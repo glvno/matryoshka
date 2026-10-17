@@ -530,6 +530,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: scope.visible ? 'Hide oscilloscope' : 'Show oscilloscope', keywords: 'scope window waveform', run: inPatch(() => scope.setVisible(!scope.visible)) },
     { kind: 'command', label: 'Scope: waveform', keywords: 'oscilloscope time', run: inPatch(() => scope.setMode('time')) },
     { kind: 'command', label: 'Scope: spectrum', keywords: 'oscilloscope frequency fft', run: inPatch(() => scope.setMode('spectrum')) },
+    { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
     { kind: 'command', label: 'Tidy up the canvas', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
     { kind: 'command', label: 'Cable slack: none', keywords: 'slack sag tight straight', run: inPatch(() => setSlack(0)) },
     { kind: 'command', label: 'Cable slack: half', keywords: 'slack sag droop hang loose', run: inPatch(() => setSlack(0.5)) },
@@ -644,6 +645,9 @@ window.addEventListener('keydown', (e) => {
   }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !document.querySelector('dialog[open]')) {
     e.preventDefault(); e.stopImmediatePropagation(); openPalette(); return;
+  }
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'b' && !compactWorkspace.matches && !document.querySelector('dialog[open]')) {
+    e.preventDefault(); e.stopImmediatePropagation(); toggleSidebarCollapsed(); return;
   }
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's' && currentTab === 'patch' && !document.querySelector('dialog[open]')) {
     e.preventDefault(); e.stopImmediatePropagation(); saveCurrent(); return;
@@ -1061,6 +1065,34 @@ const closeSidebar = (): void => setSidebarOpen(false);
 sidebarToggle.onclick = () => setSidebarOpen(!sidebar.classList.contains('open'));
 sidebarDismiss.onclick = closeSidebar;
 compactWorkspace.addEventListener('change', closeSidebar);
+// collapsing the sidebar (wide layouts): the canvas runs the full height, the sidebar keeps a strip beside the Main dock (logo, tabs, expand)
+const SIDEBAR_COLLAPSED = 'matryoshka.sidebar-collapsed';
+const collapseBtn = $('sidebar-collapse');
+const setSidebarCollapsed = (on: boolean): void => {
+  if (on && sidebar.contains(document.activeElement) && document.activeElement !== collapseBtn) (document.activeElement as HTMLElement).blur();
+  sidebar.parentElement!.classList.toggle('side-collapsed', on);
+  collapseBtn.textContent = on ? '»' : '«';
+  collapseBtn.setAttribute('aria-expanded', String(!on));
+  collapseBtn.title = `${on ? 'Expand' : 'Collapse'} the sidebar (Ctrl/Cmd+B)`;
+  collapseBtn.setAttribute('aria-label', `${on ? 'Expand' : 'Collapse'} the sidebar`);
+  try {
+    if (on) localStorage.setItem(SIDEBAR_COLLAPSED, '1');
+    else localStorage.removeItem(SIDEBAR_COLLAPSED);
+  } catch {
+    /* storage blocked: the choice lasts until the page is reloaded */
+  }
+  editor.positionSideCables();
+};
+const toggleSidebarCollapsed = (): void => setSidebarCollapsed(!sidebar.parentElement!.classList.contains('side-collapsed'));
+collapseBtn.onclick = toggleSidebarCollapsed;
+sidebar.querySelector<HTMLElement>('.brand')!.addEventListener('click', () => {
+  if (sidebar.parentElement!.classList.contains('side-collapsed')) setSidebarCollapsed(false);
+});
+try {
+  if (localStorage.getItem(SIDEBAR_COLLAPSED)) setSidebarCollapsed(true);
+} catch {
+  /* storage blocked: start expanded */
+}
 
 // tabs
 const refreshBank = buildBankTab($('tab-library'), device, () => editor.patch, (msg) => {

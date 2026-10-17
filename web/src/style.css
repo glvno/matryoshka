@@ -114,6 +114,25 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 syste
 .budget-item.pick { cursor: pointer; }
 .budget-item.pick:hover > :first-child { color: var(--ink); text-decoration: underline; }
 .budget-list p { margin: 4px 0 0; font-size: 11px; }
+/* collapsing the sidebar: the canvas takes its place, and the sidebar shrinks to the strip left of the Main dock
+   (the logo, the Patch / Library tabs and the expand button); not in the compact layout, where the sidebar is a drawer */
+.sidebar { position: relative; }
+.side-collapse { position: absolute; top: 6px; right: 6px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; min-height: 0 !important;
+  padding: 0 !important; border-radius: 4px; font-size: 15px !important; line-height: 1; letter-spacing: 0 !important;
+  background: transparent !important; border: 1px solid transparent !important; color: var(--muted) !important; }
+.side-collapse:hover { color: var(--ink) !important; border-color: var(--line) !important; filter: none !important; }
+@media (min-width: 701px) {
+  .workspace.side-collapsed > main { grid-column: 1 / 4; }
+  .workspace.side-collapsed > .sidebar { grid-row: 2; flex-direction: row; align-items: center; justify-content: center; gap: 8px; padding: 6px 30px 6px 8px; overflow: hidden; border-top: 1px solid var(--line); }
+  .side-collapsed .sidebar > :not(.brand, .side-collapse, #tabs) { display: none; }
+  .side-collapsed #tabs { flex: 1; border-bottom: 0; }
+  .side-collapsed #tabs button { padding: 8px 2px; }
+  .side-collapsed .sidebar > .brand { cursor: pointer; }
+  .side-collapsed .brand h1 { display: none; }
+  .side-collapsed .brand > img { width: auto; height: 44px; min-height: 0; }
+  .side-collapsed .side-collapse { top: 50%; transform: translateY(-50%); }
+}
+@media (max-width: 700px) { .side-collapse { display: none; } }
 .sidebar-bottom { margin-top: auto; display: grid; gap: 12px; padding-top: 24px; }
 #audio-status { font-size: 11px; overflow-wrap: anywhere; }
 #palette-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; background: transparent; }
