@@ -227,6 +227,11 @@ dialog.help { width: 760px; max-width: calc(100% - 24px); max-height: calc(100dv
   border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 48px var(--backdrop); font: 500 13px/1.35 'Barlow', system-ui, sans-serif; }
 dialog.help[open] { display: flex; flex-direction: column; }
 dialog.help::backdrop { background: var(--backdrop); }
+/* the ? button: floats over the canvas's bottom right corner (on the patch tab, not on the canvas: it does not scroll) */
+.help-btn { position: absolute; right: 18px; bottom: 18px; z-index: 6; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--panel)); background: var(--panel); color: var(--muted); box-shadow: 0 2px 8px var(--shadow);
+  font: 600 17px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; }
+.help-btn:hover { color: var(--ink); border-color: var(--secondary); }
 dialog.help .shead { flex: none; height: 34px; padding: 0 6px 0 10px; }
 dialog.help .shead form { margin: 0; }
 dialog.help .help-close { border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }

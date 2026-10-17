@@ -633,6 +633,7 @@ $('mobile-commands').onclick = () => openPalette();
 $('palette-close').onclick = () => palette.close();
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.onclick = () => prefill(button.dataset.query!);
 const help = $<HTMLDialogElement>('help');
+$('help-btn').onclick = () => help.showModal();
 
 // A pointer interaction gives focus back to the page, so Space / arrows / Delete reach the shortcuts below, not the control.
 releaseFocusAfterPointer();
