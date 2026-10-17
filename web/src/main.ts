@@ -973,10 +973,20 @@ const noteKeys = attachKeyboard(sink, () => currentTab === 'patch' && !document.
 // Web MIDI is only asked for on request: while a page holds MIDI access, Chromium's ALSA backend tracks every MIDI port on the
 // system and aborts the whole browser (SIGILL in midi::MidiManager::SetInputPortState) when the ports change, for example when
 // the FM-1 re-enumerates after a reset or a firmware update.
-$('midi-btn').onclick = () => {
-  $('midi-btn').setAttribute('disabled', '');
-  void attachMidi(sink, (s) => {
-    if (!host.running) status.textContent = s;
+const midiBtn = $('midi-btn');
+let midiAsked = false;
+midiBtn.onclick = () => {
+  if (midiAsked) return; // once granted it stays: Release MIDI (FM-1 & MIDI menu) reloads the page to drop it
+  midiAsked = true;
+  void attachMidi(
+    sink,
+    (s) => {
+      if (!host.running) status.textContent = s;
+    },
+    (n) => (midiBtn.title = `MIDI on: ${n} input${n === 1 ? '' : 's'}. Release MIDI is in the FM-1 & MIDI menu.`),
+  ).then((ok) => {
+    midiAsked = ok;
+    midiBtn.setAttribute('aria-pressed', String(ok));
   });
 };
 $('dev-release').onclick = () => {

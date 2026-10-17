@@ -81,6 +81,7 @@
       <div class="deck-controls">
         <button id="audio-btn" title="Start the audio">Audio on</button>
         <button id="keys-btn" aria-expanded="true" aria-controls="piano" title="Show or hide the keyboard">Keys</button>
+        <button id="midi-btn" aria-pressed="false" title="Play from a MIDI keyboard (the browser asks for MIDI access)">MIDI</button>
       </div>
       <div id="piano" class="piano" role="group" aria-label="Keyboard"></div>
       </div>
@@ -103,7 +104,6 @@
         <div class="row"><button id="dev-send" disabled>Send patch</button><button id="dev-store" disabled>Store on FM-1</button></div>
         <span id="dev-status" class="muted" role="status"></span>
         <span class="menu-heading">MIDI keyboard</span>
-        <button id="midi-btn">Enable MIDI keyboard</button>
         <button id="dev-release" title="Release MIDI ports by reloading the page. Use before unplugging or flashing the FM-1.">Release MIDI</button>
         <form method="dialog"><button>Close</button></form>
       </dialog>

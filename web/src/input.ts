@@ -61,8 +61,12 @@ export function attachKeyboard(host: Pick<AudioHost, 'send'>, isActive: () => bo
   return { octave: () => octave, shift };
 }
 
-export async function attachMidi(host: Pick<AudioHost, 'send'>, status: (s: string) => void): Promise<void> {
-  if (!navigator.requestMIDIAccess) return status('Web MIDI is not available in this browser');
+/** resolves to the number of MIDI inputs as they change (`inputs`), false when MIDI could not be had */
+export async function attachMidi(host: Pick<AudioHost, 'send'>, status: (s: string) => void, inputs?: (n: number) => void): Promise<boolean> {
+  if (!navigator.requestMIDIAccess) {
+    status('Web MIDI is not available in this browser');
+    return false;
+  }
   try {
     const access = await navigator.requestMIDIAccess();
     const hook = (): void => {
@@ -81,10 +85,13 @@ export async function attachMidi(host: Pick<AudioHost, 'send'>, status: (s: stri
         };
       }
       status(`${access.inputs.size} MIDI input(s)`);
+      inputs?.(access.inputs.size);
     };
     access.onstatechange = hook;
     hook();
+    return true;
   } catch (e) {
     status(`MIDI access denied: ${e}`);
+    return false;
   }
 }
