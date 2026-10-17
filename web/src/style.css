@@ -747,7 +747,8 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
   height: 18px; margin: 0; padding: 0; border-radius: 5px; background: var(--bar); font: 500 12px/1 'Barlow', system-ui, sans-serif; color: var(--ink); }
 .param.bar > span:first-child { grid-area: 1 / 1; padding-left: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font: var(--cap); text-transform: uppercase; letter-spacing: .06em; pointer-events: none; }
-.param.bar > span:first-child.rename { pointer-events: auto; position: relative; z-index: 3; }
+/* only the name itself renames: the rest of the bar stays the slider */
+.param.bar > span:first-child.rename { pointer-events: auto; position: relative; z-index: 3; justify-self: start; max-width: 100%; }
 .param.bar > output { grid-area: 1 / 2; padding-right: 6px; font-size: 11.5px; color: var(--ink); pointer-events: none; }
 .param.bar > output:empty { display: none; }
 .param.bar .unit { margin-left: 2px; font-size: 9.5px; color: var(--muted); }

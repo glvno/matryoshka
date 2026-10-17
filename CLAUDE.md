@@ -437,3 +437,10 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Prophet 5: envelope shapes `filter env` (FILTER) and `amp env` (AMP), three scopes (the filter output in FILTER, the voice sum in AMP, LFO / osc A in MOD); the nested voice card exposes `filter`, `osc A` (`nestOutput` in gen-assemblies.ts).
 - First-run patch (`starter.ts`, tested in `starter.test.ts`): "Mellow Pad", the factory Prophet 5 at four voices with pad settings, the mod wheel into its `wheel`, into a reverb; 96 % CPU estimate (the reverb costs ~21 %; five voices or a chorus on top go over).
 - Note: an assembly's "Delete with its modules" keeps nested children (by design, tested); a deleted Prophet 5 leaves its voice card.
+
+## Palette prefill, slider drags (2026-10-17, browser-checked on [::1]:5173; editor only)
+
+- A palette opened with a query (+ Add module, + Add assembly, the filter buttons) prefills it with a trailing space and the caret at the end (`prefill` in main.ts), so typing narrows instead of extending the word.
+- Slider drags are all custom (`slider-jack.ts drag`): a press on the bare track puts the thumb there, then drags; the whole track = the whole range, Shift = `FINE` (0.1) speed, applied per pointer step so pressing / releasing Shift mid-drag does not jump. Assembly-card row names (`.rename`, click renames with `window.prompt`) are only as wide as their text; they used to cover the whole bar, so a press on the bar opened the rename prompt (that blocked the page in browser checks: the "freeze").
+- Browser automation: the computer tool's click coordinates are CSS px (clientX / clientY) on this machine, not the screenshot's frame.
+

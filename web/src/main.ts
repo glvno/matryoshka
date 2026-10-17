@@ -594,13 +594,18 @@ const palRun = (c: Command): void => {
   if (c.kind !== 'command') switchTab('patch');
   c.run();
 };
-const openPalette = (query = ''): void => {
-  palInput.value = query;
+/** a prefilled query ends in a space, the caret after it, so typing straight away narrows it instead of extending its last word */
+const prefill = (query: string): void => {
+  palInput.value = query ? `${query} ` : '';
   palSel = 0;
   palRender();
+  palInput.focus();
+  palInput.setSelectionRange(palInput.value.length, palInput.value.length);
+};
+const openPalette = (query = ''): void => {
   closeSidebar();
   palette.showModal();
-  palInput.focus();
+  prefill(query);
 };
 palInput.oninput = () => {
   palSel = 0;
@@ -626,12 +631,7 @@ $('fit-btn').onclick = () => editor.zoomToFit();
 $('tour-btn').onclick = () => { switchTab('patch'); tutorial.open(); };
 $('mobile-commands').onclick = () => openPalette();
 $('palette-close').onclick = () => palette.close();
-for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.onclick = () => {
-  palInput.value = button.dataset.query!;
-  palSel = 0;
-  palRender();
-  palInput.focus();
-};
+for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.onclick = () => prefill(button.dataset.query!);
 const help = $<HTMLDialogElement>('help');
 
 // A pointer interaction gives focus back to the page, so Space / arrows / Delete reach the shortcuts below, not the control.
