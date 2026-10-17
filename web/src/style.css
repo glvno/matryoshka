@@ -458,11 +458,13 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .deck-controls { flex: none; display: grid; grid-template-rows: 1fr 1fr; grid-template-columns: 1fr 1fr; gap: 6px; align-content: stretch; }
 .deck-controls #audio-btn { grid-column: 1 / -1; }
 .deck-controls button { padding: 0 8px; font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-/* Audio on (off: filled, the thing to press) / Panic (playing: outlined in the danger colour) */
+/* Audio on (off: filled teal, the thing to press) / Panic (playing: filled like + Add module) */
 .deck-controls #audio-btn { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
-.deck-controls #audio-btn.on { background: var(--panel); border-color: var(--danger); color: var(--danger); }
-.deck-controls #keys-btn[aria-expanded="true"], .deck-controls #midi-btn[aria-pressed="true"] { color: var(--secondary); border-color: var(--secondary); }
-.deck-controls #midi-btn[aria-pressed="true"] { cursor: default; }
+.deck-controls #audio-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.deck-controls #keys-btn[aria-expanded="true"] { color: var(--secondary); border-color: var(--secondary); }
+/* MIDI in the keyboard's colours: a white key with black text while on, a black key while off */
+.deck-controls #midi-btn { background: var(--key-black); border-color: var(--key-black); color: var(--key-white); }
+.deck-controls #midi-btn[aria-pressed="true"] { background: var(--key-white); border-color: var(--key-edge); color: var(--key-black); }
 .arp-line { display: flex; gap: 6px; align-items: stretch; }
 .dock #arp-btn { font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding: 4px 10px; }
 .dock #arp-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }

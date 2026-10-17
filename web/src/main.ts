@@ -974,20 +974,37 @@ const noteKeys = attachKeyboard(sink, () => currentTab === 'patch' && !document.
 // system and aborts the whole browser (SIGILL in midi::MidiManager::SetInputPortState) when the ports change, for example when
 // the FM-1 re-enumerates after a reset or a firmware update.
 const midiBtn = $('midi-btn');
-let midiAsked = false;
-midiBtn.onclick = () => {
-  if (midiAsked) return; // once granted it stays: Release MIDI (FM-1 & MIDI menu) reloads the page to drop it
-  midiAsked = true;
-  void attachMidi(
+let midiSwitch: ((on: boolean) => void) | null = null;
+let midiOn = false;
+let midiInputs = 0;
+const showMidi = (): void => {
+  midiBtn.setAttribute('aria-pressed', String(midiOn));
+  midiBtn.title = midiOn
+    ? `MIDI on: ${midiInputs} input${midiInputs === 1 ? '' : 's'}. Click to stop listening.`
+    : 'Play from a MIDI keyboard (the browser asks for MIDI access)';
+};
+let midiAsking = false;
+midiBtn.onclick = async () => {
+  if (midiSwitch) {
+    midiOn = !midiOn;
+    midiSwitch(midiOn);
+    return showMidi();
+  }
+  if (midiAsking) return;
+  midiAsking = true;
+  midiSwitch = await attachMidi(
     sink,
     (s) => {
       if (!host.running) status.textContent = s;
     },
-    (n) => (midiBtn.title = `MIDI on: ${n} input${n === 1 ? '' : 's'}. Release MIDI is in the FM-1 & MIDI menu.`),
-  ).then((ok) => {
-    midiAsked = ok;
-    midiBtn.setAttribute('aria-pressed', String(ok));
-  });
+    (n) => {
+      midiInputs = n;
+      showMidi();
+    },
+  );
+  midiAsking = false;
+  midiOn = !!midiSwitch;
+  showMidi();
 };
 $('dev-release').onclick = () => {
   save(editor.patch); // the patch is remembered; reloading the page is what drops the MIDI access

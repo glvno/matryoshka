@@ -61,37 +61,57 @@ export function attachKeyboard(host: Pick<AudioHost, 'send'>, isActive: () => bo
   return { octave: () => octave, shift };
 }
 
-/** resolves to the number of MIDI inputs as they change (`inputs`), false when MIDI could not be had */
-export async function attachMidi(host: Pick<AudioHost, 'send'>, status: (s: string) => void, inputs?: (n: number) => void): Promise<boolean> {
+/**
+ * Asks for Web MIDI and plays from every input. Resolves to a switch (off: incoming messages are ignored and the notes
+ * MIDI holds are released; the access itself stays until the page reloads), or null when MIDI could not be had.
+ * `inputs` hears the number of inputs as it changes.
+ */
+export async function attachMidi(
+  host: Pick<AudioHost, 'send'>,
+  status: (s: string) => void,
+  inputs?: (n: number) => void,
+): Promise<((on: boolean) => void) | null> {
   if (!navigator.requestMIDIAccess) {
     status('Web MIDI is not available in this browser');
-    return false;
+    return null;
   }
+  let access: MIDIAccess;
   try {
-    const access = await navigator.requestMIDIAccess();
-    const hook = (): void => {
-      for (const input of access.inputs.values()) {
-        input.onmidimessage = (ev) => {
-          const [s, a, b] = ev.data ?? [];
-          if (s === 0xf8) return void host.send({ t: 'clock' });
-          if (s === 0xfa || s === 0xfb || s === 0xfc) return void host.send({ t: 'clockrun', on: s !== 0xfc });
-          const cmd = s & 0xf0;
-          if (cmd === 0x90 && b > 0) host.send({ t: 'on', note: a, vel: b / 127 });
-          else if (cmd === 0x80 || (cmd === 0x90 && b === 0)) host.send({ t: 'off', note: a });
-          else if (cmd === 0xb0 && a === 123) host.send({ t: 'panic' });
-          else if (cmd === 0xb0) host.send({ t: 'cc', n: a, v: b }); // CC 1 = mod wheel, 16..19 = the Main module's knobs
-          else if (cmd === 0xe0) host.send({ t: 'bend', v: (((b << 7) | a) - 8192) / 8192 });
-          else if (cmd === 0xd0) host.send({ t: 'at', v: a / 127 });
-        };
-      }
-      status(`${access.inputs.size} MIDI input(s)`);
-      inputs?.(access.inputs.size);
-    };
-    access.onstatechange = hook;
-    hook();
-    return true;
+    access = await navigator.requestMIDIAccess();
   } catch (e) {
     status(`MIDI access denied: ${e}`);
-    return false;
+    return null;
   }
+  let on = true;
+  const held = new Set<number>();
+  const message = (ev: MIDIMessageEvent): void => {
+    if (!on) return;
+    const [s, a, b] = ev.data ?? [];
+    if (s === 0xf8) return void host.send({ t: 'clock' });
+    if (s === 0xfa || s === 0xfb || s === 0xfc) return void host.send({ t: 'clockrun', on: s !== 0xfc });
+    const cmd = s & 0xf0;
+    if (cmd === 0x90 && b > 0) {
+      held.add(a);
+      host.send({ t: 'on', note: a, vel: b / 127 });
+    } else if (cmd === 0x80 || (cmd === 0x90 && b === 0)) {
+      held.delete(a);
+      host.send({ t: 'off', note: a });
+    } else if (cmd === 0xb0 && a === 123) host.send({ t: 'panic' });
+    else if (cmd === 0xb0) host.send({ t: 'cc', n: a, v: b }); // CC 1 = mod wheel, 16..19 = the Main module's knobs
+    else if (cmd === 0xe0) host.send({ t: 'bend', v: (((b << 7) | a) - 8192) / 8192 });
+    else if (cmd === 0xd0) host.send({ t: 'at', v: a / 127 });
+  };
+  const hook = (): void => {
+    for (const input of access.inputs.values()) input.onmidimessage = message;
+    status(`${access.inputs.size} MIDI input(s)`);
+    inputs?.(access.inputs.size);
+  };
+  access.onstatechange = hook;
+  hook();
+  return (next) => {
+    on = next;
+    if (on) return hook();
+    for (const note of held) host.send({ t: 'off', note });
+    held.clear();
+  };
 }
