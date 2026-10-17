@@ -977,6 +977,8 @@ const midiBtn = $('midi-btn');
 let midiSwitch: ((on: boolean) => void) | null = null;
 let midiOn = false;
 let midiInputs = 0;
+/** set when the user switched MIDI off: it then stays off on the next visits until switched on again */
+const MIDI_OFF = 'matryoshka.midi-off';
 const showMidi = (): void => {
   midiBtn.setAttribute('aria-pressed', String(midiOn));
   midiBtn.title = midiOn
@@ -984,13 +986,13 @@ const showMidi = (): void => {
     : 'Play from a MIDI keyboard (the browser asks for MIDI access)';
 };
 let midiAsking = false;
-midiBtn.onclick = async () => {
+const setMidi = async (on: boolean): Promise<void> => {
   if (midiSwitch) {
-    midiOn = !midiOn;
-    midiSwitch(midiOn);
+    midiOn = on;
+    midiSwitch(on);
     return showMidi();
   }
-  if (midiAsking) return;
+  if (!on || midiAsking) return;
   midiAsking = true;
   midiSwitch = await attachMidi(
     sink,
@@ -1006,6 +1008,36 @@ midiBtn.onclick = async () => {
   midiOn = !!midiSwitch;
   showMidi();
 };
+midiBtn.onclick = () => {
+  const on = !midiOn;
+  try {
+    if (on) localStorage.removeItem(MIDI_OFF);
+    else localStorage.setItem(MIDI_OFF, '1');
+  } catch {
+    /* storage blocked: the choice lasts until the page is reloaded */
+  }
+  void setMidi(on);
+};
+// MIDI is on by default (the browser asks once), unless the user switched it off. Not on Linux: there Chromium's ALSA
+// backend crashes the browser when ports change while a page holds MIDI access (see above), so it waits for the button.
+const midiOffChosen = ((): boolean => {
+  try {
+    return localStorage.getItem(MIDI_OFF) === '1';
+  } catch {
+    return false;
+  }
+})();
+if (!midiOffChosen && !/Linux/.test(navigator.userAgent) && 'requestMIDIAccess' in navigator) {
+  void (async () => {
+    try {
+      const p = await navigator.permissions.query({ name: 'midi' as PermissionName });
+      if (p.state === 'denied') return;
+    } catch {
+      /* no permission query for MIDI here: ask anyway */
+    }
+    await setMidi(true);
+  })();
+}
 $('dev-release').onclick = () => {
   save(editor.patch); // the patch is remembered; reloading the page is what drops the MIDI access
   location.reload();

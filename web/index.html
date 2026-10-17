@@ -107,27 +107,46 @@
         <button id="dev-release" title="Release MIDI ports by reloading the page. Use before unplugging or flashing the FM-1.">Release MIDI</button>
         <form method="dialog"><button>Close</button></form>
       </dialog>
-      <dialog id="help" class="help">
-        <h2>Keyboard</h2>
-        <table>
-          <tr><td>/ or Ctrl/Cmd+K</td><td>command palette: add a module, insert an assembly, load a patch, new patch</td></tr>
-          <tr><td>click a jack, then another</td><td>connect (Esc cancels); drag works as before</td></tr>
-          <tr><td>Internal cables</td><td>your own routes (coloured): click to disconnect; drag a side input to a slider thumb to add one. Grey routes are built into the module</td></tr>
-          <tr><td>Drag a slider / Alt-drag</td><td>adjust its value / patch its input; drop an output cable onto its thumb to connect</td></tr>
-          <tr><td>Shift-drag a slider</td><td>fine adjustment: a tenth of the speed (press or let go of Shift mid-drag)</td></tr>
-          <tr><td>Delete / Backspace</td><td>remove the selected modules and assemblies</td></tr>
-          <tr><td>B</td><td>bypass / unbypass the selected modules</td></tr>
-          <tr><td>Ctrl/Cmd+G</td><td>group the selection into an assembly</td></tr>
-          <tr><td>Ctrl/Cmd+A</td><td>select every module and assembly on the canvas</td></tr>
-          <tr><td>Ctrl/Cmd+D</td><td>duplicate the selection with its settings and the cables among it</td></tr>
-          <tr><td>Arrows (Shift: ×10)</td><td>nudge the selected cards</td></tr>
-          <tr><td>Ctrl/Cmd+Z, Shift+Ctrl/Cmd+Z</td><td>undo, redo</td></tr>
-          <tr><td>Alt+B</td><td>flip between the A and B snapshots</td></tr>
-          <tr><td>Space</td><td>arpeggiator enable / disable</td></tr>
-          <tr><td>A W S E D F T G Y H U J K, Z / X</td><td>play notes, octave down / up</td></tr>
-          <tr><td>?</td><td>this list; Esc closes it</td></tr>
-        </table>
-        <form method="dialog"><button>Close</button></form>
+      <dialog id="help" class="help" aria-labelledby="help-title">
+        <div class="shead"><span class="mtag util">HELP</span><span class="stitle" id="help-title">Shortcuts</span><form method="dialog"><button class="help-close" aria-label="Close">×</button></form></div>
+        <div class="help-body">
+          <section class="hsec"><h3>Commands</h3>
+            <div class="hrow"><span class="hkeys"><kbd>/</kbd> <kbd>Ctrl/Cmd+K</kbd></span><span>command palette: add a module, insert an assembly, open a patch, any action</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+S</kbd></span><span>save the patch to Your patches</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>?</kbd></span><span>this list</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Esc</kbd></span><span>cancel a connection, finish choosing or arranging what a card shows, close a dialog</span></div>
+          </section>
+          <section class="hsec"><h3>Selection</h3>
+            <div class="hrow"><span class="hkeys">click / <kbd>Shift</kbd>-click a title</span><span>select a card / add it to the selection; drag on the empty canvas to select an area</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+A</kbd></span><span>select every card on the canvas</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+D</kbd></span><span>duplicate the selection with its settings and the cables among it</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+G</kbd></span><span>make an assembly from the selection</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Delete</kbd> <kbd>Backspace</kbd></span><span>remove the selection</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>B</kbd></span><span>bypass / un-bypass the selection</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd></span><span>nudge the selection (with <kbd>Shift</kbd>: ten times further)</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+Z</kbd> <kbd>Shift+Ctrl/Cmd+Z</kbd></span><span>undo, redo</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd> + wheel</span><span>zoom the canvas (pinch on a touch screen)</span></div>
+            <div class="hrow"><span class="hkeys">right-click a title</span><span>the card’s ⋯ menu</span></div>
+          </section>
+          <section class="hsec"><h3>Patching</h3>
+            <div class="hrow"><span class="hkeys">click a jack, then another</span><span>connect (dragging works too)</span></div>
+            <div class="hrow"><span class="hkeys">click a cable</span><span>disconnect it; grey routes are built into the module</span></div>
+            <div class="hrow"><span class="hkeys">drop on a thumb</span><span>modulate that parameter (depth in its ⋮ menu); <kbd>Alt</kbd>-drag a thumb to patch from it</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Shift</kbd>-click a jack</span><span>show it on the scope</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd>-click a row</span><span>in an expanded assembly: show it on the collapsed card, or take it off</span></div>
+          </section>
+          <section class="hsec"><h3>Controls</h3>
+            <div class="hrow"><span class="hkeys">drag a slider</span><span>set its value; press anywhere on the bar to jump there</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Shift</kbd>-drag</span><span>fine: a slider at a tenth of the speed, a knob or envelope corner finer too</span></div>
+            <div class="hrow"><span class="hkeys">double-click</span><span>a knob, wheel or envelope display: back to its default; a heading or assembly title: rename it</span></div>
+          </section>
+          <section class="hsec"><h3>Playing</h3>
+            <div class="hrow"><span class="hkeys"><kbd>A</kbd><kbd>W</kbd><kbd>S</kbd><kbd>E</kbd><kbd>D</kbd><kbd>F</kbd><kbd>T</kbd><kbd>G</kbd><kbd>Y</kbd><kbd>H</kbd><kbd>U</kbd><kbd>J</kbd><kbd>K</kbd><kbd>O</kbd><kbd>L</kbd><kbd>P</kbd></span><span>play notes, C up to D#</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Z</kbd> <kbd>X</kbd></span><span>octave down / up</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Space</kbd></span><span>arpeggiator on / off</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Alt+B</kbd></span><span>flip between the A and B snapshots</span></div>
+          </section>
+        </div>
       </dialog>
   <script type="module" src="/src/main.ts"></script>
 </body>
