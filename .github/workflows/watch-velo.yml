@@ -1,0 +1,46 @@
+# Weekly check of charlesvestal/fm1-velocity (issue #56). Comments on the issue only when the
+# project's default branch has commits since the last one recorded. The last seen commit is kept
+# in the issue's comments as a hidden marker <!-- velo-watch:SHA -->; before the first comment it
+# is the commit the issue was written against.
+name: watch-velo
+on:
+  schedule:
+    - cron: '17 7 * * 1'   # Mondays 07:17 UTC
+  workflow_dispatch:
+permissions:
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      WATCHED: charlesvestal/fm1-velocity
+      ISSUE: 56
+      BASELINE: 8f62ce0d968c91ce8bfdafbb908f81d15351650a
+    steps:
+      - name: Compare with the last seen commit, comment if there are new ones
+        run: |
+          set -euo pipefail
+          branch=$(gh api "repos/$WATCHED" --jq .default_branch)
+          head=$(gh api "repos/$WATCHED/commits/$branch" --jq .sha)
+          last=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$ISSUE/comments" --jq '.[].body' \
+            | grep -o 'velo-watch:[0-9a-f]\{40\}' | tail -n 1 | cut -d: -f2 || true)
+          last=${last:-$BASELINE}
+          echo "last seen $last, head $head"
+          if [ "$head" = "$last" ]; then
+            echo "no new commits"
+            exit 0
+          fi
+          if list=$(gh api "repos/$WATCHED/compare/$last...$head" \
+              --jq '.commits | reverse | .[] | "- [`\(.sha[0:7])`](\(.html_url)) \(.commit.author.date[0:10]) \(.commit.message | split("\n")[0])"'); then
+            total=$(gh api "repos/$WATCHED/compare/$last...$head" --jq .total_commits)
+            title="$total new commit(s) on \`$branch\` since \`${last:0:7}\`, newest first:"
+          else
+            # history was rewritten: the last seen commit is gone, list the newest instead
+            list=$(gh api "repos/$WATCHED/commits?sha=$branch&per_page=20" \
+              --jq '.[] | "- [`\(.sha[0:7])`](\(.html_url)) \(.commit.author.date[0:10]) \(.commit.message | split("\n")[0])"')
+            title="\`${last:0:7}\` is no longer on \`$branch\` (history rewritten?); its newest commits:"
+          fi
+          body=$(printf '%s\n\n%s\n\n[Compare](https://github.com/%s/compare/%s...%s) · re-check the checklist above.\n\n<!-- velo-watch:%s -->\n' \
+            "$title" "$list" "$WATCHED" "$last" "$head" "$head")
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "$body"
