@@ -286,7 +286,7 @@ describe('assemblies', () => {
 
   it('ships factory assemblies that load, insert and play', () => {
     expect(FACTORY.map((d) => d.name)).toEqual([
-      'adsr operator', 'analog voice', 'auto pan', 'barber pole', 'bowed glass', 'bowed string', 'clap', 'clock', 'cloud', 'cowbell', 'echo', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'hihat', 'kalimba', 'kick', 'marimba', 'mono lead', 'noise voice', 'operator', 'pluck', 'poly voice', 'prophet 5', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'shimmer', 'sidechain pump', 'slicer', 'snare', 'stack voice', 'step sequencer', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'vibrato', 'voice', 'vowel voice', 'wavetable pad',
+      'adsr operator', 'analog voice', 'auto pan', 'barber pole', 'bowed glass', 'bowed string', 'clap', 'clock', 'cloud', 'cowbell', 'echo', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'hihat', 'kalimba', 'kick', 'marimba', 'mono lead', 'noise voice', 'operator', 'Oracle V', 'pluck', 'poly voice', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'shimmer', 'sidechain pump', 'slicer', 'snare', 'stack voice', 'step sequencer', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'vibrato', 'voice', 'vowel voice', 'wavetable pad',
     ]);
     for (const d of FACTORY) {
       expect(d.modules.every((m) => m.map === undefined || ['k1', 'k2', 'k3', 'k4'].every((k) => m.map![k as 'k1'].length === 0)), d.name).toBe(true);
@@ -651,7 +651,7 @@ describe('assembly card columns and headings', () => {
   });
 
   it('drops malformed layout fields on load', () => {
-    const def = JSON.parse(JSON.stringify(FACTORY.find((d) => d.name === 'prophet 5')!));
+    const def = JSON.parse(JSON.stringify(FACTORY.find((d) => d.name === 'Oracle V')!));
     def.params[0].col = true;
     def.params[1].col = 'yes';
     def.params[2].head = 42;
@@ -663,8 +663,8 @@ describe('assembly card columns and headings', () => {
     expect(d.params[3].head).toHaveLength(40);
   });
 
-  it('the factory Prophet 5 has three sectioned columns', () => {
-    const d = FACTORY.find((x) => x.name === 'prophet 5')!;
+  it('the factory Oracle V has three sectioned columns', () => {
+    const d = FACTORY.find((x) => x.name === 'Oracle V')!;
     expect(paramColumns(d.params).map((c) => c.length)).toEqual([9, 13, 12]);
     expect(d.params.filter((r) => r.head).map((r) => r.head)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter', 'amp', 'mod']);
   });

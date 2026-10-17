@@ -5,14 +5,14 @@ import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 
 /**
- * The first-run patch: a mellow pad on the factory Prophet 5 (slow, soft attack, a darker filter that opens gently,
+ * The first-run patch: a mellow pad on the factory Oracle V (slow, soft attack, a darker filter that opens gently,
  * a long release, two detuned saws, four voices), through a reverb. The mod wheel brings in the vibrato. It fits the
  * FM-1 (the reverb costs about a fifth of the CPU: a fifth voice or a chorus on top would not fit).
  */
 export function starterPatch(): Patch {
   const p = emptyPatch('Mellow Pad');
   const main = addModule(p, DEFS.fm1, 20, 20);
-  const def = FACTORY.find((d) => d.name === 'prophet 5');
+  const def = FACTORY.find((d) => d.name === 'Oracle V');
   const out = addModule(p, DEFS.output, 1320, 20);
   out.params.level = 0.4;
   if (!def) return p;
@@ -21,7 +21,7 @@ export function starterPatch(): Patch {
   const row = (label: string, after?: string): { module: number; param: string } => {
     const from = after ? pro.params.findIndex((r) => r.label === after) : 0;
     const r = pro.params.slice(from).find((x) => x.label === label);
-    if (!r) throw new Error(`Prophet 5 has no row ${label}`);
+    if (!r) throw new Error(`Oracle V has no row ${label}`);
     return r;
   };
   const set = (label: string, v: number, after?: string): void => {

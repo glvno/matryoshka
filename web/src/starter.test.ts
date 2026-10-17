@@ -5,9 +5,9 @@ import { deviceBudget, encodePatch } from './patchbin';
 import { Engine } from './engine';
 
 describe('the first-run patch', () => {
-  it('is the Prophet 5 pad, fits the FM-1 and plays a chord without clipping', () => {
+  it('is the Oracle V pad, fits the FM-1 and plays a chord without clipping', () => {
     const p = starterPatch();
-    expect(p.assemblies?.some((a) => a.name === 'prophet 5')).toBe(true);
+    expect(p.assemblies?.some((a) => a.name === 'Oracle V')).toBe(true);
     const b = deviceBudget(p);
     expect(b.over, JSON.stringify(b.over)).toEqual([]);
     expect(() => encodePatch(p)).not.toThrow();

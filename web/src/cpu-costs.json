@@ -17305,16 +17305,16 @@
    "cycles": 49525
   },
   {
+   "name": "assembly Oracle V",
+   "cycles": 601488
+  },
+  {
    "name": "assembly pluck",
    "cycles": 67636
   },
   {
    "name": "assembly poly voice",
    "cycles": 267800
-  },
-  {
-   "name": "assembly prophet 5",
-   "cycles": 601488
   },
   {
    "name": "assembly rain",

@@ -661,15 +661,15 @@ asm('poly voice', 'Voices', (b) => {
   for (const q of ['a', 'd', 's', 'r']) b.param(q, env, q);
 }, {});
 
-// Sequential Prophet-5 (rev 3), built like the instrument: the keyboard's keys go into the Voice allocator (the Z80), which
+// Oracle V, a classic five-voice analog polysynth built like the instrument: the keyboard's keys go into the Voice allocator (the Z80), which
 // plays five voice cards, a poly assembly (about 95 % of the FM-1's estimated CPU). A card: oscillator A (saw / pulse, sync to B) and B, the 24 dB
 // ladder low pass with its own ADSR (its cvamt is the envelope amount) and keyboard tracking, the amp ADSR, glide. The
 // oscillators' levels are the mixer: they and the noise sum at the filter input. Poly Mod (off by default): the filter
 // envelope into A's pitch, B into A's phase (FM). Outside the voices, once, as on the instrument: the noise source and
 // Wheel Mod, an LFO through a VCA whose cv is the `wheel` input (plug Main's mod into it) into both oscillators' fine tune
 // (per block: their pitch inputs stay still, which keeps the oscillators cheap; `vibrato` 0.24 = +-48 cents).
-// The flaws are a mild out-of-tune set as on a well-kept rev 3.
-asm('prophet 5', 'Voices', (b) => {
+// The flaws are a mild out-of-tune set as on a well-kept vintage unit.
+asm('Oracle V', 'Voices', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5, depth: 1 });
   const wheel = b.add('vca', 0, 1);
   const vib = b.add('scale', 0, 2, { gain: 0.24, offset: 0 });
@@ -1200,5 +1200,5 @@ for (const d of defs) {
   d.inputs = pinsToParams(d.inputs, d.params, moduleOf);
   for (const n of d.assemblies ?? []) n.inputs = pinsToParams(n.inputs, n.params, moduleOf);
 }
-for (const d of defs) writeFileSync(new URL(`${d.name.replace(/[^a-z0-9]+/g, '-')}.json`, OUT), JSON.stringify(d, null, 2) + '\n');
+for (const d of defs) writeFileSync(new URL(`${d.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`, OUT), JSON.stringify(d, null, 2) + '\n');
 console.log(`wrote ${defs.length} assemblies: ${defs.map((d) => d.name).join(', ')}`);
