@@ -9,6 +9,8 @@ import { isCoverageStats, type CoverageStats } from './coverage';
 import { version } from '../package.json';
 
 const KOFI = 'glvno';
+/** the button is as tall as the logo beside it (56 px, style.css lines its top up with the logo's) */
+const KOFI_BUTTON_H = 56;
 const KOFI_SCRIPT = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
 
 declare global {
@@ -141,13 +143,14 @@ export class AboutCard {
       if (!doc?.head || doc.getElementById('m-font')) return;
       const font = new URL('./fonts/BarlowCondensed-SemiBold.ttf', document.baseURI).href;
       doc.head.insertAdjacentHTML('beforeend', `<style id="m-font">@font-face { font-family: 'Barlow Condensed'; src: url('${font}'); font-weight: 600; }
-        .floatingchat-donate-button span { font-family: 'Barlow Condensed', system-ui, sans-serif !important; font-weight: 600 !important; letter-spacing: .06em; text-transform: uppercase; }</style>`);
+        .floatingchat-donate-button span { font-family: 'Barlow Condensed', system-ui, sans-serif !important; font-weight: 600 !important; letter-spacing: .06em; text-transform: uppercase; }
+        .floatingchat-donate-button { height: ${KOFI_BUTTON_H}px !important; } .kofiimg { height: 38px !important; width: auto !important; }</style>`);
     };
     // the button sits in the card's top right corner (style.css): its wrapper is as wide as the button, so it ends at the edge
     const fit = (): void => {
       const button = frame?.contentDocument?.querySelector<HTMLElement>('.floatingchat-donate-button');
       const wrap = frame?.parentElement;
-      if (button?.offsetWidth && wrap) wrap.style.width = `${button.offsetWidth + 2}px`;
+      if (button?.offsetWidth && wrap) wrap.style.width = `${button.offsetWidth}px`;
     };
     for (const ms of [50, 400, 1500]) setTimeout(() => (style(), fit()), ms);
   }
