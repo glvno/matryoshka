@@ -46,9 +46,9 @@ function figure(label: string, value: string, caption: string): string {
 
 /** Blood (time), Sweat (human review), Tears (AI spend: WakaTime's estimate at API prices, not a bill) */
 function figures(stats: AiStats | null, review: AiReview): string {
-  const blood = figure('Blood', stats ? formatHours(stats.seconds) : '—', 'human-in-the-loop time');
+  const blood = figure('Blood', stats ? formatHours(stats.seconds) : '—', 'human in the loop');
   const sweat = figure('Sweat', review.percent !== null ? `${Math.round(review.percent)} %` : '—',
-    review.sessions !== null ? `${review.sessions} human review sessions` : 'human review sessions');
+    'human-scrutinized');
   const tears = figure('Tears', stats ? formatUsd(totalCost(stats)) : '—', 'AI spend');
   return `<div class="ai-figs">${blood}${sweat}${tears}</div>`;
 }

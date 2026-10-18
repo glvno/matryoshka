@@ -282,6 +282,8 @@ dialog.about[open] .about-body { flex: 1; }
 .credit + .credit { border-top: 1px dashed color-mix(in srgb, var(--line) 70%, transparent); }
 .credit-links { font-size: 12px; }
 .about-foot { margin-top: 6px !important; font-size: 11px; }
+/* the card's section headings (Slop Disclosure, Built on) at twice the size of the help dialog's */
+dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .06em; color: var(--ink); }
 .about-kofi > a { position: absolute; left: 16px; bottom: 24px; }
 @media (max-width: 760px) { .ai-figs { grid-template-columns: minmax(0, 1fr); } }
 /* the sidebar's About button (outlined like TIDY / FIT) and the ♥ that stands in for it in the collapsed strip */
