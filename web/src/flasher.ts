@@ -5,6 +5,7 @@
 import { Updater, STOCK_PRODUCT } from './flasher/fm1ota.js';
 // @ts-ignore untyped JS modules
 import { logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
+import { FELUCCA_WARNING, runsFelucca } from './felucca-store';
 
 
 const ERRORS: Record<string, string> = {
@@ -17,6 +18,7 @@ const ERRORS: Record<string, string> = {
   mismatch: 'Written, but the device reports a different identity.',
   badreq: 'The device asked for data outside the package.',
   phase: 'The device asked to finish a step other than the one running. Nothing more was sent.',
+  felucca: 'Nothing was sent. Read the note above Install, tick its box and press Install again.',
 };
 
 /** Flashing has never run against a real FM-1 (glvno/matryoshka#94): the production build (GitHub Pages) only installs
@@ -79,6 +81,9 @@ export function buildFlashTab(root: HTMLElement): void {
 
   const ack = el('input', { type: 'checkbox', id: 'ack' });
   const typed = el('input', { type: 'text', id: 'ack-typed', placeholder: PHRASE, autocomplete: 'off', spellcheck: false });
+  // installing over Felucca (#73): shown once the FM-1 reports a Felucca identity, needed for any non-stock install then
+  const feluccaAck = el('input', { type: 'checkbox', id: 'ack-felucca' });
+  const feluccaNote = el('div', { class: 'card warn', hidden: true }, el('h2', { textContent: 'Felucca projects, samples and presets' }), el('p', { textContent: FELUCCA_WARNING }), el('label', {}, feluccaAck, ' I have saved what I need: install anyway'));
   const accepted = (): boolean => UNLOCKED && (TYPED ? typed.value.trim().toLowerCase() === PHRASE : ack.checked);
   const supported = 'requestMIDIAccess' in navigator;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -123,12 +128,26 @@ export function buildFlashTab(root: HTMLElement): void {
     await up.install(image, product, step);
   };
 
+  /** asks the running FM-1 who it is; over Felucca the install waits for feluccaAck (an update loader is not asked:
+   *  a cut-off write is finished as before) */
+  const overFelucca = async (): Promise<void> => {
+    const dev = await (await access()).find((id: { model: string }) => !/^ota-/i.test(id.model));
+    if (!dev) return; // install() reports a missing device itself
+    dev.link.close();
+    if (!runsFelucca(dev.id.text)) return;
+    feluccaNote.hidden = false;
+    feluccaNote.scrollIntoView({ block: 'nearest' });
+    if (!feluccaAck.checked) throw Object.assign(new Error('felucca'), { code: 'felucca', detail: dev.id.text });
+    log(`installing over Felucca (${dev.id.text}): its projects and samples in the shared sectors will be overwritten`);
+  };
+
   const install = async (raw: Uint8Array): Promise<void> => {
     const product = productOf(raw);
     log(`package: ${product}, ${raw.length} bytes`);
     const mark = new TextEncoder().encode('FELUCCA-LOADER-1');
     if (!raw.some((_: number, i: number) => i < raw.length - mark.length && mark.every((b, k) => raw[i + k] === b))) throw new Error('this package has no update loader; refusing to install it');
     if (product === STOCK_PRODUCT) throw new Error('this is the official V15: use Return to stock');
+    await overFelucca();
     await installImage(logicalImage(raw), product);
   };
 
@@ -160,6 +179,7 @@ export function buildFlashTab(root: HTMLElement): void {
       if (!dev) throw Object.assign(new Error('not found'), { code: 'notfound' });
       log(`${dev.id.text}  [${/^ota-/i.test(dev.id.model) ? 'update loader: an update was not finished' : 'running'}]  port: ${dev.name}`);
       dev.link.close();
+      if (runsFelucca(dev.id.text)) (feluccaNote.hidden = false), log('this FM-1 runs Felucca: read the note about its projects and samples before installing');
     });
 
   // ---- another package
@@ -219,6 +239,7 @@ export function buildFlashTab(root: HTMLElement): void {
         el('p', { textContent: 'Until it has been tried on a spare device, this page does not install anything. You can still check that the FM-1 answers; that only asks for its identity.' }),
         el('p', { class: 'muted' }, 'Developers who accept the risk: open this page with ', el('code', { textContent: '?flash' }), ' at the end of the address, or use ', el('code', { textContent: 'tools/fm1_install.py' }), ' from the source.'),
       ),
+      feluccaNote,
       card('FM-1 connection', bundleInfo, el('div', { class: 'row' }, findBtn), licences),
       el('div', { class: 'card' }, logEl),
     );
@@ -239,10 +260,15 @@ export function buildFlashTab(root: HTMLElement): void {
       }),
       el('p', {
         textContent:
+          'Coming from Felucca: Matryoshka stores its patches in flash sectors that hold Felucca projects, samples and user presets, and overwrites them on its first start. Save them with Felucca first; this page asks again when it sees a Felucca identity.',
+      }),
+      el('p', {
+        textContent:
           'The FM-1 disconnects and comes back several times. Chromium on Linux can close the whole browser when that happens (a bug in its MIDI backend): close other tabs first, or install with tools/fm1_install.py.',
       }),
       TYPED ? el('label', {}, `Type “${PHRASE}” to accept the risk: `, typed) : el('label', {}, ack, ' I understand and accept the risk'),
     ),
+    feluccaNote,
     card('Install Matryoshka', bundleInfo, el('div', { class: 'row' }, installBtn, findBtn), licences),
     card(
       'Return to stock',
