@@ -242,8 +242,8 @@ describe('assemblies', () => {
   it('inserts past the FM-1 module limit (the budget meter counts it, the editor does not stop)', () => {
     const def = FACTORY.find((d) => d.name === 'voice')!;
     const p = emptyPatch();
-    for (let i = 0; i < 7; i++) insertAssembly(p, DEFS, def, 0, 0);
-    expect(p.modules).toHaveLength(35);
+    for (let i = 0; i < 13; i++) insertAssembly(p, DEFS, def, 0, 0);
+    expect(p.modules).toHaveLength(65);
     expect(deviceBudget(p).over.map((i) => i.key)).toContain('modules');
   });
 

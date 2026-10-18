@@ -20,11 +20,11 @@
  * frees them and takes what it needs). A patch that finds no free slot does not load (-4 lines, -6 buffers, -7
  * instances): NO ROOM on the panel. Keep DEVICE in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines
  * of manual.c in step. */
-#define ENG_MAX_MODULES 32
+#define ENG_MAX_MODULES 64          /* (the module list, `order`, `outputs` are uint8 indices; the binary header byte 2) */
 #define ENG_MAX_RANGES 48           /* macro ranges (patch.ts ModuleInst.range) */
-#define ENG_MAX_CABLES 192
-#define MAX_SUM 128                 /* summed inputs (an input of an instance with two or more sources) */
-#define MAX_SRC 256                 /* their sources: a shared input reading a per-note output has one per note */
+#define ENG_MAX_CABLES 255           /* (the HELLO reply carries it in a byte) */
+#define MAX_SUM 160                 /* summed inputs (an input of an instance with two or more sources) */
+#define MAX_SRC 320                 /* their sources: a shared input reading a per-note output has one per note */
 #define ENG_MAX_INST 128            /* module instances: a shared module has one, a per-note module one per note */
 #define ENG_NBUF 255u               /* signal buffers of ENG_BLOCK samples (a connected output, a summed input) */
 #define ENG_NDELAY 1                /* delay lines */
