@@ -514,6 +514,15 @@ static void knobs_poll(void)
         preset_step(st[6]);
         return;
     }
+    if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track, SELECT with a step held its chance */
+        if (st[1] && eng_steps_count())
+            seq_select((uint32_t)((seq_trk + (uint32_t)eng_steps_count() * 8u + (uint32_t)st[1]) % (uint32_t)eng_steps_count()));
+        st[1] = 0;
+        if (st[0] && seq_held >= 0) {
+            seq_chance(st[0]);
+            st[0] = 0;
+        }
+    }
     for (k = 0; k < 6u && panel >= 0; k++) {       /* the Main module's k1..k6 (its parameters 0..5) */
         const def_t *fd = &DEFS[T_FM1];
         int32_t inc = fd->pinc[k], v, c = st[ENC_OF[k]];
@@ -543,6 +552,8 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
 }
 
 static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
+static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
+static uint8_t seq_held_used;                    /* SEQ is held and a black key muted a track: its release does not switch the page */
 static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F3 = MIDI 53), shifted by the octave, -> the engine */
 {
     static uint32_t prev;
@@ -555,12 +566,24 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
         if (!(diff & (1u << n)))
             continue;
         diff &= ~(1u << n);
+        if ((now & (1u << n)) && (fm1_in.buttons >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
+            seq_mute_key(n);
+            seq_held_used = 1;
+            continue;
+        }
+        if (!(key_sounding & (1u << n)) && (page == PAGE_SEQ || !(now & (1u << n)))) {   /* the SEQ page: steps and tracks */
+            if (page == PAGE_SEQ)
+                seq_key(n, (int)(now >> n & 1u));
+            continue;
+        }
         if (now & (1u << n)) {
             int32_t note = 53 + (int32_t)n + 12 * octave;
             key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
+            key_sounding |= 1u << n;
             eng_note_on(key_note[n], ENG_ONE, cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
             midi_send(0x90u, key_note[n], 100u);
         } else {
+            key_sounding &= ~(1u << n);
             eng_note_off(key_note[n], cfg.ch ? cfg.ch : 1u);
             midi_send(0x80u, key_note[n], 0u);
         }
@@ -570,7 +593,7 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
 /* PLAY: red while the transport is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
  * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. */
 /* the patch buttons (the Main module's outputs fx .. rec, engine.h ENG_PANEL_BUTTONS): their matrix ids, M-VAVE's order */
-static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10, 11, 13};
+static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
 static void led_breath_key(uint32_t id, int on)     /* a button's LED breathes (the HAL's one shared speed, fm1_br_step) */
 {
     uint32_t p, r;
@@ -636,6 +659,11 @@ static void page_set(uint32_t p)    /* the same button again goes back to the mo
     page = (uint8_t)(page == p ? 0u : p);
     if (page == PAGE_MENU)
         menu_open();
+    if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends live recording) */
+        seq_rec = 0;
+        seq_leds_off();
+    }
+    header_draw();
     leds_play();
     lcd_fill(0, 24, 240, 216, C_BG);
     view_draw(1);
@@ -715,6 +743,22 @@ static void buttons_poll(void)
         if (p & (1u << BTN_OCT_UP))
             menu_set_row(menu_sel, 1);
         p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
+    }
+    if (page == PAGE_SEQ) {                         /* the SEQ page: OCT- / OCT+ page through a long track, ENV is the accent key */
+        if (p & (1u << BTN_OCT_DOWN))
+            seq_page_step(-1);
+        if (p & (1u << BTN_OCT_UP))
+            seq_page_step(1);
+        p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_ENV));
+    }
+    if (p & (1u << BTN_SEQ))                        /* SEQ acts on release, unless a black key muted a track meanwhile */
+        seq_held_used = 0;
+    if ((rel & (1u << BTN_SEQ)) && !seq_held_used)
+        page_set(PAGE_SEQ);
+    if (p & (1u << BTN_REC)) {                      /* REC: live recording, on the SEQ page */
+        if (page != PAGE_SEQ)
+            page_set(PAGE_SEQ);
+        seq_rec_toggle();
     }
     if (p & (1u << BTN_OCT_DOWN))
         octave = octave > -3 ? octave - 1 : octave;
@@ -969,6 +1013,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         buttons_poll();
         knobs_poll();
         master_poll();
+        seq_poll();
         {
             if (msg_until && fm1_ms >= msg_until)
                 ui_msg_clear();

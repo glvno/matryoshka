@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The level each factory patch should reach in the emulator smoke test (tools/emu, `m1emu smoke --levels`): a freshly
-// loaded patch, MIDI note 60 at velocity 100 held for 500 ms, peak of the left channel in the emulator's 16-bit units
+// loaded patch, MIDI note 60 at velocity 100 held for 500 ms (the drum kits, which have Steps tracks: with the transport running), peak of the left channel in the emulator's 16-bit units
 // (full scale 1.0 = 12656: the -6 dB output ceiling times the MASTER pot at fm1-emu's default 900 of 1023, square law).
 // Writes build/emu/levels.txt, one "NAME<TAB>peak" line per patch, names as the LCD shows them.
 // Run from web/:  npx vite-node scripts/emu-levels.ts   (npm run emu:smoke does this)
@@ -15,7 +15,9 @@ mkdirSync(out, { recursive: true });
 const lines: string[] = [];
 for (const [name, make] of Object.entries(PRESETS)) {
   const e = new Engine(SR);
-  e.load(make());
+  const p = make();
+  e.load(p);
+  e.transport(p.modules.some((m) => m.type === 'steps')); // (the smoke test presses PLAY for these)
   const L = new Float32Array(128), R = new Float32Array(128);
   let peak = 0;
   e.noteOn(60, 100 / 127);

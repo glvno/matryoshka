@@ -34,7 +34,7 @@ import { synthLink } from './tutorial/link';
 import { CHAPTERS, LISTED, chapterEnd } from './tutorial/chapters';
 import { PRESETS } from './presets';
 import { deviceBudget } from './patchbin';
-import { ALLOC } from './poly';
+import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -92,6 +92,16 @@ device.onEvent = (e) => {
     return;
   }
   if (!live()) return;
+  if (e.kind === 'step' || e.kind === 'mute') {   // the FM-1's SEQ page (#83): a step edited or recorded, a track muted
+    const id = deviceView(editor.patch).patch.modules[e.module]?.id;
+    if (id === undefined) return;
+    fromDevice = true;
+    try {
+      if (e.kind === 'step') editor.stepFromDevice(id, e.step, e.b);
+      else host.send({ t: 'mute', id, on: e.on });
+    } finally { fromDevice = false; }
+    return;
+  }
   const main = editor.patch.modules.find((m) => m.type === 'fm1');
   if (!main) return;
   if (e.n >= 16 && e.n <= 21) {
@@ -184,6 +194,7 @@ const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host
   limits: (type, name) => { const pd = DEFS[type].params.find((q) => q.name === name)!; return { min: pd.min, max: pd.max, def: pd.default }; },
 });
 host.onEnv = (key, states) => envs.receive(key, states);
+host.onSteps = (view) => editor.showSteps(view);
 /** the sidebar's sliders whose thumbs are jacks (cable slack, zoom): see sideSlider below; filled once the editor exists */
 const sides = new Map<SideKey, SideSlider>();
 /** the zoom slider's setting (the user's zoom; a source adds to it) */
@@ -207,6 +218,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onParam(id, name, value) {
     host.send({ t: 'param', id, name, value });
     envs.changed();
+    if (name === 'len') editor.refreshSteps(id);   // (a Steps module's grid follows its length)
     queueSave(editor.patch);
     if (editor.patch.modules.find((m) => m.id === id)?.type === ALLOC) {
       // a Voice allocator's setting changes the poly groups: the FM-1 takes the whole patch again
@@ -217,6 +229,17 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (fromDevice) return;
     if (live() && !uploading) device.param(editor.patch, id, name, value);
     else if (live()) dirty = true;
+  },
+  onStep(id, k, b) {
+    host.send({ t: 'step', id, k, b });
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !uploading) device.step(editor.patch, id, k, b);
+    else if (live()) dirty = true;
+  },
+  onMute(id, on) {
+    host.send({ t: 'mute', id, on });
+    if (live() && !uploading) device.mute(editor.patch, id, on);
   },
   onBypass(id, on) {
     host.send({ t: 'bypass', id, on });

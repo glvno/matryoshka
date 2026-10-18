@@ -18,7 +18,9 @@ static int load_err;
 static const char *patch_label;
 #define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
 #define PAGE_LEGEND 7u                          /* HOME tapped: every knob and patch button with its label (legend_draw) */
-static uint8_t page;                            /* 0: the player screen, 5 menu, 7 legend */
+static uint8_t page;                            /* 0: the player screen, 5 menu, 7 legend, 8 the SEQ page (seq_ui.c) */
+static void seq_bar(void);
+static void seq_draw(int full);
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
 
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
@@ -179,6 +181,11 @@ static void bar_name_cpu(const char *s, uint16_t bg)
 
 static void header_draw(void)
 {
+    if (page == 8u && !eng_overload && !load_err) {     /* the SEQ page: the track's name (seq_ui.c PAGE_SEQ) */
+        seq_bar();
+        msg_until = 0;
+        return;
+    }
     if (eng_overload) {                     /* audio.c: the patch was too heavy and is muted until another one loads */
         bar_text("OVERLOAD: CHANGE PATCH", C_RED);
     } else if (load_err) {
@@ -314,7 +321,7 @@ static int panel_label(uint32_t i, char *out)
     return k > 0;
 }
 
-static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SCL", "ENV", "LFO", "EDIT", "GLO", "ARP", "SEQ", "REC"};
+static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SCL", "ENV", "LFO", "EDIT", "GLO", "ARP"};
 
 /* the name a knob shows: its label, else its destination, else K1..K6 */
 static void knob_name(int panel, uint32_t k, char *out)
@@ -442,6 +449,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         menu_draw(full);
     else if (page == PAGE_LEGEND)
         legend_draw(full);
+    else if (page == 8u)
+        seq_draw(full);
     else
         player_draw(full);
 }

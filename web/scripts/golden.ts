@@ -1390,6 +1390,10 @@ tests['steps-clk'] = make('steps-clk', (add, wire) => {
   ends['steps-clk'] = 128 * 200 + 900 * 200 + 128 * 120;
 }
 
+// the factory drum kits play on the transport: their kits start it with the notes
+for (const [name, patch] of Object.entries(tests))
+  if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];
+
 for (const [name, patch] of Object.entries(tests)) {
   const e = new Engine(SR);
   e.load(patch);

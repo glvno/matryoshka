@@ -1102,6 +1102,26 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   letter-spacing: .08em; color: var(--muted); pointer-events: none; }
 .module .param.screen > .screen-name.rename { pointer-events: auto; cursor: pointer; }
 .module.picking .param.screen > .screen-name, .picking .module .param.screen > .screen-name { left: 21px; }
+/* a Steps module's grid (step-grid.ts): its name and mute switch, then rows of 16 steps; a cell fills from the bottom by
+ * its chance, accented ones in the accent colour, the step playing outlined, beats a shade darker */
+.steps-screen { padding: 5px; border-radius: 5px; background: var(--bar); }
+.module .mbody > .param.screen.steps { margin: 6px 10px 8px; }
+.steps-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.steps-name { flex: 1; min-width: 0; height: 20px; box-sizing: border-box; padding: 0 5px; line-height: 18px; font: var(--cap); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
+.steps-name::placeholder { color: var(--muted); }
+.steps-mute { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  background: transparent; border: 1px solid var(--line); border-radius: 4px; }
+.steps-mute.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.steps-rows { display: grid; gap: 3px; }
+.steps-row { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
+.step { position: relative; height: 18px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 8%, var(--panel)); cursor: pointer; overflow: hidden; touch-action: none; }
+.step.beat { background: color-mix(in srgb, var(--ink) 15%, var(--panel)); }
+.step > i { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--chance, 0) * 100%); background: var(--ink); pointer-events: none; }
+.step.acc > i { background: var(--accent); }
+.step.play { box-shadow: inset 0 0 0 1.5px var(--gate); }
+.step.past { opacity: .25; cursor: default; }
+.steps-screen.muted .step > i { opacity: .35; }
 /* the card body lets clicks through except to its controls: a screen is one too (Arrange drags it, pick mode adds it) */
 .module .mbody .param.screen { pointer-events: auto; }
 /* the Scope's settings: a toolbar over its screen while hovered (not while choosing or arranging the card) */

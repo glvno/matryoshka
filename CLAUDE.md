@@ -502,3 +502,9 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 ## Allocator key range (#57 decision 13, 2026-10-18; host-tested: vitest, golden incl. `alloc-split` in both builds; not flashed)
 
 - Voice allocator params `channel` (all / 1..16), `low`, `high` (note names): `takesKey` (patch.ts) = `takes_key` (engine.c); `all` = the device's channel (`Engine.channel`, `eng_midi_channel`, MENU > MIDI CHANNEL). Arpeggiated groups: range only. Notes reach the engine on every channel (main.c `midi_drain`); panel keys play on the device channel (1 when omni). `eng_note_on(note, vel, ch)` / `eng_note_off(note, ch)`. Binary format 25: group record 48 B (+ channel, low, high). Details: docs/ARCHITECTURE.md "Voice allocator key range".
+
+## Steps module + SEQ page (#83, 2026-10-18, branch `device-player`; host-tested: vitest 613, golden 83 incl. `steps-kit` / `steps-clk`, LCD previews, stand-in firmware compile; editor grid browser-checked on a temporary dev server; NOT built with the JieLi toolchain, emulator smoke `seq()` written but not run, not flashed)
+
+- Decisions with the user (issue comment 2026-10-18): SEQ and REC are the device's (out of `PANEL_BUTTONS`, format 26); black keys pick the track; a track follows the transport at `rate` unless `clk` is patched, plus `swing`; probability and live REC in this pass; SEQ held + black key mutes (not saved); `ModuleInst.name` on Steps only. My call: `acc` is a level held from an accented step to the next played step (pins can use it), and the editor grid shows every step in rows of 16 instead of paging. Details in docs/ARCHITECTURE.md "Steps module and the SEQ page".
+- C name clash: the pattern length macro is `TRACK_STEPS` (defs.h), since `STEPS_MAX` is the generated per-type min/max array name.
+- The drum kits are silent until PLAY: golden, emu-levels, the engine preset test and the smoke step 5 start the transport for patches with Steps modules (smoke: names ending in " KIT").

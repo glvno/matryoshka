@@ -19,6 +19,9 @@ export type HostMsg =
   | { t: 'range'; id: number; index: number; name: string; range: [number, number] | null }
   | { t: 'transport'; on: boolean }
   | { t: 'button'; i: number; on: boolean }
+  /** a step of a Steps module edited (its byte), a Steps module muted */
+  | { t: 'step'; id: number; k: number; b: number }
+  | { t: 'mute'; id: number; on: boolean }
   | { t: 'probe'; key: string; id: number; port: string }
   | { t: 'unprobe'; key: string }
   | { t: 'watch'; key: string; id: number; port: string }
@@ -63,6 +66,9 @@ class ModularProcessor extends AudioWorkletProcessor {
   private viewSum = new Float32Array(128);
   /** envelope displays on show: module id by key */
   private envs = new Map<string, number>();
+  /** the Steps modules' places as last sent (the editor's grids draw the playhead), blocks since */
+  private stepsSent = '';
+  private stepsBlocks = 0;
   constructor() {
     super();
     this.port.onmessage = (ev: MessageEvent<HostMsg>) => {
@@ -91,6 +97,8 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
         else if (m.t === 'transport') this.engine.transport(m.on);
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
+        else if (m.t === 'step') this.engine.setStep(m.id, m.k, m.b);
+        else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch);
         else if (m.t === 'off') this.engine.noteOff(m.note, m.ch);
         else if (m.t === 'clock') {                   // MIDI clock: it drives the clock while it comes in
@@ -167,6 +175,15 @@ class ModularProcessor extends AudioWorkletProcessor {
       if (this.views.size) this.feedViews(out[0].length);
       if (this.probes.size || this.views.size || this.envs.size) this.feedProbes(out[0].length, out);
       if (this.watched.size) this.feedWatch(out[0].length);
+      if (++this.stepsBlocks >= PROBE_EVERY / 2) {   // the Steps modules' playheads, about 60 times a second when they move
+        this.stepsBlocks = 0;
+        const v = this.engine.stepsView();
+        const s = JSON.stringify(v);
+        if (s !== this.stepsSent) {
+          this.stepsSent = s;
+          this.port.postMessage({ steps: v });
+        }
+      }
       if (this.valuesRequested) {
         this.valuesRequested = false;
         this.port.postMessage({ values: this.engine.parameterValues(), revision: this.revision });

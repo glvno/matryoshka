@@ -12565,13 +12565,13 @@
      "input": "cv"
     },
     {
-     "output": "notch"
-    },
-    {
      "output": "peak"
     },
     {
      "output": "ap"
+    },
+    {
+     "output": "notch"
     }
    ],
    "grid": [
@@ -16737,10 +16737,10 @@
      ]
     },
     {
-     "input": "in"
+     "input": "side"
     },
     {
-     "input": "side"
+     "input": "in"
     },
     {
      "param": "attack",
@@ -17073,7 +17073,7 @@
    "cv": 652
   },
   "steps": {
-   "run": 10533,
+   "run": 10661,
    "cv": 715,
    "dims": [
     {
@@ -17084,10 +17084,10 @@
     }
    ],
    "grid": [
-    10533,
-    11173,
-    13216,
-    13856
+    10661,
+    11301,
+    13344,
+    13984
    ]
   }
  },
@@ -17154,11 +17154,11 @@
   },
   {
    "name": "808 Kit",
-   "cycles": 551786
+   "cycles": 543991
   },
   {
    "name": "909 Kit",
-   "cycles": 328668
+   "cycles": 298242
   },
   {
    "name": "Acid, 4 parts",

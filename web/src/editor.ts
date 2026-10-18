@@ -43,7 +43,9 @@ import {
   rowDef,
   PANEL_LABEL_MAX,
   panelLabel,
+  STEPS_MAX,
 } from './patch';
+import { stepGrid, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
@@ -111,6 +113,9 @@ export interface EditorEvents {
   onAtt(id: number, index: number, value: number): void;
   /** a module's bypass switch (the structure is unchanged: the engine keeps its state) */
   onBypass(id: number, on: boolean): void;
+  /** a step of a Steps module changed (its byte, patch.ts stepByte), a Steps module muted (not saved) */
+  onStep?(id: number, k: number, b: number): void;
+  onMute?(id: number, on: boolean): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
@@ -423,6 +428,7 @@ export class Editor {
     this.cancelArm();
     this.screens = [];
     this.envScreens = [];
+    this.stepGrids.clear();
     this.parameterDisplays = [];
     this.sliderPorts = [];
     this.cablePaths = [];
@@ -659,12 +665,74 @@ export class Editor {
     }
     const outs = def.outputs.map((p) => this.port(m, p, 'out', { open, short: true }));
     // its displays first (an envelope's shape, the Scope's screen), then the parameters
-    const params = [...(def.views ?? []), ...def.params.filter((pd) => !pd.onScreen)].map((pd) => ({ el: this.paramRow(m, def, pd, { open }), input: pd.input ? { module: m.id, port: pd.input } : undefined }));
+    // (a Steps module's grid goes under the rows, across the card: 16 steps need the width)
+    const steps = def.type === 'steps';
+    const params = [...(def.views ?? []).filter(() => !steps), ...def.params.filter((pd) => !pd.onScreen)].map((pd) => ({ el: this.paramRow(m, def, pd, { open }), input: pd.input ? { module: m.id, port: pd.input } : undefined }));
     // a second Main card (from an old patch) keeps its B side under the rows
-    const extra = def.type === 'fm1' ? [this.morphRow()] : [];
+    const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
     el.append(head, body);
     return el;
+  }
+
+  /** the Steps modules' grids drawn in this rebuild, by module id */
+  private stepGrids = new Map<number, StepGrid>();
+
+  /** where the Steps modules are (Engine.stepsView through the worklet): their grids' playheads and mute switches */
+  showSteps(view: { id: number; pos: number; mute: boolean }[]): void {
+    for (const v of view) this.stepGrids.get(v.id)?.show(v.pos, v.mute);
+  }
+
+  /** a step changed on the FM-1's SEQ page: into the patch (no undo step: it happened on the device) and the grid */
+  stepFromDevice(id: number, k: number, b: number): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    if (!m || k < 0 || k >= STEPS_MAX) return;
+    m.steps = Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? b & 0x7f : m.steps?.[i] ?? 0));
+    this.stepGrids.get(id)?.refresh();
+    this.ev.onStep?.(id, k, b & 0x7f);
+  }
+
+  /** a Steps module's grid follows its length (the len slider) */
+  refreshSteps(id: number): void {
+    this.stepGrids.get(id)?.refresh();
+  }
+
+  /** a Steps module's grid: its edits go through the undo history and onStep / onMute; a new name is a structure change
+   * (the name is in the binary the FM-1 gets) */
+  private stepsRow(m: ModuleInst): StepGrid {
+    const index = this.patch.modules.filter((x) => x.type === 'steps').indexOf(m);
+    const push = (): void => {
+      this.history.push(JSON.stringify(this.patch));
+      if (this.history.length > HISTORY) this.history.shift();
+      this.future = [];
+    };
+    let batch = false;
+    const grid = stepGrid(m, index, {
+      set: (k, b) => {
+        if (!batch) push();
+        m.steps = Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? b : m.steps?.[i] ?? 0));
+        if (!m.steps.some((x) => x)) delete m.steps;
+        this.ev.onStep?.(m.id, k, b);
+      },
+      begin: () => {
+        const done = this.beginEdit();
+        batch = true;
+        return () => {
+          batch = false;
+          done();
+        };
+      },
+      name: (s) => {
+        if ((m.name ?? '') === s) return;
+        push();
+        if (s) m.name = s;
+        else delete m.name;
+        this.ev.onStructure(this.patch);
+      },
+      mute: (on) => this.ev.onMute?.(m.id, on),
+    });
+    this.stepGrids.set(m.id, grid);
+    return grid;
   }
 
   /** the Scope screens and envelope shapes drawn in this rebuild (onScreens) */
@@ -687,6 +755,17 @@ export class Editor {
     const open = o.open;
     const row = document.createElement('div');
     row.className = 'param screen';
+    if (m.type === 'steps') {                 // a Steps module's grid (step-grid.ts)
+      row.className = 'param screen steps';
+      row.append(this.stepsRow(m).el);
+      if (open) {
+        const on = isPromoted(open, m.id, pd.name);
+        row.classList.toggle('shown', on);
+        this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)));
+        if (this.picking(open)) row.append(this.pickBox(on));
+      }
+      return row;
+    }
     const isScope = m.type === 'scope'; // else an envelope's shape
     const screen = document.createElement('div');
     screen.className = isScope ? 'scope-screen' : 'scope-screen env-screen';

@@ -2240,7 +2240,8 @@ export interface StepsState {
   /** a swung step waiting: samples to go (0: none) and which step */
   pend: number;
   pstep: number;
-  /** samples the trig output stays up, the step was accented, one low sample before a trig that follows a trig */
+  /** samples the trig output stays up, the acc output (up from an accented step until the next step that plays), one
+   * low sample before a trig that follows a trig */
   trig: number;
   acc: boolean;
   gap: boolean;
@@ -2261,8 +2262,9 @@ export function stepPlays(seed: number, loop: number, k: number, b: number): boo
  * (ModuleInst.steps); `len` plays the first steps. With nothing in clk it follows the engine's clock while the transport
  * runs: the first step when PLAY starts, then one step per `rate` (24 ppqn ticks, ARP_RATE_TICKS), each on the sample its
  * tick falls on; a rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 75 %
- * the most) delays every second step by (swing - 50) / 50 of a step. A step that plays raises trig for `gate` of a step
- * (and acc with it when the step is accented). The name and the pattern travel in its binary record (`data`: the name,
+ * the most) delays every second step by (swing - 50) / 50 of a step. A step that plays raises trig for `gate` of a step;
+ * acc is a level, 1 from an accented step until the next step that plays (so it can set a drum's level through a pin
+ * for the whole hit). The name and the pattern travel in its binary record (`data`: the name,
  * then the pattern); it runs once (SHARED_TYPES).
  */
 const steps: ModuleImpl<StepsState> = {
@@ -2271,6 +2273,7 @@ const steps: ModuleImpl<StepsState> = {
     label: 'Steps',
     inputs: [gate('clk'), gate('reset')],
     outputs: [gate('trig'), gate('acc')],
+    views: [param('grid', 0, 0, 0, { screen: true })],
     params: [
       param('len', 1, STEPS_MAX, 16, { step: 1 }),
       param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATES }),
@@ -2337,7 +2340,7 @@ const steps: ModuleImpl<StepsState> = {
       }
       const up = s.trig > 0 && !s.gap;
       c.out.trig[i] = up ? 1 : 0;
-      c.out.acc[i] = up && s.acc ? 1 : 0;
+      c.out.acc[i] = s.acc ? 1 : 0;
       if (s.gap) s.gap = false;
       else if (s.trig > 0) s.trig--;
     }

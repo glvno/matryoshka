@@ -63,4 +63,5 @@ static void m1_transport(int run);                             /* main.c: the ed
 #define UI_POOL __attribute__((section(".pool")))
 #include "ui.c"
 #include "menu.c"
+#include "seq_ui.c"
 #include "main.c"

@@ -82,7 +82,7 @@ describe('binary patch format', () => {
       expect(b[2], name).toBe(p.modules.length);
       expect(b[3], name).toBe(g); // poly groups (Oracle V has one)
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
-      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0), 0) + 4 * p.cables.length;
+      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length;
       expect(b.length, name).toBe(size);
       expect(p.cables.length).toBeLessThanOrEqual(MAX_CABLES);
     }

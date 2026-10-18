@@ -12,7 +12,10 @@
     "k2": 0.25,
     "k3": 0.7511,
     "k4": 0.7118,
-    "morph": 0
+    "k5": 0.5,
+    "k6": 0.5,
+    "morph": 0,
+    "tempo": 120
    }
   },
   {
@@ -133,7 +136,10 @@
     "assign": 0,
     "legato": 0,
     "priority": 0,
-    "unison": 0
+    "unison": 0,
+    "channel": 0,
+    "low": 0,
+    "high": 127
    }
   },
   {

@@ -3077,7 +3077,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         {
             int up = it->s.stp.trig > 0 && !it->s.stp.gap;
             trig[i] = up ? ENG_ONE : 0;
-            acc[i] = up && it->s.stp.acc ? ENG_ONE : 0;
+            acc[i] = it->s.stp.acc ? ENG_ONE : 0;   /* (a level: from an accented step until the next step that plays) */
             if (it->s.stp.gap)
                 it->s.stp.gap = 0;
             else if (it->s.stp.trig > 0)

@@ -32,6 +32,8 @@ export class AudioHost {
   onWatch: (key: string, v: number) => void = () => {};
   /** a Scope screen's latest histories, one per input (scope-stream.ts) */
   onView: (key: string, chans: ViewData[], sr: number) => void = () => {};
+  /** where the Steps modules are (Engine.stepsView), when that changes */
+  onSteps: (view: { id: number; pos: number; mute: boolean }[]) => void = () => {};
   /** an envelope display's copies (Engine.envStates) */
   onEnv: (key: string, states: { stage: number; v: number; newest: boolean }[] | null) => void = () => {};
 
@@ -63,6 +65,8 @@ export class AudioHost {
           this.latestValues = null; this.onValues(null); this.onError(ev.data.error);
         } else if (typeof ev.data?.watch === 'string') {
           this.onWatch(ev.data.watch, ev.data.v);
+        } else if (Array.isArray(ev.data?.steps)) {
+          this.onSteps(ev.data.steps);
         } else if (typeof ev.data?.env === 'string') {
           this.onEnv(ev.data.env, ev.data.states);
         } else if (typeof ev.data?.view === 'string') {

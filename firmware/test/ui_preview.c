@@ -60,6 +60,27 @@ static void leds_octave(void) {}
 static void update_only(const char *why) { (void)why; }
 static void defaults_now(void) {}
 #include "../src/menu.c"
+/* what seq_ui.c reaches in proto.c and the HAL, for the preview */
+#define FM1_NCOL 11u
+static const int8_t FM1_KEYMAP[6][FM1_NCOL] = {{-1}};
+static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_mid[FM1_NCOL];
+static struct { uint32_t buttons; } fm1_in;
+static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the previewed binary) */
+{
+    uint32_t at = eng_records_at(pv_bin, pv_len), i;
+    for (i = 0; i < mod; i++) {
+        const def_t *d = &DEFS[pv_bin[at] & 0x7Fu];
+        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+    }
+    at += 1u + 4u * DEFS[T_STEPS].npar + (DEFS[T_STEPS].cvbase >= 0 ? 20u : 0u);
+    for (i = 0; i < TRACK_NAME_MAX && pv_bin[at + i]; i++)
+        out[i] = (char)pv_bin[at + i];
+    out[i] = 0;
+}
+static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
+static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b) { (void)mod; (void)k; (void)b; }
+static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
+#include "../src/seq_ui.c"
 
 int main(int argc, char **argv)
 {
@@ -100,9 +121,18 @@ int main(int argc, char **argv)
     }
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     octave = argc > 4 ? atoi(argv[4]) : 0;
-    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 7: legend */
+    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 7: legend, 8: SEQ (SELECTED_MODULE = the track) */
     if (argc > 6)                                           /* the transport running */
         eng_transport(atoi(argv[6]) != 0);
+    if (page == PAGE_SEQ) {                                 /* the SEQ page: the track, a muted one, the playhead some steps in */
+        static int32_t l[128], r[128];
+        seq_trk = (uint8_t)sel;
+        if (eng_steps_count() > 2)
+            eng_steps_mute((uint32_t)eng_steps_module(2), 1);
+        for (i = 0; i < 300u; i++)
+            eng_render(l, r, 128);
+        seq_rec = argc > 7 && atoi(argv[7]) != 0;
+    }
     booting = 0;
     if (argc > 7) {                                         /* page 5: the menu's tab (4 = MANUAL) */
         int t = atoi(argv[7]);

@@ -280,6 +280,7 @@ describe('engine', () => {
     for (const [name, make] of Object.entries(PRESETS)) {
       const e = new Engine(SR);
       e.load(make());
+      e.transport(true); // (the drum kits play on the transport)
       e.noteOn(48);
       const { l, r } = render(e, 24000);
       expect(l.every(Number.isFinite), name).toBe(true);

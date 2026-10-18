@@ -14,7 +14,8 @@
 //! 8. safety: a patch far over the CPU budget sheds parts, one with nothing to shed is muted (OVERLOAD) and the
 //!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank); OCT- +
 //!    OCT+ held at power-on and MENU > UPDATE MODE = update mode (no engine)
-//! 9. hardware the emulator does not model: any register besides P33 fails the test
+//! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
+//! 10. hardware the emulator does not model: any register besides P33 fails the test
 //!
 //! Snapshots of every step go to OUT (PNG); a WAV of the first run too.
 
@@ -31,6 +32,8 @@ const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
 const OCT_DOWN: u8 = 0;
 const OCT_UP: u8 = 1;
 const FX: u8 = 2;
+const ARP: u8 = 10;
+const SEQ: u8 = 11;
 const REC: u8 = 13;
 const GLO: u8 = 7;
 const HOME: u8 = 8;
@@ -305,7 +308,7 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     Ok(())
 }
 
-/// The patch buttons (#60): a held button (FX) opens a VCA while held; a switching one (REC, saved on) flips on each press.
+/// The patch buttons (#60): a held button (FX) opens a VCA while held; a switching one (ARP, saved on) flips on each press.
 fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let patch = std::fs::read("build/emu/panel.m1p").map_err(|e| format!("build/emu/panel.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
     let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
@@ -331,13 +334,61 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let p = hold(&mut m, false)?;
     t.check("panel: silent while FX is not held", p < QUIET, format!("peak {p}"));
     let p = hold(&mut m, true)?;
-    t.check("panel: FX held opens the VCA (REC saved on)", p > LOUD, format!("peak {p}"));
-    m.tap(REC, 120, 300)?;
+    t.check("panel: FX held opens the VCA (ARP saved on)", p > LOUD, format!("peak {p}"));
+    m.tap(ARP, 120, 300)?;
     let p = hold(&mut m, true)?;
-    t.check("panel: REC switched off closes the second VCA", p < QUIET, format!("peak {p}"));
-    m.tap(REC, 120, 300)?;
+    t.check("panel: ARP switched off closes the second VCA", p < QUIET, format!("peak {p}"));
+    m.tap(ARP, 120, 300)?;
     let p = hold(&mut m, true)?;
-    t.check("panel: REC switched on again", p > LOUD, format!("peak {p}"));
+    t.check("panel: ARP switched on again", p > LOUD, format!("peak {p}"));
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// The SEQ page (#83) on the factory 808 Kit: SEQ opens it on the first track, a white key switches a step on (its cell
+/// lights), a black key picks another track, PLAY runs the tracks (sound), SEQ held + a black key mutes one, REC
+/// records a hit, SEQ again closes the page.
+fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let Some(kit) = presets.iter().position(|(n, _)| n == "808 KIT") else {
+        t.check("seq: the factory 808 Kit is there", false, String::new());
+        return Ok(());
+    };
+    let mut m = Machine::boot(app, None);
+    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    m.run_for(2500)?;
+    m.midi(&[0xC0, kit as u8], 500)?;
+    t.screen(&m, "seq: the 808 Kit loads", "808 KIT");
+    m.tap(SEQ, 120, 400)?;
+    t.screen(&m, "seq: SEQ opens the step page on track 1", "KICK 1/6");
+    let cell = |m: &Machine| m.lcd()[70 * 240 + 28]; // step 2's cell (x 22..33, y 52..85)
+    let before = cell(&m);
+    m.tap(14 + 2, 120, 300)?;                // G3: the second white key = step 2
+    let after = cell(&m);
+    t.snap(&m, "seq-step-on");
+    t.check("seq: a white key switches its step on (the cell lights)", before != after && after == 0xffff, format!("{before:#06x} -> {after:#06x}"));
+    m.tap(14 + 3, 120, 300)?;                // G#3: the second black key = track 2
+    t.screen(&m, "seq: a black key picks track 2", "SNARE 2/6");
+    let mk = m.mark();
+    m.run_for(500)?;
+    t.check("seq: silent while the transport is stopped", m.peak_since(mk) < QUIET, String::new());
+    m.tap(PLAY, 120, 300)?;
+    let mk = m.mark();
+    m.run_for(2000)?;
+    let p = m.peak_since(mk);
+    t.check("seq: PLAY runs the tracks", p > LOUD, format!("peak {p}"));
+    m.key(SEQ, true);
+    m.run_for(200)?;
+    m.tap(14 + 1, 120, 100)?;                // SEQ held + F#3: track 1 muted
+    t.screen(&m, "seq: SEQ held + a black key mutes a track", "KICK MUTED");
+    m.key(SEQ, false);
+    m.run_for(1200)?;
+    t.screen(&m, "seq: the page stays after the mute", "SNARE 2/6");
+    m.tap(REC, 120, 300)?;
+    m.run_for(1100)?;
+    t.screen(&m, "seq: REC on", "SNARE 2/6 REC");
+    m.tap(PLAY, 120, 300)?;
+    m.tap(SEQ, 120, 400)?;
+    t.screen(&m, "seq: SEQ again closes the page", "SAVE: STORE");
     *emulated += m.ms();
     Ok(())
 }
@@ -491,8 +542,15 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
         m.midi(&[0xC0, i as u8], 300)?;
         let shown = font::on_screen(m.lcd(), name);
         let cpu = cpu_figure(&m);
+        let kit = name.ends_with(" KIT"); // the drum kits play on the transport (Steps tracks): PLAY around the note
+        if kit {
+            m.tap(PLAY, 120, 0)?;
+        }
         let p = midi_note_peak(&mut m, 60, 500)?;
         let cpu_note = cpu_figure(&m);
+        if kit {
+            m.tap(PLAY, 120, 0)?;
+        }
         let want = levels.iter().find(|(n, _)| n == name).map(|l| l.1);
         println!(
             "       {i:2} {name:24} peak {p:6}  reference {:>6}  cpu {:>4} / {:>4}",
@@ -570,6 +628,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     safety(app, t, emulated, &presets)?;
     store(app, t, emulated, &presets)?;
     panel(app, t, emulated)?;
+    seq(app, t, emulated, &presets)?;
 
     // ---- 9. unmodelled hardware
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h

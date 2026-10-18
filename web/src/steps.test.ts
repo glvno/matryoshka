@@ -23,11 +23,11 @@ function rig(steps: number[], params: Record<string, number> = {}): { p: Patch; 
 }
 
 /** render `n` samples; the samples where l / r rise */
-function edges(e: Engine, n: number): { trig: number[]; acc: number[]; l: Float32Array } {
+function edges(e: Engine, n: number): { trig: number[]; acc: number[]; l: Float32Array; r: Float32Array } {
   const l = new Float32Array(n), r = new Float32Array(n);
   e.render(l, r);
   const rise = (b: Float32Array): number[] => [...b.keys()].filter((i) => b[i] > 0.5 && (i === 0 || b[i - 1] <= 0.5));
-  return { trig: rise(l), acc: rise(r), l };
+  return { trig: rise(l), acc: rise(r), l, r };
 }
 
 const ON = stepByte({ on: true, accent: false, chance: 100 });
@@ -50,14 +50,15 @@ describe('the Steps module (#83)', () => {
     expect(trig).toEqual([0, 5999, 17999, 95999].filter((t) => t < 30000)); // steps 0, 1, 3 (the tick ends its period)
   });
 
-  it('wraps at len, accents raise acc with trig, gate is a share of the step', () => {
+  it('wraps at len, acc is up from an accented step until the next step that plays, gate is a share of the step', () => {
     const { p } = rig([ACC, 0, ON], { len: 3, gate: 0.5 });
     const e = new Engine(SR);
     e.load(p);
     e.transport(true);
-    const { trig, acc, l } = edges(e, 40000);
+    const { trig, acc, l, r } = edges(e, 40000);
     expect(trig).toEqual([0, 11999, 17999, 29999, 35999]);
     expect(acc).toEqual([0, 17999, 35999]);
+    expect([r[5000], r[11998], r[11999], r[17998]]).toEqual([1, 1, 0, 0]); // held over the off step, down with step 2
     expect([...l.slice(17999, 17999 + 3000)].every((v) => v === 1)).toBe(true);
     expect(l[17999 + 3000]).toBe(0);
   });

@@ -7,7 +7,7 @@
 // The 909 Kit is kept as its file. Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { addModule, connect, emptyPatch, modulate, validatePatch, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, connect, emptyPatch, modulate, stepByte, validatePatch, type ModuleInst, type Patch } from '../src/patch';
 import { FACTORY } from '../src/assemblies';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { connectParameter } from '../src/parameter-routing';
@@ -109,9 +109,10 @@ function around(name: string, asm: string, o: { pitchGate?: boolean; poly?: numb
 
 // ---- loudness: the Output's level from a render (a held note, or a chord on a poly patch), clamped to 0.05..1
 const SR = 44118;
-function peakOf(p: Patch, notes: number[], secs = 1.2): number {
+function peakOf(p: Patch, notes: number[], secs = 1.2, run = false): number {
   const e = new Engine(SR);
   e.load(p);
+  e.transport(run); // (the drum kits play on the transport)
   for (const n of notes) e.noteOn(n);
   const l = new Float32Array(Math.round(SR * secs));
   const r = new Float32Array(l.length);
@@ -123,7 +124,7 @@ function peakOf(p: Patch, notes: number[], secs = 1.2): number {
 function level(p: Patch, opts: { chord?: boolean; drums?: boolean } = {}): void {
   const out = p.modules.find((m) => m.type === 'output')!;
   out.params.level = 0.1;
-  const single = peakOf(p, opts.drums ? [] : [48], opts.drums ? 4 : 1.2) / 0.1;
+  const single = peakOf(p, opts.drums ? [] : [48], opts.drums ? 4 : 1.2, !!opts.drums) / 0.1;
   const chord = opts.chord ? peakOf(p, [48, 55, 60, 64]) / 0.1 : 0;
   let lv = Math.min(0.45 / Math.max(single, 1e-6), chord ? 0.85 / chord : 1);
   lv = Math.max(0.05, Math.min(1, lv));
@@ -260,31 +261,34 @@ presets.push(() => {
   return x.p;
 });
 
-// 808 Kit: a drum machine that plays itself (as the 909 Kit): a square LFO at sixteenths is the clock, one sequencer
-// per drum (a step at -1 rests), Main's gate restarts the pattern. The boom kick, a tonal snare, the clap, a closed and
-// an open hat and the two-square cowbell, from the factory drum assemblies; two mixers (the second into the first's in4).
-// About 45 modules: it needs the FM-1's 64-module table (ENG_MAX_MODULES).
+/** a Steps pattern of 16 steps from a string: x = on, X = accented, . = off */
+const pattern = (s: string): number[] => Array.from({ length: 64 }, (_, k) => stepByte({ on: /[xX]/.test(s[k] ?? ''), accent: s[k] === 'X', chance: 100 }));
+
+// 808 Kit: a drum machine on the transport (PLAY starts it, the Main module's tempo sets it): one Steps track per drum,
+// named for the SEQ page. The boom kick, a tonal snare, the clap, a closed and an open hat and the two-square cowbell, from
+// the factory drum assemblies; two mixers (the second into the first's in4). A track's acc (up from an accented step
+// until its next hit) adds to a part of the drum through a pin (in that row's units): the kick's drop, the snare's noise,
+// the clap's tail level, the closed hat's level. K1 swing (every track), K2 kick decay, K3 clap tail, K4 closed hat decay.
 presets.push(() => {
   const p = emptyPatch('808 Kit');
   const main = addModule(p, DEFS.fm1, 20, 20);
-  const clk = addModule(p, DEFS.lfo, 20, 600);
-  Object.assign(clk.params, { wave: 3, rate: 8, depth: 1 });
   const mixA = addModule(p, DEFS.mixer, 2940, 20);
   Object.assign(mixA.params, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
   const mixB = addModule(p, DEFS.mixer, 2940, 600);
   Object.assign(mixB.params, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 0 });
   const out = addModule(p, DEFS.output, 3260, 20);
-  const R = -1;
-  const drums: [string, number[], Record<string, number>, number, string][] = [
-    ['boom kick', [0, R, R, R, 0, R, 0, R], {}, mixA.id, 'in1'],
-    ['snare', [R, R, 0, R, R, R, R, R], { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, mixA.id, 'in2'],
-    ['clap', [R, R, R, R, R, R, 0, R], {}, mixA.id, 'in3'],
-    ['hihat', [0, 0, 0, 0, 0, 0, 0, R], { decay: 0.04 }, mixB.id, 'in1'],
-    ['hihat', [R, R, R, R, R, R, R, 0], { decay: 0.3 }, mixB.id, 'in2'],
-    ['cowbell', [R, R, R, R, R, 0, R, R], {}, mixB.id, 'in3'],
+  //            assembly     name       pattern             settings                                        accent row, amount  mixer
+  const drums: [string, string, string, Record<string, number>, [string, number] | null, number, string][] = [
+    ['boom kick', 'KICK', 'X...x...x.x.....', {}, ['drop', 0.35], mixA.id, 'in1'],
+    ['snare', 'SNARE', '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, ['noise', 0.3], mixA.id, 'in2'],
+    ['clap', 'CLAP', '............X...', {}, ['tail level', 0.4], mixA.id, 'in3'],
+    ['hihat', 'CL HAT', 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, ['level', 0.5], mixB.id, 'in1'],
+    ['hihat', 'OP HAT', '..............x.', { decay: 0.3 }, null, mixB.id, 'in2'],
+    ['cowbell', 'COWBELL', '..........x.....', {}, null, mixB.id, 'in3'],
   ];
   const drumsOf: AssemblyInst[] = [];
-  drums.forEach(([name, steps, params, to, port], i) => {
+  const tracks: ModuleInst[] = [];
+  drums.forEach(([name, label, steps, params, accent, to, port], i) => {
     const def = FACTORY.find((d) => d.name === name);
     if (!def) throw new Error(`no factory assembly ${name}`);
     const a = insertAssembly(p, DEFS, def, 380 + 420 * i, 600);
@@ -292,23 +296,31 @@ presets.push(() => {
       const r = row(a, label);
       mod(p, r.module).params[r.param] = v;
     }
-    const sq = addModule(p, DEFS.seq, 380 + 420 * i, 20);
-    steps.forEach((v, s) => (sq.params[`s${s + 1}`] = v));
-    Object.assign(sq.params, { len: 8, dir: 0 });
-    wire(p, clk.id, 'out', sq.id, 'clock');
-    wire(p, main.id, 'gate', sq.id, 'reset');
-    plugIn(p, sq.id, 'gate', a, 'gate');
+    const st = addModule(p, DEFS.steps, 380 + 420 * i, 20);
+    st.name = label;
+    st.steps = pattern(steps);
+    plugIn(p, st.id, 'trig', a, 'gate');
+    if (accent) {
+      const r = row(a, accent[0]);
+      connectParameter(p, DEFS, { module: st.id, port: 'acc' }, r.module, r.param);
+      const m = mod(p, r.module);
+      const pd = DEFS[m.type].params.find((q) => q.name === r.param)!;
+      if (pd.log) throw new Error(`808 Kit: the accent row ${accent[0]} is logarithmic`);
+      const pin = (['p1', 'p2'] as const).findIndex((q) => p.cables.some((c) => c.from.module === st.id && c.from.port === 'acc' && c.to.module === m.id && c.to.port === q));
+      m.att![pin] = accent[1] / (pd.max - pd.min);
+    }
     plugOut(p, a, 'out', to, port);
     drumsOf.push(a);
+    tracks.push(st);
   });
   wire(p, mixB.id, 'out', mixA.id, 'in4');
   wire(p, mixA.id, 'out', out.id, 'l');
   wire(p, mixA.id, 'out', out.id, 'r');
-  // K1 tempo, K2 kick decay, K3 clap tail, K4 closed hat decay
-  knob(p, main, 'k1', { module: clk.id, param: 'rate' });
+  for (const st of tracks) knob(p, main, 'k1', { module: st.id, param: 'swing' });
   knob(p, main, 'k2', row(drumsOf[0], 'decay'));
   knob(p, main, 'k3', row(drumsOf[2], 'tail'));
   knob(p, main, 'k4', row(drumsOf[3], 'decay'));
+  main.panel = { labels: { k1: 'SWING', k2: 'KICK DECAY', k3: 'CLAP TAIL', k4: 'HAT DECAY' } };
   level(p, { drums: true });
   return p;
 });
