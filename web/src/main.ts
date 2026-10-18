@@ -689,8 +689,9 @@ $('add-assembly-btn').onclick = () => openPalette('assembly');
 $('tidy-btn').onclick = () => editor.tidyUp();
 $('fit-btn').onclick = () => editor.zoomToFit();
 $('tour-btn').onclick = () => { switchTab('patch'); tutorial.open(); };
-/** the demo patch, with the audio started (the click is the gesture the browser wants) */
-const openDemo = (): void => { loadNamed(demoPatch()); closeSidebar(); void startAudio(); };
+/** the demo patch, with the audio and the transport started (the click is the gesture the browser wants; its drums
+ * and the drone's pump are Steps tracks, which play while the transport runs) */
+const openDemo = (): void => { loadNamed(demoPatch()); closeSidebar(); void startAudio().then(() => setPlaying(true)); };
 $('demo-btn').onclick = openDemo;
 $('mobile-commands').onclick = () => openPalette();
 $('palette-close').onclick = () => palette.close();

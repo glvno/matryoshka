@@ -5,6 +5,7 @@ import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import raw from './demo/sum1-gr8.json';
 
-/** a fresh copy of the demo patch: drums and sequencers, the Hera 6 bassline (played on the keys, octave -2) and the
- *  Synthi drone, which plays on its own as soon as audio runs */
+/** a fresh copy of the demo patch: drums on Steps tracks (KICK, SNARE, HAT; PUMP restarts the drone's pump every
+ *  quarter) at the Main module's 96 bpm, the Hera 6 bassline (played on the keys, octave -2) and the Synthi drone, which
+ *  plays on its own as soon as audio runs; the Demo button starts the transport too */
 export const demoPatch = (): Patch => validatePatch(structuredClone(raw), DEFS);

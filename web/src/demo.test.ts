@@ -17,4 +17,21 @@ describe('the demo patch', () => {
     for (let i = 48000 * 2; i < l.length; i++) s += l[i] * l[i];
     expect(Math.sqrt(s / 48000)).toBeGreaterThan(0.02);
   });
+
+  it('its drums are Steps tracks on the transport: louder once it runs', () => {
+    const p = demoPatch();
+    expect(p.modules.filter((m) => m.type === 'steps').map((m) => m.name)).toEqual(['KICK', 'SNARE', 'HAT', 'PUMP']);
+    expect(p.modules.some((m) => m.type === 'seq')).toBe(false);
+    const energy = (run: boolean): number => {
+      const e = new Engine(48000);
+      e.load(p);
+      e.transport(run);
+      const l = new Float32Array(48000 * 2), r = new Float32Array(l.length);
+      e.render(l, r);
+      let s = 0;
+      for (let i = 0; i < l.length; i++) s += l[i] * l[i];
+      return s;
+    };
+    expect(energy(true)).toBeGreaterThan(energy(false) * 2);
+  });
 });
