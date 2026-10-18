@@ -49,12 +49,14 @@ import {
 import { stepGrid, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
+import { ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
 import { EXCLUDED_TYPES,
   addChild,
   addMember,
   allModules,
+  assemblyById,
   assembliesOf,
   assemblyOf,
   childrenOf,
@@ -2930,8 +2932,15 @@ export class Editor {
     this.positionSideCables();
     const w = this.world.getBoundingClientRect();
     const o = this.dockCables?.getBoundingClientRect();
+    const routed = this.ribbonRoutes();
     for (const { path, from, to, origin } of this.cablePaths) {
-      const pts = this.curvePts(this.center(from, origin), this.center(to, origin), this.endOf(from), this.endOf(to));
+      let pts = routed.get(from)?.get(to);
+      if (pts && origin !== this.world) {
+        // a copy on a card: the same route in the card's coordinates
+        const a = this.center(to, origin), b = this.center(to);
+        pts = pts.map((p) => ({ x: p.x + a.x - b.x, y: p.y + a.y - b.y }));
+      }
+      pts ??= this.curvePts(this.center(from, origin), this.center(to, origin), this.endOf(from), this.endOf(to));
       path.setAttribute('d', pathOf(pts));
       const over = this.overPaths.get(path);
       if (!over || !o) continue;
@@ -2944,6 +2953,70 @@ export class Editor {
         rect.setAttribute('height', String(Math.max(0, j.top - o.top + j.height / 2)));
       }
     }
+  }
+
+  /** a frame's box in world coordinates (as `center`) */
+  private worldRect(el: HTMLElement): Rect {
+    const r = el.getBoundingClientRect();
+    const c = this.world.getBoundingClientRect();
+    return { x: (r.left - c.left) / this.zoom - this.world.clientLeft, y: (r.top - c.top) / this.zoom - this.world.clientTop, w: r.width / this.zoom, h: r.height / this.zoom };
+  }
+
+  private clampLayer: SVGGElement | null = null;
+
+  /**
+   * The routes of the cables that cross an expanded assembly's border (ribbons.ts, #85), by their drawn ends, in world
+   * coordinates; also draws the ribbons' clamps. Every copy of a cable (on a card, over the dock) follows the same route.
+   */
+  private ribbonRoutes(): Map<HTMLElement, Map<HTMLElement, Pt[]>> {
+    const out = new Map<HTMLElement, Map<HTMLElement, Pt[]>>();
+    if (!this.clampLayer || !this.clampLayer.isConnected) {
+      this.clampLayer = document.createElementNS(SVGNS, 'g') as SVGGElement;
+      this.clampLayer.setAttribute('class', 'ribbon-clamps');
+      this.svg.append(this.clampLayer);
+    }
+    this.clampLayer.replaceChildren();
+    const frames: RibbonFrame[] = [];
+    for (const [id, el] of this.frames) {
+      const a = assemblyById(this.patch, id);
+      if (!a?.open || !el.isConnected || !el.offsetWidth) continue;
+      const nIn = a.inputs.length;
+      frames.push({
+        id,
+        rect: this.worldRect(el),
+        members: new Set(allModules(this.patch, a)),
+        depth: depthOf(this.patch, a),
+        rank: (dir, module, port, param) => {
+          const t = { module, port };
+          const i = param !== undefined
+            ? a.params.findIndex((r) => r.module === module && r.param === param)
+            : (dir === 'in' ? a.inputs : a.outputs).findIndex((r) => targetsOf(r).some((x) => sameEnd(x, t)));
+          return i < 0 ? undefined : param !== undefined ? nIn + i : i;
+        },
+      });
+    }
+    if (!frames.length) return out;
+    const entries = this.cablePaths.filter((e) => e.origin === this.world && e.cable && !e.path.classList.contains('alias'));
+    const cables: RibbonCable[] = entries.map(({ from, to, cable }) => ({
+      from: { pt: this.center(from), dir: this.endOf(from), module: cable!.from.module, port: cable!.from.port },
+      to: { pt: this.center(to), dir: this.endOf(to), module: cable!.to.module, port: cable!.to.port, param: to.dataset.param },
+    }));
+    const { routes, clamps } = ribbons(frames, cables, (a, b, da, db) => this.curvePts(a, b, da, db));
+    for (const [i, pts] of routes) {
+      const { from, to } = entries[i];
+      if (!out.has(from)) out.set(from, new Map());
+      out.get(from)!.set(to, pts);
+    }
+    for (const c of clamps) {
+      const r = document.createElementNS(SVGNS, 'rect');
+      r.setAttribute('x', String(c.x));
+      r.setAttribute('y', String(c.y));
+      r.setAttribute('width', String(c.w));
+      r.setAttribute('height', String(c.h));
+      r.setAttribute('rx', '2');
+      this.clampLayer.append(r);
+    }
+    return out;
   }
 
   private inputJack(to: Endpoint): HTMLElement | undefined {
@@ -3001,6 +3074,11 @@ export class Editor {
       }
       layer.prepend(path);
       this.cablePaths.push({ path, from, to, origin, cable });
+      // hovering any part of a cable highlights all of it: the path and its copies on a card and over the dock
+      const group: SVGPathElement[] = [path];
+      const hover = (on: boolean): void => group.forEach((g) => g.classList.toggle('hover', on));
+      path.addEventListener('pointerenter', () => hover(true));
+      path.addEventListener('pointerleave', () => hover(false));
       const over = this.dockCables;
       if (over && origin === this.world && (this.inDock(from) || this.inDock(to))) {
         const copy = document.createElementNS(SVGNS, 'path');
@@ -3015,6 +3093,7 @@ export class Editor {
         copy.setAttribute('clip-path', `url(#${clip.id})`);
         over.append(clip, copy);
         this.overPaths.set(path, { copy, clips });
+        group.push(copy);
       }
       // a cable into a card's interior (to a thumb, a picker's or a switch's jack) runs under the card like every cable;
       // a copy on the card, clipped to it, draws the stretch over the card up to the jack
@@ -3024,13 +3103,14 @@ export class Editor {
         copy.setAttribute('class', path.getAttribute('class')!);
         cardLayer(card, 'entry-cables').append(copy);
         this.cablePaths.push({ path: copy, from, to, origin: card, cable });
+        group.push(copy);
         if (remove) {
           const hit = document.createElementNS(SVGNS, 'path');
           hit.setAttribute('class', 'cable-hit');
           hit.addEventListener('pointerdown', (e) => e.stopPropagation());
           hit.addEventListener('click', (e) => { e.stopPropagation(); remove(); });
-          hit.addEventListener('pointerenter', () => copy.classList.add('hover'));
-          hit.addEventListener('pointerleave', () => copy.classList.remove('hover'));
+          hit.addEventListener('pointerenter', () => hover(true));
+          hit.addEventListener('pointerleave', () => hover(false));
           const t = document.createElementNS(SVGNS, 'title'); t.textContent = title; hit.append(t);
           cardLayer(card, 'entry-cables', true).append(hit);
           this.cablePaths.push({ path: hit, from, to, origin: card });
@@ -3043,8 +3123,8 @@ export class Editor {
         hit.setAttribute('class', 'cable-hit');
         hit.addEventListener('pointerdown', (e) => e.stopPropagation());
         hit.addEventListener('click', (e) => { e.stopPropagation(); remove(); });
-        hit.addEventListener('pointerenter', () => path.classList.add('hover'));
-        hit.addEventListener('pointerleave', () => path.classList.remove('hover'));
+        hit.addEventListener('pointerenter', () => hover(true));
+        hit.addEventListener('pointerleave', () => hover(false));
         (origin === this.world ? layer : cardLayer(origin, 'internal-cables', true)).append(hit);
         this.cablePaths.push({ path: hit, from, to, origin });
       }

@@ -471,6 +471,8 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 :is(.internal-cables, .entry-cables).hits { z-index: 3; }
 .entry-cables .cable-hit { stroke-width: 6px; }
 .cable.hover { stroke-width: 6; }
+/* the clamp across a ribbon of cables where they pass an expanded assembly's border (ribbons.ts) */
+.ribbon-clamps rect { fill: var(--secondary); pointer-events: none; }
 .module .sel-track, .tog-switch .tog-jack { z-index: 4; }
 .module .port > span:not(.dot), .module .param > input { position: relative; z-index: 2; }
 .module:has(.parameter-routing[open]) { z-index: 3; }
