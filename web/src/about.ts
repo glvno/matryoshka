@@ -1,6 +1,7 @@
 // The About & support card: the owner's words, the Slop Disclosure figures (ai-stats.ts), the test coverage (coverage.ts), the credits, and Ko-fi's floating button.
 // Ko-fi's overlay script is loaded the first time the card opens (nothing from Ko-fi before that) and draws its button into the
-// card: the dialog has a transform, so the script's position: fixed button and popup sit in the card's corner, not the window's.
+// card: the dialog has a transform, so the script's position: fixed button and popup are placed in the card, not the window
+// (top right, see style.css).
 import COPY from './about-copy.json';
 import REVIEW from './ai-review.json';
 import { formatDay, formatHours, formatUsd, isAiStats, modelName, modelShares, totalCost, type AiReview, type AiStats } from './ai-stats';
@@ -72,8 +73,8 @@ function source(stats: AiStats | null): string {
 const pctText = (pct: number): string => `${Math.round(pct)} %`;
 
 function coverage(c: CoverageStats | null): string {
-  const core = figure('Core', c ? pctText(c.core.pct) : '—', 'sound engine, modules, patch model, binary format, assemblies, polyphony, arpeggiator, CPU estimate, protocol');
-  const ui = figure('Browser interface', c ? pctText(c.interface.pct) : '—', 'LGTM!');
+  const core = figure('Core', c ? pctText(c.core.pct) : '—', '(sound engine, modules, patch model, binary format, assemblies, polyphony, arpeggiator, CPU estimate, protocol)');
+  const ui = figure('Browser interface', c ? pctText(c.interface.pct) : '—', '(lgtm lmao)');
   const src = c ? `<p class="ai-source">Source: Vitest as of ${formatDay(c.asOf)}</p>` : '<p class="ai-source">The figures appear after the next deploy runs the tests.</p>';
   return `<div class="ai-figs two">${core}${ui}</div>${src}`;
 }
@@ -142,7 +143,13 @@ export class AboutCard {
       doc.head.insertAdjacentHTML('beforeend', `<style id="m-font">@font-face { font-family: 'Barlow Condensed'; src: url('${font}'); font-weight: 600; }
         .floatingchat-donate-button span { font-family: 'Barlow Condensed', system-ui, sans-serif !important; font-weight: 600 !important; letter-spacing: .06em; text-transform: uppercase; }</style>`);
     };
-    for (const ms of [50, 400, 1500]) setTimeout(style, ms);
+    // the button sits in the card's top right corner (style.css): its wrapper is as wide as the button, so it ends at the edge
+    const fit = (): void => {
+      const button = frame?.contentDocument?.querySelector<HTMLElement>('.floatingchat-donate-button');
+      const wrap = frame?.parentElement;
+      if (button?.offsetWidth && wrap) wrap.style.width = `${button.offsetWidth + 2}px`;
+    };
+    for (const ms of [50, 400, 1500]) setTimeout(() => (style(), fit()), ms);
   }
 
   private render(): void {

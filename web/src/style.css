@@ -254,12 +254,17 @@ dialog.help { width: 760px; max-width: calc(100% - 24px); max-height: calc(100dv
   border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 48px var(--backdrop); font: 500 13px/1.35 'Barlow', system-ui, sans-serif; }
 dialog.help[open] { display: flex; flex-direction: column; }
 dialog.help::backdrop { background: var(--backdrop); }
-/* the About & support card (about.ts): the help dialog's frame, one column (the owner's words, the Slop Disclosure figures, the credits);
-   Ko-fi's floating button sits in the card's bottom left corner: the transform makes the script's position: fixed button and
-   popup relative to the card, and the body leaves room at the bottom for the button */
-dialog.about { width: 680px; min-height: min(780px, calc(100dvh - 32px)); transform: translateZ(0); } /* tall enough for Ko-fi's popup */
-dialog.about[open] .about-body { flex: 1; }
-.about-body { overflow: auto; padding: 12px 16px 96px; }
+/* the About & support card (about.ts): the help dialog's frame, one column (the owner's words, the Slop Disclosure figures, the
+   test coverage, the credits). Ko-fi's floating button is in the card's top right corner. The transform makes the script's
+   position: fixed button and popup relative to the card. The script sizes the popup from the button wrapper's offsetTop, so the
+   wrapper keeps Ko-fi's bottom position (a tall popup) and is moved up by a transform (offsetTop ignores it); that needs the card's
+   height fixed (--about-h). The popup opens below the button. */
+dialog.about { --about-h: min(780px, calc(100dvh - 32px)); width: 680px; height: var(--about-h); transform: translateZ(0); }
+dialog.about[open] .about-body { flex: 1; min-height: 0; }
+.about-body { overflow: auto; padding: 12px 16px 16px; }
+dialog.about .floatingchat-container-wrap { left: auto !important; right: 16px; transform: translateY(calc(125px - var(--about-h))); }
+dialog.about .floatingchat-container { width: 100% !important; }
+dialog.about .floating-chat-kofi-popup-iframe { left: auto !important; right: 16px; bottom: auto !important; top: 116px; }
 .about-main { min-width: 0; }
 .about-main p { margin: 0 0 8px; }
 .about-brand-row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
@@ -285,7 +290,7 @@ dialog.about[open] .about-body { flex: 1; }
 .about-foot { margin-top: 6px !important; font-size: 11px; }
 /* the card's section headings (Slop Disclosure, Built on) at twice the size of the help dialog's */
 dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .06em; color: var(--ink); }
-.about-kofi > a { position: absolute; left: 16px; bottom: 24px; }
+.about-kofi > a { position: absolute; right: 16px; top: 52px; }
 @media (max-width: 760px) { .ai-figs { grid-template-columns: minmax(0, 1fr); } }
 /* the sidebar's About button (outlined like TIDY / FIT) and the ♥ that stands in for it in the collapsed strip */
 .sidebar #about-btn { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
