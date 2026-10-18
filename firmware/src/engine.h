@@ -10,13 +10,13 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 25   /* 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
-#define ENG_PATCH_COMPAT_VERSION 25
+#define ENG_PATCH_VERSION 26   /* 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_COMPAT_VERSION 26
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
 
-#define ENG_PANEL_BUTTONS 9            /* the patch buttons: FX SCL ENV LFO EDIT GLO ARP SEQ REC (modules.ts PANEL_BUTTONS) */
-#define ENG_PANEL_LABELS 15            /* K1..K6, then the buttons (patch.ts PANEL_LABEL_KEYS) */
+#define ENG_PANEL_BUTTONS 7            /* the patch buttons: FX SCL ENV LFO EDIT GLO ARP (modules.ts PANEL_BUTTONS); SEQ and REC are the step page's */
+#define ENG_PANEL_LABELS 13            /* K1..K6, then the buttons (patch.ts PANEL_LABEL_KEYS) */
 #define ENG_PANEL_LABEL 10             /* bytes per label (PANEL_LABEL_MAX), zero padded */
 #define ENG_PANEL_BYTES (4u + ENG_PANEL_LABELS * ENG_PANEL_LABEL)   /* the panel section (patchbin.ts PANEL_BYTES) */
 
@@ -98,6 +98,18 @@ void eng_buttons(uint32_t mask);
 uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quarter note) */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
 uint32_t eng_buttons_get(void);
+/* Steps modules (the SEQ page): how many the patch has and the module of the t-th (patch order); a step's byte (patch.ts
+ * stepByte, -1 if no such module / step) and setting it (the running pattern; the caller keeps the binary in step); the
+ * step playing (-1 while stopped or before the first); muting (not saved, a load clears it); a hit from the panel
+ * (sounds now; with `record` while playing it goes into the nearest step: returned, else -1) */
+int eng_steps_count(void);
+int eng_steps_module(uint32_t t);
+int eng_steps_get(uint32_t module, uint32_t k);
+void eng_steps_set(uint32_t module, uint32_t k, uint32_t b);
+int eng_steps_pos(uint32_t module);
+void eng_steps_mute(uint32_t module, int on);
+int eng_steps_muted(uint32_t module);
+int eng_steps_hit(uint32_t module, int accent, int record);
 /* the performance controls: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
  * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch, 0..1, the at output) */
 enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_NCTL };

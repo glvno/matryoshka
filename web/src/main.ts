@@ -236,7 +236,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onButton(i, on) {
     host.send({ t: 'button', i, on });
-    if (live()) device.cc(80 + i, on ? 127 : 0);   // the FM-1 takes its patch buttons as CC 80..88 (#64)
+    if (live()) device.cc(80 + i, on ? 127 : 0);   // the FM-1 takes its patch buttons as CC 80..86 (#64)
   },
   onProbe(key, id, port, kind, _label, on) {
     if (on) {

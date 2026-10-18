@@ -98,6 +98,8 @@ export interface ModuleDef {
    * binary format and the firmware never see them.
    */
   views?: ParamDef[];
+  /** bytes the module's binary record carries after its parameters and pins (patchbin.ts): a Steps module's name and pattern */
+  data?: number;
 }
 
 /** a parameter or a display of a module type, by name (what a ParamRef can name) */
@@ -141,6 +143,10 @@ export interface ModuleInst {
    * off instead of acting while held, the switched ones that are on, and labels for K1..K6 and the buttons (the device's
    * player screen and legend show them; at most PANEL_LABEL_MAX characters of the LCD's font) */
   panel?: MainPanel;
+  /** a Steps module only: its track name (at most TRACK_NAME_MAX characters of the LCD's font; the device shows STEPS n
+   * without one) and its pattern, one byte per step (STEPS_MAX of them; stepByte / stepOf) */
+  name?: string;
+  steps?: number[];
 }
 
 export interface MainPanel {
@@ -150,10 +156,25 @@ export interface MainPanel {
 }
 
 /** the controls a panel label can name: K1..K6, then the buttons (patchbin.ts writes the labels in this order) */
-export const PANEL_LABEL_KEYS = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp', 'seq', 'rec'];
+export const PANEL_LABEL_KEYS = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
 export const PANEL_LABEL_MAX = 10;
 /** a label as the LCD can draw it: capitals, digits, space and its few signs */
-export const panelLabel = (s: unknown): string => String(s ?? '').toUpperCase().replace(/[^A-Z0-9 +%&>=()?!#*<,_'.:\/-]/g, '').slice(0, PANEL_LABEL_MAX).trim();
+export const panelLabel = (s: unknown, max = PANEL_LABEL_MAX): string => String(s ?? '').toUpperCase().replace(/[^A-Z0-9 +%&>=()?!#*<,_'.:\/-]/g, '').slice(0, max).trim();
+
+/** a Steps module's pattern: STEPS_MAX steps (its `len` parameter plays the first ones); a step's byte holds bit 0 = on,
+ * bit 1 = accent, bits 2..6 = the chance code c (it plays with a chance of 100 - 5 c percent, c 0..19) */
+export const STEPS_MAX = 64;
+export const TRACK_NAME_MAX = 8;
+export const trackName = (s: unknown): string => panelLabel(s, TRACK_NAME_MAX);
+export interface Step { on: boolean; accent: boolean; chance: number }
+export const stepOf = (b: number | undefined): Step => ({ on: !!((b ?? 0) & 1), accent: !!((b ?? 0) & 2), chance: 100 - 5 * Math.min(19, ((b ?? 0) >> 2) & 31) });
+export const stepByte = (s: Step): number => (s.on ? 1 : 0) | (s.accent ? 2 : 0) | (Math.min(19, Math.max(0, Math.round((100 - s.chance) / 5))) << 2);
+/** a pattern from anything: STEPS_MAX valid step bytes (missing steps off), or undefined when every step is off */
+export function fixSteps(raw: unknown): number[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = Array.from({ length: STEPS_MAX }, (_, i) => stepByte(stepOf(Number.isFinite(raw[i]) ? raw[i] & 0x7f : 0)));
+  return out.some((b) => b) ? out : undefined;
+}
 
 /** a Main module's panel settings from anything: known names only, labels as the LCD draws them; undefined when empty */
 export function fixPanel(raw: unknown): MainPanel | undefined {
@@ -385,7 +406,7 @@ export function ensureMain(p: Patch, defs: Record<string, ModuleDef>): boolean {
 }
 
 /** modules that run once even inside a poly assembly: their inputs sum the parts (big state, or the end of the chain) */
-export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output', 'arp']);
+export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output', 'arp', 'steps']);
 /** module types the editor shows but the engines and the FM-1 never run: poly.ts deviceView drops them and their cables */
 export const EDITOR_ONLY = new Set(['scope']);
 
@@ -562,6 +583,17 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
       if (panel) m.panel = panel;
       else delete m.panel;
     } else delete m.panel;
+    if (m.type === 'steps') {
+      const name = trackName(m.name);
+      if (name) m.name = name;
+      else delete m.name;
+      const steps = fixSteps(m.steps);
+      if (steps) m.steps = steps;
+      else delete m.steps;
+    } else {
+      delete m.name;
+      delete m.steps;
+    }
     if (m.bypass && m.type !== 'fm1' && m.type !== 'output') m.bypass = true;
     else delete m.bypass;
     if (m.paramsB && typeof m.paramsB === 'object' && m.type !== 'fm1') {
@@ -591,6 +623,8 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   (p as { version: number }).version = 2;
   migrateVoicing(p as Patch, defs);
   migratePatchParts(p as Patch, defs); // Part modules (before Voice allocators) become allocators
+  // the SEQ and REC buttons belong to the device since #83 (the step page, live recording): cables from them go
+  p.cables = p.cables.filter((c) => !(p.modules.find((m) => m.id === c.from?.module)?.type === 'fm1' && (c.from?.port === 'seq' || c.from?.port === 'rec')));
   for (const c of p.cables) {
     const mf = p.modules.find((m) => m.id === c.from?.module);
     if (mf?.type === 'filter' && c.from?.port === 'lp') c.from.port = 'lp12'; // the filter's 12 dB output used to be called lp

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The module library: definitions (shared with the editor) and DSP implementations.
 
-import { ARP_MODES, ARP_RATES } from './arpeggiator';
-import type { ModuleDef, ParamDef, PortDef } from './patch';
+import { ARP_MODES, ARP_RATE_TICKS, ARP_RATES } from './arpeggiator';
+import { STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import WT from './wavetables.json';
 
 export interface Voice {
@@ -14,6 +14,11 @@ export interface Voice {
   clock: boolean;
   /** the transport runs (PLAY, MIDI Start / Stop): the Main module's run output */
   run: boolean;
+  /** the clock's ticks in this block while the transport runs: the sample they fall on (-1: none; MIDI clock ticks all
+   * fall on sample 0), how many, and the samples per tick (from the tempo, or measured from MIDI clock) */
+  tick: number;
+  ticks: number;
+  tickLen: number;
   /** the FM-1's patch buttons held / switched on (bit i = PANEL_BUTTONS[i]): the Main module's button outputs */
   buttons: number;
   /** the performance controls, the same for every voice: pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1 */
@@ -166,7 +171,7 @@ export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse'];
 /** the FM-1 panel's controls a patch owns (#57 decision 4): six knobs (K1..K4 and the SELECT / ALGO encoders as K5 / K6)
  * and nine buttons, gate outputs of the Main module; the device keeps PRESET, PLAY, SAVE, HOME and OCT- / OCT+ */
 const N_KNOBS = 6;
-export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp', 'seq', 'rec'];
+export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];   // SEQ and REC: the device's step page (#83)
 /** the Main module's tempo range (bpm) */
 export const TEMPO_MIN = 20;
 export const TEMPO_MAX = 300;
@@ -2218,6 +2223,128 @@ const arp: ModuleImpl<null> = {
   },
 };
 
+/** the Steps module's state: its pattern (ModuleInst.steps, loaded by the engine) and where it plays */
+export interface StepsState {
+  pat: Uint8Array;
+  seed: number;
+  /** muted (the device's SEQ page, the editor's card; never saved): steps play silently */
+  mute: boolean;
+  /** the transport as the last block saw it, the clk / reset inputs' last samples */
+  run: boolean;
+  c1: number;
+  r1: number;
+  /** ticks since the last step (its own clock), the step playing (-1: the next step is the first), times round the pattern */
+  count: number;
+  pos: number;
+  loop: number;
+  /** a swung step waiting: samples to go (0: none) and which step */
+  pend: number;
+  pstep: number;
+  /** samples the trig output stays up, the step was accented, one low sample before a trig that follows a trig */
+  trig: number;
+  acc: boolean;
+  gap: boolean;
+  /** clk mode: samples since the last edge and between the last two (-1 / 0 before) */
+  since: number;
+  period: number;
+}
+
+/** a step's chance as the hash decides it: does step k play on time `loop` round the pattern (firmware: steps_plays) */
+export function stepPlays(seed: number, loop: number, k: number, b: number): boolean {
+  if (!(b & 1)) return false;
+  const code = Math.min(19, (b >> 2) & 31);
+  return !code || hash32((seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0) % 100 < 100 - 5 * code;
+}
+
+/**
+ * Steps: a drum track, XOX style (#83). A pattern of up to STEPS_MAX steps, each on / off, accented, and with a chance
+ * (ModuleInst.steps); `len` plays the first steps. With nothing in clk it follows the engine's clock while the transport
+ * runs: the first step when PLAY starts, then one step per `rate` (24 ppqn ticks, ARP_RATE_TICKS), each on the sample its
+ * tick falls on; a rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 75 %
+ * the most) delays every second step by (swing - 50) / 50 of a step. A step that plays raises trig for `gate` of a step
+ * (and acc with it when the step is accented). The name and the pattern travel in its binary record (`data`: the name,
+ * then the pattern); it runs once (SHARED_TYPES).
+ */
+const steps: ModuleImpl<StepsState> = {
+  def: {
+    type: 'steps',
+    label: 'Steps',
+    inputs: [gate('clk'), gate('reset')],
+    outputs: [gate('trig'), gate('acc')],
+    params: [
+      param('len', 1, STEPS_MAX, 16, { step: 1 }),
+      param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATES }),
+      param('swing', 50, 75, 50, { step: 1, unit: '%' }),
+      param('gate', 0.01, 1, 0.25, { step: 0.01 }),
+    ],
+    data: TRACK_NAME_MAX + STEPS_MAX,
+  },
+  init: () => ({ pat: new Uint8Array(STEPS_MAX), seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, trig: 0, acc: false, gap: false, since: -1, period: 0 }),
+  seed(s, seed) {
+    s.seed = seed;
+  },
+  process(c, s) {
+    const q16 = (v: number | undefined): number => Math.round((v ?? 0) * 65536);
+    const len = Math.min(STEPS_MAX, Math.max(1, Math.round(c.p.len ?? 16)));
+    const div = ARP_RATE_TICKS[Math.min(ARP_RATE_TICKS.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
+    const swing = q16(c.p.swing ?? 50) - 50 * 65536;
+    const gate = q16(c.p.gate ?? 0.25);
+    const v = c.voice;
+    const ext = !!c.connected.clk;
+    const { clk, reset } = c.inp;
+    const fire = (k: number): void => {
+      if (!stepPlays(s.seed, s.loop, k, s.pat[k]) || s.mute) return;
+      const sl = ext && s.period > 0 ? s.period : (ext ? 6 : div) * v.tickLen;
+      s.gap = s.trig > 0;
+      s.trig = Math.max(1, Math.floor((gate * sl) / 65536));
+      s.acc = !!(s.pat[k] & 2);
+    };
+    for (let i = 0; i < c.n; i++) {
+      let adv = 0;
+      if (reset[i] >= 0.5 && s.r1 < 0.5) s.pos = -1;
+      s.r1 = reset[i];
+      if (ext) {
+        if (s.since >= 0 && s.since < 8388608) s.since++;
+        if (clk[i] >= 0.5 && s.c1 < 0.5) {
+          if (s.since > 0) s.period = s.since;
+          s.since = 0;
+          adv++;
+        }
+        s.c1 = clk[i];
+      } else {
+        if (i === 0 && v.run && !s.run) {
+          s.count = 0;
+          s.pos = -1;
+          adv++;
+        }
+        if (v.run && i === v.tick)
+          for (let t = 0; t < v.ticks; t++)
+            if (++s.count >= div) {
+              s.count = 0;
+              adv++;
+            }
+      }
+      if (s.pend > 0 && --s.pend === 0) fire(s.pstep);
+      for (; adv > 0; adv--) {
+        s.pos = s.pos + 1 >= len ? 0 : s.pos + 1;
+        if (s.pos === 0) s.loop = (s.loop + 1) >>> 0;
+        const sl = ext ? s.period : div * v.tickLen;
+        const d = s.pos & 1 && swing > 0 && sl > 0 ? Math.floor((swing * sl) / (50 * 65536)) : 0;
+        if (d > 0) {
+          s.pend = d;
+          s.pstep = s.pos;
+        } else fire(s.pos);
+      }
+      const up = s.trig > 0 && !s.gap;
+      c.out.trig[i] = up ? 1 : 0;
+      c.out.acc[i] = up && s.acc ? 1 : 0;
+      if (s.gap) s.gap = false;
+      else if (s.trig > 0) s.trig--;
+    }
+    s.run = v.run;
+  },
+};
+
 export const SCOPE_MODES = ['time', 'spectrum'];
 /** the shortest / longest window of a Scope (ms) */
 export const SCOPE_TIME_MIN = 1;
@@ -2244,7 +2371,7 @@ const scope: ModuleImpl<null> = {
   process: () => {},
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

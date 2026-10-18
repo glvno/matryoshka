@@ -8,8 +8,8 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
-import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
+import { driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { defaultMap, FLAW_TARGETS, STEPS_MAX, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView } from './poly';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
@@ -92,7 +92,7 @@ interface ArpRun {
 }
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
-  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, buttons: 0, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
+  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
   note: -1, on: false, onStamp: 0, offStamp: 0, retrig: false, walk: walkInit(seed),
 });
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
@@ -123,6 +123,9 @@ export class Engine {
   private tickAcc = 0;
   private extTicks = 0;
   private ext = false;
+  /** MIDI clock: samples since its last tick, and per tick as last measured (0: not yet) */
+  private extSince = 0;
+  private extLen = 0;
   private running = false;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
   private buttons = 0;
@@ -215,6 +218,7 @@ export class Engine {
       node.range = [{ ...(m.range?.p1 ?? {}) }, { ...(m.range?.p2 ?? {}) }];
       node.inputRoutes = Object.entries(m.inputMap ?? {}).map(([port, params]) => ({ port, params: [...params], mean: 0 }));
       for (const inst of node.inst) inst.dspInp = { ...inst.inp };
+      if (m.type === 'steps') for (const inst of node.inst) (inst.state as StepsState).pat.set(Array.from({ length: STEPS_MAX }, (_, k) => m.steps?.[k] ?? 0));
       node.sources = [];
       node.connected = {};
       next.set(m.id, node);
@@ -289,6 +293,29 @@ export class Engine {
       out.push({ stage: s.stage, v: s.v, newest: i === newest });
     }
     return out;
+  }
+
+  /** a Steps module's state, null if `id` is not one */
+  private stepsOf(id: number): StepsState | null {
+    const node = this.nodes.get(id);
+    return node?.type === 'steps' ? (node.inst[0].state as StepsState) : null;
+  }
+  /** a step of a Steps module changed (its byte, patch.ts stepByte): no reload, the pattern plays on */
+  setStep(id: number, k: number, b: number): void {
+    const s = this.stepsOf(id);
+    if (s && k >= 0 && k < STEPS_MAX) s.pat[k] = b & 0x7f;
+  }
+  /** mute / unmute a Steps module (not part of the patch: a reload keeps it while the module stays) */
+  setMute(id: number, on: boolean): void {
+    const s = this.stepsOf(id);
+    if (s) s.mute = on;
+  }
+  /** where every Steps module is (the step playing, -1 before the first) and whether it is muted, for the editor's grid */
+  stepsView(): { id: number; pos: number; mute: boolean }[] {
+    return this.order.filter((n) => n.type === 'steps').map((n) => {
+      const s = n.inst[0].state as StepsState;
+      return { id: n.id, pos: this.running || n.connected.clk ? s.pos : -1, mute: s.mute };
+    });
   }
 
   /** the probes' sums over the parts, one buffer per probed output */
@@ -538,6 +565,8 @@ export class Engine {
   clockExternal(on: boolean): void {
     this.ext = on;
     this.extTicks = 0;
+    this.extSince = 0;
+    this.extLen = 0;
   }
 
   /** the transport (PLAY, MIDI Start / Stop): the Main module's run output, and its clock output pulses only while it runs */
@@ -570,7 +599,7 @@ export class Engine {
   }
 
   /** a control change: CC 1 (mod wheel) is the Main module's mod output, CC 16..21 turn its knobs k1..k6, CC 22 its morph,
-   * CC 80..88 hold / release its patch buttons (64 and up: on); others are ignored */
+   * CC 80..86 hold / release its patch buttons (64 and up: on); others are ignored */
   cc(n: number, v: number): void {
     const x = Math.max(0, Math.min(1, v / 127));
     const main = (name: string): void => {
@@ -680,17 +709,30 @@ export class Engine {
       // the clock: MIDI ticks while external, else the tempo (bpm x 24 ticks a minute, in whole bpm as the firmware does)
       const bpm = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(this.main?.params.tempo ?? TEMPO_DEFAULT)));
       let seen = false;
+      // where this block's ticks fall (Steps modules start their steps there): MIDI clock ticks on the first sample, the
+      // tempo's on the sample that completes the tick; and the samples per tick (measured between MIDI clock ticks)
+      let tick = -1, nt = 0, tickLen = Math.floor((60 * this.sampleRate) / (bpm * PPQN));
       if (this.ext) {
         seen = this.extTicks > 0;
+        if (seen) {
+          tick = 0;
+          nt = this.extTicks;
+          if (this.extSince > 0) this.extLen = Math.floor(this.extSince / nt);
+          this.extSince = 0;
+        }
+        if (this.extLen > 0) tickLen = this.extLen;
+        this.extSince = Math.min(this.extSince + n, 1 << 23);
         this.ticks = (this.ticks + this.extTicks) >>> 0;
         this.extTicks = 0;
       } else {
-        this.tickAcc += n * bpm * PPQN;
-        const whole = 60 * this.sampleRate;
+        const whole = 60 * this.sampleRate, inc = bpm * PPQN;
+        if (this.tickAcc + n * inc >= whole) tick = Math.ceil((whole - this.tickAcc) / inc) - 1;
+        this.tickAcc += n * inc;
         while (this.tickAcc >= whole) {
           this.tickAcc -= whole;
           this.ticks = (this.ticks + 1) >>> 0;
           seen = true;
+          nt++;
         }
       }
       const clock = seen && this.running; // the Main module's clock output: one pulse per block that saw a tick while running
@@ -708,6 +750,9 @@ export class Engine {
       for (const g of all)
         for (const x of g.parts) {
           x.clock = clock;
+          x.tick = this.running ? tick : -1;
+          x.ticks = nt;
+          x.tickLen = tickLen;
           x.run = this.running;
           x.buttons = this.buttons;
           x.bend = this.ctl.bend;

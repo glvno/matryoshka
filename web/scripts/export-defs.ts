@@ -4,7 +4,7 @@
 import { writeFileSync } from 'node:fs';
 import { ASSIGN_MODES, DEFS, DELAY_DIVS, DELAY_CLK_PPQN, LEGATO_MODES, PRIORITIES } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16 } from '../src/patchbin';
-import { FLAW_RANGE, MAX_PARTS, thruInput } from '../src/patch';
+import { FLAW_RANGE, MAX_PARTS, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { MAX_POLY } from '../src/poly';
 import { PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
@@ -34,6 +34,7 @@ for (const t of TYPE_ORDER) {
   w(`#define ${up(t)}_NOUT ${d.outputs.length}`);
   w(`#define ${up(t)}_NPAR ${d.params.length}`);
   w(`#define ${up(t)}_CVBASE ${d.paramInputs ? explicit.length : -1}`);   /* index of p1; p2 follows */
+  w(`#define ${up(t)}_NDATA ${d.data ?? 0}`);   /* bytes after the parameters and pins in a record */
   w();
 }
 w(`#define DELAY_NDIV ${DELAY_DIVS.length}`);
@@ -44,6 +45,9 @@ w(`static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {${DELAY_DIVS.map((d) =
 w();
 // poly assemblies (patch.ts PolyCfg): the group records of the binary
 const names = (a: string[]): string => `{${a.map((c) => `"${c.toUpperCase()}"`).join(', ')}}`;
+w(`#define TRACK_STEPS ${STEPS_MAX}        /* a Steps module's pattern (patch.ts stepByte) and name, after its pins in the record */`);
+w(`#define TRACK_NAME_MAX ${TRACK_NAME_MAX}`);
+w();
 w(`#define POLY_MAX_GROUPS ${MAX_POLY}`);
 w(`#define POLY_MAX_PARTS ${MAX_PARTS}`);
 w(`#define POLY_FLAW_DETUNE ${FLAW_RANGE.detune[1]}  /* a part's flaws (patch.ts PartFlaw): detune -n..n cents, bright -n..n semitones, env -n..n % */`);
@@ -63,6 +67,7 @@ w('    uint8_t nin, nout, npar;');
 w('    uint8_t fixed_inputs;    /* inputs with independently switchable parameter links */');
 w('    int8_t cvbase;          /* index of the p1 input (p2 follows), -1: the module has no parameter inputs */');
 w('    int8_t thru;            /* the input a bypassed module passes to all of its outputs, -1: they are silent */');
+w('    uint8_t ndata;          /* bytes the record carries after the parameters and pins (a Steps module: name + pattern) */');
 w('    const int32_t *pmin, *pmax, *pdef, *pinc;   /* Q16.16; pinc: what one knob click adds */');
 w('    const char *name;       /* upper case, for the LCD */');
 w('    const char *const *pname;');
@@ -95,7 +100,7 @@ for (const t of TYPE_ORDER) {
   const d = DEFS[t];
   const has = d.params.length > 0;
   const n = up(t);
-  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}},   /* ${t} */`);
+  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}},   /* ${t} */`);
 }
 w('};');
 w();

@@ -48,9 +48,9 @@ function panel(): Patch {
   const v2 = addModule(p, DEFS.vca, 900, 0);
   const o = addModule(p, DEFS.output, 1200, 0);
   Object.assign(osc.params, { wave: 2, level: 0.8 });
-  for (const [a, ap, b, bp] of [[main, 'pitch', osc, 'pitch'], [osc, 'out', v, 'in'], [main, 'fx', v, 'cv'], [v, 'out', v2, 'in'], [main, 'rec', v2, 'cv'], [v2, 'out', o, 'l']] as const)
+  for (const [a, ap, b, bp] of [[main, 'pitch', osc, 'pitch'], [osc, 'out', v, 'in'], [main, 'fx', v, 'cv'], [v, 'out', v2, 'in'], [main, 'arp', v2, 'cv'], [v2, 'out', o, 'l']] as const)
     if (!connect(p, DEFS, { module: a.id, port: ap }, { module: b.id, port: bp })) throw new Error(`panel: ${ap} -> ${bp}`);
-  main.panel = { toggle: ['rec'], on: ['rec'], labels: { fx: 'GATE', rec: 'MUTE' } };
+  main.panel = { toggle: ['arp'], on: ['arp'], labels: { fx: 'GATE', arp: 'MUTE' } };
   return p;
 }
 writeFileSync(new URL('panel.m1p', out), encodePatch(panel()));

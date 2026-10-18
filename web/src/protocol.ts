@@ -27,7 +27,7 @@
 //   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
 //   43 SLOT_NOW  slot u8, name 20 bytes                unasked: the slot the FM-1 plays now (a patch from its panel, program
 //                                                    change, boot or SAVE). Its knobs and patch buttons arrive as USB MIDI CC
-//                                                    (16..21, 80..88) when MENU > MIDI OUT is on.
+//                                                    (16..21, 80..86) when MENU > MIDI OUT is on.
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT]
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store

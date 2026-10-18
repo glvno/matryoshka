@@ -9,7 +9,7 @@ import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
-import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, type Patch, type PolyCfg } from '../src/patch';
+import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { makeAssembly } from '../src/assembly';
 import { withParts } from '../src/test-poly';
 import { acid } from '../src/test-patches';
@@ -19,7 +19,7 @@ const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
 /** [frame, kind, note (a button for bon / boff), MIDI channel of a note (absent: 1)] */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff', number, number?];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -1307,12 +1307,88 @@ tests['panel-buttons'] = make('panel-buttons', (add, wire) => {
   wire(o, 'out', v, 'in');
   wire(kb, 'fx', v, 'cv');
   wire(v, 'out', v2, 'in');
-  wire(kb, 'rec', v2, 'cv');
+  wire(kb, 'arp', v2, 'cv');
   wire(v2, 'out', out, 'l');
 });
-tests['panel-buttons'].modules[0].panel = { toggle: ['rec'], on: ['rec'], labels: { k5: 'LEVEL', fx: 'GATE' } };
-events['panel-buttons'] = [[0, 'on', 60], [128 * 20, 'bon', 0], [128 * 60, 'boff', 0], [128 * 80, 'bon', 0], [128 * 100, 'boff', 8], [128 * 140, 'bon', 8], [128 * 160, 'off', 60]];
+tests['panel-buttons'].modules[0].panel = { toggle: ['arp'], on: ['arp'], labels: { k5: 'LEVEL', fx: 'GATE' } };
+events['panel-buttons'] = [[0, 'on', 60], [128 * 20, 'bon', 0], [128 * 60, 'boff', 0], [128 * 80, 'bon', 0], [128 * 100, 'boff', 6], [128 * 140, 'bon', 6], [128 * 160, 'off', 60]];
 ends['panel-buttons'] = 128 * 180;
+
+
+// Steps (#83): drum tracks on the transport. A kick on the quarters (accent on the first, acc opens more level), a hat at
+// 1/16 over 12 steps with chances (the deterministic hash), swing and a short gate, and a third track at 1/8T; stop and
+// run again restart them all at step 1
+const pattern = (on: number[], acc: number[] = [], chance: Record<number, number> = {}): number[] =>
+  Array.from({ length: 64 }, (_, k) => stepByte({ on: on.includes(k), accent: acc.includes(k), chance: chance[k] ?? 100 }));
+const drum = (add: Parameters<Build>[0], wire: Parameters<Build>[1], x: number, wave: number, pitch: number, decay: number): { st: number; v: number } => {
+  const st = add('steps', x, 0, {});
+  const e = add('adsr', x, 200, { a: 0.001, d: decay, s: 0, r: 0.01 });
+  const o = add('osc', x, 400, { wave, level: 0.6, coarse: pitch });
+  const v = add('vca', x, 600);
+  const va = add('vca', x, 800);
+  const c = add('const', x, 1000, { value: 0.4 });
+  wire(st, 'trig', e, 'gate');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', va, 'in');
+  wire(c, 'out', va, 'cv');
+  wire(st, 'acc', va, 'cv');
+  return { st, v: va };
+};
+tests['steps-kit'] = make('steps-kit', (add, wire) => {
+  const kb = add('fm1', 0, 0, { tempo: 140 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const mx = add('mixer', 1800, 0);
+  const a = drum(add, wire, 200, 0, -12, 0.12);
+  const b = drum(add, wire, 600, 3, 12, 0.03);
+  const c = drum(add, wire, 1000, 1, 0, 0.06);
+  wire(a.v, 'out', mx, 'in1');
+  wire(b.v, 'out', mx, 'in2');
+  wire(c.v, 'out', mx, 'in3');
+  wire(mx, 'out', out, 'l');
+});
+{
+  const st = tests['steps-kit'].modules.filter((m) => m.type === 'steps');
+  st[0].name = 'KICK';
+  st[0].steps = pattern([0, 4, 8, 12], [0]);
+  Object.assign(st[1].params, { len: 12, rate: 4, swing: 66, gate: 0.1 });
+  st[1].name = 'HAT';
+  st[1].steps = pattern([0, 1, 2, 3, 5, 6, 7, 9, 10, 11], [2, 6], { 1: 50, 3: 25, 5: 75, 7: 5, 9: 50, 11: 90 });
+  Object.assign(st[2].params, { len: 5, rate: 3, gate: 0.6 });
+  st[2].steps = pattern([0, 2, 3], [3]);
+}
+events['steps-kit'] = [[128 * 5, 'run', 0], [128 * 380, 'stop', 0], [128 * 420, 'run', 0]];
+ends['steps-kit'] = 128 * 560;
+
+// a track stepped by a clock in clk (an LFO square) and sent back to step 1 by the key's gate (reset); a second track on
+// MIDI clock: ticks every 900 samples (about 122 bpm), then the clock stops and the tempo takes over again
+tests['steps-clk'] = make('steps-clk', (add, wire) => {
+  const kb = add('fm1', 0, 0, { tempo: 100 });
+  const l = add('lfo', 200, 0, { wave: 3, rate: 9, depth: 1 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const mx = add('mixer', 1800, 0);
+  const a = drum(add, wire, 400, 2, 0, 0.05);
+  const b = drum(add, wire, 800, 0, 7, 0.08);
+  wire(l, 'out', a.st, 'clk');
+  wire(kb, 'gate', a.st, 'reset');
+  wire(a.v, 'out', mx, 'in1');
+  wire(b.v, 'out', mx, 'in2');
+  wire(mx, 'out', out, 'l');
+});
+{
+  const st = tests['steps-clk'].modules.filter((m) => m.type === 'steps');
+  Object.assign(st[0].params, { len: 7, swing: 60, gate: 0.4 });
+  st[0].steps = pattern([0, 1, 3, 4, 6], [4], { 3: 40 });
+  Object.assign(st[1].params, { len: 16, rate: 5, swing: 75 });
+  st[1].steps = pattern([0, 3, 5, 6, 9, 12, 14], [0, 9], { 5: 60, 14: 30 });
+}
+{
+  const ev: Ev[] = [[128 * 3, 'run', 0], [128 * 40, 'on', 60], [128 * 41, 'off', 60], [128 * 150, 'on', 62], [128 * 180, 'off', 62], [128 * 200, 'ext', 0]];
+  for (let t = 0; t < 200; t++) ev.push([128 * 200 + 900 * t + (t % 3) * 37, 'tick', 0]);
+  ev.push([128 * 200 + 900 * 200 + 200, 'int', 0]);
+  events['steps-clk'] = ev;
+  ends['steps-clk'] = 128 * 200 + 900 * 200 + 128 * 120;
+}
 
 for (const [name, patch] of Object.entries(tests)) {
   const e = new Engine(SR);
@@ -1337,6 +1413,8 @@ for (const [name, patch] of Object.entries(tests)) {
     if (kind === 'on') e.noteOn(note, 1, ch ?? 1);
     else if (kind === 'off') e.noteOff(note, ch ?? 1);
     else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
+    else if (kind === 'ext' || kind === 'int') e.clockExternal(kind === 'ext');
+    else if (kind === 'tick') e.clockTick();
     else e.transport(kind === 'run');
   }
   seg(END);

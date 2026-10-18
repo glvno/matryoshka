@@ -94,6 +94,10 @@ int main(int argc, char **argv)
             eng_buttons(!strcmp(kind, "bon") ? eng_buttons_get() | 1u << note : eng_buttons_get() & ~(1u << note));
         } else if (!strcmp(kind, "run") || !strcmp(kind, "stop")) {
             eng_transport(!strcmp(kind, "run"));
+        } else if (!strcmp(kind, "ext") || !strcmp(kind, "int")) {
+            eng_clock_external(!strcmp(kind, "ext"));
+        } else if (!strcmp(kind, "tick")) {
+            eng_clock_tick();
         }
     }
     for (i = 0; i < total; i++) {

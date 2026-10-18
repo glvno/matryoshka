@@ -41,6 +41,7 @@
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 16
 #define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
+#define ENG_MAX_TRACKS 16            /* Steps modules of a patch (their patterns live in E.trk_pat) */
 #define ARP_HELD 16                  /* keys an arpeggiator holds (arpeggiator.ts ARP_HELD) */
 #define ARP_LIST (ARP_HELD * 4u)     /* its notes over four octaves */
 #define TEMPO_DEFAULT 120u           /* without a Main module */
@@ -275,7 +276,12 @@ typedef struct {
         struct { int16_t *buf; uint32_t w, seed; int32_t lp, s1, err, burst, blen; } str;   /* Q13 line with error feedback */
         struct { uint32_t phase; int32_t s1; } wt;
         struct { int16_t *buf; uint32_t w, phase; } ch;
-        struct { uint32_t seed; int32_t c1, r1, y, period, since, gleft; int8_t pos, down; } seq;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
+        struct { uint32_t seed; int32_t c1, r1, y, period, since, gleft; int8_t pos, down; } seq;
+        /* Steps (modules.ts StepsState): ticks since the step, the step (-1: the next is the first), times round the pattern,
+         * a swung step waiting (samples, which), trig samples left, clk mode's edge distance; slen / sst: the step's length
+         * and samples since it began (live recording rounds to the nearest step); skip: a step recorded ahead, not played
+         * again when reached; hit: 1 / 2 (accented) = sound now (eng_steps_hit) */
+        struct { uint32_t seed, loop; int32_t c1, r1, since, period, pend, trig, slen, sst; uint16_t count; int8_t pos, pstep, skip; uint8_t run, acc, gap, mute, hit; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
         struct { int32_t count, c1, r1; } cdv;
         struct { int32_t v, c1; } sh;
         struct { int32_t rem, t1; } pls;
@@ -293,6 +299,7 @@ typedef struct {
     int32_t par[MAX_PAR];
     uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
     uint16_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
+    uint8_t trk;                     /* a Steps module: its pattern, E.trk_pat[trk] */
 } node_t;
 
 /* a macro range: input `pin` (0 p1, 1 p2) of module `mod` moves parameter `par` between lo and hi (0..255 of the range,
@@ -363,6 +370,10 @@ typedef struct {
     uint32_t stamp;
     uint32_t clk_seen, clk_pulse;    /* MIDI clock ticks counted so far; the Main module's clock pulse length in this block */
     uint32_t ticks, tick_acc;        /* the clock: ticks so far, the tempo's remainder (1 / (60 ENG_SR) of a tick) */
+    int32_t tick_off, tick_n, tick_len;   /* this block's ticks while running: the sample they fall on (-1 none), how many, samples per tick */
+    uint32_t ext_since, ext_len;     /* MIDI clock: samples since its last tick, samples per tick as measured (0: not yet) */
+    uint8_t ntrk;
+    uint8_t trk_pat[ENG_MAX_TRACKS][TRACK_STEPS];   /* the Steps modules' patterns (patch.ts stepByte) */
     uint8_t running;                 /* the transport as this block saw it */
     uint8_t narp;
     arp_t arp[ENG_MAX_ARPS];
@@ -481,6 +492,11 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
         it->s.str.seed = 0x3779b97fu;
         it->s.str.blen = 1;
         break;
+    case T_STEPS:                        /* modules.ts steps.seed with engine.ts instSeed(module index, part) */
+        it->s.stp.seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
+        it->s.stp.pos = it->s.stp.skip = -1;
+        it->s.stp.since = -1;
+        break;
     case T_SEQ:
         it->s.seq.seed = 0x9e3779b9u;
         it->s.seq.since = -1;
@@ -509,7 +525,7 @@ static inline int32_t rd32(const uint8_t *p)
 }
 
 /* bytes a module record has beyond its type byte and parameters: the attenuverters and the matrix */
-static inline uint32_t eng_record_extra(const def_t *d) { return d->cvbase >= 0 ? 20u : 0u; }
+static inline uint32_t eng_record_extra(const def_t *d) { return (d->cvbase >= 0 ? 20u : 0u) + d->ndata; }
 
 static int32_t morph_unit(const def_t *d, uint32_t j, int32_t v);
 
@@ -543,6 +559,7 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.clk_seen = clk_ticks;
     E.clk_pulse = 0;
     E.narp = 0;
+    E.ntrk = 0;
     E.ngrp = 0;
     E.grp[0].parts = 1;                          /* the shared keyboard: one part, legato auto, last note */
     E.grp[0].assign = E.grp[0].legato = E.grp[0].priority = 0;
@@ -646,8 +663,16 @@ int eng_load(const uint8_t *p, uint32_t len)
             for (j = 0; j < 6u; j++, at += 2)
                 nd->map[j] = (uint16_t)((uint32_t)p[at] | (uint32_t)p[at + 1] << 8);
         }
+        if (nd->type == T_STEPS) {               /* its name (the panel reads it from the binary), then its pattern */
+            if (E.ntrk >= ENG_MAX_TRACKS)
+                return -2;
+            nd->trk = E.ntrk++;
+            for (j = 0; j < TRACK_STEPS; j++)
+                E.trk_pat[nd->trk][j] = p[at + TRACK_NAME_MAX + j] & 0x7Fu;
+        }
+        at += d->ndata;
         /* the memories of delay, reverb, chorus, granular and the output exist once (patch.ts SHARED_TYPES) */
-        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP ? 0u : member[i];
+        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS ? 0u : member[i];
         nd->ninst = E.grp[nd->grp].parts;
         if (nd->type == T_FM1 && E.main < 0)
             E.main = (int8_t)i;
@@ -1519,6 +1544,67 @@ uint32_t eng_ticks(void) { return E.ticks; }
 int eng_clock_is_external(void) { return clk_ext; }
 void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
 int eng_transport_running(void) { return transport_on; }
+
+/* ------------------------------------------------------------------ Steps modules (the SEQ page) */
+static inst_t *steps_inst(uint32_t module)
+{
+    return E.loaded && module < E.nmod && E.node[module].type == T_STEPS ? &inst_pool[E.node[module].inst0] : 0;
+}
+int eng_steps_count(void) { return E.loaded ? E.ntrk : 0; }
+int eng_steps_module(uint32_t t)
+{
+    uint32_t i;
+    for (i = 0; E.loaded && i < E.nmod; i++)
+        if (E.node[i].type == T_STEPS && E.node[i].trk == t)
+            return (int)i;
+    return -1;
+}
+int eng_steps_get(uint32_t module, uint32_t k)
+{
+    return steps_inst(module) && k < TRACK_STEPS ? E.trk_pat[E.node[module].trk][k] : -1;
+}
+void eng_steps_set(uint32_t module, uint32_t k, uint32_t b)
+{
+    if (steps_inst(module) && k < TRACK_STEPS)
+        E.trk_pat[E.node[module].trk][k] = (uint8_t)(b & 0x7Fu);
+}
+int eng_steps_pos(uint32_t module)
+{
+    inst_t *it = steps_inst(module);
+    return it && (E.running || ((E.node[module].conn >> STEPS_I_CLK) & 1u)) ? it->s.stp.pos : -1;
+}
+void eng_steps_mute(uint32_t module, int on)
+{
+    inst_t *it = steps_inst(module);
+    if (it)
+        it->s.stp.mute = (uint8_t)(on != 0);
+}
+int eng_steps_muted(uint32_t module)
+{
+    inst_t *it = steps_inst(module);
+    return it ? it->s.stp.mute : 0;
+}
+/* A hit from the panel (live recording, REC on): it sounds at once. While the track plays it also goes into the pattern
+ * at the nearest step: the one playing, or the next when more than half of this one has passed (that step is then not
+ * played again when it comes up, it has just sounded). Returns the step it went into, -1 when only heard. */
+int eng_steps_hit(uint32_t module, int accent, int record)
+{
+    inst_t *it = steps_inst(module);
+    int32_t k, len;
+    if (!it)
+        return -1;
+    it->s.stp.hit = accent ? 2u : 1u;
+    if (!record || eng_steps_pos(module) < 0)
+        return -1;
+    len = clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
+    k = it->s.stp.pos < 0 ? 0 : it->s.stp.pos;
+    if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
+        k = k + 1 >= len ? 0 : k + 1;
+        it->s.stp.skip = (int8_t)k;
+    }
+    E.trk_pat[E.node[module].trk][k] |= accent ? 3u : 1u;
+    return k;
+}
 
 /* Overload (audio.c): one part fewer in the poly group that has the most (the part with the highest number:
  * its key is let go, its instances are no longer rendered and their outputs fall silent). 0 when no group has more than
@@ -2891,6 +2977,116 @@ static void m_chorus(const node_t *nd, inst_t *it, uint32_t n)
 
 /* The step sequencer (modules.ts seq): out is the current step all the time, gate follows the clock unless the step is a
  * rest (fully down, -1). A rising clock edge advances (fwd, back, pendulum, random), a rising reset edge goes to step 1. */
+/* a step's chance (modules.ts stepPlays): does step k (its byte b) play on time `loop` round the pattern */
+static int steps_plays(uint32_t seed, uint32_t loop, uint32_t k, uint32_t b)
+{
+    uint32_t code = (b >> 2) & 31u;
+    if (!(b & 1u))
+        return 0;
+    if (code > 19u)
+        code = 19u;
+    return !code || hash32(seed ^ (loop * 0x9e3779b9u) ^ ((k + 1u) * 0x85ebca6bu)) % 100u < 100u - 5u * code;
+}
+
+/* a step of a Steps module comes up: it sounds (trig for gate x the step length sl, one low sample first if trig is still up)
+ * unless it is off, its chance says no, it was recorded ahead (skip) or the track is muted */
+static void steps_fire(inst_t *it, const uint8_t *pat, int32_t k, int32_t gate, int32_t sl)
+{
+    int32_t g;
+    if (it->s.stp.skip == k) {
+        it->s.stp.skip = -1;
+        return;
+    }
+    if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, pat[k]) || it->s.stp.mute)
+        return;
+    g = (int32_t)(((int64_t)gate * sl) >> 16);
+    it->s.stp.gap = it->s.stp.trig > 0;
+    it->s.stp.trig = g > 1 ? g : 1;
+    it->s.stp.acc = (pat[k] >> 1) & 1u;
+}
+
+/* the Steps module (modules.ts steps): one step per `rate` of the clock while the transport runs (the first when it starts),
+ * or per rising edge in clk; every second step late by the swing; a step that plays raises trig (and acc) for gate x step */
+static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
+{
+    static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* arpeggiator.ts ARP_RATE_TICKS */
+    const esig_t *clk = it->in[STEPS_I_CLK], *reset = it->in[STEPS_I_RESET];
+    esig_t *trig = it->out[STEPS_O_TRIG], *acc = it->out[STEPS_O_ACC];
+    const uint8_t *pat = E.trk_pat[nd->trk];
+    int32_t len = clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
+    int32_t div = RATE_TICKS[clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 6)];
+    int32_t swing = EF(it, STEPS_P_SWING) - 50 * ENG_ONE, gate = EF(it, STEPS_P_GATE);
+    int ext = (nd->conn >> STEPS_I_CLK) & 1u;
+    uint32_t i;
+    for (i = 0; i < n; i++) {
+        int32_t adv = 0, sl;
+        if (reset[i] >= 32768 && it->s.stp.r1 < 32768)
+            it->s.stp.pos = -1;
+        it->s.stp.r1 = reset[i];
+        if (ext) {
+            if (it->s.stp.since >= 0 && it->s.stp.since < (1 << 23))
+                it->s.stp.since++;
+            if (clk[i] >= 32768 && it->s.stp.c1 < 32768) {
+                if (it->s.stp.since > 0)
+                    it->s.stp.period = it->s.stp.since;
+                it->s.stp.since = 0;
+                adv++;
+            }
+            it->s.stp.c1 = clk[i];
+        } else {
+            if (i == 0 && E.running && !it->s.stp.run) {
+                it->s.stp.count = 0;
+                it->s.stp.pos = -1;
+                adv++;
+            }
+            if ((int32_t)i == E.tick_off) {
+                int32_t t;
+                for (t = 0; t < E.tick_n; t++)
+                    if (++it->s.stp.count >= div) {
+                        it->s.stp.count = 0;
+                        adv++;
+                    }
+            }
+        }
+        sl = ext && it->s.stp.period > 0 ? it->s.stp.period : (ext ? 6 : div) * E.tick_len;   /* the gate's step length */
+        if (i == 0 && it->s.stp.hit) {           /* a hit from the panel (eng_steps_hit): sounds now, whatever the pattern */
+            int32_t g = (int32_t)(((int64_t)gate * sl) >> 16);
+            it->s.stp.gap = it->s.stp.trig > 0;
+            it->s.stp.trig = g > 1 ? g : 1;
+            it->s.stp.acc = it->s.stp.hit == 2u;
+            it->s.stp.hit = 0;
+        }
+        it->s.stp.sst++;
+        if (it->s.stp.pend > 0 && --it->s.stp.pend == 0)
+            steps_fire(it, pat, it->s.stp.pstep, gate, sl);
+        for (; adv > 0; adv--) {
+            int32_t sw = ext ? it->s.stp.period : div * E.tick_len, d = 0;
+            it->s.stp.pos = (int8_t)(it->s.stp.pos + 1 >= len ? 0 : it->s.stp.pos + 1);
+            if (it->s.stp.pos == 0)
+                it->s.stp.loop++;
+            it->s.stp.sst = 0;
+            it->s.stp.slen = sw;
+            if ((it->s.stp.pos & 1) && swing > 0 && sw > 0)
+                d = (int32_t)(((int64_t)swing * sw) / (50 * ENG_ONE));
+            if (d > 0) {
+                it->s.stp.pend = d;
+                it->s.stp.pstep = it->s.stp.pos;
+            } else
+                steps_fire(it, pat, it->s.stp.pos, gate, sl);
+        }
+        {
+            int up = it->s.stp.trig > 0 && !it->s.stp.gap;
+            trig[i] = up ? ENG_ONE : 0;
+            acc[i] = up && it->s.stp.acc ? ENG_ONE : 0;
+            if (it->s.stp.gap)
+                it->s.stp.gap = 0;
+            else if (it->s.stp.trig > 0)
+                it->s.stp.trig--;
+        }
+    }
+    it->s.stp.run = E.running;
+}
+
 static void m_seq(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *clock = it->in[SEQ_I_CLOCK], *reset = it->in[SEQ_I_RESET];
@@ -3339,6 +3535,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_WAVETABLE: m_wavetable(nd, it, n); break;
     case T_CHORUS: m_chorus(nd, it, n); break;
     case T_SEQ: m_seq(nd, it, n); break;
+    case T_STEPS: m_steps(nd, it, n); break;
     case T_CLKDIV: m_clkdiv(nd, it, n); break;
     case T_SH: m_sh(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;
@@ -3386,17 +3583,39 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
             E.running = run;
             t = clk_ticks;
+            /* where this block's ticks fall (Steps modules start their steps there, engine.ts render): MIDI clock ticks on the
+             * first sample, the tempo's on the sample that completes the tick; samples per tick (measured from MIDI clock) */
+            E.tick_off = -1;
+            E.tick_n = 0;
+            E.tick_len = (int32_t)(60u * ENG_SR / (bpm * 24u));
             if (clk_ext) {
                 seen = t != E.clk_seen;
+                if (seen) {
+                    E.tick_off = 0;
+                    E.tick_n = (int32_t)(t - E.clk_seen);
+                    if (E.ext_since > 0u)
+                        E.ext_len = E.ext_since / (uint32_t)E.tick_n;
+                    E.ext_since = 0;
+                }
+                if (E.ext_len > 0u)
+                    E.tick_len = (int32_t)E.ext_len;
+                E.ext_since = E.ext_since + n < (1u << 23) ? E.ext_since + n : 1u << 23;
                 E.ticks += t - E.clk_seen;
             } else {
-                E.tick_acc += n * bpm * 24u;
-                while (E.tick_acc >= 60u * ENG_SR) {
-                    E.tick_acc -= 60u * ENG_SR;
+                uint32_t whole = 60u * ENG_SR, inc = bpm * 24u;
+                E.ext_since = E.ext_len = 0;
+                if (E.tick_acc + n * inc >= whole)
+                    E.tick_off = (int32_t)((whole - E.tick_acc + inc - 1u) / inc) - 1;
+                E.tick_acc += n * inc;
+                while (E.tick_acc >= whole) {
+                    E.tick_acc -= whole;
                     E.ticks++;
+                    E.tick_n++;
                     seen = 1;
                 }
             }
+            if (!run)
+                E.tick_off = -1;
             E.clk_seen = t;
             E.clk_pulse = seen && run ? (n + 1u) / 2u : 0u;   /* the Main clock: half a block per block that saw a tick while running */
             for (k = 0; k < E.narp; k++)

@@ -16,8 +16,8 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43 };
-#define M1_FEATURES 2u                                       /* INFO byte 5: bit 1 = the TRANSPORT command (bit 0, the ARP command, is retired) */
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_STEP = 0x26, C_MUTE = 0x27, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_STEP = 0x44, R_MUTE = 0x45 };
+#define M1_FEATURES 6u                                       /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = STEP / MUTE (bit 0, the ARP command, is retired) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
@@ -133,7 +133,7 @@ static uint32_t m1_record(uint32_t mod)
         if (at >= m1_cur_len || M1_TYPE(m1_cur[at]) >= N_TYPES)
             return 0;
         d = &DEFS[M1_TYPE(m1_cur[at])];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u);
+        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
     }
     return at < m1_cur_len && M1_TYPE(m1_cur[at]) < N_TYPES ? at : 0;
 }
@@ -183,6 +183,55 @@ static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
     m1_edited = 1;
 }
 
+/* where a Steps module's name starts in the running binary (its pattern follows), 0 if `mod` is not one */
+static uint32_t m1_track_at(uint32_t mod)
+{
+    uint32_t at = m1_record(mod);
+    const def_t *d;
+    if (!at || M1_TYPE(m1_cur[at]) != T_STEPS)
+        return 0;
+    d = &DEFS[T_STEPS];
+    at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u);
+    return at + TRACK_NAME_MAX + TRACK_STEPS <= m1_cur_len ? at : 0;
+}
+
+/* a Steps module's name as the LCD shows it (TRACK_NAME_MAX + 1 bytes, 0-terminated; empty without one) */
+static void m1_track_name(uint32_t mod, char *out)
+{
+    uint32_t at = m1_track_at(mod), i;
+    for (i = 0; i < TRACK_NAME_MAX; i++)
+        out[i] = at && m1_cur[at + i] >= 32u && m1_cur[at + i] < 127u && (!i || out[i - 1]) ? (char)m1_cur[at + i] : 0;
+    out[TRACK_NAME_MAX] = 0;
+}
+
+/* a step edit into the running engine and the binary (SAVE keeps it) */
+static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b)
+{
+    uint32_t at = m1_track_at(mod);
+    if (!at || k >= TRACK_STEPS)
+        return;
+    eng_steps_set(mod, k, b);
+    m1_cur[at + TRACK_NAME_MAX + k] = (uint8_t)(b & 0x7Fu);
+    m1_edited = 1;
+}
+
+/* unasked: a step or a mute changed on the panel (the editor follows) */
+static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b)
+{
+    uint8_t p[3];
+    p[0] = (uint8_t)mod;
+    p[1] = (uint8_t)k;
+    p[2] = (uint8_t)b;
+    m1_reply(R_STEP, p, 3);
+}
+static void m1_mute_now(uint32_t mod, int on)
+{
+    uint8_t p[2];
+    p[0] = (uint8_t)mod;
+    p[1] = (uint8_t)(on != 0);
+    m1_reply(R_MUTE, p, 2);
+}
+
 static void m1_patch_bypass(uint32_t mod, int on)
 {
     uint32_t at = m1_record(mod);
@@ -209,7 +258,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         if (at >= len || M1_TYPE(p[at]) >= N_TYPES)
             return 0;
         d = &DEFS[M1_TYPE(p[at])];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u);
+        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
         npar += d->npar;
     }
     at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);           /* flag bit 0: the morph B set after the cables */
@@ -239,7 +288,7 @@ static uint32_t m1_range_section(void)
         if (at >= m1_cur_len || M1_TYPE(m1_cur[at]) >= N_TYPES)
             return 0;
         d = &DEFS[M1_TYPE(m1_cur[at])];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u);
+        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
         npar += d->npar;
     }
     at += 4u * ncab + ((m1_cur[6] & 1u) ? 4u * npar : 0u);
@@ -457,6 +506,18 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         if (len >= 6u) {
             if (eng_set_range(d[0], d[1], d[2], d[3] != 0, d[4], d[5]))
                 m1_patch_range(d[0], d[1], d[2], d[3] != 0, d[4], d[5]);
+            m1_ui_changed();
+        }
+        break;
+    case C_STEP:                                             /* module u8, step u8, byte u8 (patch.ts stepByte) */
+        if (len >= 3u) {
+            m1_patch_step(d[0], d[1], d[2]);
+            m1_ui_changed();
+        }
+        break;
+    case C_MUTE:                                             /* module u8, on u8: not saved */
+        if (len >= 2u) {
+            eng_steps_mute(d[0], d[1] != 0u);
             m1_ui_changed();
         }
         break;
