@@ -468,3 +468,7 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Not covered: USB (editor link, installs, recovery), P33 (watchdog / reboot / UBOOT), real timing. Text checks use the firmware's font (`font.rs` finds `text_dots` strings exactly), so a check names a string the LCD draws.
 - fm1-emu's AArch64 JIT renders our engine wrong (patches 20-50 dB too quiet at random); `m1emu` uses the interpreter unless `M1EMU_JIT=1`. With the interpreter the 33 factory patches match the web engine within 6 dB (Echo Pluck ~4x louder: unexplained).
 - Found with it: every second HOME press was ignored (`home_t0 = fm1_ms | 1` with bit 1 as a flag; now `(fm1_ms & ~3u) | 1u`, not yet run in the emulator: needs a JieLi build).
+
+## Oracle V is factory patch 0 (2026-10-17; host-tested: vitest 596, golden incl. `oracle-v`; not flashed)
+
+- `web/presets/00-oracle-v.json`: the factory Oracle V assembly at **4 voices** (5 estimate 105 % CPU and would not load; 4 = 85 % counted), Main keys → allocator, mod wheel → vibrato, out → Output L / R (level 0.4). K1..K4 = cutoff, resonance, filter decay, amp release, each through a pin at depth 1 with the base at the range's minimum and the knob starting where the factory value was. The other presets moved up one slot (01..33); `presets.h` regenerated (34), `cpu-costs.json` recounted. It is the first factory preset with a poly assembly, so the patchbin tests read the device view (`deviceView`) for module / group counts and skip poly patches in the overlay-is-layout-only check.

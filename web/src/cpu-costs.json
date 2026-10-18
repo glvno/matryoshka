@@ -17071,6 +17071,10 @@
  },
  "checks": [
   {
+   "name": "Oracle V",
+   "cycles": 568705
+  },
+  {
    "name": "303 Acid",
    "cycles": 142431
   },

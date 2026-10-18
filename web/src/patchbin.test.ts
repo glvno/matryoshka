@@ -4,7 +4,7 @@ import { DEFS } from './modules';
 import { addModule } from './patch';
 import { GROUP_REC, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
 import { PRESETS } from './presets';
-import { polyGroups } from './poly';
+import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
 
 describe('binary patch format', () => {
@@ -12,6 +12,7 @@ describe('binary patch format', () => {
     let grouped = 0;
     for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
+      if (polyGroups(p).length) continue; // a poly assembly is not only layout: its cards run once per voice
       const flat = { ...p, assemblies: undefined };
       delete flat.assemblies;
       expect(Array.from(encodePatch(p)), name).toEqual(Array.from(encodePatch(flat)));
@@ -70,15 +71,16 @@ describe('binary patch format', () => {
 
   it('encodes every preset with the documented layout', () => {
     for (const [name, make] of Object.entries(PRESETS)) {
-      const p = make();
-      const b = encodePatch(p);
+      const b = encodePatch(make());
+      const { patch: p, groups } = deviceView(make()); // what the device gets: the allocator as a Part per poly group
+      const g = groups.length;
       const dv = new DataView(b.buffer);
       expect(b[0], name).toBe(0xa1);
       expect(b[1], name).toBe(21);
       expect(b[2], name).toBe(p.modules.length);
-      expect(b[3], name).toBe(0); // poly groups: the factory presets have none
+      expect(b[3], name).toBe(g); // poly groups (Oracle V has one)
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
-      const size = 8 + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0), 0) + 4 * p.cables.length;
+      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0), 0) + 4 * p.cables.length;
       expect(b.length, name).toBe(size);
       expect(p.cables.length).toBeLessThanOrEqual(MAX_CABLES);
     }
