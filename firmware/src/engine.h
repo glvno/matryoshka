@@ -92,6 +92,8 @@ void eng_transport(int on);
 int eng_transport_running(void);
 /* the patch buttons (bit i = button i of ENG_PANEL_BUTTONS): held or switched on; the Main module's button outputs */
 void eng_buttons(uint32_t mask);
+uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quarter note) */
+int eng_clock_is_external(void);          /* MIDI clock drives the clock */
 uint32_t eng_buttons_get(void);
 /* the performance controls: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
  * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch, 0..1, the at output) */

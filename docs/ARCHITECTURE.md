@@ -325,3 +325,9 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 - Engines: the button states are runtime (`Engine.setButton`, `eng_buttons`), started from the saved switches at load; the Main module fills the outputs. CC in: 16..21 = K1..K6, 22 = morph, 80..88 = the buttons (64 and up: on).
 - Firmware: K1..K6 always turn the Main module's knobs; a held button is on while held, a switching one flips on the press (the patch's `on` mask follows, SAVE keeps it); the buttons' LEDs are lit while on and glow dimly when a cable leaves the output. Gone: the mixer page (level = MASTER, morph / legato / priority = the patch), the ENV page, FX bypass, SELECT's module stepping.
 - Editor dock: K5 / K6 knobs beside K1..K4, a 3 x 3 grid of the buttons with their jacks (press = hold / switch; right-click: switch or hold, label), a knob's label by right-click on its cap.
+
+## Player screen and legend (#63, 2026-10-18)
+
+- Page 0 is the player screen (`ui.c player_draw`): the top bar is the slot number (1..64) and the patch name, ` *` while edited; K1..K4 as four big rows (the panel label, else where the knob's cable goes, the position in percent, a bar); K5 / K6 small, side by side; a footer with PLAY / STOP and the tempo (MIDI while MIDI clock drives the clock), the parts and the octave, and a square that lights on each beat while the transport runs. Turning a knob or pressing a patch button puts its label and value / state in the bar for a second.
+- HOME tapped shows the legend (`legend_draw`): every knob and patch button with its label; buttons no cable uses are dim, switched-on ones say (ON). HOME again goes back; HOME held is the menu.
+- Gone: the module page (SELECT stepping, P1 / P2 lines), the patch diagram (its 30 KB picture buffer), the ENV performance page.

@@ -1494,6 +1494,8 @@ void eng_clock_tick(void)
 void eng_clock_external(int on) { clk_ext = (uint8_t)(on != 0); }
 void eng_buttons(uint32_t mask) { panel_buttons = (uint16_t)(mask & ((1u << ENG_PANEL_BUTTONS) - 1u)); }
 uint32_t eng_buttons_get(void) { return panel_buttons; }
+uint32_t eng_ticks(void) { return E.ticks; }
+int eng_clock_is_external(void) { return clk_ext; }
 void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
 int eng_transport_running(void) { return transport_on; }
 

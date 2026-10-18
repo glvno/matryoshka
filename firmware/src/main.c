@@ -561,19 +561,6 @@ static void leds_panel(void)
         fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u));
 }
 
-/* the patch buttons a cable leaves from (the rest stay dark) */
-static uint32_t panel_used(void)
-{
-    uint32_t i, from, fp, to, tp, used = 0;
-    int main = eng_find(T_FM1);
-    for (i = 0; main >= 0 && i < (uint32_t)eng_ncables(); i++) {
-        eng_cable(i, &from, &fp, &to, &tp);
-        if (from == (uint32_t)main && fp >= FM1_O_FX && fp < FM1_O_FX + ENG_PANEL_BUTTONS)
-            used |= 1u << (fp - FM1_O_FX);
-    }
-    return used;
-}
-
 /* a patch button pressed / let go (index into PANEL_BTN_ID): a switching one flips on the press, the others act while held;
  * a switch is kept in the patch (SAVE stores it) */
 static void panel_button(uint32_t b, int down)
@@ -667,20 +654,9 @@ static void leds_avail(void)                        /* HOME and the patch button
     leds_panel();
 }
 
-static void home_press(void)
+static void home_press(void)                        /* HOME tapped: the legend, again: the player screen */
 {
-    uint32_t n = (uint32_t)eng_nmodules(), i;
-    for (i = 0; i < n; i++)
-        if (eng_type(i) == T_FM1) {
-            sel = i;
-            break;
-        }
-    if (page) {
-        page = 0;
-        leds_play();
-        lcd_fill(0, 24, 240, 216, C_BG);
-    }
-    view_draw(1);
+    page_set(PAGE_LEGEND);
 }
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
 
@@ -900,6 +876,39 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;
             bootguard.failed = 0;
+        }
+        if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
+            char m[40], name[16], num[12], *q = m;
+            if (knob_touched) {
+                int panel = eng_find(T_FM1);
+                uint32_t k = knob_touched - 1u;
+                knob_name(panel, k, name);
+                name[14] = 0;
+                q = put(q, name);
+                *q++ = ' ';
+                fmt_int(num, panel >= 0 ? (int32_t)(((int64_t)clampi(eng_get_param((uint32_t)panel, k), 0, 65536) * 100) >> 16) : 0);
+                q = put(q, num);
+                *q++ = '%';
+            } else {
+                uint32_t b = button_touched - 1u;
+                if (!panel_label(6u + b, name))
+                    put(name, PANEL_BTN_NAME[b])[0] = 0;
+                q = put(q, name);
+                q = put(q, eng_buttons_get() >> b & 1u ? " ON" : " OFF");
+            }
+            *q = 0;
+            knob_touched = button_touched = 0;
+            if (page == 0)
+                ui_msg(m, 1000);
+        }
+        {                                               /* the beat on the player screen while the transport runs */
+            static uint32_t beat_seen;
+            uint32_t beat = eng_transport_running() ? eng_ticks() / 6u : 0u;
+            if (beat != beat_seen && page == 0) {
+                beat_seen = beat;
+                if (!ui_dirty)
+                    ui_dirty = 1;
+            }
         }
         if (eng_overload != ovl_seen) {                 /* audio.c's overload guard: muted, or a part fewer */
             ovl_seen = eng_overload;

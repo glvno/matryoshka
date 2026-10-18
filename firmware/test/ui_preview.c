@@ -22,6 +22,9 @@ static uint32_t eng_us_last = 316, eng_us_max = 358;
 static uint8_t eng_overload;               /* audio.c: the overload guard muted the patch */
 static int32_t patch_gain;                 /* audio.c: the mixer level */
 static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
+#define M1_SLOTS 64u
+static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
+static uint32_t pv_len;
 #define FELUCCA_VERSION "M1-PREVIEW"
 #define FM1_TICKS_PER_US 24u
 
@@ -48,6 +51,7 @@ static void lcd_sync(void) {}
 #include "../src/engine.c"
 #include "../src/presets.h"
 #include "../src/font5x7.c"
+static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
 #include "../src/ui.c"
 static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }
 static void leds_avail(void) {}
@@ -68,19 +72,22 @@ int main(int argc, char **argv)
         return 1;
     }
     {   /* a copy of the preset; with argv[9] (parts, 1..8) all its modules go into one poly group of that many parts */
-        static uint8_t bin[4096];
+        uint8_t *bin = pv_bin;
         uint32_t len = PRESET_LIST[p].len;
         memcpy(bin, PRESET_LIST[p].data, len);
-        if (argc > 9 && !bin[3] && len + 5u + bin[2] <= sizeof bin) {
-            uint32_t extra = 5u + bin[2];
+        if (argc > 9 && !bin[3] && len + ENG_GROUP_REC + bin[2] <= sizeof pv_bin) {
+            uint32_t extra = ENG_GROUP_REC + bin[2];
             memmove(bin + 8 + extra, bin + 8, len - 8u);
+            memset(bin + 8, 0, extra);
             bin[3] = 1;
             bin[8] = (uint8_t)atoi(argv[9]);
-            bin[9] = bin[10] = bin[11] = bin[12] = 0;
+            for (i = 0; i < ENG_MAX_PARTS; i++)
+                bin[8 + 4 + 5 * i + 4] = 100;      /* each part's level */
             for (i = 0; i < bin[2]; i++)
-                bin[13 + i] = 1;                 /* eng_load keeps delay, reverb, chorus, granular and output out */
+                bin[8 + ENG_GROUP_REC + i] = 1;  /* eng_load keeps delay, reverb, chorus, granular and output out */
             len += extra;
         }
+        pv_len = len;
         if (eng_load(bin, len)) {
             fprintf(stderr, "eng_load failed\n");
             return 1;
@@ -92,7 +99,7 @@ int main(int argc, char **argv)
     }
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     octave = argc > 4 ? atoi(argv[4]) : 0;
-    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 4: mixer, 5: menu, 6: performance */
+    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 7: legend */
     if (argc > 6)                                           /* the transport running */
         eng_transport(atoi(argv[6]) != 0);
     booting = 0;

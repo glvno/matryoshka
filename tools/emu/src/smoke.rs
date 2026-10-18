@@ -4,7 +4,8 @@
 //!
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
-//! 3. pages: GLO (a patch button: the page stays), PLAY (the transport shows PLAY / STOP), HOME, HOME held (the menu), HOME again
+//! 3. pages: GLO (a patch button: the page stays), PLAY (the transport shows PLAY / STOP), HOME (the legend), HOME,
+//!    HOME held (the menu), HOME again
 //! 4. PRESET encoder: forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
@@ -313,6 +314,9 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     wait_text(&mut m, "SAVE: STORE", 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "panel: the patch loads", "EMU PANEL");
+    m.tap(HOME, 120, 400)?;
+    t.screen(&m, "panel: the legend shows a button's label", "GATE");
+    m.tap(HOME, 120, 400)?;
     let hold = |m: &mut Machine, fx: bool| -> Result<i32, String> {
         m.midi(&[0x90, 60, 100], 0)?;
         if fx { m.key(FX, true); }
@@ -448,7 +452,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
         (GLO, "GLO: a patch button (the page stays)", "SAVE: STORE"),
         (PLAY, "PLAY: the transport runs", "PLAY 120"),
         (PLAY, "PLAY again: it stops", "STOP 120"),
-        (HOME, "HOME: module page", "SAVE: STORE"),
+        (HOME, "HOME: the legend", "LEGEND"),
+        (HOME, "HOME again: the player screen", "SAVE: STORE"),
     ] {
         m.tap(key, 120, 400)?;
         t.screen(&m, what, text);

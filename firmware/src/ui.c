@@ -16,10 +16,10 @@
 static uint32_t cur_preset, sel;
 static int load_err;
 static const char *patch_label;
-#define PAGE_MIXER 4u                           /* GLO: the mixer (menu.c) */
 #define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
-#define PAGE_PERF 6u                            /* ENV: the performance page (big values, no names: perf_draw) */
-static uint8_t page;                            /* 0: the selected module, 4 mixer, 5 menu, 6 performance */
+#define PAGE_LEGEND 7u                          /* HOME tapped: every knob and patch button with its label (legend_draw) */
+static uint8_t page;                            /* 0: the player screen, 5 menu, 7 legend */
+static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
 
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {
@@ -142,177 +142,6 @@ static uint32_t param_bar(const def_t *def, uint32_t j, int32_t q16, uint32_t wi
 
 /* ---- the picture of the patch: modules as coloured boxes in rows by depth (a vertical strip), cables as lines */
 
-#define TH_X 164u                       /* the right third of the screen, below the top bar */
-#define TH_Y 26u
-#define TH_W 76u
-#define TH_H 198u
-#define LEFT_W 136u                     /* the left two thirds: text and bars from x = 12 */
-#ifndef UI_POOL
-#define UI_POOL                         /* the device build (modular.c) puts the picture buffer in the pool section */
-#endif
-static uint16_t th_buf[TH_W * TH_H] UI_POOL;   /* byte swapped, as the LCD takes it */
-
-static const uint16_t TYPE_COLOR[N_TYPES] = {
-    [T_FM1] = 0x07E0, [T_OSC] = 0xFD20, [T_LFO] = 0xF81F, [T_NOISE] = 0xB596, [T_CONST] = 0xBDF7, [T_SCALE] = 0x867F,
-    [T_ADSR] = 0x57EA, [T_VCA] = 0xFFE0, [T_FILTER] = 0x07FF, [T_MIXER] = 0xFC10, [T_DELAY] = 0x9A7F, [T_REVERB] = 0x07F3, [T_OUTPUT] = 0xF800, [T_GLIDE] = 0x4E9F, [T_SHAPE] = 0xFBE0,
-    [T_ENV] = 0x2FEA, [T_STRING] = 0xFD75, [T_WAVETABLE] = 0xFE60, [T_CHORUS] = 0x9C7F,
-    [T_SEQ] = 0xF7A0, [T_CLKDIV] = 0xCE79, [T_SH] = 0xAEDF, [T_QUANT] = 0x7FF5, [T_PULSE] = 0xFEF5,
-    [T_PAN] = 0xAFE5, [T_XFADE] = 0xC618, [T_VOWEL] = 0xF5B6, [T_PHASER] = 0x8C7F, [T_CRUSH] = 0xBC40,
-    [T_LADDER] = 0x04DF, [T_DYN] = 0xFD8F, [T_MATH] = 0xDEFB, [T_LOGIC] = 0xA7E0, [T_GRAIN] = 0xE3B9, [T_COMB] = 0x5E7F, [T_MODAL] = 0xFD55, [T_SHIFT] = 0xC7FA,
-    [T_PART] = 0x47E8, [T_RANDOM] = 0xE71C,
-};
-
-static void th_px(int32_t x, int32_t y, uint16_t c)
-{
-    if (x >= 0 && y >= 0 && x < (int32_t)TH_W && y < (int32_t)TH_H)
-        th_buf[(uint32_t)y * TH_W + (uint32_t)x] = (uint16_t)((c >> 8) | (c << 8));
-}
-
-static void th_rect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
-{
-    int32_t i, j;
-    for (j = 0; j < h; j++)
-        for (i = 0; i < w; i++)
-            th_px(x + i, y + j, c);
-}
-
-static void th_frame(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t c)
-{
-    int32_t i;
-    for (i = 0; i < w; i++) {
-        th_px(x + i, y, c);
-        th_px(x + i, y + h - 1, c);
-    }
-    for (i = 0; i < h; i++) {
-        th_px(x, y + i, c);
-        th_px(x + w - 1, y + i, c);
-    }
-}
-
-static void th_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t c)
-{
-    int32_t dx = x1 > x0 ? x1 - x0 : x0 - x1, dy = y1 > y0 ? y0 - y1 : y1 - y0;     /* dy <= 0 */
-    int32_t sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx + dy;
-    for (;;) {
-        int32_t e2;
-        th_px(x0, y0, c);
-        if (x0 == x1 && y0 == y1)
-            break;
-        e2 = 2 * err;
-        if (e2 >= dy) {
-            err += dy;
-            x0 += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
-
-static void th_text(int32_t x, int32_t y, const char *s, uint16_t c)   /* 5x7 text into the picture */
-{
-    for (; *s; s++, x += 6) {
-        uint32_t ch = (uint8_t)*s, i, r;
-        if (ch < 0x20u || ch > 0x5Au)
-            ch = 0x20u;
-        for (i = 0; i < 5u; i++)
-            for (r = 0; r < 7u; r++)
-                if ((FONT5X7[ch - 0x20u][i] >> r) & 1u)
-                    th_px(x + (int32_t)i, y + (int32_t)r, c);
-    }
-}
-
-static void thumb_draw(void)
-{
-    uint32_t n = (uint32_t)eng_nmodules(), nc = (uint32_t)eng_ncables(), i, c, ncols = 1, maxrows = 1, changed = 1, round;
-    uint8_t layer[32], row[32], rows_in[8];
-    int32_t bw, bh, px[32], py[32];
-    for (i = 0; i < TH_W * TH_H; i++)
-        th_buf[i] = 0;
-    if (!n) {
-        text5x7(TH_X + 4, TH_Y + 90, "EMPTY", 1, C_DIM, C_BG);
-        return;
-    }
-    for (i = 0; i < n; i++)
-        layer[i] = 0;
-    for (round = 0; changed && round < 40u; round++) {            /* depth = longest chain of cables to the module, capped at 7 */
-        changed = 0;
-        for (c = 0; c < nc; c++) {
-            uint32_t f, fp, t, tp;
-            eng_cable(c, &f, &fp, &t, &tp);
-            if (layer[f] < 7u && layer[t] < layer[f] + 1u) {
-                layer[t] = (uint8_t)(layer[f] + 1u);
-                changed = 1;
-            }
-        }
-    }
-    for (i = 0; i < 8u; i++)
-        rows_in[i] = 0;
-    for (i = 0; i < n; i++) {
-        row[i] = rows_in[layer[i]]++;
-        if (layer[i] + 1u > ncols)
-            ncols = layer[i] + 1u;
-    }
-    for (i = 0; i < ncols; i++)
-        if (rows_in[i] > maxrows)
-            maxrows = rows_in[i];
-    {   /* layers run top to bottom, the modules of a layer side by side; a 2 px margin all round */
-        int32_t pitch_y = ((int32_t)TH_H - 4) / (int32_t)ncols, pitch_x = ((int32_t)TH_W - 4) / (int32_t)maxrows;
-        bh = pitch_y - 8;
-        bh = bh > 15 ? 15 : bh < 6 ? 6 : bh;
-        bw = pitch_x - 4;
-        bw = bw > 60 ? 60 : bw < 10 ? 10 : bw;
-        for (i = 0; i < n; i++) {
-            int32_t off = ((int32_t)maxrows - (int32_t)rows_in[layer[i]]) * pitch_x / 2;
-            px[i] = 2 + off + (int32_t)row[i] * pitch_x + (pitch_x - bw) / 2;
-            py[i] = 2 + (int32_t)layer[i] * pitch_y + (pitch_y - bh) / 2;
-        }
-    }
-    for (c = 0; c < nc; c++) {                                   /* the cables first, the boxes over them */
-        uint32_t f, fp, t, tp;
-        eng_cable(c, &f, &fp, &t, &tp);
-        if (layer[t] > layer[f])
-            th_line(px[f] + bw / 2, py[f] + bh, px[t] + bw / 2, py[t] - 1, 0x6B4D);
-        else
-            th_line(px[f] + bw / 2, py[f] + bh / 2, px[t] + bw / 2, py[t] + bh / 2, 0xA145);   /* feedback / same row */
-    }
-    for (i = 0; i < n; i++) {
-        int t = eng_type(i);
-        uint16_t col = t >= 0 && !eng_bypass(i) ? TYPE_COLOR[t] : C_DIM;   /* a bypassed module is grey */
-        th_rect(px[i], py[i], bw, bh, col);
-        if (t >= 0 && bh >= 9 && bw >= 14) {                                 /* the module's name, as much as fits, black on its colour */
-            char nm[8];
-            uint32_t k = 0, maxc = (uint32_t)(bw - 2) / 6u;
-            const char *src = DEFS[t].name;
-            maxc = maxc > 7u ? 7u : maxc;
-            while (src[k] && src[k] != ' ' && k < maxc) {
-                nm[k] = src[k];
-                k++;
-            }
-            nm[k] = 0;
-            th_text(px[i] + (bw - (int32_t)k * 6 + 1) / 2, py[i] + (bh - 7) / 2, nm, C_BG);
-        }
-        if (i == sel)
-            th_frame(px[i] - 2, py[i] - 2, bw + 4, bh + 4, C_FG);
-    }
-}
-
-static void thumb_show(void)
-{
-    uint32_t y;
-    thumb_draw();
-    for (y = 0; y < TH_H; y += 14u) {                           /* 14 rows (6 KB) per transfer */
-        uint32_t h = TH_H - y < 14u ? TH_H - y : 14u;
-        lcd_blit(TH_X, TH_Y + y, TH_W, h, th_buf + y * TH_W);
-        lcd_sync();
-    }
-}
-
-/* ---- text parts */
-
-/* the bar at the top: black on the accent colour, the text centred (the preset name; for a moment a message, or red for a
- * load error) */
 #define BAR_H 22u
 static void bar_text(const char *s, uint16_t bg)
 {
@@ -359,7 +188,14 @@ static void header_draw(void)
         p[str_len(num)] = 0;
         bar_text(b, C_RED);
     } else {
-        char b[40], *p = b;
+        char b[40], num[12], *p = b;
+        if (cur_preset < M1_SLOTS && !booting) {   /* the slot's number (1..64) before the name */
+            fmt_int(num, (int32_t)cur_preset + 1);
+            if (cur_preset < 9u)
+                *p++ = '0';
+            p = put(p, num);
+            *p++ = ' ';
+        }
         p = put(p, patch_label ? patch_label : "");
         if (m1_edited)
             p = put(p, " *");                   /* edited since it was loaded (SAVE writes it into its slot) */
@@ -443,221 +279,176 @@ static int knob_target(uint32_t panel, uint32_t k, char *out)
     return found;
 }
 
-/* the selected module, laid out like the arpeggiator pages: name, then per knob a small label, the value and a bar; the
- * picture of the patch stands at the right (TH_X..) */
-/* a knob row: name, value, a value bar; blo / bhi >= 0 draw a bracket over the bar (the travel of a macro range) */
-static void module_row_b(uint32_t k, const char *label, const char *val, int active, int32_t bar, int32_t blo, int32_t bhi)
+/* the patch buttons a cable leaves from (the rest stay dark) */
+static uint32_t panel_used(void)
 {
-    char line[40], v[24], *p = line;
-    uint32_t y = 56u + 36u * k;
-    *p++ = 'K';
-    *p++ = (char)('1' + k);
-    *p++ = ' ';
-    p = put(p, label);
-    pad(p, line, 22);
-    text5x7(12, y, line, 1, C_DIM, C_BG);
-    p = put(v, val);
-    pad(p, v, 15);
-    text_mid(12, y + 10u, v, active ? C_FG : C_DIM, C_BG);
-    if (bar >= 0) {
-        uint32_t w = (uint32_t)bar > LEFT_W ? LEFT_W : (uint32_t)bar;
-        lcd_fill(12, y + 24u, w, 2, C_ACC);
-        lcd_fill(12 + w, y + 24u, LEFT_W - w, 2, 0x2104u);
-    } else {
-        lcd_fill(12, y + 24u, LEFT_W, 2, C_BG);
+    uint32_t i, from, fp, to, tp, used = 0;
+    int main = eng_find(T_FM1);
+    for (i = 0; main >= 0 && i < (uint32_t)eng_ncables(); i++) {
+        eng_cable(i, &from, &fp, &to, &tp);
+        if (from == (uint32_t)main && fp >= FM1_O_FX && fp < FM1_O_FX + ENG_PANEL_BUTTONS)
+            used |= 1u << (fp - FM1_O_FX);
     }
-    if (blo >= 0 && bhi >= 0) {                     /* the bracket: a tick at each end, a thin line between them above the bar */
-        uint32_t a = (uint32_t)(blo < bhi ? blo : bhi), b = (uint32_t)(blo < bhi ? bhi : blo);
-        if (b > LEFT_W - 1u)
-            b = LEFT_W - 1u;
-        if (a > b)
-            a = b;
-        lcd_fill(12 + a, y + 22u, b - a + 1u, 1, C_FG);
-        lcd_fill(12 + a, y + 22u, 1, 5, C_FG);
-        lcd_fill(12 + b, y + 22u, 1, 5, C_FG);
-    }
-}
-
-static void module_row(uint32_t k, const char *label, const char *val, int active, int32_t bar) { module_row_b(k, label, val, active, bar, -1, -1); }
-
-static void module_draw(int full)
-{
-    char line[48], tgt[40], *p;
-    uint32_t n = (uint32_t)eng_nmodules(), k, j;
-    int type = eng_type(sel);
-    const def_t *d;
-    if (!n || type < 0) {
-        text5x7(12, 24, "NO MODULES         ", 1, C_FG, C_BG);
-        return;
-    }
-    d = &DEFS[type];
-    if (full) {
-        p = put(line, d->name);
-        if (type == T_FM1 && eng_groups()) {            /* the panel: the parts of the patch's first poly group after its name */
-            p = put(p, "  ");
-            p = put_parts(p, eng_parts());
-        }
-        if (eng_bypass(sel))                            /* bypassed (FX button) */
-            p = put(p, " OFF");
-        pad(p, line, 15);
-        text_mid(12, 30, line, C_ACC, C_BG);
-        thumb_show();
-    }
-    for (k = 0; k < 4u; k++) {
-        if (type == T_FM1) {                            /* the panel: the knob's destination and a bar for its value */
-            int32_t v = eng_get_param(sel, FM1_P_K1 + k);
-            int has = knob_target(sel, k, tgt);
-            tgt[15] = 0;
-            module_row(k, "", has ? tgt : "-", has, (int32_t)(((int64_t)(v < 0 ? 0 : v > 65536 ? 65536 : v) * LEFT_W) >> 16));
-        } else {
-            uint32_t mask = eng_knob_mask(sel, k), first = 0, cnt = 0;
-            for (j = 0; j < d->npar; j++)
-                if (mask >> j & 1u) {
-                    if (!cnt)
-                        first = j;
-                    cnt++;
-                }
-            if (!cnt) {
-                module_row(k, "", "-", 0, -1);
-            } else {
-                char nm[10], val[24], *q = nm;
-                q = put(q, d->pname[first]);
-                *q = 0;
-                if (str_len(nm) > 8u)
-                    nm[8] = 0;
-                if (cnt > 1u) {                         /* more than one parameter: a + after the name */
-                    uint32_t l = str_len(nm);
-                    l = l > 7u ? 7u : l;
-                    nm[l] = '+';
-                    nm[l + 1u] = 0;
-                }
-                int32_t eff = eng_get_eff(sel, first);          /* what the sound uses, knobs and cables included */
-                if (d == &DEFS[T_DELAY] && first == DELAY_P_TIME && eng_get_eff(sel, DELAY_P_SYNC) >= 32768) {
-                    char *v = put(val, DELAY_DIV_NAME[delay_div(eff)]);      /* synced: the time knob picks a note length */
-                    *v = 0;
-                } else
-                    put_param(val, d, first, eff);
-                val[15] = 0;
-                {                                   /* a macro range of p1 / p2 on this parameter: its travel as a bracket */
-                    uint32_t lo, hi, pin;
-                    int32_t blo = -1, bhi = -1;
-                    for (pin = 0; pin < 2u; pin++)
-                        if (eng_range(sel, pin, first, &lo, &hi)) {
-                            blo = (int32_t)(lo * LEFT_W / 255u);
-                            bhi = (int32_t)(hi * LEFT_W / 255u);
-                            break;
-                        }
-                    module_row_b(k, nm, val, 1, (int32_t)param_bar(d, first, eff, LEFT_W), blo, bhi);
-                }
-            }
-        }
-    }
-    for (k = 0; k < 2u; k++) {
-        uint32_t mask = d->cvbase >= 0 ? eng_map(sel, k) : 0u;
-        char *start = line;
-        p = line;
-        *p++ = 'P';
-        *p++ = (char)('1' + k);
-        *p++ = ' ';
-        if (d->cvbase < 0) {
-            p = put(p, "NO PARAMETER INPUTS");
-        } else {
-            int32_t a = (int32_t)(((int64_t)eng_att(sel, k) * 100) / 65536);
-            if (a >= 0)
-                *p++ = '+';
-            p = put_hundredths(p, a, 2);
-            for (j = 0; j < d->npar; j++)
-                if (mask >> j & 1u) {
-                    *p++ = ' ';
-                    p = put(p, d->pname[j]);
-                }
-        }
-        start[24] = 0;                                  /* the left two thirds only */
-        pad(p < start + 24 ? p : start + 24, start, 24);
-        text5x7(12, 204u + 9u * k, line, 1, d->cvbase >= 0 && mask ? C_FG : C_DIM, C_BG);
-    }
-    if (full)
-        text5x7(12, 230, "SAVE: STORE  OCT-/OCT+: OCTAVE", 1, 0x4208u, C_BG);
+    return used;
 }
 
 static void menu_draw(int full);
 
-/* The performance page (ENV): what matters while playing, readable from arm's length. The four knob rows show the
- * destination of the Main module's K1..K4 with the value they put out (big), the strip shows the patch with bypassed
- * modules dim, and one line below the rows says the transport and tempo, the polyphony, the octave and how many modules
- * are off. K1..K4 keep turning the Main module's knobs here (main.c knobs_poll). */
-static void perf_draw(int full)
+/* The player screen (#63): what the patch's author put on the panel, readable from arm's length.
+ *   top bar  slot and name, * when edited (header_draw)
+ *   y  30..  K1..K4: the author's label (else where the knob's cable goes), the knob's position in percent, a bar
+ *   y 176    K5 / K6 (SELECT / ALGO): label and value, side by side
+ *   y 206    PLAY / STOP and the tempo (MIDI when the clock comes in), the parts, the octave
+ *   y 228    the last knob or button touched, else the hint line
+ * Labels come from the patch's panel section (proto.c m1_panel); a knob without one shows its destination (knob_target). */
+#define LEFT_W 216u
+
+/* label i of the panel section (0..5 K1..K6, 6.. the buttons) into out (11 bytes); 0 if the patch has none */
+static int panel_label(uint32_t i, char *out)
 {
-    char line[40], tgt[40], num[12], *p;
-    int panel = eng_find(T_FM1);
-    uint32_t k, n = (uint32_t)eng_nmodules(), off = 0, i;
-    if (full) {
-        p = put(line, patch_label ? patch_label : "");
-        pad(p, line, 15);
-        text_mid(12, 30, line, C_ACC, C_BG);
-        thumb_show();
+    const uint8_t *pn = m1_panel();
+    uint32_t k;
+    out[0] = 0;
+    if (!pn || i >= ENG_PANEL_LABELS)
+        return 0;
+    for (k = 0; k < ENG_PANEL_LABEL && pn[4u + i * ENG_PANEL_LABEL + k]; k++)
+        out[k] = (char)pn[4u + i * ENG_PANEL_LABEL + k];
+    out[k] = 0;
+    return k > 0;
+}
+
+static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SCL", "ENV", "LFO", "EDIT", "GLO", "ARP", "SEQ", "REC"};
+
+/* the name a knob shows: its label, else its destination, else K1..K6 */
+static void knob_name(int panel, uint32_t k, char *out)
+{
+    char t[40];
+    if (panel_label(k, out))
+        return;
+    if (panel >= 0 && knob_target((uint32_t)panel, k, t)) {
+        t[15] = 0;
+        put(out, t)[0] = 0;
+        return;
     }
-    for (k = 0; k < 4u; k++) {
-        int32_t v = panel >= 0 ? eng_get_param((uint32_t)panel, FM1_P_K1 + k) : 0;
-        int has = panel >= 0 && knob_target((uint32_t)panel, k, tgt);
-        uint32_t y = 56u + 36u * k, w;
-        v = v < 0 ? 0 : v > 65536 ? 65536 : v;
-        w = (uint32_t)(((int64_t)v * LEFT_W) >> 16);
-        if (!has)
-            put(tgt, "-");
-        tgt[11] = 0;
-        p = put(line, tgt);                             /* the destination, big (11 characters: 99 px of the 136) */
-        pad(p, line, 12);
+    out[0] = 'K';
+    out[1] = (char)('1' + k);
+    out[2] = 0;
+}
+
+static void player_draw(int full)
+{
+    char line[40], name[40], num[12], *p;
+    int panel = eng_find(T_FM1);
+    uint32_t k;
+    (void)full;
+    for (k = 0; k < 4u; k++) {                          /* K1..K4: big */
+        int32_t v = panel >= 0 ? clampi(eng_get_param((uint32_t)panel, FM1_P_K1 + k), 0, 65536) : 0;
+        uint32_t y = 30u + 36u * k, w = (uint32_t)(((int64_t)v * LEFT_W) >> 16);
+        int has = panel >= 0;
+        knob_name(panel, k, name);
+        name[17] = 0;
+        p = put(line, name);
+        pad(p, line, 18);
         text_mid(12, y + 2u, line, has ? C_FG : C_DIM, C_BG);
-        fmt_int(num, (int32_t)(((int64_t)v * 100) >> 16));   /* the knob's position in percent, small, at the right edge */
+        fmt_int(num, (int32_t)(((int64_t)v * 100) >> 16));
         p = put(line, num);
         *p++ = '%';
         pad(p, line, 4);
         text5x7(12 + LEFT_W - 24u, y + 4u, line, 1, C_DIM, C_BG);
-        lcd_fill(12, y + 24u, w, 3, has ? C_ACC : C_DIM);
-        lcd_fill(12 + w, y + 24u, LEFT_W - w, 3, 0x2104u);
+        lcd_fill(12, y + 22u, w, 3, has ? C_ACC : C_DIM);
+        lcd_fill(12 + w, y + 22u, LEFT_W - w, 3, 0x2104u);
     }
-    for (i = 0; i < n; i++)
-        off += eng_bypass(i) ? 1u : 0u;
-    p = line;                                           /* PLAY 120  4 PARTS  OCT +1  2 OFF */
-    p = put(p, eng_transport_running() ? "PLAY " : "STOP ");
-    fmt_int(num, panel >= 0 ? (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16 : 120);
-    p = put(p, num);
-    *p++ = ' ';
-    *p++ = ' ';
-    if (eng_groups())
-        p = put_parts(p, eng_parts());
-    else
-        p = put(p, "MONO");
-    *p++ = ' ';
-    *p++ = ' ';
-    p = put(p, "OCT ");
-    if (octave >= 0)
-        *p++ = '+';
-    fmt_int(num, octave);
-    p = put(p, num);
-    if (off) {
+    for (k = 4; k < 6u; k++) {                          /* K5 / K6: small, side by side */
+        int32_t v = panel >= 0 ? clampi(eng_get_param((uint32_t)panel, FM1_P_K5 + (k - 4u)), 0, 65536) : 0;
+        uint32_t x = 12u + 112u * (k - 4u), w = (uint32_t)(((int64_t)v * 104) >> 16);
+        knob_name(panel, k, name);
+        name[12] = 0;
+        p = put(line, name);
         *p++ = ' ';
-        *p++ = ' ';
-        fmt_int(num, (int32_t)off);
+        fmt_int(num, (int32_t)(((int64_t)v * 100) >> 16));
         p = put(p, num);
-        p = put(p, " OFF");
+        *p++ = '%';
+        pad(p, line, 17);
+        text5x7(x, 176, line, 1, C_FG, C_BG);
+        lcd_fill(x, 186, w, 2, C_ACC);
+        lcd_fill(x + w, 186, 104u - w, 2, 0x2104u);
     }
-    pad(p, line, 26);
-    text5x7(12, 204, line, 1, eng_transport_running() ? C_FG : C_DIM, C_BG);
+    {                                                   /* PLAY 120  4 PARTS  OCT +1 */
+        int run = eng_transport_running(), beat = run && (eng_ticks() % 24u) < 6u;
+        p = put(line, run ? "PLAY " : "STOP ");
+        if (eng_clock_is_external())
+            p = put(p, "MIDI");
+        else {
+            fmt_int(num, panel >= 0 ? (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16 : 120);
+            p = put(p, num);
+        }
+        *p++ = ' ';
+        *p++ = ' ';
+        if (eng_groups())
+            p = put_parts(p, eng_parts());
+        else
+            p = put(p, "MONO");
+        p = put(p, "  OCT ");
+        if (octave >= 0)
+            *p++ = '+';
+        fmt_int(num, octave);
+        p = put(p, num);
+        pad(p, line, 26);
+        text5x7(12, 206, line, 1, run ? C_FG : C_DIM, C_BG);
+        lcd_fill(228, 206, 7, 7, beat ? C_ACC : C_BG);  /* the beat while the transport runs */
+    }
     if (full)
-        text5x7(12, 230, "SAVE: STORE  OCT-/OCT+: OCTAVE", 1, 0x4208u, C_BG);
+        text5x7(12, 228, "SAVE: STORE  HOME: LEGEND", 1, 0x4208u, C_BG);
+}
+
+/* The legend (HOME tap): every knob and patch button with its label; a button the patch does not use is dim, a lit one is on. */
+static void legend_draw(int full)
+{
+    char line[40], name[16], *p;
+    int panel = eng_find(T_FM1);
+    uint32_t k, used = panel_used(), on = eng_buttons_get();
+    if (full)
+        text_mid(12, 30, "LEGEND", C_ACC, C_BG);
+    for (k = 0; k < 6u; k++) {
+        knob_name(panel, k, name);
+        name[13] = 0;
+        p = put(line, k < 4u ? "K" : k == 4u ? "SEL " : "ALG ");
+        if (k < 4u) {
+            *p++ = (char)('1' + k);
+            *p++ = ' ';
+            *p++ = ' ';
+        }
+        p = put(p, name);
+        pad(p, line, 18);
+        text5x7(12, 52u + 12u * k, line, 1, C_FG, C_BG);
+    }
+    for (k = 0; k < ENG_PANEL_BUTTONS; k++) {
+        int has = (int)(used >> k & 1u);
+        p = put(line, PANEL_BTN_NAME[k]);
+        pad(p, line, 5);
+        p = line + 5;
+        if (!panel_label(6u + k, name))
+            put(name, has ? "-" : "")[0] = 0;
+        p = put(p, name);
+        if (has && (on >> k & 1u))
+            p = put(p, " (ON)");
+        pad(p, line, 18);
+        text5x7(12u + 112u * (k % 2u), 132u + 12u * (k / 2u), line, 1, has ? C_FG : C_DIM, C_BG);
+    }
+    if (full)
+        text5x7(12, 228, "HOME: BACK", 1, 0x4208u, C_BG);
 }
 
 static void view_draw(int full)                 /* whichever page is showing */
 {
     if (page == PAGE_MENU)
         menu_draw(full);
+    else if (page == PAGE_LEGEND)
+        legend_draw(full);
     else
-        perf_draw(full);                        /* the player screen (#63 redraws it) */
+        player_draw(full);
 }
 
-static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
 
 static void screen_idle(void)                   /* redraws in place: every text pads its field, no blanking of the screen */
 {
