@@ -104,6 +104,8 @@ const FRAME_HEAD = 30;
 export interface EditorEvents {
   /** structure changed (modules or cables): the engine needs the whole patch */
   onStructure(p: Patch): void;
+  /** another patch was opened (setPatch), before its onStructure */
+  onLoad?(p: Patch): void;
   /** a knob moved: cheap update */
   onParam(id: number, name: string, value: number): void;
   /** an attenuverter of a parameter input moved (index 0 = p1, 1 = p2) */
@@ -281,6 +283,7 @@ export class Editor {
     this.selectedAsm.clear();
     this.expandedOnce.clear();
     this.rebuild();
+    this.ev.onLoad?.(p);
     this.ev.onStructure(p);
   }
 

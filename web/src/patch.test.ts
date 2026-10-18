@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
-import { addModule, ensureMain, newPatch, type Patch } from './patch';
+import { addModule, ensureMain, newPatch, validatePatch, type Patch } from './patch';
 
 describe('the Main module', () => {
   it('is added to a patch that has none, once, without touching the rest', () => {
@@ -15,5 +15,14 @@ describe('the Main module', () => {
 
   it('a new patch already has one', () => {
     expect(ensureMain(newPatch(DEFS), DEFS)).toBe(false);
+  });
+});
+
+describe('the keyboard octave a patch remembers', () => {
+  const load = (octave: unknown): number | undefined => validatePatch({ ...newPatch(DEFS), octave }, DEFS).octave;
+  it('keeps a whole octave in range, drops 0 (the default) and anything else', () => {
+    expect(load(-2)).toBe(-2);
+    expect(load(3)).toBe(3);
+    for (const bad of [0, 4, -4, 1.5, '1', null, undefined]) expect(load(bad)).toBeUndefined();
   });
 });

@@ -170,8 +170,18 @@ host.onEnv = (key, states) => envs.receive(key, states);
 const sides = new Map<SideKey, SideSlider>();
 /** the zoom slider's setting (the user's zoom; a source adds to it) */
 let zoomBase = 1;
+/** the computer keyboard's octave (noteKeys), mirrored here because the editor's events run before noteKeys exists */
+let keyOctave = 0;
+/** the patch remembers the keyboard's octave (Patch.octave); undo / redo bring back older snapshots, so stamp it again */
+const stampOctave = (p: Patch): boolean => {
+  if ((p.octave ?? 0) === keyOctave) return false;
+  if (keyOctave) p.octave = keyOctave;
+  else delete p.octave;
+  return true;
+};
 const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onStructure(p) {
+    stampOctave(p);
     $<HTMLInputElement>('patch-name').value = p.name;
     syncSides();
     scope.clearSamples();
@@ -249,6 +259,9 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     refreshAssemblies();
     if (r !== 'cancelled') tutorial.saved(def);
     tutorial.refresh();
+  },
+  onLoad(p) {
+    noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
   },
   onHistory(kind) {
     if (kind === 'undo') tutorial.undone();
@@ -978,7 +991,12 @@ const syncAudioBtn = (): void => {
 host.onState = () => { syncAudioBtn(); screens.state(); envs.state(); };
 syncAudioBtn();
 audioBtn.onclick = () => (host.running && !host.muted ? panic() : void startAudio());
-const noteKeys = attachKeyboard(sink, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => piano.setOctave(o));
+const noteKeys = attachKeyboard(sink, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
+  keyOctave = o;
+  piano.setOctave(o);
+  if (stampOctave(editor.patch)) queueSave(editor.patch);
+});
+noteKeys.set(editor.patch.octave ?? 0);
 // Web MIDI is only asked for on request: while a page holds MIDI access, Chromium's ALSA backend tracks every MIDI port on the
 // system and aborts the whole browser (SIGILL in midi::MidiManager::SetInputPortState) when the ports change, for example when
 // the FM-1 re-enumerates after a reset or a firmware update.
