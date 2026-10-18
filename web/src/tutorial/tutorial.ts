@@ -166,7 +166,7 @@ export class Tutorial {
     try { if (localStorage.getItem(OFFER_OFF)) return; } catch { /* storage optional: offer anyway */ }
     const ci = this.chapterIndex;
     const resume = this.chapter && offered(ci) ? this.chapter : null;
-    const card = el('section', { class: 'tutorial-offer' });
+    const card = el('section', { class: 'tutorial-offer spanel' });
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-labelledby', 'tutorial-offer-title');
     const onKey = (ev: KeyboardEvent): void => { if (ev.key === 'Escape') close(); };
@@ -188,7 +188,9 @@ export class Tutorial {
       if (box.checked) document.getElementById(compact ? 'sidebar-toggle' : 'tour-btn')?.classList.add('tour-focus');
     };
     card.append(
-      el('h2', { id: 'tutorial-offer-title', textContent: resume ? (resume.tour ? 'Pick up the tour?' : 'Pick up the tutorial?') : 'New here? Take the tutorial' }),
+      el('div', { class: 'shead' }, el('span', { class: 'mtag mod', textContent: 'LEARN' }),
+        el('span', { class: 'stitle', id: 'tutorial-offer-title', textContent: resume ? (resume.tour ? 'Pick up the tour?' : 'Pick up the tutorial?') : 'New here? Take the tutorial' })),
+      el('div', { class: 'tutorial-body' },
       el('p', { textContent: resume
         ? `You were ${resume.tour ? 'on the tour' : `in chapter ${LISTED.indexOf(ci) + 1}`}, ${resume.title}. Carry on where you left off.`
         : 'Short chapters build synths from modules, one cable at a time, and show the editor on the way. Each chapter starts from a prepared patch.' }),
@@ -197,7 +199,7 @@ export class Tutorial {
         ...(TOUR >= 0 && TOUR !== ci ? [this.button('I know what I’m doing, just show me around', () => { close(); this.start(TOUR); })] : []),
         this.button('Not now', close)),
       el('label', { class: 'tutorial-offer-check' }, box, ' Don’t show this again'),
-      where,
+      where),
     );
     document.body.append(card);
     document.addEventListener('keydown', onKey);
@@ -220,13 +222,15 @@ export class Tutorial {
     });
     const saved = this.variationList();
     this.menu.replaceChildren(
-      el('h2', { textContent: 'Tutorial' }),
+      el('div', { class: 'shead' }, el('span', { class: 'mtag mod', textContent: 'LEARN' }), el('span', { class: 'stitle', textContent: 'Tutorial' }),
+        el('form', { method: 'dialog' }, el('button', { class: 'help-close', textContent: '×', title: 'Close' }))),
+      el('div', { class: 'tutorial-body' },
       el('p', { class: 'muted', textContent: 'Each chapter builds a patch; later chapters reuse what you saved. Start anywhere: every chapter opens its own patch.' }),
       el('div', { class: 'tutorial-rows' }, ...rows),
       el('details', {}, el('summary', { textContent: 'Your saved variations' }), saved),
       el('div', { class: 'tour-actions' },
         el('button', { textContent: 'Reset progress', onclick: () => { this.close(); this.page = 'intro'; this.progress = { done: [], chapter: null, step: 0 }; this.saveProgress(); this.menu.close(); this.panel.hidden = true; this.host.status('tutorial progress reset'); } }),
-        el('form', { method: 'dialog' }, el('button', { textContent: 'Close' }))),
+        el('form', { method: 'dialog' }, el('button', { textContent: 'Close' })))),
     );
     this.menu.showModal();
   }
@@ -298,7 +302,9 @@ export class Tutorial {
       this.panel.style.top = `${Math.max(0, Math.min(window.innerHeight - r.height, r.top + (ev.key === 'ArrowUp' ? -20 : ev.key === 'ArrowDown' ? 20 : 0)))}px`;
       this.panel.style.right = this.panel.style.bottom = 'auto';
     };
-    const h = el('div', { class: 'tutorial-head' }, handle, this.button(this.followTarget ? 'Dock' : 'Follow', () => { this.followTarget = !this.followTarget; this.pinned = false; this.place(this.beside, true); this.render(true); }), el('h2', { textContent: title }), el('button', { class: 'x', textContent: '×', title: 'Hide the tutorial (the chapter menu brings it back)', onclick: () => this.close() }));
+    const follow = this.button(this.followTarget ? 'Dock' : 'Follow', () => { this.followTarget = !this.followTarget; this.pinned = false; this.place(this.beside, true); this.render(true); });
+    follow.classList.add('tutorial-follow');
+    const h = el('div', { class: 'shead tutorial-head' }, handle, el('span', { class: 'mtag mod', textContent: this.chapter?.tour ? 'TOUR' : 'LEARN' }), el('h2', { class: 'stitle', textContent: title }), follow, el('button', { class: 'x', textContent: '×', title: 'Hide the tutorial (the chapter menu brings it back)', onclick: () => this.close() }));
     return h;
   }
 
@@ -459,7 +465,8 @@ export class Tutorial {
         this.button('Chapters', () => this.open()),
         this.button('Close', () => this.close())));
     }
-    this.panel.replaceChildren(...parts);
+    // the head is the card's strip, the rest scrolls under it
+    this.panel.replaceChildren(parts[0], el('div', { class: 'tutorial-body' }, ...parts.slice(1)));
     this.focus(this.targetsOf(st, s), this.wanting(st, s));
   }
 
