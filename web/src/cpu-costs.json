@@ -12565,10 +12565,10 @@
      "input": "cv"
     },
     {
-     "output": "peak"
+     "output": "notch"
     },
     {
-     "output": "notch"
+     "output": "peak"
     },
     {
      "output": "ap"
@@ -16737,10 +16737,10 @@
      ]
     },
     {
-     "input": "side"
+     "input": "in"
     },
     {
-     "input": "in"
+     "input": "side"
     },
     {
      "param": "attack",
@@ -17119,6 +17119,18 @@
    "cycles": 334337
   },
   {
+   "name": "Briefcase 3",
+   "cycles": 374293
+  },
+  {
+   "name": "Io 4",
+   "cycles": 471747
+  },
+  {
+   "name": "Vernon 100",
+   "cycles": 220369
+  },
+  {
    "name": "808 Kit",
    "cycles": 544855
   },
@@ -17165,6 +17177,10 @@
   {
    "name": "assembly bowed string",
    "cycles": 83304
+  },
+  {
+   "name": "assembly Briefcase 3",
+   "cycles": 347259
   },
   {
    "name": "assembly Canvas",
@@ -17221,6 +17237,10 @@
   {
    "name": "assembly hihat",
    "cycles": 68248
+  },
+  {
+   "name": "assembly Io 4",
+   "cycles": 408320
   },
   {
    "name": "assembly kalimba",
@@ -17341,6 +17361,10 @@
   {
    "name": "assembly tom",
    "cycles": 90131
+  },
+  {
+   "name": "assembly Vernon 100",
+   "cycles": 188141
   },
   {
    "name": "assembly vibrato",
