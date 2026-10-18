@@ -7,6 +7,7 @@ import type { HostMsg } from './worklet';
 import type { ViewData } from './scope-stream';
 import { spectrum } from './scope';
 import { SCOPE_MODES } from './modules';
+import { voiceToken } from './voice-colors';
 import type { ModuleInst } from './patch';
 
 /** windows up to this long (ms) trigger; longer ones roll */
@@ -28,6 +29,8 @@ interface Screen extends ScreenSpec {
   /** the stream asked for (its message as JSON), '' when none */
   sent: string;
   data: ViewData[] | null;
+  /** per input its voices' histories (#54), while the module's `voices` is on and the input's sources run per voice */
+  voices: (ViewData[] | null)[] | null;
   sr: number;
 }
 
@@ -57,7 +60,7 @@ export class ScopeScreens {
       spec.el.append(canvas);
       if (old && old.el !== spec.el) this.io.unobserve(old.el);
       this.io.observe(spec.el);
-      next.set(key, { ...spec, key, canvas, visible: old?.el === spec.el ? old.visible : false, sent: old?.sent ?? '', data: old?.data ?? null, sr: old?.sr ?? 48000 });
+      next.set(key, { ...spec, key, canvas, visible: old?.el === spec.el ? old.visible : false, sent: old?.sent ?? '', data: old?.data ?? null, voices: old?.voices ?? null, sr: old?.sr ?? 48000 });
     }
     for (const [key, s] of this.screens)
       if (!next.has(key)) {
@@ -69,10 +72,11 @@ export class ScopeScreens {
   }
 
   /** a stream's latest history from the audio thread */
-  receive(key: string, chans: ViewData[], sr: number): void {
+  receive(key: string, chans: ViewData[], sr: number, voices: (ViewData[] | null)[] | null = null): void {
     const s = this.screens.get(key);
     if (!s) return;
     s.data = chans;
+    s.voices = perVoice(s.m) ? voices : null;
     s.sr = sr;
     this.schedule();
   }
@@ -91,7 +95,10 @@ export class ScopeScreens {
       if (want) this.send(JSON.parse(want) as HostMsg);
       else this.send({ t: 'unview', key: s.key });
       s.sent = want;
-      if (!want) s.data = null;
+      if (!want) {
+        s.data = null;
+        s.voices = null;
+      }
     }
     this.schedule();
   }
@@ -99,7 +106,9 @@ export class ScopeScreens {
   private message(s: Screen): HostMsg {
     const spectrumMode = SCOPE_MODES[Math.round(s.m.params.mode ?? 0)] === 'spectrum';
     const samples = spectrumMode ? SPECTRUM_SAMPLES : Math.round(((s.m.params.time ?? 16) / 1000) * s.sr);
-    return { t: 'view', key: s.key, chans: s.chans.map((c) => c.map(({ id, port }) => ({ id, port }))), samples };
+    const msg: HostMsg = { t: 'view', key: s.key, chans: s.chans.map((c) => c.map(({ id, port }) => ({ id, port }))), samples };
+    if (perVoice(s.m)) msg.voices = true;
+    return msg;
   }
 
   private schedule(): void {
@@ -150,42 +159,65 @@ export class ScopeScreens {
     [...s.data.entries()].reverse().forEach(([i, d]) => {
       const kind = s.chans[i][0]?.kind;
       if (!kind) return;
-      g.strokeStyle = style.getPropertyValue(`--${kind}`).trim();
-      g.beginPath();
-      if (spectrumMode) {
-        if (!('raw' in d)) return;
-        const sp = spectrum(d.raw);
-        const n = sp.length, fmin = 20, fmax = s.sr / 2;
-        for (let x = 0; x < W; x++) {
-          const bin = Math.min(n - 1, Math.round(((fmin * Math.pow(fmax / fmin, x / W)) / fmax) * (n - 1)));
-          const y = H - 2 - ((Math.max(-96, Math.min(0, sp[bin])) + 96) / 96) * (H - 4);
-          if (x) g.lineTo(x, y);
-          else g.moveTo(x, y);
+      const colour = style.getPropertyValue(`--${kind}`).trim();
+      // per voice: the sum / newest held trace faint, then one thin trace per voice in its colour (b's dashed)
+      const voices = s.voices?.[i]?.filter((v) => ('raw' in v) === ('raw' in d));
+      const traces: { d: ViewData; colour: string; width: number; alpha: number }[] = voices?.length
+        ? [{ d, colour, width: 1.5, alpha: 0.3 }, ...voices.map((v, k) => ({ d: v, colour: style.getPropertyValue(voiceToken(k)).trim(), width: 1, alpha: 0.95 }))]
+        : [{ d, colour, width: 1.5, alpha: 1 }];
+      const windowOf = (raw: Float32Array): Float32Array => {
+        const len = Math.min(samples, raw.length);
+        const from = start >= 0 ? start : raw.length - len;
+        return raw.subarray(from, from + len);
+      };
+      // one gain for all of an input's traces
+      const scale = Math.max(...traces.map(({ d: t }) => ('raw' in t ? gain(windowOf(t.raw), kind) : Math.max(gain(t.min, kind), gain(t.max, kind)))));
+      const plot = (d: ViewData): void => {
+        if (spectrumMode) {
+          if (!('raw' in d)) return;
+          const sp = spectrum(d.raw);
+          const n = sp.length, fmin = 20, fmax = s.sr / 2;
+          for (let x = 0; x < W; x++) {
+            const bin = Math.min(n - 1, Math.round(((fmin * Math.pow(fmax / fmin, x / W)) / fmax) * (n - 1)));
+            const y = H - 2 - ((Math.max(-96, Math.min(0, sp[bin])) + 96) / 96) * (H - 4);
+            if (x) g.lineTo(x, y);
+            else g.moveTo(x, y);
+          }
+        } else if ('raw' in d) {
+          const view = windowOf(d.raw);
+          const len = view.length;
+          for (let x = 0; x < W; x++) {
+            const y = H / 2 - (view[Math.floor((x / W) * len)] / scale) * (H / 2 - 3);
+            if (x) g.lineTo(x, y);
+            else g.moveTo(x, y);
+          }
+        } else {
+          // rolling: one column per min / max pair, the newest at the right
+          const n = d.min.length;
+          for (let x = 0; x < W; x++) {
+            const k = Math.floor((x / W) * n);
+            g.moveTo(x + 0.5, H / 2 - (d.max[k] / scale) * (H / 2 - 3));
+            g.lineTo(x + 0.5, H / 2 - (d.min[k] / scale) * (H / 2 - 3) + 0.5);
+          }
         }
-      } else if ('raw' in d) {
-        const len = Math.min(samples, d.raw.length);
-        const from = start >= 0 ? start : d.raw.length - len;
-        const view = d.raw.subarray(from, from + len);
-        const scale = gain(view, kind);
-        for (let x = 0; x < W; x++) {
-          const y = H / 2 - (view[Math.floor((x / W) * len)] / scale) * (H / 2 - 3);
-          if (x) g.lineTo(x, y);
-          else g.moveTo(x, y);
-        }
-      } else {
-        // rolling: one column per min / max pair, the newest at the right
-        const n = d.min.length;
-        const scale = Math.max(gain(d.min, kind), gain(d.max, kind));
-        for (let x = 0; x < W; x++) {
-          const k = Math.floor((x / W) * n);
-          g.moveTo(x + 0.5, H / 2 - (d.max[k] / scale) * (H / 2 - 3));
-          g.lineTo(x + 0.5, H / 2 - (d.min[k] / scale) * (H / 2 - 3) + 0.5);
-        }
+      };
+      g.setLineDash(voices?.length && i > 0 && 'raw' in d ? [3, 2] : []); // a rolling window's columns stay solid
+      for (const t of traces) {
+        g.strokeStyle = t.colour;
+        g.lineWidth = t.width;
+        g.globalAlpha = t.alpha;
+        g.beginPath();
+        plot(t.d);
+        g.stroke();
       }
-      g.stroke();
+      g.globalAlpha = 1;
+      g.setLineDash([]);
     });
   }
 }
+
+/** a Scope draws each voice of a per-voice source as its own trace (its `voices` switch, #54) */
+const perVoice = (m: ModuleInst): boolean => Math.round(m.params.voices ?? 0) === 1;
 
 /** automatic gain: audio fills the screen, a control signal at least ±1 (so a small cv does not look huge) */
 function gain(d: Float32Array, kind: string): number {

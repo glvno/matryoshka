@@ -2370,7 +2370,7 @@ export const SCOPE_TIME_MAX = 2000;
 /**
  * Scope: an editor-only display. It draws what is cabled into `a` and `b` (as a probe sees it: a per-voice audio signal
  * summed over the voices, a control signal from the newest held voice); `view` is its screen, which goes on an assembly
- * card like a parameter. It has no outputs; the engines and the FM-1 never see it (poly.ts deviceView drops it, it has
+ * card like a parameter; `voices` draws each voice of such a signal as its own thin trace instead. It has no outputs; the engines and the FM-1 never see it (poly.ts deviceView drops it, it has
  * no type index: patchbin.ts TYPE_ORDER).
  */
 const scope: ModuleImpl<null> = {
@@ -2383,6 +2383,8 @@ const scope: ModuleImpl<null> = {
     params: [
       param('time', SCOPE_TIME_MIN, SCOPE_TIME_MAX, 16, { unit: 'ms', log: true, onScreen: true }),
       param('mode', 0, 1, 0, { step: 1, choices: SCOPE_MODES, onScreen: true }),
+      // each voice of a per-voice source as its own trace (#54), set from the toolbar's Voices button
+      param('voices', 0, 1, 0, { step: 1, choices: ['sum', 'each'], toggle: true, onScreen: true }),
     ],
   },
   init: () => null,

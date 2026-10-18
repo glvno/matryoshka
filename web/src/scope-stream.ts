@@ -69,3 +69,49 @@ export class ViewStream {
     return this.raw ? { raw: order(this.raw) } : { min: order(this.min!), max: order(this.max!) };
   }
 }
+
+/**
+ * The per-voice histories of one traced signal (#54: a probe or a Scope input on an output of a module that runs once per
+ * voice): one ViewStream per voice, V1 first, made again when the voice count changes (a reload).
+ */
+export class VoiceStreams {
+  private streams: ViewStream[] = [];
+  constructor(private samples: number) {}
+
+  /** this block's buffer per voice; null: no per-voice view now (the history is dropped) */
+  push(bufs: readonly Float32Array[] | null, n: number): void {
+    if (!bufs?.length) {
+      this.streams = [];
+      return;
+    }
+    if (this.streams.length !== bufs.length) this.streams = bufs.map(() => new ViewStream(this.samples));
+    bufs.forEach((b, k) => this.streams[k].push(b, n));
+  }
+
+  /** the histories, one per voice (copies the caller may transfer); null without a per-voice view */
+  data(): ViewData[] | null {
+    return this.streams.length ? this.streams.map((s) => s.data()) : null;
+  }
+}
+
+/**
+ * Voice by voice, the sum of the outputs cabled into one Scope input (`per` = Engine.probeVoices of each): null unless
+ * every one of them runs per voice (a signal that runs once has no voice to belong to). `scratch` keeps the sums between
+ * blocks.
+ */
+export function voiceSums(per: readonly (readonly Float32Array[] | null)[], n: number, scratch: Float32Array[]): Float32Array[] | null {
+  if (!per.length || per.some((b) => !b)) return null;
+  if (per.length === 1) return per[0] as Float32Array[];
+  const count = Math.max(...per.map((b) => b!.length));
+  const out: Float32Array[] = [];
+  for (let k = 0; k < count; k++) {
+    const s = (scratch[k] = scratch[k]?.length >= n ? scratch[k] : new Float32Array(n));
+    s.fill(0, 0, n);
+    for (const b of per) {
+      const v = b![k];
+      if (v) for (let i = 0; i < n; i++) s[i] += v[i];
+    }
+    out.push(s);
+  }
+  return out;
+}

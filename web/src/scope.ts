@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { resizeHandle } from './resize-handle';
 import { onThemeChange } from './theme';
+import { voiceToken } from './voice-colors';
 
 // Draggable, resizable scope window, anchored to the patch viewport independently of patch zoom.
 type ProbeKind = 'audio' | 'control' | 'gate' | 'keys';
@@ -8,8 +9,12 @@ interface Probe {
   key: string;
   kind: ProbeKind;
   data: Float32Array | null;
+  /** per voice (#54), while the per-voice view is on and the probed module runs once per voice */
+  voices: Float32Array[] | null;
   sr: number;
 }
+/** localStorage: the per-voice view is on */
+const VOICES_KEY = 'matryoshka.scope-voices';
 const FFT_N = 2048;
 
 /** in-place radix-2 FFT of re / im (length a power of two) */
@@ -61,9 +66,18 @@ export class Scope {
   private raf = 0;
   private cv: HTMLCanvasElement;
   private position: { x: number; y: number } | null = null;
+  /** each voice of a per-voice module as its own thin trace (#54); the sum / newest held trace is the default */
+  perVoice = false;
+  /** the per-voice view was switched: the host asks the audio thread for (or stops) the voices' rings */
+  onVoices: (on: boolean) => void = () => {};
+  private voicesBtn: HTMLButtonElement | null;
 
   constructor(private root: HTMLElement) {
     this.cv = root.querySelector('canvas')!;
+    this.voicesBtn = root.querySelector<HTMLButtonElement>('[data-scope-voices]');
+    try { this.perVoice = localStorage.getItem(VOICES_KEY) === '1'; } catch { /* no storage: off */ }
+    this.voicesBtn?.setAttribute('aria-pressed', String(this.perVoice));
+    if (this.voicesBtn) this.voicesBtn.onclick = () => this.setPerVoice(!this.perVoice);
     for (const button of root.querySelectorAll<HTMLButtonElement>('[data-scope-mode]')) {
       button.onclick = () => this.setMode(button.dataset.scopeMode === 'time' ? 'time' : 'spectrum');
     }
@@ -100,6 +114,17 @@ export class Scope {
       button.setAttribute('aria-pressed', String(button.dataset.scopeMode === mode));
     }
     this.setVisible(true);
+  }
+
+  /** the per-voice view on or off (the window's Voices button, the palette) */
+  setPerVoice(on: boolean): void {
+    if (on === this.perVoice) return;
+    this.perVoice = on;
+    try { localStorage.setItem(VOICES_KEY, on ? '1' : '0'); } catch { /* not remembered */ }
+    this.voicesBtn?.setAttribute('aria-pressed', String(on));
+    if (!on) for (const p of this.probes) p.voices = null;
+    this.onVoices(on);
+    this.schedule();
   }
 
   private clampPosition(): void {
@@ -165,7 +190,7 @@ export class Scope {
   /** a probe set by shift-clicking a jack: the window appears with its first one (nothing is traced before that) */
   add(key: string, kind: ProbeKind): void {
     if (this.probes.some((p) => p.key === key)) return;
-    this.probes.push({ key, kind, data: null, sr: 48000 });
+    this.probes.push({ key, kind, data: null, voices: null, sr: 48000 });
     if (!this.visible) this.setVisible(true);
     this.schedule();
   }
@@ -176,14 +201,15 @@ export class Scope {
   }
 
   clearSamples(): void {
-    for (const p of this.probes) p.data = null;
+    for (const p of this.probes) { p.data = null; p.voices = null; }
     this.schedule();
   }
 
-  feed(key: string, data: Float32Array, sr: number): void {
+  feed(key: string, data: Float32Array, sr: number, voices: Float32Array[] | null = null): void {
     const p = this.probes.find((x) => x.key === key);
     if (p) {
       p.data = data;
+      p.voices = this.perVoice ? voices : null;
       p.sr = sr;
       this.schedule();
     }
@@ -225,23 +251,41 @@ export class Scope {
     for (const p of this.probes) {
       const d = p.data;
       if (!d?.length) continue;
-      g.strokeStyle = style.getPropertyValue(`--${p.kind}`).trim();
-      g.beginPath();
-      if (this.mode === 'spectrum') {
-        const s = spectrum(d);
-        const n = s.length;
-        const fmin = 20, fmax = p.sr / 2;
-        for (let x = 0; x < W; x++) {
-          const f = fmin * Math.pow(fmax / fmin, x / W);
-          const bin = Math.min(n - 1, Math.round((f / (p.sr / 2)) * (n - 1)));
-          const db = Math.max(-96, Math.min(0, s[bin]));
-          const y = traceBottom - ((db + 96) / 96) * traceHeight;
-          if (x === 0) g.moveTo(x, y);
-          else g.lineTo(x, y);
+      const voices = this.perVoice ? p.voices?.filter((v) => v.length === d.length) : undefined;
+      const colour = style.getPropertyValue(`--${p.kind}`).trim();
+      // per voice: the sum / newest held trace stays, faint, under one thin trace per voice
+      const traces: { data: Float32Array; colour: string; width: number; alpha: number }[] = voices?.length
+        ? [{ data: d, colour, width: 1.5, alpha: 0.3 }, ...voices.map((v, i) => ({ data: v, colour: style.getPropertyValue(voiceToken(i)).trim(), width: 1, alpha: 0.95 }))]
+        : [{ data: d, colour, width: 1.5, alpha: 1 }];
+      const stroke = (path: (data: Float32Array) => void): void => {
+        for (const t of traces) {
+          g.strokeStyle = t.colour;
+          g.lineWidth = t.width;
+          g.globalAlpha = t.alpha;
+          g.beginPath();
+          path(t.data);
+          g.stroke();
         }
+        g.globalAlpha = 1;
+      };
+      if (this.mode === 'spectrum') {
+        stroke((data) => {
+          const s = spectrum(data);
+          const n = s.length;
+          const fmin = 20, fmax = p.sr / 2;
+          for (let x = 0; x < W; x++) {
+            const f = fmin * Math.pow(fmax / fmin, x / W);
+            const bin = Math.min(n - 1, Math.round((f / (p.sr / 2)) * (n - 1)));
+            const db = Math.max(-96, Math.min(0, s[bin]));
+            const y = traceBottom - ((db + 96) / 96) * traceHeight;
+            if (x === 0) g.moveTo(x, y);
+            else g.lineTo(x, y);
+          }
+        });
       } else {
+        // one scale and one window for all traces of a probe, found on the sum / newest held trace
         let amp = 1e-3;
-        for (const sample of d) amp = Math.max(amp, Math.abs(sample));
+        for (const t of traces) for (const sample of t.data) amp = Math.max(amp, Math.abs(sample));
         let start = 0, len = d.length;
         if (p.kind === 'audio') {
           // A 16 ms window gives individual samples more horizontal space.
@@ -254,14 +298,15 @@ export class Scope {
         }
         const scale = p.kind === 'audio' ? amp : Math.max(1, amp);
         // Original display: pick the nearest preceding sample for each pixel.
-        for (let x = 0; x < W; x++) {
-          const i = start + Math.floor((x / W) * len);
-          const y = H / 2 - (d[i] / scale) * traceHeight / 2;
-          if (x === 0) g.moveTo(x, y);
-          else g.lineTo(x, y);
-        }
+        stroke((data) => {
+          for (let x = 0; x < W; x++) {
+            const i = start + Math.floor((x / W) * len);
+            const y = H / 2 - (data[i] / scale) * traceHeight / 2;
+            if (x === 0) g.moveTo(x, y);
+            else g.lineTo(x, y);
+          }
+        });
       }
-      g.stroke();
     }
   }
 }

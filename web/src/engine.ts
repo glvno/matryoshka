@@ -291,12 +291,25 @@ export class Engine {
       return node.inst[this.shownPart(this.groups[node.group])]?.out[port] ?? null;
     const sum = (this.probeSums[`${id}:${port}`] ??= new Float32Array(BLOCK));
     sum.fill(0);
-    for (const inst of node.inst) {
-      const b = inst.out[port];
-      if (b) for (let i = 0; i < BLOCK; i++) sum[i] += b[i];
-    }
+    for (const b of this.probeVoices(id, port) ?? []) for (let i = 0; i < BLOCK; i++) sum[i] += b[i];
     return sum;
   }
+
+  /**
+   * The scope's per-voice view (#54): what each copy of a module that runs once per voice wrote in the last block, voice
+   * by voice (V1 first); null for a module that runs once. An audio output of a voice skipped this block (idle,
+   * partQuiet) reads silence, so the copies always sum to `probe`'s trace; a control output keeps its last block.
+   * The buffers are the engine's own: copy them before the next render.
+   */
+  probeVoices(id: number, port: string): Float32Array[] | null {
+    const node = this.nodes.get(id);
+    if (!node || node.group < 0 || node.inst.length < 2) return null;
+    const audio = node.impl.def.outputs.find((o) => o.name === port)?.kind === 'audio';
+    const parts = this.groups[node.group].parts;
+    return node.inst.map((inst, v) => (audio && parts[v]?.skip) || !inst.out[port] ? this.silent : inst.out[port]);
+  }
+  /** a block of silence for probeVoices (never written) */
+  private silent = new Float32Array(BLOCK);
   /**
    * An envelope's copies as they run, for its display (env-view.ts): stage and level of each copy (one per voice inside
    * a poly assembly) and which is the newest held one; null when the module has no stage state.

@@ -905,6 +905,20 @@ export class Editor {
     rule.className = 'scope-rule';
     show();
     bar.append(shorter, value, longer, rule, ...modes);
+    // per voice (#54): only where something cabled in runs once per voice
+    const copies = copiesOf(this.patch);
+    const fed = this.patch.cables.filter((c) => c.to.module === m.id).some((c) => (copies.get(c.from.module) ?? 1) > 1);
+    if (fed) {
+      const on = (): boolean => Math.round(m.params.voices ?? 0) === 1;
+      const each = this.button('Voices', 'Each voice as its own trace', () => {
+        this.setParam(m.id, 'voices', on() ? 0 : 1);
+        each.setAttribute('aria-pressed', String(on()));
+      }, 'sm');
+      each.setAttribute('aria-pressed', String(on()));
+      const rule2 = document.createElement('span');
+      rule2.className = 'scope-rule';
+      bar.append(rule2, each);
+    }
     // the toolbar's presses are its own: no card drag, no cable, no pick
     bar.addEventListener('pointerdown', (e) => e.stopPropagation());
     return bar;

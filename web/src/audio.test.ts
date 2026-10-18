@@ -134,7 +134,7 @@ it('discards stale scope messages after a preset switch', async () => {
   node.port.onmessage({ data: { probe: 'output:left', data, sr: 48000, revision: 1 } });
   expect(paint).not.toHaveBeenCalled();
   node.port.onmessage({ data: { probe: 'output:left', data, sr: 48000, revision: 2 } });
-  expect(paint).toHaveBeenCalledWith('output:left', data, 48000);
+  expect(paint).toHaveBeenCalledWith('output:left', data, 48000, null);
 });
 
 

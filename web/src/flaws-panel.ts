@@ -3,6 +3,7 @@
 // header with one row per voice and a
 // slider per flaw. It lives outside the canvas (the editor rebuilds its cards on every change) and reads the settings
 // through the host each time, so undo and a changed part count show at the next sync().
+import { voiceColor } from './voice-colors';
 import { FLAW_KEYS, FLAW_NONE, FLAW_RANGE, flawOf, type PartFlaw, type PolyCards } from './patch';
 
 export interface FlawHost {
@@ -150,6 +151,7 @@ export class FlawPanel {
       const n = document.createElement('span');
       n.className = 'flaw-part';
       n.textContent = `V${i + 1}`;
+      n.style.setProperty('--swatch', voiceColor(i)); // the voice's colour, as the scope draws it (voice-colors.ts)
       kids.push(n);
       for (const k of FLAW_KEYS) {
         const cell = document.createElement('label');
