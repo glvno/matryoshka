@@ -199,7 +199,7 @@ export function morphValue(pd: ParamDef, a: number, b: number, t: number): numbe
 }
 
 /** the FM-1's module limit per patch (ENG_MAX_MODULES): the budget meter counts against it, the editor does not stop at it */
-export const MAX_MODULES = 32;
+export const MAX_MODULES = 64;
 
 /**
  * How a poly group plays (poly.ts polyGroups / deviceView; the engines' and the binary's form): the settings of the Voice

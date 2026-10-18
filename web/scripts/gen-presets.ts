@@ -240,25 +240,30 @@ presets.push(() => {
 });
 
 // 808 Kit: a drum machine that plays itself (as the 909 Kit): a square LFO at sixteenths is the clock, one sequencer
-// per drum (a step at -1 rests), Main's gate restarts the pattern. The boom kick, a tonal snare, a closed hat and the
-// two-square cowbell, from the factory drum assemblies.
+// per drum (a step at -1 rests), Main's gate restarts the pattern. The boom kick, a tonal snare, the clap, a closed and
+// an open hat and the two-square cowbell, from the factory drum assemblies; two mixers (the second into the first's in4).
+// About 45 modules: it needs the FM-1's 64-module table (ENG_MAX_MODULES).
 presets.push(() => {
   const p = emptyPatch('808 Kit');
   const main = addModule(p, DEFS.fm1, 20, 20);
   const clk = addModule(p, DEFS.lfo, 20, 600);
   Object.assign(clk.params, { wave: 3, rate: 8, depth: 1 });
-  const mix = addModule(p, DEFS.mixer, 2100, 20);
-  Object.assign(mix.params, { l1: 0.8, l2: 0.5, l3: 0.35, l4: 0.3 });
-  const out = addModule(p, DEFS.output, 2420, 20);
+  const mixA = addModule(p, DEFS.mixer, 2940, 20);
+  Object.assign(mixA.params, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
+  const mixB = addModule(p, DEFS.mixer, 2940, 600);
+  Object.assign(mixB.params, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 0 });
+  const out = addModule(p, DEFS.output, 3260, 20);
   const R = -1;
-  const drums: [string, number[], Record<string, number>][] = [
-    ['boom kick', [0, R, R, R, 0, R, 0, R], {}],
-    ['snare', [R, R, 0, R, R, R, 0, R], { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }],
-    ['hihat', [0, 0, 0, 0, 0, 0, 0, 0], { decay: 0.04 }],
-    ['cowbell', [R, R, R, R, R, 0, R, 0], {}],
+  const drums: [string, number[], Record<string, number>, number, string][] = [
+    ['boom kick', [0, R, R, R, 0, R, 0, R], {}, mixA.id, 'in1'],
+    ['snare', [R, R, 0, R, R, R, R, R], { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, mixA.id, 'in2'],
+    ['clap', [R, R, R, R, R, R, 0, R], {}, mixA.id, 'in3'],
+    ['hihat', [0, 0, 0, 0, 0, 0, 0, R], { decay: 0.04 }, mixB.id, 'in1'],
+    ['hihat', [R, R, R, R, R, R, R, 0], { decay: 0.3 }, mixB.id, 'in2'],
+    ['cowbell', [R, R, R, R, R, 0, R, R], {}, mixB.id, 'in3'],
   ];
   const drumsOf: AssemblyInst[] = [];
-  drums.forEach(([name, steps, params], i) => {
+  drums.forEach(([name, steps, params, to, port], i) => {
     const def = FACTORY.find((d) => d.name === name);
     if (!def) throw new Error(`no factory assembly ${name}`);
     const a = insertAssembly(p, DEFS, def, 380 + 420 * i, 600);
@@ -272,16 +277,17 @@ presets.push(() => {
     wire(p, clk.id, 'out', sq.id, 'clock');
     wire(p, main.id, 'gate', sq.id, 'reset');
     plugIn(p, sq.id, 'gate', a, 'gate');
-    plugOut(p, a, 'out', mix.id, `in${i + 1}`);
+    plugOut(p, a, 'out', to, port);
     drumsOf.push(a);
   });
-  wire(p, mix.id, 'out', out.id, 'l');
-  wire(p, mix.id, 'out', out.id, 'r');
-  // K1 tempo, K2 kick decay, K3 snare decay, K4 hat decay
+  wire(p, mixB.id, 'out', mixA.id, 'in4');
+  wire(p, mixA.id, 'out', out.id, 'l');
+  wire(p, mixA.id, 'out', out.id, 'r');
+  // K1 tempo, K2 kick decay, K3 clap tail, K4 closed hat decay
   knob(p, main, 'k1', { module: clk.id, param: 'rate' });
   knob(p, main, 'k2', row(drumsOf[0], 'decay'));
-  knob(p, main, 'k3', row(drumsOf[1], 'decay'));
-  knob(p, main, 'k4', row(drumsOf[2], 'decay'));
+  knob(p, main, 'k3', row(drumsOf[2], 'tail'));
+  knob(p, main, 'k4', row(drumsOf[3], 'decay'));
   level(p, { drums: true });
   return p;
 });

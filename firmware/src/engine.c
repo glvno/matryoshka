@@ -23,12 +23,12 @@
  * The pool sizes follow the voice count (engine.h ENG_VOICES): the one-voice build gives its one patch more signal
  * buffers and instances and keeps one delay and one reverb (docs/HANDOFF.md); the four-voice build has the sizes of
  * the 1.0.2 panel. Keep DEVICE in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines of manual.c in step. */
-#define ENG_MAX_MODULES 32          /* per voice */
 #define ENG_MAX_RANGES 48           /* macro ranges per voice (patch.ts ModuleInst.range) */
 #define ENG_MAX_CABLES 192
 #define MAX_SUM 128                 /* summed inputs per voice (an input of an instance with two or more sources) */
 #define MAX_SRC 256                 /* their sources: a shared input reading a per-note output has one per note */
 #if ENG_VOICES == 1
+#define ENG_MAX_MODULES 64          /* modules of the patch (node_t ~120 B each) */
 #define ENG_MAX_INST 128            /* module instances: a shared module has one, a per-note module one per note */
 #define ENG_NBUF 255u               /* signal buffers of ENG_BLOCK samples (a connected output, a summed input) */
 #define ENG_NDELAY 1                /* delay lines */
@@ -37,6 +37,7 @@
 #define ENG_NCHORUS 1               /* chorus lines (a shared module, like the delay) */
 #define ENG_NGRAIN 1                /* granular lines (a shared module): 1 s of int16 plus the grain records, 88 KB */
 #else
+#define ENG_MAX_MODULES 32          /* per voice */
 #define ENG_MAX_INST 72             /* module instances, all voices: a shared module has one, a per-note module one per note */
 #define ENG_NBUF 104u               /* signal buffers of ENG_BLOCK samples, all voices (a connected output, a summed input) */
 #define ENG_NDELAY 4                /* delay lines, all voices (one each when every voice has a delay) */

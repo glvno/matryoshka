@@ -127,7 +127,7 @@ static const char *const MANUAL[] = {
     " SAVE: 3840 BYTES FOR 4 PATCHES",
     "   + ARPS, ELSE ERROR",
 #else
-    " PATCH: 32 MODULES, 192 CABLES,",
+    " PATCH: 64 MODULES, 192 CABLES,",
     "   MAX 3072 BYTES, 4 POLY ASSEMBLIES",
     "   OF 1-8 PARTS",
     " 255 SIGNAL BUFFERS, 128 MODULE",
