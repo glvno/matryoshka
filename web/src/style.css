@@ -18,6 +18,8 @@
   --danger: var(--ref-red); --warning: var(--gate);
   /* filled yellow buttons: the gate colour, greyed down so it does not shout */
   --btn-yellow: color-mix(in oklab, var(--ref-ochre) 70%, var(--ref-stone));
+  /* the Demo button (LEARN): the palette's blue */
+  --btn-blue: var(--ref-blue);
   --piano-h: 160px;
   /* The on-screen keyboard: paper and ink keys, the lettered range tinted teal, held keys in the accent. */
   --key-white: var(--ref-white); --key-black: var(--ref-ink); --key-edge: var(--ref-sand);
@@ -37,6 +39,7 @@
     --accent: var(--ref-coral); --accent-ink: var(--ref-night);
     --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
     --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
+    --btn-blue: var(--ref-blue-light);
     --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a;
     --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
     --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
@@ -52,6 +55,7 @@
   --accent: var(--ref-coral); --accent-ink: var(--ref-night);
   --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
   --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
+  --btn-blue: var(--ref-blue-light);
   --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a;
   --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
   --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
@@ -972,6 +976,7 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .sidebar button:not(.primary):hover, .sidebar #tour-btn:hover, .sidebar #palette-btn:hover { border-color: var(--ink); color: var(--accent-ink); filter: brightness(1.08); }
 .sidebar #palette-btn kbd { color: inherit; opacity: .7; }
 #add-assembly-btn { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
+.sidebar #demo-btn { background: var(--btn-blue); border-color: var(--btn-blue); color: var(--accent-ink); }
 /* the canvas panel's buttons (TIDY, FIT) look like the dock's octave buttons: outlined on the panel, the border teal on hover */
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
