@@ -7,7 +7,7 @@ describe('the demo patch', () => {
   it('loads, remembers its octave, and sounds with no key held (the drone plays on its own)', () => {
     const p = demoPatch();
     expect(p.octave).toBe(-2);
-    const drone = p.assemblies!.find((a) => a.label === 'Synthi drone')!;
+    const drone = p.assemblies!.find((a) => a.label === 'Synthi throb')!;
     expect(p.modules.filter((m) => drone.modules.includes(m.id) && m.bypass)).toEqual([]);
     const e = new Engine(48000);
     e.load(p);
@@ -18,9 +18,10 @@ describe('the demo patch', () => {
     expect(Math.sqrt(s / 48000)).toBeGreaterThan(0.02);
   });
 
-  it('its drums are Steps tracks on the transport: louder once it runs', () => {
+  it('its drums (the drum kit) and the Hera line are Steps tracks on the transport: louder once it runs', () => {
     const p = demoPatch();
-    expect(p.modules.filter((m) => m.type === 'steps').map((m) => m.name)).toEqual(['KICK', 'SNARE', 'HAT', 'PUMP']);
+    expect(p.modules.filter((m) => m.type === 'steps').map((m) => m.name)).toEqual(['PUMP', 'KICK', 'SNARE', 'CLAP', 'CL HAT', 'OP HAT', 'COWBELL', 'HERA']);
+    expect(p.assemblies!.some((a) => a.name === 'drum kit')).toBe(true);
     expect(p.modules.some((m) => m.type === 'seq')).toBe(false);
     const energy = (run: boolean): number => {
       const e = new Engine(48000);

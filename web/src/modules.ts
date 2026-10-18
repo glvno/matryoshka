@@ -1444,7 +1444,8 @@ const shape: ModuleImpl<OsState> = {
  * holds l3 while the gate stays up, and on release goes to l4 in r4 and stays there. A rising segment is linear at the
  * rate that would cover 0..1 in r (the ADSR's attack); a falling one approaches its level exponentially, 99 % in r (the
  * ADSR's decay) and ends after r (the last 1 % is stepped). A segment that starts at its level is skipped. Stage: 0 idle at
- * l4, 1..3 the segments, 4 holding l3, 5 the release.
+ * l4, 1..3 the segments, 4 holding l3, 5 the release. `shot` (one-shot, for drums played by short trigs): the gate only
+ * starts it, the three segments run through whatever the gate does, then the release follows at once.
  */
 interface EnvState {
   stage: 0 | 1 | 2 | 3 | 4 | 5;
@@ -1469,6 +1470,7 @@ const env: ModuleImpl<EnvState> = {
       param('r3', 0.001, 10, 1, { unit: 's', step: 0.001, log: true }),
       param('l4', 0, 1, 0, { step: 0.01 }),
       param('r4', 0.001, 10, 0.5, { unit: 's', step: 0.001, log: true }),
+      param('shot', 0, 1, 0, { step: 1, toggle: true }),
     ],
     views: [param('view', 0, 0, 0, { screen: true })],
   },
@@ -1479,12 +1481,13 @@ const env: ModuleImpl<EnvState> = {
     const len = tm.map((t) => Math.max(Math.round(t * c.sr), 1));
     const inc = len.map((l) => 1 / l);
     const k = len.map((l) => 1 - Math.exp(-4.6 / l));
+    const shot = (c.p.shot ?? 0) >= 0.5;
     for (let i = 0; i < c.n; i++) {
       const g = c.inp.gate[i] > 0.5 ? 1 : 0;
       if (g && !s.prev) {
         s.stage = 1;
         s.t = 0;
-      } else if (!g && s.prev) {
+      } else if (!g && s.prev && !shot) {
         s.stage = 5;
         s.t = 0;
       }
@@ -1506,7 +1509,7 @@ const env: ModuleImpl<EnvState> = {
           break;
         }
         s.v = t;
-        s.stage = st === 5 ? 0 : ((st + 1) as EnvState['stage']);
+        s.stage = st === 5 ? 0 : st === 3 && shot ? 5 : ((st + 1) as EnvState['stage']);
         s.t = 0;
       }
       c.out.env[i] = s.v;

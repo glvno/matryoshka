@@ -2925,6 +2925,7 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t len[6], tt = it->s.env.t;
     uint8_t stage = it->s.env.stage, prev = it->s.env.prev;
     uint32_t i, st;
+    int shot = EF(it, ENV_P_SHOT) >= 32768;   /* one-shot: the gate only starts it, the segments run through, then the release */
     static const uint8_t LP[6] = {ENV_P_L4, ENV_P_L1, ENV_P_L2, ENV_P_L3, ENV_P_L3, ENV_P_L4};
     static const uint8_t RP[6] = {0, ENV_P_R1, ENV_P_R2, ENV_P_R3, 0, ENV_P_R4};
     for (st = 0; st < 6u; st++) {
@@ -2948,7 +2949,7 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
         if (g && !prev) {
             stage = 1;
             tt = 0;
-        } else if (!g && prev) {
+        } else if (!g && prev && !shot) {
             stage = 5;
             tt = 0;
         }
@@ -2970,7 +2971,7 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
                 break;
             }
             v = t;
-            stage = stage == 5 ? 0 : (uint8_t)(stage + 1);
+            stage = stage == 5 ? 0 : stage == 3 && shot ? 5 : (uint8_t)(stage + 1);
             tt = 0;
         }
         out[i] = v >> 14;

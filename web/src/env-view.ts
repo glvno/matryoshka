@@ -66,12 +66,13 @@ export function envShape(type: string, p: Record<string, number>): Segment[] {
     return ys;
   };
   let level = 0;
+  const shot = type === 'env' && (p.shot ?? 0) >= 0.5; // one-shot: no sustain, the release follows the last segment
   for (const stage of moving) {
     const time = p[spec.times[stage]] ?? 0.01;
     const sr = SEG_SAMPLES / Math.max(time, 1e-4);
     if (stage === spec.release) {
       // the sustain slot first: the level the held gate rests at
-      raw.push({ stage: spec.sustain, ys: [level, level], time: 0 });
+      if (!shot) raw.push({ stage: spec.sustain, ys: [level, level], time: 0 });
       gate[0] = 0;
     } else gate[0] = 1;
     // a segment whose start is already its end (a level equal to the one before) still gets its slot
@@ -85,7 +86,7 @@ export function envShape(type: string, p: Record<string, number>): Segment[] {
     raw.push({ stage, ys, time });
     // a stage that ran out its time without reaching its target: move the state on by hand so the next one starts
     if ((state as { stage: number }).stage === stage && stage !== spec.release) {
-      state = { ...(state as object), stage: stage === Math.max(...moving.filter((s) => s !== spec.release)) ? spec.sustain : stage + 1 } as typeof state;
+      state = { ...(state as object), stage: stage === Math.max(...moving.filter((s) => s !== spec.release)) ? (shot ? spec.release : spec.sustain) : stage + 1 } as typeof state;
       (state as { v: number }).v = level;
       if ('t' in (state as object)) (state as { t: number }).t = 0;
     }
@@ -94,7 +95,7 @@ export function envShape(type: string, p: Record<string, number>): Segment[] {
   const moves = raw.filter((r) => r.stage !== spec.sustain);
   const weights = moves.map((r) => Math.sqrt(Math.max(r.time, 1e-4)));
   const sum = weights.reduce((a, b) => a + b, 0) || 1;
-  const free = 1 - SUSTAIN_W - MIN_W * moves.length;
+  const free = 1 - (shot ? 0 : SUSTAIN_W) - MIN_W * moves.length;
   let x = 0;
   let k = 0;
   return raw.map((r) => {

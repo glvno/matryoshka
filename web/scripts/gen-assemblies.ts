@@ -143,6 +143,9 @@ function build(name: string, category: string, f: (b: B) => void, poly?: PolyCar
     },
   };
   f(b);
+  // drums are played by short trigs (a Steps track's gate is a fraction of a step): their level / rate envelopes are
+  // one-shot, so the decay rows set the sound, not the trig's length
+  if (category === 'Drums') for (const m of modules) if (m.type === 'env') m.params.shot = 1;
   return {
     format: 'modular-1-assembly', version: 1, name, category, modules, cables, inputs, outputs, params,
     ...(nested.length ? { children: nested.map((n) => n.id), assemblies: nested } : {}),
@@ -450,6 +453,8 @@ asm('hihat', 'Drums', (b) => {
 // drums as nested cards, two mixers. The collapsed card shows every track's grid (its name, mute, steps; the lanes for
 // velocity and note), then the drums' main settings. An accented step pushes a part of its drum through a pin as in the
 // 808 Kit; `clk` and `reset` reach every track (with clk patched the tracks step on its edges instead of the transport).
+// A track's pitch output tunes its drum's oscillators relative to the drum's own tuning (a step's note C4 = as tuned, C3 an
+// octave down); the clap and the hi-hats are noise and do not follow it.
 const pattern = (s: string): number[] => Array.from({ length: 64 }, (_, k) => stepByte({ on: /[xX]/.test(s[k] ?? ''), accent: s[k] === 'X', chance: 100 }));
 asm('drum kit', 'Drums', (b) => {
   const mixA = b.add('mixer', 3, 0, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
@@ -482,6 +487,7 @@ asm('drum kit', 'Drums', (b) => {
     }
     const gate = defs.find((d) => d.name === from)!.inputs.find((q) => q.label === 'gate')!;
     b.wire(st, 'trig', ids.get(gate.module)!, gate.port);
+    for (const id of ids.values()) if (b.module(id).type === 'osc') b.wire(st, 'pitch', id, 'pitch');
     for (const a of gate.also ?? []) b.wire(st, 'trig', ids.get(a.module)!, a.port);
     if (accent) {   // acc into the row's module through its first pin, at the amount in the row's units
       const r = rowOf(from, ids, accent[0]);

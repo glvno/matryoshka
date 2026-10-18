@@ -323,9 +323,10 @@ enum {
 #define ENV_P_R3 5
 #define ENV_P_L4 6
 #define ENV_P_R4 7
+#define ENV_P_SHOT 8
 #define ENV_NIN 3
 #define ENV_NOUT 1
-#define ENV_NPAR 8
+#define ENV_NPAR 9
 #define ENV_CVBASE 1
 #define ENV_NDATA 0
 
@@ -942,14 +943,14 @@ static const char *const SHAPE_CH1[] = {"SOFT", "HARD", "FOLD", 0};
 static const char *const SHAPE_CH3[] = {"OFF", "ON", 0};
 static const char *const *const SHAPE_CH[] = {0, SHAPE_CH1, 0, SHAPE_CH3, 0, 0};
 static const char *const ENV_INNAMES[] = {"GATE", "P1", "P2"};
-static const int32_t ENV_MIN[] = {0, 66, 0, 66, 0, 66, 0, 66};
-static const int32_t ENV_MAX[] = {65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360};
-static const int32_t ENV_DEF[] = {65536, 655, 39322, 19661, 39322, 65536, 0, 32768};
-static const int32_t ENV_INC[] = {655, 6553, 655, 6553, 655, 6553, 655, 6553};
-static const char *const ENV_PN[] = {"L1", "R1", "L2", "R2", "L3", "R3", "L4", "R4"};
-static const uint8_t ENV_LOG[] = {0, 1, 0, 1, 0, 1, 0, 1};
-static const char *const ENV_UNIT[] = {"", "S", "", "S", "", "S", "", "S"};
-static const char *const *const ENV_CH[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t ENV_MIN[] = {0, 66, 0, 66, 0, 66, 0, 66, 0};
+static const int32_t ENV_MAX[] = {65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536};
+static const int32_t ENV_DEF[] = {65536, 655, 39322, 19661, 39322, 65536, 0, 32768, 0};
+static const int32_t ENV_INC[] = {655, 6553, 655, 6553, 655, 6553, 655, 6553, 65536};
+static const char *const ENV_PN[] = {"L1", "R1", "L2", "R2", "L3", "R3", "L4", "R4", "SHOT"};
+static const uint8_t ENV_LOG[] = {0, 1, 0, 1, 0, 1, 0, 1, 0};
+static const char *const ENV_UNIT[] = {"", "S", "", "S", "", "S", "", "S", ""};
+static const char *const *const ENV_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const STRING_INNAMES[] = {"PITCH", "GATE", "EXC", "P1", "P2"};
 static const int32_t STRING_MIN[] = {3277, 0, 0, -1572864, 0};
 static const int32_t STRING_MAX[] = {655360, 65536, 65536, 1572864, 65536};
