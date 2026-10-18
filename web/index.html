@@ -7,6 +7,8 @@
   <meta name="description" content="A modular synthesizer for the M-VAVE FM-1. Build patches with reusable, nested assemblies." />
   <link rel="icon" type="image/png" href="./brand/matryoshka.png" />
   <link rel="stylesheet" href="/src/style.css" />
+  <!-- the stored theme (theme.ts) before the first paint, so a reload does not flash the other one -->
+  <script>try { const t = localStorage.getItem('matryoshka.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
 </head>
 <body>
   <div class="mobile-bar"><button id="sidebar-toggle" aria-expanded="false" aria-controls="workspace-sidebar">☰ Workspace</button><button id="mobile-commands">Commands</button></div>
@@ -14,6 +16,7 @@
   <div class="workspace">
     <aside id="workspace-sidebar" class="sidebar" aria-label="Workspace controls">
       <button id="sidebar-collapse" class="side-collapse" aria-expanded="true" aria-controls="workspace-sidebar" title="Collapse the sidebar (Ctrl/Cmd+B)" aria-label="Collapse the sidebar">«</button>
+      <button id="theme-btn" class="side-collapse theme-toggle" title="Dark theme" aria-label="Switch to the dark theme">☾</button>
       <button id="about-heart" class="about-heart" title="About & support" aria-label="About and support">♥</button>
       <div class="brand">
         <img src="./brand/matryoshka.png" width="80" height="80" alt="" />

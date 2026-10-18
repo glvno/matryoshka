@@ -36,6 +36,7 @@ import { PRESETS } from './presets';
 import { deviceBudget } from './patchbin';
 import { ALLOC } from './poly';
 import { AboutCard } from './about';
+import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = 'modular-1.patch';
@@ -531,6 +532,8 @@ const commands = (): Command[] => {
     { kind: 'command', label: scope.visible ? 'Hide oscilloscope' : 'Show oscilloscope', keywords: 'scope window waveform', run: inPatch(() => scope.setVisible(!scope.visible)) },
     { kind: 'command', label: 'Scope: waveform', keywords: 'oscilloscope time', run: inPatch(() => scope.setMode('time')) },
     { kind: 'command', label: 'Scope: spectrum', keywords: 'oscilloscope frequency fft', run: inPatch(() => scope.setMode('spectrum')) },
+    { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
+    ...(themeChoice() ? [{ kind: 'command' as const, label: 'Theme: follow the system', keywords: 'theme dark light mode auto os appearance', run: () => setTheme(null) }] : []),
     { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
     { kind: 'command', label: 'Tidy up the canvas', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
     { kind: 'command', label: 'Cable slack: none', keywords: 'slack sag tight straight', run: inPatch(() => setSlack(0)) },
@@ -1084,6 +1087,20 @@ const setSidebarCollapsed = (on: boolean): void => {
   }
   editor.positionSideCables();
 };
+// the theme toggle beside the collapse button: shows the theme a click switches to
+const themeBtn = $('theme-btn');
+const showTheme = (): void => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  themeBtn.textContent = next === 'dark' ? '☾' : '☀';
+  themeBtn.title = `${next === 'dark' ? 'Dark' : 'Light'} theme`;
+  themeBtn.setAttribute('aria-label', `Switch to the ${next} theme`);
+  envs.changed(); // canvases read the colour tokens when they draw
+  screens.state();
+  editor.positionSideCables();
+};
+themeBtn.onclick = toggleTheme;
+onThemeChange(showTheme);
+showTheme();
 const toggleSidebarCollapsed = (): void => setSidebarCollapsed(!sidebar.parentElement!.classList.contains('side-collapsed'));
 collapseBtn.onclick = toggleSidebarCollapsed;
 sidebar.querySelector<HTMLElement>('.brand')!.addEventListener('click', () => {
