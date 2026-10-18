@@ -7,3 +7,4 @@ __pycache__/
 !web/public/firmware/*.fwsc
 tools/emu/target/
 tools/emu/live/
+.claude/

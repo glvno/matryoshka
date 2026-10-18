@@ -18,6 +18,8 @@
   --danger: var(--ref-red); --warning: var(--gate);
   /* filled yellow buttons: the gate colour, greyed down so it does not shout */
   --btn-yellow: color-mix(in oklab, var(--ref-ochre) 70%, var(--ref-stone));
+  /* the Demo button (LEARN): the palette's blue */
+  --btn-blue: var(--ref-blue);
   --piano-h: 160px;
   /* The on-screen keyboard: paper and ink keys, the lettered range tinted teal, held keys in the accent. */
   --key-white: var(--ref-white); --key-black: var(--ref-ink); --key-edge: var(--ref-sand);
@@ -37,6 +39,7 @@
     --accent: var(--ref-coral); --accent-ink: var(--ref-night);
     --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
     --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
+    --btn-blue: var(--ref-blue-light);
     --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
     --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
     --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
@@ -44,6 +47,21 @@
     --key-white-letter: var(--ref-deep-teal); --key-black-letter: var(--ref-seafoam);
     color-scheme: dark;
   }
+}
+/* the theme toggle (theme.ts): the same dark tokens when chosen, whatever the system prefers */
+:root[data-theme="dark"] {
+  --bg: var(--ref-night); --panel: var(--ref-ink); --ink: var(--ref-ivory);
+  --muted: var(--ref-mist); --line: var(--ref-slate);
+  --accent: var(--ref-coral); --accent-ink: var(--ref-night);
+  --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
+  --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
+  --btn-blue: var(--ref-blue-light);
+  --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
+  --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
+  --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
+  --key-black-mapped: color-mix(in oklab, var(--ref-seafoam) 22%, var(--ref-night));
+  --key-white-letter: var(--ref-deep-teal); --key-black-letter: var(--ref-seafoam);
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
@@ -121,10 +139,13 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 syste
   padding: 0 !important; border-radius: 4px; font-size: 15px !important; line-height: 1; letter-spacing: 0 !important;
   background: transparent !important; border: 1px solid transparent !important; color: var(--muted) !important; }
 .side-collapse:hover { color: var(--ink) !important; border-color: var(--line) !important; filter: none !important; }
+/* the theme toggle: left of the collapse button, the same quiet square */
+.side-collapse.theme-toggle { right: 34px; font-size: 14px !important; }
 @media (min-width: 701px) {
   .workspace.side-collapsed > main { grid-column: 1 / 4; }
   .workspace.side-collapsed > .sidebar { grid-row: 2; flex-direction: row; align-items: center; justify-content: center; gap: 8px; padding: 6px 30px 6px 8px; overflow: hidden; border-top: 1px solid var(--line); }
   .side-collapsed .sidebar > :not(.brand, .side-collapse, #tabs, .about-heart) { display: none; }
+  .side-collapsed .sidebar > .theme-toggle { display: none; }
   .side-collapsed .sidebar .about-heart { display: grid; place-items: center; flex: none; width: 26px; min-height: 26px; padding: 0; order: 3;
     background: transparent; border: 1px solid transparent; color: var(--accent); font-size: 15px; }
   .side-collapsed .sidebar .about-heart:hover { border-color: var(--line); filter: none; color: var(--accent); }
@@ -962,10 +983,13 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .sidebar button:not(.primary):hover, .sidebar #tour-btn:hover, .sidebar #palette-btn:hover { border-color: var(--ink); color: var(--accent-ink); filter: brightness(1.08); }
 .sidebar #palette-btn kbd { color: inherit; opacity: .7; }
 #add-assembly-btn { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
+.sidebar #demo-btn { background: var(--btn-blue); border-color: var(--btn-blue); color: var(--accent-ink); }
 /* the canvas panel's buttons (TIDY, FIT) look like the dock's octave buttons: outlined on the panel, the border teal on hover */
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
 .view-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* LEARN: the tutorial and the demo side by side */
+.learn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 /* the cable slack and zoom sliders are cards' value bars (sliderJack; main.ts sideSlider) with a small name and a thumb as tall
    as the bar. Their thumbs are jacks (the easter egg): a cable from any output dropped on one moves it (Patch.slackFrom / zoomFrom) */
 .side-bar > .slider-jack { --jack-size: 18px; }

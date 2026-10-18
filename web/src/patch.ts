@@ -210,7 +210,16 @@ export interface Patch {
   /** (legacy) the firmware arpeggiator's settings before the Arpeggiator module (#58): validatePatch keeps only its tempo,
    * as the Main module's tempo, and drops the rest */
   arp?: { bpm?: number };
+  /** the computer keyboard's octave (Z / X, the octave buttons) when the patch was last played, so a bass patch opens low;
+   * absent = 0. Editor only: the engine, the encoder and the FM-1 ignore it */
+  octave?: number;
+  /** where the canvas was looked at: the user's zoom and the scroll position of the view's top left in unzoomed layout
+   * pixels (Editor.restoreView / stampView). Editor only */
+  view?: { zoom: number; x: number; y: number };
 }
+
+/** the computer keyboard's octave range (Patch.octave, input.ts) */
+export const OCTAVE_MIN = -3, OCTAVE_MAX = 3;
 
 /** do two patches have the same structure (modules of the same types in the same order, the same cables), so that one can be the B side of the other? */
 export function sameStructure(a: Patch, b: Patch): boolean {
@@ -638,5 +647,10 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   p.name = String(p.name ?? 'patch');
   if (!hasMorph(p as Patch) || typeof p.morphName !== 'string') delete p.morphName;
   for (const k of SIDE_KEYS) if (!sideSourceOk(p as Patch, k, defs)) delete p[k];
+  if (!Number.isInteger(p.octave) || p.octave === 0 || p.octave! < OCTAVE_MIN || p.octave! > OCTAVE_MAX) delete p.octave;
+  const v = p.view as { zoom?: unknown; x?: unknown; y?: unknown } | undefined;
+  if (v && typeof v === 'object' && [v.zoom, v.x, v.y].every((n) => typeof n === 'number' && Number.isFinite(n)) && (v.zoom as number) > 0)
+    p.view = { zoom: v.zoom as number, x: Math.max(0, v.x as number), y: Math.max(0, v.y as number) };
+  else delete p.view;
   return p as Patch;
 }

@@ -1140,6 +1140,12 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
       params: tidyRows(refs(e.params, 'param') as unknown as ParamRef[]),
     };
     if (e.poly) a.poly = fixCards(e.poly);
+    if (e.bypass) {
+      // the group switch is off: without it the card read on while every member stayed off, and the switch could not bring them back
+      a.bypass = true;
+      const member = new Set(a.modules);
+      a.kept = Array.isArray(e.kept) ? e.kept.filter((id): id is number => member.has(id)) : [];
+    }
     for (const m of a.modules) used.add(m);
     ids.add(a.id);
     if (kids.length) wantKids.set(a.id, kids);

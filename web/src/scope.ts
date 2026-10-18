@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { resizeHandle } from './resize-handle';
+import { onThemeChange } from './theme';
 
 // Draggable, resizable scope window, anchored to the patch viewport independently of patch zoom.
 type ProbeKind = 'audio' | 'control' | 'gate' | 'keys';
@@ -81,7 +82,7 @@ export class Scope {
     }));
     new ResizeObserver(() => { this.clampPosition(); this.schedule(); }).observe(root.parentElement!);
     new ResizeObserver(() => this.schedule()).observe(this.cv);
-    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.schedule());
+    onThemeChange(() => this.schedule());
     document.addEventListener('visibilitychange', () => this.schedule());
   }
 

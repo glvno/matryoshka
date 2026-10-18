@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Computer-keyboard and Web MIDI note input.
 import type { AudioHost } from './audio';
+import { OCTAVE_MAX, OCTAVE_MIN } from './patch';
 
 /** the note keys, C up to D# a bit more than an octave above; key i plays `keyBase(octave) + i` */
 export const KEYS = 'awsedftgyhujkolp';
-export const OCTAVE_MIN = -3, OCTAVE_MAX = 3;
+export { OCTAVE_MIN, OCTAVE_MAX };
 export const keyBase = (octave: number): number => 60 + octave * 12;
 const NON_TYPING_INPUTS = new Set(['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'color']);
 
@@ -19,14 +20,17 @@ export interface NoteKeys {
   octave(): number;
   /** move the note keys by `d` octaves (clamped); held notes keep sounding until their key is released */
   shift(d: number): void;
+  /** go to an octave (clamped), as when a patch opens; held notes keep sounding until their key is released */
+  set(octave: number): void;
 }
 
 export function attachKeyboard(host: Pick<AudioHost, 'send'>, isActive: () => boolean, onOctave: (octave: number) => void = () => {}): NoteKeys {
   let octave = 0;
-  const shift = (d: number): void => {
-    const o = Math.max(OCTAVE_MIN, Math.min(OCTAVE_MAX, octave + d));
+  const set = (to: number): void => {
+    const o = Math.max(OCTAVE_MIN, Math.min(OCTAVE_MAX, Math.round(to)));
     if (o !== octave) (octave = o), onOctave(o);
   };
+  const shift = (d: number): void => set(octave + d);
   const down = new Map<string, number>();
   window.addEventListener('keydown', (e) => {
     if (!isActive() || e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey || isTextEntry(e.target)) return;
@@ -58,7 +62,7 @@ export function attachKeyboard(host: Pick<AudioHost, 'send'>, isActive: () => bo
     for (const note of down.values()) host.send({ t: 'off', note });
     down.clear();
   });
-  return { octave: () => octave, shift };
+  return { octave: () => octave, shift, set };
 }
 
 /**

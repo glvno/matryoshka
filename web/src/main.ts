@@ -36,6 +36,8 @@ import { PRESETS } from './presets';
 import { deviceBudget } from './patchbin';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
+import { demoPatch } from './demo';
+import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = 'modular-1.patch';
@@ -199,8 +201,18 @@ host.onSteps = (view) => editor.showSteps(view);
 const sides = new Map<SideKey, SideSlider>();
 /** the zoom slider's setting (the user's zoom; a source adds to it) */
 let zoomBase = 1;
+/** the computer keyboard's octave (noteKeys), mirrored here because the editor's events run before noteKeys exists */
+let keyOctave = 0;
+/** the patch remembers the keyboard's octave (Patch.octave); undo / redo bring back older snapshots, so stamp it again */
+const stampOctave = (p: Patch): boolean => {
+  if ((p.octave ?? 0) === keyOctave) return false;
+  if (keyOctave) p.octave = keyOctave;
+  else delete p.octave;
+  return true;
+};
 const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onStructure(p) {
+    stampOctave(p);
     $<HTMLInputElement>('patch-name').value = p.name;
     syncSides();
     scope.clearSamples();
@@ -288,6 +300,9 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (r !== 'cancelled') tutorial.saved(def);
     tutorial.refresh();
   },
+  onLoad(p) {
+    noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
+  },
   onHistory(kind) {
     if (kind === 'undo') tutorial.undone();
     else tutorial.redone();
@@ -339,7 +354,7 @@ const tutorial = new Tutorial({
 editor.onZoom = (z, live) => {
   if (live) return;
   zoomBase = z;          // the user's zoom is the zoom slider's setting
-  tutorial.zoomed();
+  if (!editor.restoring) tutorial.zoomed(); // a patch opening at its own zoom is not a zoom gesture
   showSide('zoomFrom');
 };
 host.onValues = (values) => {
@@ -570,6 +585,9 @@ const commands = (): Command[] => {
     { kind: 'command', label: scope.visible ? 'Hide oscilloscope' : 'Show oscilloscope', keywords: 'scope window waveform', run: inPatch(() => scope.setVisible(!scope.visible)) },
     { kind: 'command', label: 'Scope: waveform', keywords: 'oscilloscope time', run: inPatch(() => scope.setMode('time')) },
     { kind: 'command', label: 'Scope: spectrum', keywords: 'oscilloscope frequency fft', run: inPatch(() => scope.setMode('spectrum')) },
+    { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
+    ...(themeChoice() ? [{ kind: 'command' as const, label: 'Theme: follow the system', keywords: 'theme dark light mode auto os appearance', run: () => setTheme(null) }] : []),
+    { kind: 'command', label: 'Open the demo patch', keywords: 'demo example song listen play showcase', run: () => openDemo() },
     { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
     { kind: 'command', label: 'Tidy up the canvas', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
     { kind: 'command', label: 'Cable slack: none', keywords: 'slack sag tight straight', run: inPatch(() => setSlack(0)) },
@@ -671,6 +689,9 @@ $('add-assembly-btn').onclick = () => openPalette('assembly');
 $('tidy-btn').onclick = () => editor.tidyUp();
 $('fit-btn').onclick = () => editor.zoomToFit();
 $('tour-btn').onclick = () => { switchTab('patch'); tutorial.open(); };
+/** the demo patch, with the audio started (the click is the gesture the browser wants) */
+const openDemo = (): void => { loadNamed(demoPatch()); closeSidebar(); void startAudio(); };
+$('demo-btn').onclick = openDemo;
 $('mobile-commands').onclick = () => openPalette();
 $('palette-close').onclick = () => palette.close();
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.onclick = () => prefill(button.dataset.query!);
@@ -1027,7 +1048,12 @@ const syncAudioBtn = (): void => {
 host.onState = () => { syncAudioBtn(); screens.state(); envs.state(); };
 syncAudioBtn();
 audioBtn.onclick = () => (host.running && !host.muted ? panic() : void startAudio());
-const noteKeys = attachKeyboard(sink, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => piano.setOctave(o));
+const noteKeys = attachKeyboard(sink, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
+  keyOctave = o;
+  piano.setOctave(o);
+  if (stampOctave(editor.patch)) queueSave(editor.patch);
+});
+noteKeys.set(editor.patch.octave ?? 0);
 // Web MIDI is only asked for on request: while a page holds MIDI access, Chromium's ALSA backend tracks every MIDI port on the
 // system and aborts the whole browser (SIGILL in midi::MidiManager::SetInputPortState) when the ports change, for example when
 // the FM-1 re-enumerates after a reset or a firmware update.
@@ -1136,6 +1162,20 @@ const setSidebarCollapsed = (on: boolean): void => {
   }
   editor.positionSideCables();
 };
+// the theme toggle beside the collapse button: shows the theme a click switches to
+const themeBtn = $('theme-btn');
+const showTheme = (): void => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  themeBtn.textContent = next === 'dark' ? '☾' : '☀';
+  themeBtn.title = `${next === 'dark' ? 'Dark' : 'Light'} theme`;
+  themeBtn.setAttribute('aria-label', `Switch to the ${next} theme`);
+  envs.changed(); // canvases read the colour tokens when they draw
+  screens.state();
+  editor.positionSideCables();
+};
+themeBtn.onclick = toggleTheme;
+onThemeChange(showTheme);
+showTheme();
 const toggleSidebarCollapsed = (): void => setSidebarCollapsed(!sidebar.parentElement!.classList.contains('side-collapsed'));
 collapseBtn.onclick = toggleSidebarCollapsed;
 sidebar.querySelector<HTMLElement>('.brand')!.addEventListener('click', () => {
