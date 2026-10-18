@@ -7,8 +7,8 @@
 // fm1-live lists its keys when it starts; every MIDI input plays (TRS MIDI IN; USB is not emulated).
 // The window runs fm1-emu's interpreter at 120 MHz (about 1.4x real time on an M1; the firmware needs ~12 % of
 // 240 MHz): its AArch64 JIT renders our engine wrong. M1EMU_JIT=1 uses the JIT at 240 MHz anyway.
-import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -63,11 +63,15 @@ console.log(`firmware: ${fw}`);
 mkdirSync(OUT, { recursive: true });
 if (smoke) process.exit(run('sh', [join(ROOT, 'tools/emu_smoke.sh'), fw]));
 
-if (run('cargo', ['build', '--release', '--quiet', '--manifest-path', join(EMU, 'Cargo.toml')]) !== 0) process.exit(1);
+// fm1-emu's decoder misses long forward test-and-branch jumps; tools/emu/isa_fix.sh patches its fm1-isa crate
+const isa = execFileSync(join(ROOT, 'tools/emu/isa_fix.sh'), { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
+if (run('cargo', ['build', '--release', '--quiet', '--manifest-path', join(EMU, 'Cargo.toml'), '--config', isa]) !== 0) process.exit(1);
 const live = join(EMU, 'live/bin', process.platform === 'win32' ? 'fm1-live.exe' : 'fm1-live');
-if (!existsSync(live)) {
+const liveFixed = join(EMU, 'live/.isa-fixed'); // (an fm1-live from before the decoder fix is rebuilt)
+if (!existsSync(live) || !existsSync(liveFixed)) {
   console.log('building fm1-live (once)...');
-  if (run('cargo', ['install', '--git', FM1_EMU, '--rev', REV, '--locked', '--root', join(EMU, 'live'), 'fm1-live']) !== 0) process.exit(1);
+  if (run('cargo', ['install', '--git', FM1_EMU, '--rev', REV, '--config', isa, '--force', '--root', join(EMU, 'live'), 'fm1-live']) !== 0) process.exit(1);
+  writeFileSync(liveFixed, '');
 }
 const xip = join(OUT, 'xip.bin');
 if (run(join(EMU, 'target/release/m1emu'), ['xip', fw, xip]) !== 0) process.exit(1);

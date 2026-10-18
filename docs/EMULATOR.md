@@ -4,7 +4,14 @@
 pi32v2 cores, timers, interrupts, SPI flash, the 240×240 LCD, the key matrix and encoders, the MASTER pot, the I2S
 audio and the TRS MIDI input. Our `modular-1.bin` runs on it unchanged. `tools/emu/` is a small Rust crate (`m1emu`)
 on fm1-emu's `fm1-core` / `fm1-soc`, pinned to commit `7ca5b96` in `tools/emu/Cargo.toml` (a git dependency, nothing
-of fm1-emu is copied into this repository).
+of fm1-emu is copied into this repository). One fix is applied to it at build time: `tools/emu/isa_fix.sh` copies
+fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa`, widens one decoder entry and hands
+cargo a `patch` through `--config` (`emu_smoke.sh` and `npm run emu` do this, also for fm1-live). The entry: the
+forward `if ((R & #h) == #i) goto #i` (6 bytes, `..ff60`) had a 13-bit offset field (bits 32..44, learned from
+samples with short jumps) while its `!=` sibling has 15 (bits 32..46). A JieLi build that jumps 8 KB or more forward
+with it stopped the emulator at boot with UnknownInstruction (every build from the cpu-opt work on, 2026-10-18: pc
+0x020043d4, a jump of 18076 bytes). The real chip runs it: the toolchain emits it. The firmware CI keeps the ELF and
+its disassembly (artifact `modular-1-elf`) for tracing such faults to a function.
 
 **Run it locally before any device work.** It is not part of CI (the user's call: too expensive on Actions).
 

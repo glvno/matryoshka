@@ -10,7 +10,8 @@ cd "$(dirname "$0")/.."
 BIN="${1:-build/modular-1.bin}"
 mkdir -p build/emu
 (cd web && npx vite-node scripts/emu-levels.ts && npx vite-node scripts/emu-patches.ts)
-cargo build --release --quiet --manifest-path tools/emu/Cargo.toml
+ISA="$(tools/emu/isa_fix.sh)"   # fm1-emu decoder fix (tools/emu/isa_fix.sh)
+cargo build --release --quiet --manifest-path tools/emu/Cargo.toml --config "$ISA"
 OUT="build/emu/smoke"
 rm -rf "$OUT"
 exec tools/emu/target/release/m1emu smoke "$BIN" --levels build/emu/levels.txt --out "$OUT" \
