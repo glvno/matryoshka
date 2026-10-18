@@ -7,6 +7,7 @@ import REVIEW from './ai-review.json';
 import { formatDay, formatHours, formatUsd, isAiStats, modelName, modelShares, totalCost, type AiReview, type AiStats } from './ai-stats';
 import { isCoverageStats, type CoverageStats } from './coverage';
 import { version } from '../package.json';
+import { inlineWordmarks, logoHtml } from './brand';
 
 const KOFI = 'glvno';
 /** the button is as tall as the wordmark (30 px; style.css lines its top up with the wordmark's) */
@@ -161,7 +162,7 @@ export class AboutCard {
         <form method="dialog"><button class="help-close" aria-label="Close">×</button></form></div>
       <div class="about-body">
         <div class="about-main">
-          <div class="about-brand-row"><img src="./brand/matryoshka.png" width="56" height="56" alt="" />
+          <div class="about-brand-row">${logoHtml()}
             <div><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" />
             <p class="muted">A patchable modular synth for the M-VAVE FM-1, with a browser editor.</p></div></div>
           ${passage(COPY.intro, 'Your words for supporters go here')}
@@ -172,6 +173,7 @@ export class AboutCard {
         </div>
         <div id="about-kofi" class="about-kofi" aria-label="Support on Ko-fi"></div>
       </div>`;
+    void inlineWordmarks(this.dialog);
     this.renderUsage();
   }
 

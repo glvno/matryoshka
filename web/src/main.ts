@@ -33,6 +33,7 @@ import { starterPatch } from './starter';
 import { Tutorial } from './tutorial/tutorial';
 import { synthLink } from './tutorial/link';
 import { PRESETS } from './presets';
+import { inlineWordmarks } from './brand';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
 import { deviceBudget } from './patchbin';
 import { ALLOC, deviceView } from './poly';
@@ -390,6 +391,7 @@ const fillPicker = (): void => {
 };
 fillPicker();
 onSavedChange(fillPicker);
+void inlineWordmarks(); // the sidebar's wordmark in the theme's colours
 presetSel.onchange = () => {
   const o = openableByValue(presetSel.value);
   if (o) { editor.setPatch(o.load()); closeSidebar(); }

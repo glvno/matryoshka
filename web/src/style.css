@@ -90,7 +90,21 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 syste
 .sidebar > * { flex-shrink: 0; }
 .sidebar > .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: calc(80px + 6px + 38px); flex-shrink: 1; } /* never below the 80 px logo + gap + the wordmark (38 px at the sidebar's width): below that they ran into the tabs */
 .brand img { width: 100%; height: auto; min-width: 0; object-fit: contain; }
-.brand > img { flex: 0 1 auto; min-height: 80px; }
+.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 80px; }
+/* the logo: colour masks (brand.ts, scripts/logo-layers.ts) filled with the theme's button colours, so it follows the theme
+   switch; cream, rim and the dark line work are the art's own */
+.logo { position: relative; display: block; aspect-ratio: 1; min-width: 0; }
+.logo i { position: absolute; inset: 0; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.logo .l-coral { -webkit-mask-image: url('/brand/layers/coral.png'); mask-image: url('/brand/layers/coral.png'); background: var(--accent); }
+.logo .l-gold { -webkit-mask-image: url('/brand/layers/gold.png'); mask-image: url('/brand/layers/gold.png'); background: var(--btn-yellow); }
+.logo .l-shade { -webkit-mask-image: url('/brand/layers/shade.png'); mask-image: url('/brand/layers/shade.png'); background: color-mix(in oklab, var(--btn-yellow) 78%, #000); }
+.logo .l-teal { -webkit-mask-image: url('/brand/layers/teal.png'); mask-image: url('/brand/layers/teal.png'); background: var(--secondary); }
+.logo .l-rim { -webkit-mask-image: url('/brand/layers/rim.png'); mask-image: url('/brand/layers/rim.png'); background: var(--ref-sand); }
+.logo .l-cream { -webkit-mask-image: url('/brand/layers/cream.png'); mask-image: url('/brand/layers/cream.png'); background: var(--ref-ivory); }
+.logo .l-ink { -webkit-mask-image: url('/brand/layers/ink.png'); mask-image: url('/brand/layers/ink.png'); background: var(--ref-ink); }
+/* the inline wordmark (brand.ts inlineWordmarks): ink and the teal M */
+svg.brand-mark .ink { fill: var(--ink); }
+svg.brand-mark .accent { fill: var(--secondary); }
 .brand h1 { flex-shrink: 0; width: 100%; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.045em; }
 #tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
@@ -151,7 +165,7 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 syste
   .side-collapsed #tabs button { padding: 8px 2px; }
   .side-collapsed .sidebar > .brand { cursor: pointer; }
   .side-collapsed .brand h1 { display: none; }
-  .side-collapsed .brand > img { width: auto; height: 44px; min-height: 0; }
+  .side-collapsed .brand > .logo { width: 44px; height: 44px; min-height: 0; flex: none; }
   .side-collapsed .side-collapse { top: 50%; transform: translateY(-50%); }
 }
 @media (max-width: 700px) { .side-collapse { display: none; } }
@@ -286,6 +300,7 @@ dialog.about .floating-chat-kofi-popup-iframe { left: auto !important; right: 16
 .about-main { min-width: 0; }
 .about-main p { margin: 0 0 8px; }
 .about-brand-row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.about-brand-row .logo { flex: none; width: 56px; height: 56px; }
 .about-brand-row .brand-mark { display: block; height: 30px; width: auto; margin-bottom: 4px; }
 .about-brand-row p { margin: 0; font-size: 12px; }
 .about-todo { padding: 6px 8px; border: 1px dashed var(--accent); border-radius: 5px; color: var(--accent); font-size: 12px; }
