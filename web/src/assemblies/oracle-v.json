@@ -388,7 +388,8 @@
       "y": 0,
       "params": {
         "time": 16,
-        "mode": 0
+        "mode": 0,
+        "voices": 0
       }
     },
     {
@@ -398,7 +399,8 @@
       "y": 560,
       "params": {
         "time": 16,
-        "mode": 0
+        "mode": 0,
+        "voices": 0
       }
     },
     {
@@ -408,7 +410,8 @@
       "y": 1120,
       "params": {
         "time": 500,
-        "mode": 0
+        "mode": 0,
+        "voices": 0
       }
     }
   ],

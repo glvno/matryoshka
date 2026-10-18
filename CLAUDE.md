@@ -569,3 +569,9 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Worklet `probe` / `view` take `voices: true` and only then send one ring per voice (`VoiceStreams`, `voiceSums` in scope-stream.ts); a Scope input gets voices only when every output cabled into it runs per voice.
 - Floating scope: Voices button `[data-scope-voices]` (`Scope.perVoice` / `setPerVoice`, localStorage `matryoshka.scope-voices`, palette command). Scope module: editor-only onScreen param `voices` (sum / each), toolbar Voices button only when a cabled source runs per voice. Thin trace per voice over the faint default trace; input b's voices dashed (not when rolling).
 - Colours `--voice1..8` (knob hues, then rose / blue; all three theme blocks), `web/src/voice-colors.ts`; the voices panel's V1..Vn rows carry a swatch.
+
+## Display spans (#55, 2026-10-18; host-tested: vitest 655; browser-checked on a temporary dev server; editor only)
+
+- `ParamRef.span` (2..16, `SPAN_MAX`) lets a display row (`pd.screen`) of a collapsed assembly card reach across its own column and the ones to its right; it belongs to the position like `col` / `head` (`keepParams`, `moveParam`, `setSpan`).
+- `spanPlan` (assembly.ts, pure) groups the covered columns: stacks above, the display, stacks below; spans in reading order, one that starts inside an earlier group or runs past the edge is cut short (from the refs alone). `edgeLayout` renders it as nested subgrids (`.egrp`, `.eseg` with `grid-column: 1 / -1`, `.ecol`); jacks stay on the outer edges, `cardWidth` unchanged.
+- Arrange: "↔ span N" (`.arr-span`) on display rows cycles 1..columns to the right. `gen-assemblies.ts` `param(..., { span })`: Oracle V's `out` scope spans the foot (mixer at the end of column 0), the drum kit's grids span both columns with the knobs in two columns under them.

@@ -58,7 +58,7 @@ both in the flasher and marked ready-for-agent:
   step. Reuse `dragSet()`, `toDef` / `insertAssembly` (they now carry Steps data) and the Duplicate code path.
 - (done 2026-10-18 as ribbon cables, see CLAUDE.md) #85 an expanded assembly's frame shows the same exposed jacks on its edges as the collapsed card (inputs left, outputs
   right, extras along the bottom), with the cables drawn to them.
-- #55 displays (scopes, envelope shapes, step grids) spanning several columns of an assembly card; #54 per-voice scope
+- (both done 2026-10-18, see CLAUDE.md) #55 displays (scopes, envelope shapes, step grids) spanning several columns of an assembly card; #54 per-voice scope
   traces of a poly assembly.
 
 ### 4. Device work that stays host + emulator only

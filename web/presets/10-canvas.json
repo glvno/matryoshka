@@ -352,7 +352,8 @@
    "y": 60,
    "params": {
     "time": 16,
-    "mode": 0
+    "mode": 0,
+    "voices": 0
    }
   },
   {
