@@ -65,4 +65,5 @@ static void m1_transport(int run);                             /* main.c: the ed
 #include "ui.c"
 #include "menu.c"
 #include "seq_ui.c"
+#include "splash.c"
 #include "main.c"

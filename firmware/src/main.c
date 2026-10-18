@@ -250,17 +250,8 @@ static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
     return 1;
 }
 
-/* The loading screen: the name, then what is being loaded and a bar, from the first LCD write until the patches are up */
-static void splash_draw(void)
-{
-    lcd_fill(0, 0, 240, 240, C_BG);
-    lcd_fill(12, 60, 216, 3, C_ACC);
-    text5x7(12, 72, "MODULAR-1", 4, C_FG, C_BG);
-    lcd_fill(12, 108, 216, 3, C_ACC);
-    text5x7(12, 122, "PATCHABLE SYNTH FOR FM-1", 1, C_DIM, C_BG);
-    text5x7(12, 136, FELUCCA_VERSION, 1, C_ACC, C_BG);
-}
-
+/* The loading screen (splash.c): the logo, then what is being loaded and a bar, from the first LCD write until the patches
+ * are up */
 #define SPLASH_MS 5000u                         /* the loading screen stays up at least this long */
 static const char BOOT_READY[] = "READY";
 static uint32_t t_splash;                       /* fm1_ms when it came up */
@@ -271,7 +262,7 @@ static void boot_step(const char *what)
 {
     static uint32_t drawn = ~0u;
     char line[32], *p;
-    uint32_t el = fm1_ms - t_splash, w = el >= SPLASH_MS ? 216u : el * 216u / SPLASH_MS;
+    uint32_t el = fm1_ms - t_splash, w = el >= SPLASH_MS ? SPLASH_BAR_W : el * SPLASH_BAR_W / SPLASH_MS;
     if (!booting)
         return;
     if (what != boot_what) {
@@ -279,12 +270,11 @@ static void boot_step(const char *what)
         p = put(line, what == BOOT_READY ? "" : "LOADING ");
         p = put(p, what);
         pad(p, line, 26);
-        text5x7(12, 176, line, 1, C_FG, C_BG);
+        splash_line(line);
     }
     if (w != drawn) {
         drawn = w;
-        lcd_fill(12, 196, w, 6, C_ACC);
-        lcd_fill(12 + w, 196, 216u - w, 6, 0x2104u);
+        splash_bar(w);
     }
 }
 
