@@ -36,6 +36,7 @@ import { PRESETS } from './presets';
 import { deviceBudget } from './patchbin';
 import { ALLOC } from './poly';
 import { AboutCard } from './about';
+import { demoPatch } from './demo';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -547,6 +548,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Scope: spectrum', keywords: 'oscilloscope frequency fft', run: inPatch(() => scope.setMode('spectrum')) },
     { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
     ...(themeChoice() ? [{ kind: 'command' as const, label: 'Theme: follow the system', keywords: 'theme dark light mode auto os appearance', run: () => setTheme(null) }] : []),
+    { kind: 'command', label: 'Open the demo patch', keywords: 'demo example song listen play showcase', run: () => openDemo() },
     { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
     { kind: 'command', label: 'Tidy up the canvas', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
     { kind: 'command', label: 'Cable slack: none', keywords: 'slack sag tight straight', run: inPatch(() => setSlack(0)) },
@@ -647,6 +649,9 @@ $('add-assembly-btn').onclick = () => openPalette('assembly');
 $('tidy-btn').onclick = () => editor.tidyUp();
 $('fit-btn').onclick = () => editor.zoomToFit();
 $('tour-btn').onclick = () => { switchTab('patch'); tutorial.open(); };
+/** the demo patch, with the audio started (the click is the gesture the browser wants) */
+const openDemo = (): void => { loadNamed(demoPatch()); closeSidebar(); void startAudio(); };
+$('demo-btn').onclick = openDemo;
 $('mobile-commands').onclick = () => openPalette();
 $('palette-close').onclick = () => palette.close();
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-query]')) button.onclick = () => prefill(button.dataset.query!);

@@ -976,6 +976,8 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
 .view-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* LEARN: the tutorial and the demo side by side */
+.learn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 /* the cable slack and zoom sliders are cards' value bars (sliderJack; main.ts sideSlider) with a small name and a thumb as tall
    as the bar. Their thumbs are jacks (the easter egg): a cable from any output dropped on one moves it (Patch.slackFrom / zoomFrom) */
 .side-bar > .slider-jack { --jack-size: 18px; }
