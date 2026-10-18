@@ -17,6 +17,7 @@ import { CPU } from '../src/cpu';
 import { cpuChecks } from '../src/cpu-checks';
 import { encodePatch } from '../src/patchbin';
 import { deviceView } from '../src/poly';
+import { DEVICE_COMPILE } from '../src/device-compile';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
 const NOTE = 72, BLOCKS = 24, SKIP = Number(process.env.CPU_SKIP ?? 3);
@@ -126,7 +127,10 @@ if (nodes) {
   process.exit(0);
 }
 
-const POOL = pool({ plain: `${ROOT}build/cpu/plain.elf` });
+// CPU_ELF=path counts another build of the engine (an older one: its numbers for --save / --compare); CPU_NOCOMPILE=1 sends
+// the patches without the device compile pass (what firmware before it got)
+if (process.env.CPU_NOCOMPILE) DEVICE_COMPILE.on = false;
+const POOL = pool({ plain: process.env.CPU_ELF ?? `${ROOT}build/cpu/plain.elf` });
 const before: Record<string, number> = arg('--compare') ? JSON.parse(readFileSync(arg('--compare')!, 'utf8')) : {};
 const peaks: Record<string, number> = {};
 await Promise.all(
