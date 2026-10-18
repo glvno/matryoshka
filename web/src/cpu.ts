@@ -28,6 +28,10 @@ export interface TypeCost {
   extra?: { dim: CostDim; add: number[] }[];
   /** cycles added when the pitch input moves every sample (not just from the keyboard), per unison copy */
   moving?: number;
+  /** cycles saved when the first output is not patched (nor the outputs FIRST_ALSO lists): work only it needs; more with
+   * some inputs patched (firstOffWith: the filter's second stage also works out its own coefficients while the cv moves) */
+  firstOff?: number;
+  firstOffWith?: Record<string, number>;
 }
 
 export interface CpuTable {
@@ -129,20 +133,43 @@ export function runCost(m: ModuleInst, t: TypeCost, inputs: Set<string>, outputs
   return c;
 }
 
-/** modules whose output never holds still (a periodic or noisy signal) */
-const MOVERS = new Set(['lfo', 'osc', 'noise', 'wavetable', 'string', 'grain']);
+/** modules whose output may move every sample (a noisy or audio-rate signal; a glide, an envelope or a Random walk while it
+ * moves, which can be all the time: a slow or modulated glide is, and the estimate is a worst case) */
+const MOVERS = new Set(['osc', 'noise', 'wavetable', 'string', 'grain', 'glide', 'adsr', 'env', 'random']);
 
-/** does a signal from module `id` keep moving: a mover feeds it, through any chain of modules */
-function keepsMoving(p: Patch, id: number, seen = new Set<number>()): boolean {
-  if (seen.has(id)) return false;
+/** outputs that need the same work as the first output (TypeCost.firstOff): the filter's mix is made from its lp24 */
+const FIRST_ALSO: Record<string, string[]> = { filter: ['mix'] };
+
+/** the most a signal from module `id` changes per sample, in Q16 steps (Infinity: it may change every sample by any
+ * amount): an LFO by its slope (rate x depth; sample & hold steps a few times a second), a Scale by its input's times its
+ * gain, a Constant and the Main module per block; anything else as fast as the fastest thing feeding it */
+function slope(p: Patch, id: number, seen = new Set<number>()): number {
+  if (seen.has(id)) return 0;
   seen.add(id);
-  if (MOVERS.has(p.modules.find((m) => m.id === id)?.type ?? '')) return true;
-  return p.cables.some((c) => c.to.module === id && keepsMoving(p, c.from.module, seen));
+  const m = p.modules.find((x) => x.id === id);
+  if (!m) return 0;
+  if (MOVERS.has(m.type)) return Infinity;
+  if (m.type === 'lfo') {
+    const wave = Math.round(m.params.wave ?? 0);
+    const ins = p.cables.filter((c) => c.to.module === id);
+    const clocked = ins.some((c) => c.to.port === 'clk' || c.to.port === 'reset');
+    if (wave === 4 && !clocked) return 0;                                            // sample & hold: a step per cycle, whatever its rate
+    if (ins.length || wave === 2 || wave === 3) return Infinity;                    // modulated (a knob may turn the rate up), or a saw / square edge
+    return (4 * (m.params.rate ?? 4) * Math.abs(m.params.depth ?? 1) * 65536) / 44118; // a triangle's slope (a sine's is lower)
+  }
+  if (m.type === 'const' || m.type === 'fm1' || m.type === 'part') return 0;
+  const inputs = p.cables.filter((c) => c.to.module === id).map((c) => slope(p, c.from.module, seen));
+  const fastest = inputs.length ? Math.max(...inputs) : 0;
+  if (m.type === 'scale' && Number.isFinite(fastest)) return fastest * Math.abs(m.params.gain ?? 1);
+  return fastest;
 }
+
+/** does a signal from module `id` change about every sample (the oscillator works out its increments only when the pitch moves)? */
+const keepsMoving = (p: Patch, id: number): boolean => slope(p, id) >= 0.5;
 
 export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
   // counted on what the FM-1 runs (poly.ts deviceView): an allocator is a Part in each group it drives
-  const { patch: p, groups } = deviceView(source);
+  const { patch: p, groups } = deviceView(source, true);
   const copies = new Map<number, number>();
   const groupOf = new Map<number, number>();
   groups.forEach((g, i) => g.modules.forEach((id) => (groupOf.set(id, i), copies.set(id, g.cfg.parts))));
@@ -185,6 +212,8 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
       for (const [name, v] of Object.entries(m.paramsB ?? {})) if (v !== m.params[name]) moved.add(name);
     }
     one += m.bypass ? table.bypass * outputs.size : runCost(m, t, inputs, outputs, moved, table.note);
+    if (t.firstOff && !m.bypass && !outputs.has(def.outputs[0].name) && !(FIRST_ALSO[m.type] ?? []).some((o) => outputs.has(o)))
+      one -= t.firstOff + Math.max(0, ...Object.entries(t.firstOffWith ?? {}).filter(([i]) => inputs.has(i)).map(([, v]) => v));
     // a pitch input that keeps moving: something that never holds still reaches it (an envelope or a glide only moves for a moment)
     if (t.moving && !m.bypass && p.cables.some((c) => c.to.module === m.id && c.to.port === 'pitch' && keepsMoving(p, c.from.module)))
       one += t.moving * (m.type === 'osc' ? Math.max(Math.round(m.params.unison ?? 1), STACKS[Math.round(m.params.stack ?? 0)]?.length ?? 1) : 1);

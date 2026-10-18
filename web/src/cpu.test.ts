@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { CPU, cpuEstimate } from './cpu';
-import { BUSY_TYPES, cpuChecks } from './cpu-checks';
+import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { EDITOR_ONLY } from './patch';
 import { PRESETS } from './presets';
@@ -17,14 +17,15 @@ describe('CPU estimate', () => {
     expect(CPU.checks.map((c) => c.name)).toEqual(checks.map((c) => c.name));
   });
 
-  // the model against the emulator's count of the whole patch: never more than 5 % low; at most 15 % high, except where a
-  // module's cost depends on what it is fed (the table takes the worst case there)
+  // the model against the emulator's count of the whole patch (its peak block, the note-on included): never more than 5 % low;
+  // at most 15 % high, except where a module's cost depends on what it is fed or how fast a modulation moves (looseModel:
+  // the table takes the worst case there)
   for (const { name, patch } of checks)
     it(`matches the counted engine: ${name}`, () => {
       const counted = CPU.checks.find((c) => c.name === name)!.cycles;
       const est = cpuEstimate(patch).cycles;
       expect(est).toBeGreaterThan(0.95 * counted);
-      if (!patch.modules.some((m) => BUSY_TYPES.has(m.type))) expect(est).toBeLessThan(1.15 * counted);
+      if (!looseModel(patch)) expect(est).toBeLessThan(1.15 * counted);
     });
 
   it('counts every part of a poly assembly', () => {

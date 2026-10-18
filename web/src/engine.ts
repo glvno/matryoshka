@@ -105,6 +105,7 @@ export class Engine {
   private stamp = 0;
   /** the patch as loaded (an allocator's setting changes the groups: setParam reloads it) */
   private src: Patch | null = null;
+  private compiled = false;
   private ticks = 0;
   private clockOn = true;
   /** the performance controls (pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1): one set, every part sees it */
@@ -146,9 +147,11 @@ export class Engine {
   }
 
   /** Install a patch. Modules whose id, type and copy count are unchanged keep their running state; so do poly groups. */
-  load(source: Patch): void {
+  /** `compile`: run the device compile pass first (device-compile.ts: what the FM-1 runs; the editor keeps every module running, unplugged ones show their live values too) */
+  load(source: Patch, compile = false): void {
     this.src = source;
-    const { patch, groups: pg } = deviceView(source);
+    this.compiled = compile;
+    const { patch, groups: pg } = deviceView(source, compile);
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
     this.groups = pg.map((x, i) => {
       const g = oldGroups.get(x.key) ?? newGroup(x.key, x.cfg, i);
@@ -298,7 +301,7 @@ export class Engine {
     if (m?.type === ALLOC) {
       // the voice count, assign, legato, priority, unison: the groups change, the patch loads again (running modules keep their state)
       m.params[name] = value;
-      this.load(this.src!);
+      this.load(this.src!, this.compiled);
       return;
     }
     const n = this.nodes.get(id);

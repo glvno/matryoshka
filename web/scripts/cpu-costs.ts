@@ -28,7 +28,7 @@ const NOTE = 72; // C5
 const BLOCK_US = 2901; // 128 frames at 44118 Hz (DEVICE_SR)
 const OLD_PEAK = 0.12; // 303 Acid on M1-0.2: 11 % typical, 12 % peak of the half buffer (ISR time incl. key scan and USB)
 const BLOCKS = 24;
-const SKIP = 3; // blocks before the maximum is taken (the first notes, envelopes starting)
+const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)
 
 const ON = (n: number): number => (1 << 16) | n;
 const RENDER = 3 << 16;
@@ -60,6 +60,8 @@ interface KitCfg {
   params?: Record<string, number>;
   inputs?: string[];
   outputs?: string[];
+  /** the output that goes to the Output module (default: the first one) */
+  primary?: string;
   /** what feeds the inputs: an oscillator (edges every few samples) or the Main gate (high for whole blocks) */
   feed?: 'osc' | 'gate';
   /** an LFO adds to the pitch input: it moves every sample (the oscillator works out its increments only when the pitch moves) */
@@ -85,7 +87,7 @@ function kit(type: string, cfg: KitCfg = {}): { p: Patch; m: ModuleInst } {
       connect(p, DEFS, { module: src.id, port: 'out' }, { module: m.id, port: name });
     }
   }
-  if (m !== out && def.outputs.length) connect(p, DEFS, { module: m.id, port: def.outputs[0].name }, { module: out.id, port: 'l' });
+  if (m !== out && def.outputs.length) connect(p, DEFS, { module: m.id, port: cfg.primary ?? def.outputs[0].name }, { module: out.id, port: 'l' });
   for (const name of cfg.outputs ?? []) connect(p, DEFS, { module: m.id, port: name }, { module: out.id, port: 'r' });
   return { p, m };
 }
@@ -215,6 +217,23 @@ async function typeCost(type: string): Promise<TypeCost> {
     const moving = Math.round((await measure(type, { moving: true })).run - base.run);
     if (moving > thr) out.moving = moving;
   }
+  // work only the first output needs (the filter's second stage feeds lp24 and mix): saved when the module is heard through
+  // its second output instead (cpu.ts FIRST_ALSO lists outputs that need the same work)
+  if (def.outputs.length > 1 && type !== 'fm1') {
+    const second = def.outputs[1].name;
+    const off = Math.round(base.run - (await measure(type, { primary: second })).run);
+    if (off > thr) {
+      out.firstOff = off;
+      const withIn: Record<string, number> = {};
+      await Promise.all(
+        allInputs.map(async (name) => {
+          const more = Math.round((await measure(type, { inputs: [name] })).run - (await measure(type, { inputs: [name], primary: second })).run) - off;
+          if (more > thr) withIn[name] = more;
+        }),
+      );
+      if (Object.keys(withIn).length) out.firstOffWith = withIn;
+    }
+  }
   if (dims.length) {
     out.dims = dims.map((d) => d.dim);
     const cells: KitCfg[] = [];
@@ -303,11 +322,13 @@ async function loopCosts(types: Record<string, TypeCost>): Promise<{ block: numb
   const total = async (p: Patch): Promise<number> => peak((await run(ELF.plain, p)).totals);
   const base = newPatch(DEFS, 'cpu loop');
   const many = structuredClone(base);
-  for (let i = 0; i < 10; i++) addModule(many, DEFS.const, 0, 100 * i);
+  const sink = many.modules.find((m) => m.type === 'output')!;
+  // heard (into the Output), or the compile pass drops them (device-compile.ts); the Output's input sum is taken off again
+  for (let i = 0; i < 10; i++) connect(many, DEFS, { module: addModule(many, DEFS.const, 0, 100 * i).id, port: 'out' }, { module: sink.id, port: 'l' });
   const two = structuredClone(base);
   addModule(two, DEFS.output, 0, 300);
-  const [t0, t10, t2] = await Promise.all([total(base), total(many), total(two)]);
-  const node = (t10 - t0 - 10 * own('const')) / 10;
+  const [t0, t10, t2, summed] = await Promise.all([total(base), total(many), total(two), run(ELF.prof, many).then((r) => stages(r, many.modules.indexOf(sink)).sum)]);
+  const node = (t10 - summed - t0 - 10 * own('const')) / 10;
   const output = t2 - t0 - node - own('output');
   const block = t0 - 2 * node - output - own('fm1') - own('output');
   return { block: Math.round(block), node: Math.round(node), output: Math.round(output) };
@@ -358,7 +379,8 @@ const table: CpuTable = {
 
 // whole patches: the plain engine's peak against the model
 const checks = cpuChecks(NOTE).map(({ name, patch, notes }): [string, Patch, number[]] => [name, patch, notes]);
-const totals = await Promise.all(checks.map(([, p, notes]) => run(ELF.plain, p, notes).then((r) => peak(r.totals))));
+// a check's peak includes the note-on block: envelopes and glides moving there are what the FM-1 must keep up with
+const totals = await Promise.all(checks.map(([, p, notes]) => run(ELF.plain, p, notes).then((r) => Math.max(...r.totals))));
 let worst = 0;
 checks.forEach(([name, p], i) => {
   const cycles = totals[i];

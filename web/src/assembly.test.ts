@@ -242,8 +242,13 @@ describe('assemblies', () => {
   it('inserts past the FM-1 module limit (the budget meter counts it, the editor does not stop)', () => {
     const def = FACTORY.find((d) => d.name === 'voice')!;
     const p = emptyPatch();
-    for (let i = 0; i < 7; i++) insertAssembly(p, DEFS, def, 0, 0);
-    expect(p.modules).toHaveLength(35);
+    const out = addModule(p, DEFS.output, 0, 0);
+    for (let i = 0; i < 7; i++) {
+      const a = insertAssembly(p, DEFS, def, 0, 0);
+      const o = a.outputs.find((r) => r.label === 'out')!;
+      connect(p, DEFS, { module: o.module, port: o.port }, { module: out.id, port: 'l' }); // wired: unwired modules are never sent (device-compile.ts)
+    }
+    expect(p.modules).toHaveLength(36);
     expect(deviceBudget(p).over.map((i) => i.key)).toContain('modules');
   });
 

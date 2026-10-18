@@ -19,7 +19,7 @@ import { encodePatch } from '../src/patchbin';
 import { deviceView } from '../src/poly';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
-const NOTE = 72, BLOCKS = 24, SKIP = 3;
+const NOTE = 72, BLOCKS = 24, SKIP = Number(process.env.CPU_SKIP ?? 3);
 const ON = (n: number): number => (1 << 16) | n;
 const events = (notes: number[]): number[] => [...notes.map(ON), ...Array(BLOCKS).fill(3 << 16)];
 const arg = (k: string): string | undefined => {

@@ -12,6 +12,7 @@
 // group it drives (each group allocates the same notes the same way). migrateParts converts patches from before
 // allocators (a Part module inside each poly assembly, the voice settings on the assembly); migrateVoicing the ones from
 // before poly assemblies (Patch.voices, the Main module's voicing, the oscillator's drift).
+import { compileDevice } from './device-compile';
 import {
   allModules,
   assembliesOf,
@@ -127,7 +128,7 @@ export interface DeviceGroup {
  * left out). Group order: the poly assemblies in
  * overlay order, then the allocators' own groups.
  */
-export function deviceView(source: Patch): { patch: Patch; groups: DeviceGroup[] } {
+export function deviceView(source: Patch, compile = false): { patch: Patch; groups: DeviceGroup[] } {
   // editor-only modules (the Scope) and their cables are not part of the sound
   const shown = new Set(source.modules.filter((m) => EDITOR_ONLY.has(m.type)).map((m) => m.id));
   const p = shown.size ? { ...source, modules: source.modules.filter((m) => !shown.has(m.id)), cables: source.cables.filter((c) => !shown.has(c.from.module) && !shown.has(c.to.module)) } : source;
@@ -167,7 +168,8 @@ export function deviceView(source: Patch): { patch: Patch; groups: DeviceGroup[]
       return { from: { module: g === undefined ? spare : parts.get(g)!, port: c.from.port }, to: c.to };
     });
   }
-  return { patch: { ...p, modules, cables, assemblies: undefined }, groups: out };
+  const view = { patch: { ...p, modules, cables, assemblies: undefined }, groups: out };
+  return compile ? compileDevice(view.patch, view.groups) : view;
 }
 
 /** the poly assembly above `a` (not `a` itself), if any */

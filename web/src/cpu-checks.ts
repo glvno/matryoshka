@@ -4,7 +4,7 @@
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { DEFS } from './modules';
-import { newPatch, type Patch } from './patch';
+import { connect, newPatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
 import { PRESETS } from './presets';
 import { withParts } from './test-poly';
@@ -18,7 +18,15 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
   out.push({ name: '303 Acid, morph', patch: morph, notes: [note] });
   for (const def of FACTORY) {                     // those the FM-1 can load (a CPU estimate over 100 % is checked too)
     const patch = newPatch(DEFS, def.name);
-    insertAssembly(patch, DEFS, def, 300, 0);
+    const a = insertAssembly(patch, DEFS, def, 300, 0);
+    const sink = patch.modules.find((m) => m.type === 'output')!;
+    for (const o of a.outputs) connect(patch, DEFS, { module: o.module, port: o.port }, { module: sink.id, port: 'l' });   // heard, so the FM-1 runs it (device-compile.ts drops what is not)
+    // played: the keys into a Voice allocator, the Main pitch / gate / velocity into inputs of those names
+    const main = patch.modules[0].id;
+    for (const i of a.inputs) {
+      const from = i.port === 'keys' ? 'keys' : (['pitch', 'gate', 'vel'] as const).find((k) => i.port === k || i.label === k);
+      if (from) connect(patch, DEFS, { module: main, port: from }, { module: i.module, port: i.port });
+    }
     if (deviceBudget(patch).over.every((i) => i.key === 'cpu')) out.push({ name: `assembly ${def.name}`, patch, notes: chord });
   }
   return out;
@@ -26,3 +34,13 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
 
 /** modules whose cost depends on what they are fed (grains alive, a compressor working): the table holds their worst case */
 export const BUSY_TYPES = new Set(['grain', 'dyn']);
+
+/** checks the model may overestimate by more than usual: a busy module (above), or a filter whose cutoff an LFO moves (the
+ * model charges a cutoff that moves every sample; a slow LFO changes the Q16 value only every few samples, and the filter
+ * works out its coefficients only then) */
+export function looseModel(p: Patch): boolean {
+  if (p.modules.some((m) => BUSY_TYPES.has(m.type))) return true;
+  // an LFO whose rate a knob or another signal sets: the model charges it at its fastest (a pitch it moves every sample)
+  if (p.modules.some((m) => m.type === 'lfo' && Math.round(m.params.wave ?? 0) !== 4 && p.cables.some((c) => c.to.module === m.id))) return true;
+  return p.cables.some((c) => c.to.port === 'cv' && p.modules.find((m) => m.id === c.to.module)?.type === 'filter' && p.modules.find((m) => m.id === c.from.module)?.type === 'lfo');
+}
