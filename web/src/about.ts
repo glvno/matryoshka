@@ -1,4 +1,4 @@
-// The About & support card: the owner's words, the AI usage figures (ai-stats.ts), the credits, and Ko-fi's floating button.
+// The About & support card: the owner's words, the Slop Disclosure figures (ai-stats.ts), the credits, and Ko-fi's floating button.
 // Ko-fi's overlay script is loaded the first time the card opens (nothing from Ko-fi before that) and draws its button into the
 // card: the dialog has a transform, so the script's position: fixed button and popup sit in the card's corner, not the window's.
 import COPY from './about-copy.json';
@@ -40,24 +40,17 @@ const link = (href: string, text: string): string => `<a href="${href}" target="
 const passage = (text: string, where: string): string =>
   text ? text.split(/\n{2,}/).map((p) => `<p>${esc(p)}</p>`).join('') : import.meta.env.DEV ? `<p class="about-todo">${where} (src/about-copy.json)</p>` : '';
 
-function figure(label: string, value: string, sub: string, def: string): string {
-  return `<div class="ai-fig"><span class="ai-label">${label}</span><span class="ai-value">${value}</span><span class="ai-sub">${sub}</span><span class="ai-def">${def}</span></div>`;
+function figure(label: string, value: string, caption: string): string {
+  return `<div class="ai-fig"><span class="ai-label">${label}</span><span class="ai-value">${value}</span><span class="ai-sub">${caption}</span></div>`;
 }
 
+/** Blood (time), Sweat (human review), Tears (AI spend: WakaTime's estimate at API prices, not a bill) */
 function figures(stats: AiStats | null, review: AiReview): string {
-  const time = stats
-    ? figure('Time', formatHours(stats.seconds), stats.since ? `since ${formatDay(stats.since)}` : 'nothing tracked yet',
-      'Every minute WakaTime tracked on the project: writing, prompting the AI, reviewing, debugging, reading.')
-    : figure('Time', '—', 'not fetched yet', 'Every minute WakaTime tracked on the project.');
-  const spend = stats
-    ? figure('AI spend', formatUsd(totalCost(stats)), 'API-equivalent estimate',
-      'What the AI\'s tokens would cost at API prices, as WakaTime estimates it. It is not a bill.')
-    : figure('AI spend', '—', 'not fetched yet', 'What the AI\'s tokens would cost at API prices, as WakaTime estimates it.');
-  const rev = review.percent !== null
-    ? figure('Human review', `${Math.round(review.percent)} %`, review.sessions !== null ? `${review.sessions} review sessions` : '',
-      `WakaTime's dashboard figure for how much of the AI's work got a human review session, copied by hand${review.asOf ? ` on ${formatDay(review.asOf)}` : ''} (it is not in their API).`)
-    : figure('Human review', '—', 'not copied yet', 'WakaTime\'s dashboard figure for how much of the AI\'s work got a human review session.');
-  return `<div class="ai-figs">${time}${spend}${rev}</div>`;
+  const blood = figure('Blood', stats ? formatHours(stats.seconds) : '—', 'human-in-the-loop time');
+  const sweat = figure('Sweat', review.percent !== null ? `${Math.round(review.percent)} %` : '—',
+    review.sessions !== null ? `${review.sessions} human review sessions` : 'human review sessions');
+  const tears = figure('Tears', stats ? formatUsd(totalCost(stats)) : '—', 'AI spend');
+  return `<div class="ai-figs">${blood}${sweat}${tears}</div>`;
 }
 
 function models(stats: AiStats | null): string {
@@ -72,7 +65,7 @@ function models(stats: AiStats | null): string {
 
 function source(stats: AiStats | null): string {
   if (!stats) return '<p class="ai-source">The figures appear after the next deploy fetches them from WakaTime.</p>';
-  return `<p class="ai-source">WakaTime projects ${stats.projects.map((p) => `<code>${esc(p)}</code>`).join(' + ')} · as of ${formatDay(stats.asOf)}</p>`;
+  return `<p class="ai-source">Source: WakaTime API as of ${formatDay(stats.asOf)}</p>`;
 }
 
 function credits(): string {
@@ -151,7 +144,7 @@ export class AboutCard {
             <div><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" />
             <p class="muted">A patchable modular synth for the M-VAVE FM-1, with a browser editor.</p></div></div>
           ${passage(COPY.intro, 'Your words for supporters go here')}
-          <section class="hsec ai-usage"><h3>AI usage</h3><div class="ai-live"></div>
+          <section class="hsec ai-usage"><h3>Slop Disclosure</h3><div class="ai-live"></div>
             ${passage(COPY.howMade, 'Your “How it’s made” paragraph goes here')}</section>
           ${credits()}
         </div>

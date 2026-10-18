@@ -93,7 +93,7 @@ export function isAiStats(x: unknown): x is AiStats {
   return !!s && typeof s.asOf === 'string' && typeof s.seconds === 'number' && Array.isArray(s.projects) && !!s.costs && typeof s.costs === 'object';
 }
 
-/** "Claude Opus 5.5" from "claude-opus-5-5", "GPT 5.5 Codex" from "gpt-5.5-codex" */
+/** the model key's names: "Opus 5.5" from "claude-opus-5-5" (the Claude prefix dropped), "GPT Astra" from "gpt-astra" */
 export function modelName(id: string): string {
   const words: string[] = [];
   for (const w of id.split(/[-_ ]+/).filter(Boolean)) {
@@ -101,5 +101,6 @@ export function modelName(id: string): string {
     if (/^\d+$/.test(w) && last !== undefined && /^\d+(\.\d+)*$/.test(last)) words[words.length - 1] = `${last}.${w}`;
     else words.push(/^(gpt|ai)$/i.test(w) ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1));
   }
+  if (words.length > 1 && words[0] === 'Claude') words.shift();
   return words.join(' ');
 }

@@ -44,7 +44,9 @@ describe('AI usage figures', () => {
 
 describe('model names', () => {
   it('reads WakaTime model ids', () => {
-    expect(modelName('claude-opus-5-5')).toBe('Claude Opus 5.5');
+    expect(modelName('claude-opus-5-5')).toBe('Opus 5.5');
+    expect(modelName('claude-fable-5-1')).toBe('Fable 5.1');
+    expect(modelName('gpt-astra')).toBe('GPT Astra');
     expect(modelName('gpt-5.5-codex')).toBe('GPT 5.5 Codex');
     expect(modelName('other')).toBe('Other');
   });

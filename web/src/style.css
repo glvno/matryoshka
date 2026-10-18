@@ -254,7 +254,7 @@ dialog.help { width: 760px; max-width: calc(100% - 24px); max-height: calc(100dv
   border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 48px var(--backdrop); font: 500 13px/1.35 'Barlow', system-ui, sans-serif; }
 dialog.help[open] { display: flex; flex-direction: column; }
 dialog.help::backdrop { background: var(--backdrop); }
-/* the About & support card (about.ts): the help dialog's frame, one column (the owner's words, the AI usage figures, the credits);
+/* the About & support card (about.ts): the help dialog's frame, one column (the owner's words, the Slop Disclosure figures, the credits);
    Ko-fi's floating button sits in the card's bottom left corner: the transform makes the script's position: fixed button and
    popup relative to the card, and the body leaves room at the bottom for the button */
 dialog.about { width: 680px; min-height: min(780px, calc(100dvh - 32px)); transform: translateZ(0); } /* tall enough for Ko-fi's popup */
@@ -271,12 +271,11 @@ dialog.about[open] .about-body { flex: 1; }
 .ai-label { font: var(--cap); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .ai-value { font: 600 24px/1.1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; color: var(--ink); font-variant-numeric: tabular-nums; }
 .ai-sub { font-size: 11.5px; color: var(--secondary); }
-.ai-def { margin-top: 4px; font-size: 11px; line-height: 1.3; color: var(--muted); }
 .ai-models { margin: 0 0 8px; }
 .ai-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--line); }
 .ai-models ul { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; padding: 0; list-style: none; font-size: 11.5px; }
 .ai-models li i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 2px; }
-.ai-models li b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ai-models li b { margin-left: 4px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
 .ai-source { font-size: 11px; color: var(--muted); }
 .ai-source code { font-size: 10.5px; }
 .credit { padding: 4px 0; }
