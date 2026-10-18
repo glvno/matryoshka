@@ -63,10 +63,10 @@ both in the flasher and marked ready-for-agent:
 
 ### 4. Device work that stays host + emulator only
 
-- #89 boot splash -> the Matryoshka logo (+ wordmark if it fits) in `splash_draw` (main.c): convert the art at build time
+- (done 2026-10-18, see CLAUDE.md) #89 boot splash -> the Matryoshka logo (+ wordmark if it fits) in `splash_draw` (main.c): convert the art at build time
   with a script in `tools/` (packed bitmap / palette, RGB565 LCD 240 x 240), keep the `boot_step` lines and bar, check
   pool and flash headroom in `tools/build.py`, preview with `tools/ui_preview.sh`, run the emulator smoke.
-- #73 warn on the Flash tab (and in the README) before installing over Felucca: our patch store and bank sectors lie
+- (done 2026-10-18) #73 warn on the Flash tab (and in the README) before installing over Felucca: our patch store and bank sectors lie
   inside Felucca's project / sample store.
 - #79 an identity scheme of our own (needs a decision from the user: today every build is `FM-1_800`, release builds
   take Felucca's `FM-1_9XY` space, `FM-1_8` is M-VAVE Official Open's prefix); keep `loaderFits` / `loader_fits` in step.
@@ -75,12 +75,12 @@ both in the flasher and marked ready-for-agent:
 
 ## Things the user mentioned that have no ticket yet
 
-- The 909 Kit factory patch (`web/presets/16-909-kit.json`, kept by hand) still has gated envelopes: its decays are cut
+- (done 2026-10-18) The 909 Kit factory patch (`web/presets/16-909-kit.json`, kept by hand) still has gated envelopes: its decays are cut
   by the short Steps trigs as the 808 Kit's were. Convert its drum envelopes to `shot` (and refit their decays) if the
   user wants it.
-- A Steps track's `vel` output is not cabled anywhere in the drum kit or the demo's HERA track; wiring velocity into the
+- (done 2026-10-18 for the drum kit assembly and the demo's Hera; the 808 Kit patch still has none) A Steps track's `vel` output is not cabled anywhere in the drum kit or the demo's HERA track; wiring velocity into the
   drums' levels (or Hera's VCA / filter) is open.
-- localStorage `matryoshka.patches.backup-2026-10-18` (localhost:5173) holds the user's saved patches from before the
+- (deleted 2026-10-18) localStorage `matryoshka.patches.backup-2026-10-18` (localhost:5173) holds the user's saved patches from before the
   cleanup; remove it once the user confirms the new demo is right.
 
 ## Working notes
