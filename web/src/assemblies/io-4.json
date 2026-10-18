@@ -122,7 +122,10 @@
         "assign": 0,
         "legato": 0,
         "priority": 0,
-        "unison": 0
+        "unison": 0,
+        "channel": 0,
+        "low": 0,
+        "high": 127
       }
     },
     {

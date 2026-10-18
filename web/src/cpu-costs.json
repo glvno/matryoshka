@@ -26,37 +26,37 @@
      "output": "clock"
     },
     {
-     "output": "vel"
-    },
-    {
-     "output": "k1"
-    },
-    {
-     "output": "k4"
-    },
-    {
-     "output": "k5"
-    },
-    {
      "output": "gate"
     },
     {
-     "output": "bend"
+     "output": "vel"
+    },
+    {
+     "output": "k3"
     },
     {
      "output": "k2"
     },
     {
+     "output": "k5"
+    },
+    {
+     "output": "k4"
+    },
+    {
      "output": "k6"
     },
     {
-     "output": "at"
+     "output": "k1"
     },
     {
-     "output": "mod"
+     "output": "bend"
     },
     {
      "output": "run"
+    },
+    {
+     "output": "mod"
     },
     {
      "output": "fx"
@@ -16463,34 +16463,7 @@
     },
     {
      "dim": {
-      "output": "env"
-     },
-     "add": [
-      0,
-      323
-     ]
-    },
-    {
-     "dim": {
       "output": "scl"
-     },
-     "add": [
-      0,
-      323
-     ]
-    },
-    {
-     "dim": {
-      "output": "arp"
-     },
-     "add": [
-      0,
-      323
-     ]
-    },
-    {
-     "dim": {
-      "output": "seq"
      },
      "add": [
       0,
@@ -16508,6 +16481,15 @@
     },
     {
      "dim": {
+      "output": "env"
+     },
+     "add": [
+      0,
+      323
+     ]
+    },
+    {
+     "dim": {
       "output": "rec"
      },
      "add": [
@@ -16517,7 +16499,25 @@
     },
     {
      "dim": {
-      "output": "k3"
+      "output": "arp"
+     },
+     "add": [
+      0,
+      323
+     ]
+    },
+    {
+     "dim": {
+      "output": "at"
+     },
+     "add": [
+      0,
+      323
+     ]
+    },
+    {
+     "dim": {
+      "output": "seq"
      },
      "add": [
       0,
@@ -26222,10 +26222,10 @@
      ]
     },
     {
-     "input": "reset"
+     "input": "clk"
     },
     {
-     "input": "clk"
+     "input": "reset"
     },
     {
      "param": "wave",
@@ -26296,16 +26296,6 @@
     16188,
     7228,
     7228,
-    45953,
-    45953,
-    44417,
-    44417,
-    45441,
-    45441,
-    47055,
-    47055,
-    38017,
-    38017,
     15548,
     15548,
     14012,
@@ -26316,6 +26306,16 @@
     16572,
     7612,
     7612,
+    45953,
+    45953,
+    44417,
+    44417,
+    45441,
+    45441,
+    47055,
+    47055,
+    38017,
+    38017,
     46110,
     46110,
     44574,
@@ -26561,13 +26561,13 @@
      "input": "cv"
     },
     {
-     "output": "notch"
+     "output": "ap"
     },
     {
      "output": "peak"
     },
     {
-     "output": "ap"
+     "output": "notch"
     }
    ],
    "grid": [
@@ -29392,16 +29392,16 @@
      "output": "gate"
     },
     {
-     "output": "index"
+     "output": "legato"
     },
     {
-     "output": "jump"
+     "output": "index"
     },
     {
      "output": "vel"
     },
     {
-     "output": "legato"
+     "output": "jump"
     }
    ],
    "grid": [
@@ -29455,7 +29455,7 @@
  "checks": [
   {
    "name": "Oracle V",
-   "cycles": 459771
+   "cycles": 570531
   },
   {
    "name": "Init",
@@ -29479,7 +29479,7 @@
   },
   {
    "name": "Hera 6",
-   "cycles": 385805
+   "cycles": 544925
   },
   {
    "name": "Sallen 20",
