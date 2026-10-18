@@ -18,6 +18,8 @@ From the Felucca and FM-1 reverse-engineering projects: a JieLi AC791N SoC (pi32
 
 `web/src/engine.ts` and `web/src/modules.ts` are the reference implementation: float DSP, 128-frame blocks, patch graph ordered by `processingOrder` (loops become one-block feedback). Module definitions (`ModuleDef`) are data and are shared by the editor and, later, the firmware.
 
+**Sample rate.** The FM-1's I2S runs at 44118 Hz (M-VAVE's own board code, `fm1_open` `app/board/fm1_audio.h`, `FM1_AUDIO_HARDWARE_RATE`; nominally 11.2896 MHz / 256), so `ENG_SR` (engine.h) and `DEVICE_SR` (modules.ts) are 44118 since 1.1; before that the firmware assumed 44100 and played 0.7 cent sharp with times 0.04 % short. A 128-frame half buffer is 2901 us. The golden test renders the reference at `DEVICE_SR`. The browser keeps its AudioContext's own rate (48 or 44.1 kHz): the engine works in Hz and seconds at any rate, so it already sounds as the device does; a 44118 Hz context would only add a resampler to the output. The delay and reverb lines are fixed sample counts at `DEVICE_SR` (the firmware's arrays) and scale with the rate in the browser. USB audio (usb.c) still streams 44.1 / 48 kHz to the host: its rate tracking absorbs the 18 extra frames a second.
+
 ## Firmware
 
 Builds with `tools/build.py` inside `nix develop` (see CLAUDE.md), flashes with the web flasher or `tools/fm1_install.py`.
@@ -46,7 +48,7 @@ Not done yet: the FM-1's buttons, a patch name on the device, reading a patch ba
 
 ## Measured CPU budget (benchmark firmware, `firmware/src/bench.c`)
 
-Per 128-frame block (2902 us of audio), interrupts off, 16 repetitions, 1 us resolution, run on a real FM-1:
+Per 128-frame block (2902 us of audio as counted then; 2901 us at the real 44118 Hz), interrupts off, 16 repetitions, 1 us resolution, run on a real FM-1:
 
 | kernel | us/block | instances in 70 % of a block |
 |---|---|---|
@@ -62,7 +64,7 @@ Conclusions: the core has no FPU (float links against `libcompiler-rt.a` soft fl
 
 ## Estimated CPU load (the editor's budget meter)
 
-The editor estimates how much of the 2902 us audio interrupt a patch needs (`web/src/cpu.ts`, `cpuEstimate`; the sidebar meter's CPU bar; over 100 % counts as over the FM-1 budget like a memory limit, `deviceBudget` in patchbin.ts). Nothing here was measured per module on the device: it is a model.
+The editor estimates how much of the 2901 us audio interrupt a patch needs (`web/src/cpu.ts`, `cpuEstimate`; the sidebar meter's CPU bar; over 100 % counts as over the FM-1 budget like a memory limit, `deviceBudget` in patchbin.ts). Nothing here was measured per module on the device: it is a model.
 
 - **Counting.** `tools/cpu/build.sh` builds `firmware/src/engine.c` for rv32im (clang + ld.lld, `-Os` as tools/build.py) with `tools/cpu/prof.c` as the driver; `tools/cpu/rv32.mjs` is a small RV32IM interpreter (cycles = 1 per instruction, +1 load, +2 taken branch / jump, +32 division) that reads the `ENG_PROF` hooks in `render_voice` (compiled out in the firmware) and attributes each module's input sums, parameter inputs (`apply_cv`) and processing. The FM-1's core is not RISC-V; the model only has to get the ratios right.
 - **Scale.** The M1-0.2 engine (b907693) built the same way, running its own 303 Acid with a note held, peaks at 84,600 cycles per block; that build took 12 % (peak) of the interrupt on the FM-1, so 243 cycles = 1 us. The bench kernels above (4x MAC 9 us, SVF 8 us) give 258 and 243: the two independent checks agree within ~6 %. The 12 % included the key scan and USB, so the scale errs towards a higher load.
@@ -239,7 +241,7 @@ Rules: `reconcile` keeps an assembly consistent after every structural change (d
 
 ## Reverb (FDN)
 
-- `reverb` is an eight-line feedback delay network: line lengths 331 439 547 661 773 881 991 1117 samples (primes, 7.5..25 ms at 44.1 kHz; the TS engine scales them with the sample rate), Householder feedback f_k = t_k − Σt/4 (lossless mixing, so the decay is set by the per-line gains alone), in every line a one-pole damping filter (coefficient damp × 0.8) and a gain g_k = 10^(−3 L_k / (T·sr)) so that every line loses 60 dB in T = 0.2 × 2^(5·size) s (0.2 .. 6.4 s). Input: pre-delay (0..40 ms, `pre`), two diffusion allpasses (223, 347 samples, g 0.5), × 0.125 into every line; wet = Σ raw line outputs × 0.5. Lines 0 and 1 are read with a fractional, linearly interpolated delay that swings by `mod` × 6 samples (sine at 0.5 and 0.83 Hz): the chorusing that keeps fixed lines from ringing. Measured in the test: a sustained noise of 0.5 rms gives a wet level of 0.13 (size 0) .. 0.29 (size 1); the tail of size 0.5 falls 53 dB/s. Memory: 8074 int16 samples = 16 KB per instance (`RV_LEN`; was 12 KB): the one-voice build keeps one, the four-voice build two and gives up 16 signal buffers for them (`ENG_NBUF` 108). C: Q13 lines as before, T and the gains through `exp2_q16`, the modulation through `sin_turn`; golden kit `reverb` 0.1 % rel rms (the C and TS modulators agree to a fraction of a sample over the whole tail).
+- `reverb` is an eight-line feedback delay network: line lengths 331 439 547 661 773 881 991 1117 samples (primes, 7.5..25 ms at 44118 Hz; the TS engine scales them with the sample rate), Householder feedback f_k = t_k − Σt/4 (lossless mixing, so the decay is set by the per-line gains alone), in every line a one-pole damping filter (coefficient damp × 0.8) and a gain g_k = 10^(−3 L_k / (T·sr)) so that every line loses 60 dB in T = 0.2 × 2^(5·size) s (0.2 .. 6.4 s). Input: pre-delay (0..40 ms, `pre`), two diffusion allpasses (223, 347 samples, g 0.5), × 0.125 into every line; wet = Σ raw line outputs × 0.5. Lines 0 and 1 are read with a fractional, linearly interpolated delay that swings by `mod` × 6 samples (sine at 0.5 and 0.83 Hz): the chorusing that keeps fixed lines from ringing. Measured in the test: a sustained noise of 0.5 rms gives a wet level of 0.13 (size 0) .. 0.29 (size 1); the tail of size 0.5 falls 53 dB/s. Memory: 8074 int16 samples = 16 KB per instance (`RV_LEN`; was 12 KB): the one-voice build keeps one, the four-voice build two and gives up 16 signal buffers for them (`ENG_NBUF` 108). C: Q13 lines as before, T and the gains through `exp2_q16`, the modulation through `sin_turn`; golden kit `reverb` 0.1 % rel rms (the C and TS modulators agree to a fraction of a sample over the whole tail).
 
 ## Oversampling toggle (shaper, digitizer) and sequencer glide / gate
 

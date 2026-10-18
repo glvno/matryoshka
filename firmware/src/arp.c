@@ -18,7 +18,7 @@ static const uint8_t ARP_RATE_TICKS[ARP_NRATES] = {96, 48, 24, 16, 12, 8, 6, 4, 
 #define ARP_MAX_POOL 39u                /* the longest scale (chromatic, 13 notes) x 3 octaves */
 #define ARP_VEL_DEFAULT 100u
 #define ARP_GATE_PERCENT 65u            /* the note ends at 65 % of the step */
-#define ARP_TICK_NUM 110250u            /* samples per tick = 44100 * 60 / 24 / bpm = 110250 / bpm */
+#define ARP_TICK_NUM 110295u            /* samples per tick = ENG_SR (44118) * 60 / 24 / bpm = 110295 / bpm */
 
 typedef struct {
     const char *name;

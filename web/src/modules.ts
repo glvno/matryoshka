@@ -29,6 +29,10 @@ export interface Voice {
 /** the pitch bend range: +-2 semitones on the Main module's pitch output */
 export const BEND_OCT = 2 / 12;
 
+/** the FM-1's audio rate (its I2S clock, M-VAVE fm1_open FM1_AUDIO_HARDWARE_RATE; ENG_SR in engine.h). The engine runs at
+ * any rate; the delay and reverb lines are fixed sample counts at this rate (as the firmware's) and scale with the rate. */
+export const DEVICE_SR = 44118;
+
 export interface Ctx {
   sr: number;
   n: number;
@@ -844,7 +848,7 @@ const grain: ModuleImpl<GrainState> = {
     }
     const avail = LEN - 1 - span;
     const position = c.p.position ?? 0;
-    const sprayS = Math.floor((c.p.spray ?? 0) * GRAIN_SPRAY_S * c.sr);
+    const sprayS = Math.floor((c.p.spray ?? 0) * Math.floor(GRAIN_SPRAY_S * c.sr)); // whole samples first, as the firmware's ENG_SR / 4
     const freeze = (c.p.freeze ?? 0) >= 0.5;
     const mix = c.p.mix ?? 0.5;
     const dry = 1 - mix;
@@ -1109,7 +1113,7 @@ const delay: ModuleImpl<DelayState> = {
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(Math.round((sr * 23000) / 44100)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
+  init: (sr) => ({ buf: new Float32Array(Math.round((sr * 23000) / DEVICE_SR)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
   process(c, s) {
     const len = s.buf.length;
     const half = Math.floor(len / 2);
@@ -1169,7 +1173,7 @@ const delay: ModuleImpl<DelayState> = {
 /**
  * Reverb: an eight-line feedback delay network (FDN) with a Householder feedback matrix, a one-pole damping filter and a
  * decay gain in every line, two input diffusion allpasses, a pre-delay and a slow modulation of two of the lines (a
- * chorus of the tail that breaks up the metallic ring of fixed lines). Line lengths at 44.1 kHz (primes, 7.5..25 ms):
+ * chorus of the tail that breaks up the metallic ring of fixed lines). Line lengths at DEVICE_SR (primes, 7.5..25 ms):
  * RV_LINE; the per-line gain g = 10^(-3 L / (T sr)) makes every line decay 60 dB in T = 0.2 x 2^(5 size) seconds
  * (0.2 .. 6.4 s). Input: x -> pre-delay -> two allpasses (g 0.5) -> x RV_GIN into every line; the feedback is
  * f_i = t_i - (sum of t) / 4 (Householder, lossless) with t_i = damped and decayed line output; wet = (sum of the raw
@@ -1179,7 +1183,7 @@ const delay: ModuleImpl<DelayState> = {
  */
 export const RV_LINE = [331, 439, 547, 661, 773, 881, 991, 1117];
 export const RV_DIFF = [223, 347];
-/** the pre-delay line: 40 ms at 44.1 kHz (the `pre` parameter's range) */
+/** the pre-delay line: 40 ms at DEVICE_SR (the `pre` parameter's range) */
 export const RV_PRE = 1764;
 export const RV_PRE_MS = 40;
 const RV_GIN = 0.125;
@@ -1213,7 +1217,7 @@ const reverb: ModuleImpl<ReverbState> = {
     ],
   },
   init: (sr) => {
-    const len = (n: number): number => Math.max(4, Math.round((n * sr) / 44100));
+    const len = (n: number): number => Math.max(4, Math.round((n * sr) / DEVICE_SR));
     return {
       pre: new Float32Array(len(RV_PRE)),
       pi: 0,

@@ -218,7 +218,7 @@ export class Arp {
 
   constructor(readonly sr: number, seed = 0x2545f491) {
     this.rng = seed >>> 0;
-    this.tickNum = Math.round(sr * 2.5); // samples per tick x bpm: 44100 x 60 / 24 = 110250 at 44.1 kHz
+    this.tickNum = Math.round(sr * 2.5); // samples per tick x bpm: sr x 60 / 24 = 110295 at the FM-1's 44118 Hz
   }
 
   /** new settings from the host, taken at the next block */

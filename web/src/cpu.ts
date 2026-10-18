@@ -35,7 +35,7 @@ export interface CpuTable {
   source: string;
   /** the table's unit per microsecond on the FM-1 */
   cyclesPerUs: number;
-  /** the time the audio interrupt has per block (128 frames at 44.1 kHz) */
+  /** the time the audio interrupt has per block (128 frames at 44118 Hz) */
   blockUs: number;
   /** the note the costs were counted at, through a module's pitch input (with nothing patched there a module plays C4, 60:
    * its `coarse` counts that much lower) */

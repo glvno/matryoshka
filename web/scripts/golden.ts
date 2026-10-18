@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Golden vectors for the firmware engine: for each test patch, the binary patch (.m1p), the note events (.ev) and the
-// reference output of web/src/engine.ts (.f32, float32 stereo interleaved) at 44.1 kHz, written to build/golden/.
+// reference output of web/src/engine.ts (.f32, float32 stereo interleaved) at the FM-1's rate (DEVICE_SR, 44118 Hz), written to build/golden/.
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
 import { encodePatch, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
-import { DEFS } from '../src/modules';
+import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
 import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, type Patch, type PolyCfg } from '../src/patch';
 import { makeAssembly } from '../src/assembly';
 import { withParts } from '../src/test-poly';
 
-const SR = 44100;
+const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
@@ -493,7 +493,9 @@ kit('grain', (add, wire) => {
   const adsr = add('adsr', 0, 0, { a: 0.01, d: 0.3, s: 0.5, r: 0.2 });
   const vca = add('vca', 0, 0);
   const lfo = add('lfo', 0, 0, { wave: 3, rate: 6, depth: 1 });
-  const gr = add('grain', 0, 0, { position: 0.25, size: 0.06, density: 15, pitch: 7, spray: 0.3, mix: 0.7 });
+  // size 0.0625 is exact in Q16 and keeps len x rate clear of an integer at 44118 Hz (0.06 put span on the edge: the C
+  // engine's exp2 rate is a hair lower than 2^(7/12), so the grains started one sample apart)
+  const gr = add('grain', 0, 0, { position: 0.25, size: 0.0625, density: 15, pitch: 7, spray: 0.3, mix: 0.7 });
   const out = add('output', 0, 0);
   wire(kb, 'pitch', osc, 'pitch');
   wire(kb, 'gate', adsr, 'gate');

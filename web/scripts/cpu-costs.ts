@@ -16,7 +16,7 @@ import { pool } from '../../tools/cpu/pool.mjs';
 import { cpuEstimate, type CostDim, type CpuTable, type TypeCost } from '../src/cpu';
 import { DEFS } from '../src/modules';
 import { encodePatch } from '../src/patchbin';
-import { addModule, connect, fromUnit, newPatch, type ModuleInst, type ParamDef, type Patch } from '../src/patch';
+import { addModule, connect, EDITOR_ONLY, fromUnit, newPatch, type ModuleInst, type ParamDef, type Patch } from '../src/patch';
 import { cpuChecks } from '../src/cpu-checks';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
@@ -25,7 +25,7 @@ const ELF = { prof: 'prof', plain: 'plain', old: 'old', bench: 'bench' } as cons
 const POOL = pool(Object.fromEntries(Object.keys(ELF).map((k) => [k, `${ROOT}build/cpu/${k}.elf`])));
 const NOTE = 72; // C5
 
-const BLOCK_US = 2902;
+const BLOCK_US = 2901; // 128 frames at 44118 Hz (DEVICE_SR)
 const OLD_PEAK = 0.12; // 303 Acid on M1-0.2: 11 % typical, 12 % peak of the half buffer (ISR time incl. key scan and USB)
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken (the first notes, envelopes starting)
@@ -321,7 +321,7 @@ async function calibration(): Promise<CpuTable['calibration'] & { cyclesPerUs: n
   const kernel = bench.blocks.map((b) => b.total / 16);
   return {
     cyclesPerUs: Math.round(oldPeak / (OLD_PEAK * BLOCK_US)),
-    method: '303 Acid of M1-0.2 (b907693), one note held, peak cycles per block = 12 % of 2902 us (the ISR peak measured on the FM-1)',
+    method: '303 Acid of M1-0.2 (b907693), one note held, peak cycles per block = 12 % of 2901 us (the ISR peak measured on the FM-1)',
     acidM102Cycles: oldPeak,
     benchMac4CyclesPerUs: Math.round(kernel[0] / 9),
     benchSvfCyclesPerUs: Math.round(kernel[1] / 8),
@@ -333,7 +333,7 @@ async function calibration(): Promise<CpuTable['calibration'] & { cyclesPerUs: n
 // ------------------------------------------------------------------ the table
 
 HOOK = await hookCost();
-const names = Object.keys(DEFS);
+const names = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t)); // the Scope never runs on the FM-1
 const costs = await Promise.all(names.map(typeCost));
 const types: Record<string, TypeCost> = Object.fromEntries(names.map((n, i) => [n, costs[i]]));
 for (const type of names) {

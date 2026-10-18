@@ -7,7 +7,7 @@
 #pragma once
 #include <stdint.h>
 
-#define ENG_SR 44100u
+#define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
 #define ENG_PATCH_VERSION 22   /* 22: bit 7 of a group record's legato byte = unison (written only when a group uses it) */

@@ -45,16 +45,16 @@
 #define ENG_NCHORUS 1               /* chorus lines, all voices (a shared module, like the delay) */
 #define ENG_NGRAIN 0                /* no room for a granular line next to four voices: a patch with one does not load */
 #endif
-#define GRAIN_LEN 44100u            /* GRAIN_SECONDS x ENG_SR */
+#define GRAIN_LEN 44118u            /* GRAIN_SECONDS x ENG_SR */
 #define GRAIN_MAX 8
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
 #define RV_LEN 8074u                /* the eight FDN lines (5740), two input allpasses (570) and the 40 ms pre-delay (1764), int16 Q13 */
-#define DELAY_LEN 23000u            /* 521 ms (the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
+#define DELAY_LEN 23000u            /* 521 ms at ENG_SR (the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 16
 
-#define INC_C4 25480119u            /* 261.6255653 Hz at ENG_SR, u32 phase per sample */
+#define INC_C4 25469723u            /* 261.6255653 Hz at ENG_SR, u32 phase per sample */
 #define DT_MAX 1932735283u          /* 0.45 of a cycle per sample (the reference limits osc to 0.45, cutoff to 0.45 sr) */
 #define TURN_PER_RAD 683565276u     /* 2^32 / 2 pi */
 
@@ -2561,8 +2561,8 @@ static void m_wavetable(const node_t *nd, inst_t *it, uint32_t n)
     it->s.wt.s1 = s1;
 }
 
-#define CH_BASE_Q16 34681651u       /* 0.012 * ENG_SR samples, Q16 */
-#define CH_SWING_Q16 23121101u      /* 0.008 * ENG_SR samples, Q16 */
+#define CH_BASE_Q16 34695807u       /* 0.012 * ENG_SR samples, Q16 */
+#define CH_SWING_Q16 23130538u      /* 0.008 * ENG_SR samples, Q16 */
 
 /* The stereo chorus (modules.ts chorus): a Q13 line, two taps swept in quadrature by a sine around 12 ms by up to 8 ms. */
 static void m_chorus(const node_t *nd, inst_t *it, uint32_t n)
@@ -2832,7 +2832,7 @@ static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
     }
 }
 
-#define INC_20HZ 1948006u            /* 20 Hz as a phase increment */
+#define INC_20HZ ((uint32_t)((20ull << 32) / ENG_SR))   /* 20 Hz as a phase increment */
 
 /* four first-order allpasses in series with one coefficient a = (g - 1) / (g + 1), g = tan(pi f / sr), f = center *
  * 2^(2 depth tri) from a triangle sweep, once per block; feedback from stage 4 into stage 1 */

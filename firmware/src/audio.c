@@ -2,9 +2,9 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * Modified for Modular-1 (morgulbrut). */
 /* I2S output (ALNK0 -> external codec) and the audio ISR, which renders the patch engine. Registers: hal/fm1_audio.h */
-#define HALF_FRAMES 128u          /* I2S half buffer: 2.9 ms at 44.1 kHz */
+#define HALF_FRAMES 128u          /* I2S half buffer: 2.9 ms at 44.118 kHz */
 #define HALF_WORDS (HALF_FRAMES * 2u)
-#define FS 44100u
+#define FS 44118u                 /* the I2S rate (ENG_SR) */
 
 static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
 
