@@ -254,10 +254,12 @@ dialog.help { width: 760px; max-width: calc(100% - 24px); max-height: calc(100dv
   border-radius: 8px; background: var(--panel); color: var(--ink); box-shadow: 0 12px 48px var(--backdrop); font: 500 13px/1.35 'Barlow', system-ui, sans-serif; }
 dialog.help[open] { display: flex; flex-direction: column; }
 dialog.help::backdrop { background: var(--backdrop); }
-/* the About & support card (about.ts): the help dialog's frame; left the owner's words, the AI usage figures and the credits, right
-   Ko-fi's donation panel (light, framed: it is Ko-fi's own checkout); one column on narrow screens, Ko-fi last */
-dialog.about { width: 940px; }
-.about-body { overflow: auto; display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px; padding: 12px 16px 16px; }
+/* the About & support card (about.ts): the help dialog's frame, one column (the owner's words, the AI usage figures, the credits);
+   Ko-fi's floating button sits in the card's bottom left corner: the transform makes the script's position: fixed button and
+   popup relative to the card, and the body leaves room at the bottom for the button */
+dialog.about { width: 680px; min-height: min(780px, calc(100dvh - 32px)); transform: translateZ(0); } /* tall enough for Ko-fi's popup */
+dialog.about[open] .about-body { flex: 1; }
+.about-body { overflow: auto; padding: 12px 16px 96px; }
 .about-main { min-width: 0; }
 .about-main p { margin: 0 0 8px; }
 .about-brand-row { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
@@ -281,17 +283,8 @@ dialog.about { width: 940px; }
 .credit + .credit { border-top: 1px dashed color-mix(in srgb, var(--line) 70%, transparent); }
 .credit-links { font-size: 12px; }
 .about-foot { margin-top: 6px !important; font-size: 11px; }
-/* Ko-fi's panel is a cross-origin iframe we cannot restyle: a layer over it that takes no pointer events (clicks go through to
-   Ko-fi) multiplies its white into the app's palette, so the dark text stays dark and the brightness drops; --kofi-tint per theme */
-.about-kofi { --kofi-tint: var(--ref-sand); position: relative; align-self: start; border-radius: 8px; overflow: hidden; background: #f9f9f9; border: 1px solid var(--line); min-height: 712px; }
-.about-kofi::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--kofi-tint); mix-blend-mode: multiply; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .about-kofi { --kofi-tint: color-mix(in srgb, var(--ref-mist) 62%, var(--ref-slate)); } }
-:root[data-theme="dark"] .about-kofi { --kofi-tint: color-mix(in srgb, var(--ref-mist) 62%, var(--ref-slate)); }
-.about-kofi iframe { display: block; width: 100%; border: 0; padding: 4px; background: #f9f9f9; box-sizing: border-box; }
-@media (max-width: 760px) {
-  .about-body { grid-template-columns: minmax(0, 1fr); }
-  .ai-figs { grid-template-columns: minmax(0, 1fr); }
-}
+.about-kofi > a { position: absolute; left: 16px; bottom: 24px; }
+@media (max-width: 760px) { .ai-figs { grid-template-columns: minmax(0, 1fr); } }
 /* the sidebar's About button (outlined like TIDY / FIT) and the ♥ that stands in for it in the collapsed strip */
 .sidebar #about-btn { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
 .sidebar #about-btn:hover { border-color: var(--secondary); filter: none; }

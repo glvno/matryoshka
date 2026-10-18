@@ -1,13 +1,36 @@
-// The About & support card: the owner's words, the AI usage figures (ai-stats.ts), the credits, and Ko-fi's donation panel. The
-// panel is an iframe made when the card opens and removed when it closes, so nothing from Ko-fi loads (no script, no cookies)
-// before someone opens the card.
+// The About & support card: the owner's words, the AI usage figures (ai-stats.ts), the credits, and Ko-fi's floating button.
+// Ko-fi's overlay script is loaded the first time the card opens (nothing from Ko-fi before that) and draws its button into the
+// card: the dialog has a transform, so the script's position: fixed button and popup sit in the card's corner, not the window's.
 import COPY from './about-copy.json';
 import REVIEW from './ai-review.json';
 import { formatDay, formatHours, formatUsd, isAiStats, modelName, modelShares, totalCost, type AiReview, type AiStats } from './ai-stats';
 import { version } from '../package.json';
 
 const KOFI = 'glvno';
-const KOFI_PANEL = `https://ko-fi.com/${KOFI}/?hidefeed=true&widget=true&embed=true&preview=true`;
+const KOFI_SCRIPT = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
+
+declare global {
+  interface Window { kofiWidgetOverlay?: { draw(page: string, config: Record<string, string>, containerId?: string): void } }
+}
+
+/** a theme token as a plain rgb() colour (the button is drawn inside Ko-fi's frame, where our variables do not exist) */
+function tokenColor(token: string): string {
+  const probe = document.createElement('span');
+  probe.style.color = `var(${token})`;
+  document.body.append(probe);
+  const c = getComputedStyle(probe).color;
+  probe.remove();
+  return c;
+}
+
+let kofiScript: Promise<void> | null = null;
+const loadKofi = (): Promise<void> => (kofiScript ??= new Promise((resolve, reject) => {
+  const s = document.createElement('script');
+  s.src = KOFI_SCRIPT;
+  s.onload = () => resolve();
+  s.onerror = () => { kofiScript = null; reject(new Error('Ko-fi did not load')); };
+  document.head.append(s);
+}));
 const REPO = 'https://github.com/glvno/matryoshka';
 const MODEL_COLORS = ['var(--accent)', 'var(--secondary)', 'var(--gate)', 'var(--tag-asm)', 'var(--muted)'];
 
@@ -67,30 +90,55 @@ function credits(): string {
 export class AboutCard {
   readonly dialog: HTMLDialogElement;
   private stats: AiStats | null | undefined;
+  private kofiDrawn = false;
 
   constructor(dialog: HTMLDialogElement) {
     this.dialog = dialog;
-    dialog.addEventListener('close', () => dialog.querySelector('.about-kofi iframe')?.remove());
     dialog.addEventListener('click', (e) => {
       if (e.target === dialog) dialog.close(); // a click on the backdrop
     });
   }
 
   async open(): Promise<void> {
-    this.render();
+    if (!this.dialog.firstChild) this.render();
     if (!this.dialog.open) this.dialog.showModal();
-    const frame = document.createElement('iframe');
-    frame.src = KOFI_PANEL;
-    frame.title = `Support ${KOFI} on Ko-fi`;
-    frame.height = '712';
-    this.dialog.querySelector('.about-kofi')!.append(frame);
+    void this.drawKofi();
     if (this.stats === undefined) {
       this.stats = await fetch('./ai-stats.json', { cache: 'no-cache' })
         .then((r) => (r.ok ? r.json() : null))
         .then((j: unknown) => (isAiStats(j) ? j : null))
         .catch(() => null);
-      if (this.dialog.open) this.renderUsage();
+      this.renderUsage();
     }
+  }
+
+  /** Ko-fi's button, once per page: the script keeps the button (and the panel it opens) in the card from then on */
+  private async drawKofi(): Promise<void> {
+    if (this.kofiDrawn) return;
+    this.kofiDrawn = true;
+    try {
+      await loadKofi();
+    } catch {
+      this.kofiDrawn = false;
+      this.dialog.querySelector('.about-kofi')!.innerHTML = link(`https://ko-fi.com/${KOFI}`, 'Support Matryoshka on Ko-fi');
+      return;
+    }
+    window.kofiWidgetOverlay!.draw(KOFI, {
+      type: 'floating-chat',
+      'floating-chat.donateButton.text': 'Support',
+      'floating-chat.donateButton.background-color': tokenColor('--accent'),
+      'floating-chat.donateButton.text-color': tokenColor('--accent-ink'),
+    }, 'about-kofi');
+    // the button's frame is written by the script (same origin): give it the app's capitals once its stylesheet is in
+    const frame = this.dialog.querySelector<HTMLIFrameElement>('iframe.floatingchat-container');
+    const style = (): void => {
+      const doc = frame?.contentDocument;
+      if (!doc?.head || doc.getElementById('m-font')) return;
+      const font = new URL('./fonts/BarlowCondensed-SemiBold.ttf', document.baseURI).href;
+      doc.head.insertAdjacentHTML('beforeend', `<style id="m-font">@font-face { font-family: 'Barlow Condensed'; src: url('${font}'); font-weight: 600; }
+        .floatingchat-donate-button span { font-family: 'Barlow Condensed', system-ui, sans-serif !important; font-weight: 600 !important; letter-spacing: .06em; text-transform: uppercase; }</style>`);
+    };
+    for (const ms of [50, 400, 1500]) setTimeout(style, ms);
   }
 
   private render(): void {
@@ -107,7 +155,7 @@ export class AboutCard {
             ${passage(COPY.howMade, 'Your “How it’s made” paragraph goes here')}</section>
           ${credits()}
         </div>
-        <div class="about-kofi" aria-label="Support on Ko-fi"></div>
+        <div id="about-kofi" class="about-kofi" aria-label="Support on Ko-fi"></div>
       </div>`;
     this.renderUsage();
   }

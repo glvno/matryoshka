@@ -2,7 +2,7 @@
 
 ## Matryoshka
 
-- Add an About & support card (sidebar About button, ♥ in the collapsed strip, palette "About Matryoshka", #about): your words, AI usage figures from WakaTime (time, API-equivalent AI spend by model, the hand-copied human review figure), the credits with Felucca's support links, and Ko-fi's donation panel, which loads only while the card is open. Replaces the About tab. The Pages workflow fetches the figures daily; `.github/FUNDING.yml` points GitHub's Sponsor button at Ko-fi.
+- Add an About & support card (sidebar About button, ♥ in the collapsed strip, palette "About Matryoshka", #about): your words, AI usage figures from WakaTime (time, API-equivalent AI spend by model, the hand-copied human review figure), the credits with Felucca's support links, and Ko-fi's floating Support button in the app's colours, inside the card; Ko-fi's script loads only when the card is first opened. Replaces the About tab. The Pages workflow fetches the figures daily; `.github/FUNDING.yml` points GitHub's Sponsor button at Ko-fi.
 
 - Make the sidebar collapsible (« / », Ctrl/Cmd+B); the logo shrinks instead of the sidebar scrolling when the window is short.
 
