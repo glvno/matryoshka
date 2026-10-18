@@ -4,7 +4,7 @@
 //!
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
-//! 3. pages: GLO, ENV, ARP, SEQ, LFO, HOME, HOME held (the menu), HOME again
+//! 3. pages: GLO, ENV (with PLAY: the transport shows PLAY / STOP), HOME, HOME held (the menu), HOME again
 //! 4. PRESET encoder: forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
@@ -30,12 +30,10 @@ const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
 const OCT_DOWN: u8 = 0;
 const OCT_UP: u8 = 1;
 const ENV: u8 = 4;
-const LFO: u8 = 5;
 const GLO: u8 = 7;
 const HOME: u8 = 8;
 const SAVE: u8 = 9;
-const ARP: u8 = 10;
-const SEQ: u8 = 11;
+const PLAY: u8 = 12;
 const C4: u8 = 14 + 7; // note keys start at F3
 const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
@@ -352,9 +350,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     for (key, what, text) in [
         (GLO, "GLO: mixer page", "MUTE"),
         (ENV, "ENV: performance page", "ENV: BACK"),
-        (ARP, "ARP: melody page", "MELODY"),
-        (SEQ, "SEQ: rhythm page", "RHYTHM"),
-        (LFO, "LFO: chaos page", "CHAOS"),
+        (PLAY, "PLAY: the transport runs", "PLAY 120"),
+        (PLAY, "PLAY again: it stops", "STOP 120"),
         (HOME, "HOME: module page", "SAVE: STORE"),
     ] {
         m.tap(key, 120, 400)?;

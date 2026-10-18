@@ -385,7 +385,7 @@ static void fallback_boot(void)
 
 static void patch_boot(void)                    /* the stored state if there is one, else the first factory patches */
 {
-    static uint8_t buf[PS_MAX] ENG_POOL;
+    uint8_t *buf = blob;                        /* (the state record buffer: SAVE is not running while this boots) */
     uint32_t len, seq, sector;
     if (boot_safe) {
         fallback_boot();
