@@ -331,3 +331,8 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 - Page 0 is the player screen (`ui.c player_draw`): the top bar is the slot number (1..64) and the patch name, ` *` while edited; K1..K4 as four big rows (the panel label, else where the knob's cable goes, the position in percent, a bar); K5 / K6 small, side by side; a footer with PLAY / STOP and the tempo (MIDI while MIDI clock drives the clock), the parts and the octave, and a square that lights on each beat while the transport runs. Turning a knob or pressing a patch button puts its label and value / state in the bar for a second.
 - HOME tapped shows the legend (`legend_draw`): every knob and patch button with its label; buttons no cable uses are dim, switched-on ones say (ON). HOME again goes back; HOME held is the menu.
 - Gone: the module page (SELECT stepping, P1 / P2 lines), the patch diagram (its 30 KB picture buffer), the ENV performance page.
+
+## MIDI in and out (#64, 2026-10-18)
+
+- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes, pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot: ignored), CC 16..21 = K1..K6, CC 22 = morph, CC 80..88 = the patch buttons (64 and up: down), CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
+- Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): the keys as notes (velocity 100), K1..K6 as CC 16..21, the patch buttons as CC 80..88 (127 / 0), on the MIDI channel (omni: channel 1). What came in is not sent out again. Not verified: USB is not emulated.

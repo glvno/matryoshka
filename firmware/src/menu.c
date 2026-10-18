@@ -19,11 +19,11 @@ static void defaults_now(void);
 
 /* ---- settings menu */
 
-enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH, MR_CLOCK, MR_PROG, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
+enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH, MR_CLOCK, MR_PROG, MR_MOUT, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
 enum { MT_DISPLAY, MT_CONTROL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
-static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", "MIDI CHANNEL", "CLOCK IN", "PROG CHANGE",
+static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", "MIDI CHANNEL", "CLOCK IN", "PROG CHANGE", "MIDI OUT",
                                               "VERSION", "CPU PEAK", "UPDATE MODE", "FACTORY RESET"};
-static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
+static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
 static const char *const TAB_NAME[MT_COUNT] = {"DISPLAY", "CONTROL", "MIDI", "SYSTEM", "MANUAL"};
 
 static uint8_t menu_tab, menu_sel = MR_LEDS;     /* the tab and the selected row (a row number) */
@@ -89,6 +89,7 @@ static void menu_value(uint32_t row, char *out)
     }
     case MR_CLOCK: p = put(p, ONOFF[cfg.clock_in]); break;
     case MR_PROG: p = put(p, ONOFF[cfg.prog_chg]); break;
+    case MR_MOUT: p = put(p, ONOFF[cfg.midi_out]); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_PEAK:
         fmt_int(p, (int32_t)cpu_peak);
@@ -235,6 +236,7 @@ static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value
     }
     case MR_CLOCK: cfg.clock_in = (uint8_t)up; break;
     case MR_PROG: cfg.prog_chg = (uint8_t)up; break;
+    case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
     case MR_UPDATE:
     case MR_DEFAULTS:
         if (!up)

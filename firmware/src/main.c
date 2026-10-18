@@ -62,6 +62,8 @@ static void fm1_fault(const fm1_crash_t *c)
 static void leds_octave(void);
 static void leds_play(void);
 static void panel_button(uint32_t b, int down);
+static void panel_button_set(uint32_t b, int down, int from_panel);
+static void midi_send(uint32_t status, uint32_t d1, uint32_t d2);
 static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button (1..9) last moved: the player screen shows it */
 static void page_set(uint32_t p);
 
@@ -121,7 +123,7 @@ static void settings_pack(uint8_t *d)
     d[6] = cfg.clock_in;
     d[7] = cfg.prog_chg;
     d[8] = cfg.ch;
-    d[9] = 100;                                 /* (the mixer's level and mute before #60) */
+    d[9] = cfg.midi_out;                        /* (was the mixer's level before #60: values over 1 read as on) */
     d[10] = 0;
     d[11] = (uint8_t)sel;
 }
@@ -136,7 +138,8 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     cfg.cpu_bar = d[5] & 1u;
     cfg.clock_in = d[6] & 1u;
     cfg.prog_chg = d[7] & 1u;
-    cfg.ch = d[8] > 16u ? 1u : d[8];
+    cfg.ch = d[8] > 16u ? 0u : d[8];
+    cfg.midi_out = d[9] == 0u ? 0u : 1u;
     *module = d[11];
     return 0;
 }
@@ -422,7 +425,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                         ui_dirty = 1;
                 }
             } else if (st == 0xB0u && n >= 80u && n < 80u + ENG_PANEL_BUTTONS) {   /* CC 80..88: the patch buttons (64 and up: down) */
-                panel_button(n - 80u, v >= 64u);
+                panel_button_set(n - 80u, v >= 64u, 0);
             } else if (st == 0xE0u) {                   /* pitch bend: +-2 semitones on the pitch, and the bend output */
                 eng_ctl(ENG_CTL_BEND, ((int32_t)(v << 7 | n) - 8192) << 3);
             } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
@@ -497,10 +500,21 @@ static void knobs_poll(void)
         v = clampi(eng_get_param((uint32_t)panel, k) + c * inc, fd->pmin[k], fd->pmax[k]);
         eng_set_param((uint32_t)panel, k, v);
         m1_patch_param((uint32_t)panel, k, v);
+        midi_send(0xB0u, 16u + k, (uint32_t)(((int64_t)v * 127 + 32768) >> 16));
         knob_touched = (uint8_t)(k + 1u);
         if (!ui_dirty)
             ui_dirty = 1;
     }
+}
+
+/* USB MIDI out (MENU > MIDI OUT): the keys as notes (velocity 100), K1..K6 as CC 16..21, the patch buttons as CC 80..88
+ * (127 / 0), on the MIDI channel (omni: channel 1). Only what the panel does goes out, never what came in. */
+static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
+{
+    uint32_t st = status | (cfg.ch ? cfg.ch - 1u : 0u);
+    if (!cfg.midi_out)
+        return;
+    midi_out_event((st >> 4) | st << 8 | (d1 & 127u) << 16 | (d2 & 127u) << 24);
 }
 
 static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
@@ -518,8 +532,10 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
             int32_t note = 53 + (int32_t)n + 12 * octave;
             key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
             eng_note_on(key_note[n], ENG_ONE);
+            midi_send(0x90u, key_note[n], 100u);
         } else {
             eng_note_off(key_note[n]);
+            midi_send(0x80u, key_note[n], 0u);
         }
     }
 }
@@ -563,7 +579,8 @@ static void leds_panel(void)
 
 /* a patch button pressed / let go (index into PANEL_BTN_ID): a switching one flips on the press, the others act while held;
  * a switch is kept in the patch (SAVE stores it) */
-static void panel_button(uint32_t b, int down)
+static void panel_button(uint32_t b, int down) { panel_button_set(b, down, 1); }
+static void panel_button_set(uint32_t b, int down, int from_panel)
 {
     const uint8_t *pn = m1_panel();
     uint32_t tog = pn ? (uint32_t)pn[0] | (uint32_t)pn[1] << 8 : 0u, mask = eng_buttons_get(), was = mask;
@@ -578,6 +595,8 @@ static void panel_button(uint32_t b, int down)
     eng_buttons(mask);
     if (tog >> b & 1u)
         m1_panel_on(mask & tog);
+    if (from_panel)
+        midi_send(0xB0u, 80u + b, (mask >> b & 1u) ? 127u : 0u);
     leds_panel();
     if (down) {
         button_touched = (uint8_t)(b + 1u);

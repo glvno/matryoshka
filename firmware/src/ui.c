@@ -26,15 +26,16 @@ static struct {
     uint8_t leds;                       /* the idle buttons glow: 0 off, 1 dim low, 2 dim higher */
     uint8_t cpu_bar;                    /* the CPU load in the top bar */
     uint8_t accel;                      /* a knob turned fast steps 5 times as far */
-    uint8_t ch;                         /* the MIDI channel: 1..16, 0 all (omni) */
+    uint8_t ch;                         /* the MIDI channel: 1..16, 0 all (omni); MIDI out goes on it (omni: channel 1) */
     uint8_t clock_in;                   /* MIDI clock drives the clock output */
     uint8_t prog_chg;                   /* MIDI program change loads a preset */
-} cfg = {2, 1, 1, 1, 1, 1};
+    uint8_t midi_out;                   /* the keys, knobs and patch buttons go out over USB MIDI */
+} cfg = {2, 1, 1, 0, 1, 1, 1};
 static void cfg_defaults(void)
 {
-    cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = 1;
+    cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = cfg.midi_out = 1;
     cfg.leds = 2;
-    cfg.ch = 1;
+    cfg.ch = 0;
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
 static volatile uint8_t ui_dirty;               /* 1: the knob rows need a redraw, 2: the module changed too (title, picture) */
