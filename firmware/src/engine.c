@@ -70,6 +70,14 @@ HOT int32_t mul16(int32_t a, int32_t b) { return mulq(a, b, 16); }
 HOT int32_t mulr(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b + ((int64_t)1 << (s - 1))) >> s); }
 HOT int32_t clampi(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
 
+/* (x << 16) / ENG_SR truncated to 32 bits (a Q16 frequency in Hz -> u32 turns per sample) with two 32-bit divisions
+ * instead of a 64-bit one: x = q sr + r, then q 2^16 + floor(r 2^16 / sr) (r < sr < 2^16), equal modulo 2^32 */
+HOT uint32_t hz_turns(uint32_t x)
+{
+    uint32_t q = x / ENG_SR, r = x - q * ENG_SR;
+    return (q << 16) + (r << 16) / ENG_SR;
+}
+
 /* sum / n as C divides (toward zero), without the 64-bit division (a library call on this core) for a whole block */
 HOT int32_t block_mean(int64_t sum, uint32_t n)
 {
@@ -1588,7 +1596,7 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
 {
     esig_t *out = it->out[0];
     const esig_t *clk = it->in[LFO_I_CLK], *rst = it->in[LFO_I_RESET];
-    uint32_t dtfree = (uint32_t)(((uint64_t)(uint32_t)EF(it, LFO_P_RATE) << 16) / ENG_SR), phase = it->s.lfo.phase, i, dt;
+    uint32_t dtfree = hz_turns((uint32_t)EF(it, LFO_P_RATE)), phase = it->s.lfo.phase, i, dt;
     int32_t kind = round_q16(EF(it, LFO_P_WAVE)), depth = EF(it, LFO_P_DEPTH);
     int sync = EF(it, LFO_P_SYNC) >= 32768;
     int32_t div = clampi((EF(it, LFO_P_DIV) + 32768) >> 16, 0, DELAY_NDIV - 1), bpm = EF(it, LFO_P_BPM);
@@ -1887,11 +1895,13 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
     int32_t k24 = (2 << 24) - mulq(EF(it, FILTER_P_RES), 33218888, 16);   /* 2 - 1.98 res */
     int32_t cvamt = EF(it, FILTER_P_CVAMT), ic1 = it->s.flt.ic1, ic2 = it->s.flt.ic2, jc1 = it->s.flt.jc1, jc2 = it->s.flt.jc2;
     int32_t morph = EF(it, FILTER_P_MORPH), tr = EF(it, FILTER_P_TRACK) >= 32768 ? cur_pv->pitch : 0;
-    uint32_t base = (uint32_t)(((uint64_t)(uint32_t)EF(it, FILTER_P_CUTOFF) << 16) / ENG_SR), i;
+    uint32_t base = hz_turns((uint32_t)EF(it, FILTER_P_CUTOFF)), i;
     svf_coef_t c, d;
     int fixed = !(nd->conn & (1u << FILTER_I_CV));
     int msig = nd->conn & (1u << FILTER_I_MORPH);
     int ext = notch != dummy_out || peak != dummy_out || apo != dummy_out;   /* the notch / peak / allpass outputs are in use */
+    int st2 = lp24 != dummy_out || mix != dummy_out;     /* the second stage only feeds lp24 and mix: skipped when neither is */
+    int32_t lcv = 0;
     if (tr)
         base = exp2_scale(base, tr);
     if (fixed) {
@@ -1901,10 +1911,13 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
     }
     for (i = 0; i < n; i++) {
         int32_t v0 = in[i] << 4, v3, v1, v2, w3, w1, w2, h, m, kv1;          /* Q20 */
-        if (!fixed) {
-            int32_t g = svf_g(exp2_scale(base, mul16(cv[i], cvamt)));
+        if (!fixed && (i == 0 || cv[i] != lcv)) {      /* the coefficients only when the cv moves (exactly the same values) */
+            int32_t g;
+            lcv = cv[i];
+            g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
             svf_stage(&c, g, k24);
-            svf_stage(&d, g, SQRT2_24);
+            if (st2)
+                svf_stage(&d, g, SQRT2_24);
         }
         v3 = v0 - ic2;
         v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
@@ -1913,17 +1926,19 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
         ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
         kv1 = mulr(v1, k24, 24);
         h = v0 - kv1 - v2;
-        w3 = v2 - jc2;
-        w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
-        w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
-        jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
-        jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
-        m = clampi(msig ? morph + mo[i] : morph, 0, 65536);
         lp[i] = (v2 + 8) >> 4;
         bp[i] = (v1 + 8) >> 4;
         hp[i] = (h + 8) >> 4;
-        lp24[i] = (w2 + 8) >> 4;
-        mix[i] = (w2 + mul16(h - w2, m) + 8) >> 4;
+        if (st2) {
+            w3 = v2 - jc2;
+            w1 = mulr(d.a1, jc1, 24) + mulr(d.a2, w3, 24);
+            w2 = jc2 + mulr(d.a2, jc1, 24) + mulr(d.a3, w3, 24);
+            jc1 = clampi(2 * w1 - jc1, -(1 << 30), 1 << 30);
+            jc2 = clampi(2 * w2 - jc2, -(1 << 30), 1 << 30);
+            m = clampi(msig ? morph + mo[i] : morph, 0, 65536);
+            lp24[i] = (w2 + 8) >> 4;
+            mix[i] = (w2 + mul16(h - w2, m) + 8) >> 4;
+        }
         if (ext) {                                                        /* from the same states: notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp */
             notch[i] = (v0 - kv1 + 8) >> 4;
             peak[i] = (v2 - h + 8) >> 4;
@@ -1952,7 +1967,7 @@ static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
     int32_t drive = EF(it, LADDER_P_DRIVE), cvamt = EF(it, LADDER_P_CVAMT);
     int32_t k24 = EF(it, LADDER_P_RES) << 10;                                     /* 4 res, Q24 */
     int32_t tr = EF(it, LADDER_P_TRACK) >= 32768 ? cur_pv->pitch : 0, x = tr;
-    uint32_t base = (uint32_t)(((uint64_t)(uint32_t)EF(it, LADDER_P_CUTOFF) << 16) / ENG_SR), i;
+    uint32_t base = hz_turns((uint32_t)EF(it, LADDER_P_CUTOFF)), i;
     int32_t g, G, G2, G3, G4, hG, F;
     if (nd->conn & (1u << LADDER_I_CV)) {
         int64_t sum = 0;
@@ -2663,7 +2678,7 @@ static void m_chorus(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *l = it->out[CHORUS_O_L], *r = it->out[CHORUS_O_R];
     int16_t *buf = it->s.ch.buf;
     uint32_t w = it->s.ch.w, phase = it->s.ch.phase, i;
-    uint32_t dphi = (uint32_t)(((uint64_t)(uint32_t)EF(it, CHORUS_P_RATE) << 16) / ENG_SR);
+    uint32_t dphi = hz_turns((uint32_t)EF(it, CHORUS_P_RATE));
     int32_t swing = mul16((int32_t)CH_SWING_Q16, EF(it, CHORUS_P_DEPTH)), mix = EF(it, CHORUS_P_MIX), dry = ENG_ONE - mix;
     for (i = 0; i < n; i++) {
         int32_t x = in[i], tap[2], k;
@@ -2907,7 +2922,7 @@ static void m_vowel(const node_t *nd, inst_t *it, uint32_t n)
     t = v - (vi << 16);
     for (f = 0; f < 3u; f++) {
         int32_t hz = ((int32_t)FORMANT_HZ[vi][f] << 16) + (int32_t)((int64_t)(FORMANT_HZ[vi + 1][f] - FORMANT_HZ[vi][f]) * t);
-        svf_stage(&c[f], svf_g((uint32_t)(((uint64_t)(uint32_t)hz << 16) / ENG_SR)), k24);
+        svf_stage(&c[f], svf_g(hz_turns((uint32_t)hz)), k24);
     }
     for (i = 0; i < n; i++) {
         int32_t v0 = in[i] << 4, sum = 0;
@@ -2932,9 +2947,9 @@ static void m_phaser(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[PHASER_I_IN];
     esig_t *out = it->out[0];
-    uint32_t dt = (uint32_t)(((uint64_t)(uint32_t)EF(it, PHASER_P_RATE) << 16) / ENG_SR), phase = it->s.phs.phase, i, k;
+    uint32_t dt = hz_turns((uint32_t)EF(it, PHASER_P_RATE)), phase = it->s.phs.phase, i, k;
     int32_t tri = wave_tri(phase), oct = mul16(2 * EF(it, PHASER_P_DEPTH), tri);
-    uint32_t rinc = exp2_scale((uint32_t)(((uint64_t)(uint32_t)EF(it, PHASER_P_CENTER) << 16) / ENG_SR), oct);
+    uint32_t rinc = exp2_scale(hz_turns((uint32_t)EF(it, PHASER_P_CENTER)), oct);
     int32_t g, a, fb = EF(it, PHASER_P_FB), mix = EF(it, PHASER_P_MIX), dry = ENG_ONE - mix, fbv = it->s.phs.fbv, *ap = it->s.phs.ap;
     if (rinc < INC_20HZ)
         rinc = INC_20HZ;

@@ -67,6 +67,35 @@ if (hot) {
   process.exit(0);
 }
 
+if (process.argv.includes('--types')) {
+  // every check's peak block, per module type: where the cycles go across the whole set
+  const PROF = pool({ prof: `${ROOT}build/cpu/prof.elf` });
+  const by = new Map<string, { sum: number; cv: number; run: number; n: number }>();
+  let all = 0;
+  await Promise.all(
+    checks.map(async (c) => {
+      const dv = deviceView(c.patch).patch;
+      const r = await PROF.run('prof', encodePatch(c.patch, true), events(c.notes));
+      const pk = r.blocks.slice(SKIP).reduce((a: { total: number }, b: { total: number }) => (b.total > a.total ? b : a));
+      all += pk.total;
+      for (const [key, st] of pk.nodes as Map<string, { sum: number; cv: number; run: number }>) {
+        const t = dv.modules[Number(key.split('/')[0])].type;
+        const e = by.get(t) ?? { sum: 0, cv: 0, run: 0, n: 0 };
+        e.sum += st.sum; e.cv += st.cv; e.run += st.run; e.n++;
+        by.set(t, e);
+      }
+    }),
+  );
+  let stages = { sum: 0, cv: 0, run: 0 };
+  for (const [t, v] of [...by].sort((a, b) => b[1].sum + b[1].cv + b[1].run - (a[1].sum + a[1].cv + a[1].run))) {
+    const tot = v.sum + v.cv + v.run;
+    stages = { sum: stages.sum + v.sum, cv: stages.cv + v.cv, run: stages.run + v.run };
+    console.log(`${t.padEnd(10)} ${(100 * tot / all).toFixed(1).padStart(5)} %  instances ${String(v.n).padStart(4)}  per instance ${String(Math.round(tot / v.n)).padStart(6)}   sum ${(100 * v.sum / all).toFixed(1)} %  cv ${(100 * v.cv / all).toFixed(1)} %  run ${(100 * v.run / all).toFixed(1)} %`);
+  }
+  console.log(`all checks' peaks ${all}: input sums ${(100 * stages.sum / all).toFixed(1)} %, parameter inputs ${(100 * stages.cv / all).toFixed(1)} %, module work ${(100 * stages.run / all).toFixed(1)} %, the rest ${(100 * (all - stages.sum - stages.cv - stages.run) / all).toFixed(1)} %`);
+  process.exit(0);
+}
+
 const nodes = arg('--nodes');
 if (nodes) {
   // per module of the patch as the device gets it: input sums, parameter inputs and the module's own work, summed over its

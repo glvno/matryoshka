@@ -15,6 +15,8 @@ for f in $(git ls-tree --name-only "$BASE" firmware/src/); do git show "$BASE:$f
 cp firmware/test/host_test.c "$T/base/test/"
 gcc -O1 -w $CF -o "$T/base_test" "$T/base/test/host_test.c" -lm
 gcc -O1 -w $CF -o "$T/new_test" firmware/test/host_test.c -lm
+gcc -O1 -w $CF -o "$T/exact_test" firmware/test/exact_test.c -lm
+"$T/exact_test" || exit 1                 # the division-free helpers against the divisions they replace
 fail=0 n=0
 for p in build/golden/*.m1p; do
   k="${p%.m1p}"; b="$(basename "$k")"
