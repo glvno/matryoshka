@@ -1619,6 +1619,34 @@ static void lfo_cycle(inst_t *it)
     it->s.lfo.held = (int32_t)(it->s.lfo.seed >> 15) - ENG_ONE;
 }
 
+/* the free-running LFO (no sync, nothing in clk / reset): the wave picked once a block. A function of its own: inside
+ * m_lfo the branch around it came out longer than 16 KB in the JieLi build, a form of `if ((R & #h) == #i) goto` that
+ * fm1-emu (7ca5b96) does not decode yet (docs/ARCHITECTURE.md "Estimated CPU load") */
+static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t dt, int32_t kind, int32_t depth, uint32_t n)
+{
+    uint32_t phase = it->s.lfo.phase, since = it->s.lfo.since + n, i, lrc[4] = {0};
+#define LFO_FREE(Y)                                                                     \
+    for (i = 0; i < n; i++) {                                                           \
+        uint32_t prev = phase;                                                          \
+        phase += dt;                                                                    \
+        if (phase < prev)                                                               \
+            lfo_cycle(it);                                                              \
+        out[i] = mul16((Y), depth);                                                     \
+    }
+    switch (kind) {
+    case 0: LFO_FREE(sin_turn(phase)) break;
+    case 1: LFO_FREE(wave_tri(phase)) break;
+    case 2: LFO_FREE(wave_saw(phase, dt, lrc)) break;
+    case 4: LFO_FREE(it->s.lfo.held) break;
+    default: LFO_FREE(wave_square(phase, dt, 0x80000000u, lrc)) break;
+    }
+#undef LFO_FREE
+    it->s.lfo.since = since < ENG_SR ? since : ENG_SR;   /* as m_lfo's loop counts it, the clock and reset inputs low */
+    it->s.lfo.clk_hi = 0;
+    it->s.lfo.rst_hi = 0;
+    it->s.lfo.phase = phase;
+}
+
 /* free: rate in Hz. sync: one cycle per note length (DELAY_DIV_NUM / DELAY_DIV_DEN, as the delay) that snaps to every n-th edge of clk
  * (24 ppqn, n = ticks per cycle), runs at the measured clock speed in between and at bpm when there is no clock. */
 static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
@@ -1633,29 +1661,8 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     if (bpm < 65536)
         bpm = 65536;
     dtbpm = (uint32_t)(((uint64_t)(uint32_t)bpm * DELAY_DIV_DEN[div] << 16) / (60u * DELAY_DIV_NUM[div] * ENG_SR));
-    if (!sync && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {   /* free running, nothing patched in: the wave picked once a block */
-        uint32_t since = it->s.lfo.since + n;
-        dt = dtfree;
-#define LFO_FREE(Y)                                                                     \
-        for (i = 0; i < n; i++) {                                                       \
-            uint32_t prev = phase;                                                      \
-            phase += dt;                                                                \
-            if (phase < prev)                                                           \
-                lfo_cycle(it);                                                          \
-            out[i] = mul16((Y), depth);                                                 \
-        }
-        switch (kind) {
-        case 0: LFO_FREE(sin_turn(phase)) break;
-        case 1: LFO_FREE(wave_tri(phase)) break;
-        case 2: LFO_FREE(wave_saw(phase, dt, lrc)) break;
-        case 4: LFO_FREE(it->s.lfo.held) break;
-        default: LFO_FREE(wave_square(phase, dt, 0x80000000u, lrc)) break;
-        }
-#undef LFO_FREE
-        it->s.lfo.since = since < ENG_SR ? since : ENG_SR;   /* as the loop below counts it, the clock and reset inputs low */
-        it->s.lfo.clk_hi = 0;
-        it->s.lfo.rst_hi = 0;
-        it->s.lfo.phase = phase;
+    if (!sync && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {   /* free running, nothing patched in */
+        lfo_free(it, out, dtfree, kind, depth, n);
         return;
     }
     for (i = 0; i < n; i++) {
