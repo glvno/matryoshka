@@ -281,7 +281,12 @@ dialog.about { width: 940px; }
 .credit + .credit { border-top: 1px dashed color-mix(in srgb, var(--line) 70%, transparent); }
 .credit-links { font-size: 12px; }
 .about-foot { margin-top: 6px !important; font-size: 11px; }
-.about-kofi { align-self: start; border-radius: 8px; overflow: hidden; background: #f9f9f9; border: 1px solid var(--line); min-height: 712px; }
+/* Ko-fi's panel is a cross-origin iframe we cannot restyle: a layer over it that takes no pointer events (clicks go through to
+   Ko-fi) multiplies its white into the app's palette, so the dark text stays dark and the brightness drops; --kofi-tint per theme */
+.about-kofi { --kofi-tint: var(--ref-sand); position: relative; align-self: start; border-radius: 8px; overflow: hidden; background: #f9f9f9; border: 1px solid var(--line); min-height: 712px; }
+.about-kofi::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: var(--kofi-tint); mix-blend-mode: multiply; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .about-kofi { --kofi-tint: color-mix(in srgb, var(--ref-mist) 62%, var(--ref-slate)); } }
+:root[data-theme="dark"] .about-kofi { --kofi-tint: color-mix(in srgb, var(--ref-mist) 62%, var(--ref-slate)); }
 .about-kofi iframe { display: block; width: 100%; border: 0; padding: 4px; background: #f9f9f9; box-sizing: border-box; }
 @media (max-width: 760px) {
   .about-body { grid-template-columns: minmax(0, 1fr); }
