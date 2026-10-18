@@ -142,7 +142,7 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 syste
 #palette-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; background: transparent; }
 kbd { font: 10px system-ui, sans-serif; color: var(--muted); }
 .mobile-bar, .sidebar-dismiss { display: none; }
-a { color: var(--secondary); text-underline-offset: 3px; }
+a { color: var(--secondary); text-decoration: none; }
 a:hover { color: var(--accent); }
 input[type=file] { min-width: 0; max-width: 100%; }
 input[type=checkbox], progress { accent-color: var(--accent); }
