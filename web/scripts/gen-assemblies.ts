@@ -4,7 +4,7 @@
 // `voice` and `echo` are kept as files. Run from web/:  npx vite-node scripts/gen-assemblies.ts
 import { writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { defaultMap, defaultParams, rowDef, stepByte, type ModuleInst, type PolyCards, type Source } from '../src/patch';
+import { defaultMap, defaultParams, rowDef, STEP_VEL, stepByte, type ModuleInst, type PolyCards, type Source } from '../src/patch';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
@@ -497,8 +497,13 @@ asm('drum kit', 'Drums', (b) => {
       m.att = [accent[1] / (pd.max - pd.min), m.att?.[1] ?? 1];
       b.wire(st, 'acc', r.module, 'p1');
     }
+    // velocity: the drum through a VCA whose cv is the track's vel, gain 127 / 100 so a step at the default velocity
+    // (STEP_VEL 100) plays at the drum's own level
     const out = defs.find((d) => d.name === from)!.outputs[0];
-    b.wire(ids.get(out.module)!, out.port, mix, port);
+    const vel = b.add('vca', 2, y, { gain: 127 / STEP_VEL });
+    b.wire(ids.get(out.module)!, out.port, vel, 'in');
+    b.wire(st, 'vel', vel, 'cv');
+    b.wire(vel, 'out', mix, port);
     if (from === 'boom kick') shown.push({ label: 'kick tune', at: rowOf(from, ids, 'tune') }, { label: 'kick decay', at: rowOf(from, ids, 'decay') });
     if (from === 'snare') shown.push({ label: 'snare tone', at: rowOf(from, ids, 'body tune') }, { label: 'snare noise', at: rowOf(from, ids, 'noise') });
     if (from === 'clap') shown.push({ label: 'clap tail', at: rowOf(from, ids, 'tail') });

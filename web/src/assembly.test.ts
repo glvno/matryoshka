@@ -381,6 +381,29 @@ describe('assemblies', () => {
     expect(Math.max(...Array.from(l).map(Math.abs))).toBeGreaterThan(0.05);
   });
 
+  it('the drum kit follows each step\'s velocity: half the velocity, half the level; the default velocity plays the drums as they are', () => {
+    const kit = FACTORY.find((d) => d.name === 'drum kit')!;
+    const peak = (vel: number | null): number => {
+      const p = emptyPatch('v');
+      addModule(p, DEFS.fm1, 0, 0);
+      const out = addModule(p, DEFS.output, 0, 0).id;
+      const a = insertAssembly(p, DEFS, kit, 0, 0);
+      for (const t of p.modules.filter((m) => m.type === 'steps')) if (t.name !== 'KICK') t.steps = t.steps!.map(() => 0);
+      if (vel !== null) p.modules.find((m) => m.name === 'KICK')!.vels = Array.from({ length: 64 }, () => vel);
+      connect(p, DEFS, a.outputs.find((r) => r.label === 'out')!, { module: out, port: 'l' });
+      const e = new Engine(48000);
+      e.load(p);
+      e.transport(true);
+      const l = new Float32Array(24000);
+      e.render(l, new Float32Array(l.length));
+      return Math.max(...Array.from(l).map(Math.abs));
+    };
+    expect(peak(100)).toBeCloseTo(peak(null), 6);
+    expect(peak(50) / peak(100)).toBeCloseTo(0.5, 2);
+    const vca = kit.modules.filter((m) => m.type === 'vca' && kit.cables.some((c) => c.to.module === m.id && c.to.port === 'cv' && c.from.port === 'vel'));
+    expect(vca).toHaveLength(6);
+  });
+
   it('rejects bad definitions', () => {
     expect(() => validateAssemblyDef({ format: 'x' }, DEFS)).toThrow(/not a Matryoshka assembly/);
     const base = FACTORY[0];
