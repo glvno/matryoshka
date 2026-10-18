@@ -3251,8 +3251,10 @@ static void steps_fire(inst_t *it, uint32_t trk, int32_t k, int32_t gate, int32_
     it->s.stp.trig = g > 1 ? g : 1;
     it->s.stp.acc = (pat[k] >> 1) & 1u;
     {                                            /* octaves from C4, rounded to Q16 (modules.ts the same) */
-        int32_t d = ((int32_t)E.trk_note[trk][k] - STEP_NOTE) * ENG_ONE;
-        it->s.stp.pitch = (d >= 0 ? d + 6 : d - 6) / 12;
+        /* = (d +- 6) / 12 with d = n * ENG_ONE, split as ENG_ONE = 12 * 5461 + 4: written plainly the compiler folds
+         * -STEP_NOTE * ENG_ONE + 6 into 0xFFC40006, which build.py rejects as a chip ROM address */
+        int32_t n = (int32_t)E.trk_note[trk][k] - STEP_NOTE;
+        it->s.stp.pitch = n * 5461 + (n >= 0 ? 4 * n + 6 : 4 * n - 6) / 12;
     }
     it->s.stp.vel = (int32_t)(((uint32_t)E.trk_vel[trk][k] << 16) / 127u);
 }
