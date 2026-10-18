@@ -49,7 +49,7 @@ import {
 import { stepGrid, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
-import { ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
+import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
 import { EXCLUDED_TYPES,
@@ -105,6 +105,8 @@ function snapTo(pd: ParamDef, v: number): number {
 
 /** the frame around an expanded assembly: padding around its cards and the height of its header */
 const FRAME_PAD = 12;
+/** left / right: room inside the border for the inner half of the ribbons (ribbons.ts) */
+const FRAME_PAD_X = 32;
 const FRAME_HEAD = 30;
 /** a poly assembly's frame: the settings strip under the header, and the width it needs */
 
@@ -1447,10 +1449,12 @@ export class Editor {
     const elements = [...this.cards.values(), ...this.containers.values(), ...this.frames.values()];
     if (!elements.length) return;
     const PAD = 24;
-    const x0 = Math.max(0, Math.min(...elements.map((el) => el.offsetLeft)) - PAD);
-    const y0 = Math.max(0, Math.min(...elements.map((el) => el.offsetTop)) - PAD);
-    const w = Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth)) + PAD - x0;
-    const h = Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight)) + PAD - y0;
+    // an open frame's cables run in a gutter round it (ribbons.ts): fit that too
+    const out = (el: HTMLElement): number => (el.classList.contains('frame') ? GUTTER_ROOM : 0);
+    const x0 = Math.max(0, Math.min(...elements.map((el) => el.offsetLeft - out(el))) - PAD);
+    const y0 = Math.max(0, Math.min(...elements.map((el) => el.offsetTop - out(el))) - PAD);
+    const w = Math.max(...elements.map((el) => el.offsetLeft + el.offsetWidth + out(el))) + PAD - x0;
+    const h = Math.max(...elements.map((el) => el.offsetTop + el.offsetHeight + out(el))) + PAD - y0;
     this.setZoom(Math.min(1.5, this.canvas.clientWidth / w, this.canvas.clientHeight / h));
     this.canvas.scrollTo(x0 * this.zoom, y0 * this.zoom);
   }
@@ -1539,7 +1543,7 @@ export class Editor {
     return {
       module: (id) => size(this.cards.get(id)),
       container: (id) => size(this.containers.get(id)),
-      frame: () => ({ pad: FRAME_PAD, head: FRAME_HEAD, minW: 0 }),
+      frame: () => ({ pad: FRAME_PAD, padX: FRAME_PAD_X, head: FRAME_HEAD, minW: 0 }),
     };
   }
 
@@ -1555,6 +1559,10 @@ export class Editor {
         const ys = allModules(this.patch, a).map((id) => this.patch.modules.find((m) => m.id === id)?.y ?? Infinity);
         const room = FRAME_PAD + FRAME_HEAD + 8;
         if (Math.min(...ys) < room) moveAssembly(this.patch, a, 0, room - Math.min(...ys));
+        // and right of the canvas's left edge, with room for the cables running round it (ribbons.ts)
+        const xs = allModules(this.patch, a).map((id) => this.patch.modules.find((m) => m.id === id)?.x ?? Infinity);
+        const roomX = FRAME_PAD_X + GUTTER_ROOM;
+        if (Math.min(...xs) < roomX) moveAssembly(this.patch, a, roomX - Math.min(...xs), 0);
       }
     });
     if (!opened || !a.open) return;
@@ -2493,7 +2501,7 @@ export class Editor {
     }
     if (x0 === Infinity) return null;
     const head = FRAME_HEAD;
-    return { x: x0 - FRAME_PAD, y: y0 - FRAME_PAD - head, w: Math.max(x1 - x0 + 2 * FRAME_PAD, a.frameSize?.width ?? 0), h: Math.max(y1 - y0 + 2 * FRAME_PAD + head, a.frameSize?.height ?? 0) };
+    return { x: x0 - FRAME_PAD_X, y: y0 - FRAME_PAD - head, w: Math.max(x1 - x0 + 2 * FRAME_PAD_X, a.frameSize?.width ?? 0), h: Math.max(y1 - y0 + 2 * FRAME_PAD + head, a.frameSize?.height ?? 0) };
   }
 
   private layoutFrames(exclude?: Set<number>, excludeAsm?: number): void {

@@ -13,8 +13,9 @@ export interface TidySizes {
   module(id: number): { w: number; h: number };
   /** a collapsed assembly card's size */
   container(id: number): { w: number; h: number };
-  /** an expanded assembly's frame around its content: padding, header height (with a poly strip) and least width */
-  frame(a: AssemblyInst): { pad: number; head: number; minW: number };
+  /** an expanded assembly's frame around its content: padding (top / bottom, and `padX` left / right when it differs), header
+   *  height (with a poly strip) and least width */
+  frame(a: AssemblyInst): { pad: number; padX?: number; head: number; minW: number };
 }
 
 type Item = { r: Rect; move: (dx: number, dy: number) => void };
@@ -55,13 +56,14 @@ function itemsOf(p: Patch, sizes: TidySizes, skip: Set<number>) {
     const inner = [...a.modules.map(moduleItem), ...childrenOf(p, a).map(asmItem)].filter((x): x is Item => !!x);
     if (!inner.length) return null;
     const { pad, head, minW } = sizes.frame(a);
+    const padX = sizes.frame(a).padX ?? pad;
     const left = Math.min(...inner.map((it) => it.r.x));
     const top = Math.min(...inner.map((it) => it.r.y));
     arrange(inner, left, top);
     delete a.frameSize;
     const right = Math.max(...inner.map((it) => it.r.x + it.r.w));
     const bottom = Math.max(...inner.map((it) => it.r.y + it.r.h));
-    return { x: left - pad, y: top - pad - head, w: Math.max(right - left + 2 * pad, minW), h: bottom - top + 2 * pad + head };
+    return { x: left - padX, y: top - pad - head, w: Math.max(right - left + 2 * padX, minW), h: bottom - top + 2 * pad + head };
   };
   const asmItem = (a: AssemblyInst): Item | null => {
     if (!a.open) {

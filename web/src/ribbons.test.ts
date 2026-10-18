@@ -69,3 +69,37 @@ describe('ribbon cables through an open frame (#85)', () => {
     expect(clamps).toHaveLength(2);
   });
 });
+
+describe('the gutter along an open frame', () => {
+  const f = frame(1, 400, 100, 600, 500, [10, 11, 12]);
+  const inside = (p: Pt, r = f.rect): boolean => p.x > r.x + 1 && p.x < r.x + r.w - 1 && p.y > r.y + 1 && p.y < r.y + r.h - 1;
+
+  it('a cable that can go straight in does not hug', () => {
+    const { routes } = ribbons([f], [{ from: end(100, 140, 1), to: end(600, 300, 10) }], curve);
+    const pts = routes.get(0)!;
+    expect(pts.some((p) => p.y < 100)).toBe(false); // never over the top
+  });
+
+  it('cables from below and from the right run outside the frame to the left opening, in separate lanes', () => {
+    const c = [{ from: end(700, 900, 1), to: end(600, 300, 10, 'a') }, { from: end(1400, 300, 2), to: end(600, 350, 11, 'b') }, { from: end(800, 950, 3), to: end(620, 400, 12, 'c') }];
+    const { routes } = ribbons([f], c, curve);
+    for (const [i, pts] of routes) {
+      const anchors = pts.filter((_, k) => k % 3 === 0);
+      const before = anchors.slice(0, anchors.findIndex((p) => p.x >= 400 - RIBBON_LEN / 2 + 1 && p.y < 100 + RIBBON_TOP + 20 && p.y >= 100 + RIBBON_TOP - 1));
+      // up to the ribbon, nothing passes over the frame
+      for (const p of before) expect(inside(p), `cable ${i} at ${p.x},${p.y}`).toBe(false);
+    }
+    // the two cables coming up the left side keep distinct lanes there (distinct x where the left edge's straight run starts)
+    const leftXs = [0, 2].map((i) => routes.get(i)!.find((p, k) => k % 3 === 0 && p.x < 400 && p.y > 500)?.x);
+    expect(leftXs[0]).toBeDefined();
+    expect(leftXs[0]).not.toBe(leftXs[1]);
+  });
+
+  it('an output to a module on the left leaves the right opening and runs round outside', () => {
+    const { routes } = ribbons([f], [{ from: end(700, 450, 11), to: end(100, 700, 2) }], curve);
+    const anchors = routes.get(0)!.filter((_, k) => k % 3 === 0);
+    const after = anchors.slice(anchors.findIndex((p) => p.x > 1000));
+    for (const p of after) expect(inside(p)).toBe(false);
+    expect(anchors.at(-1)).toEqual({ x: 100, y: 700 });
+  });
+});
