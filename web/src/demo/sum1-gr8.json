@@ -27,7 +27,7 @@
     "l1": 0.8,
     "l2": 0.53,
     "l3": 0.45,
-    "l4": 1
+    "l4": 0.45
    },
    "att": [
     1,
@@ -211,7 +211,7 @@
     "level": 0.55,
     "fb": 0,
     "unison": 1,
-    "detune": 10,
+    "detune": 4,
     "blend": 0.5,
     "stack": 0
    },
@@ -246,7 +246,7 @@
     "level": 0.99,
     "fb": 0,
     "unison": 1,
-    "detune": 10,
+    "detune": 4,
     "blend": 0.5,
     "stack": 0
    },
@@ -3110,6 +3110,121 @@
     43,
     43
    ]
+  },
+  {
+   "id": 117,
+   "type": "steps",
+   "x": 20,
+   "y": 640,
+   "params": {
+    "len": 17,
+    "rate": 0,
+    "swing": 50,
+    "gate": 0.25
+   },
+   "name": "INTRO",
+   "steps": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": 118,
+   "type": "logic",
+   "x": 340,
+   "y": 640,
+   "params": {
+    "thresh": 0.5
+   }
+  },
+  {
+   "id": 119,
+   "type": "logic",
+   "x": 340,
+   "y": 860,
+   "params": {
+    "thresh": 0.5
+   }
+  },
+  {
+   "id": 120,
+   "type": "sh",
+   "x": 660,
+   "y": 640,
+   "params": {
+    "mode": 0
+   }
+  },
+  {
+   "id": 121,
+   "type": "logic",
+   "x": 980,
+   "y": 640,
+   "params": {
+    "thresh": 0.5
+   }
   }
  ],
  "cables": [
@@ -4175,16 +4290,6 @@
   },
   {
    "from": {
-    "module": 116,
-    "port": "trig"
-   },
-   "to": {
-    "module": 39,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
     "module": 75,
     "port": "pitch"
    },
@@ -4221,6 +4326,96 @@
    "to": {
     "module": 111,
     "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "run"
+   },
+   "to": {
+    "module": 118,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 117,
+    "port": "trig"
+   },
+   "to": {
+    "module": 119,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 118,
+    "port": "not"
+   },
+   "to": {
+    "module": 119,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 119,
+    "port": "or"
+   },
+   "to": {
+    "module": 120,
+    "port": "clock"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "run"
+   },
+   "to": {
+    "module": 120,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 116,
+    "port": "trig"
+   },
+   "to": {
+    "module": 121,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 120,
+    "port": "out"
+   },
+   "to": {
+    "module": 121,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 121,
+    "port": "and"
+   },
+   "to": {
+    "module": 39,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 120,
+    "port": "out"
+   },
+   "to": {
+    "module": 116,
+    "port": "reset"
    }
   }
  ],
@@ -5204,6 +5399,53 @@
     11,
     12
    ]
+  },
+  {
+   "v": 1,
+   "id": 14,
+   "name": "wait 4 bars",
+   "label": "wait 4 bars",
+   "x": 20,
+   "y": 640,
+   "open": false,
+   "modules": [
+    117,
+    118,
+    119,
+    120,
+    121
+   ],
+   "inputs": [
+    {
+     "module": 118,
+     "port": "a",
+     "label": "run",
+     "also": [
+      {
+       "module": 120,
+       "port": "in"
+      }
+     ]
+    },
+    {
+     "module": 121,
+     "port": "a",
+     "label": "gate in"
+    }
+   ],
+   "outputs": [
+    {
+     "module": 121,
+     "port": "and",
+     "label": "gate"
+    },
+    {
+     "module": 120,
+     "port": "out",
+     "label": "started"
+    }
+   ],
+   "params": []
   }
  ],
  "octave": -2,
