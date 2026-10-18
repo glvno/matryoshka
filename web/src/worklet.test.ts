@@ -4,6 +4,7 @@ import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { DEFS } from './modules';
 import { PRESETS } from './presets';
 import { withParts } from './test-poly';
+import { polyGroups } from './poly';
 import type { HostMsg } from './worklet';
 import { subtractiveSaw } from './test-patches';
 
@@ -85,4 +86,43 @@ it('a probe reads its output without cancellation and a new patch does not retai
     expect(message.revision).toBe(2);
     expect(message.data.every(value => value === 0)).toBe(true);
   }
+});
+
+it('per-voice probes and Scope inputs (#54): one ring per voice only when asked for, summing to the trace', () => {
+  const processor = new Processor();
+  const patch = withParts(subtractiveSaw(), 4);
+  const group = polyGroups(patch)[0].modules;
+  const m = patch.modules.find(m => group.has(m.id) && DEFS[m.type].outputs.some(o => o.kind === 'audio'))!;
+  const port = DEFS[m.type].outputs.find(o => o.kind === 'audio')!.name;
+  send(processor, { t: 'patch', patch, revision: 1 });
+  for (const note of [60, 64, 67]) send(processor, { t: 'on', note, vel: .8 });
+  send(processor, { t: 'probe', key: 'sum', id: m.id, port });
+  send(processor, { t: 'probe', key: 'each', id: m.id, port, voices: true });
+  send(processor, { t: 'view', key: 'scope', chans: [[{ id: m.id, port }], [{ id: m.id, port }, { id: m.id, port }]], samples: 256, voices: true });
+  render(processor, 36);
+  const calls = processor.port.postMessage.mock.calls.map(([message]) => message);
+  const last = (key: string) => calls.filter(c => c.probe === key).at(-1) as ProbeMessage & { voices: Float32Array[] | null };
+  expect(last('sum').voices).toBeNull();
+  const each = last('each');
+  expect(each.voices).toHaveLength(4);
+  for (const v of each.voices!) expect(v).toHaveLength(each.data.length);
+  expect(each.voices!.filter(v => v.some(x => x !== 0)).length).toBeGreaterThanOrEqual(3);
+  for (let i = 0; i < each.data.length; i += 17)
+    expect(each.voices!.reduce((s, v) => s + v[i], 0)).toBeCloseTo(each.data[i], 5);
+  // the Scope: input a per voice, input b (the same output cabled twice) per voice doubled
+  const view = calls.filter(c => c.view === 'scope').at(-1) as { chans: { raw: Float32Array }[]; voices: { raw: Float32Array }[][] };
+  expect(view.voices).toHaveLength(2);
+  const [a, b] = view.voices;
+  expect(a).toHaveLength(4);
+  for (let i = 0; i < view.chans[0].raw.length; i += 13) {
+    expect(a.reduce((s, v) => s + v.raw[i], 0)).toBeCloseTo(view.chans[0].raw[i], 5);
+    for (let k = 0; k < 4; k++) expect(b[k].raw[i]).toBeCloseTo(2 * a[k].raw[i], 5);
+  }
+  // a source that runs once has no voices
+  const main = patch.modules.find(m => m.type === 'fm1')!;
+  send(processor, { t: 'probe', key: 'once', id: main.id, port: 'gate', voices: true });
+  render(processor, 12);
+  const once = processor.port.postMessage.mock.calls.map(([message]) => message).filter(c => c.probe === 'once').at(-1);
+  expect(once.voices).toBeNull();
+  expect(once.data.some((v: number) => v > 0)).toBe(true);
 });

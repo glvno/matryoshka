@@ -15,6 +15,8 @@
   --secondary: var(--ref-deep-teal); --audio: var(--accent); --control: var(--secondary); --gate: var(--ref-ochre);
   /* The FM-1 knobs K1..K4 in Sloop's hues (blue, green, yellow, orange), darkened for paper. */
   --k1: #2d5fb5; --k2: #1f8a55; --k3: #9a7a12; --k4: #c4541c; --k5: #7a4bb0; --k6: #2b8590;
+  /* a poly assembly's voices V1..V8 (voice-colors.ts: scope traces, voices panel): the knob hues, then rose and blue */
+  --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose); --voice8: var(--ref-blue);
   --danger: var(--ref-red); --warning: var(--gate);
   /* filled yellow buttons: the gate colour, greyed down so it does not shout */
   --btn-yellow: color-mix(in oklab, var(--ref-ochre) 70%, var(--ref-stone));
@@ -39,6 +41,7 @@
     --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
     --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
     --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
+    --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
     --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
     --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
     --key-black-mapped: color-mix(in oklab, var(--ref-seafoam) 22%, var(--ref-night));
@@ -54,6 +57,7 @@
   --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
   --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
   --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
+  --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
   --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
   --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
   --key-black-mapped: color-mix(in oklab, var(--ref-seafoam) 22%, var(--ref-night));
@@ -1098,6 +1102,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .flaw-col { font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .flaw-col small { font-size: 9px; text-transform: none; }
 .flaw-part { font: 600 12px/1 'Barlow Condensed', system-ui, sans-serif; color: var(--muted); }
+.flaw-part::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 4px; border-radius: 50%; background: var(--swatch, transparent); vertical-align: 0; }
 .flaw-cell { display: grid; grid-template-columns: minmax(0, 1fr) 26px; align-items: center; gap: 3px; }
 .flaw-cell input { width: 100%; min-width: 0; margin: 0; accent-color: var(--secondary); }
 .flaw-cell output { font: 500 11px/1 'Barlow', system-ui, sans-serif; font-variant-numeric: tabular-nums; text-align: right; }

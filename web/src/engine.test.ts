@@ -1243,6 +1243,47 @@ describe('polyphony', () => {
     expect(probed(poly, [60, 67], alloc, 'pitch')).not.toEqual(probed(poly, [60], alloc, 'pitch'));
   });
 
+  it('per-voice probes (#54): one buffer per copy, each the copy alone, audio summing to the probe; null for a module that runs once', () => {
+    const build = (): Patch => {
+      const p = emptyPatch();
+      const kb = addModule(p, DEFS.fm1, 0, 0);
+      const o = addModule(p, DEFS.osc, 0, 0);
+      const out = addModule(p, DEFS.output, 0, 0);
+      connect(p, DEFS, { module: kb.id, port: 'pitch' }, { module: o.id, port: 'pitch' });
+      connect(p, DEFS, { module: o.id, port: 'out' }, { module: out.id, port: 'l' });
+      return p;
+    };
+    const osc = build().modules.find((m) => m.type === 'osc')!.id;
+    const play = (q: Patch, notes: number[]): Engine => {
+      const e = new Engine(SR);
+      e.load(q);
+      for (const k of notes) e.noteOn(k);
+      render(e, 512);
+      return e;
+    };
+    const poly = withParts(build(), 3);
+    const notes = [62, 67, 72];
+    const e = play(poly, notes);
+    const voices = e.probeVoices(osc, 'out')!.map((b) => Float32Array.from(b));
+    expect(voices).toHaveLength(3);
+    const sum = e.probe(osc, 'out')!;
+    for (let i = 0; i < BLOCK; i++) expect(voices[0][i] + voices[1][i] + voices[2][i]).toBeCloseTo(sum[i], 6);
+    // each voice is its note played alone
+    const alone = notes.map((k) => Float32Array.from(play(build(), [k]).probe(osc, 'out')!));
+    const close = (a: Float32Array, b: Float32Array): boolean => a.every((v, i) => Math.abs(v - b[i]) < 1e-5);
+    for (const a of alone) expect(voices.filter((v) => close(v, a))).toHaveLength(1);
+    // control: one buffer per voice, the probe shows the newest held one
+    const alloc = poly.modules.find((m) => m.type === 'alloc')!.id;
+    const pitches = e.probeVoices(alloc, 'pitch')!;
+    expect(pitches).toHaveLength(3);
+    expect(pitches.map((b) => b[0])).toContainEqual(e.probe(alloc, 'pitch')![0]);
+    expect(new Set(pitches.map((b) => b[0])).size).toBe(3);
+    // a module that runs once has no per-voice view
+    const mono = play(build(), [60]);
+    expect(mono.probeVoices(osc, 'out')).toBeNull();
+    expect(e.probeVoices(poly.modules.find((m) => m.type === 'output')!.id, 'l')).toBeNull();
+  });
+
   it('assign reuse: a free part first (the one that played the key, else the longest free), then the oldest is taken over; note off frees', () => {
     const e = new Engine(SR);
     e.load(polyPatch(3).p);

@@ -5,7 +5,7 @@ import { addModule, connect, emptyPatch, type Patch } from './patch';
 import { encodePatch, TYPE_ORDER, deviceBudget } from './patchbin';
 import { deviceView } from './poly';
 import { Engine } from './engine';
-import { ROLL_COLS, ViewStream } from './scope-stream';
+import { ROLL_COLS, ViewStream, VoiceStreams, voiceSums } from './scope-stream';
 import { trigger } from './scope-view';
 import { deviceIndex } from './device';
 
@@ -87,5 +87,25 @@ describe('Scope module', () => {
     expect(d[at - 1]).toBeLessThan(0.2);
     expect(d[at]).toBeGreaterThanOrEqual(0.2);
     expect(trigger(new Float32Array(400), 150)).toBe(-1); // flat: free running
+  });
+
+  it('per-voice streams (#54): a history per voice, dropped without voices; a sum per voice only when every source has voices', () => {
+    const v = (x: number): Float32Array => new Float32Array(128).fill(x);
+    const vs = new VoiceStreams(100);
+    expect(vs.data()).toBeNull();
+    vs.push([v(0.25), v(-0.5)], 128);
+    const d = vs.data()!;
+    expect(d).toHaveLength(2);
+    expect('raw' in d[0] && d[0].raw.at(-1)).toBe(0.25);
+    expect('raw' in d[1] && d[1].raw.at(-1)).toBe(-0.5);
+    vs.push([v(1), v(1), v(1)], 128); // the voice count changed (a reload): fresh histories
+    expect(vs.data()!.map((x) => ('raw' in x ? x.raw[0] : NaN))).toEqual([0, 0, 0]);
+    vs.push(null, 128);
+    expect(vs.data()).toBeNull();
+    const scratch: Float32Array[] = [];
+    expect(voiceSums([], 128, scratch)).toBeNull();
+    expect(voiceSums([[v(1)], null], 128, scratch)).toBeNull(); // one source runs once
+    const sums = voiceSums([[v(1), v(2)], [v(10), v(20), v(30)]], 128, scratch)!;
+    expect(sums.map((b) => b[5])).toEqual([11, 22, 30]);
   });
 });

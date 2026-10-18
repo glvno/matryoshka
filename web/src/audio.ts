@@ -26,12 +26,12 @@ export class AudioHost {
   onState: () => void = () => {};
   onValues: (values: ParameterValues | null) => void = () => {};
   onError: (msg: string) => void = () => {};
-  /** a scope probe's latest samples (oldest first) */
-  onProbe: (key: string, data: Float32Array, sr: number) => void = () => {};
+  /** a scope probe's latest samples (oldest first); `voices`: the same per voice (#54) when asked for and the module runs per voice */
+  onProbe: (key: string, data: Float32Array, sr: number, voices: Float32Array[] | null) => void = () => {};
   /** a watched output's mean over the last two blocks (a sidebar slider's source, by key) */
   onWatch: (key: string, v: number) => void = () => {};
-  /** a Scope screen's latest histories, one per input (scope-stream.ts) */
-  onView: (key: string, chans: ViewData[], sr: number) => void = () => {};
+  /** a Scope screen's latest histories, one per input (scope-stream.ts); `voices`: per input its voices' histories (#54), or null */
+  onView: (key: string, chans: ViewData[], sr: number, voices: (ViewData[] | null)[] | null) => void = () => {};
   /** where the Steps modules are (Engine.stepsView), when that changes */
   onSteps: (view: { id: number; pos: number; mute: boolean }[]) => void = () => {};
   /** an envelope display's copies (Engine.envStates) */
@@ -70,9 +70,9 @@ export class AudioHost {
         } else if (typeof ev.data?.env === 'string') {
           this.onEnv(ev.data.env, ev.data.states);
         } else if (typeof ev.data?.view === 'string') {
-          this.onView(ev.data.view, ev.data.chans, ev.data.sr);
+          this.onView(ev.data.view, ev.data.chans, ev.data.sr, ev.data.voices ?? null);
         } else if (ev.data?.probe) {
-          if (ev.data.revision === this.revision) this.onProbe(ev.data.probe, ev.data.data, ev.data.sr);
+          if (ev.data.revision === this.revision) this.onProbe(ev.data.probe, ev.data.data, ev.data.sr, ev.data.voices ?? null);
         }
         else if (ev.data?.values) {
           this.valuesPending = false;

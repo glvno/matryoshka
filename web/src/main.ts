@@ -189,10 +189,16 @@ const patchCandidates = (): { name: string; patch: Patch }[] => {
   return out;
 };
 const scope = new Scope($('scope'));
-host.onProbe = (key, data, sr) => scope.feed(key, data, sr);
+host.onProbe = (key, data, sr, voices) => scope.feed(key, data, sr, voices);
+/** ask the audio thread for a probe (probeKey = id:port), with its voices' rings while the per-voice view is on (#54) */
+const sendProbe = (key: string): void => {
+  const i = key.indexOf(':');
+  host.send({ t: 'probe', key, id: Number(key.slice(0, i)), port: key.slice(i + 1), voices: scope.perVoice });
+};
+scope.onVoices = () => { for (const key of editor.probes) sendProbe(key); };
 // Scope modules' screens: they stream while on screen and audio runs
 const screens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
-host.onView = (key, chans, sr) => screens.receive(key, chans, sr);
+host.onView = (key, chans, sr, voices) => screens.receive(key, chans, sr, voices);
 // envelope shapes: drags edit through the editor (made below; used only after it exists)
 const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host.muted, {
   set: (id, name, v) => editor.setParam(id, name, v),
@@ -287,7 +293,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onProbe(key, id, port, kind, _label, on) {
     if (on) {
       scope.add(key, kind);
-      host.send({ t: 'probe', key, id, port });
+      sendProbe(key);
     } else {
       scope.remove(key);
       host.send({ t: 'unprobe', key });
@@ -357,7 +363,7 @@ const tutorial = new Tutorial({
   flipAB: () => flipAB(),
   share: () => sharePatch(),
   arpPlay: (on) => setPlaying(on),
-  probe: (id, port) => { const key = probeKey(id, port); if (editor.probes.has(key)) return; editor.probes.add(key); const def = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']; const kind = def?.outputs.find((o) => o.name === port)?.kind ?? 'audio'; scope.add(key, kind); host.send({ t: 'probe', key, id, port }); editor.rebuild(); },
+  probe: (id, port) => { const key = probeKey(id, port); if (editor.probes.has(key)) return; editor.probes.add(key); const def = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']; const kind = def?.outputs.find((o) => o.name === port)?.kind ?? 'audio'; scope.add(key, kind); sendProbe(key); editor.rebuild(); },
   bypass: (id, on) => { const m = editor.patch.modules.find((m) => m.id === id); if (!m) return; if (on) m.bypass = true; else delete m.bypass; host.send({ t: 'bypass', id, on }); tutorial.bypassed(); editor.rebuild(); queueSave(editor.patch); },
   bankSave: addToBank,
   rename: (name) => { editor.patch.name = name; nameInput.value = name; queueSave(editor.patch); },
@@ -615,6 +621,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: scope.visible ? 'Hide oscilloscope' : 'Show oscilloscope', keywords: 'scope window waveform', run: inPatch(() => scope.setVisible(!scope.visible)) },
     { kind: 'command', label: 'Scope: waveform', keywords: 'oscilloscope time', run: inPatch(() => scope.setMode('time')) },
     { kind: 'command', label: 'Scope: spectrum', keywords: 'oscilloscope frequency fft', run: inPatch(() => scope.setMode('spectrum')) },
+    { kind: 'command', label: scope.perVoice ? 'Scope: sum of the voices' : 'Scope: each voice', keywords: 'oscilloscope poly voices per-voice traces', run: inPatch(() => scope.setPerVoice(!scope.perVoice)) },
     { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
     ...(themeChoice() ? [{ kind: 'command' as const, label: 'Theme: follow the system', keywords: 'theme dark light mode auto os appearance', run: () => setTheme(null) }] : []),
     { kind: 'command', label: 'Open the demo patch', keywords: 'demo example song listen play showcase', run: () => openDemo() },
