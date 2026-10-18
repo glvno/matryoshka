@@ -2244,38 +2244,43 @@
       "module": 3,
       "param": "grid",
       "label": "kick",
-      "head": "pattern"
+      "head": "pattern",
+      "span": 2
     },
     {
       "module": 9,
       "param": "grid",
-      "label": "snare"
+      "label": "snare",
+      "span": 2
     },
     {
       "module": 18,
       "param": "grid",
-      "label": "clap"
+      "label": "clap",
+      "span": 2
     },
     {
       "module": 27,
       "param": "grid",
-      "label": "cl hat"
+      "label": "cl hat",
+      "span": 2
     },
     {
       "module": 32,
       "param": "grid",
-      "label": "op hat"
+      "label": "op hat",
+      "span": 2
     },
     {
       "module": 37,
       "param": "grid",
-      "label": "cowbell"
+      "label": "cowbell",
+      "span": 2
     },
     {
       "module": 4,
       "param": "coarse",
       "label": "kick tune",
-      "col": true,
       "head": "drums"
     },
     {
@@ -2306,7 +2311,8 @@
     {
       "module": 36,
       "param": "r3",
-      "label": "open decay"
+      "label": "open decay",
+      "col": true
     },
     {
       "module": 38,

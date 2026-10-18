@@ -17,9 +17,9 @@ interface B {
   wire(a: number, ap: string, b: number, bp: string): void;
   input(label: string, module: number, port: string, ...also: [number, string][]): void;
   output(label: string, module: number, port: string): void;
-  /** `col`: a new column of the card starts here; `head`: a heading above it; `inner`: the label on a nested card (which
-   * has no headings), when it differs */
-  param(label: string, module: number, param: string, o?: { col?: boolean; head?: string; inner?: string }): void;
+  /** `col`: a new column of the card starts here; `head`: a heading above it; `span`: a display reaches across this many
+   * columns (its own and those to the right); `inner`: the label on a nested card (which has no headings), when it differs */
+  param(label: string, module: number, param: string, o?: { col?: boolean; head?: string; span?: number; inner?: string }): void;
   /** a nested assembly (collapsed) of these modules at grid column / row; a top-level port or parameter of one of its
    * modules is shown on it too (a parent only shows what its children show) */
   nest(name: string, col: number, row: number, members: number[], poly?: PolyCards): void;
@@ -90,7 +90,7 @@ function build(name: string, category: string, f: (b: B) => void, poly?: PolyCar
     param(label, module, param, o = {}) {
       const m = modules[module - 1];
       if (!m || !rowDef(DEFS[m.type], param)) throw new Error(`${name}: no parameter ${param} on module ${module}`);
-      params.push({ module, param, label, ...(o.col && params.length ? { col: true as const } : {}), ...(o.head ? { head: o.head } : {}) });
+      params.push({ module, param, label, ...(o.col && params.length ? { col: true as const } : {}), ...(o.head ? { head: o.head } : {}), ...(o.span && o.span > 1 ? { span: o.span } : {}) });
       const n = nestOf(module);
       if (n && !n.params.some((r) => r.module === module && r.param === param)) n.params.push({ module, param, label: o.inner ?? label });
     },
@@ -510,8 +510,9 @@ asm('drum kit', 'Drums', (b) => {
   b.input('clk', tracks[0], 'clk', ...tracks.slice(1).map((t) => [t, 'clk'] as [number, string]));
   b.input('reset', tracks[0], 'reset', ...tracks.slice(1).map((t) => [t, 'reset'] as [number, string]));
   b.output('out', mixA, 'out');
-  tracks.forEach((t, i) => b.param(drums[i][1].toLowerCase(), t, 'grid', i === 0 ? { head: 'pattern' } : {}));
-  shown.forEach(({ label, at }, i) => b.param(label, at.module, at.param, i === 0 ? { col: true, head: 'drums' } : {}));
+  tracks.forEach((t, i) => b.param(drums[i][1].toLowerCase(), t, 'grid', { span: 2, ...(i === 0 ? { head: 'pattern' } : {}) }));
+  const half = Math.ceil((shown.length + 3) / 2); // the knobs and the three levels in two columns under the grids
+  shown.forEach(({ label, at }, i) => b.param(label, at.module, at.param, i === 0 ? { head: 'drums' } : i === half ? { col: true } : {}));
   b.param('kick level', mixA, 'l1');
   b.param('snare level', mixA, 'l2');
   b.param('hats level', mixB, 'l1');
@@ -866,10 +867,11 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('wave', oscB, 'wave', { head: 'osc B', inner: 'B wave' });
   b.param('freq', oscB, 'coarse', { inner: 'B freq' });
   b.param('fine', oscB, 'fine', { inner: 'B fine' });
-  b.param('A level', oscA, 'level', { col: true, head: 'mixer' });
+  b.param('A level', oscA, 'level', { head: 'mixer' });
   b.param('B level', oscB, 'level');
   b.param('noise', nz, 'level');
-  b.param('cutoff', flt, 'cutoff', { head: 'filter' });
+  b.param('out', aScope, 'view', { span: 3 }); // the voice sum across the card's foot
+  b.param('cutoff', flt, 'cutoff', { col: true, head: 'filter' });
   b.param('res', flt, 'res');
   b.param('env amt', flt, 'cvamt');
   b.param('kbd track', flt, 'track');
@@ -878,7 +880,6 @@ asm('Oracle V', 'Voices', (b) => {
   b.param('filter', fScope, 'view');
   b.param('amp env', aenv, 'view', { col: true, head: 'amp' });
   for (const q of ['a', 'd', 's', 'r']) b.param(q, aenv, q, { inner: `amp ${q}` });
-  b.param('out', aScope, 'view');
   b.param('pmod env→A', polyEnv, 'gain', { head: 'mod' });
   b.param('pmod B→A', oscA, 'pm');
   b.param('lfo rate', lfo, 'rate');

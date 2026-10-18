@@ -92,7 +92,7 @@ import { EXCLUDED_TYPES,
   type AssemblyInst,
   type PortRef,
   type Rect,
-  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setHeading } from './assembly';
+  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setHeading, setSpan, spanPlan, type SpanBlock } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HISTORY = 40;
@@ -186,7 +186,7 @@ const EDGE_JACKS = 4;
 /** an input for a card's edge layout: its row element and which port it is (a parameter's dedicated input joins its row) */
 type EdgePort = { el: HTMLElement; module: number; port: string };
 /** a parameter for a card's edge layout: its row, its dedicated input, a column break before it, rows above it (a heading) */
-type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[] };
+type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; span?: number };
 /** an entry of a card's menu: `key` is the shortcut shown at the right, `rule` a line above it */
 type MenuItem = { text: string; run: () => void; key?: string; danger?: boolean; rule?: boolean };
 /** a drop is judged by the card's header (where it is held), this far below its top */
@@ -928,80 +928,97 @@ export class Editor {
    * column joins the free inputs, and each side edge takes as many jacks as the tallest column has rows.
    */
   private edgeLayout(ins: EdgePort[], outs: HTMLElement[], params: EdgeParam[], extra: HTMLElement[] = []): HTMLElement[] {
-    type Item = { el: HTMLElement; param?: EdgeParam };
+    // a row of the card: a parameter (with its headings above it) or a row only for a jack; `l` / `r` are its jacks
+    type Item = { el: HTMLElement | null; above: HTMLElement[]; param?: EdgeParam; l?: HTMLElement; r?: HTMLElement };
     const cols: Item[][] = [[]];
     for (const p of params) {
       if (p.col && cols[cols.length - 1].length) cols.push([]);
-      const c = cols[cols.length - 1];
-      for (const el of p.above ?? []) c.push({ el });
-      c.push({ el: p.el, param: p });
+      cols[cols.length - 1].push({ el: p.el, above: p.above ?? [], param: p });
     }
     const n = cols.length;
-    const cap = n > 1 ? Math.max(EDGE_JACKS, ...cols.map((c) => c.length)) : EDGE_JACKS;
-    type Row = { l: HTMLElement | null; m: (HTMLElement | null)[]; r: HTMLElement | null };
-    const rows: Row[] = [];
-    const row = (i: number): Row => {
-      while (rows.length <= i) rows.push({ l: null, m: Array<HTMLElement | null>(n).fill(null), r: null });
-      return rows[i];
+    const height = (c: Item[]): number => c.reduce((h, it) => h + 1 + it.above.length, 0);
+    const cap = n > 1 ? Math.max(EDGE_JACKS, ...cols.map(height)) : EDGE_JACKS;
+    // the k-th place for a jack on a side edge: the column's k-th row, then rows for jacks only under it
+    const slot = (ci: number, k: number): Item => {
+      const c = cols[ci];
+      while (c.length <= k) c.push({ el: null, above: [] });
+      return c[k];
     };
-    cols.forEach((c, ci) => c.forEach((it, ri) => (row(ri).m[ci] = it.el)));
     const free = [...ins];
     let fixed = 0;
-    cols[0].forEach((it, ri) => {
+    for (const it of cols[0]) {
       const input = it.param?.input;
       const k = input ? free.findIndex((x) => x.module === input.module && x.port === input.port) : -1;
-      if (k < 0) return;
-      row(ri).l = free.splice(k, 1)[0].el;
+      if (k < 0) continue;
+      it.l = free.splice(k, 1)[0].el;
       fixed++;
-    });
-    // a side edge's places: the rows of its column's parameters (not of its headings), then rows under the column
-    const slots = (c: Item[]): number[] => {
-      const s = c.flatMap((it, ri) => (it.param ? [ri] : []));
-      for (let i = c.length; s.length < cap; i++) s.push(i);
-      return s;
-    };
+    }
     const sideIns = free.splice(0, Math.max(0, cap - fixed));
-    const left = slots(cols[0]).filter((ri) => !rows[ri]?.l);
-    sideIns.forEach((x, i) => (row(left[i]).l = x.el));
+    let k = 0;
+    for (const x of sideIns) {
+      while (slot(0, k).l) k++;
+      slot(0, k++).l = x.el;
+    }
     const sideOuts = outs.slice(0, cap);
-    const right = slots(cols[n - 1]);
-    sideOuts.forEach((el, i) => (row(right[i]).r = el));
+    sideOuts.forEach((el, i) => (slot(n - 1, i).r = el));
     const cell = (cls: string, child: HTMLElement | null): HTMLElement => {
       const c = document.createElement('div');
       c.className = cls;
       if (child) c.append(child);
       return c;
     };
-    const grid = document.createElement('div');
-    grid.className = 'erows' + (n > 1 ? ' multi' : '');
-    if (n === 1) for (const r of rows) {
+    // a row element: the input track's cell when it reaches the card's left edge, the outputs' when it reaches the right
+    const rowEl = (m: HTMLElement | null, first: boolean, last: boolean, l?: HTMLElement, r?: HTMLElement, across = 1): HTMLElement => {
       const el = document.createElement('div');
       el.className = 'erow';
-      el.append(cell('el', r.l), cell('em', r.m[0]), cell('er', r.r));
-      grid.append(el);
-    }
+      if (first) el.append(cell('el', l ?? null));
+      const em = cell('em', m);
+      if (across > 1) em.style.gridColumn = `span ${across}`;
+      el.append(em);
+      if (last) el.append(cell('er', r ?? null));
+      return el;
+    };
+    const rowsOf = (it: Item, first: boolean, last: boolean, across = 1): HTMLElement[] =>
+      [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across)];
+    const grid = document.createElement('div');
+    grid.className = 'erows' + (n > 1 ? ' multi' : '');
+    if (n === 1) for (const it of cols[0]) grid.append(...rowsOf(it, true, true));
     else {
-      // each column stacks its own rows; the first one holds the input jacks' track, the last one the outputs'
+      // each column stacks its own rows; the first one holds the input jacks' track, the last one the outputs'. A display
+      // that spans (`spanPlan`) cuts the columns it covers into stacks above it and below it. Grid lines are the whole
+      // card's (1 = the input track, column c starts at c + 2, n + 3 = after the output track); each block is a subgrid
       grid.style.gridTemplateColumns = `auto repeat(${n}, minmax(0, 1fr)) auto`;
-      cols.forEach((c, ci) => {
-        const first = ci === 0, last = ci === n - 1;
-        let len = c.length;
-        rows.forEach((r, ri) => { if ((first && r.l) || (last && r.r)) len = Math.max(len, ri + 1); });
-        const col = document.createElement('div');
-        col.className = 'ecol';
-        col.style.gridColumn = `${first ? 1 : ci + 2} / ${last ? -1 : ci + 3}`;
-        for (const r of rows.slice(0, len)) {
-          const el = document.createElement('div');
-          el.className = 'erow';
-          if (first) el.append(cell('el', r.l));
-          el.append(cell('em', r.m[ci]));
-          if (last) el.append(cell('er', r.r));
-          col.append(el);
+      const lineA = (c: number): number => (c === 0 ? 1 : c + 2);
+      const lineB = (c: number): number => (c === n ? n + 3 : c + 2);
+      const place = (el: HTMLElement, from: number, to: number, base: number): void => {
+        el.style.gridColumn = `${lineA(from) - base + 1} / ${lineB(to) - base + 1}`;
+      };
+      const blocks = (list: SpanBlock<Item>[], base: number): HTMLElement[] => list.map((b) => {
+        const el = document.createElement('div');
+        if ('col' in b) {
+          el.className = 'ecol';
+          place(el, b.col, b.col + 1, base);
+          for (const it of b.items) el.append(...rowsOf(it, b.col === 0, b.col === n - 1));
+          return el;
         }
-        grid.append(col);
+        el.className = 'egrp';
+        place(el, b.from, b.to, base);
+        const inner = lineA(b.from);
+        const seg = (sub: SpanBlock<Item>[]): void => {
+          if (!sub.length) return;
+          const s = document.createElement('div');
+          s.className = 'eseg';
+          s.append(...blocks(sub, inner));
+          el.append(s);
+        };
+        seg(b.above);
+        el.append(...rowsOf(b.band, b.from === 0, b.to === n, b.to - b.from));
+        seg(b.below);
+        return el;
       });
+      grid.append(...blocks(spanPlan(cols, (it) => it.param?.span), 1));
     }
-    const out: HTMLElement[] = rows.length ? [grid] : [];
+    const out: HTMLElement[] = cols.some((c) => c.length) ? [grid] : [];
     out.push(...extra);
     const bottomIns = free.map((x) => x.el), bottomOuts = outs.slice(cap);
     if (bottomIns.length || bottomOuts.length) {
@@ -2257,6 +2274,9 @@ export class Editor {
       if (arranging) this.arrangeItem(port, a, 'out', i);
       return port;
     });
+    // how many columns a display on each row could reach across: its own and those to its right
+    const spanRoom: number[] = [];
+    paramColumns(a.params).forEach((c, ci) => c.forEach((i) => (spanRoom[i] = ncols - ci)));
     const params = a.params.flatMap((r, i): EdgeParam[] => {
       const m = mod(r.module);
       const def = DEFS[m.type];
@@ -2268,9 +2288,9 @@ export class Editor {
       if (r.head || (arranging && this.newHeading === `${a.id}:${i}`)) above.push(this.heading(a, i, arranging));
       if (arranging) {
         this.arrangeItem(row, a, 'param', i);
-        row.append(this.arrangeTools(a, i));
+        row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
       }
-      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above }];
+      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
     if (!a.inputs.length && !a.outputs.length && !a.params.length) {
@@ -2351,8 +2371,9 @@ export class Editor {
     return c;
   }
 
-  /** while arranging: on a row's top edge, + heading and a column break before it */
-  private arrangeTools(a: AssemblyInst, i: number): HTMLElement {
+  /** while arranging: on a row's top edge, + heading and a column break before it; on a display that could reach across
+   * `room` columns, ↔ steps how many it spans (1 .. room, then back to 1) */
+  private arrangeTools(a: AssemblyInst, i: number, room = 0): HTMLElement {
     const t = document.createElement('span');
     t.className = 'arr-tools';
     const r = a.params[i];
@@ -2361,6 +2382,11 @@ export class Editor {
       this.rebuild();
     }, 'sm'));
     if (i > 0 && !r.col) t.append(this.button('↦ column', 'Start a new column with this row', () => this.layoutChange(() => setColumnBreak(a.params, i, true)), 'sm'));
+    if (room > 1) {
+      const now = Math.min(r.span ?? 1, room);
+      const next = now >= room ? 1 : now + 1;
+      t.append(this.button(`↔ span ${now}`, next > 1 ? `Reach across ${next} columns` : 'Back to its own column', () => this.layoutChange(() => setSpan(a.params, i, next)), 'sm arr-span'));
+    }
     for (const b of t.querySelectorAll('button')) b.addEventListener('pointerdown', (e) => e.stopPropagation());
     return t;
   }

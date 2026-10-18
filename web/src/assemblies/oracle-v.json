@@ -726,7 +726,6 @@
       "module": 8,
       "param": "level",
       "label": "A level",
-      "col": true,
       "head": "mixer"
     },
     {
@@ -740,9 +739,16 @@
       "label": "noise"
     },
     {
+      "module": 16,
+      "param": "view",
+      "label": "out",
+      "span": 3
+    },
+    {
       "module": 12,
       "param": "cutoff",
       "label": "cutoff",
+      "col": true,
       "head": "filter"
     },
     {
@@ -816,11 +822,6 @@
       "module": 13,
       "param": "r",
       "label": "r"
-    },
-    {
-      "module": 16,
-      "param": "view",
-      "label": "out"
     },
     {
       "module": 9,
