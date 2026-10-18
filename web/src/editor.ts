@@ -269,6 +269,8 @@ export class Editor {
       else this.undo();
     });
     this.rebuild();
+    canvas.addEventListener('scroll', () => this.queueView(), { passive: true });
+    this.restoreView();
   }
 
   setPatch(p: Patch): void {
@@ -283,8 +285,45 @@ export class Editor {
     this.selectedAsm.clear();
     this.expandedOnce.clear();
     this.rebuild();
+    this.restoreView();
     this.ev.onLoad?.(p);
     this.ev.onStructure(p);
+  }
+
+  // ---- the patch remembers where it was looked at (Patch.view): the user's zoom and the canvas's scroll, in layout pixels
+  /** the user's zoom: a source on the zoom slider (a live zoom) moves `zoom` but is not remembered */
+  private userZoom = 1;
+  private viewTimer = 0;
+  /** set while a patch's view is put back: the zoom that causes is not the user's gesture (the tutorial's zoom step) */
+  restoring = false;
+
+  /** a patch opens where it was last looked at; one without a view keeps the current one (and gets it on the next move) */
+  private restoreView(): void {
+    const v = this.patch.view;
+    if (!v) return;
+    clearTimeout(this.viewTimer);
+    this.restoring = true;
+    try {
+      this.setZoom(v.zoom);
+    } finally {
+      this.restoring = false;
+    }
+    this.canvas.scrollTo(v.x * this.zoom, v.y * this.zoom);
+  }
+
+  private queueView(): void {
+    clearTimeout(this.viewTimer);
+    this.viewTimer = window.setTimeout(() => this.stampView(), 300);
+  }
+
+  /** write the current view into the patch, saved like a layout change (no undo step, no engine reload) */
+  private stampView(): void {
+    const c = this.canvas;
+    const v = { zoom: this.userZoom, x: Math.round(c.scrollLeft / this.zoom), y: Math.round(c.scrollTop / this.zoom) };
+    const o = this.patch.view;
+    if (o && o.zoom === v.zoom && o.x === v.x && o.y === v.y) return;
+    this.patch.view = v;
+    this.ev.onLayout(this.patch);
   }
 
   private report(msgs: string[]): void {
@@ -1243,6 +1282,10 @@ export class Editor {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, live ? z : Math.round(z * 100) / 100));
     if (live && next === this.zoom) return;
     this.zoom = next;
+    if (!live) {
+      this.userZoom = next;
+      this.queueView();
+    }
     this.world.style.transform = this.zoom === 1 ? '' : `scale(${this.zoom})`;
     this.sizeCanvas();
     // a live zoom only moves the cables' ends (the same cables); the user's redraws them

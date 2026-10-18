@@ -315,7 +315,7 @@ const tutorial = new Tutorial({
 editor.onZoom = (z, live) => {
   if (live) return;
   zoomBase = z;          // the user's zoom is the zoom slider's setting
-  tutorial.zoomed();
+  if (!editor.restoring) tutorial.zoomed(); // a patch opening at its own zoom is not a zoom gesture
   showSide('zoomFrom');
 };
 host.onValues = (values) => {
