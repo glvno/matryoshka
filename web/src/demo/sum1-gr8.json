@@ -2931,22 +2931,22 @@
   },
   {
    "from": {
-    "module": 62,
-    "port": "out"
-   },
-   "to": {
-    "module": 61,
-    "port": "clk"
-   }
-  },
-  {
-   "from": {
     "module": 2,
     "port": "out"
    },
    "to": {
     "module": 62,
     "port": "clock"
+   }
+  },
+  {
+   "from": {
+    "module": 62,
+    "port": "d4"
+   },
+   "to": {
+    "module": 61,
+    "port": "reset"
    }
   }
  ],
