@@ -388,7 +388,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     t.screen(&m, "loading screen", "MODULAR-1");
     let up = wait_text(&mut m, "SAVE: STORE", 8000)?;
     t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
-    m.run_for(300)?;
+    m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
     t.screen(&m, "factory patch 0 loaded", &presets[0].0);
     t.screen(&m, "module page title", "MAIN");
     if let Some(c) = cpu_figure(&m) {
@@ -472,7 +472,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     let target = 4usize;
     m.midi(&[0xC0, target as u8], 400)?;
     m.tap(OCT_UP, 120, 400)?;
-    m.turn(K1, 5, 400)?;
+    m.turn(K1, 5, 1200)?;                     // (the OCTAVE message leaves the bar after 1 s)
     let edited = format!("{} *", presets[target].0);
     t.screen(&m, "an edit marks the patch (*)", &edited);
     let before = diagram(&m);
