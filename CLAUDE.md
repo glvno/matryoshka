@@ -100,7 +100,7 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 - Polyphony has only run on the host (vitest + golden); the firmware with it has not been built with the JieLi toolchain nor flashed.
 - FM-1 CPU clock, RAM and flash sizes are unknown. A single reverse-engineering write-up (not seen first-hand) names the chip JieLi AC791N / pi32v2. Memory map hints: `firmware/app.ld`, `tools/build.py` (app slot 0x8DFBC bytes).
 - Whether `buildFeluccaPackage` (patch an app.bin into the user's official V15) also swaps in the Felucca loader. Read `web/src/flasher/fm1pkg.js` `Package.setApp` before relying on it.
-- Product identity `FM-1_800` (`PRODUCT` in `web/src/flasher.ts` and `tools/build.py`) is a choice, not something the device mandated; it must match `FELUCCA_ID` in the firmware build.
+- Product identity `FM-1_700` (#79, was `FM-1_800`; `PRODUCT` in `tools/build.py`) is a choice, not something the device mandated; it must match `FELUCCA_ID` in the firmware build.
 
 ## How the flash path works (from reading Felucca)
 
@@ -575,3 +575,8 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - `ParamRef.span` (2..16, `SPAN_MAX`) lets a display row (`pd.screen`) of a collapsed assembly card reach across its own column and the ones to its right; it belongs to the position like `col` / `head` (`keepParams`, `moveParam`, `setSpan`).
 - `spanPlan` (assembly.ts, pure) groups the covered columns: stacks above, the display, stacks below; spans in reading order, one that starts inside an earlier group or runs past the edge is cut short (from the refs alone). `edgeLayout` renders it as nested subgrids (`.egrp`, `.eseg` with `grid-column: 1 / -1`, `.ecol`); jacks stay on the outer edges, `cardWidth` unchanged.
 - Arrange: "↔ span N" (`.arr-span`) on display rows cycles 1..columns to the right. `gen-assemblies.ts` `param(..., { span })`: Oracle V's `out` scope spans the foot (mixer at the end of column 0), the drum kit's grids span both columns with the knobs in two columns under them.
+
+## Identity scheme (#79, 2026-10-18, the user's decision; host-tested, not flashed)
+
+- Matryoshka is `FM-1_7XY`: dev builds `FM-1_700`, `build.py --release X.Y` = `FM-1_7XY`; the update loader always reports `ota-FM-1_700`. Other spaces: M-VAVE stock `FM-1_0XX` (V15 = 015), M-VAVE Official Open `FM-1_8` + 6 digits, Felucca (and Sloop) `FM-1_9XY`; our builds before #79 were `FM-1_800`. The `FM-1` model prefix must stay: every Felucca-lineage installer (ours too: `Updater.install`, `fm1_install.py`) compares the package's model with the device's. M-VAVE's updater also knows `FM1_COMMUNITY_<n>`, but `FM1` would fail those model checks.
+- `loaderFits` (fm1ota.js) / `loader_fits` (fm1_install.py) / flasher.ts `otherLoader` accept `ota-FM-1_[789]\d\d` (7 = ours, 8 = ours before #79, 9 = Felucca's). Published Felucca-family tools only know 8 / 9, so they will not finish a write cut off in our new loader; ours do.

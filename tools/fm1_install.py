@@ -154,11 +154,11 @@ STOCK_PRODUCT = "FM-1_015"
 def loader_fits(loader, product):
     """may this waiting loader finish a write of this package? (as web/src/flasher/fm1ota.js loaderFits)
     M-VAVE's loader (ota-FM-1_015) writes the flash head from the package: only the official V15.
-    Felucca-lineage loaders (ota-FM-1_8XX / _9XY, three digits; ours reports ota-FM-1_800 for release
+    Felucca-lineage loaders (ota-FM-1_7XX ours since #79, _8XX ours before, _9XY Felucca; three digits; ours reports ota-FM-1_700 for release
     builds too) never write the head: every other package. Unknown loaders: nothing."""
     if product == STOCK_PRODUCT:
         return loader == "ota-" + STOCK_PRODUCT
-    return re.fullmatch(r"ota-FM-1_[89]\d\d", loader) is not None
+    return re.fullmatch(r"ota-FM-1_[789]\d\d", loader) is not None
 
 
 # ------------------------------------------------------------------ MIDI ---
@@ -398,7 +398,7 @@ class Updater:
             dev.link.close()
             hint = ("finish it with the official V15 (FM-1.fwsc)" if dev.id.text == "ota-" + STOCK_PRODUCT else
                     "finish it with the Felucca / Modular-1 package that was being installed"
-                    if re.fullmatch(r"ota-FM-1_[89]\d\d", dev.id.text) else "finish it with the tool that started it")
+                    if re.fullmatch(r"ota-FM-1_[789]\d\d", dev.id.text) else "finish it with the tool that started it")
             raise InstallError("otherloader", f"the FM-1 waits in the update loader {dev.id.text} from an unfinished "
                                               f"update, which must not be given {product}: nothing was sent; {hint}")
         ota = dev if dev.id.loader else self.check(dev, image, step)

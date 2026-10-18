@@ -9,6 +9,8 @@ describe('installing over Felucca (#73)', () => {
     expect(runsFelucca('ota-FM-1_900')).toBe(false);
     expect(runsFelucca('FM-1_015')).toBe(false);
     expect(runsFelucca('FM-1_800')).toBe(false);
+    expect(runsFelucca('FM-1_700')).toBe(false);
+    expect(runsFelucca('FM-1_711')).toBe(false);
     expect(runsFelucca('FM-1_8000013')).toBe(false);
   });
 });

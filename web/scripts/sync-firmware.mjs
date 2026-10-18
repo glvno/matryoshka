@@ -14,7 +14,7 @@ mkdirSync(dir, { recursive: true });
 copyFileSync(src, new URL('modular-1.fwsc', dir));
 const bytes = readFileSync(src);
 const version = /#define FELUCCA_VERSION "([^"]+)"/.exec(readFileSync(new URL('../../firmware/src/modular.c', import.meta.url), 'utf8'))?.[1] ?? '?';
-const product = /#define FELUCCA_ID "([^"]+)"/.exec(readFileSync(new URL('../../firmware/src/modular.c', import.meta.url), 'utf8'))?.[1] ?? 'FM-1_800';
+const product = /#define FELUCCA_ID "([^"]+)"/.exec(readFileSync(new URL('../../firmware/src/modular.c', import.meta.url), 'utf8'))?.[1] ?? 'FM-1_700';
 writeFileSync(new URL('modular-1.json', dir), JSON.stringify({ version, product, size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }));
 // the package carries three Apache-2.0 SDK files and GPL-3.0 firmware: ship both licence texts with it
 copyFileSync(new URL('../../LICENSE', import.meta.url), new URL('LICENSE-GPL-3.0.txt', dir));

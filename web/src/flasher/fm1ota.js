@@ -20,13 +20,13 @@ const IS_OTA = (id) => /^ota-/i.test(id.model);
 // mismatch (detail: the identity the device reports), badreq, phase
 // Which loader may finish an interrupted write of which package. M-VAVE's loader (ota-FM-1_015)
 // writes the flash head (boot code) from the package, so it only ever gets the official V15.
-// Felucca-lineage loaders (Felucca FM-1_9XY, ours FM-1_800; three digits) never write the head
+// Felucca-lineage loaders (Felucca FM-1_9XY, ours FM-1_7XY since #79 and FM-1_800 before; three digits) never write the head
 // and get every other package; their identity does not follow the package's (ours reports
-// ota-FM-1_800 for release builds too). Unknown loaders (M-VAVE Official Open, others) get nothing.
+// ota-FM-1_700 for release builds too). Unknown loaders (M-VAVE Official Open, others) get nothing.
 export const STOCK_PRODUCT = "FM-1_015";
 export function loaderFits(loader, product) {
   if (product === STOCK_PRODUCT) return loader === "ota-" + STOCK_PRODUCT;
-  return /^ota-FM-1_[89]\d\d$/.test(loader);
+  return /^ota-FM-1_[789]\d\d$/.test(loader);
 }
 
 function fail(code, msg, detail = "") { const e = new Error(msg); e.code = code; e.detail = detail; return e; }

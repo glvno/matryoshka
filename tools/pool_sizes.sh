@@ -9,7 +9,7 @@ cd "$(dirname "$0")/../firmware/src"
 mkdir -p ../../build
 out=../../build/pool_sizes.s
 clang --target=riscv32-unknown-elf -march=rv32im -fno-integrated-as -Os -ffunction-sections -fno-builtin -Wall \
-  -Wno-unused-function -I../hal -I. -DFELUCCA_ID='"FM-1_800"' "$@" -S modular.c -o "$out"
+  -Wno-unused-function -I../hal -I. -DFELUCCA_ID='"FM-1_700"' "$@" -S modular.c -o "$out"
 python3 - "$out" <<'PY'
 import re, sys
 sec = None; pool = 0; items = []

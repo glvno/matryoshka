@@ -68,7 +68,7 @@ both in the flasher and marked ready-for-agent:
   pool and flash headroom in `tools/build.py`, preview with `tools/ui_preview.sh`, run the emulator smoke.
 - (done 2026-10-18) #73 warn on the Flash tab (and in the README) before installing over Felucca: our patch store and bank sectors lie
   inside Felucca's project / sample store.
-- #79 an identity scheme of our own (needs a decision from the user: today every build is `FM-1_800`, release builds
+- (done 2026-10-18: FM-1_7XY, see CLAUDE.md) #79 an identity scheme of our own (needs a decision from the user: today every build is `FM-1_800`, release builds
   take Felucca's `FM-1_9XY` space, `FM-1_8` is M-VAVE Official Open's prefix); keep `loaderFits` / `loader_fits` in step.
 - Verification only, needs hardware: #82 (USB audio at the 44118 Hz engine rate), #75 and #71 (return to stock), #56
   (velocity and aftertouch from the keys, an outside project), #1.

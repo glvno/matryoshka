@@ -49,7 +49,8 @@ SDK_SHA256 = {
     "cfg/eq_cfg_hw.bin": "41167491bffed4651750719c973d2758adeb9021a5670d02d6a53c85ed80ea7d",
 }
 
-PRODUCT = "FM-1_800"                # package identity; must match FELUCCA_ID in firmware/src/modular.c and loader.c
+PRODUCT = "FM-1_700"                # package identity (#79: Matryoshka = FM-1_7XY; M-VAVE stock 0XX, M-VAVE Open 8 + 6 digits,
+                                     # Felucca 9XY); must match FELUCCA_ID in firmware/src/modular.c
 VERSION = None                      # FELUCCA_VERSION for release builds (default: firmware/src/modular.c)
 
 
@@ -335,7 +336,7 @@ def mmio_check():
 def main():
     global PRODUCT, VERSION
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_9XY, version string vX.Y")
+    ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_7XY, version string vX.Y")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
     name = "modular-1.fwsc"
@@ -343,7 +344,7 @@ def main():
         m = re.fullmatch(r"(\d)\.(\d)(?:\.\d){0,2}(-[A-Za-z0-9]+)?", a.release)
         if not m:
             raise SystemExit(f"--release {a.release}: use X.Y, X.Y.Z, X.Y.Z.W or X.Y-suffix, one digit each")
-        PRODUCT = "FM-1_9" + m[1] + m[2]
+        PRODUCT = "FM-1_7" + m[1] + m[2]
         VERSION = "v" + a.release.lower()      # e.g. v1.0, v1.1-rc1
         name = f"modular-1-{a.release}.fwsc"
     fm1pkg_make.SDK = a.sdk

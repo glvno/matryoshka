@@ -31,11 +31,12 @@ describe('bundled stock firmware', () => {
 describe('finishing an interrupted write (resume)', () => {
   it('M-VAVE\'s loader only gets the official V15, Felucca-type loaders everything else', () => {
     expect(loaderFits('ota-FM-1_015', 'FM-1_015')).toBe(true);
-    expect(loaderFits('ota-FM-1_015', 'FM-1_800')).toBe(false); // it would write our flash head
+    expect(loaderFits('ota-FM-1_015', 'FM-1_700')).toBe(false); // it would write our flash head
     expect(loaderFits('ota-FM-1_015', 'FM-1_910')).toBe(false);
-    expect(loaderFits('ota-FM-1_800', 'FM-1_800')).toBe(true);
-    expect(loaderFits('ota-FM-1_800', 'FM-1_910')).toBe(true); // our loader reports 800 in release builds too
-    expect(loaderFits('ota-FM-1_900', 'FM-1_800')).toBe(true); // Felucca's loader
+    expect(loaderFits('ota-FM-1_700', 'FM-1_700')).toBe(true);
+    expect(loaderFits('ota-FM-1_700', 'FM-1_710')).toBe(true); // our loader reports 700 in release builds too
+    expect(loaderFits('ota-FM-1_800', 'FM-1_700')).toBe(true); // a loader of ours from before #79 finishes a new package
+    expect(loaderFits('ota-FM-1_900', 'FM-1_700')).toBe(true); // Felucca's loader
     expect(loaderFits('ota-FM-1_800', 'FM-1_015')).toBe(false);
     expect(loaderFits('ota-FM-1_8123456', 'FM-1_800')).toBe(false); // M-VAVE Official Open
     expect(loaderFits('ota-FM1C_0123456789abcdef', 'FM-1_800')).toBe(false);

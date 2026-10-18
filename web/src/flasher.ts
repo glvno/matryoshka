@@ -30,7 +30,7 @@ const PHRASE = 'flash untested firmware';
 /** an interrupted write can only be finished with a package the waiting loader may write (fm1ota.js loaderFits) */
 function otherLoader(loader: string): string {
   if (loader === 'ota-' + STOCK_PRODUCT) return `The FM-1 waits in M-VAVE's update loader (${loader}) from an unfinished return to stock. Finish it with Return to official V15; nothing else may be written by that loader.`;
-  if (/^ota-FM-1_[89]\d\d$/.test(loader)) return `The FM-1 waits in a Felucca-type update loader (${loader}) from an unfinished install. Finish it with Install Matryoshka or the package you were installing; the official V15 cannot be written by it.`;
+  if (/^ota-FM-1_[789]\d\d$/.test(loader)) return `The FM-1 waits in a Felucca-type update loader (${loader}) from an unfinished install. Finish it with Install Matryoshka or the package you were installing; the official V15 cannot be written by it.`;
   return `The FM-1 waits in an update loader this page does not know (${loader}). Nothing was written. Finish that update with the tool that started it.`;
 }
 
