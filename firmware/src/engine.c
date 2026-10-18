@@ -371,6 +371,8 @@ typedef struct {
     uint32_t on_stamp, off_stamp;
     walk_t dw;                       /* the drift's random walk (modules.ts driftSeed), stepped every block */
     int32_t flaw;                    /* the pitch flaw, octaves Q16: detune + drift (modules.ts flawQ16); the Part module adds it */
+    uint8_t idle, skip;              /* idle: released and silent, its modules are skipped (part_idle); skip: this block */
+    uint16_t idle_n;                 /* blocks since it went idle: every IDLE_CHECK-th one runs and checks again */
 } pv_t;
 
 /* an allocator and its parts (engine.ts Group): grp[0] is the shared keyboard (one part, legato auto, last note), grp[1..]
@@ -3276,6 +3278,53 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
 #define ENG_PROF(stage, node, part) ((void)0)
 #endif
 
+/* Idle parts (engine.ts partIdle, the same rule): a part of a poly group whose gate is low, whose envelopes (ADSR / level
+ * envelope, at least one) have all finished, and whose outputs that leave the group stayed within IDLE_Q16 for a whole block
+ * is idle: those outputs are set to 0 and its modules are skipped until a note reaches it, except every IDLE_CHECK-th block,
+ * which runs it and checks again (a part that sounds without its envelopes, a knob opening a drone, comes back). */
+#define IDLE_Q16 6
+#define IDLE_CHECK 32u
+static int part_quiet(uint32_t k, uint32_t v)
+{
+    uint32_t i, c, envs = 0;
+    for (i = 0; i < E.nmod; i++) {
+        const node_t *nd = &E.node[i];
+        const inst_t *it;
+        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV))
+            continue;
+        it = &inst_pool[nd->inst0 + v];
+        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : it->s.env.stage != 0)
+            return 0;
+        envs++;
+    }
+    if (!envs)
+        return 0;
+    for (c = 0; c < E.ncab; c++) {
+        const node_t *f = &E.node[E.from_m[c]];
+        const esig_t *o;
+        if (f->grp != k || E.node[E.to_m[c]].grp == k)
+            continue;
+        o = inst_pool[f->inst0 + v].out[E.from_p[c]];
+        for (i = 0; i < ENG_BLOCK; i++)
+            if (o[i] > IDLE_Q16 || o[i] < -IDLE_Q16)
+                return 0;
+    }
+    return 1;
+}
+static void part_silence(uint32_t k, uint32_t v)
+{
+    uint32_t c, i;
+    for (c = 0; c < E.ncab; c++) {
+        const node_t *f = &E.node[E.from_m[c]];
+        esig_t *o;
+        if (f->grp != k || E.node[E.to_m[c]].grp == k)
+            continue;
+        o = inst_pool[f->inst0 + v].out[E.from_p[c]];
+        for (i = 0; i < ENG_BLOCK; i++)
+            o[i] = 0;
+    }
+}
+
 static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the selected voice alone, clamped */
 {
     uint32_t off, i, k, s, v;
@@ -3297,6 +3346,15 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 x->flaw = (int32_t)g->detune[v] * 65536 / 1200 + (int32_t)(((int64_t)x->dw.y * g->drift[v] * 1092) / 3276800);
             }
         }
+        for (k = 1; k <= E.ngrp; k++) {                 /* idle parts: woken by a note, else run every IDLE_CHECK-th block */
+            const grp_t *g = &E.grp[k];
+            for (v = 0; v < g->parts; v++) {
+                pv_t *x = &E.pv[g->pv0 + v];
+                if (x->idle && (x->gate || x->retrig))
+                    x->idle = 0;
+                x->skip = x->idle && ++x->idle_n % IDLE_CHECK != 0u;
+            }
+        }
         for (k = 0; k < E.norder; k++) {
             const node_t *nd = &E.node[E.order[k]];
             cur_g = &E.grp[nd->grp];
@@ -3304,6 +3362,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 inst_t *it = &inst_pool[nd->inst0 + v];
                 cur_v = v;
                 cur_pv = &E.pv[cur_g->pv0 + v];
+                if (nd->grp && cur_pv->skip)
+                    continue;
                 ENG_PROF(0, E.order[k], v);
                 for (s = it->sum0; s < (uint32_t)it->sum0 + it->nsum; s++) {
                     const sum_t *sm = &E.sum[s];
@@ -3346,6 +3406,22 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 ENG_PROF(3, E.order[k], v);
             }
         }
+        if (n == ENG_BLOCK)
+            for (k = 1; k <= E.ngrp; k++) {             /* a released part that has gone quiet goes idle (part_quiet) */
+                const grp_t *g = &E.grp[k];
+                for (v = 0; v < g->parts; v++) {
+                    pv_t *x = &E.pv[g->pv0 + v];
+                    if (x->skip)
+                        continue;
+                    if (!x->gate && !x->retrig && part_quiet(k, v)) {
+                        if (!x->idle)
+                            x->idle_n = 0;
+                        x->idle = 1;
+                        part_silence(k, v);
+                    } else
+                        x->idle = 0;
+                }
+            }
         for (k = 0; k < ENG_NPV; k++)                   /* a retrig lasts one block (every Main / Part module saw it) */
             E.pv[k].retrig = 0;
         for (k = 0; k < E.nout; k++) {

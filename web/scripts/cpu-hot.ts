@@ -21,7 +21,8 @@ import { deviceView } from '../src/poly';
 const ROOT = new URL('../../', import.meta.url).pathname;
 const NOTE = 72, BLOCKS = 24, SKIP = Number(process.env.CPU_SKIP ?? 3);
 const ON = (n: number): number => (1 << 16) | n;
-const events = (notes: number[]): number[] => [...notes.map(ON), ...Array(BLOCKS).fill(3 << 16)];
+// CPU_NOTES=n holds only the first n notes of each check (what idle voices save when fewer keys are down than voices)
+const events = (notes: number[]): number[] => [...notes.slice(0, Number(process.env.CPU_NOTES ?? notes.length)).map(ON), ...Array(BLOCKS).fill(3 << 16)];
 const arg = (k: string): string | undefined => {
   const i = process.argv.indexOf(k);
   return i < 0 ? undefined : process.argv[i + 1];

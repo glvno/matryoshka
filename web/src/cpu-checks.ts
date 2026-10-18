@@ -7,11 +7,18 @@ import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
 import { PRESETS } from './presets';
+import { deviceView } from './poly';
 import { withParts } from './test-poly';
 
 export function cpuChecks(note: number): { name: string; patch: Patch; notes: number[] }[] {
   const chord = [note - 12, note - 5, note, note + 4];
-  const out = Object.entries(PRESETS).map(([name, make]) => ({ name, patch: make(), notes: [note] }));
+  // one note per voice of the patch's largest poly group: a voice with no note goes idle (engine.c part_quiet), and the
+  // estimate is the worst case, every voice playing
+  const voices = (p: Patch): number[] => {
+    const n = Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));
+    return Array.from({ length: n }, (_, i) => note + [0, 4, 7, 11, 14, 17, 21, 24][i % 8] - (i >= 8 ? 12 : 0));
+  };
+  const out = Object.entries(PRESETS).map(([name, make]) => { const patch = make(); return { name, patch, notes: voices(patch) }; });
   out.push({ name: '303 Acid, 4 parts', patch: withParts(PRESETS['303 Acid'](), 4), notes: chord });
   const morph = PRESETS['303 Acid']();
   for (const m of morph.modules) if (m.type !== 'fm1') m.paramsB = { ...m.params };
@@ -27,7 +34,7 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
       const from = i.port === 'keys' ? 'keys' : (['pitch', 'gate', 'vel'] as const).find((k) => i.port === k || i.label === k);
       if (from) connect(patch, DEFS, { module: main, port: from }, { module: i.module, port: i.port });
     }
-    if (deviceBudget(patch).over.every((i) => i.key === 'cpu')) out.push({ name: `assembly ${def.name}`, patch, notes: chord });
+    if (deviceBudget(patch).over.every((i) => i.key === 'cpu')) out.push({ name: `assembly ${def.name}`, patch, notes: voices(patch).length > 1 ? voices(patch) : chord });
   }
   return out;
 }
