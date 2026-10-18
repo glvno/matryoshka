@@ -664,23 +664,29 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .brand .wordmark { width: 100%; margin: 0; line-height: 1; }
 .brand-mark { display: block; width: 100%; height: auto; overflow: visible; }
 #tour-btn { color: var(--secondary); border-color: transparent; text-align: left; padding-inline: 0; background: transparent; }
-.tutorial { position: fixed; z-index: 11000; right: 24px; bottom: calc(var(--piano-h) + 24px); width: min(440px, calc(100vw - 40px)); max-height: calc(100dvh - 48px); overflow: auto; padding: 18px 22px 22px; background: var(--panel); border: 1px solid var(--secondary); border-radius: 12px; box-shadow: 0 8px 32px var(--shadow); }
+.tutorial { position: fixed; z-index: 11000; right: 24px; bottom: calc(var(--piano-h) + 24px); width: min(400px, calc(100vw - 40px)); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; background: var(--panel); border: 1px solid var(--secondary); border-radius: 8px; box-shadow: 0 8px 32px var(--shadow); font: 500 13px/1.45 'Barlow', system-ui, sans-serif; }
 .tutorial[hidden] { display: none; }
-.tutorial-offer { position: fixed; z-index: 11001; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px 22px; background: var(--panel); border: 1px solid var(--secondary); border-radius: 12px; box-shadow: 0 8px 32px var(--shadow); }
-.tutorial-offer h2 { margin: 0 0 8px; font-size: 18px; }
-.tutorial-offer p { color: var(--muted); line-height: 1.6; margin: 8px 0; }
-.tutorial-offer-check { display: flex; align-items: center; gap: 6px; margin-top: 14px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.tutorial-offer { position: fixed; z-index: 11001; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(400px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; border-color: var(--secondary); box-shadow: 0 12px 48px var(--backdrop); font: 500 13px/1.45 'Barlow', system-ui, sans-serif; }
+.tutorial-offer p { color: var(--muted); margin: 0 0 4px; }
+.tutorial-offer-check { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .tutorial-offer .tutorial-offer-where { font-size: 12px; padding: 6px 10px; border-radius: 6px; background: var(--surface-tint); color: var(--ink); }
 .tutorial:not(.dragging) { transition: left .25s ease, top .25s ease; }
-.tutorial-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.tutorial-head h2 { font-family: 'Alegreya SC', Georgia, serif; font-size: 23px; margin: 0; line-height: 1.1; flex: 1; }
-.tutorial-head .x { min-height: 0; padding: 2px 8px; }
-.tutorial-handle { cursor: grab; touch-action: none; min-height: 0; padding: 2px 6px; color: var(--muted); background: transparent; border-color: transparent; letter-spacing: -2px; }
+/* the tutorial cards (panel, offer, chapter menu) are cards like the sidebar's: a .shead strip (tag + condensed title), then the body */
+.tutorial-head { flex: none; height: 34px; padding: 0 4px 0 2px; gap: 6px; }
+.tutorial-head h2.stitle { margin: 0; color: var(--ink); }
+.tutorial-head button { margin: 0; }
+.tutorial .tutorial-head .x, .tutorial-menu .shead .help-close { min-height: 0; border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }
+.tutorial .tutorial-head .x:hover { color: var(--ink); }
+.tutorial .tutorial-head .tutorial-follow { min-height: 0; padding: 4px 7px 3px; border-radius: 5px; font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .07em; }
+.tutorial .tutorial-head .tutorial-handle { cursor: grab; touch-action: none; min-height: 0; padding: 2px 4px; color: var(--muted); background: transparent; border-color: transparent; letter-spacing: -2px; }
+.tutorial-body { min-height: 0; overflow: auto; padding: 10px 12px 12px; }
+.tutorial-offer .tutorial-body { padding: 12px; }
+.tutorial :is(button, .btn), .tutorial-offer button, .tutorial-menu .tutorial-body button { min-height: 28px; padding: 4px 9px; border-radius: 5px; font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
 .tutorial-handle:active { cursor: grabbing; }
-.tour-count { font-size: 10px; letter-spacing: .12em; color: var(--secondary); font-weight: 700; text-transform: uppercase; }
-.tour-step { display: block; margin-top: 8px; font-size: 11px; color: var(--muted); }
-.tutorial p { white-space: pre-line; color: var(--muted); line-height: 1.6; margin: 8px 0; }
-.tutorial-prose { margin: 8px 0; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+.tour-count { display: block; font: var(--cap); font-size: 11px; letter-spacing: .08em; color: var(--secondary); text-transform: uppercase; }
+.tour-step { display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted); }
+.tutorial p { white-space: pre-line; color: var(--muted); line-height: 1.5; margin: 6px 0; }
+.tutorial-prose { margin: 8px 0; color: color-mix(in srgb, var(--ink) 85%, var(--muted)); line-height: 1.5; overflow-wrap: anywhere; }
 .tutorial .tutorial-prose p { white-space: normal; color: inherit; }
 .tutorial-prose > :first-child { margin-top: 0; }
 .tutorial-prose > :last-child { margin-bottom: 0; }
@@ -721,11 +727,16 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .tutorial-todo ul { margin: 4px 0 0; padding-left: 18px; color: var(--ink); line-height: 1.5; }
 .tutorial-todo li::marker { color: var(--secondary); }
 .tutorial-why summary { cursor: pointer; color: var(--secondary); font-weight: 600; }
-.tutorial button { margin-right: 6px; }
-.tour-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.tour-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tutorial-body > details { margin-top: 8px; font-size: 12px; color: var(--muted); }
+.tutorial-body > details > summary { cursor: pointer; }
 .tour-note { touch-action: none; user-select: none; width: 100%; background: var(--surface-tint); }
 .tour-note:active { background: var(--secondary); color: var(--panel); }
 .tutorial-menu { width: 520px; max-width: calc(100% - 24px); }
+.tutorial-menu .shead { flex: none; height: 34px; padding: 0 6px 0 10px; }
+.tutorial-menu .shead form { margin: 0; }
+.tutorial-menu .tutorial-body { padding: 10px 14px 14px; }
+.tutorial-menu .tutorial-body > p { margin: 0; color: var(--muted); }
 .tutorial-rows { display: grid; gap: 2px; margin: 12px 0; }
 .tutorial-row { display: flex; align-items: center; gap: 10px; padding: 4px 6px; border-radius: 6px; }
 .tutorial-row.current { background: var(--surface-tint); }
@@ -745,7 +756,7 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .tour-focus { outline: 3px solid var(--secondary); outline-offset: 3px; border-radius: 6px; animation: tour-ping 1.2s cubic-bezier(.15, .6, .35, 1) infinite, tour-glow 1.2s ease-in-out infinite; }
 .dot.tour-focus { outline-offset: 2px; border-radius: 50%; }
 .dot.connected.tour-focus { --tour-base: inset 0 0 0 3px var(--panel); }
-@media (max-width: 650px) { .tutorial { right: 0; bottom: 0; left: 0; width: auto; max-height: 55dvh; border-radius: 12px 12px 0 0; padding: 12px 16px 16px; } .tutorial p { font-size: 12px; } }
+@media (max-width: 650px) { .tutorial { right: 0; bottom: 0; left: 0; width: auto; max-height: 55dvh; border-radius: 8px 8px 0 0; } .tutorial p { font-size: 12px; } }
 
 /* Docking must be immediate on resize; desktop follow-target animation must not leave the panel offscreen. */
 @media (max-width: 650px) { .tutorial:not(.dragging) { transition: none; } }
