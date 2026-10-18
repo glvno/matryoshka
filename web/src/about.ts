@@ -9,8 +9,8 @@ import { isCoverageStats, type CoverageStats } from './coverage';
 import { version } from '../package.json';
 
 const KOFI = 'glvno';
-/** the button is as tall as the logo beside it (56 px, style.css lines its top up with the logo's) */
-const KOFI_BUTTON_H = 56;
+/** the button is as tall as the wordmark (30 px; style.css lines its top up with the wordmark's) */
+const KOFI_BUTTON_H = 30;
 const KOFI_SCRIPT = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
 
 declare global {
@@ -144,7 +144,7 @@ export class AboutCard {
       const font = new URL('./fonts/BarlowCondensed-SemiBold.ttf', document.baseURI).href;
       doc.head.insertAdjacentHTML('beforeend', `<style id="m-font">@font-face { font-family: 'Barlow Condensed'; src: url('${font}'); font-weight: 600; }
         .floatingchat-donate-button span { font-family: 'Barlow Condensed', system-ui, sans-serif !important; font-weight: 600 !important; letter-spacing: .06em; text-transform: uppercase; }
-        .floatingchat-donate-button { height: ${KOFI_BUTTON_H}px !important; } .kofiimg { height: 38px !important; width: auto !important; }</style>`);
+        .floatingchat-donate-button { height: ${KOFI_BUTTON_H}px !important; } .floatingchat-donate-button { padding: 0 14px !important; } .kofiimg { height: 22px !important; width: auto !important; }</style>`);
     };
     // the button sits in the card's top right corner (style.css): its wrapper is as wide as the button, so it ends at the edge
     const fit = (): void => {
