@@ -40,7 +40,10 @@ import {
   paramColumns,
   setColumnBreak,
   setHeading,
+  setSpan,
+  spanPlan,
   type ParamRef,
+  type SpanBlock,
 } from './assembly';
 import { CATEGORIES, categoryOf, FACTORY } from './assemblies';
 import { newPatch } from './patch';
@@ -663,9 +666,17 @@ describe('assembly layout metadata', () => {
 });
 
 describe('assembly card columns and headings', () => {
-  const rows = (...xs: (string | [string, { col?: true; head?: string }])[]): ParamRef[] =>
+  const rows = (...xs: (string | [string, { col?: true; head?: string; span?: number }])[]): ParamRef[] =>
     xs.map((x, i) => (typeof x === 'string' ? { module: i + 1, param: x, label: x } : { module: i + 1, param: x[0], label: x[0], ...x[1] }));
-  const show = (list: ParamRef[]): string[] => list.map((r) => `${r.col ? '| ' : ''}${r.head ? `[${r.head}] ` : ''}${r.label}`);
+  const show = (list: ParamRef[]): string[] => list.map((r) => `${r.col ? '| ' : ''}${r.head ? `[${r.head}] ` : ''}${r.label}${r.span ? ` <${r.span}>` : ''}`);
+  // a card's layout as text: `c:x y` = column c's stack, `{a-b ... X ...}` = the row X across columns a..b-1 with what is above and below it
+  const plan = (list: ParamRef[]): string => {
+    const cols = paramColumns(list).map((c) => c.map((i) => list[i]));
+    const text = (bs: SpanBlock<ParamRef>[]): string => bs.map((b) => ('col' in b
+      ? `${b.col}:${b.items.map((r) => r.label).join(' ')}`
+      : `{${b.from}-${b.to} ${text(b.above)}${b.above.length ? ' ' : ''}${b.band.label.toUpperCase()}${b.below.length ? ' ' : ''}${text(b.below)}}`)).join(' ');
+    return text(spanPlan(cols, (r) => r.span));
+  };
 
   it('splits the rows into columns at the breaks', () => {
     expect(paramColumns(rows('a', 'b', ['c', { col: true }], 'd', ['e', { col: true }]))).toEqual([[0, 1], [2, 3], [4]]);
@@ -688,6 +699,44 @@ describe('assembly card columns and headings', () => {
     expect(show(moveParam(list, 2, 3, true))).toEqual(['[A] a', 'b', '| [C] d', 'c']);
     expect(show(moveParam(list, 1, 3, true))).toEqual(['[A] a', '| [C] c', 'd', 'b']);
     expect(moveParam(list, 1, 1, false)).toBe(list);
+  });
+
+  it('a spanning row cuts the columns it covers: as many rows above as it has in its own column, the rest below', () => {
+    // column 0: a b S(2) c | column 1: d e f g | column 2: h
+    const list = rows('a', 'b', ['s', { span: 2 }], 'c', ['d', { col: true }], 'e', 'f', 'g', ['h', { col: true }]);
+    expect(plan(list)).toBe('{0-2 0:a b 1:d e S 0:c 1:f g} 2:h');
+    // full width; on the first row nothing is above it
+    expect(plan(rows(['s', { span: 3 }], 'a', ['b', { col: true }], ['c', { col: true }]))).toBe('{0-3 S 0:a 1:b 2:c}');
+    // a covered column shorter than the rows above leaves empty space; the band starts under the tallest stack
+    expect(plan(rows('a', 'b', 'c', ['s', { span: 2 }], ['d', { col: true }]))).toBe('{0-2 0:a b c 1:d S}');
+    // no span, or a span of one: plain columns
+    expect(plan(rows('a', ['b', { col: true }]))).toBe('0:a 1:b');
+  });
+
+  it('spans nest and sit side by side; one at the card edge or partly over another is cut short to fit', () => {
+    // side by side: columns 0-1 and 2-3
+    expect(plan(rows(['s', { span: 2 }], ['a', { col: true }], ['t', { col: true, span: 2 }], ['b', { col: true }]))).toBe('{0-2 S 1:a} {2-4 T 3:b}');
+    // nested: the wide one first, a narrower one under it inside its group
+    expect(plan(rows(['s', { span: 3 }], 'a', ['t', { col: true }], ['u', { span: 2 }], ['b', { col: true }]))).toBe('{0-3 S 0:a {1-3 1:t 2:b U}}');
+    // partly over: columns 0-1 and 1-2 in the same stretch; the second is cut at the first one's edge
+    expect(plan(rows(['s', { span: 2 }], ['t', { col: true, span: 2 }], ['b', { col: true }]))).toBe('{0-2 S 1:t} 2:b');
+    // the same span above the first one's band is inside its group too
+    expect(plan(rows('a', ['s', { span: 2 }], ['t', { col: true, span: 2 }], ['b', { col: true }]))).toBe('{0-2 0:a 1:t S} 2:b');
+    // past the right edge
+    expect(plan(rows('a', ['b', { col: true, span: 5 }], 'c'))).toBe('0:a 1:b c');
+    // a later span in the same column as an earlier one nests in its group (cut to it)
+    expect(plan(rows(['s', { span: 2 }], ['t', { span: 3 }], ['a', { col: true }], ['b', { col: true }]))).toBe('{0-2 S {0-2 T 1:a}} 2:b');
+  });
+
+  it('a span belongs to its place: a removed row hands it on, a moved row takes over the place it lands on', () => {
+    const list = rows('a', ['s', { span: 2 }], 't', ['b', { col: true }]);
+    expect(show(keepParams(list, (r) => r.label !== 's'))).toEqual(['a', 't <2>', '| b']);
+    expect(show(keepParams(list, (r) => r.label !== 'a'))).toEqual(['s <2>', 't', '| b']);
+    expect(show(moveParam(list, 2, 1, false))).toEqual(['a', 't <2>', 's', '| b']);
+    expect(show(moveParam(list, 1, 3, true))).toEqual(['a', 't <2>', '| b', 's']);
+    setSpan(list, 2, 3);
+    setSpan(list, 1, 1);
+    expect(show(list)).toEqual(['a', 's', 't <3>', '| b']);
   });
 
   it('sets and clears breaks and headings; never a break on the first row', () => {
@@ -739,11 +788,22 @@ describe('assembly card columns and headings', () => {
     expect(d.params[1].col).toBeUndefined();
     expect(d.params[2].head).toBeUndefined();
     expect(d.params[3].head).toHaveLength(40);
+    def.params[4].span = 1.5;
+    def.params[5].span = 3;
+    def.params[6].span = 999;
+    const e = validateAssemblyDef(def, DEFS);
+    expect(e.params[4].span).toBeUndefined();
+    expect(e.params[5].span).toBe(3);
+    expect(e.params[6].span).toBe(16);
   });
 
-  it('the factory Oracle V has three sectioned columns', () => {
+  it('the factory Oracle V has three sectioned columns and its output scope across the foot', () => {
     const d = FACTORY.find((x) => x.name === 'Oracle V')!;
-    expect(paramColumns(d.params).map((c) => c.length)).toEqual([9, 13, 12]);
+    expect(paramColumns(d.params).map((c) => c.length)).toEqual([13, 10, 11]);
+    expect(plan(d.params)).toMatch(/^\{0-3 0:.* 1:.* 2:.* OUT\}$/);
+    // the drum kit's grids run across both columns, its knobs in two columns under them
+    const kit = FACTORY.find((x) => x.name === 'drum kit')!;
+    expect(plan(kit.params)).toMatch(/^\{0-2 KICK \{0-2 SNARE \{0-2 CLAP \{0-2 CL HAT \{0-2 OP HAT \{0-2 COWBELL 0:.* 1:.*\}\}\}\}\}\}$/);
     expect(d.params.filter((r) => r.head).map((r) => r.head)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter', 'amp', 'mod']);
   });
 });
