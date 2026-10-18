@@ -47,11 +47,10 @@ jobs:
           test "${PIPESTATUS[0]}" -eq 0
           if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
           grep -E "pool [0-9]+ B of [0-9]+" build/build.log
-      - name: golden vectors, arpeggiator and protocol tests, LCD preview
+      - name: golden vectors and protocol tests, LCD preview
         run: |
           export
           tools/golden.sh
-          tools/arp_test.sh
           tools/ui_preview.sh build/ui-preview.png 0 1
       - uses: actions/upload-artifact@v4
         with:

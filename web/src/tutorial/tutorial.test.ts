@@ -16,12 +16,11 @@ function peak(p: Patch, key = true): number {
   const e = new Engine(SR);
   e.load(validatePatch(JSON.parse(JSON.stringify(p)), DEFS));
   if (key) e.noteOn(60, 0.8);
-  e.clockRun(true);
+  e.transport(true); // the clock runs from the Main module's tempo
   const l = new Float32Array(128);
   const r = new Float32Array(128);
   let max = 0;
   for (let i = 0; i < SR / 128; i++) {
-    if (i % 8 === 0) e.clockTick(); // 24 ppqn at about 120 bpm
     e.render(l, r);
     for (let k = 0; k < 128; k++) max = Math.max(max, Math.abs(l[k]), Math.abs(r[k]));
   }

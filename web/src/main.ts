@@ -22,7 +22,6 @@ import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
 import { DEFS } from './modules';
 import { newPatch, validatePatch, type Patch, type SideKey } from './patch';
-import { ARP_DEFAULT } from './arp';
 import { Scope } from './scope';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { FACTORY, loadLibrary, categoryOf, USER_SHELF, summary } from './assemblies';
@@ -211,16 +210,8 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (live() && !uploading) device.range(editor.patch, id, index, name, range);
     else if (live()) dirty = true;
   },
-  onArp(cfg) {
-    host.send({ t: 'arp', cfg });
-    queueSave(editor.patch);
-    if (live() && !uploading) device.arp(cfg, null);
-    else if (live()) dirty = true;
-  },
-  onArpPlay(on) {
-    host.send({ t: 'arpplay', on });
-    if (live()) device.arp(editor.patch.arp ?? ARP_DEFAULT, on);
-    syncArpBtn();
+  onTransport(on) {
+    setPlaying(on);
   },
   onProbe(key, id, port, kind, _label, on) {
     if (on) {
@@ -259,15 +250,15 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
 editor.wheelHost = $('wheels');
 editor.dockWheels = hands.wheels;
 editor.dockOctave = piano.octaveControls;
-// the arpeggiator's play switch, beside its settings in Main's arpeggiator column (kept across redraws)
+// the transport's Play switch, under the tempo in Main's clock column (kept across redraws; the id is the tutorial's target)
 const arpBtn = document.createElement('button');
 arpBtn.id = 'arp-btn';
 arpBtn.type = 'button';
 arpBtn.textContent = 'Play';
-arpBtn.title = 'Arpeggiator: plays while keys are held (Space)';
-arpBtn.setAttribute('aria-label', 'Arpeggiator play');
+arpBtn.title = 'Transport: Main\u2019s run output and its clock (Space)';
+arpBtn.setAttribute('aria-label', 'Transport play');
 arpBtn.setAttribute('aria-pressed', 'false');
-editor.dockArp = arpBtn;
+editor.dockPlay = arpBtn;
 editor.dockBudget = $('budget');
 editor.rebuild();
 showBudget();
@@ -290,7 +281,7 @@ const tutorial = new Tutorial({
   snapshot: (side) => takeSnapshot(side),
   flipAB: () => flipAB(),
   share: () => sharePatch(),
-  arpPlay: (on) => setArpPlay(on),
+  arpPlay: (on) => setPlaying(on),
   probe: (id, port) => { const key = probeKey(id, port); if (editor.probes.has(key)) return; editor.probes.add(key); const def = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']; const kind = def?.outputs.find((o) => o.name === port)?.kind ?? 'audio'; scope.add(key, kind); host.send({ t: 'probe', key, id, port }); editor.rebuild(); },
   bypass: (id, on) => { const m = editor.patch.modules.find((m) => m.id === id); if (!m) return; if (on) m.bypass = true; else delete m.bypass; host.send({ t: 'bypass', id, on }); tutorial.bypassed(); editor.rebuild(); queueSave(editor.patch); },
   bankSave: addToBank,
@@ -672,7 +663,7 @@ window.addEventListener('keydown', (e) => {
   else if (!mod && k.toLowerCase() === 'b') done = editor.bypassSelected();
   else if (mod && k.toLowerCase() === 'g') (editor.makeAssembly(), (done = true)); // plain G is a note key
   else if (k === ' ') {
-    toggleArp();
+    togglePlaying();
     done = true;
   } else if (k.startsWith('Arrow')) {
     const d = e.shiftKey ? 100 : 10;
@@ -833,23 +824,22 @@ function panic(): void {
   host.mute(true);
   sink.send({ t: 'panic' });
 }
-// the Arp button in Main's arpeggiator column, Space and the arpeggiator's enable box are one switch
-function syncArpBtn(): void {
-  arpBtn.setAttribute('aria-pressed', String(editor.arpPlay));
+// the Play button in Main's clock column and Space are one switch: the transport (Main's run output and clock)
+function syncPlayBtn(): void {
+  arpBtn.setAttribute('aria-pressed', String(editor.playing));
 }
-function setArpPlay(on: boolean): void {
+function setPlaying(on: boolean): void {
   if (on) host.mute(false);
-  editor.arpPlay = on;
-  host.send({ t: 'arpplay', on });
-  if (live()) device.arp(editor.patch.arp ?? ARP_DEFAULT, on);
-  editor.rebuild();
-  syncArpBtn();
+  editor.playing = on;
+  host.transport(on);
+  if (live()) device.transport(on);
+  syncPlayBtn();
 }
-function toggleArp(): void {
-  setArpPlay(!editor.arpPlay);
-  status.textContent = editor.arpPlay ? 'arpeggiator enabled · hold keys' : 'arpeggiator disabled';
+function togglePlaying(): void {
+  setPlaying(!editor.playing);
+  status.textContent = editor.playing ? 'transport running' : 'transport stopped';
 }
-arpBtn.onclick = toggleArp;
+arpBtn.onclick = togglePlaying;
 
 // the keyboard folds away, leaving the deck's buttons; remembered per browser
 const KEYS_HIDDEN = 'matryoshka.keys-hidden';
@@ -1158,7 +1148,7 @@ if (import.meta.env.DEV) {
   import.meta.hot?.on('lesson-course-saved', () => location.reload());
   // the lesson editor's live link: it checks steps against this synth and loads patches into it
   tutorial.observer = synthLink(() => ({
-    patch: editor.patch, probes: [...editor.probes], selected: [...editor.selected], arpPlay: editor.arpPlay, audio: host.running && !host.muted,
+    patch: editor.patch, probes: [...editor.probes], selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
     snapshots: { A: !!editor.snapshots.A, B: !!editor.snapshots.B }, zoom: editor.zoom, library: loadLibrary(),
   }), (p) => { sink.send({ t: 'panic' }); loadNamed(p); });
   const link = document.createElement('a');

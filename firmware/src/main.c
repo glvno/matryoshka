@@ -60,7 +60,7 @@ static void fm1_fault(const fm1_crash_t *c)
 }
 
 static void leds_octave(void);
-static void leds_arp(void);
+static void leds_play(void);
 static void page_set(uint32_t p);
 
 /* proto.c hooks */
@@ -107,7 +107,8 @@ static void state_unpack(uint32_t w)
 }
 
 /* The saved state (SAVE, the editor's STORE): one blob in the patch store (patchstore.c), the whole state of the panel:
- *   0 0xB2  1 version 2  2..9 the length of each voice's patch (u16)  10.. the arpeggiators' settings (ARP_PACK bytes each)
+ *   0 0xB2  1 version 2  2..9 the length of each voice's patch (u16)  10.. the firmware arpeggiators' settings (ARP_PACK bytes
+ *   each; zeros since the Arpeggiator module, #58, and ignored)
  *   then the patches as they run now (parameter edits included), then the tail: the MIDI channels (4), the LED mode, the
  *   mixer levels (4), the mute bits.
  * With the header's words: octave and settings (state_pack), the selected module of each voice (byte per voice in word 1) and
@@ -121,43 +122,19 @@ static void state_unpack(uint32_t w)
 #define BLOB_NV 4u                                /* voice slots in the record (the panel's most) */
 static uint8_t blob[PS_MAX] ENG_POOL;
 
-static void arp_pack(uint8_t *d, const arp_cfg_t *c)
-{
-    d[0] = c->mode; d[1] = c->scale; d[2] = c->root; d[3] = c->octaves; d[4] = c->chaos; d[5] = c->vchaos; d[6] = c->rchaos;
-    d[7] = c->steps; d[8] = c->pulses; d[9] = c->rot; d[10] = c->rate; d[11] = (uint8_t)c->bpm; d[12] = (uint8_t)(c->bpm >> 8);
-}
 
-static void arp_unpack(uint32_t v, const uint8_t *d);
-
-/* the editor's ARP command: the 13 byte record into the arpeggiator, byte 13 the transport (0 stop, 1 start, else leave) */
-static void m1_arp_set(const uint8_t *d, uint32_t n)
+/* the editor's TRANSPORT command (PLAY) */
+static void m1_transport(int run)
 {
-    arp_unpack(0, d);
-    arp_sync_scale();
-    if (n >= 14u && d[13] < 2u) {
-        AV[0].play = d[13];
-        leds_arp();
-    }
-    ui_dirty = 2;
-}
-
-static void arp_unpack(uint32_t v, const uint8_t *d)
-{
-    arp_t *keep = arp_p;
-    arp_p = &AV[v];
-    arp_c.mode = d[0]; arp_c.scale = d[1]; arp_c.root = d[2]; arp_c.octaves = d[3]; arp_c.chaos = d[4]; arp_c.vchaos = d[5];
-    arp_c.rchaos = d[6]; arp_c.steps = d[7]; arp_c.pulses = d[8]; arp_c.rot = d[9]; arp_c.rate = d[10];
-    arp_c.bpm = (uint16_t)(d[11] | d[12] << 8);
-    arp_fix();                                  /* anything out of range is clamped */
-    arp_dirty = 1;
-    arp_p = keep;
+    eng_transport(run);
+    leds_play();
+    ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
 #define BLOB_HDR (2u + 2u * BLOB_NV)
 #define BLOB_TAIL (BLOB_NV + 1u + BLOB_NV + 1u)
 static uint32_t blob_build(void)                /* 0 if it does not fit */
 {
-    static const arp_cfg_t arp_default = ARP_CFG_DEFAULT;
     uint32_t n = BLOB_HDR, v, i, total = BLOB_HDR + BLOB_NV * ARP_PACK + BLOB_TAIL + m1_cur_len;
     if (total > PS_MAX)
         return 0;
@@ -168,8 +145,8 @@ static uint32_t blob_build(void)                /* 0 if it does not fit */
         blob[2u + 2u * v] = (uint8_t)l;
         blob[3u + 2u * v] = (uint8_t)(l >> 8);
     }
-    for (v = 0; v < BLOB_NV; v++, n += ARP_PACK)
-        arp_pack(blob + n, v ? &arp_default : &AV[0].cfg);
+    for (i = 0; i < BLOB_NV * ARP_PACK; i++)    /* (the firmware arpeggiators' settings, before #58: zeros) */
+        blob[n++] = 0;
     for (i = 0; i < m1_cur_len; i++)
         blob[n++] = m1_cur[i];
     for (v = 0; v < BLOB_NV; v++)
@@ -385,8 +362,7 @@ static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob
             cfg.leds = t[BLOB_NV] > 2u ? 2u : t[BLOB_NV];
         }
     }
-    arp_unpack(0, b + hdr);
-    arp_sync_scale();
+    (void)hdr;                                          /* (the arpeggiators' settings after the header: no longer used) */
     mix_apply_all();
     return 0;
 }
@@ -448,24 +424,20 @@ static void patch_boot(void)                    /* the stored state if there is 
     factory_boot();
 }
 
-/* MENU > DEFAULTS: the settings, mixer, arpeggiators and the voices as they were made, and the saved state erased */
+/* MENU > DEFAULTS: the settings, mixer, transport and the patch as they were made, and the saved state erased */
 static void defaults_now(void)
 {
-    arp_clear_keys(0);
     eng_all_notes_off();
+    eng_transport(0);
     cfg_defaults();
     mix_vol = 100;
     mix_mute = 0;
-    AV[0].play = 0;
-    AV[0].cfg = (arp_cfg_t)ARP_CFG_DEFAULT;
-    AV[0].dirty = 1;
     mix_apply_all();
     octave = 0;
-    arp_p = &AV[0];
     factory_boot();
     leds_avail();
     leds_octave();
-    leds_arp();
+    leds_play();
     if (flash_ok) {
         eng_run = 0;
         (void)ps_erase();
@@ -474,7 +446,8 @@ static void defaults_now(void)
     ui_msg("DEFAULTS", 1500);
 }
 
-static uint8_t midi_clk_run = 1;                /* MIDI clock passes until a Stop (0xFC), and again after Start / Continue */
+static uint32_t midi_clk_ms;                    /* fm1_ms of the last MIDI clock tick (MIDI clock drives the clock while they come) */
+static uint8_t midi_clk_seen;
 
 static void midi_drain(void)                    /* USB-MIDI events -> the engine */
 {
@@ -483,21 +456,27 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
         RING_PUBLISH();
         mi_r++;
         uint32_t chn = ((pkt >> 8) & 15u) + 1u, redraw = 0;
-        if (st == 0xF0u) {                      /* realtime: the clock comes from the arpeggiator while it runs, else from MIDI in */
+        if (st == 0xF0u) {                      /* realtime (MENU > CLOCK IN): MIDI clock drives the clock, Start / Continue / Stop the transport */
             uint32_t rt = (pkt >> 8) & 0xFFu;
-            if (rt == 0xF8u) {
-                if (midi_clk_run && cfg.clock_in && !arp_any_play())
-                    eng_clock_tick();
-            } else {
-                midi_clk_run = rt != 0xFCu;
+            if (!cfg.clock_in) {
+            } else if (rt == 0xF8u) {
+                if (!midi_clk_seen)
+                    eng_clock_external(1);
+                midi_clk_seen = 1;
+                midi_clk_ms = fm1_ms;
+                eng_clock_tick();
+            } else if (rt == 0xFAu || rt == 0xFBu || rt == 0xFCu) {
+                eng_transport(rt != 0xFCu);
+                leds_play();
+                if (!ui_dirty)
+                    ui_dirty = 1;
             }
         } else if (!cfg.ch || cfg.ch == chn) {  /* channel messages on the MIDI channel (MENU > MIDI CHANNEL; 0 = all) */
             if (st == 0x90u && v) {
-                arp_key_on(0, n, (int32_t)(v * 65536u / 127u));
+                eng_note_on(n, (int32_t)(v * 65536u / 127u));
             } else if (st == 0x80u || st == 0x90u) {
-                arp_key_off(0, n);
+                eng_note_off(n);
             } else if (st == 0xB0u && n == 123u) {
-                arp_clear_keys(0);
                 eng_all_notes_off();
             } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
                 eng_ctl(ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
@@ -522,6 +501,10 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
         }
     }
     midi_in_overflow = 0;
+    if (midi_clk_seen && fm1_ms - midi_clk_ms > 500u) {   /* half a second without MIDI clock: the Main module's tempo again */
+        midi_clk_seen = 0;
+        eng_clock_external(0);
+    }
 }
 
 /* MASTER pot (ADC 0..1023, square law): read before the audio starts, then smoothed per main-loop pass */
@@ -683,18 +666,6 @@ static void knobs_poll(void)
         }
         return;
     }
-    if (page) {                                     /* K1..K4 of an arpeggiator page */
-        for (k = 0; k < 4u; k++) {
-            uint32_t fast = cfg.accel && fm1_ms - last_ms[k] < 80u;
-            if (st[2u + k]) {
-                last_ms[k] = fm1_ms;
-                if (arp_knob(page, k, st[2u + k], (int)fast) && !ui_dirty)
-                    ui_dirty = 1;
-            }
-        }
-        if (!st[0])
-            return;
-    }
     if (!n)
         return;
     if (sel >= n)
@@ -773,21 +744,17 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
         if (now & (1u << n)) {
             int32_t note = 53 + (int32_t)n + 12 * octave;
             key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
-            arp_key_on(0, key_note[n], ENG_ONE);
+            eng_note_on(key_note[n], ENG_ONE);
         } else {
-            arp_key_off(0, key_note[n]);
+            eng_note_off(key_note[n]);
         }
     }
 }
 
-/* PLAY: red while the arpeggiator is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
- * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. ARP / SEQ / LFO light up
- * while their page shows. */
+/* PLAY: red while the transport is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
+ * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. GLO lights up while the mixer shows. */
 #define BTN_GLO 7u                  /* the mixer page */
-#define BTN_ARP 10u
-#define BTN_SEQ 11u
 #define BTN_PLAY 12u
-#define BTN_LFO 5u                  /* the request said "BTN 52": there is no id 52 (buttons are 0..13), 5 is LFO in Felucca's table */
 static void led_breath_key(uint32_t id, int on)     /* a button's LED breathes (the HAL's one shared speed, fm1_br_step) */
 {
     uint32_t p, r;
@@ -801,18 +768,15 @@ static void led_breath_key(uint32_t id, int on)     /* a button's LED breathes (
             }
 }
 
-static void leds_arp(void)
+static void leds_play(void)
 {
-    int run = arp_play;
+    int run = eng_transport_running();
     fm1_led_key(BTN_PLAY, !run);                    /* stopped: PLAY's red LED; running: the green one breathes */
     fm1_led[8] &= (uint8_t)~2u;
     if (run)
         fm1_led_breath[8] |= 2u;
     else
         fm1_led_breath[8] &= (uint8_t)~2u;
-    fm1_led_key(BTN_ARP, page == 1u);
-    fm1_led_key(BTN_SEQ, page == 2u);
-    fm1_led_key(BTN_LFO, page == 3u);
     fm1_led_key(BTN_GLO, page == PAGE_MIXER);
 }
 
@@ -821,17 +785,16 @@ static void page_set(uint32_t p)    /* the same button again goes back to the mo
     page = (uint8_t)(page == p ? 0u : p);
     if (page == PAGE_MENU)
         menu_open();
-    leds_arp();
+    leds_play();
     lcd_fill(0, 24, 240, 216, C_BG);
     view_draw(1);
 }
 
-static void arp_toggle(void)
+static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock) */
 {
-    arp_play = !arp_play;
-    leds_arp();
-    if (page)
-        ui_dirty = ui_dirty ? ui_dirty : 1;
+    eng_transport(!eng_transport_running());
+    leds_play();
+    ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
 /* OCT- / OCT+ light up while the octave is shifted */
@@ -884,9 +847,6 @@ static void leds_avail(void)                        /* the page buttons glow dim
     int on = cfg.leds != 0;
     fm1_led_dim_level(cfg.leds == 2u ? 2u : 0u);  /* DIM LOW is the old glow (~1/30), DIM HIGH a brighter one (~1/12) */
     led_glow(BTN_HOME, on);
-    led_glow(BTN_ARP, on);
-    led_glow(BTN_SEQ, on);
-    led_glow(BTN_LFO, on);
     led_glow(BTN_GLO, on);
 }
 
@@ -900,7 +860,7 @@ static void home_press(void)
         }
     if (page) {
         page = 0;
-        leds_arp();
+        leds_play();
         lcd_fill(0, 24, 240, 216, C_BG);
     }
     view_draw(1);
@@ -977,14 +937,8 @@ static void buttons_poll(void)
         page_set(PAGE_MIXER);
     if (p & (1u << BTN_ENV))
         page_set(PAGE_PERF);                        /* the performance page (again: back to the module page) */
-    if (p & (1u << BTN_ARP))
-        page_set(1);
-    if (p & (1u << BTN_SEQ))
-        page_set(2);
-    if (p & (1u << BTN_LFO))
-        page_set(3);
     if (p & (1u << BTN_PLAY))
-        arp_toggle();
+        play_toggle();
 }
 
 /* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No
@@ -1131,7 +1085,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     screen_idle();                                      /* the top bar and the page */
     if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
-    leds_arp();
+    leds_play();
     leds_avail();
     {   /* presses while booting are not commands: SAVE held for safe mode must not save the fallback over the stored state */
         uint32_t rel;
@@ -1167,7 +1121,6 @@ static void fm1_main(int update)                    /* update: the boot guard sa
                 ui_dirty = 0;
                 view_draw(full);
             }
-            au_step_poll(page);
             cpu_poll();
         }
         host_poll();

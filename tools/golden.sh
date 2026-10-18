@@ -8,6 +8,7 @@ set -e
 cd "$(dirname "$0")/.."
 TOL="${1:-0.05}"
 CF=""
+rm -rf build/golden                          # (kits that are gone must not be compared from an old run)
 (cd web && npx vite-node scripts/golden.ts)
 mkdir -p build
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/host_test firmware/test/host_test.c -lm

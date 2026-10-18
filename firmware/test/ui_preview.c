@@ -47,13 +47,11 @@ static void lcd_sync(void) {}
 #include "../src/engine.c"
 #include "../src/presets.h"
 #include "../src/font5x7.c"
-#include "../src/arp.c"
 #include "../src/ui.c"
-#include "../src/arp_ui.c"
 static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }
 static void leds_avail(void) {}
 static void leds_octave(void) {}
-static void uboot_now(void) {}
+static void update_only(const char *why) { (void)why; }
 static void defaults_now(void) {}
 #include "../src/menu.c"
 
@@ -93,11 +91,9 @@ int main(int argc, char **argv)
     }
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     octave = argc > 4 ? atoi(argv[4]) : 0;
-    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 1..3: the arpeggiator pages, 4: mixer, 5: menu */
-    if (argc > 6) {                                         /* page 2: a playing step */
-        arp_play = 1;
-        arp_step_ui = (uint8_t)atoi(argv[6]);
-    }
+    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 4: mixer, 5: menu, 6: performance */
+    if (argc > 6)                                           /* the transport running */
+        eng_transport(atoi(argv[6]) != 0);
     booting = 0;
     if (argc > 7) {                                         /* page 5: the menu's tab (4 = MANUAL) */
         int t = atoi(argv[7]);

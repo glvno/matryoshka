@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import type { AssemblyInst } from './assembly';
-import { fixArp, type ArpCfg } from './arp';
 import { migratePatchParts, migrateVoicing } from './poly';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
@@ -153,9 +152,9 @@ export interface Patch {
    * sways the cables (its signal adds to the cable slack), one moves the zoom */
   slackFrom?: Endpoint;
   zoomFrom?: Endpoint;
-  /** the arpeggiator's settings (arp.ts), an optional overlay: the browser's arpeggiator and the FM-1's (ARP command) take
-   * them with the patch; the binary patch does not carry them */
-  arp?: ArpCfg;
+  /** (legacy) the firmware arpeggiator's settings before the Arpeggiator module (#58): validatePatch keeps only its tempo,
+   * as the Main module's tempo, and drops the rest */
+  arp?: { bpm?: number };
 }
 
 /** do two patches have the same structure (modules of the same types in the same order, the same cables), so that one can be the B side of the other? */
@@ -335,7 +334,7 @@ export function ensureMain(p: Patch, defs: Record<string, ModuleDef>): boolean {
 }
 
 /** modules that run once even inside a poly assembly: their inputs sum the parts (big state, or the end of the chain) */
-export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output']);
+export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output', 'arp']);
 /** module types the editor shows but the engines and the FM-1 never run: poly.ts deviceView drops them and their cables */
 export const EDITOR_ONLY = new Set(['scope']);
 
@@ -488,6 +487,12 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   const p = raw as Omit<Patch, 'version'> & { version: number };
   if (!p || (p.version !== 1 && p.version !== 2) || !Array.isArray(p.modules) || !Array.isArray(p.cables)) throw new Error('not a Matryoshka patch');
   const seen = new Set<number>();
+  if (p.arp && typeof p.arp === 'object') {   // the firmware arpeggiator's settings (before #58): its tempo goes to the Main module
+    const bpm = Math.round(Number((p.arp as { bpm?: unknown }).bpm));
+    const main = p.modules.find((m) => m.type === 'fm1');
+    if (main && Number.isFinite(bpm) && main.params?.tempo === undefined) main.params = { ...(main.params ?? {}), tempo: Math.min(300, Math.max(20, bpm)) };
+  }
+  delete p.arp;
   for (const m of p.modules) {
     if (m.type === 'midi') m.type = 'fm1'; // the MIDI module is gone: the FM-1 panel has the same pitch / gate / vel outputs
     const def = defs[m.type];
@@ -542,8 +547,6 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   p.cables = p.cables.filter((c) => kindsFit(defs, p.modules.find((m) => m.id === c.from.module)!.type, c.from.port, p.modules.find((m) => m.id === c.to.module)!.type, c.to.port));
   p.name = String(p.name ?? 'patch');
   if (!hasMorph(p as Patch) || typeof p.morphName !== 'string') delete p.morphName;
-  if (p.arp && typeof p.arp === 'object') p.arp = fixArp(p.arp);
-  else delete p.arp;
   for (const k of SIDE_KEYS) if (!sideSourceOk(p as Patch, k, defs)) delete p[k];
   return p as Patch;
 }

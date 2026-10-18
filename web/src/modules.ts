@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The module library: definitions (shared with the editor) and DSP implementations.
 
+import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import type { ModuleDef, ParamDef, PortDef } from './patch';
 import WT from './wavetables.json';
 
@@ -9,8 +10,10 @@ export interface Voice {
   pitch: number;
   gate: number;
   velocity: number;
-  /** a clock tick (24 per quarter note) falls in this block */
+  /** a clock tick (24 per quarter note) falls in this block while the transport runs */
   clock: boolean;
+  /** the transport runs (PLAY, MIDI Start / Stop): the Main module's run output */
+  run: boolean;
   /** the performance controls, the same for every voice: pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1 */
   bend: number;
   mod: number;
@@ -159,6 +162,9 @@ export const PRIORITIES = ['last', 'low', 'high'];
 export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse'];
 
 const N_KNOBS = 4;
+/** the Main module's tempo range (bpm) */
+export const TEMPO_MIN = 20;
+export const TEMPO_MAX = 300;
 const knobNames = Array.from({ length: N_KNOBS }, (_, i) => `k${i + 1}`);
 
 const fm1: ModuleImpl<null> = {
@@ -169,11 +175,13 @@ const fm1: ModuleImpl<null> = {
     // sequencer can morph the patch; the engine reads it, not this module (engine.ts morphPosition)
     inputs: [control('morph')],
     // pitch / gate / vel: the shared keyboard (one note: the last held, legato); keys: the held keys for Voice allocators
-    // (the keyboard's ribbon cable to a polysynth's CPU)
-    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys')],
+    // (the keyboard's ribbon cable to a polysynth's CPU); clock: 24 ppqn while the transport runs; run: high while it runs
+    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run')],
     params: [
       ...knobNames.map((n) => param(n, 0, 1, 0.5, { step: 0.01 })),
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
+      // the patch's tempo: the engine's clock (24 ppqn) runs from it unless MIDI clock comes in; arpeggiators and the clock output follow it
+      param('tempo', TEMPO_MIN, TEMPO_MAX, 120, { step: 1, unit: 'bpm' }),
     ],
   },
   init: () => null,
@@ -186,10 +194,11 @@ const fm1: ModuleImpl<null> = {
     c.out.at.fill(c.voice.at, 0, c.n);
     c.out.keys.fill(c.voice.gate, 0, c.n); // 1 while a key is down (a scope shows it; the allocators take the keys themselves)
     for (const n of knobNames) c.out[n].fill(c.p[n] ?? 0, 0, c.n);
-    // clock: 24 ppqn from the arpeggiator or MIDI in, a pulse of half a block per tick; nothing without a source
+    // clock: 24 ppqn (the tempo, or MIDI clock) while the transport runs, a pulse of half a block per block that saw a tick
     const hi = c.voice.clock ? Math.ceil(c.n / 2) : 0;
     c.out.clock.fill(1, 0, hi);
     c.out.clock.fill(0, hi, c.n);
+    c.out.run.fill(c.voice.run ? 1 : 0, 0, c.n);
   },
 };
 
@@ -2168,6 +2177,31 @@ const alloc: ModuleImpl<null> = {
   process: (c) => part.process(c, null),
 };
 
+/**
+ * Arpeggiator: keys in, keys out (between the Main module and a Voice allocator). It plays the held keys one at a time
+ * (arpeggiator.ts: mode, octaves, rate of the engine's clock or one step per edge on clk, gate length, latch). It runs once
+ * (SHARED_TYPES); the engine runs its notes, not process(): the keys output only shows the gate of the note it plays.
+ */
+const arp: ModuleImpl<null> = {
+  def: {
+    type: 'arp',
+    label: 'Arpeggiator',
+    inputs: [keys('keys'), gate('clk')],
+    outputs: [keys('keys')],
+    params: [
+      param('mode', 0, ARP_MODES.length - 1, 0, { step: 1, choices: ARP_MODES }),
+      param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATES }),
+      param('octaves', 1, 4, 1, { step: 1 }),
+      param('gate', 0.1, 1, 0.5, { step: 0.01 }),
+      param('latch', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+    ],
+  },
+  init: () => null,
+  process(c) {
+    c.out.keys.fill(c.voice.gate, 0, c.n);
+  },
+};
+
 export const SCOPE_MODES = ['time', 'spectrum'];
 /** the shortest / longest window of a Scope (ms) */
 export const SCOPE_TIME_MIN = 1;
@@ -2194,7 +2228,7 @@ const scope: ModuleImpl<null> = {
   process: () => {},
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
@@ -2202,7 +2236,7 @@ const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, de
  * effective value is its base + (block mean of p1 x att1 + block mean of p2 x att2, for the inputs that control it) x
  * (max - min), clamped.
  */
-export const PIN_EXEMPT = new Set(['fm1', 'output', 'alloc', 'scope']);
+export const PIN_EXEMPT = new Set(['fm1', 'output', 'alloc', 'scope', 'arp']);
 export const PIN_NAMES = ['p1', 'p2'] as const;
 for (const m of ALL)
   if (!PIN_EXEMPT.has(m.def.type) && m.def.params.length) {

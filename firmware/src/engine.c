@@ -40,6 +40,10 @@
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 16
+#define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
+#define ARP_HELD 16                  /* keys an arpeggiator holds (arpeggiator.ts ARP_HELD) */
+#define ARP_LIST (ARP_HELD * 4u)     /* its notes over four octaves */
+#define TEMPO_DEFAULT 120u           /* without a Main module */
 
 #define INC_C4 25469723u            /* 261.6255653 Hz at ENG_SR, u32 phase per sample */
 #define DT_MAX 1932735283u          /* 0.45 of a cycle per sample (the reference limits osc to 0.45, cutoff to 0.45 sr) */
@@ -326,11 +330,23 @@ typedef struct {
     int8_t env[ENG_MAX_PARTS];       /* % on the envelope times, */
     uint8_t level[ENG_MAX_PARTS];    /* % of the VCA gains */
     uint8_t rot;                     /* rotate: the part the next note tries first */
+    uint8_t src;                     /* where its notes come from: 0 the keys, else 1 + the node index of an Arpeggiator */
     uint8_t pv0;                     /* its first part in E.pv[] */
     uint8_t nheld;
     uint8_t held_note[MAX_HELD];
     int32_t held_vel[MAX_HELD];
 } grp_t;
+
+/* an Arpeggiator module as it runs (web/src/arpeggiator.ts, the same steps): its keys in press order, the step counter, the
+ * note it plays, samples since the last step and between the last two, the clock tick of its next step, the random mode's
+ * generator, the clk input's last state */
+typedef struct { uint8_t note, down; int32_t vel; } arp_key_t;
+typedef struct {
+    uint8_t node, n, running, clk_hi;
+    int16_t cur;
+    arp_key_t held[ARP_HELD];
+    uint32_t pos, since, interval, next, seed;
+} arp_t;
 
 typedef struct {
     uint8_t loaded, nmod, nsum, norder, nout, ngrp, ninst;   /* ngrp: the poly groups, E.grp[1..ngrp] */
@@ -344,7 +360,11 @@ typedef struct {
     grp_t grp[1 + ENG_MAX_GROUPS];
     pv_t pv[ENG_NPV];
     uint32_t stamp;
-    uint32_t clk_seen, clk_pulse;    /* the Main module's clock output: ticks seen so far, the pulse length of this block */
+    uint32_t clk_seen, clk_pulse;    /* MIDI clock ticks counted so far; the Main module's clock pulse length in this block */
+    uint32_t ticks, tick_acc;        /* the clock: ticks so far, the tempo's remainder (1 / (60 ENG_SR) of a tick) */
+    uint8_t running;                 /* the transport as this block saw it */
+    uint8_t narp;
+    arp_t arp[ENG_MAX_ARPS];
     int32_t ctl[ENG_NCTL];           /* pitch bend, mod wheel, aftertouch (engine.h ENG_CTL_*), Q16 */
     uint8_t has_b;                   /* the patch carries a morph B set (node_t.parb) */
     uint8_t nranges;
@@ -356,7 +376,9 @@ typedef struct {
 /* the engine. The clock ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
 static eng_t eng_one ENG_POOL;
 #define E eng_one
-static volatile uint32_t clk_ticks;
+static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
+static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
+static volatile uint8_t transport_on; /* the transport (eng_transport) */
 
 /* the memories: slot i of a pool is taken while own[i] is 1 */
 static inst_t inst_pool[ENG_MAX_INST] ENG_POOL;
@@ -518,9 +540,11 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.stamp = 0;
     E.clk_seen = clk_ticks;
     E.clk_pulse = 0;
+    E.narp = 0;
     E.ngrp = 0;
     E.grp[0].parts = 1;                          /* the shared keyboard: one part, legato auto, last note */
     E.grp[0].assign = E.grp[0].legato = E.grp[0].priority = 0;
+    E.grp[0].src = 0;
     groups_reset();
     pool_free(inst_own, ENG_MAX_INST);           /* what this voice's old patch held */
     pool_free(buf_own, ENG_NBUF);
@@ -566,6 +590,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             g->env[v] = (int8_t)env;
             g->level[v] = f[4];
         }
+        g->src = q[4u + 5u * ENG_MAX_PARTS];     /* checked against the modules below */
     }
     for (i = 0; i < E.nmod; i++) {
         member[i] = p[3] ? p[8u + ENG_GROUP_REC * p[3] + i] : 0u;
@@ -609,11 +634,26 @@ int eng_load(const uint8_t *p, uint32_t len)
                 nd->map[j] = (uint16_t)((uint32_t)p[at] | (uint32_t)p[at + 1] << 8);
         }
         /* the memories of delay, reverb, chorus, granular and the output exist once (patch.ts SHARED_TYPES) */
-        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT ? 0u : member[i];
+        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP ? 0u : member[i];
         nd->ninst = E.grp[nd->grp].parts;
         if (nd->type == T_FM1 && E.main < 0)
             E.main = (int8_t)i;
+        if (nd->type == T_ARP) {                 /* an arpeggiator: its note logic runs before the modules (arp_block) */
+            arp_t *a = &E.arp[E.narp];
+            uint8_t *az = (uint8_t *)a;
+            if (E.narp >= ENG_MAX_ARPS)
+                return -2;
+            for (j = 0; j < sizeof *a; j++)
+                az[j] = 0;
+            a->node = (uint8_t)i;
+            a->cur = -1;
+            a->seed = 0x2545F491u;
+            E.narp++;
+        }
     }
+    for (i = 1; i <= E.ngrp; i++)                /* a group's note source must be an arpeggiator of the patch */
+        if (E.grp[i].src && (E.grp[i].src > E.nmod || E.node[E.grp[i].src - 1u].type != T_ARP))
+            return -3;
     if (at + 4u * ncab > len)
         return -3;
     for (c = 0; c < ncab; c++, at += 4) {
@@ -1244,24 +1284,210 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
     x->on_stamp = ++E.stamp;
 }
 
+/* ------------------------------------------------------------------ arpeggiator (web/src/arpeggiator.ts) */
+
+static int arp_latched(const arp_t *a) { return E.node[a->node].par[ARP_P_LATCH] >= 32768; }
+
+static void arp_key_drop(arp_t *a, uint32_t note)
+{
+    uint32_t i, k = 0;
+    for (i = 0; i < a->n; i++)
+        if (a->held[i].note != note)
+            a->held[k++] = a->held[i];
+    a->n = (uint8_t)k;
+}
+
+static void arp_note_on(arp_t *a, uint32_t note, int32_t vel)
+{
+    uint32_t i;
+    int down = 0;
+    for (i = 0; i < a->n; i++)
+        down |= a->held[i].down;
+    if (arp_latched(a) && !down)
+        a->n = 0;                                /* a new chord after all keys were let go replaces the latched one */
+    arp_key_drop(a, note);
+    if (a->n >= ARP_HELD) {
+        for (i = 1; i < a->n; i++)
+            a->held[i - 1] = a->held[i];
+        a->n--;
+    }
+    a->held[a->n].note = (uint8_t)note;
+    a->held[a->n].vel = vel;
+    a->held[a->n].down = 1;
+    a->n++;
+}
+
+static void arp_note_off(arp_t *a, uint32_t note)
+{
+    uint32_t i;
+    for (i = 0; i < a->n; i++)
+        if (a->held[i].note == note)
+            a->held[i].down = 0;
+    if (!arp_latched(a))
+        arp_key_drop(a, note);
+}
+
+/* the note of step pos (arpeggiator.ts arpNote): the keys sorted (or as played), over the octaves, picked by the mode */
+static int arp_pick(arp_t *a, int32_t *vel)
+{
+    const node_t *nd = &E.node[a->node];
+    uint8_t base[ARP_HELD], note[ARP_LIST];
+    int32_t bvel[ARP_HELD], nvel[ARP_LIST];
+    int32_t mode = clampi((nd->par[ARP_P_MODE] + 32768) >> 16, 0, 4), oct = clampi((nd->par[ARP_P_OCTAVES] + 32768) >> 16, 1, 4);
+    uint32_t i, j, o, len = 0, idx;
+    for (i = 0; i < a->n; i++) {
+        base[i] = a->held[i].note;
+        bvel[i] = a->held[i].vel;
+    }
+    if (mode != 4)                               /* sorted by note (insertion sort: stable, as Array.sort) */
+        for (i = 1; i < a->n; i++)
+            for (j = i; j > 0 && base[j - 1] > base[j]; j--) {
+                uint8_t t = base[j];
+                int32_t tv = bvel[j];
+                base[j] = base[j - 1];
+                bvel[j] = bvel[j - 1];
+                base[j - 1] = t;
+                bvel[j - 1] = tv;
+            }
+    for (o = 0; o < (uint32_t)oct; o++)
+        for (i = 0; i < a->n; i++)
+            if (base[i] + 12u * o <= 127u) {
+                note[len] = (uint8_t)(base[i] + 12u * o);
+                nvel[len++] = bvel[i];
+            }
+    if (!len)
+        return -1;
+    if (mode == 1) {
+        idx = len - 1u - a->pos % len;
+    } else if (mode == 2 && len > 2u) {
+        uint32_t cycle = 2u * len - 2u, k = a->pos % cycle;
+        idx = k < len ? k : cycle - k;
+    } else if (mode == 3) {
+        a->seed = a->seed * 1664525u + 1013904223u;
+        idx = (a->seed >> 16) % len;
+    } else {
+        idx = a->pos % len;
+    }
+    *vel = nvel[idx];
+    return note[idx];
+}
+
+/* its note into the groups it plays; a part it lands on restarts its envelopes */
+static void arp_emit_on(const arp_t *a, uint32_t note, int32_t vel)
+{
+    uint32_t g, v;
+    for (g = 1; g <= E.ngrp; g++)
+        if (E.grp[g].src == a->node + 1u) {
+            group_on(&E.grp[g], note, vel);
+            for (v = 0; v < E.grp[g].parts; v++) {
+                pv_t *x = &E.pv[E.grp[g].pv0 + v];
+                if (x->on && x->note == note && x->on_stamp == E.stamp)
+                    x->retrig = 1;
+            }
+        }
+}
+
+static void arp_emit_off(const arp_t *a, uint32_t note)
+{
+    uint32_t g;
+    for (g = 1; g <= E.ngrp; g++)
+        if (E.grp[g].src == a->node + 1u)
+            group_off(&E.grp[g], note);
+}
+
+/* one block (arpeggiator.ts arpBlock): steps on the clock at its rate, or one per block with a rising edge on clk (the
+ * input as the last block left it); the gate a share of the last step's length */
+static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
+{
+    static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};
+    const node_t *nd = &E.node[a->node];
+    const inst_t *it = &inst_pool[nd->inst0];
+    uint32_t rate = RATE_TICKS[clampi((nd->par[ARP_P_RATE] + 32768) >> 16, 0, 6)], i;
+    int clk = (nd->conn >> ARP_I_CLK) & 1u, edge = 0, step = 0;
+    if (!arp_latched(a)) {                       /* latch turned off: the keys let go meanwhile go */
+        uint32_t k = 0;
+        for (i = 0; i < a->n; i++)
+            if (a->held[i].down)
+                a->held[k++] = a->held[i];
+        a->n = (uint8_t)k;
+    }
+    if (clk) {
+        const esig_t *c = it->in[ARP_I_CLK];
+        for (i = 0; i < n; i++) {
+            uint8_t hi = c[i] > 32768;
+            if (hi && !a->clk_hi)
+                edge = 1;
+            a->clk_hi = hi;
+        }
+    }
+    if (!a->n) {
+        if (a->cur >= 0)
+            arp_emit_off(a, (uint32_t)a->cur);
+        a->cur = -1;
+        a->running = 0;
+        return;
+    }
+    if (!a->running) {
+        a->running = 1;
+        step = 1;
+        a->pos = 0;
+        a->next = E.ticks + rate;
+        a->interval = (uint32_t)((uint64_t)rate * 60u * ENG_SR / (24u * bpm));
+        a->since = 0;
+    } else if (clk ? edge : (int32_t)(E.ticks - a->next) >= 0) {
+        step = 1;
+        if (!clk) {
+            a->next += rate;
+            if ((int32_t)(E.ticks - a->next) >= 0)
+                a->next = E.ticks + rate;        /* fell behind (a tempo jump): from now */
+        }
+        if (a->since > 0)
+            a->interval = a->since;
+        a->since = 0;
+    }
+    if (step) {
+        int32_t vel = 0;
+        int note = arp_pick(a, &vel);
+        a->pos++;
+        if (a->cur >= 0)
+            arp_emit_off(a, (uint32_t)a->cur);
+        arp_emit_on(a, (uint32_t)note, vel);
+        a->cur = (int16_t)note;
+    } else if (a->cur >= 0 && a->since >= (uint32_t)(((uint64_t)a->interval * (uint32_t)nd->par[ARP_P_GATE]) >> 16)) {
+        arp_emit_off(a, (uint32_t)a->cur);
+        a->cur = -1;
+    }
+    a->since += n;
+}
+
 void eng_note_on(uint32_t note, int32_t vel_q16)
 {
     uint32_t g;
     for (g = 0; g <= E.ngrp; g++)
-        group_on(&E.grp[g], note, vel_q16);
+        if (!E.grp[g].src)
+            group_on(&E.grp[g], note, vel_q16);
+    for (g = 0; g < E.narp; g++)
+        arp_note_on(&E.arp[g], note, vel_q16);
 }
 
 void eng_note_off(uint32_t note)
 {
     uint32_t g;
     for (g = 0; g <= E.ngrp; g++)
-        group_off(&E.grp[g], note);
+        if (!E.grp[g].src)
+            group_off(&E.grp[g], note);
+    for (g = 0; g < E.narp; g++)
+        arp_note_off(&E.arp[g], note);
 }
 
 void eng_clock_tick(void)
 {
     clk_ticks++;
 }
+
+void eng_clock_external(int on) { clk_ext = (uint8_t)(on != 0); }
+void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
+int eng_transport_running(void) { return transport_on; }
 
 /* Overload (audio.c): one part fewer in the poly group that has the most (the part with the highest number:
  * its key is let go, its instances are no longer rendered and their outputs fall silent). 0 when no group has more than
@@ -1302,6 +1528,11 @@ int eng_shed(void)
 void eng_all_notes_off(void)
 {
     uint32_t i;
+    for (i = 0; i < E.narp; i++) {
+        E.arp[i].n = 0;
+        E.arp[i].cur = -1;
+        E.arp[i].running = 0;
+    }
     for (i = 0; i <= E.ngrp; i++)
         E.grp[i].nheld = 0;
     for (i = 0; i < ENG_NPV; i++) {
@@ -1345,6 +1576,14 @@ static void m_fm1(const node_t *nd, inst_t *it, uint32_t n)
         for (i = 0; i < n; i++)
             ck[i] = i < E.clk_pulse ? ENG_ONE : 0;
     }
+    fill(it->out[FM1_O_RUN], E.running ? ENG_ONE : 0, n);
+}
+
+/* the Arpeggiator: its notes are run by arp_block; the keys output shows the shared keyboard's gate (modules.ts arp) */
+static void m_arp(const node_t *nd, inst_t *it, uint32_t n)
+{
+    (void)nd;
+    fill(it->out[ARP_O_KEYS], cur_pv->gate, n);
 }
 
 /* the Part module (modules.ts part): its part's note (with its detune / drift flaw), the part's place among the parts (index -1 .. 1, 0 with one part),
@@ -3042,6 +3281,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     switch (nd->type) {
     case T_FM1: m_fm1(nd, it, n); break;
     case T_PART: m_part(nd, it, n); break;
+    case T_ARP: m_arp(nd, it, n); break;
     case T_RANDOM: m_random(nd, it, n); break;
     case T_OSC: m_osc(nd, it, n); break;
     case T_LFO: m_lfo(nd, it, n); break;
@@ -3101,8 +3341,29 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
         ENG_PROF(4, 0, 0);
         E.morph = E.has_b ? morph_position(n) : 0;
-        E.clk_pulse = E.clk_seen != clk_ticks ? (n + 1u) / 2u : 0u;   /* the Main clock: half a block per block that saw a tick */
-        E.clk_seen = clk_ticks;
+        {   /* the clock: MIDI ticks while external, else the Main module's tempo (whole bpm x 24 ticks a minute) */
+            uint32_t bpm = E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
+            uint8_t run = transport_on;
+            if (run && !E.running)
+                E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
+            E.running = run;
+            t = clk_ticks;
+            if (clk_ext) {
+                seen = t != E.clk_seen;
+                E.ticks += t - E.clk_seen;
+            } else {
+                E.tick_acc += n * bpm * 24u;
+                while (E.tick_acc >= 60u * ENG_SR) {
+                    E.tick_acc -= 60u * ENG_SR;
+                    E.ticks++;
+                    seen = 1;
+                }
+            }
+            E.clk_seen = t;
+            E.clk_pulse = seen && run ? (n + 1u) / 2u : 0u;   /* the Main clock: half a block per block that saw a tick while running */
+            for (k = 0; k < E.narp; k++)
+                arp_block(&E.arp[k], n, bpm);
+        }
         for (k = 1; k <= E.ngrp; k++) {                 /* the parts' pitch flaws: detune + drift (engine.ts render) */
             const grp_t *g = &E.grp[k];
             for (v = 0; v < g->parts; v++) {

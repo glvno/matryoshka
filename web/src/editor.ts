@@ -45,7 +45,6 @@ import {
 import { FlawPanel } from './flaws-panel';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
-import { ARP_DEFAULT, ARP_MODES, ARP_RATES, ARP_SCALES, ARP_MAX_STEPS, fixArp, noteName, type ArpCfg } from './arp';
 import { EXCLUDED_TYPES,
   addChild,
   addMember,
@@ -112,10 +111,8 @@ export interface EditorEvents {
   onBypass(id: number, on: boolean): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
-  /** the arpeggiator's settings changed (they are part of the patch: Patch.arp) */
-  onArp(cfg: ArpCfg): void;
-  /** the arpeggiator's transport (editor state, not saved) */
-  onArpPlay(on: boolean): void;
+  /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
+  onTransport(on: boolean): void;
   /** a scope probe on an output was set or removed (key = probeKey) */
   onProbe(key: string, id: number, port: string, kind: PortDef['kind'], label: string, on: boolean): void;
   /** cards were moved: positions changed, nothing the engine needs */
@@ -542,16 +539,15 @@ export class Editor {
 
   /** a module card; inside an expanded assembly its ports and parameters get the expose / pin toggles */
   /** the Main module shown in the dock (the first one; a second Main, from an old patch, stays a card) */
-  private dockArpOpen = false;
   /** the deck's bend and modulation wheels, placed in the dock under Main's jacks (set by the host, then rebuild) */
   dockWheels: { bend: HTMLElement; mod: HTMLElement } | null = null;
   /** the column beside the keyboard, as tall as the dock and the keyboard together, that holds the wheels (set by the host) */
   wheelHost: HTMLElement | null = null;
   /** the keyboard's octave buttons, shown under Main's output strip (set by the host, then rebuild) */
   dockOctave: HTMLElement | null = null;
-  /** the arpeggiator's play switch, shown beside its settings button (set by the host, then rebuild) */
-  dockArp: HTMLElement | null = null;
-  /** the FM-1 budget meter, shown in its own column right of the arpeggiator (set by the host, then rebuild) */
+  /** the transport's Play switch, shown under the tempo (set by the host, then rebuild) */
+  dockPlay: HTMLElement | null = null;
+  /** the FM-1 budget meter, shown in its own column right of the clock (set by the host, then rebuild) */
   dockBudget: HTMLElement | null = null;
 
   private docked(): ModuleInst | undefined {
@@ -589,8 +585,8 @@ export class Editor {
     const param = (name: string): HTMLElement => this.paramRow(m, def, def.params.find((pd) => pd.name === name)!);
     // outputs with a home next to the control or setting that makes them; the rest in the strip
     const wheels = this.dockWheels;
-    const WHEELS = wheels && this.wheelHost ? ['bend', 'mod'] : [], ARP = ['clock'];
-    const homed = [...WHEELS, ...ARP];
+    const WHEELS = wheels && this.wheelHost ? ['bend', 'mod'] : [], CLOCK = ['clock', 'run'];
+    const homed = [...WHEELS, ...CLOCK];
     const strip = jacks(def.outputs.map((p) => p.name).filter((n) => !isKnob(n) && !homed.includes(n)));
     const knobs = document.createElement('div');
     knobs.className = 'deck-knobs';
@@ -601,10 +597,6 @@ export class Editor {
       const jack = this.sliderPorts.find((s) => s.m === m && s.pd === pd)?.jack;
       if (jack) this.ports.set(this.key(m.id, pd.input, 'in'), jack);
     }
-    // the arpeggiator opens as a panel over the canvas: it stays as the user left it across redraws
-    const arp = this.arpPanel();
-    arp.open = this.dockArpOpen;
-    arp.ontoggle = () => (this.dockArpOpen = arp.open);
     // the bend and modulation wheels (the deck's, kept across redraws) each under its output's jack, in the column beside the keyboard
     if (wheels && this.wheelHost)
       this.wheelHost.replaceChildren(...(['bend', 'mod'] as const).map((n) => {
@@ -620,19 +612,11 @@ export class Editor {
       col('dock-outputs', strip, ...(this.dockOctave ? [this.dockOctave] : [])),
       col('dock-knobs', null, knobs),
       col('dock-morph', null, morph, this.morphRow()),
-      col('dock-arp', jacks(ARP), ...(this.dockArp ? [this.arpLine(arp)] : [arp])),
+      col('dock-clock', jacks(CLOCK), param('tempo'), ...(this.dockPlay ? [this.dockPlay] : [])),
       ...(this.dockBudget ? [col('dock-budget', null, this.dockBudget)] : []));
     return el;
   }
 
-
-  /** the arpeggiator's play switch and its settings button side by side */
-  private arpLine(arp: HTMLElement): HTMLElement {
-    const line = document.createElement('div');
-    line.className = 'arp-line';
-    line.append(this.dockArp!, arp);
-    return line;
-  }
 
   private card(m: ModuleInst, def: ModuleDef, perVoice: number, open?: AssemblyInst): HTMLElement {
     const el = document.createElement('div');
@@ -668,8 +652,8 @@ export class Editor {
     const outs = def.outputs.map((p) => this.port(m, p, 'out', { open, short: true }));
     // its displays first (an envelope's shape, the Scope's screen), then the parameters
     const params = [...(def.views ?? []), ...def.params.filter((pd) => !pd.onScreen)].map((pd) => ({ el: this.paramRow(m, def, pd, { open }), input: pd.input ? { module: m.id, port: pd.input } : undefined }));
-    // a second Main card (from an old patch) keeps its B side and arpeggiator under the rows
-    const extra = def.type === 'fm1' ? [this.morphRow(), this.arpPanel()] : [];
+    // a second Main card (from an old patch) keeps its B side under the rows
+    const extra = def.type === 'fm1' ? [this.morphRow()] : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
     el.append(head, body);
     return el;
@@ -1226,8 +1210,8 @@ export class Editor {
     return row;
   }
 
-  /** the arpeggiator's transport (editor state) */
-  arpPlay = false;
+  /** the transport runs (editor state: the Play switch, Space) */
+  playing = false;
 
   // ---- zoom and touch: the cards and cables are scaled by `zoom`; offsets stay in layout pixels, pointer deltas are divided by it
 
@@ -1646,99 +1630,11 @@ export class Editor {
     const keepLayout = this.patch.modules.map((m) => [m.x, m.y]);
     this.patch = target;
     this.patch.modules.forEach((m, i) => ([m.x, m.y] = keepLayout[i]));
-    if (target.arp) this.ev.onArp(target.arp);
     this.rebuild();
     this.ev.onLayout(this.patch);
   }
   /** the outputs with a scope probe (probeKey) */
   readonly probes = new Set<string>();
-
-  /** the arpeggiator on the Main card: the rows of the FM-1's MELODY / RHYTHM / CHAOS pages, saved with the patch (Patch.arp) */
-  private arpPanel(): HTMLDetailsElement {
-    const box = document.createElement('details');
-    box.className = 'arp';
-    box.open = !!this.patch.arp || this.arpPlay;
-    const sum = document.createElement('summary');
-    sum.textContent = 'Arpeggiator';
-    const rowsEl = document.createElement('div');
-    rowsEl.className = 'arp-rows';
-    box.append(sum, rowsEl);
-    const cfg = (): ArpCfg => this.patch.arp ?? { ...ARP_DEFAULT };
-    const set = (f: keyof ArpCfg, v: number): void => {
-      const c = fixArp({ ...cfg(), [f]: v });
-      this.patch.arp = c;
-      this.ev.onArp(c);
-      refresh();
-    };
-    const rows: (() => void)[] = [];
-    // the rows look like a card's: a bar with the name at the left and the value at the right (paramRow)
-    const row = (label: string, cls: string, kids: HTMLElement[], show: () => void): void => {
-      const r = document.createElement('div');
-      r.className = `param bar ${cls}`;
-      const name = document.createElement('span');
-      name.textContent = label;
-      r.append(name, ...kids);
-      rows.push(show);
-      rowsEl.append(r);
-    };
-    const refresh = (): void => rows.forEach((f) => f());
-    const choice = (label: string, f: keyof ArpCfg, names: string[]): void => {
-      const sel = selector({ label: `arpeggiator ${label}`, names, get: () => cfg()[f], set: (i) => set(f, i) });
-      row(label, 'choice sel', [sel.element], () => sel.update(cfg()[f], cfg()[f]));
-    };
-    const num = (label: string, f: keyof ArpCfg, lo: number, hi: () => number, show: (v: number) => string = String): void => {
-      const input = document.createElement('input');
-      input.type = 'range';
-      input.min = String(lo);
-      input.step = '1';
-      input.setAttribute('aria-label', `arpeggiator ${label}`);
-      input.oninput = () => set(f, Number(input.value));
-      const bar = sliderJack(input, () => {});
-      bar.jack.classList.replace('slider-port', 'slider-thumb');
-      const val = document.createElement('output');
-      row(label, '', [val, bar.element], () => {
-        input.max = String(hi());
-        input.value = String(cfg()[f]);
-        val.textContent = show(cfg()[f]);
-        bar.update();
-      });
-    };
-    // transport
-    const pbox = document.createElement('input');
-    pbox.type = 'checkbox';
-    pbox.checked = this.arpPlay;
-    pbox.setAttribute('aria-label', 'arpeggiator enable');
-    pbox.oninput = () => {
-      this.arpPlay = pbox.checked;
-      if (this.arpPlay && !this.patch.arp) {
-        this.patch.arp = { ...ARP_DEFAULT };
-        this.ev.onArp(this.patch.arp);
-      }
-      this.ev.onArpPlay(this.arpPlay);
-    };
-    const pval = document.createElement('output');
-    pval.textContent = 'hold keys to play';
-    const line = document.createElement('label');
-    line.className = 'toggle-line';
-    line.append(pbox, pval);
-    row('enable', 'toggle', [document.createElement('span'), line], () => {});
-    choice('mode', 'mode', ARP_MODES);
-    num('bpm', 'bpm', 40, () => 300);
-    choice('rate', 'rate', ARP_RATES);
-    num('steps', 'steps', 1, () => ARP_MAX_STEPS);
-    num('pulses', 'pulses', 0, () => cfg().steps);
-    num('rotation', 'rot', 0, () => Math.max(0, cfg().steps - 1));
-    num('octaves', 'octaves', 1, () => 3);
-    num('melody chaos', 'chaos', 0, () => 100, (v) => `${v} %`);
-    num('velocity chaos', 'vchaos', 0, () => 100, (v) => `${v} %`);
-    num('rhythm chaos', 'rchaos', 0, () => 100, (v) => `${v} %`);
-    const foot = document.createElement('div');
-    foot.className = 'hint';
-    foot.textContent = this.patch.arp ? 'saved with the patch; sent to the FM-1 with it' : 'the FM-1 defaults: change a row to save the groove with the patch';
-    rowsEl.append(foot);
-    refresh();
-    return box;
-  }
 
   /**
    * A port row. On a member card of an expanded assembly it gets the expose toggle; on an assembly card (`label`) the dot

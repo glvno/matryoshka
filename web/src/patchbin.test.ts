@@ -31,7 +31,7 @@ describe('binary patch format', () => {
     filter.range = { p1: { cutoff: [.2, .8] } };
     filter.map!.p1 = ['cutoff'];
     const b = encodePatch(p);
-    expect(b[1]).toBe(21); // no unison: still format 21
+    expect(b[1]).toBe(VERSION);
     expect(b[6]).toBe(2);
     expect(b.length).toBe(before.length + 6);
     expect(b[before.length]).toBe(1); // macro range count
@@ -46,7 +46,8 @@ describe('binary patch format', () => {
     filter.inputMap = { cv: ['res', 'cvamt'], in: ['track'] };
     filter.range = { p1: { cutoff: [.2, .8] } }; filter.map!.p1 = ['cutoff'];
     const b = encodePatch(p);
-    expect(b[1]).toBe(21); // no unison: still format 21 expect(b[6]).toBe(11);
+    expect(b[1]).toBe(VERSION);
+    expect(b[6]).toBe(11);
     expect(b.length).toBe(before.length + 9 + 6);
     expect(b[before.length]).toBe(2);
     const dv = new DataView(b.buffer);
@@ -77,7 +78,7 @@ describe('binary patch format', () => {
       const g = groups.length;
       const dv = new DataView(b.buffer);
       expect(b[0], name).toBe(0xa1);
-      expect(b[1], name).toBe(21);
+      expect(b[1], name).toBe(VERSION);
       expect(b[2], name).toBe(p.modules.length);
       expect(b[3], name).toBe(g); // poly groups (Oracle V has one)
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
@@ -99,9 +100,9 @@ describe('binary patch format', () => {
     expect(deviceBudget(p).instances).toBeLessThanOrEqual(DEVICE.instances);
   });
 
-  it('unison: bit 7 of the group\'s legato byte, and only then format 22', () => {
+  it('unison: bit 7 of the group\'s legato byte', () => {
     const p = withParts(subtractiveSaw(), 4, { legato: 1 });
-    expect(encodePatch(p)[1]).toBe(21);
+    expect(encodePatch(p)[10]).toBe(1);
     polyCfg(p).unison = true;
     const b = encodePatch(p);
     expect(b[1]).toBe(VERSION);

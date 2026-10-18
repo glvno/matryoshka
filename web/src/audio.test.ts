@@ -119,7 +119,7 @@ it('resumes within the gesture, shares initialization and replays the patch befo
   host.send({ t: 'on', note: 60, vel: .8 }); host.send({ t: 'off', note: 60 });
   expect(messages).toEqual([]); ready(); await Promise.all([first, second]);
   expect(messages).toEqual([
-    { t: 'patch', patch, revision: 1 }, expect.objectContaining({ t: 'arp' }),
+    { t: 'patch', patch, revision: 1 }, { t: 'transport', on: false },
     { t: 'on', note: 60, vel: .8 }, { t: 'off', note: 60 },
   ]);
 });

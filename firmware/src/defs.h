@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 40
+#define N_TYPES 41
 enum {
     T_FM1,
     T_OSC,
@@ -45,6 +45,7 @@ enum {
     T_PART,
     T_RANDOM,
     T_ALLOC,
+    T_ARP,
 };
 
 /* fm1: Main */
@@ -61,14 +62,16 @@ enum {
 #define FM1_O_MOD 9
 #define FM1_O_AT 10
 #define FM1_O_KEYS 11
+#define FM1_O_RUN 12
 #define FM1_P_K1 0
 #define FM1_P_K2 1
 #define FM1_P_K3 2
 #define FM1_P_K4 3
 #define FM1_P_MORPH 4
+#define FM1_P_TEMPO 5
 #define FM1_NIN 1
-#define FM1_NOUT 12
-#define FM1_NPAR 5
+#define FM1_NOUT 13
+#define FM1_NPAR 6
 #define FM1_CVBASE -1
 
 /* osc: Oscillator */
@@ -663,6 +666,20 @@ enum {
 #define ALLOC_NPAR 5
 #define ALLOC_CVBASE -1
 
+/* arp: Arpeggiator */
+#define ARP_I_KEYS 0
+#define ARP_I_CLK 1
+#define ARP_O_KEYS 0
+#define ARP_P_MODE 0
+#define ARP_P_RATE 1
+#define ARP_P_OCTAVES 2
+#define ARP_P_GATE 3
+#define ARP_P_LATCH 4
+#define ARP_NIN 2
+#define ARP_NOUT 1
+#define ARP_NPAR 5
+#define ARP_CVBASE -1
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -679,7 +696,7 @@ static const char *const POLY_LEGATO_NAME[3] = {"AUTO", "OFF", "ON"};
 static const char *const POLY_PRIORITY_NAME[3] = {"LAST", "LOW", "HIGH"};
 
 #define MAX_IN 6
-#define MAX_OUT 12
+#define MAX_OUT 13
 #define MAX_PAR 12
 
 typedef struct {
@@ -697,14 +714,14 @@ typedef struct {
 } def_t;
 
 static const char *const FM1_INNAMES[] = {"MORPH"};
-static const int32_t FM1_MIN[] = {0, 0, 0, 0, 0};
-static const int32_t FM1_MAX[] = {65536, 65536, 65536, 65536, 65536};
-static const int32_t FM1_DEF[] = {32768, 32768, 32768, 32768, 0};
-static const int32_t FM1_INC[] = {655, 655, 655, 655, 655};
-static const char *const FM1_PN[] = {"K1", "K2", "K3", "K4", "MORPH"};
-static const uint8_t FM1_LOG[] = {0, 0, 0, 0, 0};
-static const char *const FM1_UNIT[] = {"", "", "", "", ""};
-static const char *const *const FM1_CH[] = {0, 0, 0, 0, 0};
+static const int32_t FM1_MIN[] = {0, 0, 0, 0, 0, 1310720};
+static const int32_t FM1_MAX[] = {65536, 65536, 65536, 65536, 65536, 19660800};
+static const int32_t FM1_DEF[] = {32768, 32768, 32768, 32768, 0, 7864320};
+static const int32_t FM1_INC[] = {655, 655, 655, 655, 655, 183501};
+static const char *const FM1_PN[] = {"K1", "K2", "K3", "K4", "MORPH", "TEMPO"};
+static const uint8_t FM1_LOG[] = {0, 0, 0, 0, 0, 0};
+static const char *const FM1_UNIT[] = {"", "", "", "", "", "BPM"};
+static const char *const *const FM1_CH[] = {0, 0, 0, 0, 0, 0};
 static const char *const OSC_INNAMES[] = {"PITCH", "PM", "SYNC", "P1", "P2"};
 static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0, 0, 0};
 static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144};
@@ -1073,6 +1090,18 @@ static const char *const ALLOC_CH2[] = {"AUTO", "OFF", "ON", 0};
 static const char *const ALLOC_CH3[] = {"LAST", "LOW", "HIGH", 0};
 static const char *const ALLOC_CH4[] = {"OFF", "ON", 0};
 static const char *const *const ALLOC_CH[] = {0, ALLOC_CH1, ALLOC_CH2, ALLOC_CH3, ALLOC_CH4};
+static const char *const ARP_INNAMES[] = {"KEYS", "CLK"};
+static const int32_t ARP_MIN[] = {0, 0, 65536, 6554, 0};
+static const int32_t ARP_MAX[] = {262144, 393216, 262144, 65536, 65536};
+static const int32_t ARP_DEF[] = {0, 262144, 65536, 32768, 0};
+static const int32_t ARP_INC[] = {65536, 65536, 65536, 655, 65536};
+static const char *const ARP_PN[] = {"MODE", "RATE", "OCTAVES", "GATE", "LATCH"};
+static const uint8_t ARP_LOG[] = {0, 0, 0, 0, 0};
+static const char *const ARP_UNIT[] = {"", "", "", "", ""};
+static const char *const ARP_CH0[] = {"UP", "DOWN", "UP-DOWN", "RANDOM", "AS PLAYED", 0};
+static const char *const ARP_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
+static const char *const ARP_CH4[] = {"OFF", "ON", 0};
+static const char *const *const ARP_CH[] = {ARP_CH0, ARP_CH1, 0, 0, ARP_CH4};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */
@@ -1115,4 +1144,5 @@ static const def_t DEFS[N_TYPES] = {
     {PART_NIN, PART_NOUT, PART_NPAR, 0, PART_CVBASE, -1, 0, 0, 0, 0, "PART (ENGINE)", 0, PART_INNAMES, 0, 0, 0},   /* part */
     {RANDOM_NIN, RANDOM_NOUT, RANDOM_NPAR, 0, RANDOM_CVBASE, -1, RANDOM_MIN, RANDOM_MAX, RANDOM_DEF, RANDOM_INC, "RANDOM", RANDOM_PN, RANDOM_INNAMES, RANDOM_LOG, RANDOM_UNIT, RANDOM_CH},   /* random */
     {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 0, ALLOC_CVBASE, -1, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICE ALLOCATOR", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH},   /* alloc */
+    {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH},   /* arp */
 };

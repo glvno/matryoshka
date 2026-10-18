@@ -3,7 +3,7 @@
 // on every deploy). Files in neither group (tutorial logic, presets, small helpers) are not in either figure.
 
 /** the sound engine, modules, patch model, binary format, assemblies, polyphony, arpeggiator, CPU estimate, protocol */
-export const CORE = ['engine.ts', 'modules.ts', 'patch.ts', 'parameter-routing.ts', 'patchbin.ts', 'assembly.ts', 'poly.ts', 'arp.ts', 'cpu.ts', 'protocol.ts'];
+export const CORE = ['engine.ts', 'modules.ts', 'patch.ts', 'parameter-routing.ts', 'patchbin.ts', 'assembly.ts', 'poly.ts', 'arpeggiator.ts', 'cpu.ts', 'protocol.ts'];
 
 /** the browser interface: everything that draws or handles the page */
 export const INTERFACE = ['editor.ts', 'main.ts', 'tutorial/tutorial.ts', 'bank.ts', 'assemblies.ts', 'browser.ts', 'scope-view.ts', 'env-view.ts',

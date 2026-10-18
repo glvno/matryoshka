@@ -10,10 +10,10 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 22   /* 22: bit 7 of a group record's legato byte = unison (written only when a group uses it) */
-#define ENG_PATCH_COMPAT_VERSION 21
+#define ENG_PATCH_VERSION 23   /* 23: the group record ends with its note source (an Arpeggiator), the Main module's tempo and run */
+#define ENG_PATCH_COMPAT_VERSION 23
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
-#define ENG_GROUP_REC (4u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part (patchbin.ts GROUP_REC) */
+#define ENG_GROUP_REC (5u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source (patchbin.ts GROUP_REC) */
 
 /* where the module records of a patch binary start: after the 8 header bytes, the poly groups' records (ENG_GROUP_REC each,
  * header byte 3 = their count) and, with any group, one membership byte per module. 0 if the binary is too short. */
@@ -71,8 +71,13 @@ int eng_poly_set(uint32_t g, uint32_t field, uint32_t v);
 void eng_note_on(uint32_t note, int32_t vel_q16);
 void eng_note_off(uint32_t note);
 void eng_all_notes_off(void);
-/* one clock tick (24 per quarter note); the Main module's clock output pulses once per block that saw one */
+/* The clock: 24 ticks per quarter note, from the Main module's tempo, or from MIDI clock while it comes in (eng_clock_external
+ * on, then each eng_clock_tick is one). The transport (PLAY, MIDI Start / Stop): the Main module's run output; its clock
+ * output pulses once per block that saw a tick while the transport runs. Arpeggiators step on the clock either way. */
 void eng_clock_tick(void);
+void eng_clock_external(int on);
+void eng_transport(int on);
+int eng_transport_running(void);
 /* the performance controls: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
  * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch, 0..1, the at output) */
 enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_NCTL };

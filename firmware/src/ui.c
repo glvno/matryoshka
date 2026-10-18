@@ -19,7 +19,7 @@ static const char *patch_label;
 #define PAGE_MIXER 4u                           /* GLO: the mixer (menu.c) */
 #define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
 #define PAGE_PERF 6u                            /* ENV: the performance page (big values, no names: perf_draw) */
-static uint8_t page;                            /* 0: the selected module, 1..3: the arpeggiator pages MELODY, RHYTHM, CHAOS (arp_ui.c), 4 mixer, 5 menu */
+static uint8_t page;                            /* 0: the selected module, 4 mixer, 5 menu, 6 performance */
 
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {
@@ -578,13 +578,12 @@ static void module_draw(int full)
         text5x7(12, 230, "SAVE: STORE  OCT-/OCT+: OCTAVE", 1, 0x4208u, C_BG);
 }
 
-static void arp_view_draw(uint32_t page, int full);
 static void mixer_draw(int full);
 static void menu_draw(int full);
 
 /* The performance page (ENV): what matters while playing, readable from arm's length. The four knob rows show the
  * destination of the Main module's K1..K4 with the value they put out (big), the strip shows the patch with bypassed
- * modules dim, and one line below the rows says the arpeggiator's state, the polyphony, the octave and how many modules
+ * modules dim, and one line below the rows says the transport and tempo, the polyphony, the octave and how many modules
  * are off. K1..K4 keep turning the Main module's knobs here (main.c knobs_poll). */
 static void perf_draw(int full)
 {
@@ -619,15 +618,10 @@ static void perf_draw(int full)
     }
     for (i = 0; i < n; i++)
         off += eng_bypass(i) ? 1u : 0u;
-    p = line;                                           /* ARP 120 1/16  4 PARTS  OCT +1  2 OFF */
-    if (arp_play) {
-        fmt_int(num, arp_c.bpm);
-        p = put(p, "ARP ");
-        p = put(p, num);
-        *p++ = ' ';
-        p = put(p, ARP_RATE_NAME[arp_c.rate]);
-    } else
-        p = put(p, "ARP OFF");
+    p = line;                                           /* PLAY 120  4 PARTS  OCT +1  2 OFF */
+    p = put(p, eng_transport_running() ? "PLAY " : "STOP ");
+    fmt_int(num, panel >= 0 ? (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16 : 120);
+    p = put(p, num);
     *p++ = ' ';
     *p++ = ' ';
     if (eng_groups())
@@ -649,7 +643,7 @@ static void perf_draw(int full)
         p = put(p, " OFF");
     }
     pad(p, line, 26);
-    text5x7(12, 204, line, 1, arp_play ? C_FG : C_DIM, C_BG);
+    text5x7(12, 204, line, 1, eng_transport_running() ? C_FG : C_DIM, C_BG);
     if (full)
         text5x7(12, 230, "K1-K4: MAIN KNOBS  ENV: BACK", 1, 0x4208u, C_BG);
 }
@@ -662,8 +656,6 @@ static void view_draw(int full)                 /* whichever page is showing */
         menu_draw(full);
     else if (page == PAGE_PERF)
         perf_draw(full);
-    else if (page)
-        arp_view_draw(page, full);
     else
         module_draw(full);
 }

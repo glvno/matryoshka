@@ -16,8 +16,8 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_ARP = 0x24, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42 };
-#define M1_FEATURES 1u                                       /* INFO byte 5: bit 0 = the ARP command */
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42 };
+#define M1_FEATURES 2u                                       /* INFO byte 5: bit 1 = the TRANSPORT command (bit 0, the ARP command, is retired) */
 #define M1_SLOTS 32u
 #define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
@@ -414,9 +414,9 @@ static int m1_handle(const uint8_t *f, uint32_t n)
             m1_patch_att(d[0], d[1], v);
         }
         break;
-    case C_ARP:                                              /* the arpeggiator's settings (13 bytes, arp_pack) and transport */
-        if (len >= 13u)
-            m1_arp_set(d, len);
+    case C_TRANSPORT:                                        /* the transport (PLAY): run u8 */
+        if (len >= 1u)
+            m1_transport(d[0] != 0u);
         break;
     case C_RANGE:
         if (len >= 6u) {

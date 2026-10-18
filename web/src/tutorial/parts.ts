@@ -121,11 +121,10 @@ export function soundPeak(p: Patch, key: boolean): number {
     const e = new Engine(SR);
     e.load(validatePatch(JSON.parse(JSON.stringify(p)), DEFS));
     if (key) e.noteOn(60, 0.8);
-    e.clockRun(true);
+    e.transport(true); // the clock runs from the Main module's tempo
     const l = new Float32Array(128);
     const r = new Float32Array(128);
     for (let i = 0; i < SR / 2 / 128; i++) {
-      if (i % 4 === 0) e.clockTick();
       e.render(l, r);
       for (let j = 0; j < 128; j++) max = Math.max(max, Math.abs(l[j]), Math.abs(r[j]));
     }

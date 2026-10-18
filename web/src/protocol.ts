@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // SysEx protocol between the editor and the Modular-1 firmware (firmware/src/proto.c). Pure functions.
-import { packArp, type ArpCfg } from './arp';
 //
 //   F0 7D 4D 31 <cmd> <payload packed to 7-bit> F7
 //
@@ -21,17 +20,17 @@ import { packArp, type ArpCfg } from './arp';
 //   22 BYPASS   module u8, on u8 (0/1)               bypass a module (its outputs carry its through input or silence), no reply
 //   23 RANGE    module u8, pin u8 (0 p1, 1 p2), param u8, on u8, low u8, high u8   a macro range of the pin on the parameter
 //                                                    (ends 0..255 of the range, patchbin.ts), on 0 removes it; no reply
-//   24 ARP      13 bytes (arp.ts packArp: mode scale root octaves chaos vchaos rchaos steps pulses rot rate bpm lo bpm hi),
-//               play u8 (0 stop, 1 start, 255 leave)   the arpeggiator's settings of the selected voice (and its transport); no reply.
-//                                                    Offered by firmware whose INFO has feature bit 0.
+//   25 TRANSPORT  run u8 (0 stop, 1 run)            the transport (PLAY: the Main module's run output and clock); no reply.
+//                                                    Offered by firmware whose INFO has feature bit 1. (24 was the arpeggiator's
+//                                                    settings until the Arpeggiator module replaced it: feature bit 0, retired.)
 // device -> host
 //   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
-//   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit0 ARP]
+//   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT]
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, arp: 0x24, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42 } as const;
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42 } as const;
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store'];
@@ -141,7 +140,7 @@ export const attFrame = (module: number, input: number, q16: number): Uint8Array
 
 export const bypassFrame = (module: number, on: boolean): Uint8Array => frame(CMD.bypass, [module, on ? 1 : 0]);
 /** the arpeggiator's settings, and its transport (null = leave it) */
-export const arpFrame = (cfg: ArpCfg, play: boolean | null): Uint8Array => frame(CMD.arp, [...packArp(cfg), play === null ? 255 : play ? 1 : 0]);
+export const transportFrame = (run: boolean): Uint8Array => frame(CMD.transport, [run ? 1 : 0]);
 /** a macro range of pin 0 / 1 on parameter `param`: ends 0..1, or null to remove it */
 export const rangeFrame = (module: number, pin: number, param: number, range: [number, number] | null): Uint8Array =>
   frame(CMD.range, [module, pin, param, range ? 1 : 0, range ? Math.round(range[0] * 255) : 0, range ? Math.round(range[1] * 255) : 0]);

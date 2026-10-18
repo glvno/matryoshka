@@ -18,7 +18,7 @@ const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
-type Ev = [number, 'on' | 'off', number];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop', number];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -1197,6 +1197,61 @@ kit('fixed-links', (add, wire) => {
 }
 
 const slug = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+// the Arpeggiator (#58): Main keys -> arpeggiator -> Voice allocator -> a plucky voice; the clock from the Main module's
+// tempo (the transport is not needed), or one step per edge on clk; the run output and the clock output while the transport runs
+const arpVoice = (name: string, arp: Record<string, number>, voices: number, tempo: number, clk = false): void => {
+  tests[name] = make(name, (add, wire) => {
+    const kb = add('fm1', 0, 0, { tempo });
+    const a = add('arp', 200, 0, arp);
+    const al = add('alloc', 400, 0, { voices });
+    const o = add('osc', 600, 0, { wave: 2, level: 0.6 });
+    const e = add('adsr', 600, 200, { a: 0.002, d: 0.08, s: 0.4, r: 0.05 });
+    const v = add('vca', 800, 0);
+    const out = add('output', 1000, 0, { level: 0.7 });
+    wire(kb, 'keys', a, 'keys');
+    wire(a, 'keys', al, 'keys');
+    wire(al, 'pitch', o, 'pitch');
+    wire(al, 'gate', e, 'gate');
+    wire(al, 'vel', v, 'p1');
+    wire(o, 'out', v, 'in');
+    wire(e, 'env', v, 'cv');
+    wire(v, 'out', out, 'l');
+    if (clk) {
+      const l = add('lfo', 200, 200, { wave: 3, rate: 7 });
+      wire(l, 'out', a, 'clk');
+    }
+  });
+};
+arpVoice('arp-updown-poly', { mode: 2, rate: 4, octaves: 2, gate: 0.6 }, 4, 132);
+events['arp-updown-poly'] = [[0, 'on', 60], [0, 'on', 64], [128 * 3, 'on', 67], [128 * 150, 'off', 64], [128 * 200, 'off', 60], [128 * 200, 'off', 67]];
+ends['arp-updown-poly'] = 128 * 260;
+arpVoice('arp-random-latch', { mode: 3, rate: 5, octaves: 3, gate: 1, latch: 1 }, 1, 97);
+events['arp-random-latch'] = [[0, 'on', 62], [128 * 2, 'on', 69], [128 * 20, 'off', 62], [128 * 21, 'off', 69], [128 * 160, 'on', 57], [128 * 200, 'off', 57]];
+ends['arp-random-latch'] = 128 * 300;
+arpVoice('arp-clk-played', { mode: 4, rate: 0, octaves: 1, gate: 0.3 }, 2, 120, true);
+events['arp-clk-played'] = [[0, 'on', 67], [128 * 5, 'on', 60], [128 * 9, 'on', 63], [128 * 180, 'off', 67], [128 * 180, 'off', 60], [128 * 180, 'off', 63]];
+ends['arp-clk-played'] = 128 * 240;
+// the Main module's clock (24 ppqn while the transport runs) through a divider into an envelope; run opens a second VCA
+tests['main-clock-run'] = make('main-clock-run', (add, wire) => {
+  const kb = add('fm1', 0, 0, { tempo: 150 });
+  const d = add('clkdiv', 200, 0);
+  const e = add('adsr', 400, 0, { a: 0.001, d: 0.05, s: 0, r: 0.02 });
+  const o = add('osc', 400, 200, { wave: 1, level: 0.7 });
+  const v = add('vca', 600, 0);
+  const v2 = add('vca', 800, 0);
+  const out = add('output', 1000, 0, { level: 0.7 });
+  wire(kb, 'clock', d, 'clock');
+  wire(d, 'd8', e, 'gate');
+  wire(kb, 'pitch', o, 'pitch');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', v2, 'in');
+  wire(kb, 'run', v2, 'cv');
+  wire(v2, 'out', out, 'l');
+});
+events['main-clock-run'] = [[0, 'on', 57], [128 * 20, 'run', 0], [128 * 160, 'stop', 0], [128 * 200, 'run', 0], [128 * 250, 'off', 57]];
+ends['main-clock-run'] = 128 * 280;
+
 for (const [name, patch] of Object.entries(tests)) {
   const e = new Engine(SR);
   e.load(patch);
@@ -1218,7 +1273,8 @@ for (const [name, patch] of Object.entries(tests)) {
   for (const [fr, kind, note] of evs) {
     seg(fr);
     if (kind === 'on') e.noteOn(note, 1);
-    else e.noteOff(note);
+    else if (kind === 'off') e.noteOff(note);
+    else e.transport(kind === 'run');
   }
   seg(END);
   const st = new Float32Array(END * 2);
@@ -1231,7 +1287,7 @@ for (const [name, patch] of Object.entries(tests)) {
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), encodePatch(patch, true));
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n]) => (k === 'on' ? `${fr} on ${n} 127` : `${fr} off ${n}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n]) => (k === 'on' ? `${fr} on ${n} 127` : k === 'off' ? `${fr} off ${n}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

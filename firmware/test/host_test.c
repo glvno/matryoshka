@@ -28,6 +28,7 @@ static uint8_t *slurp(const char *path, long *n)
     return b;
 }
 
+static int rc;
 int main(int argc, char **argv)
 {
     long np, nr, i;
@@ -48,8 +49,8 @@ int main(int argc, char **argv)
     patch = slurp(argv[1], &np);
     ref_raw = slurp(argv[3], &nr);
     ref = (float *)ref_raw;
-    if (eng_load(patch, (uint32_t)np)) {
-        fprintf(stderr, "eng_load failed\n");
+    if ((rc = eng_load(patch, (uint32_t)np)) != 0) {
+        fprintf(stderr, "eng_load failed (%d)\n", rc);
         return 1;
     }
     ev = fopen(argv[2], "r");
@@ -64,7 +65,7 @@ int main(int argc, char **argv)
                 total = fr;
             else if (!strcmp(kind, "on"))
                 fscanf(ev, "%u %u", &note, &vel);
-            else
+            else if (!strcmp(kind, "off"))
                 fscanf(ev, "%u", &note);
         }
         rewind(ev);
@@ -86,6 +87,8 @@ int main(int argc, char **argv)
         } else if (!strcmp(kind, "off")) {
             fscanf(ev, "%u", &note);
             eng_note_off(note);
+        } else if (!strcmp(kind, "run") || !strcmp(kind, "stop")) {
+            eng_transport(!strcmp(kind, "run"));
         }
     }
     for (i = 0; i < total; i++) {

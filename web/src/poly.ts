@@ -105,9 +105,24 @@ export const maxParts = (p: Patch): number => Math.max(1, ...p.modules.filter((m
 /** a poly assembly that no allocator feeds: it runs once */
 export const unfed = (p: Patch, a: AssemblyInst): boolean => !!a.poly && !polyAncestor(p, a) && !allocatorOf(p, a);
 
-/** does an allocator take keys: a cable from a Main module's keys output into it */
-export const keyed = (p: Patch, alloc: ModuleInst): boolean =>
-  p.cables.some((c) => c.to.module === alloc.id && c.to.port === 'keys' && p.modules.find((m) => m.id === c.from.module)?.type === 'fm1');
+/** where an allocator's keys come from: the Main module, or an Arpeggiator that the Main module's keys feed; null: none */
+export function keySource(p: Patch, alloc: ModuleInst): ModuleInst | null {
+  const cable = p.cables.find((c) => c.to.module === alloc.id && c.to.port === 'keys');
+  const from = cable && p.modules.find((m) => m.id === cable.from.module);
+  if (!from) return null;
+  if (from.type === 'fm1') return from;
+  if (from.type === 'arp' && p.cables.some((c) => c.to.module === from.id && c.to.port === 'keys' && p.modules.find((m) => m.id === c.from.module)?.type === 'fm1')) return from;
+  return null;
+}
+
+/** does an allocator take keys: from a Main module's keys output, directly or through an Arpeggiator */
+export const keyed = (p: Patch, alloc: ModuleInst): boolean => keySource(p, alloc) !== null;
+
+/** the Arpeggiator that plays an allocator, or null (the keys come straight from the Main module, or not at all) */
+export function arpOf(p: Patch, alloc: ModuleInst): ModuleInst | null {
+  const s = keySource(p, alloc);
+  return s?.type === 'arp' ? s : null;
+}
 
 /** a poly group as the engines and the binary take it */
 export interface DeviceGroup {
@@ -115,6 +130,8 @@ export interface DeviceGroup {
   key: string;
   cfg: PolyCfg;
   modules: Set<number>;
+  /** the Arpeggiator module (id) whose notes the group plays; absent: the keys */
+  src?: number;
 }
 
 /**
@@ -134,7 +151,9 @@ export function deviceView(source: Patch): { patch: Patch; groups: DeviceGroup[]
   const groups = polyGroups(p);
   const out: DeviceGroup[] = groups.map((g) => ({ key: `${g.asm.id}:${g.cfg.parts}`, cfg: g.cfg, modules: new Set(g.modules) }));
   const modules = p.modules.map((m) => m);
-  let cables: Cable[] = p.cables.filter((c) => p.modules.find((m) => m.id === c.from.module)?.type !== 'fm1' || c.from.port !== 'keys');
+  // keys cables are not signals: the groups take the notes (from the keys, or an Arpeggiator: DeviceGroup.src)
+  const keysFrom = (c: Cable): boolean => { const t = p.modules.find((m) => m.id === c.from.module)?.type; return (t === 'fm1' || t === 'arp') && c.from.port === 'keys'; };
+  let cables: Cable[] = p.cables.filter((c) => !keysFrom(c));
   let next = p.modules.reduce((m, x) => Math.max(m, x.id), 0) + 1;
   const partAt = (alloc: ModuleInst, id: number): ModuleInst => ({ id, type: 'part', x: alloc.x, y: alloc.y, params: {} });
   for (const alloc of p.modules.filter((m) => m.type === ALLOC)) {
@@ -156,10 +175,17 @@ export function deviceView(source: Patch): { patch: Patch; groups: DeviceGroup[]
       else modules.push(partAt(alloc, id));
     });
     const spare = mine.length ? parts.get(mine[0])! : alloc.id;
+    const arp = arpOf(p, alloc);
     if (!mine.length) {
       modules[slot] = partAt(alloc, alloc.id);
       const cfg = polyCfg(alloc);
-      if (cfg.parts > 1 || cfg.legato || cfg.priority) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
+      // (an arpeggiated allocator always gets a group of its own: the shared keyboard plays the keys)
+      if (cfg.parts > 1 || cfg.legato || cfg.priority || arp) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
+    }
+    if (arp) {
+      for (const i of mine) out[i].src = arp.id;
+      const own = out.find((g) => g.key === `a${alloc.id}:${polyCfg(alloc).parts}`);
+      if (!mine.length && own) own.src = arp.id;
     }
     cables = cables.map((c) => {
       if (c.from.module !== alloc.id) return c;

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import workletUrl from './worklet.ts?worker&url';
 import type { Patch } from './patch';
-import { ARP_DEFAULT } from './arp';
 import type { HostMsg } from './worklet';
 import type { ParameterValues } from './engine';
 import type { ViewData } from './scope-stream';
@@ -82,10 +81,8 @@ export class AudioHost {
       this.gain.connect(ctx.destination);
       this.node = node;
       ctx.onstatechange = () => { this.watchValues(); this.onState(); };
-      if (this.pending) {
-        this.send({ t: 'patch', patch: this.pending, revision: this.revision });
-        this.send({ t: 'arp', cfg: this.pending.arp ?? ARP_DEFAULT });
-      }
+      if (this.pending) this.send({ t: 'patch', patch: this.pending, revision: this.revision });
+      this.send({ t: 'transport', on: this.transportOn });
       for (const msg of this.early) this.send(msg);
       this.early = [];
       for (const msg of this.watches.values()) node.port.postMessage(msg);
@@ -126,7 +123,13 @@ export class AudioHost {
     this.latestValues = null;
     this.onValues(null);
     this.send({ t: 'patch', patch, revision: this.revision });
-    this.send({ t: 'arp', cfg: patch.arp ?? ARP_DEFAULT });
+  }
+
+  /** the transport (the deck's Play, Space): the Main module's run output and clock; kept for when the worklet starts */
+  private transportOn = false;
+  transport(on: boolean): void {
+    this.transportOn = on;
+    this.send({ t: 'transport', on });
   }
 
   /** the standing watches (sidebar slider sources), sent again once the worklet exists: a watch asked for before audio started
@@ -137,6 +140,6 @@ export class AudioHost {
     if (msg.t === 'watch' || msg.t === 'view' || msg.t === 'envwatch') this.watches.set(msg.key, msg);
     else if (msg.t === 'unwatch' || msg.t === 'unview' || msg.t === 'unenvwatch') this.watches.delete(msg.key);
     if (this.node) this.node.port.postMessage(msg);
-    else if (this.ctx && !['patch', 'arp'].includes(msg.t)) this.early.push(msg);
+    else if (this.ctx && !['patch', 'transport'].includes(msg.t)) this.early.push(msg);
   }
 }

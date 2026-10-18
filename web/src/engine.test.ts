@@ -136,7 +136,7 @@ describe('engine', () => {
   it('every module but fm1 and output has the two parameter inputs and a matrix', () => {
     for (const d of Object.values(DEFS)) {
       const has = d.inputs.filter((i) => i.pin).map((i) => i.name);
-      if (['fm1', 'output', 'alloc', 'scope'].includes(d.type) || !d.params.length) expect(has, d.type).toEqual([]); // nothing to modulate (the Part); the allocator's settings are structure; the Scope's are its display
+      if (['fm1', 'output', 'alloc', 'scope', 'arp'].includes(d.type) || !d.params.length) expect(has, d.type).toEqual([]); // nothing to modulate (the Part); the allocator's and the arpeggiator's settings are structure (the engine runs them before the modules); the Scope's are its display
       else expect(has, d.type).toEqual(['p1', 'p2']);
       const m = addModule(emptyPatch(), d, 0, 0);
       expect(!!m.map, d.type).toBe(!!d.paramInputs);
@@ -2250,6 +2250,10 @@ describe('delay sync and ping-pong', () => {
     connect(p, DEFS, { module: dly.id, port: 'r' }, { module: out.id, port: 'r' });
     const e = new Engine(44100);
     e.load(p);
+    if (clockEvery) {           // MIDI clock, the transport running (the Main module's clock output pulses only then)
+      e.clockExternal(true);
+      e.transport(true);
+    }
     const l = new Float32Array(128);
     const r = new Float32Array(128);
     const first: number[] = [];

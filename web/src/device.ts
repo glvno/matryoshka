@@ -2,14 +2,13 @@
 // The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
 import { DEFS } from './modules';
 import type { Patch } from './patch';
-import type { ArpCfg } from './arp';
 import { encodePatch, toQ16 } from './patchbin';
 import { deviceView } from './poly';
 
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch).patch.modules.findIndex((m) => m.id === moduleId);
-import { arpFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 const NAME = /felucca|fm-?1|modular/i;
 const ACK_TIMEOUT = 700;
@@ -95,20 +94,19 @@ export class DeviceLink {
       const bin = encodePatch(patch);
       await this.sendChunks(bin);
       await this.ackFor(commitFrame(bin), CMD.commit);
-      if (patch.arp && this.hasArp) this.out!.send(arpFrame(patch.arp, null)); // the groove travels with the patch
     };
     return this.serial(run);
   }
 
-  /** the firmware takes the ARP command (INFO feature bit 0) */
-  get hasArp(): boolean {
-    return !!(this.info && this.info.features & 1);
+  /** the firmware takes the TRANSPORT command (INFO feature bit 1) */
+  get hasTransport(): boolean {
+    return !!(this.info && this.info.features & 2);
   }
 
-  /** the arpeggiator's settings and transport (null = leave the transport) */
-  arp(cfg: ArpCfg, play: boolean | null): void {
-    if (!this.connected || !this.hasArp) return;
-    this.out!.send(arpFrame(cfg, play));
+  /** the transport (PLAY) */
+  transport(run: boolean): void {
+    if (!this.connected || !this.hasTransport) return;
+    this.out!.send(transportFrame(run));
   }
 
   private async sendChunks(bin: Uint8Array): Promise<void> {

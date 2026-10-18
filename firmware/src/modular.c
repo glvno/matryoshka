@@ -40,7 +40,6 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #define ENG_POOL __attribute__((section(".pool")))
 #include "engine.c"
 #include "presets.h"
-#include "arp.c"
 #include "audio.c"
 #include "usb.c"
 #include "midi_uart.c"
@@ -55,7 +54,7 @@ static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint
 static int m1_slot_erase(uint32_t slot);
 static int m1_slot_info(uint32_t slot, char *name, uint32_t *len);
 static void m1_ui_changed(void);                               /* main.c: a live edit changed what the LCD shows */
-static void m1_arp_set(const uint8_t *d, uint32_t n);          /* main.c: the editor's ARP command (settings + transport) */
+static void m1_transport(int run);                             /* main.c: the editor's TRANSPORT command (PLAY) */
 #include "proto.c"
 #include "patchstore.c"
 #include "slotstore.c"
@@ -64,6 +63,5 @@ static void m1_arp_set(const uint8_t *d, uint32_t n);          /* main.c: the ed
 #endif
 #define UI_POOL __attribute__((section(".pool")))
 #include "ui.c"
-#include "arp_ui.c"
 #include "menu.c"
 #include "main.c"

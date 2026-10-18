@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // What changed between two versions of a patch (the diff view): parameters by module id, modules and cables added or
-// removed, and the rest (attenuverters, matrix, bypass, macro ranges, voices, arpeggiator, morph) as one line each.
+// removed, and the rest (attenuverters, matrix, bypass, macro ranges, voices, morph) as one line each.
 import type { ModuleDef, Patch, PolyCards } from './patch';
-import { ARP_FIELDS } from './arp';
 
 export interface PatchDiff {
   params: { module: number; label: string; name: string; from: number; to: number }[];
@@ -60,10 +59,6 @@ export function diffPatches(a: Patch, b: Patch, defs: Record<string, ModuleDef>)
     else if (JSON.stringify(was.flaws ?? null) !== JSON.stringify(cfg.flaws ?? null)) d.other.push(`${label}: flaws changed`);
   }
   for (const label of pa.keys()) if (!pb.has(label)) d.other.push(`${label}: poly off`);
-  if (JSON.stringify(a.arp ?? null) !== JSON.stringify(b.arp ?? null)) {
-    const changed = a.arp && b.arp ? ARP_FIELDS.filter((f) => a.arp![f] !== b.arp![f]).map((f) => `${f} ${a.arp![f]} → ${b.arp![f]}`) : [];
-    d.other.push(`arpeggiator ${changed.length ? changed.join(', ') : b.arp ? 'set' : 'removed'}`);
-  }
   if ((a.morphName ?? '') !== (b.morphName ?? '')) d.other.push(`morph B side: ${b.morphName ?? 'none'}`);
   if (a.name !== b.name) d.other.push(`name "${a.name}" → "${b.name}"`);
   return d;

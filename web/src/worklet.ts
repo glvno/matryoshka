@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // AudioWorklet wrapper around Engine.
 import { Engine } from './engine';
-import { Arp, type ArpCfg } from './arp';
 import type { Patch } from './patch';
 import { ViewStream, type ViewData } from './scope-stream';
 
@@ -18,8 +17,7 @@ export type HostMsg =
   | { t: 'att'; id: number; index: number; value: number }
   | { t: 'bypass'; id: number; on: boolean }
   | { t: 'range'; id: number; index: number; name: string; range: [number, number] | null }
-  | { t: 'arp'; cfg: ArpCfg }
-  | { t: 'arpplay'; on: boolean }
+  | { t: 'transport'; on: boolean }
   | { t: 'probe'; key: string; id: number; port: string }
   | { t: 'unprobe'; key: string }
   | { t: 'watch'; key: string; id: number; port: string }
@@ -39,6 +37,8 @@ export type HostMsg =
   | { t: 'at'; v: number }
   | { t: 'panic' };
 
+/** blocks without MIDI clock after which it no longer drives the clock (about half a second) */
+const CLOCK_GONE = Math.round((0.5 * sampleRate) / 128);
 /** samples a probe keeps (about 85 ms at 48 kHz: a few cycles of a bass note, a whole envelope attack) */
 const PROBE_LEN = 4096;
 /** blocks between two probe messages: 12 x 128 = 1536 samples, about 32 ms */
@@ -46,8 +46,8 @@ const PROBE_EVERY = 12;
 
 class ModularProcessor extends AudioWorkletProcessor {
   private engine = new Engine(sampleRate);
-  /** the arpeggiator: runs before every block, plays the engine, drives its clock while it plays (then MIDI clock is ignored, as on the device) */
-  private arp = new Arp(sampleRate, (Math.random() * 0xffffffff) >>> 0);
+  /** blocks since the last MIDI clock tick: after half a second without one the Main module's tempo drives the clock again */
+  private sinceClock = Infinity;
   private failed = false;
   private revision = 0;
   private valuesRequested = false;
@@ -68,7 +68,6 @@ class ModularProcessor extends AudioWorkletProcessor {
       const m = ev.data;
       try {
         if (m.t === 'patch') {
-          this.arp.clear(this.engine);
           this.engine.load(m.patch);
           for (const p of this.probes.values()) { p.ring.fill(0); p.w = 0; }
           for (const v of this.views.values()) v.streams = v.chans.map(() => new ViewStream(v.samples));
@@ -89,23 +88,18 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'unview') this.views.delete(m.key);
         else if (m.t === 'envwatch') this.envs.set(m.key, m.id);
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
-        else if (m.t === 'arp') this.arp.set(m.cfg);
-        else if (m.t === 'arpplay') {
-          this.arp.play = m.on;
-          this.arp.ticks = (Date.now() & 0xffffffff) >>> 0;
-          if (!m.on) this.engine.clockRun(true);
-        }
-        else if (m.t === 'on') this.arp.keyOn(m.note, m.vel, this.engine);
-        else if (m.t === 'off') this.arp.keyOff(m.note, this.engine);
-        else if (m.t === 'clock') {
-          if (!this.arp.active) this.engine.clockTick();
-        } else if (m.t === 'clockrun') {
-          if (!this.arp.active) this.engine.clockRun(m.on);
-        }
+        else if (m.t === 'transport') this.engine.transport(m.on);
+        else if (m.t === 'on') this.engine.noteOn(m.note, m.vel);
+        else if (m.t === 'off') this.engine.noteOff(m.note);
+        else if (m.t === 'clock') {                   // MIDI clock: it drives the clock while it comes in
+          if (this.sinceClock > CLOCK_GONE) this.engine.clockExternal(true);
+          this.sinceClock = 0;
+          this.engine.clockTick();
+        } else if (m.t === 'clockrun') this.engine.transport(m.on);   // MIDI Start / Continue / Stop
         else if (m.t === 'bend') this.engine.bend(m.v);
         else if (m.t === 'cc') this.engine.cc(m.n, m.v);
         else if (m.t === 'at') this.engine.aftertouch(m.v);
-        else if (m.t === 'panic') { this.arp.clear(this.engine); this.engine.allNotesOff(); }
+        else if (m.t === 'panic') this.engine.allNotesOff();
       } catch (e) {
         this.port.postMessage({ error: String(e) });
       }
@@ -166,7 +160,7 @@ class ModularProcessor extends AudioWorkletProcessor {
   process(_in: Float32Array[][], outputs: Float32Array[][]): boolean {
     const out = outputs[0];
     try {
-      this.arp.run(out[0].length, this.engine);
+      if (this.sinceClock <= CLOCK_GONE && ++this.sinceClock > CLOCK_GONE) this.engine.clockExternal(false);
       this.engine.render(out[0], out[1] ?? out[0]);
       if (this.views.size) this.feedViews(out[0].length);
       if (this.probes.size || this.views.size || this.envs.size) this.feedProbes(out[0].length, out);

@@ -8,9 +8,10 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { driftSeed, flawQ16, IMPLS, instSeed, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { driftSeed, flawQ16, IMPLS, instSeed, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, thruInput } from './patch';
 import { ALLOC, deviceView } from './poly';
+import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
 export const BLOCK = 128;
 
@@ -79,17 +80,28 @@ interface Group {
   held: { note: number; vel: number }[];
   /** rotate: the part the next note tries first */
   rot: number;
+  /** where its notes come from: -1 the keys (Main), else the id of the Arpeggiator module that feeds its allocator */
+  src: number;
+}
+
+/** an Arpeggiator module as it runs: its note logic (arpeggiator.ts) and the groups it plays */
+interface ArpRun {
+  node: Node;
+  st: ArpState;
+  clk: { hi: boolean };
 }
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
-  pitch: 0, gate: 0, velocity: 0, clock: false, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
+  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
   note: -1, on: false, onStamp: 0, offStamp: 0, retrig: false, walk: walkInit(seed),
 });
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
 /** g: the poly group's index (its parts' drift seeds), -1 for the shared keyboard */
 const newGroup = (key: string, cfg: PolyCfg, g: number): Group => ({
-  key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0,
+  key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0, src: -1,
 });
+/** the tempo without a Main module */
+const TEMPO_DEFAULT = 120;
 /** how often a part's drift picks a new target (Hz) */
 export const DRIFT_RATE = 0.5;
 const FLAW_KEYS3 = Object.keys(FLAW_TARGETS) as ('bright' | 'env' | 'level')[];
@@ -105,8 +117,14 @@ export class Engine {
   private stamp = 0;
   /** the patch as loaded (an allocator's setting changes the groups: setParam reloads it) */
   private src: Patch | null = null;
+  /** the clock: 24 ppqn ticks so far (from the Main module's tempo, or MIDI clock while it comes in), the internal
+   * clock's remainder (in 1 / (60 sr) of a tick), MIDI clock ticks not yet counted, and the transport */
   private ticks = 0;
-  private clockOn = true;
+  private tickAcc = 0;
+  private extTicks = 0;
+  private ext = false;
+  private running = false;
+  private arps: ArpRun[] = [];
   /** the performance controls (pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1): one set, every part sees it */
   private ctl = { bend: 0, mod: 0, at: 0 };
   /** the Main module, and the morph position of the current block (its morph parameter plus the block mean of its morph input, one block late) */
@@ -153,6 +171,7 @@ export class Engine {
     this.groups = pg.map((x, i) => {
       const g = oldGroups.get(x.key) ?? newGroup(x.key, x.cfg, i);
       g.cfg = { ...x.cfg };
+      g.src = x.src ?? -1;
       return g;
     });
     const groupOf = new Map<number, number>();
@@ -210,6 +229,21 @@ export class Engine {
     this.outputs = this.order.filter((n) => n.type === 'output');
     this.main = this.order.find((n) => n.type === 'fm1') ?? null;
     this.hasB = this.order.some((n) => n.paramsB);
+    const oldArps = new Map(this.arps.map((a) => [a.node.id, a]));
+    this.arps = this.order.filter((n) => n.type === 'arp').map((node) => {
+      const old = oldArps.get(node.id);
+      return old ? { ...old, node } : { node, st: arpInit(), clk: { hi: false } };
+    });
+  }
+
+  private arpParams(a: ArpRun): ArpParams {
+    const p = a.node.params;
+    return { mode: p.mode ?? 0, rate: p.rate ?? 4, octaves: p.octaves ?? 1, gate: p.gate ?? 0.5, latch: p.latch ?? 0 };
+  }
+
+  /** the groups an arpeggiator plays */
+  private arpGroups(a: ArpRun): Group[] {
+    return this.groups.filter((g) => g.src === a.node.id);
   }
 
   /** the morph position the current block uses (for tests) */
@@ -398,11 +432,22 @@ export class Engine {
   }
 
   noteOn(note: number, velocity = 1): void {
-    for (const g of [this.kb, ...this.groups]) this.groupOn(g, note, velocity);
+    for (const g of [this.kb, ...this.groups]) if (g.src < 0) this.groupOn(g, note, velocity);
+    for (const a of this.arps) arpKeyOn(a.st, note, velocity, this.arpParams(a));
   }
 
   noteOff(note: number): void {
-    for (const g of [this.kb, ...this.groups]) this.groupOff(g, note);
+    for (const g of [this.kb, ...this.groups]) if (g.src < 0) this.groupOff(g, note);
+    for (const a of this.arps) arpKeyOff(a.st, note, this.arpParams(a));
+  }
+
+  /** an arpeggiator's note into its groups; a part it lands on restarts its envelopes (one note after another, also
+   * at gate 100 %, where the next note follows the last in the same block) */
+  private arpOn(a: ArpRun, note: number, vel: number): void {
+    for (const g of this.arpGroups(a)) {
+      this.groupOn(g, note, vel);
+      for (const x of g.parts) if (x.on && x.note === note && x.onStamp === this.stamp) x.retrig = true;
+    }
   }
 
   /**
@@ -469,13 +514,25 @@ export class Engine {
       }
   }
 
-  /** MIDI clock (0xF8): one tick; Stop (0xFC) mutes the clock until Start/Continue */
+  /** MIDI clock (0xF8): one tick, counted while the clock is external (clockExternal) */
   clockTick(): void {
-    if (this.clockOn) this.ticks++;
+    if (this.ext) this.extTicks++;
   }
 
-  clockRun(on: boolean): void {
-    this.clockOn = on;
+  /** MIDI clock comes in: it drives the clock instead of the Main module's tempo */
+  clockExternal(on: boolean): void {
+    this.ext = on;
+    this.extTicks = 0;
+  }
+
+  /** the transport (PLAY, MIDI Start / Stop): the Main module's run output, and its clock output pulses only while it runs */
+  transport(on: boolean): void {
+    if (on && !this.running) this.tickAcc = 0;
+    this.running = on;
+  }
+
+  get transportRunning(): boolean {
+    return this.running;
   }
 
   /** pitch bend, -1..1: +-2 semitones on every pitch output, and the Main module's bend output */
@@ -496,6 +553,11 @@ export class Engine {
   }
 
   allNotesOff(): void {
+    for (const a of this.arps) {
+      arpClear(a.st);
+      a.st.cur = -1;
+      a.st.running = false;
+    }
     for (const g of [this.kb, ...this.groups]) {
       g.held = [];
       for (const x of g.parts) {
@@ -585,8 +647,26 @@ export class Engine {
     const all = [this.kb, ...this.groups];
     for (let off = 0; off < total; off += BLOCK) {
       const n = Math.min(BLOCK, total - off);
-      const clock = this.ticks > 0; // the Main module's clock output: one pulse per block that saw a tick
-      this.ticks = 0;
+      // the clock: MIDI ticks while external, else the tempo (bpm x 24 ticks a minute, in whole bpm as the firmware does)
+      const bpm = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, Math.round(this.main?.params.tempo ?? TEMPO_DEFAULT)));
+      let seen = false;
+      if (this.ext) {
+        seen = this.extTicks > 0;
+        this.ticks = (this.ticks + this.extTicks) >>> 0;
+        this.extTicks = 0;
+      } else {
+        this.tickAcc += n * bpm * PPQN;
+        const whole = 60 * this.sampleRate;
+        while (this.tickAcc >= whole) {
+          this.tickAcc -= whole;
+          this.ticks = (this.ticks + 1) >>> 0;
+          seen = true;
+        }
+      }
+      const clock = seen && this.running; // the Main module's clock output: one pulse per block that saw a tick while running
+      for (const a of this.arps)
+        arpBlock(a.st, this.arpParams(a), n, this.ticks, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk, bpm, this.sampleRate,
+          (note, vel) => this.arpOn(a, note, vel), (note) => { for (const g of this.arpGroups(a)) this.groupOff(g, note); });
       this.morphT = this.hasB ? this.morphPosition(n) : 0;
       const hold = walkHold(this.sampleRate, DRIFT_RATE);
       for (const g of this.groups)
@@ -598,6 +678,7 @@ export class Engine {
       for (const g of all)
         for (const x of g.parts) {
           x.clock = clock;
+          x.run = this.running;
           x.bend = this.ctl.bend;
           x.mod = this.ctl.mod;
           x.at = this.ctl.at;

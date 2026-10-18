@@ -136,7 +136,7 @@ export class Tutorial {
   private state(): TutorialState {
     const e = this.host.editor;
     return {
-      patch: e.patch, entry: this.entry ?? e.patch, zoom: e.zoom, probes: e.probes, arpPlay: e.arpPlay, audio: this.host.audioOn(),
+      patch: e.patch, entry: this.entry ?? e.patch, zoom: e.zoom, probes: e.probes, arpPlay: e.playing, audio: this.host.audioOn(),
       lastSaved: this.lastSaved, selected: e.selected, library: this.host.library(), snapshots: e.snapshots, seen: this.seen,
     };
   }
@@ -367,7 +367,7 @@ export class Tutorial {
 
   private preview(): void {
     if (this.previewing) { this.endPreview(); return; }
-    this.previewTransport = this.host.editor.arpPlay;
+    this.previewTransport = this.host.editor.playing;
     this.previewMuted = !this.host.audioOn();
     this.previewing = true;
     this.host.preview(chapterEnd(this.chapterIndex));
