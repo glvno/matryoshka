@@ -324,7 +324,7 @@ describe('assemblies', () => {
       expect(l.every((v) => Number.isFinite(v)), d.name).toBe(true);
       if (o.label === 'out' || o.label === 'l') expect(l.filter((v) => Math.abs(v) >= 1).length, d.name).toBeLessThan(l.length / 20); // a clock is a square at +-1 by design
     }
-  });
+  }, 30_000); // renders every factory assembly: slow under coverage on the CI runner
 
   it('rejects bad definitions', () => {
     expect(() => validateAssemblyDef({ format: 'x' }, DEFS)).toThrow(/not a Matryoshka assembly/);
