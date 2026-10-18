@@ -14,10 +14,12 @@
     "firmware": "node scripts/sync-firmware.mjs",
     "export-defs": "vite-node scripts/export-defs.ts",
     "cpu-costs": "vite-node scripts/cpu-costs.ts",
-    "ai-stats": "vite-node scripts/ai-stats.ts"
+    "ai-stats": "vite-node scripts/ai-stats.ts",
+    "coverage": "vitest run --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary --coverage.include='src/**' && vite-node scripts/coverage-stats.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
+    "@vitest/coverage-v8": "^5.0.3",
     "esbuild": "^0.28.2",
     "fontkit": "^2.0.4",
     "typescript": "^7.0.2",

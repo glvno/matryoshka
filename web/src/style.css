@@ -267,6 +267,7 @@ dialog.about[open] .about-body { flex: 1; }
 .about-brand-row p { margin: 0; font-size: 12px; }
 .about-todo { padding: 6px 8px; border: 1px dashed var(--accent); border-radius: 5px; color: var(--accent); font-size: 12px; }
 .ai-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 4px 0 10px; }
+.ai-figs.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ai-fig { display: grid; align-content: start; gap: 2px; padding: 8px 10px; border-radius: 6px; background: var(--bar); }
 .ai-label { font: var(--cap); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .ai-value { font: 600 24px/1.1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; color: var(--ink); font-variant-numeric: tabular-nums; }

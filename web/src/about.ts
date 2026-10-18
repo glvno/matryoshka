@@ -1,9 +1,10 @@
-// The About & support card: the owner's words, the Slop Disclosure figures (ai-stats.ts), the credits, and Ko-fi's floating button.
+// The About & support card: the owner's words, the Slop Disclosure figures (ai-stats.ts), the test coverage (coverage.ts), the credits, and Ko-fi's floating button.
 // Ko-fi's overlay script is loaded the first time the card opens (nothing from Ko-fi before that) and draws its button into the
 // card: the dialog has a transform, so the script's position: fixed button and popup sit in the card's corner, not the window's.
 import COPY from './about-copy.json';
 import REVIEW from './ai-review.json';
 import { formatDay, formatHours, formatUsd, isAiStats, modelName, modelShares, totalCost, type AiReview, type AiStats } from './ai-stats';
+import { isCoverageStats, type CoverageStats } from './coverage';
 import { version } from '../package.json';
 
 const KOFI = 'glvno';
@@ -68,6 +69,15 @@ function source(stats: AiStats | null): string {
   return `<p class="ai-source">Source: WakaTime API as of ${formatDay(stats.asOf)}</p>`;
 }
 
+const pctText = (pct: number): string => `${Math.round(pct)} %`;
+
+function coverage(c: CoverageStats | null): string {
+  const core = figure('Core', c ? pctText(c.core.pct) : '—', 'sound engine, modules, patch model, binary format, assemblies, polyphony, arpeggiator, CPU estimate, protocol');
+  const ui = figure('Browser interface', c ? pctText(c.interface.pct) : '—', 'LGTM!');
+  const src = c ? `<p class="ai-source">Source: Vitest as of ${formatDay(c.asOf)}</p>` : '<p class="ai-source">The figures appear after the next deploy runs the tests.</p>';
+  return `<div class="ai-figs two">${core}${ui}</div>${src}`;
+}
+
 function credits(): string {
   return `<section class="hsec"><h3>Built on</h3>
     <div class="credit"><p>${link('https://github.com/hugelton/Felucca', 'Felucca')}, by ${link('https://github.com/kurogedelic', 'Leo Kuroshita (@kurogedelic)')} /
@@ -83,6 +93,7 @@ function credits(): string {
 export class AboutCard {
   readonly dialog: HTMLDialogElement;
   private stats: AiStats | null | undefined;
+  private cov: CoverageStats | null | undefined;
   private kofiDrawn = false;
 
   constructor(dialog: HTMLDialogElement) {
@@ -97,10 +108,10 @@ export class AboutCard {
     if (!this.dialog.open) this.dialog.showModal();
     void this.drawKofi();
     if (this.stats === undefined) {
-      this.stats = await fetch('./ai-stats.json', { cache: 'no-cache' })
-        .then((r) => (r.ok ? r.json() : null))
-        .then((j: unknown) => (isAiStats(j) ? j : null))
-        .catch(() => null);
+      const get = (file: string): Promise<unknown> => fetch(file, { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      const [stats, cov] = await Promise.all([get('./ai-stats.json'), get('./coverage.json')]);
+      this.stats = isAiStats(stats) ? stats : null;
+      this.cov = isCoverageStats(cov) ? cov : null;
       this.renderUsage();
     }
   }
@@ -146,6 +157,7 @@ export class AboutCard {
           ${passage(COPY.intro, 'Your words for supporters go here')}
           <section class="hsec ai-usage"><h3>Slop Disclosure</h3><div class="ai-live"></div>
             ${passage(COPY.howMade, 'Your “How it’s made” paragraph goes here')}</section>
+          <section class="hsec"><h3>Test coverage</h3><div class="cov-live"></div></section>
           ${credits()}
         </div>
         <div id="about-kofi" class="about-kofi" aria-label="Support on Ko-fi"></div>
@@ -157,5 +169,7 @@ export class AboutCard {
     const stats = this.stats ?? null;
     const live = this.dialog.querySelector('.ai-live');
     if (live) live.innerHTML = figures(stats, REVIEW as AiReview) + models(stats) + source(stats);
+    const cov = this.dialog.querySelector('.cov-live');
+    if (cov) cov.innerHTML = coverage(this.cov ?? null);
   }
 }

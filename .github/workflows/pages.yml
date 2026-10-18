@@ -57,7 +57,8 @@ jobs:
           (cd web && npm run export-defs)
           python3 tools/build.py
           (cd web && npm run firmware)
-      - run: npm test
+      # the tests, with coverage: public/coverage.json is the About card's Test coverage figures
+      - run: npm run coverage
       # the About card's AI usage figures: WakaTime summaries of the projects in web/ai-projects.json, fetched with the
       # WAKATIME_API_KEY repository secret; a failed fetch keeps the last good file from the cache (the card shows its date)
       - name: the last good AI usage figures
