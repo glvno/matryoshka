@@ -32,6 +32,7 @@ import time
 HS_QUERY = bytes([0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7])
 UPGRADE = bytes([0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7])
 FINISH_CHECK, FINISH_WRITE = 0xE0000000, 0xF0000000
+SUCCESS = b"success\0"
 MAXDATA = 512
 BLOCKS, BLK, KEEP = 20, 0x30, 0x2F
 LOADER_MARK = b"FELUCCA-LOADER-1"
@@ -43,10 +44,10 @@ PORT_RE = re.compile(r"fm-1|felucca|modular|ota|composite|sinco|usb-midi", re.I)
 # seconds; the tests shorten them
 DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0, "retry": 1.0,
          "poll": 1.0, "hs": 1.0, "idle_check": 8.0, "idle_write": 180.0,
-         "wait_loader": 30.0, "wait_reboot": 40.0}
+         "wait_loader": 30.0, "wait_reboot": 40.0, "settle": 0.6}
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
-        "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7}
+        "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7}
 
 
 class InstallError(Exception):
@@ -314,18 +315,32 @@ class Updater:
                 continue
             fl, addr, n = r
             last = time.monotonic()
+            if n == 0 or n > MAXDATA:
+                raise InstallError("badreq", f"the device asked for {addr:#x}+{n}: bad length")
             if addr in (FINISH_CHECK, FINISH_WRITE):
-                link.send(response(addr, b"success\0"))
-                if addr == finish:
-                    return served, True, False
-                continue
-            if n > MAXDATA or addr + n > len(image):
+                # as M-VAVE's WebUpdate.js: only this phase's finish address, 8 bytes, then answer repeats for a while
+                if addr != finish or n != len(SUCCESS):
+                    raise InstallError("phase", f"the device asked for the finish address {addr:#x}+{n} "
+                                       f"in the {'check' if finish == FINISH_CHECK else 'write'} step")
+                link.send(response(addr, SUCCESS, fl))
+                self.settle(link, finish)
+                return served, True, False
+            if addr + n > len(image):
                 raise InstallError("badreq", f"the device asked for {addr:#x}+{n}, outside the package")
             time.sleep(DELAY["reply"])
             if not link.send(response(addr, image[addr:addr + n], fl)):
                 return served, False, True
             served += 1
             progress(served, addr + n)
+
+    def settle(self, link, finish):
+        """the answer may still be queued and the device may ask again: answer the same finish request only"""
+        end = time.monotonic() + DELAY["settle"]
+        while time.monotonic() < end and not link.lost:
+            pkt = link.read(min(0.1, end - time.monotonic()))
+            r = pkt and parse_request(pkt)
+            if r and r[1] == finish and r[2] == len(SUCCESS):
+                link.send(response(finish, SUCCESS, r[0]))
 
     def check(self, dev, image, step):
         """step 1: the running firmware checks the package and starts the loader"""

@@ -84,6 +84,7 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 ## Flash tab (simplified)
 
 - One click installs the firmware bundled with the app: `tools/build.py` then `cd web && npm run firmware` copies `build/modular-1.fwsc` to `web/public/firmware/modular-1.fwsc` + `modular-1.json` (version, product, sha256; git-ignored). If the FM-1 is sitting in its update loader from an interrupted install, the same button finishes that write. "Return to stock" needs the official `FM-1.fwsc`; "Install another package" takes any `.fwsc` that carries the loader. The "combine the official V15 with an app.bin" step is gone (`buildFeluccaPackage` is no longer used by the UI).
+- Locked in production (#94, 2026-10-18): the built app (Pages) shows "Flashing is switched off" with only Check the connection, unless opened with `?flash`, and then the write buttons need the typed phrase `flash untested firmware` (`UNLOCKED` / `TYPED` / `PHRASE` in flasher.ts); the dev server keeps the check box. The flasher's `Link` uses `addEventListener('midimessage')` (#80), and `serve` (fm1ota.js and fm1_install.py) refuses zero-length requests and the other step's finish address (error `phase`), and answers repeated finish requests for 600 ms (#77, after M-VAVE's `WebUpdate.js`).
 
 ## Polyphony (host-tested, golden 45 patches pass; not flashed) — device controls superseded by the merge section at the end
 

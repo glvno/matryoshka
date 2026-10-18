@@ -10,11 +10,14 @@
 const HS_QUERY = [0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7];
 const UPGRADE = [0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7];
 const MAXDATA = 512;
+const FINISH_CHECK = 0xE0000000, FINISH_WRITE = 0xF0000000;
+const SUCCESS = [...new TextEncoder().encode("success"), 0];
+const SETTLE_MS = 600; // after the finish answer: keep the port and answer repeated finish requests (as M-VAVE's WebUpdate.js)
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const IS_OTA = (id) => /^ota-/i.test(id.model);
 
 // errors carry a code the pages translate: notfound, model, stopped, noloader, lost, noreturn,
-// mismatch (detail: the identity the device reports), badreq
+// mismatch (detail: the identity the device reports), badreq, phase
 // Which loader may finish an interrupted write of which package. M-VAVE's loader (ota-FM-1_015)
 // writes the flash head (boot code) from the package, so it only ever gets the official V15.
 // Felucca-lineage loaders (Felucca FM-1_9XY, ours FM-1_800; three digits) never write the head
@@ -80,11 +83,13 @@ function parseIdentity(pkt) {
 class Link {
   constructor(input, output) {
     this.input = input; this.output = output; this.q = []; this.waiter = null;
-    input.onmidimessage = (ev) => {
+    // a listener of its own, not onmidimessage: the editor's live link and the MIDI keyboard may use the same port
+    this.onmsg = (ev) => {
       if (ev.data[0] !== 0xF0) return;
       this.q.push(Array.from(ev.data));
       if (this.waiter) { const w = this.waiter; this.waiter = null; w(); }
     };
+    input.addEventListener("midimessage", this.onmsg);
   }
   get lost() { return this.input.state === "disconnected" || this.output.state === "disconnected"; }
   // false when the port is gone (unplugged): WebMIDI throws on a disconnected output
@@ -101,7 +106,7 @@ class Link {
     }
     return this.q.shift() || null;
   }
-  close() { this.input.onmidimessage = null; }
+  close() { this.input.removeEventListener("midimessage", this.onmsg); }
 }
 
 async function handshake(link, tries = 3) {
@@ -152,8 +157,10 @@ export class Updater {
     return null;
   }
 
-  // serve read requests until the device asks for one of the finish addresses; stops early
-  // when the port disappears (lost: true) instead of waiting out idleMs
+  // serve read requests until the device asks for the finish address of this phase (M-VAVE's WebUpdate.js is the
+  // model: a finish request must be this phase's address and 8 bytes long, anything else is refused, and repeated
+  // finish requests are answered for SETTLE_MS); stops early when the port disappears (lost: true) instead of waiting
+  // out idleMs
   async serve(link, image, finishAddr, idleMs, onProgress) {
     let served = 0, last = Date.now();
     for (;;) {
@@ -166,18 +173,30 @@ export class Updater {
       const r = parseRequest(pkt);
       if (!r) continue;
       last = Date.now();
-      if (r.addr === 0xE0000000 || r.addr === 0xF0000000) {
-        link.send(response(r.addr, [...new TextEncoder().encode("success"), 0]));
-        if (r.addr === finishAddr) return { served, finished: true };
-        continue;
+      if (r.len === 0 || r.len > MAXDATA) throw fail("badreq", `bad request length ${r.addr.toString(16)}+${r.len}`);
+      if (r.addr === FINISH_CHECK || r.addr === FINISH_WRITE) {
+        if (r.addr !== finishAddr || r.len !== SUCCESS.length) throw fail("phase", `finish request ${r.addr.toString(16)}+${r.len} in the ${finishAddr === FINISH_CHECK ? "check" : "write"} step`);
+        link.send(response(r.addr, SUCCESS, r.fl));
+        await this.settle(link, finishAddr);
+        return { served, finished: true };
       }
-      if (r.len > MAXDATA || r.addr + r.len > image.length) throw fail("badreq", `bad request ${r.addr.toString(16)}+${r.len}`);
+      if (r.addr + r.len > image.length) throw fail("badreq", `bad request ${r.addr.toString(16)}+${r.len}`);
       await sleep(10);
       if (!link.send(response(r.addr, Array.from(image.subarray(r.addr, r.addr + r.len)), r.fl))) {
         return { served, finished: false, lost: true };
       }
       served++;
       if (onProgress) onProgress(served, r.addr);
+    }
+  }
+
+  // the answer may still sit in the send queue and the device may ask again: answer the same finish request only
+  async settle(link, finishAddr) {
+    const end = Date.now() + SETTLE_MS;
+    while (Date.now() < end && !link.lost) {
+      const pkt = await link.read(Math.min(100, end - Date.now()));
+      const r = pkt && parseRequest(pkt);
+      if (r && r.addr === finishAddr && r.len === SUCCESS.length) link.send(response(r.addr, SUCCESS, r.fl));
     }
   }
 
@@ -191,7 +210,7 @@ export class Updater {
     step("start", dev.id.text);
     dev.link.send(UPGRADE);
     await sleep(2000);
-    const s1 = await this.serve(dev.link, image, 0xE0000000, 8000, (n) => step("verify", n));
+    const s1 = await this.serve(dev.link, image, FINISH_CHECK, 8000, (n) => step("verify", n));
     dev.link.close();
     if (!s1.finished) throw fail(s1.lost ? "lost" : "stopped", `the device ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests: nothing was written`);
     step("loader");
@@ -215,7 +234,7 @@ export class Updater {
   async write(ota, image, step) {
     ota.link.send(UPGRADE);
     await sleep(2000);
-    const s2 = await this.serve(ota.link, image, 0xF0000000, 180000, (n) => step("write", n));
+    const s2 = await this.serve(ota.link, image, FINISH_WRITE, 180000, (n) => step("write", n));
     ota.link.close();
     return s2;
   }

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 // @ts-ignore untyped JS module
 import { STOCK_V15_SHA256, validateStockPackage } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
-import { Updater, loaderFits } from './flasher/fm1ota.js';
+import { Updater, loaderFits, pack7, unpack7 } from './flasher/fm1ota.js';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
 
@@ -67,5 +67,67 @@ describe('finishing an interrupted write (resume)', () => {
     const { up, state } = parked('ota-FM-1_800');
     await expect(up.resume(new Uint8Array(8), () => {}, 'FM-1_015')).rejects.toMatchObject({ code: 'otherloader' });
     expect(state().written).toBe(false);
+  });
+});
+
+/** a device read request (cmd 0x30) as the firmware's ota_read sends it */
+const request = (addr: number, len: number): number[] => {
+  const u = [0x00, 0x59, 0x30, 8, 0, 0, 0, addr & 0xff, (addr >>> 8) & 0xff, (addr >>> 16) & 0xff, (addr >>> 24) & 0xff, len & 0xff, (len >> 8) & 0xff, 0];
+  let s = 0;
+  for (let i = 6; i < 14; i++) s += u[i];
+  return [0xf0, ...pack7([...u, ~s & 0xff]), 0xf7];
+};
+/** the address a response answers */
+const answered = (pkt: number[]): number => {
+  const u = unpack7(pkt.slice(1, -1));
+  return (u[7] | (u[8] << 8) | (u[9] << 16) | (u[10] << 24)) >>> 0;
+};
+/** a link that hands out the given packets, then nothing */
+const fakeLink = (pkts: number[][]) => {
+  const sent: number[][] = [];
+  return { sent, lost: false, read: async () => pkts.shift() ?? null, send: (b: number[]) => (sent.push(b), true) };
+};
+
+describe('serving read requests', () => {
+  const image = new Uint8Array(1024).map((_, i) => i & 0xff);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const up: any = new Updater({ inputs: new Map(), outputs: new Map() });
+
+  it('answers data, then this step\'s finish request and its repeats', async () => {
+    const link = fakeLink([request(0, 16), request(0xe0000000, 8), request(0xe0000000, 8)]);
+    expect(await up.serve(link, image, 0xe0000000, 1000)).toEqual({ served: 1, finished: true });
+    expect(link.sent.map(answered)).toEqual([0, 0xe0000000, 0xe0000000]);
+  });
+
+  it('refuses the other step\'s finish address, sending nothing for it', async () => {
+    const link = fakeLink([request(0xf0000000, 8)]);
+    await expect(up.serve(link, image, 0xe0000000, 1000)).rejects.toMatchObject({ code: 'phase' });
+    expect(link.sent).toEqual([]);
+  });
+
+  it('refuses zero-length requests and finish requests of the wrong length', async () => {
+    await expect(up.serve(fakeLink([request(0, 0)]), image, 0xe0000000, 1000)).rejects.toMatchObject({ code: 'badreq' });
+    await expect(up.serve(fakeLink([request(0xe0000000, 4)]), image, 0xe0000000, 1000)).rejects.toMatchObject({ code: 'phase' });
+  });
+});
+
+describe('the flasher\'s MIDI listener', () => {
+  it('leaves the port\'s onmidimessage (the editor\'s link) alone', async () => {
+    const id = [0x00, 0x59, 0x11, 0, 0, 0, ...Array.from('FM-1_800', (c) => c.charCodeAt(0))];
+    const identity = [0xf0, ...pack7([...id, ...new Array(34 - id.length).fill(0)]), 0xf7];
+    const listeners = new Set<(ev: { data: Uint8Array }) => void>();
+    const editor = (): void => {};
+    const input = {
+      name: 'Modular-1', state: 'connected', onmidimessage: editor, open: async () => {},
+      addEventListener: (_: string, f: (ev: { data: Uint8Array }) => void) => listeners.add(f),
+      removeEventListener: (_: string, f: (ev: { data: Uint8Array }) => void) => listeners.delete(f),
+    };
+    const output = { name: 'Modular-1', state: 'connected', open: async () => {}, send: () => setTimeout(() => listeners.forEach((f) => f({ data: new Uint8Array(identity) })), 1) };
+    const up = new Updater({ inputs: new Map([['i', input]]), outputs: new Map([['o', output]]) });
+    const dev = (await up.find())!;
+    expect(dev.id.text).toBe('FM-1_800');
+    dev.link.close();
+    expect(listeners.size).toBe(0);
+    expect(input.onmidimessage).toBe(editor);
   });
 });

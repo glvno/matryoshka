@@ -24,7 +24,7 @@ until the device has been seen running the player.
 
 ## Suggested order
 
-### 1. #94: no flashing from the production build (safety, small)
+### 1. #94: no flashing from the production build (safety, small) — done 2026-10-18 with #80 and #77 (see CLAUDE.md "Flash tab")
 
 GitHub Pages serves a one-click installer of firmware that has never run on hardware. Hide or disable the Flash tab's
 install / return-to-stock / other-package actions unless `import.meta.env.DEV` (or an explicit opt-in such as a URL flag
