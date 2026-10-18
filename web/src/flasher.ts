@@ -2,7 +2,7 @@
 // Flash tab. The USB-MIDI update protocol and package handling come from Felucca
 // (src/flasher/fm1ota.js, fm1pkg.js; Copyright (C) 2026 Leo Kuroshita, GPL-3.0-only).
 // @ts-ignore untyped JS modules
-import { Updater } from './flasher/fm1ota.js';
+import { Updater, STOCK_PRODUCT } from './flasher/fm1ota.js';
 // @ts-ignore untyped JS modules
 import { logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
 
@@ -17,6 +17,13 @@ const ERRORS: Record<string, string> = {
   mismatch: 'Written, but the device reports a different identity.',
   badreq: 'The device asked for data outside the package.',
 };
+
+/** an interrupted write can only be finished with a package the waiting loader may write (fm1ota.js loaderFits) */
+function otherLoader(loader: string): string {
+  if (loader === 'ota-' + STOCK_PRODUCT) return `The FM-1 waits in M-VAVE's update loader (${loader}) from an unfinished return to stock. Finish it with Return to official V15; nothing else may be written by that loader.`;
+  if (/^ota-FM-1_[89]\d\d$/.test(loader)) return `The FM-1 waits in a Felucca-type update loader (${loader}) from an unfinished install. Finish it with Install Matryoshka or the package you were installing; the official V15 cannot be written by it.`;
+  return `The FM-1 waits in an update loader this page does not know (${loader}). Nothing was written. Finish that update with the tool that started it.`;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -78,7 +85,8 @@ export function buildFlashTab(root: HTMLElement): void {
       await fn();
     } catch (e) {
       const err = e as Error & { code?: string; detail?: string };
-      log(`ERROR: ${(err.code && ERRORS[err.code]) || err.message}${err.detail ? ` (${err.detail})` : ''}`);
+      if (err.code === 'otherloader') log(`ERROR: ${otherLoader(err.detail ?? '')}`);
+      else log(`ERROR: ${(err.code && ERRORS[err.code]) || err.message}${err.detail ? ` (${err.detail})` : ''}`);
     } finally {
       busy = false;
       setButtons();
@@ -95,18 +103,24 @@ export function buildFlashTab(root: HTMLElement): void {
     else if (kind === 'done') log(`done: the FM-1 runs ${a}`);
   };
 
-  /** install a package; if an earlier install was cut off (the FM-1 sits in its update loader) finish that write instead */
+  /** install an image; if an earlier install was cut off (the FM-1 sits in an update loader) finish that write
+   *  instead, but only when that loader may write this package (otherwise an 'otherloader' error, nothing sent) */
+  const installImage = async (image: Uint8Array, product: string): Promise<void> => {
+    const up = await access();
+    if (await up.resume(image, step, product)) {
+      log('an earlier update was unfinished: it is finished now');
+      return;
+    }
+    await up.install(image, product, step);
+  };
+
   const install = async (raw: Uint8Array): Promise<void> => {
     const product = productOf(raw);
     log(`package: ${product}, ${raw.length} bytes`);
     const mark = new TextEncoder().encode('FELUCCA-LOADER-1');
     if (!raw.some((_: number, i: number) => i < raw.length - mark.length && mark.every((b, k) => raw[i + k] === b))) throw new Error('this package has no update loader; refusing to install it');
-    const up = await access();
-    if (await up.resume(logicalImage(raw), step, product)) {
-      log('an earlier update was unfinished: it is finished now');
-      return;
-    }
-    await up.install(logicalImage(raw), product, step);
+    if (product === STOCK_PRODUCT) throw new Error('this is the official V15: use Return to stock');
+    await installImage(logicalImage(raw), product);
   };
 
   // ---- Modular-1
@@ -154,7 +168,7 @@ export function buildFlashTab(root: HTMLElement): void {
   const returnToStock = async (raw: Uint8Array): Promise<void> => {
     const v = await validateStockPackage(raw);
     log(`package: ${v.product}, ${raw.length} bytes, SHA-256 checked`);
-    await (await access()).install(v.image, v.product, step);
+    await installImage(v.image, v.product); // also finishes a return to stock that was cut off
   };
   const stockBtn = el('button', { textContent: 'Return to official V15' });
   stockBtn.onclick = () =>
@@ -189,7 +203,7 @@ export function buildFlashTab(root: HTMLElement): void {
       el('h2', { textContent: 'Before you flash' }),
       el('p', {
         textContent:
-          'Flashing replaces the FM-1 firmware. It has one firmware slot and no rollback. If an update is cut off the FM-1 waits in its update loader and Install finishes it; the official V15 file brings the stock firmware back. Keep the USB cable and the battery connected and keep this page open.',
+          'Flashing replaces the FM-1 firmware. It has one firmware slot and no rollback. If an update is cut off the FM-1 waits in its update loader: the same button finishes it (Install for Matryoshka, Return to official V15 for a return to stock; this page refuses the wrong one). The official V15 file brings the stock firmware back. Keep the USB cable and the battery connected and keep this page open.',
       }),
       el('p', {
         textContent:

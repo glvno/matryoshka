@@ -15,6 +15,17 @@ const IS_OTA = (id) => /^ota-/i.test(id.model);
 
 // errors carry a code the pages translate: notfound, model, stopped, noloader, lost, noreturn,
 // mismatch (detail: the identity the device reports), badreq
+// Which loader may finish an interrupted write of which package. M-VAVE's loader (ota-FM-1_015)
+// writes the flash head (boot code) from the package, so it only ever gets the official V15.
+// Felucca-lineage loaders (Felucca FM-1_9XY, ours FM-1_800; three digits) never write the head
+// and get every other package; their identity does not follow the package's (ours reports
+// ota-FM-1_800 for release builds too). Unknown loaders (M-VAVE Official Open, others) get nothing.
+export const STOCK_PRODUCT = "FM-1_015";
+export function loaderFits(loader, product) {
+  if (product === STOCK_PRODUCT) return loader === "ota-" + STOCK_PRODUCT;
+  return /^ota-FM-1_[89]\d\d$/.test(loader);
+}
+
 function fail(code, msg, detail = "") { const e = new Error(msg); e.code = code; e.detail = detail; return e; }
 
 export function pack7(data) {
@@ -187,6 +198,7 @@ export class Updater {
     await sleep(3000);
     const ota = await this.waitFor((id) => id.model === "ota-" + model, 30000);
     if (!ota) throw fail("noloader", "the update loader did not appear. Replug the USB cable and press Install again: the device stays in update mode until it is finished.");
+    if (!loaderFits(ota.id.text, product)) { ota.link.close(); throw fail("otherloader", `the loader ${ota.id.text} must not be given ${product}`, ota.id.text); }
     const s2 = await this.write(ota, image, step);
     if (!s2.finished) throw fail(s2.lost ? "lost" : "stopped", `the loader ${s2.lost ? "was disconnected" : "stopped"} after ${s2.served} requests. Replug and press Install again to resume.`);
     step("reboot");
@@ -208,11 +220,17 @@ export class Updater {
     return s2;
   }
 
-  // resume: the device is already in update mode (loader) -> true when the write finished
-  async resume(image, onStep, product = null) {
-    const model = product && product.split("_")[0];
-    const ota = await this.find((id) => model ? id.model === "ota-" + model : IS_OTA(id));
+  // resume: the device is already in update mode (loader) -> true when the write finished.
+  // Only a loader that may write this package is fed (loaderFits); any other loader is refused,
+  // never written to: M-VAVE's own loader rewrites the flash head with whatever it is given.
+  async resume(image, onStep, product) {
+    const model = product.split("_")[0];
+    const ota = await this.find(IS_OTA);
     if (!ota) return false;
+    if (!loaderFits(ota.id.text, product)) {
+      ota.link.close();
+      throw fail("otherloader", `the FM-1 waits in the update loader ${ota.id.text}, which must not be given ${product}`, ota.id.text);
+    }
     const step = onStep || (() => {});
     const result = await this.write(ota, image, step);
     if (!result.finished) return false;

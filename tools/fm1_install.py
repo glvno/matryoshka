@@ -14,11 +14,13 @@ the FM-1 restarts and the installed identity is checked.
   fm1_install.py --info [--port NAME]
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
-install finishes the write. Needs mido with python-rtmidi.
+install finishes the write, when that loader may write this package. Needs mido with python-rtmidi.
 
 Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
 3 FM-1 not found, 4 connection lost or the device stopped, 5 timeout (no
-loader / no restart), 6 wrong model, or another identity after the install.
+loader / no restart), 6 wrong model, or another identity after the install,
+7 the FM-1 waits in an update loader that must not write this package (an
+M-VAVE loader only gets the official V15, a Felucca-type one everything else).
 """
 import argparse
 import hashlib
@@ -44,7 +46,7 @@ DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0,
          "wait_loader": 30.0, "wait_reboot": 40.0}
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
-        "noloader": 5, "noreturn": 5, "mismatch": 6}
+        "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7}
 
 
 class InstallError(Exception):
@@ -143,6 +145,19 @@ def logical_image(raw):
 
 def model_of(text):
     return text.split("_")[0].removeprefix("ota-")
+
+
+STOCK_PRODUCT = "FM-1_015"
+
+
+def loader_fits(loader, product):
+    """may this waiting loader finish a write of this package? (as web/src/flasher/fm1ota.js loaderFits)
+    M-VAVE's loader (ota-FM-1_015) writes the flash head from the package: only the official V15.
+    Felucca-lineage loaders (ota-FM-1_8XX / _9XY, three digits; ours reports ota-FM-1_800 for release
+    builds too) never write the head: every other package. Unknown loaders: nothing."""
+    if product == STOCK_PRODUCT:
+        return loader == "ota-" + STOCK_PRODUCT
+    return re.fullmatch(r"ota-FM-1_[89]\d\d", loader) is not None
 
 
 # ------------------------------------------------------------------ MIDI ---
@@ -364,6 +379,13 @@ class Updater:
         if model_of(dev.id.text) != model_of(product):
             dev.link.close()
             raise InstallError("model", f"the device is {dev.id.text}, the package is for {product}")
+        if dev.id.loader and not loader_fits(dev.id.text, product):
+            dev.link.close()
+            hint = ("finish it with the official V15 (FM-1.fwsc)" if dev.id.text == "ota-" + STOCK_PRODUCT else
+                    "finish it with the Felucca / Modular-1 package that was being installed"
+                    if re.fullmatch(r"ota-FM-1_[89]\d\d", dev.id.text) else "finish it with the tool that started it")
+            raise InstallError("otherloader", f"the FM-1 waits in the update loader {dev.id.text} from an unfinished "
+                                              f"update, which must not be given {product}: nothing was sent; {hint}")
         ota = dev if dev.id.loader else self.check(dev, image, step)
         self.write(ota, image, step)
         return self.verify(product, step)
