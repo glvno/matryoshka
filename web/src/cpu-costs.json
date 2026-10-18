@@ -12565,13 +12565,13 @@
      "input": "cv"
     },
     {
+     "output": "notch"
+    },
+    {
      "output": "peak"
     },
     {
      "output": "ap"
-    },
-    {
-     "output": "notch"
     }
    ],
    "grid": [
@@ -17075,148 +17075,72 @@
    "cycles": 568705
   },
   {
-   "name": "303 Acid",
-   "cycles": 142431
+   "name": "Init",
+   "cycles": 93133
   },
   {
-   "name": "Subtractive saw",
-   "cycles": 120855
+   "name": "Simple FM",
+   "cycles": 123539
   },
   {
-   "name": "Two-operator FM",
-   "cycles": 116846
+   "name": "Plucked String",
+   "cycles": 280211
   },
   {
-   "name": "Wobble bass",
-   "cycles": 139200
+   "name": "Monolith D",
+   "cycles": 218227
   },
   {
-   "name": "FM-1 Panel synth",
-   "cycles": 100683
+   "name": "Silver Box",
+   "cycles": 132561
   },
   {
-   "name": "Sub Bass",
-   "cycles": 115554
+   "name": "Hera 6",
+   "cycles": 575215
   },
   {
-   "name": "Pluck",
-   "cycles": 136817
+   "name": "Sallen 20",
+   "cycles": 277422
   },
   {
-   "name": "Warm Pad",
-   "cycles": 310772
+   "name": "Expander S",
+   "cycles": 595512
   },
   {
-   "name": "Square Lead",
-   "cycles": 105002
+   "name": "Algo Four",
+   "cycles": 629164
   },
   {
-   "name": "PWM Pad",
-   "cycles": 80861
+   "name": "Canvas",
+   "cycles": 214067
   },
   {
-   "name": "Wind",
-   "cycles": 266716
+   "name": "Wanderer",
+   "cycles": 334334
   },
   {
-   "name": "Hi-hat",
-   "cycles": 74719
-  },
-  {
-   "name": "Snare",
-   "cycles": 97345
-  },
-  {
-   "name": "Kick",
-   "cycles": 67284
-  },
-  {
-   "name": "Laser",
-   "cycles": 77962
-  },
-  {
-   "name": "Siren",
-   "cycles": 76824
-  },
-  {
-   "name": "Vibrato Lead",
-   "cycles": 123891
-  },
-  {
-   "name": "Organ",
-   "cycles": 97005
-  },
-  {
-   "name": "FM Bell",
-   "cycles": 265700
-  },
-  {
-   "name": "Electric Piano",
-   "cycles": 257634
-  },
-  {
-   "name": "Brass",
-   "cycles": 156480
-  },
-  {
-   "name": "Strings",
-   "cycles": 331482
-  },
-  {
-   "name": "Wobble 2",
-   "cycles": 135999
-  },
-  {
-   "name": "Echo Pluck",
-   "cycles": 62487
-  },
-  {
-   "name": "Dub Stab",
-   "cycles": 171418
-  },
-  {
-   "name": "Noise Sweep",
-   "cycles": 111736
-  },
-  {
-   "name": "Metal",
-   "cycles": 105041
-  },
-  {
-   "name": "Drone",
-   "cycles": 157309
-  },
-  {
-   "name": "Tremolo Keys",
-   "cycles": 77040
-  },
-  {
-   "name": "S&H Bleeps",
-   "cycles": 85969
-  },
-  {
-   "name": "Glass",
-   "cycles": 227750
-  },
-  {
-   "name": "Fat Mono",
-   "cycles": 174782
+   "name": "808 Kit",
+   "cycles": 391712
   },
   {
    "name": "909 Kit",
    "cycles": 321700
   },
   {
-   "name": "303 Acid, 4 parts",
-   "cycles": 510652
+   "name": "Acid, 4 parts",
+   "cycles": 482491
   },
   {
-   "name": "303 Acid, morph",
-   "cycles": 142449
+   "name": "Acid, morph",
+   "cycles": 134037
   },
   {
    "name": "assembly adsr operator",
    "cycles": 45360
+  },
+  {
+   "name": "assembly Algo Four",
+   "cycles": 576612
   },
   {
    "name": "assembly analog voice",
@@ -17231,12 +17155,20 @@
    "cycles": 82672
   },
   {
+   "name": "assembly boom kick",
+   "cycles": 61729
+  },
+  {
    "name": "assembly bowed glass",
    "cycles": 127280
   },
   {
    "name": "assembly bowed string",
    "cycles": 83305
+  },
+  {
+   "name": "assembly Canvas",
+   "cycles": 198754
   },
   {
    "name": "assembly clap",
@@ -17259,6 +17191,10 @@
    "cycles": 166926
   },
   {
+   "name": "assembly Expander S",
+   "cycles": 524427
+  },
+  {
    "name": "assembly filter voice",
    "cycles": 80064
   },
@@ -17279,6 +17215,10 @@
    "cycles": 263082
   },
   {
+   "name": "assembly Hera 6",
+   "cycles": 715500
+  },
+  {
    "name": "assembly hihat",
    "cycles": 68249
   },
@@ -17297,6 +17237,10 @@
   {
    "name": "assembly mono lead",
    "cycles": 100740
+  },
+  {
+   "name": "assembly Monolith D",
+   "cycles": 169459
   },
   {
    "name": "assembly noise voice",
@@ -17339,12 +17283,20 @@
    "cycles": 91882
   },
   {
+   "name": "assembly Sallen 20",
+   "cycles": 257532
+  },
+  {
    "name": "assembly shimmer",
    "cycles": 186879
   },
   {
    "name": "assembly sidechain pump",
    "cycles": 63810
+  },
+  {
+   "name": "assembly Silver Box",
+   "cycles": 113710
   },
   {
    "name": "assembly slicer",
@@ -17401,6 +17353,10 @@
   {
    "name": "assembly vowel voice",
    "cycles": 101869
+  },
+  {
+   "name": "assembly Wanderer",
+   "cycles": 302851
   },
   {
    "name": "assembly wavetable pad",

@@ -6,6 +6,7 @@ import { GROUP_REC, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, T
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
+import { subtractiveSaw, wobble } from './test-patches';
 
 describe('binary patch format', () => {
   it('the assembly overlay of the factory patches never reaches the binary (it is editor-only)', () => {
@@ -18,11 +19,11 @@ describe('binary patch format', () => {
       expect(Array.from(encodePatch(p)), name).toEqual(Array.from(encodePatch(flat)));
       if (p.assemblies?.length) grouped++;
     }
-    expect(grouped).toBeGreaterThanOrEqual(25); // 29 of 33 open as a few cards; subtractive saw, snare, organ and drone stay flat
+    expect(grouped).toBeGreaterThanOrEqual(5); // the factory patches without a poly assembly that open as cards (Init stays flat)
   });
 
   it('never writes the legacy disabled-input masks (format 17) and keeps macro ranges last', () => {
-    const p = PRESETS['Wobble 2']();
+    const p = wobble();
     const filter = p.modules.find((m) => m.type === 'filter')!;
     const before = encodePatch(p);
     const cables = structuredClone(p.cables);
@@ -38,7 +39,7 @@ describe('binary patch format', () => {
   });
 
   it('encodes side-input fan-out after morph, before macro ranges', () => {
-    const p = PRESETS['Wobble 2']();
+    const p = wobble();
     const filter = p.modules.find((m) => m.type === 'filter')!;
     filter.paramsB = { ...filter.params, cutoff: 4000 };
     const before = encodePatch(p);
@@ -59,7 +60,7 @@ describe('binary patch format', () => {
   });
 
   it('counts a summing buffer for an input with two sources, routes or not', () => {
-    const p = PRESETS['Wobble 2']();
+    const p = wobble();
     const filter = p.modules.find((m) => m.type === 'filter')!;
     const cable = p.cables.find((c) => c.to.module === filter.id && c.to.port === 'cv')!;
     const one = deviceBudget(p);
@@ -88,8 +89,8 @@ describe('binary patch format', () => {
 
   it('counts what a patch costs on the device: every factory preset fits, and voices multiply the per-voice part', () => {
     for (const [name, make] of Object.entries(PRESETS)) expect(deviceBudget(make()).fits, name).toBe(true);
-    const mono = deviceBudget(PRESETS['Subtractive saw']());
-    const p = withParts(PRESETS['Subtractive saw'](), 4);
+    const mono = deviceBudget(subtractiveSaw());
+    const p = withParts(subtractiveSaw(), 4);
     const poly = deviceBudget(p);
     expect(poly.instances).toBeGreaterThan(mono.instances);
     expect(poly.buffers).toBeGreaterThan(mono.buffers);
@@ -99,7 +100,7 @@ describe('binary patch format', () => {
   });
 
   it('unison: bit 7 of the group\'s legato byte, and only then format 22', () => {
-    const p = withParts(PRESETS['Subtractive saw'](), 4, { legato: 1 });
+    const p = withParts(subtractiveSaw(), 4, { legato: 1 });
     expect(encodePatch(p)[1]).toBe(21);
     polyCfg(p).unison = true;
     const b = encodePatch(p);
@@ -108,7 +109,7 @@ describe('binary patch format', () => {
   });
 
   it('writes the poly groups after the header: their settings, then every module\'s group', () => {
-    const p = withParts(PRESETS['Subtractive saw'](), 4, { assign: 1, legato: 2, priority: 1, flaws: [{ detune: -7, drift: 40, bright: 5, env: -20, level: 80 }] });
+    const p = withParts(subtractiveSaw(), 4, { assign: 1, legato: 2, priority: 1, flaws: [{ detune: -7, drift: 40, bright: 5, env: -20, level: 80 }] });
     const b = encodePatch(p);
     expect(b[3]).toBe(1);
     expect(Array.from(b.slice(8, 12))).toEqual([4, 1, 2, 1]);
@@ -123,7 +124,7 @@ describe('binary patch format', () => {
   });
 
   it('writes parameters as Q16.16 and cables as indices', () => {
-    const p = PRESETS['Subtractive saw']();
+    const p = subtractiveSaw();
     const b = encodePatch(p);
     // module 0 is the FM-1 panel (type byte + 4 parameters); module 1 osc starts right after
     const osc = 8 + 1 + 4 * DEFS.fm1.params.length;
@@ -140,7 +141,7 @@ describe('binary patch format', () => {
   });
 
   it('lists every FM-1 limit, and a patch over one plays in the browser but is never encoded', () => {
-    const p = PRESETS['Subtractive saw']();
+    const p = subtractiveSaw();
     const b = deviceBudget(p);
     expect(b.items.map((i) => i.key)).toEqual(Object.keys(DEVICE));
     expect(b.items.find((i) => i.key === 'bytes')!.used).toBe(encodePatch(p).length);
@@ -151,7 +152,7 @@ describe('binary patch format', () => {
     expect(over.fits).toBe(false);
     expect(over.over.map((i) => i.key)).toContain('modules');
     expect(() => encodePatch(p)).toThrow(/over the FM-1 budget: modules/);
-    const two = PRESETS['Subtractive saw']();
+    const two = subtractiveSaw();
     for (let i = 0; i < 2; i++) addModule(two, DEFS.reverb, 0, 0);
     expect(deviceBudget(two).over.map((i) => i.key)).toEqual(['reverbs']);
   });
