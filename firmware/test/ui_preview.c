@@ -83,6 +83,8 @@ static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t v
 static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { (void)mod; (void)k; (void)note; (void)vel; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
 #include "../src/seq_ui.c"
+static uint16_t lcd_fillbuf[240];          /* lcd.c's, the splash's row buffer */
+#include "../src/splash.c"
 
 int main(int argc, char **argv)
 {
@@ -145,7 +147,12 @@ int main(int argc, char **argv)
         man_top = (uint32_t)(t < 0 ? 0 : t > max ? max : t);
     }
     patch_label = PRESET_LIST[p].name;
-    screen_idle();
+    if (page == 9u) {                                       /* the loading screen, the bar 60 % in */
+        splash_draw();
+        splash_line("LOADING PATCH");
+        splash_bar(SPLASH_BAR_W * 3u / 5u);
+    } else
+        screen_idle();
     f = fopen(argv[1], "wb");
     fprintf(f, "P6\n240 240\n255\n");
     for (i = 0; i < 240u * 240u; i++) {
