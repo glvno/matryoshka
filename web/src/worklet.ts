@@ -21,6 +21,7 @@ export type HostMsg =
   | { t: 'button'; i: number; on: boolean }
   /** a step of a Steps module edited (its byte), a Steps module muted */
   | { t: 'step'; id: number; k: number; b: number }
+  | { t: 'stepval'; id: number; k: number; note: number; vel: number }
   | { t: 'mute'; id: number; on: boolean }
   | { t: 'probe'; key: string; id: number; port: string }
   | { t: 'unprobe'; key: string }
@@ -98,6 +99,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'transport') this.engine.transport(m.on);
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'step') this.engine.setStep(m.id, m.k, m.b);
+        else if (m.t === 'stepval') this.engine.setStepValue(m.id, m.k, m.note, m.vel);
         else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch);
         else if (m.t === 'off') this.engine.noteOff(m.note, m.ch);

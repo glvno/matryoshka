@@ -10,8 +10,8 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 26   /* 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
-#define ENG_PATCH_COMPAT_VERSION 26
+#define ENG_PATCH_VERSION 27   /* 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_COMPAT_VERSION 27
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
 
@@ -106,6 +106,8 @@ int eng_steps_count(void);
 int eng_steps_module(uint32_t t);
 int eng_steps_get(uint32_t module, uint32_t k);
 void eng_steps_set(uint32_t module, uint32_t k, uint32_t b);
+int eng_steps_value(uint32_t module, uint32_t k);
+void eng_steps_value_set(uint32_t module, uint32_t k, uint32_t note, uint32_t vel);
 int eng_steps_pos(uint32_t module);
 void eng_steps_mute(uint32_t module, int on);
 int eng_steps_muted(uint32_t module);

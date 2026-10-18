@@ -94,12 +94,13 @@ device.onEvent = (e) => {
     return;
   }
   if (!live()) return;
-  if (e.kind === 'step' || e.kind === 'mute') {   // the FM-1's SEQ page (#83): a step edited or recorded, a track muted
+  if (e.kind === 'step' || e.kind === 'stepval' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #93): a step edited or recorded, a step's note / velocity, a track muted
     const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;   // (the compiled form the FM-1 got, as deviceIndex)
     if (id === undefined) return;
     fromDevice = true;
     try {
       if (e.kind === 'step') editor.stepFromDevice(id, e.step, e.b);
+      else if (e.kind === 'stepval') editor.stepValueFromDevice(id, e.step, e.note, e.vel);
       else host.send({ t: 'mute', id, on: e.on });
     } finally { fromDevice = false; }
     return;
@@ -247,6 +248,13 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     queueSave(editor.patch);
     if (fromDevice) return;
     if (live() && !uploading) device.step(editor.patch, id, k, b);
+    else if (live()) dirty = true;
+  },
+  onStepValue(id, k, note, vel) {
+    host.send({ t: 'stepval', id, k, note, vel });
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !uploading) device.stepValue(editor.patch, id, k, note, vel);
     else if (live()) dirty = true;
   },
   onMute(id, on) {

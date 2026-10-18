@@ -234,6 +234,48 @@ int main(int argc, char **argv)
         CHECK(eng_load(patch, base) == 0);
         printf("fixed input routing and legacy patch framing ok\n");
     }
+    if (argc > 10) {                                             /* step values (#93): a Steps patch without them */
+        long nk;
+        uint8_t *kit = slurp(argv[10], &nk);
+        int t0, t1;
+        uint32_t base;
+        CHECK(!(kit[6] & 18u));                                  /* no step values, no ranges */
+        memcpy(m1_cur, kit, (size_t)nk);
+        m1_cur_len = (uint32_t)nk;
+        CHECK(eng_load(m1_cur, m1_cur_len) == 0);
+        CHECK(eng_steps_count() >= 2);
+        t0 = eng_steps_module(0);
+        t1 = eng_steps_module(1);
+        CHECK(eng_steps_value((uint32_t)t0, 5) == (STEP_NOTE | STEP_VEL << 8));
+        base = m1_values_at();
+        CHECK(base == m1_cur_len);
+        m1_patch_stepval((uint32_t)t0, 5, 67, 30);              /* the section is created with the track's entry */
+        CHECK(m1_cur[6] & 16u);
+        CHECK(m1_cur_len == (uint32_t)nk + 1u + M1_VALUES_REC);
+        CHECK(m1_valid(m1_cur, m1_cur_len) && !m1_valid(m1_cur, m1_cur_len - 1));
+        m1_patch_range((uint32_t)t1, 0, STEPS_P_SWING, 1, 10, 200);   /* ranges come after the step values */
+        CHECK(m1_range_section() == base + 1u + M1_VALUES_REC);
+        m1_patch_stepval((uint32_t)t1, 63, 24, 127);            /* a second entry: the ranges move up */
+        CHECK(m1_cur[base] == 2u);
+        CHECK(m1_range_section() == base + 1u + 2u * M1_VALUES_REC);
+        CHECK(m1_valid(m1_cur, m1_cur_len));
+        m1_patch_stepval((uint32_t)t0, 6, 70, 0);               /* an entry that exists: updated in place */
+        CHECK(m1_cur[base] == 2u && m1_valid(m1_cur, m1_cur_len));
+        CHECK(eng_load(m1_cur, m1_cur_len) == 0);               /* SAVE keeps them: a reload plays the same values */
+        CHECK(eng_steps_value((uint32_t)t0, 5) == (67 | 30 << 8));
+        CHECK(eng_steps_value((uint32_t)t0, 6) == 70);
+        CHECK(eng_steps_value((uint32_t)t0, 7) == (STEP_NOTE | STEP_VEL << 8));
+        CHECK(eng_steps_value((uint32_t)t1, 63) == (24 | 127 << 8));
+        CHECK(E.nranges == 0 || E.ranges[0].mod == (uint8_t)t1);
+        m1_patch_range((uint32_t)t1, 0, STEPS_P_SWING, 0, 0, 0);
+        CHECK(m1_valid(m1_cur, m1_cur_len) && !(m1_cur[6] & 2u));
+        m1_cur[base + 1u] = 0;                                   /* an entry that names a module that is not a Steps module */
+        if (eng_steps_module(0) != 0)
+            CHECK(eng_load(m1_cur, m1_cur_len) != 0);
+        m1_cur[1] = 26;                                          /* format 26 had no step values */
+        CHECK(!m1_valid(m1_cur, m1_cur_len));
+        printf("step values ok\n");
+    }
     printf("proto ok: %u acks, %ld patch bytes, render identical\n", acks_ok, np);
     return 0;
 }

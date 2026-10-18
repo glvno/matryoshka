@@ -739,18 +739,21 @@ enum {
 /* steps: Steps */
 #define STEPS_I_CLK 0
 #define STEPS_I_RESET 1
-#define STEPS_I_P1 2
-#define STEPS_I_P2 3
+#define STEPS_I_TRANSPOSE 2
+#define STEPS_I_P1 3
+#define STEPS_I_P2 4
 #define STEPS_O_TRIG 0
 #define STEPS_O_ACC 1
+#define STEPS_O_PITCH 2
+#define STEPS_O_VEL 3
 #define STEPS_P_LEN 0
 #define STEPS_P_RATE 1
 #define STEPS_P_SWING 2
 #define STEPS_P_GATE 3
-#define STEPS_NIN 4
-#define STEPS_NOUT 2
+#define STEPS_NIN 5
+#define STEPS_NOUT 4
 #define STEPS_NPAR 4
-#define STEPS_CVBASE 2
+#define STEPS_CVBASE 3
 #define STEPS_NDATA 72
 
 #define DELAY_NDIV 11
@@ -761,6 +764,8 @@ static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {"1/16T", "1/16", "1/8T", 
 
 #define TRACK_STEPS 64        /* a Steps module's pattern (patch.ts stepByte) and name, after its pins in the record */
 #define TRACK_NAME_MAX 8
+#define STEP_NOTE 60           /* a step's note and velocity without step values (patch.ts; the step values section, flag bit 4) */
+#define STEP_VEL 100
 
 #define POLY_MAX_GROUPS 4
 #define POLY_MAX_PARTS 8
@@ -1182,7 +1187,7 @@ static const char *const ARP_CH0[] = {"UP", "DOWN", "UP-DOWN", "RANDOM", "AS PLA
 static const char *const ARP_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
 static const char *const ARP_CH4[] = {"OFF", "ON", 0};
 static const char *const *const ARP_CH[] = {ARP_CH0, ARP_CH1, 0, 0, ARP_CH4};
-static const char *const STEPS_INNAMES[] = {"CLK", "RESET", "P1", "P2"};
+static const char *const STEPS_INNAMES[] = {"CLK", "RESET", "TRANSPOSE", "P1", "P2"};
 static const int32_t STEPS_MIN[] = {65536, 0, 3276800, 655};
 static const int32_t STEPS_MAX[] = {4194304, 393216, 4915200, 65536};
 static const int32_t STEPS_DEF[] = {1048576, 262144, 3276800, 16384};

@@ -1126,8 +1126,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   letter-spacing: .08em; color: var(--muted); pointer-events: none; }
 .module .param.screen > .screen-name.rename { pointer-events: auto; cursor: pointer; }
 .module.picking .param.screen > .screen-name, .picking .module .param.screen > .screen-name { left: 21px; }
-/* a Steps module's grid (step-grid.ts): its name and mute switch, then rows of 16 steps; a cell fills from the bottom by
- * its chance, accented ones in the accent colour, the step playing outlined, beats a shade darker */
+/* a Steps module's grid (step-grid.ts): its name, lane switch (steps / note / vel) and mute switch, then rows of 16 steps;
+ * steps lane: a cell fills from the bottom by its chance, accented ones in the accent colour; note lane: a tick at the
+ * note's height and its pitch class; vel lane: the fill is the velocity; the step playing outlined, beats a shade darker */
 .steps-screen { padding: 5px; border-radius: 5px; background: var(--bar); }
 .module .mbody > .param.screen.steps { margin: 6px 10px 8px; }
 .steps-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
@@ -1137,13 +1138,33 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .steps-mute { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
   background: transparent; border: 1px solid var(--line); border-radius: 4px; }
 .steps-mute.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.steps-lanes { display: flex; }
+.steps-screen .steps-lanes button { padding: 2px 5px; font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
+  background: none; border: 1px solid var(--line); border-left-width: 0; cursor: pointer; }
+.steps-screen .steps-lanes button:first-child { border-left-width: 1px; border-radius: 3px 0 0 3px; }
+.steps-screen .steps-lanes button:last-child { border-radius: 0 3px 3px 0; }
+.steps-screen .steps-lanes button.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
 .steps-rows { display: grid; gap: 3px; }
+.steps-readout { min-height: 12px; margin-top: 3px; font: var(--cap); font-size: 10px; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.steps-readout:empty { display: none; }
+.step > b { position: absolute; left: 0; right: 0; top: 1px; z-index: 1; font: var(--cap); font-size: 9px; line-height: 10px; text-align: center; color: var(--muted); pointer-events: none; }
+.steps-screen[data-lane="note"] .step, .steps-screen[data-lane="vel"] .step { height: 34px; }
+.steps-screen[data-lane="vel"] .step > i { background: color-mix(in srgb, var(--ink) 55%, var(--bar)); }
+.steps-screen[data-lane="vel"] .step.on > i { background: var(--ink); }
+.steps-screen[data-lane="vel"] .step.acc > i { background: var(--accent); }
+.steps-screen[data-lane="note"] .step > i { height: 3px; bottom: calc(2px + var(--note, 0) * (100% - 17px)); background: color-mix(in srgb, var(--ink) 45%, var(--bar)); }
+.steps-screen[data-lane="note"] .step.on > i { background: var(--ink); }
+.steps-screen[data-lane="note"] .step.acc > i { background: var(--accent); }
+.steps-screen[data-lane="note"] .step.on > b { color: var(--ink); }
 .steps-row { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; }
-.step { position: relative; height: 18px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 8%, var(--panel)); cursor: pointer; overflow: hidden; touch-action: none; }
-.step.beat { background: color-mix(in srgb, var(--ink) 15%, var(--panel)); }
-.step > i { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--chance, 0) * 100%); background: var(--ink); pointer-events: none; }
+.step { position: relative; height: 18px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 16%, var(--bar)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 30%, var(--bar));
+  cursor: pointer; overflow: hidden; touch-action: none; }
+.step.beat { background: color-mix(in srgb, var(--ink) 26%, var(--bar)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 45%, var(--bar)); }
+/* the fill sits 2 px inside the cell, so an on step keeps its edge and neighbouring on steps stay apart (#91) */
+.step > i { position: absolute; left: 2px; right: 2px; bottom: 2px; height: calc(var(--chance, 0) * (100% - 4px)); border-radius: 1px; background: var(--ink); pointer-events: none; }
 .step.acc > i { background: var(--accent); }
-.step.play { box-shadow: inset 0 0 0 1.5px var(--gate); }
+.step.play::after { content: ''; position: absolute; inset: 0; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--gate), 0 0 0 1px var(--gate); pointer-events: none; }
+.step.play { overflow: visible; z-index: 1; }
 .step.past { opacity: .25; cursor: default; }
 .steps-screen.muted .step > i { opacity: .35; }
 /* the card body lets clicks through except to its controls: a screen is one too (Arrange drags it, pick mode adds it) */

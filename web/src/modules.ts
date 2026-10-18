@@ -2,7 +2,7 @@
 // The module library: definitions (shared with the editor) and DSP implementations.
 
 import { ARP_MODES, ARP_RATE_TICKS, ARP_RATES } from './arpeggiator';
-import { STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
+import { STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import WT from './wavetables.json';
 
 export interface Voice {
@@ -2226,6 +2226,12 @@ const arp: ModuleImpl<null> = {
 /** the Steps module's state: its pattern (ModuleInst.steps, loaded by the engine) and where it plays */
 export interface StepsState {
   pat: Uint8Array;
+  /** the step values (ModuleInst.notes / vels, loaded by the engine) and what the pitch / vel outputs hold: the last step
+   * that played (before the first: STEP_NOTE / STEP_VEL), pitch in octaves from C4 */
+  notes: Uint8Array;
+  vels: Uint8Array;
+  pitch: number;
+  vel: number;
   seed: number;
   /** muted (the device's SEQ page, the editor's card; never saved): steps play silently */
   mute: boolean;
@@ -2264,15 +2270,17 @@ export function stepPlays(seed: number, loop: number, k: number, b: number): boo
  * tick falls on; a rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 75 %
  * the most) delays every second step by (swing - 50) / 50 of a step. A step that plays raises trig for `gate` of a step;
  * acc is a level, 1 from an accented step until the next step that plays (so it can set a drum's level through a pin
- * for the whole hit). The name and the pattern travel in its binary record (`data`: the name,
- * then the pattern); it runs once (SHARED_TYPES).
+ * for the whole hit). Each step also has a note and a velocity (#93): pitch (octaves from C4, plus the transpose input)
+ * and vel (velocity / 127) hold the values of the last step that played, so a track can play a melody. The name and the
+ * pattern travel in its binary record (`data`: the name, then the pattern), the values in the patch's step values section
+ * (patchbin.ts flag bit 4); it runs once (SHARED_TYPES).
  */
 const steps: ModuleImpl<StepsState> = {
   def: {
     type: 'steps',
     label: 'Steps',
-    inputs: [gate('clk'), gate('reset')],
-    outputs: [gate('trig'), gate('acc')],
+    inputs: [gate('clk'), gate('reset'), control('transpose')],
+    outputs: [gate('trig'), gate('acc'), control('pitch'), control('vel')],
     views: [param('grid', 0, 0, 0, { screen: true })],
     params: [
       param('len', 1, STEPS_MAX, 16, { step: 1 }),
@@ -2282,7 +2290,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX + STEPS_MAX,
   },
-  init: () => ({ pat: new Uint8Array(STEPS_MAX), seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, trig: 0, acc: false, gap: false, since: -1, period: 0 }),
+  init: () => ({ pat: new Uint8Array(STEPS_MAX), notes: new Uint8Array(STEPS_MAX).fill(STEP_NOTE), vels: new Uint8Array(STEPS_MAX).fill(STEP_VEL), pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, trig: 0, acc: false, gap: false, since: -1, period: 0 }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -2294,13 +2302,15 @@ const steps: ModuleImpl<StepsState> = {
     const gate = q16(c.p.gate ?? 0.25);
     const v = c.voice;
     const ext = !!c.connected.clk;
-    const { clk, reset } = c.inp;
+    const { clk, reset, transpose } = c.inp;
     const fire = (k: number): void => {
       if (!stepPlays(s.seed, s.loop, k, s.pat[k]) || s.mute) return;
       const sl = ext && s.period > 0 ? s.period : (ext ? 6 : div) * v.tickLen;
       s.gap = s.trig > 0;
       s.trig = Math.max(1, Math.floor((gate * sl) / 65536));
       s.acc = !!(s.pat[k] & 2);
+      s.pitch = Math.sign(s.notes[k] - STEP_NOTE) * Math.round((Math.abs(s.notes[k] - STEP_NOTE) * 65536) / 12) / 65536; // (Q16 rounded half away from 0, as engine.c)
+      s.vel = s.vels[k] / 127;
     };
     for (let i = 0; i < c.n; i++) {
       let adv = 0;
@@ -2341,6 +2351,8 @@ const steps: ModuleImpl<StepsState> = {
       const up = s.trig > 0 && !s.gap;
       c.out.trig[i] = up ? 1 : 0;
       c.out.acc[i] = s.acc ? 1 : 0;
+      c.out.pitch[i] = s.pitch + transpose[i];
+      c.out.vel[i] = s.vel;
       if (s.gap) s.gap = false;
       else if (s.trig > 0) s.trig--;
     }

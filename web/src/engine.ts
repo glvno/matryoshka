@@ -9,7 +9,7 @@
 // shared output gets that one buffer.
 
 import { driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
-import { defaultMap, FLAW_TARGETS, STEPS_MAX, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
+import { defaultMap, FLAW_TARGETS, STEP_NOTE, STEP_VEL, STEPS_MAX, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView } from './poly';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
@@ -231,7 +231,13 @@ export class Engine {
       node.range = [{ ...(m.range?.p1 ?? {}) }, { ...(m.range?.p2 ?? {}) }];
       node.inputRoutes = Object.entries(m.inputMap ?? {}).map(([port, params]) => ({ port, params: [...params], mean: 0 }));
       for (const inst of node.inst) inst.dspInp = { ...inst.inp };
-      if (m.type === 'steps') for (const inst of node.inst) (inst.state as StepsState).pat.set(Array.from({ length: STEPS_MAX }, (_, k) => m.steps?.[k] ?? 0));
+      if (m.type === 'steps')
+        for (const inst of node.inst) {
+          const st = inst.state as StepsState;
+          st.pat.set(Array.from({ length: STEPS_MAX }, (_, k) => m.steps?.[k] ?? 0));
+          st.notes.set(Array.from({ length: STEPS_MAX }, (_, k) => m.notes?.[k] ?? STEP_NOTE));
+          st.vels.set(Array.from({ length: STEPS_MAX }, (_, k) => m.vels?.[k] ?? STEP_VEL));
+        }
       node.sources = [];
       node.connected = {};
       next.set(m.id, node);
@@ -317,6 +323,13 @@ export class Engine {
   setStep(id: number, k: number, b: number): void {
     const s = this.stepsOf(id);
     if (s && k >= 0 && k < STEPS_MAX) s.pat[k] = b & 0x7f;
+  }
+  /** a step's note and velocity changed (ModuleInst.notes / vels): no reload; heard when the step next plays */
+  setStepValue(id: number, k: number, note: number, vel: number): void {
+    const s = this.stepsOf(id);
+    if (!s || k < 0 || k >= STEPS_MAX) return;
+    s.notes[k] = Math.max(0, Math.min(127, Math.round(note)));
+    s.vels[k] = Math.max(0, Math.min(127, Math.round(vel)));
   }
   /** mute / unmute a Steps module (not part of the patch: a reload keeps it while the module stays) */
   setMute(id: number, on: boolean): void {

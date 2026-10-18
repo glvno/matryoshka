@@ -4,7 +4,7 @@
 import { writeFileSync } from 'node:fs';
 import { ASSIGN_MODES, DEFS, DELAY_DIVS, DELAY_CLK_PPQN, LEGATO_MODES, PRIORITIES } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16 } from '../src/patchbin';
-import { FLAW_RANGE, MAX_PARTS, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
+import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { MAX_POLY } from '../src/poly';
 import { PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
@@ -47,6 +47,8 @@ w();
 const names = (a: string[]): string => `{${a.map((c) => `"${c.toUpperCase()}"`).join(', ')}}`;
 w(`#define TRACK_STEPS ${STEPS_MAX}        /* a Steps module's pattern (patch.ts stepByte) and name, after its pins in the record */`);
 w(`#define TRACK_NAME_MAX ${TRACK_NAME_MAX}`);
+w(`#define STEP_NOTE ${STEP_NOTE}           /* a step's note and velocity without step values (patch.ts; the step values section, flag bit 4) */`);
+w(`#define STEP_VEL ${STEP_VEL}`);
 w();
 w(`#define POLY_MAX_GROUPS ${MAX_POLY}`);
 w(`#define POLY_MAX_PARTS ${MAX_PARTS}`);

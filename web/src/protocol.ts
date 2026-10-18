@@ -26,6 +26,7 @@
 //   26 STEP     module u8, step u8 (0..63), byte u8   a step of a Steps module (patch.ts stepByte: bit 0 on, bit 1 accent,
 //                                                    bits 2..6 the chance code); no reply. Feature bit 2 (with MUTE).
 //   27 MUTE     module u8, on u8                     mute / unmute a Steps module (not saved); no reply
+//   28 STEPVAL  module u8, step u8, note u8, vel u8   a step's note (MIDI, 60 = C4) and velocity (0..127); no reply. Feature bit 3.
 // device -> host
 //   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
 //   43 SLOT_NOW  slot u8, name 20 bytes                unasked: the slot the FM-1 plays now (a patch from its panel, program
@@ -33,12 +34,13 @@
 //                                                    (16..21, 80..86) when MENU > MIDI OUT is on.
 //   44 STEP     module u8, step u8, byte u8           unasked: a step edited on the FM-1's SEQ page (or recorded with REC)
 //   45 MUTE     module u8, on u8                      unasked: a track muted / unmuted on the FM-1 (SEQ held + a black key)
-//   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT, bit2 STEP / MUTE]
+//   46 STEPVAL  module u8, step u8, note u8, vel u8   unasked: a step's note / velocity set on the FM-1 (a step held + K1 / K2)
+//   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT, bit2 STEP / MUTE, bit3 STEPVAL]
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, step: 0x26, mute: 0x27, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, stepNow: 0x44, muteNow: 0x45 } as const;
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, step: 0x26, mute: 0x27, stepVal: 0x28, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, stepNow: 0x44, muteNow: 0x45, stepValNow: 0x46 } as const;
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store'];
@@ -149,6 +151,8 @@ export const attFrame = (module: number, input: number, q16: number): Uint8Array
 export const bypassFrame = (module: number, on: boolean): Uint8Array => frame(CMD.bypass, [module, on ? 1 : 0]);
 /** a step of a Steps module (its byte, patch.ts stepByte), a Steps module muted */
 export const stepFrame = (module: number, step: number, b: number): Uint8Array => frame(CMD.step, [module, step, b & 0x7f]);
+/** a step's note and velocity (0..127 each) */
+export const stepValFrame = (module: number, step: number, note: number, vel: number): Uint8Array => frame(CMD.stepVal, [module, step, note & 0x7f, vel & 0x7f]);
 export const muteFrame = (module: number, on: boolean): Uint8Array => frame(CMD.mute, [module, on ? 1 : 0]);
 /** the arpeggiator's settings, and its transport (null = leave it) */
 export const transportFrame = (run: boolean): Uint8Array => frame(CMD.transport, [run ? 1 : 0]);

@@ -44,6 +44,7 @@ import {
   PANEL_LABEL_MAX,
   panelLabel,
   STEPS_MAX,
+  setStepValue,
 } from './patch';
 import { stepGrid, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
@@ -118,6 +119,8 @@ export interface EditorEvents {
   /** a step of a Steps module changed (its byte, patch.ts stepByte), a Steps module muted (not saved) */
   onStep?(id: number, k: number, b: number): void;
   onMute?(id: number, on: boolean): void;
+  /** a Steps module's step got a new note / velocity (#93) */
+  onStepValue?(id: number, k: number, note: number, vel: number): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
@@ -734,6 +737,15 @@ export class Editor {
     this.ev.onStep?.(id, k, b & 0x7f);
   }
 
+  /** a step's note / velocity set on the FM-1 (a step held + K1 / K2): into the patch, no undo step */
+  stepValueFromDevice(id: number, k: number, note: number, vel: number): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    if (!m || k < 0 || k >= STEPS_MAX) return;
+    setStepValue(m, k, note, vel);
+    this.stepGrids.get(id)?.refresh();
+    this.ev.onStepValue?.(id, k, note & 0x7f, vel & 0x7f);
+  }
+
   /** a Steps module's grid follows its length (the len slider) */
   refreshSteps(id: number): void {
     this.stepGrids.get(id)?.refresh();
@@ -770,6 +782,11 @@ export class Editor {
         if (s) m.name = s;
         else delete m.name;
         this.ev.onStructure(this.patch);
+      },
+      value: (k, note, vel) => {
+        if (!batch) push();
+        setStepValue(m, k, note, vel);
+        this.ev.onStepValue?.(m.id, k, note, vel);
       },
       mute: (on) => this.ev.onMute?.(m.id, on),
     });

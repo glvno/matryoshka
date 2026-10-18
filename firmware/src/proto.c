@@ -16,8 +16,8 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_STEP = 0x26, C_MUTE = 0x27, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_STEP = 0x44, R_MUTE = 0x45 };
-#define M1_FEATURES 6u                                       /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = STEP / MUTE (bit 0, the ARP command, is retired) */
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_STEP = 0x26, C_MUTE = 0x27, C_STEPVAL = 0x28, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_STEP = 0x44, R_MUTE = 0x45, R_STEPVAL = 0x46 };
+#define M1_FEATURES 14u                                      /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = STEP / MUTE, bit 3 = STEPVAL (bit 0, the ARP command, is retired) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
@@ -224,6 +224,15 @@ static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b)
     p[2] = (uint8_t)b;
     m1_reply(R_STEP, p, 3);
 }
+static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel)
+{
+    uint8_t p[4];
+    p[0] = (uint8_t)mod;
+    p[1] = (uint8_t)k;
+    p[2] = (uint8_t)(note & 0x7Fu);
+    p[3] = (uint8_t)(vel & 0x7Fu);
+    m1_reply(R_STEPVAL, p, 4);
+}
 static void m1_mute_now(uint32_t mod, int on)
 {
     uint8_t p[2];
@@ -247,7 +256,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if ((p[6] & ~15u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)))
+    if ((p[6] & ~31u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)))
         return 0;
     nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
@@ -267,6 +276,10 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         if (at >= len) return 0;
         at += 1u + 4u * p[at];
     }
+    if (p[6] & 16u) {                                           /* flag bit 4: the step values */
+        if (at >= len) return 0;
+        at += 1u + (1u + 2u * TRACK_STEPS) * p[at];
+    }
     if (p[6] & 2u) {                                            /* flag bit 1: the macro ranges after that */
         if (at >= len)
             return 0;
@@ -275,11 +288,12 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     return at == len;
 }
 
-/* the offset of the macro range section (its count byte) in the current patch, 0 if the patch has none */
-static uint32_t m1_range_section(void)
+/* the offset in the current patch where the step values section starts (or would start: after the side-input routes),
+ * 0 if the binary is malformed */
+static uint32_t m1_values_at(void)
 {
     uint32_t at = eng_records_at(m1_cur, m1_cur_len), i, nmod, ncab, npar = 0;
-    if (!at || !(m1_cur[6] & 2u))
+    if (!at)
         return 0;
     nmod = m1_cur[2];
     ncab = (uint32_t)m1_cur[4] | (uint32_t)m1_cur[5] << 8;
@@ -297,7 +311,57 @@ static uint32_t m1_range_section(void)
         if (at >= m1_cur_len) return 0;
         at += 1u + 4u * m1_cur[at];
     }
+    return at <= m1_cur_len ? at : 0;
+}
+
+#define M1_VALUES_REC (1u + 2u * TRACK_STEPS)                /* a step values entry: module, notes, velocities */
+
+/* the offset of the macro range section (its count byte) in the current patch, 0 if the patch has none */
+static uint32_t m1_range_section(void)
+{
+    uint32_t at;
+    if (!(m1_cur[6] & 2u) || !(at = m1_values_at()))
+        return 0;
+    if (m1_cur[6] & 16u) {
+        if (at >= m1_cur_len) return 0;
+        at += 1u + M1_VALUES_REC * m1_cur[at];
+    }
     return at < m1_cur_len ? at : 0;
+}
+
+/* a step's note / velocity into the running engine and the binary (SAVE keeps them): the track's entry in the step values
+ * section is updated, or added (the section created) with the track's current values; what follows (the macro ranges)
+ * moves up */
+static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel)
+{
+    uint32_t sec, n, i, at, ins, j;
+    if (!m1_track_at(mod) || k >= TRACK_STEPS || !(sec = m1_values_at()))
+        return;
+    eng_steps_value_set(mod, k, note, vel);
+    n = (m1_cur[6] & 16u) && sec < m1_cur_len ? m1_cur[sec] : 0u;
+    for (i = 0, at = sec + 1u; i < n; i++, at += M1_VALUES_REC)
+        if (m1_cur[at] == mod)
+            break;
+    if (i == n) {                                            /* a new entry at the end of the section */
+        ins = (m1_cur[6] & 16u) ? M1_VALUES_REC : 1u + M1_VALUES_REC;
+        if (m1_cur_len + ins > M1_PATCH_MAX || n >= 255u)
+            return;
+        at = sec + 1u + M1_VALUES_REC * n;               /* (n is 0 without a section: it starts at sec) */
+        for (j = m1_cur_len; j-- > at - (ins - M1_VALUES_REC);)
+            m1_cur[j + ins] = m1_cur[j];
+        m1_cur_len += ins;
+        m1_cur[6] |= 16u;
+        m1_cur[sec] = (uint8_t)(n + 1u);
+        m1_cur[at] = (uint8_t)mod;
+        for (j = 0; j < TRACK_STEPS; j++) {
+            int v = eng_steps_value(mod, j);
+            m1_cur[at + 1u + j] = (uint8_t)(v & 0x7F);
+            m1_cur[at + 1u + TRACK_STEPS + j] = (uint8_t)((v >> 8) & 0x7F);
+        }
+    }
+    m1_cur[at + 1u + k] = (uint8_t)(note & 0x7Fu);
+    m1_cur[at + 1u + TRACK_STEPS + k] = (uint8_t)(vel & 0x7Fu);
+    m1_edited = 1;
 }
 
 /* the stored copy follows a macro range edit: update, append or remove the entry (the section is last in the binary) */
@@ -512,6 +576,12 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     case C_STEP:                                             /* module u8, step u8, byte u8 (patch.ts stepByte) */
         if (len >= 3u) {
             m1_patch_step(d[0], d[1], d[2]);
+            m1_ui_changed();
+        }
+        break;
+    case C_STEPVAL:                                          /* module u8, step u8, note u8, vel u8 */
+        if (len >= 4u) {
+            m1_patch_stepval(d[0], d[1], d[2], d[3]);
             m1_ui_changed();
         }
         break;

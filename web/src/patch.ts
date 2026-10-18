@@ -144,9 +144,13 @@ export interface ModuleInst {
    * player screen and legend show them; at most PANEL_LABEL_MAX characters of the LCD's font) */
   panel?: MainPanel;
   /** a Steps module only: its track name (at most TRACK_NAME_MAX characters of the LCD's font; the device shows STEPS n
-   * without one) and its pattern, one byte per step (STEPS_MAX of them; stepByte / stepOf) */
+   * without one) and its pattern, one byte per step (STEPS_MAX of them; stepByte / stepOf); its per-step values (#93): a
+   * MIDI note (the pitch output, C4 = 60 = 0) and a velocity (the vel output, v / 127), STEPS_MAX each, absent while every
+   * step has the default (STEP_NOTE / STEP_VEL; fixLane) */
   name?: string;
   steps?: number[];
+  notes?: number[];
+  vels?: number[];
 }
 
 export interface MainPanel {
@@ -174,6 +178,52 @@ export function fixSteps(raw: unknown): number[] | undefined {
   if (!Array.isArray(raw)) return undefined;
   const out = Array.from({ length: STEPS_MAX }, (_, i) => stepByte(stepOf(Number.isFinite(raw[i]) ? raw[i] & 0x7f : 0)));
   return out.some((b) => b) ? out : undefined;
+}
+
+/** a Steps module's step values when a step has none of its own: C4 and the velocity the FM-1's keys send */
+export const STEP_NOTE = 60;
+export const STEP_VEL = 100;
+/** a value lane (notes or velocities) from anything: STEPS_MAX integers 0..127 (missing ones `dflt`), or undefined when
+ * every step has the default */
+export function fixLane(raw: unknown, dflt: number): number[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = Array.from({ length: STEPS_MAX }, (_, i) => (Number.isFinite(Number(raw[i])) && raw[i] !== null ? Math.max(0, Math.min(127, Math.round(Number(raw[i])))) : dflt));
+  return out.some((v) => v !== dflt) ? out : undefined;
+}
+
+/** a module's Steps data (name, pattern, step values) made valid in place; other modules lose those fields */
+export function fixTrack(m: ModuleInst): void {
+  if (m.type !== 'steps') {
+    delete m.name;
+    delete m.steps;
+    delete m.notes;
+    delete m.vels;
+    return;
+  }
+  const name = trackName(m.name);
+  if (name) m.name = name;
+  else delete m.name;
+  const steps = fixSteps(m.steps);
+  if (steps) m.steps = steps;
+  else delete m.steps;
+  const notes = fixLane(m.notes, STEP_NOTE);
+  if (notes) m.notes = notes;
+  else delete m.notes;
+  const vels = fixLane(m.vels, STEP_VEL);
+  if (vels) m.vels = vels;
+  else delete m.vels;
+}
+
+/** set step k's note and velocity on a Steps module, keeping its lanes absent while they hold only the defaults */
+export function setStepValue(m: ModuleInst, k: number, note: number, vel: number): void {
+  const lane = (cur: number[] | undefined, v: number, dflt: number): number[] | undefined =>
+    fixLane(Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? v : cur?.[i] ?? dflt)), dflt);
+  const notes = lane(m.notes, note, STEP_NOTE);
+  const vels = lane(m.vels, vel, STEP_VEL);
+  if (notes) m.notes = notes;
+  else delete m.notes;
+  if (vels) m.vels = vels;
+  else delete m.vels;
 }
 
 /** a Main module's panel settings from anything: known names only, labels as the LCD draws them; undefined when empty */
@@ -592,17 +642,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
       if (panel) m.panel = panel;
       else delete m.panel;
     } else delete m.panel;
-    if (m.type === 'steps') {
-      const name = trackName(m.name);
-      if (name) m.name = name;
-      else delete m.name;
-      const steps = fixSteps(m.steps);
-      if (steps) m.steps = steps;
-      else delete m.steps;
-    } else {
-      delete m.name;
-      delete m.steps;
-    }
+    fixTrack(m);
     if (m.bypass && m.type !== 'fm1' && m.type !== 'output') m.bypass = true;
     else delete m.bypass;
     if (m.paramsB && typeof m.paramsB === 'object' && m.type !== 'fm1') {

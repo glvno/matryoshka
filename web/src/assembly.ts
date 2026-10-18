@@ -15,6 +15,7 @@ import {
   fixMatrix,
   fixCards,
   fixInputRoutes,
+  fixTrack,
   removeModule,
   sameEnd,
   type Cable,
@@ -859,6 +860,10 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     if (src.att) m.att = [...src.att];
     if (src.map) m.map = clone(src.map);
     if (src.inputMap) m.inputMap = structuredClone(src.inputMap);
+    if (src.type === 'steps') {   // a track's name, pattern and step values
+      Object.assign(m, clone({ name: src.name, steps: src.steps, notes: src.notes, vels: src.vels }));
+      fixTrack(m);
+    }
     fixInputRoutes(m, defs[src.type]);
     fixMatrix(m, defs[src.type]);
     stripKnobs(m);
@@ -990,6 +995,7 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
     m.y = Number(m.y) || 0;
     fixMatrix(m, def);
     fixInputRoutes(m, def);
+    fixTrack(m);
     stripKnobs(m);
   }
   const typeOf = (id: number): string | undefined => d.modules.find((m) => m.id === id)?.type;

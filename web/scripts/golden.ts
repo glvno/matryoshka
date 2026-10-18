@@ -1360,6 +1360,48 @@ tests['steps-kit'] = make('steps-kit', (add, wire) => {
 events['steps-kit'] = [[128 * 5, 'run', 0], [128 * 380, 'stop', 0], [128 * 420, 'run', 0]];
 ends['steps-kit'] = 128 * 560;
 
+// step values (#93): a melody track (notes and velocities) into an oscillator and a VCA, transposed 3 semitones up by a
+// Constant in its transpose input; a second track with notes only (default velocities) on an external clock
+tests['steps-notes'] = make('steps-notes', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 150 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const mx = add('mixer', 1800, 0);
+  const tr = add('const', 100, 400, { value: 0.25 });
+  const voice = (x: number, wave: number): { st: number; v: number } => {
+    const st = add('steps', x, 0, { len: 8, rate: 4, gate: 0.5 });
+    const o = add('osc', x + 100, 0, { wave });
+    const env = add('adsr', x + 100, 200, { a: 0.002, d: 0.08, s: 0.4, r: 0.05 });
+    const v1 = add('vca', x + 200, 0);
+    const v2 = add('vca', x + 300, 0);
+    wire(st, 'pitch', o, 'pitch');
+    wire(st, 'trig', env, 'gate');
+    wire(o, 'out', v1, 'in');
+    wire(env, 'env', v1, 'cv');
+    wire(v1, 'out', v2, 'in');
+    wire(st, 'vel', v2, 'cv');
+    return { st, v: v2 };
+  };
+  const a = voice(200, 1);
+  const b = voice(700, 2);
+  wire(tr, 'out', a.st, 'transpose');
+  const clk = add('lfo', 600, 400, { wave: 3, rate: 5, depth: 1 });
+  wire(clk, 'out', b.st, 'clk');
+  wire(a.v, 'out', mx, 'in1');
+  wire(b.v, 'out', mx, 'in2');
+  wire(mx, 'out', out, 'l');
+});
+{
+  const st = tests['steps-notes'].modules.filter((m) => m.type === 'steps');
+  st[0].steps = pattern([0, 1, 2, 3, 4, 5, 6, 7], [4]);
+  st[0].notes = Array.from({ length: 64 }, (_, k) => [48, 55, 60, 63, 67, 70, 72, 41][k % 8]);
+  st[0].vels = Array.from({ length: 64 }, (_, k) => [127, 40, 90, 20, 110, 64, 1, 100][k % 8]);
+  Object.assign(st[1].params, { len: 6 });
+  st[1].steps = pattern([0, 2, 3, 5], []);
+  st[1].notes = Array.from({ length: 64 }, (_, k) => [36, 36, 43, 39, 36, 31][k % 6]);
+}
+events['steps-notes'] = [[128 * 5, 'run', 0]];
+ends['steps-notes'] = 128 * 400;
+
 // a track stepped by a clock in clk (an LFO square) and sent back to step 1 by the key's gate (reset); a second track on
 // MIDI clock: ticks every 900 samples (about 122 bpm), then the clock stops and the tempo takes over again
 tests['steps-clk'] = make('steps-clk', (add, wire) => {

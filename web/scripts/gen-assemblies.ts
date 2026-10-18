@@ -4,7 +4,7 @@
 // `voice` and `echo` are kept as files. Run from web/:  npx vite-node scripts/gen-assemblies.ts
 import { writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { defaultMap, defaultParams, rowDef, type ModuleInst, type PolyCards, type Source } from '../src/patch';
+import { defaultMap, defaultParams, rowDef, stepByte, type ModuleInst, type PolyCards, type Source } from '../src/patch';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
@@ -27,6 +27,13 @@ interface B {
   nestInput(label: string, module: number, port: string, ...also: [number, string][]): void;
   /** an output of a nested assembly only (read inside the top level, e.g. by a scope) */
   nestOutput(label: string, module: number, port: string): void;
+  /** a parameter shown on a nested assembly only */
+  nestParam(label: string, module: number, param: string): void;
+  /** a factory assembly defined above (no nesting of its own) as a nested assembly at grid column / row, with the ports and
+   * parameters it shows; returns its modules' ids here, by their ids in the definition */
+  include(name: string, col: number, row: number, label?: string): Map<number, number>;
+  /** the module with this id (to set what `add` does not: a Steps track's name and pattern, pins) */
+  module(id: number): ModuleInst;
 }
 
 function build(name: string, category: string, f: (b: B) => void, poly?: PolyCards): AssemblyDef {
@@ -36,6 +43,7 @@ function build(name: string, category: string, f: (b: B) => void, poly?: PolyCar
   const outputs: PortRef[] = [];
   const params: ParamRef[] = [];
   const nested: NestedDef[] = [];
+  const nestedDefs = nested;
   const nestOf = (module: number): NestedDef | undefined => nested.find((n) => n.modules.includes(module));
   const check = (id: number, port: string, dir: 'inputs' | 'outputs'): void => {
     const m = modules[id - 1];
@@ -76,13 +84,45 @@ function build(name: string, category: string, f: (b: B) => void, poly?: PolyCar
     output(label, module, port) {
       check(module, port, 'outputs');
       outputs.push({ module, port, label });
-      nestOf(module)?.outputs.push({ module, port, label });
+      const n = nestOf(module);
+      if (n && !n.outputs.some((r) => r.module === module && r.port === port)) n.outputs.push({ module, port, label });
     },
     param(label, module, param, o = {}) {
       const m = modules[module - 1];
       if (!m || !rowDef(DEFS[m.type], param)) throw new Error(`${name}: no parameter ${param} on module ${module}`);
       params.push({ module, param, label, ...(o.col && params.length ? { col: true as const } : {}), ...(o.head ? { head: o.head } : {}) });
-      nestOf(module)?.params.push({ module, param, label: o.inner ?? label });
+      const n = nestOf(module);
+      if (n && !n.params.some((r) => r.module === module && r.param === param)) n.params.push({ module, param, label: o.inner ?? label });
+    },
+    nestParam(label, module, param) {
+      const m = modules[module - 1];
+      const n = nestOf(module);
+      if (!m || !rowDef(DEFS[m.type], param) || !n) throw new Error(`${name}: ${label} is not a parameter on a nested assembly`);
+      n.params.push({ module, param, label });
+    },
+    include(from, col, row, label) {
+      const d = defs.find((x) => x.name === from);
+      if (!d || d.assemblies?.length) throw new Error(`${name}: cannot include ${from}`);
+      const ids = new Map<number, number>();
+      for (const src of d.modules) {
+        const m: ModuleInst = { ...structuredClone(src), id: modules.length + 1, x: col * GX + src.x, y: row * GY + src.y };
+        modules.push(m);
+        ids.set(src.id, m.id);
+      }
+      for (const c of d.cables) b.wire(ids.get(c.from.module)!, c.from.port, ids.get(c.to.module)!, c.to.port);
+      b.nest(label ?? from, col, row, [...ids.values()]);
+      const nested = nestedDefs.at(-1)!;
+      nested.name = from;
+      for (const r of d.inputs as (PortRef & { also?: { module: number; port: string }[] })[])
+        b.nestInput(r.label ?? r.port, ids.get(r.module)!, r.port, ...(r.also ?? []).map((a) => [ids.get(a.module)!, a.port] as [number, string]));
+      for (const r of d.outputs) b.nestOutput(r.label ?? r.port, ids.get(r.module)!, r.port);
+      for (const r of d.params) b.nestParam(r.label ?? r.param, ids.get(r.module)!, r.param);
+      return ids;
+    },
+    module(id) {
+      const m = modules[id - 1];
+      if (!m) throw new Error(`${name}: no module ${id}`);
+      return m;
     },
     nest(label, col, row, members, poly) {
       for (const m of members) if (!modules[m - 1] || nestOf(m)) throw new Error(`${name}: module ${m} cannot join ${label}`);
@@ -404,6 +444,71 @@ asm('hihat', 'Drums', (b) => {
   b.param('decay', env, 'r3');
   b.param('tone', flt, 'cutoff');
   b.param('level', vca, 'gain');
+});
+
+// a drum kit (#93): a Steps track per drum on the transport (PLAY starts it, the Main module's tempo sets it), the factory
+// drums as nested cards, two mixers. The collapsed card shows every track's grid (its name, mute, steps; the lanes for
+// velocity and note), then the drums' main settings. An accented step pushes a part of its drum through a pin as in the
+// 808 Kit; `clk` and `reset` reach every track (with clk patched the tracks step on its edges instead of the transport).
+const pattern = (s: string): number[] => Array.from({ length: 64 }, (_, k) => stepByte({ on: /[xX]/.test(s[k] ?? ''), accent: s[k] === 'X', chance: 100 }));
+asm('drum kit', 'Drums', (b) => {
+  const mixA = b.add('mixer', 3, 0, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
+  const mixB = b.add('mixer', 3, 1, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 0 });
+  //            assembly     track      pattern             settings                                      accent row, amount   mixer, input
+  const drums: [string, string, string, Record<string, number>, [string, number] | null, number, string][] = [
+    ['boom kick', 'KICK', 'X...x...x.x.....', {}, ['drop', 0.35], mixA, 'in1'],
+    ['snare', 'SNARE', '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, ['noise', 0.3], mixA, 'in2'],
+    ['clap', 'CLAP', '............X...', {}, ['tail level', 0.4], mixA, 'in3'],
+    ['hihat', 'CL HAT', 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, ['level', 0.5], mixB, 'in1'],
+    ['hihat', 'OP HAT', '..............x.', { decay: 0.3 }, null, mixB, 'in2'],
+    ['cowbell', 'COWBELL', '..........x.....', {}, null, mixB, 'in3'],
+  ];
+  const tracks: number[] = [];
+  const rowOf = (from: string, ids: Map<number, number>, label: string): { module: number; param: string } => {
+    const r = defs.find((d) => d.name === from)!.params.find((q) => q.label === label);
+    if (!r) throw new Error(`drum kit: ${from} has no ${label}`);
+    return { module: ids.get(r.module)!, param: r.param };
+  };
+  const shown: { label: string; at: { module: number; param: string } }[] = [];
+  drums.forEach(([from, track, steps, settings, accent, mix, port], i) => {
+    const y = i * 0.55;
+    const st = b.add('steps', 0, y, {});
+    Object.assign(b.module(st), { name: track, steps: pattern(steps) });
+    tracks.push(st);
+    const ids = b.include(from, 1, y, track.toLowerCase());
+    for (const [label, v] of Object.entries(settings)) {
+      const r = rowOf(from, ids, label);
+      b.module(r.module).params[r.param] = v;
+    }
+    const gate = defs.find((d) => d.name === from)!.inputs.find((q) => q.label === 'gate')!;
+    b.wire(st, 'trig', ids.get(gate.module)!, gate.port);
+    for (const a of gate.also ?? []) b.wire(st, 'trig', ids.get(a.module)!, a.port);
+    if (accent) {   // acc into the row's module through its first pin, at the amount in the row's units
+      const r = rowOf(from, ids, accent[0]);
+      const m = b.module(r.module);
+      const pd = DEFS[m.type].params.find((q) => q.name === r.param)!;
+      m.map = { ...m.map!, p1: [r.param] };
+      m.att = [accent[1] / (pd.max - pd.min), m.att?.[1] ?? 1];
+      b.wire(st, 'acc', r.module, 'p1');
+    }
+    const out = defs.find((d) => d.name === from)!.outputs[0];
+    b.wire(ids.get(out.module)!, out.port, mix, port);
+    if (from === 'boom kick') shown.push({ label: 'kick tune', at: rowOf(from, ids, 'tune') }, { label: 'kick decay', at: rowOf(from, ids, 'decay') });
+    if (from === 'snare') shown.push({ label: 'snare tone', at: rowOf(from, ids, 'body tune') }, { label: 'snare noise', at: rowOf(from, ids, 'noise') });
+    if (from === 'clap') shown.push({ label: 'clap tail', at: rowOf(from, ids, 'tail') });
+    if (track === 'CL HAT') shown.push({ label: 'hat decay', at: rowOf(from, ids, 'decay') });
+    if (track === 'OP HAT') shown.push({ label: 'open decay', at: rowOf(from, ids, 'decay') });
+    if (from === 'cowbell') shown.push({ label: 'cowbell tune', at: rowOf(from, ids, 'tune') });
+  });
+  b.wire(mixB, 'out', mixA, 'in4');
+  b.input('clk', tracks[0], 'clk', ...tracks.slice(1).map((t) => [t, 'clk'] as [number, string]));
+  b.input('reset', tracks[0], 'reset', ...tracks.slice(1).map((t) => [t, 'reset'] as [number, string]));
+  b.output('out', mixA, 'out');
+  tracks.forEach((t, i) => b.param(drums[i][1].toLowerCase(), t, 'grid', i === 0 ? { head: 'pattern' } : {}));
+  shown.forEach(({ label, at }, i) => b.param(label, at.module, at.param, i === 0 ? { col: true, head: 'drums' } : {}));
+  b.param('kick level', mixA, 'l1');
+  b.param('snare level', mixA, 'l2');
+  b.param('hats level', mixB, 'l1');
 });
 
 // a plucked string with a tracking low pass for the body

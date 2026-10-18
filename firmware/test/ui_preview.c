@@ -79,6 +79,8 @@ static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the pre
 }
 static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
 static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b) { (void)mod; (void)k; (void)b; }
+static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { eng_steps_value_set(mod, k, note, vel); }
+static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { (void)mod; (void)k; (void)note; (void)vel; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
 #include "../src/seq_ui.c"
 

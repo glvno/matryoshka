@@ -522,6 +522,11 @@ static void knobs_poll(void)
             seq_chance(st[0]);
             st[0] = 0;
         }
+        if ((st[2] || st[3]) && seq_held >= 0) {   /* K1 / K2 with a step held: its note / velocity (not the Main knobs) */
+            seq_value(st[2], st[3], cfg.accel && fm1_ms - last_ms[1] < 80u);
+            last_ms[1] = fm1_ms;
+            st[2] = st[3] = 0;
+        }
     }
     for (k = 0; k < 6u && panel >= 0; k++) {       /* the Main module's k1..k6 (its parameters 0..5) */
         const def_t *fd = &DEFS[T_FM1];

@@ -312,7 +312,7 @@ describe('assemblies', () => {
 
   it('ships factory assemblies that load, insert and play', () => {
     expect(FACTORY.map((d) => d.name)).toEqual([
-      'adsr operator', 'Algo Four', 'analog voice', 'auto pan', 'barber pole', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'clap', 'clock', 'cloud', 'cowbell', 'echo', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'Hera 6', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'mono lead', 'Monolith D', 'noise voice', 'operator', 'Oracle V', 'pluck', 'poly voice', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'stack voice', 'step sequencer', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
+      'adsr operator', 'Algo Four', 'analog voice', 'auto pan', 'barber pole', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'clap', 'clock', 'cloud', 'cowbell', 'drum kit', 'echo', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'Hera 6', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'mono lead', 'Monolith D', 'noise voice', 'operator', 'Oracle V', 'pluck', 'poly voice', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'stack voice', 'step sequencer', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
     ]);
     for (const d of FACTORY) {
       expect(d.modules.every((m) => m.map === undefined || ['k1', 'k2', 'k3', 'k4'].every((k) => m.map![k as 'k1'].length === 0)), d.name).toBe(true);
@@ -351,6 +351,35 @@ describe('assemblies', () => {
       if (o.label === 'out' || o.label === 'l') expect(l.filter((v) => Math.abs(v) >= 1).length, d.name).toBeLessThan(l.length / 20); // a clock is a square at +-1 by design
     }
   }, 30_000); // renders every factory assembly: slow under coverage on the CI runner
+
+  it('keeps a Steps track\'s pattern, name and step values through a definition, and the drum kit plays on PLAY', () => {
+    const kit = FACTORY.find((d) => d.name === 'drum kit')!;
+    const p = emptyPatch('f');
+    addModule(p, DEFS.fm1, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0).id;
+    const a = insertAssembly(p, DEFS, kit, 0, 0);
+    const tracks = p.modules.filter((m) => m.type === 'steps');
+    expect(tracks.map((m) => m.name)).toEqual(['KICK', 'SNARE', 'CLAP', 'CL HAT', 'OP HAT', 'COWBELL']);
+    expect(tracks.every((m) => m.steps?.some((b) => b & 1))).toBe(true);
+    expect(a.params.filter((r) => r.param === 'grid')).toHaveLength(6);
+    tracks[0].notes = Array.from({ length: 64 }, (_, k) => 40 + (k % 5));
+    tracks[0].vels = Array.from({ length: 64 }, () => 77);
+    const again = insertAssembly(p, DEFS, validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS), 2000, 0);
+    const copy = p.modules.find((m) => again.modules.includes(m.id) && m.type === 'steps' && m.name === 'KICK')!;
+    expect(copy.steps).toEqual(tracks[0].steps);
+    expect(copy.notes).toEqual(tracks[0].notes);
+    expect(copy.vels).toEqual(tracks[0].vels);
+    expect(connect(p, DEFS, a.outputs.find((r) => r.label === 'out')!, { module: out, port: 'l' })).toBe(true);
+    const e = new Engine(48000);
+    e.load(p);
+    const quiet = new Float32Array(9600);
+    e.render(quiet, new Float32Array(9600));
+    expect(Math.max(...Array.from(quiet).map(Math.abs))).toBe(0); // (nothing until PLAY)
+    e.transport(true);
+    const l = new Float32Array(48000);
+    e.render(l, new Float32Array(48000));
+    expect(Math.max(...Array.from(l).map(Math.abs))).toBeGreaterThan(0.05);
+  });
 
   it('rejects bad definitions', () => {
     expect(() => validateAssemblyDef({ format: 'x' }, DEFS)).toThrow(/not a Matryoshka assembly/);

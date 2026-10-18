@@ -6,7 +6,9 @@
  *   black keys      pick the track (1..11, patch order); ALGO steps through all of them; with REC on a black key is a hit on
  *                   its track instead: it sounds and, while the track plays, goes into the nearest step (ENV held: accented)
  *   white keys      the 16 steps of the page: a press switches the step on / off (ENV held: its accent instead)
- *   white key held  + SELECT: the step's chance, 100 % .. 5 % in steps of 5
+ *   white key held  + SELECT: the step's chance, 100 % .. 5 % in steps of 5; + K1: its note (a semitone a click; on a track
+ *                   without notes the first click starts from C of the keys' octave); + K2: its velocity (#93). Turning a
+ *                   knob on a held step undoes the press's on / off: the step keeps its accent and plays.
  *   OCT- / OCT+     the page of a track longer than 16 steps (17-32 ...)
  *   REC             live recording on / off (its LED is lit while on)
  * On this page the keys play no notes. Key LEDs: the selected track's steps bright, the step playing at the mid level (dark
@@ -21,7 +23,9 @@
 static uint8_t seq_trk;                 /* the selected track (index among the patch's Steps modules) */
 static uint8_t seq_pg;                  /* the page of 16 steps */
 static uint8_t seq_rec;                 /* REC: live recording */
-static int8_t seq_held = -1;            /* the step whose white key is held (SELECT sets its chance), -1 none */
+static int8_t seq_held = -1;            /* the step whose white key is held (SELECT sets its chance, K1 / K2 its values), -1 none */
+static uint8_t seq_held_was;            /* that step's byte before its press switched it */
+static uint8_t seq_held_turned;         /* a knob turned while it is held (the press's switch is undone once) */
 static int8_t seq_shown_pos = -2;       /* the playhead as last drawn */
 
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's track (0..10), else -1 */
@@ -196,10 +200,21 @@ static void seq_key(uint32_t n, int down)
             s = (s & 1u) ? s ^ 2u : s | 3u;
         else
             s = (s & 1u) ? s & ~3u : s | 1u;     /* (switched off: its accent goes too; its chance stays) */
+        seq_held_was = (uint8_t)eng_steps_get((uint32_t)mod, (uint32_t)k);
+        seq_held_turned = 0;
         seq_put(mod, (uint32_t)k, s);
         seq_held = (int8_t)k;
         ui_dirty = ui_dirty ? ui_dirty : 1;
     }
+}
+
+/* the first knob turn on a held step: its byte as before the press, on (an edit means the step should play) */
+static void seq_held_restore(int mod)
+{
+    if (seq_held_turned)
+        return;
+    seq_held_turned = 1;
+    seq_put(mod, (uint32_t)seq_held, seq_held_was | 1u);
 }
 
 /* SELECT turned with a step held: its chance, 5 % a click */
@@ -211,6 +226,7 @@ static void seq_chance(int32_t clicks)
     char m[24], num[8];
     if (mod < 0 || seq_held < 0)
         return;
+    seq_held_restore(mod);
     s = (uint32_t)eng_steps_get((uint32_t)mod, (uint32_t)seq_held);
     code = clampi((int32_t)((s >> 2) & 31u) - clicks, 0, 19);
     s = (s & 3u) | (uint32_t)code << 2 | 1u;     /* (a chance only means something on a step that is on) */
@@ -218,6 +234,50 @@ static void seq_chance(int32_t clicks)
     fmt_int(num, 100 - 5 * code);
     put(put(put(m, "CHANCE "), num), "%")[0] = 0;
     ui_msg(m, 1000);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
+/* a note number as the LCD writes it: C4, F#2 (60 = C4) */
+static char *seq_note_name(char *p, uint32_t n)
+{
+    static const char NAMES[12][3] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    char num[8];
+    p = put(p, NAMES[n % 12u]);
+    fmt_int(num, (int32_t)(n / 12u) - 1);
+    return put(p, num);
+}
+
+/* K1 / K2 turned with a step held: its note (a semitone a click) / velocity (1 a click, 5 when turned fast) */
+static void seq_value(int32_t note_clicks, int32_t vel_clicks, int fast)
+{
+    int mod = seq_module(), v, k;
+    int32_t note, vel;
+    char m[24], num[8], *p;
+    if (mod < 0 || seq_held < 0 || (!note_clicks && !vel_clicks))
+        return;
+    seq_held_restore(mod);
+    v = eng_steps_value((uint32_t)mod, (uint32_t)seq_held);
+    note = v & 0x7F;
+    vel = (v >> 8) & 0x7F;
+    if (note_clicks) {
+        int fresh = 1;                           /* a track without notes: the first click starts from C of the keys' octave */
+        for (k = 0; k < TRACK_STEPS && fresh; k++)
+            fresh = (eng_steps_value((uint32_t)mod, (uint32_t)k) & 0x7F) == STEP_NOTE;
+        if (fresh)
+            note = STEP_NOTE + 12 * octave;
+        note = clampi(note + note_clicks, 0, 127);
+    }
+    vel = clampi(vel + vel_clicks * (fast ? 5 : 1), 0, 127);
+    m1_patch_stepval((uint32_t)mod, (uint32_t)seq_held, (uint32_t)note, (uint32_t)vel);
+    m1_stepval_now((uint32_t)mod, (uint32_t)seq_held, (uint32_t)note, (uint32_t)vel);
+    fmt_int(num, seq_held + 1);
+    p = put(put(m, "STEP "), num);
+    p = put(p, "  ");
+    p = seq_note_name(p, (uint32_t)note);
+    p = put(p, "  VEL ");
+    fmt_int(num, vel);
+    put(p, num)[0] = 0;
+    ui_msg(m, 1200);
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
@@ -345,7 +405,7 @@ static void seq_draw(int full)
         text5x7(x, y, line, 1, t == seq_trk ? C_ACC : t < (uint32_t)eng_steps_count() && !eng_steps_muted((uint32_t)eng_steps_module(t)) ? C_FG : C_DIM, C_BG);
     }
     if (full)
-        text5x7(12, 228, seq_rec ? "BLACK: HIT  ENV+BLACK: ACCENT" : "ENV+KEY: ACCENT  HOLD+SEL: CHANCE", 1, 0x4208u, C_BG);
+        text5x7(12, 228, seq_rec ? "BLACK: HIT  ENV+BLACK: ACCENT" : "ENV:ACCENT HOLD+SEL:% K1:NOTE K2:VEL", 1, 0x4208u, C_BG);
 }
 
 /* the main loop, every pass: the LEDs, and the cells when the playhead moved */

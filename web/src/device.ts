@@ -8,7 +8,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { muteFrame, stepFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { muteFrame, stepFrame, stepValFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 const NAME = /felucca|fm-?1|modular/i;
 const ACK_TIMEOUT = 700;
@@ -21,6 +21,7 @@ export type DeviceEvent =
   | { kind: 'cc'; n: number; v: number }
   | { kind: 'slot'; slot: number; name: string }
   | { kind: 'step'; module: number; step: number; b: number }
+  | { kind: 'stepval'; module: number; step: number; note: number; vel: number }
   | { kind: 'mute'; module: number; on: boolean };
 
 export class DeviceLink {
@@ -55,6 +56,7 @@ export class DeviceLink {
         return this.onEvent({ kind: 'slot', slot: p.payload[0], name });
       }
       if (p?.cmd === CMD.stepNow && p.payload.length >= 3) return this.onEvent({ kind: 'step', module: p.payload[0], step: p.payload[1], b: p.payload[2] });
+      if (p?.cmd === CMD.stepValNow && p.payload.length >= 4) return this.onEvent({ kind: 'stepval', module: p.payload[0], step: p.payload[1], note: p.payload[2], vel: p.payload[3] });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
       if (p && this.waiter?.match(p)) {
         const w = this.waiter;
@@ -221,6 +223,18 @@ export class DeviceLink {
     if (!this.connected || !this.hasSteps) return;
     const mi = deviceIndex(patch, moduleId);
     if (mi >= 0) this.out!.send(stepFrame(mi, k, b));
+  }
+
+  /** the firmware takes STEPVAL (INFO feature bit 3) */
+  get hasStepValues(): boolean {
+    return !!(this.info && this.info.features & 8);
+  }
+
+  /** a step's note and velocity */
+  stepValue(patch: Patch, moduleId: number, k: number, note: number, vel: number): void {
+    if (!this.connected || !this.hasStepValues) return;
+    const mi = deviceIndex(patch, moduleId);
+    if (mi >= 0) this.out!.send(stepValFrame(mi, k, note, vel));
   }
 
   /** a Steps module muted / unmuted (not part of the patch) */

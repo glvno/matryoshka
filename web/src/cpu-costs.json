@@ -29,40 +29,40 @@
      "output": "gate"
     },
     {
-     "output": "vel"
+     "output": "k1"
     },
     {
-     "output": "k3"
+     "output": "vel"
     },
     {
      "output": "k2"
     },
     {
-     "output": "k1"
+     "output": "k6"
+    },
+    {
+     "output": "k3"
     },
     {
      "output": "k4"
     },
     {
-     "output": "at"
+     "output": "k5"
     },
     {
      "output": "bend"
     },
     {
-     "output": "k6"
+     "output": "mod"
     },
     {
-     "output": "edit"
-    },
-    {
-     "output": "fx"
+     "output": "at"
     },
     {
      "output": "scl"
     },
     {
-     "output": "mod"
+     "output": "env"
     }
    ],
    "grid": [
@@ -16454,15 +16454,6 @@
    "extra": [
     {
      "dim": {
-      "output": "env"
-     },
-     "add": [
-      0,
-      323
-     ]
-    },
-    {
-     "dim": {
       "output": "lfo"
      },
      "add": [
@@ -16472,7 +16463,7 @@
     },
     {
      "dim": {
-      "output": "glo"
+      "output": "edit"
      },
      "add": [
       0,
@@ -16481,7 +16472,7 @@
     },
     {
      "dim": {
-      "output": "k5"
+      "output": "glo"
      },
      "add": [
       0,
@@ -16500,6 +16491,15 @@
     {
      "dim": {
       "output": "run"
+     },
+     "add": [
+      0,
+      323
+     ]
+    },
+    {
+     "dim": {
+      "output": "fx"
      },
      "add": [
       0,
@@ -26204,10 +26204,10 @@
      ]
     },
     {
-     "input": "clk"
+     "input": "reset"
     },
     {
-     "input": "reset"
+     "input": "clk"
     },
     {
      "param": "wave",
@@ -26278,16 +26278,6 @@
     16188,
     7228,
     7228,
-    15548,
-    15548,
-    14012,
-    14012,
-    15036,
-    15036,
-    16572,
-    16572,
-    7612,
-    7612,
     45953,
     45953,
     44417,
@@ -26298,6 +26288,16 @@
     47055,
     38017,
     38017,
+    15548,
+    15548,
+    14012,
+    14012,
+    15036,
+    15036,
+    16572,
+    16572,
+    7612,
+    7612,
     46110,
     46110,
     44574,
@@ -26543,13 +26543,13 @@
      "input": "cv"
     },
     {
+     "output": "notch"
+    },
+    {
      "output": "peak"
     },
     {
      "output": "ap"
-    },
-    {
-     "output": "notch"
     }
    ],
    "grid": [
@@ -29201,10 +29201,10 @@
      ]
     },
     {
-     "input": "side"
+     "input": "in"
     },
     {
-     "input": "in"
+     "input": "side"
     },
     {
      "param": "attack",
@@ -29374,16 +29374,16 @@
      "output": "gate"
     },
     {
-     "output": "index"
-    },
-    {
      "output": "vel"
     },
     {
-     "output": "jump"
+     "output": "index"
     },
     {
      "output": "legato"
+    },
+    {
+     "output": "jump"
     }
    ],
    "grid": [
@@ -29434,8 +29434,8 @@
    "cv": 650
   },
   "steps": {
-   "run": 10661,
-   "cv": 713,
+   "run": 12969,
+   "cv": 770,
    "dims": [
     {
      "input": "clk"
@@ -29445,10 +29445,10 @@
     }
    ],
    "grid": [
-    10661,
-    11301,
-    13344,
-    13984
+    12969,
+    13609,
+    15652,
+    16292
    ]
   }
  },
@@ -29515,11 +29515,11 @@
   },
   {
    "name": "808 Kit",
-   "cycles": 394378
+   "cycles": 408568
   },
   {
    "name": "909 Kit",
-   "cycles": 228866
+   "cycles": 235961
   },
   {
    "name": "Acid, 4 parts",
@@ -29584,6 +29584,10 @@
   {
    "name": "assembly cowbell",
    "cycles": 71610
+  },
+  {
+   "name": "assembly drum kit",
+   "cycles": 390782
   },
   {
    "name": "assembly echo",
