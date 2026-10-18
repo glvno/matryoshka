@@ -95,7 +95,7 @@ device.onEvent = (e) => {
   }
   if (!live()) return;
   if (e.kind === 'step' || e.kind === 'mute') {   // the FM-1's SEQ page (#83): a step edited or recorded, a track muted
-    const id = deviceView(editor.patch).patch.modules[e.module]?.id;
+    const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;   // (the compiled form the FM-1 got, as deviceIndex)
     if (id === undefined) return;
     fromDevice = true;
     try {

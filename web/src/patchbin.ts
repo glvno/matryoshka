@@ -80,7 +80,7 @@ function routesOf(p: Patch): { mod: number; input: number; mask: number }[] {
 
 /** bytes of the binary patch (what the FM-1 must hold, M1_PATCH_MAX) */
 export function encodedSize(source: Patch): number {
-  const { patch: p, groups: dg } = deviceView(source);
+  const { patch: p, groups: dg } = deviceView(source, true);
   return sizeOf(p, dg);
 }
 
@@ -103,7 +103,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[]): number {
 export function encodePatch(source: Patch, anyway = false): Uint8Array {
   const budget = deviceBudget(source);
   if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => `${i.label} ${i.used} of ${i.max}`).join(', ')}`);
-  const { patch: p, groups } = deviceView(source);
+  const { patch: p, groups } = deviceView(source, true);
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const morph = hasMorph(p);
   const ranges = rangeList(p);
@@ -237,7 +237,7 @@ export interface Budget {
 }
 
 export function deviceBudget(source: Patch): Budget {
-  const { patch: p, groups } = deviceView(source);
+  const { patch: p, groups } = deviceView(source, true);
   const copies = new Map<number, number>();
   const groupOf = new Map<number, number>();
   groups.forEach((g, i) => g.modules.forEach((id) => (groupOf.set(id, i), copies.set(id, g.cfg.parts))));

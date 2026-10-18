@@ -133,10 +133,10 @@ function level(p: Patch, opts: { chord?: boolean; drums?: boolean } = {}): void 
 
 const presets: (() => Patch)[] = [];
 
-// Oracle V: the factory assembly at four voices (five estimate over the FM-1's CPU)
+// Oracle V: the factory assembly at its five voices (they fit since the engine speed-ups, branch cpu-opt)
 presets.push(() => {
   const x = around('Oracle V', 'Oracle V');
-  x.set('voices', 4);
+  x.set('voices', 5);
   x.knobs(['cutoff'], ['res'], ['d', 'filter env'], ['r', 'amp env']);
   level(x.p, { chord: true });
   return x.p;
@@ -199,7 +199,7 @@ presets.push(() => {
 
 presets.push(() => {
   const x = around('Hera 6', 'Hera 6');
-  x.set('voices', 4); // six estimate 120 % of the FM-1's CPU
+  x.set('voices', 6); // all six (they fit since the engine speed-ups, branch cpu-opt)
   x.knobs(['cutoff'], ['res'], ['a', 'envelope'], ['r', 'envelope']);
   level(x.p, { chord: true });
   return x.p;

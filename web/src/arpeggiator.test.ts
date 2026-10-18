@@ -54,6 +54,33 @@ function played(e: Engine, blocks: number): number[] {
 const STEP = Math.round((0.125 * SR) / 128);
 
 describe('Arpeggiator module', () => {
+  it('survives the device compile pass (its keys cables are gone there, it still plays its group) and idle parts', () => {
+    const { p, ids } = arpPatch({ mode: 0, rate: 4, gate: 0.3 }, 3);
+    const view = deviceView(p, true);
+    expect(view.patch.modules.some((m) => m.id === ids.arp)).toBe(true);
+    expect(view.groups.map((g) => g.src)).toContain(ids.arp);
+    const bin = encodePatch(p);
+    expect(bin.length).toBeGreaterThan(0);
+    const render = (compile: boolean): Float32Array => {
+      const e = new Engine(SR);
+      e.load(structuredClone(p), compile);
+      for (const n of [64, 60, 67]) e.noteOn(n, 1);
+      const out = new Float32Array(STEP * 12 * 128), l = new Float32Array(128), r = new Float32Array(128);
+      for (let b = 0; b < STEP * 12; b++) {
+        e.render(l, r);
+        out.set(l, b * 128);
+      }
+      return out;
+    };
+    const a = render(false), b = render(true);
+    expect(a.some((x) => x !== 0)).toBe(true);
+    let diff = -1;
+    for (let i = 0; i < a.length && diff < 0; i++) if (a[i] !== b[i]) diff = i;
+    expect(diff).toBe(-1);
+    // the last step still sounds: a part the arpeggiator plays is never left idle while its gate is up
+    expect(b.subarray(b.length - STEP * 128).some((x) => x !== 0)).toBe(true);
+  });
+
   it('plays the held keys one at a time, up, from the Main module\'s tempo', () => {
     const e = new Engine(SR);
     e.load(arpPatch({ mode: 0, rate: 4, gate: 0.5 }).p);

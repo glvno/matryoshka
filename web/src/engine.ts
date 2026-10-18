@@ -66,6 +66,10 @@ interface VoiceState extends Voice {
   offStamp: number;
   /** the part was taken over while sounding: this block's gate starts with one low sample so envelopes restart */
   retrig: boolean;
+  /** released and silent (partQuiet): its modules are skipped; skip: this block; idleN: blocks since it went idle */
+  idle?: boolean;
+  skip?: boolean;
+  idleN?: number;
   /** the drift's random walk (driftSeed), stepped every block */
   walk: Walk;
 }
@@ -90,6 +94,11 @@ interface ArpRun {
   st: ArpState;
   clk: { hi: boolean };
 }
+
+/** idle parts (Engine.partQuiet): an output within this counts as silent (6 in Q16, engine.c IDLE_Q16); every IDLE_CHECK-th
+ * block an idle part runs and is checked again */
+const IDLE = 6 / 65536;
+const IDLE_CHECK = 32;
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
   pitch: 0, gate: 0, velocity: 0, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
@@ -117,6 +126,7 @@ export class Engine {
   private stamp = 0;
   /** the patch as loaded (an allocator's setting changes the groups: setParam reloads it) */
   private src: Patch | null = null;
+  private compiled = false;
   /** the clock: 24 ppqn ticks so far (from the Main module's tempo, or MIDI clock while it comes in), the internal
    * clock's remainder (in 1 / (60 sr) of a tick), MIDI clock ticks not yet counted, and the transport */
   private ticks = 0;
@@ -169,14 +179,17 @@ export class Engine {
   }
 
   /** Install a patch. Modules whose id, type and copy count are unchanged keep their running state; so do poly groups. */
-  load(source: Patch): void {
+  /** `compile`: run the device compile pass first (device-compile.ts: what the FM-1 runs; the editor keeps every module running, unplugged ones show their live values too) */
+  load(source: Patch, compile = false): void {
     this.src = source;
-    const { patch, groups: pg } = deviceView(source);
+    this.compiled = compile;
+    const { patch, groups: pg } = deviceView(source, compile);
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
     this.groups = pg.map((x, i) => {
       const g = oldGroups.get(x.key) ?? newGroup(x.key, x.cfg, i);
       g.cfg = { ...x.cfg };
       g.src = x.src ?? -1;
+      for (const v of g.parts) v.idle = false; // the patch changed: every part runs and is judged again
       return g;
     });
     const groupOf = new Map<number, number>();
@@ -363,7 +376,7 @@ export class Engine {
     if (m?.type === ALLOC) {
       // the voice count, assign, legato, priority, unison: the groups change, the patch loads again (running modules keep their state)
       m.params[name] = value;
-      this.load(this.src!);
+      this.load(this.src!, this.compiled);
       return;
     }
     const n = this.nodes.get(id);
@@ -699,6 +712,36 @@ export class Engine {
   }
 
   /** Render `left.length` frames (any length; processed in blocks of up to BLOCK). */
+  /**
+   * Is part v of poly group g idle (engine.c part_quiet, the same rule)? Its envelopes (ADSR / level envelope, at least one)
+   * have all finished and every output leaving the group stayed within IDLE (6 in Q16) for the whole block.
+   */
+  private partQuiet(g: number, v: number): boolean {
+    let envs = 0;
+    for (const node of this.order) {
+      if (node.group !== g || (node.type !== 'adsr' && node.type !== 'env')) continue;
+      if ((node.inst[v].state as { stage: number }).stage !== 0) return false;
+      envs++;
+    }
+    if (!envs) return false;
+    for (const node of this.order) {
+      if (node.group === g) continue;
+      for (const s of node.sources) {
+        if (s.from.group !== g) continue;
+        const o = s.from.inst[v].out[s.fromPort];
+        for (let i = 0; i < BLOCK; i++) if (o[i] > IDLE || o[i] < -IDLE) return false;
+      }
+    }
+    return true;
+  }
+
+  private partSilence(g: number, v: number): void {
+    for (const node of this.order) {
+      if (node.group === g) continue;
+      for (const s of node.sources) if (s.from.group === g) s.from.inst[v].out[s.fromPort].fill(0);
+    }
+  }
+
   render(left: Float32Array, right: Float32Array): void {
     const total = left.length;
     left.fill(0);
@@ -759,10 +802,17 @@ export class Engine {
           x.mod = this.ctl.mod;
           x.at = this.ctl.at;
         }
+      // idle parts (partQuiet): woken by a note, else run every IDLE_CHECK-th block
+      for (const g of this.groups)
+        for (const x of g.parts) {
+          if (x.idle && (x.gate > 0 || x.retrig)) x.idle = false;
+          x.skip = !!x.idle && (x.idleN = (x.idleN ?? 0) + 1) % IDLE_CHECK !== 0;
+        }
       const kb = this.kb.parts[0];
       for (const node of this.order) {
         const parts = node.group >= 0 ? this.groups[node.group].parts : null;
         for (let v = 0; v < node.inst.length; v++) {
+          if (parts?.[v].skip) continue;
           const inst = node.inst[v];
           this.gather(node, inst, v, n);
           this.applyCv(node, inst, n);
@@ -771,6 +821,17 @@ export class Engine {
           this.guard(node, inst, n);
         }
       }
+      if (n === BLOCK)
+        this.groups.forEach((g, gi) =>
+          g.parts.forEach((x, v) => {
+            if (x.skip) return;
+            if (!x.gate && !x.retrig && this.partQuiet(gi, v)) {
+              if (!x.idle) x.idleN = 0;
+              x.idle = true;
+              this.partSilence(gi, v);
+            } else x.idle = false;
+          }),
+        );
       for (const g of all) for (const x of g.parts) x.retrig = false;
       for (const o of this.outputs) {
         const inst = o.inst[0];

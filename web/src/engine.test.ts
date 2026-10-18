@@ -460,6 +460,7 @@ describe('macro ranges', () => {
     const p = emptyPatch();
     addModule(p, DEFS.fm1, 0, 0);
     const f = addModule(p, DEFS.filter, 0, 0);
+    connect(p, DEFS, { module: f.id, port: 'lp12' }, { module: addModule(p, DEFS.output, 0, 0).id, port: 'l' }); // heard, so it is sent
     f.map!.p1 = ['cutoff'];
     f.range = { p1: { cutoff: [0.2, 0.9], res: [0, 1] }, p2: { cutoff: [0, 1] } };
     const v = validatePatch(JSON.parse(JSON.stringify(p)), DEFS);

@@ -43,7 +43,10 @@ void *memcpy(void *d, const void *s, unsigned long n)
     return d;
 }
 
-/* 64-bit division, as compiler-rt does it on a core without a 64-bit divider (the firmware links libcompiler-rt.a) */
+#ifndef OLD_PRESET
+#include "div64.c"                                      /* the firmware's own 64-bit division (modular.c) */
+#else
+/* 64-bit division, as compiler-rt does it on a core without a 64-bit divider (the M1-0.2 firmware linked libcompiler-rt.a's) */
 uint64_t __udivmoddi4(uint64_t a, uint64_t b, uint64_t *rem)
 {
     uint64_t q = 0;
@@ -77,6 +80,7 @@ int64_t __moddi3(int64_t a, int64_t b)
     __udivmoddi4(a < 0 ? -(uint64_t)a : (uint64_t)a, b < 0 ? -(uint64_t)b : (uint64_t)b, &r);
     return a < 0 ? -(int64_t)r : (int64_t)r;
 }
+#endif
 
 static uint8_t patch[4096];
 static int32_t l[128], r[128], out[256];
