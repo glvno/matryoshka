@@ -127,6 +127,27 @@ describe('assemblies', () => {
     expect(validatePatch(JSON.parse(JSON.stringify(p)), DEFS).modules.filter((m) => m.bypass).length).toBe(1);
   });
 
+  it('a switched-off group stays switched off through save and load, and comes back on afterwards', () => {
+    const p = emptyPatch();
+    addModule(p, DEFS.fm1, 0, 0);
+    const osc = addModule(p, DEFS.osc, 0, 0);
+    const flt = addModule(p, DEFS.filter, 0, 0);
+    const dly = addModule(p, DEFS.delay, 0, 0);
+    connect(p, DEFS, { module: osc.id, port: 'out' }, { module: flt.id, port: 'in' });
+    connect(p, DEFS, { module: flt.id, port: 'lp24' }, { module: dly.id, port: 'in' });
+    makeAssembly(p, [flt.id, dly.id], 'fx');
+    dly.bypass = true; // off on its own
+    bypassAssembly(p, p.assemblies![0], true);
+    const q = validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
+    expect(fixAssemblies(q, DEFS)).toEqual([]); // what the editor runs on every patch it opens
+    const a = q.assemblies![0];
+    expect(a.bypass).toBe(true); // the card's switch still reads off: it was lost on load, which left the members stuck off
+    expect(a.kept).toEqual([dly.id]);
+    bypassAssembly(q, a, false);
+    expect(q.modules.find((m) => m.id === flt.id)!.bypass).toBeUndefined();
+    expect(q.modules.find((m) => m.id === dly.id)!.bypass).toBe(true);
+  });
+
   it('does not change the sound or the binary: engine and FM-1 see the flat patch', () => {
     const { p, osc, env, vca } = voice();
     const before = render(p);
