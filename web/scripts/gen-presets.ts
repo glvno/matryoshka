@@ -239,6 +239,27 @@ presets.push(() => {
   return x.p;
 });
 
+presets.push(() => {
+  const x = around('Briefcase 3', 'Briefcase 3');
+  x.knobs(['cutoff'], ['osc 3 → osc 1'], ['res'], ['decay']); // K1 / K2: the joystick's X / Y
+  level(x.p);
+  return x.p;
+});
+
+presets.push(() => {
+  const x = around('Io 4', 'Io 4');
+  x.knobs(['cutoff'], ['res'], ['d', 'envelope'], ['r', 'envelope']); // not `env` too: the ladder has two pins
+  level(x.p, { chord: true });
+  return x.p;
+});
+
+presets.push(() => {
+  const x = around('Vernon 100', 'Vernon 100');
+  x.knobs(['cutoff'], ['res'], ['s&h → filter'], ['lfo rate']); // not `mode` too: the filter has two pins
+  level(x.p, { chord: true });
+  return x.p;
+});
+
 // 808 Kit: a drum machine that plays itself (as the 909 Kit): a square LFO at sixteenths is the clock, one sequencer
 // per drum (a step at -1 rests), Main's gate restarts the pattern. The boom kick, a tonal snare, the clap, a closed and
 // an open hat and the two-square cowbell, from the factory drum assemblies; two mixers (the second into the first's in4).

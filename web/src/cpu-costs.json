@@ -17123,6 +17123,18 @@
    "cycles": 335273
   },
   {
+   "name": "Briefcase 3",
+   "cycles": 375179
+  },
+  {
+   "name": "Io 4",
+   "cycles": 472633
+  },
+  {
+   "name": "Vernon 100",
+   "cycles": 221259
+  },
+  {
    "name": "808 Kit",
    "cycles": 545787
   },
@@ -17169,6 +17181,10 @@
   {
    "name": "assembly bowed string",
    "cycles": 84173
+  },
+  {
+   "name": "assembly Briefcase 3",
+   "cycles": 348139
   },
   {
    "name": "assembly Canvas",
@@ -17225,6 +17241,10 @@
   {
    "name": "assembly hihat",
    "cycles": 69116
+  },
+  {
+   "name": "assembly Io 4",
+   "cycles": 409186
   },
   {
    "name": "assembly kalimba",
@@ -17345,6 +17365,10 @@
   {
    "name": "assembly tom",
    "cycles": 90999
+  },
+  {
+   "name": "assembly Vernon 100",
+   "cycles": 189013
   },
   {
    "name": "assembly vibrato",
