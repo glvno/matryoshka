@@ -93,8 +93,12 @@ export function isAiStats(x: unknown): x is AiStats {
   return !!s && typeof s.asOf === 'string' && typeof s.seconds === 'number' && Array.isArray(s.projects) && !!s.costs && typeof s.costs === 'object';
 }
 
-/** the model key's names: "Opus 5.5" from "claude-opus-5-5" (the Claude prefix dropped), "GPT Astra" from "gpt-astra" */
+/** WakaTime keys its costs by model family ("Opus", "Fable", "GPT"); the key names the versions used here (the owner's list) */
+export const MODEL_VERSIONS: Record<string, string> = { Opus: 'Opus 5.5', Fable: 'Fable 5.1', GPT: 'GPT Astra' };
+
+/** the model key's names: a family from MODEL_VERSIONS, else "Opus 5.5" from "claude-opus-5-5" (the Claude prefix dropped) */
 export function modelName(id: string): string {
+  if (MODEL_VERSIONS[id]) return MODEL_VERSIONS[id];
   const words: string[] = [];
   for (const w of id.split(/[-_ ]+/).filter(Boolean)) {
     const last = words[words.length - 1];

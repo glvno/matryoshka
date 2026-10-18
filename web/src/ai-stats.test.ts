@@ -49,5 +49,6 @@ describe('model names', () => {
     expect(modelName('gpt-astra')).toBe('GPT Astra');
     expect(modelName('gpt-5.5-codex')).toBe('GPT 5.5 Codex');
     expect(modelName('other')).toBe('Other');
+    expect(['Opus', 'Fable', 'GPT'].map(modelName)).toEqual(['Opus 5.5', 'Fable 5.1', 'GPT Astra']);
   });
 });
