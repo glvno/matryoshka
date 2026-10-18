@@ -34,6 +34,7 @@ import { Tutorial } from './tutorial/tutorial';
 import { synthLink } from './tutorial/link';
 import { PRESETS } from './presets';
 import { inlineWordmarks } from './brand';
+import { clipText, parseClip, type Clip } from './clipboard';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
 import { deviceBudget } from './patchbin';
 import { ALLOC, deviceView } from './poly';
@@ -596,6 +597,9 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Browse assembly library', run: () => browser.open() },
     { kind: 'command', label: 'Select all', detail: 'Ctrl/Cmd+A', keywords: 'everything modules assemblies', run: inPatch(() => editor.selectAll()) },
     { kind: 'command', label: 'Duplicate selection', detail: 'Ctrl/Cmd+D', run: inPatch(() => editor.duplicateSelected()) },
+    { kind: 'command', label: 'Copy selection', detail: 'Ctrl/Cmd+C', keywords: 'clipboard', run: inPatch(() => copySelection()) },
+    { kind: 'command', label: 'Cut selection', detail: 'Ctrl/Cmd+X', keywords: 'clipboard', run: inPatch(() => copySelection() && editor.removeSelected()) },
+    { kind: 'command', label: 'Paste', detail: 'Ctrl/Cmd+V', keywords: 'clipboard', run: inPatch(() => void pasteFromPalette()) },
     { kind: 'command', label: 'Delete selection', detail: 'Delete', run: inPatch(() => editor.removeSelected()) },
     { kind: 'command', label: 'Bypass selection', detail: 'B', run: inPatch(() => editor.bypassSelected()) },
     { kind: 'command', label: 'Show changes since last load / upload', keywords: 'diff', run: inPatch(showDiff) },
@@ -771,6 +775,59 @@ window.addEventListener('keydown', (e) => {
     e.stopImmediatePropagation();
   }
 }, true);
+// Copy / cut / paste of the selection (clipboard.ts, #92): through the browser's copy / paste events, which reach the system
+// clipboard without a permission prompt; a clip is JSON, so it survives switching patches or tabs. `lastClip` is the in-app
+// fallback when the system clipboard is out of reach (the palette's Paste, a browser that refuses). Text fields, an open
+// dialog, a text selection on the page and the other tabs keep the browser's own copy and paste.
+let lastClip: Clip | null = null;
+const clipboardIsOurs = (e: Event): boolean => {
+  const t = e.target as HTMLElement | null;
+  if (currentTab !== 'patch' || isTextEntry(t) || t?.tagName === 'SELECT' || document.querySelector('dialog[open], [popover]:popover-open')) return false;
+  const sel = window.getSelection();
+  return !sel || sel.isCollapsed;
+};
+/** copy the selection: false when there is nothing to copy (Main and the Output are never copied) */
+function copySelection(clipboardData?: DataTransfer | null): boolean {
+  const clip = editor.copySelection();
+  if (!clip) {
+    status.textContent = 'nothing to copy: select modules or assemblies (Main and the Output are not copied)';
+    return false;
+  }
+  lastClip = clip;
+  if (clipboardData) clipboardData.setData('text/plain', clipText(clip));
+  else void navigator.clipboard?.writeText(clipText(clip)).catch(() => {});
+  const n = clip.def.modules.length;
+  status.textContent = `copied ${n} module${n === 1 ? '' : 's'}${clip.def.assemblies?.length ? ` in ${clip.def.assemblies.length} assembl${clip.def.assemblies.length === 1 ? 'y' : 'ies'}` : ''}`;
+  return true;
+}
+function pasteText(text: string | null): void {
+  const clip = text ? parseClip(text, DEFS) : null;
+  if (text && !clip) return; // something else is on the clipboard: not ours to paste
+  const use = clip ?? lastClip;
+  if (!use) return void (status.textContent = 'nothing to paste: copy modules or assemblies first');
+  if (editor.paste(use)) status.textContent = 'pasted: the pasted items are selected';
+}
+document.addEventListener('copy', (e) => {
+  if (clipboardIsOurs(e) && copySelection(e.clipboardData)) e.preventDefault();
+});
+document.addEventListener('cut', (e) => {
+  if (clipboardIsOurs(e) && copySelection(e.clipboardData)) (editor.removeSelected(), e.preventDefault());
+});
+document.addEventListener('paste', (e) => {
+  if (!clipboardIsOurs(e)) return;
+  e.preventDefault();
+  pasteText(e.clipboardData?.getData('text/plain') ?? null);
+});
+/** the palette's Paste: no paste event there, so ask the clipboard (the browser may ask the user), else the in-app copy */
+async function pasteFromPalette(): Promise<void> {
+  let text: string | null = null;
+  try {
+    text = (await navigator.clipboard?.readText()) ?? null;
+  } catch {
+    /* refused or not supported: the in-app copy */
+  }
+  pasteText(text && parseClip(text, DEFS) ? text : null);
+}
 // The sidebar's cable slack and zoom sliders: a card's value bar (sliderJack) each, and (the easter egg) their thumbs are
 // jacks. An output dropped on one (Editor.setSideSource: Patch.slackFrom / zoomFrom) moves it: the worklet sends that
 // output's mean (watch), which adds to the slider's setting in its unit (0..1). As on a card the thumb and value show the

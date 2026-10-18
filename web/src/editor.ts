@@ -48,6 +48,7 @@ import {
 } from './patch';
 import { stepGrid, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
+import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
 import { EXCLUDED_TYPES,
@@ -169,6 +170,8 @@ type Pt = { x: number; y: number };
 /** the footprint of a new card for the free-spot search: a grid cell less its gutters */
 const CARD_W = 300;
 const CARD_H = 540;
+/** how far each paste of the same clip lands from the last (down and right) */
+const PASTE_STEP = 40;
 /** a collapsed assembly card's footprint width: a grid cell per column (`.module.assembly.cols` in style.css) */
 const cardWidth = (params: ParamRef[]): number => {
   const n = paramColumns(params).length;
@@ -1696,6 +1699,38 @@ export class Editor {
       for (const id of map.values()) this.selected.add(id);
       this.selectedAsm.clear();
       for (const id of asmCopies) this.selectedAsm.add(id);
+    });
+  }
+
+  // ---- copy / paste (clipboard.ts): the system clipboard is main.ts's; the editor turns a selection into a clip and back
+
+  /** the clip last copied or pasted, and how many times it was pasted: each paste of it lands one PASTE_STEP further */
+  private clipKey = '';
+  private clipPastes = 0;
+
+  /** the selection as a clip (Main and the Output are left out); null with nothing to copy */
+  copySelection(): Clip | null {
+    const set = this.dragSet();
+    const clip = copyItems(this.patch, set.mods.map((m) => m.id), set.asms.map((a) => a.id));
+    if (clip) {
+      this.clipKey = clipText(clip);
+      this.clipPastes = 0;
+    }
+    return clip;
+  }
+
+  /** put a clip into the patch, offset from where it was copied, as one undo step; the pasted items become the selection */
+  paste(clip: Clip): boolean {
+    const key = clipText(clip);
+    this.clipPastes = key === this.clipKey ? this.clipPastes + 1 : 1;
+    this.clipKey = key;
+    const off = PASTE_STEP * this.clipPastes;
+    return this.change(() => {
+      const got = pasteClip(this.patch, DEFS, clip, Math.max(0, clip.x + off), Math.max(0, clip.y + off));
+      this.selected.clear();
+      for (const id of got.modules) this.selected.add(id);
+      this.selectedAsm.clear();
+      for (const id of got.assemblies) this.selectedAsm.add(id);
     });
   }
 

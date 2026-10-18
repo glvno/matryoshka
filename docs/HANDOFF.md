@@ -53,7 +53,7 @@ both in the flasher and marked ready-for-agent:
 
 ### 3. Larger editor features
 
-- #92 copy / paste of the selection (modules and assemblies with nested ones and the cables among them) through the
+- (done 2026-10-18) #92 copy / paste of the selection (modules and assemblies with nested ones and the cables among them) through the
   system clipboard as JSON with an in-app fallback; works across patches; pasted items become the selection; one undo
   step. Reuse `dragSet()`, `toDef` / `insertAssembly` (they now carry Steps data) and the Duplicate code path.
 - #85 an expanded assembly's frame shows the same exposed jacks on its edges as the collapsed card (inputs left, outputs

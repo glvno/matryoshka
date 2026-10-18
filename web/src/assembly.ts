@@ -860,6 +860,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     if (src.att) m.att = [...src.att];
     if (src.map) m.map = clone(src.map);
     if (src.inputMap) m.inputMap = structuredClone(src.inputMap);
+    if (src.bypass) m.bypass = true; // toDef writes the members' own switches
     if (src.type === 'steps') {   // a track's name, pattern and step values
       Object.assign(m, clone({ name: src.name, steps: src.steps, notes: src.notes, vels: src.vels }));
       fixTrack(m);

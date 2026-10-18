@@ -436,7 +436,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     wait_text(&mut m, "SAVE: STORE", 9000)?;
     let saved = wait_text(&mut m, "SAVED", 1000)?;
     t.check("safe mode: holding SAVE at power-on does not save", !saved, String::new());
-    m.run_for(3000)?;                         // (the SAFE MODE message in the bar goes after 4 s)
+    wait_text(&mut m, "SAFE PATCH", 6000)?;   // (the SAFE MODE message holds the bar for 4 s, then the patch's name shows)
     t.screen(&m, "safe mode: the fallback patch", "SAFE PATCH");
     let p = midi_note_peak(&mut m, 60, 500)?;
     t.check("safe mode: the fallback patch sounds", p > QUIET, format!("peak {p}"));
