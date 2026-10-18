@@ -1513,37 +1513,53 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 #undef OSC_PITCH
             n = 0;                                                          /* skips the general loop below */
         }
-        for (i = 0; i < n; i++) {
-            int rst = sync[i] >= 32768 && s1 < 32768;                      /* a rising edge on sync restarts the phases */
-            uint32_t dt;
-            int32_t y;
-            if (i == 0 || pitch[i] != lastp) {                             /* the increments only when the pitch moves (exactly the same values) */
-                lastp = pitch[i];
-                for (j = 0; j < nu; j++) {
-                    dts[j] = exp2_scale(INC_C4, lastp + base + doct[j]);
-                    if (dts[j] > DT_MAX)
-                        dts[j] = DT_MAX;
-                }
+        if (n) {                                                            /* unison / stack: the wave picked once a block, phases in locals */
+            uint32_t lph[4];
+            for (j = 0; j < 4; j++)
+                lph[j] = ph[j];
+#define OSC_SIN(p, d, r) sin_turn(p)
+#define OSC_TRI(p, d, r) wave_tri(p)
+#define OSC_SAW(p, d, r) wave_saw(p, d, r)
+#define OSC_SQR(p, d, r) wave_square(p, d, pw, r)
+#define OSC_UNI(W)                                                                      \
+            for (i = 0; i < n; i++) {                                                   \
+                int rst = sync[i] >= 32768 && s1 < 32768;   /* a rising edge on sync restarts the phases */ \
+                int32_t y;                                                              \
+                if (i == 0 || pitch[i] != lastp) {          /* the increments only when the pitch moves */ \
+                    lastp = pitch[i];                                                   \
+                    for (j = 0; j < nu; j++) {                                          \
+                        dts[j] = exp2_scale(INC_C4, lastp + base + doct[j]);            \
+                        if (dts[j] > DT_MAX)                                            \
+                            dts[j] = DT_MAX;                                            \
+                    }                                                                   \
+                }                                                                       \
+                s1 = sync[i];                                                           \
+                if (rst) {                                                              \
+                    phase = 0;                                                          \
+                    for (j = 1; j < nu; j++)                                            \
+                        lph[j - 1] = 0;                                                 \
+                }                                                                       \
+                phase += dts[0];                                                        \
+                y = mul16(W(phase, dts[0], rc[0]), wq[0]);                              \
+                for (j = 1; j < nu; j++) {                                              \
+                    lph[j - 1] += dts[j];                                               \
+                    y += mul16(W(lph[j - 1], dts[j], rc[j]), wq[j]);                    \
+                }                                                                       \
+                out[i] = mul16(y, lvl);                                                 \
             }
-            dt = dts[0];
-            s1 = sync[i];
-            if (rst)
-                phase = 0;
-            phase += dt;
-            y = wave(kind, phase, dt, pw, rc[0]);
-            if (nu == 1) {
-                out[i] = mul16(y, lvl);
-                continue;
+            switch (kind) {
+            case 0: OSC_UNI(OSC_SIN) break;
+            case 1: OSC_UNI(OSC_TRI) break;
+            case 2: OSC_UNI(OSC_SAW) break;
+            default: OSC_UNI(OSC_SQR) break;
             }
-            y = mul16(y, wq[0]);
-            for (j = 1; j < nu; j++) {
-                uint32_t dtj = dts[j];
-                if (rst)
-                    ph[j - 1] = 0;
-                ph[j - 1] += dtj;
-                y += mul16(wave(kind, ph[j - 1], dtj, pw, rc[j]), wq[j]);
-            }
-            out[i] = mul16(y, lvl);
+#undef OSC_UNI
+#undef OSC_SIN
+#undef OSC_TRI
+#undef OSC_SAW
+#undef OSC_SQR
+            for (j = 0; j < 4; j++)
+                ph[j] = lph[j];
         }
         it->s.osc.phase = phase;
         it->s.osc.s1 = s1;
