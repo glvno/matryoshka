@@ -64,7 +64,9 @@ static void leds_play(void);
 static void panel_button(uint32_t b, int down);
 static void panel_button_set(uint32_t b, int down, int from_panel);
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2);
-static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button (1..9) last moved: the player screen shows it */
+static uint8_t knob_touched, button_touched;
+#define BTN_PLAY 12u                  /* PLAY: the transport; held, PRESET sets the tempo */
+static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */  /* the knob (1..6) / patch button (1..9) last moved: the player screen shows it */
 static void page_set(uint32_t p);
 
 /* proto.c hooks */
@@ -135,9 +137,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     octave = clampi((int32_t)d[2] - 8, -3, 3);
     cfg.leds = d[3] > 2u ? 2u : d[3];
     cfg.accel = d[4] & 1u;
-    cfg.cpu_bar = d[5] & 1u;
-    cfg.clock_in = d[6] & 1u;
-    cfg.prog_chg = d[7] & 1u;
+    cfg.clock_in = d[6] & 1u;                   /* (bytes 5 and 7, CPU in the bar and program change, are no longer settings) */
     cfg.ch = d[8] > 16u ? 0u : d[8];
     cfg.midi_out = d[9] == 0u ? 0u : 1u;
     *module = d[11];
@@ -485,6 +485,25 @@ static void knobs_poll(void)
         menu_knobs(st);
         return;
     }
+    if (st[6] && (fm1_in.buttons >> BTN_PLAY & 1u)) {   /* PLAY held + PRESET: the tempo (the Main module's), 1 bpm a click */
+        play_turned = 1;
+        if (panel >= 0 && !eng_clock_is_external()) {
+            char m[16], num[8];
+            int32_t bpm = (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16;
+            bpm = clampi(bpm + st[6] * (cfg.accel && fm1_ms - last_ms[0] < 80u ? 5 : 1), 20, 300);
+            last_ms[0] = fm1_ms;
+            eng_set_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
+            m1_patch_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
+            fmt_int(num, bpm);
+            put(put(m, "TEMPO "), num)[0] = 0;
+            ui_msg(m, 1000);
+            if (!ui_dirty)
+                ui_dirty = 1;
+        } else if (panel >= 0) {
+            ui_msg("TEMPO: MIDI CLOCK", 1000);
+        }
+        return;
+    }
     if (st[6]) {
         preset_step(st[6]);
         return;
@@ -542,7 +561,6 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
 
 /* PLAY: red while the transport is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
  * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. */
-#define BTN_PLAY 12u
 /* the patch buttons (the Main module's outputs fx .. rec, engine.h ENG_PANEL_BUTTONS): their matrix ids, M-VAVE's order */
 static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10, 11, 13};
 static void led_breath_key(uint32_t id, int on)     /* a button's LED breathes (the HAL's one shared speed, fm1_br_step) */
@@ -733,7 +751,9 @@ static void buttons_poll(void)
         }
         home_t0 = 0;
     }
-    if (p & (1u << BTN_PLAY))
+    if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
+        play_turned = 0;
+    if ((rel & (1u << BTN_PLAY)) && !play_turned)
         play_toggle();
 }
 

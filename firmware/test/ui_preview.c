@@ -23,6 +23,7 @@ static uint8_t eng_overload;               /* audio.c: the overload guard muted 
 static int32_t patch_gain;                 /* audio.c: the mixer level */
 static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
 #define M1_SLOTS 64u
+static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
 #define FELUCCA_VERSION "M1-PREVIEW"

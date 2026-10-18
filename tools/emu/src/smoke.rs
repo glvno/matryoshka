@@ -409,9 +409,10 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     let mut m = Machine::boot(app, None);
     wait_text(&mut m, "SAVE: STORE", 9000)?;
     m.tap(HOME, 1000, 400)?;
-    m.turn(ALGO, 3, 400)?;
+    m.turn(ALGO, 2, 400)?;
     t.screen(&m, "menu: the SYSTEM tab", "UPDATE MODE");
-    m.turn(PRESET, 2, 400)?;
+    t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
+    m.turn(PRESET, 4, 400)?;
     m.tap(OCT_UP, 120, 300)?;
     m.tap(OCT_UP, 120, 800)?;
     t.screen(&m, "menu: UPDATE MODE enters update mode", "FROM THE MENU");
@@ -458,8 +459,15 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
         m.tap(key, 120, 400)?;
         t.screen(&m, what, text);
     }
+    m.key(PLAY, true);                        // PLAY held + PRESET: the tempo; the release then does not start the transport
+    m.run_for(200)?;
+    m.turn(PRESET, 1, 300)?;
+    t.screen(&m, "PLAY held + PRESET: the tempo", "TEMPO 121");
+    m.key(PLAY, false);
+    m.run_for(1300)?;
+    t.screen(&m, "the release after a tempo turn does not start", "STOP 121");
     m.tap(HOME, 1000, 400)?;
-    t.screen(&m, "HOME held: settings menu", "DISPLAY");
+    t.screen(&m, "HOME held: settings menu", "PANEL");
     m.tap(HOME, 120, 400)?;
     t.screen(&m, "HOME again: menu closed", "SAVE: STORE");
     go_home(&mut m)?;

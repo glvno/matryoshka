@@ -201,12 +201,8 @@ static void header_draw(void)
         if (m1_edited)
             p = put(p, " *");                   /* edited since it was loaded (SAVE writes it into its slot) */
         *p = 0;
-        if (cfg.cpu_bar) {
-            bar_name_cpu(b, C_ACC);
-        } else {
-            b[24] = 0;
-            bar_text(b, C_ACC);
-        }
+        b[24] = 0;                              /* (the CPU load is in MENU > SYSTEM) */
+        bar_text(b, C_ACC);
     }
     msg_until = 0;
 }

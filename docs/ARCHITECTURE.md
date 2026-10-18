@@ -336,3 +336,8 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 
 - In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes, pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot: ignored), CC 16..21 = K1..K6, CC 22 = morph, CC 80..88 = the patch buttons (64 and up: down), CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
 - Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): the keys as notes (velocity 100), K1..K6 as CC 16..21, the patch buttons as CC 80..88 (127 / 0), on the MIDI channel (omni: channel 1). What came in is not sent out again. Not verified: USB is not emulated.
+
+## Settings menu and manual (#66, 2026-10-18)
+
+- HOME held: tabs PANEL (LEDS, KNOB ACCEL), MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), SYSTEM (VERSION, CPU now, CPU PEAK, BANK SLOTS n OF 64, UPDATE MODE = update-only mode, FACTORY RESET; both OCT+ twice within 3 s), MANUAL (one screen: the reserved controls, the power-on keys, the menu's controls, the web address). ALGO steps the tabs, PRESET / SELECT the rows, K1..K4 / OCT- / OCT+ the value.
+- PLAY acts on its release; PLAY held + PRESET sets the Main module's tempo (1 bpm a click, x5 when turned fast), refused while MIDI clock drives the clock; such a release does not start / stop.

@@ -19,12 +19,12 @@ static void defaults_now(void);
 
 /* ---- settings menu */
 
-enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH, MR_CLOCK, MR_PROG, MR_MOUT, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
-enum { MT_DISPLAY, MT_CONTROL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
-static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", "MIDI CHANNEL", "CLOCK IN", "PROG CHANGE", "MIDI OUT",
-                                              "VERSION", "CPU PEAK", "UPDATE MODE", "FACTORY RESET"};
-static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, MT_MIDI, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
-static const char *const TAB_NAME[MT_COUNT] = {"DISPLAY", "CONTROL", "MIDI", "SYSTEM", "MANUAL"};
+enum { MR_LEDS, MR_ACCEL, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
+enum { MT_PANEL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
+static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
+                                              "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "UPDATE MODE", "FACTORY RESET"};
+static const uint8_t ROW_TAB[MR_COUNT] = {MT_PANEL, MT_PANEL, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
+static const char *const TAB_NAME[MT_COUNT] = {"PANEL", "MIDI", "SYSTEM", "MANUAL"};
 
 static uint8_t menu_tab, menu_sel = MR_LEDS;     /* the tab and the selected row (a row number) */
 static uint32_t cpu_peak;                       /* the highest CPU % since boot */
@@ -69,14 +69,22 @@ static void menu_value(uint32_t row, char *out)
     char *p = out;
     switch (row) {
     case MR_LEDS: p = put(p, cfg.leds == 0 ? "OFF" : cfg.leds == 1 ? "DIM LOW" : "DIM HIGH"); break;
-    case MR_CPU: p = put(p, ONOFF[cfg.cpu_bar]); break;
     case MR_ACCEL: p = put(p, ONOFF[cfg.accel]); break;
-    case MR_OCT:
-        if (octave > 0)
-            *p++ = '+';
-        fmt_int(p, octave);
+    case MR_CPU:
+        fmt_int(p, (int32_t)cpu_pct);
         p += str_len(p);
+        *p++ = '%';
         break;
+    case MR_SLOTS: {                             /* the occupied slots of the bank */
+        uint64_t b = bank_mask;
+        uint32_t n = 0;
+        for (; b; b &= b - 1u)
+            n++;
+        fmt_int(p, (int32_t)n);
+        p += str_len(p);
+        p = put(p, " OF 64");
+        break;
+    }
     case MR_CH: {
         uint32_t c = cfg.ch;
         if (!c) {
@@ -88,7 +96,6 @@ static void menu_value(uint32_t row, char *out)
         break;
     }
     case MR_CLOCK: p = put(p, ONOFF[cfg.clock_in]); break;
-    case MR_PROG: p = put(p, ONOFF[cfg.prog_chg]); break;
     case MR_MOUT: p = put(p, ONOFF[cfg.midi_out]); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
     case MR_PEAK:
@@ -222,20 +229,13 @@ static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value
         leds_avail();
         break;
     }
-    case MR_CPU: cfg.cpu_bar = (uint8_t)up; header_draw(); break;
     case MR_ACCEL: cfg.accel = (uint8_t)up; break;
-    case MR_OCT:
-        octave += d;
-        octave = octave < -3 ? -3 : octave > 3 ? 3 : octave;
-        leds_octave();
-        break;
     case MR_CH: {
         int32_t v = (int32_t)cfg.ch + d;
         cfg.ch = (uint8_t)(v < 0 ? 0 : v > 16 ? 16 : v);
         break;
     }
     case MR_CLOCK: cfg.clock_in = (uint8_t)up; break;
-    case MR_PROG: cfg.prog_chg = (uint8_t)up; break;
     case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
     case MR_UPDATE:
     case MR_DEFAULTS:
@@ -311,8 +311,6 @@ static void cpu_poll(void)
         cpu_peak = pct;
     if (pct != cpu_pct) {
         cpu_pct = pct;
-        if (cfg.cpu_bar && !msg_until && !load_err)
-            header_draw();
         if (page == PAGE_MENU && ROW_TAB[MR_PEAK] == menu_tab && !ui_dirty)
             ui_dirty = 1;
     }
