@@ -56,7 +56,7 @@ both in the flasher and marked ready-for-agent:
 - (done 2026-10-18) #92 copy / paste of the selection (modules and assemblies with nested ones and the cables among them) through the
   system clipboard as JSON with an in-app fallback; works across patches; pasted items become the selection; one undo
   step. Reuse `dragSet()`, `toDef` / `insertAssembly` (they now carry Steps data) and the Duplicate code path.
-- (built 2026-10-18 as ribbon cables, see CLAUDE.md; awaiting the user's look) #85 an expanded assembly's frame shows the same exposed jacks on its edges as the collapsed card (inputs left, outputs
+- (done 2026-10-18 as ribbon cables, see CLAUDE.md) #85 an expanded assembly's frame shows the same exposed jacks on its edges as the collapsed card (inputs left, outputs
   right, extras along the bottom), with the cables drawn to them.
 - #55 displays (scopes, envelope shapes, step grids) spanning several columns of an assembly card; #54 per-voice scope
   traces of a poly assembly.
