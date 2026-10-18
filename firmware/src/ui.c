@@ -580,7 +580,6 @@ static void module_draw(int full)
         text5x7(12, 230, "SAVE: STORE  OCT-/OCT+: OCTAVE", 1, 0x4208u, C_BG);
 }
 
-static void mixer_draw(int full);
 static void menu_draw(int full);
 
 /* The performance page (ENV): what matters while playing, readable from arm's length. The four knob rows show the
@@ -647,19 +646,15 @@ static void perf_draw(int full)
     pad(p, line, 26);
     text5x7(12, 204, line, 1, eng_transport_running() ? C_FG : C_DIM, C_BG);
     if (full)
-        text5x7(12, 230, "K1-K4: MAIN KNOBS  ENV: BACK", 1, 0x4208u, C_BG);
+        text5x7(12, 230, "SAVE: STORE  OCT-/OCT+: OCTAVE", 1, 0x4208u, C_BG);
 }
 
 static void view_draw(int full)                 /* whichever page is showing */
 {
-    if (page == PAGE_MIXER)
-        mixer_draw(full);
-    else if (page == PAGE_MENU)
+    if (page == PAGE_MENU)
         menu_draw(full);
-    else if (page == PAGE_PERF)
-        perf_draw(full);
     else
-        module_draw(full);
+        perf_draw(full);                        /* the player screen (#63 redraws it) */
 }
 
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */

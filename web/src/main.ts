@@ -213,6 +213,9 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onTransport(on) {
     setPlaying(on);
   },
+  onButton(i, on) {
+    host.send({ t: 'button', i, on });
+  },
   onProbe(key, id, port, kind, _label, on) {
     if (on) {
       scope.add(key, kind);

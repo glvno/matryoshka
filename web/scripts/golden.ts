@@ -18,7 +18,7 @@ const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
-type Ev = [number, 'on' | 'off' | 'run' | 'stop', number];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff', number];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -1252,6 +1252,27 @@ tests['main-clock-run'] = make('main-clock-run', (add, wire) => {
 events['main-clock-run'] = [[0, 'on', 57], [128 * 20, 'run', 0], [128 * 160, 'stop', 0], [128 * 200, 'run', 0], [128 * 250, 'off', 57]];
 ends['main-clock-run'] = 128 * 280;
 
+// the panel (#60): K5 / K6 into an oscillator's level and fine tune, the FX button opens a VCA, the REC button (switched on
+// in the patch: the binary's on mask) a second one
+tests['panel-buttons'] = make('panel-buttons', (add, wire) => {
+  const kb = add('fm1', 0, 0, { k5: 0.8, k6: 0.3 });
+  const o = add('osc', 200, 0, { wave: 2, level: 0.5 });
+  const v = add('vca', 400, 0);
+  const v2 = add('vca', 600, 0);
+  const out = add('output', 800, 0, { level: 0.7 });
+  wire(kb, 'pitch', o, 'pitch');
+  wire(kb, 'k5', v, 'p1');
+  wire(kb, 'k6', o, 'p1');
+  wire(o, 'out', v, 'in');
+  wire(kb, 'fx', v, 'cv');
+  wire(v, 'out', v2, 'in');
+  wire(kb, 'rec', v2, 'cv');
+  wire(v2, 'out', out, 'l');
+});
+tests['panel-buttons'].modules[0].panel = { toggle: ['rec'], on: ['rec'], labels: { k5: 'LEVEL', fx: 'GATE' } };
+events['panel-buttons'] = [[0, 'on', 60], [128 * 20, 'bon', 0], [128 * 60, 'boff', 0], [128 * 80, 'bon', 0], [128 * 100, 'boff', 8], [128 * 140, 'bon', 8], [128 * 160, 'off', 60]];
+ends['panel-buttons'] = 128 * 180;
+
 for (const [name, patch] of Object.entries(tests)) {
   const e = new Engine(SR);
   e.load(patch);
@@ -1274,6 +1295,7 @@ for (const [name, patch] of Object.entries(tests)) {
     seg(fr);
     if (kind === 'on') e.noteOn(note, 1);
     else if (kind === 'off') e.noteOff(note);
+    else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
     else e.transport(kind === 'run');
   }
   seg(END);
@@ -1287,7 +1309,7 @@ for (const [name, patch] of Object.entries(tests)) {
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), encodePatch(patch, true));
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n]) => (k === 'on' ? `${fr} on ${n} 127` : k === 'off' ? `${fr} off ${n}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n]) => (k === 'on' ? `${fr} on ${n} 127` : k === 'off' || k === 'bon' || k === 'boff' ? `${fr} ${k} ${n}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

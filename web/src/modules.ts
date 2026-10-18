@@ -14,6 +14,8 @@ export interface Voice {
   clock: boolean;
   /** the transport runs (PLAY, MIDI Start / Stop): the Main module's run output */
   run: boolean;
+  /** the FM-1's patch buttons held / switched on (bit i = PANEL_BUTTONS[i]): the Main module's button outputs */
+  buttons: number;
   /** the performance controls, the same for every voice: pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1 */
   bend: number;
   mod: number;
@@ -161,7 +163,10 @@ export const PRIORITIES = ['last', 'low', 'high'];
  * part, or a free part whose last note was the key (else the one free the longest) */
 export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse'];
 
-const N_KNOBS = 4;
+/** the FM-1 panel's controls a patch owns (#57 decision 4): six knobs (K1..K4 and the SELECT / ALGO encoders as K5 / K6)
+ * and nine buttons, gate outputs of the Main module; the device keeps PRESET, PLAY, SAVE, HOME and OCT- / OCT+ */
+const N_KNOBS = 6;
+export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp', 'seq', 'rec'];
 /** the Main module's tempo range (bpm) */
 export const TEMPO_MIN = 20;
 export const TEMPO_MAX = 300;
@@ -176,7 +181,7 @@ const fm1: ModuleImpl<null> = {
     inputs: [control('morph')],
     // pitch / gate / vel: the shared keyboard (one note: the last held, legato); keys: the held keys for Voice allocators
     // (the keyboard's ribbon cable to a polysynth's CPU); clock: 24 ppqn while the transport runs; run: high while it runs
-    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run')],
+    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run'), ...PANEL_BUTTONS.map(gate)],
     params: [
       ...knobNames.map((n) => param(n, 0, 1, 0.5, { step: 0.01 })),
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
@@ -199,6 +204,7 @@ const fm1: ModuleImpl<null> = {
     c.out.clock.fill(1, 0, hi);
     c.out.clock.fill(0, hi, c.n);
     c.out.run.fill(c.voice.run ? 1 : 0, 0, c.n);
+    PANEL_BUTTONS.forEach((b, i) => c.out[b].fill((c.voice.buttons >> i) & 1, 0, c.n));
   },
 };
 

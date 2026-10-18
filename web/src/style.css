@@ -14,7 +14,7 @@
   --accent: var(--ref-rust); --accent-ink: var(--ref-white);
   --secondary: var(--ref-deep-teal); --audio: var(--accent); --control: var(--secondary); --gate: var(--ref-ochre);
   /* The FM-1 knobs K1..K4 in Sloop's hues (blue, green, yellow, orange), darkened for paper. */
-  --k1: #2d5fb5; --k2: #1f8a55; --k3: #9a7a12; --k4: #c4541c;
+  --k1: #2d5fb5; --k2: #1f8a55; --k3: #9a7a12; --k4: #c4541c; --k5: #7a4bb0; --k6: #2b8590;
   --danger: var(--ref-red); --warning: var(--gate);
   /* filled yellow buttons: the gate colour, greyed down so it does not shout */
   --btn-yellow: color-mix(in oklab, var(--ref-ochre) 70%, var(--ref-stone));
@@ -37,7 +37,7 @@
     --accent: var(--ref-coral); --accent-ink: var(--ref-night);
     --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
     --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
-    --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a;
+    --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
     --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
     --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
     --key-black-mapped: color-mix(in oklab, var(--ref-seafoam) 22%, var(--ref-night));
@@ -166,8 +166,8 @@ main { min-width: 0; min-height: 0; overflow: auto; }
 /* keys: Main's held keys to a Voice allocator, a ribbon cable rather than a signal */
 .cable.keys { stroke: var(--ink); stroke-dasharray: 1 5; stroke-linecap: round; }
 /* The FM-1 knobs: their jacks, slider rows and cables carry the knob's colour. */
-.cable.knob-k1 { stroke: var(--k1); } .cable.knob-k2 { stroke: var(--k2); } .cable.knob-k3 { stroke: var(--k3); } .cable.knob-k4 { stroke: var(--k4); }
-.dot[data-knob=k1] { color: var(--k1); } .dot[data-knob=k2] { color: var(--k2); } .dot[data-knob=k3] { color: var(--k3); } .dot[data-knob=k4] { color: var(--k4); }
+.cable.knob-k1 { stroke: var(--k1); } .cable.knob-k2 { stroke: var(--k2); } .cable.knob-k3 { stroke: var(--k3); } .cable.knob-k4 { stroke: var(--k4); } .cable.knob-k5 { stroke: var(--k5); } .cable.knob-k6 { stroke: var(--k6); }
+.dot[data-knob=k1] { color: var(--k1); } .dot[data-knob=k2] { color: var(--k2); } .dot[data-knob=k3] { color: var(--k3); } .dot[data-knob=k4] { color: var(--k4); } .dot[data-knob=k5] { color: var(--k5); } .dot[data-knob=k6] { color: var(--k6); }
 .param.knob .slider-port { color: var(--knob); }
 .param.knob > span:first-child { color: var(--knob); font-weight: 600; }
 .cable.pending { stroke: var(--muted); stroke-dasharray: 5 4; pointer-events: none; }
@@ -553,6 +553,13 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .deck.folded .piano { display: none; }
 /* K1..K4 as knobs in the knobs' colours: the arc from 7 to 5 o'clock is the value, the line on the cap points at it */
 .deck-knobs { display: flex; gap: 6px; align-items: stretch; }
+/* the FM-1's patch buttons (Main outputs fx .. rec): a 3 x 3 grid like a button block, lit while held / switched on */
+.dock-buttons-grid { display: grid; grid-template-columns: repeat(3, minmax(38px, 1fr)); gap: 4px; }
+.panel-btn { font: 600 10px/1 var(--cond, inherit); letter-spacing: .04em; text-transform: uppercase; padding: 5px 2px; min-height: 22px;
+  border: 1px solid var(--line, #888); border-radius: 4px; background: transparent; color: var(--ink); cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: none; }
+.panel-btn.toggle { border-style: dashed; }
+.panel-btn[aria-pressed=true] { background: var(--accent); color: var(--accent-ink, #fff); border-color: var(--accent); border-style: solid; }
 .deck-knob { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; font-weight: 650; color: var(--knob); }
 /* the jack at the top with the others, the dial centred below it */
 .deck-knob > .dial { margin: auto 0; }

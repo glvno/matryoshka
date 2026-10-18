@@ -10,20 +10,32 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 23   /* 23: the group record ends with its note source (an Arpeggiator), the Main module's tempo and run */
-#define ENG_PATCH_COMPAT_VERSION 23
+#define ENG_PATCH_VERSION 24   /* 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_COMPAT_VERSION 24
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (5u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source (patchbin.ts GROUP_REC) */
 
-/* where the module records of a patch binary start: after the 8 header bytes, the poly groups' records (ENG_GROUP_REC each,
+#define ENG_PANEL_BUTTONS 9            /* the patch buttons: FX SCL ENV LFO EDIT GLO ARP SEQ REC (modules.ts PANEL_BUTTONS) */
+#define ENG_PANEL_LABELS 15            /* K1..K6, then the buttons (patch.ts PANEL_LABEL_KEYS) */
+#define ENG_PANEL_LABEL 10             /* bytes per label (PANEL_LABEL_MAX), zero padded */
+#define ENG_PANEL_BYTES (4u + ENG_PANEL_LABELS * ENG_PANEL_LABEL)   /* the panel section (patchbin.ts PANEL_BYTES) */
+
+/* where the panel section of a patch binary starts: after the 8 header bytes, the poly groups' records (ENG_GROUP_REC each,
  * header byte 3 = their count) and, with any group, one membership byte per module. 0 if the binary is too short. */
-static inline uint32_t eng_records_at(const uint8_t *p, uint32_t len)
+static inline uint32_t eng_panel_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at;
     if (len < 8u)
         return 0;
     at = 8u + ENG_GROUP_REC * p[3] + (p[3] ? p[2] : 0u);
-    return at <= len ? at : 0;
+    return at + ENG_PANEL_BYTES <= len ? at : 0;
+}
+
+/* where the module records start: after the panel section. 0 if the binary is too short. */
+static inline uint32_t eng_records_at(const uint8_t *p, uint32_t len)
+{
+    uint32_t at = eng_panel_at(p, len);
+    return at ? at + ENG_PANEL_BYTES : 0;
 }
 
 /* Install a patch from its binary form (web/src/patchbin.ts) into the selected voice. 0 on success, negative on error
@@ -78,6 +90,9 @@ void eng_clock_tick(void);
 void eng_clock_external(int on);
 void eng_transport(int on);
 int eng_transport_running(void);
+/* the patch buttons (bit i = button i of ENG_PANEL_BUTTONS): held or switched on; the Main module's button outputs */
+void eng_buttons(uint32_t mask);
+uint32_t eng_buttons_get(void);
 /* the performance controls: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
  * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch, 0..1, the at output) */
 enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_NCTL };

@@ -379,6 +379,7 @@ static eng_t eng_one ENG_POOL;
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
+static volatile uint16_t panel_buttons; /* the patch buttons held / switched on (eng_buttons) */
 
 /* the memories: slot i of a pool is taken while own[i] is 1 */
 static inst_t inst_pool[ENG_MAX_INST] ENG_POOL;
@@ -568,6 +569,11 @@ int eng_load(const uint8_t *p, uint32_t len)
     at = eng_records_at(p, len);                 /* the poly groups: their settings, then each module's group */
     if (!at)
         return -3;
+    {                                             /* the panel: the switched-on buttons the patch was saved with */
+        const uint8_t *q = p + eng_panel_at(p, len);
+        uint32_t tog = (uint32_t)q[0] | (uint32_t)q[1] << 8, on = (uint32_t)q[2] | (uint32_t)q[3] << 8;
+        eng_buttons(on & tog);
+    }
     for (i = 0; i < p[3]; i++) {
         const uint8_t *q = p + 8u + ENG_GROUP_REC * i;
         grp_t *g = &E.grp[1u + i];
@@ -1486,6 +1492,8 @@ void eng_clock_tick(void)
 }
 
 void eng_clock_external(int on) { clk_ext = (uint8_t)(on != 0); }
+void eng_buttons(uint32_t mask) { panel_buttons = (uint16_t)(mask & ((1u << ENG_PANEL_BUTTONS) - 1u)); }
+uint32_t eng_buttons_get(void) { return panel_buttons; }
 void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
 int eng_transport_running(void) { return transport_on; }
 
@@ -1577,6 +1585,13 @@ static void m_fm1(const node_t *nd, inst_t *it, uint32_t n)
             ck[i] = i < E.clk_pulse ? ENG_ONE : 0;
     }
     fill(it->out[FM1_O_RUN], E.running ? ENG_ONE : 0, n);
+    fill(it->out[FM1_O_K5], EF(it, FM1_P_K5), n);
+    fill(it->out[FM1_O_K6], EF(it, FM1_P_K6), n);
+    {
+        uint32_t b, mask = panel_buttons;
+        for (b = 0; b < ENG_PANEL_BUTTONS; b++)
+            fill(it->out[FM1_O_FX + b], (mask >> b & 1u) ? ENG_ONE : 0, n);
+    }
 }
 
 /* the Arpeggiator: its notes are run by arp_block; the keys output shows the shared keyboard's gate (modules.ts arp) */

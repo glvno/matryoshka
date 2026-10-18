@@ -8,7 +8,7 @@
 import { DEFS, PIN_NAMES } from './modules';
 import { modulate, paramValue, toUnit, type ModuleInst, type Patch } from './patch';
 
-export const KNOBS = ['k1', 'k2', 'k3', 'k4'] as const;
+export const KNOBS = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6'] as const;
 export type Knob = (typeof KNOBS)[number];
 
 export interface KnobRest {

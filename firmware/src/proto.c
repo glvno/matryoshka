@@ -145,6 +145,24 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     m1_edited = 1;
 }
 
+/* the panel section of the running patch (engine.h eng_panel_at), 0 without one */
+static const uint8_t *m1_panel(void)
+{
+    uint32_t at = eng_panel_at(m1_cur, m1_cur_len);
+    return at ? m1_cur + at : 0;
+}
+
+/* the switched-on buttons into the running patch (SAVE keeps them) */
+static void m1_panel_on(uint32_t mask)
+{
+    uint32_t at = eng_panel_at(m1_cur, m1_cur_len);
+    if (!at)
+        return;
+    m1_cur[at + 2u] = (uint8_t)mask;
+    m1_cur[at + 3u] = (uint8_t)(mask >> 8);
+    m1_edited = 1;
+}
+
 static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
 {
     uint32_t at = m1_record(mod);

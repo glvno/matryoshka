@@ -4,7 +4,7 @@
 //!
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
-//! 3. pages: GLO, ENV (with PLAY: the transport shows PLAY / STOP), HOME, HOME held (the menu), HOME again
+//! 3. pages: GLO (a patch button: the page stays), PLAY (the transport shows PLAY / STOP), HOME, HOME held (the menu), HOME again
 //! 4. PRESET encoder: forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
@@ -29,7 +29,8 @@ const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
 const OCT_DOWN: u8 = 0;
 const OCT_UP: u8 = 1;
-const ENV: u8 = 4;
+const FX: u8 = 2;
+const REC: u8 = 13;
 const GLO: u8 = 7;
 const HOME: u8 = 8;
 const SAVE: u8 = 9;
@@ -303,6 +304,40 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     Ok(())
 }
 
+/// The patch buttons (#60): a held button (FX) opens a VCA while held; a switching one (REC, saved on) flips on each press.
+fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    let patch = std::fs::read("build/emu/panel.m1p").map_err(|e| format!("build/emu/panel.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
+    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU PANEL", &patch, false));
+    let mut m = Machine::boot(app, Some(&flash));
+    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    m.run_for(2500)?;
+    t.screen(&m, "panel: the patch loads", "EMU PANEL");
+    let hold = |m: &mut Machine, fx: bool| -> Result<i32, String> {
+        m.midi(&[0x90, 60, 100], 0)?;
+        if fx { m.key(FX, true); }
+        m.run_for(300)?;
+        let mk = m.mark();
+        m.run_for(300)?;
+        let p = m.peak_since(mk);
+        if fx { m.key(FX, false); }
+        m.midi(&[0x80, 60, 0], 300)?;
+        Ok(p)
+    };
+    let p = hold(&mut m, false)?;
+    t.check("panel: silent while FX is not held", p < QUIET, format!("peak {p}"));
+    let p = hold(&mut m, true)?;
+    t.check("panel: FX held opens the VCA (REC saved on)", p > LOUD, format!("peak {p}"));
+    m.tap(REC, 120, 300)?;
+    let p = hold(&mut m, true)?;
+    t.check("panel: REC switched off closes the second VCA", p < QUIET, format!("peak {p}"));
+    m.tap(REC, 120, 300)?;
+    let p = hold(&mut m, true)?;
+    t.check("panel: REC switched on again", p > LOUD, format!("peak {p}"));
+    *emulated += m.ms();
+    Ok(())
+}
+
 fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let flash = heavy_bank(presets)?;
     // the overload guard: parts dropped while it plays, then a patch with nothing to drop muted, the main loop alive all along
@@ -390,7 +425,6 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
     m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
     t.screen(&m, "factory patch 0 loaded", &presets[0].0);
-    t.screen(&m, "module page title", "MAIN");
     if let Some(c) = cpu_figure(&m) {
         println!("     CPU figure in the top bar: {c} %");
     }
@@ -411,8 +445,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
 
     // ---- 3. pages
     for (key, what, text) in [
-        (GLO, "GLO: mixer page", "MUTE"),
-        (ENV, "ENV: performance page", "ENV: BACK"),
+        (GLO, "GLO: a patch button (the page stays)", "SAVE: STORE"),
         (PLAY, "PLAY: the transport runs", "PLAY 120"),
         (PLAY, "PLAY again: it stops", "STOP 120"),
         (HOME, "HOME: module page", "SAVE: STORE"),
@@ -492,9 +525,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     t.screen(&m, "restart: the saved slot opens", &presets[target].0);
     t.check("restart: no edit mark", !font::on_screen(m.lcd(), &edited), String::new());
     t.check("restart: the same patch as saved (the diagram)", diagram(&m) == before, String::new());
-    m.tap(ENV, 120, 400)?;
     t.screen(&m, "restart: the saved octave", "OCT +1");
-    m.tap(ENV, 120, 400)?;
     *emulated += m.ms();
 
     // ---- 7. the preset bank in flash
@@ -525,6 +556,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     // ---- 8. safety: the overload guard, safe mode, update mode; power-safe slot writes
     safety(app, t, emulated, &presets)?;
     store(app, t, emulated, &presets)?;
+    panel(app, t, emulated)?;
 
     // ---- 9. unmodelled hardware
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h

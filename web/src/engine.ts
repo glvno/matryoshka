@@ -8,7 +8,7 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { driftSeed, flawQ16, IMPLS, instSeed, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, thruInput } from './patch';
 import { ALLOC, deviceView } from './poly';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
@@ -92,7 +92,7 @@ interface ArpRun {
 }
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
-  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
+  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, buttons: 0, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
   note: -1, on: false, onStamp: 0, offStamp: 0, retrig: false, walk: walkInit(seed),
 });
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
@@ -124,6 +124,8 @@ export class Engine {
   private extTicks = 0;
   private ext = false;
   private running = false;
+  /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
+  private buttons = 0;
   private arps: ArpRun[] = [];
   /** the performance controls (pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1): one set, every part sees it */
   private ctl = { bend: 0, mod: 0, at: 0 };
@@ -229,6 +231,8 @@ export class Engine {
     this.outputs = this.order.filter((n) => n.type === 'output');
     this.main = this.order.find((n) => n.type === 'fm1') ?? null;
     this.hasB = this.order.some((n) => n.paramsB);
+    const mainInst = patch.modules.find((m) => m.type === 'fm1');   // the switched-on buttons the patch was saved with
+    this.buttons = PANEL_BUTTONS.reduce((mask, b, i) => (mainInst?.panel?.on?.includes(b) && mainInst.panel.toggle?.includes(b) ? mask | (1 << i) : mask), 0);
     const oldArps = new Map(this.arps.map((a) => [a.node.id, a]));
     this.arps = this.order.filter((n) => n.type === 'arp').map((node) => {
       const old = oldArps.get(node.id);
@@ -531,6 +535,15 @@ export class Engine {
     this.running = on;
   }
 
+  /** a patch button (PANEL_BUTTONS index) held or switched: the host does the switching, the engine keeps the state */
+  setButton(i: number, on: boolean): void {
+    if (i >= 0 && i < PANEL_BUTTONS.length) this.buttons = on ? this.buttons | (1 << i) : this.buttons & ~(1 << i);
+  }
+
+  get buttonMask(): number {
+    return this.buttons;
+  }
+
   get transportRunning(): boolean {
     return this.running;
   }
@@ -545,11 +558,17 @@ export class Engine {
     this.ctl.at = Math.max(0, Math.min(1, v));
   }
 
-  /** a control change: CC 1 (mod wheel) is the Main module's mod output, CC 16..19 turn its knobs k1..k4; others are ignored */
+  /** a control change: CC 1 (mod wheel) is the Main module's mod output, CC 16..21 turn its knobs k1..k6, CC 22 its morph,
+   * CC 80..88 hold / release its patch buttons (64 and up: on); others are ignored */
   cc(n: number, v: number): void {
     const x = Math.max(0, Math.min(1, v / 127));
+    const main = (name: string): void => {
+      for (const node of this.nodes.values()) if (node.type === 'fm1') node.params[name] = x;
+    };
     if (n === 1) this.ctl.mod = x;
-    else if (n >= 16 && n <= 19) for (const node of this.nodes.values()) if (node.type === 'fm1') node.params[`k${n - 15}`] = x;
+    else if (n >= 16 && n <= 21) main(`k${n - 15}`);
+    else if (n === 22) main('morph');
+    else if (n >= 80 && n < 80 + PANEL_BUTTONS.length) this.setButton(n - 80, v >= 64);
   }
 
   allNotesOff(): void {
@@ -679,6 +698,7 @@ export class Engine {
         for (const x of g.parts) {
           x.clock = clock;
           x.run = this.running;
+          x.buttons = this.buttons;
           x.bend = this.ctl.bend;
           x.mod = this.ctl.mod;
           x.at = this.ctl.at;

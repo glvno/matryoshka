@@ -1,15 +1,13 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* Two pages of the panel, after ui.c and before main.c:
+/* The settings menu, after ui.c and before main.c:
  *
- * MIXER (GLO): K1 the patch's level, the black key F#3 (OP1) mutes it (and plays no note then), K2 the patch's MORPH,
- * K3 / K4 the first poly group's LEGATO and PRIORITY, ALGORITHM its parts (main.c poly_set).
  *
  * MENU (HOME held 0.7 s, HOME again closes it): the settings, in tabs like Felucca's menu (its layout, its rows are ours).
  * ALGORITHM steps between the tabs, PRESET and SELECT between the rows, K1..K4 and OCT- / OCT+ change the value of the
  * selected row. The values are applied at once and saved with the state (SAVE: main.c save bits).
  *
- * The state is plain bytes the main loop writes; the audio ISR only sees the level through patch_gain (audio.c). */
+ * The state is plain bytes the main loop writes. */
 
 #ifndef FELUCCA_VERSION
 #define FELUCCA_VERSION "M1"
@@ -18,122 +16,6 @@ static void leds_avail(void);
 static void leds_octave(void);
 static void update_only(const char *why);
 static void defaults_now(void);
-
-/* ---- mixer */
-
-static int voice_poly(void)             /* the parts of the first poly group (-1: it has none, 0: no patch loaded) */
-{
-    return eng_groups() ? eng_parts() : eng_parts() ? -1 : 0;
-}
-
-/* the key that mutes the patch: the black key F#3 (OP1) */
-#define MIX_KEY_BIT 1u
-#define MIX_KEYS (1u << MIX_KEY_BIT)
-
-static uint8_t mix_vol = 100;           /* percent, square law (so the lower half has some travel) */
-static uint8_t mix_mute;
-
-static void mix_apply(void)
-{
-    uint32_t p = mix_vol;
-    patch_gain = mix_mute ? 0 : (int32_t)((p * p * 65536u) / 10000u);
-    fm1_led_key(14u + MIX_KEY_BIT, mix_mute);              /* the mute key's LED is lit while the patch is muted */
-}
-
-static void mix_apply_all(void) { mix_apply(); }
-
-static void mix_row(int32_t y)
-{
-    char line[40], num[12], *p = line;
-    uint32_t w = (uint32_t)mix_vol * 216u / 100u;
-    p = put(p, "K1  LEVEL  (OP1: MUTE)");
-    pad(p, line, 28);
-    text5x7(12, (uint32_t)y, line, 1, C_DIM, C_BG);
-    if (mix_mute) {
-        p = put(line, "MUTED");
-    } else {
-        fmt_int(num, mix_vol);
-        p = put(line, num);
-        *p++ = '%';
-    }
-    pad(p, line, 14);
-    text_mid(12, (uint32_t)y + 11u, line, mix_mute ? C_RED : C_FG, C_BG);
-    {                                   /* the parts at the right: MONO / n PARTS (ALGO changes them) */
-        int n = voice_poly();
-        if (n <= 0)
-            p = put(line, n ? "MONO" : "-");
-        else
-            p = put_parts(line, n);
-        pad(p, line, 7);
-        text_mid(165, (uint32_t)y + 11u, line, C_FG, C_BG);
-    }
-    lcd_fill(12, (uint32_t)y + 27u, w, 4, mix_mute ? C_DIM : C_ACC);
-    lcd_fill(12 + w, (uint32_t)y + 27u, 216u - w, 4, 0x2104u);
-}
-
-/* the second mixer row: the patch's MORPH position (the Main module's parameter; K2) */
-static void morph_row(int32_t y)
-{
-    char line[40], num[12], *p;
-    int m = eng_find(T_FM1), has = eng_has_morph();
-    uint32_t pct = m >= 0 ? (uint32_t)clampi(eng_get_param((uint32_t)m, FM1_P_MORPH), 0, 65536) * 100u / 65536u : 0u, w = pct * 216u / 100u;
-    p = put(line, "K2  MORPH  (A > B OF THE PATCH)");
-    pad(p, line, 28);
-    text5x7(12, (uint32_t)y, line, 1, C_DIM, C_BG);
-    if (!has)
-        p = put(line, "NO B SIDE");
-    else {
-        fmt_int(num, (int32_t)pct);
-        p = put(line, num);
-        *p++ = '%';
-    }
-    pad(p, line, 14);
-    text_mid(12, (uint32_t)y + 11u, line, has ? C_FG : C_DIM, C_BG);
-    lcd_fill(12, (uint32_t)y + 27u, w, 4, has ? C_ACC : C_DIM);
-    lcd_fill(12 + w, (uint32_t)y + 27u, 216u - w, 4, 0x2104u);
-}
-
-/* the third row: the first poly group's LEGATO on K3, PRIORITY on K4 (main.c poly_turn) */
-static void voicing_row(int32_t y)
-{
-    char line[40], *p;
-    uint32_t j;
-    p = put(line, "K3  LEGATO      K4  PRIORITY");
-    pad(p, line, 28);
-    text5x7(12, (uint32_t)y, line, 1, C_DIM, C_BG);
-    for (j = 0; j < 2u; j++) {
-        int c = eng_poly_get(0, j ? ENG_POLY_PRIORITY : ENG_POLY_LEGATO);
-        p = put(line, c < 0 ? "-" : j ? POLY_PRIORITY_NAME[c] : POLY_LEGATO_NAME[c]);
-        pad(p, line, 9);
-        text_mid(12u + 96u * j, (uint32_t)y + 11u, line, c >= 0 ? C_FG : C_DIM, C_BG);
-    }
-}
-
-static void mixer_draw(int full)
-{
-    if (full)
-        text5x7(12, 226, "K1 LEVEL K2 MORPH OP1 MUTE ALGO PARTS", 1, 0x4208u, C_BG);
-    mix_row(32);
-    morph_row(80);
-    voicing_row(128);
-}
-
-static void mix_turn(int32_t clicks, int fast)
-{
-    int32_t x = (int32_t)mix_vol + clicks * (fast ? 5 : 1);
-    mix_vol = (uint8_t)(x < 0 ? 0 : x > 100 ? 100 : x);
-    mix_apply();
-    if (!ui_dirty)
-        ui_dirty = 1;
-}
-
-static void mix_toggle(void)
-{
-    mix_mute ^= 1u;
-    mix_apply();
-    if (!ui_dirty)
-        ui_dirty = 1;
-}
 
 /* ---- settings menu */
 

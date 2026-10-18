@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule } from './patch';
-import { GROUP_REC, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
+import { GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -82,7 +82,7 @@ describe('binary patch format', () => {
       expect(b[2], name).toBe(p.modules.length);
       expect(b[3], name).toBe(g); // poly groups (Oracle V has one)
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
-      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0), 0) + 4 * p.cables.length;
+      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0), 0) + 4 * p.cables.length;
       expect(b.length, name).toBe(size);
       expect(p.cables.length).toBeLessThanOrEqual(MAX_CABLES);
     }
@@ -119,17 +119,18 @@ describe('binary patch format', () => {
     const members = polyGroups(p)[0].modules;
     // the allocator is written in its place as the group's Part (poly.ts deviceView)
     expect(Array.from(b.slice(at, at + p.modules.length))).toEqual(p.modules.map((m) => (members.has(m.id) || m.type === 'alloc' ? 1 : 0)));
-    expect(b[at + p.modules.length + p.modules.slice(0, p.modules.findIndex((m) => m.type === 'alloc')).reduce((n, m) => n + recordSize(m.type), 0)]).toBe(TYPE_ORDER.indexOf('part'));
+    const rec = at + p.modules.length + PANEL_BYTES; // the panel section, then the module records
+    expect(b[rec + p.modules.slice(0, p.modules.findIndex((m) => m.type === 'alloc')).reduce((n, m) => n + recordSize(m.type), 0)]).toBe(TYPE_ORDER.indexOf('part'));
     expect(b.slice(at, at + p.modules.length).some((g) => g === 0)).toBe(true); // Main and Output run once
-    expect(b[at + p.modules.length]).toBe(TYPE_ORDER.indexOf(p.modules[0].type)); // the module records follow
+    expect(b[rec]).toBe(TYPE_ORDER.indexOf(p.modules[0].type)); // the module records follow
   });
 
   it('writes parameters as Q16.16 and cables as indices', () => {
     const p = subtractiveSaw();
     const b = encodePatch(p);
     // module 0 is the FM-1 panel (type byte + 4 parameters); module 1 osc starts right after
-    const osc = 8 + 1 + 4 * DEFS.fm1.params.length;
-    expect(b[8]).toBe(TYPE_ORDER.indexOf('fm1'));
+    const osc = 8 + PANEL_BYTES + 1 + 4 * DEFS.fm1.params.length;
+    expect(b[8 + PANEL_BYTES]).toBe(TYPE_ORDER.indexOf('fm1'));
     expect(b[osc]).toBe(TYPE_ORDER.indexOf('osc'));
     const dv = new DataView(b.buffer);
     expect(dv.getInt32(osc + 1, true)).toBe(2 * 65536); // wave = saw (2)

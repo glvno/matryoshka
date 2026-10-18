@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import { describe, expect, it } from 'vitest';
+import { Engine } from './engine';
+import { DEFS } from './modules';
+import { addModule, connect, emptyPatch, validatePatch } from './patch';
+import { encodePatch } from './patchbin';
+import { subtractiveSaw } from './test-patches';
+
+describe('the panel section (#60)', () => {
+  it('writes the button modes, the switched-on ones and the labels after the header', () => {
+    const p = subtractiveSaw();
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    main.panel = { toggle: ['rec', 'fx'], on: ['rec', 'glo'], labels: { k5: 'cutoff', fx: 'gate!', bogus: 'x' } };
+    const v = validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
+    expect(v.modules[0].panel).toEqual({ toggle: ['rec', 'fx'], on: ['rec'], labels: { k5: 'CUTOFF', fx: 'GATE!' } });
+    const b = encodePatch(v);
+    const dv = new DataView(b.buffer);
+    expect(dv.getUint16(8, true)).toBe((1 << 8) | 1); // rec = button 8, fx = button 0
+    expect(dv.getUint16(10, true)).toBe(1 << 8);
+    const label = (i: number): string => String.fromCharCode(...b.slice(12 + i * 10, 22 + i * 10)).replace(/\0+$/, '');
+    expect(label(4)).toBe('CUTOFF'); // k5
+    expect(label(6)).toBe('GATE!'); // fx
+    expect(label(0)).toBe('');
+  });
+
+  it('a held button and a switched one reach the Main module\'s outputs; CC 80.. holds them, CC 20 / 21 turn K5 / K6', () => {
+    const p = emptyPatch();
+    const main = addModule(p, DEFS.fm1, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    connect(p, DEFS, { module: main.id, port: 'fx' }, { module: out.id, port: 'l' });
+    main.panel = { toggle: ['rec'], on: ['rec'] };
+    const e = new Engine(44100);
+    e.load(p);
+    const l = new Float32Array(128), r = new Float32Array(128);
+    e.render(l, r);
+    expect(e.probe(main.id, 'rec')![0]).toBe(1); // saved switched on
+    expect(e.probe(main.id, 'fx')![0]).toBe(0);
+    e.cc(80, 127);
+    e.render(l, r);
+    expect(e.probe(main.id, 'fx')![0]).toBe(1);
+    e.cc(80, 0);
+    e.cc(20, 127);
+    e.render(l, r);
+    expect(e.probe(main.id, 'fx')![0]).toBe(0);
+    expect(e.probe(main.id, 'k5')![0]).toBe(1);
+  });
+});

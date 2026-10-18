@@ -18,6 +18,7 @@ export type HostMsg =
   | { t: 'bypass'; id: number; on: boolean }
   | { t: 'range'; id: number; index: number; name: string; range: [number, number] | null }
   | { t: 'transport'; on: boolean }
+  | { t: 'button'; i: number; on: boolean }
   | { t: 'probe'; key: string; id: number; port: string }
   | { t: 'unprobe'; key: string }
   | { t: 'watch'; key: string; id: number; port: string }
@@ -89,6 +90,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'envwatch') this.envs.set(m.key, m.id);
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
         else if (m.t === 'transport') this.engine.transport(m.on);
+        else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel);
         else if (m.t === 'off') this.engine.noteOff(m.note);
         else if (m.t === 'clock') {                   // MIDI clock: it drives the clock while it comes in

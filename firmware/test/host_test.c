@@ -65,7 +65,7 @@ int main(int argc, char **argv)
                 total = fr;
             else if (!strcmp(kind, "on"))
                 fscanf(ev, "%u %u", &note, &vel);
-            else if (!strcmp(kind, "off"))
+            else if (!strcmp(kind, "off") || !strcmp(kind, "bon") || !strcmp(kind, "boff"))
                 fscanf(ev, "%u", &note);
         }
         rewind(ev);
@@ -87,6 +87,9 @@ int main(int argc, char **argv)
         } else if (!strcmp(kind, "off")) {
             fscanf(ev, "%u", &note);
             eng_note_off(note);
+        } else if (!strcmp(kind, "bon") || !strcmp(kind, "boff")) {
+            fscanf(ev, "%u", &note);
+            eng_buttons(!strcmp(kind, "bon") ? eng_buttons_get() | 1u << note : eng_buttons_get() & ~(1u << note));
         } else if (!strcmp(kind, "run") || !strcmp(kind, "stop")) {
             eng_transport(!strcmp(kind, "run"));
         }

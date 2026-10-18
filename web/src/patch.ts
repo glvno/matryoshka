@@ -137,6 +137,40 @@ export interface ModuleInst {
   /** macro ranges: for a parameter that p1 / p2 controls (map), the input's value 0..1 lands between these two positions of the
    * parameter's range (0..1, octaves for a log parameter; paramUnit) instead of adding to the base value */
   range?: { p1?: Record<string, [number, number]>; p2?: Record<string, [number, number]> };
+  /** the Main module only: what the patch makes of the FM-1's panel (#60): which of its buttons (PANEL_BUTTONS) switch on and
+   * off instead of acting while held, the switched ones that are on, and labels for K1..K6 and the buttons (the device's
+   * player screen and legend show them; at most PANEL_LABEL_MAX characters of the LCD's font) */
+  panel?: MainPanel;
+}
+
+export interface MainPanel {
+  toggle?: string[];
+  on?: string[];
+  labels?: Record<string, string>;
+}
+
+/** the controls a panel label can name: K1..K6, then the buttons (patchbin.ts writes the labels in this order) */
+export const PANEL_LABEL_KEYS = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp', 'seq', 'rec'];
+export const PANEL_LABEL_MAX = 10;
+/** a label as the LCD can draw it: capitals, digits, space and its few signs */
+export const panelLabel = (s: unknown): string => String(s ?? '').toUpperCase().replace(/[^A-Z0-9 +%&>=()?!#*<,_'.:\/-]/g, '').slice(0, PANEL_LABEL_MAX).trim();
+
+/** a Main module's panel settings from anything: known names only, labels as the LCD draws them; undefined when empty */
+export function fixPanel(raw: unknown): MainPanel | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const buttons = PANEL_LABEL_KEYS.slice(6);
+  const names = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => buttons.includes(x)))] : []);
+  const toggle = names(r.toggle);
+  const on = names(r.on).filter((b) => toggle.includes(b));
+  const labels: Record<string, string> = {};
+  if (r.labels && typeof r.labels === 'object')
+    for (const [k, v] of Object.entries(r.labels as Record<string, unknown>)) if (PANEL_LABEL_KEYS.includes(k) && panelLabel(v)) labels[k] = panelLabel(v);
+  const out: MainPanel = {};
+  if (toggle.length) out.toggle = toggle;
+  if (on.length) out.on = on;
+  if (Object.keys(labels).length) out.labels = labels;
+  return Object.keys(out).length ? out : undefined;
 }
 
 export interface Patch {
@@ -506,6 +540,11 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
       delete m.att;
       delete m.map;
     }
+    if (m.type === 'fm1') {
+      const panel = fixPanel(m.panel);
+      if (panel) m.panel = panel;
+      else delete m.panel;
+    } else delete m.panel;
     if (m.bypass && m.type !== 'fm1' && m.type !== 'output') m.bypass = true;
     else delete m.bypass;
     if (m.paramsB && typeof m.paramsB === 'object' && m.type !== 'fm1') {

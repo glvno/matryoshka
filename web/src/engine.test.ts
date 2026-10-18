@@ -7,7 +7,7 @@ import { copiesOf, polyGroups } from './poly';
 import { fixAssemblies, makeAssembly } from './assembly';
 import { addAlloc, polyCfg, withParts } from './test-poly';
 import { PRESETS } from './presets';
-import { encodePatch, recordSize } from './patchbin';
+import { PANEL_BYTES, encodePatch, recordSize } from './patchbin';
 import { acid, subtractiveSaw, twoOpFM, wobble } from './test-patches';
 
 const SR = 48000;
@@ -1066,9 +1066,9 @@ describe('bypass', () => {
     const v = validatePatch({ ...p, modules: mods }, DEFS);
     expect(v.modules.map((m) => !!m.bypass)).toEqual([false, false, true, false]);
     const b = encodePatch(v);
-    const at = 8 + recordSize('fm1') + recordSize('osc');
+    const at = 8 + PANEL_BYTES + recordSize('fm1') + recordSize('osc');
     expect(b[at]).toBe(DEFS.filter ? (Object.keys(DEFS).indexOf('filter') | 0x80) : -1);
-    expect(b[8] & 0x80).toBe(0);
+    expect(b[8 + PANEL_BYTES] & 0x80).toBe(0);
   });
 });
 
@@ -1523,7 +1523,7 @@ describe('FM oscillator', () => {
     const r = validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
     expect(r.modules.find((m) => m.id === osc)!.params.fb).toBe(0.25);
     const b = encodePatch(p);
-    const rec = 8 + recordSize('fm1'); // the oscillator's record follows the panel's
+    const rec = 8 + PANEL_BYTES + recordSize('fm1'); // the oscillator's record follows the Main module's
     const at = rec + 1 + 4 * DEFS.osc.params.findIndex((q) => q.name === 'fb');
     expect(new DataView(b.buffer).getInt32(at, true)).toBe(Math.round(0.25 * 65536));
   });

@@ -61,6 +61,8 @@ static void fm1_fault(const fm1_crash_t *c)
 
 static void leds_octave(void);
 static void leds_play(void);
+static void panel_button(uint32_t b, int down);
+static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button (1..9) last moved: the player screen shows it */
 static void page_set(uint32_t p);
 
 /* proto.c hooks */
@@ -79,6 +81,7 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
     eng_run = 1;                                /* a voice that did not load renders silence by itself */
     sel = 0;
     patch_label = "FROM EDITOR";
+    leds_avail();                               /* the patch buttons it uses */
     screen_idle();
     return rc;
 }
@@ -118,8 +121,8 @@ static void settings_pack(uint8_t *d)
     d[6] = cfg.clock_in;
     d[7] = cfg.prog_chg;
     d[8] = cfg.ch;
-    d[9] = mix_vol;
-    d[10] = mix_mute;
+    d[9] = 100;                                 /* (the mixer's level and mute before #60) */
+    d[10] = 0;
     d[11] = (uint8_t)sel;
 }
 static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint32_t *module)
@@ -134,8 +137,6 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     cfg.clock_in = d[6] & 1u;
     cfg.prog_chg = d[7] & 1u;
     cfg.ch = d[8] > 16u ? 1u : d[8];
-    mix_vol = d[9] > 100u ? 100u : d[9];
-    mix_mute = d[10] & 1u;
     *module = d[11];
     return 0;
 }
@@ -340,7 +341,6 @@ static void patch_boot(void)                    /* the slot the settings record 
         boot_msg = "FACTORY BANK WRITTEN";
         boot_msg_ms = 2000;
     } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
-        mix_apply_all();
         leds_avail();
         leds_octave();
     }
@@ -363,9 +363,6 @@ static void defaults_now(void)
     eng_all_notes_off();
     eng_transport(0);
     cfg_defaults();
-    mix_vol = 100;
-    mix_mute = 0;
-    mix_apply_all();
     octave = 0;
     if (flash_ok) {
         ui_msg("WRITING THE FACTORY BANK", 10000);
@@ -415,14 +412,17 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                 eng_all_notes_off();
             } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
                 eng_ctl(ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
-            } else if (st == 0xB0u && n >= 16u && n <= 20u) {   /* CC 16..19: the Main module's knobs K1..K4; CC 20: its MORPH */
+            } else if (st == 0xB0u && n >= 16u && n <= 22u) {   /* CC 16..21: the Main module's knobs K1..K6; CC 22: its MORPH */
                 int m = eng_find(T_FM1);
                 if (m >= 0) {
-                    eng_set_param((uint32_t)m, n == 20u ? FM1_P_MORPH : n - 16u, (int32_t)(v * 65536u / 127u));
-                    m1_patch_param((uint32_t)m, n == 20u ? FM1_P_MORPH : n - 16u, (int32_t)(v * 65536u / 127u));
+                    uint32_t par = n == 22u ? FM1_P_MORPH : n - 16u;
+                    eng_set_param((uint32_t)m, par, (int32_t)(v * 65536u / 127u));
+                    m1_patch_param((uint32_t)m, par, (int32_t)(v * 65536u / 127u));
                     if (!ui_dirty)
                         ui_dirty = 1;
                 }
+            } else if (st == 0xB0u && n >= 80u && n < 80u + ENG_PANEL_BUTTONS) {   /* CC 80..88: the patch buttons (64 and up: down) */
+                panel_button(n - 80u, v >= 64u);
             } else if (st == 0xE0u) {                   /* pitch bend: +-2 semitones on the pitch, and the bend output */
                 eng_ctl(ENG_CTL_BEND, ((int32_t)(v << 7 | n) - 8192) << 3);
             } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
@@ -469,90 +469,13 @@ static void master_boot(void)
     }
 }
 
-/* SELECT (encoder 0) steps through the modules of the patch. The four knobs (encoders 2..5, Felucca's panel table) change
- * the parameters the selected module's matrix assigns to them (on the FM-1 panel: k1..k4): a click is 1/100 of the range
- * (the parameter's own step if that is larger, so a choice moves one entry), five times that when turned fast. The new
- * values go into the stored copy of the patch too. */
-/* The parts of the selected voice's first poly group (its group record in the binary, byte 8; ALGO on the mixer page):
- * the patch is reloaded with the new count (its module state restarts, held notes end). When the pools have no room for it
- * (signal buffers, instances) the old count comes back. A patch without a poly group has nothing to change. SAVE keeps
- * it, as it is part of the stored patch. */
-static void poly_set(int32_t n)
-{
-    uint8_t old;
-    int rc;
-    char m[24], num[8], *q = m;
-    if (m1_cur_len < 8u)
-        return;
-    if (!m1_cur[3] || m1_cur_len < 8u + ENG_GROUP_REC) {
-        ui_msg("NO POLY ASSEMBLY", 1500);
-        return;
-    }
-    n = n < 1 ? 1 : n > ENG_MAX_PARTS ? ENG_MAX_PARTS : n;
-    old = m1_cur[8];
-    if (old == (uint32_t)n)
-        return;
-    m1_cur[8] = (uint8_t)n;
-    eng_run = 0;
-    __asm__ volatile("" ::: "memory");
-    rc = eng_load(m1_cur, m1_cur_len);
-    if (rc) {
-        m1_cur[8] = old;
-        rc = eng_load(m1_cur, m1_cur_len);
-    }
-    load_err = -rc;
-    eng_us_max = 0;
-    eng_overload_clear();
-    __asm__ volatile("" ::: "memory");
-    eng_run = 1;
-    if (m1_cur[8] != (uint8_t)n)
-        q = put(q, "NO ROOM FOR ");
-    else
-        m1_edited = 1;
-    fmt_int(num, n);
-    q = put(q, num);
-    put(q, n == 1 ? " PART" : " PARTS");
-    ui_msg(m, 1500);
-    ui_dirty = 2;
-}
-
-/* the mixer page's K2: the patch's MORPH position (the Main module's parameter, 0..100 %) by `clicks` percent */
-static void morph_turn(int32_t clicks)
-{
-    int m = eng_find(T_FM1);
-    int32_t v;
-    if (m < 0)
-        return;
-    v = clampi(eng_get_param((uint32_t)m, FM1_P_MORPH) + clicks * 655, 0, 65536);
-    eng_set_param((uint32_t)m, FM1_P_MORPH, v);
-    m1_patch_param((uint32_t)m, FM1_P_MORPH, v);
-    if (!ui_dirty)
-        ui_dirty = 1;
-}
-
-/* the mixer page's K3 / K4: a setting of the first poly group (ENG_POLY_LEGATO, ENG_POLY_PRIORITY: 0..2), one step per
- * turn, into the running patch and its group record (byte 8 + field) */
-static void poly_turn(uint32_t field, int32_t clicks)
-{
-    int c = eng_poly_get(0, field);
-    if (c < 0 || m1_cur_len < 8u + ENG_GROUP_REC || !m1_cur[3]) {
-        ui_msg("NO POLY ASSEMBLY", 1500);
-        return;
-    }
-    c = clampi(c + (clicks > 0 ? 1 : -1), 0, 2);
-    if (eng_poly_set(0, field, (uint32_t)c)) {
-        m1_cur[8u + field] = (uint8_t)((uint32_t)c | (m1_cur[8u + field] & 0x80u));   /* the legato byte keeps its unison bit */
-        m1_edited = 1;
-    }
-    if (!ui_dirty)
-        ui_dirty = 1;
-}
-
 static void knobs_poll(void)
 {
-    static uint32_t last_ms[4];
+    static uint32_t last_ms[6];
+    static const uint8_t ENC_OF[6] = {2, 3, 4, 5, 0, 1};   /* K1..K4, then SELECT (K5) and ALGO (K6) */
     int32_t st[7];
-    uint32_t k, j, n = (uint32_t)eng_nmodules();
+    uint32_t k;
+    int panel = eng_find(T_FM1);
     for (k = 0; k < 7u; k++)
         st[k] = fm1_enc_take(k);
     if (page == PAGE_MENU) {                        /* the settings menu: ALGO tabs, PRESET rows, K1..K4 the value */
@@ -563,117 +486,28 @@ static void knobs_poll(void)
         preset_step(st[6]);
         return;
     }
-    if (page == PAGE_MIXER) {                       /* K1: the level; K2: morph; K3 / K4: legato / priority; ALGO: the parts of the first poly group */
-        if (st[2]) {
-            uint32_t fast = cfg.accel && fm1_ms - last_ms[0] < 80u;
-            last_ms[0] = fm1_ms;
-            mix_turn(st[2], (int)fast);
-        }
-        if (st[3]) {                                /* K2: the patch's MORPH (the Main module's parameter), 1 % per click */
-            uint32_t fast = cfg.accel && fm1_ms - last_ms[1] < 80u;
-            last_ms[1] = fm1_ms;
-            morph_turn(st[3] * (fast ? 5 : 1));
-        }
-        if (st[4])                                  /* K3 / K4: the first poly group's LEGATO / PRIORITY */
-            poly_turn(ENG_POLY_LEGATO, st[4]);
-        if (st[5])
-            poly_turn(ENG_POLY_PRIORITY, st[5]);
-        if (st[1])
-            poly_set(eng_parts() + st[1]);
-        if (st[0])
-            page_set(page);                         /* SELECT: back to the module page */
-        return;
-    }
-    if (page && st[0])                              /* SELECT: back to the module page */
-        page_set(page);
-    if (page == PAGE_PERF) {                        /* the performance page: K1..K4 are the Main module's knobs */
-        int panel = eng_find(T_FM1);
-        for (k = 0; k < 4u && panel >= 0; k++) {
-            const def_t *fd = &DEFS[T_FM1];
-            int32_t inc = fd->pinc[k], v;
-            if (!st[2u + k])
-                continue;
-            if (cfg.accel && fm1_ms - last_ms[k] < 80u)
-                inc *= 5;
-            last_ms[k] = fm1_ms;
-            v = eng_get_param((uint32_t)panel, k) + st[2u + k] * inc;
-            v = v < fd->pmin[k] ? fd->pmin[k] : v > fd->pmax[k] ? fd->pmax[k] : v;
-            eng_set_param((uint32_t)panel, k, v);
-            m1_patch_param((uint32_t)panel, k, v);
-            if (!ui_dirty)
-                ui_dirty = 1;
-        }
-        return;
-    }
-    if (!n)
-        return;
-    if (sel >= n)
-        sel = 0;
-    if (st[0]) {
-        int32_t m = ((int32_t)sel + st[0]) % (int32_t)n;
-        sel = (uint32_t)(m < 0 ? m + (int32_t)n : m);
-        ui_dirty = 2;
-    }
-    for (k = 0; k < 4u; k++) {
-        uint32_t mask;
-        int panel_knob = -1;
-        if (!st[2u + k])
+    for (k = 0; k < 6u && panel >= 0; k++) {       /* the Main module's k1..k6 (its parameters 0..5) */
+        const def_t *fd = &DEFS[T_FM1];
+        int32_t inc = fd->pinc[k], v, c = st[ENC_OF[k]];
+        if (!c)
             continue;
-        mask = eng_knob_mask(sel, k);
-        for (j = 0; j < DEFS[eng_type(sel)].npar; j++) {
-            const def_t *d = &DEFS[eng_type(sel)];
-            int32_t inc, v, pn;
-            uint32_t fast = cfg.accel && fm1_ms - last_ms[k] < 80u;
-            if (!(mask >> j & 1u))
-                continue;
-            if ((pn = eng_knob_panel(sel, k, j)) >= 0) {   /* the panel's knob drives it: turn that one (as with the panel selected) */
-                panel_knob = pn;
-                continue;
-            }
-            inc = d->pinc[j];
-            if (eng_param_is_log(sel, j)) {              /* the cutoff: 1/100 of its octaves per click */
-                v = eng_step_param(sel, j, st[2u + k], fast ? 5 * 655 : 655);
-            } else {
-                if (inc < ENG_ONE && fast)
-                    inc *= 5;
-                v = eng_get_param(sel, j) + st[2u + k] * inc;
-                v = v < d->pmin[j] ? d->pmin[j] : v > d->pmax[j] ? d->pmax[j] : v;
-            }
-            eng_set_param(sel, j, v);
-            m1_patch_param(sel, j, v);
-        }
-        if (panel_knob >= 0) {
-            const def_t *fd = &DEFS[T_FM1];
-            int32_t inc = fd->pinc[k], v;
-            if (cfg.accel && inc < ENG_ONE && fm1_ms - last_ms[k] < 80u)
-                inc *= 5;
-            v = eng_get_param((uint32_t)panel_knob, k) + st[2u + k] * inc;
-            v = v < fd->pmin[k] ? fd->pmin[k] : v > fd->pmax[k] ? fd->pmax[k] : v;
-            eng_set_param((uint32_t)panel_knob, k, v);
-            m1_patch_param((uint32_t)panel_knob, k, v);
-        }
-        if (mask) {
-            last_ms[k] = fm1_ms;
-            if (!ui_dirty)
-                ui_dirty = 1;
-        }
+        if (cfg.accel && fm1_ms - last_ms[k] < 80u)
+            inc *= 5;
+        last_ms[k] = fm1_ms;
+        v = clampi(eng_get_param((uint32_t)panel, k) + c * inc, fd->pmin[k], fd->pmax[k]);
+        eng_set_param((uint32_t)panel, k, v);
+        m1_patch_param((uint32_t)panel, k, v);
+        knob_touched = (uint8_t)(k + 1u);
+        if (!ui_dirty)
+            ui_dirty = 1;
     }
 }
 
 static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
 static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F3 = MIDI 53), shifted by the octave, -> the engine */
 {
-    static uint32_t prev, prev_raw, ignore;
-    uint32_t raw = fm1_in.notes, now, diff, n;
-    if (page == PAGE_MIXER) {                       /* the mixer: the F# key mutes the patch and plays nothing */
-        uint32_t rise = raw & ~prev_raw & MIX_KEYS;
-        if (rise >> MIX_KEY_BIT & 1u)
-            mix_toggle();
-        ignore |= rise;                             /* (until they are let go, also after leaving the page) */
-    }
-    prev_raw = raw;
-    ignore &= raw;
-    now = raw & ~ignore;
+    static uint32_t prev;
+    uint32_t now = fm1_in.notes, diff, n;
     diff = now ^ prev;
     prev = now;
     for (n = 0; diff && n < 27u; n++) {
@@ -691,9 +525,10 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
 }
 
 /* PLAY: red while the transport is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
- * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. GLO lights up while the mixer shows. */
-#define BTN_GLO 7u                  /* the mixer page */
+ * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. */
 #define BTN_PLAY 12u
+/* the patch buttons (the Main module's outputs fx .. rec, engine.h ENG_PANEL_BUTTONS): their matrix ids, M-VAVE's order */
+static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10, 11, 13};
 static void led_breath_key(uint32_t id, int on)     /* a button's LED breathes (the HAL's one shared speed, fm1_br_step) */
 {
     uint32_t p, r;
@@ -716,7 +551,52 @@ static void leds_play(void)
         fm1_led_breath[8] |= 2u;
     else
         fm1_led_breath[8] &= (uint8_t)~2u;
-    fm1_led_key(BTN_GLO, page == PAGE_MIXER);
+}
+
+/* a patch button's LED: lit while it is held or switched on */
+static void leds_panel(void)
+{
+    uint32_t b, mask = eng_buttons_get();
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++)
+        fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u));
+}
+
+/* the patch buttons a cable leaves from (the rest stay dark) */
+static uint32_t panel_used(void)
+{
+    uint32_t i, from, fp, to, tp, used = 0;
+    int main = eng_find(T_FM1);
+    for (i = 0; main >= 0 && i < (uint32_t)eng_ncables(); i++) {
+        eng_cable(i, &from, &fp, &to, &tp);
+        if (from == (uint32_t)main && fp >= FM1_O_FX && fp < FM1_O_FX + ENG_PANEL_BUTTONS)
+            used |= 1u << (fp - FM1_O_FX);
+    }
+    return used;
+}
+
+/* a patch button pressed / let go (index into PANEL_BTN_ID): a switching one flips on the press, the others act while held;
+ * a switch is kept in the patch (SAVE stores it) */
+static void panel_button(uint32_t b, int down)
+{
+    const uint8_t *pn = m1_panel();
+    uint32_t tog = pn ? (uint32_t)pn[0] | (uint32_t)pn[1] << 8 : 0u, mask = eng_buttons_get(), was = mask;
+    if (tog >> b & 1u) {
+        if (down)
+            mask ^= 1u << b;
+    } else {
+        mask = down ? mask | 1u << b : mask & ~(1u << b);
+    }
+    if (mask == was)
+        return;
+    eng_buttons(mask);
+    if (tog >> b & 1u)
+        m1_panel_on(mask & tog);
+    leds_panel();
+    if (down) {
+        button_touched = (uint8_t)(b + 1u);
+        if (!ui_dirty)
+            ui_dirty = 1;
+    }
 }
 
 static void page_set(uint32_t p)    /* the same button again goes back to the module page */
@@ -756,17 +636,12 @@ static void save_state(void)
     ui_msg(m1_store(m1_cur, m1_cur_len) ? "ERROR" : "SAVED", 1500);
 }
 
-/* The panel buttons (matrix ids as in Felucca's panel table; unknown ones are shown so they can be assigned):
- * OCT- 0, OCT+ 1: octave; SAVE 9: save the state; GLO 7: the voices page. */
+/* The device's own buttons (matrix ids, M-VAVE's fm1_open order): OCT- 0, OCT+ 1: octave; SAVE 9: write the patch into its slot;
+ * HOME 8: tap = the legend, held = the menu; PLAY 12: the transport. The others are the patch's (PANEL_BTN_ID). */
 #define BTN_OCT_DOWN 0u
 #define BTN_OCT_UP 1u
 #define BTN_SAVE 9u
-/* the panel's buttons (ids 0..13); the unused ones do nothing yet and show no banner */
-#define BTN_FX 2u
-#define BTN_ENV 4u
-#define BTN_EDIT 6u
-#define BTN_REC 13u
-#define BTN_HOME 8u                     /* HOME: back to the module page, on the FM-1 panel module of the patch */
+#define BTN_HOME 8u
 
 static void led_glow(uint32_t id, int on)           /* the HAL's dim glow (~1/30 of lit) for a button's LED */
 {
@@ -781,12 +656,15 @@ static void led_glow(uint32_t id, int on)           /* the HAL's dim glow (~1/30
             }
 }
 
-static void leds_avail(void)                        /* the page buttons glow dimly (lit while their page shows); MENU > LEDS */
+static void leds_avail(void)                        /* HOME and the patch buttons the patch uses glow dimly; MENU > LEDS */
 {
     int on = cfg.leds != 0;
+    uint32_t b, used = panel_used();
     fm1_led_dim_level(cfg.leds == 2u ? 2u : 0u);  /* DIM LOW is the old glow (~1/30), DIM HIGH a brighter one (~1/12) */
     led_glow(BTN_HOME, on);
-    led_glow(BTN_GLO, on);
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++)
+        led_glow(PANEL_BTN_ID[b], on && (used >> b & 1u));
+    leds_panel();
 }
 
 static void home_press(void)
@@ -804,25 +682,6 @@ static void home_press(void)
     }
     view_draw(1);
 }
-/* FX: the selected module on / off (bypass): its outputs carry its through input (a filter's IN) or silence. Stored with the
- * patch (bit 7 of the record's type byte), so SAVE keeps it. Not on the Main module or the output. */
-static void bypass_toggle(void)
-{
-    int t = eng_type(sel), on;
-    char m[24], *q;
-    if (t < 0 || t == T_FM1 || t == T_OUTPUT) {
-        ui_msg("NOT ON THIS MODULE", 1000);
-        return;
-    }
-    on = !eng_bypass(sel);
-    eng_set_bypass(sel, on);
-    m1_patch_bypass(sel, on);
-    q = put(m, DEFS[t].name);
-    put(q, on ? " OFF" : " ON");
-    ui_msg(m, 1000);
-    ui_dirty = 2;
-}
-
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
 
 static void buttons_poll(void)
@@ -854,8 +713,15 @@ static void buttons_poll(void)
     }
     if (p & (1u << BTN_SAVE))
         save_state();
-    if (p & (1u << BTN_FX))
-        bypass_toggle();
+    {
+        uint32_t b;
+        for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
+            if (p >> PANEL_BTN_ID[b] & 1u)
+                panel_button(b, 1);
+            if (rel >> PANEL_BTN_ID[b] & 1u)
+                panel_button(b, 0);
+        }
+    }
     if (p & (1u << BTN_HOME))
         home_t0 = (fm1_ms & ~3u) | 1u;              /* HOME acts on release: a tap goes home, 0.7 s held opens the menu
                                                      * (bit 1 cleared: with fm1_ms's own bit 1 a press looked fired) */
@@ -872,10 +738,6 @@ static void buttons_poll(void)
         }
         home_t0 = 0;
     }
-    if (p & (1u << BTN_GLO))
-        page_set(PAGE_MIXER);
-    if (p & (1u << BTN_ENV))
-        page_set(PAGE_PERF);                        /* the performance page (again: back to the module page) */
     if (p & (1u << BTN_PLAY))
         play_toggle();
 }

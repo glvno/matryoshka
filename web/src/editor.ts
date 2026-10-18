@@ -2,7 +2,7 @@
 // Patch editor: module cards on a canvas, SVG cables, drag-to-connect, a selection, assemblies and undo.
 import { resizeHandle } from './resize-handle';
 import { tidy, tidyAssembly } from './tidy';
-import { DEFS } from './modules';
+import { DEFS, PANEL_BUTTONS } from './modules';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
@@ -41,6 +41,8 @@ import {
   ensureMain,
   EDITOR_ONLY,
   rowDef,
+  PANEL_LABEL_MAX,
+  panelLabel,
 } from './patch';
 import { FlawPanel } from './flaws-panel';
 import type { ScreenSpec } from './scope-view';
@@ -113,6 +115,8 @@ export interface EditorEvents {
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
   onTransport(on: boolean): void;
+  /** a patch button of the Main module (PANEL_BUTTONS index) held / let go or switched */
+  onButton?(i: number, on: boolean): void;
   /** a scope probe on an output was set or removed (key = probeKey) */
   onProbe(key: string, id: number, port: string, kind: PortDef['kind'], label: string, on: boolean): void;
   /** cards were moved: positions changed, nothing the engine needs */
@@ -586,11 +590,14 @@ export class Editor {
     // outputs with a home next to the control or setting that makes them; the rest in the strip
     const wheels = this.dockWheels;
     const WHEELS = wheels && this.wheelHost ? ['bend', 'mod'] : [], CLOCK = ['clock', 'run'];
-    const homed = [...WHEELS, ...CLOCK];
+    const homed = [...WHEELS, ...CLOCK, ...PANEL_BUTTONS];
     const strip = jacks(def.outputs.map((p) => p.name).filter((n) => !isKnob(n) && !homed.includes(n)));
     const knobs = document.createElement('div');
     knobs.className = 'deck-knobs';
-    for (const k of ['k1', 'k2', 'k3', 'k4']) knobs.append(this.dockKnob(m, def, k));
+    for (const k of ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']) knobs.append(this.dockKnob(m, def, k));
+    const buttons = document.createElement('div');
+    buttons.className = 'dock-buttons-grid';
+    PANEL_BUTTONS.forEach((b, i) => buttons.append(this.dockButton(m, b, i)));
     const morph = param('morph');
     // the morph slider's thumb is the morph input (Main has no p1 / p2): its cables are drawn to the thumb
     for (const pd of def.params) if (pd.input) {
@@ -611,6 +618,7 @@ export class Editor {
     el.append(title,
       col('dock-outputs', strip, ...(this.dockOctave ? [this.dockOctave] : [])),
       col('dock-knobs', null, knobs),
+      col('dock-buttons', jacks(PANEL_BUTTONS), buttons),
       col('dock-morph', null, morph, this.morphRow()),
       col('dock-clock', jacks(CLOCK), param('tempo'), ...(this.dockPlay ? [this.dockPlay] : [])),
       ...(this.dockBudget ? [col('dock-budget', null, this.dockBudget)] : []));
@@ -1757,9 +1765,14 @@ export class Editor {
     dial.className = 'dial';
     const name = document.createElement('span');
     name.className = 'dial-name';
-    name.textContent = k.toUpperCase();
+    name.textContent = m.panel?.labels?.[k] || k.toUpperCase();
+    name.title = `${k.toUpperCase()}${k === 'k5' ? ' (the FM-1\u2019s SELECT encoder)' : k === 'k6' ? ' (the FM-1\u2019s ALGO encoder)' : ''}: right-click to name it for the FM-1\u2019s screen`;
     dial.append(name);
     box.append(dial);
+    dial.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.dockMenu([{ text: 'Label for the FM-1\u2026', run: () => this.renamePanel(m, k) }], e.clientX, e.clientY);
+    });
     const c = dragControl(dial, `Knob ${k.toUpperCase()}`, 0, 1, m.params[k] ?? 0.5, (v) => this.setParam(m.id, k, Number(v.toFixed(3))), {
       reset: 0.5,
       text: (v) => `${Math.round(v * 100)} %`,
@@ -1768,6 +1781,79 @@ export class Editor {
     // MIDI CC 16..19 move the knobs in the engine: follow its live value
     this.parameterDisplays.push({ id: m.id, update: (values) => c.set(values?.[k] ?? m.params[k] ?? 0.5) });
     return box;
+  }
+
+  /** a patch button of the FM-1 in the dock: held while pressed, or switched (right-click: switch / hold, label) */
+  private dockButton(m: ModuleInst, b: string, i: number): HTMLElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'panel-btn';
+    btn.dataset.button = b;
+    const toggles = (): boolean => !!m.panel?.toggle?.includes(b);
+    const isOn = (): boolean => !!m.panel?.on?.includes(b);
+    btn.textContent = m.panel?.labels?.[b] || b.toUpperCase();
+    btn.title = `${b.toUpperCase()} button: ${toggles() ? 'switches on / off' : 'on while held'} (right-click: switch or hold, label)`;
+    btn.classList.toggle('toggle', toggles());
+    btn.setAttribute('aria-pressed', String(toggles() && isOn()));
+    const set = (on: boolean): void => {
+      btn.setAttribute('aria-pressed', String(on));
+      this.ev.onButton?.(i, on);
+    };
+    btn.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      if (!toggles()) return set(true);
+      const panel = (m.panel ??= {});
+      const on = !isOn();
+      panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
+      if (!panel.on.length) delete panel.on;
+      set(on);
+      this.ev.onLayout(this.patch);           // saved with the patch (the device keeps switched buttons too)
+    });
+    for (const ev of ['pointerup', 'pointerleave'] as const) btn.addEventListener(ev, () => { if (!toggles() && btn.getAttribute('aria-pressed') === 'true') set(false); });
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      this.dockMenu([
+        { text: toggles() ? 'Act while held' : 'Switch on / off', run: () => {
+          const panel = (m.panel ??= {});
+          panel.toggle = toggles() ? (panel.toggle ?? []).filter((x) => x !== b) : [...(panel.toggle ?? []), b];
+          panel.on = (panel.on ?? []).filter((x) => x !== b);
+          this.ev.onButton?.(i, false);
+          this.history.push(JSON.stringify(this.patch));
+          this.ev.onStructure(this.patch);
+          this.rebuild();
+        } },
+        { text: 'Label for the FM-1\u2026', run: () => this.renamePanel(m, b) },
+      ], e.clientX, e.clientY);
+    });
+    return btn;
+  }
+
+  /** a knob's / button's label on the FM-1's screen (patch.ts panelLabel: capitals, 10 characters) */
+  private renamePanel(m: ModuleInst, key: string): void {
+    const now = m.panel?.labels?.[key] ?? '';
+    const typed = window.prompt(`Label of ${key.toUpperCase()} on the FM-1 (capitals, up to ${PANEL_LABEL_MAX} characters; empty = ${key.toUpperCase()})`, now);
+    if (typed === null) return;
+    const label = panelLabel(typed);
+    const before = JSON.stringify(this.patch);
+    const panel = (m.panel ??= {});
+    const labels = { ...(panel.labels ?? {}) };
+    if (label) labels[key] = label;
+    else delete labels[key];
+    if (Object.keys(labels).length) panel.labels = labels;
+    else delete panel.labels;
+    if (!Object.keys(panel).length) delete m.panel;
+    this.history.push(before);
+    this.ev.onStructure(this.patch);
+    this.rebuild();
+  }
+
+  /** a small menu at a screen point (the dock is not in the canvas); a press anywhere else closes it */
+  private dockMenu(items: MenuItem[], x: number, y: number): void {
+    this.popMenu(items, { x, y });
+    const menu = document.querySelector<HTMLElement>('.ctx');
+    if (!menu) return;
+    document.body.append(menu);
+    Object.assign(menu.style, { position: 'fixed', left: `${x}px`, top: `${y - 8}px`, zIndex: '40', transform: 'translateY(-100%)' });
   }
 
   /**
