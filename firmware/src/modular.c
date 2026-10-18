@@ -36,6 +36,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #define BOOTGUARD_MAGIC 0x42475244u
 
 #include "libc.c"
+#include "div64.c"           /* 64-bit division in 32-bit steps, ahead of libcompiler-rt.a in the link */
 #include "lcd.c"
 #include "font5x7.c"
 #define ENG_POOL __attribute__((section(".pool")))

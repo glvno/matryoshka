@@ -1344,10 +1344,19 @@ void eng_all_notes_off(void)
 
 #define EF(it, name) ((it)->eff[name])
 
+/* a constant block into an output; nothing for an unconnected one (they all share dummy_out, which nobody reads) */
 static void fill(esig_t *o, int32_t v, uint32_t n)
 {
-    uint32_t i;
-    for (i = 0; i < n; i++)
+    uint32_t i = 0;
+    if (o == dummy_out)
+        return;
+    for (; i + 4u <= n; i += 4u) {
+        o[i] = v;
+        o[i + 1u] = v;
+        o[i + 2u] = v;
+        o[i + 3u] = v;
+    }
+    for (; i < n; i++)
         o[i] = v;
 }
 
@@ -1370,9 +1379,13 @@ static void m_fm1(const node_t *nd, inst_t *it, uint32_t n)
     fill(it->out[FM1_O_K4], EF(it, FM1_P_K4), n);
     {
         esig_t *ck = it->out[FM1_O_CLOCK];
-        uint32_t i;
-        for (i = 0; i < n; i++)
-            ck[i] = i < E.clk_pulse ? ENG_ONE : 0;
+        uint32_t i, p = E.clk_pulse < n ? E.clk_pulse : n;
+        if (ck != dummy_out) {
+            for (i = 0; i < p; i++)
+                ck[i] = ENG_ONE;
+            for (; i < n; i++)
+                ck[i] = 0;
+        }
     }
 }
 
@@ -1604,6 +1617,31 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     if (bpm < 65536)
         bpm = 65536;
     dtbpm = (uint32_t)(((uint64_t)(uint32_t)bpm * DELAY_DIV_DEN[div] << 16) / (60u * DELAY_DIV_NUM[div] * ENG_SR));
+    if (!sync && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {   /* free running, nothing patched in: the wave picked once a block */
+        uint32_t since = it->s.lfo.since + n;
+        dt = dtfree;
+#define LFO_FREE(Y)                                                                     \
+        for (i = 0; i < n; i++) {                                                       \
+            uint32_t prev = phase;                                                      \
+            phase += dt;                                                                \
+            if (phase < prev)                                                           \
+                lfo_cycle(it);                                                          \
+            out[i] = mul16((Y), depth);                                                 \
+        }
+        switch (kind) {
+        case 0: LFO_FREE(sin_turn(phase)) break;
+        case 1: LFO_FREE(wave_tri(phase)) break;
+        case 2: LFO_FREE(wave_saw(phase, dt, lrc)) break;
+        case 4: LFO_FREE(it->s.lfo.held) break;
+        default: LFO_FREE(wave_square(phase, dt, 0x80000000u, lrc)) break;
+        }
+#undef LFO_FREE
+        it->s.lfo.since = since < ENG_SR ? since : ENG_SR;   /* as the loop below counts it, the clock and reset inputs low */
+        it->s.lfo.clk_hi = 0;
+        it->s.lfo.rst_hi = 0;
+        it->s.lfo.phase = phase;
+        return;
+    }
     for (i = 0; i < n; i++) {
         uint32_t prev = phase;
         int32_t w;
@@ -2347,64 +2385,89 @@ static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
         off += RV_DIFF[k];
     }
     pre = base + off;
-    for (i = 0; i < n; i++) {
-        int32_t x = in[i], u = x, wet = 0, sum = 0;
-        uint32_t ix = it->s.rev.pi;
-        if (dpre) {
-            uint32_t rp = ix + RV_PRE - dpre;
-            if (rp >= RV_PRE)
-                rp -= RV_PRE;
-            u = (int32_t)pre[rp] * 8;
+    {
+        /* the indices and states in locals (the int16 line writes could alias them in it->s), the lines written out */
+        uint32_t li[8], ai0 = it->s.rev.ai[0], ai1 = it->s.rev.ai[1], pi = it->s.rev.pi, ph0 = it->s.rev.ph[0], ph1 = it->s.rev.ph[1];
+        int32_t lp[8], od = ENG_ONE - d;
+        for (k = 0; k < 8u; k++) {
+            li[k] = it->s.rev.li[k];
+            lp[k] = it->s.rev.lp[k];
         }
-        pre[ix] = dly_pack(x);
-        if (++ix == RV_PRE)
-            ix = 0;
-        it->s.rev.pi = (uint16_t)ix;
-        for (k = 0; k < 2u; k++) {                                        /* input diffusion */
-            int32_t bo, y;
-            ix = it->s.rev.ai[k];
-            bo = (int32_t)ap[k][ix] * 8;
+        for (i = 0; i < n; i++) {
+            int32_t x = in[i], u = x, wet = 0, sum = 0, bo, y, o;
+            if (dpre) {
+                uint32_t rp = pi + RV_PRE - dpre;
+                if (rp >= RV_PRE)
+                    rp -= RV_PRE;
+                u = (int32_t)pre[rp] * 8;
+            }
+            pre[pi] = dly_pack(x);
+            if (++pi == RV_PRE)
+                pi = 0;
+            bo = (int32_t)ap[0][ai0] * 8;                                   /* input diffusion */
             y = bo - u;
-            ap[k][ix] = dly_pack(u + (bo >> 1));
-            if (++ix == RV_DIFF[k])
-                ix = 0;
-            it->s.rev.ai[k] = (uint16_t)ix;
+            ap[0][ai0] = dly_pack(u + (bo >> 1));
+            if (++ai0 == 223u)
+                ai0 = 0;
             u = y;
-        }
-        u = mulr(u, RV_GIN, 16);
-        for (k = 0; k < 8u; k++) {                                        /* read, damp, decay */
-            int16_t *buf = line[k];
-            uint32_t L = RV_LINE[k], w = it->s.rev.li[k];
-            int32_t o;
-            if (k < 2u && depth > 0) {
-                int32_t sn = sin_turn(it->s.rev.ph[k]);
-                int32_t dl = (int32_t)((L - 2u) << 16) - mulq(depth, 32768 + (sn >> 1), 16);   /* the delay, samples Q16 */
-                uint32_t di = (uint32_t)dl >> 16, fr = (uint32_t)dl & 0xFFFFu, ra = w + L - di, rb;
-                int32_t a, b;
-                if (ra >= L)
-                    ra -= L;
-                rb = ra ? ra - 1u : L - 1u;
-                a = (int32_t)buf[ra] * 8;
-                b = (int32_t)buf[rb] * 8;
-                o = a + (int32_t)(((int64_t)(b - a) * fr) >> 16);
-            } else
-                o = (int32_t)buf[w] * 8;
-            wet += o;
-            it->s.rev.lp[k] = mulr(o, ENG_ONE - d, 16) + mulr(it->s.rev.lp[k], d, 16);
-            t[k] = mulr(it->s.rev.lp[k], g[k], 16);
+            bo = (int32_t)ap[1][ai1] * 8;
+            y = bo - u;
+            ap[1][ai1] = dly_pack(u + (bo >> 1));
+            if (++ai1 == 347u)
+                ai1 = 0;
+            u = y;
+            u = mulr(u, RV_GIN, 16);
+#define RV_DAMP(k)                                                                      \
+            wet += o;                                                                   \
+            lp[k] = mulr(o, od, 16) + mulr(lp[k], d, 16);                               \
+            t[k] = mulr(lp[k], g[k], 16);                                               \
             sum += t[k];
+#define RV_MODTAP(k, ph)                                                                \
+            if (depth > 0) {                                                            \
+                const uint32_t L = RV_LINE[k], w = li[k];                               \
+                int32_t sn = sin_turn(ph);                                              \
+                int32_t dl = (int32_t)((L - 2u) << 16) - mulq(depth, 32768 + (sn >> 1), 16);   /* the delay, samples Q16 */ \
+                uint32_t di = (uint32_t)dl >> 16, fr = (uint32_t)dl & 0xFFFFu, ra = w + L - di, rb;   \
+                int32_t a, b;                                                           \
+                if (ra >= L)                                                            \
+                    ra -= L;                                                            \
+                rb = ra ? ra - 1u : L - 1u;                                             \
+                a = (int32_t)line[k][ra] * 8;                                           \
+                b = (int32_t)line[k][rb] * 8;                                           \
+                o = a + (int32_t)(((int64_t)(b - a) * fr) >> 16);                       \
+            } else                                                                      \
+                o = (int32_t)line[k][li[k]] * 8;                                        \
+            RV_DAMP(k)
+#define RV_TAP(k)                                                                       \
+            o = (int32_t)line[k][li[k]] * 8;                                            \
+            RV_DAMP(k)
+            RV_MODTAP(0, ph0)
+            RV_MODTAP(1, ph1)
+            RV_TAP(2) RV_TAP(3) RV_TAP(4) RV_TAP(5) RV_TAP(6) RV_TAP(7)
+#undef RV_TAP
+#undef RV_MODTAP
+#undef RV_DAMP
+            sum >>= 2;
+            for (k = 0; k < 8u; k++) {                                      /* Householder feedback, write */
+                uint32_t w = li[k];
+                line[k][w] = dly_pack(u + t[k] - sum);
+                if (++w == RV_LINE[k])
+                    w = 0;
+                li[k] = w;
+            }
+            ph0 += RV_MOD_INC[0];
+            ph1 += RV_MOD_INC[1];
+            out[i] = mulr(x, dry, 16) + mulr(mulr(wet, RV_GOUT, 16), mix, 16);
         }
-        sum >>= 2;
-        for (k = 0; k < 8u; k++) {                                        /* Householder feedback, write */
-            uint32_t w = it->s.rev.li[k];
-            line[k][w] = dly_pack(u + t[k] - sum);
-            if (++w == RV_LINE[k])
-                w = 0;
-            it->s.rev.li[k] = (uint16_t)w;
+        for (k = 0; k < 8u; k++) {
+            it->s.rev.li[k] = (uint16_t)li[k];
+            it->s.rev.lp[k] = lp[k];
         }
-        it->s.rev.ph[0] += RV_MOD_INC[0];
-        it->s.rev.ph[1] += RV_MOD_INC[1];
-        out[i] = mulr(x, dry, 16) + mulr(mulr(wet, RV_GOUT, 16), mix, 16);
+        it->s.rev.ai[0] = (uint16_t)ai0;
+        it->s.rev.ai[1] = (uint16_t)ai1;
+        it->s.rev.pi = (uint16_t)pi;
+        it->s.rev.ph[0] = ph0;
+        it->s.rev.ph[1] = ph1;
     }
 }
 
@@ -2621,15 +2684,28 @@ static void m_modal(const node_t *nd, inst_t *it, uint32_t n)
         c1[i] = 2 * mulq(r30, co30, 30);
         c2[i] = mulq(r30, r30, 30);
     }
-    for (k = 0; k < n; k++) {
-        int32_t x20 = in[k] << 4, y = 0;
+    {
+        /* the states in locals (out[] is int32 too and could alias them in it->s), the six modes written out */
+        int32_t a1[MODAL_N], a2[MODAL_N];
         for (i = 0; i < MODAL_N; i++) {
-            int32_t v = clampi(mulr(g[i], x20, 30) + mulr(c1[i], y1[i], 30) - mulr(c2[i], y2[i], 30), -(8 << 20), 8 << 20);
-            y2[i] = y1[i];
-            y1[i] = v;
-            y += v;
+            a1[i] = y1[i];
+            a2[i] = y2[i];
         }
-        out[k] = (y + 8) >> 4;
+        for (k = 0; k < n; k++) {
+            int32_t x20 = in[k] << 4, y = 0, v;
+#define MODE(i)                                                                                             \
+            v = clampi(mulr(g[i], x20, 30) + mulr(c1[i], a1[i], 30) - mulr(c2[i], a2[i], 30), -(8 << 20), 8 << 20); \
+            a2[i] = a1[i];                                                                                  \
+            a1[i] = v;                                                                                      \
+            y += v;
+            MODE(0) MODE(1) MODE(2) MODE(3) MODE(4) MODE(5)
+#undef MODE
+            out[k] = (y + 8) >> 4;
+        }
+        for (i = 0; i < MODAL_N; i++) {
+            y1[i] = a1[i];
+            y2[i] = a2[i];
+        }
     }
     (void)nd;
 }

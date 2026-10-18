@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "../src/engine.c"
+#include "../src/div64.c"
 
 static uint64_t rs = 88172645463325252ull;
 static uint32_t rnd(void)
@@ -45,6 +46,30 @@ int main(int argc, char **argv)
             sum = -sum;
         if (block_mean(sum, ENG_BLOCK) != (int32_t)(sum / (int64_t)ENG_BLOCK) && bad++ < 15)
             printf("block_mean %lld\n", (long long)sum);
+    }
+    for (k = 0; k < cases; k++) {                       /* div64.c against the host's 64-bit division */
+        uint64_t a = ((uint64_t)rnd() << 32 | rnd()) >> (rnd() % 64), b = ((uint64_t)rnd() << 32 | rnd()) >> (rnd() % 64), r;
+        int64_t sa, sb;
+        if (k % 7 == 0)
+            b = (b & 0xFFFFu) | 1u;                             /* small divisors */
+        if (k % 11 == 0)
+            b = (uint64_t)1 << (rnd() % 64);
+        if (k % 13 == 0)
+            a = ~(uint64_t)0 - (rnd() % 3);
+        if (!b)
+            b = 1;
+        if (eng_udivmod64(a, b, &r) != a / b || r != a % b) {
+            if (bad++ < 20)
+                printf("udiv %llu / %llu\n", (unsigned long long)a, (unsigned long long)b);
+        }
+        sa = (int64_t)a * ((k & 1) ? -1 : 1);
+        sb = (int64_t)b * ((k & 2) ? -1 : 1);
+        if (sb == 0 || (sa == INT64_MIN && sb == -1))
+            continue;
+        if (eng_sdiv64(sa, sb) != sa / sb || eng_smod64(sa, sb) != sa % sb) {
+            if (bad++ < 20)
+                printf("sdiv %lld / %lld\n", (long long)sa, (long long)sb);
+        }
     }
     printf("%s: %ld wrong\n", bad ? "FAIL" : "ok", bad);
     return bad != 0;
