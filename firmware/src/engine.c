@@ -60,11 +60,23 @@
 
 typedef int32_t esig_t;
 
-static inline int32_t mulq(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b) >> s); }
-static inline int32_t mul16(int32_t a, int32_t b) { return mulq(a, b, 16); }
+/* the per-sample helpers are forced inline: -Os left mulq / mulr as calls, a sixth of a busy patch's cycles went to the
+ * call and return (tools/cpu, npm run cpu-hot) */
+#define HOT static inline __attribute__((always_inline))
+
+HOT int32_t mulq(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b) >> s); }
+HOT int32_t mul16(int32_t a, int32_t b) { return mulq(a, b, 16); }
 /* rounded to nearest: no bias, which the filter's integrators would turn into a DC offset at low cutoffs */
-static inline int32_t mulr(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b + ((int64_t)1 << (s - 1))) >> s); }
-static inline int32_t clampi(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
+HOT int32_t mulr(int32_t a, int32_t b, unsigned s) { return (int32_t)(((int64_t)a * b + ((int64_t)1 << (s - 1))) >> s); }
+HOT int32_t clampi(int32_t v, int32_t lo, int32_t hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+/* sum / n as C divides (toward zero), without the 64-bit division (a library call on this core) for a whole block */
+HOT int32_t block_mean(int64_t sum, uint32_t n)
+{
+    if (n == ENG_BLOCK)
+        return (int32_t)(sum < 0 ? -((-sum) >> 7) : sum >> 7);
+    return (int32_t)(sum / (int64_t)n);
+}
 
 /* ------------------------------------------------------------------ number helpers */
 
@@ -146,41 +158,68 @@ static int32_t recip24(int32_t d)
 
 static inline int32_t round_q16(int32_t v) { return (v + 32768) >> 16; }   /* Math.round for the integer params */
 
-/* poly-BLEP residual, phase t and increment dt in u32 turns -> Q16 */
-static int32_t poly_blep(uint32_t t, uint32_t dt)
+/* floor(t * 2^16 / dt) for t < dt, the poly-BLEP's position inside the step, without a 64-bit division per edge: the
+ * reciprocal R = floor(2^48 / dt) is worked out once per increment (`rc` caches it: rc[0] the dt, rc[1] R), then
+ * q = floor(t R / 2^32) is at most one short of the quotient (t R / 2^32 <= t 2^16 / dt < t R / 2^32 + 1) and one compare
+ * fixes it. Increments up to 2^16 (under 0.7 Hz) take the 32-bit division, where t << 16 still fits (R would not). Exact. */
+HOT uint32_t blep_pos(uint32_t t, uint32_t dt, uint32_t *rc)
+{
+    uint32_t q;
+    if (dt <= 65536u)
+        return (t << 16) / dt;
+    if (rc[0] != dt) {
+        rc[0] = dt;
+        rc[1] = (uint32_t)((1ull << 48) / dt);
+    }
+    q = (uint32_t)(((uint64_t)t * rc[1]) >> 32);
+    if ((uint64_t)(q + 1u) * dt <= (uint64_t)t << 16)
+        q++;
+    return q;
+}
+
+/* poly-BLEP residual, phase t and increment dt in u32 turns -> Q16 (rc: blep_pos's cache, one per phase) */
+HOT int32_t poly_blep(uint32_t t, uint32_t dt, uint32_t *rc)
 {
     if (dt == 0u)
         return 0;
     if (t < dt) {
-        int32_t u = (int32_t)(((uint64_t)t << 16) / dt);
+        int32_t u = (int32_t)blep_pos(t, dt, rc);
         return 2 * u - (int32_t)(((int64_t)u * u) >> 16) - ENG_ONE;
     }
     if (t > 0u - dt) {
-        int32_t u = (int32_t)(((uint64_t)(0u - t) << 16) / dt);      /* -(t - 1) / dt */
+        int32_t u = (int32_t)blep_pos(0u - t, dt, rc);      /* -(t - 1) / dt */
         return (int32_t)(((int64_t)u * u) >> 16) - 2 * u + ENG_ONE;
     }
     return 0;
 }
 
 /* the waveforms of modules.ts wave(): 0 sine, 1 triangle, 2 saw, 3 square. phase and pw in u32 turns */
-static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw)
+HOT int32_t wave_tri(uint32_t ph)
+{
+    int32_t s = (int32_t)ph;
+    uint32_t a = s < 0 ? 0u - (uint32_t)s : (uint32_t)s;     /* |phase - round(phase)| in 2^32 */
+    return (int32_t)(a >> 14) - ENG_ONE;
+}
+HOT int32_t wave_saw(uint32_t ph, uint32_t dt, uint32_t *rc) { return (int32_t)(ph >> 15) - ENG_ONE - poly_blep(ph, dt, rc); }
+HOT int32_t wave_square(uint32_t ph, uint32_t dt, uint32_t pw, uint32_t *rc)
+{
+    int32_t v = ph < pw ? ENG_ONE : -ENG_ONE;
+    v += poly_blep(ph, dt, rc);
+    v -= poly_blep(ph - pw, dt, rc + 2);
+    return v;
+}
+/* rc: four words of blep_pos cache for this phase */
+static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw, uint32_t *rc)
 {
     switch (kind) {
     case 0:
         return sin_turn(ph);
-    case 1: {
-        int32_t s = (int32_t)ph;
-        uint32_t a = s < 0 ? 0u - (uint32_t)s : (uint32_t)s;     /* |phase - round(phase)| in 2^32 */
-        return (int32_t)(a >> 14) - ENG_ONE;
-    }
+    case 1:
+        return wave_tri(ph);
     case 2:
-        return (int32_t)(ph >> 15) - ENG_ONE - poly_blep(ph, dt);
-    default: {
-        int32_t v = ph < pw ? ENG_ONE : -ENG_ONE;
-        v += poly_blep(ph, dt);
-        v -= poly_blep(ph - pw, dt);
-        return v;
-    }
+        return wave_saw(ph, dt, rc);
+    default:
+        return wave_square(ph, dt, pw, rc);
     }
 }
 
@@ -1024,7 +1063,7 @@ static int32_t morph_position(uint32_t n)
         uint32_t i;
         for (i = 0; i < n; i++)
             s += b[i];
-        t += (int32_t)(s / (int64_t)n);
+        t += block_mean(s, n);
     }
     return clampi(t, 0, ENG_ONE);
 }
@@ -1404,8 +1443,55 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
             for (j = 0; j < nu; j++)
                 wq[j] = (int32_t)(((int64_t)w[j] << 16) / sum);
         }
-        uint32_t dts[5];
+        uint32_t dts[5], rc[5][4] = {{0}};
         int32_t lastp = 0;
+        if (nu == 1) {                                                      /* one phase: the wave picked once a block */
+            uint32_t dt = 0, *r = rc[0];
+            int32_t d0 = base + doct[0];
+#define OSC_PITCH                                                                       \
+                if (i == 0 || pitch[i] != lastp) {                                      \
+                    lastp = pitch[i];                                                   \
+                    dt = exp2_scale(INC_C4, lastp + d0);                                \
+                    if (dt > DT_MAX)                                                    \
+                        dt = DT_MAX;                                                    \
+                }
+#define OSC_PLAIN(Y)                                                                    \
+            for (i = 0; i < n; i++) {                                                   \
+                OSC_PITCH                                                               \
+                phase += dt;                                                            \
+                out[i] = mul16((Y), lvl);                                               \
+            }
+#define OSC_SYNC(Y)                                                                     \
+            for (i = 0; i < n; i++) {                                                   \
+                int rst = sync[i] >= 32768 && s1 < 32768;                               \
+                OSC_PITCH                                                               \
+                s1 = sync[i];                                                           \
+                if (rst)                                                                \
+                    phase = 0;                                                          \
+                phase += dt;                                                            \
+                out[i] = mul16((Y), lvl);                                               \
+            }
+            if (!(nd->conn & (1u << OSC_I_SYNC))) {
+                switch (kind) {
+                case 0: OSC_PLAIN(sin_turn(phase)) break;
+                case 1: OSC_PLAIN(wave_tri(phase)) break;
+                case 2: OSC_PLAIN(wave_saw(phase, dt, r)) break;
+                default: OSC_PLAIN(wave_square(phase, dt, pw, r)) break;
+                }
+                s1 = n ? sync[n - 1] : s1;                                  /* (the unconnected sync input reads 0) */
+            } else {
+                switch (kind) {
+                case 0: OSC_SYNC(sin_turn(phase)) break;
+                case 1: OSC_SYNC(wave_tri(phase)) break;
+                case 2: OSC_SYNC(wave_saw(phase, dt, r)) break;
+                default: OSC_SYNC(wave_square(phase, dt, pw, r)) break;
+                }
+            }
+#undef OSC_PLAIN
+#undef OSC_SYNC
+#undef OSC_PITCH
+            n = 0;                                                          /* skips the general loop below */
+        }
         for (i = 0; i < n; i++) {
             int rst = sync[i] >= 32768 && s1 < 32768;                      /* a rising edge on sync restarts the phases */
             uint32_t dt;
@@ -1423,7 +1509,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
             if (rst)
                 phase = 0;
             phase += dt;
-            y = wave(kind, phase, dt, pw);
+            y = wave(kind, phase, dt, pw, rc[0]);
             if (nu == 1) {
                 out[i] = mul16(y, lvl);
                 continue;
@@ -1434,7 +1520,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 if (rst)
                     ph[j - 1] = 0;
                 ph[j - 1] += dtj;
-                y += mul16(wave(kind, ph[j - 1], dtj, pw), wq[j]);
+                y += mul16(wave(kind, ph[j - 1], dtj, pw, rc[j]), wq[j]);
             }
             out[i] = mul16(y, lvl);
         }
@@ -1449,6 +1535,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
     y2 = it->s.osc.y2;
     pm1 = it->s.osc.pm1;
     xb = it->s.osc.xb;
+    uint32_t frc[4] = {0};
     for (i = 0; i < n; i++) {
         uint32_t dt, sub;
         int32_t pm_now = idx > 0 ? pm[i] : 0, pm_mid = (pm1 + pm_now) >> 1, ya = 0;
@@ -1469,7 +1556,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
             phase += dt;
             ph = phase + (uint32_t)(((int64_t)mul16(idx, sub ? pm_now : pm_mid) * TURN_PER_RAD) >> 16)
                        + (uint32_t)((int64_t)mul16(fb, (y1 + y2) >> 1) << 15);   /* fb: Q16 of pi = half a turn */
-            y = wave(kind, ph, dt, pw);
+            y = wave(kind, ph, dt, pw, frc);
             y2 = y1;
             y1 = y;
             if (sub) {        /* path 0 takes the even sub-sample, path 1 the odd one of the previous frame (the z^-1) */
@@ -1505,7 +1592,7 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     int32_t kind = round_q16(EF(it, LFO_P_WAVE)), depth = EF(it, LFO_P_DEPTH);
     int sync = EF(it, LFO_P_SYNC) >= 32768;
     int32_t div = clampi((EF(it, LFO_P_DIV) + 32768) >> 16, 0, DELAY_NDIV - 1), bpm = EF(it, LFO_P_BPM);
-    uint32_t per = 24u * DELAY_DIV_NUM[div] / DELAY_DIV_DEN[div], dtbpm;
+    uint32_t per = 24u * DELAY_DIV_NUM[div] / DELAY_DIV_DEN[div], dtbpm, lrc[4] = {0};
     if (bpm < 65536)
         bpm = 65536;
     dtbpm = (uint32_t)(((uint64_t)(uint32_t)bpm * DELAY_DIV_DEN[div] << 16) / (60u * DELAY_DIV_NUM[div] * ENG_SR));
@@ -1544,7 +1631,7 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
             else
                 lfo_cycle(it);              /* a new cycle: sample & hold takes a new random value */
         }
-        w = kind == 4 ? it->s.lfo.held : wave(kind, phase, dt, 0x80000000u);
+        w = kind == 4 ? it->s.lfo.held : wave(kind, phase, dt, 0x80000000u, lrc);
         out[i] = mul16(w, depth);
     }
     it->s.lfo.phase = phase;
@@ -1871,7 +1958,7 @@ static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
         int64_t sum = 0;
         for (i = 0; i < n; i++)
             sum += cv[i];
-        x += mul16((int32_t)(sum / (int32_t)n), cvamt);
+        x += mul16(block_mean(sum, n), cvamt);
     }
     if (x)
         base = exp2_scale(base, x);
@@ -1882,27 +1969,32 @@ static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
     G4 = mulq(G3, G, 24);
     hG = (1 << 24) - G;
     F = recip24((1 << 24) + mulq(k24, G4, 24));
-    for (i = 0; i < n; i++) {
-        int32_t x20 = in[i] << 4, S, y4, u, y2 = 0, j;
-        S = mulr(G3, s[0], 24) + mulr(G2, s[1], 24) + mulr(G, s[2], 24) + s[3];
-        S = mulr(S, hG, 24);
-        y4 = mulr(F, mulr(G4, x20, 24) + S, 24);
-        u = mulq(x20, drive, 16) - mulq(k24, y4, 24);
-        if (u >= LAD_SAT_KNEE)
-            u = 1 << 20;
-        else if (u <= -LAD_SAT_KNEE)
-            u = -(1 << 20);
-        else
-            u -= mulq(mulq(mulq(u, u, 20), u, 20), LAD_SAT_CUBE, 24);
-        for (j = 0; j < 4; j++) {
-            int32_t v = mulr(G, u - s[j], 24);
-            u = v + s[j];
-            s[j] = u + v;
-            if (j == 1)
-                y2 = u;
+    {
+        int32_t s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];     /* the states in registers, the four stages written out */
+        for (i = 0; i < n; i++) {
+            int32_t x20 = in[i] << 4, S, y4, u, v, y2;
+            S = mulr(G3, s0, 24) + mulr(G2, s1, 24) + mulr(G, s2, 24) + s3;
+            S = mulr(S, hG, 24);
+            y4 = mulr(F, mulr(G4, x20, 24) + S, 24);
+            u = mulq(x20, drive, 16) - mulq(k24, y4, 24);
+            if (u >= LAD_SAT_KNEE)
+                u = 1 << 20;
+            else if (u <= -LAD_SAT_KNEE)
+                u = -(1 << 20);
+            else
+                u -= mulq(mulq(mulq(u, u, 20), u, 20), LAD_SAT_CUBE, 24);
+            v = mulr(G, u - s0, 24); u = v + s0; s0 = u + v;
+            v = mulr(G, u - s1, 24); u = v + s1; s1 = u + v;
+            y2 = u;
+            v = mulr(G, u - s2, 24); u = v + s2; s2 = u + v;
+            v = mulr(G, u - s3, 24); u = v + s3; s3 = u + v;
+            lp24[i] = (u + 8) >> 4;
+            lp12[i] = (y2 + 8) >> 4;
         }
-        lp24[i] = (u + 8) >> 4;
-        lp12[i] = (y2 + 8) >> 4;
+        s[0] = s0;
+        s[1] = s1;
+        s[2] = s2;
+        s[3] = s3;
     }
 }
 
@@ -2101,7 +2193,7 @@ static void m_shift(const node_t *nd, inst_t *it, uint32_t n)
         int64_t sum = 0;
         for (i = 0; i < n; i++)
             sum += cv[i];
-        hz += mul16((int32_t)(sum / (int32_t)n), EF(it, SHIFT_P_CVAMT));
+        hz += mul16(block_mean(sum, n), EF(it, SHIFT_P_CVAMT));
     }
     inc = (uint32_t)(((int64_t)hz << 16) / (int32_t)ENG_SR);                 /* Hz Q16 -> turns per sample in u32 (negative wraps) */
     for (i = 0; i < n; i++) {
@@ -2841,7 +2933,7 @@ static void m_phaser(const node_t *nd, inst_t *it, uint32_t n)
     const esig_t *in = it->in[PHASER_I_IN];
     esig_t *out = it->out[0];
     uint32_t dt = (uint32_t)(((uint64_t)(uint32_t)EF(it, PHASER_P_RATE) << 16) / ENG_SR), phase = it->s.phs.phase, i, k;
-    int32_t tri = wave(1, phase, dt, 0), oct = mul16(2 * EF(it, PHASER_P_DEPTH), tri);
+    int32_t tri = wave_tri(phase), oct = mul16(2 * EF(it, PHASER_P_DEPTH), tri);
     uint32_t rinc = exp2_scale((uint32_t)(((uint64_t)(uint32_t)EF(it, PHASER_P_CENTER) << 16) / ENG_SR), oct);
     int32_t g, a, fb = EF(it, PHASER_P_FB), mix = EF(it, PHASER_P_MIX), dry = ENG_ONE - mix, fbv = it->s.phs.fbv, *ap = it->s.phs.ap;
     if (rinc < INC_20HZ)
@@ -2923,13 +3015,13 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
             cv = it->in[d->cvbase + s];
             for (i = 0; i < n; i++)
                 sum += cv[i];
-            mean[s] = mul16((int32_t)(sum / (int64_t)n), nd->att[s]);
+            mean[s] = mul16(block_mean(sum, n), nd->att[s]);
             have |= 1u << s;
         }
     for (s = 0; s < d->nin; s++) if (nd->input_map[s]) {
         int64_t sum = 0;
         for (i = 0; i < n; i++) sum += it->in[s][i];
-        extra[s] = (int32_t)(sum / (int64_t)n);
+        extra[s] = block_mean(sum, n);
     }
     for (j = 0; j < d->npar; j++) {
         int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, nd->par[j], nd->parb[j], E.morph) : nd->par[j];
@@ -3088,7 +3180,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             for (v = 0; v < g->parts; v++) {
                 pv_t *x = &E.pv[g->pv0 + v];
                 walk_step(&x->dw, DRIFT_HOLD);           /* every block, so the wander does not depend on the amount */
-                x->flaw = (int32_t)(((int64_t)g->detune[v] * 65536) / 1200) + (int32_t)(((int64_t)x->dw.y * g->drift[v] * 1092) / 3276800);
+                x->flaw = (int32_t)g->detune[v] * 65536 / 1200 + (int32_t)(((int64_t)x->dw.y * g->drift[v] * 1092) / 3276800);
             }
         }
         for (k = 0; k < E.norder; k++) {
@@ -3101,13 +3193,22 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 ENG_PROF(0, E.order[k], v);
                 for (s = it->sum0; s < (uint32_t)it->sum0 + it->nsum; s++) {
                     const sum_t *sm = &E.sum[s];
+                    esig_t *dst = sm->dst;
                     uint32_t q;
-                    for (i = 0; i < n; i++)
-                        sm->dst[i] = 0;
-                    for (q = 0; q < sm->n; q++) {
+                    if (!sm->n) {
+                        for (i = 0; i < n; i++)
+                            dst[i] = 0;
+                        continue;
+                    }
+                    {
+                        const esig_t *a = E.sum_src[sm->first];   /* the first source copied, the rest added: one pass less */
+                        for (i = 0; i < n; i++)
+                            dst[i] = a[i];
+                    }
+                    for (q = 1; q < sm->n; q++) {
                         const esig_t *src = E.sum_src[sm->first + q];
                         for (i = 0; i < n; i++)
-                            sm->dst[i] += src[i];
+                            dst[i] += src[i];
                     }
                 }
                 ENG_PROF(1, E.order[k], v);
