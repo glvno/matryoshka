@@ -40,6 +40,8 @@ Patch transfer (M1-0.3): `web/src/protocol.ts` defines the SysEx messages (`F0 7
 
 Not done yet: the FM-1's buttons, a patch name on the device, reading a patch back, the knob matrix columns have no meaning in the browser (there the sliders are the knobs).
 
+**Emulator.** The release firmware runs on fm1-emu (an emulated AC791N with LCD, keys, audio, flash and TRS MIDI, no USB, no P33): `npm run emu` opens it in a window, `npm run emu:smoke` drives it through boot, pages, patches, MIDI, SAVE / restore and the preset bank. Run locally before any device work; details and limits in [EMULATOR.md](EMULATOR.md).
+
 ## Open questions
 
 - ~~Per-voice polyphony~~ done, see below; the CPU cost per voice on the device is not measured yet.

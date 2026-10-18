@@ -1,0 +1,19 @@
+# The FM-1 emulator harness: our firmware on Joakim Eriksson's fm1-emu (MIT,
+# https://github.com/joakimeriksson/fm1-emu), pinned to one commit.
+[package]
+name = "m1emu"
+version = "0.0.0"
+edition = "2021"
+license = "GPL-3.0-only"
+publish = false
+
+[dependencies]
+fm1-core = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "7ca5b96c9e828dea5176fc60f0b945abbf442895" }
+fm1-soc = { git = "https://github.com/joakimeriksson/fm1-emu", rev = "7ca5b96c9e828dea5176fc60f0b945abbf442895" }
+
+[profile.release]
+opt-level = 3
+lto = true
+
+# not part of a parent workspace
+[workspace]

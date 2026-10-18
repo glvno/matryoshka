@@ -1052,7 +1052,8 @@ static void buttons_poll(void)
     if (p & (1u << BTN_SEL))
         voice_switch();
     if (p & (1u << BTN_HOME))
-        home_t0 = fm1_ms | 1u;                      /* HOME acts on release: a tap goes home, 0.7 s held opens the menu */
+        home_t0 = (fm1_ms & ~3u) | 1u;              /* HOME acts on release: a tap goes home, 0.7 s held opens the menu
+                                                     * (bit 1 cleared: with fm1_ms's own bit 1 a press looked fired) */
     if (home_t0 && !(home_t0 & 2u) && (fm1_in.buttons >> BTN_HOME & 1u) && fm1_ms - (home_t0 & ~3u) > 700u) {
         home_t0 |= 2u;
         page_set(PAGE_MENU);                        /* (closes it when it is open) */
