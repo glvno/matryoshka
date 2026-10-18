@@ -361,6 +361,8 @@ static void header_draw(void)
     } else {
         char b[40], *p = b;
         p = put(p, patch_label ? patch_label : "");
+        if (m1_edited)
+            p = put(p, " *");                   /* edited since it was loaded (SAVE writes it into its slot) */
         *p = 0;
         if (cfg.cpu_bar) {
             bar_name_cpu(b, C_ACC);

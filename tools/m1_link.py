@@ -6,9 +6,9 @@
   tools/m1_link.py info
   tools/m1_link.py upload PATCH.m1p       (binary patches: build/golden/*.m1p from tools/golden.sh)
   tools/m1_link.py store
-  tools/m1_link.py bank                   (write the 32 factory presets from firmware/src/presets.h into the flash bank)
+  tools/m1_link.py bank                   (write the factory presets from firmware/src/presets.h into the flash bank)
   tools/m1_link.py bank-info              (list the bank slots on the FM-1)
-  tools/m1_link.py bank-clear             (empty the bank: the PRESET knob steps through the factory presets again)
+  tools/m1_link.py bank-clear             (empty the bank: the next boot writes the factory patches again)
   tools/m1_link.py param MODULE PARAM VALUE     (module / parameter index, value as a float)
   tools/m1_link.py note 60 [seconds]
   tools/m1_link.py program N              (factory patch N, MIDI program change)
@@ -140,20 +140,20 @@ def main():
             c = crc16(data)
             link.ack(frame(0x13, [slot, *n, len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x13, wait=4.0, tries=1)
             print(f"slot {slot + 1:02d}  {name}  ({len(data)} bytes)")
-        for slot in range(len(presets), 32):
+        for slot in range(len(presets), 64):
             link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
         print(f"bank written: {len(presets)} presets")
     elif a[0] == "bank-info":
         used = 0
-        for slot in range(32):
+        for slot in range(64):
             p = link.ask(frame(0x15, [slot]), (0x42, slot))
             if p[1]:
                 used += 1
                 name = bytes(x for x in p[4:24] if 32 <= x < 127).decode()
                 print(f"slot {slot + 1:02d}  {name}  ({p[2] | p[3] << 8} bytes)")
-        print(f"{used} of 32 slots used" + ("" if used else ": the PRESET knob steps through the factory presets"))
+        print(f"{used} of 64 slots used" + ("" if used else ": the next boot writes the factory patches again"))
     elif a[0] == "bank-clear":
-        for slot in range(32):
+        for slot in range(64):
             link.ack(frame(0x14, [slot]), 0x14, wait=4.0, tries=1)
         print("bank emptied")
     elif a[0] == "store":

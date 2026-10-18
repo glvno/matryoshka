@@ -56,7 +56,6 @@ static int m1_slot_info(uint32_t slot, char *name, uint32_t *len);
 static void m1_ui_changed(void);                               /* main.c: a live edit changed what the LCD shows */
 static void m1_transport(int run);                             /* main.c: the editor's TRANSPORT command (PLAY) */
 #include "proto.c"
-#include "patchstore.c"
 #include "slotstore.c"
 #ifdef M1_BENCH
 #include "bench.c"

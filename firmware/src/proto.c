@@ -18,7 +18,7 @@
 
 enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42 };
 #define M1_FEATURES 2u                                       /* INFO byte 5: bit 1 = the TRANSPORT command (bit 0, the ARP command, is retired) */
-#define M1_SLOTS 32u
+#define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
 
@@ -95,6 +95,8 @@ static void m1_ack(uint32_t cmd, uint32_t seq, uint32_t status, uint32_t aux)
 }
 
 /* a patch the firmware already runs (boot: from flash or a factory patch): what STORE writes and PARAM edits */
+static uint8_t m1_edited;                                    /* the running patch differs from what was loaded (SAVE clears it; the LCD shows *) */
+
 static void m1_set_current(const uint8_t *p, uint32_t len)
 {
     uint32_t i;
@@ -103,6 +105,7 @@ static void m1_set_current(const uint8_t *p, uint32_t len)
     for (i = 0; i < len; i++)
         m1_cur[i] = p[i];
     m1_cur_len = len;
+    m1_edited = 0;
 }
 
 #define M1_BYPASS 0x80u                                     /* bit 7 of a record's type byte: the module is bypassed */
@@ -139,6 +142,7 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
     if (!at || par >= DEFS[M1_TYPE(m1_cur[at])].npar)
         return;
     m1_put32(at + 1u + 4u * par, v);
+    m1_edited = 1;
 }
 
 static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
@@ -147,6 +151,7 @@ static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
     if (!at || input >= 2u || DEFS[M1_TYPE(m1_cur[at])].cvbase < 0)
         return;
     m1_put32(at + 1u + 4u * DEFS[M1_TYPE(m1_cur[at])].npar + 4u * input, v);
+    m1_edited = 1;
 }
 
 static void m1_patch_bypass(uint32_t mod, int on)
@@ -155,6 +160,7 @@ static void m1_patch_bypass(uint32_t mod, int on)
     if (!at)
         return;
     m1_cur[at] = (uint8_t)(on ? m1_cur[at] | M1_BYPASS : m1_cur[at] & ~M1_BYPASS);
+    m1_edited = 1;
 }
 
 /* a patch binary that eng_load would at least not reject for its framing: header, record sizes add up to the length */

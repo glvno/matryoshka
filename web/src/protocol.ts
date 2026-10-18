@@ -114,7 +114,7 @@ export const paramFrame = (module: number, param: number, q16: number): Uint8Arr
   return frame(CMD.param, [module, param, v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >>> 24) & 0xff]);
 };
 
-export const SLOTS = 32;
+export const SLOTS = 64;
 export const NAME_BYTES = 20;
 export const slotFrame = (slot: number, name: string, patch: Uint8Array, crc = crc16(patch)): Uint8Array => {
   const n = Array.from({ length: NAME_BYTES }, (_, i) => (name.charCodeAt(i) >= 32 && name.charCodeAt(i) < 127 ? name.charCodeAt(i) : 0));

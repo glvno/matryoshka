@@ -21,6 +21,7 @@ static uint32_t fm1_ticks(void) { return 0; }
 static uint32_t eng_us_last = 316, eng_us_max = 358;
 static uint8_t eng_overload;               /* audio.c: the overload guard muted the patch */
 static int32_t patch_gain;                 /* audio.c: the mixer level */
+static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
 #define FELUCCA_VERSION "M1-PREVIEW"
 #define FM1_TICKS_PER_US 24u
 

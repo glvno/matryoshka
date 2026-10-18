@@ -82,47 +82,6 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
     screen_idle();
     return rc;
 }
-/* The menu's settings ride in the upper bits of the first state word (the low 4: the octave + 8):
- *   7 mixer is in the blob's tail  9 cpu_bar  10 accel  11 clock_in  12 prog_chg  15 set (older records have 0 here)
- * (records before the four voices also have 8 leds, 13..14 midi_to, 16..29 the levels of voices 1 / 2, 30..31 their mutes) */
-static uint32_t state_pack(void)
-{
-    return 1u << 7 | (uint32_t)cfg.cpu_bar << 9 | (uint32_t)cfg.accel << 10 | (uint32_t)cfg.clock_in << 11 |
-           (uint32_t)cfg.prog_chg << 12 | 1u << 15;
-}
-
-static void state_unpack(uint32_t w)
-{
-    if (!(w >> 15 & 1u))
-        return;                                         /* a record from before: the defaults */
-    cfg.cpu_bar = w >> 9 & 1u;
-    cfg.accel = w >> 10 & 1u;
-    cfg.clock_in = w >> 11 & 1u;
-    cfg.prog_chg = w >> 12 & 1u;
-    if (!(w >> 7 & 1u)) {                               /* the mixer of a record from before (voices 1 and 2) */
-        mix_vol = (uint8_t)(w >> 16 & 127u) > 100u ? 100u : (uint8_t)(w >> 16 & 127u);
-        mix_mute = w >> 30 & 1u;
-    }
-    mix_apply_all();
-}
-
-/* The saved state (SAVE, the editor's STORE): one blob in the patch store (patchstore.c), the whole state of the panel:
- *   0 0xB2  1 version 2  2..9 the length of each voice's patch (u16)  10.. the firmware arpeggiators' settings (ARP_PACK bytes
- *   each; zeros since the Arpeggiator module, #58, and ignored)
- *   then the patches as they run now (parameter edits included), then the tail: the MIDI channels (4), the LED mode, the
- *   mixer levels (4), the mute bits.
- * With the header's words: octave and settings (state_pack), the selected module of each voice (byte per voice in word 1) and
- * the preset of each (word 2). Version 1 (two voices, before the four-voice firmware) is still read: its lengths are 2..5,
- * its arpeggiators follow at 6, its tail is the two channels and the LED mode. An even older record holds just voice 1's
- * patch (starts with 0xA1).
- * The record has BLOB_NV = 4 patch slots (from the four-voice firmware of 1.0.x): the firmware writes the first and leaves
- * the others empty (length 0, default arp, channel, level), and reads only the first of a record that firmware wrote. */
-#define BLOB_MAGIC 0xB2u
-#define ARP_PACK 13u
-#define BLOB_NV 4u                                /* voice slots in the record (the panel's most) */
-static uint8_t blob[PS_MAX] ENG_POOL;
-
-
 /* the editor's TRANSPORT command (PLAY) */
 static void m1_transport(int run)
 {
@@ -131,141 +90,151 @@ static void m1_transport(int run)
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
-#define BLOB_HDR (2u + 2u * BLOB_NV)
-#define BLOB_TAIL (BLOB_NV + 1u + BLOB_NV + 1u)
-static uint32_t blob_build(void)                /* 0 if it does not fit */
-{
-    uint32_t n = BLOB_HDR, v, i, total = BLOB_HDR + BLOB_NV * ARP_PACK + BLOB_TAIL + m1_cur_len;
-    if (total > PS_MAX)
-        return 0;
-    blob[0] = BLOB_MAGIC;
-    blob[1] = 2;
-    for (v = 0; v < BLOB_NV; v++) {             /* the slots after the first are empty */
-        uint32_t l = v ? 0u : m1_cur_len;
-        blob[2u + 2u * v] = (uint8_t)l;
-        blob[3u + 2u * v] = (uint8_t)(l >> 8);
-    }
-    for (i = 0; i < BLOB_NV * ARP_PACK; i++)    /* (the firmware arpeggiators' settings, before #58: zeros) */
-        blob[n++] = 0;
-    for (i = 0; i < m1_cur_len; i++)
-        blob[n++] = m1_cur[i];
-    for (v = 0; v < BLOB_NV; v++)
-        blob[n++] = v ? (uint8_t)(v + 1u) : cfg.ch;
-    blob[n++] = cfg.leds;
-    for (v = 0; v < BLOB_NV; v++)
-        blob[n++] = v ? 100u : mix_vol;
-    blob[n++] = mix_mute;
-    return n;
-}
-
-static int m1_store(const uint8_t *patch, uint32_t len)        /* (the arguments are the editor's: the state is stored whole) */
-{
-    int rc;
-    uint32_t n;
-    (void)patch;
-    (void)len;
-    if (!flash_ok || !m1_cur_len)
-        return -1;
-    n = blob_build();
-    if (!n)
-        return -2;
-    ps_state[0] = (uint32_t)(octave + 8) | state_pack();   /* octave and settings */
-    ps_state[1] = sel & 255u;                   /* the selected module and the preset (one byte each, as voice 1's were) */
-    ps_state[2] = cur_preset & 255u;
-    ps_state[3] = 0;
-    eng_run = 0;                                /* a sector erase takes the CPU for a while: no audio meanwhile */
-    rc = ps_save(blob, n);
-    eng_resume();
-    return rc;
-}
-
-/* The preset list the PRESET knob and MIDI program change step through: the preset bank if the editor uploaded one
- * (the occupied flash slots in slot order), else the factory presets compiled into the firmware. */
-static uint32_t popcount32(uint32_t v)
+/* The bank (slotstore.c) is the only patch list: 64 slots, filled with the factory patches (presets.h) on the first boot
+ * and by FACTORY RESET. PRESET steps through the occupied slots, MIDI program change n loads slot n, SAVE writes the running
+ * patch (edits included) back into its slot and the panel settings into the settings record, which the next boot reads
+ * (the slot it opens, the octave, the menu, the mixer). cur_preset is the slot the running patch came from. */
+static uint32_t popcount64(uint64_t v)
 {
     uint32_t n = 0;
     for (; v; v &= v - 1u)
         n++;
     return n;
 }
-static uint32_t list_count(void) { return bank_mask ? popcount32(bank_mask) : N_PRESETS; }
-static uint32_t list_slot(uint32_t idx)             /* slot number of the idx-th occupied slot */
+static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u); }
+
+/* the settings record: version, slot, octave + 8, LED mode, knob accel, CPU in the bar, clock in, program change,
+ * MIDI channel, level, mute, the selected module */
+#define SET_VERSION 1u
+#define SET_LEN 12u
+static void settings_pack(uint8_t *d)
 {
-    uint32_t s;
-    for (s = 0; s < M1_SLOTS; s++)
-        if ((bank_mask >> s & 1u) && idx-- == 0u)
-            return s;
+    d[0] = SET_VERSION;
+    d[1] = (uint8_t)cur_preset;
+    d[2] = (uint8_t)(octave + 8);
+    d[3] = cfg.leds;
+    d[4] = cfg.accel;
+    d[5] = cfg.cpu_bar;
+    d[6] = cfg.clock_in;
+    d[7] = cfg.prog_chg;
+    d[8] = cfg.ch;
+    d[9] = mix_vol;
+    d[10] = mix_mute;
+    d[11] = (uint8_t)sel;
+}
+static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint32_t *module)
+{
+    if (len < SET_LEN || d[0] != SET_VERSION)
+        return -1;
+    *slot = d[1];
+    octave = clampi((int32_t)d[2] - 8, -3, 3);
+    cfg.leds = d[3] > 2u ? 2u : d[3];
+    cfg.accel = d[4] & 1u;
+    cfg.cpu_bar = d[5] & 1u;
+    cfg.clock_in = d[6] & 1u;
+    cfg.prog_chg = d[7] & 1u;
+    cfg.ch = d[8] > 16u ? 1u : d[8];
+    mix_vol = d[9] > 100u ? 100u : d[9];
+    mix_mute = d[10] & 1u;
+    *module = d[11];
     return 0;
 }
 
-static char label_buf[40];                       /* the preset's name */
-
-static void preset_load(uint32_t n)
+/* a store write: the erase and program windows have the IRQs off, so no audio meanwhile */
+static int store_write(uint32_t id, const char *name, const uint8_t *p, uint32_t len)
 {
-    static uint8_t bank_buf[M1_PATCH_MAX] ENG_POOL;
-    uint32_t count = list_count(), len = 0;
-    const uint8_t *data;
-    const char *name;
-    char slot_name[M1_NAME + 1], *p = label_buf;
-    if (n >= count)
-        return;
-    if (bank_mask) {
-        if (sl_read(list_slot(n), bank_buf, &len, slot_name))
-            return;
-        data = bank_buf;
-        name = slot_name;
-    } else {
-        data = PRESET_LIST[n].data;
-        len = PRESET_LIST[n].len;
-        name = PRESET_LIST[n].name;
-    }
-    if (m1_apply(data, len) == 0)
-        m1_set_current(data, len);
-    cur_preset = n;
-    p = put(p, name);
-    *p = 0;
-    patch_label = label_buf;
-    screen_idle();
-}
-
-static void preset_step(int32_t d)                  /* the PRESET knob */
-{
-    int32_t n = (int32_t)list_count(), i = ((int32_t)cur_preset + d) % n;
-    preset_load((uint32_t)(i < 0 ? i + n : i));
-}
-
-/* proto.c hooks: the preset bank */
-static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
-{
-    uint8_t was = eng_run;
     int rc;
     if (!flash_ok)
         return -1;
-    eng_run = 0;                                /* the erase and program windows have the IRQs off */
-    rc = sl_write(slot, name, p, len);
-    eng_run = was;
-    if (cur_preset >= list_count())
-        cur_preset = 0;
+    eng_run = 0;
+    rc = sl_write(id, name, p, len);
+    eng_resume();
     return rc;
+}
+
+static char label_buf[M1_NAME + 1];              /* the running patch's name (its slot's) */
+
+static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the editor's STORE: the running patch into its slot */
+{
+    uint8_t set[SET_LEN];
+    char name[M1_NAME];
+    uint32_t i;
+    const char *src = label_buf[0] ? label_buf : patch_label ? patch_label : "PATCH";
+    (void)patch;
+    (void)len;
+    if (!flash_ok || !m1_cur_len || cur_preset >= M1_SLOTS)
+        return -1;
+    for (i = 0; i < M1_NAME; i++)                /* the slot keeps its name; a patch from the editor or the fallback brings its own */
+        name[i] = 0;
+    for (i = 0; i < M1_NAME && src[i]; i++)
+        name[i] = src[i];
+    if (store_write(cur_preset, name, m1_cur, m1_cur_len))
+        return -2;
+    settings_pack(set);
+    if (store_write(SL_SETTINGS, 0, set, SET_LEN))
+        return -2;
+    for (i = 0; i < M1_NAME; i++)
+        label_buf[i] = name[i];
+    label_buf[M1_NAME] = 0;
+    patch_label = label_buf;
+    m1_edited = 0;
+    return 0;
+}
+
+static void fallback_boot(void);
+
+/* slot n into the engine; an empty slot or one that does not load: the fallback patch. 0 = the slot's patch runs */
+static int preset_load(uint32_t n)
+{
+    static uint8_t bank_buf[M1_PATCH_MAX] ENG_POOL;
+    uint32_t len = 0;
+    char slot_name[M1_NAME + 1];
+    if (!slot_used(n) || sl_read(n, bank_buf, &len, slot_name) || m1_apply(bank_buf, len)) {
+        fallback_boot();
+        cur_preset = n < M1_SLOTS ? n : 0u;
+        return -1;
+    }
+    m1_set_current(bank_buf, len);
+    cur_preset = n;
+    put(label_buf, slot_name)[0] = 0;
+    patch_label = label_buf;
+    screen_idle();
+    return 0;
+}
+
+static void preset_step(int32_t d)                  /* the PRESET knob: the next / previous occupied slot */
+{
+    uint32_t s = cur_preset, i;
+    if (!bank_mask)
+        return;
+    for (i = 0; i < M1_SLOTS; i++) {
+        s = (s + (d > 0 ? 1u : M1_SLOTS - 1u)) % M1_SLOTS;
+        if (slot_used(s))
+            break;
+    }
+    (void)preset_load(s);
+}
+
+/* proto.c hooks: the bank */
+static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
+{
+    return store_write(slot, name, p, len);
 }
 static int m1_slot_erase(uint32_t slot)
 {
-    uint8_t was = eng_run;
     int rc;
     if (!flash_ok)
         return -1;
     eng_run = 0;
     rc = sl_erase(slot);
-    eng_run = was;
-    if (cur_preset >= list_count())
-        cur_preset = 0;
+    eng_resume();
     return rc;
 }
 static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
 {
     sl_hdr_t h;
     uint32_t i;
-    if (!flash_ok || !(bank_mask >> slot & 1u) || sl_head(slot, &h, 0))
+    if (!flash_ok || !slot_used(slot) || sl_head(slot, &h, 0))
         return 0;
     *len = h.len;
     for (i = 0; i < M1_NAME; i++)
@@ -314,65 +283,34 @@ static void boot_step(const char *what)
 static const char *boot_msg;                    /* shown in the bar once the pages are up */
 static uint32_t boot_msg_ms;
 
-static void factory_boot(void)                  /* the first entry of the preset list */
+/* the factory patches (presets.h) into slots 0.., then the settings record (slot 0): the first boot, FACTORY RESET */
+static void factory_bank(void)
 {
-    boot_step("PATCH");
-    preset_load(0);
-    screen_idle();
-}
-
-/* the patch from the saved state: its patch, the module the knobs act on, the preset it came from */
-static int voice_restore(const uint8_t *p, uint32_t len, uint32_t module, uint32_t preset)
-{
-    int rc;
-    boot_step("PATCH");
-    rc = m1_apply(p, len);
-    if (rc == 0) {
-        m1_set_current(p, len);
-        sel = module < (uint32_t)eng_nmodules() ? module : 0u;
-        cur_preset = preset < list_count() ? preset : 0u;
-        patch_label = "STORED PATCH";
+    uint8_t set[SET_LEN];
+    uint32_t i;
+    boot_step("FACTORY BANK");
+    for (i = 0; i < N_PRESETS && i < M1_SLOTS; i++) {
+        char name[M1_NAME];
+        uint32_t k;
+        for (k = 0; k < M1_NAME; k++)
+            name[k] = 0;
+        for (k = 0; k < M1_NAME && PRESET_LIST[i].name[k]; k++)
+            name[k] = PRESET_LIST[i].name[k];
+        fm1_wdt_feed();
+        (void)store_write(i, name, PRESET_LIST[i].data, PRESET_LIST[i].len);
     }
-    return rc;
+    cur_preset = 0;
+    sel = 0;
+    settings_pack(set);
+    (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
 }
 
-static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob_build); 0 = restored */
-{
-    uint32_t nv = b[1] == 1u ? 2u : BLOB_NV, hdr = 2u + 2u * nv, at = hdr + nv * ARP_PACK, v, l0, total;
-    if (len < at || (b[1] != 1u && b[1] != 2u))
-        return -1;
-    for (v = 0, total = at; v < nv; v++)
-        total += (uint32_t)b[2u + 2u * v] | (uint32_t)b[3u + 2u * v] << 8;
-    l0 = (uint32_t)b[2] | (uint32_t)b[3] << 8;
-    if (!l0 || total > len)
-        return -1;
-    if (b[1] == 1u ? voice_restore(b + at, l0, ps_loaded[1] & 0xFFFFu, ps_loaded[2])        /* two voices: 16 bit modules */
-                   : voice_restore(b + at, l0, ps_loaded[1] & 255u, ps_loaded[2] & 255u))
-        return -2;
-    {                                                   /* the tail: channel, LED mode, level and mute */
-        const uint8_t *t = b + total;
-        uint32_t left = len - total;
-        if (b[1] == 1u && left >= 3u) {
-            cfg.ch = t[0] > 16u ? 1u : t[0];
-            cfg.leds = t[2] > 2u ? 2u : t[2];
-        } else if (b[1] == 2u && left >= BLOB_TAIL) {
-            cfg.ch = t[0] > 16u ? 1u : t[0];
-            mix_vol = t[BLOB_NV + 1u] > 100u ? 100u : t[BLOB_NV + 1u];
-            mix_mute = t[2u * BLOB_NV + 1u] & 1u;
-            cfg.leds = t[BLOB_NV] > 2u ? 2u : t[BLOB_NV];
-        }
-    }
-    (void)hdr;                                          /* (the arpeggiators' settings after the header: no longer used) */
-    mix_apply_all();
-    return 0;
-}
-
-/* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): the stored
- * state is skipped (it stays in flash: a normal boot tries it again, MENU > SYSTEM > DEFAULTS erases it) */
+/* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): nothing is
+ * read from the flash (the bank stays: a normal boot opens it again) */
 static uint8_t boot_safe;
 
-/* safe mode's patch: the fallback compiled into the firmware (presets.h FALLBACK_PATCH, web/src/fallback.ts),
- * nothing read from the flash (no stored state, no bank slot: either may be what made the last boot fail) */
+/* safe mode's patch, and the last resort when a slot does not load: the fallback compiled into the firmware (presets.h
+ * FALLBACK_PATCH, web/src/fallback.ts) */
 static void fallback_boot(void)
 {
     boot_step("PATCH");
@@ -383,48 +321,43 @@ static void fallback_boot(void)
     screen_idle();
 }
 
-static void patch_boot(void)                    /* the stored state if there is one, else the first factory patches */
+static void patch_boot(void)                    /* the slot the settings record names (the first boot: the factory bank first) */
 {
-    uint8_t *buf = blob;                        /* (the state record buffer: SAVE is not running while this boots) */
-    uint32_t len, seq, sector;
-    if (boot_safe) {
+    static uint8_t set[SET_LEN + 4u];
+    uint32_t len = 0, slot = 0, module = 0;
+    if (boot_safe || !flash_ok) {
         fallback_boot();
-        boot_msg = "SAFE MODE: FALLBACK PATCH";
-        boot_msg_ms = 4000;
+        if (boot_safe) {
+            boot_msg = "SAFE MODE: FALLBACK PATCH";
+            boot_msg_ms = 4000;
+        }
         return;
     }
-    if (flash_ok)
-        sl_scan();
-    if (flash_ok && ps_load(buf, &len, &seq, &sector) == 0) {
-        int ok = 0;
-        if (buf[0] == BLOB_MAGIC)
-            ok = boot_blob(buf, len) == 0;
-        else if (m1_apply(buf, len) == 0) {     /* a record from before: voice 1's patch alone */
-            m1_set_current(buf, len);
-            sel = ps_loaded[1] < (uint32_t)eng_nmodules() ? ps_loaded[1] : 0u;
-            cur_preset = ps_loaded[2] < list_count() ? ps_loaded[2] : 0u;
-            patch_label = "STORED PATCH";
-            ok = 1;
-        }
-        if (ok) {
-            octave = (ps_loaded[0] & 15u) ? (int32_t)(ps_loaded[0] & 15u) - 8 : 0;   /* the state that was saved with it (0: a record from before) */
-            octave = octave < -3 ? -3 : octave > 3 ? 3 : octave;
-            state_unpack(ps_loaded[0]);
-            leds_avail();
-            leds_octave();
-            boot_msg = buf[0] == BLOB_MAGIC ? "STATE RESTORED" : "PATCH RESTORED";
-            boot_msg_ms = 2000;
-            return;
-        }
-        factory_boot();
-        boot_msg = "RESTORE FAILED";                /* a record was there but did not load: the factory presets run */
+    boot_step("BANK");
+    sl_scan();
+    if (!bank_mask && sl_sec[SL_SETTINGS] == SL_NONE) {          /* an empty store: the first boot (or after a reset) */
+        factory_bank();
+        boot_msg = "FACTORY BANK WRITTEN";
+        boot_msg_ms = 2000;
+    } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
+        mix_apply_all();
+        leds_avail();
+        leds_octave();
+    }
+    if (!slot_used(slot)) {                       /* the slot is gone: the first occupied one */
+        for (slot = 0; slot < M1_SLOTS && !slot_used(slot); slot++)
+            ;
+    }
+    boot_step("PATCH");
+    if (preset_load(slot) == 0)
+        sel = module < (uint32_t)eng_nmodules() ? module : 0u;
+    else if (bank_mask) {
+        boot_msg = "SLOT DID NOT LOAD";
         boot_msg_ms = 3000;
-        return;
     }
-    factory_boot();
 }
 
-/* MENU > DEFAULTS: the settings, mixer, transport and the patch as they were made, and the saved state erased */
+/* MENU > FACTORY RESET: the bank erased and the factory patches written again, the settings, mixer and transport as made */
 static void defaults_now(void)
 {
     eng_all_notes_off();
@@ -434,16 +367,18 @@ static void defaults_now(void)
     mix_mute = 0;
     mix_apply_all();
     octave = 0;
-    factory_boot();
+    if (flash_ok) {
+        ui_msg("WRITING THE FACTORY BANK", 10000);
+        eng_run = 0;
+        sl_clear_all();
+        eng_resume();
+        factory_bank();
+    }
+    (void)preset_load(0);
     leds_avail();
     leds_octave();
     leds_play();
-    if (flash_ok) {
-        eng_run = 0;
-        (void)ps_erase();
-        eng_resume();
-    }
-    ui_msg("DEFAULTS", 1500);
+    ui_msg("FACTORY RESET", 1500);
 }
 
 static uint32_t midi_clk_ms;                    /* fm1_ms of the last MIDI clock tick (MIDI clock drives the clock while they come) */
@@ -492,7 +427,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                 eng_ctl(ENG_CTL_BEND, ((int32_t)(v << 7 | n) - 8192) << 3);
             } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
                 eng_ctl(ENG_CTL_AT, (int32_t)(n * 65536u / 127u));
-            } else if (st == 0xC0u && cfg.prog_chg) {   /* program change: a preset of the list */
+            } else if (st == 0xC0u && cfg.prog_chg && slot_used(n)) {   /* program change n: bank slot n (an empty one: nothing) */
                 preset_load(n);
                 redraw = 1;
             }
@@ -572,6 +507,8 @@ static void poly_set(int32_t n)
     eng_run = 1;
     if (m1_cur[8] != (uint8_t)n)
         q = put(q, "NO ROOM FOR ");
+    else
+        m1_edited = 1;
     fmt_int(num, n);
     q = put(q, num);
     put(q, n == 1 ? " PART" : " PARTS");
@@ -603,8 +540,10 @@ static void poly_turn(uint32_t field, int32_t clicks)
         return;
     }
     c = clampi(c + (clicks > 0 ? 1 : -1), 0, 2);
-    if (eng_poly_set(0, field, (uint32_t)c))
+    if (eng_poly_set(0, field, (uint32_t)c)) {
         m1_cur[8u + field] = (uint8_t)((uint32_t)c | (m1_cur[8u + field] & 0x80u));   /* the legato byte keeps its unison bit */
+        m1_edited = 1;
+    }
     if (!ui_dirty)
         ui_dirty = 1;
 }

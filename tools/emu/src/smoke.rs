@@ -240,6 +240,69 @@ fn heavy_bank(presets: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
     Ok(flash)
 }
 
+/// A record of the bank (firmware/src/slotstore.c): header ("M1S2", id, sequence number, length, CRC, name) at the start
+/// of a sector, the data from +256. `torn`: the data without the header (a write cut before its commit).
+fn record(id: u32, seq: u32, name: &str, data: &[u8], torn: bool) -> Vec<u8> {
+    let mut crc = 0xffffu32;
+    for &b in data {
+        crc ^= (b as u32) << 8;
+        for _ in 0..8 {
+            crc = if crc & 0x8000 != 0 { ((crc << 1) ^ 0x1021) & 0xffff } else { (crc << 1) & 0xffff };
+        }
+    }
+    let mut s = vec![0xffu8; 0x1000];
+    if !torn {
+        let mut h = Vec::new();
+        h.extend_from_slice(&0x3253_314Du32.to_le_bytes()); // "M1S2"
+        h.extend_from_slice(&id.to_le_bytes());
+        h.extend_from_slice(&seq.to_le_bytes());
+        h.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        h.extend_from_slice(&crc.to_le_bytes());
+        let mut n = [0u8; 20];
+        n[..name.len()].copy_from_slice(name.as_bytes());
+        h.extend_from_slice(&n);
+        h.extend_from_slice(&[0u8; 8]);
+        s[..48].copy_from_slice(&h);
+    }
+    s[256..256 + data.len()].copy_from_slice(data);
+    s
+}
+
+/// The bank's power-loss rules (#74): of two records of one slot the newer wins (a write cut after its commit, before the
+/// old sector was erased); a record without its header (cut before the commit) does not count; the first boot writes
+/// the factory patches.
+fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
+    put(&mut flash, 0x97000, record(3, 9, "EMU NEW", &presets[1].1, false));
+    put(&mut flash, 0xA5000, record(3, 5, "EMU OLD", &presets[2].1, false));
+    put(&mut flash, 0xB0000, record(7, 20, "EMU TORN", &presets[3].1, true));
+    put(&mut flash, 0xC0000, record(0, 1, "EMU ZERO", &presets[0].1, false));
+    let mut m = Machine::boot(app, Some(&flash));
+    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    m.run_for(300)?;
+    t.screen(&m, "store: boot opens slot 0 (no settings record)", "EMU ZERO");
+    m.midi(&[0xC0, 3], 500)?;
+    t.screen(&m, "store: the newer of two records of a slot wins", "EMU NEW");
+    m.midi(&[0xC0, 7], 500)?;
+    t.check("store: a record cut before its header does not count", !font::on_screen(m.lcd(), "EMU TORN"), String::new());
+    let f = m.flash();
+    t.check("store: the older record was erased", f[0xA5000..0xA5004] == [0xff; 4], String::new());
+    *emulated += m.ms();
+
+    let mut m = Machine::boot(app, None);
+    let written = wait_text(&mut m, "FACTORY BANK WRITTEN", 9000)?;
+    t.check("store: the first boot writes the factory bank", written, String::new());
+    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    m.run_for(2500)?;
+    t.screen(&m, "store: factory slot 0 plays", &presets[0].0);
+    let last = presets.len() - 1;
+    m.midi(&[0xC0, last as u8], 500)?;
+    t.screen(&m, "store: the last factory slot", &presets[last].0);
+    *emulated += m.ms();
+    Ok(())
+}
+
 fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let flash = heavy_bank(presets)?;
     // the overload guard: parts dropped while it plays, then a patch with nothing to drop muted, the main loop alive all along
@@ -410,6 +473,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     m.midi(&[0xC0, target as u8], 400)?;
     m.tap(OCT_UP, 120, 400)?;
     m.turn(K1, 5, 400)?;
+    let edited = format!("{} *", presets[target].0);
+    t.screen(&m, "an edit marks the patch (*)", &edited);
     let before = diagram(&m);
     m.tap(SAVE, 120, 50)?;
     let saved = wait_text(&mut m, "SAVED", 3000)?;
@@ -422,12 +487,10 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     t.check("SAVE wrote the flash", same > 0, format!("{same} bytes not erased"));
 
     let mut m = Machine::boot(app, Some(&flash));
-    let restored = wait_text(&mut m, "STATE RESTORED", 9000)?;
-    t.snap(&m, "restart");
-    t.check("restart: STATE RESTORED", restored, format!("at {} ms", m.ms()));
-    wait_text(&mut m, "SAVE: STORE", 3000)?;
+    wait_text(&mut m, "SAVE: STORE", 9000)?;
     m.run_for(2500)?;
-    t.screen(&m, "restart: the stored patch is playing", "STORED PATCH");
+    t.screen(&m, "restart: the saved slot opens", &presets[target].0);
+    t.check("restart: no edit mark", !font::on_screen(m.lcd(), &edited), String::new());
     t.check("restart: the same patch as saved (the diagram)", diagram(&m) == before, String::new());
     m.tap(ENV, 120, 400)?;
     t.screen(&m, "restart: the saved octave", "OCT +1");
@@ -447,8 +510,10 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     t.screen(&m, "bank: boot plays slot entry 0", "EMU BANK A");
     m.turn(PRESET, 1, 500)?;
     t.screen(&m, "bank: PRESET +1", "EMU BANK B");
-    m.midi(&[0xC0, 2], 500)?;
-    t.screen(&m, "bank: program change 2", "EMU BANK C");
+    m.midi(&[0xC0, 5], 500)?;
+    t.screen(&m, "bank: program change 5 (slot 5)", "EMU BANK C");
+    m.midi(&[0xC0, 3], 500)?;
+    t.screen(&m, "bank: program change to an empty slot: nothing", "EMU BANK C");
     let p = midi_note_peak(&mut m, 60, 500)?;
     t.check("bank: a note sounds", p > QUIET, format!("peak {p}"));
     m.turn(PRESET, 1, 500)?;
@@ -457,8 +522,9 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     t.check("bank: the slot with a bad CRC is skipped", !d, String::new());
     *emulated += m.ms();
 
-    // ---- 8. safety: the overload guard, safe mode, update mode
+    // ---- 8. safety: the overload guard, safe mode, update mode; power-safe slot writes
     safety(app, t, emulated, &presets)?;
+    store(app, t, emulated, &presets)?;
 
     // ---- 9. unmodelled hardware
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h

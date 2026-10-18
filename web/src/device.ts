@@ -138,7 +138,7 @@ export class DeviceLink {
     });
   }
 
-  /** all 32 slots of the bank */
+  /** all 64 slots of the bank */
   async readBank(): Promise<SlotInfo[]> {
     const out: SlotInfo[] = [];
     for (let s = 0; s < SLOTS; s++) out.push(await this.readSlot(s));

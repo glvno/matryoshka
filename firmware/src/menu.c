@@ -140,7 +140,7 @@ static void mix_toggle(void)
 enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH, MR_CLOCK, MR_PROG, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
 enum { MT_DISPLAY, MT_CONTROL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", "MIDI CHANNEL", "CLOCK IN", "PROG CHANGE",
-                                              "VERSION", "CPU PEAK", "UPDATE MODE", "DEFAULTS"};
+                                              "VERSION", "CPU PEAK", "UPDATE MODE", "FACTORY RESET"};
 static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
 static const char *const TAB_NAME[MT_COUNT] = {"DISPLAY", "CONTROL", "MIDI", "SYSTEM", "MANUAL"};
 

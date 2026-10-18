@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The Patches page: choose up to 32 patches and put them into the FM-1's patch bank (flash). The PRESET knob of the
+// The Patches page: choose up to 64 patches and put them into the FM-1's patch bank (flash). The PRESET knob of the
 // FM-1 steps through the bank; with an empty bank it steps through the factory patches built into the firmware.
 // Patches over the FM-1's budget (patchbin.ts deviceBudget) are kept apart, in an uncapped browser-only list.
 import type { DeviceLink } from './device';
@@ -285,7 +285,7 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
   onSavedChange(refresh);
   root.append(
     el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag src', textContent: 'MINE' }), 'Your patches'), el('p', { class: 'muted', textContent: 'Patches you saved, kept in this browser. Saving under the same name replaces the copy.' }), mineEl),
-    el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'Patch bank'), el('p', { textContent: 'Choose up to 32 patches and send them to the FM-1. They are written to its flash: the PRESET knob steps through them, a program change selects one, and they stay when the power is off. Uploading replaces the whole bank.' }), el('div', { class: 'toolbar' }, connect, upload, read, clear), bar, status),
+    el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'Patch bank'), el('p', { textContent: 'Choose up to 64 patches and send them to the FM-1. They are written to its flash: the PRESET knob steps through them, program change n opens slot n, SAVE on the FM-1 writes edits back, and they stay when the power is off. Uploading replaces the whole bank.' }), el('div', { class: 'toolbar' }, connect, upload, read, clear), bar, status),
     el(
       'div',
       { class: 'bank-cols' },
