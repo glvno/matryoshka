@@ -1,112 +1,94 @@
-# Handoff: after the upstream merge, before the one-voice build and the new modules
+# Handoff: what to work on next
 
-Written 2026-10-13 at the end of a session. Read CLAUDE.md first (its last section, "Merge with upstream main 1.0.2",
-has the merge facts); this file has the decisions and the plan that came after it.
+Written 2026-10-18 at the end of a session. Read CLAUDE.md first (decisions, gotchas, the state of each feature); this
+file is the work queue after that session. The previous handoff (2026-10-13: the one-voice build and the first new
+modules) is done and lives in git history.
 
 ## Where things stand
 
-- Branch `dev` = upstream `main` 1.0.2 merged with all of this branch's work, commit c3e3eee, pushed to the fork
-  (`glvno/Modular-1`). No PR to upstream (`WiggisModular/Modular-1`): agreed to build and flash first.
-- Host-tested only: vitest 86, `tools/golden.sh` 65 kits, `tools/arp_test.sh`, proto test, `tools/ui_preview.sh`. Never
-  built with the JieLi toolchain (Linux only; this Mac has no Docker, no `~/.jieli`), never flashed.
-- First thing on the Linux box: `nix develop -c python3 tools/build.py`, read the pool headroom it prints (must be
-  >= 8 KB), then `nix develop -c python3 tools/fm1_install.py build/modular-1.fwsc`.
-- Versions are `M1-1.1.0-dev` (modular.c) / `1.1.0-dev` (web/package.json, package-lock.json).
+- `main` at 7181c3d (local; `origin/main` and `device-player` are at a636b57 until the next push). Everything is on
+  `main`; `device-player` is merged and only kept for its worktree.
+- Host-tested: vitest 624, `tools/golden.sh` 84 kits + proto_test (incl. step values), LCD previews, `npm run build`.
+- The JieLi CI build of the newest commits has not been run in the emulator yet: after a push, wait for the
+  `firmware` workflow, then `cd web && npm run emu:smoke` (it fetches the CI build of the checkout's commit). The last
+  smoke (a636b57) passed 108 / 108.
+- Nothing has run on a real FM-1 since M1-0.2. The user will not flash until a second FM-1 is in hand
+  (memory: no-flash-until-second-device). Device work stays host + emulator only; #1 tracks the first real build and flash.
+- Binary patch format 28 (compat 28): step values (27), Env L/R `shot` (28).
 
-## Decisions made with the user (this session)
+## Closed this session
 
-1. **Instrument shape: one patch at a time, polyphonic.** Upstream's four voices (four patches with SEL, mixer, per-voice
-   MIDI channel) are not wanted in the user's build. Keep the code, make `ENG_VOICES` a real build switch, build with 1.
-   Reason to keep it: every upstream merge otherwise becomes a repeat of this one.
-2. **Keep one delay (521 ms) and one reverb.** Reverb could go (it is always last in the chain), delay stays because it is
-   patched inside the graph (LFO on its time, feedback into filters, clock-synced ping-pong). `ENG_NDELAY 1`, `ENG_NREV 1`.
-3. **Granular: yes.** Budget fixed as a 1 s int16 buffer (88 KB), up to 8 grains, one module per patch, shared like the
-   delay. It records whatever is patched into it (no audio input on the FM-1), a freeze toggle stops recording.
-4. **Priority order:** ENG_VOICES switch + pool sizes, ladder filter with drive, unison/detune on the oscillator,
-   envelope follower + compressor, math/logic modules, granular, then modal resonator, comb filter, pitch bend / mod
-   wheel / aftertouch as Main outputs + CC to knobs, frequency shifter, drum samples from flash (needs a flash-map decision).
+#90 #91 #93 (step grid styling, step note / velocity, drum kit assembly) and, as implemented on `main` but not verified on a
+device, #22 #36 #45 #58-#66 #67-#70 #72 #74 #76 #78 #81 #83. #57 (the device-player spec) stays open as the umbrella
+until the device has been seen running the player.
 
-## Memory picture (stand-in build, see CLAUDE.md for the method)
+## Suggested order
 
-Pool is 417,792 B. Now (four voices): 408,482 B. With one voice, one delay, one reverb: about 230 KB used, so about
-190 KB free; the 1 s grain buffer takes 88 KB of that. Big items: delay line 46 KB each, reverb 12 KB, LCD strip 30 KB,
-signal buffers 512 B each, instances 224 B each (the delay's clock ring made `inst_t` grow), `eng_t` 5.3 KB each.
-Proposed one-voice sizes: `ENG_NBUF` 255, `ENG_MAX_INST` 128, `ENG_NSTRING` 8, `ENG_NDELAY` 1, `ENG_NREV` 1,
-`ENG_NCHORUS` 1, plus the grain buffer. Keep `DEVICE` in `web/src/patchbin.ts` and the MEMORY lines of
-`firmware/src/manual.c` in step with the defines at the top of `firmware/src/engine.c`.
+### 1. #94: no flashing from the production build (safety, small)
 
-## Progress (2026-10-13, all host-tested only: vitest 105, golden 73; never built with the JieLi toolchain, not flashed)
+GitHub Pages serves a one-click installer of firmware that has never run on hardware. Hide or disable the Flash tab's
+install / return-to-stock / other-package actions unless `import.meta.env.DEV` (or an explicit opt-in such as a URL flag
+plus a typed confirmation), and say on the tab why. Files: `web/src/flasher.ts`, `index.html` (`#tab-flash`), `main.ts`
+(tab wiring). Check that the Pages workflow's `dist/` checks (the bundled stock .fwsc) still pass. Natural companions,
+both in the flasher and marked ready-for-agent:
 
-Done, in the priority order: the `ENG_VOICES` switch (step 1 below), the ladder filter (`ladder`), unison / detune on the
-oscillator (patch format 11), the compressor / envelope follower (`dyn`), `math` and `logic`, the granular module
-(`grain`, `gr_pool`, `ENG_NGRAIN`), the comb filter (`comb`, a string line) and the modal resonator (`modal`). Each has a
-section in docs/ARCHITECTURE.md and README.md and a golden kit. Stand-in pool after all of it: 392,278 B of 417,792
-(25 KB free; the four-voice build 407,712 B, 10 KB free; build.py wants 8 KB, the stand-in overestimated by ~7 KB before).
-Also done: pitch bend / mod wheel / aftertouch as Main outputs (`bend`, `mod`, `at`; the pitch includes the bend) and
-CC 16..19 to the Main knobs (`eng_ctl_v`, `midi_drain`, `input.ts`). The frequency shifter (`shift`) is done too. Drum samples from flash were
-dropped (decided 2026-10-13). After that: module bypass (editor ⏻ / FM-1 FX button, format 12, protocol 0x22) and the slider
-audit (log sliders snapped to integers; cutoff to 16 kHz; LFO rate and ADSR times log; delay time 1..520 ms). The next big
-item on the device side is still the first real build and flash.
+- #80: `fm1ota.js` `Link` overwrites `input.onmidimessage` and nulls it on close, killing the editor's live link. Use
+  `addEventListener` / `removeEventListener` for its own handler (or have `device.ts` reattach after a flash).
+- #77: `fm1ota.js` `serve` (lines ~170-174) answers either finish address in either phase and accepts zero-length
+  requests; match M-VAVE's `WebUpdate.js` (exact finish address, keep answering duplicates for a settle window), and
+  `tools/fm1_install.py` the same.
 
-## Step 1: the `ENG_VOICES` build switch (DONE 2026-10-13, host-tested; not built with the JieLi toolchain)
+### 2. Editor bug batch (small, one pass)
 
-Done as planned below, with two deviations: (a) the saved-state record stays version 2 with four voice slots (`BLOB_NV`)
-instead of a version 3 with a voice count, so a record moves between the builds (a one-voice build writes voice 1 plus
-empty slots and reads the first slot of a four-voice record); (b) initialisers use `ENG_VOICE_INIT(a, b, c, d)` (engine.h)
-instead of loops. Rows of the menu's MIDI tab are no longer contiguous (`CH_TAB`), so the menu walks them by membership
-(`menu_row_at`, `menu_pos`). Stand-in sizes: one voice 302,338 B of 417,792 (115 KB free; the handoff's "about 230 KB"
-below had left out the 255 buffers, 128 KB), four voices 408,482 B as before. `tools/pool_sizes.sh [-DENG_VOICES=4]` prints that estimate. Build: `M1_VOICES=4 python3 tools/build.py`;
-host tests: `M1_VOICES=4 tools/golden.sh` etc. (default: one voice). Both pass golden (65), arp, proto, previews.
+- #87 saved patches can't be deleted: the Library's "Your patches" card does have a × (`web/src/bank.ts` ~line 166 ->
+  `removeSaved`). Find out why the user could not use it (hidden by the "quiet row tools" CSS until hover? not
+  refreshed? not reachable from the Open picker, which is where the user looks?). Add delete where the user expects it,
+  confirm without a browser dialog (in-app prompt or an undo toast), and check it survives a reload.
+- #84 the command palette (`commands()` in `web/src/main.ts`, ~line 563) offers modules / assemblies / patches the pickers
+  no longer list (Part, Main, retired factory items). Build its entries from the same sources as Add module
+  (`MODULE_GROUPS`), the assembly browser (`FACTORY` + the library) and the Open picker (`fillPicker`), plus a test.
+- #86 `#demo-btn` uses `--btn-blue` (style.css `.sidebar #demo-btn`); use the teal + Add assembly uses.
+- #88 logo colours (`web/public/brand`, the logo in the sidebar) to the button palette, ideally from the CSS tokens so
+  light / dark stay in step.
 
-### The plan as written before
+### 3. Larger editor features
 
-`ENG_VOICES` is defined in `firmware/src/engine.h`. Places that assume four (C initialisers with four elements fail to
-compile with fewer; found with grep in the last session):
+- #92 copy / paste of the selection (modules and assemblies with nested ones and the cables among them) through the
+  system clipboard as JSON with an in-app fallback; works across patches; pasted items become the selection; one undo
+  step. Reuse `dragSet()`, `toDef` / `insertAssembly` (they now carry Steps data) and the Duplicate code path.
+- #85 an expanded assembly's frame shows the same exposed jacks on its edges as the collapsed card (inputs left, outputs
+  right, extras along the bottom), with the cables drawn to them.
+- #55 displays (scopes, envelope shapes, step grids) spanning several columns of an assembly card; #54 per-voice scope
+  traces of a poly assembly.
 
-- `menu.c`: `MIX_KEY_BIT[ENG_VOICES] = {1, 3, 5, 8}`, `mix_vol[] = {100, 100, 100, 100}`, rows `MR_CH1..MR_CH4` and
-  their `ROW_NAME` / `ROW_TAB` entries (make the channel rows `ENG_VOICES` many, or keep four rows and clamp).
-- `ui.c`: `VOICE_COLOR[ENG_VOICES] = {4 colours}`, `cfg = {2, 1, 1, {1, 2, 3, 4}, 1, 1}`, `cfg_defaults` sets `ch[0..3]`.
-- `main.c`: `VOICE_LINE[ENG_VOICES]`, `boot_blob`: `l[ENG_VOICES] = {0, 0, 0, 0}` and `nv = b[1] == 1 ? 2 : 4`;
-  `midi_drain`: `AV[0].play | AV[1].play | AV[2].play | AV[3].play`; the state blob is version 2 = four patches.
-  Plan: blob version 3 with the voice count in byte 2, `boot_blob` restores `min(record count, ENG_VOICES)` voices and
-  still reads versions 1 and 2.
-- `arp.c`: `ARP_N 4`, `AV[ARP_N]` initialiser with four entries (use `ENG_VOICES` and a loop or designated initialisers).
-- `engine.c`: `vgain[ENG_VOICES] = {ENG_ONE x4}` (just `{ENG_ONE}` and fill the rest in `eng_voice_select`'s first call,
-  or a static initialiser via a loop at load).
-- `proto.c`: fine (`m1_curv[ENG_VOICES]`). `manual.c`: text mentions four voices; make the MEMORY / CONTROLS lines
-  conditional or neutral.
-- Build with both values and run the host tests for each: `tools/golden.sh`, `tools/arp_test.sh`, `tools/ui_preview.sh`.
-  The stand-in compile for riscv32 (`clang --target=riscv32-unknown-elf -fno-integrated-as -S`, CLAUDE.md) catches the
-  initialiser errors on the Mac.
+### 4. Device work that stays host + emulator only
 
-## How a module is added (the pattern every item below follows)
+- #89 boot splash -> the Matryoshka logo (+ wordmark if it fits) in `splash_draw` (main.c): convert the art at build time
+  with a script in `tools/` (packed bitmap / palette, RGB565 LCD 240 x 240), keep the `boot_step` lines and bar, check
+  pool and flash headroom in `tools/build.py`, preview with `tools/ui_preview.sh`, run the emulator smoke.
+- #73 warn on the Flash tab (and in the README) before installing over Felucca: our patch store and bank sectors lie
+  inside Felucca's project / sample store.
+- #79 an identity scheme of our own (needs a decision from the user: today every build is `FM-1_800`, release builds
+  take Felucca's `FM-1_9XY` space, `FM-1_8` is M-VAVE Official Open's prefix); keep `loaderFits` / `loader_fits` in step.
+- Verification only, needs hardware: #82 (USB audio at the 44118 Hz engine rate), #75 and #71 (return to stock), #56
+  (velocity and aftertouch from the keys, an outside project), #1.
 
-- `web/src/modules.ts`: a `ModuleImpl` (def + init + process), appended to `ALL` (type indices are append-only).
-  Shared-per-patch modules (delay-like) go into `SHARED_TYPES` in `web/src/patch.ts`.
-- `cd web && npm run export-defs` regenerates `firmware/src/defs.h` (T_*, port and parameter indices, MAX_IN/OUT/PAR)
-  and `presets.h`.
-- `firmware/src/engine.c`: a state struct in the `inst_t` union, `m_<type>(const node_t *nd, inst_t *it, uint32_t n)`,
-  a case in `process()`, allocation in `eng_load` if it needs a line (copy the delay / string pattern with `slot_take`),
-  `init_state` if it needs a seed. Q16.16 signals, `mul16` / `mulr` / `clampi`, tables in `dsp_tables.h` (SIN_T, EXP2_T,
-  TAN_T, EXPN_T, LOG2_T; `svf_g()` gives tan(pi f / sr) from a phase increment).
-- `firmware/src/ui.c`: a colour in `TYPE_COLOR`, else the patch picture draws the module black.
-- Tests: a `describe` in `web/src/engine.test.ts`; a kit in `web/scripts/golden.ts` (`kit(name, (add, wire) => ...)`),
-  then `tools/golden.sh` must pass (rel rms <= 5 %, smooth patches reach 0.1 %).
-- Docs: a section in `docs/ARCHITECTURE.md`, a line in README's module list, CHANGELOG "Unreleased".
-- Bump `VERSION` in `web/src/patchbin.ts` and `ENG_PATCH_VERSION` in `engine.h` only if a record layout changes (a new
-  type appended does not; new parameters on an existing module do).
+## Things the user mentioned that have no ticket yet
 
-## Notes for the first modules
+- The 909 Kit factory patch (`web/presets/16-909-kit.json`, kept by hand) still has gated envelopes: its decays are cut
+  by the short Steps trigs as the 808 Kit's were. Convert its drum envelopes to `shot` (and refit their decays) if the
+  user wants it.
+- A Steps track's `vel` output is not cabled anywhere in the drum kit or the demo's HERA track; wiring velocity into the
+  drums' levels (or Hera's VCA / filter) is open.
+- localStorage `matryoshka.patches.backup-2026-10-18` (localhost:5173) holds the user's saved patches from before the
+  cleanup; remove it once the user confirms the new demo is right.
 
-- **Ladder with drive**: model it on `m_filter` (Q20 integrator states, rounded products, `svf_g` for the warped cutoff,
-  `exp2_scale` for cv/tracking). Four one-pole stages with a tanh-ish saturator (use `shape`'s soft clip or a small table)
-  on the input and in the feedback, resonance up to self-oscillation, `drive` parameter, outputs `lp24` and `lp12`
-  (2-pole tap). Keep cutoff log (`log: true`) and `cvamt`, `track` like the SVF so the knob pages read the same.
-- **Unison**: parameters `unison` (1..5, step 1) and `detune` (cents) on `osc`; in the plain path run N phases with a
-  symmetric detune spread and sum / N; `inst_t.s.osc` needs N phases (it has 13 words now; 5 phases fit). Not for the
-  FM path at first. Patch format bump (new parameters on an existing module).
-- **Envelope follower + compressor**: one module `dyn` with `in`, `side` inputs, `env` (control) and `out` outputs;
-  attack / release one-poles in Q24 (Q16 one-poles stall, see CLAUDE.md "Lesson"), threshold / ratio in dB via LOG2_T.
-- **Math / logic**: `math` (a, b -> add, mul, min, max, abs, cmp) and `logic` (gates: and, or, xor, not) as tiny modules.
-- **Granular**: `grain` module, shared, 1 s int16 line from a new pool (`gr_pool`, `ENG_NGRAIN 1`), params position,
-  size, density, pitch, spray, freeze (toggle), mix; up to 8 grains with a Hann window from SIN_T; linear interpolation.
+## Working notes
+
+- Browser checks: use http://[::1]:5173 (the user's dev server, separate storage) unless the task is the user's own
+  data on http://localhost:5173. A source change can make Vite reload the page and drop in-memory state: keep work in
+  `sessionStorage` while scripting the page. The browser tool truncates long results and blocks base64; to bring a large
+  JSON out of the page, POST it to a one-shot local receiver in the scratchpad.
+- `gh` needs `-R glvno/matryoshka` (it defaults to upstream); in zsh pass it literally, a `$R` variable does not split.
+- After changing `modules.ts` / presets: `npm run export-defs`; after engine.c: `npm run cpu-costs`; after a
+  default-parameter change: run course.json's stored patches through `validatePatch` (the tutorial tests compare them).
