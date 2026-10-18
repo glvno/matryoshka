@@ -106,7 +106,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 }
 
 /** builds the page; returns a refresh that rereads both lists (another part of the app may have saved to them) */
-export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch: () => Patch, onConnected: (msg: string) => void, open: (p: Patch) => void): () => void {
+/** `remove` deletes one of Your patches (main.ts: at once, with an Undo toast) */
+export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch: () => Patch, onConnected: (msg: string) => void, open: (p: Patch) => void, remove: (name: string) => void = (n) => void removeSaved(n)): () => void {
   let list = load();
   let over = loadOver();
   // an editor copy that no longer fits (saved before the budget, or a larger factory build) moves to the over-budget list
@@ -163,7 +164,7 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
         el('span', { class: 'muted', textContent: e.saved ? new Date(e.saved).toLocaleDateString() : '' }),
         el('button', { textContent: 'Open', title: 'open in the editor', onclick: () => open(JSON.parse(JSON.stringify(e.patch)) as Patch) }),
         el('button', { textContent: '+ bank', title: 'put a copy in the bank to upload to the FM-1', onclick: () => { status.textContent = addToBank(e.patch); reread(); refresh(); } }),
-        el('button', { textContent: '×', title: 'delete this saved patch', onclick: () => removeSaved(e.name) }),
+        el('button', { class: 'delete', textContent: 'Delete', title: `delete "${e.name}" from Your patches (you can undo it)`, onclick: () => remove(e.name) }),
       )) : [el('p', { class: 'muted', textContent: 'None yet. Click the save icon next to the patch name (or Ctrl/Cmd+S) to keep the open patch here.' })]),
     );
     overEl.replaceChildren(

@@ -8,7 +8,8 @@ import { Editor, probeKey, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildBankTab } from './bank';
-import { onSavedChange, savedPatches, savePatch as keepPatch } from './saved';
+import { isSaved, onSavedChange, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch } from './saved';
+import { showUndo } from './toast';
 import { buildAssembliesTab, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
@@ -25,14 +26,14 @@ import { DEFS } from './modules';
 import { newPatch, validatePatch, type Patch, type SideKey } from './patch';
 import { Scope } from './scope';
 import { diffCount, diffLines, diffPatches } from './diff';
-import { FACTORY, loadLibrary, categoryOf, USER_SHELF, summary } from './assemblies';
+import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
 import { decodeShare, encodeShare, shareCodeOf, shareLink } from './share';
 import { starterPatch } from './starter';
 import { Tutorial } from './tutorial/tutorial';
 import { synthLink } from './tutorial/link';
-import { CHAPTERS, LISTED, chapterEnd } from './tutorial/chapters';
 import { PRESETS } from './presets';
+import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
 import { deviceBudget } from './patchbin';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
@@ -310,6 +311,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onLoad(p) {
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
+    syncDeleteBtn(p.name);
   },
   onHistory(kind) {
     if (kind === 'undo') tutorial.undone();
@@ -374,34 +376,35 @@ host.onValues = (values) => {
 // Sidebar
 setupPopoverPositioning();
 const presetSel = $<HTMLSelectElement>('preset');
-/** the Open picker: the user's saved patches (rebuilt on every save), the examples, the tutorial chapters' ends */
+/** the Open picker: the user's saved patches (rebuilt on every save), the examples, the tutorial chapters' ends (catalog.ts) */
 const fillPicker = (): void => {
-  const group = (label: string, opts: HTMLOptionElement[]): HTMLOptGroupElement => {
-    const g = document.createElement('optgroup');
-    g.label = label;
-    g.append(...opts);
-    return g;
-  };
-  const mine = savedPatches();
   presetSel.replaceChildren(
     new Option('Open a patch…', ''),
-    ...(mine.length ? [group('Your patches', mine.map((e) => new Option(e.name, `saved:${e.name}`)))] : []),
-    group('Examples', Object.keys(PRESETS).map((n) => new Option(n, n))),
-    group('Tutorial', LISTED.map((i, n) => new Option(`${n + 1}. ${CHAPTERS[i].title}${CHAPTERS[i].published ? '' : ' (unpublished)'}`, `tutorial:${i}`))),
+    ...openableGroups().map(({ label, items }) => {
+      const g = document.createElement('optgroup');
+      g.label = label;
+      g.append(...items.map((o) => new Option(o.name, o.value)));
+      return g;
+    }),
   );
 };
 fillPicker();
 onSavedChange(fillPicker);
 presetSel.onchange = () => {
-  const v = presetSel.value;
-  const mine = v.startsWith('saved:') ? savedPatches().find((e) => e.name === v.slice(6)) : undefined;
-  if (mine) { editor.setPatch(mine.patch); closeSidebar(); }
-  else if (v.startsWith('tutorial:')) { editor.setPatch(chapterEnd(Number(v.slice(9)))); closeSidebar(); }
-  else if (v && PRESETS[v]) { editor.setPatch(PRESETS[v]()); closeSidebar(); }
+  const o = openableByValue(presetSel.value);
+  if (o) { editor.setPatch(o.load()); closeSidebar(); }
   setBaseline();
   presetSel.value = '';
   $<HTMLInputElement>('patch-name').value = editor.patch.name;
 };
+/** delete one of Your patches at once, with an Undo toast instead of a question (Library rows, the trash icon) */
+function deleteSaved(name: string): void {
+  const gone = removeSaved(name);
+  if (!gone) return;
+  showUndo(`"${name}" deleted from Your patches`, () => {
+    status.textContent = restoreSaved(gone) ? `"${name}" is back in Your patches` : `"${name}" was saved again since: the deleted copy was not put back`;
+  });
+}
 const nameInput = $<HTMLInputElement>('patch-name');
 nameInput.value = editor.patch.name;
 nameInput.oninput = () => {
@@ -421,6 +424,19 @@ const saveCurrent = (): void => {
   setTimeout(() => saveBtn.classList.remove('saved'), 900);
 };
 saveBtn.onclick = saveCurrent;
+/** the trash icon beside it shows while the open patch's name is one of Your patches (a declaration: onLoad calls it from the
+ *  editor's constructor, before the rest of this file has run) */
+function syncDeleteBtn(name = editor.patch.name): void {
+  const btn = document.getElementById('delete-patch-btn');
+  if (!btn) return;
+  const n = name.trim();
+  btn.hidden = !n || !isSaved(n);
+  btn.title = `Delete "${n}" from Your patches (the open patch stays open)`;
+}
+$<HTMLButtonElement>('delete-patch-btn').onclick = () => deleteSaved(editor.patch.name.trim());
+onSavedChange(() => syncDeleteBtn());
+nameInput.addEventListener('input', () => syncDeleteBtn());
+syncDeleteBtn();
 /** the FM-1 budget meter in the Main dock: memory (the fullest limit) and CPU as bars; open, a card above the deck with every limit and the costliest modules */
 /** a meter row: name, bar, percent; `near` / `over` colour it */
 function meterRow(row: Element, name: string, frac: number, text: string): void {
@@ -606,10 +622,10 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Fit patch to screen', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
     { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
     { kind: 'command', label: 'Reset canvas scale', keywords: 'zoom 100%', run: inPatch(() => editor.setZoom(1)) },
-    ...Object.values(DEFS).filter((d) => d.type !== 'fm1' && d.type !== 'part').map((d) => ({ kind: 'add module', tags: ['module'], label: moduleName(d.type, d.label), keywords: d.label, run: () => editor.add(d.type) })),
-    ...loadLibrary().map((d) => assembly(d, USER_SHELF)),
-    ...FACTORY.map((d) => assembly(d, categoryOf(d))),
-    ...patchCandidates().map((c) => ({ kind: 'load patch', label: c.name, run: () => loadNamed(c.patch) })),
+    // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
+    ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: m.def.label, run: () => editor.add(m.type) })),
+    ...assemblyShelves().map((a) => assembly(a.def, a.shelf)),
+    ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.name, detail: g.label, run: () => loadNamed(o.load()) }))),
   ];
 };
 const loadNamed = (p: Patch): void => {
@@ -1200,7 +1216,7 @@ try {
 const refreshBank = buildBankTab($('tab-library'), device, () => editor.patch, (msg) => {
   devStatus(msg);
   for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
-}, (p) => loadNamed(p));
+}, (p) => loadNamed(p), deleteSaved);
 refreshAssemblies = buildAssembliesTab($('tab-library'), {
   insert(def) {
     document.querySelector<HTMLButtonElement>('#tabs button[data-tab="patch"]')?.click();

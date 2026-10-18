@@ -19,7 +19,6 @@
   /* filled yellow buttons: the gate colour, greyed down so it does not shout */
   --btn-yellow: color-mix(in oklab, var(--ref-ochre) 70%, var(--ref-stone));
   /* the Demo button (LEARN): the palette's blue */
-  --btn-blue: var(--ref-blue);
   --piano-h: 160px;
   /* The on-screen keyboard: paper and ink keys, the lettered range tinted teal, held keys in the accent. */
   --key-white: var(--ref-white); --key-black: var(--ref-ink); --key-edge: var(--ref-sand);
@@ -39,7 +38,6 @@
     --accent: var(--ref-coral); --accent-ink: var(--ref-night);
     --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
     --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
-    --btn-blue: var(--ref-blue-light);
     --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
     --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
     --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
@@ -55,7 +53,6 @@
   --accent: var(--ref-coral); --accent-ink: var(--ref-night);
   --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
   --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
-  --btn-blue: var(--ref-blue-light);
   --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
   --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
   --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
@@ -973,17 +970,25 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 input#patch-name { height: 24px; padding: 0 4px; margin-left: -4px; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: text; }
 input#patch-name:hover { border-color: var(--line); }
 input#patch-name:focus { border-color: var(--secondary); background: var(--bar); outline: none; }
-#save-patch-btn { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--muted); }
-#save-patch-btn:hover { color: var(--ink); border-color: var(--line); }
+#save-patch-btn, #delete-patch-btn { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--muted); }
+#save-patch-btn:hover, #delete-patch-btn:hover { color: var(--ink); border-color: var(--line); }
 #save-patch-btn.saved { color: var(--secondary); }
+#delete-patch-btn:hover { color: var(--danger); }
+#delete-patch-btn[hidden] { display: none; }
+/* the Undo toast (toast.ts) */
+.toast { position: fixed; z-index: 60; left: 50%; bottom: calc(var(--piano-h, 0px) + 16px); transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
+  max-width: calc(100vw - 32px); padding: 6px 6px 6px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
+  box-shadow: 0 6px 20px color-mix(in srgb, #000 25%, transparent); font-size: 13px; }
+.toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast button { flex: none; min-height: 26px; padding: 0 10px; border: 1px solid var(--secondary); border-radius: 4px; background: transparent; color: var(--secondary); font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
+.toast button.toast-close { border-color: transparent; color: var(--muted); padding: 0 6px; }
 .sbody { display: grid; gap: 6px; padding: 8px; }
 .sidebar button { min-height: 30px; padding: 4px 8px; border-radius: 5px; white-space: nowrap; }
 /* the plain buttons in the (muted) gate colour: a grey fill read as a slider's bar */
 .sidebar button:not(.primary), .sidebar #tour-btn, .sidebar #palette-btn { background: var(--btn-yellow); border-color: var(--btn-yellow); color: var(--accent-ink); }
 .sidebar button:not(.primary):hover, .sidebar #tour-btn:hover, .sidebar #palette-btn:hover { border-color: var(--ink); color: var(--accent-ink); filter: brightness(1.08); }
 .sidebar #palette-btn kbd { color: inherit; opacity: .7; }
-#add-assembly-btn { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
-.sidebar #demo-btn { background: var(--btn-blue); border-color: var(--btn-blue); color: var(--accent-ink); }
+#add-assembly-btn, .sidebar #demo-btn { background: var(--secondary); border-color: var(--secondary); color: var(--panel); }
 /* the canvas panel's buttons (TIDY, FIT) look like the dock's octave buttons: outlined on the panel, the border teal on hover */
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
@@ -1028,6 +1033,7 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 #tab-library .bank-row button { min-height: 20px; padding: 0 6px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 #tab-library .bank-row button:hover:not(:disabled) { color: var(--secondary); background: color-mix(in srgb, var(--secondary) 14%, transparent); }
 #tab-library .bank-row button:disabled { opacity: .3; }
+#tab-library .bank-row button.delete:hover:not(:disabled) { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
 /* the cable into the cable slack's thumb: over the sidebar, unlike every other cable (z-index under panels and menus) */
 svg.slack-cable { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 15; overflow: visible; pointer-events: none; }
 svg.slack-cable .cable { pointer-events: stroke; cursor: pointer; }

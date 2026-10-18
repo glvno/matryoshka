@@ -4,7 +4,8 @@
 // exposed ports; a search field at the top cuts across every shelf. A click inserts and closes. On a phone the dialog is
 // a full-width sheet (style.css).
 import type { AssemblyDef } from './assembly';
-import { CATEGORIES, categoryOf, FACTORY, loadLibrary, summary, USER_SHELF } from './assemblies';
+import { CATEGORIES, loadLibrary, summary, USER_SHELF } from './assemblies';
+import { assemblyShelves, SHELVES } from './catalog';
 import { score } from './fuzzy';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
@@ -63,10 +64,9 @@ export class AssemblyBrowser {
   }
 
   private render(): void {
-    const user = loadLibrary();
     const q = this.search.value.trim().toLowerCase();
-    const all: [string, AssemblyDef][] = [...user.map((d): [string, AssemblyDef] => [USER_SHELF, d]), ...FACTORY.map((d): [string, AssemblyDef] => [categoryOf(d), d])];
-    const names = [USER_SHELF, ...CATEGORIES];
+    const all: [string, AssemblyDef][] = assemblyShelves().map((a) => [a.shelf, a.def]);
+    const names = SHELVES;
     this.shelves.replaceChildren(
       ...names.map((n) => {
         const count = all.filter(([s]) => s === n).length;

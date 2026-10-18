@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { beforeEach, expect, it } from 'vitest';
 import { PRESETS } from './presets';
-import { isSaved, removeSaved, savedPatches, savePatch } from './saved';
+import { isSaved, removeSaved, restoreSaved, savedPatches, savePatch } from './saved';
 
 const mem = new Map<string, string>();
 beforeEach(() => {
@@ -31,4 +31,20 @@ it('keeps a copy, not the live patch', () => {
   savePatch(p);
   p.modules.length = 0;
   expect(savedPatches()[0].patch.modules.length).toBeGreaterThan(0);
+});
+
+it('a deletion stays gone (storage) and can be undone, but never over a newer save of that name', () => {
+  const [a, b] = Object.values(PRESETS).map((make) => make());
+  savePatch({ ...a, name: 'Gone' });
+  const before = JSON.parse(mem.get('matryoshka.patches')!);
+  const entry = removeSaved('Gone')!;
+  expect(entry.name).toBe('Gone');
+  expect(JSON.parse(mem.get('matryoshka.patches')!)).toEqual([]); // what a reload reads
+  expect(removeSaved('Gone')).toBeNull();
+  expect(restoreSaved(entry)).toBe(true);
+  expect(JSON.parse(mem.get('matryoshka.patches')!)).toEqual(before);
+  removeSaved('Gone');
+  savePatch({ ...b, name: 'Gone' });
+  expect(restoreSaved(entry)).toBe(false);
+  expect(savedPatches()[0].patch.modules.length).toBe(b.modules.length);
 });

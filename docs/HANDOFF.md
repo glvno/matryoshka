@@ -38,7 +38,7 @@ both in the flasher and marked ready-for-agent:
   requests; match M-VAVE's `WebUpdate.js` (exact finish address, keep answering duplicates for a settle window), and
   `tools/fm1_install.py` the same.
 
-### 2. Editor bug batch (small, one pass)
+### 2. Editor bug batch (small, one pass) — #84 #86 #87 done 2026-10-18; #88 open
 
 - #87 saved patches can't be deleted: the Library's "Your patches" card does have a × (`web/src/bank.ts` ~line 166 ->
   `removeSaved`). Find out why the user could not use it (hidden by the "quiet row tools" CSS until hover? not

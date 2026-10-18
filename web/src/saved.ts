@@ -68,8 +68,21 @@ export function savePatch(p: Patch): string {
   return `"${name}" ${i >= 0 ? 'saved (replaced the earlier copy)' : 'saved'} in Your patches`;
 }
 
-export function removeSaved(name: string): void {
-  write(rawList().filter((e) => e.name !== name));
+/** delete the saved patch of that name; returns it as stored (for `restoreSaved`), or null when there was none */
+export function removeSaved(name: string): SavedPatch | null {
+  const list = rawList();
+  const i = list.findIndex((e) => e.name === name);
+  if (i < 0) return null;
+  const [gone] = list.splice(i, 1);
+  return write(list) ? gone : null;
+}
+
+/** undo of `removeSaved`: puts the entry back as it was (its date too), unless a patch of that name was saved since */
+export function restoreSaved(entry: SavedPatch): boolean {
+  const list = rawList();
+  if (list.some((e) => e.name === entry.name)) return false;
+  list.push(entry);
+  return write(list);
 }
 
 export const isSaved = (name: string): boolean => rawList().some((e) => e.name === name);
