@@ -14,6 +14,7 @@
   <div class="workspace">
     <aside id="workspace-sidebar" class="sidebar" aria-label="Workspace controls">
       <button id="sidebar-collapse" class="side-collapse" aria-expanded="true" aria-controls="workspace-sidebar" title="Collapse the sidebar (Ctrl/Cmd+B)" aria-label="Collapse the sidebar">«</button>
+      <button id="about-heart" class="about-heart" title="About & support" aria-label="About and support">♥</button>
       <div class="brand">
         <img src="./brand/matryoshka.png" width="80" height="80" alt="" />
         <h1 class="wordmark"><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" /></h1>
@@ -50,6 +51,7 @@
       </div>
       <div class="sidebar-bottom">
         <span id="audio-status" class="muted" role="status">Audio ready · play a key</span>
+        <button id="about-btn" title="About Matryoshka, the AI usage figures, the credits, and Ko-fi">About</button>
         <button id="palette-btn" title="All commands (Ctrl/Cmd+K)">Commands <kbd>⌘ / Ctrl K</kbd></button>
       </div>
     </aside>
@@ -72,7 +74,6 @@
     </section>
     <section id="tab-library" class="tab" role="tabpanel" aria-labelledby="nav-library" hidden></section>
     <section id="tab-flash" class="tab" aria-label="Flash firmware" hidden></section>
-    <section id="tab-about" class="tab" aria-label="About Matryoshka" hidden></section>
     </main>
     <div id="wheels" class="wheels" role="group" aria-label="Wheels"></div>
     <!-- the FM-1 budget: placed in the Main dock beside the knobs by the editor (Editor.dockBudget) -->
@@ -109,6 +110,7 @@
         <button id="dev-release" title="Release MIDI ports by reloading the page. Use before unplugging or flashing the FM-1.">Release MIDI</button>
         <form method="dialog"><button>Close</button></form>
       </dialog>
+      <dialog id="about" class="help about" aria-labelledby="about-title"></dialog>
       <dialog id="help" class="help" aria-labelledby="help-title">
         <div class="shead"><span class="mtag util">HELP</span><span class="stitle" id="help-title">Shortcuts</span><form method="dialog"><button class="help-close" aria-label="Close">×</button></form></div>
         <div class="help-body">

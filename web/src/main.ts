@@ -35,6 +35,7 @@ import { CHAPTERS, LISTED, chapterEnd } from './tutorial/chapters';
 import { PRESETS } from './presets';
 import { deviceBudget } from './patchbin';
 import { ALLOC } from './poly';
+import { AboutCard } from './about';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = 'modular-1.patch';
@@ -525,7 +526,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
     { kind: 'command', label: 'Flash firmware', keywords: 'install update hardware', run: () => switchTab('flash') },
-    { kind: 'command', label: 'About Matryoshka', keywords: 'credits', run: () => switchTab('about') },
+    { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
     { kind: 'command', label: 'Keyboard shortcuts', keywords: 'help', detail: '?', run: () => help.showModal() },
     { kind: 'command', label: scope.visible ? 'Hide oscilloscope' : 'Show oscilloscope', keywords: 'scope window waveform', run: inPatch(() => scope.setVisible(!scope.visible)) },
     { kind: 'command', label: 'Scope: waveform', keywords: 'oscilloscope time', run: inPatch(() => scope.setMode('time')) },
@@ -1109,15 +1110,8 @@ refreshAssemblies = buildAssembliesTab($('tab-library'), {
   },
 });
 buildFlashTab($('tab-flash'));
-$('tab-about').innerHTML = `
-  <div class="card about-brand">
-  <img src="./brand/matryoshka.png" width="160" height="160" alt="Coral and yellow parent dolls with two teal siblings, connected by matching cable arms" />
-  <h2><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" /></h2>
-  <p>A patchable modular synth for the M-VAVE FM-1, with a browser editor. Build sounds from modules, wrap them into assemblies, and nest those assemblies inside bigger instruments. The module engine runs in your browser here and on the FM-1 itself.</p></div>
-  <div class="card credits"><h2>We stand on the shoulders of giants.</h2>
-  <p><a href="https://github.com/hugelton/Felucca">Felucca</a>, by <a href="https://github.com/kurogedelic">Leo Kuroshita (@kurogedelic)</a> / <a href="https://github.com/hugelton">Hügelton Instruments</a>, provides the foundation for the flasher, loader and hardware support.</p>
-  <p><a href="https://github.com/WiggisModular/Modular-1">Modular-1</a>, by <a href="https://github.com/morgulbrut">@morgulbrut</a> / <a href="https://github.com/WiggisModular">WiggisModular</a>, is the modular synthesizer this project grew from.</p>
-  <p class="muted">GPL-3.0-only. Not affiliated with M-VAVE or Clavia.</p></div>`;
+const about = new AboutCard($<HTMLDialogElement>('about'));
+for (const id of ['about-btn', 'about-heart']) $(id).onclick = () => void about.open();
 const switchTab = (name: string): void => {
   currentTab = name;
   closeSidebar();
@@ -1143,11 +1137,12 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
   b.onclick = () => switchTab(b.dataset.tab!);
 }
 
-// open the tab named in the address (#library, #flash, #about; the old #presets and #assemblies open the Library)
+// open the tab named in the address (#library, #flash; the old #presets and #assemblies open the Library; #about opens the About card)
 {
   const h = location.hash.slice(1);
   const tab = h === 'presets' || h === 'assemblies' ? 'library' : h;
-  if (['patch', 'library', 'flash', 'about'].includes(tab)) switchTab(tab);
+  if (['patch', 'library', 'flash'].includes(tab)) switchTab(tab);
+  if (tab === 'about') void about.open();
 }
 
 

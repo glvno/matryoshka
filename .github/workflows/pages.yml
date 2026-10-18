@@ -3,9 +3,12 @@ name: pages
 #   https://glvno.github.io/matryoshka/ (repository: glvno/matryoshka)
 # One-time setup: repository Settings > Pages > Source: GitHub Actions. The github-pages environment
 # deploys only main; workflow_dispatch on any other branch is skipped.
+# Also daily (schedule), so the About card's AI usage figures stay fresh between pushes.
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: '17 5 * * *'
   workflow_dispatch:
 
 permissions:
@@ -55,6 +58,24 @@ jobs:
           python3 tools/build.py
           (cd web && npm run firmware)
       - run: npm test
+      # the About card's AI usage figures: WakaTime summaries of the projects in web/ai-projects.json, fetched with the
+      # WAKATIME_API_KEY repository secret; a failed fetch keeps the last good file from the cache (the card shows its date)
+      - name: the last good AI usage figures
+        uses: actions/cache/restore@v5
+        with:
+          path: web/public/ai-stats.json
+          key: ai-stats-${{ github.run_id }}
+          restore-keys: ai-stats-
+      - name: fetch the AI usage figures
+        env:
+          WAKATIME_API_KEY: ${{ secrets.WAKATIME_API_KEY }}
+        run: npm run ai-stats
+      - name: keep them for the next run
+        if: hashFiles('web/public/ai-stats.json') != ''
+        uses: actions/cache/save@v5
+        with:
+          path: web/public/ai-stats.json
+          key: ai-stats-${{ github.run_id }}
       - run: npm run build
       - name: the firmware package must be there
         run: test -s dist/firmware/modular-1.fwsc && test -s dist/firmware/modular-1.json
