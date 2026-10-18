@@ -279,7 +279,7 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       }
     },
   });
-  const reset = el('button', { textContent: 'All 32 factory patches', title: 'Replace the list with the factory patches', onclick: () => { list = Object.keys(PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); } });
+  const reset = el('button', { textContent: 'All factory patches', title: 'Replace the list with the factory patches', onclick: () => { list = Object.keys(PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); } });
   const empty = el('button', { textContent: 'Empty the list', onclick: () => { list = []; changed(); } });
 
   onSavedChange(refresh);

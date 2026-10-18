@@ -8,14 +8,15 @@ import { newPatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
 import { PRESETS } from './presets';
 import { withParts } from './test-poly';
+import { acid } from './test-patches';
 
 export function cpuChecks(note: number): { name: string; patch: Patch; notes: number[] }[] {
   const chord = [note - 12, note - 5, note, note + 4];
   const out = Object.entries(PRESETS).map(([name, make]) => ({ name, patch: make(), notes: [note] }));
-  out.push({ name: '303 Acid, 4 parts', patch: withParts(PRESETS['303 Acid'](), 4), notes: chord });
-  const morph = PRESETS['303 Acid']();
+  out.push({ name: 'Acid, 4 parts', patch: withParts(acid(), 4), notes: chord });
+  const morph = acid();
   for (const m of morph.modules) if (m.type !== 'fm1') m.paramsB = { ...m.params };
-  out.push({ name: '303 Acid, morph', patch: morph, notes: [note] });
+  out.push({ name: 'Acid, morph', patch: morph, notes: [note] });
   for (const def of FACTORY) {                     // those the FM-1 can load (a CPU estimate over 100 % is checked too)
     const patch = newPatch(DEFS, def.name);
     insertAssembly(patch, DEFS, def, 300, 0);

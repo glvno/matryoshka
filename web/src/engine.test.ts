@@ -8,6 +8,7 @@ import { fixAssemblies, makeAssembly } from './assembly';
 import { addAlloc, polyCfg, withParts } from './test-poly';
 import { PRESETS } from './presets';
 import { encodePatch, recordSize } from './patchbin';
+import { acid, subtractiveSaw, twoOpFM, wobble } from './test-patches';
 
 const SR = 48000;
 
@@ -61,7 +62,7 @@ describe('patch model', () => {
 
   it('validates JSON patches', () => {
     expect(() => validatePatch({ version: 2 }, DEFS)).toThrow();
-    const p = PRESETS['Subtractive saw']();
+    const p = subtractiveSaw();
     expect(validatePatch(JSON.parse(JSON.stringify(p)), DEFS).modules).toHaveLength(p.modules.length);
     const bad = JSON.parse(JSON.stringify(p));
     bad.cables[0].to.port = 'ghost';
@@ -96,7 +97,7 @@ describe('engine', () => {
 
   it('applies the ADSR: silent before the note, sounding while held, decaying after release', () => {
     const e = new Engine(SR);
-    e.load(PRESETS['Subtractive saw']());
+    e.load(subtractiveSaw());
     expect(rms(render(e, 4800).l)).toBeLessThan(1e-4);
     e.noteOn(48);
     expect(rms(render(e, 9600).l)).toBeGreaterThan(0.02);
@@ -107,7 +108,7 @@ describe('engine', () => {
 
   it('303 Acid preset is finite, audible and not clipping', () => {
     const e = new Engine(SR);
-    e.load(PRESETS['303 Acid']());
+    e.load(acid());
     e.noteOn(36);
     const { l } = render(e, SR);
     expect(l.every(Number.isFinite)).toBe(true);
@@ -235,7 +236,7 @@ describe('engine', () => {
 
   it('keeps running state when the patch is edited, but not output order assumptions', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Subtractive saw']();
+    const p = subtractiveSaw();
     e.load(p);
     e.noteOn(48);
     render(e, 4800);
@@ -248,7 +249,7 @@ describe('engine', () => {
 
   it('FM changes the spectrum compared to the unmodulated carrier', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Two-operator FM']();
+    const p = twoOpFM();
     e.load(p);
     e.noteOn(60);
     const a = render(e, 8000).l;
@@ -264,7 +265,7 @@ describe('engine', () => {
 
   it('survives a feedback cable without NaNs', () => {
     const e = new Engine(SR);
-    const p = PRESETS['Subtractive saw']();
+    const p = subtractiveSaw();
     const vca = p.modules.find((m) => m.type === 'vca')!;
     const osc = p.modules.find((m) => m.type === 'osc')!;
     connect(p, DEFS, { module: vca.id, port: 'out' }, { module: osc.id, port: 'pm' });
@@ -300,49 +301,36 @@ describe('engine', () => {
     expect(modulate(level, 0.5, 0.25)).toBeCloseTo(0.75, 9); // the others stay linear
   });
 
-  it('K1 moves the filter cutoff the same way in every factory preset: 20..4000 Hz over the whole knob', () => {
-    const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
+  it('the factory patches route the knobs over whole ranges: each knob through a pin at full depth from the bottom of its parameter', () => {
     for (const [name, make] of Object.entries(PRESETS)) {
       const p = make();
       const panel = p.modules.find((m) => m.type === 'fm1')!;
-      const flt = p.modules.find((m) => m.type === 'filter');
-      if (!flt) continue;
-      const cable = p.cables.find((c) => c.from.module === panel.id && c.from.port === 'k1' && c.to.module === flt.id);
-      expect(cable, `${name}: K1 reaches the filter`).toBeTruthy();
-      const pin = cable!.to.port === 'p1' ? 0 : 1;
-      expect(flt.map![pin === 0 ? 'p1' : 'p2'], name).toEqual(['cutoff']);
-      expect(flt.att![pin], `${name}: full attenuverter`).toBe(1);
-      expect(flt.params.cutoff, `${name}: K1 = 0 is the bottom`).toBeCloseTo(cutoff.min, 6);
-      expect(modulate(cutoff, flt.params.cutoff, 1), name).toBeCloseTo(cutoff.max, 3); // K1 = 1 is the top
-    }
-  });
-
-  it('the factory presets route the knobs: K1 is the filter cutoff, K4 the delay mix, K3 the reverb mix', () => {
-    for (const [name, make] of Object.entries(PRESETS)) {
-      const p = make();
-      const panel = p.modules.find((m) => m.type === 'fm1')!;
-      const dest = (k: number) =>
-        p.cables
-          .filter((c) => c.from.module === panel.id && c.from.port === `k${k}`)
-          .map((c) => {
-            const m = p.modules.find((x) => x.id === c.to.module)!;
-            return { type: m.type, params: m.map?.[c.to.port as 'p1' | 'p2'] ?? [] };
-          });
-      for (let k = 1; k <= 4; k++) expect(dest(k).length, `${name} K${k}`).toBeGreaterThan(0);
-      if (p.modules.some((m) => m.type === 'filter')) expect(dest(1).some((d) => d.type === 'filter' && d.params.includes('cutoff')), `${name}: K1 is the cutoff`).toBe(true);
-      if (p.modules.some((m) => m.type === 'delay')) expect(dest(4).some((d) => d.type === 'delay' && d.params.includes('mix')), `${name}: K4 is the delay mix`).toBe(true);
-      if (p.modules.some((m) => m.type === 'reverb')) expect(dest(3).some((d) => d.type === 'reverb' && d.params.includes('mix')), `${name}: K3 is the reverb mix`).toBe(true);
+      const routes = p.cables.filter((c) => c.from.module === panel.id && /^k[1-4]$/.test(c.from.port));
+      expect(routes.some((c) => c.from.port === 'k1'), `${name}: K1 does something`).toBe(true);
+      for (const c of routes) {
+        const m = p.modules.find((x) => x.id === c.to.module)!;
+        const pin = c.to.port as 'p1' | 'p2';
+        const params = m.map![pin];
+        expect(params.length, `${name} ${c.from.port}: a parameter`).toBeGreaterThan(0);
+        if (name === '909 Kit') continue; // written by hand before gen-presets.ts: its own depths
+        expect(m.att![pin === 'p1' ? 0 : 1], `${name} ${c.from.port}: full depth`).toBe(1);
+        for (const q of params) {
+          const pd = DEFS[m.type].params.find((x) => x.name === q)!;
+          expect(m.params[q], `${name} ${c.from.port}: ${m.type}.${q} rests at its minimum`).toBeCloseTo(pd.min, 6);
+          expect(modulate(pd, m.params[q], 1), `${name} ${c.from.port}: reaches the top`).toBeCloseTo(pd.max, 3);
+        }
+      }
     }
   });
 
   it('knob routing leaves the sound of a preset where it was (the knobs start where the values are)', () => {
-    const p = PRESETS['Pluck']();
+    const p = PRESETS['Init']();
     const filt = p.modules.find((m) => m.type === 'filter')!;
     const panel = p.modules.find((m) => m.type === 'fm1')!;
     const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
     const moved = modulate(cutoff, filt.params.cutoff, panel.params.k1 * filt.att![0]);
-    expect(moved).toBeGreaterThan(299);
-    expect(moved).toBeLessThan(301);
+    expect(moved).toBeGreaterThan(2390); // gen-presets.ts: Init's cutoff is 2400 Hz, K1 sweeps the whole range
+    expect(moved).toBeLessThan(2410);
   });
 });
 
@@ -421,7 +409,7 @@ describe('filter', () => {
   });
 
   it('loads old patches whose cables leave the filter at "lp"', () => {
-    const p = PRESETS['303 Acid']();
+    const p = acid();
     const q = JSON.parse(JSON.stringify(p));
     const flt = q.modules.find((m: { type: string }) => m.type === 'filter').id;
     const cable = q.cables.find((c: { from: { module: number } }) => c.from.module === flt);
@@ -2390,7 +2378,7 @@ describe('dedicated CV parameter displays', () => {
 });
 
 it('animates the Wobble 2 factory filter and VCA displays through their dedicated CV jacks', () => {
-  const p = PRESETS['Wobble 2']();
+  const p = wobble();
   const original = JSON.stringify(p);
   const filter = p.modules.find((m) => m.type === 'filter')!;
   const amp = p.modules.find((m) => m.type === 'vca')!;

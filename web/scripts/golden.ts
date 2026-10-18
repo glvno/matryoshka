@@ -12,6 +12,7 @@ import { make, PRESETS, type Build } from '../src/presets';
 import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, type Patch, type PolyCfg } from '../src/patch';
 import { makeAssembly } from '../src/assembly';
 import { withParts } from '../src/test-poly';
+import { acid } from '../src/test-patches';
 
 const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
@@ -48,6 +49,7 @@ const events: Record<string, Ev[]> = {};
 /** a kit's length in frames, when not END */
 const ends: Record<string, number> = {};
 for (const [n, p] of Object.entries(PRESETS)) tests[n] = p();
+tests['acid'] = acid(); // also the protocol test's upload (golden.sh hands acid.m1p to proto_test)
 
 /**
  * A kit built the way patches were before poly assemblies (`voices`, the Main module's legato / priority / unit and its
@@ -1231,9 +1233,9 @@ for (const [name, patch] of Object.entries(tests)) {
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
   writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n]) => (k === 'on' ? `${fr} on ${n} 127` : `${fr} off ${n}`)).join('\n') + `\n${END} end\n`);
 }
-// protocol test input: upload of 303 Acid, then a cutoff change on its filter
+// protocol test input: upload of the acid kit, then a cutoff change on its filter
 {
-  const p = PRESETS['303 Acid']();
+  const p = acid();
   const bin = encodePatch(p);
   const mod = p.modules.findIndex((m) => m.type === 'filter');
   const par = DEFS.filter.params.findIndex((x) => x.name === 'cutoff');
