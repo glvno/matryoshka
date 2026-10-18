@@ -476,7 +476,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     // ---- 1. boot
     let mut m = Machine::boot(app, None);
     m.run_to(1200)?;
-    t.screen(&m, "loading screen", "MODULAR-1");
+    t.screen(&m, "loading screen", "READY"); // (the splash logo and wordmark are pictures; by 1.2 s the line reads READY)
     let up = wait_text(&mut m, "SAVE: STORE", 8000)?;
     t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
     m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
