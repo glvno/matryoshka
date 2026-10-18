@@ -25,12 +25,15 @@
 //                                                    settings until the Arpeggiator module replaced it: feature bit 0, retired.)
 // device -> host
 //   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
+//   43 SLOT_NOW  slot u8, name 20 bytes                unasked: the slot the FM-1 plays now (a patch from its panel, program
+//                                                    change, boot or SAVE). Its knobs and patch buttons arrive as USB MIDI CC
+//                                                    (16..21, 80..88) when MENU > MIDI OUT is on.
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT]
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42 } as const;
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43 } as const;
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store'];

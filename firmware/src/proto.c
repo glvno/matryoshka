@@ -16,7 +16,7 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43 };
 #define M1_FEATURES 2u                                       /* INFO byte 5: bit 1 = the TRANSPORT command (bit 0, the ARP command, is retired) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
@@ -82,6 +82,17 @@ static void m1_reply(uint32_t cmd, const uint8_t *payload, uint32_t n)
     w += m1_pack7(payload, n, f + w);
     f[w++] = 0xF7;
     m1_send(f, w);
+}
+
+/* unasked: the slot the FM-1 plays now and its name (a patch from the panel, program change or boot; the editor shows it) */
+static void m1_slot_now(uint32_t slot, const char *name)
+{
+    uint8_t p[1u + M1_NAME];
+    uint32_t i;
+    p[0] = (uint8_t)slot;
+    for (i = 0; i < M1_NAME; i++)
+        p[1u + i] = name && name[i] && (!i || p[i]) ? (uint8_t)name[i] : 0u;
+    m1_reply(R_SLOT_NOW, p, sizeof p);
 }
 
 static void m1_ack(uint32_t cmd, uint32_t seq, uint32_t status, uint32_t aux)

@@ -24,6 +24,8 @@ export class DeviceLink {
   private paramTimer = 0;
   info: Info | null = null;
   onStatus: (s: string) => void = () => {};
+  /** what the FM-1 does on its own (#65): a knob or patch button as MIDI CC, the slot it plays now */
+  onEvent: (e: { kind: 'cc'; n: number; v: number } | { kind: 'slot'; slot: number; name: string }) => void = () => {};
 
   get connected(): boolean {
     return !!this.out && this.out.state === 'connected';
@@ -38,7 +40,12 @@ export class DeviceLink {
     this.inp = pick(access.inputs.values());
     if (!this.out || !this.inp) throw new Error('FM-1 not found. Is it connected and running the Matryoshka firmware?');
     this.inp.onmidimessage = (ev) => {
+      if (ev.data && ev.data.length === 3 && (ev.data[0] & 0xf0) === 0xb0) return this.onEvent({ kind: 'cc', n: ev.data[1], v: ev.data[2] });
       const p = ev.data ? parse(ev.data) : null;
+      if (p?.cmd === CMD.slotNow && p.payload.length >= 1) {
+        const name = String.fromCharCode(...p.payload.slice(1, 21).filter((c) => c)).trim();
+        return this.onEvent({ kind: 'slot', slot: p.payload[0], name });
+      }
       if (p && this.waiter?.match(p)) {
         const w = this.waiter;
         this.waiter = null;

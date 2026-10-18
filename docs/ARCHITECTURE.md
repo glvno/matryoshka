@@ -341,3 +341,9 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 
 - HOME held: tabs PANEL (LEDS, KNOB ACCEL), MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), SYSTEM (VERSION, CPU now, CPU PEAK, BANK SLOTS n OF 64, UPDATE MODE = update-only mode, FACTORY RESET; both OCT+ twice within 3 s), MANUAL (one screen: the reserved controls, the power-on keys, the menu's controls, the web address). ALGO steps the tabs, PRESET / SELECT the rows, K1..K4 / OCT- / OCT+ the value.
 - PLAY acts on its release; PLAY held + PRESET sets the Main module's tempo (1 bpm a click, x5 when turned fast), refused while MIDI clock drives the clock; such a release does not start / stop.
+
+## Editor link both ways (#65, 2026-10-18)
+
+- The FM-1 tells the editor which slot it plays: SysEx SLOT_NOW (0x43: slot, name) whenever it loads a slot (PRESET, program change, boot) or SAVEs. Its K1..K6 and patch buttons reach the editor as the USB MIDI CC of #64 (MENU > MIDI OUT on). With Live on, the editor moves the Main module's knobs (without sending them back) and the browser engine's buttons; the status line names the slot.
+- The editor's patch buttons go to the FM-1 as CC 80..88; its knob turns as PARAM as before. STORE writes the running patch into the slot the FM-1 plays; "Store to an FM-1 slot…" (palette) writes the open patch into any slot (SLOT command) without switching to it; the Library's bank upload writes all 64.
+- Not verified on a device: USB is not emulated.

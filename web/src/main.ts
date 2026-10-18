@@ -17,6 +17,7 @@ import { attachKeyboard, attachMidi, isTextEntry } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { isKnob } from './knob-rest';
+import { PANEL_BUTTONS } from './modules';
 import { longName, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
@@ -81,6 +82,25 @@ const devStatus = (s: string): void => {
   $('dev-status').textContent = s;
 };
 device.onStatus = devStatus;
+// the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
+let fromDevice = false;
+let deviceSlot: { slot: number; name: string } | null = null;
+device.onEvent = (e) => {
+  if (e.kind === 'slot') {
+    deviceSlot = { slot: e.slot, name: e.name };
+    devStatus(`FM-1 plays slot ${String(e.slot + 1).padStart(2, '0')} ${e.name}`);
+    return;
+  }
+  if (!live()) return;
+  const main = editor.patch.modules.find((m) => m.type === 'fm1');
+  if (!main) return;
+  if (e.n >= 16 && e.n <= 21) {
+    fromDevice = true;                       // (not sent back: the FM-1 already has it)
+    try { editor.setParam(main.id, `k${e.n - 15}`, Math.round((e.v / 127) * 1000) / 1000); } finally { fromDevice = false; }
+  } else if (e.n >= 80 && e.n < 80 + PANEL_BUTTONS.length) {
+    host.send({ t: 'button', i: e.n - 80, on: e.v >= 64 });
+  }
+};
 /** upload the current patch; changes made meanwhile cause one more upload */
 async function sendPatch(): Promise<boolean> {
   if (!fitsDevice) {
@@ -194,6 +214,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
       if (live()) queueUpload();
       return;
     }
+    if (fromDevice) return;
     if (live() && !uploading) device.param(editor.patch, id, name, value);
     else if (live()) dirty = true;
   },
@@ -215,6 +236,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onButton(i, on) {
     host.send({ t: 'button', i, on });
+    if (live()) device.cc(80 + i, on ? 127 : 0);   // the FM-1 takes its patch buttons as CC 80..88 (#64)
   },
   onProbe(key, id, port, kind, _label, on) {
     if (on) {
@@ -533,6 +555,7 @@ const commands = (): Command[] => {
     ...(editor.patch.slackFrom ? [{ kind: 'command' as const, label: 'Cable slack: unplug its input', keywords: 'slack sway modulate', run: inPatch(() => editor.setSideSource('slackFrom', null)) }] : []),
     ...(editor.patch.zoomFrom ? [{ kind: 'command' as const, label: 'Zoom: unplug its input', keywords: 'zoom modulate', run: inPatch(() => editor.setSideSource('zoomFrom', null)) }] : []),
     { kind: 'command', label: 'Fit patch to screen', keywords: 'zoom view', run: inPatch(() => editor.zoomToFit()) },
+    { kind: 'command', label: 'Store to an FM-1 slot\u2026', keywords: 'bank flash save device', run: () => void storeToSlot() },
     { kind: 'command', label: 'Reset canvas scale', keywords: 'zoom 100%', run: inPatch(() => editor.setZoom(1)) },
     ...Object.values(DEFS).filter((d) => d.type !== 'fm1' && d.type !== 'part').map((d) => ({ kind: 'add module', tags: ['module'], label: moduleName(d.type, d.label), keywords: d.label, run: () => editor.add(d.type) })),
     ...loadLibrary().map((d) => assembly(d, USER_SHELF)),
@@ -884,6 +907,19 @@ $('dev-btn').onclick = async () => {
   }
 };
 $('dev-send').onclick = () => void sendPatch();
+/** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */
+async function storeToSlot(): Promise<void> {
+  if (!device.connected) return devStatus('connect the FM-1 first (FM-1 & MIDI)');
+  const typed = window.prompt('Store into FM-1 slot (1-64):', String((deviceSlot?.slot ?? 0) + 1));
+  const n = Math.round(Number(typed));
+  if (!typed || !Number.isFinite(n) || n < 1 || n > 64) return;
+  try {
+    await device.uploadSlot(n - 1, editor.patch.name.toUpperCase().slice(0, 20), editor.patch);
+    devStatus(`"${editor.patch.name}" stored into FM-1 slot ${String(n).padStart(2, '0')}`);
+  } catch (e) {
+    devStatus((e as Error).message);
+  }
+}
 $('dev-live').onchange = () => {
   if ($<HTMLInputElement>('dev-live').checked) void sendPatch();
 };
@@ -892,7 +928,7 @@ $('dev-store').onclick = async () => {
     if (!(await sendPatch())) return;
     await device.store();
     setBaseline();
-    devStatus('stored: the FM-1 starts with this patch');
+    devStatus(`stored into the FM-1's slot ${deviceSlot ? String(deviceSlot.slot + 1).padStart(2, '0') : ''} (the one it plays; it opens it at the next start)`);
   } catch (e) {
     devStatus((e as Error).message);
   }

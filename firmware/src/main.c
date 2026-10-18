@@ -182,10 +182,12 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* SAVE, the edit
     label_buf[M1_NAME] = 0;
     patch_label = label_buf;
     m1_edited = 0;
+    m1_slot_now(cur_preset, label_buf);
     return 0;
 }
 
 static void fallback_boot(void);
+static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
 
 /* slot n into the engine; an empty slot or one that does not load: the fallback patch. 0 = the slot's patch runs */
 static int preset_load(uint32_t n)
@@ -203,6 +205,8 @@ static int preset_load(uint32_t n)
     put(label_buf, slot_name)[0] = 0;
     patch_label = label_buf;
     screen_idle();
+    if (patches_up)
+        m1_slot_now(n, label_buf);                  /* the editor follows the slot (#65) */
     return 0;
 }
 
@@ -773,7 +777,6 @@ static void chip_boot(void)
     fm1_enter_uboot();
 }
 
-static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
 
 /* Update mode: USB and the firmware update (M-UPGRADE) only, no engine and nothing read from the flash, until the power
  * goes off. Reached when two boots in a row failed (the boot guard), with OCT- + OCT+ held at power-on, or from MENU >
