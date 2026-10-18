@@ -160,7 +160,7 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
   if (m.type === 'const' || m.type === 'fm1' || m.type === 'part') return 0;
   const inputs = p.cables.filter((c) => c.to.module === id).map((c) => slope(p, c.from.module, seen));
   const fastest = inputs.length ? Math.max(...inputs) : 0;
-  if (m.type === 'scale' && Number.isFinite(fastest)) return fastest * Math.abs(m.params.gain ?? 1);
+  if (m.type === 'scale') return (m.params.gain ?? 1) === 0 ? 0 : Number.isFinite(fastest) ? fastest * Math.abs(m.params.gain ?? 1) : fastest;
   return fastest;
 }
 

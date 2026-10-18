@@ -1,0 +1,249 @@
+{
+ "version": 2,
+ "name": "Plucked String",
+ "modules": [
+  {
+   "id": 1,
+   "type": "fm1",
+   "x": 20,
+   "y": 20,
+   "params": {
+    "k1": 0.6962,
+    "k2": 0.3,
+    "k3": 0.8658,
+    "k4": 0.5,
+    "morph": 0
+   }
+  },
+  {
+   "id": 2,
+   "type": "string",
+   "x": 20,
+   "y": 60,
+   "params": {
+    "decay": 0.05,
+    "damp": 0,
+    "burst": 0,
+    "coarse": 0,
+    "level": 0.8
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "decay"
+    ],
+    "p2": [
+     "damp"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 3,
+   "type": "filter",
+   "x": 340,
+   "y": 60,
+   "params": {
+    "cutoff": 20,
+    "res": 0.1,
+    "cvamt": 1,
+    "track": 1,
+    "morph": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "cutoff"
+    ],
+    "p2": [
+     "res"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 4,
+   "type": "output",
+   "x": 720,
+   "y": 20,
+   "params": {
+    "level": 0.88
+   }
+  },
+  {
+   "id": 5,
+   "type": "alloc",
+   "x": 20,
+   "y": 580,
+   "params": {
+    "voices": 4,
+    "assign": 0,
+    "legato": 0,
+    "priority": 0,
+    "unison": 0
+   }
+  }
+ ],
+ "cables": [
+  {
+   "from": {
+    "module": 2,
+    "port": "out"
+   },
+   "to": {
+    "module": 3,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 5,
+    "port": "pitch"
+   },
+   "to": {
+    "module": 2,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 5,
+    "port": "gate"
+   },
+   "to": {
+    "module": 2,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "lp24"
+   },
+   "to": {
+    "module": 4,
+    "port": "l"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "lp24"
+   },
+   "to": {
+    "module": 4,
+    "port": "r"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
+    "module": 5,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "k1"
+   },
+   "to": {
+    "module": 2,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "k2"
+   },
+   "to": {
+    "module": 2,
+    "port": "p2"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "k3"
+   },
+   "to": {
+    "module": 3,
+    "port": "p1"
+   }
+  }
+ ],
+ "assemblies": [
+  {
+   "v": 1,
+   "id": 1,
+   "name": "pluck",
+   "label": "pluck",
+   "x": 20,
+   "y": 60,
+   "open": false,
+   "modules": [
+    2,
+    3,
+    5
+   ],
+   "inputs": [
+    {
+     "module": 2,
+     "port": "exc",
+     "label": "exc"
+    },
+    {
+     "module": 5,
+     "port": "keys",
+     "label": "keys"
+    }
+   ],
+   "outputs": [
+    {
+     "module": 3,
+     "port": "lp24",
+     "label": "out"
+    }
+   ],
+   "params": [
+    {
+     "module": 2,
+     "param": "decay",
+     "label": "decay"
+    },
+    {
+     "module": 2,
+     "param": "damp",
+     "label": "damp"
+    },
+    {
+     "module": 2,
+     "param": "burst",
+     "label": "pick"
+    },
+    {
+     "module": 3,
+     "param": "cutoff",
+     "label": "tone"
+    }
+   ],
+   "poly": {}
+  }
+ ]
+}

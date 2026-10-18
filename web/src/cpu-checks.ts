@@ -9,6 +9,7 @@ import { deviceBudget } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView } from './poly';
 import { withParts } from './test-poly';
+import { acid } from './test-patches';
 
 export function cpuChecks(note: number): { name: string; patch: Patch; notes: number[] }[] {
   const chord = [note - 12, note - 5, note, note + 4];
@@ -19,10 +20,10 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
     return Array.from({ length: n }, (_, i) => note + [0, 4, 7, 11, 14, 17, 21, 24][i % 8] - (i >= 8 ? 12 : 0));
   };
   const out = Object.entries(PRESETS).map(([name, make]) => { const patch = make(); return { name, patch, notes: voices(patch) }; });
-  out.push({ name: '303 Acid, 4 parts', patch: withParts(PRESETS['303 Acid'](), 4), notes: chord });
-  const morph = PRESETS['303 Acid']();
+  out.push({ name: 'Acid, 4 parts', patch: withParts(acid(), 4), notes: chord });
+  const morph = acid();
   for (const m of morph.modules) if (m.type !== 'fm1') m.paramsB = { ...m.params };
-  out.push({ name: '303 Acid, morph', patch: morph, notes: [note] });
+  out.push({ name: 'Acid, morph', patch: morph, notes: [note] });
   for (const def of FACTORY) {                     // those the FM-1 can load (a CPU estimate over 100 % is checked too)
     const patch = newPatch(DEFS, def.name);
     const a = insertAssembly(patch, DEFS, def, 300, 0);
@@ -47,6 +48,16 @@ export const BUSY_TYPES = new Set(['grain', 'dyn']);
  * works out its coefficients only then) */
 export function looseModel(p: Patch): boolean {
   if (p.modules.some((m) => BUSY_TYPES.has(m.type))) return true;
+  // an envelope or a glide into an oscillator's pitch (a drum's sweep, portamento): the model charges every sample as
+  // moving, it settles sooner
+  const byId = new Map(p.modules.map((m) => [m.id, m]));
+  const fromEnv = (id: number, seen = new Set<number>()): boolean => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    if (['adsr', 'env', 'glide'].includes(byId.get(id)?.type ?? '')) return true;
+    return p.cables.some((c) => c.to.module === id && fromEnv(c.from.module, seen));
+  };
+  if (p.cables.some((c) => c.to.port === 'pitch' && fromEnv(c.from.module))) return true;
   // an LFO whose rate a knob or another signal sets: the model charges it at its fastest (a pitch it moves every sample)
   if (p.modules.some((m) => m.type === 'lfo' && Math.round(m.params.wave ?? 0) !== 4 && p.cables.some((c) => c.to.module === m.id))) return true;
   return p.cables.some((c) => c.to.port === 'cv' && p.modules.find((m) => m.id === c.to.module)?.type === 'filter' && p.modules.find((m) => m.id === c.from.module)?.type === 'lfo');

@@ -13,7 +13,7 @@ mkdir -p build
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/host_test firmware/test/host_test.c -lm
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/proto_test firmware/test/proto_test.c -lm
 fail=0
-build/proto_test build/golden/303-acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx || fail=1
+build/proto_test build/golden/acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx || fail=1
 for p in build/golden/*.m1p; do
   n="${p%.m1p}"
   if [ "$M1_VOICES" = 4 ] && [ "$n" = build/golden/grain ]; then echo "skip grain: the four-voice build has no granular line"; continue; fi

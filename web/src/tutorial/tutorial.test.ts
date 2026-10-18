@@ -195,7 +195,7 @@ describe('publishing', () => {
     const bad = structuredClone(COURSE); (bad.chapters[0] as unknown as Record<string, unknown>).tour = 'yes';
     expect(() => validateShape(bad)).toThrow('tour');
   });
-  it('starts the tour on Warm Pad with its assemblies closed', () => {
+  it('starts the tour on its stored stack voice patch with its assemblies closed', () => {
     const t = CHAPTERS.findIndex((c) => c.tour);
     const p = chapterStart(t);
     expect(p.assemblies!.map((a) => [a.name, a.open])).toEqual([['stack voice', false], ['echo', false]]);

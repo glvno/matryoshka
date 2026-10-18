@@ -5,11 +5,12 @@ import { DEFS } from './modules';
 import { PRESETS } from './presets';
 import { addModule, connect, removeModule } from './patch';
 import { makeAssembly } from './assembly';
+import { acid } from './test-patches';
 
 describe('patch diff', () => {
   it('lists changed parameters, added / removed modules and cables, and the rest as lines', () => {
-    const a = PRESETS['303 Acid']();
-    const b = PRESETS['303 Acid']();
+    const a = acid();
+    const b = acid();
     expect(diffCount(diffPatches(a, b, DEFS))).toBe(0);
     const flt = b.modules.find((m) => m.type === 'filter')!;
     flt.params.cutoff = 999;

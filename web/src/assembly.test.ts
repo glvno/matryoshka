@@ -291,7 +291,7 @@ describe('assemblies', () => {
 
   it('ships factory assemblies that load, insert and play', () => {
     expect(FACTORY.map((d) => d.name)).toEqual([
-      'adsr operator', 'analog voice', 'auto pan', 'barber pole', 'bowed glass', 'bowed string', 'clap', 'clock', 'cloud', 'cowbell', 'echo', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'hihat', 'kalimba', 'kick', 'marimba', 'mono lead', 'noise voice', 'operator', 'Oracle V', 'pluck', 'poly voice', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'shimmer', 'sidechain pump', 'slicer', 'snare', 'stack voice', 'step sequencer', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'vibrato', 'voice', 'vowel voice', 'wavetable pad',
+      'adsr operator', 'Algo Four', 'analog voice', 'auto pan', 'barber pole', 'boom kick', 'bowed glass', 'bowed string', 'Canvas', 'clap', 'clock', 'cloud', 'cowbell', 'echo', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'Hera 6', 'hihat', 'kalimba', 'kick', 'marimba', 'mono lead', 'Monolith D', 'noise voice', 'operator', 'Oracle V', 'pluck', 'poly voice', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'stack voice', 'step sequencer', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
     ]);
     for (const d of FACTORY) {
       expect(d.modules.every((m) => m.map === undefined || ['k1', 'k2', 'k3', 'k4'].every((k) => m.map![k as 'k1'].length === 0)), d.name).toBe(true);
