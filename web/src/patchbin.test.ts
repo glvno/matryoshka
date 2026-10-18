@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
-import { addModule } from './patch';
+import { addModule, connect } from './patch';
 import { GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
@@ -149,13 +149,15 @@ describe('binary patch format', () => {
     expect(b.items.find((i) => i.key === 'bytes')!.used).toBe(encodePatch(p).length);
     expect(b.use).toBeGreaterThan(0);
     expect(b.use).toBeLessThanOrEqual(1);
-    while (p.modules.length <= DEVICE.modules) addModule(p, DEFS.const, 0, 0);
+    const out = p.modules.find((m) => m.type === 'output')!;
+    while (p.modules.length <= DEVICE.modules) connect(p, DEFS, { module: addModule(p, DEFS.const, 0, 0).id, port: 'out' }, { module: out.id, port: 'l' }); // wired: unwired modules are never sent
     const over = deviceBudget(p);
     expect(over.fits).toBe(false);
     expect(over.over.map((i) => i.key)).toContain('modules');
     expect(() => encodePatch(p)).toThrow(/over the FM-1 budget: modules/);
     const two = subtractiveSaw();
-    for (let i = 0; i < 2; i++) addModule(two, DEFS.reverb, 0, 0);
+    const out2 = two.modules.find((m) => m.type === 'output')!;
+    for (let i = 0; i < 2; i++) connect(two, DEFS, { module: addModule(two, DEFS.reverb, 0, 0).id, port: 'out' }, { module: out2.id, port: 'l' });
     expect(deviceBudget(two).over.map((i) => i.key)).toEqual(['reverbs']);
   });
 });

@@ -31,11 +31,12 @@ function loadElf(buf, mem) {
  * @param {Uint8Array} patch  the binary patch (patchbin.ts encodePatch)
  * @param {number[]} events  (kind << 16) | note: 1 note on, 2 note off, 3 render one 128-frame block
  * @param {Partial<typeof WEIGHTS>} [w]  other cycle weights
+ * @param {Float64Array} [hist]  if given, the cycles of every instruction are added at index pc / 4 (web/scripts/cpu-hot.ts)
  * @returns {{ blocks: { total: number, nodes: Map<string, {sum: number, cv: number, run: number}> }[], exit: number }}
  *   per rendered block: the cycles of the whole render (incl. the ISR's output loop), and per "node/part" the cycles of
  *   its input sums, parameter inputs and processing.
  */
-export function profile(elf, patch, events, w = WEIGHTS) {
+export function profile(elf, patch, events, w = WEIGHTS, hist = null) {
   const W = { ...WEIGHTS, ...w };
   const mem = new Uint8Array(MEM);
   const dv = new DataView(mem.buffer);
@@ -52,6 +53,7 @@ export function profile(elf, patch, events, w = WEIGHTS) {
     const op = ins & 0x7f, rd = (ins >> 7) & 31, f3 = (ins >> 12) & 7, rs1 = (ins >> 15) & 31, rs2 = (ins >> 20) & 31;
     const f7 = ins >>> 25;
     let next = pc + 4;
+    const c0 = cycles;
     cycles += W.base;
     switch (op) {
       case 0x37: if (rd) x[rd] = ins & 0xfffff000; break;                          // lui
@@ -190,6 +192,7 @@ export function profile(elf, patch, events, w = WEIGHTS) {
       default:
         throw new Error(`unsupported opcode ${op.toString(16)} at ${pc.toString(16)}`);
     }
+    if (hist) hist[pc >>> 2] += cycles - c0;
     pc = next;
   }
 }
