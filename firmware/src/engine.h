@@ -106,3 +106,5 @@ enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_NCTL };
 void eng_ctl_v(uint32_t v, uint32_t which, int32_t q16);
 /* n frames of stereo, Q16, clamped to +-1.0; any n, processed in blocks of ENG_BLOCK */
 void eng_render(int32_t *l, int32_t *r, uint32_t n);
+/* overload: one part fewer in the poly group with the most (the audio ISR, before a render); 0 = none left to drop */
+int eng_shed(void);

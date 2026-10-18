@@ -15,7 +15,6 @@
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_CDC 0
 #define FELUCCA_UAC 0
-#define FELUCCA_UART 0
 #define FELUCCA_UAC_TONE 0
 
 #include <stdint.h>

@@ -1281,6 +1281,48 @@ void eng_clock_tick(void)
     clk_ticks++;
 }
 
+/* Overload (audio.c): one part fewer in the poly group that has the most, in any voice (the part with the highest number:
+ * its key is let go, its instances are no longer rendered and their outputs fall silent). 0 when no group has more than
+ * one part left. The count comes back with the next eng_load. Called by the audio ISR before it renders. */
+int eng_shed(void)
+{
+    eng_t *keep = eng_p;
+    uint32_t v, k, best = 0, o;
+    int done = 0;
+    for (v = 0; v < ENG_VOICES && !done; v++) {
+        eng_p = &EV[v];
+        if (!E.loaded)
+            continue;
+        for (k = 1, best = 0; k <= E.ngrp; k++)
+            if (E.grp[k].parts > 1u && (!best || E.grp[k].parts > E.grp[best].parts))
+                best = k;
+        if (best) {
+            grp_t *g = &E.grp[best];
+            pv_t *x;
+            g->parts--;
+            x = &E.pv[g->pv0 + g->parts];
+            x->on = 0;
+            x->gate = 0;
+            if (g->rot >= g->parts)
+                g->rot = 0;
+            for (k = 0; k < E.nmod; k++) {          /* its copies' outputs: silence (cables out of the group sum them) */
+                const node_t *nd = &E.node[k];
+                if (nd->grp == best && g->parts < nd->ninst)
+                    for (o = 0; o < MAX_OUT; o++) {
+                        esig_t *b = inst_pool[nd->inst0 + g->parts].out[o];
+                        uint32_t i;
+                        if (b && b != zero_buf)
+                            for (i = 0; i < ENG_BLOCK; i++)
+                                b[i] = 0;
+                    }
+            }
+            done = 1;
+        }
+    }
+    eng_p = keep;
+    return done;
+}
+
 void eng_all_notes_off(void)
 {
     uint32_t i;
@@ -3070,6 +3112,8 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
 #define ENG_PROF(stage, node, part) ((void)0)
 #endif
 
+#define cur_g_parts(nd) ((uint32_t)E.grp[(nd)->grp].parts)
+
 static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the selected voice alone, clamped */
 {
     uint32_t off, i, k, s, v;
@@ -3093,8 +3137,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         }
         for (k = 0; k < E.norder; k++) {
             const node_t *nd = &E.node[E.order[k]];
+            uint32_t ninst = nd->grp && cur_g_parts(nd) < nd->ninst ? cur_g_parts(nd) : nd->ninst;   /* (fewer after an overload: eng_shed) */
             cur_g = &E.grp[nd->grp];
-            for (v = 0; v < nd->ninst; v++) {           /* every part of a module in a poly group, once for the rest */
+            for (v = 0; v < ninst; v++) {               /* every part of a module in a poly group, once for the rest */
                 inst_t *it = &inst_pool[nd->inst0 + v];
                 cur_v = v;
                 cur_pv = &E.pv[cur_g->pv0 + v];

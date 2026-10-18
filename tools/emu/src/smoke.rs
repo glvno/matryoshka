@@ -10,7 +10,10 @@
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
 //! 7. the preset bank: three slots (and one with a bad CRC) written straight into the flash,
 //!    PRESET and program change step through the three, wrapping
-//! 8. hardware the emulator does not model: any register besides P33 fails the test
+//! 8. safety: a patch far over the CPU budget sheds parts, one with nothing to shed is muted (OVERLOAD) and the
+//!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank); OCT- +
+//!    OCT+ held at power-on and MENU > UPDATE MODE = update mode (no engine)
+//! 9. hardware the emulator does not model: any register besides P33 fails the test
 //!
 //! Snapshots of every step go to OUT (PNG); a WAV of the first run too.
 
@@ -24,6 +27,7 @@ pub const AUDIO_RATE: u32 = 44118;
 const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
 
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
+const OCT_DOWN: u8 = 0;
 const OCT_UP: u8 = 1;
 const SEL: u8 = 3;
 const ENV: u8 = 4;
@@ -35,6 +39,7 @@ const ARP: u8 = 10;
 const SEQ: u8 = 11;
 const C4: u8 = 14 + 7; // note keys start at F3
 const PRESET: u8 = 6; // encoder
+const ALGO: u8 = 1; // encoder
 const K1: u8 = 2;
 
 /// Below this the output counts as silent, above `LOUD` as sounding (16-bit samples).
@@ -226,6 +231,94 @@ fn go_home(m: &mut Machine) -> Result<(), String> {
     Ok(())
 }
 
+/// The bank for the safety steps: slot 0 a patch far over the CPU budget with eight parts (web/scripts/emu-patches.ts),
+/// slot 1 one with nothing to drop, slot 2 a factory patch.
+fn heavy_bank(presets: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
+    let read = |f: &str| std::fs::read(format!("build/emu/{f}")).map_err(|e| format!("build/emu/{f}: {e} (run web/scripts/emu-patches.ts)"));
+    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    for (slot, name, patch) in [(0u32, "EMU HEAVY POLY", read("heavy-poly.m1p")?), (1, "EMU HEAVY MONO", read("heavy-mono.m1p")?), (2, "EMU LIGHT", presets[1].1.clone())] {
+        let at = 0xA0000 + slot as usize * 0x1000;
+        flash[at..at + 0x1000].copy_from_slice(&slot_sector(slot, name, &patch, false));
+    }
+    Ok(flash)
+}
+
+fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let flash = heavy_bank(presets)?;
+    // the overload guard: parts dropped while it plays, then a patch with nothing to drop muted, the main loop alive all along
+    let mut m = Machine::boot(app, Some(&flash));
+    wait_text(&mut m, "SAVE: STORE", 12000)?;
+    t.screen(&m, "overload: the heavy poly patch loads", "EMU HEAVY POLY");
+    let mk = m.mark();
+    for n in [48u8, 52, 55, 59, 62, 65, 69, 72] {
+        m.midi(&[0x90, n, 100], 0)?;
+    }
+    let shed = wait_text(&mut m, "OVERLOAD: A PART LESS", 4000)?;
+    t.snap(&m, "overload-shed");
+    t.check("overload: parts are dropped (A PART LESS)", shed, format!("at {} ms", m.ms()));
+    m.run_for(1500)?;
+    let p = m.peak_since(mk);
+    t.check("overload: the heavy poly patch still sounds", p > QUIET, format!("peak {p}"));
+    m.midi(&[0xB0, 123, 0], 300)?;
+    m.turn(PRESET, 1, 800)?;
+    t.screen(&m, "overload: PRESET still steps (the main loop runs)", "EMU HEAVY MONO");
+    m.midi(&[0x90, 60, 100], 0)?;
+    let muted = wait_text(&mut m, "OVERLOAD: CHANGE PATCH", 4000)?;
+    t.snap(&m, "overload-muted");
+    t.check("overload: a patch with nothing to drop is muted (OVERLOAD)", muted, format!("at {} ms", m.ms()));
+    let mk = m.mark();
+    m.run_for(500)?;
+    let p = m.peak_since(mk);
+    t.check("overload: silent while muted", p < QUIET, format!("peak {p}"));
+    m.midi(&[0x80, 60, 0], 100)?;
+    m.turn(PRESET, 1, 800)?;
+    t.screen(&m, "overload: the next patch loads", "EMU LIGHT");
+    let gone = !font::on_screen(m.lcd(), "OVERLOAD");
+    t.check("overload: forgotten with the next patch", gone, String::new());
+    let p = midi_note_peak(&mut m, 60, 500)?;
+    t.check("overload: the next patch sounds", p > QUIET, format!("peak {p}"));
+    *emulated += m.ms();
+
+    // safe mode: SAVE held at power-on: the built-in fallback patch, nothing from the flash (not the heavy slot 0)
+    let mut m = Machine::boot(app, Some(&flash));
+    m.key(SAVE, true);
+    m.run_to(3000)?;
+    m.key(SAVE, false);
+    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    m.run_for(200)?;
+    t.screen(&m, "safe mode: the fallback patch", "SAFE PATCH");
+    let p = midi_note_peak(&mut m, 60, 500)?;
+    t.check("safe mode: the fallback patch sounds", p > QUIET, format!("peak {p}"));
+    *emulated += m.ms();
+
+    // update mode: OCT- + OCT+ held at power-on
+    let mut m = Machine::boot(app, Some(&flash));
+    m.key(OCT_DOWN, true);
+    m.key(OCT_UP, true);
+    m.run_to(3000)?;
+    m.key(OCT_DOWN, false);
+    m.key(OCT_UP, false);
+    m.run_for(500)?;
+    t.screen(&m, "update mode: OCT- + OCT+ held at power-on", "UPDATE MODE");
+    t.screen(&m, "update mode: says why", "OCT- + OCT+ HELD AT POWER-ON");
+    let p = note_peak(&mut m, C4, 500)?;
+    t.check("update mode: no engine (a key is silent)", p < QUIET, format!("peak {p}"));
+    *emulated += m.ms();
+
+    // update mode from the menu: HOME held, ALGO to SYSTEM, PRESET to UPDATE MODE, OCT+ twice
+    let mut m = Machine::boot(app, None);
+    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    m.tap(HOME, 1000, 400)?;
+    m.turn(ALGO, 3, 400)?;
+    t.screen(&m, "menu: the SYSTEM tab", "UPDATE MODE");
+    m.turn(PRESET, 2, 400)?;
+    m.tap(OCT_UP, 120, 300)?;
+    m.tap(OCT_UP, 120, 800)?;
+    t.screen(&m, "menu: UPDATE MODE enters update mode", "FROM THE MENU");
+    *emulated += m.ms();
+    Ok(())
+}
+
 fn steps(app: &[u8], voices: u32, t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) -> Result<(), String> {
     let presets = factory();
     // ---- 1. boot
@@ -378,7 +471,10 @@ fn steps(app: &[u8], voices: u32, t: &mut Run, emulated: &mut u64, levels: &[(St
     t.check("bank: the slot with a bad CRC is skipped", !d, String::new());
     *emulated += m.ms();
 
-    // ---- 8. unmodelled hardware
+    // ---- 8. safety: the overload guard, safe mode, update mode
+    safety(app, t, emulated, &presets)?;
+
+    // ---- 9. unmodelled hardware
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h
     let mut unknown = m.unknown_mmio();
     unknown.retain(|(a, ..)| !known.contains(a));

@@ -14,13 +14,44 @@ static volatile uint32_t master_q12 = 2048;        /* the MASTER pot, 0..4088 (Q
 static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 
+/* Overload guard (as Felucca's shed_check): a render that takes longer than the half it fills makes the ISR come back at
+ * once, the main loop starves (no watchdog feed, no USB host: no OTA) and the watchdog resets. So after two halves in a
+ * row above 85 % of a half (the render plus the key scan and USB nested in it) a part of a poly group is dropped
+ * (eng_shed), one more per two halves while it lasts; when no group has more than one part the engine is muted
+ * (eng_overload, OVERLOAD on the LCD) until a patch is loaded again (eng_resume). */
+#define OVL_TICKS ((HALF_FRAMES * 1000000u / FS) * 85u / 100u * FM1_TICKS_PER_US)
+static volatile uint8_t eng_overload;            /* muted after an overload: until the next patch load */
+static volatile uint32_t eng_shed_count;         /* parts dropped since the last patch load (the LCD says so) */
+static uint8_t ovl_bits;                         /* bit k: the half k halves ago was over 85 % */
+static uint8_t shed_req;
+
+/* after a patch load (or a flash write that had the audio off): play again, unless the overload muted it */
+static void eng_resume(void) { eng_run = (uint8_t)!eng_overload; }
+/* a new patch: the overload is forgotten */
+static void eng_overload_clear(void)
+{
+    eng_overload = 0;
+    eng_shed_count = 0;
+    ovl_bits = 0;
+    shed_req = 0;
+}
+
 void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) */
 {
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
-        uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), us;
+        uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), all;
         int32_t *o = &abuf[half * HALF_WORDS];
+        if (shed_req && eng_run) {
+            shed_req = 0;
+            if (eng_shed()) {
+                eng_shed_count++;
+            } else {
+                eng_run = 0;
+                eng_overload = 1;
+            }
+        }
         if (eng_run) {
             arp_run(HALF_FRAMES);                       /* the arpeggiator plays the voice before the block is rendered */
             eng_render(eng_l, eng_r, HALF_FRAMES);
@@ -34,10 +65,15 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 o[i] = 0;
         }
         fm1_audio_ack_half();
-        us = (fm1_ticks() - t0) / FM1_TICKS_PER_US;     /* includes the key scan and USB poll nested in the ISR */
-        eng_us_last = us;
-        if (us > eng_us_max)
-            eng_us_max = us;
+        all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
+        ovl_bits = (uint8_t)(ovl_bits << 1 | (all > OVL_TICKS));
+        if ((ovl_bits & 3u) == 3u) {
+            ovl_bits = 0;
+            shed_req = 1;
+        }
+        eng_us_last = all / FM1_TICKS_PER_US;
+        if (eng_us_last > eng_us_max)
+            eng_us_max = eng_us_last;
         eng_halves++;
     }
 }

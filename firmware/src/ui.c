@@ -359,7 +359,9 @@ static void bar_name_cpu(const char *s, uint16_t bg)
 
 static void header_draw(void)
 {
-    if (load_err) {
+    if (eng_overload) {                     /* audio.c: the patch was too heavy and is muted until another one loads */
+        bar_text("OVERLOAD: CHANGE PATCH", C_RED);
+    } else if (load_err) {
         char b[24], num[12], *p = b;
         p = put(p, "LOAD ERR ");
         fmt_int(num, load_err);

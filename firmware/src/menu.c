@@ -18,7 +18,7 @@
 #endif
 static void leds_avail(void);
 static void leds_octave(void);
-static void uboot_now(void);
+static void update_only(const char *why);
 static void defaults_now(void);
 
 /* ---- mixer */
@@ -402,7 +402,7 @@ static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value
         if (update_arm && fm1_ms - (update_arm & ~1u) < 3000u) {
             update_arm = 0;
             if (row == MR_UPDATE)
-                uboot_now();
+                update_only("FROM THE MENU");
             else
                 defaults_now();
         } else {

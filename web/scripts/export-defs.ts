@@ -7,6 +7,7 @@ import { encodePatch, TYPE_ORDER, toQ16 } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, thruInput } from '../src/patch';
 import { MAX_POLY } from '../src/poly';
 import { PRESETS } from '../src/presets';
+import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 const L: string[] = [];
@@ -110,5 +111,9 @@ P.push('', `#define N_PRESETS ${presetNames.length}`);
 P.push('static const struct { const char *name; const uint8_t *data; uint32_t len; } PRESET_LIST[N_PRESETS] = {');
 presetNames.forEach((n, i) => P.push(`    {"${n.toUpperCase()}", PRESET_${i}, sizeof PRESET_${i}},`));
 P.push('};', '');
+{ // safe mode's patch, and the last resort when nothing else loads (web/src/fallback.ts)
+  const bin = encodePatch(fallbackPatch());
+  P.push(`#define FALLBACK_NAME "${FALLBACK_NAME}"`, `static const uint8_t FALLBACK_PATCH[${bin.length}] = {${Array.from(bin).join(',')}};`, '');
+}
 writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('\n'));
 console.log('wrote defs.h, presets.h');

@@ -34,14 +34,19 @@ function firmware() {
   const local = join(ROOT, 'build/modular-1.bin');
   if (existsSync(local)) return local;
   const ci = join(OUT, 'ci');
-  const id = spawnSync('gh', ['run', 'list', '-R', REPO, '--workflow', 'firmware', '--branch', 'main', '--status', 'success',
-    '-L', '1', '--json', 'databaseId', '--jq', '.[0].databaseId'], { encoding: 'utf8' });
-  if (id.status === 0 && id.stdout.trim()) {
+  // the CI build of this checkout's commit, else the newest of its branch, else the newest of main
+  const git = (a) => (spawnSync('git', a, { cwd: ROOT, encoding: 'utf8' }).stdout ?? '').trim();
+  const tries = [['--commit', git(['rev-parse', 'HEAD'])], ['--branch', git(['rev-parse', '--abbrev-ref', 'HEAD'])], ['--branch', 'main']]
+    .filter(([, v]) => v && v !== 'HEAD');
+  for (const [flag, value] of tries) {
+    const id = spawnSync('gh', ['run', 'list', '-R', REPO, '--workflow', 'firmware', flag, value, '--status', 'success',
+      '-L', '1', '--json', 'databaseId', '--jq', '.[0].databaseId'], { encoding: 'utf8' });
+    if (id.status !== 0 || !id.stdout.trim()) continue;
     rmSync(ci, { recursive: true, force: true });  // gh run download refuses to overwrite
     mkdirSync(ci, { recursive: true });
     spawnSync('gh', ['run', 'download', id.stdout.trim(), '-R', REPO, '-n', 'modular-1-firmware', '-D', ci], { stdio: 'inherit' });
     if (existsSync(join(ci, 'modular-1.bin'))) {
-      console.log(`firmware: CI run ${id.stdout.trim()} of ${REPO} main`);
+      console.log(`firmware: CI run ${id.stdout.trim()} of ${REPO} (${flag.slice(2)} ${value})`);
       return join(ci, 'modular-1.bin');
     }
   }

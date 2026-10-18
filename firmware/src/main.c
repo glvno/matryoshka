@@ -2,8 +2,10 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * Modified for Modular-1 (morgulbrut). */
 /* Boot and main loop, reduced from Felucca's: WDT, boot-loop guard, fatal vectors, then LCD, input (TIMER5
- * IRQ, 10 kHz), audio (ALNK0 IRQ), USB. Kept so the device can always be re-flashed: the boot-loop guard
- * (two failed boots -> UBOOT), OCT- + OCT+ held 5 s -> UBOOT, the OTA command and the UBOOT SysEx. */
+ * IRQ, 10 kHz), audio (ALNK0 IRQ), USB. Kept so the device can always be re-flashed: the OTA command, answered from a
+ * second before any patch loads; the boot-loop guard (one failed boot -> safe mode with the fallback patch, two -> update
+ * mode); OCT- + OCT+ held at power-on and MENU > UPDATE MODE -> update mode (USB + OTA only); the audio overload guard
+ * (audio.c) keeps the main loop alive. The chip's mask-ROM mode only by its explicit SysEx (chip_boot). */
 extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end[];
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 
@@ -68,9 +70,12 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
 {
     int rc;
     eng_run = 0;                                /* the ISR renders silence while the patch is replaced */
+    __asm__ volatile("" ::: "memory");          /* (volatile alone does not keep the engine's writes after it: #78) */
     rc = eng_load(patch, len);
     load_err = -rc;
     eng_us_max = 0;
+    eng_overload_clear();                       /* a new patch: an overload is forgotten */
+    __asm__ volatile("" ::: "memory");
     eng_run = 1;                                /* a voice that did not load renders silence by itself */
     sel = 0;
     patch_label = "FROM EDITOR";
@@ -213,7 +218,7 @@ static int m1_store(const uint8_t *patch, uint32_t len)        /* (the arguments
     }
     eng_run = 0;                                /* a sector erase takes the CPU for a while: no audio meanwhile */
     rc = ps_save(blob, n);
-    eng_run = 1;
+    eng_resume();
     return rc;
 }
 
@@ -450,18 +455,35 @@ static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob
  * state is skipped (it stays in flash: a normal boot tries it again, MENU > SYSTEM > DEFAULTS erases it) */
 static uint8_t boot_safe;
 
+/* safe mode's patch on every voice: the fallback compiled into the firmware (presets.h FALLBACK_PATCH, web/src/fallback.ts),
+ * nothing read from the flash (no stored state, no bank slot: either may be what made the last boot fail) */
+static void fallback_boot(void)
+{
+    uint32_t v;
+    for (v = 0; v < ENG_VOICES; v++) {
+        voice_step(v);
+        eng_voice_select(v);
+        if (m1_apply(FALLBACK_PATCH, sizeof FALLBACK_PATCH) == 0)
+            m1_set_current(FALLBACK_PATCH, sizeof FALLBACK_PATCH);
+        cur_preset = 0;
+        patch_label = FALLBACK_NAME;
+    }
+    eng_voice_select(0);
+    screen_idle();
+}
+
 static void patch_boot(void)                    /* the stored state if there is one, else the first factory patches */
 {
     static uint8_t buf[PS_MAX] ENG_POOL;
     uint32_t len, seq, sector;
-    if (flash_ok)
-        sl_scan();
     if (boot_safe) {
-        voices_boot(0u);
-        boot_msg = "SAFE MODE: STATE SKIPPED";
+        fallback_boot();
+        boot_msg = "SAFE MODE: FALLBACK PATCH";
         boot_msg_ms = 4000;
         return;
     }
+    if (flash_ok)
+        sl_scan();
     if (flash_ok && ps_load(buf, &len, &seq, &sector) == 0) {
         int ok = 0;
         if (buf[0] == BLOB_MAGIC)
@@ -518,7 +540,7 @@ static void defaults_now(void)
     if (flash_ok) {
         eng_run = 0;
         (void)ps_erase();
-        eng_run = 1;
+        eng_resume();
     }
     ui_msg("DEFAULTS", 1500);
 }
@@ -636,6 +658,7 @@ static void poly_set(int32_t n)
         return;
     m1_cur[8] = (uint8_t)n;
     eng_run = 0;
+    __asm__ volatile("" ::: "memory");
     rc = eng_load(m1_cur, m1_cur_len);
     if (rc) {
         m1_cur[8] = old;
@@ -643,6 +666,8 @@ static void poly_set(int32_t n)
     }
     load_err = -rc;
     eng_us_max = 0;
+    eng_overload_clear();
+    __asm__ volatile("" ::: "memory");
     eng_run = 1;
     if (m1_cur[8] != (uint8_t)n)
         q = put(q, "NO ROOM FOR ");
@@ -1081,19 +1106,70 @@ static void buttons_poll(void)
         arp_toggle();
 }
 
-static void uboot_now(void)                             /* the update loader (also MENU > UPDATE MODE) */
+/* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No
+ * tool of this project (nor M-VAVE's web updater) talks to that mode: jl-uboot-tool / FM-1 Transporter do. A power cycle
+ * should start the firmware again (not verified). */
+static void chip_boot(void)
 {
     fm1_audio_stop();
     lcd_fill(0, 0, 240, 240, C_BG);
-    text5x7(12, 110, "UBOOT", 4, C_ACC, C_BG);
+    text5x7(12, 100, "CHIP BOOT MODE", 2, C_ACC, C_BG);
+    text5x7(12, 130, "(USB) POWER OFF TO LEAVE", 1, C_DIM, C_BG);
+    fm1_delay_ms(20);
     usb_detach();
     fm1_delay_ms(30);
     bootguard.pending = 0;
     fm1_enter_uboot();
 }
 
+static uint8_t patches_up;                      /* patch_boot has run (host_poll may reload the current patch) */
+
+/* Update mode: USB and the firmware update (M-UPGRADE) only, no engine and nothing read from the flash, until the power
+ * goes off. Reached when two boots in a row failed (the boot guard), with OCT- + OCT+ held at power-on, or from MENU >
+ * SYSTEM > UPDATE MODE, so the Flash page of the editor (or tools/fm1_install.py) can always install a firmware. */
+static void update_screen(const char *why)
+{
+    lcd_fill(0, 0, 240, 240, C_BG);
+    lcd_fill(12, 40, 216, 3, C_ACC);
+    text5x7(12, 52, "UPDATE MODE", 3, C_FG, C_BG);
+    lcd_fill(12, 80, 216, 3, C_ACC);
+    text5x7(12, 100, "CONNECT USB AND OPEN THE", 1, C_FG, C_BG);
+    text5x7(12, 114, "FLASH PAGE OF THE EDITOR", 1, C_FG, C_BG);
+    text5x7(12, 128, "TO INSTALL A FIRMWARE.", 1, C_FG, C_BG);
+    text5x7(12, 156, why, 1, C_ACC, C_BG);
+    if (!flash_ok)
+        text5x7(12, 170, "NO FLASH ID: NO UPDATES", 1, C_RED, C_BG);
+    text5x7(12, 210, "POWER OFF TO LEAVE", 1, C_DIM, C_BG);
+}
+
+static void update_only(const char *why)
+{
+    eng_run = 0;
+    booting = 0;
+    bootguard.pending = 0;                      /* this boot did not fail: a watchdog reset from here starts normally */
+    update_screen(why);
+    for (;;) {
+        const uint8_t *fp;
+        uint32_t fn;
+        fm1_wdt_feed();
+        usb_retry(fm1_ms);
+        if (ota_frame_get(&fp, &fn) && fn >= 3u && fp[0] == 0x7Du && fp[1] == 0x4Du && fp[2] == 0x31u)
+            ota_frame_done();                   /* the editor's SysEx: not in this mode */
+        ota_service();                          /* M-UPGRADE handshake */
+        if (usb.ota_req) {                      /* M-UPGRADE upgrade command */
+            usb.ota_req = 0;
+            if (flash_ok)
+                ota_session();                  /* returns only if nothing was committed */
+            update_screen(why);
+        }
+        if (usb.uboot_req)
+            chip_boot();
+    }
+}
+
 /* USB host requests: the editor's SysEx (proto.c) before the update protocol's, the M-UPGRADE handshake and upgrade, the
- * UBOOT SysEx. Run by the main loop and while the loading screen waits, so a host is answered from the start. */
+ * chip boot SysEx. Run by the main loop, while the loading screen waits and for a second before the patches load, so a
+ * host is answered from the start (and a patch that crashes the boot cannot keep a flasher out). */
 static void host_poll(void)
 {
     {   /* the editor's SysEx (proto.c) before the update protocol's */
@@ -1108,26 +1184,19 @@ static void host_poll(void)
         eng_run = 0;
         if (flash_ok)
             ota_session();                          /* returns only if nothing was committed */
-        if (m1_apply(m1_cur, m1_cur_len) == 0)
-            m1_set_current(m1_cur, m1_cur_len);
-        else
-            preset_load(cur_preset);
+        if (patches_up) {                           /* (before patch_boot: it loads them next) */
+            if (m1_apply(m1_cur, m1_cur_len) == 0)
+                m1_set_current(m1_cur, m1_cur_len);
+            else
+                preset_load(cur_preset);
+        }
     }
-    if (usb.uboot_req) {                            /* SysEx F0 22 24 35 7D F7 from the host */
-        fm1_audio_stop();
-        lcd_fill(0, 0, 240, 240, C_BG);
-        text5x7(12, 110, "UBOOT (USB)", 3, C_ACC, C_BG);
-        fm1_delay_ms(20);
-        usb_detach();
-        fm1_delay_ms(30);
-        bootguard.pending = 0;
-        fm1_enter_uboot();
-    }
+    if (usb.uboot_req)                              /* SysEx F0 22 24 35 7D F7 from the host */
+        chip_boot();
 }
 
-static void fm1_main(void)
+static void fm1_main(int update)                    /* update: the boot guard saw two failed boots */
 {
-    uint32_t t_btn = 0;
     flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;     /* the expected 1 MiB part, else no OTA staging */
     if (flash_ok)
         ota_boot_cleanup();                             /* staging area left by an update */
@@ -1148,9 +1217,27 @@ static void fm1_main(void)
     fm1_guard_lock_top();
     fm1_irq_enable_all();
     fm1_delay_ms(30);
+    if (update)
+        update_only("TWO BOOTS IN A ROW FAILED");
+    if ((fm1_in.buttons & 3u) == 3u)                    /* OCT- + OCT+ held at power-on */
+        update_only("OCT- + OCT+ HELD AT POWER-ON");
+    boot_step("HOST");
+    {                                                   /* a second for a flasher before any patch loads (#70) */
+        uint32_t t0 = fm1_ms;
+        while (fm1_ms - t0 < 1000u) {
+            fm1_wdt_feed();
+            usb_retry(fm1_ms);
+            host_poll();
+        }
+    }
     boot_step("STATE");
     boot_safe = (uint8_t)((fm1_in.buttons >> BTN_SAVE & 1u) || bootguard.failed >= 1u);   /* SAVE held, or the last boot failed */
     patch_boot();
+    patches_up = 1;
+    if (!flash_ok) {                                    /* another flash chip than the one OTA knows: say so (#72) */
+        boot_msg = "NO FLASH ID: NO UPDATES";
+        boot_msg_ms = 8000;
+    }
     while (fm1_ms - t_splash < SPLASH_MS) {             /* the screen stays up; the bar fills with the time; MIDI and the host */
         fm1_wdt_feed();                                 /* are served meanwhile (notes play, the editor and flasher get answers) */
         usb_retry(fm1_ms);
@@ -1163,15 +1250,24 @@ static void fm1_main(void)
     screen_idle();                                      /* the top bar and the page */
     if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
-    t_btn = fm1_ms;                                     /* the OCT- + OCT+ hold counts from here, not from power-up */
     leds_arp();
     leds_avail();
     for (;;) {
+        static uint8_t ovl_seen;
+        static uint32_t shed_seen;
         fm1_wdt_feed();
         usb_retry(fm1_ms);
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;
             bootguard.failed = 0;
+        }
+        if (eng_overload != ovl_seen) {                 /* audio.c's overload guard: muted, or a part fewer */
+            ovl_seen = eng_overload;
+            header_draw();
+        } else if (eng_shed_count != shed_seen) {
+            shed_seen = eng_shed_count;
+            if (shed_seen)
+                ui_msg("OVERLOAD: A PART LESS", 1500);
         }
         midi_drain();
         keys_poll();
@@ -1189,13 +1285,6 @@ static void fm1_main(void)
             au_step_poll(page);
             cpu_poll();
         }
-        {   /* OCT- + OCT+ (matrix buttons 0 and 1) held 5 s: UBOOT, as in Felucca */
-            uint32_t both = 3u;
-            if ((fm1_in.buttons & both) != both)
-                t_btn = fm1_ms;
-            else if (fm1_ms - t_btn > 5000u)
-                uboot_now();
-        }
         host_poll();
     }
 }
@@ -1203,6 +1292,7 @@ static void fm1_main(void)
 void fm1_cstart(void)
 {
     uint32_t *s, *d, p3, src, wdt;
+    int update = 0;
     fm1_time_init();
     fm1_reset_reason();
     p3 = fm1_boot.p3_rst;
@@ -1217,10 +1307,10 @@ void fm1_cstart(void)
     if (bootguard.pending)
         bootguard.failed++;
     bootguard.pending = 1;
-    if (bootguard.failed >= 2u) {
+    if (bootguard.failed >= 2u) {                /* two in a row: update mode (USB + OTA only), not the chip's boot ROM */
         bootguard.failed = 0;
         bootguard.pending = 0;
-        fm1_enter_uboot();
+        update = 1;
     }
     fm1_irq_init();
     for (d = _bss_start; d < _bss_end; d++)
@@ -1236,7 +1326,7 @@ void fm1_cstart(void)
     fm1_boot.p3_rst = (uint8_t)p3;
     fm1_boot.rst_src = src;
     fm1_boot.wdt_con = (uint8_t)wdt;
-    fm1_main();
+    fm1_main(update);
     for (;;)
         ;
 }

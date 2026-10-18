@@ -9,7 +9,7 @@ set -e
 cd "$(dirname "$0")/.."
 BIN="${1:-build/modular-1.bin}"
 mkdir -p build/emu
-(cd web && npx vite-node scripts/emu-levels.ts)
+(cd web && npx vite-node scripts/emu-levels.ts && npx vite-node scripts/emu-patches.ts)
 cargo build --release --quiet --manifest-path tools/emu/Cargo.toml
 OUT="build/emu/smoke-${M1_VOICES:-1}"
 rm -rf "$OUT"
