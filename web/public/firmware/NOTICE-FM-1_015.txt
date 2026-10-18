@@ -1,0 +1,14 @@
+FM-1_015.fwsc: M-VAVE FM-1 stock firmware V15 (recovery image)
+
+Copyright (c) 2026 珠海笙科智能科技有限公司 (M-VAVE).
+Distributed by M-VAVE under the Apache License, Version 2.0 (LICENSE-Apache-2.0.txt in this folder).
+Components inside it keep their own notices; M-VAVE's notice file is reproduced unchanged as
+FM-1_015-THIRD_PARTY.md in this folder.
+
+Source: https://github.com/m-vave/fm1_open, file sdk/firmware/FM-1_015.fwsc at commit
+b178ac43c25f010c60a878056fb5331fe693fd62.
+SHA-256: db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a (699956 bytes)
+
+The file is redistributed unmodified. Matryoshka's Flash tab sends it to the FM-1 to return the
+device to its stock firmware; it checks the size and SHA-256 above before sending. Matryoshka is
+not affiliated with or endorsed by M-VAVE.

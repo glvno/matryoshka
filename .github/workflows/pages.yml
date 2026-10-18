@@ -79,7 +79,7 @@ jobs:
           key: ai-stats-${{ github.run_id }}
       - run: npm run build
       - name: the firmware package must be there
-        run: test -s dist/firmware/modular-1.fwsc && test -s dist/firmware/modular-1.json
+        run: test -s dist/firmware/modular-1.fwsc && test -s dist/firmware/modular-1.json && test -s dist/firmware/FM-1_015.fwsc && test -s dist/firmware/NOTICE-FM-1_015.txt
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

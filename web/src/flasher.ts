@@ -27,6 +27,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
   return e;
 }
 
+/** M-VAVE's stock V15 in web/public/firmware (Apache-2.0, NOTICE-FM-1_015.txt next to it) */
+const STOCK_FILE = 'FM-1_015.fwsc';
+
 async function readFile(f: File): Promise<Uint8Array> {
   return new Uint8Array(await f.arrayBuffer());
 }
@@ -146,21 +149,33 @@ export function buildFlashTab(root: HTMLElement): void {
       await install(await readFile(f));
     });
 
-  // ---- return to stock
-  const stockOnly = el('input', { type: 'file', accept: '.fwsc' });
+  // ---- return to stock: M-VAVE's V15 comes with the app (Apache-2.0, from m-vave/fm1_open); validateStockPackage checks
+  // its size, SHA-256 and layout before anything is sent, for the bundled file and for one the user picks alike
+  const returnToStock = async (raw: Uint8Array): Promise<void> => {
+    const v = await validateStockPackage(raw);
+    log(`package: ${v.product}, ${raw.length} bytes, SHA-256 checked`);
+    await (await access()).install(v.image, v.product, step);
+  };
   const stockBtn = el('button', { textContent: 'Return to official V15' });
   stockBtn.onclick = () =>
     run('return to official V15', async () => {
+      const r = await fetch(`./firmware/${STOCK_FILE}`, { cache: 'no-cache' });
+      if (!r.ok) throw new Error('the bundled official V15 could not be loaded: use your own FM-1.fwsc below');
+      await returnToStock(new Uint8Array(await r.arrayBuffer()));
+    });
+  const stockOnly = el('input', { type: 'file', accept: '.fwsc' });
+  const stockFileBtn = el('button', { textContent: 'Return with this file' });
+  stockFileBtn.onclick = () =>
+    run('return to official V15 (your file)', async () => {
       const f = stockOnly.files?.[0];
       if (!f) throw new Error('choose the unmodified official FM-1.fwsc');
-      const v = await validateStockPackage(await readFile(f));
-      await (await access()).install(v.image, v.product, step);
+      await returnToStock(await readFile(f));
     });
 
   function setButtons(): void {
     findBtn.disabled = busy || !supported;
     installBtn.disabled = busy || !supported || !ack.checked || !bundle;
-    for (const b of [pkgBtn, stockBtn]) b.disabled = busy || !supported || !ack.checked;
+    for (const b of [pkgBtn, stockBtn, stockFileBtn]) b.disabled = busy || !supported || !ack.checked;
   }
   ack.onchange = setButtons;
 
@@ -188,7 +203,13 @@ export function buildFlashTab(root: HTMLElement): void {
       el('div', { class: 'row' }, installBtn, findBtn),
       el('p', { class: 'muted' }, 'Licences: ', el('a', { href: './firmware/LICENSE-GPL-3.0.txt', textContent: 'GPL-3.0' }), ', ', el('a', { href: './firmware/LICENSE-Apache-2.0.txt', textContent: 'Apache-2.0' }), '. Source: ', el('a', { href: 'https://github.com/glvno/matryoshka', textContent: 'Matryoshka source' }), '.'),
     ),
-    card('Return to stock', el('p', { class: 'muted', textContent: 'Needs the unmodified official FM-1.fwsc (V15); anything else is refused.' }), el('div', { class: 'row' }, stockOnly, stockBtn)),
+    card(
+      'Return to stock',
+      el('p', { class: 'muted', textContent: "M-VAVE's official firmware V15 comes with this app; its size and checksum are checked before it is sent." }),
+      el('div', { class: 'row' }, stockBtn),
+      el('p', { class: 'muted' }, 'FM-1_015.fwsc © M-VAVE, ', el('a', { href: './firmware/LICENSE-Apache-2.0.txt', textContent: 'Apache-2.0' }), ' (', el('a', { href: './firmware/NOTICE-FM-1_015.txt', textContent: 'notice' }), ', ', el('a', { href: 'https://github.com/m-vave/fm1_open', textContent: 'source' }), '). Matryoshka is not affiliated with M-VAVE.'),
+      el('details', {}, el('summary', { textContent: 'Use your own copy' }), el('p', { class: 'muted', textContent: 'The unmodified official FM-1.fwsc (V15); anything else is refused.' }), el('div', { class: 'row' }, stockOnly, stockFileBtn)),
+    ),
     el(
       'details',
       { class: 'card' },
