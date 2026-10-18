@@ -1252,6 +1252,10 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         ui_msg(boot_msg, boot_msg_ms);
     leds_arp();
     leds_avail();
+    {   /* presses while booting are not commands: SAVE held for safe mode must not save the fallback over the stored state */
+        uint32_t rel;
+        (void)fm1_input_edges(&rel);
+    }
     for (;;) {
         static uint8_t ovl_seen;
         static uint32_t shed_seen;

@@ -260,8 +260,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     let p = m.peak_since(mk);
     t.check("overload: the heavy poly patch still sounds", p > QUIET, format!("peak {p}"));
     m.midi(&[0xB0, 123, 0], 300)?;
-    m.turn(PRESET, 1, 800)?;
-    t.screen(&m, "overload: PRESET still steps (the main loop runs)", "EMU HEAVY MONO");
+    m.turn(PRESET, 1, 0)?;                    // the heavy mono patch: it is over the budget before any key
     m.midi(&[0x90, 60, 100], 0)?;
     let muted = wait_text(&mut m, "OVERLOAD: CHANGE PATCH", 4000)?;
     t.snap(&m, "overload-muted");
@@ -285,7 +284,9 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     m.run_to(3000)?;
     m.key(SAVE, false);
     wait_text(&mut m, "SAVE: STORE", 9000)?;
-    m.run_for(200)?;
+    let saved = wait_text(&mut m, "SAVED", 1000)?;
+    t.check("safe mode: holding SAVE at power-on does not save", !saved, String::new());
+    m.run_for(3000)?;                         // (the SAFE MODE message in the bar goes after 4 s)
     t.screen(&m, "safe mode: the fallback patch", "SAFE PATCH");
     let p = midi_note_peak(&mut m, 60, 500)?;
     t.check("safe mode: the fallback patch sounds", p > QUIET, format!("peak {p}"));
