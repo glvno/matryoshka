@@ -15,7 +15,7 @@ of fm1-emu is copied into this repository).
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
 - Without FIRMWARE both take `build/modular-1.bin`, else download the latest firmware artifact of a successful
   `firmware` run on `main` with `gh` (`build/emu/ci/`), else unpack `web/public/firmware/modular-1.fwsc`.
-- `tools/emu_smoke.sh [BIN]` is what `emu:smoke` runs (`M1_VOICES=4` for the four-voice build, `M1EMU_STRICT=1` makes
+- `tools/emu_smoke.sh [BIN]` is what `emu:smoke` runs (`M1EMU_STRICT=1` makes
   level warnings fail). `tools/emu/target/release/m1emu run BIN --ms N --keys SCRIPT --snap MS,.. --wav F
   --flash-in F --flash-out F --text S` is a free run (SCRIPT as fm1-emu's: `800:n7,1500:n7^,2000:e6:1,2500:mc005`;
   snapshots as `lcd_MS.png` in the current directory).

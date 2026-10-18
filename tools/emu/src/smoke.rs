@@ -29,7 +29,6 @@ const PRESETS_H: &str = include_str!("../../../firmware/src/presets.h");
 /// Panel ids (fm1-emu / Felucca's table, confirmed by M-VAVE's fm1_open)
 const OCT_DOWN: u8 = 0;
 const OCT_UP: u8 = 1;
-const SEL: u8 = 3;
 const ENV: u8 = 4;
 const LFO: u8 = 5;
 const GLO: u8 = 7;
@@ -180,7 +179,7 @@ fn slot_sector(slot: u32, name: &str, patch: &[u8], bad_crc: bool) -> Vec<u8> {
 
 /// `levels`: build/emu/levels.txt from web/scripts/emu-levels.ts (the reference engine's peak per factory patch);
 /// `strict`: level differences fail the test too.
-pub fn run(app: &[u8], voices: u32, out: &str, levels: Option<&str>, strict: bool) -> ExitCode {
+pub fn run(app: &[u8], out: &str, levels: Option<&str>, strict: bool) -> ExitCode {
     let _ = std::fs::create_dir_all(out);
     let mut t = Run { out: out.to_string(), fails: Vec::new(), warns: Vec::new(), checks: 0, shot: 0 };
     let t0 = std::time::Instant::now();
@@ -188,7 +187,7 @@ pub fn run(app: &[u8], voices: u32, out: &str, levels: Option<&str>, strict: boo
     let levels: Vec<(String, i32)> = levels
         .map(|txt| txt.lines().filter_map(|l| l.split_once('\t')).filter_map(|(n, v)| Some((n.to_string(), v.trim().parse().ok()?))).collect())
         .unwrap_or_default();
-    let r = steps(app, voices, &mut t, &mut emulated, &levels);
+    let r = steps(app, &mut t, &mut emulated, &levels);
     if let Err(e) = r {
         t.check("the firmware keeps running", false, format!("halt: {e}"));
     }
@@ -320,7 +319,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     Ok(())
 }
 
-fn steps(app: &[u8], voices: u32, t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) -> Result<(), String> {
+fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) -> Result<(), String> {
     let presets = factory();
     // ---- 1. boot
     let mut m = Machine::boot(app, None);
@@ -366,17 +365,6 @@ fn steps(app: &[u8], voices: u32, t: &mut Run, emulated: &mut u64, levels: &[(St
     m.tap(HOME, 120, 400)?;
     t.screen(&m, "HOME again: menu closed", "SAVE: STORE");
     go_home(&mut m)?;
-
-    // ---- the four-voice build: SEL steps the voices (voice 2 starts on factory patch 1)
-    if voices > 1 {
-        m.tap(SEL, 120, 500)?;
-        t.screen(&m, "SEL: voice 2", &presets[1].0);
-        for _ in 1..voices {
-            m.tap(SEL, 120, 300)?;
-        }
-        m.run_for(300)?;
-        t.screen(&m, "SEL round: voice 1 again", &presets[0].0);
-    }
 
     // ---- 4. PRESET encoder
     m.turn(PRESET, 1, 500)?;

@@ -8,21 +8,14 @@
  *   y  29  CPU                          y 120  K1..K4 rows        y 200 P1, P2 */
 #define C_BG 0x0000u
 #define C_FG 0xFFFFu
-/* the accent: each voice has its own colour (orange, purple, cyan, green) */
-static const uint16_t VOICE_COLOR[ENG_VOICES] = ENG_VOICE_INIT(0xFD20u, 0xA19Fu, 0x07FFu, 0x7FE0u);
-#define C_ACC (VOICE_COLOR[eng_voice()])
+#define C_ACC 0xFD20u                           /* the accent: orange */
 #define C_DIM 0x7BEFu
 #define C_RED 0xF800u
 
-/* the panel state of each voice (the patch it runs): SEL switches the voice the keys, knobs and LCD act on (eng_voice_select) */
-static struct {
-    uint32_t preset, module;               /* the preset in the list; the module the knobs act on (SELECT turns it) */
-    int load_err;
-    const char *label;
-} vs[ENG_VOICES];
-#define cur_preset (vs[eng_voice()].preset)
-#define load_err (vs[eng_voice()].load_err)
-#define patch_label (vs[eng_voice()].label)
+/* the panel state of the patch: the preset in the list, the module the knobs act on (SELECT turns it), its load error and name */
+static uint32_t cur_preset, sel;
+static int load_err;
+static const char *patch_label;
 #define PAGE_MIXER 4u                           /* GLO: the mixer (menu.c) */
 #define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
 #define PAGE_PERF 6u                            /* ENV: the performance page (big values, no names: perf_draw) */
@@ -33,20 +26,17 @@ static struct {
     uint8_t leds;                       /* the idle buttons glow: 0 off, 1 dim low, 2 dim higher */
     uint8_t cpu_bar;                    /* the CPU load in the top bar */
     uint8_t accel;                      /* a knob turned fast steps 5 times as far */
-    uint8_t ch[ENG_VOICES];             /* the MIDI channel of each voice: 1..16, 0 all (omni) */
+    uint8_t ch;                         /* the MIDI channel: 1..16, 0 all (omni) */
     uint8_t clock_in;                   /* MIDI clock drives the clock output */
     uint8_t prog_chg;                   /* MIDI program change loads a preset */
-} cfg = {2, 1, 1, ENG_VOICE_INIT(1, 2, 3, 4), 1, 1};
+} cfg = {2, 1, 1, 1, 1, 1};
 static void cfg_defaults(void)
 {
-    uint32_t v;
     cfg.cpu_bar = cfg.accel = cfg.clock_in = cfg.prog_chg = 1;
     cfg.leds = 2;
-    for (v = 0; v < ENG_VOICES; v++)
-        cfg.ch[v] = (uint8_t)(v + 1u);
+    cfg.ch = 1;
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
-#define sel (vs[eng_voice()].module)
 static volatile uint8_t ui_dirty;               /* 1: the knob rows need a redraw, 2: the module changed too (title, picture) */
 static int32_t octave;                          /* the keys' octave shift, -3..3 (OCT- / OCT+) */
 static uint32_t msg_until;                      /* a message in the top bar (SAVED ...) until this fm1_ms */
@@ -370,10 +360,6 @@ static void header_draw(void)
         bar_text(b, C_RED);
     } else {
         char b[40], *p = b;
-#if ENG_VOICES > 1
-        *p++ = (char)('1' + eng_voice());     /* the voice's number before the name */
-        *p++ = ' ';
-#endif
         p = put(p, patch_label ? patch_label : "");
         *p = 0;
         if (cfg.cpu_bar) {

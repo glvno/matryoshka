@@ -5,11 +5,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../src/engine.h"                 /* ENG_VOICES: the arpeggiator has one instance per voice */
+#include "../src/engine.h"
 
 static int on[128], events, last_note = -1, last_vel;
-void eng_note_on_v(uint32_t vc, uint32_t n, int32_t v) { (void)vc; on[n] = 1; events++; last_note = (int)n; last_vel = v; }
-void eng_note_off_v(uint32_t vc, uint32_t n) { (void)vc; on[n] = 0; }
+void eng_note_on(uint32_t n, int32_t v) { on[n] = 1; events++; last_note = (int)n; last_vel = v; }
+void eng_note_off(uint32_t n) { on[n] = 0; }
 void eng_clock_tick(void) {}
 static uint32_t fm1_ticks(void) { return 12345; }
 #include "../src/arp.c"

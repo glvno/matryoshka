@@ -1,8 +1,8 @@
 name: firmware
-# Builds the firmware with the JieLi toolchain on every push and pull request, for the one-voice and the four-voice
-# build, and fails on compiler warnings or on a pool headroom below 8 KB (tools/build.py). Then the host tests that need
-# a C compiler: the golden vectors (web engine vs firmware engine), the arpeggiator and protocol tests, the LCD preview.
-# The .fwsc of the one-voice build is kept as an artifact (not for the only device: see the fork's issue 1).
+# Builds the firmware with the JieLi toolchain on every push and pull request and fails on compiler warnings or on a
+# pool headroom below 8 KB (tools/build.py). Then the host tests that need a C compiler: the golden vectors (web engine
+# vs firmware engine), the arpeggiator and protocol tests, the LCD preview. The .fwsc and .bin are kept as an artifact
+# (the emulator smoke test, npm run emu:smoke, downloads them; not for the only device: see the fork's issue 1).
 on:
   push:
   pull_request:
@@ -11,10 +11,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        voices: [1, 4]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -43,9 +39,9 @@ jobs:
         run: |
           npm run export-defs
           git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h || { echo "::error::defs.h / presets.h are stale: run 'npm run export-defs' and commit"; exit 1; }
-      - name: build the firmware (M1_VOICES=${{ matrix.voices }}), no warnings, pool headroom >= 8 KB
+      - name: build the firmware, no warnings, pool headroom >= 8 KB
         run: |
-          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk" M1_VOICES=${{ matrix.voices }}
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
           mkdir -p build
           python3 tools/build.py 2>&1 | tee build/build.log
           test "${PIPESTATUS[0]}" -eq 0
@@ -53,12 +49,11 @@ jobs:
           grep -E "pool [0-9]+ B of [0-9]+" build/build.log
       - name: golden vectors, arpeggiator and protocol tests, LCD preview
         run: |
-          export M1_VOICES=${{ matrix.voices }}
+          export
           tools/golden.sh
           tools/arp_test.sh
           tools/ui_preview.sh build/ui-preview.png 0 1
       - uses: actions/upload-artifact@v4
-        if: matrix.voices == 1
         with:
           name: modular-1-firmware
           path: |

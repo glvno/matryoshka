@@ -171,7 +171,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
 
 /** the FM-1's limits (firmware/src/engine.c, the one-voice build: ENG_MAX_MODULES, ENG_MAX_CABLES, POLY_MAX_GROUPS,
  * POLY_MAX_PARTS, ENG_MAX_INST, ENG_NBUF, ENG_NDELAY, ENG_NREV, ENG_NSTRING, ENG_NCHORUS, ENG_NGRAIN; proto.c M1_PATCH_MAX).
- * The four-voice build (-DENG_VOICES=4) has 108 buffers and 72 instances shared by its four patches. */
+ */
 export const DEVICE = {
   modules: MAX_MODULES, cables: MAX_CABLES, poly: MAX_POLY, parts: MAX_PARTS, instances: 128, buffers: 255,
   delays: 1, reverbs: 1, strings: 8, chorus: 1, grains: 1, bytes: 3072,

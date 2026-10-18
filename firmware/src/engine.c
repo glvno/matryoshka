@@ -16,19 +16,15 @@
 #define ENG_POOL
 #endif
 
-/* Per voice (a patch): modules, cables, summed inputs. The memories below them are one pool for all ENG_VOICES voices:
- * each slot has an owner, a load frees the loading voice's slots and takes free ones (slot_take), so a big polyphonic
- * patch on one voice and small ones on the others share what the FM-1 has. A patch that finds no free slot does not load
- * (-4 lines, -6 buffers, -7 instances): NO ROOM on the panel, the voice falls back to its old patch.
- * The pool sizes follow the voice count (engine.h ENG_VOICES): the one-voice build gives its one patch more signal
- * buffers and instances and keeps one delay and one reverb (docs/HANDOFF.md); the four-voice build has the sizes of
- * the 1.0.2 panel. Keep DEVICE in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines of manual.c in step. */
-#define ENG_MAX_MODULES 32          /* per voice */
-#define ENG_MAX_RANGES 48           /* macro ranges per voice (patch.ts ModuleInst.range) */
+/* The patch: modules, cables, summed inputs; below them the memories (pools of slots with an owner, slot_take; a load
+ * frees them and takes what it needs). A patch that finds no free slot does not load (-4 lines, -6 buffers, -7
+ * instances): NO ROOM on the panel. Keep DEVICE in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines
+ * of manual.c in step. */
+#define ENG_MAX_MODULES 32
+#define ENG_MAX_RANGES 48           /* macro ranges (patch.ts ModuleInst.range) */
 #define ENG_MAX_CABLES 192
-#define MAX_SUM 128                 /* summed inputs per voice (an input of an instance with two or more sources) */
+#define MAX_SUM 128                 /* summed inputs (an input of an instance with two or more sources) */
 #define MAX_SRC 256                 /* their sources: a shared input reading a per-note output has one per note */
-#if ENG_VOICES == 1
 #define ENG_MAX_INST 128            /* module instances: a shared module has one, a per-note module one per note */
 #define ENG_NBUF 255u               /* signal buffers of ENG_BLOCK samples (a connected output, a summed input) */
 #define ENG_NDELAY 1                /* delay lines */
@@ -36,15 +32,6 @@
 #define ENG_NSTRING 8               /* string lines (a per-note module: one per note) */
 #define ENG_NCHORUS 1               /* chorus lines (a shared module, like the delay) */
 #define ENG_NGRAIN 1                /* granular lines (a shared module): 1 s of int16 plus the grain records, 88 KB */
-#else
-#define ENG_MAX_INST 72             /* module instances, all voices: a shared module has one, a per-note module one per note */
-#define ENG_NBUF 104u               /* signal buffers of ENG_BLOCK samples, all voices (a connected output, a summed input) */
-#define ENG_NDELAY 4                /* delay lines, all voices (one each when every voice has a delay) */
-#define ENG_NREV 2                  /* reverb memories, all voices */
-#define ENG_NSTRING 6               /* string lines, all voices (a per-note module: one per note) */
-#define ENG_NCHORUS 1               /* chorus lines, all voices (a shared module, like the delay) */
-#define ENG_NGRAIN 0                /* no room for a granular line next to four voices: a patch with one does not load */
-#endif
 #define GRAIN_LEN 44118u            /* GRAIN_SECONDS x ENG_SR */
 #define GRAIN_MAX 8
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
@@ -366,16 +353,12 @@ typedef struct {
     int32_t morph;                   /* the morph position of this block, Q16 0..1: the Main's MORPH parameter plus the mean of its morph input */
 } eng_t;
 
-/* the voices: one engine per patch that plays. E is the one the API calls act on (eng_voice_select; the panel code), the
- * audio ISR walks all of them and puts the pointer back. The clock is shared: ticks (24 ppqn) come from the arpeggiator
- * or MIDI in (eng_clock_tick). */
-static eng_t EV[ENG_VOICES] ENG_POOL;
-static eng_t *eng_p = EV;
-#define E (*eng_p)
-#define VOICE_NO ((uint32_t)(eng_p - EV))
+/* the engine. The clock ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
+static eng_t eng_one ENG_POOL;
+#define E eng_one
 static volatile uint32_t clk_ticks;
 
-/* the memories, shared by the voices: slot i of a pool belongs to voice own[i] - 1 (0: free) */
+/* the memories: slot i of a pool is taken while own[i] is 1 */
 static inst_t inst_pool[ENG_MAX_INST] ENG_POOL;
 static uint8_t inst_own[ENG_MAX_INST];
 static uint32_t cur_v;               /* the part whose instance is being rendered (0 for a module that runs once) */
@@ -402,15 +385,14 @@ static uint8_t gr_own[ENG_NGRAIN];
 static const esig_t zero_buf[ENG_BLOCK];
 static esig_t dummy_out[ENG_BLOCK];
 
-static void pool_free(uint8_t *own, uint32_t n)          /* the slots of the selected voice back to the pool */
+static void pool_free(uint8_t *own, uint32_t n)          /* every slot back to the pool */
 {
     uint32_t i;
     for (i = 0; i < n; i++)
-        if (own[i] == VOICE_NO + 1u)
-            own[i] = 0;
+        own[i] = 0;
 }
 
-static int slots_take(uint8_t *own, uint32_t n, uint32_t count)   /* `count` free slots in a row for the selected voice, -1 if none */
+static int slots_take(uint8_t *own, uint32_t n, uint32_t count)   /* `count` free slots in a row, -1 if none */
 {
     uint32_t i, run = 0;
     for (i = 0; i < n; i++) {
@@ -418,7 +400,7 @@ static int slots_take(uint8_t *own, uint32_t n, uint32_t count)   /* `count` fre
         if (run == count) {
             uint32_t k;
             for (k = i + 1 - count; k <= i; k++)
-                own[k] = (uint8_t)(VOICE_NO + 1u);
+                own[k] = 1;
             return (int)(i + 1 - count);
         }
     }
@@ -1281,46 +1263,40 @@ void eng_clock_tick(void)
     clk_ticks++;
 }
 
-/* Overload (audio.c): one part fewer in the poly group that has the most, in any voice (the part with the highest number:
+/* Overload (audio.c): one part fewer in the poly group that has the most (the part with the highest number:
  * its key is let go, its instances are no longer rendered and their outputs fall silent). 0 when no group has more than
  * one part left. The count comes back with the next eng_load. Called by the audio ISR before it renders. */
 int eng_shed(void)
 {
-    eng_t *keep = eng_p;
-    uint32_t v, k, best = 0, o;
-    int done = 0;
-    for (v = 0; v < ENG_VOICES && !done; v++) {
-        eng_p = &EV[v];
-        if (!E.loaded)
-            continue;
-        for (k = 1, best = 0; k <= E.ngrp; k++)
-            if (E.grp[k].parts > 1u && (!best || E.grp[k].parts > E.grp[best].parts))
-                best = k;
-        if (best) {
-            grp_t *g = &E.grp[best];
-            pv_t *x;
-            g->parts--;
-            x = &E.pv[g->pv0 + g->parts];
-            x->on = 0;
-            x->gate = 0;
-            if (g->rot >= g->parts)
-                g->rot = 0;
-            for (k = 0; k < E.nmod; k++) {          /* its copies' outputs: silence (cables out of the group sum them) */
-                const node_t *nd = &E.node[k];
-                if (nd->grp == best && g->parts < nd->ninst)
-                    for (o = 0; o < MAX_OUT; o++) {
-                        esig_t *b = inst_pool[nd->inst0 + g->parts].out[o];
-                        uint32_t i;
-                        if (b && b != zero_buf)
-                            for (i = 0; i < ENG_BLOCK; i++)
-                                b[i] = 0;
-                    }
+    uint32_t k, best = 0, o;
+    grp_t *g;
+    pv_t *x;
+    if (!E.loaded)
+        return 0;
+    for (k = 1; k <= E.ngrp; k++)
+        if (E.grp[k].parts > 1u && (!best || E.grp[k].parts > E.grp[best].parts))
+            best = k;
+    if (!best)
+        return 0;
+    g = &E.grp[best];
+    g->parts--;
+    x = &E.pv[g->pv0 + g->parts];
+    x->on = 0;
+    x->gate = 0;
+    if (g->rot >= g->parts)
+        g->rot = 0;
+    for (k = 0; k < E.nmod; k++) {              /* its copies' outputs: silence (cables out of the group sum them) */
+        const node_t *nd = &E.node[k];
+        if (nd->grp == best && g->parts < nd->ninst)
+            for (o = 0; o < MAX_OUT; o++) {
+                esig_t *b = inst_pool[nd->inst0 + g->parts].out[o];
+                uint32_t i;
+                if (b)
+                    for (i = 0; i < ENG_BLOCK; i++)
+                        b[i] = 0;
             }
-            done = 1;
-        }
     }
-    eng_p = keep;
-    return done;
+    return 1;
 }
 
 void eng_all_notes_off(void)
@@ -3114,7 +3090,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
 
 #define cur_g_parts(nd) ((uint32_t)E.grp[(nd)->grp].parts)
 
-static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the selected voice alone, clamped */
+static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the patch, clamped */
 {
     uint32_t off, i, k, s, v;
     for (i = 0; i < total; i++)
@@ -3196,77 +3172,13 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
     }
 }
 
-void eng_voice_select(uint32_t v)
-{
-    if (v < ENG_VOICES)
-        eng_p = &EV[v];
-}
-
-uint32_t eng_voice(void) { return VOICE_NO; }
-
-static volatile int32_t vgain[ENG_VOICES] = ENG_VOICE_INIT(ENG_ONE, ENG_ONE, ENG_ONE, ENG_ONE);   /* the mixer: each voice's level, Q16 (0 = muted) */
-
-void eng_voice_gain(uint32_t v, int32_t q16)
-{
-    if (v < ENG_VOICES)
-        vgain[v] = q16 < 0 ? 0 : q16 > ENG_ONE ? ENG_ONE : q16;
-}
-
-/* the voices of the patch, mixed: voice 1 into left / right, the others added, then clamped */
 void eng_render(int32_t *left, int32_t *right, uint32_t total)
 {
-    eng_t *keep = eng_p;                /* the audio ISR may run in the middle of a panel call: give the pointer back */
-    uint32_t v, off, i;
-    int32_t tl[ENG_BLOCK], tr[ENG_BLOCK];
-    eng_p = &EV[0];
     render_voice(left, right, total);
-    if (vgain[0] != ENG_ONE)
-        for (i = 0; i < total; i++) {
-            left[i] = mul16(left[i], vgain[0]);
-            right[i] = mul16(right[i], vgain[0]);
-        }
-    for (v = 1; v < ENG_VOICES; v++) {
-        eng_p = &EV[v];
-        if (!E.loaded)
-            continue;
-        for (off = 0; off < total; off += ENG_BLOCK) {
-            uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
-            render_voice(tl, tr, n);
-            for (i = 0; i < n; i++) {
-                left[off + i] = clampi(left[off + i] + mul16(tl[i], vgain[v]), -ENG_ONE, ENG_ONE);
-                right[off + i] = clampi(right[off + i] + mul16(tr[i], vgain[v]), -ENG_ONE, ENG_ONE);
-            }
-        }
-    }
-    eng_p = keep;
 }
 
-void eng_ctl_v(uint32_t v, uint32_t which, int32_t q16)
+void eng_ctl(uint32_t which, int32_t q16)
 {
-    if (v < ENG_VOICES && which < ENG_NCTL)
-        EV[v].ctl[which] = clampi(q16, which == ENG_CTL_BEND ? -ENG_ONE : 0, ENG_ONE);
-}
-
-void eng_note_on_v(uint32_t v, uint32_t note, int32_t vel_q16)     /* a note on one voice, whichever the panel has selected */
-{
-    eng_t *keep = eng_p;
-    eng_voice_select(v);
-    eng_note_on(note, vel_q16);
-    eng_p = keep;
-}
-
-void eng_note_off_v(uint32_t v, uint32_t note)
-{
-    eng_t *keep = eng_p;
-    eng_voice_select(v);
-    eng_note_off(note);
-    eng_p = keep;
-}
-
-void eng_all_notes_off_v(uint32_t v)
-{
-    eng_t *keep = eng_p;
-    eng_voice_select(v);
-    eng_all_notes_off();
-    eng_p = keep;
+    if (which < ENG_NCTL)
+        E.ctl[which] = clampi(q16, which == ENG_CTL_BEND ? -ENG_ONE : 0, ENG_ONE);
 }

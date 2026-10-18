@@ -142,9 +142,9 @@ typedef struct {
 } arp_t;
 
 #define ARP_CFG_DEFAULT {ARP_UP, 5, 60, 1, 0, 0, 0, 16, 16, 0, RATE_1_16, 120}   /* Maj Pentatonic, as the original's default set */
-#define ARP_N ((uint32_t)ENG_VOICES)   /* one per voice (engine.h) */
+#define ARP_N 1u
 #define ARP_INIT(seed) {.cfg = ARP_CFG_DEFAULT, .dirty = 1, .run = {.rng = seed}}
-static arp_t AV[ARP_N] = ENG_VOICE_INIT(ARP_INIT(0x2545F491u), ARP_INIT(0x6C8E9CF5u), ARP_INIT(0x1B873593u), ARP_INIT(0x3C6EF372u));
+static arp_t AV[ARP_N] = {ARP_INIT(0x2545F491u)};
 static arp_t *arp_p = AV;
 #define arp_c (arp_p->cfg)
 #define arp_dirty (arp_p->dirty)
@@ -243,7 +243,7 @@ static void arp_pool_build(void)
 static void arp_note_off(void)
 {
     if (AR.note_on) {
-        eng_note_off_v(ARP_VOICE, AR.note);
+        eng_note_off(AR.note);
         AR.note_on = 0;
     }
 }
@@ -347,7 +347,7 @@ static void arp_step(void)
         uint32_t v = ARP_VEL_DEFAULT;
         if (AR.c.vchaos && arp_rnd(100) < AR.c.vchaos)
             v = 1u + arp_rnd(127);
-        eng_note_on_v(ARP_VOICE, note, (int32_t)(v * 65536u / 127u));
+        eng_note_on(note, (int32_t)(v * 65536u / 127u));
     }
     AR.note = note;
     AR.note_on = 1;
@@ -371,8 +371,8 @@ static void arp_run_one(uint32_t n)
         uint32_t key;
         arp_note_off(); AR.running = 0; arp_step_ui = 0;
         for (key = 0; key < 128; key++) if (arp_p->held[key]) {
-            if (arp_play) eng_note_off_v(ARP_VOICE, key);
-            else eng_note_on_v(ARP_VOICE, key, (int32_t)(arp_p->held[key] * 65536u / 127u));
+            if (arp_play) eng_note_off(key);
+            else eng_note_on(key, (int32_t)(arp_p->held[key] * 65536u / 127u));
         }
         arp_p->enabled = arp_play;
     }
@@ -436,13 +436,13 @@ static void arp_key_on(uint32_t voice, uint32_t note, int32_t velocity)
     if (voice >= ARP_N || note > 127) return;
     AV[voice].held[note] = (uint8_t)(velocity < 517 ? 1 : velocity >= 65536 ? 127 : velocity * 127 / 65536);
     AV[voice].dirty = 1;
-    if (!AV[voice].play) eng_note_on_v(voice, note, velocity);
+    if (!AV[voice].play) eng_note_on(note, velocity);
 }
 static void arp_key_off(uint32_t voice, uint32_t note)
 {
     if (voice >= ARP_N || note > 127) return;
     AV[voice].held[note] = 0; AV[voice].dirty = 1;
-    if (!AV[voice].play) eng_note_off_v(voice, note);
+    if (!AV[voice].play) eng_note_off(note);
 }
 static void arp_clear_keys(uint32_t voice)
 {

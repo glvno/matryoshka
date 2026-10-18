@@ -1,6 +1,6 @@
 //! m1emu: our firmware on the emulated FM-1 (fm1-emu, MIT, pinned in Cargo.toml).
 //!
-//!   m1emu smoke BIN [--voices N] [--out DIR] [--levels FILE] [--strict]
+//!   m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]
 //!       the scripted smoke test (smoke.rs); exit code 1 on any failed check (with --strict also on a
 //!       level warning); FILE = web/scripts/emu-levels.ts's output, the reference level per factory patch
 //!   m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]
@@ -19,7 +19,7 @@ use machine::Machine;
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: m1emu smoke BIN [--voices N] [--out DIR] [--levels FILE] [--strict]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]");
+    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]");
     ExitCode::from(2)
 }
 
@@ -39,10 +39,9 @@ fn main() -> ExitCode {
     };
     match cmd.as_str() {
         "smoke" => {
-            let voices = opt(&a, "--voices").and_then(|v| v.parse().ok()).unwrap_or(1);
             let out = opt(&a, "--out").unwrap_or("build/emu/smoke");
             let levels = opt(&a, "--levels").map(|p| std::fs::read_to_string(p).unwrap_or_else(|e| panic!("{p}: {e}")));
-            smoke::run(&app, voices, out, levels.as_deref(), a.iter().any(|x| x == "--strict"))
+            smoke::run(&app, out, levels.as_deref(), a.iter().any(|x| x == "--strict"))
         }
         "run" => run(&app, &a),
         "xip" => {

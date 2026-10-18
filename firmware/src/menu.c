@@ -2,16 +2,14 @@
  * Copyright (C) 2026 morgulbrut */
 /* Two pages of the panel, after ui.c and before main.c:
  *
- * MIXER (GLO): K1..K4 the level of voice 1..4, the black keys F# G# A# C# (OP1..OP4) mute them (and play no notes then),
- * ALGORITHM sets the parts of the selected voice's first poly group (main.c poly_set). A build with fewer voices (engine.h
- * ENG_VOICES) has that many rows, mute keys and channel rows; the one-voice build uses K2 for the patch's MORPH and K3 / K4
- * for the first poly group's LEGATO and PRIORITY.
+ * MIXER (GLO): K1 the patch's level, the black key F#3 (OP1) mutes it (and plays no note then), K2 the patch's MORPH,
+ * K3 / K4 the first poly group's LEGATO and PRIORITY, ALGORITHM its parts (main.c poly_set).
  *
  * MENU (HOME held 0.7 s, HOME again closes it): the settings, in tabs like Felucca's menu (its layout, its rows are ours).
  * ALGORITHM steps between the tabs, PRESET and SELECT between the rows, K1..K4 and OCT- / OCT+ change the value of the
  * selected row. The values are applied at once and saved with the state (SAVE: main.c save bits).
  *
- * The state is plain bytes the main loop writes; the audio ISR only sees the voice levels through eng_voice_gain. */
+ * The state is plain bytes the main loop writes; the audio ISR only sees the level through patch_gain (audio.c). */
 
 #ifndef FELUCCA_VERSION
 #define FELUCCA_VERSION "M1"
@@ -23,79 +21,57 @@ static void defaults_now(void);
 
 /* ---- mixer */
 
-static int voice_poly(uint32_t v)       /* the parts of voice v's first poly group (-1: it has none, 0: no patch loaded) */
+static int voice_poly(void)             /* the parts of the first poly group (-1: it has none, 0: no patch loaded) */
 {
-    int n;
-    uint32_t keep = eng_voice();
-    eng_voice_select(v);
-    n = eng_groups() ? eng_parts() : eng_parts() ? -1 : 0;
-    eng_voice_select(keep);
-    return n;
+    return eng_groups() ? eng_parts() : eng_parts() ? -1 : 0;
 }
 
-/* the keys that mute voice 1..4: the black keys F#3, G#3, A#3, C#4 (OP1..OP4) */
-static const uint8_t MIX_KEY_BIT[ENG_VOICES] = ENG_VOICE_INIT(1, 3, 5, 8);
-#define MIX_KEYS ((1u << 1) | (ENG_VOICES > 1 ? 1u << 3 : 0u) | (ENG_VOICES > 2 ? 1u << 5 : 0u) | (ENG_VOICES > 3 ? 1u << 8 : 0u))
+/* the key that mutes the patch: the black key F#3 (OP1) */
+#define MIX_KEY_BIT 1u
+#define MIX_KEYS (1u << MIX_KEY_BIT)
 
-static uint8_t mix_vol[ENG_VOICES] = ENG_VOICE_INIT(100, 100, 100, 100);   /* percent, square law (so the lower half has some travel) */
-static uint8_t mix_mute[ENG_VOICES];
+static uint8_t mix_vol = 100;           /* percent, square law (so the lower half has some travel) */
+static uint8_t mix_mute;
 
-static void mix_apply(uint32_t v)
+static void mix_apply(void)
 {
-    uint32_t p = mix_vol[v];
-    eng_voice_gain(v, mix_mute[v] ? 0 : (int32_t)((p * p * 65536u) / 10000u));
-    fm1_led_key(14u + MIX_KEY_BIT[v], mix_mute[v]);        /* the mute key's LED is lit while its voice is muted */
+    uint32_t p = mix_vol;
+    patch_gain = mix_mute ? 0 : (int32_t)((p * p * 65536u) / 10000u);
+    fm1_led_key(14u + MIX_KEY_BIT, mix_mute);              /* the mute key's LED is lit while the patch is muted */
 }
 
-static void mix_apply_all(void)
-{
-    uint32_t v;
-    for (v = 0; v < ENG_VOICES; v++)
-        mix_apply(v);
-}
+static void mix_apply_all(void) { mix_apply(); }
 
-static void mix_row(uint32_t v, int32_t y)
+static void mix_row(int32_t y)
 {
     char line[40], num[12], *p = line;
-    uint16_t col = VOICE_COLOR[v];
-    uint32_t w = (uint32_t)mix_vol[v] * 216u / 100u;
-    p = put(p, "K");
-    *p++ = (char)('1' + v);
-    if (ENG_VOICES > 1) {
-        p = put(p, "  VOICE ");
-        *p++ = (char)('1' + v);
-    } else {
-        p = put(p, "  LEVEL");
-    }
-    p = put(p, "  (OP");
-    *p++ = (char)('1' + v);
-    p = put(p, ": MUTE)");
+    uint32_t w = (uint32_t)mix_vol * 216u / 100u;
+    p = put(p, "K1  LEVEL  (OP1: MUTE)");
     pad(p, line, 28);
     text5x7(12, (uint32_t)y, line, 1, C_DIM, C_BG);
-    if (mix_mute[v]) {
+    if (mix_mute) {
         p = put(line, "MUTED");
     } else {
-        fmt_int(num, mix_vol[v]);
+        fmt_int(num, mix_vol);
         p = put(line, num);
         *p++ = '%';
     }
     pad(p, line, 14);
-    text_mid(12, (uint32_t)y + 11u, line, mix_mute[v] ? C_RED : C_FG, C_BG);
-    {                                   /* the parts at the right: MONO / n PARTS (ALGO changes the selected voice's) */
-        int n = voice_poly(v);
+    text_mid(12, (uint32_t)y + 11u, line, mix_mute ? C_RED : C_FG, C_BG);
+    {                                   /* the parts at the right: MONO / n PARTS (ALGO changes them) */
+        int n = voice_poly();
         if (n <= 0)
             p = put(line, n ? "MONO" : "-");
         else
             p = put_parts(line, n);
         pad(p, line, 7);
-        text_mid(165, (uint32_t)y + 11u, line, v == eng_voice() ? C_FG : C_DIM, C_BG);
+        text_mid(165, (uint32_t)y + 11u, line, C_FG, C_BG);
     }
-    lcd_fill(12, (uint32_t)y + 27u, w, 4, mix_mute[v] ? C_DIM : col);
+    lcd_fill(12, (uint32_t)y + 27u, w, 4, mix_mute ? C_DIM : C_ACC);
     lcd_fill(12 + w, (uint32_t)y + 27u, 216u - w, 4, 0x2104u);
 }
 
-#if ENG_VOICES == 1
-/* the one-voice build's second mixer row: the patch's MORPH position (the Main module's parameter; K2) */
+/* the second mixer row: the patch's MORPH position (the Main module's parameter; K2) */
 static void morph_row(int32_t y)
 {
     char line[40], num[12], *p;
@@ -117,7 +93,7 @@ static void morph_row(int32_t y)
     lcd_fill(12 + w, (uint32_t)y + 27u, 216u - w, 4, 0x2104u);
 }
 
-/* the one-voice build's third row: the first poly group's LEGATO on K3, PRIORITY on K4 (main.c poly_turn) */
+/* the third row: the first poly group's LEGATO on K3, PRIORITY on K4 (main.c poly_turn) */
 static void voicing_row(int32_t y)
 {
     char line[40], *p;
@@ -132,52 +108,40 @@ static void voicing_row(int32_t y)
         text_mid(12u + 96u * j, (uint32_t)y + 11u, line, c >= 0 ? C_FG : C_DIM, C_BG);
     }
 }
-#endif
 
 static void mixer_draw(int full)
 {
-    uint32_t v;
     if (full)
-        text5x7(12, 226, ENG_VOICES > 1 ? "K1-4: LEVEL  OP1-4: MUTE  ALGO: PARTS" : "K1 LEVEL K2 MORPH OP1 MUTE ALGO PARTS", 1, 0x4208u, C_BG);
-    for (v = 0; v < ENG_VOICES; v++)
-        mix_row(v, 32 + 48 * (int32_t)v);
-#if ENG_VOICES == 1
+        text5x7(12, 226, "K1 LEVEL K2 MORPH OP1 MUTE ALGO PARTS", 1, 0x4208u, C_BG);
+    mix_row(32);
     morph_row(80);
     voicing_row(128);
-#endif
 }
 
-static void mix_turn(uint32_t v, int32_t clicks, int fast)
+static void mix_turn(int32_t clicks, int fast)
 {
-    int32_t x = (int32_t)mix_vol[v] + clicks * (fast ? 5 : 1);
-    mix_vol[v] = (uint8_t)(x < 0 ? 0 : x > 100 ? 100 : x);
-    mix_apply(v);
+    int32_t x = (int32_t)mix_vol + clicks * (fast ? 5 : 1);
+    mix_vol = (uint8_t)(x < 0 ? 0 : x > 100 ? 100 : x);
+    mix_apply();
     if (!ui_dirty)
         ui_dirty = 1;
 }
 
-static void mix_toggle(uint32_t v)
+static void mix_toggle(void)
 {
-    mix_mute[v] ^= 1u;
-    mix_apply(v);
+    mix_mute ^= 1u;
+    mix_apply();
     if (!ui_dirty)
         ui_dirty = 1;
 }
 
 /* ---- settings menu */
 
-enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH1, MR_CH2, MR_CH3, MR_CH4, MR_CLOCK, MR_PROG, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
+enum { MR_LEDS, MR_CPU, MR_ACCEL, MR_OCT, MR_CH, MR_CLOCK, MR_PROG, MR_VERSION, MR_PEAK, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
 enum { MT_DISPLAY, MT_CONTROL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
-#define MT_NONE MT_COUNT                         /* the tab of a row this build has not (a channel row of a voice it lacks): never shown */
-#define CH_TAB(v) ((v) < ENG_VOICES ? MT_MIDI : MT_NONE)
-#if ENG_VOICES > 1
-#define CH_ROW_NAMES "V1 CHANNEL", "V2 CHANNEL", "V3 CHANNEL", "V4 CHANNEL"
-#else
-#define CH_ROW_NAMES "MIDI CHANNEL", "", "", ""
-#endif
-static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", CH_ROW_NAMES, "CLOCK IN", "PROG CHANGE",
+static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "CPU IN BAR", "KNOB ACCEL", "OCTAVE", "MIDI CHANNEL", "CLOCK IN", "PROG CHANGE",
                                               "VERSION", "CPU PEAK", "UPDATE MODE", "DEFAULTS"};
-static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, CH_TAB(0), CH_TAB(1), CH_TAB(2), CH_TAB(3), MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
+static const uint8_t ROW_TAB[MR_COUNT] = {MT_DISPLAY, MT_DISPLAY, MT_CONTROL, MT_CONTROL, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
 static const char *const TAB_NAME[MT_COUNT] = {"DISPLAY", "CONTROL", "MIDI", "SYSTEM", "MANUAL"};
 
 static uint8_t menu_tab, menu_sel = MR_LEDS;     /* the tab and the selected row (a row number) */
@@ -231,11 +195,8 @@ static void menu_value(uint32_t row, char *out)
         fmt_int(p, octave);
         p += str_len(p);
         break;
-    case MR_CH1:
-    case MR_CH2:
-    case MR_CH3:
-    case MR_CH4: {
-        uint32_t c = cfg.ch[row - MR_CH1];
+    case MR_CH: {
+        uint32_t c = cfg.ch;
         if (!c) {
             p = put(p, "OMNI");
         } else {
@@ -385,12 +346,9 @@ static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value
         octave = octave < -3 ? -3 : octave > 3 ? 3 : octave;
         leds_octave();
         break;
-    case MR_CH1:
-    case MR_CH2:
-    case MR_CH3:
-    case MR_CH4: {
-        int32_t v = (int32_t)cfg.ch[row - MR_CH1] + d;
-        cfg.ch[row - MR_CH1] = (uint8_t)(v < 0 ? 0 : v > 16 ? 16 : v);
+    case MR_CH: {
+        int32_t v = (int32_t)cfg.ch + d;
+        cfg.ch = (uint8_t)(v < 0 ? 0 : v > 16 ? 16 : v);
         break;
     }
     case MR_CLOCK: cfg.clock_in = (uint8_t)up; break;

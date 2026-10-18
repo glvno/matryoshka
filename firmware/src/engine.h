@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* Fixed-point patch engine: the C port of web/src/engine.ts and modules.ts. Integer only (the FM-1 has no FPU).
- * Signals and parameters are Q16.16 (1.0 = 65536); the sample rate is ENG_SR. ENG_VOICES patches play at once (the
- * panel's "voices"; 1 unless the build says otherwise). Polyphony is per poly group (a poly assembly of the editor): up to
- * POLY_MAX_GROUPS per patch, each running its modules once per part (1..ENG_MAX_PARTS), as the reference. */
+ * Signals and parameters are Q16.16 (1.0 = 65536); the sample rate is ENG_SR. One patch plays at a time. Polyphony is per
+ * poly group (a poly assembly of the editor): up to POLY_MAX_GROUPS per patch, each running its modules once per part
+ * (1..ENG_MAX_PARTS), as the reference. */
 #pragma once
 #include <stdint.h>
 
@@ -71,39 +71,12 @@ int eng_poly_set(uint32_t g, uint32_t field, uint32_t v);
 void eng_note_on(uint32_t note, int32_t vel_q16);
 void eng_note_off(uint32_t note);
 void eng_all_notes_off(void);
-/* the voices (patches that play together): the calls above and the patch / parameter calls act on the selected one; the
- * _v calls name the voice (the arpeggiator plays its own). eng_render mixes all voices. The memories (signal buffers,
- * module instances, delay / reverb / string / chorus lines) are pools shared by the voices: a patch loads when enough is
- * free (engine.c). */
-#ifndef ENG_VOICES
-#define ENG_VOICES 1                  /* patches that play at once, voices 1..ENG_VOICES (build switch: -DENG_VOICES=4 for the four-voice panel) */
-#endif
-#if ENG_VOICES < 1 || ENG_VOICES > 4
-#error "ENG_VOICES is 1..4 (the panel has four voice colours, mute keys and channel rows)"
-#endif
-/* an initialiser with one entry per voice: ENG_VOICE_INIT(a, b, c, d) is {a} .. {a, b, c, d} (entries with commas go
- * through a macro of their own, so the commas are inside parentheses) */
-#if ENG_VOICES == 1
-#define ENG_VOICE_INIT(a, b, c, d) {a}
-#elif ENG_VOICES == 2
-#define ENG_VOICE_INIT(a, b, c, d) {a, b}
-#elif ENG_VOICES == 3
-#define ENG_VOICE_INIT(a, b, c, d) {a, b, c}
-#else
-#define ENG_VOICE_INIT(a, b, c, d) {a, b, c, d}
-#endif
-void eng_voice_select(uint32_t v);
-void eng_voice_gain(uint32_t v, int32_t q16);        /* the mixer: a voice's level, Q16 (0 = muted) */
-uint32_t eng_voice(void);
-void eng_note_on_v(uint32_t v, uint32_t note, int32_t vel_q16);
-void eng_note_off_v(uint32_t v, uint32_t note);
-void eng_all_notes_off_v(uint32_t v);
 /* one clock tick (24 per quarter note); the Main module's clock output pulses once per block that saw one */
 void eng_clock_tick(void);
-/* the performance controls of a voice: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
+/* the performance controls: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
  * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch, 0..1, the at output) */
 enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_NCTL };
-void eng_ctl_v(uint32_t v, uint32_t which, int32_t q16);
+void eng_ctl(uint32_t which, int32_t q16);
 /* n frames of stereo, Q16, clamped to +-1.0; any n, processed in blocks of ENG_BLOCK */
 void eng_render(int32_t *l, int32_t *r, uint32_t n);
 /* overload: one part fewer in the poly group with the most (the audio ISR, before a render); 0 = none left to drop */

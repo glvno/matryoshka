@@ -100,12 +100,8 @@ static void state_unpack(uint32_t w)
     cfg.clock_in = w >> 11 & 1u;
     cfg.prog_chg = w >> 12 & 1u;
     if (!(w >> 7 & 1u)) {                               /* the mixer of a record from before (voices 1 and 2) */
-        mix_vol[0] = (uint8_t)(w >> 16 & 127u) > 100u ? 100u : (uint8_t)(w >> 16 & 127u);
-        mix_mute[0] = w >> 30 & 1u;
-#if ENG_VOICES > 1
-        mix_vol[1] = (uint8_t)(w >> 23 & 127u) > 100u ? 100u : (uint8_t)(w >> 23 & 127u);
-        mix_mute[1] = w >> 31 & 1u;
-#endif
+        mix_vol = (uint8_t)(w >> 16 & 127u) > 100u ? 100u : (uint8_t)(w >> 16 & 127u);
+        mix_mute = w >> 30 & 1u;
     }
     mix_apply_all();
 }
@@ -118,15 +114,11 @@ static void state_unpack(uint32_t w)
  * the preset of each (word 2). Version 1 (two voices, before the four-voice firmware) is still read: its lengths are 2..5,
  * its arpeggiators follow at 6, its tail is the two channels and the LED mode. An even older record holds just voice 1's
  * patch (starts with 0xA1).
- * The record always has BLOB_NV = 4 voice slots, whatever the build's ENG_VOICES: a one-voice build writes voice 1 and
- * leaves the other slots empty (length 0, default arp, channel, level), and reads the first ENG_VOICES slots of a record
- * a four-voice build wrote; so a record moves between the builds. */
+ * The record has BLOB_NV = 4 patch slots (from the four-voice firmware of 1.0.x): the firmware writes the first and leaves
+ * the others empty (length 0, default arp, channel, level), and reads only the first of a record that firmware wrote. */
 #define BLOB_MAGIC 0xB2u
 #define ARP_PACK 13u
 #define BLOB_NV 4u                                /* voice slots in the record (the panel's most) */
-#if ENG_VOICES > BLOB_NV
-#error "the state record holds BLOB_NV voices"
-#endif
 static uint8_t blob[PS_MAX] ENG_POOL;
 
 static void arp_pack(uint8_t *d, const arp_cfg_t *c)
@@ -137,16 +129,13 @@ static void arp_pack(uint8_t *d, const arp_cfg_t *c)
 
 static void arp_unpack(uint32_t v, const uint8_t *d);
 
-/* the editor's ARP command: the 13 byte record into the selected voice's arpeggiator, byte 13 the transport (0 stop,
- * 1 start, else leave) */
+/* the editor's ARP command: the 13 byte record into the arpeggiator, byte 13 the transport (0 stop, 1 start, else leave) */
 static void m1_arp_set(const uint8_t *d, uint32_t n)
 {
-    uint32_t v = eng_voice();
-    arp_unpack(v, d);
-    if (!v)
-        arp_sync_scale();
+    arp_unpack(0, d);
+    arp_sync_scale();
     if (n >= 14u && d[13] < 2u) {
-        AV[v].play = d[13];
+        AV[0].play = d[13];
         leds_arp();
     }
     ui_dirty = 2;
@@ -169,53 +158,44 @@ static void arp_unpack(uint32_t v, const uint8_t *d)
 static uint32_t blob_build(void)                /* 0 if it does not fit */
 {
     static const arp_cfg_t arp_default = ARP_CFG_DEFAULT;
-    uint32_t n = BLOB_HDR, v, i, total = BLOB_HDR + BLOB_NV * ARP_PACK + BLOB_TAIL;
-    uint8_t mutes = 0;
-    for (v = 0; v < ENG_VOICES; v++)
-        total += m1_cur_lenv[v];
+    uint32_t n = BLOB_HDR, v, i, total = BLOB_HDR + BLOB_NV * ARP_PACK + BLOB_TAIL + m1_cur_len;
     if (total > PS_MAX)
         return 0;
     blob[0] = BLOB_MAGIC;
     blob[1] = 2;
-    for (v = 0; v < BLOB_NV; v++) {             /* the slots of voices this build lacks are empty */
-        uint32_t l = v < ENG_VOICES ? m1_cur_lenv[v] : 0u;
+    for (v = 0; v < BLOB_NV; v++) {             /* the slots after the first are empty */
+        uint32_t l = v ? 0u : m1_cur_len;
         blob[2u + 2u * v] = (uint8_t)l;
         blob[3u + 2u * v] = (uint8_t)(l >> 8);
     }
     for (v = 0; v < BLOB_NV; v++, n += ARP_PACK)
-        arp_pack(blob + n, v < ENG_VOICES ? &AV[v].cfg : &arp_default);
-    for (v = 0; v < ENG_VOICES; v++)
-        for (i = 0; i < m1_cur_lenv[v]; i++)
-            blob[n++] = m1_curv[v][i];
+        arp_pack(blob + n, v ? &arp_default : &AV[0].cfg);
+    for (i = 0; i < m1_cur_len; i++)
+        blob[n++] = m1_cur[i];
     for (v = 0; v < BLOB_NV; v++)
-        blob[n++] = v < ENG_VOICES ? cfg.ch[v] : (uint8_t)(v + 1u);
+        blob[n++] = v ? (uint8_t)(v + 1u) : cfg.ch;
     blob[n++] = cfg.leds;
-    for (v = 0; v < BLOB_NV; v++) {
-        blob[n++] = v < ENG_VOICES ? mix_vol[v] : 100u;
-        if (v < ENG_VOICES)
-            mutes |= (uint8_t)(mix_mute[v] << v);
-    }
-    blob[n++] = mutes;
+    for (v = 0; v < BLOB_NV; v++)
+        blob[n++] = v ? 100u : mix_vol;
+    blob[n++] = mix_mute;
     return n;
 }
 
 static int m1_store(const uint8_t *patch, uint32_t len)        /* (the arguments are the editor's: the state is stored whole) */
 {
     int rc;
-    uint32_t n, v;
+    uint32_t n;
     (void)patch;
     (void)len;
-    if (!flash_ok || !m1_cur_lenv[0])
+    if (!flash_ok || !m1_cur_len)
         return -1;
     n = blob_build();
     if (!n)
         return -2;
     ps_state[0] = (uint32_t)(octave + 8) | state_pack();   /* octave and settings */
-    ps_state[1] = ps_state[2] = ps_state[3] = 0;
-    for (v = 0; v < ENG_VOICES; v++) {
-        ps_state[1] |= (vs[v].module & 255u) << (8u * v);  /* the selected module and the preset of each voice */
-        ps_state[2] |= (vs[v].preset & 255u) << (8u * v);
-    }
+    ps_state[1] = sel & 255u;                   /* the selected module and the preset (one byte each, as voice 1's were) */
+    ps_state[2] = cur_preset & 255u;
+    ps_state[3] = 0;
     eng_run = 0;                                /* a sector erase takes the CPU for a while: no audio meanwhile */
     rc = ps_save(blob, n);
     eng_resume();
@@ -241,7 +221,7 @@ static uint32_t list_slot(uint32_t idx)             /* slot number of the idx-th
     return 0;
 }
 
-static char label_buf[ENG_VOICES][40];           /* each voice's preset name */
+static char label_buf[40];                       /* the preset's name */
 
 static void preset_load(uint32_t n)
 {
@@ -249,7 +229,7 @@ static void preset_load(uint32_t n)
     uint32_t count = list_count(), len = 0;
     const uint8_t *data;
     const char *name;
-    char slot_name[M1_NAME + 1], *p = label_buf[eng_voice()];
+    char slot_name[M1_NAME + 1], *p = label_buf;
     if (n >= count)
         return;
     if (bank_mask) {
@@ -267,7 +247,7 @@ static void preset_load(uint32_t n)
     cur_preset = n;
     p = put(p, name);
     *p = 0;
-    patch_label = label_buf[eng_voice()];
+    patch_label = label_buf;
     screen_idle();
 }
 
@@ -357,30 +337,18 @@ static void boot_step(const char *what)
 static const char *boot_msg;                    /* shown in the bar once the pages are up */
 static uint32_t boot_msg_ms;
 
-static const char *const VOICE_LINE[ENG_VOICES] = ENG_VOICE_INIT("VOICE 1", "VOICE 2", "VOICE 3", "VOICE 4");
-static void voice_step(uint32_t v)              /* the loading screen's line for voice v (0..3) */
+static void factory_boot(void)                  /* the first entry of the preset list */
 {
-    boot_step(ENG_VOICES > 1 ? VOICE_LINE[v] : "PATCH");
-}
-
-static void voices_boot(uint32_t from)           /* voices from..ENG_VOICES run the factory presets (voice n the n-th) */
-{
-    uint32_t v;
-    for (v = from; v < ENG_VOICES; v++) {
-        voice_step(v);
-        eng_voice_select(v);
-        preset_load(v < list_count() ? v : 0u);
-    }
-    eng_voice_select(0);
+    boot_step("PATCH");
+    preset_load(0);
     screen_idle();
 }
 
-/* one voice from the saved state: its patch, the module the knobs act on, the preset it came from */
-static int voice_restore(uint32_t v, const uint8_t *p, uint32_t len, uint32_t module, uint32_t preset)
+/* the patch from the saved state: its patch, the module the knobs act on, the preset it came from */
+static int voice_restore(const uint8_t *p, uint32_t len, uint32_t module, uint32_t preset)
 {
     int rc;
-    voice_step(v);
-    eng_voice_select(v);
+    boot_step("PATCH");
     rc = m1_apply(p, len);
     if (rc == 0) {
         m1_set_current(p, len);
@@ -388,64 +356,36 @@ static int voice_restore(uint32_t v, const uint8_t *p, uint32_t len, uint32_t mo
         cur_preset = preset < list_count() ? preset : 0u;
         patch_label = "STORED PATCH";
     }
-    eng_voice_select(0);
     return rc;
 }
 
 static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob_build); 0 = restored */
 {
-    uint32_t nv = b[1] == 1u ? 2u : BLOB_NV, hdr = 2u + 2u * nv, at = hdr + nv * ARP_PACK, v, l[BLOB_NV] = {0}, total;
-    uint32_t nrest = nv < ENG_VOICES ? nv : ENG_VOICES;    /* the record's voices this build has */
-    int booted = 0;                                         /* voices_boot ran for an empty slot (and the voices after it) */
+    uint32_t nv = b[1] == 1u ? 2u : BLOB_NV, hdr = 2u + 2u * nv, at = hdr + nv * ARP_PACK, v, l0, total;
     if (len < at || (b[1] != 1u && b[1] != 2u))
         return -1;
-    for (v = 0, total = at; v < nv; v++) {
-        l[v] = (uint32_t)b[2u + 2u * v] | (uint32_t)b[3u + 2u * v] << 8;
-        total += l[v];
-    }
-    if (!l[0] || total > len)
+    for (v = 0, total = at; v < nv; v++)
+        total += (uint32_t)b[2u + 2u * v] | (uint32_t)b[3u + 2u * v] << 8;
+    l0 = (uint32_t)b[2] | (uint32_t)b[3] << 8;
+    if (!l0 || total > len)
         return -1;
-    {
-        const uint8_t *p = b + at;
-        for (v = 0; v < nrest; p += l[v], v++) {
-            uint32_t module, preset;
-            if (b[1] == 1u) {                           /* two voices: 16 bit modules, voice 2's preset + 1 in word 3 */
-                module = v ? ps_loaded[1] >> 16 : ps_loaded[1] & 0xFFFFu;
-                preset = v ? (ps_loaded[3] ? ps_loaded[3] - 1u : 0u) : ps_loaded[2];
-            } else {
-                module = ps_loaded[1] >> (8u * v) & 255u;
-                preset = ps_loaded[2] >> (8u * v) & 255u;
-            }
-            if (l[v]) {
-                if (voice_restore(v, p, l[v], module, preset) && v == 0)
-                    return -2;
-            } else {
-                voices_boot(v);
-                booted = 1;
-                break;
-            }
-        }
-    }
-    if (nrest < ENG_VOICES && !booted)
-        voices_boot(nrest);
-    {                                                   /* the tail: channels, LED mode, mixer */
+    if (b[1] == 1u ? voice_restore(b + at, l0, ps_loaded[1] & 0xFFFFu, ps_loaded[2])        /* two voices: 16 bit modules */
+                   : voice_restore(b + at, l0, ps_loaded[1] & 255u, ps_loaded[2] & 255u))
+        return -2;
+    {                                                   /* the tail: channel, LED mode, level and mute */
         const uint8_t *t = b + total;
         uint32_t left = len - total;
         if (b[1] == 1u && left >= 3u) {
-            for (v = 0; v < nrest; v++)
-                cfg.ch[v] = t[v] > 16u ? (uint8_t)(v + 1u) : t[v];
+            cfg.ch = t[0] > 16u ? 1u : t[0];
             cfg.leds = t[2] > 2u ? 2u : t[2];
         } else if (b[1] == 2u && left >= BLOB_TAIL) {
-            for (v = 0; v < nrest; v++) {
-                cfg.ch[v] = t[v] > 16u ? (uint8_t)(v + 1u) : t[v];
-                mix_vol[v] = t[BLOB_NV + 1u + v] > 100u ? 100u : t[BLOB_NV + 1u + v];
-                mix_mute[v] = t[2u * BLOB_NV + 1u] >> v & 1u;
-            }
+            cfg.ch = t[0] > 16u ? 1u : t[0];
+            mix_vol = t[BLOB_NV + 1u] > 100u ? 100u : t[BLOB_NV + 1u];
+            mix_mute = t[2u * BLOB_NV + 1u] & 1u;
             cfg.leds = t[BLOB_NV] > 2u ? 2u : t[BLOB_NV];
         }
     }
-    for (v = 0; v < nrest; v++)
-        arp_unpack(v, b + hdr + v * ARP_PACK);
+    arp_unpack(0, b + hdr);
     arp_sync_scale();
     mix_apply_all();
     return 0;
@@ -455,20 +395,15 @@ static int boot_blob(const uint8_t *b, uint32_t len)    /* the saved state (blob
  * state is skipped (it stays in flash: a normal boot tries it again, MENU > SYSTEM > DEFAULTS erases it) */
 static uint8_t boot_safe;
 
-/* safe mode's patch on every voice: the fallback compiled into the firmware (presets.h FALLBACK_PATCH, web/src/fallback.ts),
+/* safe mode's patch: the fallback compiled into the firmware (presets.h FALLBACK_PATCH, web/src/fallback.ts),
  * nothing read from the flash (no stored state, no bank slot: either may be what made the last boot fail) */
 static void fallback_boot(void)
 {
-    uint32_t v;
-    for (v = 0; v < ENG_VOICES; v++) {
-        voice_step(v);
-        eng_voice_select(v);
-        if (m1_apply(FALLBACK_PATCH, sizeof FALLBACK_PATCH) == 0)
-            m1_set_current(FALLBACK_PATCH, sizeof FALLBACK_PATCH);
-        cur_preset = 0;
-        patch_label = FALLBACK_NAME;
-    }
-    eng_voice_select(0);
+    boot_step("PATCH");
+    if (m1_apply(FALLBACK_PATCH, sizeof FALLBACK_PATCH) == 0)
+        m1_set_current(FALLBACK_PATCH, sizeof FALLBACK_PATCH);
+    cur_preset = 0;
+    patch_label = FALLBACK_NAME;
     screen_idle();
 }
 
@@ -493,7 +428,6 @@ static void patch_boot(void)                    /* the stored state if there is 
             sel = ps_loaded[1] < (uint32_t)eng_nmodules() ? ps_loaded[1] : 0u;
             cur_preset = ps_loaded[2] < list_count() ? ps_loaded[2] : 0u;
             patch_label = "STORED PATCH";
-            voices_boot(1u);
             ok = 1;
         }
         if (ok) {
@@ -506,34 +440,29 @@ static void patch_boot(void)                    /* the stored state if there is 
             boot_msg_ms = 2000;
             return;
         }
-        voices_boot(0u);
+        factory_boot();
         boot_msg = "RESTORE FAILED";                /* a record was there but did not load: the factory presets run */
         boot_msg_ms = 3000;
         return;
     }
-    voices_boot(0u);
+    factory_boot();
 }
 
 /* MENU > DEFAULTS: the settings, mixer, arpeggiators and the voices as they were made, and the saved state erased */
 static void defaults_now(void)
 {
-    uint32_t v;
-    for (v = 0; v < ENG_VOICES; v++) {
-        arp_clear_keys(v);
-        eng_all_notes_off_v(v);
-    }
+    arp_clear_keys(0);
+    eng_all_notes_off();
     cfg_defaults();
-    for (v = 0; v < ENG_VOICES; v++) {
-        mix_vol[v] = 100;
-        mix_mute[v] = 0;
-        AV[v].play = 0;
-        AV[v].cfg = (arp_cfg_t)ARP_CFG_DEFAULT;
-        AV[v].dirty = 1;
-    }
+    mix_vol = 100;
+    mix_mute = 0;
+    AV[0].play = 0;
+    AV[0].cfg = (arp_cfg_t)ARP_CFG_DEFAULT;
+    AV[0].dirty = 1;
     mix_apply_all();
     octave = 0;
     arp_p = &AV[0];
-    voices_boot(0u);
+    factory_boot();
     leds_avail();
     leds_octave();
     leds_arp();
@@ -553,7 +482,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
         uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u, n = (pkt >> 16) & 0x7Fu, v = pkt >> 24;
         RING_PUBLISH();
         mi_r++;
-        uint32_t chn = ((pkt >> 8) & 15u) + 1u, mv, redraw = 0;
+        uint32_t chn = ((pkt >> 8) & 15u) + 1u, redraw = 0;
         if (st == 0xF0u) {                      /* realtime: the clock comes from the arpeggiator while it runs, else from MIDI in */
             uint32_t rt = (pkt >> 8) & 0xFFu;
             if (rt == 0xF8u) {
@@ -562,42 +491,31 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
             } else {
                 midi_clk_run = rt != 0xFCu;
             }
-        } else {                                /* channel messages: each voice listens to its own channel (MENU > V1 / V2 CHANNEL) */
-            for (mv = 0; mv < ENG_VOICES; mv++) {
-                if (cfg.ch[mv] && cfg.ch[mv] != chn)
-                    continue;
-                if (st == 0x90u && v) {
-                    arp_key_on(mv, n, (int32_t)(v * 65536u / 127u));
-                } else if (st == 0x80u || st == 0x90u) {
-                    arp_key_off(mv, n);
-                } else if (st == 0xB0u && n == 123u) {
-                    arp_clear_keys(mv);
-                    eng_all_notes_off_v(mv);
-                } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
-                    eng_ctl_v(mv, ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
-                } else if (st == 0xB0u && n >= 16u && n <= 20u) {   /* CC 16..19: the Main module's knobs K1..K4; CC 20: its MORPH */
-                    uint32_t keep = eng_voice();
-                    int m;
-                    eng_voice_select(mv);
-                    m = eng_find(T_FM1);
-                    if (m >= 0) {
-                        eng_set_param((uint32_t)m, n == 20u ? FM1_P_MORPH : n - 16u, (int32_t)(v * 65536u / 127u));
-                        m1_patch_param((uint32_t)m, n == 20u ? FM1_P_MORPH : n - 16u, (int32_t)(v * 65536u / 127u));
-                        if (mv == keep && !ui_dirty)
-                            ui_dirty = 1;
-                    }
-                    eng_voice_select(keep);
-                } else if (st == 0xE0u) {                   /* pitch bend: +-2 semitones on the pitch, and the bend output */
-                    eng_ctl_v(mv, ENG_CTL_BEND, ((int32_t)(v << 7 | n) - 8192) << 3);
-                } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
-                    eng_ctl_v(mv, ENG_CTL_AT, (int32_t)(n * 65536u / 127u));
-                } else if (st == 0xC0u && cfg.prog_chg) {   /* program change: a preset of the list, on that voice */
-                    uint32_t keep = eng_voice();
-                    eng_voice_select(mv);
-                    preset_load(n);
-                    eng_voice_select(keep);
-                    redraw = 1;
+        } else if (!cfg.ch || cfg.ch == chn) {  /* channel messages on the MIDI channel (MENU > MIDI CHANNEL; 0 = all) */
+            if (st == 0x90u && v) {
+                arp_key_on(0, n, (int32_t)(v * 65536u / 127u));
+            } else if (st == 0x80u || st == 0x90u) {
+                arp_key_off(0, n);
+            } else if (st == 0xB0u && n == 123u) {
+                arp_clear_keys(0);
+                eng_all_notes_off();
+            } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
+                eng_ctl(ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
+            } else if (st == 0xB0u && n >= 16u && n <= 20u) {   /* CC 16..19: the Main module's knobs K1..K4; CC 20: its MORPH */
+                int m = eng_find(T_FM1);
+                if (m >= 0) {
+                    eng_set_param((uint32_t)m, n == 20u ? FM1_P_MORPH : n - 16u, (int32_t)(v * 65536u / 127u));
+                    m1_patch_param((uint32_t)m, n == 20u ? FM1_P_MORPH : n - 16u, (int32_t)(v * 65536u / 127u));
+                    if (!ui_dirty)
+                        ui_dirty = 1;
                 }
+            } else if (st == 0xE0u) {                   /* pitch bend: +-2 semitones on the pitch, and the bend output */
+                eng_ctl(ENG_CTL_BEND, ((int32_t)(v << 7 | n) - 8192) << 3);
+            } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
+                eng_ctl(ENG_CTL_AT, (int32_t)(n * 65536u / 127u));
+            } else if (st == 0xC0u && cfg.prog_chg) {   /* program change: a preset of the list */
+                preset_load(n);
+                redraw = 1;
             }
             if (redraw)
                 screen_idle();
@@ -678,7 +596,6 @@ static void poly_set(int32_t n)
     ui_dirty = 2;
 }
 
-#if ENG_VOICES == 1
 /* the mixer page's K2: the patch's MORPH position (the Main module's parameter, 0..100 %) by `clicks` percent */
 static void morph_turn(int32_t clicks)
 {
@@ -708,7 +625,6 @@ static void poly_turn(uint32_t field, int32_t clicks)
     if (!ui_dirty)
         ui_dirty = 1;
 }
-#endif
 
 static void knobs_poll(void)
 {
@@ -725,15 +641,12 @@ static void knobs_poll(void)
         preset_step(st[6]);
         return;
     }
-    if (page == PAGE_MIXER) {                       /* K1..K4: the level of voice 1..4; ALGO: the parts of the selected voice's first poly group */
-        for (k = 0; k < ENG_VOICES; k++) {
-            uint32_t fast = cfg.accel && fm1_ms - last_ms[k] < 80u;
-            if (st[2u + k]) {
-                last_ms[k] = fm1_ms;
-                mix_turn(k, st[2u + k], (int)fast);
-            }
+    if (page == PAGE_MIXER) {                       /* K1: the level; K2: morph; K3 / K4: legato / priority; ALGO: the parts of the first poly group */
+        if (st[2]) {
+            uint32_t fast = cfg.accel && fm1_ms - last_ms[0] < 80u;
+            last_ms[0] = fm1_ms;
+            mix_turn(st[2], (int)fast);
         }
-#if ENG_VOICES == 1
         if (st[3]) {                                /* K2: the patch's MORPH (the Main module's parameter), 1 % per click */
             uint32_t fast = cfg.accel && fm1_ms - last_ms[1] < 80u;
             last_ms[1] = fm1_ms;
@@ -743,7 +656,6 @@ static void knobs_poll(void)
             poly_turn(ENG_POLY_LEGATO, st[4]);
         if (st[5])
             poly_turn(ENG_POLY_PRIORITY, st[5]);
-#endif
         if (st[1])
             poly_set(eng_parts() + st[1]);
         if (st[0])
@@ -774,9 +686,7 @@ static void knobs_poll(void)
     if (page) {                                     /* K1..K4 of an arpeggiator page */
         for (k = 0; k < 4u; k++) {
             uint32_t fast = cfg.accel && fm1_ms - last_ms[k] < 80u;
-            if (st[2u + k] && page == 1u && k == 1u && eng_voice() != 0u) {   /* the scale is set on voice 1 only */
-                ui_msg("SCALE: VOICE 1", 1000);
-            } else if (st[2u + k]) {
+            if (st[2u + k]) {
                 last_ms[k] = fm1_ms;
                 if (arp_knob(page, k, st[2u + k], (int)fast) && !ui_dirty)
                     ui_dirty = 1;
@@ -845,11 +755,10 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
 {
     static uint32_t prev, prev_raw, ignore;
     uint32_t raw = fm1_in.notes, now, diff, n;
-    if (page == PAGE_MIXER) {                       /* the mixer: the F# and G# keys mute voice 1 / 2 and play nothing */
-        uint32_t rise = raw & ~prev_raw & MIX_KEYS, v;
-        for (v = 0; v < ENG_VOICES; v++)
-            if (rise >> MIX_KEY_BIT[v] & 1u)
-                mix_toggle(v);
+    if (page == PAGE_MIXER) {                       /* the mixer: the F# key mutes the patch and plays nothing */
+        uint32_t rise = raw & ~prev_raw & MIX_KEYS;
+        if (rise >> MIX_KEY_BIT & 1u)
+            mix_toggle();
         ignore |= rise;                             /* (until they are let go, also after leaving the page) */
     }
     prev_raw = raw;
@@ -864,9 +773,9 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
         if (now & (1u << n)) {
             int32_t note = 53 + (int32_t)n + 12 * octave;
             key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
-            arp_key_on(eng_voice(), key_note[n], ENG_ONE);
+            arp_key_on(0, key_note[n], ENG_ONE);
         } else {
-            arp_key_off(eng_voice(), key_note[n]);
+            arp_key_off(0, key_note[n]);
         }
     }
 }
@@ -874,7 +783,6 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
 /* PLAY: red while the arpeggiator is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
  * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. ARP / SEQ / LFO light up
  * while their page shows. */
-#define BTN_SEL 3u                  /* the next voice (1 -> 2 -> 3 -> 4 -> 1); nothing in a one-voice build */
 #define BTN_GLO 7u                  /* the mixer page */
 #define BTN_ARP 10u
 #define BTN_SEQ 11u
@@ -905,7 +813,6 @@ static void leds_arp(void)
     fm1_led_key(BTN_ARP, page == 1u);
     fm1_led_key(BTN_SEQ, page == 2u);
     fm1_led_key(BTN_LFO, page == 3u);
-    fm1_led_key(BTN_SEL, eng_voice() != 0u);        /* lit while another voice than 1 is selected */
     fm1_led_key(BTN_GLO, page == PAGE_MIXER);
 }
 
@@ -939,12 +846,12 @@ static void leds_octave(void)
 /* SAVE: the current state (the patch with its edited parameters, the octave, the selected module and preset) to flash */
 static void save_state(void)
 {
-    if (!flash_ok || !m1_cur_lenv[0]) {
+    if (!flash_ok || !m1_cur_len) {
         ui_msg("NO FLASH", 1500);
         return;
     }
     ui_msg("SAVING", 5000);
-    ui_msg(m1_store(m1_curv[0], m1_cur_lenv[0]) ? "ERROR" : "SAVED", 1500);   /* voice 1's patch; voice 2 only as its preset */
+    ui_msg(m1_store(m1_cur, m1_cur_len) ? "ERROR" : "SAVED", 1500);
 }
 
 /* The panel buttons (matrix ids as in Felucca's panel table; unknown ones are shown so they can be assigned):
@@ -980,7 +887,6 @@ static void leds_avail(void)                        /* the page buttons glow dim
     led_glow(BTN_ARP, on);
     led_glow(BTN_SEQ, on);
     led_glow(BTN_LFO, on);
-    led_glow(BTN_SEL, on && ENG_VOICES > 1);
     led_glow(BTN_GLO, on);
 }
 
@@ -999,29 +905,6 @@ static void home_press(void)
     }
     view_draw(1);
 }
-/* SEL: the next voice (1 -> 2 -> 3 -> 4 -> 1). The keys, MIDI, knobs and LCD follow it; the notes held on the old voice end */
-static void voice_switch(void)
-{
-    uint32_t v = (eng_voice() + 1u) % ENG_VOICES;
-    if (ENG_VOICES == 1)
-        return;
-    arp_clear_keys(eng_voice());
-    eng_all_notes_off_v(eng_voice());
-    eng_voice_select(v);
-    arp_p = &AV[v];                                 /* the arpeggiator pages and PLAY act on this voice's */
-    arp_sync_scale();
-    leds_arp();
-    lcd_fill(0, 24, 240, 216, C_BG);
-    screen_idle();
-    {
-        char m[12], *q = m;
-        q = put(q, "VOICE ");
-        *q++ = (char)('1' + v);
-        *q = 0;
-        ui_msg(m, 1000);
-    }
-}
-
 /* FX: the selected module on / off (bypass): its outputs carry its through input (a filter's IN) or silence. Stored with the
  * patch (bit 7 of the record's type byte), so SAVE keeps it. Not on the Main module or the output. */
 static void bypass_toggle(void)
@@ -1074,8 +957,6 @@ static void buttons_poll(void)
         save_state();
     if (p & (1u << BTN_FX))
         bypass_toggle();
-    if (p & (1u << BTN_SEL))
-        voice_switch();
     if (p & (1u << BTN_HOME))
         home_t0 = (fm1_ms & ~3u) | 1u;              /* HOME acts on release: a tap goes home, 0.7 s held opens the menu
                                                      * (bit 1 cleared: with fm1_ms's own bit 1 a press looked fired) */

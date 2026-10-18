@@ -22,10 +22,8 @@ enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM 
 #define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
 
-static uint8_t m1_up[M1_PATCH_MAX] ENG_POOL, m1_curv[ENG_VOICES][M1_PATCH_MAX] ENG_POOL;     /* the patch of each voice, as it runs (parameter edits included) */
-static uint32_t m1_up_got, m1_up_total, m1_cur_lenv[ENG_VOICES];
-#define m1_cur (m1_curv[eng_voice()])
-#define m1_cur_len (m1_cur_lenv[eng_voice()])
+static uint8_t m1_up[M1_PATCH_MAX] ENG_POOL, m1_cur[M1_PATCH_MAX] ENG_POOL;     /* the patch as it runs (parameter edits included) */
+static uint32_t m1_up_got, m1_up_total, m1_cur_len;
 
 static uint16_t m1_crc16(const uint8_t *d, uint32_t n)       /* CRC-16/CCITT-FALSE */
 {
@@ -342,7 +340,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         break;
     }
     case C_STORE:
-        if (!m1_cur_len || eng_voice() != 0u)              /* only voice 1's patch is stored */
+        if (!m1_cur_len)
             m1_ack(C_STORE, 0, S_NONE, 0);
         else
             m1_ack(C_STORE, 0, m1_store(m1_cur, m1_cur_len) ? S_FLASH : S_OK, 0);

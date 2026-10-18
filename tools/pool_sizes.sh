@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Stand-in estimate of the firmware's .pool use without the JieLi toolchain (macOS / any clang): compile modular.c for
 # riscv32 to assembly and sum the .size of the symbols placed in the .pool section.
-#   tools/pool_sizes.sh [extra cflags, e.g. -DENG_VOICES=4]
+#   tools/pool_sizes.sh [extra cflags]
 # It overestimated the real build (tools/build.py) by about 7 KB in the past; build.py wants >= 8 KB of headroom.
 set -e
 cd "$(dirname "$0")/../firmware/src"
