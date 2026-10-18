@@ -334,8 +334,15 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 
 ## MIDI in and out (#64, 2026-10-18)
 
-- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes, pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot: ignored), CC 16..21 = K1..K6, CC 22 = morph, CC 80..88 = the patch buttons (64 and up: down), CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
+- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot: ignored), CC 16..21 = K1..K6, CC 22 = morph, CC 80..88 = the patch buttons (64 and up: down), CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
 - Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): the keys as notes (velocity 100), K1..K6 as CC 16..21, the patch buttons as CC 80..88 (127 / 0), on the MIDI channel (omni: channel 1). What came in is not sent out again. Not verified: USB is not emulated.
+
+## Voice allocator key range: channel, low, high (#57 decision 13, 2026-10-18)
+
+- The Voice allocator has `channel` (all, 1..16), `low` and `high` (note names, C-1..G9; defaults all / C-1 / G9). A group takes a key when it lies in low..high and, for keys from the keyboard or MIDI, it comes on the allocator's channel, or with `all` on the device's channel (MENU > MIDI CHANNEL; every channel in the browser). The rule is `takesKey` (patch.ts) and `takes_key` (engine.c). The shared keyboard (Main pitch / gate / vel) and the Arpeggiators play the device's channel only. An arpeggiated allocator's range judges the Arpeggiator's notes (the arpeggiator itself takes every key of the device's channel); its channel is not used. Note offs follow the same rule, so an off on another channel does not end a note.
+- Splits and layers: two allocators with low / high side by side split the keyboard; allocators on channels 2, 3 ... make the FM-1 multitimbral over MIDI. Every note-on message now reaches the engine whatever MENU > MIDI CHANNEL says (main.c `midi_drain`); the other channel messages still obey it. The panel's 27 keys play on the device's channel (1 when omni).
+- An allocator with a channel or range always gets a poly group of its own (deviceView), even with one voice. Binary format 25: the group record (`GROUP_REC` / `ENG_GROUP_REC` 48 bytes) ends with u8 channel (0 = the device's), u8 low, u8 high; `ENG_PATCH_COMPAT_VERSION` 25 (older stored patches fall back to the fallback patch). Browser: Web MIDI passes the channel (`input.ts`, worklet `on` / `off` `ch`); `Engine.channel` is the device channel (0).
+- Tests: `keyrange.test.ts`; golden kit `alloc-split` (three groups: below C4 on any channel, C4 up on channel 2, channel 3; notes on channels 1..4; a mutated C channel test fails it). Not verified on a device.
 
 ## Settings menu and manual (#66, 2026-10-18)
 

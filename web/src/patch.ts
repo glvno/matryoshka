@@ -255,6 +255,19 @@ export interface PolyCfg {
    * a missing entry is FLAW_NONE. Kept for every part number up to EDITOR_MAX_PARTS, so fewer parts and back keeps them.
    */
   flaws?: PartFlaw[];
+  /** the MIDI channel whose keys the group takes, 1..16; absent: the device's channel (all in the browser) */
+  channel?: number;
+  /** the lowest / highest key it takes (MIDI note numbers); absent: 0 / 127 */
+  low?: number;
+  high?: number;
+}
+
+/** does a group take this key: in its range, and (direct keys only, `ch` given) on its channel or, with none set, on the
+ * device's (`device` 0 = every channel). Both engines: engine.ts noteOn, engine.c eng_note_on. */
+export function takesKey(cfg: PolyCfg, note: number, ch?: number, device = 0): boolean {
+  if (note < (cfg.low ?? 0) || note > (cfg.high ?? 127)) return false;
+  if (ch === undefined) return true;
+  return cfg.channel ? cfg.channel === ch : !device || device === ch;
 }
 
 /**
@@ -311,6 +324,10 @@ export function polyCfg(alloc: ModuleInst, cards: PolyCards = {}): PolyCfg {
   };
   const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 2, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
   if (int('unison', 0, 1, 0) && cfg.parts > 1) cfg.unison = true;
+  const ch = int('channel', 0, 16, 0), low = int('low', 0, 127, 0), high = int('high', 0, 127, 127);
+  if (ch) cfg.channel = ch;
+  if (low) cfg.low = low;
+  if (high < 127) cfg.high = high;
   if (cards.flaws) cfg.flaws = cards.flaws;
   return cfg;
 }

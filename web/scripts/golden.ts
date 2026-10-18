@@ -18,7 +18,8 @@ const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff', number];
+/** [frame, kind, note (a button for bon / boff), MIDI channel of a note (absent: 1)] */
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -80,7 +81,7 @@ const kit = (name: string, b: Build, voices = 1): void => {
 const polyAsm = (p: Patch, ids: number[], cfg: Partial<PolyCfg>): void => {
   const alloc = p.modules.find((m) => ids.includes(m.id) && m.type === 'part')!;
   alloc.type = 'alloc';
-  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unison ? 1 : 0 };
+  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unison ? 1 : 0, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
   fixMatrix(alloc, DEFS.alloc);
   const main = p.modules.find((m) => m.type === 'fm1')!;
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: alloc.id, port: 'keys' } });
@@ -441,6 +442,46 @@ polyAsm(tests['alloc-unison'], unisonParts, {
   flaws: [{ detune: 12, drift: 0, bright: 0, env: 0, level: 100 }, { detune: -9, drift: 0, bright: 0, env: 0, level: 100 }, { detune: 4, drift: 30, bright: 0, env: 0, level: 100 }],
 });
 events['alloc-unison'] = POLY_EVENTS;
+// key ranges and channels (allocator channel / low / high): A takes the keys below C4 on any channel (two parts), B the
+// keys from C4 up on channel 2 only (two parts), C channel 3 only (one part). Notes on channel 1 above C4 and on channel 4
+// above C4 sound nowhere; an off on the wrong channel does not end B's note.
+const splits: number[][] = [];
+kit('alloc-split', (add, wire) => {
+  add('fm1', 0, 0);
+  const mix = add('mixer', 0, 0, { l1: 0.5, l2: 0.5, l3: 0.5 });
+  const out = add('output', 0, 0, { level: 0.6 });
+  [[1, 0], [0, 12], [3, 7]].forEach(([wave, coarse], i) => {
+    const pt = add('part', 0, 0);
+    const osc = add('osc', 0, 0, { wave, coarse, level: 0.3 });
+    const env = add('adsr', 0, 0, { a: 0.005, d: 0.1, s: 0.6, r: 0.08 });
+    const vca = add('vca', 0, 0);
+    wire(pt, 'pitch', osc, 'pitch');
+    wire(pt, 'gate', env, 'gate');
+    wire(osc, 'out', vca, 'in');
+    wire(env, 'env', vca, 'cv');
+    wire(vca, 'out', mix, `in${i + 1}`);
+    splits.push([pt, osc, env, vca]);
+  });
+  wire(mix, 'out', out, 'l');
+});
+polyAsm(tests['alloc-split'], splits[0], { parts: 2, high: 59 });
+polyAsm(tests['alloc-split'], splits[1], { parts: 2, channel: 2, low: 60 });
+polyAsm(tests['alloc-split'], splits[2], { parts: 1, channel: 3 });
+events['alloc-split'] = [
+  [0, 'on', 48, 1],
+  [128 * 10, 'on', 64, 1],
+  [128 * 20, 'on', 67, 2],
+  [128 * 30, 'on', 55, 2],
+  [128 * 40, 'on', 72, 3],
+  [128 * 50, 'on', 74, 4],
+  [128 * 60, 'off', 67, 1],
+  [128 * 70, 'off', 48, 1],
+  [128 * 80, 'off', 72, 3],
+  [128 * 90, 'off', 67, 2],
+  [128 * 90, 'off', 55, 2],
+  [128 * 90, 'off', 64, 1],
+  [128 * 90, 'off', 74, 4],
+];
 ends['part-flaws'] = 128 * 400;
 kit('dyn', (add, wire) => {
   const kb = add('fm1', 0, 0);
@@ -1291,10 +1332,10 @@ for (const [name, patch] of Object.entries(tests)) {
     }
   };
   const evs = events[name] ?? EVENTS;
-  for (const [fr, kind, note] of evs) {
+  for (const [fr, kind, note, ch] of evs) {
     seg(fr);
-    if (kind === 'on') e.noteOn(note, 1);
-    else if (kind === 'off') e.noteOff(note);
+    if (kind === 'on') e.noteOn(note, 1, ch ?? 1);
+    else if (kind === 'off') e.noteOff(note, ch ?? 1);
     else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
     else e.transport(kind === 'run');
   }
@@ -1309,7 +1350,7 @@ for (const [name, patch] of Object.entries(tests)) {
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), encodePatch(patch, true));
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n]) => (k === 'on' ? `${fr} on ${n} 127` : k === 'off' || k === 'bon' || k === 'boff' ? `${fr} ${k} ${n}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' ? `${fr} ${k} ${n}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

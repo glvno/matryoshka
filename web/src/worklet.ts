@@ -29,8 +29,8 @@ export type HostMsg =
   /** an envelope display: its copies' stage and level (Engine.envStates), sent with the probes */
   | { t: 'envwatch'; key: string; id: number }
   | { t: 'unenvwatch'; key: string }
-  | { t: 'on'; note: number; vel: number }
-  | { t: 'off'; note: number }
+  | { t: 'on'; note: number; vel: number; ch?: number }
+  | { t: 'off'; note: number; ch?: number }
   | { t: 'clock' }
   | { t: 'clockrun'; on: boolean }
   | { t: 'bend'; v: number }
@@ -91,8 +91,8 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
         else if (m.t === 'transport') this.engine.transport(m.on);
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
-        else if (m.t === 'on') this.engine.noteOn(m.note, m.vel);
-        else if (m.t === 'off') this.engine.noteOff(m.note);
+        else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch);
+        else if (m.t === 'off') this.engine.noteOff(m.note, m.ch);
         else if (m.t === 'clock') {                   // MIDI clock: it drives the clock while it comes in
           if (this.sinceClock > CLOCK_GONE) this.engine.clockExternal(true);
           this.sinceClock = 0;

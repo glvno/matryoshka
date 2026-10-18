@@ -82,7 +82,7 @@ static uint8_t *slurp(const char *path, long *n)
 
 static void run(int32_t *l, int32_t *r)
 {
-    eng_note_on(60, 65536);
+    eng_note_on(60, 65536, 1);
     eng_render(l, r, 128 * 40);
 }
 

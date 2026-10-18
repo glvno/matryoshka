@@ -201,8 +201,8 @@ describe('device form', () => {
     expect(groups[0].src).toBe(ids.arp);
     const bin = encodePatch(p);
     expect(bin[1]).toBe(VERSION);
-    expect(bin[8 + GROUP_REC - 1]).toBe(patch.modules.findIndex((m) => m.id === ids.arp) + 1);
-    expect(GROUP_REC).toBe(5 + 5 * MAX_PARTS);
+    expect(bin[8 + 4 + 5 * MAX_PARTS]).toBe(patch.modules.findIndex((m) => m.id === ids.arp) + 1);
+    expect(GROUP_REC).toBe(8 + 5 * MAX_PARTS);
   });
 
   it('a patch with the old firmware arpeggiator keeps its tempo as the Main module\'s', () => {

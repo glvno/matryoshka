@@ -38,7 +38,7 @@ int main(int argc, char **argv)
     FILE *ev;
     char kind[16];
     long frame, pos = 0, total = 0;
-    unsigned note, vel;
+    unsigned note, vel, ch = 1;
     double maxe = 0, sum = 0, maxref = 0, refsum = 0;
     long bad = 0;
     long maxat = 0;
@@ -64,8 +64,10 @@ int main(int argc, char **argv)
             if (!strcmp(kind, "end"))
                 total = fr;
             else if (!strcmp(kind, "on"))
-                fscanf(ev, "%u %u", &note, &vel);
-            else if (!strcmp(kind, "off") || !strcmp(kind, "bon") || !strcmp(kind, "boff"))
+                fscanf(ev, "%u %u %u", &note, &vel, &ch);
+            else if (!strcmp(kind, "off"))
+                fscanf(ev, "%u %u", &note, &ch);
+            else if (!strcmp(kind, "bon") || !strcmp(kind, "boff"))
                 fscanf(ev, "%u", &note);
         }
         rewind(ev);
@@ -82,11 +84,11 @@ int main(int argc, char **argv)
             pos = frame;
         }
         if (!strcmp(kind, "on")) {
-            fscanf(ev, "%u %u", &note, &vel);
-            eng_note_on(note, (int32_t)(vel * 65536u / 127u));
+            fscanf(ev, "%u %u %u", &note, &vel, &ch);
+            eng_note_on(note, (int32_t)(vel * 65536u / 127u), ch);
         } else if (!strcmp(kind, "off")) {
-            fscanf(ev, "%u", &note);
-            eng_note_off(note);
+            fscanf(ev, "%u %u", &note, &ch);
+            eng_note_off(note, ch);
         } else if (!strcmp(kind, "bon") || !strcmp(kind, "boff")) {
             fscanf(ev, "%u", &note);
             eng_buttons(!strcmp(kind, "bon") ? eng_buttons_get() | 1u << note : eng_buttons_get() & ~(1u << note));

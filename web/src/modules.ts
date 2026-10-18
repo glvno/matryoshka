@@ -2159,11 +2159,18 @@ const random: ModuleImpl<RandomState> = {
 };
 
 export const UNISON_MODES = ['off', 'on'];
+/** a Voice allocator's MIDI channel: `all` = the device's channel (MENU > MIDI CHANNEL on the FM-1, every channel in the browser) */
+export const KEY_CHANNELS = ['all', ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)];
+const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+/** MIDI note numbers as names, C4 = 60 (the allocator's key range) */
+export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES[n % 12]}${Math.floor(n / 12) - 1}`);
 /**
  * Voice allocator: a polysynth's CPU. It takes the keys held on its `keys` input (Main's keys) and hands them to `voices`
  * voices (assign, priority, legato as poly.ts describes; unison: every voice plays the one note the priority picks). Each
  * output is per voice: into a poly assembly voice i reaches copy i (the voice cards), into a module that runs once the
  * voices sum. The poly assemblies it feeds run once per voice. The engines run it in its Part form (poly.ts deviceView).
+ * channel / low / high: it takes only the keys of that MIDI channel (all = the device's) between those notes (a split or
+ * a layer per channel); an Arpeggiator's notes are judged by the range only.
  */
 const alloc: ModuleImpl<null> = {
   def: {
@@ -2177,6 +2184,9 @@ const alloc: ModuleImpl<null> = {
       param('legato', 0, 2, 0, { step: 1, choices: LEGATO_MODES }),
       param('priority', 0, 2, 0, { step: 1, choices: PRIORITIES }),
       param('unison', 0, 1, 0, { step: 1, choices: UNISON_MODES, toggle: true }),
+      param('channel', 0, 16, 0, { step: 1, choices: KEY_CHANNELS }),
+      param('low', 0, 127, 0, { step: 1, choices: NOTE_NAMES }),
+      param('high', 0, 127, 127, { step: 1, choices: NOTE_NAMES }),
     ],
   },
   init: () => null,

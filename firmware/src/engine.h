@@ -10,10 +10,10 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 24   /* 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
-#define ENG_PATCH_COMPAT_VERSION 24
+#define ENG_PATCH_VERSION 25   /* 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_COMPAT_VERSION 25
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
-#define ENG_GROUP_REC (5u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source (patchbin.ts GROUP_REC) */
+#define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
 
 #define ENG_PANEL_BUTTONS 9            /* the patch buttons: FX SCL ENV LFO EDIT GLO ARP SEQ REC (modules.ts PANEL_BUTTONS) */
 #define ENG_PANEL_LABELS 15            /* K1..K6, then the buttons (patch.ts PANEL_LABEL_KEYS) */
@@ -80,8 +80,11 @@ int eng_groups(void);                                                /* the poly
 enum { ENG_POLY_PARTS, ENG_POLY_ASSIGN, ENG_POLY_LEGATO, ENG_POLY_PRIORITY, ENG_NPOLY };
 int eng_poly_get(uint32_t g, uint32_t field);
 int eng_poly_set(uint32_t g, uint32_t field, uint32_t v);
-void eng_note_on(uint32_t note, int32_t vel_q16);
-void eng_note_off(uint32_t note);
+/* a key on MIDI channel ch (1..16; the panel's keys play on the device's channel, or 1): the groups that take it (their
+ * channel, or the device's without one, and their key range), the shared keyboard and the Arpeggiators (the device's) */
+void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch);
+void eng_note_off(uint32_t note, uint32_t ch);
+void eng_midi_channel(uint32_t ch);   /* the device's channel, 0 = every channel (MENU > MIDI CHANNEL) */
 void eng_all_notes_off(void);
 /* The clock: 24 ticks per quarter note, from the Main module's tempo, or from MIDI clock while it comes in (eng_clock_external
  * on, then each eng_clock_tick is one). The transport (PLAY, MIDI Start / Stop): the Main module's run output; its clock

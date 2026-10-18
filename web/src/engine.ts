@@ -9,7 +9,7 @@
 // shared output gets that one buffer.
 
 import { driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
-import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, thruInput } from './patch';
+import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView } from './poly';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
@@ -435,20 +435,31 @@ export class Engine {
     }
   }
 
-  noteOn(note: number, velocity = 1): void {
-    for (const g of [this.kb, ...this.groups]) if (g.src < 0) this.groupOn(g, note, velocity);
-    for (const a of this.arps) arpKeyOn(a.st, note, velocity, this.arpParams(a));
+  /**
+   * A key on MIDI channel `ch` (1..16; the computer keys and the on-screen keyboard play on 1). The groups that take it
+   * (takesKey: the allocator's channel and key range; one without a channel listens on `channel`), the shared keyboard
+   * and the Arpeggiators (on `channel`) play it.
+   */
+  noteOn(note: number, velocity = 1, ch = 1): void {
+    for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
+    if (this.listens(ch)) for (const a of this.arps) arpKeyOn(a.st, note, velocity, this.arpParams(a));
   }
 
-  noteOff(note: number): void {
-    for (const g of [this.kb, ...this.groups]) if (g.src < 0) this.groupOff(g, note);
-    for (const a of this.arps) arpKeyOff(a.st, note, this.arpParams(a));
+  noteOff(note: number, ch = 1): void {
+    for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
+    if (this.listens(ch)) for (const a of this.arps) arpKeyOff(a.st, note, this.arpParams(a));
   }
+
+  /** the device's MIDI channel (1..16, 0 = every channel): the shared keyboard, the Arpeggiators and the allocators
+   * without a channel of their own play its keys (engine.c eng_midi_channel; MENU > MIDI CHANNEL on the FM-1) */
+  channel = 0;
+  private listens = (ch: number): boolean => !this.channel || this.channel === ch;
 
   /** an arpeggiator's note into its groups; a part it lands on restarts its envelopes (one note after another, also
    * at gate 100 %, where the next note follows the last in the same block) */
   private arpOn(a: ArpRun, note: number, vel: number): void {
     for (const g of this.arpGroups(a)) {
+      if (!takesKey(g.cfg, note)) continue; // an arpeggiated allocator's key range judges the arpeggiator's notes
       this.groupOn(g, note, vel);
       for (const x of g.parts) if (x.on && x.note === note && x.onStamp === this.stamp) x.retrig = true;
     }

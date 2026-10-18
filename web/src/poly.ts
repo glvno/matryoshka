@@ -179,8 +179,8 @@ export function deviceView(source: Patch): { patch: Patch; groups: DeviceGroup[]
     if (!mine.length) {
       modules[slot] = partAt(alloc, alloc.id);
       const cfg = polyCfg(alloc);
-      // (an arpeggiated allocator always gets a group of its own: the shared keyboard plays the keys)
-      if (cfg.parts > 1 || cfg.legato || cfg.priority || arp) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
+      // (an arpeggiated or split allocator always gets a group of its own: the shared keyboard plays every key)
+      if (cfg.parts > 1 || cfg.legato || cfg.priority || arp || cfg.channel || cfg.low !== undefined || cfg.high !== undefined) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
     }
     if (arp) {
       for (const i of mine) out[i].src = arp.id;

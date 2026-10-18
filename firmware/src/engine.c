@@ -331,6 +331,7 @@ typedef struct {
     uint8_t level[ENG_MAX_PARTS];    /* % of the VCA gains */
     uint8_t rot;                     /* rotate: the part the next note tries first */
     uint8_t src;                     /* where its notes come from: 0 the keys, else 1 + the node index of an Arpeggiator */
+    uint8_t ch, lo, hi;              /* the keys it takes: MIDI channel (0: the device's), lowest and highest (patch.ts takesKey) */
     uint8_t pv0;                     /* its first part in E.pv[] */
     uint8_t nheld;
     uint8_t held_note[MAX_HELD];
@@ -545,7 +546,8 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.ngrp = 0;
     E.grp[0].parts = 1;                          /* the shared keyboard: one part, legato auto, last note */
     E.grp[0].assign = E.grp[0].legato = E.grp[0].priority = 0;
-    E.grp[0].src = 0;
+    E.grp[0].src = E.grp[0].ch = E.grp[0].lo = 0;
+    E.grp[0].hi = 127u;
     groups_reset();
     pool_free(inst_own, ENG_MAX_INST);           /* what this voice's old patch held */
     pool_free(buf_own, ENG_NBUF);
@@ -597,6 +599,11 @@ int eng_load(const uint8_t *p, uint32_t len)
             g->level[v] = f[4];
         }
         g->src = q[4u + 5u * ENG_MAX_PARTS];     /* checked against the modules below */
+        g->ch = q[5u + 5u * ENG_MAX_PARTS];
+        g->lo = q[6u + 5u * ENG_MAX_PARTS];
+        g->hi = q[7u + 5u * ENG_MAX_PARTS];
+        if (g->ch > 16u || g->lo > 127u || g->hi > 127u)
+            return -3;
     }
     for (i = 0; i < E.nmod; i++) {
         member[i] = p[3] ? p[8u + ENG_GROUP_REC * p[3] + i] : 0u;
@@ -1383,7 +1390,7 @@ static void arp_emit_on(const arp_t *a, uint32_t note, int32_t vel)
 {
     uint32_t g, v;
     for (g = 1; g <= E.ngrp; g++)
-        if (E.grp[g].src == a->node + 1u) {
+        if (E.grp[g].src == a->node + 1u && note >= E.grp[g].lo && note <= E.grp[g].hi) {   /* the range judges the arpeggiator's notes */
             group_on(&E.grp[g], note, vel);
             for (v = 0; v < E.grp[g].parts; v++) {
                 pv_t *x = &E.pv[E.grp[g].pv0 + v];
@@ -1466,24 +1473,38 @@ static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
     a->since += n;
 }
 
-void eng_note_on(uint32_t note, int32_t vel_q16)
+static uint8_t dev_ch;               /* the device's MIDI channel, 0 = every channel (engine.ts Engine.channel) */
+
+void eng_midi_channel(uint32_t ch) { dev_ch = (uint8_t)(ch <= 16u ? ch : 0u); }
+
+/* patch.ts takesKey: in the group's range, on its channel or, with none, on the device's */
+static int takes_key(const grp_t *g, uint32_t note, uint32_t ch)
 {
-    uint32_t g;
-    for (g = 0; g <= E.ngrp; g++)
-        if (!E.grp[g].src)
-            group_on(&E.grp[g], note, vel_q16);
-    for (g = 0; g < E.narp; g++)
-        arp_note_on(&E.arp[g], note, vel_q16);
+    if (note < g->lo || note > g->hi)
+        return 0;
+    return g->ch ? g->ch == ch : !dev_ch || dev_ch == ch;
 }
 
-void eng_note_off(uint32_t note)
+void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 {
     uint32_t g;
     for (g = 0; g <= E.ngrp; g++)
-        if (!E.grp[g].src)
+        if (!E.grp[g].src && takes_key(&E.grp[g], note, ch))
+            group_on(&E.grp[g], note, vel_q16);
+    if (!dev_ch || dev_ch == ch)
+        for (g = 0; g < E.narp; g++)
+            arp_note_on(&E.arp[g], note, vel_q16);
+}
+
+void eng_note_off(uint32_t note, uint32_t ch)
+{
+    uint32_t g;
+    for (g = 0; g <= E.ngrp; g++)
+        if (!E.grp[g].src && takes_key(&E.grp[g], note, ch))
             group_off(&E.grp[g], note);
-    for (g = 0; g < E.narp; g++)
-        arp_note_off(&E.arp[g], note);
+    if (!dev_ch || dev_ch == ch)
+        for (g = 0; g < E.narp; g++)
+            arp_note_off(&E.arp[g], note);
 }
 
 void eng_clock_tick(void)

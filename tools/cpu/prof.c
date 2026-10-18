@@ -17,6 +17,13 @@ static inline long host(long n, long a, long b, long c)
 #define ENG_PROF(stage, node, part) host(2, (stage), (long)(node), (long)(part))
 #endif
 #include "engine.c"
+#ifdef OLD_PRESET                                       /* M1-0.2's engine had no MIDI channels */
+#define NOTE_ON(n, v) eng_note_on(n, v)
+#define NOTE_OFF(n) eng_note_off(n)
+#else
+#define NOTE_ON(n, v) eng_note_on(n, v, 1)
+#define NOTE_OFF(n) eng_note_off(n, 1)
+#endif
 #ifdef OLD_PRESET                                       /* an old engine checked out of git with its factory patch 0 */
 #include "presets.h"
 #endif
@@ -90,9 +97,9 @@ int main(void)
     while ((ev = host(3, 0, 0, 0)) != 0) {
         uint32_t kind = (uint32_t)ev >> 16, note = (uint32_t)ev & 0xffff;
         if (kind == 1)
-            eng_note_on(note, 0xC000);
+            NOTE_ON(note, 0xC000);
         else if (kind == 2)
-            eng_note_off(note);
+            NOTE_OFF(note);
         else {
             host(2, 6, 0, 0);
             eng_render(l, r, 128);

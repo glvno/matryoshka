@@ -410,12 +410,14 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                 if (!ui_dirty)
                     ui_dirty = 1;
             }
-        } else if (!cfg.ch || cfg.ch == chn) {  /* channel messages on the MIDI channel (MENU > MIDI CHANNEL; 0 = all) */
-            if (st == 0x90u && v) {
-                eng_note_on(n, (int32_t)(v * 65536u / 127u));
-            } else if (st == 0x80u || st == 0x90u) {
-                eng_note_off(n);
-            } else if (st == 0xB0u && n == 123u) {
+        } else if (st == 0x90u || st == 0x80u) {  /* notes on every channel: the engine judges them (a Voice allocator may take its own channel) */
+            eng_midi_channel(cfg.ch);
+            if (st == 0x90u && v)
+                eng_note_on(n, (int32_t)(v * 65536u / 127u), chn);
+            else
+                eng_note_off(n, chn);
+        } else if (!cfg.ch || cfg.ch == chn) {  /* other channel messages on the MIDI channel (MENU > MIDI CHANNEL; 0 = all) */
+            if (st == 0xB0u && n == 123u) {
                 eng_all_notes_off();
             } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
                 eng_ctl(ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
@@ -547,6 +549,8 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
     uint32_t now = fm1_in.notes, diff, n;
     diff = now ^ prev;
     prev = now;
+    if (diff)
+        eng_midi_channel(cfg.ch);
     for (n = 0; diff && n < 27u; n++) {
         if (!(diff & (1u << n)))
             continue;
@@ -554,10 +558,10 @@ static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F
         if (now & (1u << n)) {
             int32_t note = 53 + (int32_t)n + 12 * octave;
             key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
-            eng_note_on(key_note[n], ENG_ONE);
+            eng_note_on(key_note[n], ENG_ONE, cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
             midi_send(0x90u, key_note[n], 100u);
         } else {
-            eng_note_off(key_note[n]);
+            eng_note_off(key_note[n], cfg.ch ? cfg.ch : 1u);
             midi_send(0x80u, key_note[n], 0u);
         }
     }

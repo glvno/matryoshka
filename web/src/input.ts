@@ -89,13 +89,13 @@ export async function attachMidi(
     const [s, a, b] = ev.data ?? [];
     if (s === 0xf8) return void host.send({ t: 'clock' });
     if (s === 0xfa || s === 0xfb || s === 0xfc) return void host.send({ t: 'clockrun', on: s !== 0xfc });
-    const cmd = s & 0xf0;
+    const cmd = s & 0xf0, ch = (s & 0x0f) + 1; // the channel: a Voice allocator can take one only
     if (cmd === 0x90 && b > 0) {
-      held.add(a);
-      host.send({ t: 'on', note: a, vel: b / 127 });
+      held.add(a | (ch << 7));
+      host.send({ t: 'on', note: a, vel: b / 127, ch });
     } else if (cmd === 0x80 || (cmd === 0x90 && b === 0)) {
-      held.delete(a);
-      host.send({ t: 'off', note: a });
+      held.delete(a | (ch << 7));
+      host.send({ t: 'off', note: a, ch });
     } else if (cmd === 0xb0 && a === 123) host.send({ t: 'panic' });
     else if (cmd === 0xb0) host.send({ t: 'cc', n: a, v: b }); // CC 1 = mod wheel, 16..19 = the Main module's knobs
     else if (cmd === 0xe0) host.send({ t: 'bend', v: (((b << 7) | a) - 8192) / 8192 });
@@ -111,7 +111,7 @@ export async function attachMidi(
   return (next) => {
     on = next;
     if (on) return hook();
-    for (const note of held) host.send({ t: 'off', note });
+    for (const k of held) host.send({ t: 'off', note: k & 127, ch: k >> 7 });
     held.clear();
   };
 }
