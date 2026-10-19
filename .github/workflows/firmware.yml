@@ -1,12 +1,71 @@
 name: firmware
-# Builds the firmware with the JieLi toolchain on every push and pull request and fails on compiler warnings or on a
+# Builds the firmware with the JieLi toolchain on every push and pull request that touches it (paths below) and fails on compiler warnings or on a
 # pool headroom below 8 KB (tools/build.py). Then the host tests that need a C compiler: the golden vectors (web engine
 # vs firmware engine), the arpeggiator and protocol tests, the LCD preview. The .fwsc and .bin are kept as an artifact
 # (the emulator smoke test, npm run emu:smoke, downloads them; not for the only device: see the fork's issue 1).
 on:
   push:
+    paths:
+      # what the build, the generated-header check and the golden vectors read: firmware/, tools/, and the web files
+      # scripts/export-defs.ts and scripts/golden.ts import (keep in step when they gain imports)
+      - firmware/**
+      - tools/**
+      - .github/workflows/firmware.yml
+      - web/presets/**
+      - web/package-lock.json
+      - web/scripts/export-defs.ts
+      - web/scripts/golden.ts
+      - web/src/arpeggiator.ts
+      - web/src/assembly.ts
+      - web/src/cpu-costs.json
+      - web/src/cpu.ts
+      - web/src/device-compile.ts
+      - web/src/engine.ts
+      - web/src/fallback.ts
+      - web/src/labels.ts
+      - web/src/modules.ts
+      - web/src/parameter-routing.ts
+      - web/src/patch.ts
+      - web/src/patchbin.ts
+      - web/src/poly.ts
+      - web/src/presets.ts
+      - web/src/protocol.ts
+      - web/src/test-patches.ts
+      - web/src/test-poly.ts
+      - web/src/wavetables.json
   pull_request:
+    paths:
+      - firmware/**
+      - tools/**
+      - .github/workflows/firmware.yml
+      - web/presets/**
+      - web/package-lock.json
+      - web/scripts/export-defs.ts
+      - web/scripts/golden.ts
+      - web/src/arpeggiator.ts
+      - web/src/assembly.ts
+      - web/src/cpu-costs.json
+      - web/src/cpu.ts
+      - web/src/device-compile.ts
+      - web/src/engine.ts
+      - web/src/fallback.ts
+      - web/src/labels.ts
+      - web/src/modules.ts
+      - web/src/parameter-routing.ts
+      - web/src/patch.ts
+      - web/src/patchbin.ts
+      - web/src/poly.ts
+      - web/src/presets.ts
+      - web/src/protocol.ts
+      - web/src/test-patches.ts
+      - web/src/test-poly.ts
+      - web/src/wavetables.json
   workflow_dispatch:
+
+# a newer run for the same branch / PR replaces an older one still running (a push that skips this workflow cancels nothing)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
