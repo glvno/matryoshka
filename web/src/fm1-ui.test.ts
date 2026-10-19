@@ -43,7 +43,7 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect(off).toBe(0);
   }, 120_000);
 
-  it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME opens the legend', async () => {
+  it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes back along the trail', async () => {
     const focus: [number, number][] = [];
     const params: number[][] = [];
     const ui = await Fm1Ui.create(bytes, { focus: (d, g) => focus.push([d, g]), param: (m, p, v) => params.push([m, p, v]) });
@@ -60,10 +60,12 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect(ui.takeDirty()).toBe(true);
     ui.tick(12_000);
     const tap = (id: number, at: number): void => { ui.tick(at); ui.button(id, true); ui.tick(at + 50); ui.button(id, false); ui.tick(at + 100); };
-    tap(BUTTONS.home, 12_000);                 // back to the first device
-    tap(BUTTONS.home, 13_000);                 // the legend
-    expect(ui.page).toBe(7);
-    tap(BUTTONS.home, 13_500);                 // back
+    tap(BUTTONS.home, 12_000);                 // nothing to go back to: the page stays
+    expect([ui.page, ui.focusDevice, ui.focusPage]).toEqual([0, 1, 1]);
+    tap(BUTTONS.seq, 13_000);                  // the SEQ page, HOME back
+    expect(ui.page).toBe(8);
+    tap(BUTTONS.home, 13_500);
+    expect(ui.page).toBe(0);
     tap(BUTTONS.seq, 13_700);                  // the SEQ page: the kick's steps light their keys
     expect(ui.page).toBe(8);
     expect(ui.lights().keys.lit).not.toBe(0);

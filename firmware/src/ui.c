@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* The LCD's frame: the top bar, messages, the legend, and which page shows. Page 0 is the device page (pages_ui.c), the
- * others the menu (menu.c), the legend and the SEQ page (seq_ui.c). The colours are the editor's dark theme (style.css):
+/* The LCD's frame: the top bar, messages, and which page shows. Page 0 is the device page (pages_ui.c), the others the
+ * menu (menu.c) and the SEQ page (seq_ui.c). The colours are the editor's dark theme (style.css):
  * night paper, ivory ink, the coral accent. */
 #define C_BG 0x10E4u                            /* night */
 #define C_FG 0xFFBDu                            /* ivory */
@@ -16,8 +16,7 @@ static uint32_t cur_preset, sel;
 static int load_err;
 static const char *patch_label;
 #define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
-#define PAGE_LEGEND 7u                          /* HOME tapped: every knob and patch button with its label (legend_draw) */
-static uint8_t page;                            /* 0: the player screen, 5 menu, 7 legend, 8 the SEQ page (seq_ui.c) */
+static uint8_t page;                            /* 0: the device page, 5 menu, 8 the SEQ page (seq_ui.c); (7, the legend, is gone: #114) */
 static void seq_bar(void);
 static void seq_draw(int full);
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
@@ -265,39 +264,10 @@ static int panel_label(uint32_t i, char *out)
 
 static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SCL", "ENV", "LFO", "EDIT", "GLO", "ARP"};
 
-/* The legend (HOME tapped on the first device): how the panel works, and every patch button with its label; a button the
- * patch does not use is dim, a lit one is on. */
-static void legend_draw(int full)
-{
-    char name[16];
-    uint32_t k, used = panel_used(), on = eng_buttons_get();
-    if (!full)
-        return;
-    lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
-    text_bc(&FONT_M, 10, 26, "LEGEND", C_ACC, C_BG, 0, TA_LEFT);
-    text_bc(&FONT_S, 10, 50, "K1-K4  the rows of the page in focus", C_FG, C_BG, 224, TA_LEFT);
-    text_bc(&FONT_S, 10, 66, "SELECT  the device     ALGO  its page", C_FG, C_BG, 224, TA_LEFT);
-    text_bc(&FONT_S, 10, 82, "PRESET  the patch     HOME  back here", C_DIM, C_BG, 224, TA_LEFT);
-    for (k = 0; k < ENG_PANEL_BUTTONS; k++) {
-        int has = (int)(used >> k & 1u), lit = has && (on >> k & 1u);
-        uint32_t x = 10u + 76u * (k % 3u), y = 108u + 38u * (k / 3u);
-        uint16_t bg = lit ? C_TRACK : C_BG;
-        lcd_fill(x, y, 70, 32, lit ? C_ACC : C_TRACK);
-        lcd_fill(x + 1u, y + 1u, 68, 30, bg);
-        text_bc(&FONT_S, x + 5u, y + 2u, PANEL_BTN_NAME[k], C_HINT, bg, 60, TA_LEFT);
-        if (!panel_label(k, name))
-            put(name, has ? "-" : "")[0] = 0;
-        text_bc(&FONT_S, x + 5u, y + 16u, name, has ? C_FG : C_HINT, bg, 62, TA_LEFT);
-    }
-    text_bc(&FONT_S, 10, 222, "HOME  back to the device", C_HINT, C_BG, 224, TA_LEFT);
-}
-
 static void view_draw(int full)                 /* whichever page is showing */
 {
     if (page == PAGE_MENU)
         menu_draw(full);
-    else if (page == PAGE_LEGEND)
-        legend_draw(full);
     else if (page == 8u)
         seq_draw(full);
     else

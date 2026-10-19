@@ -4,8 +4,8 @@
 //!
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
-//! 3. pages: GLO (a patch button: the page stays), PLAY (the transport shows PLAY / STOP), HOME (the legend), HOME,
-//!    HOME held (the menu), HOME again
+//! 3. pages: GLO (a patch button: the page stays), PLAY (the transport shows PLAY / STOP), HOME (nothing to go back
+//!    to: the page stays), HOME held (the menu), HOME again (back out of it)
 //! 4. PRESET encoder: forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
@@ -42,6 +42,7 @@ const PLAY: u8 = 12;
 const C4: u8 = 14 + 7; // note keys start at F3
 const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
+const SELECT: u8 = 0; // encoder
 const K1: u8 = 2;
 
 /// Below this the output counts as silent, above `LOUD` as sounding (16-bit samples).
@@ -320,9 +321,6 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "panel: the patch loads", "EMU PANEL");
-    m.tap(HOME, 120, 400)?;
-    t.screen(&m, "panel: the legend shows a button's label", "GATE");
-    m.tap(HOME, 120, 400)?;
     let hold = |m: &mut Machine, fx: bool| -> Result<i32, String> {
         m.midi(&[0x90, 60, 100], 0)?;
         if fx { m.key(FX, true); }
@@ -459,14 +457,14 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.check("update mode: no engine (a key is silent)", p < QUIET, format!("peak {p}"));
     *emulated += m.ms();
 
-    // update mode from the menu: HOME held, ALGO to SYSTEM, PRESET to UPDATE MODE, OCT+ twice
+    // update mode from the menu: HOME held, ALGO to SYSTEM, SELECT to UPDATE MODE, OCT+ twice
     let mut m = Machine::boot(app, None);
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.tap(HOME, 1000, 400)?;
     m.turn(ALGO, 2, 400)?;
     t.screen(&m, "menu: the SYSTEM tab", "UPDATE MODE");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
-    m.turn(PRESET, 4, 400)?;
+    m.turn(SELECT, 4, 400)?;
     m.tap(OCT_UP, 120, 300)?;
     m.tap(OCT_UP, 120, 800)?;
     t.screen(&m, "menu: UPDATE MODE enters update mode", "FROM THE MENU");
@@ -507,8 +505,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
         (GLO, "GLO: a patch button (the page stays)", DEVICE_PAGE),
         (PLAY, "PLAY: the transport runs", "PLAY 120"),
         (PLAY, "PLAY again: it stops", "STOP 120"),
-        (HOME, "HOME: the legend", "LEGEND"),
-        (HOME, "HOME again: the player screen", DEVICE_PAGE),
+        (HOME, "HOME on the device page, nothing to go back to: the page stays", DEVICE_PAGE),
     ] {
         m.tap(key, 120, 400)?;
         t.screen(&m, what, text);
@@ -523,7 +520,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     m.tap(HOME, 1000, 400)?;
     t.screen(&m, "HOME held: settings menu", "PANEL");
     m.tap(HOME, 120, 400)?;
-    t.screen(&m, "HOME again: menu closed", DEVICE_PAGE);
+    t.screen(&m, "HOME tapped: back out of the menu", DEVICE_PAGE);
     go_home(&mut m)?;
 
     // ---- 4. PRESET encoder

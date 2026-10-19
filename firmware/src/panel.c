@@ -24,8 +24,9 @@ static uint8_t play_turned;                   /* PRESET turned the tempo while P
 
 static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
 
-/* The device's own buttons (matrix ids, M-VAVE's fm1_open order): OCT- 0, OCT+ 1: octave; SAVE 9: write the patch into its slot;
- * HOME 8: tap = the legend, held = the menu; PLAY 12: the transport. The others are the patch's (PANEL_BTN_ID). */
+/* The device's own buttons (matrix ids, M-VAVE's fm1_open order): OCT- 0, OCT+ 1: octave; SAVE 9: write the patch into its slot
+ * (in the menu: and close it); HOME 8: tap = back (the trail), held = the menu; PLAY 12: the transport. The others are the
+ * patch's (PANEL_BTN_ID). */
 #define BTN_OCT_DOWN 0u
 #define BTN_OCT_UP 1u
 #define BTN_SAVE 9u
@@ -85,9 +86,16 @@ static void panel_button_set(uint32_t b, int down)
     }
 }
 
-static void page_set(uint32_t p)    /* the same button again goes back to the module page */
+/* The trail (#114): every screen change by a button (SEQ, REC, opening the menu; page buttons and GLO later) leaves a step
+ * of where it came from; a HOME tap goes back one. ALGO / SELECT moving on the device pages are no steps. The oldest step
+ * goes when the trail is full. */
+#define TRAIL_MAX 8u
+static struct { uint8_t page, dev, pg; } trail[TRAIL_MAX];
+static uint8_t trail_n;
+
+static void page_show(uint32_t p)
 {
-    page = (uint8_t)(page == p ? 0u : p);
+    page = (uint8_t)p;
     if (page == PAGE_MENU)
         menu_open();
     if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends live recording) */
@@ -100,28 +108,43 @@ static void page_set(uint32_t p)    /* the same button again goes back to the mo
     view_draw(1);
 }
 
+/* HOME tapped: one step back along the trail (the device page in focus then, if it moved); nothing when the trail is empty */
+static void screen_back(void)
+{
+    if (!trail_n)
+        return;
+    trail_n--;
+    if (trail[trail_n].page == 0u && pages_focus(trail[trail_n].dev, trail[trail_n].pg))
+        m1_focus_now(pg_cur_dev, pg_cur_page);
+    page_show(trail[trail_n].page);
+}
+
+/* a button opens screen p: a step on the trail; the same button again (p showing) goes back */
+static void page_set(uint32_t p)
+{
+    if (page == p) {
+        screen_back();
+        return;
+    }
+    if (trail_n == TRAIL_MAX) {
+        uint32_t i;
+        for (i = 1; i < TRAIL_MAX; i++)
+            trail[i - 1u] = trail[i];
+        trail_n--;
+    }
+    trail[trail_n].page = page;
+    trail[trail_n].dev = (uint8_t)pg_cur_dev;
+    trail[trail_n].pg = (uint8_t)pg_cur_page;
+    trail_n++;
+    page_show(p);
+}
+
 static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock) */
 {
     eng_transport(!eng_transport_running());
     midi_send_rt(eng_transport_running() ? 0xFAu : 0xFCu);
     leds_play();
     ui_dirty = ui_dirty ? ui_dirty : 1;
-}
-
-/* HOME tapped: from another page back to the device page; on a device page back to the first device; there the legend
- * (and from the legend back) */
-static void home_press(void)
-{
-    if (page == PAGE_LEGEND || page == PAGE_SEQ) {
-        page_set(page);
-        return;
-    }
-    if (pages_focus(0, 0)) {
-        m1_focus_now(0, 0);
-        ui_dirty = 2;
-        return;
-    }
-    page_set(PAGE_LEGEND);
 }
 
 
@@ -134,8 +157,10 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 7u; k++)                        /* MIDI out: the encoders as they turn, before anything uses them */
         if (ENC_CC[k] && st[k])
             midi_send(0xB0u, ENC_CC[k], rel_cc(st[k]));
-    if (page == PAGE_MENU) {                        /* the settings menu: ALGO tabs, PRESET rows, K1..K4 the value */
+    if (page == PAGE_MENU) {                        /* the settings menu: ALGO tabs, SELECT rows, K1..K4 the value */
         menu_knobs(st);
+        if (st[6])                                  /* (PRESET only ever steps the patches) */
+            preset_step(st[6]);
         return;
     }
     if (st[6] && (panel_held >> BTN_PLAY & 1u)) {   /* PLAY held + PRESET: the tempo (the Main module's), 1 bpm a click */
@@ -294,8 +319,12 @@ static void panel_edges(uint32_t p, uint32_t rel)
             ui_msg(m, 1000);
         }
     }
-    if (p & (1u << BTN_SAVE))
+    if (p & (1u << BTN_SAVE)) {
+        int menu = page == PAGE_MENU;
         save_state();
+        if (menu)                                   /* SAVE in the menu: saved (the settings too), and the menu closes */
+            screen_back();
+    }
     {
         uint32_t b;
         for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
@@ -306,19 +335,16 @@ static void panel_edges(uint32_t p, uint32_t rel)
         }
     }
     if (p & (1u << BTN_HOME))
-        home_t0 = (fm1_ms & ~3u) | 1u;              /* HOME acts on release: a tap goes home, 0.7 s held opens the menu
+        home_t0 = (fm1_ms & ~3u) | 1u;              /* HOME acts on release: a tap goes back, 0.7 s held opens the menu
                                                      * (bit 1 cleared: with fm1_ms's own bit 1 a press looked fired) */
     if (home_t0 && !(home_t0 & 2u) && (panel_held >> BTN_HOME & 1u) && fm1_ms - (home_t0 & ~3u) > 700u) {
         home_t0 |= 2u;
-        page_set(PAGE_MENU);                        /* (closes it when it is open) */
+        if (page != PAGE_MENU)
+            page_set(PAGE_MENU);
     }
     if (rel & (1u << BTN_HOME)) {
-        if (home_t0 && !(home_t0 & 2u)) {
-            if (page == PAGE_MENU)
-                page_set(PAGE_MENU);                /* a tap closes the menu */
-            else
-                home_press();
-        }
+        if (home_t0 && !(home_t0 & 2u))
+            screen_back();                          /* a tap: one step back (out of the menu, the SEQ page ...) */
         home_t0 = 0;
     }
     if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */

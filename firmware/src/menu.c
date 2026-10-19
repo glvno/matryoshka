@@ -173,7 +173,7 @@ static void menu_draw(int full)
     uint32_t t, r, n = menu_count(menu_tab), y = 68u, x = 6;
     if (full || shown != menu_tab) {                /* (a new tab: the page is cleared, the hint changes) */
         lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
-        text_bc(&FONT_S, 8, 222, menu_tab == MT_MANUAL ? "SELECT  scroll      ALGO  tab" : "ALGO  tab    PRESET  row    K1-K4  value", C_HINT, C_BG, 226, TA_LEFT);
+        text_bc(&FONT_S, 8, 222, menu_tab == MT_MANUAL ? "SELECT  scroll      ALGO  tab" : "ALGO  tab    SELECT  row    K1-K4  value", C_HINT, C_BG, 226, TA_LEFT);
         shown = menu_tab;
     }
     for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages) */
@@ -194,7 +194,7 @@ static void menu_draw(int full)
         lcd_fill(0, y + n * 26u, 240, 218u - (y + n * 26u), C_BG);   /* (the rows a longer tab had) */
 }
 
-static void menu_open(void)             /* via page_set (main.c): the tab and row it was left at */
+static void menu_open(void)             /* via page_show (panel.c): the tab and row it was left at */
 {
     if (ROW_TAB[menu_sel] != menu_tab)
         menu_sel = (uint8_t)menu_first(menu_tab);
@@ -241,7 +241,7 @@ static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value
     ui_dirty = 1;
 }
 
-static void menu_move(int32_t s)                        /* PRESET / SELECT: the next / previous row of the tab */
+static void menu_move(int32_t s)                        /* SELECT: the next / previous row of the tab */
 {
     uint32_t n = menu_count(menu_tab), k = menu_pos(menu_sel);
     if (!n)
@@ -267,13 +267,11 @@ static void menu_knobs(const int32_t *st)
     uint32_t k;
     if (st[1])
         menu_tab_go(st[1]);
-    if (menu_tab == MT_MANUAL) {                    /* the manual: SELECT (and PRESET) scroll */
-        manual_scroll(st[0] + st[6]);
+    if (menu_tab == MT_MANUAL) {                    /* the manual: SELECT scrolls */
+        manual_scroll(st[0]);
         return;
     }
-    if (st[6])
-        menu_move(st[6]);
-    else if (st[0])
+    if (st[0])                                      /* SELECT: the rows (PRESET steps the patches, panel.c) */
         menu_move(st[0]);
     for (k = 0; k < 4u; k++)
         if (st[2u + k])

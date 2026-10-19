@@ -68,7 +68,7 @@ int main(int argc, char **argv)
     if (getenv("DEVTOAST"))
         pg_dev_toast_until = 1000;
     octave = argc > 4 ? atoi(argv[4]) : 0;
-    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 7: legend, 8: SEQ (SELECTED_MODULE = the track) */
+    page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 8: SEQ (SELECTED_MODULE = the track) */
     if (argc > 6)                                           /* the transport running */
         eng_transport(atoi(argv[6]) != 0);
     if (page == PAGE_SEQ) {                                 /* the SEQ page: the track, a muted one, the playhead some steps in */

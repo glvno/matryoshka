@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* The panel core (firmware/src/panel.c) on the host, with no HAL: SELECT, ALGO, K1, HOME (tap, legend, held = menu),
+/* The panel core (firmware/src/panel.c) on the host, with no HAL: SELECT, ALGO, K1, HOME (the trail back, held = menu),
  * PLAY / tempo, a key and the MIDI out of every control (#115), checked on the core's state and on the LCD's framebuffer (ui_preview.c's stand-ins).
  *   tools/panel_test.sh */
 #define UI_PREVIEW_LIB
@@ -141,14 +141,10 @@ int main(void)
     later(1100);
     check("the toast ends", px(12, ROWS_Y + 15) == KNOB_HUE[0]);
 
-    tap(BTN_HOME);
-    check("HOME: back to the first device", page == 0 && pg_cur_dev == 0 && pg_cur_page == 0 && focus_dev == 0);
     memcpy(before, fb, sizeof before);
     tap(BTN_HOME);
-    check("HOME again: the legend", page == PAGE_LEGEND && memcmp(before, fb, sizeof before) != 0);
-    tap(BTN_HOME);
-    later(1000);                                            /* (the first tap changed device: its toast ends) */
-    check("HOME on the legend: the device page", page == 0 && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+    check("HOME on the device pages, nothing to go back to: nothing", page == 0 && pg_cur_dev == 1 && pg_cur_page == 1
+          && trail_n == 0 && memcmp(before, fb, sizeof before) == 0);
 
     panel_held |= 1u << BTN_HOME;                           /* HOME held: the menu after 0.7 s */
     panel_edges(1u << BTN_HOME, 0);
@@ -161,12 +157,44 @@ int main(void)
     loop();
     check("its release does not close it", page == PAGE_MENU);
     {
-        uint8_t tab = menu_tab;
+        uint8_t tab = menu_tab, row;
+        int stepped = presets_stepped;
         enc(1, 1);                                          /* ALGO: the next tab */
         check("ALGO in the menu: the next tab", menu_tab != tab);
+        row = menu_sel;
+        enc(0, 1);
+        check("SELECT in the menu: the next row", menu_sel != row);
+        row = menu_sel;
+        enc(6, 1);
+        check("PRESET in the menu: the next patch, not a row", menu_sel == row && presets_stepped == stepped + 1);
+        presets_stepped = stepped;
     }
+    tap(BTN_SEQ);
+    check("SEQ from the menu: the step page, a second step", page == PAGE_SEQ && trail_n == 2);
     tap(BTN_HOME);
-    check("HOME tapped: the menu closes", page == 0);
+    check("HOME: back to the menu", page == PAGE_MENU && trail_n == 1);
+    tap(BTN_HOME);
+    check("HOME tapped: the menu closes, back on the page it was opened from", page == 0 && trail_n == 0 && pg_cur_dev == 1 && pg_cur_page == 1);
+    panel_held |= 1u << BTN_HOME;                           /* the menu again, then SAVE */
+    panel_edges(1u << BTN_HOME, 0);
+    later(800);
+    panel_held &= ~(1u << BTN_HOME);
+    panel_edges(0, 1u << BTN_HOME);
+    tap(BTN_SAVE);
+    check("SAVE in the menu: saved, the menu closes", page == 0 && saved == 1);
+    saved = 0;
+    {
+        uint32_t i;
+        for (i = 0; i < TRAIL_MAX + 3u; i++)                /* SEQ, then the menu, ... on and on: the trail keeps the latest */
+            page_set(i & 1u ? PAGE_MENU : PAGE_SEQ);
+        check("a full trail drops its oldest step", trail_n == TRAIL_MAX);
+        for (i = 0; i < TRAIL_MAX + 2u; i++)
+            tap(BTN_HOME);
+        check("... and HOME still walks it back", trail_n == 0);
+        if (page != 0) {
+            page_show(0);
+        }
+    }
 
     tap(BTN_PLAY);
     check("PLAY: the transport runs", eng_transport_running() == 1);
@@ -195,8 +223,8 @@ int main(void)
             at = mlen;
             tap(B[i].id);
             all &= sent(at, 0xB0u, B[i].cc, 127u) && sent(at, 0xB0u, B[i].cc, 0u);
-            if (page == PAGE_MENU || page == PAGE_SEQ || page == PAGE_LEGEND)   /* (SEQ opened its page, HOME the legend: back) */
-                tap(B[i].id == 13u ? 11u : B[i].id);
+            if (page == PAGE_SEQ)                           /* (SEQ and REC opened the step page: back) */
+                tap(BTN_HOME);
             loop();
         }
         check("every button: CC 127 on the press, 0 on the release", all);

@@ -389,7 +389,7 @@ CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in
 
 ## Settings menu and manual (#66, 2026-10-18)
 
-- HOME held: tabs PANEL (LEDS, KNOB ACCEL), MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), SYSTEM (VERSION, CPU now, CPU PEAK, BANK SLOTS n OF 64, UPDATE MODE = update-only mode, FACTORY RESET; both OCT+ twice within 3 s), MANUAL (one screen: the reserved controls, the power-on keys, the menu's controls, the web address). ALGO steps the tabs, PRESET / SELECT the rows, K1..K4 / OCT- / OCT+ the value.
+- HOME held: tabs PANEL (LEDS, KNOB ACCEL), MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), SYSTEM (VERSION, CPU now, CPU PEAK, BANK SLOTS n OF 64, UPDATE MODE = update-only mode, FACTORY RESET; both OCT+ twice within 3 s), MANUAL (one screen: the reserved controls, the power-on keys, the menu's controls, the web address). ALGO steps the tabs, SELECT the rows (PRESET only steps patches since #114), K1..K4 / OCT- / OCT+ the value; SAVE saves and closes it, a HOME tap goes back out.
 - PLAY acts on its release; PLAY held + PRESET sets the Main module's tempo (1 bpm a click, x5 when turned fast), refused while MIDI clock drives the clock; such a release does not start / stop.
 
 ## Editor link both ways (#65, 2026-10-18)
@@ -458,15 +458,21 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   (y 206: a segment per page, the focus coral, its heading's others dim) and the patch / transport line (y 214). A turned
   knob's toast (full size with its range bar, one second) and the device's name when SELECT moves cover the bars. There is
   no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
-  HOME taps go back to the first device, then the legend; MIDI CC 16..19 set the rows (absolute). A poly row writes the
+  HOME goes back along the trail (below; on the device pages with nothing to go back to it does nothing; the legend is
+  gone); MIDI CC 16..19 set the rows (absolute). A poly row writes the
   group record of `m1_cur` (`poly_row_set` in main.c; the voices and unison reload the engine).
 - Panel core (`firmware/src/panel.c`, #108): what the knobs, keys and buttons do, apart from the HAL. main.c's polls
   read the hardware and hand it in (`panel_held` = the buttons held, `panel_encoders(st[7])`, `panel_keys(bits)`,
   `panel_edges(pressed, released)`); its loop calls `panel_status()` before the inputs and `panel_draw()` after them.
   The core's hooks (LEDs, `preset_step`, `save_state`, `midi_send`, `poly_row_set`, proto.c's `m1_*_now`) are main.c's
   on the device and stubs on a host. `tools/panel_test.sh` (firmware/test/panel_test.c, on ui_preview.c built with
-  `UI_PREVIEW_LIB`) drives SELECT / ALGO / K1 / HOME / the menu / PLAY / tempo / SAVE / a key and checks the framebuffer;
-  the firmware CI runs it.
+  `UI_PREVIEW_LIB`) drives SELECT / ALGO / K1 / HOME / the menu / the trail / PLAY / tempo / SAVE / a key / MIDI out and
+  checks the framebuffer; the firmware CI runs it.
+- Navigation (#114): one rule. A button that changes the screen (SEQ, REC, HOME held = the menu; page buttons #117 and
+  GLO #118 next) leaves a step on the trail (`panel.c` `page_set`: page + the device page in focus, `TRAIL_MAX` 8, the
+  oldest dropped); a HOME tap goes back one (`screen_back`, restoring the device page if it moved; the same button again
+  goes back too). ALGO moves sideways (device pages, menu tabs, SEQ tracks), SELECT picks (the device, a menu row, the
+  manual's scroll); PRESET only steps patches (also with the menu open). SAVE in the menu saves, then goes back.
 - The UI as WebAssembly (#109): `firmware/wasm/fm1_ui.c` = the panel core and screens on the C engine over the host
   stand-ins of `firmware/test/host_ui.h` (shared with ui_preview.c and panel_test.c; no libc, framebuffer `fb` with a
   dirty flag, LEDs as bits). `npm run fm1-wasm` (web/scripts/fm1-wasm.mjs: clang `--target=wasm32 -ffreestanding
