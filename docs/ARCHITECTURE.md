@@ -439,6 +439,15 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   on the device and stubs on a host. `tools/panel_test.sh` (firmware/test/panel_test.c, on ui_preview.c built with
   `UI_PREVIEW_LIB`) drives SELECT / ALGO / K1 / HOME / the menu / PLAY / tempo / SAVE / a key and checks the framebuffer;
   the firmware CI runs it.
+- The UI as WebAssembly (#109): `firmware/wasm/fm1_ui.c` = the panel core and screens on the C engine over the host
+  stand-ins of `firmware/test/host_ui.h` (shared with ui_preview.c and panel_test.c; no libc, framebuffer `fb` with a
+  dirty flag, LEDs as bits). `npm run fm1-wasm` (web/scripts/fm1-wasm.mjs: clang `--target=wasm32 -ffreestanding
+  -nostdlib`, then wasm-ld; Homebrew llvm + lld or Ubuntu clang + lld) writes `web/public/fm1-ui.wasm` (git-ignored,
+  ~250 KB; the web and Pages workflows build it). Exports `fm1w_*` (load a patch binary + name + slot, tick = silent
+  engine blocks for the time gone + the loop's bookkeeping and drawing, encoder / button / keys, focus / param from the
+  editor, framebuffer, LEDs, page, focus); imports `fm1.focus / param / preset / save / midi / poly`. TS wrapper
+  `web/src/fm1-ui.ts` (`Fm1Ui`, `ENCODERS`, `BUTTONS`); `fm1-ui.test.ts` checks a device page pixel for pixel against
+  ui_preview and drives the panel (it rebuilds the wasm when a source is newer).
 - LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as
   4-bit anti-aliased bitmaps at four sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
   `firmware/src/font_bc.h`, ~36 KB of flash; `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,

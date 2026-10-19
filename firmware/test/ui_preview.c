@@ -3,8 +3,8 @@
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
  * Environment: TOAST=k shows knob k's toast on the device page, DEVTOAST=1 the device just picked
- * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins for the HAL
- * and proto.c plus the UI (panel_test.c includes it so). */
+ * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
+ * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,80 +17,7 @@
 #undef memcpy
 #undef memcmp
 
-static uint16_t fb[240 * 240];
-static uint32_t fm1_ms;
-static uint32_t fm1_ticks(void) { return 0; }
-static uint32_t eng_us_last = 316, eng_us_max = 358;
-static uint8_t eng_overload;               /* audio.c: the overload guard muted the patch */
-static int32_t patch_gain;                 /* audio.c: the mixer level */
-static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
-#define M1_SLOTS 64u
-static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
-static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
-static uint32_t pv_len;
-#define FELUCCA_VERSION "M1-PREVIEW"
-#define FM1_TICKS_PER_US 24u
-
-static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
-{
-    uint32_t i, j;
-    for (j = 0; j < h; j++)
-        for (i = 0; i < w; i++)
-            if (x + i < 240u && y + j < 240u)
-                fb[(y + j) * 240u + x + i] = c;
-}
-static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *px)
-{
-    uint32_t i, j;
-    for (j = 0; j < h; j++)
-        for (i = 0; i < w; i++)
-            if (x + i < 240u && y + j < 240u) {
-                uint16_t v = px[j * w + i];
-                fb[(y + j) * 240u + x + i] = (uint16_t)((v >> 8) | (v << 8));     /* the LCD takes big endian */
-            }
-}
-static void lcd_sync(void) {}
-
-#include "../src/engine.c"
-#include "../src/presets.h"
-#include "../src/font5x7.c"
-#include "../src/font_bc.c"
-static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
-#include "../src/ui.c"
-#include "../src/pages_ui.c"
-static const uint8_t *pages_src(uint32_t *len) { *len = pv_len; return pv_bin; }
-static uint32_t pages_gen(void) { return 1; }
-static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }
-static void leds_avail(void) {}
-static void leds_octave(void) {}
-static void update_only(const char *why) { (void)why; }
-static void defaults_now(void) {}
-#include "../src/menu.c"
-/* what seq_ui.c reaches in proto.c and the HAL, for the preview */
-#define FM1_NCOL 11u
-static const int8_t FM1_KEYMAP[6][FM1_NCOL] = {{-1}};
-static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_mid[FM1_NCOL];
-static struct { uint32_t buttons; } fm1_in;
-static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the previewed binary) */
-{
-    uint32_t at = eng_records_at(pv_bin, pv_len), i;
-    for (i = 0; i < mod; i++) {
-        const def_t *d = &DEFS[pv_bin[at] & 0x7Fu];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
-    }
-    at += 1u + 4u * DEFS[T_STEPS].npar + (DEFS[T_STEPS].cvbase >= 0 ? 20u : 0u);
-    for (i = 0; i < TRACK_NAME_MAX && pv_bin[at + i]; i++)
-        out[i] = (char)pv_bin[at + i];
-    out[i] = 0;
-}
-static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
-static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b) { (void)mod; (void)k; (void)b; }
-static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { eng_steps_value_set(mod, k, note, vel); }
-static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { (void)mod; (void)k; (void)note; (void)vel; }
-static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
-#include "../src/seq_ui.c"
-static uint16_t lcd_fillbuf[240];          /* lcd.c's, the splash's row buffer */
-#include "../src/splash.c"
+#include "host_ui.h"
 
 #ifndef UI_PREVIEW_LIB
 int main(int argc, char **argv)

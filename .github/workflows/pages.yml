@@ -57,6 +57,11 @@ jobs:
           (cd web && npm run export-defs)
           python3 tools/build.py
           (cd web && npm run firmware)
+      # the FM-1's UI as WebAssembly (firmware/wasm/fm1_ui.c -> public/fm1-ui.wasm): the editor's FM-1 tab and fm1-ui.test.ts
+      - name: clang + wasm-ld, the FM-1 UI as WebAssembly
+        run: |
+          sudo apt-get install -y --no-install-recommends clang lld
+          npm run fm1-wasm
       # the tests, with coverage: public/coverage.json is the About card's Test coverage figures
       - run: npm run coverage
       # the About card's AI usage figures: WakaTime summaries of the projects in web/ai-projects.json, fetched with the

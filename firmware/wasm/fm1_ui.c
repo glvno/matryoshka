@@ -1,0 +1,168 @@
+/* SPDX-License-Identifier: GPL-3.0-only
+ * Copyright (C) 2026 morgulbrut */
+/* The FM-1's UI as WebAssembly, for the editor's FM-1 tab (#109, #110): the real panel core (panel.c) and screens (ui.c,
+ * pages_ui.c, menu.c, seq_ui.c) on the engine, over the host stand-ins of firmware/test/host_ui.h. No libc, no HAL, no
+ * flash: what the core asks of the outside goes to the page (the imports below); the page puts a patch binary in
+ * (fm1w_patch, fm1w_load), drives the panel (fm1w_encoder, fm1w_button, fm1w_keys) and the clock (fm1w_tick), and
+ * reads the 240 x 240 RGB565 framebuffer (fm1w_fb) when fm1w_take_dirty says it changed.
+ * The engine runs on the tick (silent blocks) so the transport, the effective values (live ticks) and the SEQ playhead
+ * move; its audio is not used (the browser engine plays).
+ * Built by web/scripts/fm1-wasm.mjs (npm run fm1-wasm) into web/public/fm1-ui.wasm. */
+#include <stdint.h>
+#include "../src/libc.c"
+
+#define WASM_IMPORT(name) __attribute__((import_module("fm1"), import_name(name)))
+#define WASM_EXPORT(name) __attribute__((export_name(name)))
+
+/* the page: the focus and a parameter moved here (the editor follows, as with the device link's FOCUS_NOW / PARAM_NOW),
+ * PRESET turned, SAVE pressed, a MIDI message the panel sent, a poly group's setting turned */
+WASM_IMPORT("focus") void js_focus(uint32_t dev, uint32_t page);
+WASM_IMPORT("param") void js_param(uint32_t mod, uint32_t par, int32_t v);
+WASM_IMPORT("preset") void js_preset(int32_t d);
+WASM_IMPORT("save") void js_save(void);
+WASM_IMPORT("midi") void js_midi(uint32_t status, uint32_t d1, uint32_t d2);
+WASM_IMPORT("poly") void js_poly(uint32_t mod, uint32_t field, int32_t v);
+
+#include "../test/host_ui.h"
+
+/* what panel.c asks of proto.c and audio.c */
+static volatile uint32_t eng_shed_count;
+static void m1_focus_now(uint32_t d, uint32_t g) { js_focus(d, g); }
+static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { js_param(mod, par, v); }
+static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; }
+static void m1_panel_on(uint32_t mask) { (void)mask; }
+#include "../src/panel.c"
+
+/* the hooks: the LEDs are bits the page reads (fm1w_leds), the rest goes to the page */
+static void leds_play(void) { fm1_led_key(BTN_PLAY, eng_transport_running()); }
+static void leds_panel(void)
+{
+    uint32_t b, mask = eng_buttons_get();
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++)
+        fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u));
+}
+static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
+{
+    if (cfg.midi_out)
+        js_midi(status | (cfg.ch ? cfg.ch - 1u : 0u), d1 & 127u, d2 & 127u);
+}
+static void preset_step(int32_t d) { js_preset(d); }
+static void save_state(void) { js_save(); }
+static void poly_row_set(uint32_t mod, uint32_t field, int32_t v) { js_poly(mod, field, v); }
+
+static char name_buf[24];                     /* the patch name the page writes (fm1w_name), NUL-terminated */
+static uint32_t last_ms, frac;                  /* the engine's clock: ms of the last tick, samples owed (x1000) */
+
+WASM_EXPORT("fm1w_patch") uint8_t *fm1w_patch(void) { return pv_bin; }
+WASM_EXPORT("fm1w_patch_max") uint32_t fm1w_patch_max(void) { return sizeof pv_bin; }
+WASM_EXPORT("fm1w_name") char *fm1w_name(void) { return name_buf; }
+WASM_EXPORT("fm1w_fb") uint16_t *fm1w_fb(void) { return fb; }
+WASM_EXPORT("fm1w_leds") uint32_t fm1w_leds(void) { return host_leds; }
+WASM_EXPORT("fm1w_page") uint32_t fm1w_page(void) { return page; }
+WASM_EXPORT("fm1w_take_dirty") uint32_t fm1w_take_dirty(void)
+{
+    uint32_t d = fb_dirty;
+    fb_dirty = 0;
+    return d;
+}
+
+/* the patch the page put at fm1w_patch (len bytes, its name at fm1w_name, the slot number shown: slot 0..63, else
+ * none): into the engine and on the screen. Returns eng_load's result (0 = it runs). `fresh`: another patch (the
+ * focus goes to its first device), else the same one edited (the focus stays) */
+WASM_EXPORT("fm1w_load") int32_t fm1w_load(uint32_t len, uint32_t slot, uint32_t fresh)
+{
+    static int32_t l[128], r[128];
+    int e;
+    uint32_t dev = pg_cur_dev, pg = pg_cur_page;
+    if (len > sizeof pv_bin)
+        return -1;
+    pv_len = len;
+    e = eng_load(pv_bin, pv_len);
+    if (e)
+        return e;
+    name_buf[sizeof name_buf - 1u] = 0;
+    patch_label = name_buf;
+    cur_preset = slot;
+    pv_gen++;
+    eng_render(l, r, 128);                      /* the modules' effective parameters */
+    booting = 0;
+    pages_ensure();
+    if (!fresh)
+        (void)pages_focus(dev, pg);
+    pg_dev_toast_until = 0;
+    leds_play();
+    leds_panel();
+    ui_dirty = 2;
+    panel_draw();
+    return 0;
+}
+
+/* the clock: ms since the page started. Runs the engine for the time gone (at most a tenth of a second) and the loop's
+ * bookkeeping and drawing (as fm1_main does each turn) */
+WASM_EXPORT("fm1w_tick") void fm1w_tick(uint32_t ms)
+{
+    static int32_t l[128], r[128];
+    uint32_t gone = ms - last_ms, blocks = 0;
+    last_ms = ms;
+    fm1_ms = ms;
+    if (pv_len) {
+        frac += (gone > 100u ? 100u : gone) * (uint32_t)ENG_SR;
+        while (frac >= 128000u && blocks++ < 40u) {
+            eng_render(l, r, 128);
+            frac -= 128000u;
+        }
+    }
+    panel_status();
+    panel_edges(0, 0);
+    seq_poll();
+    panel_draw();
+}
+
+/* the panel: encoder n (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET) turned by clicks; button id (matrix id) down / up; the
+ * 27 keys now held (bit 0 = F3) */
+WASM_EXPORT("fm1w_encoder") void fm1w_encoder(uint32_t n, int32_t clicks)
+{
+    int32_t st[7] = {0};
+    if (n >= 7u)
+        return;
+    st[n] = clicks;
+    panel_encoders(st);
+    panel_draw();
+}
+WASM_EXPORT("fm1w_button") void fm1w_button(uint32_t id, uint32_t down)
+{
+    if (id >= 32u)
+        return;
+    if (down) {
+        panel_held |= 1u << id;
+        panel_edges(1u << id, 0);
+    } else {
+        panel_held &= ~(1u << id);
+        panel_edges(0, 1u << id);
+    }
+    panel_draw();
+}
+WASM_EXPORT("fm1w_keys") void fm1w_keys(uint32_t bits)
+{
+    panel_keys(bits & 0x7FFFFFFu);
+    panel_draw();
+}
+
+/* the editor: another device page in focus; a parameter set there (the bars follow) */
+WASM_EXPORT("fm1w_focus") void fm1w_focus(uint32_t dev, uint32_t pg)
+{
+    if (pages_focus(dev, pg) && page == 0)
+        ui_dirty = 2;
+    panel_draw();
+}
+WASM_EXPORT("fm1w_param") void fm1w_param(uint32_t mod, uint32_t par, int32_t v)
+{
+    if ((int)mod < eng_nmodules()) {
+        eng_set_param(mod, par, v);
+        if (!ui_dirty)
+            ui_dirty = 1;
+    }
+}
+WASM_EXPORT("fm1w_focus_dev") uint32_t fm1w_focus_dev(void) { return pg_cur_dev; }
+WASM_EXPORT("fm1w_focus_page") uint32_t fm1w_focus_page(void) { return pg_cur_page; }
+WASM_EXPORT("fm1w_octave") int32_t fm1w_octave(void) { return octave; }
