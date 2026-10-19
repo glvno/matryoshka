@@ -1255,47 +1255,55 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 #fm1-view[hidden] { display: none; }
 /* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it */
 .workspace.fm1-mode > :is(.wheels, .dock-wrap, .deck) { display: none; }
-/* the panel: 1280 x 820 units (fm1-view.ts places everything in them), scaled to the view; the device's own colours */
-.fm1-body { --silk: #c9c6bd; --tray: #2b2c2f; --cap: #45484e; --amber: #f2a33a; --green: #62d36e;
+/* the panel: 1280 x 820 units (fm1-view.ts places everything in them), scaled to the view; in the brand's colours,
+   from the theme tokens (paper and white caps in the light theme, night and ink in the dark one), the keys as the
+   deck's keyboard, the lights in the accent (lit), gold (glows) and teal (PLAY while running) */
+.fm1-body { --f-body: color-mix(in oklab, var(--ink) 9%, var(--bg)); --f-edge: color-mix(in oklab, var(--ink) 18%, var(--bg));
+  --f-tray: color-mix(in oklab, var(--ink) 15%, var(--bg)); --f-cap: var(--panel); --f-cap-ink: var(--muted); --f-drop: color-mix(in srgb, var(--ref-night) 30%, transparent);
+  --f-silk: var(--ink); --f-dial: var(--panel); --f-dial-rim: var(--line); --f-glow: var(--gate);
   position: relative; flex: none; width: min(100%, calc((100dvh - 120px) * 1280 / 820), 1280px); aspect-ratio: 1280 / 820; container-type: inline-size;
-  border-radius: 2.4cqw; background: #55585d; box-shadow: 0 6px 24px var(--shadow), inset 0 0 0 1px #6a6d72; }
+  border-radius: 2.4cqw; background: var(--f-body); box-shadow: 0 6px 24px var(--shadow), inset 0 0 0 1px var(--f-edge); }
 .fm1-body > * { position: absolute; box-sizing: border-box; }
-.fm1-tray { border-radius: 1.2cqw; background: var(--tray); }
-.fm1-keybed { border-radius: 2cqw; background: #2b2b2e; }
-.fm1-transport { border-radius: .8cqw; box-shadow: inset 0 0 0 .16cqw #3c6b43; }
-.fm1-bezel { border-radius: 1.7cqw; background: #0d0d0f; }
-.fm1-lcd { position: absolute; display: block; image-rendering: pixelated; background: #101c21; }
-.fm1-note { position: absolute; inset: 3.5%; display: grid; place-items: center; margin: 0; padding: 6%; text-align: center; background: rgba(11, 18, 20, .88);
-  color: #fff7ef; font: 500 1.2cqw/1.4 'Barlow', system-ui, sans-serif; }
+.fm1-tray { border-radius: 1.2cqw; background: var(--f-tray); }
+.fm1-keybed { border-radius: 2cqw; }
+.fm1-transport { border-radius: .8cqw; box-shadow: inset 0 0 0 .16cqw var(--secondary); }
+.fm1-bezel { border-radius: 1.7cqw; background: var(--ref-night); box-shadow: inset 0 0 0 .2cqw var(--ref-slate); }
+.fm1-lcd { position: absolute; display: block; image-rendering: pixelated; background: var(--ref-night); }
+.fm1-note { position: absolute; inset: 3.5%; display: grid; place-items: center; margin: 0; padding: 6%; text-align: center;
+  background: color-mix(in srgb, var(--ref-night) 88%, transparent); color: var(--ref-ivory); font: 500 1.2cqw/1.4 'Barlow', system-ui, sans-serif; }
 .fm1-note[hidden] { display: none; }
-.fm1-silk { display: flex; align-items: center; justify-content: center; color: var(--silk); font: 600 1.25cqw/1 'Barlow Condensed', system-ui, sans-serif;
+.fm1-silk { display: flex; align-items: center; justify-content: center; color: var(--f-silk); font: 600 1.25cqw/1 'Barlow Condensed', system-ui, sans-serif;
   text-transform: uppercase; letter-spacing: .1em; pointer-events: none; white-space: nowrap; }
-.fm1-name { font-size: .9cqw; color: #8c8a85; letter-spacing: .2em; }
+.fm1-name { font-size: .9cqw; color: var(--secondary); letter-spacing: .2em; }
 .fm1-dial { --turn: 0deg; border-radius: 50%; cursor: ns-resize; touch-action: none; outline-offset: .3cqw;
-  background: radial-gradient(circle at 50% 50%, #5c6067 0 70%, #34363b 71% 100%); box-shadow: .15cqw .3cqw 0 #26272a; }
-.fm1-dial::after { content: ''; position: absolute; left: calc(50% - .14cqw); top: 12%; width: .28cqw; height: 34%; border-radius: .14cqw; background: #eeeae2;
+  background: radial-gradient(circle at 50% 50%, var(--f-dial) 0 70%, var(--f-dial-rim) 71% 100%); box-shadow: .15cqw .3cqw 0 var(--f-drop); }
+.fm1-dial::after { content: ''; position: absolute; left: calc(50% - .14cqw); top: 12%; width: .28cqw; height: 34%; border-radius: .14cqw; background: var(--accent);
   transform-origin: 50% 112%; transform: rotate(var(--turn)); }
-.fm1-dial:focus-visible { outline: 2px solid var(--amber); }
-.fm1-btn { padding: 0; border: 0; border-radius: .7cqw; background: var(--cap); color: #9c9a94; box-shadow: .08cqw .24cqw 0 #1c1d20;
+.fm1-dial:focus-visible { outline: 2px solid var(--accent); }
+.fm1-btn { padding: 0; border: 0; border-radius: .7cqw; background: var(--f-cap); color: var(--f-cap-ink); box-shadow: .08cqw .24cqw 0 var(--f-drop), inset 0 0 0 .08cqw var(--line);
   font: 600 1.15cqw/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .04em; touch-action: none; }
-.fm1-btn:hover { color: #d8d5cd; }
-.fm1-btn.down, .fm1-btn.latched { transform: translateY(.16cqw); box-shadow: none; }
-.fm1-btn.latched { outline: .16cqw solid var(--amber); outline-offset: .1cqw; }
-/* the lights (fm1-ui.ts lights(), colours after X0X's browser emulator): lit, a dim glow, breathing; PLAY is red while
-   stopped and breathes green while it runs; on the keys the SEQ page's steps (lit), playhead (mid) and tracks (dim) */
-.fm1-btn.dim { background: color-mix(in srgb, var(--amber) 18%, var(--cap)); color: #d8c4a4; }
-.fm1-btn.lit { background: #f0a043; color: #1b1205; }
-.fm1-btn.play.lit { background: #e2574c; color: #1b0705; }
-.fm1-btn.breath { animation: fm1-breath 1.6s ease-in-out infinite; color: #1b1205; }
-.fm1-btn.play.breath { --breath: var(--green); }
-@keyframes fm1-breath { 0%, 100% { background: color-mix(in srgb, var(--breath, #f0a043) 35%, var(--cap)); } 50% { background: var(--breath, #f0a043); } }
-.fm1-key.lit { background: #f3b25c; }
-.fm1-key.black.lit { background: #e0902c; }
-.fm1-key.mid { background: color-mix(in srgb, #f3b25c 55%, #5e4a4d); }
-.fm1-key.dim { background: #7a5326; }
-.fm1-key:is(.lit, .mid)::after { background: #ffe2b0; }
-.fm1-key { padding: 0; border: 0; border-radius: 99cqw; background: #5e4a4d; box-shadow: .08cqw .3cqw 0 #1a1a1c; touch-action: none; }
-.fm1-key::after { content: ''; position: absolute; left: calc(50% - .2cqw); top: 17%; width: .4cqw; height: 66%; border-radius: .2cqw; background: #8f7c7e; }
-.fm1-key.down { transform: translateY(.24cqw); box-shadow: none; background: color-mix(in srgb, var(--amber) 55%, #5e4a4d); }
-.fm1-key.down::after { background: #ffe2b0; }
+.fm1-btn:hover { color: var(--ink); }
+.fm1-btn.down, .fm1-btn.latched { transform: translateY(.16cqw); box-shadow: inset 0 0 0 .08cqw var(--line); }
+.fm1-btn.latched { outline: .16cqw solid var(--accent); outline-offset: .1cqw; }
+/* the lights (fm1-ui.ts lights(), after X0X's browser emulator): lit, a dim glow, breathing; PLAY is red while stopped
+   and breathes teal while it runs; on the keys the SEQ page's steps (lit), playhead (mid) and tracks (dim) */
+.fm1-btn.dim { background: color-mix(in oklab, var(--f-glow) 22%, var(--f-cap)); color: var(--ink); }
+.fm1-btn.lit { background: var(--accent); color: var(--accent-ink); }
+.fm1-btn.play.lit { background: var(--danger); color: var(--accent-ink); }
+.fm1-btn.breath { animation: fm1-breath 1.6s ease-in-out infinite; color: var(--accent-ink); }
+.fm1-btn.play.breath { --breath: var(--secondary); }
+@keyframes fm1-breath { 0%, 100% { background: color-mix(in oklab, var(--breath, var(--f-glow)) 35%, var(--f-cap)); } 50% { background: var(--breath, var(--f-glow)); } }
+.fm1-key { padding: 0; border: 0; border-radius: 99cqw; background: var(--key-white); box-shadow: .08cqw .3cqw 0 var(--f-drop), inset 0 0 0 .08cqw var(--key-edge); touch-action: none; }
+.fm1-key.black { background: var(--key-black); }
+.fm1-key::after { content: ''; position: absolute; left: calc(50% - .2cqw); top: 17%; width: .4cqw; height: 66%; border-radius: .2cqw;
+  background: color-mix(in oklab, var(--key-white) 70%, var(--key-black)); }
+.fm1-key.black::after { background: color-mix(in oklab, var(--key-black) 60%, var(--key-white)); }
+.fm1-key.lit { background: var(--accent); }
+.fm1-key.mid { background: color-mix(in oklab, var(--accent) 50%, var(--key-white)); }
+.fm1-key.black.mid { background: color-mix(in oklab, var(--accent) 50%, var(--key-black)); }
+.fm1-key.dim { background: color-mix(in oklab, var(--f-glow) 30%, var(--key-white)); }
+.fm1-key.black.dim { background: color-mix(in oklab, var(--f-glow) 40%, var(--key-black)); }
+.fm1-key:is(.lit, .mid)::after { background: var(--accent-ink); }
+.fm1-key.down { transform: translateY(.24cqw); box-shadow: inset 0 0 0 .08cqw var(--key-edge); background: var(--key-held); }
+.fm1-key.down::after { background: var(--key-held-ink); }
 .fm1-hint { margin: 0; text-align: center; font: 400 12px/1.4 'Barlow', system-ui, sans-serif; color: var(--muted); }
