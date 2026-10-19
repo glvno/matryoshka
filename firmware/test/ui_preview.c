@@ -3,7 +3,8 @@
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
  * Environment: TOAST=k shows knob k's toast on the device page, DEVTOAST=1 the device just picked
- * tools/ui_preview.sh converts the image to PNG. */
+ * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins for the HAL
+ * and proto.c plus the UI (panel_test.c includes it so). */
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -91,6 +92,7 @@ static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
 static uint16_t lcd_fillbuf[240];          /* lcd.c's, the splash's row buffer */
 #include "../src/splash.c"
 
+#ifndef UI_PREVIEW_LIB
 int main(int argc, char **argv)
 {
     uint32_t i, p;
@@ -178,3 +180,4 @@ int main(int argc, char **argv)
     fclose(f);
     return 0;
 }
+#endif

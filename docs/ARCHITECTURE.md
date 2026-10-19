@@ -432,6 +432,13 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
   HOME taps go back to the first device, then the legend; MIDI CC 16..19 set the rows (absolute). A poly row writes the
   group record of `m1_cur` (`poly_row_set` in main.c; the voices and unison reload the engine).
+- Panel core (`firmware/src/panel.c`, #108): what the knobs, keys and buttons do, apart from the HAL. main.c's polls
+  read the hardware and hand it in (`panel_held` = the buttons held, `panel_encoders(st[7])`, `panel_keys(bits)`,
+  `panel_edges(pressed, released)`); its loop calls `panel_status()` before the inputs and `panel_draw()` after them.
+  The core's hooks (LEDs, `preset_step`, `save_state`, `midi_send`, `poly_row_set`, proto.c's `m1_*_now`) are main.c's
+  on the device and stubs on a host. `tools/panel_test.sh` (firmware/test/panel_test.c, on ui_preview.c built with
+  `UI_PREVIEW_LIB`) drives SELECT / ALGO / K1 / HOME / the menu / PLAY / tempo / SAVE / a key and checks the framebuffer;
+  the firmware CI runs it.
 - LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as
   4-bit anti-aliased bitmaps at four sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
   `firmware/src/font_bc.h`, ~36 KB of flash; `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,

@@ -59,16 +59,6 @@ static void fm1_fault(const fm1_crash_t *c)
     fm1_reboot();
 }
 
-static void leds_octave(void);
-static void leds_play(void);
-static void panel_button(uint32_t b, int down);
-static void panel_button_set(uint32_t b, int down, int from_panel);
-static void midi_send(uint32_t status, uint32_t d1, uint32_t d2);
-static uint8_t knob_touched, button_touched;
-#define BTN_PLAY 12u                  /* PLAY: the transport; held, PRESET sets the tempo */
-static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */  /* the knob (1..6) / patch button (1..9) last moved: the player screen shows it */
-static void page_set(uint32_t p);
-
 /* proto.c hooks */
 static int m1_flash_ok(void) { return flash_ok; }
 static void m1_send(const uint8_t *f, uint32_t n) { (void)ota_wire_send(f, n); }
@@ -507,79 +497,28 @@ static void master_boot(void)
     }
 }
 
+/* the HAL's inputs into the panel core (panel.c) */
 static void knobs_poll(void)
 {
-    static uint32_t last_ms[6];
     int32_t st[7];
     uint32_t k;
-    int panel = eng_find(T_FM1);
     for (k = 0; k < 7u; k++)
         st[k] = fm1_enc_take(k);
-    if (page == PAGE_MENU) {                        /* the settings menu: ALGO tabs, PRESET rows, K1..K4 the value */
-        menu_knobs(st);
-        return;
-    }
-    if (st[6] && (fm1_in.buttons >> BTN_PLAY & 1u)) {   /* PLAY held + PRESET: the tempo (the Main module's), 1 bpm a click */
-        play_turned = 1;
-        if (panel >= 0 && !eng_clock_is_external()) {
-            char m[16], num[8];
-            int32_t bpm = (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16;
-            bpm = clampi(bpm + st[6] * (cfg.accel && fm1_ms - last_ms[0] < 80u ? 5 : 1), 20, 300);
-            last_ms[0] = fm1_ms;
-            eng_set_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
-            m1_patch_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
-            fmt_int(num, bpm);
-            put(put(m, "TEMPO "), num)[0] = 0;
-            ui_msg(m, 1000);
-            if (!ui_dirty)
-                ui_dirty = 1;
-        } else if (panel >= 0) {
-            ui_msg("TEMPO: MIDI CLOCK", 1000);
-        }
-        return;
-    }
-    if (st[6]) {
-        preset_step(st[6]);
-        return;
-    }
-    if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track, SELECT with a step held its chance */
-        if (st[1] && eng_steps_count())
-            seq_select((uint32_t)((seq_trk + (uint32_t)eng_steps_count() * 8u + (uint32_t)st[1]) % (uint32_t)eng_steps_count()));
-        st[1] = 0;
-        if (st[0] && seq_held >= 0) {
-            seq_chance(st[0]);
-            st[0] = 0;
-        }
-        if ((st[2] || st[3]) && seq_held >= 0) {   /* K1 / K2 with a step held: its note / velocity (not the Main knobs) */
-            seq_value(st[2], st[3], cfg.accel && fm1_ms - last_ms[1] < 80u);
-            last_ms[1] = fm1_ms;
-            st[2] = st[3] = 0;
-        }
-    }
-    if (page != 0)
-        return;
-    if (pages_select(st[0]) | pages_page(st[1])) {  /* SELECT: the device, ALGO: its page (the editor follows) */
-        m1_focus_now(pg_cur_dev, pg_cur_page);
-        ui_dirty = 2;
-    }
-    for (k = 0; k < 4u; k++) {                      /* K1..K4: the rows of the page in focus, relative */
-        uint32_t mod, par;
-        int32_t v, c = st[2u + k], r;
-        if (!c || (r = pages_turn(k, c, cfg.accel && fm1_ms - last_ms[2u + k] < 80u, &mod, &par, &v)) < 0)
-            continue;
-        last_ms[2u + k] = fm1_ms;
-        if (r == 1)
-            poly_row_set(mod, par & 0x7Fu, v);      /* a poly group's setting (the Voice allocator's in the editor) */
-        else {
-            eng_set_param(mod, par, v);
-            m1_patch_param(mod, par, v);
-        }
-        m1_param_now(mod, par, r == 1 ? v << 16 : v);   /* the editor follows (Live) */
-        midi_send(0xB0u, 16u + k, pages_cc(k));
-        if (!ui_dirty)
-            ui_dirty = 1;
-    }
-    (void)panel;
+    panel_held = fm1_in.buttons;
+    panel_encoders(st);
+}
+
+static void keys_poll(void)
+{
+    panel_held = fm1_in.buttons;
+    panel_keys(fm1_in.notes);
+}
+
+static void buttons_poll(void)
+{
+    uint32_t rel, p = fm1_input_edges(&rel);
+    panel_held = fm1_in.buttons;
+    panel_edges(p, rel);
 }
 
 /* USB MIDI out (MENU > MIDI OUT): the keys as notes (velocity 100), K1..K4 as CC 16..19 (their rows' positions), the patch buttons as CC 80..86
@@ -592,49 +531,9 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
     midi_out_event((st >> 4) | st << 8 | (d1 & 127u) << 16 | (d2 & 127u) << 24);
 }
 
-static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
-static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
-static uint8_t seq_held_used;                    /* SEQ is held and a black key muted a track: its release does not switch the page */
-static void keys_poll(void)                     /* the FM-1's 27 keys (bit 0 = F3 = MIDI 53), shifted by the octave, -> the engine */
-{
-    static uint32_t prev;
-    uint32_t now = fm1_in.notes, diff, n;
-    diff = now ^ prev;
-    prev = now;
-    if (diff)
-        eng_midi_channel(cfg.ch);
-    for (n = 0; diff && n < 27u; n++) {
-        if (!(diff & (1u << n)))
-            continue;
-        diff &= ~(1u << n);
-        if ((now & (1u << n)) && (fm1_in.buttons >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
-            seq_mute_key(n);
-            seq_held_used = 1;
-            continue;
-        }
-        if (!(key_sounding & (1u << n)) && (page == PAGE_SEQ || !(now & (1u << n)))) {   /* the SEQ page: steps and tracks */
-            if (page == PAGE_SEQ)
-                seq_key(n, (int)(now >> n & 1u));
-            continue;
-        }
-        if (now & (1u << n)) {
-            int32_t note = 53 + (int32_t)n + 12 * octave;
-            key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
-            key_sounding |= 1u << n;
-            eng_note_on(key_note[n], ENG_ONE, cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
-            midi_send(0x90u, key_note[n], 100u);
-        } else {
-            key_sounding &= ~(1u << n);
-            eng_note_off(key_note[n], cfg.ch ? cfg.ch : 1u);
-            midi_send(0x80u, key_note[n], 0u);
-        }
-    }
-}
-
 /* PLAY: red while the transport is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,
  * where there is no key (found on the hardware by Felucca); the red one is PLAY's own. */
 /* the patch buttons (the Main module's outputs fx .. rec, engine.h ENG_PANEL_BUTTONS): their matrix ids, M-VAVE's order */
-static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
 static void led_breath_key(uint32_t id, int on)     /* a button's LED breathes (the HAL's one shared speed, fm1_br_step) */
 {
     uint32_t p, r;
@@ -667,56 +566,6 @@ static void leds_panel(void)
         fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u));
 }
 
-/* a patch button pressed / let go (index into PANEL_BTN_ID): a switching one flips on the press, the others act while held;
- * a switch is kept in the patch (SAVE stores it) */
-static void panel_button(uint32_t b, int down) { panel_button_set(b, down, 1); }
-static void panel_button_set(uint32_t b, int down, int from_panel)
-{
-    const uint8_t *pn = m1_panel();
-    uint32_t tog = pn ? (uint32_t)pn[0] | (uint32_t)pn[1] << 8 : 0u, mask = eng_buttons_get(), was = mask;
-    if (tog >> b & 1u) {
-        if (down)
-            mask ^= 1u << b;
-    } else {
-        mask = down ? mask | 1u << b : mask & ~(1u << b);
-    }
-    if (mask == was)
-        return;
-    eng_buttons(mask);
-    if (tog >> b & 1u)
-        m1_panel_on(mask & tog);
-    if (from_panel)
-        midi_send(0xB0u, 80u + b, (mask >> b & 1u) ? 127u : 0u);
-    leds_panel();
-    if (down) {
-        button_touched = (uint8_t)(b + 1u);
-        if (!ui_dirty)
-            ui_dirty = 1;
-    }
-}
-
-static void page_set(uint32_t p)    /* the same button again goes back to the module page */
-{
-    page = (uint8_t)(page == p ? 0u : p);
-    if (page == PAGE_MENU)
-        menu_open();
-    if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends live recording) */
-        seq_rec = 0;
-        seq_leds_off();
-    }
-    header_draw();
-    leds_play();
-    lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
-    view_draw(1);
-}
-
-static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock) */
-{
-    eng_transport(!eng_transport_running());
-    leds_play();
-    ui_dirty = ui_dirty ? ui_dirty : 1;
-}
-
 /* OCT- / OCT+ light up while the octave is shifted */
 static void leds_octave(void)
 {
@@ -736,13 +585,6 @@ static void save_state(void)
     ui_msg("SAVING", 5000);
     ui_msg(m1_store(m1_cur, m1_cur_len) ? "ERROR" : "SAVED", 1500);
 }
-
-/* The device's own buttons (matrix ids, M-VAVE's fm1_open order): OCT- 0, OCT+ 1: octave; SAVE 9: write the patch into its slot;
- * HOME 8: tap = the legend, held = the menu; PLAY 12: the transport. The others are the patch's (PANEL_BTN_ID). */
-#define BTN_OCT_DOWN 0u
-#define BTN_OCT_UP 1u
-#define BTN_SAVE 9u
-#define BTN_HOME 8u
 
 static void led_glow(uint32_t id, int on)           /* the HAL's dim glow (~1/30 of lit) for a button's LED */
 {
@@ -768,22 +610,6 @@ static void leds_avail(void)                        /* HOME and the patch button
     leds_panel();
 }
 
-/* HOME tapped: from another page back to the device page; on a device page back to the first device; there the legend
- * (and from the legend back) */
-static void home_press(void)
-{
-    if (page == PAGE_LEGEND || page == PAGE_SEQ) {
-        page_set(page);
-        return;
-    }
-    if (pages_focus(0, 0)) {
-        m1_focus_now(0, 0);
-        ui_dirty = 2;
-        return;
-    }
-    page_set(PAGE_LEGEND);
-}
-
 /* proto.c: the editor shows another device page (FOCUS) */
 static void m1_focus(uint32_t dev, uint32_t pg)
 {
@@ -791,82 +617,6 @@ static void m1_focus(uint32_t dev, uint32_t pg)
         ui_dirty = 2;
 }
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
-
-static void buttons_poll(void)
-{
-    static uint32_t home_t0;                        /* fm1_ms | 1 of the HOME press, 0: not held; bit 1: the hold fired */
-    uint32_t rel, p = fm1_input_edges(&rel);
-    if (page == PAGE_MENU) {                        /* the menu: OCT- / OCT+ step the selected row's value */
-        if (p & (1u << BTN_OCT_DOWN))
-            menu_set_row(menu_sel, -1);
-        if (p & (1u << BTN_OCT_UP))
-            menu_set_row(menu_sel, 1);
-        p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
-    }
-    if (page == PAGE_SEQ) {                         /* the SEQ page: OCT- / OCT+ page through a long track, ENV is the accent key */
-        if (p & (1u << BTN_OCT_DOWN))
-            seq_page_step(-1);
-        if (p & (1u << BTN_OCT_UP))
-            seq_page_step(1);
-        p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_ENV));
-    }
-    if (p & (1u << BTN_SEQ))                        /* SEQ acts on release, unless a black key muted a track meanwhile */
-        seq_held_used = 0;
-    if ((rel & (1u << BTN_SEQ)) && !seq_held_used)
-        page_set(PAGE_SEQ);
-    if (p & (1u << BTN_REC)) {                      /* REC: live recording, on the SEQ page */
-        if (page != PAGE_SEQ)
-            page_set(PAGE_SEQ);
-        seq_rec_toggle();
-    }
-    if (p & (1u << BTN_OCT_DOWN))
-        octave = octave > -3 ? octave - 1 : octave;
-    if (p & (1u << BTN_OCT_UP))
-        octave = octave < 3 ? octave + 1 : octave;
-    if (p & ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP))) {
-        leds_octave();
-        {
-            char m[12], num[8], *q = m;
-            q = put(q, "OCTAVE ");
-            if (octave > 0)
-                *q++ = '+';
-            fmt_int(num, octave);
-            put(q, num);
-            ui_msg(m, 1000);
-        }
-    }
-    if (p & (1u << BTN_SAVE))
-        save_state();
-    {
-        uint32_t b;
-        for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
-            if (p >> PANEL_BTN_ID[b] & 1u)
-                panel_button(b, 1);
-            if (rel >> PANEL_BTN_ID[b] & 1u)
-                panel_button(b, 0);
-        }
-    }
-    if (p & (1u << BTN_HOME))
-        home_t0 = (fm1_ms & ~3u) | 1u;              /* HOME acts on release: a tap goes home, 0.7 s held opens the menu
-                                                     * (bit 1 cleared: with fm1_ms's own bit 1 a press looked fired) */
-    if (home_t0 && !(home_t0 & 2u) && (fm1_in.buttons >> BTN_HOME & 1u) && fm1_ms - (home_t0 & ~3u) > 700u) {
-        home_t0 |= 2u;
-        page_set(PAGE_MENU);                        /* (closes it when it is open) */
-    }
-    if (rel & (1u << BTN_HOME)) {
-        if (home_t0 && !(home_t0 & 2u)) {
-            if (page == PAGE_MENU)
-                page_set(PAGE_MENU);                /* a tap closes the menu */
-            else
-                home_press();
-        }
-        home_t0 = 0;
-    }
-    if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
-        play_turned = 0;
-    if ((rel & (1u << BTN_PLAY)) && !play_turned)
-        play_toggle();
-}
 
 /* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No
  * tool of this project (nor M-VAVE's web updater) talks to that mode: jl-uboot-tool / FM-1 Transporter do. A power cycle
@@ -1018,71 +768,21 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         (void)fm1_input_edges(&rel);
     }
     for (;;) {
-        static uint8_t ovl_seen;
-        static uint32_t shed_seen;
         fm1_wdt_feed();
         usb_retry(fm1_ms);
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;
             bootguard.failed = 0;
         }
-        if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
-            char m[40], name[16], num[12], *q = m;
-            (void)num;
-            if (!knob_touched) {
-                uint32_t b = button_touched - 1u;
-                if (!panel_label(b, name))
-                    put(name, PANEL_BTN_NAME[b])[0] = 0;
-                q = put(q, name);
-                q = put(q, eng_buttons_get() >> b & 1u ? " ON" : " OFF");
-            }
-            *q = 0;
-            if (page == 0 && !knob_touched)
-                ui_msg(m, 1000);
-            knob_touched = button_touched = 0;
-        }
-        {                                               /* the beat on the player screen while the transport runs */
-            static uint32_t beat_seen;
-            uint32_t beat = eng_transport_running() ? eng_ticks() / 6u : 0u;
-            if (beat != beat_seen && page == 0) {
-                beat_seen = beat;
-                if (!ui_dirty)
-                    ui_dirty = 1;
-            }
-        }
-        if (eng_overload != ovl_seen) {                 /* audio.c's overload guard: muted, or a part fewer */
-            ovl_seen = eng_overload;
-            header_draw();
-        } else if (eng_shed_count != shed_seen) {
-            shed_seen = eng_shed_count;
-            if (shed_seen)
-                ui_msg("OVERLOAD: A PART LESS", 1500);
-        }
-        if (page == 0 && pages_expired())             /* a toast ended: the picture comes back */
-            ui_dirty = ui_dirty ? ui_dirty : 1;
-        {                                               /* the live ticks of modulated rows, ten times a second */
-            static uint32_t tick_ms;
-            if (page == 0 && !ui_dirty && fm1_ms - tick_ms >= 100u) {
-                tick_ms = fm1_ms;
-                pages_ticks();
-            }
-        }
+        panel_status();
         midi_drain();
         keys_poll();
         buttons_poll();
         knobs_poll();
         master_poll();
         seq_poll();
-        {
-            if (msg_until && fm1_ms >= msg_until)
-                ui_msg_clear();
-            if (ui_dirty) {
-                int full = ui_dirty > 1;
-                ui_dirty = 0;
-                view_draw(full);
-            }
-            cpu_poll();
-        }
+        panel_draw();
+        cpu_poll();
         host_poll();
     }
 }

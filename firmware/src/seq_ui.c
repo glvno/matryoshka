@@ -168,7 +168,7 @@ static void seq_mute_key(uint32_t n)
 static void seq_key(uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module();
-    int env = (int)(fm1_in.buttons >> BTN_ENV & 1u);
+    int env = (int)(panel_held >> BTN_ENV & 1u);
     if (!down) {
         if (w >= 0 && seq_held == seq_pg * 16 + w)
             seq_held = -1;

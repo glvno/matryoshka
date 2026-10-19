@@ -71,4 +71,5 @@ static uint32_t pages_gen(void) { return m1_gen; }
 #include "menu.c"
 #include "seq_ui.c"
 #include "splash.c"
+#include "panel.c"
 #include "main.c"
