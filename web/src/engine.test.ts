@@ -1166,7 +1166,7 @@ describe('polyphony', () => {
     expect(y).toEqual(x);
   });
 
-  it('two parts sound both notes: the output is the sum of the two mono notes', () => {
+  it('two parts sound both notes: parts that do not gate their sound mix at 1 / parts each (#125)', () => {
     const build = (): Patch => {
       const p = emptyPatch();
       const kb = addModule(p, DEFS.fm1, 0, 0);
@@ -1190,8 +1190,12 @@ describe('polyphony', () => {
     const both = render(e, 2048).l;
     const a = mono(60);
     const b = mono(67);
-    for (let i = 0; i < both.length; i += 7) expect(both[i]).toBeCloseTo(a[i] + b[i], 5);
-    expect(rms(both)).toBeGreaterThan(rms(a));
+    for (let i = 0; i < both.length; i += 7) expect(both[i]).toBeCloseTo((a[i] + b[i]) / 2, 5);
+    // one note at two voices: no louder than at one (the idle part's oscillator sounds too, at half)
+    const one = new Engine(SR);
+    one.load(withParts(build(), 2));
+    one.noteOn(60);
+    expect(Math.max(...render(one, 2048).l.map(Math.abs))).toBeLessThanOrEqual(Math.max(...a.map(Math.abs)) + 1e-6);
   });
 
   it('a scope probe on a per-part output: audio is the sum over the parts, control the newest held part', () => {
@@ -1373,7 +1377,7 @@ describe('polyphony', () => {
     expect(polyGroups(r)[0].cfg).toEqual({ parts: EDITOR_MAX_PARTS, assign: 2, legato: 0, priority: 0, flaws: [{ detune: 50, drift: 0, bright: 2, env: 0, level: 100 }] });
   });
 
-  it('two poly assemblies layer: each plays every note on its own parts; a cable out of one sums its parts', () => {
+  it('two poly assemblies layer: each plays every note on its own parts; a cable out of one sums its parts (at 1 / parts: ungated)', () => {
     const p = emptyPatch();
     const out = addModule(p, DEFS.output, 0, 0);
     out.params.level = 1;
@@ -1394,8 +1398,8 @@ describe('polyphony', () => {
     e.noteOn(60);
     e.noteOn(67);
     const l = render(e, 2048).l;
-    expect(Math.max(...l.map(Math.abs))).toBeGreaterThan(0.45); // two notes at 0.2 and two at 0.1 summed
-    expect(Math.max(...l.map(Math.abs))).toBeLessThanOrEqual(0.6 + 1e-6);
+    expect(Math.max(...l.map(Math.abs))).toBeGreaterThan(0.22); // two notes at 0.2 and two at 0.1, each group at half
+    expect(Math.max(...l.map(Math.abs))).toBeLessThanOrEqual(0.3 + 1e-6);
   });
 });
 

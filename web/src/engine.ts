@@ -16,6 +16,27 @@ import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type 
 
 export const BLOCK = 128;
 
+/**
+ * A paraphonic group's mix (#125): a poly group whose parts do not gate their own sound (no cable from its Part's gate or
+ * legato output to a module inside the group: the gate goes only to modules that run once, say one shared envelope) has
+ * every part sounding all the time, played or not, so its audio summed into a module outside the group grew with the
+ * voice count. Such a sum weighs each part by 1 / parts (Q16, as engine.c para_w), a fixed mixer: the level no longer
+ * depends on the voices. A group that gates its parts is left alone (an unplayed part is silent, so one note sounds the
+ * same at any voice count). Control and gate outputs are not weighed.
+ */
+function paraMix(nodes: Node[]): void {
+  const gated = new Set<number>();
+  for (const to of nodes)
+    for (const s of to.sources)
+      if (s.from.type === 'part' && s.from.group >= 0 && s.from.group === to.group && (s.fromPort === 'gate' || s.fromPort === 'legato')) gated.add(to.group);
+  for (const to of nodes)
+    for (const s of to.sources) {
+      const g = s.from.group, parts = s.from.inst.length;
+      const audio = s.from.impl.def.outputs.find((o) => o.name === s.fromPort)?.kind === 'audio';
+      s.w = g >= 0 && g !== to.group && parts > 1 && audio && !gated.has(g) ? Math.round(65536 / parts) / 65536 : 1;
+    }
+}
+
 /** A display snapshot, detached from the patch and the audio thread's mutable state. */
 export type ParameterValues = { id: number; params: Record<string, number> }[];
 
@@ -43,7 +64,8 @@ interface Node {
   map: Record<Source, string[]>;
   connected: Record<string, boolean>;
   inputRoutes: { port: string; params: string[]; mean: number }[];
-  sources: { port: string; from: Node; fromPort: string }[];
+  /** w: the weight a summed source adds with (paraMix), else 1 */
+  sources: { port: string; from: Node; fromPort: string; w: number }[];
   /** the poly group it runs in (index in Engine.groups), -1: runs once */
   group: number;
   /** bypassed: run() copies `thru` (or silence) to the outputs instead of processing */
@@ -249,10 +271,11 @@ export class Engine {
     for (const c of patch.cables) {
       const to = next.get(c.to.module)!;
       const from = next.get(c.from.module)!;
-      to.sources.push({ port: c.to.port, from, fromPort: c.from.port });
+      to.sources.push({ port: c.to.port, from, fromPort: c.from.port, w: 1 });
       to.connected[c.to.port] = true;
     }
     this.nodes = next;
+    paraMix([...next.values()]);
     const { order } = processingOrder(patch);
     this.order = order.map((id) => next.get(id)!);
     this.outputs = this.order.filter((n) => n.type === 'output');
@@ -737,9 +760,11 @@ export class Engine {
       const dst = inst.inp[s.port];
       const g = s.from.group;
       if (g >= 0 && g !== node.group) {
+        const w = s.w;
         for (const k of s.from.inst) {
           const src = k.out[s.fromPort];
-          for (let i = 0; i < n; i++) dst[i] += src[i];
+          if (w === 1) for (let i = 0; i < n; i++) dst[i] += src[i];
+          else for (let i = 0; i < n; i++) dst[i] += src[i] * w;
         }
       } else {
         const src = s.from.inst[g >= 0 ? v : 0].out[s.fromPort];

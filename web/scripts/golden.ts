@@ -442,6 +442,27 @@ polyAsm(tests['alloc-unison'], unisonParts, {
   flaws: [{ detune: 12, drift: 0, bright: 0, env: 0, level: 100 }, { detune: -9, drift: 0, bright: 0, env: 0, level: 100 }, { detune: 4, drift: 30, bright: 0, env: 0, level: 100 }],
 });
 events['alloc-unison'] = POLY_EVENTS;
+// a paraphonic group (#125): three oscillator parts and no envelope of their own, summed into one filter and VCA that run
+// once; each part reaches them at a third (engine.ts paraMix, engine.c para_w), the Part's gate at full
+const paraParts: number[] = [];
+kit('paraphonic', (add, wire) => {
+  add('fm1', 0, 0);
+  const pt = add('part', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const flt = add('filter', 0, 0, { cutoff: 1800, res: 0.3 });
+  const env = add('adsr', 0, 0, { a: 0.01, d: 0.2, s: 0.6, r: 0.1 });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.7 });
+  wire(pt, 'pitch', osc, 'pitch');
+  wire(pt, 'gate', env, 'gate');
+  wire(osc, 'out', flt, 'in');
+  wire(flt, 'lp12', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+  paraParts.push(pt, osc);
+});
+polyAsm(tests['paraphonic'], paraParts, { parts: 3 });
+events['paraphonic'] = POLY_EVENTS;
 // key ranges and channels (allocator channel / low / high): A takes the keys below C4 on any channel (two parts), B the
 // keys from C4 up on channel 2 only (two parts), C channel 3 only (one part). Notes on channel 1 above C4 and on channel 4
 // above C4 sound nowhere; an off on the wrong channel does not end B's note.

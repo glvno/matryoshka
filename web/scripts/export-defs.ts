@@ -70,6 +70,7 @@ w('    uint8_t fixed_inputs;    /* inputs with independently switchable paramete
 w('    int8_t cvbase;          /* index of the p1 input (p2 follows), -1: the module has no parameter inputs */');
 w('    int8_t thru;            /* the input a bypassed module passes to all of its outputs, -1: they are silent */');
 w('    uint8_t ndata;          /* bytes the record carries after the parameters and pins (a Steps module: name + pattern) */');
+w('    uint16_t aout;          /* the audio outputs (bit i: output i), which a paraphonic group\'s mix weighs (engine.c para_w) */');
 w('    const int32_t *pmin, *pmax, *pdef, *pinc;   /* Q16.16; pinc: what one knob click adds */');
 w('    const char *name;       /* upper case, for the LCD */');
 w('    const char *const *pname;');
@@ -102,7 +103,7 @@ for (const t of TYPE_ORDER) {
   const d = DEFS[t];
   const has = d.params.length > 0;
   const n = up(t);
-  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}},   /* ${t} */`);
+  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${d.outputs.reduce((mask, o, i) => mask | (o.kind === 'audio' ? 1 << i : 0), 0)}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}},   /* ${t} */`);
 }
 w('};');
 w();

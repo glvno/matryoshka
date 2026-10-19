@@ -415,6 +415,7 @@ typedef struct {
     node_t node[ENG_MAX_MODULES];
     sum_t sum[MAX_SUM];
     const esig_t *sum_src[MAX_SRC];
+    uint16_t sum_w[MAX_SRC];                 /* 0: the source adds as it is, else its Q16 weight (para_w) */
     grp_t grp[1 + ENG_MAX_GROUPS];
     pv_t pv[ENG_NPV];
     uint32_t stamp;
@@ -575,6 +576,23 @@ static esig_t *buf_of(uint32_t m, uint32_t p, uint32_t v)
 {
     const node_t *nd = &E.node[m];
     return inst_pool[nd->inst0 + (nd->ninst > 1 ? v : 0)].out[p];
+}
+
+/* A paraphonic group's mix (engine.ts paraMix, #125): output p of module m, a poly group's, summed into a module outside
+ * the group weighs each part by 1 / parts (Q16) when it is audio and the group does not gate its parts (no cable from its
+ * Part's gate or legato output to a module inside the group): such parts sound played or not. 0: added as it is. */
+static uint16_t para_w(uint32_t m, uint32_t p)
+{
+    const node_t *f = &E.node[m];
+    uint32_t c;
+    if (f->ninst < 2 || !(DEFS[f->type].aout & (1u << p)))
+        return 0;
+    for (c = 0; c < E.ncab; c++) {
+        const node_t *a = &E.node[E.from_m[c]];
+        if (a->type == T_PART && a->grp == f->grp && E.node[E.to_m[c]].grp == f->grp && (E.from_p[c] == PART_O_GATE || E.from_p[c] == PART_O_LEGATO))
+            return 0;
+    }
+    return (uint16_t)((65536u + f->ninst / 2u) / f->ninst);
 }
 
 static inline int32_t rd32(const uint8_t *p)
@@ -983,11 +1001,13 @@ int eng_load(const uint8_t *p, uint32_t len)
                         for (v = 0; v < E.node[E.from_m[c]].ninst; v++, n++) {
                             if (E.nsrc >= MAX_SRC)
                                 return -6;
+                            E.sum_w[E.nsrc] = para_w(E.from_m[c], E.from_p[c]);
                             one = E.sum_src[E.nsrc++] = buf_of(E.from_m[c], E.from_p[c], v);
                         }
                     } else {
                         if (E.nsrc >= MAX_SRC)
                             return -6;
+                        E.sum_w[E.nsrc] = 0;
                         one = E.sum_src[E.nsrc++] = buf_of(E.from_m[c], E.from_p[c], k);
                         n++;
                     }
@@ -4017,13 +4037,23 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     }
                     {
                         const esig_t *a = E.sum_src[sm->first];   /* the first source copied, the rest added: one pass less */
-                        for (i = 0; i < n; i++)
-                            dst[i] = a[i];
+                        const int32_t w = E.sum_w[sm->first];
+                        if (w)
+                            for (i = 0; i < n; i++)
+                                dst[i] = mul16(a[i], w);
+                        else
+                            for (i = 0; i < n; i++)
+                                dst[i] = a[i];
                     }
                     for (q = 1; q < sm->n; q++) {
                         const esig_t *src = E.sum_src[sm->first + q];
-                        for (i = 0; i < n; i++)
-                            dst[i] += src[i];
+                        const int32_t w = E.sum_w[sm->first + q];
+                        if (w)
+                            for (i = 0; i < n; i++)
+                                dst[i] += mul16(src[i], w);
+                        else
+                            for (i = 0; i < n; i++)
+                                dst[i] += src[i];
                     }
                 }
                 ENG_PROF(1, E.order[k], v);
