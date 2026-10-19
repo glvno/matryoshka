@@ -502,6 +502,10 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   label, else its kind, "-" for Nothing. SELECT / ALGO on it go back to the device pages first. GLO's LED is lit while
   the page shows. Editor: the dock's GLO (`Editor.setGlo`) puts the same page on the dock knobs (`gloDevice`, not one of
   the devices; picking a device leaves it); with Live its press reaches the FM-1 as CC 85.
+- **Arpeggiator on the dock (#119, design G):** the Arpeggiator stays a module; the dock's `dock-arp` column (after the
+  knobs) shows the first one's rows (`Editor.arpColumn`, the module's own `paramRow`s: its edits, undo, Live; a picker
+  "Arp n of m" with two). Without one it reads "+ Add arpeggiator": `dock-arp.ts` `insertArpeggiator` puts it between
+  Main's keys and every input they fed (`spotNear` places the card) and makes ARP its switching Toggle.
 - Navigation (#114): one rule. A button that changes the screen (SEQ, REC, HOME held = the menu; page buttons #117 and
   GLO #118 next) leaves a step on the trail (`panel.c` `page_set`: page + the device page in focus, `TRAIL_MAX` 8, the
   oldest dropped); a HOME tap goes back one (`screen_back`, restoring the device page if it moved; the same button again

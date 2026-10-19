@@ -673,3 +673,8 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Details in docs/ARCHITECTURE.md "GLO". The footer shows a button's kind when it has no label (the issue said "label, or —"; a Gate without a label would read as unassigned otherwise). `fixPanel` drops GLO from the PRESS list; the encoder never lets GLO switch.
 - The device-page toasts expiring and the live ticks now also redraw GLO's page (`panel_status`).
 - Smoke: GLO opens GLOBAL, GLO again is back on the device page.
+
+## Arpeggiator on Main's dock (#119, 2026-10-19; vitest 691 incl. dock-arp.test.ts, editor seen on [::1]:5173: add, the dock row and the card row move together, undo; editor only)
+
+- Details in docs/ARCHITECTURE.md "Arpeggiator on the dock". `poly.ts spotNear` is exported for it. The dock is taller with the column's five rows (the canvas is a little shorter).
+- ARP as the arpeggiator's Toggle means: lit = the arpeggiator bypassed (keys pass straight through), as every Toggle (engaged = target bypassed).

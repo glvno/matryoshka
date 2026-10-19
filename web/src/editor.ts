@@ -9,6 +9,7 @@ import { DEFS, PANEL_BUTTONS } from './modules';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
+import { arpsOf, insertArpeggiator } from './dock-arp';
 import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
@@ -822,12 +823,45 @@ export class Editor {
     el.append(title,
       col('dock-outputs', strip, ...(this.dockOctave ? [this.dockOctave] : [])),
       col('dock-knobs', null, this.focusCol),
+      col('dock-arp', null, ...this.arpColumn()),
       this.buttonCol = col('dock-buttons', buttonJacks, buttons),
       col('dock-morph', null, morph, this.morphRow()),
       col('dock-clock', jacks(CLOCK), param('tempo')),
       ...(this.dockBudget ? [col('dock-budget', null, this.dockBudget)] : []));
     this.buttonCol.prepend(traces);
     return el;
+  }
+
+  /** which of the patch's Arpeggiators the dock shows (#119; a picker when it has two) */
+  private dockArp = 0;
+
+  /** the dock's Arpeggiator column (design G): the module's own rows (its edits, undo, Live), or "+ Add arpeggiator" */
+  private arpColumn(): HTMLElement[] {
+    const arps = arpsOf(this.patch);
+    const head = document.createElement('div');
+    head.className = 'arp-head';
+    const title = document.createElement('span');
+    title.textContent = 'Arpeggiator';
+    head.append(title);
+    if (!arps.length) {
+      const add = this.button('+ Add arpeggiator', 'Put an Arpeggiator between Main’s keys and the voices; ARP switches it in and out', () => {
+        this.change(() => { insertArpeggiator(this.patch); });
+      }, 'arp-add');
+      return [head, add];
+    }
+    this.dockArp = Math.min(this.dockArp, arps.length - 1);
+    if (arps.length > 1) {
+      const pick = document.createElement('select');
+      pick.className = 'arp-pick';
+      pick.setAttribute('aria-label', 'Which arpeggiator the dock shows');
+      arps.forEach((_, i) => pick.append(new Option(`Arp ${i + 1} of ${arps.length}`, String(i))));
+      pick.value = String(this.dockArp);
+      pick.onchange = () => { this.dockArp = Number(pick.value); this.rebuild(); };
+      head.append(pick);
+    }
+    const arp = arps[this.dockArp];
+    const def = DEFS.arp;
+    return [head, ...def.params.map((pd) => this.paramRow(arp, def, pd))];
   }
 
   /** one of the FM-1's own buttons (HOME, SAVE, SEQ, REC): shown in its place, greyed, not part of the patch */

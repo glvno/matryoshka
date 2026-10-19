@@ -575,7 +575,13 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .dock-body > .param { width: 150px; margin: 0; font-size: 12px; }
 .dock-drift .dock-body > .param { width: 120px; }
 .dock-body > .param select { grid-column: 1 / -1; width: 100%; font-size: 12px; padding: 2px 4px; }
-.dock-arp { align-items: center; }
+.dock-arp { align-items: stretch; min-width: 170px; }
+/* the dock's Arpeggiator column (#119, design G): the first one's rows, a picker with two, or the add button */
+.dock-arp .arp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font: var(--cap); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.dock-arp .arp-pick { font-size: 11px; padding: 1px 4px; max-width: 96px; }
+.dock-arp .dock-body > .param { width: 170px; }
+.dock-arp .arp-add { align-self: center; font: var(--cap); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 6px; background: transparent; color: var(--ink); }
+.dock-arp .arp-add:hover { border-color: var(--secondary); color: var(--secondary); }
 .dock details.arp { margin: 0; border: 0; padding: 0; }
 .dock details.arp summary { font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); white-space: nowrap; }
 .dock details.arp[open] summary { border-color: var(--secondary); color: var(--secondary); }
