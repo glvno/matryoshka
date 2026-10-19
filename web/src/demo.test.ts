@@ -61,5 +61,5 @@ describe('the demo patch', () => {
       const t = new Float32Array(sr * 4); // the release and the chorus die away
       e.render(t, new Float32Array(t.length));
     }
-  });
+  }, 60_000); // (renders ~33 s of the whole demo: several seconds on a CI runner)
 });
