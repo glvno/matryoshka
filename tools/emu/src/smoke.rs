@@ -366,9 +366,9 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     let cell = |m: &Machine| m.lcd()[70 * 240 + 28]; // step 2's cell (x 22..33, y 52..85)
     let before = cell(&m);
     m.tap(14 + 2, 120, 300)?;                // G3: the second white key = step 2
-    let after = cell(&m);
+    let after = cell(&m);                    // lit = C_FG (ui.c), ivory
     t.snap(&m, "seq-step-on");
-    t.check("seq: a white key switches its step on (the cell lights)", before != after && after == 0xffff, format!("{before:#06x} -> {after:#06x}"));
+    t.check("seq: a white key switches its step on (the cell lights)", before != after && after == 0xffbd, format!("{before:#06x} -> {after:#06x}"));
     m.tap(14 + 3, 120, 300)?;                // G#3: the second black key = track 2
     t.screen(&m, "seq: a black key picks track 2", "SNARE 2/6");
     let mk = m.mark();
