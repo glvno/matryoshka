@@ -107,13 +107,14 @@ const SVGNS = 'http://www.w3.org/2000/svg';
 const PAGE_HOLD_MS = 400;
 
 /** a dock button's kind mark (board E): Toggle a power sign, Gate a pulse */
-function kindMark(kind: ButtonKind): SVGSVGElement {
+function kindMark(kind: ButtonKind | 'main'): SVGSVGElement {
   const svg = document.createElementNS(SVGNS, 'svg') as SVGSVGElement;
   svg.setAttribute('class', `pb-mark ${kind}`);
   svg.setAttribute('viewBox', '0 0 12 12');
   svg.setAttribute('aria-hidden', 'true');
   const path = (d: string): void => { const e = document.createElementNS(SVGNS, 'path'); e.setAttribute('d', d); svg.append(e); };
-  if (kind === 'bypass') { path('M6 1.5v4'); path('M3.3 3.6a4 4 0 1 0 5.4 0'); }
+  if (kind === 'main') { path('M6 1.5a4.5 4.5 0 1 1 0 9a4.5 4.5 0 1 1 0-9z'); path('M6 4.5a1.5 1.5 0 1 1 0 3a1.5 1.5 0 1 1 0-3z'); }
+  else if (kind === 'bypass') { path('M6 1.5v4'); path('M3.3 3.6a4 4 0 1 0 5.4 0'); }
   else if (kind === 'page') { path('M3 1.5h6a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-6a1.5 1.5 0 0 1-1.5-1.5v-6a1.5 1.5 0 0 1 1.5-1.5z'); path('M4 4.5h4M4 7.5h4'); }
   else path('M1 9h3V3h4v6h3');
   return svg;
@@ -2224,14 +2225,16 @@ export class Editor {
     btn.className = 'panel-btn';
     btn.dataset.button = b;
     const panel = m.panel;
+    const glo = b === 'glo';
     const kind = kindOf(panel, b);
     const name = b.toUpperCase();
     const top = document.createElement('span');
     top.className = 'pb-face';
-    if (kind !== 'nothing') top.append(kindMark(kind));
+    if (glo) top.append(kindMark('main'));
+    else if (kind !== 'nothing') top.append(kindMark(kind));
     const label = document.createElement('span');
     label.className = 'pb-label';
-    label.textContent = kind === 'nothing' ? name : panel?.labels?.[b] || name;
+    label.textContent = glo ? 'GLOBAL' : kind === 'nothing' ? name : panel?.labels?.[b] || name;
     top.append(label);
     const under = document.createElement('span');
     under.className = 'pb-hw';
@@ -2242,18 +2245,19 @@ export class Editor {
     btn.append(top, under, led);
     btn.classList.toggle('unassigned', kind === 'nothing');
     btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
-    const engaged = kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
+    const engaged = glo ? this.gloOn : kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
     btn.setAttribute('aria-pressed', String(engaged));
-    const does = kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
-    btn.title = `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
+    const does = glo ? 'Main’s global page on the knobs (tempo, morph, the arpeggiator); again: back' : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
+    btn.title = glo ? `GLO: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
     btn.addEventListener('pointerdown', (e) => {
       if (e.button === 0) this.pressButton(i, true);
     });
     for (const ev of ['pointerup', 'pointerleave'] as const) btn.addEventListener(ev, () => { if (!switches(m.panel, b) && btn.getAttribute('aria-pressed') === 'true') this.pressButton(i, false); });
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      this.openButtonEditor(b);
+      if (!glo) this.openButtonEditor(b);
     });
+    if (glo) return btn;                    // GLO is fixed (#118): no editor
     const more = document.createElement('span');
     more.className = 'pb-more';
     more.textContent = '⋯';
@@ -2313,6 +2317,12 @@ export class Editor {
     if (!m || b === undefined) return;
     const btn = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${b}"]`);
     const kind = kindOf(m.panel, b);
+    if (b === 'glo') {                      // GLO (#118): Main's global page on the dock knobs; again: back
+      if (down) this.setGlo(!this.gloOn);
+      this.ev.onButton?.(i, down);          // (its jack: high while held)
+      btn?.setAttribute('aria-pressed', String(this.gloOn));
+      return;
+    }
     if (kind === 'page') return this.pagePress(i, b, down, btn);
     const t = kind === 'bypass' ? m.panel?.targets?.[b] : undefined;
     const a = t && 'asm' in t ? assembliesOf(this.patch).find((x) => x.id === t.asm) : undefined;
@@ -3345,8 +3355,30 @@ export class Editor {
   // ---- Main's knobs: K1..K4 edit the rows of the device page in focus (pages.ts)
 
   /** the device and page in focus */
-  private focusedDevice(): Device | undefined { return this.devices.find((d) => d.key === this.focus?.device); }
-  private focusedPage(): Page | undefined { return this.focusedDevice()?.pages[this.focus!.page]; }
+  private focusedDevice(): Device | undefined { return this.gloOn ? this.gloDevice() : this.devices.find((d) => d.key === this.focus?.device); }
+  private focusedPage(): Page | undefined { return this.gloOn ? this.gloDevice().pages[0] : this.focusedDevice()?.pages[this.focus!.page]; }
+
+  // ---- GLO (#118): Main's global page on the knobs, as on the FM-1 (pages_ui.c glo_page): K1 tempo, K2 morph, K3 / K4 the
+  // first Arpeggiator's rate and gate. Not one of the devices: the pickers leave it, the focus stays where it was.
+  private gloOn = false;
+  private gloDevice(): Device {
+    const main = this.patch.modules.find((m) => m.type === 'fm1');
+    const arp = this.patch.modules.find((m) => m.type === 'arp');
+    const rows: PageRow[] = main ? [{ module: main.id, param: 'tempo', label: 'Tempo' }, { module: main.id, param: 'morph', label: 'Morph' }] : [];
+    if (main && arp) rows.push({ module: arp.id, param: 'rate', label: 'Arp rate' }, { module: arp.id, param: 'gate', label: 'Arp gate' });
+    return { key: '$glo', name: 'Global', pages: [{ name: 'Global', part: 0, parts: 1, rows }] };
+  }
+
+  /** GLO's page on (or off: back to the focus it left) */
+  private setGlo(on: boolean): void {
+    if (on === this.gloOn) return;
+    this.gloOn = on;
+    if (on && this.pageOn) this.pageOn = null;
+    this.fillFocus();
+    this.markFocus();
+    this.syncPageButtons();
+    this.dock?.querySelector<HTMLElement>('.panel-btn[data-button="glo"]')?.setAttribute('aria-pressed', String(on));
+  }
 
   /** the dock's knob column: the four dials, the DEVICE and PAGE pickers (the FM-1's SELECT and ALGO) under them */
   private fillFocus(): void {
@@ -3472,6 +3504,11 @@ export class Editor {
   /** put a device page on Main's knobs; `notify` tells the host (the FM-1 follows with Live on) */
   setFocus(f: { device: string; page: number } | null, notify = true): void {
     const next = fixFocus(this.devices, f);
+    if (this.gloOn && !this.listMoving) {   // a device page chosen on GLO's page: GLO is left
+      this.setGlo(false);
+      const i = PANEL_BUTTONS.indexOf('glo');
+      if (i >= 0) this.ev.onButton?.(i, false);
+    }
     if (next?.device === this.focus?.device && next?.page === this.focus?.page) return;
     if (!this.listMoving && this.pageOn) {   // the focus moved some other way: the Page button's list is left
       const i = PANEL_BUTTONS.indexOf(this.pageOn.b);

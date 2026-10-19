@@ -321,6 +321,31 @@ int main(void)
         trail_n = 0;
     }
 
+    {                                                       /* GLO (#118): Main's global page */
+        int main = eng_find(T_FM1);
+        int32_t bpm = eng_get_param((uint32_t)main, FM1_P_TEMPO);
+        uint32_t d = pg_cur_dev, g = pg_cur_page;
+        tap(7);
+        check("GLO: the global page, a step on the trail, GLO's jack was high while held", page == PAGE_GLO && trail_n == 1);
+        check("its bar: GLOBAL on coral", px(2, 2) == P_CORAL);
+        enc(2, 4);
+        check("K1 on GLO: the tempo", eng_get_param((uint32_t)main, FM1_P_TEMPO) != bpm);
+        later(1500);
+        check("the rows: tempo and morph, no arpeggiator in the 808 Kit", pages_now()->nrows == 2u);
+        if (getenv("PANEL_SNAP_GLO")) {
+            const char *keep = getenv("PANEL_SNAP");
+            setenv("PANEL_SNAP", getenv("PANEL_SNAP_GLO"), 1);
+            snap();
+            if (keep) setenv("PANEL_SNAP", keep, 1);
+        }
+        tap(BTN_HOME);
+        check("HOME: back to the device page it came from", page == 0 && pg_cur_dev == d && pg_cur_page == g && trail_n == 0);
+        tap(7);
+        tap(7);
+        check("GLO again on its page: back", page == 0);
+        eng_set_param((uint32_t)main, FM1_P_TEMPO, bpm);
+    }
+
     panel_keys(1u << 7);                                    /* a key: a note, sent out */
     check("a key plays a note (MIDI out asked)", (key_sounding & (1u << 7)) && midi_out > 0);
     panel_keys(0);

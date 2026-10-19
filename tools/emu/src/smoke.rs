@@ -4,7 +4,7 @@
 //!
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
-//! 3. pages: GLO (a patch button: the page stays), PLAY (the transport shows PLAY / STOP), HOME (nothing to go back
+//! 3. pages: GLO (Main's global page, again: back), PLAY (the transport shows PLAY / STOP), HOME (nothing to go back
 //!    to: the page stays), HOME held (the menu), HOME again (back out of it)
 //! 4. PRESET encoder: forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
@@ -502,7 +502,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
 
     // ---- 3. pages
     for (key, what, text) in [
-        (GLO, "GLO: a patch button (the page stays)", DEVICE_PAGE),
+        (GLO, "GLO: Main's global page", "GLOBAL"),
+        (GLO, "GLO again: back to the device page", DEVICE_PAGE),
         (PLAY, "PLAY: the transport runs", "PLAY 120"),
         (PLAY, "PLAY again: it stops", "STOP 120"),
         (HOME, "HOME on the device page, nothing to go back to: the page stays", DEVICE_PAGE),

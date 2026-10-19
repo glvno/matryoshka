@@ -228,9 +228,42 @@ static void pages_ensure(void)
     }
 }
 
+/* GLO (#118): Main's global page. K1 the tempo, K2 the morph, K3 / K4 the first Arpeggiator's rate and gate (a patch
+ * without one: two rows) */
+static ppage_t pg_glo;
+static const ppage_t *glo_page(void)
+{
+    static const char *const LAB[4] = {"TEMPO", "MORPH", "ARP RATE", "ARP GATE"};
+    int main = eng_find(T_FM1), arp = eng_find(T_ARP);
+    uint32_t k;
+    pg_glo.name = "GLOBAL";
+    pg_glo.nlen = 6;
+    pg_glo.part = 0;
+    pg_glo.parts = 1;
+    pg_glo.display = 0;
+    pg_glo.nrows = 0;
+    if (main < 0)
+        return &pg_glo;
+    pg_glo.mod[0] = (uint8_t)main, pg_glo.par[0] = FM1_P_TEMPO;
+    pg_glo.mod[1] = (uint8_t)main, pg_glo.par[1] = FM1_P_MORPH;
+    pg_glo.nrows = 2;
+    if (arp >= 0) {
+        pg_glo.mod[2] = (uint8_t)arp, pg_glo.par[2] = ARP_P_RATE;
+        pg_glo.mod[3] = (uint8_t)arp, pg_glo.par[3] = ARP_P_GATE;
+        pg_glo.nrows = 4;
+    }
+    for (k = 0; k < PG_ROWS; k++) {
+        pg_glo.lab[k] = LAB[k];
+        pg_glo.llen[k] = (uint8_t)str_len(LAB[k]);
+    }
+    return &pg_glo;
+}
+
 static const ppage_t *pages_now(void)
 {
     pages_ensure();
+    if (page == PAGE_GLO)
+        return glo_page();
     return pg_ndev ? &pg_page[pg_dev[pg_cur_dev].pg0 + pg_cur_page] : 0;
 }
 
@@ -445,6 +478,22 @@ static void pages_strip(void)
     char t[20];
     uint32_t first = 0, x, i, w[PG_DEVS];
     lcd_fill(0, 0, 240, 20, P_STRIP);
+    if (page == PAGE_GLO) {                             /* GLO: GLOBAL and the patch, on coral */
+        char nm[32], num[8], *q = nm;
+        if (cur_preset < M1_SLOTS) {
+            fmt_int(num, (int32_t)cur_preset + 1);
+            if (cur_preset < 9u)
+                *q++ = '0';
+            q = put(q, num);
+            *q++ = ' ';
+        }
+        put(q, patch_label ? patch_label : "")[0] = 0;
+        nm[22] = 0;
+        lcd_fill(0, 0, 240, 20, P_CORAL);
+        text_bc(&FONT_S, 8, 3, "GLOBAL", P_NIGHT, P_CORAL, 80, TA_LEFT);
+        text_bc(&FONT_S, 88, 3, nm, P_NIGHT, P_CORAL, 144, TA_RIGHT);
+        return;
+    }
     if (pg_list_btn >= 0 && pg_ndev) {                  /* a Page button's list: "SCL 2/3 · AMP ENV" */
         char bar[48], num[8], *q = bar;
         const uint8_t *l;
@@ -782,25 +831,56 @@ static void pages_dev_toast(void)
     text_bc(&FONT_S, 0, TOAST_Y + 54u, t, P_DIM, P_NIGHT, 240, TA_CENTER);
 }
 
-/* the device page (page 0); full: everything, else what moves (the bars or a toast, the rail, the foot line) */
+/* GLO's footer: what each patch button does in this patch (its label; else its kind; "-" for Nothing) */
+static void glo_footer(void)
+{
+    static const char *const KIND[4] = {"GATE", "-", "TOGGLE", "PAGE"};
+    char t[16], line[40], *q;
+    uint32_t b, i = 0;
+    lcd_fill(0, ROWS_END + 2u, 240, 240u - ROWS_END - 2u, P_NIGHT);
+    lcd_fill(BAR_X, ROWS_END + 4u, BAR_W, 1, P_TRACK);
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++, i++) {
+        uint32_t x, y, kind = eng_button_kind(b);
+        if (b == 5u) {                                  /* (GLO is this page) */
+            i--;
+            continue;
+        }
+        x = BAR_X + (i % 3u) * 76u;
+        y = ROWS_END + 8u + (i / 3u) * 16u;
+        q = put(line, PANEL_BTN_NAME[b]);
+        *q = 0;
+        text_bc(&FONT_S, x, y, line, P_FAINT, P_NIGHT, 30, TA_LEFT);
+        if (!panel_label(b, t))
+            put(t, KIND[kind <= 3u ? kind : 1u])[0] = 0;
+        text_bc(&FONT_S, x + 28u, y, t, kind == ENG_BTN_NOTHING && !t[1] ? P_FAINT : P_INK, P_NIGHT, 46, TA_LEFT);
+    }
+}
+
+/* the device page (page 0) and GLO's (PAGE_GLO); full: everything, else what moves (the bars or a toast, the rail, the
+ * foot line) */
 static void pages_draw(int full)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
+    int glo = page == PAGE_GLO;
     if (full)
         lcd_fill(0, 20, 240, 220, P_NIGHT);
     if (full || pg_strip_dirty) {
         if (!msg_until)
             pages_strip();
-        if (pg)
+        if (pg && !glo)
             pages_chips();
         else
             lcd_fill(0, 20, 240, 18, P_NIGHT);
-        pages_rail();
+        if (glo)
+            glo_footer();
+        else
+            pages_rail();
         pg_strip_dirty = 0;
     }
-    pages_info();
-    if (pg && fm1_ms < pg_dev_toast_until)
+    if (!glo)
+        pages_info();
+    if (pg && !glo && fm1_ms < pg_dev_toast_until)
         pages_dev_toast();
     else if (pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows)
         pages_toast(pg, pg_toast_k);

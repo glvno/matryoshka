@@ -667,3 +667,9 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Details in docs/ARCHITECTURE.md "Page buttons". The editor's dock HOME stays inert: in the editor a list is left by moving the focus another way (pickers, a row click); the FM-1's HOME goes back along its trail.
 - The bar uses " - " between the list position and the page (the LCD font has no middle dot).
 - A page button does not raise the "SCL ON / OFF" toast (the bar names the list instead).
+
+## GLO = Main's global page (#118, 2026-10-19; vitest 689, panel host test incl. GLO + an LCD snapshot (`PANEL_SNAP_GLO=x.ppm`), golden 85 + proto, editor seen on [::1]:5173; JieLi CI build + emulator smoke after the push; not flashed)
+
+- Details in docs/ARCHITECTURE.md "GLO". The footer shows a button's kind when it has no label (the issue said "label, or —"; a Gate without a label would read as unassigned otherwise). `fixPanel` drops GLO from the PRESS list; the encoder never lets GLO switch.
+- The device-page toasts expiring and the live ticks now also redraw GLO's page (`panel_status`).
+- Smoke: GLO opens GLOBAL, GLO again is back on the device page.

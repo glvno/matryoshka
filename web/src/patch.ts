@@ -266,7 +266,7 @@ export function fixPanel(raw: unknown): MainPanel | undefined {
       if (Number.isInteger(t.module)) targets[k] = { module: t.module as number };
       else if (Number.isInteger(t.asm)) targets[k] = { asm: t.asm as number };
     }
-  const toggle = names(r.toggle).filter((b) => kinds[b] !== 'nothing' && kinds[b] !== 'page');   // only Gates and Toggles have PRESS
+  const toggle = names(r.toggle).filter((b) => b !== 'glo' && kinds[b] !== 'nothing' && kinds[b] !== 'page');   // only Gates and Toggles have PRESS (GLO is fixed)
   const on = names(r.on).filter((b) => toggle.includes(b));
   const labels: Record<string, string> = {};
   if (r.labels && typeof r.labels === 'object')

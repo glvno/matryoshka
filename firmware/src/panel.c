@@ -20,6 +20,7 @@ static void poly_row_set(uint32_t mod, uint32_t field, int32_t v);
 
 static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button (1..7) last moved: the bar shows it */
 #define BTN_PLAY 12u                  /* PLAY: the transport; held, PRESET sets the tempo */
+#define BTN_GLO_IDX 5u                /* GLO among the patch buttons (PANEL_BTN_ID): Main's global page, never switching */
 static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */
 
 static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
@@ -65,6 +66,7 @@ static void panel_master(uint32_t adc)
 static void panel_button_set(uint32_t b, int down);
 static void panel_button(uint32_t b, int down) { panel_button_set(b, down); }
 static void page_button(uint32_t b, int down);
+static void page_set(uint32_t p);
 static void page_mask(void);
 static void panel_button_set(uint32_t b, int down)
 {
@@ -73,8 +75,10 @@ static void panel_button_set(uint32_t b, int down)
         page_button(b, down);
         return;
     }
+    if (b == BTN_GLO_IDX && down)                  /* GLO (#118): Main's global page; again (or HOME) goes back. Its jack as a Gate */
+        page_set(PAGE_GLO);
     pn = m1_panel();
-    uint32_t tog = pn ? (uint32_t)pn[0] | (uint32_t)pn[1] << 8 : 0u, mask = eng_buttons_get(), was = mask;
+    uint32_t tog = pn ? ((uint32_t)pn[0] | (uint32_t)pn[1] << 8) & ~(1u << BTN_GLO_IDX) : 0u, mask = eng_buttons_get(), was = mask;
     if (tog >> b & 1u) {
         if (down)
             mask ^= 1u << b;
@@ -128,6 +132,7 @@ static void trail_push(void)
 static void page_show(uint32_t p)
 {
     page = (uint8_t)p;
+    pg_strip_dirty = 1;
     if (page == PAGE_MENU)
         menu_open();
     if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends live recording) */
@@ -136,6 +141,7 @@ static void page_show(uint32_t p)
     }
     header_draw();
     leds_play();
+    leds_panel();                                   /* (GLO is lit while its page shows) */
     lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
     view_draw(1);
 }
@@ -317,7 +323,9 @@ static void panel_encoders(int32_t *st)
             st[2] = st[3] = 0;
         }
     }
-    if (page != 0)
+    if (page == PAGE_GLO && (st[0] || st[1]))       /* SELECT / ALGO on GLO's page: back to the device pages, then as there */
+        screen_back();
+    if (page != 0 && page != PAGE_GLO)
         return;
     if (st[0] && pg_list_btn >= 0 && !pg_list_peek) {   /* SELECT inside a page list: leaves it */
         pg_list_btn = -1;
@@ -333,7 +341,7 @@ static void panel_encoders(int32_t *st)
         }
         st[1] = 0;
     }
-    if (pages_select(st[0]) | pages_page(st[1])) {  /* SELECT: the device, ALGO: its page (the editor follows) */
+    if (page == 0 && (pages_select(st[0]) | pages_page(st[1]))) {   /* SELECT: the device, ALGO: its page (the editor follows) */
         m1_focus_now(pg_cur_dev, pg_cur_page);
         ui_dirty = 2;
     }
@@ -523,11 +531,11 @@ static void panel_status(void)
         if (shed_seen)
             ui_msg("OVERLOAD: A PART LESS", 1500);
     }
-    if (page == 0 && pages_expired())             /* a toast ended: the picture comes back */
+    if ((page == 0 || page == PAGE_GLO) && pages_expired())   /* a toast ended: the picture comes back */
         ui_dirty = ui_dirty ? ui_dirty : 1;
     {                                               /* the live ticks of modulated rows, ten times a second */
         static uint32_t tick_ms;
-        if (page == 0 && !ui_dirty && fm1_ms - tick_ms >= 100u) {
+        if ((page == 0 || page == PAGE_GLO) && !ui_dirty && fm1_ms - tick_ms >= 100u) {
             tick_ms = fm1_ms;
             pages_ticks();
         }

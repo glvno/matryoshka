@@ -494,6 +494,14 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   `page_hold_poll`, `page_mask`, `list_focus`, `trail_push`. Editor: the same rules on the dock knobs
   (`Editor.pagePress`, the list is left when the focus moves any other way); the popover's PAGES list (a picker,
   Alt-click a card row while it is open, drag or Alt+Up / Down to reorder, ×). Page buttons have no PRESS.
+- **GLO (#118, design I):** GLO is fixed (no button editor, never switching, always glowing dim; its jack still high
+  while held). A press opens Main's global page (`PAGE_GLO` 6, a trail step; GLO again or HOME goes back): K1 the tempo,
+  K2 the morph, K3 / K4 the first Arpeggiator's rate and gate (`pages_ui.c` `glo_page`, a synthetic page the device
+  page's bars, toasts and knob code use; without an Arpeggiator two rows and "-"). Its bar is coral "GLOBAL" + the
+  patch; the footer (`glo_footer`, in place of the rail and info line) lists what each other patch button does: its
+  label, else its kind, "-" for Nothing. SELECT / ALGO on it go back to the device pages first. GLO's LED is lit while
+  the page shows. Editor: the dock's GLO (`Editor.setGlo`) puts the same page on the dock knobs (`gloDevice`, not one of
+  the devices; picking a device leaves it); with Live its press reaches the FM-1 as CC 85.
 - Navigation (#114): one rule. A button that changes the screen (SEQ, REC, HOME held = the menu; page buttons #117 and
   GLO #118 next) leaves a step on the trail (`panel.c` `page_set`: page + the device page in focus, `TRAIL_MAX` 8, the
   oldest dropped); a HOME tap goes back one (`screen_back`, restoring the device page if it moved; the same button again

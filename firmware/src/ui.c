@@ -16,7 +16,8 @@ static uint32_t cur_preset, sel;
 static int load_err;
 static const char *patch_label;
 #define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
-static uint8_t page;                            /* 0: the device page, 5 menu, 8 the SEQ page (seq_ui.c); (7, the legend, is gone: #114) */
+#define PAGE_GLO 6u                             /* GLO: Main's global page (#118, pages_ui.c pg_glo) */
+static uint8_t page;                            /* 0: the device page, 5 menu, 6 GLO, 8 the SEQ page (seq_ui.c); (7, the legend, is gone: #114) */
 static void seq_bar(void);
 static void seq_draw(int full);
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
@@ -211,7 +212,7 @@ static void header_draw(void)
         *p = 0;
         b[24] = 0;                              /* (the CPU load is in MENU > SYSTEM) */
         msg_until = 0;
-        if (page == 0)                          /* the device page: the devices strip (the patch is on the info line) */
+        if (page == 0 || page == PAGE_GLO)      /* the device page: the devices strip (the patch is on the info line); GLO's bar */
             pages_strip();
         else
             bar_text(b, C_ACC);

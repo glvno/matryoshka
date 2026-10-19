@@ -29,7 +29,7 @@ export function kindOf(panel: MainPanel | undefined, b: string): ButtonKind {
  * press and hold have their own rules) */
 export function switches(panel: MainPanel | undefined, b: string): boolean {
   const k = kindOf(panel, b);
-  return (k === 'gate' || k === 'bypass') && !!panel?.toggle?.includes(b);
+  return b !== 'glo' && (k === 'gate' || k === 'bypass') && !!panel?.toggle?.includes(b);   // (GLO is fixed, #118)
 }
 
 /** a Page button's list, by the editor's device keys; pages that are gone are left out */
