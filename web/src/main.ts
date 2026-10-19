@@ -234,6 +234,12 @@ const stampOctave = (p: Patch): boolean => {
   return true;
 };
 // the FM-1 tab's emulator (see "the FM-1 tab" below): made before the editor, whose first events reach it
+/** the note each pill key started (the octave may change while it is held) */
+const pillNote = new Map<number, number>();
+/** the MASTER knob's level, kept per browser; it sets the output only while the FM-1 tab shows */
+const MASTER_KEY = 'matryoshka.fm1-master';
+const emuMaster = ((): number => { try { const v = Number(localStorage.getItem(MASTER_KEY)); return localStorage.getItem(MASTER_KEY) !== null && v >= 0 && v <= 1 ? v : 1; } catch { return 1; } })();
+let emuLevel = emuMaster;
 const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`, {
   focus: (d, g) => fm1Event({ kind: 'focus', device: d, page: g }, 'emu'),
   param: (m, p, v) => fm1Event({ kind: 'param', module: m, param: p, value: v / 65536 }, 'emu'),
@@ -246,7 +252,21 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   step: (m, k, b) => fm1Event({ kind: 'step', module: m, step: k, b }, 'emu'),
   stepval: (m, k, note, vel) => fm1Event({ kind: 'stepval', module: m, step: k, note, vel }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
-});
+  key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
+    if (down) {
+      const note = 53 + k + 12 * emu.octave;
+      if (note < 0 || note > 127) return;
+      pillNote.set(k, note);
+      sink.send({ t: 'on', note, vel: 0.8 });
+    } else {
+      const note = pillNote.get(k);
+      pillNote.delete(k);
+      if (note !== undefined) sink.send({ t: 'off', note });
+    }
+  },
+  master: (v) => { emuLevel = v; host.setMaster(v); try { localStorage.setItem(MASTER_KEY, String(v)); } catch { /* private mode */ } },
+  used: () => { if (!host.running) void startAudio(); },
+}, emuMaster);
 emu.onReady = () => emuLoad();
 /** another patch opened (the emulator's focus starts at its first device) */
 let emuFresh = true;
@@ -1100,6 +1120,9 @@ function setView(v: 'patch' | 'fm1'): void {
   for (const b of viewBtns) b.setAttribute('aria-selected', String(b.dataset.view === v));
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
+  // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go
+  document.querySelector('.workspace')!.classList.toggle('fm1-mode', v === 'fm1');
+  host.setMaster(v === 'fm1' ? emuLevel : 1);
   if (v === 'fm1') void emu.show();
   else emu.hide();
 }

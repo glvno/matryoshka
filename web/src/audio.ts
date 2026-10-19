@@ -10,10 +10,19 @@ export class AudioHost {
   private node: AudioWorkletNode | null = null;
   private gain: GainNode | null = null;
   muted = false;
+  /** the output level, 0..1 (the FM-1 tab's MASTER knob; square law as the device's pot) */
+  master = 1;
   mute(on: boolean): void {
     this.muted = on;
     this.onState();
-    if (this.gain && this.ctx) this.gain.gain.setTargetAtTime(on ? 0 : 1, this.ctx.currentTime, 0.01);
+    this.applyGain();
+  }
+  setMaster(v: number): void {
+    this.master = Math.min(1, Math.max(0, v));
+    this.applyGain();
+  }
+  private applyGain(): void {
+    if (this.gain && this.ctx) this.gain.gain.setTargetAtTime(this.muted ? 0 : this.master * this.master, this.ctx.currentTime, 0.01);
   }
   private ready: Promise<void> | null = null;
   private early: HostMsg[] = [];
@@ -76,7 +85,7 @@ export class AudioHost {
         }
       };
       this.gain = ctx.createGain();
-      this.gain.gain.value = this.muted ? 0 : 1;
+      this.gain.gain.value = this.muted ? 0 : this.master * this.master;
       node.connect(this.gain);
       this.gain.connect(ctx.destination);
       this.node = node;

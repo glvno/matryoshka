@@ -449,14 +449,20 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   `web/src/fm1-ui.ts` (`Fm1Ui`, `ENCODERS`, `BUTTONS`); `fm1-ui.test.ts` checks a device page pixel for pixel against
   ui_preview and drives the panel (it rebuilds the wasm when a source is newer).
 - The editor's FM-1 tab (#110): a Patch | FM-1 switch over the canvas (`#view-switch`, Patch by default, not
-  remembered). `web/src/fm1-view.ts` `Fm1View` draws a flat panel around the wasm's LCD (2x, pixelated): SELECT, ALGO,
-  PRESET, K1..K4 (drag 8 px a click, wheel, arrows), the 14 buttons with LEDs (press / hold; Shift-click latches one
-  down for chords). main.ts: the emulator's focus / param / step / stepval / mute go through `fm1Event` (the same path
+  remembered). `web/src/fm1-view.ts` `Fm1View` draws the FM-1's front panel laid out as the device (the geometry of
+  fm1-emu's fm1-live, after Felucca's controls diagram, in 1280 x 820 panel units scaled with `cqw`): MASTER / SELECT /
+  PRESETS / ALGORITHM and OCT- / OCT+ top left, the LCD (2x, pixelated) in the middle, KNOB1..4 and the two rows of six
+  buttons on the right, the 27 pill keys across the bottom; device colours, not the theme's. While it shows, the Main
+  dock, the wheels and the deck (keyboard, Audio on) are hidden (`.workspace.fm1-mode`); the first press on the panel
+  starts the audio, MASTER sets the output level (`AudioHost.setMaster`, square law, only while the tab shows, kept in
+  localStorage `matryoshka.fm1-master`). Encoders: drag 8 px a click, wheel, arrows; buttons: press / hold, Shift-click
+  latches one down. main.ts: the emulator's focus / param / step / stepval / mute go through `fm1Event` (the same path
   as a Live FM-1, flag `fromEmu`: not echoed to the emulator, but passed on to a Live FM-1); editor parameter edits go
   to it at once (`emuParam`), any other edit reloads the patch into it (`queueEmu`, 120 ms; it keeps the focus), the
   editor's focus and transport go to it, its PLAY sets the editor's. PRESET steps the Open list (Your patches,
-  Examples), SAVE = Save patch. The keyboard's held notes are its 27 keys at its octave (`emuKeys`); on its SEQ page
-  they enter steps and are not sounded. The browser engine plays; there is no emulated flash bank.
+  Examples), SAVE = Save patch. The pill keys and the computer keyboard play through the note sink at the emulated
+  octave; the held notes are the emulator's keys (`emuKeys`), on its SEQ page they enter steps and are not sounded.
+  The browser engine plays; there is no emulated flash bank; the SEQ page's key LEDs are not shown.
 - LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as
   4-bit anti-aliased bitmaps at four sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
   `firmware/src/font_bc.h`, ~36 KB of flash; `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,
