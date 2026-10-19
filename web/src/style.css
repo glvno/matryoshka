@@ -13,8 +13,9 @@
   --muted: var(--ref-stone); --line: var(--ref-sand);
   --accent: var(--ref-rust); --accent-ink: var(--ref-white);
   --secondary: var(--ref-deep-teal); --audio: var(--accent); --control: var(--secondary); --gate: var(--ref-ochre);
-  /* The FM-1 knobs K1..K4 in Sloop's hues (blue, green, yellow, orange), darkened for paper. */
-  --k1: #2d5fb5; --k2: #1f8a55; --k3: #9a7a12; --k4: #c4541c; --k5: #7a4bb0; --k6: #2b8590;
+  /* The FM-1 knobs K1..K4 in the logo's colours (coral, gold, teal, sand; K5 / K6 the lilac and blue of the tags),
+     darkened for paper. A knob mark always carries its number too, so the colour is never the only cue. */
+  --k1: var(--ref-rust); --k2: var(--ref-ochre); --k3: var(--ref-deep-teal); --k4: #7d7058; --k5: var(--ref-lilac); --k6: var(--ref-blue);
   /* a poly assembly's voices V1..V8 (voice-colors.ts: scope traces, voices panel): the knob hues, then rose and blue */
   --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose); --voice8: var(--ref-blue);
   --danger: var(--ref-red); --warning: var(--gate);
@@ -40,7 +41,7 @@
     --accent: var(--ref-coral); --accent-ink: var(--ref-night);
     --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
     --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
-    --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
+    --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand); --k5: var(--ref-lilac-light); --k6: var(--ref-blue-light);
     --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
     --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
     --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
@@ -56,7 +57,7 @@
   --accent: var(--ref-coral); --accent-ink: var(--ref-night);
   --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
   --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
-  --k1: #5b96ee; --k2: #4cc78c; --k3: #d6b63c; --k4: #f08a3a; --k5: #b48be8; --k6: #5cc2cc;
+  --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand); --k5: var(--ref-lilac-light); --k6: var(--ref-blue-light);
   --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
   --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
   --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
@@ -201,11 +202,19 @@ main { min-width: 0; min-height: 0; overflow: auto; }
 .cable.audio { stroke: var(--audio); } .cable.control { stroke: var(--control); } .cable.gate { stroke: var(--gate); }
 /* keys: Main's held keys to a Voice allocator, a ribbon cable rather than a signal */
 .cable.keys { stroke: var(--ink); stroke-dasharray: 1 5; stroke-linecap: round; }
-/* The FM-1 knobs: their jacks, slider rows and cables carry the knob's colour. */
-.cable.knob-k1 { stroke: var(--k1); } .cable.knob-k2 { stroke: var(--k2); } .cable.knob-k3 { stroke: var(--k3); } .cable.knob-k4 { stroke: var(--k4); } .cable.knob-k5 { stroke: var(--k5); } .cable.knob-k6 { stroke: var(--k6); }
-.dot[data-knob=k1] { color: var(--k1); } .dot[data-knob=k2] { color: var(--k2); } .dot[data-knob=k3] { color: var(--k3); } .dot[data-knob=k4] { color: var(--k4); } .dot[data-knob=k5] { color: var(--k5); } .dot[data-knob=k6] { color: var(--k6); }
-.param.knob .slider-port { color: var(--knob); }
-.param.knob > span:first-child { color: var(--knob); font-weight: 600; }
+/* A cable is drawn by the role of the input it lands on (cable-role.ts): the sound bold, modulation lighter, gates dashed. */
+.cable.role-signal { stroke-width: 3.6; } .cable.role-mod { stroke-width: 2.3; } .cable.role-gate { stroke-dasharray: 7 4; }
+/* The rows Main's knobs turn (the device page in focus, pages.ts): a ring and a numbered badge in the knob's colour. */
+.param.bar.bound { box-shadow: 0 0 0 1.5px var(--knob); border-radius: 5px; }
+.param.bar.bound::after { content: attr(data-kn); position: absolute; left: -9px; top: 1px; z-index: 6; display: grid; place-items: center;
+  width: 16px; height: 16px; border-radius: 50%; background: var(--knob); color: var(--bg); font: 700 10px/1 'Barlow Condensed', system-ui, sans-serif; pointer-events: none; }
+.param.bar.bound > span:first-child { padding-left: 11px; }
+.param.bar.page-start { margin-top: 14px; }
+.param.bar.page-start::before { content: attr(data-page); position: absolute; left: 0; right: 0; top: -13px; z-index: 6; border-top: 1px dashed var(--muted);
+  padding-top: 1px; font: 600 9px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
+/* the dotted lines from the dock's dials to the rows they turn: no signal, an edit binding */
+svg.bind-cables { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 14; overflow: visible; pointer-events: none; }
+svg.bind-cables .bind { fill: none; stroke: var(--knob); stroke-width: 1.6; stroke-dasharray: 1.5 4; stroke-linecap: round; opacity: .9; }
 .cable.pending { stroke: var(--muted); stroke-dasharray: 5 4; pointer-events: none; }
 .cable:hover { stroke-width: 5; }
 .module { position: absolute; z-index: 2; width: 236px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 2px 6px var(--shadow); user-select: none; }
@@ -905,7 +914,6 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .param.bar .slider-base { top: 0; height: 100%; border-radius: 0; background: color-mix(in srgb, var(--secondary) 16%, transparent); }
 .param.bar .slider-base::after { top: 0; height: 100%; width: 2px; border-radius: 1px; }
 .param.bar .slider-knob { top: auto; bottom: -3px; height: 4px; width: 6px; left: calc(var(--at) * (100% - var(--jack-size)) + var(--jack-size) / 2 - 3px); }
-.param.bar.knob > span:first-child { color: var(--knob); }
 /* the routing menu (⋮): always shown, in its own slot right of the bar, so it never covers the thumb. Every bar of a card
    (or a dock column) that has one keeps the slot, so the bars stay the same width */
 :is(.erows, .dock-body, .arp-rows):has(.parameter-routing) .param.bar { margin-right: 14px; }
@@ -1219,3 +1227,11 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* an envelope's name sits top right (its attack peaks top left) and gives way to the hovered segment's time */
 .module .param.screen > .screen-name.right { left: auto; right: 6px; }
 .module .param.screen:hover > .screen-name.right { opacity: 0; }
+
+/* Main's knobs in the dock: the DEVICE / PAGE pickers (the FM-1's SELECT / ALGO) over the four dials bound to the page */
+.dock-focus { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.focus-pickers { display: flex; gap: 6px; max-width: 100%; }
+.focus-pick { min-width: 0; max-width: 150px; }
+.focus-pick .pick-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
+.dial-caption { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10px/1.1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); }
+.deck-knob.off .dial-caption { color: var(--muted); }

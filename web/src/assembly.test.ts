@@ -52,6 +52,7 @@ import { DEFS } from './modules';
 import { longName } from './labels';
 import { addModule, connect, emptyPatch, removeModule, validatePatch, type Patch } from './patch';
 import { encodePatch } from './patchbin';
+import { engineBytes } from './test-bin';
 import { PRESETS } from './presets';
 
 /** panel -> osc -> vca -> output, with an envelope on the vca: the modules of a 1-operator voice */
@@ -151,13 +152,13 @@ describe('assemblies', () => {
     expect(q.modules.find((m) => m.id === dly.id)!.bypass).toBe(true);
   });
 
-  it('does not change the sound or the binary: engine and FM-1 see the flat patch', () => {
+  it('does not change the sound or the binary beyond the device pages: engine and FM-1 see the flat patch', () => {
     const { p, osc, env, vca } = voice();
     const before = render(p);
-    const bin = encodePatch(p);
+    const bin = engineBytes(p);
     makeAssembly(p, [osc, env, vca], 'operator');
     expect(render(p)).toEqual(before);
-    expect(encodePatch(p)).toEqual(bin);
+    expect(engineBytes(p)).toEqual(bin);
     const json = JSON.parse(JSON.stringify(p)) as Patch;
     expect(json.assemblies).toHaveLength(1);
     // an editor without assemblies: validatePatch keeps the field, the modules are plain
@@ -752,16 +753,16 @@ describe('assembly card columns and headings', () => {
     expect(moveRef(['x', 'y', 'z'], 2, 0, false)).toEqual(['z', 'x', 'y']);
   });
 
-  it('demoting a row keeps its column; the layout survives save, load and insert, and leaves the binary alone', () => {
+  it('demoting a row keeps its column; the layout survives save, load and insert, and reaches the binary only as pages', () => {
     const { p, osc, env, vca } = voice();
     const a = makeAssembly(p, [osc, env, vca], 'voice');
     for (const q of ['a', 'd', 's', 'r']) promote(a, env, q);
     promote(a, vca, 'gain');
-    const before = encodePatch(p);
+    const before = engineBytes(p);
     setHeading(a.params, 0, 'env');
     setColumnBreak(a.params, 4, true);
     setHeading(a.params, 4, 'amp');
-    expect(encodePatch(p)).toEqual(before);
+    expect(engineBytes(p)).toEqual(before);
     const def = validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS);
     expect(show(def.params)).toEqual(['[env] a', 'd', 's', 'r', '| [amp] gain']);
     const next = emptyPatch();

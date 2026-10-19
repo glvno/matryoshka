@@ -17,7 +17,6 @@ import { buildFlashTab } from './flasher';
 import { attachKeyboard, attachMidi, isTextEntry } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
-import { isKnob } from './knob-rest';
 import { PANEL_BUTTONS } from './modules';
 import { longName, moduleName } from './labels';
 import { DeckControls } from './deck';
@@ -35,7 +34,7 @@ import { PRESETS } from './presets';
 import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { deviceBudget } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, POLY_ROW, POLY_ROW_PARAMS } from './patchbin';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
 import { demoPatch } from './demo';
@@ -107,12 +106,21 @@ device.onEvent = (e) => {
     } finally { fromDevice = false; }
     return;
   }
-  const main = editor.patch.modules.find((m) => m.type === 'fm1');
-  if (!main) return;
-  if (e.n >= 16 && e.n <= 21) {
+  if (e.kind === 'param') {   // K1..K4 turned on a device page of the FM-1
+    const m = deviceView(editor.patch, true).patch.modules[e.module];
+    // a poly group's setting is the Voice allocator's parameter (the allocator's Part has its id: patchbin.ts rowParam)
+    const name = m && (e.param & POLY_ROW ? POLY_ROW_PARAMS[e.param & 0x7f] : DEFS[m.type].params[e.param]?.name);
+    if (!m || !name) return;
     fromDevice = true;                       // (not sent back: the FM-1 already has it)
-    try { editor.setParam(main.id, `k${e.n - 15}`, Math.round((e.v / 127) * 1000) / 1000); } finally { fromDevice = false; }
-  } else if (e.n >= 80 && e.n < 80 + PANEL_BUTTONS.length) {
+    try { editor.setParam(m.id, name, e.param & POLY_ROW ? Math.round(e.value) : e.value); } finally { fromDevice = false; }
+    return;
+  }
+  if (e.kind === 'focus') {   // the FM-1 shows another device page: the knobs follow
+    const f = editorPage(editor.patch, e.device, e.page);
+    if (f) editor.focusFrom(f);
+    return;
+  }
+  if (e.n >= 80 && e.n < 80 + PANEL_BUTTONS.length) {
     host.send({ t: 'button', i: e.n - 80, on: e.v >= 64 });
   }
 };
@@ -134,6 +142,8 @@ async function sendPatch(): Promise<boolean> {
       await device.upload(editor.patch);
       baseline = JSON.stringify(editor.patch);
       devStatus('patch on the FM-1');
+      const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
+      if (at) device.focus(at[0], at[1]);   // the FM-1 opens on the page the knobs edit here
     } while (dirty);
   } catch (e) {
     devStatus(`${(e as Error).message}`);
@@ -161,6 +171,8 @@ const hands = new DeckControls(document.createElement('div'), {
 /** notes go to the browser engine and, with Live on, to the FM-1 */
 const sink = {
   send(msg: HostMsg): void {
+    // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
+    if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
     if (msg.t === 'on') host.mute(false);
     host.send(msg);
     piano.track(msg);
@@ -235,7 +247,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (editor.patch.modules.find((m) => m.id === id)?.type === ALLOC) {
       // a Voice allocator's setting changes the poly groups: the FM-1 takes the whole patch again
       showBudget();
-      if (live()) queueUpload();
+      if (live() && !fromDevice) queueUpload();   // (from the FM-1: it changed its group itself)
       return;
     }
     if (fromDevice) return;
@@ -275,6 +287,10 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onTransport(on) {
     setPlaying(on);
+  },
+  onFocus(key, page) {
+    const at = live() ? binaryPage(editor.patch, key, page) : null;
+    if (at) device.focus(at[0], at[1]);
   },
   onButton(i, on) {
     host.send({ t: 'button', i, on });
@@ -890,7 +906,6 @@ function showSide(key: SideKey): void {
   if (!side.dragging) input.value = String(u);
   side.bar.update();
   side.bar.setBase(m ? base : null);
-  side.bar.setKnobTicks(m && m.type === 'fm1' && isKnob(from!.port) ? [{ knob: from!.port, unit: clamp01(base + (m.params[from!.port] ?? 0)) }] : []);
   side.bar.jack.classList.toggle('connected', !!m);
   side.row.classList.toggle('automated', !!m);
   side.row.querySelector('output')!.textContent = side.text(u);

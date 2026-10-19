@@ -11,7 +11,7 @@
 //                u8 its MIDI channel (0: the device's, 1..16), u8 its lowest key, u8 its highest key (patch.ts takesKey)
 //   with G > 0: one u8 per module, its poly group (0: it runs once, 1..G); delay, reverb, chorus, granular and output are always 0
 //   the panel (PANEL_BYTES, always): u16 LE the buttons that switch (bit i = PANEL_BUTTONS[i]), u16 LE the switched ones that are
-//                on, then PANEL_LABEL_KEYS.length labels of PANEL_LABEL_MAX bytes (ASCII, zero padded): K1..K6, the buttons
+//                on, then PANEL_LABEL_KEYS.length labels of PANEL_LABEL_MAX bytes (ASCII, zero padded): the buttons
 //   per module:  u8 type index (bit 7 set: the module is bypassed), then one i32 LE per parameter (Q16.16), in the order of the definition;
 //                modules with parameter inputs (paramInputs) then add i32 att1, i32 att2 (Q16.16, -1..1) and
 //                six u16 LE matrix masks for the sources p1, p2, k1, k2, k3, k4 (bit n = the n-th parameter);
@@ -24,8 +24,15 @@
 //   with flag bit 3: u8 count, then u8 module index, u8 input index, u16 LE parameter mask per routed input
 //   with flag bit 4: u8 count, then per Steps module with step values (ModuleInst.notes / vels): u8 module index,
 //                STEPS_MAX u8 notes (MIDI, 60 = C4), STEPS_MAX u8 velocities (0..127); the others play STEP_NOTE / STEP_VEL
-//   with flag bit 1: u8 count, then per macro range: u8 module index, u8 pin (0 p1, 1 p2), u8 parameter index, u8 low end,
-//                u8 high end (0..255 of the parameter's range, octaves for a log one): the pin's value lands between the ends
+//   with flag bit 5: the device pages (pages.ts): u8 device count, then per device u8 kind: 0 a plain module, then u8 its
+//                module index (the FM-1 makes its pages itself: its parameters in order, four to a page, named as in
+//                defs.h); 1 an assembly, then its name (a text: u8 length 0..NAME_MAX, ASCII) and u8 page count, per page its
+//                name (text), u8 part (0-based), u8 parts, u8 the envelope drawn above it (1 + module index, 0 none), u8 row
+//                count (1..PAGE_ROWS), per row u8 module index, u8 parameter index (bit 7: a setting of the poly group of
+//                that Part, POLY_ROW_PARAMS), its label (text)
+//   with flag bit 1 (always last: the FM-1 edits it in place): u8 count, then per macro range: u8 module index, u8 pin (0 p1,
+//                1 p2), u8 parameter index, u8 low end, u8 high end (0..255 of the parameter's range, octaves for a log
+//                one): the pin's value lands between the ends
 //
 // Type indices are the position in TYPE_ORDER (append only: the firmware has the same list in defs.h).
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
@@ -33,6 +40,7 @@
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { EDITOR_ONLY, flawOf, hasMorph, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, trackName, type Patch } from './patch';
 import { deviceView, MAX_POLY, type DeviceGroup } from './poly';
+import { devicesOf, NAME_MAX, type Device } from './pages';
 import { cpuEstimate, type CpuEstimate } from './cpu';
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t));
@@ -42,7 +50,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 28; // 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
+export const VERSION = 29; // 29: the device pages section (flag bit 5); the Main module lost the knob outputs and parameters k1..k6 (its knobs edit the page in focus), the panel section the knob labels (7 labels); the Macro module; 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
 /** bytes of a module record */
 export const recordSize = (type: string): number => 1 + 4 * DEFS[type].params.length + (DEFS[type].paramInputs ? 20 : 0) + (DEFS[type].data ?? 0);
 export const Q = 65536;
@@ -55,6 +63,9 @@ export const FLAG_RANGE = 2;
 export const FLAG_INPUTS = 4; // legacy: disabled fixed links (format 17); the encoder no longer sets it
 export const FLAG_INPUT_MAP = 8;
 export const FLAG_STEP_VALUES = 16;
+export const FLAG_DEVICES = 32;
+/** the most devices, and pages per device, the binary lists (the rest are left out) */
+export const MAX_DEVICES = 32, MAX_PAGES = 32;
 /** bytes of one entry of the step values section: the module index, the notes, the velocities */
 export const STEP_VALUES_REC = 1 + 2 * STEPS_MAX;
 /** the Steps modules of a (device form) patch that carry step values, by module index */
@@ -85,13 +96,82 @@ function routesOf(p: Patch): { mod: number; input: number; mask: number }[] {
   }));
 }
 
+/** a Voice allocator's settings on a page: in the device form the allocator is the Part of its group (poly.ts deviceView),
+ * and a row names the group setting with bit 7 set (0x80 + the index here; engine.h ENG_POLY_*, unison last) */
+export const POLY_ROW_PARAMS = ['voices', 'assign', 'legato', 'priority', 'unison'];
+export const POLY_ROW = 0x80;
+/** the parameter byte of a row on a module of `type` in the device form, -1 when it has none */
+export const rowParam = (type: string, param: string): number =>
+  type === 'part' ? (POLY_ROW_PARAMS.includes(param) ? POLY_ROW | POLY_ROW_PARAMS.indexOf(param) : -1) : DEFS[type].params.findIndex((q) => q.name === param);
+
+/** a name as the FM-1's font draws it: printable ASCII (an arrow becomes >), NAME_MAX characters */
+export const deviceText = (s: string): string => s.replace(/→/g, '>').replace(/←/g, '<').replace(/[–—−]/g, '-').replace(/[^\x20-\x7e]/g, '').slice(0, NAME_MAX).trim();
+
+/** the device pages as the binary lists them: rows on modules the device form dropped are left out, and so are pages
+ * and devices left empty */
+export function deviceSection(source: Patch, dev: Patch): Device[] {
+  const byId = new Map(dev.modules.map((m) => [m.id, m]));
+  const kept = (r: { module: number; param: string }): boolean => { const m = byId.get(r.module); return !!m && rowParam(m.type, r.param) >= 0; };
+  return devicesOf(source, DEFS).slice(0, MAX_DEVICES).map((d) => ({
+    ...d,
+    pages: d.pages.map((pg) => ({ ...pg, rows: pg.rows.filter(kept) })).filter((pg) => pg.rows.length).slice(0, MAX_PAGES),
+  })).filter((d) => d.pages.length);
+}
+
+/** a device page of the editor (pages.ts devicesOf) as the binary lists it, [device, page]; null when the binary has
+ * none for it (every row on modules the device form drops) */
+export function binaryPage(source: Patch, key: string, page: number): [number, number] | null {
+  const pg = devicesOf(source, DEFS).find((d) => d.key === key)?.pages[page];
+  const devs = deviceSection(source, deviceView(source, true).patch);
+  const d = devs.findIndex((x) => x.key === key);
+  const i = d < 0 || !pg ? -1 : devs[d].pages.findIndex((x) => x.name === pg.name && x.part === pg.part);
+  return i < 0 ? null : [d, i];
+}
+
+/** the reverse of binaryPage: the editor's device key and page for the binary's [device, page] */
+export function editorPage(source: Patch, device: number, page: number): { device: string; page: number } | null {
+  const d = deviceSection(source, deviceView(source, true).patch)[device];
+  const pg = d?.pages[page];
+  const i = pg ? devicesOf(source, DEFS).find((x) => x.key === d.key)?.pages.findIndex((x) => x.name === pg.name && x.part === pg.part) ?? -1 : -1;
+  return i < 0 ? null : { device: d.key, page: i };
+}
+
+/** bytes of a patch's device pages section (0 without one) */
+export const deviceBytes = (source: Patch): number => { const p = deviceView(source, true).patch; return devicesSize(deviceSection(source, p), p); };
+
+const devicesSize = (devs: Device[], p: Patch): number => deviceRecord(devs, p).length;
+
+/** the device pages section's bytes (see the top of this file) */
+export function deviceRecord(devs: Device[], p: Patch): number[] {
+  if (!devs.length) return [];
+  const index = new Map(p.modules.map((m, i) => [m.id, i]));
+  const out = [devs.length];
+  const text = (s: string): void => { const t = deviceText(s); out.push(t.length, ...Array.from(t, (c) => c.charCodeAt(0))); };
+  for (const d of devs) {
+    if (d.module !== undefined) { out.push(0, index.get(d.module)!); continue; }
+    out.push(1);
+    text(d.name);
+    out.push(d.pages.length);
+    for (const pg of d.pages) {
+      text(pg.name);
+      out.push(pg.part, pg.parts, pg.display !== undefined && index.has(pg.display) ? index.get(pg.display)! + 1 : 0, pg.rows.length);
+      for (const r of pg.rows) {
+        const m = p.modules[index.get(r.module)!];
+        out.push(index.get(r.module)!, rowParam(m.type, r.param));
+        text(r.label);
+      }
+    }
+  }
+  return out;
+}
+
 /** bytes of the binary patch (what the FM-1 must hold, M1_PATCH_MAX) */
 export function encodedSize(source: Patch): number {
   const { patch: p, groups: dg } = deviceView(source, true);
-  return sizeOf(p, dg);
+  return sizeOf(p, dg, deviceSection(source, p));
 }
 
-function sizeOf(p: Patch, dg: DeviceGroup[]): number {
+function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[]): number {
   const groups = dg.length;
   const routes = routesOf(p).length;
   const ranges = rangeList(p).length;
@@ -103,7 +183,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[]): number {
   const valued = valuedTracks(p).length;
   if (valued) size += 1 + STEP_VALUES_REC * valued;
   if (ranges) size += 1 + 5 * ranges;
-  return size;
+  return size + devicesSize(devs, p);
 }
 
 /** the binary patch; throws when the patch does not fit the FM-1 (deviceBudget): only a patch that fits is ever sent */
@@ -118,7 +198,8 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   const ranges = rangeList(p);
   const routes = routesOf(p);
   const valued = valuedTracks(p);
-  const size = sizeOf(p, groups);
+  const devs = deviceSection(source, p);
+  const size = sizeOf(p, groups, devs);
   const out = new Uint8Array(size);
   const dv = new DataView(out.buffer);
   out[0] = 0xa1;
@@ -126,7 +207,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   out[2] = p.modules.length;
   out[3] = groups.length;
   dv.setUint16(4, p.cables.length, true);
-  dv.setUint16(6, (morph ? FLAG_MORPH : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_STEP_VALUES : 0), true);
+  dv.setUint16(6, (morph ? FLAG_MORPH : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_STEP_VALUES : 0) | (devs.length ? FLAG_DEVICES : 0), true);
   let at = 8;
   for (const { cfg, src } of groups) {
     out.set([cfg.parts, cfg.assign, cfg.legato | (cfg.unison ? 0x80 : 0), cfg.priority], at);
@@ -212,6 +293,11 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
       at += STEP_VALUES_REC;
     }
   }
+  if (devs.length) {
+    const rec = deviceRecord(devs, p);
+    out.set(rec, at);
+    at += rec.length;
+  }
   if (ranges.length) {
     out[at++] = ranges.length;
     for (const r of ranges) out.set([r.mod, r.pin, r.par, r.lo, r.hi], (at += 5) - 5);
@@ -287,7 +373,7 @@ export function deviceBudget(source: Patch): Budget {
   const used: Record<BudgetKey, number> = {
     modules: p.modules.length, cables: p.cables.length, poly: groups.length, parts: Math.max(1, ...[...copies.values()]),
     instances, buffers, delays: count('delay'), reverbs: count('reverb'), strings: count('string', 'comb'), chorus: count('chorus'),
-    grains: count('grain'), arps: count('arp'), tracks: count('steps'), bytes: sizeOf(p, groups),
+    grains: count('grain'), arps: count('arp'), tracks: count('steps'), bytes: sizeOf(p, groups, deviceSection(source, p)),
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));
   const over: BudgetItem[] = items.filter((i) => i.used > i.max);

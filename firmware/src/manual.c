@@ -1,8 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* The manual page of the settings menu (MANUAL tab): a short text, one line per entry, at most MAN_COLS characters after
- * the marker. The first character is the style: '#' a heading (accent colour), ' ' text, '~' dim. The font has capitals
- * only. Keep it in step with the buttons (main.c), the MIDI handling (midi_drain) and the limits (engine.c, proto.c). */
+ * the marker. The first character is the style: '#' a heading (accent colour), ' ' text, '~' dim (font_bc.c, FONT_S). Keep it in step with the buttons (main.c), the MIDI handling (midi_drain) and the limits (engine.c, proto.c). */
 #define MAN_COLS 35u
 
 static const char *const MANUAL[] = {
@@ -13,9 +12,13 @@ static const char *const MANUAL[] = {
     " SAVE: THE PATCH INTO ITS SLOT, AND",
     "   THE PANEL SETTINGS",
     " OCT- / OCT+: OCTAVE",
-    " HOME: LEGEND, HELD: THIS MENU",
-    " K1-K6 AND THE OTHER BUTTONS: THE",
-    "   PATCH'S (HOME SHOWS WHAT THEY DO)",
+    "#DEVICES: THE PATCH'S TOP-LEVEL CARDS",
+    " SELECT: THE DEVICE, ALGO: ITS PAGE",
+    " K1-K4: THE FOUR ROWS OF THE PAGE",
+    " HOME: THE FIRST DEVICE, THEN THE",
+    "   LEGEND; HELD: THIS MENU",
+    " THE OTHER BUTTONS: THE PATCH'S",
+    "   (THE LEGEND SHOWS WHAT THEY DO)",
     " AT POWER-ON: SAVE HELD = SAFE MODE,",
     "   OCT- + OCT+ HELD = UPDATE MODE",
     "#SEQ: THE PATCH'S DRUM TRACKS",

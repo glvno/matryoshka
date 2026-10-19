@@ -630,7 +630,7 @@ int eng_load(const uint8_t *p, uint32_t len)
 #endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
-    if ((p[6] & ~31u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)))
+    if ((p[6] & ~63u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)))
         return -1;
     E.nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
@@ -814,6 +814,12 @@ int eng_load(const uint8_t *p, uint32_t len)
             }
         }
     }
+    if (p[6] & 32u) {                            /* the device pages (the LCD's, proto.c / pages_ui.c): not the engine's */
+        uint32_t end = eng_devices_end(p, len, at);
+        if (!end)
+            return -3;
+        at = end;
+    }
     if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin / parameter / lo / hi each */
         uint32_t nr;
         if (at >= len)
@@ -995,6 +1001,8 @@ int eng_poly_get(uint32_t g, uint32_t field)
     return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : x->priority;
 }
 
+int eng_module_group(uint32_t module) { return E.loaded && module < E.nmod ? E.node[module].grp : 0; }
+int eng_poly_unison(uint32_t g) { return E.loaded && g < E.ngrp ? E.grp[1u + g].unison : 0; }
 int eng_poly_set(uint32_t g, uint32_t field, uint32_t v)
 {
     grp_t *x;
@@ -1032,31 +1040,6 @@ uint32_t eng_knob_mask(uint32_t module, uint32_t knob)
     if (d->cvbase >= 0)
         return E.node[module].map[2u + knob];
     return knob < d->npar ? 1u << knob : 0u;
-}
-
-/* Is parameter j of `module` driven by a cable from the FM-1 panel's knob k (a K1..K4 output into p1 or p2, whose matrix column
- * has j)? Then turning that knob while `module` is selected must move the panel's knob, not the base value: the two would add up
- * (and clamp), and the knob would seem to jam at the end of the range. Returns the panel's module index or -1. */
-int eng_knob_panel(uint32_t module, uint32_t knob, uint32_t j)
-{
-    const def_t *d;
-    uint32_t c;
-    if (module >= E.nmod || knob >= 4u)
-        return -1;
-    d = &DEFS[E.node[module].type];
-    if (d->cvbase < 0)
-        return -1;
-    for (c = 0; c < E.ncab; c++) {
-        uint32_t pin;
-        if (E.to_m[c] != module || E.to_p[c] < (uint32_t)d->cvbase || E.to_p[c] > (uint32_t)d->cvbase + 1u)
-            continue;
-        if (E.node[E.from_m[c]].type != T_FM1 || E.from_p[c] != FM1_O_K1 + knob)
-            continue;
-        pin = E.to_p[c] - (uint32_t)d->cvbase;
-        if (E.node[module].map[pin] >> j & 1u)
-            return (int)E.from_m[c];
-    }
-    return -1;
 }
 
 int eng_ncables(void) { return E.loaded ? E.ncab : 0; }
@@ -1778,10 +1761,6 @@ static void m_fm1(const node_t *nd, inst_t *it, uint32_t n)
     fill(it->out[FM1_O_VEL], x->vel, n);
     if (x->retrig)
         it->out[FM1_O_GATE][0] = 0;              /* one low sample: the envelopes of a taken-over part see a new gate */
-    fill(it->out[FM1_O_K1], EF(it, FM1_P_K1), n);
-    fill(it->out[FM1_O_K2], EF(it, FM1_P_K2), n);
-    fill(it->out[FM1_O_K3], EF(it, FM1_P_K3), n);
-    fill(it->out[FM1_O_K4], EF(it, FM1_P_K4), n);
     {
         esig_t *ck = it->out[FM1_O_CLOCK];
         uint32_t i, p = E.clk_pulse < n ? E.clk_pulse : n;
@@ -1793,8 +1772,6 @@ static void m_fm1(const node_t *nd, inst_t *it, uint32_t n)
         }
     }
     fill(it->out[FM1_O_RUN], E.running ? ENG_ONE : 0, n);
-    fill(it->out[FM1_O_K5], EF(it, FM1_P_K5), n);
-    fill(it->out[FM1_O_K6], EF(it, FM1_P_K6), n);
     {
         uint32_t b, mask = panel_buttons;
         for (b = 0; b < ENG_PANEL_BUTTONS; b++)
@@ -3777,6 +3754,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_LFO: m_lfo(nd, it, n); break;
     case T_NOISE: m_noise(nd, it, n); break;
     case T_CONST: m_const(nd, it, n); break;
+    case T_MACRO: m_const(nd, it, n); break;   /* a Macro is a Constant with the knobs' range 0..1 */
     case T_SCALE: m_scale(nd, it, n); break;
     case T_ADSR: m_adsr(nd, it, n); break;
     case T_VCA: m_vca(nd, it, n); break;

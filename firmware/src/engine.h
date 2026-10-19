@@ -10,13 +10,13 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 28   /* 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
-#define ENG_PATCH_COMPAT_VERSION 28
+#define ENG_PATCH_VERSION 29   /* 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_COMPAT_VERSION 29
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
 
 #define ENG_PANEL_BUTTONS 7            /* the patch buttons: FX SCL ENV LFO EDIT GLO ARP (modules.ts PANEL_BUTTONS); SEQ and REC are the step page's */
-#define ENG_PANEL_LABELS 13            /* K1..K6, then the buttons (patch.ts PANEL_LABEL_KEYS) */
+#define ENG_PANEL_LABELS 7             /* the buttons (patch.ts PANEL_LABEL_KEYS); the knobs show their rows' names */
 #define ENG_PANEL_LABEL 10             /* bytes per label (PANEL_LABEL_MAX), zero padded */
 #define ENG_PANEL_BYTES (4u + ENG_PANEL_LABELS * ENG_PANEL_LABEL)   /* the panel section (patchbin.ts PANEL_BYTES) */
 
@@ -36,6 +36,47 @@ static inline uint32_t eng_records_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at = eng_panel_at(p, len);
     return at ? at + ENG_PANEL_BYTES : 0;
+}
+
+/* the end of the device pages section (patchbin.ts, header flag bit 5) that starts at `at`, 0 when it is cut short:
+ * u8 devices; per device u8 kind (0: u8 a plain module's index; 1: a text name, u8 pages, per page a text name, u8 part,
+ * u8 parts, u8 display, u8 rows, per row u8 module, u8 parameter, a text label); a text is u8 length + that many bytes */
+static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n, d, g, r, np, nr;
+    if (at >= len)
+        return 0;
+    n = p[at++];
+    for (d = 0; d < n; d++) {
+        if (at >= len)
+            return 0;
+        if (p[at] == 0u) {
+            at += 2u;
+            continue;
+        }
+        if (p[at++] != 1u || at >= len)
+            return 0;
+        at += 1u + p[at];
+        if (at >= len)
+            return 0;
+        np = p[at++];
+        for (g = 0; g < np; g++) {
+            if (at >= len)
+                return 0;
+            at += 1u + p[at];
+            if (at + 4u > len)
+                return 0;
+            nr = p[at + 3u];
+            at += 4u;
+            for (r = 0; r < nr; r++) {
+                at += 2u;
+                if (at >= len)
+                    return 0;
+                at += 1u + p[at];
+            }
+        }
+    }
+    return at <= len ? at : 0;
 }
 
 /* Install a patch from its binary form (web/src/patchbin.ts) into the selected voice. 0 on success, negative on error
@@ -66,7 +107,6 @@ uint32_t eng_map(uint32_t module, uint32_t source);
  * matrix (fm1, output) the k-th parameter */
 uint32_t eng_knob_mask(uint32_t module, uint32_t knob);
 /* the FM-1 panel module whose knob k drives parameter j of `module` through a cable (then the knob, not the parameter, is turned), else -1 */
-int eng_knob_panel(uint32_t module, uint32_t knob, uint32_t j);
 /* the value of a parameter after `clicks` knob clicks of `unit_per_click` (Q16 fraction of the range; octaves for the cutoff) */
 int32_t eng_step_param(uint32_t module, uint32_t param, int32_t clicks, int32_t unit_per_click);
 int eng_param_is_log(uint32_t module, uint32_t param);
@@ -78,6 +118,9 @@ int eng_groups(void);                                                /* the poly
 /* a setting of poly group g (0 = the first): ENG_POLY_* (assign, legato, priority 0..2), -1 if none.
  * eng_poly_set changes all but the parts at once (0 = refused); the parts need a reload (the binary's group record). */
 enum { ENG_POLY_PARTS, ENG_POLY_ASSIGN, ENG_POLY_LEGATO, ENG_POLY_PRIORITY, ENG_NPOLY };
+/* the poly group a module runs in, 1-based (0: none); whether group g (0 = the first) plays in unison */
+int eng_module_group(uint32_t module);
+int eng_poly_unison(uint32_t g);
 int eng_poly_get(uint32_t g, uint32_t field);
 int eng_poly_set(uint32_t g, uint32_t field, uint32_t v);
 /* a key on MIDI channel ch (1..16; the panel's keys play on the device's channel, or 1): the groups that take it (their

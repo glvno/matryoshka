@@ -8,12 +8,6 @@
    "x": 20,
    "y": 20,
    "params": {
-    "k1": 0.7743,
-    "k2": 0.35,
-    "k3": 0.5,
-    "k4": 0.7264,
-    "k5": 0.5,
-    "k6": 0.5,
     "morph": 0,
     "tempo": 120
    }
@@ -25,7 +19,7 @@
    "y": 60,
    "params": {
     "wave": 1,
-    "rate": 0.02,
+    "rate": 5,
     "depth": 1,
     "sync": 0,
     "div": 6,
@@ -155,7 +149,7 @@
    "x": 340,
    "y": 1180,
    "params": {
-    "gain": -4,
+    "gain": 0,
     "offset": 0
    },
    "att": [
@@ -232,8 +226,8 @@
    "x": 980,
    "y": 60,
    "params": {
-    "cutoff": 20,
-    "res": 0,
+    "cutoff": 1100,
+    "res": 0.35,
     "cvamt": 2.2,
     "track": 1,
     "morph": 0.25
@@ -554,46 +548,6 @@
    "to": {
     "module": 15,
     "port": "r"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k1"
-   },
-   "to": {
-    "module": 10,
-    "port": "p1"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k2"
-   },
-   "to": {
-    "module": 10,
-    "port": "p2"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k3"
-   },
-   "to": {
-    "module": 7,
-    "port": "p1"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k4"
-   },
-   "to": {
-    "module": 2,
-    "port": "p2"
    }
   }
  ],

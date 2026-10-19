@@ -49,6 +49,9 @@ const QUIET: i32 = 64;
 const LOUD: i32 = 1000;
 
 /// (name, binary) of every factory patch in presets.h
+/// on the device page (pages_ui.c): the info line's octave ("STOP 120  OCT 0")
+const DEVICE_PAGE: &str = "OCT ";
+
 fn factory() -> Vec<(String, Vec<u8>)> {
     let list = &PRESETS_H[PRESETS_H.find("PRESET_LIST[").expect("PRESET_LIST")..];
     let mut out = Vec::new();
@@ -225,7 +228,7 @@ fn diagram(m: &Machine) -> Vec<u16> {
 /// Back to the module page from wherever: HOME taps (a tap closes the menu, another goes home).
 fn go_home(m: &mut Machine) -> Result<(), String> {
     for _ in 0..4 {
-        if font::on_screen(m.lcd(), "SAVE: STORE") {
+        if font::on_screen(m.lcd(), DEVICE_PAGE) {
             return Ok(());
         }
         m.tap(HOME, 120, 400)?;
@@ -284,7 +287,7 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     put(&mut flash, 0xB0000, record(7, 20, "EMU TORN", &presets[3].1, true));
     put(&mut flash, 0xC0000, record(0, 1, "EMU ZERO", &presets[0].1, false));
     let mut m = Machine::boot(app, Some(&flash));
-    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(300)?;
     t.screen(&m, "store: boot opens slot 0 (no settings record)", "EMU ZERO");
     m.midi(&[0xC0, 3], 500)?;
@@ -298,7 +301,7 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     let mut m = Machine::boot(app, None);
     let written = wait_text(&mut m, "FACTORY BANK WRITTEN", 9000)?;
     t.check("store: the first boot writes the factory bank", written, String::new());
-    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "store: factory slot 0 plays", &presets[0].0);
     let last = presets.len() - 1;
@@ -314,7 +317,7 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
     flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, "EMU PANEL", &patch, false));
     let mut m = Machine::boot(app, Some(&flash));
-    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "panel: the patch loads", "EMU PANEL");
     m.tap(HOME, 120, 400)?;
@@ -354,7 +357,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         return Ok(());
     };
     let mut m = Machine::boot(app, None);
-    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     m.midi(&[0xC0, kit as u8], 500)?;
     t.screen(&m, "seq: the 808 Kit loads", "808 KIT");
@@ -388,7 +391,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "seq: REC on", "SNARE 2/6 REC");
     m.tap(PLAY, 120, 300)?;
     m.tap(SEQ, 120, 400)?;
-    t.screen(&m, "seq: SEQ again closes the page", "SAVE: STORE");
+    t.screen(&m, "seq: SEQ again closes the page", DEVICE_PAGE);
     *emulated += m.ms();
     Ok(())
 }
@@ -397,7 +400,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     let flash = heavy_bank(presets)?;
     // the overload guard: parts dropped while it plays, then a patch with nothing to drop muted, the main loop alive all along
     let mut m = Machine::boot(app, Some(&flash));
-    wait_text(&mut m, "SAVE: STORE", 12000)?;
+    wait_text(&mut m, DEVICE_PAGE, 12000)?;
     t.screen(&m, "overload: the heavy poly patch loads", "EMU HEAVY POLY");
     let mk = m.mark();
     for n in [48u8, 52, 55, 59, 62, 65, 69, 72] {
@@ -433,7 +436,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     m.key(SAVE, true);
     m.run_to(3000)?;
     m.key(SAVE, false);
-    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
     let saved = wait_text(&mut m, "SAVED", 1000)?;
     t.check("safe mode: holding SAVE at power-on does not save", !saved, String::new());
     wait_text(&mut m, "SAFE PATCH", 6000)?;   // (the SAFE MODE message holds the bar for 4 s, then the patch's name shows)
@@ -458,7 +461,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
 
     // update mode from the menu: HOME held, ALGO to SYSTEM, PRESET to UPDATE MODE, OCT+ twice
     let mut m = Machine::boot(app, None);
-    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.tap(HOME, 1000, 400)?;
     m.turn(ALGO, 2, 400)?;
     t.screen(&m, "menu: the SYSTEM tab", "UPDATE MODE");
@@ -477,7 +480,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     let mut m = Machine::boot(app, None);
     m.run_to(1200)?;
     t.screen(&m, "loading screen", "READY"); // (the splash logo and wordmark are pictures; by 1.2 s the line reads READY)
-    let up = wait_text(&mut m, "SAVE: STORE", 8000)?;
+    let up = wait_text(&mut m, DEVICE_PAGE, 8000)?;
     t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
     m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
     t.screen(&m, "factory patch 0 loaded", &presets[0].0);
@@ -501,11 +504,11 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
 
     // ---- 3. pages
     for (key, what, text) in [
-        (GLO, "GLO: a patch button (the page stays)", "SAVE: STORE"),
+        (GLO, "GLO: a patch button (the page stays)", DEVICE_PAGE),
         (PLAY, "PLAY: the transport runs", "PLAY 120"),
         (PLAY, "PLAY again: it stops", "STOP 120"),
         (HOME, "HOME: the legend", "LEGEND"),
-        (HOME, "HOME again: the player screen", "SAVE: STORE"),
+        (HOME, "HOME again: the player screen", DEVICE_PAGE),
     ] {
         m.tap(key, 120, 400)?;
         t.screen(&m, what, text);
@@ -520,7 +523,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     m.tap(HOME, 1000, 400)?;
     t.screen(&m, "HOME held: settings menu", "PANEL");
     m.tap(HOME, 120, 400)?;
-    t.screen(&m, "HOME again: menu closed", "SAVE: STORE");
+    t.screen(&m, "HOME again: menu closed", DEVICE_PAGE);
     go_home(&mut m)?;
 
     // ---- 4. PRESET encoder
@@ -591,7 +594,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
     t.check("SAVE wrote the flash", same > 0, format!("{same} bytes not erased"));
 
     let mut m = Machine::boot(app, Some(&flash));
-    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "restart: the saved slot opens", &presets[target].0);
     t.check("restart: no edit mark", !font::on_screen(m.lcd(), &edited), String::new());
@@ -607,7 +610,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
         flash[at..at + 0x1000].copy_from_slice(&slot_sector(*slot, name, &presets[preset].1, bad));
     }
     let mut m = Machine::boot(app, Some(&flash));
-    wait_text(&mut m, "SAVE: STORE", 9000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(300)?;
     t.screen(&m, "bank: boot plays slot entry 0", "EMU BANK A");
     m.turn(PRESET, 1, 500)?;

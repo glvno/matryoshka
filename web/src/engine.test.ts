@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { BLOCK, Engine } from './engine';
+import { devicesOf } from './pages';
 import { DEFS, DELAY_TIME_MAX, DELAY_TIME_MIN } from './modules';
 import { EDITOR_MAX_PARTS, addModule, clearMorph, connect, disconnect, emptyPatch, fromUnit, hasMorph, modulate, morphValue, paramUnit, paramValue, processingOrder, removeModule, sameStructure, setMorphTarget, toUnit, validatePatch, type Patch, type PolyCfg } from './patch';
 import { copiesOf, polyGroups } from './poly';
@@ -216,15 +217,17 @@ describe('engine', () => {
     expect(rms(render(e, 4800).l)).toBeGreaterThan(0.1);
   });
 
-  it('FM-1 panel module outputs keys and knobs', () => {
+  it('FM-1 panel module outputs the keys, a Macro its value', () => {
     const p = emptyPatch();
     const panel = addModule(p, DEFS.fm1, 0, 0);
-    Object.assign(panel.params, { k3: 0.25 });
+    const macro = addModule(p, DEFS.macro, 0, 0);
+    macro.params.value = 0.25;
     const osc = addModule(p, DEFS.osc, 0, 0);
     const out = addModule(p, DEFS.output, 0, 0);
     expect(connect(p, DEFS, { module: panel.id, port: 'pitch' }, { module: osc.id, port: 'pitch' })).toBe(true);
     osc.map!.p1 = ['level'];
-    expect(connect(p, DEFS, { module: panel.id, port: 'k3' }, { module: osc.id, port: 'p1' })).toBe(true);
+    expect(connect(p, DEFS, { module: panel.id, port: 'k3' }, { module: osc.id, port: 'p1' })).toBe(false); // the knobs are no outputs
+    expect(connect(p, DEFS, { module: macro.id, port: 'out' }, { module: osc.id, port: 'p1' })).toBe(true);
     expect(connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' })).toBe(true);
     const e = new Engine(SR);
     e.load(p);
@@ -302,36 +305,15 @@ describe('engine', () => {
     expect(modulate(level, 0.5, 0.25)).toBeCloseTo(0.75, 9); // the others stay linear
   });
 
-  it('the factory patches route the knobs over whole ranges: each knob through a pin at full depth from the bottom of its parameter', () => {
+  it('every factory patch has device pages for the knobs: no page holds more than four rows', () => {
     for (const [name, make] of Object.entries(PRESETS)) {
-      const p = make();
-      const panel = p.modules.find((m) => m.type === 'fm1')!;
-      const routes = p.cables.filter((c) => c.from.module === panel.id && /^k[1-4]$/.test(c.from.port));
-      expect(routes.some((c) => c.from.port === 'k1'), `${name}: K1 does something`).toBe(true);
-      for (const c of routes) {
-        const m = p.modules.find((x) => x.id === c.to.module)!;
-        const pin = c.to.port as 'p1' | 'p2';
-        const params = m.map![pin];
-        expect(params.length, `${name} ${c.from.port}: a parameter`).toBeGreaterThan(0);
-        if (name === '909 Kit') continue; // written by hand before gen-presets.ts: its own depths
-        expect(m.att![pin === 'p1' ? 0 : 1], `${name} ${c.from.port}: full depth`).toBe(1);
-        for (const q of params) {
-          const pd = DEFS[m.type].params.find((x) => x.name === q)!;
-          expect(m.params[q], `${name} ${c.from.port}: ${m.type}.${q} rests at its minimum`).toBeCloseTo(pd.min, 6);
-          expect(modulate(pd, m.params[q], 1), `${name} ${c.from.port}: reaches the top`).toBeCloseTo(pd.max, 3);
-        }
+      const devices = devicesOf(make(), DEFS);
+      expect(devices.length, `${name}: a device`).toBeGreaterThan(0);
+      for (const d of devices) for (const pg of d.pages) {
+        expect(pg.rows.length, `${name} ${d.name} ${pg.name}`).toBeGreaterThan(0);
+        expect(pg.rows.length, `${name} ${d.name} ${pg.name}`).toBeLessThanOrEqual(4);
       }
     }
-  });
-
-  it('knob routing leaves the sound of a preset where it was (the knobs start where the values are)', () => {
-    const p = PRESETS['Init']();
-    const filt = p.modules.find((m) => m.type === 'filter')!;
-    const panel = p.modules.find((m) => m.type === 'fm1')!;
-    const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
-    const moved = modulate(cutoff, filt.params.cutoff, panel.params.k1 * filt.att![0]);
-    expect(moved).toBeGreaterThan(2390); // gen-presets.ts: Init's cutoff is 2400 Hz, K1 sweeps the whole range
-    expect(moved).toBeLessThan(2410);
   });
 });
 
@@ -466,7 +448,7 @@ describe('macro ranges', () => {
     const v = validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
     expect(v.modules[1].range).toEqual({ p1: { cutoff: [0.2, 0.9] } }); // res is not a p1 destination, cutoff not a p2 one
     const plain = encodePatch(emptyPatch());
-    expect(plain[6]).toBe(0);
+    expect(plain[6] & ~32).toBe(0); // (bit 5: the device pages)
     const b = encodePatch(v);
     expect(b[6] & 2).toBe(2);
     const n = b.length;
@@ -565,14 +547,15 @@ describe('morph', () => {
   it('encodes the B side after the cables with the header flag', () => {
     const a = rig();
     const plain = encodePatch(a.p);
-    expect(plain[6]).toBe(0);
+    expect(plain[6] & ~32).toBe(0); // (bit 5: the device pages)
     const b = rig();
     setMorphTarget(a.p, b.p, DEFS);
     const withB = encodePatch(a.p);
-    expect(withB[6]).toBe(1);
+    expect(withB[6] & ~32).toBe(1);
     const npar = a.p.modules.reduce((s, m) => s + DEFS[m.type].params.length, 0);
     expect(withB.length).toBe(plain.length + 4 * npar);
-    expect(Array.from(withB.subarray(0, plain.length)).slice(8)).toEqual(Array.from(plain).slice(8)); // the records and cables are untouched
+    const cables = 8 + PANEL_BYTES + a.p.modules.reduce((n, m) => n + recordSize(m.type), 0) + 4 * a.p.cables.length;
+    expect(Array.from(withB.subarray(8, cables))).toEqual(Array.from(plain.subarray(8, cables))); // the records and cables are untouched
   });
 });
 
@@ -942,19 +925,16 @@ describe('bend, mod wheel, aftertouch, cc', () => {
     expect(b.out()).toBeCloseTo(0.25, 6);
   });
 
-  it('cc 1 is the mod output, aftertouch the at output, cc 16..19 turn the knobs', () => {
+  it('cc 1 is the mod output, aftertouch the at output; the knobs\' cc 16..19 are the editor\'s, not the engine\'s', () => {
     const m = rig('mod');
     m.e.cc(1, 127);
     expect(m.out()).toBeCloseTo(1, 6);
     const a = rig('at');
     a.e.aftertouch(0.5);
     expect(a.out()).toBeCloseTo(0.5, 6);
-    const k = rig('k3');
-    expect(k.out()).toBeCloseTo(0.5, 6);
-    k.e.cc(18, 0);
-    expect(k.out()).toBeCloseTo(0, 6);
-    k.e.cc(74, 127); // an unmapped CC does nothing
-    expect(k.out()).toBeCloseTo(0, 6);
+    m.e.cc(18, 0); // (the knobs edit the page in focus: the editor maps them, pages.ts)
+    m.e.cc(74, 0); // an unmapped CC does nothing
+    expect(m.out()).toBeCloseTo(1, 6);
   });
 });
 
@@ -2349,7 +2329,7 @@ describe('live parameter displays', () => {
     expect(e.parameterValues()).toEqual([]);
   });
 
-  it('reports logarithmic macro ranges, morph values, and MIDI-controlled Main knobs', () => {
+  it('reports logarithmic macro ranges and morph values', () => {
     const p = emptyPatch();
     const main = addModule(p, DEFS.fm1, 0, 0);
     main.params.morph = 0.5;
@@ -2363,12 +2343,10 @@ describe('live parameter displays', () => {
     connect(p, DEFS, { module: source.id, port: 'out' }, { module: filter.id, port: 'p1' });
     const e = new Engine(SR);
     e.load(p);
-    e.cc(16, 127);
     render(e, 128);
     const values = new Map(e.parameterValues().map((m) => [m.id, m.params]));
     expect(values.get(filter.id)!.cutoff).toBeCloseTo(Math.sqrt(20 * 16000));
     expect(values.get(filter.id)!.res).toBeCloseTo(0.5);
-    expect(values.get(main.id)!.k1).toBe(1);
     expect(values.get(main.id)!.morph).toBe(0.5);
   });
 

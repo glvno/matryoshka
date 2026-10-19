@@ -38,6 +38,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "div64.c"           /* 64-bit division in 32-bit steps, ahead of libcompiler-rt.a in the link */
 #include "lcd.c"
 #include "font5x7.c"
+#include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
 #include "engine.c"
 #include "presets.h"
@@ -56,6 +57,7 @@ static int m1_slot_erase(uint32_t slot);
 static int m1_slot_info(uint32_t slot, char *name, uint32_t *len);
 static void m1_ui_changed(void);                               /* main.c: a live edit changed what the LCD shows */
 static void m1_transport(int run);                             /* main.c: the editor's TRANSPORT command (PLAY) */
+static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the editor's FOCUS command (a device page) */
 #include "proto.c"
 #include "slotstore.c"
 #ifdef M1_BENCH
@@ -63,6 +65,9 @@ static void m1_transport(int run);                             /* main.c: the ed
 #endif
 #define UI_POOL __attribute__((section(".pool")))
 #include "ui.c"
+#include "pages_ui.c"
+static const uint8_t *pages_src(uint32_t *len) { *len = m1_cur_len; return m1_cur_len ? m1_cur : 0; }
+static uint32_t pages_gen(void) { return m1_gen; }
 #include "menu.c"
 #include "seq_ui.c"
 #include "splash.c"

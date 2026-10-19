@@ -8,12 +8,6 @@
    "x": 26,
    "y": 26,
    "params": {
-    "k1": 0.8037,
-    "k2": 0,
-    "k3": 0,
-    "k4": 0,
-    "k5": 0.5,
-    "k6": 0.5,
     "morph": 0,
     "tempo": 96
    }
@@ -410,7 +404,8 @@
    "y": 5.12046370967732,
    "params": {
     "time": 16,
-    "mode": 0
+    "mode": 0,
+    "voices": 0
    }
   },
   {
@@ -783,7 +778,8 @@
    "y": 456,
    "params": {
     "time": 16,
-    "mode": 0
+    "mode": 0,
+    "voices": 0
    }
   },
   {
@@ -3188,7 +3184,31 @@
     0,
     0,
     0
-   ]
+   ],
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "len"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "swing"
+    ],
+    "k4": [
+     "gate"
+    ]
+   }
   },
   {
    "id": 118,
@@ -3197,6 +3217,22 @@
    "y": 640,
    "params": {
     "thresh": 0.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "thresh"
+    ],
+    "p2": [],
+    "k1": [
+     "thresh"
+    ],
+    "k2": [],
+    "k3": [],
+    "k4": []
    }
   },
   {
@@ -3206,6 +3242,22 @@
    "y": 860,
    "params": {
     "thresh": 0.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "thresh"
+    ],
+    "p2": [],
+    "k1": [
+     "thresh"
+    ],
+    "k2": [],
+    "k3": [],
+    "k4": []
    }
   },
   {
@@ -3215,6 +3267,22 @@
    "y": 640,
    "params": {
     "mode": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mode"
+    ],
+    "p2": [],
+    "k1": [
+     "mode"
+    ],
+    "k2": [],
+    "k3": [],
+    "k4": []
    }
   },
   {
@@ -3224,6 +3292,22 @@
    "y": 640,
    "params": {
     "thresh": 0.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "thresh"
+    ],
+    "p2": [],
+    "k1": [
+     "thresh"
+    ],
+    "k2": [],
+    "k3": [],
+    "k4": []
    }
   }
  ],
@@ -4615,7 +4699,7 @@
     {
      "module": 31,
      "param": "gain",
-     "label": "lfo \u2192 pitch"
+     "label": "lfo → pitch"
     },
     {
      "module": 32,
@@ -4625,7 +4709,7 @@
     {
      "module": 33,
      "param": "gain",
-     "label": "lfo \u2192 filter"
+     "label": "lfo → filter"
     },
     {
      "module": 36,
@@ -4926,6 +5010,11 @@
        "port": "gate"
       }
      ]
+    },
+    {
+     "module": 76,
+     "port": "pitch",
+     "label": "pitch"
     }
    ],
    "outputs": [
@@ -4987,6 +5076,11 @@
        "port": "gate"
       }
      ]
+    },
+    {
+     "module": 86,
+     "port": "pitch",
+     "label": "pitch"
     }
    ],
    "outputs": [
@@ -5198,6 +5292,16 @@
      "module": 114,
      "port": "gate",
      "label": "gate"
+    },
+    {
+     "module": 110,
+     "port": "pitch",
+     "label": "pitch"
+    },
+    {
+     "module": 111,
+     "port": "pitch",
+     "label": "pitch 2"
     }
    ],
    "outputs": [

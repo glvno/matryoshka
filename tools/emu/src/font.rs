@@ -101,7 +101,146 @@ pub fn find(fb: &[u16], s: &str, size2: usize) -> Option<(usize, usize, u16, u16
     None
 }
 
-/// `s` at any of the firmware's sizes (1x, 1.5x, 2x, 3x, 4x).
+/// `s` at any of the firmware's sizes (1x, 1.5x, 2x, 3x, 4x), or in the brand type (font_bc.c) at any of its sizes.
 pub fn on_screen(fb: &[u16], s: &str) -> bool {
-    [2, 3, 4, 6, 8].iter().any(|&z| find(fb, s, z).is_some())
+    [2, 3, 4, 6, 8].iter().any(|&z| find(fb, s, z).is_some()) || (0..bc_fonts().len()).any(|f| find_bc(fb, s, f).is_some())
+}
+
+// ---- the brand type: firmware/src/font_bc.h (tools/gen_font.py), 4-bit coverage blended from paper to ink. A glyph's
+// fully covered pixels are the ink, its empty ones the paper; the blended edge pixels are left out of the match.
+
+const BC: &str = include_str!("../../../firmware/src/font_bc.h");
+
+pub struct BcFont {
+    h: usize,
+    map: Vec<u8>,
+    glyphs: Vec<(usize, usize, i32, usize)>, // ink width, advance, ink start, offset into bits
+    bits: Vec<u8>,
+}
+
+fn numbers(body: &str) -> Vec<i64> {
+    body.split(|c: char| !(c.is_ascii_digit() || c == '-'))
+        .filter(|t| !t.is_empty() && t != &"-")
+        .filter_map(|t| t.parse().ok())
+        .collect()
+}
+
+fn array<'a>(name: &str) -> &'a str {
+    let start = BC.find(&format!("{name}[")).unwrap_or_else(|| panic!("{name} in font_bc.h"));
+    let body = &BC[start..];
+    let open = body.find('{').unwrap();
+    let close = body.find("};").unwrap();
+    &body[open + 1..close]
+}
+
+pub fn bc_fonts() -> &'static Vec<BcFont> {
+    static F: OnceLock<Vec<BcFont>> = OnceLock::new();
+    F.get_or_init(|| {
+        let mut out = Vec::new();
+        for name in ["FONT_S", "FONT_M", "FONT_L", "FONT_XL"] {
+            let l = name.to_lowercase();
+            let head = &BC[BC.find(&format!("static const font_t {name} = {{")).unwrap_or_else(|| panic!("{name}"))..];
+            let h = numbers(&head[..head.find('}').unwrap()])[0] as usize;
+            let map: Vec<u8> = numbers(array(&format!("{l}_map"))).into_iter().map(|v| v as u8).collect();
+            let g = numbers(array(&format!("{l}_g")));
+            let glyphs = g.chunks(4).map(|c| (c[0] as usize, c[1] as usize, c[2] as i32, c[3] as usize)).collect();
+            let bits = numbers(array(&format!("{l}_bits"))).into_iter().map(|v| v as u8).collect();
+            out.push(BcFont { h, map, glyphs, bits });
+        }
+        out
+    })
+}
+
+/// The block `text_bc` draws for `s` in font `f`: coverage 0..15 per pixel (left aligned, as wide as the text).
+pub fn render_bc(s: &str, f: usize) -> (usize, usize, Vec<u8>) {
+    let font = &bc_fonts()[f];
+    let gl = |c: char| -> Option<&(usize, usize, i32, usize)> {
+        let c = c as u32;
+        if !(0x20..0x7f).contains(&c) {
+            return None;
+        }
+        let g = font.map[(c - 0x20) as usize];
+        (g != 255).then(|| &font.glyphs[g as usize])
+    };
+    let w: usize = s.chars().filter_map(gl).map(|g| g.1).sum();
+    let mut px = vec![0u8; w * font.h];
+    let mut x = 0usize;
+    for c in s.chars() {
+        let Some(&(gw, adv, gx, off)) = gl(c) else { continue };
+        let rb = (gw + 1) / 2;
+        for r in 0..font.h {
+            for j in 0..gw {
+                let b = font.bits[off + r * rb + j / 2];
+                let a = if j % 2 == 1 { b & 15 } else { b >> 4 };
+                let at = x as i32 + j as i32 + gx;
+                if a > 0 && at >= 0 && (at as usize) < w {
+                    px[r * w + at as usize] = a;
+                }
+            }
+        }
+        x += adv;
+    }
+    (w, font.h, px)
+}
+
+/// Where `s` is on the screen in brand font `f`: (x, y, fg, bg).
+pub fn find_bc(fb: &[u16], s: &str, f: usize) -> Option<(usize, usize, u16, u16)> {
+    let (w, h, px) = render_bc(s, f);
+    if w == 0 || w > W || h > H {
+        return None;
+    }
+    let first = px.iter().position(|&a| a == 15)?;
+    let empty = px.iter().position(|&a| a == 0)?;
+    for y in 0..=H - h {
+        'x: for x in 0..=W - w {
+            let fg = fb[(y + first / w) * W + x + first % w];
+            let bg = fb[(y + empty / w) * W + x + empty % w];
+            if fg == bg {
+                continue;
+            }
+            for r in 0..h {
+                for c in 0..w {
+                    let p = fb[(y + r) * W + x + c];
+                    match px[r * w + c] {
+                        15 if p != fg => continue 'x,
+                        0 if p != bg => continue 'x,
+                        _ => {}
+                    }
+                }
+            }
+            return Some((x, y, fg, bg));
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn brand_type_parses() {
+        let f = bc_fonts();
+        assert_eq!(f.len(), 4);
+        assert_eq!(f[0].map.len(), 95);
+        let (w, h, px) = render_bc("OCT 0", 0);
+        assert!(w > 10 && h == f[0].h && px.iter().any(|&a| a == 15));
+    }
+
+    /// against the LCD preview (tools/ui_preview.sh writes build/ui_preview.ppm): run it first
+    #[test]
+    #[ignore]
+    fn finds_text_on_the_preview() {
+        let d = std::fs::read("../../build/ui_preview.ppm").expect("build/ui_preview.ppm");
+        let px = &d[d.len() - W * H * 3..];
+        let fb: Vec<u16> = px.chunks(3).map(|c| {
+            let r = (c[0] as u32 * 31 + 127) / 255;
+            let g = (c[1] as u32 * 63 + 127) / 255;
+            let b = (c[2] as u32 * 31 + 127) / 255;
+            (r << 11 | g << 5 | b) as u16
+        }).collect();
+        assert!(on_screen(&fb, "OCT "), "the info line");
+        assert!(on_screen(&fb, "CUTOFF"), "a column's name");
+        assert!(!on_screen(&fb, "NOT THERE"));
+    }
 }

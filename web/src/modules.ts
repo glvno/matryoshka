@@ -168,14 +168,13 @@ export const PRIORITIES = ['last', 'low', 'high'];
  * part, or a free part whose last note was the key (else the one free the longest) */
 export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse'];
 
-/** the FM-1 panel's controls a patch owns (#57 decision 4): six knobs (K1..K4 and the SELECT / ALGO encoders as K5 / K6)
- * and nine buttons, gate outputs of the Main module; the device keeps PRESET, PLAY, SAVE, HOME and OCT- / OCT+ */
-const N_KNOBS = 6;
+/** the FM-1 panel's buttons a patch owns (#57 decision 4), gate outputs of the Main module; the device keeps PRESET, PLAY,
+ * SAVE, HOME and OCT- / OCT+. The knobs K1..K4 are no signals: they edit the rows of the device page in focus (pages.ts),
+ * and the SELECT / ALGO encoders pick the device and the page. */
 export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];   // SEQ and REC: the device's step page (#83)
 /** the Main module's tempo range (bpm) */
 export const TEMPO_MIN = 20;
 export const TEMPO_MAX = 300;
-const knobNames = Array.from({ length: N_KNOBS }, (_, i) => `k${i + 1}`);
 
 const fm1: ModuleImpl<null> = {
   def: {
@@ -186,9 +185,8 @@ const fm1: ModuleImpl<null> = {
     inputs: [control('morph')],
     // pitch / gate / vel: the shared keyboard (one note: the last held, legato); keys: the held keys for Voice allocators
     // (the keyboard's ribbon cable to a polysynth's CPU); clock: 24 ppqn while the transport runs; run: high while it runs
-    outputs: [control('pitch'), gate('gate'), control('vel'), ...knobNames.map(control), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run'), ...PANEL_BUTTONS.map(gate)],
+    outputs: [control('pitch'), gate('gate'), control('vel'), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run'), ...PANEL_BUTTONS.map(gate)],
     params: [
-      ...knobNames.map((n) => param(n, 0, 1, 0.5, { step: 0.01 })),
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
       // the patch's tempo: the engine's clock (24 ppqn) runs from it unless MIDI clock comes in; arpeggiators and the clock output follow it
       param('tempo', TEMPO_MIN, TEMPO_MAX, 120, { step: 1, unit: 'bpm' }),
@@ -203,7 +201,6 @@ const fm1: ModuleImpl<null> = {
     c.out.mod.fill(c.voice.mod, 0, c.n);
     c.out.at.fill(c.voice.at, 0, c.n);
     c.out.keys.fill(c.voice.gate, 0, c.n); // 1 while a key is down (a scope shows it; the allocators take the keys themselves)
-    for (const n of knobNames) c.out[n].fill(c.p[n] ?? 0, 0, c.n);
     // clock: 24 ppqn (the tempo, or MIDI clock) while the transport runs, a pulse of half a block per block that saw a tick
     const hi = c.voice.clock ? Math.ceil(c.n / 2) : 0;
     c.out.clock.fill(1, 0, hi);
@@ -491,6 +488,16 @@ const noise: ModuleImpl<{ seed: number; y: number }> = {
 
 const constant: ModuleImpl<null> = {
   def: { type: 'const', label: 'Constant', inputs: [], outputs: [control('out')], params: [param('value', -4, 4, 0, { step: 0.01 })] },
+  init: () => null,
+  process(c) {
+    c.out.out.fill(c.p.value ?? 0, 0, c.n);
+  },
+};
+
+/** a performance value for a device page (what Main's knobs K1..K4 were before they became edit bindings): its one row is
+ * turned like any other, its output carries it to pins and inputs */
+const macro: ModuleImpl<null> = {
+  def: { type: 'macro', label: 'Macro', inputs: [], outputs: [control('out')], params: [param('value', 0, 1, 0.5, { step: 0.01 })] },
   init: () => null,
   process(c) {
     c.out.out.fill(c.p.value ?? 0, 0, c.n);
@@ -2391,7 +2398,7 @@ const scope: ModuleImpl<null> = {
   process: () => {},
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
