@@ -422,11 +422,14 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
 - Protocol: FOCUS 0x29 (host → device: show a page), PARAM_NOW 0x47 (a row turned on the FM-1: module, parameter, Q16)
   and FOCUS_NOW 0x48 (the page the FM-1 shows) from the device; INFO feature bit 4. With Live on the editor follows the
   FM-1's page and turns, and sends its own focus; an upload is followed by the focus.
-- Firmware (`firmware/src/pages_ui.c`): the device page is page 0. Strip of device tabs (y 0), the page chips by heading
-  (y 22, the current one in seafoam), the patch and transport line (y 40), the picture (y 56: the envelope, else the page
-  map; a turned knob's toast at full size with its range bar for a second; the device's name when SELECT moves), four
-  knob columns (y 148: K-number in its hue, name, value, unit, bar = base, ivory tick = live, refreshed ten times a second
-  for modulated rows). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
+- Firmware (`firmware/src/pages_ui.c`): the device page is page 0. Layout "A+" (#107, board OptionA of the design canvas
+  with a slimmer header): strip of device tabs (y 0), the page chips by heading (y 22, the current one in seafoam), four
+  full-width knob bars (y 41, 36 px each, 4 px apart: the K-number square and the fill in the knob's hue, name left, value
+  and unit right, ivory tick = live; an empty slot where the page has fewer rows; `pages_bar` composes each bar a scanline
+  at a time and blends the type onto it, `text_onto`; modulated bars are redrawn ten times a second), the page rail
+  (y 206: a segment per page, the focus coral, its heading's others dim) and the patch / transport line (y 214). A turned
+  knob's toast (full size with its range bar, one second) and the device's name when SELECT moves cover the bars. There is
+  no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
   HOME taps go back to the first device, then the legend; MIDI CC 16..19 set the rows (absolute). A poly row writes the
   group record of `m1_cur` (`poly_row_set` in main.c; the voices and unison reload the engine).
 - LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as

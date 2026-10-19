@@ -5,12 +5,15 @@
  * pages of one; the patch binary lists them (patchbin.ts, the device pages section: proto.c m1_devices_at). A plain
  * module's pages are made here: its parameters in order, four to a page, named as in defs.h.
  *
- * The screen (the brand look: night paper, ivory ink, the K1..K4 hues of the editor; Barlow Condensed, font_bc.c):
+ * The screen, layout "A+" (the brand look: night paper, ivory ink, the K1..K4 hues of the editor; Barlow Condensed,
+ * font_bc.c):
  *   y   0  the devices, a strip of tabs (the one in focus in ivory)
- *   y  22  the pages of the device in focus, by heading (the current one in seafoam, "FILTER 1/2")
- *   y  40  the patch (slot, name, * when edited) and the transport, the parts, the octave
- *   y  56  the picture: the page's envelope, else the device's page map; a knob just turned at full size (the toast)
- *   y 148  K1..K4: one column per knob, its row's name, value, unit and a bar (fill = base, ivory tick = live) */
+ *   y  20  the pages of the device in focus, by heading (the current one in seafoam, "FILTER 1/2")
+ *   y  41  K1..K4: four full-width bars, each tinted in its knob's hue: the row's name left, value and unit right, the
+ *          fill to the base value, an ivory tick where modulation has it; an empty slot where the page has no row. A knob
+ *          just turned, or a device just picked, shows at full size over them (the toast)
+ *   y 206  the page rail: a segment per page of the device, the one in focus lit, its section's others dimmer
+ *   y 214  the patch (slot, name, * when edited) and the transport, the parts, the octave */
 
 /* ---- colours (RGB565): web/src/style.css's dark theme */
 #define P_NIGHT 0x10E4u
@@ -492,7 +495,139 @@ static void pages_chips(void)
     }
 }
 
-/* the patch and the transport, the line over the picture */
+#define ROWS_Y 41u
+#define ROW_H 36u
+#define ROW_GAP 4u
+#define ROWS_END (ROWS_Y + 4u * ROW_H + 3u * ROW_GAP)
+#define BAR_X 6u
+#define BAR_W 228u
+#define RAIL_Y 206u
+#define FOOT_Y 214u
+
+/* a mixed with b: a by 0..16 sixteenths (RGB565) */
+static uint16_t mix565(uint16_t a, uint16_t b, uint32_t k)
+{
+    uint32_t r = ((a >> 11) * k + (b >> 11) * (16u - k) + 8u) >> 4, g = (((a >> 5) & 63u) * k + ((b >> 5) & 63u) * (16u - k) + 8u) >> 4,
+             bl = ((a & 31u) * k + (b & 31u) * (16u - k) + 8u) >> 4;
+    return (uint16_t)(r << 11 | g << 5 | bl);
+}
+
+/* glyph row r of s (font f) blended in fg onto whatever row[] already holds, from x (row[] is w px wide) */
+static void text_onto(uint16_t *row, uint32_t w, const font_t *f, uint32_t r, const char *s, uint32_t x, uint16_t fg)
+{
+    uint32_t px = x;
+    int32_t k;
+    if (r >= f->h)
+        return;
+    for (k = 0; s[k]; k++) {
+        uint32_t c = (uint8_t)s[k], gw, rb, j;
+        const fglyph_t *g;
+        const uint8_t *bits;
+        uint8_t gi = c >= 0x20u && c < 0x7Fu ? f->map[c - 0x20u] : 255u;
+        if (gi == 255u)
+            continue;
+        g = &f->g[gi];
+        gw = g->w;
+        rb = (gw + 1u) / 2u;
+        bits = f->bits + g->off + r * rb;
+        for (j = 0; j < gw; j++) {
+            uint32_t a = (j & 1u) ? bits[j >> 1] & 15u : bits[j >> 1] >> 4, at = px + (uint32_t)((int32_t)j + g->x);
+            if (a && at < w)
+                row[at] = mix565(fg, row[at], a + (a > 7u ? 1u : 0u));
+        }
+        px += g->adv;
+        if (px >= w)
+            break;
+    }
+}
+
+/* the text of s cut to fit `max` px (the rest dropped at a character) */
+static void fit(char *s, const font_t *f, uint32_t max)
+{
+    uint32_t n = str_len(s);
+    while (n && text_w(f, s, (int32_t)n) > max)
+        n--;
+    s[n] = 0;
+}
+
+/* knob k's bar: drawn a scanline at a time (fill, ticks, then the type blended onto them), so the text reads across the
+ * fill's edge */
+static void pages_bar(const ppage_t *pg, uint32_t k)
+{
+    static uint16_t row[BAR_W], sw[BAR_W];
+    char name[24], num[20], unit[8], kn[2];
+    uint32_t y0 = ROWS_Y + k * (ROW_H + ROW_GAP), base = 0, live = 0, r, i, vx = 0, ux = 0, nx = 22u;
+    int used = pg && k < pg->nrows;
+    uint16_t hue = KNOB_HUE[k], track = used ? P_PANEL : P_STRIP, fill = mix565(hue, P_PANEL, 6u);
+    kn[0] = (char)('1' + k);
+    kn[1] = 0;
+    name[0] = num[0] = unit[0] = 0;
+    if (used) {
+        uint32_t uw, vw;
+        row_show(pg, k, num, unit, BAR_W, &base, &live);
+        caps(name, pg->lab[k], pg->llen[k], 16);
+        uw = unit[0] ? text_w(&FONT_S, unit, -1) + 2u : 0u;
+        fit(num, &FONT_M, 110u);
+        vw = text_w(&FONT_M, num, -1);
+        ux = BAR_W - 7u - uw + 2u;
+        vx = BAR_W - 7u - uw - vw;
+        fit(name, &FONT_M, vx > nx + 6u ? vx - nx - 6u : 0u);
+    }
+    for (r = 0; r < ROW_H; r++) {
+        for (i = 0; i < BAR_W; i++)
+            row[i] = used && i < base ? fill : track;
+        if (used) {
+            if (base >= 2u)                             /* the fill's edge in the knob's own hue */
+                row[base - 2u] = row[base - 1u] = hue;
+            if (live != base && r >= 4u && r < ROW_H - 4u) /* modulated: where the parameter is now */
+                row[live > 1u ? live - 1u : 0u] = row[live > 1u ? live : 1u] = P_INK;
+        }
+        if (r >= 11u && r < 25u)                        /* the knob's square with its number */
+            for (i = 6; i < 18u; i++)
+                row[i] = used ? hue : P_PANEL;
+        if (r >= 11u)
+            text_onto(row, BAR_W, &FONT_S, r - 11u, kn, 9u, used ? P_NIGHT : P_FAINT);
+        if (used) {
+            if (r >= 9u) {
+                text_onto(row, BAR_W, &FONT_M, r - 9u, name, nx, P_INK);
+                text_onto(row, BAR_W, &FONT_M, r - 9u, num, vx, P_INK);
+            }
+            if (r >= 12u)
+                text_onto(row, BAR_W, &FONT_S, r - 12u, unit, ux, P_DIM);
+        } else if (r >= 9u)
+            text_onto(row, BAR_W, &FONT_M, r - 9u, "-", nx, P_FAINT);
+        if (r == 0u || r == ROW_H - 1u) {               /* rounded corners: the night shows at the four corner pixels */
+            row[0] = row[BAR_W - 1u] = P_NIGHT;
+        }
+        for (i = 0; i < BAR_W; i++)
+            sw[i] = (uint16_t)((row[i] >> 8) | (row[i] << 8));
+        lcd_blit(BAR_X, y0 + r, BAR_W, 1, sw);
+        lcd_sync();                                     /* sw is reused by the next row */
+    }
+}
+
+/* the page rail: one segment per page of the device, the one in focus in coral, the others of its heading dimmer */
+static void pages_rail(void)
+{
+    uint32_t g0, n, i, cur, head = 0, cur_head = 0;
+    lcd_fill(0, RAIL_Y - 2u, 240, 7, P_NIGHT);
+    if (!pg_ndev)
+        return;
+    g0 = pg_dev[pg_cur_dev].pg0;
+    n = pg_dev[pg_cur_dev].npg;
+    cur = pg_cur_page;
+    for (i = 0; i <= cur && i < n; i++)
+        if (i && pg_page[g0 + i].part == 0u)
+            cur_head++;
+    for (i = 0; i < n; i++) {
+        uint32_t a = BAR_X + i * BAR_W / n, b = BAR_X + (i + 1u) * BAR_W / n;
+        if (i && pg_page[g0 + i].part == 0u)
+            head++;
+        lcd_fill(a, RAIL_Y, b - a > 2u ? b - a - 2u : 1u, 3, i == cur ? P_CORAL : head == cur_head ? 0x6A06u : P_TRACK);
+    }
+}
+
+/* the patch and the transport, the foot line */
 static void pages_info(void)
 {
     char a[40], b[32], num[12], *p = a;
@@ -527,135 +662,41 @@ static void pages_info(void)
     put(p, num)[0] = 0;
     {
         uint32_t wb = text_w(&FONT_S, b, -1);
-        text_bc(&FONT_S, 6, 40, a, P_DIM, P_NIGHT, 228u - wb - 6u, TA_LEFT);
-        text_bc(&FONT_S, 234u - wb, 40, b, run ? P_SEA : P_FAINT, P_NIGHT, wb, TA_LEFT);
+        text_bc(&FONT_S, 0, FOOT_Y, "", P_DIM, P_NIGHT, BAR_X, TA_LEFT);
+        text_bc(&FONT_S, BAR_X, FOOT_Y, a, P_DIM, P_NIGHT, 228u - wb, TA_LEFT);
+        text_bc(&FONT_S, 234u - wb, FOOT_Y, b, run ? P_SEA : P_FAINT, P_NIGHT, wb + 6u, TA_LEFT);
     }
 }
 
-#define PIC_Y 56u
-#define PIC_H 90u
-
-/* the envelope of module m over the picture: times as the square root (as the editor's env-view), the sustain a fixed slot */
-static void pages_envelope(const ppage_t *pg, uint32_t m)
-{
-    int t = eng_type(m);
-    int32_t lv[5];
-    uint32_t xw[5], nseg, i, x, x0 = 10, w = 220, top = PIC_Y + 6u, h = PIC_H - 12u;
-    uint8_t knob_of[5];
-    lcd_fill(0, PIC_Y, 240, PIC_H, P_NIGHT);
-    for (i = 0; i < 5u; i++)
-        knob_of[i] = 255u;
-    if (t == T_ADSR) {                                  /* attack up, decay to the sustain, the sustain, release down */
-        int32_t a = eng_get_param(m, ADSR_P_A), d = eng_get_param(m, ADSR_P_D), s = clampi(eng_get_param(m, ADSR_P_S), 0, 65536), r = eng_get_param(m, ADSR_P_R);
-        uint32_t sa = isqrt32((uint32_t)clampi(a, 0, 0x7FFFFFFF) << 4), sd = isqrt32((uint32_t)clampi(d, 0, 0x7FFFFFFF) << 4), sr = isqrt32((uint32_t)clampi(r, 0, 0x7FFFFFFF) << 4);
-        uint32_t tot = sa + sd + sr + 1u, room = w - 44u;
-        lv[0] = 0; lv[1] = 65536; lv[2] = s; lv[3] = s; lv[4] = 0;
-        xw[0] = 0; xw[1] = 4u + sa * room / tot; xw[2] = 4u + sd * room / tot; xw[3] = 36u; xw[4] = w - xw[1] - xw[2] - xw[3];
-        nseg = 4;
-        knob_of[1] = ADSR_P_A; knob_of[2] = ADSR_P_D; knob_of[3] = ADSR_P_S; knob_of[4] = ADSR_P_R;
-    } else {                                            /* the level / rate envelope: four segments of equal width */
-        lv[0] = 0;
-        for (i = 0; i < 4u; i++) {
-            lv[i + 1u] = clampi(eng_get_param(m, ENV_P_L1 + 2u * i), 0, 65536);
-            xw[i + 1u] = w / 4u;
-            knob_of[i + 1u] = (uint8_t)(ENV_P_L1 + 2u * i);
-        }
-        xw[0] = 0;
-        nseg = 4;
-    }
-    /* the curve, a column at a time: filled below in a dark seafoam, the line in seafoam */
-    {
-        uint32_t seg = 1, sx = 0;
-        int32_t prev = (int32_t)(top + h);
-        for (x = 0; x < w; x++) {
-            int32_t y, a, b;
-            while (seg < nseg && x >= sx + xw[seg]) {
-                sx += xw[seg];
-                seg++;
-            }
-            a = lv[seg - 1u];
-            b = lv[seg];
-            y = (int32_t)(top + h) - (int32_t)(((int64_t)(a + (int32_t)(((int64_t)(b - a) * (int32_t)(x - sx)) / (int32_t)(xw[seg] ? xw[seg] : 1u))) * (int32_t)h) >> 16);
-            if ((uint32_t)y < top + h)
-                lcd_fill(x0 + x, (uint32_t)y + 1u, 1, top + h - (uint32_t)y, 0x1A68u);
-            lcd_fill(x0 + x, (uint32_t)(y < prev ? y : prev), 1, (uint32_t)(y < prev ? prev - y : y - prev) + 2u, P_SEA);
-            prev = y;
-        }
-        lcd_fill(x0, top + h + 1u, w, 1, P_TRACK);
-    }
-    {   /* a dot at each corner, in the hue of the knob whose row moves it */
-        uint32_t s, cx = x0;
-        for (s = 1; s <= nseg; s++) {
-            uint32_t k, hue = P_INK;
-            int32_t cy;
-            cx += xw[s];
-            cy = (int32_t)(top + h) - (int32_t)(((int64_t)lv[s] * (int32_t)h) >> 16);
-            for (k = 0; k < pg->nrows; k++)
-                if (pg->mod[k] == m && pg->par[k] == knob_of[s])
-                    hue = KNOB_HUE[k];
-            lcd_fill(cx > 3u ? cx - 3u : 0u, (uint32_t)(cy > 3 ? cy - 3 : 0), 6, 6, (uint16_t)hue);
-        }
-    }
-}
-
-/* the device's page map: one line per heading, a segment per page, the one in focus lit */
-static void pages_map(void)
-{
-    uint32_t g0 = pg_dev[pg_cur_dev].pg0, n = pg_dev[pg_cur_dev].npg, i, line = 0, y = PIC_Y + 4u, first = 0, heads = 0, cur_head = 0;
-    lcd_fill(0, PIC_Y, 240, PIC_H, P_NIGHT);
-    for (i = 0; i < n; i++)
-        if (pg_page[g0 + i].part == 0u) {
-            if (i <= pg_cur_page)
-                cur_head = heads;
-            heads++;
-        }
-    if (heads > 5u)                                     /* five lines show: the one in focus among them */
-        first = cur_head > 2u ? (cur_head - 2u + 5u > heads ? heads - 5u : cur_head - 2u) : 0u;
-    for (i = 0; i < n; i++) {
-        const ppage_t *pg = &pg_page[g0 + i];
-        char t[16];
-        uint32_t j, lit = 0, k;
-        if (pg->part != 0u)
-            continue;
-        if (line++ < first || line > first + 5u)
-            continue;
-        for (j = 0; j < pg->parts; j++)
-            if (i + j == pg_cur_page)
-                lit = 1;
-        caps(t, pg->name, pg->nlen, 12);
-        text_bc(&FONT_S, 10, y, t, lit ? P_INK : P_FAINT, P_NIGHT, 90, TA_LEFT);
-        for (k = 0; k < pg->parts && k < 6u; k++)
-            lcd_fill(104u + k * 22u, y + 5u, 18, 5, i + k == pg_cur_page ? P_SEA : lit ? 0x3B2Cu : P_TRACK);
-        y += 17u;
-    }
-}
+/* the toasts: over the bars, centred in their height */
+#define TOAST_Y (ROWS_Y + 26u)
 
 /* knob k's row at full size: its name, the value in the big type, the range bar with the live tick */
 static void pages_toast(const ppage_t *pg, uint32_t k)
 {
     char t[24], num[20], unit[8], lo_n[20], lo_u[8], hi_n[20], hi_u[8];
     uint32_t m = pg->mod[k], j = pg->par[k], xw, i, ok = 1, bw = 216, base, live;
-    lcd_fill(0, PIC_Y, 240, PIC_H, P_NIGHT);
+    lcd_fill(0, ROWS_Y, 240, ROWS_END - ROWS_Y, P_NIGHT);
     t[0] = 'K';
     t[1] = (char)('1' + k);
     t[2] = ' ';
     caps(t + 3, pg->lab[k], pg->llen[k], 16);
-    text_bc(&FONT_S, 12, PIC_Y + 2u, t, KNOB_HUE[k], P_NIGHT, 0, TA_LEFT);
+    text_bc(&FONT_S, 12, TOAST_Y + 2u, t, KNOB_HUE[k], P_NIGHT, 0, TA_LEFT);
     row_show(pg, k, num, unit, bw, &base, &live);
     for (i = 0; num[i]; i++)                            /* the big type has digits and a few letters: else the large one */
         if (num[i] < 0x20 || num[i] > 0x7E || FONT_XL.map[num[i] - 0x20] == 255u)
             ok = 0;
     if (ok) {
-        xw = text_bc(&FONT_XL, 10, PIC_Y + 16u, num, P_INK, P_NIGHT, 0, TA_LEFT);
-        text_bc(&FONT_M, 16u + xw, PIC_Y + 16u + 42u - 22u, unit, P_DIM, P_NIGHT, 0, TA_LEFT);
+        xw = text_bc(&FONT_XL, 10, TOAST_Y + 16u, num, P_INK, P_NIGHT, 0, TA_LEFT);
+        text_bc(&FONT_M, 16u + xw, TOAST_Y + 16u + 42u - 22u, unit, P_DIM, P_NIGHT, 0, TA_LEFT);
     } else {
-        xw = text_bc(&FONT_L, 12, PIC_Y + 26u, num, P_INK, P_NIGHT, 0, TA_LEFT);
-        text_bc(&FONT_M, 18u + xw, PIC_Y + 30u, unit, P_DIM, P_NIGHT, 0, TA_LEFT);
+        xw = text_bc(&FONT_L, 12, TOAST_Y + 26u, num, P_INK, P_NIGHT, 0, TA_LEFT);
+        text_bc(&FONT_M, 18u + xw, TOAST_Y + 30u, unit, P_DIM, P_NIGHT, 0, TA_LEFT);
     }
-    lcd_fill(12, PIC_Y + 64u, bw, 8, P_TRACK);
-    lcd_fill(12, PIC_Y + 64u, base, 8, KNOB_HUE[k]);
+    lcd_fill(12, TOAST_Y + 64u, bw, 8, P_TRACK);
+    lcd_fill(12, TOAST_Y + 64u, base, 8, KNOB_HUE[k]);
     if (live != base)
-        lcd_fill(12u + (live > 1u ? live - 1u : 0u), PIC_Y + 61u, 2, 14, P_INK);
+        lcd_fill(12u + (live > 1u ? live - 1u : 0u), TOAST_Y + 61u, 2, 14, P_INK);
     if (j & POLY_ROW)
         return;
     {
@@ -664,18 +705,18 @@ static void pages_toast(const ppage_t *pg, uint32_t k)
         value_parts(d, j, d->pmax[j], hi_n, hi_u);
     }
     put(put(put(t, lo_n), " "), lo_u)[0] = 0;
-    text_bc(&FONT_S, 12, PIC_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_LEFT);
+    text_bc(&FONT_S, 12, TOAST_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_LEFT);
     put(put(put(t, hi_n), " "), hi_u)[0] = 0;
-    text_bc(&FONT_S, 128, PIC_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_RIGHT);
+    text_bc(&FONT_S, 128, TOAST_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_RIGHT);
 }
 
 /* the device just picked with SELECT, big */
 static void pages_dev_toast(void)
 {
     char t[20], num[8], *p;
-    lcd_fill(0, PIC_Y, 240, PIC_H, P_NIGHT);
+    lcd_fill(0, ROWS_Y, 240, ROWS_END - ROWS_Y, P_NIGHT);
     caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
-    text_bc(&FONT_L, 0, PIC_Y + 24u, t, P_INK, P_NIGHT, 240, TA_CENTER);
+    text_bc(&FONT_L, 0, TOAST_Y + 24u, t, P_INK, P_NIGHT, 240, TA_CENTER);
     fmt_int(num, (int32_t)pg_cur_dev + 1);
     p = put(t, num);
     *p++ = '/';
@@ -683,49 +724,14 @@ static void pages_dev_toast(void)
     p = put(p, num);
     p = put(p, pg_dev[pg_cur_dev].module >= 0 ? "  MODULE" : "  ASSEMBLY");
     *p = 0;
-    text_bc(&FONT_S, 0, PIC_Y + 54u, t, P_DIM, P_NIGHT, 240, TA_CENTER);
+    text_bc(&FONT_S, 0, TOAST_Y + 54u, t, P_DIM, P_NIGHT, 240, TA_CENTER);
 }
 
-#define COL_Y 148u
-#define COL_W 60u
-
-/* knob k's column: K1 in its hue, the row's name, the value, the unit, the bar (base) and the live tick */
-static void pages_column(const ppage_t *pg, uint32_t k, int lit)
-{
-    char t[20], num[20], unit[8];
-    uint32_t x = k * COL_W, cw = COL_W - (k < 3u ? 1u : 0u);
-    uint16_t bg = lit ? P_PANEL : P_NIGHT;
-    t[0] = 'K';
-    t[1] = (char)('1' + k);
-    t[2] = 0;
-    lcd_fill(x, COL_Y, cw, 240u - COL_Y, bg);
-    if (k < 3u)
-        lcd_fill(x + COL_W - 1u, COL_Y + 2u, 1, 240u - COL_Y - 6u, P_PANEL);
-    text_bc(&FONT_S, x + 5u, COL_Y + 3u, t, pg && k < pg->nrows ? KNOB_HUE[k] : P_FAINT, bg, 0, TA_LEFT);
-    if (!pg || k >= pg->nrows) {
-        text_bc(&FONT_L, x + 5u, COL_Y + 34u, "-", P_FAINT, bg, 0, TA_LEFT);
-        return;
-    }
-    {
-        uint32_t bw = cw - 10u, base, live;
-        caps(t, pg->lab[k], pg->llen[k], 12);
-        text_bc(&FONT_S, x + 5u, COL_Y + 18u, t, P_DIM, bg, cw - 6u, TA_LEFT);
-        row_show(pg, k, num, unit, bw, &base, &live);
-        text_bc(&FONT_L, x + 5u, COL_Y + 34u, num, P_INK, bg, cw - 6u, TA_LEFT);
-        text_bc(&FONT_S, x + 5u, COL_Y + 60u, unit, P_DIM, bg, cw - 6u, TA_LEFT);
-        lcd_fill(x + 5u, 228, bw, 3, P_TRACK);
-        lcd_fill(x + 5u, 228, base, 3, KNOB_HUE[k]);
-        if (live != base)                               /* modulated: where the parameter is now */
-            lcd_fill(x + 5u + (live > 1u ? live - 1u : 0u), 225, 2, 9, P_INK);
-    }
-}
-
-/* the device page (page 0); full: everything, else what moves (the picture, the columns, the info line) */
+/* the device page (page 0); full: everything, else what moves (the bars or a toast, the rail, the foot line) */
 static void pages_draw(int full)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
-    int toast = pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows;
     if (full)
         lcd_fill(0, 20, 240, 220, P_NIGHT);
     if (full || pg_strip_dirty) {
@@ -735,24 +741,25 @@ static void pages_draw(int full)
             pages_chips();
         else
             lcd_fill(0, 20, 240, 18, P_NIGHT);
+        pages_rail();
         pg_strip_dirty = 0;
     }
     pages_info();
-    if (!pg)
-        lcd_fill(0, PIC_Y, 240, PIC_H, P_NIGHT);
-    else if (fm1_ms < pg_dev_toast_until)
+    if (pg && fm1_ms < pg_dev_toast_until)
         pages_dev_toast();
-    else if (toast)
+    else if (pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows)
         pages_toast(pg, pg_toast_k);
-    else if (pg->display && pg->display - 1u < (uint32_t)eng_nmodules() && (eng_type(pg->display - 1u) == T_ADSR || eng_type(pg->display - 1u) == T_ENV))
-        pages_envelope(pg, pg->display - 1u);
-    else
-        pages_map();
-    for (k = 0; k < PG_ROWS; k++)
-        pages_column(pg, k, toast && k == pg_toast_k);
+    else {
+        lcd_fill(0, ROWS_Y - 3u, 240, 3, P_NIGHT);
+        for (k = 0; k < PG_ROWS; k++) {
+            pages_bar(pg, k);
+            if (k < 3u)
+                lcd_fill(0, ROWS_Y + k * (ROW_H + ROW_GAP) + ROW_H, 240, ROW_GAP, P_NIGHT);
+        }
+    }
 }
 
-/* the toasts end: the picture comes back (main loop) */
+/* the toasts end: the bars come back (main loop) */
 static int pages_expired(void)
 {
     static uint8_t was;
@@ -762,22 +769,21 @@ static int pages_expired(void)
     return out;
 }
 
-/* the live ticks of the columns (the rows a cable or pin moves), redrawn alone ten times a second */
+/* the bars whose rows a cable or pin moves (their live tick), redrawn alone ten times a second */
 static void pages_ticks(void)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
     if (!pg || fm1_ms < pg_toast_until || fm1_ms < pg_dev_toast_until)
         return;
+    static uint8_t was;                                 /* bars that had a tick last time: redrawn once more to clear it */
+    uint8_t now = 0;
     for (k = 0; k < pg->nrows; k++) {
-        uint32_t m = pg->mod[k], j = pg->par[k], x = k * COL_W, bw = COL_W - (k < 3u ? 1u : 0u) - 10u, base, live;
-        if ((j & POLY_ROW) || eng_get_param(m, j) == eng_get_eff(m, j))
-            continue;
-        base = param_bar(&DEFS[eng_type(m)], j, eng_get_param(m, j), bw);
-        live = param_bar(&DEFS[eng_type(m)], j, eng_get_eff(m, j), bw);
-        lcd_fill(x + 5u, 225, bw, 9, P_NIGHT);
-        lcd_fill(x + 5u, 228, bw, 3, P_TRACK);
-        lcd_fill(x + 5u, 228, base, 3, KNOB_HUE[k]);
-        lcd_fill(x + 5u + (live > 1u ? live - 1u : 0u), 225, 2, 9, P_INK);
+        uint32_t m = pg->mod[k], j = pg->par[k];
+        if (!(j & POLY_ROW) && eng_get_param(m, j) != eng_get_eff(m, j))
+            now |= (uint8_t)(1u << k);
+        if ((now | was) & (1u << k))
+            pages_bar(pg, k);
     }
+    was = now;
 }

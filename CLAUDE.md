@@ -611,3 +611,10 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Firmware: `pages_ui.c` (page 0), `font_bc.c` + generated `font_bc.h` (`python3 tools/gen_font.py`: Barlow Condensed, OFL, 4-bit AA, four sizes), ui.c / menu.c / seq_ui.c restyled in the dark brand palette; ui_preview takes `DEVICE:PAGE` and env `TOAST`, `DEVTOAST`. Emulator text reader knows the new font (`font.rs find_bc`); smoke's home marker is `OCT `.
 - Factory patches no longer route knobs; course.json's stored patches went through validatePatch once, the Macros assemblies there were ungrouped (one-off script in the session scratchpad), chapter 3 / 9 knob steps rewritten around the focus and the Macro module.
 - Superseded above: "Panel controls as patch outputs" (K1..K6), "Player screen and legend", the knob ticks (knob-rest.ts, deleted), Sloop knob hues.
+
+## Groups, knob-tinted bars, layout A+ (#104–#107, 2026-10-19; host-tested: vitest 670, golden 84, LCD previews, editor seen on [::1]:5173)
+
+- #104: `gen_splash.py` composites the art over `BG565` = `C_BG` (keep in step with ui.c); palette entry 0 is that colour.
+- #105: `ParamRef.group` (Arrange "↵ new group", chip "new group ×", `setGroupBreak`; belongs to the position like `col` / `head`); `groupStarts` (pages.ts) is the one rule for cards and pages: fours, a group flag, a column break or a heading start a group, displays do not count. Section = heading, its groups = its pages. Cards: `.erow.gstart` dashed divider; plain module cards use `moduleRows` (same order the FM-1 pages). Binary format unchanged (the device section already lists pages). Factory regroupings via `param(..., { group: true })` in gen-assemblies.ts.
+- #106: the focused page's bars get `.param.bar.focused` (fill + tint in `--knob`), set in `markFocus`.
+- #107: pages_ui.c layout A+ (docs/ARCHITECTURE.md "Device pages"); the envelope picture and page map are gone (#112 brings envelopes back inside the bars).
