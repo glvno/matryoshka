@@ -222,7 +222,7 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 
 ## Handoff
 
-- `docs/HANDOFF.md` (2026-10-18): the work queue (#94 first, then the editor bug batch, copy / paste, device work that stays host + emulator only) and loose ends with no ticket. Read it at the start of a session. (The 2026-10-13 handoff is in git history.)
+- `docs/HANDOFF.md` (2026-10-19, second session): #104–#110 done, next #111 / #112 and merging #108–#110 into main. Read it at the start of a session.
 
 ## One-voice build switch (handoff step 1, done 2026-10-13; host-tested, NOT built with the JieLi toolchain, not flashed)
 
