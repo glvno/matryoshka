@@ -19,6 +19,7 @@
     "emu": "node scripts/emu.mjs",
     "emu:smoke": "node scripts/emu.mjs --smoke",
     "ai-stats": "vite-node scripts/ai-stats.ts",
+    "ai-prompts": "vite-node scripts/ai-prompts.ts",
     "coverage": "vitest run --testTimeout=60000 --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary --coverage.include='src/**' && vite-node scripts/coverage-stats.ts"
   },
   "devDependencies": {

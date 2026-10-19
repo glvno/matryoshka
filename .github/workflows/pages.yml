@@ -77,6 +77,10 @@ jobs:
         with:
           path: web/public/ai-stats.json
           key: ai-stats-${{ github.run_id }}
+      - name: sum the prompt counts (AI_PROMPTS_* variables, set by the pre-push hook in .githooks)
+        env:
+          GH_VARS: ${{ toJSON(vars) }}
+        run: npm run ai-prompts -- collect
       - run: npm run build
       - name: the firmware package must be there
         run: test -s dist/firmware/modular-1.fwsc && test -s dist/firmware/modular-1.json && test -s dist/firmware/FM-1_015.fwsc && test -s dist/firmware/NOTICE-FM-1_015.txt

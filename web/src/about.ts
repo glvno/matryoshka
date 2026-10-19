@@ -3,8 +3,8 @@
 // card: the dialog has a transform, so the script's position: fixed button and popup are placed in the card, not the window
 // (top right, see style.css).
 import COPY from './about-copy.json';
-import REVIEW from './ai-review.json';
-import { formatDay, formatHours, formatUsd, isAiStats, modelName, modelShares, totalCost, type AiReview, type AiStats } from './ai-stats';
+import { isAiPrompts, type AiPrompts } from './ai-prompts';
+import { formatDay, formatHours, formatUsd, isAiStats, modelName, modelShares, totalCost, type AiStats } from './ai-stats';
 import { isCoverageStats, type CoverageStats } from './coverage';
 import { version } from '../package.json';
 import { inlineWordmarks, logoHtml } from './brand';
@@ -49,11 +49,10 @@ function figure(label: string, value: string, caption: string): string {
   return `<div class="ai-fig"><span class="ai-label">${label}</span><span class="ai-value">${value}</span><span class="ai-sub">${caption}</span></div>`;
 }
 
-/** Blood (time), Sweat (human review), Tears (AI spend: WakaTime's estimate at API prices, not a bill) */
-function figures(stats: AiStats | null, review: AiReview): string {
+/** Blood (time), Sweat (prompts typed into Claude Code and Codex), Tears (AI spend: WakaTime's estimate at API prices, not a bill) */
+function figures(stats: AiStats | null, prompts: AiPrompts | null): string {
   const blood = figure('Blood', stats ? formatHours(stats.seconds) : '—', 'human in the loop');
-  const sweat = figure('Sweat', review.percent !== null ? `${Math.round(review.percent)} %` : '—',
-    'human-scrutinized');
+  const sweat = figure('Sweat', prompts ? prompts.prompts.toLocaleString('en-US') : '—', 'prompts');
   const tears = figure('Tears', stats ? formatUsd(totalCost(stats)) : '—', 'AI spend');
   return `<div class="ai-figs">${blood}${sweat}${tears}</div>`;
 }
@@ -68,9 +67,11 @@ function models(stats: AiStats | null): string {
     <ul>${shares.map((m, i) => `<li><i style="background: ${color(i)}"></i>${esc(modelName(m.model))} <b>${pct(m.share)}</b></li>`).join('')}</ul></div>`;
 }
 
-function source(stats: AiStats | null): string {
-  if (!stats) return '<p class="ai-source">The figures appear after the next deploy fetches them from WakaTime.</p>';
-  return `<p class="ai-source">Source: WakaTime API as of ${formatDay(stats.asOf)}</p>`;
+function source(stats: AiStats | null, prompts: AiPrompts | null): string {
+  const waka = stats ? `WakaTime API as of ${formatDay(stats.asOf)}` : '';
+  const cli = prompts ? `prompts from Claude Code and Codex transcripts as of ${formatDay(prompts.asOf)}` : '';
+  if (!waka && !cli) return '<p class="ai-source">The figures appear after the next deploy fetches them.</p>';
+  return `<p class="ai-source">Source: ${[waka, cli].filter(Boolean).join('; ')}</p>`;
 }
 
 const pctText = (pct: number): string => `${Math.round(pct)} %`;
@@ -97,6 +98,7 @@ function credits(): string {
 export class AboutCard {
   readonly dialog: HTMLDialogElement;
   private stats: AiStats | null | undefined;
+  private prompts: AiPrompts | null | undefined;
   private cov: CoverageStats | null | undefined;
   private kofiDrawn = false;
 
@@ -113,8 +115,9 @@ export class AboutCard {
     void this.drawKofi();
     if (this.stats === undefined) {
       const get = (file: string): Promise<unknown> => fetch(file, { cache: 'no-cache' }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-      const [stats, cov] = await Promise.all([get('./ai-stats.json'), get('./coverage.json')]);
+      const [stats, prompts, cov] = await Promise.all([get('./ai-stats.json'), get('./ai-prompts.json'), get('./coverage.json')]);
       this.stats = isAiStats(stats) ? stats : null;
+      this.prompts = isAiPrompts(prompts) ? prompts : null;
       this.cov = isCoverageStats(cov) ? cov : null;
       this.renderUsage();
     }
@@ -180,7 +183,8 @@ export class AboutCard {
   private renderUsage(): void {
     const stats = this.stats ?? null;
     const live = this.dialog.querySelector('.ai-live');
-    if (live) live.innerHTML = figures(stats, REVIEW as AiReview) + models(stats) + source(stats);
+    const prompts = this.prompts ?? null;
+    if (live) live.innerHTML = figures(stats, prompts) + models(stats) + source(stats, prompts);
     const cov = this.dialog.querySelector('.cov-live');
     if (cov) cov.innerHTML = coverage(this.cov ?? null);
   }

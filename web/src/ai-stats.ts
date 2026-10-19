@@ -1,6 +1,6 @@
 // The About card's AI usage figures. `scripts/ai-stats.ts` (run by the Pages workflow with the WAKATIME_API_KEY secret) sums the
 // WakaTime summaries of the projects in `ai-projects.json` with `sumSummaries` and writes `public/ai-stats.json`; the card reads
-// that file and formats it here. The human review figure is not in WakaTime's API: it is copied by hand into `ai-review.json`.
+// that file and formats it here. The prompt count comes from ai-prompts.ts.
 
 /** what the build writes to public/ai-stats.json */
 export interface AiStats {
@@ -13,15 +13,6 @@ export interface AiStats {
   seconds: number;
   /** WakaTime's estimate at API token prices, per model, in USD (not a bill) */
   costs: Record<string, number>;
-}
-
-/** the hand-copied figure from the WakaTime AI dashboard */
-export interface AiReview {
-  /** 0..100, or null while not filled in */
-  percent: number | null;
-  sessions: number | null;
-  /** the day it was copied (YYYY-MM-DD) */
-  asOf: string | null;
 }
 
 /** the parts of one day of `GET /users/current/summaries` this reads; WakaTime has put the AI fields on the day and on its grand_total */
