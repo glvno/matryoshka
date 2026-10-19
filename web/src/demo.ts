@@ -5,8 +5,7 @@ import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import raw from './demo/sum1-gr8.json';
 
-/** a fresh copy of the demo patch: drums on Steps tracks (KICK, SNARE, HAT; PUMP restarts the drone's pump every
- *  quarter) at the Main module's 96 bpm, the Hera 6 bassline (the HERA track; `wait 4 bars` keeps it out until bar 5,
- *  then restarts it at step 1) and the Synthi drone, which
- *  plays on its own as soon as audio runs; the Demo button starts the transport too */
+/** a fresh copy of the demo patch ("Sum1 Gr8 tweaks"): drums on Steps tracks at the Main module's 113 bpm, the Hera 6
+ *  bassline (the HERA track; `wait 4 bars` keeps it out until bar 5, then restarts it at step 1) and the Synthi drone;
+ *  it is silent until the transport runs, which the Demo button starts */
 export const demoPatch = (): Patch => validatePatch(structuredClone(raw), DEFS);

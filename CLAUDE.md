@@ -603,3 +603,7 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - History entries carry the A / B side (`{ s, side }`); a flip is a step on the side it left; `setPatch` clears A / B. Undo / redo are ignored while a pointer gesture is held; Ctrl+Y redoes; only text entry fields keep Cmd / Ctrl+Z for themselves (`isTextEntry`). `restore` resets cable-slack modulation and forgets first-expansion tidying of assemblies the undo closed.
 - Fixed on the way: the panel button's switch / hold menu pushed its snapshot after the change (a dead step); `renamePanel` / `applyLive` pushed without clearing redo or on no change.
 - Left as is: tutorial Back clears the history (it loads a patch); `applyLive` (A/B) replaces the whole target except module positions and forwards only params / att / bypass / range live; an undo reloads the engine (held panel buttons reset to the patch's state).
+
+## Demo = "Sum1 Gr8 tweaks" (2026-10-19)
+
+- `web/src/demo/sum1-gr8.json` is the user's "Sum1 Gr8 tweaks" (copied from the dev server's localStorage `modular-1.patch`): 113 bpm, no stored octave, silent until the transport runs (the Demo button starts it). demo.test.ts follows it. The first-run patch stays Mellow Pad (Oracle V).
