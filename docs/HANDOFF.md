@@ -10,8 +10,8 @@ pages". The earlier handoffs are in git history.
   (`ParamRef.group`, `groupStarts`), #106 knob-tinted bars for the focused page, #107 FM-1 page layout A+, #108 the
   panel core (`firmware/src/panel.c`, host test `tools/panel_test.sh`), #109 the firmware UI as WebAssembly
   (`firmware/wasm/fm1_ui.c`, `npm run fm1-wasm`, `web/src/fm1-ui.ts`), #110 the editor's FM-1 tab (`web/src/fm1-view.ts`).
-- `device-pages` was merged into `main` after #107 (e46dcbb). #108–#110 are on `device-pages` only (pushed, CI green):
-  merge them into `main` when the user agrees (that deploys the FM-1 tab to Pages).
+- `device-pages` (#108–#110, the FM-1 tab's device layout, lights and "doll" look) was merged into `main` on 2026-10-19
+  (87f2145) and deployed to Pages (web, firmware and pages workflows green).
 - Verified: vitest 672, golden 84 + proto + panel tests, `npm run build`, the JieLi CI build (no warnings, pool 41.5 KB
   free), `npm run emu:smoke` 108 / 108 on efd5f84 (the last commit that changed device code), the editor and FM-1 tab
   in Chrome on [::1]:5173.
@@ -22,10 +22,9 @@ pages". The earlier handoffs are in git history.
 
 ## Suggested order
 
-1. Ask the user about merging `device-pages` (#108–#110) into `main`.
-2. **#111** C engine audio in the FM-1 tab (the wasm already renders the engine silently on each tick: route its
+1. **#111** C engine audio in the FM-1 tab (the wasm already renders the engine silently on each tick: route its
    output to an AudioWorklet instead of the browser engine, or let the user choose).
-3. **#112** Faint envelope shapes on envelope pages (inside the bars of layout A+; the old `pages_envelope` is in git
+2. **#112** Faint envelope shapes on envelope pages (inside the bars of layout A+; the old `pages_envelope` is in git
    history before 735b504).
 
 ## Working notes
