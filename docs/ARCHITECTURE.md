@@ -187,7 +187,7 @@ Rules: `reconcile` keeps an assembly consistent after every structural change (d
 
 - `shift`: single sideband. A Hilbert pair (Olli Niemitalo's two chains of four second-order allpasses y = a²(x + y₂) − x₂, coefficients `HILBERT_A` / `HILBERT_B`; chain A's output delayed by one sample is I, chain B's is Q) and a quadrature oscillator at `shift` + cv·cvamt Hz (per block from the block mean of cv): up = I·cos + Q·sin, down = I·cos − Q·sin (the sign convention of this pair; verified by the test: a 440 Hz sine shifted by 100 comes out at 540 on `up`); each output is in·(1 − mix) + shifted·mix. Below about 20 Hz the pair's phase error lets a little of the other sideband through, as with any such design. C: a² in Q30 (`HILB_A2` / `HILB_B2`), each section in the two-state form w = x + a²w₂, y = a²w − w₂ (18 words of state), signals Q16, `sin_turn` for the oscillator, the increment from Hz as (hz << 16) / sr in u32 turns (a negative shift wraps). Golden kit `shift` (saw, LFO on cv): 0.4 % rel rms.
 
-## Pitch bend, mod wheel, aftertouch, CC to knobs
+## Pitch bend, mod wheel, aftertouch, CC to knobs (CC 16..19: see "Device pages")
 
 - The Main module has three more outputs, shared by the notes like the knobs: `bend` (−1..1), `mod` (0..1) and `at` (0..1). The `pitch` output already includes the bend at ±2 semitones (`BEND_OCT`), so every patch bends; the raw `bend` output is for other uses. CC 1 is the mod wheel, channel aftertouch (0xD0) the `at` output. CC 16..19 set the Main module's knobs k1..k4 (0..1). Web: `input.ts` parses 0xE0 / 0xB0 / 0xD0 into worklet messages `bend`, `cc`, `at`; `Engine.bend / cc / aftertouch` keep one set of values (`ctl`), copied into every voice at the start of a block (the engine sets the editor's knobs only in the worklet: the sliders do not follow a CC). Firmware: `eng_ctl_v(voice, ENG_CTL_*, q16)`, `E.ctl[]`, filled by `m_fm1` (`port_poly` treats the new outputs as shared); `midi_drain` routes bend, CC 1, CC 16..19 (through `eng_find(T_FM1)`, `eng_set_param` and `m1_patch_param`, so SAVE keeps the knob) and aftertouch to the voices whose channel matches, as notes. Binary patch format unchanged (outputs are not in the record); `MAX_OUT` is 12.
 
@@ -328,7 +328,7 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 - SAVE (and the editor's STORE) writes the running patch, edits included, into the slot it came from (`cur_preset`) under that slot's name, and the settings record (12 bytes: version, slot, octave, LED mode, knob accel, CPU in the bar, clock in, program change, MIDI channel, level, mute, selected module). The next boot opens the slot the settings record names. Choosing a patch does not write the flash (an erase stops the audio for a moment), so the boot opens the slot last saved. Edits since the load show as ` *` after the name (`m1_edited` in proto.c, set by the live edit writers, cleared by `m1_set_current` and SAVE).
 - Gone: `patchstore.c`, the state blob and its versions, `state_pack`, `ps_*`; old stored states are not read.
 
-## Panel controls as patch outputs (#60, 2026-10-18)
+## Panel controls as patch outputs (#60, 2026-10-18; the knobs K1..K6 superseded by "Device pages" below)
 
 - The patch owns the FM-1's spare controls (#57 decision 4): Main parameters `k5` / `k6` are the SELECT / ALGO encoders (outputs after k4), and the gate outputs `fx scl env lfo edit glo arp` (`PANEL_BUTTONS`; the matrix ids 2 3 4 5 6 7 10, M-VAVE's order) are the buttons (SEQ and REC were patch buttons too until #83 gave them to the step page; format 26: 7 buttons, 13 labels, CC 80..86). The device keeps PRESET, PLAY, SAVE, HOME and OCT- / OCT+.
 - `ModuleInst.panel` on the Main module: `toggle` (buttons that switch on / off instead of acting while held), `on` (switched ones that are on, saved), `labels` for K1..K6 and the buttons (`panelLabel`: the LCD's capitals and signs, at most 10 characters). Binary format 24: a fixed panel section (`PANEL_BYTES` = 154: u16 toggle mask, u16 on mask, 15 labels x 10 bytes) after the poly group bytes; `eng_panel_at` / `eng_records_at` in engine.h; proto.c `m1_panel` / `m1_panel_on`.
@@ -336,7 +336,7 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 - Firmware: K1..K6 always turn the Main module's knobs; a held button is on while held, a switching one flips on the press (the patch's `on` mask follows, SAVE keeps it); the buttons' LEDs are lit while on and glow dimly when a cable leaves the output. Gone: the mixer page (level = MASTER, morph / legato / priority = the patch), the ENV page, FX bypass, SELECT's module stepping.
 - Editor dock: K5 / K6 knobs beside K1..K4, a 3 x 3 grid of the buttons with their jacks (press = hold / switch; right-click: switch or hold, label), a knob's label by right-click on its cap.
 
-## Player screen and legend (#63, 2026-10-18)
+## Player screen and legend (#63, 2026-10-18; superseded by "Device pages" below)
 
 - Page 0 is the player screen (`ui.c player_draw`): the top bar is the slot number (1..64) and the patch name, ` *` while edited; K1..K4 as four big rows (the panel label, else where the knob's cable goes, the position in percent, a bar); K5 / K6 small, side by side; a footer with PLAY / STOP and the tempo (MIDI while MIDI clock drives the clock), the parts and the octave, and a square that lights on each beat while the transport runs. Turning a knob or pressing a patch button puts its label and value / state in the bar for a second.
 - HOME tapped shows the legend (`legend_draw`): every knob and patch button with its label; buttons no cable uses are dim, switched-on ones say (ON). HOME again goes back; HOME held is the menu.
@@ -377,3 +377,68 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 - The FM-1 tells the editor which slot it plays: SysEx SLOT_NOW (0x43: slot, name) whenever it loads a slot (PRESET, program change, boot) or SAVEs. Its K1..K6 and patch buttons reach the editor as the USB MIDI CC of #64 (MENU > MIDI OUT on). With Live on, the editor moves the Main module's knobs (without sending them back) and the browser engine's buttons; the status line names the slot.
 - The editor's patch buttons go to the FM-1 as CC 80..88; its knob turns as PARAM as before. STORE writes the running patch into the slot the FM-1 plays; "Store to an FM-1 slot…" (palette) writes the open patch into any slot (SLOT command) without switching to it; the Library's bank upload writes all 64.
 - Not verified on a device: USB is not emulated.
+
+## Device pages: the knobs follow the focus (2026-10-19, branch device-pages)
+
+Decided with the user (design canvas https://claude.ai/artifact/R8qCCtaZ8RghG1QRYeahgV): every top-level module or assembly
+of the canvas is a **device** the FM-1 plays; its card's rows are its **pages**, four rows each, and K1..K4 turn the rows
+of the page in focus. Assemblies hide the inside: what the card shows is what the player gets.
+
+- Model (`web/src/pages.ts`, tests `pages.test.ts`): `devicesOf(patch)` = the top-level modules (not Main, Output, Steps,
+  Part, editor-only) and assemblies with rows, in Tidy's reading order (columns from the left, half a card of slack, then
+  from the top). An assembly's rows are its promoted parameters; a heading (`ParamRef.head`) starts a **section** (rows
+  before the first heading take the assembly's name), a section holds **groups** of at most `PAGE_ROWS` (4) rows and each
+  group is one page ("Filter 1/2" = the section's first group). `groupStarts` decides them: groups fill in fours, a
+  `ParamRef.group` flag (Arrange's "↵ new group"; belongs to the position like `col` / `head`) or a column break ends one
+  early, a display does not count and starts the next group when the last is full. Cards draw a dashed divider above a
+  group that has no heading or column of its own (`.erow.gstart`). A plain module's rows are its parameters (not
+  `onScreen`), four to a page (`moduleRows`, the FM-1 makes the same pages itself), labelled with the long name where it
+  fits `NAME_MAX` (12).
+  An envelope's display row (adsr / env `view`) puts its shape on the page holding its rows (`Page.display`).
+- Main's knobs are **edit bindings**, not signals: the Main module lost the outputs and parameters k1..k6 (format 29).
+  `migrateKnobs` (`knob-migrate.ts`, run by `validatePatch`) turns an old patch's knob cables into a "Macros" assembly of
+  **Macro** modules (new type, `value` 0..1, one output; C: `m_const`), one per knob used, at the knob's old value and
+  with its old panel label as the row label, placed top left (everything else moves a column right when that spot is
+  taken), so it is the first device: the old performance page. The factory patches no longer route knobs (gen-presets.ts):
+  their instruments' cards are their pages. The tutorial's knob steps teach the focus and the Macro module instead.
+- Editor (editor.ts): `Editor.devices` / `focus` (`fixFocus`), the dock's K1..K4 (`boundKnob`, dials at the row's
+  position in its range; choices and switches snap) and two pickers DEVICE / PAGE (`fillFocus`) in place of K5 / K6. A
+  press on any row (`focusRow`, capture phase) puts its page on the knobs. The bound rows get a ring and a numbered badge
+  in the knob's colour (`markFocus`, `.param.bar.bound`); while an assembly is arranged every row shows its knob and
+  where its pages start (`.page-start`). Dotted lines from the dials to the rows (`positionBindings`, `svg.bind-cables`,
+  over everything; a row out of view gets none). MIDI CC 16..19 turn the bound rows (`Editor.turnKnob`, from main.ts's
+  sink). The knob ticks under sliders (knob-rest.ts) are gone with the knob outputs.
+- Knob colours are the logo's (style.css `--k1..--k6`: coral, gold, teal / seafoam, sand, lilac, blue), every mark with
+  its number. Cables are drawn by the **role of the input** they land on (`cable-role.ts`): into a signal input the
+  accent, bold (`role-signal`); into a CV input, a pin or a thumb, and into `pm` / `side`, the secondary colour, lighter
+  (`role-mod`); into a gate / trigger / clock input the gate colour, dashed (`role-gate`); keys as before.
+- Binary format 29 (`patchbin.ts`): header flag bit 5 = a device pages section after the step values, before the macro
+  ranges (which stay last: proto.c edits them in place). Per device a kind byte: 0 = a plain module (its index; the
+  FM-1 makes its pages from defs.h), 1 = an assembly with its name, pages (name, part, parts, envelope module + 1, row
+  count) and rows (module index, parameter index, label), texts length-prefixed. A Voice allocator's rows (voices,
+  assign, legato, priority, unison) name its group setting: in the device form the allocator is its group's Part, and
+  the parameter byte is 0x80 + the field (`POLY_ROW_PARAMS`). `binaryPage` / `editorPage` map the editor's focus to the
+  binary's indices. `eng_devices_end` (engine.h) walks the section; `eng_load` skips it.
+- Protocol: FOCUS 0x29 (host → device: show a page), PARAM_NOW 0x47 (a row turned on the FM-1: module, parameter, Q16)
+  and FOCUS_NOW 0x48 (the page the FM-1 shows) from the device; INFO feature bit 4. With Live on the editor follows the
+  FM-1's page and turns, and sends its own focus; an upload is followed by the focus.
+- Firmware (`firmware/src/pages_ui.c`): the device page is page 0. Layout "A+" (#107, board OptionA of the design canvas
+  with a slimmer header): strip of device tabs (y 0), the page chips by heading (y 22, the current one in seafoam), four
+  full-width knob bars (y 41, 36 px each, 4 px apart: the K-number square and the fill in the knob's hue, name left, value
+  and unit right, ivory tick = live; an empty slot where the page has fewer rows; `pages_bar` composes each bar a scanline
+  at a time and blends the type onto it, `text_onto`; modulated bars are redrawn ten times a second), the page rail
+  (y 206: a segment per page, the focus coral, its heading's others dim) and the patch / transport line (y 214). A turned
+  knob's toast (full size with its range bar, one second) and the device's name when SELECT moves cover the bars. There is
+  no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
+  HOME taps go back to the first device, then the legend; MIDI CC 16..19 set the rows (absolute). A poly row writes the
+  group record of `m1_cur` (`poly_row_set` in main.c; the voices and unison reload the engine).
+- LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as
+  4-bit anti-aliased bitmaps at four sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
+  `firmware/src/font_bc.h`, ~36 KB of flash; `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,
+  manual, SEQ page and the top bar use it; the update / crash screens keep the 5x7 font. Host preview:
+  `tools/ui_preview.sh OUT.png PRESET DEVICE:PAGE OCTAVE 0` (env `TOAST=k`, `DEVTOAST=1`).
+- Emulator: `tools/emu/src/font.rs` also reads font_bc.h and matches its fully covered / empty pixels (the blended edge is
+  left out); the smoke test's home marker is the info line's `OCT `. Checked against the host preview only
+  (`cargo test -- --ignored`); the smoke run needs a JieLi build (CI).
+- Not done: the plain module's labels on the FM-1 are defs.h's short capitals (L1, CVAMT); the device page draws in full
+  on focus changes (no partial redraw of the chips); none of it has run on hardware.

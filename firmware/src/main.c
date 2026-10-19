@@ -378,6 +378,34 @@ static void defaults_now(void)
 static uint32_t midi_clk_ms;                    /* fm1_ms of the last MIDI clock tick (MIDI clock drives the clock while they come) */
 static uint8_t midi_clk_seen;
 
+/* a poly group's setting from a device page (pages_ui.c poly rows): voices, assign, legato, priority, unison, into the
+ * group record of the running patch; the voices and unison are read at load: the engine loads the patch again */
+static void poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+{
+    int g = eng_module_group(mod);
+    uint32_t at;
+    if (g <= 0 || !m1_cur_len)
+        return;
+    at = 8u + ENG_GROUP_REC * (uint32_t)(g - 1);
+    if (at + 4u > m1_cur_len)
+        return;
+    if (field == 0u)
+        m1_cur[at] = (uint8_t)clampi(v, 1, ENG_MAX_PARTS);
+    else if (field == 1u)
+        m1_cur[at + 1u] = (uint8_t)clampi(v, 0, 2);
+    else if (field == 2u)
+        m1_cur[at + 2u] = (uint8_t)((m1_cur[at + 2u] & 0x80u) | (uint32_t)clampi(v, 0, 2));
+    else if (field == 3u)
+        m1_cur[at + 3u] = (uint8_t)clampi(v, 0, 2);
+    else
+        m1_cur[at + 2u] = (uint8_t)((m1_cur[at + 2u] & 0x7Fu) | (v ? 0x80u : 0u));
+    m1_edited = 1;
+    if (field == 0u || field == 4u)
+        (void)eng_load(m1_cur, m1_cur_len);     /* (the parts sound again from the next note) */
+    else
+        (void)eng_poly_set((uint32_t)g - 1u, field, (uint32_t)v);
+}
+
 static void midi_drain(void)                    /* USB-MIDI events -> the engine */
 {
     while (mi_r != mi_w) {
@@ -411,14 +439,25 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                 eng_all_notes_off();
             } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
                 eng_ctl(ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
-            } else if (st == 0xB0u && n >= 16u && n <= 22u) {   /* CC 16..21: the Main module's knobs K1..K6; CC 22: its MORPH */
-                int m = eng_find(T_FM1);
-                if (m >= 0) {
-                    uint32_t par = n == 22u ? FM1_P_MORPH : n - 16u;
-                    eng_set_param((uint32_t)m, par, (int32_t)(v * 65536u / 127u));
-                    m1_patch_param((uint32_t)m, par, (int32_t)(v * 65536u / 127u));
+            } else if (st == 0xB0u && n >= 16u && n <= 19u) {   /* CC 16..19: K1..K4, the rows of the device page in focus */
+                uint32_t mod, par;
+                int32_t val, r = pages_set_unit(n - 16u, (int32_t)(v * 65536u / 127u), &mod, &par, &val);
+                if (r >= 0) {
+                    if (r == 1)
+                        poly_row_set(mod, par & 0x7Fu, val);
+                    else {
+                        eng_set_param(mod, par, val);
+                        m1_patch_param(mod, par, val);
+                    }
+                    m1_param_now(mod, par, r == 1 ? val << 16 : val);
                     if (!ui_dirty)
                         ui_dirty = 1;
+                }
+            } else if (st == 0xB0u && n == 22u) {      /* CC 22: the Main module's MORPH */
+                int m = eng_find(T_FM1);
+                if (m >= 0) {
+                    eng_set_param((uint32_t)m, FM1_P_MORPH, (int32_t)(v * 65536u / 127u));
+                    m1_patch_param((uint32_t)m, FM1_P_MORPH, (int32_t)(v * 65536u / 127u));
                 }
             } else if (st == 0xB0u && n >= 80u && n < 80u + ENG_PANEL_BUTTONS) {   /* CC 80..88: the patch buttons (64 and up: down) */
                 panel_button_set(n - 80u, v >= 64u, 0);
@@ -471,7 +510,6 @@ static void master_boot(void)
 static void knobs_poll(void)
 {
     static uint32_t last_ms[6];
-    static const uint8_t ENC_OF[6] = {2, 3, 4, 5, 0, 1};   /* K1..K4, then SELECT (K5) and ALGO (K6) */
     int32_t st[7];
     uint32_t k;
     int panel = eng_find(T_FM1);
@@ -518,25 +556,33 @@ static void knobs_poll(void)
             st[2] = st[3] = 0;
         }
     }
-    for (k = 0; k < 6u && panel >= 0; k++) {       /* the Main module's k1..k6 (its parameters 0..5) */
-        const def_t *fd = &DEFS[T_FM1];
-        int32_t inc = fd->pinc[k], v, c = st[ENC_OF[k]];
-        if (!c)
+    if (page != 0)
+        return;
+    if (pages_select(st[0]) | pages_page(st[1])) {  /* SELECT: the device, ALGO: its page (the editor follows) */
+        m1_focus_now(pg_cur_dev, pg_cur_page);
+        ui_dirty = 2;
+    }
+    for (k = 0; k < 4u; k++) {                      /* K1..K4: the rows of the page in focus, relative */
+        uint32_t mod, par;
+        int32_t v, c = st[2u + k], r;
+        if (!c || (r = pages_turn(k, c, cfg.accel && fm1_ms - last_ms[2u + k] < 80u, &mod, &par, &v)) < 0)
             continue;
-        if (cfg.accel && fm1_ms - last_ms[k] < 80u)
-            inc *= 5;
-        last_ms[k] = fm1_ms;
-        v = clampi(eng_get_param((uint32_t)panel, k) + c * inc, fd->pmin[k], fd->pmax[k]);
-        eng_set_param((uint32_t)panel, k, v);
-        m1_patch_param((uint32_t)panel, k, v);
-        midi_send(0xB0u, 16u + k, (uint32_t)(((int64_t)v * 127 + 32768) >> 16));
-        knob_touched = (uint8_t)(k + 1u);
+        last_ms[2u + k] = fm1_ms;
+        if (r == 1)
+            poly_row_set(mod, par & 0x7Fu, v);      /* a poly group's setting (the Voice allocator's in the editor) */
+        else {
+            eng_set_param(mod, par, v);
+            m1_patch_param(mod, par, v);
+        }
+        m1_param_now(mod, par, r == 1 ? v << 16 : v);   /* the editor follows (Live) */
+        midi_send(0xB0u, 16u + k, pages_cc(k));
         if (!ui_dirty)
             ui_dirty = 1;
     }
+    (void)panel;
 }
 
-/* USB MIDI out (MENU > MIDI OUT): the keys as notes (velocity 100), K1..K6 as CC 16..21, the patch buttons as CC 80..88
+/* USB MIDI out (MENU > MIDI OUT): the keys as notes (velocity 100), K1..K4 as CC 16..19 (their rows' positions), the patch buttons as CC 80..86
  * (127 / 0), on the MIDI channel (omni: channel 1). Only what the panel does goes out, never what came in. */
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
 {
@@ -660,7 +706,7 @@ static void page_set(uint32_t p)    /* the same button again goes back to the mo
     }
     header_draw();
     leds_play();
-    lcd_fill(0, 24, 240, 216, C_BG);
+    lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
     view_draw(1);
 }
 
@@ -722,9 +768,27 @@ static void leds_avail(void)                        /* HOME and the patch button
     leds_panel();
 }
 
-static void home_press(void)                        /* HOME tapped: the legend, again: the player screen */
+/* HOME tapped: from another page back to the device page; on a device page back to the first device; there the legend
+ * (and from the legend back) */
+static void home_press(void)
 {
+    if (page == PAGE_LEGEND || page == PAGE_SEQ) {
+        page_set(page);
+        return;
+    }
+    if (pages_focus(0, 0)) {
+        m1_focus_now(0, 0);
+        ui_dirty = 2;
+        return;
+    }
     page_set(PAGE_LEGEND);
+}
+
+/* proto.c: the editor shows another device page (FOCUS) */
+static void m1_focus(uint32_t dev, uint32_t pg)
+{
+    if (pages_focus(dev, pg) && page == 0)
+        ui_dirty = 2;
 }
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
 
@@ -964,27 +1028,18 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         }
         if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
             char m[40], name[16], num[12], *q = m;
-            if (knob_touched) {
-                int panel = eng_find(T_FM1);
-                uint32_t k = knob_touched - 1u;
-                knob_name(panel, k, name);
-                name[14] = 0;
-                q = put(q, name);
-                *q++ = ' ';
-                fmt_int(num, panel >= 0 ? (int32_t)(((int64_t)clampi(eng_get_param((uint32_t)panel, k), 0, 65536) * 100) >> 16) : 0);
-                q = put(q, num);
-                *q++ = '%';
-            } else {
+            (void)num;
+            if (!knob_touched) {
                 uint32_t b = button_touched - 1u;
-                if (!panel_label(6u + b, name))
+                if (!panel_label(b, name))
                     put(name, PANEL_BTN_NAME[b])[0] = 0;
                 q = put(q, name);
                 q = put(q, eng_buttons_get() >> b & 1u ? " ON" : " OFF");
             }
             *q = 0;
-            knob_touched = button_touched = 0;
-            if (page == 0)
+            if (page == 0 && !knob_touched)
                 ui_msg(m, 1000);
+            knob_touched = button_touched = 0;
         }
         {                                               /* the beat on the player screen while the transport runs */
             static uint32_t beat_seen;
@@ -1002,6 +1057,15 @@ static void fm1_main(int update)                    /* update: the boot guard sa
             shed_seen = eng_shed_count;
             if (shed_seen)
                 ui_msg("OVERLOAD: A PART LESS", 1500);
+        }
+        if (page == 0 && pages_expired())             /* a toast ended: the picture comes back */
+            ui_dirty = ui_dirty ? ui_dirty : 1;
+        {                                               /* the live ticks of modulated rows, ten times a second */
+            static uint32_t tick_ms;
+            if (page == 0 && !ui_dirty && fm1_ms - tick_ms >= 100u) {
+                tick_ms = fm1_ms;
+                pages_ticks();
+            }
         }
         midi_drain();
         keys_poll();

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Writes the factory patches (web/presets/NN-name.json, NN = the slot, the order the firmware compiles them in) from
 // the factory assemblies (src/assemblies, made by gen-assemblies.ts: run that first). Each patch: the Main module, the
-// assembly (or a few modules), Main's keys / mod wheel into it, its outputs into the Output, K1..K4 routed to the
-// controls that matter most, each knob starting where the assembly's value is (so the patch sounds as designed until a
-// knob is turned), and the Output's level set from a render so the patches play at about the same loudness.
+// assembly (or a few modules), Main's keys / mod wheel into it, its outputs into the Output, and the Output's level set
+// from a render so the patches play at about the same loudness. The knobs need no routing: they turn the rows of the
+// device page in focus, and the assembly's card is its pages (pages.ts).
 // The 909 Kit is kept as its file. Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { addModule, connect, emptyPatch, modulate, stepByte, validatePatch, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, connect, emptyPatch, stepByte, validatePatch, type ModuleInst, type Patch } from '../src/patch';
 import { FACTORY } from '../src/assemblies';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { connectParameter } from '../src/parameter-routing';
@@ -42,33 +42,12 @@ function plugOut(p: Patch, a: AssemblyInst, label: string, to: number, port: str
   wire(p, r.module, r.port, to, port);
 }
 
-/** Main's knob `k` moves this parameter over its whole range: the base goes to the range's minimum, the knob starts
- * where the value was (depth 1 through a free pin) */
-function knob(p: Patch, main: ModuleInst, k: string, r: Ref): void {
-  const m = mod(p, r.module);
-  const pd = DEFS[m.type].params.find((q) => q.name === r.param)!;
-  const want = m.params[r.param];
-  connectParameter(p, DEFS, { module: main.id, port: k }, m.id, r.param);
-  const pin = (['p1', 'p2'] as const).findIndex((q) => (m.map?.[q] ?? []).includes(r.param) && p.cables.some((c) => c.from.module === main.id && c.from.port === k && c.to.module === m.id && c.to.port === q));
-  if (pin < 0) throw new Error(`${p.name}: ${k} found no pin on ${m.type}.${r.param}`);
-  const att = m.att![pin];
-  m.params[r.param] = pd.min;
-  let lo = 0, hi = 1;
-  for (let i = 0; i < 60; i++) {
-    const mid = (lo + hi) / 2;
-    if (modulate(pd, pd.min, mid * att) < want) lo = mid;
-    else hi = mid;
-  }
-  main.params[k] = Math.round(((lo + hi) / 2) * 10000) / 10000;
-}
-
 interface Inst {
   p: Patch;
   main: ModuleInst;
   out: ModuleInst;
   a: AssemblyInst;
   set(label: string, v: number, after?: string): void;
-  knobs(...k: [string, string?][]): void;
 }
 /** a patch around one factory assembly: Main's keys (or pitch / gate) and mod wheel in, the outputs to the Output */
 function around(name: string, asm: string, o: { pitchGate?: boolean; poly?: number } = {}): Inst {
@@ -102,7 +81,6 @@ function around(name: string, asm: string, o: { pitchGate?: boolean; poly?: numb
       const r = row(a, label, after);
       mod(p, r.module).params[r.param] = v;
     },
-    knobs: (...ks) => ks.forEach(([label, after], i) => knob(p, main, `k${i + 1}`, row(a, label, after))),
   };
   return inst;
 }
@@ -137,7 +115,6 @@ const presets: (() => Patch)[] = [];
 presets.push(() => {
   const x = around('Oracle V', 'Oracle V');
   x.set('voices', 5);
-  x.knobs(['cutoff'], ['res'], ['d', 'filter env'], ['r', 'amp env']);
   level(x.p, { chord: true });
   return x.p;
 });
@@ -161,7 +138,6 @@ presets.push(() => {
   wire(p, env.id, 'env', vca.id, 'cv');
   wire(p, vca.id, 'out', out.id, 'l');
   wire(p, vca.id, 'out', out.id, 'r');
-  for (const [k, m, q] of [['k1', flt, 'cutoff'], ['k2', flt, 'res'], ['k3', env, 'a'], ['k4', env, 'r']] as const) knob(p, main, k, { module: m.id, param: q });
   level(p);
   return p;
 });
@@ -169,7 +145,6 @@ presets.push(() => {
 // Simple FM: two operators (the factory fm pair), one note at a time from Main
 presets.push(() => {
   const x = around('Simple FM', 'fm pair', { pitchGate: true });
-  x.knobs(['index'], ['mod decay'], ['mod sustain'], ['release']); // not feedback: above 0 the modulator runs oversampled (the CPU estimate counts a knob on it that way)
   level(x.p);
   return x.p;
 });
@@ -177,7 +152,6 @@ presets.push(() => {
 // Plucked String: the factory pluck (a Karplus-Strong string, a tracking low pass) on four voices
 presets.push(() => {
   const x = around('Plucked String', 'pluck', { pitchGate: true, poly: 4 });
-  x.knobs(['decay'], ['damp'], ['tone']);
   level(x.p, { chord: true });
   return x.p;
 });
@@ -185,14 +159,12 @@ presets.push(() => {
 presets.push(() => {
   const x = around('Monolith D', 'Monolith D');
   x.set('glide', 0.04);
-  x.knobs(['cutoff'], ['emphasis'], ['d', 'filter contour'], ['glide']);
   level(x.p);
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Silver Box', 'Silver Box');
-  x.knobs(['cutoff'], ['env mod'], ['decay'], ['accent']);
   level(x.p);
   return x.p;
 });
@@ -200,63 +172,54 @@ presets.push(() => {
 presets.push(() => {
   const x = around('Hera 6', 'Hera 6');
   x.set('voices', 6); // all six (they fit since the engine speed-ups, branch cpu-opt)
-  x.knobs(['cutoff'], ['res'], ['a', 'envelope'], ['r', 'envelope']);
   level(x.p, { chord: true });
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Sallen 20', 'Sallen 20');
-  x.knobs(['lp cutoff'], ['lp peak'], ['hp cutoff'], ['hp peak']);
   level(x.p);
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Expander S', 'Expander S');
-  x.knobs(['cutoff'], ['env 1 amt'], ['mode'], ['r', 'env 2']);
   level(x.p, { chord: true });
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Algo Four', 'Algo Four');
-  x.knobs(['level 2'], ['level 4'], ['r2 1']); // a fourth knob would cost another 1.5 % per voice
   level(x.p, { chord: true });
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Canvas', 'Canvas');
-  x.knobs(['timbre'], ['fm index'], ['decay'], ['random']);
   level(x.p);
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Wanderer', 'Wanderer');
-  x.knobs(['cutoff'], ['res'], ['s&h → filter'], ['ring mod']);
   level(x.p, { chord: true });
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Briefcase 3', 'Briefcase 3');
-  x.knobs(['cutoff'], ['osc 3 → osc 1'], ['res'], ['decay']); // K1 / K2: the joystick's X / Y
   level(x.p);
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Io 4', 'Io 4');
-  x.knobs(['cutoff'], ['res'], ['d', 'envelope'], ['r', 'envelope']); // not `env` too: the ladder has two pins
   level(x.p, { chord: true });
   return x.p;
 });
 
 presets.push(() => {
   const x = around('Vernon 100', 'Vernon 100');
-  x.knobs(['cutoff'], ['res'], ['s&h → filter'], ['lfo rate']); // not `mode` too: the filter has two pins
   level(x.p, { chord: true });
   return x.p;
 });
@@ -316,11 +279,6 @@ presets.push(() => {
   wire(p, mixB.id, 'out', mixA.id, 'in4');
   wire(p, mixA.id, 'out', out.id, 'l');
   wire(p, mixA.id, 'out', out.id, 'r');
-  for (const st of tracks) knob(p, main, 'k1', { module: st.id, param: 'swing' });
-  knob(p, main, 'k2', row(drumsOf[0], 'decay'));
-  knob(p, main, 'k3', row(drumsOf[2], 'tail'));
-  knob(p, main, 'k4', row(drumsOf[3], 'decay'));
-  main.panel = { labels: { k1: 'SWING', k2: 'KICK DECAY', k3: 'CLAP TAIL', k4: 'HAT DECAY' } };
   level(p, { drums: true });
   return p;
 });

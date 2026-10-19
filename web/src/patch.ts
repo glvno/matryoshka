@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
+import { migrateKnobs } from './knob-migrate';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -159,8 +160,9 @@ export interface MainPanel {
   labels?: Record<string, string>;
 }
 
-/** the controls a panel label can name: K1..K6, then the buttons (patchbin.ts writes the labels in this order) */
-export const PANEL_LABEL_KEYS = ['k1', 'k2', 'k3', 'k4', 'k5', 'k6', 'fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
+/** the controls a panel label can name: the patch buttons (patchbin.ts writes the labels in this order). The knobs have
+ * none any more: they show the names of the rows they turn (pages.ts). */
+export const PANEL_LABEL_KEYS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
 export const PANEL_LABEL_MAX = 10;
 /** a label as the LCD can draw it: capitals, digits, space and its few signs */
 export const panelLabel = (s: unknown, max = PANEL_LABEL_MAX): string => String(s ?? '').toUpperCase().replace(/[^A-Z0-9 +%&>=()?!#*<,_'.:\/-]/g, '').slice(0, max).trim();
@@ -230,7 +232,7 @@ export function setStepValue(m: ModuleInst, k: number, note: number, vel: number
 export function fixPanel(raw: unknown): MainPanel | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
-  const buttons = PANEL_LABEL_KEYS.slice(6);
+  const buttons = PANEL_LABEL_KEYS;
   const names = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => buttons.includes(x)))] : []);
   const toggle = names(r.toggle);
   const on = names(r.on).filter((b) => toggle.includes(b));
@@ -624,6 +626,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
     if (main && Number.isFinite(bpm) && main.params?.tempo === undefined) main.params = { ...(main.params ?? {}), tempo: Math.min(300, Math.max(20, bpm)) };
   }
   delete p.arp;
+  const knobLabels = { ...((p.modules.find((m) => m?.type === 'fm1')?.panel?.labels ?? {}) as Record<string, unknown>) };
   for (const m of p.modules) {
     if (m.type === 'midi') m.type = 'fm1'; // the MIDI module is gone: the FM-1 panel has the same pitch / gate / vel outputs
     const def = defs[m.type];
@@ -670,6 +673,7 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
     }
   }
   (p as { version: number }).version = 2;
+  migrateKnobs(p as Patch, defs, knobLabels); // Main's knob outputs are gone: cables from them come from a Macros assembly
   migrateVoicing(p as Patch, defs);
   migratePatchParts(p as Patch, defs); // Part modules (before Voice allocators) become allocators
   // the SEQ and REC buttons belong to the device since #83 (the step page, live recording): cables from them go

@@ -5,11 +5,12 @@
 
   tools/gen_splash.py [OUT]
 
-LOGO  web/public/brand/matryoshka.png, cropped to its ink, box-filtered to LOGO_H px high over the LCD's black
+LOGO  web/public/brand/matryoshka.png, cropped to its ink, box-filtered to LOGO_H px high over the LCD background
 WORD  web/public/brand/wordmark.svg (only M / L / Q / Z, absolute), rasterised 4 x 4 supersampled to WORD_W px,
-      in the wordmark's dark-scheme colours (the LCD background is black)
+      in the wordmark's dark-scheme colours
 
-Each image is reduced to at most 16 colours (median cut in RGB565; entry 0 is the black background) and run-length
+Both are composited over BG = the restyle's C_BG (ui.c, night), so their edges blend into the screen around them.
+Each image is reduced to at most 16 colours (median cut in RGB565; entry 0 is the background exactly) and run-length
 coded: one byte per run, colour index in the high nibble, run - 1 in the low nibble; a byte with run nibble 15 is
 followed by one more byte that adds 0..255 to the run (runs of 16..271). Runs carry across rows.
 Standard library only; rerun after changing the art.
@@ -28,6 +29,7 @@ WORD_W = 216
 INK = (0xFF, 0xF7, 0xE8)              # wordmark.svg, prefers-color-scheme: dark
 ACCENT = (0x79, 0xC7, 0xC1)
 NCOL = 16
+BG565 = 0x10E4                        # C_BG in firmware/src/ui.c: keep in step
 
 
 def png_rgba(path):
@@ -72,14 +74,14 @@ def png_rgba(path):
 
 
 def logo_image():
-    """the logo over black, cropped to its ink and area-averaged to LOGO_H px high -> list of (r, g, b) floats"""
+    """the logo over BG, cropped to its ink and area-averaged to LOGO_H px high -> list of (r, g, b) floats"""
     w, h, rows = png_rgba(BRAND / "matryoshka.png")
     ink = [(x, y) for y in range(0, h) for x in range(0, w) if rows[y][4 * x + 3] > 8]
     x0, x1 = min(p[0] for p in ink), max(p[0] for p in ink) + 1
     y0, y1 = min(p[1] for p in ink), max(p[1] for p in ink) + 1
     oh = LOGO_H
     ow = round((x1 - x0) * oh / (y1 - y0))
-    acc = [[0.0, 0.0, 0.0, 0] for _ in range(ow * oh)]
+    acc = [[0.0, 0.0, 0.0, 0, 0.0] for _ in range(ow * oh)]   # premultiplied r g b, samples, coverage
     for y in range(y0, y1):
         row, dy = rows[y], (y - y0) * oh // (y1 - y0)
         for x in range(x0, x1):
@@ -90,8 +92,10 @@ def logo_image():
                 cell[0] += row[4 * x] * k
                 cell[1] += row[4 * x + 1] * k
                 cell[2] += row[4 * x + 2] * k
+                cell[4] += k
             cell[3] += 1
-    return ow, oh, [(c[0] / c[3], c[1] / c[3], c[2] / c[3]) for c in acc]
+    bg = unpack(BG565)
+    return ow, oh, [tuple((c[ch] + bg[ch] * (c[3] - c[4])) / c[3] for ch in range(3)) for c in acc]
 
 
 def word_paths():
@@ -152,7 +156,7 @@ def word_image():
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
     k = WORD_W / (x1 - x0)
     w, h = WORD_W, int((y1 - y0) * k + 0.999)
-    img = [[0.0, 0.0, 0.0] for _ in range(w * h)]
+    img = [list(unpack(BG565)) for _ in range(w * h)]
     for col, polys in paths:
         edges = []
         for poly in polys:
@@ -192,9 +196,11 @@ def unpack(v):
 
 
 def quantize(px):
-    """median cut to NCOL colours, entry 0 = black (the background) -> (palette, indices)"""
-    black = [i for i, p in enumerate(px) if max(p) < 12]
-    rest = [i for i, p in enumerate(px) if max(p) >= 12]
+    """median cut to NCOL colours, entry 0 = BG (the background) -> (palette, indices)"""
+    bg = unpack(BG565)
+    near = [sum((p[ch] - bg[ch]) ** 2 for ch in range(3)) < 64 for p in px]
+    black = [i for i, p in enumerate(px) if near[i]]
+    rest = [i for i, p in enumerate(px) if not near[i]]
     boxes = [rest]
     while len(boxes) < NCOL - 1:
         best = None
@@ -211,7 +217,7 @@ def quantize(px):
         _, bi, ch = best
         box = sorted(boxes.pop(bi), key=lambda i: px[i][ch])
         boxes += [box[:len(box) // 2], box[len(box) // 2:]]
-    pal = [0]
+    pal = [BG565]
     idx = [0] * len(px)
     for box in boxes:
         avg = tuple(sum(px[i][ch] for i in box) / len(box) for ch in range(3))

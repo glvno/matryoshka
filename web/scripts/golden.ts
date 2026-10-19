@@ -618,12 +618,14 @@ kit('ladder', (add, wire) => {
   wire(mix, 'out', out, 'l');
 });
 kit('fm1-panel', (add, wire) => {
-  const pn = add('fm1', 0, 0, { k1: 0.2, k3: 0.4 });
+  const pn = add('fm1', 0, 0);
+  const m3 = add('macro', 0, 0, { value: 0.4 }); // (Main's knobs were outputs once: Macro modules play their part)
+  const m1 = add('macro', 0, 0, { value: 0.2 });
   const osc = add('osc', 0, 0, { wave: 2 }, { map: { p1: ['level'], p2: ['fine'] } });
   const out = add('output', 0, 0);
   wire(pn, 'pitch', osc, 'pitch');
-  wire(pn, 'k3', osc, 'p1');
-  wire(pn, 'k1', osc, 'p2');
+  wire(m3, 'out', osc, 'p1');
+  wire(m1, 'out', osc, 'p2');
   wire(osc, 'out', out, 'l');
 });
 kit('delay-fb', (add, wire) => {
@@ -1151,9 +1153,10 @@ const morphVoice = (b: boolean): Build => (add, wire) => {
 };
 kit('morph', morphVoice(false));
 // macro ranges: one triangle LFO into the filter's p1 (cutoff between 150 Hz and 6 kHz in octaves) and the ADSR's p1
-// (decay between 0.6 s and 30 ms, the ends swapped), the Main's K2 into the oscillator's p2 (pulse width 0.2..0.5)
+// (decay between 0.6 s and 30 ms, the ends swapped), a Macro into the oscillator's p2 (pulse width 0.2..0.5)
 kit('macro', (add, wire) => {
-  const kb = add('fm1', 0, 0, { k2: 0.7 });
+  const kb = add('fm1', 0, 0);
+  const k2 = add('macro', 0, 0, { value: 0.7 });
   const lfo = add('lfo', 0, 0, { wave: 1, rate: 0.5, depth: 1 });
   const sc = add('scale', 0, 0, { gain: 0.5, offset: 0.5 });
   const osc = add('osc', 0, 0, { wave: 3, level: 0.7 }, { map: { p2: ['pw'] } });
@@ -1164,7 +1167,7 @@ kit('macro', (add, wire) => {
   wire(lfo, 'out', sc, 'in');
   wire(sc, 'out', flt, 'p1');
   wire(sc, 'out', env, 'p1');
-  wire(kb, 'k2', osc, 'p2');
+  wire(k2, 'out', osc, 'p2');
   wire(kb, 'pitch', osc, 'pitch');
   wire(kb, 'gate', env, 'gate');
   wire(osc, 'out', flt, 'in');
@@ -1293,24 +1296,26 @@ tests['main-clock-run'] = make('main-clock-run', (add, wire) => {
 events['main-clock-run'] = [[0, 'on', 57], [128 * 20, 'run', 0], [128 * 160, 'stop', 0], [128 * 200, 'run', 0], [128 * 250, 'off', 57]];
 ends['main-clock-run'] = 128 * 280;
 
-// the panel (#60): K5 / K6 into an oscillator's level and fine tune, the FX button opens a VCA, the REC button (switched on
+// the panel (#60): two Macros (K5 / K6 before the device pages) into an oscillator's level and fine tune, the FX button opens a VCA, the REC button (switched on
 // in the patch: the binary's on mask) a second one
 tests['panel-buttons'] = make('panel-buttons', (add, wire) => {
-  const kb = add('fm1', 0, 0, { k5: 0.8, k6: 0.3 });
+  const kb = add('fm1', 0, 0);
+  const k5 = add('macro', 0, 0, { value: 0.8 });
+  const k6 = add('macro', 0, 0, { value: 0.3 });
   const o = add('osc', 200, 0, { wave: 2, level: 0.5 });
   const v = add('vca', 400, 0);
   const v2 = add('vca', 600, 0);
   const out = add('output', 800, 0, { level: 0.7 });
   wire(kb, 'pitch', o, 'pitch');
-  wire(kb, 'k5', v, 'p1');
-  wire(kb, 'k6', o, 'p1');
+  wire(k5, 'out', v, 'p1');
+  wire(k6, 'out', o, 'p1');
   wire(o, 'out', v, 'in');
   wire(kb, 'fx', v, 'cv');
   wire(v, 'out', v2, 'in');
   wire(kb, 'arp', v2, 'cv');
   wire(v2, 'out', out, 'l');
 });
-tests['panel-buttons'].modules[0].panel = { toggle: ['arp'], on: ['arp'], labels: { k5: 'LEVEL', fx: 'GATE' } };
+tests['panel-buttons'].modules[0].panel = { toggle: ['arp'], on: ['arp'], labels: { fx: 'GATE' } };
 events['panel-buttons'] = [[0, 'on', 60], [128 * 20, 'bon', 0], [128 * 60, 'boff', 0], [128 * 80, 'bon', 0], [128 * 100, 'boff', 6], [128 * 140, 'bon', 6], [128 * 160, 'off', 60]];
 ends['panel-buttons'] = 128 * 180;
 

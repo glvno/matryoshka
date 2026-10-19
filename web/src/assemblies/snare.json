@@ -346,7 +346,8 @@
     {
       "module": 8,
       "param": "l2",
-      "label": "body"
+      "label": "body",
+      "group": true
     },
     {
       "module": 5,

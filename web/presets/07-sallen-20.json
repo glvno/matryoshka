@@ -8,12 +8,6 @@
    "x": 20,
    "y": 20,
    "params": {
-    "k1": 0.8097,
-    "k2": 0.45,
-    "k3": 0.4054,
-    "k4": 0.2,
-    "k5": 0.5,
-    "k6": 0.5,
     "morph": 0,
     "tempo": 120
    }
@@ -159,8 +153,8 @@
    "x": 660,
    "y": 60,
    "params": {
-    "cutoff": 20,
-    "res": 0,
+    "cutoff": 60,
+    "res": 0.2,
     "cvamt": 0,
     "track": 0,
     "morph": 0
@@ -188,8 +182,8 @@
    "x": 980,
    "y": 60,
    "params": {
-    "cutoff": 20,
-    "res": 0,
+    "cutoff": 1600,
+    "res": 0.45,
     "cvamt": 2.5,
     "track": 0,
     "morph": 0
@@ -728,46 +722,6 @@
    "to": {
     "module": 18,
     "port": "r"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k1"
-   },
-   "to": {
-    "module": 8,
-    "port": "p1"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k2"
-   },
-   "to": {
-    "module": 8,
-    "port": "p2"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k3"
-   },
-   "to": {
-    "module": 7,
-    "port": "p1"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k4"
-   },
-   "to": {
-    "module": 7,
-    "port": "p2"
    }
   }
  ],

@@ -9,7 +9,8 @@ import { DEFS, PANEL_BUTTONS } from './modules';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
-import { isKnob, knobRests } from './knob-rest';
+import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
+import { cableRole } from './cable-role';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
 import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
@@ -95,7 +96,7 @@ import { EXCLUDED_TYPES,
   type AssemblyInst,
   type PortRef,
   type Rect,
-  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setHeading, setSpan, spanPlan, type SpanBlock } from './assembly';
+  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setGroupBreak, setHeading, setSpan, spanPlan, type SpanBlock } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HISTORY = 40;
@@ -135,6 +136,8 @@ export interface EditorEvents {
   onTransport(on: boolean): void;
   /** a patch button of the Main module (PANEL_BUTTONS index) held / let go or switched */
   onButton?(i: number, on: boolean): void;
+  /** the device page Main's knobs edit changed in the editor (a device key and page of devicesOf): the FM-1 can follow */
+  onFocus?(device: string, page: number): void;
   /** cards were moved: positions changed, nothing the engine needs */
   onLayout(p: Patch): void;
   /** the displays drawn this time (after every rebuild): Scope screens with what is cabled into each input, envelope shapes */
@@ -187,7 +190,8 @@ const EDGE_JACKS = 4;
 /** an input for a card's edge layout: its row element and which port it is (a parameter's dedicated input joins its row) */
 type EdgePort = { el: HTMLElement; module: number; port: string };
 /** a parameter for a card's edge layout: its row, its dedicated input, a column break before it, rows above it (a heading) */
-type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; span?: number };
+/** `gap`: a new group (FM-1 page) starts at this row within its column, drawn as a divider above it */
+type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; span?: number; gap?: boolean };
 /** an entry of a card's menu: `key` is the shortcut shown at the right, `rule` a line above it */
 type MenuItem = { text: string; run: () => void; key?: string; danger?: boolean; rule?: boolean };
 /** a drop is judged by the card's header (where it is held), this far below its top */
@@ -234,7 +238,16 @@ export class Editor {
 /** undo steps: the patch snapshot and the A / B side it belongs to (a flip is a step; undoing it goes back to that side) */
   private history: { s: string; side: 'A' | 'B' }[] = [];
   private future: { s: string; side: 'A' | 'B' }[] = [];
-  private parameterDisplays: { id: number; update: (values: Record<string, number> | null) => void }[] = [];
+  private parameterDisplays: { id: number; update: (values: Record<string, number> | null) => void; el?: HTMLElement }[] = [];
+  /** the patch's devices (pages.ts) and the page Main's knobs K1..K4 edit: the dock's DEVICE / PAGE pickers or a click on a
+   * row choose it, the FM-1 too with Live on */
+  devices: Device[] = [];
+  focus: { device: string; page: number } | null = null;
+  /** the dock's knob column (re-filled when the focus moves) and its dials, K1..K4 */
+  private focusCol: HTMLElement | null = null;
+  private dials: HTMLElement[] = [];
+  /** the dotted lines from the dials to the rows they turn, over everything */
+  private bindLayer: SVGSVGElement | null = null;
 
   /** Display only: never write telemetry into the patch, undo history, or parameter callbacks. */
   showParameterValues(values: ParameterValues | null): void {
@@ -597,6 +610,8 @@ export class Editor {
     // frames of the outer assemblies first: a nested frame is drawn on top of its parent's
     const visible = assembliesOf(this.patch).filter((a) => !hiddenAsm.has(a.id));
     for (const a of [...visible].sort((u, v) => depthOf(this.patch, u) - depthOf(this.patch, v))) if (a.open) this.modulesEl.append(this.frame(a, perVoice(a)));
+    this.devices = devicesOf(this.patch, DEFS);
+    this.focus = fixFocus(this.devices, this.focus);
     const docked = this.docked();
     this.wheelHost?.replaceChildren();
     this.dock?.replaceChildren(...(docked ? [this.dockPanel(docked)] : []));
@@ -606,6 +621,7 @@ export class Editor {
       this.modulesEl.append(this.card(m, DEFS[m.type], copies.get(m.id) ?? 0, a));
     }
     for (const a of visible) if (!a.open) this.modulesEl.append(this.container(a, perVoice(a), parentOf(this.patch, a.id)));
+    this.markFocus();
     this.applyStack();
     this.flawPanel?.sync();
     this.ev.onScreens?.(this.screens, this.envScreens);
@@ -735,10 +751,10 @@ export class Editor {
     const wheels = this.dockWheels;
     const WHEELS = wheels && this.wheelHost ? ['bend', 'mod'] : [], CLOCK = ['clock', 'run'];
     const homed = [...WHEELS, ...CLOCK, ...PANEL_BUTTONS];
-    const strip = jacks(def.outputs.map((p) => p.name).filter((n) => !isKnob(n) && !homed.includes(n)));
-    const knobs = document.createElement('div');
-    knobs.className = 'deck-knobs';
-    for (const k of ['k1', 'k2', 'k3', 'k4', 'k5', 'k6']) knobs.append(this.dockKnob(m, def, k));
+    const strip = jacks(def.outputs.map((p) => p.name).filter((n) => !homed.includes(n)));
+    this.focusCol = document.createElement('div');
+    this.focusCol.className = 'dock-focus';
+    this.fillFocus();
     const buttons = document.createElement('div');
     buttons.className = 'dock-buttons-grid';
     PANEL_BUTTONS.forEach((b, i) => buttons.append(this.dockButton(m, b, i)));
@@ -761,7 +777,7 @@ export class Editor {
       }));
     el.append(title,
       col('dock-outputs', strip, ...(this.dockOctave ? [this.dockOctave] : [])),
-      col('dock-knobs', null, knobs),
+      col('dock-knobs', null, this.focusCol),
       col('dock-buttons', jacks(PANEL_BUTTONS), buttons),
       col('dock-morph', null, morph, this.morphRow()),
       col('dock-clock', jacks(CLOCK), param('tempo'), ...(this.dockPlay ? [this.dockPlay] : [])),
@@ -804,8 +820,11 @@ export class Editor {
     const outs = def.outputs.map((p) => this.port(m, p, 'out', { open, short: true }));
     // its displays first (an envelope's shape, the Scope's screen), then the parameters
     // (a Steps module's grid goes under the rows, across the card: 16 steps need the width)
+    // in groups of four (one FM-1 page each)
     const steps = def.type === 'steps';
-    const params = [...(def.views ?? []).filter(() => !steps), ...def.params.filter((pd) => !pd.onScreen)].map((pd) => ({ el: this.paramRow(m, def, pd, { open }), input: pd.input ? { module: m.id, port: pd.input } : undefined }));
+    const rows = moduleRows(def);
+    const starts = groupStarts(rows.map((pd) => ({ knob: !pd.screen })));
+    const params = rows.map((pd, i) => ({ el: this.paramRow(m, def, pd, { open }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] }));
     // a second Main card (from an old patch) keeps its B side under the rows
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
@@ -1063,8 +1082,11 @@ export class Editor {
       if (last) el.append(cell('er', r ?? null));
       return el;
     };
-    const rowsOf = (it: Item, first: boolean, last: boolean, across = 1): HTMLElement[] =>
-      [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across)];
+    const rowsOf = (it: Item, first: boolean, last: boolean, across = 1): HTMLElement[] => {
+      const els = [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across)];
+      if (it.param?.gap) els[0].classList.add('gstart');
+      return els;
+    };
     const grid = document.createElement('div');
     grid.className = 'erows' + (n > 1 ? ' multi' : '');
     if (n === 1) for (const it of cols[0]) grid.append(...rowsOf(it, true, true));
@@ -1148,11 +1170,10 @@ export class Editor {
     if (pd.screen) return this.screenRow(m, pd, o);
     const row = document.createElement('div');
     row.className = 'param bar';
-    const knob = def.type === 'fm1' && isKnob(pd.name) ? pd.name : null;
-    if (knob) {
-      row.classList.add('knob');
-      row.style.setProperty('--knob', `var(--${knob})`);
-    }
+    // a row the knobs can turn: a press on it puts its device page on Main's knobs (markFocus colours the bound ones)
+    row.dataset.mod = String(m.id);
+    row.dataset.param = pd.name;
+    row.addEventListener('pointerdown', () => this.focusRow(m.id, pd.name), true);
     const name = document.createElement('span');
     name.textContent = o.label ?? longName(def.type, pd.name);
     // an enum parameter is a selector (a detent rail, or a drum when the names do not fit) whose jack stands on the live choice
@@ -1251,7 +1272,7 @@ export class Editor {
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? toUnit(pd, v) : null);
       this.ev.onParam(m.id, pd.name, v);
-      this.refreshKnobTicks(); // a knob moved, or a base a knob rests on
+      this.syncDials();
       this.relock(m.id);
     };
     if (m.type === ALLOC && pd.name === 'voices') input.addEventListener('change', () => this.rebuild()); // the ×N badges follow
@@ -1265,7 +1286,7 @@ export class Editor {
         show(v);
         for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // a toggle can change how its siblings show (altText)
         this.ev.onParam(m.id, pd.name, v);
-        this.refreshKnobTicks();
+        this.syncDials();
         this.relock(m.id);
       };
     }
@@ -2108,45 +2129,10 @@ export class Editor {
     dot.dataset.mod = String(m.id);
     dot.dataset.port = p.name;
     dot.dataset.dir = dir;
-    if (m.type === 'fm1' && dir === 'out' && isKnob(p.name)) dot.dataset.knob = p.name;
     dot.title = `${longName(m.type, p.name)} (${p.kind})`;
     dot.addEventListener('pointerdown', (e) => this.beginDrag(e, dot));
     this.ports.set(this.key(m.id, p.name, dir), dot);
     return dot;
-  }
-
-  /** one of Main's knobs K1..K4 on the dock: its output's jack above it (towards the canvas), the name on the cap */
-  private dockKnob(m: ModuleInst, def: ModuleDef, k: string): HTMLElement {
-    const box = document.createElement('div');
-    box.className = 'deck-knob';
-    box.dataset.param = k;
-    box.style.setProperty('--knob', `var(--${k})`);
-    const out = def.outputs.find((o) => o.name === k);
-    if (out) {
-      const dot = this.jack(m, out, 'out');
-      dot.title = `${k.toUpperCase()} output: drag a cable from here`;
-      box.append(dot);
-    }
-    const dial = document.createElement('div');
-    dial.className = 'dial';
-    const name = document.createElement('span');
-    name.className = 'dial-name';
-    name.textContent = m.panel?.labels?.[k] || k.toUpperCase();
-    name.title = `${k.toUpperCase()}${k === 'k5' ? ' (the FM-1\u2019s SELECT encoder)' : k === 'k6' ? ' (the FM-1\u2019s ALGO encoder)' : ''}: right-click to name it for the FM-1\u2019s screen`;
-    dial.append(name);
-    box.append(dial);
-    dial.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      this.dockMenu([{ text: 'Label for the FM-1\u2026', run: () => this.renamePanel(m, k) }], e.clientX, e.clientY);
-    });
-    const c = dragControl(dial, `Knob ${k.toUpperCase()}`, 0, 1, m.params[k] ?? 0.5, (v) => this.setParam(m.id, k, Number(v.toFixed(3))), {
-      reset: 0.5,
-      text: (v) => `${Math.round(v * 100)} %`,
-      draw: (v) => dial.style.setProperty('--v', String(v)),
-    });
-    // MIDI CC 16..19 move the knobs in the engine: follow its live value
-    this.parameterDisplays.push({ id: m.id, update: (values) => c.set(values?.[k] ?? m.params[k] ?? 0.5) });
-    return box;
   }
 
   /** a patch button of the FM-1 in the dock: held while pressed, or switched (right-click: switch / hold, label) */
@@ -2439,20 +2425,25 @@ export class Editor {
     // how many columns a display on each row could reach across: its own and those to its right
     const spanRoom: number[] = [];
     paramColumns(a.params).forEach((c, ci) => c.forEach((i) => (spanRoom[i] = ncols - ci)));
+    // where its groups (FM-1 pages) start: a divider above a group that has no heading or column of its own
+    const shown = a.params.map((r) => rowDef(DEFS[mod(r.module).type], r.param)!);
+    const kept = a.params.map((_, i) => i).filter((i) => !shown[i].onScreen);
+    const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
     const params = a.params.flatMap((r, i): EdgeParam[] => {
       const m = mod(r.module);
       const def = DEFS[m.type];
-      const pd = rowDef(def, r.param)!;
+      const pd = shown[i];
       if (pd.onScreen) return [];
       const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open });
       const above: HTMLElement[] = [];
       if (arranging && r.col) above.push(this.columnChip(a, i));
+      else if (arranging && r.group && !r.head) above.push(this.groupChip(a, i));
       if (r.head || (arranging && this.newHeading === `${a.id}:${i}`)) above.push(this.heading(a, i, arranging));
       if (arranging) {
         this.arrangeItem(row, a, 'param', i);
         row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
       }
-      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined }];
+      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(i) && !r.col && !r.head }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
     if (!a.inputs.length && !a.outputs.length && !a.params.length) {
@@ -2530,6 +2521,23 @@ export class Editor {
     return c;
   }
 
+  /** while arranging: the mark of a group start (`ParamRef.group`) above its first row, with a button to undo it */
+  private groupChip(a: AssemblyInst, i: number): HTMLElement {
+    const c = document.createElement('div');
+    c.className = 'ebreak';
+    c.textContent = 'new group';
+    c.append(this.button('×', 'Let the groups fill in fours here again', () => this.layoutChange(() => setGroupBreak(a.params, i, false)), 'sm arr-x'));
+    return c;
+  }
+
+  /** whether a group already starts at row `i` of an assembly card on its own (the one before it is full) */
+  private groupStartAt(a: AssemblyInst, i: number): boolean {
+    const shown = a.params.map((r) => { const m = this.patch.modules.find((x) => x.id === r.module); return m ? rowDef(DEFS[m.type], r.param) : undefined; });
+    const kept = a.params.map((_, k) => k).filter((k) => shown[k] && !shown[k]!.onScreen);
+    const k = kept.indexOf(i);
+    return k > 0 && groupStarts(kept.map((j) => ({ ...a.params[j], knob: !shown[j]!.screen })))[k];
+  }
+
   /** while arranging: on a row's top edge, + heading and a column break before it; on a display that could reach across
    * `room` columns, ↔ steps how many it spans (1 .. room, then back to 1) */
   private arrangeTools(a: AssemblyInst, i: number, room = 0): HTMLElement {
@@ -2540,6 +2548,7 @@ export class Editor {
       this.newHeading = `${a.id}:${i}`;
       this.rebuild();
     }, 'sm'));
+    if (i > 0 && !r.col && !r.head && !r.group && !this.groupStartAt(a, i)) t.append(this.button('↵ new group', 'End the group before this row: this row starts the next FM-1 page', () => this.layoutChange(() => setGroupBreak(a.params, i, true)), 'sm'));
     if (i > 0 && !r.col) t.append(this.button('↦ column', 'Start a new column with this row', () => this.layoutChange(() => setColumnBreak(a.params, i, true)), 'sm'));
     if (room > 1) {
       const now = Math.min(r.span ?? 1, room);
@@ -3093,6 +3102,188 @@ export class Editor {
     return this.sideLayer;
   }
 
+  // ---- Main's knobs: K1..K4 edit the rows of the device page in focus (pages.ts)
+
+  /** the device and page in focus */
+  private focusedDevice(): Device | undefined { return this.devices.find((d) => d.key === this.focus?.device); }
+  private focusedPage(): Page | undefined { return this.focusedDevice()?.pages[this.focus!.page]; }
+
+  /** the dock's knob column: the DEVICE and PAGE pickers (the FM-1's SELECT and ALGO) over the four dials */
+  private fillFocus(): void {
+    const col = this.focusCol;
+    if (!col) return;
+    this.parameterDisplays = this.parameterDisplays.filter((d) => !d.el || (d.el.isConnected && col.contains(d.el) === false));
+    const dev = this.focusedDevice();
+    const pg = this.focusedPage();
+    const pick = (label: string, text: string, count: number, get: () => number, set: (i: number) => void): HTMLElement => {
+      const value = document.createElement('span');
+      value.textContent = text;
+      const el = picker({ label, value, count: () => count, get, set });
+      el.classList.add('focus-pick');
+      return el;
+    };
+    const pickers = document.createElement('div');
+    pickers.className = 'focus-pickers';
+    const di = this.devices.findIndex((d) => d.key === dev?.key);
+    pickers.append(
+      pick('device (SELECT)', dev?.name ?? 'no device', this.devices.length, () => di, (i) => this.setFocus({ device: this.devices[i].key, page: 0 })),
+      pick('page (ALGO)', pg ? pageTitle(pg) : '—', dev?.pages.length ?? 0, () => this.focus?.page ?? 0, (i) => this.setFocus({ device: dev!.key, page: i })),
+    );
+    pickers.title = 'The device and the page Main\u2019s knobs turn (SELECT and ALGO on the FM-1). Click any row on a card to put its page on the knobs.';
+    const knobs = document.createElement('div');
+    knobs.className = 'deck-knobs';
+    this.dials = [];
+    for (let i = 0; i < PAGE_ROWS; i++) knobs.append(this.boundKnob(i, pg?.rows[i]));
+    col.replaceChildren(pickers, knobs);
+  }
+
+  /** knob K(i + 1) on the dock, bound to a row of the page in focus (or idle when the page has fewer rows) */
+  private boundKnob(i: number, r: PageRow | undefined): HTMLElement {
+    const k = `k${i + 1}`;
+    const box = document.createElement('div');
+    box.className = 'deck-knob';
+    box.dataset.param = k;
+    box.style.setProperty('--knob', `var(--${k})`);
+    const dial = document.createElement('div');
+    dial.className = 'dial';
+    const name = document.createElement('span');
+    name.className = 'dial-name';
+    name.textContent = `K${i + 1}`;
+    dial.append(name);
+    const caption = document.createElement('span');
+    caption.className = 'dial-caption';
+    box.append(dial, caption);
+    this.dials[i] = dial;
+    const m = r && this.patch.modules.find((x) => x.id === r.module);
+    const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
+    if (!r || !m || !pd) {
+      box.classList.add('off');
+      caption.textContent = '—';
+      dial.title = `K${i + 1}: this page has no row for it`;
+      return box;
+    }
+    caption.textContent = r.label;
+    // the dial is the row's position in its range (octaves for a log parameter); choices and switches snap
+    const unitOf = (v: number): number => (pd.choices ? (pd.choices.length > 1 ? Math.round(v) / (pd.choices.length - 1) : 0) : toUnit(pd, v));
+    const valueOf = (u: number): number => {
+      if (pd.toggle) return u >= 0.5 ? 1 : 0;
+      if (pd.choices) return Math.round(u * (pd.choices.length - 1));
+      const v = fromUnit(pd, u);
+      return pd.log ? snapTo(pd, v) : pd.step ? Math.round(v / pd.step) * pd.step : Number(v.toFixed(6));
+    };
+    const text = (v: number): string => {
+      if (pd.choices) return choiceName(m.type, pd.name, pd.choices[Math.round(v)] ?? '');
+      const f = formatValue(v, pd.unit, pd.min < 0);
+      return f.unit ? `${f.num} ${f.unit}` : f.num;
+    };
+    const c = dragControl(dial, `K${i + 1}: ${r.label}`, 0, 1, unitOf(m.params[r.param]), (u) => this.setParam(m.id, r.param, valueOf(u)), {
+      reset: unitOf(pd.default),
+      text: (u) => text(valueOf(u)),
+      draw: (u) => dial.style.setProperty('--v', String(u)),
+    });
+    (dial as HTMLElement & { sync?: () => void }).sync = () => c.set(unitOf(m.params[r.param]));
+    return box;
+  }
+
+  /** the dials follow their rows' base values (a slider moved, an undo, the FM-1) */
+  private syncDials(): void {
+    for (const d of this.dials) (d as HTMLElement & { sync?: () => void }).sync?.();
+  }
+
+  /** colour the rows of the page in focus with their knobs (a badge and a ring, K1..K4); while an assembly is arranged,
+   * every row of it shows its knob and where its pages start */
+  private markFocus(): void {
+    for (const el of this.modulesEl.querySelectorAll<HTMLElement>('.param.bound, .param.page-start')) {
+      el.classList.remove('bound', 'page-start', 'focused');
+      delete el.dataset.kn;
+      delete el.dataset.page;
+      el.style.removeProperty('--knob');
+    }
+    const rowEls = (r: PageRow): HTMLElement[] => [...this.modulesEl.querySelectorAll<HTMLElement>(`.param[data-mod="${r.module}"][data-param="${r.param}"]`)];
+    // the page in focus also fills its bars in the knobs' colours (`focused`), as the FM-1's page does
+    const mark = (pg: Page, start: boolean): void => pg.rows.forEach((r, i) => rowEls(r).forEach((el) => {
+      el.classList.add('bound');
+      el.classList.toggle('focused', !start);
+      el.dataset.kn = String(i + 1);
+      el.style.setProperty('--knob', `var(--k${i + 1})`);
+      if (start && i === 0) { el.classList.add('page-start'); el.dataset.page = pageTitle(pg); }
+    }));
+    const arranging = this.devices.find((d) => d.asm !== undefined && d.asm === this.arrangeAsm);
+    if (arranging) arranging.pages.forEach((pg) => mark(pg, true));
+    const pg = this.focusedPage();
+    if (pg) mark(pg, false);
+    this.positionBindings();
+  }
+
+  /** a press on a row: its device page goes on the knobs */
+  private focusRow(module: number, param: string): void {
+    const at = findRow(this.devices, module, param);
+    if (at) this.setFocus({ device: this.devices[at.device].key, page: at.page });
+  }
+
+  /** put a device page on Main's knobs; `notify` tells the host (the FM-1 follows with Live on) */
+  setFocus(f: { device: string; page: number } | null, notify = true): void {
+    const next = fixFocus(this.devices, f);
+    if (next?.device === this.focus?.device && next?.page === this.focus?.page) return;
+    this.focus = next;
+    this.fillFocus();
+    this.markFocus();
+    if (notify && next) this.ev.onFocus?.(next.device, next.page);
+  }
+
+  /** the FM-1 shows another page (patchbin.ts editorPage turns its indices into this) */
+  focusFrom(f: { device: string; page: number }): void {
+    this.setFocus(f, false);
+  }
+
+  /** a knob turned elsewhere (MIDI CC 16..19, the FM-1): K(i + 1) to position u (0..1) of its row's range */
+  turnKnob(i: number, u: number): void {
+    const r = this.focusedPage()?.rows[i];
+    const m = r && this.patch.modules.find((x) => x.id === r.module);
+    const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
+    if (!r || !m || !pd) return;
+    const x = Math.min(1, Math.max(0, u));
+    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : pd.log ? snapTo(pd, fromUnit(pd, x)) : Number(fromUnit(pd, x).toFixed(6));
+    this.setParam(m.id, r.param, v);
+  }
+
+  /** the rows of the page in focus (the FM-1's device page, the knobs' targets) */
+  focusRows(): PageRow[] { return this.focusedPage()?.rows ?? []; }
+
+  /** the dotted lines from the dials to the rows they turn, drawn over everything; a row out of view gets none */
+  private positionBindings(): void {
+    if (!this.bindLayer) {
+      this.bindLayer = document.createElementNS(SVGNS, 'svg') as SVGSVGElement;
+      this.bindLayer.setAttribute('class', 'bind-cables');
+      this.bindLayer.setAttribute('aria-hidden', 'true');
+      document.body.append(this.bindLayer);
+    }
+    const layer = this.bindLayer;
+    const view = this.canvas.getBoundingClientRect();
+    const paths: SVGPathElement[] = [];
+    const pg = this.focusedPage();
+    if (pg && this.canvas.offsetParent !== null) pg.rows.forEach((r, i) => {
+      const dial = this.dials[i];
+      if (!dial?.isConnected) return;
+      const thumb = this.sliderPorts.find((s) => s.m.id === r.module && s.pd.name === r.param)?.jack;
+      const row = this.modulesEl.querySelector<HTMLElement>(`.param[data-mod="${r.module}"][data-param="${r.param}"]`);
+      const end = thumb?.isConnected && thumb.offsetParent !== null ? thumb : row;
+      if (!end || end.offsetParent === null) return;
+      const e = end.getBoundingClientRect();
+      const b = { x: e.left + e.width / 2, y: e.top + e.height / 2 };
+      if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) return;
+      const d = dial.getBoundingClientRect();
+      const a = { x: d.left + d.width / 2, y: d.top };
+      const lift = Math.max(40, (a.y - b.y) * 0.45);
+      const path = document.createElementNS(SVGNS, 'path');
+      path.setAttribute('class', 'bind');
+      path.style.setProperty('--knob', `var(--k${i + 1})`);
+      path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x} ${b.y + lift} ${b.x} ${b.y}`);
+      paths.push(path);
+    });
+    layer.replaceChildren(...paths);
+  }
+
   positionSideCables(): void {
     this.sideOverlay();
     const w = this.world.getBoundingClientRect();
@@ -3111,7 +3302,7 @@ export class Editor {
       keep.add(path);
       const m = this.patch.modules.find((x) => x.id === from!.module)!;
       const kind = DEFS[m.type].outputs.find((o) => o.name === from!.port)?.kind ?? 'control';
-      path.setAttribute('class', `cable ${kind}${m.type === 'fm1' && isKnob(from!.port) ? ` knob-${from!.port}` : ''}`);
+      path.setAttribute('class', `cable ${kind}`);
       path.setAttribute('aria-label', 'A sidebar slider\'s source: click to unplug');
       // into the thumb's centre (it moves with the live value), from above
       const r = thumb.getBoundingClientRect();
@@ -3124,6 +3315,7 @@ export class Editor {
 
   private positionCables(): void {
     this.positionSideCables();
+    this.positionBindings();
     const w = this.world.getBoundingClientRect();
     const o = this.dockCables?.getBoundingClientRect();
     const routed = this.ribbonRoutes();
@@ -3342,8 +3534,10 @@ export class Editor {
       for (const { jack } of thumbs) jack.classList.add('connected');
       if (!a) continue;
       const src = this.patch.modules.find((m) => m.id === c.from.module)!;
-      let kind = DEFS[src.type].outputs.find((o) => o.name === c.from.port)!.kind;
-      if (src.type === 'fm1' && isKnob(c.from.port)) kind += ` knob-${c.from.port}`;
+      // drawn by the role of the input it lands on (cable-role.ts), not the kind of the output
+      const role = cableRole(DEFS[this.patch.modules.find((x) => x.id === c.to.module)!.type], c.to.port);
+      const kind = `${role === 'signal' ? 'audio' : role === 'mod' ? 'control' : role} role-${role}`;
+      void src;
       if (b) {
         const key = `${c.from.module}:${c.from.port}:${b.dataset.mod}:${b.dataset.port}`;
         if (!physicalCables.has(key)) add(a, b, kind, () => this.removeCable(c), 'Disconnect cable', false, c);
@@ -3352,7 +3546,6 @@ export class Editor {
         // a pin has no jack: its cable is drawn to every thumb it feeds, and each drawn cable removes just that route
         for (const { jack, pd } of thumbs) add(a, jack, kind, () => this.change(() => removeRoute(this.patch, c, pd.name)), `Disconnect from ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}`, false, c);
     }
-    this.refreshKnobTicks();
     this.positionCables();
   }
 
@@ -3363,16 +3556,9 @@ export class Editor {
     this.touch();
     m.params[name] = v;
     this.ev.onParam(id, name, v);
-    this.refreshKnobTicks();
+    this.syncDials();
     for (const d of this.parameterDisplays) if (d.id === id) d.update(null);
     this.relock(id);
-  }
-
-  /** the knob ticks under every slider an FM-1 knob reaches: where that knob alone leaves the parameter at rest */
-  private refreshKnobTicks(): void {
-    const rests = knobRests(this.patch);
-    for (const { m, pd, ticks } of this.sliderPorts)
-      ticks((rests.get(`${m.id}:${pd.name}`) ?? []).map((r) => ({ knob: r.knob, unit: toUnit(pd, r.value) })));
   }
 
   /** remove a cable; one drawn to a merged jack whose other inputs are hidden takes their cables (from the same output) with it */

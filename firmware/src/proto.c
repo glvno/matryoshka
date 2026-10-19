@@ -16,8 +16,8 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_STEP = 0x26, C_MUTE = 0x27, C_STEPVAL = 0x28, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_STEP = 0x44, R_MUTE = 0x45, R_STEPVAL = 0x46 };
-#define M1_FEATURES 14u                                      /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = STEP / MUTE, bit 3 = STEPVAL (bit 0, the ARP command, is retired) */
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_STEP = 0x26, C_MUTE = 0x27, C_STEPVAL = 0x28, C_FOCUS = 0x29, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_STEP = 0x44, R_MUTE = 0x45, R_STEPVAL = 0x46, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48 };
+#define M1_FEATURES 30u                                      /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = STEP / MUTE, bit 3 = STEPVAL, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW (bit 0, the ARP command, is retired) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
@@ -106,6 +106,7 @@ static void m1_ack(uint32_t cmd, uint32_t seq, uint32_t status, uint32_t aux)
 }
 
 /* a patch the firmware already runs (boot: from flash or a factory patch): what STORE writes and PARAM edits */
+static uint32_t m1_gen;                                     /* counts patches set as current: the LCD reads the device pages again */
 static uint8_t m1_edited;                                    /* the running patch differs from what was loaded (SAVE clears it; the LCD shows *) */
 
 static void m1_set_current(const uint8_t *p, uint32_t len)
@@ -117,6 +118,7 @@ static void m1_set_current(const uint8_t *p, uint32_t len)
         m1_cur[i] = p[i];
     m1_cur_len = len;
     m1_edited = 0;
+    m1_gen++;
 }
 
 #define M1_BYPASS 0x80u                                     /* bit 7 of a record's type byte: the module is bypassed */
@@ -233,6 +235,26 @@ static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel
     p[3] = (uint8_t)(vel & 0x7Fu);
     m1_reply(R_STEPVAL, p, 4);
 }
+/* a parameter turned on the FM-1 (K1..K4 on a device page): module, parameter, the value Q16.16 */
+static void m1_param_now(uint32_t mod, uint32_t par, int32_t v)
+{
+    uint8_t p[6];
+    p[0] = (uint8_t)mod;
+    p[1] = (uint8_t)par;
+    p[2] = (uint8_t)v;
+    p[3] = (uint8_t)((uint32_t)v >> 8);
+    p[4] = (uint8_t)((uint32_t)v >> 16);
+    p[5] = (uint8_t)((uint32_t)v >> 24);
+    m1_reply(R_PARAM_NOW, p, 6);
+}
+/* the device page the FM-1 shows now (indices into the device pages section) */
+static void m1_focus_now(uint32_t dev, uint32_t pg)
+{
+    uint8_t p[2];
+    p[0] = (uint8_t)dev;
+    p[1] = (uint8_t)pg;
+    m1_reply(R_FOCUS_NOW, p, 2);
+}
 static void m1_mute_now(uint32_t mod, int on)
 {
     uint8_t p[2];
@@ -256,7 +278,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if ((p[6] & ~31u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)))
+    if ((p[6] & ~63u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)))
         return 0;
     nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
@@ -280,6 +302,8 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         if (at >= len) return 0;
         at += 1u + (1u + 2u * TRACK_STEPS) * p[at];
     }
+    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))    /* flag bit 5: the device pages */
+        return 0;
     if (p[6] & 2u) {                                            /* flag bit 1: the macro ranges after that */
         if (at >= len)
             return 0;
@@ -316,6 +340,19 @@ static uint32_t m1_values_at(void)
 
 #define M1_VALUES_REC (1u + 2u * TRACK_STEPS)                /* a step values entry: module, notes, velocities */
 
+/* the offset of the device pages section (its count byte) in the current patch, 0 if the patch has none */
+static uint32_t m1_devices_at(void)
+{
+    uint32_t at;
+    if (!(m1_cur[6] & 32u) || !(at = m1_values_at()))
+        return 0;
+    if (m1_cur[6] & 16u) {
+        if (at >= m1_cur_len) return 0;
+        at += 1u + M1_VALUES_REC * m1_cur[at];
+    }
+    return at < m1_cur_len ? at : 0;
+}
+
 /* the offset of the macro range section (its count byte) in the current patch, 0 if the patch has none */
 static uint32_t m1_range_section(void)
 {
@@ -326,6 +363,8 @@ static uint32_t m1_range_section(void)
         if (at >= m1_cur_len) return 0;
         at += 1u + M1_VALUES_REC * m1_cur[at];
     }
+    if ((m1_cur[6] & 32u) && !(at = eng_devices_end(m1_cur, m1_cur_len, at)))   /* the device pages come before the ranges */
+        return 0;
     return at < m1_cur_len ? at : 0;
 }
 
@@ -584,6 +623,10 @@ static int m1_handle(const uint8_t *f, uint32_t n)
             m1_patch_stepval(d[0], d[1], d[2], d[3]);
             m1_ui_changed();
         }
+        break;
+    case C_FOCUS:                                            /* device u8, page u8: show that device page */
+        if (len >= 2u)
+            m1_focus(d[0], d[1]);
         break;
     case C_MUTE:                                             /* module u8, on u8: not saved */
         if (len >= 2u) {

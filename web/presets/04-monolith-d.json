@@ -8,12 +8,6 @@
    "x": 20,
    "y": 20,
    "params": {
-    "k1": 0.7293,
-    "k2": 0.3,
-    "k3": 0.7173,
-    "k4": 0.4331,
-    "k5": 0.5,
-    "k6": 0.5,
     "morph": 0,
     "tempo": 120
    }
@@ -40,7 +34,7 @@
    "x": 20,
    "y": 60,
    "params": {
-    "time": 0.001,
+    "time": 0.04,
     "curve": 0
    },
    "att": [
@@ -296,7 +290,7 @@
    "y": 620,
    "params": {
     "a": 0.005,
-    "d": 0.001,
+    "d": 0.45,
     "s": 0.35,
     "r": 0.25
    },
@@ -323,8 +317,8 @@
    "x": 980,
    "y": 60,
    "params": {
-    "cutoff": 20,
-    "res": 0,
+    "cutoff": 700,
+    "res": 0.3,
     "drive": 1.4,
     "cvamt": 3,
     "track": 1
@@ -678,46 +672,6 @@
     "module": 17,
     "port": "r"
    }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k1"
-   },
-   "to": {
-    "module": 13,
-    "port": "p1"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k2"
-   },
-   "to": {
-    "module": 13,
-    "port": "p2"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k3"
-   },
-   "to": {
-    "module": 12,
-    "port": "p2"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k4"
-   },
-   "to": {
-    "module": 3,
-    "port": "p1"
-   }
   }
  ],
  "assemblies": [
@@ -801,7 +755,8 @@
     {
      "module": 5,
      "param": "coarse",
-     "label": "osc 2 range"
+     "label": "osc 2 range",
+     "group": true
     },
     {
      "module": 5,
@@ -816,7 +771,8 @@
     {
      "module": 6,
      "param": "coarse",
-     "label": "osc 3 range"
+     "label": "osc 3 range",
+     "group": true
     },
     {
      "module": 6,

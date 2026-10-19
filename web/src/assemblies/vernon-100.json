@@ -613,7 +613,8 @@
     {
       "module": 11,
       "param": "view",
-      "label": "env 2"
+      "label": "env 2",
+      "group": true
     },
     {
       "module": 11,

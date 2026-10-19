@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 42
+#define N_TYPES 43
 enum {
     T_FM1,
     T_OSC,
@@ -47,6 +47,7 @@ enum {
     T_ALLOC,
     T_ARP,
     T_STEPS,
+    T_MACRO,
 };
 
 /* fm1: Main */
@@ -54,36 +55,24 @@ enum {
 #define FM1_O_PITCH 0
 #define FM1_O_GATE 1
 #define FM1_O_VEL 2
-#define FM1_O_K1 3
-#define FM1_O_K2 4
-#define FM1_O_K3 5
-#define FM1_O_K4 6
-#define FM1_O_K5 7
-#define FM1_O_K6 8
-#define FM1_O_CLOCK 9
-#define FM1_O_BEND 10
-#define FM1_O_MOD 11
-#define FM1_O_AT 12
-#define FM1_O_KEYS 13
-#define FM1_O_RUN 14
-#define FM1_O_FX 15
-#define FM1_O_SCL 16
-#define FM1_O_ENV 17
-#define FM1_O_LFO 18
-#define FM1_O_EDIT 19
-#define FM1_O_GLO 20
-#define FM1_O_ARP 21
-#define FM1_P_K1 0
-#define FM1_P_K2 1
-#define FM1_P_K3 2
-#define FM1_P_K4 3
-#define FM1_P_K5 4
-#define FM1_P_K6 5
-#define FM1_P_MORPH 6
-#define FM1_P_TEMPO 7
+#define FM1_O_CLOCK 3
+#define FM1_O_BEND 4
+#define FM1_O_MOD 5
+#define FM1_O_AT 6
+#define FM1_O_KEYS 7
+#define FM1_O_RUN 8
+#define FM1_O_FX 9
+#define FM1_O_SCL 10
+#define FM1_O_ENV 11
+#define FM1_O_LFO 12
+#define FM1_O_EDIT 13
+#define FM1_O_GLO 14
+#define FM1_O_ARP 15
+#define FM1_P_MORPH 0
+#define FM1_P_TEMPO 1
 #define FM1_NIN 1
-#define FM1_NOUT 22
-#define FM1_NPAR 8
+#define FM1_NOUT 16
+#define FM1_NPAR 2
 #define FM1_CVBASE -1
 #define FM1_NDATA 0
 
@@ -757,6 +746,17 @@ enum {
 #define STEPS_CVBASE 3
 #define STEPS_NDATA 72
 
+/* macro: Macro */
+#define MACRO_I_P1 0
+#define MACRO_I_P2 1
+#define MACRO_O_OUT 0
+#define MACRO_P_VALUE 0
+#define MACRO_NIN 2
+#define MACRO_NOUT 1
+#define MACRO_NPAR 1
+#define MACRO_CVBASE 0
+#define MACRO_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -778,7 +778,7 @@ static const char *const POLY_LEGATO_NAME[3] = {"AUTO", "OFF", "ON"};
 static const char *const POLY_PRIORITY_NAME[3] = {"LAST", "LOW", "HIGH"};
 
 #define MAX_IN 6
-#define MAX_OUT 22
+#define MAX_OUT 16
 #define MAX_PAR 12
 
 typedef struct {
@@ -797,14 +797,14 @@ typedef struct {
 } def_t;
 
 static const char *const FM1_INNAMES[] = {"MORPH"};
-static const int32_t FM1_MIN[] = {0, 0, 0, 0, 0, 0, 0, 1310720};
-static const int32_t FM1_MAX[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536, 19660800};
-static const int32_t FM1_DEF[] = {32768, 32768, 32768, 32768, 32768, 32768, 0, 7864320};
-static const int32_t FM1_INC[] = {655, 655, 655, 655, 655, 655, 655, 183501};
-static const char *const FM1_PN[] = {"K1", "K2", "K3", "K4", "K5", "K6", "MORPH", "TEMPO"};
-static const uint8_t FM1_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const FM1_UNIT[] = {"", "", "", "", "", "", "", "BPM"};
-static const char *const *const FM1_CH[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t FM1_MIN[] = {0, 1310720};
+static const int32_t FM1_MAX[] = {65536, 19660800};
+static const int32_t FM1_DEF[] = {0, 7864320};
+static const int32_t FM1_INC[] = {655, 183501};
+static const char *const FM1_PN[] = {"MORPH", "TEMPO"};
+static const uint8_t FM1_LOG[] = {0, 0};
+static const char *const FM1_UNIT[] = {"", "BPM"};
+static const char *const *const FM1_CH[] = {0, 0};
 static const char *const OSC_INNAMES[] = {"PITCH", "PM", "SYNC", "P1", "P2"};
 static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0, 0, 0};
 static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144};
@@ -1198,6 +1198,15 @@ static const uint8_t STEPS_LOG[] = {0, 0, 0, 0};
 static const char *const STEPS_UNIT[] = {"", "", "%", ""};
 static const char *const STEPS_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
 static const char *const *const STEPS_CH[] = {0, STEPS_CH1, 0, 0};
+static const char *const MACRO_INNAMES[] = {"P1", "P2"};
+static const int32_t MACRO_MIN[] = {0};
+static const int32_t MACRO_MAX[] = {65536};
+static const int32_t MACRO_DEF[] = {32768};
+static const int32_t MACRO_INC[] = {655};
+static const char *const MACRO_PN[] = {"VALUE"};
+static const uint8_t MACRO_LOG[] = {0};
+static const char *const MACRO_UNIT[] = {""};
+static const char *const *const MACRO_CH[] = {0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */
@@ -1242,4 +1251,5 @@ static const def_t DEFS[N_TYPES] = {
     {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 0, ALLOC_CVBASE, -1, ALLOC_NDATA, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICE ALLOCATOR", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH},   /* alloc */
     {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH},   /* arp */
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH},   /* steps */
+    {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH},   /* macro */
 };

@@ -8,12 +8,6 @@
    "x": 20,
    "y": 20,
    "params": {
-    "k1": 0.6962,
-    "k2": 0.3,
-    "k3": 0.8658,
-    "k4": 0.5,
-    "k5": 0.5,
-    "k6": 0.5,
     "morph": 0,
     "tempo": 120
    }
@@ -24,8 +18,8 @@
    "x": 20,
    "y": 60,
    "params": {
-    "decay": 0.05,
-    "damp": 0,
+    "decay": 2,
+    "damp": 0.3,
     "burst": 0,
     "coarse": 0,
     "level": 0.8
@@ -53,7 +47,7 @@
    "x": 340,
    "y": 60,
    "params": {
-    "cutoff": 20,
+    "cutoff": 3000,
     "res": 0.1,
     "cvamt": 1,
     "track": 1,
@@ -161,36 +155,6 @@
    "to": {
     "module": 5,
     "port": "keys"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k1"
-   },
-   "to": {
-    "module": 2,
-    "port": "p1"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k2"
-   },
-   "to": {
-    "module": 2,
-    "port": "p2"
-   }
-  },
-  {
-   "from": {
-    "module": 1,
-    "port": "k3"
-   },
-   "to": {
-    "module": 3,
-    "port": "p1"
    }
   }
  ],

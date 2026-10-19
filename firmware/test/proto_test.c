@@ -32,6 +32,8 @@ static int m1_flash_ok(void) { return 1; }
 static void m1_ui_changed(void) {}
 static int transport_calls;
 static void m1_transport(int run) { (void)run; transport_calls++; }
+static uint32_t focus_calls, focus_dev, focus_page;
+static void m1_focus(uint32_t dev, uint32_t pg) { focus_calls++; focus_dev = dev; focus_page = pg; }
 static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
 {
     slot_writes++;
@@ -179,9 +181,15 @@ int main(int argc, char **argv)
     }
     /* Legacy fixed-link masks (flag bit 2, written by format 17 editors) survive framing, load and live macro-range edits. */
     {
-        uint32_t base = (uint32_t)np, count = patch[2];
+        static uint8_t flat[M1_PATCH_MAX];               /* the fixture without its device pages: the raw sections go at its end */
+        uint32_t base, count = patch[2];
         CHECK(!(patch[6] & 6u)); /* this fixture has no ranges or fixed-link masks */
-        memcpy(m1_cur, patch, base);
+        memcpy(m1_cur, patch, (size_t)np);
+        m1_cur_len = (uint32_t)np;
+        base = m1_devices_at() ? m1_devices_at() : (uint32_t)np;
+        memcpy(flat, patch, base);
+        flat[6] &= (uint8_t)~32u;
+        memcpy(m1_cur, flat, base);
         memset(m1_cur + base, 0, count);
         m1_cur[1] = ENG_PATCH_VERSION;
         m1_cur[6] |= 4u;
@@ -192,7 +200,7 @@ int main(int argc, char **argv)
         CHECK(eng_load(m1_cur, m1_cur_len) == 0);
         CHECK(!(E.node[mod].conn & (1u << FILTER_I_CV)));
         CHECK(inst_pool[E.node[mod].inst0].in[FILTER_I_CV] == zero_buf);
-        CHECK(E.ncab == (uint32_t)(patch[4] | patch[5] << 8));
+        CHECK(E.ncab == (uint32_t)(flat[4] | flat[5] << 8));
         m1_patch_range(mod, 0, par, 1, 20, 220);
         CHECK(m1_range_section() == base + count);
         CHECK(m1_valid(m1_cur, m1_cur_len));
@@ -202,9 +210,9 @@ int main(int argc, char **argv)
         CHECK(m1_cur_len == base + count && m1_valid(m1_cur, m1_cur_len));
         m1_cur[base + mod] = 0x80; /* not a fixed input */
         CHECK(eng_load(m1_cur, m1_cur_len) != 0);
-        CHECK(eng_load(patch, base) == 0);
+        CHECK(eng_load(flat, base) == 0);
         /* Additional input routes (flag bit 3) retain the raw CV buffer for extra destinations when the fixed link is off. */
-        memcpy(m1_cur, patch, base);
+        memcpy(m1_cur, flat, base);
         memset(m1_cur + base, 0, count);
         m1_cur[1] = ENG_PATCH_VERSION; m1_cur[6] |= 12u;
         m1_cur[base + mod] = 1u << FILTER_I_CV;
@@ -231,14 +239,14 @@ int main(int argc, char **argv)
         m1_cur[base + count + 2] = FILTER_I_CV;
         m1_cur[base + count + 4] = 0x80;
         CHECK(eng_load(m1_cur, m1_cur_len) != 0);
-        CHECK(eng_load(patch, base) == 0);
+        CHECK(eng_load(flat, base) == 0);
         printf("fixed input routing and legacy patch framing ok\n");
     }
     if (argc > 10) {                                             /* step values (#93): a Steps patch without them */
         long nk;
         uint8_t *kit = slurp(argv[10], &nk);
         int t0, t1;
-        uint32_t base;
+        uint32_t base, devb;
         CHECK(!(kit[6] & 18u));                                  /* no step values, no ranges */
         memcpy(m1_cur, kit, (size_t)nk);
         m1_cur_len = (uint32_t)nk;
@@ -248,16 +256,19 @@ int main(int argc, char **argv)
         t1 = eng_steps_module(1);
         CHECK(eng_steps_value((uint32_t)t0, 5) == (STEP_NOTE | STEP_VEL << 8));
         base = m1_values_at();
-        CHECK(base == m1_cur_len);
+        devb = (m1_cur[6] & 32u) ? eng_devices_end(m1_cur, m1_cur_len, base) - base : 0u;   /* the device pages follow */
+        CHECK(base + devb == m1_cur_len);
+        CHECK(!(m1_cur[6] & 32u) || m1_devices_at() == base);
         m1_patch_stepval((uint32_t)t0, 5, 67, 30);              /* the section is created with the track's entry */
         CHECK(m1_cur[6] & 16u);
         CHECK(m1_cur_len == (uint32_t)nk + 1u + M1_VALUES_REC);
         CHECK(m1_valid(m1_cur, m1_cur_len) && !m1_valid(m1_cur, m1_cur_len - 1));
         m1_patch_range((uint32_t)t1, 0, STEPS_P_SWING, 1, 10, 200);   /* ranges come after the step values */
-        CHECK(m1_range_section() == base + 1u + M1_VALUES_REC);
-        m1_patch_stepval((uint32_t)t1, 63, 24, 127);            /* a second entry: the ranges move up */
+        CHECK(m1_range_section() == base + 1u + M1_VALUES_REC + devb);
+        CHECK(!devb || m1_devices_at() == base + 1u + M1_VALUES_REC);   /* the device pages moved up with the new section */
+        m1_patch_stepval((uint32_t)t1, 63, 24, 127);            /* a second entry: the device pages and the ranges move up */
         CHECK(m1_cur[base] == 2u);
-        CHECK(m1_range_section() == base + 1u + 2u * M1_VALUES_REC);
+        CHECK(m1_range_section() == base + 1u + 2u * M1_VALUES_REC + devb);
         CHECK(m1_valid(m1_cur, m1_cur_len));
         m1_patch_stepval((uint32_t)t0, 6, 70, 0);               /* an entry that exists: updated in place */
         CHECK(m1_cur[base] == 2u && m1_valid(m1_cur, m1_cur_len));

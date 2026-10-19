@@ -4708,7 +4708,7 @@
     {
      "module": 31,
      "param": "gain",
-     "label": "lfo \u2192 pitch"
+     "label": "lfo → pitch"
     },
     {
      "module": 32,
@@ -4718,7 +4718,7 @@
     {
      "module": 33,
      "param": "gain",
-     "label": "lfo \u2192 filter"
+     "label": "lfo → filter"
     },
     {
      "module": 36,

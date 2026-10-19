@@ -343,9 +343,10 @@ static void seq_draw(int full)
     seq_clamp();
     if (mod < 0) {
         if (full) {
-            text5x7(12, 60, "THIS PATCH HAS NO STEPS MODULE.", 1, C_FG, C_BG);
-            text5x7(12, 76, "ADD ONE IN THE EDITOR.", 1, C_DIM, C_BG);
-            text5x7(12, 228, "SEQ: BACK", 1, 0x4208u, C_BG);
+            lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+            text_bc(&FONT_M, 10, 56, "This patch has no Steps module.", C_FG, C_BG, 224, TA_LEFT);
+            text_bc(&FONT_S, 10, 80, "Add one in the editor.", C_DIM, C_BG, 224, TA_LEFT);
+            text_bc(&FONT_S, 10, 222, "SEQ  back", C_HINT, C_BG, 224, TA_LEFT);
         }
         return;
     }
@@ -370,8 +371,10 @@ static void seq_draw(int full)
             *p++ = '%';
         }
     }
-    pad(p, line, 36);
-    text5x7(12, 32, line, 1, C_FG, C_BG);
+    *p = 0;
+    if (full)
+        lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+    text_bc(&FONT_S, 8, 28, line, C_FG, C_BG, 224, TA_LEFT);
     for (i = 0; i < 16; i++) {
         int k = seq_pg * 16 + i;
         uint32_t x = 8u + 14u * (uint32_t)i, s = k < len ? (uint32_t)eng_steps_get((uint32_t)mod, (uint32_t)k) : 0u;
@@ -382,7 +385,7 @@ static void seq_draw(int full)
             lcd_fill(x, 52 + h + 3u, 12, 3, C_BG);
             continue;
         }
-        lcd_fill(x, 52, 12, h - fill, (i & 3) ? 0x2104u : 0x3186u);   /* the beats a shade lighter */
+        lcd_fill(x, 52, 12, h - fill, (i & 3) ? C_TRACK : C_TRACK);   /* the beats a shade lighter */
         if (fill)
             lcd_fill(x, 52 + h - fill, 12, fill, c);
         lcd_fill(x, 52 + h + 3u, 12, 3, k == pos ? C_ACC : C_BG);
@@ -401,11 +404,11 @@ static void seq_draw(int full)
             if (eng_steps_muted((uint32_t)tm))
                 p = put(p, " M");
         }
-        pad(p, line, 17);
-        text5x7(x, y, line, 1, t == seq_trk ? C_ACC : t < (uint32_t)eng_steps_count() && !eng_steps_muted((uint32_t)eng_steps_module(t)) ? C_FG : C_DIM, C_BG);
+        *p = 0;
+        text_bc(&FONT_S, x, y, line, t == seq_trk ? C_ACC : t < (uint32_t)eng_steps_count() && !eng_steps_muted((uint32_t)eng_steps_module(t)) ? C_FG : C_DIM, C_BG, 108, TA_LEFT);
     }
     if (full)
-        text5x7(12, 228, seq_rec ? "BLACK: HIT  ENV+BLACK: ACCENT" : "ENV:ACCENT HOLD+SEL:% K1:NOTE K2:VEL", 1, 0x4208u, C_BG);
+        text_bc(&FONT_S, 8, 222, seq_rec ? "BLACK  hit    ENV+BLACK  accent" : "ENV accent   HOLD+SEL %   K1 note   K2 vel", C_HINT, C_BG, 228, TA_LEFT);
 }
 
 /* the main loop, every pass: the LEDs, and the cells when the playhead moved */

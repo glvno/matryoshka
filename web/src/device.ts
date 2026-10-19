@@ -8,7 +8,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { muteFrame, stepFrame, stepValFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { muteFrame, stepFrame, focusFrame, stepValFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 const NAME = /felucca|fm-?1|modular/i;
 const ACK_TIMEOUT = 700;
@@ -22,7 +22,9 @@ export type DeviceEvent =
   | { kind: 'slot'; slot: number; name: string }
   | { kind: 'step'; module: number; step: number; b: number }
   | { kind: 'stepval'; module: number; step: number; note: number; vel: number }
-  | { kind: 'mute'; module: number; on: boolean };
+  | { kind: 'mute'; module: number; on: boolean }
+  | { kind: 'param'; module: number; param: number; value: number }
+  | { kind: 'focus'; device: number; page: number };
 
 export class DeviceLink {
   private out: MIDIOutput | null = null;
@@ -58,6 +60,11 @@ export class DeviceLink {
       if (p?.cmd === CMD.stepNow && p.payload.length >= 3) return this.onEvent({ kind: 'step', module: p.payload[0], step: p.payload[1], b: p.payload[2] });
       if (p?.cmd === CMD.stepValNow && p.payload.length >= 4) return this.onEvent({ kind: 'stepval', module: p.payload[0], step: p.payload[1], note: p.payload[2], vel: p.payload[3] });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
+      if (p?.cmd === CMD.paramNow && p.payload.length >= 6) {
+        const v = new DataView(Uint8Array.from(p.payload.slice(2, 6)).buffer).getInt32(0, true) / 65536;
+        return this.onEvent({ kind: 'param', module: p.payload[0], param: p.payload[1], value: v });
+      }
+      if (p?.cmd === CMD.focusNow && p.payload.length >= 2) return this.onEvent({ kind: 'focus', device: p.payload[0], page: p.payload[1] });
       if (p && this.waiter?.match(p)) {
         const w = this.waiter;
         this.waiter = null;
@@ -242,6 +249,17 @@ export class DeviceLink {
     if (!this.connected || !this.hasSteps) return;
     const mi = deviceIndex(patch, moduleId);
     if (mi >= 0) this.out!.send(muteFrame(mi, on));
+  }
+
+  /** the firmware takes FOCUS and reports its knobs and pages (INFO feature bit 4) */
+  get hasPages(): boolean {
+    return !!(this.info && this.info.features & 16);
+  }
+
+  /** show a device page on the FM-1 (indices into the binary's device pages section) */
+  focus(device: number, page: number): void {
+    if (!this.connected || !this.hasPages || device < 0) return;
+    this.out!.send(focusFrame(device, page));
   }
 
   /** a module's bypass switch */

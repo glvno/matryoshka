@@ -110,33 +110,28 @@ static void menu_value(uint32_t row, char *out)
 
 static void menu_row_draw(uint32_t row, uint32_t y, int hot)
 {
-    char name[20], val[16], *p;
-    uint32_t w;
-    uint16_t bg = hot ? 0x2104u : C_BG;
-    lcd_fill(0, y, 240, 22, bg);
-    p = put(name, ROW_NAME[row]);
-    *p = 0;
-    text_mid(12, y + 5u, name, hot ? C_FG : C_DIM, bg);
+    char val[16];
+    uint16_t bg = hot ? C_TRACK : C_BG;
+    lcd_fill(6, y, 228, 24, bg);
     if (hot)
-        lcd_fill(0, y, 4, 22, C_ACC);
+        lcd_fill(6, y, 3, 24, C_ACC);
+    text_bc(&FONT_M, 14, y + 3u, ROW_NAME[row], hot ? C_FG : C_DIM, bg, 140, TA_LEFT);
     menu_value(row, val);
-    w = str_len(val) * 9u;
-    text_mid(228u - w, y + 5u, val, hot ? C_ACC : C_FG, bg);
+    text_bc(&FONT_M, 150, y + 3u, val, hot ? C_ACC : C_FG, bg, 78, TA_RIGHT);
 }
 
 /* the MANUAL tab (manual.c): MAN_VIS lines from man_top, SELECT scrolls */
 #include "manual.c"
-#define MAN_Y 62u
-#define MAN_VIS 16u
-#define MAN_PITCH 10u
+#define MAN_Y 70u
+#define MAN_VIS 10u
+#define MAN_PITCH 14u
 static uint32_t man_top;
 
 static void manual_draw(void)
 {
     uint32_t i, h = MAN_VIS * MAN_PITCH, thumb, ty;
     for (i = 0; i < MAN_VIS; i++) {
-        uint32_t k = man_top + i, y = MAN_Y + i * MAN_PITCH, c = 0, nm = 0;
-        char line[MAN_COLS + 2u], *p = line;
+        uint32_t k = man_top + i, y = MAN_Y + i * MAN_PITCH, c = 0, nm = 0, w;
         uint16_t col = C_FG;
         const char *s = k < MAN_N ? MANUAL[k] : "";
         if (s[0] == '#')
@@ -148,27 +143,18 @@ static void manual_draw(void)
                 c++;
         if (s[0] == ' ' && s[1] != ' ' && s[1u + c] == ':')
             nm = c + 1u;
-        if (nm) {                                   /* the name with its colon, then the rest */
-            uint32_t j;
-            for (j = 0; j < nm; j++)
-                line[j] = s[1u + j];
-            line[nm] = 0;
-            text5x7(12, y, line, 1, C_ACC, C_BG);
-            p = put(line, s + 1u + nm);
-            pad(p, line, MAN_COLS - nm);
-            text5x7(12u + 6u * nm, y, line, 1, col, C_BG);
+        if (!s[0]) {
+            lcd_fill(10, y, 220, MAN_PITCH, C_BG);
             continue;
         }
-        if (s[0])
-            p = put(p, s + 1);
-        pad(p, line, MAN_COLS);
-        text5x7(12, y, line, 1, col, C_BG);
+        w = nm ? text_bcn(&FONT_S, 10, y, s + 1, (int32_t)nm, C_ACC, C_BG, 0, TA_LEFT) : 0u;
+        text_bc(&FONT_S, 10u + w, y, s + 1 + nm, col, C_BG, 218u - w, TA_LEFT);
     }
     thumb = h * MAN_VIS / MAN_N;                    /* the scroll bar at the right */
     thumb = thumb < 8u ? 8u : thumb;
     ty = MAN_N > MAN_VIS ? (h - thumb) * man_top / (MAN_N - MAN_VIS) : 0u;
-    lcd_fill(232, MAN_Y, 4, h, 0x2104u);
-    lcd_fill(232, MAN_Y + ty, 4, thumb, C_ACC);
+    lcd_fill(232, MAN_Y, 3, h, C_TRACK);
+    lcd_fill(232, MAN_Y + ty, 3, thumb, C_ACC);
 }
 
 static void manual_scroll(int32_t s)
@@ -184,29 +170,28 @@ static void manual_scroll(int32_t s)
 static void menu_draw(int full)
 {
     static uint8_t shown = 255;
-    uint32_t t, r, n = menu_count(menu_tab), y = 72u;
+    uint32_t t, r, n = menu_count(menu_tab), y = 68u, x = 6;
     if (full || shown != menu_tab) {                /* (a new tab: the page is cleared, the hint changes) */
-        lcd_fill(0, 24, 240, 216, C_BG);
-        text5x7(12, 230, menu_tab == MT_MANUAL ? "SELECT: SCROLL      ALGO: TAB" : "ALGO: TAB  PRESET: ROW  K1-4: VALUE", 1, 0x4208u, C_BG);
+        lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+        text_bc(&FONT_S, 8, 222, menu_tab == MT_MANUAL ? "SELECT  scroll      ALGO  tab" : "ALGO  tab    PRESET  row    K1-K4  value", C_HINT, C_BG, 226, TA_LEFT);
         shown = menu_tab;
     }
-    for (t = 0; t < MT_COUNT; t++)       /* the tabs: bars, the open one in the accent colour */
-        lcd_fill(12u + t * 44u, 30, 40, 4, t == menu_tab ? C_ACC : 0x2104u);
-    {
-        char line[20], *p = put(line, TAB_NAME[menu_tab]);
-        pad(p, line, 12);
-        text_mid(12, 42, line, C_ACC, C_BG);
+    for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages) */
+        uint32_t w = text_w(&FONT_S, TAB_NAME[t], -1) + 12u;
+        text_bc(&FONT_S, x, 24, TAB_NAME[t], t == menu_tab ? C_BG : C_DIM, t == menu_tab ? 0x7E38u : C_TRACK, w, TA_CENTER);
+        x += w + 3u;
     }
+    text_bc(&FONT_L, 8, 42, menu_tab == MT_MANUAL ? "Manual" : TAB_NAME[menu_tab], C_ACC, C_BG, 200, TA_LEFT);
     if (menu_tab == MT_MANUAL) {
         manual_draw();
         return;
     }
     for (r = 0; r < n; r++) {
         uint32_t row = menu_row_at(menu_tab, r);
-        menu_row_draw(row, y + r * 24u, row == menu_sel);
+        menu_row_draw(row, y + r * 26u, row == menu_sel);
     }
-    if (y + n * 24u < 224u)
-        lcd_fill(0, y + n * 24u, 240, 224u - (y + n * 24u), C_BG);   /* (the rows a longer tab had) */
+    if (y + n * 26u < 218u)
+        lcd_fill(0, y + n * 26u, 240, 218u - (y + n * 26u), C_BG);   /* (the rows a longer tab had) */
 }
 
 static void menu_open(void)             /* via page_set (main.c): the tab and row it was left at */

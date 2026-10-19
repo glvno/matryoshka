@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
- *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
+ *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
+ * Environment: TOAST=k shows knob k's toast on the device page, DEVTOAST=1 the device just picked
  * tools/ui_preview.sh converts the image to PNG. */
 #include <stdint.h>
 #include <stdio.h>
@@ -52,8 +53,12 @@ static void lcd_sync(void) {}
 #include "../src/engine.c"
 #include "../src/presets.h"
 #include "../src/font5x7.c"
+#include "../src/font_bc.c"
 static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
 #include "../src/ui.c"
+#include "../src/pages_ui.c"
+static const uint8_t *pages_src(uint32_t *len) { *len = pv_len; return pv_bin; }
+static uint32_t pages_gen(void) { return 1; }
 static void fm1_led_key(uint32_t id, int on) { (void)id; (void)on; }
 static void leds_avail(void) {}
 static void leds_octave(void) {}
@@ -124,6 +129,15 @@ int main(int argc, char **argv)
         eng_render(l, r, 128);
     }
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
+    if (argc > 3 && strchr(argv[3], ':'))                   /* the device page: DEVICE:PAGE */
+        pages_focus((uint32_t)atoi(argv[3]), (uint32_t)atoi(strchr(argv[3], ':') + 1));
+    pg_dev_toast_until = 0;
+    if (getenv("TOAST")) {                                  /* knob n just turned: its toast */
+        pg_toast_k = (uint8_t)atoi(getenv("TOAST"));
+        pg_toast_until = 1000;
+    }
+    if (getenv("DEVTOAST"))
+        pg_dev_toast_until = 1000;
     octave = argc > 4 ? atoi(argv[4]) : 0;
     page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 7: legend, 8: SEQ (SELECTED_MODULE = the track) */
     if (argc > 6)                                           /* the transport running */

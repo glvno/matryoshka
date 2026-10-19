@@ -24,7 +24,9 @@ export const subtractiveSaw = (): Patch =>
 /** an acid line: saw into a resonant filter swept by a decay envelope, an amp envelope, a delay; K1 / K2 = cutoff / resonance */
 export const acid = (): Patch =>
   make('Acid', (add, wire) => {
-    const kb = add('fm1', 20, 40, { k1: 0.5, k2: 0.7 });
+    const kb = add('fm1', 20, 40);
+    const m1 = add('macro', 20, 260, { value: 0.5 });
+    const m2 = add('macro', 20, 380, { value: 0.7 });
     const osc = add('osc', 260, 40, { wave: 2, level: 0.8 });
     const flt = add('filter', 500, 40, { cutoff: 20, res: 0, cvamt: 2.5 }, { map: { p1: ['cutoff'], p2: ['res'] } });
     const fenv = add('adsr', 500, 260, { a: 0.001, d: 0.25, s: 0, r: 0.05 });
@@ -42,8 +44,8 @@ export const acid = (): Patch =>
     wire(vca, 'out', dly, 'in');
     wire(dly, 'out', out, 'l');
     wire(dly, 'out', out, 'r');
-    wire(kb, 'k1', flt, 'p1');
-    wire(kb, 'k2', flt, 'p2');
+    wire(m1, 'out', flt, 'p1');
+    wire(m2, 'out', flt, 'p2');
   });
 
 /** a modulator oscillator into the phase of a carrier (index 3), an ADSR on the level */
