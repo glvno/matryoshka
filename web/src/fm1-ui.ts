@@ -25,6 +25,12 @@ export interface Fm1Events {
   mute?(module: number, on: boolean): void;
 }
 
+/** bits of lit buttons (matrix ids) and keys (key n = F3 + n) */
+export interface Lights {
+  buttons: { lit: number; dim: number; breath: number };
+  keys: { lit: number; mid: number; dim: number };
+}
+
 /** the panel's encoders, as fm1w_encoder numbers them */
 export const ENCODERS = { select: 0, algo: 1, k1: 2, k2: 3, k3: 4, k4: 5, preset: 6 } as const;
 /** the panel's buttons by matrix id (M-VAVE's order, firmware/src/panel.c) */
@@ -33,7 +39,7 @@ export const BUTTONS = { octDown: 0, octUp: 1, fx: 2, scl: 3, env: 4, lfo: 5, ed
 interface Exports {
   memory: WebAssembly.Memory;
   fm1w_patch(): number; fm1w_patch_max(): number; fm1w_name(): number; fm1w_fb(): number;
-  fm1w_leds(): number; fm1w_page(): number; fm1w_take_dirty(): number;
+  fm1w_led(kind: number, first: number): number; fm1w_page(): number; fm1w_take_dirty(): number;
   fm1w_load(len: number, slot: number, fresh: number): number;
   fm1w_tick(ms: number): void;
   fm1w_encoder(n: number, clicks: number): void;
@@ -90,8 +96,15 @@ export class Fm1Ui {
   get focusDevice(): number { return this.x.fm1w_focus_dev(); }
   get focusPage(): number { return this.x.fm1w_focus_page(); }
   get octave(): number { return this.x.fm1w_octave(); }
-  /** the buttons' LEDs, matrix ids as bits */
-  get leds(): number { return this.x.fm1w_leds() >>> 0; }
+  /** the panel's lights as the firmware sets them (after X0X's browser emulator): the buttons by matrix id, the 27 keys
+   * from F3; lit, a dim glow, the mid level (the SEQ page's playhead), breathing (PLAY running, a shifted octave) */
+  lights(): Lights {
+    const m = (kind: number, first: number): number => this.x.fm1w_led(kind, first) >>> 0;
+    return {
+      buttons: { lit: m(0, 0) & 0x3fff, dim: m(1, 0) & 0x3fff, breath: m(3, 0) & 0x3fff },
+      keys: { lit: m(0, 14), mid: m(2, 14), dim: m(1, 14) },
+    };
+  }
   /** whether the screen changed since the last call */
   takeDirty(): boolean { return this.x.fm1w_take_dirty() !== 0; }
   /** the framebuffer, 240 x 240 RGB565 (a view into the module's memory: copy it to keep it) */

@@ -462,7 +462,11 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   editor's focus and transport go to it, its PLAY sets the editor's. PRESET steps the Open list (Your patches,
   Examples), SAVE = Save patch. The pill keys and the computer keyboard play through the note sink at the emulated
   octave; the held notes are the emulator's keys (`emuKeys`), on its SEQ page they enter steps and are not sounded.
-  The browser engine plays; there is no emulated flash bank; the SEQ page's key LEDs are not shown.
+  The browser engine plays; there is no emulated flash bank. Lights (after X0X's browser emulator): host_ui.h keeps
+  the HAL's LED arrays over a host matrix (id = (row - 1) * 11 + column), so seq_ui.c's step cells and the wasm's
+  `leds_play` / `leds_octave` / `leds_avail` (as main.c) land there; `fm1w_led(kind, first)` reads them as bits (lit,
+  dim, mid, breathing), `Fm1Ui.lights()`, and the panel colours buttons and keys from them (PLAY red stopped, green
+  breathing running; SEQ steps lit, the playhead mid, tracks dim on the black keys).
 - LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as
   4-bit anti-aliased bitmaps at four sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
   `firmware/src/font_bc.h`, ~36 KB of flash; `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,

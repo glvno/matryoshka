@@ -187,9 +187,20 @@ export class Fm1View {
     this.ctx.putImageData(this.img, 0, 0);
   }
 
+  /** the lights, as X0X's emulator shows them: classes on the buttons and keys */
   private paintLeds(): void {
-    const on = this.ui?.leds ?? 0;
-    for (const [id, el] of this.btnEls) el.classList.toggle('lit', (on >> id & 1) !== 0);
+    if (!this.ui) return;
+    const { buttons: b, keys: k } = this.ui.lights();
+    for (const [id, el] of this.btnEls) {
+      el.classList.toggle('lit', (b.lit >> id & 1) !== 0);
+      el.classList.toggle('dim', (b.dim >> id & 1) !== 0);
+      el.classList.toggle('breath', (b.breath >> id & 1) !== 0);
+    }
+    for (const [n, el] of this.keyEls) {
+      el.classList.toggle('lit', (k.lit >> n & 1) !== 0);
+      el.classList.toggle('mid', (k.mid >> n & 1) !== 0);
+      el.classList.toggle('dim', (k.dim >> n & 1) !== 0);
+    }
   }
 
   /** a knob's look and its drag / wheel / arrow handling; turn(clicks) is told every move */

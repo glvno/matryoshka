@@ -6,7 +6,6 @@
  * (firmware/wasm/fm1_ui.c). The running patch is pv_bin / pv_len (bump pv_gen when another one goes in). */
 static uint16_t fb[240 * 240];
 static uint8_t fb_dirty;                   /* the framebuffer changed since the host last looked */
-static uint32_t host_leds;                 /* the buttons' LEDs (fm1_led_key), matrix ids as bits */
 static uint32_t fm1_ms;
 static uint32_t fm1_ticks(void) { return 0; }
 static uint32_t eng_us_last = 316, eng_us_max = 358;
@@ -52,16 +51,49 @@ static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len
 static const uint8_t *pages_src(uint32_t *len) { *len = pv_len; return pv_bin; }
 static uint32_t pv_gen = 1;               /* another patch in pv_bin: +1 */
 static uint32_t pages_gen(void) { return pv_gen; }
-static void fm1_led_key(uint32_t id, int on) { host_leds = on ? host_leds | 1u << id : host_leds & ~(1u << id); }
+/* The LEDs, as the HAL keeps them (one byte per matrix column, a bit per row: lit, dim glow, the mid level, breathing),
+ * over a host matrix where row r, column p is id (r - 1) * FM1_NCOL + p: so the firmware's own LED code (seq_ui.c's
+ * step cells, main.c's glows) lands here and host_led_mask reads it back by id (0..13 buttons, 14..40 keys). */
+#define FM1_NCOL 11u
+static const int8_t FM1_KEYMAP[6][FM1_NCOL] = {
+    {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+    {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+    {11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21},
+    {22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32},
+    {33, 34, 35, 36, 37, 38, 39, 40, -1, -1, -1},
+    {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+};
+static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_mid[FM1_NCOL], fm1_led_breath[FM1_NCOL];
+static void host_led_set(uint8_t *a, uint32_t id, int on)
+{
+    if (id > 43u)
+        return;
+    if (on)
+        a[id % FM1_NCOL] |= (uint8_t)(1u << (id / FM1_NCOL + 1u));
+    else
+        a[id % FM1_NCOL] &= (uint8_t)~(1u << (id / FM1_NCOL + 1u));
+}
+/* ids first .. first + 31 of one LED array as bits */
+static uint32_t host_led_mask(const uint8_t *a, uint32_t first)
+{
+    uint32_t m = 0, i;
+    for (i = 0; i < 32u && first + i < 41u; i++)
+        if (a[(first + i) % FM1_NCOL] >> ((first + i) / FM1_NCOL + 1u) & 1u)
+            m |= 1u << i;
+    return m;
+}
+static void fm1_led_key(uint32_t id, int on) { host_led_set(fm1_led, id, on); fb_dirty |= 2; }
+#ifndef HOST_LED_HOOKS                      /* (the wasm build lights them as main.c does) */
 static void leds_avail(void) {}
 static void leds_octave(void) {}
+#else
+static void leds_avail(void);
+static void leds_octave(void);
+#endif
 static void update_only(const char *why) { (void)why; }
 static void defaults_now(void) {}
 #include "../src/menu.c"
 /* what seq_ui.c reaches in proto.c and the HAL, for the preview */
-#define FM1_NCOL 11u
-static const int8_t FM1_KEYMAP[6][FM1_NCOL] = {{-1}};
-static uint8_t fm1_led[FM1_NCOL], fm1_led_dim[FM1_NCOL], fm1_led_mid[FM1_NCOL];
 static struct { uint32_t buttons; } fm1_in;
 static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the previewed binary) */
 {

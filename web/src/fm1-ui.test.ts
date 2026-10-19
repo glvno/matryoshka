@@ -63,7 +63,14 @@ describe('the FM-1 UI as WebAssembly', () => {
     tap(BUTTONS.home, 12_000);                 // back to the first device
     tap(BUTTONS.home, 13_000);                 // the legend
     expect(ui.page).toBe(7);
+    tap(BUTTONS.home, 13_500);                 // back
+    tap(BUTTONS.seq, 13_700);                  // the SEQ page: the kick's steps light their keys
+    expect(ui.page).toBe(8);
+    expect(ui.lights().keys.lit).not.toBe(0);
+    expect(ui.lights().keys.lit & 1).toBe(1);  // (the kick on step 1: the first white key, F3)
+    tap(BUTTONS.seq, 13_900);
+    expect(ui.lights().buttons.lit & (1 << BUTTONS.play)).not.toBe(0);     // stopped: PLAY's red LED
     tap(BUTTONS.play, 14_000);
-    expect(ui.leds & (1 << BUTTONS.play)).not.toBe(0);
+    expect(ui.lights().buttons.breath & (1 << BUTTONS.play)).not.toBe(0);  // running: the green one breathes
   }, 30_000);
 });

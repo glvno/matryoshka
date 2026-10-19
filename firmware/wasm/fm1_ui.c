@@ -31,6 +31,7 @@ static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b) { js_step(mod, k, 
 static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { js_stepval(mod, k, note, vel); }
 static void m1_mute_now(uint32_t mod, int on) { js_mute(mod, (uint32_t)on); }
 #define HOST_STEP_HOOKS
+#define HOST_LED_HOOKS
 
 #include "../test/host_ui.h"
 
@@ -48,12 +49,15 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 #include "../src/panel.c"
 
-/* the hooks: the LEDs are bits the page reads (fm1w_leds), the rest goes to the page */
+/* the hooks: the LEDs as main.c lights them on the device, into the host's LED arrays (host_ui.h), which the page
+ * reads as bits (fm1w_led); the rest goes to the page. Lighting after X0X (charlesvestal/fm1-x0x, GPL-3.0-only):
+ * its browser emulator shows the panel's lights from such masks. */
 static int play_was;                            /* the transport as the page last heard of it */
 static void leds_play(void)
 {
     int run = eng_transport_running();
-    fm1_led_key(BTN_PLAY, run);
+    fm1_led_key(BTN_PLAY, !run);                /* stopped: PLAY's red LED; running: the green one breathes (main.c) */
+    host_led_set(fm1_led_breath, BTN_PLAY, run);
     if (run != play_was) {                      /* PLAY: the page's transport follows */
         play_was = run;
         js_transport((uint32_t)run);
@@ -65,6 +69,24 @@ static void leds_panel(void)
     for (b = 0; b < ENG_PANEL_BUTTONS; b++)
         fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u));
 }
+/* OCT- / OCT+ breathe while the octave is shifted; HOME and the patch buttons the patch uses glow (MENU > LEDS) */
+static void leds_octave(void)
+{
+    host_led_set(fm1_led_breath, BTN_OCT_DOWN, octave < 0);
+    host_led_set(fm1_led_breath, BTN_OCT_UP, octave > 0);
+    fb_dirty |= 2;
+}
+static void leds_avail(void)
+{
+    int on = cfg.leds != 0;
+    uint32_t b, used = panel_used();
+    host_led_set(fm1_led_dim, BTN_HOME, on);
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++)
+        host_led_set(fm1_led_dim, PANEL_BTN_ID[b], on && (used >> b & 1u));
+    leds_panel();
+    fb_dirty |= 2;
+}
+
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
 {
     if (cfg.midi_out)
@@ -106,7 +128,13 @@ WASM_EXPORT("fm1w_patch") uint8_t *fm1w_patch(void) { return pv_bin; }
 WASM_EXPORT("fm1w_patch_max") uint32_t fm1w_patch_max(void) { return sizeof pv_bin; }
 WASM_EXPORT("fm1w_name") char *fm1w_name(void) { return name_buf; }
 WASM_EXPORT("fm1w_fb") uint16_t *fm1w_fb(void) { return fb; }
-WASM_EXPORT("fm1w_leds") uint32_t fm1w_leds(void) { return host_leds; }
+/* the LEDs as bits: kind 0 lit, 1 dim glow, 2 the mid level (the SEQ playhead), 3 breathing; ids from `first` (0: the
+ * buttons by matrix id, 14: the 27 keys) */
+WASM_EXPORT("fm1w_led") uint32_t fm1w_led(uint32_t kind, uint32_t first)
+{
+    const uint8_t *a = kind == 1u ? fm1_led_dim : kind == 2u ? fm1_led_mid : kind == 3u ? fm1_led_breath : fm1_led;
+    return host_led_mask(a, first);
+}
 WASM_EXPORT("fm1w_page") uint32_t fm1w_page(void) { return page; }
 WASM_EXPORT("fm1w_take_dirty") uint32_t fm1w_take_dirty(void)
 {
@@ -141,7 +169,8 @@ WASM_EXPORT("fm1w_load") int32_t fm1w_load(uint32_t len, uint32_t slot, uint32_t
     pg_dev_toast_until = 0;
     play_was = eng_transport_running();         /* (a load is no PLAY: the page sets the transport with fm1w_transport) */
     leds_play();
-    leds_panel();
+    leds_avail();
+    leds_octave();
     ui_dirty = 2;
     panel_draw();
     return 0;

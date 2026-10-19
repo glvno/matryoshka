@@ -1281,8 +1281,19 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-btn:hover { color: #d8d5cd; }
 .fm1-btn.down, .fm1-btn.latched { transform: translateY(.16cqw); box-shadow: none; }
 .fm1-btn.latched { outline: .16cqw solid var(--amber); outline-offset: .1cqw; }
-.fm1-btn.lit { background: color-mix(in srgb, var(--amber) 80%, var(--cap)); color: #2a1a03; }
-.fm1-btn.play.lit { background: color-mix(in srgb, var(--green) 80%, var(--cap)); }
+/* the lights (fm1-ui.ts lights(), colours after X0X's browser emulator): lit, a dim glow, breathing; PLAY is red while
+   stopped and breathes green while it runs; on the keys the SEQ page's steps (lit), playhead (mid) and tracks (dim) */
+.fm1-btn.dim { background: color-mix(in srgb, var(--amber) 18%, var(--cap)); color: #d8c4a4; }
+.fm1-btn.lit { background: #f0a043; color: #1b1205; }
+.fm1-btn.play.lit { background: #e2574c; color: #1b0705; }
+.fm1-btn.breath { animation: fm1-breath 1.6s ease-in-out infinite; color: #1b1205; }
+.fm1-btn.play.breath { --breath: var(--green); }
+@keyframes fm1-breath { 0%, 100% { background: color-mix(in srgb, var(--breath, #f0a043) 35%, var(--cap)); } 50% { background: var(--breath, #f0a043); } }
+.fm1-key.lit { background: #f3b25c; }
+.fm1-key.black.lit { background: #e0902c; }
+.fm1-key.mid { background: color-mix(in srgb, #f3b25c 55%, #5e4a4d); }
+.fm1-key.dim { background: #7a5326; }
+.fm1-key:is(.lit, .mid)::after { background: #ffe2b0; }
 .fm1-key { padding: 0; border: 0; border-radius: 99cqw; background: #5e4a4d; box-shadow: .08cqw .3cqw 0 #1a1a1c; touch-action: none; }
 .fm1-key::after { content: ''; position: absolute; left: calc(50% - .2cqw); top: 17%; width: .4cqw; height: 66%; border-radius: .2cqw; background: #8f7c7e; }
 .fm1-key.down { transform: translateY(.24cqw); box-shadow: none; background: color-mix(in srgb, var(--amber) 55%, #5e4a4d); }
