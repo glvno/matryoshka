@@ -91,8 +91,7 @@ export function partProblems(part: PartSpec, roles: Roles): string[] {
       break;
     case 'event':
       if (!EVENT_NAMES.includes(part.event)) out.push(`unknown event "${part.event}"`);
-      if (part.event === 'probe') port(part.ref ? ref(part.ref, 'probe') : undefined, part.port ?? 'out', 'out', 'probe');
-      if ((part.event === 'probe' || part.event === 'bypassed') && !part.ref) out.push('pick the module');
+      if (part.event === 'bypassed' && !part.ref) out.push('pick the module');
       if (part.event === 'selected' && !part.types?.length) out.push('pick the module types to select');
       for (const t of part.types ?? []) if (!DEFS[t]) out.push(`there is no module type "${t}"`);
       break;

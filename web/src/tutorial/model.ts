@@ -28,8 +28,6 @@ export interface TutorialState {
   /** the patch as it was when the step was entered */
   entry: Patch;
   zoom: number;
-  /** scope probes, as probeKey: `${id}:${port}` */
-  probes: Set<string>;
   arpPlay: boolean;
   audio: boolean;
   selected: Set<number>;
@@ -45,8 +43,6 @@ export type Target =
   | { kind: 'asm'; id: number }
   | { kind: 'port'; id: number; port: string; dir: 'in' | 'out' }
   | { kind: 'param'; id: number; param: string }
-  /** an output's jack, to shift-click for the scope */
-  | { kind: 'probe'; id: number; port: string }
   | { kind: 'ui'; id: string }
   /** a poly assembly's setting picker (else its poly button, else its card) */
   | { kind: 'poly'; id: number; setting: string };
@@ -181,7 +177,6 @@ export const T = {
   asm: (id: number | undefined): Target[] => (id === undefined ? [] : [{ kind: 'asm', id }]),
   port: (m: ModuleInst | undefined, port: string, dir: 'in' | 'out'): Target[] => (m ? [{ kind: 'port', id: m.id, port, dir }] : []),
   param: (m: ModuleInst | undefined, param: string): Target[] => (m ? [{ kind: 'param', id: m.id, param }] : []),
-  probe: (m: ModuleInst | undefined, port: string): Target[] => (m ? [{ kind: 'probe', id: m.id, port }] : []),
   ui: (id: string): Target[] => [{ kind: 'ui', id }],
 };
 
@@ -201,5 +196,5 @@ export function stepDone(ch: Chapter, i: number, s: TutorialState): { met: boole
 }
 
 export function headlessState(patch: Patch, library: AssemblyDef[] = []): TutorialState {
-  return { patch, entry: patch, zoom: 1, probes: new Set(), arpPlay: false, audio: false, selected: new Set(), library, snapshots: { A: null, B: null }, seen: noSeen() };
+  return { patch, entry: patch, zoom: 1, arpPlay: false, audio: false, selected: new Set(), library, snapshots: { A: null, B: null }, seen: noSeen() };
 }

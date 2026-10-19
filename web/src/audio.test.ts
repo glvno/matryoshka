@@ -124,18 +124,6 @@ it('resumes within the gesture, shares initialization and replays the patch befo
   ]);
 });
 
-it('discards stale scope messages after a preset switch', async () => {
-  const host = new AudioHost();
-  host.setPatch(emptyPatch());
-  await host.start();
-  const paint = vi.fn(); host.onProbe = paint;
-  host.setPatch(emptyPatch());
-  const data = new Float32Array([.1, -.1]);
-  node.port.onmessage({ data: { probe: 'output:left', data, sr: 48000, revision: 1 } });
-  expect(paint).not.toHaveBeenCalled();
-  node.port.onmessage({ data: { probe: 'output:left', data, sr: 48000, revision: 2 } });
-  expect(paint).toHaveBeenCalledWith('output:left', data, 48000, null);
-});
 
 
 it('keeps Stop effective when worklet initialization finishes later', async () => {

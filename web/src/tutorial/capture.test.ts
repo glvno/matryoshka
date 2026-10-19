@@ -12,10 +12,10 @@ function recorded(chapter: number, step: string, extra: Partial<Recorded> = {}):
   return {
     before: stepStart(chapter, at(chapter, step)),
     after: referenceOf(COURSE, COURSE.chapters[chapter].id, step)!.patch,
-    seen: noSeen(), probes: [], selected: [], arpPlay: false, audio: false, snapshots: { A: false, B: false }, ...extra,
+    seen: noSeen(), selected: [], arpPlay: false, audio: false, snapshots: { A: false, B: false }, ...extra,
   };
 }
-const idle = { probes: [], selected: [], arpPlay: false, audio: false, snapshots: { A: false, B: false } };
+const idle = { selected: [], arpPlay: false, audio: false, snapshots: { A: false, B: false } };
 /** Main, Output and an Oscillator droning into the Output: built here, so these tests do not follow the course's wording */
 function drone(): Patch {
   const p = newPatch(DEFS);

@@ -148,7 +148,7 @@ const EVENT_LABEL: Record<EventName, string> = {
   notes: 'Play a note', undos: 'Press Ctrl+Z to undo', redos: 'Press Shift+Ctrl+Z to redo', zooms: 'Zoom the canvas (Ctrl+wheel, or Fit patch to screen)',
   flips: 'Press Alt+B', shares: 'Copy a share link (Commands → Share patch link)', bypasses: 'Bypass a module (B)', news: 'Press New patch', saves: 'Save an assembly',
   audio: 'Enable audio', arpPlay: 'Start the arpeggiator (Space)', snapshotA: 'Set snapshot A (Commands)', snapshotB: 'Set snapshot B (Commands)',
-  probe: 'Shift-click a jack', selected: 'Select the modules', bypassed: 'Switch the module back on',
+  selected: 'Select the modules', bypassed: 'Switch the module back on',
 };
 const COUNTERS: EventName[] = ['notes', 'undos', 'redos', 'zooms', 'flips', 'shares', 'bypasses', 'news', 'saves'];
 
@@ -246,7 +246,6 @@ export function partLabel(part: PartSpec, roles: Roles): string {
       return `Set the Voice allocator’s ${name} ${op}`;
     }
     case 'event': {
-      if (part.event === 'probe' && part.ref) return `Shift-click ${n(part.ref)}’s ${part.port ?? 'out'} jack`;
       if (part.event === 'selected' && part.types) return `Select the ${part.types.map(typeLabel).join(', ')}`;
       if (part.event === 'bypassed' && part.ref) return part.on ? `Bypass ${n(part.ref)}` : `Switch ${n(part.ref)} back on`;
       const c = part.count ?? 1;
@@ -326,7 +325,6 @@ export function partCheck(part: PartSpec, s: S, roles: Roles): boolean {
         case 'arpPlay': return s.arpPlay;
         case 'snapshotA': return !!s.snapshots.A;
         case 'snapshotB': return !!s.snapshots.B;
-        case 'probe': { const m = part.ref && one(part.ref); return !!m && s.probes.has(`${m.id}:${part.port ?? 'out'}`); }
         case 'selected': return (part.types ?? []).every((t) => mods(p, t).some((m) => s.selected.has(m.id)));
         case 'bypassed': { const m = part.ref && one(part.ref); return !!m && !!m.bypass === !!part.on; }
         default: return s.seen[part.event] >= (part.count ?? 1);
@@ -399,7 +397,6 @@ export function partTargets(part: PartSpec, s: S, roles: Roles): Target[] {
         case 'news': return T.ui('new-patch-btn');
         case 'notes': return T.param(mod(p, 'output'), 'level');
         case 'arpPlay': return T.ui('arp-btn');
-        case 'probe': return T.probe(part.ref && one(part.ref), part.port ?? 'out');
         case 'bypassed': case 'bypasses': return T.module(part.ref ? one(part.ref)?.id : undefined);
         case 'selected': {
           const types = part.types ?? [];

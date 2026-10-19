@@ -43,7 +43,7 @@ export type AssemblyFact = 'exists' | 'open' | 'collapsed' | 'promoted' | 'expos
 /** editor events and states a step can wait for; counts are since the step was entered */
 export type EventName =
   | 'notes' | 'undos' | 'redos' | 'zooms' | 'flips' | 'shares' | 'bypasses' | 'news' | 'saves'
-  | 'audio' | 'arpPlay' | 'snapshotA' | 'snapshotB' | 'probe' | 'selected' | 'bypassed';
+  | 'audio' | 'arpPlay' | 'snapshotA' | 'snapshotB' | 'selected' | 'bypassed';
 
 /** what a requirement checks; its generated line (parts.ts partLabel) is the default wording the lesson editor inserts */
 export type PartSpec =
@@ -64,7 +64,7 @@ export type PartSpec =
   | { kind: 'assembly'; role: string; fact: AssemblyFact; type?: string; index?: number; param?: string; port?: string; child?: string; tag?: string; name?: string }
   /** a setting of a poly assembly (some poly assembly of the patch satisfies it); `changed` compares with the first one's at the step's start */
   | { kind: 'poly'; setting: PolySetting; op: SliderOp; value?: number; max?: number }
-  /** `count` (default 1) for counters; `ref` + `port` for a probe; `types` for a selection; `ref` + `on` for a bypass state */
+  /** `count` (default 1) for counters; `types` for a selection; `ref` + `on` for a bypass state */
   | { kind: 'event'; event: EventName; count?: number; ref?: Ref; port?: string; types?: string[]; on?: boolean }
   /** the patch rendered offline: `held` = it sounds with a key held, `silent` = nothing without a key */
   | { kind: 'sound'; mode: 'held' | 'silent'; threshold?: number }
@@ -150,7 +150,7 @@ export const refKey = (chapter: string, step: string): string => `${chapter}/${s
 
 export const SLIDER_OPS: SliderOp[] = ['le', 'ge', 'eq', 'ne', 'between', 'changed'];
 export const ASSEMBLY_FACTS: AssemblyFact[] = ['exists', 'open', 'collapsed', 'promoted', 'exposed', 'merged', 'contains', 'resized', 'saved'];
-export const EVENT_NAMES: EventName[] = ['notes', 'undos', 'redos', 'zooms', 'flips', 'shares', 'bypasses', 'news', 'saves', 'audio', 'arpPlay', 'snapshotA', 'snapshotB', 'probe', 'selected', 'bypassed'];
+export const EVENT_NAMES: EventName[] = ['notes', 'undos', 'redos', 'zooms', 'flips', 'shares', 'bypasses', 'news', 'saves', 'audio', 'arpPlay', 'snapshotA', 'snapshotB', 'selected', 'bypassed'];
 export const PART_KINDS: PartKind[] = ['module', 'cable', 'noCable', 'slider', 'routed', 'pinMap', 'att', 'macroRange', 'assembly', 'poly', 'event', 'sound', 'custom'];
 
 /** a permanent id from a title, unique among `taken` */

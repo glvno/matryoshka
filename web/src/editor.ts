@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Patch editor: module cards on a canvas, SVG cables, drag-to-connect, a selection, assemblies and undo.
 import { resizeHandle } from './resize-handle';
+import { parseValue } from './value-input';
+import { lockOf } from './relevance';
 import { tidy, tidyAssembly } from './tidy';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
@@ -132,8 +134,6 @@ export interface EditorEvents {
   onTransport(on: boolean): void;
   /** a patch button of the Main module (PANEL_BUTTONS index) held / let go or switched */
   onButton?(i: number, on: boolean): void;
-  /** a scope probe on an output was set or removed (key = probeKey) */
-  onProbe(key: string, id: number, port: string, kind: PortDef['kind'], label: string, on: boolean): void;
   /** cards were moved: positions changed, nothing the engine needs */
   onLayout(p: Patch): void;
   /** the displays drawn this time (after every rebuild): Scope screens with what is cabled into each input, envelope shapes */
@@ -166,10 +166,8 @@ const pathOf = ([a, ...rest]: { x: number; y: number }[]): string => {
 /** how far (px) beyond the jack's sides the strip a docked cable is drawn in over the panel reaches: none, so a cable
  * that bends away (to a module below the canvas's view) shows only its straight stub above the jack */
 const CLIP_HALF = 0;
-const SCOPE_HINT = '\nShift-click: show on the scope';
-
-/** the key of a scope probe on an output */
-export const probeKey = (id: number, port: string): string => `${id}:${port}`;
+/** presses closer than this belong to one gesture (a double-click's two presses) */
+const TYPE_GAP_MS = 400;
 type Pt = { x: number; y: number };
 /** the footprint of a new card for the free-spot search: a grid cell less its gutters */
 const CARD_W = 300;
@@ -483,6 +481,7 @@ export class Editor {
     this.stepGrids.clear();
     this.parameterDisplays = [];
     this.sliderPorts = [];
+    this.lockers = [];
     this.cablePaths = [];
     this.drag?.cancel();
     this.svg.replaceChildren();
@@ -1165,14 +1164,24 @@ export class Editor {
       if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown', ' '].includes(e.key)) begin();
     };
     input.onkeyup = input.onblur = () => { editing = false; };
+    // the value before the latest gesture began: a double-click's first press moves the thumb, typing puts it back
+    let gestureFrom = m.params[pd.name];
+    let lastInput = 0;
     input.oninput = () => {
+      const now = performance.now();
+      if (now - lastInput > TYPE_GAP_MS) gestureFrom = m.params[pd.name];
+      lastInput = now;
       const pos = Math.min(Number(input.max), Math.max(Number(input.min), Number(input.value) - offset));
       const v = pd.log ? snapTo(pd, fromUnit(pd, pos / 1000)) : Number(pos.toFixed(6));
       m.params[pd.name] = v;
-      if (!offset) show(v); // else the live text keeps coming from the engine
+      // the text follows the thumb: the base itself, or with modulation the live value the drag holds under the pointer
+      // (the engine's reports run a poll behind, so they are not shown until the edit ends)
+      const at = Number(input.value);
+      show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? toUnit(pd, v) : null);
       this.ev.onParam(m.id, pd.name, v);
       this.refreshKnobTicks(); // a knob moved, or a base a knob rests on
+      this.relock(m.id);
     };
     if (m.type === ALLOC && pd.name === 'voices') input.addEventListener('change', () => this.rebuild()); // the ×N badges follow
     if (pd.toggle) {
@@ -1185,6 +1194,7 @@ export class Editor {
         for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // a toggle can change how its siblings show (altText)
         this.ev.onParam(m.id, pd.name, v);
         this.refreshKnobTicks();
+        this.relock(m.id);
       };
     }
     // a thumb or a picker is a jack only where a cable dropped on it has somewhere to go: the module's parameter inputs,
@@ -1200,6 +1210,7 @@ export class Editor {
       names: pd.choices!.map((c) => choiceName(def.type, pd.name, c)),
       get: () => Math.round(m.params[pd.name]),
       set: (i) => {
+        if (row.classList.contains('locked')) return;
         input.value = String(i);
         input.dispatchEvent(new Event('input'));
       },
@@ -1251,10 +1262,9 @@ export class Editor {
         sel?.update(Math.round(v), Math.round(base));
         input.title = automated ? `Live: ${text}. Base: ${fmt(base)}. ${gesture || 'Drag to edit the base value.'}` : gesture;
       }
-      if (!editing || automated) {
-        show(v, values ?? m.params);
-        input.setAttribute('aria-valuetext', text);
-      }
+      if (editing) return; // the edit shows its own value (oninput); a report taken before the last move would set it back
+      show(v, values ?? m.params);
+      input.setAttribute('aria-valuetext', text);
       row.classList.toggle('automated', automated);
     } });
     row.append(name, choice ? sel!.element : pd.toggle ? document.createElement('span') : val);
@@ -1282,7 +1292,87 @@ export class Editor {
     } else if (!choice) row.append(thumb?.element ?? plain?.element ?? input);
     if (plain) this.parameterDisplays.push({ id: m.id, update: () => { if (!editing) plain.update(); } });
     if (pickBox) row.append(pickBox);
+    // a parameter with no effect in the module's current setting is dimmed and takes no direct edits (relevance.ts);
+    // cables still reach its jack
+    const relock = (): void => {
+      const why = lockOf(this.patch, m, def.params, pd.name);
+      row.classList.toggle('locked', !!why);
+      input.disabled = !!why;
+      if (why) row.title = why;
+      else row.removeAttribute('title');
+    };
+    relock();
+    this.lockers.push({ id: m.id, run: relock });
+    if (!pd.toggle) {
+      const names = pd.choices?.map((c) => choiceName(def.type, pd.name, c));
+      const type = (): void => {
+        if (row.classList.contains('locked') || row.querySelector('.val-edit')) return;
+        if (performance.now() - lastInput < TYPE_GAP_MS * 2 && m.params[pd.name] !== gestureFrom) this.setParam(m.id, pd.name, gestureFrom);
+        this.typeValue(row, fmt(m.params[pd.name]), (text) => {
+          let v = parseValue(text, pd, names);
+          if (v === null) return false;
+          if (pd.log) v = snapTo(pd, v);
+          const done = this.beginEdit();
+          this.setParam(m.id, pd.name, v);
+          done();
+          return true;
+        });
+      };
+      this.typers.set(row, type);
+      row.addEventListener('dblclick', (e) => {
+        if ((e.target as Element).closest('.parameter-routing, .pickbox, .rename')) return;
+        e.preventDefault();
+        type();
+      });
+    }
     return row;
+  }
+
+  /** the rows' lock checks (relevance.ts), run again when a parameter of their module changes */
+  private lockers: { id: number; run: () => void }[] = [];
+  private relock(id: number): void {
+    for (const l of this.lockers) if (l.id === id) l.run();
+  }
+
+  /** the bars that take a typed value, by row (Tab moves on to the next one in the card) */
+  private typers = new WeakMap<HTMLElement, () => void>();
+
+  /**
+   * A text field over a parameter's bar: Enter sets what `commit` reads (false: it could not, the field stays with a red
+   * edge), Esc or leaving it cancels, Tab / Shift+Tab set and move to the next / previous bar of the card.
+   */
+  private typeValue(row: HTMLElement, text: string, commit: (text: string) => boolean): void {
+    const field = document.createElement('input');
+    field.type = 'text';
+    field.className = 'val-edit';
+    field.value = text;
+    field.spellcheck = false;
+    field.setAttribute('aria-label', `Type a value for ${row.querySelector('span')?.textContent ?? 'the parameter'}`);
+    field.title = 'Enter sets it, Esc cancels. Units work: 2k, 440 Hz, 120 ms, 50 %, a choice by name.';
+    let closed = false;
+    const close = (): void => {
+      if (closed) return;
+      closed = true;
+      field.remove();
+    };
+    field.addEventListener('keydown', (e) => {
+      e.stopPropagation(); // not a note key or a shortcut
+      if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+      if (e.key !== 'Enter' && e.key !== 'Tab') return;
+      e.preventDefault();
+      if (!commit(field.value)) { field.classList.add('bad'); return; }
+      close();
+      if (e.key !== 'Tab') return;
+      const rows = [...(row.closest('.module, .dock-main') ?? this.modulesEl).querySelectorAll<HTMLElement>('.param.bar')].filter((r) => this.typers.has(r) && !r.classList.contains('locked'));
+      const next = rows[rows.indexOf(row) + (e.shiftKey ? -1 : 1)];
+      if (next) this.typers.get(next)!();
+    });
+    field.addEventListener('input', () => field.classList.remove('bad'));
+    field.addEventListener('blur', close);
+    for (const ev of ['pointerdown', 'dblclick'] as const) field.addEventListener(ev, (e) => e.stopPropagation());
+    row.append(field);
+    field.focus();
+    field.select();
   }
 
   /** the open flaws card (flaws-panel.ts), if any */
@@ -1578,38 +1668,63 @@ export class Editor {
     };
   }
 
-  /** expand or collapse an assembly; its first expansion in a session tidies the inside once the cards have a size */
-  private toggleOpen(a: AssemblyInst): void {
-    const first = !a.open && !this.expandedOnce.has(a.id);
-    const opened = this.change(() => {
-      a.open = !a.open;
-      if (a.open && overlapping(this.patch, a)) tileMembers(this.patch, a); // stacked cards (an old file, members added at one spot) spread out
-      if (a.open && a.poly) makeRoom(this.patch, a);
-      // the frame's header goes above the members: move them down when it would stick out of the canvas's top
-      if (a.open) {
-        const ys = allModules(this.patch, a).map((id) => this.patch.modules.find((m) => m.id === id)?.y ?? Infinity);
-        const room = FRAME_PAD + FRAME_HEAD + 8;
-        if (Math.min(...ys) < room) moveAssembly(this.patch, a, 0, room - Math.min(...ys));
-        // and right of the canvas's left edge, with room for the cables running round it (ribbons.ts)
-        const xs = allModules(this.patch, a).map((id) => this.patch.modules.find((m) => m.id === id)?.x ?? Infinity);
-        const roomX = FRAME_PAD_X + GUTTER_ROOM;
-        if (Math.min(...xs) < roomX) moveAssembly(this.patch, a, roomX - Math.min(...xs), 0);
-      }
-    });
-    if (!opened || !a.open) return;
-    for (const x of [a, ...descendants(this.patch, a)]) this.expandedOnce.add(x.id);
-    if (!first) return;
-    // after rebuild's own frame (the cards are drawn then): part of the expansion's undo step, not one of its own
+  /** what opening `a` does to the layout: spread stacked members, make room for the copies, keep the frame on the canvas */
+  private openLayout(a: AssemblyInst): void {
+    if (overlapping(this.patch, a)) tileMembers(this.patch, a); // stacked cards (an old file, members added at one spot) spread out
+    if (a.poly) makeRoom(this.patch, a);
+    // the frame's header goes above the members: move them down when it would stick out of the canvas's top
+    const ys = allModules(this.patch, a).map((id) => this.patch.modules.find((m) => m.id === id)?.y ?? Infinity);
+    const room = FRAME_PAD + FRAME_HEAD + 8;
+    if (Math.min(...ys) < room) moveAssembly(this.patch, a, 0, room - Math.min(...ys));
+    // and right of the canvas's left edge, with room for the cables running round it (ribbons.ts)
+    const xs = allModules(this.patch, a).map((id) => this.patch.modules.find((m) => m.id === id)?.x ?? Infinity);
+    const roomX = FRAME_PAD_X + GUTTER_ROOM;
+    if (Math.min(...xs) < roomX) moveAssembly(this.patch, a, roomX - Math.min(...xs), 0);
+  }
+
+  /** tidy the insides of assemblies opened for the first time this session, innermost first, once their cards have a size
+   * (after rebuild's own frame: part of the expansion's undo step, not one of its own) */
+  private tidyFirstOpened(ids: number[]): void {
+    if (!ids.length) return;
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      const now = assembliesOf(this.patch).find((x) => x.id === a.id);
-      if (!now?.open) return;
       const before = JSON.stringify(this.patch);
-      tidyAssembly(this.patch, now, this.tidySizes());
+      const list = ids.map((id) => assembliesOf(this.patch).find((x) => x.id === id)).filter((x): x is AssemblyInst => !!x?.open);
+      list.sort((u, v) => depthOf(this.patch, v) - depthOf(this.patch, u));
+      for (const a of list) tidyAssembly(this.patch, a, this.tidySizes());
       if (JSON.stringify(this.patch) === before) return;
       this.rebuild();
       this.ev.onLayout(this.patch);
     }));
   }
+
+  /** expand or collapse an assembly; its first expansion in a session tidies the inside once the cards have a size */
+  private toggleOpen(a: AssemblyInst): void {
+    const first = !a.open && !this.expandedOnce.has(a.id);
+    const opened = this.change(() => {
+      a.open = !a.open;
+      if (a.open) this.openLayout(a);
+    });
+    if (!opened || !a.open) return;
+    for (const x of [a, ...descendants(this.patch, a)]) this.expandedOnce.add(x.id);
+    if (first) this.tidyFirstOpened([a.id]);
+  }
+
+  /** expand or collapse every assembly, nested ones too, as one undo step (the sidebar's EXPAND / COLLAPSE) */
+  setAllOpen(open: boolean): void {
+    const list = [...assembliesOf(this.patch)].sort((u, v) => depthOf(this.patch, u) - depthOf(this.patch, v)); // outermost first
+    const first = open ? list.filter((a) => !a.open && !this.expandedOnce.has(a.id)).map((a) => a.id) : [];
+    const changed = this.change(() => {
+      for (const a of list) {
+        if (a.open === open) continue;
+        a.open = open;
+        if (open) this.openLayout(a);
+      }
+    });
+    if (!changed || !open) return;
+    for (const a of list) this.expandedOnce.add(a.id);
+    this.tidyFirstOpened(first);
+  }
+
 
   /** a header's ⋯: opens the card's menu under it */
   private moreButton(open: (at: Pt) => void): HTMLButtonElement {
@@ -1859,9 +1974,6 @@ export class Editor {
     this.rebuild();
     this.ev.onLayout(this.patch);
   }
-  /** the outputs with a scope probe (probeKey) */
-  readonly probes = new Set<string>();
-
   /**
    * A port row. On a member card of an expanded assembly it gets the expose toggle; on an assembly card (`label`) the dot
    * still belongs to the inner module, so cables and drags work the same, and the label renames on click.
@@ -1871,7 +1983,7 @@ export class Editor {
     row.className = `port ${dir}`;
     const dot = this.jack(m, p, dir);
     const long = longName(m.type, p.name);
-    dot.title = (o.label ? `${o.label}: ${DEFS[m.type].label} ${long} (${p.kind})` : `${long} (${p.kind})`) + SCOPE_HINT;
+    dot.title = (o.label ? `${o.label}: ${DEFS[m.type].label} ${long} (${p.kind})` : `${long} (${p.kind})`);
     const label = document.createElement('span');
     // a card's edge has little room: a long name gives way to the short one (the jack's tooltip has the long one)
     label.textContent = o.label ?? (o.short && long.length > 6 ? p.name : long);
@@ -1901,27 +2013,6 @@ export class Editor {
     }
     row.append(...parts);
     return row;
-  }
-
-  /**
-   * Shift-click on a jack puts it on the scope or takes it off: an output itself, an input the output that feeds it (its
-   * first cable). The tutorial and the palette see it through `onProbe` like any other probe.
-   */
-  private toggleProbe(m: ModuleInst, p: PortDef, dir: 'out' | 'in'): void {
-    let src = m, port = p;
-    if (dir === 'in') {
-      const c = this.patch.cables.find((c) => c.to.module === m.id && c.to.port === p.name);
-      const from = c && this.patch.modules.find((x) => x.id === c.from.module);
-      const out = from && DEFS[from.type].outputs.find((o) => o.name === c.from.port);
-      if (!from || !out) return;
-      src = from; port = out;
-    }
-    const key = probeKey(src.id, port.name);
-    const now = !this.probes.has(key);
-    if (now) this.probes.add(key);
-    else this.probes.delete(key);
-    this.ports.get(this.key(src.id, port.name, 'out'))?.classList.toggle('probed', now);
-    this.ev.onProbe(key, src.id, port.name, port.kind, `${moduleName(src.type, DEFS[src.type].label)} ${longName(src.type, port.name)}`, now);
   }
 
   /** briefly highlight the drawn cables of these model cables (the two sources holding a module's pins) */
@@ -1955,14 +2046,8 @@ export class Editor {
     dot.dataset.port = p.name;
     dot.dataset.dir = dir;
     if (m.type === 'fm1' && dir === 'out' && isKnob(p.name)) dot.dataset.knob = p.name;
-    dot.title = `${longName(m.type, p.name)} (${p.kind})${SCOPE_HINT}`;
-    if (dir === 'out') dot.classList.toggle('probed', this.probes.has(probeKey(m.id, p.name)));
-    dot.addEventListener('pointerdown', (e) => {
-      if (!e.shiftKey) return this.beginDrag(e, dot);
-      e.preventDefault();
-      e.stopPropagation();
-      this.toggleProbe(m, p, dir);
-    });
+    dot.title = `${longName(m.type, p.name)} (${p.kind})`;
+    dot.addEventListener('pointerdown', (e) => this.beginDrag(e, dot));
     this.ports.set(this.key(m.id, p.name, dir), dot);
     return dot;
   }
@@ -1976,7 +2061,7 @@ export class Editor {
     const out = def.outputs.find((o) => o.name === k);
     if (out) {
       const dot = this.jack(m, out, 'out');
-      dot.title = `${k.toUpperCase()} output: drag a cable from here${SCOPE_HINT}`;
+      dot.title = `${k.toUpperCase()} output: drag a cable from here`;
       box.append(dot);
     }
     const dial = document.createElement('div');
@@ -3218,6 +3303,7 @@ export class Editor {
     this.ev.onParam(id, name, v);
     this.refreshKnobTicks();
     for (const d of this.parameterDisplays) if (d.id === id) d.update(null);
+    this.relock(id);
   }
 
   /** the knob ticks under every slider an FM-1 knob reaches: where that knob alone leaves the parameter at rest */

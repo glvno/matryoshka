@@ -13,7 +13,6 @@ export const LINK_CHANNEL = 'matryoshka.lesson-link';
 export interface SynthState {
   patch: Patch;
   seen: Seen;
-  probes: string[];
   selected: number[];
   arpPlay: boolean;
   audio: boolean;
@@ -30,7 +29,7 @@ export type FromSynth = { t: 'state'; state: SynthState };
 /** the synth's state as a check sees it; `entry` is the patch the step began with */
 export function linkedState(st: SynthState, entry: Patch): TutorialState {
   return {
-    patch: st.patch, entry, zoom: st.zoom, probes: new Set(st.probes), arpPlay: st.arpPlay, audio: st.audio, selected: new Set(st.selected),
+    patch: st.patch, entry, zoom: st.zoom, arpPlay: st.arpPlay, audio: st.audio, selected: new Set(st.selected),
     library: st.library, lastSaved: st.lastSaved, snapshots: { A: st.snapshots.A ? '1' : null, B: st.snapshots.B ? '1' : null }, seen: st.seen,
   };
 }

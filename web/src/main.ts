@@ -4,7 +4,7 @@ import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { DeviceLink } from './device';
-import { Editor, probeKey, ZOOM_MAX, ZOOM_MIN } from './editor';
+import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildBankTab } from './bank';
@@ -24,7 +24,6 @@ import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
 import { DEFS } from './modules';
 import { newPatch, validatePatch, type Patch, type SideKey } from './patch';
-import { Scope } from './scope';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
@@ -188,14 +187,6 @@ const patchCandidates = (): { name: string; patch: Patch }[] => {
     }
   return out;
 };
-const scope = new Scope($('scope'));
-host.onProbe = (key, data, sr, voices) => scope.feed(key, data, sr, voices);
-/** ask the audio thread for a probe (probeKey = id:port), with its voices' rings while the per-voice view is on (#54) */
-const sendProbe = (key: string): void => {
-  const i = key.indexOf(':');
-  host.send({ t: 'probe', key, id: Number(key.slice(0, i)), port: key.slice(i + 1), voices: scope.perVoice });
-};
-scope.onVoices = () => { for (const key of editor.probes) sendProbe(key); };
 // Scope modules' screens: they stream while on screen and audio runs
 const screens = new ScopeScreens((msg) => host.send(msg), () => host.running && !host.muted);
 host.onView = (key, chans, sr, voices) => screens.receive(key, chans, sr, voices);
@@ -225,7 +216,6 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     stampOctave(p);
     $<HTMLInputElement>('patch-name').value = p.name;
     syncSides();
-    scope.clearSamples();
     host.setPatch(p);
     queueSave(p);
     showBudget();
@@ -289,15 +279,6 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onButton(i, on) {
     host.send({ t: 'button', i, on });
     if (live()) device.cc(80 + i, on ? 127 : 0);   // the FM-1 takes its patch buttons as CC 80..86 (#64)
-  },
-  onProbe(key, id, port, kind, _label, on) {
-    if (on) {
-      scope.add(key, kind);
-      sendProbe(key);
-    } else {
-      scope.remove(key);
-      host.send({ t: 'unprobe', key });
-    }
   },
   onScreens(list, envList) {
     screens.sync(list);
@@ -363,7 +344,6 @@ const tutorial = new Tutorial({
   flipAB: () => flipAB(),
   share: () => sharePatch(),
   arpPlay: (on) => setPlaying(on),
-  probe: (id, port) => { const key = probeKey(id, port); if (editor.probes.has(key)) return; editor.probes.add(key); const def = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']; const kind = def?.outputs.find((o) => o.name === port)?.kind ?? 'audio'; scope.add(key, kind); sendProbe(key); editor.rebuild(); },
   bypass: (id, on) => { const m = editor.patch.modules.find((m) => m.id === id); if (!m) return; if (on) m.bypass = true; else delete m.bypass; host.send({ t: 'bypass', id, on }); tutorial.bypassed(); editor.rebuild(); queueSave(editor.patch); },
   bankSave: addToBank,
   rename: (name) => { editor.patch.name = name; nameInput.value = name; queueSave(editor.patch); },
@@ -378,7 +358,6 @@ editor.onZoom = (z, live) => {
 host.onValues = (values) => {
   editor.showParameterValues(values);
   envs.values(values);
-  if (!host.running) scope.clearSamples();
 };
 
 // Sidebar
@@ -618,14 +597,12 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Flash firmware', keywords: 'install update hardware', run: () => switchTab('flash') },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
     { kind: 'command', label: 'Keyboard shortcuts', keywords: 'help', detail: '?', run: () => help.showModal() },
-    { kind: 'command', label: scope.visible ? 'Hide oscilloscope' : 'Show oscilloscope', keywords: 'scope window waveform', run: inPatch(() => scope.setVisible(!scope.visible)) },
-    { kind: 'command', label: 'Scope: waveform', keywords: 'oscilloscope time', run: inPatch(() => scope.setMode('time')) },
-    { kind: 'command', label: 'Scope: spectrum', keywords: 'oscilloscope frequency fft', run: inPatch(() => scope.setMode('spectrum')) },
-    { kind: 'command', label: scope.perVoice ? 'Scope: sum of the voices' : 'Scope: each voice', keywords: 'oscilloscope poly voices per-voice traces', run: inPatch(() => scope.setPerVoice(!scope.perVoice)) },
     { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
     ...(themeChoice() ? [{ kind: 'command' as const, label: 'Theme: follow the system', keywords: 'theme dark light mode auto os appearance', run: () => setTheme(null) }] : []),
     { kind: 'command', label: 'Open the demo patch', keywords: 'demo example song listen play showcase', run: () => openDemo() },
     { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
+    { kind: 'command', label: 'Expand all assemblies', keywords: 'open frames nested show inside', run: inPatch(() => editor.setAllOpen(true)) },
+    { kind: 'command', label: 'Collapse all assemblies', keywords: 'close frames nested cards fold', run: inPatch(() => editor.setAllOpen(false)) },
     { kind: 'command', label: 'Tidy up the canvas', keywords: 'clean up arrange align layout grid', run: inPatch(() => editor.tidyUp()) },
     { kind: 'command', label: 'Cable slack: none', keywords: 'slack sag tight straight', run: inPatch(() => setSlack(0)) },
     { kind: 'command', label: 'Cable slack: half', keywords: 'slack sag droop hang loose', run: inPatch(() => setSlack(0.5)) },
@@ -725,6 +702,8 @@ $('add-btn').onclick = () => openPalette('module');
 $('add-assembly-btn').onclick = () => openPalette('assembly');
 $('tidy-btn').onclick = () => editor.tidyUp();
 $('fit-btn').onclick = () => editor.zoomToFit();
+$('expand-all-btn').onclick = () => editor.setAllOpen(true);
+$('collapse-all-btn').onclick = () => editor.setAllOpen(false);
 $('tour-btn').onclick = () => { switchTab('patch'); tutorial.open(); };
 /** the demo patch, with the audio and the transport started (the click is the gesture the browser wants; its drums
  * and the drone's pump are Steps tracks, which play while the transport runs) */
@@ -1341,7 +1320,7 @@ if (import.meta.env.DEV) {
   import.meta.hot?.on('lesson-course-saved', () => location.reload());
   // the lesson editor's live link: it checks steps against this synth and loads patches into it
   tutorial.observer = synthLink(() => ({
-    patch: editor.patch, probes: [...editor.probes], selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
+    patch: editor.patch, selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
     snapshots: { A: !!editor.snapshots.A, B: !!editor.snapshots.B }, zoom: editor.zoom, library: loadLibrary(),
   }), (p) => { sink.send({ t: 'panic' }); loadNamed(p); });
   const link = document.createElement('a');

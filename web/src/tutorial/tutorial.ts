@@ -27,7 +27,6 @@ export interface TutorialHost {
   flipAB(): void;
   share(): Promise<void>;
   arpPlay(on: boolean): void;
-  probe(id: number, port: string): void;
   bypass(id: number, on: boolean): void;
   /** keep a patch in the bank; returns a status line */
   bankSave(p: Patch): string;
@@ -136,7 +135,7 @@ export class Tutorial {
   private state(): TutorialState {
     const e = this.host.editor;
     return {
-      patch: e.patch, entry: this.entry ?? e.patch, zoom: e.zoom, probes: e.probes, arpPlay: e.playing, audio: this.host.audioOn(),
+      patch: e.patch, entry: this.entry ?? e.patch, zoom: e.zoom, arpPlay: e.playing, audio: this.host.audioOn(),
       lastSaved: this.lastSaved, selected: e.selected, library: this.host.library(), snapshots: e.snapshots, seen: this.seen,
     };
   }
@@ -546,7 +545,6 @@ export class Tutorial {
       case 'param': return document.querySelector(`.slider-port[data-mod="${t.id}"][data-param="${t.param}"]`)?.closest('.param')
         ?? (/^k[1-4]$/.test(t.param) ? document.querySelector(`.deck-knob[data-param="${t.param}"]`) : null) ?? card(t.id); // Main's knobs are on the deck
       // the button, else its output's jack (the output is hidden inside a closed assembly), else the card
-      case 'probe': return document.querySelector(`.dot[data-mod="${t.id}"][data-port="${t.port}"][data-dir="out"]`) ?? card(t.id);
       case 'ui': return document.getElementById(t.id);
       case 'poly': return document.querySelector(`[data-asm="${t.id}"][data-setting="${t.setting}"]`) ?? document.querySelector(`.poly-btn[data-asm="${t.id}"]`)
         ?? document.querySelector(`.module[data-asm="${t.id}"], .frame[data-asm="${t.id}"]`);

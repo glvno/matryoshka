@@ -17,7 +17,6 @@ export interface Recorded {
   after: Patch;
   /** editor events counted while recording */
   seen: Seen;
-  probes: string[];
   selected: number[];
   arpPlay: boolean;
   audio: boolean;
@@ -180,11 +179,6 @@ export function capture(rec: Recorded, roles: Roles): Capture {
   if (rec.arpPlay) ev('arpPlay');
   if (rec.snapshots.A) ev('snapshotA');
   if (rec.snapshots.B) ev('snapshotB');
-  for (const key of rec.probes) {
-    const [id, port] = key.split(':');
-    const m = byId(after, Number(id));
-    if (m) ev('probe', { ref: ref(m), port });
-  }
   const sel = [...new Set(rec.selected.map((id) => byId(after, id)?.type).filter((t): t is string => !!t))];
   if (sel.length) ev('selected', { types: sel });
   return { proposals: out, notes };

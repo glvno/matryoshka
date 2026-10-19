@@ -26,8 +26,6 @@ export class AudioHost {
   onState: () => void = () => {};
   onValues: (values: ParameterValues | null) => void = () => {};
   onError: (msg: string) => void = () => {};
-  /** a scope probe's latest samples (oldest first); `voices`: the same per voice (#54) when asked for and the module runs per voice */
-  onProbe: (key: string, data: Float32Array, sr: number, voices: Float32Array[] | null) => void = () => {};
   /** a watched output's mean over the last two blocks (a sidebar slider's source, by key) */
   onWatch: (key: string, v: number) => void = () => {};
   /** a Scope screen's latest histories, one per input (scope-stream.ts); `voices`: per input its voices' histories (#54), or null */
@@ -71,8 +69,6 @@ export class AudioHost {
           this.onEnv(ev.data.env, ev.data.states);
         } else if (typeof ev.data?.view === 'string') {
           this.onView(ev.data.view, ev.data.chans, ev.data.sr, ev.data.voices ?? null);
-        } else if (ev.data?.probe) {
-          if (ev.data.revision === this.revision) this.onProbe(ev.data.probe, ev.data.data, ev.data.sr, ev.data.voices ?? null);
         }
         else if (ev.data?.values) {
           this.valuesPending = false;

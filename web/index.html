@@ -41,6 +41,7 @@
           <div class="shead"><span class="mtag shp">VIEW</span><span class="stitle">Canvas</span></div>
           <div class="sbody">
             <div class="view-row"><button id="tidy-btn" title="Line the cards up in columns, keeping their order (undo with Ctrl/Cmd+Z)">TIDY</button><button id="fit-btn" title="Zoom so every card is in view">FIT</button></div>
+            <div class="view-row"><button id="expand-all-btn" title="Open every assembly, nested ones too (undo with Ctrl/Cmd+Z)">EXPAND ALL</button><button id="collapse-all-btn" title="Close every assembly (undo with Ctrl/Cmd+Z)">COLLAPSE ALL</button></div>
             <div id="slack-bar" class="param bar side-bar"><span>Cable slack</span><output id="slack-out">0 %</output><input id="slack-input" type="range" min="0" max="1" step="any" value="0" aria-label="Cable slack" /></div>
             <div id="zoom-bar" class="param bar side-bar"><span>Zoom</span><output id="zoom-out">100 %</output><input id="zoom-input" type="range" min="0" max="1" step="any" value="0.63" aria-label="Zoom" /></div>
           </div>
@@ -60,16 +61,6 @@
     </aside>
     <main>
     <section id="tab-patch" class="tab" role="tabpanel" aria-labelledby="nav-patch">
-      <section id="scope" class="scope-window" aria-label="Oscilloscope" hidden>
-        <div class="scope-head">
-          <button type="button" class="scope-handle" aria-label="Move oscilloscope" title="Drag to move; arrow keys move; Home returns to top right">Scope</button>
-          <button type="button" data-scope-mode="time" aria-pressed="true">Waveform</button>
-          <button type="button" data-scope-mode="spectrum" aria-pressed="false">Spectrum</button>
-          <button type="button" data-scope-voices aria-pressed="false" title="Draw each voice of a poly assembly's module as its own trace">Voices</button>
-          <button type="button" class="scope-close" aria-label="Hide oscilloscope">×</button>
-        </div>
-        <canvas role="img" aria-label="Live oscilloscope traces"></canvas>
-      </section>
       <div id="canvas" class="canvas" aria-label="Patch canvas">
         <div id="canvas-space"><div id="patch-world"><svg id="cables" class="cables"></svg><div id="modules"></div><svg id="patch-preview" class="cables patch-preview"></svg></div></div>
       </div>
@@ -142,13 +133,13 @@
             <div class="hrow"><span class="hkeys">click a jack, then another</span><span>connect (dragging works too)</span></div>
             <div class="hrow"><span class="hkeys">click a cable</span><span>disconnect it; grey routes are built into the module</span></div>
             <div class="hrow"><span class="hkeys">drop on a thumb</span><span>modulate that parameter (depth in its ⋮ menu); <kbd>Alt</kbd>-drag a thumb to patch from it</span></div>
-            <div class="hrow"><span class="hkeys"><kbd>Shift</kbd>-click a jack</span><span>show it on the scope</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd>-click a row</span><span>in an expanded assembly: show it on the collapsed card, or take it off</span></div>
           </section>
           <section class="hsec"><h3>Controls</h3>
             <div class="hrow"><span class="hkeys">drag a slider</span><span>set its value; press anywhere on the bar to jump there</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Shift</kbd>-drag</span><span>fine: a slider at a tenth of the speed, a knob or envelope corner finer too</span></div>
             <div class="hrow"><span class="hkeys">double-click</span><span>a knob, wheel or envelope display: back to its default; a heading or assembly title: rename it</span></div>
+            <div class="hrow"><span class="hkeys">double-click a value bar</span><span>type a value (2k, 440 Hz, 120 ms, 50 %, a choice by name); <kbd>Enter</kbd> sets, <kbd>Tab</kbd> sets and moves on, <kbd>Esc</kbd> cancels</span></div>
           </section>
           <section class="hsec"><h3>Playing</h3>
             <div class="hrow"><span class="hkeys"><kbd>A</kbd><kbd>W</kbd><kbd>S</kbd><kbd>E</kbd><kbd>D</kbd><kbd>F</kbd><kbd>T</kbd><kbd>G</kbd><kbd>Y</kbd><kbd>H</kbd><kbd>U</kbd><kbd>J</kbd><kbd>K</kbd><kbd>O</kbd><kbd>L</kbd><kbd>P</kbd></span><span>play notes, C up to D#</span></div>

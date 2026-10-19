@@ -79,7 +79,7 @@ const KINDS: Record<PartKind, string> = {
 const FACTS: Record<AssemblyFact, string> = { exists: 'exists', open: 'is expanded', collapsed: 'is collapsed', promoted: 'has a promoted slider', exposed: 'has an exposed output', merged: 'has merged inputs', contains: 'contains another assembly', resized: 'was resized', saved: 'was saved to the library' };
 const EVENTS: Record<EventName, string> = {
   notes: 'notes played', undos: 'undo', redos: 'redo', zooms: 'zoom', flips: 'A/B flip', shares: 'share link', bypasses: 'bypass presses', news: 'New patch pressed', saves: 'assembly saves',
-  audio: 'audio enabled', arpPlay: 'arpeggiator playing', snapshotA: 'snapshot A set', snapshotB: 'snapshot B set', probe: 'scope probe on a jack', selected: 'modules selected', bypassed: 'a module bypassed / on',
+  audio: 'audio enabled', arpPlay: 'arpeggiator playing', snapshotA: 'snapshot A set', snapshotB: 'snapshot B set', selected: 'modules selected', bypassed: 'a module bypassed / on',
 };
 const UI_IDS = ['add-btn', 'add-assembly-btn', 'palette-btn', 'audio-btn', 'new-patch-btn', 'tour-btn'];
 
@@ -521,7 +521,6 @@ async function mount() {
       case 'event': {
         body.append(labelled('event', select(EVENT_NAMES.map((e) => [e, EVENTS[e]]), part.event, (v) => set({ kind: 'event', event: v as EventName }))));
         if (['notes', 'undos', 'redos', 'zooms', 'flips', 'shares', 'bypasses', 'news', 'saves'].includes(part.event)) body.append(labelled('times', numberInput(part.count, (v) => set({ ...part, count: v && v > 1 ? v : undefined }, false), 'at least', '1')));
-        if (part.event === 'probe') body.append(labelled('on', refPicker(part.ref ?? { type: 'osc' }, (r) => set({ ...part, ref: r, port: fixPort(T(r), part.port ?? 'out', 'out') }), false), portPicker(part.ref && T(part.ref), part.port ?? 'out', 'out', (v) => set({ ...part, port: v }))));
         if (part.event === 'bypassed' || part.event === 'bypasses') body.append(labelled('module', refPicker(part.ref ?? { type: 'reverb' }, (r) => set({ ...part, ref: r }), false)));
         if (part.event === 'bypassed') body.append(check('bypassed (off = switched back on)', !!part.on, (v) => set({ ...part, on: v || undefined })));
         if (part.event === 'selected') {
@@ -862,7 +861,7 @@ async function mount() {
   function stopRecording(ch: ChapterData, st: StepData) {
     const rec = recording; recording = null;
     if (!rec || !synth) { renderFields(); return; }
-    const result = capture({ before: rec.before, after: synth.patch, seen: synth.seen, probes: synth.probes, selected: synth.selected, arpPlay: synth.arpPlay, audio: synth.audio, snapshots: synth.snapshots, saved: synth.lastSaved }, draft.roles);
+    const result = capture({ before: rec.before, after: synth.patch, seen: synth.seen, selected: synth.selected, arpPlay: synth.arpPlay, audio: synth.audio, snapshots: synth.snapshots, saved: synth.lastSaved }, draft.roles);
     openReview(ch, st, result.proposals, result.notes, copy(synth.patch), synth.lastSaved ? copy(synth.lastSaved) : undefined);
     renderFields();
   }

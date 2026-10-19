@@ -24,14 +24,12 @@ export type HostMsg =
   | { t: 'stepval'; id: number; k: number; note: number; vel: number }
   | { t: 'mute'; id: number; on: boolean }
   /** voices: also each voice of a module that runs once per voice (#54), sent as `voices` beside `data` */
-  | { t: 'probe'; key: string; id: number; port: string; voices?: boolean }
-  | { t: 'unprobe'; key: string }
   | { t: 'watch'; key: string; id: number; port: string }
   | { t: 'unwatch'; key: string }
   /** a Scope module's screen: per input the outputs cabled into it (summed), and its window in samples */
   | { t: 'view'; key: string; chans: { id: number; port: string }[][]; samples: number; voices?: boolean }
   | { t: 'unview'; key: string }
-  /** an envelope display: its copies' stage and level (Engine.envStates), sent with the probes */
+  /** an envelope display: its copies' stage and level (Engine.envStates), sent about 30 times a second */
   | { t: 'envwatch'; key: string; id: number }
   | { t: 'unenvwatch'; key: string }
   | { t: 'on'; note: number; vel: number; ch?: number }
@@ -45,10 +43,8 @@ export type HostMsg =
 
 /** blocks without MIDI clock after which it no longer drives the clock (about half a second) */
 const CLOCK_GONE = Math.round((0.5 * sampleRate) / 128);
-/** samples a probe keeps (about 85 ms at 48 kHz: a few cycles of a bass note, a whole envelope attack) */
-const PROBE_LEN = 4096;
-/** blocks between two probe messages: 12 x 128 = 1536 samples, about 32 ms */
-const PROBE_EVERY = 12;
+/** blocks between two display messages (Scope screens, envelope dots): 12 x 128 = 1536 samples, about 32 ms */
+const DISPLAY_EVERY = 12;
 
 class ModularProcessor extends AudioWorkletProcessor {
   private engine = new Engine(sampleRate);
@@ -57,13 +53,11 @@ class ModularProcessor extends AudioWorkletProcessor {
   private failed = false;
   private revision = 0;
   private valuesRequested = false;
-  /** scope probes: the last PROBE_LEN samples of an output, sent to the host about 30 times a second */
-  private probes = new Map<string, { id: number; port: string; ring: Float32Array; w: number; voices: VoiceStreams | null }>();
-  private probeBlocks = 0;
+  private displayBlocks = 0;
   /** outputs patched into the editor's sidebar sliders (Patch.slackFrom, zoomFrom) by key: their mean over two blocks, sent
    * about 170 times a second */
   private watched = new Map<string, { id: number; port: string; sum: number; n: number }>();
-  /** Scope screens on show: their inputs' histories (scope-stream.ts), sent with the probes */
+  /** Scope screens on show: their inputs' histories (scope-stream.ts), sent about 30 times a second */
   private views = new Map<string, { chans: { id: number; port: string }[][]; samples: number; streams: ViewStream[]; voices: VoiceStreams[] | null }>();
   private viewSum = new Float32Array(128);
   /** the per-voice sums of a Scope input fed by several outputs (voiceSums) */
@@ -80,12 +74,11 @@ class ModularProcessor extends AudioWorkletProcessor {
       try {
         if (m.t === 'patch') {
           this.engine.load(m.patch);
-          for (const p of this.probes.values()) { p.ring.fill(0); p.w = 0; p.voices &&= new VoiceStreams(PROBE_LEN / 2); }
           for (const v of this.views.values()) {
             v.streams = v.chans.map(() => new ViewStream(v.samples));
             v.voices &&= v.chans.map(() => new VoiceStreams(v.samples));
           }
-          this.probeBlocks = 0;
+          this.displayBlocks = 0;
           this.revision = m.revision ?? 0;
           this.failed = false;
         }
@@ -94,8 +87,6 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'att') this.engine.setAtt(m.id, m.index, m.value);
         else if (m.t === 'bypass') this.engine.setBypass(m.id, m.on);
         else if (m.t === 'range') this.engine.setRange(m.id, m.index, m.name, m.range);
-        else if (m.t === 'probe') this.probes.set(m.key, { id: m.id, port: m.port, ring: new Float32Array(PROBE_LEN), w: 0, voices: m.voices ? new VoiceStreams(PROBE_LEN / 2) : null });
-        else if (m.t === 'unprobe') this.probes.delete(m.key);
         else if (m.t === 'watch') this.watched.set(m.key, { id: m.id, port: m.port, sum: 0, n: 0 });
         else if (m.t === 'unwatch') this.watched.delete(m.key);
         else if (m.t === 'view') this.views.set(m.key, { chans: m.chans, samples: m.samples, streams: m.chans.map(() => new ViewStream(m.samples)), voices: m.voices ? m.chans.map(() => new VoiceStreams(m.samples)) : null });
@@ -123,26 +114,9 @@ class ModularProcessor extends AudioWorkletProcessor {
       }
     };
   }
-  private feedProbes(n: number, outputs: Float32Array[]): void {
-    for (const p of this.probes.values()) {
-      const src = this.engine.probe(p.id, p.port);
-      for (let i = 0; i < n; i++) {
-        p.ring[p.w] = src?.[i] ?? 0;
-        if (++p.w === PROBE_LEN) p.w = 0;
-      }
-      p.voices?.push(this.engine.probeVoices(p.id, p.port), n);
-    }
-    if (++this.probeBlocks < PROBE_EVERY) return;
-    this.probeBlocks = 0;
-    for (const [key, p] of this.probes) {
-      const data = new Float32Array(PROBE_LEN); // oldest first
-      data.set(p.ring.subarray(p.w));
-      data.set(p.ring.subarray(0, p.w), PROBE_LEN - p.w);
-      // per voice: raw histories as long as the ring (VoiceStreams of PROBE_LEN / 2 keep twice that), oldest first
-      const voices = p.voices?.data()?.map((d) => ('raw' in d ? d.raw : new Float32Array(PROBE_LEN))) ?? null;
-      const bufs = [data.buffer, ...(voices ?? []).map((v) => v.buffer)];
-      this.port.postMessage({ probe: key, data, voices, sr: sampleRate, revision: this.revision }, bufs);
-    }
+  private sendDisplays(): void {
+    if (++this.displayBlocks < DISPLAY_EVERY) return;
+    this.displayBlocks = 0;
     for (const [key, v] of this.views) {
       const chans: ViewData[] = v.streams.map((s) => s.data());
       const voices = v.voices?.map((s) => s.data()) ?? null;
@@ -187,9 +161,9 @@ class ModularProcessor extends AudioWorkletProcessor {
       if (this.sinceClock <= CLOCK_GONE && ++this.sinceClock > CLOCK_GONE) this.engine.clockExternal(false);
       this.engine.render(out[0], out[1] ?? out[0]);
       if (this.views.size) this.feedViews(out[0].length);
-      if (this.probes.size || this.views.size || this.envs.size) this.feedProbes(out[0].length, out);
+      if (this.views.size || this.envs.size) this.sendDisplays();
       if (this.watched.size) this.feedWatch(out[0].length);
-      if (++this.stepsBlocks >= PROBE_EVERY / 2) {   // the Steps modules' playheads, about 60 times a second when they move
+      if (++this.stepsBlocks >= DISPLAY_EVERY / 2) {   // the Steps modules' playheads, about 60 times a second when they move
         this.stepsBlocks = 0;
         const v = this.engine.stepsView();
         const s = JSON.stringify(v);

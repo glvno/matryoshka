@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The colours of a poly assembly's voices (V1, V2, ...): the scope's per-voice traces (scope.ts, scope-view.ts) and the
+// The colours of a poly assembly's voices (V1, V2, ...): the Scope module's per-voice traces (scope-view.ts) and the
 // swatches of the voices panel (flaws-panel.ts). Tokens `--voice1` .. `--voice8` in style.css (the knob hues, then rose
 // and blue, each with its light and dark value); voices past the eighth reuse them in order.
 
