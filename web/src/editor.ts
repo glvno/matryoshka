@@ -3559,6 +3559,40 @@ export class Editor {
     if (notify && next) this.ev.onFocus?.(next.device, next.page);
   }
 
+  /** Tab / Shift+Tab: the next / previous page of the device in focus, wrapping within it (GLO's page: the device it left);
+   *  false when there is no device */
+  stepPage(d: number): boolean {
+    const dev = this.devices.find((x) => x.key === this.focus?.device) ?? this.devices[0];
+    if (!dev) return false;
+    const at = this.focus?.device === dev.key && !this.gloOn ? this.focus.page : d > 0 ? -1 : 0;
+    this.setFocus({ device: dev.key, page: (((at + d) % dev.pages.length) + dev.pages.length) % dev.pages.length });
+    return true;
+  }
+
+  /** Left / Right arrows: the previous / next device's first page, wrapping; false when there is no device */
+  stepDevice(d: number): boolean {
+    const n = this.devices.length;
+    if (!n) return false;
+    const i = this.devices.findIndex((x) => x.key === this.focus?.device);
+    const next = i < 0 ? (d > 0 ? 0 : n - 1) : this.gloOn ? i : (((i + d) % n) + n) % n;
+    this.setFocus({ device: this.devices[next].key, page: 0 });
+    return true;
+  }
+
+  /** a held 1..4 and the wheel: K(i + 1) by `notches` (a hundredth of its range each; a choice or a switch: one position) */
+  nudgeKnob(i: number, notches: number): boolean {
+    const r = this.focusedPage()?.rows[i];
+    const m = r && this.patch.modules.find((x) => x.id === r.module);
+    const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
+    if (!r || !m || !pd) return false;
+    const v = m.params[r.param];
+    const w = fromUnit(pd, Math.min(1, Math.max(0, toUnit(pd, v) + notches / 100)));
+    this.setParam(m.id, r.param, pd.toggle ? (notches > 0 ? 1 : 0)
+      : pd.choices ? Math.min(pd.choices.length - 1, Math.max(0, Math.round(v) + Math.sign(notches)))
+      : pd.log ? snapTo(pd, w) : pd.step ? Math.round(w / pd.step) * pd.step : Number(w.toFixed(6)));
+    return true;
+  }
+
   /** the FM-1 shows another page (patchbin.ts editorPage turns its indices into this) */
   focusFrom(f: { device: string; page: number }): void {
     this.setFocus(f, false);

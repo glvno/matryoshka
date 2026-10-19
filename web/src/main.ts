@@ -838,12 +838,38 @@ window.addEventListener('keydown', (e) => {
   } else if (k.startsWith('Arrow')) {
     const d = e.shiftKey ? 100 : 10;
     done = editor.nudgeSelected(k === 'ArrowLeft' ? -d : k === 'ArrowRight' ? d : 0, k === 'ArrowUp' ? -d : k === 'ArrowDown' ? d : 0);
+    // nothing selected: Left / Right page through the devices on Main's knobs (the FM-1's SELECT)
+    if (!done && !mod && (k === 'ArrowLeft' || k === 'ArrowRight')) done = editor.stepDevice(k === 'ArrowRight' ? 1 : -1);
+  } else if (k === 'Tab' && !mod && !e.altKey) done = editor.stepPage(e.shiftKey ? -1 : 1);
+  else if (!mod && !e.altKey && KNOB_KEYS.includes(k)) {
+    heldKnob = KNOB_KEYS.indexOf(k);
+    done = true;
   }
   if (done) {
     e.preventDefault();
     e.stopImmediatePropagation();
   }
 }, true);
+// Hold 1..4 and turn the wheel: K1..K4 of the page on Main's knobs. The wheel's delta is gathered into notches (a hundredth
+// of the row's range each), so a trackpad's small steps add up the same way as a mouse wheel's clicks.
+const KNOB_KEYS = ['1', '2', '3', '4'];
+const WHEEL_NOTCH = 40;
+let heldKnob = -1;
+let knobWheel = 0;
+document.addEventListener('keyup', (e) => {
+  if (KNOB_KEYS.indexOf(e.key) === heldKnob) (heldKnob = -1), (knobWheel = 0);
+}, true);
+window.addEventListener('blur', () => (heldKnob = -1));
+window.addEventListener('wheel', (e) => {
+  if (heldKnob < 0 || currentTab !== 'patch' || e.ctrlKey || e.metaKey) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  knobWheel -= e.deltaMode === WheelEvent.DOM_DELTA_LINE ? e.deltaY * WHEEL_NOTCH / 3 : e.deltaY;
+  const notches = Math.trunc(knobWheel / WHEEL_NOTCH);
+  if (!notches) return;
+  knobWheel -= notches * WHEEL_NOTCH;
+  editor.nudgeKnob(heldKnob, notches);
+}, { capture: true, passive: false });
 // Copy / cut / paste of the selection (clipboard.ts, #92): through the browser's copy / paste events, which reach the system
 // clipboard without a permission prompt; a clip is JSON, so it survives switching patches or tabs. `lastClip` is the in-app
 // fallback when the system clipboard is out of reach (the palette's Paste, a browser that refuses). Text fields, an open
