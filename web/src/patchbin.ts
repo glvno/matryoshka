@@ -30,9 +30,10 @@
 //                name (text), u8 part (0-based), u8 parts, u8 the envelope drawn above it (1 + module index, 0 none), u8 row
 //                count (1..PAGE_ROWS), per row u8 module index, u8 parameter index (bit 7: a setting of the poly group of
 //                that Part, POLY_ROW_PARAMS), its label (text)
-//   with flag bit 6: the button kinds (buttons.ts): PANEL_BUTTONS.length u8 kinds (0 Gate, 1 Nothing, 2 Toggle), then per
-//                Toggle button, in button order, u8 n (0..), n u8 module indices: the modules it bypasses (buttons.ts
-//                toggleTargets). A patch without it: every button is a Gate. The panel's switched-on mask holds a
+//   with flag bit 6: the button kinds (buttons.ts): PANEL_BUTTONS.length u8 kinds (0 Gate, 1 Nothing, 2 Toggle, 3 Page),
+//                then in button order per Toggle button u8 n (0..), n u8 module indices: the modules it bypasses (buttons.ts
+//                toggleTargets); per Page button u8 n, n (u8 device, u8 page): its list, in the device pages section's
+//                indices (binaryPage; pages that are gone are left out). A patch without it: every button is a Gate. The panel's switched-on mask holds a
 //                switching Toggle as on while its targets are bypassed.
 //   with flag bit 1 (always last: the FM-1 edits it in place): u8 count, then per macro range: u8 module index, u8 pin (0 p1,
 //                1 p2), u8 parameter index, u8 low end, u8 high end (0..255 of the parameter's range, octaves for a log
@@ -81,6 +82,11 @@ export function buttonRecord(source: Patch, p: Patch): number[] {
   const out = PANEL_BUTTONS.map((b) => KIND_CODE[kindOf(panel, b)]);
   let total = 0;
   for (const b of PANEL_BUTTONS) {
+    if (kindOf(panel, b) === 'page') {
+      const at = (panel?.pages?.[b] ?? []).map((x) => binaryPage(source, x.device, x.page)).filter((x): x is [number, number] => !!x);
+      out.push(at.length, ...at.flat());
+      continue;
+    }
     if (kindOf(panel, b) !== 'bypass') continue;
     const ids = toggleTargets(source, b).filter((id) => index.has(id));
     total += ids.length;

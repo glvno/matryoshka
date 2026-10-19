@@ -8,13 +8,15 @@
 
 import { allModules, assembliesOf } from './assembly';
 import { PANEL_BUTTONS } from './modules';
+import { PAGE_LIST_MAX } from './patch';
 import type { MainPanel, ModuleInst, Patch } from './patch';
+import type { Device } from './pages';
 
-export type ButtonKind = 'nothing' | 'gate' | 'bypass';
+export type ButtonKind = 'nothing' | 'gate' | 'page' | 'bypass';
 /** the kinds as the editor names them (`bypass` is the Toggle of the designs) */
-export const KIND_LABEL: Record<ButtonKind, string> = { nothing: 'Nothing', gate: 'Gate', bypass: 'Toggle' };
+export const KIND_LABEL: Record<ButtonKind, string> = { nothing: 'Nothing', gate: 'Gate', page: 'Page', bypass: 'Toggle' };
 /** the binary's kind byte (patchbin.ts, flag bit 6): 0 Gate keeps a patch without the section unchanged */
-export const KIND_CODE: Record<ButtonKind, number> = { gate: 0, nothing: 1, bypass: 2 };
+export const KIND_CODE: Record<ButtonKind, number> = { gate: 0, nothing: 1, bypass: 2, page: 3 };
 
 export const mainOf = (p: Patch): ModuleInst | undefined => p.modules.find((m) => m.type === 'fm1');
 
@@ -23,9 +25,18 @@ export function kindOf(panel: MainPanel | undefined, b: string): ButtonKind {
   return panel?.kinds?.[b] ?? 'gate';
 }
 
-/** button b switches on / off (PRESS: switches) instead of acting while held; a button that does nothing never switches */
+/** button b switches on / off (PRESS: switches) instead of acting while held: Gates and Toggles only (a Page button's
+ * press and hold have their own rules) */
 export function switches(panel: MainPanel | undefined, b: string): boolean {
-  return kindOf(panel, b) !== 'nothing' && !!panel?.toggle?.includes(b);
+  const k = kindOf(panel, b);
+  return (k === 'gate' || k === 'bypass') && !!panel?.toggle?.includes(b);
+}
+
+/** a Page button's list, by the editor's device keys; pages that are gone are left out */
+export function pageList(p: Patch, b: string, devices: Device[]): { device: string; page: number }[] {
+  const panel = mainOf(p)?.panel;
+  if (kindOf(panel, b) !== 'page') return [];
+  return (panel?.pages?.[b] ?? []).filter((x) => (devices.find((d) => d.key === x.device)?.pages.length ?? 0) > x.page);
 }
 
 /**
@@ -73,7 +84,7 @@ const tidy = (p: Patch): void => {
   const panel = main?.panel;
   if (!main || !panel) return;
   for (const k of ['toggle', 'on'] as const) if (panel[k] && !panel[k]!.length) delete panel[k];
-  for (const k of ['kinds', 'targets', 'labels'] as const) if (panel[k] && !Object.keys(panel[k]!).length) delete panel[k];
+  for (const k of ['kinds', 'targets', 'labels', 'pages'] as const) if (panel[k] && !Object.keys(panel[k]!).length) delete panel[k];
   if (!Object.keys(panel).length) delete main.panel;
 };
 
@@ -86,7 +97,8 @@ export function setKind(p: Patch, b: string, kind: ButtonKind): void {
   else kinds[b] = kind;
   panel.kinds = kinds;
   if (kind !== 'bypass' && panel.targets) delete panel.targets[b];
-  if (kind === 'nothing') {
+  if (kind !== 'page' && panel.pages) delete panel.pages[b];
+  if (kind === 'nothing' || kind === 'page') {
     panel.toggle = (panel.toggle ?? []).filter((x) => x !== b);
     panel.on = (panel.on ?? []).filter((x) => x !== b);
   }
@@ -105,10 +117,22 @@ export function setTarget(p: Patch, b: string, t: { module: number } | { asm: nu
   tidy(p);
 }
 
+/** a Page button's list: `list` replaces it (at most PAGE_LIST_MAX pages) */
+export function setPages(p: Patch, b: string, list: { device: string; page: number }[]): void {
+  const panel = panelOf(p);
+  if (!panel || kindOf(panel, b) !== 'page') return;
+  const pages = { ...(panel.pages ?? {}) };
+  if (list.length) pages[b] = list.slice(0, PAGE_LIST_MAX).map((x) => ({ ...x }));
+  else delete pages[b];
+  panel.pages = pages;
+  tidy(p);
+}
+
 /** PRESS: the button switches on / off (true) or acts while held */
 export function setSwitches(p: Patch, b: string, on: boolean): void {
   const panel = panelOf(p);
-  if (!panel || kindOf(panel, b) === 'nothing') return;
+  const k = kindOf(panel, b);
+  if (!panel || (k !== 'gate' && k !== 'bypass')) return;
   panel.toggle = on ? [...new Set([...(panel.toggle ?? []), b])] : (panel.toggle ?? []).filter((x) => x !== b);
   if (!on) panel.on = (panel.on ?? []).filter((x) => x !== b);
   tidy(p);

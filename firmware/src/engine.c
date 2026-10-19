@@ -833,10 +833,14 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (!end)
             return -3;
         for (b = 0; b < ENG_PANEL_BUTTONS; b++)
-            E.btn_kind[b] = (uint8_t)(p[at + b] <= ENG_BTN_TOGGLE ? p[at + b] : ENG_BTN_NOTHING);
+            E.btn_kind[b] = (uint8_t)(p[at + b] <= ENG_BTN_PAGE ? p[at + b] : ENG_BTN_NOTHING);
         at += ENG_PANEL_BUTTONS;
         for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
             uint32_t n, k;
+            if (E.btn_kind[b] == ENG_BTN_PAGE) {     /* a page list: the panel's (pages_ui.c pages_list) */
+                at += 1u + 2u * p[at];
+                continue;
+            }
             if (E.btn_kind[b] != ENG_BTN_TOGGLE)
                 continue;
             n = p[at++];

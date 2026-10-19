@@ -161,9 +161,11 @@ export interface MainPanel {
   on?: string[];
   labels?: Record<string, string>;
   /** what each button does (#116, buttons.ts): absent = Gate (a patch from before the kinds); Nothing and Toggle (`bypass`) are listed */
-  kinds?: Record<string, 'nothing' | 'bypass'>;
+  kinds?: Record<string, 'nothing' | 'bypass' | 'page'>;
   /** a Toggle's target: a module or an assembly (by id) */
   targets?: Record<string, { module: number } | { asm: number }>;
+  /** a Page button's list (#117): device pages by the editor's device key and page index (pages.ts), in order */
+  pages?: Record<string, { device: string; page: number }[]>;
 }
 
 /** a new patch's panel: every button that has an editor starts as Nothing (no implicit roles, #116); GLO stays as it is (#118) */
@@ -173,6 +175,8 @@ export const NEW_PANEL = (): MainPanel => ({ kinds: Object.fromEntries(['fx', 's
  * none any more: they show the names of the rows they turn (pages.ts). */
 export const PANEL_LABEL_KEYS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
 export const PANEL_LABEL_MAX = 10;
+/** the most pages a Page button's list holds */
+export const PAGE_LIST_MAX = 16;
 /** a label as the LCD can draw it: capitals, digits, space and its few signs */
 export const panelLabel = (s: unknown, max = PANEL_LABEL_MAX): string => String(s ?? '').toUpperCase().replace(/[^A-Z0-9 +%&>=()?!#*<,_'.:\/-]/g, '').slice(0, max).trim();
 
@@ -243,9 +247,17 @@ export function fixPanel(raw: unknown): MainPanel | undefined {
   const r = raw as Record<string, unknown>;
   const buttons = PANEL_LABEL_KEYS;
   const names = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => buttons.includes(x)))] : []);
-  const kinds: Record<string, 'nothing' | 'bypass'> = {};
+  const kinds: Record<string, 'nothing' | 'bypass' | 'page'> = {};
   if (r.kinds && typeof r.kinds === 'object')
-    for (const [k, v] of Object.entries(r.kinds as Record<string, unknown>)) if (buttons.includes(k) && (v === 'nothing' || v === 'bypass')) kinds[k] = v;
+    for (const [k, v] of Object.entries(r.kinds as Record<string, unknown>)) if (buttons.includes(k) && k !== 'glo' && (v === 'nothing' || v === 'bypass' || v === 'page')) kinds[k] = v;
+  const pages: Record<string, { device: string; page: number }[]> = {};
+  if (r.pages && typeof r.pages === 'object')
+    for (const [k, v] of Object.entries(r.pages as Record<string, unknown>)) {
+      if (kinds[k] !== 'page' || !Array.isArray(v)) continue;
+      const list = v.filter((x): x is { device: string; page: number } => !!x && typeof x.device === 'string' && Number.isInteger(x.page) && x.page >= 0)
+        .map((x) => ({ device: x.device, page: x.page })).slice(0, PAGE_LIST_MAX);
+      if (list.length) pages[k] = list;
+    }
   const targets: Record<string, { module: number } | { asm: number }> = {};
   if (r.targets && typeof r.targets === 'object')
     for (const [k, v] of Object.entries(r.targets as Record<string, unknown>)) {
@@ -254,7 +266,7 @@ export function fixPanel(raw: unknown): MainPanel | undefined {
       if (Number.isInteger(t.module)) targets[k] = { module: t.module as number };
       else if (Number.isInteger(t.asm)) targets[k] = { asm: t.asm as number };
     }
-  const toggle = names(r.toggle).filter((b) => kinds[b] !== 'nothing');   // a button that does nothing has no PRESS
+  const toggle = names(r.toggle).filter((b) => kinds[b] !== 'nothing' && kinds[b] !== 'page');   // only Gates and Toggles have PRESS
   const on = names(r.on).filter((b) => toggle.includes(b));
   const labels: Record<string, string> = {};
   if (r.labels && typeof r.labels === 'object')
@@ -265,6 +277,7 @@ export function fixPanel(raw: unknown): MainPanel | undefined {
   if (Object.keys(labels).length) out.labels = labels;
   if (Object.keys(kinds).length) out.kinds = kinds;
   if (Object.keys(targets).length) out.targets = targets;
+  if (Object.keys(pages).length) out.pages = pages;
   return Object.keys(out).length ? out : undefined;
 }
 

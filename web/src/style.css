@@ -626,6 +626,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .pb-mark { flex: none; width: 11px; height: 11px; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .pb-mark.bypass { stroke: var(--secondary); }
 .pb-mark.gate { stroke: var(--gate); }
+.pb-mark.page { stroke: var(--k6); }
 .panel-btn[aria-pressed=true] .pb-mark { stroke: currentColor; }
 .pb-led { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
 .panel-btn.assigned .pb-led { background: color-mix(in srgb, var(--gate) 45%, transparent); box-shadow: none; }
@@ -645,6 +646,14 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .button-editor select, .button-editor input[type=text] { width: 100%; box-sizing: border-box; min-height: 30px; font-size: 12px; }
 .button-editor input[type=text] { text-transform: uppercase; letter-spacing: .06em; }
 .button-editor .be-hint { margin: 0; font-size: 11px; }
+.button-editor .be-pages { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.button-editor .be-pages li { display: grid; grid-template-columns: 14px 18px 1fr 22px; align-items: center; min-height: 30px; padding: 0 4px 0 8px; border-radius: 6px; background: var(--surface-tint); font-size: 12px; cursor: grab; }
+.button-editor .be-pages li.dragging { opacity: .5; }
+.button-editor .be-pages li:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.button-editor .be-grip, .button-editor .be-n { color: var(--muted); }
+.button-editor .be-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.button-editor .be-del { border: 0; background: transparent; color: var(--muted); padding: 0; font-size: 14px; min-height: 0; }
+.button-editor .be-del:hover { color: var(--danger); }
 /* the FM-1's own buttons (HOME SAVE SEQ REC): in their place, dashed and dim, inert */
 .panel-btn.device, .panel-btn.device:hover { border-style: dashed; border-color: var(--line); color: color-mix(in oklab, var(--muted) 60%, var(--panel)); cursor: default; }
 /* PLAY is the transport (Space): outlined in the secondary colour while it runs */

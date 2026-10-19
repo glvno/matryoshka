@@ -83,6 +83,22 @@ static void later(uint32_t ms)
     loop();
 }
 static uint16_t px(uint32_t x, uint32_t y) { return fb[y * 240u + x]; }
+/* PANEL_SNAP=file.ppm: the LCD at the page-list step, to look at (tools/ui_preview.sh converts PPM to PNG) */
+static void snap(void)
+{
+    const char *path = getenv("PANEL_SNAP");
+    FILE *f;
+    uint32_t i;
+    if (!path || !(f = fopen(path, "wb")))
+        return;
+    fprintf(f, "P6\n240 240\n255\n");
+    for (i = 0; i < 240u * 240u; i++) {
+        fputc(((fb[i] >> 11) & 31u) * 255u / 31u, f);
+        fputc(((fb[i] >> 5) & 63u) * 255u / 63u, f);
+        fputc((fb[i] & 31u) * 255u / 31u, f);
+    }
+    fclose(f);
+}
 
 static int load(const char *name)
 {
@@ -260,6 +276,49 @@ int main(void)
                 panel_button_set(0, 0);
             }
         }
+    }
+
+    if (pv_bin[6] & 2u) {                                   /* Page buttons (#117), spliced into the 808 Kit's binary */
+        check("(the 808 Kit has no macro ranges: the button kinds section goes last)", 0);
+    } else {
+        /* SCL (button 1) a Page button: device 1 page 0, then device 1 page 1 */
+        static const uint8_t sec[] = {0, 3, 0, 0, 0, 0, 0, 2, 1, 0, 1, 1};
+        memcpy(pv_bin + pv_len, sec, sizeof sec);
+        pv_len += sizeof sec;
+        pv_bin[6] |= 64u;
+        pv_gen++;
+        check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(1) == ENG_BTN_PAGE);
+        page_show(0);
+        trail_n = 0;
+        pages_focus(2, 0);
+        loop();
+        tap(3);
+        check("SCL tapped: its list's first page, a step on the trail, lit", pg_list_btn == 1 && pg_cur_dev == 1 && pg_cur_page == 0
+              && trail_n == 1 && (eng_buttons_get() >> 1 & 1u) && focus_dev == 1);
+        later(2000);                                        /* (a message from before ends) */
+        check("the top bar names the list", px(120, 2) == P_SEA);
+        snap();
+        tap(3);
+        check("SCL again: the next page", pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1 && trail_n == 1);
+        tap(3);
+        check("... round the list", pg_list_step == 0 && pg_cur_dev == 1 && pg_cur_page == 0);
+        enc(1, 1);
+        check("ALGO inside the list: its next step", pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1);
+        panel_held |= 1u << 3;                              /* held: the first page while it is down */
+        panel_edges(1u << 3, 0);
+        later(500);
+        check("SCL held: the list's first page", pg_list_peek && pg_cur_dev == 1 && pg_cur_page == 0);
+        panel_held &= ~(1u << 3);
+        panel_edges(0, 1u << 3);
+        loop();
+        check("let go: back to the step it was on", !pg_list_peek && pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1);
+        tap(BTN_HOME);
+        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 2 && pg_cur_page == 0
+              && trail_n == 0 && !(eng_buttons_get() >> 1 & 1u));
+        tap(3);
+        enc(0, 1);
+        check("SELECT inside the list leaves it", pg_list_btn < 0 && !(eng_buttons_get() >> 1 & 1u));
+        trail_n = 0;
     }
 
     panel_keys(1u << 7);                                    /* a key: a note, sent out */

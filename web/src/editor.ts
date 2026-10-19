@@ -7,7 +7,7 @@ import { lockOf } from './relevance';
 import { tidy, tidyAssembly } from './tidy';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
-import { buttonLight, kindOf, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
+import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
 import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
@@ -49,7 +49,7 @@ import {
   ensureMain,
   EDITOR_ONLY,
   rowDef,
-  PANEL_LABEL_MAX,
+  PAGE_LIST_MAX,
   panelLabel,
   STEPS_MAX,
   setStepValue,
@@ -103,6 +103,8 @@ import { EXCLUDED_TYPES,
   type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setGroupBreak, setHeading, setSpan, spanPlan, type SpanBlock } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
+/** a Page button held this long shows its list's first page while it is down (panel.c PAGE_HOLD_MS) */
+const PAGE_HOLD_MS = 400;
 
 /** a dock button's kind mark (board E): Toggle a power sign, Gate a pulse */
 function kindMark(kind: ButtonKind): SVGSVGElement {
@@ -112,6 +114,7 @@ function kindMark(kind: ButtonKind): SVGSVGElement {
   svg.setAttribute('aria-hidden', 'true');
   const path = (d: string): void => { const e = document.createElementNS(SVGNS, 'path'); e.setAttribute('d', d); svg.append(e); };
   if (kind === 'bypass') { path('M6 1.5v4'); path('M3.3 3.6a4 4 0 1 0 5.4 0'); }
+  else if (kind === 'page') { path('M3 1.5h6a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-6a1.5 1.5 0 0 1-1.5-1.5v-6a1.5 1.5 0 0 1 1.5-1.5z'); path('M4 4.5h4M4 7.5h4'); }
   else path('M1 9h3V3h4v6h3');
   return svg;
 }
@@ -1248,7 +1251,10 @@ export class Editor {
     // a row the knobs can turn: a press on it puts its device page on Main's knobs (markFocus colours the bound ones)
     row.dataset.mod = String(m.id);
     row.dataset.param = pd.name;
-    row.addEventListener('pointerdown', () => this.focusRow(m.id, pd.name), true);
+    row.addEventListener('pointerdown', (e) => {
+      if (e.altKey && this.addRowToList(m.id, pd.name)) { e.stopPropagation(); e.preventDefault(); return; }
+      this.focusRow(m.id, pd.name);
+    }, true);
     const name = document.createElement('span');
     name.textContent = o.label ?? longName(def.type, pd.name);
     // an enum parameter is a selector (a detent rail, or a drum when the names do not fit) whose jack stands on the live choice
@@ -2236,10 +2242,10 @@ export class Editor {
     btn.append(top, under, led);
     btn.classList.toggle('unassigned', kind === 'nothing');
     btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
-    const engaged = kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
+    const engaged = kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
     btn.setAttribute('aria-pressed', String(engaged));
-    const does = kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : 'bypasses its target';
-    btn.title = `${name}: ${does}, ${switches(panel, b) ? 'switches on / off' : 'while held'} (right-click: edit the button)`;
+    const does = kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
+    btn.title = `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
     btn.addEventListener('pointerdown', (e) => {
       if (e.button === 0) this.pressButton(i, true);
     });
@@ -2289,6 +2295,7 @@ export class Editor {
       patch: () => this.patch,
       change: (fn) => { this.change(fn); },
       label: (text) => this.setPanelLabel(m, pop.b, text),
+      devices: () => this.devices,
     }, pop.b === 'glo'));
     if (!pop.el.matches(':popover-open')) pop.el.showPopover();
     positionPopover(pop.el, anchor);
@@ -2306,6 +2313,7 @@ export class Editor {
     if (!m || b === undefined) return;
     const btn = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${b}"]`);
     const kind = kindOf(m.panel, b);
+    if (kind === 'page') return this.pagePress(i, b, down, btn);
     const t = kind === 'bypass' ? m.panel?.targets?.[b] : undefined;
     const a = t && 'asm' in t ? assembliesOf(this.patch).find((x) => x.id === t.asm) : undefined;
     if (!switches(m.panel, b)) {
@@ -2337,6 +2345,77 @@ export class Editor {
     btn?.setAttribute('aria-pressed', String(on));
     this.ev.onButton?.(i, on);
     this.ev.onLayout(this.patch);           // saved with the patch (the device keeps switched buttons too)
+  }
+
+  // ---- Page buttons (#117): the same rules as on the FM-1, on the dock knobs. A press puts the next page of the list in
+  // focus (the first press: the list's first page), a hold shows its first page while it is down; the list is left when
+  // the focus moves any other way. Engaged (lit, its jack high) while the list is on.
+  private pageOn: { b: string; step: number } | null = null;
+  private pageHold: { b: string; timer: number; peeked: { on: { b: string; step: number } | null; focus: { device: string; page: number } | null } | null } | null = null;
+  private listMoving = false;
+
+  private pagePress(i: number, b: string, down: boolean, btn: HTMLElement | null | undefined): void {
+    const list = pageList(this.patch, b, this.devices);
+    if (down) {
+      if (this.pageHold) clearTimeout(this.pageHold.timer);
+      const hold = { b, timer: 0, peeked: null as { on: { b: string; step: number } | null; focus: { device: string; page: number } | null } | null };
+      hold.timer = window.setTimeout(() => {
+        if (this.pageHold !== hold || !list.length) return;
+        hold.peeked = { on: this.pageOn, focus: this.focus ? { ...this.focus } : null };
+        this.pageOn = { b, step: 0 };
+        this.listFocus(list[0]);
+      }, PAGE_HOLD_MS);
+      this.pageHold = hold;
+      this.ev.onButton?.(i, true);
+      this.syncPageButtons();
+      return;
+    }
+    const hold = this.pageHold;
+    if (!hold || hold.b !== b) return;
+    clearTimeout(hold.timer);
+    this.pageHold = null;
+    if (hold.peeked) {                       // the hold ends: back to what showed before it
+      this.pageOn = hold.peeked.on;
+      if (hold.peeked.focus) this.listFocus(hold.peeked.focus);
+    } else if (list.length) {
+      const step = this.pageOn?.b === b ? (this.pageOn.step + 1) % list.length : 0;
+      this.pageOn = { b, step };
+      this.listFocus(list[step]);
+    }
+    this.ev.onButton?.(i, this.pageOn?.b === b);
+    this.syncPageButtons();
+    void btn;
+  }
+
+  /** a page of a list into focus (setFocus leaves the list otherwise) */
+  private listFocus(f: { device: string; page: number }): void {
+    this.listMoving = true;
+    try { this.setFocus(f); } finally { this.listMoving = false; }
+    this.syncPageButtons();
+  }
+
+  /** the dock's Page buttons: lit while held or while their list is on */
+  private syncPageButtons(): void {
+    const m = this.patch.modules.find((x) => x.type === 'fm1');
+    for (const b of PANEL_BUTTONS) {
+      if (kindOf(m?.panel, b) !== 'page') continue;
+      const on = this.pageOn?.b === b || this.pageHold?.b === b;
+      this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${b}"]`)?.setAttribute('aria-pressed', String(on));
+    }
+  }
+
+  /** Alt-click on a card row while a Page button's editor is open: its page joins the list */
+  private addRowToList(module: number, param: string): boolean {
+    const b = this.buttonPop?.b;
+    const m = this.patch.modules.find((x) => x.type === 'fm1');
+    if (!b || kindOf(m?.panel, b) !== 'page') return false;
+    const at = findRow(this.devices, module, param);
+    if (!at) return false;
+    const entry = { device: this.devices[at.device].key, page: at.page };
+    const list = pageList(this.patch, b, this.devices);
+    if (list.length >= PAGE_LIST_MAX) return true;
+    this.change(() => setPages(this.patch, b, [...list, entry]));
+    return true;
   }
 
   /** the cards of modules a Toggle bypasses show it (without a redraw: the dock button may be held) */
@@ -3394,6 +3473,12 @@ export class Editor {
   setFocus(f: { device: string; page: number } | null, notify = true): void {
     const next = fixFocus(this.devices, f);
     if (next?.device === this.focus?.device && next?.page === this.focus?.page) return;
+    if (!this.listMoving && this.pageOn) {   // the focus moved some other way: the Page button's list is left
+      const i = PANEL_BUTTONS.indexOf(this.pageOn.b);
+      this.pageOn = null;
+      if (i >= 0) this.ev.onButton?.(i, false);
+      this.syncPageButtons();
+    }
     this.focus = next;
     this.fillFocus();
     this.markFocus();

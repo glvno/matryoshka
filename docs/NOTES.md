@@ -661,3 +661,9 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Editor Toggle presses do not call `onBypass` (with Live the FM-1 gets the CC press and bypasses itself; a C_BYPASS first would make its press flip the state back). The browser engine applies the bypass in `setButton`.
 - Behaviour change on the device: every Gate button now glows dim (assigned), not only cabled ones. Old patches are all Gates.
 - Not done here: an LCD change (none needed: the legend is gone), page buttons (#117), GLO (#118).
+
+## Page buttons (#117, 2026-10-19; vitest 689, panel host test incl. a page list spliced into the 808 Kit, golden 85 + proto, LCD snapshot via `PANEL_SNAP=x.ppm tools/panel_test.sh`, editor seen on [::1]:5173; JieLi CI build + emulator smoke after the push; not flashed)
+
+- Details in docs/ARCHITECTURE.md "Page buttons". The editor's dock HOME stays inert: in the editor a list is left by moving the focus another way (pickers, a row click); the FM-1's HOME goes back along its trail.
+- The bar uses " - " between the list position and the page (the LCD font has no middle dot).
+- A page button does not raise the "SCL ON / OFF" toast (the bar names the list instead).

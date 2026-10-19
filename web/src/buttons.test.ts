@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { bypassAssembly, makeAssembly } from './assembly';
-import { buttonLight, kindOf, switches, toggleEngaged, toggleTargets } from './buttons';
+import { buttonLight, kindOf, pageList, setKind, setPages, switches, toggleEngaged, toggleTargets } from './buttons';
+import { devicesOf } from './pages';
 import { Engine } from './engine';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { addModule, connect, emptyPatch, newPatch, validatePatch, type Patch } from './patch';
-import { FLAG_BUTTONS, VERSION, encodePatch } from './patchbin';
+import { FLAG_BUTTONS, VERSION, binaryPage, encodePatch } from './patchbin';
 
 /** Main, an oscillator into a VCA into the Output: the VCA has nothing in cv (closed), bypassed it lets the oscillator through */
 function rig(): { p: Patch; main: number; osc: number; vca: number } {
@@ -104,5 +105,23 @@ describe('patch button kinds (#116)', () => {
     expect((e.buttonMask >> 6) & 1).toBe(1);
     e.setBypass(vca, false);
     expect((e.buttonMask >> 6) & 1).toBe(0);
+  });
+
+  it('Page buttons: a list of device pages, gone pages left out, encoded as the binary\'s (device, page) pairs; no PRESS', () => {
+    const { p, osc, vca } = rig();
+    setKind(p, 'scl', 'page');
+    setPages(p, 'scl', [{ device: `m${vca}`, page: 0 }, { device: 'm999', page: 0 }, { device: `m${osc}`, page: 1 }]);
+    const devs = devicesOf(p, DEFS);
+    expect(pageList(p, 'scl', devs)).toEqual([{ device: `m${vca}`, page: 0 }, { device: `m${osc}`, page: 1 }]);
+    p.modules[0].panel!.toggle = ['scl'];
+    expect(switches(p.modules[0].panel, 'scl')).toBe(false);
+    const v = validatePatch(JSON.parse(JSON.stringify(p)), DEFS).modules[0].panel!;
+    expect(v.kinds?.scl).toBe('page');
+    expect(v.toggle).toBeUndefined();
+    const b = encodePatch(p);
+    const pairs = [binaryPage(p, `m${vca}`, 0)!, binaryPage(p, `m${osc}`, 1)!];
+    expect(Array.from(b.slice(b.length - 12))).toEqual([0, 3, 0, 0, 0, 0, 0, 2, ...pairs.flat()]);
+    setKind(p, 'scl', 'gate');
+    expect(p.modules[0].panel?.pages).toBeUndefined();
   });
 });

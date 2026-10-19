@@ -483,6 +483,17 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   (`button-editor.ts`, right-click or ⋯ on a dock button: DOES, BYPASSES, PRESS, LABEL; GLO gets PRESS and LABEL only).
   A Toggle press from the dock or the FM-1 (`Editor.pressButton`): a switching one is a patch edit (undo step), a held
   one only the engine and the card's look. Golden kit `button-toggle`.
+- **Page buttons (#117):** a fourth kind, Page (`page`, kind byte 3): a list of device pages from any devices
+  (`MainPanel.pages`: editor device key + page index, at most `PAGE_LIST_MAX` 16; pages that are gone are left out,
+  `pageList`; in the binary (device, page) pairs in the device pages section's indices, `binaryPage`). A press puts the
+  next page of the list on K1..K4, round the list; the first press from elsewhere is a trail step (HOME goes back, the
+  trail entries carry the list state); held `PAGE_HOLD_MS` 400 ms, the list's first page shows while the button is down.
+  While its list is on the button is engaged (lit, jack high) and the device's top bar reads "SCL 2/3 - AMP ENV"
+  (`pages_strip`, seafoam). Inside a list ALGO steps the list and SELECT leaves it. Firmware: `pages_ui.c`
+  `pg_list_btn` / `pg_list_step` / `pg_list_peek` (reset on another patch) and `pages_list`; `panel.c` `page_button`,
+  `page_hold_poll`, `page_mask`, `list_focus`, `trail_push`. Editor: the same rules on the dock knobs
+  (`Editor.pagePress`, the list is left when the focus moves any other way); the popover's PAGES list (a picker,
+  Alt-click a card row while it is open, drag or Alt+Up / Down to reorder, ×). Page buttons have no PRESS.
 - Navigation (#114): one rule. A button that changes the screen (SEQ, REC, HOME held = the menu; page buttons #117 and
   GLO #118 next) leaves a step on the trail (`panel.c` `page_set`: page + the device page in focus, `TRAIL_MAX` 8, the
   oldest dropped); a HOME tap goes back one (`screen_back`, restoring the device page if it moved; the same button again

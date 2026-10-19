@@ -64,9 +64,16 @@ static void panel_master(uint32_t adc)
  * and CC 80..86 coming in. */
 static void panel_button_set(uint32_t b, int down);
 static void panel_button(uint32_t b, int down) { panel_button_set(b, down); }
+static void page_button(uint32_t b, int down);
+static void page_mask(void);
 static void panel_button_set(uint32_t b, int down)
 {
-    const uint8_t *pn = m1_panel();
+    const uint8_t *pn;
+    if (eng_button_kind(b) == ENG_BTN_PAGE) {      /* a page list (#117): its own press / hold rules */
+        page_button(b, down);
+        return;
+    }
+    pn = m1_panel();
     uint32_t tog = pn ? (uint32_t)pn[0] | (uint32_t)pn[1] << 8 : 0u, mask = eng_buttons_get(), was = mask;
     if (tog >> b & 1u) {
         if (down)
@@ -98,8 +105,25 @@ static void panel_button_set(uint32_t b, int down)
  * of where it came from; a HOME tap goes back one. ALGO / SELECT moving on the device pages are no steps. The oldest step
  * goes when the trail is full. */
 #define TRAIL_MAX 8u
-static struct { uint8_t page, dev, pg; } trail[TRAIL_MAX];
+static struct { uint8_t page, dev, pg; int8_t lbtn; uint8_t lstep; } trail[TRAIL_MAX];   /* (lbtn: a page list on, -1 none) */
 static uint8_t trail_n;
+
+/* a step on the trail: where we are now (the oldest step goes when it is full) */
+static void trail_push(void)
+{
+    if (trail_n == TRAIL_MAX) {
+        uint32_t i;
+        for (i = 1; i < TRAIL_MAX; i++)
+            trail[i - 1u] = trail[i];
+        trail_n--;
+    }
+    trail[trail_n].page = page;
+    trail[trail_n].dev = (uint8_t)pg_cur_dev;
+    trail[trail_n].pg = (uint8_t)pg_cur_page;
+    trail[trail_n].lbtn = pg_list_btn;
+    trail[trail_n].lstep = pg_list_step;
+    trail_n++;
+}
 
 static void page_show(uint32_t p)
 {
@@ -122,9 +146,14 @@ static void screen_back(void)
     if (!trail_n)
         return;
     trail_n--;
+    pg_list_btn = trail[trail_n].lbtn;
+    pg_list_step = trail[trail_n].lstep;
+    pg_list_peek = 0;
+    pg_strip_dirty = 1;
     if (trail[trail_n].page == 0u && pages_focus(trail[trail_n].dev, trail[trail_n].pg))
         m1_focus_now(pg_cur_dev, pg_cur_page);
     page_show(trail[trail_n].page);
+    page_mask();
 }
 
 /* a button opens screen p: a step on the trail; the same button again (p showing) goes back */
@@ -134,17 +163,97 @@ static void page_set(uint32_t p)
         screen_back();
         return;
     }
-    if (trail_n == TRAIL_MAX) {
-        uint32_t i;
-        for (i = 1; i < TRAIL_MAX; i++)
-            trail[i - 1u] = trail[i];
-        trail_n--;
-    }
-    trail[trail_n].page = page;
-    trail[trail_n].dev = (uint8_t)pg_cur_dev;
-    trail[trail_n].pg = (uint8_t)pg_cur_page;
-    trail_n++;
+    trail_push();
     page_show(p);
+}
+
+/* ---- Page buttons (#117): a press puts the next page of the button's list on K1..K4 (round the list; the first press
+ * a step on the trail, so HOME goes back to where you were); held, its first page shows while it is down. While one of
+ * its pages shows the button is engaged (lit, its jack high) and the top bar names it. ALGO steps the list, SELECT leaves it. */
+#define PAGE_HOLD_MS 400u
+static int8_t page_held = -1;                       /* the Page button down now, -1 none */
+static uint32_t page_t0;                            /* fm1_ms of its press */
+static int8_t peek_btn;                             /* what showed before a hold peeked: the list, its step, the focus */
+static uint8_t peek_step, peek_dev, peek_pg;
+
+/* the Page buttons' jacks: high while held or while their list shows (the other buttons' bits stay) */
+static void page_mask(void)
+{
+    uint32_t b, mask = eng_buttons_get(), was = mask;
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++)
+        if (eng_button_kind(b) == ENG_BTN_PAGE) {
+            int on = page_held == (int8_t)b || pg_list_btn == (int8_t)b;
+            mask = on ? mask | 1u << b : mask & ~(1u << b);
+        }
+    if (mask != was) {
+        eng_buttons(mask);
+        leds_panel();
+    }
+}
+
+/* the list's page in focus (the first while a hold peeks) */
+static void list_focus(void)
+{
+    const uint8_t *l;
+    uint32_t n = pg_list_btn >= 0 ? pages_list((uint32_t)pg_list_btn, &l) : 0u, k;
+    if (!n)
+        return;
+    k = pg_list_peek ? 0u : pg_list_step % n;
+    if (pages_focus(l[2u * k], l[2u * k + 1u]))
+        m1_focus_now(pg_cur_dev, pg_cur_page);
+    pg_strip_dirty = 1;
+    ui_dirty = 2;
+}
+
+static void page_button(uint32_t b, int down)
+{
+    const uint8_t *l;
+    uint32_t n = pages_list(b, &l);
+    if (down) {
+        page_held = (int8_t)b;
+        page_t0 = fm1_ms;
+        page_mask();
+        return;
+    }
+    if (page_held != (int8_t)b)
+        return;
+    page_held = -1;
+    if (pg_list_peek) {                             /* the hold ends: back to what showed before it */
+        pg_list_peek = 0;
+        pg_list_btn = peek_btn;
+        pg_list_step = peek_step;
+        if (pages_focus(peek_dev, peek_pg))
+            m1_focus_now(pg_cur_dev, pg_cur_page);
+        pg_strip_dirty = 1;
+        ui_dirty = 2;
+    } else if (n) {                                 /* a tap: the next page of the list, or into it */
+        if (pg_list_btn == (int8_t)b && page == 0u) {
+            pg_list_step = (uint8_t)((pg_list_step + 1u) % n);
+        } else {
+            trail_push();
+            pg_list_btn = (int8_t)b;
+            pg_list_step = 0;
+            if (page != 0u)
+                page_show(0);
+        }
+        list_focus();
+    }
+    page_mask();
+}
+
+/* a Page button held long enough: its first page shows until it is let go (from panel_edges, every pass) */
+static void page_hold_poll(void)
+{
+    const uint8_t *l;
+    if (page_held < 0 || pg_list_peek || fm1_ms - page_t0 < PAGE_HOLD_MS || page != 0u || !pages_list((uint32_t)page_held, &l))
+        return;
+    peek_btn = pg_list_btn;
+    peek_step = pg_list_step;
+    peek_dev = (uint8_t)pg_cur_dev;
+    peek_pg = (uint8_t)pg_cur_page;
+    pg_list_btn = page_held;
+    pg_list_peek = 1;
+    list_focus();
 }
 
 static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock) */
@@ -210,6 +319,20 @@ static void panel_encoders(int32_t *st)
     }
     if (page != 0)
         return;
+    if (st[0] && pg_list_btn >= 0 && !pg_list_peek) {   /* SELECT inside a page list: leaves it */
+        pg_list_btn = -1;
+        pg_strip_dirty = 1;
+        page_mask();
+    }
+    if (st[1] && pg_list_btn >= 0 && !pg_list_peek) {   /* ALGO inside a page list: its steps */
+        const uint8_t *l;
+        uint32_t n = pages_list((uint32_t)pg_list_btn, &l);
+        if (n) {
+            pg_list_step = (uint8_t)(((int32_t)pg_list_step + st[1] % (int32_t)n + (int32_t)n) % (int32_t)n);
+            list_focus();
+        }
+        st[1] = 0;
+    }
     if (pages_select(st[0]) | pages_page(st[1])) {  /* SELECT: the device, ALGO: its page (the editor follows) */
         m1_focus_now(pg_cur_dev, pg_cur_page);
         ui_dirty = 2;
@@ -342,6 +465,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
                 panel_button(b, 0);
         }
     }
+    page_hold_poll();
     if (p & (1u << BTN_HOME))
         home_t0 = (fm1_ms & ~3u) | 1u;              /* HOME acts on release: a tap goes back, 0.7 s held opens the menu
                                                      * (bit 1 cleared: with fm1_ms's own bit 1 a press looked fired) */

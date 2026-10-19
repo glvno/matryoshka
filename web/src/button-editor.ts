@@ -4,10 +4,11 @@
 // the popover (a top-layer element that survives redraws) and refills it with this after every change.
 
 import { assembliesOf } from './assembly';
-import { KIND_LABEL, kindOf, mainOf, setKind, setSwitches, setTarget, switches, type ButtonKind } from './buttons';
+import { KIND_LABEL, kindOf, mainOf, pageList, setKind, setPages, setSwitches, setTarget, switches, type ButtonKind } from './buttons';
+import { pageTitle, type Device } from './pages';
 import { moduleName } from './labels';
 import { DEFS } from './modules';
-import { EDITOR_ONLY, PANEL_LABEL_MAX, type Patch } from './patch';
+import { EDITOR_ONLY, PAGE_LIST_MAX, PANEL_LABEL_MAX, type Patch } from './patch';
 
 export interface ButtonEditorEvents {
   patch(): Patch;
@@ -15,7 +16,16 @@ export interface ButtonEditorEvents {
   change(fn: () => void): void;
   /** the label on the FM-1 (patch.ts panelLabel), '' for none */
   label(text: string): void;
+  /** the patch's devices and their pages (pages.ts devicesOf) */
+  devices(): Device[];
 }
+
+/** "Oracle V · filter 1/2": a page of a Page button's list */
+export const listEntryName = (devices: Device[], x: { device: string; page: number }): string => {
+  const d = devices.find((y) => y.key === x.device);
+  const pg = d?.pages[x.page];
+  return d && pg ? `${d.name} · ${pageTitle(pg)}` : '(gone)';
+};
 
 /** the targets a Toggle can name, assemblies first, each with a name to tell it apart */
 export function toggleChoices(p: Patch): { value: string; text: string; group: 'asm' | 'module' }[] {
@@ -70,7 +80,7 @@ export function buttonEditor(b: string, ev: ButtonEditorEvents, fixed = false): 
   head.append(title, scope);
   const out: HTMLElement[] = [head];
   if (!fixed)
-    out.push(segmented<ButtonKind>('Does', (['nothing', 'gate', 'bypass'] as ButtonKind[]).map((k) => [k, KIND_LABEL[k]]), kind,
+    out.push(segmented<ButtonKind>('Does', (['nothing', 'gate', 'page', 'bypass'] as ButtonKind[]).map((k) => [k, KIND_LABEL[k]]), kind,
       (k) => ev.change(() => setKind(ev.patch(), b, k))));
   if (kind === 'bypass' && !fixed) {
     const field = document.createElement('label');
@@ -100,7 +110,8 @@ export function buttonEditor(b: string, ev: ButtonEditorEvents, fixed = false): 
     field.append(l, sel);
     out.push(field);
   }
-  if (kind !== 'nothing')
+  if (kind === 'page') out.push(pagesField(b, ev));
+  if (kind === 'gate' || kind === 'bypass')
     out.push(segmented<'hold' | 'switch'>('Press', [['hold', 'While held'], ['switch', 'Switches']], switches(panel, b) ? 'switch' : 'hold',
       (v) => ev.change(() => setSwitches(ev.patch(), b, v === 'switch'))));
   {
@@ -125,7 +136,84 @@ export function buttonEditor(b: string, ev: ButtonEditorEvents, fixed = false): 
   hint.textContent = fixed ? 'GLO will open Main’s global page (#118).'
     : kind === 'nothing' ? 'Unassigned: no role. Its jack still goes high while it is held.'
     : kind === 'gate' ? 'Its jack is high while held (or switched on): patch it.'
+    : kind === 'page' ? 'A press puts the next page of the list on K1..K4; held, its first page shows while it is down; HOME goes back.'
     : 'Bypasses its target, like the card’s ⏻. Its jack is high while engaged.';
   out.push(hint);
   return out;
+}
+
+/** a Page button's list: drag to reorder, × to remove, a picker to add (or Alt-click a card row while this is open) */
+function pagesField(b: string, ev: ButtonEditorEvents): HTMLElement {
+  const p = ev.patch();
+  const devices = ev.devices();
+  const list = pageList(p, b, devices);
+  const field = document.createElement('div');
+  field.className = 'be-field';
+  const head = document.createElement('span');
+  head.className = 'be-label';
+  head.textContent = `Pages (${list.length})`;
+  const ol = document.createElement('ol');
+  ol.className = 'be-pages';
+  let dragged = -1;
+  list.forEach((x, i) => {
+    const li = document.createElement('li');
+    li.draggable = true;
+    const grip = document.createElement('span');
+    grip.className = 'be-grip';
+    grip.textContent = '≡';
+    grip.setAttribute('aria-hidden', 'true');
+    const n = document.createElement('span');
+    n.className = 'be-n';
+    n.textContent = String(i + 1);
+    const name = document.createElement('span');
+    name.className = 'be-name';
+    name.textContent = listEntryName(devices, x);
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'be-del';
+    del.textContent = '×';
+    del.setAttribute('aria-label', `Remove ${name.textContent}`);
+    del.onclick = () => ev.change(() => setPages(ev.patch(), b, list.filter((_, k) => k !== i)));
+    // keyboard: Alt+Up / Alt+Down move the page
+    li.tabIndex = 0;
+    li.onkeydown = (e) => {
+      if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      e.preventDefault();
+      const to = i + (e.key === 'ArrowUp' ? -1 : 1);
+      if (to < 0 || to >= list.length) return;
+      const next = [...list];
+      next.splice(to, 0, next.splice(i, 1)[0]);
+      ev.change(() => setPages(ev.patch(), b, next));
+    };
+    li.ondragstart = (e) => { dragged = i; e.dataTransfer?.setData('text/plain', String(i)); li.classList.add('dragging'); };
+    li.ondragend = () => li.classList.remove('dragging');
+    li.ondragover = (e) => { if (dragged >= 0) e.preventDefault(); };
+    li.ondrop = (e) => {
+      e.preventDefault();
+      if (dragged < 0 || dragged === i) return;
+      const next = [...list];
+      next.splice(i, 0, next.splice(dragged, 1)[0]);
+      dragged = -1;
+      ev.change(() => setPages(ev.patch(), b, next));
+    };
+    li.append(grip, n, name, del);
+    ol.append(li);
+  });
+  const add = document.createElement('select');
+  add.className = 'be-add';
+  add.setAttribute('aria-label', 'Add a page');
+  add.append(new Option(list.length >= PAGE_LIST_MAX ? `the list is full (${PAGE_LIST_MAX})` : '+ Add page (or Alt-click a card row)', ''));
+  add.disabled = list.length >= PAGE_LIST_MAX;
+  for (const d of devices) {
+    const og = document.createElement('optgroup');
+    og.label = d.name;
+    d.pages.forEach((pg, i) => og.append(new Option(`${d.name} · ${pageTitle(pg)}`, `${d.key}#${i}`)));
+    add.append(og);
+  }
+  add.onchange = () => {
+    const [device, page] = add.value.split('#');
+    if (device) ev.change(() => setPages(ev.patch(), b, [...list, { device, page: Number(page) }]));
+  };
+  field.append(head, ol, add);
+  return field;
 }

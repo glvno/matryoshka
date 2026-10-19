@@ -23,6 +23,7 @@
 #define ENG_BTN_GATE 0u                /* a button's kind (buttons.ts KIND_CODE): on while held / switched, its jack only */
 #define ENG_BTN_NOTHING 1u             /* unassigned: its jack still goes high while held */
 #define ENG_BTN_TOGGLE 2u              /* bypasses its modules while on */
+#define ENG_BTN_PAGE 3u                /* a list of device pages for K1..K4 (#117: the panel's, panel.c; the engine skips it) */
 
 /* where the panel section of a patch binary starts: after the 8 header bytes, the poly groups' records (ENG_GROUP_REC each,
  * header byte 3 = their count) and, with any group, one membership byte per module. 0 if the binary is too short. */
@@ -43,7 +44,8 @@ static inline uint32_t eng_records_at(const uint8_t *p, uint32_t len)
 }
 
 /* the end of the button kinds section (patchbin.ts, header flag bit 6) that starts at `at`, 0 when it is cut short:
- * ENG_PANEL_BUTTONS u8 kinds, then per Toggle (kind 2) button u8 n and n u8 module indices */
+ * ENG_PANEL_BUTTONS u8 kinds, then per Toggle (kind 2) button u8 n and n u8 module indices, per Page (kind 3) button u8 n
+ * and n (u8 device, u8 page) pairs (the device pages section's indices, as FOCUS) */
 static inline uint32_t eng_buttons_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     uint32_t b;
@@ -52,11 +54,11 @@ static inline uint32_t eng_buttons_end(const uint8_t *p, uint32_t len, uint32_t 
         return 0;
     at += ENG_PANEL_BUTTONS;
     for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
-        if (k[b] != 2u)
+        if (k[b] != 2u && k[b] != 3u)
             continue;
         if (at >= len)
             return 0;
-        at += 1u + p[at];
+        at += 1u + (k[b] == 3u ? 2u : 1u) * p[at];
     }
     return at <= len ? at : 0;
 }

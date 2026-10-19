@@ -53,6 +53,9 @@ static uint32_t pg_cur_dev, pg_cur_page;                /* the focus: the device
 static uint8_t pg_strip_dirty = 1;                      /* the tabs and chips need a redraw (the focus moved) */
 static uint32_t pg_toast_until, pg_dev_toast_until;     /* a knob just turned / a device just picked: shown until fm1_ms */
 static uint8_t pg_toast_k;
+/* a Page button's list on K1..K4 (#117): its button (-1: none), the step showing, whether a hold peeks at its first page */
+static int8_t pg_list_btn = -1;
+static uint8_t pg_list_step, pg_list_peek;
 
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
 static uint32_t pages_gen(void);                        /* changes when another patch becomes current */
@@ -217,8 +220,11 @@ static void pages_ensure(void)
     int fresh = pg_built_gen != pages_gen();
     if (fresh || (p && pages_at(p, len) != pg_built_at)) {
         pages_build();
-        if (fresh)                                      /* another patch: its first device's first page */
+        if (fresh) {                                    /* another patch: its first device's first page, no list */
             pg_cur_dev = pg_cur_page = 0;
+            pg_list_btn = -1;
+            pg_list_peek = 0;
+        }
     }
 }
 
@@ -229,6 +235,25 @@ static const ppage_t *pages_now(void)
 }
 
 /* ---- the focus */
+
+/* the page list of button b in the running patch (the button kinds section, flag bit 6): its length, *l = its (device,
+ * page) pairs; 0 if b is no Page button */
+static uint32_t pages_list(uint32_t b, const uint8_t **l)
+{
+    uint32_t len, at, k;
+    const uint8_t *p = pages_src(&len), *kind;
+    if (!p || !(p[6] & 64u) || b >= ENG_PANEL_BUTTONS || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at)) || !eng_buttons_end(p, len, at))
+        return 0;
+    kind = p + at;
+    at += ENG_PANEL_BUTTONS;
+    for (k = 0; k < b; k++)
+        if (kind[k] == ENG_BTN_TOGGLE || kind[k] == ENG_BTN_PAGE)
+            at += 1u + (kind[k] == ENG_BTN_PAGE ? 2u : 1u) * p[at];
+    if (kind[b] != ENG_BTN_PAGE)
+        return 0;
+    *l = p + at + 1u;
+    return p[at];
+}
 
 /* put a device page on K1..K4 (indices into the section, clamped); returns whether it moved */
 static int pages_focus(uint32_t d, uint32_t g)
@@ -420,6 +445,36 @@ static void pages_strip(void)
     char t[20];
     uint32_t first = 0, x, i, w[PG_DEVS];
     lcd_fill(0, 0, 240, 20, P_STRIP);
+    if (pg_list_btn >= 0 && pg_ndev) {                  /* a Page button's list: "SCL 2/3 · AMP ENV" */
+        char bar[48], num[8], *q = bar;
+        const uint8_t *l;
+        uint32_t n = pages_list((uint32_t)pg_list_btn, &l);
+        const ppage_t *pg = &pg_page[pg_dev[pg_cur_dev].pg0 + pg_cur_page];
+        if (!panel_label((uint32_t)pg_list_btn, t))
+            put(t, PANEL_BTN_NAME[pg_list_btn])[0] = 0;
+        q = put(q, t);
+        *q++ = ' ';
+        fmt_int(num, (int32_t)(pg_list_peek ? 1u : pg_list_step + 1u));
+        q = put(q, num);
+        *q++ = '/';
+        fmt_int(num, (int32_t)n);
+        q = put(q, num);
+        q = put(q, "  -  ");
+        caps(q, pg->name, pg->nlen, 14);
+        q += str_len(q);
+        if (pg->parts > 1u) {
+            *q++ = ' ';
+            fmt_int(num, pg->part + 1);
+            q = put(q, num);
+            *q++ = '/';
+            fmt_int(num, pg->parts);
+            q = put(q, num);
+        }
+        *q = 0;
+        lcd_fill(0, 0, 240, 20, P_SEA);
+        text_bc(&FONT_S, 0, 3, bar, P_NIGHT, P_SEA, 240, TA_CENTER);
+        return;
+    }
     if (!pg_ndev) {
         text_bc(&FONT_S, 8, 3, "NO DEVICES ON THIS PATCH", P_FAINT, P_STRIP, 0, TA_LEFT);
         return;
