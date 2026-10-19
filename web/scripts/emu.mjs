@@ -16,8 +16,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const EMU = join(ROOT, 'tools/emu');
 const OUT = join(ROOT, 'build/emu');
 const REPO = 'glvno/matryoshka';
-const FM1_EMU = 'https://github.com/joakimeriksson/fm1-emu';
-const REV = '7ca5b96c9e828dea5176fc60f0b945abbf442895';
 
 const args = process.argv.slice(2);
 const smoke = args.includes('--smoke');
@@ -67,10 +65,12 @@ if (smoke) process.exit(run('sh', [join(ROOT, 'tools/emu_smoke.sh'), fw]));
 const isa = execFileSync(join(ROOT, 'tools/emu/isa_fix.sh'), { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
 if (run('cargo', ['build', '--release', '--quiet', '--manifest-path', join(EMU, 'Cargo.toml'), '--config', isa]) !== 0) process.exit(1);
 const live = join(EMU, 'live/bin', process.platform === 'win32' ? 'fm1-live.exe' : 'fm1-live');
-const liveFixed = join(EMU, 'live/.isa-fixed'); // (an fm1-live from before the decoder fix is rebuilt)
+// (built from a patched copy of fm1-emu, tools/emu/live_build.sh: a cargo patch does not reach it. Builds made before
+// that, marked .isa-fixed, ran the unfixed decoder and halted on long forward jumps; they are rebuilt)
+const liveFixed = join(EMU, 'live/.isa-fixed-2');
 if (!existsSync(live) || !existsSync(liveFixed)) {
   console.log('building fm1-live (once)...');
-  if (run('cargo', ['install', '--git', FM1_EMU, '--rev', REV, '--config', isa, '--force', '--root', join(EMU, 'live'), 'fm1-live']) !== 0) process.exit(1);
+  if (run('sh', [join(ROOT, 'tools/emu/live_build.sh')]) !== 0) process.exit(1);
   writeFileSync(liveFixed, '');
 }
 const xip = join(OUT, 'xip.bin');
