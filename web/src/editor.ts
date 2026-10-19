@@ -3194,14 +3194,16 @@ export class Editor {
    * every row of it shows its knob and where its pages start */
   private markFocus(): void {
     for (const el of this.modulesEl.querySelectorAll<HTMLElement>('.param.bound, .param.page-start')) {
-      el.classList.remove('bound', 'page-start');
+      el.classList.remove('bound', 'page-start', 'focused');
       delete el.dataset.kn;
       delete el.dataset.page;
       el.style.removeProperty('--knob');
     }
     const rowEls = (r: PageRow): HTMLElement[] => [...this.modulesEl.querySelectorAll<HTMLElement>(`.param[data-mod="${r.module}"][data-param="${r.param}"]`)];
+    // the page in focus also fills its bars in the knobs' colours (`focused`), as the FM-1's page does
     const mark = (pg: Page, start: boolean): void => pg.rows.forEach((r, i) => rowEls(r).forEach((el) => {
       el.classList.add('bound');
+      el.classList.toggle('focused', !start);
       el.dataset.kn = String(i + 1);
       el.style.setProperty('--knob', `var(--k${i + 1})`);
       if (start && i === 0) { el.classList.add('page-start'); el.dataset.page = pageTitle(pg); }

@@ -209,6 +209,8 @@ main { min-width: 0; min-height: 0; overflow: auto; }
 .param.bar.bound::after { content: attr(data-kn); position: absolute; left: -9px; top: 1px; z-index: 6; display: grid; place-items: center;
   width: 16px; height: 16px; border-radius: 50%; background: var(--knob); color: var(--bg); font: 700 10px/1 'Barlow Condensed', system-ui, sans-serif; pointer-events: none; }
 .param.bar.bound > span:first-child { padding-left: 11px; }
+/* the page in focus: its bars filled in the knob colours (as on the FM-1's device page) */
+.param.bar.focused { --bar-fill: color-mix(in srgb, var(--knob) 46%, transparent); background: color-mix(in srgb, var(--knob) 12%, var(--bar)); }
 .param.bar.page-start { margin-top: 14px; }
 .param.bar.page-start::before { content: attr(data-page); position: absolute; left: 0; right: 0; top: -13px; z-index: 6; border-top: 1px dashed var(--muted);
   padding-top: 1px; font: 600 9px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
