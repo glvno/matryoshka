@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The editor's FM-1 tab (#110): the FM-1's front panel, laid out as the device is, around the real firmware UI as
 // WebAssembly (fm1-ui.ts). The geometry is the one fm1-emu's fm1-live draws (after Felucca's controls diagram, in a
-// 1280 x 820 panel): MASTER / SELECT / PRESETS / ALGORITHM top left with OCT- / OCT+ under them, the screen in the
-// middle, KNOB1..4 and two rows of six buttons on the right, the 27 pill keys (F3..G5) across the bottom. Encoders turn
+// 1280 x 820 panel), made shorter: the left section (MASTER / SELECT / PRESETS / ALGORITHM, OCT- / OCT+ under them) as
+// tall as the right one, the screen in the middle only as tall as they are (so 1280 x 678), KNOB1..4 and two rows of six buttons on the right, the 27 pill keys (F3..G5) across the bottom. Encoders turn
 // by drag, wheel or arrows; a button is held while pressed (Shift-click latches it down, for chords such as PLAY +
 // PRESET); the keys play notes. No editor knowledge here: main.ts wires the events.
 import { BUTTONS, ENCODERS, Fm1Ui, type Fm1Events } from './fm1-ui';
@@ -12,25 +12,25 @@ const capture = (el: Element, id: number): void => { try { el.setPointerCapture(
 
 /** the panel's size in its own units; everything below is placed in them */
 const PW = 1280;
-const PH = 820;
+const PH = 678;
 /** px of vertical drag per encoder click */
 const DRAG_STEP = 8;
 
 /** encoders: label, fm1w_encoder number, centre, radius */
 const ENCS: { label: string; n: number; x: number; y: number; r: number }[] = [
-  { label: 'Select', n: ENCODERS.select, x: 250, y: 135, r: 44 },
-  { label: 'Presets', n: ENCODERS.preset, x: 110, y: 295, r: 44 },
-  { label: 'Algorithm', n: ENCODERS.algo, x: 250, y: 295, r: 44 },
+  { label: 'Select', n: ENCODERS.select, x: 250, y: 124, r: 40 },
+  { label: 'Presets', n: ENCODERS.preset, x: 110, y: 244, r: 40 },
+  { label: 'Algorithm', n: ENCODERS.algo, x: 250, y: 244, r: 40 },
   { label: 'Knob1', n: ENCODERS.k1, x: 935, y: 120, r: 36 },
   { label: 'Knob2', n: ENCODERS.k2, x: 1027, y: 120, r: 36 },
   { label: 'Knob3', n: ENCODERS.k3, x: 1119, y: 120, r: 36 },
   { label: 'Knob4', n: ENCODERS.k4, x: 1211, y: 120, r: 36 },
 ];
-const MASTER = { x: 110, y: 135, r: 44 };
+const MASTER = { x: 110, y: 124, r: 40 };
 /** buttons: label, matrix id, box */
 const BTNS: { label: string; id: number; x: number; y: number; w: number; h: number }[] = [
-  { label: 'Oct-', id: BUTTONS.octDown, x: 62, y: 398, w: 112, h: 44 },
-  { label: 'Oct+', id: BUTTONS.octUp, x: 186, y: 398, w: 112, h: 44 },
+  { label: 'Oct-', id: BUTTONS.octDown, x: 62, y: 328, w: 112, h: 44 },
+  { label: 'Oct+', id: BUTTONS.octUp, x: 186, y: 328, w: 112, h: 44 },
   ...([
     [['FX', BUTTONS.fx], ['SCL', BUTTONS.scl], ['ENV', BUTTONS.env], ['LFO', BUTTONS.lfo], ['EDIT', BUTTONS.edit], ['GLO', BUTTONS.glo]],
     [['HOME', BUTTONS.home], ['SAVE', BUTTONS.save], ['ARP', BUTTONS.arp], ['SEQ', BUTTONS.seq], ['PLAY', BUTTONS.play], ['REC', BUTTONS.rec]],
@@ -42,8 +42,8 @@ const KEYS: { k: number; x: number; y: number; w: number; h: number; black: bool
   const whites = [0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26];
   const blacks: [number, number][] = [[1, 0], [3, 1], [5, 2], [8, 4], [10, 5], [13, 7], [15, 8], [17, 9], [20, 11], [22, 12], [25, 14]];
   return [
-    ...whites.map((k, i) => ({ k, x: x0 + i * (kw + gap), y: 680, w: kw, h: 106, black: false })),
-    ...blacks.map(([k, after]) => ({ k, x: x0 + (after + 1) * (kw + gap) - gap / 2 - kw / 2, y: 574, w: kw, h: 94, black: true })),
+    ...whites.map((k, i) => ({ k, x: x0 + i * (kw + gap), y: 538, w: kw, h: 106, black: false })),
+    ...blacks.map(([k, after]) => ({ k, x: x0 + (after + 1) * (kw + gap) - gap / 2 - kw / 2, y: 432, w: kw, h: 94, black: true })),
   ];
 })();
 
@@ -91,24 +91,24 @@ export class Fm1View {
     el.classList.add('fm1-view');
     const body = div('fm1-body', el);
     body.addEventListener('pointerdown', () => this.host.used?.(), { capture: true });
-    place(div('fm1-tray', body), 50, 388, 260, 64);
+    place(div('fm1-tray', body), 50, 318, 260, 64);
     place(div('fm1-tray', body), 896, 222, 360, 160);
-    place(div('fm1-tray fm1-keybed', body), 34, 562, 1212, 236);
+    place(div('fm1-tray fm1-keybed', body), 34, 420, 1212, 236);
     place(div('fm1-transport', body), 1134, 302, 112, 72);
-    const bezel = place(div('fm1-bezel', body), 352, 24, 516, 516);
+    const bezel = place(div('fm1-bezel', body), 439, 54, 328, 328);
     const lcd = document.createElement('canvas');
     lcd.className = 'fm1-lcd';
     lcd.width = lcd.height = 240;
     lcd.setAttribute('role', 'img');
     lcd.setAttribute('aria-label', 'FM-1 display');
-    lcd.style.left = `${(18 / 516) * 100}%`;
-    lcd.style.top = `${(18 / 516) * 100}%`;
-    lcd.style.width = lcd.style.height = `${(480 / 516) * 100}%`;
+    lcd.style.left = `${(12 / 328) * 100}%`;
+    lcd.style.top = `${(12 / 328) * 100}%`;
+    lcd.style.width = lcd.style.height = `${(304 / 328) * 100}%`;
     bezel.append(lcd);
     this.ctx = lcd.getContext('2d')!;
     this.note = div('fm1-note', bezel);
     this.note.hidden = true;
-    place(div('fm1-silk fm1-name', body, 'FM-1 · Matryoshka'), 352, 546, 516, 14);
+    place(div('fm1-silk fm1-name', body, 'FM-1 · Matryoshka'), 439, 392, 328, 14);
     for (const e of ENCS) this.encoder(body, e.label, e.n, e.x, e.y, e.r);
     this.pot(body, master);
     for (const b of BTNS) this.button(body, b.label, b.id, b.x, b.y, b.w, b.h);
