@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { starterPatch } from './starter';
+import { STARTER, starterPatch } from './starter';
 import { deviceBudget, encodePatch } from './patchbin';
 import { Engine } from './engine';
 
 describe('the first-run patch', () => {
-  it('is the Oracle V pad, fits the FM-1 and plays a chord without clipping', () => {
+  it('is the factory Vernon 100, fits the FM-1 and plays a chord without clipping', () => {
     const p = starterPatch();
-    expect(p.assemblies?.some((a) => a.name === 'Oracle V')).toBe(true);
+    expect(p.name).toBe(STARTER);
+    expect(p.assemblies?.some((a) => a.name === 'Vernon 100')).toBe(true);
     const b = deviceBudget(p);
     expect(b.over, JSON.stringify(b.over)).toEqual([]);
     expect(() => encodePatch(p)).not.toThrow();
@@ -20,7 +21,7 @@ describe('the first-run patch', () => {
     let peak = 0, sum = 0;
     for (let i = N / 2; i < N; i++) { peak = Math.max(peak, Math.abs(l[i]), Math.abs(r[i])); sum += l[i] * l[i]; }
     const rms = Math.sqrt(sum / (N / 2));
-        expect(rms).toBeGreaterThan(0.03);
+    expect(rms).toBeGreaterThan(0.03);
     expect(peak).toBeLessThan(0.99);
   });
 });
