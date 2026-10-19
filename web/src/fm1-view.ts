@@ -18,15 +18,15 @@ const DRAG_STEP = 8;
 
 /** encoders: label, fm1w_encoder number, centre, radius */
 const ENCS: { label: string; n: number; x: number; y: number; r: number }[] = [
-  { label: 'Select', n: ENCODERS.select, x: 250, y: 124, r: 40 },
-  { label: 'Presets', n: ENCODERS.preset, x: 110, y: 244, r: 40 },
-  { label: 'Algorithm', n: ENCODERS.algo, x: 250, y: 244, r: 40 },
+  { label: 'Select', n: ENCODERS.select, x: 250, y: 120, r: 36 },
+  { label: 'Presets', n: ENCODERS.preset, x: 110, y: 248, r: 36 },
+  { label: 'Algorithm', n: ENCODERS.algo, x: 250, y: 248, r: 36 },
   { label: 'Knob1', n: ENCODERS.k1, x: 935, y: 120, r: 36 },
   { label: 'Knob2', n: ENCODERS.k2, x: 1027, y: 120, r: 36 },
   { label: 'Knob3', n: ENCODERS.k3, x: 1119, y: 120, r: 36 },
   { label: 'Knob4', n: ENCODERS.k4, x: 1211, y: 120, r: 36 },
 ];
-const MASTER = { x: 110, y: 124, r: 40 };
+const MASTER = { x: 110, y: 120, r: 36 };
 /** buttons: label, matrix id, box */
 const BTNS: { label: string; id: number; x: number; y: number; w: number; h: number }[] = [
   { label: 'Oct-', id: BUTTONS.octDown, x: 62, y: 328, w: 112, h: 44 },
