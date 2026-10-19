@@ -278,7 +278,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if ((p[6] & ~63u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)))
+    if ((p[6] & ~127u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return 0;
     nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
@@ -303,6 +303,8 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         at += 1u + (1u + 2u * TRACK_STEPS) * p[at];
     }
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))    /* flag bit 5: the device pages */
+        return 0;
+    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))    /* flag bit 6: the button kinds */
         return 0;
     if (p[6] & 2u) {                                            /* flag bit 1: the macro ranges after that */
         if (at >= len)
@@ -364,6 +366,8 @@ static uint32_t m1_range_section(void)
         at += 1u + M1_VALUES_REC * m1_cur[at];
     }
     if ((m1_cur[6] & 32u) && !(at = eng_devices_end(m1_cur, m1_cur_len, at)))   /* the device pages come before the ranges */
+        return 0;
+    if ((m1_cur[6] & 64u) && !(at = eng_buttons_end(m1_cur, m1_cur_len, at)))   /* then the button kinds */
         return 0;
     return at < m1_cur_len ? at : 0;
 }

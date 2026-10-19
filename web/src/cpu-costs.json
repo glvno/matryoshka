@@ -26,28 +26,16 @@
      "output": "clock"
     },
     {
-     "output": "mod"
-    },
-    {
      "output": "gate"
-    },
-    {
-     "output": "bend"
     },
     {
      "output": "vel"
     },
     {
-     "output": "at"
+     "output": "bend"
     },
     {
-     "output": "run"
-    },
-    {
-     "output": "fx"
-    },
-    {
-     "output": "scl"
+     "output": "mod"
     },
     {
      "output": "env"
@@ -56,7 +44,19 @@
      "output": "lfo"
     },
     {
+     "output": "run"
+    },
+    {
+     "output": "scl"
+    },
+    {
+     "output": "fx"
+    },
+    {
      "output": "edit"
+    },
+    {
+     "output": "at"
     },
     {
      "output": "glo"
@@ -26487,10 +26487,10 @@
      "input": "cv"
     },
     {
-     "output": "notch"
+     "output": "peak"
     },
     {
-     "output": "peak"
+     "output": "notch"
     },
     {
      "output": "ap"
@@ -29145,10 +29145,10 @@
      ]
     },
     {
-     "input": "in"
+     "input": "side"
     },
     {
-     "input": "side"
+     "input": "in"
     },
     {
      "param": "attack",
@@ -29315,16 +29315,16 @@
    "cv": 190,
    "dims": [
     {
-     "output": "legato"
-    },
-    {
-     "output": "gate"
+     "output": "vel"
     },
     {
      "output": "index"
     },
     {
-     "output": "vel"
+     "output": "legato"
+    },
+    {
+     "output": "gate"
     },
     {
      "output": "jump"

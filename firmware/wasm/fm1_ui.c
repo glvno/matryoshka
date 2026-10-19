@@ -47,6 +47,7 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
         js_param(mod, par, v);
 }
 static void m1_panel_on(uint32_t mask) { (void)mask; }
+static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }   /* (the page hears of a Toggle through its button) */
 #include "../src/panel.c"
 
 /* the hooks: the LEDs as main.c lights them on the device, into the host's LED arrays (host_ui.h), which the page

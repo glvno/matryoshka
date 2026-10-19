@@ -60,7 +60,8 @@ static void panel_master(uint32_t adc)
 }
 
 /* a patch button pressed / let go (index into PANEL_BTN_ID): a switching one flips on the press, the others act while held;
- * a switch is kept in the patch (SAVE stores it). The same for the panel and CC 80..86 coming in. */
+ * a switch is kept in the patch (SAVE stores it). A Toggle (#116) bypasses its modules while on. The same for the panel
+ * and CC 80..86 coming in. */
 static void panel_button_set(uint32_t b, int down);
 static void panel_button(uint32_t b, int down) { panel_button_set(b, down); }
 static void panel_button_set(uint32_t b, int down)
@@ -75,7 +76,14 @@ static void panel_button_set(uint32_t b, int down)
     }
     if (mask == was)
         return;
-    eng_buttons(mask);
+    eng_buttons(mask);                              /* (a Toggle bypasses its modules, engine.c) */
+    mask = eng_buttons_get();
+    if (eng_button_kind(b) == ENG_BTN_TOGGLE) {     /* ... in the running binary too: SAVE keeps a switched one */
+        const uint8_t *t;
+        uint32_t k, n = eng_button_targets(b, &t);
+        for (k = 0; k < n; k++)
+            m1_patch_bypass(t[k], (int)(mask >> b & 1u));
+    }
     if (tog >> b & 1u)
         m1_panel_on(mask & tog);
     leds_panel();

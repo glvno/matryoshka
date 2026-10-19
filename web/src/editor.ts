@@ -7,6 +7,9 @@ import { lockOf } from './relevance';
 import { tidy, tidyAssembly } from './tidy';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
+import { buttonLight, kindOf, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
+import { buttonEditor } from './button-editor';
+import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
@@ -100,6 +103,18 @@ import { EXCLUDED_TYPES,
   type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setGroupBreak, setHeading, setSpan, spanPlan, type SpanBlock } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
+
+/** a dock button's kind mark (board E): Toggle a power sign, Gate a pulse */
+function kindMark(kind: ButtonKind): SVGSVGElement {
+  const svg = document.createElementNS(SVGNS, 'svg') as SVGSVGElement;
+  svg.setAttribute('class', `pb-mark ${kind}`);
+  svg.setAttribute('viewBox', '0 0 12 12');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = (d: string): void => { const e = document.createElementNS(SVGNS, 'path'); e.setAttribute('d', d); svg.append(e); };
+  if (kind === 'bypass') { path('M6 1.5v4'); path('M3.3 3.6a4 4 0 1 0 5.4 0'); }
+  else path('M1 9h3V3h4v6h3');
+  return svg;
+}
 const HISTORY = 40;
 /** a logarithmic slider's value rounded to the parameter's step (a glide time to the ms, a cutoff to the Hz), not to a whole number */
 function snapTo(pd: ParamDef, v: number): number {
@@ -628,6 +643,7 @@ export class Editor {
     for (const a of visible) if (!a.open) this.modulesEl.append(this.container(a, perVoice(a), parentOf(this.patch, a.id)));
     this.markFocus();
     this.applyStack();
+    if (this.buttonPop) this.fillButtonEditor();
     this.flawPanel?.sync();
     this.ev.onScreens?.(this.screens, this.envScreens);
     this.sizeCanvas();
@@ -2194,83 +2210,156 @@ export class Editor {
     return dot;
   }
 
-  /** a patch button of the FM-1 in the dock: held while pressed, or switched (right-click: switch / hold, label) */
+  /** a patch button of the FM-1 in the dock (board E): its label and kind mark, the FM-1 name under them, a light (dark
+   * unassigned, dim assigned or cabled, lit engaged); held while pressed or switched; right-click or ⋯: the button editor */
   private dockButton(m: ModuleInst, b: string, i: number): HTMLElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'panel-btn';
     btn.dataset.button = b;
-    const toggles = (): boolean => !!m.panel?.toggle?.includes(b);
-    const isOn = (): boolean => !!m.panel?.on?.includes(b);
-    btn.textContent = m.panel?.labels?.[b] || b.toUpperCase();
-    btn.title = `${b.toUpperCase()} button: ${toggles() ? 'switches on / off' : 'on while held'} (right-click: switch or hold, label)`;
-    btn.classList.toggle('toggle', toggles());
-    btn.setAttribute('aria-pressed', String(toggles() && isOn()));
+    const panel = m.panel;
+    const kind = kindOf(panel, b);
+    const name = b.toUpperCase();
+    const top = document.createElement('span');
+    top.className = 'pb-face';
+    if (kind !== 'nothing') top.append(kindMark(kind));
+    const label = document.createElement('span');
+    label.className = 'pb-label';
+    label.textContent = kind === 'nothing' ? name : panel?.labels?.[b] || name;
+    top.append(label);
+    const under = document.createElement('span');
+    under.className = 'pb-hw';
+    under.textContent = kind === 'nothing' ? 'unassigned' : name;
+    const led = document.createElement('span');
+    led.className = 'pb-led';
+    led.setAttribute('aria-hidden', 'true');
+    btn.append(top, under, led);
+    btn.classList.toggle('unassigned', kind === 'nothing');
+    btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
+    const engaged = kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
+    btn.setAttribute('aria-pressed', String(engaged));
+    const does = kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : 'bypasses its target';
+    btn.title = `${name}: ${does}, ${switches(panel, b) ? 'switches on / off' : 'while held'} (right-click: edit the button)`;
     btn.addEventListener('pointerdown', (e) => {
       if (e.button === 0) this.pressButton(i, true);
     });
-    for (const ev of ['pointerup', 'pointerleave'] as const) btn.addEventListener(ev, () => { if (!toggles() && btn.getAttribute('aria-pressed') === 'true') this.pressButton(i, false); });
+    for (const ev of ['pointerup', 'pointerleave'] as const) btn.addEventListener(ev, () => { if (!switches(m.panel, b) && btn.getAttribute('aria-pressed') === 'true') this.pressButton(i, false); });
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      this.dockMenu([
-        { text: toggles() ? 'Act while held' : 'Switch on / off', run: () => {
-          const before = this.mark();
-          const panel = (m.panel ??= {});
-          panel.toggle = toggles() ? (panel.toggle ?? []).filter((x) => x !== b) : [...(panel.toggle ?? []), b];
-          panel.on = (panel.on ?? []).filter((x) => x !== b);
-          this.ev.onButton?.(i, false);
-          this.commit(before);
-          this.ev.onStructure(this.patch);
-          this.rebuild();
-        } },
-        { text: 'Label for the FM-1\u2026', run: () => this.renamePanel(m, b) },
-      ], e.clientX, e.clientY);
+      this.openButtonEditor(b);
+    });
+    const more = document.createElement('span');
+    more.className = 'pb-more';
+    more.textContent = '⋯';
+    more.title = `Edit the ${name} button`;
+    more.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); this.openButtonEditor(b); });
+    btn.append(more);
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) { e.preventDefault(); this.openButtonEditor(b); }
     });
     return btn;
+  }
+
+  /** the button editor's popover (button-editor.ts): kept across redraws, anchored on its dock button */
+  private buttonPop: { el: HTMLElement; b: string } | null = null;
+
+  /** open (or move to) the editor of patch button b */
+  openButtonEditor(b: string): void {
+    if (!this.buttonPop) {
+      const el = document.createElement('div');
+      el.className = 'routing-controls button-editor';
+      el.popover = 'auto';
+      el.addEventListener('toggle', () => { if (!el.matches(':popover-open')) this.buttonPop = null; });
+      el.addEventListener('keydown', (e) => { if (e.key !== 'Escape') e.stopPropagation(); });
+      document.body.append(el);
+      this.buttonPop = { el, b };
+    }
+    this.buttonPop.b = b;
+    this.fillButtonEditor();
+  }
+
+  /** refill the open button editor (after a change, a redraw, undo) and keep it on its button */
+  private fillButtonEditor(): void {
+    const pop = this.buttonPop;
+    const m = this.docked() ?? this.patch.modules.find((x) => x.type === 'fm1');
+    if (!pop) return;
+    const anchor = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${pop.b}"]`);
+    if (!m || !anchor) { if (pop.el.matches(':popover-open')) pop.el.hidePopover(); pop.el.remove(); this.buttonPop = null; return; }
+    pop.el.replaceChildren(...buttonEditor(pop.b, {
+      patch: () => this.patch,
+      change: (fn) => { this.change(fn); },
+      label: (text) => this.setPanelLabel(m, pop.b, text),
+    }, pop.b === 'glo'));
+    if (!pop.el.matches(':popover-open')) pop.el.showPopover();
+    positionPopover(pop.el, anchor);
   }
 
   /**
    * Patch button i (PANEL_BUTTONS) pressed or let go, on the dock or elsewhere (CC 80..86 from the FM-1, which sends the
    * presses raw, #115): a switching one flips on the press and is saved with the patch, the others are on while held.
+   * A Toggle (#116) bypasses its target while on: a switching one in the patch (an undo step, like the card's ⏻), one
+   * that acts while held in the engine only. The engine applies the bypass itself (Engine.setButton), as the FM-1 does.
    */
   pressButton(i: number, down: boolean): void {
     const b = PANEL_BUTTONS[i];
     const m = this.patch.modules.find((x) => x.type === 'fm1');
     if (!m || b === undefined) return;
     const btn = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${b}"]`);
-    if (!m.panel?.toggle?.includes(b)) {
+    const kind = kindOf(m.panel, b);
+    const t = kind === 'bypass' ? m.panel?.targets?.[b] : undefined;
+    const a = t && 'asm' in t ? assembliesOf(this.patch).find((x) => x.id === t.asm) : undefined;
+    if (!switches(m.panel, b)) {
       btn?.setAttribute('aria-pressed', String(down));
+      if (kind === 'bypass') this.showBypass(toggleTargets(this.patch, b), down, a);
       this.ev.onButton?.(i, down);
       return;
     }
     if (!down) return;
     this.touch();
-    const panel = (m.panel ??= {});
-    const on = !panel.on?.includes(b);
-    panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
-    if (!panel.on.length) delete panel.on;
+    let on: boolean;
+    if (kind === 'bypass') {
+      on = !toggleEngaged(this.patch, b);
+      const ids = toggleTargets(this.patch, b);
+      if (a) bypassAssembly(this.patch, a, on);
+      else for (const id of ids) {
+        const x = this.patch.modules.find((y) => y.id === id);
+        if (!x) continue;
+        if (on) x.bypass = true;
+        else delete x.bypass;
+      }
+      this.showBypass(ids, on, a);
+    } else {
+      const panel = (m.panel ??= {});
+      on = !panel.on?.includes(b);
+      panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
+      if (!panel.on.length) delete panel.on;
+    }
     btn?.setAttribute('aria-pressed', String(on));
     this.ev.onButton?.(i, on);
     this.ev.onLayout(this.patch);           // saved with the patch (the device keeps switched buttons too)
   }
 
-  /** a knob's / button's label on the FM-1's screen (patch.ts panelLabel: capitals, 10 characters) */
-  private renamePanel(m: ModuleInst, key: string): void {
-    const now = m.panel?.labels?.[key] ?? '';
-    const typed = window.prompt(`Label of ${key.toUpperCase()} on the FM-1 (capitals, up to ${PANEL_LABEL_MAX} characters; empty = ${key.toUpperCase()})`, now);
-    if (typed === null) return;
+  /** the cards of modules a Toggle bypasses show it (without a redraw: the dock button may be held) */
+  private showBypass(ids: number[], on: boolean, a?: AssemblyInst): void {
+    for (const id of ids) this.cards.get(id)?.classList.toggle('off', on);
+    if (a) {
+      this.containers.get(a.id)?.classList.toggle('off', on);
+      this.frames.get(a.id)?.classList.toggle('off', on);
+    }
+  }
+
+  /** a button's label on the FM-1's screen (patch.ts panelLabel: capitals, 10 characters; '' = none) */
+  private setPanelLabel(m: ModuleInst, key: string, typed: string): void {
     const label = panelLabel(typed);
-    const before = this.mark();
-    const panel = (m.panel ??= {});
-    const labels = { ...(panel.labels ?? {}) };
-    if (label) labels[key] = label;
-    else delete labels[key];
-    if (Object.keys(labels).length) panel.labels = labels;
-    else delete panel.labels;
-    if (!Object.keys(panel).length) delete m.panel;
-    if (!this.commit(before)) return;
-    this.ev.onStructure(this.patch);
-    this.rebuild();
+    this.change(() => {
+      const panel = (m.panel ??= {});
+      const labels = { ...(panel.labels ?? {}) };
+      if (label) labels[key] = label;
+      else delete labels[key];
+      if (Object.keys(labels).length) panel.labels = labels;
+      else delete panel.labels;
+      if (!Object.keys(panel).length) delete m.panel;
+    });
   }
 
   /** a small menu at a screen point (the dock is not in the canvas); a press anywhere else closes it */

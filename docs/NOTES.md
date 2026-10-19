@@ -653,3 +653,11 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Details in docs/ARCHITECTURE.md "Navigation". `panel.c`: `page_show` (was page_set's body), `page_set` pushes the trail, `screen_back`; `home_press` and the legend (`legend_draw`, `PAGE_LEGEND` 7) are gone, so is the HOME-tap jump to the first device. menu.c: SELECT rows, PRESET passes through to `preset_step`; the footer says SELECT row.
 - Manual: HOME / ALGO / SELECT lines, SAVE closes the menu; the over-long "#DEVICES: …" heading (37 characters) shortened. The ? card (index.html) has an "On the FM-1" section now; its Space line said arpeggiator (stale since #58).
 - Smoke (tools/emu/src/smoke.rs): the legend checks went (the button labels come back on GLO's page, #118); HOME on the device page must leave it; the update-from-menu step uses SELECT for the rows.
+
+## Patch button kinds: Nothing / Gate / Toggle (#116, 2026-10-19; vitest 688 incl. buttons.test.ts, golden 85 incl. `button-toggle`, panel host test, proto test, editor seen on [::1]:5173; JieLi CI build + emulator smoke after the push; not flashed)
+
+- Details in docs/ARCHITECTURE.md "Button kinds". New files: `web/src/buttons.ts` (kinds, `toggleTargets`, `toggleEngaged`, `buttonLight`, the editor's edits `setKind` / `setTarget` / `setSwitches`), `web/src/button-editor.ts` (the popover's content; the Editor owns the popover element, `openButtonEditor` / `fillButtonEditor`, refilled after every rebuild).
+- The kind value for Toggle is `bypass` in code (the PRESS list is already called `toggle` since #60); the UI says Toggle.
+- Editor Toggle presses do not call `onBypass` (with Live the FM-1 gets the CC press and bypasses itself; a C_BYPASS first would make its press flip the state back). The browser engine applies the bypass in `setButton`.
+- Behaviour change on the device: every Gate button now glows dim (assigned), not only cabled ones. Old patches are all Gates.
+- Not done here: an LCD change (none needed: the legend is gone), page buttons (#117), GLO (#118).

@@ -231,11 +231,14 @@ static void ui_msg_clear(void)
     header_draw();
 }
 
-/* the patch buttons a cable leaves from (the rest stay dark) */
+/* the patch buttons that glow: assigned (any kind but Nothing, #116) or with a cable from them; the rest stay dark */
 static uint32_t panel_used(void)
 {
     uint32_t i, from, fp, to, tp, used = 0;
     int main = eng_find(T_FM1);
+    for (i = 0; i < ENG_PANEL_BUTTONS; i++)
+        if (eng_button_kind(i) != ENG_BTN_NOTHING)
+            used |= 1u << i;
     for (i = 0; main >= 0 && i < (uint32_t)eng_ncables(); i++) {
         eng_cable(i, &from, &fp, &to, &tp);
         if (from == (uint32_t)main && fp >= FM1_O_FX && fp < FM1_O_FX + ENG_PANEL_BUTTONS)

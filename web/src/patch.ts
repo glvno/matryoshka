@@ -155,10 +155,19 @@ export interface ModuleInst {
 }
 
 export interface MainPanel {
+  /** PRESS: the buttons that switch on / off instead of acting while held */
   toggle?: string[];
+  /** the switched ones that are on (a Toggle's: its target bypassed) */
   on?: string[];
   labels?: Record<string, string>;
+  /** what each button does (#116, buttons.ts): absent = Gate (a patch from before the kinds); Nothing and Toggle (`bypass`) are listed */
+  kinds?: Record<string, 'nothing' | 'bypass'>;
+  /** a Toggle's target: a module or an assembly (by id) */
+  targets?: Record<string, { module: number } | { asm: number }>;
 }
+
+/** a new patch's panel: every button that has an editor starts as Nothing (no implicit roles, #116); GLO stays as it is (#118) */
+export const NEW_PANEL = (): MainPanel => ({ kinds: Object.fromEntries(['fx', 'scl', 'env', 'lfo', 'edit', 'arp'].map((b) => [b, 'nothing' as const])) });
 
 /** the controls a panel label can name: the patch buttons (patchbin.ts writes the labels in this order). The knobs have
  * none any more: they show the names of the rows they turn (pages.ts). */
@@ -234,7 +243,18 @@ export function fixPanel(raw: unknown): MainPanel | undefined {
   const r = raw as Record<string, unknown>;
   const buttons = PANEL_LABEL_KEYS;
   const names = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => buttons.includes(x)))] : []);
-  const toggle = names(r.toggle);
+  const kinds: Record<string, 'nothing' | 'bypass'> = {};
+  if (r.kinds && typeof r.kinds === 'object')
+    for (const [k, v] of Object.entries(r.kinds as Record<string, unknown>)) if (buttons.includes(k) && (v === 'nothing' || v === 'bypass')) kinds[k] = v;
+  const targets: Record<string, { module: number } | { asm: number }> = {};
+  if (r.targets && typeof r.targets === 'object')
+    for (const [k, v] of Object.entries(r.targets as Record<string, unknown>)) {
+      const t = v as { module?: unknown; asm?: unknown } | null;
+      if (kinds[k] !== 'bypass' || !t || typeof t !== 'object') continue;
+      if (Number.isInteger(t.module)) targets[k] = { module: t.module as number };
+      else if (Number.isInteger(t.asm)) targets[k] = { asm: t.asm as number };
+    }
+  const toggle = names(r.toggle).filter((b) => kinds[b] !== 'nothing');   // a button that does nothing has no PRESS
   const on = names(r.on).filter((b) => toggle.includes(b));
   const labels: Record<string, string> = {};
   if (r.labels && typeof r.labels === 'object')
@@ -243,6 +263,8 @@ export function fixPanel(raw: unknown): MainPanel | undefined {
   if (toggle.length) out.toggle = toggle;
   if (on.length) out.on = on;
   if (Object.keys(labels).length) out.labels = labels;
+  if (Object.keys(kinds).length) out.kinds = kinds;
+  if (Object.keys(targets).length) out.targets = targets;
   return Object.keys(out).length ? out : undefined;
 }
 
@@ -454,7 +476,7 @@ export function emptyPatch(name = 'init'): Patch {
 /** what the editor's "New patch" opens: the Main panel at the top left and the Output at the right, nothing wired (grid of assembly.ts) */
 export function newPatch(defs: Record<string, ModuleDef>, name = 'init'): Patch {
   const p = emptyPatch(name);
-  addModule(p, defs.fm1, 20, 20);
+  addModule(p, defs.fm1, 20, 20).panel = NEW_PANEL();
   addModule(p, defs.output, 20 + 3 * 270, 20);
   return p;
 }
@@ -462,7 +484,7 @@ export function newPatch(defs: Record<string, ModuleDef>, name = 'init'): Patch 
 /** give a patch its Main module if it has none (the editor keeps one in the dock, always). Returns whether it added one. */
 export function ensureMain(p: Patch, defs: Record<string, ModuleDef>): boolean {
   if (p.modules.some((m) => m.type === 'fm1')) return false;
-  addModule(p, defs.fm1, 20, 20);
+  addModule(p, defs.fm1, 20, 20).panel = NEW_PANEL();
   return true;
 }
 
@@ -688,6 +710,15 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
     if (!defs[mt.type].inputs.some((i) => i.name === c.to.port)) throw new Error(`no input "${c.to.port}" on ${mt.type}`);
   }
   p.cables = p.cables.filter((c) => kindsFit(defs, p.modules.find((m) => m.id === c.from.module)!.type, c.from.port, p.modules.find((m) => m.id === c.to.module)!.type, c.to.port));
+  {   // a Toggle's target that is gone: the button keeps its kind, without a target
+    const main = p.modules.find((m) => m.type === 'fm1');
+    const t = main?.panel?.targets;
+    if (main?.panel && t) {
+      for (const [b, x] of Object.entries(t))
+        if ('module' in x ? !p.modules.some((m) => m.id === x.module) : !(p.assemblies ?? []).some((a) => a?.id === x.asm)) delete t[b];
+      if (!Object.keys(t).length) delete main.panel.targets;
+    }
+  }
   p.name = String(p.name ?? 'patch');
   if (!hasMorph(p as Patch) || typeof p.morphName !== 'string') delete p.morphName;
   for (const k of SIDE_KEYS) if (!sideSourceOk(p as Patch, k, defs)) delete p[k];

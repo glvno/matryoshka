@@ -433,6 +433,10 @@ typedef struct {
     uint8_t has_b;                   /* the patch carries a morph B set (node_t.parb) */
     uint8_t nranges;
     range_t ranges[ENG_MAX_RANGES];
+    uint8_t btn_kind[ENG_PANEL_BUTTONS];   /* the button kinds (ENG_BTN_*, flag bit 6; without it every one is a Gate) */
+    uint8_t btn_first[ENG_PANEL_BUTTONS], btn_n[ENG_PANEL_BUTTONS];   /* a Toggle's modules: btn_list[first .. first + n) */
+    uint8_t btn_list[ENG_BTN_TARGETS];
+    uint16_t btn_sw;                 /* the buttons that switch (the panel's mask) */
     int8_t main;                     /* the Main module, -1 without one */
     int32_t morph;                   /* the morph position of this block, Q16 0..1: the Main's MORPH parameter plus the mean of its morph input */
 } eng_t;
@@ -440,6 +444,7 @@ typedef struct {
 /* the engine. The clock ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
 static eng_t eng_one ENG_POOL;
 #define E eng_one
+static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
 static volatile uint8_t transport_on; /* the transport (eng_transport) */
@@ -630,8 +635,10 @@ int eng_load(const uint8_t *p, uint32_t len)
 #endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
-    if ((p[6] & ~63u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)))
+    if ((p[6] & ~127u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return -1;
+    for (i = 0; i < ENG_PANEL_BUTTONS; i++)      /* (before eng_buttons below: no Toggle of the last patch acts on this one) */
+        E.btn_kind[i] = (uint8_t)ENG_BTN_GATE, E.btn_n[i] = 0;
     E.nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
     if (E.nmod > ENG_MAX_MODULES || ncab > ENG_MAX_CABLES)
@@ -645,6 +652,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         const uint8_t *q = p + eng_panel_at(p, len);
         uint32_t tog = (uint32_t)q[0] | (uint32_t)q[1] << 8, on = (uint32_t)q[2] | (uint32_t)q[3] << 8;
         eng_buttons(on & tog);
+        E.btn_sw = (uint16_t)tog;
     }
     for (i = 0; i < p[3]; i++) {
         const uint8_t *q = p + 8u + ENG_GROUP_REC * i;
@@ -819,6 +827,30 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (!end)
             return -3;
         at = end;
+    }
+    if (p[6] & 64u) {                            /* the button kinds, a Toggle's modules (#116) */
+        uint32_t end = eng_buttons_end(p, len, at), used = 0, b;
+        if (!end)
+            return -3;
+        for (b = 0; b < ENG_PANEL_BUTTONS; b++)
+            E.btn_kind[b] = (uint8_t)(p[at + b] <= ENG_BTN_TOGGLE ? p[at + b] : ENG_BTN_NOTHING);
+        at += ENG_PANEL_BUTTONS;
+        for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
+            uint32_t n, k;
+            if (E.btn_kind[b] != ENG_BTN_TOGGLE)
+                continue;
+            n = p[at++];
+            if (used + n > ENG_BTN_TARGETS)
+                return -3;
+            E.btn_first[b] = (uint8_t)used;
+            E.btn_n[b] = (uint8_t)n;
+            for (k = 0; k < n; k++, at++) {
+                if (p[at] >= E.nmod)
+                    return -3;
+                E.btn_list[used++] = p[at];
+            }
+        }
+        toggles_sync();
     }
     if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin / parameter / lo / hi each */
         uint32_t nr;
@@ -1021,10 +1053,36 @@ void eng_set_att(uint32_t module, uint32_t input, int32_t q16)
         E.node[module].att[input] = q16;
 }
 
+/* a switching Toggle is on while every module it bypasses is bypassed (a bypass from the editor moves it too); one that
+ * acts while held is on while held */
+static void toggles_sync(void)
+{
+    uint32_t b, k, mask = panel_buttons;
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
+        uint32_t on = E.btn_n[b] != 0u;
+        if (E.btn_kind[b] != ENG_BTN_TOGGLE || !(E.btn_sw >> b & 1u))
+            continue;
+        for (k = 0; k < E.btn_n[b]; k++)
+            on &= E.node[E.btn_list[E.btn_first[b] + k]].bypass;
+        mask = on ? mask | 1u << b : mask & ~(1u << b);
+    }
+    panel_buttons = (uint16_t)mask;
+}
+
 void eng_set_bypass(uint32_t module, int on)
 {
     if (module < E.nmod && E.node[module].type != T_FM1 && E.node[module].type != T_OUTPUT)
         E.node[module].bypass = (uint8_t)(on != 0);
+    toggles_sync();
+}
+
+uint32_t eng_button_kind(uint32_t b) { return b < ENG_PANEL_BUTTONS ? E.btn_kind[b] : ENG_BTN_NOTHING; }
+uint32_t eng_button_targets(uint32_t b, const uint8_t **list)
+{
+    if (b >= ENG_PANEL_BUTTONS || E.btn_kind[b] != ENG_BTN_TOGGLE)
+        return 0;
+    *list = E.btn_list + E.btn_first[b];
+    return E.btn_n[b];
 }
 
 int eng_bypass(uint32_t module) { return module < E.nmod ? E.node[module].bypass : 0; }
@@ -1591,7 +1649,20 @@ void eng_clock_tick(void)
 }
 
 void eng_clock_external(int on) { clk_ext = (uint8_t)(on != 0); }
-void eng_buttons(uint32_t mask) { panel_buttons = (uint16_t)(mask & ((1u << ENG_PANEL_BUTTONS) - 1u)); }
+/* the buttons held / switched on: a Toggle whose state changes bypasses its modules (or brings them back) */
+void eng_buttons(uint32_t mask)
+{
+    uint32_t b, k, was = panel_buttons;
+    panel_buttons = (uint16_t)(mask & ((1u << ENG_PANEL_BUTTONS) - 1u));
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++)
+        if (E.btn_kind[b] == ENG_BTN_TOGGLE && ((was ^ panel_buttons) >> b & 1u))
+            for (k = 0; k < E.btn_n[b]; k++) {
+                uint32_t m = E.btn_list[E.btn_first[b] + k];
+                if (E.node[m].type != T_FM1 && E.node[m].type != T_OUTPUT)
+                    E.node[m].bypass = (uint8_t)(panel_buttons >> b & 1u);
+            }
+    toggles_sync();
+}
 uint32_t eng_buttons_get(void) { return panel_buttons; }
 uint32_t eng_ticks(void) { return E.ticks; }
 int eng_clock_is_external(void) { return clk_ext; }

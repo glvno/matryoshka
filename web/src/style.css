@@ -613,9 +613,38 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); cursor: pointer;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: none; }
 .panel-btn:hover { border-color: var(--secondary); filter: none; }
-.panel-btn.toggle::after { content: ''; position: absolute; top: 4px; right: 4px; width: 4px; height: 4px; border-radius: 50%; box-shadow: 0 0 0 1px var(--muted); }
 .panel-btn[aria-pressed=true] { background: var(--accent); color: var(--accent-ink, #fff); border-color: var(--accent); }
-.panel-btn.toggle[aria-pressed=true]::after { background: var(--accent-ink, #fff); box-shadow: none; }
+/* a patch button's face (board E): the label with its kind mark, the FM-1 name under it, a light at the top right
+   (dark unassigned and uncabled, dim assigned or cabled, lit engaged); ⋯ opens the button editor */
+.panel-btn:not(.device):not(.play) { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 3px 12px; min-height: 36px; }
+.pb-face { display: flex; align-items: center; gap: 4px; max-width: 100%; }
+.pb-label { overflow: hidden; text-overflow: ellipsis; }
+.pb-hw { font-size: 8.5px; letter-spacing: .1em; color: var(--muted); line-height: 1; }
+.panel-btn.unassigned .pb-label { color: var(--muted); }
+.panel-btn.unassigned .pb-hw { text-transform: none; letter-spacing: .02em; font-size: 9.5px; color: color-mix(in oklab, var(--muted) 70%, var(--panel)); }
+.panel-btn[aria-pressed=true] .pb-hw { color: inherit; }
+.pb-mark { flex: none; width: 11px; height: 11px; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.pb-mark.bypass { stroke: var(--secondary); }
+.pb-mark.gate { stroke: var(--gate); }
+.panel-btn[aria-pressed=true] .pb-mark { stroke: currentColor; }
+.pb-led { position: absolute; top: 4px; right: 4px; width: 5px; height: 5px; border-radius: 50%; background: var(--panel); box-shadow: 0 0 0 1px var(--line); }
+.panel-btn.assigned .pb-led { background: color-mix(in srgb, var(--gate) 45%, transparent); box-shadow: none; }
+.panel-btn[aria-pressed=true] .pb-led { background: var(--gate); box-shadow: 0 0 5px var(--gate); }
+.pb-more { position: absolute; bottom: 1px; right: 3px; padding: 0 2px; font-size: 11px; line-height: 1; color: var(--muted); opacity: 0; cursor: pointer; }
+.panel-btn:hover .pb-more, .panel-btn:focus-visible .pb-more { opacity: 1; }
+/* the button editor (board F), in the parameter menus' popover frame */
+.button-editor { width: 280px; display: flex; flex-direction: column; gap: 10px; }
+.button-editor .be-head { display: flex; justify-content: space-between; align-items: baseline; font: var(--cap); text-transform: uppercase; letter-spacing: .06em; }
+.button-editor .be-head span { font-size: 11px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+.button-editor .be-field { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 0; }
+.button-editor .be-label { font: var(--cap); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.button-editor .be-seg { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.button-editor .be-seg button { flex: 1; min-height: 30px; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: var(--cap); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.button-editor .be-seg button + button { border-left: 1px solid var(--line); }
+.button-editor .be-seg button[aria-pressed=true] { background: var(--secondary); color: var(--panel); }
+.button-editor select, .button-editor input[type=text] { width: 100%; box-sizing: border-box; min-height: 30px; font-size: 12px; }
+.button-editor input[type=text] { text-transform: uppercase; letter-spacing: .06em; }
+.button-editor .be-hint { margin: 0; font-size: 11px; }
 /* the FM-1's own buttons (HOME SAVE SEQ REC): in their place, dashed and dim, inert */
 .panel-btn.device, .panel-btn.device:hover { border-style: dashed; border-color: var(--line); color: color-mix(in oklab, var(--muted) 60%, var(--panel)); cursor: default; }
 /* PLAY is the transport (Space): outlined in the secondary colour while it runs */

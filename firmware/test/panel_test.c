@@ -13,6 +13,7 @@ static void m1_focus_now(uint32_t d, uint32_t g) { focus_dev = (int)d; focus_pg 
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; param_now++; }
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; }
 static void m1_panel_on(uint32_t mask) { (void)mask; }
+static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }
 #include "../src/panel.c"
 /* the hooks */
 static int presets_stepped, saved, midi_out;

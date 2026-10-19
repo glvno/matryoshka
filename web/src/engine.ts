@@ -11,6 +11,7 @@
 import { driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, STEP_NOTE, STEP_VEL, STEPS_MAX, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView } from './poly';
+import { kindOf, switches, toggleTargets } from './buttons';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
 export const BLOCK = 128;
@@ -139,6 +140,9 @@ export class Engine {
   private running = false;
   /** the FM-1's patch buttons (bit i = PANEL_BUTTONS[i]): held, or switched on */
   private buttons = 0;
+  /** per patch button: the modules a Toggle bypasses (buttons.ts toggleTargets), null for the other kinds; and whether it switches */
+  private btnTargets: (number[] | null)[] = [];
+  private btnSwitch: boolean[] = [];
   private arps: ArpRun[] = [];
   /** the performance controls (pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1): one set, every part sees it */
   private ctl = { bend: 0, mod: 0, at: 0 };
@@ -256,6 +260,10 @@ export class Engine {
     this.hasB = this.order.some((n) => n.paramsB);
     const mainInst = patch.modules.find((m) => m.type === 'fm1');   // the switched-on buttons the patch was saved with
     this.buttons = PANEL_BUTTONS.reduce((mask, b, i) => (mainInst?.panel?.on?.includes(b) && mainInst.panel.toggle?.includes(b) ? mask | (1 << i) : mask), 0);
+    const srcPanel = source.modules.find((m) => m.type === 'fm1')?.panel;
+    this.btnTargets = PANEL_BUTTONS.map((b) => (kindOf(srcPanel, b) === 'bypass' ? toggleTargets(source, b).filter((id) => next.has(id)) : null));
+    this.btnSwitch = PANEL_BUTTONS.map((b) => switches(srcPanel, b));
+    this.syncToggles();
     const oldArps = new Map(this.arps.map((a) => [a.node.id, a]));
     this.arps = this.order.filter((n) => n.type === 'arp').map((node) => {
       const old = oldArps.get(node.id);
@@ -426,6 +434,17 @@ export class Engine {
   setBypass(id: number, on: boolean): void {
     const n = this.nodes.get(id);
     if (n && n.type !== 'fm1' && n.type !== 'output') n.bypass = on;
+    this.syncToggles();
+  }
+
+  /** a switching Toggle is on while every module it bypasses is bypassed (a card's ⏻ moves it too); one that acts while
+   * held is on while held */
+  private syncToggles(): void {
+    this.btnTargets.forEach((t, i) => {
+      if (!t || !this.btnSwitch[i]) return;
+      const on = t.length > 0 && t.every((id) => this.nodes.get(id)?.bypass);
+      this.buttons = on ? this.buttons | (1 << i) : this.buttons & ~(1 << i);
+    });
   }
 
   /**
@@ -615,8 +634,13 @@ export class Engine {
   }
 
   /** a patch button (PANEL_BUTTONS index) held or switched: the host does the switching, the engine keeps the state */
+  /** patch button i is on (held, or switched on): a Toggle bypasses its modules while on */
   setButton(i: number, on: boolean): void {
-    if (i >= 0 && i < PANEL_BUTTONS.length) this.buttons = on ? this.buttons | (1 << i) : this.buttons & ~(1 << i);
+    if (i < 0 || i >= PANEL_BUTTONS.length) return;
+    const was = (this.buttons >> i) & 1;
+    this.buttons = on ? this.buttons | (1 << i) : this.buttons & ~(1 << i);
+    const t = this.btnTargets[i];
+    if (t && was !== (on ? 1 : 0)) for (const id of t) this.setBypass(id, on);
   }
 
   get buttonMask(): number {

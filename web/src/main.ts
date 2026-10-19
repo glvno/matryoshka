@@ -19,6 +19,7 @@ import { attachKeyboard, attachMidi, isTextEntry } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
+import { switches } from './buttons';
 import { longName, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
@@ -356,7 +357,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     host.send({ t: 'button', i, on });
     // the FM-1 takes CC 80..86 as presses (127) and releases (0) of its patch buttons: a switch is one press
     if (!live() || fromDevice) return;
-    const toggles = !!editor.patch.modules.find((m) => m.type === 'fm1')?.panel?.toggle?.includes(PANEL_BUTTONS[i]);
+    const toggles = switches(editor.patch.modules.find((m) => m.type === 'fm1')?.panel, PANEL_BUTTONS[i]);
     if (toggles) { device.cc(80 + i, 127); device.cc(80 + i, 0); }
     else device.cc(80 + i, on ? 127 : 0);
   },

@@ -468,6 +468,21 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   on the device and stubs on a host. `tools/panel_test.sh` (firmware/test/panel_test.c, on ui_preview.c built with
   `UI_PREVIEW_LIB`) drives SELECT / ALGO / K1 / HOME / the menu / the trail / PLAY / tempo / SAVE / a key / MIDI out and
   checks the framebuffer; the firmware CI runs it.
+- **Button kinds (#116, designs E / F):** each patch button has one kind per patch (`web/src/buttons.ts`): Nothing
+  (unassigned, no role), Gate (on while held or switched; patch its jack) or Toggle (`bypass` in the model: bypasses a
+  module or an assembly, the same bypass as the card's ⏻; on = its target bypassed). Every button keeps its jack, high
+  while held or engaged. Model: `MainPanel.kinds` (absent = Gate, so patches from before keep their behaviour; a new
+  patch's buttons start as Nothing, `NEW_PANEL`, GLO aside until #118) and `MainPanel.targets` ({module} or {asm});
+  `toggle` stays the PRESS setting (switches). An assembly target moves the members its own switch moves
+  (`toggleTargets`: not those bypassed on their own). Binary format 30: flag bit 6 section (patchbin.ts top), before the
+  macro ranges; `ENG_PATCH_COMPAT_VERSION` stays 29 (the panel section is unchanged). Engines: `Engine.setButton` /
+  `eng_buttons` bypass a Toggle's modules when its state changes; a switching Toggle's state follows its targets
+  (`syncToggles` / `toggles_sync`, also after a bypass from elsewhere); the firmware also writes the bypass bits into the
+  running binary (`m1_patch_bypass`) so SAVE keeps them. LEDs: dark = Nothing and uncabled, dim = assigned or cabled
+  (`panel_used`), lit = engaged. Editor: dock faces with label, kind mark, FM-1 name, light; the button editor popover
+  (`button-editor.ts`, right-click or ⋯ on a dock button: DOES, BYPASSES, PRESS, LABEL; GLO gets PRESS and LABEL only).
+  A Toggle press from the dock or the FM-1 (`Editor.pressButton`): a switching one is a patch edit (undo step), a held
+  one only the engine and the card's look. Golden kit `button-toggle`.
 - Navigation (#114): one rule. A button that changes the screen (SEQ, REC, HOME held = the menu; page buttons #117 and
   GLO #118 next) leaves a step on the trail (`panel.c` `page_set`: page + the device page in focus, `TRAIL_MAX` 8, the
   oldest dropped); a HOME tap goes back one (`screen_back`, restoring the device page if it moved; the same button again

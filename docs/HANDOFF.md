@@ -36,7 +36,7 @@ docs/ARCHITECTURE.md "Device pages". The earlier handoffs are in git history.
 
 1. ~~#113 dock layout~~ done 2026-10-19 (docs/NOTES.md "Main dock to board D"). Next, independent: **#114** navigation
    (firmware + wasm) and **#115** MIDI out of every control (firmware); #116 and #119 are unblocked.
-2. **#116** button kinds + editor + LEDs (format bump), then **#117** page buttons, **#118** GLO, **#119** arpeggiator
+2. ~~#114, #115, #116~~ done 2026-10-19 (docs/NOTES.md). Next **#117** page buttons, **#118** GLO, **#119** arpeggiator
    on the dock.
 3. **#120** MIDI mirroring for any firmware (after #115).
 4. Older open work: **#111** C engine audio in the FM-1 tab, **#112** envelope shapes in the bars, **#102** / **#103**

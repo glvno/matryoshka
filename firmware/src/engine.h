@@ -10,7 +10,7 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 29   /* 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_VERSION 30   /* 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
 #define ENG_PATCH_COMPAT_VERSION 29
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
@@ -19,6 +19,10 @@
 #define ENG_PANEL_LABELS 7             /* the buttons (patch.ts PANEL_LABEL_KEYS); the knobs show their rows' names */
 #define ENG_PANEL_LABEL 10             /* bytes per label (PANEL_LABEL_MAX), zero padded */
 #define ENG_PANEL_BYTES (4u + ENG_PANEL_LABELS * ENG_PANEL_LABEL)   /* the panel section (patchbin.ts PANEL_BYTES) */
+#define ENG_BTN_TARGETS 128            /* the modules the Toggle buttons bypass, all together (patchbin.ts BUTTON_TARGETS_MAX) */
+#define ENG_BTN_GATE 0u                /* a button's kind (buttons.ts KIND_CODE): on while held / switched, its jack only */
+#define ENG_BTN_NOTHING 1u             /* unassigned: its jack still goes high while held */
+#define ENG_BTN_TOGGLE 2u              /* bypasses its modules while on */
 
 /* where the panel section of a patch binary starts: after the 8 header bytes, the poly groups' records (ENG_GROUP_REC each,
  * header byte 3 = their count) and, with any group, one membership byte per module. 0 if the binary is too short. */
@@ -36,6 +40,25 @@ static inline uint32_t eng_records_at(const uint8_t *p, uint32_t len)
 {
     uint32_t at = eng_panel_at(p, len);
     return at ? at + ENG_PANEL_BYTES : 0;
+}
+
+/* the end of the button kinds section (patchbin.ts, header flag bit 6) that starts at `at`, 0 when it is cut short:
+ * ENG_PANEL_BUTTONS u8 kinds, then per Toggle (kind 2) button u8 n and n u8 module indices */
+static inline uint32_t eng_buttons_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t b;
+    const uint8_t *k = p + at;
+    if (at + ENG_PANEL_BUTTONS > len)
+        return 0;
+    at += ENG_PANEL_BUTTONS;
+    for (b = 0; b < ENG_PANEL_BUTTONS; b++) {
+        if (k[b] != 2u)
+            continue;
+        if (at >= len)
+            return 0;
+        at += 1u + p[at];
+    }
+    return at <= len ? at : 0;
 }
 
 /* the end of the device pages section (patchbin.ts, header flag bit 5) that starts at `at`, 0 when it is cut short:
@@ -138,6 +161,9 @@ void eng_transport(int on);
 int eng_transport_running(void);
 /* the patch buttons (bit i = button i of ENG_PANEL_BUTTONS): held or switched on; the Main module's button outputs */
 void eng_buttons(uint32_t mask);
+/* what button b does (ENG_BTN_*), and a Toggle's modules (their count; *list points at their indices) */
+uint32_t eng_button_kind(uint32_t b);
+uint32_t eng_button_targets(uint32_t b, const uint8_t **list);
 uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quarter note) */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
 uint32_t eng_buttons_get(void);

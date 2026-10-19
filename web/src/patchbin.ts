@@ -30,6 +30,10 @@
 //                name (text), u8 part (0-based), u8 parts, u8 the envelope drawn above it (1 + module index, 0 none), u8 row
 //                count (1..PAGE_ROWS), per row u8 module index, u8 parameter index (bit 7: a setting of the poly group of
 //                that Part, POLY_ROW_PARAMS), its label (text)
+//   with flag bit 6: the button kinds (buttons.ts): PANEL_BUTTONS.length u8 kinds (0 Gate, 1 Nothing, 2 Toggle), then per
+//                Toggle button, in button order, u8 n (0..), n u8 module indices: the modules it bypasses (buttons.ts
+//                toggleTargets). A patch without it: every button is a Gate. The panel's switched-on mask holds a
+//                switching Toggle as on while its targets are bypassed.
 //   with flag bit 1 (always last: the FM-1 edits it in place): u8 count, then per macro range: u8 module index, u8 pin (0 p1,
 //                1 p2), u8 parameter index, u8 low end, u8 high end (0..255 of the parameter's range, octaves for a log
 //                one): the pin's value lands between the ends
@@ -38,6 +42,7 @@
 // Port indices are positions in ModuleDef.outputs / inputs (explicit ports first, then the `<param>_cv` inputs).
 
 import { DEFS, PANEL_BUTTONS } from './modules';
+import { KIND_CODE, kindOf, mainOf, switches, toggleEngaged, toggleTargets } from './buttons';
 import { EDITOR_ONLY, flawOf, hasMorph, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS, PANEL_LABEL_MAX, panelLabel, SOURCES, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, trackName, type Patch } from './patch';
 import { deviceView, MAX_POLY, type DeviceGroup } from './poly';
 import { devicesOf, NAME_MAX, type Device } from './pages';
@@ -50,7 +55,7 @@ export const GROUP_REC = 4 + 5 * MAX_PARTS + 4;
 /** bytes of the panel section (engine.h ENG_PANEL_BYTES): two masks and the labels */
 export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
-export const VERSION = 29; // 29: the device pages section (flag bit 5); the Main module lost the knob outputs and parameters k1..k6 (its knobs edit the page in focus), the panel section the knob labels (7 labels); the Macro module; 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
+export const VERSION = 30; // 30: the button kinds section (flag bit 6: Nothing / Gate / Toggle and a Toggle's modules); 29: the device pages section (flag bit 5); the Main module lost the knob outputs and parameters k1..k6 (its knobs edit the page in focus), the panel section the knob labels (7 labels); the Macro module; 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
 /** bytes of a module record */
 export const recordSize = (type: string): number => 1 + 4 * DEFS[type].params.length + (DEFS[type].paramInputs ? 20 : 0) + (DEFS[type].data ?? 0);
 export const Q = 65536;
@@ -64,6 +69,26 @@ export const FLAG_INPUTS = 4; // legacy: disabled fixed links (format 17); the e
 export const FLAG_INPUT_MAP = 8;
 export const FLAG_STEP_VALUES = 16;
 export const FLAG_DEVICES = 32;
+export const FLAG_BUTTONS = 64;
+/** the most Toggle targets a patch can list, all buttons together (engine.h ENG_BTN_TARGETS) */
+export const BUTTON_TARGETS_MAX = 128;
+
+/** the button kinds section (flag bit 6), or [] when every button is a Gate (see the top of this file) */
+export function buttonRecord(source: Patch, p: Patch): number[] {
+  const panel = mainOf(source)?.panel;
+  if (!PANEL_BUTTONS.some((b) => kindOf(panel, b) !== 'gate')) return [];
+  const index = new Map(p.modules.map((m, i) => [m.id, i]));
+  const out = PANEL_BUTTONS.map((b) => KIND_CODE[kindOf(panel, b)]);
+  let total = 0;
+  for (const b of PANEL_BUTTONS) {
+    if (kindOf(panel, b) !== 'bypass') continue;
+    const ids = toggleTargets(source, b).filter((id) => index.has(id));
+    total += ids.length;
+    if (total > BUTTON_TARGETS_MAX) throw new Error(`the buttons toggle more than ${BUTTON_TARGETS_MAX} modules`);
+    out.push(ids.length, ...ids.map((id) => index.get(id)!));
+  }
+  return out;
+}
 /** the most devices, and pages per device, the binary lists (the rest are left out) */
 export const MAX_DEVICES = 32, MAX_PAGES = 32;
 /** bytes of one entry of the step values section: the module index, the notes, the velocities */
@@ -168,7 +193,7 @@ export function deviceRecord(devs: Device[], p: Patch): number[] {
 /** bytes of the binary patch (what the FM-1 must hold, M1_PATCH_MAX) */
 export function encodedSize(source: Patch): number {
   const { patch: p, groups: dg } = deviceView(source, true);
-  return sizeOf(p, dg, deviceSection(source, p));
+  return sizeOf(p, dg, deviceSection(source, p)) + buttonRecord(source, p).length;
 }
 
 function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[]): number {
@@ -199,7 +224,8 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   const routes = routesOf(p);
   const valued = valuedTracks(p);
   const devs = deviceSection(source, p);
-  const size = sizeOf(p, groups, devs);
+  const kinds = buttonRecord(source, p);
+  const size = sizeOf(p, groups, devs) + kinds.length;
   const out = new Uint8Array(size);
   const dv = new DataView(out.buffer);
   out[0] = 0xa1;
@@ -207,7 +233,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   out[2] = p.modules.length;
   out[3] = groups.length;
   dv.setUint16(4, p.cables.length, true);
-  dv.setUint16(6, (morph ? FLAG_MORPH : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_STEP_VALUES : 0) | (devs.length ? FLAG_DEVICES : 0), true);
+  dv.setUint16(6, (morph ? FLAG_MORPH : 0) | (ranges.length ? FLAG_RANGE : 0) | (routes.length ? FLAG_INPUT_MAP : 0) | (valued.length ? FLAG_STEP_VALUES : 0) | (devs.length ? FLAG_DEVICES : 0) | (kinds.length ? FLAG_BUTTONS : 0), true);
   let at = 8;
   for (const { cfg, src } of groups) {
     out.set([cfg.parts, cfg.assign, cfg.legato | (cfg.unison ? 0x80 : 0), cfg.priority], at);
@@ -222,9 +248,11 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   if (groups.length) for (const m of p.modules) out[at++] = groups.findIndex((g) => g.modules.has(m.id)) + 1;
   {   // the panel: what the patch makes of the FM-1's buttons, the labels of its knobs and buttons
     const panel = p.modules.find((m) => m.type === 'fm1')?.panel;
-    const mask = (names: string[] | undefined): number => PANEL_BUTTONS.reduce((k, b, i) => (names?.includes(b) ? k | (1 << i) : k), 0);
-    dv.setUint16(at, mask(panel?.toggle), true);
-    dv.setUint16(at + 2, mask(panel?.on) & mask(panel?.toggle), true);
+    const mask = (on: (b: string) => boolean): number => PANEL_BUTTONS.reduce((k, b, i) => (on(b) ? k | (1 << i) : k), 0);
+    // a switching Toggle is on while its targets are bypassed; a button that does nothing never switches
+    const lit = (b: string): boolean => switches(panel, b) && (kindOf(panel, b) === 'bypass' ? toggleEngaged(source, b) : !!panel?.on?.includes(b));
+    dv.setUint16(at, mask((b) => switches(panel, b)), true);
+    dv.setUint16(at + 2, mask(lit), true);
     PANEL_LABEL_KEYS.forEach((k, i) => {
       const s = panelLabel(panel?.labels?.[k]);
       for (let j = 0; j < s.length; j++) out[at + 4 + i * PANEL_LABEL_MAX + j] = s.charCodeAt(j);
@@ -297,6 +325,10 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
     const rec = deviceRecord(devs, p);
     out.set(rec, at);
     at += rec.length;
+  }
+  if (kinds.length) {
+    out.set(kinds, at);
+    at += kinds.length;
   }
   if (ranges.length) {
     out[at++] = ranges.length;

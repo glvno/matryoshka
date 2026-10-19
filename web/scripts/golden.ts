@@ -1319,6 +1319,28 @@ tests['panel-buttons'].modules[0].panel = { toggle: ['arp'], on: ['arp'], labels
 events['panel-buttons'] = [[0, 'on', 60], [128 * 20, 'bon', 0], [128 * 60, 'boff', 0], [128 * 80, 'bon', 0], [128 * 100, 'boff', 6], [128 * 140, 'bon', 6], [128 * 160, 'off', 60]];
 ends['panel-buttons'] = 128 * 180;
 
+// Toggle buttons (#116): FX bypasses a closed VCA while held (the oscillator gets through), ARP switches a folder that the
+// patch was saved with bypassed (on: its target bypassed) back in and out
+tests['button-toggle'] = make('button-toggle', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const o = add('osc', 200, 0, { wave: 0, level: 0.5 });
+  const f = add('shape', 400, 0, { drive: 8 });
+  const v = add('vca', 600, 0);
+  const out = add('output', 800, 0, { level: 0.7 });
+  wire(kb, 'pitch', o, 'pitch');
+  wire(o, 'out', f, 'in');
+  wire(f, 'out', v, 'in');
+  wire(v, 'out', out, 'l');
+});
+{
+  const t = tests['button-toggle'];
+  const [vca, fold] = [t.modules.find((m) => m.type === 'vca')!, t.modules.find((m) => m.type === 'shape')!];
+  fold.bypass = true;
+  t.modules[0].panel = { toggle: ['arp'], on: ['arp'], kinds: { fx: 'bypass', arp: 'bypass', scl: 'nothing' }, targets: { fx: { module: vca.id }, arp: { module: fold.id } } };
+}
+events['button-toggle'] = [[0, 'on', 60], [128 * 20, 'bon', 0], [128 * 60, 'boff', 0], [128 * 70, 'bon', 0], [128 * 80, 'boff', 6], [128 * 110, 'bon', 6], [128 * 130, 'boff', 0], [128 * 150, 'off', 60]];
+ends['button-toggle'] = 128 * 170;
+
 
 // Steps (#83): drum tracks on the transport. A kick on the quarters (accent on the first, acc opens more level), a hat at
 // 1/16 over 12 steps with chances (the deterministic hash), swing and a short gate, and a third track at 1/8T; stop and
