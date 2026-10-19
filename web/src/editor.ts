@@ -55,7 +55,7 @@ import {
   STEPS_MAX,
   setStepValue,
 } from './patch';
-import { stepGrid, type StepGrid } from './step-grid';
+import { disarm, stepGrid, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
@@ -338,6 +338,7 @@ export class Editor {
   }
 
   setPatch(p: Patch): void {
+    disarm(); // (step entry belongs to the patch it started in)
     this.patch = p;
     if (this.dock) ensureMain(this.patch, DEFS);
     this.report(fixAssemblies(this.patch, DEFS));

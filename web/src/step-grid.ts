@@ -7,6 +7,10 @@
 //   vel:   press and sweep across the steps to draw their velocities (the height in the cell), double click the default.
 // The step playing is outlined (Engine.stepsView through the worklet). The editor owns the patch and the undo history:
 // the grid only reports through `ops`.
+// Step entry (#127): `rec` in the head arms one grid at a time (the note lane, a cursor on the first step or the one
+// clicked). A note played anywhere (the note keys, a MIDI controller, the on-screen keys: recordNote) writes the cursor's
+// step (on, untied, the note and its velocity) and moves on; Backspace a rest, Enter a tie, Left / Right move the cursor,
+// Escape or `rec` again stops (recordKey).
 import { NOTE_NAMES } from './modules';
 import { STEP_NOTE, STEP_VEL, STEPS_MAX, stepByte, stepOf, TRACK_NAME_MAX, trackName, type ModuleInst } from './patch';
 
@@ -30,6 +34,23 @@ export interface StepGrid {
 }
 
 type Lane = 'steps' | 'note' | 'vel';
+
+/** the armed grid (#127): its module, the cursor, and what the newest grid of that module does with a note or a key */
+let armed: { id: number; k: number; note(note: number, vel: number): void; key(key: string): boolean; stop(): void } | null = null;
+/** a note played while a grid is armed: written into the cursor's step; false when none is armed */
+export function recordNote(note: number, vel: number): boolean {
+  if (!armed) return false;
+  armed.note(note, vel);
+  return true;
+}
+/** a key while a grid is armed (Backspace, Enter, Left, Right, Escape): true when it was the grid's */
+export const recordKey = (key: string): boolean => !!armed?.key(key);
+/** stop step entry (another patch loaded) */
+export function disarm(): void {
+  const a = armed;
+  armed = null;
+  a?.stop();
+}
 const LANES: Lane[] = ['steps', 'note', 'vel'];
 /** the lane each grid shows, by module id (kept over the editor's rebuilds, not saved) */
 const laneOf = new Map<number, Lane>();
@@ -82,7 +103,13 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   mute.title = 'mute the track (not saved; on the FM-1: SEQ held + its black key)';
   let muted = false;
   mute.onclick = () => ops.mute(!muted);
-  head.append(name, lanes, mute);
+  const rec = document.createElement('button');
+  rec.type = 'button';
+  rec.className = 'steps-rec';
+  rec.textContent = 'rec';
+  rec.title = 'step entry: play notes (keys or MIDI) into the steps from the cursor; Backspace a rest, Enter a tie, ← → move, Esc stops';
+  rec.onclick = () => (armed?.id === m.id ? stopRec() : startRec(armed?.id === m.id ? armed.k : 0));
+  head.append(name, lanes, rec, mute);
   const rows = document.createElement('div');
   rows.className = 'steps-rows';
   /** what a note / velocity drag is setting, under the grid */
@@ -176,6 +203,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     }
     paintAll();
     shownPos = -1;
+    if (armed?.id === m.id) cells[armed.k]?.classList.add('cursor');
   };
   /** the step under a pointer (sweeping across the velocity lane), -1 outside */
   const stepAt = (x: number, y: number): number => {
@@ -200,6 +228,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation(); // (not a card drag)
+      if (armed?.id === m.id) return move(k); // step entry: a click puts the cursor there
       c.setPointerCapture(e.pointerId);
       if (lane === 'vel') return velSweep(c, k, e);
       if (lane === 'note') return noteDrag(c, k, e);
@@ -279,8 +308,58 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       end();
     };
   };
+  /** step entry: the cursor's step and the key / note handlers, kept on the module across the editor's rebuilds */
+  const showRec = (): void => {
+    const on = armed?.id === m.id;
+    rec.classList.toggle('on', on);
+    rec.setAttribute('aria-pressed', String(on));
+    cells.forEach((c, k) => c.classList.toggle('cursor', on && k === armed!.k));
+  };
+  const move = (k: number): void => {
+    if (!armed) return;
+    armed.k = ((k % len()) + len()) % len();
+    showRec();
+    readout.textContent = `rec: step ${armed.k + 1}`;
+  };
+  const stopRec = (): void => {
+    if (armed?.id === m.id) disarm();
+  };
+  const startRec = (k: number): void => {
+    disarm();
+    armed = {
+      id: m.id,
+      k: Math.min(k, len() - 1),
+      note: (note, vel) => {
+        const at = armed!.k;
+        const end = ops.begin();
+        writeValue(at, note, Math.max(1, Math.min(127, Math.round(vel * 127))));
+        write(at, { ...stepOf(m.steps?.[at]), on: true, tie: false });
+        end();
+        paintAll();
+        move(at + 1);
+      },
+      key: (key) => {
+        if (!armed) return false;
+        const at = armed.k;
+        if (key === 'Backspace' || key === 'Delete') write(at, { ...stepOf(m.steps?.[at]), on: false, tie: false });
+        else if (key === 'Enter') write(at, { ...stepOf(m.steps?.[at]), tie: true });
+        else if (key === 'ArrowLeft' || key === 'ArrowRight') return move(at + (key === 'ArrowRight' ? 1 : -1)), true;
+        else if (key === 'Escape') return stopRec(), true;
+        else return false;
+        move(at + 1);
+        return true;
+      },
+      stop: () => {
+        readout.textContent = '';
+        showRec();
+      },
+    };
+    if (lane !== 'note') setLane('note');
+    move(armed.k);
+  };
   build();
   setLane(lane);
+  if (armed?.id === m.id) startRec(armed.k); // (a rebuilt card picks the entry up where it was)
   return {
     el,
     show(pos, isMuted) {

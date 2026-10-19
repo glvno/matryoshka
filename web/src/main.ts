@@ -33,6 +33,7 @@ import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
 import { decodeShare, encodeShare, shareCodeOf, shareLink } from './share';
 import { starterPatch } from './starter';
+import { recordKey, recordNote } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
 import { synthLink } from './tutorial/link';
 import { PRESETS } from './presets';
@@ -186,6 +187,7 @@ const sink = {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
     if (msg.t === 'on') host.mute(false);
+    if (msg.t === 'on' && currentTab === 'patch') recordNote(msg.note, msg.vel); // a Steps card's step entry (#127); it sounds too
     if (emuKeys(msg)) return;
     host.send(msg);
     piano.track(msg);
@@ -822,7 +824,12 @@ window.addEventListener('keydown', (e) => {
   if (control && [' ', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
-  let done = false;
+  let done = !mod && !e.altKey && recordKey(k); // a Steps card's step entry: rest, tie, cursor, stop (#127)
+  if (done) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    return;
+  }
   if (k === '/' || (mod && k.toLowerCase() === 'k')) (openPalette(), (done = true));
   else if (k === '?') (help.showModal(), (done = true));
   else if (k === 'Escape') (editor.cancelArm(), editor.endPick(), (diffPanel.hidden = true), (done = true));

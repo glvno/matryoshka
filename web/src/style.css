@@ -1252,6 +1252,11 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .steps-mute { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
   background: transparent; border: 1px solid var(--line); border-radius: 4px; }
 .steps-mute.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.steps-rec { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  background: transparent; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.steps-rec.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* step entry's cursor (#127): the step the next note goes into */
+.step.cursor::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
 .steps-lanes { display: flex; }
 .steps-screen .steps-lanes button { padding: 2px 5px; font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
   background: none; border: 1px solid var(--line); border-left-width: 0; cursor: pointer; }
