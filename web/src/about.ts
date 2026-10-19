@@ -167,7 +167,7 @@ export class AboutCard {
         <div class="about-main">
           <div class="about-brand-row">${logoHtml()}
             <div><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" />
-            <p class="muted">A patchable modular synth for the M-VAVE FM-1, with a browser editor.</p></div></div>
+            <p class="muted">A recursively modular and FM1-friendly synth framework</p></div></div>
           ${passage(COPY.intro, 'Your words for supporters go here')}
           <section class="hsec ai-usage"><h3>Slop Disclosure</h3><div class="ai-live"></div>
             ${passage(COPY.howMade, 'Your “How it’s made” paragraph goes here')}</section>

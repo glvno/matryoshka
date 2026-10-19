@@ -11,7 +11,7 @@
 
 # Matryoshka
 
-A modular synthesizer for the **M-VAVE FM-1**, with a browser patch editor and reusable, nested assemblies.
+A recursively modular and **FM1**-friendly synth framework, with a browser patch editor and reusable, nested assemblies.
 
 **Modules** are the building blocks -- a single oscillator, a VCA, a filter, a delay, whatever.
 
