@@ -604,6 +604,7 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Fixed on the way: the panel button's switch / hold menu pushed its snapshot after the change (a dead step); `renamePanel` / `applyLive` pushed without clearing redo or on no change.
 - Left as is: tutorial Back clears the history (it loads a patch); `applyLive` (A/B) replaces the whole target except module positions and forwards only params / att / bypass / range live; an undo reloads the engine (held panel buttons reset to the patch's state).
 
-## Demo = "Sum1 Gr8 tweaks" (2026-10-19)
+## Demo updated (2026-10-19)
 
-- `web/src/demo/sum1-gr8.json` is the user's "Sum1 Gr8 tweaks" (copied from the dev server's localStorage `modular-1.patch`): 113 bpm, no stored octave, silent until the transport runs (the Demo button starts it). demo.test.ts follows it. The first-run patch stays Mellow Pad (Oracle V).
+- `web/src/demo/sum1-gr8.json` is the user's "Sum1 Gr8 tweaks", named "Sum1 Gr8" (copied from the dev server's localStorage `modular-1.patch`): 113 bpm, no stored octave, silent until the transport runs (the Demo button starts it). demo.test.ts follows it. The first-run patch stays Mellow Pad (Oracle V).
+- CI: `firmware` runs only for changes to its `paths` (firmware/, tools/, the workflow, web/presets/ and the web files `export-defs.ts` / `golden.ts` import: keep that list in step when they gain imports). `firmware` and `web` cancel an older run of the same workflow on the same ref (`concurrency`); `pages` already did.

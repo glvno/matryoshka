@@ -2,6 +2,11 @@ name: web
 on:
   push:
   pull_request:
+
+# a newer run for the same branch / PR replaces an older one still running
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
