@@ -20,26 +20,57 @@ export interface TidySizes {
 
 type Item = { r: Rect; move: (dx: number, dy: number) => void };
 
-/** the items' new places: columns from their left edges, each column stacked from `y0`, the columns side by side from `x0` */
+/** the width : height the packing aims for (a canvas is wider than tall) */
+const ASPECT = 2;
+
+/** do two boxes come closer than TIDY_GAP? */
+const near = (a: Rect, b: Rect): boolean =>
+  a.x < b.x + b.w + TIDY_GAP && b.x < a.x + a.w + TIDY_GAP && a.y < b.y + b.h + TIDY_GAP && b.y < a.y + a.h + TIDY_GAP;
+
+/**
+ * The items' new places, packed from (`x0`, `y0`) (#121). The user's columns (cards whose left edges are within the first
+ * half of the column's first card) keep their order left to right and their order down the column, but a card does not
+ * have to sit straight under the one before it: it takes the free spot that grows the layout least (the larger of its
+ * width / ASPECT and its height: what Fit has to show), then the highest, then the leftmost, no further left than the
+ * previous column's last left edge and no higher than the card before it in its column. A short card under a wide one
+ * leaves no gap down the whole column, and a later column fills the room beside a narrow card. The columns are read from
+ * the layout given, so tidying a packed layout again may read others: the editor leaves a layout it tidied alone.
+ */
 function arrange(items: Item[], x0: number, y0: number): void {
   const cols: Item[][] = [];
   for (const it of [...items].sort((a, b) => a.r.x - b.r.x || a.r.y - b.r.y)) {
     const col = cols[cols.length - 1];
-    // a card joins the column while its left edge is within the first half of the column's first card
     if (col && it.r.x < col[0].r.x + col[0].r.w / 2) col.push(it);
     else cols.push([it]);
   }
-  let x = x0;
+  const placed: Rect[] = [];
+  let right = x0, bottom = y0, floor = x0;
   for (const col of cols) {
     col.sort((a, b) => a.r.y - b.r.y || a.r.x - b.r.x);
-    let y = y0;
+    let top = y0, colLeft = floor;
     for (const it of col) {
+      const { w, h } = it.r;
+      const xs = [floor, ...placed.map((r) => r.x + r.w + TIDY_GAP)].filter((x) => x >= floor);
+      const ys = [top, ...placed.map((r) => r.y + r.h + TIDY_GAP)].filter((y) => y >= top);
+      let best: { x: number; y: number; cost: number } | null = null;
+      for (const y of ys)
+        for (const x of xs) {
+          const cost = Math.max((Math.max(right, x + w) - x0) / ASPECT, Math.max(bottom, y + h) - y0);
+          if (best && (cost > best.cost || (cost === best.cost && (y > best.y || (y === best.y && x >= best.x))))) continue;
+          const box = { x, y, w, h };
+          if (!placed.some((r) => near(r, box))) best = { x, y, cost };
+        }
+      const { x, y } = best!; // (a spot right of everything placed is always free)
       it.move(x - it.r.x, y - it.r.y);
       it.r.x = x;
       it.r.y = y;
-      y += it.r.h + TIDY_GAP;
+      placed.push({ ...it.r });
+      right = Math.max(right, x + w);
+      bottom = Math.max(bottom, y + h);
+      top = y + h + TIDY_GAP;
+      colLeft = Math.max(colLeft, x);
     }
-    x += Math.max(...col.map((it) => it.r.w)) + TIDY_GAP;
+    floor = colLeft + TIDY_GAP;
   }
 }
 

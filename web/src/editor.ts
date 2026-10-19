@@ -1716,12 +1716,26 @@ export class Editor {
     this.onZoom(this.zoom, live);
   }
 
-  /** Tidy up: line the cards up in columns, keeping their arrangement (tidy.ts); one undo step */
+  /** the layout tidyUp made last: tidy reads the columns from the layout, so it is left alone until something moves or resizes */
+  private tidied = '';
+  /** the cards' places and sizes, the frames' and which assemblies are open */
+  private layoutKey(): string {
+    const sz = this.tidySizes();
+    return JSON.stringify([
+      this.patch.modules.map((m) => [m.id, m.x, m.y, sz.module(m.id)]),
+      assembliesOf(this.patch).map((a) => [a.id, a.x, a.y, a.open, a.frameSize, sz.container(a.id)]),
+    ]);
+  }
+
+  /** Tidy up: pack the cards, keeping their columns' order (tidy.ts); one undo step */
   tidyUp(): void {
+    if (this.layoutKey() === this.tidied) return this.ev.onError('already tidy');
     const before = this.mark();
     const docked = this.docked();
     tidy(this.patch, this.tidySizes(), new Set(docked ? [docked.id] : []));
-    if (!this.commit(before)) return this.ev.onError('already tidy');
+    const changed = this.commit(before);
+    this.tidied = this.layoutKey();
+    if (!changed) return this.ev.onError('already tidy');
     this.rebuild();
     this.canvas.scrollTo(0, 0);
     this.ev.onLayout(this.patch);

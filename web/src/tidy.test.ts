@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { makeAssembly, overlaps } from './assembly';
 import { DEFS } from './modules';
 import { addModule, emptyPatch, type Patch } from './patch';
+import { PRESETS } from './presets';
 import { TIDY_GAP, tidy, tidyAssembly, type TidySizes } from './tidy';
 
 const W = 250;
@@ -63,5 +64,50 @@ describe('tidy up', () => {
     expect(at(p, x.id)).toEqual([500, 500]);
     expect(at(p, y.id)).toEqual([500, 500 + H + TIDY_GAP]);
     expect(at(p, free.id)).toEqual([900, 40]);
+  });
+
+  it('packs a later column into the room beside a narrow card under a wide one (#121)', () => {
+    const p = emptyPatch();
+    const size: Record<number, { w: number; h: number }> = {};
+    const card = (type: string, x: number, y: number, w: number, h: number): number => {
+      const m = addModule(p, DEFS[type], x, y);
+      size[m.id] = { w, h };
+      return m.id;
+    };
+    card('lfo', 0, 0, 150, 250);
+    const wide = card('osc', 300, 0, 600, 270);
+    const narrow = card('filter', 300, 300, 400, 300);
+    const mix1 = card('mixer', 1000, 0, 170, 90);
+    const mix2 = card('mixer', 1000, 100, 170, 90);
+    const big = card('reverb', 1000, 300, 400, 300);
+    const out = card('output', 1500, 0, 150, 50);
+    const sz: TidySizes = { ...sizes, module: (id) => size[id] };
+    tidy(p, sz);
+    const box = (id: number) => { const [x, y] = at(p, id); return { x, y, ...size[id] }; };
+    // the big card sits beside the narrow one, under the wide one, not right of the wide one's column
+    expect(box(big).x).toBe(box(narrow).x + 400 + TIDY_GAP);
+    expect(box(big).y).toBeGreaterThanOrEqual(box(wide).y + 270 + TIDY_GAP);
+    // the columns keep their order and their order down the column
+    expect(box(mix1).x).toBeGreaterThan(box(wide).x);
+    expect(box(mix2).y).toBeGreaterThan(box(mix1).y);
+    expect(box(big).y).toBeGreaterThan(box(mix2).y);
+    expect(box(out).x).toBeGreaterThan(box(mix1).x);
+    const ids = Object.keys(size).map(Number);
+    for (const a of ids) for (const b of ids) if (a < b) expect(overlaps(box(a), box(b))).toBe(false);
+  });
+
+  it('every factory patch: nothing overlaps, tidied once or again (a packed layout may read as other columns)', () => {
+    for (const [name, make] of Object.entries(PRESETS)) for (const times of [1, 2]) {
+      const p = make();
+      const size = (id: number) => ({ w: 200 + (id % 5) * 60, h: 120 + (id % 7) * 50 });
+      const sz: TidySizes = { module: size, container: size, frame: () => ({ pad: 12, head: 30, minW: 0 }) };
+      for (let k = 0; k < times; k++) tidy(p, sz);
+      const inAsm = new Set((p.assemblies ?? []).flatMap((a) => a.modules));
+      const boxes = [
+        ...p.modules.filter((m) => !inAsm.has(m.id)).map((m) => ({ x: m.x, y: m.y, ...size(m.id) })),
+        ...(p.assemblies ?? []).filter((a) => !a.open && !(p.assemblies ?? []).some((b) => b.children?.includes(a.id))).map((a) => ({ x: a.x, y: a.y, ...size(a.id) })),
+      ];
+      boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b), name).toBe(false)));
+    }
   });
 });
