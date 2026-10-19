@@ -672,7 +672,8 @@
     {
       "module": 4,
       "param": "coarse",
-      "label": "osc 2 range"
+      "label": "osc 2 range",
+      "group": true
     },
     {
       "module": 4,
@@ -687,7 +688,8 @@
     {
       "module": 5,
       "param": "coarse",
-      "label": "osc 3 range"
+      "label": "osc 3 range",
+      "group": true
     },
     {
       "module": 5,

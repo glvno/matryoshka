@@ -4,9 +4,10 @@
 // Every top-level thing on the canvas, a module or an assembly, is a device, unless it is the Main panel, the Output (the
 // MASTER pot), a Steps track (the SEQ page) or editor-only (a Scope); one with no rows is left out too. Devices come in
 // the canvas's reading order (columns from the left, as Tidy reads them, each from the top). A device's rows are the rows
-// of its collapsed card: an assembly's promoted parameters, a plain module's every parameter. A heading starts a page,
-// and a page holds at most PAGE_ROWS rows: a longer group goes on over more pages ("Filter 2/2"). An envelope's shape on
-// the card (adsr / env `view`) is drawn above the page that holds its rows. Pure model code: the editor, the binary
+// of its collapsed card: an assembly's promoted parameters, a plain module's every parameter. A heading starts a section;
+// a section holds groups of at most PAGE_ROWS rows (`groupStarts`), and each group is one page ("Filter 2/2" = the
+// section's second group). Groups fill in fours; a row's `group` flag (Arrange's "new group") or a column break ends one
+// early. An envelope's shape on the card (adsr / env `view`) is drawn above the page that holds its rows. Pure model code: the editor, the binary
 // format (patchbin.ts) and the tests use it.
 import { allModules, assembliesOf, parentOf, type AssemblyInst } from './assembly';
 import { longName, moduleName } from './labels';
@@ -47,49 +48,89 @@ export interface Device {
 /** a page's title as the editor and the FM-1 show it: the name, and "2/3" when its group spans pages */
 export const pageTitle = (pg: Page): string => (pg.parts > 1 ? `${pg.name} ${pg.part + 1}/${pg.parts}` : pg.name);
 
-interface Group { name: string; rows: PageRow[]; displays: { module: number; at: number }[] }
+/** a row of a card as grouping sees it: its layout flags, and whether it takes a knob (a display does not) */
+export interface GroupItem { head?: string; group?: true; col?: true; knob: boolean }
 
-/** cut a heading's rows into pages of PAGE_ROWS and put each envelope shape on the page that holds its rows */
-function paginate(groups: Group[], typeOf: (id: number) => string | undefined): Page[] {
+/**
+ * Where a card's groups start (true at the first item of each): at the first item, a heading, a `group` flag, a column
+ * break, and wherever the group already has PAGE_ROWS knob rows (a display there starts the next group, so it stays with
+ * the rows under it). Items set from the screen (onScreen) are not passed in.
+ */
+export function groupStarts(items: GroupItem[]): boolean[] {
+  let n = 0;
+  return items.map((it, i) => {
+    const start = i === 0 || !!it.head || !!it.group || !!it.col || n >= PAGE_ROWS;
+    if (start) n = 0;
+    if (it.knob) n++;
+    return start;
+  });
+}
+
+interface Section { name: string; groups: { rows: PageRow[]; displays: number[] }[] }
+
+/** each group with rows is a page of its section; an envelope shape goes on the section's page that holds its module's
+ * rows, else on the page of its own group, else of the nearest group with rows before it (after it, at the top) */
+function paginate(sections: Section[], typeOf: (id: number) => string | undefined): Page[] {
   const out: Page[] = [];
-  for (const g of groups) {
-    if (!g.rows.length) continue;
-    const parts = Math.ceil(g.rows.length / PAGE_ROWS);
-    const pages: Page[] = Array.from({ length: parts }, (_, i) => ({ name: g.name, part: i, parts, rows: g.rows.slice(i * PAGE_ROWS, (i + 1) * PAGE_ROWS) }));
-    for (const d of g.displays) {
-      if (!ENVELOPES.has(typeOf(d.module) ?? '')) continue;
-      const own = pages.findIndex((pg) => pg.rows.some((r) => r.module === d.module));
-      const pg = pages[own >= 0 ? own : Math.min(parts - 1, Math.floor(d.at / PAGE_ROWS))];
-      pg.display ??= d.module;
-    }
+  for (const s of sections) {
+    const pageOf: number[] = []; // group index -> its page, -1 without rows
+    let parts = 0;
+    for (const g of s.groups) pageOf.push(g.rows.length ? parts++ : -1);
+    const pages: Page[] = s.groups.filter((g) => g.rows.length).map((g, part) => ({ name: s.name, part, parts, rows: g.rows }));
+    if (!pages.length) continue;
+    s.groups.forEach((g, gi) => {
+      for (const d of g.displays) {
+        if (!ENVELOPES.has(typeOf(d) ?? '')) continue;
+        const own = pages.findIndex((pg) => pg.rows.some((r) => r.module === d));
+        const before = pageOf.slice(0, gi + 1).filter((x) => x >= 0);
+        pages[own >= 0 ? own : before.length ? before[before.length - 1] : 0].display ??= d;
+      }
+    });
     out.push(...pages);
   }
   return out;
 }
 
-/** a plain module's rows: every parameter (never the ones set from its screen) */
-function moduleGroups(type: string, def: ModuleDef, id: number): Group[] {
-  // the spelled-out name, or the short one where that would not fit the FM-1's screen
-  const label = (name: string): string => { const long = longName(type, name); return long.length <= NAME_MAX ? long : name; };
-  const rows = def.params.filter((pd) => !pd.onScreen && !pd.screen).map((pd) => ({ module: id, param: pd.name, label: label(pd.name) }));
-  const displays = ENVELOPES.has(type) ? [{ module: id, at: 0 }] : [];
-  return [{ name: moduleName(type, def.label), rows, displays }];
+/** cut items into sections (at headings) and groups (`groupStarts`) */
+function sectionsOf<T extends GroupItem>(first: string, items: T[], row: (t: T) => PageRow | number): Section[] {
+  const starts = groupStarts(items);
+  const out: Section[] = [{ name: first, groups: [] }];
+  items.forEach((it, i) => {
+    if (it.head) out.push({ name: it.head, groups: [] });
+    const s = out[out.length - 1];
+    if (starts[i] || !s.groups.length) s.groups.push({ rows: [], displays: [] });
+    const g = s.groups[s.groups.length - 1];
+    const r = row(it);
+    if (typeof r === 'number') g.displays.push(r);
+    else g.rows.push(r);
+  });
+  return out;
 }
 
-/** an assembly's rows: its promoted parameters, cut into groups at the headings */
-function assemblyGroups(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Group[] {
-  const groups: Group[] = [{ name: a.label, rows: [], displays: [] }];
-  for (const r of a.params) {
+/** a plain module's card rows in order: its displays, then every parameter (never the ones set from its screen); the
+ * card and the FM-1 group them in fours */
+export function moduleRows(def: ModuleDef): ModuleDef['params'] {
+  return [...(def.type === 'steps' ? [] : def.views ?? []), ...def.params.filter((pd) => !pd.onScreen)];
+}
+
+/** a plain module's sections: one, its parameters in groups of four */
+function moduleSections(type: string, def: ModuleDef, id: number): Section[] {
+  // the spelled-out name, or the short one where that would not fit the FM-1's screen
+  const label = (name: string): string => { const long = longName(type, name); return long.length <= NAME_MAX ? long : name; };
+  const items = moduleRows(def).map((pd) => ({ pd, knob: !pd.screen }));
+  return sectionsOf(moduleName(type, def.label), items, ({ pd }) => (pd.screen ? id : { module: id, param: pd.name, label: label(pd.name) }));
+}
+
+/** an assembly's sections: its promoted parameters, cut at the headings, in groups */
+function assemblySections(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Section[] {
+  const items = a.params.flatMap((r) => {
     const m = p.modules.find((x) => x.id === r.module);
     const def = m && defs[m.type];
     const pd = def && rowDef(def, r.param);
-    if (!m || !pd || pd.onScreen) continue;
-    if (r.head) groups.push({ name: r.head, rows: [], displays: [] });
-    const g = groups[groups.length - 1];
-    if (pd.screen) g.displays.push({ module: m.id, at: g.rows.length });
-    else g.rows.push({ module: m.id, param: r.param, label: r.label });
-  }
-  return groups;
+    if (!m || !pd || pd.onScreen) return [];
+    return [{ head: r.head, group: r.group, col: r.col, knob: !pd.screen, r, screen: !!pd.screen }];
+  });
+  return sectionsOf(a.label, items, (it) => (it.screen ? it.r.module : { module: it.r.module, param: it.r.param, label: it.r.label }));
 }
 
 /** where a top-level item sits on the canvas: a collapsed card's corner, an open frame's first member */
@@ -106,12 +147,12 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const items: { x: number; y: number; dev: Device }[] = [];
   for (const m of p.modules) {
     if (inAsm.has(m.id) || NOT_DEVICES.has(m.type) || !defs[m.type]) continue;
-    const pages = paginate(moduleGroups(m.type, defs[m.type], m.id), typeOf);
+    const pages = paginate(moduleSections(m.type, defs[m.type], m.id), typeOf);
     if (pages.length) items.push({ x: m.x, y: m.y, dev: { key: `m${m.id}`, name: moduleName(m.type, defs[m.type].label), module: m.id, pages } });
   }
   for (const a of assembliesOf(p)) {
     if (parentOf(p, a.id)) continue;
-    const pages = paginate(assemblyGroups(p, a, defs), typeOf);
+    const pages = paginate(assemblySections(p, a, defs), typeOf);
     if (pages.length) items.push({ ...placeOf(p, a), dev: { key: `a${a.id}`, name: a.label, asm: a.id, pages } });
   }
   // columns from the left; a card joins the column of the first card in it while it starts within half a card of it

@@ -386,9 +386,14 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
 
 - Model (`web/src/pages.ts`, tests `pages.test.ts`): `devicesOf(patch)` = the top-level modules (not Main, Output, Steps,
   Part, editor-only) and assemblies with rows, in Tidy's reading order (columns from the left, half a card of slack, then
-  from the top). An assembly's rows are its promoted parameters; a heading (`ParamRef.head`) starts a page, rows before
-  the first heading take the assembly's name, a group of more than `PAGE_ROWS` (4) spills ("Filter 1/2"). A plain module's
-  rows are its parameters (not `onScreen`), four to a page, labelled with the long name where it fits `NAME_MAX` (12).
+  from the top). An assembly's rows are its promoted parameters; a heading (`ParamRef.head`) starts a **section** (rows
+  before the first heading take the assembly's name), a section holds **groups** of at most `PAGE_ROWS` (4) rows and each
+  group is one page ("Filter 1/2" = the section's first group). `groupStarts` decides them: groups fill in fours, a
+  `ParamRef.group` flag (Arrange's "↵ new group"; belongs to the position like `col` / `head`) or a column break ends one
+  early, a display does not count and starts the next group when the last is full. Cards draw a dashed divider above a
+  group that has no heading or column of its own (`.erow.gstart`). A plain module's rows are its parameters (not
+  `onScreen`), four to a page (`moduleRows`, the FM-1 makes the same pages itself), labelled with the long name where it
+  fits `NAME_MAX` (12).
   An envelope's display row (adsr / env `view`) puts its shape on the page holding its rows (`Page.display`).
 - Main's knobs are **edit bindings**, not signals: the Main module lost the outputs and parameters k1..k6 (format 29).
   `migrateKnobs` (`knob-migrate.ts`, run by `validatePatch`) turns an old patch's knob cables into a "Macros" assembly of

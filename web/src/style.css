@@ -1132,6 +1132,10 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* a display spanning columns (ParamRef.span): the group of columns it covers, and the stretches above and below it */
 .egrp, .eseg { display: grid; grid-template-columns: subgrid; align-content: start; align-items: start; }
 .eseg { grid-column: 1 / -1; }
+/* a new group of rows (one FM-1 page, pages.ts groupStarts) without a heading of its own: a divider above it */
+.erow.gstart { margin-top: 5px; }
+.erow.gstart > .em { position: relative; }
+.erow.gstart > .em::before { content: ''; position: absolute; left: 0; right: 0; top: -3px; border-top: 1px dashed var(--line); }
 .ehead { display: flex; align-items: center; gap: 4px; height: 18px; margin-top: 4px; border-bottom: 1px solid var(--line);
   font: var(--cap); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); white-space: nowrap; overflow: hidden; }
 .ehead input { flex: 1; min-width: 0; height: 16px; padding: 0 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel);

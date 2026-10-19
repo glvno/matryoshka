@@ -889,7 +889,8 @@
     {
      "module": 6,
      "param": "wave",
-     "label": "vco 2 wave"
+     "label": "vco 2 wave",
+     "group": true
     },
     {
      "module": 6,
@@ -909,7 +910,8 @@
     {
      "module": 5,
      "param": "level",
-     "label": "vco 1"
+     "label": "vco 1",
+     "group": true
     },
     {
      "module": 6,

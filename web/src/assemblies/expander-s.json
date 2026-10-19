@@ -606,7 +606,8 @@
     {
       "module": 5,
       "param": "wave",
-      "label": "vco 2 wave"
+      "label": "vco 2 wave",
+      "group": true
     },
     {
       "module": 5,
@@ -626,7 +627,8 @@
     {
       "module": 4,
       "param": "level",
-      "label": "vco 1"
+      "label": "vco 1",
+      "group": true
     },
     {
       "module": 5,

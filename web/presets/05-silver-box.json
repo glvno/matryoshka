@@ -533,7 +533,8 @@
     {
      "module": 8,
      "param": "cutoff",
-     "label": "cutoff"
+     "label": "cutoff",
+     "group": true
     },
     {
      "module": 8,
@@ -553,7 +554,8 @@
     {
      "module": 7,
      "param": "gain",
-     "label": "accent"
+     "label": "accent",
+     "group": true
     },
     {
      "module": 3,

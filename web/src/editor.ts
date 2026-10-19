@@ -9,7 +9,7 @@ import { DEFS, PANEL_BUTTONS } from './modules';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
-import { devicesOf, findRow, fixFocus, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
+import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
 import { cableRole } from './cable-role';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
@@ -96,7 +96,7 @@ import { EXCLUDED_TYPES,
   type AssemblyInst,
   type PortRef,
   type Rect,
-  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setHeading, setSpan, spanPlan, type SpanBlock } from './assembly';
+  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setGroupBreak, setHeading, setSpan, spanPlan, type SpanBlock } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 const HISTORY = 40;
@@ -190,7 +190,8 @@ const EDGE_JACKS = 4;
 /** an input for a card's edge layout: its row element and which port it is (a parameter's dedicated input joins its row) */
 type EdgePort = { el: HTMLElement; module: number; port: string };
 /** a parameter for a card's edge layout: its row, its dedicated input, a column break before it, rows above it (a heading) */
-type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; span?: number };
+/** `gap`: a new group (FM-1 page) starts at this row within its column, drawn as a divider above it */
+type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; span?: number; gap?: boolean };
 /** an entry of a card's menu: `key` is the shortcut shown at the right, `rule` a line above it */
 type MenuItem = { text: string; run: () => void; key?: string; danger?: boolean; rule?: boolean };
 /** a drop is judged by the card's header (where it is held), this far below its top */
@@ -819,8 +820,11 @@ export class Editor {
     const outs = def.outputs.map((p) => this.port(m, p, 'out', { open, short: true }));
     // its displays first (an envelope's shape, the Scope's screen), then the parameters
     // (a Steps module's grid goes under the rows, across the card: 16 steps need the width)
+    // in groups of four (one FM-1 page each)
     const steps = def.type === 'steps';
-    const params = [...(def.views ?? []).filter(() => !steps), ...def.params.filter((pd) => !pd.onScreen)].map((pd) => ({ el: this.paramRow(m, def, pd, { open }), input: pd.input ? { module: m.id, port: pd.input } : undefined }));
+    const rows = moduleRows(def);
+    const starts = groupStarts(rows.map((pd) => ({ knob: !pd.screen })));
+    const params = rows.map((pd, i) => ({ el: this.paramRow(m, def, pd, { open }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] }));
     // a second Main card (from an old patch) keeps its B side under the rows
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
@@ -1078,8 +1082,11 @@ export class Editor {
       if (last) el.append(cell('er', r ?? null));
       return el;
     };
-    const rowsOf = (it: Item, first: boolean, last: boolean, across = 1): HTMLElement[] =>
-      [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across)];
+    const rowsOf = (it: Item, first: boolean, last: boolean, across = 1): HTMLElement[] => {
+      const els = [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across)];
+      if (it.param?.gap) els[0].classList.add('gstart');
+      return els;
+    };
     const grid = document.createElement('div');
     grid.className = 'erows' + (n > 1 ? ' multi' : '');
     if (n === 1) for (const it of cols[0]) grid.append(...rowsOf(it, true, true));
@@ -2418,20 +2425,25 @@ export class Editor {
     // how many columns a display on each row could reach across: its own and those to its right
     const spanRoom: number[] = [];
     paramColumns(a.params).forEach((c, ci) => c.forEach((i) => (spanRoom[i] = ncols - ci)));
+    // where its groups (FM-1 pages) start: a divider above a group that has no heading or column of its own
+    const shown = a.params.map((r) => rowDef(DEFS[mod(r.module).type], r.param)!);
+    const kept = a.params.map((_, i) => i).filter((i) => !shown[i].onScreen);
+    const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
     const params = a.params.flatMap((r, i): EdgeParam[] => {
       const m = mod(r.module);
       const def = DEFS[m.type];
-      const pd = rowDef(def, r.param)!;
+      const pd = shown[i];
       if (pd.onScreen) return [];
       const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open });
       const above: HTMLElement[] = [];
       if (arranging && r.col) above.push(this.columnChip(a, i));
+      else if (arranging && r.group && !r.head) above.push(this.groupChip(a, i));
       if (r.head || (arranging && this.newHeading === `${a.id}:${i}`)) above.push(this.heading(a, i, arranging));
       if (arranging) {
         this.arrangeItem(row, a, 'param', i);
         row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
       }
-      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined }];
+      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(i) && !r.col && !r.head }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
     if (!a.inputs.length && !a.outputs.length && !a.params.length) {
@@ -2509,6 +2521,23 @@ export class Editor {
     return c;
   }
 
+  /** while arranging: the mark of a group start (`ParamRef.group`) above its first row, with a button to undo it */
+  private groupChip(a: AssemblyInst, i: number): HTMLElement {
+    const c = document.createElement('div');
+    c.className = 'ebreak';
+    c.textContent = 'new group';
+    c.append(this.button('×', 'Let the groups fill in fours here again', () => this.layoutChange(() => setGroupBreak(a.params, i, false)), 'sm arr-x'));
+    return c;
+  }
+
+  /** whether a group already starts at row `i` of an assembly card on its own (the one before it is full) */
+  private groupStartAt(a: AssemblyInst, i: number): boolean {
+    const shown = a.params.map((r) => { const m = this.patch.modules.find((x) => x.id === r.module); return m ? rowDef(DEFS[m.type], r.param) : undefined; });
+    const kept = a.params.map((_, k) => k).filter((k) => shown[k] && !shown[k]!.onScreen);
+    const k = kept.indexOf(i);
+    return k > 0 && groupStarts(kept.map((j) => ({ ...a.params[j], knob: !shown[j]!.screen })))[k];
+  }
+
   /** while arranging: on a row's top edge, + heading and a column break before it; on a display that could reach across
    * `room` columns, ↔ steps how many it spans (1 .. room, then back to 1) */
   private arrangeTools(a: AssemblyInst, i: number, room = 0): HTMLElement {
@@ -2519,6 +2548,7 @@ export class Editor {
       this.newHeading = `${a.id}:${i}`;
       this.rebuild();
     }, 'sm'));
+    if (i > 0 && !r.col && !r.head && !r.group && !this.groupStartAt(a, i)) t.append(this.button('↵ new group', 'End the group before this row: this row starts the next FM-1 page', () => this.layoutChange(() => setGroupBreak(a.params, i, true)), 'sm'));
     if (i > 0 && !r.col) t.append(this.button('↦ column', 'Start a new column with this row', () => this.layoutChange(() => setColumnBreak(a.params, i, true)), 'sm'));
     if (room > 1) {
       const now = Math.min(r.span ?? 1, room);

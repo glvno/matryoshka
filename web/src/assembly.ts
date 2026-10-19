@@ -47,6 +47,8 @@ export interface ParamRef {
   col?: true;
   /** a heading above this row on the collapsed card */
   head?: string;
+  /** a new group (one FM-1 page, pages.ts `groupStarts`) starts at this row, before the four of the last one are full */
+  group?: true;
   /** a display on this row reaches across this many columns of the collapsed card, its own and those to its right (2..;
    * see `spanPlan`; cut short where the card has fewer columns or another span is in the way) */
   span?: number;
@@ -58,49 +60,55 @@ const HEAD_MAX = 40;
 /** the widest span kept (a card has at most this many columns worth spanning) */
 const SPAN_MAX = 16;
 
-/** the layout fields of a promoted parameter from a file: a column break, a heading and a span, each only when well formed */
-function rowLayout(r: Record<string, unknown>): Pick<ParamRef, 'col' | 'head' | 'span'> {
-  const out: Pick<ParamRef, 'col' | 'head' | 'span'> = {};
+/** the layout fields of a promoted parameter from a file: a column break, a heading, a group start and a span, each only
+ * when well formed */
+function rowLayout(r: Record<string, unknown>): Pick<ParamRef, 'col' | 'head' | 'group' | 'span'> {
+  const out: Pick<ParamRef, 'col' | 'head' | 'group' | 'span'> = {};
   if (r.col === true) out.col = true;
+  if (r.group === true) out.group = true;
   const head = typeof r.head === 'string' ? r.head.trim().slice(0, HEAD_MAX) : '';
   if (head) out.head = head;
   if (Number.isInteger(r.span) && (r.span as number) >= 2) out.span = Math.min(r.span as number, SPAN_MAX);
   return out;
 }
 
-/** a column break on the first row means nothing: drop it */
+/** a column break or group start on the first row means nothing: drop them */
 function tidyRows(list: ParamRef[]): ParamRef[] {
-  if (list[0]?.col) {
-    const { col: _, ...rest } = list[0];
+  if (list[0]?.col || list[0]?.group) {
+    const { col: _, group: _g, ...rest } = list[0];
     list[0] = rest;
   }
   return list;
 }
 
 /**
- * The promoted parameters `keep` accepts. A column break, heading or span belongs to its place in the list, not to its
- * row: a row that goes hands them to the next row that stays (whose own heading and span win, being nearer); with no row
+ * The promoted parameters `keep` accepts. A column break, heading, group start or span belongs to its place in the list,
+ * not to its row: a row that goes hands them to the next row that stays (whose own heading and span win, being nearer); with no row
  * after it they go too.
  */
 export function keepParams(list: ParamRef[], keep: (r: ParamRef) => boolean): ParamRef[] {
   const out: ParamRef[] = [];
   let col = false;
+  let group = false;
   let head: string | undefined;
   let span: number | undefined;
   for (const r of list) {
     if (!keep(r)) {
       col ||= !!r.col;
+      group ||= !!r.group;
       if (r.head) head = r.head;
       if (r.span) span = r.span;
       continue;
     }
-    if (col || head || span) {
+    if (col || group || head || span) {
       const n: ParamRef = { ...r };
       if (col) n.col = true;
+      if (group) n.group = true;
       if (head && !n.head) n.head = head;
       if (span && !n.span) n.span = span;
       out.push(n);
       col = false;
+      group = false;
       head = undefined;
       span = undefined;
     } else out.push(r);
@@ -119,11 +127,11 @@ export function moveParam(list: ParamRef[], from: number, to: number, after: boo
   const same = (a: ParamRef, b: ParamRef): boolean => a.module === b.module && a.param === b.param;
   const rest = keepParams(list, (r) => r !== moving);
   const i = rest.findIndex((r) => same(r, target));
-  const { col: _c, head: _h, span: _s, ...plain } = moving;
+  const { col: _c, head: _h, group: _g, span: _s, ...plain } = moving;
   if (after) rest.splice(i + 1, 0, plain);
   else {
-    const { col, head, span, ...was } = rest[i];
-    rest.splice(i, 1, { ...plain, ...(col ? { col } : {}), ...(head ? { head } : {}), ...(span ? { span } : {}) }, was);
+    const { col, head, group, span, ...was } = rest[i];
+    rest.splice(i, 1, { ...plain, ...(col ? { col } : {}), ...(head ? { head } : {}), ...(group ? { group } : {}), ...(span ? { span } : {}) }, was);
   }
   return tidyRows(rest);
 }
@@ -134,6 +142,14 @@ export function setColumnBreak(list: ParamRef[], i: number, on: boolean): void {
   if (!r) return;
   if (on && i > 0) r.col = true;
   else delete r.col;
+}
+
+/** start a new group (FM-1 page) at row `i` (not the first), or let the groups fill in fours again there */
+export function setGroupBreak(list: ParamRef[], i: number, on: boolean): void {
+  const r = list[i];
+  if (!r) return;
+  if (on && i > 0) r.group = true;
+  else delete r.group;
 }
 
 /** the heading above row `i`; an empty text removes it */

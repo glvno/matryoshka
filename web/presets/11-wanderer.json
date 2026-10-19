@@ -838,7 +838,8 @@
     {
      "module": 8,
      "param": "wave",
-     "label": "vco 2 wave"
+     "label": "vco 2 wave",
+     "group": true
     },
     {
      "module": 8,

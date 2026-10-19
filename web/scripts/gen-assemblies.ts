@@ -19,7 +19,7 @@ interface B {
   output(label: string, module: number, port: string): void;
   /** `col`: a new column of the card starts here; `head`: a heading above it; `span`: a display reaches across this many
    * columns (its own and those to the right); `inner`: the label on a nested card (which has no headings), when it differs */
-  param(label: string, module: number, param: string, o?: { col?: boolean; head?: string; span?: number; inner?: string }): void;
+  param(label: string, module: number, param: string, o?: { col?: boolean; head?: string; group?: boolean; span?: number; inner?: string }): void;
   /** a nested assembly (collapsed) of these modules at grid column / row; a top-level port or parameter of one of its
    * modules is shown on it too (a parent only shows what its children show) */
   nest(name: string, col: number, row: number, members: number[], poly?: PolyCards): void;
@@ -90,7 +90,7 @@ function build(name: string, category: string, f: (b: B) => void, poly?: PolyCar
     param(label, module, param, o = {}) {
       const m = modules[module - 1];
       if (!m || !rowDef(DEFS[m.type], param)) throw new Error(`${name}: no parameter ${param} on module ${module}`);
-      params.push({ module, param, label, ...(o.col && params.length ? { col: true as const } : {}), ...(o.head ? { head: o.head } : {}), ...(o.span && o.span > 1 ? { span: o.span } : {}) });
+      params.push({ module, param, label, ...(o.col && params.length ? { col: true as const } : {}), ...(o.head ? { head: o.head } : {}), ...(o.group && params.length ? { group: true as const } : {}), ...(o.span && o.span > 1 ? { span: o.span } : {}) });
       const n = nestOf(module);
       if (n && !n.params.some((r) => r.module === module && r.param === param)) n.params.push({ module, param, label: o.inner ?? label });
     },
@@ -429,7 +429,7 @@ asm('snare', 'Drums', (b) => {
   b.param('snap', flt, 'cutoff');
   b.param('decay', nenv, 'r3');
   b.param('noise', mix, 'l1');
-  b.param('body', mix, 'l2');
+  b.param('body', mix, 'l2', { group: true });
   b.param('body tune', osc, 'coarse');
 });
 
@@ -941,10 +941,10 @@ asm('Monolith D', 'Voices', (b) => {
   b.param('filter mod', fltMod, 'gain');
   b.param('osc 1 range', o1, 'coarse', { head: 'oscillators' });
   b.param('osc 1 wave', o1, 'wave');
-  b.param('osc 2 range', o2, 'coarse');
+  b.param('osc 2 range', o2, 'coarse', { group: true });
   b.param('osc 2 fine', o2, 'fine');
   b.param('osc 2 wave', o2, 'wave');
-  b.param('osc 3 range', o3, 'coarse');
+  b.param('osc 3 range', o3, 'coarse', { group: true });
   b.param('osc 3 fine', o3, 'fine');
   b.param('osc 3 wave', o3, 'wave');
   b.param('osc 1', o1, 'level', { col: true, head: 'mixer' });
@@ -999,11 +999,11 @@ asm('Silver Box', 'Voices', (b) => {
   b.output('out', drive, 'out');
   b.param('tuning', osc, 'coarse', { head: 'voice' });
   b.param('waveform', osc, 'wave');
-  b.param('cutoff', flt, 'cutoff');
+  b.param('cutoff', flt, 'cutoff', { group: true });
   b.param('resonance', flt, 'res');
   b.param('env mod', flt, 'cvamt');
   b.param('decay', fenv, 'd');
-  b.param('accent', acc, 'gain');
+  b.param('accent', acc, 'gain', { group: true });
   b.param('slide', slide, 'gain');
   b.param('drive', drive, 'drive');
   b.param('sweep', fenv, 'view', { col: true, head: 'envelopes' });
@@ -1217,11 +1217,11 @@ asm('Expander S', 'Voices', (b) => {
   b.param('width', width, 'gain');
   b.param('vco 1 wave', o1, 'wave', { head: 'oscillators' });
   b.param('vco 1 pw', o1, 'pw');
-  b.param('vco 2 wave', o2, 'wave');
+  b.param('vco 2 wave', o2, 'wave', { group: true });
   b.param('vco 2 pw', o2, 'pw');
   b.param('vco 2 freq', o2, 'coarse');
   b.param('vco 2 fine', o2, 'fine');
-  b.param('vco 1', o1, 'level');
+  b.param('vco 1', o1, 'level', { group: true });
   b.param('vco 2', o2, 'level');
   b.param('cutoff', flt, 'cutoff', { col: true, head: 'filter' });
   b.param('resonance', flt, 'res');
@@ -1395,7 +1395,7 @@ asm('Wanderer', 'Voices', (b) => {
   b.param('voices', part, 'voices', { head: 'voice' });
   b.param('vco 1 wave', o1, 'wave', { head: 'oscillators' });
   b.param('vco 1 pw', o1, 'pw');
-  b.param('vco 2 wave', o2, 'wave');
+  b.param('vco 2 wave', o2, 'wave', { group: true });
   b.param('vco 2 freq', o2, 'coarse');
   b.param('vco 2 fine', o2, 'fine');
   b.param('vco 1', o1, 'level', { col: true, head: 'mixer' });
@@ -1463,11 +1463,11 @@ asm('Briefcase 3', 'Voices', (b) => {
   b.output('out', rev, 'out');
   b.param('osc 1 sine', o1s, 'level', { head: 'oscillators' });
   b.param('osc 1 saw', o1w, 'level');
-  b.param('osc 2 pulse', o2, 'level');
+  b.param('osc 2 pulse', o2, 'level', { group: true });
   b.param('osc 2 shape', o2, 'pw');
   b.param('osc 2 freq', o2, 'coarse');
   b.param('osc 2 fine', o2, 'fine');
-  b.param('osc 3 rate', o3, 'rate');
+  b.param('osc 3 rate', o3, 'rate', { group: true });
   b.param('osc 3 wave', o3, 'wave');
   b.param('noise', nz, 'level', { col: true, head: 'matrix' });
   b.param('ring mod', ring, 'gain');
@@ -1609,7 +1609,7 @@ asm('Vernon 100', 'Voices', (b) => {
   b.param('kbd track', flt, 'track');
   b.param('env 1', env1, 'view', { col: true, head: 'envelopes' });
   for (const q of ['a', 'd', 's']) b.param(q, env1, q);
-  b.param('env 2', env2, 'view');
+  b.param('env 2', env2, 'view', { group: true });
   for (const q of ['a', 'd', 's']) b.param(q, env2, q);
   b.param('out', scope, 'view');
 });

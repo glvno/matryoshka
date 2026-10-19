@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch } from './patch';
-import { makeAssembly, fixAssemblies, promote, setHeading } from './assembly';
-import { devicesOf, findRow, fixFocus, pageTitle } from './pages';
+import { makeAssembly, fixAssemblies, keepParams, moveParam, promote, setColumnBreak, setGroupBreak, setHeading } from './assembly';
+import { devicesOf, findRow, fixFocus, groupStarts, pageTitle } from './pages';
 import { encodePatch } from './patchbin';
 
 describe('device pages', () => {
@@ -45,6 +45,39 @@ describe('device pages', () => {
     expect(dev.pages[2].rows.map((r) => r.param)).toEqual(['level']);
     expect(findRow([dev], env.id, 's')).toEqual({ device: 0, page: 1, row: 2 });
     expect(findRow([dev], env.id, 'nope')).toBeUndefined();
+  });
+
+  it('groups fill in fours; a group start, a column break or a heading ends one early; a display stays with the rows under it', () => {
+    const k = { knob: true }, d = { knob: false };
+    expect(groupStarts([k, k, k, k, k, k])).toEqual([true, false, false, false, true, false]);
+    expect(groupStarts([k, { knob: true, group: true }, k, k, k, k])).toEqual([true, true, false, false, false, true]);
+    expect(groupStarts([k, k, { knob: true, col: true }, { knob: true, head: 'x' }])).toEqual([true, false, true, true]);
+    expect(groupStarts([k, k, k, k, d, k])).toEqual([true, false, false, false, true, false]);
+    expect(groupStarts([d, k, k, k, k, k])).toEqual([true, false, false, false, false, true]);
+  });
+
+  it('a section\'s groups are its pages: "new group" splits a section, removing rows keeps the flag at its place', () => {
+    const p = emptyPatch();
+    const osc = addModule(p, DEFS.osc, 20, 20);
+    const flt = addModule(p, DEFS.filter, 20, 400);
+    const a = makeAssembly(p, [osc.id, flt.id], 'mono');
+    a.params = [];
+    for (const q of ['wave', 'pw', 'coarse']) promote(a, osc.id, q);
+    for (const q of ['cutoff', 'res', 'cvamt', 'track', 'morph']) promote(a, flt.id, q);
+    setHeading(a.params, 3, 'filter');
+    const titles = (): string[] => devicesOf(p, DEFS)[0].pages.map(pageTitle);
+    expect(titles()).toEqual(['mono', 'filter 1/2', 'filter 2/2']);
+    setGroupBreak(a.params, 5, true); // cutoff, res | cvamt, track, morph
+    expect(devicesOf(p, DEFS)[0].pages.map((pg) => pg.rows.map((r) => r.param))).toEqual([['wave', 'pw', 'coarse'], ['cutoff', 'res'], ['cvamt', 'track', 'morph']]);
+    setGroupBreak(a.params, 0, true); // the first row: no flag
+    expect(a.params[0].group).toBeUndefined();
+    a.params = keepParams(a.params, (r) => r.param !== 'cvamt'); // its flag goes to track
+    expect(a.params.find((r) => r.param === 'track')!.group).toBe(true);
+    a.params = moveParam(a.params, 0, 5, false); // wave dropped before track takes its place, in its group
+    expect(devicesOf(p, DEFS)[0].pages.map((pg) => pg.rows.map((r) => r.param))).toEqual([['pw', 'coarse'], ['cutoff', 'res'], ['wave', 'track', 'morph']]);
+    setColumnBreak(a.params, 1, true); // a column ends a group, not the section
+    expect(titles()).toEqual(['mono 1/2', 'mono 2/2', 'filter 1/2', 'filter 2/2']);
+    expect(() => encodePatch(p)).not.toThrow();
   });
 
   it('devices come in reading order: columns from the left, each from the top', () => {

@@ -735,7 +735,8 @@
     {
      "module": 5,
      "param": "level",
-     "label": "osc 2 pulse"
+     "label": "osc 2 pulse",
+     "group": true
     },
     {
      "module": 5,
@@ -755,7 +756,8 @@
     {
      "module": 6,
      "param": "rate",
-     "label": "osc 3 rate"
+     "label": "osc 3 rate",
+     "group": true
     },
     {
      "module": 6,
