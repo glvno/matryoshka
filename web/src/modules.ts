@@ -2280,7 +2280,8 @@ export function stepPlays(seed: number, loop: number, k: number, b: number): boo
  * tick falls on; a rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 75 %
  * the most) delays every second step by (swing - 50) / 50 of a step. A step that plays raises trig for `gate` of a step;
  * acc is a level, 1 from an accented step until the next step that plays (so it can set a drum's level through a pin
- * for the whole hit). Each step also has a note and a velocity (#93): pitch (octaves from C4, plus the transpose input)
+ * for the whole hit). A tied step (#128) holds the note before it: trig stays up from that step through the tie (no new
+ * edge) and falls `gate` into the last tied step. Each step also has a note and a velocity (#93): pitch (octaves from C4, plus the transpose input)
  * and vel (velocity / 127) hold the values of the last step that played, so a track can play a melody. The name and the
  * pattern travel in its binary record (`data`: the name, then the pattern), the values in the patch's step values section
  * (patchbin.ts flag bit 4); it runs once (SHARED_TYPES).
@@ -2314,10 +2315,16 @@ const steps: ModuleImpl<StepsState> = {
     const ext = !!c.connected.clk;
     const { clk, reset, transpose } = c.inp;
     const fire = (k: number): void => {
-      if (!stepPlays(s.seed, s.loop, k, s.pat[k]) || s.mute) return;
       const sl = ext && s.period > 0 ? s.period : (ext ? 6 : div) * v.tickLen;
+      // the next step ties (#128): the gate stays up into it (two steps at most, so a stopped clock lets it fall)
+      const g = s.pat[k + 1 >= len ? 0 : k + 1] & 0x80 ? 2 * sl : Math.max(1, Math.floor((gate * sl) / 65536));
+      if (s.pat[k] & 0x80) {   // a tie: the note sounding goes on, its pitch and velocity; nothing sounding, nothing to tie
+        if (s.trig > 0 && !s.mute) s.trig = g;
+        return;
+      }
+      if (!stepPlays(s.seed, s.loop, k, s.pat[k]) || s.mute) return;
       s.gap = s.trig > 0;
-      s.trig = Math.max(1, Math.floor((gate * sl) / 65536));
+      s.trig = g;
       s.acc = !!(s.pat[k] & 2);
       s.pitch = Math.sign(s.notes[k] - STEP_NOTE) * Math.round((Math.abs(s.notes[k] - STEP_NOTE) * 65536) / 12) / 65536; // (Q16 rounded half away from 0, as engine.c)
       s.vel = s.vels[k] / 127;

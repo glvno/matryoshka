@@ -181,17 +181,19 @@ export const PAGE_LIST_MAX = 16;
 export const panelLabel = (s: unknown, max = PANEL_LABEL_MAX): string => String(s ?? '').toUpperCase().replace(/[^A-Z0-9 +%&>=()?!#*<,_'.:\/-]/g, '').slice(0, max).trim();
 
 /** a Steps module's pattern: STEPS_MAX steps (its `len` parameter plays the first ones); a step's byte holds bit 0 = on,
- * bit 1 = accent, bits 2..6 = the chance code c (it plays with a chance of 100 - 5 c percent, c 0..19) */
+ * bit 1 = accent, bits 2..6 = the chance code c (it plays with a chance of 100 - 5 c percent, c 0..19), bit 7 = tie (#128:
+ * the note sounding goes on through the step, its pitch and velocity, no new trig; the step's own on / accent / chance /
+ * values are not played; firmware from before ties masks the bit off and plays the step as it is) */
 export const STEPS_MAX = 64;
 export const TRACK_NAME_MAX = 8;
 export const trackName = (s: unknown): string => panelLabel(s, TRACK_NAME_MAX);
-export interface Step { on: boolean; accent: boolean; chance: number }
-export const stepOf = (b: number | undefined): Step => ({ on: !!((b ?? 0) & 1), accent: !!((b ?? 0) & 2), chance: 100 - 5 * Math.min(19, ((b ?? 0) >> 2) & 31) });
-export const stepByte = (s: Step): number => (s.on ? 1 : 0) | (s.accent ? 2 : 0) | (Math.min(19, Math.max(0, Math.round((100 - s.chance) / 5))) << 2);
+export interface Step { on: boolean; accent: boolean; chance: number; tie?: boolean }
+export const stepOf = (b: number | undefined): Step => ({ on: !!((b ?? 0) & 1), accent: !!((b ?? 0) & 2), chance: 100 - 5 * Math.min(19, ((b ?? 0) >> 2) & 31), tie: !!((b ?? 0) & 0x80) });
+export const stepByte = (s: Step): number => (s.on ? 1 : 0) | (s.accent ? 2 : 0) | (Math.min(19, Math.max(0, Math.round((100 - s.chance) / 5))) << 2) | (s.tie ? 0x80 : 0);
 /** a pattern from anything: STEPS_MAX valid step bytes (missing steps off), or undefined when every step is off */
 export function fixSteps(raw: unknown): number[] | undefined {
   if (!Array.isArray(raw)) return undefined;
-  const out = Array.from({ length: STEPS_MAX }, (_, i) => stepByte(stepOf(Number.isFinite(raw[i]) ? raw[i] & 0x7f : 0)));
+  const out = Array.from({ length: STEPS_MAX }, (_, i) => stepByte(stepOf(Number.isFinite(raw[i]) ? raw[i] & 0xff : 0)));
   return out.some((b) => b) ? out : undefined;
 }
 

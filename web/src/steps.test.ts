@@ -35,9 +35,11 @@ const ACC = stepByte({ on: true, accent: true, chance: 100 });
 
 describe('the Steps module (#83)', () => {
   it('step bytes: on, accent, chance in 5 % steps', () => {
-    expect(stepOf(stepByte({ on: true, accent: true, chance: 35 }))).toEqual({ on: true, accent: true, chance: 35 });
+    expect(stepOf(stepByte({ on: true, accent: true, chance: 35 }))).toEqual({ on: true, accent: true, chance: 35, tie: false });
+    expect(stepOf(stepByte({ on: false, accent: false, chance: 100, tie: true }))).toEqual({ on: false, accent: false, chance: 100, tie: true });
+    expect(stepByte({ on: false, accent: false, chance: 100, tie: true })).toBe(0x80);
     expect(stepByte({ on: true, accent: false, chance: 2 })).toBe(1 | (19 << 2)); // 5 % is the least
-    expect(stepOf(0)).toEqual({ on: false, accent: false, chance: 100 });
+    expect(stepOf(0)).toEqual({ on: false, accent: false, chance: 100, tie: false });
   });
 
   it('plays nothing until the transport runs, the first step when it starts, then one step per 1/16 on the clock', () => {
@@ -130,6 +132,25 @@ describe('the Steps module (#83)', () => {
     expect(runs[0]).toBeLessThan(240);
     expect(stepPlays(1, 2, 3, 0)).toBe(false);
     expect(stepPlays(1, 2, 3, ON)).toBe(true);
+  });
+
+  it('a tied step holds the note before it: no new trig, the same pitch, the gate falling gate x step into the last tie (#128)', () => {
+    const TIE = stepByte({ on: false, accent: false, chance: 100, tie: true });
+    const { p, st } = rig([ON, TIE, TIE, ON, 0, TIE, ON], { len: 7, gate: 0.5 });
+    st.notes = Array.from({ length: 64 }, (_, k) => (k === 1 ? 72 : 60)); // (a tie's own note is not played)
+    p.cables = p.cables.filter((c) => c.to.port !== 'r');
+    connect(p, DEFS, { module: st.id, port: 'pitch' }, { module: p.modules.find((m) => m.type === 'output')!.id, port: 'r' });
+    const e = new Engine(SR);
+    e.load(p);
+    e.transport(true);
+    const { trig, l, r } = edges(e, 42000);
+    // steps 0, 1, 2 one note (up from 0 to half of step 2), step 3 a new one; step 5's tie follows an off step: nothing
+    expect(trig).toEqual([0, 17999, 35999, 41999]); // (41999: step 0 again)
+    expect(l[11500]).toBe(1);
+    expect(l[14500]).toBe(1);
+    expect(l[15500]).toBe(0);
+    expect(l[31000]).toBe(0);
+    expect(r[7000]).toBe(0); // C4 under the tie, not C5
   });
 
   it('with a cable in clk it steps on every rising edge instead', () => {

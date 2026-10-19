@@ -1277,6 +1277,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* the fill sits 2 px inside the cell, so an on step keeps its edge and neighbouring on steps stay apart (#91) */
 .step > i { position: absolute; left: 2px; right: 2px; bottom: 2px; height: calc(var(--chance, 0) * (100% - 4px)); border-radius: 1px; background: var(--ink); pointer-events: none; }
 .step.acc > i { background: var(--accent); }
+/* a tied step (#128): a band from its left edge, the note before going on through it */
+.step.tie > i { left: 0; height: 6px; bottom: calc(50% - 3px); border-radius: 0 1px 1px 0; background: var(--ink); }
+.steps-screen[data-lane="note"] .step.tie > i, .steps-screen[data-lane="vel"] .step.tie > i { opacity: .35; }
 .step.play::after { content: ''; position: absolute; inset: 0; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--gate), 0 0 0 1px var(--gate); pointer-events: none; }
 .step.play { overflow: visible; z-index: 1; }
 .step.past { opacity: .25; cursor: default; }

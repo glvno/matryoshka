@@ -213,7 +213,7 @@ static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b)
     if (!at || k >= TRACK_STEPS)
         return;
     eng_steps_set(mod, k, b);
-    m1_cur[at + TRACK_NAME_MAX + k] = (uint8_t)(b & 0x7Fu);
+    m1_cur[at + TRACK_NAME_MAX + k] = (uint8_t)(b & 0xFFu);
     m1_edited = 1;
 }
 

@@ -1450,6 +1450,20 @@ tests['steps-notes'] = make('steps-notes', (add, wire) => {
 events['steps-notes'] = [[128 * 5, 'run', 0]];
 ends['steps-notes'] = 128 * 400;
 
+// ties (#128): the steps-notes voices with tied steps (bit 7): a held note through two ties, a tie after an off step (it
+// plays nothing), a tie that wraps from the last step to the first, swing on; the second track on an external clock
+tests['steps-tie'] = structuredClone(tests['steps-notes']);
+tests['steps-tie'].name = 'steps-tie';
+{
+  const st = tests['steps-tie'].modules.filter((m) => m.type === 'steps');
+  const T = 0x80;
+  Object.assign(st[0].params, { swing: 62 });
+  st[0].steps = Array.from({ length: 64 }, (_, k) => [stepByte({ on: true, accent: true, chance: 100 }), T, T, 0, T, stepByte({ on: true, accent: false, chance: 100 }), 0, T][k % 8]);
+  st[1].steps = Array.from({ length: 64 }, (_, k) => [stepByte({ on: true, accent: false, chance: 100 }), T, 0, stepByte({ on: true, accent: false, chance: 100 }), T, T][k % 6]);
+}
+events['steps-tie'] = [[128 * 5, 'run', 0]];
+ends['steps-tie'] = 128 * 400;
+
 // a track stepped by a clock in clk (an LFO square) and sent back to step 1 by the key's gate (reset); a second track on
 // MIDI clock: ticks every 900 samples (about 122 bpm), then the clock stops and the tempo takes over again
 tests['steps-clk'] = make('steps-clk', (add, wire) => {

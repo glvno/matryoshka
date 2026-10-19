@@ -747,7 +747,7 @@ int eng_load(const uint8_t *p, uint32_t len)
                 return -2;
             nd->trk = E.ntrk++;
             for (j = 0; j < TRACK_STEPS; j++) {
-                E.trk_pat[nd->trk][j] = p[at + TRACK_NAME_MAX + j] & 0x7Fu;
+                E.trk_pat[nd->trk][j] = p[at + TRACK_NAME_MAX + j];
                 E.trk_note[nd->trk][j] = STEP_NOTE;  /* (the step values section, if any, comes after the cables) */
                 E.trk_vel[nd->trk][j] = STEP_VEL;
             }
@@ -1714,7 +1714,7 @@ int eng_steps_get(uint32_t module, uint32_t k)
 void eng_steps_set(uint32_t module, uint32_t k, uint32_t b)
 {
     if (steps_inst(module) && k < TRACK_STEPS)
-        E.trk_pat[E.node[module].trk][k] = (uint8_t)(b & 0x7Fu);
+        E.trk_pat[E.node[module].trk][k] = (uint8_t)(b & 0xFFu);
 }
 /* a step's note / velocity (#93): get returns note | vel << 8, -1 if `module` is not a Steps module */
 int eng_steps_value(uint32_t module, uint32_t k)
@@ -3308,7 +3308,7 @@ static int steps_plays(uint32_t seed, uint32_t loop, uint32_t k, uint32_t b)
 
 /* a step of a Steps module comes up: it sounds (trig for gate x the step length sl, one low sample first if trig is still up)
  * unless it is off, its chance says no, it was recorded ahead (skip) or the track is muted */
-static void steps_fire(inst_t *it, uint32_t trk, int32_t k, int32_t gate, int32_t sl)
+static void steps_fire(inst_t *it, uint32_t trk, int32_t k, int32_t len, int32_t gate, int32_t sl)
 {
     const uint8_t *pat = E.trk_pat[trk];
     int32_t g;
@@ -3316,11 +3316,21 @@ static void steps_fire(inst_t *it, uint32_t trk, int32_t k, int32_t gate, int32_
         it->s.stp.skip = -1;
         return;
     }
+    if (pat[k + 1 >= len ? 0 : k + 1] & 0x80u)  /* the next step ties (#128): the gate stays up into it, two steps at most */
+        g = 2 * sl;
+    else {
+        g = (int32_t)(((int64_t)gate * sl) >> 16);
+        g = g > 1 ? g : 1;
+    }
+    if (pat[k] & 0x80u) {                        /* a tie: the note sounding goes on, its pitch and velocity */
+        if (it->s.stp.trig > 0 && !it->s.stp.mute)
+            it->s.stp.trig = g;
+        return;
+    }
     if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, pat[k]) || it->s.stp.mute)
         return;
-    g = (int32_t)(((int64_t)gate * sl) >> 16);
     it->s.stp.gap = it->s.stp.trig > 0;
-    it->s.stp.trig = g > 1 ? g : 1;
+    it->s.stp.trig = g;
     it->s.stp.acc = (pat[k] >> 1) & 1u;
     {                                            /* octaves from C4, rounded to Q16 (modules.ts the same) */
         /* = (d +- 6) / 12 with d = n * ENG_ONE, split as ENG_ONE = 12 * 5461 + 4: written plainly the compiler folds
@@ -3384,7 +3394,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         }
         it->s.stp.sst++;
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0)
-            steps_fire(it, trk, it->s.stp.pstep, gate, sl);
+            steps_fire(it, trk, it->s.stp.pstep, len, gate, sl);
         for (; adv > 0; adv--) {
             int32_t sw = ext ? it->s.stp.period : div * E.tick_len, d = 0;
             it->s.stp.pos = (int8_t)(it->s.stp.pos + 1 >= len ? 0 : it->s.stp.pos + 1);
@@ -3398,7 +3408,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 it->s.stp.pend = d;
                 it->s.stp.pstep = it->s.stp.pos;
             } else
-                steps_fire(it, trk, it->s.stp.pos, gate, sl);
+                steps_fire(it, trk, it->s.stp.pos, len, gate, sl);
         }
         {
             int up = it->s.stp.trig > 0 && !it->s.stp.gap;

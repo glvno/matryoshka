@@ -24,7 +24,7 @@
 //                                                    Offered by firmware whose INFO has feature bit 1. (24 was the arpeggiator's
 //                                                    settings until the Arpeggiator module replaced it: feature bit 0, retired.)
 //   26 STEP     module u8, step u8 (0..63), byte u8   a step of a Steps module (patch.ts stepByte: bit 0 on, bit 1 accent,
-//                                                    bits 2..6 the chance code); no reply. Feature bit 2 (with MUTE).
+//                                                    bits 2..6 the chance code, bit 7 tie); no reply. Feature bit 2 (with MUTE).
 //   27 MUTE     module u8, on u8                     mute / unmute a Steps module (not saved); no reply
 //   28 STEPVAL  module u8, step u8, note u8, vel u8   a step's note (MIDI, 60 = C4) and velocity (0..127); no reply. Feature bit 3.
 //   29 FOCUS    device u8, page u8                   show this device page (indices into the binary's device pages section,
@@ -154,7 +154,7 @@ export const attFrame = (module: number, input: number, q16: number): Uint8Array
 
 export const bypassFrame = (module: number, on: boolean): Uint8Array => frame(CMD.bypass, [module, on ? 1 : 0]);
 /** a step of a Steps module (its byte, patch.ts stepByte), a Steps module muted */
-export const stepFrame = (module: number, step: number, b: number): Uint8Array => frame(CMD.step, [module, step, b & 0x7f]);
+export const stepFrame = (module: number, step: number, b: number): Uint8Array => frame(CMD.step, [module, step, b & 0xff]);
 export const focusFrame = (device: number, page: number): Uint8Array => frame(CMD.focus, [device & 0xff, page & 0xff]);
 /** a step's note and velocity (0..127 each) */
 export const stepValFrame = (module: number, step: number, note: number, vel: number): Uint8Array => frame(CMD.stepVal, [module, step, note & 0x7f, vel & 0x7f]);

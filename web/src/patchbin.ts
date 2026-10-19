@@ -290,7 +290,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
     if (m.type === 'steps') {
       const name = trackName(m.name);
       for (let j = 0; j < name.length; j++) out[at + j] = name.charCodeAt(j);
-      for (let k = 0; k < STEPS_MAX; k++) out[at + TRACK_NAME_MAX + k] = (m.steps?.[k] ?? 0) & 0x7f;
+      for (let k = 0; k < STEPS_MAX; k++) out[at + TRACK_NAME_MAX + k] = (m.steps?.[k] ?? 0) & 0xff;
     }
     at += def.data ?? 0;
   }

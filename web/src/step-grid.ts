@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // A Steps module's grid on its card (#83): every step up to its length in rows of 16 (the FM-1 shows 16 at a time on its
 // white keys), its name for the FM-1's SEQ page and a mute switch. Three lanes (#93), picked in the head:
-//   steps: a click switches a step on / off, Shift- or Alt-click its accent, a vertical drag sets its chance (5 % steps);
+//   steps: a click switches a step on / off, Shift- or Alt-click its accent, Ctrl / Cmd-click ties it to the note before
+//          (#128: the note goes on through it), a vertical drag sets its chance (5 % steps);
 //   note:  a vertical drag sets the step's note (a semitone per NOTE_PX, Shift an octave), double click C4;
 //   vel:   press and sweep across the steps to draw their velocities (the height in the cell), double click the default.
 // The step playing is outlined (Engine.stepsView through the worklet). The editor owns the patch and the undo history:
@@ -106,17 +107,18 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   };
   const tip = (k: number): string => {
     const s = stepOf(m.steps?.[k]);
-    const what = s.on ? `${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}` : ': off';
+    const what = s.tie ? ': tied (the note before goes on)' : s.on ? `${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}` : ': off';
     const vals = `${NOTE_NAMES[noteOf(m, k)]}, velocity ${velOf(m, k)}`;
-    const how = { steps: 'click: on / off, Shift-click: accent, drag up / down: chance', note: 'drag up / down: note (Shift: octaves), double click: C4', vel: 'press and sweep: velocity, double click: default' }[lane];
+    const how = { steps: 'click: on / off, Shift-click: accent, Ctrl / Cmd-click: tie, drag up / down: chance', note: 'drag up / down: note (Shift: octaves), double click: C4', vel: 'press and sweep: velocity, double click: default' }[lane];
     return `step ${k + 1}${what} · ${vals}\n${how}`;
   };
   const paint = (k: number, sp?: [number, number]): void => {
     const c = cells[k];
     if (!c) return;
     const s = stepOf(m.steps?.[k]);
-    c.classList.toggle('on', s.on);
-    c.classList.toggle('acc', s.on && s.accent);
+    c.classList.toggle('on', s.on && !s.tie);
+    c.classList.toggle('acc', s.on && s.accent && !s.tie);
+    c.classList.toggle('tie', !!s.tie);
     let v = s.on ? s.chance / 100 : 0;
     if (lane === 'vel') v = velOf(m, k) / 127;
     c.style.setProperty('--chance', String(v));
@@ -208,13 +210,15 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
         const d = Math.round((y0 - ev.clientY) / DRAG_PX);
         if (!end && Math.abs(y0 - ev.clientY) < DRAG_PX) return;
         end ??= ops.begin();
-        write(k, { on: true, accent: start.accent, chance: Math.max(5, Math.min(100, (start.on ? start.chance : 100) + 5 * d)) });
+        write(k, { on: true, accent: start.accent, chance: Math.max(5, Math.min(100, (start.on ? start.chance : 100) + 5 * d)), tie: false });
       };
       c.onpointerup = (ev) => {
         c.onpointermove = c.onpointerup = null;
         if (end) return end();
         const s = stepOf(m.steps?.[k]);
-        if (ev.shiftKey || ev.altKey) write(k, s.on ? { ...s, accent: !s.accent } : { on: true, accent: true, chance: s.chance });
+        if (ev.metaKey || ev.ctrlKey) write(k, { ...s, tie: !s.tie });
+        else if (s.tie) write(k, { ...s, tie: false });
+        else if (ev.shiftKey || ev.altKey) write(k, s.on ? { ...s, accent: !s.accent } : { on: true, accent: true, chance: s.chance });
         else write(k, s.on ? { on: false, accent: false, chance: s.chance } : { ...s, on: true });
       };
     };

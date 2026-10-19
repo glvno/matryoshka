@@ -959,9 +959,9 @@ export class Editor {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
     if (!m || k < 0 || k >= STEPS_MAX) return;
     this.touch();
-    m.steps = Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? b & 0x7f : m.steps?.[i] ?? 0));
+    m.steps = Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? b & 0xff : m.steps?.[i] ?? 0));
     this.stepGrids.get(id)?.refresh();
-    this.ev.onStep?.(id, k, b & 0x7f);
+    this.ev.onStep?.(id, k, b & 0xff);
   }
 
   /** a step's note / velocity set on the FM-1 (a step held + K1 / K2): into the patch, an undo step as above */

@@ -366,7 +366,7 @@ export class Engine {
   /** a step of a Steps module changed (its byte, patch.ts stepByte): no reload, the pattern plays on */
   setStep(id: number, k: number, b: number): void {
     const s = this.stepsOf(id);
-    if (s && k >= 0 && k < STEPS_MAX) s.pat[k] = b & 0x7f;
+    if (s && k >= 0 && k < STEPS_MAX) s.pat[k] = b & 0xff;
   }
   /** a step's note and velocity changed (ModuleInst.notes / vels): no reload; heard when the step next plays */
   setStepValue(id: number, k: number, note: number, vel: number): void {
