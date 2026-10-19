@@ -448,6 +448,15 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   editor, framebuffer, LEDs, page, focus); imports `fm1.focus / param / preset / save / midi / poly`. TS wrapper
   `web/src/fm1-ui.ts` (`Fm1Ui`, `ENCODERS`, `BUTTONS`); `fm1-ui.test.ts` checks a device page pixel for pixel against
   ui_preview and drives the panel (it rebuilds the wasm when a source is newer).
+- The editor's FM-1 tab (#110): a Patch | FM-1 switch over the canvas (`#view-switch`, Patch by default, not
+  remembered). `web/src/fm1-view.ts` `Fm1View` draws a flat panel around the wasm's LCD (2x, pixelated): SELECT, ALGO,
+  PRESET, K1..K4 (drag 8 px a click, wheel, arrows), the 14 buttons with LEDs (press / hold; Shift-click latches one
+  down for chords). main.ts: the emulator's focus / param / step / stepval / mute go through `fm1Event` (the same path
+  as a Live FM-1, flag `fromEmu`: not echoed to the emulator, but passed on to a Live FM-1); editor parameter edits go
+  to it at once (`emuParam`), any other edit reloads the patch into it (`queueEmu`, 120 ms; it keeps the focus), the
+  editor's focus and transport go to it, its PLAY sets the editor's. PRESET steps the Open list (Your patches,
+  Examples), SAVE = Save patch. The keyboard's held notes are its 27 keys at its octave (`emuKeys`); on its SEQ page
+  they enter steps and are not sounded. The browser engine plays; there is no emulated flash bank.
 - LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as
   4-bit anti-aliased bitmaps at four sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
   `firmware/src/font_bc.h`, ~36 KB of flash; `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,

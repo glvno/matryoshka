@@ -14,14 +14,23 @@
 #define WASM_IMPORT(name) __attribute__((import_module("fm1"), import_name(name)))
 #define WASM_EXPORT(name) __attribute__((export_name(name)))
 
-/* the page: the focus and a parameter moved here (the editor follows, as with the device link's FOCUS_NOW / PARAM_NOW),
- * PRESET turned, SAVE pressed, a MIDI message the panel sent, a poly group's setting turned */
+/* the page: the focus and a parameter moved here (the editor follows, as with the device link's FOCUS_NOW / PARAM_NOW;
+ * a poly row's parameter index has bit 7 set, as there), PRESET turned, SAVE pressed, a MIDI message the panel sent,
+ * the transport started / stopped (PLAY) */
 WASM_IMPORT("focus") void js_focus(uint32_t dev, uint32_t page);
 WASM_IMPORT("param") void js_param(uint32_t mod, uint32_t par, int32_t v);
 WASM_IMPORT("preset") void js_preset(int32_t d);
 WASM_IMPORT("save") void js_save(void);
 WASM_IMPORT("midi") void js_midi(uint32_t status, uint32_t d1, uint32_t d2);
-WASM_IMPORT("poly") void js_poly(uint32_t mod, uint32_t field, int32_t v);
+WASM_IMPORT("transport") void js_transport(uint32_t run);
+/* the SEQ page edited a step (its bits), a step's note / velocity, muted a track: module = its index in the binary */
+WASM_IMPORT("step") void js_step(uint32_t mod, uint32_t k, uint32_t b);
+WASM_IMPORT("stepval") void js_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel);
+WASM_IMPORT("mute") void js_mute(uint32_t mod, uint32_t on);
+static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b) { js_step(mod, k, b); }
+static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { js_stepval(mod, k, note, vel); }
+static void m1_mute_now(uint32_t mod, int on) { js_mute(mod, (uint32_t)on); }
+#define HOST_STEP_HOOKS
 
 #include "../test/host_ui.h"
 
@@ -29,12 +38,27 @@ WASM_IMPORT("poly") void js_poly(uint32_t mod, uint32_t field, int32_t v);
 static volatile uint32_t eng_shed_count;
 static void m1_focus_now(uint32_t d, uint32_t g) { js_focus(d, g); }
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v) { js_param(mod, par, v); }
-static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v) { (void)mod; (void)par; (void)v; }
+/* the running patch's copy of a parameter: on the device proto.c's; here only the tempo (PLAY held + PRESET) goes out, a
+ * knob row also says m1_param_now */
+static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
+{
+    if ((int)mod == eng_find(T_FM1) && par == FM1_P_TEMPO)
+        js_param(mod, par, v);
+}
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 #include "../src/panel.c"
 
 /* the hooks: the LEDs are bits the page reads (fm1w_leds), the rest goes to the page */
-static void leds_play(void) { fm1_led_key(BTN_PLAY, eng_transport_running()); }
+static int play_was;                            /* the transport as the page last heard of it */
+static void leds_play(void)
+{
+    int run = eng_transport_running();
+    fm1_led_key(BTN_PLAY, run);
+    if (run != play_was) {                      /* PLAY: the page's transport follows */
+        play_was = run;
+        js_transport((uint32_t)run);
+    }
+}
 static void leds_panel(void)
 {
     uint32_t b, mask = eng_buttons_get();
@@ -48,7 +72,32 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
 }
 static void preset_step(int32_t d) { js_preset(d); }
 static void save_state(void) { js_save(); }
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v) { js_poly(mod, field, v); }
+/* a poly group's setting from a device page: into the group record of the running patch, as main.c does on the device
+ * (the page hears of it through m1_param_now and sends the edited patch again) */
+static void poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+{
+    int g = eng_module_group(mod);
+    uint32_t at;
+    if (g <= 0 || !pv_len)
+        return;
+    at = 8u + ENG_GROUP_REC * (uint32_t)(g - 1);
+    if (at + 4u > pv_len)
+        return;
+    if (field == 0u)
+        pv_bin[at] = (uint8_t)clampi(v, 1, ENG_MAX_PARTS);
+    else if (field == 1u)
+        pv_bin[at + 1u] = (uint8_t)clampi(v, 0, 2);
+    else if (field == 2u)
+        pv_bin[at + 2u] = (uint8_t)((pv_bin[at + 2u] & 0x80u) | (uint32_t)clampi(v, 0, 2));
+    else if (field == 3u)
+        pv_bin[at + 3u] = (uint8_t)clampi(v, 0, 2);
+    else
+        pv_bin[at + 2u] = (uint8_t)((pv_bin[at + 2u] & 0x7Fu) | (v ? 0x80u : 0u));
+    if (field == 0u || field == 4u)
+        (void)eng_load(pv_bin, pv_len);
+    else
+        (void)eng_poly_set((uint32_t)g - 1u, field, (uint32_t)v);
+}
 
 static char name_buf[24];                     /* the patch name the page writes (fm1w_name), NUL-terminated */
 static uint32_t last_ms, frac;                  /* the engine's clock: ms of the last tick, samples owed (x1000) */
@@ -90,6 +139,7 @@ WASM_EXPORT("fm1w_load") int32_t fm1w_load(uint32_t len, uint32_t slot, uint32_t
     if (!fresh)
         (void)pages_focus(dev, pg);
     pg_dev_toast_until = 0;
+    play_was = eng_transport_running();         /* (a load is no PLAY: the page sets the transport with fm1w_transport) */
     leds_play();
     leds_panel();
     ui_dirty = 2;
@@ -162,6 +212,16 @@ WASM_EXPORT("fm1w_param") void fm1w_param(uint32_t mod, uint32_t par, int32_t v)
         if (!ui_dirty)
             ui_dirty = 1;
     }
+}
+/* the page's transport (its Play button, Space) */
+WASM_EXPORT("fm1w_transport") void fm1w_transport(uint32_t run)
+{
+    if ((int)run != eng_transport_running())
+        eng_transport((int)run);
+    leds_play();
+    if (!ui_dirty)
+        ui_dirty = 1;
+    panel_draw();
 }
 WASM_EXPORT("fm1w_focus_dev") uint32_t fm1w_focus_dev(void) { return pg_cur_dev; }
 WASM_EXPORT("fm1w_focus_page") uint32_t fm1w_focus_page(void) { return pg_cur_page; }

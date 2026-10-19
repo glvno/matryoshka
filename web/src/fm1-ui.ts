@@ -8,7 +8,8 @@
 export interface Fm1Events {
   /** the device page in focus moved (SELECT / ALGO / HOME): the binary's device and page indices */
   focus?(device: number, page: number): void;
-  /** a knob turned a parameter: module index (the device form's), parameter index, Q16 value */
+  /** a knob turned a parameter: module index (the device form's), parameter index (bit 7: a poly row, patchbin.ts
+   * POLY_ROW), Q16 value */
   param?(module: number, param: number, value: number): void;
   /** PRESET turned: the next / previous patch */
   preset?(d: number): void;
@@ -16,8 +17,12 @@ export interface Fm1Events {
   save?(): void;
   /** a MIDI message the panel sent (MENU > MIDI OUT) */
   midi?(status: number, d1: number, d2: number): void;
-  /** a poly group's setting turned on a device page (the group of module `module`; field 0 voices .. 4 unison) */
-  poly?(module: number, field: number, value: number): void;
+  /** PLAY started / stopped the transport */
+  transport?(run: boolean): void;
+  /** the SEQ page: a step's bits, a step's note / velocity, a track muted (module = its index in the binary) */
+  step?(module: number, step: number, b: number): void;
+  stepval?(module: number, step: number, note: number, vel: number): void;
+  mute?(module: number, on: boolean): void;
 }
 
 /** the panel's encoders, as fm1w_encoder numbers them */
@@ -36,6 +41,7 @@ interface Exports {
   fm1w_keys(bits: number): void;
   fm1w_focus(device: number, page: number): void;
   fm1w_param(module: number, param: number, value: number): void;
+  fm1w_transport(run: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
 }
 
@@ -50,7 +56,10 @@ export class Fm1Ui {
       preset: (d: number) => ev.preset?.(d),
       save: () => ev.save?.(),
       midi: (s: number, a: number, b: number) => ev.midi?.(s, a, b),
-      poly: (m: number, f: number, v: number) => ev.poly?.(m, f, v),
+      transport: (r: number) => ev.transport?.(r !== 0),
+      step: (m: number, k: number, b: number) => ev.step?.(m, k, b),
+      stepval: (m: number, k: number, n: number, v: number) => ev.stepval?.(m, k, n, v),
+      mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
     };
     const { instance } = await WebAssembly.instantiate(bytes, { fm1: env });
     return new Fm1Ui(instance.exports as unknown as Exports);
@@ -75,6 +84,7 @@ export class Fm1Ui {
   keys(bits: number): void { this.x.fm1w_keys(bits >>> 0); }
   focus(device: number, page: number): void { this.x.fm1w_focus(device, page); }
   param(module: number, param: number, value: number): void { this.x.fm1w_param(module, param, value | 0); }
+  transport(run: boolean): void { this.x.fm1w_transport(run ? 1 : 0); }
 
   get page(): number { return this.x.fm1w_page(); }
   get focusDevice(): number { return this.x.fm1w_focus_dev(); }
