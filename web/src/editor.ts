@@ -1754,15 +1754,18 @@ export class Editor {
     this.ev.onLayout(this.patch);
   }
 
-  /** the zoom, holding the canvas's centre in place (the zoom slider and its source); `live`: a modulation, not the user's */
-  zoomAround(z: number, live = false): void {
+  /** the zoom, holding a point in place: `at` (client px: the pointer, for the wheel and pinch) or else the canvas's centre (the
+   *  zoom slider and its source); `live`: a modulation, not the user's */
+  zoomAround(z: number, live = false, at?: Pt): void {
     const c = this.canvas;
-    const cx = (c.scrollLeft + c.clientWidth / 2) / this.zoom, cy = (c.scrollTop + c.clientHeight / 2) / this.zoom;
+    const r = c.getBoundingClientRect();
+    const px = at ? at.x - r.left - c.clientLeft : c.clientWidth / 2, py = at ? at.y - r.top - c.clientTop : c.clientHeight / 2;
+    const cx = (c.scrollLeft + px) / this.zoom, cy = (c.scrollTop + py) / this.zoom;
     const was = this.zoom;
     this.setZoom(z, live);
     if (this.zoom === was) return;
-    c.scrollLeft = cx * this.zoom - c.clientWidth / 2;
-    c.scrollTop = cy * this.zoom - c.clientHeight / 2;
+    c.scrollLeft = cx * this.zoom - px;
+    c.scrollTop = cy * this.zoom - py;
   }
 
   /** every card in view: the zoom that fits the cards' extent into the canvas, scrolled to its top left */
@@ -1787,7 +1790,7 @@ export class Editor {
     this.canvas.addEventListener('wheel', (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
-      this.setZoom(this.zoom * Math.exp(-e.deltaY / 400));
+      this.zoomAround(this.zoom * Math.exp(-e.deltaY / 400), false, { x: e.clientX, y: e.clientY });
     }, { passive: false });
     this.canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch') return;
@@ -1808,7 +1811,7 @@ export class Editor {
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pinch && pts.size === 2) {
         const [a, b] = [...pts.values()];
-        this.setZoom(pinch.z * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d));
+        this.zoomAround(pinch.z * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), false, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
         e.preventDefault();
       }
     });
