@@ -1250,7 +1250,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .view-switch button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
 .view-switch button:not([aria-selected="true"]):hover { color: var(--ink); }
-#fm1-view { position: absolute; inset: 0; z-index: 5; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+#fm1-view { position: absolute; inset: 0; z-index: 5; overflow: auto; background: color-mix(in oklab, var(--ink) 9%, var(--bg)); display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; padding: 52px 16px 16px; box-sizing: border-box; }
 #fm1-view[hidden] { display: none; }
 /* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it */
@@ -1258,7 +1258,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* the panel: 1280 x 820 units (fm1-view.ts places everything in them), scaled to the view; in the brand's colours,
    from the theme tokens (paper and white caps in the light theme, night and ink in the dark one), the keys as the
    deck's keyboard, the lights in the accent (lit), gold (glows) and teal (PLAY while running) */
-.fm1-body { --f-body: color-mix(in oklab, var(--ink) 9%, var(--bg)); --f-edge: color-mix(in oklab, var(--ink) 18%, var(--bg));
+.fm1-body { --f-body: var(--bg); --f-edge: color-mix(in oklab, var(--ink) 18%, var(--bg));
   --f-tray: color-mix(in oklab, var(--ink) 15%, var(--bg)); --f-cap: var(--panel); --f-cap-ink: var(--muted); --f-drop: color-mix(in srgb, var(--ref-night) 30%, transparent);
   --f-silk: var(--ink); --f-dial: var(--panel); --f-dial-rim: var(--line); --f-glow: var(--gate);
   position: relative; flex: none; width: min(100%, calc((100dvh - 120px) * 1280 / 820), 1280px); aspect-ratio: 1280 / 820; container-type: inline-size;
