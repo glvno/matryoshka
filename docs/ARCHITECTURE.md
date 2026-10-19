@@ -432,6 +432,41 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
   HOME taps go back to the first device, then the legend; MIDI CC 16..19 set the rows (absolute). A poly row writes the
   group record of `m1_cur` (`poly_row_set` in main.c; the voices and unison reload the engine).
+- Panel core (`firmware/src/panel.c`, #108): what the knobs, keys and buttons do, apart from the HAL. main.c's polls
+  read the hardware and hand it in (`panel_held` = the buttons held, `panel_encoders(st[7])`, `panel_keys(bits)`,
+  `panel_edges(pressed, released)`); its loop calls `panel_status()` before the inputs and `panel_draw()` after them.
+  The core's hooks (LEDs, `preset_step`, `save_state`, `midi_send`, `poly_row_set`, proto.c's `m1_*_now`) are main.c's
+  on the device and stubs on a host. `tools/panel_test.sh` (firmware/test/panel_test.c, on ui_preview.c built with
+  `UI_PREVIEW_LIB`) drives SELECT / ALGO / K1 / HOME / the menu / PLAY / tempo / SAVE / a key and checks the framebuffer;
+  the firmware CI runs it.
+- The UI as WebAssembly (#109): `firmware/wasm/fm1_ui.c` = the panel core and screens on the C engine over the host
+  stand-ins of `firmware/test/host_ui.h` (shared with ui_preview.c and panel_test.c; no libc, framebuffer `fb` with a
+  dirty flag, LEDs as bits). `npm run fm1-wasm` (web/scripts/fm1-wasm.mjs: clang `--target=wasm32 -ffreestanding
+  -nostdlib`, then wasm-ld; Homebrew llvm + lld or Ubuntu clang + lld) writes `web/public/fm1-ui.wasm` (git-ignored,
+  ~250 KB; the web and Pages workflows build it). Exports `fm1w_*` (load a patch binary + name + slot, tick = silent
+  engine blocks for the time gone + the loop's bookkeeping and drawing, encoder / button / keys, focus / param from the
+  editor, framebuffer, LEDs, page, focus); imports `fm1.focus / param / preset / save / midi / poly`. TS wrapper
+  `web/src/fm1-ui.ts` (`Fm1Ui`, `ENCODERS`, `BUTTONS`); `fm1-ui.test.ts` checks a device page pixel for pixel against
+  ui_preview and drives the panel (it rebuilds the wasm when a source is newer).
+- The editor's FM-1 tab (#110): a Patch | FM-1 switch over the canvas (`#view-switch`, Patch by default, not
+  remembered). `web/src/fm1-view.ts` `Fm1View` draws the FM-1's front panel laid out as the device (the geometry of
+  fm1-emu's fm1-live, after Felucca's controls diagram, in 1280 x 820 panel units scaled with `cqw`): MASTER / SELECT /
+  PRESETS / ALGORITHM and OCT- / OCT+ top left, the LCD (2x, pixelated) in the middle, KNOB1..4 and the two rows of six
+  buttons on the right, the 27 pill keys across the bottom; device colours, not the theme's. While it shows, the Main
+  dock, the wheels and the deck (keyboard, Audio on) are hidden (`.workspace.fm1-mode`); the first press on the panel
+  starts the audio, MASTER sets the output level (`AudioHost.setMaster`, square law, only while the tab shows, kept in
+  localStorage `matryoshka.fm1-master`). Encoders: drag 8 px a click, wheel, arrows; buttons: press / hold, Shift-click
+  latches one down. main.ts: the emulator's focus / param / step / stepval / mute go through `fm1Event` (the same path
+  as a Live FM-1, flag `fromEmu`: not echoed to the emulator, but passed on to a Live FM-1); editor parameter edits go
+  to it at once (`emuParam`), any other edit reloads the patch into it (`queueEmu`, 120 ms; it keeps the focus), the
+  editor's focus and transport go to it, its PLAY sets the editor's. PRESET steps the Open list (Your patches,
+  Examples), SAVE = Save patch. The pill keys and the computer keyboard play through the note sink at the emulated
+  octave; the held notes are the emulator's keys (`emuKeys`), on its SEQ page they enter steps and are not sounded.
+  The browser engine plays; there is no emulated flash bank. Lights (after X0X's browser emulator): host_ui.h keeps
+  the HAL's LED arrays over a host matrix (id = (row - 1) * 11 + column), so seq_ui.c's step cells and the wasm's
+  `leds_play` / `leds_octave` / `leds_avail` (as main.c) land there; `fm1w_led(kind, first)` reads them as bits (lit,
+  dim, mid, breathing), `Fm1Ui.lights()`, and the panel colours buttons and keys from them (PLAY red stopped, green
+  breathing running; SEQ steps lit, the playhead mid, tracks dim on the black keys).
 - LCD restyle: the dark brand palette in RGB565 (ui.c `C_*`, pages_ui.c `P_*`) and Barlow Condensed SemiBold as
   4-bit anti-aliased bitmaps at four sizes (`tools/gen_font.py`, stdlib TrueType reader + the splash's scanline fill →
   `firmware/src/font_bc.h`, ~36 KB of flash; `font_bc.c` `text_bc` blends per channel). The device page, legend, menu,

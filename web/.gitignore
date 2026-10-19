@@ -4,3 +4,4 @@ public/ai-stats.json
 public/ai-prompts.json
 public/coverage.json
 coverage/
+public/fm1-ui.wasm

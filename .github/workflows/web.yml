@@ -21,5 +21,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # the FM-1's UI as WebAssembly (firmware/wasm/fm1_ui.c -> public/fm1-ui.wasm): the editor's FM-1 tab and fm1-ui.test.ts
+      - name: clang + wasm-ld, the FM-1 UI as WebAssembly
+        run: |
+          sudo apt-get install -y --no-install-recommends clang lld
+          npm run fm1-wasm
       - run: npm test
       - run: npm run build

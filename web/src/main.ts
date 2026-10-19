@@ -3,7 +3,8 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { DeviceLink } from './device';
+import { DeviceLink, deviceIndex, type DeviceEvent } from './device';
+import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
@@ -34,7 +35,7 @@ import { PRESETS } from './presets';
 import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, POLY_ROW, POLY_ROW_PARAMS } from './patchbin';
+import { binaryPage, deviceBudget, editorPage, encodePatch, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
 import { demoPatch } from './demo';
@@ -87,6 +88,8 @@ const devStatus = (s: string): void => {
 device.onStatus = devStatus;
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
+/** the change comes from the FM-1 tab's emulator (fm1-view.ts): not sent back to it, but on to a Live FM-1 */
+let fromEmu = false;
 let deviceSlot: { slot: number; name: string } | null = null;
 device.onEvent = (e) => {
   if (e.kind === 'slot') {
@@ -95,15 +98,21 @@ device.onEvent = (e) => {
     return;
   }
   if (!live()) return;
+  fm1Event(e, 'device');
+};
+/** what an FM-1 did on its panel, the real one over USB or the emulated one: the editor follows */
+function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
+  const mark = (on: boolean): void => { if (from === 'device') fromDevice = on; else fromEmu = on; };
+  if (e.kind === 'slot') return;
   if (e.kind === 'step' || e.kind === 'stepval' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #93): a step edited or recorded, a step's note / velocity, a track muted
     const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;   // (the compiled form the FM-1 got, as deviceIndex)
     if (id === undefined) return;
-    fromDevice = true;
+    mark(true);
     try {
       if (e.kind === 'step') editor.stepFromDevice(id, e.step, e.b);
       else if (e.kind === 'stepval') editor.stepValueFromDevice(id, e.step, e.note, e.vel);
       else host.send({ t: 'mute', id, on: e.on });
-    } finally { fromDevice = false; }
+    } finally { mark(false); }
     return;
   }
   if (e.kind === 'param') {   // K1..K4 turned on a device page of the FM-1
@@ -111,8 +120,8 @@ device.onEvent = (e) => {
     // a poly group's setting is the Voice allocator's parameter (the allocator's Part has its id: patchbin.ts rowParam)
     const name = m && (e.param & POLY_ROW ? POLY_ROW_PARAMS[e.param & 0x7f] : DEFS[m.type].params[e.param]?.name);
     if (!m || !name) return;
-    fromDevice = true;                       // (not sent back: the FM-1 already has it)
-    try { editor.setParam(m.id, name, e.param & POLY_ROW ? Math.round(e.value) : e.value); } finally { fromDevice = false; }
+    mark(true);                              // (not sent back: the FM-1 already has it)
+    try { editor.setParam(m.id, name, e.param & POLY_ROW ? Math.round(e.value) : e.value); } finally { mark(false); }
     return;
   }
   if (e.kind === 'focus') {   // the FM-1 shows another device page: the knobs follow
@@ -123,7 +132,7 @@ device.onEvent = (e) => {
   if (e.n >= 80 && e.n < 80 + PANEL_BUTTONS.length) {
     host.send({ t: 'button', i: e.n - 80, on: e.v >= 64 });
   }
-};
+}
 /** upload the current patch; changes made meanwhile cause one more upload */
 async function sendPatch(): Promise<boolean> {
   if (!fitsDevice) {
@@ -174,6 +183,7 @@ const sink = {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
     if (msg.t === 'on') host.mute(false);
+    if (emuKeys(msg)) return;
     host.send(msg);
     piano.track(msg);
     hands.track(msg);
@@ -223,6 +233,46 @@ const stampOctave = (p: Patch): boolean => {
   else delete p.octave;
   return true;
 };
+// the FM-1 tab's emulator (see "the FM-1 tab" below): made before the editor, whose first events reach it
+/** the note each pill key started (the octave may change while it is held) */
+const pillNote = new Map<number, number>();
+/** the MASTER knob's level, kept per browser; it sets the output only while the FM-1 tab shows */
+const MASTER_KEY = 'matryoshka.fm1-master';
+const emuMaster = ((): number => { try { const v = Number(localStorage.getItem(MASTER_KEY)); return localStorage.getItem(MASTER_KEY) !== null && v >= 0 && v <= 1 ? v : 1; } catch { return 1; } })();
+let emuLevel = emuMaster;
+const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`, {
+  focus: (d, g) => fm1Event({ kind: 'focus', device: d, page: g }, 'emu'),
+  param: (m, p, v) => fm1Event({ kind: 'param', module: m, param: p, value: v / 65536 }, 'emu'),
+  preset: (d) => stepOpenList(d),
+  save: () => saveCurrent(),
+  transport: (run) => {
+    fromEmu = true;
+    try { setPlaying(run); } finally { fromEmu = false; }
+  },
+  step: (m, k, b) => fm1Event({ kind: 'step', module: m, step: k, b }, 'emu'),
+  stepval: (m, k, note, vel) => fm1Event({ kind: 'stepval', module: m, step: k, note, vel }, 'emu'),
+  mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
+  key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
+    if (down) {
+      const note = 53 + k + 12 * emu.octave;
+      if (note < 0 || note > 127) return;
+      pillNote.set(k, note);
+      sink.send({ t: 'on', note, vel: 0.8 });
+    } else {
+      const note = pillNote.get(k);
+      pillNote.delete(k);
+      if (note !== undefined) sink.send({ t: 'off', note });
+    }
+  },
+  master: (v) => { emuLevel = v; host.setMaster(v); try { localStorage.setItem(MASTER_KEY, String(v)); } catch { /* private mode */ } },
+  used: () => { if (!host.running) void startAudio(); },
+}, emuMaster);
+emu.onReady = () => emuLoad();
+/** another patch opened (the emulator's focus starts at its first device) */
+let emuFresh = true;
+let emuTimer = 0;
+const emuHeld = new Set<number>();
+const emuSwallowed = new Set<number>();
 const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onStructure(p) {
     stampOctave(p);
@@ -232,9 +282,11 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     queueSave(p);
     showBudget();
     if (live()) queueUpload();
+    queueEmu();
   },
   onAtt(id, index, value) {
     host.send({ t: 'att', id, index, value });
+    queueEmu();
     queueSave(editor.patch);
     if (live() && !uploading) device.att(editor.patch, id, index, value);
     else if (live()) dirty = true;
@@ -248,14 +300,17 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
       // a Voice allocator's setting changes the poly groups: the FM-1 takes the whole patch again
       showBudget();
       if (live() && !fromDevice) queueUpload();   // (from the FM-1: it changed its group itself)
+      queueEmu();
       return;
     }
+    if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
     if (live() && !uploading) device.param(editor.patch, id, name, value);
     else if (live()) dirty = true;
   },
   onStep(id, k, b) {
     host.send({ t: 'step', id, k, b });
+    if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
     if (live() && !uploading) device.step(editor.patch, id, k, b);
@@ -263,6 +318,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onStepValue(id, k, note, vel) {
     host.send({ t: 'stepval', id, k, note, vel });
+    if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
     if (live() && !uploading) device.stepValue(editor.patch, id, k, note, vel);
@@ -274,6 +330,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onBypass(id, on) {
     host.send({ t: 'bypass', id, on });
+    queueEmu();
     tutorial.bypassed();
     queueSave(editor.patch);
     if (live() && !uploading) device.bypass(editor.patch, id, on);
@@ -281,6 +338,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onRange(id, index, name, range) {
     host.send({ t: 'range', id, index, name, range });
+    queueEmu();
     queueSave(editor.patch);
     if (live() && !uploading) device.range(editor.patch, id, index, name, range);
     else if (live()) dirty = true;
@@ -289,8 +347,9 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     setPlaying(on);
   },
   onFocus(key, page) {
-    const at = live() ? binaryPage(editor.patch, key, page) : null;
-    if (at) device.focus(at[0], at[1]);
+    const at = live() || emu.ui ? binaryPage(editor.patch, key, page) : null;
+    if (at && live()) device.focus(at[0], at[1]);
+    if (at && !fromEmu) emu.ui?.focus(at[0], at[1]);
   },
   onButton(i, on) {
     host.send({ t: 'button', i, on });
@@ -315,6 +374,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     tutorial.refresh();
   },
   onLoad(p) {
+    emuFresh = true;
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
     syncDeleteBtn(p.name);
   },
@@ -988,6 +1048,7 @@ function setPlaying(on: boolean): void {
   editor.playing = on;
   host.transport(on);
   if (live()) device.transport(on);
+  if (!fromEmu) emu.ui?.transport(on);
   syncPlayBtn();
 }
 function togglePlaying(): void {
@@ -995,6 +1056,77 @@ function togglePlaying(): void {
   status.textContent = editor.playing ? 'transport running' : 'transport stopped';
 }
 arpBtn.onclick = togglePlaying;
+
+// ---- the FM-1 tab (#110): the real firmware UI as WebAssembly (fm1-ui.ts, fm1-view.ts) in place of the canvas. Its
+// panel drives the editor as a Live FM-1 does (fm1Event), the editor's edits go to it; the browser engine plays.
+/** the editor's patch into the emulator, its transport and focus as here */
+function emuLoad(): void {
+  const ui = emu.ui;
+  if (!ui) return;
+  let bin: Uint8Array;
+  try {
+    bin = encodePatch(editor.patch);
+  } catch (e) {
+    emu.message(`This patch does not fit the FM-1: ${(e as Error).message}`);
+    return;
+  }
+  const err = ui.load(bin, editor.patch.name.toUpperCase(), { fresh: emuFresh });
+  emuFresh = false;
+  emu.message(err ? `The FM-1 could not load this patch (error ${err}).` : null);
+  ui.transport(editor.playing);
+  const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
+  if (at) ui.focus(at[0], at[1]);
+}
+function queueEmu(): void {
+  if (!emu.ui) return;
+  clearTimeout(emuTimer);
+  emuTimer = window.setTimeout(emuLoad, 120);
+}
+/** a parameter set in the editor: the emulator's engine takes it at once (as a Live FM-1 does) */
+function emuParam(id: number, name: string, value: number): void {
+  if (!emu.ui) return;
+  const m = editor.patch.modules.find((x) => x.id === id);
+  const mi = m ? deviceIndex(editor.patch, id) : -1;
+  const pi = m ? DEFS[m.type].params.findIndex((q) => q.name === name) : -1;
+  if (mi >= 0 && pi >= 0) emu.ui.param(mi, pi, toQ16(value));
+}
+/** the emulated PRESET knob: the next / previous entry of the Open list's Your patches and Examples */
+function stepOpenList(d: number): void {
+  const list = openableGroups().filter((g) => g.label !== 'Tutorial').flatMap((g) => g.items);
+  if (!list.length || !d) return;
+  const i = list.findIndex((o) => o.name === editor.patch.name);
+  const next = list[(((i < 0 ? (d > 0 ? -1 : 0) : i) + d) % list.length + list.length) % list.length];
+  editor.setPatch(next.load());
+  setBaseline();
+  $<HTMLInputElement>('patch-name').value = editor.patch.name;
+  status.textContent = `FM-1: ${next.name}`;
+}
+/** the keyboard's notes are the emulated FM-1's keys while its tab shows; on its SEQ page they enter steps and do not
+ * sound (as on the device). True: the message is used up */
+function emuKeys(msg: HostMsg): boolean {
+  if (msg.t === 'panic') { emuHeld.clear(); emuSwallowed.clear(); }
+  if (!emu.shown || !emu.ui || (msg.t !== 'on' && msg.t !== 'off')) return false;
+  const note = (msg as { note: number }).note;
+  if (msg.t === 'on') emuHeld.add(note);
+  else emuHeld.delete(note);
+  emu.keys(emuHeld);
+  if (msg.t === 'on' && emu.ui.page === 8) { emuSwallowed.add(note); return true; }
+  if (msg.t === 'off' && emuSwallowed.delete(note)) return true;
+  return false;
+}
+// the Patch | FM-1 switch over the canvas
+const viewBtns = [...document.querySelectorAll<HTMLButtonElement>('#view-switch [data-view]')];
+function setView(v: 'patch' | 'fm1'): void {
+  for (const b of viewBtns) b.setAttribute('aria-selected', String(b.dataset.view === v));
+  $('canvas').hidden = v !== 'patch';
+  $('help-btn').hidden = v !== 'patch';
+  // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go
+  document.querySelector('.workspace')!.classList.toggle('fm1-mode', v === 'fm1');
+  host.setMaster(v === 'fm1' ? emuLevel : 1);
+  if (v === 'fm1') void emu.show();
+  else emu.hide();
+}
+for (const b of viewBtns) b.onclick = () => setView(b.dataset.view as 'patch' | 'fm1');
 
 // the keyboard folds away, leaving the deck's buttons; remembered per browser
 const KEYS_HIDDEN = 'matryoshka.keys-hidden';

@@ -50,3 +50,11 @@ The doll-colored cable-arm variant, `web/public/brand/round-three/28-doll-colore
 The hidden cable-end revision, `web/public/brand/round-three/29-hidden-arm-ends.png`, was edited with the built-in image generator. Its prompt is in `web/public/brand/round-three/hidden-arm-ends-edit.json`.
 
 The active Matryoshka wordmark uses preset p13: the approved narrow Roboto Flex capitals, both T arms shortened to 55%, custom A–T / T–R spacing, and a small foot on the teal R/1. The earlier FM1 wordmarks remain historical studies. The active logo is `web/public/brand/matryoshka.png`.
+
+## Ideas taken from other FM-1 projects (no code copied)
+
+- The FM-1 tab's panel geometry (`web/src/fm1-view.ts`) follows the panel that
+  [fm1-emu](https://github.com/joakimeriksson/fm1-emu) (MIT) draws in fm1-live, itself after Felucca's controls diagram.
+- The FM-1 tab's lights (the wasm exports the panel's LEDs as lit / dim / mid / breathing bits, the page colours buttons
+  and keys from them) follow the browser emulator of [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal
+  (GPL-3.0-only), including its light colours.

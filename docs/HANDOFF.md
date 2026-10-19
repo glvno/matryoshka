@@ -1,66 +1,41 @@
 # Handoff: what to work on next
 
-Written 2026-10-19 at the end of the device-pages session. Read CLAUDE.md first (decisions, gotchas, the state of each
-feature; "Device pages" is the newest section) and docs/ARCHITECTURE.md "Device pages". The previous handoff
-(2026-10-18) is done and lives in git history.
+Written 2026-10-19 (second session of the day). Read CLAUDE.md first (decisions, gotchas, the state of each feature; the
+sections "Device pages" and "Groups, knob-tinted bars, layout A+" are the newest) and docs/ARCHITECTURE.md "Device
+pages". The earlier handoffs are in git history.
 
 ## Where things stand
 
-- Branch `device-pages` (pushed, a5374d6) holds the device-pages redesign: top-level modules / assemblies are FM-1
-  devices whose card rows are pages of four; Main's K1..K4 are edit bindings to the page in focus (K5 / K6 = device /
-  page); k1..k6 outputs migrate to a Macros assembly; cables coloured by the input's role; knobs in the logo colours;
-  the LCD restyled in the dark brand palette with a Barlow Condensed bitmap font; binary format 29.
-- **Keep building on `device-pages`**; merge it into `main` when #107 (layout A+) lands. `main` is behind it.
-- Verified: vitest 668, `tools/golden.sh` 84 kits + proto_test, `npm run build`, the JieLi CI build (firmware workflow
-  green), `npm run emu:smoke` 108 / 108 on that build, the editor in Chrome on [::1]:5173.
-- Not verified: the editor link over USB (focus / knob turns between FM-1 and editor: USB is not emulated), real-panel
-  colours and font drawing speed. Nothing is flashed: the user will not flash until a second FM-1 is in hand
-  (memory: no-flash-until-second-device).
-- Known gap: plain modules' row labels on the FM-1 are the firmware's short capitals ("L1", "CVAMT"), not the
-  editor's long names.
-- Design canvas (keep for consulting): https://claude.ai/artifact/R8qCCtaZ8RghG1QRYeahgV (boards A–D, Cables, Knobs,
-  DeviceKnobs). The new FM-1 page follows board "OptionA".
-
-## Decided with the user this session (after the implementation)
-
-- **Sections and groups:** a heading = a section; a section holds one or more groups of at most four rows; one group =
-  one FM-1 page ("FILTER 1/2", "FILTER 2/2" stays). Groups fill in fours automatically, Arrange gets "↵ new group" to
-  end one early (`ParamRef.group`); a fifth row dropped on a full group starts the next one. The card draws the groups
-  as clearly separate chunks. Plain modules group in fours.
-- **Coloured bars in both places:** the editor fills the focused group's bars in the K1..K4 colours; the FM-1 page
-  becomes option A's four full-width knob-tinted bars, with a slim header that keeps the device tabs and page chips
-  ("A+"), the page rail and transport line at the foot, no picture area (the full-size toast shows while turning).
-- **The web editor doubles as a firmware emulator:** a "Patch | FM-1" switch on the canvas area (Patch default). It
-  runs the **real firmware UI compiled to WebAssembly** (not a TS re-drawing, not the chip emulator), the **whole panel
-  UI** (pages, HOME / legend, menu + manual, SEQ, PLAY / tempo, toasts) but no flash: PRESET steps the Open list, SAVE
-  saves to Your patches. A flat brand-style panel drawing; the 27 keys are the on-screen keyboard; dock K1..K4 = the
-  emulated knobs; the focus is shared with the editor; the browser engine plays (C engine audio is a later ticket).
+- Done this session, each closed on glvno/matryoshka: #104 splash on the night background, #105 sections and groups
+  (`ParamRef.group`, `groupStarts`), #106 knob-tinted bars for the focused page, #107 FM-1 page layout A+, #108 the
+  panel core (`firmware/src/panel.c`, host test `tools/panel_test.sh`), #109 the firmware UI as WebAssembly
+  (`firmware/wasm/fm1_ui.c`, `npm run fm1-wasm`, `web/src/fm1-ui.ts`), #110 the editor's FM-1 tab (`web/src/fm1-view.ts`).
+- `device-pages` was merged into `main` after #107 (e46dcbb). #108–#110 are on `device-pages` only (pushed, CI green):
+  merge them into `main` when the user agrees (that deploys the FM-1 tab to Pages).
+- Verified: vitest 672, golden 84 + proto + panel tests, `npm run build`, the JieLi CI build (no warnings, pool 41.5 KB
+  free), `npm run emu:smoke` 108 / 108 on efd5f84 (the last commit that changed device code), the editor and FM-1 tab
+  in Chrome on [::1]:5173.
+- Not verified: anything on a real FM-1 (nothing is flashed until a second unit is in hand), the editor link over USB,
+  real-panel colours and drawing speed of layout A+ (`pages_bar` blits each bar a scanline at a time).
+- Known gaps: plain modules' row labels on the FM-1 are the firmware's short capitals; the FM-1 tab's panel layout is
+  our own flat drawing, not measured from the device; the emulator tab ignores MIDI out.
 
 ## Suggested order
 
-1. **#104** Splash: logo and wordmark sit on black boxes (`gen_splash.py` palette entry 0 is black, the LCD is now
-   `C_BG` night). Small, independent.
-2. **#105** Sections and groups (model + editor + factory assemblies re-grouped).
-3. **#106** Editor: knob-coloured bars for the focused group (after #105).
-4. **#107** FM-1 page layout A+ (after #105). Then merge `device-pages` into `main`.
-5. **#108** Firmware: split panel input from the HAL into a panel core (device behaviour identical; smoke must stay
-   108 / 108 on the CI build).
-6. **#109** Firmware UI as WebAssembly (`clang --target=wasm32 -nostdlib` + `wasm-ld`; Homebrew llvm here has the
-   target; built in the Pages workflow).
-7. **#110** Editor: FM-1 emulator tab.
-8. Later: **#111** C engine audio in the emulator tab; **#112** faint envelope shapes on envelope pages.
+1. Ask the user about merging `device-pages` (#108–#110) into `main`.
+2. **#111** C engine audio in the FM-1 tab (the wasm already renders the engine silently on each tick: route its
+   output to an AudioWorklet instead of the browser engine, or let the user choose).
+3. **#112** Faint envelope shapes on envelope pages (inside the bars of layout A+; the old `pages_envelope` is in git
+   history before 735b504).
 
 ## Working notes
 
-- Browser checks: use http://[::1]:5173 (the user's dev server, separate storage) unless the task is the user's own
-  data on http://localhost:5173. Do not start a second dev server. A source change can make Vite reload the page and
-  drop in-memory state: keep work in `sessionStorage` while scripting the page.
-- `gh` needs `-R glvno/matryoshka` (it defaults to upstream). zsh arrays are 1-based: use a TSV + `while read` (or
-  bash) when scripting several `gh issue create` calls.
+- Browser checks: http://[::1]:5173 (the user's dev server, separate storage). Do not start a second dev server. A
+  source change can make Vite reload the page. The browser window could not be resized: a 390 px iframe of the same
+  page served as the phone-width check.
+- `gh` needs `-R glvno/matryoshka`.
 - After a push: wait for the `firmware` workflow, then `cd web && npm run emu:smoke` (it fetches the CI build of the
-  checkout's commit). Smoke checks that sample LCD colours must use the restyle's palette (`C_*` in ui.c, `P_*` in
-  pages_ui.c), e.g. a lit SEQ cell is `C_FG` 0xFFBD.
-- LCD previews: `tools/ui_preview.sh out.png PRESET DEVICE:PAGE ...` with env `TOAST=k`, `DEVTOAST=1`; the font is
-  generated by `python3 tools/gen_font.py`.
-- After changing `modules.ts` / presets: `npm run export-defs`; after engine.c: `npm run cpu-costs`; after a
-  default-parameter change: run course.json's stored patches through `validatePatch` (the tutorial tests compare them).
+  checkout's commit).
+- The FM-1 tab needs `web/public/fm1-ui.wasm`: `cd web && npm run fm1-wasm` after any change to the firmware UI (the
+  vitest rebuilds it when a source is newer; the web and Pages workflows build it).
+- LCD previews: `tools/ui_preview.sh out.png PRESET DEVICE:PAGE ...` with env `TOAST=k`, `DEVTOAST=1`.
