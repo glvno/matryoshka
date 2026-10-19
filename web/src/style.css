@@ -1277,7 +1277,11 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-name { font-size: .9cqw; color: var(--secondary); letter-spacing: .2em; }
 .fm1-dial { --turn: 0deg; border-radius: 50%; cursor: ns-resize; touch-action: none; outline-offset: .3cqw;
   background: radial-gradient(circle at 50% 50%, var(--f-dial) 0 70%, var(--f-dial-rim) 71% 100%); box-shadow: .15cqw .3cqw 0 var(--f-drop); }
-.fm1-dial::after { content: ''; position: absolute; left: calc(50% - .14cqw); top: 12%; width: .28cqw; height: 34%; border-radius: .14cqw; background: var(--accent);
+/* K1..K4 in the knob colours (the LCD's bars, the editor's focused page); the ticks stay neutral */
+.fm1-dial:is(.k1, .k2, .k3, .k4) { --f-dial-rim: color-mix(in oklab, var(--knob) 70%, var(--ref-night)); --f-tick: var(--accent-ink);
+  background: radial-gradient(circle at 50% 50%, var(--knob) 0 70%, var(--f-dial-rim) 71% 100%); }
+.fm1-dial.k1 { --knob: var(--k1); } .fm1-dial.k2 { --knob: var(--k2); } .fm1-dial.k3 { --knob: var(--k3); } .fm1-dial.k4 { --knob: var(--k4); }
+.fm1-dial::after { content: ''; position: absolute; left: calc(50% - .14cqw); top: 12%; width: .28cqw; height: 34%; border-radius: .14cqw; background: var(--f-tick, var(--ink));
   transform-origin: 50% 112%; transform: rotate(var(--turn)); }
 .fm1-dial:focus-visible { outline: 2px solid var(--accent); }
 .fm1-btn { padding: 0; border: 0; border-radius: .7cqw; background: var(--f-cap); color: var(--f-cap-ink); box-shadow: .08cqw .24cqw 0 var(--f-drop), inset 0 0 0 .08cqw var(--line);

@@ -246,6 +246,8 @@ export class Fm1View {
       d.style.setProperty('--turn', `${turns * 18}deg`);
     });
     d.setAttribute('aria-label', `${label} encoder`);
+    const k = [ENCODERS.k1, ENCODERS.k2, ENCODERS.k3, ENCODERS.k4].indexOf(n);
+    if (k >= 0) d.classList.add(`k${k + 1}`);     /* K1..K4 in their colours, as on the LCD and the editor */
   }
 
   /** MASTER: a pot, -135..135 degrees (the output level) */
