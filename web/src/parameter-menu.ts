@@ -8,6 +8,8 @@ import { choiceName, longName, moduleName } from './labels';
 interface Events {
   patch(): Patch;
   change(fn: () => void): void;
+  /** a control is about to change the patch: one undo step per gesture (Editor.touch) */
+  touch?(): void;
   onAtt(id: number, index: number, value: number): void;
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
 }
@@ -96,6 +98,7 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
       value.textContent = Number(depth.value).toFixed(2);
       refreshers.push(() => { depth.value = String(m.att![index]); value.textContent = Number(depth.value).toFixed(2); });
       depth.oninput = () => {
+        ev.touch?.();
         m.att![index] = Number(depth.value);
         value.textContent = Number(depth.value).toFixed(2);
         ev.onAtt(m.id, index, Number(depth.value));
@@ -133,6 +136,7 @@ export function parameterMenu(m: ModuleInst, def: ModuleDef, pd: ParamDef, ev: E
         output.textContent = pd.choices ? choiceName(def.type, pd.name, pd.choices[Math.round(v)] ?? '') : `${Number(v.toFixed(3))}${pd.unit ? ' ' + pd.unit : ''}`;
       };
       input.oninput = () => {
+        ev.touch?.();
         r[end] = Number(input.value);
         show();
         ev.onRange(m.id, index, pd.name, [r[0], r[1]]);

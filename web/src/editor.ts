@@ -2,6 +2,7 @@
 // Patch editor: module cards on a canvas, SVG cables, drag-to-connect, a selection, assemblies and undo.
 import { resizeHandle } from './resize-handle';
 import { parseValue } from './value-input';
+import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { tidy, tidyAssembly } from './tidy';
 import { DEFS, PANEL_BUTTONS } from './modules';
@@ -168,6 +169,8 @@ const pathOf = ([a, ...rest]: { x: number; y: number }[]): string => {
 const CLIP_HALF = 0;
 /** presses closer than this belong to one gesture (a double-click's two presses) */
 const TYPE_GAP_MS = 400;
+/** a gesture made without a pointer (arrow keys, the wheel) ends this long after its last change */
+const GESTURE_IDLE_MS = 600;
 type Pt = { x: number; y: number };
 /** the footprint of a new card for the free-spot search: a grid cell less its gutters */
 const CARD_W = 300;
@@ -228,8 +231,9 @@ export class Editor {
   private cablePaths: { path: SVGPathElement; from: HTMLElement; to: HTMLElement; origin: HTMLElement; cable?: Cable }[] = [];
   private stack: string[] = [];
   private routingOpen = new Set<string>();
-  private history: string[] = [];
-  private future: string[] = [];
+/** undo steps: the patch snapshot and the A / B side it belongs to (a flip is a step; undoing it goes back to that side) */
+  private history: { s: string; side: 'A' | 'B' }[] = [];
+  private future: { s: string; side: 'A' | 'B' }[] = [];
   private parameterDisplays: { id: number; update: (values: Record<string, number> | null) => void }[] = [];
 
   /** Display only: never write telemetry into the patch, undo history, or parameter callbacks. */
@@ -272,14 +276,22 @@ export class Editor {
       if (card) this.raiseCard(card);
     };
     canvas.addEventListener('pointerdown', raise, true);
+    window.addEventListener('pointerdown', () => { this.pointerHeld = true; }, true);
+    const release = (): void => {
+      this.pointerHeld = false;
+      if (this.gesture !== null) window.setTimeout(() => { if (!this.pointerHeld) this.endGesture(); }); // after the control's own pointerup
+    };
+    for (const type of ['pointerup', 'pointercancel'] as const) window.addEventListener(type, release, true);
+    window.addEventListener('blur', release);
     canvas.addEventListener('focusin', raise);
     window.addEventListener('keydown', (e) => {
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+      const k = e.key.toLowerCase();
+      if (!(e.metaKey || e.ctrlKey) || (k !== 'z' && !(k === 'y' && e.ctrlKey && !e.metaKey))) return;
       if (!this.canvas.checkVisibility() || document.querySelector('dialog[open], [popover]:popover-open')) return;
       const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') && (t as HTMLInputElement).type !== 'range') return;
+      if (t && isTextEntry(t)) return; // a text field's own undo
       e.preventDefault();
-      if (e.shiftKey) this.redo();
+      if (e.shiftKey || k === 'y') this.redo();
       else this.undo();
     });
     this.rebuild();
@@ -293,6 +305,9 @@ export class Editor {
     this.report(fixAssemblies(this.patch, DEFS));
     this.history = [];
     this.future = [];
+    this.dropGesture();
+    this.snapshots.A = this.snapshots.B = null;
+    this.side = 'A';
     this.routingOpen.clear();
     this.stack = [];
     this.selected.clear();
@@ -394,20 +409,94 @@ export class Editor {
   }
 
   // ---- undo
+  // Snapshots of the patch. A structural change (`change`) is one step; an edit by a control (a slider drag, a switch, a
+  // card drag, a run of arrow keys) is a gesture: `touch` before its first change keeps the patch as it was, and the
+  // gesture becomes one step when the pointer is let go, or GESTURE_IDLE_MS after its last change without a pointer.
+
+  /** the patch as an undo snapshot: without the view (zoom, scroll), the keyboard's octave and the name, which undo leaves alone */
+  private snap(): string {
+    const { view: _view, octave: _octave, name: _name, ...rest } = this.patch;
+    return JSON.stringify(rest);
+  }
+
+  /** a snapshot as the patch, keeping the current view and octave */
+  private revive(s: string): Patch {
+    const p = JSON.parse(s) as Patch;
+    p.name = this.patch.name;
+    if (this.patch.view) p.view = this.patch.view;
+    if (this.patch.octave !== undefined) p.octave = this.patch.octave;
+    return p;
+  }
+
+  /** one undo step from `before` (a snap) to now, if anything changed; inside an open gesture the gesture's step covers it */
+  private commit(before: string, side = this.side): boolean {
+    if (before === this.snap()) return false;
+    if (this.gesture !== null) return true;
+    this.history.push({ s: before, side });
+    if (this.history.length > HISTORY) this.history.shift();
+    this.future = [];
+    return true;
+  }
+
+  /** the patch before a discrete change (a snap): a gesture of keys or the wheel still open ends first, so the two stay
+   * separate steps; a pointer gesture stays open (a drag's drop into a frame is part of the drag) */
+  private mark(): string {
+    if (this.gesture !== null && !this.gesturePointer) this.endGesture();
+    return this.snap();
+  }
+
+  /** the patch before the open gesture's first change (null: none open) */
+  private gesture: string | null = null;
+  /** the open gesture began with a pointer down (it ends at the release, not on a timer) */
+  private gesturePointer = false;
+  private gestureTimer = 0;
+  /** a pointer is down somewhere: a gesture it makes ends when it is let go */
+  private pointerHeld = false;
+
+  /** a control is about to change the patch: open a gesture, or keep the open one going */
+  touch(): void {
+    if (this.gesture !== null && !this.gesturePointer && this.pointerHeld) this.endGesture(); // keys, then a drag: two steps
+    if (this.gesture === null) {
+      this.gesture = this.snap();
+      this.gesturePointer = this.pointerHeld;
+    }
+    window.clearTimeout(this.gestureTimer);
+    if (!this.pointerHeld) this.gestureTimer = window.setTimeout(() => this.endGesture(), GESTURE_IDLE_MS);
+  }
+
+  /** close the open gesture: one undo step if it changed anything */
+  endGesture(): void {
+    window.clearTimeout(this.gestureTimer);
+    const before = this.gesture;
+    this.gesture = null;
+    if (before !== null) this.commit(before);
+  }
+
+  /** drop an open gesture without a step (the patch was replaced) */
+  private dropGesture(): void {
+    window.clearTimeout(this.gestureTimer);
+    this.gesture = null;
+  }
 
   undo(): void {
-    const s = this.history.pop();
-    if (s === undefined) return this.ev.onError('nothing to undo');
-    this.future.push(JSON.stringify(this.patch));
-    this.restore(s);
+    if (this.gesture !== null && this.pointerHeld) return; // not in the middle of a drag: it would go on moving a replaced patch
+    this.endGesture();
+    const e = this.history.pop();
+    if (e === undefined) return this.ev.onError('nothing to undo');
+    this.future.push({ s: this.snap(), side: this.side });
+    this.restore(e.s);
+    this.side = e.side;
     this.ev.onHistory?.('undo');
   }
 
   redo(): void {
-    const s = this.future.pop();
-    if (s === undefined) return this.ev.onError('nothing to redo');
-    this.history.push(JSON.stringify(this.patch));
-    this.restore(s);
+    if (this.gesture !== null && this.pointerHeld) return;
+    this.endGesture();
+    const e = this.future.pop();
+    if (e === undefined) return this.ev.onError('nothing to redo');
+    this.history.push({ s: this.snap(), side: this.side });
+    this.restore(e.s);
+    this.side = e.side;
     this.ev.onHistory?.('redo');
   }
 
@@ -436,7 +525,11 @@ export class Editor {
   }
 
   private restore(s: string): void {
-    this.patch = JSON.parse(s) as Patch;
+    this.dropGesture();
+    this.patch = this.revive(s);
+    if (!this.patch.slackFrom) this.slackMod = 0;
+    // an assembly the undo closed again tidies on its next first expansion (its tidied layout went with the step)
+    for (const a of assembliesOf(this.patch)) if (!a.open) this.expandedOnce.delete(a.id);
     this.selected.clear();
     this.selectedAsm.clear();
     this.rebuild();
@@ -448,21 +541,18 @@ export class Editor {
    * the host. An error undoes the change and goes to the status line. Returns whether something changed.
    */
   private change(fn: () => unknown): boolean {
-    const before = JSON.stringify(this.patch);
+    const before = this.mark();
     try {
       fn();
     } catch (e) {
-      this.patch = JSON.parse(before) as Patch;
+      this.patch = this.revive(before);
       this.rebuild();
       this.ev.onError(String((e as Error).message ?? e));
       if (e instanceof PinsInUse) this.flash(e.cables);
       return false;
     }
     this.report(reconcileAll(this.patch, DEFS).map((l) => `assembly "${l}" is empty and was removed`));
-    if (JSON.stringify(this.patch) === before) return false;
-    this.history.push(before);
-    if (this.history.length > HISTORY) this.history.shift();
-    this.future = [];
+    if (!this.commit(before)) return false;
     this.rebuild();
     this.ev.onStructure(this.patch);
     return true;
@@ -550,17 +640,14 @@ export class Editor {
   private resizeAssembly(el: HTMLElement, a: AssemblyInst): void {
     let before = '';
     el.append(resizeHandle(`Resize ${a.label}`, () => this.zoom, {
-      start: () => { before = JSON.stringify(this.patch); this.raiseCard(el); },
+      start: () => { before = this.mark(); this.raiseCard(el); },
       size: () => ({ width: el.offsetWidth, height: el.offsetHeight }),
       resize: (width, height) => {
         a.frameSize = { width: Math.min(4000, Math.max(236, width)), height: Math.min(4000, Math.max(80, height)) };
         this.layoutFrames(); this.sizeCanvas(); this.positionCables();
       },
       end: () => {
-        if (before !== JSON.stringify(this.patch)) {
-          this.history.push(before); if (this.history.length > HISTORY) this.history.shift(); this.future = [];
-          this.ev.onLayout(this.patch);
-        }
+        if (this.commit(before)) this.ev.onLayout(this.patch);
       },
     }));
   }
@@ -734,19 +821,22 @@ export class Editor {
     for (const v of view) this.stepGrids.get(v.id)?.show(v.pos, v.mute);
   }
 
-  /** a step changed on the FM-1's SEQ page: into the patch (no undo step: it happened on the device) and the grid */
+  /** a step changed on the FM-1's SEQ page: into the patch and the grid, an undo step like an edit here (an undo sends the
+   * patch back to the FM-1, so a change made there must be in the history) */
   stepFromDevice(id: number, k: number, b: number): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
     if (!m || k < 0 || k >= STEPS_MAX) return;
+    this.touch();
     m.steps = Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? b & 0x7f : m.steps?.[i] ?? 0));
     this.stepGrids.get(id)?.refresh();
     this.ev.onStep?.(id, k, b & 0x7f);
   }
 
-  /** a step's note / velocity set on the FM-1 (a step held + K1 / K2): into the patch, no undo step */
+  /** a step's note / velocity set on the FM-1 (a step held + K1 / K2): into the patch, an undo step as above */
   stepValueFromDevice(id: number, k: number, note: number, vel: number): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
     if (!m || k < 0 || k >= STEPS_MAX) return;
+    this.touch();
     setStepValue(m, k, note, vel);
     this.stepGrids.get(id)?.refresh();
     this.ev.onStepValue?.(id, k, note & 0x7f, vel & 0x7f);
@@ -761,36 +851,23 @@ export class Editor {
    * (the name is in the binary the FM-1 gets) */
   private stepsRow(m: ModuleInst): StepGrid {
     const index = this.patch.modules.filter((x) => x.type === 'steps').indexOf(m);
-    const push = (): void => {
-      this.history.push(JSON.stringify(this.patch));
-      if (this.history.length > HISTORY) this.history.shift();
-      this.future = [];
-    };
-    let batch = false;
     const grid = stepGrid(m, index, {
       set: (k, b) => {
-        if (!batch) push();
+        this.touch(); // a drag across the grid is one gesture: one undo step
         m.steps = Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? b : m.steps?.[i] ?? 0));
         if (!m.steps.some((x) => x)) delete m.steps;
         this.ev.onStep?.(m.id, k, b);
       },
-      begin: () => {
-        const done = this.beginEdit();
-        batch = true;
-        return () => {
-          batch = false;
-          done();
-        };
-      },
+      begin: () => this.beginEdit(),
       name: (s) => {
         if ((m.name ?? '') === s) return;
-        push();
+        this.touch();
         if (s) m.name = s;
         else delete m.name;
         this.ev.onStructure(this.patch);
       },
       value: (k, note, vel) => {
-        if (!batch) push();
+        this.touch(); // a drag across the grid is one gesture: one undo step
         setStepValue(m, k, note, vel);
         this.ev.onStepValue?.(m.id, k, note, vel);
       },
@@ -806,13 +883,8 @@ export class Editor {
 
   /** an undo step around a change made outside the editor's own controls (a drag on an envelope's shape): call the result when done */
   beginEdit(): () => void {
-    const before = JSON.stringify(this.patch);
-    return () => {
-      if (JSON.stringify(this.patch) === before) return;
-      this.history.push(before);
-      if (this.history.length > HISTORY) this.history.shift();
-      this.future = [];
-    };
+    this.touch();
+    return () => this.endGesture();
   }
 
   /** a Scope's screen: it goes on an assembly card like a parameter (pick mode, Cmd / Ctrl-click) */
@@ -1056,9 +1128,7 @@ export class Editor {
   /** the power button of a card: bypass on / off (the through input, or silence, replaces the module's outputs) */
   private bypassButton(m: ModuleInst, def: ModuleDef, card: HTMLElement): HTMLButtonElement {
     const b = this.button('⏻', `${def.label} on / off (bypass)`, () => {
-      this.history.push(JSON.stringify(this.patch));
-      if (this.history.length > HISTORY) this.history.shift();
-      this.future = [];
+      this.touch();
       m.bypass = !m.bypass;
       if (!m.bypass) delete m.bypass;
       card.classList.toggle('off', !!m.bypass);
@@ -1173,6 +1243,7 @@ export class Editor {
       lastInput = now;
       const pos = Math.min(Number(input.max), Math.max(Number(input.min), Number(input.value) - offset));
       const v = pd.log ? snapTo(pd, fromUnit(pd, pos / 1000)) : Number(pos.toFixed(6));
+      if (m.params[pd.name] !== v) this.touch();
       m.params[pd.name] = v;
       // the text follows the thumb: the base itself, or with modulation the live value the drag holds under the pointer
       // (the engine's reports run a poll behind, so they are not shown until the edit ends)
@@ -1189,6 +1260,7 @@ export class Editor {
       input.checked = m.params[pd.name] >= 0.5;
       input.oninput = () => {
         const v = input.checked ? 1 : 0;
+        this.touch();
         m.params[pd.name] = v;
         show(v);
         for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // a toggle can change how its siblings show (altText)
@@ -1270,7 +1342,7 @@ export class Editor {
     row.append(name, choice ? sel!.element : pd.toggle ? document.createElement('span') : val);
     if (canPatch) {
       const key = `${m.id}:${pd.name}`;
-      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn) }, this.routingOpen.has(key), (on) => {
+      row.append(parameterMenu(m, def, pd, { ...this.ev, patch: () => this.patch, change: (fn) => this.change(fn), touch: () => this.touch() }, this.routingOpen.has(key), (on) => {
         if (on) {
           this.routingOpen.clear();
           this.routingOpen.add(key);
@@ -1308,13 +1380,13 @@ export class Editor {
       const type = (): void => {
         if (row.classList.contains('locked') || row.querySelector('.val-edit')) return;
         if (performance.now() - lastInput < TYPE_GAP_MS * 2 && m.params[pd.name] !== gestureFrom) this.setParam(m.id, pd.name, gestureFrom);
+        this.endGesture(); // the double-click's own presses (moved and put back) leave no step
         this.typeValue(row, fmt(m.params[pd.name]), (text) => {
           let v = parseValue(text, pd, names);
           if (v === null) return false;
           if (pd.log) v = snapTo(pd, v);
-          const done = this.beginEdit();
           this.setParam(m.id, pd.name, v);
-          done();
+          this.endGesture();
           return true;
         });
       };
@@ -1396,7 +1468,8 @@ export class Editor {
         edit: (fn) => {
           const c = cfg();
           if (!c) return;
-          before ??= JSON.stringify(this.patch);
+          this.touch();
+          before ??= this.snap();
           fn(c.cards, c.parts);
           if (!frame) frame = requestAnimationFrame(() => {
             frame = 0;
@@ -1405,11 +1478,7 @@ export class Editor {
         },
         commit: () => {
           if (before === null) return;
-          if (JSON.stringify(this.patch) !== before) {
-            this.history.push(before);
-            if (this.history.length > HISTORY) this.history.shift();
-            this.future = [];
-          }
+          this.endGesture();
           before = null;
           this.rebuild();
           this.ev.onStructure(this.patch);
@@ -1512,13 +1581,10 @@ export class Editor {
 
   /** Tidy up: line the cards up in columns, keeping their arrangement (tidy.ts); one undo step */
   tidyUp(): void {
-    const before = JSON.stringify(this.patch);
+    const before = this.mark();
     const docked = this.docked();
     tidy(this.patch, this.tidySizes(), new Set(docked ? [docked.id] : []));
-    if (JSON.stringify(this.patch) === before) return this.ev.onError('already tidy');
-    this.history.push(before);
-    if (this.history.length > HISTORY) this.history.shift();
-    this.future = [];
+    if (!this.commit(before)) return this.ev.onError('already tidy');
     this.rebuild();
     this.canvas.scrollTo(0, 0);
     this.ev.onLayout(this.patch);
@@ -1542,13 +1608,10 @@ export class Editor {
 
   /** patch an output into a sidebar slider (null: unplug it); an undo step, no engine reload */
   setSideSource(key: SideKey, from: Endpoint | null): void {
-    const before = JSON.stringify(this.patch);
+    const before = this.mark();
     if (from) this.patch[key] = { ...from };
     else delete this.patch[key];
-    if (JSON.stringify(this.patch) === before) return;
-    this.history.push(before);
-    if (this.history.length > HISTORY) this.history.shift();
-    this.future = [];
+    if (!this.commit(before)) return;
     if (key === 'slackFrom' && !from) this.slackMod = 0;
     this.rebuild();
     this.ev.onLayout(this.patch);
@@ -1800,9 +1863,7 @@ export class Editor {
     const ms = this.patch.modules.filter((m) => (mods.includes(m) || inside.has(m.id)) && m.type !== 'fm1' && m.type !== 'output');
     if (!ms.length) return false;
     const on = ms.some((m) => !m.bypass);
-    this.history.push(JSON.stringify(this.patch));
-    if (this.history.length > HISTORY) this.history.shift();
-    this.future = [];
+    this.touch();
     for (const m of ms) {
       if (on) m.bypass = true;
       else delete m.bypass;
@@ -1817,6 +1878,7 @@ export class Editor {
   nudgeSelected(dx: number, dy: number): boolean {
     const set = this.dragSet();
     if (!set.mods.length && !set.asms.length) return false;
+    this.touch();
     for (const m of set.mods) {
       m.x = Math.max(0, m.x + dx);
       m.y = Math.max(0, m.y + dy);
@@ -1937,24 +1999,24 @@ export class Editor {
     const s = this.snapshots[other];
     if (s === null) return false;
     this.snapshots[this.side] = JSON.stringify(this.patch); // the side we leave keeps what we did to it
+    const from = this.side;
     this.side = other;
-    this.applyLive(JSON.parse(s) as Patch);
+    this.applyLive(JSON.parse(s) as Patch, from);
     return true;
   }
 
   /** switch to `target`: with the same structure only the values move (onParam / onAtt / onBypass / onRange, no reload, the voices keep sounding), else a full load */
-  applyLive(target: Patch): void {
+  applyLive(target: Patch, side = this.side): void {
+    this.endGesture();
+    const before = this.mark();
     if (!sameStructure(this.patch, target) || this.patch.modules.some((m, i) => m.id !== target.modules[i].id)) {
-      this.history.push(JSON.stringify(this.patch));
       this.patch = target;
+      this.commit(before, side);
       this.selected.clear();
       this.rebuild();
       this.ev.onStructure(this.patch);
       return;
     }
-    this.history.push(JSON.stringify(this.patch));
-    if (this.history.length > HISTORY) this.history.shift();
-    this.future = [];
     target.modules.forEach((t, i) => {
       const m = this.patch.modules[i];
       for (const pd of DEFS[m.type].params) if ((m.params[pd.name] ?? pd.default) !== (t.params[pd.name] ?? pd.default)) this.ev.onParam(m.id, pd.name, t.params[pd.name] ?? pd.default);
@@ -1971,6 +2033,7 @@ export class Editor {
     const keepLayout = this.patch.modules.map((m) => [m.x, m.y]);
     this.patch = target;
     this.patch.modules.forEach((m, i) => ([m.x, m.y] = keepLayout[i]));
+    this.commit(before, side);
     this.rebuild();
     this.ev.onLayout(this.patch);
   }
@@ -2105,6 +2168,7 @@ export class Editor {
     btn.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       if (!toggles()) return set(true);
+      this.touch();
       const panel = (m.panel ??= {});
       const on = !isOn();
       panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
@@ -2117,11 +2181,12 @@ export class Editor {
       e.preventDefault();
       this.dockMenu([
         { text: toggles() ? 'Act while held' : 'Switch on / off', run: () => {
+          const before = this.mark();
           const panel = (m.panel ??= {});
           panel.toggle = toggles() ? (panel.toggle ?? []).filter((x) => x !== b) : [...(panel.toggle ?? []), b];
           panel.on = (panel.on ?? []).filter((x) => x !== b);
           this.ev.onButton?.(i, false);
-          this.history.push(JSON.stringify(this.patch));
+          this.commit(before);
           this.ev.onStructure(this.patch);
           this.rebuild();
         } },
@@ -2137,7 +2202,7 @@ export class Editor {
     const typed = window.prompt(`Label of ${key.toUpperCase()} on the FM-1 (capitals, up to ${PANEL_LABEL_MAX} characters; empty = ${key.toUpperCase()})`, now);
     if (typed === null) return;
     const label = panelLabel(typed);
-    const before = JSON.stringify(this.patch);
+    const before = this.mark();
     const panel = (m.panel ??= {});
     const labels = { ...(panel.labels ?? {}) };
     if (label) labels[key] = label;
@@ -2145,7 +2210,7 @@ export class Editor {
     if (Object.keys(labels).length) panel.labels = labels;
     else delete panel.labels;
     if (!Object.keys(panel).length) delete m.panel;
-    this.history.push(before);
+    if (!this.commit(before)) return;
     this.ev.onStructure(this.patch);
     this.rebuild();
   }
@@ -2270,9 +2335,7 @@ export class Editor {
 
   private assemblyButtons(a: AssemblyInst): HTMLElement[] {
     const pw = this.button('⏻', `${a.label} on / off (bypass every module inside)`, () => {
-      this.history.push(JSON.stringify(this.patch));
-      if (this.history.length > HISTORY) this.history.shift();
-      this.future = [];
+      this.touch();
       const changed = bypassAssembly(this.patch, a, !a.bypass);
       for (const id of changed) this.ev.onBypass(id, !!this.patch.modules.find((m) => m.id === id)?.bypass);
       this.rebuild();
@@ -2411,12 +2474,9 @@ export class Editor {
 
   /** a layout change of an assembly card: undoable, saved, no engine reload */
   private layoutChange(fn: () => void): void {
-    const before = JSON.stringify(this.patch);
+    const before = this.mark();
     fn();
-    if (JSON.stringify(this.patch) === before) return this.rebuild();
-    this.history.push(before);
-    if (this.history.length > HISTORY) this.history.shift();
-    this.future = [];
+    if (!this.commit(before)) return this.rebuild();
     this.rebuild();
     this.ev.onLayout(this.patch);
   }
@@ -2731,6 +2791,7 @@ export class Editor {
         }
         if (!on) this.select(item.module ? [item.module.id] : [], item.asm ? [item.asm.id] : []);
         set = this.dragSet();
+        this.touch();
         return true;
       },
       (dx, dy) => this.moveSet(set, dx, dy),
@@ -3299,6 +3360,7 @@ export class Editor {
   setParam(id: number, name: string, v: number): void {
     const m = this.patch.modules.find((x) => x.id === id);
     if (!m || m.params[name] === v) return;
+    this.touch();
     m.params[name] = v;
     this.ev.onParam(id, name, v);
     this.refreshKnobTicks();
