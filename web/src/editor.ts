@@ -6,6 +6,7 @@ import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { tidy, tidyAssembly } from './tidy';
 import { DEFS, PANEL_BUTTONS } from './modules';
+import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
@@ -245,6 +246,10 @@ export class Editor {
   focus: { device: string; page: number } | null = null;
   /** the dock's knob column (re-filled when the focus moves) and its dials, K1..K4 */
   private focusCol: HTMLElement | null = null;
+  /** the knobs' binding jacks on the dock's top edge (the dotted wires to the focused rows start there) */
+  private knobJacks: HTMLElement[] = [];
+  /** the dock's button column, whose SVG holds the traces from the patch buttons to their jacks */
+  private buttonCol: HTMLElement | null = null;
   private dials: HTMLElement[] = [];
   /** the dotted lines from the dials to the rows they turn, over everything */
   private bindLayer: SVGSVGElement | null = null;
@@ -709,7 +714,7 @@ export class Editor {
   wheelHost: HTMLElement | null = null;
   /** the keyboard's octave buttons, shown under Main's output strip (set by the host, then rebuild) */
   dockOctave: HTMLElement | null = null;
-  /** the transport's Play switch, shown under the tempo (set by the host, then rebuild) */
+  /** the transport's Play switch, PLAY in the dock's button block (set by the host, then rebuild) */
   dockPlay: HTMLElement | null = null;
   /** the FM-1 budget meter, shown in its own column right of the clock (set by the host, then rebuild) */
   dockBudget: HTMLElement | null = null;
@@ -720,7 +725,8 @@ export class Editor {
 
   /**
    * The Main module as the panel above the keyboard: its jacks along the top edge (towards the canvas), the knobs
-   * K1..K4 with their outputs' jacks in the middle (in place of their sliders and output rows), then its settings.
+   * K1..K4 (bound to the focused page, their wires leaving fixed jacks on the edge), the FM-1's button block with the
+   * patch buttons' jacks and traces (design board D, #113), then its settings.
    */
   private dockPanel(m: ModuleInst): HTMLElement {
     const def = DEFS[m.type];
@@ -755,9 +761,27 @@ export class Editor {
     this.focusCol = document.createElement('div');
     this.focusCol.className = 'dock-focus';
     this.fillFocus();
+    // the FM-1's two button rows in device order; HOME SAVE SEQ REC are the device's (greyed), PLAY the transport
     const buttons = document.createElement('div');
     buttons.className = 'dock-buttons-grid';
-    PANEL_BUTTONS.forEach((b, i) => buttons.append(this.dockButton(m, b, i)));
+    FM1_BUTTON_ROWS.forEach((row, r) => row.forEach((b, c) => {
+      const kind = buttonKind(b);
+      const btn = kind === 'patch' ? this.dockButton(m, b, PANEL_BUTTONS.indexOf(b))
+        : kind === 'play' && this.dockPlay ? this.dockPlay : this.deviceButton(b);
+      if (btn === this.dockPlay) btn.classList.add('panel-btn', 'play');
+      btn.style.gridArea = `${r + 1} / ${c + 1}`;
+      buttons.append(btn);
+    }));
+    // the patch buttons' jacks in a row on the dock's edge (the buttons name them), each over its button or lane
+    const buttonJacks = jacks(PANEL_BUTTONS);
+    buttonJacks.className = 'dock-button-jacks';
+    for (const port of buttonJacks.querySelectorAll<HTMLElement>(':scope > .port')) {
+      port.querySelectorAll(':scope > span:not(.dot)').forEach((s) => s.remove());
+      port.style.gridColumn = String(jackColumn(port.querySelector<HTMLElement>('.dot')?.dataset.port ?? '') + 1);
+    }
+    const traces = document.createElementNS(SVGNS, 'svg');
+    traces.setAttribute('class', 'button-traces');
+    traces.setAttribute('aria-hidden', 'true');
     const morph = param('morph');
     // the morph slider's thumb is the morph input (Main has no p1 / p2): its cables are drawn to the thumb
     for (const pd of def.params) if (pd.input) {
@@ -778,11 +802,46 @@ export class Editor {
     el.append(title,
       col('dock-outputs', strip, ...(this.dockOctave ? [this.dockOctave] : [])),
       col('dock-knobs', null, this.focusCol),
-      col('dock-buttons', jacks(PANEL_BUTTONS), buttons),
+      this.buttonCol = col('dock-buttons', buttonJacks, buttons),
       col('dock-morph', null, morph, this.morphRow()),
-      col('dock-clock', jacks(CLOCK), param('tempo'), ...(this.dockPlay ? [this.dockPlay] : [])),
+      col('dock-clock', jacks(CLOCK), param('tempo')),
       ...(this.dockBudget ? [col('dock-budget', null, this.dockBudget)] : []));
+    this.buttonCol.prepend(traces);
     return el;
+  }
+
+  /** one of the FM-1's own buttons (HOME, SAVE, SEQ, REC): shown in its place, greyed, not part of the patch */
+  private deviceButton(b: string): HTMLElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'panel-btn device';
+    btn.dataset.button = b;
+    btn.textContent = b.toUpperCase();
+    btn.disabled = true;
+    btn.title = `${b.toUpperCase()}: the FM-1's own button (not part of the patch)`;
+    return btn;
+  }
+
+  /** the gold traces from the patch buttons up to their jacks: straight up from the top row, ARP's through the gap
+   * between the rows and up the lane right of REC (dock-buttons.ts) */
+  private positionTraces(): void {
+    const c = this.buttonCol, m = this.docked();
+    const svg = c?.querySelector<SVGSVGElement>(':scope > svg.button-traces');
+    if (!c || !svg || !m || !c.isConnected) return;
+    const o = c.getBoundingClientRect();
+    const top = c.querySelector(`.panel-btn[data-button="${FM1_BUTTON_ROWS[0][0]}"]`)?.getBoundingClientRect();
+    const paths: SVGPathElement[] = [];
+    for (const b of PANEL_BUTTONS) {
+      const btn = c.querySelector(`.panel-btn[data-button="${b}"]`)?.getBoundingClientRect();
+      const jack = this.ports.get(this.key(m.id, b, 'out'))?.getBoundingClientRect();
+      if (!btn || !jack || !top || !btn.width || !jack.width) continue;
+      const from = { x: btn.left + btn.width / 2 - o.left, y: btn.top - o.top };
+      const to = { x: jack.left + jack.width / 2 - o.left, y: jack.bottom - o.top };
+      const path = document.createElementNS(SVGNS, 'path');
+      path.setAttribute('d', tracePath(from, to, (top.bottom + btn.top) / 2 - o.top));
+      paths.push(path);
+    }
+    svg.replaceChildren(...paths);
   }
 
 
@@ -3108,7 +3167,7 @@ export class Editor {
   private focusedDevice(): Device | undefined { return this.devices.find((d) => d.key === this.focus?.device); }
   private focusedPage(): Page | undefined { return this.focusedDevice()?.pages[this.focus!.page]; }
 
-  /** the dock's knob column: the DEVICE and PAGE pickers (the FM-1's SELECT and ALGO) over the four dials */
+  /** the dock's knob column: the four dials, the DEVICE and PAGE pickers (the FM-1's SELECT and ALGO) under them */
   private fillFocus(): void {
     const col = this.focusCol;
     if (!col) return;
@@ -3133,8 +3192,10 @@ export class Editor {
     const knobs = document.createElement('div');
     knobs.className = 'deck-knobs';
     this.dials = [];
+    this.knobJacks = [];
     for (let i = 0; i < PAGE_ROWS; i++) knobs.append(this.boundKnob(i, pg?.rows[i]));
-    col.replaceChildren(pickers, knobs);
+    // the pickers under the knobs' captions, so the binding wires (from the jacks on the edge) never cross them
+    col.replaceChildren(knobs, pickers);
   }
 
   /** knob K(i + 1) on the dock, bound to a row of the page in focus (or idle when the page has fewer rows) */
@@ -3152,8 +3213,14 @@ export class Editor {
     dial.append(name);
     const caption = document.createElement('span');
     caption.className = 'dial-caption';
-    box.append(dial, caption);
+    // the binding wire's fixed end on the dock's top edge, a stem down to the dial: not a patch point
+    const jack = document.createElement('span');
+    jack.className = 'knob-jack';
+    const stem = document.createElement('span');
+    stem.className = 'knob-stem';
+    box.append(jack, stem, dial, caption);
     this.dials[i] = dial;
+    this.knobJacks[i] = jack;
     const m = r && this.patch.modules.find((x) => x.id === r.module);
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) {
@@ -3272,7 +3339,7 @@ export class Editor {
       const e = end.getBoundingClientRect();
       const b = { x: e.left + e.width / 2, y: e.top + e.height / 2 };
       if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) return;
-      const d = dial.getBoundingClientRect();
+      const d = (this.knobJacks[i]?.isConnected ? this.knobJacks[i] : dial).getBoundingClientRect();
       const a = { x: d.left + d.width / 2, y: d.top };
       const lift = Math.max(40, (a.y - b.y) * 0.45);
       const path = document.createElementNS(SVGNS, 'path');
@@ -3316,6 +3383,7 @@ export class Editor {
   private positionCables(): void {
     this.positionSideCables();
     this.positionBindings();
+    this.positionTraces();
     const w = this.world.getBoundingClientRect();
     const o = this.dockCables?.getBoundingClientRect();
     const routed = this.ribbonRoutes();

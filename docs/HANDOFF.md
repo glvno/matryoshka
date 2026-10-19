@@ -34,8 +34,8 @@ docs/ARCHITECTURE.md "Device pages". The earlier handoffs are in git history.
 
 ## Suggested order
 
-1. **#113** dock layout (editor only; unblocks #116 and #119). Independent, can run in parallel: **#114** navigation
-   (firmware + wasm) and **#115** MIDI out of every control (firmware).
+1. ~~#113 dock layout~~ done 2026-10-19 (docs/NOTES.md "Main dock to board D"). Next, independent: **#114** navigation
+   (firmware + wasm) and **#115** MIDI out of every control (firmware); #116 and #119 are unblocked.
 2. **#116** button kinds + editor + LEDs (format bump), then **#117** page buttons, **#118** GLO, **#119** arpeggiator
    on the dock.
 3. **#120** MIDI mirroring for any firmware (after #115).

@@ -635,3 +635,9 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Decisions and slices are in glvno/matryoshka #113–#120 and docs/HANDOFF.md; design canvas https://claude.ai/artifact/AVwEtd7tAMwHjaRhu4n5mu (boards D, E, F, G, I chosen).
 - Survey (2026-10-19) of what FM-1 firmwares send over USB MIDI: Matryoshka keys + K1..K4 CC 16..19 + patch buttons CC 80..86 (+ SysEx SLOT_NOW / FOCUS_NOW / PARAM_NOW / step edits); M-VAVE Open V14 keys only (stock V15 closed); Felucca keys + CC 1 from SELECT in MODW mode; Sloop keys, clock with CLK OUT (same USB name and identity as Felucca); Baud Girl keys, K1..K4 CC 74 / 71 / 73 / 72 in its CC knob bank, more when enabled. Identity via port name and M-VAVE's handshake (`FM-1_015` / `8…` / `9XY` / `7XY`).
 - Demo patch replaced with the user's current Sum1 Gr8 (deployed).
+
+## Main dock to board D (#113, 2026-10-19; vitest 682, `npm run build`, editor seen on [::1]:5173 in both themes and at 800 px wide; editor only)
+
+- Details in docs/ARCHITECTURE.md "Main dock: button block". Pure layout / trace geometry in `web/src/dock-buttons.ts` (tests `dock-buttons.test.ts`); editor: `deviceButton`, `positionTraces`, `knobJacks` (`positionBindings` starts the dotted wires there).
+- The separate Play under the tempo is gone; the same `#arp-btn` element sits in the grid as PLAY (`.panel-btn.play`, outlined in `--secondary` while running), so the tutorial's `arpPlay` target still resolves. GLO is still a patch button here (#118 makes it fixed).
+- Checked in the browser: PLAY toggles the transport and shows it, a cable from the FX jack to a Steps input still patches (undone), the knob jacks take no pointer, traces follow when the dock scrolls sideways.

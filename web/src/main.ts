@@ -1039,7 +1039,7 @@ function panic(): void {
   host.mute(true);
   sink.send({ t: 'panic' });
 }
-// the Play button in Main's clock column and Space are one switch: the transport (Main's run output and clock)
+// PLAY in the dock's button block and Space are one switch: the transport (Main's run output and clock)
 function syncPlayBtn(): void {
   arpBtn.setAttribute('aria-pressed', String(editor.playing));
 }

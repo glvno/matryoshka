@@ -234,7 +234,7 @@ Rules: `reconcile` keeps an assembly consistent after every structural change (d
 - It runs at the start of every block, before the modules: block-quantized (a step lands on a block boundary, up to 2.9 ms late). Its notes go to the groups it plays (`group_on` / `group_off`); a part it lands on gets `retrig` (envelopes restart, also at gate 100 % where the next note follows in the same block). The keys reach the groups whose source is the keys and every arpeggiator.
 - **Device form:** `poly.ts keySource` / `arpOf`; `deviceView` drops every keys cable, keeps the arpeggiator in the module list, gives an arpeggiated allocator a group even with one voice, and sets `DeviceGroup.src`. Binary format **23** (always written; `ENG_PATCH_COMPAT_VERSION` 23): the group record ends with its note source (`GROUP_REC` / `ENG_GROUP_REC` = 45 bytes: 0 the keys, else 1 + the arpeggiator's module index).
 - **Tempo and clock:** Main parameter `tempo` (20..300 bpm, whole bpm, default 120). The engine's clock (`Engine.ticks`, `E.ticks`) always runs: per block `acc += n x bpm x 24`, a tick per `60 x sr`; while MIDI clock comes in (`clockExternal` / `eng_clock_external`; the worklet and `midi_drain` turn it off after 0.5 s without a tick) its ticks replace the tempo. **Transport:** `Engine.transport` / `eng_transport` (PLAY on the FM-1, the deck's Play and Space in the browser, MIDI Start / Continue / Stop, protocol TRANSPORT 0x25 with INFO feature bit 1); a new Main output `run` is high while it runs; the Main `clock` output pulses (half a block per block that saw a tick) only while it runs. Arpeggiators step whether or not it runs.
-- **Old patches:** `Patch.arp` (the firmware arpeggiator's settings) is dropped by `validatePatch`; its bpm becomes the Main module's tempo when the patch had none. `arp.ts`, `arp.c`, `arp_ui.c`, the arp pages (ARP / SEQ / LFO buttons now unused, for #60), the ARP command 0x24, `tools/arp_test.sh` and the dock's arpeggiator panel are gone; the dock's clock column has the clock and run jacks, the tempo and Play (`#arp-btn` kept as the tutorial target). The saved-state record keeps its arp bytes as zeros.
+- **Old patches:** `Patch.arp` (the firmware arpeggiator's settings) is dropped by `validatePatch`; its bpm becomes the Main module's tempo when the patch had none. `arp.ts`, `arp.c`, `arp_ui.c`, the arp pages (ARP / SEQ / LFO buttons now unused, for #60), the ARP command 0x24, `tools/arp_test.sh` and the dock's arpeggiator panel are gone; the dock's clock column has the clock and run jacks and the tempo; Play (`#arp-btn`, the tutorial target) is PLAY in the dock's button block since #113. The saved-state record keeps its arp bytes as zeros.
 - Golden kits `arp-updown-poly`, `arp-random-latch`, `arp-clk-played`, `main-clock-run` (events `run` / `stop` in `.ev`, `host_test` calls `eng_transport`).
 
 ## Macro ranges
@@ -334,7 +334,7 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 - `ModuleInst.panel` on the Main module: `toggle` (buttons that switch on / off instead of acting while held), `on` (switched ones that are on, saved), `labels` for K1..K6 and the buttons (`panelLabel`: the LCD's capitals and signs, at most 10 characters). Binary format 24: a fixed panel section (`PANEL_BYTES` = 154: u16 toggle mask, u16 on mask, 15 labels x 10 bytes) after the poly group bytes; `eng_panel_at` / `eng_records_at` in engine.h; proto.c `m1_panel` / `m1_panel_on`.
 - Engines: the button states are runtime (`Engine.setButton`, `eng_buttons`), started from the saved switches at load; the Main module fills the outputs. CC in: 16..21 = K1..K6, 22 = morph, 80..88 = the buttons (64 and up: on).
 - Firmware: K1..K6 always turn the Main module's knobs; a held button is on while held, a switching one flips on the press (the patch's `on` mask follows, SAVE keeps it); the buttons' LEDs are lit while on and glow dimly when a cable leaves the output. Gone: the mixer page (level = MASTER, morph / legato / priority = the patch), the ENV page, FX bypass, SELECT's module stepping.
-- Editor dock: K5 / K6 knobs beside K1..K4, a 3 x 3 grid of the buttons with their jacks (press = hold / switch; right-click: switch or hold, label), a knob's label by right-click on its cap.
+- Editor dock: the buttons with their jacks (press = hold / switch; right-click: switch or hold, label); the layout is "Main dock: button block" under Device pages (#113).
 
 ## Player screen and legend (#63, 2026-10-18; superseded by "Device pages" below)
 
@@ -408,6 +408,14 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   where its pages start (`.page-start`). Dotted lines from the dials to the rows (`positionBindings`, `svg.bind-cables`,
   over everything; a row out of view gets none). MIDI CC 16..19 turn the bound rows (`Editor.turnKnob`, from main.ts's
   sink). The knob ticks under sliders (knob-rest.ts) are gone with the knob outputs.
+- **Main dock: button block (#113, design board D):** the knob column is K1..K4 with their captions, then the DEVICE / PAGE
+  pickers under them; each dial's binding wire starts at a fixed `.knob-jack` on the dock's top edge (ring + core in the
+  knob colour, a faint stem down to the dial; `pointer-events: none`, not a port). The button block is the FM-1's two rows
+  in device order (`dock-buttons.ts` `FM1_BUTTON_ROWS`): FX SCL ENV LFO EDIT GLO / HOME SAVE ARP SEQ PLAY REC. HOME SAVE
+  SEQ REC are greyed and disabled (`.panel-btn.device`), PLAY is the transport switch (`#arp-btn`, Space). The seven
+  patch-button jacks (`.dock-button-jacks`) share the grid's columns plus a 12 px lane right of REC for ARP's jack
+  (`jackColumn`); gold traces (`svg.button-traces`, `Editor.positionTraces` from `positionCables`, `tracePath`) run
+  straight up from the top row, and from ARP up into the gap between the rows, right past REC and up the lane.
 - Knob colours are the logo's (style.css `--k1..--k6`: coral, gold, teal / seafoam, sand, lilac, blue), every mark with
   its number. Cables are drawn by the **role of the input** they land on (`cable-role.ts`): into a signal input the
   accent, bold (`role-signal`); into a CV input, a pin or a thumb, and into `pm` / `side`, the secondary colour, lighter
