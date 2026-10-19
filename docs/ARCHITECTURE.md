@@ -357,8 +357,28 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 
 ## MIDI in and out (#64, 2026-10-18)
 
-- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot: ignored), CC 16..21 = K1..K6, CC 22 = morph, CC 80..88 = the patch buttons (64 and up: down), CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
-- Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): the keys as notes (velocity 100), K1..K6 as CC 16..21, the patch buttons as CC 80..88 (127 / 0), on the MIDI channel (omni: channel 1). What came in is not sent out again. Not verified: USB is not emulated.
+- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot: ignored), CC 16..19 = K1..K4 (the rows of the page in focus), CC 22 = morph, CC 80..86 = presses (64 and up) and releases of the patch buttons FX..ARP, CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
+- Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): every panel control, the "MIDI out map" below (#115). What came in is not sent out again. Not verified: USB is not emulated.
+
+### MIDI out map (#115, 2026-10-19)
+
+Every control goes out as it is touched, raw, whatever it does on the device at that moment (a host can mirror or replay
+the panel); on the MIDI channel (omni: channel 1). Sent from the panel core (`panel.c` `BTN_CC`, `ENC_CC`, `panel_master`),
+checked by `tools/panel_test.sh`.
+
+| Control | Message |
+|---|---|
+| keys | note on (velocity 100) / note off, at the octave |
+| K1..K4 | CC 16..19, absolute: the bound row's position (only on a device page, when the knob moves a row) |
+| SELECT, ALGO, PRESET | CC 20, 21, 23, relative two's complement (1..63 = up by n, 127..65 = down by 128 - n) |
+| MASTER | CC 7, absolute (the pot's 10 bits >> 3; changes under 6 / 1024 dropped) |
+| FX SCL ENV LFO EDIT GLO ARP | CC 80..86 |
+| HOME SAVE SEQ REC PLAY | CC 87, 88, 89, 90, 91 |
+| OCT- OCT+ | CC 92, 93 |
+| PLAY starting / stopping the transport | also Start 0xFA / Stop 0xFC (not when PLAY held + PRESET set the tempo) |
+
+Buttons send 127 on the press and 0 on the release, a switching patch button too (the editor and the FM-1 itself take
+CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in only.
 
 ## Voice allocator key range: channel, low, high (#57 decision 13, 2026-10-18)
 
@@ -374,8 +394,8 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 
 ## Editor link both ways (#65, 2026-10-18)
 
-- The FM-1 tells the editor which slot it plays: SysEx SLOT_NOW (0x43: slot, name) whenever it loads a slot (PRESET, program change, boot) or SAVEs. Its K1..K6 and patch buttons reach the editor as the USB MIDI CC of #64 (MENU > MIDI OUT on). With Live on, the editor moves the Main module's knobs (without sending them back) and the browser engine's buttons; the status line names the slot.
-- The editor's patch buttons go to the FM-1 as CC 80..88; its knob turns as PARAM as before. STORE writes the running patch into the slot the FM-1 plays; "Store to an FM-1 slot…" (palette) writes the open patch into any slot (SLOT command) without switching to it; the Library's bank upload writes all 64.
+- The FM-1 tells the editor which slot it plays: SysEx SLOT_NOW (0x43: slot, name) whenever it loads a slot (PRESET, program change, boot) or SAVEs. Its K1..K4 and patch buttons reach the editor as the USB MIDI CC of the MIDI out map (MENU > MIDI OUT on). With Live on, the editor moves the Main module's knobs (without sending them back) and presses its patch buttons (`Editor.pressButton`: a switch flips on the press); the status line names the slot.
+- The editor's patch buttons go to the FM-1 as CC 80..86 presses / releases (a switch: one press and release); its knob turns as PARAM as before. STORE writes the running patch into the slot the FM-1 plays; "Store to an FM-1 slot…" (palette) writes the open patch into any slot (SLOT command) without switching to it; the Library's bank upload writes all 64.
 - Not verified on a device: USB is not emulated.
 
 ## Device pages: the knobs follow the focus (2026-10-19, branch device-pages)

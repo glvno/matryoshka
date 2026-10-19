@@ -2206,22 +2206,10 @@ export class Editor {
     btn.title = `${b.toUpperCase()} button: ${toggles() ? 'switches on / off' : 'on while held'} (right-click: switch or hold, label)`;
     btn.classList.toggle('toggle', toggles());
     btn.setAttribute('aria-pressed', String(toggles() && isOn()));
-    const set = (on: boolean): void => {
-      btn.setAttribute('aria-pressed', String(on));
-      this.ev.onButton?.(i, on);
-    };
     btn.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      if (!toggles()) return set(true);
-      this.touch();
-      const panel = (m.panel ??= {});
-      const on = !isOn();
-      panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
-      if (!panel.on.length) delete panel.on;
-      set(on);
-      this.ev.onLayout(this.patch);           // saved with the patch (the device keeps switched buttons too)
+      if (e.button === 0) this.pressButton(i, true);
     });
-    for (const ev of ['pointerup', 'pointerleave'] as const) btn.addEventListener(ev, () => { if (!toggles() && btn.getAttribute('aria-pressed') === 'true') set(false); });
+    for (const ev of ['pointerup', 'pointerleave'] as const) btn.addEventListener(ev, () => { if (!toggles() && btn.getAttribute('aria-pressed') === 'true') this.pressButton(i, false); });
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       this.dockMenu([
@@ -2239,6 +2227,31 @@ export class Editor {
       ], e.clientX, e.clientY);
     });
     return btn;
+  }
+
+  /**
+   * Patch button i (PANEL_BUTTONS) pressed or let go, on the dock or elsewhere (CC 80..86 from the FM-1, which sends the
+   * presses raw, #115): a switching one flips on the press and is saved with the patch, the others are on while held.
+   */
+  pressButton(i: number, down: boolean): void {
+    const b = PANEL_BUTTONS[i];
+    const m = this.patch.modules.find((x) => x.type === 'fm1');
+    if (!m || b === undefined) return;
+    const btn = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${b}"]`);
+    if (!m.panel?.toggle?.includes(b)) {
+      btn?.setAttribute('aria-pressed', String(down));
+      this.ev.onButton?.(i, down);
+      return;
+    }
+    if (!down) return;
+    this.touch();
+    const panel = (m.panel ??= {});
+    const on = !panel.on?.includes(b);
+    panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
+    if (!panel.on.length) delete panel.on;
+    btn?.setAttribute('aria-pressed', String(on));
+    this.ev.onButton?.(i, on);
+    this.ev.onLayout(this.patch);           // saved with the patch (the device keeps switched buttons too)
   }
 
   /** a knob's / button's label on the FM-1's screen (patch.ts panelLabel: capitals, 10 characters) */

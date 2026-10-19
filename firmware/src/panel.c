@@ -13,6 +13,7 @@ static void leds_play(void);
 static void leds_panel(void);
 static void leds_avail(void);
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2);
+static void midi_send_rt(uint32_t b);                   /* a one-byte real-time message (Start 0xFA, Stop 0xFC) */
 static void preset_step(int32_t d);                     /* PRESET: the next / previous patch */
 static void save_state(void);                           /* SAVE */
 static void poly_row_set(uint32_t mod, uint32_t field, int32_t v);
@@ -30,12 +31,38 @@ static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};  
 #define BTN_SAVE 9u
 #define BTN_HOME 8u
 
-static void panel_button_set(uint32_t b, int down, int from_panel);
+/* MIDI out (#115, MENU > MIDI OUT; docs/ARCHITECTURE.md "MIDI out map"): every panel control as it is touched, whatever
+ * it does here, so a host can mirror or replay the panel. Buttons: CC 127 on the press, 0 on the release (by matrix id
+ * below); SELECT / ALGO / PRESET: relative CCs (1..63 up, 127..65 down, two's complement); MASTER: CC 7; PLAY also Start /
+ * Stop when it starts / stops the transport; keys as notes; K1..K4 as CC 16..19 (their rows' positions). */
+static const uint8_t BTN_CC[14] = {92, 93, 80, 81, 82, 83, 84, 85, 87, 88, 86, 89, 91, 90};
+#define CC_SELECT 20u
+#define CC_ALGO 21u
+#define CC_PRESET 23u
+#define CC_MASTER 7u
+static const uint8_t ENC_CC[7] = {CC_SELECT, CC_ALGO, 0, 0, 0, 0, CC_PRESET};
+
+/* clicks of an encoder as a relative CC value (two's complement, at most 63 a message) */
+static uint32_t rel_cc(int32_t c) { return c > 0 ? (uint32_t)(c > 63 ? 63 : c) : 128u - (uint32_t)(c < -63 ? 63 : -c); }
+
+/* the MASTER pot moved (0..1023, smoothed): CC 7 when its 7-bit value changes by more than the pot's jitter */
+static void panel_master(uint32_t adc)
+{
+    static int32_t sent = -1;
+    int32_t v = (int32_t)(adc > 1023u ? 1023u : adc);
+    if (sent >= 0 && (v >> 3) == (sent >> 3))
+        return;
+    if (sent >= 0 && v - sent < 6 && sent - v < 6 && v >> 3 != 0 && v >> 3 != 127)
+        return;
+    sent = v;
+    midi_send(0xB0u, CC_MASTER, (uint32_t)v >> 3);
+}
 
 /* a patch button pressed / let go (index into PANEL_BTN_ID): a switching one flips on the press, the others act while held;
- * a switch is kept in the patch (SAVE stores it) */
-static void panel_button(uint32_t b, int down) { panel_button_set(b, down, 1); }
-static void panel_button_set(uint32_t b, int down, int from_panel)
+ * a switch is kept in the patch (SAVE stores it). The same for the panel and CC 80..86 coming in. */
+static void panel_button_set(uint32_t b, int down);
+static void panel_button(uint32_t b, int down) { panel_button_set(b, down); }
+static void panel_button_set(uint32_t b, int down)
 {
     const uint8_t *pn = m1_panel();
     uint32_t tog = pn ? (uint32_t)pn[0] | (uint32_t)pn[1] << 8 : 0u, mask = eng_buttons_get(), was = mask;
@@ -50,8 +77,6 @@ static void panel_button_set(uint32_t b, int down, int from_panel)
     eng_buttons(mask);
     if (tog >> b & 1u)
         m1_panel_on(mask & tog);
-    if (from_panel)
-        midi_send(0xB0u, 80u + b, (mask >> b & 1u) ? 127u : 0u);
     leds_panel();
     if (down) {
         button_touched = (uint8_t)(b + 1u);
@@ -78,6 +103,7 @@ static void page_set(uint32_t p)    /* the same button again goes back to the mo
 static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock) */
 {
     eng_transport(!eng_transport_running());
+    midi_send_rt(eng_transport_running() ? 0xFAu : 0xFCu);
     leds_play();
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
@@ -105,6 +131,9 @@ static void panel_encoders(int32_t *st)
     static uint32_t last_ms[6];
     uint32_t k;
     int panel = eng_find(T_FM1);
+    for (k = 0; k < 7u; k++)                        /* MIDI out: the encoders as they turn, before anything uses them */
+        if (ENC_CC[k] && st[k])
+            midi_send(0xB0u, ENC_CC[k], rel_cc(st[k]));
     if (page == PAGE_MENU) {                        /* the settings menu: ALGO tabs, PRESET rows, K1..K4 the value */
         menu_knobs(st);
         return;
@@ -217,6 +246,15 @@ static void panel_keys(uint32_t now)
 static void panel_edges(uint32_t p, uint32_t rel)
 {
     static uint32_t home_t0;                        /* fm1_ms | 1 of the HOME press, 0: not held; bit 1: the hold fired */
+    {                                               /* MIDI out: every button, raw, before anything uses it */
+        uint32_t id;
+        for (id = 0; (p | rel) >> id && id < 14u; id++) {
+            if (p >> id & 1u)
+                midi_send(0xB0u, BTN_CC[id], 127u);
+            if (rel >> id & 1u)
+                midi_send(0xB0u, BTN_CC[id], 0u);
+        }
+    }
     if (page == PAGE_MENU) {                        /* the menu: OCT- / OCT+ step the selected row's value */
         if (p & (1u << BTN_OCT_DOWN))
             menu_set_row(menu_sel, -1);

@@ -54,7 +54,7 @@ docs/ARCHITECTURE.md "Device pages". The earlier handoffs are in git history.
   checkout's commit).
 - The FM-1 tab needs `web/public/fm1-ui.wasm`: `cd web && npm run fm1-wasm` after any change to the firmware UI.
 - LCD previews: `tools/ui_preview.sh out.png PRESET DEVICE:PAGE ...` with env `TOAST=k`, `DEVTOAST=1`.
-- Facts found this session that are not obvious from the code: Matryoshka's MIDI out sends keys, K1..K4 as CC 16..19
-  and the patch buttons as CC 80..86 only (notes saying K1..K6 / CC 16..21 / 80..88 are stale); the device's PLAY,
+- Facts found this session that are not obvious from the code: Matryoshka's MIDI out now sends every panel control
+  (docs/ARCHITECTURE.md "MIDI out map", #115; notes saying K1..K6 / CC 16..21 / 80..88 are stale); the device's PLAY,
   tempo, octave, slot loads (beyond the status line), menu and LCD do not reach the editor; the FM-1 tab runs its own
   wasm copy fed from the editor, not the device.

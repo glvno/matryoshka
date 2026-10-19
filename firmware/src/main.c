@@ -449,8 +449,8 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                     eng_set_param((uint32_t)m, FM1_P_MORPH, (int32_t)(v * 65536u / 127u));
                     m1_patch_param((uint32_t)m, FM1_P_MORPH, (int32_t)(v * 65536u / 127u));
                 }
-            } else if (st == 0xB0u && n >= 80u && n < 80u + ENG_PANEL_BUTTONS) {   /* CC 80..88: the patch buttons (64 and up: down) */
-                panel_button_set(n - 80u, v >= 64u, 0);
+            } else if (st == 0xB0u && n >= 80u && n < 80u + ENG_PANEL_BUTTONS) {   /* CC 80..86: the patch buttons pressed (64 and up) / let go */
+                panel_button_set(n - 80u, v >= 64u);
             } else if (st == 0xE0u) {                   /* pitch bend: +-2 semitones on the pitch, and the bend output */
                 eng_ctl(ENG_CTL_BEND, ((int32_t)(v << 7 | n) - 8192) << 3);
             } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
@@ -480,6 +480,7 @@ static void master_poll(void)
         master_knob += (a * 16 - master_knob) / 8;
         k = (uint32_t)(master_knob / 16);
         master_q12 = (k * k) >> 8;
+        panel_master(k);
     }
 }
 
@@ -521,14 +522,19 @@ static void buttons_poll(void)
     panel_edges(p, rel);
 }
 
-/* USB MIDI out (MENU > MIDI OUT): the keys as notes (velocity 100), K1..K4 as CC 16..19 (their rows' positions), the patch buttons as CC 80..86
- * (127 / 0), on the MIDI channel (omni: channel 1). Only what the panel does goes out, never what came in. */
+/* USB MIDI out (MENU > MIDI OUT): every panel control (panel.c BTN_CC / ENC_CC, docs/ARCHITECTURE.md "MIDI out map"), on the MIDI
+ * channel (omni: channel 1). Only what the panel does goes out, never what came in. */
 static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
 {
     uint32_t st = status | (cfg.ch ? cfg.ch - 1u : 0u);
     if (!cfg.midi_out)
         return;
     midi_out_event((st >> 4) | st << 8 | (d1 & 127u) << 16 | (d2 & 127u) << 24);
+}
+static void midi_send_rt(uint32_t b)                /* a real-time byte: USB MIDI code index 0xF (one byte) */
+{
+    if (cfg.midi_out)
+        midi_out_event(0x0Fu | (b & 0xFFu) << 8);
 }
 
 /* PLAY: red while the transport is stopped, green while it runs. The green LED sits at matrix column 8, row bit 1,

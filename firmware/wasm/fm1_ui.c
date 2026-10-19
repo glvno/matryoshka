@@ -92,6 +92,11 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2)
     if (cfg.midi_out)
         js_midi(status | (cfg.ch ? cfg.ch - 1u : 0u), d1 & 127u, d2 & 127u);
 }
+static void midi_send_rt(uint32_t b)
+{
+    if (cfg.midi_out)
+        js_midi(b & 0xFFu, 0u, 0u);
+}
 static void preset_step(int32_t d) { js_preset(d); }
 static void save_state(void) { js_save(); }
 /* a poly group's setting from a device page: into the group record of the running patch, as main.c does on the device

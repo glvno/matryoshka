@@ -641,3 +641,9 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - Details in docs/ARCHITECTURE.md "Main dock: button block". Pure layout / trace geometry in `web/src/dock-buttons.ts` (tests `dock-buttons.test.ts`); editor: `deviceButton`, `positionTraces`, `knobJacks` (`positionBindings` starts the dotted wires there).
 - The separate Play under the tempo is gone; the same `#arp-btn` element sits in the grid as PLAY (`.panel-btn.play`, outlined in `--secondary` while running), so the tutorial's `arpPlay` target still resolves. GLO is still a patch button here (#118 makes it fixed).
 - Checked in the browser: PLAY toggles the transport and shows it, a cable from the FX jack to a Steps input still patches (undone), the knob jacks take no pointer, traces follow when the dock scrolls sideways.
+
+## MIDI out of every panel control (#115, 2026-10-19; panel host test, vitest 682, fm1-wasm, stand-in pool 41.5 KB free; JieLi CI build + emulator smoke after the push; not flashed, USB not emulated)
+
+- Map in docs/ARCHITECTURE.md "MIDI out map": buttons raw by matrix id (`panel.c` `BTN_CC`: FX..ARP 80..86, HOME 87, SAVE 88, SEQ 89, REC 90, PLAY 91, OCT- 92, OCT+ 93; 127 press / 0 release), SELECT / ALGO / PRESET relative CC 20 / 21 / 23 (`ENC_CC`, `rel_cc`), MASTER CC 7 (`panel_master`, from main.c `master_poll`), PLAY also Start / Stop (`midi_send_rt` hook: main.c USB code index 0xF, wasm `js_midi(byte, 0, 0)`).
+- Behaviour change: CC 80..86 out used to carry a switch's state (a toggle's release sent nothing); now they are raw presses, the same as the FM-1 already read them coming in. The editor follows: `Editor.pressButton` (the dock's pointer handler and CC from the device), and `onButton` sends a switch as press + release (before, switching a toggle off in the editor sent CC 0, which the FM-1 read as a release and left it on).
+- `panel_button_set` lost its `from_panel` argument (the state CC is gone).

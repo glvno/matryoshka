@@ -129,8 +129,9 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     if (f) editor.focusFrom(f);
     return;
   }
-  if (e.n >= 80 && e.n < 80 + PANEL_BUTTONS.length) {
-    host.send({ t: 'button', i: e.n - 80, on: e.v >= 64 });
+  if (e.n >= 80 && e.n < 80 + PANEL_BUTTONS.length) {   // a patch button pressed / let go on the FM-1 (raw, #115)
+    mark(true);
+    try { editor.pressButton(e.n - 80, e.v >= 64); } finally { mark(false); }
   }
 }
 /** upload the current patch; changes made meanwhile cause one more upload */
@@ -353,7 +354,11 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onButton(i, on) {
     host.send({ t: 'button', i, on });
-    if (live()) device.cc(80 + i, on ? 127 : 0);   // the FM-1 takes its patch buttons as CC 80..86 (#64)
+    // the FM-1 takes CC 80..86 as presses (127) and releases (0) of its patch buttons: a switch is one press
+    if (!live() || fromDevice) return;
+    const toggles = !!editor.patch.modules.find((m) => m.type === 'fm1')?.panel?.toggle?.includes(PANEL_BUTTONS[i]);
+    if (toggles) { device.cc(80 + i, 127); device.cc(80 + i, 0); }
+    else device.cc(80 + i, on ? 127 : 0);
   },
   onScreens(list, envList) {
     screens.sync(list);

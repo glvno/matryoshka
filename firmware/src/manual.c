@@ -33,6 +33,13 @@ static const char *const MANUAL[] = {
     " SEQ HELD + BLACK KEY: MUTE TRACK",
     " IN THIS MENU: ALGO TABS, PRESET OR",
     "   SELECT ROWS, K1-K4 / OCT VALUE",
+    "#MIDI OUT: EVERY CONTROL",
+    " KEYS: NOTES, K1-K4: CC 16-19",
+    " SELECT / ALGO / PRESET: CC 20 / 21",
+    "   / 23, RELATIVE",
+    " MASTER: CC 7",
+    " BUTTONS: CC 80-93, 127 / 0 ON PRESS",
+    "   AND RELEASE, PLAY ALSO START/STOP",
     "~MORE: GLVNO.GITHUB.IO/MATRYOSHKA",
 };
 #define MAN_N ((uint32_t)(sizeof MANUAL / sizeof MANUAL[0]))

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* The panel core (firmware/src/panel.c) on the host, with no HAL: SELECT, ALGO, K1, HOME (tap, legend, held = menu),
- * PLAY / tempo and a key, checked on the core's state and on the LCD's framebuffer (ui_preview.c's stand-ins).
+ * PLAY / tempo, a key and the MIDI out of every control (#115), checked on the core's state and on the LCD's framebuffer (ui_preview.c's stand-ins).
  *   tools/panel_test.sh */
 #define UI_PREVIEW_LIB
 #include "ui_preview.c"
@@ -18,7 +18,30 @@ static void m1_panel_on(uint32_t mask) { (void)mask; }
 static int presets_stepped, saved, midi_out;
 static void leds_play(void) {}
 static void leds_panel(void) {}
-static void midi_send(uint32_t status, uint32_t d1, uint32_t d2) { (void)status; (void)d1; (void)d2; midi_out++; }
+/* MIDI out: the messages in order (status, d1, d2; a real-time byte with d1 = d2 = 0xFF) */
+static uint8_t mlog[256][3];
+static int mlen;
+static void mlog_add(uint32_t s, uint32_t a, uint32_t b)
+{
+    if (mlen < 256) {
+        mlog[mlen][0] = (uint8_t)s;
+        mlog[mlen][1] = (uint8_t)a;
+        mlog[mlen][2] = (uint8_t)b;
+        mlen++;
+    }
+    midi_out++;
+}
+static void midi_send(uint32_t status, uint32_t d1, uint32_t d2) { mlog_add(status, d1, d2); }
+static void midi_send_rt(uint32_t b) { mlog_add(b, 0xFFu, 0xFFu); }
+/* the log since `from` holds this message */
+static int sent(int from, uint32_t s, uint32_t a, uint32_t b)
+{
+    int i;
+    for (i = from; i < mlen; i++)
+        if (mlog[i][0] == s && mlog[i][1] == a && mlog[i][2] == b)
+            return 1;
+    return 0;
+}
 static void preset_step(int32_t d) { presets_stepped += d; }
 static void save_state(void) { saved++; }
 static void poly_row_set(uint32_t mod, uint32_t field, int32_t v) { (void)mod; (void)field; (void)v; }
@@ -162,6 +185,53 @@ int main(void)
     check("PRESET alone: the next patch", presets_stepped == 1);
     tap(BTN_SAVE);
     check("SAVE", saved == 1);
+
+    {                                                       /* MIDI out (#115): every control, raw */
+        static const struct { uint8_t id, cc; } B[] = {{0, 92}, {1, 93}, {2, 80}, {3, 81}, {4, 82}, {5, 83}, {6, 84}, {7, 85},
+                                                       {8, 87}, {9, 88}, {10, 86}, {11, 89}, {12, 91}, {13, 90}};
+        uint32_t i;
+        int at, all = 1;
+        for (i = 0; i < sizeof B / sizeof B[0]; i++) {
+            at = mlen;
+            tap(B[i].id);
+            all &= sent(at, 0xB0u, B[i].cc, 127u) && sent(at, 0xB0u, B[i].cc, 0u);
+            if (page == PAGE_MENU || page == PAGE_SEQ || page == PAGE_LEGEND)   /* (SEQ opened its page, HOME the legend: back) */
+                tap(B[i].id == 13u ? 11u : B[i].id);
+            loop();
+        }
+        check("every button: CC 127 on the press, 0 on the release", all);
+        at = mlen;
+        enc(0, 1);
+        enc(1, -1);
+        enc(6, 2);
+        check("SELECT / ALGO / PRESET: relative CC 20 / 21 / 23", sent(at, 0xB0u, 20u, 1u) && sent(at, 0xB0u, 21u, 127u) && sent(at, 0xB0u, 23u, 2u));
+        at = mlen;
+        enc(2, 3);
+        check("K1 on a device page: CC 16", mlen > at && mlog[mlen - 1][0] == 0xB0u && mlog[mlen - 1][1] == 16u);
+        at = mlen;
+        panel_master(1023);
+        panel_master(1020);
+        panel_master(512);
+        check("MASTER: CC 7, jitter dropped", sent(at, 0xB0u, 7u, 127u) && sent(at, 0xB0u, 7u, 64u) && mlen - at == 2);
+        at = mlen;
+        tap(BTN_PLAY);
+        {
+            int run = eng_transport_running();
+            tap(BTN_PLAY);
+            check("PLAY: Start / Stop with the transport", sent(at, run ? 0xFAu : 0xFCu, 0xFFu, 0xFFu) && sent(at, run ? 0xFCu : 0xFAu, 0xFFu, 0xFFu));
+        }
+        {
+            uint32_t was = eng_buttons_get();
+            at = mlen;
+            panel_button_set(0, 1);                         /* CC 80 coming in: not echoed */
+            panel_button_set(0, 0);
+            check("a patch button from MIDI in: not sent back", mlen == at);
+            if (eng_buttons_get() != was) {
+                panel_button_set(0, 1);
+                panel_button_set(0, 0);
+            }
+        }
+    }
 
     panel_keys(1u << 7);                                    /* a key: a note, sent out */
     check("a key plays a note (MIDI out asked)", (key_sounding & (1u << 7)) && midi_out > 0);
