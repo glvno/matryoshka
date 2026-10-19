@@ -20,6 +20,9 @@ import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
 import { switches } from './buttons';
+import { Fm1Mirror } from './mirror';
+import { BUTTONS, ENCODERS } from './fm1-ui';
+import type { Firmware, PanelInput } from './fm1-profiles';
 import { longName, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
@@ -98,6 +101,9 @@ device.onEvent = (e) => {
     devStatus(`FM-1 plays slot ${String(e.slot + 1).padStart(2, '0')} ${e.name}`);
     return;
   }
+  // the panel itself (knobs, buttons, the focus) comes in as plain MIDI through the mirror (#120, fm1-profiles.ts), whatever
+  // firmware runs: the FM-1's PARAM_NOW / FOCUS_NOW and its CC here are not used
+  if (e.kind === 'param' || e.kind === 'focus' || e.kind === 'cc') return;
   if (!live()) return;
   fm1Event(e, 'device');
 };
@@ -116,7 +122,7 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     } finally { mark(false); }
     return;
   }
-  if (e.kind === 'param') {   // K1..K4 turned on a device page of the FM-1
+  if (e.kind === 'param') {   // K1..K4 turned on a device page of the FM-1 tab's emulator
     const m = deviceView(editor.patch, true).patch.modules[e.module];
     // a poly group's setting is the Voice allocator's parameter (the allocator's Part has its id: patchbin.ts rowParam)
     const name = m && (e.param & POLY_ROW ? POLY_ROW_PARAMS[e.param & 0x7f] : DEFS[m.type].params[e.param]?.name);
@@ -125,14 +131,9 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     try { editor.setParam(m.id, name, e.param & POLY_ROW ? Math.round(e.value) : e.value); } finally { mark(false); }
     return;
   }
-  if (e.kind === 'focus') {   // the FM-1 shows another device page: the knobs follow
+  if (e.kind === 'focus') {   // the emulator (or the FM-1 it follows) shows another device page: the knobs follow
     const f = editorPage(editor.patch, e.device, e.page);
     if (f) editor.focusFrom(f);
-    return;
-  }
-  if (e.n >= 80 && e.n < 80 + PANEL_BUTTONS.length) {   // a patch button pressed / let go on the FM-1 (raw, #115)
-    mark(true);
-    try { editor.pressButton(e.n - 80, e.v >= 64); } finally { mark(false); }
   }
 }
 /** upload the current patch; changes made meanwhile cause one more upload */
@@ -190,7 +191,7 @@ const sink = {
     piano.track(msg);
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
-    if (live()) {
+    if (live() && !fromDevice) {   // (what the FM-1 played itself is not sent back)
       device.note(msg as { t: string; note?: number; vel?: number });
       if (msg.t === 'bend') device.bend(msg.v);
       else if (msg.t === 'cc') device.cc(msg.n, msg.v);
@@ -1169,9 +1170,67 @@ $('dev-btn').onclick = async () => {
     devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
     for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
     $('dev-btn').textContent = 'Reconnect';
+    if (!mirror.following) void followFm1('matryoshka');   // it runs Matryoshka (it answered HELLO): its panel drives the page
   } catch (e) {
     devStatus((e as Error).message);
   }
+};
+
+// ---- following the FM-1's panel (#120): any firmware, through plain MIDI (fm1-profiles.ts, mirror.ts). Its inputs go
+// through Matryoshka's panel logic (the FM-1 tab's WebAssembly copy, which tells the editor its focus and page) and the
+// editor (Main's knobs, the patch buttons), and its keys play the browser engine. Nothing goes back to the FM-1.
+const mirror = new Fm1Mirror();
+const PANEL_OF_ID = new Map<number, number>(PANEL_BUTTONS.map((b, i) => [BUTTONS[b as keyof typeof BUTTONS], i]));
+mirror.onInput = (i) => void mirrorInput(i);
+async function mirrorInput(i: PanelInput): Promise<void> {
+  if (i.t === 'button' || i.t === 'enc') await emu.ready();   // (the panel logic: loaded even while the FM-1 tab is hidden)
+  fromDevice = true;
+  try {
+    switch (i.t) {
+      case 'note': sink.send(i.on ? { t: 'on', note: i.note, vel: i.vel || 0.8 } : { t: 'off', note: i.note }); break;
+      case 'mod': sink.send({ t: 'cc', n: 1, v: i.v * 127 }); break;
+      case 'knob': editor.turnKnob(i.k, i.u); break;
+      case 'master': emu.setMaster(i.v); host.setMaster(i.v); break;
+      case 'transport': setPlaying(i.run); break;
+      case 'enc':
+        if (i.n === ENCODERS.preset && live()) break;          // (with Live the FM-1 plays the editor's patch: its slots are its own)
+        emu.drive(i);
+        break;
+      case 'button': {
+        const b = PANEL_OF_ID.get(i.id);
+        emu.drive(i);
+        if (b !== undefined) editor.pressButton(b, i.down);
+        break;
+      }
+    }
+  } finally { fromDevice = false; }
+}
+async function followFm1(fw?: Firmware): Promise<void> {
+  try {
+    const p = await mirror.follow(fw);
+    emu.following(p.name, p.reports);
+    $<HTMLSelectElement>('mirror-fw').value = p.firmware;
+    devStatus(`following the FM-1's panel: ${p.name}${mirror.identity ? ` (${mirror.identity})` : ''}`);
+    $('mirror-btn').textContent = 'Stop following';
+  } catch (e) {
+    emu.following(null, null);
+    devStatus((e as Error).message);
+  }
+}
+$('mirror-btn').onclick = () => {
+  if (mirror.following) {
+    mirror.stop();
+    emu.following(null, null);
+    $('mirror-btn').textContent = 'Follow its panel';
+    devStatus('not following the FM-1');
+    return;
+  }
+  const v = $<HTMLSelectElement>('mirror-fw').value;
+  void followFm1((v || undefined) as Firmware | undefined);
+};
+$<HTMLSelectElement>('mirror-fw').onchange = () => {
+  const v = $<HTMLSelectElement>('mirror-fw').value;
+  if (mirror.following) void followFm1((v || undefined) as Firmware | undefined);
 };
 $('dev-send').onclick = () => void sendPatch();
 /** the open patch into slot n of the FM-1's bank, under its name (the device does not switch to it) */

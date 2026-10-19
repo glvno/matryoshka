@@ -380,6 +380,24 @@ checked by `tools/panel_test.sh`.
 Buttons send 127 on the press and 0 on the release, a switching patch button too (the editor and the FM-1 itself take
 CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in only.
 
+### Following the FM-1's panel, any firmware (#120, 2026-10-19)
+
+- The page reads a connected FM-1 through plain MIDI only (`web/src/mirror.ts` `Fm1Mirror`: its own listener on the
+  port; the firmware from M-VAVE's identity handshake, `fm1-profiles.ts` `firmwareOf`: FM-1_7XY ours, FM-1_9XY Felucca
+  or Sloop, FM-1_0XX / 8XX M-VAVE; Baud Girl by hand). A profile per firmware (`PROFILES`) turns its messages into panel
+  inputs: Matryoshka the map above; M-VAVE the keys; Felucca / Sloop the keys, CC 1 (Felucca's MODW mode) as the
+  modulation wheel, Start / Stop; Baud Girl the keys and K1..K4 as CC 74 / 71 / 73 / 72.
+- main.ts `mirrorInput`: buttons and encoders go through Matryoshka's panel logic (the FM-1 tab's WebAssembly copy,
+  `Fm1View.drive`, loaded even while the tab is hidden; its focus / page events move the editor as the emulator's do)
+  and the patch buttons also through `Editor.pressButton`; K1..K4 positions through `Editor.turnKnob`; keys, the
+  modulation wheel, MASTER and the transport to the page. Nothing is sent back to the FM-1 (`fromDevice`). PRESET is
+  not followed while Live is on (the FM-1 then plays the editor's patch; its slots are its own).
+- The FM-1 tab names the firmware and greys the controls it does not report (`Fm1View.following`).
+- The FM-1's PARAM_NOW / FOCUS_NOW and its CC on the Live link are no longer used by the page (the firmware still sends
+  them). A knob's value now arrives as its row's 7-bit position (CC 16..19), not the exact value.
+- Connect FM-1 (it answers HELLO, so it runs Matryoshka) also starts following it; FM-1 & MIDI > Follow the FM-1 does
+  it for any firmware, with a firmware list (detect, or by hand).
+
 ## Voice allocator key range: channel, low, high (#57 decision 13, 2026-10-18)
 
 - The Voice allocator has `channel` (all, 1..16), `low` and `high` (note names, C-1..G9; defaults all / C-1 / G9). A group takes a key when it lies in low..high and, for keys from the keyboard or MIDI, it comes on the allocator's channel, or with `all` on the device's channel (MENU > MIDI CHANNEL; every channel in the browser). The rule is `takesKey` (patch.ts) and `takes_key` (engine.c). The shared keyboard (Main pitch / gate / vel) and the Arpeggiators play the device's channel only. An arpeggiated allocator's range judges the Arpeggiator's notes (the arpeggiator itself takes every key of the device's channel); its channel is not used. Note offs follow the same rule, so an off on another channel does not end a note.

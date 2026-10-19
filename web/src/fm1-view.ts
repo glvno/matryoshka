@@ -85,6 +85,13 @@ export class Fm1View {
   private latched = new Set<number>();
   private held = new Set<number>();
   private note: HTMLElement;
+  /** the encoders by number and the MASTER pot (following an FM-1: they turn with it, #120) */
+  private encEls = new Map<number, { el: HTMLElement; turns: number }>();
+  private potSet: ((v: number) => void) | null = null;
+  private potEl: HTMLElement | null = null;
+  private follow: HTMLElement;
+  private farHeld = new Set<number>();
+  private farTimer = 0;
   /** called once the module is up (the page then loads the patch into it) */
   onReady: (ui: Fm1Ui) => void = () => {};
 
@@ -123,6 +130,49 @@ export class Fm1View {
     for (const k of KEYS) this.key(body, k.k, k.x, k.y, k.w, k.h, k.black);
     const hint = div('fm1-hint', el);
     hint.textContent = 'Drag or scroll an encoder · Shift-click a button to hold it down · the computer keyboard plays the keys too';
+    this.follow = div('fm1-follow', el);
+    this.follow.hidden = true;
+  }
+
+  /** the module, loaded if it is not yet (following an FM-1 needs it while this tab is hidden too) */
+  ready(): Promise<Fm1Ui | null> { return this.ensure(); }
+
+  /**
+   * A connected FM-1's control (#120), through Matryoshka's panel logic: a button by matrix id, an encoder's clicks. The
+   * controls here move with it. The module's clock is brought up to now first (a HOME hold, a Page button's hold).
+   */
+  drive(i: { t: 'button'; id: number; down: boolean } | { t: 'enc'; n: number; clicks: number }): void {
+    const ui = this.ui;
+    if (!ui) return;
+    ui.tick(performance.now() - this.t0);
+    if (i.t === 'button') {
+      this.btnEls.get(i.id)?.classList.toggle('down', i.down);
+      ui.button(i.id, i.down);
+      // a held button needs the clock running (HOME held = the menu, a Page button's hold) while this tab is hidden too
+      if (i.down) this.farHeld.add(i.id);
+      else this.farHeld.delete(i.id);
+      if (this.farHeld.size && !this.farTimer) this.farTimer = window.setInterval(() => { ui.tick(performance.now() - this.t0); if (!this.farHeld.size) { clearInterval(this.farTimer); this.farTimer = 0; } }, 40);
+    } else {
+      ui.encoder(i.n, i.clicks);
+      const e = this.encEls.get(i.n);
+      if (e) { e.turns += i.clicks; e.el.style.setProperty('--turn', `${e.turns * 18}deg`); }
+    }
+    if (this.shown && ui.takeDirty()) this.paint();
+  }
+
+  /** MASTER moved on the FM-1: the pot here follows (the level is the page's, main.ts) */
+  setMaster(v: number): void { this.potSet?.(v); }
+
+  /** following an FM-1 (#120): its firmware named, the controls it does not report greyed; null: not following */
+  following(name: string | null, reports: ReadonlySet<string> | null): void {
+    this.follow.hidden = !name;
+    this.follow.textContent = name ? `Following the FM-1 (${name}): greyed controls are not sent over MIDI by that firmware` : '';
+    const grey = (el: HTMLElement | null | undefined, c: string): void => { el?.classList.toggle('unreported', !!reports && !reports.has(c)); };
+    for (const [id, el] of this.btnEls) grey(el, `b${id}`);
+    const ENC_NAME: Record<number, string> = { [ENCODERS.select]: 'select', [ENCODERS.algo]: 'algo', [ENCODERS.preset]: 'preset', [ENCODERS.k1]: 'k1', [ENCODERS.k2]: 'k2', [ENCODERS.k3]: 'k3', [ENCODERS.k4]: 'k4' };
+    for (const [n, e] of this.encEls) grey(e.el, ENC_NAME[n]);
+    grey(this.potEl, 'master');
+    for (const el of this.keyEls.values()) grey(el, 'keys');
   }
 
   /** start (the module loads on the first show) and draw every frame while shown */
@@ -246,13 +296,14 @@ export class Fm1View {
   }
 
   private encoder(body: HTMLElement, label: string, n: number, x: number, y: number, r: number): void {
-    let turns = 0;
     const d = this.dial(body, label, x, y, r, (clicks) => {
       if (!clicks || !this.ui) return;
       this.ui.encoder(n, clicks);
-      turns += clicks;
-      d.style.setProperty('--turn', `${turns * 18}deg`);
+      const e = this.encEls.get(n)!;
+      e.turns += clicks;
+      d.style.setProperty('--turn', `${e.turns * 18}deg`);
     });
+    this.encEls.set(n, { el: d, turns: 0 });
     d.setAttribute('aria-label', `${label} encoder`);
     const k = ([ENCODERS.k1, ENCODERS.k2, ENCODERS.k3, ENCODERS.k4] as number[]).indexOf(n);
     if (k >= 0) d.classList.add(`k${k + 1}`);     /* K1..K4 in their colours, as on the LCD and the editor */
@@ -269,6 +320,8 @@ export class Fm1View {
     });
     d.classList.add('pot');
     show();
+    this.potEl = d;
+    this.potSet = (x) => { v = Math.min(1, Math.max(0, x)); show(); };
   }
 
   private press(id: number): void {

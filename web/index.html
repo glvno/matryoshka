@@ -102,6 +102,9 @@
         <label><input id="dev-live" type="checkbox" disabled /> Live sync</label>
         <p class="muted">Send patch edits, knobs and notes to the FM-1.</p>
         <div class="row"><button id="dev-send" disabled>Send patch</button><button id="dev-store" disabled>Store on FM-1</button></div>
+        <span class="menu-heading">Follow the FM-1</span>
+        <div class="row"><button id="mirror-btn">Follow its panel</button><select id="mirror-fw" aria-label="The FM-1's firmware"><option value="">firmware: detect</option><option value="matryoshka">Matryoshka</option><option value="mvave">M-VAVE</option><option value="felucca">Felucca / Sloop</option><option value="baudgirl">Baud Girl</option></select></div>
+        <p class="muted">Its keys, knobs and buttons play this page, whatever firmware it runs (only what that firmware sends over MIDI).</p>
         <span id="dev-status" class="muted" role="status"></span>
         <span class="menu-heading">MIDI keyboard</span>
         <button id="dev-release" title="Release MIDI ports by reloading the page. Use before unplugging or flashing the FM-1.">Release MIDI</button>

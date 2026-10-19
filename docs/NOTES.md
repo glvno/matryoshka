@@ -678,3 +678,9 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 
 - Details in docs/ARCHITECTURE.md "Arpeggiator on the dock". `poly.ts spotNear` is exported for it. The dock is taller with the column's five rows (the canvas is a little shorter).
 - ARP as the arpeggiator's Toggle means: lit = the arpeggiator bypassed (keys pass straight through), as every Toggle (engaged = target bypassed).
+
+## The FM-1 drives the web app through MIDI, any firmware (#120, 2026-10-19; vitest 695 incl. fm1-profiles.test.ts and recorded Matryoshka MIDI through the wasm panel logic; the menu seen on [::1]:5173; NOT tried with an FM-1: no device, and Follow was not pressed in the browser (a MIDI permission prompt))
+
+- Details in docs/ARCHITECTURE.md "Following the FM-1's panel". New: `fm1-profiles.ts`, `mirror.ts`; `Fm1View.ready` / `drive` / `setMaster` / `following`; a 40 ms ticker keeps the panel logic's clock running while a followed button is held and the tab is hidden.
+- Not verified at all: the identity handshake on each firmware, Felucca's and Baud Girl's CC numbers (from the 2026-10-19 survey, not measured), what M-VAVE stock V15 sends.
+- Two copies of the panel logic act on a followed button: the wasm's (focus, pages, GLO, SEQ) and the editor's (`pressButton`: kinds, Toggle bypass in the browser engine). They are fed the same presses.
