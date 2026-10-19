@@ -1255,26 +1255,36 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 #fm1-view[hidden] { display: none; }
 /* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it */
 .workspace.fm1-mode > :is(.wheels, .dock-wrap, .deck) { display: none; }
-/* the panel: 1280 x 678 units (fm1-view.ts places everything in them), scaled to the view; in the brand's colours,
-   from the theme tokens (paper and white caps in the light theme, night and ink in the dark one), the keys as the
-   deck's keyboard, the lights in the accent (lit), gold (glows) and teal (PLAY while running) */
-.fm1-body { --f-body: var(--panel); --f-edge: color-mix(in oklab, var(--ink) 18%, var(--panel));
-  --f-tray: color-mix(in oklab, var(--ink) 12%, var(--panel)); --f-cap: color-mix(in oklab, var(--ink) 7%, var(--panel)); --f-cap-ink: var(--muted); --f-drop: color-mix(in srgb, var(--ref-night) 30%, transparent);
-  --f-silk: var(--ink); --f-dial: var(--f-cap); --f-dial-rim: var(--line); --f-glow: var(--gate);
+/* the panel: 1280 x 678 units (fm1-view.ts places everything in them), scaled to the view. "The doll" (decided with the
+   user from the colourways canvas https://claude.ai/artifact/Kkg2ghED6iJq1XVxHjV6sJ, C6): a coral shell, an ivory face with the logo under the left section and the
+   wordmark under the screen, a gold band, a teal keybed; the same in both themes (the brand's own colours), so the
+   theme tokens are pinned here for everything inside */
+.fm1-body { --ink: var(--ref-ink); --muted: var(--ref-stone); --line: var(--ref-sand); --panel: var(--ref-white);
+  --accent: var(--ref-coral); --accent-ink: var(--ref-night); --secondary: var(--ref-deep-teal); --danger: var(--ref-rust); --gate: var(--ref-gold);
+  --btn-yellow: var(--ref-gold); --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand);
+  --key-white: var(--ref-ivory); --key-black: var(--ref-night); --key-edge: var(--ref-night); --key-held: var(--ref-gold); --key-held-ink: var(--ref-night);
+  --f-body: var(--ref-coral); --f-edge: var(--ref-rust); --f-face: var(--ref-ivory);
+  --f-tray: var(--ref-paper); --f-cap: #fff; --f-cap-ink: var(--ref-ink); --f-drop: color-mix(in srgb, var(--ref-night) 22%, transparent);
+  --f-silk: var(--ref-ink); --f-dial: #fff; --f-dial-rim: var(--ref-sand); --f-glow: var(--ref-gold);
   position: relative; flex: none; width: min(100%, calc((100dvh - 120px) * 1280 / 678), 1280px); aspect-ratio: 1280 / 678; container-type: inline-size;
-  border-radius: 2.4cqw; background: var(--f-body); box-shadow: 0 6px 24px var(--shadow), inset 0 0 0 1px var(--f-edge); }
+  border-radius: 2.4cqw; background: var(--f-body); box-shadow: 0 6px 24px var(--shadow), inset 0 0 0 .25cqw var(--f-edge); color: var(--ink); }
 .fm1-body > * { position: absolute; box-sizing: border-box; }
-.fm1-tray { border-radius: 1.2cqw; background: var(--f-tray); }
-.fm1-keybed { border-radius: 2cqw; }
+.fm1-face { border-radius: 1.6cqw; background: var(--f-face); }
+.fm1-band { border-radius: .3cqw; background: var(--ref-gold); }
+.fm1-logo-wrap { pointer-events: none; opacity: .45; }
+.fm1-logo { width: 100%; height: 100%; }
+.fm1-wordmark { display: flex; justify-content: center; pointer-events: none; }
+.fm1-wordmark .brand-mark { width: auto; height: 100%; }
+.fm1-tray { border-radius: 1.2cqw; background: var(--f-tray); box-shadow: inset 0 0 0 .12cqw var(--line); }
+.fm1-keybed { border-radius: 2cqw; background: var(--secondary); box-shadow: none; }
 .fm1-transport { border-radius: .8cqw; box-shadow: inset 0 0 0 .16cqw var(--secondary); }
-.fm1-bezel { border-radius: 1.7cqw; background: var(--ref-night); box-shadow: inset 0 0 0 .2cqw var(--ref-slate); }
+.fm1-bezel { border-radius: 1.7cqw; background: var(--ref-night); box-shadow: 0 0 0 .32cqw var(--ref-gold); }
 .fm1-lcd { position: absolute; display: block; image-rendering: pixelated; background: var(--ref-night); }
 .fm1-note { position: absolute; inset: 3.5%; display: grid; place-items: center; margin: 0; padding: 6%; text-align: center;
   background: color-mix(in srgb, var(--ref-night) 88%, transparent); color: var(--ref-ivory); font: 500 1.2cqw/1.4 'Barlow', system-ui, sans-serif; }
 .fm1-note[hidden] { display: none; }
 .fm1-silk { display: flex; align-items: center; justify-content: center; color: var(--f-silk); font: 600 1.25cqw/1 'Barlow Condensed', system-ui, sans-serif;
   text-transform: uppercase; letter-spacing: .1em; pointer-events: none; white-space: nowrap; }
-.fm1-name { font-size: .9cqw; color: var(--secondary); letter-spacing: .2em; }
 .fm1-dial { --turn: 0deg; border-radius: 50%; cursor: ns-resize; touch-action: none; outline-offset: .3cqw;
   background: radial-gradient(circle at 50% 50%, var(--f-dial) 0 70%, var(--f-dial-rim) 71% 100%); box-shadow: .15cqw .3cqw 0 var(--f-drop); }
 /* K1..K4 in the knob colours (the LCD's bars, the editor's focused page); the ticks stay neutral */
@@ -1293,9 +1303,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
    and breathes teal while it runs; on the keys the SEQ page's steps (lit), playhead (mid) and tracks (dim) */
 .fm1-btn.dim { background: color-mix(in oklab, var(--f-glow) 22%, var(--f-cap)); color: var(--ink); }
 .fm1-btn.lit { background: var(--accent); color: var(--accent-ink); }
-.fm1-btn.play.lit { background: var(--danger); color: var(--accent-ink); }
+.fm1-btn.play.lit { background: var(--danger); color: var(--ref-ivory); }
 .fm1-btn.breath { animation: fm1-breath 1.6s ease-in-out infinite; color: var(--accent-ink); }
-.fm1-btn.play.breath { --breath: var(--secondary); }
+.fm1-btn.play.breath { --breath: var(--ref-seafoam); }
 @keyframes fm1-breath { 0%, 100% { background: color-mix(in oklab, var(--breath, var(--f-glow)) 35%, var(--f-cap)); } 50% { background: var(--breath, var(--f-glow)); } }
 .fm1-key { padding: 0; border: 0; border-radius: 99cqw; background: var(--key-white); box-shadow: .08cqw .3cqw 0 var(--f-drop), inset 0 0 0 .08cqw var(--key-edge); touch-action: none; }
 .fm1-key.black { background: var(--key-black); }

@@ -2,9 +2,10 @@
 // The editor's FM-1 tab (#110): the FM-1's front panel, laid out as the device is, around the real firmware UI as
 // WebAssembly (fm1-ui.ts). The geometry is the one fm1-emu's fm1-live draws (after Felucca's controls diagram, in a
 // 1280 x 820 panel), made shorter: the left section (MASTER / SELECT / PRESETS / ALGORITHM, OCT- / OCT+ under them) as
-// tall as the right one, the screen in the middle only as tall as they are (so 1280 x 678), KNOB1..4 and two rows of six buttons on the right, the 27 pill keys (F3..G5) across the bottom. Encoders turn
+// tall as the right one, the screen in the middle a little shorter with the wordmark under it (so 1280 x 678), KNOB1..4 and two rows of six buttons on the right, the 27 pill keys (F3..G5) across the bottom. Encoders turn
 // by drag, wheel or arrows; a button is held while pressed (Shift-click latches it down, for chords such as PLAY +
 // PRESET); the keys play notes. No editor knowledge here: main.ts wires the events.
+import { inlineWordmarks, logoHtml } from './brand';
 import { BUTTONS, ENCODERS, Fm1Ui, type Fm1Events } from './fm1-ui';
 
 /** keep a pointer's moves and release on el (a pointer that is already gone cannot be captured: then without) */
@@ -91,24 +92,31 @@ export class Fm1View {
     el.classList.add('fm1-view');
     const body = div('fm1-body', el);
     body.addEventListener('pointerdown', () => this.host.used?.(), { capture: true });
+    // the doll: a coral shell, an ivory face with the logo under the left section, a gold band over the keybed
+    place(div('fm1-face', body), 20, 20, 1240, 380);
+    const logo = place(div('fm1-logo-wrap', body), 22, 32, 336, 336);
+    logo.innerHTML = logoHtml('fm1-logo');
+    place(div('fm1-band', body), 20, 404, 1240, 6);
     place(div('fm1-tray', body), 50, 318, 260, 64);
     place(div('fm1-tray', body), 896, 222, 360, 160);
     place(div('fm1-tray fm1-keybed', body), 34, 420, 1212, 236);
     place(div('fm1-transport', body), 1134, 302, 112, 72);
-    const bezel = place(div('fm1-bezel', body), 439, 54, 328, 328);
+    const bezel = place(div('fm1-bezel', body), 478, 54, 250, 250);
     const lcd = document.createElement('canvas');
     lcd.className = 'fm1-lcd';
     lcd.width = lcd.height = 240;
     lcd.setAttribute('role', 'img');
     lcd.setAttribute('aria-label', 'FM-1 display');
-    lcd.style.left = `${(12 / 328) * 100}%`;
-    lcd.style.top = `${(12 / 328) * 100}%`;
-    lcd.style.width = lcd.style.height = `${(304 / 328) * 100}%`;
+    lcd.style.left = `${(10 / 250) * 100}%`;
+    lcd.style.top = `${(10 / 250) * 100}%`;
+    lcd.style.width = lcd.style.height = `${(230 / 250) * 100}%`;
     bezel.append(lcd);
     this.ctx = lcd.getContext('2d')!;
     this.note = div('fm1-note', bezel);
     this.note.hidden = true;
-    place(div('fm1-silk fm1-name', body, 'FM-1 · Matryoshka'), 439, 392, 328, 14);
+    const mark = place(div('fm1-wordmark', body), 453, 334, 300, 36);
+    mark.innerHTML = '<img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka">';
+    void inlineWordmarks(mark);
     for (const e of ENCS) this.encoder(body, e.label, e.n, e.x, e.y, e.r);
     this.pot(body, master);
     for (const b of BTNS) this.button(body, b.label, b.id, b.x, b.y, b.w, b.h);
@@ -246,7 +254,7 @@ export class Fm1View {
       d.style.setProperty('--turn', `${turns * 18}deg`);
     });
     d.setAttribute('aria-label', `${label} encoder`);
-    const k = [ENCODERS.k1, ENCODERS.k2, ENCODERS.k3, ENCODERS.k4].indexOf(n);
+    const k = ([ENCODERS.k1, ENCODERS.k2, ENCODERS.k3, ENCODERS.k4] as number[]).indexOf(n);
     if (k >= 0) d.classList.add(`k${k + 1}`);     /* K1..K4 in their colours, as on the LCD and the editor */
   }
 
