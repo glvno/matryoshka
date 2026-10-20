@@ -13,8 +13,18 @@
  *                   + K2: its velocity (#93). Turning a knob on a held step undoes the press: the track's notes as they
  *                   were, the step on.
  *   OCT- / OCT+     the page of a track longer than 16 steps (17-32 ...)
- *   REC             live recording on / off (its LED is lit while on)
- * On this page the keys play no notes. Key LEDs: the selected track's steps bright, the step playing at the mid level (dark
+ *   REC             live recording on / off (its LED is lit while on); it acts on its release
+ * On this page the keys play no notes, unless REC records an armed track.
+ *
+ * Arming and recording from the keys (#139, the editor's #134 / #135):
+ *   REC held + a black key (any page): arm that track, again: disarm. While a track is armed the keys (and MIDI notes)
+ *                   play through it to what it plays (engine.c eng_arm); the device pages' info line says ARM and its name.
+ *   REC with a track armed: stopped, the SEQ page opens on it in step entry: the 27 keys are its keyboard, every key held
+ *                   when the first is let go fills the cursor's step (a chord, one step long; ENV held: full velocity), the
+ *                   cursor moves on; ENV + OCT a rest, LFO + OCT a tie, SELECT moves the cursor, OCT- / OCT+ the octave.
+ *                   Running, the page stays: the keys play and the engine records them live onto the nearest step
+ *                   (eng_steps_rec); on the SEQ page they are the track's keyboard. PLAY / stop switches between the two.
+ *                   REC again, or another arm, ends it; leaving the page ends step entry (a live take goes on). Key LEDs: the selected track's steps bright, the step playing at the mid level (dark
  * on a step that is on), the selected track's black key bright, tracks with hits glowing, muted ones blinking. The top bar
  * shows the track's name (STEPS n without one). Edits go into the running patch (SAVE keeps them) and to the editor. */
 
@@ -22,10 +32,14 @@
 #define BTN_SEQ 11u
 #define BTN_REC 13u
 #define BTN_ENV 4u
+#define BTN_LFO 5u
 
 static uint8_t seq_trk;                 /* the selected track (index among the patch's Steps modules) */
 static uint8_t seq_pg;                  /* the page of 16 steps */
-static uint8_t seq_rec;                 /* REC: live recording */
+static uint8_t seq_rec;                 /* REC: 1 black keys record hits, 2 the keys record into the armed track (#139) */
+static int8_t seq_cur;                  /* step entry: the cursor's step */
+static uint32_t ent_keys;               /* the keys held while they are the armed track's keyboard (bit n: key n) */
+static uint8_t ent_note[TRACK_POLY], ent_n, ent_vel;   /* step entry: the chord being played for the cursor's step */
 static int8_t seq_held = -1;            /* the step whose white key is held (SELECT sets its chance, K1 / K2 its values), -1 none */
 static uint32_t seq_held_notes[TRACK_NOTES_MAX];   /* the track's notes before the held step's press switched it */
 static uint8_t seq_held_n;
@@ -45,6 +59,19 @@ static int seq_black(uint32_t n)
 }
 
 static int seq_module(void) { return eng_steps_module(seq_trk); }
+
+/* the armed track's index among the Steps modules, -1 none */
+static int seq_armed_trk(void)
+{
+    int t, a = eng_armed();
+    for (t = 0; a >= 0 && t < eng_steps_count(); t++)
+        if (eng_steps_module((uint32_t)t) == a)
+            return t;
+    return -1;
+}
+/* the keys are the armed track's keyboard (REC on it, on this page); step entry: that, stopped */
+static int seq_kbd(void) { return seq_rec == 2u && page == PAGE_SEQ; }
+static int seq_entry(void) { return seq_kbd() && !eng_transport_running(); }
 
 static int32_t seq_len(int mod)
 {
@@ -110,14 +137,29 @@ static void seq_leds_off(void)
     fm1_led_key(BTN_REC, 0);
 }
 
+/* does step k of `mod` start this note (step entry: the keys of the cursor's step glow) */
+static int seq_step_has(int mod, uint32_t k, uint32_t note)
+{
+    const uint32_t *w;
+    int i, n = eng_steps_notes((uint32_t)mod, &w);
+    for (i = 0; i < n; i++)
+        if ((w[i] & 63u) == k && ((w[i] >> 12) & 127u) == note)
+            return 1;
+    return 0;
+}
+
 static void seq_leds(void)
 {
-    int mod = seq_module(), pos = mod >= 0 ? eng_steps_pos((uint32_t)mod) : -1;
-    int blink = (fm1_ms / 200u) & 1u;
+    int mod = seq_module(), pos = mod >= 0 ? eng_steps_pos((uint32_t)mod) : -1, arm = seq_armed_trk();
+    int blink = (fm1_ms / 200u) & 1u, kbd = seq_kbd(), entry = seq_entry();
     uint32_t n;
     for (n = 0; n < 27u; n++) {
         int w = seq_white(n), b = seq_black(n), lit = 0, mid = 0, dim = 0;
-        if (w >= 0 && mod >= 0) {
+        if (kbd) {                               /* the armed track's keyboard: the keys held bright; step entry: the notes */
+            uint32_t note = (uint32_t)clampi(53 + (int32_t)n + 12 * octave, 0, 127);   /* on the cursor's step glow, */
+            lit = (int)(ent_keys >> n & 1u);     /* live: every C, to find your place */
+            dim = !lit && (entry ? mod >= 0 && seq_step_has(mod, (uint32_t)seq_cur, note) : note % 12u == 0u);
+        } else if (w >= 0 && mod >= 0) {
             int k = seq_pg * 16 + w, on = k < seq_len(mod) && (eng_steps_get((uint32_t)mod, (uint32_t)k) & 1);
             lit = on && k != pos;
             mid = !on && k == pos;
@@ -129,6 +171,8 @@ static void seq_leds(void)
                 lit = blink;
             else if ((uint32_t)b == seq_trk)
                 lit = 1;
+            else if (b == arm)                   /* the armed track: the mid level */
+                mid = 1;
             else
                 dim = any;
         }
@@ -311,11 +355,169 @@ static void seq_page_step(int d)
     ui_dirty = 2;
 }
 
-static void seq_rec_toggle(void)
+/* the running patch's copy of a track after an engine edit of its notes (proto.c), and the editor */
+static void seq_sync(int mod)
 {
-    seq_rec = (uint8_t)!seq_rec;
-    ui_msg(seq_rec ? "REC: BLACK KEYS RECORD" : "REC OFF", 1000);
+    m1_patch_notes((uint32_t)mod);
+    m1_track_now((uint32_t)mod);
+}
+
+static void seq_rec_off(void)
+{
+    if (seq_rec == 2u && eng_armed() >= 0)
+        eng_steps_rec((uint32_t)eng_armed(), 0);
+    seq_rec = 0;
+    ent_n = 0;
+    ent_keys = 0;
     ui_dirty = 2;
+}
+
+/* REC let go (panel.c; not after REC held + a black key armed a track): off, or on: with a track armed into it (stopped:
+ * step entry on the SEQ page, the caller opens it: seq_rec_page), else the black keys record hits */
+static int seq_rec_page(void) { return !seq_rec && (eng_armed() < 0 || !eng_transport_running()); }
+static void seq_rec_press(void)
+{
+    int t = seq_armed_trk();
+    char m[32], name[TRACK_NAME_MAX + 8];
+    if (seq_rec) {
+        seq_rec_off();
+        ui_msg("REC OFF", 1000);
+        return;
+    }
+    if (t < 0) {
+        seq_rec = 1;
+        ui_msg("REC: BLACK KEYS RECORD", 1000);
+        ui_dirty = 2;
+        return;
+    }
+    seq_rec = 2;
+    eng_steps_rec((uint32_t)eng_armed(), 1);
+    if ((uint32_t)t != seq_trk)
+        seq_pg = 0;
+    seq_trk = (uint8_t)t;
+    seq_held = -1;
+    seq_cur = (int8_t)(seq_pg * 16);
+    ent_n = 0;
+    seq_name((uint32_t)t, name);
+    put(put(m, eng_transport_running() ? "REC " : "WRITE "), name)[0] = 0;
+    ui_msg(m, 1000);
+    ui_dirty = 2;
+}
+
+/* REC held + a black key (any page): that track armed, or disarmed if it was */
+static void seq_arm_key(uint32_t n)
+{
+    int b = seq_black(n), mod;
+    char m[32], name[TRACK_NAME_MAX + 8];
+    if (b < 0 || b >= eng_steps_count())
+        return;
+    mod = eng_steps_module((uint32_t)b);
+    if (seq_rec == 2u)                           /* (a take on the track armed before ends) */
+        seq_rec_off();
+    eng_arm(eng_armed() == mod ? -1 : mod);
+    m1_arm_now(eng_armed());
+    seq_name((uint32_t)b, name);
+    put(put(m, name), eng_armed() == mod ? " ARMED" : " DISARMED")[0] = 0;
+    ui_msg(m, 1200);
+    ui_dirty = 2;
+}
+
+/* the page is left: step entry and the black keys' recording end (a live take on the armed track goes on) */
+static void seq_leave(void)
+{
+    if (seq_rec == 1u || (seq_rec == 2u && !eng_transport_running()))
+        seq_rec_off();
+    ent_keys = 0;
+    ent_n = 0;
+}
+
+/* the cursor moves by d steps (round the track's length); the page follows it */
+static void seq_cur_move(int32_t d)
+{
+    int32_t len = seq_len(seq_module());
+    seq_cur = (int8_t)(((seq_cur + d) % len + len) % len);
+    seq_pg = (uint8_t)(seq_cur / 16);
+    ui_dirty = 2;
+}
+
+/* a key while the keys are the armed track's keyboard (the panel plays it too): step entry collects a chord, written into
+ * the cursor's step when the first of its keys is let go (the editor's step entry) */
+static void seq_kbd_key(uint32_t n, uint32_t note, int down, uint32_t vel)
+{
+    int mod = eng_armed();
+    if (down)
+        ent_keys |= 1u << n;
+    else
+        ent_keys &= ~(1u << n);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+    if (!seq_entry() || mod < 0)
+        return;
+    if (down) {
+        uint32_t i;
+        if (!(ent_keys & ~(1u << n)))
+            ent_n = 0;                           /* (the first key of a new chord) */
+        for (i = 0; i < ent_n && ent_note[i] != note; i++)
+            ;
+        if (i == ent_n && ent_n < TRACK_POLY)
+            ent_note[ent_n++] = (uint8_t)note;
+        ent_vel = (uint8_t)vel;
+        return;
+    }
+    if (!ent_n)
+        return;
+    eng_steps_chord((uint32_t)mod, (uint32_t)seq_cur, ent_note, ent_n, ent_vel);
+    seq_sync(mod);
+    ent_n = 0;                                   /* (the keys still down were in it; a key now starts the next chord) */
+    seq_cur_move(1);
+}
+
+/* OCT- / OCT+ in step entry: with ENV held a rest, with LFO held a tie (then the cursor moves on); 0: not taken (the
+ * octave) */
+static int seq_entry_oct(void)
+{
+    int mod = eng_armed(), env = (int)(panel_held >> BTN_ENV & 1u), lfo = (int)(panel_held >> BTN_LFO & 1u);
+    if (!seq_entry() || mod < 0 || (!env && !lfo))
+        return 0;
+    m1_patch_step((uint32_t)mod, (uint32_t)seq_cur, env ? 0u : 0x80u);
+    m1_track_now((uint32_t)mod);
+    seq_cur_move(1);
+    return 1;
+}
+
+/* the device pages' info line: ARM / REC and the armed track's name (the colour: recording or not); 0 when none is armed */
+static int seq_arm_label(char *out, int *rec)
+{
+    int t = seq_armed_trk();
+    char name[TRACK_NAME_MAX + 8];
+    if (t < 0)
+        return 0;
+    seq_name((uint32_t)t, name);
+    *rec = seq_rec == 2u;
+    put(put(out, *rec ? "REC " : "ARM "), name)[0] = 0;
+    return 1;
+}
+
+/* the main loop, every pass (seq_poll): the notes the engine recorded laid over their tracks; a patch that took the arm
+ * away ends the take; REC's LED off the page */
+static void seq_take(void)
+{
+    uint32_t m, w, done = 0;
+    int last = -1;
+    while (eng_steps_take(&m, &w)) {
+        eng_steps_overdub(m, w);
+        if ((int)m != last && last >= 0)
+            seq_sync(last);
+        last = (int)m;
+        done = 1;
+    }
+    if (last >= 0)
+        seq_sync(last);
+    if (done && page == PAGE_SEQ)
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+    if (seq_rec == 2u && eng_armed() < 0)
+        seq_rec_off();
+    if (page != PAGE_SEQ)
+        fm1_led_key(BTN_REC, seq_rec != 0);
 }
 
 /* ---- the LCD */
@@ -331,11 +533,15 @@ static void seq_bar(void)
     seq_name(seq_trk, name);
     p = put(p, name);
     *p++ = ' ';
-    fmt_int(num, (int32_t)seq_trk + 1);
-    p = put(p, num);
-    *p++ = '/';
-    fmt_int(num, eng_steps_count());
-    p = put(p, num);
+    if (seq_kbd())                               /* the keys record into the armed track: step entry's cursor, or live */
+        p = put(p, seq_entry() ? "WRITE" : "KEYS");
+    else {
+        fmt_int(num, (int32_t)seq_trk + 1);
+        p = put(p, num);
+        *p++ = '/';
+        fmt_int(num, eng_steps_count());
+        p = put(p, num);
+    }
     if (seq_rec)
         p = put(p, " REC");
     *p = 0;
@@ -402,8 +608,42 @@ static void seq_draw(int full)
         if (fill)
             lcd_fill(x, 52 + h - fill, 12, fill, c);
         lcd_fill(x, 52 + h + 3u, 12, 3, k == pos ? C_ACC : C_BG);
+        {                                        /* step entry's cursor: a frame round its cell */
+            uint16_t fc = seq_entry() && k == seq_cur ? C_ACC : C_BG;
+            lcd_fill(x - 1u, 50, 14, 1, fc);
+            lcd_fill(x - 1u, 51, 1, h + 1u, fc);
+            lcd_fill(x + 12u, 51, 1, h + 1u, fc);
+        }
     }
     seq_shown_pos = (int8_t)pos;
+    if (seq_entry()) {                           /* step entry: the chord being played, what the cursor's step holds */
+        const uint32_t *w;
+        int i, nn = eng_steps_notes((uint32_t)mod, &w), any = 0;
+        uint32_t k = (uint32_t)seq_cur;
+        fmt_int(num, seq_cur + 1);
+        p = put(put(line, "WRITE "), num);
+        p = put(p, "  ");
+        for (i = 0; i < ent_n && p < line + 30; i++) {
+            p = seq_note_name(p, ent_note[i]);
+            *p++ = ' ';
+        }
+        *p = 0;
+        text_bc(&FONT_M, 8, 100, line, C_FG, C_BG, 224, TA_LEFT);
+        p = put(line, "ON THE STEP: ");
+        for (i = 0; i < nn && p < line + 32; i++)
+            if ((w[i] & 63u) == k) {
+                p = seq_note_name(p, (w[i] >> 12) & 127u);
+                *p++ = ' ';
+                any = 1;
+            }
+        if (!any)
+            p = put(p, (eng_steps_get((uint32_t)mod, k) & 0x80) ? "TIED" : "EMPTY");
+        *p = 0;
+        text_bc(&FONT_S, 8, 128, line, C_DIM, C_BG, 224, TA_LEFT);
+        if (full)
+            text_bc(&FONT_S, 8, 222, "ENV+OCT rest  LFO+OCT tie  SEL move", C_HINT, C_BG, 228, TA_LEFT);
+        return;
+    }
     for (t = 0; t < 12u; t++) {                  /* the tracks, two columns of six */
         uint32_t x = 12u + 112u * (t / 6u), y = 100u + 16u * (t % 6u);
         p = line;
@@ -421,15 +661,25 @@ static void seq_draw(int full)
         text_bc(&FONT_S, x, y, line, t == seq_trk ? C_ACC : t < (uint32_t)eng_steps_count() && !eng_steps_muted((uint32_t)eng_steps_module(t)) ? C_FG : C_DIM, C_BG, 108, TA_LEFT);
     }
     if (full)
-        text_bc(&FONT_S, 8, 222, seq_rec ? "BLACK  hit    ENV+BLACK  accent" : "ENV accent   HOLD+SEL %   K1 note   K2 vel", C_HINT, C_BG, 228, TA_LEFT);
+        text_bc(&FONT_S, 8, 222, seq_kbd() ? "KEYS record   OCT octave   REC stop" : seq_rec ? "BLACK  hit    ENV+BLACK  accent" : "ENV accent   HOLD+SEL %   K1 note   K2 vel", C_HINT, C_BG, 228, TA_LEFT);
 }
 
 /* the main loop, every pass: the LEDs, and the cells when the playhead moved */
 static void seq_poll(void)
 {
+    static int8_t entry_was = -1;
     int mod;
-    if (page != PAGE_SEQ)
+    seq_take();
+    if (page != PAGE_SEQ) {
+        entry_was = -1;
         return;
+    }
+    if ((seq_kbd() ? seq_entry() : -1) != entry_was) {   /* PLAY / stop while REC records the armed track: step entry or live */
+        entry_was = (int8_t)(seq_kbd() ? seq_entry() : -1);
+        ent_n = 0;
+        header_draw();
+        ui_dirty = 2;
+    }
     seq_leds();
     mod = seq_module();
     if (mod >= 0 && eng_steps_pos((uint32_t)mod) != seq_shown_pos && !ui_dirty)

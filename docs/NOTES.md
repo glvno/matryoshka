@@ -832,3 +832,31 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
 - **The two melodies are placeholders I wrote** (in G#, the quantizer's key, following the HERA line); the recipe had the sounds and the bars, not the notes. The owner records their own with the roll / REC.
 - `CLAUDE.md`: the stale `TYPE_COLOR` rule is gone.
 - **Demo kit swapped (owner's request):** the Demo's own rewired drums are replaced by the factory `drum kit` assembly (`insertAssembly` from `src/assemblies/drum-kit.json` at the old kit's place, collapsed; DRUMS keys out → its `keys`, its `out` → mixer 28 in1, everything else in the patch unchanged). The owner's tuning of the old drums is gone with it. Drums alone: RMS 0.049 → 0.092 (the factory sounds ring longer), peak 0.44 → 0.43; whole mix over 34 bars peaks at 0.80. vitest 724.
+
+## 2026-10-20 (evening): FM-1 arming and recording from the keys, #139 (host-tested: vitest 725, golden 91 with the new `steps-arm`, proto_test, panel_test 62 checks, fm1-wasm, the build, pool 40250 B free; the LCD of step entry and of a live take looked at through `PANEL_SNAP_ENTRY` / `PANEL_SNAP_TAKE`. Not run: the JieLi CI build, `npm run emu:smoke` (after the push), nothing on a device)
+
+- The owner picked from a design canvas of three strategies per question, set against X0X (charlesvestal/fm1-x0x
+  `54194c5`: no ARM, ALGO picks the part, REC turns all 27 keys into the 303's keyboard on any of its screens, stopped =
+  each key the next step from step 1, ENV + OCT rest, LFO + OCT tie, the cursor only on the LCD as `WRITE 5 C3`, held
+  keys bright and Cs dim): https://claude.ai/artifact/SXuedHA3UiaWXFLP41MXu3. Picks: **1B** REC held + a black key arms
+  (any page; the keys play through the track, like the editor), **2C** the transport decides (stopped: step entry on the
+  SEQ page; running: a live take on the page you are on), **3B** the cursor on the LCD and the key LEDs show the notes
+  already on the cursor's step. Details in ARCHITECTURE.md "Arming and recording on the FM-1".
+- engine.c now does what engine.ts does for keys in: arming, thru, the Main-keys cable into a track (`ksrc` = 1; poly.ts
+  `deviceView` keeps that one keys cable so the binary carries it, no format change) and live recording (rounded the
+  same way, the same notes: golden `steps-arm` checks keys unarmed / armed / recorded / taken / disarmed with a key held,
+  and the fed track). The keys reach the audio side through a ring (main loop → interrupt), recorded notes come back
+  through another (`eng_steps_take`). Each block costs 15 cycles more (cpu-costs `block` 4146 → 4161); the pool 232 B.
+- Choices made without the owner: REC acts on its release now (so REC held + a key is free for arming); the panel keys
+  play an armed track at velocity 100 (ENV held on the SEQ keyboard: 127), unarmed as before (127); step entry's cursor
+  starts at the shown page's first step (the editor starts at step 1); ALGO does nothing while the keys record into the
+  armed track; switching the arm ends a take; leaving the SEQ page ends step entry but not a live take; the armed track's
+  name replaces the patch name on the device pages' info line (not the device strip); the device does not tell the editor
+  it armed (the FM-1 tab's emulator does, both ways).
+- The emulator smoke's `seq()` was still written for the six-track 808 Kit (`KICK 1/6`, a black key picking track 2):
+  rewritten for the one DRUMS track, plus arming, step entry (`WRITE 1` → `WRITE 2`), a live take and disarming. It
+  compiles; it has not run.
+- Not done: the Drum map rows on the SEQ page (the canvas's "found on the way": since #138 a white key on an empty DRUMS
+  step adds C4, which the map does not play, and black keys 2..11 do nothing on the 808 / 909 Kits). Waits on the owner:
+  black keys 1..8 as the map's rows, and whether the row names go into the binary (a format bump) or the device shows
+  `ROW 2 D2`.

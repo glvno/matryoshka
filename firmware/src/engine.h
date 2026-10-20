@@ -202,6 +202,14 @@ int eng_steps_muted(uint32_t module);
 int eng_steps_hit(uint32_t module, int accent, int record);
 int eng_steps_notes(uint32_t module, const uint32_t **w);
 int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n);
+/* arming and recording from the keys (#139): the armed Steps module (-1 none); live recording on a track; the notes it
+ * recorded, one at a time (0: none); step entry's chord; a recorded note laid over the track */
+void eng_arm(int module);
+int eng_armed(void);
+void eng_steps_rec(uint32_t module, int on);
+int eng_steps_take(uint32_t *module, uint32_t *word);
+void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t n, uint32_t vel);
+void eng_steps_overdub(uint32_t module, uint32_t word);
 /* the performance controls: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
  * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch, 0..1, the at output) */
 enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_NCTL };

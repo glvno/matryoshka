@@ -135,8 +135,8 @@ static void page_show(uint32_t p)
     pg_strip_dirty = 1;
     if (page == PAGE_MENU)
         menu_open();
-    if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends live recording) */
-        seq_rec = 0;
+    if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends its recording, not a live take: seq_leave) */
+        seq_leave();
         seq_leds_off();
     }
     header_draw();
@@ -309,6 +309,11 @@ static void panel_encoders(int32_t *st)
         preset_step(st[6]);
         return;
     }
+    if (page == PAGE_SEQ && seq_rec == 2u) {        /* the keys record into the armed track: ALGO keeps it, SELECT moves */
+        if (st[0] && seq_entry())                   /* step entry's cursor */
+            seq_cur_move(st[0]);
+        st[0] = st[1] = 0;
+    }
     if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track, SELECT with a step held its chance */
         if (st[1] && eng_steps_count())
             seq_select((uint32_t)((seq_trk + (uint32_t)eng_steps_count() * 8u + (uint32_t)st[1]) % (uint32_t)eng_steps_count()));
@@ -368,6 +373,7 @@ static void panel_encoders(int32_t *st)
 static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
 static uint8_t seq_held_used;                    /* SEQ is held and a black key muted a track: its release does not switch the page */
+static uint8_t rec_held_used;                    /* REC is held and a black key armed a track: its release does not record */
 /* the 27 keys now held (bit 0 = F3 = MIDI 53), shifted by the octave, -> the engine */
 static void panel_keys(uint32_t now)
 {
@@ -381,26 +387,38 @@ static void panel_keys(uint32_t now)
         if (!(diff & (1u << n)))
             continue;
         diff &= ~(1u << n);
+        if ((now & (1u << n)) && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
+            seq_arm_key(n);
+            rec_held_used = 1;
+            continue;
+        }
         if ((now & (1u << n)) && (panel_held >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
             seq_mute_key(n);
             seq_held_used = 1;
             continue;
         }
-        if (!(key_sounding & (1u << n)) && (page == PAGE_SEQ || !(now & (1u << n)))) {   /* the SEQ page: steps and tracks */
-            if (page == PAGE_SEQ)
+        if (!(key_sounding & (1u << n)) && ((page == PAGE_SEQ && !seq_kbd()) || !(now & (1u << n)))) {   /* the SEQ page: steps and tracks */
+            if (page == PAGE_SEQ && !seq_kbd())
                 seq_key(n, (int)(now >> n & 1u));
             continue;
         }
         if (now & (1u << n)) {
             int32_t note = 53 + (int32_t)n + 12 * octave;
+            /* into an armed track at the default velocity (ENV held on its keyboard: full), so a take records what a step
+             * entered would be; else at full velocity as always */
+            uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ENV & 1u) ? ACCENT_VEL : STEP_VEL;
             key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
             key_sounding |= 1u << n;
-            eng_note_on(key_note[n], ENG_ONE, cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
+            eng_note_on(key_note[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
             midi_send(0x90u, key_note[n], 100u);
+            if (seq_kbd())
+                seq_kbd_key(n, key_note[n], 1, vel);
         } else {
             key_sounding &= ~(1u << n);
             eng_note_off(key_note[n], cfg.ch ? cfg.ch : 1u);
             midi_send(0x80u, key_note[n], 0u);
+            if (seq_kbd())
+                seq_kbd_key(n, key_note[n], 0, 0u);
         }
     }
 }
@@ -426,7 +444,14 @@ static void panel_edges(uint32_t p, uint32_t rel)
             menu_set_row(menu_sel, 1);
         p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
     }
-    if (page == PAGE_SEQ) {                         /* the SEQ page: OCT- / OCT+ page through a long track, ENV is the accent key */
+    if (page == PAGE_SEQ && seq_kbd()) {            /* the armed track's keyboard: OCT the octave (step entry: ENV + OCT a rest, LFO
+                                                     * + OCT a tie), ENV and LFO are the page's */
+        if ((p & (1u << BTN_OCT_DOWN)) && seq_entry_oct())
+            p &= ~(1u << BTN_OCT_DOWN);
+        if ((p & (1u << BTN_OCT_UP)) && seq_entry_oct())
+            p &= ~(1u << BTN_OCT_UP);
+        p &= ~((1u << BTN_ENV) | (1u << BTN_LFO));
+    } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track, ENV is the accent key */
         if (p & (1u << BTN_OCT_DOWN))
             seq_page_step(-1);
         if (p & (1u << BTN_OCT_UP))
@@ -437,10 +462,12 @@ static void panel_edges(uint32_t p, uint32_t rel)
         seq_held_used = 0;
     if ((rel & (1u << BTN_SEQ)) && !seq_held_used)
         page_set(PAGE_SEQ);
-    if (p & (1u << BTN_REC)) {                      /* REC: live recording, on the SEQ page */
-        if (page != PAGE_SEQ)
+    if (p & (1u << BTN_REC))                        /* REC acts on release, unless a black key armed a track meanwhile */
+        rec_held_used = 0;
+    if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, step entry) */
+        if (seq_rec_page() && page != PAGE_SEQ)
             page_set(PAGE_SEQ);
-        seq_rec_toggle();
+        seq_rec_press();
     }
     if (p & (1u << BTN_OCT_DOWN))
         octave = octave > -3 ? octave - 1 : octave;

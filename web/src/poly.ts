@@ -183,8 +183,11 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
   const groups = polyGroups(p);
   const out: DeviceGroup[] = groups.map((g) => ({ key: `${g.asm.id}:${g.cfg.parts}`, cfg: g.cfg, modules: new Set(g.modules) }));
   const modules = p.modules.map((m) => m);
-  // keys cables are not signals: the groups take the notes (from the keys, or an Arpeggiator or a Steps track: DeviceGroup.src)
-  const keysFrom = (c: Cable): boolean => { const t = p.modules.find((m) => m.id === c.from.module)?.type; return (t === 'fm1' || t === 'arp' || t === 'steps') && c.from.port === 'keys'; };
+  // keys cables are not signals: the groups take the notes (from the keys, or an Arpeggiator or a Steps track: DeviceGroup.src).
+  // One stays: Main's keys into a Steps track's keys in (#138), which tells the C engine that the keys pass through the
+  // track (engine.c ksrc; no signal flows on it)
+  const typeOf = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
+  const keysFrom = (c: Cable): boolean => { const t = typeOf(c.from.module); return (t === 'fm1' || t === 'arp' || t === 'steps') && c.from.port === 'keys' && !(t === 'fm1' && c.to.port === 'keys' && typeOf(c.to.module) === 'steps'); };
   let cables: Cable[] = p.cables.filter((c) => !keysFrom(c));
   let next = p.modules.reduce((m, x) => Math.max(m, x.id), 0) + 1;
   const partAt = (alloc: ModuleInst, id: number): ModuleInst => ({ id, type: 'part', x: alloc.x, y: alloc.y, params: {} });

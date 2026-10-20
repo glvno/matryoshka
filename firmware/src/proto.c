@@ -220,6 +220,10 @@ static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t v
     eng_steps_value_set(mod, k, note, vel);
     m1_patch_track(mod);
 }
+/* a track's notes changed in the engine (#139: step entry's chord, a live take): into the running binary */
+static void m1_patch_notes(uint32_t mod) { m1_patch_track(mod); }
+/* a track armed or disarmed on the panel (#139): the editor is not told (the FM-1 tab's emulator is) */
+static void m1_arm_now(int mod) { (void)mod; }
 
 /* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
 static void m1_track_now(uint32_t mod)

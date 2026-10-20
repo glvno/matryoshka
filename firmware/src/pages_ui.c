@@ -730,20 +730,25 @@ static void pages_rail(void)
 }
 
 /* the patch and the transport, the foot line */
+static int seq_arm_label(char *out, int *rec);   /* (seq_ui.c) */
 static void pages_info(void)
 {
     char a[40], b[32], num[12], *p = a;
-    int panel = eng_find(T_FM1), run = eng_transport_running();
-    if (cur_preset < M1_SLOTS) {
+    int panel = eng_find(T_FM1), run = eng_transport_running(), rec = 0, arm = seq_arm_label(a, &rec);
+    if (arm) {                                          /* a track armed (#139): ARM / REC and its name instead of the patch */
+        p = a + str_len(a);
+    } else if (cur_preset < M1_SLOTS) {
         fmt_int(num, (int32_t)cur_preset + 1);
         if (cur_preset < 9u)
             *p++ = '0';
         p = put(p, num);
         *p++ = ' ';
     }
-    p = put(p, patch_label ? patch_label : "");
-    if (m1_edited)
-        p = put(p, " *");
+    if (!arm) {
+        p = put(p, patch_label ? patch_label : "");
+        if (m1_edited)
+            p = put(p, " *");
+    }
     *p = 0;
     p = put(b, run ? "PLAY " : "STOP ");
     if (eng_clock_is_external())
@@ -765,7 +770,7 @@ static void pages_info(void)
     {
         uint32_t wb = text_w(&FONT_S, b, -1);
         text_bc(&FONT_S, 0, FOOT_Y, "", P_DIM, P_NIGHT, BAR_X, TA_LEFT);
-        text_bc(&FONT_S, BAR_X, FOOT_Y, a, P_DIM, P_NIGHT, 228u - wb, TA_LEFT);
+        text_bc(&FONT_S, BAR_X, FOOT_Y, a, arm ? (rec ? P_REDC : P_SEA) : P_DIM, P_NIGHT, 228u - wb, TA_LEFT);
         text_bc(&FONT_S, 234u - wb, FOOT_Y, b, run ? P_SEA : P_FAINT, P_NIGHT, wb + 6u, TA_LEFT);
     }
 }

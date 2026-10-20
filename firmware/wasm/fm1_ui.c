@@ -27,6 +27,8 @@ WASM_IMPORT("transport") void js_transport(uint32_t run);
  * module = its index in the binary */
 WASM_IMPORT("track") void js_track(uint32_t mod, const uint32_t *at, uint32_t n);
 WASM_IMPORT("mute") void js_mute(uint32_t mod, uint32_t on);
+/* REC held + a black key armed a track (#139; module index, -1 none): the page arms it too, so its keys play through it */
+WASM_IMPORT("arm") void js_arm(int32_t mod);
 int eng_steps_notes(uint32_t module, const uint32_t **w);   /* (engine.c, included by host_ui.h) */
 static void m1_track_now(uint32_t mod)
 {
@@ -36,6 +38,7 @@ static void m1_track_now(uint32_t mod)
         js_track(mod, w, (uint32_t)n);
 }
 static void m1_mute_now(uint32_t mod, int on) { js_mute(mod, (uint32_t)on); }
+static void m1_arm_now(int mod) { js_arm(mod); }
 #define HOST_STEP_HOOKS
 #define HOST_LED_HOOKS
 
@@ -262,6 +265,13 @@ WASM_EXPORT("fm1w_transport") void fm1w_transport(uint32_t run)
     leds_play();
     if (!ui_dirty)
         ui_dirty = 1;
+    panel_draw();
+}
+/* the editor armed a track (#139; module index, -1 none): REC records into it, the info line names it */
+WASM_EXPORT("fm1w_arm") void fm1w_arm(int32_t mod)
+{
+    eng_arm(mod);
+    ui_dirty = 2;
     panel_draw();
 }
 WASM_EXPORT("fm1w_focus_dev") uint32_t fm1w_focus_dev(void) { return pg_cur_dev; }

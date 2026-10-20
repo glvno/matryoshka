@@ -109,9 +109,11 @@ static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the pre
 }
 static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
 static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { eng_steps_value_set(mod, k, note, vel); }
+static void m1_patch_notes(uint32_t mod) { (void)mod; }
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */
 static void m1_track_now(uint32_t mod) { (void)mod; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
+static void m1_arm_now(int mod) { (void)mod; }
 #endif
 #include "../src/seq_ui.c"
 static uint16_t lcd_fillbuf[240];          /* lcd.c's, the splash's row buffer */

@@ -253,6 +253,17 @@ describe('the Steps module (#83, #133)', () => {
     expect(at()).toBe(0);
   });
 
+  it('the FM-1\'s form keeps that cable (the C engine reads it as "fed"), and no other keys cable', () => {
+    const { p, st, main } = rig([], { len: 16 });
+    p.cables = [];
+    connect(p, DEFS, { module: main.id, port: 'keys' }, { module: st.id, port: 'keys' });
+    const al = addModule(p, DEFS.alloc, 0, 0);
+    connect(p, DEFS, { module: st.id, port: 'keys' }, { module: al.id, port: 'keys' });
+    const d = deviceView(p, true).patch;
+    expect(d.cables.filter((c) => c.to.port === 'keys')).toEqual([{ from: { module: main.id, port: 'keys' }, to: { module: st.id, port: 'keys' } }]);
+    expect(() => encodePatch(p)).not.toThrow();
+  });
+
   it('armed: a played note is transposed as the track\'s notes, sets the mono outputs and holds until let go; muted too', () => {
     const { p, st } = rig([], { len: 16, gate: 0.01 });
     const c = addModule(p, DEFS.const, 0, 0);

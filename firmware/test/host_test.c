@@ -39,6 +39,7 @@ int main(int argc, char **argv)
     char kind[16];
     long frame, pos = 0, total = 0;
     unsigned note, vel, ch = 1;
+    int arm;
     double maxe = 0, sum = 0, maxref = 0, refsum = 0;
     long bad = 0;
     long maxat = 0;
@@ -69,6 +70,10 @@ int main(int argc, char **argv)
                 fscanf(ev, "%u %u", &note, &ch);
             else if (!strcmp(kind, "bon") || !strcmp(kind, "boff"))
                 fscanf(ev, "%u", &note);
+            else if (!strcmp(kind, "arm"))
+                fscanf(ev, "%d", &arm);
+            else if (!strcmp(kind, "rec"))
+                fscanf(ev, "%u %u", &note, &vel);
         }
         rewind(ev);
     }
@@ -98,6 +103,16 @@ int main(int argc, char **argv)
             eng_clock_external(!strcmp(kind, "ext"));
         } else if (!strcmp(kind, "tick")) {
             eng_clock_tick();
+        } else if (!strcmp(kind, "arm")) {      /* (#139) arming, live recording, the recorded notes into their tracks */
+            fscanf(ev, "%d", &arm);
+            eng_arm(arm);
+        } else if (!strcmp(kind, "rec")) {
+            fscanf(ev, "%u %u", &note, &vel);
+            eng_steps_rec(note, (int)vel);
+        } else if (!strcmp(kind, "take")) {
+            uint32_t m, w;
+            while (eng_steps_take(&m, &w))
+                eng_steps_overdub(m, w);
         }
     }
     for (i = 0; i < total; i++) {

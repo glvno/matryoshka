@@ -59,6 +59,7 @@ static void loop(void)
 {
     panel_status();
     panel_edges(0, 0);
+    seq_poll();
     panel_draw();
 }
 static void enc(uint32_t n, int32_t clicks)
@@ -84,9 +85,8 @@ static void later(uint32_t ms)
 }
 static uint16_t px(uint32_t x, uint32_t y) { return fb[y * 240u + x]; }
 /* PANEL_SNAP=file.ppm: the LCD at the page-list step, to look at (tools/ui_preview.sh converts PPM to PNG) */
-static void snap(void)
+static void snap_to(const char *path)
 {
-    const char *path = getenv("PANEL_SNAP");
     FILE *f;
     uint32_t i;
     if (!path || !(f = fopen(path, "wb")))
@@ -99,6 +99,7 @@ static void snap(void)
     }
     fclose(f);
 }
+static void snap(void) { snap_to(getenv("PANEL_SNAP")); }
 
 static int load(const char *name)
 {
@@ -350,6 +351,85 @@ int main(void)
     check("a key plays a note (MIDI out asked)", (key_sounding & (1u << 7)) && midi_out > 0);
     panel_keys(0);
     check("its release ends it", !(key_sounding & (1u << 7)));
+
+    {                                                       /* arming and recording from the keys (#139), on the 808 Kit's DRUMS */
+        static int32_t l[128], r[128];
+        int drums = eng_steps_module(0), i;
+        const uint32_t *w;
+        uint32_t before;
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+        if (eng_transport_running())
+            tap(BTN_PLAY);
+        panel_held |= 1u << BTN_REC;                        /* REC held + black key 1 (F#3): DRUMS armed, no recording */
+        panel_edges(1u << BTN_REC, 0);
+        panel_keys(1u << 1);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("REC held + a black key: the track armed, REC's release records nothing", drums >= 0 && eng_armed() == drums && seq_rec == 0 && page == 0u);
+        tap(BTN_REC);
+        check("REC with a track armed, stopped: step entry on the SEQ page at step 1", page == PAGE_SEQ && seq_rec == 2u && seq_entry() && seq_cur == 0);
+        before = (uint32_t)eng_steps_notes((uint32_t)drums, &w);
+        panel_keys(1u << 7);                                /* C4 and E4 held, C4 let go: the chord into step 1 */
+        panel_keys(1u << 7 | 1u << 11);
+        panel_keys(1u << 11);
+        {
+            int n = eng_steps_notes((uint32_t)drums, &w), on1 = 0;
+            for (i = 0; i < n; i++)
+                on1 += (w[i] & 63u) == 0u && (((w[i] >> 12) & 127u) == 60u || ((w[i] >> 12) & 127u) == 64u) && ((w[i] >> 19) & 127u) == STEP_VEL;
+            check("step entry: the keys held at the first release fill the step, the cursor moves on", on1 == 2 && seq_cur == 1);
+        }
+        panel_keys(0);
+        check("the last key let go writes nothing more", seq_cur == 1);
+        panel_keys(1u << 14);                               /* (G4 held, for the picture: the chord being played) */
+        loop();
+        snap_to(getenv("PANEL_SNAP_ENTRY"));
+        panel_keys(0);
+        loop();
+        seq_cur_move(-1);                                   /* (its chord written into step 2, the cursor back) */
+        panel_held |= 1u << BTN_ENV;                        /* ENV + OCT+: a rest */
+        tap(BTN_OCT_UP);
+        panel_held &= ~(1u << BTN_ENV);
+        check("ENV + OCT: a rest, the cursor on (the octave stays)", seq_cur == 2 && !(eng_steps_get((uint32_t)drums, 1u) & 1) && octave == 0);
+        enc(0, -2);
+        check("SELECT moves the cursor", seq_cur == 0);
+        tap(BTN_REC);
+        check("REC again: off", seq_rec == 0 && !seq_kbd());
+        tap(BTN_HOME);
+        tap(BTN_PLAY);
+        tap(BTN_REC);
+        check("REC with a track armed, running: a live take, the page stays", page == 0u && seq_rec == 2u);
+        for (i = 0; i < 40; i++)
+            eng_render(l, r, 128);
+        before = (uint32_t)eng_steps_notes((uint32_t)drums, &w);
+        panel_keys(1u << 3);                                /* G#3 (56): a note the track did not have */
+        for (i = 0; i < 10; i++)
+            eng_render(l, r, 128);
+        panel_keys(0);
+        eng_render(l, r, 128);
+        loop();
+        {
+            int n = eng_steps_notes((uint32_t)drums, &w), got = 0;
+            for (i = 0; i < n; i++)
+                got |= ((w[i] >> 12) & 127u) == 56u;
+            check("the live take: the played note in the track", got && (uint32_t)n == before + 1u);
+        }
+        check("REC's LED lit on the device page while the take goes on", host_led_mask(fm1_led, 0) >> BTN_REC & 1u);
+        ui_dirty = 2;
+        loop();
+        snap_to(getenv("PANEL_SNAP_TAKE"));
+        panel_held |= 1u << BTN_REC;                        /* REC held + the same black key: disarmed, the take ends */
+        panel_edges(1u << BTN_REC, 0);
+        panel_keys(1u << 1);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("REC held + the armed track's key: disarmed, REC off", eng_armed() < 0 && seq_rec == 0);
+        tap(BTN_PLAY);
+    }
 
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;

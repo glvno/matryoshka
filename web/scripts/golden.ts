@@ -10,7 +10,7 @@ import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
 import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, stepByte, type Patch, type PolyCfg } from '../src/patch';
-import { migrateSteps, type StepNote } from '../src/track';
+import { migrateSteps, overdub, type StepNote } from '../src/track';
 import { makeAssembly } from '../src/assembly';
 import { withParts } from '../src/test-poly';
 import { acid } from '../src/test-patches';
@@ -19,8 +19,9 @@ const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
-/** [frame, kind, note (a button for bon / boff), MIDI channel of a note (absent: 1)] */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick', number, number?];
+/** [frame, kind, note (a button for bon / boff; a module index for arm, -1 none, and rec), MIDI channel of a note (absent:
+ * 1; rec: 1 on, 0 off)]; take: the notes recorded so far go into their tracks (the editor's overdub, the panel's) */
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'rec' | 'take', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -1581,6 +1582,57 @@ events['drummap'] = [[128 * 4, 'run', 0], [128 * 30, 'on', 60], [128 * 60, 'on',
   [128 * 120, 'off', 62], [128 * 140, 'off', 60], [128 * 300, 'stop', 0]];
 ends['drummap'] = 128 * 360;
 
+// arming and recording from the keys (#134, #135, #139): a melody track (transposed a fourth up) into two voices on the
+// left; the shared keyboard and a second track that a cable from Main's keys feeds (into one voice) on the right. Keys
+// unarmed: the keyboard and the fed track; armed: through the melody track only (recording live: a short note, a chord, a
+// note held two steps), taken into the track and heard on its next passes; disarmed with a key held: it goes quiet; a
+// key again unarmed
+tests['steps-arm'] = make('steps-arm', (add, wire) => {
+  const main = add('fm1', 0, 0, { tempo: 150 });
+  const st = add('steps', 200, 0, { len: 8, rate: 4, gate: 0.5 });
+  const tr = add('const', 200, 300, { value: 5 / 12 });
+  const al = add('alloc', 400, 0, { voices: 2 });
+  const o = add('osc', 600, 0, { wave: 1, level: 0.5 });
+  const e = add('adsr', 600, 200, { a: 0.003, d: 0.1, s: 0.6, r: 0.03 });
+  const v = add('vca', 800, 0);
+  const fed = add('steps', 200, 600, { len: 8, rate: 4 });
+  const al2 = add('alloc', 400, 600, { voices: 1 });
+  const o2 = add('osc', 600, 600, { wave: 2, level: 0.4 });
+  const o3 = add('osc', 600, 800, { wave: 0, level: 0.3 });
+  const mr = add('mixer', 800, 600, { l1: 0.5, l2: 0.5, l3: 0.3 });
+  const out = add('output', 1000, 0, { level: 0.6 });
+  wire(tr, 'out', st, 'transpose');
+  wire(st, 'keys', al, 'keys');
+  wire(al, 'pitch', o, 'pitch');
+  wire(al, 'gate', e, 'gate');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+  wire(main, 'keys', fed, 'keys');
+  wire(fed, 'keys', al2, 'keys');
+  wire(al2, 'pitch', o2, 'pitch');
+  wire(main, 'pitch', o3, 'pitch');
+  wire(o2, 'out', mr, 'in1');
+  wire(o3, 'out', mr, 'in2');
+  wire(main, 'gate', mr, 'in3');
+  wire(mr, 'out', out, 'r');
+});
+{
+  const p = tests['steps-arm'];
+  const ids = p.modules.filter((m) => ['alloc', 'osc', 'adsr', 'vca'].includes(m.type) && m.x < 700 && m.y < 400).map((m) => m.id);
+  makeAssembly(p, ids, 'arm voices').poly = {};
+  p.modules.find((m) => m.type === 'steps')!.notes = [n(0, 1, 48), n(4, 2, 55)];
+}
+{
+  const arm = tests['steps-arm'].modules.findIndex((m) => m.type === 'steps');
+  events['steps-arm'] = [[128 * 4, 'run', 0], [128 * 20, 'on', 60], [128 * 40, 'off', 60],
+    [128 * 50, 'arm', arm], [128 * 51, 'rec', arm, 1], [128 * 60, 'on', 64], [128 * 66, 'off', 64],
+    [128 * 100, 'on', 67], [128 * 101, 'on', 71], [128 * 140, 'off', 71], [128 * 141, 'off', 67],
+    [128 * 170, 'on', 62], [128 * 260, 'off', 62], [128 * 270, 'take', 0], [128 * 280, 'rec', arm, 0],
+    [128 * 400, 'on', 69], [128 * 420, 'arm', -1], [128 * 440, 'on', 57], [128 * 460, 'off', 57], [128 * 470, 'off', 69], [128 * 520, 'stop', 0]];
+  ends['steps-arm'] = 128 * 560;
+}
+
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
   if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];
@@ -1603,9 +1655,17 @@ for (const [name, patch] of Object.entries(tests)) {
     }
   };
   const evs = events[name] ?? EVENTS;
+  const notes = new Map(patch.modules.filter((m) => m.type === 'steps').map((m) => [m.id, m.notes]));
   for (const [fr, kind, note, ch] of evs) {
     seg(fr);
-    if (kind === 'on') e.noteOn(note, 1, ch ?? 1);
+    if (kind === 'arm') e.arm(note < 0 ? null : patch.modules[note].id);
+    else if (kind === 'rec') e.setRec(patch.modules[note].id, !!ch);
+    else if (kind === 'take')
+      for (const r of e.takeRecorded()) {
+        notes.set(r.id, overdub(notes.get(r.id), [r.note]));
+        e.setTrack(r.id, notes.get(r.id));
+      }
+    else if (kind === 'on') e.noteOn(note, 1, ch ?? 1);
     else if (kind === 'off') e.noteOff(note, ch ?? 1);
     else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
     else if (kind === 'ext' || kind === 'int') e.clockExternal(kind === 'ext');
@@ -1623,7 +1683,7 @@ for (const [name, patch] of Object.entries(tests)) {
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), encodePatch(patch, true));
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' ? `${fr} ${k} ${n}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' ? `${fr} ${k} ${n}` : k === 'rec' ? `${fr} rec ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

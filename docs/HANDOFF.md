@@ -38,14 +38,17 @@ The owner grilled and approved spec **#132**: Steps becomes the one sequencer fo
 5. ~~**#137** Drum map module + a one-track drum kit~~ (done, committed, not pushed; NOTES "the Drum map"): (General MIDI notes; no compatibility with the per-drum-track kit).
 6. ~~**#138** Rebuild the Demo and the factory patches~~ (done, committed, not pushed; NOTES "the Demo and the factory kits"; the melodies are placeholders): on the new Steps, then add the xylophone (bar 13) and operator
    (bar 29) melodies (recipe in NOTES 2026-10-20).
-7. **#139** FM-1: chord tracks, arming and recording from the device's keys (emulator-tested only). **Waiting on the
-   owner's UI decisions:** on the SEQ page the keys are the grid (white = steps, black = tracks), so recording notes from
-   them needs a control scheme: where ARM lives on the device, whether recording happens on the device pages (keys play)
-   or the SEQ page, and where step entry's cursor shows. The C engine already plays chord tracks, keys out and the Drum
-   map; arming, live recording and the Main-keys cable into a track are editor-engine only so far.
+7. ~~**#139** FM-1 arming and recording from the device's keys~~ (done, committed, not pushed; NOTES "FM-1 arming and
+   recording", ARCHITECTURE "Arming and recording on the FM-1"; the owner's picks 1B / 2C / 3B).
 
-**Before any device work:** push `main` (#133-#138 are committed, not pushed), wait for the `firmware` workflow (the
-JieLi build has not seen formats 31 / 32), then `cd web && npm run emu:smoke`.
+**Open, waiting on the owner:** the Drum map's rows on the SEQ page. Since #138 the 808 / 909 Kits are one DRUMS
+track: a white key on an empty step adds C4 (the map does not play it) and black keys 2..11 do nothing. Proposal (the
+canvas's last board): black keys 1..8 pick the map's rows, white keys that row's hits, REC + a black key a hit on it;
+the row names either go into the binary (format bump) or the device shows `ROW 2 D2`.
+
+**Before any device work:** push `main` (#133-#139 are committed, not pushed), wait for the `firmware` workflow (the
+JieLi build has not seen formats 31 / 32 nor #139's firmware), then `cd web && npm run emu:smoke` (its `seq()` is new and
+has never run).
 
 Also open: #131 Player Piano (its Q4 is unblocked by #133), #111 C engine audio in the FM-1 tab, #112 envelope shapes in
 the bars, #102 / #103 A/B flip bugs.

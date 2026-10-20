@@ -277,6 +277,9 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   },
   track: (m, notes) => fm1Event({ kind: 'track', module: m, notes }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
+  // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
+  // emulator's MIDI out) go through it as they do on the device
+  arm: (m) => editor.armTrack(m < 0 ? null : deviceView(editor.patch, true).patch.modules[m]?.id ?? null),
   key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
     if (down) {
       const note = 53 + k + 12 * emu.octave;
@@ -345,6 +348,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onArm(id, plays) {
     host.send({ t: 'arm', id });
+    emuArm();
     armPlays = plays;
     showArmed();
   },
@@ -1159,8 +1163,14 @@ function emuLoad(): void {
       chip: `Over budget · ${over} · won’t upload`, action: 'Use the FM-1 view anyway', more });
   }
   ui.transport(editor.playing);
+  emuArm();                                  // (a load disarms the emulator's engine)
   const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
   if (at) ui.focus(at[0], at[1]);
+}
+/** the emulated FM-1 arms the editor's armed track (#139), so its REC records into it */
+function emuArm(): void {
+  const id = editor.armedTrack;
+  emu.ui?.arm(id === null ? -1 : deviceView(editor.patch, true).patch.modules.findIndex((m) => m.id === id));
 }
 function queueEmu(): void {
   if (!emu.ui) return;

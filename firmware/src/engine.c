@@ -353,7 +353,8 @@ typedef struct {
     uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
     uint16_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
     uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
-    uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's index) */
+    uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's index);
+                                      * a Steps module: 1 = a cable from Main's keys into its keys in (engine.ts fed) */
 } node_t;
 
 /* a macro range: input `pin` (0 p1, 1 p2) of module `mod` moves parameter `par` between lo and hi (0..255 of the range,
@@ -401,8 +402,23 @@ typedef struct {
     int32_t held_vel[MAX_HELD];
 } grp_t;
 
-/* a note a Steps track sounds (modules.ts StepsSound): the key it sent, steps to go after the one it is on, samples left */
-typedef struct { uint8_t key, left; int32_t cnt; } snd_t;
+/* a note a Steps track sounds (modules.ts StepsSound): the key it sent, steps to go after the one it is on, samples left;
+ * thru: a key played into the track (#134, #139: the note played + 1, 0 = one of its own), sounding until it is let go */
+typedef struct { uint8_t key, left, thru; int32_t cnt; } snd_t;
+
+/* keys in (#139; engine.ts arm / thru): the keys played into a track (the armed one, or one a cable from Main's keys
+ * feeds) wait in a ring the main loop fills and the audio side empties at the start of a block (eng_note_on runs
+ * outside the interrupt): module index, the note (bit 7: on), velocity */
+#define ENG_THRU 32u
+static uint8_t thru_ring[ENG_THRU][3];
+static volatile uint8_t thru_head, thru_tail;
+/* live recording (#135, #139): the notes being recorded (track, note, the step they landed on, velocity, samples since
+ * that step began, negative before it) and the recorded ones for the main loop (eng_steps_take: module, note word) */
+#define ENG_RIN 16u
+typedef struct { uint8_t trk, note, at, vel; int32_t t; } rin_t;
+#define ENG_TOOK 32u
+static uint32_t took_ring[ENG_TOOK][2];
+static volatile uint8_t took_head, took_tail;
 
 /* a Steps note (track.ts noteWord): bits 0..5 the start step, 6..11 the length - 1, 12..18 the note, 19..25 the velocity,
  * 26..30 the chance code (100 - chance) / 5 */
@@ -451,6 +467,13 @@ typedef struct {
     uint8_t trk_last[ENG_MAX_TRACKS];    /* the last note a track started (a hit from the panel plays it) */
     uint8_t nkev;                    /* keys out of the Steps tracks this block: node index, key (bit 7: on), velocity */
     uint8_t kev[ENG_KEV][3];
+    uint8_t arm;                     /* the armed Steps module + 1 (#139; engine.ts arm), 0 none */
+    uint16_t trk_rec;                /* bit t: track t records what is played through it (eng_steps_rec) */
+    volatile uint16_t thru_kill;     /* bit t: track t lets go of the keys played through it (at its next block) */
+    uint8_t nthru;                   /* keys in taken from the ring for this block (m_steps reads its own) */
+    uint8_t blk_thru[ENG_THRU][3];
+    uint8_t nrin;
+    rin_t rin[ENG_RIN];
     uint8_t running;                 /* the transport as this block saw it */
     uint8_t narp;
     arp_t arp[ENG_MAX_ARPS];
@@ -662,6 +685,11 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.ntrk = 0;
     E.nnotes = 0;
     E.nkev = 0;
+    E.arm = 0;
+    E.trk_rec = E.thru_kill = 0;
+    E.nthru = E.nrin = 0;
+    thru_tail = thru_head;                       /* (keys still waiting were for the last patch) */
+    took_tail = took_head;
     E.ngrp = 0;
     E.grp[0].parts = 1;                          /* the shared keyboard: one part, legato auto, last note */
     E.grp[0].assign = E.grp[0].legato = E.grp[0].priority = 0;
@@ -815,6 +843,8 @@ int eng_load(const uint8_t *p, uint32_t len)
         E.to_m[c] = tm;
         E.to_p[c] = tp;
         E.node[tm].conn |= (uint8_t)(1u << tp);
+        if (E.node[fm].type == T_FM1 && fp == FM1_O_KEYS && E.node[tm].type == T_STEPS && tp == STEPS_I_KEYS)
+            E.node[tm].ksrc = 1u;                /* Main's keys pass through the track while none is armed (#138) */
     }
     if (p[6] & 1u) {                             /* the morph B set: one Q16 value per parameter of every module, kept as unit positions */
         for (i = 0; i < E.nmod; i++) {
@@ -1754,23 +1784,50 @@ static int takes_key(const grp_t *g, uint32_t note, uint32_t ch)
     return g->ch ? g->ch == ch : !dev_ch || dev_ch == ch;
 }
 
+/* a key into a track's keys in (module index, note | 0x80 with velocity 1..127, or note and 0), taken at the next block */
+static void thru_put(uint32_t module, uint32_t kv, uint32_t vel)
+{
+    uint8_t h = thru_head;
+    if ((uint8_t)(h - thru_tail) >= ENG_THRU)
+        return;
+    thru_ring[h % ENG_THRU][0] = (uint8_t)module;
+    thru_ring[h % ENG_THRU][1] = (uint8_t)kv;
+    thru_ring[h % ENG_THRU][2] = (uint8_t)vel;
+    thru_head = (uint8_t)(h + 1u);
+}
+
+/* the keys (engine.ts noteOn / noteOff): with a track armed they go into it and through to what it plays, and nowhere
+ * else; otherwise to the groups that take them, the shared keyboard, the Arpeggiators, the Drum maps and the tracks a
+ * cable from Main's keys feeds */
 void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 {
-    uint32_t g;
+    uint32_t g, v = (uint32_t)clampi((int32_t)(((int64_t)vel_q16 * 127 + 32768) >> 16), 1, 127);
+    if (E.arm) {
+        if (!dev_ch || dev_ch == ch)
+            thru_put(E.arm - 1u, note | 0x80u, v);
+        return;
+    }
     for (g = 0; g <= E.ngrp; g++)
         if (!E.grp[g].src && takes_key(&E.grp[g], note, ch))
             group_on(&E.grp[g], note, vel_q16);
     if (!dev_ch || dev_ch == ch) {
-        int32_t v = (int32_t)(((int64_t)vel_q16 * 127 + 32768) >> 16);
         for (g = 0; g < E.narp; g++)
             arp_note_on(&E.arp[g], note, vel_q16);
-        dm_keys(1u, note | 0x80u, (uint32_t)clampi(v, 1, 127));
+        dm_keys(1u, note | 0x80u, v);
+        for (g = 0; g < E.nmod; g++)
+            if (E.node[g].type == T_STEPS && E.node[g].ksrc)
+                thru_put(g, note | 0x80u, v);
     }
 }
 
 void eng_note_off(uint32_t note, uint32_t ch)
 {
     uint32_t g;
+    if (E.arm) {
+        if (!dev_ch || dev_ch == ch)
+            thru_put(E.arm - 1u, note, 0u);
+        return;
+    }
     for (g = 0; g <= E.ngrp; g++)
         if (!E.grp[g].src && takes_key(&E.grp[g], note, ch))
             group_off(&E.grp[g], note);
@@ -1778,7 +1835,76 @@ void eng_note_off(uint32_t note, uint32_t ch)
         for (g = 0; g < E.narp; g++)
             arp_note_off(&E.arp[g], note);
         dm_keys(1u, note, 0u);
+        for (g = 0; g < E.nmod; g++)
+            if (E.node[g].type == T_STEPS && E.node[g].ksrc)
+                thru_put(g, note, 0u);
     }
+}
+
+/* the keys' own listeners let go of every key (engine.ts keysOff): the groups that play the keys, the shared keyboard,
+ * the Arpeggiators, the Drum maps on the keys, the tracks Main's keys feed */
+static void keys_off(void)
+{
+    uint32_t g, v;
+    for (g = 0; g < E.narp; g++) {
+        E.arp[g].n = 0;
+        E.arp[g].cur = -1;
+        E.arp[g].running = 0;
+    }
+    for (g = 0; g <= E.ngrp; g++) {
+        if (E.grp[g].src)
+            continue;
+        E.grp[g].nheld = 0;
+        for (v = 0; v < E.grp[g].parts; v++) {
+            E.pv[E.grp[g].pv0 + v].on = 0;
+            E.pv[E.grp[g].pv0 + v].gate = 0;
+            E.pv[E.grp[g].pv0 + v].retrig = 0;
+        }
+    }
+    for (g = 0; g < E.nmod; g++)
+        if (E.node[g].type == T_DRUMMAP && E.node[g].ksrc == 1u)
+            inst_pool[E.node[g].inst0].s.dm.gate = 0;
+        else if (E.node[g].type == T_STEPS && E.node[g].ksrc)
+            E.thru_kill |= (uint16_t)(1u << E.node[g].trk);
+}
+
+/* Arm a Steps module (#139; engine.ts arm; -1 none): while one is armed the keys go into its keys in and through it to
+ * what it plays, instead of where they go otherwise. The keys held when the routing changes go quiet. Not saved; another
+ * patch disarms. */
+void eng_arm(int module)
+{
+    uint32_t a = module >= 0 && (uint32_t)module < E.nmod && E.node[module].type == T_STEPS ? (uint32_t)module + 1u : 0u;
+    if (!E.loaded || a == E.arm)
+        return;
+    if (E.arm)
+        E.thru_kill |= (uint16_t)(1u << E.node[E.arm - 1u].trk);
+    keys_off();
+    E.arm = (uint8_t)a;
+}
+int eng_armed(void) { return E.loaded && E.arm ? (int)E.arm - 1 : -1; }
+
+/* live recording on a track (#135, #139; engine.ts setRec): while it runs, the notes played through it land on the
+ * nearest step and last the whole steps they were held (at least one); eng_steps_take hands them out. Off: the notes still
+ * held are recorded when let go. */
+void eng_steps_rec(uint32_t module, int on)
+{
+    if (!E.loaded || module >= E.nmod || E.node[module].type != T_STEPS)
+        return;
+    if (on)
+        E.trk_rec |= (uint16_t)(1u << E.node[module].trk);
+    else
+        E.trk_rec &= (uint16_t)~(1u << E.node[module].trk);
+}
+/* a recorded note (module index, note word: one step at least, chance 100 %), 0 when none is waiting */
+int eng_steps_take(uint32_t *module, uint32_t *word)
+{
+    uint8_t t = took_tail;
+    if (t == took_head)
+        return 0;
+    *module = took_ring[t % ENG_TOOK][0];
+    *word = took_ring[t % ENG_TOOK][1];
+    took_tail = (uint8_t)(t + 1u);
+    return 1;
 }
 
 void eng_clock_tick(void)
@@ -2037,6 +2163,38 @@ int eng_steps_hit(uint32_t module, int accent, int record)
     return k;
 }
 
+/* step entry (#139; track.ts setChord): step k's notes replaced by `n` notes one step long at `vel` (its chance kept, a tie
+ * through it cut) */
+void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t n, uint32_t vel)
+{
+    uint32_t w[TRACK_NOTES_MAX + 1u], m, i, t;
+    int b;
+    if (!steps_inst(module) || k >= TRACK_STEPS)
+        return;
+    b = eng_steps_get(module, k);
+    eng_steps_set(module, k, 0u);
+    t = E.node[module].trk;
+    m = trk_copy(t, w);
+    vel = vel < 1u ? 1u : vel > 127u ? 127u : vel;
+    for (i = 0; i < n && m < TRACK_NOTES_MAX; i++)
+        w[m++] = NW(k, 1u, notes[i] & 127u, vel, (b & 1) ? ((uint32_t)b >> 2) & 31u : 0u);
+    (void)trk_put(t, w, m);
+}
+/* a live-recorded note laid over the track (#135 overdub): it replaces a note on the same step and key */
+void eng_steps_overdub(uint32_t module, uint32_t word)
+{
+    uint32_t w[TRACK_NOTES_MAX + 1u], n, i, m, t;
+    if (!steps_inst(module) || NW_AT(word) + NW_LEN(word) > TRACK_STEPS)
+        return;
+    t = E.node[module].trk;
+    n = trk_copy(t, w + 1);
+    w[0] = word;                                  /* (a full track keeps its first notes by step: trk_put) */
+    for (i = 0, m = 1; i < n; i++)
+        if (NW_AT(w[1u + i]) != NW_AT(word) || NW_NOTE(w[1u + i]) != NW_NOTE(word))
+            w[m++] = w[1u + i];
+    (void)trk_put(t, w, m);
+}
+
 /* Overload (audio.c): one part fewer in the poly group that has the most (the part with the highest number:
  * its key is let go, its instances are no longer rendered and their outputs fall silent). 0 when no group has more than
  * one part left. The count comes back with the next eng_load. Called by the audio ISR before it renders. */
@@ -2091,6 +2249,7 @@ void eng_all_notes_off(void)
     for (i = 0; i < E.nmod; i++)
         if (E.node[i].type == T_DRUMMAP)
             inst_pool[E.node[i].inst0].s.dm.gate = 0;
+    E.thru_kill = 0xFFFFu;                       /* the keys played through the tracks end too */
 }
 
 /* ------------------------------------------------------------------ modules */
@@ -3609,6 +3768,7 @@ static void steps_start(uint32_t t, uint32_t node, uint32_t key, uint32_t vel, u
     j = E.trk_nsnd[t]++;
     E.trk_snd[t][j].key = (uint8_t)key;
     E.trk_snd[t][j].left = (uint8_t)left;
+    E.trk_snd[t][j].thru = 0;
     E.trk_snd[t][j].cnt = cnt;
     steps_key(node, key | 0x80u, vel);
 }
@@ -3631,6 +3791,88 @@ static int steps_sounding(uint32_t t)
         if (E.trk_snd[t][j].cnt > 0)
             return 1;
     return 0;
+}
+
+/* a note as the pitch output gives it: octaves from C4, rounded to Q16 (modules.ts stepPitch) = (d +- 6) / 12 with d =
+ * n * ENG_ONE, split as ENG_ONE = 12 * 5461 + 4: written plainly the compiler folds -STEP_NOTE * ENG_ONE + 6 into
+ * 0xFFC40006, which build.py rejects as a chip ROM address */
+static int32_t steps_pitch(uint32_t note)
+{
+    int32_t n = (int32_t)note - STEP_NOTE;
+    return n * 5461 + (n >= 0 ? 4 * n + 6 : 4 * n - 6) / 12;
+}
+
+/* a key played into track t let go (engine.ts / modules.ts steps, keys in): the note it sounds ends; recording, the note
+ * goes into the track's took ring, its length the whole steps it was held (at least one, to the end of the steps) */
+static void steps_thru_off(uint32_t t, uint32_t node, const inst_t *it, uint32_t note)
+{
+    uint32_t j;
+    for (j = 0; j < E.trk_nsnd[t]; j++)
+        if (E.trk_snd[t][j].thru == note + 1u) {
+            steps_end(t, node, j);
+            break;
+        }
+    for (j = 0; j < E.nrin; j++)
+        if (E.rin[j].trk == t && E.rin[j].note == note) {
+            rin_t x = E.rin[j];
+            int32_t sl = it->s.stp.slen, len = x.t > 0 && sl > 0 ? (int32_t)((x.t + sl / 2) / sl) : 1;
+            uint8_t h = took_head;
+            len = clampi(len, 1, TRACK_STEPS - x.at);
+            for (; j + 1u < E.nrin; j++)
+                E.rin[j] = E.rin[j + 1u];
+            E.nrin--;
+            if ((uint8_t)(h - took_tail) < ENG_TOOK) {
+                took_ring[h % ENG_TOOK][0] = node;
+                took_ring[h % ENG_TOOK][1] = NW(x.at, (uint32_t)len, note, x.vel, 0u);
+                took_head = (uint8_t)(h + 1u);
+            }
+            break;
+        }
+}
+
+/* the keys played into a Steps module this block (modules.ts steps, keys in), before its samples: each one straight
+ * through, as the track's own note (transposed, into keys out and the mono outputs), held until let go (muted too);
+ * recording live, a played note lands on the nearest step (the next one when more than half of this one has passed) */
+static void steps_thru(const node_t *nd, inst_t *it, int32_t len, int ext, int32_t tr)
+{
+    uint32_t t = nd->trk, node = (uint32_t)(nd - E.node), e;
+    int32_t semis = (int32_t)(((int64_t)tr * 12 + 32768) >> 16);
+    int live = (E.trk_rec >> t & 1u) && it->s.stp.pos >= 0 && it->s.stp.slen > 0 && (ext || E.running);
+    for (e = 0; e < E.nthru; e++) {
+        uint32_t note = E.blk_thru[e][1] & 0x7Fu, vel = E.blk_thru[e][2];
+        int was;
+        if (E.blk_thru[e][0] != node)
+            continue;
+        steps_thru_off(t, node, it, note);
+        if (!(E.blk_thru[e][1] & 0x80u))
+            continue;
+        if (live && E.nrin < ENG_RIN) {
+            int32_t ago = it->s.stp.sst, sl = it->s.stp.slen, pos = it->s.stp.pos;
+            int next = ago * 2 >= sl, wrap = next && pos + 1 >= len;
+            rin_t *x = &E.rin[E.nrin++];
+            x->trk = (uint8_t)t;
+            x->note = (uint8_t)note;
+            x->at = (uint8_t)(wrap ? 0 : next ? pos + 1 : pos);
+            x->vel = (uint8_t)vel;
+            x->t = next ? ago - sl : ago;
+        }
+        was = steps_sounding(t);
+        steps_start(t, node, (uint32_t)clampi((int32_t)note + semis, 0, 127), vel, 0, 1);
+        E.trk_snd[t][E.trk_nsnd[t] - 1u].thru = (uint8_t)(note + 1u);
+        it->s.stp.pitch = steps_pitch(note);
+        it->s.stp.vel = (int32_t)((vel << 16) / 127u);
+        E.trk_last[t] = (uint8_t)note;
+        it->s.stp.gap = (uint8_t)was;
+    }
+    if (E.thru_kill >> t & 1u) {                 /* the routing changed: the keys played through it go quiet */
+        uint32_t j;
+        E.thru_kill &= (uint16_t)~(1u << t);
+        for (j = 0; j < E.trk_nsnd[t];)
+            if (E.trk_snd[t][j].thru)
+                steps_thru_off(t, node, it, E.trk_snd[t][j].thru - 1u);
+            else
+                j++;
+    }
 }
 
 /* step k of a Steps module comes up: the notes sounding go on to their next step, then the notes starting on it sound
@@ -3658,7 +3900,7 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
     end = (uint32_t)E.trk_first[t] + E.trk_n[t];
     for (i = E.trk_first[t]; i < end && i < ENG_MAX_NOTES; i++) {
         uint32_t w = E.trk_note[i], left;
-        int32_t key, n;
+        int32_t key;
         if (NW_AT(w) != (uint32_t)k)
             continue;
         if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, j++, NW_CODE(w)))
@@ -3666,11 +3908,7 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         key = clampi((int32_t)NW_NOTE(w) + semis, 0, 127);
         left = (NW_LEN(w) < (uint32_t)(len - k) ? NW_LEN(w) : (uint32_t)(len - k)) - 1u;
         steps_start(t, node, (uint32_t)key, NW_VEL(w), left, steps_hold(left, gate, sl));
-        /* octaves from C4, rounded to Q16 (modules.ts the same) = (d +- 6) / 12 with d = n * ENG_ONE, split as ENG_ONE =
-         * 12 * 5461 + 4: written plainly the compiler folds -STEP_NOTE * ENG_ONE + 6 into 0xFFC40006, which build.py
-         * rejects as a chip ROM address */
-        n = (int32_t)NW_NOTE(w) - STEP_NOTE;
-        it->s.stp.pitch = n * 5461 + (n >= 0 ? 4 * n + 6 : 4 * n - 6) / 12;
+        it->s.stp.pitch = steps_pitch(NW_NOTE(w));
         it->s.stp.vel = (int32_t)((NW_VEL(w) << 16) / 127u);
         E.trk_last[t] = (uint8_t)NW_NOTE(w);
         any = 1;
@@ -3709,6 +3947,8 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
     int32_t swing = EF(it, STEPS_P_SWING) - 50 * ENG_ONE, gate = EF(it, STEPS_P_GATE);
     int ext = (nd->conn >> STEPS_I_CLK) & 1u;
     uint32_t i;
+    if (E.nthru || E.thru_kill)
+        steps_thru(nd, it, len, ext, tr[0]);
     for (i = 0; i < n; i++) {
         int32_t adv = 0, sl;
         if (reset[i] >= 32768 && it->s.stp.r1 < 32768)
@@ -3774,11 +4014,14 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             else if (E.trk_nsnd[t]) {
                 int32_t j;
                 for (j = (int32_t)E.trk_nsnd[t] - 1; j >= 0; j--)
-                    if (E.trk_snd[t][j].cnt > 0 && --E.trk_snd[t][j].cnt == 0)
+                    if (E.trk_snd[t][j].cnt > 0 && !E.trk_snd[t][j].thru && --E.trk_snd[t][j].cnt == 0)
                         steps_end(t, node, (uint32_t)j);
             }
         }
     }
+    for (i = 0; i < E.nrin; i++)
+        if (E.rin[i].trk == t)
+            E.rin[i].t += (int32_t)n;
     it->s.stp.run = E.running;
 }
 
@@ -4366,6 +4609,15 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             E.clk_seen = t;
             E.clk_pulse = seen && run ? (n + 1u) / 2u : 0u;   /* the Main clock: half a block per block that saw a tick while running */
             steps_keys();
+            {                                    /* the keys played into tracks since the last block (eng_note_on) */
+                uint8_t q = thru_tail;
+                for (E.nthru = 0; q != thru_head && E.nthru < ENG_THRU; q++, E.nthru++) {
+                    E.blk_thru[E.nthru][0] = thru_ring[q % ENG_THRU][0];
+                    E.blk_thru[E.nthru][1] = thru_ring[q % ENG_THRU][1];
+                    E.blk_thru[E.nthru][2] = thru_ring[q % ENG_THRU][2];
+                }
+                thru_tail = q;
+            }
             for (k = 0; k < E.narp; k++)
                 arp_block(&E.arp[k], n, bpm);
         }
