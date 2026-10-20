@@ -221,6 +221,7 @@ presets.push(() => {
 presets.push(() => {
   const x = around('Vernon 100', 'Vernon 100');
   level(x.p, { chord: true });
+  x.p.octave = -1;   // opens an octave down: the keyboard's A plays C3, where its bass and lead sit
   return x.p;
 });
 

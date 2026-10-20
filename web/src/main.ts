@@ -201,6 +201,9 @@ const sink = {
     }
   },
 };
+// the demo video's script (web/dev/demo) plays its riff through the sink as the keys do, also while a dialog is open
+// (the letter keys stop then); the dev server only
+if (import.meta.env.DEV) (window as unknown as { __notes?: typeof sink }).__notes = sink;
 
 let refreshAssemblies: () => void = () => {};
 /** the factory patches and the Patches page's own copies (the morph picker keeps those of the same structure; the palette loads any) */

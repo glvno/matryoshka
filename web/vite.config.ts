@@ -7,5 +7,6 @@ export default defineConfig({
   // the tutorial's built-in riff is a MIDI file, imported as bytes (`?inline`)
   assetsInclude: ['**/*.mid'],
   build: { target: 'es2022' },
-  test: { environment: 'node' },
+  // dev/demo is its own project (the Remotion demo video, its own node_modules)
+  test: { environment: 'node', exclude: ['**/node_modules/**', 'dev/demo/**'] },
 } as never);

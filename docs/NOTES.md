@@ -718,3 +718,36 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
   over-budget patch still plays in the view; a firmware refusal (e.g. 2 reverbs) keeps the last loaded patch (`emuLoaded`).
 - Checks: vitest 705 passed, `npm run build` ok. The window could not be resized in the session, so 1280 px was checked by
   narrowing `.workspace` and by measuring the columns' natural widths.
+
+## 2026-10-20: demo patch entries, a demo-video attempt, the octave / REC investigation, the Steps spec (#132)
+
+- **Demo patch entries, built and then reverted** (the owner wants the melodies added after the piano-roll work, #138).
+  The recipe, for then: a **xylophone** assembly (a 1 ms pulse x 0.035 + a noise tick (env r2 6 ms) into two modal
+  resonators, struct 0 / bright 0.05 / damp 0.8: the note, decay 0.5 s, and the tuned third partial 3x = +19 st, decay
+  0.16 s; mixer 0.85 / 0.4 / 0.06; offline its strongest peak is the note, C5 = 524 Hz) on a XYLO track from bar 13,
+  and the adsr operator on an OPER track from bar 29 at mixer 71 l4 0.2 (0.41 peaked the mix at 0.97). Waits longer than
+  16 bars cannot use `wait 4 bars`' design (a Steps track is at most 64 steps of 1/4): a BARS track (len 4, rate 1/4,
+  step 1 on) clocks INTRO externally, Main's run resets INTRO. While the operator's keys cable was gone, Main's keys
+  drove no instrument, which caused the REC confusion below.
+- **Vernon 100 octave -1** (`gen-presets.ts`), for the video.
+- **Demo video** (`web/dev/demo/`, Remotion 4 + Playwright; README there): one scripted take of the app with the riff
+  `web/dev/riffs/vernon.mid` played through a dev-only hook (`window.__notes` = the note sink, main.ts, `import.meta.env.DEV`),
+  frames from CDP screencast, the app's own audio teed into a MediaRecorder; Remotion pans / zooms between logged shots.
+  Abandoned for the in-app Demo patch; the timing work that is worth keeping: the riff's 1 is its first MIDI note (the
+  file trails off, each loop starts on a whole bar), a Steps track added while the transport runs counts from when it
+  was added (restart the transport to bring tracks into phase), the cutoff slider's thumb moves with live modulation (find
+  it again right before dropping a cable on it). `web/tsconfig.json` and `vite.config.ts` exclude `dev/demo`.
+- **"The octave changes unpredictably":** Z / X work as designed (tested in headless Chromium on [::1]); Shift+Z / X also
+  shift (Shift is not excluded), and a Cmd+Z whose Z lands before Cmd shifts down. Undo never touches the octave
+  (`Editor.snap` drops it). A patch opens in its saved octave (Open list, palette, PRESET, Demo = +1), and the owner's
+  saved Sum1 Gr8 copies differ (+1, -2). Also found: after a click on the dock's Octave up / down button, Space (meant for
+  the transport) presses the focused button again (main.ts keydown leaves Space to a focused button); not fixed.
+  The real cause in the owner's case: recording into XYLO while the keys played no instrument (above), then pressing Z /
+  X to make playback match what was heard; Backspace rests keep the old note value, which left octave-up notes on off steps.
+- **Spec #132** (grilled; designs https://claude.ai/artifact/1wtacK9E4fuyFjycHNhcVA, layout A = the roll drawer chosen):
+  Steps becomes the one sequencer: chord steps with per-note lengths stored sparsely, `keys in` / `keys out` (thru while
+  armed; Main's keys snap to the armed track as a dock routing), Arm and REC separate (REC stopped = chord step entry,
+  running = live overdub), a piano-roll drawer, a Drum map module and a one-track drum kit (no compatibility with the
+  per-drum kit). Slices #133-#139. #131 (Player Piano) Q4 is unblocked by #133.
+- Gotcha: http://localhost:5173/@vite/client (or any path) opened as a page **does run the app** (Vite answers with
+  index.html), which can write the user's localStorage; the 2026-10-19 handoff said otherwise.
