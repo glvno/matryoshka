@@ -66,7 +66,7 @@ Conclusions: the core has no FPU (float links against `libcompiler-rt.a` soft fl
 
 ## Estimated CPU load (the editor's budget meter)
 
-The editor estimates how much of the 2901 us audio interrupt a patch needs (`web/src/cpu.ts`, `cpuEstimate`; the sidebar meter's CPU bar; over 100 % counts as over the FM-1 budget like a memory limit, `deviceBudget` in patchbin.ts). Nothing here was measured per module on the device: it is a model.
+The editor estimates how much of the 2901 us audio interrupt a patch needs (`web/src/cpu.ts`, `cpuEstimate`; the status line's CPU bar; over 100 % counts as over the FM-1 budget like a memory limit, `deviceBudget` in patchbin.ts). Nothing here was measured per module on the device: it is a model.
 
 - **Counting.** `tools/cpu/build.sh` builds `firmware/src/engine.c` for rv32im (clang + ld.lld, `-Os` as tools/build.py) with `tools/cpu/prof.c` as the driver; `tools/cpu/rv32.mjs` is a small RV32IM interpreter (cycles = 1 per instruction, +1 load, +2 taken branch / jump, +32 division) that reads the `ENG_PROF` hooks in `render_voice` (compiled out in the firmware) and attributes each module's input sums, parameter inputs (`apply_cv`) and processing. The FM-1's core is not RISC-V; the model only has to get the ratios right.
 - **Scale.** The M1-0.2 engine (b907693) built the same way, running its own 303 Acid with a note held, peaks at 84,600 cycles per block; that build took 12 % (peak) of the interrupt on the FM-1, so 243 cycles = 1 us. The bench kernels above (4x MAC 9 us, SVF 8 us) give 258 and 243: the two independent checks agree within ~6 %. The 12 % included the key scan and USB, so the scale errs towards a higher load.
@@ -520,10 +520,31 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   label, else its kind, "-" for Nothing. SELECT / ALGO on it go back to the device pages first. GLO's LED is lit while
   the page shows. Editor: the dock's GLO (`Editor.setGlo`) puts the same page on the dock knobs (`gloDevice`, not one of
   the devices; picking a device leaves it); with Live its press reaches the FM-1 as CC 85.
-- **Arpeggiator on the dock (#119, design G):** the Arpeggiator stays a module; the dock's `dock-arp` column (after the
-  knobs) shows the first one's rows (`Editor.arpColumn`, the module's own `paramRow`s: its edits, undo, Live; a picker
-  "Arp n of m" with two). Without one it reads "+ Add arpeggiator": `dock-arp.ts` `insertArpeggiator` puts it between
-  Main's keys and every input they fed (`spotNear` places the card) and makes ARP its switching Toggle.
+- **ARP with nothing on it (2026-10-19, replaces #119's dock column):** the Arpeggiator stays a module; the dock has no
+  Arpeggiator column (its controls are the card's and GLO's K3 / K4). ARP is "free" (`arp-button.ts` `arpFree`) when its
+  kind is Nothing and its jack has no cable, or it is a Toggle whose target is gone; the dock then draws it "+ ARP / add
+  one" (`Editor.freeArpButton`) and a click puts an arpeggiator on it (ARP becomes its switching Toggle). `arpChoices`
+  lists what can be done: put each arpeggiator already in the patch on ARP; a new one for what Main's keys play straight
+  (all of it, or each target alone when they feed several), off with the reason once the patch has `DEVICE.arps` (2);
+  with an arpeggiator there and keys still played straight, route those through it. One enabled choice: the click does
+  it; several: a menu above the button (`Editor.openArpMenu`), each row glowing the keys cables it takes over. Every
+  choice is one undo step, selects the arpeggiator and shows a toast with Undo. Targets are named by the assembly the
+  allocator sits in (`keysTargetName`). Anything already on ARP: the button acts as its kind says, no menu.
+- **Status line (2026-10-19):** a 24 px row under the whole workspace (`index.html` `#statusline`, `statusline.ts`). Left:
+  what the pointer is over, from the element's `data-help` / `data-help-tag`, else its title or an SVG `<title>` (a
+  cable: "OSC out → Filter in. Click to disconnect it"); "NAME: text" splits into tag and text. While nothing is
+  hovered it shows `pinStatus`'s message (over the budget: red "Too much for the FM-1") or the idle hint. Right: the FM-1
+  budget (MEM / CPU side by side; open, its list above the status line). With it out of the dock (and the dock's ARP
+  column gone, morph / B side / tempo in one column with CLOCK / RUN on its edge, the button block's columns as wide as
+  their buttons through a subgrid, VEL / AFT captions) the dock fits a 1280 px window (1270 px with the sidebar open).
+- **Cable hover glow (2026-10-19, design A):** a hovered cable on the canvas gets a copy in `#cable-glow`, a layer above
+  the cards that takes no pointer: a blurred halo in the cable's colour, a fine light core and rings on its jacks
+  (`Editor.glow`), so its run shows where it passes behind a card. `Editor.glowCables` lights given cables (the ARP menu).
+- **FM-1 view, a patch that does not fit (2026-10-19):** the view loads a patch over the budget anyway
+  (`encodePatch(p, true)`; the emulator has the firmware's tables, not its timing) under a card (`Fm1View.notice`,
+  amber "Over the FM-1 budget") that dismisses to a chip above the device ("Over budget · CPU 104 % · won't upload"),
+  which brings it back. A patch past the firmware's tables is refused by `ui.load`: a red card, the view keeps the last
+  patch it loaded and the chip names it. A dismissed card comes back only when the level changes or the patch fits again.
 - Navigation (#114): one rule. A button that changes the screen (SEQ, REC, HOME held = the menu; page buttons #117 and
   GLO #118 next) leaves a step on the trail (`panel.c` `page_set`: page + the device page in focus, `TRAIL_MAX` 8, the
   oldest dropped); a HOME tap goes back one (`screen_back`, restoring the device page if it moved; the same button again

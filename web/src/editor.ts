@@ -9,7 +9,8 @@ import { DEFS, PANEL_BUTTONS } from './modules';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
-import { arpsOf, insertArpeggiator } from './dock-arp';
+import { arpChoices, arpFree, type ArpChoice } from './arp-button';
+import { showUndo } from './toast';
 import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
@@ -220,6 +221,9 @@ const HEAD_Y = 15;
 /** a touch held this long without moving is a long press */
 const LONG_PRESS_MS = 500;
 
+/** Main's jack captions on the dock that are shortened */
+const DOCK_SHORT: Record<string, string> = { vel: 'vel', at: 'aft' };
+
 export class Editor {
   patch: Patch;
   /** the selected modules (shift-click or a rubber band); "Make assembly" groups them, dragging one moves all */
@@ -243,6 +247,8 @@ export class Editor {
   }
   private modulesEl: HTMLElement;
   private svg: SVGSVGElement;
+  /** the hovered cable's glow, over the cards (index.html #cable-glow) */
+  private glowLayer: SVGSVGElement | null = null;
   private preview: SVGSVGElement;
   private world: HTMLElement;
   private space: HTMLElement;
@@ -292,6 +298,7 @@ export class Editor {
     this.modulesEl = canvas.querySelector('#modules')!;
     this.svg = canvas.querySelector('#cables')! as unknown as SVGSVGElement;
     this.preview = canvas.querySelector('#patch-preview')! as unknown as SVGSVGElement;
+    this.glowLayer = canvas.querySelector('#cable-glow') as unknown as SVGSVGElement | null;
     this.world = canvas.querySelector('#patch-world')!;
     this.space = canvas.querySelector('#canvas-space')!;
     this.report(fixAssemblies(this.patch, DEFS));
@@ -738,8 +745,6 @@ export class Editor {
   dockOctave: HTMLElement | null = null;
   /** the transport's Play switch, PLAY in the dock's button block (set by the host, then rebuild) */
   dockPlay: HTMLElement | null = null;
-  /** the FM-1 budget meter, shown in its own column right of the clock (set by the host, then rebuild) */
-  dockBudget: HTMLElement | null = null;
 
   private docked(): ModuleInst | undefined {
     return this.dock ? this.patch.modules.find((m) => m.type === 'fm1') : undefined;
@@ -771,7 +776,14 @@ export class Editor {
     const jacks = (names: string[]): HTMLElement => {
       const row = document.createElement('div');
       row.className = 'dock-jacks';
-      for (const p of def.outputs) if (names.includes(p.name)) row.append(this.port(m, p, 'out'));
+      for (const p of def.outputs) if (names.includes(p.name)) {
+        const port = this.port(m, p, 'out');
+        // the long names in short, so the dock fits a 1280 px window (the tooltip keeps the full name)
+        const short = DOCK_SHORT[p.name];
+        const caption = short && port.querySelector(':scope > span:not(.dot)');
+        if (caption) caption.textContent = short;
+        row.append(port);
+      }
       return row;
     };
     const param = (name: string): HTMLElement => this.paramRow(m, def, def.params.find((pd) => pd.name === name)!);
@@ -824,45 +836,11 @@ export class Editor {
     el.append(title,
       col('dock-outputs', strip, ...(this.dockOctave ? [this.dockOctave] : [])),
       col('dock-knobs', null, this.focusCol),
-      col('dock-arp', null, ...this.arpColumn()),
       this.buttonCol = col('dock-buttons', buttonJacks, buttons),
-      col('dock-morph', null, morph, this.morphRow()),
-      col('dock-clock', jacks(CLOCK), param('tempo')),
-      ...(this.dockBudget ? [col('dock-budget', null, this.dockBudget)] : []));
+      // morph, its B side and the tempo share a column (so the dock fits a 1280 px window), the clock's jacks on its edge
+      col('dock-morph', jacks(CLOCK), morph, this.morphRow(), param('tempo')));
     this.buttonCol.prepend(traces);
     return el;
-  }
-
-  /** which of the patch's Arpeggiators the dock shows (#119; a picker when it has two) */
-  private dockArp = 0;
-
-  /** the dock's Arpeggiator column (design G): the module's own rows (its edits, undo, Live), or "+ Add arpeggiator" */
-  private arpColumn(): HTMLElement[] {
-    const arps = arpsOf(this.patch);
-    const head = document.createElement('div');
-    head.className = 'arp-head';
-    const title = document.createElement('span');
-    title.textContent = 'Arpeggiator';
-    head.append(title);
-    if (!arps.length) {
-      const add = this.button('+ Add arpeggiator', 'Put an Arpeggiator between Main’s keys and the voices; ARP switches it in and out', () => {
-        this.change(() => { insertArpeggiator(this.patch); });
-      }, 'arp-add');
-      return [head, add];
-    }
-    this.dockArp = Math.min(this.dockArp, arps.length - 1);
-    if (arps.length > 1) {
-      const pick = document.createElement('select');
-      pick.className = 'arp-pick';
-      pick.setAttribute('aria-label', 'Which arpeggiator the dock shows');
-      arps.forEach((_, i) => pick.append(new Option(`Arp ${i + 1} of ${arps.length}`, String(i))));
-      pick.value = String(this.dockArp);
-      pick.onchange = () => { this.dockArp = Number(pick.value); this.rebuild(); };
-      head.append(pick);
-    }
-    const arp = arps[this.dockArp];
-    const def = DEFS.arp;
-    return [head, ...def.params.map((pd) => this.paramRow(arp, def, pd))];
   }
 
   /** one of the FM-1's own buttons (HOME, SAVE, SEQ, REC): shown in its place, greyed, not part of the patch */
@@ -2272,6 +2250,7 @@ export class Editor {
   /** a patch button of the FM-1 in the dock (board E): its label and kind mark, the FM-1 name under them, a light (dark
    * unassigned, dim assigned or cabled, lit engaged); held while pressed or switched; right-click or ⋯: the button editor */
   private dockButton(m: ModuleInst, b: string, i: number): HTMLElement {
+    if (b === 'arp' && arpFree(this.patch)) return this.freeArpButton();
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'panel-btn';
@@ -2320,6 +2299,83 @@ export class Editor {
       if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) { e.preventDefault(); this.openButtonEditor(b); }
     });
     return btn;
+  }
+
+  /** ARP with nothing on it (arp-button.ts): "+ ARP". A click puts an arpeggiator on it, at once when there is one way to,
+   * else from a menu above the button; right-click or ⋯ still edits the button */
+  private freeArpButton(): HTMLElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'panel-btn arp-free';
+    btn.dataset.button = 'arp';
+    const face = document.createElement('span');
+    face.className = 'pb-face';
+    const label = document.createElement('span');
+    label.className = 'pb-label';
+    label.textContent = '+ ARP';
+    face.append(label);
+    const under = document.createElement('span');
+    under.className = 'pb-hw';
+    under.textContent = 'add one';
+    const choices = arpChoices(this.patch);
+    const open = choices.filter((c) => !c.disabled);
+    btn.title = open.length === 1 ? `ARP: nothing on it. Click: ${open[0].label} (${open[0].sub})`
+      : `ARP: nothing on it. Click to add an arpeggiator: ${open.length} ways, a menu asks which`;
+    btn.addEventListener('click', () => open.length === 1 ? this.takeArp(open[0]) : this.openArpMenu(btn, choices));
+    btn.addEventListener('contextmenu', (e) => { e.preventDefault(); this.openButtonEditor('arp'); });
+    const more = document.createElement('span');
+    more.className = 'pb-more';
+    more.textContent = '⋯';
+    more.title = 'Edit the ARP button';
+    more.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); this.openButtonEditor('arp'); });
+    more.addEventListener('click', (e) => e.stopPropagation());
+    btn.append(face, under, more);
+    return btn;
+  }
+
+  /** the ARP menu: one row per choice; hovering a row glows the keys cables it takes over */
+  private openArpMenu(btn: HTMLElement, choices: ArpChoice[]): void {
+    document.querySelector('.arp-menu')?.remove();
+    const menu = document.createElement('div');
+    menu.className = 'arp-menu';
+    menu.popover = 'auto';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Put an arpeggiator on ARP');
+    const head = document.createElement('div');
+    head.className = 'arp-menu-head';
+    head.textContent = 'ARP';
+    menu.append(head);
+    for (const c of choices) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.setAttribute('role', 'menuitem');
+      row.disabled = !!c.disabled;
+      const l = document.createElement('span');
+      l.textContent = c.label;
+      const sub = document.createElement('small');
+      sub.textContent = c.sub;
+      row.append(l, sub);
+      row.addEventListener('pointerenter', () => this.glowCables(c.cables));
+      row.addEventListener('focus', () => this.glowCables(c.cables));
+      row.addEventListener('pointerleave', () => this.glowCables([]));
+      row.addEventListener('click', () => { menu.hidePopover(); this.takeArp(c); });
+      menu.append(row);
+    }
+    menu.addEventListener('toggle', () => { if (!menu.matches(':popover-open')) { this.glowCables([]); menu.remove(); } });
+    document.body.append(menu);
+    menu.showPopover();
+    const r = btn.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.left + r.width / 2 - menu.offsetWidth / 2))}px`;
+    menu.style.top = `${Math.max(8, r.top - menu.offsetHeight - 8)}px`;
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+  }
+
+  /** do one of the ARP choices: undoable, the arpeggiator selected, a toast with Undo */
+  private takeArp(c: ArpChoice): void {
+    let arp = null as ModuleInst | null;
+    if (!this.change(() => { arp = c.apply(this.patch); })) return;
+    if (arp) this.reveal(arp.id);
+    showUndo(c.done, () => this.undo());
   }
 
   /** the button editor's popover (button-editor.ts): kept across redraws, anchored on its dock button */
@@ -3783,6 +3839,48 @@ export class Editor {
     return out;
   }
 
+  /** a cable end as the status line names it: the module and its port */
+  private endName(e: Endpoint): string {
+    const m = this.patch.modules.find((x) => x.id === e.module);
+    return m ? `${moduleName(m.type, DEFS[m.type]?.label ?? m.type)} ${e.port}` : e.port;
+  }
+
+  /** the hovered cable's glow (design A): a copy over the cards, so its whole run shows where it passes behind one, and
+   * rings on its jacks on the canvas; it takes no pointer */
+  private glow(paths: { path: SVGPathElement; from: HTMLElement; to: HTMLElement }[]): void {
+    const layer = this.glowLayer;
+    if (!layer) return;
+    layer.replaceChildren();
+    for (const { path, from, to } of paths) {
+      const d = path.getAttribute('d');
+      if (!d) continue;
+      const g = document.createElementNS(SVGNS, 'g');
+      g.setAttribute('class', `glow ${['audio', 'control', 'gate', 'keys'].find((k) => path.classList.contains(k)) ?? 'audio'}`);
+      for (const cls of ['halo', 'core']) {
+        const e = document.createElementNS(SVGNS, 'path');
+        e.setAttribute('class', cls);
+        e.setAttribute('d', d);
+        g.append(e);
+      }
+      for (const jack of [from, to]) {
+        if (this.inDock(jack)) continue;
+        const c = this.center(jack);
+        const ring = document.createElementNS(SVGNS, 'circle');
+        ring.setAttribute('class', 'ring');
+        ring.setAttribute('cx', String(c.x));
+        ring.setAttribute('cy', String(c.y));
+        ring.setAttribute('r', '9');
+        g.append(ring);
+      }
+      layer.append(g);
+    }
+  }
+
+  /** glow these cables (the ARP menu's rows show what they would take over); none: off */
+  glowCables(cables: Cable[]): void {
+    this.glow(this.cablePaths.filter((x) => x.origin === this.world && x.cable && cables.some((c) => sameEnd(c.from, x.cable!.from) && sameEnd(c.to, x.cable!.to))));
+  }
+
   private inputJack(to: Endpoint): HTMLElement | undefined {
     return this.ports.get(this.key(to.module, to.port, 'in')) ?? [...this.ports.values()].find((dot) =>
       dot.dataset.also && (JSON.parse(dot.dataset.also) as Target[]).some((t) => sameEnd(t, to)));
@@ -3840,7 +3938,10 @@ export class Editor {
       this.cablePaths.push({ path, from, to, origin, cable });
       // hovering any part of a cable highlights all of it: the path and its copies on a card and over the dock
       const group: SVGPathElement[] = [path];
-      const hover = (on: boolean): void => group.forEach((g) => g.classList.toggle('hover', on));
+      const hover = (on: boolean): void => {
+        group.forEach((g) => g.classList.toggle('hover', on));
+        if (origin === this.world) this.glow(on ? [{ path, from, to }] : []);
+      };
       path.addEventListener('pointerenter', () => hover(true));
       path.addEventListener('pointerleave', () => hover(false));
       const over = this.dockCables;
@@ -3918,7 +4019,7 @@ export class Editor {
       void src;
       if (b) {
         const key = `${c.from.module}:${c.from.port}:${b.dataset.mod}:${b.dataset.port}`;
-        if (!physicalCables.has(key)) add(a, b, kind, () => this.removeCable(c), 'Disconnect cable', false, c);
+        if (!physicalCables.has(key)) add(a, b, kind, () => this.removeCable(c), `${this.endName(c.from)} → ${this.endName(c.to)}. Click to disconnect it`, false, c);
         physicalCables.add(key);
       } else
         // a pin has no jack: its cable is drawn to every thumb it feeds, and each drawn cable removes just that route

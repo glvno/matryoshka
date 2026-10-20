@@ -62,7 +62,7 @@
     <main>
     <section id="tab-patch" class="tab" role="tabpanel" aria-labelledby="nav-patch">
       <div id="canvas" class="canvas" aria-label="Patch canvas">
-        <div id="canvas-space"><div id="patch-world"><svg id="cables" class="cables"></svg><div id="modules"></div><svg id="patch-preview" class="cables patch-preview"></svg></div></div>
+        <div id="canvas-space"><div id="patch-world"><svg id="cables" class="cables"></svg><div id="modules"></div><svg id="cable-glow" class="cables cable-glow" aria-hidden="true"></svg><svg id="patch-preview" class="cables patch-preview"></svg></div></div>
       </div>
       <div id="fm1-view" hidden></div>
       <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true">Patch</button><button type="button" role="tab" data-view="fm1" aria-selected="false" title="The FM-1's own screen and panel, emulated (its firmware, compiled for the browser)">FM-1</button></div>
@@ -73,8 +73,6 @@
     <section id="tab-flash" class="tab" aria-label="Flash firmware" hidden></section>
     </main>
     <div id="wheels" class="wheels" role="group" aria-label="Wheels"></div>
-    <!-- the FM-1 budget: placed in the Main dock beside the knobs by the editor (Editor.dockBudget) -->
-    <details id="budget" class="budget"><summary title="How much of the FM-1 this patch uses"><span class="budget-title">FM-1 budget</span><span class="budget-row" data-k="mem"><span class="budget-name">MEM</span><span class="budget-bar"><span></span></span><span class="budget-pct"></span></span><span class="budget-row" data-k="cpu"><span class="budget-name">CPU</span><span class="budget-bar"><span></span></span><span class="budget-pct"></span></span></summary><div class="budget-list"></div></details>
     <div class="dock-wrap"><div id="dock" class="dock" role="group" aria-label="Main"></div><svg class="dock-cables cables" aria-hidden="true"></svg></div>
     <footer id="deck" class="deck" aria-label="Performance">
       <div class="deck-row">
@@ -86,6 +84,10 @@
       <div id="piano" class="piano" role="group" aria-label="Keyboard"></div>
       </div>
     </footer>
+    <!-- the status line (statusline.ts): what the pointer is over, then the FM-1 budget (main.ts showBudget) -->
+    <div id="statusline" class="statusline"><span class="sl-tag"></span><span class="sl-text" aria-live="off"></span>
+      <details id="budget" class="budget"><summary title="How much of the FM-1 this patch uses"><span class="budget-title">FM-1</span><span class="budget-row" data-k="mem"><span class="budget-name">MEM</span><span class="budget-bar"><span></span></span><span class="budget-pct"></span></span><span class="budget-row" data-k="cpu"><span class="budget-name">CPU</span><span class="budget-bar"><span></span></span><span class="budget-pct"></span></span></summary><div class="budget-list"></div></details>
+    </div>
   </div>
   <input id="load-file" type="file" accept="application/json,.json" hidden />
   <dialog id="palette" class="palette" aria-label="Command palette">
@@ -145,6 +147,7 @@
             <div class="hrow"><span class="hkeys">hold <kbd>1</kbd>–<kbd>4</kbd> + wheel</span><span>turn knob K1–K4 of that page</span></div>
             <div class="hrow"><span class="hkeys">a Steps card’s <b>rec</b></span><span>play notes (note keys or MIDI) into its steps from the cursor; <kbd>Backspace</kbd> a rest, <kbd>Enter</kbd> a tie, <kbd>←</kbd><kbd>→</kbd> move, <kbd>Esc</kbd> stops</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd>-click a step</span><span>tie it to the note before (it holds on through the step)</span></div>
+            <div class="hrow"><span class="hkeys">hover</span><span>the status line under the keyboard says what it is and what it does; the FM-1 budget is at its right</span></div>
             <div class="hrow"><span class="hkeys">drag a slider</span><span>set its value; press anywhere on the bar to jump there</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Shift</kbd>-drag</span><span>fine: a slider at a tenth of the speed, a knob or envelope corner finer too</span></div>
             <div class="hrow"><span class="hkeys">double-click</span><span>a knob, wheel or envelope display: back to its default; a heading or assembly title: rename it</span></div>
@@ -155,6 +158,7 @@
             <div class="hrow"><span class="hkeys"><kbd>A</kbd><kbd>W</kbd><kbd>S</kbd><kbd>E</kbd><kbd>D</kbd><kbd>F</kbd><kbd>T</kbd><kbd>G</kbd><kbd>Y</kbd><kbd>H</kbd><kbd>U</kbd><kbd>J</kbd><kbd>K</kbd><kbd>O</kbd><kbd>L</kbd><kbd>P</kbd></span><span>play notes, C up to D#</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Z</kbd> <kbd>X</kbd></span><span>octave down / up</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Space</kbd></span><span>the transport (PLAY in the dock): Main’s run output and clock</span></div>
+            <div class="hrow"><span class="hkeys"><b>+ ARP</b> in the dock</span><span>ARP with nothing on it: a click puts an arpeggiator on it (a menu asks where when there is more than one way); Undo in the toast</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Alt+B</kbd></span><span>flip between the A and B snapshots</span></div>
           </section>
           <section class="hsec"><h3>On the FM-1</h3>

@@ -696,3 +696,25 @@ The current course behavior is specified in [docs/TUTORIAL.md](docs/TUTORIAL.md)
 - #121 tidy.ts `arrange`: columns keep their order and their order down the column, each card takes the free spot that grows max(width / 2, height) least, then the highest, then the leftmost, never left of the previous column. Not idempotent as a pure function (a packed layout reads as other columns; iterating drifted and got worse), so `Editor.tidyUp` remembers the layout it made (`layoutKey`: places, sizes, frames) and answers 'already tidy'.
 - #128 ties: step byte bit 7 (was masked everywhere as 0x7f; now kept in patch.ts, patchbin, protocol, editor, engine.c load / live edit, proto.c). A tie continues the note sounding (no edge, pitch and velocity stay), the step before a tie holds trig for 2 steps at most (a stopped clock lets it fall), a tie after a silent step plays nothing. Old firmware masks the bit: no format bump. Ctrl / Cmd-click on the grid. Golden kit `steps-tie`. The SEQ page on the FM-1 does not draw ties.
 - #127 step entry: step-grid.ts `recordNote` / `recordKey` / `disarm`, a `rec` button per Steps card; main.ts `sink.send` hands every note-on to it (it still sounds), the keydown handler gives it Backspace (rest), Enter (tie), arrows, Escape first.
+
+## 2026-10-19 (later): status line, ARP button cases, cable glow, FM-1 fit notice
+
+Designed with the user on the canvas https://claude.ai/artifact/XSLUxYvSmyyJdBsgwTAt8F (rows "Status line", "ARP button
+edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-tested and checked in Chrome on [::1].
+
+- **Status line** (`statusline.ts`, `#statusline`, its own workspace row under the deck so the wheels do not cover it):
+  hover help from data-help / title / an SVG `<title>`, "NAME: text" split into a tag; `pinStatus` for the over-budget
+  message. The FM-1 budget moved into it (`#budget`, `Editor.dockBudget` gone). Cable titles now name both ends
+  (`Editor.endName`).
+- **Dock at 1280 px:** the ARP column is gone (`Editor.arpColumn`, `dockArp` removed); morph + B side + tempo in one column
+  with CLOCK / RUN on its edge; the button block's columns are auto-sized through a subgrid (`.dock-col.dock-buttons`) so
+  the jacks stay over their buttons; VEL / AFT captions (`DOCK_SHORT`); tighter paddings. Needs 1270 px with the sidebar
+  open (measured on the 808 Kit; the K1..K4 pickers are capped at 100 px each, long device names ellipsize).
+- **ARP button** (`arp-button.ts`, was `dock-arp.ts`): `arpFree`, `arpChoices`, `keysTargetName`; `Editor.freeArpButton`,
+  `openArpMenu` (rows glow the keys cables they take over), `takeArp` (undoable, selects, toast with Undo). Tests for the
+  six cases in `arp-button.test.ts`.
+- **Cable glow** (`#cable-glow` over the cards, `Editor.glow` / `glowCables`): halo, core, rings on the canvas jacks.
+- **FM-1 view:** `Fm1View.notice` (card over the device, chip once dismissed); `emuLoad` encodes with `anyway` so an
+  over-budget patch still plays in the view; a firmware refusal (e.g. 2 reverbs) keeps the last loaded patch (`emuLoaded`).
+- Checks: vitest 705 passed, `npm run build` ok. The window could not be resized in the session, so 1280 px was checked by
+  narrowing `.workspace` and by measuring the columns' natural widths.

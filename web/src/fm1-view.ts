@@ -64,6 +64,21 @@ function div(cls: string, parent: HTMLElement, text?: string): HTMLElement {
   return d;
 }
 
+/** a patch the FM-1 cannot run as it is (design: FM-1 view, a patch that doesn't fit): a card over the device until
+ * dismissed, then a chip above it that brings the card back. `warn`: over the budget, loaded anyway; `error`: past the
+ * firmware's own limits, the view keeps the last patch it could load */
+export interface Fm1Notice {
+  level: 'warn' | 'error';
+  title: string;
+  body: string;
+  /** the chip's text once the card is dismissed */
+  chip: string;
+  /** the card's main button (it dismisses the card) */
+  action: string;
+  /** a second button: what costs most (the budget's list) */
+  more?: () => void;
+}
+
 export interface Fm1ViewHost extends Fm1Events {
   /** a pill key pressed / let go: key n = F3 + n semitones (the page plays it at the emulated octave) */
   key?(k: number, down: boolean): void;
@@ -85,6 +100,10 @@ export class Fm1View {
   private latched = new Set<number>();
   private held = new Set<number>();
   private note: HTMLElement;
+  private alert: HTMLElement;
+  private chip: HTMLButtonElement;
+  /** the level of a notice the user dismissed: it stays a chip until the patch fits again (or gets worse) */
+  private dismissed: Fm1Notice['level'] | null = null;
   /** the encoders by number and the MASTER pot (following an FM-1: they turn with it, #120) */
   private encEls = new Map<number, { el: HTMLElement; turns: number }>();
   private potSet: ((v: number) => void) | null = null;
@@ -128,6 +147,14 @@ export class Fm1View {
     this.pot(body, master);
     for (const b of BTNS) this.button(body, b.label, b.id, b.x, b.y, b.w, b.h);
     for (const k of KEYS) this.key(body, k.k, k.x, k.y, k.w, k.h, k.black);
+    this.alert = div('fm1-alert', body);
+    this.alert.hidden = true;
+    this.chip = document.createElement('button');
+    this.chip.type = 'button';
+    this.chip.className = 'fm1-chip';
+    this.chip.hidden = true;
+    this.chip.addEventListener('click', () => { this.dismissed = null; this.alert.hidden = false; this.chip.hidden = true; });
+    el.insertBefore(this.chip, body);
     const hint = div('fm1-hint', el);
     hint.textContent = 'Drag or scroll an encoder · Shift-click a button to hold it down · the computer keyboard plays the keys too';
     this.follow = div('fm1-follow', el);
@@ -204,6 +231,57 @@ export class Fm1View {
   message(text: string | null): void {
     this.note.hidden = !text;
     this.note.textContent = text ?? '';
+  }
+
+  /** the patch does not fit (a card, or the chip once dismissed), or null: it fits */
+  notice(n: Fm1Notice | null): void {
+    if (!n) {
+      this.dismissed = null;
+      this.alert.hidden = this.chip.hidden = true;
+      return;
+    }
+    if (this.dismissed !== n.level) this.dismissed = null;
+    this.alert.className = `fm1-alert ${n.level}`;
+    this.chip.className = `fm1-chip ${n.level}`;
+    this.chip.textContent = n.chip;
+    this.chip.title = `${n.title}: show why`;
+    const card = document.createElement('div');
+    card.className = 'fm1-alert-card';
+    card.setAttribute('role', 'alertdialog');
+    card.setAttribute('aria-label', n.title);
+    const head = document.createElement('div');
+    head.className = 'fm1-alert-head';
+    const h = document.createElement('strong');
+    h.textContent = n.title;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'fm1-alert-close';
+    close.textContent = '×';
+    close.setAttribute('aria-label', 'Dismiss');
+    head.append(h, close);
+    const p = document.createElement('p');
+    p.textContent = n.body;
+    const row = document.createElement('div');
+    row.className = 'fm1-alert-row';
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'fm1-alert-go';
+    go.textContent = n.action;
+    row.append(go);
+    if (n.more) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.textContent = 'What costs most';
+      more.addEventListener('click', () => n.more?.());
+      row.append(more);
+    }
+    const dismiss = (): void => { this.dismissed = n.level; this.alert.hidden = true; this.chip.hidden = false; };
+    close.addEventListener('click', dismiss);
+    go.addEventListener('click', dismiss);
+    card.append(head, p, row);
+    this.alert.replaceChildren(card);
+    this.alert.hidden = this.dismissed === n.level;
+    this.chip.hidden = !this.alert.hidden;
   }
 
   /** the notes held now (the computer keyboard's, the pill keys'): the FM-1's 27 keys from F3 at its octave; the

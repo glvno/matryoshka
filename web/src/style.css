@@ -79,7 +79,7 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 syste
 ::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--ink) 28%, transparent); }
 ::-webkit-scrollbar-corner { background: transparent; }
 /* The synth is the workspace: a control rail beside an uninterrupted patch field. */
-.workspace { display: grid; grid-template-columns: 208px auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto; height: 100dvh; }
+.workspace { display: grid; grid-template-columns: 208px auto minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto auto auto; height: 100dvh; }
 /* the sidebar runs down to the keyboard; the Main panel sits under the canvas only, so every cable reaches its jack; the
    wheels stand left of the dock and the keyboard, as tall as both (like a hardware synth's) */
 .workspace > .sidebar { grid-column: 1; grid-row: 1 / 3; }
@@ -118,22 +118,22 @@ svg.brand-mark .accent { fill: var(--secondary); }
 .patch-controls { display: grid; gap: 12px; }
 .patch-controls[hidden] { display: none; }
 .patch-controls > * { width: 100%; min-width: 0; }
-/* the FM-1 budget meter, a column of the Main dock right of the arpeggiator: memory (the fullest limit) and the estimated CPU
- * load as bars; open, a card above the deck with every limit and the costliest modules */
-.budget { margin: 0; }
-.budget summary { display: grid; gap: 4px; width: 150px; list-style: none; cursor: pointer; font-size: 11px; color: var(--muted); }
+/* the FM-1 budget meter at the right of the status line: memory (the fullest limit) and the estimated CPU load side by
+ * side; open, a card above the status line with every limit and the costliest modules */
+.budget { flex: none; margin: 0; }
+.budget summary { display: flex; align-items: center; gap: 10px; list-style: none; cursor: pointer; font: var(--cap); font-size: 11px; letter-spacing: .06em; color: var(--muted); }
 .budget summary::-webkit-details-marker { display: none; }
-.budget-title { text-align: center; font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.budget-row { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 6px; }
+.budget-title { text-transform: uppercase; color: var(--muted); }
+.budget-row { display: grid; grid-template-columns: auto 48px auto; align-items: center; gap: 5px; color: var(--ink); }
 .budget-name { font-weight: 650; letter-spacing: 0.04em; }
-.budget-bar { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.budget-bar { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .budget-bar > span { display: block; height: 100%; background: var(--secondary); }
-.budget-pct { min-width: 34px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.budget-pct { min-width: 30px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
 .budget-row.near .budget-bar > span { background: var(--accent); }
 .budget-row.over .budget-bar > span { width: 100% !important; background: var(--danger); }
 .budget-row.over .budget-pct, .budget-row.over .budget-name { color: var(--danger); }
 .budget[open] summary .budget-title { color: var(--secondary); }
-.budget-list { position: fixed; z-index: 30; bottom: calc(var(--piano-h) + 8px); width: 260px; max-height: calc(100dvh - var(--piano-h) - 32px); overflow: auto;
+.budget-list { position: fixed; z-index: 30; bottom: 32px; width: 260px; max-height: calc(100dvh - 48px); overflow: auto;
   display: grid; gap: 2px; padding: 8px 12px; font-size: 11.5px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 4px 16px var(--shadow); }
 .budget-list > .budget-head:first-child { margin-top: 0; }
 .budget-head { margin-top: 4px; font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -529,7 +529,7 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .deck-row > .deck-controls { grid-column: 1; margin: 0 8px; }
 .deck-row > .piano { grid-column: 3; margin: 0 8px; }
 /* the wheels' column: its jacks sit half over its top edge like the dock's (a see-through band takes no pointer) */
-.wheels { position: relative; z-index: 2; display: flex; gap: 8px; margin-top: -8px; padding: 8px 10px 8px; pointer-events: none;
+.wheels { position: relative; z-index: 2; display: flex; gap: 8px; margin-top: -8px; padding: 8px 6px 8px; pointer-events: none;
   background: linear-gradient(transparent 8px, var(--line) 8px, var(--line) 9px, var(--panel) 9px); border-right: 1px solid var(--line); }
 .wheels:empty { display: none; }
 .wheels > * { pointer-events: auto; }
@@ -549,7 +549,7 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 /* Columns of related controls, spread across the panel: jacks along the top (the cables come down to them), the
    rest centred in the height that is left */
 .dock-main { flex: 1; }
-.dock-col { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0 10px 6px; border-left: 1px solid var(--line); }
+.dock-col { flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 0 6px 6px; border-left: 1px solid var(--line); }
 /* the jacks sit on the dock's top edge, half over it, as a card's jacks sit on the card's side */
 .dock-jacks { margin-top: -8px; }
 /* the keyboard's octave buttons, in a row under the outputs */
@@ -565,29 +565,16 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .dock-wheels .dock-body { flex-direction: row; justify-content: center; gap: 8px; }
 .dock-knobs .dock-body { justify-content: stretch; }
 .dock-knobs .dock-focus { flex: 1; }
-.dock-knobs .deck-knobs { flex: 1; gap: 12px; }
+.dock-knobs .deck-knobs { flex: 1; gap: 6px; }
 .dock-wheel { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .dock-wheel .deck-wheel { flex: 1; grid-template-rows: 1fr; }
 .dock-jacks { display: flex; justify-content: center; gap: 2px; }
 .dock-jacks .port { flex-direction: column-reverse; justify-content: flex-end; gap: 1px; min-width: 30px; padding: 0 2px; font-size: 10px; }
 .dock-jacks .port .dot { margin: 0; }
 .dock-jacks .port > span:not(.dot) { white-space: nowrap; }
-.dock-body > .param { width: 150px; margin: 0; font-size: 12px; }
+.dock-body > .param { width: 140px; margin: 0; font-size: 12px; }
 .dock-drift .dock-body > .param { width: 120px; }
 .dock-body > .param select { grid-column: 1 / -1; width: 100%; font-size: 12px; padding: 2px 4px; }
-.dock-arp { align-items: stretch; min-width: 170px; }
-/* the dock's Arpeggiator column (#119, design G): the first one's rows, a picker with two, or the add button */
-.dock-arp .arp-head { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font: var(--cap); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.dock-arp .arp-pick { font-size: 11px; padding: 1px 4px; max-width: 96px; }
-.dock-arp .dock-body > .param { width: 170px; }
-.dock-arp .arp-add { align-self: center; font: var(--cap); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; padding: 6px 10px; border: 1px dashed var(--line); border-radius: 6px; background: transparent; color: var(--ink); }
-.dock-arp .arp-add:hover { border-color: var(--secondary); color: var(--secondary); }
-.dock details.arp { margin: 0; border: 0; padding: 0; }
-.dock details.arp summary { font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); white-space: nowrap; }
-.dock details.arp[open] summary { border-color: var(--secondary); color: var(--secondary); }
-/* the arpeggiator's rows open as a panel above the deck (fixed: the dock scrolls sideways and would clip it) */
-.dock details.arp .arp-rows { position: fixed; z-index: 30; right: 16px; bottom: calc(var(--piano-h) + 8px); width: 280px; max-height: calc(100dvh - var(--piano-h) - 32px); overflow: auto;
-  padding: 8px 12px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 4px 16px var(--shadow); }
 .deck-controls { flex: none; display: grid; grid-template-rows: 1fr 1fr; grid-template-columns: 1fr 1fr; gap: 6px; align-content: stretch; }
 .deck-controls #audio-btn { grid-column: 1 / -1; }
 .deck-controls button { padding: 0 8px; font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
@@ -604,7 +591,11 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .deck-knobs { display: flex; gap: 6px; align-items: stretch; }
 /* the FM-1's button block (design board D): its two rows in device order, six columns and a lane on the right for ARP's
    trace; the patch buttons' jacks in a row on the dock's edge over the same columns, gold traces from button to jack */
-.dock-buttons { position: relative; --btn-cols: repeat(6, minmax(44px, 1fr)) 12px; }
+.dock-buttons { position: relative; --btn-cols: repeat(6, minmax(44px, auto)) 12px; }
+/* each column as wide as its own button, the jacks' row on the same columns (a subgrid through the body) */
+.dock-col.dock-buttons { display: grid; grid-template-columns: var(--btn-cols); grid-template-rows: auto 1fr; column-gap: 6px; align-items: stretch; }
+.dock-buttons > :not(svg), .dock-buttons .dock-buttons-grid { grid-column: 1 / -1; }
+.dock-buttons > .dock-body, .dock-buttons .dock-buttons-grid, .dock-buttons .dock-button-jacks { display: grid; grid-template-columns: subgrid; }
 .dock-buttons > .dock-body { align-self: stretch; }
 .dock-buttons-grid, .dock-button-jacks { display: grid; grid-template-columns: var(--btn-cols); column-gap: 6px; }
 .dock-buttons-grid { position: relative; z-index: 1; grid-auto-rows: minmax(26px, auto); row-gap: 14px; }
@@ -622,7 +613,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .panel-btn[aria-pressed=true] { background: var(--accent); color: var(--accent-ink, #fff); border-color: var(--accent); }
 /* a patch button's face (board E): the label with its kind mark, the FM-1 name under it, a light at the top right
    (dark unassigned and uncabled, dim assigned or cabled, lit engaged); ⋯ opens the button editor */
-.panel-btn:not(.device):not(.play) { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 3px 12px; min-height: 36px; }
+.panel-btn:not(.device):not(.play) { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 3px 6px; min-height: 36px; }
 .pb-face { display: flex; align-items: center; gap: 4px; max-width: 100%; }
 .pb-label { overflow: hidden; text-overflow: ellipsis; }
 .pb-hw { font-size: 8.5px; letter-spacing: .1em; color: var(--muted); line-height: 1; }
@@ -1016,7 +1007,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .dock-body > .param.bar { width: 160px; }
 .dial-name { font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .06em; }
 .deck-wheel { font: var(--cap); font-size: 9.5px; text-transform: uppercase; letter-spacing: .06em; }
-.dock details.arp summary, .dock .piano-octave button { font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.dock .piano-octave button { font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .dock .piano-octave output { font: var(--cap); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
 /* the thumb of a slider with nothing to patch: shaped like a jack, in the muted colour, takes no cables */
 .slider-thumb.dot { position: absolute; z-index: 4; box-sizing: border-box; width: var(--jack-size); height: var(--jack-size); top: 50%; left: calc(var(--position) * (100% - var(--jack-size)));
@@ -1310,6 +1301,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .dock-focus { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .focus-pickers { display: flex; gap: 6px; max-width: 100%; }
 .focus-pick { min-width: 0; max-width: 150px; }
+/* on the dock the two pickers stay within the knobs' width (long device names ellipsize), so the dock fits 1280 px */
+.dock-knobs .focus-pick { max-width: 100px; }
 .focus-pick .pick-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
 .dial-caption { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10px/1.1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); }
 .deck-knob.off .dial-caption { color: var(--muted); }
@@ -1395,3 +1388,57 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* following a connected FM-1 (#120): which firmware, and the controls it does not send greyed */
 .fm1-follow { margin: 0; text-align: center; font: 600 12px/1.4 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; color: var(--secondary); }
 .fm1-view .unreported { opacity: .35; filter: grayscale(1); }
+
+/* The status line under the keyboard (statusline.ts): what the pointer is over and what it does, then the FM-1 budget */
+.statusline { grid-column: 1 / -1; grid-row: 4; display: flex; background: var(--panel); align-items: center; gap: 12px; height: 24px; padding: 0 12px; border-top: 1px solid var(--line);
+  font-size: 12px; white-space: nowrap; overflow: hidden; }
+.statusline .sl-tag { flex: none; font: var(--cap); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--secondary); }
+.statusline .sl-tag:empty { display: none; }
+.statusline .sl-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+.statusline .sl-text.idle { color: var(--muted); }
+.statusline:has(.budget.over) .sl-tag { color: var(--danger); }
+.statusline .budget { padding-left: 12px; border-left: 1px solid var(--line); }
+
+/* the hovered cable's glow (design A), over the cards: a soft halo in its colour, a fine light core, rings on its jacks */
+.cable-glow { z-index: 4; pointer-events: none; }
+.cable-glow .glow { fill: none; stroke: var(--audio); }
+.cable-glow .glow.control { stroke: var(--control); } .cable-glow .glow.gate { stroke: var(--gate); } .cable-glow .glow.keys { stroke: var(--ink); }
+.cable-glow .halo { stroke-width: 12; opacity: .45; filter: blur(4px); }
+.cable-glow .core { stroke: var(--ink); stroke-width: 1.5; opacity: .55; }
+.cable-glow .ring { stroke-width: 1.5; opacity: .85; }
+
+/* ARP with nothing on it (arp-button.ts): "+ ARP", dashed in the secondary colour; its menu above it */
+.panel-btn.arp-free { border-style: dashed; border-color: var(--secondary); background: transparent; }
+.panel-btn.arp-free .pb-label { color: var(--secondary); }
+.panel-btn.arp-free:hover { background: color-mix(in srgb, var(--secondary) 14%, transparent); border-style: solid; }
+.arp-menu { position: fixed; inset: auto; margin: 0; width: 280px; display: flex; flex-direction: column; gap: 2px; padding: 8px;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 6px 20px var(--shadow); }
+.arp-menu-head { padding: 2px 8px 4px; font: var(--cap); font-size: 11px; letter-spacing: .1em; color: var(--muted); }
+.arp-menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 8px; border: 0; border-radius: 5px;
+  background: transparent; color: var(--ink); text-align: left; font-size: 13px; }
+.arp-menu button small { font-size: 11px; color: var(--muted); }
+.arp-menu button:not(:disabled):is(:hover, :focus-visible) { background: color-mix(in srgb, var(--secondary) 16%, transparent); outline: none; }
+.arp-menu button:disabled { color: var(--muted); opacity: .6; cursor: default; }
+
+/* a patch the FM-1 cannot run as it is (fm1-view.ts notice): a card over the device, dimmed under it, until dismissed;
+   then a chip above the device that brings it back. Amber over the budget (it plays here), red past the firmware's limits */
+.fm1-body > .fm1-alert { inset: 0; z-index: 20; display: grid; place-items: center; border-radius: inherit; background: color-mix(in srgb, var(--ref-night) 62%, transparent); }
+.fm1-alert[hidden] { display: none; }
+.fm1-alert-card { --tone: var(--ref-gold); width: min(400px, 80%); display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 10px;
+  background: var(--ref-ink); color: var(--ref-ivory); border: 1px solid var(--tone); box-shadow: 0 8px 28px color-mix(in srgb, var(--ref-night) 60%, transparent);
+  font: 500 14px/1.4 'Barlow', system-ui, sans-serif; }
+.fm1-alert.error .fm1-alert-card { --tone: var(--ref-red-light); }
+.fm1-alert-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fm1-alert-head strong { font: 700 17px/1.2 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; color: var(--tone); }
+.fm1-alert-card p { margin: 0; color: var(--ref-mist); }
+.fm1-alert-card button { min-height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--ref-slate); background: transparent; color: var(--ref-ivory);
+  font: 600 12px 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; }
+.fm1-alert-row { display: flex; gap: 8px; margin-top: 4px; }
+.fm1-alert-row > button { flex: 1; }
+.fm1-alert-card .fm1-alert-go { background: var(--ref-seafoam); border-color: var(--ref-seafoam); color: var(--ref-ink); }
+.fm1-alert-card .fm1-alert-close { width: 30px; padding: 0; font-size: 18px; color: var(--ref-mist); }
+.fm1-chip { flex: none; display: flex; align-items: center; gap: 6px; min-height: 26px; padding: 0 12px; border-radius: 13px; border: 1px solid var(--gate); background: var(--panel);
+  color: var(--gate); font: 600 12px 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
+.fm1-chip::before { content: '\26A0\FE0E'; }
+.fm1-chip.error { border-color: var(--danger); color: var(--danger); }
+.fm1-chip[hidden] { display: none; }

@@ -11,6 +11,7 @@ import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildBankTab } from './bank';
 import { isSaved, onSavedChange, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch } from './saved';
 import { showUndo } from './toast';
+import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesTab, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
@@ -140,7 +141,7 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
 /** upload the current patch; changes made meanwhile cause one more upload */
 async function sendPatch(): Promise<boolean> {
   if (!fitsDevice) {
-    devStatus('over the FM-1 budget: not sent (the FM-1 budget right of the arpeggiator says what is over)');
+    devStatus('over the FM-1 budget: not sent (the FM-1 budget in the status line says what is over)');
     return false;
   }
   if (uploading) {
@@ -275,6 +276,8 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
 emu.onReady = () => emuLoad();
 /** another patch opened (the emulator's focus starts at its first device) */
 let emuFresh = true;
+/** the name of the last patch the emulated FM-1 took (a refused one leaves it showing) */
+let emuLoaded = '';
 let emuTimer = 0;
 const emuHeld = new Set<number>();
 const emuSwallowed = new Set<number>();
@@ -406,7 +409,7 @@ arpBtn.title = 'Transport: Main\u2019s run output and its clock (Space)';
 arpBtn.setAttribute('aria-label', 'Transport play');
 arpBtn.setAttribute('aria-pressed', 'false');
 editor.dockPlay = arpBtn;
-editor.dockBudget = $('budget');
+initStatusline($('statusline'));
 editor.rebuild();
 showBudget();
 snapshotCandidates = () => editor.snapshots.B ? [{ name: 'Snapshot B', patch: { ...JSON.parse(editor.snapshots.B) as Patch, name: 'Snapshot B' } }] : [];
@@ -510,7 +513,7 @@ $<HTMLButtonElement>('delete-patch-btn').onclick = () => deleteSaved(editor.patc
 onSavedChange(() => syncDeleteBtn());
 nameInput.addEventListener('input', () => syncDeleteBtn());
 syncDeleteBtn();
-/** the FM-1 budget meter in the Main dock: memory (the fullest limit) and CPU as bars; open, a card above the deck with every limit and the costliest modules */
+/** the FM-1 budget meter at the right of the status line: memory (the fullest limit) and CPU as bars; open, a card above the deck with every limit and the costliest modules */
 /** a meter row: name, bar, percent; `near` / `over` colour it */
 function meterRow(row: Element, name: string, frac: number, text: string): void {
   row.classList.toggle('over', frac > 1);
@@ -581,10 +584,11 @@ function showBudget(): void {
     ? 'The CPU figure is an estimate: the engine counted on a model of the processor, scaled by one load measured on the FM-1. Treat anything above 80 % as tight.'
     : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and the Library keeps it under "Over budget".';
   list.append(note);
+  pinStatus(b.fits ? null : { tag: 'Too much for the FM-1', text: `${b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} of ${i.max}`).join(', ')}. It plays here; click the budget for what costs most.` });
   if (was && !b.fits && device.connected) devStatus('over the FM-1 budget: Live paused until the patch fits');
   requestAnimationFrame(placeBudget);
 }
-// the open budget is a card above the deck, centred on the meter (fixed: the dock scrolls sideways and would clip it); a
+// the open budget is a card above the status line, over the meter; a
 // click elsewhere or Escape closes it
 const budgetEl = $('budget') as HTMLDetailsElement;
 function placeBudget(): void {
@@ -1103,16 +1107,28 @@ arpBtn.onclick = togglePlaying;
 function emuLoad(): void {
   const ui = emu.ui;
   if (!ui) return;
-  let bin: Uint8Array;
+  // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
+  // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
+  const b = deviceBudget(editor.patch);
+  const over = b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  let err = 0;
   try {
-    bin = encodePatch(editor.patch);
-  } catch (e) {
-    emu.message(`This patch does not fit the FM-1: ${(e as Error).message}`);
-    return;
+    err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });
+  } catch {
+    err = -1;
   }
-  const err = ui.load(bin, editor.patch.name.toUpperCase(), { fresh: emuFresh });
   emuFresh = false;
-  emu.message(err ? `The FM-1 could not load this patch (error ${err}).` : null);
+  const more = (): void => { budgetEl.open = true; };
+  if (err) {
+    emu.notice({ level: 'error', title: 'The FM-1 can’t hold this patch',
+      body: `${over || `The firmware refused it (error ${err})`}. ${emuLoaded ? `The view shows ${emuLoaded}, the last patch it could load,` : 'The view has no patch'} until this one fits.`,
+      chip: emuLoaded ? `Showing ${emuLoaded} · this patch is too big` : 'This patch is too big for the FM-1', action: emuLoaded ? `Show ${emuLoaded}` : 'OK', more });
+  } else {
+    emuLoaded = editor.patch.name.toUpperCase();
+    emu.notice(b.fits ? null : { level: 'warn', title: 'Over the FM-1 budget',
+      body: `${over}. It plays here, but it would ${b.over.some((i) => i.key === 'cpu') ? 'drop out' : 'not load'} on the device and will not upload until it fits.`,
+      chip: `Over budget · ${over} · won’t upload`, action: 'Use the FM-1 view anyway', more });
+  }
   ui.transport(editor.playing);
   const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
   if (at) ui.focus(at[0], at[1]);
@@ -1183,10 +1199,10 @@ const showKeys = (on: boolean): void => {
   }
 };
 keysBtn.onclick = () => showKeys(deck.classList.contains('folded'));
-// the panels that dock above the deck (tutorial, diff) keep clear of it and the Main panel at whatever height they have
+// the panels that dock above the deck (tutorial, diff) keep clear of it, the Main panel and the status line at whatever height they have
 {
-  const dockEl = $('dock');
-  const fit = new ResizeObserver(() => document.documentElement.style.setProperty('--piano-h', `${deck.offsetHeight + dockEl.offsetHeight}px`));
+  const dockEl = $('dock'), statusEl = $('statusline');
+  const fit = new ResizeObserver(() => document.documentElement.style.setProperty('--piano-h', `${deck.offsetHeight + dockEl.offsetHeight + statusEl.offsetHeight}px`));
   fit.observe(deck);
   fit.observe(dockEl);
 }
