@@ -1109,6 +1109,7 @@ export class Editor {
         this.stepGrids.get(id)?.refresh();
       },
       begin: () => this.beginEdit(),
+      len: (n) => this.setParam(id, 'len', n),
       play: (note, vel) => this.ev.onThru?.(id, note, vel),
       arm: (on) => this.armTrack(on ? id : null),
       armed: () => this.armedTrack === id,
@@ -1122,6 +1123,18 @@ export class Editor {
     this.roll = { id, view };
     host.append(view.el);
     host.classList.add('roll-open');
+    // the canvas shrinks to the space above the roll, so every card can still be scrolled to (the #136 follow-up)
+    const fit = (): void => {
+      host.style.setProperty('--roll-h', `${view.el.offsetHeight}px`);
+      this.positionBindings();
+    };
+    this.rollFit = new ResizeObserver(fit);
+    this.rollFit.observe(view.el);
+    fit();
+    // the roll keeps its keys (Delete, the arrows ...) while the last press was in it, wherever the focus went
+    this.rollActive = true;
+    this.rollPress = (e: PointerEvent): void => { this.rollActive = view.el.contains(e.target as Node); };
+    window.addEventListener('pointerdown', this.rollPress, true);
     view.render();
     view.el.focus({ preventScroll: true });
     this.positionBindings();
@@ -1133,14 +1146,29 @@ export class Editor {
     if (!r) return;
     this.roll = null;
     r.view.el.remove();
+    this.rollFit?.disconnect();
+    this.rollFit = null;
+    if (this.rollPress) window.removeEventListener('pointerdown', this.rollPress, true);
+    this.rollPress = null;
+    this.rollActive = false;
     this.canvas.parentElement?.classList.remove('roll-open');
+    this.canvas.parentElement?.style.removeProperty('--roll-h');
     for (const g of this.stepGrids.values()) g.rolled(false);
     this.positionBindings();
   }
 
-  /** a key while the focus is in the roll: true when the roll took it */
+  private rollFit: ResizeObserver | null = null;
+  private rollPress: ((e: PointerEvent) => void) | null = null;
+  private rollActive = false;
+
+  /** a key while the focus is in the roll, or the last press was: true when the roll took it */
   rollKey(e: KeyboardEvent): boolean {
-    return !!this.roll && this.roll.view.el.contains(e.target as Node) && this.roll.view.key(e.key, e.shiftKey, e.metaKey || e.ctrlKey);
+    return !!this.roll && (this.rollActive || this.roll.view.el.contains(e.target as Node)) && this.roll.view.key(e.key, e.shiftKey, e.metaKey || e.ctrlKey, e.altKey);
+  }
+
+  /** a key Main plays went down / up (the keyboard, the on-screen keys, MIDI): the open roll lights it */
+  rollHeld(note: number, on: boolean): void {
+    this.roll?.view.heldKey(note, on);
   }
 
   /** what a track plays, by the names the canvas shows */
@@ -3893,6 +3921,8 @@ export class Editor {
     const snap = this.armRoute(view);
     if (snap) paths.push(snap);
     layer.replaceChildren(...paths);
+    // (the open roll covers them: the lines from the dock to the cards above it pass under it, the #136 follow-up)
+    layer.style.clipPath = roll ? `path(evenodd, "M0 0H${innerWidth}V${innerHeight}H0Z M${roll.left} ${roll.top}H${roll.right}V${roll.bottom}H${roll.left}Z")` : '';
   }
 
   /** the armed track's routing (#134): Main's keys into its keys in (on its card, else its grid, a collapsed assembly's card),

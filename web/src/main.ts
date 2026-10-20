@@ -191,6 +191,7 @@ const sink = {
     // records instead (live overdub)
     if (msg.t === 'on' && currentTab === 'patch' && !editor.playing) recordNote(msg.note, msg.vel);
     if (msg.t === 'off' && currentTab === 'patch') recordOff(msg.note);
+    if (msg.t === 'on' || msg.t === 'off') editor.rollHeld(msg.note, msg.t === 'on');   // (the roll's keys light, the #136 follow-up)
     if (emuKeys(msg)) return;
     host.send(msg);
     piano.track(msg);

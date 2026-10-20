@@ -1467,14 +1467,34 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .roll-head .roll-arm.on, .roll-head .roll-tool.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
 .roll-head .roll-rec.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .roll-len { color: var(--muted); }
-.roll-tools { display: flex; gap: 4px; margin-left: 6px; }
+.roll-help { width: 22px; height: 22px; flex: none; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--muted); cursor: help; }
+/* the canvas: the space above the open roll (the #136 follow-up), so every card can be scrolled to */
+#tab-patch.roll-open .canvas { height: calc(100% - var(--roll-h, 45%)); }
+/* the ruler (the #136 follow-up): bar numbers, beats, the track's length (drag) */
+.roll-ruler-row { flex: none; height: 20px; display: flex; border-bottom: 1px solid var(--line); }
+.roll-corner { width: 56px; flex: none; border-right: 1px solid var(--line); }
+.roll.drums .roll-corner { width: 120px; }
+.roll-ruler { flex: 1; position: relative; cursor: ew-resize; overflow: hidden; }
+.roll-ruler span { position: absolute; top: 0; bottom: 0; }
+.roll-bar-no, .roll-beat-no { padding: 3px 0 0 3px; border-left: 1px solid var(--roll-bar); font: var(--cap); font-size: 10px; color: var(--ink); pointer-events: none; }
+.roll-beat-no { border-left-color: var(--roll-beat); color: var(--muted); font-size: 9px; }
+.roll-len-fill { left: 0; background: color-mix(in srgb, var(--secondary) 14%, transparent); pointer-events: none; }
+.roll-len-mark { width: 3px; margin-left: -1px; background: var(--secondary); pointer-events: none; }
+.roll-marker { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--accent); pointer-events: none; opacity: .7; }
+.roll.drawing .roll-grid { cursor: cell; }
 .roll-info { margin-left: auto; color: var(--muted); text-transform: none; letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; }
 .roll-head .roll-close { width: 28px; padding: 0; font-size: 16px; }
 .roll-body { flex: 1; min-height: 0; display: flex; }
 .roll-keys { width: 56px; flex: none; position: relative; overflow: hidden; border-right: 1px solid var(--line); cursor: pointer; }
-.roll-key { position: absolute; left: 0; right: 0; height: 12px; box-sizing: border-box; border-bottom: 1px solid var(--key-edge);
+.roll-key { position: absolute; left: 0; right: 0; height: 12px; box-sizing: border-box; display: block; border-bottom: 1px solid var(--key-edge);
   background: var(--key-white); font: var(--cap); font-size: 9px; line-height: 11px; text-align: right; padding-right: 4px; color: var(--key-name); }
 .roll-key.black { background: var(--key-black); right: 18px; }
+/* a key Main holds, or one the roll's keyboard sounds (the #136 follow-up); the pointer's key shows its name */
+.roll-key.held { background: var(--key-held); color: var(--key-held-ink); }
+.roll-key.hover:not(.drum)::after { content: attr(data-name); position: absolute; right: 2px; top: 50%; transform: translateY(-50%); z-index: 3;
+  padding: 0 4px; border-radius: 3px; background: var(--ink); color: var(--panel); font: var(--cap); font-size: 10px; line-height: 13px; pointer-events: none; white-space: nowrap; }
+.roll-key.hover:not(.held) { filter: brightness(.93); }
+.roll.listed .roll-key:not(.drum) { right: 0; line-height: var(--rh, 12px); }
 /* a Drum map's rows (#137): the row's name and note instead of a key */
 .roll.drums .roll-keys { width: 120px; }
 .roll.drums .roll-vel-name { width: 120px; }
