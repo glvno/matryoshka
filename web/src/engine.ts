@@ -633,6 +633,12 @@ export class Engine {
     return out;
   }
 
+  /** a note into a track's keys in, armed or not (the roll's keys, to hear the instrument: #136); vel 0 lets it go */
+  thru(id: number, note: number, vel: number): void {
+    const s = this.stepsOf(id);
+    if (s) s.thru.push(vel > 0 ? (note & 0x7f) | 0x80 : note & 0x7f, vel > 0 ? Math.max(1, Math.min(127, Math.round(vel))) : 0);
+  }
+
   /** a track's keys played through end (at its next block) */
   private thruOff(s: StepsState | null): void {
     if (s) for (const x of s.snd) if (x.thru !== undefined && !s.thru.some((v, i) => i % 2 === 0 && v === x.thru)) s.thru.push(x.thru, 0);

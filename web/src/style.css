@@ -1248,7 +1248,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   background: transparent; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
 .steps-screen .steps-head .steps-rec.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 /* the armed track (#134): ARM lit, the grid and its card edged in the armed colour (the dock's routing to it too) */
-.steps-arm { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+.steps-arm, .steps-roll { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
   background: transparent; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
 .steps-screen .steps-head .steps-arm.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
 .steps-screen.armed { box-shadow: inset 0 0 0 2px var(--secondary); }
@@ -1449,3 +1449,47 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-chip::before { content: '\26A0\FE0E'; }
 .fm1-chip.error { border-color: var(--danger); color: var(--danger); }
 .fm1-chip[hidden] { display: none; }
+
+/* The piano roll (#136, roll.ts; design A): a drawer over the canvas above the dock, full width, edged in the armed colour
+   while its track is armed. Header, then the keyboard and the grid of 64 steps, then the velocity lane. */
+.roll { --roll-step: color-mix(in srgb, var(--ink) 7%, transparent); --roll-beat: color-mix(in srgb, var(--ink) 14%, transparent);
+  --roll-bar: color-mix(in srgb, var(--ink) 30%, transparent); --roll-black: color-mix(in srgb, var(--ink) 6%, transparent);
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; height: 45%; min-height: 200px; display: flex; flex-direction: column;
+  background: var(--panel); border-top: 2px solid var(--line); box-shadow: 0 -10px 24px var(--shadow); outline: none; user-select: none; }
+.roll.armed { border-top-color: var(--secondary); }
+.roll-head { flex: none; height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--line);
+  font: var(--cap); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
+.roll-grip { width: 40px; height: 4px; flex: none; border-radius: 2px; background: var(--line); cursor: ns-resize; margin-right: 4px; }
+.roll-name { font-size: 15px; }
+.roll-plays { color: var(--muted); text-transform: none; letter-spacing: .02em; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.roll-head button { height: 26px; padding: 0 10px; font: inherit; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.roll-head .roll-arm.on, .roll-head .roll-tool.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
+.roll-head .roll-rec.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.roll-len { color: var(--muted); }
+.roll-tools { display: flex; gap: 4px; margin-left: 6px; }
+.roll-info { margin-left: auto; color: var(--muted); text-transform: none; letter-spacing: .02em; overflow: hidden; text-overflow: ellipsis; }
+.roll-head .roll-close { width: 28px; padding: 0; font-size: 16px; }
+.roll-body { flex: 1; min-height: 0; display: flex; }
+.roll-keys { width: 56px; flex: none; position: relative; overflow: hidden; border-right: 1px solid var(--line); cursor: pointer; }
+.roll-key { position: absolute; left: 0; right: 0; height: 12px; box-sizing: border-box; border-bottom: 1px solid var(--key-edge);
+  background: var(--key-white); font: var(--cap); font-size: 9px; line-height: 11px; text-align: right; padding-right: 4px; color: var(--key-name); }
+.roll-key.black { background: var(--key-black); right: 18px; }
+.roll-grid { flex: 1; position: relative; overflow: hidden; cursor: cell; }
+.roll-row { position: absolute; left: 0; right: 0; height: 12px; pointer-events: none; }
+.roll-row.black { background: var(--roll-black); }
+.roll-row.octave { border-bottom: 1px solid var(--roll-beat); box-sizing: border-box; }
+.roll-notes { position: absolute; inset: 0; pointer-events: none; }
+.roll-note { position: absolute; height: 10px; box-sizing: border-box; border-radius: 3px;
+  background: color-mix(in srgb, var(--secondary) calc(45% + var(--vel, 1) * 55%), var(--panel)); border: 1px solid var(--secondary); }
+.roll-note.sel { background: var(--accent); border-color: var(--ink); }
+.roll-note.past { opacity: .4; }
+.roll-past { position: absolute; top: 0; bottom: 0; right: 0; background: color-mix(in srgb, var(--panel) 55%, transparent); pointer-events: none; }
+.roll-playhead { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--ink) 10%, transparent); border-left: 2px solid var(--ink); box-sizing: border-box; pointer-events: none; }
+.roll-band { position: absolute; border: 1px dashed var(--ink); background: color-mix(in srgb, var(--secondary) 12%, transparent); pointer-events: none; }
+.roll-vel { flex: none; height: 54px; display: flex; border-top: 1px solid var(--line); }
+.roll-vel-name { width: 56px; flex: none; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--line);
+  font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.roll-vel-lane { flex: 1; position: relative; margin: 4px 0; cursor: ns-resize; }
+.roll-vbar { position: absolute; bottom: 0; width: 4px; border-radius: 2px; background: var(--secondary); }
+.roll-vbar.sel { background: var(--accent); }
+.steps-screen .steps-head .steps-roll.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }

@@ -352,6 +352,10 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     host.send({ t: 'rec', id, on });
     showArmed();
   },
+  onThru(id, note, vel) {
+    host.mute(false);
+    host.send({ t: 'thru', id, note, vel });
+  },
   onMute(id, on) {
     host.send({ t: 'mute', id, on });
     if (live() && !uploading) device.mute(editor.patch, id, on);
@@ -848,7 +852,7 @@ window.addEventListener('keydown', (e) => {
   if (control && [' ', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
-  let done = !mod && !e.altKey && recordKey(k); // a Steps card's step entry: rest, tie, cursor, stop (#127)
+  let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's step entry: rest, tie, cursor, stop (#127)
   if (done) {
     e.preventDefault();
     e.stopImmediatePropagation();

@@ -802,3 +802,10 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
 - Live recording is done in the engine, not from the editor's playhead (the playhead reaches the page ~60 times a second; the engine knows the sample). Block-quantized: a key lands at the start of the next 128-sample block, about 2.7 ms.
 - A pass = `loop` (times round the pattern) when the note was played (a note snapped forward over the end counts for the next pass). Undo / redo close the open pass first.
 - `statusline.ts`'s 'arm' message says Armed / Rec, and for Rec step entry or live (it follows the transport: `setPlaying` calls `showArmed`).
+
+## 2026-10-20 (later): the piano roll drawer, #136 (tsc, vitest 720; browser check on [::1]:5173 with the 808 Kit: open / close, draw with a drag for length, move a note, erase, undo of each, Select with Cmd+A, Shift+Up an octave, Right a step, Esc twice closes. No unit tests: vitest runs without a DOM)
+
+- The roll is plain DOM (a div per note and per key row; at most 128 notes a track), redrawn whole on every change.
+- Its header's length and rate are read-only (the card's sliders set them).
+- The knobs' K1..K4 binding lines skip rows under the roll; ones to rows above it still cross it (the bind layer is over everything).
+- Not done from the design: the roll's own step-entry cursor (step entry stays on the card), scrolling sideways (64 steps always fit), a chance editor (the card's steps lane has it).

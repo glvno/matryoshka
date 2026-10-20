@@ -34,6 +34,8 @@ export interface StepGridOps {
   /** REC on / off (#135: it arms the track too), and whether it is on */
   rec(on: boolean): void;
   recording(): boolean;
+  /** open / close the piano roll on this track (#136) */
+  roll(): void;
 }
 
 export interface StepGrid {
@@ -46,6 +48,8 @@ export interface StepGrid {
   armed(on: boolean): void;
   /** REC went on or off (#135): step entry starts on the first step, or stops */
   rec(on: boolean): void;
+  /** the roll is open on this track, or not */
+  rolled(on: boolean): void;
 }
 
 type Lane = 'steps' | 'note' | 'vel';
@@ -141,7 +145,13 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     arm.setAttribute('aria-pressed', String(on));
     el.classList.toggle('armed', on);
   };
-  head.append(name, lanes, arm, rec, mute);
+  const roll = document.createElement('button');
+  roll.type = 'button';
+  roll.className = 'steps-roll';
+  roll.textContent = 'roll';
+  roll.title = 'ROLL: the piano roll for this track, over the canvas (all 64 steps, chords, lengths, velocities)';
+  roll.onclick = () => ops.roll();
+  head.append(name, lanes, roll, arm, rec, mute);
   const rows = document.createElement('div');
   rows.className = 'steps-rows';
   /** what a note / velocity drag is setting, under the grid */
@@ -426,6 +436,10 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       if (document.activeElement !== name) name.value = m.name ?? '';
     },
     armed: showArm,
+    rolled(on) {
+      roll.classList.toggle('on', on);
+      roll.setAttribute('aria-pressed', String(on));
+    },
     rec(on) {
       if (on && entry?.id !== m.id) startRec(0);
       else if (!on && entry?.id === m.id) stopEntry();

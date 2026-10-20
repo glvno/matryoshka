@@ -34,7 +34,7 @@ The owner grilled and approved spec **#132**: Steps becomes the one sequencer fo
    cables: not saved, no undo), one armed track at a time.
 3. ~~**#135** REC~~ (done, committed, not pushed; NOTES "Steps REC"): stopped = chord step entry (Backspace rests, Enter ties), running = live overdub quantized to steps,
    one undo step per pass, Shift+R.
-4. **#136** The piano-roll drawer (design A).
+4. ~~**#136** The piano-roll drawer (design A)~~ (done, committed, not pushed; NOTES "the piano roll drawer").
 5. **#137** Drum map module + a one-track drum kit (General MIDI notes; no compatibility with the per-drum-track kit).
 6. **#138** Rebuild the Demo and the factory patches on the new Steps, then add the xylophone (bar 13) and operator
    (bar 29) melodies (recipe in NOTES 2026-10-20).

@@ -53,8 +53,10 @@ import {
   rowDef,
   PAGE_LIST_MAX,
   panelLabel,
+  trackLabel,
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
+import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
@@ -153,6 +155,8 @@ export interface EditorEvents {
   onArm?(id: number | null, plays: string[]): void;
   /** REC on the armed track went on or off (#135) */
   onRec?(id: number, on: boolean): void;
+  /** a note into a Steps track's instrument, to hear it (the roll's keys and notes, #136; vel 0..127, 0: let go) */
+  onThru?(id: number, note: number, vel: number): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
@@ -346,8 +350,9 @@ export class Editor {
   }
 
   setPatch(p: Patch): void {
-    stopEntry(); // (step entry and the armed track belong to the patch they started in)
+    stopEntry(); // (step entry, the armed track and the roll belong to the patch they started in)
     this.armTrack(null);
+    this.closeRoll();
     this.patch = p;
     if (this.dock) ensureMain(this.patch, DEFS);
     this.report(fixAssemblies(this.patch, DEFS));
@@ -619,6 +624,10 @@ export class Editor {
     if (this.armedTrack !== null) {
       if (this.patch.modules.some((m) => m.id === this.armedTrack && m.type === 'steps')) this.ev.onArm?.(this.armedTrack, this.trackPlays(this.armedTrack));
       else this.armTrack(null); // (the track went)
+    }
+    if (this.roll) {
+      if (this.patch.modules.some((m) => m.id === this.roll!.id && m.type === 'steps')) queueMicrotask(() => this.roll?.view.render());
+      else this.closeRoll();
     }
     this.screens = [];
     this.envScreens = [];
@@ -938,6 +947,8 @@ export class Editor {
   /** where the Steps modules are (Engine.stepsView through the worklet): their grids' playheads and mute switches */
   showSteps(view: { id: number; pos: number; mute: boolean }[]): void {
     for (const v of view) this.stepGrids.get(v.id)?.show(v.pos, v.mute);
+    const r = this.roll && view.find((v) => v.id === this.roll!.id);
+    if (r) this.roll!.view.show(r.pos);
   }
 
   /** a track edited on the FM-1's SEQ page (its notes as they are now): into the patch and the grid, an undo step like an
@@ -956,6 +967,7 @@ export class Editor {
     if (n) m.notes = n;
     else delete m.notes;
     this.ev.onTrack?.(m.id, m.notes);
+    if (this.roll?.id === m.id) this.roll.view.render();
   }
 
   /** a Steps module's grid follows its length (the len slider) */
@@ -988,8 +1000,10 @@ export class Editor {
         this.setRec(on && this.armedTrack === m.id);
       },
       recording: () => this.recOn && this.armedTrack === m.id,
+      roll: () => (this.roll?.id === m.id ? this.closeRoll() : this.openRoll(m.id)),
     });
     this.stepGrids.set(m.id, grid);
+    if (this.roll?.id === m.id) grid.rolled(true);
     return grid;
   }
 
@@ -1006,6 +1020,7 @@ export class Editor {
     for (const [k, card] of this.cards) card.classList.toggle('armed', k === id);
     this.ev.onArm?.(id, id === null ? [] : this.trackPlays(id));
     this.positionBindings();
+    this.roll?.view.render();
   }
 
   /** REC on the armed track (#135; editor state like the arming): stopped, step entry on its card; running, the engine
@@ -1021,6 +1036,7 @@ export class Editor {
     if (id === null) return;
     this.stepGrids.get(id)?.rec(on);
     this.ev.onRec?.(id, on);
+    this.roll?.view.render();
   }
 
   /** Shift+R: REC on the armed track on / off; false when no track is armed */
@@ -1053,6 +1069,60 @@ export class Editor {
       this.setNotes(m, overdub(m.notes, [note]));
       this.stepGrids.get(id)?.refresh();
     }
+  }
+
+  /** the open piano roll (#136): one track's, over the canvas above the dock */
+  private roll: { id: number; view: PianoRoll } | null = null;
+
+  openRoll(id: number): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    const host = this.canvas.parentElement;
+    if (!m || !host) return;
+    this.closeRoll();
+    const track = (): ModuleInst | null => this.patch.modules.find((x) => x.id === id && x.type === 'steps') ?? null;
+    const view = new PianoRoll({
+      track,
+      label: () => trackLabel(this.patch, id),
+      plays: () => this.trackPlays(id),
+      notes: (n) => {
+        const t = track();
+        if (!t) return;
+        this.setNotes(t, n);
+        this.stepGrids.get(id)?.refresh();
+      },
+      begin: () => this.beginEdit(),
+      play: (note, vel) => this.ev.onThru?.(id, note, vel),
+      arm: (on) => this.armTrack(on ? id : null),
+      armed: () => this.armedTrack === id,
+      rec: (on) => {
+        if (on) this.armTrack(id);
+        this.setRec(on && this.armedTrack === id);
+      },
+      recording: () => this.recOn && this.armedTrack === id,
+      close: () => this.closeRoll(),
+    });
+    this.roll = { id, view };
+    host.append(view.el);
+    host.classList.add('roll-open');
+    view.render();
+    view.el.focus({ preventScroll: true });
+    this.positionBindings();
+    for (const [k, g] of this.stepGrids) g.rolled(k === id);
+  }
+
+  closeRoll(): void {
+    const r = this.roll;
+    if (!r) return;
+    this.roll = null;
+    r.view.el.remove();
+    this.canvas.parentElement?.classList.remove('roll-open');
+    for (const g of this.stepGrids.values()) g.rolled(false);
+    this.positionBindings();
+  }
+
+  /** a key while the focus is in the roll: true when the roll took it */
+  rollKey(e: KeyboardEvent): boolean {
+    return !!this.roll && this.roll.view.el.contains(e.target as Node) && this.roll.view.key(e.key, e.shiftKey, e.metaKey || e.ctrlKey);
   }
 
   /** what a track plays, by the names the canvas shows */
@@ -3767,6 +3837,8 @@ export class Editor {
     const view = this.canvas.getBoundingClientRect();
     const paths: SVGPathElement[] = [];
     const pg = this.focusedPage();
+    const roll = this.roll?.view.el.getBoundingClientRect();
+    const under = (p: Pt): boolean => !!roll && p.x >= roll.left && p.x <= roll.right && p.y >= roll.top && p.y <= roll.bottom;
     if (pg && this.canvas.offsetParent !== null) pg.rows.forEach((r, i) => {
       const dial = this.dials[i];
       if (!dial?.isConnected) return;
@@ -3777,6 +3849,7 @@ export class Editor {
       const e = end.getBoundingClientRect();
       const b = { x: e.left + e.width / 2, y: e.top + e.height / 2 };
       if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) return;
+      if (under(b)) return; // (a row under the roll)
       const d = (this.knobJacks[i]?.isConnected ? this.knobJacks[i] : dial).getBoundingClientRect();
       const a = { x: d.left + d.width / 2, y: d.top };
       const lift = Math.max(40, (a.y - b.y) * 0.45);
