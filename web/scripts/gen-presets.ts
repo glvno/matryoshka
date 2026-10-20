@@ -7,10 +7,10 @@
 // The 909 Kit is kept as its file. Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { addModule, connect, emptyPatch, stepByte, validatePatch, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from '../src/patch';
+import { patternNotes } from '../src/track';
 import { FACTORY } from '../src/assemblies';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
-import { connectParameter } from '../src/parameter-routing';
 import { deviceBudget } from '../src/patchbin';
 import { setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
@@ -225,14 +225,12 @@ presets.push(() => {
   return x.p;
 });
 
-/** a Steps pattern of 16 steps from a string: x = on, X = accented, . = off */
-const pattern = (s: string): number[] => Array.from({ length: 64 }, (_, k) => stepByte({ on: /[xX]/.test(s[k] ?? ''), accent: s[k] === 'X', chance: 100 }));
 
 // 808 Kit: a drum machine on the transport (PLAY starts it, the Main module's tempo sets it): one Steps track per drum,
 // named for the SEQ page. The boom kick, a tonal snare, the clap, a closed and an open hat and the two-square cowbell, from
-// the factory drum assemblies; two mixers (the second into the first's in4). A track's acc (up from an accented step
-// until its next hit) adds to a part of the drum through a pin (in that row's units): the kick's drop, the snare's noise,
-// the clap's tail level, the closed hat's level. K1 swing (every track), K2 kick decay, K3 clap tail, K4 closed hat decay.
+// the factory drum assemblies; two mixers (the second into the first's in4). Accented steps are notes at full velocity
+// (#133: the acc output that pushed a part of the drum is gone; #138 rebuilds the kits). K1 swing (every track), K2 kick
+// decay, K3 clap tail, K4 closed hat decay.
 presets.push(() => {
   const p = emptyPatch('808 Kit');
   const main = addModule(p, DEFS.fm1, 20, 20);
@@ -241,18 +239,18 @@ presets.push(() => {
   const mixB = addModule(p, DEFS.mixer, 2940, 600);
   Object.assign(mixB.params, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 0 });
   const out = addModule(p, DEFS.output, 3260, 20);
-  //            assembly     name       pattern             settings                                        accent row, amount  mixer
-  const drums: [string, string, string, Record<string, number>, [string, number] | null, number, string][] = [
-    ['boom kick', 'KICK', 'X...x...x.x.....', {}, ['drop', 0.35], mixA.id, 'in1'],
-    ['snare', 'SNARE', '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, ['noise', 0.3], mixA.id, 'in2'],
-    ['clap', 'CLAP', '............X...', {}, ['tail level', 0.4], mixA.id, 'in3'],
-    ['hihat', 'CL HAT', 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, ['level', 0.5], mixB.id, 'in1'],
-    ['hihat', 'OP HAT', '..............x.', { decay: 0.3 }, null, mixB.id, 'in2'],
-    ['cowbell', 'COWBELL', '..........x.....', {}, null, mixB.id, 'in3'],
+  //            assembly     name       pattern             settings                                        mixer
+  const drums: [string, string, string, Record<string, number>, number, string][] = [
+    ['boom kick', 'KICK', 'X...x...x.x.....', {}, mixA.id, 'in1'],
+    ['snare', 'SNARE', '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, mixA.id, 'in2'],
+    ['clap', 'CLAP', '............X...', {}, mixA.id, 'in3'],
+    ['hihat', 'CL HAT', 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, mixB.id, 'in1'],
+    ['hihat', 'OP HAT', '..............x.', { decay: 0.3 }, mixB.id, 'in2'],
+    ['cowbell', 'COWBELL', '..........x.....', {}, mixB.id, 'in3'],
   ];
   const drumsOf: AssemblyInst[] = [];
   const tracks: ModuleInst[] = [];
-  drums.forEach(([name, label, steps, params, accent, to, port], i) => {
+  drums.forEach(([name, label, steps, params, to, port], i) => {
     const def = FACTORY.find((d) => d.name === name);
     if (!def) throw new Error(`no factory assembly ${name}`);
     const a = insertAssembly(p, DEFS, def, 380 + 420 * i, 600);
@@ -262,17 +260,8 @@ presets.push(() => {
     }
     const st = addModule(p, DEFS.steps, 380 + 420 * i, 20);
     st.name = label;
-    st.steps = pattern(steps);
+    st.notes = patternNotes(steps);
     plugIn(p, st.id, 'trig', a, 'gate');
-    if (accent) {
-      const r = row(a, accent[0]);
-      connectParameter(p, DEFS, { module: st.id, port: 'acc' }, r.module, r.param);
-      const m = mod(p, r.module);
-      const pd = DEFS[m.type].params.find((q) => q.name === r.param)!;
-      if (pd.log) throw new Error(`808 Kit: the accent row ${accent[0]} is logarithmic`);
-      const pin = (['p1', 'p2'] as const).findIndex((q) => p.cables.some((c) => c.from.module === st.id && c.from.port === 'acc' && c.to.module === m.id && c.to.port === q));
-      m.att![pin] = accent[1] / (pd.max - pd.min);
-    }
     plugOut(p, a, 'out', to, port);
     drumsOf.push(a);
     tracks.push(st);

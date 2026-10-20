@@ -3,6 +3,7 @@
 
 import { ARP_MODES, ARP_RATE_TICKS, ARP_RATES } from './arpeggiator';
 import { STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
+import type { StepNote } from './track';
 import WT from './wavetables.json';
 
 export interface Voice {
@@ -2233,17 +2234,21 @@ const arp: ModuleImpl<null> = {
   },
 };
 
-/** the Steps module's state: its pattern (ModuleInst.steps, loaded by the engine) and where it plays */
+/** a note a Steps track is sounding: the key it sent (its note + the transpose), steps still to go after the one it is
+ * on, samples until it ends (TRACK_POLY at most; engine.c trk_snd) */
+export interface StepsSound { key: number; left: number; cnt: number }
+/** how many notes a Steps track sounds at once (a further note ends the oldest) */
+export const TRACK_POLY = 8;
+
+/** the Steps module's state: its notes (ModuleInst.notes, loaded by the engine) and where it plays */
 export interface StepsState {
-  pat: Uint8Array;
-  /** the step values (ModuleInst.notes / vels, loaded by the engine) and what the pitch / vel outputs hold: the last step
-   * that played (before the first: STEP_NOTE / STEP_VEL), pitch in octaves from C4 */
-  notes: Uint8Array;
-  vels: Uint8Array;
+  notes: StepNote[];
+  /** what the pitch / vel outputs hold: the last note that started (before the first: STEP_NOTE / STEP_VEL), pitch in
+   * octaves from C4 */
   pitch: number;
   vel: number;
   seed: number;
-  /** muted (the device's SEQ page, the editor's card; never saved): steps play silently */
+  /** muted (the device's SEQ page, the editor's card; never saved): no new notes */
   mute: boolean;
   /** the transport as the last block saw it, the clk / reset inputs' last samples */
   run: boolean;
@@ -2256,42 +2261,47 @@ export interface StepsState {
   /** a swung step waiting: samples to go (0: none) and which step */
   pend: number;
   pstep: number;
-  /** samples the trig output stays up, the acc output (up from an accented step until the next step that plays), one
-   * low sample before a trig that follows a trig */
-  trig: number;
-  acc: boolean;
+  /** the notes sounding; one low trig sample before a note that starts while one sounds */
+  snd: StepsSound[];
   gap: boolean;
   /** clk mode: samples since the last edge and between the last two (-1 / 0 before) */
   since: number;
   period: number;
+  /** keys out: the notes started (key | 0x80, velocity 1..127) and ended (key, 0) this block, in order; the engine hands
+   * them to the poly groups the track plays at the start of the next block */
+  ev: number[];
 }
 
-/** a step's chance as the hash decides it: does step k play on time `loop` round the pattern (firmware: steps_plays) */
-export function stepPlays(seed: number, loop: number, k: number, b: number): boolean {
-  if (!(b & 1)) return false;
-  const code = Math.min(19, (b >> 2) & 31);
-  return !code || hash32((seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(k + 1, 0x85ebca6b)) >>> 0) % 100 < 100 - 5 * code;
+/** does note j of step k (in stored order) play on time `loop` round the pattern (firmware: steps_plays); note 0 hashes as
+ * the step did before #133, so a migrated pattern plays the same */
+export function notePlays(seed: number, loop: number, k: number, j: number, chance = 100): boolean {
+  const code = Math.min(19, Math.max(0, Math.round((100 - chance) / 5)));
+  return !code || hash32((seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(k + 1, 0x85ebca6b) ^ Math.imul(j, 0xc2b2ae35)) >>> 0) % 100 < 100 - 5 * code;
 }
+
+/** a MIDI note as the pitch output gives it: octaves from C4, Q16 rounded half away from zero (as engine.c) */
+const stepPitch = (note: number): number => (Math.sign(note - STEP_NOTE) * Math.round((Math.abs(note - STEP_NOTE) * 65536) / 12)) / 65536;
 
 /**
- * Steps: a drum track, XOX style (#83). A pattern of up to STEPS_MAX steps, each on / off, accented, and with a chance
- * (ModuleInst.steps); `len` plays the first steps. With nothing in clk it follows the engine's clock while the transport
- * runs: the first step when PLAY starts, then one step per `rate` (24 ppqn ticks, ARP_RATE_TICKS), each on the sample its
- * tick falls on; a rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 75 %
- * the most) delays every second step by (swing - 50) / 50 of a step. A step that plays raises trig for `gate` of a step;
- * acc is a level, 1 from an accented step until the next step that plays (so it can set a drum's level through a pin
- * for the whole hit). A tied step (#128) holds the note before it: trig stays up from that step through the tie (no new
- * edge) and falls `gate` into the last tied step. Each step also has a note and a velocity (#93): pitch (octaves from C4, plus the transpose input)
- * and vel (velocity / 127) hold the values of the last step that played, so a track can play a melody. The name and the
- * pattern travel in its binary record (`data`: the name, then the pattern), the values in the patch's step values section
- * (patchbin.ts flag bit 4); it runs once (SHARED_TYPES).
+ * Steps: a track of notes (#83, #133). Each note (ModuleInst.notes, track.ts) starts on a step, lasts a number of steps
+ * and has a velocity and a chance; a step can hold several (a chord). `len` plays the first steps; a note is cut at the
+ * end of the pattern. With nothing in clk it follows the engine's clock while the transport runs: the first step when
+ * PLAY starts, then one step per `rate` (24 ppqn ticks, ARP_RATE_TICKS), each on the sample its tick falls on; a rising
+ * edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 75 % the most) delays every
+ * second step by (swing - 50) / 50 of a step. A note sounds for `gate` of its last step (a longer note holds through the
+ * steps before it: two steps at most from the last, so a stopped clock lets it end).
+ * keys out: every note on / off, transposed, like Main's keys (the instrument's allocator decides the voices; the engine
+ * delivers them at the start of the next block). The mono outputs: trig is up while any note sounds (one low sample when
+ * a note starts while one sounds), pitch (octaves from C4, plus transpose) and vel (velocity / 127) hold the last note
+ * that started. The name travels in its binary record (`data`), the notes in the notes section (patchbin.ts flag bit 4);
+ * it runs once (SHARED_TYPES).
  */
 const steps: ModuleImpl<StepsState> = {
   def: {
     type: 'steps',
     label: 'Steps',
     inputs: [gate('clk'), gate('reset'), control('transpose')],
-    outputs: [gate('trig'), gate('acc'), control('pitch'), control('vel')],
+    outputs: [gate('trig'), control('pitch'), control('vel'), keys('keys')],
     views: [param('grid', 0, 0, 0, { screen: true })],
     params: [
       param('len', 1, STEPS_MAX, 16, { step: 1 }),
@@ -2299,9 +2309,9 @@ const steps: ModuleImpl<StepsState> = {
       param('swing', 50, 75, 50, { step: 1, unit: '%' }),
       param('gate', 0.01, 1, 0.25, { step: 0.01 }),
     ],
-    data: TRACK_NAME_MAX + STEPS_MAX,
+    data: TRACK_NAME_MAX,
   },
-  init: () => ({ pat: new Uint8Array(STEPS_MAX), notes: new Uint8Array(STEPS_MAX).fill(STEP_NOTE), vels: new Uint8Array(STEPS_MAX).fill(STEP_VEL), pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, trig: 0, acc: false, gap: false, since: -1, period: 0 }),
+  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -2314,20 +2324,36 @@ const steps: ModuleImpl<StepsState> = {
     const v = c.voice;
     const ext = !!c.connected.clk;
     const { clk, reset, transpose } = c.inp;
-    const fire = (k: number): void => {
+    const end = (j: number): void => {
+      s.ev.push(s.snd[j].key, 0);
+      s.snd.splice(j, 1);
+    };
+    const fire = (k: number, i: number): void => {
       const sl = ext && s.period > 0 ? s.period : (ext ? 6 : div) * v.tickLen;
-      // the next step ties (#128): the gate stays up into it (two steps at most, so a stopped clock lets it fall)
-      const g = s.pat[k + 1 >= len ? 0 : k + 1] & 0x80 ? 2 * sl : Math.max(1, Math.floor((gate * sl) / 65536));
-      if (s.pat[k] & 0x80) {   // a tie: the note sounding goes on, its pitch and velocity; nothing sounding, nothing to tie
-        if (s.trig > 0 && !s.mute) s.trig = g;
-        return;
+      // a note's samples from here: through to the next step while more follow (two steps at most), else gate of a step
+      const hold = (left: number): number => (left > 0 ? 2 * sl : Math.max(1, Math.floor((gate * sl) / 65536)));
+      for (const x of s.snd)
+        if (x.left > 0 && x.cnt > 0 && !s.mute) x.cnt = hold(--x.left);
+      if (s.mute) return;
+      const was = s.snd.some((x) => x.cnt > 0);
+      const semis = Math.floor((q16(transpose[i]) * 12 + 32768) / 65536);
+      let j = 0, any = false;
+      for (const n of s.notes) {
+        if (n.at !== k) continue;
+        if (notePlays(s.seed, s.loop, k, j++, n.chance)) {
+          const key = Math.max(0, Math.min(127, n.note + semis));
+          const same = s.snd.findIndex((x) => x.key === key);
+          if (same >= 0) end(same);
+          if (s.snd.length >= TRACK_POLY) end(0);
+          const left = Math.min(n.len, len - k) - 1;
+          s.snd.push({ key, left, cnt: hold(left) });
+          s.ev.push(key | 0x80, n.vel);
+          s.pitch = stepPitch(n.note);
+          s.vel = n.vel / 127;
+          any = true;
+        }
       }
-      if (!stepPlays(s.seed, s.loop, k, s.pat[k]) || s.mute) return;
-      s.gap = s.trig > 0;
-      s.trig = g;
-      s.acc = !!(s.pat[k] & 2);
-      s.pitch = Math.sign(s.notes[k] - STEP_NOTE) * Math.round((Math.abs(s.notes[k] - STEP_NOTE) * 65536) / 12) / 65536; // (Q16 rounded half away from 0, as engine.c)
-      s.vel = s.vels[k] / 127;
+      if (any) s.gap = was;
     };
     for (let i = 0; i < c.n; i++) {
       let adv = 0;
@@ -2354,7 +2380,7 @@ const steps: ModuleImpl<StepsState> = {
               adv++;
             }
       }
-      if (s.pend > 0 && --s.pend === 0) fire(s.pstep);
+      if (s.pend > 0 && --s.pend === 0) fire(s.pstep, i);
       for (; adv > 0; adv--) {
         s.pos = s.pos + 1 >= len ? 0 : s.pos + 1;
         if (s.pos === 0) s.loop = (s.loop + 1) >>> 0;
@@ -2363,15 +2389,17 @@ const steps: ModuleImpl<StepsState> = {
         if (d > 0) {
           s.pend = d;
           s.pstep = s.pos;
-        } else fire(s.pos);
+        } else fire(s.pos, i);
       }
-      const up = s.trig > 0 && !s.gap;
-      c.out.trig[i] = up ? 1 : 0;
-      c.out.acc[i] = s.acc ? 1 : 0;
+      const up = !s.gap && s.snd.some((x) => x.cnt > 0) ? 1 : 0;
+      c.out.trig[i] = up;
+      c.out.keys[i] = up;
       c.out.pitch[i] = s.pitch + transpose[i];
       c.out.vel[i] = s.vel;
       if (s.gap) s.gap = false;
-      else if (s.trig > 0) s.trig--;
+      else
+        for (let j = s.snd.length - 1; j >= 0; j--)
+          if (s.snd[j].cnt > 0 && --s.snd[j].cnt === 0) end(j);
     }
     s.run = v.run;
   },

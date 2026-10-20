@@ -733,9 +733,9 @@ enum {
 #define STEPS_I_P1 3
 #define STEPS_I_P2 4
 #define STEPS_O_TRIG 0
-#define STEPS_O_ACC 1
-#define STEPS_O_PITCH 2
-#define STEPS_O_VEL 3
+#define STEPS_O_PITCH 1
+#define STEPS_O_VEL 2
+#define STEPS_O_KEYS 3
 #define STEPS_P_LEN 0
 #define STEPS_P_RATE 1
 #define STEPS_P_SWING 2
@@ -744,7 +744,7 @@ enum {
 #define STEPS_NOUT 4
 #define STEPS_NPAR 4
 #define STEPS_CVBASE 3
-#define STEPS_NDATA 72
+#define STEPS_NDATA 8
 
 /* macro: Macro */
 #define MACRO_I_P1 0
@@ -763,10 +763,13 @@ static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 
 static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {6, 4, 3, 8, 2, 4, 1, 2, 1, 2, 1};
 static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1"};
 
-#define TRACK_STEPS 64        /* a Steps module's pattern (patch.ts stepByte) and name, after its pins in the record */
+#define TRACK_STEPS 64        /* a Steps track's most steps (track.ts); its name follows its pins in the record */
 #define TRACK_NAME_MAX 8
-#define STEP_NOTE 60           /* a step's note and velocity without step values (patch.ts; the step values section, flag bit 4) */
+#define TRACK_NOTES_MAX 128   /* notes per track (the notes section, flag bit 4; track.ts noteWord) */
+#define TRACK_POLY 8          /* notes a track sounds at once (modules.ts) */
+#define STEP_NOTE 60           /* a new step's note and velocity (track.ts), an accent's velocity */
 #define STEP_VEL 100
+#define ACCENT_VEL 127
 
 #define POLY_MAX_GROUPS 4
 #define POLY_MAX_PARTS 8

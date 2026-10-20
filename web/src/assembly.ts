@@ -941,8 +941,9 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     if (src.map) m.map = clone(src.map);
     if (src.inputMap) m.inputMap = structuredClone(src.inputMap);
     if (src.bypass) m.bypass = true; // toDef writes the members' own switches
-    if (src.type === 'steps') {   // a track's name, pattern and step values
-      Object.assign(m, clone({ name: src.name, steps: src.steps, notes: src.notes, vels: src.vels }));
+    if (src.type === 'steps') {   // a track's name and notes (a definition from before #133: its pattern and step values, migrated)
+      const old = src as typeof src & { steps?: unknown; vels?: unknown };
+      Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels }));
       fixTrack(m);
     }
     fixInputRoutes(m, defs[src.type]);
@@ -1080,6 +1081,12 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
     stripKnobs(m);
   }
   const typeOf = (id: number): string | undefined => d.modules.find((m) => m.id === id)?.type;
+  {   // a Steps module's acc output is gone (#133: an accent is full velocity): its cables and the cards' acc jacks go
+    const acc = (r: unknown): boolean => isRec(r) && r.port === 'acc' && typeOf(Number(r.module)) === 'steps';
+    d.cables = d.cables.filter((c) => !acc(c.from));
+    if (Array.isArray(d.outputs)) d.outputs = d.outputs.filter((r) => !acc(r));
+    for (const n of Array.isArray(d.assemblies) ? d.assemblies : []) if (isRec(n) && Array.isArray(n.outputs)) n.outputs = (n.outputs as unknown[]).filter((r) => !acc(r)) as typeof n.outputs;
+  }
   for (const c of d.cables) {
     const tf = typeOf(c.from?.module);
     const tt = typeOf(c.to?.module);

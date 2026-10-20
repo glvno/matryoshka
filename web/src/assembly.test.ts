@@ -356,7 +356,7 @@ describe('assemblies', () => {
     }
   }, 30_000); // renders every factory assembly: slow under coverage on the CI runner
 
-  it('keeps a Steps track\'s pattern, name and step values through a definition, and the drum kit plays on PLAY', () => {
+  it('keeps a Steps track\'s name and notes through a definition, and the drum kit plays on PLAY', () => {
     const kit = FACTORY.find((d) => d.name === 'drum kit')!;
     const p = emptyPatch('f');
     addModule(p, DEFS.fm1, 0, 0);
@@ -364,15 +364,12 @@ describe('assemblies', () => {
     const a = insertAssembly(p, DEFS, kit, 0, 0);
     const tracks = p.modules.filter((m) => m.type === 'steps');
     expect(tracks.map((m) => m.name)).toEqual(['KICK', 'SNARE', 'CLAP', 'CL HAT', 'OP HAT', 'COWBELL']);
-    expect(tracks.every((m) => m.steps?.some((b) => b & 1))).toBe(true);
+    expect(tracks.every((m) => m.notes?.length)).toBe(true);
     expect(a.params.filter((r) => r.param === 'grid')).toHaveLength(6);
-    tracks[0].notes = Array.from({ length: 64 }, (_, k) => 40 + (k % 5));
-    tracks[0].vels = Array.from({ length: 64 }, () => 77);
+    tracks[0].notes = [{ at: 0, len: 3, note: 40, vel: 77 }, { at: 0, len: 1, note: 47, vel: 77, chance: 35 }];
     const again = insertAssembly(p, DEFS, validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS), 2000, 0);
     const copy = p.modules.find((m) => again.modules.includes(m.id) && m.type === 'steps' && m.name === 'KICK')!;
-    expect(copy.steps).toEqual(tracks[0].steps);
     expect(copy.notes).toEqual(tracks[0].notes);
-    expect(copy.vels).toEqual(tracks[0].vels);
     expect(connect(p, DEFS, a.outputs.find((r) => r.label === 'out')!, { module: out, port: 'l' })).toBe(true);
     const e = new Engine(48000);
     e.load(p);
@@ -385,15 +382,16 @@ describe('assemblies', () => {
     expect(Math.max(...Array.from(l).map(Math.abs))).toBeGreaterThan(0.05);
   });
 
-  it('the drum kit follows each step\'s velocity: half the velocity, half the level; the default velocity plays the drums as they are', () => {
+  it('the drum kit follows each note\'s velocity: half the velocity, half the level', () => {
     const kit = FACTORY.find((d) => d.name === 'drum kit')!;
     const peak = (vel: number | null): number => {
       const p = emptyPatch('v');
       addModule(p, DEFS.fm1, 0, 0);
       const out = addModule(p, DEFS.output, 0, 0).id;
       const a = insertAssembly(p, DEFS, kit, 0, 0);
-      for (const t of p.modules.filter((m) => m.type === 'steps')) if (t.name !== 'KICK') t.steps = t.steps!.map(() => 0);
-      if (vel !== null) p.modules.find((m) => m.name === 'KICK')!.vels = Array.from({ length: 64 }, () => vel);
+      for (const t of p.modules.filter((m) => m.type === 'steps')) if (t.name !== 'KICK') delete t.notes;
+      const kick = p.modules.find((m) => m.name === 'KICK')!;
+      kick.notes = kick.notes!.map((n) => ({ ...n, vel: vel ?? 100 }));
       connect(p, DEFS, a.outputs.find((r) => r.label === 'out')!, { module: out, port: 'l' });
       const e = new Engine(48000);
       e.load(p);
@@ -402,7 +400,6 @@ describe('assemblies', () => {
       e.render(l, new Float32Array(l.length));
       return Math.max(...Array.from(l).map(Math.abs));
     };
-    expect(peak(100)).toBeCloseTo(peak(null), 6);
     expect(peak(50) / peak(100)).toBeCloseTo(0.5, 2);
     const vca = kit.modules.filter((m) => m.type === 'vca' && kit.cables.some((c) => c.to.module === m.id && c.to.port === 'cv' && c.from.port === 'vel'));
     expect(vca).toHaveLength(6);

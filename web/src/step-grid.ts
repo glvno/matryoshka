@@ -1,24 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // A Steps module's grid on its card (#83): every step up to its length in rows of 16 (the FM-1 shows 16 at a time on its
-// white keys), its name for the FM-1's SEQ page and a mute switch. Three lanes (#93), picked in the head:
-//   steps: a click switches a step on / off, Shift- or Alt-click its accent, Ctrl / Cmd-click ties it to the note before
-//          (#128: the note goes on through it), a vertical drag sets its chance (5 % steps);
-//   note:  a vertical drag sets the step's note (a semitone per NOTE_PX, Shift an octave), double click C4;
+// white keys), its name for the FM-1's SEQ page and a mute switch. The track holds notes (#133, track.ts); the grid shows
+// and edits them as steps (stepView / setStep / setStepValue): a step is on when notes start there, tied when a note
+// started before goes on through it. Three lanes (#93), picked in the head:
+//   steps: a click switches a step on / off, Shift- or Alt-click its accent (full velocity), Ctrl / Cmd-click ties it to
+//          the note before (#128: the note goes on through it), a vertical drag sets its chance (5 % steps);
+//   note:  a vertical drag sets the step's note (a chord moves as one; a semitone per NOTE_PX, Shift an octave; an off
+//          step gets a note), double click C4;
 //   vel:   press and sweep across the steps to draw their velocities (the height in the cell), double click the default.
 // The step playing is outlined (Engine.stepsView through the worklet). The editor owns the patch and the undo history:
 // the grid only reports through `ops`.
 // Step entry (#127): `rec` in the head arms one grid at a time (the note lane, a cursor on the first step or the one
-// clicked). A note played anywhere (the note keys, a MIDI controller, the on-screen keys: recordNote) writes the cursor's
-// step (on, untied, the note and its velocity) and moves on; Backspace a rest, Enter a tie, Left / Right move the cursor,
-// Escape or `rec` again stops (recordKey).
+// clicked). A note played anywhere (the note keys, a MIDI controller, the on-screen keys: recordNote) becomes the cursor's
+// step (that note alone, its velocity, one step long) and the cursor moves on; Backspace a rest (its notes go), Enter a
+// tie, Left / Right move the cursor, Escape or `rec` again stops (recordKey).
 import { NOTE_NAMES } from './modules';
-import { STEP_NOTE, STEP_VEL, STEPS_MAX, stepByte, stepOf, TRACK_NAME_MAX, trackName, type ModuleInst } from './patch';
+import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst } from './patch';
+import { setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepNote, type StepView } from './track';
 
 export interface StepGridOps {
-  /** a step's new byte (one undo step per click; a chance drag is wrapped in begin / its result) */
-  set(k: number, b: number): void;
-  /** a step's new note and velocity (one undo step, or inside begin / its result while dragging) */
-  value(k: number, note: number, vel: number): void;
+  /** the track's new notes (one undo step per click; a drag is wrapped in begin / its result) */
+  notes(n: StepNote[] | undefined): void;
   begin(): () => void;
   /** the track's name (an empty string removes it) */
   name(s: string): void;
@@ -60,8 +62,9 @@ const ROW = 16;
 const DRAG_PX = 4;
 const NOTE_PX = 6;
 
-const noteOf = (m: ModuleInst, k: number): number => m.notes?.[k] ?? STEP_NOTE;
-const velOf = (m: ModuleInst, k: number): number => m.vels?.[k] ?? STEP_VEL;
+const view = (m: ModuleInst, k: number): StepView => stepView(m.notes, k);
+const noteOf = (m: ModuleInst, k: number): number => view(m, k).note;
+const velOf = (m: ModuleInst, k: number): number => view(m, k).vel;
 
 export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGrid {
   const el = document.createElement('div');
@@ -123,7 +126,8 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   let shownPos = -1;
   /** the notes the note lane spans (at least an octave, around the notes the track uses) */
   const span = (): [number, number] => {
-    const used = Array.from({ length: len() }, (_, k) => noteOf(m, k));
+    const used = (m.notes ?? []).filter((n) => n.at < len()).map((n) => n.note);
+    if (!used.length) used.push(STEP_NOTE);
     let lo = Math.min(...used), hi = Math.max(...used);
     if (hi - lo < 12) {
       const pad = 12 - (hi - lo);
@@ -133,40 +137,44 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     return [lo, hi];
   };
   const tip = (k: number): string => {
-    const s = stepOf(m.steps?.[k]);
+    const s = view(m, k);
+    const chord = (m.notes ?? []).filter((n) => n.at === k).map((n) => NOTE_NAMES[n.note]);
     const what = s.tie ? ': tied (the note before goes on)' : s.on ? `${s.accent ? ', accented' : ''}${s.chance < 100 ? `, ${s.chance} %` : ''}` : ': off';
-    const vals = `${NOTE_NAMES[noteOf(m, k)]}, velocity ${velOf(m, k)}`;
+    const vals = s.on ? ` · ${chord.join(' ')}, velocity ${s.vel}` : '';
     const how = { steps: 'click: on / off, Shift-click: accent, Ctrl / Cmd-click: tie, drag up / down: chance', note: 'drag up / down: note (Shift: octaves), double click: C4', vel: 'press and sweep: velocity, double click: default' }[lane];
-    return `step ${k + 1}${what} · ${vals}\n${how}`;
+    return `step ${k + 1}${what}${vals}\n${how}`;
   };
   const paint = (k: number, sp?: [number, number]): void => {
     const c = cells[k];
     if (!c) return;
-    const s = stepOf(m.steps?.[k]);
-    c.classList.toggle('on', s.on && !s.tie);
-    c.classList.toggle('acc', s.on && s.accent && !s.tie);
-    c.classList.toggle('tie', !!s.tie);
+    const s = view(m, k);
+    c.classList.toggle('on', s.on);
+    c.classList.toggle('acc', s.on && s.accent);
+    c.classList.toggle('tie', s.tie);
     let v = s.on ? s.chance / 100 : 0;
-    if (lane === 'vel') v = velOf(m, k) / 127;
+    if (lane === 'vel') v = s.on ? s.vel / 127 : 0;
     c.style.setProperty('--chance', String(v));
-    if (lane === 'note') {
+    if (lane === 'note' && s.on) {
       const [lo, hi] = sp ?? span();
-      const n = noteOf(m, k);
-      c.style.setProperty('--note', String((n - lo) / Math.max(1, hi - lo)));
-      c.firstElementChild!.textContent = NOTE_NAMES[n].replace(/-?\d+$/, '');
-    } else c.firstElementChild!.textContent = '';
+      c.style.setProperty('--note', String((s.note - lo) / Math.max(1, hi - lo)));
+      c.firstElementChild!.textContent = NOTE_NAMES[s.note].replace(/-?\d+$/, '') + ((m.notes ?? []).filter((n) => n.at === k).length > 1 ? '+' : '');
+    } else {
+      c.style.removeProperty('--note');
+      c.firstElementChild!.textContent = '';
+    }
     c.title = tip(k);
   };
   const paintAll = (): void => {
     const sp = lane === 'note' ? span() : undefined;
     for (let k = 0; k < cells.length; k++) paint(k, sp);
   };
-  const write = (k: number, s: ReturnType<typeof stepOf>): void => {
-    ops.set(k, stepByte(s));
-    paint(k);
+  /** a step edited as a step (setStep): every step is repainted (a tie or an untie changes the steps around it) */
+  const write = (k: number, s: { on: boolean; accent: boolean; chance: number; tie?: boolean }): void => {
+    ops.notes(setStep(m.notes, k, s));
+    paintAll();
   };
   const writeValue = (k: number, note: number, vel: number): void => {
-    ops.value(k, Math.max(0, Math.min(127, note)), Math.max(0, Math.min(127, vel)));
+    ops.notes(setStepValue(m.notes, k, note, vel));
   };
   const setLane = (l: Lane): void => {
     lane = l;
@@ -220,6 +228,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       if (lane === 'steps') return;
       e.preventDefault();
       e.stopPropagation();
+      if (!view(m, k).on) return;
       if (lane === 'note') writeValue(k, STEP_NOTE, velOf(m, k));
       else writeValue(k, noteOf(m, k), STEP_VEL);
       paintAll();
@@ -233,7 +242,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       if (lane === 'vel') return velSweep(c, k, e);
       if (lane === 'note') return noteDrag(c, k, e);
       const y0 = e.clientY;
-      const start = stepOf(m.steps?.[k]);
+      const start = view(m, k);
       let end: (() => void) | null = null;
       c.onpointermove = (ev) => {
         const d = Math.round((y0 - ev.clientY) / DRAG_PX);
@@ -244,7 +253,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       c.onpointerup = (ev) => {
         c.onpointermove = c.onpointerup = null;
         if (end) return end();
-        const s = stepOf(m.steps?.[k]);
+        const s = view(m, k);
         if (ev.metaKey || ev.ctrlKey) write(k, { ...s, tie: !s.tie });
         else if (s.tie) write(k, { ...s, tie: false });
         else if (ev.shiftKey || ev.altKey) write(k, s.on ? { ...s, accent: !s.accent } : { on: true, accent: true, chance: s.chance });
@@ -286,6 +295,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   const velSweep = (c: HTMLElement, k: number, e: PointerEvent): void => {
     const end = ops.begin();
     const put = (j: number, y: number): void => {
+      if (!view(m, j).on) return; // (an off step has no velocity)
       const v = velAt(cells[j], y);
       if (v !== velOf(m, j)) writeValue(j, noteOf(m, j), v);
       paint(j);
@@ -331,18 +341,15 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       k: Math.min(k, len() - 1),
       note: (note, vel) => {
         const at = armed!.k;
-        const end = ops.begin();
-        writeValue(at, note, Math.max(1, Math.min(127, Math.round(vel * 127))));
-        write(at, { ...stepOf(m.steps?.[at]), on: true, tie: false });
-        end();
+        ops.notes(setStepValue(setStep(m.notes, at, { on: false, accent: false, chance: 100 }), at, note, Math.max(1, Math.min(127, Math.round(vel * 127)))));
         paintAll();
         move(at + 1);
       },
       key: (key) => {
         if (!armed) return false;
         const at = armed.k;
-        if (key === 'Backspace' || key === 'Delete') write(at, { ...stepOf(m.steps?.[at]), on: false, tie: false });
-        else if (key === 'Enter') write(at, { ...stepOf(m.steps?.[at]), tie: true });
+        if (key === 'Backspace' || key === 'Delete') write(at, { on: false, accent: false, chance: 100 });
+        else if (key === 'Enter') write(at, { ...view(m, at), tie: true });
         else if (key === 'ArrowLeft' || key === 'ArrowRight') return move(at + (key === 'ArrowRight' ? 1 : -1)), true;
         else if (key === 'Escape') return stopRec(), true;
         else return false;

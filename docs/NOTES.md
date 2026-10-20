@@ -751,3 +751,37 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
   per-drum kit). Slices #133-#139. #131 (Player Piano) Q4 is unblocked by #133.
 - Gotcha: http://localhost:5173/@vite/client (or any path) opened as a page **does run the app** (Vite answers with
   index.html), which can write the user's localStorage; the 2026-10-19 handoff said otherwise.
+
+## 2026-10-20 (later): Steps note model, #133 (host-tested: vitest 715, golden 89 incl. `steps-keys` / `steps-legato`, proto_test, panel_test, fm1-wasm, LCD preview of the SEQ page, stand-in pool 40.5 KB free; NOT built with the JieLi toolchain, no emulator smoke, not flashed)
+
+- Decided with the owner before starting: cables from the old `acc` output are **dropped** on load (no rewiring to vel);
+  **chance is per note** (one more field, packed into the note word); a note longer than what is left of the pattern is
+  **cut at len** (no ringing over the loop point).
+- `web/src/track.ts` is the model: `StepNote` (at, len, note, vel, chance), `fixNotes`, `migrateSteps` (step bytes +
+  lanes -> notes), `noteWord` / `wordNote` (u32), the step view (`stepView`, `setStep`, `setStepValue`) the card's
+  lanes and the SEQ page edit, `patternNotes` (x / X strings for the factory kits). patch.ts re-exports the constants;
+  `stepByte` / `stepOf` stay as the pre-#133 byte (migration, golden kits).
+- Format 31 (`VERSION`, `ENG_PATCH_VERSION`; compat 31): the Steps record carries only its name (`data` 8), flag bit 4
+  is the notes section (variable entries, module order), the Steps outputs are trig, pitch, vel, keys (acc gone). A
+  group's note source may be a Steps module (poly.ts `keySource` / `arpOf`, engine.c load check).
+- Engines: `TRACK_POLY` 8 notes sound per track (TS `StepsState.snd`, C `E.trk_snd` per track, not in the instance
+  union, so instances did not grow); keys events queue per block (TS `StepsState.ev`, C `E.kev`, 64 a block) and reach
+  the groups at the start of the next block (`Engine.trackKeys` / `steps_keys`), with a retrig for a part let go and
+  taken again in the same delivery. The C notes live in one pool (`E.trk_note[512]`, tracks contiguous in order;
+  `trk_put` sorts, dedupes and moves the tracks after). Steps cost 12.6 k cycles a block (was 13.0 k): the transpose's
+  semitones are worked out only on a step.
+- Protocol: TRACK 0x2A / TRACK_NOW 0x49 (all of a track's notes; at most 2 + 512 bytes, which needed proto.c's frame
+  buffer at 522 bytes; OTA_FRAME_MAX 640 wire bytes holds it), feature bit 5; STEP / STEPVAL retired. proto.c
+  `m1_patch_track` / `m1_splice` keep the running binary's notes section; `eng_notes_end` (engine.h) is the one walker
+  (pages_ui.c had its own copy of the old one: the panel test segfaulted until it used it).
+- SEQ page: a press on a tied step unties it and turns it on (the tie used to win); the held-step undo restores the
+  track's notes from before the press (a chord came back as one C4 otherwise); a hit plays the track's last note.
+  Editor grid: off steps have no note / velocity (the note lane shows nothing there, the vel sweep skips them);
+  Backspace in step entry now removes the step's notes (the handoff's "rest keeps its note" bug).
+- The 909 Kit file and the demo patch (`src/demo/sum1-gr8.json`) were migrated on disk through validatePatch (step
+  bytes -> notes, acc cables dropped); gen-assemblies / gen-presets write notes and no acc wiring. The drum kit's
+  accents now sound through its vel VCAs; the 808 / 909 Kits have no vel cables, so their accents do nothing until #138.
+- Gotcha found on the way: the engines' idle-part judgment (outputs within 6 / 65536 for a block) can differ by one
+  block on a release tail (C a hair quieter through a velocity-scaled VCA), which freezes an oscillator's phase at a
+  different point: a golden kit whose voices go idle and come back can fail on phase alone. `steps-keys` sends the
+  allocator's vel out of the group (a part holding its velocity never idles) to keep that out of the comparison.

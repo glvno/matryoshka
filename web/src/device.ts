@@ -2,13 +2,14 @@
 // The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
 import { DEFS } from './modules';
 import type { Patch } from './patch';
+import type { StepNote } from './track';
 import { encodePatch, toQ16 } from './patchbin';
 import { deviceView } from './poly';
 
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { muteFrame, stepFrame, focusFrame, stepValFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { muteFrame, trackFrame, parseTrack, focusFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 const NAME = /felucca|fm-?1|modular/i;
 const ACK_TIMEOUT = 700;
@@ -20,8 +21,7 @@ const TRIES = 3;
 export type DeviceEvent =
   | { kind: 'cc'; n: number; v: number }
   | { kind: 'slot'; slot: number; name: string }
-  | { kind: 'step'; module: number; step: number; b: number }
-  | { kind: 'stepval'; module: number; step: number; note: number; vel: number }
+  | { kind: 'track'; module: number; notes: StepNote[] }
   | { kind: 'mute'; module: number; on: boolean }
   | { kind: 'param'; module: number; param: number; value: number }
   | { kind: 'focus'; device: number; page: number };
@@ -57,8 +57,8 @@ export class DeviceLink {
         const name = String.fromCharCode(...p.payload.slice(1, 21).filter((c) => c)).trim();
         return this.onEvent({ kind: 'slot', slot: p.payload[0], name });
       }
-      if (p?.cmd === CMD.stepNow && p.payload.length >= 3) return this.onEvent({ kind: 'step', module: p.payload[0], step: p.payload[1], b: p.payload[2] });
-      if (p?.cmd === CMD.stepValNow && p.payload.length >= 4) return this.onEvent({ kind: 'stepval', module: p.payload[0], step: p.payload[1], note: p.payload[2], vel: p.payload[3] });
+      const t = p?.cmd === CMD.trackNow ? parseTrack(p.payload) : null;
+      if (t) return this.onEvent({ kind: 'track', ...t });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
       if (p?.cmd === CMD.paramNow && p.payload.length >= 6) {
         const v = new DataView(Uint8Array.from(p.payload.slice(2, 6)).buffer).getInt32(0, true) / 65536;
@@ -220,28 +220,21 @@ export class DeviceLink {
     if (pi >= 0) this.out!.send(rangeFrame(mi, index, pi, range));
   }
 
-  /** the firmware takes STEP and MUTE (INFO feature bit 2) */
+  /** the firmware takes MUTE (INFO feature bit 2) */
   get hasSteps(): boolean {
     return !!(this.info && this.info.features & 4);
   }
 
-  /** a step of a Steps module (its byte, patch.ts stepByte) */
-  step(patch: Patch, moduleId: number, k: number, b: number): void {
-    if (!this.connected || !this.hasSteps) return;
-    const mi = deviceIndex(patch, moduleId);
-    if (mi >= 0) this.out!.send(stepFrame(mi, k, b));
+  /** the firmware takes TRACK (INFO feature bit 5, patch format 31) */
+  get hasTracks(): boolean {
+    return !!(this.info && this.info.features & 32);
   }
 
-  /** the firmware takes STEPVAL (INFO feature bit 3) */
-  get hasStepValues(): boolean {
-    return !!(this.info && this.info.features & 8);
-  }
-
-  /** a step's note and velocity */
-  stepValue(patch: Patch, moduleId: number, k: number, note: number, vel: number): void {
-    if (!this.connected || !this.hasStepValues) return;
+  /** a Steps module's notes, all of them (#133) */
+  track(patch: Patch, moduleId: number, notes: readonly StepNote[] | undefined): void {
+    if (!this.connected || !this.hasTracks) return;
     const mi = deviceIndex(patch, moduleId);
-    if (mi >= 0) this.out!.send(stepValFrame(mi, k, note, vel));
+    if (mi >= 0) this.out!.send(trackFrame(mi, notes));
   }
 
   /** a Steps module muted / unmuted (not part of the patch) */

@@ -3,6 +3,7 @@
 // panel core and screens on the C engine, with no hardware. The page loads a patch binary (patchbin.ts encodePatch),
 // drives the panel and the clock, and draws the 240 x 240 RGB565 framebuffer. No DOM here: the editor's FM-1 tab
 // (#110) and the tests use it.
+import { wordNote, type StepNote } from './track';
 
 /** what the emulated FM-1 tells the page */
 export interface Fm1Events {
@@ -19,9 +20,8 @@ export interface Fm1Events {
   midi?(status: number, d1: number, d2: number): void;
   /** PLAY started / stopped the transport */
   transport?(run: boolean): void;
-  /** the SEQ page: a step's bits, a step's note / velocity, a track muted (module = its index in the binary) */
-  step?(module: number, step: number, b: number): void;
-  stepval?(module: number, step: number, note: number, vel: number): void;
+  /** the SEQ page: a track's notes as they are after an edit there, a track muted (module = its index in the binary) */
+  track?(module: number, notes: StepNote[]): void;
   mute?(module: number, on: boolean): void;
 }
 
@@ -56,6 +56,7 @@ export class Fm1Ui {
 
   /** instantiate from the module's bytes (a fetch of fm1-ui.wasm, or a file in tests) */
   static async create(bytes: BufferSource, ev: Fm1Events = {}): Promise<Fm1Ui> {
+    let memory: WebAssembly.Memory | null = null;
     const env = {
       focus: (d: number, g: number) => ev.focus?.(d, g),
       param: (m: number, p: number, v: number) => ev.param?.(m, p, v),
@@ -63,11 +64,11 @@ export class Fm1Ui {
       save: () => ev.save?.(),
       midi: (s: number, a: number, b: number) => ev.midi?.(s, a, b),
       transport: (r: number) => ev.transport?.(r !== 0),
-      step: (m: number, k: number, b: number) => ev.step?.(m, k, b),
-      stepval: (m: number, k: number, n: number, v: number) => ev.stepval?.(m, k, n, v),
+      track: (m: number, at: number, n: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : []),
       mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
     };
     const { instance } = await WebAssembly.instantiate(bytes, { fm1: env });
+    memory = (instance.exports as unknown as Exports).memory;
     return new Fm1Ui(instance.exports as unknown as Exports);
   }
 

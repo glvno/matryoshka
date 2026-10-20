@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
-import { addModule, connect, STEPS_MAX, type Patch } from './patch';
+import { addModule, connect, type Patch } from './patch';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
 import { engineBytes } from './test-bin';
@@ -130,9 +130,9 @@ describe('binary patch format', () => {
       const devs = deviceSection(make(), p);
       const txt = (t: string): number => 1 + deviceText(t).length;
       const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label), 0), 0)), 0) : 0;
-      const valued = p.modules.filter((m) => m.type === 'steps' && (m.notes || m.vels)).length;
+      const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
       const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
-        + (valued ? 1 + valued * (1 + 2 * STEPS_MAX) : 0) + pages;
+        + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages;
       expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);
       expect(p.cables.length).toBeLessThanOrEqual(MAX_CABLES);

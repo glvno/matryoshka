@@ -2,6 +2,7 @@
 // AudioWorklet wrapper around Engine.
 import { Engine } from './engine';
 import type { Patch } from './patch';
+import type { StepNote } from './track';
 import { ViewStream, VoiceStreams, voiceSums, type ViewData } from './scope-stream';
 
 declare const sampleRate: number;
@@ -19,9 +20,8 @@ export type HostMsg =
   | { t: 'range'; id: number; index: number; name: string; range: [number, number] | null }
   | { t: 'transport'; on: boolean }
   | { t: 'button'; i: number; on: boolean }
-  /** a step of a Steps module edited (its byte), a Steps module muted */
-  | { t: 'step'; id: number; k: number; b: number }
-  | { t: 'stepval'; id: number; k: number; note: number; vel: number }
+  /** a Steps module's notes edited (#133), a Steps module muted */
+  | { t: 'track'; id: number; notes: StepNote[] | undefined }
   | { t: 'mute'; id: number; on: boolean }
   /** voices: also each voice of a module that runs once per voice (#54), sent as `voices` beside `data` */
   | { t: 'watch'; key: string; id: number; port: string }
@@ -95,8 +95,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
         else if (m.t === 'transport') this.engine.transport(m.on);
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
-        else if (m.t === 'step') this.engine.setStep(m.id, m.k, m.b);
-        else if (m.t === 'stepval') this.engine.setStepValue(m.id, m.k, m.note, m.vel);
+        else if (m.t === 'track') this.engine.setTrack(m.id, m.notes);
         else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch);
         else if (m.t === 'off') this.engine.noteOff(m.note, m.ch);

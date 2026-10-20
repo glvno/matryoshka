@@ -10,8 +10,8 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 30   /* 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
-#define ENG_PATCH_COMPAT_VERSION 29
+#define ENG_PATCH_VERSION 31   /* 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_COMPAT_VERSION 31
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
 
@@ -63,6 +63,21 @@ static inline uint32_t eng_buttons_end(const uint8_t *p, uint32_t len, uint32_t 
     return at <= len ? at : 0;
 }
 
+/* the end of the tracks' notes section (flag bit 4, patchbin.ts) that starts at `at`: u8 count, then per track u8 module,
+ * u8 n, n u32 notes; 0 if it runs past `len` */
+static inline uint32_t eng_notes_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n, i;
+    if (at >= len)
+        return 0;
+    n = p[at++];
+    for (i = 0; i < n; i++) {
+        if (at + 2u > len)
+            return 0;
+        at += 2u + 4u * p[at + 1u];
+    }
+    return at <= len ? at : 0;
+}
 /* the end of the device pages section (patchbin.ts, header flag bit 5) that starts at `at`, 0 when it is cut short:
  * u8 devices; per device u8 kind (0: u8 a plain module's index; 1: a text name, u8 pages, per page a text name, u8 part,
  * u8 parts, u8 display, u8 rows, per row u8 module, u8 parameter, a text label); a text is u8 length + that many bytes */
@@ -169,10 +184,12 @@ uint32_t eng_button_targets(uint32_t b, const uint8_t **list);
 uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quarter note) */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
 uint32_t eng_buttons_get(void);
-/* Steps modules (the SEQ page): how many the patch has and the module of the t-th (patch order); a step's byte (patch.ts
- * stepByte, -1 if no such module / step) and setting it (the running pattern; the caller keeps the binary in step); the
- * step playing (-1 while stopped or before the first); muting (not saved, a load clears it); a hit from the panel
- * (sounds now; with `record` while playing it goes into the nearest step: returned, else -1) */
+/* Steps modules (the SEQ page): how many the patch has and the module of the t-th (patch order); a step as a byte (the
+ * step view of its notes, track.ts: bit 0 on, bit 1 accent, bits 2..6 the chance code, bit 7 tie; -1 if no such module /
+ * step) and setting it, a step's note / velocity (note | vel << 8) and setting them (the running track; the caller keeps
+ * the binary in step); the step playing (-1 while stopped or before the first); muting (not saved, a load clears it); a
+ * hit from the panel (sounds now; with `record` while playing it goes into the nearest step: returned, else -1); a
+ * track's notes (track.ts noteWord, sorted) and replacing them (0: they do not fit) */
 int eng_steps_count(void);
 int eng_steps_module(uint32_t t);
 int eng_steps_get(uint32_t module, uint32_t k);
@@ -183,6 +200,8 @@ int eng_steps_pos(uint32_t module);
 void eng_steps_mute(uint32_t module, int on);
 int eng_steps_muted(uint32_t module);
 int eng_steps_hit(uint32_t module, int accent, int record);
+int eng_steps_notes(uint32_t module, const uint32_t **w);
+int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n);
 /* the performance controls: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
  * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch, 0..1, the at output) */
 enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_NCTL };

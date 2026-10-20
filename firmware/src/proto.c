@@ -16,8 +16,8 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_STEP = 0x26, C_MUTE = 0x27, C_STEPVAL = 0x28, C_FOCUS = 0x29, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_STEP = 0x44, R_MUTE = 0x45, R_STEPVAL = 0x46, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48 };
-#define M1_FEATURES 30u                                      /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = STEP / MUTE, bit 3 = STEPVAL, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW (bit 0, the ARP command, is retired) */
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49 };
+#define M1_FEATURES 54u                                      /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
 enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
@@ -185,7 +185,7 @@ static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
     m1_edited = 1;
 }
 
-/* where a Steps module's name starts in the running binary (its pattern follows), 0 if `mod` is not one */
+/* where a Steps module's name starts in the running binary, 0 if `mod` is not one */
 static uint32_t m1_track_at(uint32_t mod)
 {
     uint32_t at = m1_record(mod);
@@ -194,7 +194,7 @@ static uint32_t m1_track_at(uint32_t mod)
         return 0;
     d = &DEFS[T_STEPS];
     at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u);
-    return at + TRACK_NAME_MAX + TRACK_STEPS <= m1_cur_len ? at : 0;
+    return at + TRACK_NAME_MAX <= m1_cur_len ? at : 0;
 }
 
 /* a Steps module's name as the LCD shows it (TRACK_NAME_MAX + 1 bytes, 0-terminated; empty without one) */
@@ -206,34 +206,46 @@ static void m1_track_name(uint32_t mod, char *out)
     out[TRACK_NAME_MAX] = 0;
 }
 
-/* a step edit into the running engine and the binary (SAVE keeps it) */
+static void m1_patch_track(uint32_t mod);
+
+/* a step edit (the SEQ page's step view, eng_steps_set) / a step's note and velocity into the running engine and the
+ * binary (SAVE keeps them) */
 static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b)
 {
-    uint32_t at = m1_track_at(mod);
-    if (!at || k >= TRACK_STEPS)
-        return;
     eng_steps_set(mod, k, b);
-    m1_cur[at + TRACK_NAME_MAX + k] = (uint8_t)(b & 0xFFu);
-    m1_edited = 1;
+    m1_patch_track(mod);
+}
+static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel)
+{
+    eng_steps_value_set(mod, k, note, vel);
+    m1_patch_track(mod);
 }
 
-/* unasked: a step or a mute changed on the panel (the editor follows) */
-static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b)
+/* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
+static void m1_track_now(uint32_t mod)
 {
-    uint8_t p[3];
+    static uint8_t p[2u + 4u * TRACK_NOTES_MAX], f[8u + (8u * sizeof p + 6u) / 7u];
+    const uint32_t *w;
+    int n = eng_steps_notes(mod, &w), i;
+    uint32_t o = 0;
+    if (n < 0)
+        return;
     p[0] = (uint8_t)mod;
-    p[1] = (uint8_t)k;
-    p[2] = (uint8_t)b;
-    m1_reply(R_STEP, p, 3);
-}
-static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel)
-{
-    uint8_t p[4];
-    p[0] = (uint8_t)mod;
-    p[1] = (uint8_t)k;
-    p[2] = (uint8_t)(note & 0x7Fu);
-    p[3] = (uint8_t)(vel & 0x7Fu);
-    m1_reply(R_STEPVAL, p, 4);
+    p[1] = (uint8_t)n;
+    for (i = 0; i < n; i++) {
+        p[2 + 4 * i] = (uint8_t)w[i];
+        p[3 + 4 * i] = (uint8_t)(w[i] >> 8);
+        p[4 + 4 * i] = (uint8_t)(w[i] >> 16);
+        p[5 + 4 * i] = (uint8_t)(w[i] >> 24);
+    }
+    f[o++] = 0xF0;
+    f[o++] = 0x7D;
+    f[o++] = 0x4D;
+    f[o++] = 0x31;
+    f[o++] = R_TRACK;
+    o += m1_pack7(p, 2u + 4u * (uint32_t)n, f + o);
+    f[o++] = 0xF7;
+    m1_send(f, o);
 }
 /* a parameter turned on the FM-1 (K1..K4 on a device page): module, parameter, the value Q16.16 */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v)
@@ -298,10 +310,8 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         if (at >= len) return 0;
         at += 1u + 4u * p[at];
     }
-    if (p[6] & 16u) {                                           /* flag bit 4: the step values */
-        if (at >= len) return 0;
-        at += 1u + (1u + 2u * TRACK_STEPS) * p[at];
-    }
+    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))      /* flag bit 4: the tracks' notes */
+        return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))    /* flag bit 5: the device pages */
         return 0;
     if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))    /* flag bit 6: the button kinds */
@@ -314,9 +324,9 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     return at == len;
 }
 
-/* the offset in the current patch where the step values section starts (or would start: after the side-input routes),
- * 0 if the binary is malformed */
-static uint32_t m1_values_at(void)
+/* the offset in the current patch where the notes section starts (or would start: after the side-input routes), 0 if
+ * the binary is malformed */
+static uint32_t m1_notes_at(void)
 {
     uint32_t at = eng_records_at(m1_cur, m1_cur_len), i, nmod, ncab, npar = 0;
     if (!at)
@@ -340,18 +350,14 @@ static uint32_t m1_values_at(void)
     return at <= m1_cur_len ? at : 0;
 }
 
-#define M1_VALUES_REC (1u + 2u * TRACK_STEPS)                /* a step values entry: module, notes, velocities */
-
 /* the offset of the device pages section (its count byte) in the current patch, 0 if the patch has none */
 static uint32_t m1_devices_at(void)
 {
     uint32_t at;
-    if (!(m1_cur[6] & 32u) || !(at = m1_values_at()))
+    if (!(m1_cur[6] & 32u) || !(at = m1_notes_at()))
         return 0;
-    if (m1_cur[6] & 16u) {
-        if (at >= m1_cur_len) return 0;
-        at += 1u + M1_VALUES_REC * m1_cur[at];
-    }
+    if ((m1_cur[6] & 16u) && !(at = eng_notes_end(m1_cur, m1_cur_len, at)))
+        return 0;
     return at < m1_cur_len ? at : 0;
 }
 
@@ -359,12 +365,10 @@ static uint32_t m1_devices_at(void)
 static uint32_t m1_range_section(void)
 {
     uint32_t at;
-    if (!(m1_cur[6] & 2u) || !(at = m1_values_at()))
+    if (!(m1_cur[6] & 2u) || !(at = m1_notes_at()))
         return 0;
-    if (m1_cur[6] & 16u) {
-        if (at >= m1_cur_len) return 0;
-        at += 1u + M1_VALUES_REC * m1_cur[at];
-    }
+    if ((m1_cur[6] & 16u) && !(at = eng_notes_end(m1_cur, m1_cur_len, at)))
+        return 0;
     if ((m1_cur[6] & 32u) && !(at = eng_devices_end(m1_cur, m1_cur_len, at)))   /* the device pages come before the ranges */
         return 0;
     if ((m1_cur[6] & 64u) && !(at = eng_buttons_end(m1_cur, m1_cur_len, at)))   /* then the button kinds */
@@ -372,38 +376,63 @@ static uint32_t m1_range_section(void)
     return at < m1_cur_len ? at : 0;
 }
 
-/* a step's note / velocity into the running engine and the binary (SAVE keeps them): the track's entry in the step values
- * section is updated, or added (the section created) with the track's current values; what follows (the macro ranges)
- * moves up */
-static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel)
+/* `old` bytes at `at` of the current patch become `len` bytes (to be written): what follows moves */
+static void m1_splice(uint32_t at, uint32_t old, uint32_t len)
 {
-    uint32_t sec, n, i, at, ins, j;
-    if (!m1_track_at(mod) || k >= TRACK_STEPS || !(sec = m1_values_at()))
+    uint32_t j;
+    if (len > old)
+        for (j = m1_cur_len; j-- > at + old;)
+            m1_cur[j + len - old] = m1_cur[j];
+    else if (len < old)
+        for (j = at + old; j < m1_cur_len; j++)
+            m1_cur[j - (old - len)] = m1_cur[j];
+    m1_cur_len = m1_cur_len + len - old;
+}
+
+/* a track's notes as the engine has them into the binary (SAVE keeps them): its entry in the notes section replaced,
+ * added in module order or removed; the section created or dropped; what follows (device pages, button kinds, macro
+ * ranges) moves. A patch that would outgrow M1_PATCH_MAX keeps its old entry. */
+static void m1_patch_track(uint32_t mod)
+{
+    const uint32_t *w;
+    int n = eng_steps_notes(mod, &w), i;
+    uint32_t sec, at, cnt, old = 0, len, has = m1_cur[6] & 16u;
+    if (n < 0 || !m1_track_at(mod) || !(sec = m1_notes_at()) || (has && !eng_notes_end(m1_cur, m1_cur_len, sec)))
         return;
-    eng_steps_value_set(mod, k, note, vel);
-    n = (m1_cur[6] & 16u) && sec < m1_cur_len ? m1_cur[sec] : 0u;
-    for (i = 0, at = sec + 1u; i < n; i++, at += M1_VALUES_REC)
-        if (m1_cur[at] == mod)
+    cnt = has ? m1_cur[sec] : 0u;
+    at = has ? sec + 1u : sec;
+    for (i = 0; i < (int)cnt; i++) {                 /* the entry, or where it goes */
+        if (m1_cur[at] >= mod) {
+            if (m1_cur[at] == mod)
+                old = 2u + 4u * m1_cur[at + 1u];
             break;
-    if (i == n) {                                            /* a new entry at the end of the section */
-        ins = (m1_cur[6] & 16u) ? M1_VALUES_REC : 1u + M1_VALUES_REC;
-        if (m1_cur_len + ins > M1_PATCH_MAX || n >= 255u)
-            return;
-        at = sec + 1u + M1_VALUES_REC * n;               /* (n is 0 without a section: it starts at sec) */
-        for (j = m1_cur_len; j-- > at - (ins - M1_VALUES_REC);)
-            m1_cur[j + ins] = m1_cur[j];
-        m1_cur_len += ins;
-        m1_cur[6] |= 16u;
-        m1_cur[sec] = (uint8_t)(n + 1u);
-        m1_cur[at] = (uint8_t)mod;
-        for (j = 0; j < TRACK_STEPS; j++) {
-            int v = eng_steps_value(mod, j);
-            m1_cur[at + 1u + j] = (uint8_t)(v & 0x7F);
-            m1_cur[at + 1u + TRACK_STEPS + j] = (uint8_t)((v >> 8) & 0x7F);
         }
+        at += 2u + 4u * m1_cur[at + 1u];
     }
-    m1_cur[at + 1u + k] = (uint8_t)(note & 0x7Fu);
-    m1_cur[at + 1u + TRACK_STEPS + k] = (uint8_t)(vel & 0x7Fu);
+    len = n ? 2u + 4u * (uint32_t)n : 0u;
+    if (!has && !n)
+        return;
+    if (m1_cur_len + (has ? 0u : 1u) + len - old > M1_PATCH_MAX)
+        return;
+    if (!has) {
+        m1_splice(sec, 0, 1u);
+        m1_cur[sec] = 0;
+        m1_cur[6] |= 16u;
+        at = sec + 1u;
+    }
+    m1_splice(at, old, len);
+    if (n) {
+        m1_cur[at] = (uint8_t)mod;
+        m1_cur[at + 1u] = (uint8_t)n;
+        for (i = 0; i < n; i++)
+            m1_put32(at + 2u + 4u * (uint32_t)i, (int32_t)w[i]);
+    }
+    cnt = cnt - (old ? 1u : 0u) + (n ? 1u : 0u);
+    m1_cur[sec] = (uint8_t)cnt;
+    if (!cnt) {                                      /* the section is empty: it goes */
+        m1_splice(sec, 1u, 0);
+        m1_cur[6] &= (uint8_t)~16u;
+    }
     m1_edited = 1;
 }
 
@@ -453,7 +482,7 @@ static void m1_patch_range(uint32_t mod, uint32_t pin, uint32_t par, int on, uin
 /* f: the bytes between F0 and F7. Returns 1 if the frame was ours (and is consumed). */
 static int m1_handle(const uint8_t *f, uint32_t n)
 {
-    uint8_t d[M1_PATCH_MAX > 512u ? 512u : M1_PATCH_MAX];
+    uint8_t d[2u + 4u * TRACK_NOTES_MAX + 8u];         /* (the largest frame: TRACK) */
     uint32_t len;
     if (n < 4u || f[0] != 0x7D || f[1] != 0x4D || f[2] != 0x31)
         return 0;
@@ -616,15 +645,13 @@ static int m1_handle(const uint8_t *f, uint32_t n)
             m1_ui_changed();
         }
         break;
-    case C_STEP:                                             /* module u8, step u8, byte u8 (patch.ts stepByte) */
-        if (len >= 3u) {
-            m1_patch_step(d[0], d[1], d[2]);
-            m1_ui_changed();
-        }
-        break;
-    case C_STEPVAL:                                          /* module u8, step u8, note u8, vel u8 */
-        if (len >= 4u) {
-            m1_patch_stepval(d[0], d[1], d[2], d[3]);
+    case C_TRACK:                                            /* module u8, n u8, n u32 LE notes (track.ts noteWord) */
+        if (len >= 2u && len >= 2u + 4u * d[1]) {
+            uint32_t w[TRACK_NOTES_MAX], i, n = d[1] < TRACK_NOTES_MAX ? d[1] : TRACK_NOTES_MAX;
+            for (i = 0; i < n; i++)
+                w[i] = (uint32_t)d[2 + 4 * i] | (uint32_t)d[3 + 4 * i] << 8 | (uint32_t)d[4 + 4 * i] << 16 | (uint32_t)d[5 + 4 * i] << 24;
+            if (eng_steps_set_notes(d[0], w, n))
+                m1_patch_track(d[0]);
             m1_ui_changed();
         }
         break;

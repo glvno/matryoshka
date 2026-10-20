@@ -10,6 +10,7 @@ import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
 import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, stepByte, type Patch, type PolyCfg } from '../src/patch';
+import { migrateSteps, type StepNote } from '../src/track';
 import { makeAssembly } from '../src/assembly';
 import { withParts } from '../src/test-poly';
 import { acid } from '../src/test-patches';
@@ -1363,11 +1364,11 @@ events['button-toggle'] = [[0, 'on', 60], [128 * 20, 'bon', 0], [128 * 60, 'boff
 ends['button-toggle'] = 128 * 170;
 
 
-// Steps (#83): drum tracks on the transport. A kick on the quarters (accent on the first, acc opens more level), a hat at
-// 1/16 over 12 steps with chances (the deterministic hash), swing and a short gate, and a third track at 1/8T; stop and
-// run again restart them all at step 1
-const pattern = (on: number[], acc: number[] = [], chance: Record<number, number> = {}): number[] =>
-  Array.from({ length: 64 }, (_, k) => stepByte({ on: on.includes(k), accent: acc.includes(k), chance: chance[k] ?? 100 }));
+// Steps (#83): drum tracks on the transport. A kick on the quarters (accent on the first: full velocity opens more
+// level), a hat at 1/16 over 12 steps with chances (the deterministic hash), swing and a short gate, and a third track at
+// 1/8T; stop and run again restart them all at step 1. The patterns are written as before #133 (step bytes) and migrated.
+const pattern = (on: number[], acc: number[] = [], chance: Record<number, number> = {}): StepNote[] | undefined =>
+  migrateSteps(Array.from({ length: 64 }, (_, k) => stepByte({ on: on.includes(k), accent: acc.includes(k), chance: chance[k] ?? 100 })));
 const drum = (add: Parameters<Build>[0], wire: Parameters<Build>[1], x: number, wave: number, pitch: number, decay: number): { st: number; v: number } => {
   const st = add('steps', x, 0, {});
   const e = add('adsr', x, 200, { a: 0.001, d: decay, s: 0, r: 0.01 });
@@ -1380,7 +1381,7 @@ const drum = (add: Parameters<Build>[0], wire: Parameters<Build>[1], x: number, 
   wire(e, 'env', v, 'cv');
   wire(v, 'out', va, 'in');
   wire(c, 'out', va, 'cv');
-  wire(st, 'acc', va, 'cv');
+  wire(st, 'vel', va, 'cv');
   return { st, v: va };
 };
 tests['steps-kit'] = make('steps-kit', (add, wire) => {
@@ -1398,12 +1399,12 @@ tests['steps-kit'] = make('steps-kit', (add, wire) => {
 {
   const st = tests['steps-kit'].modules.filter((m) => m.type === 'steps');
   st[0].name = 'KICK';
-  st[0].steps = pattern([0, 4, 8, 12], [0]);
+  st[0].notes = pattern([0, 4, 8, 12], [0]);
   Object.assign(st[1].params, { len: 12, rate: 4, swing: 66, gate: 0.1 });
   st[1].name = 'HAT';
-  st[1].steps = pattern([0, 1, 2, 3, 5, 6, 7, 9, 10, 11], [2, 6], { 1: 50, 3: 25, 5: 75, 7: 5, 9: 50, 11: 90 });
+  st[1].notes = pattern([0, 1, 2, 3, 5, 6, 7, 9, 10, 11], [2, 6], { 1: 50, 3: 25, 5: 75, 7: 5, 9: 50, 11: 90 });
   Object.assign(st[2].params, { len: 5, rate: 3, gate: 0.6 });
-  st[2].steps = pattern([0, 2, 3], [3]);
+  st[2].notes = pattern([0, 2, 3], [3]);
 }
 events['steps-kit'] = [[128 * 5, 'run', 0], [128 * 380, 'stop', 0], [128 * 420, 'run', 0]];
 ends['steps-kit'] = 128 * 560;
@@ -1440,26 +1441,26 @@ tests['steps-notes'] = make('steps-notes', (add, wire) => {
 });
 {
   const st = tests['steps-notes'].modules.filter((m) => m.type === 'steps');
-  st[0].steps = pattern([0, 1, 2, 3, 4, 5, 6, 7], [4]);
-  st[0].notes = Array.from({ length: 64 }, (_, k) => [48, 55, 60, 63, 67, 70, 72, 41][k % 8]);
-  st[0].vels = Array.from({ length: 64 }, (_, k) => [127, 40, 90, 20, 110, 64, 1, 100][k % 8]);
+  const bytes = (on: number[], acc: number[] = []): number[] => Array.from({ length: 64 }, (_, k) => stepByte({ on: on.includes(k), accent: acc.includes(k), chance: 100 }));
+  st[0].notes = migrateSteps(bytes([0, 1, 2, 3, 4, 5, 6, 7], [4]), Array.from({ length: 64 }, (_, k) => [48, 55, 60, 63, 67, 70, 72, 41][k % 8]), Array.from({ length: 64 }, (_, k) => [127, 40, 90, 20, 110, 64, 1, 100][k % 8]));
   Object.assign(st[1].params, { len: 6 });
-  st[1].steps = pattern([0, 2, 3, 5], []);
-  st[1].notes = Array.from({ length: 64 }, (_, k) => [36, 36, 43, 39, 36, 31][k % 6]);
+  st[1].notes = migrateSteps(bytes([0, 2, 3, 5]), Array.from({ length: 64 }, (_, k) => [36, 36, 43, 39, 36, 31][k % 6]));
 }
 events['steps-notes'] = [[128 * 5, 'run', 0]];
 ends['steps-notes'] = 128 * 400;
 
-// ties (#128): the steps-notes voices with tied steps (bit 7): a held note through two ties, a tie after an off step (it
-// plays nothing), a tie that wraps from the last step to the first, swing on; the second track on an external clock
+// ties (#128), now longer notes (#133): the steps-notes voices with notes held through tied steps (migrated: a held note
+// through two ties, a tie after an off step plays nothing, a tie on the first step is dropped), swing on; the second
+// track on an external clock
 tests['steps-tie'] = structuredClone(tests['steps-notes']);
 tests['steps-tie'].name = 'steps-tie';
 {
   const st = tests['steps-tie'].modules.filter((m) => m.type === 'steps');
   const T = 0x80;
   Object.assign(st[0].params, { swing: 62 });
-  st[0].steps = Array.from({ length: 64 }, (_, k) => [stepByte({ on: true, accent: true, chance: 100 }), T, T, 0, T, stepByte({ on: true, accent: false, chance: 100 }), 0, T][k % 8]);
-  st[1].steps = Array.from({ length: 64 }, (_, k) => [stepByte({ on: true, accent: false, chance: 100 }), T, 0, stepByte({ on: true, accent: false, chance: 100 }), T, T][k % 6]);
+  const lanes = (l: number[]): number[] => Array.from({ length: 64 }, (_, k) => l[k % l.length]);
+  st[0].notes = migrateSteps(lanes([stepByte({ on: true, accent: true, chance: 100 }), T, T, 0, T, stepByte({ on: true, accent: false, chance: 100 }), 0, T]), lanes([48, 55, 60, 63, 67, 70, 72, 41]), lanes([127, 40, 90, 20, 110, 64, 1, 100]));
+  st[1].notes = migrateSteps(lanes([stepByte({ on: true, accent: false, chance: 100 }), T, 0, stepByte({ on: true, accent: false, chance: 100 }), T, T]), lanes([36, 36, 43, 39, 36, 31]));
 }
 events['steps-tie'] = [[128 * 5, 'run', 0]];
 ends['steps-tie'] = 128 * 400;
@@ -1482,10 +1483,69 @@ tests['steps-clk'] = make('steps-clk', (add, wire) => {
 {
   const st = tests['steps-clk'].modules.filter((m) => m.type === 'steps');
   Object.assign(st[0].params, { len: 7, swing: 60, gate: 0.4 });
-  st[0].steps = pattern([0, 1, 3, 4, 6], [4], { 3: 40 });
+  st[0].notes = pattern([0, 1, 3, 4, 6], [4], { 3: 40 });
   Object.assign(st[1].params, { len: 16, rate: 5, swing: 75 });
-  st[1].steps = pattern([0, 3, 5, 6, 9, 12, 14], [0, 9], { 5: 60, 14: 30 });
+  st[1].notes = pattern([0, 3, 5, 6, 9, 12, 14], [0, 9], { 5: 60, 14: 30 });
 }
+
+// keys out (#133): a Steps track of chords (notes of different lengths, one through the loop's end and cut there, a chance
+// per note, a note past len that never plays) into a Voice allocator of three voices in a poly assembly (osc, envelope,
+// VCA); transposed a fifth up by a Constant; four notes at once take a voice over
+const n = (at: number, len: number, note: number, vel = 100, chance?: number): StepNote => ({ at, len, note, vel, ...(chance ? { chance } : {}) });
+tests['steps-keys'] = make('steps-keys', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 160 });
+  const st = add('steps', 200, 0, { len: 12, rate: 4, gate: 0.7, swing: 58 });
+  const tr = add('const', 200, 300, { value: 7 / 12 });
+  const al = add('alloc', 400, 0, { voices: 3 });
+  const o = add('osc', 600, 0, { wave: 1, level: 0.5 });
+  const e = add('adsr', 600, 200, { a: 0.003, d: 0.1, s: 0.5, r: 0.04 });
+  const v = add('vca', 800, 0);
+  const out = add('output', 1000, 0, { level: 0.6 });
+  wire(tr, 'out', st, 'transpose');
+  wire(st, 'keys', al, 'keys');
+  wire(al, 'pitch', o, 'pitch');
+  wire(al, 'gate', e, 'gate');
+  wire(al, 'vel', v, 'p1');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+  // right: trig and the voices' velocities (summed out of the group; a part holding its velocity never goes idle, so the
+  // engines' idle judgment, which can differ by a block on a release tail, plays no part here)
+  const mr = add('mixer', 1000, 200, { l1: 0.3, l2: 0.3 });
+  wire(st, 'trig', mr, 'in1');
+  wire(al, 'vel', mr, 'in2');
+  wire(mr, 'out', out, 'r');
+});
+{
+  const p = tests['steps-keys'];
+  const ids = p.modules.filter((m) => ['alloc', 'osc', 'adsr', 'vca'].includes(m.type)).map((m) => m.id);
+  makeAssembly(p, ids, 'chord voices').poly = {};
+  p.modules.find((m) => m.type === 'steps')!.notes = [n(0, 4, 48), n(0, 1, 55, 70), n(0, 2, 60, 127), n(2, 1, 67, 90, 50), n(4, 2, 50), n(4, 2, 57), n(4, 2, 62), n(4, 1, 65, 40),
+    n(7, 1, 64, 110, 25), n(8, 3, 45), n(9, 1, 72, 60), n(10, 6, 52, 100), n(13, 1, 70)];
+}
+events['steps-keys'] = [[128 * 5, 'run', 0], [128 * 500, 'stop', 0]];
+ends['steps-keys'] = 128 * 560;
+
+// keys out into one voice, legato auto: notes one after another retrigger the envelope (the off and the next on land in
+// the same block: the part restarts), overlapping ones glide on without a new attack; a muted gap
+tests['steps-legato'] = make('steps-legato', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 128 });
+  const st = add('steps', 200, 0, { len: 8, rate: 5, gate: 1 });
+  const al = add('alloc', 400, 0, { voices: 1, legato: 0 });
+  const o = add('osc', 600, 0, { wave: 2, level: 0.5 });
+  const e = add('adsr', 600, 200, { a: 0.01, d: 0.05, s: 0.3, r: 0.02 });
+  const v = add('vca', 800, 0);
+  const out = add('output', 1000, 0, { level: 0.6 });
+  wire(st, 'keys', al, 'keys');
+  wire(al, 'pitch', o, 'pitch');
+  wire(al, 'gate', e, 'gate');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+});
+tests['steps-legato'].modules.find((m) => m.type === 'steps')!.notes = [n(0, 1, 60), n(1, 1, 62), n(2, 2, 64), n(3, 2, 67), n(5, 1, 60), n(6, 2, 55)];
+events['steps-legato'] = [[128 * 5, 'run', 0]];
+ends['steps-legato'] = 128 * 400;
 {
   const ev: Ev[] = [[128 * 3, 'run', 0], [128 * 40, 'on', 60], [128 * 41, 'off', 60], [128 * 150, 'on', 62], [128 * 180, 'off', 62], [128 * 200, 'ext', 0]];
   for (let t = 0; t < 200; t++) ev.push([128 * 200 + 900 * t + (t % 3) * 37, 'tick', 0]);

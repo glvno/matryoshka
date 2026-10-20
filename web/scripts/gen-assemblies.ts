@@ -4,7 +4,8 @@
 // `voice` and `echo` are kept as files. Run from web/:  npx vite-node scripts/gen-assemblies.ts
 import { writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { defaultMap, defaultParams, rowDef, STEP_VEL, stepByte, type ModuleInst, type PolyCards, type Source } from '../src/patch';
+import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type PolyCards, type Source } from '../src/patch';
+import { patternNotes } from '../src/track';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
@@ -451,22 +452,21 @@ asm('hihat', 'Drums', (b) => {
 
 // a drum kit (#93): a Steps track per drum on the transport (PLAY starts it, the Main module's tempo sets it), the factory
 // drums as nested cards, two mixers. The collapsed card shows every track's grid (its name, mute, steps; the lanes for
-// velocity and note), then the drums' main settings. An accented step pushes a part of its drum through a pin as in the
-// 808 Kit; `clk` and `reset` reach every track (with clk patched the tracks step on its edges instead of the transport).
+// velocity and note), then the drums' main settings. An accented step is a note at full velocity (the drum's VCA follows
+// the track's vel; #133); `clk` and `reset` reach every track (with clk patched the tracks step on its edges instead of the transport).
 // A track's pitch output tunes its drum's oscillators relative to the drum's own tuning (a step's note C4 = as tuned, C3 an
 // octave down); the clap and the hi-hats are noise and do not follow it.
-const pattern = (s: string): number[] => Array.from({ length: 64 }, (_, k) => stepByte({ on: /[xX]/.test(s[k] ?? ''), accent: s[k] === 'X', chance: 100 }));
 asm('drum kit', 'Drums', (b) => {
   const mixA = b.add('mixer', 3, 0, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
   const mixB = b.add('mixer', 3, 1, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 0 });
-  //            assembly     track      pattern             settings                                      accent row, amount   mixer, input
-  const drums: [string, string, string, Record<string, number>, [string, number] | null, number, string][] = [
-    ['boom kick', 'KICK', 'X...x...x.x.....', {}, ['drop', 0.35], mixA, 'in1'],
-    ['snare', 'SNARE', '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, ['noise', 0.3], mixA, 'in2'],
-    ['clap', 'CLAP', '............X...', {}, ['tail level', 0.4], mixA, 'in3'],
-    ['hihat', 'CL HAT', 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, ['level', 0.5], mixB, 'in1'],
-    ['hihat', 'OP HAT', '..............x.', { decay: 0.3 }, null, mixB, 'in2'],
-    ['cowbell', 'COWBELL', '..........x.....', {}, null, mixB, 'in3'],
+  //            assembly     track      pattern             settings                                      mixer, input
+  const drums: [string, string, string, Record<string, number>, number, string][] = [
+    ['boom kick', 'KICK', 'X...x...x.x.....', {}, mixA, 'in1'],
+    ['snare', 'SNARE', '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, mixA, 'in2'],
+    ['clap', 'CLAP', '............X...', {}, mixA, 'in3'],
+    ['hihat', 'CL HAT', 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, mixB, 'in1'],
+    ['hihat', 'OP HAT', '..............x.', { decay: 0.3 }, mixB, 'in2'],
+    ['cowbell', 'COWBELL', '..........x.....', {}, mixB, 'in3'],
   ];
   const tracks: number[] = [];
   const rowOf = (from: string, ids: Map<number, number>, label: string): { module: number; param: string } => {
@@ -475,10 +475,10 @@ asm('drum kit', 'Drums', (b) => {
     return { module: ids.get(r.module)!, param: r.param };
   };
   const shown: { label: string; at: { module: number; param: string } }[] = [];
-  drums.forEach(([from, track, steps, settings, accent, mix, port], i) => {
+  drums.forEach(([from, track, steps, settings, mix, port], i) => {
     const y = i * 0.55;
     const st = b.add('steps', 0, y, {});
-    Object.assign(b.module(st), { name: track, steps: pattern(steps) });
+    Object.assign(b.module(st), { name: track, notes: patternNotes(steps) });
     tracks.push(st);
     const ids = b.include(from, 1, y, track.toLowerCase());
     for (const [label, v] of Object.entries(settings)) {
@@ -489,14 +489,6 @@ asm('drum kit', 'Drums', (b) => {
     b.wire(st, 'trig', ids.get(gate.module)!, gate.port);
     for (const id of ids.values()) if (b.module(id).type === 'osc') b.wire(st, 'pitch', id, 'pitch');
     for (const a of gate.also ?? []) b.wire(st, 'trig', ids.get(a.module)!, a.port);
-    if (accent) {   // acc into the row's module through its first pin, at the amount in the row's units
-      const r = rowOf(from, ids, accent[0]);
-      const m = b.module(r.module);
-      const pd = DEFS[m.type].params.find((q) => q.name === r.param)!;
-      m.map = { ...m.map!, p1: [r.param] };
-      m.att = [accent[1] / (pd.max - pd.min), m.att?.[1] ?? 1];
-      b.wire(st, 'acc', r.module, 'p1');
-    }
     // velocity: the drum through a VCA whose cv is the track's vel, gain 127 / 100 so a step at the default velocity
     // (STEP_VEL 100) plays at the drum's own level
     const out = defs.find((d) => d.name === from)!.outputs[0];

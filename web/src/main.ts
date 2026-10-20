@@ -113,13 +113,12 @@ device.onEvent = (e) => {
 function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
   const mark = (on: boolean): void => { if (from === 'device') fromDevice = on; else fromEmu = on; };
   if (e.kind === 'slot') return;
-  if (e.kind === 'step' || e.kind === 'stepval' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #93): a step edited or recorded, a step's note / velocity, a track muted
+  if (e.kind === 'track' || e.kind === 'mute') {   // the FM-1's SEQ page (#83, #133): a track edited or recorded, a track muted
     const id = deviceView(editor.patch, true).patch.modules[e.module]?.id;   // (the compiled form the FM-1 got, as deviceIndex)
     if (id === undefined) return;
     mark(true);
     try {
-      if (e.kind === 'step') editor.stepFromDevice(id, e.step, e.b);
-      else if (e.kind === 'stepval') editor.stepValueFromDevice(id, e.step, e.note, e.vel);
+      if (e.kind === 'track') editor.trackFromDevice(id, e.notes);
       else host.send({ t: 'mute', id, on: e.on });
     } finally { mark(false); }
     return;
@@ -258,8 +257,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     fromEmu = true;
     try { setPlaying(run); } finally { fromEmu = false; }
   },
-  step: (m, k, b) => fm1Event({ kind: 'step', module: m, step: k, b }, 'emu'),
-  stepval: (m, k, note, vel) => fm1Event({ kind: 'stepval', module: m, step: k, note, vel }, 'emu'),
+  track: (m, notes) => fm1Event({ kind: 'track', module: m, notes }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
   key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
     if (down) {
@@ -319,20 +317,12 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (live() && !uploading) device.param(editor.patch, id, name, value);
     else if (live()) dirty = true;
   },
-  onStep(id, k, b) {
-    host.send({ t: 'step', id, k, b });
+  onTrack(id, notes) {
+    host.send({ t: 'track', id, notes });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) device.step(editor.patch, id, k, b);
-    else if (live()) dirty = true;
-  },
-  onStepValue(id, k, note, vel) {
-    host.send({ t: 'stepval', id, k, note, vel });
-    if (!fromEmu) queueEmu();
-    queueSave(editor.patch);
-    if (fromDevice) return;
-    if (live() && !uploading) device.stepValue(editor.patch, id, k, note, vel);
+    if (live() && !uploading) device.track(editor.patch, id, notes);
     else if (live()) dirty = true;
   },
   onMute(id, on) {

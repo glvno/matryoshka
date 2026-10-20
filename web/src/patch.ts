@@ -2,6 +2,7 @@
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
 import { migrateKnobs } from './knob-migrate';
+import { fixNotes, migrateSteps, type StepNote } from './track';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -145,13 +146,11 @@ export interface ModuleInst {
    * player screen and legend show them; at most PANEL_LABEL_MAX characters of the LCD's font) */
   panel?: MainPanel;
   /** a Steps module only: its track name (at most TRACK_NAME_MAX characters of the LCD's font; the device shows STEPS n
-   * without one) and its pattern, one byte per step (STEPS_MAX of them; stepByte / stepOf); its per-step values (#93): a
-   * MIDI note (the pitch output, C4 = 60 = 0) and a velocity (the vel output, v / 127), STEPS_MAX each, absent while every
-   * step has the default (STEP_NOTE / STEP_VEL; fixLane) */
+   * without one) and its notes (#133, track.ts: start step, length, note, velocity, chance; sorted, absent while there
+   * are none). Patches from before #133 carry `steps` (a byte per step, stepByte) and the lanes `notes` / `vels` (a number
+   * per step) instead: fixTrack turns them into notes. */
   name?: string;
-  steps?: number[];
-  notes?: number[];
-  vels?: number[];
+  notes?: StepNote[];
 }
 
 export interface MainPanel {
@@ -180,67 +179,33 @@ export const PAGE_LIST_MAX = 16;
 /** a label as the LCD can draw it: capitals, digits, space and its few signs */
 export const panelLabel = (s: unknown, max = PANEL_LABEL_MAX): string => String(s ?? '').toUpperCase().replace(/[^A-Z0-9 +%&>=()?!#*<,_'.:\/-]/g, '').slice(0, max).trim();
 
-/** a Steps module's pattern: STEPS_MAX steps (its `len` parameter plays the first ones); a step's byte holds bit 0 = on,
- * bit 1 = accent, bits 2..6 = the chance code c (it plays with a chance of 100 - 5 c percent, c 0..19), bit 7 = tie (#128:
- * the note sounding goes on through the step, its pitch and velocity, no new trig; the step's own on / accent / chance /
- * values are not played; firmware from before ties masks the bit off and plays the step as it is) */
-export const STEPS_MAX = 64;
+/** the step byte of patterns saved before #133 (format 30 and older; track.ts migrateSteps reads them): bit 0 = on, bit 1
+ * = accent, bits 2..6 = the chance code c (it plays with a chance of 100 - 5 c percent, c 0..19), bit 7 = tie (the note
+ * sounding goes on through the step) */
 export const TRACK_NAME_MAX = 8;
 export const trackName = (s: unknown): string => panelLabel(s, TRACK_NAME_MAX);
 export interface Step { on: boolean; accent: boolean; chance: number; tie?: boolean }
 export const stepOf = (b: number | undefined): Step => ({ on: !!((b ?? 0) & 1), accent: !!((b ?? 0) & 2), chance: 100 - 5 * Math.min(19, ((b ?? 0) >> 2) & 31), tie: !!((b ?? 0) & 0x80) });
 export const stepByte = (s: Step): number => (s.on ? 1 : 0) | (s.accent ? 2 : 0) | (Math.min(19, Math.max(0, Math.round((100 - s.chance) / 5))) << 2) | (s.tie ? 0x80 : 0);
-/** a pattern from anything: STEPS_MAX valid step bytes (missing steps off), or undefined when every step is off */
-export function fixSteps(raw: unknown): number[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const out = Array.from({ length: STEPS_MAX }, (_, i) => stepByte(stepOf(Number.isFinite(raw[i]) ? raw[i] & 0xff : 0)));
-  return out.some((b) => b) ? out : undefined;
-}
 
-/** a Steps module's step values when a step has none of its own: C4 and the velocity the FM-1's keys send */
-export const STEP_NOTE = 60;
-export const STEP_VEL = 100;
-/** a value lane (notes or velocities) from anything: STEPS_MAX integers 0..127 (missing ones `dflt`), or undefined when
- * every step has the default */
-export function fixLane(raw: unknown, dflt: number): number[] | undefined {
-  if (!Array.isArray(raw)) return undefined;
-  const out = Array.from({ length: STEPS_MAX }, (_, i) => (Number.isFinite(Number(raw[i])) && raw[i] !== null ? Math.max(0, Math.min(127, Math.round(Number(raw[i])))) : dflt));
-  return out.some((v) => v !== dflt) ? out : undefined;
-}
-
-/** a module's Steps data (name, pattern, step values) made valid in place; other modules lose those fields */
+/** a module's Steps data (name, notes) made valid in place, a pattern from before #133 turned into notes; other modules
+ * lose those fields */
 export function fixTrack(m: ModuleInst): void {
+  const old = m as ModuleInst & { steps?: unknown; vels?: unknown };
+  const legacy = Array.isArray(old.steps) || (Array.isArray(old.notes) && old.notes.some((n) => typeof n !== 'object'));
+  const notes = m.type !== 'steps' ? undefined : legacy ? migrateSteps(old.steps, old.notes, old.vels) : fixNotes(m.notes);
+  delete old.steps;
+  delete old.vels;
   if (m.type !== 'steps') {
     delete m.name;
-    delete m.steps;
     delete m.notes;
-    delete m.vels;
     return;
   }
   const name = trackName(m.name);
   if (name) m.name = name;
   else delete m.name;
-  const steps = fixSteps(m.steps);
-  if (steps) m.steps = steps;
-  else delete m.steps;
-  const notes = fixLane(m.notes, STEP_NOTE);
   if (notes) m.notes = notes;
   else delete m.notes;
-  const vels = fixLane(m.vels, STEP_VEL);
-  if (vels) m.vels = vels;
-  else delete m.vels;
-}
-
-/** set step k's note and velocity on a Steps module, keeping its lanes absent while they hold only the defaults */
-export function setStepValue(m: ModuleInst, k: number, note: number, vel: number): void {
-  const lane = (cur: number[] | undefined, v: number, dflt: number): number[] | undefined =>
-    fixLane(Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? v : cur?.[i] ?? dflt)), dflt);
-  const notes = lane(m.notes, note, STEP_NOTE);
-  const vels = lane(m.vels, vel, STEP_VEL);
-  if (notes) m.notes = notes;
-  else delete m.notes;
-  if (vels) m.vels = vels;
-  else delete m.vels;
 }
 
 /** a Main module's panel settings from anything: known names only, labels as the LCD draws them; undefined when empty */
@@ -504,6 +469,8 @@ export function ensureMain(p: Patch, defs: Record<string, ModuleDef>): boolean {
 }
 
 /** modules that run once even inside a poly assembly: their inputs sum the parts (big state, or the end of the chain) */
+export { STEPS_MAX, STEP_NOTE, STEP_VEL } from './track';
+
 export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output', 'arp', 'steps']);
 /** module types the editor shows but the engines and the FM-1 never run: poly.ts deviceView drops them and their cables */
 export const EDITOR_ONLY = new Set(['scope']);
@@ -713,8 +680,12 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   migrateKnobs(p as Patch, defs, knobLabels); // Main's knob outputs are gone: cables from them come from a Macros assembly
   migrateVoicing(p as Patch, defs);
   migratePatchParts(p as Patch, defs); // Part modules (before Voice allocators) become allocators
-  // the SEQ and REC buttons belong to the device since #83 (the step page, live recording): cables from them go
-  p.cables = p.cables.filter((c) => !(p.modules.find((m) => m.id === c.from?.module)?.type === 'fm1' && (c.from?.port === 'seq' || c.from?.port === 'rec')));
+  // the SEQ and REC buttons belong to the device since #83 (the step page, live recording): cables from them go; so do
+  // cables from a Steps module's acc output (#133: an accent is full velocity now)
+  p.cables = p.cables.filter((c) => {
+    const t = p.modules.find((m) => m.id === c.from?.module)?.type;
+    return !(t === 'fm1' && (c.from?.port === 'seq' || c.from?.port === 'rec')) && !(t === 'steps' && c.from?.port === 'acc');
+  });
   for (const c of p.cables) {
     const mf = p.modules.find((m) => m.id === c.from?.module);
     if (mf?.type === 'filter' && c.from?.port === 'lp') c.from.port = 'lp12'; // the filter's 12 dB output used to be called lp

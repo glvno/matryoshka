@@ -1,47 +1,43 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
-import { DEFS, stepPlays } from './modules';
-import { addModule, connect, emptyPatch, stepByte, stepOf, validatePatch, type ModuleInst, type Patch } from './patch';
-import { deviceBudget, encodePatch, recordSize } from './patchbin';
+import { DEFS, notePlays } from './modules';
+import { addModule, connect, emptyPatch, stepByte, validatePatch, type ModuleInst, type Patch } from './patch';
+import { deviceBudget, encodePatch, FLAG_NOTES, recordSize } from './patchbin';
+import { deviceView } from './poly';
+import { migrateSteps, noteWord, type StepNote } from './track';
 
 const SR = 48000; // 120 bpm: a tick every 1000 samples, a 1/16 step every 6000
 
-/** Main (120 bpm) -> a Steps module whose trig goes to the left output, acc to the right */
+/** Main (120 bpm) -> a Steps module (its pattern written as step bytes, migrated) whose trig goes to the left output, vel
+ * to the right */
 function rig(steps: number[], params: Record<string, number> = {}): { p: Patch; st: ModuleInst; main: ModuleInst } {
   const p = emptyPatch('steps');
   const main = addModule(p, DEFS.fm1, 0, 0);
   main.params.tempo = 120;
   const st = addModule(p, DEFS.steps, 0, 0);
   Object.assign(st.params, params);
-  st.steps = Array.from({ length: 64 }, (_, k) => steps[k] ?? 0);
+  st.notes = migrateSteps(Array.from({ length: 64 }, (_, k) => steps[k] ?? 0));
   const out = addModule(p, DEFS.output, 0, 0);
   out.params.level = 1;
   connect(p, DEFS, { module: st.id, port: 'trig' }, { module: out.id, port: 'l' });
-  connect(p, DEFS, { module: st.id, port: 'acc' }, { module: out.id, port: 'r' });
+  connect(p, DEFS, { module: st.id, port: 'vel' }, { module: out.id, port: 'r' });
   return { p, st, main };
 }
 
-/** render `n` samples; the samples where l / r rise */
-function edges(e: Engine, n: number): { trig: number[]; acc: number[]; l: Float32Array; r: Float32Array } {
+/** render `n` samples; the samples where l rises */
+function edges(e: Engine, n: number): { trig: number[]; l: Float32Array; r: Float32Array } {
   const l = new Float32Array(n), r = new Float32Array(n);
   e.render(l, r);
   const rise = (b: Float32Array): number[] => [...b.keys()].filter((i) => b[i] > 0.5 && (i === 0 || b[i - 1] <= 0.5));
-  return { trig: rise(l), acc: rise(r), l, r };
+  return { trig: rise(l), l, r };
 }
 
 const ON = stepByte({ on: true, accent: false, chance: 100 });
 const ACC = stepByte({ on: true, accent: true, chance: 100 });
+const note = (at: number, len: number, n: number, vel = 100, chance?: number): StepNote => ({ at, len, note: n, vel, ...(chance ? { chance } : {}) });
 
-describe('the Steps module (#83)', () => {
-  it('step bytes: on, accent, chance in 5 % steps', () => {
-    expect(stepOf(stepByte({ on: true, accent: true, chance: 35 }))).toEqual({ on: true, accent: true, chance: 35, tie: false });
-    expect(stepOf(stepByte({ on: false, accent: false, chance: 100, tie: true }))).toEqual({ on: false, accent: false, chance: 100, tie: true });
-    expect(stepByte({ on: false, accent: false, chance: 100, tie: true })).toBe(0x80);
-    expect(stepByte({ on: true, accent: false, chance: 2 })).toBe(1 | (19 << 2)); // 5 % is the least
-    expect(stepOf(0)).toEqual({ on: false, accent: false, chance: 100, tie: false });
-  });
-
+describe('the Steps module (#83, #133)', () => {
   it('plays nothing until the transport runs, the first step when it starts, then one step per 1/16 on the clock', () => {
     const { p } = rig([ON, ON, 0, ON]);
     const e = new Engine(SR);
@@ -52,15 +48,16 @@ describe('the Steps module (#83)', () => {
     expect(trig).toEqual([0, 5999, 17999, 95999].filter((t) => t < 30000)); // steps 0, 1, 3 (the tick ends its period)
   });
 
-  it('wraps at len, acc is up from an accented step until the next step that plays, gate is a share of the step', () => {
+  it('wraps at len, vel holds the last note (an accent is full velocity), gate is a share of the step', () => {
     const { p } = rig([ACC, 0, ON], { len: 3, gate: 0.5 });
     const e = new Engine(SR);
     e.load(p);
     e.transport(true);
-    const { trig, acc, l, r } = edges(e, 40000);
+    const { trig, l, r } = edges(e, 40000);
     expect(trig).toEqual([0, 11999, 17999, 29999, 35999]);
-    expect(acc).toEqual([0, 17999, 35999]);
-    expect([r[5000], r[11998], r[11999], r[17998]]).toEqual([1, 1, 0, 0]); // held over the off step, down with step 2
+    expect(r[5000]).toBe(1);
+    expect(r[12000]).toBeCloseTo(100 / 127, 6);
+    expect(r[18000]).toBe(1);
     expect([...l.slice(17999, 17999 + 3000)].every((v) => v === 1)).toBe(true);
     expect(l[17999 + 3000]).toBe(0);
   });
@@ -98,14 +95,14 @@ describe('the Steps module (#83)', () => {
     e.transport(false);
     edges(e, 5000);
     e.transport(true);
-    expect(edges(e, 128).acc).toEqual([0]);
+    expect(edges(e, 128).r[0]).toBe(1); // step 0: accented
     edges(e, 12000 - 128); // steps 1, 2 played
     e.noteOn(60, 1);
     const r = edges(e, 6500);
-    expect(r.acc.length).toBe(1); // the step after the reset is step 0 (accented)
+    expect(r.r[6400]).toBe(1); // the step after the reset is step 0 (accented)
   });
 
-  it('a muted track keeps its place but stays silent; setStep changes the pattern without a reload', () => {
+  it('a muted track keeps its place but plays no new notes; setTrack changes the notes without a reload', () => {
     const { p, st } = rig([ON]);
     const e = new Engine(SR);
     e.load(p);
@@ -114,11 +111,11 @@ describe('the Steps module (#83)', () => {
     expect(edges(e, 13000).trig).toEqual([]);
     expect(e.stepsView()).toEqual([{ id: st.id, pos: 2, mute: true }]);
     e.setMute(st.id, false);
-    e.setStep(st.id, 3, ON);
+    e.setTrack(st.id, [note(0, 1, 60), note(3, 1, 60)]);
     expect(edges(e, 6000).trig).toEqual([17999 - 13000]);
   });
 
-  it('a chance plays about that often and the same way every time (the hash of the seed, the time round and the step)', () => {
+  it('a chance plays about that often and the same way every time (the hash of the seed, the time round, the step and the note)', () => {
     const half = stepByte({ on: true, accent: false, chance: 50 });
     const { p } = rig([half], { len: 1 });
     const runs = [0, 1].map(() => {
@@ -130,27 +127,78 @@ describe('the Steps module (#83)', () => {
     expect(runs[0]).toBe(runs[1]);
     expect(runs[0]).toBeGreaterThan(160);
     expect(runs[0]).toBeLessThan(240);
-    expect(stepPlays(1, 2, 3, 0)).toBe(false);
-    expect(stepPlays(1, 2, 3, ON)).toBe(true);
+    expect(notePlays(1, 2, 3, 0, 100)).toBe(true);
+    const plays = (j: number): boolean[] => Array.from({ length: 40 }, (_, loop) => notePlays(7, loop, 3, j, 50));
+    expect(plays(0)).not.toEqual(plays(1)); // two notes of a step each ask for themselves
   });
 
-  it('a tied step holds the note before it: no new trig, the same pitch, the gate falling gate x step into the last tie (#128)', () => {
+  it('a migrated tied run is one longer note: no new trig, the same pitch, the gate falling gate x step into its last step', () => {
     const TIE = stepByte({ on: false, accent: false, chance: 100, tie: true });
     const { p, st } = rig([ON, TIE, TIE, ON, 0, TIE, ON], { len: 7, gate: 0.5 });
-    st.notes = Array.from({ length: 64 }, (_, k) => (k === 1 ? 72 : 60)); // (a tie's own note is not played)
-    p.cables = p.cables.filter((c) => c.to.port !== 'r');
-    connect(p, DEFS, { module: st.id, port: 'pitch' }, { module: p.modules.find((m) => m.type === 'output')!.id, port: 'r' });
+    expect(st.notes).toEqual([note(0, 3, 60), note(3, 1, 60), note(6, 1, 60)]); // (the tie after an off step is dropped)
     const e = new Engine(SR);
     e.load(p);
     e.transport(true);
-    const { trig, l, r } = edges(e, 42000);
-    // steps 0, 1, 2 one note (up from 0 to half of step 2), step 3 a new one; step 5's tie follows an off step: nothing
+    const { trig, l } = edges(e, 42000);
     expect(trig).toEqual([0, 17999, 35999, 41999]); // (41999: step 0 again)
     expect(l[11500]).toBe(1);
     expect(l[14500]).toBe(1);
     expect(l[15500]).toBe(0);
     expect(l[31000]).toBe(0);
-    expect(r[7000]).toBe(0); // C4 under the tie, not C5
+  });
+
+  it('a note longer than what is left of the pattern ends at its end; a note past len never plays', () => {
+    const { p, st } = rig([], { len: 4, gate: 0.5 });
+    st.notes = [note(2, 8, 60), note(5, 1, 72)];
+    const e = new Engine(SR);
+    e.load(p);
+    e.transport(true);
+    const { trig, l } = edges(e, 48000);
+    expect(trig).toEqual([11999, 35999]);
+    expect(l[11999 + 8999]).toBe(1); // through step 3, half of it
+    expect(l[11999 + 9001]).toBe(0);
+  });
+
+  it('a chord: one trig, pitch and vel from its last (highest) note; keys out plays every note into a Voice allocator', () => {
+    const { p, st } = rig([], { len: 4, gate: 0.5 });
+    st.notes = [note(0, 2, 48, 90), note(0, 1, 64, 80), note(0, 1, 67, 70)];
+    const al = addModule(p, DEFS.alloc, 0, 0);
+    al.params.voices = 4;
+    connect(p, DEFS, { module: st.id, port: 'keys' }, { module: al.id, port: 'keys' });
+    const out = p.modules.find((m) => m.type === 'output')!;
+    p.cables = p.cables.filter((c) => c.to.port !== 'r');
+    const mx = addModule(p, DEFS.mixer, 0, 0); // the sum of the voices' gates, a quarter of it (the output clips at 1)
+    Object.assign(mx.params, { l1: 0.25, master: 1 });
+    connect(p, DEFS, { module: al.id, port: 'gate' }, { module: mx.id, port: 'in1' });
+    connect(p, DEFS, { module: mx.id, port: 'out' }, { module: out.id, port: 'r' });
+    expect(deviceView(p).groups.map((g) => g.src)).toEqual([st.id]);
+    const e = new Engine(SR);
+    e.load(p);
+    e.transport(true);
+    const { trig, r } = edges(e, 12000);
+    expect(trig).toEqual([0]);
+    expect(r[64]).toBe(0); // the notes reach the groups at the start of the next block
+    expect(r[200]).toBeCloseTo(0.75, 5);
+    expect(r[3100]).toBeCloseTo(0.25, 5); // the two short notes end at half a step, the long one holds
+    expect(r[9000]).toBeCloseTo(0.25, 5);
+    expect(r[9300]).toBe(0); // and ends at half of step 2 (9000; block-quantized: by the block after)
+  });
+
+  it('transpose moves the keys out by whole semitones (and pitch as before)', () => {
+    const { p, st } = rig([], { len: 1 });
+    st.notes = [note(0, 1, 60)];
+    const c = addModule(p, DEFS.const, 0, 0);
+    c.params.value = 2 / 12;
+    connect(p, DEFS, { module: c.id, port: 'out' }, { module: st.id, port: 'transpose' });
+    const al = addModule(p, DEFS.alloc, 0, 0);
+    connect(p, DEFS, { module: st.id, port: 'keys' }, { module: al.id, port: 'keys' });
+    const out = p.modules.find((m) => m.type === 'output')!;
+    p.cables = p.cables.filter((c) => c.to.port !== 'r');
+    connect(p, DEFS, { module: al.id, port: 'pitch' }, { module: out.id, port: 'r' });
+    const e = new Engine(SR);
+    e.load(p);
+    e.transport(true);
+    expect(edges(e, 1000).r[500]).toBeCloseTo(2 / 12, 4);
   });
 
   it('with a cable in clk it steps on every rising edge instead', () => {
@@ -164,24 +212,47 @@ describe('the Steps module (#83)', () => {
     expect(trig).toEqual([0, 12000]);
   });
 
-  it('the name and the pattern go into its record; old patches lose cables from the SEQ / REC buttons', () => {
+  it('the name goes into its record, the notes into the notes section; old patches lose cables from the SEQ / REC buttons and acc', () => {
     const { p, st } = rig([ACC, 0, ON]);
     st.name = 'kick drum!';
     const v = validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
     expect(v.modules[1].name).toBe('KICK DRU');
     const bin = encodePatch(v);
-    const rec = bin.length - 4 * v.cables.length - recordSize('output') - recordSize('steps');
-    const data = rec + recordSize('steps') - 72;
+    expect(bin[6] & FLAG_NOTES).toBeTruthy();
+    const tail = 2 + 4 * 2; // the notes section: count, then module 1, two notes
+    const notes = bin.length - tail;
+    expect([...bin.slice(notes - 1, notes + 2)]).toEqual([1, 1, 2]);
+    const w = new DataView(bin.buffer).getUint32(notes + 2, true);
+    expect(w).toBe(noteWord(note(0, 1, 60, 127)));
+    const rec = notes - 1 - 4 * v.cables.length - recordSize('output') - recordSize('steps');
+    const data = rec + recordSize('steps') - 8;
     expect(String.fromCharCode(...bin.slice(data, data + 8))).toBe('KICK DRU');
-    expect([...bin.slice(data + 8, data + 11)]).toEqual([ACC, 0, ON]);
     const old = JSON.parse(JSON.stringify(p));
     old.cables.push({ from: { module: old.modules[0].id, port: 'rec' }, to: { module: st.id, port: 'reset' } });
+    old.cables.push({ from: { module: st.id, port: 'acc' }, to: { module: old.modules[2].id, port: 'r' } });
     expect(validatePatch(old, DEFS).cables.length).toBe(2);
   });
 
-  it('the FM-1 takes 16 tracks', () => {
+  it('a patch saved before #133 loads with notes: its step bytes and lanes become notes', () => {
+    const { p, st } = rig([]);
+    const old = JSON.parse(JSON.stringify(p));
+    const o = old.modules.find((m: ModuleInst) => m.id === st.id);
+    delete o.notes;
+    o.steps = [ACC, 0, ON, stepByte({ on: false, accent: false, chance: 100, tie: true }), stepByte({ on: true, accent: false, chance: 35 })];
+    o.notes = Array.from({ length: 64 }, (_, k) => 50 + k);
+    o.vels = Array.from({ length: 64 }, () => 90);
+    const v = validatePatch(old, DEFS).modules.find((m) => m.id === st.id)!;
+    expect(v.notes).toEqual([note(0, 1, 50, 127), note(2, 2, 52, 90), note(4, 1, 54, 90, 35)]);
+    expect(v).not.toHaveProperty('steps');
+    expect(v).not.toHaveProperty('vels');
+  });
+
+  it('the FM-1 takes 16 tracks and 512 notes', () => {
     const { p } = rig([ON]);
     for (let i = 0; i < 16; i++) addModule(p, DEFS.steps, 0, 0);
     expect(deviceBudget(p).over.map((o) => o.key)).toContain('tracks');
+    const q = rig([]).p;
+    for (let i = 0; i < 5; i++) addModule(q, DEFS.steps, 0, 0).notes = Array.from({ length: 128 }, (_, k) => note(k >> 1, 1, 40 + (k & 1)));
+    expect(deviceBudget(q).over.map((o) => o.key)).toContain('notes');
   });
 });

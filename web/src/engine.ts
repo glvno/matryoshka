@@ -9,9 +9,10 @@
 // shared output gets that one buffer.
 
 import { driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
-import { defaultMap, FLAW_TARGETS, STEP_NOTE, STEP_VEL, STEPS_MAX, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
+import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView } from './poly';
 import { kindOf, switches, toggleTargets } from './buttons';
+import { fixNotes, type StepNote } from './track';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
 export const BLOCK = 128;
@@ -107,7 +108,7 @@ interface Group {
   held: { note: number; vel: number }[];
   /** rotate: the part the next note tries first */
   rot: number;
-  /** where its notes come from: -1 the keys (Main), else the id of the Arpeggiator module that feeds its allocator */
+  /** where its notes come from: -1 the keys (Main), else the id of the Arpeggiator or Steps module that feeds its allocator */
   src: number;
 }
 
@@ -260,9 +261,7 @@ export class Engine {
       if (m.type === 'steps')
         for (const inst of node.inst) {
           const st = inst.state as StepsState;
-          st.pat.set(Array.from({ length: STEPS_MAX }, (_, k) => m.steps?.[k] ?? 0));
-          st.notes.set(Array.from({ length: STEPS_MAX }, (_, k) => m.notes?.[k] ?? STEP_NOTE));
-          st.vels.set(Array.from({ length: STEPS_MAX }, (_, k) => m.vels?.[k] ?? STEP_VEL));
+          st.notes = (m.notes ?? []).map((n) => ({ ...n }));
         }
       node.sources = [];
       node.connected = {};
@@ -292,6 +291,43 @@ export class Engine {
       const old = oldArps.get(node.id);
       return old ? { ...old, node } : { node, st: arpInit(), clk: { hi: false } };
     });
+    this.tracks = this.order.filter((n) => n.type === 'steps');
+  }
+
+  /** the Steps modules, in processing order (their keys go out in this order: engine.c the same) */
+  private tracks: Node[] = [];
+
+  /**
+   * The notes the Steps tracks started and ended in the last block, into the groups they play (DeviceGroup.src), in
+   * order; a group's key range judges them, as an arpeggiator's. A part that a track's note let go and one of its notes
+   * took again in the same delivery restarts its envelopes (its gate had no low sample); a note that starts while another
+   * still sounds is legato, as the allocator's legato setting says.
+   */
+  private trackKeys(): void {
+    for (const node of this.tracks) {
+      const st = node.inst[0].state as StepsState;
+      if (!st.ev.length) continue;
+      const gs = this.groups.filter((g) => g.src === node.id);
+      const freed = gs.map(() => 0);
+      for (let i = 0; i < st.ev.length; i += 2) {
+        const key = st.ev[i] & 0x7f;
+        gs.forEach((g, gi) => {
+          if (!(st.ev[i] & 0x80)) {
+            const was = g.parts.map((x) => x.on);
+            this.groupOff(g, key);
+            g.parts.forEach((x, v) => {
+              if (was[v] && !x.on) freed[gi] |= 1 << v;
+            });
+          } else if (takesKey(g.cfg, key)) {
+            this.groupOn(g, key, st.ev[i + 1] / 127);
+            g.parts.forEach((x, v) => {
+              if (x.on && x.note === key && x.onStamp === this.stamp && (freed[gi] >> v) & 1) x.retrig = true;
+            });
+          }
+        });
+      }
+      st.ev.length = 0;
+    }
   }
 
   private arpParams(a: ArpRun): ArpParams {
@@ -363,17 +399,11 @@ export class Engine {
     const node = this.nodes.get(id);
     return node?.type === 'steps' ? (node.inst[0].state as StepsState) : null;
   }
-  /** a step of a Steps module changed (its byte, patch.ts stepByte): no reload, the pattern plays on */
-  setStep(id: number, k: number, b: number): void {
+  /** a Steps module's notes changed (ModuleInst.notes, track.ts): no reload, the track plays on; the notes sounding end
+   * as they would */
+  setTrack(id: number, notes: readonly StepNote[] | undefined): void {
     const s = this.stepsOf(id);
-    if (s && k >= 0 && k < STEPS_MAX) s.pat[k] = b & 0xff;
-  }
-  /** a step's note and velocity changed (ModuleInst.notes / vels): no reload; heard when the step next plays */
-  setStepValue(id: number, k: number, note: number, vel: number): void {
-    const s = this.stepsOf(id);
-    if (!s || k < 0 || k >= STEPS_MAX) return;
-    s.notes[k] = Math.max(0, Math.min(127, Math.round(note)));
-    s.vels[k] = Math.max(0, Math.min(127, Math.round(vel)));
+    if (s) s.notes = fixNotes(notes) ?? [];
   }
   /** mute / unmute a Steps module (not part of the patch: a reload keeps it while the module stays) */
   setMute(id: number, on: boolean): void {
@@ -853,6 +883,7 @@ export class Engine {
         }
       }
       const clock = seen && this.running; // the Main module's clock output: one pulse per block that saw a tick while running
+      this.trackKeys();
       for (const a of this.arps)
         arpBlock(a.st, this.arpParams(a), n, this.ticks, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk, bpm, this.sampleRate,
           (note, vel) => this.arpOn(a, note, vel), (note) => { for (const g of this.arpGroups(a)) this.groupOff(g, note); });

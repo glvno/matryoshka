@@ -53,9 +53,8 @@ import {
   rowDef,
   PAGE_LIST_MAX,
   panelLabel,
-  STEPS_MAX,
-  setStepValue,
 } from './patch';
+import { fixNotes, type StepNote } from './track';
 import { disarm, stepGrid, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
@@ -147,11 +146,9 @@ export interface EditorEvents {
   onAtt(id: number, index: number, value: number): void;
   /** a module's bypass switch (the structure is unchanged: the engine keeps its state) */
   onBypass(id: number, on: boolean): void;
-  /** a step of a Steps module changed (its byte, patch.ts stepByte), a Steps module muted (not saved) */
-  onStep?(id: number, k: number, b: number): void;
+  /** a Steps module's notes changed (#133, ModuleInst.notes), a Steps module muted (not saved) */
+  onTrack?(id: number, notes: StepNote[] | undefined): void;
   onMute?(id: number, on: boolean): void;
-  /** a Steps module's step got a new note / velocity (#93) */
-  onStepValue?(id: number, k: number, note: number, vel: number): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
@@ -932,25 +929,22 @@ export class Editor {
     for (const v of view) this.stepGrids.get(v.id)?.show(v.pos, v.mute);
   }
 
-  /** a step changed on the FM-1's SEQ page: into the patch and the grid, an undo step like an edit here (an undo sends the
-   * patch back to the FM-1, so a change made there must be in the history) */
-  stepFromDevice(id: number, k: number, b: number): void {
+  /** a track edited on the FM-1's SEQ page (its notes as they are now): into the patch and the grid, an undo step like an
+   * edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
+  trackFromDevice(id: number, notes: StepNote[] | undefined): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
-    if (!m || k < 0 || k >= STEPS_MAX) return;
+    if (!m) return;
     this.touch();
-    m.steps = Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? b & 0xff : m.steps?.[i] ?? 0));
+    this.setNotes(m, notes);
     this.stepGrids.get(id)?.refresh();
-    this.ev.onStep?.(id, k, b & 0xff);
   }
 
-  /** a step's note / velocity set on the FM-1 (a step held + K1 / K2): into the patch, an undo step as above */
-  stepValueFromDevice(id: number, k: number, note: number, vel: number): void {
-    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
-    if (!m || k < 0 || k >= STEPS_MAX) return;
-    this.touch();
-    setStepValue(m, k, note, vel);
-    this.stepGrids.get(id)?.refresh();
-    this.ev.onStepValue?.(id, k, note & 0x7f, vel & 0x7f);
+  /** a Steps module's notes, valid, into the patch and the engines */
+  private setNotes(m: ModuleInst, notes: StepNote[] | undefined): void {
+    const n = fixNotes(notes);
+    if (n) m.notes = n;
+    else delete m.notes;
+    this.ev.onTrack?.(m.id, m.notes);
   }
 
   /** a Steps module's grid follows its length (the len slider) */
@@ -958,16 +952,14 @@ export class Editor {
     this.stepGrids.get(id)?.refresh();
   }
 
-  /** a Steps module's grid: its edits go through the undo history and onStep / onMute; a new name is a structure change
+  /** a Steps module's grid: its edits go through the undo history and onTrack / onMute; a new name is a structure change
    * (the name is in the binary the FM-1 gets) */
   private stepsRow(m: ModuleInst): StepGrid {
     const index = this.patch.modules.filter((x) => x.type === 'steps').indexOf(m);
     const grid = stepGrid(m, index, {
-      set: (k, b) => {
+      notes: (n) => {
         this.touch(); // a drag across the grid is one gesture: one undo step
-        m.steps = Array.from({ length: STEPS_MAX }, (_, i) => (i === k ? b : m.steps?.[i] ?? 0));
-        if (!m.steps.some((x) => x)) delete m.steps;
-        this.ev.onStep?.(m.id, k, b);
+        this.setNotes(m, n);
       },
       begin: () => this.beginEdit(),
       name: (s) => {
@@ -976,11 +968,6 @@ export class Editor {
         if (s) m.name = s;
         else delete m.name;
         this.ev.onStructure(this.patch);
-      },
-      value: (k, note, vel) => {
-        this.touch(); // a drag across the grid is one gesture: one undo step
-        setStepValue(m, k, note, vel);
-        this.ev.onStepValue?.(m.id, k, note, vel);
       },
       mute: (on) => this.ev.onMute?.(m.id, on),
     });

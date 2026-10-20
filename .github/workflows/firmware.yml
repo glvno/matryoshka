@@ -32,6 +32,7 @@ on:
       - web/src/protocol.ts
       - web/src/test-patches.ts
       - web/src/test-poly.ts
+      - web/src/track.ts
       - web/src/wavetables.json
   pull_request:
     paths:
@@ -59,6 +60,7 @@ on:
       - web/src/protocol.ts
       - web/src/test-patches.ts
       - web/src/test-poly.ts
+      - web/src/track.ts
       - web/src/wavetables.json
   workflow_dispatch:
 

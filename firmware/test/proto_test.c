@@ -242,50 +242,62 @@ int main(int argc, char **argv)
         CHECK(eng_load(flat, base) == 0);
         printf("fixed input routing and legacy patch framing ok\n");
     }
-    if (argc > 10) {                                             /* step values (#93): a Steps patch without them */
+    if (argc > 10) {                                             /* the tracks' notes (#133): the steps-kit patch */
         long nk;
         uint8_t *kit = slurp(argv[10], &nk);
-        int t0, t1;
-        uint32_t base, devb;
-        CHECK(!(kit[6] & 18u));                                  /* no step values, no ranges */
+        int t0, t1, n0, n1;
+        uint32_t base, end, devb;
+        const uint32_t *w;
+        CHECK((kit[6] & 16u) && !(kit[6] & 2u));                 /* notes, no ranges */
         memcpy(m1_cur, kit, (size_t)nk);
         m1_cur_len = (uint32_t)nk;
         CHECK(eng_load(m1_cur, m1_cur_len) == 0);
         CHECK(eng_steps_count() >= 2);
         t0 = eng_steps_module(0);
         t1 = eng_steps_module(1);
-        CHECK(eng_steps_value((uint32_t)t0, 5) == (STEP_NOTE | STEP_VEL << 8));
-        base = m1_values_at();
-        devb = (m1_cur[6] & 32u) ? eng_devices_end(m1_cur, m1_cur_len, base) - base : 0u;   /* the device pages follow */
-        CHECK(base + devb == m1_cur_len);
-        CHECK(!(m1_cur[6] & 32u) || m1_devices_at() == base);
-        m1_patch_stepval((uint32_t)t0, 5, 67, 30);              /* the section is created with the track's entry */
-        CHECK(m1_cur[6] & 16u);
-        CHECK(m1_cur_len == (uint32_t)nk + 1u + M1_VALUES_REC);
+        n0 = eng_steps_notes((uint32_t)t0, &w);
+        n1 = eng_steps_notes((uint32_t)t1, &w);
+        CHECK(n0 > 0 && n1 > 0);
+        base = m1_notes_at();
+        end = eng_notes_end(m1_cur, m1_cur_len, base);
+        devb = (m1_cur[6] & 32u) ? eng_devices_end(m1_cur, m1_cur_len, end) - end : 0u;   /* the device pages follow */
+        CHECK(end && end + devb == m1_cur_len && m1_cur[base] >= 2u);
+        CHECK(eng_steps_get((uint32_t)t0, 5) == 0 && eng_steps_value((uint32_t)t0, 5) == (STEP_NOTE | STEP_VEL << 8));
+        m1_patch_step((uint32_t)t0, 5, 1u);                      /* a note more: the entry grows by one word */
+        CHECK(eng_steps_get((uint32_t)t0, 5) == 1 && m1_cur_len == (uint32_t)nk + 4u);
+        m1_patch_stepval((uint32_t)t0, 5, 67, 30);
         CHECK(m1_valid(m1_cur, m1_cur_len) && !m1_valid(m1_cur, m1_cur_len - 1));
-        m1_patch_range((uint32_t)t1, 0, STEPS_P_SWING, 1, 10, 200);   /* ranges come after the step values */
-        CHECK(m1_range_section() == base + 1u + M1_VALUES_REC + devb);
-        CHECK(!devb || m1_devices_at() == base + 1u + M1_VALUES_REC);   /* the device pages moved up with the new section */
-        m1_patch_stepval((uint32_t)t1, 63, 24, 127);            /* a second entry: the device pages and the ranges move up */
-        CHECK(m1_cur[base] == 2u);
-        CHECK(m1_range_section() == base + 1u + 2u * M1_VALUES_REC + devb);
-        CHECK(m1_valid(m1_cur, m1_cur_len));
-        m1_patch_stepval((uint32_t)t0, 6, 70, 0);               /* an entry that exists: updated in place */
-        CHECK(m1_cur[base] == 2u && m1_valid(m1_cur, m1_cur_len));
-        CHECK(eng_load(m1_cur, m1_cur_len) == 0);               /* SAVE keeps them: a reload plays the same values */
+        m1_patch_range((uint32_t)t1, 0, STEPS_P_SWING, 1, 10, 200);   /* ranges come after the notes */
+        CHECK(m1_range_section() == eng_notes_end(m1_cur, m1_cur_len, base) + devb);
+        m1_patch_step((uint32_t)t0, 6, 0x80u);                   /* a tie: the note on step 5 goes on through step 6 */
+        CHECK(eng_steps_get((uint32_t)t0, 6) == 0x80 && m1_cur_len == (uint32_t)nk + 4u + 6u);
+        m1_patch_step((uint32_t)t0, 6, 0u);                      /* untied */
+        CHECK(eng_steps_get((uint32_t)t0, 6) == 0);
+        n1 = m1_cur[base];
+        CHECK(eng_steps_set_notes((uint32_t)t1, 0, 0));          /* every note of a track gone: its entry goes */
+        m1_patch_track((uint32_t)t1);
+        CHECK(m1_cur[base] == (uint8_t)(n1 - 1) && m1_valid(m1_cur, m1_cur_len) && m1_range_section() == eng_notes_end(m1_cur, m1_cur_len, base) + devb);
+        CHECK(eng_load(m1_cur, m1_cur_len) == 0);               /* SAVE keeps them: a reload plays the same notes */
         CHECK(eng_steps_value((uint32_t)t0, 5) == (67 | 30 << 8));
-        CHECK(eng_steps_value((uint32_t)t0, 6) == 70);
-        CHECK(eng_steps_value((uint32_t)t0, 7) == (STEP_NOTE | STEP_VEL << 8));
-        CHECK(eng_steps_value((uint32_t)t1, 63) == (24 | 127 << 8));
+        CHECK(eng_steps_notes((uint32_t)t1, &w) == 0 && eng_steps_notes((uint32_t)t0, &w) == n0 + 1);
         CHECK(E.nranges == 0 || E.ranges[0].mod == (uint8_t)t1);
-        m1_patch_range((uint32_t)t1, 0, STEPS_P_SWING, 0, 0, 0);
-        CHECK(m1_valid(m1_cur, m1_cur_len) && !(m1_cur[6] & 2u));
+        {                                                        /* every track emptied: the section goes */
+            int t;
+            for (t = 0; t < eng_steps_count(); t++) {
+                CHECK(eng_steps_set_notes((uint32_t)eng_steps_module((uint32_t)t), 0, 0));
+                m1_patch_track((uint32_t)eng_steps_module((uint32_t)t));
+            }
+            CHECK(!(m1_cur[6] & 16u) && m1_valid(m1_cur, m1_cur_len));
+            m1_patch_step((uint32_t)t1, 0, 3u);                  /* and comes back with one track's entry */
+            CHECK((m1_cur[6] & 16u) && m1_cur[base] == 1u && m1_cur[base + 1u] == (uint8_t)t1 && m1_valid(m1_cur, m1_cur_len));
+            CHECK(eng_load(m1_cur, m1_cur_len) == 0 && eng_steps_get((uint32_t)t1, 0) == 3);
+        }
         m1_cur[base + 1u] = 0;                                   /* an entry that names a module that is not a Steps module */
         if (eng_steps_module(0) != 0)
             CHECK(eng_load(m1_cur, m1_cur_len) != 0);
-        m1_cur[1] = 26;                                          /* format 26 had no step values */
+        m1_cur[1] = 30;                                          /* format 30 had step values there */
         CHECK(!m1_valid(m1_cur, m1_cur_len));
-        printf("step values ok\n");
+        printf("track notes ok\n");
     }
     printf("proto ok: %u acks, %ld patch bytes, render identical\n", acks_ok, np);
     return 0;

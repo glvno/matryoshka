@@ -41,7 +41,9 @@
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 16
 #define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
-#define ENG_MAX_TRACKS 16            /* Steps modules of a patch (their patterns live in E.trk_pat) */
+#define ENG_MAX_TRACKS 16            /* Steps modules of a patch (their notes live in E.trk_note) */
+#define ENG_MAX_NOTES 512            /* the notes of all Steps tracks of a patch (patchbin.ts DEVICE.notes) */
+#define ENG_KEV 64                   /* Steps keys out (note on / off) one block holds; more are dropped */
 #define ARP_HELD 16                  /* keys an arpeggiator holds (arpeggiator.ts ARP_HELD) */
 #define ARP_LIST (ARP_HELD * 4u)     /* its notes over four octaves */
 #define TEMPO_DEFAULT 120u           /* without a Main module */
@@ -325,11 +327,11 @@ typedef struct {
         struct { int16_t *buf; uint32_t w, phase; } ch;
         struct { uint32_t seed; int32_t c1, r1, y, period, since, gleft; int8_t pos, down; } seq;
         /* Steps (modules.ts StepsState): ticks since the step, the step (-1: the next is the first), times round the pattern,
-         * a swung step waiting (samples, which), trig samples left, clk mode's edge distance; slen / sst: the step's length
-         * and samples since it began (live recording rounds to the nearest step); skip: a step recorded ahead, not played
-         * again when reached; hit: 1 / 2 (accented) = sound now (eng_steps_hit); pitch / vel: the outputs' held values (Q16,
-         * the last step that played) */
-        struct { uint32_t seed, loop; int32_t c1, r1, since, period, pend, trig, slen, sst, pitch, vel; uint16_t count; int8_t pos, pstep, skip; uint8_t run, acc, gap, mute, hit; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
+         * a swung step waiting (samples, which), clk mode's edge distance; slen / sst: the step's length and samples since
+         * it began (live recording rounds to the nearest step); skip: a step recorded ahead, its notes not played again
+         * when reached; hit: 1 / 2 (accented) = sound now (eng_steps_hit); pitch / vel: the outputs' held values (Q16, the
+         * last note that started); the notes sounding are the track's (E.trk_snd) */
+        struct { uint32_t seed, loop; int32_t c1, r1, since, period, pend, slen, sst, pitch, vel; uint16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
         struct { int32_t count, c1, r1; } cdv;
         struct { int32_t v, c1; } sh;
         struct { int32_t rem, t1; } pls;
@@ -347,7 +349,7 @@ typedef struct {
     int32_t par[MAX_PAR];
     uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
     uint16_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
-    uint8_t trk;                     /* a Steps module: its pattern, E.trk_pat[trk] */
+    uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
 } node_t;
 
 /* a macro range: input `pin` (0 p1, 1 p2) of module `mod` moves parameter `par` between lo and hi (0..255 of the range,
@@ -395,6 +397,18 @@ typedef struct {
     int32_t held_vel[MAX_HELD];
 } grp_t;
 
+/* a note a Steps track sounds (modules.ts StepsSound): the key it sent, steps to go after the one it is on, samples left */
+typedef struct { uint8_t key, left; int32_t cnt; } snd_t;
+
+/* a Steps note (track.ts noteWord): bits 0..5 the start step, 6..11 the length - 1, 12..18 the note, 19..25 the velocity,
+ * 26..30 the chance code (100 - chance) / 5 */
+#define NW_AT(w) ((w) & 63u)
+#define NW_LEN(w) ((((w) >> 6) & 63u) + 1u)
+#define NW_NOTE(w) (((w) >> 12) & 127u)
+#define NW_VEL(w) (((w) >> 19) & 127u)
+#define NW_CODE(w) (((w) >> 26) & 31u)
+#define NW(at, len, note, vel, code) ((uint32_t)(at) | ((uint32_t)(len) - 1u) << 6 | (uint32_t)(note) << 12 | (uint32_t)(vel) << 19 | (uint32_t)(code) << 26)
+
 /* an Arpeggiator module as it runs (web/src/arpeggiator.ts, the same steps): its keys in press order, the step counter, the
  * note it plays, samples since the last step and between the last two, the clock tick of its next step, the random mode's
  * generator, the clk input's last state */
@@ -424,9 +438,15 @@ typedef struct {
     int32_t tick_off, tick_n, tick_len;   /* this block's ticks while running: the sample they fall on (-1 none), how many, samples per tick */
     uint32_t ext_since, ext_len;     /* MIDI clock: samples since its last tick, samples per tick as measured (0: not yet) */
     uint8_t ntrk;
-    uint8_t trk_pat[ENG_MAX_TRACKS][TRACK_STEPS];   /* the Steps modules' patterns (patch.ts stepByte) */
-    uint8_t trk_note[ENG_MAX_TRACKS][TRACK_STEPS];  /* their step values (#93): MIDI notes, velocities 0..127 */
-    uint8_t trk_vel[ENG_MAX_TRACKS][TRACK_STEPS];
+    uint16_t nnotes;                 /* the Steps tracks' notes (#133): track t's are trk_note[trk_first[t] .. + trk_n[t]), */
+    uint16_t trk_first[ENG_MAX_TRACKS];   /* sorted by step, then note (track.ts), the tracks in order */
+    uint8_t trk_n[ENG_MAX_TRACKS];
+    uint32_t trk_note[ENG_MAX_NOTES];
+    snd_t trk_snd[ENG_MAX_TRACKS][TRACK_POLY];   /* the notes each track sounds, oldest first */
+    uint8_t trk_nsnd[ENG_MAX_TRACKS];
+    uint8_t trk_last[ENG_MAX_TRACKS];    /* the last note a track started (a hit from the panel plays it) */
+    uint8_t nkev;                    /* keys out of the Steps tracks this block: node index, key (bit 7: on), velocity */
+    uint8_t kev[ENG_KEV][3];
     uint8_t running;                 /* the transport as this block saw it */
     uint8_t narp;
     arp_t arp[ENG_MAX_ARPS];
@@ -636,6 +656,8 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.clk_pulse = 0;
     E.narp = 0;
     E.ntrk = 0;
+    E.nnotes = 0;
+    E.nkev = 0;
     E.ngrp = 0;
     E.grp[0].parts = 1;                          /* the shared keyboard: one part, legato auto, last note */
     E.grp[0].assign = E.grp[0].legato = E.grp[0].priority = 0;
@@ -742,15 +764,13 @@ int eng_load(const uint8_t *p, uint32_t len)
             for (j = 0; j < 6u; j++, at += 2)
                 nd->map[j] = (uint16_t)((uint32_t)p[at] | (uint32_t)p[at + 1] << 8);
         }
-        if (nd->type == T_STEPS) {               /* its name (the panel reads it from the binary), then its pattern */
+        if (nd->type == T_STEPS) {               /* its name (the panel reads it from the binary); its notes come after the cables */
             if (E.ntrk >= ENG_MAX_TRACKS)
                 return -2;
             nd->trk = E.ntrk++;
-            for (j = 0; j < TRACK_STEPS; j++) {
-                E.trk_pat[nd->trk][j] = p[at + TRACK_NAME_MAX + j];
-                E.trk_note[nd->trk][j] = STEP_NOTE;  /* (the step values section, if any, comes after the cables) */
-                E.trk_vel[nd->trk][j] = STEP_VEL;
-            }
+            E.trk_first[nd->trk] = 0;
+            E.trk_n[nd->trk] = E.trk_nsnd[nd->trk] = 0;
+            E.trk_last[nd->trk] = STEP_NOTE;
         }
         at += d->ndata;
         /* the memories of delay, reverb, chorus, granular and the output exist once (patch.ts SHARED_TYPES) */
@@ -771,8 +791,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.narp++;
         }
     }
-    for (i = 1; i <= E.ngrp; i++)                /* a group's note source must be an arpeggiator of the patch */
-        if (E.grp[i].src && (E.grp[i].src > E.nmod || E.node[E.grp[i].src - 1u].type != T_ARP))
+    for (i = 1; i <= E.ngrp; i++)                /* a group's note source must be an arpeggiator or a Steps module of the patch */
+        if (E.grp[i].src && (E.grp[i].src > E.nmod || (E.node[E.grp[i].src - 1u].type != T_ARP && E.node[E.grp[i].src - 1u].type != T_STEPS)))
             return -3;
     if (at + 4u * ncab > len)
         return -3;
@@ -826,18 +846,32 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.node[mod].input_map[input] |= mask;
         }
     }
-    if (p[6] & 16u) {                            /* step values: u8 count, then module, TRACK_STEPS notes, TRACK_STEPS velocities */
-        uint32_t count;
+    if (p[6] & 16u) {                            /* the tracks' notes: u8 count, then per track u8 module, u8 n, n u32 notes */
+        uint32_t count, last = 0, t, n;
         if (at >= len) return -3;
         count = p[at++];
-        if (at + (1u + 2u * TRACK_STEPS) * count > len) return -3;
-        for (i = 0; i < count; i++, at += 1u + 2u * TRACK_STEPS) {
-            uint32_t mod = p[at];
-            if (mod >= E.nmod || E.node[mod].type != T_STEPS) return -3;
-            for (j = 0; j < TRACK_STEPS; j++) {
-                E.trk_note[E.node[mod].trk][j] = p[at + 1u + j] & 0x7Fu;
-                E.trk_vel[E.node[mod].trk][j] = p[at + 1u + TRACK_STEPS + j] & 0x7Fu;
+        for (i = 0; i < count; i++) {
+            uint32_t mod;
+            if (at + 2u > len) return -3;
+            mod = p[at];
+            n = p[at + 1u];
+            at += 2u;
+            if (mod >= E.nmod || E.node[mod].type != T_STEPS || !n || n > TRACK_NOTES_MAX || at + 4u * n > len) return -3;
+            t = E.node[mod].trk;
+            if ((i && t <= last) || E.nnotes + n > ENG_MAX_NOTES) return -3;   /* in track order, within the pool */
+            last = t;
+            for (j = 0; j < n; j++, at += 4u) {
+                uint32_t w = (uint32_t)rd32(p + at);
+                if (NW_AT(w) + NW_LEN(w) > TRACK_STEPS || !NW_VEL(w)) return -3;
+                E.trk_note[E.nnotes + j] = w;
             }
+            E.trk_first[t] = E.nnotes;
+            E.trk_n[t] = (uint8_t)n;
+            E.nnotes = (uint16_t)(E.nnotes + n);
+        }
+        for (t = 0, n = 0; t < E.ntrk; t++) {    /* (a track without notes starts where the next would) */
+            E.trk_first[t] = (uint16_t)n;
+            n += E.trk_n[t];
         }
     }
     if (p[6] & 32u) {                            /* the device pages (the LCD's, proto.c / pages_ui.c): not the engine's */
@@ -1568,6 +1602,44 @@ static void arp_emit_off(const arp_t *a, uint32_t note)
             group_off(&E.grp[g], note);
 }
 
+/* the notes the Steps tracks started and ended in the last block, into the groups they play, in order (engine.ts
+ * trackKeys); a group's key range judges them. A part that a track's note let go and one of its notes took again in the
+ * same delivery restarts its envelopes (its gate had no low sample); a note over one still sounding is legato as the
+ * allocator says */
+static void steps_keys(void)
+{
+    uint16_t freed[1 + ENG_MAX_GROUPS];
+    uint32_t e, g, v;
+    for (e = 0; e < E.nkev; e++) {
+        uint32_t node = E.kev[e][0], key = E.kev[e][1] & 0x7Fu;
+        if (!e || node != E.kev[e - 1u][0])
+            for (g = 0; g <= E.ngrp; g++)
+                freed[g] = 0;
+        for (g = 1; g <= E.ngrp; g++) {
+            grp_t *gr = &E.grp[g];
+            if (gr->src != node + 1u)
+                continue;
+            if (!(E.kev[e][1] & 0x80u)) {
+                uint32_t was = 0;
+                for (v = 0; v < gr->parts; v++)
+                    was |= (uint32_t)E.pv[gr->pv0 + v].on << v;
+                group_off(gr, key);
+                for (v = 0; v < gr->parts; v++)
+                    if ((was >> v & 1u) && !E.pv[gr->pv0 + v].on)
+                        freed[g] |= (uint16_t)(1u << v);
+            } else if (key >= gr->lo && key <= gr->hi) {
+                group_on(gr, key, (int32_t)(((uint32_t)E.kev[e][2] << 16) / 127u));
+                for (v = 0; v < gr->parts; v++) {
+                    pv_t *x = &E.pv[gr->pv0 + v];
+                    if (x->on && x->note == key && x->on_stamp == E.stamp && (freed[g] >> v & 1u))
+                        x->retrig = 1;
+                }
+            }
+        }
+    }
+    E.nkev = 0;
+}
+
 /* one block (arpeggiator.ts arpBlock): steps on the clock at its rate, or one per block with a rising edge on clk (the
  * input as the last block left it); the gate a share of the last step's length */
 static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
@@ -1707,30 +1779,179 @@ int eng_steps_module(uint32_t t)
             return (int)i;
     return -1;
 }
+/* A track's notes as a working copy and back (track.ts fixNotes): sorted by step, then note (stable: of two notes on the same
+ * step and key the first stays), at most TRACK_NOTES_MAX, into the pool (the tracks after it move) */
+static uint32_t trk_copy(uint32_t t, uint32_t *w)
+{
+    uint32_t i;
+    for (i = 0; i < E.trk_n[t]; i++)
+        w[i] = E.trk_note[E.trk_first[t] + i];
+    return E.trk_n[t];
+}
+static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
+{
+    uint32_t i, j, k, old = E.trk_n[t], first = E.trk_first[t];
+    for (i = 1; i < n; i++)                       /* insertion sort by (step, note) */
+        for (j = i; j > 0 && ((NW_AT(w[j - 1]) << 7 | NW_NOTE(w[j - 1])) > (NW_AT(w[j]) << 7 | NW_NOTE(w[j]))); j--) {
+            uint32_t x = w[j];
+            w[j] = w[j - 1];
+            w[j - 1] = x;
+        }
+    for (i = k = 0; i < n; i++)                   /* one note per step and key */
+        if (!k || NW_AT(w[i]) != NW_AT(w[k - 1]) || NW_NOTE(w[i]) != NW_NOTE(w[k - 1]))
+            w[k++] = w[i];
+    n = k < TRACK_NOTES_MAX ? k : TRACK_NOTES_MAX;
+    if ((uint32_t)E.nnotes - old + n > ENG_MAX_NOTES)
+        return 0;
+    if (n > old)                                  /* the tracks after it move up or down */
+        for (i = E.nnotes; i-- > first + old;)
+            E.trk_note[i + n - old] = E.trk_note[i];
+    else if (n < old)
+        for (i = first + old; i < E.nnotes; i++)
+            E.trk_note[i - (old - n)] = E.trk_note[i];
+    for (i = 0; i < n; i++)
+        E.trk_note[first + i] = w[i];
+    E.nnotes = (uint16_t)(E.nnotes - old + n);
+    E.trk_n[t] = (uint8_t)n;
+    for (i = t + 1u; i < E.ntrk; i++)
+        E.trk_first[i] = (uint16_t)(E.trk_first[i] + n - old);
+    return 1;
+}
+
+/* the step view (track.ts stepView, setStep, setStepValue): the SEQ page edits a track's notes as steps. A step is on
+ * when notes start there (its accent, chance, note and velocity are its lowest note's), tied when a note started before
+ * goes on through it. get: the step as a byte (bit 0 on, bit 1 accent = full velocity, bits 2..6 the chance code, bit 7
+ * tie), -1 if `module` is not a Steps module */
+static int steps_first(uint32_t t, uint32_t k)    /* the pool index of the first note on step k, -1 none */
+{
+    uint32_t i;
+    for (i = 0; i < E.trk_n[t]; i++)
+        if (NW_AT(E.trk_note[E.trk_first[t] + i]) == k)
+            return (int)(E.trk_first[t] + i);
+    return -1;
+}
+static int steps_tied(uint32_t t, uint32_t k)     /* no note starts on k and one started before goes on through it */
+{
+    uint32_t i;
+    if (steps_first(t, k) >= 0)
+        return 0;
+    for (i = 0; i < E.trk_n[t]; i++) {
+        uint32_t w = E.trk_note[E.trk_first[t] + i];
+        if (NW_AT(w) < k && k < NW_AT(w) + NW_LEN(w))
+            return 1;
+    }
+    return 0;
+}
 int eng_steps_get(uint32_t module, uint32_t k)
 {
-    return steps_inst(module) && k < TRACK_STEPS ? E.trk_pat[E.node[module].trk][k] : -1;
-}
-void eng_steps_set(uint32_t module, uint32_t k, uint32_t b)
-{
-    if (steps_inst(module) && k < TRACK_STEPS)
-        E.trk_pat[E.node[module].trk][k] = (uint8_t)(b & 0xFFu);
-}
-/* a step's note / velocity (#93): get returns note | vel << 8, -1 if `module` is not a Steps module */
-int eng_steps_value(uint32_t module, uint32_t k)
-{
-    uint32_t t;
+    uint32_t t, w;
+    int f;
     if (!steps_inst(module) || k >= TRACK_STEPS)
         return -1;
     t = E.node[module].trk;
-    return (int)E.trk_note[t][k] | (int)E.trk_vel[t][k] << 8;
+    if ((f = steps_first(t, k)) < 0)
+        return steps_tied(t, k) ? 0x80 : 0;
+    w = E.trk_note[f];
+    return (int)(1u | (NW_VEL(w) == ACCENT_VEL ? 2u : 0u) | (NW_CODE(w) > 19u ? 19u : NW_CODE(w)) << 2);
 }
+/* step k set as a byte: tie = the notes sounding on the step before go on through it (its own notes give way; nothing
+ * sounding: no change); else a tied step is untied (the notes through it end before it), on = a note there if it has none
+ * (C4, the default velocity), its notes get the chance and the accent (full velocity; the accent taken away: the default
+ * velocity); off = its notes go */
+void eng_steps_set(uint32_t module, uint32_t k, uint32_t b)
+{
+    uint32_t w[TRACK_NOTES_MAX + 1u], n, i, m, t, code = (b >> 2) & 31u, mine = 0;
+    if (!steps_inst(module) || k >= TRACK_STEPS)
+        return;
+    t = E.node[module].trk;
+    n = trk_copy(t, w);
+    if (code > 19u)
+        code = 19u;
+    if (b & 0x80u) {
+        int any = 0;
+        for (i = 0; i < n; i++)
+            any |= NW_AT(w[i]) < k && NW_AT(w[i]) + NW_LEN(w[i]) >= k;
+        if (!any)
+            return;
+        for (i = m = 0; i < n; i++)
+            if (NW_AT(w[i]) != k) {
+                if (NW_AT(w[i]) < k && NW_AT(w[i]) + NW_LEN(w[i]) < k + 1u && NW_AT(w[i]) + NW_LEN(w[i]) >= k)
+                    w[i] = (w[i] & ~(63u << 6)) | (k - NW_AT(w[i])) << 6;   /* length k - at + 1 */
+                w[m++] = w[i];
+            }
+        (void)trk_put(t, w, m);
+        return;
+    }
+    if (steps_tied(t, k))
+        for (i = 0; i < n; i++)
+            if (NW_AT(w[i]) < k && k < NW_AT(w[i]) + NW_LEN(w[i]))
+                w[i] = (w[i] & ~(63u << 6)) | (k - NW_AT(w[i]) - 1u) << 6;    /* length k - at */
+    for (i = m = 0; i < n; i++) {
+        if (NW_AT(w[i]) == k) {
+            uint32_t vel = NW_VEL(w[i]);
+            if (!(b & 1u))
+                continue;
+            mine = 1;
+            vel = (b & 2u) ? ACCENT_VEL : vel == ACCENT_VEL ? STEP_VEL : vel;
+            w[i] = (w[i] & ~((127u << 19) | (31u << 26))) | vel << 19 | code << 26;
+        }
+        w[m++] = w[i];
+    }
+    if ((b & 1u) && !mine && m < TRACK_NOTES_MAX)
+        w[m++] = NW(k, 1u, STEP_NOTE, (b & 2u) ? ACCENT_VEL : STEP_VEL, code);
+    (void)trk_put(t, w, m);
+}
+/* a step's note / velocity: note | vel << 8 of its lowest note (an off step: STEP_NOTE / STEP_VEL), -1 if `module` is not a
+ * Steps module */
+int eng_steps_value(uint32_t module, uint32_t k)
+{
+    int f;
+    if (!steps_inst(module) || k >= TRACK_STEPS)
+        return -1;
+    f = steps_first(E.node[module].trk, k);
+    return f < 0 ? STEP_NOTE | STEP_VEL << 8 : (int)(NW_NOTE(E.trk_note[f]) | NW_VEL(E.trk_note[f]) << 8);
+}
+/* step k's notes move together so the lowest is `note` (a chord keeps its shape), all get `vel`; an empty step gets one */
 void eng_steps_value_set(uint32_t module, uint32_t k, uint32_t note, uint32_t vel)
 {
-    if (steps_inst(module) && k < TRACK_STEPS) {
-        E.trk_note[E.node[module].trk][k] = (uint8_t)(note & 0x7Fu);
-        E.trk_vel[E.node[module].trk][k] = (uint8_t)(vel & 0x7Fu);
+    uint32_t w[TRACK_NOTES_MAX + 1u], n, i, t;
+    int f;
+    int32_t d;
+    if (!steps_inst(module) || k >= TRACK_STEPS)
+        return;
+    t = E.node[module].trk;
+    note = note > 127u ? 127u : note;
+    vel = vel < 1u ? 1u : vel > 127u ? 127u : vel;
+    n = trk_copy(t, w);
+    if ((f = steps_first(t, k)) < 0) {
+        if (n < TRACK_NOTES_MAX)
+            w[n++] = NW(k, 1u, note, vel, 0u);
+    } else {
+        d = (int32_t)note - (int32_t)NW_NOTE(E.trk_note[f]);
+        for (i = 0; i < n; i++)
+            if (NW_AT(w[i]) == k)
+                w[i] = (w[i] & ~((127u << 12) | (127u << 19))) | (uint32_t)clampi((int32_t)NW_NOTE(w[i]) + d, 0, 127) << 12 | vel << 19;
     }
+    (void)trk_put(t, w, n);
+}
+/* a track's notes (track.ts noteWord, sorted): how many, *w where they are; -1 if `module` is not a Steps module */
+int eng_steps_notes(uint32_t module, const uint32_t **w)
+{
+    if (!steps_inst(module))
+        return -1;
+    *w = &E.trk_note[E.trk_first[E.node[module].trk]];
+    return E.trk_n[E.node[module].trk];
+}
+/* a track's notes replaced (the editor's TRACK): checked, sorted; 0 when they do not fit the pool */
+int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n)
+{
+    uint32_t w[TRACK_NOTES_MAX], i, m = 0;
+    if (!steps_inst(module) || n > TRACK_NOTES_MAX)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (NW_AT(notes[i]) + NW_LEN(notes[i]) <= TRACK_STEPS && NW_VEL(notes[i]))
+            w[m++] = notes[i] & 0x7FFFFFFFu;
+    return trk_put(E.node[module].trk, w, m);
 }
 int eng_steps_pos(uint32_t module)
 {
@@ -1748,7 +1969,7 @@ int eng_steps_muted(uint32_t module)
     inst_t *it = steps_inst(module);
     return it ? it->s.stp.mute : 0;
 }
-/* A hit from the panel (live recording, REC on): it sounds at once. While the track plays it also goes into the pattern
+/* A hit from the panel (live recording, REC on): the track's last note sounds at once. While the track plays it also goes into the pattern
  * at the nearest step: the one playing, or the next when more than half of this one has passed (that step is then not
  * played again when it comes up, it has just sounded). Returns the step it went into, -1 when only heard. */
 int eng_steps_hit(uint32_t module, int accent, int record)
@@ -1766,7 +1987,11 @@ int eng_steps_hit(uint32_t module, int accent, int record)
         k = k + 1 >= len ? 0 : k + 1;
         it->s.stp.skip = (int8_t)k;
     }
-    E.trk_pat[E.node[module].trk][k] |= accent ? 3u : 1u;
+    {                                            /* into the step: on (C4 if it had no note), accented when ENV is held */
+        int b = eng_steps_get(module, (uint32_t)k);
+        if (!(b & 0x80))
+            eng_steps_set(module, (uint32_t)k, (uint32_t)b | (accent ? 3u : 1u));
+    }
     return k;
 }
 
@@ -3293,62 +3518,131 @@ static void m_chorus(const node_t *nd, inst_t *it, uint32_t n)
     it->s.ch.phase = phase;
 }
 
-/* The step sequencer (modules.ts seq): out is the current step all the time, gate follows the clock unless the step is a
- * rest (fully down, -1). A rising clock edge advances (fwd, back, pendulum, random), a rising reset edge goes to step 1. */
-/* a step's chance (modules.ts stepPlays): does step k (its byte b) play on time `loop` round the pattern */
-static int steps_plays(uint32_t seed, uint32_t loop, uint32_t k, uint32_t b)
+/* does note j of step k (in stored order, chance code `code`) play on time `loop` round the pattern (modules.ts notePlays);
+ * note 0 hashes as the step did before #133 */
+static int steps_plays(uint32_t seed, uint32_t loop, uint32_t k, uint32_t j, uint32_t code)
 {
-    uint32_t code = (b >> 2) & 31u;
-    if (!(b & 1u))
-        return 0;
     if (code > 19u)
         code = 19u;
-    return !code || hash32(seed ^ (loop * 0x9e3779b9u) ^ ((k + 1u) * 0x85ebca6bu)) % 100u < 100u - 5u * code;
+    return !code || hash32(seed ^ (loop * 0x9e3779b9u) ^ ((k + 1u) * 0x85ebca6bu) ^ (j * 0xc2b2ae35u)) % 100u < 100u - 5u * code;
 }
 
-/* a step of a Steps module comes up: it sounds (trig for gate x the step length sl, one low sample first if trig is still up)
- * unless it is off, its chance says no, it was recorded ahead (skip) or the track is muted */
-static void steps_fire(inst_t *it, uint32_t trk, int32_t k, int32_t len, int32_t gate, int32_t sl)
+/* keys out: a note on (key | 0x80, velocity) or off of the Steps module `node`, handed to its groups at the start of the next
+ * block (steps_keys) */
+static void steps_key(uint32_t node, uint32_t key, uint32_t vel)
 {
-    const uint8_t *pat = E.trk_pat[trk];
+    if (E.nkev >= ENG_KEV)
+        return;
+    E.kev[E.nkev][0] = (uint8_t)node;
+    E.kev[E.nkev][1] = (uint8_t)key;
+    E.kev[E.nkev][2] = (uint8_t)vel;
+    E.nkev++;
+}
+
+/* sounding note j of track t ends (its key off) */
+static void steps_end(uint32_t t, uint32_t node, uint32_t j)
+{
+    snd_t *s = E.trk_snd[t];
+    uint32_t i;
+    steps_key(node, s[j].key, 0);
+    for (i = j; i + 1u < E.trk_nsnd[t]; i++)
+        s[i] = s[i + 1u];
+    E.trk_nsnd[t]--;
+}
+
+/* a note starts on track t (a new sound; a note on the same key ends first, the oldest when TRACK_POLY sound) */
+static void steps_start(uint32_t t, uint32_t node, uint32_t key, uint32_t vel, uint32_t left, int32_t cnt)
+{
+    uint32_t j;
+    for (j = 0; j < E.trk_nsnd[t]; j++)
+        if (E.trk_snd[t][j].key == key) {
+            steps_end(t, node, j);
+            break;
+        }
+    if (E.trk_nsnd[t] >= TRACK_POLY)
+        steps_end(t, node, 0);
+    j = E.trk_nsnd[t]++;
+    E.trk_snd[t][j].key = (uint8_t)key;
+    E.trk_snd[t][j].left = (uint8_t)left;
+    E.trk_snd[t][j].cnt = cnt;
+    steps_key(node, key | 0x80u, vel);
+}
+
+/* a note's samples from now (modules.ts steps hold): through to the next step while more steps follow (two steps at most,
+ * so a stopped clock lets it end), else gate x the step length sl */
+static int32_t steps_hold(uint32_t left, int32_t gate, int32_t sl)
+{
     int32_t g;
+    if (left)
+        return 2 * sl;
+    g = (int32_t)(((int64_t)gate * sl) >> 16);
+    return g > 1 ? g : 1;
+}
+
+static int steps_sounding(uint32_t t)
+{
+    uint32_t j;
+    for (j = 0; j < E.trk_nsnd[t]; j++)
+        if (E.trk_snd[t][j].cnt > 0)
+            return 1;
+    return 0;
+}
+
+/* step k of a Steps module comes up: the notes sounding go on to their next step, then the notes starting on it sound
+ * (unless their chance says no, it was recorded ahead (skip) or the track is muted); tr: the transpose input (Q16 octaves,
+ * whole semitones for the keys) */
+static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int32_t gate, int32_t sl, int32_t tr)
+{
+    uint32_t t = nd->trk, node = (uint32_t)(nd - E.node), i, j = 0, end;
+    int32_t semis = (int32_t)(((int64_t)tr * 12 + 32768) >> 16);
+    int was, any = 0;
+    for (i = 0; i < E.trk_nsnd[t]; i++) {
+        snd_t *x = &E.trk_snd[t][i];
+        if (x->left > 0 && x->cnt > 0 && !it->s.stp.mute) {
+            x->left--;
+            x->cnt = steps_hold(x->left, gate, sl);
+        }
+    }
+    if (it->s.stp.mute)
+        return;
     if (it->s.stp.skip == k) {
         it->s.stp.skip = -1;
         return;
     }
-    if (pat[k + 1 >= len ? 0 : k + 1] & 0x80u)  /* the next step ties (#128): the gate stays up into it, two steps at most */
-        g = 2 * sl;
-    else {
-        g = (int32_t)(((int64_t)gate * sl) >> 16);
-        g = g > 1 ? g : 1;
-    }
-    if (pat[k] & 0x80u) {                        /* a tie: the note sounding goes on, its pitch and velocity */
-        if (it->s.stp.trig > 0 && !it->s.stp.mute)
-            it->s.stp.trig = g;
-        return;
-    }
-    if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, pat[k]) || it->s.stp.mute)
-        return;
-    it->s.stp.gap = it->s.stp.trig > 0;
-    it->s.stp.trig = g;
-    it->s.stp.acc = (pat[k] >> 1) & 1u;
-    {                                            /* octaves from C4, rounded to Q16 (modules.ts the same) */
-        /* = (d +- 6) / 12 with d = n * ENG_ONE, split as ENG_ONE = 12 * 5461 + 4: written plainly the compiler folds
-         * -STEP_NOTE * ENG_ONE + 6 into 0xFFC40006, which build.py rejects as a chip ROM address */
-        int32_t n = (int32_t)E.trk_note[trk][k] - STEP_NOTE;
+    was = steps_sounding(t);
+    end = (uint32_t)E.trk_first[t] + E.trk_n[t];
+    for (i = E.trk_first[t]; i < end && i < ENG_MAX_NOTES; i++) {
+        uint32_t w = E.trk_note[i], left;
+        int32_t key, n;
+        if (NW_AT(w) != (uint32_t)k)
+            continue;
+        if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, j++, NW_CODE(w)))
+            continue;
+        key = clampi((int32_t)NW_NOTE(w) + semis, 0, 127);
+        left = (NW_LEN(w) < (uint32_t)(len - k) ? NW_LEN(w) : (uint32_t)(len - k)) - 1u;
+        steps_start(t, node, (uint32_t)key, NW_VEL(w), left, steps_hold(left, gate, sl));
+        /* octaves from C4, rounded to Q16 (modules.ts the same) = (d +- 6) / 12 with d = n * ENG_ONE, split as ENG_ONE =
+         * 12 * 5461 + 4: written plainly the compiler folds -STEP_NOTE * ENG_ONE + 6 into 0xFFC40006, which build.py
+         * rejects as a chip ROM address */
+        n = (int32_t)NW_NOTE(w) - STEP_NOTE;
         it->s.stp.pitch = n * 5461 + (n >= 0 ? 4 * n + 6 : 4 * n - 6) / 12;
+        it->s.stp.vel = (int32_t)((NW_VEL(w) << 16) / 127u);
+        E.trk_last[t] = (uint8_t)NW_NOTE(w);
+        any = 1;
     }
-    it->s.stp.vel = (int32_t)(((uint32_t)E.trk_vel[trk][k] << 16) / 127u);
+    if (any)
+        it->s.stp.gap = (uint8_t)was;
 }
 
 /* the Steps module (modules.ts steps): one step per `rate` of the clock while the transport runs (the first when it starts),
- * or per rising edge in clk; every second step late by the swing; a step that plays raises trig (and acc) for gate x step */
+ * or per rising edge in clk; every second step late by the swing; its notes sound for their length (gate x their last
+ * step); trig is up while any sounds, pitch / vel hold the last that started, keys out every note on / off */
 static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
 {
     static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* arpeggiator.ts ARP_RATE_TICKS */
     const esig_t *clk = it->in[STEPS_I_CLK], *reset = it->in[STEPS_I_RESET], *tr = it->in[STEPS_I_TRANSPOSE];
-    esig_t *trig = it->out[STEPS_O_TRIG], *acc = it->out[STEPS_O_ACC], *pitch = it->out[STEPS_O_PITCH], *vel = it->out[STEPS_O_VEL];
-    uint32_t trk = nd->trk;
+    esig_t *trig = it->out[STEPS_O_TRIG], *keys = it->out[STEPS_O_KEYS], *pitch = it->out[STEPS_O_PITCH], *vel = it->out[STEPS_O_VEL];
+    uint32_t t = nd->trk, node = (uint32_t)(nd - E.node);
     int32_t len = clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
     int32_t div = RATE_TICKS[clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 6)];
     int32_t swing = EF(it, STEPS_P_SWING) - 50 * ENG_ONE, gate = EF(it, STEPS_P_GATE);
@@ -3376,8 +3670,8 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 adv++;
             }
             if ((int32_t)i == E.tick_off) {
-                int32_t t;
-                for (t = 0; t < E.tick_n; t++)
+                int32_t q;
+                for (q = 0; q < E.tick_n; q++)
                     if (++it->s.stp.count >= div) {
                         it->s.stp.count = 0;
                         adv++;
@@ -3385,16 +3679,15 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             }
         }
         sl = ext && it->s.stp.period > 0 ? it->s.stp.period : (ext ? 6 : div) * E.tick_len;   /* the gate's step length */
-        if (i == 0 && it->s.stp.hit) {           /* a hit from the panel (eng_steps_hit): sounds now, whatever the pattern */
-            int32_t g = (int32_t)(((int64_t)gate * sl) >> 16);
-            it->s.stp.gap = it->s.stp.trig > 0;
-            it->s.stp.trig = g > 1 ? g : 1;
-            it->s.stp.acc = it->s.stp.hit == 2u;
+        if (i == 0 && it->s.stp.hit) {           /* a hit from the panel (eng_steps_hit): the last note sounds now, whatever the pattern */
+            int was = steps_sounding(t);
+            steps_start(t, node, (uint32_t)clampi((int32_t)E.trk_last[t] + (int32_t)(((int64_t)tr[i] * 12 + 32768) >> 16), 0, 127), it->s.stp.hit == 2u ? ACCENT_VEL : STEP_VEL, 0, steps_hold(0, gate, sl));
+            it->s.stp.gap = (uint8_t)was;
             it->s.stp.hit = 0;
         }
         it->s.stp.sst++;
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0)
-            steps_fire(it, trk, it->s.stp.pstep, len, gate, sl);
+            steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
         for (; adv > 0; adv--) {
             int32_t sw = ext ? it->s.stp.period : div * E.tick_len, d = 0;
             it->s.stp.pos = (int8_t)(it->s.stp.pos + 1 >= len ? 0 : it->s.stp.pos + 1);
@@ -3408,23 +3701,28 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 it->s.stp.pend = d;
                 it->s.stp.pstep = it->s.stp.pos;
             } else
-                steps_fire(it, trk, it->s.stp.pos, len, gate, sl);
+                steps_fire(nd, it, it->s.stp.pos, len, gate, sl, tr[i]);
         }
         {
-            int up = it->s.stp.trig > 0 && !it->s.stp.gap;
-            trig[i] = up ? ENG_ONE : 0;
-            acc[i] = it->s.stp.acc ? ENG_ONE : 0;   /* (a level: from an accented step until the next step that plays) */
+            int up = E.trk_nsnd[t] && !it->s.stp.gap && steps_sounding(t);
+            trig[i] = keys[i] = up ? ENG_ONE : 0;
             pitch[i] = it->s.stp.pitch + tr[i];
             vel[i] = it->s.stp.vel;
             if (it->s.stp.gap)
                 it->s.stp.gap = 0;
-            else if (it->s.stp.trig > 0)
-                it->s.stp.trig--;
+            else if (E.trk_nsnd[t]) {
+                int32_t j;
+                for (j = (int32_t)E.trk_nsnd[t] - 1; j >= 0; j--)
+                    if (E.trk_snd[t][j].cnt > 0 && --E.trk_snd[t][j].cnt == 0)
+                        steps_end(t, node, (uint32_t)j);
+            }
         }
     }
     it->s.stp.run = E.running;
 }
 
+/* The step sequencer (modules.ts seq): out is the current step all the time, gate follows the clock unless the step is a
+ * rest (fully down, -1). A rising clock edge advances (fwd, back, pendulum, random), a rising reset edge goes to step 1. */
 static void m_seq(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *clock = it->in[SEQ_I_CLOCK], *reset = it->in[SEQ_I_RESET];
@@ -4005,6 +4303,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 E.tick_off = -1;
             E.clk_seen = t;
             E.clk_pulse = seen && run ? (n + 1u) / 2u : 0u;   /* the Main clock: half a block per block that saw a tick while running */
+            steps_keys();
             for (k = 0; k < E.narp; k++)
                 arp_block(&E.arp[k], n, bpm);
         }

@@ -6,6 +6,11 @@ git history.
 
 ## Where things stand
 
+- **#133 is done (committed on `main`, not pushed: the smoke test runs after the rest of #132):** the Steps note model, format 31, both
+  engines, keys out, TRACK protocol, SEQ page on the step view, migration, golden kits. NOTES "2026-10-20 (later)" has
+  the details and decisions (acc cables dropped, chance per note, notes cut at len). Not run: the JieLi CI build and
+  `npm run emu:smoke` (both after the push), nothing on a device.
+
 - `main` holds everything up to this handoff. Since the 2026-10-19 handoff: tickets #121-#130, the status line / ARP
   button cases / cable glow / FM-1 fit notice (9138135), and this session's commit (Vernon 100 an octave down, the
   dev-only demo-video project in `web/dev/demo/`, notes). The demo patch is unchanged: xylophone / operator melodies were
@@ -22,7 +27,7 @@ The owner grilled and approved spec **#132**: Steps becomes the one sequencer fo
 (private; board A, "Roll A · Drawer above the dock", is the chosen layout; the "Arm, then REC", "One-track kit" and
 "Drum map" boards show the rest). Slices, in dependency order:
 
-1. **#133** Steps note model: chord steps with per-note lengths (sparse, capped per track by the patch budget), `keys out`,
+1. ~~**#133** Steps note model~~ (done, see above; next is #134): chord steps with per-note lengths (sparse, capped per track by the patch budget), `keys out`,
    mono outputs from the last note started, `acc` dropped; format bump + migration (on step = note, tied run = one note,
    accent = full velocity), both engines, golden kits. Start here: everything else needs it.
 2. **#134** Arming: `keys in`, thru while armed, Main's keys snap to the armed track as a dock routing (like K1..K4's
@@ -43,8 +48,9 @@ the bars, #102 / #103 A/B flip bugs.
 - After a click on the dock's Octave up / down button, Space (the transport) presses the focused button again
   (main.ts keydown leaves Space to a focused button). Shift+Z / X also shift the octave. Low priority: the owner uses
   Z / X.
-- Backspace in step entry rests a step but keeps its old note value; the note lane still shows it. #133's note model
-  should simply drop the note.
+- (fixed in #133: Backspace in step entry now removes the step's notes.)
+- The 808 / 909 Kits' accents do nothing since #133 dropped their acc pins: #138 rebuilds them.
+- The SEQ page's live recording (REC + a black key) writes C4 into an empty step; #139 records real notes from the keys.
 
 ## Working notes
 

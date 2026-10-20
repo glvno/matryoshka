@@ -23,12 +23,18 @@ WASM_IMPORT("preset") void js_preset(int32_t d);
 WASM_IMPORT("save") void js_save(void);
 WASM_IMPORT("midi") void js_midi(uint32_t status, uint32_t d1, uint32_t d2);
 WASM_IMPORT("transport") void js_transport(uint32_t run);
-/* the SEQ page edited a step (its bits), a step's note / velocity, muted a track: module = its index in the binary */
-WASM_IMPORT("step") void js_step(uint32_t mod, uint32_t k, uint32_t b);
-WASM_IMPORT("stepval") void js_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel);
+/* the SEQ page edited a track (its notes as they are now: n words at `at` in memory, track.ts noteWord), muted a track:
+ * module = its index in the binary */
+WASM_IMPORT("track") void js_track(uint32_t mod, const uint32_t *at, uint32_t n);
 WASM_IMPORT("mute") void js_mute(uint32_t mod, uint32_t on);
-static void m1_step_now(uint32_t mod, uint32_t k, uint32_t b) { js_step(mod, k, b); }
-static void m1_stepval_now(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { js_stepval(mod, k, note, vel); }
+int eng_steps_notes(uint32_t module, const uint32_t **w);   /* (engine.c, included by host_ui.h) */
+static void m1_track_now(uint32_t mod)
+{
+    const uint32_t *w;
+    int n = eng_steps_notes(mod, &w);
+    if (n >= 0)
+        js_track(mod, w, (uint32_t)n);
+}
 static void m1_mute_now(uint32_t mod, int on) { js_mute(mod, (uint32_t)on); }
 #define HOST_STEP_HOOKS
 #define HOST_LED_HOOKS
