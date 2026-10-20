@@ -32,13 +32,22 @@
      "output": "bend"
     },
     {
-     "output": "at"
+     "output": "mod"
     },
     {
      "output": "vel"
     },
     {
+     "output": "at"
+    },
+    {
+     "output": "env"
+    },
+    {
      "output": "fx"
+    },
+    {
+     "output": "lfo"
     },
     {
      "output": "run"
@@ -47,19 +56,10 @@
      "output": "scl"
     },
     {
-     "output": "mod"
-    },
-    {
-     "output": "lfo"
-    },
-    {
-     "output": "env"
+     "output": "edit"
     },
     {
      "output": "glo"
-    },
-    {
-     "output": "edit"
     },
     {
      "output": "arp"
@@ -26490,10 +26490,10 @@
      "output": "peak"
     },
     {
-     "output": "ap"
+     "output": "notch"
     },
     {
-     "output": "notch"
+     "output": "ap"
     }
    ],
    "grid": [
@@ -29145,10 +29145,10 @@
      ]
     },
     {
-     "input": "in"
+     "input": "side"
     },
     {
-     "input": "side"
+     "input": "in"
     },
     {
      "param": "attack",
@@ -29315,19 +29315,19 @@
    "cv": 187,
    "dims": [
     {
+     "output": "vel"
+    },
+    {
+     "output": "index"
+    },
+    {
      "output": "gate"
     },
     {
      "output": "legato"
     },
     {
-     "output": "vel"
-    },
-    {
      "output": "jump"
-    },
-    {
-     "output": "index"
     }
    ],
    "grid": [
@@ -29405,15 +29405,6 @@
    "extra": [
     {
      "dim": {
-      "output": "g3"
-     },
-     "add": [
-      0,
-      329
-     ]
-    },
-    {
-     "dim": {
       "output": "g2"
      },
      "add": [
@@ -29423,16 +29414,7 @@
     },
     {
      "dim": {
-      "output": "g7"
-     },
-     "add": [
-      0,
-      329
-     ]
-    },
-    {
-     "dim": {
-      "output": "g4"
+      "output": "g3"
      },
      "add": [
       0,
@@ -29459,6 +29441,15 @@
     },
     {
      "dim": {
+      "output": "g4"
+     },
+     "add": [
+      0,
+      329
+     ]
+    },
+    {
+     "dim": {
       "output": "g6"
      },
      "add": [
@@ -29468,7 +29459,16 @@
     },
     {
      "dim": {
-      "output": "v1"
+      "output": "g7"
+     },
+     "add": [
+      0,
+      329
+     ]
+    },
+    {
+     "dim": {
+      "output": "v2"
      },
      "add": [
       0,
@@ -29477,7 +29477,7 @@
     },
     {
      "dim": {
-      "output": "v2"
+      "output": "v1"
      },
      "add": [
       0,
@@ -29604,11 +29604,11 @@
   },
   {
    "name": "808 Kit",
-   "cycles": 384684
+   "cycles": 342054
   },
   {
    "name": "909 Kit",
-   "cycles": 232565
+   "cycles": 218741
   },
   {
    "name": "Acid, 4 parts",
@@ -29676,7 +29676,7 @@
   },
   {
    "name": "assembly drum kit",
-   "cycles": 407062
+   "cycles": 497891
   },
   {
    "name": "assembly echo",

@@ -819,3 +819,15 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
 - The 808 / 909 Kits and the Demo still use their per-drum tracks (#138 rebuilds them on the new kit). The Steps card's header wraps now (the name keeps 72 px; roll / arm / rec / mute on their own row when the card is narrow).
 - CLAUDE.md's "new module types need an LCD colour in TYPE_COLOR (ui.c)" is stale: there is no such table any more.
 - Not done: a cable from an Arpeggiator into a Drum map (only Main and Steps are sources); names on the FM-1 (it shows N1..N8).
+
+## 2026-10-20 (later): the Demo and the factory kits on the new Steps, #138 (host-tested: vitest 724, golden 90, panel_test, fm1-wasm; offline render of the Demo: XYLO first sounds at bar 13.001, OPER at bar 29.000, HERA at bar 5, mix peak 0.78; browser check: the Demo loads and lays out. Not listened to)
+
+- **808 Kit** (`gen-presets.ts`): one DRUMS track into a Drum map, the same six drums, a velocity VCA inside each drum assembly (exposed as its `vel` input; outside, the VCAs were FM-1 devices of one page each and pushed the drums down the SELECT list). CPU 52 %, memory 73 %.
+- **909 Kit** (kept file) and **the Demo** were converted by a one-off script (not kept): each per-drum track's trig → its Drum map row's gate, the drum's output through a velocity VCA (the Demo's go inside its kit assembly, which exposes `keys`), cables into the tracks (clk / reset) moved to DRUMS, shorter tracks' notes tiled to the longest, pitch cables dropped (every old drum note was C4 = as tuned).
+- **Demo** (`src/demo/sum1-gr8.json`):
+  - HERA plays Hera 6 through its keys out (a one-voice allocator: pitch into both oscillators, its gate through `wait 4 bars`' AND, velocity into the ladder's p1).
+  - **XYLO** (from bar 13) plays a 3-voice **xylophone** assembly built from the NOTES recipe into mixer 28 in2 (0.53).
+  - **OPER** (from bar 29) plays the adsr operator (mixer 71 l4 0.2, as the recipe found). Main's keys reach the operator through a cable into OPER's keys in, so they still play it, running or stopped.
+  - The start bars come from `melody clocks`: BARS (a trig per bar), CLK16 (a trig per 1/16), and per wait a counter track (BARS into its clk, Main's run into its reset, its last step = the bar) latched into "started" (the `wait 4 bars` S&H circuit). "started" AND CLK16 clocks the track, and "started" resets it. Before its bar the track does not step, while the keys still pass through it.
+- **The two melodies are placeholders I wrote** (in G#, the quantizer's key, following the HERA line); the recipe had the sounds and the bars, not the notes. The owner records their own with the roll / REC.
+- `CLAUDE.md`: the stale `TYPE_COLOR` rule is gone.

@@ -292,12 +292,17 @@ export class Engine {
       return old ? { ...old, node } : { node, st: arpInit(), clk: { hi: false } };
     });
     this.tracks = this.order.filter((n) => n.type === 'steps');
+    // tracks whose keys in a cable from Main's keys feeds: those keys pass through them while no track is armed (#138)
+    this.fed = this.tracks.filter((node) => source.cables.some((c) => c.to.module === node.id && c.to.port === 'keys' && c.from.port === 'keys' && source.modules.find((m) => m.id === c.from.module)?.type === 'fm1')).map((node) => node.inst[0].state as StepsState);
     this.maps = this.order.filter((n) => n.type === 'drummap').flatMap((node) => {
       const m = source.modules.find((x) => x.id === node.id);
       const from = m && keysInto(source, m);
       return from ? [{ st: node.inst[0].state as DrumMapState, src: from.type === 'fm1' ? -1 : from.id }] : [];
     });
   }
+
+  /** the Steps tracks Main's keys reach by a cable into their keys in */
+  private fed: StepsState[] = [];
 
   /** the Drum maps that take keys (#137) and from where: -1 Main's keys, else a Steps module's id */
   private maps: { st: DrumMapState; src: number }[] = [];
@@ -601,6 +606,7 @@ export class Engine {
     for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
     if (this.listens(ch)) for (const a of this.arps) arpKeyOn(a.st, note, velocity, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
+    if (this.listens(ch)) for (const t of this.fed) t.thru.push(note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
   }
 
   noteOff(note: number, ch = 1): void {
@@ -612,6 +618,7 @@ export class Engine {
     for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
     if (this.listens(ch)) for (const a of this.arps) arpKeyOff(a.st, note, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note, 0);
+    if (this.listens(ch)) for (const t of this.fed) t.thru.push(note, 0);
   }
 
   /** the armed Steps track (#134, the editor's ARM; the FM-1 has none): its id, -1 none */
@@ -621,7 +628,7 @@ export class Engine {
   /**
    * Arm a Steps track (null: none). While one is armed the keys (noteOn / noteOff: the computer keys, the on-screen keys,
    * MIDI) go into its keys in and through to what it plays (modules.ts steps), not to the shared keyboard, the groups that
-   * play the keys or the Arpeggiators. What the keys held when the routing changes go quiet: the keys they sounded
+   * play the keys, the Arpeggiators, the Drum maps or the tracks a cable from Main's keys feeds. What the keys held when the routing changes go quiet: the keys they sounded
    * through let them go (a track's thru notes end, the keyboard's groups and the Arpeggiators let go of every key).
    */
   arm(id: number | null): void {
@@ -663,6 +670,7 @@ export class Engine {
   /** the keys' own listeners let go of every key: the shared keyboard, the groups that play the keys, the Arpeggiators */
   private keysOff(): void {
     for (const x of this.maps) if (x.src < 0) x.st.gate.fill(0);
+    for (const t of this.fed) this.thruOff(t);
     for (const a of this.arps) {
       arpClear(a.st);
       a.st.cur = -1;

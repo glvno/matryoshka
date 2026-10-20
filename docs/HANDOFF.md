@@ -36,7 +36,7 @@ The owner grilled and approved spec **#132**: Steps becomes the one sequencer fo
    one undo step per pass, Shift+R.
 4. ~~**#136** The piano-roll drawer (design A)~~ (done, committed, not pushed; NOTES "the piano roll drawer").
 5. ~~**#137** Drum map module + a one-track drum kit~~ (done, committed, not pushed; NOTES "the Drum map"): (General MIDI notes; no compatibility with the per-drum-track kit).
-6. **#138** Rebuild the Demo and the factory patches on the new Steps, then add the xylophone (bar 13) and operator
+6. ~~**#138** Rebuild the Demo and the factory patches~~ (done, committed, not pushed; NOTES "the Demo and the factory kits"; the melodies are placeholders): on the new Steps, then add the xylophone (bar 13) and operator
    (bar 29) melodies (recipe in NOTES 2026-10-20).
 7. **#139** FM-1: chord tracks, arming and recording from the device's keys (emulator-tested only).
 
@@ -49,7 +49,6 @@ the bars, #102 / #103 A/B flip bugs.
   (main.ts keydown leaves Space to a focused button). Shift+Z / X also shift the octave. Low priority: the owner uses
   Z / X.
 - (fixed in #133: Backspace in step entry now removes the step's notes.)
-- The 808 / 909 Kits' accents do nothing since #133 dropped their acc pins: #138 rebuilds them.
 - The SEQ page's live recording (REC + a black key) writes C4 into an empty step; #139 records real notes from the keys.
 
 ## Working notes

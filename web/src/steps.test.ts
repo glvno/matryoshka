@@ -232,6 +232,27 @@ describe('the Steps module (#83, #133)', () => {
     expect(at()).toEqual([1, 0]);
   });
 
+  it('a cable from Main\'s keys into keys in: the keys pass through while no track is armed (#138)', () => {
+    const { p, st, main } = rig([], { len: 16 });
+    const out = p.modules.find((m) => m.type === 'output')!;
+    p.cables = [];
+    connect(p, DEFS, { module: main.id, port: 'keys' }, { module: st.id, port: 'keys' });
+    const al = addModule(p, DEFS.alloc, 0, 0);
+    connect(p, DEFS, { module: st.id, port: 'keys' }, { module: al.id, port: 'keys' });
+    connect(p, DEFS, { module: al.id, port: 'gate' }, { module: out.id, port: 'l' });
+    const other = addModule(p, DEFS.steps, 0, 0);
+    const e = new Engine(SR);
+    e.load(p);
+    const at = (): number => edges(e, 384).l[383];
+    e.noteOn(60, 1);
+    expect(at()).toBe(1);
+    e.noteOff(60);
+    expect(at()).toBe(0);
+    e.arm(other.id); // another track armed: the keys go there
+    e.noteOn(62, 1);
+    expect(at()).toBe(0);
+  });
+
   it('armed: a played note is transposed as the track\'s notes, sets the mono outputs and holds until let go; muted too', () => {
     const { p, st } = rig([], { len: 16, gate: 0.01 });
     const c = addModule(p, DEFS.const, 0, 0);

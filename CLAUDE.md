@@ -33,7 +33,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 
 - Module types are appended to `ALL` in modules.ts; type / port indices are append-only. A format change: `patch.ts` (`validatePatch` migration), `patchbin.ts`, engine.c / proto.c (`ENG_PATCH_VERSION`, compat), presets, tests, golden kits, `export-defs` — together.
 - Keep both engines in step: `SCALES` order, quantized increments for anything driven by an accumulator, the same idle-part rule. Add a golden kit per new module / behaviour.
-- New module types need an LCD colour in `TYPE_COLOR` (ui.c) and a cost in cpu-costs.json (`cpu.test.ts` fails otherwise).
+- New module types need a cost in cpu-costs.json (`cpu.test.ts` fails otherwise).
 - Keep the LCD manual (`manual.c`: ≤ 35 chars, capitals, no `;`), the ? help card and the shortcut handler in step with what they describe.
 - The firmware workflow's `paths` lists the web files `export-defs.ts` / `golden.ts` import: extend it when they gain imports.
 - `course.json` (tutorial) is data: edit it in the lesson editor; stored patches there must pass `validatePatch` after model changes.

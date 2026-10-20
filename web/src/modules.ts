@@ -2311,7 +2311,8 @@ const stepPitch = (note: number): number => (Math.sign(note - STEP_NOTE) * Math.
  * it runs once (SHARED_TYPES).
  * keys in (#134, after the pins): while the track is armed (the editor's ARM; Engine.arm) the keys played go in and
  * straight through, as the track's own notes: transposed, into keys out and the mono outputs, held until let go (muted
- * too). A cable into it plays no part yet: arming routes Main's keys there without one. The FM-1 never arms a track.
+ * too). A cable from Main's keys into it does the same while no track is armed (#138: Main's keys play the track's
+ * instrument, the track adds its notes). Other cables into it play no part. The FM-1 does neither (#139).
  */
 const steps: ModuleImpl<StepsState> = {
   def: {

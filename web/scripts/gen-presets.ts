@@ -7,8 +7,8 @@
 // The 909 Kit is kept as its file. Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { addModule, connect, emptyPatch, validatePatch, type ModuleInst, type Patch } from '../src/patch';
-import { patternNotes } from '../src/track';
+import { addModule, connect, emptyPatch, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
+import { fixNotes, patternNotes, type StepNote } from '../src/track';
 import { FACTORY } from '../src/assemblies';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
@@ -226,46 +226,56 @@ presets.push(() => {
 });
 
 
-// 808 Kit: a drum machine on the transport (PLAY starts it, the Main module's tempo sets it): one Steps track per drum,
-// named for the SEQ page. The boom kick, a tonal snare, the clap, a closed and an open hat and the two-square cowbell, from
-// the factory drum assemblies; two mixers (the second into the first's in4). Accented steps are notes at full velocity
-// (#133: the acc output that pushed a part of the drum is gone; #138 rebuilds the kits). K1 swing (every track), K2 kick
-// decay, K3 clap tail, K4 closed hat decay.
+// 808 Kit: a drum machine on the transport (PLAY starts it, the Main module's tempo sets it): one DRUMS track (#138) into a
+// Drum map whose rows play the boom kick, a tonal snare, the clap, a closed and an open hat and the two-square cowbell from
+// the factory drum assemblies (General MIDI notes: arm the track and Main's keys play them), each through a VCA on its
+// row's velocity (gain 127 / 100: the default velocity plays the drum as tuned, an accent louder); two mixers (the second
+// into the first's in4).
 presets.push(() => {
   const p = emptyPatch('808 Kit');
-  const main = addModule(p, DEFS.fm1, 20, 20);
+  addModule(p, DEFS.fm1, 20, 20);
+  const st = addModule(p, DEFS.steps, 380, 20);
+  st.name = 'DRUMS';
+  const map = addModule(p, DEFS.drummap, 800, 20);
+  wire(p, st.id, 'keys', map.id, 'keys');
   const mixA = addModule(p, DEFS.mixer, 2940, 20);
   Object.assign(mixA.params, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
   const mixB = addModule(p, DEFS.mixer, 2940, 600);
   Object.assign(mixB.params, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 0 });
   const out = addModule(p, DEFS.output, 3260, 20);
-  //            assembly     name       pattern             settings                                        mixer
-  const drums: [string, string, string, Record<string, number>, number, string][] = [
-    ['boom kick', 'KICK', 'X...x...x.x.....', {}, mixA.id, 'in1'],
-    ['snare', 'SNARE', '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, mixA.id, 'in2'],
-    ['clap', 'CLAP', '............X...', {}, mixA.id, 'in3'],
-    ['hihat', 'CL HAT', 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, mixB.id, 'in1'],
-    ['hihat', 'OP HAT', '..............x.', { decay: 0.3 }, mixB.id, 'in2'],
-    ['cowbell', 'COWBELL', '..........x.....', {}, mixB.id, 'in3'],
+  //            assembly     map row  pattern (X: an accent)  settings                                        mixer
+  const drums: [string, number, string, Record<string, number>, number, string][] = [
+    ['boom kick', 1, 'X...x...x.x.....', {}, mixA.id, 'in1'],
+    ['snare', 2, '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, mixA.id, 'in2'],
+    ['clap', 3, '............X...', {}, mixA.id, 'in3'],
+    ['hihat', 4, 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, mixB.id, 'in1'],
+    ['hihat', 5, '..............x.', { decay: 0.3 }, mixB.id, 'in2'],
+    ['cowbell', 8, '..........x.....', {}, mixB.id, 'in3'],
   ];
-  const drumsOf: AssemblyInst[] = [];
-  const tracks: ModuleInst[] = [];
-  drums.forEach(([name, label, steps, params, to, port], i) => {
+  const notes: StepNote[] = [];
+  drums.forEach(([name, r, steps, params, to, port], i) => {
     const def = FACTORY.find((d) => d.name === name);
     if (!def) throw new Error(`no factory assembly ${name}`);
     const a = insertAssembly(p, DEFS, def, 380 + 420 * i, 600);
     for (const [label, v] of Object.entries(params)) {
-      const r = row(a, label);
-      mod(p, r.module).params[r.param] = v;
+      const x = row(a, label);
+      mod(p, x.module).params[x.param] = v;
     }
-    const st = addModule(p, DEFS.steps, 380 + 420 * i, 20);
-    st.name = label;
-    st.notes = patternNotes(steps);
-    plugIn(p, st.id, 'trig', a, 'gate');
-    plugOut(p, a, 'out', to, port);
-    drumsOf.push(a);
-    tracks.push(st);
+    const key = Math.round(map.params[`n${r}`]);
+    for (const n of patternNotes(steps) ?? []) notes.push({ ...n, note: key });
+    plugIn(p, map.id, `g${r}`, a, 'gate');
+    // the drum's output through a VCA inside it whose cv (its vel input) is the row's velocity
+    const vca = addModule(p, DEFS.vca, 380 + 420 * i, 1100);
+    vca.params.gain = 127 / STEP_VEL;
+    const o = a.outputs.find((x) => x.label === 'out')!;
+    wire(p, o.module, o.port, vca.id, 'in');
+    a.modules.push(vca.id);
+    a.outputs = a.outputs.map((x) => (x === o ? { module: vca.id, port: 'out', label: 'out' } : x));
+    a.inputs.push({ module: vca.id, port: 'cv', label: 'vel' });
+    wire(p, map.id, `v${r}`, vca.id, 'cv');
+    wire(p, vca.id, 'out', to, port);
   });
+  st.notes = fixNotes(notes);
   wire(p, mixB.id, 'out', mixA.id, 'in4');
   wire(p, mixA.id, 'out', out.id, 'l');
   wire(p, mixA.id, 'out', out.id, 'r');
