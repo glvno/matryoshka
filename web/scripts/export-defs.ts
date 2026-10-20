@@ -83,6 +83,7 @@ w('    const char *const *punit;               /* "HZ", "ST", ... or "" */');
 w('    const char *const *const *pchoice;      /* per parameter: the names of a choice parameter (0-terminated), or 0 */');
 w('} def_t;');
 w();
+const choiceLists = new Map<string, string>();
 for (const t of TYPE_ORDER) {
   const ps = DEFS[t].params;
   w(`static const char *const ${up(t)}_INNAMES[] = {${DEFS[t].inputs.map((p) => `"${p.name.toUpperCase()}"`).join(', ') || '0'}};`);
@@ -95,10 +96,18 @@ for (const t of TYPE_ORDER) {
   w(`static const char *const ${up(t)}_PN[] = {${ps.map((p) => `"${p.name.toUpperCase()}"`).join(', ')}};`);
   w(`static const uint8_t ${up(t)}_LOG[] = {${ps.map((p) => (p.log ? (p.bend ? 2 : 1) : 0)).join(', ')}};`);
   w(`static const char *const ${up(t)}_UNIT[] = {${ps.map((p) => `"${(p.unit ?? '').toUpperCase()}"`).join(', ')}};`);
-  ps.forEach((p, i) => {
-    if (p.choices) w(`static const char *const ${up(t)}_CH${i}[] = {${p.choices.map((c) => `"${c.toUpperCase()}"`).join(', ')}, 0};`);
+  // a list of choices written once and shared (the Drum map's eight note rows, the allocator's key range: NOTE_NAMES)
+  const chName = ps.map((p, i) => {
+    if (!p.choices) return '0';
+    const text = p.choices.map((c) => `"${c.toUpperCase()}"`).join(', ');
+    const have = choiceLists.get(text);
+    if (have) return have;
+    const name = `${up(t)}_CH${i}`;
+    choiceLists.set(text, name);
+    w(`static const char *const ${name}[] = {${text}, 0};`);
+    return name;
   });
-  w(`static const char *const *const ${up(t)}_CH[] = {${ps.map((p, i) => (p.choices ? `${up(t)}_CH${i}` : '0')).join(', ')}};`);
+  w(`static const char *const *const ${up(t)}_CH[] = {${chName.join(', ')}};`);
 }
 w();
 w('static const def_t DEFS[N_TYPES] = {');

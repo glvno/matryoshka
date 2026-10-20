@@ -5,7 +5,6 @@
 import { writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
 import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type PolyCards, type Source } from '../src/patch';
-import { patternNotes } from '../src/track';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
@@ -450,65 +449,58 @@ asm('hihat', 'Drums', (b) => {
   b.param('level', vca, 'gain');
 });
 
-// a drum kit (#93): a Steps track per drum on the transport (PLAY starts it, the Main module's tempo sets it), the factory
-// drums as nested cards, two mixers. The collapsed card shows every track's grid (its name, mute, steps; the lanes for
-// velocity and note), then the drums' main settings. An accented step is a note at full velocity (the drum's VCA follows
-// the track's vel; #133); `clk` and `reset` reach every track (with clk patched the tracks step on its edges instead of the transport).
-// A track's pitch output tunes its drum's oscillators relative to the drum's own tuning (a step's note C4 = as tuned, C3 an
-// octave down); the clap and the hi-hats are noise and do not follow it.
+// a drum kit (#93, rebuilt for #137): keys in (a Steps track's keys out, or Main's keys) into a Drum map whose eight rows
+// (General MIDI notes) play the factory drums, nested as cards: kick, snare, clap, the hats' closed and open gates (one
+// hats assembly, so the open hat chokes), tom, rim, cowbell; two mixers. Each drum goes through a VCA whose cv is its
+// row's velocity, gain 127 / 100, so a note at the default velocity (STEP_VEL 100) plays it at its own level (the hats
+// follow the closed hat's velocity). The collapsed card shows the drums' main settings and the levels.
 asm('drum kit', 'Drums', (b) => {
-  const mixA = b.add('mixer', 3, 0, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
-  const mixB = b.add('mixer', 3, 1, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 0 });
-  //            assembly     track      pattern             settings                                      mixer, input
-  const drums: [string, string, string, Record<string, number>, number, string][] = [
-    ['boom kick', 'KICK', 'X...x...x.x.....', {}, mixA, 'in1'],
-    ['snare', 'SNARE', '....X.......X..x', { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, mixA, 'in2'],
-    ['clap', 'CLAP', '............X...', {}, mixA, 'in3'],
-    ['hihat', 'CL HAT', 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, mixB, 'in1'],
-    ['hihat', 'OP HAT', '..............x.', { decay: 0.3 }, mixB, 'in2'],
-    ['cowbell', 'COWBELL', '..........x.....', {}, mixB, 'in3'],
+  const map = b.add('drummap', 0, 0, {});
+  const mixA = b.add('mixer', 4, 0, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
+  const mixB = b.add('mixer', 4, 1, { l1: 0.35, l2: 0.45, l3: 0.35, l4: 0.3 });
+  //            assembly     label      map rows (gate inputs)        settings                                      mixer, input
+  const drums: [string, string, [number, string][], Record<string, number>, number, string][] = [
+    ['boom kick', 'kick', [[1, 'gate']], {}, mixA, 'in1'],
+    ['snare', 'snare', [[2, 'gate']], { 'body tune': 2, decay: 0.1, noise: 0.45, body: 0.75 }, mixA, 'in2'],
+    ['clap', 'clap', [[3, 'gate']], {}, mixA, 'in3'],
+    ['hats', 'hats', [[4, 'gate'], [5, 'open']], {}, mixB, 'in1'],
+    ['tom', 'tom', [[6, 'gate']], {}, mixB, 'in2'],
+    ['rim', 'rim', [[7, 'gate']], {}, mixB, 'in3'],
+    ['cowbell', 'cowbell', [[8, 'gate']], {}, mixB, 'in4'],
   ];
-  const tracks: number[] = [];
   const rowOf = (from: string, ids: Map<number, number>, label: string): { module: number; param: string } => {
     const r = defs.find((d) => d.name === from)!.params.find((q) => q.label === label);
     if (!r) throw new Error(`drum kit: ${from} has no ${label}`);
     return { module: ids.get(r.module)!, param: r.param };
   };
   const shown: { label: string; at: { module: number; param: string } }[] = [];
-  drums.forEach(([from, track, steps, settings, mix, port], i) => {
+  drums.forEach(([from, label, rows, settings, mix, port], i) => {
     const y = i * 0.55;
-    const st = b.add('steps', 0, y, {});
-    Object.assign(b.module(st), { name: track, notes: patternNotes(steps) });
-    tracks.push(st);
-    const ids = b.include(from, 1, y, track.toLowerCase());
-    for (const [label, v] of Object.entries(settings)) {
-      const r = rowOf(from, ids, label);
+    const ids = b.include(from, 2, y, label);
+    for (const [name, v] of Object.entries(settings)) {
+      const r = rowOf(from, ids, name);
       b.module(r.module).params[r.param] = v;
     }
-    const gate = defs.find((d) => d.name === from)!.inputs.find((q) => q.label === 'gate')!;
-    b.wire(st, 'trig', ids.get(gate.module)!, gate.port);
-    for (const id of ids.values()) if (b.module(id).type === 'osc') b.wire(st, 'pitch', id, 'pitch');
-    for (const a of gate.also ?? []) b.wire(st, 'trig', ids.get(a.module)!, a.port);
-    // velocity: the drum through a VCA whose cv is the track's vel, gain 127 / 100 so a step at the default velocity
-    // (STEP_VEL 100) plays at the drum's own level
+    for (const [row, input] of rows) {
+      const into = defs.find((d) => d.name === from)!.inputs.find((q) => q.label === input)!;
+      for (const t of [into, ...(into.also ?? [])]) b.wire(map, `g${row}`, ids.get(t.module)!, t.port);
+    }
     const out = defs.find((d) => d.name === from)!.outputs[0];
-    const vel = b.add('vca', 2, y, { gain: 127 / STEP_VEL });
+    const vel = b.add('vca', 3, y, { gain: 127 / STEP_VEL });
     b.wire(ids.get(out.module)!, out.port, vel, 'in');
-    b.wire(st, 'vel', vel, 'cv');
+    b.wire(map, `v${rows[0][0]}`, vel, 'cv');
     b.wire(vel, 'out', mix, port);
     if (from === 'boom kick') shown.push({ label: 'kick tune', at: rowOf(from, ids, 'tune') }, { label: 'kick decay', at: rowOf(from, ids, 'decay') });
     if (from === 'snare') shown.push({ label: 'snare tone', at: rowOf(from, ids, 'body tune') }, { label: 'snare noise', at: rowOf(from, ids, 'noise') });
     if (from === 'clap') shown.push({ label: 'clap tail', at: rowOf(from, ids, 'tail') });
-    if (track === 'CL HAT') shown.push({ label: 'hat decay', at: rowOf(from, ids, 'decay') });
-    if (track === 'OP HAT') shown.push({ label: 'open decay', at: rowOf(from, ids, 'decay') });
+    if (from === 'hats') shown.push({ label: 'hat decay', at: rowOf(from, ids, 'decay') }, { label: 'open decay', at: rowOf(from, ids, 'open decay') });
+    if (from === 'tom') shown.push({ label: 'tom tune', at: rowOf(from, ids, 'tune') });
     if (from === 'cowbell') shown.push({ label: 'cowbell tune', at: rowOf(from, ids, 'tune') });
   });
   b.wire(mixB, 'out', mixA, 'in4');
-  b.input('clk', tracks[0], 'clk', ...tracks.slice(1).map((t) => [t, 'clk'] as [number, string]));
-  b.input('reset', tracks[0], 'reset', ...tracks.slice(1).map((t) => [t, 'reset'] as [number, string]));
+  b.input('keys', map, 'keys');
   b.output('out', mixA, 'out');
-  tracks.forEach((t, i) => b.param(drums[i][1].toLowerCase(), t, 'grid', { span: 2, ...(i === 0 ? { head: 'pattern' } : {}) }));
-  const half = Math.ceil((shown.length + 3) / 2); // the knobs and the three levels in two columns under the grids
+  const half = Math.ceil((shown.length + 3) / 2); // the knobs and the three levels in two columns
   shown.forEach(({ label, at }, i) => b.param(label, at.module, at.param, i === 0 ? { head: 'drums' } : i === half ? { col: true } : {}));
   b.param('kick level', mixA, 'l1');
   b.param('snare level', mixA, 'l2');

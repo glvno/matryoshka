@@ -5,7 +5,7 @@ import { parseValue } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { tidy, tidyAssembly } from './tidy';
-import { DEFS, PANEL_BUTTONS } from './modules';
+import { DEFS, drumRowName, PANEL_BUTTONS } from './modules';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
@@ -54,6 +54,10 @@ import {
   PAGE_LIST_MAX,
   panelLabel,
   trackLabel,
+  trackName,
+  fixTrack,
+  TRACK_NAME_MAX,
+  DRUM_ROWS,
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
 import { PianoRoll } from './roll';
@@ -926,14 +930,23 @@ export class Editor {
       if (!isPin(p.name)) ins.push({ el: this.port(m, p, 'in', { open, short: true }), module: m.id, port: p.name });
       else if (this.unrouted(m, p.name)) ins.push({ el: this.unroutedPort(m, p), module: m.id, port: p.name });
     }
-    const outs = def.outputs.map((p) => this.port(m, p, 'out', { open, short: true }));
+    // a Drum map's rows go by their names (#137): a gate jack and a note row each, a click on the row's name renames it
+    const row = (name: string): number => (def.type === 'drummap' && /^[gnv]\d$/.test(name) ? Number(name.slice(1)) - 1 : -1);
+    const outs = def.outputs.map((p) => {
+      const r = row(p.name);
+      return this.port(m, p, 'out', { open, short: true, ...(r >= 0 && p.name[0] === 'g' ? { label: drumRowName(m.names, r) } : {}) });
+    });
     // its displays first (an envelope's shape, the Scope's screen), then the parameters
     // (a Steps module's grid goes under the rows, across the card: 16 steps need the width)
     // in groups of four (one FM-1 page each)
     const steps = def.type === 'steps';
     const rows = moduleRows(def);
     const starts = groupStarts(rows.map((pd) => ({ knob: !pd.screen })));
-    const params = rows.map((pd, i) => ({ el: this.paramRow(m, def, pd, { open }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] }));
+    const params = rows.map((pd, i) => {
+      const r = row(pd.name);
+      const named = r >= 0 ? { label: drumRowName(m.names, r), rename: () => this.renameDrumRow(m, r) } : {};
+      return { el: this.paramRow(m, def, pd, { open, ...named }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
+    });
     // a second Main card (from an old patch) keeps its B side under the rows
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
@@ -1084,6 +1097,11 @@ export class Editor {
       track,
       label: () => trackLabel(this.patch, id),
       plays: () => this.trackPlays(id),
+      drums: () => {
+        const c = this.patch.cables.find((x) => x.from.module === id && x.from.port === 'keys' && this.patch.modules.find((q) => q.id === x.to.module)?.type === 'drummap');
+        const map = c && this.patch.modules.find((q) => q.id === c.to.module);
+        return map ? Array.from({ length: DRUM_ROWS }, (_, r) => ({ name: drumRowName(map.names, r), note: Math.round(map.params[`n${r + 1}`] ?? 0) })) : null;
+      },
       notes: (n) => {
         const t = track();
         if (!t) return;
@@ -3132,6 +3150,19 @@ export class Editor {
       best = { el: c, after: across ? x > r.left + r.width / 2 : y > r.top + r.height / 2 };
     }
     return best;
+  }
+
+  /** a Drum map row's name (the roll shows it; at most TRACK_NAME_MAX characters, empty: the default) */
+  private renameDrumRow(m: ModuleInst, r: number): void {
+    const was = drumRowName(m.names, r);
+    const v = window.prompt(`Name of row ${r + 1} (${TRACK_NAME_MAX} characters; empty: ${drumRowName(undefined, r)})`, was);
+    if (v === null) return;
+    const name = trackName(v);
+    if (name === (m.names?.[r] ?? '')) return;
+    this.change(() => {
+      m.names = Array.from({ length: DRUM_ROWS }, (_, k) => (k === r ? name : m.names?.[k] ?? ''));
+      fixTrack(m);
+    });
   }
 
   private renameRef(r: { label: string }, what: string): void {

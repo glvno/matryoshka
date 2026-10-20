@@ -8,9 +8,9 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { type DrumMapState, driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
-import { ALLOC, deviceView } from './poly';
+import { ALLOC, deviceView, keysInto } from './poly';
 import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, type StepNote } from './track';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
@@ -292,6 +292,19 @@ export class Engine {
       return old ? { ...old, node } : { node, st: arpInit(), clk: { hi: false } };
     });
     this.tracks = this.order.filter((n) => n.type === 'steps');
+    this.maps = this.order.filter((n) => n.type === 'drummap').flatMap((node) => {
+      const m = source.modules.find((x) => x.id === node.id);
+      const from = m && keysInto(source, m);
+      return from ? [{ st: node.inst[0].state as DrumMapState, src: from.type === 'fm1' ? -1 : from.id }] : [];
+    });
+  }
+
+  /** the Drum maps that take keys (#137) and from where: -1 Main's keys, else a Steps module's id */
+  private maps: { st: DrumMapState; src: number }[] = [];
+
+  /** a note on (key | 0x80, velocity 1..127) or off (key, 0) into the Drum maps fed by `src`, taken at their next block */
+  private mapKeys(src: number, key: number, vel: number): void {
+    for (const x of this.maps) if (x.src === src) x.st.ev.push(key, vel);
   }
 
   /** the Steps modules, in processing order (their keys go out in this order: engine.c the same) */
@@ -310,6 +323,7 @@ export class Engine {
       const gs = this.groups.filter((g) => g.src === node.id);
       const freed = gs.map(() => 0);
       for (let i = 0; i < st.ev.length; i += 2) {
+        this.mapKeys(node.id, st.ev[i], st.ev[i + 1]);
         const key = st.ev[i] & 0x7f;
         gs.forEach((g, gi) => {
           if (!(st.ev[i] & 0x80)) {
@@ -586,6 +600,7 @@ export class Engine {
     }
     for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
     if (this.listens(ch)) for (const a of this.arps) arpKeyOn(a.st, note, velocity, this.arpParams(a));
+    if (this.listens(ch)) this.mapKeys(-1, note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
   }
 
   noteOff(note: number, ch = 1): void {
@@ -596,6 +611,7 @@ export class Engine {
     }
     for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
     if (this.listens(ch)) for (const a of this.arps) arpKeyOff(a.st, note, this.arpParams(a));
+    if (this.listens(ch)) this.mapKeys(-1, note, 0);
   }
 
   /** the armed Steps track (#134, the editor's ARM; the FM-1 has none): its id, -1 none */
@@ -646,6 +662,7 @@ export class Engine {
 
   /** the keys' own listeners let go of every key: the shared keyboard, the groups that play the keys, the Arpeggiators */
   private keysOff(): void {
+    for (const x of this.maps) if (x.src < 0) x.st.gate.fill(0);
     for (const a of this.arps) {
       arpClear(a.st);
       a.st.cur = -1;
@@ -802,6 +819,7 @@ export class Engine {
 
   allNotesOff(): void {
     for (const node of this.tracks) this.thruOff(node.inst[0].state as StepsState);
+    for (const x of this.maps) x.st.gate.fill(0);
     for (const a of this.arps) {
       arpClear(a.st);
       a.st.cur = -1;

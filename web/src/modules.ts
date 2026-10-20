@@ -2,7 +2,7 @@
 // The module library: definitions (shared with the editor) and DSP implementations.
 
 import { ARP_MODES, ARP_RATE_TICKS, ARP_RATES } from './arpeggiator';
-import { STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
+import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import type { StepNote } from './track';
 import WT from './wavetables.json';
 
@@ -2459,6 +2459,66 @@ const steps: ModuleImpl<StepsState> = {
   },
 };
 
+/** a Drum map's rows (#137) and their defaults: General MIDI drum notes (36 kick, 38 snare, 39 clap, 42 closed hat, 46 open
+ * hat, 45 low tom, 37 rim, 56 cowbell; NOTE_NAMES calls 36 C2) and the names the roll shows */
+export { DRUM_ROWS };
+export const DRUM_MAP_DEFAULT: readonly { name: string; note: number }[] = [
+  { name: 'KICK', note: 36 }, { name: 'SNARE', note: 38 }, { name: 'CLAP', note: 39 }, { name: 'CL HAT', note: 42 },
+  { name: 'OP HAT', note: 46 }, { name: 'LOW TOM', note: 45 }, { name: 'RIM', note: 37 }, { name: 'COWBELL', note: 56 },
+];
+
+/** a Drum map's row r (0..7) as the editor names it: its own name, else the default */
+export const drumRowName = (names: readonly string[] | undefined, r: number): string => names?.[r] || DRUM_MAP_DEFAULT[r]?.name || `ROW ${r + 1}`;
+
+/** a Drum map as it runs: each row's gate (0 / 1) and velocity (0..1), the rows whose gate restarts this block (a low first
+ * sample), and the notes the engine delivered (key | 0x80, velocity 1..127 / key, 0), taken at the start of the block */
+export interface DrumMapState { gate: number[]; vel: number[]; gap: number; ev: number[] }
+
+/**
+ * Drum map (#137): keys in, eight rows out. A row's note (n1..n8, General MIDI drums by default) held in the keys raises
+ * its gate (g1..g8) while it is down and sets its velocity output (v1..v8, velocity / 127, kept after); a row hit again
+ * while its gate is up (or let go and hit again in one block) gets one low sample first, so the drum restarts. The keys come as an allocator's do (Main's, or a
+ * Steps track's keys out: the engines deliver the notes at the start of the next block; poly.ts keysInto); its record's
+ * data byte says from where (0 none, 1 Main's keys, 2 + the module index of the Steps module). Row names (ModuleInst.names)
+ * are the editor's (the roll's rows); it runs once.
+ */
+const drummap: ModuleImpl<DrumMapState> = {
+  def: {
+    type: 'drummap',
+    label: 'Drum map',
+    inputs: [keys('keys')],
+    outputs: Array.from({ length: DRUM_ROWS }, (_, r) => [gate(`g${r + 1}`), control(`v${r + 1}`)]).flat(),
+    params: DRUM_MAP_DEFAULT.map((d, r) => param(`n${r + 1}`, 0, 127, d.note, { step: 1, choices: NOTE_NAMES })),
+    data: 1,
+  },
+  init: () => ({ gate: Array(DRUM_ROWS).fill(0), vel: Array(DRUM_ROWS).fill(0), gap: 0, ev: [] }),
+  process(c, s) {
+    let fell = 0; // (a row let go and hit again in one block restarts too)
+    for (let e = 0; e < s.ev.length; e += 2) {
+      const key = s.ev[e] & 0x7f, on = s.ev[e] & 0x80;
+      for (let r = 0; r < DRUM_ROWS; r++) {
+        if (Math.round(c.p[`n${r + 1}`] ?? DRUM_MAP_DEFAULT[r].note) !== key) continue;
+        if (!on) {
+          if (s.gate[r]) fell |= 1 << r;
+          s.gate[r] = 0;
+        } else {
+          if (s.gate[r] || (fell >> r) & 1) s.gap |= 1 << r;
+          s.gate[r] = 1;
+          s.vel[r] = s.ev[e + 1] / 127;
+        }
+      }
+    }
+    s.ev.length = 0;
+    for (let r = 0; r < DRUM_ROWS; r++) {
+      const g = c.out[`g${r + 1}`], v = c.out[`v${r + 1}`];
+      g.fill(s.gate[r], 0, c.n);
+      if ((s.gap >> r) & 1) g[0] = 0;
+      v.fill(s.vel[r], 0, c.n);
+    }
+    s.gap = 0;
+  },
+};
+
 export const SCOPE_MODES = ['time', 'spectrum'];
 /** the shortest / longest window of a Scope (ms) */
 export const SCOPE_TIME_MIN = 1;
@@ -2487,7 +2547,7 @@ const scope: ModuleImpl<null> = {
   process: () => {},
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
@@ -2495,7 +2555,7 @@ const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, de
  * effective value is its base + (block mean of p1 x att1 + block mean of p2 x att2, for the inputs that control it) x
  * (max - min), clamped.
  */
-export const PIN_EXEMPT = new Set(['fm1', 'output', 'alloc', 'scope', 'arp']);
+export const PIN_EXEMPT = new Set(['fm1', 'output', 'alloc', 'scope', 'arp', 'drummap']);
 export const PIN_NAMES = ['p1', 'p2'] as const;
 for (const m of ALL)
   if (!PIN_EXEMPT.has(m.def.type) && m.def.params.length) {

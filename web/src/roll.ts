@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The piano roll (#136, design A of the #132 canvas): a drawer over the canvas, above the dock, full width, for one Steps
 // track. All 64 steps in one row across, a keyboard down the side (the wheel scrolls through the pitches; a click on a key
-// plays it into the track's instrument), a velocity lane under the notes, the playhead, the steps past `len` dimmed.
+// plays it into the track's instrument), a velocity lane under the notes, the playhead, the steps past `len` dimmed. A
+// track whose keys go into a Drum map (#137) shows the map's rows instead of the keyboard: their names and notes.
 // Tools: Draw (a press on an empty spot puts a note there, one step long, a drag sets its length; a drag on a note moves
 // it, on its right end changes its length; Alt- or right-click removes one), Select (a rubber band; a drag moves the
 // selection; arrows move it a step / a semitone, Shift: an octave; Delete / Backspace removes it), Erase (a click or a
@@ -19,6 +20,8 @@ export interface RollOps {
   label(): string;
   /** what it plays (poly.ts trackTargets) */
   plays(): string[];
+  /** the rows of the Drum map its keys go into (#137: the roll shows them instead of a keyboard), or null */
+  drums(): { name: string; note: number }[] | null;
   /** the track's new notes (inside begin / its result: one undo step) */
   notes(n: StepNote[] | undefined): void;
   begin(): () => void;
@@ -171,7 +174,27 @@ export class PianoRoll {
     return Math.max(1, this.grid.clientWidth) / STEPS_MAX;
   }
   private get rows(): number {
-    return Math.max(1, Math.ceil(this.grid.clientHeight / RH));
+    const d = this.ops.drums();
+    return d ? d.length : Math.max(1, Math.ceil(this.grid.clientHeight / RH));
+  }
+  /** px per row: a pitch's, or a Drum map row's (the map's rows fill the height) */
+  private get rh(): number {
+    const d = this.ops.drums();
+    return d ? clamp(Math.floor(this.grid.clientHeight / d.length), 14, 48) : RH;
+  }
+  /** the row a note is drawn on (the top row 0; may be out of view; a drum note not in the map: -1) and the note of a row */
+  private rowOf(note: number): number {
+    const d = this.ops.drums();
+    return d ? d.findIndex((x) => x.note === note) : this.top - note;
+  }
+  private noteAt(row: number): number {
+    const d = this.ops.drums();
+    return d ? d[clamp(row, 0, d.length - 1)].note : clamp(this.top - row, 0, 127);
+  }
+  /** the rows a note may move to */
+  private get rowRange(): [number, number] {
+    const d = this.ops.drums();
+    return d ? [0, d.length - 1] : [this.top - 127, this.top];
   }
 
   /** the pitches in view round the track's notes (C4 for an empty track), once the grid has its size */
@@ -222,17 +245,29 @@ export class PianoRoll {
     this.el.classList.toggle('armed', armed);
     this.lenEl.textContent = `length ${this.len} · rate ${ARP_RATES[clamp(Math.round(m.params.rate ?? 4), 0, ARP_RATES.length - 1)]}`;
     if (!this.centred && this.grid.clientHeight > 0) this.centre();
-    const sw = this.sw, rows = this.rows;
-    this.top = clamp(this.top, rows - 1, 127);
-    // the keyboard down the side, the rows behind the notes
+    const sw = this.sw, rows = this.rows, rh = this.rh, drums = this.ops.drums();
+    if (!drums) this.top = clamp(this.top, rows - 1, 127);
+    this.el.classList.toggle('drums', !!drums);
+    this.grid.style.setProperty('--rh', `${rh}px`);
+    // the keyboard down the side (a Drum map's rows: their names and notes), the rows behind the notes
     const keys: HTMLElement[] = [];
     for (let r = 0; r < rows; r++) {
-      const n = this.top - r;
-      if (n < 0) break;
+      const n = this.noteAt(r);
+      if (!drums && this.top - r < 0) break;
       const k = document.createElement('div');
-      k.className = 'roll-key' + (BLACK.has(n % 12) ? ' black' : '');
-      k.style.top = `${r * RH}px`;
-      if (n % 12 === 0) k.textContent = NOTE_NAMES[n];
+      k.style.top = `${r * rh}px`;
+      if (drums) {
+        k.className = 'roll-key drum';
+        k.style.height = `${rh}px`;
+        const nm = document.createElement('b');
+        nm.textContent = drums[r].name;
+        const no = document.createElement('span');
+        no.textContent = NOTE_NAMES[n];
+        k.append(nm, no);
+      } else {
+        k.className = 'roll-key' + (BLACK.has(n % 12) ? ' black' : '');
+        if (n % 12 === 0) k.textContent = NOTE_NAMES[n];
+      }
       keys.push(k);
     }
     this.keys.replaceChildren(...keys);
@@ -242,11 +277,12 @@ export class PianoRoll {
     // the notes
     const ns = this.notes;
     this.sel = new Set([...this.sel].filter((s) => ns.some((n) => id(n) === s)));
-    this.notesEl.replaceChildren(...ns.filter((n) => n.note <= this.top && n.note > this.top - rows).map((n) => {
+    this.notesEl.replaceChildren(...ns.filter((n) => { const r = this.rowOf(n.note); return r >= 0 && r < rows; }).map((n) => {
       const d = document.createElement('div');
       d.className = 'roll-note' + (this.sel.has(id(n)) ? ' sel' : '') + (n.at >= this.len ? ' past' : '');
       d.style.left = `${n.at * sw + 1}px`;
-      d.style.top = `${(this.top - n.note) * RH + 1}px`;
+      d.style.top = `${this.rowOf(n.note) * rh + 1}px`;
+      d.style.height = `${rh - 2}px`;
       d.style.width = `${Math.max(3, n.len * sw - 2)}px`;
       d.style.setProperty('--vel', String(n.vel / 127));
       d.title = this.describe(n);
@@ -268,13 +304,15 @@ export class PianoRoll {
   private paintRows(rows: number): void {
     this.grid.querySelectorAll('.roll-row').forEach((r) => r.remove());
     const strips: HTMLElement[] = [];
+    const drums = !!this.ops.drums(), rh = this.rh;
     for (let r = 0; r < rows; r++) {
       const n = this.top - r;
-      if (n < 0) break;
-      if (!BLACK.has(n % 12) && n % 12 !== 0) continue;
+      if (!drums && n < 0) break;
+      if (drums ? r % 2 === 0 : !BLACK.has(n % 12) && n % 12 !== 0) continue;
       const s = document.createElement('div');
-      s.className = 'roll-row' + (BLACK.has(n % 12) ? ' black' : ' octave');
-      s.style.top = `${r * RH}px`;
+      s.className = 'roll-row' + (drums || BLACK.has(n % 12) ? ' black' : ' octave');
+      s.style.top = `${r * rh}px`;
+      s.style.height = `${rh}px`;
       strips.push(s);
     }
     this.grid.prepend(...strips);
@@ -286,20 +324,28 @@ export class PianoRoll {
   }
 
   private describe(n: StepNote): string {
-    return `step ${n.at + 1} · ${NOTE_NAMES[n.note]} · ${n.len} step${n.len > 1 ? 's' : ''} · vel ${n.vel}${n.chance ? ` · ${n.chance} %` : ''}`;
+    return `step ${n.at + 1} · ${this.pitchName(n.note)} · ${n.len} step${n.len > 1 ? 's' : ''} · vel ${n.vel}${n.chance ? ` · ${n.chance} %` : ''}`;
   }
 
-  /** the step and pitch under a pointer (unclamped step; pitch clamped to 0..127) */
-  private at(e: { clientX: number; clientY: number }): { k: number; note: number; x: number } {
+  /** a note by what its row says: a Drum map row's name, else the pitch */
+  private pitchName(note: number): string {
+    const d = this.ops.drums()?.find((x) => x.note === note);
+    return d ? `${d.name} (${NOTE_NAMES[note]})` : NOTE_NAMES[note];
+  }
+
+  /** the step, row and note under a pointer (unclamped step; the row clamped to the ones there are) */
+  private at(e: { clientX: number; clientY: number }): { k: number; row: number; note: number; x: number } {
     const r = this.grid.getBoundingClientRect();
     const x = e.clientX - r.left;
-    return { k: Math.floor(x / this.sw), note: clamp(this.top - Math.floor((e.clientY - r.top) / RH), 0, 127), x };
+    const [lo, hi] = this.rowRange;
+    const row = clamp(Math.floor((e.clientY - r.top) / this.rh), lo, hi);
+    return { k: Math.floor(x / this.sw), row, note: this.noteAt(row), x };
   }
 
-  /** the note under a pointer (its start step and pitch), and whether the pointer is on its right end */
+  /** the note under a pointer (its start step and row), and whether the pointer is on its right end */
   private hit(e: { clientX: number; clientY: number }): { n: StepNote; end: boolean } | null {
-    const { note, x } = this.at(e);
-    const n = this.notes.find((q) => q.note === note && x >= q.at * this.sw && x < (q.at + q.len) * this.sw);
+    const { row, x } = this.at(e);
+    const n = this.notes.find((q) => this.rowOf(q.note) === row && x >= q.at * this.sw && x < (q.at + q.len) * this.sw);
     return n ? { n, end: x >= (n.at + n.len) * this.sw - EDGE } : null;
   }
 
@@ -308,7 +354,7 @@ export class PianoRoll {
     const h = this.hit(e);
     const { k, note } = this.at(e);
     this.grid.style.cursor = this.tool === 'erase' ? 'not-allowed' : h?.end && this.tool === 'draw' ? 'ew-resize' : h ? 'grab' : this.tool === 'select' ? 'crosshair' : 'cell';
-    this.infoEl.textContent = h ? this.describe(h.n) : k >= 0 && k < STEPS_MAX ? `step ${k + 1} · ${NOTE_NAMES[note]}` : '';
+    this.infoEl.textContent = h ? this.describe(h.n) : k >= 0 && k < STEPS_MAX ? `step ${k + 1} · ${this.pitchName(note)}` : '';
   }
 
   private write(ns: StepNote[]): void {
@@ -358,22 +404,26 @@ export class PianoRoll {
       const moving = this.tool === 'select' ? this.notes.filter((n) => this.sel.has(id(n))) : [h.n];
       const others = this.notes.filter((n) => !moving.includes(n));
       const minAt = Math.min(...moving.map((n) => n.at)), maxEnd = Math.max(...moving.map((n) => n.at + n.len));
-      const lo = Math.min(...moving.map((n) => n.note)), hi = Math.max(...moving.map((n) => n.note));
+      // (rows, not pitches: a Drum map's rows are not in pitch order; a note whose row is not shown stays)
+      const rowsOf = moving.map((n) => this.rowOf(n.note)).filter((r) => r >= 0 || !this.ops.drums());
+      const [rlo, rhi] = this.rowRange;
+      const top = Math.min(...rowsOf), bottom = Math.max(...rowsOf);
       this.vel = h.n.vel;
-      let last = { dk: 0, dn: 0 };
+      let last = { dk: 0, dr: 0 };
       this.ops.play(h.n.note, h.n.vel);
       let sounding = h.n.note;
+      const shift = (n: StepNote, dr: number): number => { const r = this.rowOf(n.note); return r < 0 && this.ops.drums() ? n.note : this.noteAt(r + dr); };
       return up((ev) => {
         const p = this.at(ev);
         const dk = clamp(p.k - start.k, -minAt, STEPS_MAX - maxEnd);
-        const dn = clamp(p.note - start.note, -lo, 127 - hi);
-        if (dk === last.dk && dn === last.dn) return;
-        last = { dk, dn };
-        const moved = moving.map((n) => ({ ...n, at: n.at + dk, note: n.note + dn }));
+        const dr = clamp(p.row - start.row, rlo - top, rhi - bottom);
+        if (dk === last.dk && dr === last.dr) return;
+        last = { dk, dr };
+        const moved = moving.map((n) => ({ ...n, at: n.at + dk, note: shift(n, dr) }));
         if (this.tool === 'select') this.sel = new Set(moved.map(id));
-        if (h.n.note + dn !== sounding) {
+        if (shift(h.n, dr) !== sounding) {
           this.ops.play(sounding, 0);
-          sounding = h.n.note + dn;
+          sounding = shift(h.n, dr);
           this.ops.play(sounding, h.n.vel);
         }
         this.write([...moved, ...others.filter((o) => !moved.some((n) => n.at === o.at && n.note === o.note))]);
@@ -404,7 +454,9 @@ export class PianoRoll {
       Object.assign(this.band.style, { left: `${l}px`, top: `${t}px`, width: `${rr - l}px`, height: `${b - t}px` });
       this.sel = new Set(keep);
       for (const n of this.notes) {
-        const nx0 = n.at * this.sw, nx1 = (n.at + n.len) * this.sw, ny0 = (this.top - n.note) * RH, ny1 = ny0 + RH;
+        const row = this.rowOf(n.note);
+        if (row < 0 && this.ops.drums()) continue;
+        const nx0 = n.at * this.sw, nx1 = (n.at + n.len) * this.sw, ny0 = row * this.rh, ny1 = ny0 + this.rh;
         if (nx1 > l && nx0 < rr && ny1 > t && ny0 < b) this.sel.add(id(n));
       }
       this.render();
@@ -458,6 +510,7 @@ export class PianoRoll {
 
   private wheel(e: WheelEvent): void {
     e.preventDefault();
+    if (this.ops.drums()) return; // (a Drum map's rows all fit)
     const d = Math.sign(e.deltaY) * Math.max(1, Math.round(Math.abs(e.deltaY) / 40));
     this.top = clamp(this.top - d, this.rows - 1, 127);
     this.render();
@@ -508,14 +561,21 @@ export class PianoRoll {
       return true;
     }
     const dk = k === 'ArrowLeft' ? -1 : k === 'ArrowRight' ? 1 : 0;
-    const dn = (k === 'ArrowUp' ? 1 : k === 'ArrowDown' ? -1 : 0) * (shift ? 12 : 1);
-    if (!dk && !dn) return false;
-    if (picked.some((n) => n.at + dk < 0 || n.at + n.len + dk > STEPS_MAX || n.note + dn < 0 || n.note + dn > 127)) return true;
-    const moved = picked.map((n) => ({ ...n, at: n.at + dk, note: n.note + dn }));
+    const up = k === 'ArrowUp' ? 1 : k === 'ArrowDown' ? -1 : 0;
+    if (!dk && !up) return false;
+    // a semitone (Shift: an octave), or on a Drum map's rows a row
+    const drums = this.ops.drums();
+    const to = (n: StepNote): number => {
+      if (!drums) return n.note + up * (shift ? 12 : 1);
+      const r = this.rowOf(n.note);
+      return r < 0 ? n.note : r - up < 0 || r - up >= drums.length ? -1 : this.noteAt(r - up);
+    };
+    if (picked.some((n) => n.at + dk < 0 || n.at + n.len + dk > STEPS_MAX || to(n) < 0 || to(n) > 127)) return true;
+    const moved = picked.map((n) => ({ ...n, at: n.at + dk, note: to(n) }));
     this.sel = new Set(moved.map(id));
     // (the view follows notes moved out of it)
     const hi = Math.max(...moved.map((n) => n.note)), lo = Math.min(...moved.map((n) => n.note));
-    if (hi > this.top) this.top = Math.min(127, hi + 1);
+    if (drums) { /* (every row is in view) */ } else if (hi > this.top) this.top = Math.min(127, hi + 1);
     else if (lo <= this.top - this.rows) this.top = lo + this.rows - 2;
     const end = this.ops.begin();
     this.write([...moved, ...rest.filter((o) => !moved.some((n) => n.at === o.at && n.note === o.note))]);

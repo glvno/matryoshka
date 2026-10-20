@@ -1237,8 +1237,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
  * note's height and its pitch class; vel lane: the fill is the velocity; the step playing outlined, beats a shade darker */
 .steps-screen { padding: 5px; border-radius: 5px; background: var(--bar); }
 .module .mbody > .param.screen.steps { margin: 6px 10px 8px; }
-.steps-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
-.steps-name { flex: 1; min-width: 0; height: 20px; box-sizing: border-box; padding: 0 5px; line-height: 18px; font: var(--cap); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+.steps-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 5px; }
+.steps-acts { display: flex; gap: 4px; margin-left: auto; }
+.steps-name { flex: 1 1 72px; min-width: 72px; height: 20px; box-sizing: border-box; padding: 0 5px; line-height: 18px; font: var(--cap); font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; }
 .steps-name::placeholder { color: var(--muted); }
 .steps-mute { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
@@ -1474,6 +1475,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .roll-key { position: absolute; left: 0; right: 0; height: 12px; box-sizing: border-box; border-bottom: 1px solid var(--key-edge);
   background: var(--key-white); font: var(--cap); font-size: 9px; line-height: 11px; text-align: right; padding-right: 4px; color: var(--key-name); }
 .roll-key.black { background: var(--key-black); right: 18px; }
+/* a Drum map's rows (#137): the row's name and note instead of a key */
+.roll.drums .roll-keys { width: 120px; }
+.roll.drums .roll-vel-name { width: 120px; }
+.roll-key.drum { display: flex; align-items: center; gap: 6px; padding: 0 8px; text-align: left; background: var(--panel); color: var(--ink); border-bottom-color: var(--line); }
+.roll-key.drum b { flex: 1; font-size: 12px; letter-spacing: .06em; }
+.roll-key.drum span { color: var(--muted); }
 .roll-grid { flex: 1; position: relative; overflow: hidden; cursor: cell; }
 .roll-row { position: absolute; left: 0; right: 0; height: 12px; pointer-events: none; }
 .roll-row.black { background: var(--roll-black); }

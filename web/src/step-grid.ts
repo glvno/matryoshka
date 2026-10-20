@@ -151,7 +151,10 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   roll.textContent = 'roll';
   roll.title = 'ROLL: the piano roll for this track, over the canvas (all 64 steps, chords, lengths, velocities)';
   roll.onclick = () => ops.roll();
-  head.append(name, lanes, roll, arm, rec, mute);
+  const acts = document.createElement('span');
+  acts.className = 'steps-acts';
+  acts.append(roll, arm, rec, mute);
+  head.append(name, lanes, acts);
   const rows = document.createElement('div');
   rows.className = 'steps-rows';
   /** what a note / velocity drag is setting, under the grid */

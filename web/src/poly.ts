@@ -127,6 +127,13 @@ export function arpOf(p: Patch, alloc: ModuleInst): ModuleInst | null {
   return s?.type === 'arp' || s?.type === 'steps' ? s : null;
 }
 
+/** where a Drum map's keys come from (#137): the Main module or a Steps track (its keys out), else null */
+export function keysInto(p: Patch, m: ModuleInst): ModuleInst | null {
+  const c = p.cables.find((x) => x.to.module === m.id && x.to.port === 'keys');
+  const from = c && p.modules.find((x) => x.id === c.from.module);
+  return from && c.from.port === 'keys' && (from.type === 'fm1' || from.type === 'steps') ? from : null;
+}
+
 /** what a Steps track plays (#134, the status line while it is armed): the instruments its outputs go into, by the
  * name they show (the outermost assembly holding the module; an allocator: the poly assemblies it drives), in cable order */
 export function trackTargets(p: Patch, steps: number, label: (m: ModuleInst) => string): string[] {

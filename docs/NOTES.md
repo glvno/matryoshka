@@ -809,3 +809,13 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
 - Its header's length and rate are read-only (the card's sliders set them).
 - The knobs' K1..K4 binding lines skip rows under the roll; ones to rows above it still cross it (the bind layer is over everything).
 - Not done from the design: the roll's own step-entry cursor (step entry stays on the card), scrolling sideways (64 steps always fit), a chance editor (the card's steps lane has it).
+
+## 2026-10-20 (later): the Drum map and the one-track drum kit, #137 (host-tested: vitest 722, golden 90 incl. `drummap`, proto_test, panel_test, fm1-wasm, stand-in pool 40.5 KB free; browser check on [::1]:5173: a DRUMS track into the new kit, the roll showing the map's rows. Not on the FM-1's LCD, not on a device)
+
+- Format 32 (compat 31: a format 31 patch reads the same). `engine.c`: `dm` state in the instance union, `node_t.ksrc`, `dm_keys`, `m_drummap`; maps are shared (group 0).
+- Defaults are GM note numbers; the app's naming shows them an octave above the issue's (36 = C2 here).
+- The card has no separate screen: the note rows and the gate jacks carry the row names, a click on a row's name renames it (a prompt, an undo step).
+- `cpu-costs.ts` had made every output a grid dimension (16,384 points, 98 KB of JSON): `ADDITIVE_OUTPUTS` measures them one at a time. The rest of the cpu-costs.json diff is the usual measurement-order shuffle.
+- The 808 / 909 Kits and the Demo still use their per-drum tracks (#138 rebuilds them on the new kit). The Steps card's header wraps now (the name keeps 72 px; roll / arm / rec / mute on their own row when the card is narrow).
+- CLAUDE.md's "new module types need an LCD colour in TYPE_COLOR (ui.c)" is stale: there is no such table any more.
+- Not done: a cable from an Arpeggiator into a Drum map (only Main and Steps are sources); names on the FM-1 (it shows N1..N8).

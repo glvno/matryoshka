@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 43
+#define N_TYPES 44
 enum {
     T_FM1,
     T_OSC,
@@ -48,6 +48,7 @@ enum {
     T_ARP,
     T_STEPS,
     T_MACRO,
+    T_DRUMMAP,
 };
 
 /* fm1: Main */
@@ -758,6 +759,38 @@ enum {
 #define MACRO_CVBASE 0
 #define MACRO_NDATA 0
 
+/* drummap: Drum map */
+#define DRUMMAP_I_KEYS 0
+#define DRUMMAP_O_G1 0
+#define DRUMMAP_O_V1 1
+#define DRUMMAP_O_G2 2
+#define DRUMMAP_O_V2 3
+#define DRUMMAP_O_G3 4
+#define DRUMMAP_O_V3 5
+#define DRUMMAP_O_G4 6
+#define DRUMMAP_O_V4 7
+#define DRUMMAP_O_G5 8
+#define DRUMMAP_O_V5 9
+#define DRUMMAP_O_G6 10
+#define DRUMMAP_O_V6 11
+#define DRUMMAP_O_G7 12
+#define DRUMMAP_O_V7 13
+#define DRUMMAP_O_G8 14
+#define DRUMMAP_O_V8 15
+#define DRUMMAP_P_N1 0
+#define DRUMMAP_P_N2 1
+#define DRUMMAP_P_N3 2
+#define DRUMMAP_P_N4 3
+#define DRUMMAP_P_N5 4
+#define DRUMMAP_P_N6 5
+#define DRUMMAP_P_N7 6
+#define DRUMMAP_P_N8 7
+#define DRUMMAP_NIN 1
+#define DRUMMAP_NOUT 16
+#define DRUMMAP_NPAR 8
+#define DRUMMAP_CVBASE -1
+#define DRUMMAP_NDATA 1
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -905,9 +938,7 @@ static const int32_t DELAY_INC[] = {340132, 655, 655, 65536, 65536};
 static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG"};
 static const uint8_t DELAY_LOG[] = {0, 0, 0, 0, 0};
 static const char *const DELAY_UNIT[] = {"MS", "", "", "", ""};
-static const char *const DELAY_CH3[] = {"FREE", "SYNC", 0};
-static const char *const DELAY_CH4[] = {"OFF", "ON", 0};
-static const char *const *const DELAY_CH[] = {0, 0, 0, DELAY_CH3, DELAY_CH4};
+static const char *const *const DELAY_CH[] = {0, 0, 0, LFO_CH3, FILTER_CH3};
 static const char *const REVERB_INNAMES[] = {"IN", "P1", "P2"};
 static const int32_t REVERB_MIN[] = {0, 0, 0, 0, 0};
 static const int32_t REVERB_MAX[] = {65536, 65536, 65536, 2621440, 65536};
@@ -945,8 +976,7 @@ static const char *const SHAPE_PN[] = {"DRIVE", "MODE", "LEVEL", "OS", "SYM", "S
 static const uint8_t SHAPE_LOG[] = {1, 0, 0, 0, 0, 0};
 static const char *const SHAPE_UNIT[] = {"", "", "", "", "", ""};
 static const char *const SHAPE_CH1[] = {"SOFT", "HARD", "FOLD", 0};
-static const char *const SHAPE_CH3[] = {"OFF", "ON", 0};
-static const char *const *const SHAPE_CH[] = {0, SHAPE_CH1, 0, SHAPE_CH3, 0, 0};
+static const char *const *const SHAPE_CH[] = {0, SHAPE_CH1, 0, FILTER_CH3, 0, 0};
 static const char *const ENV_INNAMES[] = {"GATE", "P1", "P2"};
 static const int32_t ENV_MIN[] = {0, 66, 0, 66, 0, 66, 0, 66, 0};
 static const int32_t ENV_MAX[] = {65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536};
@@ -1078,8 +1108,7 @@ static const int32_t CRUSH_INC[] = {65536, 65536, 65536};
 static const char *const CRUSH_PN[] = {"BITS", "RATE", "OS"};
 static const uint8_t CRUSH_LOG[] = {0, 0, 0};
 static const char *const CRUSH_UNIT[] = {"", "", ""};
-static const char *const CRUSH_CH2[] = {"OFF", "ON", 0};
-static const char *const *const CRUSH_CH[] = {0, 0, CRUSH_CH2};
+static const char *const *const CRUSH_CH[] = {0, 0, FILTER_CH3};
 static const char *const LADDER_INNAMES[] = {"IN", "CV", "P1", "P2"};
 static const int32_t LADDER_MIN[] = {1310720, 0, 65536, 0, 0};
 static const int32_t LADDER_MAX[] = {1048576000, 65536, 524288, 262144, 65536};
@@ -1088,8 +1117,7 @@ static const int32_t LADDER_INC[] = {10472653, 655, 4588, 2621, 65536};
 static const char *const LADDER_PN[] = {"CUTOFF", "RES", "DRIVE", "CVAMT", "TRACK"};
 static const uint8_t LADDER_LOG[] = {2, 0, 1, 0, 0};
 static const char *const LADDER_UNIT[] = {"HZ", "", "", "OCT", ""};
-static const char *const LADDER_CH4[] = {"OFF", "ON", 0};
-static const char *const *const LADDER_CH[] = {0, 0, 0, 0, LADDER_CH4};
+static const char *const *const LADDER_CH[] = {0, 0, 0, 0, FILTER_CH3};
 static const char *const DYN_INNAMES[] = {"IN", "SIDE", "P1", "P2"};
 static const int32_t DYN_MIN[] = {-2621440, 65536, 66, 655, 0};
 static const int32_t DYN_MAX[] = {0, 1310720, 13107, 65536, 1572864};
@@ -1125,8 +1153,7 @@ static const int32_t GRAIN_INC[] = {655, 321, 65536, 65536, 655, 65536, 655};
 static const char *const GRAIN_PN[] = {"POSITION", "SIZE", "DENSITY", "PITCH", "SPRAY", "FREEZE", "MIX"};
 static const uint8_t GRAIN_LOG[] = {0, 1, 0, 0, 0, 0, 0};
 static const char *const GRAIN_UNIT[] = {"", "S", "HZ", "ST", "", "", ""};
-static const char *const GRAIN_CH5[] = {"OFF", "ON", 0};
-static const char *const *const GRAIN_CH[] = {0, 0, 0, 0, 0, GRAIN_CH5, 0};
+static const char *const *const GRAIN_CH[] = {0, 0, 0, 0, 0, FILTER_CH3, 0};
 static const char *const COMB_INNAMES[] = {"IN", "PITCH", "P1", "P2"};
 static const int32_t COMB_MIN[] = {-1572864, -64225, 0, 0};
 static const int32_t COMB_MAX[] = {1572864, 64225, 65536, 65536};
@@ -1176,11 +1203,9 @@ static const char *const ALLOC_UNIT[] = {"", "", "", "", "", "", "", ""};
 static const char *const ALLOC_CH1[] = {"ROTATE", "LOWEST", "REUSE", 0};
 static const char *const ALLOC_CH2[] = {"AUTO", "OFF", "ON", 0};
 static const char *const ALLOC_CH3[] = {"LAST", "LOW", "HIGH", 0};
-static const char *const ALLOC_CH4[] = {"OFF", "ON", 0};
 static const char *const ALLOC_CH5[] = {"ALL", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", 0};
 static const char *const ALLOC_CH6[] = {"C-1", "C#-1", "D-1", "D#-1", "E-1", "F-1", "F#-1", "G-1", "G#-1", "A-1", "A#-1", "B-1", "C0", "C#0", "D0", "D#0", "E0", "F0", "F#0", "G0", "G#0", "A0", "A#0", "B0", "C1", "C#1", "D1", "D#1", "E1", "F1", "F#1", "G1", "G#1", "A1", "A#1", "B1", "C2", "C#2", "D2", "D#2", "E2", "F2", "F#2", "G2", "G#2", "A2", "A#2", "B2", "C3", "C#3", "D3", "D#3", "E3", "F3", "F#3", "G3", "G#3", "A3", "A#3", "B3", "C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", "G#4", "A4", "A#4", "B4", "C5", "C#5", "D5", "D#5", "E5", "F5", "F#5", "G5", "G#5", "A5", "A#5", "B5", "C6", "C#6", "D6", "D#6", "E6", "F6", "F#6", "G6", "G#6", "A6", "A#6", "B6", "C7", "C#7", "D7", "D#7", "E7", "F7", "F#7", "G7", "G#7", "A7", "A#7", "B7", "C8", "C#8", "D8", "D#8", "E8", "F8", "F#8", "G8", "G#8", "A8", "A#8", "B8", "C9", "C#9", "D9", "D#9", "E9", "F9", "F#9", "G9", 0};
-static const char *const ALLOC_CH7[] = {"C-1", "C#-1", "D-1", "D#-1", "E-1", "F-1", "F#-1", "G-1", "G#-1", "A-1", "A#-1", "B-1", "C0", "C#0", "D0", "D#0", "E0", "F0", "F#0", "G0", "G#0", "A0", "A#0", "B0", "C1", "C#1", "D1", "D#1", "E1", "F1", "F#1", "G1", "G#1", "A1", "A#1", "B1", "C2", "C#2", "D2", "D#2", "E2", "F2", "F#2", "G2", "G#2", "A2", "A#2", "B2", "C3", "C#3", "D3", "D#3", "E3", "F3", "F#3", "G3", "G#3", "A3", "A#3", "B3", "C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", "G#4", "A4", "A#4", "B4", "C5", "C#5", "D5", "D#5", "E5", "F5", "F#5", "G5", "G#5", "A5", "A#5", "B5", "C6", "C#6", "D6", "D#6", "E6", "F6", "F#6", "G6", "G#6", "A6", "A#6", "B6", "C7", "C#7", "D7", "D#7", "E7", "F7", "F#7", "G7", "G#7", "A7", "A#7", "B7", "C8", "C#8", "D8", "D#8", "E8", "F8", "F#8", "G8", "G#8", "A8", "A#8", "B8", "C9", "C#9", "D9", "D#9", "E9", "F9", "F#9", "G9", 0};
-static const char *const *const ALLOC_CH[] = {0, ALLOC_CH1, ALLOC_CH2, ALLOC_CH3, ALLOC_CH4, ALLOC_CH5, ALLOC_CH6, ALLOC_CH7};
+static const char *const *const ALLOC_CH[] = {0, ALLOC_CH1, ALLOC_CH2, ALLOC_CH3, FILTER_CH3, ALLOC_CH5, ALLOC_CH6, ALLOC_CH6};
 static const char *const ARP_INNAMES[] = {"KEYS", "CLK"};
 static const int32_t ARP_MIN[] = {0, 0, 65536, 6554, 0};
 static const int32_t ARP_MAX[] = {262144, 393216, 262144, 65536, 65536};
@@ -1191,8 +1216,7 @@ static const uint8_t ARP_LOG[] = {0, 0, 0, 0, 0};
 static const char *const ARP_UNIT[] = {"", "", "", "", ""};
 static const char *const ARP_CH0[] = {"UP", "DOWN", "UP-DOWN", "RANDOM", "AS PLAYED", 0};
 static const char *const ARP_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
-static const char *const ARP_CH4[] = {"OFF", "ON", 0};
-static const char *const *const ARP_CH[] = {ARP_CH0, ARP_CH1, 0, 0, ARP_CH4};
+static const char *const *const ARP_CH[] = {ARP_CH0, ARP_CH1, 0, 0, FILTER_CH3};
 static const char *const STEPS_INNAMES[] = {"CLK", "RESET", "TRANSPOSE", "P1", "P2", "KEYS"};
 static const int32_t STEPS_MIN[] = {65536, 0, 3276800, 655};
 static const int32_t STEPS_MAX[] = {4194304, 393216, 4915200, 65536};
@@ -1201,8 +1225,7 @@ static const int32_t STEPS_INC[] = {65536, 65536, 65536, 655};
 static const char *const STEPS_PN[] = {"LEN", "RATE", "SWING", "GATE"};
 static const uint8_t STEPS_LOG[] = {0, 0, 0, 0};
 static const char *const STEPS_UNIT[] = {"", "", "%", ""};
-static const char *const STEPS_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
-static const char *const *const STEPS_CH[] = {0, STEPS_CH1, 0, 0};
+static const char *const *const STEPS_CH[] = {0, ARP_CH1, 0, 0};
 static const char *const MACRO_INNAMES[] = {"P1", "P2"};
 static const int32_t MACRO_MIN[] = {0};
 static const int32_t MACRO_MAX[] = {65536};
@@ -1212,6 +1235,15 @@ static const char *const MACRO_PN[] = {"VALUE"};
 static const uint8_t MACRO_LOG[] = {0};
 static const char *const MACRO_UNIT[] = {""};
 static const char *const *const MACRO_CH[] = {0};
+static const char *const DRUMMAP_INNAMES[] = {"KEYS"};
+static const int32_t DRUMMAP_MIN[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t DRUMMAP_MAX[] = {8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 8323072};
+static const int32_t DRUMMAP_DEF[] = {2359296, 2490368, 2555904, 2752512, 3014656, 2949120, 2424832, 3670016};
+static const int32_t DRUMMAP_INC[] = {83231, 83231, 83231, 83231, 83231, 83231, 83231, 83231};
+static const char *const DRUMMAP_PN[] = {"N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"};
+static const uint8_t DRUMMAP_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const DRUMMAP_UNIT[] = {"", "", "", "", "", "", "", ""};
+static const char *const *const DRUMMAP_CH[] = {ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */
@@ -1257,4 +1289,5 @@ static const def_t DEFS[N_TYPES] = {
     {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, 0, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH},   /* arp */
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH},   /* macro */
+    {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH},   /* drummap */
 };

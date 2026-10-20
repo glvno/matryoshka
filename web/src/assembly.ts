@@ -946,6 +946,10 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
       Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels }));
       fixTrack(m);
     }
+    if (src.type === 'drummap' && src.names) {   // a Drum map's row names
+      m.names = clone(src.names);
+      fixTrack(m);
+    }
     fixInputRoutes(m, defs[src.type]);
     fixMatrix(m, defs[src.type]);
     stripKnobs(m);

@@ -290,6 +290,44 @@ describe('the Steps module (#83, #133)', () => {
     expect(e.takeRecorded()).toEqual([]);
   });
 
+  it('Drum map (#137): a row\'s gate while its note sounds, its velocity; a restart gets a low sample; Main\'s keys and an armed track reach it', () => {
+    const { p, st, main } = rig([], { len: 4, gate: 1 });
+    st.notes = [note(0, 1, 36, 127), note(1, 1, 36, 64), note(2, 1, 38)];
+    const out = p.modules.find((m) => m.type === 'output')!;
+    p.cables = [];
+    const dm = addModule(p, DEFS.drummap, 0, 0);
+    connect(p, DEFS, { module: st.id, port: 'keys' }, { module: dm.id, port: 'keys' });
+    connect(p, DEFS, { module: dm.id, port: 'g1' }, { module: out.id, port: 'l' });
+    connect(p, DEFS, { module: dm.id, port: 'v1' }, { module: out.id, port: 'r' });
+    expect(DEFS.drummap.params.map((pd) => pd.default)).toEqual([36, 38, 39, 42, 46, 45, 37, 56]);
+    const e = new Engine(SR);
+    e.load(p);
+    e.transport(true);
+    const { trig, l, r } = edges(e, 18000);
+    expect(trig).toEqual([128, 6017]); // (the keys arrive at the next block: 128, 6016)
+    expect(l[6016]).toBe(0); // the second kick restarts the row: one low sample (an off and an on in one block)
+    expect(r[3000]).toBe(1);
+    expect(r[9000]).toBeCloseTo(64 / 127, 6);
+    expect(l[13000]).toBe(0); // the snare's step: the kick row is down
+    // Main's keys into a second map; an armed track takes them instead, and its keys out plays its own map
+    const dk = addModule(p, DEFS.drummap, 0, 0);
+    dk.params.n1 = 60;
+    connect(p, DEFS, { module: main.id, port: 'keys' }, { module: dk.id, port: 'keys' });
+    p.cables = p.cables.filter((c) => c.to.port !== 'l');
+    connect(p, DEFS, { module: dk.id, port: 'g1' }, { module: out.id, port: 'l' });
+    const e2 = new Engine(SR);
+    e2.load(p);
+    e2.noteOn(60, 1);
+    expect(edges(e2, 256).l[255]).toBe(1);
+    e2.noteOff(60);
+    expect(edges(e2, 256).l[255]).toBe(0);
+    e2.arm(st.id);
+    e2.noteOn(36, 0.5);
+    const a = edges(e2, 512);
+    expect(a.l[511]).toBe(0); // (Main's map: nothing, the keys go to the track)
+    expect(a.r[511]).toBeCloseTo(64 / 127, 6); // the track's map: the kick row at the played velocity
+  });
+
   it('with a cable in clk it steps on every rising edge instead', () => {
     const { p, st } = rig([ON, 0, ON]);
     const l = addModule(p, DEFS.lfo, 0, 0);

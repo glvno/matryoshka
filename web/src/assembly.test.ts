@@ -74,10 +74,10 @@ function voice(): { p: Patch; kb: number; osc: number; env: number; vca: number;
   return { p, kb, osc, env, vca, out };
 }
 
-const render = (p: Patch, frames = 4096): Float32Array => {
+const render = (p: Patch, frames = 4096, note = 60): Float32Array => {
   const e = new Engine(48000);
   e.load(p);
-  e.noteOn(60);
+  e.noteOn(note);
   const l = new Float32Array(frames);
   e.render(l, new Float32Array(frames));
   return l;
@@ -348,7 +348,7 @@ describe('assemblies', () => {
       }
       const o = a.outputs.find((r) => ['out', 'l', 'pitch', 'clock'].includes(r.label))!;
       expect(connect(p, DEFS, o, { module: out, port: 'l' }), d.name).toBe(true);
-      const l = render(p, 24000);
+      const l = render(p, 24000, d.name === 'drum kit' ? 36 : 60); // (the kit's kick is General MIDI's 36)
       if (inp('gate') || inp('keys') || o.label !== 'out') expect(Math.max(...Array.from(l).map(Math.abs)), d.name).toBeGreaterThan(0.05);
       // all of them: a finite output, nothing stuck at the clamp
       expect(l.every((v) => Number.isFinite(v)), d.name).toBe(true);
@@ -356,20 +356,31 @@ describe('assemblies', () => {
     }
   }, 30_000); // renders every factory assembly: slow under coverage on the CI runner
 
-  it('keeps a Steps track\'s name and notes through a definition, and the drum kit plays on PLAY', () => {
+  it('keeps a Steps track\'s name and notes through a definition', () => {
+    const p = emptyPatch('t');
+    const st = addModule(p, DEFS.steps, 0, 0);
+    st.name = 'BASS';
+    st.notes = [{ at: 0, len: 3, note: 40, vel: 77 }, { at: 0, len: 1, note: 47, vel: 77, chance: 35 }];
+    const a = makeAssembly(p, [st.id], 'track');
+    const again = insertAssembly(p, DEFS, validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS), 2000, 0);
+    const copy = p.modules.find((m) => again.modules.includes(m.id) && m.type === 'steps')!;
+    expect([copy.name, copy.notes]).toEqual(['BASS', st.notes]);
+  });
+
+  it('the drum kit (#137): keys into a Drum map; its row names go through a definition; a Steps track plays it on PLAY', () => {
     const kit = FACTORY.find((d) => d.name === 'drum kit')!;
     const p = emptyPatch('f');
     addModule(p, DEFS.fm1, 0, 0);
     const out = addModule(p, DEFS.output, 0, 0).id;
     const a = insertAssembly(p, DEFS, kit, 0, 0);
-    const tracks = p.modules.filter((m) => m.type === 'steps');
-    expect(tracks.map((m) => m.name)).toEqual(['KICK', 'SNARE', 'CLAP', 'CL HAT', 'OP HAT', 'COWBELL']);
-    expect(tracks.every((m) => m.notes?.length)).toBe(true);
-    expect(a.params.filter((r) => r.param === 'grid')).toHaveLength(6);
-    tracks[0].notes = [{ at: 0, len: 3, note: 40, vel: 77 }, { at: 0, len: 1, note: 47, vel: 77, chance: 35 }];
+    const map = p.modules.find((m) => m.type === 'drummap')!;
+    expect(a.inputs.map((r) => r.label)).toEqual(['keys']);
+    map.names = ['BOOM', '', '', '', '', '', '', ''];
     const again = insertAssembly(p, DEFS, validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS), 2000, 0);
-    const copy = p.modules.find((m) => again.modules.includes(m.id) && m.type === 'steps' && m.name === 'KICK')!;
-    expect(copy.notes).toEqual(tracks[0].notes);
+    expect(p.modules.find((m) => again.modules.includes(m.id) && m.type === 'drummap')!.names).toEqual(map.names);
+    const st = addModule(p, DEFS.steps, 0, 0);
+    st.notes = [{ at: 0, len: 1, note: 36, vel: 100 }, { at: 4, len: 1, note: 38, vel: 100 }, { at: 2, len: 1, note: 42, vel: 100 }];
+    for (const t of targetsOf(a.inputs[0])) expect(connect(p, DEFS, { module: st.id, port: 'keys' }, t)).toBe(true);
     expect(connect(p, DEFS, a.outputs.find((r) => r.label === 'out')!, { module: out, port: 'l' })).toBe(true);
     const e = new Engine(48000);
     e.load(p);
@@ -384,14 +395,14 @@ describe('assemblies', () => {
 
   it('the drum kit follows each note\'s velocity: half the velocity, half the level', () => {
     const kit = FACTORY.find((d) => d.name === 'drum kit')!;
-    const peak = (vel: number | null): number => {
+    const peak = (vel: number): number => {
       const p = emptyPatch('v');
       addModule(p, DEFS.fm1, 0, 0);
       const out = addModule(p, DEFS.output, 0, 0).id;
       const a = insertAssembly(p, DEFS, kit, 0, 0);
-      for (const t of p.modules.filter((m) => m.type === 'steps')) if (t.name !== 'KICK') delete t.notes;
-      const kick = p.modules.find((m) => m.name === 'KICK')!;
-      kick.notes = kick.notes!.map((n) => ({ ...n, vel: vel ?? 100 }));
+      const st = addModule(p, DEFS.steps, 0, 0);
+      st.notes = [{ at: 0, len: 1, note: 36, vel }];
+      for (const t of targetsOf(a.inputs[0])) connect(p, DEFS, { module: st.id, port: 'keys' }, t);
       connect(p, DEFS, a.outputs.find((r) => r.label === 'out')!, { module: out, port: 'l' });
       const e = new Engine(48000);
       e.load(p);
@@ -400,9 +411,9 @@ describe('assemblies', () => {
       e.render(l, new Float32Array(l.length));
       return Math.max(...Array.from(l).map(Math.abs));
     };
-    expect(peak(50) / peak(100)).toBeCloseTo(0.5, 2);
-    const vca = kit.modules.filter((m) => m.type === 'vca' && kit.cables.some((c) => c.to.module === m.id && c.to.port === 'cv' && c.from.port === 'vel'));
-    expect(vca).toHaveLength(6);
+    expect(peak(50) / peak(100)).toBeCloseTo(50 / 100, 2);
+    const vca = kit.modules.filter((m) => m.type === 'vca' && kit.cables.some((c) => c.to.module === m.id && c.to.port === 'cv' && /^v\d$/.test(c.from.port)));
+    expect(vca).toHaveLength(7);
   });
 
   it('rejects bad definitions', () => {
@@ -799,9 +810,9 @@ describe('assembly card columns and headings', () => {
     const d = FACTORY.find((x) => x.name === 'Oracle V')!;
     expect(paramColumns(d.params).map((c) => c.length)).toEqual([13, 10, 11]);
     expect(plan(d.params)).toMatch(/^\{0-3 0:.* 1:.* 2:.* OUT\}$/);
-    // the drum kit's grids run across both columns, its knobs in two columns under them
+    // the drum kit's knobs in two columns
     const kit = FACTORY.find((x) => x.name === 'drum kit')!;
-    expect(plan(kit.params)).toMatch(/^\{0-2 KICK \{0-2 SNARE \{0-2 CLAP \{0-2 CL HAT \{0-2 OP HAT \{0-2 COWBELL 0:.* 1:.*\}\}\}\}\}\}$/);
+    expect(plan(kit.params)).toMatch(/^0:kick tune .* 1:.*$/);
     expect(d.params.filter((r) => r.head).map((r) => r.head)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter', 'amp', 'mod']);
   });
 });

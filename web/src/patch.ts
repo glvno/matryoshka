@@ -151,6 +151,9 @@ export interface ModuleInst {
    * per step) instead: fixTrack turns them into notes. */
   name?: string;
   notes?: StepNote[];
+  /** a Drum map only (#137): its rows' names (DRUM_ROWS, at most TRACK_NAME_MAX characters each; '' = the default name;
+   * editor only: the roll shows them as its rows) */
+  names?: string[];
 }
 
 export interface MainPanel {
@@ -183,6 +186,8 @@ export const panelLabel = (s: unknown, max = PANEL_LABEL_MAX): string => String(
  * = accent, bits 2..6 = the chance code c (it plays with a chance of 100 - 5 c percent, c 0..19), bit 7 = tie (the note
  * sounding goes on through the step) */
 export const TRACK_NAME_MAX = 8;
+/** a Drum map's rows (#137, modules.ts drummap) */
+export const DRUM_ROWS = 8;
 export const trackName = (s: unknown): string => panelLabel(s, TRACK_NAME_MAX);
 /** a Steps module as the editor and the FM-1 name it: its name, else STEPS n (n counts the patch's Steps modules) */
 export function trackLabel(p: Patch, id: number): string {
@@ -194,9 +199,14 @@ export interface Step { on: boolean; accent: boolean; chance: number; tie?: bool
 export const stepOf = (b: number | undefined): Step => ({ on: !!((b ?? 0) & 1), accent: !!((b ?? 0) & 2), chance: 100 - 5 * Math.min(19, ((b ?? 0) >> 2) & 31), tie: !!((b ?? 0) & 0x80) });
 export const stepByte = (s: Step): number => (s.on ? 1 : 0) | (s.accent ? 2 : 0) | (Math.min(19, Math.max(0, Math.round((100 - s.chance) / 5))) << 2) | (s.tie ? 0x80 : 0);
 
-/** a module's Steps data (name, notes) made valid in place, a pattern from before #133 turned into notes; other modules
- * lose those fields */
+/** a module's Steps data (name, notes) made valid in place, a pattern from before #133 turned into notes, a Drum map's row
+ * names; other modules lose those fields */
 export function fixTrack(m: ModuleInst): void {
+  if (m.type === 'drummap' && Array.isArray(m.names)) {
+    const names = Array.from({ length: DRUM_ROWS }, (_, r) => trackName(m.names![r] ?? ''));
+    if (names.some((n) => n)) m.names = names;
+    else delete m.names;
+  } else delete m.names;
   const old = m as ModuleInst & { steps?: unknown; vels?: unknown };
   const legacy = Array.isArray(old.steps) || (Array.isArray(old.notes) && old.notes.some((n) => typeof n !== 'object'));
   const notes = m.type !== 'steps' ? undefined : legacy ? migrateSteps(old.steps, old.notes, old.vels) : fixNotes(m.notes);
@@ -477,7 +487,7 @@ export function ensureMain(p: Patch, defs: Record<string, ModuleDef>): boolean {
 /** modules that run once even inside a poly assembly: their inputs sum the parts (big state, or the end of the chain) */
 export { STEPS_MAX, STEP_NOTE, STEP_VEL } from './track';
 
-export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output', 'arp', 'steps']);
+export const SHARED_TYPES = new Set(['delay', 'reverb', 'chorus', 'grain', 'output', 'arp', 'steps', 'drummap']);
 /** module types the editor shows but the engines and the FM-1 never run: poly.ts deviceView drops them and their cables */
 export const EDITOR_ONLY = new Set(['scope']);
 

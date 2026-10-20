@@ -154,6 +154,9 @@ function bends(values: number[], costs: number[][], thr: number, step: boolean):
 }
 
 const GRID_MAX = 16384;
+/** types whose outputs each cost the same whatever else is patched (a constant fill per output): their outputs are
+ * additive, not dimensions of the grid (the Drum map's sixteen would make a grid of 2^14 points) */
+const ADDITIVE_OUTPUTS = new Set(['drummap']);
 type Dim = { dim: CostDim; values: number[]; effect: number; set: (cfg: KitCfg, v: number) => void };
 
 async function typeCost(type: string): Promise<TypeCost> {
@@ -217,6 +220,7 @@ async function typeCost(type: string): Promise<TypeCost> {
   // 4. every combination of the dims; the smallest effects become additive when there are too many
   dims.sort((a, b) => b.effect - a.effect);
   const extra: Dim[] = [];
+  if (ADDITIVE_OUTPUTS.has(type)) for (let i = dims.length - 1; i >= 0; i--) if ('output' in dims[i].dim) extra.unshift(...dims.splice(i, 1));
   while (dims.reduce((n, d) => n * d.values.length, 1) > GRID_MAX) extra.unshift(dims.pop()!);
   const out: TypeCost = { run: Math.round(base.run), cv: Math.round(base.cv) };
   // a pitch that moves every sample (an LFO, a glide, an envelope into it), per copy of a unison oscillator

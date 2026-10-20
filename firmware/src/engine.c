@@ -332,6 +332,9 @@ typedef struct {
          * when reached; hit: 1 / 2 (accented) = sound now (eng_steps_hit); pitch / vel: the outputs' held values (Q16, the
          * last note that started); the notes sounding are the track's (E.trk_snd) */
         struct { uint32_t seed, loop; int32_t c1, r1, since, period, pend, slen, sst, pitch, vel; uint16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
+        /* Drum map (modules.ts DrumMapState): its rows' velocities (Q16), the rows whose gate is up, the rows that restart
+         * this block (a low first sample) */
+        struct { int32_t vel[DRUMMAP_NOUT / 2]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last block */
         struct { int32_t count, c1, r1; } cdv;
         struct { int32_t v, c1; } sh;
         struct { int32_t rem, t1; } pls;
@@ -350,6 +353,7 @@ typedef struct {
     uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
     uint16_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
     uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
+    uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's index) */
 } node_t;
 
 /* a macro range: input `pin` (0 p1, 1 p2) of module `mod` moves parameter `par` between lo and hi (0..255 of the range,
@@ -772,9 +776,10 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.trk_n[nd->trk] = E.trk_nsnd[nd->trk] = 0;
             E.trk_last[nd->trk] = STEP_NOTE;
         }
+        nd->ksrc = nd->type == T_DRUMMAP ? p[at] : 0u;   /* (checked once every module is read) */
         at += d->ndata;
         /* the memories of delay, reverb, chorus, granular and the output exist once (patch.ts SHARED_TYPES) */
-        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS ? 0u : member[i];
+        nd->grp = nd->type == T_DELAY || nd->type == T_REVERB || nd->type == T_CHORUS || nd->type == T_GRAIN || nd->type == T_OUTPUT || nd->type == T_ARP || nd->type == T_STEPS || nd->type == T_DRUMMAP ? 0u : member[i];
         nd->ninst = E.grp[nd->grp].parts;
         if (nd->type == T_FM1 && E.main < 0)
             E.main = (int8_t)i;
@@ -793,6 +798,9 @@ int eng_load(const uint8_t *p, uint32_t len)
     }
     for (i = 1; i <= E.ngrp; i++)                /* a group's note source must be an arpeggiator or a Steps module of the patch */
         if (E.grp[i].src && (E.grp[i].src > E.nmod || (E.node[E.grp[i].src - 1u].type != T_ARP && E.node[E.grp[i].src - 1u].type != T_STEPS)))
+            return -3;
+    for (i = 0; i < E.nmod; i++)                 /* a Drum map's keys: the keys, or a Steps module of the patch */
+        if (E.node[i].ksrc >= 2u && (E.node[i].ksrc - 2u >= E.nmod || E.node[E.node[i].ksrc - 2u].type != T_STEPS))
             return -3;
     if (at + 4u * ncab > len)
         return -3;
@@ -1602,6 +1610,34 @@ static void arp_emit_off(const arp_t *a, uint32_t note)
             group_off(&E.grp[g], note);
 }
 
+/* a note on (key | 0x80, velocity 1..127) or off (key, 0) into the Drum maps whose keys come from `src` (1 the keys, 2 + a
+ * Steps module's index; engine.ts mapKeys): a row on that note raises its gate (restarting it if it is up or fell since
+ * the last block) and takes the velocity, or lets it fall */
+static void dm_keys(uint32_t src, uint32_t kv, uint32_t vel)
+{
+    uint32_t i, r, key = kv & 0x7Fu;
+    for (i = 0; i < E.nmod; i++) {
+        const node_t *nd = &E.node[i];
+        inst_t *it;
+        if (nd->type != T_DRUMMAP || nd->ksrc != src)
+            continue;
+        it = &inst_pool[nd->inst0];
+        for (r = 0; r < DRUMMAP_NOUT / 2u; r++) {
+            if ((uint32_t)clampi(round_q16(nd->par[r]), 0, 127) != key)
+                continue;
+            if (!(kv & 0x80u)) {
+                it->s.dm.fell |= (uint8_t)(it->s.dm.gate & (1u << r));
+                it->s.dm.gate &= (uint8_t)~(1u << r);
+            } else {
+                if ((it->s.dm.gate | it->s.dm.fell) >> r & 1u)
+                    it->s.dm.gap |= (uint8_t)(1u << r);
+                it->s.dm.gate |= (uint8_t)(1u << r);
+                it->s.dm.vel[r] = (int32_t)((vel << 16) / 127u);
+            }
+        }
+    }
+}
+
 /* the notes the Steps tracks started and ended in the last block, into the groups they play, in order (engine.ts
  * trackKeys); a group's key range judges them. A part that a track's note let go and one of its notes took again in the
  * same delivery restarts its envelopes (its gate had no low sample); a note over one still sounding is legato as the
@@ -1612,6 +1648,7 @@ static void steps_keys(void)
     uint32_t e, g, v;
     for (e = 0; e < E.nkev; e++) {
         uint32_t node = E.kev[e][0], key = E.kev[e][1] & 0x7Fu;
+        dm_keys(2u + node, E.kev[e][1], E.kev[e][2]);
         if (!e || node != E.kev[e - 1u][0])
             for (g = 0; g <= E.ngrp; g++)
                 freed[g] = 0;
@@ -1723,9 +1760,12 @@ void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
     for (g = 0; g <= E.ngrp; g++)
         if (!E.grp[g].src && takes_key(&E.grp[g], note, ch))
             group_on(&E.grp[g], note, vel_q16);
-    if (!dev_ch || dev_ch == ch)
+    if (!dev_ch || dev_ch == ch) {
+        int32_t v = (int32_t)(((int64_t)vel_q16 * 127 + 32768) >> 16);
         for (g = 0; g < E.narp; g++)
             arp_note_on(&E.arp[g], note, vel_q16);
+        dm_keys(1u, note | 0x80u, (uint32_t)clampi(v, 1, 127));
+    }
 }
 
 void eng_note_off(uint32_t note, uint32_t ch)
@@ -1734,9 +1774,11 @@ void eng_note_off(uint32_t note, uint32_t ch)
     for (g = 0; g <= E.ngrp; g++)
         if (!E.grp[g].src && takes_key(&E.grp[g], note, ch))
             group_off(&E.grp[g], note);
-    if (!dev_ch || dev_ch == ch)
+    if (!dev_ch || dev_ch == ch) {
         for (g = 0; g < E.narp; g++)
             arp_note_off(&E.arp[g], note);
+        dm_keys(1u, note, 0u);
+    }
 }
 
 void eng_clock_tick(void)
@@ -2046,6 +2088,9 @@ void eng_all_notes_off(void)
         E.pv[i].gate = 0;
         E.pv[i].retrig = 0;
     }
+    for (i = 0; i < E.nmod; i++)
+        if (E.node[i].type == T_DRUMMAP)
+            inst_pool[E.node[i].inst0].s.dm.gate = 0;
 }
 
 /* ------------------------------------------------------------------ modules */
@@ -3637,6 +3682,22 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
 /* the Steps module (modules.ts steps): one step per `rate` of the clock while the transport runs (the first when it starts),
  * or per rising edge in clk; every second step late by the swing; its notes sound for their length (gate x their last
  * step); trig is up while any sounds, pitch / vel hold the last that started, keys out every note on / off */
+/* Drum map (modules.ts drummap): each row's gate while its note is held (one low first sample when it restarts) and its
+ * velocity; the notes come in through dm_keys */
+static void m_drummap(const node_t *nd, inst_t *it, uint32_t n)
+{
+    uint32_t r;
+    (void)nd;
+    for (r = 0; r < DRUMMAP_NOUT / 2u; r++) {
+        esig_t *g = it->out[2u * r];
+        fill(g, (it->s.dm.gate >> r & 1u) ? ENG_ONE : 0, n);
+        if (g != dummy_out && (it->s.dm.gap >> r & 1u))
+            g[0] = 0;
+        fill(it->out[2u * r + 1u], it->s.dm.vel[r], n);
+    }
+    it->s.dm.gap = it->s.dm.fell = 0;
+}
+
 static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
 {
     static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* arpeggiator.ts ARP_RATE_TICKS */
@@ -4173,6 +4234,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_CHORUS: m_chorus(nd, it, n); break;
     case T_SEQ: m_seq(nd, it, n); break;
     case T_STEPS: m_steps(nd, it, n); break;
+    case T_DRUMMAP: m_drummap(nd, it, n); break;
     case T_CLKDIV: m_clkdiv(nd, it, n); break;
     case T_SH: m_sh(nd, it, n); break;
     case T_QUANT: m_quant(nd, it, n); break;

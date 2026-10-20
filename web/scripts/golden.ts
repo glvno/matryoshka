@@ -1554,6 +1554,33 @@ ends['steps-legato'] = 128 * 400;
   ends['steps-clk'] = 128 * 200 + 900 * 200 + 128 * 120;
 }
 
+// Drum map (#137): a Steps track into one map (a row's gate while its note sounds, restarted by the same note at once
+// and by a note over a held one; velocities), Main's keys into another (a key held, let go and hit again in one block)
+tests['drummap'] = make('drummap', (add, wire) => {
+  const main = add('fm1', 0, 0, { tempo: 150 });
+  const st = add('steps', 200, 0, { len: 8, rate: 4, gate: 0.5 });
+  const dm = add('drummap', 400, 0);
+  const dk = add('drummap', 400, 400, { n1: 60, n2: 62 });
+  const ml = add('mixer', 600, 0, { l1: 0.3, l2: 0.3, l3: 0.2, l4: 0.2 });
+  const mr = add('mixer', 600, 400, { l1: 0.3, l2: 0.3, l3: 0.3, l4: 0 });
+  const out = add('output', 800, 0, { level: 1 });
+  wire(st, 'keys', dm, 'keys');
+  wire(main, 'keys', dk, 'keys');
+  wire(dm, 'g1', ml, 'in1');
+  wire(dm, 'v1', ml, 'in2');
+  wire(dm, 'g2', ml, 'in3');
+  wire(dm, 'g4', ml, 'in4');
+  wire(dk, 'g1', mr, 'in1');
+  wire(dk, 'v1', mr, 'in2');
+  wire(dk, 'g2', mr, 'in3');
+  wire(ml, 'out', out, 'l');
+  wire(mr, 'out', out, 'r');
+});
+tests['drummap'].modules.find((m) => m.type === 'steps')!.notes = [n(0, 2, 36), n(1, 1, 36, 90), n(2, 1, 38, 127), n(3, 2, 36, 50), n(4, 1, 42, 60), n(5, 3, 42), n(6, 1, 38, 20)];
+events['drummap'] = [[128 * 4, 'run', 0], [128 * 30, 'on', 60], [128 * 60, 'on', 62], [128 * 90, 'off', 60], [128 * 90 + 40, 'on', 60],
+  [128 * 120, 'off', 62], [128 * 140, 'off', 60], [128 * 300, 'stop', 0]];
+ends['drummap'] = 128 * 360;
+
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
   if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];
