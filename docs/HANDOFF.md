@@ -38,7 +38,14 @@ The owner grilled and approved spec **#132**: Steps becomes the one sequencer fo
 5. ~~**#137** Drum map module + a one-track drum kit~~ (done, committed, not pushed; NOTES "the Drum map"): (General MIDI notes; no compatibility with the per-drum-track kit).
 6. ~~**#138** Rebuild the Demo and the factory patches~~ (done, committed, not pushed; NOTES "the Demo and the factory kits"; the melodies are placeholders): on the new Steps, then add the xylophone (bar 13) and operator
    (bar 29) melodies (recipe in NOTES 2026-10-20).
-7. **#139** FM-1: chord tracks, arming and recording from the device's keys (emulator-tested only).
+7. **#139** FM-1: chord tracks, arming and recording from the device's keys (emulator-tested only). **Waiting on the
+   owner's UI decisions:** on the SEQ page the keys are the grid (white = steps, black = tracks), so recording notes from
+   them needs a control scheme: where ARM lives on the device, whether recording happens on the device pages (keys play)
+   or the SEQ page, and where step entry's cursor shows. The C engine already plays chord tracks, keys out and the Drum
+   map; arming, live recording and the Main-keys cable into a track are editor-engine only so far.
+
+**Before any device work:** push `main` (#133-#138 are committed, not pushed), wait for the `firmware` workflow (the
+JieLi build has not seen formats 31 / 32), then `cd web && npm run emu:smoke`.
 
 Also open: #131 Player Piano (its Q4 is unblocked by #133), #111 C engine audio in the FM-1 tab, #112 envelope shapes in
 the bars, #102 / #103 A/B flip bugs.
