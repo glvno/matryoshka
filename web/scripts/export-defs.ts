@@ -26,7 +26,6 @@ w('};');
 w();
 for (const t of TYPE_ORDER) {
   const d = DEFS[t];
-  const explicit = d.inputs.filter((i) => !i.pin);
   w(`/* ${t}: ${d.label} */`);
   d.inputs.forEach((p, i) => w(`#define ${up(t)}_I_${up(p.name)} ${i}`));
   d.outputs.forEach((p, i) => w(`#define ${up(t)}_O_${up(p.name)} ${i}`));
@@ -34,7 +33,7 @@ for (const t of TYPE_ORDER) {
   w(`#define ${up(t)}_NIN ${d.inputs.length}`);
   w(`#define ${up(t)}_NOUT ${d.outputs.length}`);
   w(`#define ${up(t)}_NPAR ${d.params.length}`);
-  w(`#define ${up(t)}_CVBASE ${d.paramInputs ? explicit.length : -1}`);   /* index of p1; p2 follows */
+  w(`#define ${up(t)}_CVBASE ${d.paramInputs ? d.inputs.findIndex((i) => i.pin === 1) : -1}`);   /* index of p1; p2 follows (ports added later come after them: the Steps module's keys) */
   w(`#define ${up(t)}_NDATA ${d.data ?? 0}`);   /* bytes after the parameters and pins in a record */
   w();
 }

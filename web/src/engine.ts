@@ -579,13 +579,63 @@ export class Engine {
    * and the Arpeggiators (on `channel`) play it.
    */
   noteOn(note: number, velocity = 1, ch = 1): void {
+    const t = this.armedTrack();
+    if (t) {
+      if (this.listens(ch)) t.thru.push(note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
+      return;
+    }
     for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
     if (this.listens(ch)) for (const a of this.arps) arpKeyOn(a.st, note, velocity, this.arpParams(a));
   }
 
   noteOff(note: number, ch = 1): void {
+    const t = this.armedTrack();
+    if (t) {
+      if (this.listens(ch)) t.thru.push(note, 0);
+      return;
+    }
     for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
     if (this.listens(ch)) for (const a of this.arps) arpKeyOff(a.st, note, this.arpParams(a));
+  }
+
+  /** the armed Steps track (#134, the editor's ARM; the FM-1 has none): its id, -1 none */
+  private armedId = -1;
+  private armedTrack = (): StepsState | null => this.stepsOf(this.armedId);
+
+  /**
+   * Arm a Steps track (null: none). While one is armed the keys (noteOn / noteOff: the computer keys, the on-screen keys,
+   * MIDI) go into its keys in and through to what it plays (modules.ts steps), not to the shared keyboard, the groups that
+   * play the keys or the Arpeggiators. What the keys held when the routing changes go quiet: the keys they sounded
+   * through let them go (a track's thru notes end, the keyboard's groups and the Arpeggiators let go of every key).
+   */
+  arm(id: number | null): void {
+    if ((id ?? -1) === this.armedId) return;
+    this.thruOff(this.armedTrack());
+    this.keysOff();
+    this.armedId = id ?? -1;
+  }
+
+  /** a track's keys played through end (at its next block) */
+  private thruOff(s: StepsState | null): void {
+    if (s) for (const x of s.snd) if (x.thru !== undefined && !s.thru.some((v, i) => i % 2 === 0 && v === x.thru)) s.thru.push(x.thru, 0);
+  }
+
+  /** the keys' own listeners let go of every key: the shared keyboard, the groups that play the keys, the Arpeggiators */
+  private keysOff(): void {
+    for (const a of this.arps) {
+      arpClear(a.st);
+      a.st.cur = -1;
+      a.st.running = false;
+    }
+    for (const g of [this.kb, ...this.groups]) {
+      if (g.src >= 0) continue;
+      g.held = [];
+      for (const x of g.parts) {
+        x.on = false;
+        x.gate = 0;
+        x.retrig = false;
+      }
+    }
   }
 
   /** the device's MIDI channel (1..16, 0 = every channel): the shared keyboard, the Arpeggiators and the allocators
@@ -727,6 +777,7 @@ export class Engine {
   }
 
   allNotesOff(): void {
+    for (const node of this.tracks) this.thruOff(node.inst[0].state as StepsState);
     for (const a of this.arps) {
       arpClear(a.st);
       a.st.cur = -1;

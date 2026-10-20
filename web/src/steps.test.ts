@@ -201,6 +201,63 @@ describe('the Steps module (#83, #133)', () => {
     expect(edges(e, 1000).r[500]).toBeCloseTo(2 / 12, 4);
   });
 
+  it('armed (#134): the keys go into the track and through to what it plays, not where they go otherwise; disarmed: back', () => {
+    const { p, st, main } = rig([], { len: 16 });
+    const out = p.modules.find((m) => m.type === 'output')!;
+    p.cables = [];
+    const kb = addModule(p, DEFS.alloc, 0, 0); // what Main's keys play: its gate on the left
+    connect(p, DEFS, { module: main.id, port: 'keys' }, { module: kb.id, port: 'keys' });
+    connect(p, DEFS, { module: kb.id, port: 'gate' }, { module: out.id, port: 'l' });
+    const al = addModule(p, DEFS.alloc, 0, 0); // what the track plays: its gate on the right
+    connect(p, DEFS, { module: st.id, port: 'keys' }, { module: al.id, port: 'keys' });
+    connect(p, DEFS, { module: al.id, port: 'gate' }, { module: out.id, port: 'r' });
+    const e = new Engine(SR);
+    e.load(p);
+    const at = (): [number, number] => { const { l, r } = edges(e, 384); return [l[383], r[383]]; };
+    e.noteOn(60, 0.8);
+    expect(at()).toEqual([1, 0]);
+    e.arm(st.id); // the key held goes quiet; its release later goes to the track, which never had it
+    expect(at()).toEqual([0, 0]);
+    e.noteOff(60);
+    e.noteOn(64, 0.8);
+    expect(at()).toEqual([0, 1]); // (two blocks: into the track, then out of it)
+    e.noteOff(64);
+    expect(at()).toEqual([0, 0]);
+    e.noteOn(67, 0.5);
+    at();
+    e.arm(null); // the note played through ends; the keys play Main's instrument again
+    expect(at()).toEqual([0, 0]);
+    e.noteOff(67);
+    e.noteOn(62, 1);
+    expect(at()).toEqual([1, 0]);
+  });
+
+  it('armed: a played note is transposed as the track\'s notes, sets the mono outputs and holds until let go; muted too', () => {
+    const { p, st } = rig([], { len: 16, gate: 0.01 });
+    const c = addModule(p, DEFS.const, 0, 0);
+    c.params.value = 1;
+    connect(p, DEFS, { module: c.id, port: 'out' }, { module: st.id, port: 'transpose' });
+    const al = addModule(p, DEFS.alloc, 0, 0);
+    connect(p, DEFS, { module: st.id, port: 'keys' }, { module: al.id, port: 'keys' });
+    const out = p.modules.find((m) => m.type === 'output')!;
+    p.cables = p.cables.filter((x) => x.to.port !== 'r');
+    const mx = addModule(p, DEFS.mixer, 0, 0); // the allocator's pitch, a quarter of it (the output clips at 1)
+    Object.assign(mx.params, { l1: 0.25, master: 1 });
+    connect(p, DEFS, { module: al.id, port: 'pitch' }, { module: mx.id, port: 'in1' });
+    connect(p, DEFS, { module: mx.id, port: 'out' }, { module: out.id, port: 'r' });
+    const e = new Engine(SR);
+    e.load(p);
+    e.setMute(st.id, true);
+    e.arm(st.id);
+    e.noteOn(62, 100 / 127);
+    const { l, r } = edges(e, 20000); // long after any step's gate: still held
+    expect(l[100]).toBe(1);
+    expect(l[19999]).toBe(1);
+    expect(r[19999]).toBeCloseTo((14 / 12) / 4, 4); // D4 an octave up: the allocator's pitch
+    e.noteOff(62);
+    expect(edges(e, 200).l[199]).toBe(0);
+  });
+
   it('with a cable in clk it steps on every rising edge instead', () => {
     const { p, st } = rig([ON, 0, ON]);
     const l = addModule(p, DEFS.lfo, 0, 0);

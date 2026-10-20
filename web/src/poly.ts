@@ -127,6 +127,28 @@ export function arpOf(p: Patch, alloc: ModuleInst): ModuleInst | null {
   return s?.type === 'arp' || s?.type === 'steps' ? s : null;
 }
 
+/** what a Steps track plays (#134, the status line while it is armed): the instruments its outputs go into, by the
+ * name they show (the outermost assembly holding the module; an allocator: the poly assemblies it drives), in cable order */
+export function trackTargets(p: Patch, steps: number, label: (m: ModuleInst) => string): string[] {
+  const out: string[] = [];
+  const add = (s: string): void => { if (!out.includes(s)) out.push(s); };
+  const outer = (a: AssemblyInst): AssemblyInst => {
+    for (let x = parentOf(p, a.id); x; x = parentOf(p, x.id)) a = x;
+    return a;
+  };
+  const top = (id: number): AssemblyInst | undefined => { const a = assemblyOf(p, id); return a && outer(a); };
+  const groups = polyGroups(p);
+  for (const c of p.cables) {
+    if (c.from.module !== steps) continue;
+    const m = p.modules.find((x) => x.id === c.to.module);
+    if (!m || m.id === steps) continue;
+    const fed = m.type === ALLOC ? groups.filter((g) => g.alloc === m).map((g) => outer(g.asm)) : [];
+    if (fed.length) fed.forEach((a) => add(a.label));
+    else add(top(m.id)?.label ?? label(m));
+  }
+  return out;
+}
+
 /** a poly group as the engines and the binary take it */
 export interface DeviceGroup {
   /** the engine keeps a group's notes across reloads while this stays */

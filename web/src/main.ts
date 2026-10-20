@@ -28,7 +28,7 @@ import { longName, moduleName } from './labels';
 import { DeckControls } from './deck';
 import { releaseFocusAfterPointer } from './focus';
 import { DEFS } from './modules';
-import { newPatch, validatePatch, type Patch, type SideKey } from './patch';
+import { newPatch, trackLabel, validatePatch, type Patch, type SideKey } from './patch';
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
@@ -194,7 +194,8 @@ const sink = {
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
     if (live() && !fromDevice) {   // (what the FM-1 played itself is not sent back)
-      device.note(msg as { t: string; note?: number; vel?: number });
+      // (an armed track's keys stay here: the FM-1 does not arm, #139)
+      if (editor.armedTrack === null) device.note(msg as { t: string; note?: number; vel?: number });
       if (msg.t === 'bend') device.bend(msg.v);
       else if (msg.t === 'cc') device.cc(msg.n, msg.v);
     }
@@ -324,6 +325,11 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (fromDevice) return;
     if (live() && !uploading) device.track(editor.patch, id, notes);
     else if (live()) dirty = true;
+  },
+  onArm(id, plays) {
+    host.send({ t: 'arm', id });
+    const name = id === null ? '' : trackLabel(editor.patch, id);
+    pinStatus(id === null ? null : { tag: `Armed: ${name}`, text: `Main’s keys play ${name}${plays.length ? `, heard through ${plays.join(', ')}` : ', which plays nothing yet: cable its keys out (or trig / pitch) to an instrument'}. ARM again to give Main its keys back.` }, 'arm');
   },
   onMute(id, on) {
     host.send({ t: 'mute', id, on });

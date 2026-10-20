@@ -22,7 +22,7 @@ import { deviceBudget, DEVICE } from './patchbin';
 import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
 import { picker } from './picker';
 import { selector } from './selector';
-import { ALLOC, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly } from './poly';
+import { ALLOC, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackTargets } from './poly';
 import { dragControl } from './deck';
 import { isPin, PinsInUse, removeRoute } from './parameter-routing';
 import {
@@ -55,7 +55,7 @@ import {
   panelLabel,
 } from './patch';
 import { fixNotes, type StepNote } from './track';
-import { disarm, stepGrid, type StepGrid } from './step-grid';
+import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
@@ -149,6 +149,8 @@ export interface EditorEvents {
   /** a Steps module's notes changed (#133, ModuleInst.notes), a Steps module muted (not saved) */
   onTrack?(id: number, notes: StepNote[] | undefined): void;
   onMute?(id: number, on: boolean): void;
+  /** the armed Steps track changed (#134; null: none) and what it plays (poly.ts trackTargets), or its cables changed */
+  onArm?(id: number | null, plays: string[]): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
@@ -342,7 +344,8 @@ export class Editor {
   }
 
   setPatch(p: Patch): void {
-    disarm(); // (step entry belongs to the patch it started in)
+    stopEntry(); // (step entry and the armed track belong to the patch they started in)
+    this.armTrack(null);
     this.patch = p;
     if (this.dock) ensureMain(this.patch, DEFS);
     this.report(fixAssemblies(this.patch, DEFS));
@@ -609,6 +612,10 @@ export class Editor {
 
   rebuild(): void {
     this.cancelArm();
+    if (this.armedTrack !== null) {
+      if (this.patch.modules.some((m) => m.id === this.armedTrack && m.type === 'steps')) this.ev.onArm?.(this.armedTrack, this.trackPlays(this.armedTrack));
+      else this.armTrack(null); // (the track went)
+    }
     this.screens = [];
     this.envScreens = [];
     this.stepGrids.clear();
@@ -877,7 +884,7 @@ export class Editor {
 
   private card(m: ModuleInst, def: ModuleDef, perVoice: number, open?: AssemblyInst): HTMLElement {
     const el = document.createElement('div');
-    el.className = 'module' + (this.selected.has(m.id) ? ' selected' : '') + (open ? ' member' : '') + (this.picking(open) ? ' picking' : '');
+    el.className = 'module' + (this.selected.has(m.id) ? ' selected' : '') + (open ? ' member' : '') + (this.picking(open) ? ' picking' : '') + (m.id === this.armedTrack ? ' armed' : '');
     el.style.left = `${m.x}px`;
     el.style.top = `${m.y}px`;
     el.dataset.id = String(m.id);
@@ -970,9 +977,30 @@ export class Editor {
         this.ev.onStructure(this.patch);
       },
       mute: (on) => this.ev.onMute?.(m.id, on),
+      arm: (on) => this.armTrack(on ? m.id : null),
+      armed: () => this.armedTrack === m.id,
     });
     this.stepGrids.set(m.id, grid);
     return grid;
+  }
+
+  /** the armed Steps track (#134): Main's keys go into it and through to what it plays (Engine.arm). Editor state: one
+   * track at a time, not saved, no undo step; another patch disarms it */
+  armedTrack: number | null = null;
+
+  armTrack(id: number | null): void {
+    if (id !== null && !this.patch.modules.some((m) => m.id === id && m.type === 'steps')) id = null;
+    if (id === this.armedTrack) return;
+    this.armedTrack = id;
+    for (const [k, g] of this.stepGrids) g.armed(k === id);
+    for (const [k, card] of this.cards) card.classList.toggle('armed', k === id);
+    this.ev.onArm?.(id, id === null ? [] : this.trackPlays(id));
+    this.positionBindings();
+  }
+
+  /** what a track plays, by the names the canvas shows */
+  private trackPlays(id: number): string[] {
+    return trackTargets(this.patch, id, (m) => moduleName(m.type, DEFS[m.type]?.label ?? m.type));
   }
 
   /** the Scope screens and envelope shapes drawn in this rebuild (onScreens) */
@@ -3701,7 +3729,30 @@ export class Editor {
       path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x} ${b.y + lift} ${b.x} ${b.y}`);
       paths.push(path);
     });
+    const snap = this.armRoute(view);
+    if (snap) paths.push(snap);
     layer.replaceChildren(...paths);
+  }
+
+  /** the armed track's routing (#134): Main's keys into its keys in (on its card, else its grid, a collapsed assembly's card),
+   * dashed in the armed colour; not a cable (not saved, no undo, no click). None when either end is out of view */
+  private armRoute(view: DOMRect): SVGPathElement | null {
+    const id = this.armedTrack;
+    const main = this.patch.modules.find((m) => m.type === 'fm1');
+    if (id === null || !main || this.canvas.offsetParent === null) return null;
+    const from = this.ports.get(this.key(main.id, 'keys', 'out'));
+    const jack = this.inputJack({ module: id, port: 'keys' });
+    const to = [jack, this.stepGrids.get(id)?.el].find((e) => e?.isConnected && e.offsetParent !== null);
+    if (!from?.isConnected || !to) return null;
+    const f = from.getBoundingClientRect(), t = to.getBoundingClientRect();
+    const a = { x: f.left + f.width / 2, y: f.top + f.height / 2 };
+    const b = to === jack ? { x: t.left + t.width / 2, y: t.top + t.height / 2 } : { x: t.left, y: t.top + Math.min(12, t.height / 2) };
+    if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) return null;
+    const lift = Math.max(40, (a.y - b.y) * 0.45);
+    const path = document.createElementNS(SVGNS, 'path');
+    path.setAttribute('class', 'bind arm');
+    path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x - lift * 0.6} ${b.y} ${b.x} ${b.y}`);
+    return path;
   }
 
   positionSideCables(): void {

@@ -23,6 +23,8 @@ export type HostMsg =
   /** a Steps module's notes edited (#133), a Steps module muted */
   | { t: 'track'; id: number; notes: StepNote[] | undefined }
   | { t: 'mute'; id: number; on: boolean }
+  /** the armed Steps track (#134): the keys go through it; null none */
+  | { t: 'arm'; id: number | null }
   /** voices: also each voice of a module that runs once per voice (#54), sent as `voices` beside `data` */
   | { t: 'watch'; key: string; id: number; port: string }
   | { t: 'unwatch'; key: string }
@@ -97,6 +99,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes);
         else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
+        else if (m.t === 'arm') this.engine.arm(m.id);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch);
         else if (m.t === 'off') this.engine.noteOff(m.note, m.ch);
         else if (m.t === 'clock') {                   // MIDI clock: it drives the clock while it comes in

@@ -217,6 +217,7 @@ main { min-width: 0; min-height: 0; overflow: auto; }
 /* the dotted lines from the dock's dials to the rows they turn: no signal, an edit binding */
 svg.bind-cables { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 14; overflow: visible; pointer-events: none; }
 svg.bind-cables .bind { fill: none; stroke: var(--knob); stroke-width: 1.6; stroke-dasharray: 1.5 4; stroke-linecap: round; opacity: .9; }
+svg.bind-cables .bind.arm { stroke: var(--secondary); stroke-width: 2; stroke-dasharray: 6 5; stroke-linecap: butt; }
 .cable.pending { stroke: var(--muted); stroke-dasharray: 5 4; pointer-events: none; }
 .cable:hover { stroke-width: 5; }
 .module { position: absolute; z-index: 2; width: 236px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 2px 6px var(--shadow); user-select: none; }
@@ -1242,10 +1243,16 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .steps-name::placeholder { color: var(--muted); }
 .steps-mute { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
   background: transparent; border: 1px solid var(--line); border-radius: 4px; }
-.steps-mute.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.steps-screen .steps-head .steps-mute.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .steps-rec { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
   background: transparent; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
-.steps-rec.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.steps-screen .steps-head .steps-rec.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* the armed track (#134): ARM lit, the grid and its card edged in the armed colour (the dock's routing to it too) */
+.steps-arm { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+  background: transparent; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.steps-screen .steps-head .steps-arm.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
+.steps-screen.armed { box-shadow: inset 0 0 0 2px var(--secondary); }
+.module.armed:not(.selected) { outline: 2px solid var(--secondary); outline-offset: 1px; }
 /* step entry's cursor (#127): the step the next note goes into */
 .step.cursor::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
 .steps-lanes { display: flex; }

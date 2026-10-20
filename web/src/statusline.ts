@@ -7,8 +7,8 @@ const IDLE = 'Hover over anything to see what it does.';
 
 let tagEl: HTMLElement | null = null;
 let textEl: HTMLElement | null = null;
-/** a message set by the app (an over-budget warning) shown while nothing is hovered */
-let pinned: { tag: string; text: string } | null = null;
+/** messages set by the app (the armed track, an over-budget warning) by key; the first set shows while nothing is hovered */
+const pinned = new Map<string, { tag: string; text: string }>();
 
 function show(tag: string, text: string, idle = false): void {
   if (!tagEl || !textEl) return;
@@ -17,7 +17,11 @@ function show(tag: string, text: string, idle = false): void {
   textEl.classList.toggle('idle', idle);
 }
 
-const rest = (): void => pinned ? show(pinned.tag, pinned.text) : show('', IDLE, true);
+function rest(): void {
+  const first = [...pinned.values()][0];
+  if (first) show(first.tag, first.text);
+  else show('', IDLE, true);
+}
 
 /** the help an element carries, or null: data-help, a title, an SVG element's <title> child */
 export function helpOf(el: Element): { tag: string; text: string } | null {
@@ -45,8 +49,13 @@ export function initStatusline(el: HTMLElement): void {
   document.addEventListener('pointerleave', rest);
 }
 
-/** a message to show while nothing is hovered (null: the idle hint) */
-export function pinStatus(msg: { tag: string; text: string } | null): void {
-  pinned = msg;
+/** a message to show while nothing is hovered, under a key ('arm' before 'budget'); null takes it away */
+export function pinStatus(msg: { tag: string; text: string } | null, key = 'budget'): void {
+  if (msg) pinned.set(key, msg);
+  else pinned.delete(key);
+  const order = ['arm', 'budget'];
+  const sorted = [...pinned].sort(([a], [b]) => order.indexOf(a) - order.indexOf(b));
+  pinned.clear();
+  for (const [k, v] of sorted) pinned.set(k, v);
   rest();
 }

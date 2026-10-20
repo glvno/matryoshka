@@ -785,3 +785,13 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
   block on a release tail (C a hair quieter through a velocity-scaled VCA), which freezes an oscillator's phase at a
   different point: a golden kit whose voices go idle and come back can fail on phase alone. `steps-keys` sends the
   allocator's vel out of the group (a part holding its velocity never idles) to keep that out of the comparison.
+
+## 2026-10-20 (later): arming a Steps track, #134 (host-tested: vitest 717, golden 89, panel_test; browser check on [::1]:5173 with the 808 Kit: ARM, the dashed routing to keys in, the card edge, the status line, switching tracks, disarm. Not run: the keys through the audio in a browser, the FM-1)
+
+- Decided with the owner (the round after #133): while a track is armed Main's keys are **diverted** (they stop playing what they drive otherwise); a cable into `keys in` does nothing for now (#135 records what arrives through the arm); the FM-1 never arms (#139).
+- `modules.ts`: Steps `keys` input pushed after the pin loop (append-only indices); `StepsState.thru` (events from the engine), handled at the start of `process`: a played note ends its own earlier copy, a track note on the same key, or the oldest past `TRACK_POLY`; it sounds with `thru` set (never counted down) until its release. Transposed like the track's notes (what you record plays back as you heard it).
+- `engine.ts`: `arm(id)`, `armedTrack`, `thruOff`, `keysOff` (the keyboard side of `allNotesOff`); `allNotesOff` also ends played-through notes.
+- `export-defs.ts`: `_CVBASE` = p1's index (it was the count of non-pin inputs, which would have moved Steps' to 4).
+- `statusline.ts`: `pinStatus(msg, key)` keeps one message per key ('arm' shows before 'budget').
+- `step-grid.ts`: the step-entry state is `entry` / `stopEntry()` now (was `armed` / `disarm()`, which read like arming); ARM button `.steps-arm`.
+- Fixed on the way: the Steps card's lit `mute` / `rec` buttons lost their fill to `.module .mbody :is(…button…)` (specificity); the lit rules are scoped to `.steps-screen .steps-head` now.

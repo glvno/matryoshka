@@ -2235,8 +2235,9 @@ const arp: ModuleImpl<null> = {
 };
 
 /** a note a Steps track is sounding: the key it sent (its note + the transpose), steps still to go after the one it is
- * on, samples until it ends (TRACK_POLY at most; engine.c trk_snd) */
-export interface StepsSound { key: number; left: number; cnt: number }
+ * on, samples until it ends (TRACK_POLY at most; engine.c trk_snd); `thru`: a key played into the armed track (#134,
+ * the note played), sounding until it is let go */
+export interface StepsSound { key: number; left: number; cnt: number; thru?: number }
 /** how many notes a Steps track sounds at once (a further note ends the oldest) */
 export const TRACK_POLY = 8;
 
@@ -2270,6 +2271,9 @@ export interface StepsState {
   /** keys out: the notes started (key | 0x80, velocity 1..127) and ended (key, 0) this block, in order; the engine hands
    * them to the poly groups the track plays at the start of the next block */
   ev: number[];
+  /** keys in while the track is armed (#134; editor only, the engine's noteOn / noteOff put them here): played notes
+   * (note | 0x80, velocity 1..127) and let go (note, 0), passed through at the start of the next block */
+  thru: number[];
 }
 
 /** does note j of step k (in stored order) play on time `loop` round the pattern (firmware: steps_plays); note 0 hashes as
@@ -2295,6 +2299,9 @@ const stepPitch = (note: number): number => (Math.sign(note - STEP_NOTE) * Math.
  * a note starts while one sounds), pitch (octaves from C4, plus transpose) and vel (velocity / 127) hold the last note
  * that started. The name travels in its binary record (`data`), the notes in the notes section (patchbin.ts flag bit 4);
  * it runs once (SHARED_TYPES).
+ * keys in (#134, after the pins): while the track is armed (the editor's ARM; Engine.arm) the keys played go in and
+ * straight through, as the track's own notes: transposed, into keys out and the mono outputs, held until let go (muted
+ * too). A cable into it plays no part yet: arming routes Main's keys there without one. The FM-1 never arms a track.
  */
 const steps: ModuleImpl<StepsState> = {
   def: {
@@ -2311,7 +2318,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [] }),
+  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -2355,6 +2362,27 @@ const steps: ModuleImpl<StepsState> = {
       }
       if (any) s.gap = was;
     };
+    if (s.thru.length) {
+      // the armed track's keys in: each into keys out (transposed as the track's notes) and the mono outputs
+      const semis = Math.floor((q16(transpose[0]) * 12 + 32768) / 65536);
+      for (let e = 0; e < s.thru.length; e += 2) {
+        const note = s.thru[e] & 0x7f;
+        const at = s.snd.findIndex((x) => x.thru === note);
+        if (at >= 0) end(at);
+        if (!(s.thru[e] & 0x80)) continue;
+        const was = s.snd.some((x) => x.cnt > 0);
+        const key = Math.max(0, Math.min(127, note + semis));
+        const same = s.snd.findIndex((x) => x.key === key);
+        if (same >= 0) end(same);
+        if (s.snd.length >= TRACK_POLY) end(0);
+        s.snd.push({ key, left: 0, cnt: 1, thru: note });
+        s.ev.push(key | 0x80, s.thru[e + 1]);
+        s.pitch = stepPitch(note);
+        s.vel = s.thru[e + 1] / 127;
+        s.gap = was;
+      }
+      s.thru.length = 0;
+    }
     for (let i = 0; i < c.n; i++) {
       let adv = 0;
       if (reset[i] >= 0.5 && s.r1 < 0.5) s.pos = -1;
@@ -2399,7 +2427,7 @@ const steps: ModuleImpl<StepsState> = {
       if (s.gap) s.gap = false;
       else
         for (let j = s.snd.length - 1; j >= 0; j--)
-          if (s.snd[j].cnt > 0 && --s.snd[j].cnt === 0) end(j);
+          if (s.snd[j].cnt > 0 && s.snd[j].thru === undefined && --s.snd[j].cnt === 0) end(j);
     }
     s.run = v.run;
   },
@@ -2448,6 +2476,9 @@ for (const m of ALL)
     m.def.paramInputs = true;
     m.def.inputs.push({ name: 'p1', kind: 'control', pin: 1 }, { name: 'p2', kind: 'control', pin: 2 });
   }
+
+// ports added after the pins (port indices are append-only): the Steps module's keys in (#134)
+steps.def.inputs.push(keys('keys'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 

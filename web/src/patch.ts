@@ -184,6 +184,12 @@ export const panelLabel = (s: unknown, max = PANEL_LABEL_MAX): string => String(
  * sounding goes on through the step) */
 export const TRACK_NAME_MAX = 8;
 export const trackName = (s: unknown): string => panelLabel(s, TRACK_NAME_MAX);
+/** a Steps module as the editor and the FM-1 name it: its name, else STEPS n (n counts the patch's Steps modules) */
+export function trackLabel(p: Patch, id: number): string {
+  const tracks = p.modules.filter((m) => m.type === 'steps');
+  const m = tracks.find((x) => x.id === id);
+  return m?.name || `STEPS ${tracks.indexOf(m!) + 1}`;
+}
 export interface Step { on: boolean; accent: boolean; chance: number; tie?: boolean }
 export const stepOf = (b: number | undefined): Step => ({ on: !!((b ?? 0) & 1), accent: !!((b ?? 0) & 2), chance: 100 - 5 * Math.min(19, ((b ?? 0) >> 2) & 31), tie: !!((b ?? 0) & 0x80) });
 export const stepByte = (s: Step): number => (s.on ? 1 : 0) | (s.accent ? 2 : 0) | (Math.min(19, Math.max(0, Math.round((100 - s.chance) / 5))) << 2) | (s.tie ? 0x80 : 0);
