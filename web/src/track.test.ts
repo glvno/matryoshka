@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { stepByte } from './patch';
-import { fixNotes, migrateSteps, noteWord, patternNotes, setStep, setStepValue, stepView, TRACK_NOTES_MAX, wordNote, type StepNote } from './track';
+import { fixNotes, migrateSteps, noteWord, overdub, patternNotes, setChord, setStep, setStepValue, stepView, TRACK_NOTES_MAX, wordNote, type StepNote } from './track';
 
 const n = (at: number, len: number, note: number, vel = 100, chance?: number): StepNote => ({ at, len, note, vel, ...(chance ? { chance } : {}) });
 const TIE = stepByte({ on: false, accent: false, chance: 100, tie: true });
@@ -52,6 +52,16 @@ describe('a Steps track\'s notes (#133)', () => {
   it('setStepValue moves a chord as one and sets every velocity; an empty step gets a note', () => {
     expect(setStepValue([n(1, 1, 60), n(1, 1, 64), n(1, 1, 67)], 1, 62, 70)).toEqual([n(1, 1, 62, 70), n(1, 1, 66, 70), n(1, 1, 69, 70)]);
     expect(setStepValue(undefined, 5, 72, 0)).toEqual([n(5, 1, 72, 1)]);
+  });
+
+  it('setChord: the step holds exactly the keys (one step long), a tied step is untied, the chance stays', () => {
+    expect(setChord([n(0, 4, 48), n(2, 2, 60, 90, 50)], 2, [{ note: 64, vel: 80 }, { note: 67, vel: 70 }])).toEqual([n(0, 4, 48), n(2, 1, 64, 80, 50), n(2, 1, 67, 70, 50)]);
+    expect(setChord([n(0, 4, 48)], 2, [{ note: 64, vel: 80 }])).toEqual([n(0, 2, 48), n(2, 1, 64, 80)]); // tied: untied first
+    expect(setChord(undefined, 3, [{ note: 60, vel: 100 }])).toEqual([n(3, 1, 60)]);
+  });
+
+  it('overdub: recorded notes join the track, one on the same step and key replaces it', () => {
+    expect(overdub([n(0, 1, 60), n(4, 1, 62)], [n(4, 2, 62, 90), n(8, 1, 64)])).toEqual([n(0, 1, 60), n(4, 2, 62, 90), n(8, 1, 64)]);
   });
 
   it('patternNotes: x a note, X an accented one', () => {

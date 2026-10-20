@@ -11,13 +11,15 @@
 // The step playing is outlined (Engine.stepsView through the worklet). The editor owns the patch and the undo history:
 // the grid only reports through `ops`. `arm` (#134) arms the track: Main's keys go into it and through to what it plays
 // (the editor holds which track is armed: one at a time, not saved, no undo step).
-// Step entry (#127): `rec` in the head puts one grid at a time in step entry (the note lane, a cursor on the first step or
-// the one clicked). A note played anywhere (the note keys, a MIDI controller, the on-screen keys: recordNote) becomes the cursor's
-// step (that note alone, its velocity, one step long) and the cursor moves on; Backspace a rest (its notes go), Enter a
-// tie, Left / Right move the cursor, Escape or `rec` again stops (recordKey).
+// REC (#127, #135; the editor holds it, on the armed track: `rec` arms the track too, Shift+R) puts the grid in step entry
+// (the note lane, a cursor on the first step or the one clicked). With the transport stopped every key held when the first
+// is let go (the note keys, a MIDI controller, the on-screen keys: recordNote / recordOff) becomes the cursor's step (a
+// chord, its velocities, one step long) and the cursor moves on; Backspace a rest (its notes go), Enter a tie, Left / Right
+// move the cursor, Escape or `rec` again stops (recordKey). With it running the engine records what is played (live
+// overdub: Engine.setRec, the editor's recorded).
 import { NOTE_NAMES } from './modules';
 import { STEPS_MAX, TRACK_NAME_MAX, trackName, type ModuleInst } from './patch';
-import { setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepNote, type StepView } from './track';
+import { setChord, setStep, setStepValue, STEP_NOTE, STEP_VEL, stepView, type StepNote, type StepView } from './track';
 
 export interface StepGridOps {
   /** the track's new notes (one undo step per click; a drag is wrapped in begin / its result) */
@@ -29,6 +31,9 @@ export interface StepGridOps {
   /** arm / disarm the track (#134), and whether it is armed */
   arm(on: boolean): void;
   armed(): boolean;
+  /** REC on / off (#135: it arms the track too), and whether it is on */
+  rec(on: boolean): void;
+  recording(): boolean;
 }
 
 export interface StepGrid {
@@ -39,21 +44,28 @@ export interface StepGrid {
   refresh(): void;
   /** the track was armed or disarmed (#134) */
   armed(on: boolean): void;
+  /** REC went on or off (#135): step entry starts on the first step, or stops */
+  rec(on: boolean): void;
 }
 
 type Lane = 'steps' | 'note' | 'vel';
 
-/** the grid in step entry (#127): its module, the cursor, and what the newest grid of that module does with a note or a key */
-let entry: { id: number; k: number; note(note: number, vel: number): void; key(key: string): boolean; stop(): void } | null = null;
-/** a note played while a grid is in step entry: written into the cursor's step; false when none is */
+/** the grid in step entry (#127, #135): its module, the cursor, and what the newest grid of that module does with a note
+ * played, a note let go or a key */
+let entry: { id: number; k: number; note(note: number, vel: number): void; off(note: number): void; key(key: string): boolean; stop(): void } | null = null;
+/** a note played while a grid is in step entry: it joins the chord for the cursor's step; false when none is */
 export function recordNote(note: number, vel: number): boolean {
   if (!entry) return false;
   entry.note(note, vel);
   return true;
 }
+/** a note let go while a grid is in step entry: the first let go writes the chord */
+export function recordOff(note: number): void {
+  entry?.off(note);
+}
 /** a key while a grid is in step entry (Backspace, Enter, Left, Right, Escape): true when it was the grid's */
 export const recordKey = (key: string): boolean => !!entry?.key(key);
-/** stop step entry (another patch loaded) */
+/** stop step entry (another patch loaded, REC off) */
 export function stopEntry(): void {
   const a = entry;
   entry = null;
@@ -116,8 +128,8 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   rec.type = 'button';
   rec.className = 'steps-rec';
   rec.textContent = 'rec';
-  rec.title = 'step entry: play notes (keys or MIDI) into the steps from the cursor; Backspace a rest, Enter a tie, ← → move, Esc stops';
-  rec.onclick = () => (entry?.id === m.id ? stopRec() : startRec(entry?.id === m.id ? entry.k : 0));
+  rec.title = 'REC (Shift+R; it arms the track): stopped, play a note or a chord into the cursor’s step (Backspace a rest, Enter a tie, ← → move, Esc stops); running, play along: each pass overdubs, one undo step per pass';
+  rec.onclick = () => ops.rec(!ops.recording());
   const arm = document.createElement('button');
   arm.type = 'button';
   arm.className = 'steps-arm';
@@ -348,17 +360,24 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
     showRec();
     readout.textContent = `rec: step ${entry.k + 1}`;
   };
-  const stopRec = (): void => {
-    if (entry?.id === m.id) stopEntry();
-  };
   const startRec = (k: number): void => {
     stopEntry();
+    /** the keys down now, and the chord they make: every key held when the first is let go (velocities 1..127) */
+    const down = new Set<number>();
+    let chord = new Map<number, number>();
     entry = {
       id: m.id,
       k: Math.min(k, len() - 1),
       note: (note, vel) => {
+        if (!down.size) chord = new Map();
+        down.add(note);
+        chord.set(note, Math.max(1, Math.min(127, Math.round(vel * 127))));
+      },
+      off: (note) => {
+        if (!down.delete(note) || !chord.size) return;
         const at = entry!.k;
-        ops.notes(setStepValue(setStep(m.notes, at, { on: false, accent: false, chance: 100 }), at, note, Math.max(1, Math.min(127, Math.round(vel * 127)))));
+        ops.notes(setChord(m.notes, at, [...chord].map(([n, v]) => ({ note: n, vel: v }))));
+        chord = new Map(); // (the keys still down were in it; a key played now starts the next chord)
         paintAll();
         move(at + 1);
       },
@@ -368,7 +387,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
         if (key === 'Backspace' || key === 'Delete') write(at, { on: false, accent: false, chance: 100 });
         else if (key === 'Enter') write(at, { ...view(m, at), tie: true });
         else if (key === 'ArrowLeft' || key === 'ArrowRight') return move(at + (key === 'ArrowRight' ? 1 : -1)), true;
-        else if (key === 'Escape') return stopRec(), true;
+        else if (key === 'Escape') return ops.rec(false), true;
         else return false;
         move(at + 1);
         return true;
@@ -385,6 +404,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   setLane(lane);
   showArm(ops.armed());
   if (entry?.id === m.id) startRec(entry.k); // (a rebuilt card picks the entry up where it was)
+  else if (ops.recording()) startRec(0);
   return {
     el,
     show(pos, isMuted) {
@@ -406,5 +426,9 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       if (document.activeElement !== name) name.value = m.name ?? '';
     },
     armed: showArm,
+    rec(on) {
+      if (on && entry?.id !== m.id) startRec(0);
+      else if (!on && entry?.id === m.id) stopEntry();
+    },
   };
 }

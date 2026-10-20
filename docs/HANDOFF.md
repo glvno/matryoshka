@@ -32,7 +32,7 @@ The owner grilled and approved spec **#132**: Steps becomes the one sequencer fo
    accent = full velocity), both engines, golden kits. Start here: everything else needs it.
 2. ~~**#134** Arming~~ (done, committed, not pushed; NOTES "arming a Steps track"): `keys in`, thru while armed, Main's keys snap to the armed track as a dock routing (like K1..K4's
    cables: not saved, no undo), one armed track at a time.
-3. **#135** REC: stopped = chord step entry (Backspace rests, Enter ties), running = live overdub quantized to steps,
+3. ~~**#135** REC~~ (done, committed, not pushed; NOTES "Steps REC"): stopped = chord step entry (Backspace rests, Enter ties), running = live overdub quantized to steps,
    one undo step per pass, Shift+R.
 4. **#136** The piano-roll drawer (design A).
 5. **#137** Drum map module + a one-track drum kit (General MIDI notes; no compatibility with the per-drum-track kit).

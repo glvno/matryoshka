@@ -173,6 +173,23 @@ export function setStepValue(notes: readonly StepNote[] | undefined, k: number, 
   return fixNotes(out);
 }
 
+/** step k holds exactly these notes (step entry of a chord, #135): its own notes go (a note tied through it ends before it),
+ * each key a note one step long at its velocity (1..127), the step's chance kept */
+export function setChord(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number; vel: number }[]): StepNote[] | undefined {
+  const chance = stepView(notes, k).on ? stepView(notes, k).chance : 100;
+  const out = setStep(notes, k, { on: false, accent: false, chance: 100 }) ?? [];
+  for (const x of keys)
+    if (out.length < TRACK_NOTES_MAX && k >= 0 && k < STEPS_MAX)
+      out.push({ at: k, len: 1, note: Math.max(0, Math.min(127, Math.round(x.note))), vel: Math.max(1, Math.min(127, Math.round(x.vel))), ...(chance < 100 ? { chance } : {}) });
+  return fixNotes(out);
+}
+
+/** live-recorded notes laid over a track (#135, overdub): a recorded note replaces one on the same step and key */
+export function overdub(notes: readonly StepNote[] | undefined, add: readonly StepNote[]): StepNote[] | undefined {
+  const kept = (notes ?? []).filter((n) => !add.some((a) => a.at === n.at && a.note === n.note));
+  return fixNotes([...add, ...kept]);
+}
+
 /** a drum pattern from a string, a step per character: x a note (C4, the default velocity), X an accented one (full
  * velocity), anything else a rest (the factory kits, tests) */
 export const patternNotes = (s: string): StepNote[] | undefined =>

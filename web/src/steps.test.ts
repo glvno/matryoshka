@@ -258,6 +258,38 @@ describe('the Steps module (#83, #133)', () => {
     expect(edges(e, 200).l[199]).toBe(0);
   });
 
+  it('REC running (#135): a played note lands on the nearest step and lasts the whole steps it was held, at least one', () => {
+    const { p, st } = rig([], { len: 16 });
+    const e = new Engine(SR);
+    e.load(p);
+    e.arm(st.id);
+    e.setRec(st.id, true);
+    e.transport(true);
+    const run = (n: number): void => void edges(e, n);
+    run(2 * 6000 + 1792); // step 2, under a third in
+    e.noteOn(64, 90 / 127);
+    run(15360); // 2.56 steps held
+    e.noteOff(64);
+    run(128);
+    run(6 * 6000 + 4096 - (2 * 6000 + 1792 + 15360 + 128)); // step 6, two thirds in: the nearest step is 7
+    e.noteOn(67, 1);
+    run(1024); // a sixth of a step: still one step long
+    e.noteOff(67);
+    run(128);
+    expect(e.takeRecorded()).toEqual([
+      { id: st.id, loop: 1, note: { at: 2, len: 3, note: 64, vel: 90 } },
+      { id: st.id, loop: 1, note: { at: 7, len: 1, note: 67, vel: 127 } },
+    ]);
+    expect(e.takeRecorded()).toEqual([]);
+    e.transport(false);
+    run(256);
+    e.noteOn(60, 1); // stopped: nothing recorded (the editor's step entry takes it)
+    run(256);
+    e.noteOff(60);
+    run(256);
+    expect(e.takeRecorded()).toEqual([]);
+  });
+
   it('with a cable in clk it steps on every rising edge instead', () => {
     const { p, st } = rig([ON, 0, ON]);
     const l = addModule(p, DEFS.lfo, 0, 0);

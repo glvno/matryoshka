@@ -54,7 +54,7 @@ import {
   PAGE_LIST_MAX,
   panelLabel,
 } from './patch';
-import { fixNotes, type StepNote } from './track';
+import { fixNotes, overdub, type StepNote } from './track';
 import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
@@ -151,6 +151,8 @@ export interface EditorEvents {
   onMute?(id: number, on: boolean): void;
   /** the armed Steps track changed (#134; null: none) and what it plays (poly.ts trackTargets), or its cables changed */
   onArm?(id: number | null, plays: string[]): void;
+  /** REC on the armed track went on or off (#135) */
+  onRec?(id: number, on: boolean): void;
   /** a macro range of p1 / p2 (index 0 / 1) on a parameter changed or was removed (null) */
   onRange(id: number, index: number, name: string, range: [number, number] | null): void;
   /** the transport (the Play switch: the Main module's run output and clock; editor state, not saved) */
@@ -527,6 +529,7 @@ export class Editor {
   undo(): void {
     if (this.gesture !== null && this.pointerHeld) return; // not in the middle of a drag: it would go on moving a replaced patch
     this.endGesture();
+    this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.history.pop();
     if (e === undefined) return this.ev.onError('nothing to undo');
     this.future.push({ s: this.snap(), side: this.side });
@@ -538,6 +541,7 @@ export class Editor {
   redo(): void {
     if (this.gesture !== null && this.pointerHeld) return;
     this.endGesture();
+    this.endPass(); // (a pass being recorded is a step of its own)
     const e = this.future.pop();
     if (e === undefined) return this.ev.onError('nothing to redo');
     this.history.push({ s: this.snap(), side: this.side });
@@ -979,6 +983,11 @@ export class Editor {
       mute: (on) => this.ev.onMute?.(m.id, on),
       arm: (on) => this.armTrack(on ? m.id : null),
       armed: () => this.armedTrack === m.id,
+      rec: (on) => {
+        if (on) this.armTrack(m.id);
+        this.setRec(on && this.armedTrack === m.id);
+      },
+      recording: () => this.recOn && this.armedTrack === m.id,
     });
     this.stepGrids.set(m.id, grid);
     return grid;
@@ -991,11 +1000,59 @@ export class Editor {
   armTrack(id: number | null): void {
     if (id !== null && !this.patch.modules.some((m) => m.id === id && m.type === 'steps')) id = null;
     if (id === this.armedTrack) return;
+    this.setRec(false);
     this.armedTrack = id;
     for (const [k, g] of this.stepGrids) g.armed(k === id);
     for (const [k, card] of this.cards) card.classList.toggle('armed', k === id);
     this.ev.onArm?.(id, id === null ? [] : this.trackPlays(id));
     this.positionBindings();
+  }
+
+  /** REC on the armed track (#135; editor state like the arming): stopped, step entry on its card; running, the engine
+   * records what is played (recorded) */
+  recOn = false;
+
+  setRec(on: boolean): void {
+    if (this.armedTrack === null) on = false;
+    if (on === this.recOn) return;
+    this.recOn = on;
+    if (!on) this.endPass();
+    const id = this.armedTrack;
+    if (id === null) return;
+    this.stepGrids.get(id)?.rec(on);
+    this.ev.onRec?.(id, on);
+  }
+
+  /** Shift+R: REC on the armed track on / off; false when no track is armed */
+  toggleRec(): boolean {
+    if (this.armedTrack === null) return false;
+    this.setRec(!this.recOn);
+    return true;
+  }
+
+  /** the pass being recorded live: its track, the time round the pattern, the patch before it (one undo step per pass) */
+  private pass: { id: number; loop: number; before: string } | null = null;
+
+  private endPass(): void {
+    const p = this.pass;
+    this.pass = null;
+    if (p) this.commit(p.before);
+  }
+
+  /** notes a track recorded live (Engine.takeRecorded): laid over its notes (overdub); each time round the pattern is one
+   * undo step */
+  recorded(took: { id: number; loop: number; note: StepNote }[]): void {
+    for (const { id, loop, note } of took) {
+      const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+      if (!m) continue;
+      if (this.pass && (this.pass.id !== id || this.pass.loop !== loop)) this.endPass();
+      if (!this.pass) {
+        this.endGesture();
+        this.pass = { id, loop, before: this.snap() };
+      }
+      this.setNotes(m, overdub(m.notes, [note]));
+      this.stepGrids.get(id)?.refresh();
+    }
   }
 
   /** what a track plays, by the names the canvas shows */

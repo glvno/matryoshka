@@ -795,3 +795,10 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
 - `statusline.ts`: `pinStatus(msg, key)` keeps one message per key ('arm' shows before 'budget').
 - `step-grid.ts`: the step-entry state is `entry` / `stopEntry()` now (was `armed` / `disarm()`, which read like arming); ARM button `.steps-arm`.
 - Fixed on the way: the Steps card's lit `mute` / `rec` buttons lost their fill to `.module .mbody :is(…button…)` (specificity); the lit rules are scoped to `.steps-screen .steps-head` now.
+
+## 2026-10-20 (later): Steps REC, #135 (host-tested: vitest 720 incl. live recording in `steps.test.ts`, `setChord` / `overdub` in `track.test.ts`; browser check on [::1]:5173 with the 808 Kit, audio on: chord step entry, Shift+R, Esc, undo, live overdub of two notes during one pass and its single undo step. Not on the FM-1: #139)
+
+- REC is one switch per patch on the armed track; the card's `rec` arms first. The old step-entry `rec` (#127) is the stopped half of it.
+- Live recording is done in the engine, not from the editor's playhead (the playhead reaches the page ~60 times a second; the engine knows the sample). Block-quantized: a key lands at the start of the next 128-sample block, about 2.7 ms.
+- A pass = `loop` (times round the pattern) when the note was played (a note snapped forward over the end counts for the next pass). Undo / redo close the open pass first.
+- `statusline.ts`'s 'arm' message says Armed / Rec, and for Rec step entry or live (it follows the transport: `setPlaying` calls `showArmed`).

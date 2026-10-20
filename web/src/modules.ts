@@ -2274,6 +2274,16 @@ export interface StepsState {
   /** keys in while the track is armed (#134; editor only, the engine's noteOn / noteOff put them here): played notes
    * (note | 0x80, velocity 1..127) and let go (note, 0), passed through at the start of the next block */
   thru: number[];
+  /** live recording (#135; editor only, Engine.setRec): the played notes become notes of the track while it runs */
+  rec: boolean;
+  /** samples since the last step began and a step's length then (where a played note lands: the nearest step) */
+  ago: number;
+  sl: number;
+  /** the notes being recorded: the step they landed on, samples since that step's start (negative: before it), velocity */
+  rin: { note: number; at: number; t: number; vel: number; loop: number }[];
+  /** recorded notes (lengths in whole steps, at least one) and the time round the pattern they were played on, for the
+   * editor to take (Engine.takeRecorded) */
+  took: { note: StepNote; loop: number }[];
 }
 
 /** does note j of step k (in stored order) play on time `loop` round the pattern (firmware: steps_plays); note 0 hashes as
@@ -2318,7 +2328,7 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [] }),
+  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
@@ -2362,14 +2372,26 @@ const steps: ModuleImpl<StepsState> = {
       }
       if (any) s.gap = was;
     };
+    const live = s.rec && s.pos >= 0 && s.sl > 0 && (ext || v.run);
     if (s.thru.length) {
-      // the armed track's keys in: each into keys out (transposed as the track's notes) and the mono outputs
+      // the armed track's keys in: each into keys out (transposed as the track's notes) and the mono outputs; recording
+      // live, a note lands on the nearest step and lasts the whole steps it was held (at least one)
       const semis = Math.floor((q16(transpose[0]) * 12 + 32768) / 65536);
       for (let e = 0; e < s.thru.length; e += 2) {
         const note = s.thru[e] & 0x7f;
         const at = s.snd.findIndex((x) => x.thru === note);
         if (at >= 0) end(at);
+        const r = s.rin.findIndex((x) => x.note === note);
+        if (r >= 0) {
+          const x = s.rin.splice(r, 1)[0];
+          s.took.push({ note: { at: x.at, len: Math.min(STEPS_MAX - x.at, Math.max(1, Math.round(x.t / s.sl))), note, vel: x.vel }, loop: x.loop });
+        }
         if (!(s.thru[e] & 0x80)) continue;
+        if (live) {
+          const next = s.ago * 2 >= s.sl;
+          const wrap = next && s.pos + 1 >= len;
+          s.rin.push({ note, at: wrap ? 0 : next ? s.pos + 1 : s.pos, t: next ? s.ago - s.sl : s.ago, vel: s.thru[e + 1], loop: wrap ? (s.loop + 1) >>> 0 : s.loop });
+        }
         const was = s.snd.some((x) => x.cnt > 0);
         const key = Math.max(0, Math.min(127, note + semis));
         const same = s.snd.findIndex((x) => x.key === key);
@@ -2409,10 +2431,13 @@ const steps: ModuleImpl<StepsState> = {
             }
       }
       if (s.pend > 0 && --s.pend === 0) fire(s.pstep, i);
+      s.ago++;
       for (; adv > 0; adv--) {
         s.pos = s.pos + 1 >= len ? 0 : s.pos + 1;
         if (s.pos === 0) s.loop = (s.loop + 1) >>> 0;
         const sl = ext ? s.period : div * v.tickLen;
+        s.ago = 0;
+        s.sl = sl;
         const d = s.pos & 1 && swing > 0 && sl > 0 ? Math.floor((swing * sl) / (50 * 65536)) : 0;
         if (d > 0) {
           s.pend = d;
@@ -2429,6 +2454,7 @@ const steps: ModuleImpl<StepsState> = {
         for (let j = s.snd.length - 1; j >= 0; j--)
           if (s.snd[j].cnt > 0 && s.snd[j].thru === undefined && --s.snd[j].cnt === 0) end(j);
     }
+    for (const x of s.rin) x.t += c.n;
     s.run = v.run;
   },
 };

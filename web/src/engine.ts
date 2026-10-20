@@ -615,6 +615,24 @@ export class Engine {
     this.armedId = id ?? -1;
   }
 
+  /** live recording on the armed track (#135): while the track runs, the notes played through it are recorded (the editor
+   * takes them: takeRecorded); off: the notes still held are recorded when let go */
+  setRec(id: number, on: boolean): void {
+    const s = this.stepsOf(id);
+    if (s) s.rec = on;
+  }
+
+  /** the notes the tracks recorded since the last call, by track, with the time round the pattern each was played on */
+  takeRecorded(): { id: number; loop: number; note: StepNote }[] {
+    const out: { id: number; loop: number; note: StepNote }[] = [];
+    for (const node of this.tracks) {
+      const s = node.inst[0].state as StepsState;
+      for (const x of s.took) out.push({ id: node.id, loop: x.loop, note: x.note });
+      s.took.length = 0;
+    }
+    return out;
+  }
+
   /** a track's keys played through end (at its next block) */
   private thruOff(s: StepsState | null): void {
     if (s) for (const x of s.snd) if (x.thru !== undefined && !s.thru.some((v, i) => i % 2 === 0 && v === x.thru)) s.thru.push(x.thru, 0);

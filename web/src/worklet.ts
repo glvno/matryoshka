@@ -25,6 +25,8 @@ export type HostMsg =
   | { t: 'mute'; id: number; on: boolean }
   /** the armed Steps track (#134): the keys go through it; null none */
   | { t: 'arm'; id: number | null }
+  /** live recording on a Steps track (#135) */
+  | { t: 'rec'; id: number; on: boolean }
   /** voices: also each voice of a module that runs once per voice (#54), sent as `voices` beside `data` */
   | { t: 'watch'; key: string; id: number; port: string }
   | { t: 'unwatch'; key: string }
@@ -100,6 +102,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes);
         else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
         else if (m.t === 'arm') this.engine.arm(m.id);
+        else if (m.t === 'rec') this.engine.setRec(m.id, m.on);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch);
         else if (m.t === 'off') this.engine.noteOff(m.note, m.ch);
         else if (m.t === 'clock') {                   // MIDI clock: it drives the clock while it comes in
@@ -165,6 +168,8 @@ class ModularProcessor extends AudioWorkletProcessor {
       if (this.views.size) this.feedViews(out[0].length);
       if (this.views.size || this.envs.size) this.sendDisplays();
       if (this.watched.size) this.feedWatch(out[0].length);
+      const took = this.engine.takeRecorded();
+      if (took.length) this.port.postMessage({ recorded: took });   // live recording on a Steps track (#135)
       if (++this.stepsBlocks >= DISPLAY_EVERY / 2) {   // the Steps modules' playheads, about 60 times a second when they move
         this.stepsBlocks = 0;
         const v = this.engine.stepsView();

@@ -34,7 +34,7 @@ import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
 import { decodeShare, encodeShare, shareCodeOf, shareLink } from './share';
 import { starterPatch } from './starter';
-import { recordKey, recordNote } from './step-grid';
+import { recordKey, recordNote, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
 import { synthLink } from './tutorial/link';
 import { PRESETS } from './presets';
@@ -187,7 +187,10 @@ const sink = {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
     if (msg.t === 'on') host.mute(false);
-    if (msg.t === 'on' && currentTab === 'patch') recordNote(msg.note, msg.vel); // a Steps card's step entry (#127); it sounds too
+    // a Steps card's step entry (#127, #135: a chord when the first key is let go); it sounds too. Running, the engine
+    // records instead (live overdub)
+    if (msg.t === 'on' && currentTab === 'patch' && !editor.playing) recordNote(msg.note, msg.vel);
+    if (msg.t === 'off' && currentTab === 'patch') recordOff(msg.note);
     if (emuKeys(msg)) return;
     host.send(msg);
     piano.track(msg);
@@ -201,6 +204,19 @@ const sink = {
     }
   },
 };
+/** what the armed track plays (Editor onArm), for the status line */
+let armPlays: string[] = [];
+/** the status line while a track is armed (#134) or recording (#135): what the keys play and what REC does now */
+function showArmed(): void {
+  const id = editor.armedTrack;
+  if (id === null) return pinStatus(null, 'arm');
+  const name = trackLabel(editor.patch, id);
+  const hear = armPlays.length ? `heard through ${armPlays.join(', ')}` : 'which plays nothing yet: cable its keys out (or trig / pitch) to an instrument';
+  if (!editor.recOn) return pinStatus({ tag: `Armed: ${name}`, text: `Main’s keys play ${name}, ${hear}. Shift+R records; ARM again gives Main its keys back.` }, 'arm');
+  pinStatus({ tag: `Rec: ${name}`, text: editor.playing
+    ? `live: play along, notes land on the nearest step; each pass overdubs and is one undo step. Shift+R stops.`
+    : `step entry: play a note or a chord into the cursor’s step; Backspace a rest, Enter a tie, ← → move. Shift+R or Esc stops.` }, 'arm');
+}
 // the demo video's script (web/dev/demo) plays its riff through the sink as the keys do, also while a dialog is open
 // (the letter keys stop then); the dev server only
 if (import.meta.env.DEV) (window as unknown as { __notes?: typeof sink }).__notes = sink;
@@ -229,6 +245,7 @@ const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host
 });
 host.onEnv = (key, states) => envs.receive(key, states);
 host.onSteps = (view) => editor.showSteps(view);
+host.onRecorded = (took) => editor.recorded(took);
 /** the sidebar's sliders whose thumbs are jacks (cable slack, zoom): see sideSlider below; filled once the editor exists */
 const sides = new Map<SideKey, SideSlider>();
 /** the zoom slider's setting (the user's zoom; a source adds to it) */
@@ -328,8 +345,12 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   },
   onArm(id, plays) {
     host.send({ t: 'arm', id });
-    const name = id === null ? '' : trackLabel(editor.patch, id);
-    pinStatus(id === null ? null : { tag: `Armed: ${name}`, text: `Main’s keys play ${name}${plays.length ? `, heard through ${plays.join(', ')}` : ', which plays nothing yet: cable its keys out (or trig / pitch) to an instrument'}. ARM again to give Main its keys back.` }, 'arm');
+    armPlays = plays;
+    showArmed();
+  },
+  onRec(id, on) {
+    host.send({ t: 'rec', id, on });
+    showArmed();
   },
   onMute(id, on) {
     host.send({ t: 'mute', id, on });
@@ -835,6 +856,10 @@ window.addEventListener('keydown', (e) => {
   }
   if (k === '/' || (mod && k.toLowerCase() === 'k')) (openPalette(), (done = true));
   else if (k === '?') (help.showModal(), (done = true));
+  else if (e.shiftKey && !mod && !e.altKey && k.toLowerCase() === 'r') {   // REC on the armed track (#135)
+    if (!editor.toggleRec()) status.textContent = 'Shift+R records on the armed track: ARM a Steps track first';
+    done = true;
+  }
   else if (k === 'Escape') (editor.cancelArm(), editor.endPick(), (diffPanel.hidden = true), (done = true));
   else if (k === 'Delete' || k === 'Backspace') done = editor.removeSelected();
   else if (mod && k.toLowerCase() === 'a') (editor.selectAll(), (done = true));
@@ -1093,6 +1118,7 @@ function setPlaying(on: boolean): void {
   if (live()) device.transport(on);
   if (!fromEmu) emu.ui?.transport(on);
   syncPlayBtn();
+  showArmed(); // (REC: step entry stopped, live running)
 }
 function togglePlaying(): void {
   setPlaying(!editor.playing);

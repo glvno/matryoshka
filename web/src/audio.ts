@@ -4,6 +4,7 @@ import type { Patch } from './patch';
 import type { HostMsg } from './worklet';
 import type { ParameterValues } from './engine';
 import type { ViewData } from './scope-stream';
+import type { StepNote } from './track';
 
 export class AudioHost {
   private ctx: AudioContext | null = null;
@@ -41,6 +42,8 @@ export class AudioHost {
   onView: (key: string, chans: ViewData[], sr: number, voices: (ViewData[] | null)[] | null) => void = () => {};
   /** where the Steps modules are (Engine.stepsView), when that changes */
   onSteps: (view: { id: number; pos: number; mute: boolean }[]) => void = () => {};
+  /** notes a Steps track recorded live (#135, Engine.takeRecorded) */
+  onRecorded: (took: { id: number; loop: number; note: StepNote }[]) => void = () => {};
   /** an envelope display's copies (Engine.envStates) */
   onEnv: (key: string, states: { stage: number; v: number; newest: boolean }[] | null) => void = () => {};
 
@@ -74,6 +77,8 @@ export class AudioHost {
           this.onWatch(ev.data.watch, ev.data.v);
         } else if (Array.isArray(ev.data?.steps)) {
           this.onSteps(ev.data.steps);
+        } else if (Array.isArray(ev.data?.recorded)) {
+          this.onRecorded(ev.data.recorded);
         } else if (typeof ev.data?.env === 'string') {
           this.onEnv(ev.data.env, ev.data.states);
         } else if (typeof ev.data?.view === 'string') {
