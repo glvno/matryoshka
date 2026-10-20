@@ -26,25 +26,19 @@
      "output": "clock"
     },
     {
+     "output": "bend"
+    },
+    {
      "output": "gate"
     },
     {
      "output": "vel"
     },
     {
-     "output": "mod"
-    },
-    {
      "output": "at"
     },
     {
-     "output": "bend"
-    },
-    {
-     "output": "scl"
-    },
-    {
-     "output": "env"
+     "output": "mod"
     },
     {
      "output": "edit"
@@ -53,16 +47,22 @@
      "output": "run"
     },
     {
-     "output": "lfo"
+     "output": "env"
     },
     {
-     "output": "glo"
+     "output": "fx"
+    },
+    {
+     "output": "scl"
+    },
+    {
+     "output": "lfo"
     },
     {
      "output": "arp"
     },
     {
-     "output": "fx"
+     "output": "glo"
     }
    ],
    "grid": [
@@ -29145,10 +29145,10 @@
      ]
     },
     {
-     "input": "in"
+     "input": "side"
     },
     {
-     "input": "side"
+     "input": "in"
     },
     {
      "param": "attack",
@@ -29315,19 +29315,19 @@
    "cv": 187,
    "dims": [
     {
-     "output": "gate"
-    },
-    {
      "output": "legato"
     },
     {
-     "output": "index"
+     "output": "jump"
     },
     {
      "output": "vel"
     },
     {
-     "output": "jump"
+     "output": "gate"
+    },
+    {
+     "output": "index"
     }
    ],
    "grid": [
@@ -29414,6 +29414,15 @@
     },
     {
      "dim": {
+      "output": "g5"
+     },
+     "add": [
+      0,
+      329
+     ]
+    },
+    {
+     "dim": {
       "output": "g3"
      },
      "add": [
@@ -29424,24 +29433,6 @@
     {
      "dim": {
       "output": "g4"
-     },
-     "add": [
-      0,
-      329
-     ]
-    },
-    {
-     "dim": {
-      "output": "g5"
-     },
-     "add": [
-      0,
-      329
-     ]
-    },
-    {
-     "dim": {
-      "output": "g6"
      },
      "add": [
       0,
@@ -29468,7 +29459,25 @@
     },
     {
      "dim": {
+      "output": "g6"
+     },
+     "add": [
+      0,
+      329
+     ]
+    },
+    {
+     "dim": {
       "output": "v1"
+     },
+     "add": [
+      0,
+      323
+     ]
+    },
+    {
+     "dim": {
+      "output": "v4"
      },
      "add": [
       0,
@@ -29495,24 +29504,6 @@
     },
     {
      "dim": {
-      "output": "v4"
-     },
-     "add": [
-      0,
-      323
-     ]
-    },
-    {
-     "dim": {
-      "output": "v6"
-     },
-     "add": [
-      0,
-      323
-     ]
-    },
-    {
-     "dim": {
       "output": "v7"
      },
      "add": [
@@ -29523,6 +29514,15 @@
     {
      "dim": {
       "output": "v5"
+     },
+     "add": [
+      0,
+      323
+     ]
+    },
+    {
+     "dim": {
+      "output": "v6"
      },
      "add": [
       0,

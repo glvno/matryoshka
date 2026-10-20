@@ -27,7 +27,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - Web (`cd web`): `npm test` (vitest), `npm run build`, `npm run dev` (the user runs one on port 5173: do not start a second). `npm run export-defs` regenerates `firmware/src/defs.h` + `presets.h` after any change to `modules.ts`, `presets/`, or a format bump (CI checks they are committed). `npm run cpu-costs` after any engine.c change; `npm run cpu-hot` to profile. `npm run fm1-wasm` builds the firmware UI as wasm for the FM-1 tab. `npm run emu` / `emu:smoke` run the firmware in fm1-emu (docs/EMULATOR.md; run the smoke before any device work).
 - Engines: `web/src/engine.ts` + `modules.ts` (reference) ↔ `firmware/src/engine.c` (fixed point). `tools/golden.sh` compares them on every kit in `web/scripts/golden.ts`; `tools/engine_exact.sh [BASE]` proves a speed-up is bit-exact. Also `tools/panel_test.sh`, `tools/pool_sizes.sh` (stand-in pool estimate, overestimates), `tools/ui_preview.sh` (LCD to PNG).
 - Generated: `python3 tools/gen_dsp_tables.py`, `gen_wavetables.py`, `gen_splash.py`, `gen_font.py`; `npx vite-node scripts/gen-assemblies.ts` then `gen-presets.ts`; `npm run logo-layers`.
-- Device tools: `tools/fm1_install.py` (preferred for flashing), `tools/m1_link.py` (editor protocol from the terminal). Patch format: `web/src/patchbin.ts` (currently format 29) ↔ engine.c / proto.c; protocol: `web/src/protocol.ts` ↔ `firmware/src/proto.c`.
+- Device tools: `tools/fm1_install.py` (preferred for flashing), `tools/m1_link.py` (editor protocol from the terminal). Patch format: `web/src/patchbin.ts` (currently format 33) ↔ engine.c / proto.c; protocol: `web/src/protocol.ts` ↔ `firmware/src/proto.c`.
 
 ## Rules when changing things
 
@@ -54,7 +54,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 ## Browser checks
 
 - Use http://[::1]:5173 (same dev server, its own localStorage) so the user's patch, bank and progress stay untouched; else copy `localStorage['modular-1.patch']` aside first (a source edit reloads the page and drops undo history).
-- The computer tool's click coordinates are CSS px. Synthetic key events go to `document.body`. Stub `window.prompt` before actions that open dialogs. `setPointerCapture` throws for synthetic pointers.
+- The computer tool's click coordinates are in its screenshot's frame, which can be smaller than the page (1512 vs 1728 CSS px on this Mac): scale by frame / `innerWidth`. Synthetic key events go to `document.body`. Stub `window.prompt` before actions that open dialogs. `setPointerCapture` throws for synthetic pointers.
 - Open `/lesson-editor` by navigating from the synth page (a new tab gets 403).
 
 ## Agent skills

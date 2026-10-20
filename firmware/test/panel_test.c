@@ -284,7 +284,15 @@ int main(void)
     } else {
         /* SCL (button 1) a Page button: device 1 page 0, then device 1 page 1 */
         static const uint8_t sec[] = {0, 3, 0, 0, 0, 0, 0, 2, 1, 0, 1, 1};
-        memcpy(pv_bin + pv_len, sec, sizeof sec);
+        uint32_t at = pv_len, n;
+        if (pv_bin[6] & 128u)                               /* before the Drum maps' row names, last here (format 33): */
+            for (n = 1; n < 16u; n++)                       /* u8 count, count x (1 + 64) bytes */
+                if (pv_len >= 1u + n * 65u && pv_bin[pv_len - 1u - n * 65u] == n) {
+                    at = pv_len - 1u - n * 65u;
+                    break;
+                }
+        memmove(pv_bin + at + sizeof sec, pv_bin + at, pv_len - at);
+        memcpy(pv_bin + at, sec, sizeof sec);
         pv_len += sizeof sec;
         pv_bin[6] |= 64u;
         pv_gen++;
@@ -351,6 +359,39 @@ int main(void)
     check("a key plays a note (MIDI out asked)", (key_sounding & (1u << 7)) && midi_out > 0);
     panel_keys(0);
     check("its release ends it", !(key_sounding & (1u << 7)));
+
+    {                                                       /* a drum track on the SEQ page (the #139 follow-up): the 808 Kit's DRUMS into its Drum map */
+        int drums = eng_steps_module(0), map = eng_steps_drummap((uint32_t)eng_steps_module(0));
+        char nm[12];
+        uint32_t w;
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+        tap(BTN_SEQ);
+        check("the SEQ page on DRUMS shows its Drum map's rows (row 1 first)", page == PAGE_SEQ && map >= 0 && seq_map() == map && seq_row == 0);
+        check("the row names come with the patch (format 33)", m1_drum_name((uint32_t)map, 1, nm) && !strcmp(nm, "SNARE"));
+        panel_keys(1u << 3);                                /* G#3: the second black key = row 2 (the snare) */
+        panel_keys(0);
+        check("a black key picks a row", seq_row == 1);
+        w = eng_steps_note((uint32_t)drums, 1, 38);
+        panel_keys(1u << 2);                                /* G3: the second white key, step 2 (index 1) */
+        panel_keys(0);
+        check("a white key switches the row's hit on the step", (eng_steps_note((uint32_t)drums, 1, 38) != 0) != (w != 0));
+        panel_keys(1u << 2);
+        panel_keys(0);
+        check("again: back", (eng_steps_note((uint32_t)drums, 1, 38) != 0) == (w != 0));
+        panel_held |= 1u << BTN_ENV;
+        panel_keys(1u << 4);                                /* ENV + A3: step 3 (index 2), accented */
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_ENV);
+        w = eng_steps_note((uint32_t)drums, 2, 38);
+        check("ENV + a white key: an accented hit (velocity 127)", w && ((w >> 19) & 127u) == ACCENT_VEL);
+        ui_dirty = 2;
+        loop();
+        snap_to(getenv("PANEL_SNAP_DRUMS"));
+        panel_keys(1u << 4);
+        panel_keys(0);
+        tap(BTN_SEQ);
+    }
 
     {                                                       /* arming and recording from the keys (#139), on the 808 Kit's DRUMS */
         static int32_t l[128], r[128];

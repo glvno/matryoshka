@@ -331,7 +331,7 @@ typedef struct {
          * it began (live recording rounds to the nearest step); skip: a step recorded ahead, its notes not played again
          * when reached; hit: 1 / 2 (accented) = sound now (eng_steps_hit); pitch / vel: the outputs' held values (Q16, the
          * last note that started); the notes sounding are the track's (E.trk_snd) */
-        struct { uint32_t seed, loop; int32_t c1, r1, since, period, pend, slen, sst, pitch, vel; uint16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
+        struct { uint32_t seed, loop; int32_t c1, r1, since, period, pend, slen, sst, pitch, vel; uint16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit, skipn; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
         /* Drum map (modules.ts DrumMapState): its rows' velocities (Q16), the rows whose gate is up, the rows that restart
          * this block (a low first sample) */
         struct { int32_t vel[DRUMMAP_NOUT / 2]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last block */
@@ -707,7 +707,7 @@ int eng_load(const uint8_t *p, uint32_t len)
 #endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
-    if ((p[6] & ~127u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if (p[7] || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return -1;
     for (i = 0; i < ENG_PANEL_BUTTONS; i++)      /* (before eng_buttons below: no Toggle of the last patch acts on this one) */
         E.btn_kind[i] = (uint8_t)ENG_BTN_GATE, E.btn_n[i] = 0;
@@ -945,6 +945,12 @@ int eng_load(const uint8_t *p, uint32_t len)
             }
         }
         toggles_sync();
+    }
+    if (p[6] & 128u) {                           /* the Drum maps' row names (the SEQ page's, eng_drum_name): not the engine's */
+        uint32_t end = eng_names_end(p, len, at);
+        if (!end)
+            return -3;
+        at = end;
     }
     if (p[6] & 2u) {                             /* the macro ranges: u8 count, then module / pin / parameter / lo / hi each */
         uint32_t nr;
@@ -2154,12 +2160,128 @@ int eng_steps_hit(uint32_t module, int accent, int record)
     if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
         k = k + 1 >= len ? 0 : k + 1;
         it->s.stp.skip = (int8_t)k;
+        it->s.stp.skipn = 0;                     /* (the whole step) */
     }
     {                                            /* into the step: on (C4 if it had no note), accented when ENV is held */
         int b = eng_steps_get(module, (uint32_t)k);
         if (!(b & 0x80))
             eng_steps_set(module, (uint32_t)k, (uint32_t)b | (accent ? 3u : 1u));
     }
+    return k;
+}
+
+/* where the Drum maps' row names section of a patch binary starts (flag bit 7), 0 none or malformed */
+static uint32_t names_at(const uint8_t *p, uint32_t len)
+{
+    uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
+    if (!at || len < 8u || p[1] < 33u || !(p[6] & 128u))
+        return 0;
+    nmod = p[2];
+    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
+    for (i = 0; i < nmod; i++) {
+        const def_t *d;
+        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
+            return 0;
+        d = &DEFS[p[at] & 0x7Fu];
+        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        npar += d->npar;
+    }
+    at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);
+    if (p[6] & 4u)
+        at += nmod;
+    if (p[6] & 8u) {
+        if (at >= len)
+            return 0;
+        at += 1u + 4u * p[at];
+    }
+    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
+        return 0;
+    if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))
+        return 0;
+    if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))
+        return 0;
+    return eng_names_end(p, len, at) ? at : 0;
+}
+int eng_drum_name(const uint8_t *p, uint32_t len, uint32_t module, uint32_t r, char *out)
+{
+    uint32_t at = names_at(p, len), n, i, c;
+    out[0] = 0;
+    if (!at || r >= ENG_DRUM_ROWS)
+        return 0;
+    n = p[at++];
+    for (i = 0; i < n; i++, at += 1u + ENG_DRUM_ROWS * ENG_DRUM_NAME)
+        if (p[at] == module) {
+            const uint8_t *s = p + at + 1u + r * ENG_DRUM_NAME;
+            for (c = 0; c < ENG_DRUM_NAME && s[c]; c++)
+                out[c] = (char)s[c];
+            out[c] = 0;
+            return c > 0;
+        }
+    return 0;
+}
+int eng_steps_drummap(uint32_t module)
+{
+    uint32_t i;
+    if (!steps_inst(module))
+        return -1;
+    for (i = 0; i < E.nmod; i++)
+        if (E.node[i].type == T_DRUMMAP && E.node[i].ksrc == 2u + module)
+            return (int)i;
+    return -1;
+}
+int eng_drummap_note(uint32_t map, uint32_t r)
+{
+    if (!E.loaded || map >= E.nmod || E.node[map].type != T_DRUMMAP || r >= ENG_DRUM_ROWS)
+        return -1;
+    return clampi(round_q16(E.node[map].par[r]), 0, 127);
+}
+uint32_t eng_steps_note(uint32_t module, uint32_t k, uint32_t note)
+{
+    uint32_t i, t;
+    if (!steps_inst(module))
+        return 0;
+    t = E.node[module].trk;
+    for (i = 0; i < E.trk_n[t]; i++) {
+        uint32_t w = E.trk_note[E.trk_first[t] + i];
+        if (NW_AT(w) == k && NW_NOTE(w) == note)
+            return w;
+    }
+    return 0;
+}
+void eng_steps_toggle(uint32_t module, uint32_t k, uint32_t note, uint32_t vel)
+{
+    uint32_t w[TRACK_NOTES_MAX + 1u], n, i, m, t;
+    if (!steps_inst(module) || k >= TRACK_STEPS || note > 127u)
+        return;
+    if (!eng_steps_note(module, k, note)) {
+        eng_steps_overdub(module, NW(k, 1u, note, vel < 1u ? 1u : vel > 127u ? 127u : vel, 0u));
+        return;
+    }
+    t = E.node[module].trk;
+    n = trk_copy(t, w);
+    for (i = m = 0; i < n; i++)
+        if (NW_AT(w[i]) != k || NW_NOTE(w[i]) != note)
+            w[m++] = w[i];
+    (void)trk_put(t, w, m);
+}
+int eng_steps_hit_note(uint32_t module, uint32_t note, int accent, int record)
+{
+    inst_t *it = steps_inst(module);
+    int32_t k, len;
+    if (!it || note > 127u)
+        return -1;
+    E.trk_last[E.node[module].trk] = (uint8_t)note;  /* (the hit plays the track's last note: this one) */
+    it->s.stp.hit = accent ? 2u : 1u;
+    if (!record || eng_steps_pos(module) < 0)
+        return -1;
+    len = clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
+    k = it->s.stp.pos < 0 ? 0 : it->s.stp.pos;
+    if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
+        k = k + 1 >= len ? 0 : k + 1;
+        it->s.stp.skip = (int8_t)k;
+        it->s.stp.skipn = (uint8_t)(note + 1u);
+    }
+    eng_steps_overdub(module, NW((uint32_t)k, 1u, note, accent ? ACCENT_VEL : STEP_VEL, 0u));
     return k;
 }
 
@@ -3892,7 +4014,7 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
     }
     if (it->s.stp.mute)
         return;
-    if (it->s.stp.skip == k) {
+    if (it->s.stp.skip == k && !it->s.stp.skipn) {
         it->s.stp.skip = -1;
         return;
     }
@@ -3903,6 +4025,10 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         int32_t key;
         if (NW_AT(w) != (uint32_t)k)
             continue;
+        if (it->s.stp.skip == k && it->s.stp.skipn == NW_NOTE(w) + 1u) {   /* (a drum hit recorded ahead: only its note) */
+            j++;
+            continue;
+        }
         if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, j++, NW_CODE(w)))
             continue;
         key = clampi((int32_t)NW_NOTE(w) + semis, 0, 127);
@@ -3913,6 +4039,8 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         E.trk_last[t] = (uint8_t)NW_NOTE(w);
         any = 1;
     }
+    if (it->s.stp.skip == k)
+        it->s.stp.skip = -1;
     if (any)
         it->s.stp.gap = (uint8_t)was;
 }

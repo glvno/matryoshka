@@ -38,6 +38,7 @@ static uint8_t seq_trk;                 /* the selected track (index among the p
 static uint8_t seq_pg;                  /* the page of 16 steps */
 static uint8_t seq_rec;                 /* REC: 1 black keys record hits, 2 the keys record into the armed track (#139) */
 static int8_t seq_cur;                  /* step entry: the cursor's step */
+static uint8_t seq_row;                 /* a drum track (the #139 follow-up): the Drum map's row the white keys edit */
 static uint32_t ent_keys;               /* the keys held while they are the armed track's keyboard (bit n: key n) */
 static uint8_t ent_note[TRACK_POLY], ent_n, ent_vel;   /* step entry: the chord being played for the cursor's step */
 static int8_t seq_held = -1;            /* the step whose white key is held (SELECT sets its chance, K1 / K2 its values), -1 none */
@@ -59,6 +60,24 @@ static int seq_black(uint32_t n)
 }
 
 static int seq_module(void) { return eng_steps_module(seq_trk); }
+
+/* a drum track (the #139 follow-up): the Drum map the selected track plays (-1: none, or the keys are its keyboard), a row's note and
+ * name (the binary's, else ROW n) */
+static int seq_kbd(void);
+static int seq_map(void)
+{
+    int mod = seq_module();
+    return mod >= 0 && !seq_kbd() ? eng_steps_drummap((uint32_t)mod) : -1;
+}
+static uint32_t seq_row_note(int map, uint32_t r) { int n = eng_drummap_note((uint32_t)map, r); return n < 0 ? STEP_NOTE : (uint32_t)n; }
+static void seq_row_name(int map, uint32_t r, char *out)
+{
+    char num[8];
+    if (map >= 0 && m1_drum_name((uint32_t)map, r, out))
+        return;
+    fmt_int(num, (int32_t)r + 1);
+    put(put(out, "ROW "), num)[0] = 0;
+}
 
 /* the armed track's index among the Steps modules, -1 none */
 static int seq_armed_trk(void)
@@ -151,16 +170,28 @@ static int seq_step_has(int mod, uint32_t k, uint32_t note)
 static void seq_leds(void)
 {
     int mod = seq_module(), pos = mod >= 0 ? eng_steps_pos((uint32_t)mod) : -1, arm = seq_armed_trk();
-    int blink = (fm1_ms / 200u) & 1u, kbd = seq_kbd(), entry = seq_entry();
-    uint32_t n;
+    int blink = (fm1_ms / 200u) & 1u, kbd = seq_kbd(), entry = seq_entry(), map = seq_map();
+    uint32_t n, rows = 0, rn = map >= 0 ? seq_row_note(map, seq_row) : 0u;
+    if (map >= 0) {                              /* a drum track: the rows with hits */
+        const uint32_t *ws;
+        int i, nn = eng_steps_notes((uint32_t)mod, &ws);
+        uint32_t r;
+        for (r = 0; r < ENG_DRUM_ROWS; r++)
+            for (i = 0; i < nn; i++)
+                if (((ws[i] >> 12) & 127u) == seq_row_note(map, r) && (int)(ws[i] & 63u) < seq_len(mod))
+                    rows |= 1u << r;
+    }
     for (n = 0; n < 27u; n++) {
         int w = seq_white(n), b = seq_black(n), lit = 0, mid = 0, dim = 0;
         if (kbd) {                               /* the armed track's keyboard: the keys held bright; step entry: the notes */
             uint32_t note = (uint32_t)clampi(53 + (int32_t)n + 12 * octave, 0, 127);   /* on the cursor's step glow, */
             lit = (int)(ent_keys >> n & 1u);     /* live: every C, to find your place */
             dim = !lit && (entry ? mod >= 0 && seq_step_has(mod, (uint32_t)seq_cur, note) : note % 12u == 0u);
+        } else if (map >= 0 && b >= 0) {        /* a drum track's rows: the selected one bright (blinking: muted), the */
+            if (b < (int)ENG_DRUM_ROWS)          /* others with hits dim */
+                lit = (uint32_t)b == seq_row && (!eng_steps_muted((uint32_t)mod) || blink), dim = (uint32_t)b != seq_row && (rows >> b & 1u);
         } else if (w >= 0 && mod >= 0) {
-            int k = seq_pg * 16 + w, on = k < seq_len(mod) && (eng_steps_get((uint32_t)mod, (uint32_t)k) & 1);
+            int k = seq_pg * 16 + w, on = k < seq_len(mod) && (map >= 0 ? seq_step_has(mod, (uint32_t)k, rn) : (eng_steps_get((uint32_t)mod, (uint32_t)k) & 1));
             lit = on && k != pos;
             mid = !on && k == pos;
         } else if (b >= 0 && b < eng_steps_count()) {
@@ -192,6 +223,7 @@ static void seq_select(uint32_t t)
     seq_trk = (uint8_t)t;
     seq_pg = 0;
     seq_held = -1;
+    seq_row = 0;
     header_draw();
     ui_dirty = 2;
 }
@@ -213,10 +245,80 @@ static void seq_mute_key(uint32_t n)
 }
 
 /* a key on the SEQ page (n: note key 0..26) */
-static void seq_key(uint32_t n, int down)
+static void seq_sync(int mod);
+/* a key on the SEQ page of a drum track (the #139 follow-up): black keys 1..8 the Drum map's rows (stopped: heard; REC on: a hit on the
+ * row, into the nearest step while it plays), white keys that row's hit on the page's steps (ENV held: an accent) */
+static void seq_drum_key(int map, uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module();
     int env = (int)(panel_held >> BTN_ENV & 1u);
+    if (!down) {
+        if (w >= 0 && seq_held == seq_pg * 16 + w)
+            seq_held = -1;
+        return;
+    }
+    if (b >= 0) {
+        if (b >= (int)ENG_DRUM_ROWS)
+            return;
+        seq_row = (uint8_t)b;
+        if (seq_rec) {
+            if (eng_steps_hit_note((uint32_t)mod, seq_row_note(map, seq_row), env, 1) >= 0)
+                seq_sync(mod);
+        } else if (!eng_transport_running())
+            (void)eng_steps_hit_note((uint32_t)mod, seq_row_note(map, seq_row), 0, 0);
+        header_draw();
+        ui_dirty = 2;
+        return;
+    }
+    if (w < 0)
+        return;
+    {
+        int k = seq_pg * 16 + w;
+        uint32_t note = seq_row_note(map, seq_row), have;
+        const uint32_t *ws;
+        int i, nn;
+        if (k >= seq_len(mod))
+            return;
+        nn = eng_steps_notes((uint32_t)mod, &ws);       /* (a knob turned on the held step brings them back) */
+        seq_held_n = (uint8_t)(nn > 0 ? nn : 0);
+        for (i = 0; i < nn; i++)
+            seq_held_notes[i] = ws[i];
+        seq_held_turned = 0;
+        have = eng_steps_note((uint32_t)mod, (uint32_t)k, note);
+        if (env && have)                         /* ENV held: the accent on / off */
+            eng_steps_overdub((uint32_t)mod, (have & ~(127u << 19)) | (uint32_t)(((have >> 19) & 127u) == ACCENT_VEL ? STEP_VEL : ACCENT_VEL) << 19);
+        else
+            eng_steps_toggle((uint32_t)mod, (uint32_t)k, note, env ? ACCENT_VEL : STEP_VEL);
+        seq_sync(mod);
+        seq_held = (int8_t)k;
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+    }
+}
+
+/* the held step's row note on a drum track, after the press's switch is undone once (an edit means it should play): its
+ * note word, 0 when it cannot be there */
+static uint32_t seq_drum_held(int map, int mod)
+{
+    uint32_t note = seq_row_note(map, seq_row), w;
+    if (!seq_held_turned) {
+        seq_held_turned = 1;
+        (void)eng_steps_set_notes((uint32_t)mod, seq_held_notes, seq_held_n);
+    }
+    if (!(w = eng_steps_note((uint32_t)mod, (uint32_t)seq_held, note))) {
+        eng_steps_toggle((uint32_t)mod, (uint32_t)seq_held, note, STEP_VEL);
+        w = eng_steps_note((uint32_t)mod, (uint32_t)seq_held, note);
+    }
+    return w;
+}
+
+static void seq_key(uint32_t n, int down)
+{
+    int w = seq_white(n), b = seq_black(n), mod = seq_module(), map = seq_map();
+    int env = (int)(panel_held >> BTN_ENV & 1u);
+    if (map >= 0) {
+        seq_drum_key(map, n, down);
+        return;
+    }
     if (!down) {
         if (w >= 0 && seq_held == seq_pg * 16 + w)
             seq_held = -1;
@@ -277,12 +379,25 @@ static void seq_held_restore(int mod)
 /* SELECT turned with a step held: its chance, 5 % a click */
 static void seq_chance(int32_t clicks)
 {
-    int mod = seq_module();
+    int mod = seq_module(), map = seq_map();
     uint32_t s;
     int32_t code;
     char m[24], num[8];
     if (mod < 0 || seq_held < 0)
         return;
+    if (map >= 0) {                              /* a drum track: the row's hit on the held step */
+        uint32_t w = seq_drum_held(map, mod);
+        if (!w)
+            return;
+        code = clampi((int32_t)((w >> 26) & 31u) - clicks, 0, 19);
+        eng_steps_overdub((uint32_t)mod, (w & ~(31u << 26)) | (uint32_t)code << 26);
+        seq_sync(mod);
+        fmt_int(num, 100 - 5 * code);
+        put(put(put(m, "CHANCE "), num), "%")[0] = 0;
+        ui_msg(m, 1000);
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+        return;
+    }
     seq_held_restore(mod);
     s = (uint32_t)eng_steps_get((uint32_t)mod, (uint32_t)seq_held);
     code = clampi((int32_t)((s >> 2) & 31u) - clicks, 0, 19);
@@ -307,11 +422,27 @@ static char *seq_note_name(char *p, uint32_t n)
 /* K1 / K2 turned with a step held: its note (a semitone a click) / velocity (1 a click, 5 when turned fast) */
 static void seq_value(int32_t note_clicks, int32_t vel_clicks, int fast)
 {
-    int mod = seq_module(), v, k;
+    int mod = seq_module(), v, k, map = seq_map();
     int32_t note, vel;
     char m[24], num[8], *p;
     if (mod < 0 || seq_held < 0 || (!note_clicks && !vel_clicks))
         return;
+    if (map >= 0) {                              /* a drum track: K2 the row hit's velocity (its note is the row's) */
+        uint32_t w;
+        if (!vel_clicks || !(w = seq_drum_held(map, mod)))
+            return;
+        vel = clampi((int32_t)((w >> 19) & 127u) + vel_clicks * (fast ? 5 : 1), 1, 127);
+        eng_steps_overdub((uint32_t)mod, (w & ~(127u << 19)) | (uint32_t)vel << 19);
+        seq_sync(mod);
+        fmt_int(num, seq_held + 1);
+        p = put(put(m, "STEP "), num);
+        p = put(p, "  VEL ");
+        fmt_int(num, vel);
+        put(p, num)[0] = 0;
+        ui_msg(m, 1200);
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+        return;
+    }
     seq_held_restore(mod);
     v = eng_steps_value((uint32_t)mod, (uint32_t)seq_held);
     note = v & 0x7F;
@@ -535,7 +666,12 @@ static void seq_bar(void)
     *p++ = ' ';
     if (seq_kbd())                               /* the keys record into the armed track: step entry's cursor, or live */
         p = put(p, seq_entry() ? "WRITE" : "KEYS");
-    else {
+    else if (seq_map() >= 0) {                   /* a drum track: the row the white keys edit (DRUMS: SNARE) */
+        p[-1] = ':';
+        *p++ = ' ';
+        seq_row_name(seq_map(), seq_row, name);
+        p = put(p, name);
+    } else {
         fmt_int(num, (int32_t)seq_trk + 1);
         p = put(p, num);
         *p++ = '/';
@@ -556,7 +692,7 @@ static void seq_bar(void)
 static void seq_draw(int full)
 {
     char line[40], num[8], name[TRACK_NAME_MAX + 8], *p;
-    int mod = seq_module(), pos, i;
+    int mod = seq_module(), pos, i, map = seq_map();
     int32_t len;
     uint32_t t;
     seq_clamp();
@@ -597,6 +733,10 @@ static void seq_draw(int full)
     for (i = 0; i < 16; i++) {
         int k = seq_pg * 16 + i;
         uint32_t x = 8u + 14u * (uint32_t)i, s = k < len ? (uint32_t)eng_steps_get((uint32_t)mod, (uint32_t)k) : 0u;
+        if (map >= 0 && k < len) {               /* a drum track: the row's hit, as a step byte (on, accent, chance) */
+            uint32_t w = eng_steps_note((uint32_t)mod, (uint32_t)k, seq_row_note(map, seq_row));
+            s = w ? 1u | (((w >> 19) & 127u) == ACCENT_VEL ? 2u : 0u) | (((w >> 26) & 31u) > 19u ? 19u : (w >> 26) & 31u) << 2 : 0u;
+        }
         uint32_t h = 34u, fill = (s & 1u) ? h * (100u - 5u * ((s >> 2) & 31u)) / 100u : 0u;
         uint16_t c = (s & 2u) ? C_ACC : C_FG;
         if (k >= len) {
@@ -642,6 +782,28 @@ static void seq_draw(int full)
         text_bc(&FONT_S, 8, 128, line, C_DIM, C_BG, 224, TA_LEFT);
         if (full)
             text_bc(&FONT_S, 8, 222, "ENV+OCT rest  LFO+OCT tie  SEL move", C_HINT, C_BG, 228, TA_LEFT);
+        return;
+    }
+    if (map >= 0) {                              /* a drum track: its map's rows, two columns of four (black keys 1-8) */
+        for (t = 0; t < ENG_DRUM_ROWS; t++) {
+            uint32_t x = 12u + 112u * (t / 4u), y = 100u + 16u * (t % 4u);
+            fmt_int(num, (int32_t)t + 1);
+            p = put(line, num);
+            *p++ = ' ';
+            seq_row_name(map, t, name);
+            put(p, name)[0] = 0;
+            text_bc(&FONT_S, x, y, line, t == seq_row ? C_ACC : C_FG, C_BG, 108, TA_LEFT);
+        }
+        fmt_int(num, (int32_t)seq_trk + 1);
+        p = put(line, "TRACK ");
+        p = put(p, num);
+        *p++ = '/';
+        fmt_int(num, eng_steps_count());
+        p = put(p, num);
+        put(p, eng_steps_muted((uint32_t)mod) ? "  MUTED" : "  ALGO: TRACK")[0] = 0;
+        text_bc(&FONT_S, 12, 172, line, C_DIM, C_BG, 216, TA_LEFT);
+        if (full)
+            text_bc(&FONT_S, 8, 222, seq_rec ? "BLACK  hit on a row   ENV  accent" : "BLACK row  WHITE hit  ENV acc  K2 vel", C_HINT, C_BG, 228, TA_LEFT);
         return;
     }
     for (t = 0; t < 12u; t++) {                  /* the tracks, two columns of six */

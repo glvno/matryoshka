@@ -860,3 +860,15 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
   step adds C4, which the map does not play, and black keys 2..11 do nothing on the 808 / 909 Kits). Waits on the owner:
   black keys 1..8 as the map's rows, and whether the row names go into the binary (a format bump) or the device shows
   `ROW 2 D2`.
+
+## 2026-10-20 (night): the piano roll, Ableton-style, and drum tracks on the FM-1's SEQ page (host-tested: vitest 726, golden 91, proto_test, panel_test with drum rows, fm1-wasm, the build, pool 40250 B free; the roll tried in the browser on [::1]:5173: select + Delete removes the note and not the card, Cmd-Z, double-click adds, the key's name on hover, Main's key lit, Option-drag copy, edge resize, Cmd-D, the ruler's length, the canvas above the roll, the binding lines clipped. Not run: the JieLi build, emu:smoke, a device)
+
+- The owner's list for the roll: Delete deleted the device (in Draw mode a click did not select, so the roll passed
+  Delete on and the editor removed the selected Steps card), the open roll blocked moving round the canvas (it lay over
+  the canvas's lower part), Ableton-style controls, keys lit by Main's keys, note names on hover. All in
+  ARCHITECTURE "Piano roll, Ableton-style". Tools Select / Erase are gone (one pointer mode plus Draw, as in Live).
+- The owner's answers for the device: black keys pick the Drum map's rows; the row names go into the patch format
+  (format 33, a section of their own so the records keep their layout and format 31 / 32 patches still load).
+- Browser checks: the computer tool's screenshot frame here was 1512 px wide while the page was 1728 CSS px; clicks are
+  in the screenshot's frame (scale them by 1512 / innerWidth), not CSS px as CLAUDE.md says for other setups.
+- No issues were filed for these two pieces (the code calls them the #136 / #139 follow-ups).

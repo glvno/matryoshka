@@ -206,6 +206,9 @@ static void m1_track_name(uint32_t mod, char *out)
     out[TRACK_NAME_MAX] = 0;
 }
 
+/* row r's name of a Drum map in the running patch (the #139 follow-up), 0 when it has none */
+static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_name(m1_cur, m1_cur_len, map, r, out); }
+
 static void m1_patch_track(uint32_t mod);
 
 /* a step edit (the SEQ page's step view, eng_steps_set) / a step's note and velocity into the running engine and the
@@ -294,7 +297,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if ((p[6] & ~127u) || p[7] || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if (p[7] || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return 0;
     nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
@@ -319,6 +322,8 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))    /* flag bit 5: the device pages */
         return 0;
     if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))    /* flag bit 6: the button kinds */
+        return 0;
+    if ((p[6] & 128u) && !(at = eng_names_end(p, len, at)))     /* flag bit 7: the Drum maps' row names */
         return 0;
     if (p[6] & 2u) {                                            /* flag bit 1: the macro ranges after that */
         if (at >= len)
@@ -376,6 +381,8 @@ static uint32_t m1_range_section(void)
     if ((m1_cur[6] & 32u) && !(at = eng_devices_end(m1_cur, m1_cur_len, at)))   /* the device pages come before the ranges */
         return 0;
     if ((m1_cur[6] & 64u) && !(at = eng_buttons_end(m1_cur, m1_cur_len, at)))   /* then the button kinds */
+        return 0;
+    if ((m1_cur[6] & 128u) && !(at = eng_names_end(m1_cur, m1_cur_len, at)))    /* then the Drum maps' row names */
         return 0;
     return at < m1_cur_len ? at : 0;
 }

@@ -41,13 +41,11 @@ The owner grilled and approved spec **#132**: Steps becomes the one sequencer fo
 7. ~~**#139** FM-1 arming and recording from the device's keys~~ (done, committed, not pushed; NOTES "FM-1 arming and
    recording", ARCHITECTURE "Arming and recording on the FM-1"; the owner's picks 1B / 2C / 3B).
 
-**Open, waiting on the owner:** the Drum map's rows on the SEQ page. Since #138 the 808 / 909 Kits are one DRUMS
-track: a white key on an empty step adds C4 (the map does not play it) and black keys 2..11 do nothing. Proposal (the
-canvas's last board): black keys 1..8 pick the map's rows, white keys that row's hits, REC + a black key a hit on it;
-the row names either go into the binary (format bump) or the device shows `ROW 2 D2`.
+**Done since (not pushed):** the piano roll made Ableton-style (and its Delete / canvas bugs fixed), and the Drum
+map's rows on the FM-1's SEQ page with the row names in the binary (format 33). NOTES "the piano roll, Ableton-style".
 
-**Before any device work:** push `main` (#133-#139 are committed, not pushed), wait for the `firmware` workflow (the
-JieLi build has not seen formats 31 / 32 nor #139's firmware), then `cd web && npm run emu:smoke` (its `seq()` is new and
+**Before any device work:** push `main` (#133-#139 and the follow-ups are committed, not pushed), wait for the `firmware` workflow (the
+JieLi build has not seen formats 31-33 nor #139's firmware), then `cd web && npm run emu:smoke` (its `seq()` is new and
 has never run).
 
 Also open: #131 Player Piano (its Q4 is unblocked by #133), #111 C engine audio in the FM-1 tab, #112 envelope shapes in

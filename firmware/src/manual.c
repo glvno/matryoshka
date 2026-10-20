@@ -28,6 +28,8 @@ static const char *const MANUAL[] = {
     "#SEQ: THE PATCH'S TRACKS",
     " SEQ: OPEN / CLOSE THE STEP PAGE",
     " BLACK KEYS / ALGO: PICK A TRACK",
+    " A DRUM TRACK: BLACK KEYS 1-8 PICK",
+    "   A ROW, WHITE KEYS ITS HITS",
     " WHITE KEYS: STEPS ON / OFF,",
     "   ENV HELD: ACCENT",
     " HOLD A STEP + SELECT: ITS CHANCE,",

@@ -5,7 +5,7 @@ import { addModule, connect, type Patch } from './patch';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
 import { engineBytes } from './test-bin';
-import { deviceText, deviceBytes, deviceSection, FLAG_DEVICES, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
+import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, FLAG_DEVICES, FLAG_NAMES, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -105,6 +105,18 @@ describe('binary patch format', () => {
     expect(at).toBe(b.length);
   });
 
+  it('carries the Drum maps\' row names for the FM-1 (format 33, flag bit 7): their own, else the defaults', () => {
+    const p = PRESETS['808 Kit']();
+    const map = p.modules.find((m) => m.type === 'drummap')!;
+    map.names = ['boom'];
+    const b = encodePatch(p);
+    expect(b[1]).toBe(33);
+    expect(b[6] & FLAG_NAMES).toBe(FLAG_NAMES);
+    const text = new TextDecoder().decode(b);
+    expect(text).toContain('BOOM\0\0\0\0SNARE\0\0\0CLAP');
+    expect(text).toContain('COWBELL');
+  });
+
   it('counts a summing buffer for an input with two sources, routes or not', () => {
     const p = wobble();
     const filter = p.modules.find((m) => m.type === 'filter')!;
@@ -132,9 +144,11 @@ describe('binary patch format', () => {
       const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label), 0), 0)), 0) : 0;
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
       const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
-        + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages;
+        + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
+        + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0);
       expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);
+      expect(!!(b[6] & FLAG_NAMES), name).toBe(drumMaps(p).length > 0);
       expect(p.cables.length).toBeLessThanOrEqual(MAX_CABLES);
     }
   });
