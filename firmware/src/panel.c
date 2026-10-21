@@ -574,6 +574,11 @@ static void panel_draw(void)
 {
     if (msg_until && fm1_ms >= msg_until)
         ui_msg_clear();
+    if (ui_full) {
+        ui_full = 0;
+        ui_dirty = 0;
+        screen_idle();
+    }
     if (ui_dirty) {
         int full = ui_dirty > 1;
         ui_dirty = 0;

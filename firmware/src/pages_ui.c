@@ -95,7 +95,7 @@ static int row_ok(uint32_t m, uint32_t par)
 {
     if (par & POLY_ROW)
         return eng_type(m) == T_PART && (par & 0x7Fu) < POLY_FIELDS && eng_module_group(m) > 0;
-    return par < DEFS[eng_type(m)].npar;
+    return eng_type(m) >= 0 && par < DEFS[eng_type(m)].npar;
 }
 
 /* a poly row's value (an integer) and its largest */
@@ -459,6 +459,12 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
         else
             put(num, f == 1u ? POLY_ASSIGN_NAME[clampi(v, 0, 2)] : f == 2u ? POLY_LEGATO_NAME[clampi(v, 0, 2)] : f == 3u ? POLY_PRIORITY_NAME[clampi(v, 0, 2)] : UNI[v ? 1 : 0])[0] = 0;
         *base = *live = (uint32_t)(v * (int32_t)width / poly_max(f));
+        return;
+    }
+    if (eng_type(m) < 0 || j >= DEFS[eng_type(m)].npar) {   /* a row that is not the running patch's: nothing to show */
+        put(num, "-")[0] = 0;
+        unit[0] = 0;
+        *base = *live = 0;
         return;
     }
     {

@@ -40,6 +40,7 @@ static void cfg_defaults(void)
 }
 static uint32_t cpu_pct;                /* the audio ISR's peak time over the last half second, in % of the 2.9 ms half buffer */
 static volatile uint8_t ui_dirty;               /* 1: the knob rows need a redraw, 2: the module changed too (title, picture) */
+static uint8_t ui_full;                         /* a patch was loaded: the whole screen (header too) at the next panel_draw */
 static uint32_t panel_held;                     /* the buttons held now, matrix ids as bits (main.c sets it from the HAL, panel.c) */
 static int32_t octave;                          /* the keys' octave shift, -3..3 (OCT- / OCT+) */
 static uint32_t msg_until;                      /* a message in the top bar (SAVED ...) until this fm1_ms */

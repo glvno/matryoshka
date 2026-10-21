@@ -186,9 +186,17 @@ def print_diag(raw, dis_path):
     """main.c diag_prev: p3, src, wdt; the stall record (magic, stall_ms, n, pc[24], rets[24]); fm1_crash_t"""
     w = [int.from_bytes(bytes(raw[i:i + 4]), "little") for i in range(0, len(raw) - 3, 4)]
     funcs = []
-    if dis_path:
-        for m in re.finditer(r"^([0-9a-f]+) <([^>]+)>:", open(dis_path).read(), re.M):
-            funcs.append((int(m.group(1), 16), m.group(2)))
+    if dis_path:                                 # llvm-objdump: a "name:" line, then " addr:  bytes  insn"
+        cur = None
+        for line in open(dis_path):
+            m = re.match(r"^([A-Za-z_.$][\w.$]*):\s*$", line)
+            if m:
+                cur = m.group(1)
+                continue
+            m = re.match(r"^\s*([0-9a-f]+):", line)
+            if m and cur:
+                funcs.append((int(m.group(1), 16), cur))
+                cur = None
         funcs.sort()
     def where(a):
         f = next((n for s, n in reversed(funcs) if s <= a), None) if funcs else None
