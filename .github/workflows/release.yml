@@ -1,0 +1,64 @@
+name: release
+# Builds a release package by hand (Actions > release > Run workflow, or gh workflow run release.yml -f version=1.0):
+# tools/build.py --release <version> (identity FM-1_7XY, version string vX.Y.Z), the same checks and host tests as
+# firmware.yml, and uploads release-<version>/ with the build log. It does not tag or publish: see "Releasing" in
+# docs/ARCHITECTURE.md.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "X.Y, X.Y.Z or X.Y-suffix (e.g. 1.0, 1.0-rc1)"
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: JieLi toolchain and AC79 SDK (cached)
+        id: jieli
+        uses: actions/cache@v5
+        with:
+          path: ~/.jieli
+          key: jieli-AC79NN_SDK_V1.2.1_2023-12-13-toolchain-v1
+      - name: fetch the toolchain and the three SDK files
+        if: steps.jieli.outputs.cache-hit != 'true'
+        run: |
+          tools/get_toolchain.sh
+          git clone --filter=blob:none --no-checkout --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+            https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/.jieli/ac79-sdk
+          git -C ~/.jieli/ac79-sdk sparse-checkout set cpu/wl82/tools
+          git -C ~/.jieli/ac79-sdk checkout
+      - name: the generated headers are current
+        working-directory: web
+        run: |
+          npm run export-defs
+          git diff --exit-code ../firmware/src/defs.h ../firmware/src/presets.h || { echo "::error::defs.h / presets.h are stale: run 'npm run export-defs' and commit"; exit 1; }
+      - name: build the release, no warnings, pool headroom >= 8 KB
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          mkdir -p build
+          python3 tools/build.py --release "$VERSION" 2>&1 | tee build/build.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
+          cp build/build.log "build/release-$VERSION/"
+          { echo "### Matryoshka $VERSION ($GITHUB_SHA)"; echo '```'; grep -E "image [0-9]+ B|pool [0-9]+ B of|identity" build/build.log; cat "build/release-$VERSION/SHA256SUMS"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - name: golden vectors, protocol, USB audio and panel tests
+        run: |
+          tools/golden.sh
+          tools/usb_test.sh
+          tools/panel_test.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: matryoshka-release-${{ inputs.version }}
+          path: build/release-${{ inputs.version }}/
+          if-no-files-found: error

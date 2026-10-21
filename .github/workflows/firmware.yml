@@ -120,6 +120,7 @@ jobs:
           name: matryoshka-firmware
           path: |
             build/matryoshka.fwsc
+            build/matryoshka.json
             build/matryoshka.bin
             build/ui-preview.png
           if-no-files-found: error
