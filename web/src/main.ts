@@ -891,8 +891,10 @@ window.addEventListener('keydown', (e) => {
   const t = e.target as HTMLElement | null;
   const typing = isTextEntry(t) || t?.tagName === 'SELECT';
   if (document.querySelector('dialog[open], [popover]:popover-open') || typing) return;
+  // a control keeps Space and Enter; tabs, sliders and radios keep the arrows too, a button or a dock picker passes them on (#154)
   const control = t?.closest('button, summary, [role=tab], [role=slider], input, select');
-  if (control && [' ', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+  if (control && [' ', 'Enter'].includes(e.key)) return;
+  if (t?.closest('[role=tab], [role=slider], input[type=range], input[type=radio], .resize-handle') && e.key.startsWith('Arrow')) return;
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
   let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's step entry: rest, tie, cursor, stop (#127)
@@ -920,10 +922,10 @@ window.addEventListener('keydown', (e) => {
   } else if (k.startsWith('Arrow')) {
     const d = e.shiftKey ? 100 : 10;
     done = editor.nudgeSelected(k === 'ArrowLeft' ? -d : k === 'ArrowRight' ? d : 0, k === 'ArrowUp' ? -d : k === 'ArrowDown' ? d : 0);
-    // nothing selected: Left / Right page through the devices on Main's knobs (the FM-1's SELECT)
+    // nothing selected: Left / Right pick the device on Main's knobs (the FM-1's SELECT), Up / Down its page (ALGO) (#154)
     if (!done && !mod && (k === 'ArrowLeft' || k === 'ArrowRight')) done = editor.stepDevice(k === 'ArrowRight' ? 1 : -1);
-  } else if (k === 'Tab' && !mod && !e.altKey) done = editor.stepPage(e.shiftKey ? -1 : 1);
-  else if (!mod && !e.altKey && KNOB_KEYS.includes(k)) {
+    else if (!done && !mod && (k === 'ArrowUp' || k === 'ArrowDown')) done = editor.stepPage(k === 'ArrowDown' ? 1 : -1);
+  } else if (!mod && !e.altKey && KNOB_KEYS.includes(k)) {
     heldKnob = KNOB_KEYS.indexOf(k);
     done = true;
   }

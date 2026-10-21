@@ -560,8 +560,20 @@ static void pages_strip(void)
     }
 }
 
+/* a page before its device's first heading: its section carries the device's name, which the tab above already shows */
+static int pages_unheaded(const ppage_t *pg, const pdev_t *d)
+{
+    uint32_t i;
+    if (pg->nlen != d->nlen)
+        return 0;
+    for (i = 0; i < pg->nlen; i++)
+        if (pg->name[i] != d->name[i])
+            return 0;
+    return 1;
+}
+
 /* the pages of the device in focus, by heading: the current group "FILTER 1/2" in seafoam, its neighbours by name, the
- * rest by their first letter */
+ * rest by their first letter; the pages before the first heading are "PAGE 1/2", not the device's name again (#154) */
 static void pages_chips(void)
 {
     char t[24], num[8];
@@ -584,7 +596,10 @@ static void pages_chips(void)
         if (grp == cur_grp && pg->part != (cur < n ? pg_page[g0 + cur].part : 0u))
             continue;                                   /* the current heading: one chip, the page in focus */
         gap = grp > cur_grp ? grp - cur_grp : cur_grp - grp;
-        caps(t, pg->name, pg->nlen, gap <= 1u ? 12u : 1u);
+        if (pages_unheaded(pg, &pg_dev[pg_cur_dev]))
+            caps(t, "PAGE", 4u, gap <= 1u ? 12u : 1u);
+        else
+            caps(t, pg->name, pg->nlen, gap <= 1u ? 12u : 1u);
         p = t + str_len(t);
         if (grp == cur_grp && pg->parts > 1u) {
             *p++ = ' ';

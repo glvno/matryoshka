@@ -15,7 +15,7 @@ import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
-import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
+import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageLabel, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
 import { cableRole } from './cable-role';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
@@ -3698,7 +3698,7 @@ export class Editor {
     const pg = this.focusedPage();
     const pick = (label: string, text: string, count: number, get: () => number, set: (i: number) => void): HTMLElement => {
       const value = document.createElement('span');
-      value.textContent = text;
+      value.textContent = value.title = text;
       const el = picker({ label, value, count: () => count, get, set });
       el.classList.add('focus-pick');
       return el;
@@ -3708,8 +3708,10 @@ export class Editor {
     const di = this.devices.findIndex((d) => d.key === dev?.key);
     pickers.append(
       pick('device (SELECT)', dev?.name ?? 'no device', this.devices.length, () => di, (i) => this.setFocus({ device: this.devices[i].key, page: 0 })),
-      pick('page (ALGO)', pg ? pageTitle(pg) : '—', dev?.pages.length ?? 0, () => this.focus?.page ?? 0, (i) => this.setFocus({ device: dev!.key, page: i })),
+      pick('page (ALGO)', dev && pg && dev.pages.includes(pg) ? pageLabel(dev, dev.pages.indexOf(pg)) : pg ? pageTitle(pg) : '—', dev?.pages.length ?? 0, () => this.focus?.page ?? 0, (i) => this.setFocus({ device: dev!.key, page: i })),
     );
+    // one page (or none): nothing to pick, the picker only names the knobs
+    if ((dev?.pages.length ?? 0) <= 1) for (const b of pickers.lastElementChild!.querySelectorAll('button')) b.disabled = true;
     pickers.title = 'The device and the page Main\u2019s knobs turn (SELECT and ALGO on the FM-1). Click any row on a card to put its page on the knobs.';
     const knobs = document.createElement('div');
     knobs.className = 'deck-knobs';
@@ -3831,7 +3833,7 @@ export class Editor {
     if (notify && next) this.ev.onFocus?.(next.device, next.page);
   }
 
-  /** Tab / Shift+Tab: the next / previous page of the device in focus, wrapping within it (GLO's page: the device it left);
+  /** Down / Up arrows: the next / previous page of the device in focus, wrapping within it (GLO's page: the device it left);
    *  false when there is no device */
   stepPage(d: number): boolean {
     const dev = this.devices.find((x) => x.key === this.focus?.device) ?? this.devices[0];

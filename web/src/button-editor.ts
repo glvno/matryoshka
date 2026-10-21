@@ -5,7 +5,7 @@
 
 import { assembliesOf } from './assembly';
 import { KIND_LABEL, kindOf, mainOf, pageList, setKind, setPages, setSwitches, setTarget, switches, type ButtonKind } from './buttons';
-import { pageTitle, type Device } from './pages';
+import { pageLabel, type Device } from './pages';
 import { moduleName } from './labels';
 import { DEFS } from './modules';
 import { EDITOR_ONLY, PAGE_LIST_MAX, PANEL_LABEL_MAX, type Patch } from './patch';
@@ -24,7 +24,7 @@ export interface ButtonEditorEvents {
 export const listEntryName = (devices: Device[], x: { device: string; page: number }): string => {
   const d = devices.find((y) => y.key === x.device);
   const pg = d?.pages[x.page];
-  return d && pg ? `${d.name} · ${pageTitle(pg)}` : '(gone)';
+  return d && pg ? `${d.name} · ${pageLabel(d, x.page)}` : '(gone)';
 };
 
 /** the targets a Toggle can name, assemblies first, each with a name to tell it apart */
@@ -207,7 +207,7 @@ function pagesField(b: string, ev: ButtonEditorEvents): HTMLElement {
   for (const d of devices) {
     const og = document.createElement('optgroup');
     og.label = d.name;
-    d.pages.forEach((pg, i) => og.append(new Option(`${d.name} · ${pageTitle(pg)}`, `${d.key}#${i}`)));
+    d.pages.forEach((_, i) => og.append(new Option(`${d.name} · ${pageLabel(d, i)}`, `${d.key}#${i}`)));
     add.append(og);
   }
   add.onchange = () => {

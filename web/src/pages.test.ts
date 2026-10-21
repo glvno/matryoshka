@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch } from './patch';
 import { makeAssembly, fixAssemblies, keepParams, moveParam, promote, setColumnBreak, setGroupBreak, setHeading } from './assembly';
-import { devicesOf, findRow, fixFocus, groupStarts, pageTitle } from './pages';
+import { devicesOf, findRow, fixFocus, groupStarts, LABEL_MAX, pageLabel, pageTitle } from './pages';
+import { PRESETS } from './presets';
+import { demoPatch } from './demo';
 import { encodePatch } from './patchbin';
 
 describe('device pages', () => {
@@ -125,5 +127,38 @@ describe('knob migration', () => {
     expect(devs[0].name).toBe('Macros');
     expect(devs[0].pages[0].rows).toEqual([{ module: macro.id, param: 'value', label: 'cutoff' }]);
     expect(() => encodePatch(p)).not.toThrow();
+  });
+
+  it('the page picker never repeats the device name: a heading, else the knob names, else "page 2/3" (#154)', () => {
+    const p = emptyPatch();
+    const osc = addModule(p, DEFS.osc, 20, 20);
+    const vca = addModule(p, DEFS.vca, 320, 20);
+    const a = makeAssembly(p, [osc.id, vca.id], 'voice');
+    a.params = [];
+    promote(a, osc.id, 'wave');
+    promote(a, vca.id, 'gain');
+    promote(a, osc.id, 'level');
+    setHeading(a.params, 2, 'amp');
+    const [dev] = devicesOf(p, DEFS);
+    expect(dev.pages.map((_, i) => pageLabel(dev, i))).toEqual(['wave \u00b7 gain', 'amp']);
+    // a plain module: its pages before any heading, named after it; long knob names give way to "page 2/3"
+    const q = emptyPatch();
+    addModule(q, DEFS.osc, 20, 20);
+    const [mod] = devicesOf(q, DEFS);
+    const labels = mod.pages.map((_, i) => pageLabel(mod, i));
+    labels.forEach((l, i) => {
+      const names = mod.pages[i].rows.map((r) => r.label).join(' \u00b7 ');
+      expect(l).toBe(names.length <= LABEL_MAX ? names : `page ${i + 1}/${mod.pages.length}`);
+    });
+  });
+
+  it('across the factory patches and the Demo, no page label equals its device name or another page\'s of the device (#154)', () => {
+    for (const [name, make] of [...Object.entries(PRESETS), ['Demo', demoPatch] as const]) {
+      for (const dev of devicesOf(make(), DEFS)) {
+        const labels = dev.pages.map((_, i) => pageLabel(dev, i));
+        for (const l of labels) expect(l, `${name}: ${dev.name}`).not.toBe(dev.name);
+        expect(new Set(labels).size, `${name}: ${dev.name} ${labels.join(' | ')}`).toBe(labels.length);
+      }
+    }
   });
 });
