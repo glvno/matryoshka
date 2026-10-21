@@ -109,16 +109,31 @@ static void menu_value(uint32_t row, char *out)
     *p = 0;
 }
 
-static void menu_row_draw(uint32_t row, uint32_t y, int hot)
+#define MENU_Y 68u                                      /* the first row's top, the rows' pitch */
+#define MENU_PITCH 26u
+
+/* a row's value alone, over the old one (text_bc paints its field's background with each scanline: no blink) */
+static void menu_value_draw(uint32_t row)
 {
     char val[24];
+    uint32_t y = MENU_Y + menu_pos(row) * MENU_PITCH;
+    int hot = row == menu_sel;
+    if (ROW_TAB[row] != menu_tab)
+        return;
+    menu_value(row, val);
+    text_bc(&FONT_M, 150, y + 3u, val, hot ? C_ACC : C_FG, hot ? C_TRACK : C_BG, 78, TA_RIGHT);
+}
+
+static void menu_row_draw(uint32_t row)
+{
+    int hot = row == menu_sel;
+    uint32_t y = MENU_Y + menu_pos(row) * MENU_PITCH;
     uint16_t bg = hot ? C_TRACK : C_BG;
     lcd_fill(6, y, 228, 24, bg);
     if (hot)
         lcd_fill(6, y, 3, 24, C_ACC);
     text_bc(&FONT_M, 14, y + 3u, ROW_NAME[row], hot ? C_FG : C_DIM, bg, 140, TA_LEFT);
-    menu_value(row, val);
-    text_bc(&FONT_M, 150, y + 3u, val, hot ? C_ACC : C_FG, bg, 78, TA_RIGHT);
+    menu_value_draw(row);
 }
 
 /* the MANUAL tab (manual.c): MAN_VIS lines from man_top, SELECT scrolls */
@@ -171,7 +186,7 @@ static void manual_scroll(int32_t s)
 static void menu_draw(int full)
 {
     static uint8_t shown = 255;
-    uint32_t t, r, n = menu_count(menu_tab), y = 68u, x = 6;
+    uint32_t t, r, n = menu_count(menu_tab), y = MENU_Y + n * MENU_PITCH, x = 6;   /* (y: below the last row) */
     if (full || shown != menu_tab) {                /* (a new tab: the page is cleared, the hint changes) */
         lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
         text_bc(&FONT_S, 8, 222, menu_tab == MT_MANUAL ? "SELECT  scroll      ALGO  tab" : "ALGO  tab    SELECT  row    K1-K4  value", C_HINT, C_BG, 226, TA_LEFT);
@@ -187,12 +202,10 @@ static void menu_draw(int full)
         manual_draw();
         return;
     }
-    for (r = 0; r < n; r++) {
-        uint32_t row = menu_row_at(menu_tab, r);
-        menu_row_draw(row, y + r * 26u, row == menu_sel);
-    }
-    if (y + n * 26u < 218u)
-        lcd_fill(0, y + n * 26u, 240, 218u - (y + n * 26u), C_BG);   /* (the rows a longer tab had) */
+    for (r = 0; r < n; r++)
+        menu_row_draw(menu_row_at(menu_tab, r));
+    if (y < 218u)
+        lcd_fill(0, y, 240, 218u - y, C_BG);       /* (the rows a longer tab had) */
 }
 
 static void menu_open(void)             /* via page_show (panel.c): the tab and row it was left at */
@@ -279,11 +292,13 @@ static void menu_knobs(const int32_t *st)
             menu_set_row(menu_sel, st[2u + k]);
 }
 
-/* the CPU load in the bar: the peak ISR time of the last half second, in % of the 128 frame half buffer (2.9 ms) */
+/* the CPU load (SYSTEM's CPU and CPU PEAK rows): the peak ISR time of the last half second, in % of the 128 frame half
+ * buffer (2.9 ms). On an idle SYSTEM tab only the two values are redrawn, not the page (#146). */
 static void cpu_poll(void)
 {
     static uint32_t t0;
-    uint32_t pct;
+    uint32_t pct, peak = cpu_peak;
+    int shown;
     if (fm1_ms - t0 < 500u)
         return;
     t0 = fm1_ms;
@@ -295,9 +310,12 @@ static void cpu_poll(void)
         pct = 999u;
     if (pct > cpu_peak)
         cpu_peak = pct;
+    shown = page == PAGE_MENU && menu_tab == MT_SYSTEM && !ui_dirty;   /* (a pending redraw shows them anyway) */
     if (pct != cpu_pct) {
         cpu_pct = pct;
-        if (page == PAGE_MENU && ROW_TAB[MR_PEAK] == menu_tab && !ui_dirty)
-            ui_dirty = 1;
+        if (shown)
+            menu_value_draw(MR_CPU);
     }
+    if (cpu_peak != peak && shown)
+        menu_value_draw(MR_PEAK);
 }
