@@ -151,6 +151,8 @@ export const refKey = (chapter: string, step: string): string => `${chapter}/${s
 export const SLIDER_OPS: SliderOp[] = ['le', 'ge', 'eq', 'ne', 'between', 'changed'];
 export const ASSEMBLY_FACTS: AssemblyFact[] = ['exists', 'open', 'collapsed', 'promoted', 'exposed', 'merged', 'contains', 'resized', 'saved'];
 export const EVENT_NAMES: EventName[] = ['notes', 'undos', 'redos', 'zooms', 'flips', 'shares', 'bypasses', 'news', 'saves', 'audio', 'arpPlay', 'snapshotA', 'snapshotB', 'selected', 'bypassed'];
+/** events the lesson editor does not offer and course.json must not use: A/B is off for 1.0 (#103) */
+export const HIDDEN_EVENTS: EventName[] = ['flips', 'snapshotA', 'snapshotB'];
 export const PART_KINDS: PartKind[] = ['module', 'cable', 'noCable', 'slider', 'routed', 'pinMap', 'att', 'macroRange', 'assembly', 'poly', 'event', 'sound', 'custom'];
 
 /** a permanent id from a title, unique among `taken` */

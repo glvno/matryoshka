@@ -52,7 +52,7 @@ The tour ("Overview for advanced users") is for people who already patch. It sta
 | 6. Second instrument: FM | Hear the gated carrier before modulation. Manually duplicated oscillators need a new pitch cable; helper repairs partial work. Compare mellow/hollow/metallic ratios, then envelope and nested space. |
 | 7. Plucked and struck | Hear the string and modal body before adding noise through a comb. Compare muted/ringing chords and breathy tone; save Pluck. |
 | 8. Wavetables and grains | Hear a gated dry vowel first; keep an output through every insert. Capture a four-note chord, freeze it, explore pitch/spray and return to live input. |
-| 9. Two instruments | Solo and blend layers. Map a full-depth knob to 150–4000 Hz. Compare snapshots, then explicitly choose Snapshot B as a compatible morph target and move Main morph. |
+| 9. Two instruments | Solo and blend layers. Map a full-depth knob to 150–4000 Hz. Save the patch as a variation, change a few sliders, then choose the saved variation as a compatible morph target and move Main morph. |
 | 10. Melody machine | Listen to chance before writing a reply. Sequence changes and instrument gates share the musical subdivision; a second divider derives every-other-note FM triggers after 24-ppqn conversion. Divider outputs retain input pulse width. |
 | 11. Drums and performance | A held hat dies with the documented levels/rates. Mix through a loose mixer outside factory drums. Place kick/snare beats with sequencers, then build an eight-bar arrangement using the saved Pluck. |
 
