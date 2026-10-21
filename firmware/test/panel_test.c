@@ -392,18 +392,18 @@ int main(void)
         panel_keys(1u << 3);                                /* G#3: the second black key = row 2 (the snare) */
         panel_keys(0);
         check("a black key picks a row", seq_row == 1);
-        w = eng_steps_note((uint32_t)drums, 1, 38);
+        w = eng_steps_note((uint32_t)drums, 1, 55);
         panel_keys(1u << 2);                                /* G3: the second white key, step 2 (index 1) */
         panel_keys(0);
-        check("a white key switches the row's hit on the step", (eng_steps_note((uint32_t)drums, 1, 38) != 0) != (w != 0));
+        check("a white key switches the row's hit on the step", (eng_steps_note((uint32_t)drums, 1, 55) != 0) != (w != 0));
         panel_keys(1u << 2);
         panel_keys(0);
-        check("again: back", (eng_steps_note((uint32_t)drums, 1, 38) != 0) == (w != 0));
+        check("again: back", (eng_steps_note((uint32_t)drums, 1, 55) != 0) == (w != 0));
         panel_held |= 1u << BTN_ENV;
         panel_keys(1u << 4);                                /* ENV + A3: step 3 (index 2), accented */
         panel_keys(0);
         panel_held &= ~(1u << BTN_ENV);
-        w = eng_steps_note((uint32_t)drums, 2, 38);
+        w = eng_steps_note((uint32_t)drums, 2, 55);
         check("ENV + a white key: an accented hit (velocity 127)", w && ((w >> 19) & 127u) == ACCENT_VEL);
         ui_dirty = 2;
         loop();
