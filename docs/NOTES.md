@@ -1018,3 +1018,11 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
 - **MIDI and audio at once (step 5):** the editor's Live and an upload during a recording sounded fine to the user. Isolated with the CLI during a later recording: three 808 Kit uploads (2553 B of SysEx each) and parameter traffic added 0 missed / overruns / stalls.
 - **Hot-plug:** stopping and restarting the recording, and unplugging and replugging the cable mid-recording, left 83 overruns, 53 missed and 1 stall. Those are the blocks dropped and the packets the host didn't collect while the cable was out. The FM-1 kept running (its own power), the bus reset was seen and the stream came back in band.
 - **Skipped (owner's call):** the 10-minute drift recording (the 30 s figures show the adjustment working) and return to stock (update mode and the loader are unchanged, and update mode passed).
+
+## 2026-10-21 (1.0): Web flasher: warn before closing the tab or window during an install, #147
+
+- `guardUnload(target)` in `web/src/flasher.ts`: `arm()` adds a `beforeunload` listener that calls `preventDefault()` (and sets `returnValue` on a real `BeforeUnloadEvent`, as the lesson editor does); `disarm()` removes it, so the page keeps the back-forward cache otherwise.
+- `run(name, fn, installs)`: the four install runs (Install Matryoshka, Install this package, Return to official V15, Return with this file) pass `installs = true`; the guard is armed from the click to the end of the run and disarmed in `finally`. Check the connection does not arm it (owner's decision).
+- While an install runs, a line under the progress bar says "Installing: keep this tab open. If it is closed, open the Flash tab again and press the same button to finish." (browsers show only their own text for `beforeunload`).
+- Checked: vitest (an armed guard cancels a cancelable `beforeunload`, before arming and after `disarm()` it does not), `npm test` 731, `npx tsc --noEmit`, `npm run build`.
+- NOT checked: the browser prompt itself (reload / close / a same-tab link during a run) and the line showing and hiding; no device.

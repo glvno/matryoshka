@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { STOCK_V15_SHA256, validateStockPackage } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, loaderFits, pack7, unpack7 } from './flasher/fm1ota.js';
+import { guardUnload } from './flasher';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
 
@@ -130,5 +131,23 @@ describe('the flasher\'s MIDI listener', () => {
     dev.link.close();
     expect(listeners.size).toBe(0);
     expect(input.onmidimessage).toBe(editor);
+  });
+});
+
+describe('the unload guard during an install (#147)', () => {
+  const leave = (t: EventTarget): boolean => {
+    const ev = new Event('beforeunload', { cancelable: true });
+    t.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+
+  it('asks before leaving while armed, not before or after', () => {
+    const t = new EventTarget();
+    const g = guardUnload(t);
+    expect(leave(t)).toBe(false);
+    g.arm();
+    expect(leave(t)).toBe(true);
+    g.disarm();
+    expect(leave(t)).toBe(false);
   });
 });
