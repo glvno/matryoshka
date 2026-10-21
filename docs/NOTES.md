@@ -904,3 +904,73 @@ A spare FM-1 with stock V15 (`FM-1_015`). Tools: `build/venv` (uv venv with mido
   - The load hardly depends on the notes held: a poly patch costs about the same at rest (every part renders).
   - ALGO FOUR 85 % at rest, 59 % with notes; HERA 6 76 -> 65 %: most likely the overload guard shedding a part (two halves over 85 %), which sets no flag. Those factory patches sit at the edge.
   - `cpuEstimate` against the device: ratio 0.98 .. 1.13, median 1.08 (the estimate is low); a fit gives device = 1.041 x estimate + 0.8 points (max error 5.6 points; the ISR time includes the key scan and USB poll nested in it). The model from one M1-0.2 measurement holds to about 10 %.
+
+## 2026-10-21: USB audio out (branch `usb-audio`; host-tested and emulator-tested only, not run on a device)
+
+The FM-1 now also presents itself as a class-compliant UAC1 recording device: the master output (after MASTER and the
+mixer's patch level, the same words the codec gets) as 16-bit stereo at 44.1 kHz, so a computer can record it over the
+cable. Felucca's whole path was already in `usb.c` behind `FELUCCA_UAC`; this session switched it on and fitted it.
+
+- **Build:** `modular.c` defines `FELUCCA_UAC 1` under `#ifndef` (it was a hard `0`, so `tools/build.py`'s env flag was
+  ignored); `FELUCCA_UAC=0 python3 tools/build.py` builds without. `FELUCCA_UAC_48K 0` and an `#error` if set: 48 kHz needs
+  Felucca's `uac_fir.h`, not in this repo. The format descriptor lists 44100 alone; SET_CUR is acknowledged and changes
+  nothing, GET_CUR / MIN / MAX answer 44100. RAM: .data+.bss 13104 -> 15440 B of 24576 (the 2 KB ring); image +1.9 KB.
+- **Render path (`audio.c`):** `uac_render_start()` as a half starts (samples the ring's fill), `uac_tap(o, 128)` after
+  the half's words are written (the render or the silence while `eng_run` is 0). The I2S words carry 24 bit in the low
+  bits: `UAC_IN_SHIFT 8` in usb.c's `uac_tap` (Felucca fed it 16-bit values; `uac_s16` clamps, it does not scale).
+- **The ring's band moved: 160..208 frames, prime 184** (Felucca: 80..128, prime 104). Felucca tapped block by block
+  during its render; `eng_render` makes all 128 frames before the tap, and a heavy patch takes up to 85 % of the half
+  (the overload guard's limit), so up to ~3 packets leave the ring before a render's frames arrive. With the old band
+  the drift test underran ~20 times a second at a 2.6 ms render. Latency now ~5.7 ms on average.
+- **Update mode keeps the MIDI-only device** (`usb_uac_on`, `usb_uac_switch` in usb.c): with it off, `get_desc` returns
+  `DEV_DESC_MIDI` / `CFG_DESC_MIDI`, byte for byte what a `FELUCCA_UAC=0` build (= main before this) presents (same
+  PID 1209:0001, "Modular-1", bcdDevice 3.00), EP4 is not set up, and SET_INTERFACE 2 / SET_CUR / GET_CUR / CLEAR_FEATURE
+  on 0x84 stall. The boot paths decide before the first attach: `fm1_main` now starts TIMER5, waits its 30 ms, reads
+  OCT- + OCT+ and the boot guard, switches the audio off for update mode and only then calls `usb_start` (it used to
+  attach before the timer; `usb_poll` waits for `usb.up` as it does for `usb_retry`). MENU > SYSTEM > UPDATE MODE comes
+  from a running, enumerated device: `update_only` calls `usb_uac_switch(0)`, which drops off the bus (`fm1_usb_off`,
+  as Felucca's `usb_cdc_switch`) and `usb_retry` attaches again within a second as MIDI only. So the port blinks once
+  there. The update loader (`loader.c`) is untouched: it never had UAC, and its descriptors and image (8216 B) are the
+  same as before (checked by building the old and new usb.c with the loader's defines).
+  - What still goes through the audio descriptors: a normal-mode install (step 1 runs in the running firmware) and the
+    editor. If the composite device ever fails to enumerate on a host, update mode (power-on OCT- + OCT+) is the way
+    back; and the boot guard's update mode after two failed boots is MIDI only too.
+- **Diagnostics:** DIAG pages 125 / 126 (`m1_diag`), `tools/m1_link.py uac [SECONDS]`: presented / alt / host reads /
+  primed / configured, streams, packets, frames, SET_CUR count, bus resets, fill now; underruns, overruns, missed IN
+  tokens, stalls, adj_up, adj_down, fill min..max since the stream started. With SECONDS it reads twice and prints the
+  rates: frames per second ~44100, net adjustments ~+18 / s (the I2S clock's 44118 against the host's 44100).
+- **Host test `tools/usb_test.sh`** (`firmware/test/usb_test.c`, in CI after golden.sh): a stand-in SIE under usb.c;
+  walks the configuration descriptor (every bLength, wTotalLength, interface numbering and alt order, endpoint counts,
+  IADs in the CDC build, AC header length and collection with the AS interface first (#67), MIDI streaming
+  wTotalLength, format 2 ch / 16 bit / 44100 alone, EP 0x84 iso async 184 B 1 ms); EP0 requests with and without the
+  audio function; 60 s streams at 44118, 44082, 44100, 44160, 44040 Hz, renders tapped 0.1 .. 2.6 ms (and 2.9 ms) after
+  they start, one packet per 1 ms with jitter: every frame once and in order, no underrun / overrun, the fill after 1 s
+  within 155..212, net adjustments = the drift within 60 frames. Built three ways (app, with CDC, UAC=0 for the
+  byte-for-byte comparison of update mode's descriptors).
+- **Checks:** golden.sh (91 ok), panel_test, usb_test, vitest 726; CI firmware run 39552179124 (no warnings, pool
+  headroom unchanged); emulator smoke on its .bin: 118 checks, 0 failed, the overload guard behaves as before
+  (fm1-emu has no USB, so the stream itself never runs there: the cost of the audio path with a host reading is not
+  measured). Estimate: `uac_tap` ~2k cycles a half (~8 us, 0.3 %); `uac_service` once a ms: a 45-word copy and 4 SIE
+  round trips.
+
+**Device test plan (2026-10-22, the spare FM-1, macOS):**
+1. Install this build (normal mode, `tools/fm1_install.py`). Boot, play: nothing changed (`m1_link.py cpu` on ORACLE V
+   and ALGO FOUR at rest: note the peaks, compare with the survey of 2026-10-20).
+2. Enumeration: Audio MIDI Setup shows "Modular-1" as an audio device with 2 inputs at 44.1 kHz *and* the MIDI port
+   still works (`m1_link.py info`, the editor connects). System Information > USB: bcdDevice 3.18. If no audio device
+   appears but MIDI works: note the macOS version (#67's AppleUSBAudio order issue). If MIDI is gone: update mode (step 6).
+3. Record 60 s in an app (QuickTime audio recording, or Audacity / Logic at 44.1 kHz) with a patch playing; listen for
+   clicks; `m1_link.py uac` before and after, and `m1_link.py uac 30` while recording: underruns / overruns / missed /
+   stalls stay 0 after the start, net adj ~+18 / s, fill within 160..208 (a few frames outside is the control working).
+   `m1_link.py cpu` during the recording vs. not: the cost of the stream. Then ALGO FOUR (the heaviest) recorded: no
+   underruns (the band is sized for a render that takes the whole half).
+4. Drift / clicks over minutes: record 10 minutes of a steady tone (INIT with a held note, or a sine patch); look at it
+   (a spectrogram, or a test: the triangle bench build `FELUCCA_UAC_TONE=1` makes every lost or doubled frame visible).
+   Stop and restart the recording a few times; unplug / replug while recording; the stream must come back.
+5. MIDI + audio at once: the editor's Live while recording; an upload while recording (the SysEx path shares the poll).
+6. **Update mode still shows the MIDI port, and an install still works:** OCT- + OCT+ at power-on -> Audio MIDI Setup
+   shows no audio device for "Modular-1", the installer finds the identity (`FM-1_700`), install this same build from
+   there. Then MENU > SYSTEM > UPDATE MODE from a running device: the port drops and comes back within ~1 s as MIDI only;
+   install again from there.
+7. Return to stock (`FM-1_015.fwsc` from update mode) is unaffected: it ran through update mode and the loader, both
+   MIDI only. Then back to ours.
