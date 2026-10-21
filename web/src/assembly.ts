@@ -847,6 +847,39 @@ export function freeSpot(occupied: Rect[], w: number, h: number): { x: number; y
     }
 }
 
+/** the vertical step of the cells `freeSpotNear` tries: a quarter row, so a card fits a view shorter than two rows */
+export const ROW_STEP = GRID.y / 4;
+
+/**
+ * Where a new card of w x h goes in view (#175): of the free cells (GRID.x columns from the margin, ROW_STEP rows) that lie
+ * wholly inside `view`, the one whose centre is nearest `origin` (the cursor, or the view's centre). When none is free
+ * (the view is full, or smaller than the card), the free cell that needs the least scrolling to be seen, then the one
+ * nearest `origin`. Every rectangle is in patch layout pixels; the canvas grows right and down, so a cell is always found.
+ */
+export function freeSpotNear(occupied: Rect[], w: number, h: number, view: Rect, origin: { x: number; y: number }): { x: number; y: number } {
+  const right = Math.max(view.x + view.w, ...occupied.map((o) => o.x + o.w));
+  const bottom = Math.max(view.y + view.h, ...occupied.map((o) => o.y + o.h));
+  const cols = Math.ceil(Math.max(0, right - GRID.margin) / GRID.x) + 1;
+  const rows = Math.ceil(Math.max(0, bottom - GRID.margin) / ROW_STEP) + 1;
+  // how far a span sticks out of the view's span (one longer than the view: how far its start is from the view's)
+  const out = (a: number, len: number, v0: number, vlen: number): number => (len > vlen ? Math.abs(a - v0) : Math.max(0, v0 - a, a + len - v0 - vlen));
+  let best: { x: number; y: number } | null = null;
+  let bestOut = Infinity, bestNear = Infinity;
+  for (let row = 0; row <= rows; row++)
+    for (let col = 0; col <= cols; col++) {
+      const r = { x: GRID.margin + col * GRID.x, y: GRID.margin + row * ROW_STEP, w, h };
+      const away = Math.hypot(out(r.x, w, view.x, view.w), out(r.y, h, view.y, view.h));
+      if (away > bestOut) continue;
+      const near = Math.hypot(r.x + w / 2 - origin.x, r.y + h / 2 - origin.y);
+      if (away === bestOut && near >= bestNear) continue;
+      if (occupied.some((o) => overlaps(o, r))) continue;
+      best = { x: r.x, y: r.y };
+      bestOut = away;
+      bestNear = near;
+    }
+  return best!;
+}
+
 const memberModules = (p: Patch, a: AssemblyInst): ModuleInst[] => a.modules.map((id) => p.modules.find((m) => m.id === id)!).filter(Boolean);
 
 /** whether two member cards sit on top of each other (closer than most of a card in both directions) */
