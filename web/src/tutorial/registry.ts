@@ -80,7 +80,7 @@ export const CUSTOM: Record<string, CustomCheck> = {
   },
   morphTarget: {
     describe: 'a morph target (a B side) is chosen',
-    label: () => 'Choose Snapshot B in Main’s B side picker',
+    label: () => 'Choose the saved variation in Main’s B side picker',
     check: (s) => s.patch.modules.some((m) => !!m.paramsB),
     targets: (s) => T.module(main(s)?.id),
   },

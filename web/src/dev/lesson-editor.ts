@@ -10,7 +10,7 @@ import './lesson-editor.css';
 import { DEFS } from '../modules';
 import { PRESETS } from '../presets';
 import type { Patch } from '../patch';
-import { formatCourse, refKey, slugId, validateShape, ASSEMBLY_FACTS, EVENT_NAMES, PART_KINDS, POLY_SETTINGS, SLIDER_OPS, type AssemblyFact, type ChapterData, type CourseData, type EventName, type Part, type PartKind, type PartSpec, type PolySetting, type Pointer, type Ref, type RoleDef, type SliderOp, type StartRule, type StepData } from '../tutorial/course-schema';
+import { formatCourse, refKey, slugId, validateShape, ASSEMBLY_FACTS, EVENT_NAMES, HIDDEN_EVENTS, PART_KINDS, POLY_SETTINGS, SLIDER_OPS, type AssemblyFact, type ChapterData, type CourseData, type EventName, type Part, type PartKind, type PartSpec, type PolySetting, type Pointer, type Ref, type RoleDef, type SliderOp, type StartRule, type StepData } from '../tutorial/course-schema';
 import { compileStep, stepStart } from '../tutorial/chapters';
 import { parseMidi } from '../tutorial/riff';
 import { momentary, partCheck, partLabel, refType, withId } from '../tutorial/parts';
@@ -519,7 +519,7 @@ async function mount() {
         if (part.op === 'between') body.append(labelled('and', numberInput(part.max, (v) => set({ ...part, max: v ?? 0 }, false), 'upper value', '1')));
         break;
       case 'event': {
-        body.append(labelled('event', select(EVENT_NAMES.map((e) => [e, EVENTS[e]]), part.event, (v) => set({ kind: 'event', event: v as EventName }))));
+        body.append(labelled('event', select(EVENT_NAMES.filter((e) => !HIDDEN_EVENTS.includes(e) || e === part.event).map((e) => [e, EVENTS[e]]), part.event, (v) => set({ kind: 'event', event: v as EventName }))));
         if (['notes', 'undos', 'redos', 'zooms', 'flips', 'shares', 'bypasses', 'news', 'saves'].includes(part.event)) body.append(labelled('times', numberInput(part.count, (v) => set({ ...part, count: v && v > 1 ? v : undefined }, false), 'at least', '1')));
         if (part.event === 'bypassed' || part.event === 'bypasses') body.append(labelled('module', refPicker(part.ref ?? { type: 'reverb' }, (r) => set({ ...part, ref: r }), false)));
         if (part.event === 'bypassed') body.append(check('bypassed (off = switched back on)', !!part.on, (v) => set({ ...part, on: v || undefined })));

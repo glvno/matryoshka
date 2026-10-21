@@ -14,7 +14,7 @@ import { compileCourse, chapterEnd, chapterStart, stepStart } from './chapters';
 import { momentary, partCheck, partLabel, refType, type Roles } from './parts';
 import { CUSTOM, ROLES } from './registry';
 import { placedRequirements } from './markdown';
-import { EVENT_NAMES, POLY_SETTINGS, refKey, SLIDER_OPS, validateShape, type CourseData, type PartSpec, type Ref } from './course-schema';
+import { EVENT_NAMES, HIDDEN_EVENTS, POLY_SETTINGS, refKey, SLIDER_OPS, validateShape, type CourseData, type PartSpec, type Ref } from './course-schema';
 import type { AssemblyDef } from '../assembly';
 
 export interface Issue {
@@ -136,6 +136,7 @@ export function validateCourse(course: CourseData): Report {
         for (const p of st.parts ?? []) if (!p.hidden && !placed.includes(p.id)) report.errors.push({ chapter: ch.id, step: st.id, message: `Requirement "${p.id}" is not placed in the text: place it, or mark it hidden` });
       }
       if (placedRequirements(st.why).length) report.errors.push({ chapter: ch.id, step: st.id, message: 'Why cannot hold requirements: move the req: links to the instructions' });
+      for (const [i, p] of (st.parts ?? []).entries()) if (p.kind === 'event' && HIDDEN_EVENTS.includes(p.event)) report.errors.push({ chapter: ch.id, step: st.id, message: `Requirement ${i + 1}: the event "${p.event}" is off (A/B is off for 1.0, #103)` });
       for (const [i, p] of (st.parts ?? []).entries()) for (const m of partProblems(p, roles)) report.errors.push({ chapter: ch.id, step: st.id, message: `Requirement ${i + 1}: ${m}` });
     }
   }

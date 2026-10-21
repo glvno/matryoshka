@@ -7,7 +7,7 @@ import { validateAssemblyDef } from '../assembly';
 import { COURSE, CHAPTERS, bundledLibrary, listedChapters, tourChapter, chapterEnd, chapterStart, referenceOf, stepStart, tutorialDef } from './chapters';
 import { completes, headlessState, stepDone } from './model';
 import { validateCourse } from './validate';
-import { formatCourse, slugId, validateShape } from './course-schema';
+import { formatCourse, slugId, validateShape, HIDDEN_EVENTS } from './course-schema';
 import { partLabel } from './parts';
 
 const SR = 48000;
@@ -164,6 +164,16 @@ describe('course data', () => {
     broken.references[`${ch.id}/${id}`].patch.cables = [];
     const report = validateCourse(broken);
     expect(report.errors.some((e) => e.step === id && /fails its own requirement/.test(e.message)), id).toBe(true);
+  });
+
+  it('uses none of the A/B events while A/B is off (#155), and rejects a step that does', () => {
+    const json = JSON.stringify(COURSE);
+    for (const e of HIDDEN_EVENTS) expect(json).not.toContain(`"event":"${e}"`);
+    expect(json).not.toMatch(/Alt\+B|Snapshot B/);
+    const broken = structuredClone(COURSE);
+    const st = broken.chapters[0].steps.find((s) => s.kind === 'task')!;
+    st.parts = [...st.parts!, { id: 'flipped', kind: 'event', event: 'flips', hidden: true }];
+    expect(validateCourse(broken).errors.some((e) => e.step === st.id && /A\/B is off/.test(e.message))).toBe(true);
   });
 
   it('catches a requirement that names a port the module does not have', () => {
