@@ -3,6 +3,7 @@
   "version": 1,
   "name": "basic poly",
   "category": "Voices",
+  "blurb": "The plainest polysynth: a saw, a low pass and an envelope per voice",
   "modules": [
     {
       "id": 1,

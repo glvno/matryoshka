@@ -732,7 +732,7 @@ const palList = $('palette-list');
 const inPatch = (run: () => void): (() => void) => () => { switchTab('patch'); run(); };
 const commands = (): Command[] => {
   const assembly = (d: AssemblyDef, shelf: string): Command => ({
-    kind: 'assembly', tags: ['assembly', ...(defIsEngine(d) ? ['engine'] : []), shelf], label: d.name, detail: shelf, keywords: `insert ${summary(d)}`,
+    kind: 'assembly', tags: ['assembly', ...(defIsEngine(d) ? ['engine'] : []), shelf], label: d.name, detail: d.blurb ? `${d.blurb} · ${shelf}` : shelf, keywords: `insert ${d.blurb ?? ''} ${summary(d)}`,
     run: () => editor.insert(d),
   });
   return [

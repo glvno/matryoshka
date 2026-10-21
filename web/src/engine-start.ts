@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // "Start with an engine" (glvno/matryoshka#160): New patch opens this dialog outside the tutorial. One tile per factory
-// engine (the Engines shelf, engines.ts) with its name, summary, MONO / STEREO and the estimated CPU on the FM-1; a pick
+// engine (the Engines shelf, engines.ts) with its name, its one-line description (the blurb, else the module list), MONO / STEREO and the estimated CPU on the FM-1; a pick
 // gives a new patch with that engine wired to the keys and the Output (Editor.insert). Under the grid: the empty canvas
 // (today's New patch, also Esc) and the factory patches (the Open picker).
-import { ENGINE_SHELF, summary } from './assemblies';
+import { describe, ENGINE_SHELF } from './assemblies';
 import { insertAssembly, type AssemblyDef } from './assembly';
 import { assemblyShelves } from './catalog';
 import { defIsStereo, wireEngine } from './engines';
@@ -47,7 +47,7 @@ export function engineCpu(def: AssemblyDef): number | null {
 export const engineTiles = (): EngineTile[] =>
   assemblyShelves()
     .filter((a) => a.shelf === ENGINE_SHELF)
-    .map(({ def }) => ({ def, name: def.name, line: summary(def), stereo: defIsStereo(def), cpu: engineCpu(def) }));
+    .map(({ def }) => ({ def, name: def.name, line: describe(def), stereo: defIsStereo(def), cpu: engineCpu(def) }));
 
 export interface EngineStartEvents {
   /** a tile was picked */

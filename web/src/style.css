@@ -803,7 +803,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   .sidebar-dismiss:not([hidden]) { display: block; position: fixed; inset: 44px 0 0; z-index: 40; background: var(--backdrop); border: 0; border-radius: 0; }
   .tab:not(#tab-patch) { padding: 16px; }
   dialog.palette li { gap: 8px; }
-  dialog.palette li .detail { max-width: 72px; }
+  dialog.palette li .detail { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .palette-filters { gap: 4px; }
   .palette-filters button { flex: 1; padding: 6px; }
 }

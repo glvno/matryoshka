@@ -3,6 +3,7 @@
   "version": 1,
   "name": "Wanderer",
   "category": "Voices",
+  "blurb": "ARP Odyssey type shit",
   "modules": [
     {
       "id": 1,

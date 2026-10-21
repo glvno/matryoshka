@@ -304,6 +304,9 @@ export interface AssemblyDef extends AssemblyLayout {
   name: string;
   /** a factory assembly's shelf in the browser (CATEGORIES in assemblies.ts); the user's own have none */
   category?: string;
+  /** a factory engine's one-line description (scripts/gen-assemblies.ts BLURBS): the engine tiles, the assembly browser,
+   *  the palette and the patch card show it in place of the module list; the user's own have none */
+  blurb?: string;
   /** saved by the tutorial under this tag ("my-voice"); later chapters find it by the tag whatever its name */
   tutorial?: string;
   /** every module inside, the nested ones included */
@@ -1073,6 +1076,7 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
   migrateDefParts(d, defs);
   if (d.category !== undefined && typeof d.category !== 'string') delete d.category;
   if (d.tutorial !== undefined && typeof d.tutorial !== 'string') delete d.tutorial;
+  if (d.blurb !== undefined && typeof d.blurb !== 'string') delete d.blurb;
   const seen = new Set<number>();
   for (const m of d.modules) {
     const def = defs[m.type];

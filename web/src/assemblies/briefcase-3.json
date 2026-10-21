@@ -3,6 +3,7 @@
   "version": 1,
   "name": "Briefcase 3",
   "category": "Voices",
+  "blurb": "EMS VCS3 type shit",
   "modules": [
     {
       "id": 1,

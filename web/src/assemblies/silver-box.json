@@ -3,6 +3,7 @@
   "version": 1,
   "name": "Silver Box",
   "category": "Voices",
+  "blurb": "TB-303 type shit",
   "modules": [
     {
       "id": 1,

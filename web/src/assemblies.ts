@@ -105,6 +105,9 @@ export const summary = (d: AssemblyDef): string => {
   return `${d.modules.map((m) => DEFS[m.type].label).join(' + ')}${io ? ` · ${io}` : ''}`;
 };
 
+/** a row's line: a factory engine's blurb, else the module list (`summary`) */
+export const describe = (d: AssemblyDef): string => d.blurb ?? summary(d);
+
 export function download(def: AssemblyDef): void {
   const blob = new Blob([JSON.stringify(def, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -128,7 +131,7 @@ export function buildAssembliesTab(root: HTMLElement, ev: LibraryEvents): () => 
     el(
       'div',
       { class: 'bank-row' },
-      el('span', { class: 'grow' }, ...(defIsEngine(d) ? [engineTag(), ' '] : []), el('b', { textContent: d.name }), ' ', el('span', { class: 'muted', textContent: summary(d) })),
+      el('span', { class: 'grow' }, ...(defIsEngine(d) ? [engineTag(), ' '] : []), el('b', { textContent: d.name }), ' ', el('span', { class: 'muted', textContent: describe(d) })),
       el('button', { textContent: 'Insert', title: 'Put it into the patch', onclick: () => ev.insert(d) }),
       el('button', { textContent: 'Export', title: 'Download as a .json file', onclick: () => download(d) }),
       ...(user

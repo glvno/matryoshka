@@ -5,6 +5,7 @@
 import { writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
 import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type PolyCards, type Source } from '../src/patch';
+import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
@@ -2040,6 +2041,34 @@ for (const d of defs) {
   const moduleOf = (id: number): ModuleInst | undefined => d.modules.find((m) => m.id === id);
   d.inputs = pinsToParams(d.inputs, d.params, moduleOf);
   for (const n of d.assemblies ?? []) n.inputs = pinsToParams(n.inputs, n.params, moduleOf);
+}
+// the one-line description of each engine (the Engines shelf, engines.ts) on the "Start with an engine" tiles, the
+// assembly browser, the palette and the patch card. The owner's wording (2026-10-21): an engine that emulates an
+// instrument is "<that instrument> type shit", verbatim; the others say plainly what they are.
+const BLURBS: Record<string, string> = {
+  'Oracle V': 'Prophet-5 type shit',
+  'Monolith D': 'Minimoog Model D type shit',
+  'Silver Box': 'TB-303 type shit',
+  'Hera 6': 'Juno-106 type shit',
+  'Sallen 20': 'MS-20 type shit',
+  'Expander S': 'Oberheim SEM type shit',
+  'Algo Four': 'DX100 type shit',
+  Canvas: 'Music Easel type shit',
+  Wanderer: 'ARP Odyssey type shit',
+  'Briefcase 3': 'EMS VCS3 type shit',
+  'Io 4': 'Jupiter-4 type shit',
+  'Vernon 100': 'ElectroComp 100 type shit',
+  'basic mono': 'Two saws, a low pass and an envelope, four voices that drift a little out of tune',
+  'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
+  'mono lead': 'One voice through a ladder filter, gliding between legato notes',
+  'supersaw stack': 'Detuned saws stacked and spread across the stereo field, for pads and leads',
+  'drum kit': 'One drum per key: kick, snare, clap, hats, tom, rim and cowbell',
+};
+for (const [name] of Object.entries(BLURBS)) if (!defs.some((d) => d.name === name)) throw new Error(`a blurb for ${name}, which is not a factory assembly`);
+for (const [i, d] of defs.entries()) {
+  if (defIsEngine(d) && !BLURBS[d.name]) throw new Error(`the engine ${d.name} has no blurb`);
+  const { format, version, name, category, ...rest } = d;
+  if (BLURBS[d.name]) defs[i] = { format, version, name, category, blurb: BLURBS[d.name], ...rest };
 }
 for (const d of defs) writeFileSync(new URL(`${d.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.json`, OUT), JSON.stringify(d, null, 2) + '\n');
 console.log(`wrote ${defs.length} assemblies: ${defs.map((d) => d.name).join(', ')}`);
