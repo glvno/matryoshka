@@ -1041,3 +1041,11 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
 - CLAUDE.md "Rules when changing things": a user-visible change adds a line under `## Unreleased`.
 - **Checks:** `npm run build` (tsc + vite); `dist/assets` holds `1.0.0-dev` and the commit. vitest 733: all pass when run alone, but the full run on a machine at load 26 (other agents' test runs) timed out 1..4 slow engine tests (demo, device-compile, steps chance) at 5 s; they pass on their own.
 - **Not checked:** the About footer in a browser (dev server and Pages); the Pages build's `GITHUB_SHA` path.
+
+## 2026-10-21 (1.0): Web flasher: warn before closing the tab or window during an install, #147
+
+- `guardUnload(target)` in `web/src/flasher.ts`: `arm()` adds a `beforeunload` listener that calls `preventDefault()` (and sets `returnValue` on a real `BeforeUnloadEvent`, as the lesson editor does); `disarm()` removes it, so the page keeps the back-forward cache otherwise.
+- `run(name, fn, installs)`: the four install runs (Install Matryoshka, Install this package, Return to official V15, Return with this file) pass `installs = true`; the guard is armed from the click to the end of the run and disarmed in `finally`. Check the connection does not arm it (owner's decision).
+- While an install runs, a line under the progress bar says "Installing: keep this tab open. If it is closed, open the Flash tab again and press the same button to finish." (browsers show only their own text for `beforeunload`).
+- Checked: vitest (an armed guard cancels a cancelable `beforeunload`, before arming and after `disarm()` it does not), `npm test` 731, `npx tsc --noEmit`, `npm run build`.
+- NOT checked: the browser prompt itself (reload / close / a same-tab link during a run) and the line showing and hiding; no device.

@@ -69,9 +69,26 @@ async function loadBundle(): Promise<Bundle | null> {
   }
 }
 
+/** a `beforeunload` guard for the length of an install (#147): closing, reloading or leaving the page then asks first.
+ *  Disarmed otherwise, so the page can still use the back-forward cache. */
+export function guardUnload(target: EventTarget): { arm(): void; disarm(): void } {
+  const stop = (event: Event): void => {
+    event.preventDefault();
+    // older browsers want returnValue set too; a plain Event (as in tests) has it read-only
+    if (typeof BeforeUnloadEvent !== 'undefined' && event instanceof BeforeUnloadEvent) event.returnValue = '';
+  };
+  return {
+    arm: () => target.addEventListener('beforeunload', stop),
+    disarm: () => target.removeEventListener('beforeunload', stop),
+  };
+}
+
 export function buildFlashTab(root: HTMLElement): void {
   const logEl = el('pre', { class: 'log', textContent: 'Ready.\n' });
   const bar = el('progress', { max: 100, value: 0 });
+  // shown while an install runs: browsers give only a generic text for beforeunload
+  const keepOpen = el('p', { class: 'muted', hidden: true, textContent: 'Installing: keep this tab open. If it is closed, open the Flash tab again and press the same button to finish.' });
+  const unload = guardUnload(window);
   const log = (s: string): void => {
     logEl.textContent += s + '\n';
     logEl.scrollTop = logEl.scrollHeight;
@@ -89,10 +106,16 @@ export function buildFlashTab(root: HTMLElement): void {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const access = async (): Promise<any> => new Updater(await navigator.requestMIDIAccess({ sysex: true }), log);
 
-  const run = async (name: string, fn: () => Promise<void>): Promise<void> => {
+  /** every button's action; `installs` (the four install runs, not Check the connection) guards the page against
+   *  closing until the run ends */
+  const run = async (name: string, fn: () => Promise<void>, installs = false): Promise<void> => {
     if (busy) return;
     busy = true;
     setButtons();
+    if (installs) {
+      unload.arm();
+      keepOpen.hidden = false;
+    }
     bar.value = 0;
     log(`\n— ${name}`);
     try {
@@ -102,6 +125,8 @@ export function buildFlashTab(root: HTMLElement): void {
       if (err.code === 'otherloader') log(`ERROR: ${otherLoader(err.detail ?? '')}`);
       else log(`ERROR: ${(err.code && ERRORS[err.code]) || err.message}${err.detail ? ` (${err.detail})` : ''}`);
     } finally {
+      unload.disarm();
+      keepOpen.hidden = true;
       busy = false;
       setButtons();
     }
@@ -163,7 +188,7 @@ export function buildFlashTab(root: HTMLElement): void {
       const sum = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), (b) => b.toString(16).padStart(2, '0')).join('');
       if (sum !== bundle.sha256) throw new Error('the bundled firmware package does not match its checksum');
       await install(raw);
-    });
+    }, true);
   void loadBundle().then((b) => {
     bundle = b;
     bundleInfo.textContent = b
@@ -190,7 +215,7 @@ export function buildFlashTab(root: HTMLElement): void {
       const f = pkgFile.files?.[0];
       if (!f) throw new Error('choose a .fwsc package first');
       await install(await readFile(f));
-    });
+    }, true);
 
   // ---- return to stock: M-VAVE's V15 comes with the app (Apache-2.0, from m-vave/fm1_open); validateStockPackage checks
   // its size, SHA-256 and layout before anything is sent, for the bundled file and for one the user picks alike
@@ -205,7 +230,7 @@ export function buildFlashTab(root: HTMLElement): void {
       const r = await fetch(`./firmware/${STOCK_FILE}`, { cache: 'no-cache' });
       if (!r.ok) throw new Error('the bundled official V15 could not be loaded: use your own FM-1.fwsc below');
       await returnToStock(new Uint8Array(await r.arrayBuffer()));
-    });
+    }, true);
   const stockOnly = el('input', { type: 'file', accept: '.fwsc' });
   const stockFileBtn = el('button', { textContent: 'Return with this file' });
   stockFileBtn.onclick = () =>
@@ -213,7 +238,7 @@ export function buildFlashTab(root: HTMLElement): void {
       const f = stockOnly.files?.[0];
       if (!f) throw new Error('choose the unmodified official FM-1.fwsc');
       await returnToStock(await readFile(f));
-    });
+    }, true);
 
   function setButtons(): void {
     findBtn.disabled = busy || !supported;
@@ -284,7 +309,7 @@ export function buildFlashTab(root: HTMLElement): void {
       el('p', { class: 'muted', textContent: 'A finished .fwsc from tools/build.py (it must carry the update loader).' }),
       el('div', { class: 'row' }, pkgFile, pkgBtn),
     ),
-    el('div', { class: 'card' }, bar, logEl),
+    el('div', { class: 'card' }, bar, keepOpen, logEl),
   );
   setButtons();
 }
