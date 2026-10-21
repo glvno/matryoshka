@@ -868,6 +868,7 @@ void fm1_cstart(void)
         diag_prev.stall = diag;
     if (fm1_crash.magic == FM1_CRASH_MAGIC)
         diag_prev.crash = fm1_crash;
+    fm1_crash.magic = 0;                        /* read once: the next report is a new crash */
     diag.magic = DIAG_MAGIC;
     diag.n = 0;
     fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);

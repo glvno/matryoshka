@@ -91,7 +91,7 @@ class Link:
                         if want[0] == 0x41 or p[0] == want[1]:
                             return p
                 time.sleep(0.002)
-        sys.exit("no answer from the FM-1 (is it running the Modular-1 firmware with the editor protocol?)")
+        sys.exit(f"no answer from the FM-1 to command {msg.data[3]:#04x} (is it running the Modular-1 firmware with the editor protocol?)")
 
     def ack(self, msg, cmd, wait=0.8, tries=3):
         p = self.ask(msg, (0x40, cmd), tries, wait)
