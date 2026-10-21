@@ -66,7 +66,7 @@ the bars, #102 / #103 A/B flip bugs.
   is in the middle of something there.
 - **Reading the user's localhost storage:** opening any http://localhost:5173 path in a tab (even `/@vite/client` or a
   missing file) runs the app (Vite answers with index.html), which can write their localStorage. Prefer asking the user
-  to run `copy(localStorage['modular-1.patch'])` in their console and paste it, or keep such a tab open for seconds only.
+  to run `copy(localStorage['matryoshka.patch'])` in their console and paste it, or keep such a tab open for seconds only.
 - Headless checks: Playwright lives in `web/dev/demo` (`node_modules`); put throwaway scripts in `web/dev/demo/scripts/`
   and delete them after. `scripts/setup.mjs` there opens the app with a patch and a zoom.
 - `gh` defaults to glvno/matryoshka (`gh repo set-default` done); `-R glvno/matryoshka` still works. Labels:

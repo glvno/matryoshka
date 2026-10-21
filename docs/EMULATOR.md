@@ -2,7 +2,7 @@
 
 [fm1-emu](https://github.com/joakimeriksson/fm1-emu) (Joakim Eriksson, MIT) emulates the FM-1's JieLi AC791N: the
 pi32v2 cores, timers, interrupts, SPI flash, the 240×240 LCD, the key matrix and encoders, the MASTER pot, the I2S
-audio and the TRS MIDI input. Our `modular-1.bin` runs on it unchanged. `tools/emu/` is a small Rust crate (`m1emu`)
+audio and the TRS MIDI input. Our `matryoshka.bin` runs on it unchanged. `tools/emu/` is a small Rust crate (`m1emu`)
 on fm1-emu's `fm1-core` / `fm1-soc`, pinned to commit `7ca5b96` in `tools/emu/Cargo.toml` (a git dependency, nothing
 of fm1-emu is copied into this repository). Two decoder fixes are applied to it at build time: `tools/emu/isa_fix.sh` copies
 fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa`, corrects two decoder entries and hands
@@ -16,7 +16,7 @@ own slot layout, so `r4 = r9 & ~(1 << r2) #` in `dm_keys` (the Drum map, format 
 the factory patches (pc 0x020032d2). It now has its three siblings' layout (`&`, `& #`, `&~`: mask `0xfffff`, dest =
 bits 28..31, source = 20..23, shift register = 24..27). fm1-core already runs `#` pairs with the second instruction
 seeing the old registers. The firmware CI keeps the ELF and
-its disassembly (artifact `modular-1-elf`) for tracing such faults to a function.
+its disassembly (artifact `matryoshka-elf`) for tracing such faults to a function.
 
 **Run it locally before any device work.** It is not part of CI (the user's call: too expensive on Actions).
 
@@ -25,8 +25,8 @@ its disassembly (artifact `modular-1-elf`) for tracing such faults to a function
 - `cd web && npm run emu:smoke [-- FIRMWARE]`: the smoke test (below), about two minutes on an M1.
 - `cd web && npm run emu [-- FIRMWARE]`: the firmware in fm1-live's window (LCD, keys, buttons, knobs, sound, every
   MIDI input into the TRS jack; fm1-live prints its key map; built once into `tools/emu/live/`).
-- Without FIRMWARE both take `build/modular-1.bin`, else download the latest firmware artifact of a successful
-  `firmware` run on `main` with `gh` (`build/emu/ci/`), else unpack `web/public/firmware/modular-1.fwsc`.
+- Without FIRMWARE both take `build/matryoshka.bin`, else download the latest firmware artifact of a successful
+  `firmware` run on `main` with `gh` (`build/emu/ci/`), else unpack `web/public/firmware/matryoshka.fwsc`.
 - `tools/emu_smoke.sh [BIN]` is what `emu:smoke` runs (`M1EMU_STRICT=1` makes
   level warnings fail). `tools/emu/target/release/m1emu run BIN --ms N --keys SCRIPT --snap MS,.. --wav F
   --flash-in F --flash-out F --text S` is a free run (SCRIPT as fm1-emu's: `800:n7,1500:n7^,2000:e6:1,2500:mc005`;

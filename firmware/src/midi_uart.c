@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Modified for Modular-1 (morgulbrut): the messages feed the one voice through midi_drain (main.c). */
+ * Modified for Modular-1 (morgulbrut) and Matryoshka (glvno): the messages feed the one voice through midi_drain (main.c). */
 /* MIDI IN on the TRS jack: PH8 -> input channel 1 -> UART1 RX, 31250 baud,
  * RX DMA into a 128-byte ring, polled from the TIMER5 ISR (no UART IRQ).
  * Channel messages go into midi_in_q next to USB, as USB-MIDI packets (cable 0, CIN = status >> 4), on any channel;

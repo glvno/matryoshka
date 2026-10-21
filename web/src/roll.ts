@@ -18,6 +18,7 @@
 import { ARP_RATES } from './arpeggiator';
 import { NOTE_NAMES } from './modules';
 import type { ModuleInst } from './patch';
+import { renamedKey } from './storage-key';
 import { fixNotes, STEP_VEL, STEPS_MAX, type StepNote } from './track';
 
 export interface RollOps {
@@ -47,7 +48,7 @@ const RH = 12;
 const EDGE = 6;
 const BLACK = new Set([1, 3, 6, 8, 10]);
 /** the drawer's height (px) when nothing was set; the user's own is kept per browser */
-const ROLL_H = 'modular-1.roll-h';
+const ROLL_H = renamedKey('matryoshka.roll-h', 'modular-1.roll-h');
 const ROLL_H_MIN = 200;
 /** px of vertical drag per velocity step (Cmd-drag on a note) */
 const VEL_PX = 1;

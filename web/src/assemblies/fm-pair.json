@@ -1,5 +1,5 @@
 {
-  "format": "modular-1-assembly",
+  "format": "matryoshka-assembly",
   "version": 1,
   "name": "fm pair",
   "category": "Voices",

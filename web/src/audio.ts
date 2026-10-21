@@ -69,7 +69,7 @@ export class AudioHost {
   private async prepare(ctx: AudioContext): Promise<void> {
     try {
       await ctx.audioWorklet.addModule(workletUrl);
-      const node = new AudioWorkletNode(ctx, 'modular-1', { numberOfInputs: 0, outputChannelCount: [2] });
+      const node = new AudioWorkletNode(ctx, 'matryoshka', { numberOfInputs: 0, outputChannelCount: [2] });
       node.port.onmessage = (ev) => {
         if (ev.data?.error) {
           this.latestValues = null; this.onValues(null); this.onError(ev.data.error);

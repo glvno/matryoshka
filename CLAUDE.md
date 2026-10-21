@@ -1,4 +1,4 @@
-# Matryoshka (Modular-1) — notes for Claude
+# Matryoshka — notes for Claude
 
 Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (`web/`, Vite + TS) with its own engine, and FM-1 firmware (`firmware/`) that plays the same patches. Owner: morgulbrut. Read first: `README.md`, `docs/ARCHITECTURE.md` (the design, formats, numbers), `docs/HANDOFF.md` (where the last session stopped), `LICENSING.md`.
 
@@ -53,7 +53,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 
 ## Browser checks
 
-- Use http://[::1]:5173 (same dev server, its own localStorage) so the user's patch, bank and progress stay untouched; else copy `localStorage['modular-1.patch']` aside first (a source edit reloads the page and drops undo history).
+- Use http://[::1]:5173 (same dev server, its own localStorage) so the user's patch, bank and progress stay untouched; else copy `localStorage['matryoshka.patch']` aside first (a source edit reloads the page and drops undo history).
 - The computer tool's click coordinates are in its screenshot's frame, which can be smaller than the page (1512 vs 1728 CSS px on this Mac): scale by frame / `innerWidth`. Synthetic key events go to `document.body`. Stub `window.prompt` before actions that open dialogs. `setPointerCapture` throws for synthetic pointers.
 - Open `/lesson-editor` by navigating from the synth page (a new tab gets 403).
 

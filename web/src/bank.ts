@@ -8,6 +8,7 @@ import { validatePatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
 import { PRESETS } from './presets';
 import { SLOTS } from './protocol';
+import { renamedKey } from './storage-key';
 import { removeSaved, savedPatches, onSavedChange } from './saved';
 import { decodeShare, shareCodeOf } from './share';
 
@@ -17,7 +18,7 @@ interface Entry {
   patch?: Patch;
 }
 
-const STORE = 'modular-1.bank';
+const STORE = renamedKey('matryoshka.bank', 'modular-1.bank');
 /** the editor's patches that do not fit the FM-1: played in the browser only, never uploaded */
 const STORE_OVER = 'matryoshka.bank-over';
 

@@ -3,7 +3,7 @@
 /* The firmware side of ota.c (FELUCCA_OTA): clock and watchdog, erases and writes only inside the
  * OTA area, the progress screen, the commit (record into RAM, core reset). The host test
  * (ota_test.c) provides its own. */
-/* Modular-1: text through text5x7 (font5x7.c) instead of Felucca's UI toolkit */
+/* Matryoshka: text through text5x7 (font5x7.c) instead of Felucca's UI toolkit */
 static void ota_text(uint32_t y, const char *s)
 {
     uint32_t n = str_len(s);

@@ -1,5 +1,5 @@
 {
-  description = "Modular-1 dev shell: web app + JieLi firmware toolchain";
+  description = "Matryoshka dev shell: web app + JieLi firmware toolchain";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 

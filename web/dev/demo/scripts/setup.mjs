@@ -39,7 +39,7 @@ export async function open(url = 'http://localhost:5173/') {
     p.modules.find((m) => m.type === 'fm1').params.tempo = 97;
     setKind(p, 'arp', 'nothing');
     p.cables = p.cables.filter((c) => !(c.from.port === 'arp' && p.modules.find((m) => m.id === c.from.module)?.type === 'fm1'));
-    localStorage.setItem('modular-1.patch', JSON.stringify(p));
+    localStorage.setItem('matryoshka.patch', JSON.stringify(p));
   });
   await page.reload();
   await page.waitForTimeout(1500);

@@ -24,7 +24,7 @@ export async function rig(page, pos) {
   for (const name of ['kick', 'hats']) await page.locator(`button[title^="${name} on / off"]`).first().click();
   await page.waitForTimeout(1500);   // (the app's own save of these lands first)
   await page.evaluate(({ pos, KICK_STEPS, HAT_STEPS }) => {
-    const p = JSON.parse(localStorage.getItem('modular-1.patch'));
+    const p = JSON.parse(localStorage.getItem('matryoshka.patch'));
     const asm = (n) => p.assemblies.find((a) => a.name === n);
     const kick = asm('kick'), hats = asm('hats');
     const steps = p.modules.filter((m) => m.type === 'steps');
@@ -41,7 +41,7 @@ export async function rig(page, pos) {
       for (const port of ['l', 'r']) p.cables.push({ from: { module: o.module, port: o.port }, to: { module: out.id, port } });
     }
     Object.assign(kick, pos.kick); Object.assign(ks, pos.ks); Object.assign(hats, pos.hats); Object.assign(hs, pos.hs);
-    localStorage.setItem('modular-1.patch', JSON.stringify(p));
+    localStorage.setItem('matryoshka.patch', JSON.stringify(p));
   }, { pos, KICK_STEPS, HAT_STEPS });
   await page.reload();
   await page.waitForTimeout(1500);

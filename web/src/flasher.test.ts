@@ -119,11 +119,11 @@ describe('the flasher\'s MIDI listener', () => {
     const listeners = new Set<(ev: { data: Uint8Array }) => void>();
     const editor = (): void => {};
     const input = {
-      name: 'Modular-1', state: 'connected', onmidimessage: editor, open: async () => {},
+      name: 'Matryoshka', state: 'connected', onmidimessage: editor, open: async () => {},
       addEventListener: (_: string, f: (ev: { data: Uint8Array }) => void) => listeners.add(f),
       removeEventListener: (_: string, f: (ev: { data: Uint8Array }) => void) => listeners.delete(f),
     };
-    const output = { name: 'Modular-1', state: 'connected', open: async () => {}, send: () => setTimeout(() => listeners.forEach((f) => f({ data: new Uint8Array(identity) })), 1) };
+    const output = { name: 'Matryoshka', state: 'connected', open: async () => {}, send: () => setTimeout(() => listeners.forEach((f) => f({ data: new Uint8Array(identity) })), 1) };
     const up = new Updater({ inputs: new Map([['i', input]]), outputs: new Map([['o', output]]) });
     const dev = (await up.find())!;
     expect(dev.id.text).toBe('FM-1_800');

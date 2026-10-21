@@ -285,10 +285,18 @@ describe('assemblies', () => {
     expect(emptyPatch().modules).toEqual([]);
   });
 
+  it('a file saved under the upstream format name (modular-1-assembly) still loads, as a matryoshka-assembly', () => {
+    const { p, osc, vca } = voice();
+    const raw = { format: 'modular-1-assembly', version: 1, name: 'old', modules: p.modules.filter((m) => m.id === osc || m.id === vca).map((m) => ({ ...m })),
+      cables: [], inputs: [], outputs: [{ label: 'out', module: vca, port: 'out' }], params: [] };
+    expect(validateAssemblyDef(raw, DEFS).format).toBe('matryoshka-assembly');
+    expect(() => validateAssemblyDef({ ...raw, format: 'something-else' }, DEFS)).toThrow('not a Matryoshka assembly');
+  });
+
   it('a definition with the Main panel or the Output loses them on load (their cables, ports and parameters too)', () => {
     const { p, kb, osc, env, vca, out } = voice();
     const raw = {
-      format: 'modular-1-assembly',
+      format: 'matryoshka-assembly',
       version: 1,
       name: 'with io',
       modules: p.modules.map((m) => ({ ...m })),
@@ -305,7 +313,7 @@ describe('assemblies', () => {
     expect(d.inputs.map((r) => r.label)).toEqual(['gate']);
     expect(d.outputs.map((r) => r.label)).toEqual(['out']);
     expect(d.params.map((r) => r.label)).toEqual(['cut']);
-    expect(() => validateAssemblyDef({ format: 'modular-1-assembly', version: 1, name: 'io only', modules: [{ id: 1, type: 'fm1', x: 0, y: 0, params: {} }], cables: [], inputs: [], outputs: [], params: [] }, DEFS)).toThrow(/at least one module/);
+    expect(() => validateAssemblyDef({ format: 'matryoshka-assembly', version: 1, name: 'io only', modules: [{ id: 1, type: 'fm1', x: 0, y: 0, params: {} }], cables: [], inputs: [], outputs: [], params: [] }, DEFS)).toThrow(/at least one module/);
   });
 
   it('every factory assembly sits on one of the browser shelves', () => {

@@ -910,3 +910,21 @@ A spare FM-1 with stock V15 (`FM-1_015`). Tools: `build/venv` (uv venv with mido
 - **The build:** `lcd-partial` 7df4465, from CI run 39550664956. Installed with `build/venv/bin/python tools/fm1_install.py` from `FM-1_700` to `FM-1_700`: the write reached 100 %, the device restarted and its identity was checked.
 - **The user's check:** turning a knob no longer blinks the toast's title, lo / hi labels, track or unchanged digits; only the value and the bar change. The device-name toast on SELECT works (808 Kit / Init).
 - **Found along the way:** 14 of the 17 factory patches are one device, so SELECT does nothing on them. Opened as #142.
+
+## 2026-10-21: "Modular-1" renamed to Matryoshka in the software (branch `rename-matryoshka`)
+
+Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
+- **USB product string:** `Matryoshka`, so the MIDI port is named after it. macOS may keep showing a name it cached for the VID / PID until the device is removed in Audio MIDI Setup. The host tools (`fm1_install.py`, `m1_link.py`, `device.ts`, `mirror.ts`, `fm1ota.js`) match `matryoshka` and still match `modular`, for devices on older builds.
+- **Build outputs:** `build/matryoshka.{bin,fwsc,elf,dis}`, CI artifacts `matryoshka-firmware` / `matryoshka-elf`, the bundled `web/public/firmware/matryoshka.{fwsc,json}`. Firmware runs on `main` before this merge keep the old artifact names.
+- **Saved data:**
+  - localStorage `matryoshka.{patch,bank,assemblies,roll-h}`: `storage-key.ts` `renamedKey` copies a `modular-1.*` value over on first read, and keeps the old key as a backup.
+  - Assembly files: `format: "matryoshka-assembly"`; `validateAssemblyDef` still reads `modular-1-assembly` (`LEGACY_ASSEMBLY_FORMAT`) and loads it as the new one.
+  - Worklet processor: `matryoshka`.
+- **Kept on purpose:**
+  - credits and links to upstream (about.ts, README, LICENSING, the `upstream` remote);
+  - the GPL modification notices (now "Modified for Modular-1 (morgulbrut) and Matryoshka (glvno)");
+  - the `modular-1-v*` tags and this log's history;
+  - the SysEx manufacturer bytes `4D 31` ("M1", protocol compatibility);
+  - internal names (`m1_link.py`, `m1emu`, `M1_*`, `modular.c`);
+  - the AI-stats project ids.
+- **Open:** the version string `M1-1.1.0-dev` (MENU > VERSION, splash) still says M1; the user decides the 1.0 numbering.

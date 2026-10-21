@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Modified for Modular-1 (morgulbrut). */
+ * Modified for Modular-1 (morgulbrut) and Matryoshka (glvno). */
 /* I2S output (ALNK0 -> external codec) and the audio ISR, which renders the patch engine. Registers: hal/fm1_audio.h */
 #define HALF_FRAMES 128u          /* I2S half buffer: 2.9 ms at 44.118 kHz */
 #define HALF_WORDS (HALF_FRAMES * 2u)

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Modified for Modular-1 (morgulbrut). */
-/* Modular-1 bring-up firmware: one compilation unit (the HAL is header-only). Boots on Felucca's HAL, shows its
+ * Modified for Modular-1 (morgulbrut) and Matryoshka (glvno). */
+/* Matryoshka firmware: one compilation unit (the HAL is header-only). Boots on Felucca's HAL, shows its
  * identity on the LCD, plays a sine on MIDI notes, and keeps Felucca's USB-MIDI + OTA path so it can be re-flashed. */
 
 #ifndef FELUCCA_ID
