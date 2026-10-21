@@ -57,6 +57,7 @@ static int m1_slot_erase(uint32_t slot);
 static int m1_slot_info(uint32_t slot, char *name, uint32_t *len);
 static uint32_t m1_diag(uint32_t page, uint8_t *out);          /* main.c: the DIAG command's pages */
 static void m1_ui_changed(void);                               /* main.c: a live edit changed what the LCD shows */
+static void m1_ui_rows(void);                                  /* main.c: a live parameter changed: the rows */
 static void m1_transport(int run);                             /* main.c: the editor's TRANSPORT command (PLAY) */
 static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the editor's FOCUS command (a device page) */
 #include "proto.c"

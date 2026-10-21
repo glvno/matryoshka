@@ -30,6 +30,7 @@ static int m1_store(const uint8_t *p, uint32_t n)
 }
 static int m1_flash_ok(void) { return 1; }
 static void m1_ui_changed(void) {}
+static void m1_ui_rows(void) {}
 static int transport_calls;
 static void m1_transport(int run) { (void)run; transport_calls++; }
 static uint32_t focus_calls, focus_dev, focus_page;

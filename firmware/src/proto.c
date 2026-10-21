@@ -10,6 +10,7 @@
  *   static int  m1_slot_erase(uint32_t slot);
  *   static int  m1_slot_info(uint32_t slot, char *name, uint32_t *len);                          1 = the slot holds a preset
  *   static uint32_t m1_diag(uint32_t page, uint8_t *out);       DIAG: up to 32 bytes of page n of the diagnostics, 0 = past the end
+ *   static void m1_ui_rows(void);                               a live parameter changed: the page's rows need a redraw
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"
@@ -588,6 +589,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
             int32_t v = (int32_t)((uint32_t)d[2] | (uint32_t)d[3] << 8 | (uint32_t)d[4] << 16 | (uint32_t)d[5] << 24);
             eng_set_param(d[0], d[1], v);
             m1_patch_param(d[0], d[1], v);
+            m1_ui_rows();                                    /* the LCD shows the value the editor set */
         }
         break;
     case C_SLOT: {                                           /* the uploaded patch into preset slot n, without loading it */
