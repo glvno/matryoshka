@@ -67,6 +67,10 @@
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
+/* no page zoom (#153): a pinch zooms the canvas only; scrolling still works everywhere. iOS zooms the page in on a focused
+   text field under 16px and does not zoom back, so on touch screens the fields are 16px */
+html { touch-action: pan-x pan-y; }
+@media (pointer: coarse) { :is(input:not([type=range]), select, textarea) { font-size: 16px !important; } }
 /* Scroll bars everywhere: thin, a faint ink thumb on no track, in either scheme (the tokens follow it); a little firmer on
    hover. Chrome and Safari draw the -webkit- pseudo-elements; Chrome ignores those wherever scrollbar-width / -color is
    set (and macOS overlay bars ignore scrollbar-color), so the standard properties are for Firefox only. */
@@ -196,7 +200,9 @@ main { min-width: 0; min-height: 0; overflow: auto; }
 .tab[hidden] { display: none; }
 #tab-presets, #tab-assemblies, #tab-flash { width: min(100%, 640px); margin: 0 auto; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-.canvas { position: relative; overflow: auto; border: 0; border-radius: 0; background: transparent; }
+/* touch-action: none: the canvas's own pinch, two-finger pan and one-finger pan (editor.ts touchGestures, rubberBand)
+   take its gestures, not the browser's page zoom or scroll (#153) */
+.canvas { position: relative; overflow: auto; border: 0; border-radius: 0; background: transparent; touch-action: none; }
 .cables { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .cable { fill: none; stroke-width: 3; opacity: .85; pointer-events: stroke; cursor: pointer; }
 .cable.audio { stroke: var(--audio); } .cable.control { stroke: var(--control); } .cable.gate { stroke: var(--gate); }
@@ -562,6 +568,9 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .dock { display: flex; min-width: 0; margin-top: -8px; padding-top: 8px; overflow-x: auto; overflow-y: hidden; pointer-events: none;
   background: linear-gradient(transparent 8px, var(--line) 8px, var(--line) 9px, var(--panel) 9px); }
 .dock > * { pointer-events: auto; }
+/* touch: iOS leaves a scroller that takes no pointer out of its touch scrolling, so on touch screens the dock and the
+   wheels take them, band and all (the band covers the canvas's bottom 8px, empty grid in practice) (#153) */
+@media (pointer: coarse) { .dock, .wheels { pointer-events: auto; } }
 .dock-main { display: flex; align-items: stretch; padding: 0 0 0 8px; }
 .dock-title { align-self: center; padding-right: 8px; font-weight: 650; writing-mode: vertical-rl; transform: rotate(180deg); font-size: 12px; color: var(--muted); }
 /* Columns of related controls, spread across the panel: jacks along the top (the cables come down to them), the
@@ -626,7 +635,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
    latch light at the top right; on (held or switched) is the accent fill, as the Play button */
 .panel-btn { position: relative; font: var(--cap); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; padding: 0 6px; min-height: 26px;
   border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); cursor: pointer;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: none; }
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; touch-action: pan-x; } /* a sideways swipe scrolls the dock */
 .panel-btn:hover { border-color: var(--secondary); filter: none; }
 .panel-btn[aria-pressed=true] { background: var(--accent); color: var(--accent-ink, #fff); border-color: var(--accent); }
 /* a patch button's face (board E): the label with its kind mark, the FM-1 name under it, a light at the top right
@@ -683,7 +692,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .knob-stem { flex: 1 1 4px; min-height: 4px; width: 2px; margin: -4px 0; background: var(--knob); opacity: .5; }
 .deck-knob > .dial { flex: none; }
 .deck-knob.off { opacity: .4; pointer-events: none; }
-.dial { --v: .5; position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; cursor: ns-resize; touch-action: none;
+.dial { --v: .5; position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; cursor: ns-resize; touch-action: pan-x;
   background: conic-gradient(from -135deg, var(--knob) calc(var(--v) * 270deg), var(--line) 0 270deg, transparent 0); }
 .dial::after { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--panel); box-shadow: 0 1px 2px var(--shadow); }
 .dial::before { content: ''; position: absolute; z-index: 1; left: calc(50% - 1px); top: 6px; width: 2px; height: 7px; border-radius: 1px; background: var(--ink);
@@ -694,7 +703,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 /* the wheels: a recessed track and a ridge at the value; bend rests in the middle */
 .deck-wheels { display: flex; gap: 6px; align-items: stretch; padding: 2px 0; }
 .deck-wheel { display: grid; grid-template-rows: 1fr auto; justify-items: center; gap: 3px; font-size: 9px; font-weight: 650; color: var(--muted); }
-.wheel { --v: 0; position: relative; width: 20px; border-radius: 5px; cursor: ns-resize; touch-action: none; overflow: hidden;
+.wheel { --v: 0; position: relative; width: 20px; border-radius: 5px; cursor: ns-resize; touch-action: pan-x; overflow: hidden;
   background: linear-gradient(var(--shadow), transparent 30%, transparent 70%, var(--shadow)), var(--bg); border: 1px solid var(--line); }
 .wheel::after { content: ''; position: absolute; left: 2px; right: 2px; height: 6px; border-radius: 2px; background: var(--secondary);
   bottom: calc(var(--v) * (100% - 6px)); }

@@ -65,6 +65,7 @@ import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
 import { clipText, copyItems, pasteClip, type Clip } from './clipboard';
 import { GUTTER_ROOM, ribbons, type RibbonCable, type RibbonFrame } from './ribbons';
+import { pinchStart, pinchStep, type Pinch } from './touch';
 import type { ScreenSpec } from './scope-view';
 import type { EnvSpec } from './env-view';
 import { EXCLUDED_TYPES,
@@ -1542,6 +1543,11 @@ export class Editor {
     let gestureFrom = m.params[pd.name];
     let lastInput = 0;
     input.oninput = () => {
+      // a pinch took over from the finger on the slider (touchGestures put the value back): the thumb stays
+      if (this.pinching) {
+        input.value = String(posOf(m.params[pd.name]) + offset);
+        return;
+      }
       const now = performance.now();
       if (now - lastInput > TYPE_GAP_MS) gestureFrom = m.params[pd.name];
       lastInput = now;
@@ -1964,38 +1970,76 @@ export class Editor {
     this.canvas.scrollTo(x0 * this.zoom, y0 * this.zoom);
   }
 
-  /** pinch to zoom and one-finger pan on the empty canvas (touch), Ctrl / Cmd + wheel to zoom (trackpads) */
+  /** two fingers are (or were, until every finger is up) on the canvas: the view's, no control's */
+  private pinching = false;
+  /** stops what one finger on the canvas is doing (a card drag, a pan) without finishing it: a second finger takes over */
+  private oneFinger: (() => void) | null = null;
+
+  /**
+   * Touch (#153): a two-finger pinch zooms around the fingers' midpoint and a two-finger drag pans, wherever the fingers
+   * start (.canvas has touch-action: none, so the browser leaves the gesture to us). The listeners are in the capture
+   * phase, so fingers on controls that stop propagation count too. When the second finger lands, what the first one did is
+   * put back: a card drag or a slider's change (the open gesture's snapshot), a cable being drawn. A pinch is only the
+   * view, never an undo step. Ctrl / Cmd + wheel zooms (trackpads).
+   */
   private touchGestures(): void {
     const pts = new Map<number, Pt>();
-    let pinch: { d: number; z: number } | null = null;
+    let pinch: Pinch | null = null;
+    let prev: [Pt, Pt] | null = null;
     this.canvas.addEventListener('wheel', (e) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
       this.zoomAround(this.zoom * Math.exp(-e.deltaY / 400), false, { x: e.clientX, y: e.clientY });
     }, { passive: false });
+    const two = (): [Pt, Pt] => [...pts.values()].slice(0, 2) as [Pt, Pt];
     this.canvas.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'touch') return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 2) {
-        const [a, b] = [...pts.values()];
-        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: this.zoom };
+      if (pts.size < 2) return;
+      // the second finger (or a third) starts nothing of its own
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      if (!this.pinching) {
+        this.pinching = true;
+        this.undoFirstFinger();
       }
-    });
+      prev = two();
+      pinch = pinchStart(prev[0], prev[1], this.zoom);
+    }, true);
     const end = (e: PointerEvent): void => {
-      pts.delete(e.pointerId);
-      if (pts.size < 2) pinch = null;
+      if (!pts.delete(e.pointerId)) return;
+      if (pts.size < 2) pinch = prev = null;
+      else {
+        prev = two();
+        pinch = pinchStart(prev[0], prev[1], this.zoom);
+      }
+      if (!pts.size) this.pinching = false;
     };
-    this.canvas.addEventListener('pointerup', end);
-    this.canvas.addEventListener('pointercancel', end);
-    this.canvas.addEventListener('pointermove', (e) => {
+    // (on the window: a finger lifted off the canvas, or one whose card the undo rebuilt, still ends)
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
+    window.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'touch' || !pts.has(e.pointerId)) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pinch && pts.size === 2) {
-        const [a, b] = [...pts.values()];
-        this.zoomAround(pinch.z * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.d), false, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
-        e.preventDefault();
-      }
-    });
+      if (!pinch || !prev) return;
+      e.preventDefault();
+      const now = two();
+      const s = pinchStep(pinch, prev, now, ZOOM_MIN, ZOOM_MAX);
+      prev = now;
+      this.canvas.scrollBy(s.pan.x, s.pan.y);
+      this.zoomAround(s.zoom, false, s.at);
+    }, true);
+  }
+
+  /** a second finger landed: put back what the first one did on the canvas */
+  private undoFirstFinger(): void {
+    this.oneFinger?.();
+    this.oneFinger = null;
+    this.cancelArm(); // a cable being drawn
+    const before = this.gesture;
+    if (before === null || !this.gesturePointer) return;
+    if (before === this.snap()) this.dropGesture();
+    else this.restore(before); // a card dragged, a slider moved
   }
 
   /** a long press on a card header (touch): the context actions */
@@ -2468,10 +2512,20 @@ export class Editor {
     btn.setAttribute('aria-pressed', String(engaged));
     const does = glo ? 'Main’s global page on the knobs (tempo, morph, the arpeggiator); again: back' : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
     btn.title = glo ? `GLO: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
+    // touch (#153): the dock scrolls sideways from a button (touch-action: pan-x), so a switch flips when the finger is
+    // let go, unless the browser took the touch for a scroll (pointercancel); a held button lets go on the cancel too
+    let tap = false;
     btn.addEventListener('pointerdown', (e) => {
-      if (e.button === 0) this.pressButton(i, true);
+      if (e.button !== 0) return;
+      tap = e.pointerType === 'touch' && (glo || switches(m.panel, b));
+      if (!tap) this.pressButton(i, true);
     });
-    for (const ev of ['pointerup', 'pointerleave'] as const) btn.addEventListener(ev, () => { if (!switches(m.panel, b) && btn.getAttribute('aria-pressed') === 'true') this.pressButton(i, false); });
+    btn.addEventListener('pointerup', () => {
+      if (tap) this.pressButton(i, true);
+      tap = false;
+    });
+    btn.addEventListener('pointercancel', () => { tap = false; });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel'] as const) btn.addEventListener(ev, () => { if (!switches(m.panel, b) && btn.getAttribute('aria-pressed') === 'true') this.pressButton(i, false); });
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (!glo) this.openButtonEditor(b);
@@ -3301,17 +3355,24 @@ export class Editor {
         lx = ev.clientX;
         ly = ev.clientY;
       };
-      const onUp = (): void => {
+      // `drop`: stop without finishing (a second finger landed; the pinch puts the patch back)
+      const stop = (): void => {
         if (press) clearTimeout(press);
         press = 0;
+        if (this.oneFinger === drop) this.oneFinger = null;
         window.removeEventListener('pointermove', onMove);
         window.removeEventListener('pointerup', onUp);
         window.removeEventListener('pointercancel', onUp);
+      };
+      const drop = (): void => stop();
+      const onUp = (): void => {
+        stop();
         up();
       };
       window.addEventListener('pointermove', onMove);
       window.addEventListener('pointerup', onUp);
       window.addEventListener('pointercancel', onUp);
+      if (e.pointerType === 'touch') this.oneFinger = drop;
     });
   }
 
@@ -3512,7 +3573,12 @@ export class Editor {
   /** a drag on empty canvas selects the cards it touches; a click on empty canvas clears the selection */
   private rubberBand(e: PointerEvent): void {
     const t = e.target as HTMLElement;
-    if (e.button !== 0 || t.closest('.module, .fhead, .dot, button, input, select, .ctx')) return;
+    if (e.button !== 0) return;
+    // touch: one finger on a card's body (not on a control) pans as on the empty canvas (.canvas is touch-action: none,
+    // so the browser no longer scrolls it)
+    const body = e.pointerType === 'touch' && !this.armed && !!t.closest('.module')
+      && !t.closest('.mhead, .fhead, .dot, button, input, select, textarea, summary, label, output, .ctx, .sel-track, .dial, .step, .resize-handle, .arr-item, .param.screen, .rename, .slider-thumb, .slider-knob');
+    if (!body && t.closest('.module, .fhead, .dot, button, input, select, .ctx')) return;
     e.preventDefault();
     // a click on the empty canvas drops an armed jack's ghost cable
     if (this.armed) return this.cancelArm();
@@ -3525,7 +3591,9 @@ export class Editor {
         lx = ev.clientX;
         ly = ev.clientY;
       };
-      const stop = (): void => {
+      const stop = (ev?: PointerEvent): void => {
+        if (ev && ev.pointerId !== e.pointerId) return;
+        if (this.oneFinger === stop) this.oneFinger = null;
         window.removeEventListener('pointermove', pan);
         window.removeEventListener('pointerup', stop);
         window.removeEventListener('pointercancel', stop);
@@ -3533,6 +3601,7 @@ export class Editor {
       window.addEventListener('pointermove', pan);
       window.addEventListener('pointerup', stop);
       window.addEventListener('pointercancel', stop);
+      this.oneFinger = stop; // a second finger: the pinch pans
       return;
     }
     const base = this.canvas.getBoundingClientRect();
