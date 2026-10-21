@@ -3,6 +3,7 @@
   "version": 1,
   "name": "Sallen 20",
   "category": "Voices",
+  "blurb": "MS-20 type shit",
   "modules": [
     {
       "id": 1,

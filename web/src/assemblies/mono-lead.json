@@ -3,6 +3,7 @@
   "version": 1,
   "name": "mono lead",
   "category": "Voices",
+  "blurb": "One voice through a ladder filter, gliding between legato notes",
   "modules": [
     {
       "id": 1,

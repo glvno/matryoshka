@@ -3,6 +3,7 @@
   "version": 1,
   "name": "drum kit",
   "category": "Drums",
+  "blurb": "One drum per key: kick, snare, clap, hats, tom, rim and cowbell",
   "modules": [
     {
       "id": 1,

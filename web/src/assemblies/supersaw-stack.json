@@ -3,6 +3,7 @@
   "version": 1,
   "name": "supersaw stack",
   "category": "Voices",
+  "blurb": "Detuned saws stacked and spread across the stereo field, for pads and leads",
   "modules": [
     {
       "id": 1,

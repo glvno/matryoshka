@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The assembly browser: a two-pane dialog opened from the toolbar's "Insert assembly" button. Shelves down the left (the
-// user's library first, then the Engines and the factory categories), the chosen shelf's entries on the right with name, summary and
-// exposed ports; a search field at the top cuts across every shelf. A click inserts and closes. On a phone the dialog is
-// a full-width sheet (style.css).
+// user's library first, then the Engines and the factory categories), the chosen shelf's entries on the right with name,
+// a line (an engine's blurb, else its modules) and exposed ports; a search field at the top cuts across every shelf. A
+// click inserts and closes. On a phone the dialog is a full-width sheet (style.css).
 import type { AssemblyDef } from './assembly';
-import { ENGINE_SHELF, engineTag, loadLibrary, SHELF_NOTES, summary, USER_SHELF } from './assemblies';
+import { describe, ENGINE_SHELF, engineTag, loadLibrary, SHELF_NOTES, USER_SHELF } from './assemblies';
 import { assemblyShelves, SHELVES } from './catalog';
 import { defIsEngine } from './engines';
 import { score } from './fuzzy';
@@ -100,7 +100,7 @@ export class AssemblyBrowser {
           'li',
           { class: i === this.sel ? 'sel' : '' },
           el('div', { class: 'name' }, ...(defIsEngine(d) ? [engineTag()] : []), el('b', { textContent: d.name }), q ? el('span', { class: 'shelf', textContent: s }) : ''),
-          el('div', { class: 'muted', textContent: summary(d) }),
+          el('div', { class: 'muted', textContent: describe(d) }),
           el('div', { class: 'ports', textContent: portsOf(d) }),
         );
         li.onclick = () => this.pick(d);

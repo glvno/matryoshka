@@ -3,6 +3,7 @@
   "version": 1,
   "name": "Hera 6",
   "category": "Voices",
+  "blurb": "Juno-106 type shit",
   "modules": [
     {
       "id": 1,

@@ -3,6 +3,7 @@
   "version": 1,
   "name": "Expander S",
   "category": "Voices",
+  "blurb": "Oberheim SEM type shit",
   "modules": [
     {
       "id": 1,

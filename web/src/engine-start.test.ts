@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { FACTORY } from './assemblies';
+import { describe as describeDef, FACTORY, summary } from './assemblies';
 import { enginePatch, engineTiles } from './engine-start';
 import { defIsEngine, feedsOutput } from './engines';
 import { DEFS } from './modules';
@@ -23,6 +23,29 @@ describe('"Start with an engine" (#160)', () => {
     }
     expect(by('basic poly').cpu).not.toBeNull(); // the plainest fits
     expect(engineTiles()[0].cpu).toBe(tiles[0].cpu); // memoized
+  });
+
+  it('describes each engine in a line of its own, the owner’s wording for the emulations (2026-10-21)', () => {
+    const by = (n: string) => tiles.find((t) => t.name === n)!.line;
+    expect(by('Oracle V')).toBe('Prophet-5 type shit');
+    expect(by('Monolith D')).toBe('Minimoog Model D type shit');
+    expect(by('Silver Box')).toBe('TB-303 type shit');
+    expect(by('Hera 6')).toBe('Juno-106 type shit');
+    expect(by('Sallen 20')).toBe('MS-20 type shit');
+    expect(by('Expander S')).toBe('Oberheim SEM type shit');
+    expect(by('Algo Four')).toBe('DX100 type shit');
+    expect(by('Canvas')).toBe('Music Easel type shit');
+    expect(by('Wanderer')).toBe('ARP Odyssey type shit');
+    expect(by('Briefcase 3')).toBe('EMS VCS3 type shit');
+    expect(by('Io 4')).toBe('Jupiter-4 type shit');
+    expect(by('Vernon 100')).toBe('ElectroComp 100 type shit');
+    for (const t of tiles) {
+      expect(t.def.blurb, t.name).toBeTruthy();
+      expect(t.line, t.name).toBe(t.def.blurb);
+    }
+    // the user's own engine has no blurb: the module list stands in
+    const own = { ...tiles[0].def, name: 'mine', blurb: undefined };
+    expect(describeDef(own)).toBe(summary(own));
   });
 
   it('a pick is a valid new patch that plays from the keys', () => {
