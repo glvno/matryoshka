@@ -9,7 +9,7 @@ import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildBankTab } from './bank';
-import { isSaved, onSavedChange, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch } from './saved';
+import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
 import { showUndo } from './toast';
 import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesTab, storeAssembly, storeTutorialAssembly } from './assemblies';
@@ -450,7 +450,7 @@ const tutorial = new Tutorial({
   mute: (on) => host.mute(on),
   startAudio: () => startAudio(),
   preview: (p) => host.setPatch(p ?? editor.patch),
-  load: (p) => { sink.send({ t: 'panic' }); loadNamed(p); },
+  load: (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true }); },
   note: (on, note = 60, vel = 0.8) => sink.send(on ? { t: 'on', note, vel } : { t: 'off', note }),
   library: loadLibrary,
   saveAssembly: (def) => {
@@ -498,10 +498,8 @@ onSavedChange(fillPicker);
 void inlineWordmarks(); // the sidebar's wordmark in the theme's colours
 presetSel.onchange = () => {
   const o = openableByValue(presetSel.value);
-  if (o) { editor.setPatch(o.load()); closeSidebar(); }
-  setBaseline();
+  if (o) { loadNamed(o.load(), { from: o.value.startsWith('saved:') ? o.name : undefined }); closeSidebar(); }
   presetSel.value = '';
-  $<HTMLInputElement>('patch-name').value = editor.patch.name;
 };
 /** delete one of Your patches at once, with an Undo toast instead of a question (Library rows, the trash icon) */
 function deleteSaved(name: string): void {
@@ -525,7 +523,17 @@ const saveCurrent = (): void => {
     status.textContent = 'name the patch first, then save';
     return;
   }
-  status.textContent = keepPatch(editor.patch);
+  const { msg, ok, replaced } = keepPatch(editor.patch);
+  status.textContent = msg;
+  // a save over another patch of that name offers Undo; over the copy the patch was opened from it is the expected save (#148)
+  const before = openedFrom;
+  if (replaced && replaced.name !== openedFrom) {
+    showUndo(`"${replaced.name}" replaced in Your patches`, () => {
+      openedFrom = before;
+      status.textContent = putBackSaved(replaced) ? `the earlier "${replaced.name}" is back in Your patches` : `"${replaced.name}" could not be put back: the browser refused the storage`;
+    });
+  }
+  if (ok) openedFrom = editor.patch.name.trim();
   saveBtn.classList.add('saved');
   setTimeout(() => saveBtn.classList.remove('saved'), 900);
 };
@@ -732,15 +740,46 @@ const commands = (): Command[] => {
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
     ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: m.def.label, run: () => editor.add(m.type) })),
     ...assemblyShelves().map((a) => assembly(a.def, a.shelf)),
-    ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.name, detail: g.label, run: () => loadNamed(o.load()) }))),
+    ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.name, detail: g.label, run: () => loadNamed(o.load(), { from: g.label === 'Your patches' ? o.name : undefined }) }))),
   ];
 };
-const loadNamed = (p: Patch): void => {
-  switchTab('patch');
+/**
+ * Open a patch in the editor (every load of the user's goes through here). `from`: the Your patches name it came from;
+ * `once`: it cannot be opened again as it is (a share link, an Undo's patch); `stay`: keep the current tab; `quiet`: no
+ * Undo (the tutorial, the lesson editor, an Undo itself). A load over a patch with unsaved changes offers Undo (#148).
+ */
+const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean; quiet?: boolean } = {}): void => {
+  const prev = structuredClone(editor.patch);
+  const prevFrom = openedFrom;
+  const chained = loadUndo?.open() && loadUndo.loaded === asLoaded(prev) ? loadUndo : null;
+  const losing = !chained && losesWork(prev);
+  if (!o.stay) switchTab('patch');
   editor.setPatch(p);
   setBaseline();
   nameInput.value = editor.patch.name;
+  openedFrom = o.from ?? '';
+  lastLoad = { patch: asLoaded(editor.patch), reopen: !o.once };
+  loadUndo = null;
+  if (o.quiet || !(chained || losing)) return;
+  const back = chained ?? { prev, prevFrom };
+  const name = back.prev.name.trim() || 'Untitled';
+  const open = showUndo(`Opened "${editor.patch.name}". "${name}" was not saved`, () => {
+    loadNamed(back.prev, { from: back.prevFrom, once: true, stay: o.stay, quiet: true });
+    status.textContent = `"${name}" is back`;
+  });
+  loadUndo = { prev: back.prev, prevFrom: back.prevFrom, loaded: lastLoad.patch, open };
 };
+/** the Your patches name the open patch was opened from (or last saved as): saving over that copy offers no Undo (#148) */
+let openedFrom = unsavedChanges(editor.patch, savedPatches()) ? '' : editor.patch.name.trim();
+/** the last load that offered an Undo: the patch before it, and what it put in the editor. A load right after it (the
+ *  PRESET knob turning on) keeps offering the patch before the first, while the toast shows and nothing was edited */
+let loadUndo: { prev: Patch; prevFrom: string; loaded: string; open: () => boolean } | null = null;
+/** the open patch as it was loaded, and whether it can be opened again (all but a share link and an Undo's patch): left
+ *  unedited, a load over it loses nothing */
+let lastLoad: { patch: string; reopen: boolean } | null = null;
+const asLoaded = (p: Patch): string => JSON.stringify({ ...p, view: undefined, octave: undefined });
+/** a load over `p` would lose work: it has unsaved changes, and is not an unedited patch that can be opened again */
+const losesWork = (p: Patch): boolean => unsavedChanges(p, savedPatches()) && !(lastLoad?.reopen && lastLoad.patch === asLoaded(p));
 let palSel = 0;
 let palItems: Command[] = [];
 const palRender = (): void => {
@@ -1187,13 +1226,11 @@ function emuParam(id: number, name: string, value: number): void {
 }
 /** the emulated PRESET knob: the next / previous entry of the Open list's Your patches and Examples */
 function stepOpenList(d: number): void {
-  const list = openableGroups().filter((g) => g.label !== 'Tutorial').flatMap((g) => g.items);
+  const list = openableGroups().filter((g) => g.label !== 'Tutorial').flatMap((g) => g.items.map((o) => ({ ...o, mine: g.label === 'Your patches' })));
   if (!list.length || !d) return;
   const i = list.findIndex((o) => o.name === editor.patch.name);
   const next = list[(((i < 0 ? (d > 0 ? -1 : 0) : i) + d) % list.length + list.length) % list.length];
-  editor.setPatch(next.load());
-  setBaseline();
-  $<HTMLInputElement>('patch-name').value = editor.patch.name;
+  loadNamed(next.load(), { from: next.mine ? next.name : undefined, stay: true });
   status.textContent = `FM-1: ${next.name}`;
 }
 /** the keyboard's notes are the emulated FM-1's keys while its tab shows; on its SEQ page they enter steps and do not
@@ -1328,6 +1365,9 @@ async function storeToSlot(): Promise<void> {
   const n = Math.round(Number(typed));
   if (!typed || !Number.isFinite(n) || n < 1 || n > 64) return;
   try {
+    // a used slot is overwritten only when the user says so (#148); Cancel sends nothing
+    const was = await device.readSlot(n - 1);
+    if (was.used && !window.confirm(`FM-1 slot ${String(n).padStart(2, '0')} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
     await device.uploadSlot(n - 1, editor.patch.name.toUpperCase().slice(0, 20), editor.patch);
     devStatus(`"${editor.patch.name}" stored into FM-1 slot ${String(n).padStart(2, '0')}`);
   } catch (e) {
@@ -1365,12 +1405,20 @@ const loadFromHash = (): void => {
   if (!shared) return;
   void decodeShare(shared, DEFS)
     .then((p) => {
+      const kept = loadSaved();
+      const losing = !!kept && losesWork(kept);
       suppressSave = true;
-      editor.setPatch(p);
+      loadNamed(p, { once: true, stay: true, quiet: true });
       suppressSave = false;
-      setBaseline();
-      nameInput.value = p.name;
       status.textContent = `patch "${p.name}" from the link`;
+      // the remembered patch stays in storage until the first edit; with unsaved changes it is offered back at once (#148)
+      if (kept && losing) {
+        const name = kept.name.trim() || 'Untitled';
+        showUndo(`Opened "${p.name}" from the link. "${name}" was not saved`, () => {
+          loadNamed(kept, { once: true, quiet: true });
+          status.textContent = `"${name}" is back`;
+        });
+      }
       history.replaceState(null, '', location.pathname + location.search);
     })
     .catch((e: Error) => (status.textContent = `the link holds no patch: ${e.message}`));
@@ -1561,7 +1609,7 @@ try {
 const refreshBank = buildBankTab($('tab-library'), device, () => editor.patch, (msg) => {
   devStatus(msg);
   for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
-}, (p) => loadNamed(p), deleteSaved);
+}, (p, from) => loadNamed(p, { from }), deleteSaved);
 refreshAssemblies = buildAssembliesTab($('tab-library'), {
   insert(def) {
     document.querySelector<HTMLButtonElement>('#tabs button[data-tab="patch"]')?.click();
@@ -1622,7 +1670,7 @@ if (import.meta.env.DEV) {
   tutorial.observer = synthLink(() => ({
     patch: editor.patch, selected: [...editor.selected], arpPlay: editor.playing, audio: host.running && !host.muted,
     snapshots: { A: !!editor.snapshots.A, B: !!editor.snapshots.B }, zoom: editor.zoom, library: loadLibrary(),
-  }), (p) => { sink.send({ t: 'panic' }); loadNamed(p); });
+  }), (p) => { sink.send({ t: 'panic' }); loadNamed(p, { quiet: true }); });
   const link = document.createElement('a');
   link.href = '/lesson-editor'; link.target = '_blank'; link.rel = 'noopener';
   link.textContent = 'Edit lessons';

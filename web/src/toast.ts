@@ -12,8 +12,8 @@ function dismiss(): void {
   current = null;
 }
 
-/** show `text` with an Undo button for a few seconds; `undo` runs at most once */
-export function showUndo(text: string, undo: () => void): void {
+/** show `text` with an Undo button for a few seconds; `undo` runs at most once. Returns whether this toast still shows */
+export function showUndo(text: string, undo: () => void): () => boolean {
   dismiss();
   const el = document.createElement('div');
   el.className = 'toast';
@@ -34,4 +34,5 @@ export function showUndo(text: string, undo: () => void): void {
   el.append(msg, btn, close);
   document.body.append(el);
   current = { el, timer: window.setTimeout(dismiss, SHOW_MS) };
+  return () => current?.el === el;
 }

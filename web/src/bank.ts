@@ -7,7 +7,7 @@ import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
 import { PRESETS } from './presets';
-import { SLOTS } from './protocol';
+import { NAME_BYTES, SLOTS, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
 import { removeSaved, savedPatches, onSavedChange } from './saved';
 import { decodeShare, shareCodeOf } from './share';
@@ -94,6 +94,17 @@ export function addToBank(p: Patch): string {
   return `"${p.name}" ${i >= 0 ? 'updated in' : 'kept in'} the bank`;
 }
 
+/** a name as the FM-1 keeps it after an upload (slotFrame: capitals, the first NAME_BYTES characters, printable ASCII only) */
+const deviceName = (name: string): string =>
+  [...name.toUpperCase().slice(0, NAME_BYTES)].filter((c) => c.charCodeAt(0) >= 32 && c.charCodeAt(0) < 127).join('');
+
+/** the used slots an upload of `names` would lose: the ones past the list (erased), and the ones holding a patch whose name
+ *  is not in the list (overwritten). Upload asks before it writes when there are any (#148) */
+export function uploadLoses(have: SlotInfo[], names: string[]): SlotInfo[] {
+  const kept = new Set(names.map(deviceName));
+  return have.filter((s) => s.used && (s.slot >= names.length || !kept.has(s.name)));
+}
+
 /** the patches the Patches page holds (the editor's own copies; factory patches are rebuilt), for the morph picker */
 export const bankPatches = (): { name: string; patch: Patch }[] => [...load(), ...loadOver()].map((e) => ({ name: e.name, patch: patchOf(e) }));
 
@@ -107,8 +118,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 }
 
 /** builds the page; returns a refresh that rereads both lists (another part of the app may have saved to them) */
-/** `remove` deletes one of Your patches (main.ts: at once, with an Undo toast) */
-export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch: () => Patch, onConnected: (msg: string) => void, open: (p: Patch) => void, remove: (name: string) => void = (n) => void removeSaved(n)): () => void {
+/** `open` loads a patch into the editor (`from`: the Your patches name it came from); `remove` deletes one of Your patches
+ *  (main.ts: at once, with an Undo toast) */
+export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch: () => Patch, onConnected: (msg: string) => void, open: (p: Patch, from?: string) => void, remove: (name: string) => void = (n) => void removeSaved(n)): () => void {
   let list = load();
   let over = loadOver();
   // an editor copy that no longer fits (saved before the budget, or a larger factory build) moves to the over-budget list
@@ -163,7 +175,7 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       ...(mine.length ? mine.map((e) => el('div', { class: 'bank-row' },
         el('span', { class: 'grow', textContent: e.name }),
         el('span', { class: 'muted', textContent: e.saved ? new Date(e.saved).toLocaleDateString() : '' }),
-        el('button', { textContent: 'Open', title: 'open in the editor', onclick: () => open(JSON.parse(JSON.stringify(e.patch)) as Patch) }),
+        el('button', { textContent: 'Open', title: 'open in the editor', onclick: () => open(JSON.parse(JSON.stringify(e.patch)) as Patch, e.name) }),
         el('button', { textContent: '+ bank', title: 'put a copy in the bank to upload to the FM-1', onclick: () => { status.textContent = addToBank(e.patch); reread(); refresh(); } }),
         el('button', { class: 'delete', textContent: 'Delete', title: `delete "${e.name}" from Your patches (you can undo it)`, onclick: () => remove(e.name) }),
       )) : [el('p', { class: 'muted', textContent: 'None yet. Click the save icon next to the patch name (or Ctrl/Cmd+S) to keep the open patch here.' })]),
@@ -212,6 +224,12 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       const total = list.length;
       status.textContent = 'Reading the bank on the FM-1…';
       const have = await device.readBank();
+      const lost = uploadLoses(have, list.map((e) => e.name));
+      const shown = lost.slice(0, 8).map((s) => `${String(s.slot + 1).padStart(2, '0')} ${s.name}`).join(', ') + (lost.length > 8 ? ', …' : '');
+      if (lost.length && !window.confirm(`Uploading replaces ${lost.length} patch${lost.length === 1 ? '' : 'es'} on the FM-1 that the list does not hold (${shown}). Upload anyway?`)) {
+        status.textContent = 'Upload cancelled: nothing was sent.';
+        return;
+      }
       for (let i = 0; i < total; i++) {
         status.textContent = `Uploading ${i + 1} of ${total}: ${list[i].name}`;
         bar.value = (100 * i) / total;
@@ -235,13 +253,15 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       status.textContent = `${used.length} of ${SLOTS} slots are used on the FM-1.`;
     });
 
-  clear.onclick = () =>
+  clear.onclick = () => {
+    if (busy || !window.confirm('Erase every patch slot on the FM-1? The PRESET knob then steps through the factory patches built into the firmware.')) return;
     void run('clear', async () => {
       const slots = await device.readBank();
       for (const s of slots) if (s.used) await device.eraseSlot(s.slot);
       onDevice.textContent = 'The bank is empty: the PRESET knob steps through the factory patches built into the firmware.';
       status.textContent = 'The FM-1 bank is empty.';
     });
+  };
 
   const addCurrent = el('button', {
     textContent: 'Add the patch from the editor',
