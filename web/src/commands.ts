@@ -17,8 +17,8 @@ export function searchCommands(commands: Command[], query: string): Command[] {
   return commands.map((command) => {
     let rank = 0;
     for (const word of words) {
-      const type = word === 'modules' ? 'module' : word === 'assemblies' ? 'assembly' : word;
-      if (type === 'module' || type === 'assembly') {
+      const type = word === 'modules' ? 'module' : word === 'assemblies' ? 'assembly' : word === 'engines' ? 'engine' : word;
+      if (type === 'module' || type === 'assembly' || type === 'engine') {
         const tagged = command.tags?.includes(type) || command.kind.split(' ').includes(type);
         const action = command.kind === 'command' && command.label.toLowerCase().includes(type);
         if (!tagged && !action) return { command, rank: -1 };

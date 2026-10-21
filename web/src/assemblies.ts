@@ -4,6 +4,7 @@
 import { validateAssemblyDef, type AssemblyDef } from './assembly';
 import { renamedKey } from './storage-key';
 import { DEFS } from './modules';
+import { defIsEngine } from './engines';
 
 const STORE = renamedKey('matryoshka.assemblies', 'modular-1.assemblies');
 
@@ -12,6 +13,23 @@ export const CATEGORIES = ['Drums', 'Voices', 'Effects', 'Textures', 'Utilities'
 export const USER_SHELF = 'Your library';
 /** a factory definition's shelf (an unknown or missing one lands on the last shelf) */
 export const categoryOf = (d: AssemblyDef): string => (CATEGORIES as readonly string[]).includes(d.category ?? '') ? d.category! : CATEGORIES[CATEGORIES.length - 1];
+/** the shelf of the engines (engines.ts), first among the factory shelves: derived from the ports, not a `category` */
+export const ENGINE_SHELF = 'Engines';
+/** the factory shelves in display order */
+export const FACTORY_SHELVES = [ENGINE_SHELF, ...CATEGORIES];
+/** a factory definition's shelves: an engine goes on Engines instead of Voices, and stays on any other shelf as well (the
+ *  drum kit is on Engines and Drums) */
+export const shelvesOf = (d: AssemblyDef): string[] => {
+  const c = categoryOf(d);
+  return defIsEngine(d) ? (c === 'Voices' ? [ENGINE_SHELF] : [ENGINE_SHELF, c]) : [c];
+};
+/** what a shelf holds, in a line under its name */
+export const SHELF_NOTES: Record<string, string> = {
+  [ENGINE_SHELF]: 'Whole instruments. Pick one, play the keys.',
+  Voices: 'One note each. Build an engine from them, or turn on Poly.',
+};
+/** the ENGINE tag on a row of an engine */
+export const engineTag = (): HTMLElement => el('span', { class: 'mtag eng', textContent: 'ENGINE', title: 'Takes keys, makes sound.' });
 
 /** the assemblies shipped with the editor, in file order */
 export const FACTORY: AssemblyDef[] = Object.entries(import.meta.glob('./assemblies/*.json', { eager: true, import: 'default' }) as Record<string, unknown>)
@@ -110,7 +128,7 @@ export function buildAssembliesTab(root: HTMLElement, ev: LibraryEvents): () => 
     el(
       'div',
       { class: 'bank-row' },
-      el('span', { class: 'grow' }, el('b', { textContent: d.name }), ' ', el('span', { class: 'muted', textContent: summary(d) })),
+      el('span', { class: 'grow' }, ...(defIsEngine(d) ? [engineTag(), ' '] : []), el('b', { textContent: d.name }), ' ', el('span', { class: 'muted', textContent: summary(d) })),
       el('button', { textContent: 'Insert', title: 'Put it into the patch', onclick: () => ev.insert(d) }),
       el('button', { textContent: 'Export', title: 'Download as a .json file', onclick: () => download(d) }),
       ...(user
@@ -132,9 +150,10 @@ export function buildAssembliesTab(root: HTMLElement, ev: LibraryEvents): () => 
     userEl.replaceChildren(...list.map((d) => row(d, true)));
     note.textContent = list.length ? '' : 'None yet. Select modules in the patch, click "Make assembly", then "save" on its card.';
     factoryEl.replaceChildren(
-      ...CATEGORIES.flatMap((c) => {
-        const ds = FACTORY.filter((d) => categoryOf(d) === c);
-        return ds.length ? [el('h4', { textContent: c }), el('div', { class: 'bank-list' }, ...ds.map((d) => row(d, false)))] : [];
+      ...FACTORY_SHELVES.flatMap((c) => {
+        const ds = FACTORY.filter((d) => shelvesOf(d).includes(c));
+        const sub = SHELF_NOTES[c];
+        return ds.length ? [el('h4', { textContent: c }), ...(sub ? [el('p', { class: 'muted', textContent: sub })] : []), el('div', { class: 'bank-list' }, ...ds.map((d) => row(d, false)))] : [];
       }),
     );
   };

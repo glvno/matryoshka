@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The assembly browser: a two-pane dialog opened from the toolbar's "Insert assembly" button. Shelves down the left (the
-// user's library first, then the factory categories), the chosen shelf's entries on the right with name, summary and
+// user's library first, then the Engines and the factory categories), the chosen shelf's entries on the right with name, summary and
 // exposed ports; a search field at the top cuts across every shelf. A click inserts and closes. On a phone the dialog is
 // a full-width sheet (style.css).
 import type { AssemblyDef } from './assembly';
-import { CATEGORIES, loadLibrary, summary, USER_SHELF } from './assemblies';
+import { ENGINE_SHELF, engineTag, loadLibrary, SHELF_NOTES, summary, USER_SHELF } from './assemblies';
 import { assemblyShelves, SHELVES } from './catalog';
+import { defIsEngine } from './engines';
 import { score } from './fuzzy';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
@@ -25,7 +26,7 @@ export class AssemblyBrowser {
   private shelves: HTMLElement;
   private list: HTMLElement;
   private search: HTMLInputElement;
-  private shelf: string = CATEGORIES[0];
+  private shelf: string = ENGINE_SHELF;
   private sel = 0;
   private shown: AssemblyDef[] = [];
 
@@ -52,7 +53,7 @@ export class AssemblyBrowser {
   open(): void {
     this.search.value = '';
     this.sel = 0;
-    if (!loadLibrary().length && this.shelf === USER_SHELF) this.shelf = CATEGORIES[0];
+    if (!loadLibrary().length && this.shelf === USER_SHELF) this.shelf = ENGINE_SHELF;
     this.render();
     this.dlg.showModal();
     this.search.focus();
@@ -83,6 +84,7 @@ export class AssemblyBrowser {
     );
     const rows = q
       ? all
+          .filter(([, d], i) => all.findIndex(([, e]) => e === d) === i) // a def on two shelves is one hit, under its first
           .map((x) => ({ x, s: score(q, x[1].name) }))
           .filter((r) => r.s >= 0)
           .sort((a, b) => b.s - a.s)
@@ -90,12 +92,14 @@ export class AssemblyBrowser {
       : all.filter(([s]) => s === this.shelf);
     this.shown = rows.map(([, d]) => d);
     this.sel = Math.min(this.sel, Math.max(0, this.shown.length - 1));
+    const note = !q && SHELF_NOTES[this.shelf];
     this.list.replaceChildren(
+      ...(note ? [el('li', { class: 'muted none note', textContent: note })] : []),
       ...rows.map(([s, d], i) => {
         const li = el(
           'li',
           { class: i === this.sel ? 'sel' : '' },
-          el('div', { class: 'name' }, el('b', { textContent: d.name }), q ? el('span', { class: 'shelf', textContent: s }) : ''),
+          el('div', { class: 'name' }, ...(defIsEngine(d) ? [engineTag()] : []), el('b', { textContent: d.name }), q ? el('span', { class: 'shelf', textContent: s }) : ''),
           el('div', { class: 'muted', textContent: summary(d) }),
           el('div', { class: 'ports', textContent: portsOf(d) }),
         );

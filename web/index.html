@@ -93,7 +93,7 @@
   <dialog id="palette" class="palette" aria-label="Command palette">
     <div class="palette-search"><input id="palette-input" type="text" role="combobox" aria-label="Search commands" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" placeholder="Find a command, module, assembly or patch…" autocomplete="off" /><button id="palette-close" aria-label="Close commands">×</button></div>
     <div class="palette-filters" aria-label="Filter commands">
-      <button data-query="" aria-pressed="true">Actions</button><button data-query="module" aria-pressed="false">Modules</button><button data-query="assembly" aria-pressed="false">Assemblies</button><button data-query="load patch" aria-pressed="false">Patches</button>
+      <button data-query="" aria-pressed="true">Actions</button><button data-query="module" aria-pressed="false">Modules</button><button data-query="engine" aria-pressed="false">Engines</button><button data-query="assembly" aria-pressed="false">Assemblies</button><button data-query="load patch" aria-pressed="false">Patches</button>
     </div>
     <ul id="palette-list" role="listbox" aria-label="Commands"></ul>
     <div class="palette-hint">↑ ↓ to browse <span>Enter to run · Esc to close</span></div>
@@ -113,6 +113,7 @@
         <form method="dialog"><button>Close</button></form>
       </dialog>
       <dialog id="about" class="help about" aria-labelledby="about-title"></dialog>
+      <dialog id="engine-start" class="help engine-start" aria-labelledby="engine-start-title"></dialog>
       <dialog id="help" class="help" aria-labelledby="help-title">
         <div class="shead"><span class="mtag util">HELP</span><span class="stitle" id="help-title">Shortcuts</span><form method="dialog"><button class="help-close" aria-label="Close">×</button></form></div>
         <div class="help-body">

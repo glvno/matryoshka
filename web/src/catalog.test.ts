@@ -29,7 +29,8 @@ describe('what the editor offers (#84)', () => {
 
   it('shelves every assembly on a shelf the browser shows', () => {
     const shelves = assemblyShelves();
-    expect(shelves.map((a) => a.def.name)).toEqual(FACTORY.map((d) => d.name)); // empty user library: the factory set
+    expect(new Set(shelves.map((a) => a.def.name))).toEqual(new Set(FACTORY.map((d) => d.name))); // empty user library: the factory set
+    expect(shelves.length).toBe(FACTORY.length + 1); // the drum kit is on Engines and Drums (#159)
     for (const a of shelves) expect(SHELVES).toContain(a.shelf);
   });
 

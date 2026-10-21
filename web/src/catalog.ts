@@ -2,7 +2,7 @@
 // What the editor offers to add or open, in one place: the command palette, the assembly browser and the Open picker all
 // read these lists, so anything hidden or retired in one is gone from the others too (glvno/matryoshka#84).
 import type { AssemblyDef } from './assembly';
-import { CATEGORIES, categoryOf, FACTORY, loadLibrary, USER_SHELF } from './assemblies';
+import { FACTORY, FACTORY_SHELVES, loadLibrary, shelvesOf, USER_SHELF } from './assemblies';
 import { moduleName } from './labels';
 import type { ModuleDef, Patch } from './patch';
 import { PRESETS } from './presets';
@@ -19,12 +19,13 @@ export const addableModules = (defs: Record<string, ModuleDef>): { type: string;
     .filter((d) => !NOT_ADDABLE.has(d.type))
     .map((d) => ({ type: d.type, name: moduleName(d.type, d.label), def: d }));
 
-/** the assemblies the browser shows, each with its shelf: the user's library first, then the factory set */
+/** the assemblies the browser shows, each with its shelf: the user's library first, then the factory set, the engines first
+ *  (engines.ts; one on another shelf than Voices is listed on both, as the drum kit) */
 export const assemblyShelves = (): { shelf: string; def: AssemblyDef }[] => [
   ...loadLibrary().map((def) => ({ shelf: USER_SHELF, def })),
-  ...FACTORY.map((def) => ({ shelf: categoryOf(def), def })),
+  ...FACTORY_SHELVES.flatMap((shelf) => FACTORY.filter((def) => shelvesOf(def).includes(shelf)).map((def) => ({ shelf, def }))),
 ];
-export const SHELVES = [USER_SHELF, ...CATEGORIES];
+export const SHELVES = [USER_SHELF, ...FACTORY_SHELVES];
 
 export interface Openable {
   /** the Open picker's option value */

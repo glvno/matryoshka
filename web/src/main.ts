@@ -32,6 +32,8 @@ import { newPatch, trackLabel, validatePatch, type Patch, type SideKey } from '.
 import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
+import { defIsEngine, feedsOutput } from './engines';
+import { EngineStart } from './engine-start';
 import { decodeShare, encodeShare, shareCodeOf, shareLink } from './share';
 import { starterPatch } from './starter';
 import { recordKey, recordNote, recordOff } from './step-grid';
@@ -70,7 +72,7 @@ function save(p: Patch): void {
 
 const host = new AudioHost();
 const status = $('audio-status');
-host.onError = (m) => (status.textContent = `engine: ${m}`);
+host.onError = (m) => (status.textContent = m); // the worklet says "audio: …" itself
 
 let currentTab = 'patch';
 let saveTimer = 0;
@@ -619,7 +621,7 @@ function showBudget(): void {
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
-    ? 'The CPU figure is an estimate: the engine counted on a model of the processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
+    ? 'The CPU figure is an estimate: counted on a model of the FM-1\'s processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
     : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and the Library keeps it under "Over budget".';
   list.append(note);
   pinStatus(b.fits ? null : { tag: 'Too much for the FM-1', text: `${b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} of ${i.max}`).join(', ')}. It plays here; click the budget for what costs most.` });
@@ -694,7 +696,7 @@ const palList = $('palette-list');
 const inPatch = (run: () => void): (() => void) => () => { switchTab('patch'); run(); };
 const commands = (): Command[] => {
   const assembly = (d: AssemblyDef, shelf: string): Command => ({
-    kind: 'assembly', tags: ['assembly', shelf], label: d.name, detail: shelf, keywords: `insert ${summary(d)}`,
+    kind: 'assembly', tags: ['assembly', ...(defIsEngine(d) ? ['engine'] : []), shelf], label: d.name, detail: shelf, keywords: `insert ${summary(d)}`,
     run: () => editor.insert(d),
   });
   return [
@@ -703,7 +705,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Load patch from .json', keywords: 'import open file', run: () => $('load-file').click() },
     { kind: 'command', label: 'Share patch link', keywords: 'copy url clipboard', run: () => void sharePatch() },
     { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { switchTab('patch'); tutorial.open(); } },
-    { kind: 'command', label: 'New patch', run: () => { loadNamed(newPatch(DEFS)); tutorial.newPatchPressed(); } },
+    { kind: 'command', label: 'New patch', keywords: 'engine start empty', run: () => startNew() },
     { kind: 'command', label: 'Undo', detail: 'Ctrl/Cmd+Z', run: inPatch(() => editor.undo()) },
     { kind: 'command', label: 'Redo', detail: 'Shift+Ctrl/Cmd+Z', run: inPatch(() => editor.redo()) },
     { kind: 'command', label: 'Make assembly from the selection', detail: 'Ctrl/Cmd+G', run: inPatch(() => editor.makeAssembly()) },
@@ -739,7 +741,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Reset canvas scale', keywords: 'zoom 100%', run: inPatch(() => editor.setZoom(1)) },
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
     ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: m.def.label, run: () => editor.add(m.type) })),
-    ...assemblyShelves().map((a) => assembly(a.def, a.shelf)),
+    ...assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => assembly(a.def, a.shelf)), // the drum kit once
     ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.name, detail: g.label, run: () => loadNamed(o.load(), { from: g.label === 'Your patches' ? o.name : undefined }) }))),
   ];
 };
@@ -760,6 +762,7 @@ const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean;
   openedFrom = o.from ?? '';
   lastLoad = { patch: asLoaded(editor.patch), reopen: !o.once };
   loadUndo = null;
+  if (!feedsOutput(editor.patch)) status.textContent = 'Nothing makes sound yet. Add an engine, then play a key.';
   if (o.quiet || !(chained || losing)) return;
   const back = chained ?? { prev, prevFrom };
   const name = back.prev.name.trim() || 'Untitled';
@@ -853,7 +856,21 @@ palInput.onkeydown = (e) => {
   e.stopPropagation();
 };
 $('palette-btn').onclick = () => openPalette();
-$('new-patch-btn').onclick = () => { loadNamed(newPatch(DEFS)); tutorial.newPatchPressed(); closeSidebar(); };
+// New patch: outside the tutorial, "Start with an engine" first (#160; the tutorial's steps expect a bare Main + Output)
+const emptyNew = (): void => { loadNamed(newPatch(DEFS)); tutorial.newPatchPressed(); };
+const engineStart = new EngineStart($<HTMLDialogElement>('engine-start'), {
+  pick(def) { loadNamed(newPatch(DEFS)); editor.insert(def); tutorial.newPatchPressed(); },
+  empty: emptyNew,
+  openPicker() {
+    // the Open picker is in the sidebar: expand it (wide) or slide it in (phone)
+    if (sidebar.parentElement!.classList.contains('side-collapsed')) setSidebarCollapsed(false);
+    if (compactWorkspace.matches) setSidebarOpen(true);
+    presetSel.focus();
+    try { presetSel.showPicker(); } catch { /* not allowed here: focused is enough */ }
+  },
+});
+const startNew = (): void => (tutorial.active ? emptyNew() : engineStart.open());
+$('new-patch-btn').onclick = () => { closeSidebar(); startNew(); };
 $('add-btn').onclick = () => openPalette('module');
 $('add-assembly-btn').onclick = () => openPalette('assembly');
 $('tidy-btn').onclick = () => editor.tidyUp();

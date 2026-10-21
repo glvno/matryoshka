@@ -77,7 +77,7 @@ function source(stats: AiStats | null, prompts: AiPrompts | null): string {
 const pctText = (pct: number): string => `${Math.round(pct)} %`;
 
 function coverage(c: CoverageStats | null): string {
-  const core = figure('Core', c ? pctText(c.core.pct) : '—', '(sound engine, modules, patch model, binary format, assemblies, polyphony, arpeggiator, CPU estimate, protocol)');
+  const core = figure('Core', c ? pctText(c.core.pct) : '—', '(audio processing, modules, patch model, binary format, assemblies, polyphony, arpeggiator, CPU estimate, protocol)');
   const ui = figure('Browser interface', c ? pctText(c.interface.pct) : '—', '(lgtm lmao)');
   const src = c ? `<p class="ai-source">Source: Vitest as of ${formatDay(c.asOf)}</p>` : '<p class="ai-source">The figures appear after the next deploy runs the tests.</p>';
   return `<div class="ai-figs two">${core}${ui}</div>${src}`;

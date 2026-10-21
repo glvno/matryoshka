@@ -367,6 +367,21 @@ dialog.help .shead { flex: none; height: 34px; padding: 0 6px 0 10px; }
 dialog.help .shead form { margin: 0; }
 dialog.help .help-close { border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; padding: 2px 8px; }
 dialog.help .help-close:hover { color: var(--ink); }
+/* "Start with an engine" (engine-start.ts, #160): the help dialog's frame, wider; a grid of engine tiles (one button each) */
+dialog.engine-start { width: 980px; }
+.engine-start-body { overflow: auto; padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 12px; }
+.engine-start-body h2 { margin: 0; font: 700 28px/1.05 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .02em; }
+.engine-start-body > p { margin: 0; max-width: 62ch; font-size: 14px; }
+.engine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 10px; }
+.engine-tile { display: flex; flex-direction: column; gap: 6px; min-height: 120px; padding: 10px 12px; text-align: left; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-tint); }
+.engine-tile:hover, .engine-tile:focus-visible { border-color: var(--gate); background: color-mix(in srgb, var(--gate) 10%, var(--panel)); }
+.engine-tile-top { display: flex; justify-content: space-between; gap: 8px; font: 600 11px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); }
+.engine-out { color: var(--gate); }
+.engine-name { font: 700 19px/1.1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .04em; }
+.engine-line { font-size: 12px; color: var(--muted); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.engine-start-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+.engine-start-links button.link { padding: 0; border: 0; background: none; color: var(--secondary); text-decoration: underline; font: inherit; }
+.engine-start-links button.link:hover { color: var(--accent); }
 .help-body { overflow: auto; padding: 4px 16px 16px; columns: 2 340px; column-gap: 28px; }
 .hsec { break-inside: avoid; padding-top: 12px; }
 .hsec h3 { margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
@@ -901,6 +916,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   color: var(--tag); background: color-mix(in srgb, var(--tag) 16%, transparent); }
 .mtag.src { --tag: var(--tag-src); } .mtag.shp { --tag: var(--tag-shp); } .mtag.mod { --tag: var(--tag-mod); }
 .mtag.fx { --tag: var(--tag-fx); } .mtag.util { --tag: var(--tag-util); } .mtag.asm { --tag: var(--tag-asm); background: color-mix(in srgb, var(--tag) 22%, transparent); }
+/* an engine (engines.ts): gold, the gate colour */
+.mtag.eng { --tag: var(--gate); }
 .mhead .voices { font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; padding: 1px 5px; border: 1px solid currentColor; border-radius: 8px; color: var(--accent); }
 /* the header: ▸ (an assembly), the tag and the title (the drag handle), then poly (an assembly), ⏻ and ⋯, always shown */
 .mhead { padding: 0 4px 0 6px; }

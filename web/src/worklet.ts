@@ -187,7 +187,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         this.port.postMessage({ values: this.engine.parameterValues(), revision: this.revision });
       }
     } catch (e) {
-      if (!this.failed) this.port.postMessage({ error: `engine: ${e}` });
+      if (!this.failed) this.port.postMessage({ error: `audio: ${e}` });
       this.failed = true; // stay silent instead of throwing in the audio thread on every block
       out[0].fill(0);
       out[1]?.fill(0);
