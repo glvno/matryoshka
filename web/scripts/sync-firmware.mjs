@@ -19,4 +19,4 @@ writeFileSync(new URL('matryoshka.json', dir), JSON.stringify({ version, product
 // the package carries three Apache-2.0 SDK files and GPL-3.0 firmware: ship both licence texts with it
 copyFileSync(new URL('../../LICENSE', import.meta.url), new URL('LICENSE-GPL-3.0.txt', dir));
 copyFileSync(new URL('../../LICENSES/Apache-2.0.txt', import.meta.url), new URL('LICENSE-Apache-2.0.txt', dir));
-console.log(`public/firmware/matryoshka.fwsc: Matryoshka ${version}, ${product}, ${bytes.length} bytes`);
+console.log(`public/firmware/matryoshka.fwsc: ${version}, ${product}, ${bytes.length} bytes`);

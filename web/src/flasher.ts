@@ -167,7 +167,7 @@ export function buildFlashTab(root: HTMLElement): void {
   void loadBundle().then((b) => {
     bundle = b;
     bundleInfo.textContent = b
-      ? `Matryoshka ${b.version} (${b.product}, ${Math.round(b.size / 1024)} KB) comes with this app. GPL-3.0; three JieLi SDK files inside are Apache-2.0.`
+      ? `${/^matryoshka/i.test(b.version) ? b.version : `Matryoshka ${b.version}`} (${b.product}, ${Math.round(b.size / 1024)} KB) comes with this app. GPL-3.0; three JieLi SDK files inside are Apache-2.0.`
       : 'No firmware package comes with this copy of the app. Build one (tools/build.py), run npm run firmware in web/, and reload; or choose a .fwsc file below.';
     setButtons();
   });
