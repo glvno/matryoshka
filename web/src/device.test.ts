@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state.
 import { describe, expect, it } from 'vitest';
-import { chipState, sameBinary, syncOnConnect } from './device';
+import { chipState, sameBinary, syncLine, syncOnConnect } from './device';
 import { DEFS } from './modules';
 import { newPatch } from './patch';
 import { encodePatch } from './patchbin';
@@ -48,5 +48,14 @@ describe('chipState', () => {
     expect(chipState(true, true, true)).toBe('synced');
     expect(chipState(true, false, true)).toBe('not synced');
     expect(chipState(true, true, false)).toBe('patch too big to sync');
+  });
+});
+
+describe('syncLine', () => {
+  it('shows what the chip shows, with Sync or Stop syncing only while connected and the patch fits', () => {
+    expect(syncLine(chipState(true, true, true))).toEqual({ text: 'Synced with the FM-1', action: 'stop' });
+    expect(syncLine(chipState(true, false, true))).toEqual({ text: 'Not synced', action: 'sync' });
+    expect(syncLine(chipState(true, true, false))).toEqual({ text: 'Patch too big to sync', action: null });
+    expect(syncLine(chipState(false, true, true))).toEqual({ text: 'Not connected', action: null });
   });
 });

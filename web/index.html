@@ -115,7 +115,8 @@
       <dialog id="device-bar" class="device-controls" aria-label="FM-1 and MIDI"><h2>FM-1 &amp; MIDI</h2>
         <span class="menu-heading">FM-1 connection</span>
         <button id="dev-btn">Connect FM-1</button>
-        <label><input id="dev-live" type="checkbox" disabled /> Live sync</label>
+        <!-- the sync state, as the FM-1 chip shows it (#180, main.ts syncChip): Sync / Stop syncing call setLive -->
+        <div id="dev-sync" class="sync-line"><span id="dev-sync-text">Not connected</span><span id="dev-sync-sep" hidden aria-hidden="true">·</span><button id="dev-sync-btn" type="button" hidden>Sync</button></div>
         <p class="muted">Send patch edits, knobs and notes to the FM-1.</p>
         <div class="row"><button id="dev-send" disabled>Send patch</button><button id="dev-store" disabled>Store on FM-1</button></div>
         <span class="menu-heading">Follow the FM-1</span>

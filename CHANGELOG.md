@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- FM-1 & MIDI: the Live sync checkbox is gone. A line shows what the FM-1 chip shows, "Synced with the FM-1 · Stop syncing" or "Not synced · Sync" (#180).
+
 ## 1.0.0 — date set at release
 
 > **Draft.** This entry is finished at the release (#164): the date, and every `TODO(1.0)` comment resolved.
