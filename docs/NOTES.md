@@ -1018,3 +1018,25 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
 - **MIDI and audio at once (step 5):** the editor's Live and an upload during a recording sounded fine to the user. Isolated with the CLI during a later recording: three 808 Kit uploads (2553 B of SysEx each) and parameter traffic added 0 missed / overruns / stalls.
 - **Hot-plug:** stopping and restarting the recording, and unplugging and replugging the cable mid-recording, left 83 overruns, 53 missed and 1 stall. Those are the blocks dropped and the packets the host didn't collect while the cable was out. The FM-1 kept running (its own power), the bus reset was seen and the stream came back in band.
 - **Skipped (owner's call):** the 10-minute drift recording (the 30 s figures show the adjustment working) and return to stock (update mode and the loader are unchanged, and update mode passed).
+
+## 2026-10-21 (1.0): Factory drum kits: the keys play the drums out of the box, #141
+
+- **Why:** on the FM-1 the 808 KIT and 909 KIT keys played nothing. The keys reached DRUMS only when it was armed, and the Drum map rows sat on General MIDI notes (36..56), below the FM-1's lowest key (F3 = 53 at octave 0) apart from 56.
+- **Keys:** each kit has a cable `fm1 keys -> DRUMS keys`. The #138 path then sends the keys through the track while nothing is armed. No engine or format change. Arming works as before: the keys go into the armed track only, and REC step entry and the live take record.
+- **Rows:** both kits' Drum map rows are `53 55 57 59 60 62 64 65` (F3 G3 A3 B3 C4 D4 E4 F4, the white keys from F3). Each DRUMS step note follows its row, so the patterns sound as before.
+  - **808 Kit** (`gen-presets.ts`, `KIT_NOTES`): kick, snare, clap, closed hat, open hat, then the factory tom (row 6) and rim (row 7), cowbell on row 8. Tom and rim go into a third mixer (l1 0.45, l2 0.35), which feeds the second mixer's in4 (now at 1). They have no steps in the pattern. The device budget fits: CPU 52 % -> 70 %, memory 73 % -> 92 % (`deviceBudget`; the device was not checked).
+  - **909 Kit** (the kept file, edited with a one-off script): the hat's gate and velocity cables moved from row 4 to row 3, so F3 G3 A3 play kick, snare and hat. The map's `names` call row 3 HAT, and rows 4..8 keep the default names (unwired).
+  - Both kits open at editor octave -1, so the computer keys `f g h j k l` play F3..D4.
+- **Unchanged:** `DRUM_MAP_DEFAULT`, the factory `drum kit` assembly and the Demo stay General MIDI.
+- **Tests:**
+  - `src/presets.test.ts`, new. For both kits it checks the keys cable, the row notes, that every wired row is a white key in 53..79, and that every step note is a row note. It also checks that with the transport stopped and nothing armed each wired row's key sounds (silent before), that an armed DRUMS still plays the key through, the row names, and octave -1.
+  - `panel_test.c`: the snare note in the SEQ page checks went from 38 to 55. The ticket's extra panel check (hold F3 on the 808's device page) is not added there, because another branch was editing that file for #146. The emulator smoke test covers it instead: a new check that F3 on the device page sounds the kick unarmed. The `G#3 (56)` comment no longer calls 56 the cowbell's row.
+- **Checked:**
+  - npm test 736 passed (58 files);
+  - tsc clean;
+  - `tools/golden.sh` all ok, including 808-kit and 909-kit (their key 60 now goes through DRUMS);
+  - `tools/panel_test.sh` passed;
+  - fm1-wasm + `fm1-ui.test.ts` passed;
+  - export-defs regenerated `presets.h`.
+  - CI on `t141-drum-kits` (0d8c778): web and firmware both passed (firmware run 39638356701, the JieLi build); emu:smoke on that build: 119 checks, 0 failed, 0 level warnings (F3 kick peak 4050; 808 KIT 4995 against 6099, 909 KIT 5454 against 5356).
+- **Not checked:** the browser (f g h j k l on both kits, ARM + REC, the row names on the roll), and the device (the owner's check: white keys from the lowest F at octave 0, PLAY as before, REC held + black key then REC).
