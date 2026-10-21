@@ -1,8 +1,13 @@
-name: pages
-# Builds the firmware (JieLi toolchain + AC79 SDK files), then publishes the web app (editor, presets, flasher and the freshly built firmware package) to GitHub Pages:
-#   https://glvno.github.io/matryoshka/ (repository: glvno/matryoshka)
-# One-time setup: repository Settings > Pages > Source: GitHub Actions. The github-pages environment
-# deploys only main; workflow_dispatch on any other branch is skipped.
+name: deploy
+# Publishes the web app (editor, presets, flasher and the committed, device-tested firmware package in web/public/firmware/)
+# to Cloudflare Pages, and the forwarder (deploy/github-pages-forward) to GitHub Pages:
+#   https://matryoshka.pages.dev/  (the Cloudflare Pages project `matryoshka`; the address is SITE_URL in web/src/site.ts)
+#   https://glvno.github.io/matryoshka/  (the old address: forwards there, and offers to bring the browser data along)
+# The firmware is not built here: Pages publishes the committed, device-tested package in web/public/firmware/ (made with
+# tools/build.py + npm run firmware), so the site never carries a package no device has run.
+# One-time setup: the repository secret CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit) and the variable CLOUDFLARE_ACCOUNT_ID;
+# repository Settings > Pages > Source: GitHub Actions (the github-pages environment deploys only main).
+# Runs only on main of glvno/matryoshka; workflow_dispatch on any other branch or in a fork is skipped.
 # Also daily (schedule), so the About card's AI usage figures stay fresh between pushes.
 on:
   push:
@@ -13,8 +18,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
@@ -22,7 +25,7 @@ concurrency:
 
 jobs:
   build:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.repository == 'glvno/matryoshka'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -35,28 +38,6 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      - name: JieLi toolchain and AC79 SDK (cached)
-        id: jieli
-        uses: actions/cache@v5
-        with:
-          path: ~/.jieli
-          key: jieli-AC79NN_SDK_V1.2.1_2023-12-13-toolchain-v1
-      - name: fetch the toolchain and the three SDK files
-        if: steps.jieli.outputs.cache-hit != 'true'
-        working-directory: .
-        run: |
-          tools/get_toolchain.sh
-          git clone --filter=blob:none --no-checkout --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
-            https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/.jieli/ac79-sdk
-          git -C ~/.jieli/ac79-sdk sparse-checkout set cpu/wl82/tools
-          git -C ~/.jieli/ac79-sdk checkout
-      - name: build the firmware package
-        working-directory: .
-        run: |
-          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
-          (cd web && npm run export-defs)
-          python3 tools/build.py
-          (cd web && npm run firmware)
       # the FM-1's UI as WebAssembly (firmware/wasm/fm1_ui.c -> public/fm1-ui.wasm): the editor's FM-1 tab and fm1-ui.test.ts
       - name: clang + wasm-ld, the FM-1 UI as WebAssembly
         run: |
@@ -88,18 +69,32 @@ jobs:
         run: npm run ai-prompts -- collect
       - run: npm run build
       - name: the firmware package must be there
-        run: test -s dist/firmware/matryoshka.fwsc && test -s dist/firmware/matryoshka.json && test -s dist/firmware/FM-1_015.fwsc && test -s dist/firmware/NOTICE-FM-1_015.txt
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
+        run: |
+          test -s dist/firmware/matryoshka.fwsc && test -s dist/firmware/matryoshka.json && test -s dist/firmware/FM-1_015.fwsc && test -s dist/firmware/NOTICE-FM-1_015.txt
+          grep -Eq '"product":"FM-1_7[0-9][0-9]"' dist/firmware/matryoshka.json
+      - name: deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
         with:
-          path: web/dist
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy web/dist --project-name=matryoshka --branch=main
 
-  deploy:
+  # the old address serves only the forwarder, after the app is up at the new one
+  forward:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: deploy/github-pages-forward
       - id: deployment
         uses: actions/deploy-pages@v5
