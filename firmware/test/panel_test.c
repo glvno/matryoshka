@@ -4,6 +4,7 @@
  * PLAY / tempo, a key and the MIDI out of every control (#115), checked on the core's state and on the LCD's framebuffer (ui_preview.c's stand-ins).
  *   tools/panel_test.sh */
 #define UI_PREVIEW_LIB
+#define FB_WATCH
 #include "ui_preview.c"
 
 /* what panel.c asks of proto.c and audio.c */
@@ -84,6 +85,15 @@ static void later(uint32_t ms)
     loop();
 }
 static uint16_t px(uint32_t x, uint32_t y) { return fb[y * 240u + x]; }
+/* the pixels that blinked since fb_watch_reset(): changed value twice or more (cleared, then drawn again) */
+static void fb_watch_reset(void) { memset(fb_changes, 0, sizeof fb_changes); }
+static uint32_t fb_blinked(void)
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < 240u * 240u; i++)
+        n += fb_changes[i] >= 2u;
+    return n;
+}
 /* PANEL_SNAP=file.ppm: the LCD at the page-list step, to look at (tools/ui_preview.sh converts PPM to PNG) */
 static void snap_to(const char *path)
 {
@@ -139,6 +149,10 @@ int main(void)
     enc(0, 1);                                              /* SELECT */
     check("SELECT: the next device, the editor told", pg_cur_dev == 1 && pg_cur_page == 0 && focus_dev == 1 && focus_pg == 0);
     check("SELECT: the device's name over the bars", px(12, ROWS_Y + 15) == P_NIGHT);
+    fb_watch_reset();
+    ui_dirty = 1;                                           /* a redraw while it shows (the beat's, a Live edit) */
+    later(100);
+    check("SELECT: a redraw under the device's name does not blink it", fb_blinked() == 0 && px(12, ROWS_Y + 15) == P_NIGHT);
     later(1000);
     check("the device toast ends: the bars come back", px(12, ROWS_Y + 15) == KNOB_HUE[0]);
 
@@ -156,6 +170,12 @@ int main(void)
     enc(2, 5);                                              /* K1 */
     check("K1: its row's parameter moved, the editor told", eng_get_param(mod, par) != v0 && param_now == 1);
     check("K1: the toast shows the row's range bar in K1's hue", px(14, TOAST_Y + 66u) == KNOB_HUE[0]);
+    fb_watch_reset();
+    enc(2, 1);                                              /* K1 again: the value and the bar, nothing cleared first */
+    check("K1 turned again: no pixel of the toast blinks", fb_blinked() == 0);
+    fb_watch_reset();
+    enc(2, -3);
+    check("K1 turned back: no pixel blinks", fb_blinked() == 0);
     later(1100);
     check("the toast ends", px(12, ROWS_Y + 15) == KNOB_HUE[0]);
 

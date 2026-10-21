@@ -784,43 +784,75 @@ static void pages_info(void)
 /* the toasts: over the bars, centred in their height */
 #define TOAST_Y (ROWS_Y + 26u)
 
-/* knob k's row at full size: its name, the value in the big type, the range bar with the live tick */
-static void pages_toast(const ppage_t *pg, uint32_t k)
+/* one scanline of row[] (w px) out to the LCD at x, y (big endian) */
+static void row_out(const uint16_t *row, uint32_t x, uint32_t y, uint32_t w)
 {
+    static uint16_t sw[240];
+    uint32_t i;
+    for (i = 0; i < w; i++)
+        sw[i] = (uint16_t)((row[i] >> 8) | (row[i] << 8));
+    lcd_blit(x, y, w, 1, sw);
+    lcd_sync();                                         /* sw is reused by the next row */
+}
+
+/* the toast on screen (k, page) or 0xFF: a turn of the same knob redraws only the value and the bar, a scanline at a
+ * time, so what does not change does not blink */
+static uint8_t pg_toast_shown = 0xFFu;
+static const ppage_t *pg_toast_pg;
+static uint8_t pg_dev_toast_shown = 0xFFu;               /* the device whose name is on show, or 0xFF */
+
+/* knob k's row at full size: its name, the value in the big type, the range bar with the live tick */
+static void pages_toast(const ppage_t *pg, uint32_t k, int full)
+{
+    static uint16_t row[240];
     char t[24], num[20], unit[8], lo_n[20], lo_u[8], hi_n[20], hi_u[8];
-    uint32_t m = pg->mod[k], j = pg->par[k], xw, i, ok = 1, bw = 216, base, live;
-    lcd_fill(0, ROWS_Y, 240, ROWS_END - ROWS_Y, P_NIGHT);
-    t[0] = 'K';
-    t[1] = (char)('1' + k);
-    t[2] = ' ';
-    caps(t + 3, pg->lab[k], pg->llen[k], 16);
-    text_bc(&FONT_S, 12, TOAST_Y + 2u, t, KNOB_HUE[k], P_NIGHT, 0, TA_LEFT);
+    uint32_t m = pg->mod[k], j = pg->par[k], xw, i, r, ok = 1, bw = 216, base, live, nx, ny, ux, uy;
+    const font_t *nf;
     row_show(pg, k, num, unit, bw, &base, &live);
+    if (full || pg_toast_shown != k || pg_toast_pg != pg) {
+        pg_toast_shown = (uint8_t)k;
+        pg_toast_pg = pg;
+        lcd_fill(0, ROWS_Y, 240, ROWS_END - ROWS_Y, P_NIGHT);
+        t[0] = 'K';
+        t[1] = (char)('1' + k);
+        t[2] = ' ';
+        caps(t + 3, pg->lab[k], pg->llen[k], 16);
+        text_bc(&FONT_S, 12, TOAST_Y + 2u, t, KNOB_HUE[k], P_NIGHT, 0, TA_LEFT);
+        if (!(j & POLY_ROW) && eng_type(m) >= 0 && j < DEFS[eng_type(m)].npar) {
+            const def_t *d = &DEFS[eng_type(m)];
+            value_parts(d, j, d->pmin[j], lo_n, lo_u);
+            value_parts(d, j, d->pmax[j], hi_n, hi_u);
+            put(put(put(t, lo_n), " "), lo_u)[0] = 0;
+            text_bc(&FONT_S, 12, TOAST_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_LEFT);
+            put(put(put(t, hi_n), " "), hi_u)[0] = 0;
+            text_bc(&FONT_S, 128, TOAST_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_RIGHT);
+        }
+    }
     for (i = 0; num[i]; i++)                            /* the big type has digits and a few letters: else the large one */
         if (num[i] < 0x20 || num[i] > 0x7E || FONT_XL.map[num[i] - 0x20] == 255u)
             ok = 0;
-    if (ok) {
-        xw = text_bc(&FONT_XL, 10, TOAST_Y + 16u, num, P_INK, P_NIGHT, 0, TA_LEFT);
-        text_bc(&FONT_M, 16u + xw, TOAST_Y + 16u + 42u - 22u, unit, P_DIM, P_NIGHT, 0, TA_LEFT);
-    } else {
-        xw = text_bc(&FONT_L, 12, TOAST_Y + 26u, num, P_INK, P_NIGHT, 0, TA_LEFT);
-        text_bc(&FONT_M, 18u + xw, TOAST_Y + 30u, unit, P_DIM, P_NIGHT, 0, TA_LEFT);
+    nf = ok ? &FONT_XL : &FONT_L;                       /* the value line's band: 42 rows from TOAST_Y + 16 */
+    xw = text_w(nf, num, -1);
+    nx = ok ? 10u : 12u;
+    ny = ok ? 0u : 10u;
+    ux = nx + xw + 6u;
+    uy = ok ? 20u : 14u;
+    for (r = 0; r < FONT_XL.h; r++) {
+        for (i = 0; i < 240u; i++)
+            row[i] = P_NIGHT;
+        if (r >= ny)
+            text_onto(row, 240, nf, r - ny, num, nx, P_INK);
+        if (r >= uy)
+            text_onto(row, 240, &FONT_M, r - uy, unit, ux, P_DIM);
+        row_out(row, 0, TOAST_Y + 16u + r, 240);
     }
-    lcd_fill(12, TOAST_Y + 64u, bw, 8, P_TRACK);
-    lcd_fill(12, TOAST_Y + 64u, base, 8, KNOB_HUE[k]);
-    if (live != base)
-        lcd_fill(12u + (live > 1u ? live - 1u : 0u), TOAST_Y + 61u, 2, 14, P_INK);
-    if (j & POLY_ROW)
-        return;
-    {
-        const def_t *d = &DEFS[eng_type(m)];
-        value_parts(d, j, d->pmin[j], lo_n, lo_u);
-        value_parts(d, j, d->pmax[j], hi_n, hi_u);
+    for (r = 0; r < 14u; r++) {                         /* the bar (rows 3..10) and the live tick across it */
+        for (i = 0; i < bw; i++)
+            row[i] = r >= 3u && r < 11u ? (i < base ? KNOB_HUE[k] : P_TRACK) : P_NIGHT;
+        if (live != base)
+            row[live > 1u ? live - 1u : 0u] = row[live > 1u ? live : 1u] = P_INK;
+        row_out(row, 12, TOAST_Y + 61u + r, bw);
     }
-    put(put(put(t, lo_n), " "), lo_u)[0] = 0;
-    text_bc(&FONT_S, 12, TOAST_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_LEFT);
-    put(put(put(t, hi_n), " "), hi_u)[0] = 0;
-    text_bc(&FONT_S, 128, TOAST_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_RIGHT);
 }
 
 /* the device just picked with SELECT, big */
@@ -889,11 +921,17 @@ static void pages_draw(int full)
     }
     if (!glo)
         pages_info();
-    if (pg && !glo && fm1_ms < pg_dev_toast_until)
-        pages_dev_toast();
-    else if (pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows)
-        pages_toast(pg, pg_toast_k);
-    else {
+    if (pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows && !(!glo && fm1_ms < pg_dev_toast_until)) {
+        pages_toast(pg, pg_toast_k, full);
+        return;
+    }
+    pg_toast_shown = 0xFFu;
+    if (pg && !glo && fm1_ms < pg_dev_toast_until) {
+        if (full || pg_dev_toast_shown != pg_cur_dev)  /* (a beat's redraw leaves it be) */
+            pages_dev_toast();
+        pg_dev_toast_shown = (uint8_t)pg_cur_dev;
+    } else {
+        pg_dev_toast_shown = 0xFFu;
         lcd_fill(0, ROWS_Y - 3u, 240, 3, P_NIGHT);
         for (k = 0; k < PG_ROWS; k++) {
             pages_bar(pg, k);

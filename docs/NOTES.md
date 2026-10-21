@@ -974,3 +974,9 @@ cable. Felucca's whole path was already in `usb.c` behind `FELUCCA_UAC`; this se
    install again from there.
 7. Return to stock (`FM-1_015.fwsc` from update mode) is unaffected: it ran through update mode and the loader, both
    MIDI only. Then back to ours.
+
+## 2026-10-21 (device): lcd-partial verified on the FM-1
+
+- **The build:** `lcd-partial` 7df4465, from CI run 39550664956. Installed with `build/venv/bin/python tools/fm1_install.py` from `FM-1_700` to `FM-1_700`: the write reached 100 %, the device restarted and its identity was checked.
+- **The user's check:** turning a knob no longer blinks the toast's title, lo / hi labels, track or unchanged digits; only the value and the bar change. The device-name toast on SELECT works (808 Kit / Init).
+- **Found along the way:** 14 of the 17 factory patches are one device, so SELECT does nothing on them. Opened as #142.
