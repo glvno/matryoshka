@@ -389,6 +389,15 @@ dialog.engine-start { width: 980px; }
 .engine-start-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
 .engine-start-links button.link { padding: 0; border: 0; background: none; color: var(--secondary); text-decoration: underline; font: inherit; }
 .engine-start-links button.link:hover { color: var(--accent); }
+/* connecting the FM-1 (#171): a small card, the question, the patch it would send, Sync and Not now */
+dialog.sync-ask { width: 420px; }
+.sync-ask-body { margin: 0; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; }
+.sync-ask-body h2 { margin: 0; font: 700 22px/1.1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.sync-ask-body p { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.sync-ask-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.sync-ask-actions button { min-height: 40px; padding: 6px 16px; font: 700 13px/1.15 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
+@media (max-width: 700px) { .sync-ask-actions button { flex: 1; min-height: 44px; } }
+
 /* the share sheet (share-sheet.ts, #165): the help dialog's frame; the card preview beside the form, the four actions in a
    row (two by two on a phone), the hint under a rule */
 dialog.share-sheet { width: 800px; }
@@ -1526,6 +1535,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .statusline .sl-chip:hover { border-color: var(--line); color: var(--ink); }
 .statusline .sl-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
 .statusline .sl-chip.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
+.statusline .sl-chip.idle .sl-dot { border: 2px solid var(--secondary); }   /* connected, not synced (#171) */
+.statusline .sl-chip.over .sl-dot { background: var(--danger); border-color: var(--danger); }   /* too big to sync */
 @media (max-width: 700px) { .statusline .sl-chip-text { display: none; } .statusline .sl-chip { height: 24px; padding: 0 8px; } }
 .statusline:has(.budget.over) .sl-tag { color: var(--danger); }
 .statusline .budget { padding-left: 12px; border-left: 1px solid var(--line); }
