@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { CPU, cpuEstimate } from './cpu';
 import { cpuChecks, looseModel } from './cpu-checks';
@@ -58,4 +59,23 @@ describe('CPU estimate', () => {
     expect(reverb).toBeGreaterThan(0.1);
     expect(reverb).toBeLessThan(0.3);
   });
+});
+
+// The factory patches measured on the FM-1 (the longest audio interrupt at rest and with 1 / 4 / 8 notes held, in us of the
+// half buffer), which the scale was fitted to (cpu-costs.ts, SURVEY). A new survey replaces the file after large engine
+// changes; until then a change that moves a patch out of the band means the model and the device disagree.
+describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2026-10-20.json)', () => {
+  type Reading = { name: string; idle_us: number; n1_us: number; n4_us: number; n8_us: number; budget_us: number };
+  const survey = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-10-20.json', import.meta.url), 'utf8')) as Reading[];
+  const byName = new Map(Object.keys(PRESETS).map((n) => [n.toLowerCase(), n]));
+  it('covers every factory patch', () => expect(survey.length).toBe(Object.keys(PRESETS).length));
+  for (const r of survey)
+    it(`is within -4 / +6 points of the device: ${r.name}`, () => {
+      const name = byName.get(r.name.toLowerCase());
+      if (!name) throw new Error(`the survey's ${r.name} is not a factory patch`);
+      const device = (100 * Math.max(r.idle_us, r.n1_us, r.n4_us, r.n8_us)) / r.budget_us;
+      const est = 100 * cpuEstimate(PRESETS[name]()).use;
+      expect(est).toBeGreaterThanOrEqual(device - 4);
+      expect(est).toBeLessThanOrEqual(device + 6);
+    });
 });
