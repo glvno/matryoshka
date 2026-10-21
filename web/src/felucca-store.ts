@@ -7,6 +7,17 @@
  *  too; Matryoshka is FM-1_7XY since #79 (its builds before that were FM-1_800). */
 export const runsFelucca = (identity: string): boolean => /^FM-1_9\d\d$/.test(identity);
 
+/** what a running FM-1 reports itself as (#161): M-VAVE's stock firmware (FM-1_0XX), Matryoshka (FM-1_7XY, FM-1_800 before
+ *  #79), Felucca / Sloop (FM-1_9XY), or anything else (M-VAVE Open's FM-1_8 + seven digits, unknown builds). The Flash tab
+ *  recommends a return to official V15 before installing over felucca and other. An update loader (ota-...) is not a
+ *  running firmware and comes out as other: callers ask about running identities only. */
+export function firmwareKind(identity: string): 'stock' | 'matryoshka' | 'felucca' | 'other' {
+  if (/^FM-1_0\d\d$/.test(identity)) return 'stock';
+  if (/^FM-1_(7\d\d|800)$/.test(identity)) return 'matryoshka';
+  if (runsFelucca(identity)) return 'felucca';
+  return 'other';
+}
+
 export const FELUCCA_WARNING =
   'This FM-1 runs Felucca. Matryoshka keeps its patches in flash sectors that Felucca uses for its projects, samples and ' +
   'user presets (0x97000, 0x98000, 0xA0000..0xDFFFF): its first start writes the 64 factory patches there, which erases ' +

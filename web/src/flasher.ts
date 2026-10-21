@@ -5,7 +5,7 @@
 import { Updater, STOCK_PRODUCT } from './flasher/fm1ota.js';
 // @ts-ignore untyped JS modules
 import { logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
-import { FELUCCA_WARNING, runsFelucca } from './felucca-store';
+import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
 
 
 const ERRORS: Record<string, string> = {
@@ -20,12 +20,6 @@ const ERRORS: Record<string, string> = {
   phase: 'The device asked to finish a step other than the one running. Nothing more was sent.',
   felucca: 'Nothing was sent. Read the note above Install, tick its box and press Install again.',
 };
-
-/** Flashing has never run against a real FM-1 (glvno/matryoshka#94): the production build (GitHub Pages) only installs
- *  when the page is opened with ?flash and the risk is typed out; the dev server keeps the plain check box. */
-const UNLOCKED = import.meta.env.DEV || new URLSearchParams(location.search).has('flash');
-const TYPED = !import.meta.env.DEV;
-const PHRASE = 'flash untested firmware';
 
 /** an interrupted write can only be finished with a package the waiting loader may write (fm1ota.js loaderFits) */
 function otherLoader(loader: string): string {
@@ -97,11 +91,20 @@ export function buildFlashTab(root: HTMLElement): void {
   let bundle: Bundle | null = null;
 
   const ack = el('input', { type: 'checkbox', id: 'ack' });
-  const typed = el('input', { type: 'text', id: 'ack-typed', placeholder: PHRASE, autocomplete: 'off', spellcheck: false });
   // installing over Felucca (#73): shown once the FM-1 reports a Felucca identity, needed for any non-stock install then
   const feluccaAck = el('input', { type: 'checkbox', id: 'ack-felucca' });
   const feluccaNote = el('div', { class: 'card warn', hidden: true }, el('h2', { textContent: 'Felucca projects, samples and presets' }), el('p', { textContent: FELUCCA_WARNING }), el('label', {}, feluccaAck, ' I have saved what I need: install anyway'));
-  const accepted = (): boolean => UNLOCKED && (TYPED ? typed.value.trim().toLowerCase() === PHRASE : ack.checked);
+  // an FM-1 on anything but the official V15 or Matryoshka (#161): a recommendation, nothing is blocked
+  const foreignNote = el('div', { class: 'card warn', hidden: true });
+  const noteForeign = (identity: string): void => {
+    const kind = firmwareKind(identity);
+    foreignNote.hidden = kind === 'stock' || kind === 'matryoshka';
+    if (foreignNote.hidden) return;
+    const text = `This FM-1 runs ${identity}. Returning to official V15 first is recommended.`;
+    foreignNote.replaceChildren(el('p', { textContent: `${text} Press Return to official V15, check that it boots, then install Matryoshka.` }));
+    log(text);
+  };
+  const accepted = (): boolean => ack.checked;
   const supported = 'requestMIDIAccess' in navigator;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const access = async (): Promise<any> => new Updater(await navigator.requestMIDIAccess({ sysex: true }), log);
@@ -153,12 +156,13 @@ export function buildFlashTab(root: HTMLElement): void {
     await up.install(image, product, step);
   };
 
-  /** asks the running FM-1 who it is; over Felucca the install waits for feluccaAck (an update loader is not asked:
-   *  a cut-off write is finished as before) */
+  /** asks the running FM-1 who it is: a foreign firmware gets the return-to-stock note, and over Felucca the install
+   *  waits for feluccaAck (an update loader is not asked: a cut-off write is finished as before) */
   const overFelucca = async (): Promise<void> => {
     const dev = await (await access()).find((id: { model: string }) => !/^ota-/i.test(id.model));
     if (!dev) return; // install() reports a missing device itself
     dev.link.close();
+    noteForeign(dev.id.text);
     if (!runsFelucca(dev.id.text)) return;
     feluccaNote.hidden = false;
     feluccaNote.scrollIntoView({ block: 'nearest' });
@@ -193,7 +197,7 @@ export function buildFlashTab(root: HTMLElement): void {
     bundle = b;
     bundleInfo.textContent = b
       ? `${/^matryoshka/i.test(b.version) ? b.version : `Matryoshka ${b.version}`} (${b.product}, ${Math.round(b.size / 1024)} KB) comes with this app. GPL-3.0; three JieLi SDK files inside are Apache-2.0.`
-      : 'No firmware package comes with this copy of the app. Build one (tools/build.py), run npm run firmware in web/, and reload; or choose a .fwsc file below.';
+      : 'No firmware package comes with this copy of the app. Run npm run firmware -- --ci in web/ (the newest CI build) and reload; or choose a .fwsc file below.';
     setButtons();
   });
 
@@ -204,6 +208,8 @@ export function buildFlashTab(root: HTMLElement): void {
       if (!dev) throw Object.assign(new Error('not found'), { code: 'notfound' });
       log(`${dev.id.text}  [${/^ota-/i.test(dev.id.model) ? 'update loader: an update was not finished' : 'running'}]  port: ${dev.name}`);
       dev.link.close();
+      if (/^ota-/i.test(dev.id.model)) return;
+      noteForeign(dev.id.text);
       if (runsFelucca(dev.id.text)) (feluccaNote.hidden = false), log('this FM-1 runs Felucca: read the note about its projects and samples before installing');
     });
 
@@ -246,31 +252,11 @@ export function buildFlashTab(root: HTMLElement): void {
     for (const b of [pkgBtn, stockBtn, stockFileBtn]) b.disabled = busy || !supported || !accepted();
   }
   ack.onchange = setButtons;
-  typed.oninput = setButtons;
 
   const card = (title: string, ...kids: (Node | string)[]): HTMLElement => el('div', { class: 'card' }, el('h2', { textContent: title }), ...kids);
 
   const licences = el('p', { class: 'muted' }, 'Licences: ', el('a', { href: './firmware/LICENSE-GPL-3.0.txt', textContent: 'GPL-3.0' }), ', ', el('a', { href: './firmware/LICENSE-Apache-2.0.txt', textContent: 'Apache-2.0' }), '. Source: ', el('a', { href: 'https://github.com/glvno/matryoshka', textContent: 'Matryoshka source' }), '.');
-  const untested =
-    'None of this has run against a real FM-1 yet: not the Matryoshka firmware in this package, not the install, not the recovery from a cut-off write and not the return to stock. A failed write can leave the FM-1 in a state this page cannot repair.';
-
-  if (!UNLOCKED) {
-    root.replaceChildren(
-      el(
-        'div',
-        { class: 'card warn' },
-        el('h2', { textContent: 'Flashing is switched off' }),
-        el('p', { textContent: untested }),
-        el('p', { textContent: 'Until it has been tried on a spare device, this page does not install anything. You can still check that the FM-1 answers; that only asks for its identity.' }),
-        el('p', { class: 'muted' }, 'Developers who accept the risk: open this page with ', el('code', { textContent: '?flash' }), ' at the end of the address, or use ', el('code', { textContent: 'tools/fm1_install.py' }), ' from the source.'),
-      ),
-      feluccaNote,
-      card('FM-1 connection', bundleInfo, el('div', { class: 'row' }, findBtn), licences),
-      el('div', { class: 'card' }, logEl),
-    );
-    setButtons();
-    return;
-  }
+  const list = (...items: string[]): HTMLElement => el('ul', {}, ...items.map((t) => el('li', { textContent: t })));
 
   root.replaceChildren(
     ...(supported ? [] : [el('div', { class: 'card warn', textContent: 'Web MIDI with SysEx is needed: use Chrome, Edge or Firefox over https (or localhost).' })]),
@@ -278,7 +264,28 @@ export function buildFlashTab(root: HTMLElement): void {
       'div',
       { class: 'card warn' },
       el('h2', { textContent: 'Before you flash' }),
-      el('p', { textContent: untested }),
+      el('h4', { textContent: 'Recommended: return to stock first' }),
+      el('p', {
+        textContent:
+          'If the FM-1 runs anything other than the official V15 or Matryoshka (Felucca, Sloop, M-VAVE Open or another build), press Return to official V15 first, check that it boots, then install Matryoshka. Installing from the official V15 and installing Matryoshka over Matryoshka are tested.',
+      }),
+      el('h4', { textContent: 'Tested on a real FM-1' }),
+      el('p', { class: 'muted', textContent: 'With tools/fm1_install.py, which speaks the same update protocol as this page:' }),
+      list(
+        'installing Matryoshka over the official V15, and over Matryoshka;',
+        'update mode, by OCT- and OCT+ held at power-on and by MENU > SYSTEM > UPDATE MODE, and an install from there;',
+        'returning to the official V15 from Matryoshka, then installing Matryoshka again; the official firmware boots, plays and saves;',
+        'a write cut off from the computer (at 30 %): the FM-1 waits in its update loader and the same install run again finishes it;',
+        'safe mode (SAVE held at power-on) and the boot guard.',
+      ),
+      el('p', { class: 'muted', textContent: 'Partly: a power cut as the update loader started, and one halfway through a write of the same build; both booted.' }),
+      el('h4', { textContent: 'Not tested' }),
+      list(
+        'this page against a real FM-1;',
+        'a power cut while the firmware is half old and half new;',
+        'installing over Felucca, Sloop or M-VAVE Open;',
+        'FACTORY RESET.',
+      ),
       el('p', {
         textContent:
           'Flashing replaces the FM-1 firmware. It has one firmware slot and no rollback. If an update is cut off the FM-1 waits in its update loader: the same button finishes it (Install for Matryoshka, Return to official V15 for a return to stock; this page refuses the wrong one). The official V15 file brings the stock firmware back. Keep the USB cable and the battery connected and keep this page open.',
@@ -291,8 +298,9 @@ export function buildFlashTab(root: HTMLElement): void {
         textContent:
           'The FM-1 disconnects and comes back several times. Chromium on Linux can close the whole browser when that happens (a bug in its MIDI backend): close other tabs first, or install with tools/fm1_install.py.',
       }),
-      TYPED ? el('label', {}, `Type “${PHRASE}” to accept the risk: `, typed) : el('label', {}, ack, ' I understand and accept the risk'),
+      el('label', {}, ack, ' I understand and accept the risk'),
     ),
+    foreignNote,
     feluccaNote,
     card('Install Matryoshka', bundleInfo, el('div', { class: 'row' }, installBtn, findBtn), licences),
     card(
