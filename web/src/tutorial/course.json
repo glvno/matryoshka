@@ -2866,7 +2866,7 @@
           "id": "share",
           "kind": "task",
           "title": "Share it",
-          "text": "[Open the ⋯ menu in the PATCH panel and choose Share link](req:shares): it copies a link to this patch to your clipboard. Anyone who opens it gets the beat, your Pluck instrument and the eight-bar arrangement. Name and save a personal variation at the finish.",
+          "text": "[Open the ⋯ menu in the PATCH panel, choose Share… and press Copy link](req:shares): it copies a link to this patch to your clipboard. Anyone who opens it gets the beat, your Pluck instrument and the eight-bar arrangement. Name and save a personal variation at the finish.",
           "why": "",
           "parts": [
             { "id": "shares", "kind": "event", "event": "shares" }
@@ -3226,7 +3226,7 @@
           "id": "tools",
           "kind": "continue",
           "title": "Hearing and comparing",
-          "text": "- A **Scope** module shows whatever you cable into it, as a waveform or a spectrum.\n- B bypasses the selected modules; ⏻ bypasses an assembly.\n- *Show changes* lists what moved since you loaded or sent the patch.\n- *Share patch link* puts the whole patch in a URL.\n\nAll of them are in the palette.",
+          "text": "- A **Scope** module shows whatever you cable into it, as a waveform or a spectrum.\n- B bypasses the selected modules; ⏻ bypasses an assembly.\n- *Show changes* lists what moved since you loaded or sent the patch.\n- *Share patch…* puts the whole patch in a URL and draws its card for a post.\n\nAll of them are in the palette.",
           "why": "",
           "playback": false,
           "pointer": { "kind": "ui", "id": "palette-btn" }

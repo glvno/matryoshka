@@ -72,10 +72,7 @@ export const noteLinesOf = (p: Patch): number => {
   const n = notesOf(p).length;
   return n ? Math.min(3, Math.ceil(n / 100)) : 0;
 };
-const notesOf = (p: Patch): string => {
-  const raw = (p as Patch & { notes?: unknown }).notes; // Patch.notes (#165)
-  return typeof raw === 'string' ? raw.trim() : '';
-};
+const notesOf = (p: Patch): string => (typeof p.notes === 'string' ? p.notes.trim() : '');
 
 /**
  * The map in card coordinates: one box per top-level card (a collapsed assembly that is not inside another collapsed one,

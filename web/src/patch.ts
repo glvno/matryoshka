@@ -286,7 +286,13 @@ export interface Patch {
   /** where the canvas was looked at: the user's zoom and the scroll position of the view's top left in unzoomed layout
    * pixels (Editor.restoreView / stampView). Editor only */
   view?: { zoom: number; x: number; y: number };
+  /** what the patch is about, in the author's words (the share sheet's "What's going on"; at most NOTES_MAX characters).
+   * Editor only, like the name: it travels in a link and a .json file; the binary format and the FM-1 ignore it */
+  notes?: string;
 }
+
+/** the longest Patch.notes kept */
+export const NOTES_MAX = 500;
 
 /** the computer keyboard's octave range (Patch.octave, input.ts) */
 export const OCTAVE_MIN = -3, OCTAVE_MAX = 3;
@@ -722,6 +728,8 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
     }
   }
   p.name = String(p.name ?? 'patch');
+  if (typeof p.notes !== 'string' || !p.notes.trim()) delete p.notes;
+  else p.notes = p.notes.slice(0, NOTES_MAX);
   if (!hasMorph(p as Patch) || typeof p.morphName !== 'string') delete p.morphName;
   for (const k of SIDE_KEYS) if (!sideSourceOk(p as Patch, k, defs)) delete p[k];
   if (!Number.isInteger(p.octave) || p.octave === 0 || p.octave! < OCTAVE_MIN || p.octave! > OCTAVE_MAX) delete p.octave;
