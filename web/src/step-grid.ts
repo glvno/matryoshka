@@ -165,6 +165,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   let lane: Lane = laneOf.get(m.id) ?? 'steps';
   const len = (): number => Math.min(STEPS_MAX, Math.max(1, Math.round(m.params.len ?? 16)));
   let cells: HTMLElement[] = [];
+  let builtLen = 0; // the length the cells were built for: their past marks and click handlers follow it
   let shownPos = -1;
   /** the notes the note lane spans (at least an octave, around the notes the track uses) */
   const span = (): [number, number] => {
@@ -231,6 +232,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   };
   const build = (): void => {
     const n = len();
+    builtLen = n;
     const shown = Math.ceil(n / ROW) * ROW;
     rows.replaceChildren();
     cells = [];
@@ -434,7 +436,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       }
     },
     refresh() {
-      if (cells.length !== Math.ceil(len() / ROW) * ROW) build();
+      if (builtLen !== len()) build(); // not only a new row: 16 -> 13 greys 14..16, 13 -> 16 makes them clickable
       else paintAll();
       if (document.activeElement !== name) name.value = m.name ?? '';
     },
