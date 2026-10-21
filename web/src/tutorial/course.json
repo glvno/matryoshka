@@ -2866,7 +2866,7 @@
           "id": "share",
           "kind": "task",
           "title": "Share it",
-          "text": "[Open the ⋯ menu in the PATCH panel, choose Share… and press Copy link](req:shares): it copies a link to this patch to your clipboard. Anyone who opens it gets the beat, your Pluck instrument and the eight-bar arrangement. Name and save a personal variation at the finish.",
+          "text": "[Press Share in the PATCH panel (the arrow beside the save icon) and press Copy link](req:shares): it copies a link to this patch to your clipboard. Anyone who opens it gets the beat, your Pluck instrument and the eight-bar arrangement. Name and save a personal variation at the finish.",
           "why": "",
           "parts": [
             { "id": "shares", "kind": "event", "event": "shares" }

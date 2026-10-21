@@ -107,11 +107,18 @@ const devStatus = (s: string): void => {
  *  sync line (#180) shows the same state, with Sync or Stop syncing. */
 const fm1Chip = $<HTMLButtonElement>('fm1-chip');
 const fm1State = (): ChipState => chipState(device.connected, liveOn, fitsDevice);
+/** Connect FM-1 over the canvas: connects (connectFm1, as FM-1 & MIDI's Connect); connected, it says so and opens FM-1 & MIDI */
+const fm1Connect = $<HTMLButtonElement>('fm1-connect');
 const syncChip = (): void => {
   const s = fm1State();
-  fm1Chip.classList.toggle('on', s === 'synced');
-  fm1Chip.classList.toggle('idle', s === 'not synced');
-  fm1Chip.classList.toggle('over', s === 'patch too big to sync');
+  for (const el of [fm1Chip, fm1Connect]) {
+    el.classList.toggle('on', s === 'synced');
+    el.classList.toggle('idle', s === 'not synced');
+    el.classList.toggle('over', s === 'patch too big to sync');
+  }
+  fm1Connect.classList.toggle('connected', device.connected);
+  fm1Connect.querySelector('.fm1-connect-text')!.textContent = device.connected ? 'FM-1 connected' : 'Connect FM-1';
+  fm1Connect.title = device.connected ? `FM-1 ${s}: FM-1 & MIDI (send, store, sync, follow its panel)` : 'Connect the FM-1 over USB MIDI';
   fm1Chip.querySelector('.sl-chip-text')!.textContent = `FM-1 \u00b7 ${s}`;
   const does = s === 'not synced' ? 'sync with the FM-1' : 'open FM-1 & MIDI';
   fm1Chip.setAttribute('aria-label', `FM-1 ${s}: ${does}`);
@@ -129,6 +136,10 @@ const syncChip = (): void => {
 fm1Chip.onclick = () => {
   if (fm1State() === 'not synced') offerSync(true);
   else $<HTMLDialogElement>('device-bar').showModal();
+};
+fm1Connect.onclick = () => {
+  if (device.connected) $<HTMLDialogElement>('device-bar').showModal();
+  else void toastResult(connectFm1)();   // a refusal goes to FM-1 & MIDI's status, which is closed: shown in a toast too
 };
 syncChip();
 device.onStatus = devStatus;
@@ -630,6 +641,7 @@ const saveCurrent = (): void => {
   setTimeout(() => saveBtn.classList.remove('saved'), 900);
 };
 saveBtn.onclick = saveCurrent;
+$('share-patch-btn').onclick = () => shareSheet.open();
 // the patch menu (#152): the PATCH header's ⋯ and the mobile bar's Patch ⋯ reach what moves a patch in or out of the
 // browser without the palette. Its results also show in a toast: the status line is narrow on a phone, and the FM-1
 // answers in the FM-1 & MIDI dialog (#dev-status), which is closed.
@@ -1421,8 +1433,8 @@ try {
   /* storage blocked: the keyboard starts shown */
 }
 
-// FM-1 link
-$('dev-btn').onclick = async () => {
+// FM-1 link: FM-1 & MIDI's Connect and the Connect FM-1 button over the canvas
+async function connectFm1(): Promise<void> {
   try {
     const info = await device.connect();
     devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
@@ -1433,7 +1445,8 @@ $('dev-btn').onclick = async () => {
   } catch (e) {
     devStatus((e as Error).message);
   }
-};
+}
+$('dev-btn').onclick = () => void connectFm1();
 
 // ---- following the FM-1's panel (#120): any firmware, through plain MIDI (fm1-profiles.ts, mirror.ts). Its inputs go
 // through Matryoshka's panel logic (the FM-1 tab's WebAssembly copy, which tells the editor its focus and page) and the
@@ -1563,7 +1576,7 @@ const loadFromHash = (): void => {
 loadFromHash();
 window.addEventListener('hashchange', loadFromHash);
 
-// the share sheet (#165): the ⋯ menu's Share… and the palette
+// the share sheet (#165): the PATCH header's Share, the ⋯ menu's Share… and the palette
 const shareSheet = new ShareSheet($<HTMLDialogElement>('share-sheet'), {
   patch: () => editor.patch,
   rename: (name) => { editor.patch.name = name; nameInput.value = name; queueSave(editor.patch); },
@@ -1783,7 +1796,10 @@ refreshAssemblies = buildAssembliesTab($('tab-library'), {
 });
 buildFlashTab($('tab-flash'));
 const about = new AboutCard($<HTMLDialogElement>('about'));
-$('about-heart').onclick = () => void about.open();
+$('about-btn').onclick = (e) => {
+  e.stopPropagation();   // under the logo, which expands the collapsed sidebar
+  void about.open();
+};
 const switchTab = (name: string): void => {
   currentTab = name;
   closeSidebar();

@@ -47,7 +47,8 @@ there at once, and send it to the FM-1, which plays the same patch on its own.
 - **The FM-1 tab** shows the FM-1's screen and panel, running the firmware's own interface in the browser.
 - Undo / redo, copy / paste, a command palette (Ctrl/Cmd+K), keyboard shortcuts (`?` lists them), a CPU meter that
   estimates the patch's load on the FM-1, light and dark themes. Phones and tablets: pinch to zoom, two-finger pan, and a
-  page that scrolls. The patch menu (⋯) holds the FM-1 & MIDI settings, file import and sharing.
+  page that scrolls. Connect FM-1 sits at the canvas's top right, Share beside Save, About under the logo; the patch
+  menu (⋯) holds the FM-1 & MIDI settings and file import.
 - New modules and assemblies land in the part of the canvas you are looking at.
 
 ### The FM-1 firmware

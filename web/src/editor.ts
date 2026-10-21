@@ -213,7 +213,7 @@ type Pt = { x: number; y: number };
 const CARD_W = 300;
 const CARD_H = 540;
 /** the host's elements drawn over the canvas, which a new card is kept clear of (#175) */
-const OVER_CANVAS = '.view-switch, .help-btn, #diff, .tutorial, .flaw-panel';
+const OVER_CANVAS = '.view-switch, .fm1-connect, .help-btn, #diff, .tutorial, .flaw-panel';
 /** how far each paste of the same clip lands from the last (down and right) */
 const PASTE_STEP = 40;
 /** a collapsed assembly card's footprint width: a grid cell per column (`.module.assembly.cols` in style.css) */
