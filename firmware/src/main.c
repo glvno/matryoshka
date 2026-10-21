@@ -101,11 +101,25 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
                                                  * (m1_set_current); drawn now, the old patch's rows met the new engine (#140) */
     return rc;
 }
-/* the DIAG command (proto.c): page 0 the reset cause and the crash record, pages 1.. the stall record, 32 bytes a page */
+/* the DIAG command (proto.c): page 0 the reset cause and the crash record, pages 1.. the stall record, 32 bytes a page;
+ * page 127 the CPU now: % of the half buffer, the longest audio ISR (us) since the last read of this page (then reset),
+ * the half buffer's budget (us), the overload mute, the halves rendered */
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
     uint32_t i, off = page * 32u, n = sizeof diag_prev > off ? sizeof diag_prev - off : 0u;
+    if (page == 127u) {
+        uint32_t v[5];
+        v[0] = cpu_pct;
+        v[1] = diag_us_peak > eng_us_max ? diag_us_peak : eng_us_max;
+        v[2] = 2902u;
+        v[3] = eng_overload;
+        v[4] = eng_halves;
+        diag_us_peak = 0;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     n = n > 32u ? 32u : n;
     for (i = 0; i < n; i++)
         out[i] = b[off + i];

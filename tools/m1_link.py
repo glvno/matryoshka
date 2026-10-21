@@ -12,6 +12,7 @@
   tools/m1_link.py param MODULE PARAM VALUE     (module / parameter index, value as a float)
   tools/m1_link.py note 60 [seconds]
   tools/m1_link.py program N              (factory patch N, MIDI program change)
+  tools/m1_link.py cpu                    (the audio ISR's load: now, and the peak since the last cpu read)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's modular-1.dis (CI artifact modular-1-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
@@ -170,6 +171,11 @@ def main():
         link.out.send(mido.Message("note_on", note=int(a[1]), velocity=100))
         time.sleep(float(a[2]) if len(a) > 2 else 1.0)
         link.out.send(mido.Message("note_off", note=int(a[1])))
+    elif a[0] == "cpu":
+        p = link.ask(frame(0x2B, [127]), (0x4B, 127))
+        w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(5)]
+        print(f"cpu {w[0]} %, peak {w[1]} us of {w[2]} us ({100 * w[1] / w[2]:.0f} %) since the last read, "
+              f"overload {'MUTED' if w[3] else 'no'}, halves {w[4]}")
     elif a[0] == "diag":
         raw = []
         for page in range(32):
