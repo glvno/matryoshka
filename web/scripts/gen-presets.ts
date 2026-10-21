@@ -17,6 +17,8 @@ import { Engine } from '../src/engine';
 
 const DIR = new URL('../presets/', import.meta.url);
 const KEEP = '909-kit.json'; // ours, kept as written
+/** the drum kits' Drum map rows (#141): the white keys from F3, the FM-1's lowest key at octave 0 */
+const KIT_NOTES = [53, 55, 57, 59, 60, 62, 64, 65];
 
 type Ref = { module: number; param: string };
 /** a row of an assembly card by label; a label that repeats (a d s r) by the section after the row `after` */
@@ -227,22 +229,28 @@ presets.push(() => {
 
 
 // 808 Kit: a drum machine on the transport (PLAY starts it, the Main module's tempo sets it): one DRUMS track (#138) into a
-// Drum map whose rows play the boom kick, a tonal snare, the clap, a closed and an open hat and the two-square cowbell from
-// the factory drum assemblies (General MIDI notes: arm the track and Main's keys play them), each through a VCA on its
-// row's velocity (gain 127 / 100: the default velocity plays the drum as tuned, an accent louder); two mixers (the second
-// into the first's in4).
+// Drum map whose rows play the boom kick, a tonal snare, the clap, a closed and an open hat, the tom, the rim and the
+// two-square cowbell from the factory drum assemblies, each through a VCA on its row's velocity (gain 127 / 100: the
+// default velocity plays the drum as tuned, an accent louder); three mixers (the third into the second's in4, the second
+// into the first's). Main's keys go into DRUMS (#141), so the keys play the drums unarmed; the rows sit on the white keys
+// from F3 (the FM-1's lowest key at octave 0: F3 G3 A3 B3 C4 D4 E4 F4), the editor opens at octave -1 (f g h j k l ...).
 presets.push(() => {
   const p = emptyPatch('808 Kit');
   addModule(p, DEFS.fm1, 20, 20);
   const st = addModule(p, DEFS.steps, 380, 20);
   st.name = 'DRUMS';
   const map = addModule(p, DEFS.drummap, 800, 20);
+  KIT_NOTES.forEach((n, r) => (map.params[`n${r + 1}`] = n));
   wire(p, st.id, 'keys', map.id, 'keys');
-  const mixA = addModule(p, DEFS.mixer, 2940, 20);
+  const main = p.modules.find((m) => m.type === 'fm1')!;
+  wire(p, main.id, 'keys', st.id, 'keys');
+  const mixA = addModule(p, DEFS.mixer, 3780, 20);
   Object.assign(mixA.params, { l1: 0.8, l2: 0.45, l3: 0.5, l4: 1 });
-  const mixB = addModule(p, DEFS.mixer, 2940, 600);
-  Object.assign(mixB.params, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 0 });
-  const out = addModule(p, DEFS.output, 3260, 20);
+  const mixB = addModule(p, DEFS.mixer, 3780, 600);
+  Object.assign(mixB.params, { l1: 0.35, l2: 0.3, l3: 0.3, l4: 1 });
+  const mixC = addModule(p, DEFS.mixer, 3780, 1100);
+  Object.assign(mixC.params, { l1: 0.45, l2: 0.35, l3: 0, l4: 0 });
+  const out = addModule(p, DEFS.output, 4100, 20);
   //            assembly     map row  pattern (X: an accent)  settings                                        mixer
   const drums: [string, number, string, Record<string, number>, number, string][] = [
     ['boom kick', 1, 'X...x...x.x.....', {}, mixA.id, 'in1'],
@@ -250,6 +258,8 @@ presets.push(() => {
     ['clap', 3, '............X...', {}, mixA.id, 'in3'],
     ['hihat', 4, 'x.X.x.X.x.X.x.X.', { decay: 0.04 }, mixB.id, 'in1'],
     ['hihat', 5, '..............x.', { decay: 0.3 }, mixB.id, 'in2'],
+    ['tom', 6, '................', {}, mixC.id, 'in1'],
+    ['rim', 7, '................', {}, mixC.id, 'in2'],
     ['cowbell', 8, '..........x.....', {}, mixB.id, 'in3'],
   ];
   const notes: StepNote[] = [];
@@ -276,10 +286,12 @@ presets.push(() => {
     wire(p, vca.id, 'out', to, port);
   });
   st.notes = fixNotes(notes);
+  wire(p, mixC.id, 'out', mixB.id, 'in4');
   wire(p, mixB.id, 'out', mixA.id, 'in4');
   wire(p, mixA.id, 'out', out.id, 'l');
   wire(p, mixA.id, 'out', out.id, 'r');
   level(p, { drums: true });
+  p.octave = -1;
   return p;
 });
 

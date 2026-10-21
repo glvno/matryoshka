@@ -349,7 +349,7 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
 }
 
 /// The SEQ page (#83) on the factory 808 Kit (one DRUMS track since #138, its Drum map's rows on the black keys since
-/// the #139 follow-up): SEQ opens it on the first row (KICK), a white key switches the kick on a step (its cell lights), a black key picks
+/// the #139 follow-up; Main's keys into DRUMS since #141, so F3 on the device page plays the kick): SEQ opens it on the first row (KICK), a white key switches the kick on a step (its cell lights), a black key picks
 /// the snare row, PLAY runs the track (sound), SEQ held + a black key mutes it and again brings it back, REC records
 /// hits. Arming (#139): REC held + a black key arms the track (no recording); REC while stopped is step entry (a key
 /// fills the cursor's step and the cursor moves on), PLAY makes it a live take, the device pages name the armed track,
@@ -364,6 +364,10 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.run_for(2500)?;
     m.midi(&[0xC0, kit as u8], 500)?;
     t.screen(&m, "seq: the 808 Kit loads", "808 KIT");
+    let mk = m.mark();
+    m.tap(14, 120, 300)?;                    // F3, the lowest key, on the device page: Main's keys into DRUMS (#141)
+    let p = m.peak_since(mk);
+    t.check("seq: the keys play the drums unarmed and stopped (F3: the kick)", p > LOUD, format!("peak {p}"));
     m.tap(SEQ, 120, 400)?;
     t.screen(&m, "seq: SEQ opens the step page on its track's first drum row", "DRUMS: KICK");
     t.screen(&m, "seq: the row names come with the patch (format 33)", "8 COWBELL");
@@ -409,7 +413,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(REC, 120, 1300)?;                  // stopped: step entry on the armed track
     t.screen(&m, "arm: REC with a track armed, stopped: step entry", "DRUMS WRITE REC");
     t.screen(&m, "arm: the cursor on step 1", "WRITE 1");
-    m.tap(14 + 3, 120, 300)?;                // G#3 (56, the cowbell's row): into step 1
+    m.tap(14 + 3, 120, 300)?;                // G#3 (56): into step 1
     t.snap(&m, "arm-step-entry");
     t.screen(&m, "arm: a key fills the step, the cursor moves on", "WRITE 2");
     m.tap(PLAY, 120, 600)?;
