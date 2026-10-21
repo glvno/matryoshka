@@ -1172,6 +1172,40 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 #tab-library .bank-row button:hover:not(:disabled) { color: var(--secondary); background: color-mix(in srgb, var(--secondary) 14%, transparent); }
 #tab-library .bank-row button:disabled { opacity: .3; }
 #tab-library .bank-row button.delete:hover:not(:disabled) { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+/* Community patches (community.ts, #157): a row per entry (thumbnail, title, credit + licence, notes, engines + FM-1 fit,
+   Open and ↗), an empty state that asks for the first one, and a foot with the form, the subreddit and Post yours */
+#tab-library .community-list { display: flex; flex-direction: column; gap: 6px; }
+#tab-library .community-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 6px; border-radius: 6px; background: var(--bar); }
+#tab-library .community-thumb { width: 96px; height: 60px; border-radius: 4px; background: var(--surface-tint); border: 1px solid var(--line); }
+#tab-library .community-thumb rect { fill: none; stroke: var(--muted); stroke-width: 8; }
+#tab-library .community-thumb line { stroke: var(--secondary); stroke-width: 10; stroke-linecap: round; }
+#tab-library .community-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 12px; color: var(--muted); }
+#tab-library .community-main > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tab-library .community-title { color: var(--ink); font: 600 15px/1.2 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .05em; }
+#tab-library .community-notes { color: var(--ink); font-size: 13px; }
+#tab-library .community-fit { color: var(--secondary); }
+#tab-library .community-fit.over { color: var(--danger); }
+#tab-library .community-tools { display: flex; gap: 6px; }
+#tab-library .community-tools > * { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
+#tab-library .community-open { padding: 0 14px; background: var(--btn-yellow); border-color: var(--btn-yellow); color: var(--accent-ink); }
+#tab-library .community-src { width: 32px; border: 1px solid var(--line); color: var(--muted); text-decoration: none; box-sizing: border-box; }
+#tab-library .community-src:hover { color: var(--accent); border-color: var(--ink); }
+#tab-library .community-empty { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 13px; line-height: 1.45; color: var(--muted); }
+#tab-library .community-empty b { color: var(--ink); font: 600 16px/1.2 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; }
+#tab-library .community-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; }
+#tab-library .community-foot > .muted { flex: 1 1 260px; line-height: 1.45; }
+#tab-library .community-more { font: 600 14px/1.2 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .04em; white-space: nowrap; }
+#tab-library .community-post { min-height: 36px; padding: 0 16px; border-radius: 5px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
+#tab-library .community-post:hover, #tab-library .community-open:hover { border-color: var(--ink); filter: brightness(1.08); }
+@media (max-width: 560px) {
+  #tab-library .community-row { grid-template-columns: 64px minmax(0, 1fr); }
+  #tab-library .community-thumb { width: 64px; height: 44px; }
+  #tab-library .community-tools { grid-column: 1 / -1; }
+  #tab-library .community-open { flex: 1; }
+  #tab-library .community-post { flex: 1 1 100%; }
+}
 /* the cable into the cable slack's thumb: over the sidebar, unlike every other cable (z-index under panels and menus) */
 svg.slack-cable { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 15; overflow: visible; pointer-events: none; }
 svg.slack-cable .cable { pointer-events: stroke; cursor: pointer; }
