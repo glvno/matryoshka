@@ -997,4 +997,4 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
   - the SysEx manufacturer bytes `4D 31` ("M1", protocol compatibility);
   - internal names (`m1_link.py`, `m1emu`, `M1_*`, `modular.c`);
   - the AI-stats project ids.
-- **Version string (the user's call):** `MATRYOSHKA 1.0` for the release (`tools/build.py --release 1.0`), `MATRYOSHKA 1.0-DEV` for other builds. The SYSTEM tab's version row now uses the full width, with no VERSION label (its value column held 10 characters and `val[16]` would have overflowed); the splash shows it under the bar.
+- **Version string (the user's call):** `v1.0.0` for the 1.0 release (`tools/build.py --release 1.0`, which pads X.Y to X.Y.0; `1.1-rc1` gives `v1.1.0-RC1`), `v1.0.0-DEV` for other builds. MATRYOSHKA was tried first, but it repeated the logo on the splash. The splash's 5x7 font has no lowercase, so it shows `V1.0.0-DEV`.

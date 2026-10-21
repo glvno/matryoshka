@@ -336,7 +336,7 @@ def mmio_check():
 def main():
     global PRODUCT, VERSION
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_7XY, version string MATRYOSHKA X.Y")
+    ap.add_argument("--release", metavar="X.Y", help="release build: identity FM-1_7XY, version string vX.Y.Z")
     ap.add_argument("--sdk", type=Path, help="JieLi AC79 SDK checkout (default: $AC79_SDK)")
     a = ap.parse_args()
     name = "matryoshka.fwsc"
@@ -345,7 +345,9 @@ def main():
         if not m:
             raise SystemExit(f"--release {a.release}: use X.Y, X.Y.Z, X.Y.Z.W or X.Y-suffix, one digit each")
         PRODUCT = "FM-1_7" + m[1] + m[2]
-        VERSION = "MATRYOSHKA " + a.release.upper()   # e.g. MATRYOSHKA 1.0, MATRYOSHKA 1.1-RC1 (MENU > SYSTEM, the splash)
+        num, _, sfx = a.release.partition("-")
+        num = ".".join((num.split(".") + ["0", "0"])[:max(3, len(num.split(".")))])
+        VERSION = "v" + num + ("-" + sfx.upper() if sfx else "")   # e.g. v1.0.0, v1.1.0-RC1 (MENU > SYSTEM, the splash)
         name = f"matryoshka-{a.release}.fwsc"
     fm1pkg_make.SDK = a.sdk
     for rel, sha in SDK_SHA256.items():          # fail early without the SDK

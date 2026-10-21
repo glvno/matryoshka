@@ -10,7 +10,7 @@
  * The state is plain bytes the main loop writes. */
 
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "MATRYOSHKA"
+#define FELUCCA_VERSION "v?"
 #endif
 static void leds_avail(void);
 static void leds_octave(void);
@@ -116,10 +116,6 @@ static void menu_row_draw(uint32_t row, uint32_t y, int hot)
     lcd_fill(6, y, 228, 24, bg);
     if (hot)
         lcd_fill(6, y, 3, 24, C_ACC);
-    if (row == MR_VERSION) {                        /* the version names itself ("MATRYOSHKA 1.0"): the whole row */
-        text_bc(&FONT_M, 14, y + 3u, FELUCCA_VERSION, hot ? C_FG : C_DIM, bg, 214, TA_LEFT);
-        return;
-    }
     text_bc(&FONT_M, 14, y + 3u, ROW_NAME[row], hot ? C_FG : C_DIM, bg, 140, TA_LEFT);
     menu_value(row, val);
     text_bc(&FONT_M, 150, y + 3u, val, hot ? C_ACC : C_FG, bg, 78, TA_RIGHT);
