@@ -233,7 +233,7 @@ Add a **Scope** module and cable up to two signals into its `a` and `b` inputs; 
 
 ## Factory assemblies
 
-The browser's factory shelves hold forty-three, made by `web/scripts/gen-assemblies.ts` (edit the script, rerun it, commit the files; `voice` and `echo` are kept by hand):
+The browser's factory shelves hold sixty-one, made by `web/scripts/gen-assemblies.ts` (edit the script, rerun it, commit the files; `voice` and `echo` are kept by hand):
 
 - The recipes of the factory patches: **filter voice** (oscillator, filter, one ADSR on the VCA, the filter's cv exposed), **adsr operator** (oscillator into a VCA with an ADSR: the operator of the FM patches), **noise voice**, **stack voice** (two oscillators, mixer, filter, ADSR, VCA, with `in3` for a third oscillator), **vibrato** (LFO through a Scale). The factory patches open as their instrument's assembly card (Init stays flat); the overlay is editor-only, so the sound and the binary patch are unchanged, and a patch saved from the editor keeps its grouping in the JSON and the bank while the FM-1 and the binary form drop it.
 

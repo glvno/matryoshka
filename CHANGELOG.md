@@ -6,16 +6,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
-- FM-1 & MIDI: the Live sync checkbox is gone. A line shows what the FM-1 chip shows, "Synced with the FM-1 · Stop syncing" or "Not synced · Sync" (#180).
-- FM-1: an armed Steps track shows ARM on the SEQ page (in the top bar and on the track's line). REC or SEQ held with a
-  black key that has no track says NO TRACK n. Muting, unmuting or arming no longer redraws the whole screen (#179).
-
-## 1.0.0 — date set at release
-
-> **Draft.** This entry is finished at the release (#164): the date, and every `TODO(1.0)` comment resolved.
-
-<!-- TODO(1.0): every line marked "device session" below is waiting for the owner's device session (#140 Phase 1). Keep it if
-it passes there; otherwise move it to "Known limits" or drop it. -->
+## 1.0.0 — 2026-10-21
 
 The first release of Matryoshka. It has two parts:
 
@@ -45,13 +36,19 @@ there at once, and send it to the FM-1, which plays the same patch on its own.
   rows the FM-1's knobs K1..K4 will turn.
 - **The Library** keeps your patches and assemblies in the browser and writes the whole bank to the FM-1.
 - **Share links:** a link that opens your patch, with its layout and assemblies, in anyone's editor.
-  <!-- TODO(1.0): the share sheet (#165), patch card image (#163) and Community shelf (#157) if they ship. -->
+- **Share sheet:** a link, the patch as a file, or a patch card image with its name, engine, notes and knob pages. The
+  **Community shelf** lists patches other people have submitted (through a GitHub issue form, CC BY-SA 4.0).
+- **Engines:** an engine is an assembly that plays from the keys and makes sound (an Engines shelf, with a short
+  description of each). A new patch starts from a screen of engines, or empty; an engine you add is wired to the keys and
+  the output for you.
+- **Cables** show what they carry: sound bold, modulation in a second colour, gates as a hollow rail, keys as a ribbon.
+  Dashed lines are links the app draws, never your own cables.
 - **The tutorial** ("How a patch works" in the sidebar): thirteen chapters, from a first sound to drums and voicing.
 - **The FM-1 tab** shows the FM-1's screen and panel, running the firmware's own interface in the browser.
 - Undo / redo, copy / paste, a command palette (Ctrl/Cmd+K), keyboard shortcuts (`?` lists them), a CPU meter that
-  estimates the patch's load on the FM-1, light and dark themes, touch support on phones and tablets.
-  <!-- TODO(1.0): engine language and the "Start with an engine" screen (#159, #160); cable language (#156); A/B and the
-  morph picker are off for 1.0 (#155): do not list them; layout fixes #152, #166; mobile #153; fixes #146-#150, #154. -->
+  estimates the patch's load on the FM-1, light and dark themes. Phones and tablets: pinch to zoom, two-finger pan, and a
+  page that scrolls. The patch menu (⋯) holds the FM-1 & MIDI settings, file import and sharing.
+- New modules and assemblies land in the part of the canvas you are looking at.
 
 ### The FM-1 firmware
 
@@ -60,35 +57,35 @@ there at once, and send it to the FM-1, which plays the same patch on its own.
 - **The bank:** 64 patch slots in the FM-1's flash. The first start writes the factory patches; SAVE stores the patch you
   are playing, with your edits, in its slot. The FM-1 opens the last saved slot when it starts.
 - **Steps on the panel:** the SEQ page edits a track's steps on the keys (by row for a drum track); REC held with a black
-  key arms a track, REC records into it by step or live. <!-- TODO(1.0): device session. -->
+  key arms a track (ARM shows on the SEQ page), REC records into it by step or live.
 - **MIDI:** notes, pitch bend, mod wheel, aftertouch, program change, CC to the knobs and buttons, MIDI clock and
-  Start / Stop in, over USB and the TRS MIDI input. Every panel control goes out over USB MIDI. <!-- TODO(1.0): device
-  session (USB in / out, TRS in, program change, clock, Start / Stop). -->
-- **Editor link over USB:** send a patch, store it to a slot, write the whole bank from the Library, and Live: knob and
-  button changes go both ways while you edit. <!-- TODO(1.0): device session. -->
+  Start / Stop in, over USB and the TRS MIDI input. Every panel control goes out over USB MIDI.
+- **Editor link over USB:** send a patch, store it to a slot, write the whole bank from the Library, and sync: the editor
+  asks when the FM-1 connects, then patch changes, knobs, buttons and the page in focus go both ways while you edit. The
+  FM-1 chip in the status line shows whether it is synced.
 - **USB audio out:** the FM-1 appears on a computer as a 2-channel recording device (16-bit, 44.1 kHz) carrying its
   output, alongside MIDI.
 - **Safe mode:** hold SAVE at power-on to start with the fallback patch, skipping the stored state. A start that crashes
   makes the next one safe by itself.
 - **Update mode:** hold OCT- and OCT+ at power-on, or MENU > SYSTEM > UPDATE MODE, to have the FM-1 wait for an install.
 - A settings menu (hold HOME): LEDs, knob acceleration, MIDI channel, clock in, MIDI out, CPU, version, factory reset, and
-  a short manual on the screen.
-  <!-- TODO(1.0): #141 the factory drum kits play from the keys; #146 the SYSTEM tab redraw. -->
+  a short manual on the screen. PRESET shows the patch name as you turn it.
+- The factory drum kits play from the keys: one row per key from F3 up, an octave below the melodic patches.
 
 ### Install and return to stock
 
 Install from the editor's Flash tab or with `tools/fm1_install.py`; returning to the official firmware (V15) is one button
 in the same tab. If your FM-1 runs anything other than the official firmware or Matryoshka, return it to stock first. See
 [Install on the FM-1](README.md#install-on-the-fm-1) in the README.
-<!-- TODO(1.0): the README section and the unlocked Flash tab come with #161; check the link and the wording after it
-merges. -->
 
 ### Known limits
 
 - A power cut while the firmware is being written has been tried only in cases where the image stayed whole. A cut while
   the image is half old and half new is untested.
 - The editor's CPU figures for the FM-1 are estimates, calibrated against measurements of the 17 factory patches on
-  one FM-1. Some factory patches use most of the FM-1's CPU. <!-- TODO(1.0): reword after the recalibration (#158). -->
+  one FM-1, and agree with them within a few points. The busiest factory patch, the 808 Kit, uses about 81 % with eight
+  keys held.
+- MIDI clock in and program change are implemented but have not been tried on an FM-1 yet.
 - The FM-1 has 64 patch slots and limits per patch (64 modules, 255 cables, 8 voices, one delay, one reverb); the editor
   warns when a patch does not fit.
 - The Scope runs only in the editor.
