@@ -872,3 +872,17 @@ edge cases", "FM-1 view: a patch that doesn't fit"; cable hover design A). Host-
 - Browser checks: the computer tool's screenshot frame here was 1512 px wide while the page was 1728 CSS px; clicks are
   in the screenshot's frame (scale them by 1512 / innerWidth), not CSS px as CLAUDE.md says for other setups.
 - No issues were filed for these two pieces (the code calls them the #136 / #139 follow-ups).
+
+## 2026-10-20 (late night): the firmware workflow and emu:smoke after #133-#139 (the JieLi build passed on 2c8fa98, run 39524497794: generated headers current, no warnings, pool headroom, golden / protocol / panel tests; `npm run emu:smoke` on that build: 116 checks, 0 failed, 0 level warnings. Nothing on a device)
+
+- First smoke run: the firmware halted after the factory patches with UnknownInstruction at pc 0x020032d2, in
+  `dm_keys` (engine.c, the Drum map): `94 f1 93 42` = `r4 = r9 & ~(1 << r2) #` (dual-issue head) + `bc 42`. A gap in
+  fm1-emu's decoder, not the firmware: fm1-isa's entry `r_mov_r_i_lsl_r_8` (2 corpus samples) had mask `0xcf9fffff`
+  and its own slots; its siblings (`r_mov_r_i_lsl_r`, `_5`, `_l4`) use mask `0xfffff`, dest 28..31, source 20..23,
+  shift register 24..27. `tools/emu/isa_fix.sh` now applies that as a second fix (marker `.fixed2-<rev>`); fm1-live's
+  marker is `.isa-fixed-3` (rebuilt once). Trace recipe: the `modular-1-elf` artifact's `modular-1.dis`, find the pc,
+  test the 8-byte word against the entries' mask / match.
+- Second run: `seq()` (new, first run) failed "silent while the transport is stopped": the test's F#3 back to the kick
+  row sounds the kick (stopped, picking a row auditions it, by design). The test now waits 1.5 s before the silent
+  window and prints the peak. Every other new check (drum rows by name, a white key lights the step, mute, REC, arming,
+  step entry, the live take, disarm) passed on the first run.

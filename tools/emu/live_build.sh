@@ -12,5 +12,6 @@ SRC=$(ls -d "${CARGO_HOME:-$HOME/.cargo}"/git/checkouts/fm1-emu-*/"${REV:0:7}" |
 DST=tools/emu/target/fm1-emu-src
 rm -rf "$DST"; cp -R "$SRC" "$DST"; rm -rf "$DST/.git"
 cp tools/emu/target/fm1-isa/src/generated_isa.rs "$DST/crates/fm1-isa/src/generated_isa.rs"
-grep -q 'mask: 0x000080000000ffff_u64' "$DST/crates/fm1-isa/src/generated_isa.rs"   # the fix is in
+grep -q 'mask: 0x000080000000ffff_u64' "$DST/crates/fm1-isa/src/generated_isa.rs"   # the fixes are in
+test -f "tools/emu/target/fm1-isa/.fixed2-$REV"
 cargo install --quiet --path "$DST/crates/fm1-live" --force --root tools/emu/live

@@ -4,13 +4,18 @@
 pi32v2 cores, timers, interrupts, SPI flash, the 240×240 LCD, the key matrix and encoders, the MASTER pot, the I2S
 audio and the TRS MIDI input. Our `modular-1.bin` runs on it unchanged. `tools/emu/` is a small Rust crate (`m1emu`)
 on fm1-emu's `fm1-core` / `fm1-soc`, pinned to commit `7ca5b96` in `tools/emu/Cargo.toml` (a git dependency, nothing
-of fm1-emu is copied into this repository). One fix is applied to it at build time: `tools/emu/isa_fix.sh` copies
-fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa`, widens one decoder entry and hands
-cargo a `patch` through `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in (`tools/emu/target/fm1-emu-src`); fm1-live builds from before 2026-10-18 evening (marker `.isa-fixed`, not `.isa-fixed-2`) ran the unfixed decoder and are rebuilt. The entry: the
+of fm1-emu is copied into this repository). Two decoder fixes are applied to it at build time: `tools/emu/isa_fix.sh` copies
+fm1-emu's `fm1-isa` crate from cargo's checkout into `tools/emu/target/fm1-isa`, corrects two decoder entries and hands
+cargo a `patch` through `--config` (`emu_smoke.sh` and `npm run emu` do this for m1emu). fm1-live cannot take that patch (inside fm1-emu's workspace fm1-isa is a path dependency: cargo says "patch was not used"), so `tools/emu/live_build.sh` builds it from a copy of the pinned checkout with the fixed fm1-isa swapped in (`tools/emu/target/fm1-emu-src`); fm1-live builds without both fixes (markers `.isa-fixed`, `.isa-fixed-2`, not `.isa-fixed-3`) are rebuilt. The first entry: the
 forward `if ((R & #h) == #i) goto #i` (6 bytes, `..ff60`) had a 13-bit offset field (bits 32..44, learned from
 samples with short jumps) while its `!=` sibling has 15 (bits 32..46). A JieLi build that jumps 8 KB or more forward
 with it stopped the emulator at boot with UnknownInstruction (every build from the cpu-opt work on, 2026-10-18: pc
-0x020043d4, a jump of 18076 bytes). The real chip runs it: the toolchain emits it. The firmware CI keeps the ELF and
+0x020043d4, a jump of 18076 bytes). The real chip runs it: the toolchain emits it. The second (2026-10-20): the dual-issue head
+`R = R & ~(#i << R) #` (`..f194` with bit 16 set; fm1-isa learned it from two samples) had an overfitted mask and its
+own slot layout, so `r4 = r9 & ~(1 << r2) #` in `dm_keys` (the Drum map, format 32 on) stopped the smoke test after
+the factory patches (pc 0x020032d2). It now has its three siblings' layout (`&`, `& #`, `&~`: mask `0xfffff`, dest =
+bits 28..31, source = 20..23, shift register = 24..27). fm1-core already runs `#` pairs with the second instruction
+seeing the old registers. The firmware CI keeps the ELF and
 its disassembly (artifact `modular-1-elf`) for tracing such faults to a function.
 
 **Run it locally before any device work.** It is not part of CI (the user's call: too expensive on Actions).

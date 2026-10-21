@@ -44,9 +44,9 @@ The owner grilled and approved spec **#132**: Steps becomes the one sequencer fo
 **Done since (not pushed):** the piano roll made Ableton-style (and its Delete / canvas bugs fixed), and the Drum
 map's rows on the FM-1's SEQ page with the row names in the binary (format 33). NOTES "the piano roll, Ableton-style".
 
-**Before any device work:** push `main` (#133-#139 and the follow-ups are committed, not pushed), wait for the `firmware` workflow (the
-JieLi build has not seen formats 31-33 nor #139's firmware), then `cd web && npm run emu:smoke` (its `seq()` is new and
-has never run).
+**Pushed and smoke-tested (2026-10-20, late night):** `main` is on origin; the `firmware` workflow built 2c8fa98
+(formats 31-33, #139) and `npm run emu:smoke` passes on it (116 checks) after an fm1-emu decoder fix and a `seq()` test
+fix (NOTES "the firmware workflow and emu:smoke after #133-#139"). Still nothing on a device.
 
 Also open: #131 Player Piano (its Q4 is unblocked by #133), #111 C engine audio in the FM-1 tab, #112 envelope shapes in
 the bars, #102 / #103 A/B flip bugs.

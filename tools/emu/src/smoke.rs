@@ -373,10 +373,12 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.check("seq: a white key switches its step on (the cell lights)", before != after && after == 0xffbd, format!("{before:#06x} -> {after:#06x}"));
     m.tap(14 + 3, 120, 300)?;                // G#3: the second black key = the snare row
     t.screen(&m, "seq: a black key picks a drum row", "DRUMS: SNARE");
-    m.tap(14 + 1, 120, 300)?;                // (back to the kick row)
+    m.tap(14 + 1, 120, 300)?;                // (back to the kick row; stopped, picking a row sounds it)
+    m.run_for(1500)?;                        // (the kick dies away)
     let mk = m.mark();
     m.run_for(500)?;
-    t.check("seq: silent while the transport is stopped", m.peak_since(mk) < QUIET, String::new());
+    let p = m.peak_since(mk);
+    t.check("seq: silent while the transport is stopped", p < QUIET, format!("peak {p}"));
     m.tap(PLAY, 120, 300)?;
     let mk = m.mark();
     m.run_for(2000)?;
