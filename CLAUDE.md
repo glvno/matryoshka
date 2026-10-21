@@ -7,7 +7,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 ## Decisions made with the user
 
 - **No FM engine and no Felucca features.** Only Felucca's flashing path and hardware layer (HAL, USB, update loader) are reused. GPL-3.0-only for the whole repo; keep Felucca's SPDX / copyright headers on copied files.
-- **Hard fork (2026-10-17):** `glvno/matryoshka` is standalone. Remotes: `origin` = glvno/matryoshka, `upstream` = WiggisModular/Modular-1 (fetch only, push URL `DISABLED`). Default branch `main`; GitHub Pages deploys from `main` (https://glvno.github.io/matryoshka/). No PR unless asked.
+- **Hard fork (2026-10-17):** `glvno/matryoshka` is standalone. Remotes: `origin` = glvno/matryoshka, `upstream` = WiggisModular/Modular-1 (fetch only, push URL `DISABLED`). Default branch `main`; the `deploy` workflow (`.github/workflows/pages.yml`) publishes `main` to Cloudflare Pages (https://matryoshka.pages.dev/, the address is `SITE_URL` in `web/src/site.ts`); GitHub Pages (https://glvno.github.io/matryoshka/) serves only a forwarder that hands the browser data over (`deploy/github-pages-forward`, `web/src/migrate.ts`). No PR unless asked.
 - Aftermarket firmwares: Felucca (`hugelton/Felucca`, GPL-3.0, reference source at `a4d7ca2e`, in `~/.jieli/felucca`; the only documentation of the hardware), Sloop (`isod89/sloop-fm1`). M-VAVE's `m-vave/fm1_open` (Apache-2.0) gave the stock V15 and the I2S rate.
 - The device is a **patch player** (#57): top-level modules / assemblies are devices paged by SELECT / ALGO, K1..K4 edit the focused page (docs/ARCHITECTURE.md "Device pages").
 - Factory patches are our own (`web/scripts/gen-presets.ts` from the factory assemblies), not upstream's.
