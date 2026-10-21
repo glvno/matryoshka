@@ -66,6 +66,8 @@ export function dragControl(el: HTMLElement, label: string, lo: number, hi: numb
   el.addEventListener('pointermove', (e) => {
     if (holding) move(v0 + ((y0 - e.clientY) / (e.shiftKey ? 480 : 120)) * (hi - lo));
   });
+  // touch: a sideways swipe scrolls the dock (touch-action: pan-x) and the browser cancels the drag; what it turned goes back
+  el.addEventListener('pointercancel', () => { if (holding) move(v0); });
   const release = (): void => {
     if (!holding) return;
     holding = false;
