@@ -1,4 +1,5 @@
-// The About & support card: the owner's words, the Slop Disclosure figures (ai-stats.ts), the test coverage (coverage.ts), the credits, and Ko-fi's floating button.
+// The About & support card: the owner's words, the Slop Disclosure figures (ai-stats.ts), the test coverage (coverage.ts), the credits, Ko-fi's floating button
+// and a plain GitHub Sponsors link under it (no GitHub script).
 // Ko-fi's overlay script is loaded the first time the card opens (nothing from Ko-fi before that) and draws its button into the
 // card: the dialog has a transform, so the script's position: fixed button and popup are placed in the card, not the window
 // (top right, see style.css).
@@ -10,6 +11,7 @@ import { versionLabel } from './version';
 import { inlineWordmarks, logoHtml } from './brand';
 
 const KOFI = 'glvno';
+const SPONSORS = 'https://github.com/sponsors/glvno';
 /** the button is as tall as the wordmark (30 px; style.css lines its top up with the wordmark's) */
 const KOFI_BUTTON_H = 30;
 const KOFI_SCRIPT = 'https://storage.ko-fi.com/cdn/scripts/overlay-widget.js';
@@ -168,6 +170,7 @@ export class AboutCard {
           <div class="about-brand-row">${logoHtml()}
             <div><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" />
             <p class="muted">A recursively modular and FM1-friendly synth framework</p></div></div>
+          <p class="about-sponsor">${link(SPONSORS, 'Sponsor on GitHub')}</p>
           ${passage(COPY.intro, 'Your words for supporters go here')}
           <section class="hsec ai-usage"><h3>Slop Disclosure</h3><div class="ai-live"></div>
             ${passage(COPY.howMade, 'Your “How it’s made” paragraph goes here')}</section>

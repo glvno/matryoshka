@@ -62,6 +62,10 @@ Knobs and stuff.
 * **GLO** opens the mixer: K1 sets the level, the black key F# mutes, ALGORITHM sets the polyphony (the patch reloads with the new count). Four-voice build: K1-K4 and F# G# A# C# for the four voices (patches), ALGORITHM acts on the selected one
 * **SEL** switches to the next voice (patch) in the four-voice build; keys, knobs, LCD and the editor act on it. Unused in the one-voice build
 
+## Support
+
+If Matryoshka is useful to you: [GitHub Sponsors](https://github.com/sponsors/glvno) or [Ko-fi](https://ko-fi.com/glvno).
+
 ## Hack it
 
 - Run it yourself: `cd web && npm install && npm run dev`
