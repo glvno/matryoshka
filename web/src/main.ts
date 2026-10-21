@@ -33,6 +33,7 @@ import { diffCount, diffLines, diffPatches } from './diff';
 import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
+import { EngineStart } from './engine-start';
 import { decodeShare, encodeShare, shareCodeOf, shareLink } from './share';
 import { starterPatch } from './starter';
 import { recordKey, recordNote, recordOff } from './step-grid';
@@ -695,7 +696,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Load patch from .json', keywords: 'import open file', run: () => $('load-file').click() },
     { kind: 'command', label: 'Share patch link', keywords: 'copy url clipboard', run: () => void sharePatch() },
     { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { switchTab('patch'); tutorial.open(); } },
-    { kind: 'command', label: 'New patch', run: () => { loadNamed(newPatch(DEFS)); tutorial.newPatchPressed(); } },
+    { kind: 'command', label: 'New patch', keywords: 'engine start empty', run: () => startNew() },
     { kind: 'command', label: 'Undo', detail: 'Ctrl/Cmd+Z', run: inPatch(() => editor.undo()) },
     { kind: 'command', label: 'Redo', detail: 'Shift+Ctrl/Cmd+Z', run: inPatch(() => editor.redo()) },
     { kind: 'command', label: 'Make assembly from the selection', detail: 'Ctrl/Cmd+G', run: inPatch(() => editor.makeAssembly()) },
@@ -818,7 +819,21 @@ palInput.onkeydown = (e) => {
   e.stopPropagation();
 };
 $('palette-btn').onclick = () => openPalette();
-$('new-patch-btn').onclick = () => { loadNamed(newPatch(DEFS)); tutorial.newPatchPressed(); closeSidebar(); };
+// New patch: outside the tutorial, "Start with an engine" first (#160; the tutorial's steps expect a bare Main + Output)
+const emptyNew = (): void => { loadNamed(newPatch(DEFS)); tutorial.newPatchPressed(); };
+const engineStart = new EngineStart($<HTMLDialogElement>('engine-start'), {
+  pick(def) { loadNamed(newPatch(DEFS)); editor.insert(def); tutorial.newPatchPressed(); },
+  empty: emptyNew,
+  openPicker() {
+    // the Open picker is in the sidebar: expand it (wide) or slide it in (phone)
+    if (sidebar.parentElement!.classList.contains('side-collapsed')) setSidebarCollapsed(false);
+    if (compactWorkspace.matches) setSidebarOpen(true);
+    presetSel.focus();
+    try { presetSel.showPicker(); } catch { /* not allowed here: focused is enough */ }
+  },
+});
+const startNew = (): void => (tutorial.active ? emptyNew() : engineStart.open());
+$('new-patch-btn').onclick = () => { closeSidebar(); startNew(); };
 $('add-btn').onclick = () => openPalette('module');
 $('add-assembly-btn').onclick = () => openPalette('assembly');
 $('tidy-btn').onclick = () => editor.tidyUp();
