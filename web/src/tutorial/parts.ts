@@ -146,7 +146,7 @@ const pinsOf = (m: M, part: { pin?: 'p1' | 'p2'; param?: string }): ('p1' | 'p2'
 
 const EVENT_LABEL: Record<EventName, string> = {
   notes: 'Play a note', undos: 'Press Ctrl+Z to undo', redos: 'Press Shift+Ctrl+Z to redo', zooms: 'Zoom the canvas (Ctrl+wheel, or Fit patch to screen)',
-  flips: 'Press Alt+B', shares: 'Copy a share link (the PATCH panel’s ⋯ → Share… → Copy link)', bypasses: 'Bypass a module (B)', news: 'Press New patch', saves: 'Save an assembly',
+  flips: 'Press Alt+B', shares: 'Copy a share link (the PATCH panel’s Share → Copy link)', bypasses: 'Bypass a module (B)', news: 'Press New patch', saves: 'Save an assembly',
   audio: 'Enable audio', arpPlay: 'Start the arpeggiator (Space)', snapshotA: 'Set snapshot A (Commands)', snapshotB: 'Set snapshot B (Commands)',
   selected: 'Select the modules', bypassed: 'Switch the module back on',
 };
