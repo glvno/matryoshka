@@ -68,9 +68,11 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   type Reading = { name: string; idle_us: number; n1_us: number; n4_us: number; n8_us: number; budget_us: number };
   const survey = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-10-20.json', import.meta.url), 'utf8')) as Reading[];
   const byName = new Map(Object.keys(PRESETS).map((n) => [n.toLowerCase(), n]));
+  // patches changed since the survey (not measured as they are now): re-measure on the device, then drop them here
+  const changed = new Set(['808 kit']); // #141 added the tom and rim (2026-10-21)
   it('covers every factory patch', () => expect(survey.length).toBe(Object.keys(PRESETS).length));
   for (const r of survey)
-    it(`is within -4 / +6 points of the device: ${r.name}`, () => {
+    it.skipIf(changed.has(r.name.toLowerCase()))(`is within -4 / +6 points of the device: ${r.name}`, () => {
       const name = byName.get(r.name.toLowerCase());
       if (!name) throw new Error(`the survey's ${r.name} is not a factory patch`);
       const device = (100 * Math.max(r.idle_us, r.n1_us, r.n4_us, r.n8_us)) / r.budget_us;

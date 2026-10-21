@@ -1081,3 +1081,7 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
   - export-defs regenerated `presets.h`.
   - CI on `t141-drum-kits` (0d8c778): web and firmware both passed (firmware run 39638356701, the JieLi build); emu:smoke on that build: 119 checks, 0 failed, 0 level warnings (F3 kick peak 4050; 808 KIT 4995 against 6099, 909 KIT 5454 against 5356).
 - **Not checked:** the browser (f g h j k l on both kits, ARM + REC, the row names on the roll), and the device (the owner's check: white keys from the lowest F at octave 0, PLAY as before, REC held + black key then REC).
+
+## 2026-10-21 (1.0): merging #158 and #141 together
+
+- #141 gave the 808 Kit a tom and rim, so its estimate (73.8 %) no longer matches the 2026-10-20 survey (52 % measured on the old kit). `cpu.test.ts` skips survey entries listed in `changed` (now: 808 Kit). Re-measure the 808 Kit in the device session (MENU CPU PEAK, 1 / 4 / 8 keys), update the survey JSON, and empty `changed`.
