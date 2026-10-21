@@ -6,6 +6,12 @@
  * (firmware/wasm/fm1_ui.c). The running patch is pv_bin / pv_len (bump pv_gen when another one goes in). */
 static uint16_t fb[240 * 240];
 static uint8_t fb_dirty;                   /* the framebuffer changed since the host last looked */
+#ifdef FB_WATCH
+static uint8_t fb_changes[240 * 240];      /* panel_test.c: how often each pixel changed value since fb_watch_reset() */
+#define FB_PUT(p, c) (fb_changes[p] += fb[p] != (c) && fb_changes[p] < 255u, fb[p] = (c))
+#else
+#define FB_PUT(p, c) (fb[p] = (c))
+#endif
 static uint32_t fm1_ms;
 static uint32_t fm1_ticks(void) { return 0; }
 static uint32_t eng_us_last = 316, eng_us_max = 358;
@@ -25,7 +31,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
     for (j = 0; j < h; j++)
         for (i = 0; i < w; i++)
             if (x + i < 240u && y + j < 240u)
-                fb[(y + j) * 240u + x + i] = c;
+                FB_PUT((y + j) * 240u + x + i, c);
     fb_dirty = 1;
 }
 static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *px)
@@ -35,7 +41,7 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
         for (i = 0; i < w; i++)
             if (x + i < 240u && y + j < 240u) {
                 uint16_t v = px[j * w + i];
-                fb[(y + j) * 240u + x + i] = (uint16_t)((v >> 8) | (v << 8));     /* the LCD takes big endian */
+                FB_PUT((y + j) * 240u + x + i, (uint16_t)((v >> 8) | (v << 8)));   /* the LCD takes big endian */
             }
     fb_dirty = 1;
 }
