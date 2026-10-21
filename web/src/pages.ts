@@ -48,6 +48,27 @@ export interface Device {
 /** a page's title as the editor and the FM-1 show it: the name, and "2/3" when its group spans pages */
 export const pageTitle = (pg: Page): string => (pg.parts > 1 ? `${pg.name} ${pg.part + 1}/${pg.parts}` : pg.name);
 
+/** characters of knob names the editor's page picker shows before it says "page 2/3" instead */
+export const LABEL_MAX = 30;
+
+/**
+ * What the editor's page picker shows for page `i` of a device: never the device's name (#154). A page under a heading of
+ * its own shows its title; a page before the first heading (its section is named after the device) shows its knobs' row
+ * names ("cutoff · res · env · drive"), or "page 2/3" when they do not fit or another page of the section has the same
+ * names. The section's only page always shows its knob names (the picker cuts them short). The FM-1 shows "PAGE 2/3"
+ * for such a page (pages_ui.c pages_chips): its chip has no room for knob names.
+ */
+export function pageLabel(dev: Device, i: number): string {
+  const pg = dev.pages[i];
+  if (pg.name !== dev.name) return pageTitle(pg);
+  const knobs = (q: Page): string => q.rows.map((r) => r.label).join(' · ');
+  const own = knobs(pg);
+  const twin = dev.pages.some((q, j) => j !== i && q.name === pg.name && knobs(q) === own);
+  const fallback = `page ${pg.part + 1}/${pg.parts}`;
+  if (pg.parts > 1 && (own.length > LABEL_MAX || twin)) return fallback;
+  return own && own !== dev.name ? own : fallback;
+}
+
 /** a row of a card as grouping sees it: its layout flags, and whether it takes a knob (a display does not) */
 export interface GroupItem { head?: string; group?: true; col?: true; knob: boolean }
 
