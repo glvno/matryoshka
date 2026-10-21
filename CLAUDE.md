@@ -20,7 +20,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - The flash tab and installer have never run against a real FM-1 in this project.
 - FM-1 CPU clock, RAM and flash sizes are unknown (the chip is said to be a JieLi AC791N / pi32v2). Memory map hints: `firmware/app.ld`, `tools/build.py`.
 - Button ids beyond PLAY / REC come from Felucca's panel table (fm1_open agrees), not measured.
-- The CPU estimate (`web/src/cpu.ts`) is a model scaled from one device measurement.
+- The CPU estimate (`web/src/cpu.ts`) is a model calibrated on 17 factory patches measured on the device (2026-10-20); per-module figures are not measured.
 
 ## Layout and commands
 

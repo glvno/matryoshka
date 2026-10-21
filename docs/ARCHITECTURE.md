@@ -66,13 +66,83 @@ Conclusions: the core has no FPU (float links against `libcompiler-rt.a` soft fl
 
 ## Estimated CPU load (the editor's budget meter)
 
-The editor estimates how much of the 2901 us audio interrupt a patch needs (`web/src/cpu.ts`, `cpuEstimate`; the status line's CPU bar; over 100 % counts as over the FM-1 budget like a memory limit, `deviceBudget` in patchbin.ts). Nothing here was measured per module on the device: it is a model.
+The editor estimates how much of the 2901 us audio interrupt a patch needs (`web/src/cpu.ts`, `cpuEstimate`; the status line's CPU bar; over 100 % counts as over the FM-1 budget like a memory limit, `deviceBudget` in patchbin.ts). It is a model: cycles counted on a stand-in core, calibrated on whole factory patches measured on the FM-1; nothing was measured per module on the device.
 
 - **Counting.** `tools/cpu/build.sh` builds `firmware/src/engine.c` for rv32im (clang + ld.lld, `-Os` as tools/build.py) with `tools/cpu/prof.c` as the driver; `tools/cpu/rv32.mjs` is a small RV32IM interpreter (cycles = 1 per instruction, +1 load, +2 taken branch / jump, +32 division) that reads the `ENG_PROF` hooks in `render_voice` (compiled out in the firmware) and attributes each module's input sums, parameter inputs (`apply_cv`) and processing. The FM-1's core is not RISC-V; the model only has to get the ratios right.
-- **Scale.** The M1-0.2 engine (b907693) built the same way, running its own 303 Acid with a note held, peaks at 84,600 cycles per block; that build took 12 % (peak) of the interrupt on the FM-1, so 243 cycles = 1 us. The bench kernels above (4x MAC 9 us, SVF 8 us) give 258 and 243: the two independent checks agree within ~6 %. The 12 % included the key scan and USB, so the scale errs towards a higher load.
+- **Scale (calibrated 2026-10-20).** `us = cycles / 233.4 + 23` per block, of 2901 us (`cyclesPerUs`, `fixedUs` in cpu-costs.json, frozen constants in cpu-costs.ts `SURVEY`, not re-fitted on each run). The 17 factory patches were measured on the FM-1 (`docs/measurements/cpu-survey-2026-10-20.json`, CI run 39541520839 on `device-diag`: the longest audio interrupt at rest and with 1 / 4 / 8 notes held over USB MIDI); against the estimate at the old scale a least-squares fit gives device % = 1.041 x estimate % + 0.8, so 243 / 1.041 cycles per us plus 0.8 % of the block (23 us) that the counted engine leaves out: the rest of the interrupt (key scan, USB poll), whatever the patch. The old scale is still counted as a cross-check (cpu-costs.json `calibration`): the M1-0.2 engine (b907693) running its 303 Acid with a note held peaks at 84,600 cycles per block, which took 12 % (peak) of the interrupt on the FM-1 = 243 cycles per us; the bench kernels above (4x MAC 9 us, SVF 8 us) give 258 and 243. `cpu.test.ts` holds every factory patch within -4 / +6 points of its survey peak; after large engine changes a new survey replaces the file and the constants.
 - **Table.** `cd web && npm run cpu-costs` (`web/scripts/cpu-costs.ts`, ~10 s on a worker pool, `tools/cpu/pool.mjs`) writes `web/src/cpu-costs.json`: per module type the cost with defaults plus a grid over what changes it, found by trying every setting alone and with every input patched (choices, small integers, a number stepping above its minimum = a mode such as the oscillator's FM, numbers as interpolated points such as `coarse`, patched inputs, patched outputs); shared costs (summing, a parameter input and each parameter it moves, morph, bypass, per module, per block, per Output). Pitch inputs are fed C5 while counting (a square or saw oscillator costs up to twice as much higher up); inputs are fed by an oscillator and by a held gate, the worse counts. Rerun it after changing the engine.
 - **Checks.** Every factory patch and factory assembly (in a new patch, its outputs into the Output and Main's keys / pitch / gate / velocity into its inputs, so it is heard and played) is counted whole, holding one note per voice of its largest poly group (idle voices are skipped, below; the estimate is the worst case, every voice playing), and its peak includes the note-on block; `cpu.test.ts` holds the model to those counts (never more than 5 % low, at most 15 % high). Exempt from the upper bound (`looseModel` in cpu-checks.ts): grain and compressor (their cost depends on what they are fed; the table holds the worst case, a slowly triggered grain module reads up to 3x high), a filter cut-off moved by an LFO, an LFO whose rate is patched (a knob may turn it up to where the pitch it modulates moves every sample), an envelope or glide into a pitch (charged as moving all block; it settles sooner).
-- **Numbers (counted on the C engine, 2026-10-18).** Init 13 %, Silver Box 19 %, Monolith D 31 %, Oracle V (4 voices) 81 %, Hera 6 (4 voices) 82 %, Expander S (4 voices) 84 %, Algo Four (3 voices) 89 %; the reverb alone 20 %, `supersaw stack` (4 parts x 5 unison) 105 %.
+- **Factory patches against the device** (the survey's peak of rest / 1 / 4 / 8 notes against `cpuEstimate`; `cd web && npx vite-node scripts/cpu-table.ts` prints both tables here). The estimate is the worst case, every voice playing; on the device a poly patch costs about the same at rest (every part renders). Hera 6 and Algo Four were probably clipped by the overload guard (a part shed above 85 %, no flag), so their device figures are lower bounds. At most 3.0 points low (Algo Four) and 5.5 high (Oracle V). `CPU_WARN` stays at 80 %: Algo Four and Oracle V show amber.
+
+  | patch | device peak % | estimate % | difference |
+  |---|---:|---:|---:|
+  | Oracle V | 75.2 | 80.7 | +5.5 |
+  | Init | 9.5 | 9.7 | +0.2 |
+  | Simple FM | 15.7 | 15.2 | -0.5 |
+  | Plucked String | 32.1 | 31.6 | -0.5 |
+  | Monolith D | 21.7 | 22.1 | +0.4 |
+  | Silver Box | 14.3 | 15.4 | +1.1 |
+  | Hera 6 | 76.0 | 73.2 | -2.8 |
+  | Sallen 20 | 27.8 | 28.6 | +0.8 |
+  | Expander S | 58.3 | 55.6 | -2.7 |
+  | Algo Four | 85.6 | 82.6 | -3.0 |
+  | Canvas | 24.2 | 23.5 | -0.8 |
+  | Wanderer | 31.8 | 30.1 | -1.6 |
+  | Briefcase 3 | 38.7 | 39.1 | +0.4 |
+  | Io 4 | 44.4 | 43.4 | -1.0 |
+  | Vernon 100 | 24.1 | 23.1 | -0.9 |
+  | 808 Kit | 51.6 | 54.5 | +2.9 |
+  | 909 Kit | 33.5 | 35.8 | +2.3 |
+
+- **USB audio is not modelled.** The survey was taken without the USB audio stream (it came later); streaming adds about 2 points (Algo Four 86 -> 88 %, NOTES 2026-10-21 (device)). The estimate leaves it out.
+- **Per module (model figures at default settings, calibrated on whole patches; not measured per module on the device).** `run + cv` of cpu-costs.json plus the per-module render cost (`node`, 129 cycles), at the calibrated scale; one instance, nothing patched, pitch at C5. The fixed costs come on top once per patch: the block (4161 cycles) and the 23 us, about 1.4 % together, plus 3743 cycles (0.6 %) per Output. Settings, patched inputs and outputs change most of these (the grid in cpu-costs.json; the oscillator's FM mode or unison, a filter's moving cut-off), and each part of a poly assembly counts again.
+
+  | module | type | cycles | us | % of the block |
+  |---|---|---:|---:|---:|
+  | Reverb | `reverb` | 118382 | 507 | 17.5 |
+  | Freq shift | `shift` | 43506 | 186 | 6.4 |
+  | Modal | `modal` | 39748 | 170 | 5.9 |
+  | Vowel | `vowel` | 35517 | 152 | 5.2 |
+  | Granular | `grain` | 30941 | 133 | 4.6 |
+  | Filter | `filter` | 29819 | 128 | 4.4 |
+  | Chorus | `chorus` | 25026 | 107 | 3.7 |
+  | Quantizer | `quant` | 23642 | 101 | 3.5 |
+  | Ladder | `ladder` | 23285 | 100 | 3.4 |
+  | Wavetable | `wavetable` | 21510 | 92 | 3.2 |
+  | Phaser | `phaser` | 17017 | 73 | 2.5 |
+  | String | `string` | 16101 | 69 | 2.4 |
+  | Comb | `comb` | 13709 | 59 | 2.0 |
+  | Steps | `steps` | 13612 | 58 | 2.0 |
+  | Sequencer | `seq` | 11094 | 48 | 1.6 |
+  | Env L/R | `env` | 10676 | 46 | 1.6 |
+  | Pan | `pan` | 9470 | 41 | 1.4 |
+  | Shaper | `shape` | 9438 | 40 | 1.4 |
+  | Oscillator | `osc` | 8658 | 37 | 1.3 |
+  | Compressor | `dyn` | 8546 | 37 | 1.3 |
+  | Delay | `delay` | 8284 | 35 | 1.2 |
+  | Math | `math` | 7511 | 32 | 1.1 |
+  | ADSR | `adsr` | 6509 | 28 | 1.0 |
+  | Mixer 4 | `mixer` | 6188 | 27 | 0.9 |
+  | Clock div | `clkdiv` | 6030 | 26 | 0.9 |
+  | LFO | `lfo` | 5641 | 24 | 0.8 |
+  | Crossfade | `xfade` | 5007 | 21 | 0.7 |
+  | Glide | `glide` | 4788 | 21 | 0.7 |
+  | Logic | `logic` | 4219 | 18 | 0.6 |
+  | Noise | `noise` | 3792 | 16 | 0.6 |
+  | Digitizer | `crush` | 3783 | 16 | 0.6 |
+  | VCA | `vca` | 3317 | 14 | 0.5 |
+  | Pulse | `pulse` | 2930 | 13 | 0.4 |
+  | S&H | `sh` | 2690 | 12 | 0.4 |
+  | Scale | `scale` | 2491 | 11 | 0.4 |
+  | Drum map | `drummap` | 1740 | 7 | 0.3 |
+  | Random | `random` | 1326 | 6 | 0.2 |
+  | Main | `fm1` | 1251 | 5 | 0.2 |
+  | Constant | `const` | 906 | 4 | 0.1 |
+  | Macro | `macro` | 906 | 4 | 0.1 |
+  | Arpeggiator | `arp` | 888 | 4 | 0.1 |
+  | Part (engine) | `part` | 854 | 4 | 0.1 |
+  | Output | `output` | 537 | 2 | 0.1 |
+  | Voice allocator | `alloc` | 129 | 1 | 0.0 |
 - **Later, with a second FM-1:** a build that times the `ENG_PROF` stages with `fm1_ticks` and reports them over SysEx can replace the counts with measured microseconds (`CpuTable.source`, `cyclesPerUs` = 1).
 
 - **Oscillator increments** (2026-10-17): the C oscillator works out its phase increments (`exp2_scale`) only when its pitch input changes from one sample to the next (exactly the same output; golden kits unchanged). A pitch from Main or a Part holds still for a block, so it costs less than one that moves. The table's `moving` (cycles per block and unison copy, measured with an LFO added to the pitch) is charged by `cpuEstimate` when the pitch may change about every sample (`keepsMoving` = `slope` ≥ 0.5 Q16 steps per sample: oscillators, noise, envelopes, glides, Random walks anywhere upstream; an LFO by its rate x depth unless something is patched into it; a free sample-and-hold LFO steps once a cycle and is not charged; a Scale multiplies its input's slope by its gain).

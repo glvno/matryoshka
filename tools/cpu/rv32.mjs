@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // A small RV32IM interpreter that runs tools/cpu/prof.c (the engine built for rv32im) and counts what each module costs.
 // Cycles are a simple in-order model: 1 per instruction, +1 for a load, +2 for a taken branch or a jump, +32 for a
-// division. The FM-1's core is not RISC-V; only the ratios matter, the scale comes from one measurement on the device.
+// division. The FM-1's core is not RISC-V; only the ratios matter, the scale comes from patches measured on the device.
 import { readFileSync } from 'node:fs';
 
 const MEM = 16 << 20;

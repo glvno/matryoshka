@@ -1,6 +1,7 @@
 {
- "source": "estimate: the fixed-point engine counted on an rv32im model (tools/cpu), scaled by one measurement on the FM-1",
- "cyclesPerUs": 243,
+ "source": "estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on 17 factory patches measured on the FM-1 (2026-10-20)",
+ "cyclesPerUs": 233.4,
+ "fixedUs": 23,
  "blockUs": 2901,
  "note": 72,
  "block": 4161,
@@ -26,28 +27,22 @@
      "output": "clock"
     },
     {
-     "output": "bend"
-    },
-    {
      "output": "gate"
     },
     {
      "output": "vel"
     },
     {
-     "output": "at"
+     "output": "bend"
     },
     {
      "output": "mod"
     },
     {
-     "output": "edit"
+     "output": "at"
     },
     {
      "output": "run"
-    },
-    {
-     "output": "env"
     },
     {
      "output": "fx"
@@ -56,13 +51,19 @@
      "output": "scl"
     },
     {
+     "output": "env"
+    },
+    {
      "output": "lfo"
     },
     {
-     "output": "arp"
+     "output": "edit"
     },
     {
      "output": "glo"
+    },
+    {
+     "output": "arp"
     }
    ],
    "grid": [
@@ -26487,13 +26488,13 @@
      "input": "cv"
     },
     {
+     "output": "notch"
+    },
+    {
      "output": "peak"
     },
     {
      "output": "ap"
-    },
-    {
-     "output": "notch"
     }
    ],
    "grid": [
@@ -29145,10 +29146,10 @@
      ]
     },
     {
-     "input": "side"
+     "input": "in"
     },
     {
-     "input": "in"
+     "input": "side"
     },
     {
      "param": "attack",
@@ -29315,19 +29316,19 @@
    "cv": 187,
    "dims": [
     {
-     "output": "legato"
-    },
-    {
-     "output": "jump"
+     "output": "gate"
     },
     {
      "output": "vel"
     },
     {
-     "output": "gate"
+     "output": "index"
     },
     {
-     "output": "index"
+     "output": "legato"
+    },
+    {
+     "output": "jump"
     }
    ],
    "grid": [
@@ -29414,15 +29415,6 @@
     },
     {
      "dim": {
-      "output": "g5"
-     },
-     "add": [
-      0,
-      329
-     ]
-    },
-    {
-     "dim": {
       "output": "g3"
      },
      "add": [
@@ -29433,6 +29425,24 @@
     {
      "dim": {
       "output": "g4"
+     },
+     "add": [
+      0,
+      329
+     ]
+    },
+    {
+     "dim": {
+      "output": "g5"
+     },
+     "add": [
+      0,
+      329
+     ]
+    },
+    {
+     "dim": {
+      "output": "g6"
      },
      "add": [
       0,
@@ -29459,25 +29469,7 @@
     },
     {
      "dim": {
-      "output": "g6"
-     },
-     "add": [
-      0,
-      329
-     ]
-    },
-    {
-     "dim": {
       "output": "v1"
-     },
-     "add": [
-      0,
-      323
-     ]
-    },
-    {
-     "dim": {
-      "output": "v4"
      },
      "add": [
       0,
@@ -29504,7 +29496,7 @@
     },
     {
      "dim": {
-      "output": "v7"
+      "output": "v4"
      },
      "add": [
       0,
@@ -29523,6 +29515,15 @@
     {
      "dim": {
       "output": "v6"
+     },
+     "add": [
+      0,
+      323
+     ]
+    },
+    {
+     "dim": {
+      "output": "v7"
      },
      "add": [
       0,
@@ -29864,7 +29865,11 @@
   }
  ],
  "calibration": {
-  "method": "303 Acid of M1-0.2 (b907693), one note held, peak cycles per block = 12 % of 2901 us (the ISR peak measured on the FM-1)",
+  "method": "a scale and a fixed time per block, fitted to the factory patches measured on the FM-1 (survey, fit)",
+  "survey": "docs/measurements/cpu-survey-2026-10-20.json, CI run 39541520839 (device-diag)",
+  "fit": "device % = 1.041 x estimate + 0.8, 17 patches, peak of rest / 1 / 4 / 8 notes",
+  "acidM102CyclesPerUs": 243,
+  "acidM102Note": "303 Acid of M1-0.2 (b907693), one note held, peak cycles per block = 12 % of 2901 us (the ISR peak measured on the FM-1): the scale before the survey",
   "acidM102Cycles": 84584,
   "benchMac4CyclesPerUs": 258,
   "benchSvfCyclesPerUs": 243,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The FM-1's CPU load of a patch, estimated from a table of costs (cpu-costs.json). The table comes from counting the
-// fixed-point engine's instructions on an rv32im model (tools/cpu, `npm run cpu-costs`), scaled by the one CPU load measured
-// on the device; a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
+// fixed-point engine's instructions on an rv32im model (tools/cpu, `npm run cpu-costs`), calibrated on the factory patches
+// measured on the device (a scale plus a fixed time per block); a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
 import { DEFS, STACKS } from './modules';
 import { hasMorph, type ModuleInst, type Patch } from './patch';
@@ -39,6 +39,8 @@ export interface CpuTable {
   source: string;
   /** the table's unit per microsecond on the FM-1 */
   cyclesPerUs: number;
+  /** the time per block the counted engine leaves out (the rest of the audio interrupt: key scan, USB poll), whatever the patch */
+  fixedUs: number;
   /** the time the audio interrupt has per block (128 frames at 44118 Hz) */
   blockUs: number;
   /** the note the costs were counted at, through a module's pitch input (with nothing patched there a module plays C4, 60:
@@ -223,6 +225,6 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
     total += one * k;
   }
   modules.sort((a, b) => b.cycles - a.cycles);
-  const us = total / table.cyclesPerUs;
+  const us = total / table.cyclesPerUs + table.fixedUs;
   return { cycles: total, us, use: us / table.blockUs, modules };
 }
