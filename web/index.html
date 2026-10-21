@@ -126,6 +126,14 @@
         <button id="dev-release" title="Release MIDI ports by reloading the page. Use before unplugging or flashing the FM-1.">Release MIDI</button>
         <form method="dialog"><button>Close</button></form>
       </dialog>
+      <!-- connecting the FM-1 (#171, main.ts offerSync): Sync (Enter) or Not now (Esc); the close's returnValue says which -->
+      <dialog id="sync-ask" class="help sync-ask" aria-labelledby="sync-ask-title" aria-describedby="sync-ask-text">
+        <form method="dialog" class="sync-ask-body">
+          <h2 id="sync-ask-title">Sync with the FM-1?</h2>
+          <p id="sync-ask-text"></p>
+          <div class="sync-ask-actions"><button value="sync" class="primary" autofocus>Sync</button><button value="later">Not now</button></div>
+        </form>
+      </dialog>
       <dialog id="about" class="help about" aria-labelledby="about-title"></dialog>
       <dialog id="engine-start" class="help engine-start" aria-labelledby="engine-start-title"></dialog>
       <dialog id="share-sheet" class="help share-sheet" aria-labelledby="share-title"></dialog>

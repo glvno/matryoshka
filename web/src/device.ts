@@ -11,6 +11,29 @@ import { deviceView } from './poly';
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
 import { muteFrame, trackFrame, parseTrack, focusFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
+/** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
+ *  `off` leaves it off (Not now was chosen in this visit), `too-big` leaves it off because the patch does not fit */
+export type ConnectSync = 'sync' | 'ask' | 'off' | 'too-big';
+
+/** the FM-1's binary holds the same patch as the editor's (encodePatch has no layout in it) */
+export const sameBinary = (a: Uint8Array | null, b: Uint8Array | null): boolean => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
+
+/**
+ * The choice on connect (#171). A patch that does not fit is never offered; Not now holds for the visit; with the FM-1's
+ * current slot known to hold the editor's patch (`deviceBin`, null when it cannot be read) nothing is lost, so it syncs
+ * without asking; anything else asks.
+ */
+export function syncOnConnect(o: { fits: boolean; declined: boolean; editorBin: Uint8Array; deviceBin: Uint8Array | null }): ConnectSync {
+  if (!o.fits) return 'too-big';
+  if (o.declined) return 'off';
+  return sameBinary(o.editorBin, o.deviceBin) ? 'sync' : 'ask';
+}
+
+/** the FM-1 chip's state (#152, #171) */
+export type ChipState = 'not connected' | 'synced' | 'not synced' | 'patch too big to sync';
+export const chipState = (connected: boolean, live: boolean, fits: boolean): ChipState =>
+  !connected ? 'not connected' : !fits ? 'patch too big to sync' : live ? 'synced' : 'not synced';
+
 const NAME = /felucca|fm-?1|matryoshka|modular/i;
 const ACK_TIMEOUT = 700;
 const FLASH_TIMEOUT = 2500; // a flash sector erase and program
