@@ -14,6 +14,12 @@ static volatile uint32_t master_q12 = 2048;        /* the MASTER pot, 0..4088 (Q
 static volatile int32_t patch_gain = 65536;        /* the mixer page's level of the patch, Q16 (0 = muted; menu.c) */
 static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
+#if FELUCCA_UAC
+/* USB audio out (usb.c, included after this file): the ring's fill is sampled as a half starts, then the half's I2S words
+ * (24 bit in the low bits; silence while the engine is stopped) go to the ring, >> 8 to 16 bit */
+static void uac_render_start(void);
+static void uac_tap(const int32_t *out, uint32_t n);
+#endif
 
 /* Overload guard (as Felucca's shed_check): a render that takes longer than the half it fills makes the ISR come back at
  * once, the main loop starves (no watchdog feed, no USB host: no OTA) and the watchdog resets. So after two halves in a
@@ -44,6 +50,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
     if (p & FM1_AUDIO_HALF) {
         uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), all;
         int32_t *o = &abuf[half * HALF_WORDS];
+#if FELUCCA_UAC
+        uac_render_start();
+#endif
         if (shed_req && eng_run) {
             shed_req = 0;
             if (eng_shed()) {
@@ -64,6 +73,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
             for (i = 0; i < HALF_WORDS; i++)
                 o[i] = 0;
         }
+#if FELUCCA_UAC
+        uac_tap(o, HALF_FRAMES);
+#endif
         fm1_audio_ack_half();
         all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
         ovl_bits = (uint8_t)(ovl_bits << 1 | (all > OVL_TICKS));

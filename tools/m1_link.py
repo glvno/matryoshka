@@ -13,6 +13,8 @@
   tools/m1_link.py note 60 [seconds]
   tools/m1_link.py program N              (factory patch N, MIDI program change)
   tools/m1_link.py cpu                    (the audio ISR's load: now, and the peak since the last cpu read)
+  tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
+                                           range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's modular-1.dis (CI artifact modular-1-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
@@ -176,6 +178,30 @@ def main():
         w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(5)]
         print(f"cpu {w[0]} %, peak {w[1]} us of {w[2]} us ({100 * w[1] / w[2]:.0f} %) since the last read, "
               f"overload {'MUTED' if w[3] else 'no'}, halves {w[4]}")
+    elif a[0] == "uac":
+        def read():
+            w = []
+            for page in (125, 126):
+                p = link.ask(frame(0x2B, [page]), (0x4B, page))
+                if len(p) < 33:
+                    sys.exit("no USB audio pages (a firmware built without FELUCCA_UAC?)")
+                w += [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
+            return w
+        w0 = read()
+        print_uac(w0)
+        if len(a) > 1:
+            dt = float(a[1])
+            t0 = time.time()
+            time.sleep(dt)
+            w1 = read()
+            dt = time.time() - t0
+            print_uac(w1)
+            d = [(y - x) & 0xFFFFFFFF for x, y in zip(w0, w1)]
+            pk, fr = d[2], d[3]
+            print(f"over {dt:.1f} s: {pk / dt:.1f} packets/s, {fr / dt:.1f} frames/s"
+                  f"{f' ({fr / pk * 1000:.1f} Hz per packet ms)' if pk else ''}; underruns +{d[8]}, overruns +{d[9]}, "
+                  f"missed +{d[10]}, stalls +{d[11]}, adj_up {d[12] / dt:.2f}/s, adj_down {d[13] / dt:.2f}/s "
+                  f"(net {(d[12] - d[13]) / dt:+.2f} frames/s: the I2S clock against the host's)")
     elif a[0] == "diag":
         raw = []
         for page in range(32):
@@ -186,6 +212,18 @@ def main():
         print_diag(raw, a[1] if len(a) > 1 else None)
     else:
         sys.exit(__doc__)
+
+
+def print_uac(w):
+    """main.c m1_diag pages 125 + 126 (usb.c uac)"""
+    f = w[0]
+    flags = [n for b, n in enumerate(("presented", "alt 1", "host reads", "primed", "configured")) if f >> b & 1]
+    lo, hi = w[14], w[15]
+    band = "none yet" if lo == 0xFFFFFFFF else f"{lo}..{hi}"
+    print(f"usb audio: {', '.join(flags) or 'off'}; streams {w[1]}, packets {w[2]}, frames {w[3]}, SET_CUR {w[4]}, "
+          f"bus resets {w[5]}, USB frame {w[7]}")
+    print(f"  underruns {w[8]}, overruns {w[9]}, missed {w[10]}, stalls {w[11]}, adj_up {w[12]}, adj_down {w[13]}, "
+          f"fill now {w[6]}, fill min..max {band} (band 160..208)")
 
 
 def print_diag(raw, dis_path):

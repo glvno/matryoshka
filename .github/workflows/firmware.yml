@@ -1,7 +1,7 @@
 name: firmware
 # Builds the firmware with the JieLi toolchain on every push and pull request that touches it (paths below) and fails on compiler warnings or on a
 # pool headroom below 8 KB (tools/build.py). Then the host tests that need a C compiler: the golden vectors (web engine
-# vs firmware engine), the arpeggiator, protocol and panel tests, the LCD preview. The .fwsc and .bin are kept as an artifact
+# vs firmware engine), the arpeggiator, protocol, USB audio and panel tests, the LCD preview. The .fwsc and .bin are kept as an artifact
 # (the emulator smoke test, npm run emu:smoke, downloads them; not for the only device: see the fork's issue 1).
 on:
   push:
@@ -108,10 +108,11 @@ jobs:
           test "${PIPESTATUS[0]}" -eq 0
           if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
           grep -E "pool [0-9]+ B of [0-9]+" build/build.log
-      - name: golden vectors, protocol and panel tests, LCD preview
+      - name: golden vectors, protocol, USB audio and panel tests, LCD preview
         run: |
           export
           tools/golden.sh
+          tools/usb_test.sh
           tools/panel_test.sh
           tools/ui_preview.sh build/ui-preview.png 0 1
       - uses: actions/upload-artifact@v4

@@ -103,11 +103,44 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
 }
 /* the DIAG command (proto.c): page 0 the reset cause and the crash record, pages 1.. the stall record, 32 bytes a page;
  * page 127 the CPU now: % of the half buffer, the longest audio ISR (us) since the last read of this page (then reset),
- * the half buffer's budget (us), the overload mute, the halves rendered */
+ * the half buffer's budget (us), the overload mute, the halves rendered;
+ * pages 125, 126 the USB audio stream (usb.c uac, FELUCCA_UAC; m1_link.py uac), 8 words each:
+ *   125: flags (bit 0 presented, 1 alt 1 set by the host, 2 the host reads, 3 primed, 4 configured), streams started,
+ *        packets, frames in them, SET_CUR requests, bus resets, last fill_min, USB frame number
+ *   126: underruns, overruns, missed IN tokens, stalls, adj_up, adj_down, fill_lo (min of fill_min since the stream
+ *        started, 0xFFFFFFFF: none yet), fill_hi */
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
     uint32_t i, off = page * 32u, n = sizeof diag_prev > off ? sizeof diag_prev - off : 0u;
+#if FELUCCA_UAC
+    if (page == 125u || page == 126u) {
+        uint32_t v[8];
+        if (page == 125u) {
+            v[0] = (uint32_t)usb_uac_on | (uint32_t)(uac.alt != 0) << 1 | (uint32_t)uac.flowing << 2 |
+                   (uint32_t)uac.go << 3 | (uint32_t)(usb.config != 0) << 4;
+            v[1] = uac.starts;
+            v[2] = uac.pkts;
+            v[3] = uac.frames;
+            v[4] = uac.rate_sets;
+            v[5] = usb.resets;
+            v[6] = uac.fill_min;
+            v[7] = usb.frame;
+        } else {
+            v[0] = uac.underruns;
+            v[1] = uac.overruns;
+            v[2] = uac.missed;
+            v[3] = uac.stalls;
+            v[4] = uac.adj_up;
+            v[5] = uac.adj_down;
+            v[6] = uac.fill_lo;
+            v[7] = uac.fill_hi;
+        }
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+#endif
     if (page == 127u) {
         uint32_t v[5];
         v[0] = cpu_pct;
@@ -711,6 +744,9 @@ static void update_only(const char *why)
     eng_run = 0;
     booting = 0;
     bootguard.pending = 0;                      /* this boot did not fail: a watchdog reset from here starts normally */
+#if FELUCCA_UAC
+    usb_uac_switch(0);                          /* MIDI only (from the menu: off the bus, back within a second via usb_retry) */
+#endif
     update_screen(why);
     for (;;) {
         const uint8_t *fp;
@@ -773,14 +809,18 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     master_boot();
     boot_step("AUDIO");
     audio_init();
-    boot_step("USB");
-    usb_start();
     boot_step("MIDI");
     uart_midi_init();                                   /* before TIMER5: PORTH read-modify-write */
     fm1_timer5_start(isr_timer5, 4);
     fm1_guard_lock_top();
     fm1_irq_enable_all();
-    fm1_delay_ms(30);
+    fm1_delay_ms(30);                                   /* the key scan has run: OCT- + OCT+ can be read */
+#if FELUCCA_UAC
+    if (update || (fm1_in.buttons & 3u) == 3u)          /* update mode: decided before the first attach, so the */
+        usb_uac_switch(0);                              /* host only ever sees the MIDI-only device (usb.c) */
+#endif
+    boot_step("USB");
+    usb_start();                                        /* (usb_poll in TIMER5 waits for usb.up, as with usb_retry) */
     if (update)
         update_only("TWO BOOTS IN A ROW FAILED");
     if ((fm1_in.buttons & 3u) == 3u)                    /* OCT- + OCT+ held at power-on */

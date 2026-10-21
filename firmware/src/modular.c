@@ -14,8 +14,19 @@
 #define FELUCCA_OTA 1
 #define FELUCCA_OTA_DRYRUN 0
 #define FELUCCA_CDC 0
-#define FELUCCA_UAC 0
+#ifndef FELUCCA_UAC
+#define FELUCCA_UAC 1            /* USB audio out (UAC1 recording device, 44.1 kHz 16-bit stereo; usb.c); FELUCCA_UAC=0 builds without */
+#endif
+#ifndef FELUCCA_UAC_48K
+#define FELUCCA_UAC_48K 0        /* 48 kHz needs Felucca's resampler table uac_fir.h, not in this repo */
+#endif
+#if FELUCCA_UAC_48K
+#error "FELUCCA_UAC_48K needs uac_fir.h (not in this repo)"
+#endif
+#ifndef FELUCCA_UAC_TONE
 #define FELUCCA_UAC_TONE 0
+#endif
+#define UAC_IN_SHIFT 8           /* the I2S words carry 24 bit in the low bits (audio.c): >> 8 for the 16-bit stream */
 
 #include <stdint.h>
 #include "fm1_time.h"
