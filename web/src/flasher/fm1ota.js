@@ -212,7 +212,7 @@ export class Updater {
     await sleep(2000);
     const s1 = await this.serve(dev.link, image, FINISH_CHECK, 8000, (n) => step("verify", n));
     dev.link.close();
-    if (!s1.finished) throw fail(s1.lost ? "lost" : "stopped", `the device ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests: nothing was written`);
+    if (!s1.finished) throw fail(s1.lost ? "lost" : "stopped", `the device ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests: nothing was written${s1.lost ? "" : ". If MIDI gear is plugged into its MIDI input, or an app sends it MIDI (clock), unplug or stop that and try again"}`);
     step("loader");
     await sleep(3000);
     const ota = await this.waitFor((id) => id.model === "ota-" + model, 30000);

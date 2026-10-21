@@ -11,7 +11,7 @@ import { FELUCCA_WARNING, runsFelucca } from './felucca-store';
 const ERRORS: Record<string, string> = {
   notfound: 'FM-1 not found. Check the USB data cable and close other apps that use the MIDI port.',
   model: 'This package is for a different device.',
-  stopped: 'The device stopped answering. Nothing was written if this happened in the check step.',
+  stopped: 'The device stopped answering. Nothing was written if this happened in the check step. If MIDI gear is plugged into the FM-1\'s MIDI input, or another app sends it MIDI (clock), unplug or stop that and try again.',
   noloader: 'The update loader did not appear. Replug USB and press Install again; the device stays in update mode.',
   lost: 'The device was disconnected. Replug USB and press Install again to finish.',
   noreturn: 'The device did not come back: power-cycle it.',
