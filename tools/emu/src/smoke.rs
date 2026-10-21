@@ -302,6 +302,8 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     let mut m = Machine::boot(app, None);
     let written = wait_text(&mut m, "FACTORY BANK WRITTEN", 9000)?;
     t.check("store: the first boot writes the factory bank", written, String::new());
+    m.run_for(1000)?;                          // (it holds the bar for 2 s: the first full redraw must not wipe it)
+    t.screen(&m, "store: the boot message stays up", "FACTORY BANK WRITTEN");
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
     t.screen(&m, "store: factory slot 0 plays", &presets[0].0);
@@ -470,7 +472,9 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     let saved = wait_text(&mut m, "SAVED", 1000)?;
     t.check("safe mode: holding SAVE at power-on does not save", !saved, String::new());
-    wait_text(&mut m, "SAFE PATCH", 6000)?;   // (the SAFE MODE message holds the bar for 4 s, then the patch's name shows)
+    m.run_for(1500)?;                         // (the SAFE MODE message holds the bar for 4 s: still there)
+    t.screen(&m, "safe mode: the message stays up", "SAFE MODE: FALLBACK PATCH");
+    wait_text(&mut m, "SAFE PATCH", 6000)?;   // (then the patch's name shows)
     t.screen(&m, "safe mode: the fallback patch", "SAFE PATCH");
     let p = midi_note_peak(&mut m, 60, 500)?;
     t.check("safe mode: the fallback patch sounds", p > QUIET, format!("peak {p}"));

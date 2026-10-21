@@ -222,9 +222,14 @@ static void header_draw(void)
     msg_until = 0;
 }
 
+static char msg_text[40];                       /* the message on show (panel_draw puts it back after a full redraw) */
 static void ui_msg(const char *s, uint32_t ms)  /* a short message in the bar instead of the name */
 {
-    bar_text(s, C_FG);
+    uint32_t i;
+    for (i = 0; s[i] && i < sizeof msg_text - 1u; i++)
+        msg_text[i] = s[i];
+    msg_text[i] = 0;
+    bar_text(msg_text, C_FG);
     msg_until = fm1_ms + ms;
 }
 
@@ -284,6 +289,7 @@ static void screen_idle(void)                   /* redraws in place: every text 
 {
     if (booting)
         return;
+    ui_full = 0;                                /* (a patch load's pending full redraw: this is it, not a second one) */
     header_draw();
     view_draw(1);
 }

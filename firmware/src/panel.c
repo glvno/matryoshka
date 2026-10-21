@@ -574,10 +574,13 @@ static void panel_draw(void)
 {
     if (msg_until && fm1_ms >= msg_until)
         ui_msg_clear();
-    if (ui_full) {
+    if (ui_full) {                                  /* (a message still on show, such as the boot's, stays) */
+        uint32_t left = msg_until && fm1_ms < msg_until ? msg_until - fm1_ms : 0u;
         ui_full = 0;
         ui_dirty = 0;
         screen_idle();
+        if (left)
+            ui_msg(msg_text, left);
     }
     if (ui_dirty) {
         int full = ui_dirty > 1;
