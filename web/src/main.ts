@@ -611,7 +611,7 @@ function showBudget(): void {
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
-    ? 'The CPU figure is an estimate: the engine counted on a model of the processor, scaled by one load measured on the FM-1. Treat anything above 80 % as tight.'
+    ? 'The CPU figure is an estimate: the engine counted on a model of the processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
     : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and the Library keeps it under "Over budget".';
   list.append(note);
   pinStatus(b.fits ? null : { tag: 'Too much for the FM-1', text: `${b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} of ${i.max}`).join(', ')}. It plays here; click the budget for what costs most.` });
