@@ -49,10 +49,10 @@ function figure(label: string, value: string, caption: string): string {
   return `<div class="ai-fig"><span class="ai-label">${label}</span><span class="ai-value">${value}</span><span class="ai-sub">${caption}</span></div>`;
 }
 
-/** Blood (time), Sweat (prompts typed into Claude Code and Codex), Tears (AI spend: WakaTime's estimate at API prices, not a bill) */
+/** Blood (time), Sweat (human interventions: the prompts typed into Claude Code and Codex), Tears (AI spend: WakaTime's estimate at API prices, not a bill) */
 function figures(stats: AiStats | null, prompts: AiPrompts | null): string {
   const blood = figure('Blood', stats ? formatHours(stats.seconds) : '—', 'human in the loop');
-  const sweat = figure('Sweat', prompts ? prompts.prompts.toLocaleString('en-US') : '—', 'prompts');
+  const sweat = figure('Sweat', prompts ? prompts.prompts.toLocaleString('en-US') : '—', 'human interventions');
   const tears = figure('Tears', stats ? formatUsd(totalCost(stats)) : '—', 'AI spend');
   return `<div class="ai-figs">${blood}${sweat}${tears}</div>`;
 }
@@ -69,7 +69,7 @@ function models(stats: AiStats | null): string {
 
 function source(stats: AiStats | null, prompts: AiPrompts | null): string {
   const waka = stats ? `WakaTime API as of ${formatDay(stats.asOf)}` : '';
-  const cli = prompts ? `prompts from Claude Code and Codex transcripts as of ${formatDay(prompts.asOf)}` : '';
+  const cli = prompts ? `human interventions, counted from Claude Code and Codex transcripts, as of ${formatDay(prompts.asOf)}` : '';
   if (!waka && !cli) return '<p class="ai-source">The figures appear after the next deploy fetches them.</p>';
   return `<p class="ai-source">Source: ${[waka, cli].filter(Boolean).join('; ')}</p>`;
 }
