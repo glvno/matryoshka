@@ -182,14 +182,15 @@
  {
   "slot": 15,
   "name": "808 Kit",
-  "idle_us": 1497,
-  "n1_us": 1497,
+  "idle_us": 2060,
+  "n1_us": 2060,
   "n1_ovl": 0,
-  "n4_us": 1496,
+  "n4_us": 2293,
   "n4_ovl": 0,
-  "n8_us": 1497,
+  "n8_us": 2351,
   "n8_ovl": 0,
-  "budget_us": 2902
+  "budget_us": 2902,
+  "note": "re-measured 2026-10-21 after #141 (MENU CPU PEAK 71 / 79 / 81 % with 1 / 4 / 8 keys; idle not read, set to the 1-key value)"
  },
  {
   "slot": 16,

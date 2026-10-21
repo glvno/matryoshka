@@ -16,8 +16,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 
 ## Not verified — do not claim otherwise
 
-- **Nothing after M1-0.2 has run on a real FM-1.** Measured on the device then: no FPU (float 40-70x slower than Q15, so the audio path is fixed point only), 303 Acid at 11-12 % of the audio budget, output samples are 24-bit in the LOW bits of each I2S word. Everything since (patch transfer, bank, panel, pages, polyphony, Steps, the installer, MIDI out, TRS MIDI) is host-tested, emulator-tested at most.
-- The flash tab and installer have never run against a real FM-1 in this project.
+- **Device-checked 2026-10-20 / 21** (docs/NOTES.md, the device session list in #140): install / update mode / return to stock (installer and the web Flash tab), the panel, pages, PRESET, the 17 factory patches, the editor link (send, store, bank, sync, mirroring), USB MIDI in / out / Start-Stop, TRS notes, Steps (play, step entry, live take, Drum map rows), USB audio. Measured on the device: no FPU (the audio path is fixed point only), output samples are 24-bit in the LOW bits of each I2S word, CPU per factory patch (docs/measurements/). **Not yet checked on a device:** MIDI clock in, program change, arming a Steps track from the device (#179), a power cut mid-write, FACTORY RESET. Anything newer than the last device session is host / emulator-tested only: say so.
 - FM-1 CPU clock, RAM and flash sizes are unknown (the chip is said to be a JieLi AC791N / pi32v2). Memory map hints: `firmware/app.ld`, `tools/build.py`.
 - Button ids beyond PLAY / REC come from Felucca's panel table (fm1_open agrees), not measured.
 - The CPU estimate (`web/src/cpu.ts`) is a model calibrated on 17 factory patches measured on the device (2026-10-20); per-module figures are not measured.
