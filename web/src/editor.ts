@@ -4122,6 +4122,8 @@ export class Editor {
     this.cablePaths = [];
     this.dockCables?.replaceChildren();
     this.overPaths.clear();
+    // a removed path gets no pointerleave: the hovered cable's glow would stay behind (#150)
+    this.glow([]);
     for (const svg of this.modulesEl.querySelectorAll('.internal-cables, .entry-cables')) svg.remove();
     // a card's cables are drawn over its thumbs (a layer that takes no pointer events), while their click areas lie
     // under the thumbs, so a thumb under a cable still drags and patches

@@ -552,6 +552,7 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
 - **Cable hover glow (2026-10-19, design A):** a hovered cable on the canvas gets a copy in `#cable-glow`, a layer above
   the cards that takes no pointer: a blurred halo in the cable's colour, a fine light core and rings on its jacks
   (`Editor.glow`), so its run shows where it passes behind a card. `Editor.glowCables` lights given cables (the ARP menu).
+  `drawCables` clears it: a path removed under the pointer gets no `pointerleave` (#150).
 - **FM-1 view, a patch that does not fit (2026-10-19):** the view loads a patch over the budget anyway
   (`encodePatch(p, true)`; the emulator has the firmware's tables, not its timing) under a card (`Fm1View.notice`,
   amber "Over the FM-1 budget") that dismisses to a chip above the device ("Over budget · CPU 104 % · won't upload"),
