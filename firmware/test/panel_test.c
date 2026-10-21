@@ -44,7 +44,20 @@ static int sent(int from, uint32_t s, uint32_t a, uint32_t b)
             return 1;
     return 0;
 }
-static void preset_step(int32_t d) { presets_stepped += d; }
+/* PRESET: counted; with preset_loads the next factory patch runs, as main.c preset_load does with the bank's */
+static int preset_loads;
+static int load(const char *name);
+static void preset_step(int32_t d)
+{
+    presets_stepped += d;
+    if (preset_loads) {
+        uint32_t n = (uint32_t)(((int32_t)cur_preset + d % (int32_t)N_PRESETS + (int32_t)N_PRESETS) % (int32_t)N_PRESETS);
+        (void)load(PRESET_LIST[n].name);
+        cur_preset = n;
+        pv_gen++;
+        screen_patch();
+    }
+}
 static void save_state(void) { saved++; }
 static void poly_row_set(uint32_t mod, uint32_t field, int32_t v) { (void)mod; (void)field; (void)v; }
 
@@ -528,6 +541,55 @@ int main(void)
         loop();
         check("REC held + the armed track's key: disarmed, REC off", eng_armed() < 0 && seq_rec == 0);
         tap(BTN_PLAY);
+    }
+
+    {                                                       /* #170: PRESET shows the patch's name over the bars */
+        uint32_t i, ink = 0, band = 0, blink = 0, y0 = TOAST_Y + 24u, y1 = y0 + FONT_L.h;
+        static uint16_t name1[240 * 240];
+        int main;
+        bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
+        (void)load("808 KIT");
+        cur_preset = 15;
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+        later(2000);
+        preset_loads = 1;
+        enc(6, 1);
+        for (i = y0 * 240u; i < y1 * 240u; i++)
+            ink += fb[i] == P_INK;
+        check("PRESET: the next patch, its name over the bars", cur_preset == 16 && !strcmp(patch_label, "909 KIT")
+              && ink > 50u && px(12, ROWS_Y + 15) == P_NIGHT);
+        snap_to(getenv("PANEL_SNAP_PATCH"));
+        memcpy(name1, fb, sizeof name1);
+        fb_watch_reset();
+        later(300);
+        check("a beat's redraw under it leaves it be", fb_blinked() == 0);
+        fb_watch_reset();
+        enc(6, 1);                                          /* again while it shows: the next name in place */
+        for (i = ROWS_Y * 240u; i < ROWS_END * 240u; i++) {
+            band += fb_changes[i] != 0u && i >= y0 * 240u && i < y1 * 240u;
+            blink += fb_changes[i] >= 2u;
+        }
+        check("PRESET again within it: the next name, nothing in the toast cleared first", cur_preset == 0
+              && !strcmp(patch_label, "ORACLE V") && band > 0u && blink == 0u && memcmp(name1, fb, sizeof name1) != 0);
+        later(1100);
+        check("the toast ends: the device page's bars come back", px(12, ROWS_Y + 15) != P_NIGHT);
+        main = eng_find(T_FM1);
+        panel_held |= 1u << BTN_PLAY;                       /* PLAY held + PRESET: the tempo, no patch, no toast */
+        panel_edges(1u << BTN_PLAY, 0);
+        enc(6, 1);
+        panel_held &= ~(1u << BTN_PLAY);
+        panel_edges(0, 1u << BTN_PLAY);
+        loop();
+        check("PLAY held + PRESET: the tempo, the patch and the bars stay", main >= 0 && cur_preset == 0
+              && px(12, ROWS_Y + 15) != P_NIGHT && fm1_ms >= pg_patch_until);
+        enc(6, -1);
+        enc(0, 1);                                          /* SELECT while it shows: the device's name instead */
+        check("SELECT during it: the device toast takes over", fm1_ms >= pg_patch_until && fm1_ms < pg_dev_toast_until);
+        later(1100);
+        preset_loads = 0;
     }
 
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");

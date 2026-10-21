@@ -53,6 +53,10 @@ static uint32_t pg_cur_dev, pg_cur_page;                /* the focus: the device
 static uint8_t pg_strip_dirty = 1;                      /* the tabs and chips need a redraw (the focus moved) */
 static uint32_t pg_toast_until, pg_dev_toast_until;     /* a knob just turned / a device just picked: shown until fm1_ms */
 static uint8_t pg_toast_k;
+/* PRESET turned (#170): the next patch's name, big, until pg_patch_until; asked before the load (pg_patch_ask, at
+ * pg_patch_ask_ms), started when the new patch's pages are built */
+static uint32_t pg_patch_until, pg_patch_ask_ms;
+static uint8_t pg_patch_ask;
 /* a Page button's list on K1..K4 (#117): its button (-1: none), the step showing, whether a hold peeks at its first page */
 static int8_t pg_list_btn = -1;
 static uint8_t pg_list_step, pg_list_peek;
@@ -222,8 +226,20 @@ static void pages_ensure(void)
             pg_cur_dev = pg_cur_page = 0;
             pg_list_btn = -1;
             pg_list_peek = 0;
+            if (pg_patch_ask && fm1_ms - pg_patch_ask_ms < 2000u) {   /* PRESET loaded it: its name over the bars */
+                pg_patch_until = fm1_ms + 1000u;
+                pg_toast_until = pg_dev_toast_until = 0;
+            }
+            pg_patch_ask = 0;
         }
     }
+}
+
+/* PRESET or a program change is about to load another patch: show its name once it runs (panel.c, main.c) */
+static void pages_patch_ask(void)
+{
+    pg_patch_ask = 1;
+    pg_patch_ask_ms = fm1_ms;
 }
 
 /* GLO (#118): Main's global page. K1 the tempo, K2 the morph, K3 / K4 the first Arpeggiator's rate and gate (a patch
@@ -298,6 +314,7 @@ static int pages_focus(uint32_t d, uint32_t g)
         return 0;
     if (d != pg_cur_dev)
         pg_dev_toast_until = fm1_ms + 900u;
+    pg_patch_until = 0;
     pg_cur_dev = d;
     pg_cur_page = g;
     pg_strip_dirty = 1;
@@ -337,6 +354,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
     j = pg->par[k];
     pg_toast_k = (uint8_t)k;
     pg_toast_until = fm1_ms + 1000u;
+    pg_patch_until = 0;
     *mod = m;
     *par = j;
     if (j & POLY_ROW) {                                 /* a poly group's setting: one step a click (main.c applies it) */
@@ -370,6 +388,7 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
     j = pg->par[k];
     pg_toast_k = (uint8_t)k;
     pg_toast_until = fm1_ms + 1000u;
+    pg_patch_until = 0;
     *mod = m;
     *par = j;
     if (j & POLY_ROW) {
@@ -815,6 +834,7 @@ static void row_out(const uint16_t *row, uint32_t x, uint32_t y, uint32_t w)
 static uint8_t pg_toast_shown = 0xFFu;
 static const ppage_t *pg_toast_pg;
 static uint8_t pg_dev_toast_shown = 0xFFu;               /* the device whose name is on show, or 0xFF */
+static uint32_t pg_patch_shown;                         /* the patch whose name is on show: pages_gen() + 1, 0 none */
 
 /* knob k's row at full size: its name, the value in the big type, the range bar with the live tick */
 static void pages_toast(const ppage_t *pg, uint32_t k, int full)
@@ -887,6 +907,47 @@ static void pages_dev_toast(void)
     text_bc(&FONT_S, 0, TOAST_Y + 54u, t, P_DIM, P_NIGHT, 240, TA_CENTER);
 }
 
+/* the patch PRESET just loaded, big: its name, under it the slot and how many the bank holds. full: the band cleared
+ * first; else only the two lines, each painting its own field (a turn while it shows: no blink) */
+static void pages_patch_toast(int full)
+{
+    char t[40], num[8], *p;
+    const char *nm = patch_label && patch_label[0] ? patch_label : "EMPTY";
+    if (full)
+        lcd_fill(0, ROWS_Y, 240, ROWS_END - ROWS_Y, P_NIGHT);
+    caps(t, nm, str_len(nm), 24);
+    fit(t, &FONT_L, 228);
+    text_bc(&FONT_L, 0, TOAST_Y + 24u, t, P_INK, P_NIGHT, 240, TA_CENTER);
+    p = t;
+    if (cur_preset < M1_SLOTS) {
+        uint64_t b = bank_mask;
+        uint32_t n = 0;
+        for (; b; b &= b - 1u)
+            n++;
+        fmt_int(num, (int32_t)cur_preset + 1);
+        p = put(p, num);
+        p = put(p, " / ");
+        fmt_int(num, (int32_t)n);
+        p = put(p, num);
+    }
+    *p = 0;
+    text_bc(&FONT_S, 0, TOAST_Y + 54u, t, P_DIM, P_NIGHT, 240, TA_CENTER);
+}
+
+/* a patch loaded (main.c preset_load): the whole screen, or, while the last one's name shows, the strip, the chips, the
+ * rail, the foot line and the new name in place */
+static void screen_patch(void)
+{
+    pages_ensure();
+    if (booting || (page != 0 && page != PAGE_GLO) || !pg_patch_shown || fm1_ms >= pg_patch_until) {
+        screen_idle();
+        return;
+    }
+    ui_full = 0;
+    pg_strip_dirty = 1;
+    pages_draw(0);
+}
+
 /* GLO's footer: what each patch button does in this patch (its label; else its kind; "-" for Nothing) */
 static void glo_footer(void)
 {
@@ -937,10 +998,21 @@ static void pages_draw(int full)
     if (!glo)
         pages_info();
     if (pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows && !(!glo && fm1_ms < pg_dev_toast_until)) {
+        pg_patch_shown = 0;
         pages_toast(pg, pg_toast_k, full);
         return;
     }
     pg_toast_shown = 0xFFu;
+    if (fm1_ms < pg_patch_until) {                      /* (a beat's redraw leaves it be) */
+        if (full || !pg_patch_shown)
+            pages_patch_toast(1);
+        else if (pg_patch_shown != pages_gen() + 1u)
+            pages_patch_toast(0);
+        pg_patch_shown = pages_gen() + 1u;
+        pg_dev_toast_shown = 0xFFu;
+        return;
+    }
+    pg_patch_shown = 0;
     if (pg && !glo && fm1_ms < pg_dev_toast_until) {
         if (full || pg_dev_toast_shown != pg_cur_dev)  /* (a beat's redraw leaves it be) */
             pages_dev_toast();
@@ -960,7 +1032,8 @@ static void pages_draw(int full)
 static int pages_expired(void)
 {
     static uint8_t was;
-    uint8_t now = (uint8_t)((fm1_ms < pg_toast_until ? 1u : 0u) | (fm1_ms < pg_dev_toast_until ? 2u : 0u));
+    uint8_t now = (uint8_t)((fm1_ms < pg_toast_until ? 1u : 0u) | (fm1_ms < pg_dev_toast_until ? 2u : 0u)
+                            | (fm1_ms < pg_patch_until ? 4u : 0u));
     int out = now != was;
     was = now;
     return out;
@@ -971,7 +1044,7 @@ static void pages_ticks(void)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
-    if (!pg || fm1_ms < pg_toast_until || fm1_ms < pg_dev_toast_until)
+    if (!pg || fm1_ms < pg_toast_until || fm1_ms < pg_dev_toast_until || fm1_ms < pg_patch_until)
         return;
     static uint8_t was;                                 /* bars that had a tick last time: redrawn once more to clear it */
     uint8_t now = 0;

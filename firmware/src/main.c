@@ -273,7 +273,7 @@ static int preset_load(uint32_t n)
     cur_preset = n;
     put(label_buf, slot_name)[0] = 0;
     patch_label = label_buf;
-    screen_idle();
+    screen_patch();                             /* (while PRESET's last name shows: in place, #170) */
     if (patches_up)
         m1_slot_now(n, label_buf);                  /* the editor follows the slot (#65) */
     return 0;
@@ -481,7 +481,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
         uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u, n = (pkt >> 16) & 0x7Fu, v = pkt >> 24;
         RING_PUBLISH();
         mi_r++;
-        uint32_t chn = ((pkt >> 8) & 15u) + 1u, redraw = 0;
+        uint32_t chn = ((pkt >> 8) & 15u) + 1u;
         if (st == 0xF0u) {                      /* realtime (MENU > CLOCK IN): MIDI clock drives the clock, Start / Continue / Stop the transport */
             uint32_t rt = (pkt >> 8) & 0xFFu;
             if (!cfg.clock_in) {
@@ -535,11 +535,9 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
             } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
                 eng_ctl(ENG_CTL_AT, (int32_t)(n * 65536u / 127u));
             } else if (st == 0xC0u && cfg.prog_chg && slot_used(n)) {   /* program change n: bank slot n (an empty one: nothing) */
+                pages_patch_ask();                     /* its name over the bars, as PRESET (#170) */
                 preset_load(n);
-                redraw = 1;
             }
-            if (redraw)
-                screen_idle();
         }
     }
     midi_in_overflow = 0;
