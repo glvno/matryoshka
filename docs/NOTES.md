@@ -1321,5 +1321,6 @@ No ticket.
   - quiet: the handshake and 20 answers whole, with a second of a busy jack before each, and nothing queued.
   Without the mute (a mutated copy of usb.c), 23 of these checks fail.
 - **Checks:** usb_test (both builds and the descriptor comparison), panel_test, golden.sh 91 ok (with proto_test),
-  vitest 815 + 1 skipped, `tsc --noEmit`, the CI firmware build and emu:smoke (below).
+  vitest 815 + 1 skipped, `tsc --noEmit`; CI firmware run 39660982667 (no new warnings); emu:smoke on its .bin: 119
+  checks, 0 failed (TRS MIDI notes and program change still play in normal mode; fm1-emu has no USB).
 - **Not checked:** the device with this build (owner's session).
