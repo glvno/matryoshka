@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- FM-1: an armed Steps track shows ARM on the SEQ page (in the top bar and on the track's line). REC or SEQ held with a
+  black key that has no track says NO TRACK n. Muting, unmuting or arming no longer redraws the whole screen (#179).
+
 ## 1.0.0 — date set at release
 
 > **Draft.** This entry is finished at the release (#164): the date, and every `TODO(1.0)` comment resolved.

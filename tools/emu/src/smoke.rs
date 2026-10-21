@@ -351,7 +351,8 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
 /// The SEQ page (#83) on the factory 808 Kit (one DRUMS track since #138, its Drum map's rows on the black keys since
 /// the #139 follow-up; Main's keys into DRUMS since #141, so F3 on the device page plays the kick): SEQ opens it on the first row (KICK), a white key switches the kick on a step (its cell lights), a black key picks
 /// the snare row, PLAY runs the track (sound), SEQ held + a black key mutes it and again brings it back, REC records
-/// hits. Arming (#139): REC held + a black key arms the track (no recording); REC while stopped is step entry (a key
+/// hits. Arming (#139): REC held + a black key arms the track (no recording; the bar and the track's line say ARM,
+/// #179); REC while stopped is step entry (a key
 /// fills the cursor's step and the cursor moves on), PLAY makes it a live take, the device pages name the armed track,
 /// REC held + the key again disarms. SEQ closes the page.
 fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
@@ -409,7 +410,8 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "arm: REC held + a black key arms the track", "DRUMS ARMED");
     m.key(REC, false);
     m.run_for(1300)?;
-    t.screen(&m, "arm: REC's release after arming records nothing", "DRUMS: KICK");
+    t.screen(&m, "arm: REC's release after arming records nothing, the bar says ARM", "DRUMS: KICK ARM");
+    t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/1  ARMED");
     m.tap(REC, 120, 1300)?;                  // stopped: step entry on the armed track
     t.screen(&m, "arm: REC with a track armed, stopped: step entry", "DRUMS WRITE REC");
     t.screen(&m, "arm: the cursor on step 1", "WRITE 1");
