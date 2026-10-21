@@ -56,16 +56,39 @@ function rawList(): SavedPatch[] {
   }
 }
 
-/** keep a copy of `p` under its name (replacing one of that name); returns a status line */
-export function savePatch(p: Patch): string {
+/** keep a copy of `p` under its name (replacing one of that name); returns a status line, whether it was kept, and the
+ *  entry it replaced as it was stored (for `putBackSaved`), or null */
+export function savePatch(p: Patch): { msg: string; ok: boolean; replaced: SavedPatch | null } {
   const name = p.name.trim() || 'Untitled';
   const list = rawList();
   const i = list.findIndex((e) => e.name === name);
   const entry = { name, patch: JSON.parse(JSON.stringify({ ...p, name })) as Patch, saved: Date.now() };
+  const replaced = i >= 0 ? list[i] : null;
   if (i >= 0) list[i] = entry;
   else list.push(entry);
-  if (!write(list)) return `"${name}" was not saved: the browser refused the storage`;
-  return `"${name}" ${i >= 0 ? 'saved (replaced the earlier copy)' : 'saved'} in Your patches`;
+  if (!write(list)) return { msg: `"${name}" was not saved: the browser refused the storage`, ok: false, replaced: null };
+  return { msg: `"${name}" ${i >= 0 ? 'saved (replaced the earlier copy)' : 'saved'} in Your patches`, ok: true, replaced };
+}
+
+/** undo of a save over a name: puts the replaced entry back as it was (its date too), over the copy of that name */
+export function putBackSaved(entry: SavedPatch): boolean {
+  const list = rawList().filter((e) => e.name !== entry.name);
+  list.push(entry);
+  return write(list);
+}
+
+/** the patch as compared for unsaved changes: without the view, the keyboard's octave and the name (as the editor's undo),
+ *  keys sorted so a copy read back from storage compares equal to the live patch */
+const content = (p: Patch): string => {
+  const { view: _view, octave: _octave, name: _name, ...rest } = p;
+  return JSON.stringify(rest, (_k, v: unknown) =>
+    v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : v);
+};
+
+/** `p` has changes not kept in Your patches: it differs from the saved copy of its name, or there is none */
+export function unsavedChanges(p: Patch, saved: SavedPatch[]): boolean {
+  const copy = saved.find((e) => e.name === (p.name.trim() || 'Untitled'));
+  return !copy || content(copy.patch) !== content(p);
 }
 
 /** delete the saved patch of that name; returns it as stored (for `restoreSaved`), or null when there was none */
