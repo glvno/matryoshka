@@ -1575,7 +1575,7 @@ refreshAssemblies = buildAssembliesTab($('tab-library'), {
 });
 buildFlashTab($('tab-flash'));
 const about = new AboutCard($<HTMLDialogElement>('about'));
-for (const id of ['about-btn', 'about-heart']) $(id).onclick = () => void about.open();
+$('about-heart').onclick = () => void about.open();
 const switchTab = (name: string): void => {
   currentTab = name;
   closeSidebar();

@@ -90,12 +90,12 @@ body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 syste
 /* the cables' continuation from the canvas down to the docked jacks; drawn over the panel, never taking the pointer */
 .dock-cables { z-index: 3; overflow: visible; } /* visible: the wheels' jacks are left of the dock */
 .dock-cables .cable { pointer-events: none; }
-.sidebar { display: flex; flex-direction: column; gap: 16px; padding: 20px 14px 14px; min-height: 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
-/* only the logo gives way when the sidebar is short (down to 80 px), so the panels fit without a scroll bar */
+.sidebar { display: flex; flex-direction: column; gap: 12px; padding: 20px 14px 14px; min-height: 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
+/* only the logo gives way when the sidebar is short (down to 48 px), so the panels fit without a scroll bar from 1280 × 800 (#166) */
 .sidebar > * { flex-shrink: 0; }
-.sidebar > .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: calc(80px + 6px + 38px); flex-shrink: 1; } /* never below the 80 px logo + gap + the wordmark (38 px at the sidebar's width): below that they ran into the tabs */
+.sidebar > .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: calc(48px + 6px + 38px); flex-shrink: 1; } /* never below the 48 px logo + gap + the wordmark (38 px at the sidebar's width): below that they ran into the tabs */
 .brand img { width: 100%; height: auto; min-width: 0; object-fit: contain; }
-.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 80px; }
+.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 48px; }
 /* the logo: colour masks (brand.ts, scripts/logo-layers.ts) filled with the theme's button colours, so it follows the theme
    switch; cream, rim and the dark line work are the art's own */
 .logo { position: relative; display: block; aspect-ratio: 1; min-width: 0; }
@@ -115,7 +115,7 @@ svg.brand-mark .accent { fill: var(--secondary); }
 #tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
 #tabs button { flex: 1; border: 0; border-radius: 0; padding: 10px 4px; background: transparent; color: var(--muted); }
 #tabs button[aria-selected="true"] { color: var(--secondary); box-shadow: inset 0 -2px var(--secondary); }
-.patch-controls { display: grid; gap: 12px; }
+.patch-controls { display: grid; gap: 8px; }
 .patch-controls[hidden] { display: none; }
 .patch-controls > * { width: 100%; min-width: 0; }
 /* the FM-1 budget meter at the right of the status line: memory (the fullest limit) and the estimated CPU load side by
@@ -162,9 +162,9 @@ svg.brand-mark .accent { fill: var(--secondary); }
   .workspace.side-collapsed > .sidebar { grid-row: 2; flex-direction: row; align-items: center; justify-content: center; gap: 8px; padding: 6px 30px 6px 8px; overflow: hidden; border-top: 1px solid var(--line); }
   .side-collapsed .sidebar > :not(.brand, .side-collapse, #tabs, .about-heart) { display: none; }
   .side-collapsed .sidebar > .theme-toggle { display: none; }
-  .side-collapsed .sidebar .about-heart { display: grid; place-items: center; flex: none; width: 26px; min-height: 26px; padding: 0; order: 3;
+  .side-collapsed #about-heart { position: static; height: auto; border-radius: 5px; display: grid; place-items: center; flex: none; width: 26px; min-height: 26px; padding: 0; order: 3;
     background: transparent; border: 1px solid transparent; color: var(--accent); font-size: 15px; }
-  .side-collapsed .sidebar .about-heart:hover { border-color: var(--line); filter: none; color: var(--accent); }
+  .side-collapsed #about-heart:hover { border-color: var(--line); filter: none; color: var(--accent); }
   .side-collapsed #tabs { order: 2; }
   .side-collapsed #tabs { flex: 1; border-bottom: 0; }
   .side-collapsed #tabs button { padding: 8px 2px; }
@@ -174,8 +174,7 @@ svg.brand-mark .accent { fill: var(--secondary); }
   .side-collapsed .side-collapse { top: 50%; transform: translateY(-50%); }
 }
 @media (max-width: 700px) { .side-collapse { display: none; } }
-.sidebar-bottom { margin-top: auto; display: grid; gap: 12px; padding-top: 12px; }
-#audio-status { font-size: 11px; overflow-wrap: anywhere; }
+.sidebar-bottom { margin-top: auto; display: grid; gap: 12px; }
 #palette-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; background: transparent; }
 kbd { font: 10px system-ui, sans-serif; color: var(--muted); }
 .mobile-bar, .sidebar-dismiss { display: none; }
@@ -353,10 +352,12 @@ dialog.about .floating-chat-kofi-popup-iframe { left: auto !important; right: 16
 dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .06em; color: var(--ink); }
 .about-kofi > a { position: absolute; right: 16px; top: 52px; }
 @media (max-width: 760px) { .ai-figs { grid-template-columns: minmax(0, 1fr); } }
-/* the sidebar's About button (outlined like TIDY / FIT) and the ♥ that stands in for it in the collapsed strip */
-.sidebar #about-btn { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
-.sidebar #about-btn:hover { border-color: var(--secondary); filter: none; }
-.sidebar .about-heart { display: none; }
+/* About is the ♥ (#166): a third quiet square left of the theme toggle; in the drawer, where those two are hidden, in the
+   corner. The collapsed strip shows it after the tabs (above). */
+#about-heart { position: absolute; top: 6px; right: 62px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; min-height: 0; padding: 0;
+  border-radius: 4px; background: transparent; border: 1px solid transparent; color: var(--accent); font-size: 14px; }
+#about-heart:hover { border-color: var(--line); filter: none; color: var(--accent); }
+@media (max-width: 700px) { #about-heart { right: 6px; } }
 /* the ? button: floats over the canvas's bottom right corner (on the patch tab, not on the canvas: it does not scroll) */
 .help-btn { position: absolute; right: 18px; bottom: 18px; z-index: 6; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 50%;
   border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--panel)); background: var(--panel); color: var(--muted); box-shadow: 0 2px 8px var(--shadow);
@@ -724,7 +725,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 20px 20px; }
 #tab-library { max-width: 1200px; margin: 0 auto; }
 @media (max-height: 660px) and (min-width: 701px) {
-  .sidebar { gap: 12px; padding-top: 12px; }
+  .sidebar { padding-top: 12px; }
   .brand h1 { font-size: 14px; }
 }
 @media (max-width: 700px) {
@@ -1070,7 +1071,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
    condensed capitals, cable slack as a value bar, the examples as a picker field. Button texts stay as written (the
    tutorial's targets and prose); the capitals are CSS. ---- */
 .sidebar { font-family: 'Barlow', system-ui, sans-serif; font-weight: 500; }
-#tabs button, .sidebar button, .example-picker > span, #audio-status { font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
+#tabs button, .sidebar button, .example-picker > span { font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
 #tabs button { font-size: 14px; }
 .spanel { border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--panel)); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 6px var(--shadow); }
 .shead { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 6px; border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; background: var(--surface-tint); }
@@ -1102,6 +1103,8 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
 .view-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* PATCH: + Module and + Assembly side by side (#166; their names still say Add module / Add assembly) */
+.add-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 /* LEARN: the tutorial and the demo side by side */
 .learn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 /* the cable slack and zoom sliders are cards' value bars (sliderJack; main.ts sideSlider) with a small name and a thumb as tall
@@ -1113,7 +1116,6 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .example-picker { display: grid; gap: 4px; }
 .example-picker > span { font-size: 11px; color: var(--muted); }
 .example-picker select { width: 100%; min-height: 28px; padding: 2px 6px; border-radius: 5px; border-color: var(--line); background: var(--bar); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
-#audio-status { font-size: 11px; color: var(--muted); }
 #palette-btn { font-size: 12px; }
 #palette-btn kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
 .sidebar #tour-btn { padding-inline: 8px; text-align: center; }
@@ -1421,6 +1423,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .statusline .sl-tag:empty { display: none; }
 .statusline .sl-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
 .statusline .sl-text.idle { color: var(--muted); }
+/* what the last action did (#audio-status, #166): after the hover text, which gives way first */
+.statusline .sl-status { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.statusline .sl-status:empty { display: none; }
 .statusline:has(.budget.over) .sl-tag { color: var(--danger); }
 .statusline .budget { padding-left: 12px; border-left: 1px solid var(--line); }
 

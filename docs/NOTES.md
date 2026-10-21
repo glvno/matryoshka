@@ -1085,3 +1085,25 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
 ## 2026-10-21 (1.0): merging #158 and #141 together
 
 - #141 gave the 808 Kit a tom and rim, so its estimate (73.8 %) no longer matches the 2026-10-20 survey (52 % measured on the old kit). `cpu.test.ts` skips survey entries listed in `changed` (now: 808 Kit). Re-measure the 808 Kit in the device session (MENU CPU PEAK, 1 / 4 / 8 keys), update the survey JSON, and empty `changed`.
+
+## 2026-10-21 (1.0): Sidebar fits a 1280 × 800 window, #166
+
+- **Why:** at 1280 × 800 the sidebar had 683 px for 869 px of content: the Open picker, the audio status and Commands were below the fold.
+- **Cuts** (index.html, style.css, main.ts):
+  - **About is the ♥** (`#about-heart`): a 24 px quiet square left of the theme toggle (`right: 62px`); in the ≤ 700 px drawer, where the toggle and collapse are hidden, at the corner (`right: 6px`). It carries the old About button's tooltip. `#about-btn` is gone. The collapsed strip's heart rules now use `.side-collapsed #about-heart` (plus `position: static`) so they still win over the id rule; it measures 26 × 26 after the tabs, as before.
+  - **Brand:** the logo's minimum is 48 px (was 80); `.brand` `min-height: calc(48px + 6px + 38px)`.
+  - **+ Module / + Assembly** share an `.add-row` (`1fr 1fr`, gap 6). `title` and `aria-label` stay "Add module" / "Add assembly"; ids unchanged, so the tutorial targets still work. course.json's five "+ Add module" / "+ Add assembly" mentions now say "+ Module" / "+ Assembly" (text only; edited in the file, not in the lesson editor).
+  - **Gaps:** sidebar 16 → 12, `.patch-controls` 12 → 8, `.sidebar-bottom` lost its 12 px padding-top (the gap separates it). The `max-height: 660px` rule keeps its padding-top and wordmark size.
+  - **Status:** `#audio-status` moved into `#statusline` as `.sl-status`, between the hover text and the budget (`role="status"`, `aria-live="polite"`). Every `status.textContent =` in main.ts still writes to it. `flex: 0 1 auto` against `.sl-text`'s `flex: 1` (basis 0): the status keeps its width, the hover text takes the rest. It is now visible on a phone too (no longer inside the drawer).
+- **Measured** (production build via `vite preview`, Chromium, Playwright; "dev" = with an injected 20 px Edit lessons link):
+
+  | Window | sidebar client / scroll | with dev link |
+  |---|---|---|
+  | 1280 × 800 | 683 / 683 | 683 / 683 |
+  | 1440 × 900 | 783 / 783 | 783 / 783 |
+  | 1280 × 720 | 603 / 646 (was 869) | 603 / 678 |
+  | 1024 × 768 | 651 / 651 | 651 / 678 |
+
+  `scrollWidth === innerWidth` at all of them and at 390 × 844. Collapsed at 1280 × 800: 112 px strip, heart 26 × 26. At 390 the status takes 77 px of the status line, the hover text what is left (about 1 px with the budget).
+- **Checked:** tsc, `npm run build`, `npm test` (756 passed, 1 skipped; under load average ~24 a few heavy tests time out at 5 s and pass when re-run).
+- **Not checked:** the dev server itself (no dev server allowed), dark theme, the lesson editor's view of the renamed texts, a screen reader announcing the moved status.
