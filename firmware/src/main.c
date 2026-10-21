@@ -742,6 +742,7 @@ static void update_only(const char *why)
     eng_run = 0;
     booting = 0;
     bootguard.pending = 0;                      /* this boot did not fail: a watchdog reset from here starts normally */
+    midi_in_quiet();                            /* nothing drains MIDI in here: it must not hold the SysEx back (#177) */
 #if FELUCCA_UAC
     usb_uac_switch(0);                          /* MIDI only (from the menu: off the bus, back within a second via usb_retry) */
 #endif
@@ -780,8 +781,10 @@ static void host_poll(void)
     if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
         usb.ota_req = 0;
         eng_run = 0;
-        if (flash_ok)
+        midi_in_quiet();                            /* the session does not drain MIDI in: TRS / USB events must not */
+        if (flash_ok)                               /* fill the ring and hold the SysEx back (usb.c ep1_take, #177) */
             ota_session();                          /* returns only if nothing was committed */
+        midi_in_resume();
         if (patches_up) {                           /* (before patch_boot: it loads them next) */
             if (m1_apply(m1_cur, m1_cur_len) == 0)
                 m1_set_current(m1_cur, m1_cur_len);

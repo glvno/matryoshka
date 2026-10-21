@@ -1290,3 +1290,37 @@ No ticket.
 - **Measured** (production build, `vite preview`, Chromium via Playwright): sidebar clientHeight = scrollHeight at 1280 × 800 (683), 1440 × 900 (783), collapsed at 1280 × 800 (112) and in the 390 × 844 drawer (800). The About button opens the card in all four, in light and dark. The Sponsors link is there with target=_blank rel=noopener at 1280 and 390. Hello-sound steps (scope, out, vca-copy, wave) show one to-do per line in light and dark, and the next-box mark is on the right one.
 - **Checked:** tsc, `npm run build`, `npm test` (803 passed, 1 skipped, 66 files; markdown.test.ts: prose / req / prose / req blocks, joining words, tails, nested and plain paragraphs, reading order).
 - **Not checked:** the unpublished chapters in the browser (only hello-sound and the tour are offered in a build; Two instruments and Share need the dev server), the lesson editor's preview, Safari / Firefox, a screen reader on the split lines. At 390 px Ko-fi's script places its button at the card's bottom left (it was like this before; not changed here). 1280 × 720 overflows the sidebar by 43 px, as it did before #174.
+
+## 2026-10-21 (1.0): TRS MIDI made the FM-1 deaf to the installer (step 1 stall, update mode silent), #177 (branch `t177-install-uac`)
+
+- **Found on the device (owner + coordinator):** with a MIDI controller on the TRS input, an install over the running
+  Matryoshka stalled in step 1 ("stopped answering after 3 requests") every time, and update mode from the menu or
+  power-on did not answer the identity, until a power cycle even after the TRS cable was pulled. With the controller
+  unplugged and a fresh power-up, the same install from normal mode worked (check 18 reads, loader, restart,
+  `FM-1_700`). USB audio is not involved; the ticket's option 1 (MIDI-only descriptors on UPGRADE) is dropped.
+- **Root cause (code):** USB and TRS share one MIDI-in ring (`midi_in_q`, 64 events). The main loop's `midi_drain` is its
+  only consumer. `ota_session` (step 1, from `host_poll`) and `update_only` never call it. `ep1_take` NAKs every EP1 OUT
+  packet while fewer than 24 slots are free (`EP1_ROOM`, back-pressure for note bursts). So 41 queued events (under a
+  second of a controller's clock; `midi_uart.c` queues Clock / Start / Continue / Stop and channel messages, not Active
+  Sensing) and no host SysEx arrives any more. In update mode nothing ever empties the ring: deaf until power-off.
+  "After 3 requests" is the three 5 s tries of step 1's first read (address 0), not three reads: the device asked three
+  times and gave up (`ota_ufw` -1, nothing staged).
+  - Checked and fine: the two parsers are separate (USB: `usb.sysex` / `sx_frame` in `sysex_byte`; TRS: `um` in
+    `um_byte`), and realtime bytes (0xF8..0xFF) never end or corrupt a SysEx on either. The a01b8a3 package passes every
+    check of `ota_stage` (a Python copy of steps 1-2 on the CI artifact).
+- **Fix:** `midi_in_quiet()` / `midi_in_resume()` in usb.c. While quiet, `midi_enqueue` takes and drops every event, from
+  USB and TRS, and what was queued is discarded, so the ring can never hold EP1 back. `host_poll` wraps `ota_session` in
+  them; `update_only` goes quiet for good. TRS bytes are still taken from the jack's DMA ring (no overrun), just not
+  queued. Felucca's OTA code (ota.c, ota_hw.c, the loader) is unchanged; so are fm1_install.py and fm1ota.js (a hint in
+  their stall messages was added and reverted: the fix removes the cause).
+- **Tests:** `tools/usb_test.sh`: the app build is now `FELUCCA_OTA=1` and includes midi_uart.c. `test_midi_in_quiet`
+  feeds the jack's DMA ring (Active Sensing, clock, a note on / off, a CC, a TRS SysEx) between the EP1 packets of the
+  installer's handshake, UPGRADE and 605-byte read answers, with USB realtime events (FE / F8, CIN F) inside the SysEx:
+  - drained, as between sessions: every frame whole;
+  - undrained, as before the fix: EP1 NAKed, and still NAKed 1000 polls after the jack goes quiet;
+  - quiet: the handshake and 20 answers whole, with a second of a busy jack before each, and nothing queued.
+  Without the mute (a mutated copy of usb.c), 23 of these checks fail.
+- **Checks:** usb_test (both builds and the descriptor comparison), panel_test, golden.sh 91 ok (with proto_test),
+  vitest 815 + 1 skipped, `tsc --noEmit`; CI firmware run 39660982667 (no new warnings); emu:smoke on its .bin: 119
+  checks, 0 failed (TRS MIDI notes and program change still play in normal mode; fm1-emu has no USB).
+- **Not checked:** the device with this build (owner's session).

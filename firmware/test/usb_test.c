@@ -7,7 +7,9 @@
  *     the audio interface stall, as on a MIDI-only device);
  *   - the ring and packet logic over 60 s of drift both ways: renders of 128 frames at the I2S rate (44118 Hz and
  *     others), each tapped up to 2.6 ms after it started, one packet per 1 ms USB frame at 44100: every frame arrives
- *     exactly once, in order, no underrun / overrun, the fill stays in its band.
+ *     exactly once, in order, no underrun / overrun, the fill stays in its band;
+ *   - SysEx in on EP1 while the MIDI ring is full of TRS clock (#177): refused (NAK) while the ring holds back, taken
+ *     once midi_in_quiet (an update session, update mode) drops MIDI in.
  *   usb_test            (all of the above; built by tools/usb_test.sh in several configurations)
  *   usb_test dump       (the MIDI-only device + configuration descriptors as hex: the script compares them with a
  *                        FELUCCA_UAC=0 build's, which must be the same bytes) */
@@ -22,6 +24,7 @@ static uint32_t sie_index, sie_rd_reg, sie_rd_val;
 static uint32_t csr0_in;                 /* what a read of CSR0 (index 0) returns */
 static uint32_t count0_in;               /* COUNT0 */
 static uint32_t txcsr1_ep4;              /* TXCSR1 of EP4: bit 0 = a packet is still queued */
+static uint32_t rxcsr1_ep1, rxcount_ep1; /* EP1 OUT: bit 0 = a packet waits (RxPktRdy), its length */
 static int csr0_last = -1;               /* the last value written to CSR0 */
 static uint8_t ep0_sent[512];
 static uint32_t ep0_sent_n;
@@ -35,6 +38,10 @@ static uint32_t sim_regs(uint32_t r)
         return count0_in;
     if (r == 17u && sie_index == 4u)
         return txcsr1_ep4;
+    if (r == 20u && sie_index == 1u)
+        return rxcsr1_ep1;
+    if (r == 22u && sie_index == 1u)
+        return rxcount_ep1;
     return 0;
 }
 static void fm1_usb_reset(void) {}
@@ -47,6 +54,8 @@ static void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
         sie_index = v;
     if (r == 17u && sie_index == 0u)
         csr0_last = (int)v;
+    if (r == 20u && sie_index == 1u)
+        rxcsr1_ep1 = 0;                  /* ep1_rx releases the packet */
 }
 static void fm1_usb_sie_rd_start(uint32_t r) { sie_rd_reg = r; sie_rd_val = sim_regs(r); }
 static uint32_t fm1_usb_sie_done(void) { return 0x8000u; }
@@ -78,6 +87,11 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #define FELUCCA_OTA 0
 #endif
 #include "../src/usb.c"
+#if FELUCCA_OTA
+static uint32_t ota_now_ms(void) { return fm1_ms; }
+static void ota_idle(void) {}
+#include "../src/midi_uart.c"   /* the TRS jack's parser, fed through its DMA ring (uart_midi_take) */
+#endif
 
 #if FELUCCA_UAC && !FELUCCA_UAC_48K
 static int fails;
@@ -310,6 +324,143 @@ static void test_ep0(void)
     usb.config = 0;
 }
 
+/* ------------------------------------------------------------------ MIDI in, #177 --- */
+#if FELUCCA_OTA
+/* #177: a controller on the TRS jack (Active Sensing, clock) while the installer talks SysEx over USB. The two parsers are
+ * separate (usb.c sysex_byte / sx_frame, midi_uart.c um_byte); they share only the MIDI-in ring, which ep1_take checks
+ * for room. In an update session or update mode nothing drains it, so without midi_in_quiet the ring fills and EP1 is
+ * NAKed for good. */
+static uint32_t trs_n;                                          /* TRS bytes fed so far (picks the next one) */
+static void trs_feed(uint32_t n)                                /* n bytes through the jack's DMA ring, as the ISR takes them */
+{
+    static const uint8_t TRS[] = {0xFE, 0xF8, 0x90, 0x3C, 0xF8, 0x40, 0xF0, 0x01, 0xFE, 0x02, 0xF7, 0xF8, 0xB0, 0x10,
+                                  0x7F, 0xFE, 0xF8, 0x80, 0x3C, 0x00};   /* AS, clock, a note on / off, a CC, a SysEx */
+    uint32_t i;
+    for (i = 0; i < n; i++, trs_n++)
+        um_ring[(um.rd + um.pend + i) & (UM_RING - 1u)] = TRS[trs_n % sizeof TRS];
+    uart_midi_take(n);
+}
+
+static void trs_second(void)                                    /* a second of a busy jack, 3000 bytes, the ISR's polls */
+{
+    uint32_t i;
+    for (i = 0; i < 1000u; i++)
+        trs_feed(3);
+}
+
+/* one EP1 OUT packet through ep1_rx; 1 = taken (else NAKed: it stays for the next poll) */
+static int ep1_packet(const uint8_t *p, uint32_t n)
+{
+    memcpy(ep1rx, p, n);
+    rxcsr1_ep1 = 1;
+    rxcount_ep1 = n;
+    usb.rx_pend = 1;
+    ep1_rx();
+    return rxcsr1_ep1 == 0u;
+}
+
+/* msg (F0 .. F7) from the host as USB-MIDI events, 16 to an EP1 packet, a realtime event (FE / F8, CIN F) after every
+ * rt_every of them; TRS bytes between the packets; drain: the main loop empties the ring at each poll. A NAKed packet
+ * is offered again for up to 2000 polls (1 s). 1 = all taken. */
+static int host_sysex(const uint8_t *msg, uint32_t len, uint32_t rt_every, int drain)
+{
+    uint8_t pk[64];
+    uint32_t i = 0, n = 0, ev = 0, tries;
+    while (i < len || n) {
+        if (i < len && n < 64u) {
+            uint32_t k = len - i >= 3u ? 3u : len - i, cin;
+            if (rt_every && ev && ev % rt_every == 0u && (n == 0u || pk[n - 4u] != 0x0Fu)) {
+                pk[n] = 0x0F;
+                pk[n + 1u] = ev / rt_every % 2u ? 0xFE : 0xF8;
+                pk[n + 2u] = pk[n + 3u] = 0;
+                n += 4u;
+                continue;
+            }
+            cin = k == 3u && i + 3u < len ? 4u : 4u + k;            /* 4 continues, 5 / 6 / 7 end */
+            pk[n] = (uint8_t)cin;
+            pk[n + 1u] = msg[i];
+            pk[n + 2u] = k > 1u ? msg[i + 1u] : 0;
+            pk[n + 3u] = k > 2u ? msg[i + 2u] : 0;
+            n += 4u;
+            i += k;
+            ev++;
+            continue;
+        }
+        for (tries = 0;; tries++) {
+            trs_feed(2);                                        /* ~0.5 ms of a busy jack (31250 baud: 1.5 bytes / poll) */
+            if (drain)
+                mi_r = mi_w;
+            if (ep1_packet(pk, n))
+                break;
+            if (tries == 2000u)
+                return 0;
+        }
+        n = 0;
+    }
+    return 1;
+}
+
+/* the frame usb.c handed to the main loop is msg's body (between F0 and F7); released after */
+static int frame_is(const uint8_t *msg, uint32_t len)
+{
+    const uint8_t *f;
+    uint32_t n;
+    int ok = ota_frame_get(&f, &n) && n == len - 2u && !memcmp(f, msg + 1, n);
+    ota_frame_done();
+    return ok;
+}
+
+static void test_midi_in_quiet(void)
+{
+    static const uint8_t HS[10] = {0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7};   /* the handshake */
+    static const uint8_t UPGRADE[6] = {0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7};
+    static uint8_t resp[605];                                   /* a 512-byte read answer's size on the wire */
+    uint32_t i, w;
+    resp[0] = 0xF0;
+    for (i = 1; i + 1u < sizeof resp; i++)
+        resp[i] = (uint8_t)((i * 37u + i / 7u) & 0x7Fu);
+    resp[sizeof resp - 1u] = 0xF7;
+    usb.up = 1;
+    usb.config = 1;
+    mi_r = mi_w = 0;
+    usb.ota_req = 0;
+
+    /* the running firmware between sessions (the main loop drains): TRS and USB realtime inside the SysEx change nothing */
+    CHECK(host_sysex(HS, sizeof HS, 1, 1) && frame_is(HS, sizeof HS), "running: the handshake with realtime around it");
+    CHECK(host_sysex(UPGRADE, sizeof UPGRADE, 1, 1) && usb.ota_req, "running: UPGRADE with realtime around it");
+    usb.ota_req = 0;
+    CHECK(host_sysex(resp, sizeof resp, 5, 1) && frame_is(resp, sizeof resp), "running: a 605-byte answer, TRS + realtime");
+    CHECK(um.msgs > 0u && !midi_in_overflow, "running: the TRS messages were queued");
+
+    /* the old session: nobody drains, so TRS fills the ring and EP1 is NAKed; it stays so after the jack goes quiet */
+    trs_second();                                               /* the host's 2 s after UPGRADE, the device's request */
+    CHECK(!host_sysex(resp, sizeof resp, 0, 0), "undrained: TRS clock makes EP1 NAK the answer (the stall of #177)");
+    for (i = 0; i < 1000u; i++)
+        if (ep1_packet(ep1rx, 64))
+            break;
+    CHECK(i == 1000u, "undrained: still NAKed with the jack quiet (deaf until power-off)");
+    ota_frame_done();
+    usb.sx_on = 0;                                              /* (the half-sent frame: the host starts a new one) */
+
+    /* midi_in_quiet (an update session, update mode): nothing is queued, the SysEx always gets through */
+    midi_in_quiet();
+    CHECK(mi_r == mi_w && !midi_in_overflow, "midi_in_quiet empties the ring");
+    w = mi_w;
+    trs_second();
+    CHECK(host_sysex(HS, sizeof HS, 1, 0) && frame_is(HS, sizeof HS), "quiet: the handshake with TRS + realtime, undrained");
+    for (i = 0; i < 20u; i++) {                                 /* the reads of step 1, a second of a busy jack before each */
+        trs_second();
+        CHECK(host_sysex(resp, sizeof resp, 3, 0) && frame_is(resp, sizeof resp), "quiet: answer %u arrives whole", i);
+    }
+    CHECK(mi_w == w && !midi_in_overflow, "quiet: nothing was queued, no overflow");
+    midi_in_resume();
+    CHECK(midi_enqueue(0xFu | 0xF8u << 8, 1u) == 1 && mi_w == w + 1u, "resumed: MIDI in is queued again");
+    mi_r = mi_w;
+    usb.up = 0;
+    usb.config = 0;
+}
+#endif
+
 /* ------------------------------------------------------------------ the stream --- */
 static uint32_t rng = 12345u;
 static uint32_t rnd(uint32_t n)
@@ -442,6 +593,9 @@ int main(int argc, char **argv)
 #else
     test_descriptors();
     test_ep0();
+#if FELUCCA_OTA
+    test_midi_in_quiet();
+#endif
     stream(44118.0, 60.0, 2600u);                               /* the FM-1: 18 frames a second too many */
     stream(44082.0, 60.0, 2600u);                               /* the other way */
     stream(44100.0, 60.0, 2600u);
