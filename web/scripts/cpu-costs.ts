@@ -5,8 +5,8 @@
 //     its cost (dims); the settings that do are measured in all combinations (grid), numbers at the points where their cost
 //     bends (the editor interpolates);
 //   - the shared costs: summing inputs, parameter inputs, morph, bypass, the render loop per module and per block;
-//   - the scale: the M1-0.2 engine running its 303 Acid, which took 12 % (peak) of the audio interrupt on the FM-1, checked
-//     against the fixed-point kernels of firmware/src/bench.c, also measured there;
+//   - the scale: frozen constants fitted to a survey of the factory patches on the FM-1 (SURVEY, below); the M1-0.2 engine's
+//     303 Acid and the kernels of firmware/src/bench.c, both measured there earlier, are counted again as cross-checks;
 //   - whole factory patches, as checks of the model (cpu.test.ts).
 // Kits hold C5 (a square or saw oscillator costs more the higher it plays). Run from web/: npm run cpu-costs
 import { execSync } from 'node:child_process';
@@ -27,6 +27,17 @@ const NOTE = 72; // C5
 
 const BLOCK_US = 2901; // 128 frames at 44118 Hz (DEVICE_SR)
 const OLD_PEAK = 0.12; // 303 Acid on M1-0.2: 11 % typical, 12 % peak of the half buffer (ISR time incl. key scan and USB)
+/** The scale, frozen (not fitted on each run: a faster engine would bend it against an old survey). The 17 factory patches
+ * measured on the FM-1 (docs/measurements/cpu-survey-2026-10-20.json) against the estimate at the old scale (243 cycles / us
+ * from the 303 Acid alone): device % = 1.041 x estimate % + 0.8. So 243 / 1.041 cycles per us, plus 0.8 % of the block the
+ * engine does not count (the rest of the audio interrupt: key scan, USB poll). A new survey after large engine changes
+ * replaces both. */
+const SURVEY = {
+  cyclesPerUs: 233.4,
+  fixedUs: 23,
+  survey: 'docs/measurements/cpu-survey-2026-10-20.json, CI run 39541520839 (device-diag)',
+  fit: 'device % = 1.041 x estimate + 0.8, 17 patches, peak of rest / 1 / 4 / 8 notes',
+};
 const BLOCKS = 24;
 const SKIP = 3; // blocks before the maximum is taken for a module kit (the first notes, envelopes starting)
 
@@ -157,7 +168,9 @@ const GRID_MAX = 16384;
 /** types whose outputs each cost the same whatever else is patched (a constant fill per output): their outputs are
  * additive, not dimensions of the grid (the Drum map's sixteen would make a grid of 2^14 points) */
 const ADDITIVE_OUTPUTS = new Set(['drummap']);
-type Dim = { dim: CostDim; values: number[]; effect: number; set: (cfg: KitCfg, v: number) => void };
+/** `order`: where the setting stands in the definition, so that equal effects sort the same on every run (the probes finish
+ * in any order) */
+type Dim = { dim: CostDim; values: number[]; effect: number; order: number; set: (cfg: KitCfg, v: number) => void };
 
 async function typeCost(type: string): Promise<TypeCost> {
   const def = DEFS[type];
@@ -170,11 +183,11 @@ async function typeCost(type: string): Promise<TypeCost> {
   // 1. choices, switches, small integers: alone and with every input patched
   const numbers: ParamDef[] = [];
   await Promise.all(
-    def.params.map(async (pd) => {
+    def.params.map(async (pd, order) => {
       const t = tries(pd);
       if (!t.discrete) return void numbers.push(pd);
       const effect = await effectOf(type, (v) => ({ [pd.name]: v }), t.values, [{}, { inputs: allInputs }]);
-      if (effect > thr) dims.push({ dim: { param: pd.name, values: t.values }, values: t.values, effect, set: setParam(pd.name) });
+      if (effect > thr) dims.push({ dim: { param: pd.name, values: t.values }, values: t.values, effect, order, set: setParam(pd.name) });
     }),
   );
   // 2. numbers, in the same two contexts and with each value of the choices found (a saw's cost does not depend on its pitch,
@@ -184,6 +197,7 @@ async function typeCost(type: string): Promise<TypeCost> {
   await Promise.all(
     numbers.map(async (pd) => {
       const t = tries(pd);
+      const order = def.params.indexOf(pd);
       const curves = await Promise.all(contexts.map((c) => runs(type, t.values.map((v) => ({ ...c, params: { ...c.params, [pd.name]: v } })))));
       const effect = Math.max(...curves.map((c) => Math.max(...c) - Math.min(...c)));
       if (effect <= thr) return;
@@ -192,10 +206,10 @@ async function typeCost(type: string): Promise<TypeCost> {
       if (step && flat) {
         const ref = pd.default > pd.min ? pd.default : t.values[1];
         modes.push({ name: pd.name, min: pd.min, ref });
-        dims.push({ dim: { param: pd.name, above: pd.min }, values: [0, 1], effect, set: (cfg, on) => setParam(pd.name)(cfg, on ? ref : pd.min) });
+        dims.push({ dim: { param: pd.name, above: pd.min }, values: [0, 1], effect, order, set: (cfg, on) => setParam(pd.name)(cfg, on ? ref : pd.min) });
       } else {
         const points = bends(t.values, curves, thr, step);
-        dims.push({ dim: { param: pd.name, points }, values: points, effect, set: setParam(pd.name) });
+        dims.push({ dim: { param: pd.name, points }, values: points, effect, order, set: setParam(pd.name) });
       }
     }),
   );
@@ -205,20 +219,20 @@ async function typeCost(type: string): Promise<TypeCost> {
   const modeContexts: KitCfg[] = [{}, ...modes.map((q) => ({ params: { ...off, [q.name]: q.ref } }))];
   const flag = (cfg: KitCfg, key: 'inputs' | 'outputs', name: string, on: number): void => void (on && (cfg[key] = [...(cfg[key] ?? []), name]));
   await Promise.all(
-    allInputs.map(async (name) => {
+    allInputs.map(async (name, i) => {
       const effects = await Promise.all(modeContexts.map(async (c) => Math.abs((await measure(type, { ...c, inputs: [name] })).run - (await measure(type, c)).run)));
       const effect = Math.max(...effects);
-      if (effect > thr) dims.push({ dim: { input: name }, values: [0, 1], effect, set: (cfg, on) => flag(cfg, 'inputs', name, on) });
+      if (effect > thr) dims.push({ dim: { input: name }, values: [0, 1], effect, order: 1000 + i, set: (cfg, on) => flag(cfg, 'inputs', name, on) });
     }),
   );
   await Promise.all(
-    def.outputs.slice(1).map(async (output) => {
+    def.outputs.slice(1).map(async (output, i) => {
       const effect = Math.abs((await measure(type, { outputs: [output.name] })).run - base.run);
-      if (effect > thr) dims.push({ dim: { output: output.name }, values: [0, 1], effect, set: (cfg, on) => flag(cfg, 'outputs', output.name, on) });
+      if (effect > thr) dims.push({ dim: { output: output.name }, values: [0, 1], effect, order: 2000 + i, set: (cfg, on) => flag(cfg, 'outputs', output.name, on) });
     }),
   );
   // 4. every combination of the dims; the smallest effects become additive when there are too many
-  dims.sort((a, b) => b.effect - a.effect);
+  dims.sort((a, b) => b.effect - a.effect || a.order - b.order);
   const extra: Dim[] = [];
   if (ADDITIVE_OUTPUTS.has(type)) for (let i = dims.length - 1; i >= 0; i--) if ('output' in dims[i].dim) extra.unshift(...dims.splice(i, 1));
   while (dims.reduce((n, d) => n * d.values.length, 1) > GRID_MAX) extra.unshift(dims.pop()!);
@@ -237,7 +251,7 @@ async function typeCost(type: string): Promise<TypeCost> {
       out.firstOff = off;
       const withIn: Record<string, number> = {};
       await Promise.all(
-        allInputs.map(async (name) => {
+        allInputs.map(async (name, i) => {
           const more = Math.round((await measure(type, { inputs: [name] })).run - (await measure(type, { inputs: [name], primary: second })).run) - off;
           if (more > thr) withIn[name] = more;
         }),
@@ -347,13 +361,16 @@ async function loopCosts(types: Record<string, TypeCost>): Promise<{ block: numb
 
 // ------------------------------------------------------------------ the scale
 
-async function calibration(): Promise<CpuTable['calibration'] & { cyclesPerUs: number }> {
+async function calibration(): Promise<CpuTable['calibration']> {
   const [old, bench] = await Promise.all([emulate(ELF.old, new Uint8Array(0), events([60])), emulate(ELF.bench, new Uint8Array(0), [])]);
   const oldPeak = peak(old.blocks.map((b) => b.total));
   const kernel = bench.blocks.map((b) => b.total / 16);
   return {
-    cyclesPerUs: Math.round(oldPeak / (OLD_PEAK * BLOCK_US)),
-    method: '303 Acid of M1-0.2 (b907693), one note held, peak cycles per block = 12 % of 2901 us (the ISR peak measured on the FM-1)',
+    method: 'a scale and a fixed time per block, fitted to the factory patches measured on the FM-1 (survey, fit)',
+    survey: SURVEY.survey,
+    fit: SURVEY.fit,
+    acidM102CyclesPerUs: Math.round(oldPeak / (OLD_PEAK * BLOCK_US)),
+    acidM102Note: '303 Acid of M1-0.2 (b907693), one note held, peak cycles per block = 12 % of 2901 us (the ISR peak measured on the FM-1): the scale before the survey',
     acidM102Cycles: oldPeak,
     benchMac4CyclesPerUs: Math.round(kernel[0] / 9),
     benchSvfCyclesPerUs: Math.round(kernel[1] / 8),
@@ -373,10 +390,12 @@ for (const type of names) {
   const show = (d: CostDim): string => ('values' in d ? `${d.param}[${d.values.length}]` : 'above' in d ? `${d.param}>${d.above}` : 'points' in d ? `${d.param}~${d.points.length}` : 'input' in d ? `in:${d.input}` : `out:${d.output}`);
   console.log(`${type.padEnd(10)} run ${String(t.run).padStart(7)}  cv ${String(t.cv).padStart(5)}${t.dims ? `  ${t.dims.map(show).join(' ')} (${t.grid!.length})` : ''}${t.extra ? `  + ${t.extra.map((e) => show(e.dim)).join(' ')}` : ''}`);
 }
-const [{ cyclesPerUs, ...cal }, loop, sum, cv, bypass] = await Promise.all([calibration(), loopCosts(types), sumCost(), cvCost(), bypassCost()]);
+const [cal, loop, sum, cv, bypass] = await Promise.all([calibration(), loopCosts(types), sumCost(), cvCost(), bypassCost()]);
+const { cyclesPerUs, fixedUs } = SURVEY;
 const table: CpuTable = {
-  source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), scaled by one measurement on the FM-1',
+  source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on 17 factory patches measured on the FM-1 (2026-10-20)',
   cyclesPerUs,
+  fixedUs,
   blockUs: BLOCK_US,
   note: NOTE,
   ...loop,
@@ -399,8 +418,8 @@ checks.forEach(([name, p], i) => {
   const est = cpuEstimate(p, table).cycles;
   const err = est / cycles - 1;
   worst = Math.max(worst, Math.abs(err));
-  console.log(`${name.padEnd(28)} ${String(cycles).padStart(8)}  model ${String(Math.round(est)).padStart(8)}  ${(100 * err).toFixed(1).padStart(6)} %  load ${((100 * cycles) / cyclesPerUs / BLOCK_US).toFixed(0)} %`);
+  console.log(`${name.padEnd(28)} ${String(cycles).padStart(8)}  model ${String(Math.round(est)).padStart(8)}  ${(100 * err).toFixed(1).padStart(6)} %  load ${((100 * (cycles / cyclesPerUs + fixedUs)) / BLOCK_US).toFixed(0)} %`);
 });
-console.log(`scale ${cyclesPerUs} cycles/us (bench ${cal.benchMac4CyclesPerUs}, ${cal.benchSvfCyclesPerUs}); worst model error ${(100 * worst).toFixed(1)} %`);
+console.log(`scale ${cyclesPerUs} cycles/us + ${fixedUs} us (303 Acid ${cal.acidM102CyclesPerUs}, bench ${cal.benchMac4CyclesPerUs}, ${cal.benchSvfCyclesPerUs}); worst model error ${(100 * worst).toFixed(1)} %`);
 writeFileSync(new URL('../src/cpu-costs.json', import.meta.url), JSON.stringify(table, null, 1) + '\n');
 await POOL.close();

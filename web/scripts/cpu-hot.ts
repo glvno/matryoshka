@@ -28,7 +28,7 @@ const arg = (k: string): string | undefined => {
   const i = process.argv.indexOf(k);
   return i < 0 ? undefined : process.argv[i + 1];
 };
-const load = (c: number): number => (100 * c) / CPU.cyclesPerUs / CPU.blockUs;
+const load = (c: number): number => (100 * (c / CPU.cyclesPerUs + CPU.fixedUs)) / CPU.blockUs; // as the meter (cpuEstimate)
 
 execSync('tools/cpu/build.sh', { cwd: ROOT, stdio: 'inherit' });
 const checks = cpuChecks(NOTE);
