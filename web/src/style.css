@@ -936,6 +936,9 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .ctx button.rule { margin-top: 3px; border-top: 1px solid var(--line); border-radius: 0 0 5px 5px; }
 .ctx button.danger { color: var(--danger); }
 .ctx kbd { color: var(--muted); font: 12px/1 'Barlow', system-ui, sans-serif; }
+/* the patch menu (menu.ts, #152): the same menu, fixed to the window under its button */
+.ctx.ctx-fixed { position: fixed; z-index: 70; }
+.ctx button:focus-visible { outline-offset: -2px; }
 /* a card is as wide as its labels need: input labels + a bar of at least 120 px + output labels, from 236 to 300 px; the
    title, the bars and the poly settings take the width they are given, they do not set it */
 .module { width: max-content; min-width: 236px; max-width: 300px; }
@@ -1080,11 +1083,9 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 input#patch-name { height: 24px; padding: 0 4px; margin-left: -4px; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: text; }
 input#patch-name:hover { border-color: var(--line); }
 input#patch-name:focus { border-color: var(--secondary); background: var(--bar); outline: none; }
-#save-patch-btn, #delete-patch-btn { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--muted); }
-#save-patch-btn:hover, #delete-patch-btn:hover { color: var(--ink); border-color: var(--line); }
+#save-patch-btn, #patch-menu-btn { flex: none; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--muted); }
+#save-patch-btn:hover, #patch-menu-btn:hover, #patch-menu-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--line); }
 #save-patch-btn.saved { color: var(--secondary); }
-#delete-patch-btn:hover { color: var(--danger); }
-#delete-patch-btn[hidden] { display: none; }
 /* the Undo toast (toast.ts) */
 .toast { position: fixed; z-index: 60; left: 50%; bottom: calc(var(--piano-h, 0px) + 16px); transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
   max-width: calc(100vw - 32px); padding: 6px 6px 6px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink);
@@ -1426,6 +1427,13 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* what the last action did (#audio-status, #166): after the hover text, which gives way first */
 .statusline .sl-status { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
 .statusline .sl-status:empty { display: none; }
+/* the FM-1 chip (#152): a dot and the connection; a click opens FM-1 & MIDI. At 700 px or less only the dot shows */
+.statusline .sl-chip { flex: none; display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: 4px;
+  background: transparent; color: var(--muted); font: var(--cap); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
+.statusline .sl-chip:hover { border-color: var(--line); color: var(--ink); }
+.statusline .sl-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
+.statusline .sl-chip.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
+@media (max-width: 700px) { .statusline .sl-chip-text { display: none; } .statusline .sl-chip { height: 24px; padding: 0 8px; } }
 .statusline:has(.budget.over) .sl-tag { color: var(--danger); }
 .statusline .budget { padding-left: 12px; border-left: 1px solid var(--line); }
 

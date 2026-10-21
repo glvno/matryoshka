@@ -10,7 +10,8 @@ import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildBankTab } from './bank';
 import { isSaved, onSavedChange, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch } from './saved';
-import { showUndo } from './toast';
+import { showToast, showUndo } from './toast';
+import { popMenu, type MenuItem } from './menu';
 import { initStatusline, pinStatus } from './statusline';
 import { buildAssembliesTab, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
@@ -91,7 +92,19 @@ let uploading = false;
 let dirty = false;
 const devStatus = (s: string): void => {
   $('dev-status').textContent = s;
+  syncChip();
 };
+/** the FM-1 chip in the status line (#152): whether the FM-1 is connected; a click opens FM-1 & MIDI. Every connect and
+ *  disconnect reports through devStatus; Release MIDI reloads the page. */
+const fm1Chip = $<HTMLButtonElement>('fm1-chip');
+const syncChip = (): void => {
+  const on = device.connected;
+  fm1Chip.classList.toggle('on', on);
+  fm1Chip.querySelector('.sl-chip-text')!.textContent = `FM-1 \u00b7 ${on ? 'connected' : 'not connected'}`;
+  fm1Chip.setAttribute('aria-label', `FM-1 ${on ? 'connected' : 'not connected'}: open FM-1 & MIDI`);
+};
+fm1Chip.onclick = () => $<HTMLDialogElement>('device-bar').showModal();
+syncChip();
 device.onStatus = devStatus;
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
@@ -418,7 +431,6 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onLoad(p) {
     emuFresh = true;
     noteKeys.set(p.octave ?? 0); // a patch opens in the octave it was last played in
-    syncDeleteBtn(p.name);
   },
   onHistory(kind) {
     if (kind === 'undo') tutorial.undone();
@@ -530,19 +542,40 @@ const saveCurrent = (): void => {
   setTimeout(() => saveBtn.classList.remove('saved'), 900);
 };
 saveBtn.onclick = saveCurrent;
-/** the trash icon beside it shows while the open patch's name is one of Your patches (a declaration: onLoad calls it from the
- *  editor's constructor, before the rest of this file has run) */
-function syncDeleteBtn(name = editor.patch.name): void {
-  const btn = document.getElementById('delete-patch-btn');
-  if (!btn) return;
-  const n = name.trim();
-  btn.hidden = !n || !isSaved(n);
-  btn.title = `Delete "${n}" from Your patches (the open patch stays open)`;
+// the patch menu (#152): the PATCH header's ⋯ and the mobile bar's Patch ⋯ reach what moves a patch in or out of the
+// browser without the palette. Its results also show in a toast: the status line is narrow on a phone, and the FM-1
+// answers in the FM-1 & MIDI dialog (#dev-status), which is closed.
+const toastResult = (run: () => unknown) => async (): Promise<void> => {
+  const records: MutationRecord[] = [];
+  const seen = new MutationObserver((r) => records.push(...r));
+  for (const el of [status, $('dev-status')]) seen.observe(el, { childList: true, characterData: true, subtree: true });
+  try {
+    await run();
+  } finally {
+    records.push(...seen.takeRecords());
+    seen.disconnect();
+    const last = records.at(-1)?.target;
+    const text = last?.textContent?.trim();
+    if (text) showToast(text);
+  }
+};
+const patchMenu = (): MenuItem[] => {
+  const name = editor.patch.name.trim();
+  const items: MenuItem[] = [
+    { text: 'Share link', run: toastResult(() => sharePatch()) },
+    { text: 'Save as .json', run: () => savePatch() },
+    { text: 'Load .json\u2026', run: () => $('load-file').click() },
+    { text: 'Store to an FM-1 slot\u2026', run: toastResult(() => storeToSlot()) },
+    { text: 'FM-1 & MIDI settings\u2026', run: () => $<HTMLDialogElement>('device-bar').showModal(), rule: true },
+  ];
+  // only while the open patch's name is one of Your patches; the open patch stays open
+  if (name && isSaved(name)) items.push({ text: 'Delete from Your patches', run: () => deleteSaved(name), danger: true, rule: true });
+  return items;
+};
+for (const id of ['patch-menu-btn', 'mobile-patch-menu']) {
+  const btn = $<HTMLButtonElement>(id);
+  btn.onclick = () => popMenu(patchMenu(), btn);
 }
-$<HTMLButtonElement>('delete-patch-btn').onclick = () => deleteSaved(editor.patch.name.trim());
-onSavedChange(() => syncDeleteBtn());
-nameInput.addEventListener('input', () => syncDeleteBtn());
-syncDeleteBtn();
 /** the FM-1 budget meter at the right of the status line: memory (the fullest limit) and CPU as bars; open, a card above the deck with every limit and the costliest modules */
 /** a meter row: name, bar, percent; `near` / `over` colour it */
 function meterRow(row: Element, name: string, frac: number, text: string): void {
@@ -854,6 +887,7 @@ window.addEventListener('keydown', (e) => {
   const t = e.target as HTMLElement | null;
   const typing = isTextEntry(t) || t?.tagName === 'SELECT';
   if (document.querySelector('dialog[open], [popover]:popover-open') || typing) return;
+  if (t?.closest('[role=menu]')) return; // an open menu's keys are its own (Escape closes it: menu.ts)
   const control = t?.closest('button, summary, [role=tab], [role=slider], input, select');
   if (control && [' ', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
   const mod = e.metaKey || e.ctrlKey;
@@ -1397,6 +1431,7 @@ $<HTMLInputElement>('load-file').onchange = async (e) => {
     loadNamed(validatePatch(JSON.parse(await f.text()), DEFS));
   } catch (err) {
     status.textContent = `load failed: ${(err as Error).message}`;
+    showToast(status.textContent);
   }
 };
 

@@ -3,14 +3,14 @@
 // Space / Enter / arrow key goes to that control (re-ticking a check box, re-pressing a button, nudging a slider)
 // instead of the app (Space = arpeggiator, arrows = nudge the selection, Delete = remove it). After a pointer
 // interaction the focus is released back to the page. Keyboard users are unaffected: focus that was reached with
-// Tab stays, with its :focus-visible ring. Typing fields keep their focus, as do controls inside an open dialog.
+// Tab stays, with its :focus-visible ring. Typing fields keep their focus, as do controls inside an open dialog or menu.
 import { isTextEntry } from './input';
 
 export function releaseFocusAfterPointer(): void {
   let pointer = false;
   window.addEventListener('pointerdown', () => { pointer = true; }, true);
   window.addEventListener('keydown', (e) => { if (e.key === 'Tab') pointer = false; }, true);
-  const keeps = (el: HTMLElement): boolean => isTextEntry(el) || !!el.closest('dialog[open]');
+  const keeps = (el: HTMLElement): boolean => isTextEntry(el) || !!el.closest('dialog[open], [role=menu]');
   const release = (): void => {
     if (!pointer) return;
     const el = document.activeElement;
