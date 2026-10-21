@@ -36,6 +36,7 @@ import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { decodeShare, encodeShare, shareCodeOf, shareLink } from './share';
+import { buildCommunityShelf, submitUrl } from './community';
 import { starterPatch } from './starter';
 import { recordKey, recordNote, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
@@ -1277,9 +1278,9 @@ function emuParam(id: number, name: string, value: number): void {
   const pi = m ? DEFS[m.type].params.findIndex((q) => q.name === name) : -1;
   if (mi >= 0 && pi >= 0) emu.ui.param(mi, pi, toQ16(value));
 }
-/** the emulated PRESET knob: the next / previous entry of the Open list's Your patches and Examples */
+/** the emulated PRESET knob: the next / previous entry of the Open list's Your patches and Examples (not Community) */
 function stepOpenList(d: number): void {
-  const list = openableGroups().filter((g) => g.label !== 'Tutorial').flatMap((g) => g.items.map((o) => ({ ...o, mine: g.label === 'Your patches' })));
+  const list = openableGroups().filter((g) => g.label !== 'Tutorial' && g.label !== 'Community').flatMap((g) => g.items.map((o) => ({ ...o, mine: g.label === 'Your patches' })));
   if (!list.length || !d) return;
   const i = list.findIndex((o) => o.name === editor.patch.name);
   const next = list[(((i < 0 ? (d > 0 ? -1 : 0) : i) + d) % list.length + list.length) % list.length];
@@ -1660,6 +1661,21 @@ try {
 }
 
 // tabs
+// the Community patches card goes first, above Your patches (#157). Post yours: the open patch's link, then the issue form
+// filled in with it (the share sheet of #165 takes this over)
+buildCommunityShelf($('tab-library'), {
+  open: (p) => loadNamed(p, { once: true }),
+  post: () => {
+    const tab = window.open('', '_blank');
+    void encodeShare(editor.patch)
+      .then(({ code }) => {
+        if (tab) tab.location.href = submitUrl(editor.patch, shareLink(code));
+        else status.textContent = 'the browser blocked the new tab: allow pop-ups to open the form';
+      })
+      .catch(() => tab?.close());
+  },
+  loaded: fillPicker,
+});
 const refreshBank = buildBankTab($('tab-library'), device, () => editor.patch, (msg) => {
   devStatus(msg);
   for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;

@@ -150,6 +150,12 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 
 - **Commands → Share patch link** copies a link that opens this patch: the JSON, layout and assemblies included, deflated into the URL fragment (`#p=…`, about 800 characters for a factory patch). Opening the link loads the patch into the editor without replacing the patch the browser remembers until you change something; the Patches page has an "Import link" field that puts a linked patch into the bank list. A patch too big for a link (over 8000 characters) travels without its card positions and assembly overlay, and opens on a grid.
 
+## Community patches
+
+- The Library tab opens with **Community patches**: patches players shared, each with its author, the licence (CC BY-SA 4.0), its age, its notes, its engines and whether it plays on the FM-1. **Open** loads one like a patch link (nothing is saved until you save it); **↗** opens the post. The Open picker lists them under Community.
+- **Post yours** opens the [issue form](https://github.com/glvno/matryoshka/issues/new?template=community-patch.yml) filled in with the open patch's link; **More on r/MVaveFM1** searches the subreddit for posts with a patch link.
+- The list is `web/src/community.json`, bundled with the app (no server). Accepted submissions are added to it in a commit, one entry each (`title`, `author`, `licence: "CC-BY-SA-4.0"`, `source`: the Reddit post or the issue, `code`: the link's `#p=` value, `added`: YYYY-MM-DD, optional `notes`); `community.test.ts` decodes every entry and fails on a broken code or a missing author or licence.
+
 ## Diff
 
 - **Edit → Show changes** lists what changed since the patch was last loaded, uploaded or stored on the FM-1: parameters as old → new, modules and cables added or removed, and switches, attenuverters, parameter routing, macro ranges, voices and arpeggiator changes as one line each.

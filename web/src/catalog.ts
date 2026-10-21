@@ -2,6 +2,7 @@
 // What the editor offers to add or open, in one place: the command palette, the assembly browser and the Open picker all
 // read these lists, so anything hidden or retired in one is gone from the others too (glvno/matryoshka#84).
 import type { AssemblyDef } from './assembly';
+import { communityPatches, openCommunity } from './community';
 import { FACTORY, FACTORY_SHELVES, loadLibrary, shelvesOf, USER_SHELF } from './assemblies';
 import { moduleName } from './labels';
 import type { ModuleDef, Patch } from './patch';
@@ -34,12 +35,19 @@ export interface Openable {
   load: () => Patch;
 }
 
-/** the Open picker's groups, in its order: Your patches (newest first), the examples, the tutorial chapters' ends */
+/** the Open picker's groups, in its order: Your patches (newest first), the examples, the community patches once decoded
+ *  (community.ts, newest first), the tutorial chapters' ends */
 export function openableGroups(): { label: string; items: Openable[] }[] {
   const mine = savedPatches();
   return [
     { label: 'Your patches', items: mine.map((e) => ({ value: `saved:${e.name}`, name: e.name, load: () => JSON.parse(JSON.stringify(e.patch)) as Patch })) },
     { label: 'Examples', items: Object.entries(PRESETS).map(([name, make]) => ({ value: name, name, load: make })) },
+    {
+      label: 'Community',
+      items: communityPatches()
+        .filter((c) => c.patch)
+        .map((c, i) => ({ value: `community:${i}:${c.entry.title}`, name: `${c.entry.title} (by ${c.entry.author})`, load: () => openCommunity(c) })),
+    },
     {
       label: 'Tutorial',
       items: LISTED.map((i, n) => ({

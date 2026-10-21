@@ -51,6 +51,10 @@ The hidden cable-end revision, `web/public/brand/round-three/29-hidden-arm-ends.
 
 The active Matryoshka wordmark uses preset p13: the approved narrow Roboto Flex capitals, both T arms shortened to 55%, custom A–T / T–R spacing, and a small foot on the teal R/1. The earlier FM1 wordmarks remain historical studies. The active logo is `web/public/brand/matryoshka.png`.
 
+## Community patches (CC BY-SA 4.0)
+
+The entries of `web/src/community.json` are patches made by other people, submitted through the issue form `.github/ISSUE_TEMPLATE/community-patch.yml`. Each is licensed by its author under the [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) licence; the author is named in its entry and shown with it in the app. They are data, distinct from the GPL-3.0-only code, which does not cover them. A submitter confirms on the form that they may license the patch so.
+
 ## Ideas taken from other FM-1 projects (no code copied)
 
 - The FM-1 tab's panel geometry (`web/src/fm1-view.ts`) follows the panel that

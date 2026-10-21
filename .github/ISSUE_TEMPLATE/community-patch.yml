@@ -1,0 +1,61 @@
+name: Community patch
+description: Submit a patch for the Community patches list in the Library tab.
+title: "Community patch: "
+labels: ["community-patch"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing a patch. Accepted patches are added to `web/src/community.json` and shown on the Library tab
+        and in the Open picker, with your name and the licence.
+
+        Patches on the list are licensed under **CC BY-SA 4.0** ([Creative Commons Attribution-ShareAlike 4.0](https://creativecommons.org/licenses/by-sa/4.0/)):
+        anyone may play, change and share them, crediting you and sharing changes under the same licence. The app's code
+        stays GPL-3.0-only; the licence covers only your patch.
+
+        To get the link: open the patch in Matryoshka and share it (the link ends in `#p=…`).
+  - type: input
+    id: patch-title
+    attributes:
+      label: Title
+      description: The name shown on the list.
+      placeholder: Acid line from a single wavefolder
+    validations:
+      required: true
+  - type: input
+    id: link
+    attributes:
+      label: Patch link
+      description: The share link from Matryoshka, with `#p=…` at the end.
+      placeholder: https://glvno.github.io/matryoshka/#p=…
+    validations:
+      required: true
+  - type: input
+    id: reddit
+    attributes:
+      label: Reddit post (optional)
+      description: A post on r/MVaveFM1 about the patch. The list links to it; without one it links to this issue.
+      placeholder: https://www.reddit.com/r/MVaveFM1/comments/…
+    validations:
+      required: false
+  - type: input
+    id: author
+    attributes:
+      label: Credit as
+      description: The name to show as the author (your Reddit or GitHub name is fine).
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes (optional)
+      description: How to play it, what the knobs do. The first line shows on the list.
+    validations:
+      required: false
+  - type: checkboxes
+    id: licence
+    attributes:
+      label: Licence
+      options:
+        - label: I made this patch (or may share it), and I license it under CC BY-SA 4.0.
+          required: true
