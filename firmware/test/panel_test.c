@@ -107,6 +107,47 @@ static uint32_t fb_blinked(void)
         n += fb_changes[i] >= 2u;
     return n;
 }
+/* fb_blinked from row y0 down (the top bar's messages repaint the bar: a cleared bar, then the text) */
+static uint32_t fb_blinked_below(uint32_t y0)
+{
+    uint32_t i, n = 0;
+    for (i = y0 * 240u; i < 240u * 240u; i++)
+        n += fb_changes[i] >= 2u;
+    return n;
+}
+/* the pixels that changed since fb_watch_reset() inside x0..x1-1, y0..y1-1 */
+static uint32_t fb_changed_in(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1)
+{
+    uint32_t x, y, n = 0;
+    for (y = y0; y < y1; y++)
+        for (x = x0; x < x1; x++)
+            n += fb_changes[y * 240u + x] != 0u;
+    return n;
+}
+/* button btn held, key n pressed and let go, btn let go (a loop between each) */
+static void held_key(uint32_t btn, uint32_t n)
+{
+    panel_held |= 1u << btn;
+    panel_edges(1u << btn, 0);
+    loop();
+    panel_keys(1u << n);
+    loop();
+    panel_keys(0);
+    panel_held &= ~(1u << btn);
+    panel_edges(0, 1u << btn);
+    loop();
+}
+/* the top bar shows what bar_text(s, bg) draws */
+static int bar_shows(const char *s, uint16_t bg)
+{
+    static uint16_t was[240 * BAR_H];
+    int same;
+    memcpy(was, fb, sizeof was);
+    bar_text(s, bg);
+    same = !memcmp(was, fb, sizeof was);
+    memcpy(fb, was, sizeof was);
+    return same;
+}
 /* PANEL_SNAP=file.ppm: the LCD at the page-list step, to look at (tools/ui_preview.sh converts PPM to PNG) */
 static void snap_to(const char *path)
 {
@@ -541,6 +582,113 @@ int main(void)
         loop();
         check("REC held + the armed track's key: disarmed, REC off", eng_armed() < 0 && seq_rec == 0);
         tap(BTN_PLAY);
+    }
+
+    {                                                       /* #179: arming shows on the SEQ page; a mute or an arm redraws in place */
+        static uint16_t base[240 * 240];
+        char want[40], row[16];
+        int drums = eng_steps_module(0), map = eng_steps_drummap((uint32_t)eng_steps_module(0));
+        uint32_t all, bar, line, r0;
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+        if (eng_transport_running())
+            tap(BTN_PLAY);
+        tap(BTN_SEQ);
+        later(1500);
+        check("(the 808 Kit's DRUMS on the SEQ page, nothing armed)", page == PAGE_SEQ && seq_map() == map && eng_armed() < 0);
+        memcpy(base, fb, sizeof base);
+        seq_row_name(map, seq_row, row);
+        fb_watch_reset();
+        held_key(BTN_REC, 1);                               /* REC held + F#3 on a drum track's page: track 1, not a row */
+        all = fb_changed_in(0, 0, 240, 240);
+        bar = fb_changed_in(0, 0, 240, BAR_H);
+        line = fb_changed_in(0, 172, 240, 186);
+        check("drum track's SEQ page: REC held + black key 1 arms DRUMS, REC's release records nothing",
+              eng_armed() == drums && seq_rec == 0 && page == PAGE_SEQ);
+        check("the arm: DRUMS ARMED in the bar, the track's line redrawn in place, nothing else, no blink",
+              bar_shows("DRUMS ARMED", C_FG) && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
+        later(1500);
+        put(put(put(want, "DRUMS: "), row), " ARM")[0] = 0;
+        check("after the message the bar says ARM", bar_shows(want, C_ACC));
+        snap_to(getenv("PANEL_SNAP_ARM"));
+        fb_watch_reset();
+        held_key(BTN_SEQ, 1);                               /* SEQ held + F#3: DRUMS muted */
+        all = fb_changed_in(0, 0, 240, 240);
+        bar = fb_changed_in(0, 0, 240, BAR_H);
+        line = fb_changed_in(0, 172, 240, 186);
+        check("SEQ held + black key 1: muted, only the bar's message and the track's line drawn, no blink",
+              eng_steps_muted((uint32_t)drums) && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
+        held_key(BTN_SEQ, 1);
+        later(1500);
+        held_key(BTN_REC, 1);                               /* again: disarmed */
+        later(1500);
+        check("unmuted and disarmed: the page as it was", !eng_steps_muted((uint32_t)drums) && eng_armed() < 0
+              && !memcmp(base, fb, sizeof base));
+        r0 = seq_row;
+        held_key(BTN_REC, 3);                               /* G#3: black key 2, no track 2 */
+        check("REC held + a black key past the tracks: NO TRACK 2, nothing armed, REC off, the row stays",
+              eng_armed() < 0 && seq_rec == 0 && bar_shows("NO TRACK 2", C_FG) && seq_row == r0);
+        later(1500);
+        panel_held |= 1u << BTN_REC;                        /* REC's press and the key in the same pass (the key read first) */
+        panel_keys(1u << 1);
+        panel_edges(1u << BTN_REC, 0);
+        loop();
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("REC pressed in the same pass as the key: armed, its release still records nothing", eng_armed() == drums && seq_rec == 0
+              && page == PAGE_SEQ);
+        held_key(BTN_REC, 1);
+        later(1500);
+
+        tap(BTN_SEQ);                                       /* the device page */
+        later(1500);
+        memcpy(base, fb, sizeof base);
+        fb_watch_reset();
+        held_key(BTN_REC, 1);
+        all = fb_changed_in(0, 0, 240, 240);
+        bar = fb_changed_in(0, 0, 240, BAR_H);
+        line = fb_changed_in(0, FOOT_Y, 240, FOOT_Y + FONT_S.h);
+        check("device page: the arm redraws the bar's message and the info line (ARM DRUMS) only, no blink",
+              eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
+        fb_watch_reset();
+        held_key(BTN_SEQ, 1);
+        check("device page: a mute draws only the bar's message", eng_steps_muted((uint32_t)drums)
+              && fb_changed_in(0, 0, 240, 240) == fb_changed_in(0, 0, 240, BAR_H) && fb_blinked_below(BAR_H) == 0);
+        held_key(BTN_SEQ, 1);
+        held_key(BTN_REC, 1);
+        later(1500);
+        check("device page, unmuted and disarmed: as it was", eng_armed() < 0 && !memcmp(base, fb, sizeof base));
+
+        E.node[map].ksrc = 0;                               /* the Drum map off DRUMS: a plain track, its row in the track list */
+        tap(BTN_SEQ);
+        later(1500);
+        check("(DRUMS a plain track now)", page == PAGE_SEQ && seq_map() < 0);
+        memcpy(base, fb, sizeof base);
+        fb_watch_reset();
+        held_key(BTN_REC, 1);
+        all = fb_changed_in(0, 0, 240, 240);
+        bar = fb_changed_in(0, 0, 240, BAR_H);
+        line = fb_changed_in(12, 100, 120, 114);
+        check("plain track: REC held + black key 1 arms it, the bar's message and its row (1 DRUMS ARM) only, no blink",
+              eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
+        later(1500);
+        check("plain track: the bar says ARM", bar_shows("DRUMS 1/1 ARM", C_ACC));
+        snap_to(getenv("PANEL_SNAP_ARM_TRACK"));
+        fb_watch_reset();
+        held_key(BTN_SEQ, 1);
+        all = fb_changed_in(0, 0, 240, 240);
+        bar = fb_changed_in(0, 0, 240, BAR_H);
+        line = fb_changed_in(12, 100, 120, 114);
+        check("plain track: a mute redraws the bar's message and its row only, no blink", eng_steps_muted((uint32_t)drums)
+              && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
+        held_key(BTN_SEQ, 1);
+        held_key(BTN_REC, 1);
+        later(1500);
+        check("plain track, unmuted and disarmed: the page as it was", eng_armed() < 0 && !memcmp(base, fb, sizeof base));
+        tap(BTN_SEQ);
+        E.node[map].ksrc = 2u + (uint32_t)drums;
     }
 
     {                                                       /* #170: PRESET shows the patch's name over the bars */

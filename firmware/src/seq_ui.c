@@ -18,7 +18,9 @@
  *
  * Arming and recording from the keys (#139, the editor's #134 / #135):
  *   REC held + a black key (any page): arm that track, again: disarm. While a track is armed the keys (and MIDI notes)
- *                   play through it to what it plays (engine.c eng_arm); the device pages' info line says ARM and its name.
+ *                   play through it to what it plays (engine.c eng_arm); the device pages' info line says ARM and its name,
+ *                   the SEQ page ARM in the bar and on the track's row (#179). Black key n is track n here also on a drum
+ *                   track's page, where the keys alone pick rows; a key past the tracks says NO TRACK n.
  *   REC with a track armed: stopped, the SEQ page opens on it in step entry: the 27 keys are its keyboard, every key held
  *                   when the first is let go fills the cursor's step (a chord, one step long; ENV held: full velocity), the
  *                   cursor moves on; ENV + OCT a rest, LFO + OCT a tie, SELECT moves the cursor, OCT- / OCT+ the octave.
@@ -228,12 +230,38 @@ static void seq_select(uint32_t t)
     ui_dirty = 2;
 }
 
+/* SEQ / REC held + a black key past the patch's tracks: say so, instead of nothing (#179: on a drum track's page the black
+ * keys are its rows, but held with SEQ or REC they count tracks, black key 1 = track 1) */
+static int seq_no_track(int b)
+{
+    char m[24], num[8];
+    if (b >= 0 && b < eng_steps_count())
+        return 0;
+    if (!eng_steps_count()) {
+        ui_msg("NO STEPS MODULE", 1000);
+        return 1;
+    }
+    fmt_int(num, b + 1);
+    put(put(m, "NO TRACK "), num)[0] = 0;
+    ui_msg(m, 1000);
+    return 1;
+}
+
+/* a mute or an arm changed: redrawn in place, nothing cleared first (#179). On the SEQ page its track row and, after the
+ * message, the bar; the device pages' info line (the arm) is drawn on every redraw. seq_rec_off's 2 (a take ended,
+ * the page's layout changes) stays. */
+static void seq_track_redraw(void)
+{
+    if (!ui_dirty)
+        ui_dirty = 1;
+}
+
 /* SEQ held + a black key (any page): that track muted / unmuted */
 static void seq_mute_key(uint32_t n)
 {
     int b = seq_black(n), mod;
     char m[24], name[TRACK_NAME_MAX + 8];
-    if (b < 0 || b >= eng_steps_count())
+    if (seq_no_track(b))
         return;
     mod = eng_steps_module((uint32_t)b);
     eng_steps_mute((uint32_t)mod, !eng_steps_muted((uint32_t)mod));
@@ -241,7 +269,8 @@ static void seq_mute_key(uint32_t n)
     seq_name((uint32_t)b, name);
     put(put(m, name), eng_steps_muted((uint32_t)mod) ? " MUTED" : " ON")[0] = 0;
     ui_msg(m, 1000);
-    ui_dirty = 2;
+    if (page == PAGE_SEQ)                        /* (no other page shows mutes) */
+        seq_track_redraw();
 }
 
 /* a key on the SEQ page (n: note key 0..26) */
@@ -540,7 +569,7 @@ static void seq_arm_key(uint32_t n)
 {
     int b = seq_black(n), mod;
     char m[32], name[TRACK_NAME_MAX + 8];
-    if (b < 0 || b >= eng_steps_count())
+    if (seq_no_track(b))
         return;
     mod = eng_steps_module((uint32_t)b);
     if (seq_rec == 2u)                           /* (a take on the track armed before ends) */
@@ -550,7 +579,7 @@ static void seq_arm_key(uint32_t n)
     seq_name((uint32_t)b, name);
     put(put(m, name), eng_armed() == mod ? " ARMED" : " DISARMED")[0] = 0;
     ui_msg(m, 1200);
-    ui_dirty = 2;
+    seq_track_redraw();
 }
 
 /* the page is left: step entry and the black keys' recording end (a live take on the armed track goes on) */
@@ -680,6 +709,8 @@ static void seq_bar(void)
     }
     if (seq_rec)
         p = put(p, " REC");
+    else if (seq_armed_trk() == (int)seq_trk)    /* the track shown is armed (#179) */
+        p = put(p, " ARM");
     *p = 0;
     bar_text(b, seq_rec ? C_RED : C_ACC);
 }
@@ -687,7 +718,8 @@ static void seq_bar(void)
 /*   y  32  the page's steps of the track's length, its rate and swing (when not straight)
  *   y  52  the 16 steps of the page: a cell each (filled = on, accent = the accent colour, a chance fills it part way up),
  *          the step playing underlined
- *   y 100  every track: number, name, M when muted (the selected one in the accent colour)
+ *   y 100  every track: number, name, M when muted, ARM when armed (the selected one in the accent colour); a drum
+ *          track: its map's rows, and at y 172 its number of how many, ARMED, MUTED
  *   y 228  the hint line */
 static void seq_draw(int full)
 {
@@ -800,7 +832,11 @@ static void seq_draw(int full)
         *p++ = '/';
         fmt_int(num, eng_steps_count());
         p = put(p, num);
-        put(p, eng_steps_muted((uint32_t)mod) ? "  MUTED" : "  ALGO: TRACK")[0] = 0;
+        if (seq_armed_trk() == (int)seq_trk)    /* the track row's marks: ARMED (#179), MUTED */
+            p = put(p, "  ARMED");
+        if (eng_steps_muted((uint32_t)mod))
+            p = put(p, "  MUTED");
+        put(p, seq_armed_trk() == (int)seq_trk || eng_steps_muted((uint32_t)mod) ? "" : "  ALGO: TRACK")[0] = 0;
         text_bc(&FONT_S, 12, 172, line, C_DIM, C_BG, 216, TA_LEFT);
         if (full)
             text_bc(&FONT_S, 8, 222, seq_rec ? "BLACK  hit on a row   ENV  accent" : "BLACK row  WHITE hit  ENV acc  K2 vel", C_HINT, C_BG, 228, TA_LEFT);
@@ -818,6 +854,8 @@ static void seq_draw(int full)
             p = put(p, name);
             if (eng_steps_muted((uint32_t)tm))
                 p = put(p, " M");
+            if ((int)t == seq_armed_trk())       /* (#179) */
+                p = put(p, " ARM");
         }
         *p = 0;
         text_bc(&FONT_S, x, y, line, t == seq_trk ? C_ACC : t < (uint32_t)eng_steps_count() && !eng_steps_muted((uint32_t)eng_steps_module(t)) ? C_FG : C_DIM, C_BG, 108, TA_LEFT);

@@ -459,17 +459,19 @@ static void panel_edges(uint32_t p, uint32_t rel)
             seq_page_step(1);
         p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_ENV));
     }
-    if (p & (1u << BTN_SEQ))                        /* SEQ acts on release, unless a black key muted a track meanwhile */
-        seq_held_used = 0;
+    /* SEQ and REC act on release, unless a black key muted / armed a track meanwhile; the flag is cleared at the release,
+     * not the press: panel_keys runs first in a pass, so a key that lands in the same pass as the press has set it (#179) */
     if ((rel & (1u << BTN_SEQ)) && !seq_held_used)
         page_set(PAGE_SEQ);
-    if (p & (1u << BTN_REC))                        /* REC acts on release, unless a black key armed a track meanwhile */
-        rec_held_used = 0;
+    if (rel & (1u << BTN_SEQ))
+        seq_held_used = 0;
     if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, step entry) */
         if (seq_rec_page() && page != PAGE_SEQ)
             page_set(PAGE_SEQ);
         seq_rec_press();
     }
+    if (rel & (1u << BTN_REC))
+        rec_held_used = 0;
     if (p & (1u << BTN_OCT_DOWN))
         octave = octave > -3 ? octave - 1 : octave;
     if (p & (1u << BTN_OCT_UP))
