@@ -35,8 +35,10 @@ import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
-import { decodeShare, encodeShare, shareCodeOf, shareLink } from './share';
-import { buildCommunityShelf, submitUrl } from './community';
+import { decodeShare, encodeShare, shareCodeOf } from './share';
+import { buildCommunityShelf } from './community';
+import { ShareSheet } from './share-sheet';
+import { fileStem, savePatchCard } from './patch-card';
 import { starterPatch } from './starter';
 import { recordKey, recordNote, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
@@ -573,7 +575,7 @@ const toastResult = (run: () => unknown) => async (): Promise<void> => {
 const patchMenu = (): MenuItem[] => {
   const name = editor.patch.name.trim();
   const items: MenuItem[] = [
-    { text: 'Share link', run: toastResult(() => sharePatch()) },
+    { text: 'Share\u2026', run: () => shareSheet.open() },
     { text: 'Save as .json', run: () => savePatch() },
     { text: 'Load .json\u2026', run: () => $('load-file').click() },
     { text: 'Store to an FM-1 slot\u2026', run: toastResult(() => storeToSlot()) },
@@ -737,7 +739,8 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Save patch', keywords: 'keep store your patches', run: saveCurrent },
     { kind: 'command', label: 'Save patch as .json', keywords: 'export download file', run: savePatch },
     { kind: 'command', label: 'Load patch from .json', keywords: 'import open file', run: () => $('load-file').click() },
-    { kind: 'command', label: 'Share patch link', keywords: 'copy url clipboard', run: () => void sharePatch() },
+    { kind: 'command', label: 'Share patch\u2026', keywords: 'link copy url clipboard reddit post card notes', run: () => shareSheet.open() },
+    { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
     { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { switchTab('patch'); tutorial.open(); } },
     { kind: 'command', label: 'New patch', keywords: 'engine start empty', run: () => startNew() },
     { kind: 'command', label: 'Undo', detail: 'Ctrl/Cmd+Z', run: inPatch(() => editor.undo()) },
@@ -1442,12 +1445,16 @@ $('dev-store').onclick = async () => {
   }
 };
 
+/** copy the link without the sheet (the tutorial's host); a patch too big for a link is not copied */
 const sharePatch = async (): Promise<void> => {
   try {
-    const { code, full } = await encodeShare(editor.patch);
-    const link = shareLink(code);
-    await navigator.clipboard.writeText(link);
-    status.textContent = `link copied (${link.length} characters${full ? '' : '; too long with the layout: the cards open on a grid'})`;
+    const s = await encodeShare(editor.patch);
+    if (s.tooLong) {
+      status.textContent = `too big for a link (${s.length} characters without the layout): Save as .json and share the file`;
+      return;
+    }
+    await navigator.clipboard.writeText(s.link);
+    status.textContent = `link copied (${s.length} characters${s.layout ? '' : '; too long with the layout: the cards open on a grid'})`;
     tutorial.shared();
   } catch (e) {
     status.textContent = `share failed: ${(e as Error).message}`;
@@ -1464,8 +1471,9 @@ const loadFromHash = (): void => {
       suppressSave = true;
       loadNamed(p, { once: true, stay: true, quiet: true });
       suppressSave = false;
-      status.textContent = `patch "${p.name}" from the link`;
+      status.textContent = `patch "${p.name}" from the link${p.notes ? `: ${p.notes}` : ''}`;
       // the remembered patch stays in storage until the first edit; with unsaved changes it is offered back at once (#148)
+      if (p.notes && !(kept && losing)) showToast(`"${p.name}": ${p.notes}`);
       if (kept && losing) {
         const name = kept.name.trim() || 'Untitled';
         showUndo(`Opened "${p.name}" from the link. "${name}" was not saved`, () => {
@@ -1480,11 +1488,28 @@ const loadFromHash = (): void => {
 loadFromHash();
 window.addEventListener('hashchange', loadFromHash);
 
+// the share sheet (#165): the ⋯ menu's Share… and the palette
+const shareSheet = new ShareSheet($<HTMLDialogElement>('share-sheet'), {
+  patch: () => editor.patch,
+  rename: (name) => { editor.patch.name = name; nameInput.value = name; queueSave(editor.patch); },
+  changed: () => queueSave(editor.patch),
+  copied: () => tutorial.shared(),
+  saveFile: () => savePatch(),
+});
+/** the patch card (#163): a PNG of the patch for a post, downloaded as <patch name>.png */
+const saveCard = async (by?: string): Promise<void> => {
+  try {
+    await savePatchCard(editor.patch, { by });
+    status.textContent = `card saved: ${fileStem(editor.patch)}.png`;
+  } catch (e) {
+    status.textContent = `the card could not be saved: ${(e as Error).message}`;
+  }
+};
 const savePatch = (): void => {
   const blob = new Blob([JSON.stringify(editor.patch, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${editor.patch.name.replace(/[^\w.-]+/g, '_') || 'patch'}.json`;
+  a.download = `${fileStem(editor.patch)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 };
@@ -1661,19 +1686,10 @@ try {
 }
 
 // tabs
-// the Community patches card goes first, above Your patches (#157). Post yours: the open patch's link, then the issue form
-// filled in with it (the share sheet of #165 takes this over)
+// the Community patches card goes first, above Your patches (#157). Post yours opens the share sheet (#165)
 buildCommunityShelf($('tab-library'), {
   open: (p) => loadNamed(p, { once: true }),
-  post: () => {
-    const tab = window.open('', '_blank');
-    void encodeShare(editor.patch)
-      .then(({ code }) => {
-        if (tab) tab.location.href = submitUrl(editor.patch, shareLink(code));
-        else status.textContent = 'the browser blocked the new tab: allow pop-ups to open the form';
-      })
-      .catch(() => tab?.close());
-  },
+  post: () => shareSheet.open(), // the share sheet: Copy link, Post to Reddit, Submit to the Community shelf
   loaded: fillPicker,
 });
 const refreshBank = buildBankTab($('tab-library'), device, () => editor.patch, (msg) => {

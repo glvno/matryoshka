@@ -389,6 +389,39 @@ dialog.engine-start { width: 980px; }
 .engine-start-links { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
 .engine-start-links button.link { padding: 0; border: 0; background: none; color: var(--secondary); text-decoration: underline; font: inherit; }
 .engine-start-links button.link:hover { color: var(--accent); }
+/* the share sheet (share-sheet.ts, #165): the help dialog's frame; the card preview beside the form, the four actions in a
+   row (two by two on a phone), the hint under a rule */
+dialog.share-sheet { width: 800px; }
+.share-body { overflow: auto; padding: 12px 18px 18px; display: flex; flex-direction: column; gap: 14px; }
+.share-heading { margin: 0; font: 700 26px/1.05 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; }
+.share-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 18px; align-items: start; }
+.share-figure { margin: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.share-card { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; border-radius: 8px; border: 1px solid var(--line); background: #171f21; }
+.share-figure figcaption, .share-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.share-form { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.share-field { display: flex; flex-direction: column; gap: 4px; }
+.share-field > span { font: var(--cap); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.share-field input, .share-field textarea { width: 100%; min-height: 36px; font: 500 14px/1.35 'Barlow', system-ui, sans-serif; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; }
+.share-field textarea { resize: vertical; min-height: 64px; }
+.share-facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.share-chip { padding: 3px 8px; border-radius: 99px; background: var(--bar); font-size: 12px; overflow-wrap: anywhere; }
+.share-chip.over { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+.share-check { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; }
+.share-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--secondary); }
+.share-check:has(input:disabled) { color: var(--muted); }
+.share-readout { margin: -4px 0 0; font-size: 12px; color: var(--muted); }
+.share-readout.over { color: var(--accent); }
+.share-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.share-actions button { min-height: 44px; padding: 6px 8px; font: 700 13px/1.15 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .05em; text-transform: uppercase; }
+.share-actions .share-post { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.share-actions .share-copy { background: transparent; color: var(--secondary); border-color: var(--secondary); }
+.share-msg { margin: 0; min-height: 1.35em; font-size: 13px; }
+.share-hint { padding-top: 10px; border-top: 1px solid var(--line); }
+@media (max-width: 700px) {
+  .share-grid { grid-template-columns: minmax(0, 1fr); }
+  .share-figure { max-width: 340px; }
+  .share-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .help-body { overflow: auto; padding: 4px 16px 16px; columns: 2 340px; column-gap: 28px; }
 .hsec { break-inside: avoid; padding-top: 12px; }
 .hsec h3 { margin: 0 0 6px; padding-bottom: 4px; border-bottom: 1px solid var(--line); font: var(--cap); font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
@@ -1610,3 +1643,5 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .roll-vbar { position: absolute; bottom: 0; width: 4px; border-radius: 2px; background: var(--secondary); }
 .roll-vbar.sel { background: var(--accent); }
 .steps-screen .steps-head .steps-roll.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
+.share-submit { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+.share-submit:disabled { color: var(--muted); text-decoration: none; cursor: default; }

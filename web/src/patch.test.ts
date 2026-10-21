@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
-import { addModule, ensureMain, newPatch, validatePatch, type Patch } from './patch';
+import { addModule, ensureMain, newPatch, NOTES_MAX, validatePatch, type Patch } from './patch';
+import { encodePatch } from './patchbin';
 
 describe('the Main module', () => {
   it('is added to a patch that has none, once, without touching the rest', () => {
@@ -24,6 +25,19 @@ describe('the keyboard octave a patch remembers', () => {
     expect(load(-2)).toBe(-2);
     expect(load(3)).toBe(3);
     for (const bad of [0, 4, -4, 1.5, '1', null, undefined]) expect(load(bad)).toBeUndefined();
+  });
+});
+
+describe('the notes a patch carries (the share sheet\'s "What\'s going on")', () => {
+  const load = (notes: unknown): Patch['notes'] => validatePatch({ ...newPatch(DEFS), notes }, DEFS).notes;
+  it('keeps a string, cuts a long one to NOTES_MAX, drops a blank or a non-string', () => {
+    expect(load('Play anything in C.')).toBe('Play anything in C.');
+    expect(load('x'.repeat(NOTES_MAX + 80))).toHaveLength(NOTES_MAX);
+    for (const bad of [undefined, null, 3, { text: 'x' }, ['a'], '', '   ']) expect(load(bad)).toBeUndefined();
+  });
+  it('leaves the binary format alone', () => {
+    const p = newPatch(DEFS);
+    expect(encodePatch({ ...p, notes: 'a long story '.repeat(30) })).toEqual(encodePatch(p));
   });
 });
 
