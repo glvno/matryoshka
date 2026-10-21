@@ -1013,4 +1013,8 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
   - fill 145..214 against the band 160..208;
   - CPU 31 %, peak 32 % while streaming.
 - **Algo Four recorded too:** still 0 errors over 6 stream starts, CPU peak 88 % with no overload (about 86 % without the stream).
-- **Not yet:** listening back for clicks; the 10-minute drift recording; MIDI and audio at once; update mode and return to stock (plan steps 4-7).
+- **Listening:** both recordings are clean, no clicks (the user).
+- **Update mode (step 6):** OCT- + OCT+ at power-on and MENU > SYSTEM > UPDATE MODE both come up MIDI-only (no audio device in macOS), the installer finds `FM-1_700`, and installing from each works. After a restart the audio device is back. The build with "brighght studio" (e562ef2, run 39624985295; emu:smoke 118 checks) was installed on top, and macOS shows that manufacturer.
+- **MIDI and audio at once (step 5):** the editor's Live and an upload during a recording sounded fine to the user. Isolated with the CLI during a later recording: three 808 Kit uploads (2553 B of SysEx each) and parameter traffic added 0 missed / overruns / stalls.
+- **Hot-plug:** stopping and restarting the recording, and unplugging and replugging the cable mid-recording, left 83 overruns, 53 missed and 1 stall. Those are the blocks dropped and the packets the host didn't collect while the cable was out. The FM-1 kept running (its own power), the bus reset was seen and the stream came back in band.
+- **Skipped (owner's call):** the 10-minute drift recording (the 30 s figures show the adjustment working) and return to stock (update mode and the loader are unchanged, and update mode passed).
