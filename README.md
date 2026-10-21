@@ -24,7 +24,7 @@ A handful of patch presets are provided. Use them to learn, then replace them wi
 
 ## Webapp
 
-[Open the Matryoshka editor](https://glvno.github.io/matryoshka/) to make patches and upload them to the FM-1. The editor deploys from branch `main`; its firmware package has not been installed on a device. The [original Modular-1 editor](https://wiggismodular.github.io/Modular-1/) is also available.
+[Open the Matryoshka editor](https://glvno.github.io/matryoshka/) to make patches and upload them to the FM-1. The editor deploys from branch `main` and carries the newest firmware package for the FM-1 (see [Install on the FM-1](#install-on-the-fm-1)). The [original Modular-1 editor](https://wiggismodular.github.io/Modular-1/) is also available.
 
 Start with **How a patch works** in the sidebar: play a four-module voice, trace the signals, and turn the voice into an assembly. Browser audio is enabled automatically; a fresh browser may wait for your first interaction. Enabling the arpeggiator plays only held keys.
 
@@ -62,11 +62,36 @@ Knobs and stuff.
 * **GLO** opens the mixer: K1 sets the level, the black key F# mutes, ALGORITHM sets the polyphony (the patch reloads with the new count). Four-voice build: K1-K4 and F# G# A# C# for the four voices (patches), ALGORITHM acts on the selected one
 * **SEL** switches to the next voice (patch) in the four-voice build; keys, knobs, LCD and the editor act on it. Unused in the one-voice build
 
+## Install on the FM-1
+
+Two ways, the same update protocol (Felucca's, over USB MIDI):
+
+- **The Flash tab** of the editor: **Commands** (Ctrl/Cmd+K) > **Flash firmware**, or open the editor with `#flash` at the end of the address. It needs Web MIDI with SysEx (Chrome or Edge). Tick "I understand and accept the risk", then **Install Matryoshka firmware**; **Return to official V15** puts M-VAVE's firmware back. Keep the tab open until it says done.
+- **`tools/fm1_install.py`** from a checkout of this repository: `python3 tools/fm1_install.py web/public/firmware/matryoshka.fwsc`, or `FM-1_015.fwsc` from the same folder to return to stock.
+
+**Return to stock first** if the FM-1 runs anything other than the official V15 or Matryoshka (Felucca, Sloop, M-VAVE Open or another build): Return to official V15, check that it boots, then install Matryoshka. The Flash tab says so when it sees such an identity (`fm1_install.py --info` prints it); nothing is refused, but over Felucca read the note above first.
+
+**Update mode:** hold OCT- and OCT+ while switching the FM-1 on, or choose MENU > SYSTEM > UPDATE MODE. An install works from there too, and it is the way in when the firmware does not start.
+
+**Recovery:** the FM-1 has one firmware slot and no rollback. If an install is cut off, the FM-1 waits in its update loader: run the same install again (Install for Matryoshka, Return to official V15 for a return to stock) and it finishes the write. The bundled official V15 always brings the stock firmware back.
+
+**Tested on a real FM-1** (with `tools/fm1_install.py`):
+
+- installing Matryoshka over the official V15, and over Matryoshka;
+- update mode by OCT- + OCT+ at power-on and by MENU > SYSTEM > UPDATE MODE, and an install from there;
+- returning to the official V15 from Matryoshka, then installing Matryoshka again; the official firmware boots, plays and saves;
+- a write cut off from the computer (at 30 %): the FM-1 waits in its update loader, and running the install again finishes it;
+- safe mode (SAVE held at power-on) and the boot guard.
+
+Partly tested: a power cut as the update loader started, and one halfway through a write of the same build; both booted.
+
+**Not tested:** the Flash tab against a real FM-1; a power cut while the firmware is half old and half new; installing over Felucca, Sloop or M-VAVE Open; FACTORY RESET.
+
 ## Hack it
 
 - Run it yourself: `cd web && npm install && npm run dev`
 - Edit tutorial writing locally: choose **Edit lesson writing** in the dev app sidebar, or open <http://localhost:5173/lesson-editor>. Save writes the lesson source; it does not publish. See [the lesson editor guide](docs/TUTORIAL.md#writing-lessons-locally).
-- Build the firmware: `nix develop`, then `python3 tools/build.py`
+- Build the firmware: CI builds it on every push (`.github/workflows/firmware.yml`, artifact `matryoshka-firmware`). Locally it needs the JieLi toolchain (`tools/get_toolchain.sh`), then `python3 tools/build.py`. `cd web && npm run firmware -- --ci` puts the newest CI build of `main` into the app's Flash tab (`npm run firmware -- path/to/x.fwsc` a package of your own)
 
 ## License
 
