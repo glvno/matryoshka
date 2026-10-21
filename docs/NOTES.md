@@ -904,3 +904,9 @@ A spare FM-1 with stock V15 (`FM-1_015`). Tools: `build/venv` (uv venv with mido
   - The load hardly depends on the notes held: a poly patch costs about the same at rest (every part renders).
   - ALGO FOUR 85 % at rest, 59 % with notes; HERA 6 76 -> 65 %: most likely the overload guard shedding a part (two halves over 85 %), which sets no flag. Those factory patches sit at the edge.
   - `cpuEstimate` against the device: ratio 0.98 .. 1.13, median 1.08 (the estimate is low); a fit gives device = 1.041 x estimate + 0.8 points (max error 5.6 points; the ISR time includes the key scan and USB poll nested in it). The model from one M1-0.2 measurement holds to about 10 %.
+
+## 2026-10-21 (device): lcd-partial verified on the FM-1
+
+- **The build:** `lcd-partial` 7df4465, from CI run 39550664956. Installed with `build/venv/bin/python tools/fm1_install.py` from `FM-1_700` to `FM-1_700`: the write reached 100 %, the device restarted and its identity was checked.
+- **The user's check:** turning a knob no longer blinks the toast's title, lo / hi labels, track or unchanged digits; only the value and the bar change. The device-name toast on SELECT works (808 Kit / Init).
+- **Found along the way:** 14 of the 17 factory patches are one device, so SELECT does nothing on them. Opened as #142.
