@@ -11,6 +11,7 @@ import {
   childProblem,
   depthOf,
   freeSpot,
+  freeSpotNear,
   hiddenAssemblies,
   mergePorts,
   moveAssembly,
@@ -528,6 +529,29 @@ describe('assemblies', () => {
     expect(freeSpot(row.slice(0, 2), 250, 540)).toEqual({ x: 660, y: 20 });
     // a card sitting off the grid blocks the cells it touches
     expect(freeSpot([{ x: 100, y: 100, w: 300, h: 300 }], 250, 540)).toEqual({ x: 660, y: 20 });
+  });
+
+  it('places a new card in view, nearest the origin, else the nearest cell outside (#175)', () => {
+    const view = { x: 1000, y: 1500, w: 1300, h: 850 };
+    const centre = { x: 1650, y: 1925 };
+    // an empty view: the cell whose centre is nearest the view's, wholly inside it
+    const a = freeSpotNear([], 300, 540, view, centre);
+    expect(a).toEqual({ x: 1620, y: 1700 });
+    // near the cursor instead
+    expect(freeSpotNear([], 300, 540, view, { x: 2200, y: 1600 })).toEqual({ x: 1940, y: 1560 });
+    // that cell taken: the next nearest, still in view and clear of the card
+    const b = freeSpotNear([{ ...a, w: 300, h: 400 }], 300, 540, view, centre);
+    expect(b.x === a.x && b.y === a.y).toBe(false);
+    expect(b.x >= view.x && b.x + 300 <= view.x + view.w && b.y >= view.y && b.y + 540 <= view.y + view.h).toBe(true);
+    // a full view: the free cell that needs the least scrolling (just right of it), on the grid
+    const full = [{ x: view.x - 50, y: view.y - 50, w: view.w + 100, h: view.h + 100 }];
+    const c = freeSpotNear(full, 300, 540, view, centre);
+    expect((c.x - 20) % 320).toBe(0);
+    expect((c.y - 20) % 140).toBe(0);
+    expect(full.some((o) => o.x < c.x + 300 && o.x + o.w > c.x && o.y < c.y + 540 && o.y + o.h > c.y)).toBe(false);
+    expect(c).toEqual({ x: 2580, y: 1700 });
+    // a view shorter than the card: the cell whose top left lines up best with it
+    expect(freeSpotNear([], 300, 540, { x: 0, y: 0, w: 1000, h: 300 }, { x: 500, y: 150 })).toEqual({ x: 340, y: 20 });
   });
 
   it('nests: a selection inside an expanded assembly becomes a child, with members, boundary and hiding through the levels', () => {

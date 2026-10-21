@@ -85,6 +85,7 @@ import { EXCLUDED_TYPES,
   findRef,
   fixAssemblies,
   freeSpot,
+  freeSpotNear,
   hiddenAssemblies,
   hiddenModules,
   hidePort,
@@ -211,6 +212,8 @@ type Pt = { x: number; y: number };
 /** the footprint of a new card for the free-spot search: a grid cell less its gutters */
 const CARD_W = 300;
 const CARD_H = 540;
+/** the host's elements drawn over the canvas, which a new card is kept clear of (#175) */
+const OVER_CANVAS = '.view-switch, .help-btn, #diff, .tutorial, .flaw-panel';
 /** how far each paste of the same clip lands from the last (down and right) */
 const PASTE_STEP = 40;
 /** a collapsed assembly card's footprint width: a grid cell per column (`.module.assembly.cols` in style.css) */
@@ -324,6 +327,13 @@ export class Editor {
       this.layoutFrames(); this.sizeCanvas(); this.positionCables();
     });
     canvas.addEventListener('pointerdown', (e) => this.rubberBand(e));
+    canvas.addEventListener('pointermove', (e) => { this.hover = e.pointerType === 'mouse' ? { x: e.clientX, y: e.clientY } : null; });
+    // the mouse leaving the canvas forgets it, except for a dialog opened over it (the palette, by Ctrl/Cmd+K) or a click elsewhere
+    canvas.addEventListener('pointerleave', (e) => {
+      const to = e.relatedTarget instanceof Element ? e.relatedTarget : null;
+      if (!(to ? to.closest('dialog[open]') : document.querySelector('dialog[open]'))) this.hover = null;
+    });
+    window.addEventListener('pointerdown', (e) => { if (!(e.target instanceof Node && canvas.contains(e.target))) this.hover = null; }, true);
     this.touchGestures();
     const raise = (event: Event): void => {
       const target = event.target;
@@ -418,7 +428,34 @@ export class Editor {
     if (msgs.length) this.ev.onError(msgs.join('; '));
   }
 
-  /** where the next card goes: the first grid cell that no visible card, container or frame touches; `w` = its width */
+  /** the mouse over the canvas (client px), for placing a new card near it; null when it is elsewhere */
+  private hover: Pt | null = null;
+
+  /** the canvas's view in patch layout pixels (what is scrolled into sight, at the zoom) */
+  private viewRect(): Rect {
+    const c = this.canvas, z = this.zoom;
+    return { x: c.scrollLeft / z, y: c.scrollTop / z, w: c.clientWidth / z, h: c.clientHeight / z };
+  }
+
+  /** the host's controls and panels drawn over the canvas (the view switch, ?, the diff, the tutorial card), in patch layout px */
+  private overlays(): Rect[] {
+    const w = this.world.getBoundingClientRect(), c = this.canvas.getBoundingClientRect();
+    const out: Rect[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>(OVER_CANVAS)) {
+      const r = el.getBoundingClientRect();
+      const x0 = Math.max(r.left, c.left), x1 = Math.min(r.right, c.right), y0 = Math.max(r.top, c.top), y1 = Math.min(r.bottom, c.bottom);
+      if (x1 <= x0 || y1 <= y0) continue; // hidden, or beside the canvas
+      out.push({ x: (x0 - w.left) / this.zoom, y: (y0 - w.top) / this.zoom, w: (x1 - x0) / this.zoom, h: (y1 - y0) / this.zoom });
+    }
+    return out;
+  }
+
+  /**
+   * Where the next card goes (#175); `w` = its width. In view: the free grid cell nearest the mouse when it is over the
+   * canvas, else nearest the view's centre, clear of every visible card, container, frame and the panels over the canvas
+   * (freeSpotNear); with none free in view, the nearest one outside (`scrollToCard` then brings it in). A patch with only Main
+   * and the Output (a new patch, the engine start screen) keeps the first free cell from the top left, beside the Output.
+   */
   private slot(w = CARD_W): Pt {
     const rect = (el: HTMLElement): Rect => ({ x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight });
     const occupied = [...this.cards.values(), ...this.containers.values(), ...this.frames.values()].map(rect);
@@ -430,24 +467,47 @@ export class Editor {
       for (const m of this.patch.modules) if (!hidden.has(m.id)) occupied.push({ x: m.x, y: m.y, w: CARD_W, h: CARD_H });
       for (const a of assembliesOf(this.patch)) if (!a.open && !hiddenAsm.has(a.id)) occupied.push({ x: a.x, y: a.y, w: cardWidth(a.params), h: CARD_H });
     }
-    return freeSpot(occupied, w, CARD_H);
+    const empty = !assembliesOf(this.patch).length && this.patch.modules.every((m) => EXCLUDED_TYPES.has(m.type));
+    const view = this.viewRect();
+    if (empty || !view.w || !view.h) return freeSpot(occupied, w, CARD_H);
+    const z = this.zoom, wr = this.world.getBoundingClientRect();
+    const origin = this.hover ? { x: (this.hover.x - wr.left) / z, y: (this.hover.y - wr.top) / z } : { x: view.x + view.w / 2, y: view.y + view.h / 2 };
+    return freeSpotNear([...occupied, ...this.overlays()], w, CARD_H, view, origin);
+  }
+
+  /** scroll just enough to show a new card (its element, else `fallback`), its top left first when it is larger than the view */
+  private scrollToCard(el: HTMLElement | undefined, fallback: Rect): void {
+    const r = el?.offsetWidth ? { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight } : fallback;
+    const c = this.canvas, z = this.zoom, PAD = 12;
+    const axis = (pos: number, len: number, scroll: number, size: number): number => {
+      const a = (pos - PAD) * z, b = (pos + len + PAD) * z;
+      if (b - a > size || a < scroll) return a;
+      return b > scroll + size ? b - size : scroll;
+    };
+    const x = axis(r.x, r.w, c.scrollLeft, c.clientWidth), y = axis(r.y, r.h, c.scrollTop, c.clientHeight);
+    if (x !== c.scrollLeft || y !== c.scrollTop) c.scrollTo(Math.max(0, x), Math.max(0, y));
   }
 
   add(type: string): void {
     const at = this.slot();
-    this.change(() => {
-      addModule(this.patch, DEFS[type], at.x, at.y);
-    });
+    let id = -1;
+    if (this.change(() => {
+      id = addModule(this.patch, DEFS[type], at.x, at.y).id;
+    })) this.scrollToCard(this.cards.get(id), { ...at, w: CARD_W, h: CARD_H });
   }
 
   /** put a saved assembly into the patch; an engine comes wired to Main's keys and, while nothing feeds it, the Output (one undo step) */
   insert(def: AssemblyDef): void {
-    const at = this.slot(cardWidth(def.params));
+    const w = cardWidth(def.params);
+    const at = this.slot(w);
     let wired: Wired | null = null;
+    let id = -1;
     if (!this.change(() => {
       const a = insertAssembly(this.patch, DEFS, def, at.x, at.y);
+      id = a.id;
       if (defIsEngine(def)) wired = wireEngine(this.patch, a);
     })) return;
+    this.scrollToCard(this.containers.get(id) ?? this.frames.get(id), { ...at, w, h: CARD_H });
     this.ev.onError(wired ? wiredText(def.name, wired) : `"${def.name}" inserted. Knob assignments (K1..K4) are not kept: tick them in the patch.`);
   }
 
