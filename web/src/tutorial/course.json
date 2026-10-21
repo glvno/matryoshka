@@ -1072,7 +1072,7 @@
           "kind": "task",
           "title": "Modulator into carrier",
           "text": "[Cable the second **Oscillator**’s `out` into the first one’s `pm` input](req:fm-carrier), and [set the first one’s `pm` slider (the depth) to about 2](req:carrier-pm). The first is now the carrier, the second the modulator.",
-          "why": "`pm` is *phase modulation*, what the DX7 and this engine do; it sounds like FM. The depth slider is the *modulation index*: 0 is a sine, 8 is a wall of harmonics.",
+          "why": "`pm` is *phase modulation*, what the DX7 and this oscillator do; it sounds like FM. The depth slider is the *modulation index*: 0 is a sine, 8 is a wall of harmonics.",
           "parts": [
             { "id": "fm-carrier", "kind": "custom", "name": "fmCarrier" },
             {
@@ -2842,7 +2842,7 @@
           "kind": "task",
           "title": "Place the backbeat",
           "text": "[Build the beat below](req:beat): three **Sequencers** replace the divider gates. At 120 bpm, kick lands on beats 1 and 3, snare on 2 and 4, and hats on each beat. A step at −1 is a rest; 0 is a hit. Optional: change one rest into an extra hit and listen to the push it creates.",
-          "why": "Each **Sequencer** receives the same 4 Hz clock. Its `gate` triggers one drum. The engine advances on the first tick, so the first sounding slot is `s2`; `s1` is the last eighth of the bar.",
+          "why": "Each **Sequencer** receives the same 4 Hz clock. Its `gate` triggers one drum. The sequencer advances on the first tick, so the first sounding slot is `s2`; `s1` is the last eighth of the bar.",
           "superseded": true,
           "parts": [
             { "id": "beat", "kind": "custom", "name": "beat" }
@@ -3162,7 +3162,7 @@
           "kind": "task",
           "title": "Modules inside modules",
           "text": "stack voice and echo are *assemblies*: groups of modules that behave as one. A closed assembly shows only the jacks and sliders its author brought out, so stack voice reads like a single voice module and echo like a single effect.\n\n[Expand stack voice](req:stack-voice-open) with ▸ before its name to see the oscillators, mixer, filter, envelope and VCA inside.",
-          "why": "Assemblies nest up to three deep, save to the Library and insert like a module. Inside an expanded assembly the frame’s **card** button (or Cmd/Ctrl-click) picks which ports and sliders the closed card shows. Select some cards and press Ctrl/Cmd+G to make your own. The engine never sees assemblies: on the FM-1 the patch is the plain modules underneath.",
+          "why": "Assemblies nest up to three deep, save to the Library and insert like a module. Inside an expanded assembly the frame’s **card** button (or Cmd/Ctrl-click) picks which ports and sliders the closed card shows. Select some cards and press Ctrl/Cmd+G to make your own. The FM-1 never sees assemblies: on the FM-1 the patch is the plain modules underneath.",
           "parts": [
             { "id": "stack-voice-open", "kind": "assembly", "role": "stackVoice", "fact": "open" }
           ]

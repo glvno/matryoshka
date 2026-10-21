@@ -727,7 +727,7 @@ asm('supersaw stack', 'Voices', (b) => {
 // an analog polysynth of four voices that has drifted out of spec: each oscillator's fine tune follows its own slow
 // Random walk (a few cents), a fixed Random per voice card (its tolerance) offsets the cutoff and the decay. The cards'
 // flaws (set by hand per card) add to that.
-asm('analog voice', 'Voices', (b) => {
+asm('basic mono', 'Voices', (b) => {
   const part = b.add('alloc', 0, 2, { voices: 4 });
   b.input('keys', part, 'keys');
   const w1 = b.add('random', 1, 2, { mode: 1, rate: 0.7 });
@@ -760,7 +760,7 @@ asm('analog voice', 'Voices', (b) => {
 }, { flaws: [{ detune: 4, drift: 30, bright: 1, env: 5, level: 100 }, { detune: -6, drift: 45, bright: -2, env: -8, level: 95 }, { detune: 2, drift: 25, bright: 0, env: 12, level: 100 }, { detune: -3, drift: 35, bright: 3, env: -4, level: 92 }] });
 
 // the plainest polysynth: a Voice allocator of four voices and their cards (saw, low pass, ADSR, VCA), each playing its own note
-asm('poly voice', 'Voices', (b) => {
+asm('basic poly', 'Voices', (b) => {
   const part = b.add('alloc', 0, 1, { voices: 4 });
   b.input('keys', part, 'keys');
   const osc = b.add('osc', 0, 0, { wave: 2, level: 0.8 });

@@ -420,7 +420,7 @@ export function migrateVoicing(p: Patch, defs: Record<string, ModuleDef>): strin
       for (const c of p.cables) if (c.from.module === main.id && PART_PORT[c.from.port] && groupSet.has(c.to.module)) c.from = { module: part.id, port: PART_PORT[c.from.port] };
       const id = asms.reduce((m, a) => Math.max(m, a.id), 0) + 1;
       group = {
-        v: 1, id, name: 'poly voice', label: 'poly voice', open: true,
+        v: 1, id, name: 'basic poly', label: 'basic poly', open: true,
         x: Math.min(...members.map((m) => m.x), at.x), y: Math.min(...members.map((m) => m.y), at.y),
         modules: [...loose, part.id], inputs: [], outputs: [], params: [],
         poly: { parts: voices, assign: 2, legato: old.legato, priority: old.priority },
@@ -442,7 +442,7 @@ export function migrateVoicing(p: Patch, defs: Record<string, ModuleDef>): strin
       }
       asms.push(group);
       p.assemblies = asms as unknown as AssemblyInst[];
-      notes.push(`the ${voices > 1 ? `${voices} voices` : 'voicing'} became the poly assembly "poly voice"`);
+      notes.push(`the ${voices > 1 ? `${voices} voices` : 'voicing'} became the poly assembly "basic poly"`);
     }
   }
   if (main) {

@@ -2128,7 +2128,7 @@ const crush: ModuleImpl<{ held: number; cnt: number } & OsState> = {
 const part: ModuleImpl<null> = {
   def: {
     type: 'part',
-    label: 'Part (engine)',
+    label: 'Part',
     inputs: [],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump')],
     params: [],

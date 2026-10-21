@@ -29628,16 +29628,20 @@
    "cycles": 553721
   },
   {
-   "name": "assembly analog voice",
-   "cycles": 342405
-  },
-  {
    "name": "assembly auto pan",
    "cycles": 25741
   },
   {
    "name": "assembly barber pole",
    "cycles": 64660
+  },
+  {
+   "name": "assembly basic mono",
+   "cycles": 342405
+  },
+  {
+   "name": "assembly basic poly",
+   "cycles": 222880
   },
   {
    "name": "assembly boom kick",
@@ -29754,10 +29758,6 @@
   {
    "name": "assembly pluck",
    "cycles": 57075
-  },
-  {
-   "name": "assembly poly voice",
-   "cycles": 222880
   },
   {
    "name": "assembly rain",

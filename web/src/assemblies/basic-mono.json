@@ -1,7 +1,7 @@
 {
   "format": "matryoshka-assembly",
   "version": 1,
-  "name": "analog voice",
+  "name": "basic mono",
   "category": "Voices",
   "modules": [
     {

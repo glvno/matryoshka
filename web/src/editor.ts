@@ -60,6 +60,7 @@ import {
   DRUM_ROWS,
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
+import { defIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
@@ -438,10 +439,15 @@ export class Editor {
     });
   }
 
-  /** put a saved assembly into the patch */
+  /** put a saved assembly into the patch; an engine comes wired to Main's keys and, while nothing feeds it, the Output (one undo step) */
   insert(def: AssemblyDef): void {
     const at = this.slot(cardWidth(def.params));
-    if (this.change(() => insertAssembly(this.patch, DEFS, def, at.x, at.y))) this.ev.onError(`"${def.name}" inserted. Knob assignments (K1..K4) are not kept: tick them in the patch.`);
+    let wired: Wired | null = null;
+    if (!this.change(() => {
+      const a = insertAssembly(this.patch, DEFS, def, at.x, at.y);
+      if (defIsEngine(def)) wired = wireEngine(this.patch, a);
+    })) return;
+    this.ev.onError(wired ? wiredText(def.name, wired) : `"${def.name}" inserted. Knob assignments (K1..K4) are not kept: tick them in the patch.`);
   }
 
   /** group the selected modules into a new assembly */

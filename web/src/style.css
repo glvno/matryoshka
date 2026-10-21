@@ -901,6 +901,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   color: var(--tag); background: color-mix(in srgb, var(--tag) 16%, transparent); }
 .mtag.src { --tag: var(--tag-src); } .mtag.shp { --tag: var(--tag-shp); } .mtag.mod { --tag: var(--tag-mod); }
 .mtag.fx { --tag: var(--tag-fx); } .mtag.util { --tag: var(--tag-util); } .mtag.asm { --tag: var(--tag-asm); background: color-mix(in srgb, var(--tag) 22%, transparent); }
+/* an engine (engines.ts): gold, the gate colour */
+.mtag.eng { --tag: var(--gate); }
 .mhead .voices { font: 600 11px/1 'Barlow Condensed', system-ui, sans-serif; padding: 1px 5px; border: 1px solid currentColor; border-radius: 8px; color: var(--accent); }
 /* the header: ▸ (an assembly), the tag and the title (the drag handle), then poly (an assembly), ⏻ and ⋯, always shown */
 .mhead { padding: 0 4px 0 6px; }

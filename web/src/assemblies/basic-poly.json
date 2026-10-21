@@ -1,7 +1,7 @@
 {
   "format": "matryoshka-assembly",
   "version": 1,
-  "name": "poly voice",
+  "name": "basic poly",
   "category": "Voices",
   "modules": [
     {
