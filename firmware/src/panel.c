@@ -305,7 +305,8 @@ static void panel_encoders(int32_t *st)
         }
         return;
     }
-    if (st[6]) {
+    if (st[6]) {                                    /* PRESET: the next patch, its name over the bars (#170) */
+        pages_patch_ask();
         preset_step(st[6]);
         return;
     }

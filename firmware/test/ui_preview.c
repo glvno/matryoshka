@@ -2,7 +2,8 @@
  * Copyright (C) 2026 morgulbrut */
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
- * Environment: TOAST=k shows knob k's toast on the device page, DEVTOAST=1 the device just picked
+ * Environment: TOAST=k shows knob k's toast on the device page, DEVTOAST=1 the device just picked, PATCHTOAST=1 the
+ * patch PRESET just loaded (the factory bank's slot)
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -67,6 +68,11 @@ int main(int argc, char **argv)
     }
     if (getenv("DEVTOAST"))
         pg_dev_toast_until = 1000;
+    if (getenv("PATCHTOAST")) {
+        bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
+        cur_preset = p;
+        pg_patch_until = 1000;
+    }
     octave = argc > 4 ? atoi(argv[4]) : 0;
     page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 8: SEQ (SELECTED_MODULE = the track) */
     if (argc > 6)                                           /* the transport running */
