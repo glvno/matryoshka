@@ -1,9 +1,9 @@
 {
   "format": "matryoshka-assembly",
   "version": 1,
-  "name": "basic mono",
+  "name": "drift poly",
   "category": "Voices",
-  "blurb": "Two saws, a low pass and an envelope, four voices that drift a little out of tune",
+  "blurb": "Two oscillators per voice, four voices that drift a little out of tune",
   "modules": [
     {
       "id": 1,

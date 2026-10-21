@@ -29636,10 +29636,6 @@
    "cycles": 64660
   },
   {
-   "name": "assembly basic mono",
-   "cycles": 342405
-  },
-  {
    "name": "assembly basic poly",
    "cycles": 222880
   },
@@ -29678,6 +29674,10 @@
   {
    "name": "assembly cowbell",
    "cycles": 71475
+  },
+  {
+   "name": "assembly drift poly",
+   "cycles": 342405
   },
   {
    "name": "assembly drum kit",

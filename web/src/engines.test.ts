@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 const ENGINES = [
-  'Algo Four', 'basic mono', 'basic poly', 'Briefcase 3', 'Canvas', 'drum kit', 'Expander S', 'Hera 6', 'Io 4', 'mono lead', 'Monolith D',
+  'Algo Four', 'basic poly', 'Briefcase 3', 'Canvas', 'drift poly', 'drum kit', 'Expander S', 'Hera 6', 'Io 4', 'mono lead', 'Monolith D',
   'Oracle V', 'Sallen 20', 'Silver Box', 'supersaw stack', 'Vernon 100', 'Wanderer',
 ];
 const named = (name: string): AssemblyDef => FACTORY.find((d) => d.name === name)!;

@@ -728,7 +728,7 @@ asm('supersaw stack', 'Voices', (b) => {
 // an analog polysynth of four voices that has drifted out of spec: each oscillator's fine tune follows its own slow
 // Random walk (a few cents), a fixed Random per voice card (its tolerance) offsets the cutoff and the decay. The cards'
 // flaws (set by hand per card) add to that.
-asm('basic mono', 'Voices', (b) => {
+asm('drift poly', 'Voices', (b) => {
   const part = b.add('alloc', 0, 2, { voices: 4 });
   b.input('keys', part, 'keys');
   const w1 = b.add('random', 1, 2, { mode: 1, rate: 0.7 });
@@ -2058,7 +2058,7 @@ const BLURBS: Record<string, string> = {
   'Briefcase 3': 'EMS VCS3 type shit',
   'Io 4': 'Jupiter-4 type shit',
   'Vernon 100': 'ElectroComp 100 type shit',
-  'basic mono': 'Two saws, a low pass and an envelope, four voices that drift a little out of tune',
+  'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',
   'supersaw stack': 'Detuned saws stacked and spread across the stereo field, for pads and leads',
