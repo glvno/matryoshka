@@ -52,7 +52,7 @@
  * if the whole shift were shorter than the pulse would the rest be waited (console `inp`: dim_pulse_ns,
  * dim_bits). An LED in both is fully lit. FM1_LED_DIM_DIV > 1 also skips frames (keep >= 200 Hz).
  * Three glows (MENU > LEDS): fm1_led_dim_level(0) FM1_LED_DIM_NS (~1/30), (1) FM1_LED_DIM_LO_NS (~1/60), (2) FM1_LED_DIM_HI_NS
- * (brighter, ~1/12; Modular-1 uses 0 as DIM LOW and 2 as DIM HIGH). The tick reads the target from fm1__dim_t (TIMER4 ticks, set here only, never divided):
+ * (brighter, ~1/12; Matryoshka uses 0 as DIM LOW and 2 as DIM HIGH). The tick reads the target from fm1__dim_t (TIMER4 ticks, set here only, never divided):
  * both are shorter than the shift (~3-5 us measured, dim_pulse_ns 3125 at 14 of 16 bits), so neither waits.
  * Levels: a column has one pulse, so per LED there are three: dark, the glow, lit; the pulse cannot grow towards
  * lit without a wait in the ISR (~95 us). But a second set can end inside the pulse, and a frame can be lit or
@@ -112,7 +112,7 @@
 #define FM1_LED_DIM_NS 3200u      /* a dim LED's pulse per frame (ns; a lit one ~95 us): ~1/30 the brightness */
 #endif
 #ifndef FM1_LED_DIM_HI_NS
-#define FM1_LED_DIM_HI_NS 8000u   /* the brighter glow (Modular-1 MENU > LEDS DIM HIGH): ~1/12; longer than the shift, so the tick waits the rest */
+#define FM1_LED_DIM_HI_NS 8000u   /* the brighter glow (Matryoshka MENU > LEDS DIM HIGH): ~1/12; longer than the shift, so the tick waits the rest */
 #endif
 #ifndef FM1_LED_DIM_LO_NS
 #define FM1_LED_DIM_LO_NS 1600u   /* the darker glow (MENU > LEDS DIM LO): ~1/60 */

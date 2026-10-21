@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2026 morgulbrut
-"""Talk to the Modular-1 firmware over USB-MIDI SysEx (protocol: web/src/protocol.ts), without the browser.
+"""Talk to the Matryoshka firmware over USB-MIDI SysEx (protocol: web/src/protocol.ts), without the browser.
 
   tools/m1_link.py info
   tools/m1_link.py upload PATCH.m1p       (binary patches: build/golden/*.m1p from tools/golden.sh)
@@ -16,7 +16,7 @@
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
-                                           was; DIS = the build's modular-1.dis (CI artifact modular-1-elf) names the functions)
+                                           was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
 """
 import os
@@ -75,7 +75,7 @@ def frame(cmd, payload=()):
 
 class Link:
     def __init__(self):
-        pick = lambda names: next((n for n in names if "Felucca" in n or "Modular" in n or "FM-1" in n), None)
+        pick = lambda names: next((n for n in names if "Felucca" in n or "Matryoshka" in n or "Modular" in n or "FM-1" in n), None)
         o, i = pick(mido.get_output_names()), pick(mido.get_input_names())
         if not o or not i:
             sys.exit("FM-1 not found")
@@ -94,7 +94,7 @@ class Link:
                         if want[0] == 0x41 or p[0] == want[1]:
                             return p
                 time.sleep(0.002)
-        sys.exit(f"no answer from the FM-1 to command {msg.data[3]:#04x} (is it running the Modular-1 firmware with the editor protocol?)")
+        sys.exit(f"no answer from the FM-1 to command {msg.data[3]:#04x} (is it running the Matryoshka firmware with the editor protocol?)")
 
     def ack(self, msg, cmd, wait=0.8, tries=3):
         p = self.ask(msg, (0x40, cmd), tries, wait)

@@ -8,7 +8,7 @@
 //!       times in ms: key down, `^` up, encoder clicks, MIDI bytes); snapshots go to lcd_MS.png;
 //!       --text prints whether the string is on the screen at the end
 //!
-//! BIN is the build's modular-1.bin (app.bin, runs from 0x02000120).
+//! BIN is the build's matryoshka.bin (app.bin, runs from 0x02000120).
 
 mod font;
 mod machine;

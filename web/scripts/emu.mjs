@@ -2,8 +2,8 @@
 // Our firmware on the emulated FM-1 (fm1-emu by Joakim Eriksson, MIT, pinned in tools/emu/Cargo.toml).
 //   npm run emu [-- FIRMWARE]          the panel in a window: LCD, keys, knobs, sound, MIDI in (fm1-live)
 //   npm run emu:smoke [-- FIRMWARE]    the scripted smoke test (tools/emu_smoke.sh)
-// FIRMWARE: a modular-1.bin or a .fwsc. Without one: build/modular-1.bin, else the latest firmware CI artifact of
-// glvno/matryoshka's main (needs `gh`), else web/public/firmware/modular-1.fwsc.
+// FIRMWARE: a matryoshka.bin or a .fwsc. Without one: build/matryoshka.bin, else the latest firmware CI artifact of
+// glvno/matryoshka's main (needs `gh`), else web/public/firmware/matryoshka.fwsc.
 // fm1-live lists its keys when it starts; every MIDI input plays (TRS MIDI IN; USB is not emulated).
 // The window runs fm1-emu's interpreter at 120 MHz (about 1.4x real time on an M1; the firmware needs ~12 % of
 // 240 MHz): its AArch64 JIT renders our engine wrong. M1EMU_JIT=1 uses the JIT at 240 MHz anyway.
@@ -29,7 +29,7 @@ function run(cmd, argv, opts = {}) {
 
 function firmware() {
   if (given) return resolve(process.cwd(), given);
-  const local = join(ROOT, 'build/modular-1.bin');
+  const local = join(ROOT, 'build/matryoshka.bin');
   if (existsSync(local)) return local;
   const ci = join(OUT, 'ci');
   // the CI build of this checkout's commit, else the newest of its branch, else the newest of main
@@ -42,18 +42,18 @@ function firmware() {
     if (id.status !== 0 || !id.stdout.trim()) continue;
     rmSync(ci, { recursive: true, force: true });  // gh run download refuses to overwrite
     mkdirSync(ci, { recursive: true });
-    spawnSync('gh', ['run', 'download', id.stdout.trim(), '-R', REPO, '-n', 'modular-1-firmware', '-D', ci], { stdio: 'inherit' });
-    if (existsSync(join(ci, 'modular-1.bin'))) {
+    spawnSync('gh', ['run', 'download', id.stdout.trim(), '-R', REPO, '-n', 'matryoshka-firmware', '-D', ci], { stdio: 'inherit' });
+    if (existsSync(join(ci, 'matryoshka.bin'))) {
       console.log(`firmware: CI run ${id.stdout.trim()} of ${REPO} (${flag.slice(2)} ${value})`);
-      return join(ci, 'modular-1.bin');
+      return join(ci, 'matryoshka.bin');
     }
   }
-  const bundled = join(ROOT, 'web/public/firmware/modular-1.fwsc');
+  const bundled = join(ROOT, 'web/public/firmware/matryoshka.fwsc');
   if (existsSync(bundled)) {
-    console.log('firmware: web/public/firmware/modular-1.fwsc (the package the app bundles; may be old)');
+    console.log('firmware: web/public/firmware/matryoshka.fwsc (the package the app bundles; may be old)');
     return bundled;
   }
-  throw new Error('no firmware: build one (tools/build.py), install gh, or pass a modular-1.bin / .fwsc');
+  throw new Error('no firmware: build one (tools/build.py), install gh, or pass a matryoshka.bin / .fwsc');
 }
 
 const fw = firmware();

@@ -299,7 +299,7 @@ export interface NestedDef extends AssemblyLayout {
 
 /** a saved assembly: the file format, the library entry and the factory set. Module ids are local (1..n), positions relative. */
 export interface AssemblyDef extends AssemblyLayout {
-  format: 'modular-1-assembly';
+  format: 'matryoshka-assembly';
   version: 1;
   name: string;
   /** a factory assembly's shelf in the browser (CATEGORIES in assemblies.ts); the user's own have none */
@@ -319,7 +319,9 @@ export interface AssemblyDef extends AssemblyLayout {
   poly?: PolyCards;
 }
 
-export const ASSEMBLY_FORMAT = 'modular-1-assembly';
+export const ASSEMBLY_FORMAT = 'matryoshka-assembly';
+/** the format files had under the upstream name (modular-1): still read, saved as ASSEMBLY_FORMAT */
+export const LEGACY_ASSEMBLY_FORMAT = 'modular-1-assembly';
 /** module types that cannot be members: the one panel and the output are the patch's own */
 export const EXCLUDED_TYPES = new Set(['fm1', 'output']);
 /** how deep assemblies nest (a top-level assembly is level 1): no limit the user meets (the FM-1 never sees assemblies);
@@ -1059,8 +1061,9 @@ function migrateDefParts(d: AssemblyDef, defs: Record<string, ModuleDef>): void 
 }
 
 export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef>): AssemblyDef {
-  if (!isRec(raw) || raw.format !== ASSEMBLY_FORMAT || !Array.isArray(raw.modules) || !Array.isArray(raw.cables)) throw new Error('not a Matryoshka assembly');
+  if (!isRec(raw) || (raw.format !== ASSEMBLY_FORMAT && raw.format !== LEGACY_ASSEMBLY_FORMAT) || !Array.isArray(raw.modules) || !Array.isArray(raw.cables)) throw new Error('not a Matryoshka assembly');
   const d = raw as unknown as AssemblyDef;
+  d.format = ASSEMBLY_FORMAT;
   const layout = assemblyLayout(d);
   delete d.size; delete d.frameSize;
   Object.assign(d, layout);

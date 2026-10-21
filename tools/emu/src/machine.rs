@@ -28,7 +28,7 @@ pub fn xip_of(app: &[u8]) -> Vec<u8> {
 }
 
 impl Machine {
-    /// Boot `app` (the build's modular-1.bin). `flash`: the SPI flash chip's contents (a
+    /// Boot `app` (the build's matryoshka.bin). `flash`: the SPI flash chip's contents (a
     /// previous run's `flash()`), else erased.
     pub fn boot(app: &[u8], flash: Option<&[u8]>) -> Machine {
         let mut soc = Soc::new(RAM_SIZE, xip_of(app));

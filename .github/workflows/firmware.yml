@@ -117,16 +117,16 @@ jobs:
           tools/ui_preview.sh build/ui-preview.png 0 1
       - uses: actions/upload-artifact@v4
         with:
-          name: modular-1-firmware
+          name: matryoshka-firmware
           path: |
-            build/modular-1.fwsc
-            build/modular-1.bin
+            build/matryoshka.fwsc
+            build/matryoshka.bin
             build/ui-preview.png
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: modular-1-elf
+          name: matryoshka-elf
           path: |
-            build/modular-1.elf
-            build/modular-1.dis
+            build/matryoshka.elf
+            build/matryoshka.dis
           if-no-files-found: error

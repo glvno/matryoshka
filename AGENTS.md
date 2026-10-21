@@ -1,4 +1,4 @@
-# Modular-1 — notes for Codex
+# Matryoshka — notes for Codex
 
 Nord Modular–style patchable synth for the **M-VAVE FM-1**, with a browser app to edit patches and flash firmware. Owner: morgulbrut. Read `README.md`, `docs/ARCHITECTURE.md`, `LICENSING.md` first.
 
@@ -25,14 +25,14 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**, with a browser app
 ## Firmware build (works, not flashed)
 
 - `nix develop` (flake.nix) sets `JIELI_TOOLCHAIN=~/.jieli/toolchain` and `AC79_SDK=~/.jieli/ac79-sdk`. Toolchain: `tools/get_toolchain.sh`; SDK: sparse clone of `cpu/wl82/tools` at tag `AC79NN_SDK_V1.2.1_2023-12-13` (the 3 files match the expected SHA-256). The prebuilt clang runs on NixOS via nix-ld.
-- `python3 tools/build.py` builds `build/modular-1.bin` (15 KB), `build/loader/ota.bin` and `build/modular-1.fwsc` (identity `FM-1_800`) with no warnings; all checks pass.
+- `python3 tools/build.py` builds `build/matryoshka.bin` (15 KB), `build/loader/ota.bin` and `build/matryoshka.fwsc` (identity `FM-1_800`) with no warnings; all checks pass.
 - `firmware/src/` (bring-up): `modular.c` (single unit), `main.c` (reduced Felucca boot: boot-loop guard, OCT-/OCT+ 5 s UBOOT, OTA, UBOOT SysEx), `audio.c` (sine voice on MIDI notes), `font5x7.c`, plus Felucca's `usb.c`, `ota.c`, `ota_hw.c`, `storage_hw.c`, `lcd.c`, `libc.c` (ota_hw.c edited to use `text5x7`). Felucca source: `~/.jieli/felucca` at `a4d7ca2e`.
 - build.py no longer runs `generate()` (the gen_*.py tools are not in this repo) and skips `size_fns.py` unless `FELUCCA_SIZE=1`.
 - The sine/MIDI/LCD code has never run on hardware.
 
 ## Measured on device (flashing works, user-confirmed)
 
-Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, float 40-70x slower than Q15 (osc 489 us vs 7 us per 128-frame block). **Decision: audio path fixed point only.** `tools/build.py` links `libcompiler-rt.a` from the toolchain; install with `nix develop -c python3 tools/fm1_install.py build/modular-1.fwsc` (mido/rtmidi are in the flake; the tool asks for confirmation interactively).
+Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, float 40-70x slower than Q15 (osc 489 us vs 7 us per 128-frame block). **Decision: audio path fixed point only.** `tools/build.py` links `libcompiler-rt.a` from the toolchain; install with `nix develop -c python3 tools/fm1_install.py build/matryoshka.fwsc` (mido/rtmidi are in the flake; the tool asks for confirmation interactively).
 
 ## Engine port (done on the host, not yet measured on device)
 
@@ -58,7 +58,7 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 ## Preset bank + 32 factory presets (M1-0.8, host-tested; flash bank not yet run on the device)
 
 - `web/src/presets.ts`: 32 factory presets (5 original + 27 generated with `voice()` / `toOut()` helpers, all playing from the FM-1 panel module). `cd web && npm run export-defs` regenerates `firmware/src/presets.h` (all 32 are compiled into the firmware as fallback).
-- Bank in flash: `firmware/src/slotstore.c` (32 sectors at 0xA0000), protocol commands SLOT 0x13 / SLOT_ERASE 0x14 / SLOT_INFO 0x15 (reply 0x42), web page `web/src/bank.ts` (tab "Presets", list stored in localStorage `modular-1.bank`). Device: encoder 6 (PRESET) and program change step through the bank (or the factory list if the bank is empty); boot loads the STOREd patch if any, else entry 0.
+- Bank in flash: `firmware/src/slotstore.c` (32 sectors at 0xA0000), protocol commands SLOT 0x13 / SLOT_ERASE 0x14 / SLOT_INFO 0x15 (reply 0x42), web page `web/src/bank.ts` (tab "Presets", list stored in localStorage `matryoshka.bank`). Device: encoder 6 (PRESET) and program change step through the bank (or the factory list if the bank is empty); boot loads the STOREd patch if any, else entry 0.
 - Hazard I hit: never `git checkout <file>` on a file with uncommitted work (I lost presets.ts once and had to rewrite it).
 
 ## M1-0.9 (host-tested; device UI/buttons not yet seen)
@@ -79,11 +79,11 @@ Benchmark (`firmware/src/bench.c`, numbers in docs/ARCHITECTURE.md): no FPU, flo
 - LCD: top bar = preset name only (black on `C_ACC`, messages replace it for 1 s); module page like the arp pages (`text_mid` = 1.5x font, 9 px per char), value bars on every knob row (`param_bar`), patch diagram as a vertical strip at x 164..240. `screen_idle` no longer blanks the screen (page switches still do); `put_param` terminates its string.
 - Buttons (main.c): OCT- 0, OCT+ 1, FX 2, SEL 3, ENV 4, LFO 5, EDIT 6, GLO 7, HOME 8 (FM-1 panel page), SAVE 9, ARP 10, SEQ 11, PLAY 12, REC 13; unused ones do nothing. HOME/ARP/SEQ/LFO glow dimly; octave LEDs breathe with speed by |octave| (HAL `fm1_br_step`, one shared speed, PLAY's green LED breathes while the arp runs).
 - TRS MIDI in: `firmware/src/midi_uart.c` (Felucca's parser), polled in the TIMER5 ISR; never tried with a real source (TRS type A/B unknown).
-- USB product string is `Modular-1` (port "Modular-1:Modular-1 MIDI 1"); host tools match felucca|modular|fm-1. Boot splash is off (`-DM1_SPLASH`).
+- USB product string is `Matryoshka` (was `Modular-1` before 2026-10-21; macOS may keep showing a cached name); host tools match felucca|matryoshka|modular|fm-1. Boot splash is off (`-DM1_SPLASH`).
 
 ## Flash tab (simplified)
 
-- One click installs the firmware bundled with the app: `tools/build.py` then `cd web && npm run firmware` copies `build/modular-1.fwsc` to `web/public/firmware/modular-1.fwsc` + `modular-1.json` (version, product, sha256; git-ignored). If the FM-1 is sitting in its update loader from an interrupted install, the same button finishes that write. "Return to stock" needs the official `FM-1.fwsc`; "Install another package" takes any `.fwsc` that carries the loader. The "combine the official V15 with an app.bin" step is gone (`buildFeluccaPackage` is no longer used by the UI).
+- One click installs the firmware bundled with the app: `tools/build.py` then `cd web && npm run firmware` copies `build/matryoshka.fwsc` to `web/public/firmware/matryoshka.fwsc` + `matryoshka.json` (version, product, sha256; git-ignored). If the FM-1 is sitting in its update loader from an interrupted install, the same button finishes that write. "Return to stock" needs the official `FM-1.fwsc`; "Install another package" takes any `.fwsc` that carries the loader. The "combine the official V15 with an app.bin" step is gone (`buildFeluccaPackage` is no longer used by the UI).
 
 ## Polyphony (host-tested, golden 45 patches pass; not flashed) — device controls superseded by the merge section at the end
 
@@ -131,7 +131,7 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 
 ## Assemblies (editor only, browser-tested)
 
-- `web/src/assembly.ts` (model, no DOM), `web/src/assemblies.ts` (library page, localStorage `modular-1.assemblies`, factory set from `web/src/assemblies/*.json` via `import.meta.glob`), `editor.ts` (selection: shift-click / rubber band; container cards; expanded frames; membership by drag; snapshot undo). `Patch.assemblies` is an optional overlay; the engine, encoder, protocol and firmware ignore it, old editors keep it as an unknown field. Tests: `assembly.test.ts` (12).
+- `web/src/assembly.ts` (model, no DOM), `web/src/assemblies.ts` (library page, localStorage `matryoshka.assemblies`, factory set from `web/src/assemblies/*.json` via `import.meta.glob`), `editor.ts` (selection: shift-click / rubber band; container cards; expanded frames; membership by drag; snapshot undo). `Patch.assemblies` is an optional overlay; the engine, encoder, protocol and firmware ignore it, old editors keep it as an unknown field. Tests: `assembly.test.ts` (12).
 - Factory assemblies: `web/scripts/gen-assemblies.ts` defines thirteen of them as small patches (grid positions, cables, exposed ports with `also` for merged gates, promoted parameters) and writes `web/src/assemblies/*.json`; `voice.json` and `echo.json` are kept as files. `assembly.test.ts` lists the names, inserts every one and plays it. The operator and the drums use the level/rate envelope, the subtractive voices keep the ADSR.
 - Class names: `.pin` is the parameter-input row (pins), the expose / promote toggle button is `.tog`.
 
@@ -217,7 +217,7 @@ SysEx over USB MIDI. The device *pulls* blocks: it sends read requests (cmd 0x30
 - Editor: `paramRow` got upstream's `altText` (synced delay time as a note length) through `refreshers`; tabs are "Patches" + "Assemblies"; `Engine.clockTick` / `clockRun` set `clock` on every note's `Voice`.
 - Fixed on the way: dev's main.c used `voices_set` before its definition (the JieLi toolchain never saw it); upstream's `vgain[]` initialised only two of four voices (harmless, `mix_apply_all` runs at boot).
 - Hazard: `git merge` auto-merged several upstream fragments into engine.c (`buf_pool[VOICE_NO]`, `eng_clock_tick`, the voice API at the end, the delay's state struct) without conflict markers; check the whole file, not only the hunks, after a merge there.
-- `web/public/firmware/modular-1.fwsc` / `.json` are upstream's 1.0.2 package (CI rebuilds it for Pages); not rebuilt here.
+- `web/public/firmware/matryoshka.fwsc` / `.json` are upstream's 1.0.2 package (CI rebuilds it for Pages); not rebuilt here.
 
 ## Handoff
 

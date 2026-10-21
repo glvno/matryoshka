@@ -147,7 +147,7 @@ function build(name: string, category: string, f: (b: B) => void, poly?: PolyCar
   // one-shot, so the decay rows set the sound, not the trig's length
   if (category === 'Drums') for (const m of modules) if (m.type === 'env') m.params.shot = 1;
   return {
-    format: 'modular-1-assembly', version: 1, name, category, modules, cables, inputs, outputs, params,
+    format: 'matryoshka-assembly', version: 1, name, category, modules, cables, inputs, outputs, params,
     ...(nested.length ? { children: nested.map((n) => n.id), assemblies: nested } : {}),
     ...(poly ? { poly: { ...poly } } : {}),
   };

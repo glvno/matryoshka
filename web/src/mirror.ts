@@ -7,7 +7,7 @@
 import { Updater } from './flasher/fm1ota.js';
 import { PROFILES, firmwareOf, type Firmware, type PanelInput, type Profile } from './fm1-profiles';
 
-const PORT = /fm-?1|felucca|modular|sloop|baud/i;
+const PORT = /fm-?1|felucca|matryoshka|modular|sloop|baud/i;
 
 export class Fm1Mirror {
   profile: Profile | null = null;

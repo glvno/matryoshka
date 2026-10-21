@@ -11,7 +11,7 @@ import { deviceView } from './poly';
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
 import { muteFrame, trackFrame, parseTrack, focusFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
-const NAME = /felucca|fm-?1|modular/i;
+const NAME = /felucca|fm-?1|matryoshka|modular/i;
 const ACK_TIMEOUT = 700;
 const FLASH_TIMEOUT = 2500; // a flash sector erase and program
 const TRIES = 3;

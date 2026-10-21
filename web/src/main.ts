@@ -45,10 +45,11 @@ import { binaryPage, deviceBudget, editorPage, encodePatch, POLY_ROW, POLY_ROW_P
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
 import { demoPatch } from './demo';
+import { renamedKey } from './storage-key';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
-const STORE = 'modular-1.patch';
+const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
 
 function loadSaved(): Patch | null {
   try {

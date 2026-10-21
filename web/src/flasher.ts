@@ -60,7 +60,7 @@ interface Bundle {
 
 async function loadBundle(): Promise<Bundle | null> {
   try {
-    const r = await fetch('./firmware/modular-1.json', { cache: 'no-cache' });
+    const r = await fetch('./firmware/matryoshka.json', { cache: 'no-cache' });
     if (!r.ok) return null;
     const b = (await r.json()) as Bundle; // a dev server answers a missing file with the page itself: that is not JSON
     return b && typeof b.version === 'string' && typeof b.product === 'string' ? b : null;
@@ -151,13 +151,13 @@ export function buildFlashTab(root: HTMLElement): void {
     await installImage(logicalImage(raw), product);
   };
 
-  // ---- Modular-1
+  // ---- Matryoshka
   const installBtn = el('button', { textContent: 'Install Matryoshka firmware', class: 'primary' });
   const bundleInfo = el('p', { class: 'muted', textContent: 'Looking for the firmware package…' });
   installBtn.onclick = () =>
     run('install Matryoshka', async () => {
       if (!bundle) throw new Error('no firmware package is bundled with this copy of the app');
-      const r = await fetch(`./firmware/modular-1.fwsc?v=${bundle.sha256}`, { cache: 'no-cache' });
+      const r = await fetch(`./firmware/matryoshka.fwsc?v=${bundle.sha256}`, { cache: 'no-cache' });
       if (!r.ok) throw new Error('the bundled firmware package could not be loaded');
       const raw = new Uint8Array(await r.arrayBuffer());
       const sum = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', raw)), (b) => b.toString(16).padStart(2, '0')).join('');

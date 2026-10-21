@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// SysEx protocol between the editor and the Modular-1 firmware (firmware/src/proto.c). Pure functions.
+// SysEx protocol between the editor and the Matryoshka firmware (firmware/src/proto.c). Pure functions.
 //
 //   F0 7D 4D 31 <cmd> <payload packed to 7-bit> F7
 //

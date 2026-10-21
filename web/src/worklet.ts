@@ -195,4 +195,4 @@ class ModularProcessor extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor('modular-1', ModularProcessor as never);
+registerProcessor('matryoshka', ModularProcessor as never);

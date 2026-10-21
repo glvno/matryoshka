@@ -2,9 +2,10 @@
 // The assembly library: the factory set shipped with the editor (src/assemblies/*.json) and the user's own, kept in
 // localStorage, each one in the file format of assembly.ts. The Library page lists them: insert, export, import, delete.
 import { validateAssemblyDef, type AssemblyDef } from './assembly';
+import { renamedKey } from './storage-key';
 import { DEFS } from './modules';
 
-const STORE = 'modular-1.assemblies';
+const STORE = renamedKey('matryoshka.assemblies', 'modular-1.assemblies');
 
 /** the shelves of the assembly browser and the Library page, in display order; the user's own come first under their own shelf */
 export const CATEGORIES = ['Drums', 'Voices', 'Effects', 'Textures', 'Utilities'] as const;

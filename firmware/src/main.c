@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
- * Modified for Modular-1 (morgulbrut). */
+ * Modified for Modular-1 (morgulbrut) and Matryoshka (glvno). */
 /* Boot and main loop, reduced from Felucca's: WDT, boot-loop guard, fatal vectors, then LCD, input (TIMER5
  * IRQ, 10 kHz), audio (ALNK0 IRQ), USB. Kept so the device can always be re-flashed: the OTA command, answered from a
  * second before any patch loads; the boot-loop guard (one failed boot -> safe mode with the fallback patch, two -> update

@@ -39,7 +39,7 @@ LOADER_MARK = b"FELUCCA-LOADER-1"
 # the unmodified official FM-1 V15 (FM-1.fwsc from M-VAVE): returning to it is allowed without --force,
 # as the web installer's "Return to official V15" (web/fm1pkg.js validateStockPackage)
 STOCK_V15_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
-PORT_RE = re.compile(r"fm-1|felucca|modular|ota|composite|sinco|usb-midi", re.I)   # never probe other gear
+PORT_RE = re.compile(r"fm-1|felucca|matryoshka|modular|ota|composite|sinco|usb-midi", re.I)   # never probe other gear
 
 # seconds; the tests shorten them
 DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0, "retry": 1.0,
@@ -397,7 +397,7 @@ class Updater:
         if dev.id.loader and not loader_fits(dev.id.text, product):
             dev.link.close()
             hint = ("finish it with the official V15 (FM-1.fwsc)" if dev.id.text == "ota-" + STOCK_PRODUCT else
-                    "finish it with the Felucca / Modular-1 package that was being installed"
+                    "finish it with the Felucca / Matryoshka package that was being installed"
                     if re.fullmatch(r"ota-FM-1_[789]\d\d", dev.id.text) else "finish it with the tool that started it")
             raise InstallError("otherloader", f"the FM-1 waits in the update loader {dev.id.text} from an unfinished "
                                               f"update, which must not be given {product}: nothing was sent; {hint}")
