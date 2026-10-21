@@ -39,7 +39,7 @@ export function showUndo(text: string, undo: () => void): () => boolean {
 }
 
 /** show a plain message for a few seconds, with a close button (what a patch menu action did, #152) */
-export function showToast(text: string): void {
+export function showToast(text: string, ms = SHOW_MS / 2): void {
   dismiss();
   const el = document.createElement('div');
   el.className = 'toast';
@@ -53,5 +53,5 @@ export function showToast(text: string): void {
   close.onclick = dismiss;
   el.append(msg, close);
   document.body.append(el);
-  current = { el, timer: window.setTimeout(dismiss, SHOW_MS / 2) };
+  current = { el, timer: window.setTimeout(dismiss, ms) };
 }

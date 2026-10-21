@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
+// first: migrate.ts notes which storage keys the page found before anything here writes one
+import { applyImport, backupKeys, importSummary, OLD_ORIGIN, receiveMigration } from './migrate';
 import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
@@ -56,6 +58,8 @@ import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from 
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
+/** the address's fragment as the page opened (a share link's #p=, stripped once loaded): the reload after an import opens it again */
+const openedHash = location.hash;
 
 function loadSaved(): Patch | null {
   try {
@@ -827,6 +831,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Save patch', keywords: 'keep store your patches', run: saveCurrent },
     { kind: 'command', label: 'Save patch as .json', keywords: 'export download file', run: savePatch },
     { kind: 'command', label: 'Load patch from .json', keywords: 'import open file', run: () => $('load-file').click() },
+    { kind: 'command', label: 'Import browser backup', detail: 'from the old address', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
     { kind: 'command', label: 'Share patch\u2026', keywords: 'link copy url clipboard reddit post card notes', run: () => shareSheet.open() },
     { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
     { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { switchTab('patch'); tutorial.open(); } },
@@ -1607,11 +1612,50 @@ $<HTMLInputElement>('load-file').onchange = async (e) => {
   input.value = '';
   if (!f) return;
   try {
-    loadNamed(validatePatch(JSON.parse(await f.text()), DEFS));
+    const raw = JSON.parse(await f.text()) as unknown;
+    // the old address's "Download a backup" (deploy/github-pages-forward): the browser data, not a patch
+    const backup = backupKeys(raw);
+    if (backup) importBrowserData(backup, 'the backup');
+    else loadNamed(validatePatch(raw, DEFS));
   } catch (err) {
     status.textContent = `load failed: ${(err as Error).message}`;
     showToast(status.textContent);
   }
+};
+
+/** sessionStorage: the import's toast, shown after the reload */
+const IMPORTED = 'matryoshka.imported';
+/**
+ * Browser data from the old address (migrate.ts: its hand-off, or its backup file): stored without overwriting anything
+ * silently, then the page reloads so every part (the open patch, the bank, the library, the tutorial, the theme) reads it.
+ * A save still pending would put the starter patch back over an imported open patch: it is cancelled.
+ */
+const importBrowserData = (keys: Record<string, string>, from: string): void => {
+  clearTimeout(saveTimer);
+  suppressSave = true;
+  let text: string;
+  let wrote: boolean;
+  try {
+    const plan = applyImport(keys);
+    text = importSummary(plan, from);
+    wrote = Object.keys(plan.writes).length > 0;
+  } catch (e) {
+    suppressSave = false;
+    showToast(`The import failed: ${(e as Error).message}`);
+    return;
+  }
+  if (!wrote) {
+    suppressSave = false;
+    showToast(text, 12000);
+    return;
+  }
+  try {
+    sessionStorage.setItem(IMPORTED, text);
+  } catch {
+    /* no toast after the reload */
+  }
+  if (!location.hash && openedHash) history.replaceState(history.state, '', location.pathname + location.search + openedHash);
+  location.reload();
 };
 
 // audio + input
@@ -1835,6 +1879,17 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
 
 
 if (currentTab === 'patch' && !shareCodeOf(location.href)) tutorial.welcome();
+// the old address's hand-off (?migrate=1), and the toast of an import before the reload
+receiveMigration((keys) => importBrowserData(keys, new URL(OLD_ORIGIN).host));
+try {
+  const imported = sessionStorage.getItem(IMPORTED);
+  if (imported) {
+    sessionStorage.removeItem(IMPORTED);
+    showToast(imported, 12000);
+  }
+} catch {
+  /* storage blocked */
+}
 // Audio is enabled by default. A fresh browser may require a trusted gesture to resume it.
 const unlockAudio = (): void => { if (!host.running) void startAudio(); };
 window.addEventListener('pointerdown', unlockAudio, { capture: true });
