@@ -353,9 +353,7 @@ class Updater:
         if not finished:
             raise InstallError("lost" if lost else "stopped",
                                f"the FM-1 {'was disconnected' if lost else 'stopped answering'} after "
-                               f"{served} requests; nothing was written"
-                               + ("" if lost else ". If MIDI gear is plugged into its MIDI input, or an app sends it "
-                                  "MIDI (clock), unplug or stop that and run the install again (#177)"))
+                               f"{served} requests; nothing was written")
         step("loader")
         time.sleep(DELAY["loader"])
         ota = self.wait_for(lambda i: i.loader, DELAY["wait_loader"])
