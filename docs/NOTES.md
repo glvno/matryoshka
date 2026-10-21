@@ -998,3 +998,19 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
   - internal names (`m1_link.py`, `m1emu`, `M1_*`, `modular.c`);
   - the AI-stats project ids.
 - **Version string (the user's call):** `v1.0.0` for the 1.0 release (`tools/build.py --release 1.0`, which pads X.Y to X.Y.0; `1.1-rc1` gives `v1.1.0-RC1`), `v1.0.0-DEV` for other builds. MATRYOSHKA was tried first, but it repeated the logo on the splash. The splash's 5x7 font has no lowercase, so it shows `V1.0.0-DEV`.
+
+## 2026-10-21 (device): USB audio out on the FM-1 (branch `usb-audio` at e5a40ba, CI run 39620813342)
+
+- **Install and smoke:** emu:smoke passed (118 checks). The install from `FM-1_700` went through and the device came back as `FM-1_700`.
+- **Enumeration:**
+  - macOS lists the audio device "Matryoshka" with 2 input channels at 44100 Hz.
+  - MIDI still works (`m1_link.py info`). The MIDI port name stays "Felucca", cached by macOS.
+  - The manufacturer showed as Felucca's ("Hügelton Instruments"). It is now "brighght studio" (the user's choice, spelled as written). The update loader keeps Felucca's string under `FELUCCA_LOADER`, so the loader stays byte for byte the same.
+- **A recording in QuickTime, 30 s measured:**
+  - 1000.2 packets/s, 44130 frames/s; the clock is 44119.8 Hz per packet ms (#82);
+  - underruns / overruns / missed / stalls +0;
+  - net clock adjustment +19.9 frames/s (the plan expected ~+18);
+  - fill 145..214 against the band 160..208;
+  - CPU 31 %, peak 32 % while streaming.
+- **Algo Four recorded too:** still 0 errors over 6 stream starts, CPU peak 88 % with no overload (about 86 % without the stream).
+- **Not yet:** listening back for clicks; the 10-minute drift recording; MIDI and audio at once; update mode and return to stock (plan steps 4-7).
