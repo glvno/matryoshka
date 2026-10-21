@@ -207,6 +207,44 @@ int main(void)
         check("PRESET in the menu: the next patch, not a row", menu_sel == row && presets_stepped == stepped + 1);
         presets_stepped = stepped;
     }
+    {                                                       /* #146: an idle SYSTEM tab redraws only the CPU values */
+        uint8_t tab = menu_tab, row = menu_sel;
+        uint32_t i, n = 0, outside = 0, y0 = 68u + menu_pos(MR_CPU) * 26u, y1 = 68u + menu_pos(MR_PEAK) * 26u;
+        menu_tab = MT_SYSTEM;
+        menu_sel = MR_VERSION;
+        ui_dirty = 2;
+        loop();
+        fb_watch_reset();
+        eng_us_max = (cpu_pct + 7u) * 2902u / 100u + 1u;   /* another %, above the peak */
+        fm1_ms += 500;
+        cpu_poll();
+        loop();
+        for (i = 0; i < 240u * 240u; i++) {
+            uint32_t x = i % 240u, y = i / 240u;
+            int in = x >= 150u && x < 228u && ((y >= y0 + 3u && y < y0 + 21u) || (y >= y1 + 3u && y < y1 + 21u));
+            n += fb_changes[i] != 0u;
+            outside += fb_changes[i] != 0u && !in;
+        }
+        check("SYSTEM idle, the CPU changed: only the CPU and CPU PEAK values redrawn, no blink",
+              n > 0u && outside == 0u && fb_blinked() == 0);
+        menu_tab = MT_PANEL;
+        menu_sel = MR_LEDS;
+        ui_dirty = 2;
+        loop();
+        fb_watch_reset();
+        eng_us_max = (cpu_pct + 11u) * 2902u / 100u + 1u;
+        fm1_ms += 500;
+        cpu_poll();
+        loop();
+        n = 0;
+        for (i = 0; i < 240u * 240u; i++)
+            n += fb_changes[i] != 0u;
+        check("PANEL idle, the CPU changed: nothing redrawn", n == 0u);
+        menu_tab = tab;
+        menu_sel = row;
+        ui_dirty = 2;
+        loop();
+    }
     tap(BTN_SEQ);
     check("SEQ from the menu: the step page, a second step", page == PAGE_SEQ && trail_n == 2);
     tap(BTN_HOME);

@@ -161,25 +161,6 @@ static void bar_text(const char *s, uint16_t bg)
         text_bc(&FONT_S, 0, 3, b, bg == C_FG || bg == C_ACC || bg == C_RED ? C_BG : C_FG, bg, 240, TA_CENTER);
 }
 
-/* the name at the left and the CPU load at the right, black on the accent colour */
-static void bar_name_cpu(const char *s, uint16_t bg)
-{
-    char b[24], num[12], *p = num;
-    uint32_t n = str_len(s), i, w;
-    n = n > 19u ? 19u : n;
-    for (i = 0; i < n; i++)
-        b[i] = s[i];
-    b[n] = 0;
-    fmt_int(num, (int32_t)cpu_pct);
-    p = num + str_len(num);
-    *p++ = '%';
-    *p = 0;
-    w = str_len(num) * 9u;
-    lcd_fill(0, 0, 240, BAR_H, bg);
-    text_mid(8, (BAR_H - 11u) / 2u, b, C_BG, bg);
-    text_mid(232u - w, (BAR_H - 11u) / 2u, num, C_BG, bg);
-}
-
 static void pages_draw(int full);
 static void pages_strip(void);
 static void header_draw(void)
