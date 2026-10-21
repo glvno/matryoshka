@@ -28,6 +28,7 @@ static const char *const TAB_NAME[MT_COUNT] = {"PANEL", "MIDI", "SYSTEM", "MANUA
 
 static uint8_t menu_tab, menu_sel = MR_LEDS;     /* the tab and the selected row (a row number) */
 static uint32_t cpu_peak;                       /* the highest CPU % since boot */
+static uint32_t diag_us_peak;                   /* the longest audio ISR in us since the DIAG CPU page was last read (main.c m1_diag) */
 static uint32_t update_arm;                     /* UPDATE MODE / DEFAULTS: fm1_ms | 1 of the first OCT+ (the row is menu_sel) */
 
 static uint32_t menu_first(uint32_t tab)
@@ -287,6 +288,8 @@ static void cpu_poll(void)
         return;
     t0 = fm1_ms;
     pct = eng_us_max * 100u / 2902u;
+    if (eng_us_max > diag_us_peak)
+        diag_us_peak = eng_us_max;
     eng_us_max = 0;
     if (pct > 999u)
         pct = 999u;

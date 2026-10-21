@@ -10,9 +10,22 @@ extern uint32_t _data_start[], _data_end[], _data_load[], _bss_start[], _bss_end
 extern uint32_t _pool_start[], _pool_end[], _rt_start[], _rt_end[], _rt_load[];
 
 
-void fm1_timer5_irq(void)
+/* Diagnostics for the device bring-up (#140), read with tools/m1_link.py diag: what the last run left behind. When the main
+ * loop has not passed for DIAG_STALL_MS, TIMER5 samples where the CPU was (the interrupted pc and its rets) every
+ * DIAG_EVERY_MS until the watchdog resets the chip. The record and the crash record (fm1_irq.h) survive the reset in
+ * .noinit; the boot copies both and the reset cause into diag_prev and starts a new record. */
+#define DIAG_MAGIC 0x44494147u                  /* "DIAG" */
+#define DIAG_STALL_MS 1500u
+#define DIAG_EVERY_MS 250u
+#define DIAG_SAMPLES 24u
+typedef struct { uint32_t magic, stall_ms, n, pc[DIAG_SAMPLES], rets[DIAG_SAMPLES]; } diag_t;
+diag_t diag __attribute__((section(".noinit")));        /* (not static: see fm1_crash) */
+static volatile uint32_t diag_alive, diag_armed;      /* fm1_ms of the main loop's last pass; set once the loop runs */
+static struct { uint32_t p3, src, wdt; diag_t stall; fm1_crash_t crash; } diag_prev;   /* (m1_link.py diag reads it as u32s) */
+
+void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
-    static uint32_t sub, last, acc;
+    static uint32_t sub, last, acc, next;
     uint32_t t0 = fm1_ticks();
     fm1_timer5_ack();
     fm1_input_tick();
@@ -21,6 +34,14 @@ void fm1_timer5_irq(void)
     while (acc >= 1000u * FM1_TICKS_PER_US) {
         acc -= 1000u * FM1_TICKS_PER_US;
         fm1_ms++;
+    }
+    if (diag_armed && fm1_ms - diag_alive > DIAG_STALL_MS && (int32_t)(fm1_ms - next) >= 0 && diag.n < DIAG_SAMPLES) {
+        if (!diag.n)
+            diag.stall_ms = diag_alive;
+        diag.pc[diag.n] = f[4];
+        diag.rets[diag.n] = f[5];
+        diag.n++;
+        next = fm1_ms + DIAG_EVERY_MS;
     }
     if (sub++ % 5u == 0u) {
         usb_poll();                             /* 2 kHz: all USB SIE traffic lives here */
@@ -76,8 +97,33 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
     sel = 0;
     patch_label = "FROM EDITOR";
     leds_avail();                               /* the patch buttons it uses */
-    screen_idle();
+    ui_full = 1;                                /* not drawn here: the pages come from m1_cur, which the caller sets after this
+                                                 * (m1_set_current); drawn now, the old patch's rows met the new engine (#140) */
     return rc;
+}
+/* the DIAG command (proto.c): page 0 the reset cause and the crash record, pages 1.. the stall record, 32 bytes a page;
+ * page 127 the CPU now: % of the half buffer, the longest audio ISR (us) since the last read of this page (then reset),
+ * the half buffer's budget (us), the overload mute, the halves rendered */
+static uint32_t m1_diag(uint32_t page, uint8_t *out)
+{
+    const uint8_t *b = (const uint8_t *)&diag_prev;
+    uint32_t i, off = page * 32u, n = sizeof diag_prev > off ? sizeof diag_prev - off : 0u;
+    if (page == 127u) {
+        uint32_t v[5];
+        v[0] = cpu_pct;
+        v[1] = diag_us_peak > eng_us_max ? diag_us_peak : eng_us_max;
+        v[2] = 2902u;
+        v[3] = eng_overload;
+        v[4] = eng_halves;
+        diag_us_peak = 0;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    n = n > 32u ? 32u : n;
+    for (i = 0; i < n; i++)
+        out[i] = b[off + i];
+    return n;
 }
 /* the editor's TRANSPORT command (PLAY) */
 static void m1_transport(int run)
@@ -623,6 +669,7 @@ static void m1_focus(uint32_t dev, uint32_t pg)
         ui_dirty = 2;
 }
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
+static void m1_ui_rows(void) { ui_dirty = ui_dirty ? ui_dirty : 1; }   /* proto.c: the editor moved a parameter (Live) */
 
 /* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No
  * tool of this project (nor M-VAVE's web updater) talks to that mode: jl-uboot-tool / FM-1 Transporter do. A power cycle
@@ -773,8 +820,11 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         uint32_t rel;
         (void)fm1_input_edges(&rel);
     }
+    diag_alive = fm1_ms;
+    diag_armed = 1;
     for (;;) {
         fm1_wdt_feed();
+        diag_alive = fm1_ms;
         usb_retry(fm1_ms);
         if (fm1_ms > 30000u && bootguard.pending) {     /* a crash or hang in the first 30 s counts */
             bootguard.pending = 0;
@@ -826,6 +876,16 @@ void fm1_cstart(void)
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;                                /* flash driver code that must run from RAM */
     fm1_mailbox_clear();
+    diag_prev.p3 = p3;                          /* (diag_prev is in .bss: after the clear above) */
+    diag_prev.src = src;
+    diag_prev.wdt = wdt;
+    if (diag.magic == DIAG_MAGIC)
+        diag_prev.stall = diag;
+    if (fm1_crash.magic == FM1_CRASH_MAGIC)
+        diag_prev.crash = fm1_crash;
+    fm1_crash.magic = 0;                        /* read once: the next report is a new crash */
+    diag.magic = DIAG_MAGIC;
+    diag.n = 0;
     fm1_guard_enable(FM1_GUARD_STACK | FM1_GUARD_WRITE | FM1_GUARD_BUS | FM1_GUARD_PC);
     fm1_boot.p3_rst = (uint8_t)p3;
     fm1_boot.rst_src = src;

@@ -16,5 +16,20 @@
 	rti
 	.endm
 
-	FM1_ISR isr_timer5, fm1_timer5_irq
+	/* the same with r0 = the saved frame (r0..r3, reti, rets, psr): the body can see where it interrupted */
+	.macro FM1_ISR_FRAME name, body
+	.section .text.\name,"ax",@progbits
+	.globl \name
+\name:
+	[--sp] = {psr, rets, reti}
+	[--sp] = {r3-r0}
+	r0 = sp
+	call \body
+	{r3-r0} = [sp++]
+	{psr, rets, reti} = [sp++]
+	csync
+	rti
+	.endm
+
+	FM1_ISR_FRAME isr_timer5, fm1_timer5_irq
 	FM1_ISR isr_alnk0, fm1_alnk0_irq
