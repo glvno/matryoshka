@@ -1085,3 +1085,17 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
 ## 2026-10-21 (1.0): merging #158 and #141 together
 
 - #141 gave the 808 Kit a tom and rim, so its estimate (73.8 %) no longer matches the 2026-10-20 survey (52 % measured on the old kit). `cpu.test.ts` skips survey entries listed in `changed` (now: 808 Kit). Re-measure the 808 Kit in the device session (MENU CPU PEAK, 1 / 4 / 8 keys), update the survey JSON, and empty `changed`.
+
+## 2026-10-21 (1.0): Disable the A/B snapshot flip for 1.0, #155
+
+- **Off for 1.0** (the flip moves frames and cards, #102, and does not keep the engines in step, #103, which brings it back):
+  - `main.ts`: the palette rows "Set snapshot A", "Set snapshot B", "Switch A / B snapshots" are gone. Alt+B is a branch that only sets `done` (no flip, no status, and it does not fall through to plain B = bypass). The `snapshotCandidates` assignment is gone, so the morph picker offers no "Snapshot B" (the `let` stays at `() => []`). `takeSnapshot` / `flipAB` and the tutorial host's `snapshot` / `flipAB` hooks stay, commented. `editor.ts`'s A/B code is untouched.
+  - `index.html`: the help card's Alt+B row is gone. README (the Commands list, the A/B bullet, the shortcut lists) and ARCHITECTURE (A/B paragraph: "The UI is off for 1.0"; Alt+B and "snapshots" out of the shortcut and palette lists) follow; docs/TUTORIAL.md's chapter 9 row too.
+- **Tutorial** (course.json edited directly, in the lesson editor's format; no browser):
+  - Two instruments, step `snapshots` (id kept) is now "Keep a variation": Save the patch ("Tutorial duo" in Your patches), then change sliders. Its parts: one `slider` `changed` on My voice's filter `cutoff` (momentary, so the step stays transient).
+  - Step `morph` is "Fade to the variation": choose the saved "Tutorial duo" in Main's B side picker. The "Alt+B alone only switches snapshots" sentence is gone.
+  - Both references were recomputed by a one-off vite-node script from `two-instruments/macro`: `snapshots` = macro with cutoff 400 -> 1200 and mixer l1 0.7 -> 0.4; `morph` = that with `setMorphTarget(macro)` (morphName "Tutorial duo") and Main morph 0.5. Both equal themselves under `validatePatch`.
+  - Tour step `tools`: the snapshots line is gone. `registry.ts` `morphTarget` label: "Choose the saved variation in Main's B side picker".
+  - `course-schema.ts` `HIDDEN_EVENTS` = flips, snapshotA, snapshotB (the event names stay in the schema for #103). The lesson editor's event select leaves them out (unless the part already uses one); `validateCourse` rejects them. Test: `tutorial.test.ts` "uses none of the A/B events while A/B is off".
+- **Checked:** npm test 758 passed, 1 skipped (59 files), tsc clean, npm run build ok; `grep "Alt+B\|Snapshot B\|snapshotA\|snapshotB"` on course.json, index.html, README.md: empty.
+- **Not checked:** the browser (palette search "snapshot" / "ab"; Alt+B on a selected module; Main's B side picker; walking the two rewritten steps from the lesson editor, including that Save puts "Tutorial duo" in the picker).
