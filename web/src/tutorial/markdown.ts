@@ -35,6 +35,117 @@ markdown.core.ruler.push('req', (state) => {
     }
   }
 });
+// Each requirement is a line of its own (#173): a paragraph that holds one splits into prose / requirement / prose
+// paragraphs, the requirement's with the class req-line. A requirement nested in other markup (inside **…**) stays inline.
+// The sentence is reshaped into lines: the full stop or footnote mark right after a requirement stays on its line (a comma,
+// semicolon or colon that joined it to the next words goes); joining words between lines ("and", "then") go; a lead-in
+// that ran into a requirement ("Cable", "Start Riff and") ends with a colon; a line or paragraph that now starts with a
+// small letter gets a capital.
+type Tok = ReturnType<typeof markdown.parse>[number];
+type Seg = { req: boolean; toks: Tok[] };
+const TAIL = /^[.,;:!?)\]"'”’…]+/;
+const JOIN_START = /^(?:[\s,;:]*\b(?:and then|and|or|then)\b)?[\s,;:]*/i;
+const JOIN_END = /(?:[\s,;:]*\b(?:and then|and|or|then))?[\s,;:]*$/i;
+const isBreak = (t: Tok): boolean => t.type === 'softbreak' || t.type === 'hardbreak';
+const isBlank = (seg: Tok[]): boolean => seg.every((t) => isBreak(t) || (t.type === 'text' && !t.content.trim()));
+/** a segment without the line breaks and spaces at its ends */
+function trimSegment(seg: Tok[]): Tok[] {
+  while (seg.length && isBreak(seg[0])) seg.shift();
+  while (seg.length && isBreak(seg[seg.length - 1])) seg.pop();
+  if (seg[0]?.type === 'text') seg[0].content = seg[0].content.trimStart();
+  const last = seg[seg.length - 1];
+  if (last?.type === 'text') last.content = last.content.trimEnd();
+  return seg;
+}
+/** a capital for the first letter, when the segment starts with plain text (not `code`) */
+function capitalize(seg: Tok[]): void {
+  const first = seg[0]?.type === 'req_open' ? seg[1] : seg[0];
+  if (first?.type === 'text') first.content = first.content.replace(/^[a-z]/, (c) => c.toUpperCase());
+}
+/** the paragraph's inline tokens cut at its top-level requirements, each requirement with what closes it: the punctuation
+ * and footnote marks right after it, and a remark in parentheses that follows it ("(every beat)") */
+function splitAtRequirements(children: Tok[], text: (content: string) => Tok): Seg[] {
+  const segs: Seg[] = [];
+  let inReq = false, tail = false, paren = false;
+  const queue = [...children];
+  for (let t = queue.shift(); t; t = queue.shift()) {
+    if (t.type === 'req_open' && t.level === 0) { segs.push({ req: true, toks: [t] }); inReq = true; continue; }
+    const cur = segs[segs.length - 1];
+    if (inReq) {
+      cur.toks.push(t);
+      if (t.type === 'req_close' && t.level === 0) inReq = false, tail = true;
+      continue;
+    }
+    if (tail && t.type === 'text' && /^\s*\(/.test(t.content)) paren = true;
+    if (paren) {
+      const close = t.type === 'text' ? t.content.indexOf(')') : -1;
+      if (close < 0) { cur.toks.push(t); continue; }
+      cur.toks.push(text(t.content.slice(0, close + 1)));
+      paren = false;
+      if (close + 1 < t.content.length) queue.unshift(text(t.content.slice(close + 1)));
+      continue;
+    }
+    if (tail && t.type === 'footnote_ref') { cur.toks.push(t); continue; }
+    if (tail && t.type === 'text') {
+      const m = TAIL.exec(t.content);
+      if (m) {
+        const keep = m[0].replace(/[,;:]/g, '');
+        if (keep) cur.toks.push(text(keep));
+        t.content = t.content.slice(m[0].length);
+        if (!t.content) continue;
+      }
+    }
+    tail = false;
+    if (cur && !cur.req) cur.toks.push(t);
+    else segs.push({ req: false, toks: [t] });
+  }
+  return segs;
+}
+/** the prose between requirements without its joining words; a lead-in ends with a colon; '' segments are dropped */
+function shapeProse(segs: Seg[], text: (content: string) => Tok): Seg[] {
+  return segs.filter((seg, k) => {
+    seg.toks = trimSegment(seg.toks);
+    if (seg.req) { capitalize(seg.toks); return true; }
+    const after = segs[k - 1]?.req, before = segs[k + 1]?.req;
+    const first = seg.toks[0], last = seg.toks[seg.toks.length - 1];
+    // after a requirement that ended a sentence the words start a new one ("Then rest."): they keep their joining word
+    const prev = segs[k - 1]?.toks.at(-1);
+    const sentence = prev?.type === 'text' && /[.!?…]$/.test(prev.content) || prev?.type === 'footnote_ref';
+    if (after && !sentence && first?.type === 'text') first.content = first.content.replace(JOIN_START, '');
+    if (before && last?.type === 'text') last.content = last.content.replace(JOIN_END, '');
+    seg.toks = trimSegment(seg.toks.filter((t) => t.type !== 'text' || t.content));
+    if (!seg.toks.length || isBlank(seg.toks)) return false;
+    if (after) capitalize(seg.toks);
+    const end = seg.toks[seg.toks.length - 1];
+    if (before && !(end.type === 'text' && /[.!?:…)]$/.test(end.content))) seg.toks.push(text(':'));
+    return true;
+  });
+}
+markdown.core.ruler.push('req_lines', (state) => {
+  const out: Tok[] = [];
+  const tokens = state.tokens;
+  const text = (content: string): Tok => Object.assign(new state.Token('text', '', 0), { content });
+  for (let i = 0; i < tokens.length; i++) {
+    const open = tokens[i], inline = tokens[i + 1], close = tokens[i + 2];
+    const children = inline?.children ?? [];
+    if (open.type !== 'paragraph_open' || inline.type !== 'inline' || close?.type !== 'paragraph_close' || !children.some((t) => t.type === 'req_open' && t.level === 0)) {
+      out.push(open);
+      continue;
+    }
+    for (const seg of shapeProse(splitAtRequirements(children, text), text)) {
+      const p = new state.Token('paragraph_open', 'p', 1);
+      Object.assign(p, { map: open.map, level: open.level, block: true }); // shown even in a tight list: the lines are blocks
+      if (seg.req) p.attrSet('class', 'req-line');
+      const body = new state.Token('inline', '', 0);
+      Object.assign(body, { map: inline.map, level: inline.level, content: '', children: seg.toks });
+      const end = new state.Token('paragraph_close', 'p', -1);
+      Object.assign(end, { level: close.level, block: true });
+      out.push(p, body, end);
+    }
+    i += 2;
+  }
+  state.tokens = out;
+});
 markdown.renderer.rules.req_open = (tokens, index) =>
   `<span class="req" data-req="${markdown.utils.escapeHtml(String(tokens[index].attrGet('data-req') ?? ''))}"><span class="req-box" aria-hidden="true"></span><span class="req-text">`;
 markdown.renderer.rules.req_close = () => '</span></span>';

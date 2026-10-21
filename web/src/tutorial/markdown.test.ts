@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { renderLessonMarkdown } from './markdown';
+import { placedRequirements, renderLessonMarkdown } from './markdown';
 
 describe('lesson Markdown', () => {
   it('renders emphasis, nested formatting, strikethrough and literal control names', () => {
@@ -85,5 +85,25 @@ describe('lesson Markdown', () => {
     expect(html).toContain('&lt;script&gt;');
     expect(html).not.toContain('<script>');
     expect(html).not.toContain('href="javascript:');
+  });
+});
+
+describe('requirements on their own lines (#173)', () => {
+  const blocks = (html: string): string[] => [...html.matchAll(/<p( class="req-line")?>(.*?)<\/p>/g)].map((m) => (m[1] ? 'req: ' : 'prose: ') + m[2].replace(/<[^>]+>/g, ''));
+  it('splits a paragraph with two inline requirements into prose / req / prose / req blocks', () => {
+    expect(blocks(renderLessonMarkdown('Start Riff and [drag `cutoff` down](req:a): the tone darkens. Now [raise `res`](req:b).'))).toEqual([
+      'prose: Start Riff:', 'req: Drag cutoff down', 'prose: The tone darkens. Now:', 'req: Raise res.',
+    ]);
+  });
+  it('drops the joining words between lines and keeps a full stop, a footnote mark and a remark in parentheses on the line', () => {
+    const html = renderLessonMarkdown('Cable [a → b](req:a) (every beat), [c → d](req:c) and [e → f](req:e).[^1] Then listen.\n\n[^1]: Note.');
+    expect(blocks(html).slice(0, 5)).toEqual(['prose: Cable:', 'req: A → b (every beat)', 'req: C → d', 'req: E → f.[1]', 'prose: Then listen.']);
+  });
+  it('leaves a requirement inside other markup inline and a paragraph without one alone', () => {
+    expect(renderLessonMarkdown('Do **[this](req:x)** now')).toMatch(/^<p>Do <strong><span class="req"/);
+    expect(renderLessonMarkdown('Plain [link](https://example.com) only.')).not.toContain('req-line');
+  });
+  it('keeps the requirements in reading order for the panel', () => {
+    expect(placedRequirements('Start and [one](req:a), then [two](req:b,c).')).toEqual([['a'], ['b', 'c']]);
   });
 });
