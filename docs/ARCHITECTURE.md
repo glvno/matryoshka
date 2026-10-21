@@ -469,7 +469,15 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
 - Knob colours are the logo's (style.css `--k1..--k6`: coral, gold, teal / seafoam, sand, lilac, blue), every mark with
   its number. Cables are drawn by the **role of the input** they land on (`cable-role.ts`): into a signal input the
   accent, bold (`role-signal`); into a CV input, a pin or a thumb, and into `pm` / `side`, the secondary colour, lighter
-  (`role-mod`); into a gate / trigger / clock input the gate colour, dashed (`role-gate`); keys as before.
+  (`role-mod`); into a gate / trigger / clock input a hollow rail in the gate colour (`role-gate`); into a keys input a
+  three-wire ribbon in the ink colour (`role-keys`). The rail's core and the ribbon's core and centre wire are extra
+  paths over the cable (`.cable-core`, `.cable-wire`, `pointer-events: none`), made in `Editor.drawCables` for the
+  cable and its dock and card-entry copies, positioned with it. A route the user made inside a card (a side input to a
+  parameter, `.cable.alias`) is solid too; a module's built-in link (`.cable.alias.fixed`) stays dashed and muted.
+  **The rule (#156): solid = you made it (saved in the patch, has undo); dashed = the app is showing you something** (a
+  knob target, the armed track, a cable mid-drag, a built-in link). Dashed lines march toward the receiving end
+  (`@keyframes cable-march`, one dash period per cycle, off with `prefers-reduced-motion`). Assembly members get a
+  tinted border, not a dashed one.
 - Binary format 29 (`patchbin.ts`): header flag bit 5 = a device pages section after the step values, before the macro
   ranges (which stay last: proto.c edits them in place). Per device a kind byte: 0 = a plain module (its index; the
   FM-1 makes its pages from defs.h), 1 = an assembly with its name, pages (name, part, parts, envelope module + 1, row
@@ -552,6 +560,7 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
 - **Cable hover glow (2026-10-19, design A):** a hovered cable on the canvas gets a copy in `#cable-glow`, a layer above
   the cards that takes no pointer: a blurred halo in the cable's colour, a fine light core and rings on its jacks
   (`Editor.glow`), so its run shows where it passes behind a card. `Editor.glowCables` lights given cables (the ARP menu).
+  `drawCables` clears it: a path removed under the pointer gets no `pointerleave` (#150).
 - **FM-1 view, a patch that does not fit (2026-10-19):** the view loads a patch over the budget anyway
   (`encodePatch(p, true)`; the emulator has the firmware's tables, not its timing) under a card (`Fm1View.notice`,
   amber "Over the FM-1 budget") that dismisses to a chip above the device ("Over budget · CPU 104 % · won't upload"),

@@ -201,9 +201,16 @@ main { min-width: 0; min-height: 0; overflow: auto; }
 .cable { fill: none; stroke-width: 3; opacity: .85; pointer-events: stroke; cursor: pointer; }
 .cable.audio { stroke: var(--audio); } .cable.control { stroke: var(--control); } .cable.gate { stroke: var(--gate); }
 /* keys: Main's held keys to a Voice allocator, a ribbon cable rather than a signal */
-.cable.keys { stroke: var(--ink); stroke-dasharray: 1 5; stroke-linecap: round; }
-/* A cable is drawn by the role of the input it lands on (cable-role.ts): the sound bold, modulation lighter, gates dashed. */
-.cable.role-signal { stroke-width: 3.6; } .cable.role-mod { stroke-width: 2.3; } .cable.role-gate { stroke-dasharray: 7 4; }
+.cable.keys { stroke: var(--ink); }
+/* A cable is drawn by the role of the input it lands on (cable-role.ts): the sound bold, modulation lighter, a gate a
+   hollow rail, keys a three-wire ribbon. The rail's and the ribbon's inner lines are extra paths over the cable
+   (cable-core, cable-wire: Editor.drawCables). A hand-wired cable is never dashed: dashes are for what the app draws
+   (knob targets, the armed track, a cable being dragged, a built-in link), and they march toward the receiving end (#156). */
+.cable.role-signal { stroke-width: 3.6; } .cable.role-mod { stroke-width: 2.3; }
+.cable.role-gate { stroke-width: 5; } .cable.role-keys { stroke-width: 7; stroke-linecap: butt; }
+.cable-core, .cable-wire { fill: none; pointer-events: none; stroke-linecap: butt; }
+.cable-core { stroke: var(--panel); stroke-width: 2; } .cable-core.role-keys { stroke-width: 4.6; }
+.cable-wire { stroke: var(--ink); stroke-width: 1.2; }
 /* The rows Main's knobs turn (the device page in focus, pages.ts): a ring and a numbered badge in the knob's colour. */
 .param.bar.bound { box-shadow: 0 0 0 1.5px var(--knob); border-radius: 5px; }
 .param.bar.bound::after { content: attr(data-kn); position: absolute; left: -9px; top: 1px; z-index: 6; display: grid; place-items: center;
@@ -216,9 +223,14 @@ main { min-width: 0; min-height: 0; overflow: auto; }
   padding-top: 1px; font: 600 9px/1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); pointer-events: none; }
 /* the dotted lines from the dock's dials to the rows they turn: no signal, an edit binding */
 svg.bind-cables { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 14; overflow: visible; pointer-events: none; }
-svg.bind-cables .bind { fill: none; stroke: var(--knob); stroke-width: 1.6; stroke-dasharray: 1.5 4; stroke-linecap: round; opacity: .9; }
-svg.bind-cables .bind.arm { stroke: var(--secondary); stroke-width: 2; stroke-dasharray: 6 5; stroke-linecap: butt; }
-.cable.pending { stroke: var(--muted); stroke-dasharray: 5 4; pointer-events: none; }
+svg.bind-cables .bind { fill: none; stroke: var(--knob); stroke-width: 1.6; stroke-dasharray: 1.5 4; stroke-linecap: round; opacity: .9; --march: 5.5px; --march-t: .28s; }
+svg.bind-cables .bind.arm { stroke: var(--secondary); stroke-width: 2; stroke-dasharray: 6 5; stroke-linecap: butt; --march: 11px; --march-t: .55s; }
+.cable.pending { stroke: var(--muted); stroke-dasharray: 5 4; pointer-events: none; --march: 9px; --march-t: .45s; }
+/* automatic links march: one dash period (--march) per cycle (--march-t, about 20 px/s), toward the path's end (paths
+   run source to receiver) */
+svg.bind-cables .bind, .cable.pending, .cable.alias.fixed { animation: cable-march var(--march-t) linear infinite; }
+@keyframes cable-march { to { stroke-dashoffset: calc(-1 * var(--march)); } }
+@media (prefers-reduced-motion: reduce) { svg.bind-cables .bind, .cable.pending, .cable.alias.fixed { animation: none; } }
 .cable:hover { stroke-width: 5; }
 .module { position: absolute; z-index: 2; width: 236px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 2px 6px var(--shadow); user-select: none; }
 .mhead { display: flex; justify-content: space-between; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; background: var(--surface-tint); font-weight: 600; cursor: grab; touch-action: none; }
@@ -414,7 +426,8 @@ progress { width: 100%; }
 
 /* selection, assemblies, undo */
 .module.selected, .frame.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
-.module.member { border-style: dashed; }
+/* a member of an assembly: a tinted border (a dashed line on the canvas means something the app draws, #156) */
+.module.member { border-color: color-mix(in oklab, var(--secondary) 45%, var(--line)); }
 .module.assembly { border-color: var(--accent); }
 .module.assembly .mhead { background: color-mix(in srgb, var(--accent) 12%, var(--panel)); border-radius: 8px 8px 0 0; }
 .mhead .tools, .fhead .tools { display: flex; gap: 2px; align-items: center; }
@@ -436,7 +449,7 @@ button.tog { padding: 0 2px; line-height: 1; border: none; background: transpare
 #tab-assemblies h3 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); }
 .merged { font-size: 10px; color: var(--accent); white-space: nowrap; }
 select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
-.module.assembly.member { border-style: dashed; }
+.module.assembly.member { border-color: color-mix(in oklab, var(--accent) 60%, var(--secondary)); }
 
 /* The three signal families follow the three shells of the mark. */
 
@@ -479,18 +492,22 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 :is(.internal-cables, .entry-cables).hits { z-index: 3; }
 .entry-cables .cable-hit { stroke-width: 6px; }
 .cable.hover { stroke-width: 6; }
+/* the rail and the ribbon widen on hover and flash like the others, keeping their inner lines */
+.cable.role-gate:hover, .cable.role-gate.hover, .cable.role-gate.flash { stroke-width: 7; }
+.cable.role-keys:hover, .cable.role-keys.hover, .cable.role-keys.flash { stroke-width: 9; }
 /* the clamp across a ribbon of cables where they pass an expanded assembly's border (ribbons.ts) */
 .ribbon-clamps rect { fill: var(--secondary); pointer-events: none; }
 .module .sel-track, .tog-switch .tog-jack { z-index: 4; }
 .module .port > span:not(.dot), .module .param > input { position: relative; z-index: 2; }
 .module:has(.parameter-routing[open]) { z-index: 3; }
 .module .mhead, .module .param > span:not(.slider-jack), .module .param > output, .module .parameter-routing, .module .tog, .module .voices-row, .module .morph-row { position: relative; z-index: 2; }
-.cable.alias { stroke-width: 3; stroke-dasharray: 3 4; opacity: .6; pointer-events: none; }
+/* a route the user made (a side input to a parameter): solid, as every hand-wired cable */
+.cable.alias { stroke-width: 3; opacity: .6; pointer-events: none; }
 .cable.alias:hover, .cable.alias:focus, .cable.alias.hover { stroke-width: 6; opacity: 1; }
 /* the click area of an editable route: invisible, 1.5x the stroke, on top of the card's controls */
 .cable-hit { fill: none; stroke: transparent; stroke-width: 4.5px; pointer-events: stroke; cursor: pointer; }
 /* a dedicated input's built-in link: part of the module, shown greyed out, not editable */
-.cable.alias.fixed, .cable.alias.fixed:hover { stroke: var(--muted); opacity: .45; stroke-width: 3; pointer-events: none; }
+.cable.alias.fixed, .cable.alias.fixed:hover { stroke: var(--muted); opacity: .45; stroke-width: 3; stroke-dasharray: 3 4; pointer-events: none; --march: 7px; --march-t: .35s; }
 .parameter-routing { position: relative; z-index: 2; justify-self: end; font-size: 11px; }
 .parameter-routing[open] { z-index: 5; }
 .parameter-routing summary { list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; color: var(--muted); }

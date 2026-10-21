@@ -2,7 +2,8 @@
 // What a cable is drawn as: the role of the input it lands on, not the kind of the output it leaves (any output patches
 // anywhere, and audio into a phase modulation input modulates). A signal input (in, in1, l ...) carries the sound: the
 // accent, bold. A control input, a parameter's pin or thumb, and the modulation inputs pm / side modulate: the secondary
-// colour. A gate, trigger or clock input: the gate colour, dashed. Keys stay the ribbon cable they are.
+// colour. A gate, trigger or clock input: a hollow rail in the gate colour. Keys: a three-wire ribbon. Hand-wired cables
+// are never dashed: dashes are for links the app draws (style.css, #156).
 import type { ModuleDef } from './patch';
 
 export type CableRole = 'signal' | 'mod' | 'gate' | 'keys';

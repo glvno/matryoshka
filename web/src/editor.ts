@@ -4122,6 +4122,8 @@ export class Editor {
     this.cablePaths = [];
     this.dockCables?.replaceChildren();
     this.overPaths.clear();
+    // a removed path gets no pointerleave: the hovered cable's glow would stay behind (#150)
+    this.glow([]);
     for (const svg of this.modulesEl.querySelectorAll('.internal-cables, .entry-cables')) svg.remove();
     // a card's cables are drawn over its thumbs (a layer that takes no pointer events), while their click areas lie
     // under the thumbs, so a thumb under a cable still drags and patches
@@ -4165,8 +4167,24 @@ export class Editor {
       }
       layer.prepend(path);
       this.cablePaths.push({ path, from, to, origin, cable });
+      // a gate's rail and a keys ribbon (#156): their inner lines are extra paths over the cable, in the same place
+      // (positionCables sets them like the cable; they take no pointer, carry no `cable`, so the ribbon routing and the
+      // glow see only the cable). `inner` makes them for one copy of the cable, after it.
+      const role = ['role-gate', 'role-keys'].find((r) => path.classList.contains(r));
+      const inner = (after: SVGPathElement, at: HTMLElement): SVGPathElement[] => {
+        if (!role) return [];
+        const out = (role === 'role-keys' ? ['cable-core', 'cable-wire'] : ['cable-core']).map((cls) => {
+          const e = document.createElementNS(SVGNS, 'path');
+          e.setAttribute('class', `${cls} ${role}`);
+          return e;
+        });
+        after.after(...out);
+        for (const e of out) this.cablePaths.push({ path: e, from, to, origin: at });
+        return out;
+      };
       // hovering any part of a cable highlights all of it: the path and its copies on a card and over the dock
-      const group: SVGPathElement[] = [path];
+      const lines = inner(path, origin);
+      const group: SVGPathElement[] = [path, ...lines];
       const hover = (on: boolean): void => {
         group.forEach((g) => g.classList.toggle('hover', on));
         if (origin === this.world) this.glow(on ? [{ path, from, to }] : []);
@@ -4188,6 +4206,15 @@ export class Editor {
         over.append(clip, copy);
         this.overPaths.set(path, { copy, clips });
         group.push(copy);
+        // the rail's / ribbon's inner lines over the dock: copies of the main path's inner lines, clipped alike
+        for (const e of lines) {
+          const c = document.createElementNS(SVGNS, 'path');
+          c.setAttribute('class', e.getAttribute('class')!);
+          c.setAttribute('clip-path', `url(#${clip.id})`);
+          over.append(c);
+          this.overPaths.set(e, { copy: c, clips });
+          group.push(c);
+        }
       }
       // a cable into a card's interior (to a thumb, a picker's or a switch's jack) runs under the card like every cable;
       // a copy on the card, clipped to it, draws the stretch over the card up to the jack
@@ -4197,7 +4224,7 @@ export class Editor {
         copy.setAttribute('class', path.getAttribute('class')!);
         cardLayer(card, 'entry-cables').append(copy);
         this.cablePaths.push({ path: copy, from, to, origin: card, cable });
-        group.push(copy);
+        group.push(copy, ...inner(copy, card));
         if (remove) {
           const hit = document.createElementNS(SVGNS, 'path');
           hit.setAttribute('class', 'cable-hit');
