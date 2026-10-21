@@ -9,6 +9,7 @@
  *   static int  m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len);   preset bank: 0 = ok
  *   static int  m1_slot_erase(uint32_t slot);
  *   static int  m1_slot_info(uint32_t slot, char *name, uint32_t *len);                          1 = the slot holds a preset
+ *   static uint32_t m1_diag(uint32_t page, uint8_t *out);       DIAG: up to 32 bytes of page n of the diagnostics, 0 = past the end
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"
@@ -16,7 +17,7 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B };
 #define M1_FEATURES 54u                                      /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
@@ -510,6 +511,12 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         p[4] = ENG_NDELAY;                                   /* delay lines (shared by the voices) */
         p[5] = M1_FEATURES;
         m1_reply(R_INFO, p, 6);
+        break;
+    }
+    case C_DIAG: {                                           /* bring-up diagnostics (main.c m1_diag): [page, bytes] */
+        uint8_t p[33];
+        p[0] = len ? d[0] : 0u;
+        m1_reply(R_DIAG, p, 1u + m1_diag(p[0], p + 1));
         break;
     }
     case C_CHUNK: {

@@ -12,6 +12,8 @@
   tools/m1_link.py param MODULE PARAM VALUE     (module / parameter index, value as a float)
   tools/m1_link.py note 60 [seconds]
   tools/m1_link.py program N              (factory patch N, MIDI program change)
+  tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
+                                           was; DIS = the build's modular-1.dis (CI artifact modular-1-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
 """
 import os
@@ -168,8 +170,48 @@ def main():
         link.out.send(mido.Message("note_on", note=int(a[1]), velocity=100))
         time.sleep(float(a[2]) if len(a) > 2 else 1.0)
         link.out.send(mido.Message("note_off", note=int(a[1])))
+    elif a[0] == "diag":
+        raw = []
+        for page in range(32):
+            p = link.ask(frame(0x2B, [page]), (0x4B, page))
+            raw += p[1:]
+            if len(p) < 33:
+                break
+        print_diag(raw, a[1] if len(a) > 1 else None)
     else:
         sys.exit(__doc__)
+
+
+def print_diag(raw, dis_path):
+    """main.c diag_prev: p3, src, wdt; the stall record (magic, stall_ms, n, pc[24], rets[24]); fm1_crash_t"""
+    w = [int.from_bytes(bytes(raw[i:i + 4]), "little") for i in range(0, len(raw) - 3, 4)]
+    funcs = []
+    if dis_path:
+        for m in re.finditer(r"^([0-9a-f]+) <([^>]+)>:", open(dis_path).read(), re.M):
+            funcs.append((int(m.group(1), 16), m.group(2)))
+        funcs.sort()
+    def where(a):
+        f = next((n for s, n in reversed(funcs) if s <= a), None) if funcs else None
+        return f"{a:#010x}" + (f" {f}+{a - next(s for s, n in reversed(funcs) if s <= a):#x}" if f else "")
+    p3, src, wdt = w[0], w[1], w[2]
+    causes = [n for b, n in enumerate(["power-on", "VDDIO low", "watchdog", "VCM", "long press", "1.2 V", "soft (P33)"]) if p3 >> b & 1]
+    print(f"last reset: P3_RST_SRC {p3:#04x} ({', '.join(causes) or 'none'}), RST_SRC {src:#x}, WDT_CON {wdt:#04x}")
+    S = 24
+    magic, stall_ms, n = w[3], w[4], w[5]
+    pcs, rets = w[6:6 + S], w[6 + S:6 + 2 * S]
+    if magic == 0x44494147 and n:
+        print(f"stall: the main loop's last pass at {stall_ms} ms, {n} samples (every 250 ms from 1.5 s on):")
+        for i in range(min(n, S)):
+            print(f"  pc {where(pcs[i])}   rets {where(rets[i])}")
+    else:
+        print("stall: none recorded")
+    c = w[6 + 2 * S:]
+    if len(c) >= 11 and c[0] == 0x43525348:
+        print(f"crash #{c[1]}: vector {c[2]}, pc {where(c[3])}, rets {where(c[4])}, sp {c[7]:#x}, uptime {c[10]} ms, "
+              f"emu {c[5]:#x} dbg {c[6]:#x}")
+        print("  last branches (ETM): " + ", ".join(where(x) for x in c[11:15]))
+    else:
+        print("crash: none recorded")
 
 
 if __name__ == "__main__":

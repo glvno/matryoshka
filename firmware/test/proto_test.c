@@ -57,6 +57,13 @@ static int m1_slot_info(uint32_t slot, char *name, uint32_t *len)
     *len = last_len;
     return 1;
 }
+static uint32_t m1_diag(uint32_t page, uint8_t *out)   /* two pages of 32, 7 */
+{
+    uint32_t i, n = page == 0u ? 32u : page == 1u ? 7u : 0u;
+    for (i = 0; i < n; i++)
+        out[i] = (uint8_t)(page * 32u + i);
+    return n;
+}
 static void m1_send(const uint8_t *f, uint32_t n)
 {
     memcpy(replies[nreplies], f, n);
@@ -146,6 +153,19 @@ int main(int argc, char **argv)
         uint8_t bad[8] = {0x7D, 0x4D, 0x31, C_COMMIT, 0, 0, 0, 0};
         CHECK(m1_handle(bad, sizeof bad) == 1);
         CHECK(nreplies == 1);
+    }
+    /* DIAG: a page of 32 bytes fits a reply (m1_reply's frame), the last is short, past the end only the page byte */
+    {
+        uint32_t pg;
+        for (pg = 0; pg < 3u; pg++) {
+            uint8_t q[6] = {0x7D, 0x4D, 0x31, C_DIAG, (uint8_t)pg, 0}, p[40];   /* (the page byte packed: two septets) */
+            uint32_t n;
+            nreplies = 0;
+            CHECK(m1_handle(q, sizeof q) == 1);
+            CHECK(nreplies == 1 && replies[0][4] == R_DIAG);
+            n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+            CHECK(n == (pg == 0u ? 33u : pg == 1u ? 8u : 1u) && p[0] == pg && (n < 2u || p[1] == pg * 32u));
+        }
     }
     if (argc > 9) {                                              /* the preset bank commands */
         long ns2;
