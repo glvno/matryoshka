@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 // @ts-ignore untyped JS module
-import { STOCK_V15_SHA256, validateStockPackage } from './flasher/fm1pkg.js';
+import { STOCK_V15_SHA256, productOf, validateStockPackage } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, loaderFits, pack7, unpack7 } from './flasher/fm1ota.js';
 import { guardUnload } from './flasher';
@@ -26,6 +27,17 @@ describe('bundled stock firmware', () => {
     const notice = readFileSync(new URL('../public/firmware/NOTICE-FM-1_015.txt', import.meta.url), 'utf8');
     expect(notice).toContain(STOCK_V15_SHA256);
     expect(notice).toContain('Apache License, Version 2.0');
+  });
+});
+
+describe('bundled Matryoshka firmware (#161)', () => {
+  it('matryoshka.json names the package it sits next to', () => {
+    const raw = new Uint8Array(readFileSync(new URL('../public/firmware/matryoshka.fwsc', import.meta.url)));
+    const json = JSON.parse(readFileSync(new URL('../public/firmware/matryoshka.json', import.meta.url), 'utf8'));
+    expect(productOf(raw)).toBe(json.product);
+    expect(json.product).toMatch(/^FM-1_7\d\d$/);
+    expect(json.size).toBe(raw.length);
+    expect(json.sha256).toBe(createHash('sha256').update(raw).digest('hex'));
   });
 });
 
