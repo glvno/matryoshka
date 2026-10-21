@@ -5,20 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Matryoshka</title>
   <meta name="description" content="A recursively modular and FM1-friendly synth framework" />
-  <!-- link previews (#165): one generic card for every link; the patch in a link's fragment never reaches a server -->
+  <!-- link previews (#165): one generic card for every link; the patch in a link's fragment never reaches a server.
+       The address placeholders are src/site.ts's SITE_URL, filled in by vite.config.ts -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Matryoshka" />
   <meta property="og:title" content="Matryoshka" />
   <meta property="og:description" content="A modular synth in your browser that plays on the M-VAVE FM-1. Open a shared patch and play it, no install." />
-  <meta property="og:url" content="https://glvno.github.io/matryoshka/" />
-  <meta property="og:image" content="https://glvno.github.io/matryoshka/brand/og-image.png" />
+  <meta property="og:url" content="%SITE_URL%" />
+  <meta property="og:image" content="%SITE_URL%brand/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="The Matryoshka dolls and wordmark: a modular synth in your browser that plays on the M-VAVE FM-1" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Matryoshka" />
   <meta name="twitter:description" content="A modular synth in your browser that plays on the M-VAVE FM-1. Open a shared patch and play it, no install." />
-  <meta name="twitter:image" content="https://glvno.github.io/matryoshka/brand/og-image.png" />
+  <meta name="twitter:image" content="%SITE_URL%brand/og-image.png" />
   <link rel="icon" type="image/png" href="./brand/matryoshka.png" />
   <link rel="stylesheet" href="/src/style.css" />
   <!-- the stored theme (theme.ts) before the first paint, so a reload does not flash the other one -->
