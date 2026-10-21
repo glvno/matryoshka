@@ -597,7 +597,8 @@ select.merge { font-size: 10px; padding: 0 2px; max-width: 70px; }
 .device-controls h2 { font-size: 20px; margin: 0 0 16px; }
 .menu-heading { display: block; color: var(--muted); font-size: 12px; font-weight: 600; margin: 16px 0 8px; }
 .device-controls > button { width: 100%; margin: 4px 0; text-align: left; }
-.device-controls > label { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.sync-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; font-size: 13px; }
+#dev-sync-sep { color: var(--muted); }
 .device-controls p { margin: 4px 0 10px; font-size: 12px; }
 .device-controls form { margin-top: 20px; text-align: right; }
 #dev-status { display: block; font-size: 12px; overflow-wrap: anywhere; }

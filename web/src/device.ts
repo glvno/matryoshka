@@ -33,6 +33,13 @@ export function syncOnConnect(o: { fits: boolean; declined: boolean; editorBin: 
 export type ChipState = 'not connected' | 'synced' | 'not synced' | 'patch too big to sync';
 export const chipState = (connected: boolean, live: boolean, fits: boolean): ChipState =>
   !connected ? 'not connected' : !fits ? 'patch too big to sync' : live ? 'synced' : 'not synced';
+/** FM-1 & MIDI's sync line (#180), what the chip shows: its text and its button (`sync` turns Live on, `stop` off; none
+ *  while not connected or while the patch does not fit) */
+export const syncLine = (s: ChipState): { text: string; action: 'sync' | 'stop' | null } =>
+  s === 'synced' ? { text: 'Synced with the FM-1', action: 'stop' }
+  : s === 'not synced' ? { text: 'Not synced', action: 'sync' }
+  : s === 'patch too big to sync' ? { text: 'Patch too big to sync', action: null }
+  : { text: 'Not connected', action: null };
 
 const NAME = /felucca|fm-?1|matryoshka|modular/i;
 const ACK_TIMEOUT = 700;

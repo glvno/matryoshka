@@ -3,7 +3,7 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, syncOnConnect, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
 import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
@@ -91,7 +91,9 @@ const queueSave = (p: Patch): void => {
 const device = new DeviceLink();
 /** the patch fits the FM-1 (deviceBudget); one that does not plays only in the browser and is never sent */
 let fitsDevice = true;
-const live = (): boolean => device.connected && $<HTMLInputElement>('dev-live').checked && fitsDevice;
+/** Live sync is on (setLive: the connect dialog, the chip, FM-1 & MIDI's Sync / Stop syncing) */
+let liveOn = false;
+const live = (): boolean => device.connected && liveOn && fitsDevice;
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
@@ -101,9 +103,10 @@ const devStatus = (s: string): void => {
 };
 /** the FM-1 chip in the status line (#152, #171): not connected, synced, not synced, or the patch too big to sync. A click
  *  while not synced offers Live sync (offerSync); otherwise it opens FM-1 & MIDI. Every connect and disconnect reports
- *  through devStatus, and Live, the budget and the dialog's choice call it too; Release MIDI reloads the page. */
+ *  through devStatus, and Live, the budget and the dialog's choice call it too; Release MIDI reloads the page. FM-1 & MIDI's
+ *  sync line (#180) shows the same state, with Sync or Stop syncing. */
 const fm1Chip = $<HTMLButtonElement>('fm1-chip');
-const fm1State = (): ChipState => chipState(device.connected, $<HTMLInputElement>('dev-live').checked, fitsDevice);
+const fm1State = (): ChipState => chipState(device.connected, liveOn, fitsDevice);
 const syncChip = (): void => {
   const s = fm1State();
   fm1Chip.classList.toggle('on', s === 'synced');
@@ -115,6 +118,13 @@ const syncChip = (): void => {
   fm1Chip.title = s === 'not synced' ? 'Sync with the FM-1: it plays the editor\'s patch, and changes on either side follow the other'
     : s === 'patch too big to sync' ? 'The patch is over the FM-1 budget: it plays here only (the budget beside says what is over). FM-1 & MIDI'
     : 'FM-1 & MIDI: connect, send, store, follow its panel';
+  const line = syncLine(s);
+  $('dev-sync-text').textContent = line.text;
+  const btn = $<HTMLButtonElement>('dev-sync-btn');
+  btn.hidden = $('dev-sync-sep').hidden = !line.action;
+  btn.textContent = line.action === 'stop' ? 'Stop syncing' : 'Sync';
+  btn.title = line.action === 'stop' ? 'The FM-1 keeps the patch it has; edits here stay in the browser'
+    : 'The FM-1 plays the editor\'s patch, and changes on either side follow the other';
 };
 fm1Chip.onclick = () => {
   if (fm1State() === 'not synced') offerSync(true);
@@ -217,9 +227,10 @@ const declineSync = (on: boolean): void => {
     /* storage blocked: Not now is not remembered */
   }
 };
-/** Live sync on or off, as the checkbox in FM-1 & MIDI does it (on: the FM-1 gets the editor's patch) */
+/** Live sync on or off: the one switch for the connect dialog, the chip and FM-1 & MIDI's sync line (on: the FM-1 gets the
+ *  editor's patch) */
 function setLive(on: boolean): void {
-  $<HTMLInputElement>('dev-live').checked = on;
+  liveOn = on;
   syncChip();
   if (!on) return;
   declineSync(false);
@@ -230,7 +241,7 @@ syncAsk.onclose = () => {
   if (syncAsk.returnValue === 'sync') return setLive(true);
   declineSync(true); // Not now, Esc: off, and a reconnect in this visit does not ask again
   setLive(false);
-  devStatus('Live sync is off: the FM-1 chip in the status line turns it on');
+  devStatus('Live sync is off: the FM-1 chip in the status line, or Sync here, turns it on');
 };
 /**
  * Connecting the FM-1 (`asked`: or a click on the chip) offers Live sync (syncOnConnect). Already on, a reconnect sends the
@@ -239,7 +250,7 @@ syncAsk.onclose = () => {
  */
 function offerSync(asked = false): void {
   if (!device.connected) return syncChip();
-  if ($<HTMLInputElement>('dev-live').checked && !asked) {
+  if (liveOn && !asked) {
     if (fitsDevice) void sendPatch();
     return syncChip();
   }
@@ -1415,7 +1426,7 @@ $('dev-btn').onclick = async () => {
   try {
     const info = await device.connect();
     devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
-    for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
+    for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
     $('dev-btn').textContent = 'Reconnect';
     if (!mirror.following) void followFm1('matryoshka');   // it runs Matryoshka (it answered HELLO): its panel drives the page
     offerSync();
@@ -1497,7 +1508,7 @@ async function storeToSlot(): Promise<void> {
     devStatus((e as Error).message);
   }
 }
-$('dev-live').onchange = () => setLive($<HTMLInputElement>('dev-live').checked);
+$('dev-sync-btn').onclick = () => setLive(fm1State() === 'not synced');
 $('dev-store').onclick = async () => {
   try {
     if (!(await sendPatch())) return;
@@ -1758,7 +1769,7 @@ buildCommunityShelf($('tab-library'), {
 });
 const refreshBank = buildBankTab($('tab-library'), device, () => editor.patch, (msg) => {
   devStatus(msg);
-  for (const id of ['dev-live', 'dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
+  for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
   offerSync();
 }, (p, from) => loadNamed(p, { from }), deleteSaved);
 refreshAssemblies = buildAssembliesTab($('tab-library'), {
