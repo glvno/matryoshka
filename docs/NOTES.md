@@ -1018,3 +1018,17 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
 - **MIDI and audio at once (step 5):** the editor's Live and an upload during a recording sounded fine to the user. Isolated with the CLI during a later recording: three 808 Kit uploads (2553 B of SysEx each) and parameter traffic added 0 missed / overruns / stalls.
 - **Hot-plug:** stopping and restarting the recording, and unplugging and replugging the cable mid-recording, left 83 overruns, 53 missed and 1 stall. Those are the blocks dropped and the packets the host didn't collect while the cable was out. The FM-1 kept running (its own power), the bus reset was seen and the stream came back in band.
 - **Skipped (owner's call):** the 10-minute drift recording (the 30 s figures show the adjustment working) and return to stock (update mode and the loader are unchanged, and update mode passed).
+
+## 2026-10-21 (1.0): Cable glow left behind, #150; cable language (rails / ribbon, dashed only for automatic links), #156
+
+- **#150:** `Editor.drawCables` clears `#cable-glow` (`this.glow([])`) next to `overPaths.clear()`. A path removed under the pointer gets no `pointerleave`, so a click, Enter / Space, undo / redo, a card's `.cable-hit`, a zoom redraw or a tab switch left the glow at the old place. The ARP menu's `glowCables` is unaffected (the menu does not redraw while open).
+- **#156, the rule:** solid = you made it (saved, undo); dashed = the app is showing you something. Dashes march toward the receiving end.
+  - Gate cables: a hollow rail, outer `--gate` 5 px + a `--panel` core 2 px. Keys cables: a ribbon, outer `--ink` 7 px, `--panel` core 4.6 px, `--ink` centre wire 1.2 px, butt caps. No dashes on either.
+  - The inner lines are extra paths (`.cable-core`, `.cable-wire` plus the role class) made by `inner()` in `drawCables`'s `add()`, right after the cable (and after its card-entry copy), pushed into `cablePaths` without `cable` so `positionCables` places them but `ribbonRoutes`, `glowCables` and `flash` see only the cable. Over the dock they get their own clipped copies (`overPaths`, sharing the cable's clip). They are in the hover group and are removed with the cable.
+  - Hover / `.flash` widths for the rail (7) and the ribbon (9), so they no longer shrink to the generic 5 / 6.
+  - User interior routes (`.cable.alias`) are solid; the built-in `.cable.alias.fixed` stays dashed (3 4) and muted.
+  - Marching (`@keyframes cable-march`, per class `--march` = one dash period and `--march-t` for ~20 px/s) on `.bind`, `.bind.arm`, `.cable.pending`, `.cable.alias.fixed`; off under `prefers-reduced-motion`.
+  - Member cards: a tinted solid border (`color-mix(in oklab, var(--secondary) 45%, var(--line))`); a member assembly mixes its accent with the secondary. Frames, `.panel-btn.device`, `.panel-btn.arp-free` keep their dashes.
+  - Sidebar slider source cables (`positionSideCables`) carry only the output kind, no role: a keys source there is a plain solid ink line (no ribbon).
+- **Checked:** `npm test`, `npx tsc --noEmit`, `npm run build`.
+- **Not checked (no browser on this branch):** the look in both themes, the dock copies, the glow after each removal, reduced motion, and whether the marching built-in links slow the Demo patch (many `.alias.fixed` paths animate at once).
