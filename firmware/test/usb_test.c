@@ -7,7 +7,9 @@
  *     the audio interface stall, as on a MIDI-only device);
  *   - the ring and packet logic over 60 s of drift both ways: renders of 128 frames at the I2S rate (44118 Hz and
  *     others), each tapped up to 2.6 ms after it started, one packet per 1 ms USB frame at 44100: every frame arrives
- *     exactly once, in order, no underrun / overrun, the fill stays in its band.
+ *     exactly once, in order, no underrun / overrun, the fill stays in its band;
+ *   - SysEx in on EP1 while the MIDI ring is full of TRS clock (#177): refused (NAK) while the ring holds back, taken
+ *     once midi_in_quiet (an update session, update mode) drops MIDI in.
  *   usb_test            (all of the above; built by tools/usb_test.sh in several configurations)
  *   usb_test dump       (the MIDI-only device + configuration descriptors as hex: the script compares them with a
  *                        FELUCCA_UAC=0 build's, which must be the same bytes) */
@@ -22,6 +24,7 @@ static uint32_t sie_index, sie_rd_reg, sie_rd_val;
 static uint32_t csr0_in;                 /* what a read of CSR0 (index 0) returns */
 static uint32_t count0_in;               /* COUNT0 */
 static uint32_t txcsr1_ep4;              /* TXCSR1 of EP4: bit 0 = a packet is still queued */
+static uint32_t rxcsr1_ep1, rxcount_ep1; /* EP1 OUT: bit 0 = a packet waits (RxPktRdy), its length */
 static int csr0_last = -1;               /* the last value written to CSR0 */
 static uint8_t ep0_sent[512];
 static uint32_t ep0_sent_n;
@@ -35,6 +38,10 @@ static uint32_t sim_regs(uint32_t r)
         return count0_in;
     if (r == 17u && sie_index == 4u)
         return txcsr1_ep4;
+    if (r == 20u && sie_index == 1u)
+        return rxcsr1_ep1;
+    if (r == 22u && sie_index == 1u)
+        return rxcount_ep1;
     return 0;
 }
 static void fm1_usb_reset(void) {}
@@ -47,6 +54,8 @@ static void fm1_usb_sie_wr_start(uint32_t r, uint32_t v)
         sie_index = v;
     if (r == 17u && sie_index == 0u)
         csr0_last = (int)v;
+    if (r == 20u && sie_index == 1u)
+        rxcsr1_ep1 = 0;                  /* ep1_rx releases the packet */
 }
 static void fm1_usb_sie_rd_start(uint32_t r) { sie_rd_reg = r; sie_rd_val = sim_regs(r); }
 static uint32_t fm1_usb_sie_done(void) { return 0x8000u; }
@@ -78,6 +87,10 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #define FELUCCA_OTA 0
 #endif
 #include "../src/usb.c"
+#if FELUCCA_OTA
+static uint32_t ota_now_ms(void) { return fm1_ms; }
+static void ota_idle(void) {}
+#endif
 
 #if FELUCCA_UAC && !FELUCCA_UAC_48K
 static int fails;
@@ -310,6 +323,50 @@ static void test_ep0(void)
     usb.config = 0;
 }
 
+/* ------------------------------------------------------------------ MIDI in, #177 --- */
+#if FELUCCA_OTA
+/* one EP1 OUT packet through ep1_rx; 1 = taken (else NAKed: it stays for the next poll) */
+static int ep1_packet(const uint8_t *p, uint32_t n)
+{
+    memcpy(ep1rx, p, n);
+    rxcsr1_ep1 = 1;
+    rxcount_ep1 = n;
+    usb.rx_pend = 1;
+    ep1_rx();
+    return rxcsr1_ep1 == 0u;
+}
+
+static void test_midi_in_quiet(void)
+{
+    /* the installer's handshake F0 00 32 45 00 00 00 40 7F F7 as USB-MIDI event packets (CIN 4 4 4 6) */
+    static const uint8_t HS[16] = {0x04, 0xF0, 0x00, 0x32, 0x04, 0x45, 0x00, 0x00, 0x04, 0x00, 0x40, 0x7F,
+                                   0x05, 0xF7, 0x00, 0x00};
+    static const uint8_t WANT[8] = {0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F};
+    const uint8_t *f;
+    uint32_t n, i, w;
+    usb.up = 1;
+    usb.config = 1;
+    mi_r = mi_w = 0;
+    for (i = 0; i < 48u; i++)                                   /* a controller's clock on the TRS jack, not drained */
+        midi_enqueue(0xFu | 0xF8u << 8, 2u);
+    CHECK(!ep1_packet(HS, sizeof HS) && !ota_frame_get(&f, &n), "a full MIDI ring holds EP1 back (the stall of #177)");
+    midi_in_quiet();
+    CHECK(mi_r == mi_w, "midi_in_quiet empties the ring");
+    w = mi_w;
+    for (i = 0; i < 100u; i++)
+        CHECK(midi_enqueue(0xFu | 0xF8u << 8, 2u) == 1, "quiet: an event is taken and dropped");
+    CHECK(mi_w == w && !midi_in_overflow, "quiet: nothing queued, no overflow");
+    CHECK(ep1_packet(HS, sizeof HS), "quiet: the SysEx packet is taken");
+    CHECK(ota_frame_get(&f, &n) && n == sizeof WANT && !memcmp(f, WANT, n), "quiet: the handshake arrives whole");
+    ota_frame_done();
+    midi_in_resume();
+    CHECK(midi_enqueue(0xFu | 0xF8u << 8, 2u) == 1 && mi_w == w + 1u, "resumed: MIDI in is queued again");
+    mi_r = mi_w;
+    usb.up = 0;
+    usb.config = 0;
+}
+#endif
+
 /* ------------------------------------------------------------------ the stream --- */
 static uint32_t rng = 12345u;
 static uint32_t rnd(uint32_t n)
@@ -442,6 +499,9 @@ int main(int argc, char **argv)
 #else
     test_descriptors();
     test_ep0();
+#if FELUCCA_OTA
+    test_midi_in_quiet();
+#endif
     stream(44118.0, 60.0, 2600u);                               /* the FM-1: 18 frames a second too many */
     stream(44082.0, 60.0, 2600u);                               /* the other way */
     stream(44100.0, 60.0, 2600u);
