@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // A one-line message at the bottom of the window with an Undo button: deletions act at once and offer this instead of
-// asking first (the app never opens a browser dialog for them). One toast at a time; a new one replaces it.
+// asking first (the app never opens a browser dialog for them). The patch menu's results use a plain one. One toast at a
+// time; a new one replaces it.
 
 const SHOW_MS = 8000;
 let current: { el: HTMLElement; timer: number } | null = null;
@@ -35,4 +36,22 @@ export function showUndo(text: string, undo: () => void): () => boolean {
   document.body.append(el);
   current = { el, timer: window.setTimeout(dismiss, SHOW_MS) };
   return () => current?.el === el;
+}
+
+/** show a plain message for a few seconds, with a close button (what a patch menu action did, #152) */
+export function showToast(text: string): void {
+  dismiss();
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.setAttribute('role', 'status');
+  const msg = document.createElement('span');
+  msg.textContent = text;
+  const close = document.createElement('button');
+  close.className = 'toast-close';
+  close.textContent = '×';
+  close.title = 'Dismiss';
+  close.onclick = dismiss;
+  el.append(msg, close);
+  document.body.append(el);
+  current = { el, timer: window.setTimeout(dismiss, SHOW_MS / 2) };
 }

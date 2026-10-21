@@ -1164,3 +1164,45 @@ Modular-1 is upstream's firmware (WiggisModular/Modular-1); ours is Matryoshka.
   - a switching FX button: a sideways swipe leaves it off, a tap turns it on;
   - desktop 1280 × 800 (mouse): Ctrl + wheel zooms, the dock's and the wheels' `pointer-events` stay `none` and a point in the band hits the canvas, a mouse card drag moves it, the rubber band selects.
 - **Not checked:** a real phone (iOS Safari / Chrome): the pinch, no page zoom after opening Commands, and whether the dock now swipes on iOS (cause A is an inference); WebKit was not driven; a tablet only for the 16px fields' fit (`#patch-name` fits at 1024 px).
+
+## 2026-10-21 (1.0): Sidebar fits a 1280 × 800 window, #166
+
+- **Why:** at 1280 × 800 the sidebar had 683 px for 869 px of content: the Open picker, the audio status and Commands were below the fold.
+- **Cuts** (index.html, style.css, main.ts):
+  - **About is the ♥** (`#about-heart`): a 24 px quiet square left of the theme toggle (`right: 62px`); in the ≤ 700 px drawer, where the toggle and collapse are hidden, at the corner (`right: 6px`). It carries the old About button's tooltip. `#about-btn` is gone. The collapsed strip's heart rules now use `.side-collapsed #about-heart` (plus `position: static`) so they still win over the id rule; it measures 26 × 26 after the tabs, as before.
+  - **Brand:** the logo's minimum is 48 px (was 80); `.brand` `min-height: calc(48px + 6px + 38px)`.
+  - **+ Module / + Assembly** share an `.add-row` (`1fr 1fr`, gap 6). `title` and `aria-label` stay "Add module" / "Add assembly"; ids unchanged, so the tutorial targets still work. course.json's five "+ Add module" / "+ Add assembly" mentions now say "+ Module" / "+ Assembly" (text only; edited in the file, not in the lesson editor).
+  - **Gaps:** sidebar 16 → 12, `.patch-controls` 12 → 8, `.sidebar-bottom` lost its 12 px padding-top (the gap separates it). The `max-height: 660px` rule keeps its padding-top and wordmark size.
+  - **Status:** `#audio-status` moved into `#statusline` as `.sl-status`, between the hover text and the budget (`role="status"`, `aria-live="polite"`). Every `status.textContent =` in main.ts still writes to it. `flex: 0 1 auto` against `.sl-text`'s `flex: 1` (basis 0): the status keeps its width, the hover text takes the rest. It is now visible on a phone too (no longer inside the drawer).
+- **Measured** (production build via `vite preview`, Chromium, Playwright; "dev" = with an injected 20 px Edit lessons link):
+
+  | Window | sidebar client / scroll | with dev link |
+  |---|---|---|
+  | 1280 × 800 | 683 / 683 | 683 / 683 |
+  | 1440 × 900 | 783 / 783 | 783 / 783 |
+  | 1280 × 720 | 603 / 646 (was 869) | 603 / 678 |
+  | 1024 × 768 | 651 / 651 | 651 / 678 |
+
+  `scrollWidth === innerWidth` at all of them and at 390 × 844. Collapsed at 1280 × 800: 112 px strip, heart 26 × 26. At 390 the status takes 77 px of the status line, the hover text what is left (about 1 px with the budget).
+- **Checked:** tsc, `npm run build`, `npm test` (756 passed, 1 skipped; under load average ~24 a few heavy tests time out at 5 s and pass when re-run).
+- **Not checked:** the dev server itself (no dev server allowed), dark theme, the lesson editor's view of the renamed texts, a screen reader announcing the moved status.
+
+## 2026-10-21 (1.0): The patch menu (⋯) and the FM-1 chip, #152
+
+- **Why:** FM-1 & MIDI, load / save .json, share link and store to an FM-1 slot could only be reached from the command palette.
+- **Menu helper** (`web/src/menu.ts`, new): `popMenu(items, anchor)`, the same `MenuItem` shape as the editor's card menu (`text`, `run`, `key?`, `danger?`, `rule?`) and the `.ctx` look, but `position: fixed` (`.ctx.ctx-fixed`, z 70) under the anchor, or above it when there is no room. `role="menu"` / `menuitem`, the first item takes the focus, arrows / Home / End move, Escape closes and refocuses the anchor, Tab or a press elsewhere closes, a second press on the anchor closes. The anchor's `aria-expanded` follows. `Editor.popMenu` is unchanged (editor.ts not touched).
+- **PATCH header:** `#delete-patch-btn` became `#patch-menu-btn` (⋯ as three SVG dots, `aria-haspopup="menu"`, `aria-label="Patch actions"`, title "Share, save, load, FM-1"). Items (main.ts `patchMenu()`), the palette's functions: Share link, Save as .json, Load .json…, Store to an FM-1 slot…, (rule) FM-1 & MIDI settings…, (rule, danger) Delete from Your patches, only while the open patch's name is saved (decided when the menu opens; `syncDeleteBtn` is gone). The palette entries all stay; no shortcut added, so the ? card is unchanged.
+- **Mobile:** `#mobile-patch-menu` ("Patch ⋯") between ☰ Workspace and Commands opens the same menu.
+- **Toasts:** `toastResult()` wraps Share and Store: a MutationObserver on `#audio-status` and `#dev-status` shows the last message written during the action in a plain toast (`showToast`, toast.ts; 4 s, × to close). So "connect the FM-1 first (FM-1 & MIDI)", which goes to the closed dialog, is seen. A .json load failure also toasts (from the palette too).
+- **FM-1 chip** (`#fm1-chip.sl-chip` in `#statusline`, before `#budget`, `flex: none`): a dot and "FM-1 · not connected" / "FM-1 · connected" (`.on` fills the dot teal), `aria-label` names the state. `devStatus` calls `syncChip()`, and every connect / disconnect reports through it; Release MIDI reloads the page. A click opens `#device-bar`. At ≤ 700 px only the dot shows (a 24 px-high target).
+- **Keyboard fixes found on the way:**
+  - main.ts's capture-phase shortcut handler took Escape (`editor.cancelArm` ... and `stopImmediatePropagation`) before the menu saw it. It now returns for targets inside `[role=menu]`.
+  - focus.ts released the focus after any pointer press, so a menu opened by click lost its focused item. It now keeps focus inside `[role=menu]` (as inside an open dialog).
+- **Tutorial:** chapter 10 "Share it" now says "[Open the ⋯ menu in the PATCH panel and choose Share link](req:shares)" (course.json edited in the file; text only). The `shares` event description in parts.ts says the same. `tutorial.shared()` still fires from `sharePatch`.
+- **Test:** `src/menu.test.ts` (jsdom, `// @vitest-environment jsdom`; jsdom added as a devDependency): opens as a menu with the first item focused, arrows / Home / End wrap, Escape closes and refocuses, an item runs once and closes, a second press or a press elsewhere closes.
+- **Measured** (production build, `vite preview`, Chromium via Playwright):
+  - At 1280 × 800, 1024 × 768 and 1440 × 900, `scrollWidth === innerWidth`; the PATCH header is 30 px (one line; the name 65 px with or without a saved patch); the status line is 24 px; the sidebar is 683/683, 651/651 and 783/783 (no growth over #166).
+  - At 390 × 844: no horizontal scroll; the mobile bar is 44 px with its three buttons on one line (97, 67, 84 px).
+  - The menu opens from Enter on ⋯ and from a tap on Patch ⋯, the arrows move, Escape closes and refocuses. Store without an FM-1 toasts "connect the FM-1 first", the chip opens FM-1 & MIDI (on the phone checked with a touch tap; Playwright's locator tap reports the status line as intercepting, a coordinate tap opens it). Delete shows only for a saved patch and deletes with the Undo toast.
+- **Checked:** tsc, `npm run build`, `npm test` with `--testTimeout 60000` (762 passed, 1 skipped, 60 files; the machine was under heavy load).
+- **Not checked:** the chip's "connected" state and its change on connect / disconnect (needs an FM-1), Share link's clipboard write in a real browser, the dev server, dark theme, a screen reader.

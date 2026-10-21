@@ -545,7 +545,7 @@
           "id": "macro",
           "kind": "task",
           "title": "One control, two parameters",
-          "text": "[Add a **Macro** module](req:macro-added) (+ Add module → Macro: one value, one output). [Drag its `out` to the **Filter**’s `cutoff` thumb](req:main-k1-filter-cutoff), [then drop it on the `resonance` thumb as well](req:main-k1-filter-res): one control can turn several parameters.",
+          "text": "[Add a **Macro** module](req:macro-added) (+ Module → Macro: one value, one output). [Drag its `out` to the **Filter**’s `cutoff` thumb](req:main-k1-filter-cutoff), [then drop it on the `resonance` thumb as well](req:main-k1-filter-res): one control can turn several parameters.",
           "why": "A module takes up to two different modulation sources, and one source can reach as many of its parameters as you like. A Macro is how a patch gets a performance control: put its `value` on a card, and it lands on a knob like any other row.",
           "parts": [
             { "id": "macro-added", "kind": "module", "type": "macro" },
@@ -720,7 +720,7 @@
           "id": "save",
           "kind": "task",
           "title": "Save it to your library",
-          "text": "[Open the card’s ⋯ menu, choose Save to library and keep the name My voice.](req:my-voice-saved) It is now in the Library tab and in + Add assembly, under Your library, ready for any patch.",
+          "text": "[Open the card’s ⋯ menu, choose Save to library and keep the name My voice.](req:my-voice-saved) It is now in the Library tab and in + Assembly, under Your library, ready for any patch.",
           "why": "",
           "parts": [
             {
@@ -1222,7 +1222,7 @@
           "id": "insert",
           "kind": "task",
           "title": "Insert My space",
-          "text": "[Click + Add assembly and pick My space under Your library](req:my-space-exists) (the one you saved in chapter 5). It arrives as one card.",
+          "text": "[Click + Assembly and pick My space under Your library](req:my-space-exists) (the one you saved in chapter 5). It arrives as one card.",
           "why": "",
           "parts": [
             { "id": "my-space-exists", "kind": "assembly", "role": "mySpace", "fact": "exists" }
@@ -2009,7 +2009,7 @@
           "id": "voice",
           "kind": "task",
           "title": "Insert My voice",
-          "text": "[Click + Add assembly and pick My voice from Your library](req:my-voice-exists). Cable [**Main** `pitch` → its `pitch`](req:main-pitch-my-voice-osc-pitch) and [**Main** `gate` → its `gate`](req:main-gate-my-voice-adsr-gate).",
+          "text": "[Click + Assembly and pick My voice from Your library](req:my-voice-exists). Cable [**Main** `pitch` → its `pitch`](req:main-pitch-my-voice-osc-pitch) and [**Main** `gate` → its `gate`](req:main-gate-my-voice-adsr-gate).",
           "why": "",
           "parts": [
             { "id": "my-voice-exists", "kind": "assembly", "role": "myVoice", "fact": "exists" },
@@ -2682,7 +2682,7 @@
           "id": "kit",
           "kind": "task",
           "title": "Borrow a kick and a snare",
-          "text": "Click + Add assembly and [insert kick and snare from the Drums shelf](req:kick-exists,snare-exists). Expand one to see how it is built: a kick is a sine with a pitch envelope.",
+          "text": "Click + Assembly and [insert kick and snare from the Drums shelf](req:kick-exists,snare-exists). Expand one to see how it is built: a kick is a sine with a pitch envelope.",
           "why": "",
           "parts": [
             { "id": "kick-exists", "kind": "assembly", "role": "kick", "fact": "exists" },
@@ -2866,7 +2866,7 @@
           "id": "share",
           "kind": "task",
           "title": "Share it",
-          "text": "[Commands → Share patch link](req:shares) copies a link to this patch to your clipboard. Anyone who opens it gets the beat, your Pluck instrument and the eight-bar arrangement. Name and save a personal variation at the finish.",
+          "text": "[Open the ⋯ menu in the PATCH panel and choose Share link](req:shares): it copies a link to this patch to your clipboard. Anyone who opens it gets the beat, your Pluck instrument and the eight-bar arrangement. Name and save a personal variation at the finish.",
           "why": "",
           "parts": [
             { "id": "shares", "kind": "event", "event": "shares" }
