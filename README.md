@@ -30,7 +30,7 @@ Start with **How a patch works** in the sidebar: play a four-module voice, trace
 
 The wordmark uses Roboto Flex capitals, with a teal M and a full-height “1” forming the R’s stem. The logo pairs coral and yellow parent dolls with two teal siblings and matching cable arms. The selected wordmark and editable settings are in the [type lab](https://glvno.github.io/matryoshka/brand/round-four/index.html?preset=p13). The lab also has independent spacing for all nine letter pairs and left/right T-arm and numeral-foot controls, saved in shared links and SVG exports. Earlier [wordmark and pictorial studies](https://glvno.github.io/matryoshka/brand/round-two/index.html), [ten candidates](https://glvno.github.io/matryoshka/brand/candidates/index.html), and [UX proposals](https://glvno.github.io/matryoshka/review/index.html) remain available.
 
-The sidebar holds the logo, **New patch**, patch name, example picker, **Add module**, **Add assembly**, audio controls, and **Patch / Library** navigation. **Commands** (Ctrl/Cmd+K) opens file operations, undo/redo, grouping, A/B snapshots, hardware settings, firmware installation, and help. The palette opens on actions; its Modules, Assemblies and Patches filters let you browse without guessing a name. On narrow screens, **Workspace** opens a sidebar drawer. **Tab** moves through controls; **Alt+B** switches A/B.
+The sidebar holds the logo, **New patch**, patch name, example picker, **Add module**, **Add assembly**, audio controls, and **Patch / Library** navigation. **Commands** (Ctrl/Cmd+K) opens file operations, undo/redo, grouping, hardware settings, firmware installation, and help. The palette opens on actions; its Modules, Assemblies and Patches filters let you browse without guessing a name. On narrow screens, **Workspace** opens a sidebar drawer. **Tab** moves through controls.
 
 Slider thumbs are input jacks: **drag normally to adjust, Alt-drag to patch**, or drop an output cable onto a thumb. External cables plug into side jacks, which route to the moving thumbs through internal cables. **Click an internal cable to disconnect that parameter**, leaving the incoming cable and other destinations intact. **Drag the same side input to several thumbs to add multiple destinations** (or Alt-drag from the thumb to the side input). Thumb positions pause while patching so the targets stay still.
 
@@ -150,16 +150,15 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 
 - **Commands → Share patch link** copies a link that opens this patch: the JSON, layout and assemblies included, deflated into the URL fragment (`#p=…`, about 800 characters for a factory patch). Opening the link loads the patch into the editor without replacing the patch the browser remembers until you change something; the Patches page has an "Import link" field that puts a linked patch into the bank list. A patch too big for a link (over 8000 characters) travels without its card positions and assembly overlay, and opens on a grid.
 
-## Diff and A/B
+## Diff
 
 - **Edit → Show changes** lists what changed since the patch was last loaded, uploaded or stored on the FM-1: parameters as old → new, modules and cables added or removed, and switches, attenuverters, parameter routing, macro ranges, voices and arpeggiator changes as one line each.
-- **A/B** (in **Edit**): "Set A" and "Set B" keep two versions of the patch; the A/B button (or Alt+B) flips between them while you play. When both versions have the same modules and cables only the values move, so notes keep sounding through the flip (the side you leave keeps whatever you changed on it); otherwise the other version is loaded whole.
 
 ## Keyboard
 
 - `/` or Ctrl/Cmd+K opens a **command palette**: type part of a name to add a module, insert an assembly (library or factory), load a patch or start a new one; Enter runs the first match, arrows choose. `?` lists every shortcut.
 - Note keys keep playing after using a dropdown, checkbox, slider or button. A closed dropdown keeps focus but does not use note keys to select another option. Open dropdowns, text fields and dialogs keep their normal keyboard behavior; arrows and Tab still navigate controls. Z / X change octave.
-- Click a jack, then a jack of the other kind, to connect them (Esc cancels; dragging works as before). With cards selected (shift-click or a box): Delete removes them, B bypasses them, G groups them into an assembly, Ctrl/Cmd+D duplicates them with their settings and the cables among them, the arrows nudge them (Shift: ×10). Space starts and stops the arpeggiator, Alt+B flips A/B, Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z undo and redo. The shortcuts are off while a text field has focus; the note keys (A W S E D F T G Y H U J K) still play when they are not taken.
+- Click a jack, then a jack of the other kind, to connect them (Esc cancels; dragging works as before). With cards selected (shift-click or a box): Delete removes them, B bypasses them, G groups them into an assembly, Ctrl/Cmd+D duplicates them with their settings and the cables among them, the arrows nudge them (Shift: ×10). Space starts and stops the arpeggiator, Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z undo and redo. The shortcuts are off while a text field has focus; the note keys (A W S E D F T G Y H U J K) still play when they are not taken.
 
 ## Scope
 

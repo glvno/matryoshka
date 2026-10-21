@@ -225,6 +225,7 @@ if (import.meta.env.DEV) (window as unknown as { __notes?: typeof sink }).__note
 
 let refreshAssemblies: () => void = () => {};
 /** the factory patches and the Patches page's own copies (the morph picker keeps those of the same structure; the palette loads any) */
+// A/B is off for 1.0 (#103): nothing sets this, so Snapshot B is not offered as a B side until A/B returns
 let snapshotCandidates: () => { name: string; patch: Patch }[] = () => [];
 const patchCandidates = (): { name: string; patch: Patch }[] => {
   const seen = new Set<string>();
@@ -442,7 +443,6 @@ editor.dockPlay = arpBtn;
 initStatusline($('statusline'));
 editor.rebuild();
 showBudget();
-snapshotCandidates = () => editor.snapshots.B ? [{ name: 'Snapshot B', patch: { ...JSON.parse(editor.snapshots.B) as Patch, name: 'Snapshot B' } }] : [];
 host.setPatch(editor.patch);
 const tutorial = new Tutorial({
   editor,
@@ -665,6 +665,7 @@ const showDiff = (): void => {
   diffPanel.append(h, ul);
   diffPanel.hidden = false;
 };
+// A/B is off for 1.0 (#103): only the tutorial host still calls these; #103 restores the palette rows and Alt+B
 const takeSnapshot = (side: 'A' | 'B'): void => {
   editor.takeSnapshot(side);
   editor.rebuild();
@@ -707,9 +708,6 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Delete selection', detail: 'Delete', run: inPatch(() => editor.removeSelected()) },
     { kind: 'command', label: 'Bypass selection', detail: 'B', run: inPatch(() => editor.bypassSelected()) },
     { kind: 'command', label: 'Show changes since last load / upload', keywords: 'diff', run: inPatch(showDiff) },
-    { kind: 'command', label: 'Set snapshot A', keywords: 'compare ab', run: () => takeSnapshot('A') },
-    { kind: 'command', label: 'Set snapshot B', keywords: 'compare ab', run: () => takeSnapshot('B') },
-    { kind: 'command', label: 'Switch A / B snapshots', detail: 'Alt+B', run: inPatch(flipAB) },
     { kind: 'command', label: 'Start audio', keywords: 'sound browser', run: () => void startAudio() },
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
@@ -874,7 +872,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'Delete' || k === 'Backspace') done = editor.removeSelected();
   else if (mod && k.toLowerCase() === 'a') (editor.selectAll(), (done = true));
   else if (mod && k.toLowerCase() === 'd') done = editor.duplicateSelected();
-  else if (e.altKey && k.toLowerCase() === 'b') (flipAB(), (done = true));
+  else if (e.altKey && k.toLowerCase() === 'b') done = true; // A/B is off for 1.0 (#103): Alt+B does nothing, not even a bypass
   else if (!mod && k.toLowerCase() === 'b') done = editor.bypassSelected();
   else if (mod && k.toLowerCase() === 'g') (editor.makeAssembly(), (done = true)); // plain G is a note key
   else if (k === ' ') {
