@@ -6,6 +6,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Editor: a **Connect FM-1** button at the canvas's top right connects the FM-1 (it then reads FM-1 connected and opens FM-1 & MIDI); a **Share** button beside Save in the PATCH header opens the share sheet; **About** is a button under the logo again.
 - FM-1 & MIDI: the Live sync checkbox is gone. A line shows what the FM-1 chip shows, "Synced with the FM-1 · Stop syncing" or "Not synced · Sync" (#180).
 - FM-1: an armed Steps track shows ARM on the SEQ page (in the top bar and on the track's line). REC or SEQ held with a
   black key that has no track says NO TRACK n. Muting, unmuting or arming no longer redraws the whole screen (#179).
