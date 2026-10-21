@@ -38,6 +38,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - The firmware workflow's `paths` lists the web files `export-defs.ts` / `golden.ts` import: extend it when they gain imports.
 - `course.json` (tutorial) is data: edit it in the lesson editor; stored patches there must pass `validatePatch` after model changes.
 - Version strings are bumped at release.
+- A user-visible change adds a line under `## Unreleased` in CHANGELOG.md; session detail goes to docs/NOTES.md.
 
 ## Gotchas and lessons
 
