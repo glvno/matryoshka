@@ -36,6 +36,7 @@ import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { decodeShare, encodeShare, shareCodeOf, shareLink } from './share';
+import { fileStem, savePatchCard } from './patch-card';
 import { starterPatch } from './starter';
 import { recordKey, recordNote, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
@@ -737,6 +738,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Save patch as .json', keywords: 'export download file', run: savePatch },
     { kind: 'command', label: 'Load patch from .json', keywords: 'import open file', run: () => $('load-file').click() },
     { kind: 'command', label: 'Share patch link', keywords: 'copy url clipboard', run: () => void sharePatch() },
+    { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
     { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { switchTab('patch'); tutorial.open(); } },
     { kind: 'command', label: 'New patch', keywords: 'engine start empty', run: () => startNew() },
     { kind: 'command', label: 'Undo', detail: 'Ctrl/Cmd+Z', run: inPatch(() => editor.undo()) },
@@ -1479,11 +1481,20 @@ const loadFromHash = (): void => {
 loadFromHash();
 window.addEventListener('hashchange', loadFromHash);
 
+/** the patch card (#163): a PNG of the patch for a post, downloaded as <patch name>.png */
+const saveCard = async (by?: string): Promise<void> => {
+  try {
+    await savePatchCard(editor.patch, { by });
+    status.textContent = `card saved: ${fileStem(editor.patch)}.png`;
+  } catch (e) {
+    status.textContent = `the card could not be saved: ${(e as Error).message}`;
+  }
+};
 const savePatch = (): void => {
   const blob = new Blob([JSON.stringify(editor.patch, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${editor.patch.name.replace(/[^\w.-]+/g, '_') || 'patch'}.json`;
+  a.download = `${fileStem(editor.patch)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 };
