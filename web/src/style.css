@@ -166,9 +166,7 @@ svg.brand-mark .accent { fill: var(--secondary); }
   .workspace.side-collapsed > .sidebar { grid-row: 2; flex-direction: row; align-items: center; justify-content: center; gap: 8px; padding: 6px 30px 6px 8px; overflow: hidden; border-top: 1px solid var(--line); }
   .side-collapsed .sidebar > :not(.brand, .side-collapse, #tabs, .about-heart) { display: none; }
   .side-collapsed .sidebar > .theme-toggle { display: none; }
-  .side-collapsed #about-heart { position: static; height: auto; border-radius: 5px; display: grid; place-items: center; flex: none; width: 26px; min-height: 26px; padding: 0; order: 3;
-    background: transparent; border: 1px solid transparent; color: var(--accent); font-size: 15px; }
-  .side-collapsed #about-heart:hover { border-color: var(--line); filter: none; color: var(--accent); }
+  .side-collapsed #about-heart { top: auto; bottom: 6px; } /* under the logo and tabs: the row has no room for the label */
   .side-collapsed #tabs { order: 2; }
   .side-collapsed #tabs { flex: 1; border-bottom: 0; }
   .side-collapsed #tabs button { padding: 8px 2px; }
@@ -357,13 +355,15 @@ dialog.about .floating-chat-kofi-popup-iframe { left: auto !important; right: 16
 /* the card's section headings (Slop Disclosure, Built on) at twice the size of the help dialog's */
 dialog.about .hsec h3 { margin-bottom: 10px; font-size: 22px; letter-spacing: .06em; color: var(--ink); }
 .about-kofi > a { position: absolute; right: 16px; top: 52px; }
+/* GitHub Sponsors (#172): under the Ko-fi button, right-aligned with it; in the card's flow on a phone, where the tagline takes the width */
+.about-main p.about-sponsor { position: absolute; right: 16px; top: 88px; margin: 0; font-size: 12px; }
+@media (max-width: 600px) { .about-main p.about-sponsor { position: static; margin: -2px 0 12px; } }
 @media (max-width: 760px) { .ai-figs { grid-template-columns: minmax(0, 1fr); } }
-/* About is the ♥ (#166): a third quiet square left of the theme toggle; in the drawer, where those two are hidden, in the
-   corner. The collapsed strip shows it after the tabs (above). */
-#about-heart { position: absolute; top: 6px; right: 62px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; min-height: 0; padding: 0;
-  border-radius: 4px; background: transparent; border: 1px solid transparent; color: var(--accent); font-size: 14px; }
+/* About is a labelled "About" button (#174, was the bare ♥ of #166) in the corner row, top left, so it adds no height; the theme
+   toggle and collapse button keep the top right. In the drawer it stays there; in the collapsed strip it is bottom left (above). */
+#about-heart { position: absolute; top: 6px; left: 6px; z-index: 1; display: flex; align-items: center; height: 24px; min-height: 0; padding: 0 6px;
+  border-radius: 4px; background: transparent; border: 1px solid transparent; color: var(--accent); font: var(--cap); font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
 #about-heart:hover { border-color: var(--line); filter: none; color: var(--accent); }
-@media (max-width: 700px) { #about-heart { right: 6px; } }
 /* the ? button: floats over the canvas's bottom right corner (on the patch tab, not on the canvas: it does not scroll) */
 .help-btn { position: absolute; right: 18px; bottom: 18px; z-index: 6; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; border-radius: 50%;
   border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--panel)); background: var(--panel); color: var(--muted); box-shadow: 0 2px 8px var(--shadow);
@@ -908,6 +908,10 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 /* the check: the right and bottom border of a tall box turned 40°, its corner low in the box, the long stroke past the top right */
 .tutorial-prose .req.done .req-box::after { content: ''; position: absolute; left: .4em; top: -.31em; box-sizing: border-box; width: .38em; height: 1.1em; border: solid var(--secondary); border-width: 0 .15em .15em 0; border-radius: 0 0 .05em 0; transform: rotate(40deg); }
 .tutorial-prose .req.done .req-text { color: var(--muted); }
+/* each requirement on its own line (#173): the box hangs left of the text, the lines of a run sit close together */
+.tutorial-prose p.req-line { padding-left: 1.35em; text-indent: -1.35em; }
+.tutorial-prose p.req-line + p.req-line { margin-top: -.5em; }
+.tutorial-prose li > p.req-line { margin: 0; }
 .tutorial-todo { font-size: 12px; margin: 8px 0 2px; padding: 6px 10px; border-radius: 6px; background: var(--surface-tint); }
 .tutorial-todo > span { color: var(--secondary); font-weight: 700; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
 .tutorial-todo ul { margin: 4px 0 0; padding-left: 18px; color: var(--ink); line-height: 1.5; }
@@ -1531,7 +1535,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .statusline .sl-status:empty { display: none; }
 /* the FM-1 chip (#152): a dot and the connection; a click opens FM-1 & MIDI. At 700 px or less only the dot shows */
 .statusline .sl-chip { flex: none; display: flex; align-items: center; gap: 6px; height: 20px; padding: 0 6px; border: 1px solid transparent; border-radius: 4px;
-  background: transparent; color: var(--muted); font: var(--cap); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
+  background: transparent; color: var(--accent); font: var(--cap); font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; }
 .statusline .sl-chip:hover { border-color: var(--line); color: var(--ink); }
 .statusline .sl-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
 .statusline .sl-chip.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }

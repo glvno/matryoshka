@@ -196,7 +196,7 @@
           "id": "wave",
           "kind": "task",
           "title": "Change the wave",
-          "text": "The shape of a wave determines its *timbre*.\n\nRight now, our oscillator emits a `sine` wave -- reminscent of a french horn.  But there are a few other types of wave it can emit  -- [hold a note and move its `wave` slider around to hear what they sound like](req:notes).",
+          "text": "The shape of a wave determines its *timbre*.\n\nRight now, our oscillator emits a `sine` wave -- reminscent of a french horn.  But there are a few other types of wave it can emit. [Hold a note and move its `wave` slider around to hear what they sound like](req:notes).",
           "why": "",
           "parts": [
             { "id": "notes", "kind": "event", "event": "notes" }
@@ -2185,7 +2185,7 @@
           "id": "snapshots",
           "kind": "task",
           "title": "Keep a variation",
-          "text": "Press **Save** (the sidebar’s Save button, or Commands → Save patch): Your patches now keeps this sound as \"Tutorial duo\". Then change a few sliders: [My voice’s `cutoff`](req:my-voice-cutoff-changed), the mixer levels. The saved copy is a *variation*: the next step fades between it and what you hear now.",
+          "text": "Press **Save** (the sidebar’s Save button, or Commands → Save patch): Your patches now keeps this sound as \"Tutorial duo\". Then change a few sliders, the mixer levels for one. [Change My voice’s `cutoff` too](req:my-voice-cutoff-changed). The saved copy is a *variation*: the next step fades between it and what you hear now.",
           "why": "",
           "parts": [
             {
@@ -2856,7 +2856,7 @@
           "id": "performance",
           "kind": "task",
           "title": "An eight-bar miniature",
-          "text": "[Build the arrangement below](req:performance), adding steady eighth-note hats. Bars 1–2 establish your beat; 3–6 add your saved Pluck melody; bar 7 opens the hats for a flourish; bar 8 returns to the beat. It repeats every 16 seconds at 120 bpm. Change the kick **Sequencer**’s hit values to change the melody; expand Eight-bar arrangement to change the form; your patch stores the performance.",
+          "text": "[Build the arrangement below](req:performance). It adds steady eighth-note hats. Bars 1–2 establish your beat; 3–6 add your saved Pluck melody; bar 7 opens the hats for a flourish; bar 8 returns to the beat. It repeats every 16 seconds at 120 bpm. Change the kick **Sequencer**’s hit values to change the melody; expand Eight-bar arrangement to change the form; your patch stores the performance.",
           "why": "One divider ticks once per bar. A slow **Sequencer** brings in the melody and lengthens the hat tail for a flourish. The same clock drives the notes and the form. If you skipped Pluck, the bundled instrument stands in for it.",
           "parts": [
             { "id": "performance", "kind": "custom", "name": "performance" }
@@ -2920,7 +2920,7 @@
           "id": "glide",
           "kind": "task",
           "title": "Portamento",
-          "text": "[Add a **Glide**](req:add-glide) and [drag it into the voice’s frame](req:inside-poly-glide), so it belongs to the voice. Put it into the pitch path: [**Voice allocator** `pitch` → **Glide** `in`](req:part-pitch-glide-in), [**Glide** `out` → **Oscillator** `pitch`](req:glide-out-osc-pitch), and [remove the cable from the allocator’s `pitch` to the **Oscillator**](req:unplug-part-pitch-osc-pitch). Every note now slides from the last one.",
+          "text": "[Add a **Glide**](req:add-glide) and [drag it into the voice’s frame](req:inside-poly-glide): now it belongs to the voice. Put it into the pitch path: [**Voice allocator** `pitch` → **Glide** `in`](req:part-pitch-glide-in), [**Glide** `out` → **Oscillator** `pitch`](req:glide-out-osc-pitch), and [remove the cable from the allocator’s `pitch` to the **Oscillator**](req:unplug-part-pitch-osc-pitch). Every note now slides from the last one.",
           "why": "Gliding on every note, overlapping or not, is what Serum calls *always*. The Glide is a slew: it works on any control signal, not only pitch. Outside the frame it would run once and glide the sum of the voices’ pitches.",
           "parts": [
             { "id": "add-glide", "kind": "module", "type": "glide" },
@@ -3165,7 +3165,7 @@
           "id": "assemblies",
           "kind": "task",
           "title": "Modules inside modules",
-          "text": "stack voice and echo are *assemblies*: groups of modules that behave as one. A closed assembly shows only the jacks and sliders its author brought out, so stack voice reads like a single voice module and echo like a single effect.\n\n[Expand stack voice](req:stack-voice-open) with ▸ before its name to see the oscillators, mixer, filter, envelope and VCA inside.",
+          "text": "stack voice and echo are *assemblies*: groups of modules that behave as one. A closed assembly shows only the jacks and sliders its author brought out, so stack voice reads like a single voice module and echo like a single effect.\n\n[Expand stack voice with ▸ before its name](req:stack-voice-open). Inside are the oscillators, mixer, filter, envelope and VCA.",
           "why": "Assemblies nest up to three deep, save to the Library and insert like a module. Inside an expanded assembly the frame’s **card** button (or Cmd/Ctrl-click) picks which ports and sliders the closed card shows. Select some cards and press Ctrl/Cmd+G to make your own. The FM-1 never sees assemblies: on the FM-1 the patch is the plain modules underneath.",
           "parts": [
             { "id": "stack-voice-open", "kind": "assembly", "role": "stackVoice", "fact": "open" }
