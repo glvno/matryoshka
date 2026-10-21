@@ -22,7 +22,7 @@
  * SET_CUR (UAC1 sampling frequency control, two discrete rates in the one alt setting). The engines stay
  * at 44.1 kHz; at 48 kHz uac_tap resamples (polyphase FIR 160 / 147, uac_fir.h) into the ring. 44.1 kHz,
  * the rate until a host asks for another, sends the samples as before, bit for bit.
- * Modular-1 (2026-10-21) builds FELUCCA_UAC=1 with FELUCCA_UAC_48K=0 (uac_fir.h is not in this repo): one rate,
+ * Matryoshka (2026-10-21) builds FELUCCA_UAC=1 with FELUCCA_UAC_48K=0 (uac_fir.h is not in this repo): one rate,
  * 44100, in the format descriptor; SET_CUR is acknowledged and changes nothing, GET_CUR / MIN / MAX say 44100.
  * The samples are this firmware's I2S words (24 bit in the low bits, audio.c): uac_tap takes them >> UAC_IN_SHIFT.
  * usb_uac_on = 0 (usb_uac_switch, update mode in main.c) presents the MIDI-only descriptors of a FELUCCA_UAC=0
@@ -41,7 +41,7 @@
 #define FELUCCA_UAC_48K 1
 #endif
 #ifndef UAC_IN_SHIFT
-#define UAC_IN_SHIFT 0           /* uac_tap's input: Felucca's 16-bit range (Modular-1: 8, 24-bit I2S words) */
+#define UAC_IN_SHIFT 0           /* uac_tap's input: Felucca's 16-bit range (Matryoshka: 8, 24-bit I2S words) */
 #endif
 #ifndef FELUCCA_UAC_AS_FIRST
 #define FELUCCA_UAC_AS_FIRST 1
@@ -90,7 +90,7 @@ static struct {
  * 48..119 with no glitch; one render was once seen 29 frames under the floor: a packet (46) must
  * still be in hand then. */
 #define UA_N 512u                /* ring, frames (16-bit L | R << 16); a power of two */
-/* Modular-1: eng_render makes the whole half (128 frames) before uac_tap sees any of it, and a heavy patch takes up to
+/* Matryoshka: eng_render makes the whole half (128 frames) before uac_tap sees any of it, and a heavy patch takes up to
  * the 85 % of the half the overload guard allows (2.5 ms, 108 frames drained meanwhile; 100 %: 128 + 3 adjustments,
  * in packets of up to 46). So the fill at a render's start must cover a whole half and a packet, not Felucca's
  * 80..128 (its taps came block by block during the render): 160..208, ~5.7 ms of latency on average.
