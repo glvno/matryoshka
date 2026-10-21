@@ -11,7 +11,7 @@
 // format (patchbin.ts) and the tests use it.
 import { allModules, assembliesOf, parentOf, type AssemblyInst } from './assembly';
 import { longName, moduleName } from './labels';
-import { EDITOR_ONLY, rowDef, type ModuleDef, type Patch } from './patch';
+import { EDITOR_ONLY, rowDef, type ModuleDef, type ModuleInst, type Patch } from './patch';
 
 /** rows on a page: the four knobs K1..K4 */
 export const PAGE_ROWS = 4;
@@ -161,19 +161,25 @@ function placeOf(p: Patch, a: AssemblyInst): { x: number; y: number } {
   return ms.length ? { x: Math.min(...ms.map((m) => m!.x)), y: Math.min(...ms.map((m) => m!.y)) } : { x: a.x, y: a.y };
 }
 
+const typeIn = (p: Patch) => (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
+/** a plain module's pages, as its device would have them (the patch card draws them for any module) */
+export const modulePages = (p: Patch, m: ModuleInst, defs: Record<string, ModuleDef>): Page[] =>
+  defs[m.type] ? paginate(moduleSections(m.type, defs[m.type], m.id), typeIn(p)) : [];
+/** an assembly's pages, as its device would have them (the patch card draws them for a nested one too) */
+export const assemblyPages = (p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Page[] => paginate(assemblySections(p, a, defs), typeIn(p));
+
 /** the patch's devices in reading order (see the top of this file) */
 export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
-  const typeOf = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
   const items: { x: number; y: number; dev: Device }[] = [];
   for (const m of p.modules) {
     if (inAsm.has(m.id) || NOT_DEVICES.has(m.type) || !defs[m.type]) continue;
-    const pages = paginate(moduleSections(m.type, defs[m.type], m.id), typeOf);
+    const pages = modulePages(p, m, defs);
     if (pages.length) items.push({ x: m.x, y: m.y, dev: { key: `m${m.id}`, name: moduleName(m.type, defs[m.type].label), module: m.id, pages } });
   }
   for (const a of assembliesOf(p)) {
     if (parentOf(p, a.id)) continue;
-    const pages = paginate(assemblySections(p, a, defs), typeOf);
+    const pages = assemblyPages(p, a, defs);
     if (pages.length) items.push({ ...placeOf(p, a), dev: { key: `a${a.id}`, name: a.label, asm: a.id, pages } });
   }
   // columns from the left; a card joins the column of the first card in it while it starts within half a card of it
