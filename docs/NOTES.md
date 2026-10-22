@@ -1421,3 +1421,36 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
 - **Episode 1:** `docs/video/ep01-oracle-5.assembly.json`, a Prophet-5 card of exactly the panel's 40 controls (25 modules,
   4 voices: 85 % estimate, 5 voices 104 %). Script and teleprompter live outside the repo (claude.ai).
 - **Checked:** vitest 70 files / 843 tests, tools/panel_test.sh. **Not checked:** the editor in a browser, the device.
+
+## 2026-10-22: 8 Lire, a factory engine after the SOMA Lyra-8 (#182)
+
+- **Built:** `asm('8 Lire', 'Voices', …)` in gen-assemblies.ts (after Vernon 100; blurb "Lyra-8 type shit") and its factory
+  patch in gen-presets.ts (slot 15, before the 808 Kit; the kits move to 16 / 17; `octave` −1 as the kits). 47 modules, all
+  run once, no new module type, no engine change. The panel follows the Lyra-8 as remembered, **not checked against SOMA's
+  manual**.
+- **Voices:** Drum maps (`LIRE_KEYS`, below) give each voice its gate: fixed tunings, not an
+  allocator. Voice = triangle `osc` → `vca` on its own `adsr` (s 1: attack / release stand for FAST / SLOW), nested as
+  `voice N`. Pair = one `shape` on both voices' VCAs (SHARP = drive) and one Attenuverter (MOD) into both pitches. Quad =
+  an Offset into its four VCAs' cv (HOLD, added to the envelopes) and a mixer as its modulation bus: the other quad's
+  shapers, the Hyper LFO, the delay out (total feedback). Cross-quad and feedback cables close loops: one block late.
+- **Hyper LFO:** two square LFOs → Logic → Crossfader from AND to OR (`and / or`), into the buses and, through
+  `lfo → delay`, the delay's time pin.
+- **One Delay only** (the FM-1 holds one: `deviceBudget` refused two): the Lyra's two lines are its ping-pong taps, so the
+  engine is stereo (`l` = out, `r` = r). The drive (`shape`) sits before the delay, not after.
+- **Card / pages:** sections 1-4, 5-8 (hold, from …, then mod / sharp per pair), hyper lfo, delay, out (drive, vol),
+  voice 1..8 (tune, fine, attack, release).
+- **Every white key plays (stopgap until #184, the Drum map's own repeat):** four Drum maps on Main's keys, one per block
+  of eight white keys (`LIRE_KEYS`: E2..E3, F3..F4, G4..G5, A5..A6), each row's gate into the same voice envelope (a
+  copy held keeps it up); the card's `keys` jack feeds all four (`also`). Black keys and keys outside E2..A6 stay silent.
+  The four maps cost about 8 CPU points and 10 memory points.
+- **Generator bug found, not fixed here:** gen-presets.ts `plugIn` wires only an input's primary target, not its `also`
+  targets (8 Lire wires them itself). The factory Simple FM is built that way: its fm pair's second `pitch` / `gate`
+  targets get no cable from Main (the modulator does not follow the pitch, its envelope is never gated).
+- **Numbers:** estimate 54 % (46 % with one Drum map), memory 86 %; counted engine 358,072 cycles (model +0.4 %). Output level 1 (all eight plates:
+  peak 0.76; one plate 0.6). Everything up (hold, mod 2, sharp 20, every bus source, feedback 0.9): no NaN, clips at 1.
+- **Firmware:** `presets.h` N_PRESETS 18. Factory patches reach the bank only on first boot / FACTORY RESET
+  (`factory_bank`), so a device in use keeps its bank.
+- **Tests changed:** engine / assembly name lists, engine-start (18 tiles, 8 Lire stereo, blurb), cpu.test
+  (`unmeasured` = 8 Lire until it is measured on the device), engine.test plays C3 and C4 (8 Lire has no C3 plate).
+- **Checked:** vitest 70 files / 845 tests, `npm run cpu-costs`, `export-defs`. **Not checked:** the editor in a browser,
+  golden (no engine change), emu:smoke, the device.

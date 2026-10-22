@@ -228,6 +228,20 @@ presets.push(() => {
 });
 
 
+// 8 Lire (#182): the eight voices on the white keys from F3, repeated over the keybed (the assembly's Drum maps), at
+// octave -1 as the kits
+presets.push(() => {
+  const x = around('8 Lire', '8 Lire');
+  for (const t of x.a.inputs.find((r) => r.label === 'keys')!.also ?? []) wire(x.p, x.main.id, 'keys', t.module, t.port); // the other blocks' maps
+  // the level: all eight plates held (from F3, as the kits)
+  const out = x.out;
+  out.params.level = 0.1;
+  out.params.level = Math.round(Math.max(0.05, Math.min(1, 0.85 / (peakOf(x.p, KIT_NOTES, 3) / 0.1))) * 100) / 100;
+  x.p.octave = -1;
+  return x.p;
+});
+
+
 // 808 Kit: a drum machine on the transport (PLAY starts it, the Main module's tempo sets it): one DRUMS track (#138) into a
 // Drum map whose rows play the boom kick, a tonal snare, the clap, a closed and an open hat, the tom, the rim and the
 // two-square cowbell from the factory drum assemblies, each through a VCA on its row's velocity (gain 127 / 100: the

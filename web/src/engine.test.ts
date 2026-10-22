@@ -285,6 +285,7 @@ describe('engine', () => {
       e.load(make());
       e.transport(true); // (the drum kits play on the transport)
       e.noteOn(48);
+      e.noteOn(60); // (8 Lire's plates are the white keys from F3: C4 is one, C3 is not)
       const { l, r } = render(e, 24000);
       expect(l.every(Number.isFinite), name).toBe(true);
       expect(rms(l), name).toBeGreaterThan(0.005);

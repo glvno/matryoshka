@@ -18,6 +18,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   (their poly racks and device pages), and its cards open spread over the canvas instead of stacked on one spot.
 - Tidy up spreads a pile of stacked cards over the canvas instead of making one tall column.
 - Audio on is highlighted like the tutorial's targets while the audio is off (not started, or after Panic).
+- A new engine and factory patch, **8 Lire**, after the SOMA Lyra-8: eight drone voices, each played by a white key
+  (repeating from E2 to A6), each with its own tuning and attack / release, waveshaping and cross-modulation per pair and quad, HOLD to let them drone,
+  a Hyper LFO and a ping-pong delay. A new or factory-reset FM-1 has it as patch 16 (the 808 and 909 Kits move to 17
+  and 18); an FM-1 already in use keeps its bank: send 8 Lire from the editor.
 
 ## 1.0.0 — 2026-10-21
 

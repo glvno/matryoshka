@@ -29604,6 +29604,10 @@
    "cycles": 154721
   },
   {
+   "name": "8 Lire",
+   "cycles": 358072
+  },
+  {
    "name": "808 Kit",
    "cycles": 475655
   },
@@ -29618,6 +29622,10 @@
   {
    "name": "Acid, morph",
    "cycles": 115208
+  },
+  {
+   "name": "assembly 8 Lire",
+   "cycles": 360492
   },
   {
    "name": "assembly adsr operator",
