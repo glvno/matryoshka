@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+## 1.1.0 — 2026-10-22
+
 - Modules are named after the hardware they stand for: Scale is now Attenuverter, Constant Offset, Shaper Waveshaper,
   Digitizer Bitcrusher, Modal Resonator, Vowel Formant filter, Freq shift Freq shifter, Clock div Clock divider,
   Crossfade Crossfader, Comb Comb filter, Filter Multimode, Glide Slew limiter and Voice allocator Voice assigner.
