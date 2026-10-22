@@ -143,7 +143,7 @@ describe('slider jack routing', () => {
     let err: unknown;
     try { connectParameter(p, DEFS, from, target.id, 'cvamt'); } catch (e) { err = e; }
     expect(err).toBeInstanceOf(PinsInUse);
-    expect((err as Error).message).toMatch(/takes two modulation sources, and Constant out and Noise out use them/);
+    expect((err as Error).message).toMatch(/takes two modulation sources, and Offset out and Noise out use them/);
     expect((err as PinsInUse).cables.map((c) => c.to.port)).toEqual(['p1', 'p2']);
     expect(JSON.stringify(p)).toBe(before);
   });

@@ -1405,3 +1405,19 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
 - **Checked:** vitest 70 files / 843 tests (`share.test` stores the Demo in a memory KV and reopens it identical; `share-store.test`; tidy piles incl. every factory patch piled at 0, 0); `npm run build`; `wrangler pages dev` with local KV: the Demo POSTs (id `QAoNOogbmugF`), GETs back byte-identical with the immutable cache header, junk 400, unknown id 404; in Chrome on [::1]:5173 the `#s=` link opened the Demo with its layout, and its no-positions `#p=` form opened spread out (24 top-level cards, 0 overlaps, ~2,200 x 1,050 px), 23 assemblies kept.
 - **Not checked:** the deployed functions and the real KV (namespace PATCHES, id 3ff29d141f244a6587347bbca303a35d, created 2026-10-22); the Copy / Post / Submit buttons by hand (clipboard after the network wait; Safari may refuse a clipboard write that late); a Cloudflare rate-limit rule on POST /api/patch is not set up. The Community shelf's entries still take `#p=` codes only.
 
+
+## 2026-10-22: module names follow hardware; video episode 1 (Prophet-5) prepared
+
+- **Decided with the user:** module labels name the hardware they stand for (before recording "Synth Engines from Scratch"
+  ep. 1), without a firmware release: Scale → Attenuverter, Constant → Offset, Shaper → Waveshaper, Digitizer → Bitcrusher,
+  Modal → Resonator, Vowel → Formant filter, Freq shift → Freq shifter, Clock div → Clock divider, Crossfade → Crossfader,
+  Comb → Comb filter, Filter → Multimode, Glide → Slew limiter, Voice allocator → Voice assigner. Type ids unchanged (no
+  format change). `label` in modules.ts is also the LCD name (`defs.h`, `caps(.., 14)`; neighbour page chips cut at 12:
+  FORMANT FILT, CLOCK DIVIDE, VOICE ASSIGN). The device shows the old names until the next release; the site's FM-1 tab
+  (wasm built on deploy) shows the new ones.
+- **Changed:** modules.ts labels, defs.h (export-defs), course.json bold module names (tutorial), the UI strings that named
+  them (editor, flaws panel, tutorial parts / registry), README, ARCHITECTURE's per-module CPU table, 3 tests that spelled labels.
+  Code comments and identifiers ("allocator", `alloc`) keep the old words.
+- **Episode 1:** `docs/video/ep01-oracle-5.assembly.json`, a Prophet-5 card of exactly the panel's 40 controls (25 modules,
+  4 voices: 85 % estimate, 5 voices 104 %). Script and teleprompter live outside the repo (claude.ai).
+- **Checked:** vitest 70 files / 843 tests, tools/panel_test.sh. **Not checked:** the editor in a browser, the device.

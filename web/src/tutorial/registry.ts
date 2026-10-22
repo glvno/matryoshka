@@ -52,7 +52,7 @@ export const ROLES: Record<string, CodeRole> = {
   modulator: { label: 'modulator', describe: 'the Oscillator feeding the carrier’s pm', module: modulator },
   keys: {
     label: 'the keyboard',
-    describe: 'Main, or a Voice allocator: what plays a module (inside a poly assembly its allocator gives pitch, gate and vel)',
+    describe: 'Main, or a Voice assigner: what plays a module (inside a poly assembly its allocator gives pitch, gate and vel)',
     module: main,
     modules: (s) => [main(s), ...mods(s.patch, 'alloc')].filter((m): m is ModuleInst => !!m),
   },
@@ -73,7 +73,7 @@ export const CUSTOM: Record<string, CustomCheck> = {
     targets: (s) => [...T.port(one('osc', 1)(s), 'out', 'out'), ...T.port(one('osc')(s), 'pm', 'in')],
   },
   pluckOut: {
-    describe: 'the Pluck assembly’s String or Modal out is cabled to the Output’s l',
+    describe: 'the Pluck assembly’s String or Resonator out is cabled to the Output’s l',
     label: () => 'Cable Pluck out → Output l',
     check: (s) => cabled(s.patch, pluckMember(s.patch, 'string'), 'out', out(s), 'l') || cabled(s.patch, pluckMember(s.patch, 'modal'), 'out', out(s), 'l'),
     targets: (s) => [...T.port(pluckMember(s.patch, 'string'), 'out', 'out'), ...T.port(out(s), 'l', 'in')],
@@ -85,9 +85,9 @@ export const CUSTOM: Record<string, CustomCheck> = {
     targets: (s) => T.module(main(s)?.id),
   },
   drumTriggered: {
-    describe: 'a Clock div output reaches every gate of a factory drum',
+    describe: 'a Clock divider output reaches every gate of a factory drum',
     args: [{ name: 'drum', options: DRUMS }, { name: 'port', options: ['out', 'd2', 'd4', 'd8'] }],
-    label: (a) => `Cable Clock div ${a.port} → ${a.drum} gate`,
+    label: (a) => `Cable Clock divider ${a.port} → ${a.drum} gate`,
     check: (s, a) => { const g = gateOf(s.patch, String(a.drum)); return !!g && [g, ...(g.also ?? [])].every((r) => cabled(s.patch, one('clkdiv')(s), String(a.port), byId(s.patch, r.module), r.port)); },
     targets: (s, a) => { const g = gateOf(s.patch, String(a.drum)); return [...T.port(one('clkdiv')(s), String(a.port), 'out'), ...T.port(g && byId(s.patch, g.module), g?.port ?? 'gate', 'in')]; },
   },

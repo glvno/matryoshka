@@ -120,7 +120,7 @@ export class FlawPanel {
     const now = this.host.cfg();
     if (!now) return this.close();
     if (now.parts !== this.rows) this.build(now.parts);
-    this.note.textContent = now.fed ? `${now.parts} voice${now.parts === 1 ? '' : 's'}, set on the Voice allocator` : 'No Voice allocator feeds these cards: they run once.';
+    this.note.textContent = now.fed ? `${now.parts} voice${now.parts === 1 ? '' : 's'}, set on the Voice assigner` : 'No Voice assigner feeds these cards: they run once.';
     for (let i = 0; i < now.parts; i++) {
       const f = flawOf(now.cards, i);
       for (const k of FLAW_KEYS) {

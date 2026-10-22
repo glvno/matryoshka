@@ -488,7 +488,7 @@ const noise: ModuleImpl<{ seed: number; y: number }> = {
 };
 
 const constant: ModuleImpl<null> = {
-  def: { type: 'const', label: 'Constant', inputs: [], outputs: [control('out')], params: [param('value', -4, 4, 0, { step: 0.01 })] },
+  def: { type: 'const', label: 'Offset', inputs: [], outputs: [control('out')], params: [param('value', -4, 4, 0, { step: 0.01 })] },
   init: () => null,
   process(c) {
     c.out.out.fill(c.p.value ?? 0, 0, c.n);
@@ -508,7 +508,7 @@ const macro: ModuleImpl<null> = {
 const scale: ModuleImpl<null> = {
   def: {
     type: 'scale',
-    label: 'Scale',
+    label: 'Attenuverter',
     inputs: [control('in')],
     outputs: [control('out')],
     params: [param('gain', -4, 4, 1, { step: 0.01 }), param('offset', -4, 4, 0, { step: 0.01 })],
@@ -603,7 +603,7 @@ const vca: ModuleImpl<null> = {
 const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
   def: {
     type: 'filter',
-    label: 'Filter',
+    label: 'Multimode',
     inputs: [audio('in'), control('cv'), control('morph')],
     outputs: [audio('lp24'), audio('lp12'), audio('bp'), audio('hp'), audio('mix'), audio('notch'), audio('peak'), audio('ap')],
     params: [
@@ -936,7 +936,7 @@ const grain: ModuleImpl<GrainState> = {
 const comb: ModuleImpl<{ buf: Float32Array; w: number; lp: number }> = {
   def: {
     type: 'comb',
-    label: 'Comb',
+    label: 'Comb filter',
     inputs: [audio('in'), control('pitch')],
     outputs: [audio('out')],
     params: [
@@ -984,7 +984,7 @@ const MODAL_BAR = [1, 2.756, 5.404, 8.933, 13.34, 18.64];
 const modal: ModuleImpl<{ y1: Float64Array; y2: Float64Array }> = {
   def: {
     type: 'modal',
-    label: 'Modal',
+    label: 'Resonator',
     inputs: [audio('in'), control('pitch')],
     outputs: [audio('out')],
     params: [
@@ -1057,7 +1057,7 @@ function hilbert(s: Float64Array, a: number[], x: number): number {
 const shift: ModuleImpl<{ a: Float64Array; b: Float64Array; ia: number; phase: number }> = {
   def: {
     type: 'shift',
-    label: 'Freq shift',
+    label: 'Freq shifter',
     inputs: [audio('in'), control('cv')],
     outputs: [audio('up'), audio('down')],
     params: [
@@ -1343,7 +1343,7 @@ export const GLIDE_CURVES = ['exp', 'lin'];
 const glide: ModuleImpl<{ y: number }> = {
   def: {
     type: 'glide',
-    label: 'Glide',
+    label: 'Slew limiter',
     inputs: [control('in')],
     outputs: [control('out')],
     params: [param('time', 0.001, 5, 0.1, { unit: 's', step: 0.001, log: true }), param('curve', 0, 1, 0, { step: 1, choices: GLIDE_CURVES })],
@@ -1419,7 +1419,7 @@ function shapeChain(x: number, mode: number, sym: number, stages: number): numbe
 const shape: ModuleImpl<OsState> = {
   def: {
     type: 'shape',
-    label: 'Shaper',
+    label: 'Waveshaper',
     inputs: [audio('in')],
     outputs: [audio('out')],
     params: [
@@ -1826,7 +1826,7 @@ const seq: ModuleImpl<SeqState> = {
 const clkdiv: ModuleImpl<{ count: number; c1: number; r1: number }> = {
   def: {
     type: 'clkdiv',
-    label: 'Clock div',
+    label: 'Clock divider',
     inputs: [gate('clock'), gate('reset')],
     outputs: [gate('out'), gate('d2'), gate('d4'), gate('d8')],
     params: [param('div', 1, 16, 3, { step: 1 })],
@@ -1970,7 +1970,7 @@ const pan: ModuleImpl<null> = {
 const xfade: ModuleImpl<null> = {
   def: {
     type: 'xfade',
-    label: 'Crossfade',
+    label: 'Crossfader',
     inputs: [audio('a'), audio('b'), control('pos')],
     thru: 'a',
     outputs: [audio('out')],
@@ -2007,7 +2007,7 @@ interface VowelState {
 const vowel: ModuleImpl<VowelState> = {
   def: {
     type: 'vowel',
-    label: 'Vowel',
+    label: 'Formant filter',
     inputs: [audio('in'), control('vowel')],
     outputs: [audio('out')],
     params: [param('vowel', 0, 4, 0, { step: 0.01, input: 'vowel', rest: (p, cv) => (p.vowel ?? 0) + cv }), param('res', 0, 1, 0.5, { step: 0.01 }), param('level', 0, 1, 0.7, { step: 0.01 })],
@@ -2096,7 +2096,7 @@ const phaser: ModuleImpl<PhaserState> = {
 const crush: ModuleImpl<{ held: number; cnt: number } & OsState> = {
   def: {
     type: 'crush',
-    label: 'Digitizer',
+    label: 'Bitcrusher',
     inputs: [audio('in')],
     outputs: [audio('out')],
     params: [param('bits', 1, 16, 8, { step: 1 }), param('rate', 1, 64, 1, { step: 1 }), param('os', 0, 1, 0, { step: 1, choices: OS_CHOICES, toggle: true })],
@@ -2191,7 +2191,7 @@ export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES
 const alloc: ModuleImpl<null> = {
   def: {
     type: 'alloc',
-    label: 'Voice allocator',
+    label: 'Voice assigner',
     inputs: [keys('keys')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump')],
     params: [

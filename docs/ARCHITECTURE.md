@@ -108,49 +108,49 @@ The editor estimates how much of the 2901 us audio interrupt a patch needs (`web
   | module | type | cycles | us | % of the block |
   |---|---|---:|---:|---:|
   | Reverb | `reverb` | 118382 | 507 | 17.5 |
-  | Freq shift | `shift` | 43506 | 186 | 6.4 |
-  | Modal | `modal` | 39748 | 170 | 5.9 |
-  | Vowel | `vowel` | 35517 | 152 | 5.2 |
+  | Freq shifter | `shift` | 43506 | 186 | 6.4 |
+  | Resonator | `modal` | 39748 | 170 | 5.9 |
+  | Formant filter | `vowel` | 35517 | 152 | 5.2 |
   | Granular | `grain` | 30941 | 133 | 4.6 |
-  | Filter | `filter` | 29819 | 128 | 4.4 |
+  | Multimode | `filter` | 29819 | 128 | 4.4 |
   | Chorus | `chorus` | 25026 | 107 | 3.7 |
   | Quantizer | `quant` | 23642 | 101 | 3.5 |
   | Ladder | `ladder` | 23285 | 100 | 3.4 |
   | Wavetable | `wavetable` | 21510 | 92 | 3.2 |
   | Phaser | `phaser` | 17017 | 73 | 2.5 |
   | String | `string` | 16101 | 69 | 2.4 |
-  | Comb | `comb` | 13709 | 59 | 2.0 |
+  | Comb filter | `comb` | 13709 | 59 | 2.0 |
   | Steps | `steps` | 13612 | 58 | 2.0 |
   | Sequencer | `seq` | 11094 | 48 | 1.6 |
   | Env L/R | `env` | 10676 | 46 | 1.6 |
   | Pan | `pan` | 9470 | 41 | 1.4 |
-  | Shaper | `shape` | 9438 | 40 | 1.4 |
+  | Waveshaper | `shape` | 9438 | 40 | 1.4 |
   | Oscillator | `osc` | 8658 | 37 | 1.3 |
   | Compressor | `dyn` | 8546 | 37 | 1.3 |
   | Delay | `delay` | 8284 | 35 | 1.2 |
   | Math | `math` | 7511 | 32 | 1.1 |
   | ADSR | `adsr` | 6509 | 28 | 1.0 |
   | Mixer 4 | `mixer` | 6188 | 27 | 0.9 |
-  | Clock div | `clkdiv` | 6030 | 26 | 0.9 |
+  | Clock divider | `clkdiv` | 6030 | 26 | 0.9 |
   | LFO | `lfo` | 5641 | 24 | 0.8 |
-  | Crossfade | `xfade` | 5007 | 21 | 0.7 |
-  | Glide | `glide` | 4788 | 21 | 0.7 |
+  | Crossfader | `xfade` | 5007 | 21 | 0.7 |
+  | Slew limiter | `glide` | 4788 | 21 | 0.7 |
   | Logic | `logic` | 4219 | 18 | 0.6 |
   | Noise | `noise` | 3792 | 16 | 0.6 |
-  | Digitizer | `crush` | 3783 | 16 | 0.6 |
+  | Bitcrusher | `crush` | 3783 | 16 | 0.6 |
   | VCA | `vca` | 3317 | 14 | 0.5 |
   | Pulse | `pulse` | 2930 | 13 | 0.4 |
   | S&H | `sh` | 2690 | 12 | 0.4 |
-  | Scale | `scale` | 2491 | 11 | 0.4 |
+  | Attenuverter | `scale` | 2491 | 11 | 0.4 |
   | Drum map | `drummap` | 1740 | 7 | 0.3 |
   | Random | `random` | 1326 | 6 | 0.2 |
   | Main | `fm1` | 1251 | 5 | 0.2 |
-  | Constant | `const` | 906 | 4 | 0.1 |
+  | Offset | `const` | 906 | 4 | 0.1 |
   | Macro | `macro` | 906 | 4 | 0.1 |
   | Arpeggiator | `arp` | 888 | 4 | 0.1 |
   | Part (engine) | `part` | 854 | 4 | 0.1 |
   | Output | `output` | 537 | 2 | 0.1 |
-  | Voice allocator | `alloc` | 129 | 1 | 0.0 |
+  | Voice assigner | `alloc` | 129 | 1 | 0.0 |
 - **Later, with a second FM-1:** a build that times the `ENG_PROF` stages with `fm1_ticks` and reports them over SysEx can replace the counts with measured microseconds (`CpuTable.source`, `cyclesPerUs` = 1).
 
 - **Oscillator increments** (2026-10-17): the C oscillator works out its phase increments (`exp2_scale`) only when its pitch input changes from one sample to the next (exactly the same output; golden kits unchanged). A pitch from Main or a Part holds still for a block, so it costs less than one that moves. The table's `moving` (cycles per block and unison copy, measured with an LFO added to the pitch) is charged by `cpuEstimate` when the pitch may change about every sample (`keepsMoving` = `slope` ≥ 0.5 Q16 steps per sample: oscillators, noise, envelopes, glides, Random walks anywhere upstream; an LFO by its rate x depth unless something is patched into it; a free sample-and-hold LFO steps once a cycle and is not charged; a Scale multiplies its input's slope by its gain).

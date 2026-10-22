@@ -387,8 +387,8 @@
         {
           "id": "filter",
           "kind": "task",
-          "title": "Add a Filter",
-          "text": "[Add a **Filter**](req:add-filter) and put it between the **Oscillator** and the **VCA**: [**Oscillator** `out` → **Filter** `in`](req:osc-out-filter-in), [**Filter** `lp24` → **VCA** `in`](req:filter-lp24-vca-in), and [remove the cable from the **Oscillator** to the **VCA**](req:unplug-osc-out-vca-in).",
+          "title": "Add a Multimode filter",
+          "text": "[Add a **Multimode**](req:add-filter) and put it between the **Oscillator** and the **VCA**: [**Oscillator** `out` → **Multimode** `in`](req:osc-out-filter-in), [**Multimode** `lp24` → **VCA** `in`](req:filter-lp24-vca-in), and [remove the cable from the **Oscillator** to the **VCA**](req:unplug-osc-out-vca-in).",
           "why": "VCO → VCF → VCA is the classic subtractive chain. `lp24` is a 24 dB low pass: steep. `lp12` is gentler, `hp` lets the highs through instead.",
           "parts": [
             { "id": "add-filter", "kind": "module", "type": "filter" },
@@ -439,7 +439,7 @@
           "id": "resonance",
           "kind": "task",
           "title": "Give the cutoff a voice",
-          "text": "Keep Riff playing and [raise **Filter** `res` to about 0.6](req:filter-res). A whistle appears at the cutoff. Optional: sweep `cutoff` to hear the peak travel, then return it below 800 Hz before continuing.",
+          "text": "Keep Riff playing and [raise **Multimode** `res` to about 0.6](req:filter-res). A whistle appears at the cutoff. Optional: sweep `cutoff` to hear the peak travel, then return it below 800 Hz before continuing.",
           "why": "",
           "parts": [
             {
@@ -491,7 +491,7 @@
           "id": "cv",
           "kind": "task",
           "title": "Wobble the cutoff",
-          "text": "[Drag the **LFO**’s `out` to the **Filter**’s `cv` jack.](req:lfo-out-filter-cv) The grey route shows `cv` is built into `cutoff`; `cvamt` sets how far it reaches: [set it to 2 oct](req:filter-cvamt). Hold a note.",
+          "text": "[Drag the **LFO**’s `out` to the **Multimode**’s `cv` jack.](req:lfo-out-filter-cv) The grey route shows `cv` is built into `cutoff`; `cvamt` sets how far it reaches: [set it to 2 oct](req:filter-cvamt). Hold a note.",
           "why": "The `cv` input is additive in octaves: a signal of 1 moves the cutoff up by `cvamt` octaves. A cable dropped on a thumb works differently: it adds to that parameter, with the depth set in the slider’s ⋮ menu.",
           "parts": [
             {
@@ -528,7 +528,7 @@
           "id": "knob",
           "kind": "task",
           "title": "The knobs follow your click",
-          "text": "Click any row of the **Filter**: **Main**’s knobs `K1` to `K4`, on the panel above the keyboard, now turn its first four rows. Dotted lines run from each knob to its row, and a numbered badge marks the row. [Turn **Main**’s `K1`](req:filter-cutoff-turned): the cutoff moves with it.",
+          "text": "Click any row of the **Multimode**: **Main**’s knobs `K1` to `K4`, on the panel above the keyboard, now turn its first four rows. Dotted lines run from each knob to its row, and a numbered badge marks the row. [Turn **Main**’s `K1`](req:filter-cutoff-turned): the cutoff moves with it.",
           "why": "The FM-1 does the same: SELECT picks a device, ALGO a page of four rows, and K1 to K4 turn them. A device is anything at the top of the canvas: a module, or a whole assembly with the rows its card shows.",
           "parts": [
             {
@@ -545,7 +545,7 @@
           "id": "macro",
           "kind": "task",
           "title": "One control, two parameters",
-          "text": "[Add a **Macro** module](req:macro-added) (+ Module → Macro: one value, one output). [Drag its `out` to the **Filter**’s `cutoff` thumb](req:main-k1-filter-cutoff), [then drop it on the `resonance` thumb as well](req:main-k1-filter-res): one control can turn several parameters.",
+          "text": "[Add a **Macro** module](req:macro-added) (+ Module → Macro: one value, one output). [Drag its `out` to the **Multimode**’s `cutoff` thumb](req:main-k1-filter-cutoff), [then drop it on the `resonance` thumb as well](req:main-k1-filter-res): one control can turn several parameters.",
           "why": "A module takes up to two different modulation sources, and one source can reach as many of its parameters as you like. A Macro is how a patch gets a performance control: put its `value` on a card, and it lands on a knob like any other row.",
           "parts": [
             { "id": "macro-added", "kind": "module", "type": "macro" },
@@ -618,7 +618,7 @@
           "id": "select",
           "kind": "task",
           "title": "Select the modules",
-          "text": "[Shift-click the **Oscillator**, **Filter**, **ADSR**, **VCA** and **LFO**, or drag a box around them on the empty canvas.](req:selected) Selected cards get a highlight. **Main** and **Output** stay outside.",
+          "text": "[Shift-click the **Oscillator**, **Multimode**, **ADSR**, **VCA** and **LFO**, or drag a box around them on the empty canvas.](req:selected) Selected cards get a highlight. **Main** and **Output** stay outside.",
           "why": "",
           "parts": [
             {
@@ -654,7 +654,7 @@
           "id": "promote",
           "kind": "task",
           "title": "Put two knobs on the card",
-          "text": "Click **card** on the frame, then click [the **Filter**’s `cutoff`](req:my-voice-promoted-filter-cutoff) and [the **ADSR**’s `r`](req:my-voice-promoted-adsr-r): they become sliders on the collapsed card. [Click the **LFO**’s `out` too](req:my-voice-exposed-lfo-out): an extra output. Click **done** when you have them (Cmd / Ctrl-click does the same without the button).",
+          "text": "Click **card** on the frame, then click [the **Multimode**’s `cutoff`](req:my-voice-promoted-filter-cutoff) and [the **ADSR**’s `r`](req:my-voice-promoted-adsr-r): they become sliders on the collapsed card. [Click the **LFO**’s `out` too](req:my-voice-exposed-lfo-out): an extra output. Click **done** when you have them (Cmd / Ctrl-click does the same without the button).",
           "why": "",
           "parts": [
             {
@@ -1309,7 +1309,7 @@
       "id": "plucked-and-struck",
       "title": "Plucked and struck",
       "unpublished": true,
-      "intro": "*Physical models* start from how real instruments work: a burst of energy goes into something that resonates. **String** is a Karplus-Strong string, a short delay line fed back on itself. **Modal** is a set of tuned resonances like a bar or a bell. **Comb** is a resonator you can excite with anything, even noise.",
+      "intro": "*Physical models* start from how real instruments work: a burst of energy goes into something that resonates. **String** is a Karplus-Strong string, a short delay line fed back on itself. **Resonator** is a set of tuned resonances like a bar or a bell. **Comb filter** is a resonator you can excite with anything, even noise.",
       "payoff": "You built a string, a resonating body and a breathy pipe.",
       "challenge": "Write a three-note call and answer with muted and ringing settings.",
       "patchName": "Tutorial pluck",
@@ -1378,7 +1378,7 @@
           "id": "modal",
           "kind": "task",
           "title": "Strike a body with it",
-          "text": "[Add a **Modal**](req:add-modal). Cable [**String** `out` → **Modal** `in`](req:string-out-modal-in) and [**Modal** `out` → **Output** `r`](req:modal-out-output-r). [Set `struct` to 0.5](req:modal-struct) and [`decay` to 2 s](req:modal-decay): the string now rings a bell-like body.",
+          "text": "[Add a **Resonator**](req:add-modal). Cable [**String** `out` → **Resonator** `in`](req:string-out-modal-in) and [**Resonator** `out` → **Output** `r`](req:modal-out-output-r). [Set `struct` to 0.5](req:modal-struct) and [`decay` to 2 s](req:modal-decay): the string now rings a bell-like body.",
           "why": "",
           "parts": [
             { "id": "add-modal", "kind": "module", "type": "modal" },
@@ -1421,7 +1421,7 @@
           "id": "body",
           "kind": "continue",
           "title": "Muted string, ringing body",
-          "text": "Play a few notes. Optional: try **String** `damp` 0.8 for a muted pick, then 0.1 for a ringing string. Bypass **Modal** to hear the dry string on the left; turn it back on to hear the body on the right. Return `damp` to 0.1 before continuing.",
+          "text": "Play a few notes. Optional: try **String** `damp` 0.8 for a muted pick, then 0.1 for a ringing string. Bypass **Resonator** to hear the dry string on the left; turn it back on to hear the body on the right. Return `damp` to 0.1 before continuing.",
           "why": "",
           "playback": true,
           "pointer": {
@@ -1433,7 +1433,7 @@
           "id": "comb",
           "kind": "task",
           "title": "Blow noise through a comb",
-          "text": "[Add **Noise**, a **Comb** and a **VCA**](req:add-noise,add-comb,add-vca). Cable [**Noise** `out` → **Comb** `in`](req:noise-out-comb-in), [**Main** `pitch` → **Comb** `pitch`](req:main-pitch-comb-pitch), [**Comb** `out` → **VCA** `in`](req:comb-out-vca-in), [**Main** `gate` → **VCA** `cv`](req:main-gate-vca-cv), [**VCA** `out` → **Output** `l`](req:vca-out-output-l).",
+          "text": "[Add **Noise**, a **Comb filter** and a **VCA**](req:add-noise,add-comb,add-vca). Cable [**Noise** `out` → **Comb filter** `in`](req:noise-out-comb-in), [**Main** `pitch` → **Comb filter** `pitch`](req:main-pitch-comb-pitch), [**Comb filter** `out` → **VCA** `in`](req:comb-out-vca-in), [**Main** `gate` → **VCA** `cv`](req:main-gate-vca-cv), [**VCA** `out` → **Output** `l`](req:vca-out-output-l).",
           "why": "A *comb filter* is a tuned delay line: noise through it rings at the note, like breath through a pipe. The **VCA** is a simple on / off here, straight from the `gate`.",
           "superseded": true,
           "parts": [
@@ -1486,7 +1486,7 @@
           "id": "fb",
           "kind": "task",
           "title": "Make it ring",
-          "text": "[Set the **Comb**’s `fb` to 0.95](req:comb-fb) and [`damp` to 0.1](req:comb-damp): the noise turns into a breathy, whistling tone at the note.",
+          "text": "[Set the **Comb filter**’s `fb` to 0.95](req:comb-fb) and [`damp` to 0.1](req:comb-damp): the noise turns into a breathy, whistling tone at the note.",
           "why": "",
           "parts": [
             {
@@ -1511,7 +1511,7 @@
           "id": "breath",
           "kind": "continue",
           "title": "Separate the breath from the string",
-          "text": "Optional: bypass **String** and **Modal**, then play Note to hear only noise through **Comb**. Change **Comb** `damp` from 0.1 to 0.8: the breath loses its whistle. Switch both models back on and return `damp` to 0.1 when finished.",
+          "text": "Optional: bypass **String** and **Resonator**, then play Note to hear only noise through **Comb filter**. Change **Comb filter** `damp` from 0.1 to 0.8: the breath loses its whistle. Switch both models back on and return `damp` to 0.1 when finished.",
           "why": "",
           "playback": true,
           "pointer": {
@@ -1523,8 +1523,8 @@
           "id": "glide",
           "kind": "task",
           "title": "Slide between notes",
-          "text": "[Add a **Glide**](req:add-glide). Cable [**Main** `pitch` → **Glide** `in`](req:main-pitch-glide-in) and [**Glide** `out` → **Comb** `pitch`](req:glide-out-comb-pitch), and [remove the cable from **Main**’s `pitch` to the **Comb**](req:unplug-main-pitch-comb-pitch). [Set `time` to 0.3 s](req:glide-time) and play two notes.",
-          "why": "**Glide** (*portamento*) slews a control signal: the pitch takes time to arrive. It works on any control cable, not only pitch.",
+          "text": "[Add a **Slew limiter**](req:add-glide). Cable [**Main** `pitch` → **Slew limiter** `in`](req:main-pitch-glide-in) and [**Slew limiter** `out` → **Comb filter** `pitch`](req:glide-out-comb-pitch), and [remove the cable from **Main**’s `pitch` to the **Comb filter**](req:unplug-main-pitch-comb-pitch). [Set `time` to 0.3 s](req:glide-time) and play two notes.",
+          "why": "**Slew limiter** (*portamento*) slews a control signal: the pitch takes time to arrive. It works on any control cable, not only pitch.",
           "parts": [
             { "id": "add-glide", "kind": "module", "type": "glide" },
             {
@@ -1566,7 +1566,7 @@
           "id": "group",
           "kind": "task",
           "title": "Group the pluck",
-          "text": "[Select the **String** and the **Modal** and press Ctrl+G (Cmd+G)](req:pluck-exists). Name it Pluck. Expand it, click **card**, then [click the **String**’s `decay`](req:pluck-promoted-string-decay) and [the **Modal**’s `struct`](req:pluck-promoted-modal-struct), and [collapse it again](req:pluck-collapsed).",
+          "text": "[Select the **String** and the **Resonator** and press Ctrl+G (Cmd+G)](req:pluck-exists). Name it Pluck. Expand it, click **card**, then [click the **String**’s `decay`](req:pluck-promoted-string-decay) and [the **Resonator**’s `struct`](req:pluck-promoted-modal-struct), and [collapse it again](req:pluck-collapsed).",
           "why": "",
           "parts": [
             { "id": "pluck-exists", "kind": "assembly", "role": "pluck", "fact": "exists" },
@@ -1610,8 +1610,8 @@
           "id": "chords",
           "kind": "task",
           "title": "Play chords",
-          "text": "[Press **poly** on the Pluck card’s header.](req:poly-parts) Pluck becomes a *poly assembly*, a rack of voice cards: a **Voice allocator** appears inside and takes over its `pitch` and `gate` cables, **Main**’s `keys` go into it, and the card shows ×4. Hold a chord: four strings, each with its own note.",
-          "why": "The **Voice allocator** does what the processor of a polysynth does: it hands each key you hold to a voice, and a poly assembly runs everything inside it once per voice. Everything outside, the breathy **Comb** here, runs once, plays **Main**’s one note and hears the sum of the voices. The Pluck you saved stays a plain assembly: poly is a setting of this copy.",
+          "text": "[Press **poly** on the Pluck card’s header.](req:poly-parts) Pluck becomes a *poly assembly*, a rack of voice cards: a **Voice assigner** appears inside and takes over its `pitch` and `gate` cables, **Main**’s `keys` go into it, and the card shows ×4. Hold a chord: four strings, each with its own note.",
+          "why": "The **Voice assigner** does what the processor of a polysynth does: it hands each key you hold to a voice, and a poly assembly runs everything inside it once per voice. Everything outside, the breathy **Comb filter** here, runs once, plays **Main**’s one note and hears the sum of the voices. The Pluck you saved stays a plain assembly: poly is a setting of this copy.",
           "parts": [
             { "id": "poly-parts", "kind": "poly", "setting": "parts", "op": "ge", "value": 2 }
           ]
@@ -1778,7 +1778,7 @@
           "id": "chords",
           "kind": "task",
           "title": "Play chords",
-          "text": "Select the **Wavetable**, the **VCA** and the **ADSR** (shift-click each, or drag a box around them) and press Ctrl+G (Cmd+G) to make them an assembly. [Press **poly** on its header.](req:poly-parts) A **Voice allocator** appears inside and takes over the `pitch` and `gate` cables; the card shows ×4. Hold a chord: four notes, each with its own slow envelope.",
+          "text": "Select the **Wavetable**, the **VCA** and the **ADSR** (shift-click each, or drag a box around them) and press Ctrl+G (Cmd+G) to make them an assembly. [Press **poly** on its header.](req:poly-parts) A **Voice assigner** appears inside and takes over the `pitch` and `gate` cables; the card shows ×4. Hold a chord: four notes, each with its own slow envelope.",
           "why": "A poly assembly runs everything inside it once per voice, each voice playing its own note. The **LFO** stays outside: one sweep for every voice, as a polysynth’s front panel reaches every voice card. The **Granular** you add next goes outside too, so it hears the sum of the voices and records the whole chord.",
           "parts": [
             { "id": "poly-parts", "kind": "poly", "setting": "parts", "op": "ge", "value": 2 }
@@ -2258,7 +2258,7 @@
           "id": "div",
           "kind": "task",
           "title": "Divide it",
-          "text": "[Add a **Clock div**](req:add-clkdiv) and [cable **LFO** `out` → **Clock div** `clock`](req:lfo-out-clkdiv-clock). Its outputs `out`, `d2`, `d4` and `d8` tick every `div`, 2, 4 and 8 ticks.",
+          "text": "[Add a **Clock divider**](req:add-clkdiv) and [cable **LFO** `out` → **Clock divider** `clock`](req:lfo-out-clkdiv-clock). Its outputs `out`, `d2`, `d4` and `d8` tick every `div`, 2, 4 and 8 ticks.",
           "why": "",
           "superseded": true,
           "parts": [
@@ -2277,7 +2277,7 @@
           "id": "sh",
           "kind": "task",
           "title": "A random value per tick",
-          "text": "[Add **Noise**](req:add-noise) and [an **S&H** (*sample and hold*)](req:add-sh). Cable [**Noise** `out` → **S&H** `in`](req:noise-out-sh-in) and [**Clock div** `out` → **S&H** `clock`](req:clkdiv-out-sh-clock). On every tick the **S&H** grabs the noise’s value and holds it.",
+          "text": "[Add **Noise**](req:add-noise) and [an **S&H** (*sample and hold*)](req:add-sh). Cable [**Noise** `out` → **S&H** `in`](req:noise-out-sh-in) and [**Clock divider** `out` → **S&H** `clock`](req:clkdiv-out-sh-clock). On every tick the **S&H** grabs the noise’s value and holds it.",
           "why": "",
           "parts": [
             { "id": "add-noise", "kind": "module", "type": "noise" },
@@ -2331,7 +2331,7 @@
           "id": "pluck",
           "kind": "task",
           "title": "Play Pluck with it",
-          "text": "[Insert Pluck from Your library](req:pluck-exists). Cable [**Quantizer** `out` → Pluck `pitch`](req:quant-out-pluck-string-pitch), [**Clock div** `out` → Pluck `gate`](req:clkdiv-out-pluck-string-gate) and [Pluck `out` → **Output** `l`](req:pluck-out). The machine plays on its own now.",
+          "text": "[Insert Pluck from Your library](req:pluck-exists). Cable [**Quantizer** `out` → Pluck `pitch`](req:quant-out-pluck-string-pitch), [**Clock divider** `out` → Pluck `gate`](req:clkdiv-out-pluck-string-gate) and [Pluck `out` → **Output** `l`](req:pluck-out). The machine plays on its own now.",
           "why": "",
           "parts": [
             { "id": "pluck-exists", "kind": "assembly", "role": "pluck", "fact": "exists" },
@@ -2358,7 +2358,7 @@
           "id": "pulse",
           "kind": "task",
           "title": "FM keys on every second tick",
-          "text": "[Add a **Pulse** with `time` 0.05 s](req:add-pulse,pulse-time) and [cable **Clock div** `d2` → **Pulse** `trig`](req:clkdiv-d2-pulse-trig). [Insert FM keys](req:fm-keys-exists); cable [**Quantizer** `out` → FM keys `pitch`](req:quant-out-fm-keys-osc-pitch), [**Pulse** `out` → FM keys `gate`](req:pulse-out-fm-env-gate), [FM keys `l` → **Output** `r`](req:space-out-l-output-r).",
+          "text": "[Add a **Pulse** with `time` 0.05 s](req:add-pulse,pulse-time) and [cable **Clock divider** `d2` → **Pulse** `trig`](req:clkdiv-d2-pulse-trig). [Insert FM keys](req:fm-keys-exists); cable [**Quantizer** `out` → FM keys `pitch`](req:quant-out-fm-keys-osc-pitch), [**Pulse** `out` → FM keys `gate`](req:pulse-out-fm-env-gate), [FM keys `l` → **Output** `r`](req:space-out-l-output-r).",
           "why": "A divider passes selected input pulses with their original width. **Pulse** makes a predictable 0.05 s gate regardless of the clock’s pulse width.",
           "superseded": true,
           "parts": [
@@ -2422,7 +2422,7 @@
           "id": "seq",
           "kind": "task",
           "title": "A written melody instead",
-          "text": "[Add a **Sequencer**](req:add-seq), [cable **Clock div** `out` → **Sequencer** `clock`](req:clkdiv-out-seq-clock) and [**Sequencer** `out` → **Quantizer** `in`](req:seq-out-quant-in), and [remove the cable from the **S&H** to the **Quantizer**](req:unplug-sh-out-quant-in). Set `s1`..`s4` to a few different values; [`len` to 4](req:seq-len).",
+          "text": "[Add a **Sequencer**](req:add-seq), [cable **Clock divider** `out` → **Sequencer** `clock`](req:clkdiv-out-seq-clock) and [**Sequencer** `out` → **Quantizer** `in`](req:seq-out-quant-in), and [remove the cable from the **S&H** to the **Quantizer**](req:unplug-sh-out-quant-in). Set `s1`..`s4` to a few different values; [`len` to 4](req:seq-len).",
           "why": "The **Sequencer**’s steps are the same kind of signal the **S&H** made, just chosen by you. Through the quantizer the steps land on scale notes whatever you set them to.",
           "parts": [
             { "id": "add-seq", "kind": "module", "type": "seq" },
@@ -2464,7 +2464,7 @@
           "id": "mainclock",
           "kind": "task",
           "title": "Lock to the arpeggiator’s clock",
-          "text": "[Cable **Main** `clock` → **Clock div** `clock`](req:main-clock-clkdiv-clock) and [remove the **LFO**’s cable to it](req:unplug-lfo-out-clkdiv-clock); [set the **Clock div**’s `div` to 6](req:clkdiv-div). [Add a second **Clock div**](req:add-clkdiv-2): [first `out` → second `clock`](req:clkdiv-out-clkdiv2-clock), [second `d2` → **Pulse** `trig`](req:clkdiv2-d2-pulse-trig); [remove first `d2` → **Pulse** `trig`](req:unplug-clkdiv-d2-pulse-trig). Press Space: **Main**’s `clock` now ticks 24 times per beat at the arp tempo, and on the FM-1 it follows MIDI clock.",
+          "text": "[Cable **Main** `clock` → **Clock divider** `clock`](req:main-clock-clkdiv-clock) and [remove the **LFO**’s cable to it](req:unplug-lfo-out-clkdiv-clock); [set the **Clock divider**’s `div` to 6](req:clkdiv-div). [Add a second **Clock divider**](req:add-clkdiv-2): [first `out` → second `clock`](req:clkdiv-out-clkdiv2-clock), [second `d2` → **Pulse** `trig`](req:clkdiv2-d2-pulse-trig); [remove first `d2` → **Pulse** `trig`](req:unplug-clkdiv-d2-pulse-trig). Press Space: **Main**’s `clock` now ticks 24 times per beat at the arp tempo, and on the FM-1 it follows MIDI clock.",
           "why": "",
           "parts": [
             {
@@ -2544,7 +2544,7 @@
           "id": "noise",
           "kind": "task",
           "title": "Noise through a high pass",
-          "text": "[Add **Noise**](req:add-noise) and [a **Filter**](req:add-filter). [Cable **Noise** `out` → **Filter** `in`](req:noise-out-filter-in) and [set the `cutoff` to about 6 kHz](req:filter-cutoff): the **Filter**’s `hp` output is the hiss of a hat.",
+          "text": "[Add **Noise**](req:add-noise) and [a **Multimode**](req:add-filter). [Cable **Noise** `out` → **Multimode** `in`](req:noise-out-filter-in) and [set the `cutoff` to about 6 kHz](req:filter-cutoff): the **Multimode**’s `hp` output is the hiss of a hat.",
           "why": "",
           "parts": [
             { "id": "add-noise", "kind": "module", "type": "noise" },
@@ -2571,7 +2571,7 @@
           "id": "env",
           "kind": "task",
           "title": "A very short envelope",
-          "text": "[Add an **Env L/R**](req:add-env) and [a **VCA**](req:add-vca). Cable [**Filter** `hp` → **VCA** `in`](req:filter-hp-vca-in), [**Main** `gate` → **Env** `gate`](req:main-gate-env-gate), [**Env** `env` → **VCA** `cv`](req:env-env-vca-cv), [**VCA** `out` → **Output** `l`](req:vca-out-output-l). [Set `l1` to 1](req:env-l1), [`r1` to 0.001 s](req:env-r1), [`l2` to 0](req:env-l2), [`r2` to 0.08 s](req:env-r2), [`l3` to 0](req:env-l3) and [`l4` to 0](req:env-l4). Hold a key: one crisp hiss dies away and stays silent.",
+          "text": "[Add an **Env L/R**](req:add-env) and [a **VCA**](req:add-vca). Cable [**Multimode** `hp` → **VCA** `in`](req:filter-hp-vca-in), [**Main** `gate` → **Env** `gate`](req:main-gate-env-gate), [**Env** `env` → **VCA** `cv`](req:env-env-vca-cv), [**VCA** `out` → **Output** `l`](req:vca-out-output-l). [Set `l1` to 1](req:env-l1), [`r1` to 0.001 s](req:env-r1), [`l2` to 0](req:env-l2), [`r2` to 0.08 s](req:env-r2), [`l3` to 0](req:env-l3) and [`l4` to 0](req:env-l4). Hold a key: one crisp hiss dies away and stays silent.",
           "why": "",
           "superseded": true,
           "parts": [
@@ -2664,7 +2664,7 @@
           "id": "group",
           "kind": "task",
           "title": "Group it as Hat and save it",
-          "text": "[Select the **Noise**, **Filter**, **Env** and **VCA**, press Ctrl+G (Cmd+G) and name it Hat](req:hat-exists). [Choose Save to library in its ⋮ menu](req:hat-saved).",
+          "text": "[Select the **Noise**, **Multimode**, **Env** and **VCA**, press Ctrl+G (Cmd+G) and name it Hat](req:hat-exists). [Choose Save to library in its ⋮ menu](req:hat-saved).",
           "why": "",
           "parts": [
             { "id": "hat-exists", "kind": "assembly", "role": "hat", "fact": "exists" },
@@ -2693,7 +2693,7 @@
           "id": "clock",
           "kind": "task",
           "title": "A clock and a divider",
-          "text": "[Add an **LFO** (square, 8 Hz)](req:add-lfo,lfo-wave,lfo-rate) and [a **Clock div** with `div` 2](req:add-clkdiv,clkdiv-div). [Cable **LFO** `out` → **Clock div** `clock`](req:lfo-out-clkdiv-clock).",
+          "text": "[Add an **LFO** (square, 8 Hz)](req:add-lfo,lfo-wave,lfo-rate) and [a **Clock divider** with `div` 2](req:add-clkdiv,clkdiv-div). [Cable **LFO** `out` → **Clock divider** `clock`](req:lfo-out-clkdiv-clock).",
           "why": "",
           "superseded": true,
           "parts": [
@@ -2737,7 +2737,7 @@
           "id": "pattern",
           "kind": "task",
           "title": "A pattern from the divisions",
-          "text": "Cable [**LFO** `out` → Hat `gate`](req:lfo-out-hat-gate-gate) (every eighth), [**Clock div** `d2` → kick `gate`](req:drum-triggered-kick-d2) (every beat) and [**Clock div** `d4` → snare `gate`](req:drum-triggered-snare-d4) (every second beat). [Remove the cable from **Main**’s `gate` to the Hat](req:unplug-main-gate-hat-gate-gate).",
+          "text": "Cable [**LFO** `out` → Hat `gate`](req:lfo-out-hat-gate-gate) (every eighth), [**Clock divider** `d2` → kick `gate`](req:drum-triggered-kick-d2) (every beat) and [**Clock divider** `d4` → snare `gate`](req:drum-triggered-snare-d4) (every second beat). [Remove the cable from **Main**’s `gate` to the Hat](req:unplug-main-gate-hat-gate-gate).",
           "why": "",
           "superseded": true,
           "parts": [
@@ -2878,7 +2878,7 @@
       "id": "voicing",
       "title": "Voicing",
       "unpublished": true,
-      "intro": "How a synth deals with *several keys*: one note or many, whether a new key restarts the envelopes (*legato*), which key wins, how pitch slides between notes (*portamento*), and how one oscillator becomes a thick stack. The voice here is a *poly assembly* fed by a **Voice allocator**, the synth’s processor: its settings and outputs decide all of that. At the end it drifts out of spec like an old analog polysynth.",
+      "intro": "How a synth deals with *several keys*: one note or many, whether a new key restarts the envelopes (*legato*), which key wins, how pitch slides between notes (*portamento*), and how one oscillator becomes a thick stack. The voice here is a *poly assembly* fed by a **Voice assigner**, the synth’s processor: its settings and outputs decide all of that. At the end it drifts out of spec like an old analog polysynth.",
       "payoff": "Your voice glides only when you play legato, stacks detuned copies and drifts like real hardware.",
       "challenge": "Find the smallest depths for the two **Random** modules that still make a chord sound alive.",
       "patchName": "Tutorial voicing",
@@ -2893,8 +2893,8 @@
             "kind": "module",
             "ref": { "type": "alloc" }
           },
-          "text": "This voice is a *poly assembly* whose **Voice allocator** has one voice, so it is **mono**: one note at a time. The allocator’s card holds its settings: `voices`, `assign`, `legato`, `priority` and `unison`; the voice cards’ own flaws are under **voices ▾**, next to the frame’s name. Hold a key, then press a second one without letting go of the first, and release it again. The pitch jumps, but the envelope does not start over: the gate stays up while any key is down. That is **legato**, what `legato` `auto` does with one voice.",
-          "why": "Every analog monosynth had to decide what a second key does. Most of them (a Minimoog, an SH-101 in its default) simply re-pitch the oscillator: the filter and amplitude envelopes keep going. The **Voice allocator** takes **Main**’s `keys` and gives the modules around it their `pitch` and `gate`, one pair per voice."
+          "text": "This voice is a *poly assembly* whose **Voice assigner** has one voice, so it is **mono**: one note at a time. The allocator’s card holds its settings: `voices`, `assign`, `legato`, `priority` and `unison`; the voice cards’ own flaws are under **voices ▾**, next to the frame’s name. Hold a key, then press a second one without letting go of the first, and release it again. The pitch jumps, but the envelope does not start over: the gate stays up while any key is down. That is **legato**, what `legato` `auto` does with one voice.",
+          "why": "Every analog monosynth had to decide what a second key does. Most of them (a Minimoog, an SH-101 in its default) simply re-pitch the oscillator: the filter and amplitude envelopes keep going. The **Voice assigner** takes **Main**’s `keys` and gives the modules around it their `pitch` and `gate`, one pair per voice."
         },
         {
           "id": "retrigger",
@@ -2920,8 +2920,8 @@
           "id": "glide",
           "kind": "task",
           "title": "Portamento",
-          "text": "[Add a **Glide**](req:add-glide) and [drag it into the voice’s frame](req:inside-poly-glide): now it belongs to the voice. Put it into the pitch path: [**Voice allocator** `pitch` → **Glide** `in`](req:part-pitch-glide-in), [**Glide** `out` → **Oscillator** `pitch`](req:glide-out-osc-pitch), and [remove the cable from the allocator’s `pitch` to the **Oscillator**](req:unplug-part-pitch-osc-pitch). Every note now slides from the last one.",
-          "why": "Gliding on every note, overlapping or not, is what Serum calls *always*. The Glide is a slew: it works on any control signal, not only pitch. Outside the frame it would run once and glide the sum of the voices’ pitches.",
+          "text": "[Add a **Slew limiter**](req:add-glide) and [drag it into the voice’s frame](req:inside-poly-glide): now it belongs to the voice. Put it into the pitch path: [**Voice assigner** `pitch` → **Slew limiter** `in`](req:part-pitch-glide-in), [**Slew limiter** `out` → **Oscillator** `pitch`](req:glide-out-osc-pitch), and [remove the cable from the allocator’s `pitch` to the **Oscillator**](req:unplug-part-pitch-osc-pitch). Every note now slides from the last one.",
+          "why": "Gliding on every note, overlapping or not, is what Serum calls *always*. The Slew limiter works on any control signal, not only pitch. Outside the frame it would run once and glide the sum of the voices’ pitches.",
           "parts": [
             { "id": "add-glide", "kind": "module", "type": "glide" },
             {
@@ -2960,7 +2960,7 @@
           "id": "legato-glide",
           "kind": "task",
           "title": "Glide only when legato",
-          "text": "[Turn **Glide** `time` all the way down](req:glide-time-short), then [drop the **Voice allocator**’s `legato` on the `time` thumb](req:part-legato-glide-time) and [set its depth in the `time` ⋮ menu to about 0.6](req:glide-time-depth). Detached notes now jump, overlapping notes slide.",
+          "text": "[Turn **Slew limiter** `time` all the way down](req:glide-time-short), then [drop the **Voice assigner**’s `legato` on the `time` thumb](req:part-legato-glide-time) and [set its depth in the `time` ⋮ menu to about 0.6](req:glide-time-depth). Detached notes now jump, overlapping notes slide.",
           "why": "The allocator’s `legato` output is high while a voice’s note started over a held one. Added to the glide time, it switches portamento on only when you play legato: the 303 slide, or Serum with *always* off.",
           "parts": [
             {
@@ -2994,7 +2994,7 @@
           "id": "scaled",
           "kind": "task",
           "title": "Longer glides for bigger jumps",
-          "text": "[Set **Glide** `curve` to `lin`.](req:glide-curve-lin) The glide now moves at a constant speed, so a semitone is quick and an octave takes its time.",
+          "text": "[Set **Slew limiter** `curve` to `lin`.](req:glide-curve-lin) The glide now moves at a constant speed, so a semitone is quick and an octave takes its time.",
           "why": "Serum calls this *scaled*. Another way: the allocator’s `jump` is the voice’s last pitch step in octaves; through a **Math** module’s `abs` into the glide time it does the same with the exponential curve.",
           "parts": [
             {
@@ -3061,7 +3061,7 @@
           "id": "poly",
           "kind": "task",
           "title": "Several notes",
-          "text": "[Set the **Voice allocator**’s `voices` to 4](req:poly-parts) and play a chord. Every note gets its own oscillator, glide, filter and envelope: the cards inside show ×4.",
+          "text": "[Set the **Voice assigner**’s `voices` to 4](req:poly-parts) and play a chord. Every note gets its own oscillator, glide, filter and envelope: the cards inside show ×4.",
           "why": "`assign` decides which free part a new note takes: `rotate` goes round like the voice cards of an old polysynth, `lowest` always tries the first part, `reuse` gives a key back the part that played it last. Each part glides from the note it played before.",
           "parts": [
             { "id": "poly-parts", "kind": "poly", "setting": "parts", "op": "ge", "value": 4 }
@@ -3112,7 +3112,7 @@
           "id": "tolerance",
           "kind": "task",
           "title": "Tolerances",
-          "text": "In an analog polysynth every voice is built from slightly different parts. [Add a second **Random**](req:add-random-2), [drag it into the frame too](req:inside-poly-random-2) and leave its `mode` at fixed. [Drop its `out` on the **Filter** `cutoff` thumb](req:random2-out-filter-cutoff) and [set its depth in the `cutoff` ⋮ menu between 0.05 and 0.3](req:filter-cutoff-depth). Play the same chord: now every note has its own brightness.",
+          "text": "In an analog polysynth every voice is built from slightly different parts. [Add a second **Random**](req:add-random-2), [drag it into the frame too](req:inside-poly-random-2) and leave its `mode` at fixed. [Drop its `out` on the **Multimode** `cutoff` thumb](req:random2-out-filter-cutoff) and [set its depth in the `cutoff` ⋮ menu between 0.05 and 0.3](req:filter-cutoff-depth). Play the same chord: now every note has its own brightness.",
           "why": "`fixed` is a value between −1 and 1 that never changes, different in every part, like the tolerances of a real instrument’s voice cards. Patched with a small depth into cutoffs, envelope times or `fine`, it makes the notes differ the way real hardware does.",
           "parts": [
             { "id": "add-random-2", "kind": "module", "type": "random", "count": 2 },
@@ -3175,7 +3175,7 @@
           "id": "thumbs",
           "kind": "task",
           "title": "Every slider is a jack",
-          "text": "Any slider takes a cable: its thumb is a jack. [Drop the **LFO**’s `out` on the thumb of the **Filter**’s `res` slider](req:lfo-out-filter-res): drag from `out` and let go over the thumb, or Alt-drag the thumb to the jack. Hold a key and hear the resonance breathe.\n\nA modulated thumb shows the live value, and a small tick marks the base you set. A row with a numbered badge is on one of **Main**’s knobs: click any row and its page of four goes on `K1` to `K4`.",
+          "text": "Any slider takes a cable: its thumb is a jack. [Drop the **LFO**’s `out` on the thumb of the **Multimode**’s `res` slider](req:lfo-out-filter-res): drag from `out` and let go over the thumb, or Alt-drag the thumb to the jack. Hold a key and hear the resonance breathe.\n\nA modulated thumb shows the live value, and a small tick marks the base you set. A row with a numbered badge is on one of **Main**’s knobs: click any row and its page of four goes on `K1` to `K4`.",
           "why": "A thumb drop is a real route: the ⋮ menu beside a slider lists what modulates it, sets each source’s depth and can give it a *macro range* (cutoff from 150 Hz to 4 kHz, say). A module takes up to two different sources; it is the same matrix the FM-1 runs, so the route works on the hardware too.",
           "parts": [
             {
@@ -3192,7 +3192,7 @@
           "id": "main",
           "kind": "continue",
           "title": "The FM-1 on screen",
-          "text": "**Main** is the hardware: `pitch`, `gate` and `vel` from the keys. Its knobs `K1` to `K4` turn the four rows of the device page in focus, picked with DEVICE and PAGE (SELECT and ALGO on the FM-1) or by a click on a row. Every top-level module or assembly is a device, and an assembly’s card is its pages: you design the FM-1’s panel by choosing what the cards show.\n\nThe panel also holds the arpeggiator and *morph*: pick a patch of the same structure as the **B side** and the `morph` slider, or its input, glides every parameter between the two.\n\nPolyphony works as on a polysynth: **Main**’s `keys` go into a **Voice allocator**, which hands each key to a voice, and a *poly assembly* is the rack of voice cards (marked ×N), one copy per voice. Press *poly* on any assembly’s header and it gets an allocator.",
+          "text": "**Main** is the hardware: `pitch`, `gate` and `vel` from the keys. Its knobs `K1` to `K4` turn the four rows of the device page in focus, picked with DEVICE and PAGE (SELECT and ALGO on the FM-1) or by a click on a row. Every top-level module or assembly is a device, and an assembly’s card is its pages: you design the FM-1’s panel by choosing what the cards show.\n\nThe panel also holds the arpeggiator and *morph*: pick a patch of the same structure as the **B side** and the `morph` slider, or its input, glides every parameter between the two.\n\nPolyphony works as on a polysynth: **Main**’s `keys` go into a **Voice assigner**, which hands each key to a voice, and a *poly assembly* is the rack of voice cards (marked ×N), one copy per voice. Press *poly* on any assembly’s header and it gets an allocator.",
           "why": "",
           "playback": true,
           "pointer": {
@@ -3214,7 +3214,7 @@
           "id": "modules",
           "kind": "continue",
           "title": "Modules worth a detour",
-          "text": "Beyond oscillators, filters, envelopes and VCAs:\n\n- **Wavetable** sweeps its tables with `pos`; **Granular** makes clouds from any input.\n- **String** (Karplus-Strong) and **Modal** (six tuned resonators) are plucked and struck physical models; **Comb** adds metallic resonance.\n- **Ladder** is a 4-pole filter with drive in the loop; **Filter** morphs from a 24 dB low pass to a high pass.\n- **Freq shift** is a frequency shifter and **Shaper** folds in stages; **Digitizer**, **Vowel** and **Phaser** colour the sound, and the **Compressor** takes a `side` input.\n- **Oscillator** does FM: a `pm` input and `fb` feedback, oversampled, plus `unison` and `detune`. **Env L/R** is a DX7-style level/rate envelope.\n- **Sequencer**, **Clock div**, **S&H**, **Quantizer**, **Math** and **Logic** build your own sequencers.\n\nThe factory assemblies in the Library show many of them at work.",
+          "text": "Beyond oscillators, filters, envelopes and VCAs:\n\n- **Wavetable** sweeps its tables with `pos`; **Granular** makes clouds from any input.\n- **String** (Karplus-Strong) and **Resonator** (six tuned resonators) are plucked and struck physical models; **Comb filter** adds metallic resonance.\n- **Ladder** is a 4-pole filter with drive in the loop; **Multimode** morphs from a 24 dB low pass to a high pass.\n- **Freq shifter** is a frequency shifter and **Waveshaper** folds in stages; **Bitcrusher**, **Formant filter** and **Phaser** colour the sound, and the **Compressor** takes a `side` input.\n- **Oscillator** does FM: a `pm` input and `fb` feedback, oversampled, plus `unison` and `detune`. **Env L/R** is a DX7-style level/rate envelope.\n- **Sequencer**, **Clock divider**, **S&H**, **Quantizer**, **Math** and **Logic** build your own sequencers.\n\nThe factory assemblies in the Library show many of them at work.",
           "why": "",
           "playback": false,
           "pointer": {
