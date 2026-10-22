@@ -20,8 +20,12 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - Audio on is highlighted like the tutorial's targets while the audio is off (not started, or after Panic).
 - A new engine and factory patch, **8 Lire**, after the SOMA Lyra-8: eight drone voices, each played by a white key
   (repeating from E2 to A6), each with its own tuning and attack / release, waveshaping and cross-modulation per pair and quad, HOLD to let them drone,
-  a Hyper LFO and a ping-pong delay. A new or factory-reset FM-1 has it as patch 16 (the 808 and 909 Kits move to 17
-  and 18); an FM-1 already in use keeps its bank: send 8 Lire from the editor.
+  a Hyper LFO and a ping-pong delay.
+- A new engine and factory patch, **Elvira 2**, after the neutral labs Elmyra 2: four wavetable voices on the white keys
+  (from E2 to A6), each with its tune, wave, wavetable page, a MOD that lowers its sample rate, attack / release and
+  DRONE; then a saturated mix, a ladder low pass, a delay and OUCH (bite and choke), with two LFOs.
+- A new or factory-reset FM-1 has 8 Lire and Elvira 2 as patches 16 and 17 (the 808 and 909 Kits move to 18 and 19); an
+  FM-1 already in use keeps its bank: send them from the editor.
 
 ## 1.0.0 — 2026-10-21
 

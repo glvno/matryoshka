@@ -29608,6 +29608,10 @@
    "cycles": 358072
   },
   {
+   "name": "Elvira 2",
+   "cycles": 311453
+  },
+  {
    "name": "808 Kit",
    "cycles": 475655
   },
@@ -29694,6 +29698,10 @@
   {
    "name": "assembly echo",
    "cycles": 136357
+  },
+  {
+   "name": "assembly Elvira 2",
+   "cycles": 311453
   },
   {
    "name": "assembly Expander S",

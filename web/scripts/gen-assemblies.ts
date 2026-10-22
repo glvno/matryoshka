@@ -9,16 +9,16 @@ import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
-/** 8 Lire's touch plates: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES), repeated over the
- * keybed in blocks of eight white keys (E2..E3, F3..F4, G4..G5, A5..A6), one Drum map per block, so every white key
- * plays a plate (a stopgap until the Drum map repeats its rows itself, #184) */
+/** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES),
+ * repeated over the keybed in blocks of eight white keys (E2..E3, F3..F4, G4..G5, A5..A6), one Drum map per block, so
+ * every white key plays a plate (a stopgap until the Drum map repeats its rows itself, #184) */
 const WHITE = [0, 2, 4, 5, 7, 9, 11];
 const whiteFrom = (note: number, n: number): number[] => {
   const out: number[] = [];
   for (let k = note; out.length < n; k++) if (WHITE.includes(k % 12)) out.push(k);
   return out;
 };
-const LIRE_KEYS = [40, 53, 67, 81].map((start) => whiteFrom(start, 8));
+const PLATE_KEYS = [40, 53, 67, 81].map((start) => whiteFrom(start, 8));
 const GX = 320;
 const GY = 560;
 
@@ -1611,7 +1611,7 @@ asm('Vernon 100', 'Voices', (b) => {
 
 // 8 Lire, after the SOMA Laboratory Lyra-8 (#182; the panel as we remember it, not checked against SOMA's manual): eight
 // voices, no keyboard. Drum maps turn the white keys into eight gates, one per touch plate (F3..F4 as the drum kits'
-// rows, repeated in blocks of eight white keys: LIRE_KEYS); each voice keeps its own tuning and plays a triangle through a VCA on its own envelope (attack / release
+// rows, repeated in blocks of eight white keys: PLATE_KEYS); each voice keeps its own tuning and plays a triangle through a VCA on its own envelope (attack / release
 // for the FAST / SLOW switch). Voices come in pairs (1-2, 3-4, 5-6, 7-8): a pair shares a waveshaper (SHARP) and a
 // modulation depth (MOD, into both voices' pitch); pairs come in quads (1-4, 5-8): a quad shares HOLD (an offset into its
 // voices' VCAs, so they drone with nothing held) and its modulation bus, a mix of the other quad, the Hyper LFO and the
@@ -1619,7 +1619,7 @@ asm('Vernon 100', 'Voices', (b) => {
 // the delay time. The drive, then the delay (the FM-1 holds one Delay: the Lyra's two lines are its ping-pong taps, the
 // engine's l / r). Cross-quad and feedback modulation run one block late (the cables close loops).
 asm('8 Lire', 'Voices', (b) => {
-  const maps = LIRE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
+  const maps = PLATE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
   const lfoA = b.add('lfo', 0, 1, { wave: 3, rate: 0.7, depth: 1 });
   const lfoB = b.add('lfo', 0, 2, { wave: 3, rate: 1.9, depth: 1 });
   const logic = b.add('logic', 0, 3, {});
@@ -1706,6 +1706,89 @@ asm('8 Lire', 'Voices', (b) => {
     b.param('attack', v.env, 'a');
     b.param('release', v.env, 'r');
   });
+  b.param('out', scope, 'view', { col: true });
+});
+
+// Elvira 2, after the neutral labs Elmyra 2 (its manual v2.4): four voices, each a wavetable oscillator (PG's four pages
+// = `bank`, WAVE = `pos`, TUNE) through its MOD program (here the SRR one, a Bitcrusher's rate: clean at the left) into a
+// VCA on its own envelope (the ENV knob's attack and release as two rows) plus DRONE (an offset into the VCA: the
+// envelope held at the top). The keys play the voices as touchpads: the Drum maps' rows 1-4 and 5-8 are voices 1-4 (the
+// white keys from E2 to A6, as 8 Lire). The mix is saturated, then the ladder low pass (CUTOFF, RESO), the delay (TIME,
+// FDBK, MIX; ours reaches 520 ms, the original 1.6 s) and OUCH: BITE (a folding Waveshaper) into CHOKE (a low pass, open
+// at the right), without the original's analog feedback loop or modifier ports; VOL. LFO 1 (sine) into the cutoff, LFO 2
+// (a wave choice) into the bite, each by an amount (on the original they are patched by hand). No sequencer, no CHRM:
+// TUNE is in semitones.
+asm('Elvira 2', 'Voices', (b) => {
+  const maps = PLATE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
+  const lfo1 = b.add('lfo', 0, 1, { wave: 0, rate: 0.2, depth: 1 });
+  const lfo2 = b.add('lfo', 0, 2, { wave: 2, rate: 3, depth: 1 });
+  const toCutoff = b.add('scale', 0, 3, { gain: 0, offset: 0 });
+  const toBite = b.add('scale', 0, 4, { gain: 0, offset: 0 });
+  //               bank pos  coarse attack release
+  const set: [number, number, number, number, number][] = [
+    [0, 0.2, -15, 0.05, 0.8], [1, 0.4, -8, 0.05, 0.8], [2, 0.3, -3, 0.3, 1.5], [3, 0.6, 0, 0.3, 1.5],
+  ];
+  const voices = set.map(([bank, pos, coarse, a, r], i) => {
+    const wt = b.add('wavetable', 1 + i, 0, { bank, pos, coarse, level: 0.8 });
+    const srr = b.add('crush', 1 + i, 1, { bits: 16, rate: 1 });
+    const env = b.add('adsr', 1 + i, 2, { a, d: 0.2, s: 1, r });
+    const drone = b.add('const', 1 + i, 3, { value: 0 });
+    const vca = b.add('vca', 1 + i, 4, { gain: 1 });
+    b.wire(wt, 'out', srr, 'in');
+    b.wire(srr, 'out', vca, 'in');
+    b.wire(env, 'env', vca, 'cv');
+    b.wire(drone, 'out', vca, 'cv');
+    for (const map of maps) for (const row of [i + 1, i + 5]) b.wire(map, `g${row}`, env, 'gate'); // (any key of the voice holds the gate up)
+    return { wt, srr, env, drone, vca };
+  });
+  const mix = b.add('mixer', 5, 0, { l1: 0.7, l2: 0.7, l3: 0.7, l4: 0.7 });
+  const sat = b.add('shape', 5, 1, { drive: 2, mode: 0, level: 0.8 });
+  const lpf = b.add('ladder', 6, 0, { cutoff: 2500, res: 0.25, cvamt: 3 });
+  const dly = b.add('delay', 6, 1, { time: 400, fb: 0.4, mix: 0.3 });
+  const bite = b.add('shape', 7, 0, { drive: 1, mode: 2, level: 0.8 }, { p1: 'drive' });
+  const choke = b.add('filter', 7, 1, { cutoff: 16000, res: 0 });
+  const scope = b.add('scope', 8, 0, { time: 16 });
+  voices.forEach((v, i) => b.wire(v.vca, 'out', mix, `in${i + 1}`));
+  b.wire(mix, 'out', sat, 'in');
+  b.wire(sat, 'out', lpf, 'in');
+  b.wire(lpf, 'lp24', dly, 'in');
+  b.wire(dly, 'out', bite, 'in');
+  b.wire(bite, 'out', choke, 'in');
+  b.wire(choke, 'lp12', scope, 'a');
+  b.wire(lfo1, 'out', toCutoff, 'in');
+  b.wire(toCutoff, 'out', lpf, 'cv');
+  b.wire(lfo2, 'out', toBite, 'in');
+  b.wire(toBite, 'out', bite, 'p1');
+  voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, [v.wt, v.srr, v.env, v.drone, v.vca]));
+  voices.forEach((v) => {
+    b.nestInput('gate', v.env, 'gate');
+    b.nestOutput('out', v.vca, 'out');
+  });
+  b.input('keys', maps[1], 'keys', ...maps.filter((_, i) => i !== 1).map((m) => [m, 'keys'] as [number, string]));
+  b.output('out', choke, 'lp12');
+  voices.forEach((v, i) => {
+    b.param('tune', v.wt, 'coarse', { head: `voice ${i + 1}`, ...(i % 2 === 0 ? { col: true } : {}) });
+    b.param('fine', v.wt, 'fine');
+    b.param('wave', v.wt, 'pos');
+    b.param('page', v.wt, 'bank');
+    b.param('mod', v.srr, 'rate', { group: true });
+    b.param('attack', v.env, 'a');
+    b.param('release', v.env, 'r');
+    b.param('drone', v.drone, 'value');
+  });
+  b.param('cutoff', lpf, 'cutoff', { col: true, head: 'lpf' });
+  b.param('reso', lpf, 'res');
+  b.param('time', dly, 'time', { head: 'delay' });
+  b.param('fdbk', dly, 'fb');
+  b.param('mix', dly, 'mix');
+  b.param('bite', bite, 'drive', { head: 'ouch' });
+  b.param('choke', choke, 'cutoff');
+  b.param('vol', bite, 'level');
+  b.param('lfo 1 freq', lfo1, 'rate', { col: true, head: 'lfos' });
+  b.param('lfo 1 → cutoff', toCutoff, 'gain');
+  b.param('lfo 2 freq', lfo2, 'rate', { group: true });
+  b.param('lfo 2 wav', lfo2, 'wave');
+  b.param('lfo 2 → bite', toBite, 'gain');
   b.param('out', scope, 'view', { col: true });
 });
 
@@ -2169,6 +2252,7 @@ const BLURBS: Record<string, string> = {
   'Io 4': 'Jupiter-4 type shit',
   'Vernon 100': 'ElectroComp 100 type shit',
   '8 Lire': 'Lyra-8 type shit',
+  'Elvira 2': 'Elmyra 2 type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',

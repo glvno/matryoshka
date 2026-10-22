@@ -1428,7 +1428,7 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
   patch in gen-presets.ts (slot 15, before the 808 Kit; the kits move to 16 / 17; `octave` −1 as the kits). 47 modules, all
   run once, no new module type, no engine change. The panel follows the Lyra-8 as remembered, **not checked against SOMA's
   manual**.
-- **Voices:** Drum maps (`LIRE_KEYS`, below) give each voice its gate: fixed tunings, not an
+- **Voices:** Drum maps (`PLATE_KEYS`, below) give each voice its gate: fixed tunings, not an
   allocator. Voice = triangle `osc` → `vca` on its own `adsr` (s 1: attack / release stand for FAST / SLOW), nested as
   `voice N`. Pair = one `shape` on both voices' VCAs (SHARP = drive) and one Attenuverter (MOD) into both pitches. Quad =
   an Offset into its four VCAs' cv (HOLD, added to the envelopes) and a mixer as its modulation bus: the other quad's
@@ -1440,7 +1440,7 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
 - **Card / pages:** sections 1-4, 5-8 (hold, from …, then mod / sharp per pair), hyper lfo, delay, out (drive, vol),
   voice 1..8 (tune, fine, attack, release).
 - **Every white key plays (stopgap until #184, the Drum map's own repeat):** four Drum maps on Main's keys, one per block
-  of eight white keys (`LIRE_KEYS`: E2..E3, F3..F4, G4..G5, A5..A6), each row's gate into the same voice envelope (a
+  of eight white keys (`PLATE_KEYS`: E2..E3, F3..F4, G4..G5, A5..A6), each row's gate into the same voice envelope (a
   copy held keeps it up); the card's `keys` jack feeds all four (`also`). Black keys and keys outside E2..A6 stay silent.
   The four maps cost about 8 CPU points and 10 memory points.
 - **Generator bug found, not fixed here:** gen-presets.ts `plugIn` wires only an input's primary target, not its `also`
@@ -1454,3 +1454,27 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
   (`unmeasured` = 8 Lire until it is measured on the device), engine.test plays C3 and C4 (8 Lire has no C3 plate).
 - **Checked:** vitest 70 files / 845 tests, `npm run cpu-costs`, `export-defs`. **Not checked:** the editor in a browser,
   golden (no engine change), emu:smoke, the device.
+
+## 2026-10-22: Elvira 2, a factory engine after the neutral labs Elmyra 2
+
+- **Source:** the Elmyra 2 manual v2.4 (neutral-labs.com/elmyra2/downloads/Elmyra2-v2.4-manual.pdf): 4 voices (touchpads /
+  GATE, ENV = attack and release on one knob, PG = 4 wavetable pages and drone mode, WAVE, MOD = the amount of one of 11
+  MODP programs, TUNE), the mix saturated, a ladder LPF (RESO, CUTOFF), a delay (TIME up to 1.6 s, FDBK, MIX), OUCH (an
+  analog distortion / waveshaper / low pass with its feedback loop on modifier ports: BITE, CHOKE), VOL; 2 LFOs patched
+  by hand, ATT / ADD utilities, a TUNE sequencer, CHRM (quantised tuning).
+- **Built:** `asm('Elvira 2', 'Voices', …)` in gen-assemblies.ts (blurb "Elmyra 2 type shit"; the name is the owner's) and
+  its patch (slot 16, after 8 Lire; the kits move to 17 / 18). Voice = `wavetable` (bank = page, pos = wave, coarse =
+  tune) → `crush` at 16 bits, `rate` = MOD (the SRR program, clean at 1) → `vca` on its `adsr` (s 1) plus an Offset
+  (`drone`, 0..1). Mix → `shape` (soft, the saturation) → `ladder` → `delay` → `shape` (fold: BITE, its level = VOL) →
+  `filter` lp12 (CHOKE, open at 16 kHz). LFO 1 (sine) → Attenuverter → ladder cv (`cvamt` 3 oct); LFO 2 (a wave choice) →
+  Attenuverter → the bite's drive pin.
+- **Keys:** the four Drum maps of 8 Lire (`PLATE_KEYS`, renamed from `LIRE_KEYS`, now shared): rows 1-4 and 5-8 both play
+  voices 1-4, so every white key from E2 to A6 plays one (black keys and the ends stay silent).
+- **Left out:** the 10 other MODP programs (one MOD program per voice, fixed), the OUCH feedback loop and modifier ports,
+  delay times over 520 ms (our Delay's limit), the sequencer, CHRM / scales (TUNE is in semitones), touch pressure
+  (velocity is ignored), ATT / ADD.
+- **Numbers:** estimate 47 %, memory 61 %; counted engine 311,453 cycles (model +1.1 %). Output level 1: one voice peaks
+  0.38, all four 0.49 (the saturation holds the mix down). Everything up (drone 1, mod 64, reso 1, fdbk 0.95, bite 32,
+  both LFO amounts 4, LFO 2 at 40 Hz): no NaN, peak 0.92.
+- **Checked:** vitest 70 files / 847 tests, `npm run cpu-costs`, `export-defs`. **Not checked:** the editor in a browser,
+  emu:smoke (needs the CI firmware of this commit), the device.

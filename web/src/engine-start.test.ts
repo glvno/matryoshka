@@ -12,7 +12,7 @@ describe('"Start with an engine" (#160)', () => {
 
   it('has a tile per factory engine, with mono / stereo and a CPU figure', () => {
     expect(tiles.map((t) => t.name)).toEqual(FACTORY.filter((d) => defIsEngine(d)).map((d) => d.name));
-    expect(tiles).toHaveLength(18);
+    expect(tiles).toHaveLength(19);
     const by = (n: string) => tiles.find((t) => t.name === n)!;
     expect(by('Hera 6').stereo).toBe(true);
     expect(by('Oracle V').stereo).toBe(false);
@@ -40,6 +40,7 @@ describe('"Start with an engine" (#160)', () => {
     expect(by('Briefcase 3')).toBe('EMS VCS3 type shit');
     expect(by('Io 4')).toBe('Jupiter-4 type shit');
     expect(by('8 Lire')).toBe('Lyra-8 type shit');
+    expect(by('Elvira 2')).toBe('Elmyra 2 type shit');
     expect(by('Vernon 100')).toBe('ElectroComp 100 type shit');
     for (const t of tiles) {
       expect(t.def.blurb, t.name).toBeTruthy();
