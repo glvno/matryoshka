@@ -950,14 +950,15 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   70%, 100% { box-shadow: var(--tour-base, 0 0 0 0 transparent), 0 0 0 30px color-mix(in srgb, var(--secondary) 0%, transparent), 0 0 40px 30px color-mix(in srgb, var(--secondary) 0%, transparent); }
 }
 @keyframes tour-glow { 0%, 100% { outline-color: var(--secondary); } 50% { outline-color: color-mix(in srgb, var(--secondary) 55%, var(--ink)); } }
-.tour-focus { outline: 3px solid var(--secondary); outline-offset: 3px; border-radius: 6px; animation: tour-ping 1.2s cubic-bezier(.15, .6, .35, 1) infinite, tour-glow 1.2s ease-in-out infinite; }
+/* the tutorial's highlight; also Audio on while the audio is off (main.ts syncAudioBtn: .on while it plays) */
+.tour-focus, #audio-btn:not(.on) { outline: 3px solid var(--secondary); outline-offset: 3px; border-radius: 6px; animation: tour-ping 1.2s cubic-bezier(.15, .6, .35, 1) infinite, tour-glow 1.2s ease-in-out infinite; }
 .dot.tour-focus { outline-offset: 2px; border-radius: 50%; }
 .dot.connected.tour-focus { --tour-base: inset 0 0 0 3px var(--panel); }
 @media (max-width: 650px) { .tutorial { right: 0; bottom: 0; left: 0; width: auto; max-height: 55dvh; border-radius: 8px 8px 0 0; } .tutorial p { font-size: 12px; } }
 
 /* Docking must be immediate on resize; desktop follow-target animation must not leave the panel offscreen. */
 @media (max-width: 650px) { .tutorial:not(.dragging) { transition: none; } }
-@media (prefers-reduced-motion: reduce) { .tutorial:not(.dragging) { transition: none; } .tour-focus { animation: none; box-shadow: var(--tour-base, 0 0 0 0 transparent), 0 0 0 6px color-mix(in srgb, var(--secondary) 45%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .tutorial:not(.dragging) { transition: none; } .tour-focus, #audio-btn:not(.on) { animation: none; box-shadow: var(--tour-base, 0 0 0 0 transparent), 0 0 0 6px color-mix(in srgb, var(--secondary) 45%, transparent); } }
 .tutorial-audition button[aria-pressed="true"] { background: var(--secondary); color: var(--panel); }
 .tutorial input { max-width: 100%; min-width: 0; }
 
