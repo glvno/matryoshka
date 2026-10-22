@@ -36,7 +36,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - Keep the LCD manual (`manual.c`: ≤ 35 chars, capitals, no `;`), the ? help card and the shortcut handler in step with what they describe.
 - The firmware workflow's `paths` lists the web files `export-defs.ts` / `golden.ts` import: extend it when they gain imports.
 - `course.json` (tutorial) is data: edit it in the lesson editor; stored patches there must pass `validatePatch` after model changes.
-- Version strings are bumped at release.
+- Version strings are bumped at release. Releases: "Releasing" in docs/ARCHITECTURE.md (`release.yml`, emu:smoke and the owner's device check on those exact bytes, `npm run firmware -- <package>`, tag, GitHub release). Pages ships the committed package, so a firmware change reaches users only through a release. 1.0.0 = tag `v1.0.0` (2026-10-21); main is 1.1.0-dev.
 - A user-visible change adds a line under `## Unreleased` in CHANGELOG.md; session detail goes to docs/NOTES.md.
 
 ## Gotchas and lessons
