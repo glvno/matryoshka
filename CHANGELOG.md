@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Direct links: https://matry0shka.pages.dev/#fm1 opens the FM-1 view, #flash the firmware install (as before); both also
+  work when the address changes on an open page.
+
 ## 1.0.0 — 2026-10-21
 
 The first release of Matryoshka. It has two parts:

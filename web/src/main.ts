@@ -1869,16 +1869,20 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
   b.onclick = () => switchTab(b.dataset.tab!);
 }
 
-// open the tab named in the address (#library, #flash; the old #presets and #assemblies open the Library; #about opens the About card)
-{
+// open the tab named in the address (#library, #flash; the old #presets and #assemblies open the Library; #about opens the
+// About card; #fm1 opens the Patch tab's FM-1 view). Other sites link here (fm1-editor.com/firmware: #flash and #fm1)
+const openFromAddress = (): void => {
   const h = location.hash.slice(1);
   const tab = h === 'presets' || h === 'assemblies' ? 'library' : h;
   if (['patch', 'library', 'flash'].includes(tab)) switchTab(tab);
+  if (tab === 'fm1') { switchTab('patch'); setView('fm1'); }
   if (tab === 'about') void about.open();
-}
+};
+openFromAddress();
+window.addEventListener('hashchange', openFromAddress);
 
 
-if (currentTab === 'patch' && !shareCodeOf(location.href)) tutorial.welcome();
+if (currentTab === 'patch' && location.hash !== '#fm1' && !shareCodeOf(location.href)) tutorial.welcome();
 // the old address's hand-off (?migrate=1), and the toast of an import before the reload
 receiveMigration((keys) => importBrowserData(keys, new URL(OLD_ORIGIN).host));
 try {
