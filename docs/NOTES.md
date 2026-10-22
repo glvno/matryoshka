@@ -1496,3 +1496,11 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
   FM-1's slot in the editor.
 - **Checked:** proto_test (LIVE: the hook, no reply), golden, panel test, tools/pool_sizes.sh (stand-in compile of main.c,
   40,250 B free), vitest. **Not checked:** the JieLi build (CI), the editor with a device, the device.
+
+## 2026-10-22 (evening): 1.1.0 released
+
+- **Device first (owner):** the CI build of 6d2d067 (firmware.yml run 39864186973, v1.1.0-DEV / FM-1_700) installed with fm1_install.py over FM-1_710; FACTORY RESET wrote the 19 factory patches (first device check of FACTORY RESET); PRESET, the LIVE lock (`EDITOR LIVE: NO PRESET`, free again after Chrome quit), knob turns under Live on 8 Lire, 8 Lire and Elvira 2: "looks good".
+- **On the way, not a bug:** "stuck in Live with PRESET disabled" and "boots into safe mode" were an emptied bank: `preset_step` returns silently with no slots, and an empty bank boots the fallback patch (the safe patch's name, no SAFE MODE message). The FM-1 had also still been on 1.0.0: the Flash tab installs the bundled package, which changes only with a release. Idea, not done: a BANK EMPTY message on PRESET.
+- **The release build:** release.yml run 39871109097 from 6d2d067, v1.1.0 / FM-1_711, package sha256 8e3cf32a…; emu:smoke 124 / 0 on matryoshka-1.1-app.bin. **Not device-checked on these exact bytes** (they differ from the checked CI build in the version string and identity only): the owner chose to release; installing 1.1.0 from the Flash view is that check.
+- **Ship:** db2ce1d (the Flash view: Patch | FM-1 | Flash), `npm run firmware -- build/release-1.1/matryoshka-1.1.fwsc`, web 1.1.0, CHANGELOG 1.1.0 dated 2026-10-22 (3075b24); `git diff 6d2d067 3075b24 -- firmware tools` empty; tag `v1.1.0` on 3075b24; GitHub release with matryoshka-1.1.fwsc, SHA256SUMS, matryoshka-1.1.zip.
+- **After:** main at 1.2.0-dev / v1.2.0-DEV. Still to check on a device: MIDI clock in, program change (and that LIVE holds it), a power cut mid-write.
