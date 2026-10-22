@@ -78,14 +78,14 @@
         <div id="canvas-space"><div id="patch-world"><svg id="cables" class="cables"></svg><div id="modules"></div><svg id="cable-glow" class="cables cable-glow" aria-hidden="true"></svg><svg id="patch-preview" class="cables patch-preview"></svg></div></div>
       </div>
       <div id="fm1-view" hidden></div>
-      <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true">Patch</button><button type="button" role="tab" data-view="fm1" aria-selected="false" title="The FM-1's own screen and panel, emulated (its firmware, compiled for the browser)">FM-1</button></div>
+      <section id="flash-view" class="flash-view" aria-label="Flash firmware" hidden></section>
+      <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true">Patch</button><button type="button" role="tab" data-view="fm1" aria-selected="false" title="The FM-1's own screen and panel, emulated (its firmware, compiled for the browser)">FM-1</button><button type="button" role="tab" data-view="flash" aria-selected="false" title="Install the Matryoshka firmware on the FM-1, or go back to the stock one">Flash</button></div>
       <div id="diff" class="panel" hidden></div>
       <!-- Connect FM-1 (top right of the canvas): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
       <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
       <button id="help-btn" class="help-btn" type="button" title="Shortcuts (?)" aria-label="Keyboard and mouse shortcuts">?</button>
     </section>
     <section id="tab-library" class="tab" role="tabpanel" aria-labelledby="nav-library" hidden></section>
-    <section id="tab-flash" class="tab" aria-label="Flash firmware" hidden></section>
     </main>
     <div id="wheels" class="wheels" role="group" aria-label="Wheels"></div>
     <div class="dock-wrap"><div id="dock" class="dock" role="group" aria-label="Main"></div><svg class="dock-cables cables" aria-hidden="true"></svg></div>

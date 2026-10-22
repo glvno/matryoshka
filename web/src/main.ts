@@ -871,7 +871,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Start audio', keywords: 'sound browser', run: () => void startAudio() },
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
-    { kind: 'command', label: 'Flash firmware', keywords: 'install update hardware', run: () => switchTab('flash') },
+    { kind: 'command', label: 'Flash firmware', keywords: 'install update hardware', run: () => { switchTab('patch'); setView('flash'); } },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
     { kind: 'command', label: 'Keyboard shortcuts', keywords: 'help', detail: '?', run: () => help.showModal() },
     { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
@@ -1418,17 +1418,20 @@ function emuKeys(msg: HostMsg): boolean {
 }
 // the Patch | FM-1 switch over the canvas
 const viewBtns = [...document.querySelectorAll<HTMLButtonElement>('#view-switch [data-view]')];
-function setView(v: 'patch' | 'fm1'): void {
+function setView(v: 'patch' | 'fm1' | 'flash'): void {
   for (const b of viewBtns) b.setAttribute('aria-selected', String(b.dataset.view === v));
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
+  $('flash-view').hidden = v !== 'flash';
   // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go
+  // (and from the Flash view, the firmware install page)
   document.querySelector('.workspace')!.classList.toggle('fm1-mode', v === 'fm1');
+  document.querySelector('.workspace')!.classList.toggle('flash-mode', v === 'flash');
   host.setMaster(v === 'fm1' ? emuLevel : 1);
   if (v === 'fm1') void emu.show();
   else emu.hide();
 }
-for (const b of viewBtns) b.onclick = () => setView(b.dataset.view as 'patch' | 'fm1');
+for (const b of viewBtns) b.onclick = () => setView(b.dataset.view as 'patch' | 'fm1' | 'flash');
 
 // the keyboard folds away, leaving the deck's buttons; remembered per browser
 const KEYS_HIDDEN = 'matryoshka.keys-hidden';
@@ -1857,7 +1860,7 @@ refreshAssemblies = buildAssembliesTab($('tab-library'), {
     status.textContent = msg;
   },
 });
-buildFlashTab($('tab-flash'));
+buildFlashTab($('flash-view'));
 const about = new AboutCard($<HTMLDialogElement>('about'));
 $('about-btn').onclick = (e) => {
   e.stopPropagation();   // under the logo, which expands the collapsed sidebar
@@ -1888,13 +1891,14 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
   b.onclick = () => switchTab(b.dataset.tab!);
 }
 
-// open the tab named in the address (#library, #flash; the old #presets and #assemblies open the Library; #about opens the
-// About card; #fm1 opens the Patch tab's FM-1 view). Other sites link here (fm1-editor.com/firmware: #flash and #fm1)
+// open the tab named in the address (#library; the old #presets and #assemblies open the Library; #about opens the About
+// card; #fm1 and #flash open the Patch tab's FM-1 and Flash views). Other sites link here (fm1-editor.com/firmware: #flash
+// and #fm1)
 const openFromAddress = (): void => {
   const h = location.hash.slice(1);
   const tab = h === 'presets' || h === 'assemblies' ? 'library' : h;
-  if (['patch', 'library', 'flash'].includes(tab)) switchTab(tab);
-  if (tab === 'fm1') { switchTab('patch'); setView('fm1'); }
+  if (['patch', 'library'].includes(tab)) switchTab(tab);
+  if (tab === 'fm1' || tab === 'flash') { switchTab('patch'); setView(tab); }
   if (tab === 'about') void about.open();
 };
 openFromAddress();

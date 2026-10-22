@@ -196,7 +196,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 main { min-width: 0; min-height: 0; overflow: auto; }
 .tab:not(#tab-patch) { padding: 24px; }
 .tab[hidden] { display: none; }
-#tab-presets, #tab-assemblies, #tab-flash { width: min(100%, 640px); margin: 0 auto; }
+#tab-presets, #tab-assemblies { width: min(100%, 640px); margin: 0 auto; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 /* touch-action: none: the canvas's own pinch, two-finger pan and one-finger pan (editor.ts touchGestures, rubberBand)
    take its gestures, not the browser's page zoom or scroll (#153) */
@@ -1476,6 +1476,11 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 #fm1-view[hidden] { display: none; }
 /* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it */
 .workspace.fm1-mode > :is(.wheels, .dock-wrap, .deck) { display: none; }
+/* the Flash view: the install page over the canvas, under the Patch | FM-1 | Flash switch */
+#flash-view { position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--bg); padding: 52px 16px 24px; }
+#flash-view[hidden] { display: none; }
+#flash-view > * { max-width: 640px; margin-inline: auto; }
+.workspace.flash-mode > :is(.wheels, .dock-wrap, .deck) { display: none; }
 /* the panel: 1280 x 678 units (fm1-view.ts places everything in them), scaled to the view. "The doll" (decided with the
    user from the colourways canvas https://claude.ai/artifact/Kkg2ghED6iJq1XVxHjV6sJ, C6): a coral shell, an ivory face with the logo under the left section and the
    wordmark under the screen, a gold band, a teal keybed; the same in both themes (the brand's own colours), so the
