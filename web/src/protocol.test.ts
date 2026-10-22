@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { chunkFrames, commitFrame, crc16, frame, pack7, paramFrame, parse, parseSlot, slotEraseFrame, slotFrame, slotInfoFrame, unpack7, CMD } from './protocol';
+import { chunkFrames, commitFrame, crc16, frame, liveFrame, LIVE_MS, pack7, paramFrame, parse, parseSlot, slotEraseFrame, slotFrame, slotInfoFrame, unpack7, CMD } from './protocol';
 
 describe('SysEx protocol', () => {
   it('packs and unpacks every length without loss and with 7-bit bytes only', () => {
@@ -45,6 +45,13 @@ describe('SysEx protocol', () => {
 
   it('encodes parameter values as signed Q16.16 little endian', () => {
     expect(parse(paramFrame(3, 1, -65536))!.payload).toEqual([3, 1, 0, 0, 0xff, 0xff]);
+  });
+
+  it('LIVE (#185): no payload, often enough for the FM-1 to hold it (its LIVE_HOLD_MS is 5 s)', () => {
+    const p = parse(liveFrame())!;
+    expect(p.cmd).toBe(0x2c);
+    expect(p.payload).toEqual([]);
+    expect(LIVE_MS * 2).toBeLessThan(5000); // (a lost one does not let PRESET go)
   });
 
   it('builds the preset bank commands', () => {

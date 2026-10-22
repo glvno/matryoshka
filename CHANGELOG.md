@@ -24,6 +24,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - A new engine and factory patch, **Elvira 2**, after the neutral labs Elmyra 2: four wavetable voices on the white keys
   (from E2 to A6), each with its tune, wave, wavetable page, a MOD that lowers its sample rate, attack / release and
   DRONE; then a saturated mix, a ladder low pass, a delay and OUCH (bite and choke), with two LFOs.
+- Fixed: with the editor's Live on, a knob click on the FM-1 could make a value jump (the FM-1 and the editor had come to
+  hold different values). While Live is on, PRESET and program change on the FM-1 no longer load a slot of their own, and
+  each knob turn reaches the editor as the exact parameter it moved.
 - A new or factory-reset FM-1 has 8 Lire and Elvira 2 as patches 16 and 17 (the 808 and 909 Kits move to 18 and 19); an
   FM-1 already in use keeps its bank: send them from the editor.
 

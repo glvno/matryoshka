@@ -279,11 +279,33 @@ static int preset_load(uint32_t n)
     return 0;
 }
 
+/* the editor's Live (proto.c LIVE, sent every 2 s while it is on): the FM-1 plays the editor's patch, so PRESET and program
+ * change do not load a slot under it (the two would edit different patches, #185); it lapses 5 s after the last LIVE, so a
+ * closed tab or a pulled cable frees them */
+#define LIVE_HOLD_MS 5000u
+static uint32_t live_until;
+static uint8_t live_seen;
+static void m1_live(void)
+{
+    live_until = fm1_ms + LIVE_HOLD_MS;
+    live_seen = 1;
+}
+static int editor_live(void)
+{
+    if (live_seen && (int32_t)(live_until - fm1_ms) <= 0)
+        live_seen = 0;
+    return live_seen;
+}
+
 static void preset_step(int32_t d)                  /* the PRESET knob: the next / previous occupied slot */
 {
     uint32_t s = cur_preset, i;
     if (!bank_mask)
         return;
+    if (editor_live()) {
+        ui_msg("EDITOR LIVE: NO PRESET", 1500);
+        return;
+    }
     for (i = 0; i < M1_SLOTS; i++) {
         s = (s + (d > 0 ? 1u : M1_SLOTS - 1u)) % M1_SLOTS;
         if (slot_used(s))
@@ -534,7 +556,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                 eng_ctl(ENG_CTL_BEND, ((int32_t)(v << 7 | n) - 8192) << 3);
             } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
                 eng_ctl(ENG_CTL_AT, (int32_t)(n * 65536u / 127u));
-            } else if (st == 0xC0u && cfg.prog_chg && slot_used(n)) {   /* program change n: bank slot n (an empty one: nothing) */
+            } else if (st == 0xC0u && cfg.prog_chg && slot_used(n) && !editor_live()) {   /* program change n: bank slot n (an empty one, or the editor's Live: nothing) */
                 pages_patch_ask();                     /* its name over the bars, as PRESET (#170) */
                 preset_load(n);
             }

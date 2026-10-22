@@ -35,6 +35,8 @@ static int transport_calls;
 static void m1_transport(int run) { (void)run; transport_calls++; }
 static uint32_t focus_calls, focus_dev, focus_page;
 static void m1_focus(uint32_t dev, uint32_t pg) { focus_calls++; focus_dev = dev; focus_page = pg; }
+static uint32_t live_calls;
+static void m1_live(void) { live_calls++; }
 static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
 {
     slot_writes++;
@@ -167,6 +169,13 @@ int main(int argc, char **argv)
             n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
             CHECK(n == (pg == 0u ? 33u : pg == 1u ? 8u : 1u) && p[0] == pg && (n < 2u || p[1] == pg * 32u));
         }
+    }
+    /* LIVE (no payload): the hook, and no reply (it comes every 2 s) */
+    {
+        uint8_t q[4] = {0x7D, 0x4D, 0x31, C_LIVE};
+        nreplies = 0;
+        CHECK(m1_handle(q, sizeof q) == 1);
+        CHECK(live_calls == 1 && nreplies == 0);
     }
     if (argc > 9) {                                              /* the preset bank commands */
         long ns2;

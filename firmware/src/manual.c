@@ -6,7 +6,8 @@
 
 static const char *const MANUAL[] = {
     "#THE DEVICE PLAYS PATCHES",
-    " PRESET: NEXT / PREV PATCH (BANK)",
+    " PRESET: NEXT / PREV PATCH (BANK),",
+    "   NOT WHILE THE EDITOR IS LIVE",
     " PLAY: TRANSPORT RUN / STOP",
     " PLAY HELD + PRESET: TEMPO",
     " SAVE: THE PATCH INTO ITS SLOT, AND",

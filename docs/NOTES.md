@@ -1478,3 +1478,21 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
   both LFO amounts 4, LFO 2 at 40 Hz): no NaN, peak 0.92.
 - **Checked:** vitest 70 files / 847 tests, `npm run cpu-costs`, `export-defs`. **Not checked:** the editor in a browser,
   emu:smoke (needs the CI firmware of this commit), the device.
+
+## 2026-10-22: Live knob jumps (#185)
+
+- **Report (owner):** with Live on, one click on the FM-1 made 8 Lire's feedback jump from 0.45 to about 0.9; every value on
+  the FM-1 differed from the editor's, and the click snapped the editor to the FM-1's.
+- **Cause (from the code, not reproduced on a device):** a knob turn reaches the editor as its row's position (CC 16..19)
+  applied to the editor's page in focus (`Editor.turnKnob`), so any difference in values or pages shows as a jump. Ways
+  in: PRESET / program change under Live load a slot of the FM-1's own while the page ignores PRESET (#120); the editor's
+  focus follows only relative SELECT / ALGO through the wasm panel copy. Ruled out: the click step (`DELAY_INC` 655), the
+  CC conversion both ways, an echo (`fromDevice`), the patch (`tools/ui_preview.sh 15 0:5` shows 330 / 0.45 / 0.35 / on).
+- **Fix:** protocol LIVE 0x2C (feature bit 6, M1_FEATURES 118; proto.c hook `m1_live`, main.c `editor_live`,
+  `LIVE_HOLD_MS` 5000): PRESET shows `EDITOR LIVE: NO PRESET`, program change is ignored, until 5 s after the last LIVE.
+  Web: `device.live()` every `LIVE_MS` (2000) and at Live on; `onEditorPatch` (set by an upload, cleared by SLOT_NOW from an
+  FM-1 without LIVE) and `exactKnobs()` in main.ts: then PARAM_NOW / FOCUS_NOW drive the editor (and `emu.ui.focus`), and
+  the mirror's `knob` input is skipped. LCD manual: PRESET line. The owner chose the lock over pausing Live or opening the
+  FM-1's slot in the editor.
+- **Checked:** proto_test (LIVE: the hook, no reply), golden, panel test, tools/pool_sizes.sh (stand-in compile of main.c,
+  40,250 B free), vitest. **Not checked:** the JieLi build (CI), the editor with a device, the device.

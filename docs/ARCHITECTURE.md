@@ -465,7 +465,7 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 
 ## MIDI in and out (#64, 2026-10-18)
 
-- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot: ignored), CC 16..19 = K1..K4 (the rows of the page in focus), CC 22 = morph, CC 80..86 = presses (64 and up) and releases of the patch buttons FX..ARP, CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
+- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot, or while the editor's Live is on: ignored), CC 16..19 = K1..K4 (the rows of the page in focus), CC 22 = morph, CC 80..86 = presses (64 and up) and releases of the patch buttons FX..ARP, CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
 - Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): every panel control, the "MIDI out map" below (#115). What came in is not sent out again. Not verified: USB is not emulated.
 
 ### MIDI out map (#115, 2026-10-19)
@@ -501,8 +501,14 @@ CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in
   modulation wheel, MASTER and the transport to the page. Nothing is sent back to the FM-1 (`fromDevice`). PRESET is
   not followed while Live is on (the FM-1 then plays the editor's patch; its slots are its own).
 - The FM-1 tab names the firmware and greys the controls it does not report (`Fm1View.following`).
-- The FM-1's PARAM_NOW / FOCUS_NOW and its CC on the Live link are no longer used by the page (the firmware still sends
-  them). A knob's value now arrives as its row's 7-bit position (CC 16..19), not the exact value.
+- The FM-1's CC on the Live link are not used by the page. A knob's value arrives as its row's 7-bit position (CC 16..19),
+  not the exact value, and turns K1..K4 of the editor's page in focus; except under Live with the FM-1 on the editor's
+  patch (`exactKnobs` in main.ts, #185): then PARAM_NOW (module, parameter, value) moves the parameter and FOCUS_NOW the
+  page (the editor and the mirror's panel copy), so a turn cannot land on another row when the two disagree on the page.
+- **LIVE** (#185, protocol 0x2C, feature bit 6): every 2 s while Live is on (`LIVE_MS`) the editor tells the FM-1; until 5 s
+  after the last (`LIVE_HOLD_MS`, main.c `editor_live`) PRESET and program change load no slot (`EDITOR LIVE: NO PRESET`),
+  so the FM-1 cannot leave the editor's patch under it. An FM-1 without LIVE (1.0.0) still can: its SLOT_NOW then ends
+  `exactKnobs` until the next upload.
 - Connect FM-1 (it answers HELLO, so it runs Matryoshka) also starts following it; FM-1 & MIDI > Follow the FM-1 does
   it for any firmware, with a firmware list (detect, or by hand).
 

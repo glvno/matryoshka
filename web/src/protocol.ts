@@ -29,6 +29,9 @@
 //                                                    TRACK_NOTES_MAX); no reply. Feature bit 5.
 //   29 FOCUS    device u8, page u8                   show this device page (indices into the binary's device pages section,
 //                                                    pages.ts) and put it on K1..K4; no reply. Feature bit 4.
+//   2C LIVE     (none)                               every LIVE_MS while the editor's Live is on: the FM-1 plays the
+//                                                    editor's patch, so PRESET and program change load no slot until
+//                                                    5 s after the last one; no reply. Feature bit 6.
 // device -> host
 //   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
 //   43 SLOT_NOW  slot u8, name 20 bytes                unasked: the slot the FM-1 plays now (a patch from its panel, program
@@ -40,14 +43,14 @@
 //                                                    its values, a hit recorded with REC)
 //   47 PARAM_NOW  module u8, param u8, value i32      unasked: a parameter turned on the FM-1 (K1..K4 on a device page)
 //   48 FOCUS_NOW  device u8, page u8                  unasked: the device page the FM-1 shows now (SELECT / ALGO / HOME)
-//   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW, bit5 TRACK / TRACK_NOW]
+//   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW, bit5 TRACK / TRACK_NOW, bit6 LIVE]
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
 import { noteWord, TRACK_NOTES_MAX, wordNote, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store'];
@@ -171,6 +174,9 @@ export const focusFrame = (device: number, page: number): Uint8Array => frame(CM
 export const muteFrame = (module: number, on: boolean): Uint8Array => frame(CMD.mute, [module, on ? 1 : 0]);
 /** the arpeggiator's settings, and its transport (null = leave it) */
 export const transportFrame = (run: boolean): Uint8Array => frame(CMD.transport, [run ? 1 : 0]);
+export const liveFrame = (): Uint8Array => frame(CMD.live);
+/** how often the editor says LIVE (the FM-1 holds it 5 s: firmware main.c LIVE_HOLD_MS) */
+export const LIVE_MS = 2000;
 /** a macro range of pin 0 / 1 on parameter `param`: ends 0..1, or null to remove it */
 export const rangeFrame = (module: number, pin: number, param: number, range: [number, number] | null): Uint8Array =>
   frame(CMD.range, [module, pin, param, range ? 1 : 0, range ? Math.round(range[0] * 255) : 0, range ? Math.round(range[1] * 255) : 0]);

@@ -6,6 +6,7 @@ import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
+import { LIVE_MS } from './protocol';
 import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
@@ -98,6 +99,15 @@ let fitsDevice = true;
 /** Live sync is on (setLive: the connect dialog, the chip, FM-1 & MIDI's Sync / Stop syncing) */
 let liveOn = false;
 const live = (): boolean => device.connected && liveOn && fitsDevice;
+/** the FM-1 plays the editor's patch as uploaded (set by an upload; an FM-1 without LIVE, #185, may load a slot of its own
+ * under it, which clears it) */
+let onEditorPatch = false;
+/** Live with an FM-1 on the editor's patch that reports its knobs and pages exactly (PARAM_NOW / FOCUS_NOW, feature bit 4):
+ * a knob turn names its module and parameter, so it cannot land on another row (#185); otherwise (Live off, another firmware)
+ * the mirror's K1..K4 positions turn the rows of the editor's page in focus */
+const exactKnobs = (): boolean => live() && onEditorPatch && device.hasPages;
+// while Live is on, the FM-1 holds PRESET and program change (LIVE, #185; it lapses 5 s after the last)
+window.setInterval(() => { if (live()) device.live(); }, LIVE_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
@@ -154,13 +164,21 @@ let fromEmu = false;
 let deviceSlot: { slot: number; name: string } | null = null;
 device.onEvent = (e) => {
   if (e.kind === 'slot') {
+    if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
     devStatus(`FM-1 plays slot ${String(e.slot + 1).padStart(2, '0')} ${e.name}`);
     return;
   }
   // the panel itself (knobs, buttons, the focus) comes in as plain MIDI through the mirror (#120, fm1-profiles.ts), whatever
-  // firmware runs: the FM-1's PARAM_NOW / FOCUS_NOW and its CC here are not used
-  if (e.kind === 'param' || e.kind === 'focus' || e.kind === 'cc') return;
+  // firmware runs; the FM-1's PARAM_NOW / FOCUS_NOW only while it plays the editor's patch under Live (exactKnobs, #185)
+  if (e.kind === 'cc') return;
+  if (e.kind === 'param' || e.kind === 'focus') {
+    if (!exactKnobs()) return;
+    if (e.kind === 'focus') emu.ui?.focus(e.device, e.page);   // (the mirror's copy of the panel logic too)
+    fromDevice = true;
+    try { fm1Event(e, 'device'); } finally { fromDevice = false; }
+    return;
+  }
   if (!live()) return;
   fm1Event(e, 'device');
 };
@@ -208,6 +226,7 @@ async function sendPatch(): Promise<boolean> {
       dirty = false;
       devStatus('sending patch…');
       await device.upload(editor.patch);
+      onEditorPatch = true;
       baseline = JSON.stringify(editor.patch);
       devStatus('patch on the FM-1');
       const at = editor.focus && binaryPage(editor.patch, editor.focus.device, editor.focus.page);
@@ -248,6 +267,7 @@ function setLive(on: boolean): void {
   liveOn = on;
   syncChip();
   if (!on) return;
+  if (live()) device.live();
   declineSync(false);
   void sendPatch();
 }
@@ -1466,7 +1486,7 @@ async function mirrorInput(i: PanelInput): Promise<void> {
     switch (i.t) {
       case 'note': sink.send(i.on ? { t: 'on', note: i.note, vel: i.vel || 0.8 } : { t: 'off', note: i.note }); break;
       case 'mod': sink.send({ t: 'cc', n: 1, v: i.v * 127 }); break;
-      case 'knob': editor.turnKnob(i.k, i.u); break;
+      case 'knob': if (!exactKnobs()) editor.turnKnob(i.k, i.u); break;   // (else PARAM_NOW names the row: device.onEvent)
       case 'master': emu.setMaster(i.v); host.setMaster(i.v); break;
       case 'transport': setPlaying(i.run); break;
       case 'enc':

@@ -9,7 +9,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { muteFrame, trackFrame, parseTrack, focusFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { muteFrame, trackFrame, parseTrack, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit), `too-big` leaves it off because the patch does not fit */
@@ -277,6 +277,17 @@ export class DeviceLink {
   /** the firmware takes FOCUS and reports its knobs and pages (INFO feature bit 4) */
   get hasPages(): boolean {
     return !!(this.info && this.info.features & 16);
+  }
+
+  /** the firmware takes LIVE (INFO feature bit 6): PRESET and program change wait while the editor drives it */
+  get hasLive(): boolean {
+    return !!(this.info && this.info.features & 64);
+  }
+
+  /** the editor's Live is on (sent every LIVE_MS) */
+  live(): void {
+    if (!this.connected || !this.hasLive) return;
+    this.out!.send(liveFrame());
   }
 
   /** show a device page on the FM-1 (indices into the binary's device pages section) */
