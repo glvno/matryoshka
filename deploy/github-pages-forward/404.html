@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Matryoshka has moved</title>
+<link rel="canonical" href="https://matryoshka.pages.dev/">
+<!--
+  GitHub Pages (glvno.github.io/matryoshka) serves only this page, as index.html and 404.html (identical copies),
+  since 1.0 moved the app to Cloudflare Pages. It forwards every address to the new one, path, query and fragment kept, so
+  share links (#p=...) keep working. The browser keeps the app's data (patches, bank, library, settings) per origin: when
+  this origin holds some, it does not forward silently but offers to bring it along (web/src/migrate.ts has the protocol).
+  PRODUCTION and the links below must name SITE_URL of web/src/site.ts (site.test.ts checks).
+-->
+<style>
+:root{color-scheme:dark}
+body{max-width:38rem;margin:12vh auto;padding:0 16px;background:#171f21;color:#fff7e8;font:18px/1.6 system-ui,sans-serif}
+a{color:#e8b65a}h1{font-size:28px;line-height:1.2}
+button{font:inherit;cursor:pointer;border-radius:6px;padding:8px 16px;border:1px solid #e8b65a;background:#e8b65a;color:#171f21;font-weight:600}
+button.plain{background:none;color:#e8b65a;font-weight:400}
+.row{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;margin:20px 0}
+#status{min-height:1.6em;color:#cfe3df}
+.small{font-size:15px;color:#b9c4c2}
+[hidden]{display:none!important}
+</style>
+<h1>Matryoshka has moved.</h1>
+<p>It now lives at <a id="destination" href="https://matryoshka.pages.dev/">matryoshka.pages.dev</a>. Please update your bookmark.</p>
+<div id="offer" hidden>
+  <p>Your browser keeps your patches, FM-1 bank, library and settings separately for each address, so they are still here. Bring them along to the new address:</p>
+  <div class="row">
+    <button id="bring" type="button">Bring my patches</button>
+    <a id="without" href="https://matryoshka.pages.dev/">Open without them</a>
+  </div>
+  <p id="status" role="status"></p>
+  <p class="small">Or <button id="backup" class="plain" type="button">Download a backup</button> and open it at the new address with Load .json (or the command palette's Import browser backup).</p>
+</div>
+<script>
+'use strict';
+// the new address. A test may point it elsewhere with ?to=, honoured only when this page itself is served locally
+const PRODUCTION = 'https://matryoshka.pages.dev/';
+const params = new URLSearchParams(location.search);
+const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+const NEW_URL = (local && params.get('to')) || PRODUCTION;
+const NEW_ORIGIN = new URL(NEW_URL).origin;
+params.delete('to');
+
+const KEY = /^(matryoshka|modular-1)\./;
+const MIGRATE_READY = 'matryoshka-migrate-ready';
+const MIGRATE_DATA = 'matryoshka-migrate-data';
+const MIGRATE_DONE = 'matryoshka-migrate-done';
+
+// the same path below the new address, query and fragment kept
+const suffix = location.pathname.replace(/^\/matryoshka\/?/, '').replace(/^\/+/, '');
+const destination = new URL(suffix, NEW_URL);
+destination.search = params.toString();
+destination.hash = location.hash;
+for (const id of ['destination', 'without']) document.getElementById(id).href = destination.href;
+
+/** the app's keys and values in this origin's storage (none when storage is blocked) */
+function collect() {
+  const keys = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && KEY.test(k)) keys[k] = localStorage.getItem(k);
+    }
+  } catch (e) { /* storage blocked: nothing to bring */ }
+  return keys;
+}
+
+if (Object.keys(collect()).length === 0) {
+  location.replace(destination.href);
+} else {
+  document.getElementById('offer').hidden = false;
+  const status = document.getElementById('status');
+  let opened = null;
+
+  document.getElementById('bring').onclick = () => {
+    const target = new URL(destination.href);
+    target.searchParams.set('migrate', '1');
+    // (a user gesture, so not blocked as a popup; not noopener: the new page answers through window.opener)
+    opened = window.open(target.href, '_blank');
+    status.textContent = opened ? 'Opening the new address…' : 'The browser blocked the new tab. Allow pop-ups for this page, or download a backup below.';
+  };
+
+  window.addEventListener('message', (e) => {
+    if (e.origin !== NEW_ORIGIN || !opened || e.source !== opened) return;
+    const type = e.data && e.data.type;
+    if (type === MIGRATE_READY) {
+      opened.postMessage({ type: MIGRATE_DATA, keys: collect() }, NEW_ORIGIN);
+      status.textContent = 'Sending your patches…';
+    } else if (type === MIGRATE_DONE) {
+      status.textContent = 'Done, you can close this tab.';
+    }
+  });
+
+  document.getElementById('backup').onclick = () => {
+    const file = { format: 'matryoshka-browser-backup', version: 1, from: location.origin, saved: new Date().toISOString(), keys: collect() };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+    a.download = 'matryoshka-backup-' + file.saved.slice(0, 10) + '.json';
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+}
+</script>
+</html>

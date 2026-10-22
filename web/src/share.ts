@@ -4,6 +4,7 @@
 // Too long for a link (over LINK_MAX characters): the card positions and the assembly overlay are dropped first; a patch
 // still too long without them is flagged `tooLong` and is never copied (the share sheet offers Save file instead).
 import { validatePatch, type ModuleDef, type Patch } from './patch';
+import { SITE_URL } from './site';
 
 export const LINK_MAX = 8000;
 
@@ -48,8 +49,8 @@ const slim = (p: Patch): Patch => {
   return s;
 };
 
-/** where the app lives on GitHub Pages: the base of a link made outside a browser page (tests, scripts) */
-export const PAGES_URL = 'https://glvno.github.io/matryoshka/';
+/** where the app lives (site.ts): the base of a link made outside a browser page (tests, scripts) */
+export const PAGES_URL = SITE_URL;
 const here = (): string => (typeof location === 'undefined' ? PAGES_URL : location.href);
 
 /**

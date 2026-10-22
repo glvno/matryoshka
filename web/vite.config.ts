@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import { lessonEditor } from './dev/lesson-editor.ts';
+import { SITE_URL } from './src/site.ts';
 
 /** the commit being built, for the About card's "Version 1.0.0-dev (062e77c)": CI's GITHUB_SHA, else git, else '' */
 function buildSha(): string {
@@ -14,7 +15,8 @@ function buildSha(): string {
 
 export default defineConfig({
   base: './',
-  plugins: [lessonEditor()],
+  // index.html's link previews name the published address (src/site.ts), never the address it is served from
+  plugins: [lessonEditor(), { name: 'site-url', transformIndexHtml: { order: 'pre', handler: (html: string) => html.replaceAll('%SITE_URL%', SITE_URL) } }],
   define: { __BUILD__: JSON.stringify(buildSha()) },
   // the tutorial's built-in riff is a MIDI file, imported as bytes (`?inline`)
   assetsInclude: ['**/*.mid'],
