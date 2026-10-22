@@ -107,7 +107,7 @@ describe('the demo patch', () => {
     const k = new Float32Array(sr / 2);
     s.render(k, new Float32Array(k.length));
     expect(Math.max(...Array.from(k.subarray(sr / 4)).map(Math.abs))).toBeGreaterThan(0.01);
-  }, 60_000);
+  }, 180_000);
 
   it('the Hera line waits four bars, then starts at its first step; again after stop and PLAY', () => {
     const p = demoPatch();
@@ -133,5 +133,5 @@ describe('the demo patch', () => {
       const t = new Float32Array(sr * 4); // the release and the chorus die away
       e.render(t, new Float32Array(t.length));
     }
-  }, 60_000); // (renders ~33 s of the whole demo: several seconds on a CI runner)
+  }, 180_000); // (renders ~33 s of the whole demo: about a minute on a CI runner under coverage)
 });
