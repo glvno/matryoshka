@@ -697,7 +697,7 @@ int main(void)
         int main;
         bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
         (void)load("808 KIT");
-        cur_preset = 15;
+        cur_preset = N_PRESETS - 2u;                        /* the kits are the last two factory patches */
         pv_gen++;
         page = 0;
         trail_n = 0;
@@ -707,7 +707,7 @@ int main(void)
         enc(6, 1);
         for (i = y0 * 240u; i < y1 * 240u; i++)
             ink += fb[i] == P_INK;
-        check("PRESET: the next patch, its name over the bars", cur_preset == 16 && !strcmp(patch_label, "909 KIT")
+        check("PRESET: the next patch, its name over the bars", cur_preset == N_PRESETS - 1u && !strcmp(patch_label, "909 KIT")
               && ink > 50u && px(12, ROWS_Y + 15) == P_NIGHT);
         snap_to(getenv("PANEL_SNAP_PATCH"));
         memcpy(name1, fb, sizeof name1);
