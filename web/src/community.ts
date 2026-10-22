@@ -31,7 +31,7 @@ export const LICENCE = 'CC BY-SA 4.0';
 export const LICENCE_URL = 'https://creativecommons.org/licenses/by-sa/4.0/';
 export const ISSUE_FORM = 'https://github.com/glvno/matryoshka/issues/new?template=community-patch.yml';
 export const SUBREDDIT = 'r/MVaveFM1';
-/** the address without its scheme and trailing slash, as a search term (matryoshka.pages.dev) */
+/** the address without its scheme and trailing slash, as a search term (matry0shka.pages.dev) */
 const bare = (url: string): string => url.replace(/^https:\/\//, '').replace(/\/$/, '');
 /** a search of the subreddit for posts that link the app, at its address or the old one (Reddit's search takes OR) */
 export const REDDIT_SEARCH = `https://www.reddit.com/r/MVaveFM1/search?q=${encodeURIComponent(`${bare(SITE_URL)} OR ${bare(OLD_SITE_URL)}`)}&restrict_sr=1`;

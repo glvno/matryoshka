@@ -112,7 +112,7 @@ describe('the hand-off', () => {
     expect(OLD_ORIGIN).toBe('https://glvno.github.io');
   });
   it('strips migrate=1 and keeps the rest of the address', () => {
-    expect(withoutMigrate('https://matryoshka.pages.dev/?migrate=1&x=2#p=abc')).toBe('/?x=2#p=abc');
-    expect(withoutMigrate('https://matryoshka.pages.dev/brand/?migrate=1')).toBe('/brand/');
+    expect(withoutMigrate('https://matry0shka.pages.dev/?migrate=1&x=2#p=abc')).toBe('/?x=2#p=abc');
+    expect(withoutMigrate('https://matry0shka.pages.dev/brand/?migrate=1')).toBe('/brand/');
   });
 });

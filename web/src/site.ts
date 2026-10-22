@@ -4,6 +4,6 @@
 // GitHub Pages forwarder (deploy/github-pages-forward) points at it too.
 
 /** the app on Cloudflare Pages (the Pages project `matryoshka`, deployed by .github/workflows/pages.yml) */
-export const SITE_URL = 'https://matryoshka.pages.dev/';
+export const SITE_URL = 'https://matry0shka.pages.dev/';
 /** the address before 1.0, on GitHub Pages: it now serves only the forwarder, which hands its browser data over (migrate.ts) */
 export const OLD_SITE_URL = 'https://glvno.github.io/matryoshka/';

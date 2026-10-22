@@ -11,7 +11,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 The first release of Matryoshka. It has two parts:
 
 - a **patch editor** that runs in the browser (Chrome or Edge for the FM-1 connection), at
-  https://matryoshka.pages.dev/;
+  https://matry0shka.pages.dev/;
 - a **firmware for the M-VAVE FM-1** that turns it into a player for the patches you make in the editor.
 
 A patch is a small modular synthesizer: modules joined by cables, played from the keys. You build it in the editor, hear it
@@ -96,7 +96,7 @@ in the same tab. If your FM-1 runs anything other than the official firmware or 
 - Matryoshka grew out of [Modular-1](https://github.com/WiggisModular/Modular-1), and this editor used that name until
   1.0. It still reads what its earlier versions saved in the browser (patch, bank, assemblies, under the old
   `modular-1.*` names) and assembly files saved under the old format name. Older patch files load.
-- **The editor moved** from https://glvno.github.io/matryoshka/ to https://matryoshka.pages.dev/. The old address
+- **The editor moved** from https://glvno.github.io/matryoshka/ to https://matry0shka.pages.dev/. The old address
   forwards, so bookmarks and share links made before keep working. The browser keeps the editor's data per address: with
   data at the old address, it offers **Bring my patches**, which copies Your patches, the bank, the library, the open
   patch, the tutorial progress and the settings to the new one without replacing what is already there, or **Download a
