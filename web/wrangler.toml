@@ -1,0 +1,11 @@
+# Cloudflare Pages project matry0shka (https://matry0shka.pages.dev/): deployed by .github/workflows/pages.yml from web/
+# (`wrangler pages deploy`), which also uploads web/functions/ (the stored share links, src/share-store.ts).
+# With this file the bindings below are the project's (the dashboard's are replaced on each deploy).
+name = "matry0shka"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-10-01"
+
+# stored share links: the KV namespace PATCHES (`npx wrangler kv namespace create PATCHES`)
+[[kv_namespaces]]
+binding = "PATCHES"
+id = "3ff29d141f244a6587347bbca303a35d"

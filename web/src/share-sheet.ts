@@ -10,7 +10,7 @@ import { DEFS } from './modules';
 import { fitLine, paintPatchCard, patchFacts, savePatchCard } from './patch-card';
 import { NOTES_MAX, type Patch } from './patch';
 import { submitUrl } from './community';
-import { encodeShare, LINK_MAX, type Share } from './share';
+import { encodeShare, handOut, LINK_MAX, type HandedOut, type Share } from './share';
 
 export const SUBREDDIT = 'MVaveFM1';
 /** Reddit's submit page with the title filled in (the documented `title` parameter; `url` is left out on purpose: the post
@@ -58,6 +58,8 @@ const writeBy = (v: string): void => {
 };
 
 const n = (x: number): string => x.toLocaleString('en');
+/** where a stored link's patch is kept (share-store.ts): this site */
+const SITE_HOST = location.host;
 
 export class ShareSheet {
   private heading = el('h2', { id: 'share-title', class: 'share-heading' });
@@ -191,12 +193,14 @@ export class ShareSheet {
     this.share = s;
     this.layout.disabled = !s.layoutFits;
     this.layout.checked = s.layout;
-    this.readout.classList.toggle('over', s.tooLong || !s.layoutFits);
+    this.readout.classList.toggle('over', s.tooLong || (!s.layoutFits && !s.stores));
     this.readout.textContent = s.tooLong
-      ? `This patch is too big for a link (${n(s.length)} characters without the layout, over ${n(LINK_MAX)}). Save file (.json) instead and share the file.`
-      : !s.layoutFits
-        ? `Link: ${n(s.length)} characters, too long with the layout: the cards open on a grid.`
-        : `Link: ${n(s.length)} characters. Over ${n(LINK_MAX)}, the layout is dropped first.`;
+      ? `This patch is too big for a link. Save file (.json) instead and share the file.`
+      : s.stores
+        ? `Over ${n(LINK_MAX)} characters as a plain link: the patch is stored on ${SITE_HOST} and the link is short. It keeps the layout.`
+        : !s.layoutFits
+          ? `Link: ${n(s.length)} characters, without the layout: the cards are tidied when it opens.`
+          : `Link: ${n(s.length)} characters.`;
     this.copyBtn.disabled = this.postBtn.disabled = this.submitBtn.disabled = s.tooLong;
     this.fileBtn.classList.toggle('primary', s.tooLong);
   }
@@ -212,20 +216,36 @@ export class ShareSheet {
     this.msg.textContent = text;
   }
 
-  private async copy(): Promise<boolean> {
+  /** the link to hand out for the current settings (storing the patch on the site when it does not fit), or null after
+   *  saying why there is none */
+  private async handed(): Promise<HandedOut | null> {
     const s = await this.current();
-    if (s.tooLong) {
-      this.say('Too big for a link: save the file instead.');
-      return false;
-    }
+    if (s.stores && !s.tooLong) this.say(`Storing the patch on ${SITE_HOST}\u2026`);
     try {
-      await navigator.clipboard.writeText(s.link);
+      return await handOut(s);
+    } catch (e) {
+      this.say(`${(e as Error).message}. Save the file instead.`);
+      return null;
+    }
+  }
+
+  private async copy(): Promise<boolean> {
+    const h = await this.handed();
+    if (!h) return false;
+    try {
+      await navigator.clipboard.writeText(h.link);
     } catch (e) {
       this.say(`The link could not be copied: ${(e as Error).message}`);
       return false;
     }
-    this.say(`Link copied (${n(s.length)} characters${s.layout ? '' : '; the cards open on a grid'}).`);
-    this.ev.copied(s.link);
+    this.say(
+      h.stored
+        ? `Link copied (stored on ${SITE_HOST}).`
+        : h.fallback
+          ? `Link copied without the layout: the site could not store the patch (${h.fallback}).`
+          : `Link copied (${n(h.length)} characters${h.layout ? '' : '; the cards are tidied when it opens'}).`,
+    );
+    this.ev.copied(h.link);
     return true;
   }
 
@@ -240,13 +260,12 @@ export class ShareSheet {
   /** the Community shelf's issue form, filled in with this patch's link (the tab opens at once so it is not blocked) */
   private async submit(): Promise<void> {
     const tab = window.open('', '_blank');
-    const s = await this.current();
-    if (s.tooLong) {
+    const h = await this.handed();
+    if (!h) {
       tab?.close();
-      this.say('Too big for a link: the Community shelf takes patches as links.');
       return;
     }
-    if (tab) tab.location.href = submitUrl(this.ev.patch(), s.link);
+    if (tab) tab.location.href = submitUrl(this.ev.patch(), h.link);
     else this.say('The browser blocked the new tab: allow pop-ups to open the form.');
   }
 

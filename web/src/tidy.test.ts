@@ -4,7 +4,7 @@ import { makeAssembly, overlaps } from './assembly';
 import { DEFS } from './modules';
 import { addModule, emptyPatch, type Patch } from './patch';
 import { PRESETS } from './presets';
-import { TIDY_GAP, tidy, tidyAssembly, type TidySizes } from './tidy';
+import { isPile, TIDY_GAP, tidy, tidyAssembly, type TidySizes } from './tidy';
 
 const W = 250;
 const H = 300;
@@ -94,6 +94,36 @@ describe('tidy up', () => {
     expect(box(out).x).toBeGreaterThan(box(mix1).x);
     const ids = Object.keys(size).map(Number);
     for (const a of ids) for (const b of ids) if (a < b) expect(overlaps(box(a), box(b))).toBe(false);
+  });
+
+  it('spreads a pile (a share link without its layout) over the canvas, wider than tall, in the patch order', () => {
+    const p = emptyPatch();
+    const ids = Array.from({ length: 12 }, () => addModule(p, DEFS.osc, 0, 0).id);
+    expect(isPile(p, sizes)).toBe(true);
+    tidy(p, sizes);
+    expect(isPile(p, sizes)).toBe(false);
+    const boxes = ids.map((id) => { const [x, y] = at(p, id); return { x, y, w: W, h: H }; });
+    boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b)).toBe(false)));
+    const right = Math.max(...boxes.map((b) => b.x + b.w)), bottom = Math.max(...boxes.map((b) => b.y + b.h));
+    expect(right).toBeGreaterThan(bottom); // not one tall column
+    expect(at(p, ids[0])).toEqual([TIDY_GAP, TIDY_GAP]);
+  });
+
+  it('every factory patch, its cards piled at 0, 0: spread out with nothing overlapping', () => {
+    for (const [name, make] of Object.entries(PRESETS)) {
+      const p = make();
+      for (const m of p.modules) m.x = m.y = 0;
+      for (const a of p.assemblies ?? []) a.x = a.y = 0;
+      const size = (id: number) => ({ w: 200 + (id % 5) * 60, h: 120 + (id % 7) * 50 });
+      const sz: TidySizes = { module: size, container: size, frame: () => ({ pad: 12, head: 30, minW: 0 }) };
+      tidy(p, sz);
+      const inAsm = new Set((p.assemblies ?? []).flatMap((a) => a.modules));
+      const boxes = [
+        ...p.modules.filter((m) => !inAsm.has(m.id)).map((m) => ({ x: m.x, y: m.y, ...size(m.id) })),
+        ...(p.assemblies ?? []).filter((a) => !a.open && !(p.assemblies ?? []).some((b) => b.children?.includes(a.id))).map((a) => ({ x: a.x, y: a.y, ...size(a.id) })),
+      ];
+      boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b), name).toBe(false)));
+    }
   });
 
   it('every factory patch: nothing overlaps, tidied once or again (a packed layout may read as other columns)', () => {

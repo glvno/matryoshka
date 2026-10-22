@@ -4,7 +4,7 @@ import { resizeHandle } from './resize-handle';
 import { parseValue } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
-import { tidy, tidyAssembly } from './tidy';
+import { isPile, tidy, tidyAssembly } from './tidy';
 import { DEFS, drumRowName, PANEL_BUTTONS } from './modules';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
@@ -383,6 +383,7 @@ export class Editor {
     this.selectedAsm.clear();
     this.expandedOnce.clear();
     this.rebuild();
+    this.untangle();
     this.restoreView();
     this.ev.onLoad?.(p);
     this.ev.onStructure(p);
@@ -1964,6 +1965,16 @@ export class Editor {
       this.patch.modules.map((m) => [m.id, m.x, m.y, sz.module(m.id)]),
       assembliesOf(this.patch).map((a) => [a.id, a.x, a.y, a.open, a.frameSize, sz.container(a.id)]),
     ]);
+  }
+
+  /** a patch that opens as a pile (a share link without its layout): tidied with the cards as drawn, part of the load */
+  private untangle(): void {
+    const docked = this.docked();
+    const skip = new Set(docked ? [docked.id] : []);
+    if (!isPile(this.patch, this.tidySizes(), skip)) return;
+    tidy(this.patch, this.tidySizes(), skip);
+    this.rebuild();
+    this.tidied = this.layoutKey();
   }
 
   /** Tidy up: pack the cards, keeping their columns' order (tidy.ts); one undo step */

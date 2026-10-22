@@ -22,6 +22,7 @@
   "include": [
     "src",
     "dev",
+    "functions",
     "vite.config.ts"
   ],
   "exclude": [

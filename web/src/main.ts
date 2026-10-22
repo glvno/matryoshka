@@ -37,7 +37,7 @@ import { loadLibrary, summary } from './assemblies';
 import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
-import { decodeShare, encodeShare, shareCodeOf } from './share';
+import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
 import { buildCommunityShelf } from './community';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
@@ -1541,13 +1541,11 @@ $('dev-store').onclick = async () => {
 /** copy the link without the sheet (the tutorial's host); a patch too big for a link is not copied */
 const sharePatch = async (): Promise<void> => {
   try {
-    const s = await encodeShare(editor.patch);
-    if (s.tooLong) {
-      status.textContent = `too big for a link (${s.length} characters without the layout): Save as .json and share the file`;
-      return;
-    }
-    await navigator.clipboard.writeText(s.link);
-    status.textContent = `link copied (${s.length} characters${s.layout ? '' : '; too long with the layout: the cards open on a grid'})`;
+    const h = await handOut(await encodeShare(editor.patch));
+    await navigator.clipboard.writeText(h.link);
+    status.textContent = h.stored
+      ? 'link copied (the patch is stored on the site)'
+      : `link copied (${h.length} characters${h.layout ? '' : `; without the layout${h.fallback ? `: the site could not store the patch (${h.fallback})` : ''}`})`;
     tutorial.shared();
   } catch (e) {
     status.textContent = `share failed: ${(e as Error).message}`;
@@ -1555,10 +1553,11 @@ const sharePatch = async (): Promise<void> => {
 };
 // a link with a patch in its fragment: load it (it is not saved over the remembered patch until something is changed)
 const loadFromHash = (): void => {
-  const shared = shareCodeOf(location.href);
-  if (!shared) return;
-  void decodeShare(shared, DEFS)
+  if (!isShareLink(location.href)) return;
+  if (!shareCodeOf(location.href)) status.textContent = 'opening the patch from the link\u2026'; // (a stored one is fetched)
+  void openShareLink(location.href, DEFS)
     .then((p) => {
+      if (!p) return;
       const kept = loadSaved();
       const losing = !!kept && losesWork(kept);
       suppressSave = true;
@@ -1882,7 +1881,7 @@ openFromAddress();
 window.addEventListener('hashchange', openFromAddress);
 
 
-if (currentTab === 'patch' && location.hash !== '#fm1' && !shareCodeOf(location.href)) tutorial.welcome();
+if (currentTab === 'patch' && location.hash !== '#fm1' && !isShareLink(location.href)) tutorial.welcome();
 // the old address's hand-off (?migrate=1), and the toast of an import before the reload
 receiveMigration((keys) => importBrowserData(keys, new URL(OLD_ORIGIN).host));
 try {

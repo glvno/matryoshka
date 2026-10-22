@@ -1,12 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { decodeShare, encodeShare, LINK_MAX, PAGES_URL, shareCodeOf, shareLink } from './share';
+import { decodeShare, encodeShare, handOut, LINK_MAX, openShareLink, PAGES_URL, shareCodeOf, shareLink, storedIdOf, storedLink } from './share';
+import { fetchCode, storeCode, type Kv } from './share-store';
 import { DEFS } from './modules';
 import { PRESETS } from './presets';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { demoPatch } from './demo';
 import { emptyPatch, addModule, validatePatch } from './patch';
+
+const memoryKv = (): Kv & { size(): number } => {
+  const m = new Map<string, string>();
+  return { get: async (k) => m.get(k) ?? null, put: async (k, v) => void m.set(k, v), size: () => m.size };
+};
 
 describe('share links', () => {
   it('round-trips every factory patch through the fragment, well under the link limit', async () => {
@@ -22,6 +28,8 @@ describe('share links', () => {
       expect(s.link).toBe(shareLink(s.code, 'https://example.test/x/'));
     }
     expect(shareCodeOf('https://example.test/')).toBeNull();
+    expect(storedIdOf(storedLink('abcdefghijkl', 'https://example.test/x/#p=zz'))).toBe('abcdefghijkl');
+    expect(storedIdOf('https://example.test/#s=short')).toBeNull();
   });
 
   it('keeps assemblies and layout, and drops them only when the link would be too long', async () => {
@@ -38,14 +46,53 @@ describe('share links', () => {
     const oracle = PRESETS['Oracle V']();
     const lean = await encodeShare(oracle, { layout: false });
     expect(lean).toMatchObject({ layout: false, layoutFits: true, tooLong: false });
-    expect((await decodeShare(lean.code, DEFS)).assemblies).toBeUndefined();
+    // the positions go, the assemblies (which modules they hold) stay
+    const back = await decodeShare(lean.code, DEFS);
+    expect(back.modules.every((m) => m.x === 0 && m.y === 0)).toBe(true);
+    expect(back.assemblies?.map((a) => [a.label, a.modules, a.children, !!a.poly])).toEqual(oracle.assemblies?.map((a) => [a.label, a.modules, a.children, !!a.poly]));
     expect(lean.link.startsWith(PAGES_URL)).toBe(true);
-    const demo = await encodeShare(demoPatch());
-    expect(demo).toMatchObject({ layout: false, layoutFits: false, tooLong: false });
-    expect(demo.length).toBeLessThanOrEqual(LINK_MAX);
   });
 
-  it('flags a patch too big for a link even without its layout', async () => {
+  it('the Demo: too long for a plain link, so it is stored whole (layout and assemblies) and opens as it was', async () => {
+    const demo = demoPatch();
+    const s = await encodeShare(demo, { base: PAGES_URL });
+    expect(s).toMatchObject({ layout: false, layoutFits: false, stores: true, tooLong: false });
+    const kv = memoryKv();
+    const store = async (code: string): Promise<string> => {
+      const r = await storeCode(kv, code);
+      if (!('id' in r)) throw new Error(r.error);
+      return r.id;
+    };
+    const h = await handOut(s, { base: PAGES_URL, store });
+    expect(h).toMatchObject({ stored: true, layout: true });
+    expect(h.length).toBeLessThan(100);
+    const fetchKv = (async (url: string) => {
+      const code = await fetchCode(kv, String(url).split('/').pop()!);
+      return new Response(code ?? 'no', { status: code === null ? 404 : 200 });
+    }) as typeof fetch;
+    const back = await openShareLink(h.link, DEFS, fetchKv);
+    expect(back).toEqual(validatePatch(JSON.parse(JSON.stringify(demo)), DEFS));
+    expect(back!.modules.map((m) => [m.x, m.y])).toEqual(demo.modules.map((m) => [m.x, m.y]));
+    expect(back!.assemblies?.length).toBe(demo.assemblies?.length);
+    // the same patch, the same id: nothing is stored twice
+    expect((await handOut(s, { base: PAGES_URL, store })).link).toBe(h.link);
+    expect(kv.size()).toBe(1);
+  });
+
+  it('the Demo when the site cannot store it: no link (its lean form keeps the assemblies and is over the limit too)', async () => {
+    const s = await encodeShare(demoPatch(), { base: PAGES_URL });
+    expect(s.fits).toBe(false);
+    await expect(handOut(s, { store: async () => { throw new Error('offline'); } })).rejects.toThrow(/offline/);
+  });
+
+  it('a patch with the layout unticked that fits: the lean `#p=` link, nothing stored', async () => {
+    const s = await encodeShare(PRESETS['Oracle V'](), { layout: false });
+    const h = await handOut(s, { store: async () => { throw new Error('must not store'); } });
+    expect(h).toMatchObject({ stored: false, layout: false });
+    expect(h.link).toBe(s.link);
+  });
+
+  it('a patch too long for any plain link is stored', async () => {
     const p = emptyPatch('huge');
     addModule(p, DEFS.fm1, 0, 0);
     let seed = 1;
@@ -55,8 +102,9 @@ describe('share links', () => {
       for (const k of Object.keys(m.params)) m.params[k] = rnd();
     }
     const s = await encodeShare(p);
-    expect(s).toMatchObject({ layout: false, layoutFits: false, tooLong: true });
+    expect(s).toMatchObject({ layout: false, layoutFits: false, fits: false, stores: true, tooLong: false });
     expect(s.length).toBeGreaterThan(LINK_MAX);
+    expect((await handOut(s, { store: async () => 'abcdefghijkl' })).link.endsWith('#s=abcdefghijkl')).toBe(true);
   });
 
   it('carries the notes through a link and through Save .json / Load .json', async () => {

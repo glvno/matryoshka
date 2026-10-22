@@ -77,7 +77,9 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy web/dist --project-name=matry0shka --branch=main
+          # from web/: wrangler.toml (the KV binding of the stored share links) and functions/ are read from there
+          workingDirectory: web
+          command: pages deploy dist --project-name=matry0shka --branch=main
 
   # the old address serves only the forwarder, after the app is up at the new one
   forward:

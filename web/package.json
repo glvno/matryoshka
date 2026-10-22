@@ -7,6 +7,7 @@
   "scripts": {
     "logo-layers": "vite-node scripts/logo-layers.ts",
     "dev": "vite",
+    "api": "npx -y wrangler@4 pages dev --port 8788",
     "build": "npm run brand:flex && tsc --noEmit && vite build",
     "brand:flex": "node scripts/build-brand-flex.mjs",
     "test": "vitest run",

@@ -21,6 +21,9 @@ export default defineConfig({
   // the tutorial's built-in riff is a MIDI file, imported as bytes (`?inline`)
   assetsInclude: ['**/*.mid'],
   build: { target: 'es2022' },
+  // stored share links (functions/, src/share-store.ts) in dev: `npm run api` serves them on 8788 (else storing fails and
+  // the share sheet falls back to a link without the layout)
+  server: { proxy: { '/api': 'http://localhost:8788' } },
   // dev/demo is its own project (the Remotion demo video, its own node_modules)
   test: { environment: 'node', exclude: ['**/node_modules/**', 'dev/demo/**'] },
 } as never);

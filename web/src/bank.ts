@@ -10,7 +10,7 @@ import { PRESETS } from './presets';
 import { NAME_BYTES, SLOTS, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
 import { removeSaved, savedPatches, onSavedChange } from './saved';
-import { decodeShare, shareCodeOf } from './share';
+import { decodeShare, isShareLink, openShareLink } from './share';
 
 interface Entry {
   name: string;
@@ -277,14 +277,15 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       changed();
     },
   });
-  const linkIn = el('input', { type: 'text', placeholder: 'paste a patch link (…#p=…)' });
+  const linkIn = el('input', { type: 'text', placeholder: 'paste a patch link (…#p=… or …#s=…)' });
   const importLink = el('button', {
     textContent: 'Import link',
     onclick: async () => {
-      const code = shareCodeOf(linkIn.value.trim()) ?? (/^[A-Za-z0-9_-]{16,}$/.test(linkIn.value.trim()) ? linkIn.value.trim() : null);
-      if (!code) return void (status.textContent = 'that is not a patch link');
+      const text = linkIn.value.trim();
+      const code = isShareLink(text) ? null : /^[A-Za-z0-9_-]{16,}$/.test(text) ? text : null; // (a bare `p=` value)
+      if (!code && !isShareLink(text)) return void (status.textContent = 'that is not a patch link');
       try {
-        const p = await decodeShare(code, DEFS);
+        const p = code ? await decodeShare(code, DEFS) : (await openShareLink(text, DEFS))!;
         if (!fits(p)) {
           status.textContent = addToBank({ ...p, name: p.name || 'PATCH' });
           linkIn.value = '';

@@ -5,3 +5,4 @@ public/ai-prompts.json
 public/coverage.json
 coverage/
 public/fm1-ui.wasm
+.wrangler/

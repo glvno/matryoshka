@@ -8,6 +8,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 - Direct links: https://matry0shka.pages.dev/#fm1 opens the FM-1 view, #flash the firmware install (as before); both also
   work when the address changes on an open page.
+- Share links keep big patches whole: a patch over 8,000 characters as a link (the Demo) is stored on the site and
+  shared as a short `#s=` link with its layout and assemblies. A link without the layout no longer drops the assemblies
+  (their poly racks and device pages), and its cards open spread over the canvas instead of stacked on one spot.
+- Tidy up spreads a pile of stacked cards over the canvas instead of making one tall column.
 
 ## 1.0.0 — 2026-10-21
 
