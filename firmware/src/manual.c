@@ -51,6 +51,7 @@ static const char *const MANUAL[] = {
     " A DRUM TRACK: AN 8 X 16 GRID,",
     "   BLACK KEYS 1-8 PICK A ROW, WHITE",
     "   KEYS ITS HITS. REC: BLACK = HITS",
+    "   SELECT: THE ROW (REC ON OR OFF)",
     " WHITE KEYS: STEPS ON / OFF,",
     "   FX HELD: ACCENT",
     " HOLD A STEP + SELECT: ITS CHANCE,",

@@ -325,9 +325,11 @@ static void panel_encoders(int32_t *st)
         return;
     }
     if (page == PAGE_SEQ && seq_rec == 2u) {        /* the keys record into the armed track: ALGO keeps it, SELECT moves */
-        if (st[0] && seq_entry())                   /* step entry's cursor */
+        if (st[0] && seq_entry())                   /* step entry's cursor (an armed drum track's grid: SELECT its row) */
             seq_cur_move(st[0]);
-        st[0] = st[1] = 0;
+        if (seq_kbd())
+            st[0] = 0;
+        st[1] = 0;
     }
     if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track, SELECT with a step held its chance */
         if (st[1] && eng_steps_count())
@@ -335,6 +337,10 @@ static void panel_encoders(int32_t *st)
         st[1] = 0;
         if (st[0] && seq_held >= 0) {
             seq_chance(st[0]);
+            st[0] = 0;
+        }
+        if (st[0] && seq_map() >= 0) {              /* a drum grid, no step held: SELECT picks the row (REC on or off) */
+            seq_row_step(st[0]);
             st[0] = 0;
         }
         if ((st[2] || st[3]) && seq_held >= 0) {   /* K1 / K2 with a step held: its note / velocity (not the Main knobs) */
@@ -458,19 +464,22 @@ static int panel_key(uint32_t n, int down, int quick)
         int map = seq_kbd() ? -1 : eng_keys_drummap(), b = seq_black(n);
         key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
         /* the keys reach a Drum map (the owner, 2026-10-23): black keys 1..8 play its rows 1..8 at any octave, as on the
-         * SEQ page, the white keys nothing (MIDI out still sends the key as it is) */
+         * SEQ page, the white keys nothing; MIDI out sends what plays: the row's note, nothing for a white key, so a
+         * recording played back into a Drum map hits the same rows */
         key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b) : KEY_SILENT;
         key_sounding |= bit;
         if (key_eng[n] != KEY_SILENT)
             eng_note_on(key_eng[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
-        midi_send(0x90u, key_note[n], 100u);
+        if (key_eng[n] != KEY_SILENT)
+            midi_send(0x90u, key_eng[n], 100u);
         if (seq_kbd())
             seq_kbd_key(n, key_note[n], 1, vel);
     } else {
         key_sounding &= ~bit;
         if (key_eng[n] != KEY_SILENT)
             eng_note_off(key_eng[n], cfg.ch ? cfg.ch : 1u);
-        midi_send(0x80u, key_note[n], 0u);
+        if (key_eng[n] != KEY_SILENT)
+            midi_send(0x80u, key_eng[n], 0u);
         if (seq_kbd())
             seq_kbd_key(n, key_note[n], 0, 0u);
     }

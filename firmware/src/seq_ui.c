@@ -32,7 +32,7 @@
  *
  * A drum track (its keys out into a Drum map; the #139 follow-up, the owner's grid of 2026-10-23): the page is an 8 x 16
  * grid of the map's rows (seq_grid_draw), the same for editing and recording. Black keys 1..8 pick the row (stopped: it
- * sounds); with REC on they are hits on their rows instead (heard; while running into the nearest step), the row picked
+ * sounds), SELECT moves it with no step held (seq_row_step, REC on or off); with REC on they are hits on their rows instead (heard; while running into the nearest step), the row picked
  * stays. White keys switch the selected row's hit on a step (FX held: its accent). REC with a drum track armed is this
  * grid with REC on, not step entry. Off this page the keys play a Drum map the same way (panel.c panel_key).
  *
@@ -240,6 +240,14 @@ static void seq_select(uint32_t t)
     seq_row = 0;
     header_draw();
     ui_dirty = 2;
+}
+
+/* SELECT on a drum grid with no step held (the owner, 2026-10-23): the selected row, d rows down (clamped at the first and
+ * the last, no wrap; REC on or off); only the two names are redrawn (seq_grid_draw) */
+static void seq_row_step(int32_t d)
+{
+    seq_row = (uint8_t)clampi((int32_t)seq_row + d, 0, (int32_t)ENG_DRUM_ROWS - 1);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
 }
 
 /* SEQ / REC held + a black key past the patch's tracks: say so, instead of nothing (#179: on a drum track's page the black
@@ -780,7 +788,7 @@ static void seq_bar(void)
 static uint8_t seq_grid_cell[ENG_DRUM_ROWS][16];   /* the cells as drawn (seq_grid_state's codes) */
 static int8_t seq_grid_row = -1, seq_grid_tick = -2; /* the selected row, the playhead's column as drawn (-1 none) */
 static uint8_t seq_grid_ok;             /* the grid is on the LCD (else the next draw is a whole one) */
-static char seq_grid_text[3][40];       /* the info, track and hint lines as drawn */
+static char seq_grid_text[3][48];       /* the info, track and hint lines as drawn */
 
 static uint32_t seq_grid_x(uint32_t i) { return GRID_X + 11u * i + 2u * (i / 4u); }
 
@@ -794,7 +802,7 @@ static uint32_t seq_grid_state(uint32_t w, int k, int32_t len, int pos)
         uint32_t ch = (w >> 26) & 31u;
         s = 1u | (((w >> 19) & 127u) == ACCENT_VEL ? 2u : 0u) | (ch > 19u ? 19u : ch) << 2;
     }
-    return s | (k == pos ? 0x80u : 0u);
+    return s | (k == pos && (!(s & 1u) || s >> 2) ? 0x80u : 0u);   /* (a full hit looks the same under the playhead) */
 }
 
 static void seq_grid_paint(uint32_t r, uint32_t i, uint32_t s)
@@ -898,7 +906,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         p = put(p, "  MUTED");
     put(p, seq_armed_trk() == (int)seq_trk || eng_steps_muted((uint32_t)mod) ? "" : "  ALGO: TRACK")[0] = 0;
     seq_grid_line(1, 202, line, C_DIM, 224);
-    seq_grid_line(2, 222, seq_rec ? "BLACK hit   WHITE step   FX accent" : "BLACK row  WHITE step  FX acc  K2 vel", C_HINT, 228);
+    seq_grid_line(2, 222, seq_rec ? "BLACK hit  SEL row  WHITE step  FX acc" : "BLACK/SEL row  WHITE step  FX acc  K2 vel", C_HINT, 228);
     seq_grid_ok = 1;
 }
 
