@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The first community patch: **Lire + Elvira**, 8 Lire and Elvira 2 layered on one keyboard (slimmed to fit the FM-1),
+  under Community in the Open picker and the palette.
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go
   during a full redraw used to be missed, and any key waited for the redraw to end; now every press and release plays,
   in order, within a moment of the press (#230).
