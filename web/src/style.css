@@ -1335,9 +1335,10 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .erow.gstart { margin-top: 5px; }
 .erow.gstart > .em { position: relative; }
 .erow.gstart > .em::before { content: ''; position: absolute; left: 0; right: 0; top: -3px; border-top: 1px dashed var(--line); }
-.ehead { display: flex; align-items: center; gap: 4px; height: 18px; margin-top: 4px; border-bottom: 1px solid var(--line);
-  font: var(--cap); font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); white-space: nowrap; overflow: hidden; }
-.ehead input { flex: 1; min-width: 0; height: 16px; padding: 0 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel);
+/* a section heading (and Arrange's page strips below): 13px, 1.3x the 10px it was (#186) */
+.ehead { display: flex; align-items: center; gap: 4px; height: 23px; margin-top: 4px; border-bottom: 1px solid var(--line);
+  font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.ehead input { flex: 1; min-width: 0; height: 20px; padding: 0 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel);
   font: inherit; letter-spacing: inherit; text-transform: uppercase; color: var(--ink); }
 .ebreak { display: flex; align-items: center; justify-content: space-between; height: 16px; padding: 0 0 0 6px; border: 1px dashed var(--accent);
   border-radius: 4px; font: var(--cap); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
@@ -1362,7 +1363,15 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   background-color: color-mix(in oklab, var(--secondary) 14%, transparent); }
 /* the band that selects rows (pick / arrange mode) in the selection's teal, not the modules' coral band */
 .rubber.rows { border-color: var(--secondary); background: color-mix(in srgb, var(--secondary) 10%, transparent); }
-.arr-grip { flex: none; padding: 0 3px; cursor: grab; touch-action: none; color: var(--muted); font-size: 11px; line-height: 1; }
+.arr-grip { flex: none; padding: 0 3px; cursor: grab; touch-action: none; color: var(--muted); font-size: 14px; line-height: 1; }
+/* Arrange mode: the strip above every group (one FM-1 page), named as the FM-1 names it; its grip drags that page */
+.ebreak.epage { justify-content: flex-start; gap: 4px; height: 21px; margin-top: 3px; padding: 0 2px; border-color: var(--line);
+  font-size: 13px; letter-spacing: .1em; color: var(--muted); white-space: nowrap; overflow: hidden; }
+/* the focused page's label above its first row would repeat the strip's name */
+.arranging .param.bar.page-start { margin-top: 0; }
+.arranging .param.bar.page-start::before { content: none; }
+.epage-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.epage-flag { display: flex; align-items: center; gap: 2px; font-size: 9px; letter-spacing: .08em; color: var(--accent); }
 .arr-grip:hover { color: var(--accent); }
 .ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held { opacity: .5; }
 .pickbox.pickall { pointer-events: auto; cursor: pointer; padding: 0; margin-right: 5px; vertical-align: -1px; display: inline-block; }

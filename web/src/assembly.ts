@@ -220,6 +220,7 @@ export function moveSection(list: ParamRef[], rows: readonly number[], to: numbe
  * Move a whole group (one FM-1 page, `rows` from `groupRows`) to a place `blockDropOk` allows. The pages around it stay
  * as they were: the group's first row, the row after it and the row it lands against get a group flag where they
  * started a group only because the group before them was full. Before a row with a heading it goes under the heading.
+ * A section's first page leaves its heading to the section's next page, if it has one: one page moves, not the section.
  */
 export function moveGroup(list: ParamRef[], rows: readonly number[], starts: readonly boolean[], to: number, after: boolean): ParamRef[] {
   if (!blockDropOk(list, rows, to, after, starts)) return list;
@@ -227,6 +228,14 @@ export function moveGroup(list: ParamRef[], rows: readonly number[], starts: rea
   const pin = (j: number): void => {
     if (out[j] && starts[j] && !out[j].head && !out[j].group) out[j].group = true;
   };
+  // the first page of a section with more pages: the heading stays with the pages left, the page goes alone
+  const first = out[rows[0]];
+  const next = out[rows[rows.length - 1] + 1];
+  if (first.head && next && !next.head) {
+    next.head = first.head;
+    delete next.group;
+    delete first.head;
+  }
   pin(rows[0]);
   pin(rows[rows.length - 1] + 1);
   pin(after ? to + 1 : to);

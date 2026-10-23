@@ -9,8 +9,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - Choosing and arranging what an assembly card shows works on several rows at once (#186): select rows with a band,
   Shift-click or Cmd / Ctrl-click (Cmd / Ctrl+A: all, Esc: none). Choosing: Space or Enter shows them (or hides them
   when all are shown), each member card's title has a check box for all its parameters, and Select all / Select none
-  sit in the frame's bar. Arranging: drag the selection as one block, drag a heading's or a new group's grip to move
-  its section or group, Delete takes the selection off the card. On a touch screen a long press starts a selection.
+  sit in the frame's bar. Arranging: drag the selection as one block, drag a heading's grip to move its section, and
+  every page (one FM-1 page, also one that starts because the page before is full) has a strip named as the FM-1 names
+  it ("FILTER 2/3", "PAGE 1/2") whose grip moves that page alone. Delete takes the selection off the card. On a touch
+  screen a long press starts a selection.
+- Section headings on assembly cards are 30 % larger (13 px), so cards with headings are a little taller.
 - The tutorial has no Riff button any more: Note (a held C4) is its playback, and the intro's preview holds it too.
 - The FM-1's SEQ page hints name FX, the key that really sets accents and rests (they said ENV).
 - Factory patches: Simple FM's modulator now gets pitch and gate from the keys, and the 808 Kit's kick, snare, clap and

@@ -16,7 +16,7 @@ import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
-import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageLabel, pageTitle, paramStarts, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
+import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageLabel, pageTitle, paramPageTitles, paramStarts, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
 import { cableRole } from './cable-role';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
@@ -3464,6 +3464,9 @@ export class Editor {
     const shown = a.params.map((r) => rowDef(DEFS[mod(r.module).type], r.param)!);
     const kept = a.params.map((_, i) => i).filter((i) => !shown[i].onScreen);
     const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
+    // while arranging, every group (one FM-1 page) has a strip above it that names the page and drags it
+    const pageTitles = arranging ? paramPageTitles(this.patch, a, DEFS) : [];
+    const pageStarts = arranging ? paramStarts(this.patch, a, DEFS) : [];
     const params = a.params.flatMap((r, i): EdgeParam[] => {
       const m = mod(r.module);
       const def = DEFS[m.type];
@@ -3472,13 +3475,15 @@ export class Editor {
       const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open });
       const above: HTMLElement[] = [];
       if (arranging && r.col) above.push(this.columnChip(a, i));
-      else if (arranging && r.group && !r.head) above.push(this.groupChip(a, i));
       if (r.head || (arranging && this.newHeading === `${a.id}:${i}`)) above.push(this.heading(a, i, arranging));
+      // a group with no knob (a display alone) is no FM-1 page: no strip; it drags as a row
+      if (arranging && pageStarts[i] && pageTitles[i]) above.push(this.pageStrip(a, i, pageTitles[i]!));
+      else if (arranging && r.group && !r.head && !r.col) above.push(this.pageStrip(a, i, ''));
       if (arranging) {
         this.arrangeItem(row, a, 'param', i, this.selectable(row, r));
         row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
       }
-      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(i) && !r.col && !r.head }];
+      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !arranging && !!starts.get(i) && !r.col && !r.head }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
     if (!a.inputs.length && !a.outputs.length && !a.params.length) {
@@ -3557,12 +3562,27 @@ export class Editor {
     return c;
   }
 
-  /** while arranging: the mark of a group start (`ParamRef.group`) above its first row, with a button to undo it */
-  private groupChip(a: AssemblyInst, i: number): HTMLElement {
+  /**
+   * While arranging: the strip above each group (one FM-1 page), whether it starts at a heading, a group flag, a column
+   * or because the page before is full. Its grip drags that page alone (#186); it names the page as the FM-1 does
+   * ("FILTER 2/3", "PAGE 1/2"); a group flag (`ParamRef.group`, "new group") has its × here.
+   */
+  private pageStrip(a: AssemblyInst, i: number, title: string): HTMLElement {
+    const r = a.params[i];
     const c = document.createElement('div');
-    c.className = 'ebreak';
-    c.append(this.blockGrip(a, 'group', i), 'new group');
-    c.append(this.button('×', 'Let the groups fill in fours here again', () => this.layoutChange(() => setGroupBreak(a.params, i, false)), 'sm arr-x'));
+    c.className = 'ebreak epage';
+    c.dataset.page = String(i);
+    const name = document.createElement('span');
+    name.className = 'epage-name';
+    name.textContent = title;
+    c.append(this.blockGrip(a, 'group', i), name);
+    if (r.group && !r.head && !r.col) {
+      const flag = document.createElement('span');
+      flag.className = 'epage-flag';
+      flag.textContent = 'new group';
+      flag.append(this.button('×', 'Let the groups fill in fours here again', () => this.layoutChange(() => setGroupBreak(a.params, i, false)), 'sm arr-x'));
+      c.append(flag);
+    }
     return c;
   }
 
@@ -3727,7 +3747,7 @@ export class Editor {
   }
 
   /**
-   * While arranging: the grip of a heading (drags its section) or of a group chip (drags its group, one FM-1 page). A
+   * While arranging: the grip of a heading (drags its section) or of a page strip (drags its group, one FM-1 page). A
    * section lands only between sections or at the end, a group only between groups (#186).
    */
   private blockGrip(a: AssemblyInst, whole: 'section' | 'group', i: number): HTMLElement {
@@ -3747,7 +3767,8 @@ export class Editor {
       let slot: { to: number; after: boolean } | null = null;
       this.arrangeDrag(e, card, {
         live: e.pointerType !== 'touch',
-        moving: () => [grip.parentElement!, ...items().filter((c) => rows.includes(Number(c.dataset.arrIndex)))],
+        moving: () => [...new Set([grip.parentElement!, ...items().filter((c) => rows.includes(Number(c.dataset.arrIndex))),
+          ...[...card.querySelectorAll<HTMLElement>('.epage')].filter((c) => rows.includes(Number(c.dataset.page)))])],
         aim: (x, y) => {
           let best: { el: HTMLElement; after: boolean } | null = null;
           let dist = Infinity;
@@ -3762,9 +3783,10 @@ export class Editor {
               if (d >= dist) continue;
               dist = d;
               slot = { to: k, after };
-              // a section before a row with a heading lands above the heading; a group lands under it
+              // before a row: a section lands above its heading, a group under the heading, on the row's page strip
               const head = !after && whole === 'section' ? card.querySelector<HTMLElement>(`.ehead[data-arr-index="${k}"]`) : null;
-              best = { el: head ?? c, after };
+              const strip = !after ? card.querySelector<HTMLElement>(`.epage[data-page="${k}"]`) : null;
+              best = { el: head ?? strip ?? c, after };
             }
           }
           return best;

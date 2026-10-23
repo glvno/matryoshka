@@ -942,6 +942,15 @@ describe('several rows of an assembly card at once (#186)', () => {
     const hs = [true, true, false, true];
     expect(show(moveGroup(headed, groupRows(hs, 3), hs, 1, false))).toEqual(['a', '[B] d', '/ b', 'c']);
     expect(show(moveGroup(headed, groupRows(hs, 3), hs, 0, true))).toEqual(['a', '/ d', '[B] b', 'c']);
+    // an automatic page (no flag anywhere) moves alone; the pages it leaves and joins stay whole
+    const plain = rows('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i');
+    const ps = [true, false, false, false, true, false, false, false, true];
+    expect(show(moveGroup(plain, groupRows(ps, 4), ps, 0, false))).toEqual(['e', 'f', 'g', 'h', '/ a', 'b', 'c', 'd', '/ i']);
+    expect(show(moveGroup(plain, groupRows(ps, 8), ps, 4, false))).toEqual(['a', 'b', 'c', 'd', '/ i', '/ e', 'f', 'g', 'h']);
+    // a section's first page: its heading stays with the section's next page, the page goes alone
+    const sec = rows('x', ['a', { head: 'A' }], 'b', ['c', { group: true }], 'd');
+    const ss = [true, true, false, true, false];
+    expect(show(moveGroup(sec, groupRows(ss, 1), ss, 0, false))).toEqual(['a', 'b', '/ x', '[A] c', 'd']);
   });
 
   it('pick mode: one action on several rows shows them all if any is hidden, else hides them all', () => {

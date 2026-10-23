@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch } from './patch';
 import { makeAssembly, fixAssemblies, groupRows, keepParams, moveBlock, moveGroup, moveParam, moveSection, promote, sectionRows, setColumnBreak, setGroupBreak, setHeading } from './assembly';
-import { devicesOf, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle, paramStarts } from './pages';
+import { devicesOf, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle, paramPageTitles, paramStarts } from './pages';
 import { PRESETS } from './presets';
 import { demoPatch } from './demo';
 import { encodePatch } from './patchbin';
@@ -133,6 +133,40 @@ describe('device pages', () => {
     // a group to the top joins the rows there: filter's page is now the first
     starts = paramStarts(p, a, DEFS);
     expect(groupRows(starts, at('r')[0])).toEqual([]); // r is no group's first row
+    expect(() => encodePatch(p)).not.toThrow();
+  });
+
+  it("Arrange's page strips: every group, automatic ones too, named as the FM-1 names it, and each drags alone (#186)", () => {
+    const p = emptyPatch();
+    const osc = addModule(p, DEFS.osc, 20, 20);
+    const flt = addModule(p, DEFS.filter, 20, 400);
+    const env = addModule(p, DEFS.adsr, 320, 20);
+    const a = makeAssembly(p, [osc.id, flt.id, env.id], 'mono');
+    a.params = [];
+    for (const q of ['wave', 'pw', 'coarse', 'fine', 'level']) promote(a, osc.id, q); // five: an automatic second page
+    for (const q of ['cutoff', 'res', 'cvamt', 'track', 'morph']) promote(a, flt.id, q);
+    promote(a, env.id, 'a');
+    setHeading(a.params, 5, 'filter');
+    const at = (n: string): number => a.params.findIndex((r) => r.param === n);
+    const strips = (): string[] => paramPageTitles(p, a, DEFS).flatMap((t, i) => (t ? [`${a.params[i].param}: ${t}`] : []));
+    expect(strips()).toEqual(['wave: PAGE 1/2', 'level: PAGE 2/2', 'cutoff: FILTER 1/2', 'morph: FILTER 2/2']);
+    expect(a.params.every((r) => !r.group)).toBe(true); // no flags: level and morph start pages because the one before is full
+    // filter's automatic second page (morph a) before the first page of the device: it goes alone, flags keep the rest whole
+    let starts = paramStarts(p, a, DEFS);
+    a.params = moveGroup(a.params, groupRows(starts, at('morph')), starts, at('wave'), false);
+    expect(strips()).toEqual(['morph: PAGE 1/3', 'wave: PAGE 2/3', 'level: PAGE 3/3', 'cutoff: FILTER']);
+    expect(devicesOf(p, DEFS)[0].pages.map((pg) => pg.rows.map((r) => r.param).join(' '))).toEqual(['morph a', 'wave pw coarse fine', 'level', 'cutoff res cvamt track']);
+    // the device's first page to the end: it joins the filter section
+    starts = paramStarts(p, a, DEFS);
+    a.params = moveGroup(a.params, groupRows(starts, at('wave')), starts, at('track'), true);
+    expect(strips()).toEqual(['morph: PAGE 1/2', 'level: PAGE 2/2', 'cutoff: FILTER 1/2', 'wave: FILTER 2/2']);
+    // a section's first page alone: the heading stays with the section's next page
+    starts = paramStarts(p, a, DEFS);
+    a.params = moveGroup(a.params, groupRows(starts, at('cutoff')), starts, at('level'), false);
+    expect(strips()).toEqual(['morph: PAGE 1/3', 'cutoff: PAGE 2/3', 'level: PAGE 3/3', 'wave: FILTER']);
+    // a long heading is cut to the FM-1's twelve characters
+    setHeading(a.params, at('wave'), 'resonant filter');
+    expect(strips().pop()).toBe('wave: RESONANT FIL');
     expect(() => encodePatch(p)).not.toThrow();
   });
 
