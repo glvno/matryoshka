@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Engines (glvno/matryoshka#159, redefined by docs/adr/0001, #189): an engine is an assembly that takes keys and makes
+// Engines (glvno/matryoshka#159, redefined by docs/ledger/patches-and-presets.md#D-321, #189): an engine is an assembly that takes keys and makes
 // audio: keys -> voicing -> voices. The rule is derived from what is inside (never names or the shelf), so the user's own
 // assemblies qualify too: a `keys` input whose keys reach a Voicing module (`alloc`) or a Drum map inside it (through an
 // Arpeggiator or a Steps track's keys out on the way), and at least one `audio` output. A lone voice (pitch + gate in) and

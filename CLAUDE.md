@@ -1,8 +1,8 @@
 # Matryoshka — notes for Claude
 
-Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (`web/`, Vite + TS) with its own engine, and FM-1 firmware (`firmware/`) that plays the same patches. Owner: morgulbrut. Read first: `README.md`, `docs/ARCHITECTURE.md` (the design, formats, numbers), `docs/HANDOFF.md` (where the last session stopped), `LICENSING.md`.
+Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (`web/`, Vite + TS) with its own engine, and FM-1 firmware (`firmware/`) that plays the same patches. Owner and decider: michael glaviano (morgulbrut is the upstream Modular-1 author). Read first: `README.md`, `docs/ARCHITECTURE.md` (the design, formats, numbers), `LICENSING.md`; open work is in GitHub issues.
 
-**`docs/NOTES.md`** is the full dated log of every past session (what was built, decided and checked, file / function names). Search it (`grep -n`) before changing an area; this file only keeps what applies everywhere.
+**`docs/ledger/`** holds every decision as a row (see "Decisions" at the end of this file). Search it before changing an area; this file only keeps what applies everywhere.
 
 ## Decisions made with the user
 
@@ -11,12 +11,12 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - Aftermarket firmwares: Felucca (`hugelton/Felucca`, GPL-3.0, reference source at `a4d7ca2e`, in `~/.jieli/felucca`; the only documentation of the hardware), Sloop (`isod89/sloop-fm1`). M-VAVE's `m-vave/fm1_open` (Apache-2.0) gave the stock V15 and the I2S rate.
 - The device is a **patch player** (#57): top-level modules / assemblies are devices paged by SELECT / ALGO, K1..K4 edit the focused page (docs/ARCHITECTURE.md "Device pages").
 - Factory patches are our own (`web/scripts/gen-presets.ts` from the factory assemblies), not upstream's.
-- Wording: in user-visible text a stored sound is a "patch" (the PRESET knob steps patches); a "preset" is one assembly device's stored card values (#192); in the web app "voices" = polyphony. Terms: `CONTEXT.md` (glossary), `docs/adr/`.
-- The user works on macOS only: Linux / NixOS notes in docs/NOTES.md are stale. The JieLi firmware build runs in CI (`.github/workflows/firmware.yml`).
+- Wording: in user-visible text a stored sound is a "patch" (the PRESET knob steps patches); a "preset" is one assembly device's stored card values (#192); in the web app "voices" = polyphony. Terms: `docs/ledger/vocabulary.md`.
+- The user works on macOS only. The JieLi firmware build runs in CI (`.github/workflows/firmware.yml`).
 
 ## Not verified — do not claim otherwise
 
-- **Device-checked 2026-10-20 / 21** (docs/NOTES.md, the device session list in #140): install / update mode / return to stock (installer and the web Flash tab), the panel, pages, PRESET, the 17 factory patches, the editor link (send, store, bank, sync, mirroring), USB MIDI in / out / Start-Stop, TRS notes, Steps (play, step entry, live take, Drum map rows), USB audio. Measured on the device: no FPU (the audio path is fixed point only), output samples are 24-bit in the LOW bits of each I2S word, CPU per factory patch (docs/measurements/). **Not yet checked on a device:** MIDI clock in, program change, arming a Steps track from the device (#179), a power cut mid-write. FACTORY RESET was checked on 2026-10-22 (docs/NOTES.md). Anything newer than the last device session is host / emulator-tested only: say so.
+- **Device-checked 2026-10-20 / 21** (the device session list in #140): install / update mode / return to stock (installer and the web Flash tab), the panel, pages, PRESET, the 17 factory patches, the editor link (send, store, bank, sync, mirroring), USB MIDI in / out / Start-Stop, TRS notes, Steps (play, step entry, live take, Drum map rows), USB audio. Measured on the device: no FPU (the audio path is fixed point only), output samples are 24-bit in the LOW bits of each I2S word, CPU per factory patch (docs/measurements/). **Not yet checked on a device:** MIDI clock in, program change, arming a Steps track from the device (#179), a power cut mid-write. FACTORY RESET was checked on 2026-10-22. Anything newer than the last device session is host / emulator-tested only: say so.
 - FM-1 CPU clock, RAM and flash sizes are unknown (the chip is said to be a JieLi AC791N / pi32v2). Memory map hints: `firmware/app.ld`, `tools/build.py`.
 - Button ids beyond PLAY / REC come from Felucca's panel table (fm1_open agrees), not measured.
 - The CPU estimate (`web/src/cpu.ts`) is a model calibrated on 17 factory patches measured on the device (2026-10-20); per-module figures are not measured.
@@ -26,7 +26,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - Web (`cd web`): `npm test` (vitest), `npm run build`, `npm run dev` (the user runs one on port 5173: do not start a second). `npm run export-defs` regenerates `firmware/src/defs.h` + `presets.h` after any change to `modules.ts`, `presets/`, or a format bump (CI checks they are committed). `npm run cpu-costs` after any engine.c change; `npm run cpu-hot` to profile. `npm run fm1-wasm` builds the firmware UI as wasm for the FM-1 tab. `npm run emu` / `emu:smoke` run the firmware in fm1-emu (docs/EMULATOR.md; run the smoke before any device work).
 - Engines: `web/src/engine.ts` + `modules.ts` (reference) ↔ `firmware/src/engine.c` (fixed point). `tools/golden.sh` compares them on every kit in `web/scripts/golden.ts`; `tools/engine_exact.sh [BASE]` proves a speed-up is bit-exact. Also `tools/panel_test.sh`, `tools/pool_sizes.sh` (stand-in pool estimate, overestimates), `tools/ui_preview.sh` (LCD to PNG).
 - Generated: `python3 tools/gen_dsp_tables.py`, `gen_wavetables.py`, `gen_splash.py`, `gen_font.py`; `npx vite-node scripts/gen-assemblies.ts` then `gen-presets.ts`; `npm run logo-layers`.
-- Device tools: the dev server's Flash tab installs this checkout's firmware CI build after emu:smoke passed on it (`web/dev/branch-firmware.ts`; `MATRYOSHKA_BUNDLED_FIRMWARE=1 npm run dev` for the bundled one); `npm run flash` the same from the terminal (`tools/fm1_install.py` from `build/venv`; `-- --info`, `-- x.fwsc`, `-- --ci RUN`), `tools/fm1_install.py` (preferred for flashing), `tools/m1_link.py` (editor protocol from the terminal). Patch format: `web/src/patchbin.ts` (currently format 33) ↔ engine.c / proto.c; protocol: `web/src/protocol.ts` ↔ `firmware/src/proto.c`.
+- Device tools: the dev server's Flash tab installs this checkout's firmware CI build after emu:smoke passed on it (`web/dev/branch-firmware.ts`; `MATRYOSHKA_BUNDLED_FIRMWARE=1 npm run dev` for the bundled one); `npm run flash` the same from the terminal (`tools/fm1_install.py` from `build/venv`; `-- --info`, `-- x.fwsc`, `-- --ci RUN`), `tools/fm1_install.py` (preferred for flashing), `tools/m1_link.py` (editor protocol from the terminal). Patch format: `web/src/patchbin.ts` (currently format 34) ↔ engine.c / proto.c; protocol: `web/src/protocol.ts` ↔ `firmware/src/proto.c`.
 
 ## Rules when changing things
 
@@ -37,7 +37,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - The firmware workflow's `paths` lists the web files `export-defs.ts` / `golden.ts` import: extend it when they gain imports.
 - `course.json` (tutorial) is data: edit it in the lesson editor; stored patches there must pass `validatePatch` after model changes.
 - Version strings are bumped at release. Releases: "Releasing" in docs/ARCHITECTURE.md (`release.yml`, emu:smoke and the owner's device check on those exact bytes, `npm run firmware -- <package>`, tag, GitHub release). The site serves the newest release (pushing the tag deploys it), so any change reaches users only through a release; a web-only fix is a patch release with the same firmware package. 1.0.0 = tag `v1.0.0` (2026-10-21), 1.1.0 = tag `v1.1.0` (2026-10-22); main is 1.2.0-dev.
-- A user-visible change adds a line under `## Unreleased` in CHANGELOG.md; session detail goes to docs/NOTES.md.
+- A user-visible change adds a line under `## Unreleased` in CHANGELOG.md; a decision becomes a row in `docs/ledger/`.
 
 ## Gotchas and lessons
 
@@ -65,4 +65,19 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 
 ## Keeping this file short
 
-New session results go in `docs/NOTES.md` (append a dated section) and, if they are design, in `docs/ARCHITECTURE.md`. Only add here what every session must know.
+Decisions go in `docs/ledger/` as rows, design in `docs/ARCHITECTURE.md`, open work in GitHub issues. Only add here what every session must know.
+
+<!-- decision-ledger:start -->
+## Decisions
+
+- You are the intended maintainer and reader of the decision ledger ([D-010](docs/ledger/process.md#D-010)). When a person asks what was decided about something, answer from the rows in [docs/ledger/](docs/ledger/), link each one, and say what is listed as not yet settled. When a decision changes, you make the docs change and a person reviews the pull request.
+- Decisions live in [docs/ledger/](docs/ledger/) as rows with stable `D-###` IDs, the canonical home for decisions ([D-001](docs/ledger/process.md#D-001)). Read [docs/ledger/README.md](docs/ledger/README.md) before changing a row: new rows take the next free ID in the file's block and carry the row anchor, amendments edit in place, reversals mint a new ID and leave a tombstone. A `D-TBD` row never merges.
+- Every mention of a `D-###` in `docs/`, this file, and the root README links to its row (`file.md#D-###`). Mentions inside code spans stay bare. In a reply to a person, do the opposite of what the docs do: every `D-###` you cite gets a short parenthetical summary of the ruling right after it, plus the link, because a chat is ephemeral and cannot drift the way a restated rule in the docs can.
+- Every row and every docs edit follows [docs/ledger/STYLE.md](docs/ledger/STYLE.md): plain words, acronyms expanded once per file, one idea per sentence, no jargon a newcomer would have to look up. A reader being able to understand a row is not the bar; the bar is that they spend no effort translating it. Terms with a project-specific meaning are defined in [docs/ledger/vocabulary.md](docs/ledger/vocabulary.md) before a row uses them.
+- Docs describe current state; git is the archive. Superseded text is deleted with a one-line pointer, never bannered ([D-002](docs/ledger/process.md#D-002)). Live status belongs to the work tracker, never to a docs column ([D-012](docs/ledger/process.md#D-012)).
+- A choice that passes "What gets a row" in [docs/ledger/README.md](docs/ledger/README.md#what-gets-a-row) becomes a row in the same pull request as the code ([D-005](docs/ledger/process.md#D-005)): `Decided` if you are the decider, `Proposed (decider: <name>)` if not. When in doubt, propose. A row that is wrong is never silently edited around: amend it if you are the decider, otherwise propose the amendment and say so in the pull request.
+- If you generate a document from this repo for someone (a PDF, a deck, a summary), it is a derivative artifact: name it `YYYY-MM-DD-<topic>.<ext>`, banner it as generated ad hoc on that date from this repository at commit `<sha>`, not maintained, stale after 24 hours, name the files it was distilled from, and do not commit it ([D-013](docs/ledger/process.md#D-013)).
+- Before a pull request that touches files outside `docs/ledger/`, run `python3 tools/ledger_check.py --changed origin/main` to list the rows and doc lines that cite files you changed, then follow the staleness check under "Before a pull request" in [docs/ledger/README.md](docs/ledger/README.md). Never resolve a disagreement by silently editing one side to match the other.
+- Finish every pull request that touches `docs/` with `python3 tools/ledger_check.py --fix`, which anchors new rows, links bare `D-###` mentions, regenerates `docs/ledger/backlinks.md`, and verifies; commit what it changed. It must report zero findings.
+- Docs changes ride a short-lived `docs_` branch off `main`, merged by pull request, never direct to `main` ([D-009](docs/ledger/process.md#D-009)).
+<!-- decision-ledger:end -->

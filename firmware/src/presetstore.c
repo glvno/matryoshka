@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* The preset store (#194, CONTEXT.md "Preset"): the user's presets on the FM-1, in the 7 flash sectors 0x99000 .. 0x9FFFF
+/* The preset store (#194, docs/ledger/vocabulary.md "Preset"): the user's presets on the FM-1, in the 7 flash sectors 0x99000 .. 0x9FFFF
  * that nothing else uses (inside Felucca's data region, which the update loader never erases; the bank's 66 sectors and
  * its settings record are elsewhere: slotstore.c). A preset is the card row values of one structure (structure.ts
  * fingerprint) under a name; the device extras of the patch (format 34) say which values go where.

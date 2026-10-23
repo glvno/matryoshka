@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Arming as a set (#190, CONTEXT.md "Arm"): any device with a keys input can be armed, several at once. While any device
+// Arming as a set (#190, docs/ledger/vocabulary.md "Arm"): any device with a keys input can be armed, several at once. While any device
 // is armed only armed devices hear Main's keys, cable or not; while none is, the cables decide. Arming reroutes only Main:
 // other key sources (Steps tracks, Arpeggiators) keep playing what they drive. The engine plays the arm as a patch
 // transform (armView): Main's keys cables into unarmed devices go, Main's keys into each armed device's keys input come;
