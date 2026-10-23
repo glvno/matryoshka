@@ -3097,7 +3097,10 @@ export class Editor {
       }, 'sm preset-name');
     const show = (): void => {
       const edited = !!a.preset && !matchesPreset(this.patch, a);
-      name.textContent = a.preset ? `${a.preset}${edited ? '*' : ''}` : `${list.length} preset${list.length === 1 ? '' : 's'}`;
+      // (the star outside the cut text: a long name ends in "…" and keeps its star)
+      const text = document.createElement('span');
+      text.textContent = a.preset ?? `${list.length} preset${list.length === 1 ? '' : 's'}`;
+      name.replaceChildren(text, ...(edited ? ['*'] : []));
       name.title = a.preset ? `Preset ${a.preset}${edited ? ' (edited since)' : ''}: click for the list` : 'Presets of this assembly: click for the list';
     };
     show();
@@ -3154,7 +3157,8 @@ export class Editor {
   /** ARM on a device with a keys input (#190): an independent toggle; armed, Main's keys play it (and every other armed
    * device), cable or not */
   private armButton(key: DeviceKey, name: string): HTMLButtonElement {
-    const b = this.button('arm', `ARM: Main’s keys play ${name} (with any other armed device), cable or not; again to disarm`, () => this.toggleArm(key), 'sm arm-btn');
+    const b = this.button('', `ARM: Main’s keys play ${name} (with any other armed device), cable or not; again to disarm`, () => this.toggleArm(key), 'sm arm-btn arm-dot');
+    b.setAttribute('aria-label', `Arm ${name}`);
     b.dataset.arm = key;
     b.classList.toggle('on', this.armedSet.has(key));
     b.setAttribute('aria-pressed', String(this.armedSet.has(key)));
@@ -4223,8 +4227,8 @@ export class Editor {
   }
 
   /** the armed devices' routing (#134, #190): Main's keys into each one's keys input (on its card, else a Steps track's grid,
-   * else its card), dashed in the armed colour: virtual cables (not saved, no undo, no click). One is left out while
-   * either end is out of view */
+   * else its card), drawn as a keys ribbon cut into dashes (the ribbon, its core, its middle wire): virtual cables (not
+   * saved, no undo, no click). One is left out while either end is out of view */
   private armRoutes(view: DOMRect): SVGPathElement[] {
     const main = this.patch.modules.find((m) => m.type === 'fm1');
     if (!this.armedSet.size || !main || this.canvas.offsetParent === null) return [];
@@ -4244,10 +4248,13 @@ export class Editor {
       const b = to === jack ? { x: t.left + t.width / 2, y: t.top + t.height / 2 } : { x: t.left, y: t.top + Math.min(12, t.height / 2) };
       if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) continue;
       const lift = Math.max(40, (a.y - b.y) * 0.45);
-      const path = document.createElementNS(SVGNS, 'path');
-      path.setAttribute('class', 'bind arm');
-      path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x - lift * 0.6} ${b.y} ${b.x} ${b.y}`);
-      out.push(path);
+      const d = `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x - lift * 0.6} ${b.y} ${b.x} ${b.y}`;
+      for (const part of ['arm', 'arm-core', 'arm-wire']) {
+        const path = document.createElementNS(SVGNS, 'path');
+        path.setAttribute('class', `bind ${part}`);
+        path.setAttribute('d', d);
+        out.push(path);
+      }
     }
     return out;
   }

@@ -19,6 +19,8 @@
   /* a poly assembly's voices V1..V8 (voice-colors.ts: scope traces, voices panel): the knob hues, then rose and blue */
   --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose); --voice8: var(--ref-blue);
   --danger: var(--ref-red); --warning: var(--gate);
+  /* armed devices (#190): a record-style red, on the ARM dot, the armed edges and the dashed keys ribbons */
+  --arm: var(--ref-red);
   /* filled yellow buttons: the gate colour, greyed down so it does not shout */
   --btn-yellow: color-mix(in oklab, var(--ref-ochre) 70%, var(--ref-stone));
   /* the Demo button (LEARN): the palette's blue */
@@ -39,7 +41,7 @@
     --bg: var(--ref-night); --panel: var(--ref-ink); --ink: var(--ref-ivory);
     --muted: var(--ref-mist); --line: var(--ref-slate);
     --accent: var(--ref-coral); --accent-ink: var(--ref-night);
-    --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
+    --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light); --arm: var(--ref-red-light);
     --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
     --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand); --k5: var(--ref-lilac-light); --k6: var(--ref-blue-light);
     --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
@@ -55,7 +57,7 @@
   --bg: var(--ref-night); --panel: var(--ref-ink); --ink: var(--ref-ivory);
   --muted: var(--ref-mist); --line: var(--ref-slate);
   --accent: var(--ref-coral); --accent-ink: var(--ref-night);
-  --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light);
+  --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light); --arm: var(--ref-red-light);
   --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
   --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand); --k5: var(--ref-lilac-light); --k6: var(--ref-blue-light);
   --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
@@ -228,7 +230,10 @@ main { min-width: 0; min-height: 0; overflow: auto; }
 /* the dotted lines from the dock's dials to the rows they turn: no signal, an edit binding */
 svg.bind-cables { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 14; overflow: visible; pointer-events: none; }
 svg.bind-cables .bind { fill: none; stroke: var(--knob); stroke-width: 1.6; stroke-dasharray: 1.5 4; stroke-linecap: round; opacity: .9; --march: 5.5px; --march-t: .28s; }
-svg.bind-cables .bind.arm { stroke: var(--secondary); stroke-width: 2; stroke-dasharray: 6 5; stroke-linecap: butt; --march: 11px; --march-t: .55s; }
+/* an armed device's virtual cable (#190): the keys ribbon (.cable.role-keys, its core and middle wire) cut into dashes */
+svg.bind-cables .bind.arm { stroke: var(--ink); stroke-width: 7; stroke-dasharray: 10 5; stroke-linecap: butt; opacity: .85; --march: 15px; --march-t: .55s; }
+svg.bind-cables .bind.arm-core { stroke: var(--panel); stroke-width: 4.6; stroke-dasharray: 10 5; stroke-linecap: butt; opacity: 1; --march: 15px; --march-t: .55s; }
+svg.bind-cables .bind.arm-wire { stroke: var(--ink); stroke-width: 1.2; stroke-dasharray: 10 5; stroke-linecap: butt; opacity: 1; --march: 15px; --march-t: .55s; }
 .cable.pending { stroke: var(--muted); stroke-dasharray: 5 4; pointer-events: none; --march: 9px; --march-t: .45s; }
 /* automatic links march: one dash period (--march) per cycle (--march-t, about 20 px/s), toward the path's end (paths
    run source to receiver) */
@@ -1387,17 +1392,27 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* the armed track (#134): ARM lit, the grid and its card edged in the armed colour (the dock's routing to it too) */
 .steps-arm, .steps-roll { padding: 2px 7px; font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
   background: transparent; border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
-.steps-screen .steps-head .steps-arm.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
-.steps-screen.armed { box-shadow: inset 0 0 0 2px var(--secondary); }
-.module.armed:not(.selected) { outline: 2px solid var(--secondary); outline-offset: 1px; }
+.steps-screen.armed { box-shadow: inset 0 0 0 2px var(--arm); }
+.module.armed:not(.selected) { outline: 2px solid var(--arm); outline-offset: 1px; }
 /* ARM on any device with a keys input (#190): independent toggles; Main's keys cables into unarmed devices are muted while any is armed */
-.mhead .tools .arm-btn { font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
-.mhead .tools .arm-btn.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
+/* ARM is a record-style dot (not a word: "ARM" read like the ASM tag): a ring, filled red while armed */
+.arm-dot, .mhead .tools .arm-dot, .steps-screen .steps-head .arm-dot { flex: none; width: 20px; height: 20px; min-height: 0; padding: 0; display: inline-grid; place-items: center;
+  background: transparent; border: 1px solid var(--line); border-radius: 50%; cursor: pointer; }
+.arm-dot::before { content: ''; width: 9px; height: 9px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--muted); }
+.arm-dot:hover::before { border-color: var(--arm); }
+.arm-dot.on, .mhead .tools .arm-dot.on, .steps-screen .steps-head .arm-dot.on { background: transparent; border-color: color-mix(in srgb, var(--arm) 55%, var(--line)); }
+.arm-dot.on::before { background: var(--arm); border-color: var(--arm); box-shadow: 0 0 0 3px color-mix(in srgb, var(--arm) 22%, transparent); }
 .cable.muted { opacity: .25; }
 /* the preset chip on an assembly device's header (#192): ‹ name › */
-.mhead .preset-chip { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; margin-right: 6px; min-width: 0; }
-.mhead .preset-chip .preset-name { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
-.mhead .preset-chip .preset-step { padding: 0 5px; }
+:is(.mhead, .fhead) span.preset-chip { display: inline-flex; contain: none; font: inherit; text-transform: none; letter-spacing: normal; align-items: stretch; flex: none; width: 124px; height: 20px; margin-left: auto; margin-right: 6px;
+  border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
+:is(.mhead, .fhead) .preset-chip button.sm { min-height: 0; border: 0; border-radius: 0; background: transparent; }
+:is(.mhead, .fhead) .preset-chip .preset-step { flex: none; width: 18px; padding: 0; color: var(--muted); font-size: 11px; }
+:is(.mhead, .fhead) .preset-chip .preset-step:hover { color: var(--secondary); }
+:is(.mhead, .fhead) .preset-chip .preset-name { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 0 4px;
+  border-inline: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 7%, var(--panel)); color: var(--ink); white-space: nowrap; overflow: hidden; }
+:is(.mhead, .fhead) .preset-chip .preset-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+:is(.mhead, .fhead) .preset-chip .preset-name:hover { color: var(--secondary); }
 /* step entry's cursor (#127): the step the next note goes into */
 .step.cursor::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
 .steps-lanes { display: flex; }
@@ -1631,7 +1646,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   --roll-bar: color-mix(in srgb, var(--ink) 30%, transparent); --roll-black: color-mix(in srgb, var(--ink) 6%, transparent);
   position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; height: 45%; min-height: 200px; display: flex; flex-direction: column;
   background: var(--panel); border-top: 2px solid var(--line); box-shadow: 0 -10px 24px var(--shadow); outline: none; user-select: none; }
-.roll.armed { border-top-color: var(--secondary); }
+.roll.armed { border-top-color: var(--arm); }
 .roll-head { flex: none; height: 38px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-bottom: 1px solid var(--line);
   font: var(--cap); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); white-space: nowrap; }
 .roll-grip { width: 40px; height: 4px; flex: none; border-radius: 2px; background: var(--line); cursor: ns-resize; margin-right: 4px; }

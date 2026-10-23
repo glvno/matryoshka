@@ -136,9 +136,9 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   rec.onclick = () => ops.rec(!ops.recording());
   const arm = document.createElement('button');
   arm.type = 'button';
-  arm.className = 'steps-arm';
-  arm.textContent = 'arm';
-  arm.title = 'ARM: Main’s keys play into this track and through to what it plays, so you hear its instrument (one track at a time; not saved)';
+  arm.className = 'steps-arm arm-dot';
+  arm.setAttribute('aria-label', 'Arm the track');
+  arm.title = 'ARM: Main’s keys play into this track and through to what it plays, so you hear its instrument (with any other armed device; not saved)';
   arm.onclick = () => ops.arm(!ops.armed());
   const showArm = (on: boolean): void => {
     arm.classList.toggle('on', on);

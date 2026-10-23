@@ -34,17 +34,17 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   its first instrument. A track's page is LEN RATE SWING GATE, named after the track; SEL or SEQ there opens its steps.
   The editor's DEVICE picker follows the same order.
 - Presets (#192): store an assembly's card values as a named preset (its menu: Store as a preset…), and every copy of the
-  same assembly, in any patch and under any name, can load it. An assembly with presets shows ‹ name › on its header:
+  same assembly, in any patch and under any name, can load it. An assembly with presets shows a fixed-width ‹ name › picker on its header:
   the arrows step through them, the name opens the list (store over, store as new, rename, delete); a star means a value
   changed since. Loading is one undo step; the patch remembers the preset's name. Presets are matched by structure
   (the modules, cables, nesting and which rows are on the card), so changing those makes a new kind with no presets
   yet. Palette: Export presets as .json / Import presets from .json.
 - Every factory engine comes with presets (#193): Init (as it ships) and variations such as Bright, Dark, Pad, Pluck,
   Tight, Long and Wet, where the engine has the rows for them. They are read-only: storing over one makes a new one.
-- Arm anything that takes keys, several at once (#190): ARM is on every engine, Voicing, Drum map and Steps track card,
-  each its own toggle. While anything is armed Main's keys play only the armed devices, cabled or not (a layer: arm two
-  engines); with nothing armed the cables decide. Steps tracks keep playing what they drive. Dashed lines show where
-  Main's keys go; your own Main keys cables into unarmed devices are dimmed meanwhile. In the editor only for now: the
+- Arm anything that takes keys, several at once (#190): ARM (a record-style dot, red while armed) is on every engine, Voicing, Drum map and
+  Steps track card, each its own toggle. While anything is armed Main's keys play only the armed devices, cabled or not (a layer: arm two
+  engines); with nothing armed the cables decide. Steps tracks keep playing what they drive. A dashed keys ribbon shows where
+  Main's keys go, and armed cards are edged in red; your own Main keys cables into unarmed devices are dimmed meanwhile. In the editor only for now: the
   FM-1 still arms one Steps track from its panel.
 - An engine is now what its insides make it (keys → voicing → voices): an assembly whose keys reach a Voicing module or
   a Drum map, through an Arpeggiator or a Steps track if need be, and that makes audio. Assemblies with a keys input that
