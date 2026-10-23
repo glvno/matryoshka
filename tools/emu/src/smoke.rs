@@ -368,7 +368,9 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
 /// mutes it and again brings it back, REC records hits. Arming (#139): REC held + a black key arms the track (no
 /// recording; the bar and the track's line say ARM, #179); REC on the armed drum track is its grid with REC on (no step
 /// entry), PLAY keeps it, the device pages name the armed track, REC held + the key again disarms. SEQ closes the page;
-/// REC with nothing armed opens the grid, REC again leaves it showing.
+/// REC with nothing armed opens the grid, REC again leaves it showing. Then the piano roll (#241) on <7PH's melodic
+/// PATTERN: its pitch rows, a white key switches the selected pitch on a step, REC on the armed track stopped is the roll
+/// with REC on (no step entry).
 fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let Some(kit) = presets.iter().position(|(n, _)| n == "808 KIT") else {
         t.check("seq: the factory 808 Kit is there", false, String::new());
@@ -454,6 +456,41 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(REC, 120, 1300)?;
     t.screen(&m, "seq: REC again: off, the grid stays", "ALGO: TRACK");
     m.tap(SEQ, 120, 400)?;
+    if let Some(gb) = presets.iter().position(|(n, _)| n == "<7PH") {
+        // the piano roll (#241): <7PH's PATTERN (melodic) on 8 pitch rows; a white key switches the selected pitch
+        // (A#3, the median) on a step; REC on the armed track, stopped, is the roll with REC on (no step entry)
+        m.midi(&[0xC0, gb as u8], 500)?;
+        t.screen(&m, "roll: <7PH loads", "<7PH");
+        m.tap(SEQ, 120, 400)?;
+        m.turn(ALGO, 1, 600)?;               // DRUMS, then PATTERN
+        t.screen(&m, "roll: PATTERN's piano roll", "BLACK/ALGO: TRACK");
+        t.screen(&m, "roll: its pitch rows (A#3 the median)", "A#3");
+        let cell = |m: &Machine| m.lcd()[(44 + 19 * 4 + 14) * 240 + 79]; // A#3 (row 5) on step 3 (x 74..83)
+        let before = cell(&m);
+        m.tap(14 + 4, 120, 300)?;            // A3: the third white key = step 3
+        let after = cell(&m);
+        t.snap(&m, "roll-step-on");
+        t.check("roll: a white key switches the selected pitch on a step (the cell lights)", before != after && after == 0xffbd,
+            format!("{before:#06x} -> {after:#06x}"));
+        m.tap(14 + 4, 120, 300)?;            // (off again)
+        m.key(REC, true);                    // REC held + G#3: PATTERN armed
+        m.run_for(200)?;
+        m.tap(14 + 3, 120, 100)?;
+        m.key(REC, false);
+        m.run_for(1300)?;
+        m.tap(REC, 120, 1300)?;              // stopped: the roll with REC on
+        t.screen(&m, "roll: REC with the melodic track armed, stopped: its roll, REC on", "PATTERN REC");
+        t.screen(&m, "roll: the black keys sound, no step entry", "BLACK hear");
+        m.tap(REC, 120, 300)?;
+        m.key(REC, true);                    // (disarmed)
+        m.run_for(200)?;
+        m.tap(14 + 3, 120, 100)?;
+        m.key(REC, false);
+        m.run_for(1300)?;
+        m.tap(SEQ, 120, 400)?;
+    } else {
+        t.check("roll: the factory <7PH is there", false, String::new());
+    }
     *emulated += m.ms();
     Ok(())
 }
