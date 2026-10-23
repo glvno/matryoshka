@@ -5,7 +5,8 @@
  * transfers; every source buffer must be in RAM.
  * A pixel transfer is left running (lcd_busy): the next LCD access, or a write
  * to its source buffer (lcd_sync), waits for it, so the main loop works
- * while the last strip of a frame goes out. */
+ * while the last strip of a frame goes out. lcd_yield (panel.c panel_draw, #230), when set, is called
+ * while a transfer runs, before it is waited for: the keys are taken there during a long redraw. */
 /* pins and SPI1: hal/fm1_lcd_hw.h */
 #ifndef LCD_BAUD
 #define LCD_BAUD 4u                /* lsb/(BAUD+1): 4 = 12 MHz */
@@ -13,6 +14,7 @@
 
 static uint8_t lcd_small[64];
 static uint8_t lcd_busy;           /* a lcd_data DMA may still run; CS is low */
+static void (*lcd_yield)(void);    /* (must not touch the LCD) */
 
 static void lcd_spin(uint32_t n)
 {
@@ -24,6 +26,8 @@ static void lcd_sync(void)          /* finish the running transfer (before touch
 {
     if (!lcd_busy)
         return;
+    if (lcd_yield)
+        lcd_yield();
     fm1_lcd_wait();
     fm1_lcd_deselect();
     lcd_busy = 0;

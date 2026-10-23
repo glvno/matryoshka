@@ -26,9 +26,12 @@ static uint32_t pv_len;
 #define FELUCCA_VERSION "v1.2.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
+static void (*lcd_yield)(void);            /* lcd.c's: called before each transfer here (on the device while one runs) */
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, j;
+    if (lcd_yield)
+        lcd_yield();
     lcd_px += w * h;
     lcd_xfers++;
     for (j = 0; j < h; j++)
@@ -40,6 +43,8 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *px)
 {
     uint32_t i, j;
+    if (lcd_yield)
+        lcd_yield();
     lcd_px += w * h;
     lcd_xfers++;
     for (j = 0; j < h; j++)

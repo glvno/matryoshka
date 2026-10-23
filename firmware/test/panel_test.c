@@ -169,6 +169,37 @@ static void snap_to(const char *path)
 }
 static void snap(void) { snap_to(getenv("PANEL_SNAP")); }
 
+/* the HAL's key edge queue (fm1_input.h fm1_input_key_peek / pop, #230): edges latched by the scan, in order */
+static uint8_t kq[64];
+static uint32_t kq_r, kq_w;
+static int kq_peek(void) { return kq_r == kq_w ? -1 : (int)kq[kq_r % 64u]; }
+static void kq_pop(void) { if (kq_r != kq_w) kq_r++; }
+static void kq_edge(uint32_t n, int down) { kq[kq_w++ % 64u] = (uint8_t)(n | (down ? 0x80u : 0u)); }
+/* main.c keys_poll: the latched edges, then the keys as they are now */
+static void keys_poll_q(uint32_t now)
+{
+    panel_key_queue(kq_peek, kq_pop, 0);
+    panel_keys(now);
+}
+/* main.c keys_yield, the yield panel_draw hands the LCD; counts the LCD transfers made from inside it (must be none) */
+static uint32_t yield_calls, yield_xfers;
+static void keys_yield_q(void)
+{
+    uint32_t x = lcd_xfers;
+    yield_calls++;
+    panel_key_queue(kq_peek, kq_pop, 1);
+    yield_xfers += lcd_xfers - x;
+}
+/* the index of this message in the MIDI log from `from`, -1 none */
+static int sent_at(int from, uint32_t s, uint32_t a, uint32_t b)
+{
+    int i;
+    for (i = from; i < mlen; i++)
+        if (mlog[i][0] == s && mlog[i][1] == a && mlog[i][2] == b)
+            return i;
+    return -1;
+}
+
 static int load(const char *name)
 {
     uint32_t p;
@@ -863,6 +894,122 @@ int main(void)
         loop();
         check("REC held + the armed track's key: disarmed, REC off", eng_armed() < 0 && seq_rec == 0);
         tap(BTN_PLAY);
+    }
+
+    {                                                       /* #230: no key lost or late while the screen redraws */
+        static int32_t l[128], r[128];
+        int drums = eng_steps_module(0), map = eng_steps_drummap((uint32_t)eng_steps_module(0)), m0, i, n, got;
+        int32_t base = 53 + 12 * octave;
+        uint32_t keep[TRACK_NOTES_MAX], keep_n, wk[TRACK_NOTES_MAX], rn;
+        const uint32_t *w;
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+        if (eng_transport_running())
+            tap(BTN_PLAY);
+        later(1500);
+        m0 = mlen;
+        kq_edge(9, 1);                                      /* D4 pressed and let go within one pass */
+        kq_edge(9, 0);
+        keys_poll_q(0);
+        check("a press and its release in one pass: the note on, then off",
+              sent_at(m0, 0x90u, (uint32_t)base + 9u, 100u) >= 0
+              && sent_at(m0, 0x80u, (uint32_t)base + 9u, 0u) > sent_at(m0, 0x90u, (uint32_t)base + 9u, 100u) && !key_sounding);
+        m0 = mlen;
+        kq_edge(4, 1);                                      /* A3 before G3, A3 let go before G3: in that order (key order: G3 first) */
+        kq_edge(2, 1);
+        kq_edge(4, 0);
+        kq_edge(2, 0);
+        keys_poll_q(0);
+        {
+            int a = sent_at(m0, 0x90u, (uint32_t)base + 4u, 100u), b = sent_at(m0, 0x90u, (uint32_t)base + 2u, 100u);
+            int c = sent_at(m0, 0x80u, (uint32_t)base + 4u, 0u), d = sent_at(m0, 0x80u, (uint32_t)base + 2u, 0u);
+            check("edges of two keys in one pass: in the order played", a >= 0 && a < b && b < c && c < d && mlen - m0 == 4);
+        }
+        m0 = mlen;
+        kq_edge(7, 1);                                      /* the queue and the keys now agree: nothing twice */
+        keys_poll_q(1u << 7);
+        keys_poll_q(1u << 7);
+        kq_edge(7, 0);
+        keys_poll_q(0);
+        check("an edge the keys' state already gave: once", mlen - m0 == 2 && !key_sounding);
+
+        panel_yield = keys_yield_q;                         /* main.c: from inside panel_draw */
+        m0 = mlen;
+        yield_calls = yield_xfers = 0;
+        kq_edge(9, 1);
+        ui_dirty = 2;
+        panel_draw();
+        check("a key pressed during a full redraw plays during it, the redraw drawing on",
+              sent_at(m0, 0x90u, (uint32_t)base + 9u, 100u) >= 0 && (key_sounding >> 9 & 1u) && kq_r == kq_w && yield_calls > 0u
+              && yield_xfers == 0u);
+        kq_edge(9, 0);
+        ui_dirty = 2;
+        panel_draw();
+        check("its release too", sent_at(m0, 0x80u, (uint32_t)base + 9u, 0u) >= 0 && !key_sounding && yield_xfers == 0u);
+        panel_held |= 1u << BTN_SEQ;                        /* SEQ held + black key 1 during a redraw: a mute draws, it waits */
+        panel_edges(1u << BTN_SEQ, 0);
+        loop();
+        kq_edge(1, 1);
+        kq_edge(9, 1);                                      /* (and a key after it waits behind it: the order kept) */
+        m0 = mlen;
+        ui_dirty = 2;
+        panel_draw();
+        check("SEQ held + a black key in a redraw: left for the pass, the key after it too",
+              !eng_steps_muted((uint32_t)drums) && kq_w - kq_r == 2u && mlen == m0 && yield_xfers == 0u);
+        keys_poll_q(1u << 1 | 1u << 9);
+        check("the next pass: muted, then the note", eng_steps_muted((uint32_t)drums) && (key_sounding >> 9 & 1u) && kq_r == kq_w);
+        kq_edge(1, 0);
+        kq_edge(9, 0);
+        keys_poll_q(0);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        held_key(BTN_SEQ, 1);                               /* (unmuted) */
+        later(1500);
+        check("(unmuted, the device page)", !eng_steps_muted((uint32_t)drums) && page == 0u);
+
+        tap(BTN_SEQ);                                       /* the SEQ page, DRUMS' Drum map, REC on, running: hits */
+        tap(BTN_PLAY);
+        tap(BTN_REC);
+        for (i = 0; i < 20; i++)
+            eng_render(l, r, 128);
+        loop();
+        rn = seq_row_note(map, 3);                          /* row 4 (C#4, black key 4): its hits off the track first */
+        n = eng_steps_notes((uint32_t)drums, &w);
+        keep_n = (uint32_t)n;
+        for (i = 0; i < n; i++)
+            keep[i] = w[i];
+        for (i = 0, got = 0; i < n; i++)
+            if (((w[i] >> 12) & 127u) != rn)
+                wk[got++] = w[i];
+        (void)eng_steps_set_notes((uint32_t)drums, wk, (uint32_t)got);
+        check("(the SEQ page, a Drum map, REC on, running)", page == PAGE_SEQ && seq_map() == map && seq_rec == 1u
+              && eng_transport_running() && eng_steps_pos((uint32_t)drums) >= 0);
+        steps_inst((uint32_t)drums)->s.stp.hit = 0;
+        yield_xfers = 0;
+        kq_edge(8, 1);                                      /* C#4 hit and let go during a full redraw */
+        kq_edge(8, 0);
+        ui_dirty = 2;
+        panel_draw();
+        n = eng_steps_notes((uint32_t)drums, &w);
+        for (i = 0, got = 0; i < n; i++)
+            got += ((w[i] >> 12) & 127u) == rn;
+        check("a black key's hit during a redraw: heard and recorded on its row, nothing drawn from inside",
+              seq_row == 3u && steps_inst((uint32_t)drums)->s.stp.hit && got == 1 && kq_r == kq_w && yield_xfers == 0u);
+        check("its header_draw waited for the redraw's end", !ui_yielding && !ui_header_due);
+        steps_inst((uint32_t)drums)->s.stp.hit = 0;
+        kq_edge(3, 1);                                      /* G#3 (row 2) hit and let go within one pass */
+        kq_edge(3, 0);
+        keys_poll_q(0);
+        check("a hit pressed and let go within one pass: heard, its row picked", seq_row == 1u && steps_inst((uint32_t)drums)->s.stp.hit);
+        panel_yield = 0;
+        tap(BTN_REC);
+        tap(BTN_PLAY);
+        (void)eng_steps_set_notes((uint32_t)drums, keep, keep_n);
+        seq_sync(drums);
+        tap(BTN_SEQ);
+        later(1500);
+        check("(REC off, stopped, the device page)", seq_rec == 0u && !eng_transport_running() && page == 0u);
     }
 
     {                                                       /* #179: arming shows on the SEQ page; a mute or an arm redraws in place */
