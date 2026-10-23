@@ -1125,7 +1125,7 @@ int main(void)
         int main;
         bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
         (void)load("909 KIT");
-        cur_preset = N_PRESETS - 2u;                        /* the 909 Kit, then the Groove Box, the last factory patch */
+        cur_preset = N_PRESETS - 2u;                        /* the 909 Kit, then <7PH, the last factory patch */
         pv_gen++;
         page = 0;
         trail_n = 0;
@@ -1135,7 +1135,7 @@ int main(void)
         enc(6, 1);
         for (i = y0 * 240u; i < y1 * 240u; i++)
             ink += fb[i] == P_INK;
-        check("PRESET: the next patch, its name over the bars", cur_preset == N_PRESETS - 1u && !strcmp(patch_label, "GROOVE BOX")
+        check("PRESET: the next patch, its name over the bars", cur_preset == N_PRESETS - 1u && !strcmp(patch_label, "<7PH")
               && ink > 50u && px(12, ROWS_Y + 15) == P_NIGHT);
         snap_to(getenv("PANEL_SNAP_PATCH"));
         memcpy(name1, fb, sizeof name1);
