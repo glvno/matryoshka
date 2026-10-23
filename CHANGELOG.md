@@ -6,6 +6,15 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- FM-1 drums on the black keys everywhere: whenever the keys reach a Drum map (a drum patch like the 808 Kit, or an
+  armed drum track), black keys 1..8 play its rows 1..8 on every page, recording or not, and the white keys play nothing
+  (they still switch steps on the SEQ page). A melodic patch, or the Groove Box's PATTERN, still gets every key. MIDI
+  notes coming in still play a row by its note.
+- FM-1: a drum track's SEQ page is now an 8 × 16 grid, every row's hits at once with the row names at the left, the
+  selected row highlighted, the playhead's column, accents in coral and OCT- / OCT+ for steps past 16. A hit, a step or a
+  row pick redraws only its cell or two names, so recording hits no longer redraws the page or switches the row shown.
+  REC on an armed drum track is this grid (step entry stays for melodic tracks).
+- FM-1: REC with nothing armed opens the SEQ page on a drum track, so the hits are seen landing; REC off stays there.
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go
   during a full redraw used to be missed, and any key waited for the redraw to end; now every press and release plays,
   in order, within a moment of the press (#230).
