@@ -1108,9 +1108,11 @@ window.addEventListener('keydown', (e) => {
     if (!editor.toggleRec()) status.textContent = 'Shift+R records on the armed track: ARM a Steps track first';
     done = true;
   }
-  else if (k === 'Escape') (editor.cancelArm(), editor.endPick(), (diffPanel.hidden = true), (done = true));
-  else if (k === 'Delete' || k === 'Backspace') done = editor.removeSelected();
-  else if (mod && k.toLowerCase() === 'a') (editor.selectAll(), (done = true));
+  // in pick / arrange mode Esc clears the row selection first, a second Esc ends the mode (#186)
+  else if (k === 'Escape') (editor.cancelArm(), editor.clearRows() || editor.endPick(), (diffPanel.hidden = true), (done = true));
+  else if (k === 'Delete' || k === 'Backspace') done = editor.deleteRows() || editor.removeSelected();
+  else if (mod && k.toLowerCase() === 'a') (editor.selectAllRows() || editor.selectAll(), (done = true));
+  else if ((k === ' ' || k === 'Enter') && !mod && !e.altKey && editor.applyRows()) done = true; // pick mode: show / hide the selected rows
   else if (mod && k.toLowerCase() === 'd') done = editor.duplicateSelected();
   else if (e.altKey && k.toLowerCase() === 'b') done = true; // A/B is off for 1.0 (#103): Alt+B does nothing, not even a bypass
   else if (!mod && k.toLowerCase() === 'b') done = editor.bypassSelected();

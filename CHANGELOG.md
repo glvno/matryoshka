@@ -6,6 +6,14 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Choosing and arranging what an assembly card shows works on several rows at once (#186): select rows with a band,
+  Shift-click or Cmd / Ctrl-click (Cmd / Ctrl+A: all, Esc: none). Choosing: Space or Enter shows them (or hides them
+  when all are shown), each member card's title has a check box for all its parameters, and Select all / Select none
+  sit in the frame's bar. Arranging: drag the selection as one block, drag a heading's grip to move its section, and
+  every page (one FM-1 page, also one that starts because the page before is full) has a strip named as the FM-1 names
+  it ("FILTER 2/3", "PAGE 1/2") whose grip moves that page alone. Delete takes the selection off the card. On a touch
+  screen a long press starts a selection.
+- Section headings on assembly cards are 30 % larger (13 px), so cards with headings are a little taller.
 - On the FM-1, turning SELECT or ALGO shows a quick card instead of redrawing the whole page on every click: the
   device's name on red (SELECT), the page's name on blue (ALGO). The page comes back about 0.4 s after you stop, or at
   once when you turn K1..K4 (#221).

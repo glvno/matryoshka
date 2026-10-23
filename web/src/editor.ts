@@ -16,7 +16,7 @@ import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
-import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageLabel, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
+import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageLabel, pageTitle, paramPageTitles, paramStarts, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
 import { cableRole } from './cable-role';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
@@ -114,7 +114,8 @@ import { EXCLUDED_TYPES,
   type AssemblyInst,
   type PortRef,
   type Rect,
-  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setGroupBreak, setHeading, setSpan, spanPlan, type SpanBlock } from './assembly';
+  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setGroupBreak, setHeading, setSpan, spanPlan, type SpanBlock,
+  keepParams, moveBlock, moveGroup, moveSection, sectionRows, groupRows, blockDropOk, pickRows, pickState, keyRange, type PickRow } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** a Page button held this long shows its list's first page while it is down (panel.c PAGE_HOLD_MS) */
@@ -727,6 +728,14 @@ export class Editor {
     const hidden = hiddenModules(this.patch);
     const hiddenAsm = hiddenAssemblies(this.patch);
     if (this.pickAsm !== null && !assembliesOf(this.patch).some((a) => a.id === this.pickAsm && a.open && !hiddenAsm.has(a.id))) this.pickAsm = null;
+    // the row selection belongs to its mode: another mode, or none, starts without one
+    const rowMode = `${this.pickAsm}:${this.arrangeAsm}`;
+    if (rowMode !== this.rowMode) {
+      this.rowMode = rowMode;
+      this.dropRows();
+    }
+    this.selRows = [];
+    this.rowAction = null;
     // an assembly's badge: the voice count of the poly assembly it is (or is inside), else none
     const voicesOf = new Map(polyGroups(this.patch).map((g) => [g.asm.id, g.cfg.parts]));
     const perVoice = (a: AssemblyInst): number => {
@@ -750,6 +759,10 @@ export class Editor {
       this.modulesEl.append(this.card(m, DEFS[m.type], copies.get(m.id) ?? 0, a));
     }
     for (const a of visible) if (!a.open) this.modulesEl.append(this.container(a, perVoice(a), parentOf(this.patch, a.id)));
+    const drawn = new Set(this.selRows.map((r) => r.key));
+    for (const k of this.rowSel) if (!drawn.has(k)) this.rowSel.delete(k);
+    if (!this.rowSel.size) this.rowTouch = false;
+    this.showRowSel();
     this.markFocus();
     this.applyStack();
     if (this.buttonPop) this.fillButtonEditor();
@@ -1027,6 +1040,11 @@ export class Editor {
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
     body.append(...this.edgeLayout(ins, outs, params, extra));
     el.append(head, body);
+    // pick mode: one check box for all of its parameters (#186)
+    if (open && this.picking(open)) {
+      const rows = this.selRows.filter((r) => body.contains(r.el)).map(({ module, param }) => ({ module, param }));
+      if (rows.length) title.prepend(this.pickAllBox(open, rows));
+    }
     return el;
   }
 
@@ -1325,7 +1343,7 @@ export class Editor {
       if (open) {
         const on = isPromoted(open, m.id, pd.name);
         row.classList.toggle('shown', on);
-        this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)));
+        this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)), { module: m.id, param: pd.name });
         if (this.picking(open)) row.append(this.pickBox(on));
       }
       return row;
@@ -1349,7 +1367,7 @@ export class Editor {
     if (open) {
       const on = isPromoted(open, m.id, pd.name);
       row.classList.toggle('shown', on);
-      this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)));
+      this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)), { module: m.id, param: pd.name });
       if (this.picking(open)) row.append(this.pickBox(on));
     }
     if (!isScope) {
@@ -1602,7 +1620,7 @@ export class Editor {
       const a = o.open;
       const on = isPromoted(a, m.id, pd.name);
       row.classList.toggle('shown', on);
-      this.promoteClick(row, a, () => (on ? demote(a, m.id, pd.name) : promote(a, m.id, pd.name)));
+      this.promoteClick(row, a, () => (on ? demote(a, m.id, pd.name) : promote(a, m.id, pd.name)), { module: m.id, param: pd.name });
       if (this.picking(a)) pickBox = this.pickBox(on);
     }
     if (o.rename) {
@@ -3018,8 +3036,10 @@ export class Editor {
    * A row of a member card that can go on the assembly's collapsed card: a click adds it or takes it off in pick mode,
    * a Cmd / Ctrl-click any time. In pick mode a jack still patches (a plain press on it).
    */
-  private promoteClick(el: HTMLElement, a: AssemblyInst, toggle: () => void): void {
+  private promoteClick(el: HTMLElement, a: AssemblyInst, toggle: () => void, row?: PickRow): void {
     const mod = (e: MouseEvent): boolean => e.metaKey || e.ctrlKey;
+    // a parameter row in pick mode can be selected (#186); a jack stays one click each
+    const key = row && this.picking(a) ? this.selectable(el, row) : null;
     el.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || !(this.picking(a) || mod(e))) return;
       const t = e.target as HTMLElement;
@@ -3027,11 +3047,184 @@ export class Editor {
       if (!mod(e) && t.closest('.dot:not(.slider-port)')) return;
       e.preventDefault();
       e.stopPropagation();
+      if (key) {
+        // inside the mode Shift-click and Cmd / Ctrl-click only select; a finger selects with a long press
+        if (e.shiftKey || mod(e)) return this.rowClick(key, e.shiftKey);
+        if (e.pointerType === 'touch') return this.rowPress(e, key, () => this.change(toggle));
+      }
       this.change(toggle);
     }, true);
     // macOS: Ctrl-click is also a right click; it toggled already, so no context menu
     el.addEventListener('contextmenu', (e) => { if (e.ctrlKey) { e.preventDefault(); e.stopPropagation(); } });
-    el.title = this.picking(a) ? `Click: show on the "${a.label}" card or take it off` : `Cmd / Ctrl-click: show on the "${a.label}" card or take it off`;
+    el.title = key ? `Click: show on the "${a.label}" card or take it off; Shift / Cmd / Ctrl-click: select rows (Space shows or hides them)`
+      : this.picking(a) ? `Click: show on the "${a.label}" card or take it off` : `Cmd / Ctrl-click: show on the "${a.label}" card or take it off`;
+  }
+
+  // ---- several rows at once in pick and arrange mode (#186)
+
+  /** the rows selected in pick or arrange mode (`module:param`), the Shift range's anchor, and whether a finger started it */
+  private rowSel = new Set<string>();
+  private rowAnchor: string | null = null;
+  private rowTouch = false;
+  /** the mode the selection belongs to (`pickAsm:arrangeAsm`) */
+  private rowMode = 'null:null';
+  /** the rows that can be selected in this rebuild, in the order they were drawn */
+  private selRows: (PickRow & { key: string; el: HTMLElement })[] = [];
+  /** the mode bar's button for the selection (show / hide N in pick mode, take off N in arrange mode): a finger has no keys */
+  private rowAction: HTMLButtonElement | null = null;
+
+  /** a row that can be selected in the mode that is on; its key */
+  private selectable(el: HTMLElement, r: PickRow): string {
+    const key = `${r.module}:${r.param}`;
+    el.dataset.rowKey = key;
+    this.selRows.push({ module: r.module, param: r.param, key, el });
+    return key;
+  }
+
+  private dropRows(): void {
+    this.rowSel.clear();
+    this.rowAnchor = null;
+    this.rowTouch = false;
+  }
+
+  /** the selected rows in the order they were drawn */
+  private selectedRows(): PickRow[] {
+    return this.selRows.filter((r) => this.rowSel.has(r.key)).map(({ module, param }) => ({ module, param }));
+  }
+
+  private showRowSel(): void {
+    for (const r of this.selRows) r.el.classList.toggle('row-sel', this.rowSel.has(r.key));
+    const b = this.rowAction;
+    if (!b) return;
+    const n = this.rowSel.size;
+    b.hidden = !n;
+    const a = this.pickAsm !== null ? assemblyById(this.patch, this.pickAsm) : undefined;
+    b.textContent = !a ? `take off ${n}` : pickState(a, this.selectedRows()) === 'all' ? `hide ${n}` : `show ${n}`;
+  }
+
+  /** Shift-click: add the rows from the last one clicked to this one; Cmd / Ctrl-click (or a tap while a finger selects):
+   * add or remove this one */
+  private rowClick(key: string, range: boolean): void {
+    if (range) for (const k of keyRange(this.selRows.map((r) => r.key), this.rowAnchor, key)) this.rowSel.add(k);
+    else if (this.rowSel.has(key)) this.rowSel.delete(key);
+    else this.rowSel.add(key);
+    if (!range || this.rowAnchor === null) this.rowAnchor = key;
+    if (!this.rowSel.size) this.rowTouch = false;
+    this.showRowSel();
+  }
+
+  /** a finger's long press on a row starts a selection with it (or adds it) */
+  private rowHeld(key: string): void {
+    if (!this.rowTouch) this.rowSel.clear();
+    this.rowSel.add(key);
+    this.rowAnchor = key;
+    this.rowTouch = true;
+    this.showRowSel();
+  }
+
+  /** a finger on a pick-mode row: a long press selects it, a tap adds or removes it while a finger selects, else `tap` */
+  private rowPress(e: PointerEvent, key: string, tap: () => void): void {
+    const x0 = e.clientX, y0 = e.clientY;
+    let held = false;
+    const hold = window.setTimeout(() => ((held = true), this.rowHeld(key)), LONG_PRESS_MS);
+    const move = (ev: PointerEvent): void => {
+      if (ev.pointerId === e.pointerId && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) end();
+    };
+    const end = (): void => {
+      window.clearTimeout(hold);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', end);
+    };
+    const up = (ev: PointerEvent): void => {
+      if (ev.pointerId !== e.pointerId) return;
+      end();
+      if (held) return;
+      if (this.rowTouch) this.rowClick(key, false);
+      else tap();
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', end);
+  }
+
+  /** whether pick or arrange mode is on */
+  private inRowMode(): boolean {
+    return this.pickAsm !== null || this.arrangeAsm !== null;
+  }
+
+  /** Esc in pick or arrange mode clears the row selection first: false when there was none */
+  clearRows(): boolean {
+    if (!this.rowSel.size) return false;
+    this.dropRows();
+    this.showRowSel();
+    return true;
+  }
+
+  /** Ctrl / Cmd+A in pick or arrange mode: every row is selected, nothing changes; false outside the modes */
+  selectAllRows(): boolean {
+    if (!this.inRowMode()) return false;
+    for (const r of this.selRows) this.rowSel.add(r.key);
+    this.showRowSel();
+    return true;
+  }
+
+  /** Space / Enter in pick mode: the selected rows all go on the card if any is off it, else all come off (one undo step);
+   * false outside pick mode or with nothing selected */
+  applyRows(): boolean {
+    const a = this.pickAsm !== null ? assemblyById(this.patch, this.pickAsm) : undefined;
+    const rows = this.selectedRows();
+    if (!a || !rows.length) return false;
+    this.change(() => pickRows(a, rows));
+    return true;
+  }
+
+  /** Delete in arrange mode: the selected rows come off the card (one undo step); false outside arrange mode or with
+   * nothing selected */
+  deleteRows(): boolean {
+    const a = this.arrangeAsm !== null ? assemblyById(this.patch, this.arrangeAsm) : undefined;
+    if (!a || !this.rowSel.size) return false;
+    const gone = new Set(this.rowSel);
+    this.dropRows();
+    this.change(() => (a.params = keepParams(a.params, (r) => !gone.has(`${r.module}:${r.param}`))));
+    return true;
+  }
+
+  /** the rows of pick mode's assembly that Select all / Select none act on: parameters only (#186 rule 1) */
+  private pickBar(a: AssemblyInst): HTMLElement[] {
+    const all = this.button('select all', `Select all: every parameter of the members goes on the "${a.label}" card (jacks stay one click each)`, () => {
+      const off = this.selRows.filter((r) => !isPromoted(a, r.module, r.param));
+      if (off.length) this.change(() => off.forEach((r) => promote(a, r.module, r.param)));
+    }, 'sm pick-all');
+    const none = this.button('select none', `Select none: no parameter on the "${a.label}" card (jacks stay one click each)`, () => {
+      if (a.params.length) this.change(() => (a.params = []));
+    }, 'sm pick-none');
+    const act = this.button('', 'The selected rows: on the card if any is off it, else off it (Space / Enter)', () => this.applyRows(), 'sm row-act');
+    act.hidden = true;
+    this.rowAction = act;
+    return [all, none, act];
+  }
+
+  /** pick mode's check box on a member card's header: all its parameters on the card, none, or some (–); a click acts on
+   * them all as Space does on a selection */
+  private pickAllBox(a: AssemblyInst, rows: PickRow[]): HTMLElement {
+    const state = pickState(a, rows);
+    const box = document.createElement('button');
+    box.type = 'button';
+    box.className = 'pickbox pickall' + (state === 'all' ? ' on' : state === 'some' ? ' some' : '');
+    box.textContent = state === 'all' ? '✓' : state === 'some' ? '–' : '';
+    box.setAttribute('role', 'checkbox');
+    box.setAttribute('aria-checked', state === 'all' ? 'true' : state === 'some' ? 'mixed' : 'false');
+    const title = state === 'all' ? `Take its parameters off the "${a.label}" card` : `Show all its parameters on the "${a.label}" card`;
+    box.title = title;
+    box.setAttribute('aria-label', title);
+    box.addEventListener('pointerdown', (e) => e.stopPropagation());
+    box.onclick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.change(() => pickRows(a, rows));
+    };
+    return box;
   }
 
   /** pick mode's check box: on = shown on the assembly card */
@@ -3049,7 +3242,7 @@ export class Editor {
     const n = a.inputs.length + a.outputs.length + a.params.length;
     const b = this.button(on ? 'done' : `card · ${n}`, on
       ? 'Done choosing (Esc)'
-      : `Choose what the collapsed "${a.label}" card shows: click jacks and parameters to add or remove them (Cmd / Ctrl-click does it any time)`,
+      : `Choose what the collapsed "${a.label}" card shows: click jacks and parameters to add or remove them; Shift / Cmd / Ctrl-click or a band selects rows, Space shows or hides them (outside, Cmd / Ctrl-click does it any time)`,
     () => { this.pickAsm = on ? null : a.id; this.rebuild(); }, 'sm pick-btn');
     b.setAttribute('aria-pressed', String(on));
     b.dataset.asm = String(a.id);
@@ -3229,9 +3422,12 @@ export class Editor {
     const tools = document.createElement('span');
     tools.className = 'tools';
     if (arranging) {
+      const act = this.button('', 'Take the selected rows off the card (Delete)', () => this.deleteRows(), 'sm row-act');
+      act.hidden = true;
+      this.rowAction = act;
       const done = this.button('done', 'Done arranging (Esc)', () => this.endPick(), 'sm pick-btn');
       done.setAttribute('aria-pressed', 'true');
-      tools.append(done);
+      tools.append(act, done);
     }
     if (parent) tools.append(this.outButton(parent, () => this.takeOutAssembly(parent, a)));
     tools.append(...this.assemblyButtons(a));
@@ -3268,6 +3464,9 @@ export class Editor {
     const shown = a.params.map((r) => rowDef(DEFS[mod(r.module).type], r.param)!);
     const kept = a.params.map((_, i) => i).filter((i) => !shown[i].onScreen);
     const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
+    // while arranging, every group (one FM-1 page) has a strip above it that names the page and drags it
+    const pageTitles = arranging ? paramPageTitles(this.patch, a, DEFS) : [];
+    const pageStarts = arranging ? paramStarts(this.patch, a, DEFS) : [];
     const params = a.params.flatMap((r, i): EdgeParam[] => {
       const m = mod(r.module);
       const def = DEFS[m.type];
@@ -3276,13 +3475,15 @@ export class Editor {
       const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open });
       const above: HTMLElement[] = [];
       if (arranging && r.col) above.push(this.columnChip(a, i));
-      else if (arranging && r.group && !r.head) above.push(this.groupChip(a, i));
       if (r.head || (arranging && this.newHeading === `${a.id}:${i}`)) above.push(this.heading(a, i, arranging));
+      // a group with no knob (a display alone) is no FM-1 page: no strip; it drags as a row
+      if (arranging && pageStarts[i] && pageTitles[i]) above.push(this.pageStrip(a, i, pageTitles[i]!));
+      else if (arranging && r.group && !r.head && !r.col) above.push(this.pageStrip(a, i, ''));
       if (arranging) {
-        this.arrangeItem(row, a, 'param', i);
+        this.arrangeItem(row, a, 'param', i, this.selectable(row, r));
         row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
       }
-      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(i) && !r.col && !r.head }];
+      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !arranging && !!starts.get(i) && !r.col && !r.head }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
     if (!a.inputs.length && !a.outputs.length && !a.params.length) {
@@ -3346,6 +3547,7 @@ export class Editor {
     };
     input.onpointerdown = (e) => e.stopPropagation();
     const x = this.button('×', 'Remove the heading', () => this.layoutChange(() => setHeading(a.params, i, '')), 'sm arr-x');
+    if (r.head) h.append(this.blockGrip(a, 'section', i));
     h.append(input, x);
     if (this.newHeading === `${a.id}:${i}`) requestAnimationFrame(() => input.focus());
     return h;
@@ -3360,21 +3562,34 @@ export class Editor {
     return c;
   }
 
-  /** while arranging: the mark of a group start (`ParamRef.group`) above its first row, with a button to undo it */
-  private groupChip(a: AssemblyInst, i: number): HTMLElement {
+  /**
+   * While arranging: the strip above each group (one FM-1 page), whether it starts at a heading, a group flag, a column
+   * or because the page before is full. Its grip drags that page alone (#186); it names the page as the FM-1 does
+   * ("FILTER 2/3", "PAGE 1/2"); a group flag (`ParamRef.group`, "new group") has its × here.
+   */
+  private pageStrip(a: AssemblyInst, i: number, title: string): HTMLElement {
+    const r = a.params[i];
     const c = document.createElement('div');
-    c.className = 'ebreak';
-    c.textContent = 'new group';
-    c.append(this.button('×', 'Let the groups fill in fours here again', () => this.layoutChange(() => setGroupBreak(a.params, i, false)), 'sm arr-x'));
+    c.className = 'ebreak epage';
+    c.dataset.page = String(i);
+    const name = document.createElement('span');
+    name.className = 'epage-name';
+    name.textContent = title;
+    c.append(this.blockGrip(a, 'group', i), name);
+    if (r.group && !r.head && !r.col) {
+      const flag = document.createElement('span');
+      flag.className = 'epage-flag';
+      flag.textContent = 'new group';
+      flag.append(this.button('×', 'Let the groups fill in fours here again', () => this.layoutChange(() => setGroupBreak(a.params, i, false)), 'sm arr-x'));
+      c.append(flag);
+    }
     return c;
   }
 
   /** whether a group already starts at row `i` of an assembly card on its own (the one before it is full) */
   private groupStartAt(a: AssemblyInst, i: number): boolean {
-    const shown = a.params.map((r) => { const m = this.patch.modules.find((x) => x.id === r.module); return m ? rowDef(DEFS[m.type], r.param) : undefined; });
-    const kept = a.params.map((_, k) => k).filter((k) => shown[k] && !shown[k]!.onScreen);
-    const k = kept.indexOf(i);
-    return k > 0 && groupStarts(kept.map((j) => ({ ...a.params[j], knob: !shown[j]!.screen })))[k];
+    const starts = paramStarts(this.patch, a, DEFS);
+    return starts[i] && starts.indexOf(true) < i;
   }
 
   /** while arranging: on a row's top edge, + heading and a column break before it; on a display that could reach across
@@ -3400,9 +3615,11 @@ export class Editor {
 
   /**
    * While arranging, a row or jack can be dragged before or after another of its kind (rows among rows, inputs among
-   * inputs, outputs among outputs). A mouse drags at once, a finger after a long press.
+   * inputs, outputs among outputs). A mouse drags at once, a finger after a long press. A selected row (`key`, #186)
+   * drags the whole selection as one block; Shift / Cmd / Ctrl-click selects. A finger's long press starts a selection
+   * (and can drag on at once), then taps add or remove rows and a selected row drags at once.
    */
-  private arrangeItem(el: HTMLElement, a: AssemblyInst, kind: 'param' | 'in' | 'out', index: number): void {
+  private arrangeItem(el: HTMLElement, a: AssemblyInst, kind: 'param' | 'in' | 'out', index: number, key?: string): void {
     el.dataset.arrKind = kind;
     el.dataset.arrIndex = String(index);
     el.classList.add('arr-item');
@@ -3410,59 +3627,115 @@ export class Editor {
       if (e.button !== 0 || (e.target as HTMLElement).closest('.arr-tools, input[type=text]')) return;
       e.preventDefault();
       e.stopPropagation();
+      if (key && (e.shiftKey || e.metaKey || e.ctrlKey)) return this.rowClick(key, e.shiftKey);
       const card = el.closest<HTMLElement>('.module')!;
-      const x0 = e.clientX, y0 = e.clientY;
-      let live = e.pointerType !== 'touch';
-      let started = false;
-      let target: { el: HTMLElement; after: boolean } | null = null;
-      const hold = live ? 0 : window.setTimeout(() => { live = true; el.classList.add('arr-held'); }, LONG_PRESS_MS);
-      const mark = (t: typeof target): void => {
-        card.querySelectorAll('.arr-before, .arr-after').forEach((x) => x.classList.remove('arr-before', 'arr-after'));
-        if (t) t.el.classList.add(t.after ? 'arr-after' : 'arr-before');
+      const touch = e.pointerType === 'touch';
+      // the rows that move: the selection when this row is in it (more than one), else this row
+      const block = (): number[] | null => {
+        if (!key || !this.rowSel.has(key) || this.rowSel.size < 2) return null;
+        return a.params.map((r, i) => (this.rowSel.has(`${r.module}:${r.param}`) ? i : -1)).filter((i) => i >= 0);
       };
-      const move = (ev: PointerEvent): void => {
-        if (!live) {
-          if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) end(); // a swipe, not a long press
-          return;
-        }
-        if (!started && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
-        started = true;
-        el.classList.add('arr-dragging');
-        target = this.arrangeTarget(card, kind, el, ev.clientX, ev.clientY);
-        mark(target);
-      };
-      const end = (): void => {
-        window.clearTimeout(hold);
-        window.removeEventListener('pointermove', move);
-        window.removeEventListener('pointerup', up);
-        window.removeEventListener('pointercancel', end);
-        el.classList.remove('arr-dragging', 'arr-held');
-        mark(null);
-      };
-      const up = (): void => {
-        const t = target;
-        end();
-        if (!started || !t) return;
-        const to = Number(t.el.dataset.arrIndex);
-        const after = t.after && !t.el.dataset.arrBefore;
-        this.layoutChange(() => {
-          if (kind === 'param') a.params = moveParam(a.params, index, to, after);
-          else if (kind === 'in') a.inputs = moveRef(a.inputs, index, to, after);
-          else a.outputs = moveRef(a.outputs, index, to, after);
-        });
-      };
-      window.addEventListener('pointermove', move);
-      window.addEventListener('pointerup', up);
-      window.addEventListener('pointercancel', end);
+      const moving = (): HTMLElement[] => (block() ? this.selRows.filter((r) => this.rowSel.has(r.key)).map((r) => r.el) : [el]);
+      this.arrangeDrag(e, card, {
+        live: !touch || (this.rowTouch && !!key && this.rowSel.has(key)),
+        moving,
+        held: () => key && this.rowHeld(key),
+        tap: () => key && touch && this.rowTouch && this.rowClick(key, false),
+        aim: (x, y) => {
+          const b = block();
+          const skip = (c: HTMLElement): boolean => c === el || (!!b && b.includes(Number(c.dataset.arrIndex)));
+          return this.arrangeTarget(card, kind, skip, x, y);
+        },
+        drop: (t) => {
+          const to = Number(t.el.dataset.arrIndex);
+          const after = t.after && !t.el.dataset.arrBefore;
+          const b = block();
+          this.layoutChange(() => {
+            if (b) a.params = moveBlock(a.params, b, to, after);
+            else if (kind === 'param') a.params = moveParam(a.params, index, to, after);
+            else if (kind === 'in') a.inputs = moveRef(a.inputs, index, to, after);
+            else a.outputs = moveRef(a.outputs, index, to, after);
+          });
+        },
+      });
     }, true);
   }
 
-  /** the item of `kind` nearest the pointer on the card, and whether the drop goes after it (below; right of a bottom jack) */
-  private arrangeTarget(card: HTMLElement, kind: string, self: HTMLElement, x: number, y: number): { el: HTMLElement; after: boolean } | null {
+  /**
+   * An arrange drag from a press on `card`: a mouse drags at once, a finger after a long press (or at once when `live`).
+   * `aim` finds the drop place under the pointer (marked before / after an element), `drop` acts on it; a press that does
+   * not move is a tap.
+   */
+  private arrangeDrag(e: PointerEvent, card: HTMLElement, o: {
+    live: boolean;
+    moving: () => HTMLElement[];
+    held?: () => unknown;
+    tap?: () => unknown;
+    aim: (x: number, y: number) => { el: HTMLElement; after: boolean } | null;
+    drop: (t: { el: HTMLElement; after: boolean }) => void;
+  }): void {
+    const x0 = e.clientX, y0 = e.clientY;
+    let live = o.live;
+    let started = false;
+    let held = false;
+    let moving: HTMLElement[] = [];
+    let target: { el: HTMLElement; after: boolean } | null = null;
+    const hold = live ? 0 : window.setTimeout(() => {
+      live = true;
+      held = true;
+      o.held?.();
+      moving = o.moving();
+      for (const m of moving) m.classList.add('arr-held');
+    }, LONG_PRESS_MS);
+    const mark = (t: typeof target): void => {
+      card.querySelectorAll('.arr-before, .arr-after').forEach((x) => x.classList.remove('arr-before', 'arr-after'));
+      if (t) t.el.classList.add(t.after ? 'arr-after' : 'arr-before');
+    };
+    const move = (ev: PointerEvent): void => {
+      if (ev.pointerId !== e.pointerId) return;
+      if (!live) {
+        if (Math.hypot(ev.clientX - x0, ev.clientY - y0) > 8) end(); // a swipe, not a long press
+        return;
+      }
+      if (!started && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 4) return;
+      if (!started) {
+        started = true;
+        moving = o.moving();
+        for (const m of moving) m.classList.add('arr-dragging');
+      }
+      target = o.aim(ev.clientX, ev.clientY);
+      mark(target);
+    };
+    const end = (): void => {
+      window.clearTimeout(hold);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', end);
+      for (const m of moving) m.classList.remove('arr-dragging', 'arr-held');
+      mark(null);
+    };
+    const up = (ev: PointerEvent): void => {
+      if (ev.pointerId !== e.pointerId) return;
+      const t = target;
+      end();
+      if (!started) {
+        if (!held) o.tap?.();
+        return;
+      }
+      if (t) o.drop(t);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', end);
+  }
+
+  /** the item of `kind` nearest the pointer on the card (not one `skip` says), and whether the drop goes after it (below;
+   * right of a bottom jack) */
+  private arrangeTarget(card: HTMLElement, kind: string, skip: (c: HTMLElement) => boolean, x: number, y: number): { el: HTMLElement; after: boolean } | null {
     let best: { el: HTMLElement; after: boolean } | null = null;
     let dist = Infinity;
     for (const c of card.querySelectorAll<HTMLElement>(`[data-arr-kind="${kind}"]`)) {
-      if (c === self) continue;
+      if (skip(c)) continue;
       const r = c.getBoundingClientRect();
       const d = Math.hypot(Math.max(r.left - x, 0, x - r.right), Math.max(r.top - y, 0, y - r.bottom));
       if (d >= dist) continue;
@@ -3471,6 +3744,61 @@ export class Editor {
       best = { el: c, after: across ? x > r.left + r.width / 2 : y > r.top + r.height / 2 };
     }
     return best;
+  }
+
+  /**
+   * While arranging: the grip of a heading (drags its section) or of a page strip (drags its group, one FM-1 page). A
+   * section lands only between sections or at the end, a group only between groups (#186).
+   */
+  private blockGrip(a: AssemblyInst, whole: 'section' | 'group', i: number): HTMLElement {
+    const grip = document.createElement('span');
+    grip.className = 'arr-grip';
+    grip.textContent = '⠿';
+    grip.title = whole === 'section' ? 'Drag: move this section (between sections or to the end)' : 'Drag: move this group, one FM-1 page (between groups)';
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const starts = whole === 'group' ? paramStarts(this.patch, a, DEFS) : undefined;
+      const rows = starts ? groupRows(starts, i) : sectionRows(a.params, i);
+      if (!rows.length) return;
+      const card = grip.closest<HTMLElement>('.module')!;
+      const items = (): HTMLElement[] => [...card.querySelectorAll<HTMLElement>('.arr-item[data-arr-kind="param"]')];
+      let slot: { to: number; after: boolean } | null = null;
+      this.arrangeDrag(e, card, {
+        live: e.pointerType !== 'touch',
+        moving: () => [...new Set([grip.parentElement!, ...items().filter((c) => rows.includes(Number(c.dataset.arrIndex))),
+          ...[...card.querySelectorAll<HTMLElement>('.epage')].filter((c) => rows.includes(Number(c.dataset.page)))])],
+        aim: (x, y) => {
+          let best: { el: HTMLElement; after: boolean } | null = null;
+          let dist = Infinity;
+          slot = null;
+          for (const c of items()) {
+            const k = Number(c.dataset.arrIndex);
+            const r = c.getBoundingClientRect();
+            const dx = Math.max(r.left - x, 0, x - r.right);
+            for (const after of [false, true]) {
+              if (!blockDropOk(a.params, rows, k, after, starts)) continue;
+              const d = Math.hypot(dx, y - (after ? r.bottom : r.top));
+              if (d >= dist) continue;
+              dist = d;
+              slot = { to: k, after };
+              // before a row: a section lands above its heading, a group under the heading, on the row's page strip
+              const head = !after && whole === 'section' ? card.querySelector<HTMLElement>(`.ehead[data-arr-index="${k}"]`) : null;
+              const strip = !after ? card.querySelector<HTMLElement>(`.epage[data-page="${k}"]`) : null;
+              best = { el: head ?? strip ?? c, after };
+            }
+          }
+          return best;
+        },
+        drop: () => {
+          const t = slot;
+          if (!t) return;
+          this.layoutChange(() => (a.params = starts ? moveGroup(a.params, rows, starts, t.to, t.after) : moveSection(a.params, rows, t.to, t.after)));
+        },
+      });
+    });
+    return grip;
   }
 
   /** a Drum map row's name (the roll shows it; at most TRACK_NAME_MAX characters, empty: the default) */
@@ -3500,6 +3828,7 @@ export class Editor {
     head.className = 'fhead';
     const tools = document.createElement('span');
     tools.className = 'tools';
+    if (this.picking(a)) tools.append(...this.pickBar(a));
     tools.append(this.pickButton(a), ...this.assemblyButtons(a));
     el.classList.toggle('picking', this.picking(a));
     const title = this.titleOf(a, perVoice);
@@ -3818,12 +4147,18 @@ export class Editor {
     // so the browser no longer scrolls it)
     const body = e.pointerType === 'touch' && !this.armed && !!t.closest('.module')
       && !t.closest('.mhead, .fhead, .dot, button, input, select, textarea, summary, label, output, .ctx, .sel-track, .dial, .step, .resize-handle, .arr-item, .param.screen, .rename, .slider-thumb, .slider-knob');
-    if (!body && t.closest('.module, .fhead, .dot, button, input, select, .ctx')) return;
+    // in pick and arrange mode a band may also start on a card's empty space: it selects rows (#186)
+    const rowMode = this.inRowMode();
+    const cardSpace = rowMode && e.pointerType !== 'touch' && !!t.closest('.module')
+      && !t.closest('.mhead, .dot, .param, .port, .ehead, .ebreak, .arr-item, button, input, select, textarea, summary, label, .ctx, .resize-handle');
+    if (!body && !cardSpace && t.closest('.module, .fhead, .dot, button, input, select, .ctx')) return;
     e.preventDefault();
     // a click on the empty canvas drops an armed jack's ghost cable
     if (this.armed) return this.cancelArm();
     if (e.pointerType === 'touch') {
-      // one finger on the empty canvas pans it (a rubber band needs a mouse or shift)
+      // one finger on the empty canvas pans it (a rubber band needs a mouse or shift); a tap there ends a finger's row
+      // selection (#186)
+      const x0 = e.clientX, y0 = e.clientY;
       let lx = e.clientX, ly = e.clientY;
       const pan = (ev: PointerEvent): void => {
         if (ev.pointerId !== e.pointerId) return;
@@ -3833,6 +4168,7 @@ export class Editor {
       };
       const stop = (ev?: PointerEvent): void => {
         if (ev && ev.pointerId !== e.pointerId) return;
+        if (ev?.type === 'pointerup' && this.rowTouch && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 8) this.clearRows();
         if (this.oneFinger === stop) this.oneFinger = null;
         window.removeEventListener('pointermove', pan);
         window.removeEventListener('pointerup', stop);
@@ -3848,7 +4184,7 @@ export class Editor {
     const at = (ev: PointerEvent): Pt => ({ x: (ev.clientX - base.left) / this.zoom + this.canvas.scrollLeft / this.zoom, y: (ev.clientY - base.top) / this.zoom + this.canvas.scrollTop / this.zoom });
     const o = at(e);
     const box = document.createElement('div');
-    box.className = 'rubber';
+    box.className = rowMode ? 'rubber rows' : 'rubber';
     this.modulesEl.append(box);
     let r: Rect = { x: o.x, y: o.y, w: 0, h: 0 };
     const move = (ev: PointerEvent): void => {
@@ -3859,6 +4195,20 @@ export class Editor {
     const up = (): void => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      if (rowMode) {
+        // the rows the band touches; a click on empty space clears the selection
+        const b = box.getBoundingClientRect();
+        box.remove();
+        const big = r.w > 4 || r.h > 4;
+        const hit = !big ? [] : this.selRows.filter((x) => {
+          const q = x.el.getBoundingClientRect();
+          return q.left < b.right && q.right > b.left && q.top < b.bottom && q.bottom > b.top;
+        });
+        if (!(e.shiftKey || e.metaKey || e.ctrlKey)) this.rowSel.clear();
+        for (const x of hit) this.rowSel.add(x.key);
+        this.rowTouch = false;
+        return this.showRowSel();
+      }
       box.remove();
       const hit: number[] = [];
       const hitAsm: number[] = [];
