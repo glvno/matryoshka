@@ -860,6 +860,9 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .tutorial[hidden] { display: none; }
 .tutorial-offer { position: fixed; z-index: 11001; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(400px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; border-color: var(--secondary); box-shadow: 0 12px 48px var(--backdrop); font: 500 13px/1.45 'Barlow', system-ui, sans-serif; }
 .tutorial-offer p { color: var(--muted); margin: 0 0 4px; }
+.whats-new ul { margin: 0; padding-left: 18px; color: var(--ink); }
+.whats-new li + li { margin-top: 4px; }
+.whats-new .tour-actions a.btn { display: inline-flex; align-items: center; min-height: 28px; padding: 4px 9px; border-radius: 5px; font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
 .tutorial-offer-check { display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .tutorial-offer .tutorial-offer-where { font-size: 12px; padding: 6px 10px; border-radius: 6px; background: var(--surface-tint); color: var(--ink); }
 .tutorial:not(.dragging) { transition: left .25s ease, top .25s ease; }

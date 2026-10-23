@@ -8,6 +8,7 @@ import { isAiPrompts, type AiPrompts } from './ai-prompts';
 import { formatDay, formatHours, formatUsd, isAiStats, modelName, modelShares, totalCost, type AiStats } from './ai-stats';
 import { isCoverageStats, type CoverageStats } from './coverage';
 import { versionLabel } from './version';
+import { notesUrl } from './whats-new';
 import { inlineWordmarks, logoHtml } from './brand';
 
 const KOFI = 'glvno';
@@ -93,7 +94,7 @@ function credits(): string {
       ${link('https://hugelton.itch.io/', 'Plugins on itch.io')}</p></div>
     <div class="credit"><p>${link('https://github.com/WiggisModular/Modular-1', 'Modular-1')}, by ${link('https://github.com/morgulbrut', '@morgulbrut')} /
       ${link('https://github.com/WiggisModular', 'WiggisModular')}: the modular synthesizer this project grew from.</p></div>
-    <p class="muted about-foot">Version ${esc(versionLabel())} · GPL-3.0-only · ${link(REPO, 'Source')} · ${link(`${REPO}/issues`, 'Issues')} · Not affiliated with M-VAVE or Clavia.</p>
+    <p class="muted about-foot">Version ${esc(versionLabel())} · ${link(notesUrl(), 'What’s new')} · GPL-3.0-only · ${link(REPO, 'Source')} · ${link(`${REPO}/issues`, 'Issues')} · Not affiliated with M-VAVE or Clavia.</p>
   </section>`;
 }
 
