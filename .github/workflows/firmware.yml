@@ -1,5 +1,5 @@
 name: firmware
-# Builds the firmware with the JieLi toolchain on every push and pull request that touches it (paths below) and fails on compiler warnings or on a
+# Builds the firmware with the JieLi toolchain on every push that touches it (paths below) and every pull request that does and fails on compiler warnings or on a
 # pool headroom below 8 KB (tools/build.py). Then the host tests that need a C compiler: the golden vectors (web engine
 # vs firmware engine), the arpeggiator, protocol, USB audio and panel tests, the LCD preview. The .fwsc and .bin are kept as an artifact
 # (the emulator smoke test, npm run emu:smoke, downloads them; not for the only device: see the fork's issue 1).
@@ -46,46 +46,9 @@ on:
       - web/src/pages.ts
       - web/src/storage-key.ts
       - web/src/structure.ts
+  # every pull request runs, so `build` can be a required check; the changes job skips the build (a skipped job passes)
+  # when the pull request touches none of the push paths above
   pull_request:
-    paths:
-      - firmware/**
-      - tools/**
-      - .github/workflows/firmware.yml
-      - web/presets/**
-      - web/package-lock.json
-      - web/scripts/export-defs.ts
-      - web/scripts/legacy-factory.json
-      - web/scripts/golden.ts
-      - web/src/arpeggiator.ts
-      - web/src/assembly.ts
-      - web/src/cpu-costs.json
-      - web/src/cpu.ts
-      - web/src/device-compile.ts
-      - web/src/engine.ts
-      - web/src/fallback.ts
-      - web/src/labels.ts
-      - web/src/modules.ts
-      - web/src/parameter-routing.ts
-      - web/src/patch.ts
-      - web/src/patchbin.ts
-      - web/src/poly.ts
-      - web/src/presets.ts
-      - web/src/protocol.ts
-      - web/src/test-patches.ts
-      - web/src/test-poly.ts
-      - web/src/track.ts
-      - web/src/wavetables.json
-      - web/src/arm.ts
-      - web/src/assemblies.ts
-      - web/src/assemblies/**
-      - web/src/buttons.ts
-      - web/src/device-presets.ts
-      - web/src/engines.ts
-      - web/src/factory-presets.ts
-      - web/src/knob-migrate.ts
-      - web/src/pages.ts
-      - web/src/storage-key.ts
-      - web/src/structure.ts
   workflow_dispatch:
 
 # a newer run for the same branch / PR replaces an older one still running (a push that skips this workflow cancels nothing)
@@ -94,7 +57,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      firmware: ${{ steps.diff.outputs.firmware }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: does this change touch the firmware (the push paths above)?
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then echo "firmware=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          python3 - "$BASE" <<'PY'
+          import os, re, subprocess, sys
+          wf = open('.github/workflows/firmware.yml').read()
+          block = wf.split('  push:\n    paths:\n', 1)[1].split('\n  pull_request:', 1)[0]
+          pats = re.findall(r'^\s+- (\S+)$', block, re.M)
+          files = subprocess.run(['git', 'diff', '--name-only', sys.argv[1] + '...HEAD'], capture_output=True, text=True, check=True).stdout.split()
+          hit = [f for f in files for p in pats if (f.startswith(p[:-2]) if p.endswith('/**') else f == p)]
+          print('firmware paths changed:', sorted(set(hit)) or 'none')
+          open(os.environ['GITHUB_OUTPUT'], 'a').write('firmware=%s\n' % ('true' if hit else 'false'))
+          PY
   build:
+    needs: changes
+    if: needs.changes.outputs.firmware == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
