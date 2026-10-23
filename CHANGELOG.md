@@ -6,6 +6,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The Flash tab reads an FM-1 that reports `FM-1_8XX` as M-VAVE firmware (as the FM-1 panel does), not as Matryoshka (#217).
 - A patch too big for the FM-1 no longer lets PRESET step through the bank under Live (#200, the EMLYRA bug): Live
   pauses, the editor keeps telling the FM-1 it is there, and the FM-1 says EDITOR PATCH TOO BIG (and again when PRESET
   is turned) until the patch fits.

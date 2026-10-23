@@ -56,7 +56,7 @@ try {
 } catch (e) {
   fail(`${src}: ${e.message}`);
 }
-if (!/^FM-1_[78]\d\d$/.test(product)) fail(`${src}: identity ${product} is not a Matryoshka package (FM-1_7XY, FM-1_800 before #79)`);
+if (!/^FM-1_7\d\d$/.test(product)) fail(`${src}: identity ${product} is not a Matryoshka package (FM-1_7XY)`);
 
 const sidecar = src.replace(/\.fwsc$/i, '') + '.json';
 let version;

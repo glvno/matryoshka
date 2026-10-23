@@ -4,8 +4,8 @@ import { PROFILES, firmwareOf, relClicks } from './fm1-profiles';
 
 describe('FM-1 MIDI profiles (#120)', () => {
   it('tells the firmware by its identity', () => {
-    expect(['FM-1_015', 'FM-1_812', 'FM-1_901', 'FM-1_700', 'FM-1_710', 'ota-FM-1_700', 'X'].map(firmwareOf))
-      .toEqual(['mvave', 'mvave', 'felucca', 'matryoshka', 'matryoshka', null, null]);
+    expect(['FM-1_015', 'FM-1_800', 'FM-1_812', 'FM-1_901', 'FM-1_700', 'FM-1_710', 'ota-FM-1_700', 'X'].map(firmwareOf))
+      .toEqual(['mvave', 'mvave', 'mvave', 'felucca', 'matryoshka', 'matryoshka', null, null]);
   });
 
   it('reads Matryoshka\'s map: raw buttons, relative encoders, K1..K4, MASTER, keys', () => {
