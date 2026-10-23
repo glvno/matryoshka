@@ -530,7 +530,8 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     m.turn(ALGO, 2, 400)?;
     t.screen(&m, "menu: the SYSTEM tab", "UPDATE MODE");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
-    m.turn(SELECT, 4, 400)?;
+    t.screen(&m, "menu: the battery's reading (fm1-emu's ch 3: 640, 3 bars)", "640  3/3");
+    m.turn(SELECT, 5, 400)?;
     m.tap(OCT_UP, 120, 300)?;
     m.tap(OCT_UP, 120, 800)?;
     t.screen(&m, "menu: UPDATE MODE enters update mode", "FROM THE MENU");
@@ -550,6 +551,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
     m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
     t.screen(&m, "factory patch 0 loaded", &presets[0].0);
+    let cell = m.lcd()[10 * 240 + 224]; // the battery's cell (ui.c batt_mark_draw): its first bar, ivory
+    t.check("the battery in the top bar: 3 bars (fm1-emu's ch 3 reads 640)", cell == 0xFFBD, format!("{cell:#06x} at 224, 10"));
     if let Some(c) = cpu_figure(&m) {
         println!("     CPU figure in the top bar: {c} %");
     }

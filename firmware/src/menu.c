@@ -21,8 +21,9 @@ static void defaults_now(void);
 
 enum { MT_PANEL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
-                                              "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "UPDATE MODE", "FACTORY RESET"};
-static const uint8_t ROW_TAB[MR_COUNT] = {MT_PANEL, MT_PANEL, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM};
+                                              "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET"};
+static const uint8_t ROW_TAB[MR_COUNT] = {MT_PANEL, MT_PANEL, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM,
+                                          MT_SYSTEM};
 static const char *const TAB_NAME[MT_COUNT] = {"PANEL", "MIDI", "SYSTEM", "MANUAL"};
 
 static uint8_t menu_tab, menu_sel = MR_LEDS;     /* the tab and the selected row (a row number) */
@@ -98,6 +99,23 @@ static void menu_value(uint32_t row, char *out)
     case MR_CLOCK: p = put(p, ONOFF[cfg.clock_in]); break;
     case MR_MOUT: p = put(p, ONOFF[cfg.midi_out]); break;
     case MR_VERSION: p = put(p, FELUCCA_VERSION); break;
+    case MR_BATT: {                              /* the smoothed reading (0..1023) and the bars it gives (ui.c ui_battery) */
+        uint8_t s = batt_shown();
+        if (s == BATT_NONE) {
+            p = put(p, "-");
+            break;
+        }
+        fmt_int(p, batt_raw());
+        p += str_len(p);
+        p = put(p, "  ");
+        if (s == BATT_USB) {
+            p = put(p, "USB");
+        } else {
+            *p++ = (char)('0' + s);
+            p = put(p, "/3");
+        }
+        break;
+    }
     case MR_PEAK:
         fmt_int(p, (int32_t)cpu_peak);
         p += str_len(p);
@@ -108,8 +126,10 @@ static void menu_value(uint32_t row, char *out)
     *p = 0;
 }
 
-#define MENU_Y 68u                                      /* the first row's top, the rows' pitch */
-#define MENU_PITCH 26u
+#define MENU_Y 68u                                      /* the first row's top, the rows' pitch (SYSTEM's 7 rows end at 214) */
+#define MENU_PITCH 21u
+#define MENU_ROW_H 20u
+#define MENU_TXT 1u                                     /* a row's text below its top */
 
 /* a row's value alone, over the old one (text_bc paints its field's background with each scanline: no blink) */
 static void menu_value_draw(uint32_t row)
@@ -120,7 +140,7 @@ static void menu_value_draw(uint32_t row)
     if (ROW_TAB[row] != menu_tab)
         return;
     menu_value(row, val);
-    text_bc(&FONT_M, 150, y + 3u, val, hot ? C_ACC : C_FG, hot ? C_TRACK : C_BG, 78, TA_RIGHT);
+    text_bc(&FONT_M, 150, y + MENU_TXT, val, hot ? C_ACC : C_FG, hot ? C_TRACK : C_BG, 78, TA_RIGHT);
 }
 
 static void menu_row_draw(uint32_t row)
@@ -128,10 +148,10 @@ static void menu_row_draw(uint32_t row)
     int hot = row == menu_sel;
     uint32_t y = MENU_Y + menu_pos(row) * MENU_PITCH;
     uint16_t bg = hot ? C_TRACK : C_BG;
-    lcd_fill(6, y, 228, 24, bg);
+    lcd_fill(6, y, 228, MENU_ROW_H, bg);
     if (hot)
-        lcd_fill(6, y, 3, 24, C_ACC);
-    text_bc(&FONT_M, 14, y + 3u, ROW_NAME[row], hot ? C_FG : C_DIM, bg, 140, TA_LEFT);
+        lcd_fill(6, y, 3, MENU_ROW_H, C_ACC);
+    text_bc(&FONT_M, 14, y + MENU_TXT, ROW_NAME[row], hot ? C_FG : C_DIM, bg, 136, TA_LEFT);
     menu_value_draw(row);
 }
 
@@ -322,4 +342,25 @@ static void cpu_poll(void)
     }
     if (cpu_peak != peak && shown)
         menu_value_draw(MR_PEAK);
+}
+
+/* the battery on screen (ui.c ui_battery set it): by the loop's drawing (panel_draw), never by a key. LOW BATTERY in the
+ * bar once, the cell in the top bar when its level changed, MENU > SYSTEM > BATTERY's value when the reading changed */
+static void batt_draw(void)
+{
+    static int32_t raw_shown = -1;
+    static uint8_t lvl_shown = BATT_NONE - 1u;
+    if (booting)
+        return;
+    if (batt_low_due) {
+        batt_low_due = 0;
+        ui_msg("LOW BATTERY", 3000);
+    }
+    batt_mark_sync();
+    if (batt_raw() != raw_shown || batt_shown() != lvl_shown) {
+        raw_shown = batt_raw();
+        lvl_shown = batt_shown();
+        if (page == PAGE_MENU && menu_tab == MT_SYSTEM && !ui_dirty)   /* (a pending redraw shows it anyway) */
+            menu_value_draw(MR_BATT);
+    }
 }

@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- FM-1: the battery in the top right corner of the screen: 0 to 3 bars, a bolt while a computer powers it over USB, and
+  LOW BATTERY in the top bar once when it runs low. MENU > SYSTEM > BATTERY shows the reading behind it. The thresholds
+  are the stock firmware's (via Felucca) and are still to be checked on a real FM-1 (#240).
 - FM-1 drums on the black keys everywhere: whenever the keys reach a Drum map (a drum patch like the 808 Kit, or an
   armed drum track), black keys 1..8 play its rows 1..8 on every page, recording or not, and the white keys play nothing
   (they still switch steps on the SEQ page). A melodic patch, or <7PH's PATTERN, still gets every key. MIDI

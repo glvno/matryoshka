@@ -175,9 +175,11 @@ def main():
         link.out.send(mido.Message("note_off", note=int(a[1])))
     elif a[0] == "cpu":
         p = link.ask(frame(0x2B, [127]), (0x4B, 127))
-        w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(5)]
+        w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range((len(p) - 1) // 4)]
         print(f"cpu {w[0]} %, peak {w[1]} us of {w[2]} us ({100 * w[1] / w[2]:.0f} %) since the last read, "
               f"overload {'MUTED' if w[3] else 'no'}, halves {w[4]}")
+        if len(w) >= 7:                                 # (firmware with the battery, #240)
+            print(f"battery {w[6]} of 1023 (smoothed; 0 = not read yet), its read took {w[5]} us")
     elif a[0] == "uac":
         def read():
             w = []

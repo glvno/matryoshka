@@ -349,7 +349,7 @@ int main(void)
     }
     {                                                       /* #146: an idle SYSTEM tab redraws only the CPU values */
         uint8_t tab = menu_tab, row = menu_sel;
-        uint32_t i, n = 0, outside = 0, y0 = 68u + menu_pos(MR_CPU) * 26u, y1 = 68u + menu_pos(MR_PEAK) * 26u;
+        uint32_t i, n = 0, outside = 0, y0 = MENU_Y + menu_pos(MR_CPU) * MENU_PITCH, y1 = MENU_Y + menu_pos(MR_PEAK) * MENU_PITCH;
         menu_tab = MT_SYSTEM;
         menu_sel = MR_VERSION;
         ui_dirty = 2;
@@ -361,7 +361,7 @@ int main(void)
         loop();
         for (i = 0; i < 240u * 240u; i++) {
             uint32_t x = i % 240u, y = i / 240u;
-            int in = x >= 150u && x < 228u && ((y >= y0 + 3u && y < y0 + 21u) || (y >= y1 + 3u && y < y1 + 21u));
+            int in = x >= 150u && x < 228u && ((y >= y0 + MENU_TXT && y < y0 + MENU_TXT + 18u) || (y >= y1 + MENU_TXT && y < y1 + MENU_TXT + 18u));
             n += fb_changes[i] != 0u;
             outside += fb_changes[i] != 0u && !in;
         }
@@ -1563,6 +1563,118 @@ int main(void)
         enc(6, 1);
         check("Live lapsed: PRESET steps again", presets_stepped == stepped + 1 && cur_preset != slot);
         preset_loads = 0;
+    }
+
+    {                                                       /* #240: the battery (ui.c ui_battery; main.c feeds SARADC ch 3 every 2 s) */
+        uint32_t i, all, cell;
+        char v[24];
+        int ok;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+        later(3000);
+        check("host builds start full (BATT_START 900): 3 bars in the bar's cell", batt_shown() == 3u && batt_drawn == 3u
+              && px(BATT_X + 4u, 10) == C_FG && px(BATT_X + 10u, 10) == C_FG);
+        batt_q16 = 0;                                       /* (not read yet) */
+        ui_battery(600, 0);
+        ok = batt_raw() == 600;
+        ui_battery(520, 0);
+        ok = ok && batt_raw() == 580;                       /* a quarter of the way per reading */
+        for (i = 0; i < 30u; i++)
+            ui_battery(520, 0);
+        check("smoothing: the first reading as it is, then a quarter of the way each", ok && batt_raw() >= 520 && batt_raw() <= 523);
+        ui_battery(-1, 0);
+        check("a timed-out conversion (-1) changes nothing", batt_raw() >= 520 && batt_raw() <= 523);
+        {
+            static const int32_t RAW[] = {520, 531, 533, 534, 560, 561, 563, 564, 590, 593, 594, 1023, 591, 590, 561, 560, 531, 530};
+            static const uint8_t LVL[] = {0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3, 3, 3, 2, 2, 1, 1, 0};
+            ok = 1;
+            for (i = 0; i < sizeof RAW / sizeof RAW[0]; i++) {
+                batt_q16 = RAW[i] * 16;                     /* (the smoothed value itself: one reading of the same) */
+                ui_battery(RAW[i], 0);
+                if (batt_lvl != LVL[i]) {
+                    printf("      (raw %d: level %u, not %u)\n", RAW[i], batt_lvl, LVL[i]);
+                    ok = 0;
+                }
+            }
+            check("levels 0..3 at the stock thresholds 531 / 561 / 591, 3 counts of hysteresis on the way up", ok);
+        }
+        batt_q16 = 600 * 16;
+        ui_battery(600, 0);
+        loop();
+        fb_watch_reset();
+        lcd_xfers = 0;
+        ui_battery(598, 0);                                 /* another reading, the same level */
+        loop();
+        check("the same level: nothing drawn", lcd_xfers == 0u && fb_changed_in(0, 0, 240, 240) == 0u);
+        batt_q16 = 570 * 16;
+        ui_battery(570, 0);                                 /* 2 bars */
+        loop();
+        all = fb_changed_in(0, 0, 240, 240);
+        cell = fb_changed_in(BATT_X, 0, 240, BAR_H);
+        check("a level change: the cell alone, two transfers (its halves), no blink", lcd_xfers == 2u && all > 0u && all == cell
+              && fb_blinked() == 0 && px(BATT_X + 10u, 10) == BATT_BG && px(BATT_X + 7u, 10) == C_FG);
+        batt_q16 = 540 * 16;
+        ui_battery(540, 0);
+        loop();
+        check("one bar: in the accent", px(BATT_X + 4u, 10) == C_ACC && px(BATT_X + 7u, 10) == BATT_BG);
+        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
+        batt_q16 = 520 * 16;
+        ui_battery(520, 0);                                 /* under 531: LOW BATTERY */
+        later(10);
+        check("under the lowest threshold: LOW BATTERY in the bar, the outline red", !strcmp(msg_text, "LOW BATTERY")
+              && bar_shows("LOW BATTERY", C_FG) && px(BATT_X + 2u, 10) == C_RED);
+        later(3100);
+        msg_text[0] = 0;
+        ui_battery(518, 0);
+        later(2000);
+        ui_battery(515, 0);
+        later(10);
+        check("LOW BATTERY once: not again while it stays low", msg_text[0] == 0);
+        ui_battery(515, 1);                                 /* a USB host: external power, a bolt */
+        loop();
+        check("USB power: the bolt (seafoam), no message", msg_text[0] == 0 && batt_shown() == BATT_USB
+              && px(BATT_X + 2u, 10) == 0x7E38u && px(BATT_X + 6u, 10) == 0x7E38u);
+        ui_battery(515, 0);                                 /* unplugged, still low: says so again */
+        later(10);
+        check("USB gone while low: LOW BATTERY again", !strcmp(msg_text, "LOW BATTERY"));
+        later(3100);
+        batt_q16 = 600 * 16;
+        ui_battery(600, 0);
+        loop();
+        menu_value(MR_BATT, v);
+        check("MENU > SYSTEM > BATTERY: the reading and its bars", !strcmp(v, "600  3/3"));
+        ui_battery(600, 1);
+        menu_value(MR_BATT, v);
+        check("... USB on it", !strcmp(v, "600  USB"));
+        ui_battery(600, 0);
+        {
+            uint8_t tab = menu_tab, row = menu_sel;
+            uint32_t n = 0, outside = 0, y0 = MENU_Y + menu_pos(MR_BATT) * MENU_PITCH;
+            page_set(PAGE_MENU);
+            menu_tab = MT_SYSTEM;
+            menu_sel = MR_VERSION;
+            ui_dirty = 2;
+            loop();
+            check("SYSTEM: its seven rows fit above the hint", MENU_Y + menu_count(MT_SYSTEM) * MENU_PITCH <= 220u);
+            fb_watch_reset();
+            ui_battery(560, 0);                             /* 600 -> 590: 3 bars to 2, the value changes */
+            loop();
+            for (i = 0; i < 240u * 240u; i++) {
+                uint32_t x = i % 240u, y = i / 240u;
+                int in = (x >= 150u && x < 228u && y >= y0 + MENU_TXT && y < y0 + MENU_TXT + 18u) || (x >= BATT_X && y < BAR_H);
+                n += fb_changes[i] != 0u;
+                outside += fb_changes[i] != 0u && !in;
+            }
+            menu_value(MR_BATT, v);
+            check("SYSTEM idle, a new reading: only its value (and the cell) redrawn, no blink", n > 0u && outside == 0u
+                  && fb_blinked() == 0 && !strcmp(v, "590  2/3"));
+            menu_tab = tab;
+            menu_sel = row;
+            screen_back();
+            loop();
+        }
+        snap_to(getenv("PANEL_SNAP_BATTERY"));
     }
 
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
