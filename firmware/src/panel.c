@@ -20,7 +20,10 @@ static void poly_row_set(uint32_t mod, uint32_t field, int32_t v);
 
 static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button (1..7) last moved: the bar shows it */
 #define BTN_PLAY 12u                  /* PLAY: the transport; held, PRESET sets the tempo */
-#define BTN_GLO_IDX 5u                /* GLO among the patch buttons (PANEL_BTN_ID): Main's global page, never switching */
+#define BTN_GLO_IDX 5u                /* GLO among the patch buttons (PANEL_BTN_ID): the FM-1's own page, never switching */
+#define BTN_SEL_IDX 1u                /* SEL (#197): fixed, one level deeper; its jack a Gate */
+#define BTN_ENV_IDX 2u                /* ENV (#197): fixed, the environment; its jack a Gate */
+#define FIXED_BTNS ((1u << BTN_GLO_IDX) | (1u << BTN_SEL_IDX) | (1u << BTN_ENV_IDX))
 static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */
 
 static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
@@ -72,14 +75,14 @@ static void page_mask(void);
 static void panel_button_set(uint32_t b, int down)
 {
     const uint8_t *pn;
-    if (eng_button_kind(b) == ENG_BTN_PAGE) {      /* a page list (#117): its own press / hold rules */
+    if (eng_button_kind(b) == ENG_BTN_PAGE && !(FIXED_BTNS >> b & 1u)) {   /* a page list (#117): its own press / hold rules */
         page_button(b, down);
         return;
     }
     if (b == BTN_GLO_IDX && down)                  /* GLO (#118): Main's global page; again (or HOME) goes back. Its jack as a Gate */
         page_set(PAGE_GLO);
     pn = m1_panel();
-    uint32_t tog = pn ? ((uint32_t)pn[0] | (uint32_t)pn[1] << 8) & ~(1u << BTN_GLO_IDX) : 0u, mask = eng_buttons_get(), was = mask;
+    uint32_t tog = pn ? ((uint32_t)pn[0] | (uint32_t)pn[1] << 8) & ~FIXED_BTNS : 0u, mask = eng_buttons_get(), was = mask;
     if (tog >> b & 1u) {
         if (down)
             mask ^= 1u << b;
@@ -332,7 +335,14 @@ static void panel_encoders(int32_t *st)
     }
     if (page == PAGE_GLO && (st[0] || st[1]))       /* SELECT / ALGO on GLO's page: back to the device pages, then as there */
         screen_back();
-    if (page != 0 && page != PAGE_GLO)
+    if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO nothing yet */
+        if (st[0] && pages_select(st[0])) {
+            m1_focus_now(pg_cur_dev, pg_cur_page);
+            ui_dirty = 2;
+        }
+        st[0] = st[1] = 0;
+    }
+    if (page != 0 && page != PAGE_GLO && page != PAGE_ENV)
         return;
     if (st[0] && pg_list_btn >= 0 && !pg_list_peek) {   /* SELECT inside a page list: leaves it */
         pg_list_btn = -1;
@@ -370,6 +380,8 @@ static void panel_encoders(int32_t *st)
             m1_patch_param(mod, par, v);
         }
         m1_param_now(mod, par, r == 1 ? v << 16 : v);   /* the editor follows (Live) */
+        if (page == PAGE_ENV)
+            env_knob_msg(k);
         midi_send(0xB0u, 16u + k, pages_cc(k));
         if (!ui_dirty)
             ui_dirty = 1;
@@ -413,7 +425,7 @@ static void panel_keys(uint32_t now)
             int32_t note = 53 + (int32_t)n + 12 * octave;
             /* into an armed track at the default velocity (ENV held on its keyboard: full), so a take records what a step
              * entered would be; else at full velocity as always */
-            uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ENV & 1u) ? ACCENT_VEL : STEP_VEL;
+            uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
             key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
             key_sounding |= 1u << n;
             eng_note_on(key_note[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
@@ -428,6 +440,28 @@ static void panel_keys(uint32_t now)
                 seq_kbd_key(n, key_note[n], 0, 0u);
         }
     }
+}
+
+/* ENV held and SAVE pressed meanwhile: its release opens nothing */
+static uint8_t env_held_used;
+
+/* SEL (#197): one level deeper. The environment's row: its device pages; a Steps track's page: its steps (#196); elsewhere
+ * nothing yet (an assembly's preset list: #194) */
+static void sel_open(void)
+{
+    if (page == PAGE_ENV) {
+        page_set(0);
+        m1_focus_now(pg_cur_dev, pg_cur_page);
+    } else if (page == 0 && pages_focus_track() >= 0) {
+        seq_select((uint32_t)pages_focus_track());
+        page_set(PAGE_SEQ);
+    }
+}
+
+/* ENV held + SAVE (#194): the focused device's values as its preset (filled in with the preset store) */
+static void preset_store_focused(void)
+{
+    ui_msg("NO PRESET STORE YET", 1000);
 }
 
 /* buttons pressed (p) and let go (rel) since the last call, matrix ids as bits; call it often, also with no edges: a
@@ -457,13 +491,13 @@ static void panel_edges(uint32_t p, uint32_t rel)
             p &= ~(1u << BTN_OCT_DOWN);
         if ((p & (1u << BTN_OCT_UP)) && seq_entry_oct())
             p &= ~(1u << BTN_OCT_UP);
-        p &= ~((1u << BTN_ENV) | (1u << BTN_LFO));
+        p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track, ENV is the accent key */
         if (p & (1u << BTN_OCT_DOWN))
             seq_page_step(-1);
         if (p & (1u << BTN_OCT_UP))
             seq_page_step(1);
-        p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_ENV));
+        p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_ACC));
     }
     /* SEQ and REC act on release, unless a black key muted / armed a track meanwhile; the flag is cleared at the release,
      * not the press: panel_keys runs first in a pass, so a key that lands in the same pass as the press has set it (#179) */
@@ -472,13 +506,14 @@ static void panel_edges(uint32_t p, uint32_t rel)
             seq_select((uint32_t)pages_focus_track());
         page_set(PAGE_SEQ);
     }
-    if (page == 0 && pages_focus_track() >= 0 && ((p | rel) & (1u << BTN_SEL))) {   /* SEL there: the same, not the patch's button */
-        if (rel & (1u << BTN_SEL)) {
-            seq_select((uint32_t)pages_focus_track());
-            page_set(PAGE_SEQ);
-        }
-        p &= ~(1u << BTN_SEL);
-        rel &= ~(1u << BTN_SEL);
+    if (rel & (1u << BTN_SEL))                      /* SEL (#197, fixed): one level deeper */
+        sel_open();
+    if (p & (1u << BTN_ENV))                        /* ENV (#197, fixed): the environment, on its release (held + SAVE: a preset) */
+        env_held_used = 0;
+    if ((rel & (1u << BTN_ENV)) && !env_held_used && page != PAGE_MENU) {
+        if (page != PAGE_ENV)
+            env_open();
+        page_set(PAGE_ENV);                         /* (again: back) */
     }
     if (rel & (1u << BTN_SEQ))
         seq_held_used = 0;
@@ -504,6 +539,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
             put(q, num);
             ui_msg(m, 1000);
         }
+    }
+    if ((p & (1u << BTN_SAVE)) && (panel_held >> BTN_ENV & 1u)) {   /* ENV held + SAVE: the focused device's preset (#194) */
+        env_held_used = 1;
+        p &= ~(1u << BTN_SAVE);
+        preset_store_focused();
     }
     if (p & (1u << BTN_SAVE)) {
         int menu = page == PAGE_MENU;

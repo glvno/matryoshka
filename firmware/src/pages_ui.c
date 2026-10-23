@@ -560,7 +560,8 @@ static void pages_strip(void)
     char t[20];
     uint32_t first = 0, x, i, w[PG_DEVS];
     lcd_fill(0, 0, 240, 20, P_STRIP);
-    if (page == PAGE_GLO) {                             /* GLO: GLOBAL and the patch, on coral */
+    if (page == PAGE_GLO || page == PAGE_ENV) {         /* GLO: GLOBAL and the patch, on coral; the environment's on lilac */
+        uint16_t bg = page == PAGE_ENV ? P_LILAC : P_CORAL;
         char nm[32], num[8], *q = nm;
         if (cur_preset < M1_SLOTS) {
             fmt_int(num, (int32_t)cur_preset + 1);
@@ -571,9 +572,9 @@ static void pages_strip(void)
         }
         put(q, patch_label ? patch_label : "")[0] = 0;
         nm[22] = 0;
-        lcd_fill(0, 0, 240, 20, P_CORAL);
-        text_bc(&FONT_S, 8, 3, "GLOBAL", P_NIGHT, P_CORAL, 80, TA_LEFT);
-        text_bc(&FONT_S, 88, 3, nm, P_NIGHT, P_CORAL, 144, TA_RIGHT);
+        lcd_fill(0, 0, 240, 20, bg);
+        text_bc(&FONT_S, 8, 3, page == PAGE_ENV ? "ENVIRONMENT" : "GLOBAL", P_NIGHT, bg, 100, TA_LEFT);
+        text_bc(&FONT_S, 108, 3, nm, P_NIGHT, bg, 124, TA_RIGHT);
         return;
     }
     if (pg_list_btn >= 0 && pg_ndev) {                  /* a Page button's list: "SEL 2/3 · AMP ENV" */
@@ -1115,4 +1116,163 @@ static void pages_ticks(void)
             pages_bar(pg, k);
     }
     was = now;
+}
+
+/* ---- the environment (#197, CONTEXT.md "Environment"): every device of the patch as a rack of equipment, Main first, the
+ * Output last, in the device pages' grouped order (pages.ts devicesOf). ENV opens it from any page, on the device you were
+ * on; ENV or HOME goes back. SELECT moves the row (the device in focus: K1..K4 turn its first page), SEL opens its device
+ * pages. A Steps track's row reads its name; the devices it drives follow it, indented, with a stripe in the track's hue
+ * (Decision 5D, from the device extras of format 34). A row: the name, the preset it was set to (coral), and on the right
+ * what it is doing (Main's tempo, a track's length, ARMED); a long row cuts the preset name first. */
+#define ENV_Y0 24u
+#define ENV_ROW_H 26u
+#define ENV_ROWS 8u
+static const uint16_t TRACK_HUE[4] = {P_LILAC, P_SKY, P_GOLD, P_SEA};
+static uint32_t env_first;                              /* the first row shown */
+
+/* device d's extras (format 34): the device index of the Steps track that drives it (ENG_NO_TRACK none) and the name of the
+ * preset it was set to (*name, *n characters; 0 none) */
+static uint32_t env_extras(uint32_t d, const char **name, uint32_t *n)
+{
+    uint32_t len, at, cnt, k;
+    const uint8_t *p = pages_src(&len);
+    *name = 0;
+    *n = 0;
+    if (!p || !(p[7] & ENG_FLAG_EXTRAS) || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at)) || !eng_extras_end(p, len, at))
+        return ENG_NO_TRACK;
+    cnt = p[at++];
+    for (k = 0; k < cnt; k++) {
+        if (k == d) {
+            *n = p[at + 5u];
+            *name = *n ? (const char *)p + at + 6u : 0;
+            return p[at];
+        }
+        at += 6u + p[at + 5u];
+    }
+    return ENG_NO_TRACK;
+}
+
+/* which Steps track (0.. among the device rows that are tracks) device d is, -1 none: its hue */
+static int env_track_no(uint32_t d)
+{
+    uint32_t i;
+    int n = 0;
+    for (i = 0; i < pg_ndev; i++) {
+        int m = pg_dev[i].module;
+        if (m >= 0 && eng_type((uint32_t)m) == T_STEPS) {
+            if (i == d)
+                return n;
+            n++;
+        }
+    }
+    return -1;
+}
+
+/* the right-hand text of device d's row: Main's tempo, a track's length, ARMED */
+static void env_status(uint32_t d, char *out)
+{
+    int m = pg_dev[d].module, t = m >= 0 ? eng_type((uint32_t)m) : -1;
+    char num[12];
+    out[0] = 0;
+    if (t == T_STEPS && eng_armed() == m) {
+        put(out, "ARMED")[0] = 0;
+    } else if (t == T_FM1) {
+        fmt_int(num, (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16);
+        put(put(out, num), " BPM")[0] = 0;
+    } else if (t == T_STEPS) {
+        fmt_int(num, (eng_get_param((uint32_t)m, STEPS_P_LEN) + 32768) >> 16);
+        put(put(out, num), " STEPS")[0] = 0;
+    }
+}
+
+static void env_row(uint32_t d, uint32_t y)
+{
+    char name[24], pre[24], st[16];
+    const char *pn;
+    uint32_t pl, tr = env_extras(d, &pn, &pl), x = 6u, right, w;
+    int on = d == pg_cur_dev, tn = env_track_no(d);
+    uint16_t bg = on ? P_TRACK : P_PANEL;
+    lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
+    lcd_fill(2, y + 1u, 236, ENV_ROW_H - 2u, bg);
+    if (on) {                                           /* the row in focus: an ivory frame */
+        lcd_fill(2, y + 1u, 236, 2, P_INK);
+        lcd_fill(2, y + ENV_ROW_H - 3u, 236, 2, P_INK);
+        lcd_fill(2, y + 1u, 2, ENV_ROW_H - 2u, P_INK);
+        lcd_fill(236, y + 1u, 2, ENV_ROW_H - 2u, P_INK);
+    }
+    if (tn >= 0)                                        /* a track: a square in its hue */
+        lcd_fill(x + 2u, y + 9u, 8, 8, TRACK_HUE[tn & 3]), x += 14u;
+    else if (tr != ENG_NO_TRACK && tr < pg_ndev) {      /* driven by a track: indented, a stripe in the track's hue */
+        int h = env_track_no(tr);
+        lcd_fill(x + 2u, y + 4u, 3, ENV_ROW_H - 8u, TRACK_HUE[(h < 0 ? 0 : h) & 3]);
+        x += 12u;
+    }
+    caps(name, pg_dev[d].name, pg_dev[d].nlen, 16);
+    env_status(d, st);
+    right = st[0] ? text_w(&FONT_S, st, -1) + 10u : 6u;
+    fit(name, &FONT_M, 236u - right - x);
+    w = text_w(&FONT_M, name, -1);
+    text_bc(&FONT_M, x, y + 4u, name, P_INK, bg, w, TA_LEFT);
+    x += w + 8u;
+    if (pn && x + 20u < 236u - right) {                 /* the preset's name: what room is left (cut first) */
+        caps(pre, pn, pl, 16);
+        fit(pre, &FONT_M, 236u - right - x);
+        text_bc(&FONT_M, x, y + 4u, pre, P_CORAL, bg, text_w(&FONT_M, pre, -1), TA_LEFT);
+    }
+    if (st[0])
+        text_bc(&FONT_S, 236u - right + 4u, y + 7u, st, eng_armed() == pg_dev[d].module ? P_SEA : P_DIM, bg, right - 8u, TA_RIGHT);
+}
+
+static void env_draw(int full)
+{
+    uint32_t i;
+    pages_ensure();
+    if (full || pg_strip_dirty) {
+        if (!msg_until)
+            pages_strip();
+        pg_strip_dirty = 0;
+    }
+    if (pg_cur_dev < env_first)
+        env_first = pg_cur_dev;
+    if (pg_cur_dev >= env_first + ENV_ROWS)
+        env_first = pg_cur_dev + 1u - ENV_ROWS;
+    for (i = 0; i < ENV_ROWS; i++) {
+        uint32_t y = ENV_Y0 + i * ENV_ROW_H;
+        if (env_first + i < pg_ndev)
+            env_row(env_first + i, y);
+        else
+            lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
+    }
+    if (!pg_ndev)
+        text_bc(&FONT_S, 8, ENV_Y0 + 4u, "NO DEVICES ON THIS PATCH", P_FAINT, P_NIGHT, 0, TA_LEFT);
+}
+
+/* the environment opens: the first page of the device in focus is what K1..K4 turn there */
+static void env_open(void)
+{
+    pages_ensure();
+    pg_cur_page = 0;
+    env_first = pg_cur_dev >= ENV_ROWS ? pg_cur_dev + 1u - ENV_ROWS : 0u;
+}
+
+/* K turned on the environment: its row and value in the top bar for a second */
+static void env_knob_msg(uint32_t k)
+{
+    const ppage_t *pg = pages_now();
+    char m[40], num[20], unit[8], *q = m;
+    uint32_t base, live;
+    if (!pg || k >= pg->nrows)
+        return;
+    row_show(pg, k, num, unit, 100, &base, &live);
+    *q++ = 'K';
+    *q++ = (char)('1' + k);
+    *q++ = ' ';
+    caps(q, pg->lab[k], pg->llen[k], 14);
+    q += str_len(q);
+    *q++ = ' ';
+    q = put(q, num);
+    if (unit[0])
+        q = put(put(q, " "), unit);
+    *q = 0;
+    ui_msg(m, 1000);
 }

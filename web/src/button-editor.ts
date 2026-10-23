@@ -7,7 +7,7 @@ import { assembliesOf } from './assembly';
 import { KIND_LABEL, kindOf, mainOf, pageList, setKind, setPages, setSwitches, setTarget, switches, type ButtonKind } from './buttons';
 import { pageLabel, type Device } from './pages';
 import { moduleName } from './labels';
-import { buttonLabel, DEFS } from './modules';
+import { buttonLabel, DEFS, FIXED_DOES } from './modules';
 import { EDITOR_ONLY, PAGE_LIST_MAX, PANEL_LABEL_MAX, type Patch } from './patch';
 
 export interface ButtonEditorEvents {
@@ -133,7 +133,7 @@ export function buttonEditor(b: string, ev: ButtonEditorEvents, fixed = false): 
   }
   const hint = document.createElement('p');
   hint.className = 'be-hint';
-  hint.textContent = fixed ? 'GLO opens the FM-1’s own settings (#199), never the patch’s.'
+  hint.textContent = fixed ? `${buttonLabel(b)}: ${FIXED_DOES[b] ?? 'the FM-1’s own'}. Fixed on the FM-1; its jack is high while held.`
     : kind === 'nothing' ? 'Unassigned: no role. Its jack still goes high while it is held.'
     : kind === 'gate' ? 'Its jack is high while held (or switched on): patch it.'
     : kind === 'page' ? 'A press puts the next page of the list on K1..K4; held, its first page shows while it is down; HOME goes back.'

@@ -6,6 +6,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The environment on the FM-1 (#197): ENV opens a list of every device in the patch, Main first, each Steps track then
+  what it plays (indented, with a stripe in the track's colour), the Output last, with each device's preset name and
+  what it is doing. SELECT picks the row, K1..K4 turn its first page, SEL opens its pages; ENV or HOME goes back.
+  ENV and SEL are fixed buttons now (their jacks still go high while held; a patch's role for them is dropped), and FX
+  is the SEQ page's accent / rest key in place of ENV.
 - GLO is the FM-1's own quick page (#199): K1..K4 set the MIDI channel, MIDI clock in, MIDI out and the LEDs (saved with
   SAVE), never the patch's. The patch's tempo and morph are on Main's device page. The SCL button is shown as SEL.
 - Main, the Steps tracks and the Output are devices too (#196): SELECT steps through all of them in the environment's

@@ -37,11 +37,11 @@ describe('patch button kinds (#116)', () => {
 
   it('validates kinds and targets: unknown kinds go, a button that does nothing never switches, a gone target is dropped', () => {
     const { p, vca } = rig();
-    p.modules[0].panel = { toggle: ['fx', 'scl'], on: ['scl'], kinds: { fx: 'nothing', scl: 'bypass', env: 'bogus' as never }, targets: { scl: { module: vca }, lfo: { module: vca }, arp: { asm: 99 } } };
+    p.modules[0].panel = { toggle: ['fx', 'edit'], on: ['edit'], kinds: { fx: 'nothing', edit: 'bypass', env: 'bogus' as never }, targets: { edit: { module: vca }, lfo: { module: vca }, arp: { asm: 99 } } };
     const v = validatePatch(JSON.parse(JSON.stringify(p)), DEFS).modules[0].panel!;
-    expect(v.kinds).toEqual({ fx: 'nothing', scl: 'bypass' });
-    expect(v.targets).toEqual({ scl: { module: vca } });
-    expect(v.toggle).toEqual(['scl']);
+    expect(v.kinds).toEqual({ fx: 'nothing', edit: 'bypass' });
+    expect(v.targets).toEqual({ edit: { module: vca } });
+    expect(v.toggle).toEqual(['edit']);
     expect(switches(v, 'fx')).toBe(false);
     const gone = JSON.parse(JSON.stringify(p));
     gone.modules = gone.modules.filter((m: { id: number }) => m.id !== vca);
@@ -59,15 +59,15 @@ describe('patch button kinds (#116)', () => {
     bypassAssembly(p, a, true);
     expect(toggleTargets(p, 'fx')).toEqual([vca]);                      // (the oscillator is the assembly's kept one)
     expect(toggleEngaged(p, 'fx')).toBe(true);
-    expect(toggleTargets(p, 'scl')).toEqual([]);                        // a Gate has none
+    expect(toggleTargets(p, 'edit')).toEqual([]);                        // a Gate has none
   });
 
   it('lights: dark unassigned and uncabled, dim assigned or cabled, lit engaged', () => {
     const { p, main, vca } = rig();
-    p.modules[0].panel = { kinds: { fx: 'nothing', scl: 'nothing' } };
-    connect(p, DEFS, { module: main, port: 'scl' }, { module: vca, port: 'cv' });
+    p.modules[0].panel = { kinds: { fx: 'nothing', edit: 'nothing' } };
+    connect(p, DEFS, { module: main, port: 'edit' }, { module: vca, port: 'cv' });
     expect(buttonLight(p, 'fx', false)).toBe('dark');
-    expect(buttonLight(p, 'scl', false)).toBe('dim');
+    expect(buttonLight(p, 'edit', false)).toBe('dim');
     expect(buttonLight(p, 'env', false)).toBe('dim');
     expect(buttonLight(p, 'fx', true)).toBe('lit');
   });
@@ -109,19 +109,19 @@ describe('patch button kinds (#116)', () => {
 
   it('Page buttons: a list of device pages, gone pages left out, encoded as the binary\'s (device, page) pairs; no PRESS', () => {
     const { p, osc, vca } = rig();
-    setKind(p, 'scl', 'page');
-    setPages(p, 'scl', [{ device: `m${vca}`, page: 0 }, { device: 'm999', page: 0 }, { device: `m${osc}`, page: 1 }]);
+    setKind(p, 'edit', 'page');
+    setPages(p, 'edit', [{ device: `m${vca}`, page: 0 }, { device: 'm999', page: 0 }, { device: `m${osc}`, page: 1 }]);
     const devs = devicesOf(p, DEFS);
-    expect(pageList(p, 'scl', devs)).toEqual([{ device: `m${vca}`, page: 0 }, { device: `m${osc}`, page: 1 }]);
-    p.modules[0].panel!.toggle = ['scl'];
-    expect(switches(p.modules[0].panel, 'scl')).toBe(false);
+    expect(pageList(p, 'edit', devs)).toEqual([{ device: `m${vca}`, page: 0 }, { device: `m${osc}`, page: 1 }]);
+    p.modules[0].panel!.toggle = ['edit'];
+    expect(switches(p.modules[0].panel, 'edit')).toBe(false);
     const v = validatePatch(JSON.parse(JSON.stringify(p)), DEFS).modules[0].panel!;
-    expect(v.kinds?.scl).toBe('page');
+    expect(v.kinds?.edit).toBe('page');
     expect(v.toggle).toBeUndefined();
     const b = encodePatch(p);
     const pairs = [binaryPage(p, `m${vca}`, 0)!, binaryPage(p, `m${osc}`, 1)!];
-    expect(Array.from(b.slice(b.length - 12))).toEqual([0, 3, 0, 0, 0, 0, 0, 2, ...pairs.flat()]);
-    setKind(p, 'scl', 'gate');
+    expect(Array.from(b.slice(b.length - 12))).toEqual([0, 0, 0, 0, 3, 0, 0, 2, ...pairs.flat()]);
+    setKind(p, 'edit', 'gate');
     expect(p.modules[0].panel?.pages).toBeUndefined();
   });
 });

@@ -8,6 +8,7 @@
 
 import { allModules, assembliesOf } from './assembly';
 import { PANEL_BUTTONS } from './modules';
+import { FIXED_BUTTONS } from './patch';
 import { PAGE_LIST_MAX } from './patch';
 import type { MainPanel, ModuleInst, Patch } from './patch';
 import type { Device } from './pages';
@@ -29,7 +30,7 @@ export function kindOf(panel: MainPanel | undefined, b: string): ButtonKind {
  * press and hold have their own rules) */
 export function switches(panel: MainPanel | undefined, b: string): boolean {
   const k = kindOf(panel, b);
-  return b !== 'glo' && (k === 'gate' || k === 'bypass') && !!panel?.toggle?.includes(b);   // (GLO is fixed, #118)
+  return !FIXED_BUTTONS.has(b) && (k === 'gate' || k === 'bypass') && !!panel?.toggle?.includes(b);   // (GLO, SEL, ENV are fixed)
 }
 
 /** a Page button's list, by the editor's device keys; pages that are gone are left out */
@@ -70,8 +71,8 @@ export function buttonLight(p: Patch, b: string, engaged: boolean): 'dark' | 'di
   return kindOf(main?.panel, b) !== 'nothing' || cabled ? 'dim' : 'dark';
 }
 
-/** the patch buttons a Toggle may name: every button but GLO (#199: the FM-1's own page) */
-export const EDITABLE_BUTTONS = PANEL_BUTTONS.filter((b) => b !== 'glo');
+/** the patch buttons a Toggle may name: every button but the fixed ones (GLO, SEL, ENV) */
+export const EDITABLE_BUTTONS = PANEL_BUTTONS.filter((b) => !FIXED_BUTTONS.has(b));
 
 // ---- the button editor's edits (button-editor.ts): each keeps the panel valid (patch.ts fixPanel's rules)
 

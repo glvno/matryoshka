@@ -16,8 +16,9 @@ static uint32_t cur_preset, sel;
 static int load_err;
 static const char *patch_label;
 #define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
-#define PAGE_GLO 6u                             /* GLO: Main's global page (#118, pages_ui.c pg_glo) */
-static uint8_t page;                            /* 0: the device page, 5 menu, 6 GLO, 8 the SEQ page (seq_ui.c); (7, the legend, is gone: #114) */
+#define PAGE_GLO 6u                             /* GLO: the FM-1's own page (#199, pages_ui.c pg_glo) */
+#define PAGE_ENV 9u                             /* ENV: the environment (#197, pages_ui.c env_draw) */
+static uint8_t page;                            /* 0: the device page, 5 menu, 6 GLO, 8 the SEQ page, 9 the environment (seq_ui.c); (7, the legend, is gone: #114) */
 static void seq_bar(void);
 static void seq_draw(int full);
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
@@ -196,7 +197,7 @@ static void header_draw(void)
         *p = 0;
         b[24] = 0;                              /* (the CPU load is in MENU > SYSTEM) */
         msg_until = 0;
-        if (page == 0 || page == PAGE_GLO)      /* the device page: the devices strip (the patch is on the info line); GLO's bar */
+        if (page == 0 || page == PAGE_GLO || page == PAGE_ENV)   /* the device page: the devices strip; GLO's and ENV's bars */
             pages_strip();
         else
             bar_text(b, C_ACC);
@@ -238,6 +239,7 @@ static uint32_t panel_used(void)
 }
 
 static void menu_draw(int full);
+static void env_draw(int full);
 
 #define LEFT_W 216u
 
@@ -263,6 +265,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         menu_draw(full);
     else if (page == 8u)
         seq_draw(full);
+    else if (page == PAGE_ENV)
+        env_draw(full);
     else
         pages_draw(full);
 }

@@ -33,7 +33,8 @@
 #define PAGE_SEQ 8u
 #define BTN_SEQ 11u
 #define BTN_REC 13u
-#define BTN_ENV 4u
+#define BTN_ENV 4u                      /* ENV: the environment (#197) */
+#define BTN_ACC 2u                      /* FX: the SEQ page's accent / rest key (#197; it was ENV)*/
 #define BTN_LFO 5u
 
 static uint8_t seq_trk;                 /* the selected track (index among the patch's Steps modules) */
@@ -280,7 +281,7 @@ static void seq_sync(int mod);
 static void seq_drum_key(int map, uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module();
-    int env = (int)(panel_held >> BTN_ENV & 1u);
+    int env = (int)(panel_held >> BTN_ACC & 1u);
     if (!down) {
         if (w >= 0 && seq_held == seq_pg * 16 + w)
             seq_held = -1;
@@ -343,7 +344,7 @@ static uint32_t seq_drum_held(int map, int mod)
 static void seq_key(uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module(), map = seq_map();
-    int env = (int)(panel_held >> BTN_ENV & 1u);
+    int env = (int)(panel_held >> BTN_ACC & 1u);
     if (map >= 0) {
         seq_drum_key(map, n, down);
         return;
@@ -635,7 +636,7 @@ static void seq_kbd_key(uint32_t n, uint32_t note, int down, uint32_t vel)
  * octave) */
 static int seq_entry_oct(void)
 {
-    int mod = eng_armed(), env = (int)(panel_held >> BTN_ENV & 1u), lfo = (int)(panel_held >> BTN_LFO & 1u);
+    int mod = eng_armed(), env = (int)(panel_held >> BTN_ACC & 1u), lfo = (int)(panel_held >> BTN_LFO & 1u);
     if (!seq_entry() || mod < 0 || (!env && !lfo))
         return 0;
     m1_patch_step((uint32_t)mod, (uint32_t)seq_cur, env ? 0u : 0x80u);

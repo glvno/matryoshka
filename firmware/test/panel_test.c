@@ -402,8 +402,8 @@ int main(void)
     if (pv_bin[6] & 2u) {                                   /* Page buttons (#117), spliced into the 808 Kit's binary */
         check("(the 808 Kit has no macro ranges: the button kinds section goes last)", 0);
     } else {
-        /* SCL (button 1) a Page button: device 2 (the Drum map) page 0, then its page 1 */
-        static const uint8_t sec[] = {0, 3, 0, 0, 0, 0, 0, 2, 2, 0, 2, 1};
+        /* LFO (button 3) a Page button: device 2 (the Drum map) page 0, then its page 1 (SEL is fixed since #197) */
+        static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
         uint32_t at = pv_len, n;
         if (pv_bin[6] & 128u)                               /* before the Drum maps' row names, last here (format 33): */
             for (n = 1; n < 16u; n++)                       /* u8 count, count x (1 + 64) bytes */
@@ -416,37 +416,37 @@ int main(void)
         pv_len += sizeof sec;
         pv_bin[6] |= 64u;
         pv_gen++;
-        check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(1) == ENG_BTN_PAGE);
+        check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(3) == ENG_BTN_PAGE);
         page_show(0);
         trail_n = 0;
         pages_focus(4, 0);                                  /* (the snare) */
         loop();
-        tap(3);
-        check("SCL tapped: its list's first page, a step on the trail, lit", pg_list_btn == 1 && pg_cur_dev == 2 && pg_cur_page == 0
-              && trail_n == 1 && (eng_buttons_get() >> 1 & 1u) && focus_dev == 2);
+        tap(5);
+        check("LFO tapped: its list's first page, a step on the trail, lit", pg_list_btn == 3 && pg_cur_dev == 2 && pg_cur_page == 0
+              && trail_n == 1 && (eng_buttons_get() >> 3 & 1u) && focus_dev == 2);
         later(2000);                                        /* (a message from before ends) */
         check("the top bar names the list", px(120, 2) == P_SEA);
         snap();
-        tap(3);
-        check("SCL again: the next page", pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1 && trail_n == 1);
-        tap(3);
+        tap(5);
+        check("LFO again: the next page", pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1 && trail_n == 1);
+        tap(5);
         check("... round the list", pg_list_step == 0 && pg_cur_dev == 2 && pg_cur_page == 0);
         enc(1, 1);
         check("ALGO inside the list: its next step", pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1);
-        panel_held |= 1u << 3;                              /* held: the first page while it is down */
-        panel_edges(1u << 3, 0);
+        panel_held |= 1u << 5;                              /* held: the first page while it is down */
+        panel_edges(1u << 5, 0);
         later(500);
-        check("SCL held: the list's first page", pg_list_peek && pg_cur_dev == 2 && pg_cur_page == 0);
-        panel_held &= ~(1u << 3);
-        panel_edges(0, 1u << 3);
+        check("LFO held: the list's first page", pg_list_peek && pg_cur_dev == 2 && pg_cur_page == 0);
+        panel_held &= ~(1u << 5);
+        panel_edges(0, 1u << 5);
         loop();
         check("let go: back to the step it was on", !pg_list_peek && pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1);
         tap(BTN_HOME);
         check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 4 && pg_cur_page == 0
-              && trail_n == 0 && !(eng_buttons_get() >> 1 & 1u));
-        tap(3);
+              && trail_n == 0 && !(eng_buttons_get() >> 3 & 1u));
+        tap(5);
         enc(0, 1);
-        check("SELECT inside the list leaves it", pg_list_btn < 0 && !(eng_buttons_get() >> 1 & 1u));
+        check("SELECT inside the list leaves it", pg_list_btn < 0 && !(eng_buttons_get() >> 3 & 1u));
         trail_n = 0;
     }
 
@@ -464,6 +464,48 @@ int main(void)
         pages_focus(2, 0);
         loop();
         trail_n = 0;
+    }
+
+    {                                                       /* ENV (#197): the environment */
+        uint32_t d0, n0 = trail_n;
+        pages_focus(2, 1);                                  /* the Drum map, its second page */
+        loop();
+        d0 = pg_cur_dev;
+        tap(4);
+        check("ENV: the environment, on the device you were on, its first page on the knobs", page == PAGE_ENV && pg_cur_dev == d0 && pg_cur_page == 0 && trail_n == n0 + 1u);
+        check("its bar: ENVIRONMENT on lilac", px(2, 2) == P_LILAC);
+        if (getenv("PANEL_SNAP_ENV")) {
+            const char *keep = getenv("PANEL_SNAP");
+            setenv("PANEL_SNAP", getenv("PANEL_SNAP_ENV"), 1);
+            snap();
+            if (keep) setenv("PANEL_SNAP", keep, 1);
+        }
+        enc(0, 1);
+        check("SELECT: the next row", page == PAGE_ENV && pg_cur_dev == d0 + 1u && pg_cur_page == 0);
+        {
+            const ppage_t *pg = pages_now();
+            int32_t v = eng_get_param(pg->mod[0], pg->par[0]);
+            enc(2, 3);
+            check("K1 there: the row's first page", eng_get_param(pg->mod[0], pg->par[0]) != v && page == PAGE_ENV);
+            enc(2, -3);
+        }
+        tap(3);
+        check("SEL: the row's device pages", page == 0 && pg_cur_dev == d0 + 1u);
+        tap(BTN_HOME);
+        check("HOME: back to the environment", page == PAGE_ENV);
+        tap(4);
+        check("ENV again: back where it came from", page == 0 && trail_n == n0);
+        panel_held |= 1u << 4;                              /* ENV held + SAVE: no environment on the release */
+        panel_edges(1u << 4, 0);
+        panel_edges(1u << BTN_SAVE, 0);
+        panel_edges(0, 1u << BTN_SAVE);
+        panel_held &= ~(1u << 4);
+        panel_edges(0, 1u << 4);
+        loop();
+        check("ENV held + SAVE: the release opens nothing", page == 0);
+        later(1500);
+        pages_focus(2, 0);
+        loop();
     }
 
     {                                                       /* GLO (#199): the FM-1's own settings */
@@ -516,12 +558,12 @@ int main(void)
         panel_keys(1u << 2);
         panel_keys(0);
         check("again: back", (eng_steps_note((uint32_t)drums, 1, 55) != 0) == (w != 0));
-        panel_held |= 1u << BTN_ENV;
-        panel_keys(1u << 4);                                /* ENV + A3: step 3 (index 2), accented */
+        panel_held |= 1u << BTN_ACC;
+        panel_keys(1u << 4);                                /* FX + A3: step 3 (index 2), accented (#197: FX, was ENV) */
         panel_keys(0);
-        panel_held &= ~(1u << BTN_ENV);
+        panel_held &= ~(1u << BTN_ACC);
         w = eng_steps_note((uint32_t)drums, 2, 55);
-        check("ENV + a white key: an accented hit (velocity 127)", w && ((w >> 19) & 127u) == ACCENT_VEL);
+        check("FX + a white key: an accented hit (velocity 127)", w && ((w >> 19) & 127u) == ACCENT_VEL);
         ui_dirty = 2;
         loop();
         snap_to(getenv("PANEL_SNAP_DRUMS"));
@@ -567,10 +609,10 @@ int main(void)
         panel_keys(0);
         loop();
         seq_cur_move(-1);                                   /* (its chord written into step 2, the cursor back) */
-        panel_held |= 1u << BTN_ENV;                        /* ENV + OCT+: a rest */
+        panel_held |= 1u << BTN_ACC;                        /* FX + OCT+: a rest */
         tap(BTN_OCT_UP);
-        panel_held &= ~(1u << BTN_ENV);
-        check("ENV + OCT: a rest, the cursor on (the octave stays)", seq_cur == 2 && !(eng_steps_get((uint32_t)drums, 1u) & 1) && octave == 0);
+        panel_held &= ~(1u << BTN_ACC);
+        check("FX + OCT: a rest, the cursor on (the octave stays)", seq_cur == 2 && !(eng_steps_get((uint32_t)drums, 1u) & 1) && octave == 0);
         enc(0, -2);
         check("SELECT moves the cursor", seq_cur == 0);
         tap(BTN_REC);

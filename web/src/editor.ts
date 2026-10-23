@@ -5,7 +5,8 @@ import { parseValue } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { isPile, tidy, tidyAssembly } from './tidy';
-import { buttonLabel, DEFS, drumRowName, PANEL_BUTTONS } from './modules';
+import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS } from './modules';
+import { FIXED_BUTTONS } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
@@ -2628,15 +2629,16 @@ export class Editor {
     btn.dataset.button = b;
     const panel = m.panel;
     const glo = b === 'glo';
-    const kind = kindOf(panel, b);
+    const fixed = FIXED_BUTTONS.has(b);
+    const kind = fixed ? 'gate' : kindOf(panel, b);
     const name = buttonLabel(b);
     const top = document.createElement('span');
     top.className = 'pb-face';
-    if (glo) top.append(kindMark('main'));
+    if (fixed) top.append(kindMark('main'));
     else if (kind !== 'nothing') top.append(kindMark(kind));
     const label = document.createElement('span');
     label.className = 'pb-label';
-    label.textContent = glo ? 'GLOBAL' : kind === 'nothing' ? name : panel?.labels?.[b] || name;
+    label.textContent = glo ? 'GLOBAL' : fixed ? name : kind === 'nothing' ? name : panel?.labels?.[b] || name;
     top.append(label);
     const under = document.createElement('span');
     under.className = 'pb-hw';
@@ -2649,8 +2651,8 @@ export class Editor {
     btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
     const engaged = glo ? this.gloOn : kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
     btn.setAttribute('aria-pressed', String(engaged));
-    const does = glo ? 'the FM-1’s own settings on its knobs (MIDI channel, clock in, MIDI out, LEDs; set them on the FM-1); again: back' : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
-    btn.title = glo ? `GLO: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
+    const does = fixed ? FIXED_DOES[b] : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
+    btn.title = fixed ? `${name}: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
     // touch (#153): the dock scrolls sideways from a button (touch-action: pan-x), so a switch flips when the finger is
     // let go, unless the browser took the touch for a scroll (pointercancel); a held button lets go on the cancel too
     let tap = false;
@@ -2789,7 +2791,7 @@ export class Editor {
       change: (fn) => { this.change(fn); },
       label: (text) => this.setPanelLabel(m, pop.b, text),
       devices: () => this.devices,
-    }, pop.b === 'glo'));
+    }, FIXED_BUTTONS.has(pop.b)));
     if (!pop.el.matches(':popover-open')) pop.el.showPopover();
     positionPopover(pop.el, anchor);
   }
@@ -2806,6 +2808,11 @@ export class Editor {
     if (!m || b === undefined) return;
     const btn = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${b}"]`);
     const kind = kindOf(m.panel, b);
+    if (b !== 'glo' && FIXED_BUTTONS.has(b)) {   // SEL, ENV (#197): the FM-1's own; here only their jacks (high while held)
+      this.ev.onButton?.(i, down);
+      btn?.setAttribute('aria-pressed', String(down));
+      return;
+    }
     if (b === 'glo') {                      // GLO (#199): the FM-1's own page (no rows here); again: back
       if (down) this.setGlo(!this.gloOn);
       this.ev.onButton?.(i, down);          // (its jack: high while held)

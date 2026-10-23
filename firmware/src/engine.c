@@ -950,6 +950,11 @@ int eng_load(const uint8_t *p, uint32_t len)
                 E.btn_list[used++] = p[at];
             }
         }
+        for (b = 0; b < ENG_PANEL_BUTTONS; b++)  /* SEL, ENV, GLO are fixed on the FM-1 (#197, #199): an old patch's role for them goes */
+            if (b == 1u || b == 2u || b == 5u) {
+                E.btn_kind[b] = ENG_BTN_GATE;
+                E.btn_n[b] = 0;
+            }
         toggles_sync();
     }
     if (p[6] & 128u) {                           /* the Drum maps' row names (the SEQ page's, eng_drum_name): not the engine's */

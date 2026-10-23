@@ -176,6 +176,9 @@ export const NEW_PANEL = (): MainPanel => ({ kinds: Object.fromEntries(['fx', 's
 /** the controls a panel label can name: the patch buttons (patchbin.ts writes the labels in this order). The knobs have
  * none any more: they show the names of the rows they turn (pages.ts). */
 export const PANEL_LABEL_KEYS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
+/** the panel buttons with a fixed role on the FM-1 (GLO its own page #199, SEL one level deeper and ENV the environment
+ * #197): never a Toggle or Page button, never switching; their jacks still go high while they are held */
+export const FIXED_BUTTONS = new Set(['glo', 'scl', 'env']);
 export const PANEL_LABEL_MAX = 10;
 /** the most pages a Page button's list holds */
 export const PAGE_LIST_MAX = 16;
@@ -232,7 +235,7 @@ export function fixPanel(raw: unknown): MainPanel | undefined {
   const names = (v: unknown): string[] => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => buttons.includes(x)))] : []);
   const kinds: Record<string, 'nothing' | 'bypass' | 'page'> = {};
   if (r.kinds && typeof r.kinds === 'object')
-    for (const [k, v] of Object.entries(r.kinds as Record<string, unknown>)) if (buttons.includes(k) && k !== 'glo' && (v === 'nothing' || v === 'bypass' || v === 'page')) kinds[k] = v;
+    for (const [k, v] of Object.entries(r.kinds as Record<string, unknown>)) if (buttons.includes(k) && !FIXED_BUTTONS.has(k) && (v === 'nothing' || v === 'bypass' || v === 'page')) kinds[k] = v;
   const pages: Record<string, { device: string; page: number }[]> = {};
   if (r.pages && typeof r.pages === 'object')
     for (const [k, v] of Object.entries(r.pages as Record<string, unknown>)) {
@@ -249,7 +252,7 @@ export function fixPanel(raw: unknown): MainPanel | undefined {
       if (Number.isInteger(t.module)) targets[k] = { module: t.module as number };
       else if (Number.isInteger(t.asm)) targets[k] = { asm: t.asm as number };
     }
-  const toggle = names(r.toggle).filter((b) => b !== 'glo' && kinds[b] !== 'nothing' && kinds[b] !== 'page');   // only Gates and Toggles have PRESS (GLO is fixed)
+  const toggle = names(r.toggle).filter((b) => !FIXED_BUTTONS.has(b) && kinds[b] !== 'nothing' && kinds[b] !== 'page');   // only Gates and Toggles have PRESS (GLO, SEL, ENV are fixed)
   const on = names(r.on).filter((b) => toggle.includes(b));
   const labels: Record<string, string> = {};
   if (r.labels && typeof r.labels === 'object')
