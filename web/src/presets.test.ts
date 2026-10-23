@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
-import { DRUM_MAP_DEFAULT, drumRowName } from './modules';
+import { DEFS, DRUM_MAP_DEFAULT, drumRowName } from './modules';
+import { devicesOf } from './pages';
+import { deviceBudget } from './patchbin';
 import { PRESETS } from './presets';
 import type { Patch } from './patch';
 
@@ -77,5 +79,63 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
 
   it('a Drum map\'s own defaults stay General MIDI', () => {
     expect(DRUM_MAP_DEFAULT.map((d) => d.note)).toEqual([36, 38, 39, 42, 46, 45, 37, 56]);
+  });
+});
+
+describe('factory Groove Box: the 909 Kit\'s drums and a Silver Box on PATTERN, PLAY starts both', () => {
+  const parts = (): { p: Patch; mix: number; drums: number; pattern: number } => {
+    const p = PRESETS['Groove Box']();
+    const out = p.modules.find((m) => m.type === 'output')!.id;
+    const mix = p.cables.find((c) => c.to.module === out && p.modules.find((m) => m.id === c.from.module)!.type === 'mixer')!.from.module;
+    const drums = p.modules.find((m) => m.type === 'steps' && m.name === 'DRUMS')!.id;
+    const pattern = p.modules.find((m) => m.type === 'steps' && m.name === 'PATTERN')!.id;
+    return { p, mix, drums, pattern };
+  };
+
+  it('is the last factory patch and fits the FM-1', () => {
+    expect(Object.keys(PRESETS).at(-1)).toBe('Groove Box');
+    const b = deviceBudget(PRESETS['Groove Box']());
+    expect(b.fits, JSON.stringify(b.over)).toBe(true);
+  });
+
+  it("Main's keys go into PATTERN (the bass), not DRUMS; one tempo; 16 steps with accents, a slide and a tie; its devices", () => {
+    const { p, drums, pattern } = parts();
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    expect(main.params.tempo).toBe(124);
+    const keysInto = (id: number): boolean => p.cables.some((c) => c.from.module === main.id && c.from.port === 'keys' && c.to.module === id);
+    expect(keysInto(pattern)).toBe(true);
+    expect(keysInto(drums)).toBe(false);
+    const st = p.modules.find((m) => m.id === pattern)!;
+    expect(st.params.len).toBe(16);
+    const notes = st.notes!;
+    expect(notes.some((n) => n.vel === 127)).toBe(true);
+    const long = notes.filter((n) => n.len > 1);
+    expect(long.some((n) => notes.some((m) => m.at === n.at + 1))).toBe(true); // a slide: the next step starts a note
+    expect(long.some((n) => !notes.some((m) => m.at === n.at + 1))).toBe(true); // a tie: the next step rests
+    expect(devicesOf(p, DEFS).map((d) => d.name).slice(0, 5)).toEqual(['Main', 'DRUMS', 'Drum map', 'PATTERN', 'Silver Box']);
+  });
+
+  it('PLAY: the drums and the bass each sound; unarmed a key plays the bass, DRUMS armed it plays the kit', () => {
+    const { p, mix, drums } = parts();
+    const only = (levels: Record<string, number>): Patch => {
+      const q = structuredClone(p);
+      Object.assign(q.modules.find((m) => m.id === mix)!.params, levels);
+      return q;
+    };
+    const render = (q: Patch, run: boolean, key?: number, arm?: number): number => {
+      const e = new Engine(SR);
+      e.load(q);
+      if (arm !== undefined) e.arm(arm);
+      e.transport(run);
+      if (key !== undefined) e.noteOn(key, 1);
+      return peak(e, SR);
+    };
+    const drumsOnly = only({ l4: 0 }), bassOnly = only({ l1: 0, l2: 0, l3: 0 });
+    expect(render(drumsOnly, true)).toBeGreaterThan(0.05);
+    expect(render(bassOnly, true)).toBeGreaterThan(0.02);
+    expect(render(bassOnly, false, 58)).toBeGreaterThan(0.01);
+    expect(render(drumsOnly, false, 53)).toBe(0);
+    expect(render(drumsOnly, false, 53, drums)).toBeGreaterThan(0.01);
+    expect(render(bassOnly, false, 53, drums)).toBe(0);
   });
 });

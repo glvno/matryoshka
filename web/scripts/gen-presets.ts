@@ -4,11 +4,12 @@
 // assembly (or a few modules), Main's keys / mod wheel into it, its outputs into the Output, and the Output's level set
 // from a render so the patches play at about the same loudness. The knobs need no routing: they turn the rows of the
 // device page in focus, and the assembly's card is its pages (pages.ts).
-// The 909 Kit is kept as its file. Run from web/:  npx vite-node scripts/gen-presets.ts
+// The 909 Kit is kept as its file; the Groove Box (the 909 Kit's drums and a Silver Box on its own track) is built from it
+// and comes after it. Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
 import { addModule, connect, emptyPatch, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
-import { fixNotes, patternNotes, type StepNote } from '../src/track';
+import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track';
 import { FACTORY } from '../src/assemblies';
 import { insertAssembly, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
@@ -387,24 +388,81 @@ presets.push(() => {
   return p;
 });
 
-// ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit last
+// ---- after the 909 Kit (it is built from it)
+const kept = readdirSync(DIR).find((f) => f.endsWith(KEEP));
+if (!kept) throw new Error(`presets/*-${KEEP} is missing (restore it from git)`);
+const keptJson = readFileSync(new URL(kept, DIR), 'utf8');
+const after: (() => Patch)[] = [];
+
+// Groove Box: a groove-box test patch, the 909 Kit's drums with a Silver Box on its own track, PLAY starts both at one
+// tempo. Main's keys go into PATTERN (they play the bass unarmed); DRUMS has no cable from Main, so its keys reach the kit
+// only when DRUMS is armed. The bass joins the kit's mixer on in4, so one page balances kick, snare, hats and bass.
+// PATTERN: a 16-step acid line in B flat minor (the kick sits on B flat), X an accent, a note two steps long either a
+// slide (a note starts on the next step: the voice glides) or a tie (the next step rests).
+const GROOVE_TEMPO = 124;
+/** the bass's level in the kit's mixer (in4) */
+const GROOVE_BASS = 0.7;
+const BASS: [number, number, number, boolean][] = [
+  // step, note (the Silver Box plays an octave down: 46 = B flat 1), length in steps, accent
+  [0, 46, 1, true],
+  [1, 58, 1, false],
+  [3, 46, 1, false],
+  [4, 58, 2, false], // slide into
+  [5, 61, 1, true],
+  [6, 58, 1, false],
+  [7, 56, 1, false],
+  [8, 46, 2, true], // tie (9 rests)
+  [10, 58, 1, false],
+  [11, 63, 2, false], // slide into
+  [12, 65, 1, true],
+  [13, 63, 1, false],
+  [14, 61, 2, false], // slide into
+  [15, 58, 1, false],
+];
+after.push(() => {
+  const p = validatePatch(JSON.parse(keptJson), DEFS);
+  p.name = 'Groove Box';
+  const main = p.modules.find((m) => m.type === 'fm1')!;
+  main.params.tempo = GROOVE_TEMPO;
+  const drums = p.modules.find((m) => m.type === 'steps' && m.name === 'DRUMS')!;
+  p.cables = p.cables.filter((c) => !(c.from.module === main.id && c.to.module === drums.id));
+  const out = p.modules.find((m) => m.type === 'output')!;
+  const mix = p.modules.find((m) => m.type === 'mixer' && p.cables.some((c) => c.from.module === m.id && c.to.module === out.id))!;
+  // the bass's track under DRUMS, the Silver Box under the kit (the canvas reads columns from the left)
+  const st = addModule(p, DEFS.steps, drums.x, 2600);
+  st.name = 'PATTERN';
+  st.notes = fixNotes(BASS.map(([at, note, len, acc]) => ({ at, len, note, vel: acc ? ACCENT_VEL : STEP_VEL })));
+  const def = FACTORY.find((d) => d.name === 'Silver Box')!;
+  const a = insertAssembly(p, DEFS, def, 920, 2600);
+  wire(p, main.id, 'keys', st.id, 'keys');
+  plugIn(p, st.id, 'keys', a, 'keys');
+  plugOut(p, a, 'out', mix.id, 'in4');
+  mix.params.l4 = GROOVE_BASS;
+  if (!p.cables.some((c) => c.from.module === mix.id && c.to.module === out.id && c.to.port === 'r')) wire(p, mix.id, 'out', out.id, 'r');
+  level(p, { drums: true });
+  p.octave = -1;
+  return p;
+});
+
+// ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit
+// after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const made = presets.map((f) => validatePatch(structuredClone(f()), DEFS));
-for (const p of made) {
+const later = after.map((f) => validatePatch(structuredClone(f()), DEFS));
+for (const p of [...made, ...later]) {
   const b = deviceBudget(p);
   if (!b.fits) {
     console.log(p.name, (b.cpu.use * 100).toFixed(0), '%', JSON.stringify(b.cpu.modules.slice(0, 8).map((m) => [m.type, m.copies, Math.round(m.cycles)])));
     throw new Error(`${p.name} does not fit the FM-1: ${b.over.map((o) => o.key).join(', ')}`);
   }
 }
-const kept = readdirSync(DIR).find((f) => f.endsWith(KEEP));
-if (!kept) throw new Error(`presets/*-${KEEP} is missing (restore it from git)`);
-const keptJson = readFileSync(new URL(kept, DIR), 'utf8');
 for (const f of readdirSync(DIR)) if (f.endsWith('.json')) unlinkSync(new URL(f, DIR));
-made.forEach((p, i) => {
+const write = (p: Patch, i: number): void => {
   const b = deviceBudget(p);
   writeFileSync(new URL(`${String(i).padStart(2, '0')}-${slug(p.name)}.json`, DIR), JSON.stringify(p, null, 1) + '\n');
   console.log(`${String(i).padStart(2, '0')} ${p.name.padEnd(16)} cpu ${(b.cpu.use * 100).toFixed(0)} %  memory ${(b.memory * 100).toFixed(0)} %  level ${p.modules.find((m) => m.type === 'output')!.params.level}`);
-});
+};
+made.forEach(write);
 writeFileSync(new URL(`${String(made.length).padStart(2, '0')}-${KEEP}`, DIR), keptJson);
 console.log(`${made.length} 909 Kit (kept)`);
+later.forEach((p, i) => write(p, made.length + 1 + i));
