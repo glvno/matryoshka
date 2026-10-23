@@ -30,7 +30,7 @@ describe('what the editor offers (#84)', () => {
   it('shelves every assembly on a shelf the browser shows', () => {
     const shelves = assemblyShelves();
     expect(new Set(shelves.map((a) => a.def.name))).toEqual(new Set(FACTORY.map((d) => d.name))); // empty user library: the factory set
-    expect(shelves.length).toBe(FACTORY.length + 3); // the drum kit, Scrounge and Meridian 8 are on Engines and Drums (#159)
+    expect(shelves.length).toBe(FACTORY.length + 4); // the drum kit, Scrounge, Meridian 8 and Perun 4 are on Engines and Drums (#159)
     for (const a of shelves) expect(SHELVES).toContain(a.shelf);
   });
 

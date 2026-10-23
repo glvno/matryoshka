@@ -29620,6 +29620,10 @@
    "cycles": 436495
   },
   {
+   "name": "Perun 4",
+   "cycles": 387313
+  },
+  {
    "name": "808 Kit",
    "cycles": 475655
   },
@@ -29782,6 +29786,10 @@
   {
    "name": "assembly Oracle V",
    "cycles": 520860
+  },
+  {
+   "name": "assembly Perun 4",
+   "cycles": 369451
   },
   {
    "name": "assembly pluck",

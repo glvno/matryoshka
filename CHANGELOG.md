@@ -16,8 +16,12 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   pitch or the filter, so a short gate starves the sound and a held key drones. LINK lets a channel half-power its
   neighbour, ODD / EVEN CV hold the odd or even channels up; the odd channels play on the left, the even ones on the
   right, squashed a little as the passive mix is. The patch plays a pattern on PLAY.
-- A new or factory-reset FM-1 has Scrounge and Meridian 8 as patches 18 and 19 (the 808 and 909 Kits move to 20 and 21);
-  an FM-1 already in use keeps its bank: send them from the editor.
+- A new engine and factory patch, **Perun 4**, after the Erica Synths PERKONS HD-01: four drum voices with the same
+  controls (tune, decay, param 1 and 2, a filter from low pass to high pass, drive, an FX send and a level): a folded
+  kick, a wavetable drum, a snare of body and noise, a hat of noise and a pulse stack; a delay on the sends with an LFO on
+  its time, and a master compressor. Accented steps play louder. The patch plays a pattern on PLAY.
+- A new or factory-reset FM-1 has Scrounge, Meridian 8 and Perun 4 as patches 18, 19 and 20 (the 808 and 909 Kits move
+  to 21 and 22); an FM-1 already in use keeps its bank: send them from the editor.
 
 ## 1.1.0 — 2026-10-22
 

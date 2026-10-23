@@ -1570,3 +1570,34 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
   at 1, comb fb 0.98, both ladders at res 1, crush rate 64: no NaN, peak 0.45 (the saturators hold it).
 - **Checked:** vitest 70 files / 853 tests, `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 18.
   **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.
+
+## 2026-10-23: Perun 4, a factory engine after the Erica Synths PERKONS HD-01
+
+- **Sources:** the HD-01 manual's voice tables (as quoted by manualslib: voice 1 FOLD DRUM / WAVETABLE DRUM / RESONANT
+  BASSDRUM, voice 2 FOLD / WAVETABLE / COMPLEX DRUM, voice 3 RESONANT SNARE / SLAP / RESONANT BD (TOM), voice 4 NOISE HAT /
+  SAMPLE HATS / …, three modes each) and Sound On Sound's review: four hybrid voices with the same eight knobs (TUNE, DECAY,
+  PARAM 1 / 2, CUTOFF, DRIVE, FX SEND, LEVEL) and three switches (ALGO, MODE, the filter's LP / BP / HP), a filter without
+  resonance, a BBD-style delay (time, feedback, range, color, its own LFO), one global LFO (7 waves, 8 destinations), a
+  master compressor, a 4 x 16 sequencer with accents, ratchets, probability and per-step automation; mono.
+- **Built:** `asm('Perun 4', 'Drums', …)` (Perun: the Slavic thunder god, as Pērkons is the Latvian one; blurb "Perkons
+  HD-01 type shit") and its patch (slot 19, after Meridian 8; the kits move to 20 / 21) through `sequenced()` (Steps track
+  PERUN, accents on the kick, snare and hats). Drum map on F3..B3 (rows 5..8 unused). Per voice: an `env` (one-shot,
+  l1 pinned to the row's velocity: the accent) → `vca` → `filter` (res 0, `mix` output, MODE = morph, low pass to high
+  pass) → `shape` soft (DRIVE) → the main `mixer` (LEVEL) and the send `mixer` (SEND). Voice 1 FOLD DRUM: sine + its own
+  pitch `env` and Scale (param 1 = drop) → `shape` fold (param 2). Voice 2 WAVETABLE DRUM: `wavetable` with a small drop
+  (param 1 = pos, param 2 = bank). Voice 3 RESONANT SNARE: sine body and noise into an `xfade` (param 1 = mix, param 2 =
+  the noise's color). Voice 4 NOISE HAT: two squares and noise into an `xfade` (param 1 = mix, param 2 = the second
+  square's pitch). Sends → `delay` (mix 1, time pinned to the LFO through a Scale) → summed with the mix into `dyn`
+  (COMP = threshold, MASTER = make-up gain).
+- **Tried and dropped:** phase modulation (the COMPLEX DRUM on voice 2, a bent pulse stack on voice 4) and the LFO into the
+  four tunings: 76 %, the pm input alone costs about 40 k cycles per oscillator; the wavetable and summed squares read 61 %.
+- **Left out:** the two other algorithms and three modes per voice (one algorithm each), the filter's band pass (the
+  morph goes low pass → high pass), the BBD's range / color, the LFO's other destinations and waveforms beyond our five,
+  the sequencer's ratchets, probability, per-voice lengths and automation, the sample hats (SD card), send / return jacks.
+- **Test:** assembly.test plays each engine at C4; Perun 4 has no row there, so it plays F3 (as the drum kit plays 36).
+- **Numbers:** estimate 61 %, memory 67 % (bytes 2556 / 3840; modules 40 / 64); counted engine 387,313 cycles = 58 % (the
+  model reads +5.0 %). Output level 0.24 from the pattern (as the 808 Kit's 0.34). Each voice alone peaks 0.12 (hat) ..
+  0.22 (kick); everything up (sends 1, feedback 0.95, LFO 40 Hz at 4, drives 32, comp −40 dB / 20:1 / +24 dB, decay 10 s):
+  no NaN, the output reaches 1.
+- **Checked:** vitest 70 files / 855 tests, `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 19.
+  **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.

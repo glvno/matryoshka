@@ -2077,6 +2077,124 @@ asm('Meridian 8', 'Drums', (b) => {
   b.param('out', scope, 'view', { col: true });
 });
 
+// Perun 4, after the Erica Synths PERKONS HD-01 (the manual's voice tables and Sound On Sound's review): four drum voices
+// with the same eight controls each: TUNE, DECAY, PARAM 1 / 2 (one algorithm per voice here: 1 the FOLD DRUM, a sine with
+// a pitch drop (param 1) through a wavefolder (param 2); 2 the WAVETABLE DRUM (wave, table); 3 the RESONANT SNARE, a sine
+// body crossfaded with noise (noise, tone = the noise's color); 4 the NOISE HAT, noise crossfaded with a pulse stack of
+// two squares (the mix, the second square's pitch); phase modulation, tried for 2 and 4, cost 8 points), then the filter without
+// resonance (CUTOFF, MODE from low pass to high pass), the overdrive (DRIVE), the FX send and the LEVEL. A Drum map row per
+// voice (the white keys from F3); its velocity is the hit's height (a pin on the envelope's l1): the sequencer's accent.
+// The sends feed the BBD-style delay (TIME, FEEDBACK; its LFO bends the time), the delay returns into the mix, the mix into
+// the master compressor (COMP = threshold, MASTER = make-up gain). The global LFO reaches only the delay time (into the
+// four tunings it read 8 points more: an oscillator with a moving pitch costs more).
+asm('Perun 4', 'Drums', (b) => {
+  const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
+  b.module(map).names = ['VOICE 1', 'VOICE 2', 'VOICE 3', 'VOICE 4', 'ROW 5', 'ROW 6', 'ROW 7', 'ROW 8'];
+  const lfo = b.add('lfo', 0, 1, { wave: 0, rate: 0.3, depth: 1 });
+  const toTime = b.add('scale', 0, 2, { gain: 0.02, offset: 0 });
+  const mix = b.add('mixer', 5, 0, { l1: 0.9, l2: 0.7, l3: 0.7, l4: 0.5 });
+  const send = b.add('mixer', 5, 1, { l1: 0, l2: 0.2, l3: 0.3, l4: 0.15 });
+  const dly = b.add('delay', 6, 1, { time: 300, fb: 0.35, mix: 1 }, { p1: 'time' });
+  const comp = b.add('dyn', 6, 0, { thresh: -14, ratio: 3, attack: 0.005, release: 0.15, gain: 3 });
+  const scope = b.add('scope', 7, 0, { time: 16 });
+  b.wire(lfo, 'out', toTime, 'in');
+  b.wire(toTime, 'out', dly, 'p1');
+  b.wire(send, 'out', dly, 'in');
+  b.wire(mix, 'out', comp, 'in');
+  b.wire(dly, 'out', comp, 'in');
+  b.wire(comp, 'out', scope, 'a');
+  type V = { env: number; vca: number; flt: number; drive: number; tune: [number, string]; p1: [number, string]; p2: [number, string]; members: number[] };
+  const voice = (i: number, decay: number, cutoff: number, morph: number, build: (col: number, env: number, vca: number) => Omit<V, 'env' | 'vca' | 'flt' | 'drive' | 'members'> & { members: number[] }): V => {
+    const col = 1 + i;
+    const env = b.add('env', col, 0, { l1: 0, r1: 0.001, l2: 0, r2: decay, l3: 0, r3: 0.001, l4: 0, r4: 0.001 }, { p1: 'l1' });
+    const vca = b.add('vca', col, 4, { gain: 1 });
+    const flt = b.add('filter', col, 5, { cutoff, res: 0, morph });
+    const drive = b.add('shape', col, 6, { drive: 1.5, mode: 0, level: 0.8 });
+    b.wire(map, `g${i + 1}`, env, 'gate');
+    b.wire(map, `v${i + 1}`, env, 'p1');
+    b.wire(env, 'env', vca, 'cv');
+    b.wire(vca, 'out', flt, 'in');
+    b.wire(flt, 'mix', drive, 'in');
+    b.wire(drive, 'out', mix, `in${i + 1}`);
+    b.wire(drive, 'out', send, `in${i + 1}`);
+    const v = build(col, env, vca);
+    return { env, vca, flt, drive, ...v, members: [env, ...v.members, vca, flt, drive] };
+  };
+  const voices: V[] = [
+    // 1 FOLD DRUM: a sine, its own fast pitch envelope (param 1 = the drop), a wavefolder (param 2)
+    voice(0, 0.45, 9000, 0, (col, env, vca) => {
+      const osc = b.add('osc', col, 1, { wave: 0, coarse: -27, level: 1 });
+      const penv = b.add('env', col, 2, { l1: 1, r1: 0.001, l2: 0, r2: 0.05, l3: 0, r3: 0.001, l4: 0, r4: 0.001 });
+      const drop = b.add('scale', col, 3, { gain: 2, offset: 0 });
+      const fold = b.add('shape', col, 3.5, { drive: 1.2, mode: 2, level: 0.9 });
+      b.wire(map, 'g1', penv, 'gate');
+      b.wire(penv, 'env', drop, 'in');
+      b.wire(drop, 'out', osc, 'pitch');
+      b.wire(osc, 'out', fold, 'in');
+      b.wire(fold, 'out', vca, 'in');
+      return { members: [osc, penv, drop, fold], tune: [osc, 'coarse'], p1: [drop, 'gain'], p2: [fold, 'drive'] };
+    }),
+    // 2 WAVETABLE DRUM: a wavetable oscillator with a little pitch drop (param 1 = the wave, param 2 = the table)
+    voice(1, 0.3, 7000, 0, (col, env, vca) => {
+      const wt = b.add('wavetable', col, 1, { bank: 1, pos: 0.3, coarse: -12, level: 1 });
+      const drop = b.add('scale', col, 3, { gain: 0.4, offset: 0 });
+      b.wire(env, 'env', drop, 'in');
+      b.wire(drop, 'out', wt, 'pitch');
+      b.wire(wt, 'out', vca, 'in');
+      return { members: [wt, drop], tune: [wt, 'coarse'], p1: [wt, 'pos'], p2: [wt, 'bank'] };
+    }),
+    // 3 RESONANT SNARE: a sine body and noise, crossfaded (param 1), the noise's color (param 2)
+    voice(2, 0.18, 250, 1, (col, env, vca) => {
+      const body = b.add('osc', col, 1, { wave: 0, coarse: -8, level: 0.9 });
+      const nz = b.add('noise', col, 2, { level: 1, color: 0 });
+      const xf = b.add('xfade', col, 3, { mix: 0.6 });
+      b.wire(body, 'out', xf, 'a');
+      b.wire(nz, 'out', xf, 'b');
+      b.wire(xf, 'out', vca, 'in');
+      return { members: [body, nz, xf], tune: [body, 'coarse'], p1: [xf, 'mix'], p2: [nz, 'color'] };
+    }),
+    // 4 NOISE HAT: noise crossfaded with a pulse stack, two squares (param 1 = the mix, param 2 = the second square's pitch)
+    voice(3, 0.06, 6000, 1, (col, env, vca) => {
+      const sq = b.add('osc', col, 1, { wave: 3, coarse: 31, pw: 0.3, level: 0.6 });
+      const sq2 = b.add('osc', col, 2, { wave: 3, coarse: 37, fine: 40, pw: 0.4, level: 0.6 });
+      const nz = b.add('noise', col, 2.5, { level: 1, color: 0 });
+      const xf = b.add('xfade', col, 3, { mix: 0.5 });
+      b.wire(sq, 'out', xf, 'a');
+      b.wire(sq2, 'out', xf, 'a');
+      b.wire(nz, 'out', xf, 'b');
+      b.wire(xf, 'out', vca, 'in');
+      return { members: [sq, sq2, nz, xf], tune: [sq, 'coarse'], p1: [xf, 'mix'], p2: [sq2, 'coarse'] };
+    }),
+  ];
+  voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, v.members));
+  voices.forEach((v) => {
+    b.nestInput('gate', v.env, 'gate');
+    b.nestInput('accent', v.env, 'p1');
+    b.nestOutput('out', v.drive, 'out');
+  });
+  b.input('keys', map, 'keys');
+  b.output('out', comp, 'out');
+  voices.forEach((v, i) => {
+    b.param('tune', v.tune[0], v.tune[1], { head: `voice ${i + 1}`, col: true });
+    b.param('decay', v.env, 'r2');
+    b.param('param 1', v.p1[0], v.p1[1]);
+    b.param('param 2', v.p2[0], v.p2[1]);
+    b.param('cutoff', v.flt, 'cutoff');
+    b.param('mode', v.flt, 'morph');
+    b.param('drive', v.drive, 'drive');
+    b.param('send', send, `l${i + 1}`);
+    b.param('level', mix, `l${i + 1}`);
+  });
+  b.param('time', dly, 'time', { col: true, head: 'delay' });
+  b.param('feedback', dly, 'fb');
+  b.param('lfo → time', toTime, 'gain');
+  b.param('lfo rate', lfo, 'rate', { head: 'lfo' });
+  b.param('lfo wave', lfo, 'wave');
+  b.param('comp', comp, 'thresh', { head: 'master' });
+  b.param('master', comp, 'gain');
+  b.param('out', scope, 'view', { col: true });
+});
+
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep
 asm('vibrato', 'Utilities', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 5, depth: 1 });
@@ -2540,6 +2658,7 @@ const BLURBS: Record<string, string> = {
   'Elvira 2': 'Elmyra 2 type shit',
   Scrounge: 'Scrooge type shit',
   'Meridian 8': 'NOON type shit',
+  'Perun 4': 'Perkons HD-01 type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',

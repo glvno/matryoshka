@@ -20,7 +20,7 @@ beforeEach(() => {
 
 const ENGINES = [
   '8 Lire', 'Algo Four', 'basic poly', 'Briefcase 3', 'Canvas', 'drift poly', 'drum kit', 'Elvira 2', 'Expander S', 'Hera 6', 'Io 4', 'Meridian 8', 'mono lead', 'Monolith D',
-  'Oracle V', 'Sallen 20', 'Scrounge', 'Silver Box', 'supersaw stack', 'Vernon 100', 'Wanderer',
+  'Oracle V', 'Perun 4', 'Sallen 20', 'Scrounge', 'Silver Box', 'supersaw stack', 'Vernon 100', 'Wanderer',
 ];
 const named = (name: string): AssemblyDef => FACTORY.find((d) => d.name === name)!;
 
@@ -53,6 +53,7 @@ describe('engines (#159)', () => {
     expect(on('Drums')).toContain('drum kit');
     expect(on('Drums')).toContain('Scrounge');
     expect(on('Drums')).toContain('Meridian 8');
+    expect(on('Drums')).toContain('Perun 4');
     expect(new Set(assemblyShelves().map((a) => a.def))).toEqual(new Set(FACTORY)); // every one somewhere
   });
 
