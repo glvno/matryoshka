@@ -619,6 +619,19 @@ int main(void)
                 check("no preset remembered: named after the first of its list (Init) with 2, not the device's name",
                       !ps_name_cmp(pg_pname[d], want) && ps_list(pg_dev[d].structure, 0, 0) == 2u);
             }
+            {                                           /* the editor deletes the preset the device is set to (main.c m1_preset_del) */
+                int32_t before = eng_get_param(pg_dev[d].rows[0], pg_dev[d].rows[1]);
+                char gone[17];
+                strcpy(gone, pg_pname[d]);
+                check("the editor deletes the preset in use: deleted", ps_del(pg_dev[d].structure, gone) == 0);
+                dp_deleted(pg_dev[d].structure, gone);
+                check("  the device keeps its sound, no longer names it, the message says so",
+                      !pg_pname[d][0] && eng_get_param(pg_dev[d].rows[0], pg_dev[d].rows[1]) == before &&
+                      !strcmp(msg_text, "PRESET DELETED: SOUND KEPT") && ps_list(pg_dev[d].structure, 0, 0) == 1u);
+                msg_text[0] = 0;
+                dp_deleted(pg_dev[d].structure, "NOT IN USE");
+                check("  one no device is set to: no message", !msg_text[0]);
+            }
             tap(3);
             check("SEL on the list: back", page == 0);
             {                                               /* a patch stored before format 34 (the bank keeps it): no structure */

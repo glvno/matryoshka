@@ -216,11 +216,15 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
         const as = addUserPreset(e.structure, e.name, v);
         status.textContent = as ? `"${as}" is in your presets` : `"${e.name}" is a factory preset's name: not copied`;
       }) }),
-      el('button', { class: 'delete', textContent: 'Delete', title: 'delete it on the FM-1', disabled: !ready, onclick: () => void run('Delete preset', async () => {
-        await device.deletePreset(e.structure, e.name);
-        onFm1 = onFm1.filter((x) => x !== e);
-        status.textContent = `"${e.name}" deleted on the FM-1`;
-      }) }),
+      el('button', { class: 'delete', textContent: 'Delete', title: 'delete it on the FM-1 (a device set to it keeps its sound)', disabled: !ready, onclick: () => {
+        const copy = kept.has(`${e.structure}/${e.name}`);
+        if (!window.confirm(`Delete the preset "${e.name}" on the FM-1? ${copy ? 'Your copy in this browser stays.' : 'This browser has no copy (Get keeps one), so it is gone for good.'} A device set to it keeps its sound but no longer names it.`)) return;
+        void run('Delete preset', async () => {
+          await device.deletePreset(e.structure, e.name);
+          onFm1 = onFm1.filter((x) => x !== e);
+          status.textContent = `"${e.name}" deleted on the FM-1: a device set to it keeps its sound, with no preset named`;
+        });
+      } }),
     )) : [el('p', { class: 'muted', textContent: device.connected && !device.hasPresets ? 'This firmware keeps no presets: update it.' : 'Read them from a connected FM-1.' })]));
   };
   const changed = (): void => {

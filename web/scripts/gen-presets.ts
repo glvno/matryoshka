@@ -278,7 +278,7 @@ function sequenced(x: Inst, track: string, rows: Record<number, string>): void {
 // transport (PLAY starts it) as the original's factory pattern starts on RUN
 presets.push(() => {
   const x = around('Scrounge', 'Scrounge');
-  sequenced(x, 'SCROUNGE', {
+  sequenced(x, 'PATTERN', {
     1: 'X.....x...X..x..',
     2: '..x...x...x.x.xx',
     3: '....X.......X..x',
@@ -295,7 +295,7 @@ presets.push(() => {
 // needs a sequencer to power it); a held key keeps its channel powered
 presets.push(() => {
   const x = around('Meridian 8', 'Meridian 8');
-  sequenced(x, 'MERIDIAN', {
+  sequenced(x, 'PATTERN', {
     1: 'x.....x...x.....',
     2: '....x.......x...',
     3: '..x.......x...x.',
@@ -312,7 +312,7 @@ presets.push(() => {
 // Perun 4: the four voices on F3 G3 A3 B3 (the kits' first rows), a pattern with accents (X) on the transport
 presets.push(() => {
   const x = around('Perun 4', 'Perun 4');
-  sequenced(x, 'PERUN', {
+  sequenced(x, 'PATTERN', {
     1: 'X...x...X...x..x',
     2: '..x....x..x...x.',
     3: '....X.......X.x.',

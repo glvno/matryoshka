@@ -362,6 +362,8 @@ static int m1_preset_del(uint32_t structure, const char *name)
     eng_run = 0;
     rc = ps_del(structure, name);
     eng_resume();
+    if (!rc)
+        dp_deleted(structure, name);             /* (a device set to it drops the name: pages_ui.c) */
     return rc;
 }
 

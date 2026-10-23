@@ -1546,6 +1546,23 @@ static void dp_store(uint32_t d)
     m1_preset_stored(pg_dev[d].structure, nm);          /* (the editor hears of it: #195) */
 }
 
+/* the editor deleted a preset on the FM-1: a device set to it keeps its sound but no longer names it (ENV shows no preset,
+ * SEL's list marks none, ENV+SAVE names a new one), and the message says so */
+static void dp_deleted(uint32_t structure, const char *name)
+{
+    uint32_t d, hit = 0;
+    pages_ensure();
+    for (d = 0; d < pg_ndev; d++)
+        if (pg_dev[d].structure == structure && pg_pname[d][0] && !ps_name_cmp(pg_pname[d], name)) {
+            dp_name_set(d, "");
+            hit = 1;
+        }
+    if (!hit)
+        return;
+    ui_msg("PRESET DELETED: SOUND KEPT", 2500);        /* (the bar's 26 characters) */
+    ui_dirty = 2;                                       /* (ENV's rows lose the name) */
+}
+
 /* the preset list page (SEL on an assembly device's page): its presets, the one it was set to marked; SELECT / ALGO /
  * PRESET move and load as they turn; SEL or HOME goes back */
 static void presets_open(void)
