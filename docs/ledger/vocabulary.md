@@ -56,7 +56,7 @@ The searchable list of every editor action, module, assembly and patch, opened w
 
 ### Community shelf
 
-The first card of the Library tab: patches other people submitted, from the curated `community.json`.
+The first card of the Library: patches other people submitted, from the curated `community.json`.
 
 ### Course
 
@@ -98,6 +98,10 @@ A module that sends each key to its own row's gate (mapped voicing), as a drum e
 
 Main's K1..K4 are bound to the rows of the page in focus; they edit those rows and are not signals in the patch.
 
+### Emulator view
+
+The EMU view of the editor's top switch: the FM-1's firmware UI compiled to WebAssembly, running in the browser (`#emu`). Also called the FM-1 view or the FM-1 tab.
+
 ### Engine
 
 An assembly that takes keys and makes audio: its voicing turns the keys into notes for its voices. It can be a device or sit inside one, and a patch can hold several. Avoid: machine, patch (an engine is never a whole patch).
@@ -130,10 +134,6 @@ A panel button whose job the firmware sets (GLO, SEL, ENV): a patch cannot give 
 
 Integer arithmetic with an implied binary point (Q16.16: 1.0 = 65536); the FM-1 has no floating-point unit.
 
-### Flash view
-
-The editor's firmware install page, the third view of the canvas switch (`#flash`). Also called the Flash tab.
-
 ### Flaws
 
 Per-part offsets of a poly assembly (detune, drift, brightness, envelope times, level) that make its voices differ like analog voice cards.
@@ -141,10 +141,6 @@ Per-part offsets of a poly assembly (detune, drift, brightness, envelope times, 
 ### FM-1 chip
 
 The status-line indicator that shows the editor's link to the FM-1 (not connected, synced, not synced, patch too big to sync) and opens FM-1 & MIDI.
-
-### FM-1 view
-
-The second view of the canvas switch, running the FM-1's firmware UI as WebAssembly. Also called the FM-1 tab.
 
 ### Format 34
 
@@ -186,6 +182,10 @@ The product string a firmware reports over USB MIDI (`FM-1_<n>`, or `ota-FM-1_<n
 
 A part of a poly group that is released, has finished its envelopes and stayed silent a whole block; both engines skip it until a note reaches it.
 
+### Install panel
+
+The editor's firmware install page, shown as a panel over the main area and closed with its Close button (`#flash`). It is not a view of the top switch. Also called the Flash view or the Flash tab.
+
 ### Key source
 
 What feeds an engine its keys from outside it: Main (the panel keys and MIDI), a Steps track, an Arpeggiator. Never part of an engine. Avoid: driver, controller.
@@ -201,6 +201,10 @@ The note-on / note-off output of a Steps track or Main that plays an instrument.
 ### Lesson editor
 
 The dev-server-only page (`/lesson-editor`) where the course is written and saved.
+
+### Library
+
+The editor's view for managing what is stored, in the browser and on the FM-1 (`#library`). Its sections are Patches, Assemblies and Presets.
 
 ### Live
 
