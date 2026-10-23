@@ -115,6 +115,7 @@ static void m1_preset_stored(uint32_t structure, const char *name) { (void)struc
 #include "../src/font5x7.c"
 #include "../src/font_bc.c"
 static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
+static uint16_t lcd_fillbuf[240];          /* lcd.c's: the splash's row buffer, the battery mark's (ui.c) */
 #define BATT_START 900                     /* the battery (ui.c): full, no USB host (fm1_open's simulator has 900 too) */
 #include "../src/ui.c"
 #include "../src/pages_ui.c"
@@ -187,6 +188,5 @@ static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
 static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
 #endif
 #include "../src/seq_ui.c"
-static uint16_t lcd_fillbuf[240];          /* lcd.c's, the splash's row buffer */
 #include "../src/splash.c"
 

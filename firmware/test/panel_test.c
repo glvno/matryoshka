@@ -1612,7 +1612,7 @@ int main(void)
         loop();
         all = fb_changed_in(0, 0, 240, 240);
         cell = fb_changed_in(BATT_X, 0, 240, BAR_H);
-        check("a level change: the cell alone, one transfer, no blink", lcd_xfers == 1u && all > 0u && all == cell
+        check("a level change: the cell alone, two transfers (its halves), no blink", lcd_xfers == 2u && all > 0u && all == cell
               && fb_blinked() == 0 && px(BATT_X + 10u, 10) == BATT_BG && px(BATT_X + 7u, 10) == C_FG);
         batt_q16 = 540 * 16;
         ui_battery(540, 0);

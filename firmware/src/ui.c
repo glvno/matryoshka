@@ -210,31 +210,34 @@ static void ui_battery(int32_t sample, int host)
 }
 
 /* the cell, 20 x 20: a battery 12 x 9 and its nub, 0..3 bars inside (one bar coral, empty: a red outline), a bolt in
- * seafoam on USB power; one blit */
+ * seafoam on USB power; two blits of ten rows through lcd.c's lcd_fillbuf (240 pixels; a buffer of its own would cost
+ * 800 B of RAM, which the build's 4 KB headroom check does not have) */
 static void batt_mark_draw(uint8_t lvl)
 {
-    static uint16_t px[20u * BAR_H];            /* (big endian, as the LCD takes it) */
+    uint16_t *px = lcd_fillbuf;                 /* (big endian, as the LCD takes it; rows y0..y0+9 of the cell) */
     static const char BOLT[5][11] = {".....##...", "...###....", ".#######..", "..###.....", ".##......."};
     uint16_t ink = lvl == 0u ? C_RED : lvl == BATT_USB ? 0x7E38u : C_DIM, bar = lvl == 1u ? C_ACC : C_FG;
-    uint32_t x, y;
-    lcd_sync();                                 /* (the last blit of px may still run) */
-    for (y = 0; y < BAR_H; y++)
-        for (x = 0; x < 20u; x++) {
-            uint16_t c = BATT_BG;
-            int in = x > 2u && x < 13u && y > 6u && y < 14u;     /* inside the outline: x 3..12, y 7..13 */
-            if (lvl == BATT_NONE)
-                c = BATT_BG;                    /* (blank) */
-            else if ((x >= 2u && x <= 13u && (y == 6u || y == 14u)) || ((x == 2u || x == 13u) && y >= 6u && y <= 14u))
-                c = ink;                        /* the outline */
-            else if (x >= 14u && x < 16u && y >= 8u && y < 13u)
-                c = ink;                        /* the nub */
-            else if (in && lvl == BATT_USB)
-                c = y >= 8u && y < 13u && BOLT[y - 8u][x - 3u] == '#' ? ink : BATT_BG;
-            else if (in && y >= 8u && y < 13u && x >= 4u && x < 13u && (x - 4u) % 3u != 2u && (x - 4u) / 3u < lvl)
-                c = bar;                        /* bar k: x 4 + 3k, two wide */
-            px[y * 20u + x] = (uint16_t)((c >> 8) | (c << 8));
-        }
-    lcd_blit(BATT_X, 0, 20, BAR_H, px);
+    uint32_t x, y, y0;
+    for (y0 = 0; y0 < BAR_H; y0 += 10u) {
+        lcd_sync();                                 /* (the last transfer from lcd_fillbuf may still run) */
+        for (y = y0; y < y0 + 10u && y < BAR_H; y++)
+            for (x = 0; x < 20u; x++) {
+                uint16_t c = BATT_BG;
+                int in = x > 2u && x < 13u && y > 6u && y < 14u;     /* inside the outline: x 3..12, y 7..13 */
+                if (lvl == BATT_NONE)
+                    c = BATT_BG;                    /* (blank) */
+                else if ((x >= 2u && x <= 13u && (y == 6u || y == 14u)) || ((x == 2u || x == 13u) && y >= 6u && y <= 14u))
+                    c = ink;                        /* the outline */
+                else if (x >= 14u && x < 16u && y >= 8u && y < 13u)
+                    c = ink;                        /* the nub */
+                else if (in && lvl == BATT_USB)
+                    c = y >= 8u && y < 13u && BOLT[y - 8u][x - 3u] == '#' ? ink : BATT_BG;
+                else if (in && y >= 8u && y < 13u && x >= 4u && x < 13u && (x - 4u) % 3u != 2u && (x - 4u) / 3u < lvl)
+                    c = bar;                        /* bar k: x 4 + 3k, two wide */
+                px[(y - y0) * 20u + x] = (uint16_t)((c >> 8) | (c << 8));
+            }
+        lcd_blit(BATT_X, y0, 20, y - y0, px);
+    }
     batt_drawn = lvl;
 }
 
