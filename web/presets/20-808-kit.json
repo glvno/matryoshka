@@ -289,7 +289,7 @@
    "x": 4100,
    "y": 20,
    "params": {
-    "level": 0.34
+    "level": 0.28
    }
   },
   {
@@ -1812,6 +1812,16 @@
   },
   {
    "from": {
+    "module": 3,
+    "port": "g1"
+   },
+   "to": {
+    "module": 9,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
     "module": 12,
     "port": "out"
    },
@@ -1917,6 +1927,16 @@
    },
    "to": {
     "module": 17,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "g2"
+   },
+   "to": {
+    "module": 20,
     "port": "gate"
    }
   },
@@ -2038,6 +2058,16 @@
    "to": {
     "module": 25,
     "port": "trig"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "g3"
+   },
+   "to": {
+    "module": 28,
+    "port": "gate"
    }
   },
   {
@@ -2258,6 +2288,16 @@
    "to": {
     "module": 42,
     "port": "trig"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "g6"
+   },
+   "to": {
+    "module": 45,
+    "port": "gate"
    }
   },
   {

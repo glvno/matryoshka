@@ -2323,26 +2323,6 @@
   },
   {
    "from": {
-    "module": 49,
-    "port": "out"
-   },
-   "to": {
-    "module": 51,
-    "port": "l"
-   }
-  },
-  {
-   "from": {
-    "module": 49,
-    "port": "r"
-   },
-   "to": {
-    "module": 51,
-    "port": "r"
-   }
-  },
-  {
-   "from": {
     "module": 1,
     "port": "keys"
    },
@@ -2369,6 +2349,26 @@
    "to": {
     "module": 5,
     "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 49,
+    "port": "out"
+   },
+   "to": {
+    "module": 51,
+    "port": "l"
+   }
+  },
+  {
+   "from": {
+    "module": 49,
+    "port": "r"
+   },
+   "to": {
+    "module": 51,
+    "port": "r"
    }
   }
  ],

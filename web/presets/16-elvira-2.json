@@ -1541,26 +1541,6 @@
   },
   {
    "from": {
-    "module": 35,
-    "port": "lp12"
-   },
-   "to": {
-    "module": 37,
-    "port": "l"
-   }
-  },
-  {
-   "from": {
-    "module": 35,
-    "port": "lp12"
-   },
-   "to": {
-    "module": 37,
-    "port": "r"
-   }
-  },
-  {
-   "from": {
     "module": 1,
     "port": "keys"
    },
@@ -1587,6 +1567,26 @@
    "to": {
     "module": 5,
     "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 35,
+    "port": "lp12"
+   },
+   "to": {
+    "module": 37,
+    "port": "l"
+   }
+  },
+  {
+   "from": {
+    "module": 35,
+    "port": "lp12"
+   },
+   "to": {
+    "module": 37,
+    "port": "r"
    }
   }
  ],
