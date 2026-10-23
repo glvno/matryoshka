@@ -1356,9 +1356,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .arranging .param.bar:hover > .arr-tools { display: flex; pointer-events: auto; }
 .arr-tools button.sm { height: 15px; padding: 0 5px; font-size: 9px; line-height: 1; background: var(--panel); }
 /* several rows at once (#186): a selected row in pick or arrange mode; a heading's or group chip's grip drags its section
-   or group; a member's header check box (all / none / some) */
-.row-sel { outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 1px;
-  background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
+   or group; a member's header check box (all / none / some). The selection is teal (--secondary), the shown-on-card
+   mark coral (--accent): a selected row that is shown wears both, the teal outline outside the coral inset ring */
+.row-sel { outline: 2px solid var(--secondary); outline-offset: 2px;
+  background-color: color-mix(in oklab, var(--secondary) 14%, transparent); }
+/* the band that selects rows (pick / arrange mode) in the selection's teal, not the modules' coral band */
+.rubber.rows { border-color: var(--secondary); background: color-mix(in srgb, var(--secondary) 10%, transparent); }
 .arr-grip { flex: none; padding: 0 3px; cursor: grab; touch-action: none; color: var(--muted); font-size: 11px; line-height: 1; }
 .arr-grip:hover { color: var(--accent); }
 .ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held { opacity: .5; }

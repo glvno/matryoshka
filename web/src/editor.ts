@@ -4162,7 +4162,7 @@ export class Editor {
     const at = (ev: PointerEvent): Pt => ({ x: (ev.clientX - base.left) / this.zoom + this.canvas.scrollLeft / this.zoom, y: (ev.clientY - base.top) / this.zoom + this.canvas.scrollTop / this.zoom });
     const o = at(e);
     const box = document.createElement('div');
-    box.className = 'rubber';
+    box.className = rowMode ? 'rubber rows' : 'rubber';
     this.modulesEl.append(box);
     let r: Rect = { x: o.x, y: o.y, w: 0, h: 0 };
     const move = (ev: PointerEvent): void => {
