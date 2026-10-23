@@ -588,6 +588,16 @@ int main(void)
             check("again: stored over it, still one", ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 2u);
             tap(3);
             check("SEL on the list: back", page == 0);
+            {                                               /* a patch stored before format 34 (the bank keeps it): no structure */
+                uint32_t keep = pg_dev[d].structure;
+                pg_dev[d].structure = 0;
+                tap(3);
+                loop();
+                printf("      (the bar: \"%s\")\n", msg_text);
+                check("SEL on an assembly of an old patch: no list, the bar says why (not \"SEL ON\")",
+                      page == 0 && !strcmp(msg_text, "OLD PATCH: SEND + SAVE IT"));
+                pg_dev[d].structure = keep;
+            }
             tap(4);                                         /* the environment (#198): ALGO and PRESET step the row's presets */
             {
                 char before[17];

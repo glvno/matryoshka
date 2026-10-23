@@ -102,7 +102,7 @@ static void panel_button_set(uint32_t b, int down)
     if (tog >> b & 1u)
         m1_panel_on(mask & tog);
     leds_panel();
-    if (down) {
+    if (down && !(FIXED_BTNS >> b & 1u)) {          /* (GLO, SEL, ENV say what they do themselves: no "SEL ON") */
         button_touched = (uint8_t)(b + 1u);
         if (!ui_dirty)
             ui_dirty = 1;
@@ -478,7 +478,8 @@ static void sel_open(void)
     } else if (page == 0 && pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure) {
         presets_open();
         page_set(PAGE_PRESETS);
-    }
+    } else if (page == 0)
+        dp_none_msg(pg_cur_dev);                    /* (why not: an old patch, a plain module) */
 }
 
 /* ENV held + SAVE (#194): the focused device's values as its preset */

@@ -1596,6 +1596,15 @@ static void presets_draw(int full)
         text_bc(&FONT_S, 8, ENV_Y0 + 4u, "NO PRESETS: ENV HELD + SAVE STORES ONE", P_FAINT, P_NIGHT, 0, TA_LEFT);
 }
 
+/* why a device has no presets to show, in the bar (26 characters): a plain module never has any; an assembly in a patch
+ * stored before format 34 has no structure to match them by (the bank's slots keep the format they were saved in: the
+ * editor's Send or Live, then SAVE, rewrites it); else none stored yet */
+static void dp_none_msg(uint32_t d)
+{
+    ui_msg(d >= pg_ndev || pg_dev[d].module >= 0 ? "NO PRESETS ON A MODULE"
+           : !pg_dev[d].structure ? "OLD PATCH: SEND + SAVE IT" : "NONE YET: ENV+SAVE STORES", 1500);
+}
+
 /* PRESET or ALGO on the environment (#198): the row's next / previous preset, loaded as you turn; a row without presets:
  * nothing (a short message) */
 static int env_preset_step(int32_t st)
@@ -1608,7 +1617,7 @@ static int env_preset_step(int32_t st)
         return 0;
     n = dp_list(pg_cur_dev);
     if (!n) {
-        ui_msg(pg_dev[pg_cur_dev].structure ? "NO PRESETS: ENV + SAVE STORES" : "NO PRESETS HERE", 1000);
+        dp_none_msg(pg_cur_dev);
         return 0;
     }
     c = dp_current(pg_cur_dev, n);
