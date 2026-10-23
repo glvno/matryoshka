@@ -53,7 +53,7 @@ static int8_t seq_shown_pos = -2;       /* the playhead as last drawn */
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's track (0..10), else -1 */
 static int seq_white(uint32_t n)
 {
-    static const int8_t W[12] = {0, -1, 1, -1, 2, 3, -1, 4, -1, 5, -1, 6};   /* from F: F F# G G# A A# B C C# D D# E */
+    static const int8_t W[12] = {0, -1, 1, -1, 2, -1, 3, 4, -1, 5, -1, 6};   /* from F: F F# G G# A A# B C C# D D# E */
     return n < 27u && W[n % 12u] >= 0 ? (int)(n / 12u) * 7 + W[n % 12u] : -1;
 }
 static int seq_black(uint32_t n)

@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The SEQ page's white keys: B now switches its step, and A# (a black key) no longer does; before, every B did nothing
+  and every A# both picked a track and switched the next step (since 1.0, on the FM-1 and in EMU).
 - The tutorial's text follows the new navigation and the removed Riff button (play notes on the keys, or Note for a
   held C4; LIBRARY → Assemblies; + Module and New patch in the PATCH panel).
 - After an update to a new version, a returning visitor sees a short "what's new" card once, linking to the full
