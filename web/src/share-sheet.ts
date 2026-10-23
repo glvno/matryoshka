@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The share sheet (glvno/matryoshka#165; design board "Sharing + community", option A): the PATCH header's Share button, the ⋯ menu's Share… and the
+// The share sheet (glvno/matryoshka#165; design board "Sharing + community", option A): the PATCH panel's Share button, the ⋯ menu's Share… and the
 // palette open it. The title (the patch's name) and "What's going on" (Patch.notes) write back to the patch; the facts
 // (modules, engines, the FM-1 fit) and the card preview (patch-card.ts) follow them. "Keep my layout and assemblies in
 // the link" with the link's length live; a patch too big for a link even without its layout gets Save file instead, and
@@ -114,7 +114,7 @@ export class ShareSheet {
         el('div', { class: 'share-actions' }, this.postBtn, this.copyBtn, this.cardBtn, this.fileBtn),
         this.msg,
         el('p', { class: 'share-hint', textContent: `Post to Reddit copies the link, opens a new post on r/${SUBREDDIT} with the title filled in and saves the card. Drop the card in as the image and paste the link as the first comment.` }),
-        el('p', { class: 'share-hint' }, this.submitBtn, ' opens the form (a GitHub issue) with this patch filled in; accepted patches go on the Library\u2019s Community shelf under CC BY-SA 4.0 (#157).'),
+        el('p', { class: 'share-hint' }, this.submitBtn, ' opens the form (a GitHub issue) with this patch filled in; accepted patches are listed under Community in the Open picker and the palette, under CC BY-SA 4.0 (#157).'),
       ),
     );
     dlg.setAttribute('aria-labelledby', 'share-title');

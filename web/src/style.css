@@ -96,8 +96,9 @@ html { touch-action: pan-x pan-y; }
 /* the cables' continuation from the canvas down to the docked jacks; drawn over the panel, never taking the pointer */
 .dock-cables { z-index: 3; overflow: visible; } /* visible: the wheels' jacks are left of the dock */
 .dock-cables .cable { pointer-events: none; }
-.sidebar { display: flex; flex-direction: column; gap: 12px; padding: 20px 14px 14px; min-height: 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
-/* only the logo gives way when the sidebar is short (down to 48 px), so the panels fit without a scroll bar from 1280 × 800 (#166) */
+.sidebar { display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 14px; min-height: 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
+/* only the logo gives way when the sidebar is short (down to 48 px), so the panels fit without a scroll bar from 1280 × 800 (#166,
+   D-583: the PATCH view's three panels with the PATCH header strip came 7 px short, hence the tighter top padding and gaps) */
 .sidebar > * { flex-shrink: 0; }
 .sidebar > .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: calc(48px + 6px + 38px + 6px + 26px); flex-shrink: 1; } /* never below the 48 px logo + gap + the wordmark (38 px at the sidebar's width) + gap + About: below that they ran into the tabs */
 .brand img { width: 100%; height: auto; min-width: 0; object-fit: contain; }
@@ -118,11 +119,8 @@ svg.brand-mark .ink { fill: var(--ink); }
 svg.brand-mark .accent { fill: var(--secondary); }
 .brand h1 { flex-shrink: 0; width: 100%; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.045em; }
-#tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
-#tabs button { flex: 1; border: 0; border-radius: 0; padding: 10px 4px; background: transparent; color: var(--muted); }
-#tabs button[aria-selected="true"] { color: var(--secondary); box-shadow: inset 0 -2px var(--secondary); }
-.patch-controls { display: grid; gap: 8px; }
-.patch-controls[hidden] { display: none; }
+.patch-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+.patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden], .library-side[hidden] { display: none; }
 .patch-controls > * { width: 100%; min-width: 0; }
 /* the FM-1 budget meter at the right of the status line: memory (the fullest limit) and the estimated CPU load side by
  * side; open, a card above the status line with every limit and the costliest modules */
@@ -155,7 +153,7 @@ svg.brand-mark .accent { fill: var(--secondary); }
 .budget-item.pick:hover > :first-child { color: var(--ink); text-decoration: underline; }
 .budget-list p { margin: 4px 0 0; font-size: 11px; }
 /* collapsing the sidebar: the canvas takes its place, and the sidebar shrinks to the strip left of the Main dock
-   (the logo, the Patch / Library tabs and the expand button); not in the compact layout, where the sidebar is a drawer */
+   (the logo and the expand button); not in the compact layout, where the sidebar is a drawer */
 .sidebar { position: relative; }
 .side-collapse { position: absolute; top: 6px; right: 6px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; min-height: 0 !important;
   padding: 0 !important; border-radius: 4px; font-size: 15px !important; line-height: 1; letter-spacing: 0 !important;
@@ -166,13 +164,10 @@ svg.brand-mark .accent { fill: var(--secondary); }
 @media (min-width: 701px) {
   .workspace.side-collapsed > main { grid-column: 1 / 4; }
   .workspace.side-collapsed > .sidebar { grid-row: 2; flex-direction: row; align-items: center; justify-content: center; gap: 8px; padding: 6px 30px 6px 8px; overflow: hidden; border-top: 1px solid var(--line); }
-  .side-collapsed .sidebar > :not(.brand, .side-collapse, #tabs) { display: none; }
+  .side-collapsed .sidebar > :not(.brand, .side-collapse) { display: none; }
   .side-collapsed .sidebar > .theme-toggle { display: none; }
   .side-collapsed .sidebar > .brand { gap: 4px; min-height: 0; }
   .side-collapsed .sidebar #about-btn { width: auto; padding: 0 5px; font-size: 11px; } /* under the 44 px logo */
-  .side-collapsed #tabs { order: 2; }
-  .side-collapsed #tabs { flex: 1; border-bottom: 0; }
-  .side-collapsed #tabs button { padding: 8px 2px; }
   .side-collapsed .sidebar > .brand { cursor: pointer; }
   .side-collapsed .brand h1 { display: none; }
   .side-collapsed .brand > .logo { width: 44px; height: 44px; min-height: 0; flex: none; }
@@ -195,10 +190,10 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-main { min-width: 0; min-height: 0; overflow: auto; }
-.tab:not(#tab-patch) { padding: 24px; }
+/* the main area: the views fill it and scroll themselves; the view switch, Connect FM-1 and the Install panel sit over it */
+main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.tab:not(#tab-patch) { height: 100%; overflow: auto; padding: 56px 24px 24px; }
 .tab[hidden] { display: none; }
-#tab-presets, #tab-assemblies { width: min(100%, 640px); margin: 0 auto; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 /* touch-action: none: the canvas's own pinch, two-finger pan and one-finger pan (editor.ts touchGestures, rubberBand)
    take its gestures, not the browser's page zoom or scroll (#153) */
@@ -794,7 +789,6 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 #canvas-space { position: relative; min-width: 100%; min-height: 100%; }
 #patch-world { position: absolute; left: 0; top: 0; transform-origin: 0 0;
   background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 20px 20px; }
-#tab-library { max-width: 1200px; margin: 0 auto; }
 /* a window under 800 px tall (1024 x 768): tighter gaps and a smaller logo minimum make room for About under the logo */
 @media (max-height: 790px) and (min-width: 701px) {
   .sidebar { gap: 8px; }
@@ -822,7 +816,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   .sidebar { display: none; position: fixed; top: 44px; bottom: 0; left: 0; width: 208px; z-index: 41; }
   .sidebar.open { display: flex; }
   .sidebar-dismiss:not([hidden]) { display: block; position: fixed; inset: 44px 0 0; z-index: 40; background: var(--backdrop); border: 0; border-radius: 0; }
-  .tab:not(#tab-patch) { padding: 16px; }
+  .tab:not(#tab-patch) { padding: 52px 16px 16px; }
   dialog.palette li { gap: 8px; }
   dialog.palette li .detail { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .palette-filters { gap: 4px; }
@@ -1159,8 +1153,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
    condensed capitals, cable slack as a value bar, the examples as a picker field. Button texts stay as written (the
    tutorial's targets and prose); the capitals are CSS. ---- */
 .sidebar { font-family: 'Barlow', system-ui, sans-serif; font-weight: 500; }
-#tabs button, .sidebar button, .example-picker > span { font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
-#tabs button { font-size: 14px; }
+.sidebar button { font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
 .spanel { border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--panel)); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 6px var(--shadow); }
 .shead { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 6px; border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; background: var(--surface-tint); }
 .shead .stitle, input#patch-name { flex: 1; min-width: 0; font: 600 15px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .07em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1168,10 +1161,11 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 input#patch-name { height: 24px; padding: 0 4px; margin-left: -4px; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: text; }
 input#patch-name:hover { border-color: var(--line); }
 input#patch-name:focus { border-color: var(--secondary); background: var(--bar); outline: none; }
-#save-patch-btn, #share-patch-btn, #patch-menu-btn { flex: none; display: grid; place-items: center; width: 22px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--muted); }
-/* save, share and ⋯ close together, so the name keeps what it can */
-#share-patch-btn, #patch-menu-btn { margin-left: -4px; }
-#save-patch-btn:hover, #share-patch-btn:hover, #patch-menu-btn:hover, #patch-menu-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--line); }
+/* New patch, then Save, Share and ⋯ as square buttons: the header strip keeps the whole width for the name */
+.patch-row { display: flex; gap: 4px; }
+.patch-row #new-patch-btn { flex: 1; min-width: 0; }
+#save-patch-btn, #share-patch-btn, #patch-menu-btn { flex: none; display: grid; place-items: center; width: 30px; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
+#save-patch-btn:hover, #share-patch-btn:hover, #patch-menu-btn:hover, #patch-menu-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--secondary); filter: none; }
 #save-patch-btn.saved { color: var(--secondary); }
 /* the Undo toast (toast.ts) */
 .toast { position: fixed; z-index: 60; left: 50%; bottom: calc(var(--piano-h, 0px) + 16px); transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
@@ -1180,7 +1174,11 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast button { flex: none; min-height: 26px; padding: 0 10px; border: 1px solid var(--secondary); border-radius: 4px; background: transparent; color: var(--secondary); font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
 .toast button.toast-close { border-color: transparent; color: var(--muted); padding: 0 6px; }
-.sbody { display: grid; gap: 6px; padding: 8px; }
+/* a panel's contents never run past its edge, even when a scroll bar narrows the sidebar: the columns may shrink below
+   their content (a select's widest option, a button's label), and a label too long is cut with an ellipsis */
+.sbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px; }
+.sbody > *, .sbody select { min-width: 0; max-width: 100%; }
+.sbody button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sidebar button { min-height: 30px; padding: 4px 8px; border-radius: 5px; white-space: nowrap; }
 /* the plain buttons in the (muted) gate colour: a grey fill read as a slider's bar */
 .sidebar button:not(.primary), .sidebar #tour-btn, .sidebar #palette-btn { background: var(--btn-yellow); border-color: var(--btn-yellow); color: var(--accent-ink); }
@@ -1190,23 +1188,29 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 /* the canvas panel's buttons (TIDY, FIT) look like the dock's octave buttons: outlined on the panel, the border teal on hover */
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
-.view-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.view-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* PATCH: + Module and + Assembly side by side (#166; their names still say Add module / Add assembly) */
-.add-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.add-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* LEARN: the tutorial and the demo side by side */
-.learn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.learn-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* the cable slack and zoom sliders are cards' value bars (sliderJack; main.ts sideSlider) with a small name and a thumb as tall
    as the bar. Their thumbs are jacks (the easter egg): a cable from any output dropped on one moves it (Patch.slackFrom / zoomFrom) */
 .side-bar > .slider-jack { --jack-size: 18px; }
 .side-bar > span:first-child { font: var(--cap); font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; }
 .side-bar .slider-port { background: var(--panel); }
 .patching-any .side-bar, .patching-any .side-bar .slider-port { cursor: crosshair; }
-.example-picker { display: grid; gap: 4px; }
-.example-picker > span { font-size: 11px; color: var(--muted); }
-.example-picker select { width: 100%; min-height: 28px; padding: 2px 6px; border-radius: 5px; border-color: var(--line); background: var(--bar); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
+/* PATCH: the Open picker under New patch */
+.sidebar select#preset { width: 100%; min-height: 28px; padding: 2px 6px; border-radius: 5px; border-color: var(--line); background: var(--bar); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
 #palette-btn { font-size: 12px; }
 #palette-btn kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
 .sidebar #tour-btn { padding-inline: 8px; text-align: center; }
+/* the LIBRARY view's sidebar (main.ts setLibrarySection): its sections as a list, the current one marked like a selected row */
+.library-side { display: grid; gap: 10px; }
+.library-nav { display: grid; gap: 2px; }
+#workspace-sidebar .library-nav button { min-height: 34px; padding: 6px 10px; text-align: left; background: transparent; border: 1px solid transparent; color: var(--ink); font-size: 14px; }
+#workspace-sidebar .library-nav button:hover { border-color: var(--line); filter: none; color: var(--ink); }
+#workspace-sidebar .library-nav button[aria-current="true"] { background: var(--surface-tint); border-color: var(--line); color: var(--secondary); }
+.library-note { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* ---- Library in the cards' style: each card a module-like panel with a header strip (family tag + condensed title), rows on
    the bar shade, toolbar buttons yellow like the sidebar's, the row tools quiet ---- */
@@ -1233,39 +1237,36 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 #tab-library .bank-row button:hover:not(:disabled) { color: var(--secondary); background: color-mix(in srgb, var(--secondary) 14%, transparent); }
 #tab-library .bank-row button:disabled { opacity: .3; }
 #tab-library .bank-row button.delete:hover:not(:disabled) { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
-/* Community patches (community.ts, #157): a row per entry (thumbnail, title, credit + licence, notes, engines + FM-1 fit,
-   Open and ↗), an empty state that asks for the first one, and a foot with the form, the subreddit and Post yours */
-#tab-library .community-list { display: flex; flex-direction: column; gap: 6px; }
-#tab-library .community-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 6px; border-radius: 6px; background: var(--bar); }
-#tab-library .community-thumb { width: 96px; height: 60px; border-radius: 4px; background: var(--surface-tint); border: 1px solid var(--line); }
-#tab-library .community-thumb rect { fill: none; stroke: var(--muted); stroke-width: 8; }
-#tab-library .community-thumb line { stroke: var(--secondary); stroke-width: 10; stroke-linecap: round; }
-#tab-library .community-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-size: 12px; color: var(--muted); }
-#tab-library .community-main > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#tab-library .community-title { color: var(--ink); font: 600 15px/1.2 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .05em; }
-#tab-library .community-notes { color: var(--ink); font-size: 13px; }
-#tab-library .community-fit { color: var(--secondary); }
-#tab-library .community-fit.over { color: var(--danger); }
-#tab-library .community-tools { display: flex; gap: 6px; }
-#tab-library .community-tools > * { min-height: 32px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
-#tab-library .community-open { padding: 0 14px; background: var(--btn-yellow); border-color: var(--btn-yellow); color: var(--accent-ink); }
-#tab-library .community-src { width: 32px; border: 1px solid var(--line); color: var(--muted); text-decoration: none; box-sizing: border-box; }
-#tab-library .community-src:hover { color: var(--accent); border-color: var(--ink); }
-#tab-library .community-empty { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px dashed color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: 6px;
-  background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 13px; line-height: 1.45; color: var(--muted); }
-#tab-library .community-empty b { color: var(--ink); font: 600 16px/1.2 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; }
-#tab-library .community-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12px; }
-#tab-library .community-foot > .muted { flex: 1 1 260px; line-height: 1.45; }
-#tab-library .community-more { font: 600 14px/1.2 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; letter-spacing: .04em; white-space: nowrap; }
-#tab-library .community-post { min-height: 36px; padding: 0 16px; border-radius: 5px; background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
-  font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
-#tab-library .community-post:hover, #tab-library .community-open:hover { border-color: var(--ink); filter: brightness(1.08); }
-@media (max-width: 560px) {
-  #tab-library .community-row { grid-template-columns: 64px minmax(0, 1fr); }
-  #tab-library .community-thumb { width: 64px; height: 44px; }
-  #tab-library .community-tools { grid-column: 1 / -1; }
-  #tab-library .community-open { flex: 1; }
-  #tab-library .community-post { flex: 1 1 100%; }
+/* Library's sections (#218, main.ts showLibrarySection): a title, then two columns, this browser left and the FM-1 right
+   (bank.ts, library-presets.ts), stacked on a narrow screen with the browser above; Assemblies is one column */
+.lib-section { max-width: 1100px; margin: 0 auto; }
+.lib-section[hidden] { display: none; }
+.lib-title { margin: 0 0 14px; font: 700 22px/1.1 'Alegreya SC', Georgia, serif; }
+.lib-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.lib-cols > .card { margin-bottom: 0; }
+#tab-library .lib-single { max-width: 720px; }
+#tab-library .lib-col .bank-list { max-height: min(60vh, 560px); }
+#tab-library .card > h2 .lib-state { margin-left: auto; padding: 3px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel);
+  font: 500 12px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; color: var(--muted); white-space: nowrap; }
+#tab-library .card > h2 .lib-state.live { border-color: var(--secondary); color: var(--ink); }
+#tab-library .card > h2 .lib-state.unsaved { border-color: var(--accent); color: var(--accent); }
+#tab-library .card > h2 .lib-state + .muted { margin-left: 0; }
+#tab-library .card > h2 .lib-saveas { min-height: 22px; padding: 0 8px; border-radius: 5px; font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+#tab-library .card > h2 .lib-saveas[hidden] { display: none; }
+#tab-library .toolbar button[hidden] { display: none; }
+#tab-library .lib-foot { margin: 10px 0 0; }
+#tab-library .lib-factory { min-height: 28px; padding: 2px 8px; border-radius: 5px; background: var(--bar); border-color: var(--line); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
+#tab-library .lib-count, #tab-library .lib-status, #tab-library .lib-note { margin: 8px 0 0; font-size: 12px; }
+#tab-library .lib-status:empty, #tab-library .lib-count:empty { display: none; }
+/* "browser only": a patch too big for the FM-1 (its tooltip says so) */
+#tab-library .bank-row .lib-badge { padding: 2px 6px; border: 1px solid var(--danger); border-radius: 3px; color: var(--danger); cursor: help;
+  font: 600 10.5px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; }
+#tab-library .lib-section .bank-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the transfer arrows: the row's last tool, a little stronger than the rest */
+#tab-library .bank-row button.lib-move { min-width: 26px; color: var(--secondary); font-size: 14px; }
+@media (max-width: 700px) {
+  .lib-cols { grid-template-columns: minmax(0, 1fr); }
 }
 /* the cable into the cable slack's thumb: over the sidebar, unlike every other cable (z-index under panels and menus) */
 svg.slack-cable { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 15; overflow: visible; pointer-events: none; }
@@ -1495,15 +1496,15 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .dial-caption { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10px/1.1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); }
 .deck-knob.off .dial-caption { color: var(--muted); }
 
-/* ---- the Patch | FM-1 switch and the FM-1 tab (fm1-view.ts, #110): a flat drawing of the panel around the emulated LCD */
+/* ---- the PATCH | EMU | LIBRARY switch and the Emulator view (fm1-view.ts, #110): a flat drawing of the panel around the emulated LCD */
 .view-switch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 7; display: flex; padding: 2px; gap: 2px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); }
 .view-switch button { min-width: 64px; height: 26px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--muted);
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .view-switch button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
 .view-switch button:not([aria-selected="true"]):hover { color: var(--ink); }
-/* Connect FM-1 (main.ts syncChip): the canvas's top right, the view switch's frame; a primary button until connected, then
-   quiet with the status line chip's dot (teal: synced, ring: not synced, red: too big). Over the FM-1 view too */
+/* Connect FM-1 (main.ts syncChip): the main area's top right in every view, the view switch's frame; a primary button until
+   connected, then quiet with the status line chip's dot (teal: synced, ring: not synced, red: too big) */
 .fm1-connect { position: absolute; top: 10px; right: 12px; z-index: 7; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
   border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 8px var(--shadow);
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
@@ -1514,16 +1515,23 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-connect.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .fm1-connect.idle .sl-dot { border: 2px solid var(--secondary); }
 .fm1-connect.over .sl-dot { background: var(--danger); border-color: var(--danger); }
-@media (max-width: 700px) { .fm1-connect { right: 8px; height: 30px; padding: 0 8px; gap: 5px; font-size: 11px; letter-spacing: .06em; } }
+/* narrow: the switch moves to the left, so Connect FM-1 fits beside it */
+@media (max-width: 700px) {
+  .fm1-connect { right: 8px; height: 30px; padding: 0 8px; gap: 5px; font-size: 11px; letter-spacing: .06em; }
+  .view-switch { left: 8px; transform: none; }
+  .view-switch button { min-width: 0; padding: 0 9px; letter-spacing: .06em; }
+}
 #fm1-view { position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; padding: 52px 16px 16px; box-sizing: border-box; }
 #fm1-view[hidden] { display: none; }
-/* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it */
-.workspace.fm1-mode > :is(.wheels, .dock-wrap, .deck) { display: none; }
-/* the Flash view: the install page over the canvas, under the Patch | FM-1 | Flash switch */
-#flash-view { position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--bg); padding: 52px 16px 24px; }
+/* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it; LIBRARY plays nothing and takes the full height */
+.workspace:is(.fm1-mode, .library-mode) > :is(.wheels, .dock-wrap, .deck) { display: none; }
+/* the Install panel: the install page over the whole main area (the switch and Connect FM-1 too), closed with its Close */
+#flash-view { position: absolute; inset: 0; z-index: 8; overflow: auto; background: var(--bg); padding: 16px 16px 24px; }
 #flash-view[hidden] { display: none; }
-#flash-view > * { max-width: 640px; margin-inline: auto; }
+#flash-view .install-head, #flash-body > * { max-width: 640px; margin-inline: auto; }
+#flash-view .install-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+#flash-view .install-head h2 { margin: 0; font: 700 22px/1.1 'Alegreya SC', Georgia, serif; }
 /* the warning's details (flasher.ts more): one line each until opened */
 #flash-view .flash-more { border-top: 1px solid var(--line); padding-block: 6px; }
 #flash-view .flash-more:last-of-type { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
@@ -1598,7 +1606,11 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-key.down::after { background: var(--key-held-ink); }
 .fm1-hint { margin: 0; text-align: center; font: 400 12px/1.4 'Barlow', system-ui, sans-serif; color: var(--muted); }
 /* following a connected FM-1 (#120): which firmware, and the controls it does not send greyed */
-.fm1-follow { margin: 0; text-align: center; font: 600 12px/1.4 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; color: var(--secondary); }
+/* "Mirroring your FM-1" (Fm1View.following): a small marker over the panel while a connected FM-1 drives it */
+.fm1-follow { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 3px 10px; border: 1px solid var(--secondary); border-radius: 999px;
+  background: color-mix(in srgb, var(--secondary) 14%, var(--panel)); color: var(--ink); font: 600 12px/1.4 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.fm1-follow::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--secondary); }
+.fm1-follow[hidden] { display: none; }
 .fm1-view .unreported { opacity: .35; filter: grayscale(1); }
 
 /* The status line under the keyboard (statusline.ts): what the pointer is over and what it does, then the FM-1 budget */

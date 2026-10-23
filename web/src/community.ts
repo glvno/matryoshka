@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Community patches (glvno/matryoshka#157): a curated list bundled with the app, `community.json`, fed by the GitHub issue
 // form `.github/ISSUE_TEMPLATE/community-patch.yml`. An accepted submission becomes one entry in a commit; the entries are
-// third-party patches under CC BY-SA 4.0 (LICENSING.md), not the GPL code. No live fetching: the shelf reads only the
+// third-party patches under CC BY-SA 4.0 (LICENSING.md), not the GPL code. No live fetching: the app reads only the
 // bundled JSON, and "More on r/MVaveFM1" is a plain link. Each entry's `code` is a share link's `#p=` value, decoded lazily
-// (share.ts) the first time the shelf or the Open picker needs it.
+// (share.ts) the first time the Open picker or the palette needs it (they list them under Community; the Library has no
+// Community shelf since #218).
 import RAW from './community.json';
 import { instIsEngine } from './engines';
 import { DEFS } from './modules';
@@ -136,109 +137,4 @@ export function submitUrl(patch?: { name: string }, link?: string): string {
   }
   if (link) q.set('link', link);
   return `https://github.com/glvno/matryoshka/issues/new?${q}`;
-}
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
-  const e = document.createElement(tag);
-  const { class: cls, ...rest } = props as Record<string, unknown>;
-  if (cls) e.className = String(cls);
-  Object.assign(e, rest);
-  e.append(...kids);
-  return e;
-}
-
-const SVG = 'http://www.w3.org/2000/svg';
-const CARD = { w: 300, h: 170 };
-
-/** a thumbnail of the patch's canvas: a box per module where it sits, its cables as lines */
-function thumb(p: Patch): SVGSVGElement {
-  const svg = document.createElementNS(SVG, 'svg');
-  svg.setAttribute('class', 'community-thumb');
-  svg.setAttribute('aria-hidden', 'true');
-  const ms = p.modules.slice(0, 60);
-  const x0 = Math.min(0, ...ms.map((m) => m.x)), y0 = Math.min(0, ...ms.map((m) => m.y));
-  const x1 = Math.max(CARD.w, ...ms.map((m) => m.x + CARD.w)), y1 = Math.max(CARD.h, ...ms.map((m) => m.y + CARD.h));
-  svg.setAttribute('viewBox', `${x0} ${y0} ${x1 - x0} ${y1 - y0}`);
-  svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-  const at = new Map(ms.map((m) => [m.id, m]));
-  for (const m of ms) {
-    const r = document.createElementNS(SVG, 'rect');
-    for (const [k, v] of Object.entries({ x: m.x + 10, y: m.y + 10, width: CARD.w - 20, height: CARD.h - 20, rx: 14 })) r.setAttribute(k, String(v));
-    svg.append(r);
-  }
-  for (const c of p.cables.slice(0, 80)) {
-    const a = at.get(c.from.module), b = at.get(c.to.module);
-    if (!a || !b) continue;
-    const l = document.createElementNS(SVG, 'line');
-    for (const [k, v] of Object.entries({ x1: a.x + CARD.w - 10, y1: a.y + CARD.h / 2, x2: b.x + 10, y2: b.y + CARD.h / 2 })) l.setAttribute(k, String(v));
-    svg.append(l);
-  }
-  return svg;
-}
-
-export interface ShelfEvents {
-  /** load a patch into the editor, as a share link does (not saved until the user saves it) */
-  open(p: Patch, title: string): void;
-  /** "Post yours": the share sheet (#165) */
-  post(): void;
-  /** the decoded list is ready (the Open picker refills) */
-  loaded(): void;
-}
-
-/** the "Community patches" card at the top of the Library tab */
-export function buildCommunityShelf(root: HTMLElement, ev: ShelfEvents): void {
-  const list = el('div', { class: 'community-list' });
-  const licence = (): HTMLAnchorElement => el('a', { href: LICENCE_URL, target: '_blank', rel: 'noopener', textContent: LICENCE, title: 'Creative Commons Attribution-ShareAlike 4.0' });
-  const render = (items: CommunityPatch[]): void => {
-    const ok = items.filter((c) => c.patch);
-    if (!ok.length) {
-      list.replaceChildren(
-        el('div', { class: 'community-empty' },
-          el('b', { textContent: 'None yet: post yours.' }),
-          el('span', { textContent: `Be the first: share a patch through the form and it lands here for everyone, credited to you under ${LICENCE}.` }),
-        ),
-      );
-      return;
-    }
-    list.replaceChildren(
-      ...ok.map((c) => {
-        const p = c.patch!;
-        const fit = fitOf(p);
-        const engines = enginesOf(p);
-        const notes = notesOf(c);
-        return el('div', { class: 'community-row' },
-          thumb(p),
-          el('div', { class: 'community-main' },
-            el('b', { class: 'community-title', textContent: c.entry.title, title: c.entry.title }),
-            el('span', { class: 'community-by' }, `by ${c.entry.author} · `, licence(), ` · ${ageOf(c.entry.added)}`),
-            ...(notes ? [el('span', { class: 'community-notes', textContent: notes, title: notes })] : []),
-            el('span', { class: 'community-meta' },
-              ...(engines.length ? [`Engines: ${engines.join(', ')} · `] : []),
-              el('span', { class: fit.fits ? 'community-fit' : 'community-fit over', textContent: fit.text }),
-            ),
-          ),
-          el('div', { class: 'community-tools' },
-            el('button', { class: 'community-open', textContent: 'Open', title: 'open it in the editor (nothing is saved until you save it)', onclick: () => ev.open(openCommunity(c), c.entry.title) }),
-            el('a', { class: 'community-src', href: c.entry.source, target: '_blank', rel: 'noopener', textContent: '↗', title: 'open the post', ariaLabel: `open the post of "${c.entry.title}"` }),
-          ),
-        );
-      }),
-    );
-  };
-  list.replaceChildren(el('p', { class: 'muted', textContent: 'Loading…' }));
-  void loadCommunity().then((items) => {
-    render(items);
-    ev.loaded();
-  });
-  root.append(
-    el('section', { class: 'card community', ariaLabel: 'Community patches' },
-      el('h2', {}, el('span', { class: 'mtag eng', textContent: 'SHARED' }), 'Community patches', el('span', { class: 'muted', textContent: `by players, ${LICENCE}` })),
-      list,
-      el('div', { class: 'community-foot' },
-        el('span', { class: 'muted' }, 'Open loads a patch like a patch link: nothing is saved until you save it. ', el('a', { href: ISSUE_FORM, target: '_blank', rel: 'noopener', textContent: 'Submit one through the form' }), '.'),
-        el('a', { class: 'community-more', href: REDDIT_SEARCH, target: '_blank', rel: 'noopener', textContent: `More on ${SUBREDDIT} ↗` }),
-        el('button', { class: 'community-post', textContent: 'Post yours', title: 'share the open patch and submit it to the list', onclick: () => ev.post() }),
-      ),
-    ),
-  );
 }

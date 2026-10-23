@@ -38,20 +38,18 @@
         <!-- About under the logo (as before #166; the word only, no heart): in the collapsed strip it stays under the logo -->
         <button id="about-btn" type="button" title="About Matryoshka, the AI usage figures, the credits, and support">About</button>
       </div>
-      <nav id="tabs" role="tablist" aria-label="Workspace" aria-orientation="horizontal">
-        <button id="nav-patch" role="tab" data-tab="patch" aria-controls="tab-patch" aria-selected="true">Patch</button>
-        <button id="nav-library" role="tab" data-tab="library" aria-controls="tab-library" aria-selected="false" tabindex="-1">Library</button>
-      </nav>
       <div class="patch-controls">
         <!-- sidebar panels in the cards' style: a header strip with a tag and a condensed title, a body of controls -->
         <section class="spanel" aria-label="Patch">
-          <div class="shead"><span class="mtag util">PATCH</span><input id="patch-name" aria-label="Patch name" title="Rename patch" /><button id="save-patch-btn" class="icon-btn" title="Save patch to Your patches (Ctrl/Cmd+S)" aria-label="Save patch"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2.5 1.5h8.6l2.4 2.4v10.6h-11z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.8 1.5v3.8h5.6V1.5M4.5 14.5V9.3h7v5.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button><button id="share-patch-btn" class="icon-btn" type="button" title="Share: copy a link, post to Reddit, submit to the Community shelf" aria-label="Share patch"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 10V1.8M5 4.6l3-3 3 3M5.5 7H3.5v7.5h9V7h-2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg></button><button id="patch-menu-btn" class="icon-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Patch actions" title="Share, save, load, FM-1"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="3.2" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.8" cy="8" r="1.4" fill="currentColor"/></svg></button></div>
+          <div class="shead"><span class="mtag util">PATCH</span><input id="patch-name" aria-label="Patch name" title="Rename patch" /></div>
           <div class="sbody">
-            <button id="new-patch-btn">New patch</button>
+            <!-- Save, Share and ⋯ sit beside New patch, so the header strip is the tag and the name, as on the other panels -->
+            <div class="patch-row"><button id="new-patch-btn">New patch</button><button id="save-patch-btn" class="icon-btn" title="Save patch to Your patches (Ctrl/Cmd+S)" aria-label="Save patch"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2.5 1.5h8.6l2.4 2.4v10.6h-11z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.8 1.5v3.8h5.6V1.5M4.5 14.5V9.3h7v5.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button><button id="share-patch-btn" class="icon-btn" type="button" title="Share: copy a link, post to Reddit, submit to the Community shelf" aria-label="Share patch"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 10V1.8M5 4.6l3-3 3 3M5.5 7H3.5v7.5h9V7h-2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg></button><button id="patch-menu-btn" class="icon-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Patch actions" title="Share, save, load, FM-1"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="3.2" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.8" cy="8" r="1.4" fill="currentColor"/></svg></button></div>
+            <select id="preset" aria-label="Open a saved patch or an example" title="Open one of your patches, an example or a Community patch"></select>
             <div class="add-row"><button id="add-btn" class="primary" title="Add module" aria-label="Add module">+ Module</button><button id="add-assembly-btn" class="primary" title="Add assembly" aria-label="Add assembly">+ Assembly</button></div>
           </div>
         </section>
-        <section class="spanel" aria-label="View">
+        <section class="spanel" aria-label="View" data-views="patch">
           <div class="shead"><span class="mtag shp">VIEW</span><span class="stitle">Canvas</span></div>
           <div class="sbody">
             <div class="view-row"><button id="tidy-btn" title="Line the cards up in columns, keeping their order (undo with Ctrl/Cmd+Z)">TIDY</button><button id="fit-btn" title="Zoom so every card is in view">FIT</button></div>
@@ -60,32 +58,51 @@
             <div id="zoom-bar" class="param bar side-bar"><span>Zoom</span><output id="zoom-out">100 %</output><input id="zoom-input" type="range" min="0" max="1" step="any" value="0.63" aria-label="Zoom" /></div>
           </div>
         </section>
-        <section class="spanel" aria-label="Learn">
+        <section class="spanel" aria-label="Learn" data-views="patch">
           <div class="shead"><span class="mtag mod">LEARN</span><span class="stitle">Get started</span></div>
           <div class="sbody">
             <div class="learn-row"><button id="tour-btn">Tutorial ↗</button><button id="demo-btn" title="Open the demo patch and start the audio: a drone plays at once, the keys play the bassline">Demo</button></div>
-            <label class="example-picker"><span>Open</span><select id="preset" aria-label="Open a saved patch or an example"></select></label>
+            <button id="install-btn" title="Install the Matryoshka firmware on the FM-1, or return it to the official one">Install firmware</button>
           </div>
         </section>
+      </div>
+      <!-- the LIBRARY view's sidebar: its sections (main.ts setLibrarySection) -->
+      <div class="library-side" hidden>
+        <nav class="library-nav" aria-label="Library sections">
+          <button type="button" data-section="patches" aria-current="true">Patches</button>
+          <button type="button" data-section="assemblies" aria-current="false">Assemblies</button>
+          <button type="button" data-section="presets" aria-current="false">Presets</button>
+        </nav>
+        <p class="library-note">Manage what is stored, in this browser and on the FM-1.</p>
       </div>
       <div class="sidebar-bottom">
         <button id="palette-btn" title="All commands (Ctrl/Cmd+K)">Commands <kbd>⌘ / Ctrl K</kbd></button>
       </div>
     </aside>
     <main>
-    <section id="tab-patch" class="tab" role="tabpanel" aria-labelledby="nav-patch">
+    <section id="tab-patch" class="tab" role="tabpanel" aria-label="Patch">
       <div id="canvas" class="canvas" aria-label="Patch canvas">
         <div id="canvas-space"><div id="patch-world"><svg id="cables" class="cables"></svg><div id="modules"></div><svg id="cable-glow" class="cables cable-glow" aria-hidden="true"></svg><svg id="patch-preview" class="cables patch-preview"></svg></div></div>
       </div>
       <div id="fm1-view" hidden></div>
-      <section id="flash-view" class="flash-view" aria-label="Flash firmware" hidden></section>
-      <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true">Patch</button><button type="button" role="tab" data-view="fm1" aria-selected="false" title="The FM-1's own screen and panel, emulated (its firmware, compiled for the browser)">FM-1</button><button type="button" role="tab" data-view="flash" aria-selected="false" title="Install the Matryoshka firmware on the FM-1, or go back to the stock one">Flash</button></div>
       <div id="diff" class="panel" hidden></div>
-      <!-- Connect FM-1 (top right of the canvas): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
-      <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
       <button id="help-btn" class="help-btn" type="button" title="Shortcuts (?)" aria-label="Keyboard and mouse shortcuts">?</button>
     </section>
-    <section id="tab-library" class="tab" role="tabpanel" aria-labelledby="nav-library" hidden></section>
+    <!-- LIBRARY: one section at a time (main.ts showLibrarySection): Patches and Presets in two columns, this browser and the FM-1 -->
+    <section id="tab-library" class="tab" role="tabpanel" aria-label="Library" hidden>
+      <div id="lib-patches" class="lib-section"><h2 class="lib-title">Patches</h2></div>
+      <div id="lib-assemblies" class="lib-section" hidden><h2 class="lib-title">Assemblies</h2></div>
+      <div id="lib-presets" class="lib-section" hidden><h2 class="lib-title">Presets</h2></div>
+    </section>
+    <!-- the views (main.ts setView): centred over the main area; Install firmware is a panel over all three, not a view -->
+    <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true" title="The patch: the canvas of cards">Patch</button><button type="button" role="tab" data-view="emu" aria-selected="false" tabindex="-1" title="The FM-1's firmware, emulated in the browser">Emu</button><button type="button" role="tab" data-view="library" aria-selected="false" tabindex="-1" title="Manage what is stored, in this browser and on the FM-1">Library</button></div>
+    <!-- Connect FM-1 (top right, in every view): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
+    <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
+    <!-- the Install panel (Get started > Install firmware, the palette, #flash): flasher.ts's page over the main area -->
+    <section id="flash-view" class="flash-view" aria-labelledby="install-title" hidden>
+      <div class="install-head"><h2 id="install-title">Install firmware</h2><button id="install-close" type="button" title="Close the Install panel (an install keeps running)">Close</button></div>
+      <div id="flash-body"></div>
+    </section>
     </main>
     <div id="wheels" class="wheels" role="group" aria-label="Wheels"></div>
     <div class="dock-wrap"><div id="dock" class="dock" role="group" aria-label="Main"></div><svg class="dock-cables cables" aria-hidden="true"></svg></div>
@@ -149,8 +166,10 @@
             <div class="hrow"><span class="hkeys"><kbd>/</kbd> <kbd>Ctrl/Cmd+K</kbd></span><span>command palette: add a module, insert an assembly, open a patch, any action</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+S</kbd></span><span>save the patch to Your patches</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+B</kbd></span><span>collapse / expand the sidebar</span></div>
+            <div class="hrow"><span class="hkeys">PATCH · EMU · LIBRARY</span><span>the switch at the top: the canvas, the FM-1’s firmware emulated in the browser, and what is stored in this browser and on the FM-1 (<kbd>←</kbd><kbd>→</kbd> move along it). Install firmware is under Get started and in the palette</span></div>
+            <div class="hrow"><span class="hkeys">LIBRARY <b>→</b> <b>←</b></span><span>Patches and Presets in two columns, this browser and the FM-1: → puts one on the FM-1 (or in the bank’s offline copy while none is connected), ← copies one into this browser. Deleting in this browser offers Undo; replacing on the FM-1 asks first</span></div>
             <div class="hrow"><span class="hkeys"><kbd>?</kbd></span><span>this list</span></div>
-            <div class="hrow"><span class="hkeys"><kbd>Esc</kbd></span><span>cancel a connection, clear the rows selected while choosing or arranging a card (again: finish choosing or arranging), close a dialog</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Esc</kbd></span><span>cancel a connection, clear the rows selected while choosing or arranging a card (again: finish choosing or arranging), close a dialog or the Install panel</span></div>
           </section>
           <section class="hsec"><h3>Selection</h3>
             <div class="hrow"><span class="hkeys">click / <kbd>Shift</kbd>-click a title</span><span>select a card / add it to the selection; drag on the empty canvas to select an area</span></div>

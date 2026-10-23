@@ -158,10 +158,14 @@ export class Tutorial {
 
   // ---- entry points
 
+  /** closes the welcome card if it shows (it belongs to PATCH: leaving PATCH closes it, and it does not come back) */
+  closeWelcome: (() => void) | null = null;
+
   /** every visit, until "Don't show this again" is ticked: a card in the middle of the screen offering the tutorial (or
    * the chapter the learner is in), and the tour for those who know synths. Ticking the box points at where the tutorial
    * lives from then on. */
   welcome(): void {
+    this.closeWelcome?.();
     try { if (localStorage.getItem(OFFER_OFF)) return; } catch { /* storage optional: offer anyway */ }
     const ci = this.chapterIndex;
     const resume = this.chapter && offered(ci) ? this.chapter : null;
@@ -169,7 +173,8 @@ export class Tutorial {
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-labelledby', 'tutorial-offer-title');
     const onKey = (ev: KeyboardEvent): void => { if (ev.key === 'Escape') close(); };
-    const close = (): void => { card.remove(); this.clearFocus(); document.removeEventListener('keydown', onKey); };
+    const close = (): void => { card.remove(); this.clearFocus(); document.removeEventListener('keydown', onKey); this.closeWelcome = null; };
+    this.closeWelcome = close;
     const go = (): void => {
       close();
       if (resume) { this.panel.hidden = false; this.render(true); this.schedule(); } else this.start(LISTED[0]);

@@ -9,17 +9,18 @@ import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, liveSync, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
-import { LIVE_MS } from './protocol';
+import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
-import { addToBank, bankPatches, buildBankTab } from './bank';
+import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
+import { buildPresetsSection } from './library-presets';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
-import { showToast, showUndo } from './toast';
+import { showAction, showToast, showUndo } from './toast';
 import { popMenu, type MenuItem } from './menu';
 import { initStatusline, pinStatus } from './statusline';
-import { buildAssembliesTab, storeAssembly, storeTutorialAssembly } from './assemblies';
+import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { buildFlashTab } from './flasher';
@@ -28,7 +29,8 @@ import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
 import { switches } from './buttons';
-import { Fm1Mirror } from './mirror';
+import { Fm1Mirror, identifyFm1 } from './mirror';
+import { firmwareKind } from './felucca-store';
 import { BUTTONS, ENCODERS } from './fm1-ui';
 import type { Firmware, PanelInput } from './fm1-profiles';
 import { longName, moduleName } from './labels';
@@ -42,7 +44,7 @@ import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
-import { buildCommunityShelf } from './community';
+import { loadCommunity } from './community';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
 import { starterPatch } from './starter';
@@ -86,7 +88,8 @@ const host = new AudioHost();
 const status = $('audio-status');
 host.onError = (m) => (status.textContent = m); // the worklet says "audio: …" itself
 
-let currentTab = 'patch';
+/** 'patch' in the PATCH and EMU views (the patch's own: the shortcuts and the keys act on it), 'library' in LIBRARY */
+let currentTab: 'patch' | 'library' = 'patch';
 let saveTimer = 0;
 /** set while a patch from a link is loaded: it must not replace the remembered patch until the user acts */
 let suppressSave = false;
@@ -159,12 +162,24 @@ fm1Chip.onclick = () => {
   if (fm1State() === 'not synced') offerSync(true);
   else $<HTMLDialogElement>('device-bar').showModal();
 };
-fm1Connect.onclick = () => {
-  if (device.connected) $<HTMLDialogElement>('device-bar').showModal();
-  else void toastResult(connectFm1)();   // a refusal goes to FM-1 & MIDI's status, which is closed: shown in a toast too
+fm1Connect.onclick = async () => {
+  if (device.connected) return $<HTMLDialogElement>('device-bar').showModal();
+  await toastResult(connectFm1)();   // a refusal goes to FM-1 & MIDI's status, which is closed: shown in a toast too
+  if (!device.connected) void offerInstall();
 };
+/** Connect FM-1 got no answer from Matryoshka: the FM-1 is asked who it is (M-VAVE's identity handshake, as the Install
+ *  panel asks), and one on other firmware, or waiting in its update loader, gets Install Matryoshka in a toast */
+async function offerInstall(): Promise<void> {
+  const id = await identifyFm1();
+  if (!id || (!id.loader && firmwareKind(id.text) === 'matryoshka')) return;
+  const text = id.loader ? 'The FM-1 waits in its update loader: an install was not finished' : `This FM-1 runs ${id.text}, not Matryoshka`;
+  showAction(text, 'Install Matryoshka', openInstall, 12000);
+}
 syncChip();
-device.onStatus = devStatus;
+device.onStatus = (msg) => {
+  devStatus(msg);
+  if (!device.connected) libraryDeviceChanged();   // (it went away)
+};
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
 /** the change comes from the FM-1 tab's emulator (fm1-view.ts): not sent back to it, but on to a Live FM-1 */
@@ -174,7 +189,7 @@ device.onEvent = (e) => {
   if (e.kind === 'slot') {
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
-    devStatus(`FM-1 plays slot ${String(e.slot + 1).padStart(2, '0')} ${e.name}`);
+    devStatus(`FM-1 plays slot ${slotLabel(e.slot)} ${e.name}`);
     return;
   }
   // the panel itself (knobs, buttons, the focus) comes in as plain MIDI through the mirror (#120, fm1-profiles.ts), whatever
@@ -560,10 +575,12 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     status.textContent = msg;
   },
   onSaveAssembly(def) {
-    const r = storeAssembly(def);
-    status.textContent = r === 'cancelled' ? 'not saved' : `"${def.name}" ${r === 'replaced' ? 'replaced in' : 'saved to'} the assembly library`;
+    // a name already in the library is replaced at once, with Undo (#218: no confirm for what the browser keeps)
+    const { result, undo } = storeAssembly(def);
+    status.textContent = `"${def.name}" ${result === 'replaced' ? 'replaced in' : 'saved to'} the assembly library`;
+    if (result === 'replaced') showUndo(`"${def.name}" replaced in your assemblies`, () => { undo(); refreshAssemblies(); tutorial.refresh(); });
     refreshAssemblies();
-    if (r !== 'cancelled') tutorial.saved(def);
+    tutorial.saved(def);
     tutorial.refresh();
   },
   onLoad(p) {
@@ -688,7 +705,7 @@ const saveCurrent = (): void => {
 };
 saveBtn.onclick = saveCurrent;
 $('share-patch-btn').onclick = () => shareSheet.open();
-// the patch menu (#152): the PATCH header's ⋯ and the mobile bar's Patch ⋯ reach what moves a patch in or out of the
+// the patch menu (#152): the PATCH panel's ⋯ (beside New patch) and the mobile bar's Patch ⋯ reach what moves a patch in or out of the
 // browser without the palette. Its results also show in a toast: the status line is narrow on a phone, and the FM-1
 // answers in the FM-1 & MIDI dialog (#dev-status), which is closed.
 const toastResult = (run: () => unknown) => async (): Promise<void> => {
@@ -793,7 +810,7 @@ function showBudget(): void {
   note.className = 'muted';
   note.textContent = b.fits
     ? 'The CPU figure is an estimate: counted on a model of the FM-1\'s processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
-    : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and the Library keeps it under "Over budget".';
+    : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and Library > Patches marks it "browser only".';
   list.append(note);
   pinStatus(b.fits ? null : { tag: 'Too much for the FM-1', text: `${b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} of ${i.max}`).join(', ')}. It plays here; click the budget for what costs most.` });
   if (was && !b.fits && device.connected) devStatus('over the FM-1 budget: Live paused until the patch fits');
@@ -817,7 +834,7 @@ document.addEventListener('pointerdown', (e) => {
 addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && budgetEl.open) budgetEl.open = false;
 }, true);
-const browser = new AssemblyBrowser((d) => { switchTab('patch'); editor.insert(d); });
+const browser = new AssemblyBrowser((d) => { toPatch(); editor.insert(d); });
 
 // ---- diff against the baseline (the patch as last loaded, uploaded or stored) and A / B
 let baseline = JSON.stringify(editor.patch);
@@ -864,7 +881,7 @@ const flipAB = (): void => {
 const palette = $<HTMLDialogElement>('palette');
 const palInput = $<HTMLInputElement>('palette-input');
 const palList = $('palette-list');
-const inPatch = (run: () => void): (() => void) => () => { switchTab('patch'); run(); };
+const inPatch = (run: () => void): (() => void) => () => { toPatch(); run(); };
 const commands = (): Command[] => {
   const assembly = (d: AssemblyDef, shelf: string): Command => ({
     kind: 'assembly', tags: ['assembly', ...(defIsEngine(d) ? ['engine'] : []), shelf], label: d.name, detail: d.blurb ? `${d.blurb} · ${shelf}` : shelf, keywords: `insert ${d.blurb ?? ''} ${summary(d)}`,
@@ -885,7 +902,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Import browser backup', detail: 'from the old address', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
     { kind: 'command', label: 'Share patch\u2026', keywords: 'link copy url clipboard reddit post card notes', run: () => shareSheet.open() },
     { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
-    { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { switchTab('patch'); tutorial.open(); } },
+    { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { toPatch(); tutorial.open(); } },
     { kind: 'command', label: 'New patch', keywords: 'engine start empty', run: () => startNew() },
     { kind: 'command', label: 'Undo', detail: 'Ctrl/Cmd+Z', run: inPatch(() => editor.undo()) },
     { kind: 'command', label: 'Redo', detail: 'Shift+Ctrl/Cmd+Z', run: inPatch(() => editor.redo()) },
@@ -902,7 +919,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Start audio', keywords: 'sound browser', run: () => void startAudio() },
     { kind: 'command', label: 'Panic: stop all notes', keywords: 'silence stuck', run: panic },
     { kind: 'command', label: 'FM-1 & MIDI settings', keywords: 'connect send store sync hardware keyboard release', run: () => $<HTMLDialogElement>('device-bar').showModal() },
-    { kind: 'command', label: 'Flash firmware', keywords: 'install update hardware', run: () => { switchTab('patch'); setView('flash'); } },
+    { kind: 'command', label: 'Install firmware', keywords: 'flash update hardware matryoshka return stock official v15', run: () => openInstall() },
     { kind: 'command', label: 'About Matryoshka', keywords: 'credits support ko-fi donate ai usage transparency', run: () => void about.open() },
     { kind: 'command', label: 'Keyboard shortcuts', keywords: 'help', detail: '?', run: () => help.showModal() },
     { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
@@ -936,7 +953,7 @@ const loadNamed = (p: Patch, o: { from?: string; once?: boolean; stay?: boolean;
   const prevFrom = openedFrom;
   const chained = loadUndo?.open() && loadUndo.loaded === asLoaded(prev) ? loadUndo : null;
   const losing = !chained && losesWork(prev);
-  if (!o.stay) switchTab('patch');
+  if (!o.stay) toPatch();
   editor.setPatch(p);
   setBaseline();
   nameInput.value = editor.patch.name;
@@ -1005,7 +1022,7 @@ const palRender = (): void => {
 };
 const palRun = (c: Command): void => {
   palette.close();
-  if (c.kind !== 'command') switchTab('patch');
+  if (c.kind !== 'command') toPatch();
   c.run();
 };
 /** a prefilled query ends in a space, the caret after it, so typing straight away narrows it instead of extending its last word */
@@ -1058,7 +1075,8 @@ $('tidy-btn').onclick = () => editor.tidyUp();
 $('fit-btn').onclick = () => editor.zoomToFit();
 $('expand-all-btn').onclick = () => editor.setAllOpen(true);
 $('collapse-all-btn').onclick = () => editor.setAllOpen(false);
-$('tour-btn').onclick = () => { switchTab('patch'); tutorial.open(); };
+$('tour-btn').onclick = () => { toPatch(); tutorial.open(); };
+$('install-btn').onclick = () => openInstall();
 /** the demo patch, with the audio and the transport started (the click is the gesture the browser wants; its drums
  * and the drone's pump are Steps tracks, which play while the transport runs) */
 const openDemo = (): void => { loadNamed(demoPatch()); closeSidebar(); void startAudio().then(() => setPlaying(true)); };
@@ -1085,7 +1103,7 @@ window.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 's' && currentTab === 'patch' && !document.querySelector('dialog[open]')) {
     e.preventDefault(); e.stopImmediatePropagation(); saveCurrent(); return;
   }
-  if (currentTab !== 'patch') return;
+  if (currentTab !== 'patch' || installOpen()) return;   // (not over the Install panel)
   const t = e.target as HTMLElement | null;
   const typing = isTextEntry(t) || t?.tagName === 'SELECT';
   if (document.querySelector('dialog[open], [popover]:popover-open') || typing) return;
@@ -1162,7 +1180,7 @@ window.addEventListener('wheel', (e) => {
 let lastClip: Clip | null = null;
 const clipboardIsOurs = (e: Event): boolean => {
   const t = e.target as HTMLElement | null;
-  if (currentTab !== 'patch' || isTextEntry(t) || t?.tagName === 'SELECT' || document.querySelector('dialog[open], [popover]:popover-open')) return false;
+  if (currentTab !== 'patch' || installOpen() || isTextEntry(t) || t?.tagName === 'SELECT' || document.querySelector('dialog[open], [popover]:popover-open')) return false;
   const sel = window.getSelection();
   return !sel || sel.isCollapsed;
 };
@@ -1448,22 +1466,134 @@ function emuKeys(msg: HostMsg): boolean {
   if (msg.t === 'off' && emuSwallowed.delete(note)) return true;
   return false;
 }
-// the Patch | FM-1 switch over the canvas
+// the PATCH | EMU | LIBRARY switch over the main area (#218): the primary navigation; the sidebar shows the view's panels
+type View = 'patch' | 'emu' | 'library';
+let currentView: View = 'patch';
 const viewBtns = [...document.querySelectorAll<HTMLButtonElement>('#view-switch [data-view]')];
-function setView(v: 'patch' | 'fm1' | 'flash'): void {
-  for (const b of viewBtns) b.setAttribute('aria-selected', String(b.dataset.view === v));
+const workspace = document.querySelector<HTMLElement>('.workspace')!;
+function setView(v: View): void {
+  if (installOpen()) closeInstall(); // any view navigation closes the Install panel; a running install keeps going (and its guard)
+  currentView = v;
+  if (v !== 'patch') tutorial.closeWelcome?.(); // the welcome card is PATCH's: leaving PATCH closes it for this visit
+  currentTab = v === 'library' ? 'library' : 'patch';
+  closeSidebar();
+  for (const b of viewBtns) {
+    b.setAttribute('aria-selected', String(b.dataset.view === v));
+    b.tabIndex = b.dataset.view === v ? 0 : -1;
+  }
+  $('tab-patch').hidden = v === 'library';
+  $('tab-library').hidden = v !== 'library';
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
-  $('flash-view').hidden = v !== 'flash';
-  // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go
-  // (and from the Flash view, the firmware install page)
-  document.querySelector('.workspace')!.classList.toggle('fm1-mode', v === 'fm1');
-  document.querySelector('.workspace')!.classList.toggle('flash-mode', v === 'flash');
-  host.setMaster(v === 'fm1' ? emuLevel : 1);
-  if (v === 'fm1') void emu.show();
+  // the sidebar per view: PATCH has the PATCH, Canvas and Get started panels; EMU the PATCH panel without + Module /
+  // + Assembly; LIBRARY its section list
+  document.querySelector<HTMLElement>('.patch-controls')!.hidden = v === 'library';
+  for (const el of document.querySelectorAll<HTMLElement>('.patch-controls [data-views]')) el.hidden = !el.dataset.views!.split(' ').includes(v);
+  document.querySelector<HTMLElement>('.add-row')!.hidden = v !== 'patch';
+  document.querySelector<HTMLElement>('.library-side')!.hidden = v !== 'library';
+  // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go;
+  // LIBRARY plays nothing, so they go there too and it has the full height
+  workspace.classList.toggle('fm1-mode', v === 'emu');
+  workspace.classList.toggle('library-mode', v === 'library');
+  host.setMaster(v === 'emu' ? emuLevel : 1);
+  if (v === 'emu') void emu.show();
   else emu.hide();
+  editor.positionSideCables();
+  if (v === 'patch') requestAnimationFrame(() => editor.drawCables());
+  if (v === 'library') showLibrarySection();
+  showAddress();
 }
-for (const b of viewBtns) b.onclick = () => setView(b.dataset.view as 'patch' | 'fm1' | 'flash');
+/** the address follows the view (#218), replaced, not pushed: PATCH has no fragment, EMU #emu, LIBRARY #library (Patches),
+ *  #assemblies or #presets. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
+ *  not a view's (a share link's #p= being opened) is left alone */
+const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#assemblies', '#flash', '#about'];
+function showAddress(): void {
+  if (!VIEW_HASHES.includes(location.hash)) return;
+  const want = currentView === 'emu' ? '#emu' : currentView === 'library' ? (librarySection === 'patches' ? '#library' : `#${librarySection}`) : '';
+  if (location.hash !== want) history.replaceState(history.state, '', location.pathname + location.search + want);
+}
+for (const b of viewBtns) {
+  b.onclick = () => setView(b.dataset.view as View);
+  b.onkeydown = (e) => {
+    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const i = viewBtns.indexOf(b), n = viewBtns.length;
+    const next = viewBtns[e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : (i + (e.key === 'ArrowRight' ? 1 : n - 1)) % n];
+    next.click();
+    next.focus();
+  };
+}
+/** back to the patch from LIBRARY (an open, an insert, a canvas command); PATCH and EMU stay as they are */
+function toPatch(): void {
+  closeSidebar();
+  if (currentView === 'library') setView('patch');
+}
+
+// LIBRARY's sections (#218): Patches, Assemblies, Presets in the sidebar, the last one remembered per browser; one shows
+// at a time (bank.ts, assemblies.ts, library-presets.ts build them below). Entering one rereads it, and reads the FM-1
+// when one is connected
+type LibrarySection = 'patches' | 'assemblies' | 'presets';
+const LIBRARY_SECTION = 'matryoshka.library-section';
+const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets';
+let librarySection: LibrarySection = (() => {
+  try {
+    const v = localStorage.getItem(LIBRARY_SECTION);
+    return isSection(v) ? v : 'patches';
+  } catch {
+    return 'patches'; // storage blocked: Patches every time
+  }
+})();
+const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('.library-nav [data-section]')];
+const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets') };
+/** the sections' panes with an FM-1 column (set when they are built, below) */
+const libraryPanes: Partial<Record<LibrarySection, LibraryPane>> = {};
+function showLibrarySection(): void {
+  for (const b of sectionBtns) b.setAttribute('aria-current', String(b.dataset.section === librarySection));
+  for (const [k, el] of Object.entries(sectionEls)) el.hidden = k !== librarySection;
+  $('tab-library').scrollTop = 0;
+  if (librarySection === 'assemblies') refreshAssemblies();
+  libraryPanes[librarySection]?.enter();
+}
+/** an FM-1 connected or went away: the Library's FM-1 columns follow (the one on screen reads the FM-1 now) */
+function libraryDeviceChanged(): void {
+  for (const [k, pane] of Object.entries(libraryPanes)) pane.deviceChanged(currentView === 'library' && k === librarySection);
+}
+function setLibrarySection(section: LibrarySection): void {
+  librarySection = section;
+  try {
+    localStorage.setItem(LIBRARY_SECTION, section);
+  } catch {
+    /* storage blocked: remembered until the page is reloaded */
+  }
+  if (currentView === 'library') {
+    if (installOpen()) closeInstall();
+    showLibrarySection();
+    showAddress();
+  } else setView('library');
+}
+for (const b of sectionBtns) b.onclick = () => setLibrarySection(b.dataset.section as LibrarySection);
+
+// the Install panel (#218): the firmware install page over the main area, not a view. Get started > Install firmware,
+// the palette, #flash and Connect FM-1 (an FM-1 on other firmware) open it; Close hides it, and an install keeps running
+// (the flasher's keep-this-tab-open guard stays armed until it ends)
+const installPanel = $('flash-view');
+function installOpen(): boolean { return !$('flash-view').hidden; }
+function openInstall(): void {
+  closeSidebar();
+  installPanel.hidden = false;
+  workspace.classList.add('flash-mode');
+  $('install-close').focus();
+}
+function closeInstall(): void {
+  installPanel.hidden = true;
+  workspace.classList.remove('flash-mode');
+  if (location.hash === '#flash') history.replaceState(history.state, '', location.pathname + location.search);
+}
+$('install-close').onclick = closeInstall;
+installPanel.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !document.querySelector('dialog[open]')) { e.stopPropagation(); closeInstall(); }
+});
 
 // the keyboard folds away, leaving the deck's buttons; remembered per browser
 const KEYS_HIDDEN = 'matryoshka.keys-hidden';
@@ -1502,6 +1632,7 @@ async function connectFm1(): Promise<void> {
     $('dev-btn').textContent = 'Reconnect';
     if (!mirror.following) void followFm1('matryoshka');   // it runs Matryoshka (it answered HELLO): its panel drives the page
     offerSync();
+    libraryDeviceChanged();
   } catch (e) {
     devStatus((e as Error).message);
   }
@@ -1574,9 +1705,9 @@ async function storeToSlot(): Promise<void> {
   try {
     // a used slot is overwritten only when the user says so (#148); Cancel sends nothing
     const was = await device.readSlot(n - 1);
-    if (was.used && !window.confirm(`FM-1 slot ${String(n).padStart(2, '0')} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
+    if (was.used && !window.confirm(`FM-1 slot ${slotLabel(n - 1)} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
     await device.uploadSlot(n - 1, editor.patch.name.toUpperCase().slice(0, 20), editor.patch);
-    devStatus(`"${editor.patch.name}" stored into FM-1 slot ${String(n).padStart(2, '0')}`);
+    devStatus(`"${editor.patch.name}" stored into FM-1 slot ${slotLabel(n - 1)}`);
   } catch (e) {
     devStatus((e as Error).message);
   }
@@ -1587,7 +1718,7 @@ $('dev-store').onclick = async () => {
     if (!(await sendPatch())) return;
     await device.store();
     setBaseline();
-    devStatus(`stored into the FM-1's slot ${deviceSlot ? String(deviceSlot.slot + 1).padStart(2, '0') : ''} (the one it plays; it opens it at the next start)`);
+    devStatus(`stored into the FM-1's slot ${deviceSlot ? slotLabel(deviceSlot.slot) : ''} (the one it plays; it opens it at the next start)`);
   } catch (e) {
     devStatus((e as Error).message);
   }
@@ -1635,7 +1766,7 @@ const loadFromHash = (): void => {
 loadFromHash();
 window.addEventListener('hashchange', loadFromHash);
 
-// the share sheet (#165): the PATCH header's Share, the ⋯ menu's Share… and the palette
+// the share sheet (#165): the PATCH panel's Share (beside New patch), the ⋯ menu's Share… and the palette
 const shareSheet = new ShareSheet($<HTMLDialogElement>('share-sheet'), {
   patch: () => editor.patch,
   rename: (name) => { editor.patch.name = name; nameInput.value = name; queueSave(editor.patch); },
@@ -1873,73 +2004,42 @@ try {
   /* storage blocked: start expanded */
 }
 
-// tabs
-// the Community patches card goes first, above Your patches (#157). Post yours opens the share sheet (#165)
-buildCommunityShelf($('tab-library'), {
-  open: (p) => loadNamed(p, { once: true }),
-  post: () => shareSheet.open(), // the share sheet: Copy link, Post to Reddit, Submit to the Community shelf
-  loaded: fillPicker,
-});
-const refreshBank = buildBankTab($('tab-library'), device, () => editor.patch, (msg) => {
-  devStatus(msg);
-  for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
-  offerSync();
-}, (p, from) => loadNamed(p, { from }), deleteSaved);
-refreshAssemblies = buildAssembliesTab($('tab-library'), {
-  insert(def) {
-    document.querySelector<HTMLButtonElement>('#tabs button[data-tab="patch"]')?.click();
-    editor.insert(def);
-  },
+// LIBRARY's sections (#218): it manages what is stored and opens nothing. The Community patches are in the Open picker and
+// the palette, which refill once they are decoded
+void loadCommunity().then(fillPicker);
+libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: deleteSaved });
+libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
+refreshAssemblies = buildAssembliesSection($('lib-assemblies'), {
   status(msg) {
     status.textContent = msg;
   },
+  changed() {
+    tutorial.refresh();
+  },
 });
-buildFlashTab($('flash-view'));
+buildFlashTab($('flash-body'));
 const about = new AboutCard($<HTMLDialogElement>('about'));
 $('about-btn').onclick = (e) => {
   e.stopPropagation();   // under the logo, which expands the collapsed sidebar
   void about.open();
 };
-const switchTab = (name: string): void => {
-  currentTab = name;
-  closeSidebar();
-  for (const button of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
-    const active = button.dataset.tab === name;
-    button.setAttribute('aria-selected', String(active));
-    button.tabIndex = active || (name !== 'patch' && name !== 'library' && button.dataset.tab === 'patch') ? 0 : -1;
-  }
-  for (const tab of document.querySelectorAll<HTMLElement>('.tab')) tab.hidden = tab.id !== `tab-${name}`;
-  document.querySelector<HTMLElement>('.patch-controls')!.hidden = name !== 'patch';
-  editor.positionSideCables();
-  if (name === 'patch') requestAnimationFrame(() => editor.drawCables());
-  if (name === 'library') refreshBank();
-};
-for (const b of document.querySelectorAll<HTMLButtonElement>('#tabs button')) {
-  b.onkeydown = (e) => {
-    if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(e.key)) return;
-    e.preventDefault();
-    const tabs = [...document.querySelectorAll<HTMLButtonElement>('#tabs button')];
-    const index = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (tabs.indexOf(b) + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
-    tabs[index].click(); tabs[index].focus();
-  };
-  b.onclick = () => switchTab(b.dataset.tab!);
-}
 
-// open the tab named in the address (#library; the old #presets and #assemblies open the Library; #about opens the About
-// card; #fm1 and #flash open the Patch tab's FM-1 and Flash views). Other sites link here (fm1-editor.com/firmware: #flash
-// and #fm1)
+// the address (#218): #library opens LIBRARY on Patches, #presets and #assemblies on those sections, #emu (and the old #fm1)
+// EMU, #flash the Install panel, #about the About card. Other sites link here (fm1-editor.com/firmware: #flash and #fm1).
+// Without one a page load opens PATCH
 const openFromAddress = (): void => {
   const h = location.hash.slice(1);
-  const tab = h === 'presets' || h === 'assemblies' ? 'library' : h;
-  if (['patch', 'library'].includes(tab)) switchTab(tab);
-  if (tab === 'fm1' || tab === 'flash') { switchTab('patch'); setView(tab); }
-  if (tab === 'about') void about.open();
+  if (h === 'patch') setView('patch');
+  if (h === 'library' || h === 'presets' || h === 'assemblies') setLibrarySection(h === 'library' ? 'patches' : h);
+  if (h === 'emu' || h === 'fm1') setView('emu');
+  if (h === 'flash') openInstall();
+  if (h === 'about') void about.open();
 };
 openFromAddress();
 window.addEventListener('hashchange', openFromAddress);
 
 
-if (currentTab === 'patch' && location.hash !== '#fm1' && !isShareLink(location.href)) tutorial.welcome();
+if (currentView === 'patch' && !installOpen() && !isShareLink(location.href)) tutorial.welcome();
 // the old address's hand-off (?migrate=1), and the toast of an import before the reload
 receiveMigration((keys) => importBrowserData(keys, new URL(OLD_ORIGIN).host));
 try {
