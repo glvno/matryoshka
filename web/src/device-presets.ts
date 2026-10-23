@@ -60,10 +60,10 @@ function writeUser(list: Preset[]): void {
   }
 }
 
-/** the presets of a structure: factory first, then the user's, each by name */
+/** the presets of a structure: factory first (in their own order, Init first), then the user's by name */
 export function presetsFor(structure: string): Preset[] {
   const by = (a: Preset, b: Preset): number => a.name.localeCompare(b.name, undefined, { numeric: true });
-  return [...factory.filter((p) => p.structure === structure).sort(by), ...userPresets().filter((p) => p.structure === structure).sort(by)];
+  return [...factory.filter((p) => p.structure === structure), ...userPresets().filter((p) => p.structure === structure).sort(by)];
 }
 
 /** the presets an assembly can load */

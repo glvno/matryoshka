@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // first: migrate.ts notes which storage keys the page found before anything here writes one
 import { exportPresets, importPresets } from './device-presets';
+import './factory-presets'; // the factory engines' presets (#193)
 import { applyImport, backupKeys, importSummary, OLD_ORIGIN, receiveMigration } from './migrate';
 import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';

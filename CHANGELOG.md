@@ -12,6 +12,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   changed since. Loading is one undo step; the patch remembers the preset's name. Presets are matched by structure
   (the modules, cables, nesting and which rows are on the card), so changing those makes a new kind with no presets
   yet. Palette: Export presets as .json / Import presets from .json.
+- Every factory engine comes with presets (#193): Init (as it ships) and variations such as Bright, Dark, Pad, Pluck,
+  Tight, Long and Wet, where the engine has the rows for them. They are read-only: storing over one makes a new one.
 - Arm anything that takes keys, several at once (#190): ARM is on every engine, Voicing, Drum map and Steps track card,
   each its own toggle. While anything is armed Main's keys play only the armed devices, cabled or not (a layer: arm two
   engines); with nothing armed the cables decide. Steps tracks keep playing what they drive. Dashed lines show where
