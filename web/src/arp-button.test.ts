@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kindOf, setKind, switches, toggleTargets } from './buttons';
+import { arpLitInverted, kindOf, setKind, setTarget, switches, toggleEngaged, toggleTargets } from './buttons';
 import { arpChoices, arpFree, arpsOf, insertArpeggiator } from './arp-button';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { Engine } from './engine';
@@ -133,5 +133,22 @@ describe('ARP with nothing on it: what a click does', () => {
 
   it('no Main module: nothing to offer', () => {
     expect(arpChoices(emptyPatch('t'))).toEqual([]);
+  });
+});
+
+describe('ARP\'s light (D-231): lit while its Arpeggiator plays', () => {
+  it('ARP on an Arpeggiator: the light is the inverse of the Toggle (lit = not bypassed); on anything else, or another button, as the Toggle', () => {
+    const p = emptyPatch('t');
+    addModule(p, DEFS.fm1, 0, 0);
+    const arp = insertArpeggiator(p)!;
+    expect(arpLitInverted(p, 'arp')).toBe(true);
+    arp.bypass = true;
+    expect(toggleEngaged(p, 'arp')).toBe(true); // (engaged: its target bypassed; so the light is dark)
+    const fold = addModule(p, DEFS.shape, 300, 0);
+    setTarget(p, 'arp', { module: fold.id });
+    expect(arpLitInverted(p, 'arp')).toBe(false);
+    setKind(p, 'fx', 'bypass');
+    setTarget(p, 'fx', { module: arp.id });
+    expect(arpLitInverted(p, 'fx')).toBe(false);
   });
 });

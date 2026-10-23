@@ -672,7 +672,7 @@ static void panel_status(void)
             if (!panel_label(b, name))
                 put(name, PANEL_BTN_NAME[b])[0] = 0;
             q = put(q, name);
-            q = put(q, eng_buttons_get() >> b & 1u ? " ON" : " OFF");
+            q = put(q, eng_buttons_lit() >> b & 1u ? " ON" : " OFF");   /* (as its LED: ARP ON = arpeggiating) */
         }
         *q = 0;
         if (page == 0 && !knob_touched)

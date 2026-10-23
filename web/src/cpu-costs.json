@@ -29546,7 +29546,7 @@
  "checks": [
   {
    "name": "Oracle V",
-   "cycles": 527927
+   "cycles": 560467
   },
   {
    "name": "Init",
@@ -29582,7 +29582,7 @@
   },
   {
    "name": "Algo Four",
-   "cycles": 557619
+   "cycles": 578973
   },
   {
    "name": "Canvas",

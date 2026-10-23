@@ -76,7 +76,7 @@ static void leds_play(void)
 }
 static void leds_panel(void)
 {
-    uint32_t b, mask = eng_buttons_get();
+    uint32_t b, mask = eng_buttons_lit();   /* (ARP on Arpeggiators: lit while they play, main.c) */
     for (b = 0; b < ENG_PANEL_BUTTONS; b++)
         fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u) || (b == BTN_GLO_IDX && page == PAGE_GLO));   /* (GLO: lit on its page) */
 }

@@ -1998,9 +1998,9 @@ int eng_listens(uint32_t m)
 int eng_armed(void) { return E.loaded && E.arm ? (int)E.arm - 1 : -1; }   /* (the first armed track: REC records into it) */
 
 /* the Drum map the keys reach (engine.h; the panel's black keys play its rows): of what hears Main's keys now (the armed
- * set, else what is cabled to them) at least one Drum map, on the keys or behind a track, and nothing that plays them as
- * notes: a group taking the keys, the shared keyboard with Main's pitch / gate / velocity cabled, an Arpeggiator, a track
- * into no Drum map. The first such map, -1 none */
+ * set, else what is cabled to them) at least one Drum map, on the keys or behind a track (through its Arpeggiator too), and
+ * nothing that plays them as notes: a group taking the keys, the shared keyboard with Main's pitch / gate / velocity
+ * cabled, an Arpeggiator on Main's keys, a track into no Drum map. The first such map, -1 none */
 int eng_keys_drummap(void)
 {
     uint32_t m, g;
@@ -2016,7 +2016,7 @@ int eng_keys_drummap(void)
         if (!E.grp[g].src && hears_grp(g))
             return -1;
     for (g = 0; g < E.narp; g++)
-        if (!E.armm || ARMED(E.arp[g].node))
+        if (arp_hears_main(E.arp[g].node))   /* (one a track feeds hears the track: the track decides, below) */
             return -1;
     for (m = 0; m < E.nmod; m++) {
         int d = -1;
@@ -2079,6 +2079,14 @@ void eng_buttons(uint32_t mask)
     toggles_sync();
 }
 uint32_t eng_buttons_get(void) { return panel_buttons; }
+uint32_t eng_buttons_lit(void)
+{
+    const uint32_t b = ENG_PANEL_BUTTONS - 1u;  /* ARP */
+    uint32_t k, arps = E.loaded && E.btn_kind[b] == ENG_BTN_TOGGLE && E.btn_n[b];
+    for (k = 0; arps && k < E.btn_n[b]; k++)
+        arps = E.node[E.btn_list[E.btn_first[b] + k]].type == T_ARP;
+    return arps ? panel_buttons ^ (1u << b) : panel_buttons;
+}
 uint32_t eng_ticks(void) { return E.ticks; }
 int eng_clock_is_external(void) { return clk_ext; }
 void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }

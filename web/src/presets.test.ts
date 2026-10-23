@@ -144,8 +144,9 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 
 // the owner, 2026-10-23 (docs/ledger/patches-and-presets.md D-336): every melodic factory patch that can afford them has an
 // Arpeggiator on ARP, bypassed, and a 16-step PATTERN track feeding it: Main's keys -> PATTERN -> the arpeggiator -> the
-// voice. Oracle V and Algo Four are past the CPU warning already: neither
-const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Oracle V', 'Algo Four'];
+// voice. The drum patches get neither; Oracle V and Algo Four run past the CPU estimate's warning with them (accepted)
+const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH'];
+const PAST_WARNING = ['Oracle V', 'Algo Four'];
 const PLAYED = Object.keys(PRESETS).filter((n) => !NO_PLAYERS.includes(n));
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */
 const OWN_PATTERN = ['Scrounge', 'Meridian 8', 'Perun 4'];
@@ -198,10 +199,10 @@ function play(p: Patch, notes: number[], opts: { at?: number; arpAt?: number; ru
 const loudest = (x: Float32Array): number => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 
 describe('factory patches: an arpeggiator on ARP and a PATTERN track where they fit (D-336)', () => {
-  it('the melodic patches have them; the drum kits and the patches past the CPU warning do not', () => {
-    expect(PLAYED).toHaveLength(18);
+  it('every melodic patch has them, the drum patches do not; only Oracle V and Algo Four pass the CPU warning (accepted)', () => {
+    expect(PLAYED).toHaveLength(20);
     for (const name of NO_PLAYERS) expect(PRESETS[name]().modules.some((m) => m.type === 'arp'), name).toBe(false);
-    for (const name of ['Oracle V', 'Algo Four']) expect(deviceBudget(PRESETS[name]()).cpu.use, name).toBeGreaterThan(CPU_WARN);
+    expect(PLAYED.filter((name) => deviceBudget(PRESETS[name]()).cpu.use > CPU_WARN)).toEqual(PAST_WARNING);
   });
 
   for (const name of PLAYED)
@@ -228,7 +229,7 @@ describe('factory patches: an arpeggiator on ARP and a PATTERN track where they 
       expect(p.cables.some((c) => c.from.module === arp.id && c.from.port === 'keys')).toBe(true);
       const b = deviceBudget(p);
       expect(b.fits, JSON.stringify(b.over)).toBe(true);
-      expect(b.cpu.use).toBeLessThanOrEqual(CPU_WARN);
+      expect(b.cpu.use).toBeLessThanOrEqual(PAST_WARNING.includes(name) ? 0.9 : CPU_WARN);
       // the devices: Main first, then PATTERN, the Output last; the patch does not open on the arpeggiator
       const devs = devicesOf(p, DEFS);
       expect(devs[0].kind).toBe('main');

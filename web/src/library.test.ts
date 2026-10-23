@@ -57,7 +57,7 @@ it('without an FM-1 the FM-1 column is the offline copy: → adds to it, ← cop
 
 it('a patch over the FM-1 budget is marked browser only and cannot go to the FM-1; the old over-budget list folds into Your patches', () => {
   const huge = PRESETS[names[0]]();
-  huge.modules = [...huge.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...huge.modules[huge.modules.length - 1], id: 1000 + i }))];
+  huge.modules = [...huge.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...huge.modules.find((m) => m.type === 'output')!, id: 1000 + i }))];
   localStorage.setItem('matryoshka.bank-over', JSON.stringify([{ name: 'Huge', patch: huge }]));
   const root = document.createElement('div');
   buildPatchesSection(root, fakeDevice(false), { remove: () => {} });

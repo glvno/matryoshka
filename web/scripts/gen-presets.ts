@@ -10,7 +10,6 @@ import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
 import { addModule, connect, disconnect, emptyPatch, STEP_VEL, validatePatch, type Cable, type ModuleInst, type Patch } from '../src/patch';
 import { setKind, setSwitches, setTarget } from '../src/buttons';
-import { CPU_WARN } from '../src/cpu';
 import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track';
 import { FACTORY } from '../src/assemblies';
 import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyInst } from '../src/assembly';
@@ -446,13 +445,13 @@ after.push(() => {
   return p;
 });
 
-// ---- the players (the owner, 2026-10-23: docs/ledger/patches-and-presets.md D-336): every melodic patch that can afford
-// them gets an Arpeggiator on ARP, bypassed (the patch sounds as before until ARP is pressed: bypassed it hands the keys
+// ---- the players (the owner, 2026-10-23: docs/ledger/patches-and-presets.md D-336): every melodic patch gets an Arpeggiator on ARP, bypassed (the patch sounds as before until ARP is pressed: bypassed it hands the keys
 // straight on), and an empty 16-step Steps track PATTERN in front of it: Main's keys -> PATTERN (they pass through it
 // unarmed) -> the Arpeggiator -> what Main's keys played, so the track's notes and the keys both go through the
 // arpeggiator. A patch with a PATTERN already (Scrounge, Meridian 8, Perun 4) gets the arpeggiator after it. One that
-// played Main's pitch / gate gets a one-voice Voicing for the arpeggiator to play. What does not fit (a limit, or the CPU
-// estimate past its warning) gets the arpeggiator alone, else neither. The drum kits and <7PH get neither.
+// played Main's pitch / gate gets a one-voice Voicing for the arpeggiator to play. Oracle V and Algo Four run past the CPU
+// estimate's warning with them (the owner accepts it); one that would not fit the FM-1's limits would get the arpeggiator
+// alone, else neither. The drum kits and <7PH get neither.
 const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH']);
 type Player = 'both' | 'arp' | 'none';
 function withPlayers(src: Patch, what: Player): Patch {
@@ -499,13 +498,12 @@ function withPlayers(src: Patch, what: Player): Patch {
   setSwitches(p, 'arp', true);
   return p;
 }
-/** the most a patch takes: the players that fit (the budget, and the CPU estimate under its warning) */
+/** the most a patch takes: the players that fit the FM-1 (its limits; the CPU estimate's warning is no bar) */
 function players(p: Patch): Patch {
   if (DRUMS.has(p.name)) return p;
   for (const what of ['both', 'arp'] as const) {
     const q = validatePatch(withPlayers(p, what), DEFS);
-    const b = deviceBudget(q);
-    if (b.fits && b.cpu.use <= CPU_WARN) return q;
+    if (deviceBudget(q).fits) return q;
   }
   return p;
 }
