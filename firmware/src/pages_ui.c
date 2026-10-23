@@ -332,7 +332,8 @@ static uint32_t pages_list(uint32_t b, const uint8_t **l)
 {
     uint32_t len, at, k;
     const uint8_t *p = pages_src(&len), *kind;
-    if (!p || !(p[6] & 64u) || b >= ENG_PANEL_BUTTONS || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at)) || !eng_buttons_end(p, len, at))
+    if (!p || !(p[6] & 64u) || b >= ENG_PANEL_BUTTONS || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at))
+        || ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at))) || !eng_buttons_end(p, len, at))
         return 0;
     kind = p + at;
     at += ENG_PANEL_BUTTONS;

@@ -300,7 +300,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if (p[7] || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if ((p[7] & ~ENG_FLAG_EXTRAS) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return 0;
     nmod = p[2];
     ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
@@ -323,6 +323,8 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))      /* flag bit 4: the tracks' notes */
         return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))    /* flag bit 5: the device pages */
+        return 0;
+    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at)))   /* flag bit 8: the device extras */
         return 0;
     if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))    /* flag bit 6: the button kinds */
         return 0;
@@ -382,6 +384,8 @@ static uint32_t m1_range_section(void)
     if ((m1_cur[6] & 16u) && !(at = eng_notes_end(m1_cur, m1_cur_len, at)))
         return 0;
     if ((m1_cur[6] & 32u) && !(at = eng_devices_end(m1_cur, m1_cur_len, at)))   /* the device pages come before the ranges */
+        return 0;
+    if ((m1_cur[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(m1_cur, m1_cur_len, at)))   /* then the device extras */
         return 0;
     if ((m1_cur[6] & 64u) && !(at = eng_buttons_end(m1_cur, m1_cur_len, at)))   /* then the button kinds */
         return 0;

@@ -10,7 +10,7 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 33   /* 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_VERSION 34   /* 34: the device extras section (flag bit 8: p[7] bit 0; #194, #197): per device its driving Steps track, its structure, its preset's name; 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
 #define ENG_PATCH_COMPAT_VERSION 31   /* (a format 31 patch reads the same) */
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
@@ -115,6 +115,27 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
                 at += 1u + p[at];
             }
         }
+    }
+    return at <= len ? at : 0;
+}
+
+/* the end of the device extras section (patchbin.ts, header flag bit 8 = bit 0 of p[7], format 34; right after the device
+ * pages) that starts at `at`, 0 when it is cut short: u8 devices (the device pages section's count), per device u8 track (the
+ * device index of the Steps track that drives it, ENG_NO_TRACK none), u32 LE structure (an assembly's fingerprint,
+ * structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none) */
+#define ENG_FLAG_EXTRAS 1u                      /* in p[7] */
+#define ENG_NO_TRACK 0xFFu
+static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n, d;
+    if (at >= len)
+        return 0;
+    n = p[at++];
+    for (d = 0; d < n; d++) {
+        at += 5u;
+        if (at >= len)
+            return 0;
+        at += 1u + p[at];
     }
     return at <= len ? at : 0;
 }

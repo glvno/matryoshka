@@ -707,7 +707,7 @@ int eng_load(const uint8_t *p, uint32_t len)
 #endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
-    if (p[7] || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if ((p[7] & ~ENG_FLAG_EXTRAS) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return -1;
     for (i = 0; i < ENG_PANEL_BUTTONS; i++)      /* (before eng_buttons below: no Toggle of the last patch acts on this one) */
         E.btn_kind[i] = (uint8_t)ENG_BTN_GATE, E.btn_n[i] = 0;
@@ -914,6 +914,12 @@ int eng_load(const uint8_t *p, uint32_t len)
     }
     if (p[6] & 32u) {                            /* the device pages (the LCD's, proto.c / pages_ui.c): not the engine's */
         uint32_t end = eng_devices_end(p, len, at);
+        if (!end)
+            return -3;
+        at = end;
+    }
+    if (p[7] & ENG_FLAG_EXTRAS) {                /* the device extras (the environment's, pages_ui.c): not the engine's */
+        uint32_t end = eng_extras_end(p, len, at);
         if (!end)
             return -3;
         at = end;
@@ -2197,6 +2203,8 @@ static uint32_t names_at(const uint8_t *p, uint32_t len)
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
         return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))
+        return 0;
+    if ((p[7] & ENG_FLAG_EXTRAS) && !(at = eng_extras_end(p, len, at)))
         return 0;
     if ((p[6] & 64u) && !(at = eng_buttons_end(p, len, at)))
         return 0;

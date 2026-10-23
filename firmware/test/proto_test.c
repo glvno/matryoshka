@@ -219,6 +219,7 @@ int main(int argc, char **argv)
         base = m1_devices_at() ? m1_devices_at() : (uint32_t)np;
         memcpy(flat, patch, base);
         flat[6] &= (uint8_t)~32u;
+        flat[7] &= (uint8_t)~ENG_FLAG_EXTRAS;              /* (the device extras go with the pages) */
         memcpy(m1_cur, flat, base);
         memset(m1_cur + base, 0, count);
         m1_cur[1] = ENG_PATCH_VERSION;
@@ -291,6 +292,8 @@ int main(int argc, char **argv)
         base = m1_notes_at();
         end = eng_notes_end(m1_cur, m1_cur_len, base);
         devb = (m1_cur[6] & 32u) ? eng_devices_end(m1_cur, m1_cur_len, end) - end : 0u;   /* the device pages follow */
+        if (m1_cur[7] & ENG_FLAG_EXTRAS)                          /* then the device extras (format 34) */
+            devb = eng_extras_end(m1_cur, m1_cur_len, end + devb) - end;
         CHECK(end && end + devb == m1_cur_len && m1_cur[base] >= 2u);
         CHECK(eng_steps_get((uint32_t)t0, 5) == 0 && eng_steps_value((uint32_t)t0, 5) == (STEP_NOTE | STEP_VEL << 8));
         m1_patch_step((uint32_t)t0, 5, 1u);                      /* a note more: the entry grows by one word */
