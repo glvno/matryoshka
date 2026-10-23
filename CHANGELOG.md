@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go
+  during a full redraw used to be missed, and any key waited for the redraw to end; now every press and release plays,
+  in order, within a moment of the press (#230).
 - The SEQ page's white keys: B now switches its step, and A# (a black key) no longer does; before, every B did nothing
   and every A# both picked a track and switched the next step (since 1.0, on the FM-1 and in EMU).
 - The tutorial's text follows the new navigation and the removed Riff button (play notes on the keys, or Note for a

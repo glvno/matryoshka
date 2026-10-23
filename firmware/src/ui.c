@@ -167,8 +167,14 @@ static void bar_text(const char *s, uint16_t bg)
 
 static void pages_draw(int full);
 static void pages_strip(void);
+static uint8_t ui_yielding;                     /* panel.c: keys are taken from inside a redraw (#230): nothing may draw */
+static uint8_t ui_header_due;                   /* a header_draw asked for meanwhile: panel_draw does it at the end */
 static void header_draw(void)
 {
+    if (ui_yielding) {
+        ui_header_due = 1;
+        return;
+    }
     if (page == 8u && !eng_overload && !load_err) {     /* the SEQ page: the track's name (seq_ui.c PAGE_SEQ) */
         seq_bar();
         msg_until = 0;

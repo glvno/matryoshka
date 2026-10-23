@@ -417,53 +417,74 @@ static uint8_t key_note[27];                     /* the note each held key start
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
 static uint8_t seq_held_used;                    /* SEQ is held and a black key muted a track: its release does not switch the page */
 static uint8_t rec_held_used;                    /* REC is held and a black key armed a track: its release does not record */
-/* the 27 keys now held (bit 0 = F3 = MIDI 53), shifted by the octave, -> the engine */
+/* the keys as the panel last took them (bit n: key n down) */
+static uint32_t keys_now;
+/* one key edge (key n pressed or let go), shifted by the octave, -> the engine, the SEQ page. quick: from inside a redraw
+ * (panel_draw's yield, #230), where nothing may draw: a REC / SEQ held + black key (an arm, a mute: a message, a row
+ * redrawn) is then not taken (0, nothing done) and waits for the loop's pass. All else here only changes state and asks
+ * for a redraw (ui_dirty; a header_draw waits for the end of the redraw: ui_yielding). An edge that changes nothing is
+ * taken. */
+static int panel_key(uint32_t n, int down, int quick)
+{
+    uint32_t bit = 1u << n;
+    if (n >= 27u || !(keys_now & bit) == !down)
+        return 1;
+    if (quick && down && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ)))
+        return 0;
+    keys_now ^= bit;
+    eng_midi_channel(cfg.ch);
+    if (down && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
+        seq_arm_key(n);
+        rec_held_used = 1;
+        return 1;
+    }
+    if (down && (panel_held >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
+        seq_mute_key(n);
+        seq_held_used = 1;
+        return 1;
+    }
+    if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_kbd()) || !down)) {   /* the SEQ page: steps and tracks */
+        if (page == PAGE_SEQ && !seq_kbd())
+            seq_key(n, down);
+        return 1;
+    }
+    if (down) {
+        int32_t note = 53 + (int32_t)n + 12 * octave;
+        /* into an armed track at the default velocity (ENV held on its keyboard: full), so a take records what a step
+         * entered would be; else at full velocity as always */
+        uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
+        key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
+        key_sounding |= bit;
+        eng_note_on(key_note[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
+        midi_send(0x90u, key_note[n], 100u);
+        if (seq_kbd())
+            seq_kbd_key(n, key_note[n], 1, vel);
+    } else {
+        key_sounding &= ~bit;
+        eng_note_off(key_note[n], cfg.ch ? cfg.ch : 1u);
+        midi_send(0x80u, key_note[n], 0u);
+        if (seq_kbd())
+            seq_kbd_key(n, key_note[n], 0, 0u);
+    }
+    return 1;
+}
+
+/* the 27 keys now held (bit 0 = F3 = MIDI 53): each one that changed, from key 0 up */
 static void panel_keys(uint32_t now)
 {
-    static uint32_t prev;
-    uint32_t diff, n;
-    diff = now ^ prev;
-    prev = now;
-    if (diff)
-        eng_midi_channel(cfg.ch);
-    for (n = 0; diff && n < 27u; n++) {
-        if (!(diff & (1u << n)))
-            continue;
-        diff &= ~(1u << n);
-        if ((now & (1u << n)) && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
-            seq_arm_key(n);
-            rec_held_used = 1;
-            continue;
-        }
-        if ((now & (1u << n)) && (panel_held >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
-            seq_mute_key(n);
-            seq_held_used = 1;
-            continue;
-        }
-        if (!(key_sounding & (1u << n)) && ((page == PAGE_SEQ && !seq_kbd()) || !(now & (1u << n)))) {   /* the SEQ page: steps and tracks */
-            if (page == PAGE_SEQ && !seq_kbd())
-                seq_key(n, (int)(now >> n & 1u));
-            continue;
-        }
-        if (now & (1u << n)) {
-            int32_t note = 53 + (int32_t)n + 12 * octave;
-            /* into an armed track at the default velocity (ENV held on its keyboard: full), so a take records what a step
-             * entered would be; else at full velocity as always */
-            uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
-            key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
-            key_sounding |= 1u << n;
-            eng_note_on(key_note[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
-            midi_send(0x90u, key_note[n], 100u);
-            if (seq_kbd())
-                seq_kbd_key(n, key_note[n], 1, vel);
-        } else {
-            key_sounding &= ~(1u << n);
-            eng_note_off(key_note[n], cfg.ch ? cfg.ch : 1u);
-            midi_send(0x80u, key_note[n], 0u);
-            if (seq_kbd())
-                seq_kbd_key(n, key_note[n], 0, 0u);
-        }
-    }
+    uint32_t n;
+    for (n = 0; n < 27u; n++)
+        if ((now ^ keys_now) >> n & 1u)
+            (void)panel_key(n, (int)(now >> n & 1u), 0);
+}
+
+/* the latched key edges (the HAL's queue, main.c keys_poll; #230) through panel_key in order, while it takes them: peek
+ * gives the oldest (key | 0x80 pressed, -1 none), pop takes it. So a press and its release within one pass both count. */
+static void panel_key_queue(int (*peek)(void), void (*pop)(void), int quick)
+{
+    int e;
+    while ((e = peek()) >= 0 && panel_key((uint32_t)e & 31u, e >> 7 & 1, quick))
+        pop();
 }
 
 /* ENV held and SAVE pressed meanwhile: its release opens nothing */
@@ -667,8 +688,33 @@ static void panel_status(void)
     }
 }
 
+/* the keys while a redraw runs (#230): a full page is ~0.15 s of LCD transfers, and a note waited for all of it. main.c
+ * (the tests) set panel_yield: the key edges latched so far, through panel_key_queue quick. panel_draw hands it to the LCD
+ * (lcd_yield: lcd.c calls it while a transfer runs) for its own time only, so a key is never taken in the middle of
+ * the loop's other work. Not again from inside itself; a header_draw asked for meanwhile waits for the redraw's end. */
+static void (*panel_yield)(void);
+static void panel_draw_yield(void)
+{
+    lcd_yield = 0;
+    ui_yielding = 1;
+    panel_yield();
+    ui_yielding = 0;
+    lcd_yield = panel_draw_yield;
+}
+
+static void panel_draw_now(void);
 /* the loop's drawing after the inputs: the message ends, the page is redrawn when something changed */
 static void panel_draw(void)
+{
+    lcd_yield = panel_yield ? panel_draw_yield : 0;
+    panel_draw_now();
+    lcd_yield = 0;
+    if (ui_header_due) {                            /* a key's header_draw while the redraw ran */
+        ui_header_due = 0;
+        header_draw();
+    }
+}
+static void panel_draw_now(void)
 {
     if (msg_until && fm1_ms >= msg_until)
         ui_msg_clear();

@@ -686,10 +686,21 @@ static void knobs_poll(void)
     panel_encoders(st);
 }
 
+/* the keys (#230): every edge the scan latched, in order (a press and its release within one pass both play), then the
+ * keys as they are now (only differs if the queue was full: an edge dropped). keys_yield: the same from inside a redraw
+ * (panel_draw's yield), only the edges, and only those that draw nothing (panel_key quick); the rest waits for keys_poll */
 static void keys_poll(void)
 {
     panel_held = fm1_in.buttons;
+    panel_key_queue(fm1_input_key_peek, fm1_input_key_pop, 0);
     panel_keys(fm1_in.notes);
+}
+static void keys_yield(void)
+{
+    if (fm1_input_key_peek() < 0)
+        return;
+    panel_held = fm1_in.buttons;
+    panel_key_queue(fm1_input_key_peek, fm1_input_key_pop, 1);
 }
 
 static void buttons_poll(void)
@@ -960,7 +971,10 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     {   /* presses while booting are not commands: SAVE held for safe mode must not save the fallback over the stored state */
         uint32_t rel;
         (void)fm1_input_edges(&rel);
+        while (fm1_input_key_peek() >= 0)               /* (and the keys: the first pass plays those held now) */
+            fm1_input_key_pop();
     }
+    panel_yield = keys_yield;
     diag_alive = fm1_ms;
     diag_armed = 1;
     for (;;) {

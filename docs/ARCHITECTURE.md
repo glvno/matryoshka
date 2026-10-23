@@ -630,6 +630,17 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   on the device and stubs on a host. `tools/panel_test.sh` (firmware/test/panel_test.c, on ui_preview.c built with
   `UI_PREVIEW_LIB`) drives SELECT / ALGO / K1 / HOME / the menu / the trail / PLAY / tempo / SAVE / a key / MIDI out and
   checks the framebuffer; the firmware CI runs it.
+  - Keys during a redraw (#230): a full page is ~108k pixels (panel_test), ~0.15 s of SPI at 12 MHz. The scan (`fm1__key`, in the
+    TIMER5 tick) queues every debounced note-key edge in order (`fm1_in.kq`, 32; `fm1_input_key_peek` / `_pop`), and
+    `keys_poll` hands each to `panel_key(n, down, quick)` through `panel_key_queue`, then `panel_keys(fm1_in.notes)`
+    (a no-op unless the queue overflowed): a press and its release within one pass both play, in the order played.
+    `panel_draw` sets `lcd_yield` (lcd.c calls it in `lcd_sync` while a transfer runs, before waiting; the host stand-ins
+    before each fill / blit) to `keys_yield`: the queued edges go through `panel_key` with quick = 1, so a note starts
+    within one transfer of the redraw, not after all of it. In quick mode nothing may draw: a key edge only changes
+    state and sets `ui_dirty` (`panel_draw` clears it before it draws, so a change mid-draw is drawn next pass), a
+    `header_draw` waits for the redraw's end (`ui_yielding`, `ui_header_due`), and REC / SEQ held + a black key (an arm
+    or a mute draws a message and a row) is left in the queue, with every edge behind it, for the next `keys_poll`.
+    Buttons and knobs are still taken once a pass (their edges are latched: none is lost, only later).
 - **Button kinds (#116, designs E / F):** each patch button has one kind per patch (`web/src/buttons.ts`): Nothing
   (unassigned, no role), Gate (on while held or switched; patch its jack) or Toggle (`bypass` in the model: bypasses a
   module or an assembly, the same bypass as the card's ⏻; on = its target bypassed). Every button keeps its jack, high

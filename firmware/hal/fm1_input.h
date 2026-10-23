@@ -16,6 +16,9 @@
  *            (a frame). The main loop then only
  *            reads fm1_in.notes / buttons and takes edges/steps with
  *            fm1_input_edges() / fm1_enc_take(), which are IRQ-safe.
+ *            The note keys' edges also go into a queue in order (#230: a key
+ *            pressed and let go while the main loop draws is still a note):
+ *            fm1_input_key_peek() / fm1_input_key_pop().
  *
  * fm1_input_scan() runs one full frame (11 columns, ~0.6 ms) and calls
  * FM1_INPUT_IDLE() while it waits.
@@ -147,6 +150,7 @@
 #define FM1_NCOL 11u
 #define FM1_NKEY 41u              /* ids: 0..13 buttons, 14..40 note keys */
 #define FM1_NENC 7u
+#define FM1_KQ 32u                /* the note-key edge queue (a power of 2 that divides 256); full: an edge is dropped */
 
 
 /* key id at (physical column, packed row bit), -1 = none */
@@ -170,6 +174,8 @@ static volatile struct {
     uint32_t buttons;            /* debounced: bit i = button i (0..13) */
     uint32_t pressed, released;  /* button edges since the last fm1_input_edges() */
     uint32_t notes_pressed;      /* note-key press edges since the last fm1_input_note_edges() */
+    uint8_t kq[FM1_KQ];          /* note-key edges in order: key n (0..26) | 0x80 pressed (the tick writes, the loop reads) */
+    uint8_t kq_w, kq_r;
     uint8_t raw[FM1_NCOL];       /* last frame, packed rows, 1 = closed */
     uint8_t cnt[FM1_NKEY];       /* frames in a row against the debounced state */
     uint32_t note_t0[27];        /* TIMER4 tick of the first scan that saw note key n closed */
@@ -305,6 +311,10 @@ static void fm1__key(uint32_t id, uint32_t closed)
             fm1_in_stat.press_sum += d;
             if (d > fm1_in_stat.press_max)
                 fm1_in_stat.press_max = d;
+        }
+        if ((uint8_t)(fm1_in.kq_w - fm1_in.kq_r) < FM1_KQ) {
+            fm1_in.kq[fm1_in.kq_w % FM1_KQ] = (uint8_t)((id - 14u) | (on ? 0u : 0x80u));
+            fm1_in.kq_w++;
         }
         fm1_in.notes ^= bit;
     } else {
@@ -638,6 +648,19 @@ static uint32_t fm1_input_note_edges(void)
     fm1_in.notes_pressed = 0;
     fm1__unlock(k);
     return p;
+}
+
+/* the oldest note-key edge not yet taken: key n (0..26) | 0x80 when it was pressed, -1 none; fm1_input_key_pop takes
+ * it. Main loop only, no lock: the tick writes an entry before it counts it, and only behind kq_r */
+static int fm1_input_key_peek(void)
+{
+    uint8_t r = fm1_in.kq_r;
+    return r == fm1_in.kq_w ? -1 : (int)fm1_in.kq[r % FM1_KQ];
+}
+static void fm1_input_key_pop(void)
+{
+    if (fm1_in.kq_r != fm1_in.kq_w)
+        fm1_in.kq_r++;
 }
 
 /* LED of key id (button 0..13 or note key 14..40) */
