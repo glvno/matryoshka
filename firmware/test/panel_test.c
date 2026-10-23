@@ -580,6 +580,17 @@ int main(void)
             check("again: stored over it, still one", ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 2u);
             tap(3);
             check("SEL on the list: back", page == 0);
+            tap(4);                                         /* the environment (#198): ALGO and PRESET step the row's presets */
+            {
+                char before[17];
+                memcpy(before, pg_pname[d], sizeof before);
+                enc(1, 1);
+                check("ALGO on the environment's row: its next preset", page == PAGE_ENV && strcmp(before, pg_pname[d]) != 0);
+                memcpy(before, pg_pname[d], sizeof before);
+                enc(6, -1);
+                check("PRESET there: its previous one, not another patch", page == PAGE_ENV && strcmp(before, pg_pname[d]) != 0 && !strcmp(patch_label, "ORACLE V"));
+            }
+            tap(4);
             later(2000);
         } else {
             check("(the Oracle V factory patch loads)", 0);

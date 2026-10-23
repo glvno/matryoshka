@@ -1586,3 +1586,28 @@ static void presets_draw(int full)
     if (!n)
         text_bc(&FONT_S, 8, ENV_Y0 + 4u, "NO PRESETS: ENV HELD + SAVE STORES ONE", P_FAINT, P_NIGHT, 0, TA_LEFT);
 }
+
+/* PRESET or ALGO on the environment (#198): the row's next / previous preset, loaded as you turn; a row without presets:
+ * nothing (a short message) */
+static int env_preset_step(int32_t st)
+{
+    uint32_t n;
+    int c;
+    char m[32], t[20];
+    pages_ensure();
+    if (!st || pg_cur_dev >= pg_ndev)
+        return 0;
+    n = dp_list(pg_cur_dev);
+    if (!n) {
+        ui_msg(pg_dev[pg_cur_dev].structure ? "NO PRESETS: ENV + SAVE STORES" : "NO PRESETS HERE", 1000);
+        return 0;
+    }
+    c = dp_current(pg_cur_dev, n);
+    c = c < 0 ? (st > 0 ? 0 : (int)n - 1) : (int)(((int32_t)c + st % (int32_t)n + (int32_t)n) % (int32_t)n);
+    if (dp_load(pg_cur_dev, (uint32_t)c))
+        return 0;
+    caps(t, pg_pname[pg_cur_dev], str_len(pg_pname[pg_cur_dev]), 16);
+    put(put(m, "PRESET "), t)[0] = 0;
+    ui_msg(m, 1000);
+    return 1;
+}

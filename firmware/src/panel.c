@@ -309,6 +309,11 @@ static void panel_encoders(int32_t *st)
         }
         return;
     }
+    if (page == PAGE_ENV && st[6]) {                /* PRESET on the environment: the row's presets (#198), not the patch */
+        if (env_preset_step(st[6]))
+            ui_dirty = 2;
+        return;
+    }
     if (page == PAGE_PRESETS && st[6]) {            /* PRESET on the preset list: the presets too (#194) */
         if (presets_turn(st[6]))
             ui_dirty = 2;
@@ -345,11 +350,13 @@ static void panel_encoders(int32_t *st)
             ui_dirty = 2;
         return;
     }
-    if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO nothing yet */
+    if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO its presets */
         if (st[0] && pages_select(st[0])) {
             m1_focus_now(pg_cur_dev, pg_cur_page);
             ui_dirty = 2;
         }
+        if (st[1] && env_preset_step(st[1]))
+            ui_dirty = 2;
         st[0] = st[1] = 0;
     }
     if (page != 0 && page != PAGE_GLO && page != PAGE_ENV)

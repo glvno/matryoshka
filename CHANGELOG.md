@@ -6,6 +6,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- On the environment, PRESET or ALGO steps the row's presets, loading them as you turn (#198); REC arms the row.
 - Presets between the editor and the FM-1 (#195): Library > Presets on the FM-1 reads the FM-1's own presets, gets one
   into this browser or deletes it there, and sends all of yours to it. Under Live, a preset stored on the FM-1 (ENV held
   + SAVE) comes into your presets by itself. Nothing else syncs.
