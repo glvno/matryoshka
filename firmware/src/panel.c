@@ -477,7 +477,7 @@ static void sel_open(void)
 /* ENV held + SAVE (#194): the focused device's values as its preset */
 static void preset_store_focused(void)
 {
-    preset_store(pg_cur_dev);
+    dp_store(pg_cur_dev);
     if (page == PAGE_ENV || page == PAGE_PRESETS)
         ui_dirty = 2;
 }

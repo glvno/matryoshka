@@ -1339,7 +1339,7 @@ static int32_t pr_vals[PS_MAXV];
 static uint8_t pr_sel;                                  /* the preset list page's row */
 
 /* device d's presets into pr_list: how many */
-static uint32_t preset_list(uint32_t d)
+static uint32_t dp_list(uint32_t d)
 {
     uint8_t slots[PS_SLOTS];
     uint32_t n = 0, k, m;
@@ -1355,7 +1355,7 @@ static uint32_t preset_list(uint32_t d)
 }
 
 /* entry e's name (17 bytes) and values (pr_vals): how many values, -1 unreadable */
-static int preset_entry(uint16_t e, char *name)
+static int dp_entry(uint16_t e, char *name)
 {
     uint32_t k, n, st;
     if (e & PR_USER) {
@@ -1375,17 +1375,17 @@ static int preset_entry(uint16_t e, char *name)
 }
 
 /* where device d's list stands: the entry named as the device's preset, -1 none */
-static int preset_current(uint32_t d, uint32_t n)
+static int dp_current(uint32_t d, uint32_t n)
 {
     char nm[17];
     uint32_t k;
     for (k = 0; k < n; k++)
-        if (preset_entry(pr_list[k], nm) >= 0 && !ps_name_cmp(nm, pg_pname[d]) && pg_pname[d][0])
+        if (dp_entry(pr_list[k], nm) >= 0 && !ps_name_cmp(nm, pg_pname[d]) && pg_pname[d][0])
             return (int)k;
     return -1;
 }
 
-static void preset_name_set(uint32_t d, const char *name)
+static void dp_name_set(uint32_t d, const char *name)
 {
     uint32_t k;
     for (k = 0; k < 16u && name[k]; k++)
@@ -1396,12 +1396,12 @@ static void preset_name_set(uint32_t d, const char *name)
 }
 
 /* load list entry k of device d: its rows take the values (the running binary and the editor too) */
-static int preset_load(uint32_t d, uint32_t k)
+static int dp_load(uint32_t d, uint32_t k)
 {
     char nm[17];
     int n;
     uint32_t i;
-    if (d >= pg_ndev || k >= preset_list(d) || (n = preset_entry(pr_list[k], nm)) < 0)
+    if (d >= pg_ndev || k >= dp_list(d) || (n = dp_entry(pr_list[k], nm)) < 0)
         return -1;
     for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
         uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
@@ -1421,12 +1421,12 @@ static int preset_load(uint32_t d, uint32_t k)
             m1_param_now(mod, par, v);
         }
     }
-    preset_name_set(d, nm);
+    dp_name_set(d, nm);
     return 0;
 }
 
 /* device d's row values now, in canonical order, into pr_vals: how many */
-static uint32_t preset_values(uint32_t d)
+static uint32_t dp_values(uint32_t d)
 {
     uint32_t i, n = pg_dev[d].nrows < PS_MAXV ? pg_dev[d].nrows : PS_MAXV;
     for (i = 0; i < n; i++) {
@@ -1438,7 +1438,7 @@ static uint32_t preset_values(uint32_t d)
 
 /* ENV held + SAVE: the device in focus's values as a preset: over the user preset it was set to, else under a new name (a
  * factory one's name, or the device's, with a number). The message says what happened. */
-static void preset_store(uint32_t d)
+static void dp_store(uint32_t d)
 {
     char nm[17], base[17], num[8];
     uint32_t k, n, len;
@@ -1448,7 +1448,7 @@ static void preset_store(uint32_t d)
         ui_msg("PRESETS: ASSEMBLIES ONLY", 1200);
         return;
     }
-    n = preset_values(d);
+    n = dp_values(d);
     for (k = 0; k < 16u && pg_pname[d][k]; k++)
         nm[k] = pg_pname[d][k];
     nm[k] = 0;
@@ -1456,7 +1456,7 @@ static void preset_store(uint32_t d)
         int taken;
         caps(base, nm[0] ? nm : pg_dev[d].name, nm[0] ? str_len(nm) : pg_dev[d].nlen, 12);
         for (k = 2; k < 100u; k++) {
-            uint32_t i, m = preset_list(d);
+            uint32_t i, m = dp_list(d);
             fmt_int(num, (int32_t)k);
             len = str_len(base);
             put(put(put(nm, base), " "), num)[0] = 0;
@@ -1464,7 +1464,7 @@ static void preset_store(uint32_t d)
             taken = 0;
             for (i = 0; i < m && !taken; i++) {
                 char other[17];
-                taken = preset_entry(pr_list[i], other) >= 0 && !ps_name_cmp(other, nm);
+                taken = dp_entry(pr_list[i], other) >= 0 && !ps_name_cmp(other, nm);
             }
             if (!taken)
                 break;
@@ -1475,7 +1475,7 @@ static void preset_store(uint32_t d)
         ui_msg(rc == -2 ? "PRESETS FULL" : "PRESET NOT STORED", 1500);
         return;
     }
-    preset_name_set(d, nm);
+    dp_name_set(d, nm);
     {
         char m[40];
         put(put(m, "STORED "), nm)[0] = 0;
@@ -1488,18 +1488,18 @@ static void preset_store(uint32_t d)
  * PRESET move and load as they turn; SEL or HOME goes back */
 static void presets_open(void)
 {
-    uint32_t n = preset_list(pg_cur_dev);
-    int c = preset_current(pg_cur_dev, n);
+    uint32_t n = dp_list(pg_cur_dev);
+    int c = dp_current(pg_cur_dev, n);
     pr_sel = (uint8_t)(c < 0 ? 0 : c);
 }
 
 static int presets_turn(int32_t s)
 {
-    uint32_t n = preset_list(pg_cur_dev);
+    uint32_t n = dp_list(pg_cur_dev);
     if (!n || !s)
         return 0;
     pr_sel = (uint8_t)(((int32_t)pr_sel + s % (int32_t)n + (int32_t)n) % (int32_t)n);
-    return preset_load(pg_cur_dev, pr_sel) == 0;
+    return dp_load(pg_cur_dev, pr_sel) == 0;
 }
 
 static void presets_draw(int full)
@@ -1514,7 +1514,7 @@ static void presets_draw(int full)
         text_bc(&FONT_S, 8, 3, "PRESETS", P_NIGHT, P_GOLD, 80, TA_LEFT);
         text_bc(&FONT_S, 88, 3, t, P_NIGHT, P_GOLD, 144, TA_RIGHT);
     }
-    n = preset_list(pg_cur_dev);
+    n = dp_list(pg_cur_dev);
     if (pr_sel >= n)
         pr_sel = 0;
     first = pr_sel >= ENV_ROWS ? pr_sel + 1u - ENV_ROWS : 0u;
@@ -1531,7 +1531,7 @@ static void presets_draw(int full)
             lcd_fill(2, y + 1u, 236, 2, P_INK);
             lcd_fill(2, y + ENV_ROW_H - 3u, 236, 2, P_INK);
         }
-        if (preset_entry(pr_list[k], nm) < 0)
+        if (dp_entry(pr_list[k], nm) < 0)
             put(nm, "?")[0] = 0;
         caps(t, nm, str_len(nm), 16);
         text_bc(&FONT_M, 10, y + 4u, t, ps_name_cmp(nm, pg_pname[pg_cur_dev]) ? P_INK : P_CORAL, k == pr_sel ? P_TRACK : P_PANEL, 160, TA_LEFT);

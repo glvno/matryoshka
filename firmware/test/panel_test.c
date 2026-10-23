@@ -524,7 +524,7 @@ int main(void)
             check("Oracle V: an assembly device with a structure and its rows (format 34's extras)", d < pg_ndev && pg_dev[d].nrows > 0);
             pages_focus(d, 0);
             loop();
-            n0 = preset_list(d);
+            n0 = dp_list(d);
             check("its factory presets in ROM", n0 >= 2u);
             tap(3);
             check("SEL on it: the preset list", page == PAGE_PRESETS);
@@ -557,7 +557,7 @@ int main(void)
             panel_edges(0, 1u << 4);
             loop();
             check("ENV held + SAVE on a factory preset: a new user preset (its name and a number), the editor told",
-                  ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 1u && ps_name_cmp(pg_pname[d], was) != 0 && preset_list(d) == n0 + 1u);
+                  ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 1u && ps_name_cmp(pg_pname[d], was) != 0 && dp_list(d) == n0 + 1u);
             panel_held |= 1u << 4;                          /* again: over it */
             panel_edges(1u << 4, 0);
             panel_edges(1u << BTN_SAVE, 0);
