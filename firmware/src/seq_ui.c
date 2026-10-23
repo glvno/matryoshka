@@ -4,8 +4,8 @@
  *
  *   SEQ             opens / closes the page; held + a black key: mute / unmute that track (from any page, not saved)
  *   black keys      pick the track (1..11, patch order); ALGO steps through all of them; with REC on a black key is a hit on
- *                   its track instead: it sounds and, while the track plays, goes into the nearest step (ENV held: accented)
- *   white keys      the 16 steps of the page: a press switches the step on / off (ENV held: its accent instead); the
+ *                   its track instead: it sounds and, while the track plays, goes into the nearest step (FX held: accented)
+ *   white keys      the 16 steps of the page: a press switches the step on / off (FX held: its accent instead); the
  *                   track holds notes (#133): the step view of eng_steps_get / set (on = notes start there, a tied step
  *                   is untied by a press; off = its notes go, an accent = full velocity)
  *   white key held  + SELECT: the step's chance, 100 % .. 5 % in steps of 5; + K1: its note (a semitone a click, a chord
@@ -22,8 +22,8 @@
  *                   the SEQ page ARM in the bar and on the track's row (#179). Black key n is track n here also on a drum
  *                   track's page, where the keys alone pick rows; a key past the tracks says NO TRACK n.
  *   REC with a track armed: stopped, the SEQ page opens on it in step entry: the 27 keys are its keyboard, every key held
- *                   when the first is let go fills the cursor's step (a chord, one step long; ENV held: full velocity), the
- *                   cursor moves on; ENV + OCT a rest, LFO + OCT a tie, SELECT moves the cursor, OCT- / OCT+ the octave.
+ *                   when the first is let go fills the cursor's step (a chord, one step long; FX held: full velocity), the
+ *                   cursor moves on; FX + OCT a rest, LFO + OCT a tie, SELECT moves the cursor, OCT- / OCT+ the octave.
  *                   Running, the page stays: the keys play and the engine records them live onto the nearest step
  *                   (eng_steps_rec); on the SEQ page they are the track's keyboard. PLAY / stop switches between the two.
  *                   REC again, or another arm, ends it; leaving the page ends step entry (a live take goes on). Key LEDs: the selected track's steps bright, the step playing at the mid level (dark
@@ -277,7 +277,7 @@ static void seq_mute_key(uint32_t n)
 /* a key on the SEQ page (n: note key 0..26) */
 static void seq_sync(int mod);
 /* a key on the SEQ page of a drum track (the #139 follow-up): black keys 1..8 the Drum map's rows (stopped: heard; REC on: a hit on the
- * row, into the nearest step while it plays), white keys that row's hit on the page's steps (ENV held: an accent) */
+ * row, into the nearest step while it plays), white keys that row's hit on the page's steps (FX held: an accent) */
 static void seq_drum_key(int map, uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module();
@@ -315,7 +315,7 @@ static void seq_drum_key(int map, uint32_t n, int down)
             seq_held_notes[i] = ws[i];
         seq_held_turned = 0;
         have = eng_steps_note((uint32_t)mod, (uint32_t)k, note);
-        if (env && have)                         /* ENV held: the accent on / off */
+        if (env && have)                         /* FX held: the accent on / off */
             eng_steps_overdub((uint32_t)mod, (have & ~(127u << 19)) | (uint32_t)(((have >> 19) & 127u) == ACCENT_VEL ? STEP_VEL : ACCENT_VEL) << 19);
         else
             eng_steps_toggle((uint32_t)mod, (uint32_t)k, note, env ? ACCENT_VEL : STEP_VEL);
@@ -376,9 +376,9 @@ static void seq_key(uint32_t n, int down)
         if (k >= seq_len(mod))
             return;
         s = (uint32_t)eng_steps_get((uint32_t)mod, (uint32_t)k);
-        if (s & 0x80u)                           /* a tied step: untied, on (accented with ENV held) */
+        if (s & 0x80u)                           /* a tied step: untied, on (accented with FX held) */
             s = env ? 3u : 1u;
-        else if (env)                            /* ENV held: the accent (an off step comes on accented) */
+        else if (env)                            /* FX held: the accent (an off step comes on accented) */
             s = (s & 1u) ? s ^ 2u : s | 3u;
         else
             s = (s & 1u) ? s & ~3u : s | 1u;     /* (switched off: its notes go) */
@@ -632,7 +632,7 @@ static void seq_kbd_key(uint32_t n, uint32_t note, int down, uint32_t vel)
     seq_cur_move(1);
 }
 
-/* OCT- / OCT+ in step entry: with ENV held a rest, with LFO held a tie (then the cursor moves on); 0: not taken (the
+/* OCT- / OCT+ in step entry: with FX held a rest, with LFO held a tie (then the cursor moves on); 0: not taken (the
  * octave) */
 static int seq_entry_oct(void)
 {
@@ -814,7 +814,7 @@ static void seq_draw(int full)
         *p = 0;
         text_bc(&FONT_S, 8, 128, line, C_DIM, C_BG, 224, TA_LEFT);
         if (full)
-            text_bc(&FONT_S, 8, 222, "ENV+OCT rest  LFO+OCT tie  SEL move", C_HINT, C_BG, 228, TA_LEFT);
+            text_bc(&FONT_S, 8, 222, "FX+OCT rest  LFO+OCT tie  SEL move", C_HINT, C_BG, 228, TA_LEFT);
         return;
     }
     if (map >= 0) {                              /* a drum track: its map's rows, two columns of four (black keys 1-8) */
@@ -840,7 +840,7 @@ static void seq_draw(int full)
         put(p, seq_armed_trk() == (int)seq_trk || eng_steps_muted((uint32_t)mod) ? "" : "  ALGO: TRACK")[0] = 0;
         text_bc(&FONT_S, 12, 172, line, C_DIM, C_BG, 216, TA_LEFT);
         if (full)
-            text_bc(&FONT_S, 8, 222, seq_rec ? "BLACK  hit on a row   ENV  accent" : "BLACK row  WHITE hit  ENV acc  K2 vel", C_HINT, C_BG, 228, TA_LEFT);
+            text_bc(&FONT_S, 8, 222, seq_rec ? "BLACK  hit on a row   FX  accent" : "BLACK row  WHITE hit  FX acc  K2 vel", C_HINT, C_BG, 228, TA_LEFT);
         return;
     }
     for (t = 0; t < 12u; t++) {                  /* the tracks, two columns of six */
@@ -862,7 +862,7 @@ static void seq_draw(int full)
         text_bc(&FONT_S, x, y, line, t == seq_trk ? C_ACC : t < (uint32_t)eng_steps_count() && !eng_steps_muted((uint32_t)eng_steps_module(t)) ? C_FG : C_DIM, C_BG, 108, TA_LEFT);
     }
     if (full)
-        text_bc(&FONT_S, 8, 222, seq_kbd() ? "KEYS record   OCT octave   REC stop" : seq_rec ? "BLACK  hit    ENV+BLACK  accent" : "ENV accent   HOLD+SEL %   K1 note   K2 vel", C_HINT, C_BG, 228, TA_LEFT);
+        text_bc(&FONT_S, 8, 222, seq_kbd() ? "KEYS record   OCT octave   REC stop" : seq_rec ? "BLACK  hit    FX+BLACK  accent" : "FX accent   HOLD+SEL %   K1 note   K2 vel", C_HINT, C_BG, 228, TA_LEFT);
 }
 
 /* the main loop, every pass: the LEDs, and the cells when the playhead moved */
