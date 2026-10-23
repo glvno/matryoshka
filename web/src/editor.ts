@@ -3504,7 +3504,8 @@ export class Editor {
     el.classList.toggle('picking', this.picking(a));
     const title = this.titleOf(a, perVoice);
     title.prepend(this.tag(null, a));
-    head.append(this.chevron(a), title, tools);
+    const chip = parentOf(this.patch, a.id) ? null : this.presetChip(a);   // (expanded too: the same ‹ name › as its card)
+    head.append(this.chevron(a), title, ...(chip ? [chip] : []), tools);
     this.headMenu(head, (at) => this.assemblyMenu(a, at));
     el.append(head);
     this.frames.set(a.id, el);
