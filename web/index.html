@@ -169,11 +169,11 @@
             <div class="hrow"><span class="hkeys">PATCH · EMU · LIBRARY</span><span>the switch at the top: the canvas, the FM-1’s firmware emulated in the browser, and what is stored in this browser and on the FM-1 (<kbd>←</kbd><kbd>→</kbd> move along it). Install firmware is under Get started and in the palette</span></div>
             <div class="hrow"><span class="hkeys">LIBRARY <b>→</b> <b>←</b></span><span>Patches and Presets in two columns, this browser and the FM-1: → puts one on the FM-1 (or in the bank’s offline copy while none is connected), ← copies one into this browser. Deleting in this browser offers Undo; replacing on the FM-1 asks first</span></div>
             <div class="hrow"><span class="hkeys"><kbd>?</kbd></span><span>this list</span></div>
-            <div class="hrow"><span class="hkeys"><kbd>Esc</kbd></span><span>cancel a connection, finish choosing or arranging what a card shows, close a dialog or the Install panel</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Esc</kbd></span><span>cancel a connection, clear the rows selected while choosing or arranging a card (again: finish choosing or arranging), close a dialog or the Install panel</span></div>
           </section>
           <section class="hsec"><h3>Selection</h3>
             <div class="hrow"><span class="hkeys">click / <kbd>Shift</kbd>-click a title</span><span>select a card / add it to the selection; drag on the empty canvas to select an area</span></div>
-            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+A</kbd></span><span>select every card on the canvas</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+A</kbd></span><span>select every card on the canvas; while choosing or arranging a card, every row (nothing changes)</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+D</kbd></span><span>duplicate the selection with its settings and the cables among it</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+C</kbd><kbd>Ctrl/Cmd+X</kbd><kbd>Ctrl/Cmd+V</kbd></span><span>copy, cut, paste the selection with the cables among it, also into another patch (Main and the Output stay)</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+G</kbd></span><span>make an assembly from the selection</span></div>
@@ -188,7 +188,16 @@
             <div class="hrow"><span class="hkeys">click a jack, then another</span><span>connect (dragging works too)</span></div>
             <div class="hrow"><span class="hkeys">click a cable</span><span>disconnect it; grey routes are built into the module</span></div>
             <div class="hrow"><span class="hkeys">drop on a thumb</span><span>modulate that parameter (depth in its ⋮ menu); <kbd>Alt</kbd>-drag a thumb to patch from it</span></div>
-            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd>-click a row</span><span>in an expanded assembly: show it on the collapsed card, or take it off</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd>-click a row</span><span>in an expanded assembly: show it on the collapsed card, or take it off (while choosing or arranging the card it selects the row instead)</span></div>
+          </section>
+          <section class="hsec"><h3>Choosing and arranging a card</h3>
+            <div class="hrow"><span class="hkeys">click a row</span><span>choosing (the frame’s <b>card · N</b>): show it on the collapsed card or take it off. The check box on a member’s title does all its parameters (any off: all on, else all off); <b>select all</b> / <b>select none</b> in the frame’s bar do every parameter. Jacks stay one click each</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Shift</kbd>-click, <kbd>Ctrl/Cmd</kbd>-click, drag a band</span><span>select rows while choosing or arranging: a range, one more or less, an area (from the empty canvas or a card’s empty space)</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Space</kbd> <kbd>Enter</kbd></span><span>choosing: the selected rows all go on the card if any is off it, else they all come off</span></div>
+            <div class="hrow"><span class="hkeys">drag a selected row</span><span>arranging: the selection moves as one block with its own column breaks, headings and groups</span></div>
+            <div class="hrow"><span class="hkeys">drag <b>⠿</b> on a heading / page strip</span><span>arranging: move the section (between sections or to the end) / that one FM-1 page (between pages; every page has a strip)</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>Delete</kbd> <kbd>Backspace</kbd></span><span>arranging: take the selected rows off the card</span></div>
+            <div class="hrow"><span class="hkeys">touch screen</span><span>a long press on a row starts a selection, taps add or remove rows, dragging a selected row moves them all (arranging), the button in the bar shows, hides or takes them off; a tap on the empty canvas ends it</span></div>
           </section>
           <section class="hsec"><h3>Controls</h3>
             <div class="hrow"><span class="hkeys"><kbd>←</kbd><kbd>→</kbd> <kbd>↑</kbd><kbd>↓</kbd></span><span>with nothing selected: the previous / next device on Main’s knobs, and its previous / next page, round within the device</span></div>

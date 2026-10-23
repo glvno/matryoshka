@@ -136,6 +136,150 @@ export function moveParam(list: ParamRef[], from: number, to: number, after: boo
   return tidyRows(rest);
 }
 
+/**
+ * Move several promoted parameters (`picked`, indices into `list`) as one block next to the row at `to` (not one of them),
+ * before or after it (#186). The block keeps its rows' order and their own headings, group flags, spans and the column
+ * breaks inside it, so a block that spans a column break still does. Its first row's column break stays where it was:
+ * the next row left there takes it. Dropped before a row, the block takes that row's column break (the top of a column
+ * stays the top), and, when its first row has no heading or group flag of its own, that row's heading and group flag too
+ * (it goes under the heading, as one row does); otherwise the row keeps them and the block goes before it.
+ */
+export function moveBlock(list: ParamRef[], picked: readonly number[], to: number, after: boolean): ParamRef[] {
+  const set = new Set(picked.filter((i) => list[i]));
+  if (!set.size || set.has(to) || !list[to]) return list;
+  const idx = [...set].sort((x, y) => x - y);
+  const block = idx.map((i) => ({ ...list[i] }));
+  let handCol = !!block[0].col;
+  delete block[0].col;
+  const rest: ParamRef[] = [];
+  const restIdx: number[] = [];
+  list.forEach((r, i) => {
+    if (set.has(i)) return;
+    if (handCol && i > idx[0]) {
+      rest.push(r.col ? r : { ...r, col: true });
+      handCol = false;
+    } else rest.push(r);
+    restIdx.push(i);
+  });
+  const k = restIdx.indexOf(to);
+  if (after) rest.splice(k + 1, 0, ...block);
+  else {
+    const t = { ...rest[k] };
+    if (t.col) {
+      block[0].col = true;
+      delete t.col;
+    }
+    if (!block[0].head && !block[0].group && (t.head || t.group)) {
+      if (t.head) block[0].head = t.head;
+      if (t.group) block[0].group = true;
+      delete t.head;
+      delete t.group;
+    }
+    rest.splice(k, 1, ...block, t);
+  }
+  return tidyRows(rest);
+}
+
+/** the rows of the section whose heading is on row `i` (up to the next heading), or [] when row `i` has none */
+export function sectionRows(list: ParamRef[], i: number): number[] {
+  if (!list[i]?.head) return [];
+  const out = [i];
+  for (let j = i + 1; j < list.length && !list[j].head; j++) out.push(j);
+  return out;
+}
+
+/** the rows of the group (one FM-1 page) that starts at row `i`, given where groups start (`starts[j]` per row of the
+ * list; a row no group counts, such as one set from the screen, is false), or [] when no group starts there */
+export function groupRows(starts: readonly boolean[], i: number): number[] {
+  if (!starts[i]) return [];
+  const out = [i];
+  for (let j = i + 1; j < starts.length && !starts[j]; j++) out.push(j);
+  return out;
+}
+
+/**
+ * Where a dragged section (`rows` from `sectionRows`; boundaries at headings) or group (from `groupRows`, with its
+ * `starts`) may land (#186): before a row that starts one, or after the row before such a row or after the last row.
+ * Never inside the rows it moves or right next to them (that would change nothing), and a section never above the rows
+ * before the first heading.
+ */
+export function blockDropOk(list: ParamRef[], rows: readonly number[], to: number, after: boolean, starts?: readonly boolean[]): boolean {
+  if (!rows.length || !list[to] || rows.includes(to)) return false;
+  const slot = after ? to + 1 : to;
+  // a section never goes above rows that have no heading: they would join it
+  const boundary = slot === list.length || (starts ? slot === 0 || !!starts[slot] : !!list[slot].head);
+  return boundary && slot !== rows[0] && slot !== rows[rows.length - 1] + 1;
+}
+
+/** move a whole section (`rows` from `sectionRows`) to a place `blockDropOk` allows */
+export function moveSection(list: ParamRef[], rows: readonly number[], to: number, after: boolean): ParamRef[] {
+  return blockDropOk(list, rows, to, after) ? moveBlock(list, rows, to, after) : list;
+}
+
+/**
+ * Move a whole group (one FM-1 page, `rows` from `groupRows`) to a place `blockDropOk` allows. The pages around it stay
+ * as they were: the group's first row, the row after it and the row it lands against get a group flag where they
+ * started a group only because the group before them was full. Before a row with a heading it goes under the heading.
+ * A section's first page leaves its heading to the section's next page, if it has one: one page moves, not the section.
+ */
+export function moveGroup(list: ParamRef[], rows: readonly number[], starts: readonly boolean[], to: number, after: boolean): ParamRef[] {
+  if (!blockDropOk(list, rows, to, after, starts)) return list;
+  const out = list.map((r) => ({ ...r }));
+  const pin = (j: number): void => {
+    if (out[j] && starts[j] && !out[j].head && !out[j].group) out[j].group = true;
+  };
+  // the first page of a section with more pages: the heading stays with the pages left, the page goes alone
+  const first = out[rows[0]];
+  const next = out[rows[rows.length - 1] + 1];
+  if (first.head && next && !next.head) {
+    next.head = first.head;
+    delete next.group;
+    delete first.head;
+  }
+  pin(rows[0]);
+  pin(rows[rows.length - 1] + 1);
+  pin(after ? to + 1 : to);
+  // before a section's first row: under its heading, as the section's first page (that row starts the next one)
+  if (!after && out[to].head && !out[rows[0]].head) {
+    out[rows[0]].head = out[to].head;
+    delete out[rows[0]].group;
+    delete out[to].head;
+    out[to].group = true;
+  }
+  return moveBlock(out, rows, to, after);
+}
+
+/** a parameter row of a member card, as pick mode selects it */
+export interface PickRow { module: number; param: string }
+
+/** pick mode's check box over some rows (a member card's header, #186): all of them on the card, none, or some */
+export function pickState(a: AssemblyInst, rows: readonly PickRow[]): 'all' | 'none' | 'some' {
+  const on = rows.filter((r) => isPromoted(a, r.module, r.param)).length;
+  return on === 0 ? 'none' : on === rows.length ? 'all' : 'some';
+}
+
+/** one action on several rows in pick mode (#186): if any is off the card they all go on (the new ones in the given
+ * order), if all are on they all come off. False when there are no rows */
+export function pickRows(a: AssemblyInst, rows: readonly PickRow[]): boolean {
+  if (!rows.length) return false;
+  const off = rows.filter((r) => !isPromoted(a, r.module, r.param));
+  if (off.length) for (const r of off) promote(a, r.module, r.param);
+  else {
+    const gone = new Set(rows.map((r) => `${r.module}:${r.param}`));
+    a.params = keepParams(a.params, (r) => !gone.has(`${r.module}:${r.param}`));
+  }
+  return true;
+}
+
+/** a Shift-click range: the keys from `from` to `to` in `order`, either way round (only `to` when `from` is not there) */
+export function keyRange(order: readonly string[], from: string | null, to: string): string[] {
+  const j = order.indexOf(to);
+  if (j < 0) return [];
+  const i = from === null ? -1 : order.indexOf(from);
+  if (i < 0) return [to];
+  return order.slice(Math.min(i, j), Math.max(i, j) + 1);
+}
+
 /** start a new column of the collapsed card at row `i` (not the first), or join it to the column before */
 export function setColumnBreak(list: ParamRef[], i: number, on: boolean): void {
   const r = list[i];

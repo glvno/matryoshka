@@ -163,6 +163,57 @@ function assemblySections(p: Patch, a: AssemblyInst, defs: Record<string, Module
   return sectionsOf(a.label, items, (it) => (it.screen ? it.r.module : { module: it.r.module, param: it.r.param, label: it.r.label }));
 }
 
+/** where an assembly card's groups (FM-1 pages) start, per promoted parameter (`a.params[i]`): `groupStarts` over the rows
+ * the card draws; a row set from the screen (onScreen) or no longer there starts none and rides with the group before it */
+export function paramStarts(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): boolean[] {
+  const kept: number[] = [];
+  const items: GroupItem[] = [];
+  a.params.forEach((r, i) => {
+    const m = p.modules.find((x) => x.id === r.module);
+    const pd = m && defs[m.type] && rowDef(defs[m.type], r.param);
+    if (!pd || pd.onScreen) return;
+    kept.push(i);
+    items.push({ head: r.head, group: r.group, col: r.col, knob: !pd.screen });
+  });
+  const out = a.params.map(() => false);
+  groupStarts(items).forEach((st, k) => (out[kept[k]] = st));
+  return out;
+}
+
+/** a page's title as the FM-1's page chip shows it in focus (pages_ui.c pages_chips): the heading in capitals, cut to
+ * NAME_MAX, or "PAGE" for a page before the first heading (its section takes the device's name), and "2/3" when its
+ * section has several pages */
+export function fm1PageTitle(device: string, pg: Page): string {
+  const base = pg.name === device ? 'PAGE' : pg.name.slice(0, NAME_MAX).toUpperCase();
+  return pg.parts > 1 ? `${base} ${pg.part + 1}/${pg.parts}` : base;
+}
+
+/** per promoted parameter (`a.params[i]`): the FM-1 title (fm1PageTitle) of the page whose group starts there (Arrange
+ * mode's page strips), else undefined; a group with no knob row (a display alone) is no page and has none */
+export function paramPageTitles(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): (string | undefined)[] {
+  const starts = paramStarts(p, a, defs);
+  const pages = assemblyPages(p, a, defs);
+  const out: (string | undefined)[] = a.params.map(() => undefined);
+  let pg = 0;
+  let open = -1;
+  let knobs = false;
+  const close = (): void => {
+    if (open >= 0 && knobs && pages[pg]) out[open] = fm1PageTitle(a.label, pages[pg++]);
+  };
+  a.params.forEach((r, i) => {
+    if (starts[i]) {
+      close();
+      open = i;
+      knobs = false;
+    }
+    const m = p.modules.find((x) => x.id === r.module);
+    const pd = m && defs[m.type] && rowDef(defs[m.type], r.param);
+    if (pd && !pd.onScreen && !pd.screen) knobs = true;
+  });
+  close();
+  return out;
+}
+
 /** where a top-level item sits on the canvas: a collapsed card's corner, an open frame's first member */
 function placeOf(p: Patch, a: AssemblyInst): { x: number; y: number } {
   if (!a.open) return { x: a.x, y: a.y };

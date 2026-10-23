@@ -33,6 +33,17 @@ export function syncOnConnect(o: { fits: boolean; declined: boolean; editorBin: 
 export type ChipState = 'not connected' | 'synced' | 'not synced' | 'patch too big to sync';
 export const chipState = (connected: boolean, live: boolean, fits: boolean): ChipState =>
   !connected ? 'not connected' : !fits ? 'patch too big to sync' : live ? 'synced' : 'not synced';
+/** the editor's Live (#185, #200), what main.ts does each LIVE_MS, on Sync and on a budget change, kept pure for the tests */
+export const liveSync = {
+  /** edits and uploads go to the FM-1: connected, Live on and the patch within its budget */
+  syncs: (connected: boolean, live: boolean, fits: boolean): boolean => connected && live && fits,
+  /** the LIVE to send (every LIVE_MS, and when Live turns on): null = none (not connected, Live off); paused = the patch is over
+   *  the budget, so it is not sent, but the FM-1 still holds PRESET and says EDITOR PATCH TOO BIG */
+  frame: (connected: boolean, live: boolean, fits: boolean): { paused: boolean } | null =>
+    connected && live ? { paused: !fits } : null,
+  /** a budget change that pauses Live: say so at once (LIVE paused), not only at the next LIVE_MS */
+  pausesNow: (connected: boolean, live: boolean, was: boolean, fits: boolean): boolean => was && !fits && connected && live,
+};
 /** FM-1 & MIDI's sync line (#180), what the chip shows: its text and its button (`sync` turns Live on, `stop` off; none
  *  while not connected or while the patch does not fit) */
 export const syncLine = (s: ChipState): { text: string; action: 'sync' | 'stop' | null } =>

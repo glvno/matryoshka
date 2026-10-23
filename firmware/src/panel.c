@@ -375,10 +375,17 @@ static void panel_encoders(int32_t *st)
         }
         st[1] = 0;
     }
-    if (page == 0 && (pages_select(st[0]) | pages_page(st[1]))) {   /* SELECT: the device, ALGO: its page (the editor follows) */
-        m1_focus_now(pg_cur_dev, pg_cur_page);
-        ui_dirty = 2;
+    if (page == 0) {                                /* SELECT: the device, ALGO: its page (the editor follows), their card (#221) */
+        int dev = pages_select(st[0]), pg = pages_page(st[1]);
+        if (dev | pg) {
+            pages_card(pg ? PG_CARD_PAGE : PG_CARD_DEV);
+            m1_focus_now(pg_cur_dev, pg_cur_page);
+            if (!ui_dirty)
+                ui_dirty = 1;                       /* (the card alone: pages_draw fills it on the first click) */
+        }
     }
+    if (st[2] | st[3] | st[4] | st[5])              /* K1..K4 while a card shows: the page it named, at once (#221) */
+        pg_card_until = 0;
     for (k = 0; k < 4u; k++) {                      /* K1..K4: the rows of the page in focus, relative */
         uint32_t mod, par;
         int32_t v, c = st[2u + k], r;
