@@ -29,9 +29,11 @@
 //                                                    TRACK_NOTES_MAX); no reply. Feature bit 5.
 //   29 FOCUS    device u8, page u8                   show this device page (indices into the binary's device pages section,
 //                                                    pages.ts) and put it on K1..K4; no reply. Feature bit 4.
-//   2C LIVE     (none)                               every LIVE_MS while the editor's Live is on: the FM-1 plays the
+//   2C LIVE     [paused u8]                          every LIVE_MS while the editor's Live is on: the FM-1 plays the
 //                                                    editor's patch, so PRESET and program change load no slot until
-//                                                    5 s after the last one; no reply. Feature bit 6.
+//                                                    5 s after the last one; no reply. Feature bit 6. paused 1 (#200): the
+//                                                    editor's patch is over the FM-1's budget and not sent: PRESET waits
+//                                                    still, and the FM-1 says EDITOR PATCH TOO BIG
 //   2D PRESETS  (none)                               the FM-1's user presets (#195): one PRESET (4C) per preset. Feature bit 7.
 //   2E PRESET_GET  structure u32, name 16 bytes      device answers PRESET_DATA (4D)
 //   2F PRESET_PUT  structure u32, name 16 bytes, n u8, n i32 values (Q16, canonical row order)   store it (over one of
@@ -182,7 +184,7 @@ export const focusFrame = (device: number, page: number): Uint8Array => frame(CM
 export const muteFrame = (module: number, on: boolean): Uint8Array => frame(CMD.mute, [module, on ? 1 : 0]);
 /** the arpeggiator's settings, and its transport (null = leave it) */
 export const transportFrame = (run: boolean): Uint8Array => frame(CMD.transport, [run ? 1 : 0]);
-export const liveFrame = (): Uint8Array => frame(CMD.live);
+export const liveFrame = (paused = false): Uint8Array => frame(CMD.live, paused ? [1] : []);
 /** how often the editor says LIVE (the FM-1 holds it 5 s: firmware main.c LIVE_HOLD_MS) */
 export const LIVE_MS = 2000;
 /** a macro range of pin 0 / 1 on parameter `param`: ends 0..1, or null to remove it */

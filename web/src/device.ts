@@ -331,10 +331,10 @@ export class DeviceLink {
     return !!(this.info && this.info.features & 64);
   }
 
-  /** the editor's Live is on (sent every LIVE_MS) */
-  live(): void {
+  /** the editor's Live is on (sent every LIVE_MS); paused: its patch is over the FM-1's budget, not sent (#200) */
+  live(paused = false): void {
     if (!this.connected || !this.hasLive) return;
-    this.out!.send(liveFrame());
+    this.out!.send(liveFrame(paused));
   }
 
   /** show a device page on the FM-1 (indices into the binary's device pages section) */

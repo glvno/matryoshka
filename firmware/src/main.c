@@ -284,11 +284,16 @@ static int preset_load(uint32_t n)
  * closed tab or a pulled cable frees them */
 #define LIVE_HOLD_MS 5000u
 static uint32_t live_until;
-static uint8_t live_seen;
-static void m1_live(void)
+static uint8_t live_seen, live_paused;
+/* paused (#200): the editor's patch is over the FM-1's budget, so it is not here; PRESET waits all the same (the editor's
+ * Live is on) and the FM-1 says why */
+static void m1_live(uint32_t paused)
 {
+    if (paused && (!live_paused || !live_seen))
+        ui_msg("EDITOR PATCH TOO BIG", 2500);
     live_until = fm1_ms + LIVE_HOLD_MS;
     live_seen = 1;
+    live_paused = paused != 0u;
 }
 static int editor_live(void)
 {
@@ -303,7 +308,7 @@ static void preset_step(int32_t d)                  /* the PRESET knob: the next
     if (!bank_mask)
         return;
     if (editor_live()) {
-        ui_msg("EDITOR LIVE: NO PRESET", 1500);
+        ui_msg(live_paused ? "EDITOR PATCH TOO BIG" : "EDITOR LIVE: NO PRESET", 1500);
         return;
     }
     for (i = 0; i < M1_SLOTS; i++) {

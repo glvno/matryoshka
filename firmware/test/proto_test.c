@@ -36,7 +36,7 @@ static void m1_transport(int run) { (void)run; transport_calls++; }
 static uint32_t focus_calls, focus_dev, focus_page;
 static void m1_focus(uint32_t dev, uint32_t pg) { focus_calls++; focus_dev = dev; focus_page = pg; }
 static uint32_t live_calls;
-static void m1_live(void) { live_calls++; }
+static void m1_live(uint32_t paused) { (void)paused; live_calls++; }
 static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
 {
     slot_writes++;

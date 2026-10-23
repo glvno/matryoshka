@@ -109,8 +109,9 @@ let onEditorPatch = false;
  * a knob turn names its module and parameter, so it cannot land on another row (#185); otherwise (Live off, another firmware)
  * the mirror's K1..K4 positions turn the rows of the editor's page in focus */
 const exactKnobs = (): boolean => live() && onEditorPatch && device.hasPages;
-// while Live is on, the FM-1 holds PRESET and program change (LIVE, #185; it lapses 5 s after the last)
-window.setInterval(() => { if (live()) device.live(); }, LIVE_MS);
+// while Live is on, the FM-1 holds PRESET and program change (LIVE, #185; it lapses 5 s after the last); with the patch over
+// the budget too, paused (#200): nothing is sent, but PRESET still waits and the FM-1 says why
+window.setInterval(() => { if (device.connected && liveOn) device.live(!fitsDevice); }, LIVE_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
@@ -279,7 +280,7 @@ function setLive(on: boolean): void {
   liveOn = on;
   syncChip();
   if (!on) return;
-  if (live()) device.live();
+  if (device.connected) device.live(!fitsDevice);
   declineSync(false);
   void sendPatch();
 }
@@ -750,6 +751,7 @@ function showBudget(): void {
   const was = fitsDevice;
   fitsDevice = b.fits;
   syncChip();
+  if (was && !b.fits && device.connected && liveOn) device.live(true);   // (#200: the FM-1 says so at once)
   const el = $('budget');
   el.classList.toggle('over', !b.fits);
   const memOver = b.over.filter((i) => i.key !== 'cpu');

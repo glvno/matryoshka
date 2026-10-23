@@ -84,3 +84,10 @@ describe('presets on the FM-1 (#195)', () => {
     expect(devicePresetName('a name longer than sixteen')).toBe('a name longer th');
   });
 });
+
+describe('LIVE paused (#200)', () => {
+  it('carries a paused byte when the editor\'s patch is over the budget, none otherwise', () => {
+    expect(parse(liveFrame())!.payload).toEqual([]);
+    expect(parse(liveFrame(true))!.payload).toEqual([1]);
+  });
+});

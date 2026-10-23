@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- A patch too big for the FM-1 no longer lets PRESET step through the bank under Live (#200, the EMLYRA bug): Live
+  pauses, the editor keeps telling the FM-1 it is there, and the FM-1 says EDITOR PATCH TOO BIG (and again when PRESET
+  is turned) until the patch fits.
 - On the environment, PRESET or ALGO steps the row's presets, loading them as you turn (#198); REC arms the row.
 - Presets between the editor and the FM-1 (#195): Library > Presets on the FM-1 reads the FM-1's own presets, gets one
   into this browser or deletes it there, and sends all of yours to it. Under Live, a preset stored on the FM-1 (ENV held

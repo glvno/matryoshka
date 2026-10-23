@@ -11,7 +11,8 @@
  *   static int  m1_slot_info(uint32_t slot, char *name, uint32_t *len);                          1 = the slot holds a preset
  *   static uint32_t m1_diag(uint32_t page, uint8_t *out);       DIAG: up to 32 bytes of page n of the diagnostics, 0 = past the end
  *   static void m1_ui_rows(void);                               a live parameter changed: the page's rows need a redraw
- *   static void m1_live(void);                                  LIVE: the editor drives the FM-1 (PRESET and program change wait)
+ *   static void m1_live(uint32_t paused);                       LIVE: the editor drives the FM-1 (PRESET and program change wait);
+ *                                                               paused: its patch is over the budget, so not here (#200)
  *   static uint32_t m1_presets(uint32_t k, uint32_t *structure, char *name, uint32_t *n);   the FM-1's user presets (#195): how
  *                                                               many; with k below that, preset k's structure, name (17 bytes), value count
  *   static int  m1_preset_get(uint32_t structure, const char *name, int32_t *vals, uint32_t *n);   0 = found
@@ -838,8 +839,8 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         m1_ack(C_PRESET_DEL, 0, m1_preset_del(m1_pkey_get(d, name), name) ? S_MISSING : S_OK, 0);
         break;
     }
-    case C_LIVE:                                             /* no payload, every 2 s while the editor's Live is on: no reply */
-        m1_live();
+    case C_LIVE:                                             /* every 2 s while the editor's Live is on: no reply; [paused u8] (#200) */
+        m1_live(len >= 1u ? d[0] : 0u);
         break;
     case C_MUTE:                                             /* module u8, on u8: not saved */
         if (len >= 2u) {
