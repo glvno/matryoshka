@@ -3,8 +3,9 @@
 //
 // Every top-level thing on the canvas, a module or an assembly, is a device (docs/ledger/vocabulary.md "Device"), unless it is editor-only
 // (a Scope) or a Part; one with no rows is left out too. Devices come in the environment's grouped order (#196): Main
-// first; then each Steps track (its page: LEN RATE SWING GATE) followed by the devices it drives (a cable from it into
-// them); then the others; the Output last. Tracks and the rest go in the canvas's reading order (columns from the left,
+// first; then each Steps track (its page: LEN RATE SWING GATE) followed by the devices it drives (a cable from it, or from
+// an Arpeggiator it plays through, into them); then the others (an Arpeggiator among them, never where a patch opens); the
+// Output last. Tracks and the rest go in the canvas's reading order (columns from the left,
 // as Tidy reads them, each from the top). A device's rows are the rows
 // of its collapsed card: an assembly's promoted parameters, a plain module's every parameter. A heading starts a section;
 // a section holds groups of at most PAGE_ROWS rows (`groupStarts`), and each group is one page ("Filter 2/2" = the
@@ -45,13 +46,14 @@ export interface Device {
   asm?: number;
   module?: number;
   pages: Page[];
-  /** Main, a Steps track or the Output (else an instrument, an effect, ...) */
-  kind?: 'main' | 'steps' | 'output';
+  /** Main, a Steps track, an Arpeggiator or the Output (else an instrument, an effect, ...) */
+  kind?: 'main' | 'steps' | 'arp' | 'output';
   /** the Steps track (module id) that drives it: it follows the track in the environment (#196) */
   track?: number;
 }
 
-/** where focus goes on a fresh patch: the first device that is not Main, a Steps track or the Output, else the first */
+/** where focus goes on a fresh patch: the first device that is not Main, a Steps track, an Arpeggiator or the Output, else
+ * the first */
 export const homeDevice = (devices: Device[]): number => Math.max(0, devices.findIndex((d) => !d.kind));
 
 /** a page's title as the editor and the FM-1 show it: the name, and "2/3" when its group spans pages */
@@ -232,7 +234,7 @@ export const assemblyPages = (p: Patch, a: AssemblyInst, defs: Record<string, Mo
 export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
   const items: { x: number; y: number; dev: Device }[] = [];
-  const KINDS: Record<string, Device['kind']> = { fm1: 'main', steps: 'steps', output: 'output' };
+  const KINDS: Record<string, Device['kind']> = { fm1: 'main', steps: 'steps', arp: 'arp', output: 'output' };
   for (const m of p.modules) {
     if (inAsm.has(m.id) || NOT_DEVICES.has(m.type) || !defs[m.type]) continue;
     const pages = modulePages(p, m, defs);
@@ -260,7 +262,9 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   for (const t of reading.filter((d) => d.kind === 'steps')) {
     out.push(t);
     placed.add(t);
-    const driven = reading.filter((d) => !placed.has(d) && !d.kind && p.cables.some((c) => c.from.module === t.module && deviceOf.get(c.to.module) === d));
+    // (a cable from it, or from an Arpeggiator it plays through)
+    const from = new Set([t.module, ...p.cables.filter((c) => c.from.module === t.module && p.modules.find((m) => m.id === c.to.module)?.type === 'arp').map((c) => c.to.module)]);
+    const driven = reading.filter((d) => !placed.has(d) && !d.kind && p.cables.some((c) => from.has(c.from.module) && deviceOf.get(c.to.module) === d));
     for (const d of driven) {
       d.track = t.module;
       out.push(d);

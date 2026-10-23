@@ -1584,6 +1584,79 @@ events['drummap'] = [[128 * 4, 'run', 0], [128 * 30, 'on', 60], [128 * 60, 'on',
   [128 * 120, 'off', 62], [128 * 140, 'off', 60], [128 * 300, 'stop', 0]];
 ends['drummap'] = 128 * 360;
 
+// an Arpeggiator on ARP, saved bypassed (the factory patches' arpeggiator): bypassed it hands Main's keys straight to the
+// Voicing (a chord sounds as played); ARP (index 6) switches it on (the straight notes let go, it arpeggiates the keys
+// still held) and off again (its note lets go, a key pressed after plays straight)
+tests['arp-bypass'] = make('arp-bypass', (add, wire) => {
+  const kb = add('fm1', 0, 0, { tempo: 140 });
+  const a = add('arp', 200, 0, { mode: 0, rate: 4, octaves: 2, gate: 0.5 });
+  const al = add('alloc', 400, 0, { voices: 3 });
+  const o = add('osc', 600, 0, { wave: 2, level: 0.5 });
+  const e = add('adsr', 600, 200, { a: 0.002, d: 0.08, s: 0.5, r: 0.04 });
+  const v = add('vca', 800, 0);
+  const out = add('output', 1000, 0, { level: 0.6 });
+  wire(kb, 'keys', a, 'keys');
+  wire(a, 'keys', al, 'keys');
+  wire(al, 'pitch', o, 'pitch');
+  wire(al, 'gate', e, 'gate');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+});
+{
+  const t = tests['arp-bypass'];
+  const ids = t.modules.filter((m) => ['alloc', 'osc', 'adsr', 'vca'].includes(m.type)).map((m) => m.id);
+  makeAssembly(t, ids, 'voice').poly = {};
+  const arp = t.modules.find((m) => m.type === 'arp')!;
+  arp.bypass = true;
+  t.modules[0].panel = { toggle: ['arp'], kinds: { arp: 'bypass' }, targets: { arp: { module: arp.id } } };
+}
+events['arp-bypass'] = [[0, 'on', 60], [128 * 2, 'on', 64], [128 * 40, 'boff', 6], [128 * 140, 'bon', 6], [128 * 150, 'on', 67], [128 * 170, 'off', 60],
+  [128 * 175, 'off', 64], [128 * 190, 'off', 67]];
+ends['arp-bypass'] = 128 * 230;
+
+// a Steps track through an Arpeggiator (the factory patches' PATTERN): Main's keys into the track (they pass through it
+// unarmed), its keys into the arpeggiator, the arpeggiator's into a Voicing and into a Drum map. Bypassed: the track's notes
+// and the keys play straight; ARP on: both arpeggiated (the voice and the map's rows)
+tests['steps-arp'] = make('steps-arp', (add, wire) => {
+  const kb = add('fm1', 0, 0, { tempo: 150 });
+  const st = add('steps', 200, 0, { len: 8, rate: 3, gate: 0.9 });
+  const a = add('arp', 400, 0, { mode: 2, rate: 5, octaves: 1, gate: 0.6 });
+  const al = add('alloc', 600, 0, { voices: 2 });
+  const o = add('osc', 800, 0, { wave: 1, level: 0.5 });
+  const e = add('adsr', 800, 200, { a: 0.002, d: 0.06, s: 0.5, r: 0.03 });
+  const v = add('vca', 1000, 0);
+  const dm = add('drummap', 600, 400, { n1: 60, n2: 64, n3: 67 });
+  const mr = add('mixer', 1000, 400, { l1: 0.3, l2: 0.3, l3: 0.3, l4: 0.3 });
+  const out = add('output', 1200, 0, { level: 0.6 });
+  wire(kb, 'keys', st, 'keys');
+  wire(st, 'keys', a, 'keys');
+  wire(a, 'keys', al, 'keys');
+  wire(a, 'keys', dm, 'keys');
+  wire(al, 'pitch', o, 'pitch');
+  wire(al, 'gate', e, 'gate');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+  wire(dm, 'g1', mr, 'in1');
+  wire(dm, 'g2', mr, 'in2');
+  wire(dm, 'g3', mr, 'in3');
+  wire(dm, 'v1', mr, 'in4');
+  wire(mr, 'out', out, 'r');
+});
+{
+  const t = tests['steps-arp'];
+  const ids = t.modules.filter((m) => ['alloc', 'osc', 'adsr', 'vca'].includes(m.type)).map((m) => m.id);
+  makeAssembly(t, ids, 'voice').poly = {};
+  const arp = t.modules.find((m) => m.type === 'arp')!;
+  arp.bypass = true;
+  t.modules[0].panel = { toggle: ['arp'], kinds: { arp: 'bypass' }, targets: { arp: { module: arp.id } } };
+  t.modules.find((m) => m.type === 'steps')!.notes = [n(0, 4, 60), n(0, 4, 64, 90), n(4, 2, 67, 120), n(6, 1, 60, 70)];
+}
+events['steps-arp'] = [[128 * 3, 'run', 0], [128 * 60, 'on', 72], [128 * 90, 'off', 72], [128 * 120, 'boff', 6], [128 * 200, 'on', 76], [128 * 240, 'off', 76],
+  [128 * 300, 'bon', 6], [128 * 340, 'on', 67], [128 * 360, 'off', 67], [128 * 400, 'stop', 0]];
+ends['steps-arp'] = 128 * 440;
+
 // arming and recording from the keys (#134, #135, #139): a melody track (transposed a fourth up) into two voices on the
 // left; the shared keyboard and a second track that a cable from Main's keys feeds (into one voice) on the right. Keys
 // unarmed: the keyboard and the fed track; armed: through the melody track only (recording live: a short note, a chord, a

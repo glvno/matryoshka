@@ -23,7 +23,7 @@ import { deviceBudget, DEVICE } from './patchbin';
 import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
 import { picker } from './picker';
 import { selector } from './selector';
-import { ALLOC, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackTargets } from './poly';
+import { ALLOC, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackDrumMap, trackTargets } from './poly';
 import { dragControl } from './deck';
 import { isPin, PinsInUse, removeRoute } from './parameter-routing';
 import {
@@ -1244,8 +1244,7 @@ export class Editor {
       label: () => trackLabel(this.patch, id),
       plays: () => this.trackPlays(id),
       drums: () => {
-        const c = this.patch.cables.find((x) => x.from.module === id && x.from.port === 'keys' && this.patch.modules.find((q) => q.id === x.to.module)?.type === 'drummap');
-        const map = c && this.patch.modules.find((q) => q.id === c.to.module);
+        const map = trackDrumMap(this.patch, id);
         return map ? Array.from({ length: DRUM_ROWS }, (_, r) => ({ name: drumRowName(map.names, r), note: Math.round(map.params[`n${r + 1}`] ?? 0) })) : null;
       },
       notes: (n) => {

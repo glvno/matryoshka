@@ -29394,7 +29394,8 @@
     13288,
     15589,
     16229
-   ]
+   ],
+   "thru": 2048
   },
   "macro": {
    "run": 419,
@@ -29549,35 +29550,35 @@
   },
   {
    "name": "Init",
-   "cycles": 60768
+   "cycles": 79796
   },
   {
    "name": "Simple FM",
-   "cycles": 101075
+   "cycles": 120553
   },
   {
    "name": "Plucked String",
-   "cycles": 213408
+   "cycles": 239374
   },
   {
    "name": "Monolith D",
-   "cycles": 145065
+   "cycles": 163099
   },
   {
    "name": "Silver Box",
-   "cycles": 94805
+   "cycles": 113926
   },
   {
    "name": "Hera 6",
-   "cycles": 494138
+   "cycles": 524192
   },
   {
    "name": "Sallen 20",
-   "cycles": 186102
+   "cycles": 205459
   },
   {
    "name": "Expander S",
-   "cycles": 374973
+   "cycles": 401229
   },
   {
    "name": "Algo Four",
@@ -29585,43 +29586,43 @@
   },
   {
    "name": "Canvas",
-   "cycles": 154065
+   "cycles": 172400
   },
   {
    "name": "Wanderer",
-   "cycles": 200830
+   "cycles": 222085
   },
   {
    "name": "Briefcase 3",
-   "cycles": 268046
+   "cycles": 286316
   },
   {
    "name": "Io 4",
-   "cycles": 291523
+   "cycles": 317420
   },
   {
    "name": "Vernon 100",
-   "cycles": 154721
+   "cycles": 174437
   },
   {
    "name": "8 Lire",
-   "cycles": 358072
+   "cycles": 378803
   },
   {
    "name": "Elvira 2",
-   "cycles": 311453
+   "cycles": 331988
   },
   {
    "name": "Scrounge",
-   "cycles": 432916
+   "cycles": 434981
   },
   {
    "name": "Meridian 8",
-   "cycles": 436495
+   "cycles": 438545
   },
   {
    "name": "Perun 4",
-   "cycles": 387313
+   "cycles": 389368
   },
   {
    "name": "808 Kit",

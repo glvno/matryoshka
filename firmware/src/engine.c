@@ -353,8 +353,10 @@ typedef struct {
     uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
     uint16_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
     uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
-    uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's index);
-                                      * a Steps module: 1 = a cable from Main's keys into its keys in (engine.ts fed) */
+    uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's or an
+                                      * Arpeggiator's index); a Steps module: 1 = a cable from Main's keys into its keys in
+                                      * (engine.ts fed); an Arpeggiator: 0 Main's keys, 2 + the Steps module cabled into its
+                                      * keys in (engine.ts ArpRun.feed: it plays that track's notes) */
 } node_t;
 
 /* a macro range: input `pin` (0 p1, 1 p2) of module `mod` moves parameter `par` between lo and hi (0..255 of the range,
@@ -831,8 +833,8 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 1; i <= E.ngrp; i++)                /* a group's note source must be an arpeggiator or a Steps module of the patch */
         if (E.grp[i].src && (E.grp[i].src > E.nmod || (E.node[E.grp[i].src - 1u].type != T_ARP && E.node[E.grp[i].src - 1u].type != T_STEPS)))
             return -3;
-    for (i = 0; i < E.nmod; i++)                 /* a Drum map's keys: the keys, or a Steps module of the patch */
-        if (E.node[i].ksrc >= 2u && (E.node[i].ksrc - 2u >= E.nmod || E.node[E.node[i].ksrc - 2u].type != T_STEPS))
+    for (i = 0; i < E.nmod; i++)                 /* a Drum map's keys: the keys, or a Steps module or an Arpeggiator of the patch */
+        if (E.node[i].ksrc >= 2u && (E.node[i].ksrc - 2u >= E.nmod || (E.node[E.node[i].ksrc - 2u].type != T_STEPS && E.node[E.node[i].ksrc - 2u].type != T_ARP)))
             return -3;
     if (at + 4u * ncab > len)
         return -3;
@@ -849,6 +851,8 @@ int eng_load(const uint8_t *p, uint32_t len)
         E.node[tm].conn |= (uint8_t)(1u << tp);
         if (E.node[fm].type == T_FM1 && fp == FM1_O_KEYS && E.node[tm].type == T_STEPS && tp == STEPS_I_KEYS)
             E.node[tm].ksrc = 1u;                /* Main's keys pass through the track while none is armed (#138) */
+        if (E.node[fm].type == T_STEPS && fp == STEPS_O_KEYS && E.node[tm].type == T_ARP && tp == ARP_I_KEYS)
+            E.node[tm].ksrc = (uint8_t)(2u + fm);   /* the arpeggiator plays the track's notes, not Main's keys */
     }
     if (p[6] & 1u) {                             /* the morph B set: one Q16 value per parameter of every module, kept as unit positions */
         for (i = 0; i < E.nmod; i++) {
@@ -1186,10 +1190,15 @@ static void toggles_sync(void)
     panel_buttons = (uint16_t)mask;
 }
 
+static void arp_switched(uint32_t m);
 void eng_set_bypass(uint32_t module, int on)
 {
-    if (module < E.nmod && E.node[module].type != T_FM1 && E.node[module].type != T_OUTPUT)
+    if (module < E.nmod && E.node[module].type != T_FM1 && E.node[module].type != T_OUTPUT) {
+        uint8_t was = E.node[module].bypass;
         E.node[module].bypass = (uint8_t)(on != 0);
+        if (E.node[module].type == T_ARP && was != E.node[module].bypass)
+            arp_switched(module);
+    }
     toggles_sync();
 }
 
@@ -1554,6 +1563,34 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
 
 static int arp_latched(const arp_t *a) { return E.node[a->node].par[ARP_P_LATCH] >= 32768; }
 
+/* A bypassed Arpeggiator hands the keys it hears straight on (engine.ts effSrc / passesMain): its groups and Drum maps
+ * play them as its own source's (Main's keys, or the track cabled into it). arp_hears_main: it takes Main's keys now */
+static int arp_hears_main(uint32_t m) { return !E.node[m].ksrc && (!E.armm || (E.armm >> m & 1u)); }
+static int arp_thru(uint32_t m) { return m < E.nmod && E.node[m].type == T_ARP && E.node[m].bypass; }
+/* where group g's notes come from now (grp_t src coding: 0 the keys, 1 + a node); 0xFF nothing */
+static uint32_t grp_src(uint32_t g)
+{
+    uint32_t s = E.grp[g].src, a;
+    if (!s || !arp_thru(s - 1u))
+        return s;
+    a = s - 1u;
+    if (E.node[a].ksrc >= 2u)
+        return E.node[a].ksrc - 1u;
+    return arp_hears_main(a) ? 0u : 0xFFu;
+}
+/* where a Drum map's keys come from now (ksrc coding: 1 the keys, 2 + a node); 0xFF nothing */
+static uint32_t dm_src(const node_t *nd)
+{
+    uint32_t k = nd->ksrc, a;
+    if (k < 2u || !arp_thru(k - 2u))
+        return k;
+    a = k - 2u;
+    if (E.node[a].ksrc >= 2u)
+        return E.node[a].ksrc;
+    return arp_hears_main(a) ? 1u : 0xFFu;
+}
+static void dm_keys(uint32_t src, uint32_t kv, uint32_t vel);
+
 static void arp_key_drop(arp_t *a, uint32_t note)
 {
     uint32_t i, k = 0;
@@ -1638,10 +1675,11 @@ static int arp_pick(arp_t *a, int32_t *vel)
     return note[idx];
 }
 
-/* its note into the groups it plays; a part it lands on restarts its envelopes */
+/* its note into the groups and Drum maps it plays; a part it lands on restarts its envelopes */
 static void arp_emit_on(const arp_t *a, uint32_t note, int32_t vel)
 {
     uint32_t g, v;
+    dm_keys(2u + a->node, note | 0x80u, (uint32_t)clampi((int32_t)(((int64_t)vel * 127 + 32768) >> 16), 1, 127));
     for (g = 1; g <= E.ngrp; g++)
         if (E.grp[g].src == a->node + 1u && note >= E.grp[g].lo && note <= E.grp[g].hi) {   /* the range judges the arpeggiator's notes */
             group_on(&E.grp[g], note, vel);
@@ -1656,6 +1694,7 @@ static void arp_emit_on(const arp_t *a, uint32_t note, int32_t vel)
 static void arp_emit_off(const arp_t *a, uint32_t note)
 {
     uint32_t g;
+    dm_keys(2u + a->node, note, 0u);
     for (g = 1; g <= E.ngrp; g++)
         if (E.grp[g].src == a->node + 1u)
             group_off(&E.grp[g], note);
@@ -1670,7 +1709,7 @@ static void dm_keys(uint32_t src, uint32_t kv, uint32_t vel)
     for (i = 0; i < E.nmod; i++) {
         const node_t *nd = &E.node[i];
         inst_t *it;
-        if (nd->type != T_DRUMMAP || nd->ksrc != src || (src == 1u && E.armm && !(E.armm >> i & 1u)))   /* (#191: armed ones only) */
+        if (nd->type != T_DRUMMAP || dm_src(nd) != src || (src == 1u && nd->ksrc == 1u && E.armm && !(E.armm >> i & 1u)))   /* (#191: armed ones only) */
             continue;
         it = &inst_pool[nd->inst0];
         for (r = 0; r < DRUMMAP_NOUT / 2u; r++) {
@@ -1703,9 +1742,16 @@ static void steps_keys(void)
         if (!e || node != E.kev[e - 1u][0])
             for (g = 0; g <= E.ngrp; g++)
                 freed[g] = 0;
+        for (g = 0; g < E.narp; g++)             /* the arpeggiators the track plays */
+            if (E.node[E.arp[g].node].ksrc == 2u + node) {
+                if (E.kev[e][1] & 0x80u)
+                    arp_note_on(&E.arp[g], key, (int32_t)(((uint32_t)E.kev[e][2] << 16) / 127u));
+                else
+                    arp_note_off(&E.arp[g], key);
+            }
         for (g = 1; g <= E.ngrp; g++) {
             grp_t *gr = &E.grp[g];
-            if (gr->src != node + 1u)
+            if (grp_src(g) != node + 1u)
                 continue;
             if (!(E.kev[e][1] & 0x80u)) {
                 uint32_t was = 0;
@@ -1827,11 +1873,11 @@ void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 {
     uint32_t g, v = (uint32_t)clampi((int32_t)(((int64_t)vel_q16 * 127 + 32768) >> 16), 1, 127);
     for (g = 0; g <= E.ngrp; g++)
-        if (!E.grp[g].src && hears_grp(g) && takes_key(&E.grp[g], note, ch))
+        if ((E.grp[g].src ? grp_src(g) == 0u : hears_grp(g)) && takes_key(&E.grp[g], note, ch))
             group_on(&E.grp[g], note, vel_q16);
     if (!dev_ch || dev_ch == ch) {
         for (g = 0; g < E.narp; g++)
-            if (!E.armm || ARMED(E.arp[g].node))
+            if (arp_hears_main(E.arp[g].node))
                 arp_note_on(&E.arp[g], note, vel_q16);
         dm_keys(1u, note | 0x80u, v);
         for (g = 0; g < E.nmod; g++)
@@ -1844,11 +1890,11 @@ void eng_note_off(uint32_t note, uint32_t ch)
 {
     uint32_t g;
     for (g = 0; g <= E.ngrp; g++)
-        if (!E.grp[g].src && hears_grp(g) && takes_key(&E.grp[g], note, ch))
+        if ((E.grp[g].src ? grp_src(g) == 0u : hears_grp(g)) && takes_key(&E.grp[g], note, ch))
             group_off(&E.grp[g], note);
     if (!dev_ch || dev_ch == ch) {
         for (g = 0; g < E.narp; g++)
-            if (!E.armm || ARMED(E.arp[g].node))
+            if (arp_hears_main(E.arp[g].node))
                 arp_note_off(&E.arp[g], note);
         dm_keys(1u, note, 0u);
         for (g = 0; g < E.nmod; g++)
@@ -1868,7 +1914,7 @@ static void keys_off(void)
         E.arp[g].running = 0;
     }
     for (g = 0; g <= E.ngrp; g++) {
-        if (E.grp[g].src)
+        if (E.grp[g].src && grp_src(g) != 0u)
             continue;
         E.grp[g].nheld = 0;
         for (v = 0; v < E.grp[g].parts; v++) {
@@ -1878,10 +1924,35 @@ static void keys_off(void)
         }
     }
     for (g = 0; g < E.nmod; g++)
-        if (E.node[g].type == T_DRUMMAP && E.node[g].ksrc == 1u)
+        if (E.node[g].type == T_DRUMMAP && dm_src(&E.node[g]) == 1u)
             inst_pool[E.node[g].inst0].s.dm.gate = 0;
         else if (E.node[g].type == T_STEPS && (E.node[g].ksrc || ARMED(g)))
             E.thru_kill |= (uint16_t)(1u << E.node[g].trk);
+}
+
+/* an Arpeggiator was switched (bypassed, or back; engine.ts arpSwitched): what it played lets go, its groups' parts and its
+ * Drum maps' rows (the keys held stay with it: switched on it plays them) */
+static void arp_switched(uint32_t m)
+{
+    uint32_t g, v;
+    for (g = 0; g < E.narp; g++)
+        if (E.arp[g].node == m) {
+            E.arp[g].cur = -1;
+            E.arp[g].running = 0;
+        }
+    for (g = 1; g <= E.ngrp; g++) {
+        if (E.grp[g].src != m + 1u)
+            continue;
+        E.grp[g].nheld = 0;
+        for (v = 0; v < E.grp[g].parts; v++) {
+            E.pv[E.grp[g].pv0 + v].on = 0;
+            E.pv[E.grp[g].pv0 + v].gate = 0;
+            E.pv[E.grp[g].pv0 + v].retrig = 0;
+        }
+    }
+    for (g = 0; g < E.nmod; g++)
+        if (E.node[g].type == T_DRUMMAP && E.node[g].ksrc == 2u + m)
+            inst_pool[E.node[g].inst0].s.dm.gate = 0;
 }
 
 /* Arm a set of modules (#191, engine.h). The keys held when the routing changes go quiet. Not saved; another patch disarms. */
@@ -1965,8 +2036,12 @@ void eng_buttons(uint32_t mask)
         if (E.btn_kind[b] == ENG_BTN_TOGGLE && ((was ^ panel_buttons) >> b & 1u))
             for (k = 0; k < E.btn_n[b]; k++) {
                 uint32_t m = E.btn_list[E.btn_first[b] + k];
-                if (E.node[m].type != T_FM1 && E.node[m].type != T_OUTPUT)
+                if (E.node[m].type != T_FM1 && E.node[m].type != T_OUTPUT) {
+                    uint8_t was = E.node[m].bypass;
                     E.node[m].bypass = (uint8_t)(panel_buttons >> b & 1u);
+                    if (E.node[m].type == T_ARP && was != E.node[m].bypass)
+                        arp_switched(m);
+                }
             }
     toggles_sync();
 }
@@ -2264,8 +2339,8 @@ int eng_steps_drummap(uint32_t module)
     if (!steps_inst(module))
         return -1;
     for (i = 0; i < E.nmod; i++)
-        if (E.node[i].type == T_DRUMMAP && E.node[i].ksrc == 2u + module)
-            return (int)i;
+        if (E.node[i].type == T_DRUMMAP && (E.node[i].ksrc == 2u + module || (E.node[i].ksrc >= 2u && E.node[E.node[i].ksrc - 2u].type == T_ARP && E.node[E.node[i].ksrc - 2u].ksrc == 2u + module)))
+            return (int)i;                       /* (directly, or through the Arpeggiator the track plays) */
     return -1;
 }
 int eng_drummap_note(uint32_t map, uint32_t r)
@@ -4786,7 +4861,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 thru_tail = q;
             }
             for (k = 0; k < E.narp; k++)
-                arp_block(&E.arp[k], n, bpm);
+                if (!E.node[E.arp[k].node].bypass)   /* (bypassed it plays nothing of its own: the keys it hears went straight on) */
+                    arp_block(&E.arp[k], n, bpm);
         }
         for (k = 1; k <= E.ngrp; k++) {                 /* the parts' pitch flaws: detune + drift (engine.ts render) */
             const grp_t *g = &E.grp[k];

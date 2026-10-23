@@ -6,6 +6,16 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The melodic factory patches (all but Oracle V and Algo Four, which have no CPU to spare, and the drum kits) have an
+  **arpeggiator on ARP** and an empty 16-step **PATTERN** track: Main's keys go through PATTERN into the arpeggiator,
+  then the voice. The arpeggiator starts off, so a patch sounds as before until ARP is pressed; notes entered on
+  PATTERN play on PLAY, through the arpeggiator when ARP is on. Scrounge, Meridian 8 and Perun 4 keep their pattern
+  and get the arpeggiator. On the FM-1 the arpeggiator comes after the voice in the device order and a patch still
+  opens on the voice (Init opens on its new one-voice Voicing). An FM-1 in use gets the new patches only from MENU >
+  SYSTEM > FACTORY RESET; a normal update leaves the saved slots as they are.
+- A bypassed Arpeggiator (ARP as its Toggle, or its card's power switch) now plays the keys straight through instead of
+  arpeggiating anyway; switching it lets go of what it was playing. An Arpeggiator can play a Steps track's notes (the
+  track's keys out into its keys in) and can drive Drum maps, in the editor and on the FM-1.
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go
   during a full redraw used to be missed, and any key waited for the redraw to end; now every press and release plays,
   in order, within a moment of the press (#230).

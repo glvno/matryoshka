@@ -8,12 +8,14 @@
 // and comes after it. Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { addModule, connect, emptyPatch, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, connect, disconnect, emptyPatch, STEP_VEL, validatePatch, type Cable, type ModuleInst, type Patch } from '../src/patch';
+import { setKind, setSwitches, setTarget } from '../src/buttons';
+import { CPU_WARN } from '../src/cpu';
 import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track';
 import { FACTORY } from '../src/assemblies';
-import { insertAssembly, type AssemblyInst } from '../src/assembly';
+import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
-import { setPoly } from '../src/poly';
+import { allocatorOf, setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
 
 const DIR = new URL('../presets/', import.meta.url);
@@ -444,10 +446,74 @@ after.push(() => {
   return p;
 });
 
+// ---- the players (the owner, 2026-10-23: docs/ledger/patches-and-presets.md D-336): every melodic patch that can afford
+// them gets an Arpeggiator on ARP, bypassed (the patch sounds as before until ARP is pressed: bypassed it hands the keys
+// straight on), and an empty 16-step Steps track PATTERN in front of it: Main's keys -> PATTERN (they pass through it
+// unarmed) -> the Arpeggiator -> what Main's keys played, so the track's notes and the keys both go through the
+// arpeggiator. A patch with a PATTERN already (Scrounge, Meridian 8, Perun 4) gets the arpeggiator after it. One that
+// played Main's pitch / gate gets a one-voice Voicing for the arpeggiator to play. What does not fit (a limit, or the CPU
+// estimate past its warning) gets the arpeggiator alone, else neither. The drum kits and <7PH get neither.
+const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH']);
+type Player = 'both' | 'arp' | 'none';
+function withPlayers(src: Patch, what: Player): Patch {
+  const p = structuredClone(src);
+  if (what === 'none') return p;
+  const main = p.modules.find((m) => m.type === 'fm1')!;
+  const below = Math.max(...p.modules.map((m) => m.y)) + 300;
+  const keysOut = (id: number): Cable[] => p.cables.filter((c) => c.from.module === id && c.from.port === 'keys' && mod(p, c.to.module).type !== 'steps');
+  let track = p.modules.find((m) => m.type === 'steps' && m.name === 'PATTERN');
+  let into = keysOut(track?.id ?? main.id);
+  if (!into.length) {
+    // Main's pitch / gate played the voice: a one-voice Voicing between (its pitch and gate as Main's were), inside the
+    // voice's assembly when it is one (the Poly switch: the patch keeps opening on the voice), else on its own
+    const played = p.cables.filter((c) => c.from.module === main.id && (c.from.port === 'pitch' || c.from.port === 'gate'));
+    const asm = assembliesOf(p).find((a) => !parentOf(p, a.id) && played.every((c) => allModules(p, a).includes(c.to.module)));
+    if (asm) {
+      setPoly(p, DEFS, asm, true);
+      allocatorOf(p, asm)!.params.voices = 1;
+    } else {
+      const v = addModule(p, DEFS.alloc, 380, below);
+      v.params.voices = 1;
+      for (const c of played) c.from = { module: v.id, port: c.from.port };
+      wire(p, main.id, 'keys', v.id, 'keys');
+    }
+    into = keysOut(main.id);
+  }
+  if (what === 'both' && !track) {
+    track = addModule(p, DEFS.steps, 20, below);
+    track.name = 'PATTERN';
+    track.notes = [];
+    wire(p, main.id, 'keys', track.id, 'keys');
+  }
+  const from = track ?? main;
+  // (the arpeggiator right of the voice: the FM-1 lists it after it, and a patch opens on the voice: pages.ts)
+  const arp = addModule(p, DEFS.arp, Math.max(...p.modules.filter((m) => m.type !== 'output').map((m) => m.x)) + 380, below);
+  arp.bypass = true;
+  for (const c of into) {
+    disconnect(p, c);
+    wire(p, arp.id, 'keys', c.to.module, c.to.port);
+  }
+  wire(p, from.id, 'keys', arp.id, 'keys');
+  setKind(p, 'arp', 'bypass');
+  setTarget(p, 'arp', { module: arp.id });
+  setSwitches(p, 'arp', true);
+  return p;
+}
+/** the most a patch takes: the players that fit (the budget, and the CPU estimate under its warning) */
+function players(p: Patch): Patch {
+  if (DRUMS.has(p.name)) return p;
+  for (const what of ['both', 'arp'] as const) {
+    const q = validatePatch(withPlayers(p, what), DEFS);
+    const b = deviceBudget(q);
+    if (b.fits && b.cpu.use <= CPU_WARN) return q;
+  }
+  return p;
+}
+
 // ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit
 // after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const made = presets.map((f) => validatePatch(structuredClone(f()), DEFS));
+const made = presets.map((f) => players(validatePatch(structuredClone(f()), DEFS)));
 const later = after.map((f) => validatePatch(structuredClone(f()), DEFS));
 for (const p of [...made, ...later]) {
   const b = deviceBudget(p);

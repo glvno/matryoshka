@@ -10,6 +10,19 @@
    "params": {
     "morph": 0,
     "tempo": 120
+   },
+   "panel": {
+    "toggle": [
+     "arp"
+    ],
+    "kinds": {
+     "arp": "bypass"
+    },
+    "targets": {
+     "arp": {
+      "module": 52
+     }
+    }
    }
   },
   {
@@ -1491,6 +1504,20 @@
      "vel": 100
     }
    ]
+  },
+  {
+   "id": 52,
+   "type": "arp",
+   "x": 3600,
+   "y": 3160,
+   "params": {
+    "mode": 0,
+    "rate": 4,
+    "octaves": 1,
+    "gate": 0.5,
+    "latch": 0
+   },
+   "bypass": true
   }
  ],
  "cables": [
@@ -2486,11 +2513,21 @@
   },
   {
    "from": {
-    "module": 51,
+    "module": 52,
     "port": "keys"
    },
    "to": {
     "module": 2,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 51,
+    "port": "keys"
+   },
+   "to": {
+    "module": 52,
     "port": "keys"
    }
   }

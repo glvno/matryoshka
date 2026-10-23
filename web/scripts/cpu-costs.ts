@@ -341,6 +341,22 @@ async function bypassCost(): Promise<number> {
   return Math.round(stages(await run(ELF.prof, p), p.modules.indexOf(m)).run);
 }
 
+/** a Steps track that Main's keys pass through (its keys in cabled from Main, keys out into a Voicing): its cost per key
+ * sounding through it (the track follows each one every sample), from none and four held */
+async function thruCost(): Promise<number> {
+  const p = newPatch(DEFS, 'cpu steps thru');
+  const main = p.modules[0], out = p.modules[1];
+  const st = addModule(p, DEFS.steps, 300, 0);
+  const alloc = addModule(p, DEFS.alloc, 600, 0);
+  alloc.params.voices = 8;
+  connect(p, DEFS, { module: main.id, port: 'keys' }, { module: st.id, port: 'keys' });
+  connect(p, DEFS, { module: st.id, port: 'keys' }, { module: alloc.id, port: 'keys' });
+  connect(p, DEFS, { module: alloc.id, port: 'gate' }, { module: out.id, port: 'l' });
+  const at = p.modules.indexOf(st);
+  const [none, four] = await Promise.all([run(ELF.prof, p, []), run(ELF.prof, p, [NOTE, NOTE + 4, NOTE + 7, NOTE + 11])].map((r) => r.then((x) => stages(x, at).run)));
+  return Math.max(0, Math.round((four - none) / 4));
+}
+
 /** the plain engine's whole block against the hooked stages: the render loop per module, the Output's mix, the rest */
 async function loopCosts(types: Record<string, TypeCost>): Promise<{ block: number; node: number; output: number }> {
   const own = (t: string): number => types[t].run + types[t].cv;
@@ -390,7 +406,9 @@ for (const type of names) {
   const show = (d: CostDim): string => ('values' in d ? `${d.param}[${d.values.length}]` : 'above' in d ? `${d.param}>${d.above}` : 'points' in d ? `${d.param}~${d.points.length}` : 'input' in d ? `in:${d.input}` : `out:${d.output}`);
   console.log(`${type.padEnd(10)} run ${String(t.run).padStart(7)}  cv ${String(t.cv).padStart(5)}${t.dims ? `  ${t.dims.map(show).join(' ')} (${t.grid!.length})` : ''}${t.extra ? `  + ${t.extra.map((e) => show(e.dim)).join(' ')}` : ''}`);
 }
-const [cal, loop, sum, cv, bypass] = await Promise.all([calibration(), loopCosts(types), sumCost(), cvCost(), bypassCost()]);
+const [cal, loop, sum, cv, bypass, thru] = await Promise.all([calibration(), loopCosts(types), sumCost(), cvCost(), bypassCost(), thruCost()]);
+types.steps.thru = thru;
+console.log(`steps thru ${thru} per key`);
 const { cyclesPerUs, fixedUs } = SURVEY;
 const table: CpuTable = {
   source: 'estimate: the fixed-point engine counted on an rv32im model (tools/cpu), calibrated on 17 factory patches measured on the FM-1 (2026-10-20)',
