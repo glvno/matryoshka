@@ -13,6 +13,7 @@ static uint8_t fb_changes[240 * 240];      /* panel_test.c: how often each pixel
 #define FB_PUT(p, c) (fb[p] = (c))
 #endif
 static uint32_t fm1_ms;
+static uint32_t lcd_px, lcd_xfers;         /* the pixels sent to the LCD and the transfers (a window each) since zeroed: the cost of a draw */
 static uint32_t fm1_ticks(void) { return 0; }
 static uint32_t eng_us_last = 316, eng_us_max = 358;
 static uint8_t eng_overload;               /* audio.c: the overload guard muted the patch */
@@ -28,6 +29,8 @@ static uint32_t pv_len;
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, j;
+    lcd_px += w * h;
+    lcd_xfers++;
     for (j = 0; j < h; j++)
         for (i = 0; i < w; i++)
             if (x + i < 240u && y + j < 240u)
@@ -37,6 +40,8 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *px)
 {
     uint32_t i, j;
+    lcd_px += w * h;
+    lcd_xfers++;
     for (j = 0; j < h; j++)
         for (i = 0; i < w; i++)
             if (x + i < 240u && y + j < 240u) {

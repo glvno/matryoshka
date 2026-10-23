@@ -11,9 +11,11 @@
  *   y  20  the pages of the device in focus, by heading (the current one in seafoam, "FILTER 1/2")
  *   y  41  K1..K4: four full-width bars, each tinted in its knob's hue: the row's name left, value and unit right, the
  *          fill to the base value, an ivory tick where modulation has it; an empty slot where the page has no row. A knob
- *          just turned, or a device just picked, shows at full size over them (the toast)
+ *          just turned shows at full size over them (the toast)
  *   y 206  the page rail: a segment per page of the device, the one in focus lit, its section's others dimmer
- *   y 214  the patch (slot, name, * when edited) and the transport, the parts, the octave */
+ *   y 214  the patch (slot, name, * when edited) and the transport, the parts, the octave
+ * While SELECT or ALGO turns, a card fills the screen instead (#221): the device's name on red (SELECT) or the page's on
+ * blue (ALGO); the page above is drawn once, PG_CARD_MS after the last click (or at once when K1..K4 turn). */
 
 /* ---- colours (RGB565): web/src/style.css's dark theme */
 #define P_NIGHT 0x10E4u
@@ -30,6 +32,8 @@
 #define P_LILAC 0xC55Bu
 #define P_SKY 0x9DFCu
 #define P_REDC 0xE249u
+#define P_CARD_DEV 0xB186u                              /* SELECT's device card: --ref-red #b33135 (ivory on it 5.8:1) */
+#define P_CARD_PAGE 0x4B52u                             /* ALGO's page card: --ref-blue #486b96 (ivory on it 5.3:1) */
 static const uint16_t KNOB_HUE[4] = {P_CORAL, P_GOLD, P_SEA, P_SAND};   /* K1..K4: the logo's colours (style.css --k1..--k4) */
 
 /* ---- the model, read from the running patch's binary (in the pool on the device: modular.c UI_POOL) */
@@ -62,8 +66,15 @@ static ppage_t pg_page[PG_PAGES] UI_POOL;
 static uint32_t pg_ndev, pg_npage, pg_built_gen = 0xFFFFFFFFu, pg_built_at;
 static uint32_t pg_cur_dev, pg_cur_page;                /* the focus: the device and its page K1..K4 turn */
 static uint8_t pg_strip_dirty = 1;                      /* the tabs and chips need a redraw (the focus moved) */
-static uint32_t pg_toast_until, pg_dev_toast_until;     /* a knob just turned / a device just picked: shown until fm1_ms */
+static uint32_t pg_toast_until;                         /* a knob just turned: its toast shown until fm1_ms */
 static uint8_t pg_toast_k;
+/* SELECT / ALGO turning (#221): their card (PG_CARD_DEV, PG_CARD_PAGE) alone on the screen until pg_card_until; the page
+ * once they stop */
+#define PG_CARD_MS 400u
+#define PG_CARD_DEV 1u
+#define PG_CARD_PAGE 2u
+static uint32_t pg_card_until;
+static uint8_t pg_card;
 /* PRESET turned (#170): the next patch's name, big, until pg_patch_until; asked before the load (pg_patch_ask, at
  * pg_patch_ask_ms), started when the new patch's pages are built */
 static uint32_t pg_patch_until, pg_patch_ask_ms;
@@ -339,9 +350,10 @@ static void pages_ensure(void)
             pg_cur_page = 0;
             pg_list_btn = -1;
             pg_list_peek = 0;
+            pg_card_until = 0;
             if (pg_patch_ask && fm1_ms - pg_patch_ask_ms < 2000u) {   /* PRESET loaded it: its name over the bars */
                 pg_patch_until = fm1_ms + 1000u;
-                pg_toast_until = pg_dev_toast_until = 0;
+                pg_toast_until = 0;
             }
             pg_patch_ask = 0;
         }
@@ -419,7 +431,8 @@ static uint32_t pages_list(uint32_t b, const uint8_t **l)
     return p[at];
 }
 
-/* put a device page on K1..K4 (indices into the section, clamped); returns whether it moved */
+/* put a device page on K1..K4 (indices into the section, clamped); returns whether it moved. The page shows at once
+ * (the editor, a Page button, HOME's trail): a card of SELECT / ALGO ends */
 static int pages_focus(uint32_t d, uint32_t g)
 {
     pages_ensure();
@@ -429,15 +442,24 @@ static int pages_focus(uint32_t d, uint32_t g)
     g = g < pg_dev[d].npg ? g : pg_dev[d].npg - 1u;
     if (d == pg_cur_dev && g == pg_cur_page)
         return 0;
-    if (d != pg_cur_dev)
-        pg_dev_toast_until = fm1_ms + 900u;
     pg_patch_until = 0;
+    pg_card_until = 0;
     pg_cur_dev = d;
     pg_cur_page = g;
     pg_strip_dirty = 1;
     pg_toast_until = 0;
     return 1;
 }
+
+/* SELECT (PG_CARD_DEV) or ALGO (PG_CARD_PAGE) just moved the focus on the device page: its card until they stop (#221) */
+static void pages_card(uint32_t kind)
+{
+    pg_card = (uint8_t)kind;
+    pg_card_until = fm1_ms + PG_CARD_MS;
+    pg_patch_until = 0;
+    pg_toast_until = 0;
+}
+static int pages_carding(void) { return page == 0 && pg_card && fm1_ms < pg_card_until; }
 
 /* SELECT: the next / previous device (wrapping), on its first page */
 static int pages_select(int32_t s)
@@ -472,6 +494,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
     pg_toast_k = (uint8_t)k;
     pg_toast_until = fm1_ms + 1000u;
     pg_patch_until = 0;
+    pg_card_until = 0;                                  /* (turning SELECT / ALGO: the page they reached, whole, at once) */
     *mod = m;
     *par = j;
     if (m == SETTING_ROW) {                             /* GLO: an FM-1 setting, one step a click, applied here */
@@ -513,6 +536,7 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
     pg_toast_k = (uint8_t)k;
     pg_toast_until = fm1_ms + 1000u;
     pg_patch_until = 0;
+    pg_card_until = 0;                                  /* (turning SELECT / ALGO: the page they reached, whole, at once) */
     *mod = m;
     *par = j;
     if (j & POLY_ROW) {
@@ -632,6 +656,10 @@ static void pages_strip(void)
 {
     char t[20];
     uint32_t first = 0, x, i, w[PG_DEVS];
+    if (pages_carding()) {                              /* (a message ended over the card: the card's colour back) */
+        lcd_fill(0, 0, 240, 20, pg_card == PG_CARD_PAGE ? P_CARD_PAGE : P_CARD_DEV);
+        return;
+    }
     lcd_fill(0, 0, 240, 20, P_STRIP);
     if (page == PAGE_GLO || page == PAGE_ENV) {         /* GLO: GLOBAL and the patch, on coral; the environment's on lilac */
         uint16_t bg = page == PAGE_ENV ? P_LILAC : P_CORAL;
@@ -966,7 +994,7 @@ static void row_out(const uint16_t *row, uint32_t x, uint32_t y, uint32_t w)
  * time, so what does not change does not blink */
 static uint8_t pg_toast_shown = 0xFFu;
 static const ppage_t *pg_toast_pg;
-static uint8_t pg_dev_toast_shown = 0xFFu;               /* the device whose name is on show, or 0xFF */
+static uint8_t pg_card_shown, pg_card_dev, pg_card_pg;  /* the card on screen (its kind, 0 none) and what it names */
 static uint32_t pg_patch_shown;                         /* the patch whose name is on show: pages_gen() + 1, 0 none */
 
 /* knob k's row at full size: its name, the value in the big type, the range bar with the live tick */
@@ -1023,21 +1051,56 @@ static void pages_toast(const ppage_t *pg, uint32_t k, int full)
     }
 }
 
-/* the device just picked with SELECT, big */
-static void pages_dev_toast(void)
+/* SELECT / ALGO turning (#221): the card alone on the whole screen, fill and type only. SELECT's: the device's name big
+ * and "2/5" small, on red; ALGO's: the device's name small, the page's big ("FILTER 1/2" as the chips name it), "3/7"
+ * of the device's pages small, on blue. Three bands of type (CARD_Y0, CARD_Y1, CARD_Y2), each painting the full width in
+ * the card's colour. full: the rest of the screen filled too (the first click, another kind of card); else only the
+ * bands (the next click: no blink) */
+#define CARD_Y0 84u
+#define CARD_Y1 104u
+#define CARD_Y2 134u
+static void pages_card_draw(int full)
 {
-    char t[20], num[8], *p;
-    lcd_fill(0, ROWS_Y, 240, ROWS_END - ROWS_Y, P_NIGHT);
-    caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
-    text_bc(&FONT_L, 0, TOAST_Y + 24u, t, P_INK, P_NIGHT, 240, TA_CENTER);
-    fmt_int(num, (int32_t)pg_cur_dev + 1);
+    char t[40], num[8], *p;
+    const pdev_t *dv = &pg_dev[pg_cur_dev];
+    const ppage_t *pg = &pg_page[dv->pg0 + pg_cur_page];
+    int pgc = pg_card == PG_CARD_PAGE;
+    uint16_t bg = pgc ? P_CARD_PAGE : P_CARD_DEV;
+    if (full) {                                         /* around the bands (they paint their own rows) */
+        lcd_fill(0, 0, 240, CARD_Y0, bg);
+        lcd_fill(0, CARD_Y0 + FONT_S.h, 240, CARD_Y1 - CARD_Y0 - FONT_S.h, bg);
+        lcd_fill(0, CARD_Y1 + FONT_L.h, 240, CARD_Y2 - CARD_Y1 - FONT_L.h, bg);
+        lcd_fill(0, CARD_Y2 + FONT_S.h, 240, 240u - CARD_Y2 - FONT_S.h, bg);
+    }
+    caps(t, dv->name, dv->nlen, 16);
+    if (pgc)
+        text_bc(&FONT_S, 0, CARD_Y0, t, P_INK, bg, 240, TA_CENTER);
+    else if (full)
+        text_bc(&FONT_S, 0, CARD_Y0, "", P_INK, bg, 240, TA_CENTER);
+    if (pgc) {                                          /* the page as the chips name it */
+        if (pages_unheaded(pg, dv))
+            caps(t, "PAGE", 4u, 4u);
+        else
+            caps(t, pg->name, pg->nlen, 16);
+        p = t + str_len(t);
+        if (pg->parts > 1u) {
+            *p++ = ' ';
+            fmt_int(num, pg->part + 1);
+            p = put(p, num);
+            *p++ = '/';
+            fmt_int(num, pg->parts);
+            p = put(p, num);
+            *p = 0;
+        }
+    }
+    fit(t, &FONT_L, 228);
+    text_bc(&FONT_L, 0, CARD_Y1, t, P_INK, bg, 240, TA_CENTER);
+    fmt_int(num, (int32_t)(pgc ? pg_cur_page : pg_cur_dev) + 1);
     p = put(t, num);
     *p++ = '/';
-    fmt_int(num, (int32_t)pg_ndev);
-    p = put(p, num);
-    p = put(p, pg_dev[pg_cur_dev].module >= 0 ? "  MODULE" : "  ASSEMBLY");
-    *p = 0;
-    text_bc(&FONT_S, 0, TOAST_Y + 54u, t, P_DIM, P_NIGHT, 240, TA_CENTER);
+    fmt_int(num, (int32_t)(pgc ? dv->npg : pg_ndev));
+    put(p, num)[0] = 0;
+    text_bc(&FONT_S, 0, CARD_Y2, t, P_INK, bg, 240, TA_CENTER);
 }
 
 /* the patch PRESET just loaded, big: its name, under it the slot and how many the bank holds. full: the band cleared
@@ -1113,6 +1176,20 @@ static void pages_draw(int full)
     const ppage_t *pg = pages_now();
     uint32_t k;
     int glo = page == PAGE_GLO;
+    if (pg && pages_carding()) {                        /* SELECT / ALGO turning: the card alone (a beat's redraw leaves it be) */
+        if (full || pg_card_shown != pg_card)
+            pages_card_draw(1);
+        else if (pg_card_dev != pg_cur_dev || pg_card_pg != pg_cur_page)
+            pages_card_draw(0);
+        pg_card_shown = pg_card;
+        pg_card_dev = (uint8_t)pg_cur_dev;
+        pg_card_pg = (uint8_t)pg_cur_page;
+        return;
+    }
+    if (pg_card_shown) {                                /* they stopped (or a knob turned): the page, whole, once */
+        pg_card_shown = 0;
+        full = 1;
+    }
     if (full)
         lcd_fill(0, 20, 240, 220, P_NIGHT);
     if (full || pg_strip_dirty) {
@@ -1130,7 +1207,7 @@ static void pages_draw(int full)
     }
     if (!glo)
         pages_info();
-    if (pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows && !(!glo && fm1_ms < pg_dev_toast_until)) {
+    if (pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows) {
         pg_patch_shown = 0;
         pages_toast(pg, pg_toast_k, full);
         return;
@@ -1142,30 +1219,22 @@ static void pages_draw(int full)
         else if (pg_patch_shown != pages_gen() + 1u)
             pages_patch_toast(0);
         pg_patch_shown = pages_gen() + 1u;
-        pg_dev_toast_shown = 0xFFu;
         return;
     }
     pg_patch_shown = 0;
-    if (pg && !glo && fm1_ms < pg_dev_toast_until) {
-        if (full || pg_dev_toast_shown != pg_cur_dev)  /* (a beat's redraw leaves it be) */
-            pages_dev_toast();
-        pg_dev_toast_shown = (uint8_t)pg_cur_dev;
-    } else {
-        pg_dev_toast_shown = 0xFFu;
-        lcd_fill(0, ROWS_Y - 3u, 240, 3, P_NIGHT);
-        for (k = 0; k < PG_ROWS; k++) {
-            pages_bar(pg, k);
-            if (k < 3u)
-                lcd_fill(0, ROWS_Y + k * (ROW_H + ROW_GAP) + ROW_H, 240, ROW_GAP, P_NIGHT);
-        }
+    lcd_fill(0, ROWS_Y - 3u, 240, 3, P_NIGHT);
+    for (k = 0; k < PG_ROWS; k++) {
+        pages_bar(pg, k);
+        if (k < 3u)
+            lcd_fill(0, ROWS_Y + k * (ROW_H + ROW_GAP) + ROW_H, 240, ROW_GAP, P_NIGHT);
     }
 }
 
-/* the toasts end: the bars come back (main loop) */
+/* the toasts or a card end: the bars come back (main loop) */
 static int pages_expired(void)
 {
     static uint8_t was;
-    uint8_t now = (uint8_t)((fm1_ms < pg_toast_until ? 1u : 0u) | (fm1_ms < pg_dev_toast_until ? 2u : 0u)
+    uint8_t now = (uint8_t)((fm1_ms < pg_toast_until ? 1u : 0u) | (pages_carding() ? 2u : 0u)
                             | (fm1_ms < pg_patch_until ? 4u : 0u));
     int out = now != was;
     was = now;
@@ -1177,7 +1246,7 @@ static void pages_ticks(void)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
-    if (!pg || fm1_ms < pg_toast_until || fm1_ms < pg_dev_toast_until || fm1_ms < pg_patch_until)
+    if (!pg || fm1_ms < pg_toast_until || pages_carding() || pg_card_shown || fm1_ms < pg_patch_until)
         return;
     static uint8_t was;                                 /* bars that had a tick last time: redrawn once more to clear it */
     uint8_t now = 0;

@@ -8,7 +8,7 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, liveSync, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
 import { LIVE_MS } from './protocol';
 import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
@@ -101,7 +101,7 @@ const device = new DeviceLink();
 let fitsDevice = true;
 /** Live sync is on (setLive: the connect dialog, the chip, FM-1 & MIDI's Sync / Stop syncing) */
 let liveOn = false;
-const live = (): boolean => device.connected && liveOn && fitsDevice;
+const live = (): boolean => liveSync.syncs(device.connected, liveOn, fitsDevice);
 /** the FM-1 plays the editor's patch as uploaded (set by an upload; an FM-1 without LIVE, #185, may load a slot of its own
  * under it, which clears it) */
 let onEditorPatch = false;
@@ -111,7 +111,11 @@ let onEditorPatch = false;
 const exactKnobs = (): boolean => live() && onEditorPatch && device.hasPages;
 // while Live is on, the FM-1 holds PRESET and program change (LIVE, #185; it lapses 5 s after the last); with the patch over
 // the budget too, paused (#200): nothing is sent, but PRESET still waits and the FM-1 says why
-window.setInterval(() => { if (device.connected && liveOn) device.live(!fitsDevice); }, LIVE_MS);
+const sayLive = (): void => {
+  const f = liveSync.frame(device.connected, liveOn, fitsDevice);
+  if (f) device.live(f.paused);
+};
+window.setInterval(sayLive, LIVE_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
@@ -281,7 +285,7 @@ function setLive(on: boolean): void {
   liveOn = on;
   syncChip();
   if (!on) return;
-  if (device.connected) device.live(!fitsDevice);
+  sayLive();
   declineSync(false);
   void sendPatch();
 }
@@ -752,7 +756,7 @@ function showBudget(): void {
   const was = fitsDevice;
   fitsDevice = b.fits;
   syncChip();
-  if (was && !b.fits && device.connected && liveOn) device.live(true);   // (#200: the FM-1 says so at once)
+  if (liveSync.pausesNow(device.connected, liveOn, was, b.fits)) device.live(true);   // (#200: the FM-1 says so at once)
   const el = $('budget');
   el.classList.toggle('over', !b.fits);
   const memOver = b.over.filter((i) => i.key !== 'cpu');
