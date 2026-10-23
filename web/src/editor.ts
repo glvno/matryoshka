@@ -61,7 +61,7 @@ import {
   DRUM_ROWS,
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
-import { defIsEngine, wireEngine, wiredText, type Wired } from './engines';
+import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, stepPreset, storePreset } from './device-presets';
 import { structureOf } from './structure';
 import { armable, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
@@ -1422,12 +1422,15 @@ export class Editor {
     return bar;
   }
 
-  /** the tag before a card's title (VCO, VCF, ENV ...), coloured by the module's family */
-  private tag(type: string | null): HTMLElement {
+  /** the tag before a card's title (VCO, VCF, ENV ...), coloured by the module's family; an assembly's: ENG when it is an
+   * engine (it takes keys into a Voicing or Drum map and makes sound, ADR 0001), else ASM */
+  private tag(type: string | null, a?: AssemblyInst): HTMLElement {
     const t = document.createElement('span');
-    const { tag, family } = type ? moduleTag(type) : { tag: 'ASM', family: 'asm' };
+    const engine = !type && !!a && instIsEngine(this.patch, a);
+    const { tag, family } = type ? moduleTag(type) : { tag: engine ? 'ENG' : 'ASM', family: 'asm' };
     t.className = `mtag ${family}`;
     t.textContent = tag;
+    if (!type) t.title = engine ? 'Engine: an assembly that takes keys and makes sound' : 'Assembly';
     return t;
   }
 
@@ -3233,7 +3236,7 @@ export class Editor {
     if (parent) tools.append(this.outButton(parent, () => this.takeOutAssembly(parent, a)));
     tools.append(...this.assemblyButtons(a));
     const title = this.titleOf(a, perVoice);
-    title.prepend(this.tag(null));
+    title.prepend(this.tag(null, a));
     const chip = parent ? null : this.presetChip(a);
     head.append(this.chevron(a), title, ...(chip ? [chip] : []), tools);
     this.headMenu(head, (at) => this.assemblyMenu(a, at));
@@ -3500,7 +3503,7 @@ export class Editor {
     tools.append(this.pickButton(a), ...this.assemblyButtons(a));
     el.classList.toggle('picking', this.picking(a));
     const title = this.titleOf(a, perVoice);
-    title.prepend(this.tag(null));
+    title.prepend(this.tag(null, a));
     head.append(this.chevron(a), title, tools);
     this.headMenu(head, (at) => this.assemblyMenu(a, at));
     el.append(head);

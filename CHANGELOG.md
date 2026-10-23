@@ -55,6 +55,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - An engine is now what its insides make it (keys → voicing → voices): an assembly whose keys reach a Voicing module or
   a Drum map, through an Arpeggiator or a Steps track if need be, and that makes audio. Assemblies with a keys input that
   nothing voices are no longer engines. The Voice assigner is now called **Voicing** (patches load as before).
+  An engine's card is tagged ENG instead of ASM.
 - A new engine and factory patch, **Scrounge**, after the neutral labs Scrooge: five voices played by their control
   voltage, a curve per hit (its height from the velocity, TILT its rise, GATE its fall) that sets each voice's level, pitch
   and tone at once (a boomy kick, a starved square for hats and drones, a noise snare, a growl / chirp, a squelchy bass),
