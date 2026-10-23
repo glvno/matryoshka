@@ -356,7 +356,7 @@ The control for a choice parameter: a notched groove with the jack on the live c
 
 ### SEQ page
 
-The FM-1 screen, opened by SEQ, where white keys are a track's steps and black keys pick tracks.
+The FM-1 screen, opened by SEQ, where white keys are a track's steps and black keys pick tracks; on a drum track it is a grid of the Drum map's rows and the black keys pick rows.
 
 ### Settings record
 
