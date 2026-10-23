@@ -607,7 +607,15 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   and unit right, ivory tick = live; an empty slot where the page has fewer rows; `pages_bar` composes each bar a scanline
   at a time and blends the type onto it, `text_onto`; modulated bars are redrawn ten times a second), the page rail
   (y 206: a segment per page, the focus coral, its heading's others dim) and the patch / transport line (y 214). A turned
-  knob's toast (full size with its range bar, one second) and the device's name when SELECT moves cover the bars. There is
+  knob's toast (full size with its range bar, one second) covers the bars. While SELECT or ALGO turns (#221) a card fills
+  the whole screen instead, fill and type only (`pages_card`, `pages_card_draw`): SELECT's device card on red
+  (`P_CARD_DEV`, `--ref-red`), the device's name big and "n/m" of the devices; ALGO's page card on blue (`P_CARD_PAGE`,
+  `--ref-blue`), the device's name small, the page's big (as its chip names it) and "n/m" of its pages; ivory type on
+  both (5.8:1 and 5.3:1). PRESET's patch name (#170) keeps the night. The first click fills the screen (57,600 px to the
+  LCD, against 108,000 for the whole page), the next ones repaint only the type's bands (9,000 to 12,500 px); nothing
+  else is drawn while it shows. The page (strip, chips, bars, rail, foot line) is drawn once, `PG_CARD_MS` (400 ms) after
+  the last click, or at once when K1..K4 turn (on the page the card named) or when the focus moves another way (the
+  editor, a Page button, HOME's trail). Preview: `CARD=1` / `CARD=2 tools/ui_preview.sh`. There is
   no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
   HOME goes back along the trail (below; on the device pages with nothing to go back to it does nothing; the legend is
   gone); MIDI CC 16..19 set the rows (absolute). A poly row writes the
