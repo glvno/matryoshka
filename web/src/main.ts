@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // first: migrate.ts notes which storage keys the page found before anything here writes one
 import { exportPresets, importPresets } from './device-presets';
+import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
 import { applyImport, backupKeys, importSummary, OLD_ORIGIN, receiveMigration } from './migrate';
 import { CPU, CPU_WARN } from './cpu';
@@ -416,7 +417,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
-  arm: (m) => editor.armTrack(m < 0 ? null : deviceView(editor.patch, true).patch.modules[m]?.id ?? null),
+  arms: (lo, hi) => editor.setArmed(armedFromMask(editor.patch, lo, hi)),
   key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
     if (down) {
       const note = 53 + k + 12 * emu.octave;
@@ -1392,8 +1393,7 @@ function emuLoad(): void {
 }
 /** the emulated FM-1 arms the editor's armed track (#139), so its REC records into it */
 function emuArm(): void {
-  const id = editor.armedTrack;
-  emu.ui?.arm(id === null ? -1 : deviceView(editor.patch, true).patch.modules.findIndex((m) => m.id === id));
+  emu.ui?.armMask(...armMask(editor.patch, editor.armedSet));
 }
 function queueEmu(): void {
   if (!emu.ui) return;

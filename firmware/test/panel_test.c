@@ -496,6 +496,18 @@ int main(void)
         check("HOME: back to the environment", page == PAGE_ENV);
         tap(4);
         check("ENV again: back where it came from", page == 0 && trail_n == n0);
+        pages_focus(1, 0);                                  /* REC on a row (#191): DRUMS armed, then disarmed */
+        loop();
+        tap(4);
+        tap(BTN_REC);
+        check("REC on the environment's track row: armed (the set), no recording", eng_armed() == eng_steps_module(0) && seq_rec == 0 && page == PAGE_ENV);
+        pages_focus(2, 0);                                  /* the Drum map: its keys come from the track, not Main */
+        tap(BTN_REC);
+        check("REC on a row with nothing on Main's keys: nothing armed there", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0));
+        pages_focus(1, 0);
+        tap(BTN_REC);
+        check("REC again on the track: disarmed", eng_arm_mask_get() == 0u && eng_armed() < 0);
+        tap(4);
         panel_held |= 1u << 4;                              /* ENV held + SAVE: no environment on the release */
         panel_edges(1u << 4, 0);
         panel_edges(1u << BTN_SAVE, 0);

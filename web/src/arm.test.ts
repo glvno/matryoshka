@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { armable, armableDevices, armView, keepArmed, mutedCables, virtualCables } from './arm';
+import { armable, armableDevices, armedFromMask, armMask, armView, keepArmed, mutedCables, virtualCables } from './arm';
+import { FACTORY } from './assemblies';
+import { insertAssembly } from './assembly';
+import { newPatch } from './patch';
+import { wireEngine } from './engines';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, type ModuleInst, type Patch } from './patch';
@@ -77,5 +81,21 @@ describe('arming as a set (#190)', () => {
     const v = armView(p, [`m${b.id}`]);
     expect(v.cables.some((c) => c.from.module === st.id && c.to.module === a.id)).toBe(true);
     expect(v.cables.some((c) => c.to.module === a.id && c.from.module !== st.id)).toBe(false); // Main's cable into A muted
+  });
+
+  it('goes to the FM-1 as a mask of the armed devices\' modules, and comes back from one (#191)', () => {
+    const p = newPatch(DEFS);
+    const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 6')!, 0, 0);
+    const b = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Oracle V')!, 0, 900);
+    wireEngine(p, a);
+    wireEngine(p, b);
+    const out = p.modules.find((m) => m.type === 'output')!;
+    connect(p, DEFS, { module: b.outputs[0].module, port: b.outputs[0].port }, { module: out.id, port: 'r' }); // (both reach the Output: the FM-1 drops what does not)
+    const [lo, hi] = armMask(p, [`a${b.id}`]);
+    expect(lo || hi).toBeTruthy();
+    expect(armedFromMask(p, lo, hi)).toEqual([`a${b.id}`]);
+    const both = armMask(p, [`a${a.id}`, `a${b.id}`]);
+    expect(armedFromMask(p, ...both).sort()).toEqual([`a${a.id}`, `a${b.id}`].sort());
+    expect(armMask(p, [])).toEqual([0, 0]);
   });
 });

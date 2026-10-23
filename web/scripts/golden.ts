@@ -21,7 +21,7 @@ mkdirSync(OUT, { recursive: true });
 
 /** [frame, kind, note (a button for bon / boff; a module index for arm, -1 none, and rec), MIDI channel of a note (absent:
  * 1; rec: 1 on, 0 off)]; take: the notes recorded so far go into their tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'rec' | 'take', number, number?];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -1633,6 +1633,32 @@ tests['steps-arm'] = make('steps-arm', (add, wire) => {
   ends['steps-arm'] = 128 * 560;
 }
 
+// arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
+// row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
+tests['arm-set'] = make('arm-set', (add, wire) => {
+  const main = add('fm1', 0, 0);
+  const a = add('alloc', 200, 0, { voices: 2 });
+  const b = add('alloc', 200, 300, { voices: 2 });
+  const dm = add('drummap', 200, 600);
+  const mr = add('mixer', 400, 300, { l1: 0.5, l2: 0.5 });
+  const out = add('output', 600, 0, { level: 0.6 });
+  wire(main, 'keys', a, 'keys');
+  wire(main, 'keys', b, 'keys');
+  wire(main, 'keys', dm, 'keys');
+  wire(a, 'gate', out, 'l');
+  wire(b, 'gate', mr, 'in1');
+  wire(dm, 'g1', mr, 'in2');
+  wire(mr, 'out', out, 'r');
+});
+{
+  const idx = (t: string, k = 0): number => tests['arm-set'].modules.map((m, i) => (m.type === t ? i : -1)).filter((i) => i >= 0)[k];
+  const bit = (...i: number[]): number => i.reduce((m, k) => m + 2 ** k, 0);
+  events['arm-set'] = [[128 * 4, 'on', 60], [128 * 20, 'off', 60], [128 * 30, 'arms', bit(idx('alloc', 1))], [128 * 40, 'on', 62], [128 * 60, 'off', 62],
+    [128 * 70, 'arms', bit(idx('alloc', 0), idx('drummap'))], [128 * 80, 'on', 36], [128 * 100, 'off', 36], [128 * 110, 'arms', bit(idx('alloc', 0), idx('alloc', 1))],
+    [128 * 120, 'on', 64], [128 * 140, 'arms', 0], [128 * 150, 'off', 64], [128 * 160, 'on', 36], [128 * 180, 'off', 36]];
+  ends['arm-set'] = 128 * 200;
+}
+
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
   if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];
@@ -1659,6 +1685,7 @@ for (const [name, patch] of Object.entries(tests)) {
   for (const [fr, kind, note, ch] of evs) {
     seg(fr);
     if (kind === 'arm') e.arm(note < 0 ? null : patch.modules[note].id);
+    else if (kind === 'arms') e.arm(patch.modules.flatMap((m, i) => (Math.floor(note / 2 ** i) % 2 ? [`m${m.id}`] : [])));   // (#191: a mask of module indices)
     else if (kind === 'rec') e.setRec(patch.modules[note].id, !!ch);
     else if (kind === 'take')
       for (const r of e.takeRecorded()) {
@@ -1683,7 +1710,7 @@ for (const [name, patch] of Object.entries(tests)) {
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), encodePatch(patch, true));
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' ? `${fr} ${k} ${n}` : k === 'rec' ? `${fr} rec ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' ? `${fr} ${k} ${n}` : k === 'rec' ? `${fr} rec ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

@@ -173,7 +173,7 @@ static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_n
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */
 static void m1_track_now(uint32_t mod) { (void)mod; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
-static void m1_arm_now(int mod) { (void)mod; }
+static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
 #endif
 #include "../src/seq_ui.c"
 static uint16_t lcd_fillbuf[240];          /* lcd.c's, the splash's row buffer */

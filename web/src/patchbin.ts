@@ -35,7 +35,8 @@
 //                u32 LE structure (an assembly's fingerprint, structure.ts; 0 a plain module), the name of the preset it was
 //                set to (a text, AssemblyInst.preset; empty none), u8 n and n (u8 module index, u8 parameter byte as a page
 //                row's): its card rows in canonical order (structure.ts rowOrder: the order of a preset's values; 0xFF 0xFF a
-//                row the FM-1 has not got); n is 0 for a plain module
+//                row the FM-1 has not got); n is 0 for a plain module; u8 m and m u8 module indices: the modules it is made
+//                of (a plain module: itself; arming it on the FM-1 lets these hear Main's keys, #191)
 //   with flag bit 6: the button kinds (buttons.ts): PANEL_BUTTONS.length u8 kinds (0 Gate, 1 Nothing, 2 Toggle, 3 Page),
 //                then in button order per Toggle button u8 n (0..), n u8 module indices: the modules it bypasses (buttons.ts
 //                toggleTargets); per Page button u8 n, n (u8 device, u8 page): its list, in the device pages section's
@@ -57,7 +58,7 @@ import { EDITOR_ONLY, flawOf, hasMorph, MAX_MODULES, MAX_PARTS, PANEL_LABEL_KEYS
 import { noteWord } from './track';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup } from './poly';
 import { devicesOf, NAME_MAX, type Device } from './pages';
-import { assemblyById } from './assembly';
+import { allModules, assemblyById } from './assembly';
 import { rowOrder, structureOf } from './structure';
 import { cpuEstimate, type CpuEstimate } from './cpu';
 
@@ -229,6 +230,8 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
       const par = i === undefined ? -1 : rowParam(dev.modules[i].type, r.param);
       out.push(par < 0 ? 0xff : i!, par < 0 ? 0xff : par);
     }
+    const members = (a ? allModules(source, a) : [d.module!]).map((id) => index.get(id)).filter((i): i is number => i !== undefined);
+    out.push(members.length, ...members);
   }
   return out;
 }

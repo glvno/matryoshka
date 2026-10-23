@@ -467,7 +467,9 @@ typedef struct {
     uint8_t trk_last[ENG_MAX_TRACKS];    /* the last note a track started (a hit from the panel plays it) */
     uint8_t nkev;                    /* keys out of the Steps tracks this block: node index, key (bit 7: on), velocity */
     uint8_t kev[ENG_KEV][3];
-    uint8_t arm;                     /* the armed Steps module + 1 (#139; engine.ts arm), 0 none */
+    uint8_t arm;                     /* the armed Steps module + 1 (#139; engine.ts arm), 0 none: the first armed track (REC's) */
+    uint64_t armm;                   /* the armed modules (#191, eng_arm_mask): while not 0 only they hear Main's keys */
+    uint32_t armg;                   /* bit g: poly group g hears Main's keys while armm is not 0 */
     uint16_t trk_rec;                /* bit t: track t records what is played through it (eng_steps_rec) */
     volatile uint16_t thru_kill;     /* bit t: track t lets go of the keys played through it (at its next block) */
     uint8_t nthru;                   /* keys in taken from the ring for this block (m_steps reads its own) */
@@ -686,6 +688,8 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.nnotes = 0;
     E.nkev = 0;
     E.arm = 0;
+    E.armm = 0;                                  /* (another patch disarms: #191) */
+    E.armg = 0;
     E.trk_rec = E.thru_kill = 0;
     E.nthru = E.nrin = 0;
     thru_tail = thru_head;                       /* (keys still waiting were for the last patch) */
@@ -1666,7 +1670,7 @@ static void dm_keys(uint32_t src, uint32_t kv, uint32_t vel)
     for (i = 0; i < E.nmod; i++) {
         const node_t *nd = &E.node[i];
         inst_t *it;
-        if (nd->type != T_DRUMMAP || nd->ksrc != src)
+        if (nd->type != T_DRUMMAP || nd->ksrc != src || (src == 1u && E.armm && !(E.armm >> i & 1u)))   /* (#191: armed ones only) */
             continue;
         it = &inst_pool[nd->inst0];
         for (r = 0; r < DRUMMAP_NOUT / 2u; r++) {
@@ -1813,26 +1817,25 @@ static void thru_put(uint32_t module, uint32_t kv, uint32_t vel)
     thru_head = (uint8_t)(h + 1u);
 }
 
-/* the keys (engine.ts noteOn / noteOff): with a track armed they go into it and through to what it plays, and nowhere
- * else; otherwise to the groups that take them, the shared keyboard, the Arpeggiators, the Drum maps and the tracks a
- * cable from Main's keys feeds */
+/* the keys (engine.ts noteOn / noteOff, arm.ts armView): with modules armed (#191) only the armed listeners take them (a
+ * track armed plays them through, cabled from Main or not); otherwise the groups that take them, the shared keyboard,
+ * the Arpeggiators, the Drum maps and the tracks a cable from Main's keys feeds */
+#define ARMED(m) (E.armm >> (m) & 1u)
+static int hears_grp(uint32_t g) { return !E.armm || (g && (E.armg >> g & 1u)); }
+static int hears_trk(uint32_t m) { return E.armm ? ARMED(m) : E.node[m].ksrc != 0u; }
 void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 {
     uint32_t g, v = (uint32_t)clampi((int32_t)(((int64_t)vel_q16 * 127 + 32768) >> 16), 1, 127);
-    if (E.arm) {
-        if (!dev_ch || dev_ch == ch)
-            thru_put(E.arm - 1u, note | 0x80u, v);
-        return;
-    }
     for (g = 0; g <= E.ngrp; g++)
-        if (!E.grp[g].src && takes_key(&E.grp[g], note, ch))
+        if (!E.grp[g].src && hears_grp(g) && takes_key(&E.grp[g], note, ch))
             group_on(&E.grp[g], note, vel_q16);
     if (!dev_ch || dev_ch == ch) {
         for (g = 0; g < E.narp; g++)
-            arp_note_on(&E.arp[g], note, vel_q16);
+            if (!E.armm || ARMED(E.arp[g].node))
+                arp_note_on(&E.arp[g], note, vel_q16);
         dm_keys(1u, note | 0x80u, v);
         for (g = 0; g < E.nmod; g++)
-            if (E.node[g].type == T_STEPS && E.node[g].ksrc)
+            if (E.node[g].type == T_STEPS && hears_trk(g))
                 thru_put(g, note | 0x80u, v);
     }
 }
@@ -1840,20 +1843,16 @@ void eng_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
 void eng_note_off(uint32_t note, uint32_t ch)
 {
     uint32_t g;
-    if (E.arm) {
-        if (!dev_ch || dev_ch == ch)
-            thru_put(E.arm - 1u, note, 0u);
-        return;
-    }
     for (g = 0; g <= E.ngrp; g++)
-        if (!E.grp[g].src && takes_key(&E.grp[g], note, ch))
+        if (!E.grp[g].src && hears_grp(g) && takes_key(&E.grp[g], note, ch))
             group_off(&E.grp[g], note);
     if (!dev_ch || dev_ch == ch) {
         for (g = 0; g < E.narp; g++)
-            arp_note_off(&E.arp[g], note);
+            if (!E.armm || ARMED(E.arp[g].node))
+                arp_note_off(&E.arp[g], note);
         dm_keys(1u, note, 0u);
         for (g = 0; g < E.nmod; g++)
-            if (E.node[g].type == T_STEPS && E.node[g].ksrc)
+            if (E.node[g].type == T_STEPS && hears_trk(g))
                 thru_put(g, note, 0u);
     }
 }
@@ -1881,24 +1880,51 @@ static void keys_off(void)
     for (g = 0; g < E.nmod; g++)
         if (E.node[g].type == T_DRUMMAP && E.node[g].ksrc == 1u)
             inst_pool[E.node[g].inst0].s.dm.gate = 0;
-        else if (E.node[g].type == T_STEPS && E.node[g].ksrc)
+        else if (E.node[g].type == T_STEPS && (E.node[g].ksrc || ARMED(g)))
             E.thru_kill |= (uint16_t)(1u << E.node[g].trk);
 }
 
-/* Arm a Steps module (#139; engine.ts arm; -1 none): while one is armed the keys go into its keys in and through it to
- * what it plays, instead of where they go otherwise. The keys held when the routing changes go quiet. Not saved; another
- * patch disarms. */
+/* Arm a set of modules (#191, engine.h). The keys held when the routing changes go quiet. Not saved; another patch disarms. */
+void eng_arm_mask(uint64_t mask)
+{
+    uint32_t m;
+    if (!E.loaded)
+        return;
+    mask &= E.nmod >= 64u ? ~(uint64_t)0 : (((uint64_t)1 << E.nmod) - 1u);
+    if (mask == E.armm)
+        return;
+    keys_off();                                  /* (the old set's listeners let go, its tracks' notes played through too) */
+    E.armm = mask;
+    E.armg = 0;
+    E.arm = 0;
+    for (m = 0; m < E.nmod; m++) {
+        if (!ARMED(m))
+            continue;
+        if (E.node[m].grp)
+            E.armg |= 1u << E.node[m].grp;
+        if (E.node[m].type == T_STEPS && !E.arm)
+            E.arm = (uint8_t)(m + 1u);
+    }
+}
+uint64_t eng_arm_mask_get(void) { return E.loaded ? E.armm : 0; }
+
+/* the one-track form (#139; engine.ts arm(number); -1 none) */
 void eng_arm(int module)
 {
-    uint32_t a = module >= 0 && (uint32_t)module < E.nmod && E.node[module].type == T_STEPS ? (uint32_t)module + 1u : 0u;
-    if (!E.loaded || a == E.arm)
-        return;
-    if (E.arm)
-        E.thru_kill |= (uint16_t)(1u << E.node[E.arm - 1u].trk);
-    keys_off();
-    E.arm = (uint8_t)a;
+    eng_arm_mask(module >= 0 && (uint32_t)module < E.nmod && E.node[module].type == T_STEPS ? (uint64_t)1 << module : 0u);
 }
-int eng_armed(void) { return E.loaded && E.arm ? (int)E.arm - 1 : -1; }
+
+int eng_listens(uint32_t m)
+{
+    if (!E.loaded || m >= E.nmod)
+        return 0;
+    switch (E.node[m].type) {
+    case T_STEPS: case T_ARP: return 1;
+    case T_DRUMMAP: return E.node[m].ksrc == 1u;
+    default: return E.node[m].grp && !E.grp[E.node[m].grp].src;
+    }
+}
+int eng_armed(void) { return E.loaded && E.arm ? (int)E.arm - 1 : -1; }   /* (the first armed track: REC records into it) */
 
 /* live recording on a track (#135, #139; engine.ts setRec): while it runs, the notes played through it land on the
  * nearest step and last the whole steps they were held (at least one); eng_steps_take hands them out. Off: the notes still

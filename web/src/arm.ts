@@ -4,9 +4,10 @@
 // other key sources (Steps tracks, Arpeggiators) keep playing what they drive. The engine plays the arm as a patch
 // transform (armView): Main's keys cables into unarmed devices go, Main's keys into each armed device's keys input come;
 // the editor draws the same as virtual cables. Not saved, no undo.
-import { assembliesOf, assemblyById, parentOf, targetsOf, type AssemblyInst } from './assembly';
+import { allModules, assembliesOf, assemblyById, parentOf, targetsOf, type AssemblyInst } from './assembly';
 import { DEFS } from './modules';
 import type { Cable, ModuleDef, Patch } from './patch';
+import { deviceView } from './poly';
 
 /** a device's key, as pages.ts names devices: `a<id>` an assembly, `m<id>` a module */
 export type DeviceKey = string;
@@ -82,4 +83,33 @@ export function armView(p: Patch, armed: Iterable<DeviceKey>, defs: Record<strin
   if (!list.length) return p;
   const muted = new Set(mutedCables(p, list, defs));
   return { ...p, cables: [...p.cables.filter((c) => !muted.has(c)), ...virtualCables(p, list, defs)] };
+}
+
+/** the armed devices as the FM-1 takes them (#191, engine.c eng_arm_mask): a mask of their modules' indices in the device
+ * form, as two 32-bit halves */
+export function armMask(p: Patch, armed: Iterable<DeviceKey>, defs: Record<string, ModuleDef> = DEFS): [number, number] {
+  const index = new Map(deviceView(p, true).patch.modules.map((m, i) => [m.id, i]));
+  let lo = 0, hi = 0;
+  for (const k of keepArmed(p, armed, defs)) {
+    const id = Number(k.slice(1));
+    const a = k[0] === 'a' ? assemblyById(p, id) : undefined;
+    for (const m of a ? allModules(p, a) : [id]) {
+      const i = index.get(m);
+      if (i === undefined) continue;
+      if (i < 32) lo |= 1 << i;
+      else if (i < 64) hi |= 1 << (i - 32);
+    }
+  }
+  return [lo >>> 0, hi >>> 0];
+}
+
+/** the reverse: the devices whose modules a mask from the FM-1 names */
+export function armedFromMask(p: Patch, lo: number, hi: number, defs: Record<string, ModuleDef> = DEFS): DeviceKey[] {
+  const mods = deviceView(p, true).patch.modules;
+  const keys = new Set<DeviceKey>();
+  mods.forEach((m, i) => {
+    const on = i < 32 ? (lo >>> i) & 1 : i < 64 ? (hi >>> (i - 32)) & 1 : 0;
+    if (on && p.modules.some((x) => x.id === m.id)) keys.add(deviceOfModule(p, m.id));
+  });
+  return keepArmed(p, keys, defs);
 }

@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Arming on the FM-1 is a set too (#191): REC on an environment row arms or disarms that device, REC held + a black key
+  adds or removes a track, several at once; only armed devices hear the keys, ARMED shows on their rows. The FM-1 tab
+  and the editor arm the same devices. On the FM-1 a device can be armed when something in it already takes Main's keys
+  by cable (or it is a Steps track): an engine with no cable from Main is not on the FM-1's keys at all.
 - Presets on the FM-1 (#194): SEL on an assembly's page lists its presets (the factory engines' come built in);
   SELECT, ALGO or PRESET load them as you turn. ENV held + SAVE stores the device's values as a preset: over your
   preset it was set to, else under a new name. The FM-1 keeps about 60 of your presets in flash sectors nothing else

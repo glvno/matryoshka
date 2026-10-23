@@ -46,7 +46,8 @@ typedef struct {
     uint8_t bin, track;                                 /* its index in the binary's device list; the device that drives it (0xFF none) */
     uint32_t structure;                                 /* format 34's extras: an assembly's structure (0 none) */
     const uint8_t *rows;                                /* its card rows in canonical order (module, parameter byte) pairs */
-    uint8_t nrows;
+    uint8_t nrows, nmem;
+    const uint8_t *mem;                                 /* the modules it is made of (#191: arming it arms them) */
 } pdev_t;
 typedef struct {
     const char *name;
@@ -76,6 +77,7 @@ static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);   /* proto.c: a
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v); /* proto.c: the running binary follows */
 static void poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
 static void m1_preset_stored(uint32_t structure, const char *name);   /* proto.c: a preset stored here (#195) */
+static void m1_arms_now(uint32_t lo, uint32_t hi);              /* proto.c: the armed modules changed here (#191) */
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
 static uint32_t pages_gen(void);                        /* changes when another patch becomes current */
 
@@ -179,6 +181,8 @@ static void pages_extras(const uint8_t *p, uint32_t len)
         pg_dev[i].structure = 0;
         pg_dev[i].rows = 0;
         pg_dev[i].nrows = 0;
+        pg_dev[i].mem = 0;
+        pg_dev[i].nmem = 0;
         if (pg_names_fresh)
             pg_pname[i][0] = 0;
     }
@@ -208,6 +212,11 @@ static void pages_extras(const uint8_t *p, uint32_t len)
             pg_dev[i].rows = p + at + 1u;
         }
         at += 1u + 2u * p[at];
+        if (i < pg_ndev) {
+            pg_dev[i].nmem = p[at];
+            pg_dev[i].mem = p + at + 1u;
+        }
+        at += 1u + p[at];
     }
     pg_names_fresh = 0;
 }
@@ -1219,12 +1228,49 @@ static int env_track_no(uint32_t d)
 }
 
 /* the right-hand text of device d's row: Main's tempo, a track's length, ARMED */
+/* device d's key listeners (#191: what arming it arms), as a module mask */
+static uint64_t env_listeners(uint32_t d)
+{
+    uint64_t mask = 0;
+    uint32_t k;
+    if (pg_dev[d].mem) {
+        for (k = 0; k < pg_dev[d].nmem; k++)
+            if (pg_dev[d].mem[k] < 64u && eng_listens(pg_dev[d].mem[k]))
+                mask |= (uint64_t)1 << pg_dev[d].mem[k];
+    } else if (pg_dev[d].module >= 0 && eng_listens((uint32_t)pg_dev[d].module)) {
+        mask = (uint64_t)1 << pg_dev[d].module;
+    }
+    return mask;
+}
+
+static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
+
+/* REC on the environment (#191, #198): the row's device armed or disarmed, the others as they are */
+static void env_arm_toggle(void)
+{
+    uint64_t l, mask;
+    char m[32], t[20];
+    pages_ensure();
+    if (pg_cur_dev >= pg_ndev)
+        return;
+    if (!(l = env_listeners(pg_cur_dev))) {
+        ui_msg("NOTHING HERE TAKES KEYS", 1200);
+        return;
+    }
+    mask = env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : eng_arm_mask_get() | l;
+    eng_arm_mask(mask);
+    m1_arms_now((uint32_t)mask, (uint32_t)(mask >> 32));
+    caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
+    put(put(m, t), env_armed(pg_cur_dev) ? " ARMED" : " DISARMED")[0] = 0;
+    ui_msg(m, 1200);
+}
+
 static void env_status(uint32_t d, char *out)
 {
     int m = pg_dev[d].module, t = m >= 0 ? eng_type((uint32_t)m) : -1;
     char num[12];
     out[0] = 0;
-    if (t == T_STEPS && eng_armed() == m) {
+    if (env_armed(d)) {
         put(out, "ARMED")[0] = 0;
     } else if (t == T_FM1) {
         fmt_int(num, (eng_get_param((uint32_t)m, FM1_P_TEMPO) + 32768) >> 16);
@@ -1270,7 +1316,7 @@ static void env_row(uint32_t d, uint32_t y)
         text_bc(&FONT_M, x, y + 4u, pre, P_CORAL, bg, text_w(&FONT_M, pre, -1), TA_LEFT);
     }
     if (st[0])
-        text_bc(&FONT_S, 236u - right + 4u, y + 7u, st, eng_armed() == pg_dev[d].module ? P_SEA : P_DIM, bg, right - 8u, TA_RIGHT);
+        text_bc(&FONT_S, 236u - right + 4u, y + 7u, st, env_armed(d) ? P_SEA : P_DIM, bg, right - 8u, TA_RIGHT);
 }
 
 static void env_draw(int full)

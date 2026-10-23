@@ -124,7 +124,7 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
  * device index of the Steps track that drives it, ENG_NO_TRACK none), u32 LE structure (an assembly's fingerprint,
  * structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none),
  * u8 n and n (u8 module, u8 parameter byte as a page row's): its card rows in the canonical order of a preset's values
- * (0xFF 0xFF: a row the FM-1 has not got) */
+ * (0xFF 0xFF: a row the FM-1 has not got), u8 m and m module indices: the modules it is made of (#191) */
 #define ENG_FLAG_EXTRAS 1u                      /* in p[7] */
 #define ENG_NO_TRACK 0xFFu
 static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t at)
@@ -141,6 +141,9 @@ static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t a
         if (at >= len)
             return 0;
         at += 1u + 2u * p[at];
+        if (at >= len)
+            return 0;
+        at += 1u + p[at];
     }
     return at <= len ? at : 0;
 }
@@ -256,6 +259,14 @@ int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n);
  * recorded, one at a time (0: none); step entry's chord; a recorded note laid over the track */
 void eng_arm(int module);
 int eng_armed(void);
+/* arm a set of modules (#191; engine.ts arm / arm.ts armView): while the mask is not 0 Main's keys go only to the key
+ * listeners among them (a group's Part or cards, a Drum map, an Arpeggiator, a Steps track, cabled from Main or not for a
+ * track) and to nothing else (not the shared keyboard); 0: the cables decide. eng_arm(module) is the one-track form. */
+void eng_arm_mask(uint64_t mask);
+uint64_t eng_arm_mask_get(void);
+/* whether module m hears Main's keys when armed: a Steps track, a Part or card of a group that takes the keys, a Drum map on
+ * the keys, an Arpeggiator */
+int eng_listens(uint32_t m);
 void eng_steps_rec(uint32_t module, int on);
 int eng_steps_take(uint32_t *module, uint32_t *word);
 void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t n, uint32_t vel);

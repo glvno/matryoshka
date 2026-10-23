@@ -229,7 +229,7 @@ static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t v
 /* a track's notes changed in the engine (#139: step entry's chord, a live take): into the running binary */
 static void m1_patch_notes(uint32_t mod) { m1_patch_track(mod); }
 /* a track armed or disarmed on the panel (#139): the editor is not told (the FM-1 tab's emulator is) */
-static void m1_arm_now(int mod) { (void)mod; }
+static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }   /* (the device tells no one of its arming: #139, #191) */
 
 /* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
 static void m1_track_now(uint32_t mod)
@@ -427,6 +427,7 @@ static int m1_preset_name(uint32_t dev, const char *name)
     for (k = 0; k < dev; k++) {
         at += 6u + m1_cur[at + 5u];
         at += 1u + 2u * m1_cur[at];
+        at += 1u + m1_cur[at];
     }
     while (name[n] && n < 12u)                      /* (the editor's NAME_MAX) */
         n++;

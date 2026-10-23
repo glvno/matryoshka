@@ -575,10 +575,10 @@ static void seq_arm_key(uint32_t n)
     mod = eng_steps_module((uint32_t)b);
     if (seq_rec == 2u)                           /* (a take on the track armed before ends) */
         seq_rec_off();
-    eng_arm(eng_armed() == mod ? -1 : mod);
-    m1_arm_now(eng_armed());
+    eng_arm_mask(eng_arm_mask_get() ^ (uint64_t)1 << mod);   /* (#191: one of the armed set, the others stay) */
+    m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
     seq_name((uint32_t)b, name);
-    put(put(m, name), eng_armed() == mod ? " ARMED" : " DISARMED")[0] = 0;
+    put(put(m, name), (eng_arm_mask_get() >> mod & 1u) ? " ARMED" : " DISARMED")[0] = 0;
     ui_msg(m, 1200);
     seq_track_redraw();
 }

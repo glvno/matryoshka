@@ -72,6 +72,10 @@ int main(int argc, char **argv)
                 fscanf(ev, "%u", &note);
             else if (!strcmp(kind, "arm"))
                 fscanf(ev, "%d", &arm);
+            else if (!strcmp(kind, "arms")) {
+                unsigned long long m;
+                fscanf(ev, "%llu", &m);
+            }
             else if (!strcmp(kind, "rec"))
                 fscanf(ev, "%u %u", &note, &vel);
         }
@@ -106,6 +110,10 @@ int main(int argc, char **argv)
         } else if (!strcmp(kind, "arm")) {      /* (#139) arming, live recording, the recorded notes into their tracks */
             fscanf(ev, "%d", &arm);
             eng_arm(arm);
+        } else if (!strcmp(kind, "arms")) {     /* (#191) a set: a mask of module indices */
+            unsigned long long m;
+            fscanf(ev, "%llu", &m);
+            eng_arm_mask((uint64_t)m);
         } else if (!strcmp(kind, "rec")) {
             fscanf(ev, "%u %u", &note, &vel);
             eng_steps_rec(note, (int)vel);

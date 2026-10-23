@@ -535,6 +535,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (rel & (1u << BTN_SEQ))
         seq_held_used = 0;
+    if ((rel & (1u << BTN_REC)) && !rec_held_used && page == PAGE_ENV) {   /* REC on the environment: the row's arm (#191, #198) */
+        env_arm_toggle();
+        rel &= ~(1u << BTN_REC);
+        ui_dirty = 2;
+    }
     if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, step entry) */
         if (seq_rec_page() && page != PAGE_SEQ)
             page_set(PAGE_SEQ);
