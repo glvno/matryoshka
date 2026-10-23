@@ -38,6 +38,15 @@ import {
   keepParams,
   moveParam,
   moveRef,
+  moveBlock,
+  moveGroup,
+  moveSection,
+  sectionRows,
+  groupRows,
+  blockDropOk,
+  pickRows,
+  pickState,
+  keyRange,
   paramColumns,
   setColumnBreak,
   setHeading,
@@ -846,5 +855,120 @@ describe('assembly card columns and headings', () => {
     const kit = FACTORY.find((x) => x.name === 'drum kit')!;
     expect(plan(kit.params)).toMatch(/^0:kick tune .* 1:.*$/);
     expect(d.params.filter((r) => r.head).map((r) => r.head)).toEqual(['voice', 'osc A', 'osc B', 'mixer', 'filter', 'amp', 'mod']);
+  });
+});
+
+describe('several rows of an assembly card at once (#186)', () => {
+  type Flags = { col?: true; head?: string; group?: true; span?: number };
+  const rows = (...xs: (string | [string, Flags])[]): ParamRef[] =>
+    xs.map((x, i) => (typeof x === 'string' ? { module: i + 1, param: x, label: x } : { module: i + 1, param: x[0], label: x[0], ...x[1] }));
+  const show = (list: ParamRef[]): string[] =>
+    list.map((r) => `${r.col ? '| ' : ''}${r.group ? '/ ' : ''}${r.head ? `[${r.head}] ` : ''}${r.label}${r.span ? ` <${r.span}>` : ''}`);
+  const idx = (list: ParamRef[], ...labels: string[]): number[] => labels.map((l) => list.findIndex((r) => r.label === l));
+
+  it('a block keeps its order, its headings, group flags and spans, and the column breaks inside it', () => {
+    // column 0: [A] a b c | column 1: d [D] e f
+    const list = rows(['a', { head: 'A' }], 'b', 'c', ['d', { col: true }], ['e', { head: 'D' }], ['f', { span: 2 }]);
+    // b and e: e's heading goes with it
+    expect(show(moveBlock(list, idx(list, 'b', 'e'), idx(list, 'f')[0], true))).toEqual(['[A] a', 'c', '| d', 'f <2>', 'b', '[D] e']);
+    // c and d: the break between them is inside the block and goes with it
+    expect(show(moveBlock(list, idx(list, 'c', 'd'), 0, true))).toEqual(['[A] a', 'c', '| d', 'b', '[D] e', 'f <2>']);
+    // d and e (d tops column 1): that break stays at its place and goes to f, the next row left there
+    expect(show(moveBlock(list, idx(list, 'd', 'e'), 0, true))).toEqual(['[A] a', 'd', '[D] e', 'b', 'c', '| f <2>']);
+    // a block spanning the break keeps it inside
+    expect(show(moveBlock(list, idx(list, 'c', 'd', 'e'), idx(list, 'f')[0], true))).toEqual(['[A] a', 'b', 'f <2>', 'c', '| d', '[D] e']);
+    // nothing to do: the target is in the block, or nothing is picked
+    expect(moveBlock(list, [1, 2], 2, true)).toBe(list);
+    expect(moveBlock(list, [], 2, true)).toBe(list);
+  });
+
+  it('dropped before a row the block takes its column break, and its heading when the block has none of its own', () => {
+    const list = rows(['a', { head: 'A' }], 'b', ['c', { col: true, head: 'C' }], 'd', 'e');
+    // d e before c: the top of column 1, under the heading C
+    expect(show(moveBlock(list, idx(list, 'd', 'e'), 2, false))).toEqual(['[A] a', 'b', '| [C] d', 'e', 'c']);
+    // a block whose first row has a heading of its own goes before the row's heading; the column top is still taken
+    const two = rows('a', ['b', { head: 'B' }], 'c', ['d', { col: true, head: 'D' }], 'e');
+    expect(show(moveBlock(two, idx(two, 'b', 'c'), 3, false))).toEqual(['a', '| [B] b', 'c', '[D] d', 'e']);
+    // the same for a group flag of its own
+    const three = rows('a', ['b', { group: true }], 'c', ['d', { head: 'D' }]);
+    expect(show(moveBlock(three, idx(three, 'b', 'c'), 3, false))).toEqual(['a', '/ b', 'c', '[D] d']);
+    expect(show(moveBlock(three, idx(three, 'c'), 1, false))).toEqual(['a', '/ c', 'b', '[D] d']);
+  });
+
+  it('a heading moves its section; sections drop only between sections or at the end', () => {
+    const list = rows('x', ['a', { head: 'A' }], 'b', ['c', { head: 'C' }], 'd', ['e', { head: 'E' }]);
+    const a = sectionRows(list, 1);
+    expect(a).toEqual([1, 2]);
+    expect(sectionRows(list, 2)).toEqual([]);
+    expect(sectionRows(list, 5)).toEqual([5]);
+    // between sections: before a heading, after the row before one, after the last
+    expect(blockDropOk(list, a, 5, false)).toBe(true);
+    expect(blockDropOk(list, a, 4, true)).toBe(true);
+    // never above the rows before the first heading (they would join the section)
+    expect(blockDropOk(list, a, 0, false)).toBe(false);
+    expect(blockDropOk(list, a, 5, true)).toBe(true);
+    // not inside a section, not inside itself, not where it already is
+    expect(blockDropOk(list, a, 4, false)).toBe(false);
+    expect(blockDropOk(list, a, 3, true)).toBe(false);
+    expect(blockDropOk(list, a, 2, true)).toBe(false);
+    expect(blockDropOk(list, a, 3, false)).toBe(false);
+    expect(blockDropOk(list, a, 0, true)).toBe(false);
+    expect(show(moveSection(list, a, 5, true))).toEqual(['x', '[C] c', 'd', '[E] e', '[A] a', 'b']);
+    expect(moveSection(list, a, 0, false)).toBe(list);
+    const top = rows(['a', { head: 'A' }], ['c', { head: 'C' }]);
+    expect(show(moveSection(top, [1], 0, false))).toEqual(['[C] c', '[A] a']);
+    expect(show(moveSection(list, sectionRows(list, 5), 3, false))).toEqual(['x', '[A] a', 'b', '[E] e', '[C] c', 'd']);
+    expect(moveSection(list, a, 4, false)).toBe(list);
+  });
+
+  it('a group chip moves its group; groups drop only between groups and keep the pages around them', () => {
+    // groups: a b c d | e f (full four, then the rest) | / g h
+    const list = rows('a', 'b', 'c', 'd', 'e', 'f', ['g', { group: true }], 'h');
+    const starts = [true, false, false, false, true, false, true, false];
+    const g = groupRows(starts, 6);
+    expect(g).toEqual([6, 7]);
+    expect(groupRows(starts, 5)).toEqual([]);
+    expect(blockDropOk(list, g, 4, false, starts)).toBe(true);
+    expect(blockDropOk(list, g, 3, true, starts)).toBe(true);
+    expect(blockDropOk(list, g, 2, true, starts)).toBe(false);
+    expect(blockDropOk(list, g, 5, true, starts)).toBe(false); // where it already is
+    // before e: e started its group only because a..d was full; it gets a flag so it still does after g h
+    expect(show(moveGroup(list, g, starts, 4, false))).toEqual(['a', 'b', 'c', 'd', '/ g', 'h', '/ e', 'f']);
+    // the first group to the end: e keeps its page start, now the first row (no flag there)
+    expect(show(moveGroup(list, groupRows(starts, 0), starts, 7, true))).toEqual(['e', 'f', '/ g', 'h', '/ a', 'b', 'c', 'd']);
+    expect(moveGroup(list, g, starts, 2, false)).toBe(list);
+    // before a row with a heading: under the heading, and that row starts the next page
+    const headed = rows('a', ['b', { head: 'B' }], 'c', ['d', { group: true }]);
+    const hs = [true, true, false, true];
+    expect(show(moveGroup(headed, groupRows(hs, 3), hs, 1, false))).toEqual(['a', '[B] d', '/ b', 'c']);
+    expect(show(moveGroup(headed, groupRows(hs, 3), hs, 0, true))).toEqual(['a', '/ d', '[B] b', 'c']);
+  });
+
+  it('pick mode: one action on several rows shows them all if any is hidden, else hides them all', () => {
+    const { p, osc, env } = voice();
+    const a = makeAssembly(p, [osc, env], 'v');
+    a.params = [];
+    const r = (module: number, param: string) => ({ module, param });
+    const sel = [r(osc, 'wave'), r(env, 'a'), r(env, 'd')];
+    expect(pickState(a, sel)).toBe('none');
+    promote(a, env, 'a');
+    expect(pickState(a, sel)).toBe('some');
+    expect(pickRows(a, sel)).toBe(true);
+    expect(a.params.map((x) => x.param)).toEqual(['a', 'wave', 'd']); // the shown one stays where it is
+    expect(pickState(a, sel)).toBe('all');
+    promote(a, osc, 'level');
+    a.params[1].head = 'H';
+    pickRows(a, sel);
+    expect(a.params).toEqual([{ module: osc, param: 'level', label: 'level', head: 'H' }]); // the heading stays at its place
+    expect(pickRows(a, [])).toBe(false);
+  });
+
+  it('a Shift-click range runs either way in reading order', () => {
+    const order = ['a', 'b', 'c', 'd'];
+    expect(keyRange(order, 'b', 'd')).toEqual(['b', 'c', 'd']);
+    expect(keyRange(order, 'd', 'b')).toEqual(['b', 'c', 'd']);
+    expect(keyRange(order, null, 'c')).toEqual(['c']);
+    expect(keyRange(order, 'x', 'c')).toEqual(['c']);
+    expect(keyRange(order, 'a', 'x')).toEqual([]);
   });
 });

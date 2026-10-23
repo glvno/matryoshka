@@ -163,6 +163,23 @@ function assemblySections(p: Patch, a: AssemblyInst, defs: Record<string, Module
   return sectionsOf(a.label, items, (it) => (it.screen ? it.r.module : { module: it.r.module, param: it.r.param, label: it.r.label }));
 }
 
+/** where an assembly card's groups (FM-1 pages) start, per promoted parameter (`a.params[i]`): `groupStarts` over the rows
+ * the card draws; a row set from the screen (onScreen) or no longer there starts none and rides with the group before it */
+export function paramStarts(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): boolean[] {
+  const kept: number[] = [];
+  const items: GroupItem[] = [];
+  a.params.forEach((r, i) => {
+    const m = p.modules.find((x) => x.id === r.module);
+    const pd = m && defs[m.type] && rowDef(defs[m.type], r.param);
+    if (!pd || pd.onScreen) return;
+    kept.push(i);
+    items.push({ head: r.head, group: r.group, col: r.col, knob: !pd.screen });
+  });
+  const out = a.params.map(() => false);
+  groupStarts(items).forEach((st, k) => (out[kept[k]] = st));
+  return out;
+}
+
 /** where a top-level item sits on the canvas: a collapsed card's corner, an open frame's first member */
 function placeOf(p: Patch, a: AssemblyInst): { x: number; y: number } {
   if (!a.open) return { x: a.x, y: a.y };

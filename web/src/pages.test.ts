@@ -2,8 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch } from './patch';
-import { makeAssembly, fixAssemblies, keepParams, moveParam, promote, setColumnBreak, setGroupBreak, setHeading } from './assembly';
-import { devicesOf, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle } from './pages';
+import { makeAssembly, fixAssemblies, groupRows, keepParams, moveBlock, moveGroup, moveParam, moveSection, promote, sectionRows, setColumnBreak, setGroupBreak, setHeading } from './assembly';
+import { devicesOf, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle, paramStarts } from './pages';
 import { PRESETS } from './presets';
 import { demoPatch } from './demo';
 import { encodePatch } from './patchbin';
@@ -96,6 +96,43 @@ describe('device pages', () => {
     expect(devicesOf(p, DEFS)[0].pages.map((pg) => pg.rows.map((r) => r.param))).toEqual([['pw', 'coarse'], ['cutoff', 'res'], ['wave', 'track', 'morph']]);
     setColumnBreak(a.params, 1, true); // a column ends a group, not the section
     expect(titles()).toEqual(['mono 1/2', 'mono 2/2', 'filter 1/2', 'filter 2/2']);
+    expect(() => encodePatch(p)).not.toThrow();
+  });
+
+  it('moving several rows at once moves them between pages (#186): a block, a section, a group', () => {
+    const p = emptyPatch();
+    const osc = addModule(p, DEFS.osc, 20, 20);
+    const flt = addModule(p, DEFS.filter, 20, 400);
+    const env = addModule(p, DEFS.adsr, 320, 20);
+    const a = makeAssembly(p, [osc.id, flt.id, env.id], 'mono');
+    a.params = [];
+    for (const q of ['wave', 'pw', 'coarse']) promote(a, osc.id, q);
+    promote(a, env.id, 'view'); // a display: no knob, rides with its group
+    for (const q of ['a', 'd', 's', 'r']) promote(a, env.id, q);
+    for (const q of ['cutoff', 'res', 'cvamt', 'track', 'morph']) promote(a, flt.id, q);
+    setHeading(a.params, 3, 'amp');
+    setHeading(a.params, 8, 'filter');
+    const pages = (): string[] => devicesOf(p, DEFS)[0].pages.map((pg) => `${pageTitle(pg)}: ${pg.rows.map((r) => r.param).join(' ')}`);
+    const at = (...names: string[]): number[] => names.map((n) => a.params.findIndex((r) => r.param === n));
+    expect(pages()).toEqual(['mono: wave pw coarse', 'amp: a d s r', 'filter 1/2: cutoff res cvamt track', 'filter 2/2: morph']);
+    // a loose block: pw and res after s, as one block in their order
+    a.params = moveBlock(a.params, at('pw', 'res'), at('s')[0], true);
+    expect(pages()).toEqual(['mono: wave coarse', 'amp 1/2: a d s pw', 'amp 2/2: res r', 'filter: cutoff cvamt track morph']);
+    // the filter section before amp: its heading goes with it
+    a.params = moveSection(a.params, sectionRows(a.params, at('cutoff')[0]), at('view')[0], false);
+    expect(pages()).toEqual(['mono: wave coarse', 'filter: cutoff cvamt track morph', 'amp 1/2: a d s pw', 'amp 2/2: res r']);
+    // amp's second page (a group that started because the first was full) before the first, under the heading: both stay whole pages
+    let starts = paramStarts(p, a, DEFS);
+    a.params = moveGroup(a.params, groupRows(starts, at('res')[0]), starts, at('view')[0], false);
+    expect(pages()).toEqual(['mono: wave coarse', 'filter: cutoff cvamt track morph', 'amp 1/2: res r', 'amp 2/2: a d s pw']);
+    expect(devicesOf(p, DEFS)[0].pages.filter((pg) => pg.display === env.id)).toHaveLength(1);
+    // the mono page (rows before the first heading take the device's name) to the end: now it is amp's third page
+    starts = paramStarts(p, a, DEFS);
+    a.params = moveGroup(a.params, groupRows(starts, at('wave')[0]), starts, a.params.length - 1, true);
+    expect(pages()).toEqual(['filter: cutoff cvamt track morph', 'amp 1/3: res r', 'amp 2/3: a d s pw', 'amp 3/3: wave coarse']);
+    // a group to the top joins the rows there: filter's page is now the first
+    starts = paramStarts(p, a, DEFS);
+    expect(groupRows(starts, at('r')[0])).toEqual([]); // r is no group's first row
     expect(() => encodePatch(p)).not.toThrow();
   });
 
