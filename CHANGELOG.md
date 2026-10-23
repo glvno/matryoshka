@@ -17,7 +17,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - The Library manages what is stored and opens nothing (#218). **Patches** and **Presets** show two columns, In this
   browser and FM-1, with → (onto the FM-1) and ← (into this browser) on each row. The FM-1 column always shows: without
   an FM-1 it is the bank's offline copy (order, rename, remove, Add from factory ▾); with one it shows what the FM-1's
-  slots really hold, named Bank when that is the offline copy, else Unsaved bank with Save as bank…. A patch too big for
+  slots (numbered 01..64, as everywhere else) really hold, named Bank when that is the offline copy, else Unsaved bank with Save as bank…. A patch too big for
   the FM-1 stays in this browser marked "browser only" (the Over budget card is gone). **Assemblies** lists only your
   own, with rename. Factory assemblies and Community patches are in the Open picker, the palette and the assembly
   browser. Deleting a patch, preset or assembly kept in this browser, or replacing an assembly, acts at once with Undo;

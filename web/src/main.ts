@@ -9,7 +9,7 @@ import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
-import { LIVE_MS } from './protocol';
+import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
@@ -185,7 +185,7 @@ device.onEvent = (e) => {
   if (e.kind === 'slot') {
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
-    devStatus(`FM-1 plays slot ${String(e.slot + 1).padStart(2, '0')} ${e.name}`);
+    devStatus(`FM-1 plays slot ${slotLabel(e.slot)} ${e.name}`);
     return;
   }
   // the panel itself (knobs, buttons, the focus) comes in as plain MIDI through the mirror (#120, fm1-profiles.ts), whatever
@@ -1699,9 +1699,9 @@ async function storeToSlot(): Promise<void> {
   try {
     // a used slot is overwritten only when the user says so (#148); Cancel sends nothing
     const was = await device.readSlot(n - 1);
-    if (was.used && !window.confirm(`FM-1 slot ${String(n).padStart(2, '0')} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
+    if (was.used && !window.confirm(`FM-1 slot ${slotLabel(n - 1)} holds "${was.name}". Replace it with "${editor.patch.name}"?`)) return devStatus('nothing stored');
     await device.uploadSlot(n - 1, editor.patch.name.toUpperCase().slice(0, 20), editor.patch);
-    devStatus(`"${editor.patch.name}" stored into FM-1 slot ${String(n).padStart(2, '0')}`);
+    devStatus(`"${editor.patch.name}" stored into FM-1 slot ${slotLabel(n - 1)}`);
   } catch (e) {
     devStatus((e as Error).message);
   }
@@ -1712,7 +1712,7 @@ $('dev-store').onclick = async () => {
     if (!(await sendPatch())) return;
     await device.store();
     setBaseline();
-    devStatus(`stored into the FM-1's slot ${deviceSlot ? String(deviceSlot.slot + 1).padStart(2, '0') : ''} (the one it plays; it opens it at the next start)`);
+    devStatus(`stored into the FM-1's slot ${deviceSlot ? slotLabel(deviceSlot.slot) : ''} (the one it plays; it opens it at the next start)`);
   } catch (e) {
     devStatus((e as Error).message);
   }

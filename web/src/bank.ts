@@ -16,7 +16,7 @@ import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
 import { PRESETS } from './presets';
-import { NAME_BYTES, SLOTS, type SlotInfo } from './protocol';
+import { NAME_BYTES, SLOTS, slotLabel, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
 import { isSaved, onSavedChange, putBackSaved, renameSaved, savedPatches, savePatch } from './saved';
 import { showToast, showUndo } from './toast';
@@ -188,9 +188,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
   return e;
 }
 
-/** a slot's number as the Library shows it, 00..63 */
-const two = (n: number): string => String(n).padStart(2, '0');
-
 export interface PatchesEvents {
   /** delete one of Your patches at once, with an Undo toast (main.ts deleteSaved) */
   remove(name: string): void;
@@ -284,22 +281,22 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       const err = putEntry(list, factory ? { name } : { name, patch: copyOf({ ...patch, name }) }, true);
       if (err) return say(err);
       changed();
-      if (!was) return say(`"${name}" added to the bank, slot ${two(list.length - 1)}`);
-      showUndo(`"${name}" replaced in slot ${two(i)} of the bank${was.patch ? '' : ' (it was the factory patch)'}`, () => {
+      if (!was) return say(`"${name}" added to the bank, slot ${slotLabel(list.length - 1)}`);
+      showUndo(`"${name}" replaced in slot ${slotLabel(i)} of the bank${was.patch ? '' : ' (it was the factory patch)'}`, () => {
         const j = list.findIndex((e) => e.name === name);
         if (j >= 0) list[j] = was;
         changed();
-        status.textContent = `slot ${two(j)} holds "${name}" as it was`;
+        status.textContent = `slot ${slotLabel(j)} holds "${name}" as it was`;
       });
-      status.textContent = `"${name}" replaced in slot ${two(i)}`;
+      status.textContent = `"${name}" replaced in slot ${slotLabel(i)}`;
       return;
     }
     if (!slots) return say('Read the FM-1 first');
     const to = slotFor(slots, name);
     if (!to) return say(`The FM-1's bank is full (${SLOTS} slots): "${name}" was not sent`);
-    if (to.replaces && !window.confirm(`FM-1 slot ${two(to.slot)} holds "${to.replaces.name}". Replace it with "${name}"?`)) return say('Nothing was sent');
+    if (to.replaces && !window.confirm(`FM-1 slot ${slotLabel(to.slot)} holds "${to.replaces.name}". Replace it with "${name}"?`)) return say('Nothing was sent');
     void run('Sending', async () => {
-      status.textContent = `Sending "${name}" to slot ${two(to.slot)}…`;
+      status.textContent = `Sending "${name}" to slot ${slotLabel(to.slot)}…`;
       try {
         await device.uploadSlot(to.slot, name.toUpperCase(), patch);
         slots![to.slot] = await device.readSlot(to.slot);
@@ -307,7 +304,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         showToast(`Sending "${name}" failed: ${(e as Error).message}`);
         throw e;
       }
-      say(to.replaces ? `"${name}" replaced FM-1 slot ${two(to.slot)}` : `"${name}" added to FM-1 slot ${two(to.slot)}`);
+      say(to.replaces ? `"${name}" replaced FM-1 slot ${slotLabel(to.slot)}` : `"${name}" added to FM-1 slot ${slotLabel(to.slot)}`);
     });
   };
   /** a copy into Your patches; one of that name is replaced, with Undo */
@@ -369,14 +366,14 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       bankEl.replaceChildren(...(used.length ? used.map((s) => {
         const copy = knownCopy(s, known);
         return el('div', { class: 'bank-row' },
-          el('span', { class: 'slot', textContent: two(s.slot) }),
+          el('span', { class: 'slot', textContent: slotLabel(s.slot) }),
           el('span', { class: 'grow', textContent: s.name }),
-          el('button', { class: 'delete', textContent: '×', title: 'Erase this slot on the FM-1 (asks first)', ariaLabel: `erase slot ${two(s.slot)} on the FM-1`, disabled: busy, onclick: () => {
-            if (!window.confirm(`Erase FM-1 slot ${two(s.slot)} ("${s.name}")? ${copy ? 'This browser keeps its copy.' : 'This browser has no copy of it, so it is gone for good.'}`)) return;
+          el('button', { class: 'delete', textContent: '×', title: 'Erase this slot on the FM-1 (asks first)', ariaLabel: `erase slot ${slotLabel(s.slot)} on the FM-1`, disabled: busy, onclick: () => {
+            if (!window.confirm(`Erase FM-1 slot ${slotLabel(s.slot)} ("${s.name}")? ${copy ? 'This browser keeps its copy.' : 'This browser has no copy of it, so it is gone for good.'}`)) return;
             void run('Erasing', async () => {
               await device.eraseSlot(s.slot);
               slots![s.slot] = await device.readSlot(s.slot);
-              status.textContent = `slot ${two(s.slot)} is empty`;
+              status.textContent = `slot ${slotLabel(s.slot)} is empty`;
             });
           } }),
           el('button', { class: 'lib-move', textContent: '←', ariaLabel: `copy "${s.name}" into Your patches`, disabled: busy || !copy,
@@ -387,7 +384,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       countEl.textContent = `${used.length} of ${SLOTS} slots used on the FM-1`;
     } else {
       bankEl.replaceChildren(...(list.length ? list.map((e, i) => el('div', { class: 'bank-row' },
-        el('span', { class: 'slot', textContent: two(i) }),
+        el('span', { class: 'slot', textContent: slotLabel(i) }),
         el('span', { class: 'grow', textContent: e.name }),
         ...(e.patch ? [] : [el('span', { class: 'muted', textContent: 'factory' })]),
         el('button', { textContent: '▲', title: 'move up', ariaLabel: `move "${e.name}" up`, disabled: busy || i === 0, onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; changed(); } }),
@@ -419,7 +416,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     const known = candidates();
     const kept = used.map((s) => ({ s, copy: knownCopy(s, known) }));
     const missing = kept.filter((k) => !k.copy);
-    const lose = missing.length ? ` This browser has no copy of ${missing.length} of them (${missing.slice(0, 6).map((k) => `${two(k.s.slot)} ${k.s.name}`).join(', ')}${missing.length > 6 ? ', …' : ''}): they are left out, since the FM-1 cannot send a patch back.` : '';
+    const lose = missing.length ? ` This browser has no copy of ${missing.length} of them (${missing.slice(0, 6).map((k) => `${slotLabel(k.s.slot)} ${k.s.name}`).join(', ')}${missing.length > 6 ? ', …' : ''}): they are left out, since the FM-1 cannot send a patch back.` : '';
     if (!window.confirm(`Keep the ${used.length} patches on the FM-1 as the ${BANK_NAME.toLowerCase()} in this browser? This replaces its offline copy (${list.length} patches).${lose}`)) return;
     list = kept.flatMap(({ copy }) => (!copy ? [] : copy.factory ? [{ name: copy.name }] : [{ name: copy.name, patch: copyOf(copy.patch) }]));
     changed();
@@ -431,7 +428,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     const have = await device.readBank();
     slots = have;
     const lost = uploadLoses(have, list.map((e) => e.name));
-    const shown = lost.slice(0, 8).map((s) => `${two(s.slot)} ${s.name}`).join(', ') + (lost.length > 8 ? ', …' : '');
+    const shown = lost.slice(0, 8).map((s) => `${slotLabel(s.slot)} ${s.name}`).join(', ') + (lost.length > 8 ? ', …' : '');
     if (lost.length && !window.confirm(`Sending the ${BANK_NAME.toLowerCase()} replaces ${lost.length} patch${lost.length === 1 ? '' : 'es'} on the FM-1 that it does not hold (${shown}). Send anyway?`)) {
       status.textContent = 'Nothing was sent.';
       return;
@@ -444,7 +441,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     }
     for (let i = total; i < SLOTS; i++)
       if (have[i].used) {
-        status.textContent = `Emptying slot ${two(i)}`;
+        status.textContent = `Emptying slot ${slotLabel(i)}`;
         await device.eraseSlot(i);
       }
     bar.value = 100;

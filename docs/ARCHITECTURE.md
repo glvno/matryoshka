@@ -420,7 +420,7 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 ## The bank: 64 slots, power-safe, SAVE writes the slot (#61 #62 #74, 2026-10-18; replaces the saved-state blob and patchstore.c)
 
 - `firmware/src/slotstore.c`: 64 patch slots (`M1_SLOTS`) plus one settings record (id `SL_SETTINGS` = 64), log-structured over 66 sectors (0x97000, 0x98000 = the old patch store, and 0xA0000..0xDFFFF; all inside Felucca's data window, never erased by the loader). One record per sector: header (magic "M1S2", id, sequence number, length, CRC-16, name; written last = the commit) + data from +256 (up to `M1_PATCH_MAX` 3840 B). A write takes a sector without a live record (round robin), erases it, programs data then header, verifies, and only then erases the replaced record's sector; at boot (`sl_scan`) the newest valid record of each id wins and older copies are erased. 65 live records in 66 sectors: one is always free. 32-slot bank records ("M1SL" at 0xA0000 + n x 4 KiB) are read as slot n with sequence 0.
-- The bank is the device's only patch list: PRESET steps the occupied slots, program change n = slot n (empty: ignored), the editor's SLOT commands address 0..63 (`SLOTS` 64 in protocol.ts). The first boot (an empty store) and MENU > SYSTEM > FACTORY RESET (`sl_clear_all`, ~3 s) write the factory patches (presets.h) into slots 0.. (`factory_bank`). A slot that does not load, or none at all, plays `FALLBACK_PATCH`.
+- The bank is the device's only patch list: PRESET steps the occupied slots, program change n = slot n (empty: ignored), the editor's SLOT commands address 0..63 (`SLOTS` 64 in protocol.ts). People see slots numbered 01..64 (`slotLabel`), so program change 0 loads slot 01. The first boot (an empty store) and MENU > SYSTEM > FACTORY RESET (`sl_clear_all`, ~3 s) write the factory patches (presets.h) into slots 0.. (`factory_bank`). A slot that does not load, or none at all, plays `FALLBACK_PATCH`.
 - SAVE (and the editor's STORE) writes the running patch, edits included, into the slot it came from (`cur_preset`) under that slot's name, and the settings record (12 bytes: version, slot, octave, LED mode, knob accel, CPU in the bar, clock in, program change, MIDI channel, level, mute, selected module). The next boot opens the slot the settings record names. Choosing a patch does not write the flash (an erase stops the audio for a moment), so the boot opens the slot last saved. Edits since the load show as ` *` after the name (`m1_edited` in proto.c, set by the live edit writers, cleared by `m1_set_current` and SAVE).
 - Gone: `patchstore.c`, the state blob and its versions, `state_pack`, `ps_*`; old stored states are not read.
 
@@ -475,7 +475,7 @@ Serum 2's Voicing panel in this modular's terms, plus the parts of an analog pol
 
 ## MIDI in and out (#64, 2026-10-18)
 
-- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n (an empty slot, or while the editor's Live is on: ignored), CC 16..19 = K1..K4 (the rows of the page in focus), CC 22 = morph, CC 80..86 = presses (64 and up) and releases of the patch buttons FX..ARP, CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
+- In (USB and TRS): one channel (MENU > MIDI > MIDI CHANNEL, omni by default): notes (but see the key range below), pitch bend, CC 1 (mod), aftertouch, program change n = bank slot n, counted from 0 (program change 0 = slot 01; an empty slot, or while the editor's Live is on: ignored), CC 16..19 = K1..K4 (the rows of the page in focus), CC 22 = morph, CC 80..86 = presses (64 and up) and releases of the patch buttons FX..ARP, CC 123 = all notes off; clock, Start / Continue / Stop (MENU > CLOCK IN).
 - Out (USB only; MENU > MIDI > MIDI OUT, on by default; TRS has no out): every panel control, the "MIDI out map" below (#115). What came in is not sent out again. Not verified: USB is not emulated.
 
 ### MIDI out map (#115, 2026-10-19)
@@ -701,7 +701,7 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   one over the budget is marked "browser only", tooltip "Too big for the FM-1", and its → is off), with **Add from
   factory ▾** under it (the factory patches are only a source for the bank). "FM-1" always shows: without a device the
   bank's offline copy (`matryoshka.bank`: ▲ ▼, Rename, ×, ←, All factory patches, Empty the list; Send bank to FM-1
-  off); with one what `readBank` finds, slots numbered 00..63, headed "On the FM-1 · Bank" when `bankMatches` (its used
+  off); with one what `readBank` finds, slots numbered 01..64 (internal slots 0..63: `slotLabel` in protocol.ts is the one place that adds 1), headed "On the FM-1 · Bank" when `bankMatches` (its used
   slots are 0..n-1 with the offline copy's device names and binary lengths) and "On the FM-1 · Unsaved bank" with **Save
   as bank…** when not. Then → writes a slot (`slotFor`: the slot of that name, asking before it replaces it, else the
   first empty one), × erases one (asks), and Send bank to FM-1 writes the offline copy (asks when `uploadLoses` finds

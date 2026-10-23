@@ -8,7 +8,7 @@ import type { DeviceLink } from './device';
 import type { Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { PRESETS } from './presets';
-import { SLOTS, type SlotInfo } from './protocol';
+import { SLOTS, slotLabel, type SlotInfo } from './protocol';
 import { savePatch } from './saved';
 
 const names = Object.keys(PRESETS).slice(0, 2);
@@ -122,7 +122,7 @@ it('→ onto a name the offline copy holds replaces that entry at once, with Und
   expect(factoryTag()).toBe(false);
   expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)[1].patch.notes).toBe('mine');
   const toast = document.querySelector('.toast')!;
-  expect(toast.textContent).toContain(`"${names[1]}" replaced in slot 01`);
+  expect(toast.textContent).toContain(`"${names[1]}" replaced in slot 02`);
   button(toast, 'Undo').click();
   expect(factoryTag()).toBe(true);
   expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)[1]).toEqual({ name: names[1] });
@@ -131,7 +131,7 @@ it('→ onto a name the offline copy holds replaces that entry at once, with Und
   const other = [...browser.querySelectorAll('.bank-row')].find((r) => r.querySelector('.grow')!.textContent === 'Other')!;
   button(other, '→').click();
   expect(rows(fm1)).toEqual([...names, 'Other']);
-  expect(document.querySelector('.toast')!.textContent).toContain('"Other" added to the bank, slot 02');
+  expect(document.querySelector('.toast')!.textContent).toContain('"Other" added to the bank, slot 03');
 });
 
 it('with an FM-1, → onto a used slot of that name asks first and says what it did', async () => {
@@ -147,7 +147,30 @@ it('with an FM-1, → onto a used slot of that name asks first and says what it 
   button(cols(root)[0].querySelector('.bank-row')!, '→').click();
   await flush();
   await flush();
-  expect(asked[0]).toContain('slot 00');
-  expect(document.querySelector('.toast')!.textContent).toContain('"Mine" replaced FM-1 slot 00');
+  expect(asked[0]).toContain('slot 01');
+  expect(document.querySelector('.toast')!.textContent).toContain('"Mine" replaced FM-1 slot 01');
+  vi.unstubAllGlobals();
+});
+
+it('slots show as 01..64: the first is 01, the last 64, and erasing the row shown as 01 erases slot 0', async () => {
+  expect([slotLabel(0), slotLabel(SLOTS - 1)]).toEqual(['01', '64']);
+  const dev = fakeDevice(true);
+  await dev.uploadSlot(0, 'FIRST', PRESETS[names[0]]());
+  await dev.uploadSlot(SLOTS - 1, 'LAST', PRESETS[names[1]]());
+  const root = document.createElement('div');
+  const pane = buildPatchesSection(root, dev, { remove: () => {} });
+  pane.enter();
+  await flush();
+  const fm1 = cols(root)[1];
+  const shown = [...fm1.querySelectorAll('.bank-row')].map((r) => [r.querySelector('.slot')!.textContent, r.querySelector('.grow')!.textContent]);
+  expect(shown).toEqual([['01', 'FIRST'], ['64', 'LAST']]);
+  const asked: string[] = [];
+  vi.stubGlobal('confirm', (q: string) => (asked.push(q), true));
+  button(fm1.querySelector('.bank-row')!, '×').click();
+  await flush();
+  await flush();
+  expect(asked[0]).toContain('slot 01');
+  expect(dev.slots[0].used).toBe(false);
+  expect(dev.slots[SLOTS - 1].used).toBe(true);
   vi.unstubAllGlobals();
 });

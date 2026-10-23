@@ -145,6 +145,8 @@ export const paramFrame = (module: number, param: number, q16: number): Uint8Arr
 };
 
 export const SLOTS = 64;
+/** a slot as people see it: internal slot 0..63 shows as 01..64 (the protocol, the firmware and program change count from 0) */
+export const slotLabel = (slot: number): string => String(slot + 1).padStart(2, '0');
 export const NAME_BYTES = 20;
 export const slotFrame = (slot: number, name: string, patch: Uint8Array, crc = crc16(patch)): Uint8Array => {
   const n = Array.from({ length: NAME_BYTES }, (_, i) => (name.charCodeAt(i) >= 32 && name.charCodeAt(i) < 127 ? name.charCodeAt(i) : 0));
