@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { beforeEach, expect, it } from 'vitest';
 import { PRESETS } from './presets';
-import { isSaved, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch, unsavedChanges } from './saved';
+import { isSaved, putBackSaved, removeSaved, renameSaved, restoreSaved, savedPatches, savePatch, unsavedChanges } from './saved';
 
 const mem = new Map<string, string>();
 beforeEach(() => {
@@ -74,4 +74,18 @@ it('unsaved changes: none when equal to the saved copy apart from view, octave a
   const k = Object.keys(m.params)[0];
   m.params[k] += 1;
   expect(unsavedChanges(same, saved)).toBe(true);
+});
+
+it('renames a saved patch, keeping its date, never over another name', () => {
+  const [a, b] = Object.values(PRESETS).map((make) => make());
+  savePatch({ ...a, name: 'Old' });
+  savePatch({ ...b, name: 'Taken' });
+  const date = savedPatches().find((e) => e.name === 'Old')!.saved;
+  expect(renameSaved('Old', 'Taken')).toBe(false);
+  expect(renameSaved('Missing', 'New')).toBe(false);
+  expect(renameSaved('Old', ' New ')).toBe(true);
+  const e = savedPatches().find((x) => x.name === 'New')!;
+  expect(e.patch.name).toBe('New');
+  expect(e.saved).toBe(date);
+  expect(isSaved('Old')).toBe(false);
 });

@@ -109,3 +109,14 @@ export function restoreSaved(entry: SavedPatch): boolean {
 }
 
 export const isSaved = (name: string): boolean => rawList().some((e) => e.name === name);
+
+/** rename a saved patch (its date stays); false when there is none of that name, or `to` is taken */
+export function renameSaved(from: string, to: string): boolean {
+  const name = to.trim();
+  const list = rawList();
+  const e = list.find((x) => x.name === from);
+  if (!e || !name || list.some((x) => x.name === name)) return false;
+  e.name = name;
+  e.patch = { ...e.patch, name };
+  return write(list);
+}

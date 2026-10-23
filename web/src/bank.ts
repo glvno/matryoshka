@@ -1,19 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The Patches page: choose up to 64 patches and put them into the FM-1's patch bank (flash). The PRESET knob of the
-// FM-1 steps through the bank; with an empty bank it steps through the factory patches built into the firmware.
-// Patches over the FM-1's budget (patchbin.ts deviceBudget) are kept apart, in an uncapped browser-only list.
+// Library > Patches (#218): two columns. "In this browser" lists Your patches (saved.ts): each has → (into the FM-1
+// column), Rename and Delete (at once, with Undo); one over the FM-1's budget (patchbin.ts deviceBudget) is marked
+// "browser only" and has no working →. Add from factory ▾ under the list puts a factory patch into the FM-1 column (the
+// factory patches are only a source for it). "FM-1" always shows: without a device it is the offline copy of the bank
+// (`matryoshka.bank`, up to 64 entries, each a factory patch by name or a copy of a patch), edited here (order, rename,
+// remove) and sent whole with Send bank to FM-1; with a device it is what the FM-1's slots really hold (readBank: read on
+// connect and on entering the section), named after the bank when it holds the offline copy, else "Unsaved bank" with
+// Save as bank…. Nothing merges on its own. The FM-1 cannot send a patch back (SLOT_INFO gives a name and a length), so ←
+// copies this browser's own copy of the slot's patch: one with the slot's name and binary length. One bank for now; several
+// named banks are #220.
+// The PRESET knob of the FM-1 steps through the bank; with an empty bank it steps through the factory patches built into
+// the firmware.
 import type { DeviceLink } from './device';
 import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
-import { deviceBudget } from './patchbin';
+import { deviceBudget, encodePatch } from './patchbin';
 import { PRESETS } from './presets';
-import { devicePresetName, NAME_BYTES, SLOTS, type DevicePresetEntry, type SlotInfo } from './protocol';
-import { addUserPreset, userPresets } from './device-presets';
-import { FACTORY } from './assemblies';
-import { defStructure } from './structure';
+import { NAME_BYTES, SLOTS, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
-import { removeSaved, savedPatches, onSavedChange } from './saved';
-import { decodeShare, isShareLink, openShareLink } from './share';
+import { isSaved, onSavedChange, putBackSaved, renameSaved, savedPatches, savePatch } from './saved';
+import { showUndo } from './toast';
 
 interface Entry {
   name: string;
@@ -21,8 +27,10 @@ interface Entry {
   patch?: Patch;
 }
 
+/** the bank's name in the FM-1 column (one bank for now: #220 makes several, named) */
+export const BANK_NAME = 'Bank';
 const STORE = renamedKey('matryoshka.bank', 'modular-1.bank');
-/** the editor's patches that do not fit the FM-1: played in the browser only, never uploaded */
+/** the old list of patches over the FM-1's budget (before #218): folded into Your patches on the next read */
 const STORE_OVER = 'matryoshka.bank-over';
 
 const fits = (p: Patch): boolean => deviceBudget(p).fits;
@@ -35,14 +43,6 @@ function loadOver(): Entry[] {
     /* fall through: none */
   }
   return [];
-}
-
-function saveOver(list: Entry[]): void {
-  try {
-    localStorage.setItem(STORE_OVER, JSON.stringify(list));
-  } catch {
-    /* storage blocked: the list is not remembered */
-  }
 }
 
 function load(): Entry[] {
@@ -70,35 +70,58 @@ function save(list: Entry[]): void {
 }
 
 const patchOf = (e: Entry): Patch => (e.patch ? e.patch : PRESETS[e.name]());
+const copyOf = (p: Patch): Patch => validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
 
-/**
- * Put a patch into the bank under its name (replacing one of that name); a factory patch of that name is left alone.
- * A patch over the FM-1's budget goes to the over-budget list instead (and leaves the bank), one that fits leaves that list.
- */
-export function addToBank(p: Patch): string {
-  const list = load();
-  const i = list.findIndex((e) => e.name === p.name);
-  if (i >= 0 && !list[i].patch) return `"${p.name}" is a factory patch: rename it to keep a copy`;
-  const copy = { name: p.name, patch: validatePatch(JSON.parse(JSON.stringify(p)), DEFS) };
+/** the bank, with the patches that cannot go to the FM-1 moved out: the old over-budget list, and a copy that no longer
+ *  fits (saved before the budget, or a larger factory build), go to Your patches (unless a patch of that name is there) */
+function reread(): Entry[] {
+  let list = load();
+  const misfit = list.filter((e) => e.patch && !fits(e.patch));
   const over = loadOver();
-  const j = over.findIndex((e) => e.name === p.name);
-  if (!fits(copy.patch)) {
-    if (i >= 0) save(list.filter((_, k) => k !== i));
-    if (j >= 0) over[j] = copy;
-    else over.push(copy);
-    saveOver(over);
-    return `"${p.name}" is over the FM-1 budget: kept under "Over budget" in the Library (browser only)`;
+  for (const e of [...over, ...misfit]) if (!isSaved(e.name)) savePatch({ ...e.patch!, name: e.name });
+  if (over.length) {
+    try {
+      localStorage.removeItem(STORE_OVER);
+    } catch {
+      /* storage blocked */
+    }
   }
-  if (j >= 0) saveOver(over.filter((_, k) => k !== j));
-  if (i >= 0) list[i] = copy;
-  else if (list.length >= SLOTS) return `the bank is full (${SLOTS} slots): "${p.name}" was not kept`;
-  else list.push(copy);
+  if (misfit.length) {
+    list = list.filter((e) => !misfit.includes(e));
+    save(list);
+  }
+  return list;
+}
+
+/** put `e` into the list under its name (replacing a copy of that name); an error line, or null when it went in */
+function putEntry(list: Entry[], e: Entry): string | null {
+  const i = list.findIndex((x) => x.name === e.name);
+  if (i >= 0 && !list[i].patch && e.patch) return `"${e.name}" is a factory patch's name: rename yours to put it in the bank`;
+  if (i >= 0) {
+    list[i] = e;
+    return null;
+  }
+  if (list.length >= SLOTS) return `the bank is full (${SLOTS} slots): "${e.name}" was not added`;
+  list.push(e);
+  return null;
+}
+
+/** Put a patch into the bank (the offline copy) under its name, replacing one of that name; a factory patch of that name is
+ *  left alone, and a patch over the FM-1's budget stays out (the tutorial's Save patch to the bank). Returns a status line */
+export function addToBank(p: Patch): string {
+  const name = p.name.trim() || 'PATCH';
+  const copy = copyOf({ ...p, name });
+  if (!fits(copy)) return `"${name}" is too big for the FM-1, so it cannot go into the bank: Your patches keep it, marked "browser only"`;
+  const list = load();
+  const had = list.some((e) => e.name === name);
+  const err = putEntry(list, { name, patch: copy });
+  if (err) return err;
   save(list);
-  return `"${p.name}" ${i >= 0 ? 'updated in' : 'kept in'} the bank`;
+  return `"${name}" ${had ? 'updated in' : 'kept in'} the bank`;
 }
 
 /** a name as the FM-1 keeps it after an upload (slotFrame: capitals, the first NAME_BYTES characters, printable ASCII only) */
-const deviceName = (name: string): string =>
+export const deviceName = (name: string): string =>
   [...name.toUpperCase().slice(0, NAME_BYTES)].filter((c) => c.charCodeAt(0) >= 32 && c.charCodeAt(0) < 127).join('');
 
 /** the used slots an upload of `names` would lose: the ones past the list (erased), and the ones holding a patch whose name
@@ -108,8 +131,52 @@ export function uploadLoses(have: SlotInfo[], names: string[]): SlotInfo[] {
   return have.filter((s) => s.used && (s.slot >= names.length || !kept.has(s.name)));
 }
 
-/** the patches the Patches page holds (the editor's own copies; factory patches are rebuilt), for the morph picker */
-export const bankPatches = (): { name: string; patch: Patch }[] => [...load(), ...loadOver()].map((e) => ({ name: e.name, patch: patchOf(e) }));
+/** the slot a patch named `name` goes to on the FM-1: the used slot of that name (it replaces it: asked first), else the
+ *  first empty one; null when the bank is full */
+export function slotFor(have: SlotInfo[], name: string): { slot: number; replaces: SlotInfo | null } | null {
+  const n = deviceName(name);
+  const same = have.find((s) => s.used && s.name === n);
+  if (same) return { slot: same.slot, replaces: same };
+  const free = have.find((s) => !s.used);
+  return free ? { slot: free.slot, replaces: null } : null;
+}
+
+/** the FM-1's bank holds the offline copy: its used slots are 0..n-1, with the copy's names and binary lengths in order */
+export function bankMatches(have: SlotInfo[], copy: { name: string; length: number }[]): boolean {
+  return have.filter((s) => s.used).length === copy.length
+    && copy.every((e, i) => have[i]?.used && have[i].name === deviceName(e.name) && have[i].length === e.length);
+}
+
+/** the binary's length (a patch that cannot be encoded: -1, which no slot has) */
+const binLength = (p: Patch): number => {
+  try {
+    return encodePatch(p).length;
+  } catch {
+    return -1;
+  }
+};
+
+export interface Candidate {
+  name: string;
+  patch: () => Patch;
+  /** a factory patch (the bank keeps it by name) */
+  factory?: boolean;
+}
+
+/** this browser's copy of a slot's patch: the first candidate with the slot's name and binary length; null when there is
+ *  none (the FM-1 cannot send the patch itself) */
+export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patch) => number = binLength): { name: string; patch: Patch; factory: boolean } | null {
+  if (!s.used) return null;
+  for (const c of candidates) {
+    if (deviceName(c.name) !== s.name) continue;
+    const p = c.patch();
+    if (length(p) === s.length) return { name: c.name, patch: p, factory: !!c.factory };
+  }
+  return null;
+}
+
+/** the patches the bank holds (the editor's own copies; factory patches are rebuilt), for the morph picker */
+export const bankPatches = (): { name: string; patch: Patch }[] => load().map((e) => ({ name: e.name, patch: patchOf(e) }));
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -120,117 +187,62 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
   return e;
 }
 
-/** builds the page; returns a refresh that rereads both lists (another part of the app may have saved to them) */
-/** `open` loads a patch into the editor (`from`: the Your patches name it came from); `remove` deletes one of Your patches
- *  (main.ts: at once, with an Undo toast) */
-/** which engine (or factory assembly) a structure is, by name; '' when it is the user's own */
-function engineOf(structure: string): string {
-  return FACTORY.find((d) => defStructure(d) === structure)?.name ?? '';
+/** a slot's number as the Library shows it, 00..63 */
+const two = (n: number): string => String(n).padStart(2, '0');
+
+export interface PatchesEvents {
+  /** delete one of Your patches at once, with an Undo toast (main.ts deleteSaved) */
+  remove(name: string): void;
 }
 
-export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch: () => Patch, onConnected: (msg: string) => void, open: (p: Patch, from?: string) => void, remove: (name: string) => void = (n) => void removeSaved(n)): () => void {
-  let list = load();
-  let over = loadOver();
-  // an editor copy that no longer fits (saved before the budget, or a larger factory build) moves to the over-budget list
-  const reread = (): void => {
-    list = load();
-    over = loadOver();
-    const misfit = list.filter((e) => e.patch && !fits(e.patch));
-    if (!misfit.length) return;
-    list = list.filter((e) => !misfit.includes(e));
-    over = [...over.filter((e) => !misfit.some((m) => m.name === e.name)), ...misfit];
-    save(list);
-    saveOver(over);
-  };
-  reread();
-  const mineEl = el('div', { class: 'bank-list' });
-  const overEl = el('div', { class: 'bank-list' });
-  const libEl = el('div', { class: 'bank-list' });
-  const bankEl = el('div', { class: 'bank-list' });
-  const countEl = el('span', { class: 'muted' });
-  const status = el('p', { class: 'muted', textContent: 'Not connected.' });
-  const bar = el('progress', { max: 100, value: 0 });
-  const onDevice = el('pre', { class: 'log', textContent: '' });
-  const connect = el('button', { textContent: 'Connect FM-1' });
-  const upload = el('button', { class: 'primary', textContent: 'Upload bank to FM-1', disabled: true });
-  const read = el('button', { textContent: 'Read FM-1 bank', disabled: true });
-  const clear = el('button', { textContent: 'Empty the FM-1 bank', disabled: true });
-  // presets on the FM-1 (#195): its own store, separate from the editor's library; explicit transfer
-  const presetsEl = el('div', { class: 'bank-list' });
-  const readPresets = el('button', { textContent: 'Read FM-1 presets', disabled: true });
-  const sendPresets = el('button', { textContent: 'Send my presets', disabled: true });
-  let onFm1: DevicePresetEntry[] = [];
+/** one of the Library's sections with an FM-1 column */
+export interface LibrarySection {
+  /** reread what this browser holds */
+  refresh(): void;
+  /** the section is shown: reread, and read the FM-1 when one is connected */
+  enter(): void;
+  /** an FM-1 connected or went away; `shown`: the section is on screen (it reads the FM-1 now, else on entering) */
+  deviceChanged(shown: boolean): void;
+}
+
+/** Library > Patches, built into `root` */
+export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: PatchesEvents): LibrarySection {
+  let list = reread();
+  /** the FM-1's slots as last read; null: not read since it connected */
+  let slots: SlotInfo[] | null = null;
   let busy = false;
 
-  const refresh = (): void => {
-    const full = list.length >= SLOTS;
-    libEl.replaceChildren(
-      ...Object.keys(PRESETS).map((name) => {
-        const used = list.some((e) => !e.patch && e.name === name);
-        return el('div', { class: 'bank-row' }, el('span', { textContent: name }), el('button', { textContent: '+', title: used ? 'already in the bank' : 'add to the bank', disabled: full, onclick: () => { list.push({ name }); changed(); } }));
-      }),
-    );
-    bankEl.replaceChildren(
-      ...list.map((e, i) =>
-        el(
-          'div',
-          { class: 'bank-row' },
-          el('span', { class: 'slot', textContent: String(i + 1).padStart(2, '0') }),
-          el('span', { class: 'grow', textContent: e.patch ? `${e.name} (editor)` : e.name }),
-          el('button', { textContent: '▲', title: 'move up', disabled: i === 0, onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; changed(); } }),
-          el('button', { textContent: '▼', title: 'move down', disabled: i === list.length - 1, onclick: () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; changed(); } }),
-          el('button', { textContent: '×', title: 'remove', onclick: () => { list.splice(i, 1); changed(); } }),
-        ),
-      ),
-    );
-    const mine = savedPatches();
-    mineEl.replaceChildren(
-      ...(mine.length ? mine.map((e) => el('div', { class: 'bank-row' },
-        el('span', { class: 'grow', textContent: e.name }),
-        el('span', { class: 'muted', textContent: e.saved ? new Date(e.saved).toLocaleDateString() : '' }),
-        el('button', { textContent: 'Open', title: 'open in the editor', onclick: () => open(JSON.parse(JSON.stringify(e.patch)) as Patch, e.name) }),
-        el('button', { textContent: '+ bank', title: 'put a copy in the bank to upload to the FM-1', onclick: () => { status.textContent = addToBank(e.patch); reread(); refresh(); } }),
-        el('button', { class: 'delete', textContent: 'Delete', title: `delete "${e.name}" from Your patches (you can undo it)`, onclick: () => remove(e.name) }),
-      )) : [el('p', { class: 'muted', textContent: 'None yet. Click the save icon next to the patch name (or Ctrl/Cmd+S) to keep the open patch here.' })]),
-    );
-    overEl.replaceChildren(
-      ...(over.length ? over.map((e, i) => el('div', { class: 'bank-row' },
-        el('span', { class: 'grow', textContent: e.name }),
-        el('button', { textContent: 'Open', title: 'open in the editor', onclick: () => open(JSON.parse(JSON.stringify(e.patch)) as Patch) }),
-        el('button', { textContent: '×', title: 'remove', onclick: () => { over.splice(i, 1); saveOver(over); refresh(); } }),
-      )) : [el('p', { class: 'muted', textContent: 'None. A patch saved while it is over the FM-1 budget lands here.' })]),
-    );
-    countEl.textContent = `${list.length} of ${SLOTS} slots`;
-    const ready = device.connected && !busy;
-    upload.disabled = !ready || list.length === 0;
-    read.disabled = !ready;
-    clear.disabled = !ready;
-    readPresets.disabled = sendPresets.disabled = !ready || !device.hasPresets;
-    const kept = new Set(userPresets().map((x) => `${x.structure}/${devicePresetName(x.name)}`));
-    presetsEl.replaceChildren(...(onFm1.length ? onFm1.map((e) => el('div', { class: 'bank-row' },
-      el('span', { class: 'grow', textContent: e.name }),
-      el('span', { class: 'muted', textContent: engineOf(e.structure) }),
-      el('button', { textContent: kept.has(`${e.structure}/${e.name}`) ? 'Get again' : 'Get', title: 'copy it into your presets in this browser', disabled: !ready, onclick: () => void run('Get preset', async () => {
-        const v = await device.getPreset(e.structure, e.name);
-        if (!v) throw new Error('the FM-1 has no such preset any more');
-        const as = addUserPreset(e.structure, e.name, v);
-        status.textContent = as ? `"${as}" is in your presets` : `"${e.name}" is a factory preset's name: not copied`;
-      }) }),
-      el('button', { class: 'delete', textContent: 'Delete', title: 'delete it on the FM-1 (a device set to it keeps its sound)', disabled: !ready, onclick: () => {
-        const copy = kept.has(`${e.structure}/${e.name}`);
-        if (!window.confirm(`Delete the preset "${e.name}" on the FM-1? ${copy ? 'Your copy in this browser stays.' : 'This browser has no copy (Get keeps one), so it is gone for good.'} A device set to it keeps its sound but no longer names it.`)) return;
-        void run('Delete preset', async () => {
-          await device.deletePreset(e.structure, e.name);
-          onFm1 = onFm1.filter((x) => x !== e);
-          status.textContent = `"${e.name}" deleted on the FM-1: a device set to it keeps its sound, with no preset named`;
-        });
-      } }),
-    )) : [el('p', { class: 'muted', textContent: device.connected && !device.hasPresets ? 'This firmware keeps no presets: update it.' : 'Read them from a connected FM-1.' })]));
+  const mineEl = el('div', { class: 'bank-list' });
+  const mineCount = el('span', { class: 'muted' });
+  const factorySel = el('select', { className: 'lib-factory', title: 'The factory patches: read-only, a source for the FM-1 column' });
+  factorySel.setAttribute('aria-label', 'Add a factory patch to the FM-1 column');
+  const stateEl = el('span', { class: 'lib-state' });
+  const saveAs = el('button', { className: 'lib-saveas', textContent: 'Save as bank…', title: 'Keep what the FM-1 holds as the bank in this browser (it replaces the offline copy; asks first)' });
+  const bankEl = el('div', { class: 'bank-list' });
+  const countEl = el('p', { class: 'muted lib-count' });
+  const status = el('p', { class: 'muted lib-status' });
+  const bar = el('progress', { max: 100, value: 0 });
+  bar.hidden = true;
+  const send = el('button', { class: 'primary', textContent: 'Send bank to FM-1' });
+  const readBtn = el('button', { textContent: 'Read again', title: 'Read the FM-1’s slots again' });
+  const erase = el('button', { textContent: 'Empty the FM-1 bank', title: 'Erase every slot on the FM-1 (asks first)' });
+  const resetList = el('button', { textContent: 'All factory patches', title: 'Make the offline copy the factory patches' });
+  const emptyList = el('button', { textContent: 'Empty the list', title: 'Empty the offline copy' });
+
+  const live = (): boolean => device.connected;
+  /** the candidates for a slot's patch: the offline copy, Your patches, the factory patches */
+  const candidates = (): Candidate[] => [
+    ...list.map((e) => ({ name: e.name, patch: () => patchOf(e), factory: !e.patch })),
+    ...savedPatches().map((s) => ({ name: s.name, patch: () => s.patch })),
+    ...Object.entries(PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
+  ];
+  const factoryLength = new Map<string, number>(); // a factory patch's binary length, by name
+  const lengthOf = (e: Entry): number => {
+    if (e.patch) return binLength(e.patch);
+    if (!factoryLength.has(e.name)) factoryLength.set(e.name, binLength(patchOf(e)));
+    return factoryLength.get(e.name)!;
   };
-  const changed = (): void => {
-    save(list);
-    refresh();
-  };
+  const matches = (): boolean => !!slots && bankMatches(slots, list.map((e) => ({ name: e.name, length: lengthOf(e) })));
 
   const run = async (what: string, fn: () => Promise<void>): Promise<void> => {
     if (busy) return;
@@ -242,135 +254,227 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       status.textContent = `${what} failed: ${(e as Error).message}`;
     } finally {
       busy = false;
+      bar.hidden = true;
       refresh();
     }
   };
-
-  readPresets.onclick = () => void run('Read presets', async () => {
-    onFm1 = await device.listPresets();
-    status.textContent = `${onFm1.length} preset${onFm1.length === 1 ? '' : 's'} on the FM-1`;
+  const changed = (): void => {
+    save(list);
+    refresh();
+  };
+  const readDevice = (): Promise<void> => run('Reading the FM-1', async () => {
+    status.textContent = 'Reading the FM-1’s bank…';
+    slots = await device.readBank();
+    status.textContent = '';
   });
-  sendPresets.onclick = () => void run('Send presets', async () => {
-    const mine = userPresets();
-    for (const [i, x] of mine.entries()) {
-      bar.value = (100 * i) / Math.max(1, mine.length);
-      await device.putPreset(x.structure, x.name, x.values);
+
+  /** a patch into the FM-1 column: the offline copy without a device, the FM-1's slots with one */
+  const toFm1 = (name: string, patch: Patch, factory: boolean): void => {
+    if (!live()) {
+      const err = putEntry(list, factory ? { name } : { name, patch: copyOf({ ...patch, name }) });
+      status.textContent = err ?? `"${name}" is in the offline copy`;
+      if (!err) changed();
+      return;
     }
+    if (!slots) return void (status.textContent = 'read the FM-1 first');
+    const to = slotFor(slots, name);
+    if (!to) return void (status.textContent = `the FM-1's bank is full (${SLOTS} slots): "${name}" was not sent`);
+    if (to.replaces && !window.confirm(`FM-1 slot ${two(to.slot)} holds "${to.replaces.name}". Replace it with "${name}"?`)) return void (status.textContent = 'nothing was sent');
+    void run('Sending', async () => {
+      status.textContent = `Sending "${name}" to slot ${two(to.slot)}…`;
+      await device.uploadSlot(to.slot, name.toUpperCase(), patch);
+      slots![to.slot] = await device.readSlot(to.slot);
+      status.textContent = `"${name}" is in FM-1 slot ${two(to.slot)}`;
+    });
+  };
+  /** a copy into Your patches; one of that name is replaced, with Undo */
+  const toBrowser = (name: string, patch: Patch): void => {
+    const r = savePatch({ ...copyOf(patch), name });
+    status.textContent = r.msg;
+    if (r.replaced) {
+      const was = r.replaced;
+      showUndo(`"${was.name}" replaced in Your patches`, () => void putBackSaved(was));
+    }
+  };
+
+  const refresh = (): void => {
+    const ready = live() && !busy;
+    // In this browser: Your patches
+    const mine = savedPatches();
+    mineCount.textContent = `${mine.length} patch${mine.length === 1 ? '' : 'es'}`;
+    const full = live() ? !!slots && !slots.some((s) => !s.used) : list.length >= SLOTS;
+    const waiting = live() && !slots;
+    mineEl.replaceChildren(
+      ...(mine.length ? mine.map((e) => {
+        const ok = fits(e.patch);
+        return el('div', { class: 'bank-row' },
+          el('span', { class: 'grow', textContent: e.name }),
+          ...(ok ? [] : [el('span', { class: 'lib-badge', textContent: 'browser only', title: 'Too big for the FM-1' })]),
+          el('span', { class: 'muted', textContent: e.saved ? new Date(e.saved).toLocaleDateString() : '' }),
+          el('button', { textContent: 'Rename', title: `rename "${e.name}"`, onclick: () => {
+            const to = window.prompt(`Rename "${e.name}" to:`, e.name)?.trim();
+            if (!to || to === e.name) return;
+            status.textContent = renameSaved(e.name, to) ? `"${e.name}" is now "${to}"` : `"${to}" is taken in Your patches`;
+          } }),
+          el('button', { class: 'delete', textContent: 'Delete', title: `delete "${e.name}" from Your patches (you can undo it)`, onclick: () => ev.remove(e.name) }),
+          el('button', { class: 'lib-move', textContent: '→', ariaLabel: `add "${e.name}" to the FM-1's bank`,
+            title: !ok ? 'Too big for the FM-1' : live() ? 'Add it to the FM-1’s bank (written on the FM-1)' : 'Add it to the bank (the offline copy)',
+            disabled: !ok || busy || full || waiting, onclick: () => toFm1(e.name, e.patch, false) }),
+        );
+      }) : [el('p', { class: 'muted', textContent: 'None yet. Save (next to the patch name, or Ctrl/Cmd+S) keeps the open patch here.' })]),
+    );
+    factorySel.replaceChildren(new Option('Add from factory ▾', ''), ...Object.keys(PRESETS).map((n) => new Option(n, n)));
+    factorySel.disabled = busy || full || waiting;
+
+    // FM-1: the device's slots, or the offline copy
+    const onDevice = live() && !!slots;
+    const same = onDevice && matches();
+    stateEl.textContent = !live() ? 'Not connected · offline copy' : !slots ? 'Connected · reading…' : same ? `On the FM-1 · ${BANK_NAME}` : 'On the FM-1 · Unsaved bank';
+    stateEl.className = `lib-state${!onDevice ? '' : same ? ' live' : ' unsaved'}`;
+    saveAs.hidden = !onDevice || same;
+    saveAs.disabled = busy;
+    send.disabled = !ready || list.length === 0;
+    send.title = live() ? `Write the ${BANK_NAME.toLowerCase()} kept in this browser into the FM-1's slots, replacing what they hold (asks first when it would lose a patch)` : 'Connect an FM-1 first';
+    readBtn.hidden = erase.hidden = !live();
+    readBtn.disabled = erase.disabled = !ready;
+    resetList.hidden = emptyList.hidden = live();
+    resetList.disabled = emptyList.disabled = busy;
+    if (onDevice) {
+      const used = slots!.filter((s) => s.used);
+      const known = candidates();
+      bankEl.replaceChildren(...(used.length ? used.map((s) => {
+        const copy = knownCopy(s, known);
+        return el('div', { class: 'bank-row' },
+          el('span', { class: 'slot', textContent: two(s.slot) }),
+          el('span', { class: 'grow', textContent: s.name }),
+          el('button', { class: 'delete', textContent: '×', title: 'Erase this slot on the FM-1 (asks first)', ariaLabel: `erase slot ${two(s.slot)} on the FM-1`, disabled: busy, onclick: () => {
+            if (!window.confirm(`Erase FM-1 slot ${two(s.slot)} ("${s.name}")? ${copy ? 'This browser keeps its copy.' : 'This browser has no copy of it, so it is gone for good.'}`)) return;
+            void run('Erasing', async () => {
+              await device.eraseSlot(s.slot);
+              slots![s.slot] = await device.readSlot(s.slot);
+              status.textContent = `slot ${two(s.slot)} is empty`;
+            });
+          } }),
+          el('button', { class: 'lib-move', textContent: '←', ariaLabel: `copy "${s.name}" into Your patches`, disabled: busy || !copy,
+            title: copy ? `Copy into Your patches as "${copy.name}" (this browser's copy of it: the FM-1 cannot send a patch back)` : 'This browser has no copy of this patch, and the FM-1 cannot send a patch back',
+            onclick: () => copy && toBrowser(copy.name, copy.patch) }),
+        );
+      }) : [el('p', { class: 'muted', textContent: 'The bank is empty: the PRESET knob steps through the factory patches built into the firmware.' })]));
+      countEl.textContent = `${used.length} of ${SLOTS} slots used on the FM-1`;
+    } else {
+      bankEl.replaceChildren(...(list.length ? list.map((e, i) => el('div', { class: 'bank-row' },
+        el('span', { class: 'slot', textContent: two(i) }),
+        el('span', { class: 'grow', textContent: e.name }),
+        ...(e.patch ? [] : [el('span', { class: 'muted', textContent: 'factory' })]),
+        el('button', { textContent: '▲', title: 'move up', ariaLabel: `move "${e.name}" up`, disabled: busy || i === 0, onclick: () => { [list[i - 1], list[i]] = [list[i], list[i - 1]]; changed(); } }),
+        el('button', { textContent: '▼', title: 'move down', ariaLabel: `move "${e.name}" down`, disabled: busy || i === list.length - 1, onclick: () => { [list[i + 1], list[i]] = [list[i], list[i + 1]]; changed(); } }),
+        el('button', { textContent: 'Rename', title: `rename "${e.name}" in the bank (the FM-1 shows the first ${NAME_BYTES} characters, in capitals)`, disabled: busy, onclick: () => {
+          const to = window.prompt(`Rename "${e.name}" in the bank to:`, e.name)?.trim();
+          if (!to || to === e.name) return;
+          if (list.some((x) => x.name === to)) return void (status.textContent = `"${to}" is already in the bank`);
+          list[i] = { name: to, patch: { ...copyOf(patchOf(e)), name: to } };
+          changed();
+        } }),
+        el('button', { class: 'delete', textContent: '×', title: 'take it out of the bank (Your patches keep theirs)', ariaLabel: `take "${e.name}" out of the bank`, disabled: busy, onclick: () => { list.splice(i, 1); changed(); } }),
+        el('button', { class: 'lib-move', textContent: '←', ariaLabel: `copy "${e.name}" into Your patches`, title: 'Copy into Your patches', disabled: busy, onclick: () => toBrowser(e.name, patchOf(e)) }),
+      )) : [el('p', { class: 'muted', textContent: 'Empty. → beside a patch, or Add from factory, puts one here.' })]));
+      countEl.textContent = live() ? '' : `${list.length} of ${SLOTS} slots`;
+    }
+  };
+
+  factorySel.onchange = () => {
+    const name = factorySel.value;
+    factorySel.value = '';
+    if (!name) return;
+    if (!live() && list.some((e) => e.name === name)) return void (status.textContent = `"${name}" is already in the bank`);
+    toFm1(name, PRESETS[name](), true);
+  };
+  saveAs.onclick = () => {
+    if (!slots) return;
+    const used = slots.filter((s) => s.used);
+    const known = candidates();
+    const kept = used.map((s) => ({ s, copy: knownCopy(s, known) }));
+    const missing = kept.filter((k) => !k.copy);
+    const lose = missing.length ? ` This browser has no copy of ${missing.length} of them (${missing.slice(0, 6).map((k) => `${two(k.s.slot)} ${k.s.name}`).join(', ')}${missing.length > 6 ? ', …' : ''}): they are left out, since the FM-1 cannot send a patch back.` : '';
+    if (!window.confirm(`Keep the ${used.length} patches on the FM-1 as the ${BANK_NAME.toLowerCase()} in this browser? This replaces its offline copy (${list.length} patches).${lose}`)) return;
+    list = kept.flatMap(({ copy }) => (!copy ? [] : copy.factory ? [{ name: copy.name }] : [{ name: copy.name, patch: copyOf(copy.patch) }]));
+    changed();
+    status.textContent = `the ${BANK_NAME.toLowerCase()} is what the FM-1 holds${missing.length ? `, less ${missing.length} this browser has no copy of` : ''}`;
+  };
+  send.onclick = () => void run('Sending the bank', async () => {
+    const total = list.length;
+    status.textContent = 'Reading the bank on the FM-1…';
+    const have = await device.readBank();
+    slots = have;
+    const lost = uploadLoses(have, list.map((e) => e.name));
+    const shown = lost.slice(0, 8).map((s) => `${two(s.slot)} ${s.name}`).join(', ') + (lost.length > 8 ? ', …' : '');
+    if (lost.length && !window.confirm(`Sending the ${BANK_NAME.toLowerCase()} replaces ${lost.length} patch${lost.length === 1 ? '' : 'es'} on the FM-1 that it does not hold (${shown}). Send anyway?`)) {
+      status.textContent = 'Nothing was sent.';
+      return;
+    }
+    bar.hidden = false;
+    for (let i = 0; i < total; i++) {
+      status.textContent = `Sending ${i + 1} of ${total}: ${list[i].name}`;
+      bar.value = (100 * i) / total;
+      await device.uploadSlot(i, list[i].name.toUpperCase(), patchOf(list[i]));
+    }
+    for (let i = total; i < SLOTS; i++)
+      if (have[i].used) {
+        status.textContent = `Emptying slot ${two(i)}`;
+        await device.eraseSlot(i);
+      }
     bar.value = 100;
-    onFm1 = await device.listPresets();
-    status.textContent = `${mine.length} preset${mine.length === 1 ? '' : 's'} sent; ${onFm1.length} on the FM-1`;
+    slots = await device.readBank();
+    status.textContent = `${total} patches are on the FM-1. Turn its PRESET knob to step through them.`;
   });
-
-  connect.onclick = () =>
-    void run('connect', async () => {
-      const info = await device.connect();
-      status.textContent = `FM-1 connected (flash ${info.flashOk ? 'ok' : 'not available: the bank cannot be stored'}).`;
-      onConnected(status.textContent);
-    });
-
-  upload.onclick = () =>
-    void run('upload', async () => {
-      const total = list.length;
-      status.textContent = 'Reading the bank on the FM-1…';
-      const have = await device.readBank();
-      const lost = uploadLoses(have, list.map((e) => e.name));
-      const shown = lost.slice(0, 8).map((s) => `${String(s.slot + 1).padStart(2, '0')} ${s.name}`).join(', ') + (lost.length > 8 ? ', …' : '');
-      if (lost.length && !window.confirm(`Uploading replaces ${lost.length} patch${lost.length === 1 ? '' : 'es'} on the FM-1 that the list does not hold (${shown}). Upload anyway?`)) {
-        status.textContent = 'Upload cancelled: nothing was sent.';
-        return;
-      }
-      for (let i = 0; i < total; i++) {
-        status.textContent = `Uploading ${i + 1} of ${total}: ${list[i].name}`;
-        bar.value = (100 * i) / total;
-        await device.uploadSlot(i, list[i].name.toUpperCase(), patchOf(list[i]));
-      }
-      for (let i = total; i < SLOTS; i++)
-        if (have[i].used) {
-          status.textContent = `Emptying slot ${i + 1}`;
-          await device.eraseSlot(i);
-        }
-      bar.value = 100;
-      status.textContent = `${total} patches are on the FM-1. Turn its PRESET knob to step through them.`;
-    });
-
-  read.onclick = () =>
-    void run('read', async () => {
-      status.textContent = 'Reading the bank on the FM-1…';
-      const slots = await device.readBank();
-      const used = slots.filter((s) => s.used);
-      onDevice.textContent = used.length ? used.map((s) => `${String(s.slot + 1).padStart(2, '0')}  ${s.name}  (${s.length} bytes)`).join('\n') : 'The bank is empty: the PRESET knob steps through the factory patches built into the firmware.';
-      status.textContent = `${used.length} of ${SLOTS} slots are used on the FM-1.`;
-    });
-
-  clear.onclick = () => {
+  readBtn.onclick = () => void readDevice();
+  erase.onclick = () => {
     if (busy || !window.confirm('Erase every patch slot on the FM-1? The PRESET knob then steps through the factory patches built into the firmware.')) return;
-    void run('clear', async () => {
-      const slots = await device.readBank();
-      for (const s of slots) if (s.used) await device.eraseSlot(s.slot);
-      onDevice.textContent = 'The bank is empty: the PRESET knob steps through the factory patches built into the firmware.';
+    void run('Emptying the FM-1 bank', async () => {
+      const have = await device.readBank();
+      for (const s of have) if (s.used) await device.eraseSlot(s.slot);
+      slots = await device.readBank();
       status.textContent = 'The FM-1 bank is empty.';
     });
   };
-
-  const addCurrent = el('button', {
-    textContent: 'Add the patch from the editor',
-    onclick: () => {
-      const p = JSON.parse(JSON.stringify(currentPatch())) as Patch;
-      if (!fits(p)) {
-        status.textContent = addToBank({ ...p, name: p.name || 'PATCH' });
-        reread();
-        return refresh();
-      }
-      if (list.length >= SLOTS) return;
-      list.push({ name: p.name || 'PATCH', patch: p });
-      changed();
-    },
-  });
-  const linkIn = el('input', { type: 'text', placeholder: 'paste a patch link (…#p=… or …#s=…)' });
-  const importLink = el('button', {
-    textContent: 'Import link',
-    onclick: async () => {
-      const text = linkIn.value.trim();
-      const code = isShareLink(text) ? null : /^[A-Za-z0-9_-]{16,}$/.test(text) ? text : null; // (a bare `p=` value)
-      if (!code && !isShareLink(text)) return void (status.textContent = 'that is not a patch link');
-      try {
-        const p = code ? await decodeShare(code, DEFS) : (await openShareLink(text, DEFS))!;
-        if (!fits(p)) {
-          status.textContent = addToBank({ ...p, name: p.name || 'PATCH' });
-          linkIn.value = '';
-          reread();
-          return refresh();
-        }
-        if (list.length >= SLOTS) return void (status.textContent = 'the list is full');
-        list.push({ name: p.name || 'PATCH', patch: p });
-        linkIn.value = '';
-        changed();
-        status.textContent = `"${p.name}" added to the list from the link.`;
-      } catch (e) {
-        status.textContent = `the link holds no patch: ${(e as Error).message}`;
-      }
-    },
-  });
-  const reset = el('button', { textContent: 'All factory patches', title: 'Replace the list with the factory patches', onclick: () => { list = Object.keys(PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); } });
-  const empty = el('button', { textContent: 'Empty the list', onclick: () => { list = []; changed(); } });
+  resetList.onclick = () => { list = Object.keys(PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); };
+  emptyList.onclick = () => { list = []; changed(); };
 
   onSavedChange(refresh);
   root.append(
-    el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag src', textContent: 'MINE' }), 'Your patches'), el('p', { class: 'muted', textContent: 'Patches you saved, kept in this browser. Saving under the same name replaces the copy.' }), mineEl),
-    el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'Patch bank'), el('p', { textContent: 'Choose up to 64 patches and send them to the FM-1. They are written to its flash: the PRESET knob steps through them, program change n opens slot n, SAVE on the FM-1 writes edits back, and they stay when the power is off. Uploading replaces the whole bank.' }), el('div', { class: 'toolbar' }, connect, upload, read, clear), bar, status),
-    el(
-      'div',
-      { class: 'bank-cols' },
-      el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag src', textContent: 'PATCHES' }), 'Factory patches'), el('div', { class: 'toolbar' }, addCurrent), el('div', { class: 'toolbar' }, linkIn, importLink), libEl),
-      el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag shp', textContent: 'BANK' }), 'Bank to upload ', countEl), el('div', { class: 'toolbar' }, reset, empty), bankEl),
+    el('div', { class: 'lib-cols' },
+      el('section', { class: 'card lib-col', ariaLabel: 'In this browser' },
+        el('h2', {}, el('span', { class: 'mtag src', textContent: 'MINE' }), 'In this browser', mineCount),
+        el('p', { class: 'muted', textContent: 'Your patches, kept in this browser. → adds one to the FM-1’s bank; one marked "browser only" is too big for the FM-1.' }),
+        mineEl,
+        el('div', { class: 'toolbar lib-foot' }, factorySel),
+      ),
+      el('section', { class: 'card lib-col', ariaLabel: 'FM-1' },
+        el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'FM-1', stateEl, saveAs),
+        // (the bank picker of #220 takes the bank's name's place, before Send bank to FM-1)
+        el('div', { class: 'toolbar' }, el('span', { class: 'lib-bank', textContent: BANK_NAME, title: 'The bank kept in this browser (one for now)' }), send, readBtn, erase, resetList, emptyList),
+        bar,
+        bankEl,
+        countEl,
+        status,
+      ),
     ),
-    el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'Presets on the FM-1'), el('p', { class: 'muted', textContent: 'The FM-1 keeps its own presets (ENV held + SAVE stores one there). Send yours to it, or get its into this browser; nothing syncs by itself.' }), el('div', { class: 'toolbar' }, readPresets, sendPresets), presetsEl),
-    el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag fx', textContent: 'OVER' }), 'Over budget (browser only)'), el('p', { class: 'muted', textContent: 'Patches too big for the FM-1. They play in the browser; they are never uploaded. One that fits again moves to the bank when you save it.' }), overEl),
-    el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'On the FM-1'), onDevice),
   );
   refresh();
-  return () => {
-    reread();
-    refresh();
+  return {
+    refresh() {
+      list = reread();
+      refresh();
+    },
+    enter() {
+      list = reread();
+      refresh();
+      if (live()) void readDevice();
+    },
+    deviceChanged(shown) {
+      slots = null;
+      refresh();
+      if (shown && live()) void readDevice();
+    },
   };
 }

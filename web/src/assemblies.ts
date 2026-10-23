@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The assembly library: the factory set shipped with the editor (src/assemblies/*.json) and the user's own, kept in
-// localStorage, each one in the file format of assembly.ts. The Library page lists them: insert, export, import, delete.
+// localStorage, each one in the file format of assembly.ts. Library > Assemblies lists the user's own: rename, export,
+// import, delete (at once, with Undo); the factory set is in the assembly browser and the palette (#218).
 import { validateAssemblyDef, type AssemblyDef } from './assembly';
 import { renamedKey } from './storage-key';
 import { DEFS } from './modules';
 import { defIsEngine } from './engines';
+import { showUndo } from './toast';
 
 const STORE = renamedKey('matryoshka.assemblies', 'modular-1.assemblies');
 
-/** the shelves of the assembly browser and the Library page, in display order; the user's own come first under their own shelf */
+/** the shelves of the assembly browser and the palette, in display order; the user's own come first under their own shelf */
 export const CATEGORIES = ['Drums', 'Voices', 'Effects', 'Textures', 'Utilities'] as const;
 export const USER_SHELF = 'Your library';
 /** a factory definition's shelf (an unknown or missing one lands on the last shelf) */
@@ -60,19 +62,54 @@ export function saveLibrary(list: AssemblyDef[]): void {
   }
 }
 
-/** put a definition into the user library; a name that exists is replaced after a confirm. Returns what happened. */
-export function storeAssembly(def: AssemblyDef, confirm: (msg: string) => boolean = (m) => window.confirm(m)): 'saved' | 'replaced' | 'cancelled' {
+/** put a definition into the user library; one of that name is replaced at once. Returns what happened and an undo
+ *  (the replaced one back, or the new one out), for an Undo toast */
+export function storeAssembly(def: AssemblyDef): { result: 'saved' | 'replaced'; undo: () => void } {
   const list = loadLibrary();
   const i = list.findIndex((d) => d.name === def.name);
-  if (i >= 0) {
-    if (!confirm(`Replace the assembly "${def.name}" in the library?`)) return 'cancelled';
-    list[i] = def;
-    saveLibrary(list);
-    return 'replaced';
-  }
-  list.push(def);
+  const was = i >= 0 ? list[i] : null;
+  if (i >= 0) list[i] = def;
+  else list.push(def);
   saveLibrary(list);
-  return 'saved';
+  return {
+    result: was ? 'replaced' : 'saved',
+    undo: () => {
+      const now = loadLibrary();
+      const k = now.findIndex((d) => d.name === def.name);
+      if (k < 0) return;
+      if (was) now[k] = was;
+      else now.splice(k, 1);
+      saveLibrary(now);
+    },
+  };
+}
+
+/** delete a definition from the user library; returns an undo that puts it back where it was (unless one of that name
+ *  was stored since), or null when there was none */
+export function removeAssembly(name: string): (() => boolean) | null {
+  const list = loadLibrary();
+  const i = list.findIndex((d) => d.name === name);
+  if (i < 0) return null;
+  const [gone] = list.splice(i, 1);
+  saveLibrary(list);
+  return () => {
+    const now = loadLibrary();
+    if (now.some((d) => d.name === name)) return false;
+    now.splice(Math.min(i, now.length), 0, gone);
+    saveLibrary(now);
+    return true;
+  };
+}
+
+/** rename a definition in the user library; false when it is missing or the new name is taken */
+export function renameAssembly(from: string, to: string): boolean {
+  const name = to.trim();
+  const list = loadLibrary();
+  const d = list.find((x) => x.name === from);
+  if (!d || !name || list.some((x) => x.name === name)) return false;
+  d.name = name;
+  saveLibrary(list);
+  return true;
 }
 
 /** Tutorial saves preserve earlier user instruments and fail visibly if storage is unavailable. */
@@ -118,47 +155,52 @@ export function download(def: AssemblyDef): void {
 }
 
 export interface LibraryEvents {
-  insert(def: AssemblyDef): void;
   status(msg: string): void;
+  /** the library changed here (the palette, the assembly browser and the tutorial reread it) */
+  changed(): void;
 }
 
-/** the assemblies section of the Library page. Returns a refresh function for when the library changed elsewhere (a save from the editor). */
-export function buildAssembliesTab(root: HTMLElement, ev: LibraryEvents): () => void {
+/** Library > Assemblies: the user's own, each with its blurb or module list, Rename, Export and Delete (at once, with
+ *  Undo); Import .json. The FM-1 stores none (they travel inside patches). Returns a refresh for when the library changed
+ *  elsewhere (a save from a card). */
+export function buildAssembliesSection(root: HTMLElement, ev: LibraryEvents): () => void {
   const userEl = el('div', { class: 'bank-list' });
-  const factoryEl = el('div');
-  const note = el('p', { class: 'muted' });
-  const row = (d: AssemblyDef, user: boolean): HTMLElement =>
+  const count = el('span', { class: 'muted' });
+  const row = (d: AssemblyDef): HTMLElement =>
     el(
       'div',
       { class: 'bank-row' },
       el('span', { class: 'grow' }, ...(defIsEngine(d) ? [engineTag(), ' '] : []), el('b', { textContent: d.name }), ' ', el('span', { class: 'muted', textContent: describe(d) })),
-      el('button', { textContent: 'Insert', title: 'Put it into the patch', onclick: () => ev.insert(d) }),
+      el('button', { textContent: 'Rename', title: `rename "${d.name}"`, onclick: () => {
+        const to = window.prompt(`Rename the assembly "${d.name}" to:`, d.name)?.trim();
+        if (!to || to === d.name) return;
+        ev.status(renameAssembly(d.name, to) ? `"${d.name}" is now "${to}" (patches that hold it keep their copy)` : `"${to}" is taken in your assemblies`);
+        changed();
+      } }),
       el('button', { textContent: 'Export', title: 'Download as a .json file', onclick: () => download(d) }),
-      ...(user
-        ? [
-            el('button', {
-              textContent: '×',
-              title: 'Delete from the library',
-              onclick: () => {
-                if (!window.confirm(`Delete the assembly "${d.name}" from the library?`)) return;
-                saveLibrary(loadLibrary().filter((x) => x.name !== d.name));
-                refresh();
-              },
-            }),
-          ]
-        : []),
+      el('button', {
+        class: 'delete',
+        textContent: 'Delete',
+        title: `delete "${d.name}" from your assemblies (you can undo it; patches that hold it keep their copy)`,
+        onclick: () => {
+          const undo = removeAssembly(d.name);
+          if (!undo) return;
+          changed();
+          showUndo(`"${d.name}" deleted from your assemblies`, () => {
+            ev.status(undo() ? `"${d.name}" is back in your assemblies` : `"${d.name}" was stored again since: the deleted one was not put back`);
+            changed();
+          });
+        },
+      }),
     );
   const refresh = (): void => {
     const list = loadLibrary();
-    userEl.replaceChildren(...list.map((d) => row(d, true)));
-    note.textContent = list.length ? '' : 'None yet. Select modules in the patch, click "Make assembly", then "save" on its card.';
-    factoryEl.replaceChildren(
-      ...FACTORY_SHELVES.flatMap((c) => {
-        const ds = FACTORY.filter((d) => shelvesOf(d).includes(c));
-        const sub = SHELF_NOTES[c];
-        return ds.length ? [el('h4', { textContent: c }), ...(sub ? [el('p', { class: 'muted', textContent: sub })] : []), el('div', { class: 'bank-list' }, ...ds.map((d) => row(d, false)))] : [];
-      }),
-    );
+    count.textContent = `${list.length} assembl${list.length === 1 ? 'y' : 'ies'}`;
+    userEl.replaceChildren(...(list.length ? list.map(row) : [el('p', { class: 'muted', textContent: 'None yet. Select modules in the patch, click "Make assembly", then "save" on its card.' })]));
+  };
+  const changed = (): void => {
+    refresh();
+    ev.changed();
   };
   const file = el('input', { type: 'file', accept: 'application/json,.json', hidden: true });
   file.onchange = async () => {
@@ -167,25 +209,23 @@ export function buildAssembliesTab(root: HTMLElement, ev: LibraryEvents): () => 
     if (!f) return;
     try {
       const def = validateAssemblyDef(JSON.parse(await f.text()), DEFS);
-      const r = storeAssembly(def);
-      ev.status(r === 'cancelled' ? 'import cancelled' : `"${def.name}" ${r === 'replaced' ? 'replaced in' : 'added to'} the library`);
-      refresh();
+      const { result, undo } = storeAssembly(def);
+      ev.status(`"${def.name}" ${result === 'replaced' ? 'replaced in' : 'added to'} your assemblies`);
+      if (result === 'replaced') showUndo(`"${def.name}" replaced in your assemblies`, () => { undo(); changed(); });
+      changed();
     } catch (e) {
       ev.status(`import failed: ${(e as Error).message}`);
     }
   };
   root.append(
     el(
-      'div',
-      { class: 'card' },
-      el('h2', {}, el('span', { class: 'mtag asm', textContent: 'ASM' }), 'Assemblies'),
-      el('p', { class: 'muted', textContent: 'An assembly is a building block: prewired modules that appear as one card with the ports and parameters it exposes, never the Main panel or the Output. Make one from a selection in the patch and "save" it on its card; "Insert assembly" in the toolbar puts any of these into the patch.' }),
-      el('h3', { textContent: USER_SHELF }),
+      'section',
+      { class: 'card lib-single', ariaLabel: 'Your assemblies' },
+      el('h2', {}, el('span', { class: 'mtag asm', textContent: 'ASM' }), 'Your assemblies', count),
+      el('p', { class: 'muted', textContent: 'An assembly is a building block: prewired modules that appear as one card with the ports and parameters it exposes. Make one from a selection in the patch and "save" it on its card; + Assembly and the palette insert it.' }),
       userEl,
-      note,
       el('div', { class: 'row' }, el('label', { class: 'btn', textContent: 'Import .json' }, file)),
-      el('h3', { textContent: 'Factory' }),
-      factoryEl,
+      el('p', { class: 'muted lib-note', textContent: 'The FM-1 stores no assemblies: they travel inside patches.' }),
     ),
   );
   refresh();

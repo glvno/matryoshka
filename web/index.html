@@ -87,7 +87,12 @@
       <div id="diff" class="panel" hidden></div>
       <button id="help-btn" class="help-btn" type="button" title="Shortcuts (?)" aria-label="Keyboard and mouse shortcuts">?</button>
     </section>
-    <section id="tab-library" class="tab" role="tabpanel" aria-label="Library" hidden><div id="library-cards"></div></section>
+    <!-- LIBRARY: one section at a time (main.ts showLibrarySection): Patches and Presets in two columns, this browser and the FM-1 -->
+    <section id="tab-library" class="tab" role="tabpanel" aria-label="Library" hidden>
+      <div id="lib-patches" class="lib-section"><h2 class="lib-title">Patches</h2></div>
+      <div id="lib-assemblies" class="lib-section" hidden><h2 class="lib-title">Assemblies</h2></div>
+      <div id="lib-presets" class="lib-section" hidden><h2 class="lib-title">Presets</h2></div>
+    </section>
     <!-- the views (main.ts setView): centred over the main area; Install firmware is a panel over all three, not a view -->
     <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true" title="The patch: the canvas of cards">Patch</button><button type="button" role="tab" data-view="emu" aria-selected="false" tabindex="-1" title="The FM-1's firmware, emulated in the browser">Emu</button><button type="button" role="tab" data-view="library" aria-selected="false" tabindex="-1" title="Manage what is stored, in this browser and on the FM-1">Library</button></div>
     <!-- Connect FM-1 (top right, in every view): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
@@ -161,6 +166,7 @@
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+S</kbd></span><span>save the patch to Your patches</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+B</kbd></span><span>collapse / expand the sidebar</span></div>
             <div class="hrow"><span class="hkeys">PATCH · EMU · LIBRARY</span><span>the switch at the top: the canvas, the FM-1’s firmware emulated in the browser, and what is stored in this browser and on the FM-1 (<kbd>←</kbd><kbd>→</kbd> move along it). Install firmware is under Get started and in the palette</span></div>
+            <div class="hrow"><span class="hkeys">LIBRARY <b>→</b> <b>←</b></span><span>Patches and Presets in two columns, this browser and the FM-1: → puts one on the FM-1 (or in the bank’s offline copy while none is connected), ← copies one into this browser. Deleting in this browser offers Undo; replacing on the FM-1 asks first</span></div>
             <div class="hrow"><span class="hkeys"><kbd>?</kbd></span><span>this list</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Esc</kbd></span><span>cancel a connection, finish choosing or arranging what a card shows, close a dialog or the Install panel</span></div>
           </section>

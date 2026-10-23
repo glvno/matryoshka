@@ -14,12 +14,13 @@ import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
-import { addToBank, bankPatches, buildBankTab } from './bank';
+import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
+import { buildPresetsSection } from './library-presets';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
 import { showAction, showToast, showUndo } from './toast';
 import { popMenu, type MenuItem } from './menu';
 import { initStatusline, pinStatus } from './statusline';
-import { buildAssembliesTab, storeAssembly, storeTutorialAssembly } from './assemblies';
+import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './assemblies';
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { buildFlashTab } from './flasher';
@@ -43,7 +44,7 @@ import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
-import { buildCommunityShelf } from './community';
+import { loadCommunity } from './community';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
 import { starterPatch } from './starter';
@@ -171,7 +172,10 @@ async function offerInstall(): Promise<void> {
   showAction(text, 'Install Matryoshka', openInstall, 12000);
 }
 syncChip();
-device.onStatus = devStatus;
+device.onStatus = (msg) => {
+  devStatus(msg);
+  if (!device.connected) libraryDeviceChanged();   // (it went away)
+};
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
 /** the change comes from the FM-1 tab's emulator (fm1-view.ts): not sent back to it, but on to a Live FM-1 */
@@ -567,10 +571,12 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     status.textContent = msg;
   },
   onSaveAssembly(def) {
-    const r = storeAssembly(def);
-    status.textContent = r === 'cancelled' ? 'not saved' : `"${def.name}" ${r === 'replaced' ? 'replaced in' : 'saved to'} the assembly library`;
+    // a name already in the library is replaced at once, with Undo (#218: no confirm for what the browser keeps)
+    const { result, undo } = storeAssembly(def);
+    status.textContent = `"${def.name}" ${result === 'replaced' ? 'replaced in' : 'saved to'} the assembly library`;
+    if (result === 'replaced') showUndo(`"${def.name}" replaced in your assemblies`, () => { undo(); refreshAssemblies(); tutorial.refresh(); });
     refreshAssemblies();
-    if (r !== 'cancelled') tutorial.saved(def);
+    tutorial.saved(def);
     tutorial.refresh();
   },
   onLoad(p) {
@@ -800,7 +806,7 @@ function showBudget(): void {
   note.className = 'muted';
   note.textContent = b.fits
     ? 'The CPU figure is an estimate: counted on a model of the FM-1\'s processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
-    : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and the Library keeps it under "Over budget".';
+    : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and Library > Patches marks it "browser only".';
   list.append(note);
   pinStatus(b.fits ? null : { tag: 'Too much for the FM-1', text: `${b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} of ${i.max}`).join(', ')}. It plays here; click the budget for what costs most.` });
   if (was && !b.fits && device.connected) devStatus('over the FM-1 budget: Live paused until the patch fits');
@@ -1484,10 +1490,7 @@ function setView(v: View): void {
   else emu.hide();
   editor.positionSideCables();
   if (v === 'patch') requestAnimationFrame(() => editor.drawCables());
-  if (v === 'library') {
-    refreshBank();
-    showLibrarySection();
-  }
+  if (v === 'library') showLibrarySection();
 }
 for (const b of viewBtns) {
   b.onclick = () => setView(b.dataset.view as View);
@@ -1507,8 +1510,9 @@ function toPatch(): void {
   if (currentView === 'library') setView('patch');
 }
 
-// LIBRARY's sections (#218): Patches, Assemblies, Presets in the sidebar, the last one remembered per browser. For now
-// each scrolls the library page to its cards
+// LIBRARY's sections (#218): Patches, Assemblies, Presets in the sidebar, the last one remembered per browser; one shows
+// at a time (bank.ts, assemblies.ts, library-presets.ts build them below). Entering one rereads it, and reads the FM-1
+// when one is connected
 type LibrarySection = 'patches' | 'assemblies' | 'presets';
 const LIBRARY_SECTION = 'matryoshka.library-section';
 const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets';
@@ -1521,14 +1525,19 @@ let librarySection: LibrarySection = (() => {
   }
 })();
 const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('.library-nav [data-section]')];
-/** the library card a section starts at (the page's cards, by their titles); Patches is the top */
-const SECTION_CARD: Record<LibrarySection, string | null> = { patches: null, assemblies: 'Assemblies', presets: 'Presets on the FM-1' };
+const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets') };
+/** the sections' panes with an FM-1 column (set when they are built, below) */
+const libraryPanes: Partial<Record<LibrarySection, LibraryPane>> = {};
 function showLibrarySection(): void {
   for (const b of sectionBtns) b.setAttribute('aria-current', String(b.dataset.section === librarySection));
-  const page = $('tab-library');
-  const title = SECTION_CARD[librarySection];
-  const card = title ? [...page.querySelectorAll<HTMLElement>('.card > h2')].find((h) => h.textContent?.trim().endsWith(title))?.parentElement : null;
-  page.scrollTop = card ? page.scrollTop + card.getBoundingClientRect().top - page.getBoundingClientRect().top - 52 : 0;
+  for (const [k, el] of Object.entries(sectionEls)) el.hidden = k !== librarySection;
+  $('tab-library').scrollTop = 0;
+  if (librarySection === 'assemblies') refreshAssemblies();
+  libraryPanes[librarySection]?.enter();
+}
+/** an FM-1 connected or went away: the Library's FM-1 columns follow (the one on screen reads the FM-1 now) */
+function libraryDeviceChanged(): void {
+  for (const [k, pane] of Object.entries(libraryPanes)) pane.deviceChanged(currentView === 'library' && k === librarySection);
 }
 function setLibrarySection(section: LibrarySection): void {
   librarySection = section;
@@ -1600,6 +1609,7 @@ async function connectFm1(): Promise<void> {
     $('dev-btn').textContent = 'Reconnect';
     if (!mirror.following) void followFm1('matryoshka');   // it runs Matryoshka (it answered HELLO): its panel drives the page
     offerSync();
+    libraryDeviceChanged();
   } catch (e) {
     devStatus((e as Error).message);
   }
@@ -1971,26 +1981,17 @@ try {
   /* storage blocked: start expanded */
 }
 
-// tabs
-// the Community patches card goes first, above Your patches (#157). Post yours opens the share sheet (#165)
-const libraryCards = $('library-cards');
-buildCommunityShelf(libraryCards, {
-  open: (p) => loadNamed(p, { once: true }),
-  post: () => shareSheet.open(), // the share sheet: Copy link, Post to Reddit, Submit to the Community shelf
-  loaded: fillPicker,
-});
-const refreshBank = buildBankTab(libraryCards, device, () => editor.patch, (msg) => {
-  devStatus(msg);
-  for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
-  offerSync();
-}, (p, from) => loadNamed(p, { from }), deleteSaved);
-refreshAssemblies = buildAssembliesTab(libraryCards, {
-  insert(def) {
-    toPatch();
-    editor.insert(def);
-  },
+// LIBRARY's sections (#218): it manages what is stored and opens nothing. The Community patches are in the Open picker and
+// the palette, which refill once they are decoded
+void loadCommunity().then(fillPicker);
+libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: deleteSaved });
+libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
+refreshAssemblies = buildAssembliesSection($('lib-assemblies'), {
   status(msg) {
     status.textContent = msg;
+  },
+  changed() {
+    tutorial.refresh();
   },
 });
 buildFlashTab($('flash-body'));
