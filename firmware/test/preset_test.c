@@ -92,6 +92,11 @@ int main(void)
     v[0] = 99;
     CHECK(ps_put(0xABCD1234u, "GLASS", v, 24) == 0 && !get(0xABCD1234u, "GLASS", &got, &n) && got == 99, "overwrite: the new values");
     CHECK(ps_list(0xABCD1234u, 0, 0) == 2u, "still two");
+    v[0] = 98;
+    CHECK(ps_put(0xABCD1234u, "Glass", v, 24) == 0 && ps_list(0xABCD1234u, 0, 0) == 2u && !get(0xABCD1234u, "GLASS", &got, &n) && got == 98,
+          "a name in another case is the same preset (the editor's Glass is the panel's GLASS)");
+    v[0] = 99;
+    CHECK(ps_put(0xABCD1234u, "GLASS", v, 24) == 0, "(back to its values)");
     ps_scan();
     CHECK(ps_list(0, 0, 0) == 3u && !get(0xABCD1234u, "GLASS", &got, &n) && got == 99, "after a power cycle: the same three, the new values");
     CHECK(ps_del(0x11111111u, "KIT") == 0 && ps_list(0, 0, 0) == 2u && ps_del(0x11111111u, "KIT") == -1, "delete one; again: none");

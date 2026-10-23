@@ -213,7 +213,8 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       el('button', { textContent: kept.has(`${e.structure}/${e.name}`) ? 'Get again' : 'Get', title: 'copy it into your presets in this browser', disabled: !ready, onclick: () => void run('Get preset', async () => {
         const v = await device.getPreset(e.structure, e.name);
         if (!v) throw new Error('the FM-1 has no such preset any more');
-        status.textContent = addUserPreset(e.structure, e.name, v) ? `"${e.name}" is in your presets` : `"${e.name}" is a factory preset's name: not copied`;
+        const as = addUserPreset(e.structure, e.name, v);
+        status.textContent = as ? `"${as}" is in your presets` : `"${e.name}" is a factory preset's name: not copied`;
       }) }),
       el('button', { class: 'delete', textContent: 'Delete', title: 'delete it on the FM-1', disabled: !ready, onclick: () => void run('Delete preset', async () => {
         await device.deletePreset(e.structure, e.name);

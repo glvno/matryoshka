@@ -29,6 +29,9 @@ export const PRESET_NAME_MAX = 24;
 let factory: Preset[] = [];
 export const setFactoryPresets = (list: Preset[]): void => void (factory = list.map((p) => ({ ...p, factory: true })));
 
+/** preset names are one name whatever their case (the FM-1 shows and stores capitals: BRIGHT 2 is Bright 2) */
+export const sameName = (a: string | undefined, b: string | undefined): boolean => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
 const fixName = (s: unknown): string => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, PRESET_NAME_MAX);
 
 /** a preset from anything, or null */
@@ -92,7 +95,7 @@ export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean 
 /** whether the assembly's values still match the preset it remembers (false: edited since, or the preset is gone) */
 export function matchesPreset(p: Patch, a: AssemblyInst): boolean {
   if (!a.preset) return false;
-  const pr = presetsOf(p, a).find((x) => x.name === a.preset);
+  const pr = presetsOf(p, a).find((x) => sameName(x.name, a.preset));
   if (!pr) return false;
   const now = currentValues(p, a);
   return now.length === pr.values.length && now.every((v, i) => Math.abs(v - pr.values[i]) < 1e-6);
@@ -103,30 +106,35 @@ export function matchesPreset(p: Patch, a: AssemblyInst): boolean {
 export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
   const structure = structureOf(p, a);
   let n = fixName(name) || 'preset';
-  const taken = (x: string): boolean => factory.some((f) => f.structure === structure && f.name === x);
+  const taken = (x: string): boolean => factory.some((f) => f.structure === structure && sameName(f.name, x));
   for (let k = 2; taken(n); k++) n = `${fixName(name).slice(0, PRESET_NAME_MAX - 3)} ${k}`;
-  const list = userPresets().filter((x) => !(x.structure === structure && x.name === n));
+  const list = userPresets().filter((x) => !(x.structure === structure && sameName(x.name, n)));
   list.push({ structure, name: n, values: currentValues(p, a) });
   writeUser(list);
   a.preset = n;
   return n;
 }
 
-/** a user preset from elsewhere (the FM-1, #195): stored under its name (over one of the same structure and name);
- * false when a factory one has that name */
-export function addUserPreset(structure: string, name: string, values: number[]): boolean {
-  const n = fixName(name);
-  if (!n || factory.some((f) => f.structure === structure && f.name === n)) return false;
-  writeUser([...userPresets().filter((x) => !(x.structure === structure && x.name === n)), { structure, name: n, values: [...values] }]);
-  return true;
+/** a user preset from elsewhere (the FM-1, #195): stored under its name, over one of the same structure and name in any
+ * case (which keeps its own spelling); a name in capitals only, as the FM-1 writes them, otherwise takes the editor's
+ * style (INIT 2 -> Init 2). False when a factory one has that name. Returns the name it is stored under */
+export function addUserPreset(structure: string, name: string, values: number[]): string | false {
+  let n = fixName(name);
+  if (!n || factory.some((f) => f.structure === structure && sameName(f.name, n))) return false;
+  const users = userPresets();
+  const had = users.find((x) => x.structure === structure && sameName(x.name, n));
+  if (had) n = had.name;
+  else if (n === n.toUpperCase() && /[A-Z]/.test(n)) n = n.toLowerCase().replace(/(^|[\s-])([a-z])/g, (_, a: string, b: string) => a + b.toUpperCase());
+  writeUser([...users.filter((x) => !(x.structure === structure && sameName(x.name, n))), { structure, name: n, values: [...values] }]);
+  return n;
 }
 
 /** rename a user preset; false when it is a factory one, missing, or the new name is taken */
 export function renamePreset(structure: string, from: string, to: string): boolean {
   const n = fixName(to);
   const list = userPresets();
-  const pr = list.find((x) => x.structure === structure && x.name === from);
-  if (!pr || !n || presetsFor(structure).some((x) => x.name === n)) return false;
+  const pr = list.find((x) => x.structure === structure && sameName(x.name, from));
+  if (!pr || !n || presetsFor(structure).some((x) => sameName(x.name, n) && !sameName(x.name, from))) return false;
   pr.name = n;
   writeUser(list);
   return true;
@@ -135,7 +143,7 @@ export function renamePreset(structure: string, from: string, to: string): boole
 /** delete a user preset; false when it is a factory one or missing */
 export function deletePreset(structure: string, name: string): boolean {
   const list = userPresets();
-  const kept = list.filter((x) => !(x.structure === structure && x.name === name));
+  const kept = list.filter((x) => !(x.structure === structure && sameName(x.name, name)));
   if (kept.length === list.length) return false;
   writeUser(kept);
   return true;
@@ -148,7 +156,7 @@ export const exportPresets = (): { format: string; presets: Preset[] } => ({ for
 export function importPresets(raw: unknown): number | null {
   if (!raw || typeof raw !== 'object' || (raw as { format?: unknown }).format !== PRESETS_FORMAT) return null;
   const incoming = Array.isArray((raw as { presets?: unknown }).presets) ? ((raw as { presets: unknown[] }).presets).map(fixPreset).filter((p): p is Preset => !!p) : [];
-  const key = (x: Preset): string => `${x.structure}/${x.name}`;
+  const key = (x: Preset): string => `${x.structure}/${x.name.toLowerCase()}`;
   const have = new Map(userPresets().map((x) => [key(x), x]));
   for (const x of incoming) have.set(key(x), x);
   writeUser([...have.values()]);
@@ -171,6 +179,6 @@ export function nextPresetName(p: Patch, a: AssemblyInst): string {
 export function stepPreset(p: Patch, a: AssemblyInst, dir: 1 | -1): Preset | null {
   const list = presetsOf(p, a);
   if (!list.length) return null;
-  const i = list.findIndex((x) => x.name === a.preset);
+  const i = list.findIndex((x) => sameName(x.name, a.preset));
   return list[i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length];
 }

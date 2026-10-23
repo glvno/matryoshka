@@ -62,7 +62,7 @@ import {
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
 import { defIsEngine, wireEngine, wiredText, type Wired } from './engines';
-import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, renamePreset, stepPreset, storePreset } from './device-presets';
+import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, stepPreset, storePreset } from './device-presets';
 import { structureOf } from './structure';
 import { armable, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
@@ -3097,11 +3097,13 @@ export class Editor {
       }, 'sm preset-name');
     const show = (): void => {
       const edited = !!a.preset && !matchesPreset(this.patch, a);
+      // (the preset's own spelling: the FM-1 names it in capitals)
+      const shown = a.preset && (presetsOf(this.patch, a).find((x) => sameName(x.name, a.preset))?.name ?? a.preset);
       // (the star outside the cut text: a long name ends in "…" and keeps its star)
       const text = document.createElement('span');
-      text.textContent = a.preset ?? `${list.length} preset${list.length === 1 ? '' : 's'}`;
+      text.textContent = shown || `${list.length} preset${list.length === 1 ? '' : 's'}`;
       name.replaceChildren(text, ...(edited ? ['*'] : []));
-      name.title = a.preset ? `Preset ${a.preset}${edited ? ' (edited since)' : ''}: click for the list` : 'Presets of this assembly: click for the list';
+      name.title = a.preset ? `Preset ${shown}${edited ? ' (edited since)' : ''}: click for the list` : 'Presets of this assembly: click for the list';
     };
     show();
     this.chips.set(a.id, show);
@@ -3123,7 +3125,7 @@ export class Editor {
 
   /** load a preset by name into an assembly: one undo step */
   private loadPreset(a: AssemblyInst, name: string): void {
-    const pr = presetsOf(this.patch, a).find((x) => x.name === name);
+    const pr = presetsOf(this.patch, a).find((x) => sameName(x.name, name));
     if (!pr) return;
     if (this.change(() => applyPreset(this.patch, a, pr))) this.ev.onError(`${a.label}: preset "${pr.name}"`);
   }
@@ -3131,8 +3133,8 @@ export class Editor {
   /** the presets menu of an assembly device: load one, store, rename, delete */
   private presetItems(a: AssemblyInst): MenuItem[] {
     const list = presetsOf(this.patch, a);
-    const cur = list.find((x) => x.name === a.preset);
-    const items: MenuItem[] = list.map((pr) => ({ text: `${pr.name === a.preset ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr.name) }));
+    const cur = list.find((x) => sameName(x.name, a.preset));
+    const items: MenuItem[] = list.map((pr) => ({ text: `${sameName(pr.name, a.preset) ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr.name) }));
     items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store as a preset…', rule: !!list.length, run: () => {
       const n = cur && !cur.factory ? cur.name : window.prompt('Store the card’s values as the preset', nextPresetName(this.patch, a))?.trim();
       if (!n) return;

@@ -186,9 +186,10 @@ device.onEvent = (e) => {
   if (e.kind === 'presetStored') {   // a preset stored on the FM-1 (#195): under Live it comes into the editor's library
     if (!live()) return;
     void device.getPreset(e.structure, e.name).then((v) => {
-      if (!v || !addUserPreset(e.structure, e.name, v)) return;
+      const as = v && addUserPreset(e.structure, e.name, v);
+      if (!as) return;
       editor.rebuild();
-      devStatus(`preset "${e.name}" stored on the FM-1: now in your presets too`);
+      devStatus(`preset "${as}" stored on the FM-1: now in your presets too`);
     }).catch(() => {});
     return;
   }

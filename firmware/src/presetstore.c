@@ -43,11 +43,11 @@ static void ps_scan(void);
 
 static uint32_t ps_addr(uint32_t i) { return PS_BASE + (i / PS_PER_SEC) * 0x1000u + (i % PS_PER_SEC) * PS_SLOT; }
 
-static int ps_name_eq(const char *a, const char *b)
+static int ps_name_eq(const char *a, const char *b)        /* in any case (ps_name_cmp) */
 {
     uint32_t i;
     for (i = 0; i < PS_NAME; i++) {
-        if (a[i] != b[i])
+        if ((a[i] >= 'a' && a[i] <= 'z' ? a[i] - 32 : a[i]) != (b[i] >= 'a' && b[i] <= 'z' ? b[i] - 32 : b[i]))
             return 0;
         if (!a[i])
             return 1;
@@ -84,12 +84,13 @@ static void ps_kill(uint32_t i)
     ps_state[i] = PS_DEAD;
 }
 
-static int ps_name_cmp(const char *a, const char *b)
+static int ps_name_cmp(const char *a, const char *b)       /* in any case: the panel writes capitals, the editor need not */
 {
     uint32_t i;
     for (i = 0; i < PS_NAME; i++) {
-        if (a[i] != b[i])
-            return (int)(uint8_t)a[i] - (int)(uint8_t)b[i];
+        int x = a[i] >= 'a' && a[i] <= 'z' ? a[i] - 32 : a[i], y = b[i] >= 'a' && b[i] <= 'z' ? b[i] - 32 : b[i];
+        if (x != y)
+            return x - y;
         if (!a[i])
             return 0;
     }

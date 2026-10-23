@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { insertAssembly, promote, toDef, type AssemblyDef } from './assembly';
-import { applyPreset, currentValues, deletePreset, exportPresets, importPresets, matchesPreset, nextPresetName, presetsOf, renamePreset, setFactoryPresets, stepPreset, storePreset, userPresets } from './device-presets';
+import { addUserPreset, applyPreset, currentValues, deletePreset, exportPresets, importPresets, matchesPreset, nextPresetName, presetsOf, renamePreset, setFactoryPresets, stepPreset, storePreset, userPresets } from './device-presets';
 import { DEFS } from './modules';
 import { connect, newPatch, validatePatch } from './patch';
 import { defStructure, structureOf } from './structure';
@@ -124,6 +124,23 @@ describe('presets (#192)', () => {
     storePreset(p, a, 'Bright 2');
     expect(nextPresetName(p, a)).toBe('Bright 3');               // based on Bright 2: its number is replaced
     expect(a.preset).toBe('Bright 2');
+  });
+
+  it('names are one name in any case: the FM-1\'s capitals meet the editor\'s spelling', () => {
+    const p = newPatch(DEFS);
+    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    const s = structureOf(p, a);
+    setFactoryPresets([{ structure: s, name: 'Init', values: currentValues(p, a) }]);
+    expect(addUserPreset(s, 'INIT 2', currentValues(p, a))).toBe('Init 2');        // a new one from the FM-1: the editor's style
+    storePreset(p, a, 'Bright 2');
+    const v = currentValues(p, a).map((x, i) => (i === 0 ? x + 1 : x));
+    expect(addUserPreset(s, 'BRIGHT 2', v)).toBe('Bright 2');                       // over the one you have, its spelling kept
+    expect(presetsOf(p, a).map((x) => x.name)).toEqual(['Init', 'Bright 2', 'Init 2']);
+    expect(addUserPreset(s, 'INIT', v)).toBe(false);                                // a factory one's name
+    a.preset = 'BRIGHT 2';                                                          // as a patch from the FM-1 remembers it
+    expect(stepPreset(p, a, 1)!.name).toBe('Init 2');
+    expect(storePreset(p, a, 'bright 2')).toBe('bright 2');
+    expect(presetsOf(p, a).filter((x) => x.name.toLowerCase() === 'bright 2')).toHaveLength(1);
   });
 
   it('export and import the library', () => {
