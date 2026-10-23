@@ -424,6 +424,7 @@ static void patch_boot(void)                    /* the slot the settings record 
     }
     boot_step("BANK");
     sl_scan();
+    ps_scan();                                  /* the presets (#194): their own sectors, 0x99000 .. 0x9FFFF */
     if (!bank_mask && sl_sec[SL_SETTINGS] == SL_NONE) {          /* an empty store: the first boot (or after a reset) */
         factory_bank();
         boot_msg = "FACTORY BANK WRITTEN";

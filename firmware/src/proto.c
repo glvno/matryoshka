@@ -407,6 +407,40 @@ static void m1_splice(uint32_t at, uint32_t old, uint32_t len)
     m1_cur_len = m1_cur_len + len - old;
 }
 
+/* a preset was stored on the FM-1 (#194): the editor hears of it (#195; nothing yet) */
+static void m1_preset_stored(uint32_t structure, const char *name)
+{
+    (void)structure;
+    (void)name;
+}
+
+/* the name of the preset device `dev` (the device pages section's index) was set to, into its device extras (format 34,
+ * #194: SAVE keeps it); what follows moves. 0 = done, -1 the patch has no extras or would outgrow M1_PATCH_MAX */
+static int m1_preset_name(uint32_t dev, const char *name)
+{
+    uint32_t at = m1_devices_at(), k, cnt, n = 0, old;
+    if (!at || !(m1_cur[7] & ENG_FLAG_EXTRAS) || !(at = eng_devices_end(m1_cur, m1_cur_len, at)) || !eng_extras_end(m1_cur, m1_cur_len, at))
+        return -1;
+    cnt = m1_cur[at++];
+    if (dev >= cnt)
+        return -1;
+    for (k = 0; k < dev; k++) {
+        at += 6u + m1_cur[at + 5u];
+        at += 1u + 2u * m1_cur[at];
+    }
+    while (name[n] && n < 12u)                      /* (the editor's NAME_MAX) */
+        n++;
+    old = m1_cur[at + 5u];
+    if (m1_cur_len + n > M1_PATCH_MAX + old)
+        return -1;
+    m1_splice(at + 6u, old, n);
+    m1_cur[at + 5u] = (uint8_t)n;
+    for (k = 0; k < n; k++)
+        m1_cur[at + 6u + k] = (uint8_t)name[k];
+    m1_edited = 1;
+    return 0;
+}
+
 /* a track's notes as the engine has them into the binary (SAVE keeps them): its entry in the notes section replaced,
  * added in module order or removed; the section created or dropped; what follows (device pages, button kinds, macro
  * ranges) moves. A patch that would outgrow M1_PATCH_MAX keeps its old entry. */

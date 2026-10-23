@@ -309,6 +309,11 @@ static void panel_encoders(int32_t *st)
         }
         return;
     }
+    if (page == PAGE_PRESETS && st[6]) {            /* PRESET on the preset list: the presets too (#194) */
+        if (presets_turn(st[6]))
+            ui_dirty = 2;
+        return;
+    }
     if (st[6]) {                                    /* PRESET: the next patch, its name over the bars (#170) */
         pages_patch_ask();
         preset_step(st[6]);
@@ -335,6 +340,11 @@ static void panel_encoders(int32_t *st)
     }
     if (page == PAGE_GLO && (st[0] || st[1]))       /* SELECT / ALGO on GLO's page: back to the device pages, then as there */
         screen_back();
+    if (page == PAGE_PRESETS) {                     /* the preset list: SELECT / ALGO load the next / previous as they turn */
+        if (presets_turn(st[0] + st[1]))
+            ui_dirty = 2;
+        return;
+    }
     if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO nothing yet */
         if (st[0] && pages_select(st[0])) {
             m1_focus_now(pg_cur_dev, pg_cur_page);
@@ -445,23 +455,31 @@ static void panel_keys(uint32_t now)
 /* ENV held and SAVE pressed meanwhile: its release opens nothing */
 static uint8_t env_held_used;
 
-/* SEL (#197): one level deeper. The environment's row: its device pages; a Steps track's page: its steps (#196); elsewhere
- * nothing yet (an assembly's preset list: #194) */
+/* SEL (#197): one level deeper. The environment's row: its device pages; a Steps track's page: its steps (#196); an
+ * assembly device's page: its presets (#194); on the preset list: back */
 static void sel_open(void)
 {
+    pages_ensure();
     if (page == PAGE_ENV) {
         page_set(0);
         m1_focus_now(pg_cur_dev, pg_cur_page);
+    } else if (page == PAGE_PRESETS) {
+        screen_back();
     } else if (page == 0 && pages_focus_track() >= 0) {
         seq_select((uint32_t)pages_focus_track());
         page_set(PAGE_SEQ);
+    } else if (page == 0 && pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure) {
+        presets_open();
+        page_set(PAGE_PRESETS);
     }
 }
 
-/* ENV held + SAVE (#194): the focused device's values as its preset (filled in with the preset store) */
+/* ENV held + SAVE (#194): the focused device's values as its preset */
 static void preset_store_focused(void)
 {
-    ui_msg("NO PRESET STORE YET", 1000);
+    preset_store(pg_cur_dev);
+    if (page == PAGE_ENV || page == PAGE_PRESETS)
+        ui_dirty = 2;
 }
 
 /* buttons pressed (p) and let go (rel) since the last call, matrix ids as bits; call it often, also with no edges: a

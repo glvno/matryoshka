@@ -190,6 +190,7 @@ int main(void)
     uint32_t mod, par;
     int32_t v0;
     fm1_ms = 10000;
+    host_ps_init();
     if (load("808 KIT")) {
         printf("FAIL  the 808 Kit loads\n");
         return 1;
@@ -504,6 +505,78 @@ int main(void)
         loop();
         check("ENV held + SAVE: the release opens nothing", page == 0);
         later(1500);
+        pages_focus(2, 0);
+        loop();
+    }
+
+    {                                                       /* presets (#194): Oracle V's, SEL's list, ENV held + SAVE */
+        uint32_t d, n0;
+        char was[17];
+        int r = -1;
+        if (load("ORACLE V") == 0) {
+            pv_gen++;
+            page = 0;
+            trail_n = 0;
+            loop();
+            pages_ensure();
+            for (d = 0; d < pg_ndev && !pg_dev[d].structure; d++)
+                ;
+            check("Oracle V: an assembly device with a structure and its rows (format 34's extras)", d < pg_ndev && pg_dev[d].nrows > 0);
+            pages_focus(d, 0);
+            loop();
+            n0 = preset_list(d);
+            check("its factory presets in ROM", n0 >= 2u);
+            tap(3);
+            check("SEL on it: the preset list", page == PAGE_PRESETS);
+            if (getenv("PANEL_SNAP_PRESETS")) {
+                const char *keep = getenv("PANEL_SNAP");
+                setenv("PANEL_SNAP", getenv("PANEL_SNAP_PRESETS"), 1);
+                snap();
+                if (keep) setenv("PANEL_SNAP", keep, 1);
+            }
+            {
+                uint32_t i, mod = 0, par = 0;
+                for (i = 0; i < pg_dev[d].nrows; i++)
+                    if (pg_dev[d].rows[2u * i] != 0xFFu && !(pg_dev[d].rows[2u * i + 1u] & POLY_ROW)) {
+                        mod = pg_dev[d].rows[2u * i];
+                        par = pg_dev[d].rows[2u * i + 1u];
+                        break;
+                    }
+                (void)mod; (void)par;
+                param_now = 0;
+                enc(0, 1);                                  /* SELECT: the next preset, loaded */
+                check("SELECT on the list: the next preset loaded, the editor told", pg_pname[d][0] && param_now > 0);
+            }
+            for (r = 0; r < 17; r++)
+                was[r] = pg_pname[d][r];
+            panel_held |= 1u << 4;                          /* ENV held + SAVE: stored as a new user preset */
+            panel_edges(1u << 4, 0);
+            panel_edges(1u << BTN_SAVE, 0);
+            panel_edges(0, 1u << BTN_SAVE);
+            panel_held &= ~(1u << 4);
+            panel_edges(0, 1u << 4);
+            loop();
+            check("ENV held + SAVE on a factory preset: a new user preset (its name and a number), the editor told",
+                  ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 1u && ps_name_cmp(pg_pname[d], was) != 0 && preset_list(d) == n0 + 1u);
+            panel_held |= 1u << 4;                          /* again: over it */
+            panel_edges(1u << 4, 0);
+            panel_edges(1u << BTN_SAVE, 0);
+            panel_edges(0, 1u << BTN_SAVE);
+            panel_held &= ~(1u << 4);
+            panel_edges(0, 1u << 4);
+            loop();
+            check("again: stored over it, still one", ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 2u);
+            tap(3);
+            check("SEL on the list: back", page == 0);
+            later(2000);
+        } else {
+            check("(the Oracle V factory patch loads)", 0);
+        }
+        load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        loop();
         pages_focus(2, 0);
         loop();
     }

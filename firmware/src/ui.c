@@ -18,6 +18,7 @@ static const char *patch_label;
 #define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
 #define PAGE_GLO 6u                             /* GLO: the FM-1's own page (#199, pages_ui.c pg_glo) */
 #define PAGE_ENV 9u                             /* ENV: the environment (#197, pages_ui.c env_draw) */
+#define PAGE_PRESETS 10u                        /* SEL on an assembly device: its presets (#194, pages_ui.c presets_draw) */
 static uint8_t page;                            /* 0: the device page, 5 menu, 6 GLO, 8 the SEQ page, 9 the environment (seq_ui.c); (7, the legend, is gone: #114) */
 static void seq_bar(void);
 static void seq_draw(int full);
@@ -240,6 +241,7 @@ static uint32_t panel_used(void)
 
 static void menu_draw(int full);
 static void env_draw(int full);
+static void presets_draw(int full);
 
 #define LEFT_W 216u
 
@@ -267,6 +269,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         seq_draw(full);
     else if (page == PAGE_ENV)
         env_draw(full);
+    else if (page == PAGE_PRESETS)
+        presets_draw(full);
     else
         pages_draw(full);
 }

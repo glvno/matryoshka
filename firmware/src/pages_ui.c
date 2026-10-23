@@ -39,7 +39,15 @@ static const uint16_t KNOB_HUE[4] = {P_CORAL, P_GOLD, P_SEA, P_SAND};   /* K1..K
 #define PG_DEVS 32u
 #define PG_PAGES 160u
 #define PG_ROWS 4u
-typedef struct { const char *name; uint8_t nlen, pg0, npg; int16_t module; } pdev_t;   /* module >= 0: a plain module */
+typedef struct {
+    const char *name;
+    uint8_t nlen, pg0, npg;
+    int16_t module;                                     /* >= 0: a plain module */
+    uint8_t bin, track;                                 /* its index in the binary's device list; the device that drives it (0xFF none) */
+    uint32_t structure;                                 /* format 34's extras: an assembly's structure (0 none) */
+    const uint8_t *rows;                                /* its card rows in canonical order (module, parameter byte) pairs */
+    uint8_t nrows;
+} pdev_t;
 typedef struct {
     const char *name;
     uint8_t nlen, part, parts, display, nrows;          /* display: 1 + the envelope module drawn above, 0 none */
@@ -48,6 +56,7 @@ typedef struct {
 } ppage_t;
 static pdev_t pg_dev[PG_DEVS] UI_POOL;
 static char pg_tname[PG_DEVS][9] UI_POOL;              /* a Steps track's name, for its device (m1_track_name: 8 characters) */
+static char pg_pname[PG_DEVS][17] UI_POOL;             /* the preset each device was set to (#194; read from the extras for a new patch) */
 static ppage_t pg_page[PG_PAGES] UI_POOL;
 static uint32_t pg_ndev, pg_npage, pg_built_gen = 0xFFFFFFFFu, pg_built_at;
 static uint32_t pg_cur_dev, pg_cur_page;                /* the focus: the device and its page K1..K4 turn */
@@ -63,6 +72,10 @@ static int8_t pg_list_btn = -1;
 static uint8_t pg_list_step, pg_list_peek;
 
 static void m1_track_name(uint32_t mod, char *out);     /* proto.c: a Steps track's name ("" none) */
+static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);   /* proto.c: a row turned here (the editor follows) */
+static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v); /* proto.c: the running binary follows */
+static void poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
+static void m1_preset_stored(uint32_t structure, const char *name);   /* proto.c: a preset stored here (#195) */
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
 static uint32_t pages_gen(void);                        /* changes when another patch becomes current */
 
@@ -155,6 +168,50 @@ static void pages_plain(uint32_t m)
     pg_ndev++;
 }
 
+/* the device extras of format 34 (#194, #197) into pg_dev: the driving track (as a pg_dev index), the structure, the rows
+ * in canonical order; with fresh != 0 (another patch) also the preset names into pg_pname */
+static uint8_t pg_names_fresh = 1;
+static void pages_extras(const uint8_t *p, uint32_t len)
+{
+    uint32_t at, cnt, k, i, j;
+    for (i = 0; i < pg_ndev; i++) {
+        pg_dev[i].track = 0xFFu;
+        pg_dev[i].structure = 0;
+        pg_dev[i].rows = 0;
+        pg_dev[i].nrows = 0;
+        if (pg_names_fresh)
+            pg_pname[i][0] = 0;
+    }
+    if (!p || !(p[7] & ENG_FLAG_EXTRAS) || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at)) || !eng_extras_end(p, len, at)) {
+        pg_names_fresh = 0;
+        return;
+    }
+    cnt = p[at++];
+    for (k = 0; k < cnt; k++) {
+        uint32_t nl = p[at + 5u], tr = p[at];
+        for (i = 0; i < pg_ndev && pg_dev[i].bin != k; i++)
+            ;
+        if (i < pg_ndev) {
+            for (j = 0; j < pg_ndev && (tr == 0xFFu || pg_dev[j].bin != tr); j++)
+                ;
+            pg_dev[i].track = (uint8_t)(j < pg_ndev ? j : 0xFFu);
+            pg_dev[i].structure = (uint32_t)p[at + 1u] | (uint32_t)p[at + 2u] << 8 | (uint32_t)p[at + 3u] << 16 | (uint32_t)p[at + 4u] << 24;
+            if (pg_names_fresh) {
+                for (j = 0; j < nl && j < 16u; j++)
+                    pg_pname[i][j] = (char)p[at + 6u + j];
+                pg_pname[i][j] = 0;
+            }
+        }
+        at += 6u + nl;
+        if (i < pg_ndev) {
+            pg_dev[i].nrows = p[at];
+            pg_dev[i].rows = p + at + 1u;
+        }
+        at += 1u + 2u * p[at];
+    }
+    pg_names_fresh = 0;
+}
+
 /* read the device pages of the running patch again (another patch, or its binary moved: a step value added) */
 static void pages_build(void)
 {
@@ -170,7 +227,10 @@ static void pages_build(void)
     for (d = 0; d < n && pg_ndev < PG_DEVS; d++) {
         uint32_t np, g;
         if (p[at] == 0u) {
+            uint32_t was = pg_ndev;
             pages_plain(p[at + 1u]);
+            if (pg_ndev > was)
+                pg_dev[was].bin = (uint8_t)d;
             at += 2u;
             continue;
         }
@@ -212,9 +272,11 @@ static void pages_build(void)
                 pg_npage++;
         }
         pg_dev[pg_ndev].npg = (uint8_t)(pg_npage - pg_dev[pg_ndev].pg0);
+        pg_dev[pg_ndev].bin = (uint8_t)d;
         if (pg_dev[pg_ndev].npg)
             pg_ndev++;
     }
+    pages_extras(p, len);
     if (pg_cur_dev >= pg_ndev)
         pg_cur_dev = 0;
     if (pg_ndev && pg_cur_page >= pg_dev[pg_cur_dev].npg)
@@ -260,6 +322,8 @@ static void pages_ensure(void)
     const uint8_t *p = pages_src(&len);
     int fresh = pg_built_gen != pages_gen();
     if (fresh || (p && pages_at(p, len) != pg_built_at)) {
+        if (fresh)
+            pg_names_fresh = 1;
         pages_build();
         if (fresh) {                                    /* another patch: its home device's first page, no list */
             pg_cur_dev = pages_home();
@@ -1130,27 +1194,12 @@ static void pages_ticks(void)
 static const uint16_t TRACK_HUE[4] = {P_LILAC, P_SKY, P_GOLD, P_SEA};
 static uint32_t env_first;                              /* the first row shown */
 
-/* device d's extras (format 34): the device index of the Steps track that drives it (ENG_NO_TRACK none) and the name of the
- * preset it was set to (*name, *n characters; 0 none) */
+/* device d's extras (format 34): the device that drives it (ENG_NO_TRACK none) and the preset it was set to */
 static uint32_t env_extras(uint32_t d, const char **name, uint32_t *n)
 {
-    uint32_t len, at, cnt, k;
-    const uint8_t *p = pages_src(&len);
-    *name = 0;
-    *n = 0;
-    if (!p || !(p[7] & ENG_FLAG_EXTRAS) || !(at = pages_at(p, len)) || !(at = eng_devices_end(p, len, at)) || !eng_extras_end(p, len, at))
-        return ENG_NO_TRACK;
-    cnt = p[at++];
-    for (k = 0; k < cnt; k++) {
-        if (k == d) {
-            *n = p[at + 5u];
-            *name = *n ? (const char *)p + at + 6u : 0;
-            return p[at];
-        }
-        at += 6u + p[at + 5u];
-        at += 1u + 2u * p[at];
-    }
-    return ENG_NO_TRACK;
+    *name = pg_pname[d][0] ? pg_pname[d] : 0;
+    *n = str_len(pg_pname[d]);
+    return pg_dev[d].track;
 }
 
 /* which Steps track (0.. among the device rows that are tracks) device d is, -1 none: its hue */
@@ -1276,4 +1325,218 @@ static void env_knob_msg(uint32_t k)
         q = put(put(q, " "), unit);
     *q = 0;
     ui_msg(m, 1000);
+}
+
+/* ---- presets on the FM-1 (#194, CONTEXT.md "Preset"): an assembly device's card row values under a name, for its
+ * structure. The factory engines' come in ROM (presets.h FPRESET_LIST, read-only), the user's from the preset store
+ * (presetstore.c). A device's list: the factory ones in their order, then the user's by name. Loading sets the device's
+ * rows (format 34's extras say which, in canonical order) as K1..K4 would, the editor told; ENV held + SAVE stores the
+ * device's values (over the user preset it was set to, else under a new name). */
+#define PR_USER 0x8000u                                 /* a list entry: a store slot | PR_USER, else a FPRESET_LIST index */
+#define PR_MAX (N_FPRESETS + PS_SLOTS)
+static uint16_t pr_list[PR_MAX < 256u ? 256u : PR_MAX];
+static int32_t pr_vals[PS_MAXV];
+static uint8_t pr_sel;                                  /* the preset list page's row */
+
+/* device d's presets into pr_list: how many */
+static uint32_t preset_list(uint32_t d)
+{
+    uint8_t slots[PS_SLOTS];
+    uint32_t n = 0, k, m;
+    if (d >= pg_ndev || !pg_dev[d].structure)
+        return 0;
+    for (k = 0; k < N_FPRESETS; k++)
+        if (FPRESET_LIST[k].structure == pg_dev[d].structure)
+            pr_list[n++] = (uint16_t)k;
+    m = ps_list(pg_dev[d].structure, slots, PS_SLOTS);
+    for (k = 0; k < m && k < PS_SLOTS; k++)
+        pr_list[n++] = (uint16_t)(PR_USER | slots[k]);
+    return n;
+}
+
+/* entry e's name (17 bytes) and values (pr_vals): how many values, -1 unreadable */
+static int preset_entry(uint16_t e, char *name)
+{
+    uint32_t k, n, st;
+    if (e & PR_USER) {
+        if (ps_read(e & 0xFFu, &st, name, &n))
+            return -1;
+        for (k = 0; k < n; k++)
+            pr_vals[k] = ps_vbuf[k];
+        return (int)n;
+    }
+    for (k = 0; k < 16u && FPRESET_LIST[e].name[k]; k++)
+        name[k] = FPRESET_LIST[e].name[k];
+    name[k] = 0;
+    n = FPRESET_LIST[e].n < PS_MAXV ? FPRESET_LIST[e].n : PS_MAXV;
+    for (k = 0; k < n; k++)
+        pr_vals[k] = FPRESET_LIST[e].v[k];
+    return (int)n;
+}
+
+/* where device d's list stands: the entry named as the device's preset, -1 none */
+static int preset_current(uint32_t d, uint32_t n)
+{
+    char nm[17];
+    uint32_t k;
+    for (k = 0; k < n; k++)
+        if (preset_entry(pr_list[k], nm) >= 0 && !ps_name_cmp(nm, pg_pname[d]) && pg_pname[d][0])
+            return (int)k;
+    return -1;
+}
+
+static void preset_name_set(uint32_t d, const char *name)
+{
+    uint32_t k;
+    for (k = 0; k < 16u && name[k]; k++)
+        pg_pname[d][k] = name[k];
+    pg_pname[d][k] = 0;
+    if (!m1_preset_name(pg_dev[d].bin, pg_pname[d]))
+        pg_built_at = 0xFFFFFFFFu;                      /* (the binary moved after it: the pages are read again, the names kept) */
+}
+
+/* load list entry k of device d: its rows take the values (the running binary and the editor too) */
+static int preset_load(uint32_t d, uint32_t k)
+{
+    char nm[17];
+    int n;
+    uint32_t i;
+    if (d >= pg_ndev || k >= preset_list(d) || (n = preset_entry(pr_list[k], nm)) < 0)
+        return -1;
+    for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
+        uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
+        int32_t v = pr_vals[i];
+        if (mod == 0xFFu)
+            continue;
+        if (par & POLY_ROW) {
+            if (!row_ok(mod, par))
+                continue;
+            poly_row_set(mod, par & 0x7Fu, (v + 32768) >> 16);
+            m1_param_now(mod, par, v);
+        } else {
+            if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar)
+                continue;
+            eng_set_param(mod, par, v);
+            m1_patch_param(mod, par, v);
+            m1_param_now(mod, par, v);
+        }
+    }
+    preset_name_set(d, nm);
+    return 0;
+}
+
+/* device d's row values now, in canonical order, into pr_vals: how many */
+static uint32_t preset_values(uint32_t d)
+{
+    uint32_t i, n = pg_dev[d].nrows < PS_MAXV ? pg_dev[d].nrows : PS_MAXV;
+    for (i = 0; i < n; i++) {
+        uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
+        pr_vals[i] = mod == 0xFFu ? 0 : (par & POLY_ROW) ? (row_ok(mod, par) ? poly_value(mod, par & 0x7Fu) << 16 : 0) : eng_get_param(mod, par);
+    }
+    return n;
+}
+
+/* ENV held + SAVE: the device in focus's values as a preset: over the user preset it was set to, else under a new name (a
+ * factory one's name, or the device's, with a number). The message says what happened. */
+static void preset_store(uint32_t d)
+{
+    char nm[17], base[17], num[8];
+    uint32_t k, n, len;
+    int rc;
+    pages_ensure();
+    if (d >= pg_ndev || !pg_dev[d].structure) {
+        ui_msg("PRESETS: ASSEMBLIES ONLY", 1200);
+        return;
+    }
+    n = preset_values(d);
+    for (k = 0; k < 16u && pg_pname[d][k]; k++)
+        nm[k] = pg_pname[d][k];
+    nm[k] = 0;
+    if (!nm[0] || ps_find(pg_dev[d].structure, nm) < 0) {   /* no user preset of that name: a new one */
+        int taken;
+        caps(base, nm[0] ? nm : pg_dev[d].name, nm[0] ? str_len(nm) : pg_dev[d].nlen, 12);
+        for (k = 2; k < 100u; k++) {
+            uint32_t i, m = preset_list(d);
+            fmt_int(num, (int32_t)k);
+            len = str_len(base);
+            put(put(put(nm, base), " "), num)[0] = 0;
+            (void)len;
+            taken = 0;
+            for (i = 0; i < m && !taken; i++) {
+                char other[17];
+                taken = preset_entry(pr_list[i], other) >= 0 && !ps_name_cmp(other, nm);
+            }
+            if (!taken)
+                break;
+        }
+    }
+    rc = ps_put(pg_dev[d].structure, nm, pr_vals, n);
+    if (rc) {
+        ui_msg(rc == -2 ? "PRESETS FULL" : "PRESET NOT STORED", 1500);
+        return;
+    }
+    preset_name_set(d, nm);
+    {
+        char m[40];
+        put(put(m, "STORED "), nm)[0] = 0;
+        ui_msg(m, 1500);
+    }
+    m1_preset_stored(pg_dev[d].structure, nm);          /* (the editor hears of it: #195) */
+}
+
+/* the preset list page (SEL on an assembly device's page): its presets, the one it was set to marked; SELECT / ALGO /
+ * PRESET move and load as they turn; SEL or HOME goes back */
+static void presets_open(void)
+{
+    uint32_t n = preset_list(pg_cur_dev);
+    int c = preset_current(pg_cur_dev, n);
+    pr_sel = (uint8_t)(c < 0 ? 0 : c);
+}
+
+static int presets_turn(int32_t s)
+{
+    uint32_t n = preset_list(pg_cur_dev);
+    if (!n || !s)
+        return 0;
+    pr_sel = (uint8_t)(((int32_t)pr_sel + s % (int32_t)n + (int32_t)n) % (int32_t)n);
+    return preset_load(pg_cur_dev, pr_sel) == 0;
+}
+
+static void presets_draw(int full)
+{
+    uint32_t n, i, first;
+    (void)full;
+    pages_ensure();
+    lcd_fill(0, 0, 240, 20, P_GOLD);
+    {
+        char t[20];
+        caps(t, pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].name : "", pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].nlen : 0, 16);
+        text_bc(&FONT_S, 8, 3, "PRESETS", P_NIGHT, P_GOLD, 80, TA_LEFT);
+        text_bc(&FONT_S, 88, 3, t, P_NIGHT, P_GOLD, 144, TA_RIGHT);
+    }
+    n = preset_list(pg_cur_dev);
+    if (pr_sel >= n)
+        pr_sel = 0;
+    first = pr_sel >= ENV_ROWS ? pr_sel + 1u - ENV_ROWS : 0u;
+    for (i = 0; i < ENV_ROWS; i++) {
+        uint32_t y = ENV_Y0 + i * ENV_ROW_H, k = first + i;
+        char nm[17], t[20];
+        if (k >= n) {
+            lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
+            continue;
+        }
+        lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
+        lcd_fill(2, y + 1u, 236, ENV_ROW_H - 2u, k == pr_sel ? P_TRACK : P_PANEL);
+        if (k == pr_sel) {
+            lcd_fill(2, y + 1u, 236, 2, P_INK);
+            lcd_fill(2, y + ENV_ROW_H - 3u, 236, 2, P_INK);
+        }
+        if (preset_entry(pr_list[k], nm) < 0)
+            put(nm, "?")[0] = 0;
+        caps(t, nm, str_len(nm), 16);
+        text_bc(&FONT_M, 10, y + 4u, t, ps_name_cmp(nm, pg_pname[pg_cur_dev]) ? P_INK : P_CORAL, k == pr_sel ? P_TRACK : P_PANEL, 160, TA_LEFT);
+        text_bc(&FONT_S, 170, y + 7u, (pr_list[k] & PR_USER) ? "YOURS" : "FACTORY", P_DIM, k == pr_sel ? P_TRACK : P_PANEL, 60, TA_RIGHT);
+    }
+    if (!n)
+        text_bc(&FONT_S, 8, ENV_Y0 + 4u, "NO PRESETS: ENV HELD + SAVE STORES ONE", P_FAINT, P_NIGHT, 0, TA_LEFT);
 }

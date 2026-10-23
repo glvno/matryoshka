@@ -6,6 +6,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Presets on the FM-1 (#194): SEL on an assembly's page lists its presets (the factory engines' come built in);
+  SELECT, ALGO or PRESET load them as you turn. ENV held + SAVE stores the device's values as a preset: over your
+  preset it was set to, else under a new name. The FM-1 keeps about 60 of your presets in flash sectors nothing else
+  uses: your 64 patch slots stay as they are, nothing to reset. A patch remembers each device's preset name (patch
+  format 34: patches from this editor need this firmware).
 - The environment on the FM-1 (#197): ENV opens a list of every device in the patch, Main first, each Steps track then
   what it plays (indented, with a stripe in the track's colour), the Output last, with each device's preset name and
   what it is doing. SELECT picks the row, K1..K4 turn its first page, SEL opens its pages; ENV or HOME goes back.

@@ -74,6 +74,7 @@ static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the ed
 static void m1_live(void);                                     /* main.c: the editor's LIVE command (it drives the FM-1) */
 #include "proto.c"
 #include "slotstore.c"
+#include "presetstore.c"
 #ifdef M1_BENCH
 #include "bench.c"
 #endif

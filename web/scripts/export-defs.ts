@@ -9,6 +9,7 @@ import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
 import { MAX_POLY } from '../src/poly';
 import { PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
+import { FACTORY_PRESETS } from '../src/factory-presets';
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 const L: string[] = [];
@@ -134,6 +135,14 @@ P.push('};', '');
 { // safe mode's patch, and the last resort when nothing else loads (web/src/fallback.ts)
   const bin = encodePatch(fallbackPatch());
   P.push(`#define FALLBACK_NAME "${FALLBACK_NAME}"`, `static const uint8_t FALLBACK_PATCH[${bin.length}] = {${Array.from(bin).join(',')}};`, '');
+}
+{ // the factory engines' presets (#193, #194): read-only in ROM, values Q16 in canonical row order (structure.ts)
+  P.push('/* the factory engines\' presets (web/src/factory-presets.ts): structure, name, values (Q16, canonical row order) */');
+  FACTORY_PRESETS.forEach((p, i) => P.push(`static const int32_t FPV_${i}[${p.values.length}] = {${p.values.map(toQ16).join(',')}};`));
+  P.push(`#define N_FPRESETS ${FACTORY_PRESETS.length}`);
+  P.push('static const struct { uint32_t structure; const char *name; uint32_t n; const int32_t *v; } FPRESET_LIST[N_FPRESETS] = {');
+  FACTORY_PRESETS.forEach((p, i) => P.push(`    {0x${p.structure}u, "${p.name.toUpperCase().replace(/[^ -~]/g, '').replace(/"/g, '')}", ${p.values.length}, FPV_${i}},`));
+  P.push('};', '');
 }
 writeFileSync(new URL('../../firmware/src/presets.h', import.meta.url), P.join('\n'));
 console.log('wrote defs.h, presets.h');

@@ -166,6 +166,11 @@ WASM_EXPORT("fm1w_load") int32_t fm1w_load(uint32_t len, uint32_t slot, uint32_t
     static int32_t l[128], r[128];
     int e;
     uint32_t dev = pg_cur_dev, pg = pg_cur_page;
+    static uint8_t ps_ready;
+    if (!ps_ready) {                                /* the preset store's RAM flash, once (#194: the tab's presets live until a reload) */
+        host_ps_init();
+        ps_ready = 1;
+    }
     if (len > sizeof pv_bin)
         return -1;
     pv_len = len;
