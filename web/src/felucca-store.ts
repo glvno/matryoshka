@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Installing over Felucca (glvno/matryoshka#73): our patch store and bank (firmware/src/slotstore.c: 0x97000, 0x98000,
 // 0xA0000..0xDFFFF) lie inside Felucca's store (projects 0x97000.., samples 0xA0000..0xDBFFF, user presets 0xDC000..), and the first start of Matryoshka writes the factory
-// patches there. The Flash tab asks for an extra confirmation when the FM-1 reports a Felucca identity.
+// patches there. The Install panel asks for an extra confirmation when the FM-1 reports a Felucca identity.
 
 /** a running Felucca build: FM-1_900 (dev) or FM-1_9XY (release X.Y). Not an update loader (ota-...). Sloop reports these numbers
  *  too; Matryoshka is FM-1_7XY. */
 export const runsFelucca = (identity: string): boolean => /^FM-1_9\d\d$/.test(identity);
 
 /** what a running FM-1 reports itself as (#161, #217): M-VAVE's stock firmware (FM-1_0XX), Matryoshka (FM-1_7XY), Felucca /
- *  Sloop (FM-1_9XY), or anything else (M-VAVE's FM-1_8XX and Open's FM-1_8 + seven digits, unknown builds). The Flash tab
+ *  Sloop (FM-1_9XY), or anything else (M-VAVE's FM-1_8XX and Open's FM-1_8 + seven digits, unknown builds). The Install panel
  *  recommends a return to official V15 before installing over felucca and other. An update loader (ota-...) is not a
  *  running firmware and comes out as other: callers ask about running identities only. */
 export function firmwareKind(identity: string): 'stock' | 'matryoshka' | 'felucca' | 'other' {

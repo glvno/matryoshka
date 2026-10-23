@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Flash tab. The USB-MIDI update protocol and package handling come from Felucca
+// Install panel (Get started > Install firmware). The USB-MIDI update protocol and package handling come from Felucca
 // (src/flasher/fm1ota.js, fm1pkg.js; Copyright (C) 2026 Leo Kuroshita, GPL-3.0-only).
 // @ts-ignore untyped JS modules
 import { Updater, STOCK_PRODUCT } from './flasher/fm1ota.js';
@@ -85,7 +85,7 @@ export function buildFlashTab(root: HTMLElement): void {
   const logEl = el('pre', { class: 'log', textContent: 'Ready.\n' });
   const bar = el('progress', { max: 100, value: 0 });
   // shown while an install runs: browsers give only a generic text for beforeunload
-  const keepOpen = el('p', { class: 'muted', hidden: true, textContent: 'Installing: keep this tab open. If it is closed, open the Flash tab again and press the same button to finish.' });
+  const keepOpen = el('p', { class: 'muted', hidden: true, textContent: 'Installing: keep this tab open. If it is closed, open Install firmware again and press the same button to finish.' });
   const unload = guardUnload(window);
   const log = (s: string): void => {
     logEl.textContent += s + '\n';

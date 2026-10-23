@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The editor's FM-1 tab (#110): the FM-1's front panel, laid out as the device is, around the real firmware UI as
+// The editor's Emulator view (EMU, #110): the FM-1's front panel, laid out as the device is, around the real firmware UI as
 // WebAssembly (fm1-ui.ts). The geometry is the one fm1-emu's fm1-live draws (after Felucca's controls diagram, in a
 // 1280 x 820 panel), made shorter: the left section (MASTER / SELECT / PRESETS / ALGORITHM, OCT- / OCT+ under them) as
 // tall as the right one, the screen in the middle a little shorter with the wordmark under it (so 1280 x 678), KNOB1..4 and two rows of six buttons on the right, the 27 pill keys (F3..G5) across the bottom. Encoders turn
@@ -157,8 +157,11 @@ export class Fm1View {
     el.insertBefore(this.chip, body);
     const hint = div('fm1-hint', el);
     hint.textContent = 'Drag or scroll an encoder · Shift-click a button to hold it down · the computer keyboard plays the keys too';
-    this.follow = div('fm1-follow', el);
+    // "Mirroring your FM-1": over the panel, while a connected FM-1 drives it
+    this.follow = document.createElement('p');
+    this.follow.className = 'fm1-follow';
     this.follow.hidden = true;
+    el.insertBefore(this.follow, this.chip);
   }
 
   /** the module, loaded if it is not yet (following an FM-1 needs it while this tab is hidden too) */
@@ -193,7 +196,8 @@ export class Fm1View {
   /** following an FM-1 (#120): its firmware named, the controls it does not report greyed; null: not following */
   following(name: string | null, reports: ReadonlySet<string> | null): void {
     this.follow.hidden = !name;
-    this.follow.textContent = name ? `Following the FM-1 (${name}): greyed controls are not sent over MIDI by that firmware` : '';
+    this.follow.textContent = name ? 'Mirroring your FM-1' : '';
+    this.follow.title = name ? `Following the FM-1's panel (${name}): greyed controls are not sent over MIDI by that firmware` : '';
     const grey = (el: HTMLElement | null | undefined, c: string): void => { el?.classList.toggle('unreported', !!reports && !reports.has(c)); };
     for (const [id, el] of this.btnEls) grey(el, `b${id}`);
     const ENC_NAME: Record<number, string> = { [ENCODERS.select]: 'select', [ENCODERS.algo]: 'algo', [ENCODERS.preset]: 'preset', [ENCODERS.k1]: 'k1', [ENCODERS.k2]: 'k2', [ENCODERS.k3]: 'k3', [ENCODERS.k4]: 'k4' };

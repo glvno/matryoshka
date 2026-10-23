@@ -118,11 +118,8 @@ svg.brand-mark .ink { fill: var(--ink); }
 svg.brand-mark .accent { fill: var(--secondary); }
 .brand h1 { flex-shrink: 0; width: 100%; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.045em; }
-#tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
-#tabs button { flex: 1; border: 0; border-radius: 0; padding: 10px 4px; background: transparent; color: var(--muted); }
-#tabs button[aria-selected="true"] { color: var(--secondary); box-shadow: inset 0 -2px var(--secondary); }
 .patch-controls { display: grid; gap: 8px; }
-.patch-controls[hidden] { display: none; }
+.patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden], .library-side[hidden] { display: none; }
 .patch-controls > * { width: 100%; min-width: 0; }
 /* the FM-1 budget meter at the right of the status line: memory (the fullest limit) and the estimated CPU load side by
  * side; open, a card above the status line with every limit and the costliest modules */
@@ -155,7 +152,7 @@ svg.brand-mark .accent { fill: var(--secondary); }
 .budget-item.pick:hover > :first-child { color: var(--ink); text-decoration: underline; }
 .budget-list p { margin: 4px 0 0; font-size: 11px; }
 /* collapsing the sidebar: the canvas takes its place, and the sidebar shrinks to the strip left of the Main dock
-   (the logo, the Patch / Library tabs and the expand button); not in the compact layout, where the sidebar is a drawer */
+   (the logo and the expand button); not in the compact layout, where the sidebar is a drawer */
 .sidebar { position: relative; }
 .side-collapse { position: absolute; top: 6px; right: 6px; z-index: 1; display: grid; place-items: center; width: 24px; height: 24px; min-height: 0 !important;
   padding: 0 !important; border-radius: 4px; font-size: 15px !important; line-height: 1; letter-spacing: 0 !important;
@@ -166,13 +163,10 @@ svg.brand-mark .accent { fill: var(--secondary); }
 @media (min-width: 701px) {
   .workspace.side-collapsed > main { grid-column: 1 / 4; }
   .workspace.side-collapsed > .sidebar { grid-row: 2; flex-direction: row; align-items: center; justify-content: center; gap: 8px; padding: 6px 30px 6px 8px; overflow: hidden; border-top: 1px solid var(--line); }
-  .side-collapsed .sidebar > :not(.brand, .side-collapse, #tabs) { display: none; }
+  .side-collapsed .sidebar > :not(.brand, .side-collapse) { display: none; }
   .side-collapsed .sidebar > .theme-toggle { display: none; }
   .side-collapsed .sidebar > .brand { gap: 4px; min-height: 0; }
   .side-collapsed .sidebar #about-btn { width: auto; padding: 0 5px; font-size: 11px; } /* under the 44 px logo */
-  .side-collapsed #tabs { order: 2; }
-  .side-collapsed #tabs { flex: 1; border-bottom: 0; }
-  .side-collapsed #tabs button { padding: 8px 2px; }
   .side-collapsed .sidebar > .brand { cursor: pointer; }
   .side-collapsed .brand h1 { display: none; }
   .side-collapsed .brand > .logo { width: 44px; height: 44px; min-height: 0; flex: none; }
@@ -195,10 +189,10 @@ button.primary { background: var(--accent); color: var(--accent-ink); border-col
 button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: .5; cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-main { min-width: 0; min-height: 0; overflow: auto; }
-.tab:not(#tab-patch) { padding: 24px; }
+/* the main area: the views fill it and scroll themselves; the view switch, Connect FM-1 and the Install panel sit over it */
+main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.tab:not(#tab-patch) { height: 100%; overflow: auto; padding: 56px 24px 24px; }
 .tab[hidden] { display: none; }
-#tab-presets, #tab-assemblies { width: min(100%, 640px); margin: 0 auto; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 /* touch-action: none: the canvas's own pinch, two-finger pan and one-finger pan (editor.ts touchGestures, rubberBand)
    take its gestures, not the browser's page zoom or scroll (#153) */
@@ -794,7 +788,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 #canvas-space { position: relative; min-width: 100%; min-height: 100%; }
 #patch-world { position: absolute; left: 0; top: 0; transform-origin: 0 0;
   background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 20px 20px; }
-#tab-library { max-width: 1200px; margin: 0 auto; }
+#library-cards { max-width: 1200px; margin: 0 auto; }
 /* a window under 800 px tall (1024 x 768): tighter gaps and a smaller logo minimum make room for About under the logo */
 @media (max-height: 790px) and (min-width: 701px) {
   .sidebar { gap: 8px; }
@@ -822,7 +816,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
   .sidebar { display: none; position: fixed; top: 44px; bottom: 0; left: 0; width: 208px; z-index: 41; }
   .sidebar.open { display: flex; }
   .sidebar-dismiss:not([hidden]) { display: block; position: fixed; inset: 44px 0 0; z-index: 40; background: var(--backdrop); border: 0; border-radius: 0; }
-  .tab:not(#tab-patch) { padding: 16px; }
+  .tab:not(#tab-patch) { padding: 52px 16px 16px; }
   dialog.palette li { gap: 8px; }
   dialog.palette li .detail { max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .palette-filters { gap: 4px; }
@@ -1159,8 +1153,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
    condensed capitals, cable slack as a value bar, the examples as a picker field. Button texts stay as written (the
    tutorial's targets and prose); the capitals are CSS. ---- */
 .sidebar { font-family: 'Barlow', system-ui, sans-serif; font-weight: 500; }
-#tabs button, .sidebar button, .example-picker > span { font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
-#tabs button { font-size: 14px; }
+.sidebar button { font: var(--cap); font-size: 13px; text-transform: uppercase; letter-spacing: .07em; }
 .spanel { border: 1px solid color-mix(in srgb, var(--muted) 45%, var(--panel)); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 6px var(--shadow); }
 .shead { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 6px; border-bottom: 1px solid var(--line); border-radius: 8px 8px 0 0; background: var(--surface-tint); }
 .shead .stitle, input#patch-name { flex: 1; min-width: 0; font: 600 15px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .07em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1201,12 +1194,18 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .side-bar > span:first-child { font: var(--cap); font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; }
 .side-bar .slider-port { background: var(--panel); }
 .patching-any .side-bar, .patching-any .side-bar .slider-port { cursor: crosshair; }
-.example-picker { display: grid; gap: 4px; }
-.example-picker > span { font-size: 11px; color: var(--muted); }
-.example-picker select { width: 100%; min-height: 28px; padding: 2px 6px; border-radius: 5px; border-color: var(--line); background: var(--bar); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
+/* PATCH: the Open picker under New patch */
+.sidebar select#preset { width: 100%; min-height: 28px; padding: 2px 6px; border-radius: 5px; border-color: var(--line); background: var(--bar); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
 #palette-btn { font-size: 12px; }
 #palette-btn kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
 .sidebar #tour-btn { padding-inline: 8px; text-align: center; }
+/* the LIBRARY view's sidebar (main.ts setLibrarySection): its sections as a list, the current one marked like a selected row */
+.library-side { display: grid; gap: 10px; }
+.library-nav { display: grid; gap: 2px; }
+#workspace-sidebar .library-nav button { min-height: 34px; padding: 6px 10px; text-align: left; background: transparent; border: 1px solid transparent; color: var(--ink); font-size: 14px; }
+#workspace-sidebar .library-nav button:hover { border-color: var(--line); filter: none; color: var(--ink); }
+#workspace-sidebar .library-nav button[aria-current="true"] { background: var(--surface-tint); border-color: var(--line); color: var(--secondary); }
+.library-note { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* ---- Library in the cards' style: each card a module-like panel with a header strip (family tag + condensed title), rows on
    the bar shade, toolbar buttons yellow like the sidebar's, the row tools quiet ---- */
@@ -1474,15 +1473,15 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .dial-caption { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 10px/1.1 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); }
 .deck-knob.off .dial-caption { color: var(--muted); }
 
-/* ---- the Patch | FM-1 switch and the FM-1 tab (fm1-view.ts, #110): a flat drawing of the panel around the emulated LCD */
+/* ---- the PATCH | EMU | LIBRARY switch and the Emulator view (fm1-view.ts, #110): a flat drawing of the panel around the emulated LCD */
 .view-switch { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 7; display: flex; padding: 2px; gap: 2px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: 0 2px 8px var(--shadow); }
 .view-switch button { min-width: 64px; height: 26px; padding: 0 12px; border: 0; border-radius: 6px; background: none; color: var(--muted);
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .view-switch button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
 .view-switch button:not([aria-selected="true"]):hover { color: var(--ink); }
-/* Connect FM-1 (main.ts syncChip): the canvas's top right, the view switch's frame; a primary button until connected, then
-   quiet with the status line chip's dot (teal: synced, ring: not synced, red: too big). Over the FM-1 view too */
+/* Connect FM-1 (main.ts syncChip): the main area's top right in every view, the view switch's frame; a primary button until
+   connected, then quiet with the status line chip's dot (teal: synced, ring: not synced, red: too big) */
 .fm1-connect { position: absolute; top: 10px; right: 12px; z-index: 7; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
   border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: var(--accent-ink); box-shadow: 0 2px 8px var(--shadow);
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; }
@@ -1493,16 +1492,23 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-connect.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .fm1-connect.idle .sl-dot { border: 2px solid var(--secondary); }
 .fm1-connect.over .sl-dot { background: var(--danger); border-color: var(--danger); }
-@media (max-width: 700px) { .fm1-connect { right: 8px; height: 30px; padding: 0 8px; gap: 5px; font-size: 11px; letter-spacing: .06em; } }
+/* narrow: the switch moves to the left, so Connect FM-1 fits beside it */
+@media (max-width: 700px) {
+  .fm1-connect { right: 8px; height: 30px; padding: 0 8px; gap: 5px; font-size: 11px; letter-spacing: .06em; }
+  .view-switch { left: 8px; transform: none; }
+  .view-switch button { min-width: 0; padding: 0 9px; letter-spacing: .06em; }
+}
 #fm1-view { position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; padding: 52px 16px 16px; box-sizing: border-box; }
 #fm1-view[hidden] { display: none; }
 /* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it */
 .workspace.fm1-mode > :is(.wheels, .dock-wrap, .deck) { display: none; }
-/* the Flash view: the install page over the canvas, under the Patch | FM-1 | Flash switch */
-#flash-view { position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--bg); padding: 52px 16px 24px; }
+/* the Install panel: the install page over the whole main area (the switch and Connect FM-1 too), closed with its Close */
+#flash-view { position: absolute; inset: 0; z-index: 8; overflow: auto; background: var(--bg); padding: 16px 16px 24px; }
 #flash-view[hidden] { display: none; }
-#flash-view > * { max-width: 640px; margin-inline: auto; }
+#flash-view .install-head, #flash-body > * { max-width: 640px; margin-inline: auto; }
+#flash-view .install-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+#flash-view .install-head h2 { margin: 0; font: 700 22px/1.1 'Alegreya SC', Georgia, serif; }
 /* the warning's details (flasher.ts more): one line each until opened */
 #flash-view .flash-more { border-top: 1px solid var(--line); padding-block: 6px; }
 #flash-view .flash-more:last-of-type { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
@@ -1577,7 +1583,11 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-key.down::after { background: var(--key-held-ink); }
 .fm1-hint { margin: 0; text-align: center; font: 400 12px/1.4 'Barlow', system-ui, sans-serif; color: var(--muted); }
 /* following a connected FM-1 (#120): which firmware, and the controls it does not send greyed */
-.fm1-follow { margin: 0; text-align: center; font: 600 12px/1.4 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; color: var(--secondary); }
+/* "Mirroring your FM-1" (Fm1View.following): a small marker over the panel while a connected FM-1 drives it */
+.fm1-follow { display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 3px 10px; border: 1px solid var(--secondary); border-radius: 999px;
+  background: color-mix(in srgb, var(--secondary) 14%, var(--panel)); color: var(--ink); font: 600 12px/1.4 'Barlow Condensed', system-ui, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+.fm1-follow::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--secondary); }
+.fm1-follow[hidden] { display: none; }
 .fm1-view .unreported { opacity: .35; filter: grayscale(1); }
 
 /* The status line under the keyboard (statusline.ts): what the pointer is over and what it does, then the FM-1 budget */

@@ -9,6 +9,19 @@ import { PROFILES, firmwareOf, type Firmware, type PanelInput, type Profile } fr
 
 const PORT = /fm-?1|felucca|matryoshka|modular|sloop|baud/i;
 
+/** who the FM-1 on USB MIDI is, by M-VAVE's identity handshake (as the Install panel asks): its identity, whether that is
+ *  an update loader, and its port; null when nothing answers */
+export async function identifyFm1(access?: MIDIAccess): Promise<{ text: string; loader: boolean; port: string } | null> {
+  try {
+    const dev = await new Updater(access ?? await navigator.requestMIDIAccess({ sysex: true })).find();
+    if (!dev) return null;
+    dev.link.close();
+    return { text: dev.id.text, loader: /^ota-/i.test(dev.id.model), port: dev.name };
+  } catch {
+    return null;
+  }
+}
+
 export class Fm1Mirror {
   profile: Profile | null = null;
   identity: string | null = null;
@@ -29,16 +42,9 @@ export class Fm1Mirror {
     if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
     this.stop();
     const access = await navigator.requestMIDIAccess({ sysex: true });
-    let id: string | null = null;
-    let name: string | null = null;
-    try {
-      const dev = await new Updater(access).find();
-      if (dev) {
-        id = dev.id.text;
-        name = dev.name;
-        dev.link.close();
-      }
-    } catch { /* no answer to the handshake: by port name only */ }
+    const found = await identifyFm1(access);   // (no answer to the handshake: by port name only)
+    const id = found?.text ?? null;
+    const name = found?.port ?? null;
     const input = [...access.inputs.values()].find((p) => (name ? p.name === name : PORT.test(p.name ?? '')) && !/ota-/i.test(p.name ?? '') && p.state !== 'disconnected');
     if (!input) throw new Error('no FM-1 found among the MIDI inputs');
     const fw = firmware ?? firmwareOf(id);
