@@ -11,8 +11,13 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   and tone at once (a boomy kick, a starved square for hats and drones, a noise snare, a growl / chirp, a squelchy bass),
   two unlabelled knobs, a volume and an A-B switch per voice, the MOD X and MOD Y tracks with their slew, a saturating
   mix, CHOP and MELT. The patch plays a pattern on PLAY; the white keys from F3 play the voices and the modulation tracks.
-  A new or factory-reset FM-1 has it as patch 18 (the 808 and 909 Kits move to 19 and 20); an FM-1 already in use keeps
-  its bank: send it from the editor.
+- A new engine and factory patch, **Meridian 8**, after the Landscape NOON: eight channels powered by their gates (DOT,
+  DUAL, SYS, PLAST, CYMPATH, CYRINX, LARYNX, BACID), each with two tone sliders and a volume; the power also bends the
+  pitch or the filter, so a short gate starves the sound and a held key drones. LINK lets a channel half-power its
+  neighbour, ODD / EVEN CV hold the odd or even channels up; the odd channels play on the left, the even ones on the
+  right, squashed a little as the passive mix is. The patch plays a pattern on PLAY.
+- A new or factory-reset FM-1 has Scrounge and Meridian 8 as patches 18 and 19 (the 808 and 909 Kits move to 20 and 21);
+  an FM-1 already in use keeps its bank: send them from the editor.
 
 ## 1.1.0 — 2026-10-22
 

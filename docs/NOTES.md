@@ -1538,3 +1538,35 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
 - **Checked:** vitest 70 files / 851 tests (catalog.test: the second drum engine on Engines and Drums),
   `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 17 (pages VOICE 1..5, MOD, CTL ALL, OUT).
   **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.
+
+## 2026-10-23: Meridian 8, a factory engine after the Landscape NOON
+
+- **Source:** landscape.fm/noon (the product page and its manual text; NOON was made with Eli Pechman of Mystic Circuits):
+  a passive 8-channel drum synth with no supply, each channel a different circuit powered by its gate (DOT
+  knock / saw / divide, DUAL ping / boom / sine, SYS hollow / laser / wood, PLAST stretch / static / squish, CYMPATH metal
+  by voltage starvation, CYRINX avian / angular, LARYNX vocal / bubble, BACID bass / acid); three sliders per channel (two
+  for tone, one volume), a MOD button per channel, 9 LINK buttons (neighbours share voltage, 8 ↔ 1 too), 8 CV mute buttons,
+  ODD / EVEN CV inputs that power and modulate the odd / even channels (drones), touch plates, odd / even main outputs
+  (a passive mix that squashes). The task said to fall back to the 4-channel MOON (landscape.fm/moon: POLYMER, PLAS,
+  LAUB, CYS, four knobs each and four link knobs) if NOON did not fit; it fits, so NOON it is.
+- **Built:** `asm('Meridian 8', 'Drums', …)` (blurb "NOON type shit") and its patch (slot 18, after Scrounge; the kits move
+  to 19 / 20), through `sequenced()` (Steps track MERIDIAN, a 16-step pattern on all eight rows). A Drum map on the kits'
+  rows named after the channels; per channel an `adsr` = its power (held while the gate is: the Steps gate length or a held
+  key matters, unlike the one-shot `env` curves) into the VCA's cv and the circuit's "power inputs": DOT saw → `ladder`
+  (pitch, cv), DUAL sine with a pitch Scale (ping), SYS a `pulse` at the gate → Scale → `modal` (power into its pitch; the
+  power itself into `in` gave a DC offset of 0.22), PLAST noise → `comb` (power into its pitch; tone, squish = fb),
+  CYMPATH a narrow square → `crush` (crumble = rate), CYRINX triangle with a pitch Scale (chirp), LARYNX saw → `vowel`
+  (power into pitch and vowel), BACID saw → `ladder` (acid = res). LINK n-(n+1): an Attenuverter from channel n's ADSR (not
+  what it receives: no loops) into channel n + 1's power inputs. ODD / EVEN CV: Macros into the odd / even channels' power
+  inputs. Odd channels → left `shape`, even → right; one `main` Macro pinned to both shapes' level.
+- **First try read 85 %** (Multimodes with cv on DOT and PLAST cost about 60 k cycles each, the per-sample coefficient; a
+  3-voice unison on CYMPATH): the ladder, the comb and one square brought it to 73 %.
+- **Left out:** the MOD buttons, the CV mute buttons, the touch plates (no mod wheel input), the individual outputs, the
+  external audio input into DUAL, gate voltage as a power level (the gates are all equal: velocity is not used), links
+  both ways (one direction, n into n + 1), the circuits themselves (each channel is our two- or three-module sketch of the
+  words on the page, not a model of the schematic).
+- **Numbers:** estimate 73 %, memory 78 % (modules 50 / 64; bytes 2772 / 3840); counted engine 436,495 cycles = 65 % (the
+  model reads +12.2 %). Output level 0.56. Each channel held alone peaks 0.16 (LARYNX) .. 0.45; all links at 4, ODD / EVEN
+  at 1, comb fb 0.98, both ladders at res 1, crush rate 64: no NaN, peak 0.45 (the saturators hold it).
+- **Checked:** vitest 70 files / 853 tests, `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 18.
+  **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.

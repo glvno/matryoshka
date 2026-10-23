@@ -291,6 +291,24 @@ presets.push(() => {
 });
 
 
+// Meridian 8: the eight channels on the white keys from F3 (as the kits), a gate pattern on the transport (the original
+// needs a sequencer to power it); a held key keeps its channel powered
+presets.push(() => {
+  const x = around('Meridian 8', 'Meridian 8');
+  sequenced(x, 'MERIDIAN', {
+    1: 'x.....x...x.....',
+    2: '....x.......x...',
+    3: '..x.......x...x.',
+    4: '.x...x...x...x.x',
+    5: 'X.......X.......',
+    6: '.......x.....x..',
+    7: '...x.......x....',
+    8: 'x..x..x...x..x..',
+  });
+  return x.p;
+});
+
+
 // 808 Kit: a drum machine on the transport (PLAY starts it, the Main module's tempo sets it): one DRUMS track (#138) into a
 // Drum map whose rows play the boom kick, a tonal snare, the clap, a closed and an open hat, the tom, the rim and the
 // two-square cowbell from the factory drum assemblies, each through a VCA on its row's velocity (gain 127 / 100: the

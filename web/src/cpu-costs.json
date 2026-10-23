@@ -29616,6 +29616,10 @@
    "cycles": 432916
   },
   {
+   "name": "Meridian 8",
+   "cycles": 436495
+  },
+  {
    "name": "808 Kit",
    "cycles": 475655
   },
@@ -29754,6 +29758,10 @@
   {
    "name": "assembly marimba",
    "cycles": 110005
+  },
+  {
+   "name": "assembly Meridian 8",
+   "cycles": 437174
   },
   {
    "name": "assembly mono lead",
