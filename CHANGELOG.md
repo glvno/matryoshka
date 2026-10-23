@@ -8,17 +8,19 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 - FM-1 drums on the black keys everywhere: whenever the keys reach a Drum map (a drum patch like the 808 Kit, or an
   armed drum track), black keys 1..8 play its rows 1..8 on every page, recording or not, and the white keys play nothing
-  (they still switch steps on the SEQ page). A melodic patch, or the Groove Box's PATTERN, still gets every key. MIDI
+  (they still switch steps on the SEQ page). A melodic patch, or <7PH's PATTERN, still gets every key. MIDI
   notes coming in still play a row by its note.
 - FM-1: a drum track's SEQ page is now an 8 × 16 grid, every row's hits at once with the row names at the left, the
   selected row highlighted, the playhead's column, accents in coral and OCT- / OCT+ for steps past 16. A hit, a step or a
   row pick redraws only its cell or two names, so recording hits no longer redraws the page or switches the row shown.
   REC on an armed drum track is this grid (step entry stays for melodic tracks).
 - FM-1: REC with nothing armed opens the SEQ page on a drum track, so the hits are seen landing; REC off stays there.
+- The first community patch: **Lire + Elvira**, 8 Lire and Elvira 2 layered on one keyboard (slimmed to fit the FM-1),
+  under Community in the Open picker and the palette.
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go
   during a full redraw used to be missed, and any key waited for the redraw to end; now every press and release plays,
   in order, within a moment of the press (#230).
-- A new factory patch, **Groove Box** (patch 23, after the 909 Kit): the 909 Kit's drums and the Silver Box playing a
+- A new factory patch, **<7PH** (patch 23, a groove box, after the 909 Kit): the 909 Kit's drums and the Silver Box playing a
   16-step acid bass line in B flat minor on its own PATTERN track, at 124 BPM. PLAY starts both, Main's keys play the
   bass, arming DRUMS (REC held + its black key on the FM-1) puts the keys on the kit, and the kit's mixer balances kick,
   snare, hats and bass. An FM-1 in use gets it only from MENU > SYSTEM > FACTORY RESET, which rewrites the whole bank;

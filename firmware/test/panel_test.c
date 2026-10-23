@@ -824,7 +824,7 @@ int main(void)
     }
 
     {                                                       /* arming and recording from the keys (#139), on a melodic track: the
-                                                             * Groove Box's PATTERN (a drum track's REC is its grid, below) */
+                                                             * <7PH's PATTERN (a drum track's REC is its grid, below) */
         static int32_t l[128], r[128];
         int pat, i;
         const uint32_t *w;
@@ -833,7 +833,7 @@ int main(void)
             tap(BTN_HOME);
         if (eng_transport_running())
             tap(BTN_PLAY);
-        check("(the Groove Box, the last factory patch, loads: DRUMS, then PATTERN into the Silver Box)", !load_at(N_PRESETS - 1u)
+        check("(<7PH, the last factory patch, loads: DRUMS, then PATTERN into the Silver Box)", !load_at(N_PRESETS - 1u)
               && eng_steps_count() == 2 && eng_steps_drummap((uint32_t)eng_steps_module(0)) >= 0
               && eng_steps_drummap((uint32_t)eng_steps_module(1)) < 0);
         page = 0;
@@ -1143,7 +1143,7 @@ int main(void)
                                                              * its rows 1..8 on every page, the white keys nothing; while a melodic
                                                              * listener has the keys all of them play it */
         static int32_t l[128], r[128];
-        static const char *const KIT[4] = {"808 Kit", "909 Kit", "Groove Box, nothing armed", "Groove Box, DRUMS armed"};
+        static const char *const KIT[4] = {"808 Kit", "909 Kit", "<7PH, nothing armed", "<7PH, DRUMS armed"};
         uint32_t kit;
         for (kit = 0; kit < 4u; kit++) {
             char what[96];
@@ -1156,7 +1156,7 @@ int main(void)
             if (kit < 2u)
                 (void)load(kit ? "909 KIT" : "808 KIT");
             else
-                (void)load_at(N_PRESETS - 1u);              /* (the last factory patch: the Groove Box) */
+                (void)load_at(N_PRESETS - 1u);              /* (the last factory patch: <7PH) */
             page = 0;
             trail_n = 0;
             octave = 0;
@@ -1166,13 +1166,13 @@ int main(void)
                 held_key(BTN_REC, 1);                       /* REC held + black key 1: DRUMS armed */
             map = eng_keys_drummap();
             if (kit == 2u) {
-                check("Groove Box, nothing armed: Main's keys reach PATTERN (melodic), no Drum map", map < 0 && eng_armed() < 0);
+                check("<7PH, nothing armed: Main's keys reach PATTERN (melodic), no Drum map", map < 0 && eng_armed() < 0);
                 for (n = 0; n < 27u; n++) {
                     panel_keys(1u << n);
                     ok &= key_eng[n] == key_note[n] && key_note[n] == 53u + n;
                     panel_keys(0);
                 }
-                check("Groove Box, nothing armed: every key plays its own note, white and black", ok);
+                check("<7PH, nothing armed: every key plays its own note, white and black", ok);
                 continue;
             }
             snprintf(what, sizeof what, "%s: the keys reach the drum track's Drum map", KIT[kit]);
@@ -1232,7 +1232,7 @@ int main(void)
             eng_note_off(seq_row_note(map, 2), 1);
             if (kit == 3u) {
                 held_key(BTN_REC, 1);
-                check("Groove Box: DRUMS disarmed, Main's keys back on PATTERN", eng_armed() < 0 && eng_keys_drummap() < 0);
+                check("<7PH: DRUMS disarmed, Main's keys back on PATTERN", eng_armed() < 0 && eng_keys_drummap() < 0);
             }
         }
     }
@@ -1394,7 +1394,7 @@ int main(void)
             tap(BTN_HOME);
         if (eng_transport_running())
             tap(BTN_PLAY);
-        (void)load_at(N_PRESETS - 1u);                      /* the Groove Box: DRUMS, PATTERN */
+        (void)load_at(N_PRESETS - 1u);                      /* <7PH: DRUMS, PATTERN */
         page = 0;
         trail_n = 0;
         screen_idle();
@@ -1454,7 +1454,7 @@ int main(void)
         int main;
         bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
         (void)load("909 KIT");
-        cur_preset = N_PRESETS - 2u;                        /* the 909 Kit, then the last factory patch (the Groove Box) */
+        cur_preset = N_PRESETS - 2u;                        /* the 909 Kit, then <7PH, the last factory patch */
         pv_gen++;
         page = 0;
         trail_n = 0;
@@ -1464,7 +1464,7 @@ int main(void)
         enc(6, 1);
         for (i = y0 * 240u; i < y1 * 240u; i++)
             ink += fb[i] == P_INK;
-        check("PRESET: the next patch, its name over the bars", cur_preset == N_PRESETS - 1u && !strcmp(patch_label, PRESET_LIST[N_PRESETS - 1u].name)
+        check("PRESET: the next patch, its name over the bars", cur_preset == N_PRESETS - 1u && !strcmp(patch_label, "<7PH")
               && ink > 50u && px(12, ROWS_Y + 15) == P_NIGHT);
         snap_to(getenv("PANEL_SNAP_PATCH"));
         memcpy(name1, fb, sizeof name1);

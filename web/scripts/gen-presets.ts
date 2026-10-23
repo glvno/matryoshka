@@ -4,7 +4,7 @@
 // assembly (or a few modules), Main's keys / mod wheel into it, its outputs into the Output, and the Output's level set
 // from a render so the patches play at about the same loudness. The knobs need no routing: they turn the rows of the
 // device page in focus, and the assembly's card is its pages (pages.ts).
-// The 909 Kit is kept as its file; the Groove Box (the 909 Kit's drums and a Silver Box on its own track) is built from it
+// The 909 Kit is kept as its file; <7PH (the 909 Kit's drums and a Silver Box on its own track) is built from it
 // and comes after it. Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
@@ -394,7 +394,7 @@ if (!kept) throw new Error(`presets/*-${KEEP} is missing (restore it from git)`)
 const keptJson = readFileSync(new URL(kept, DIR), 'utf8');
 const after: (() => Patch)[] = [];
 
-// Groove Box: a groove-box test patch, the 909 Kit's drums with a Silver Box on its own track, PLAY starts both at one
+// <7PH: a groove-box test patch, the 909 Kit's drums with a Silver Box on its own track, PLAY starts both at one
 // tempo. Main's keys go into PATTERN (they play the bass unarmed); DRUMS has no cable from Main, so its keys reach the kit
 // only when DRUMS is armed. The bass joins the kit's mixer on in4, so one page balances kick, snare, hats and bass.
 // PATTERN: a 16-step acid line in B flat minor (the kick sits on B flat), X an accent, a note two steps long either a
@@ -421,7 +421,7 @@ const BASS: [number, number, number, boolean][] = [
 ];
 after.push(() => {
   const p = validatePatch(JSON.parse(keptJson), DEFS);
-  p.name = 'Groove Box';
+  p.name = '<7PH';
   const main = p.modules.find((m) => m.type === 'fm1')!;
   main.params.tempo = GROOVE_TEMPO;
   const drums = p.modules.find((m) => m.type === 'steps' && m.name === 'DRUMS')!;
