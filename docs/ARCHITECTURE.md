@@ -534,7 +534,7 @@ CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in
 
 ## Settings menu and manual (#66, 2026-10-18)
 
-- HOME held: tabs PANEL (LEDS, KNOB ACCEL), MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), SYSTEM (VERSION, CPU now, CPU PEAK, BANK SLOTS n OF 64, UPDATE MODE = update-only mode, FACTORY RESET; both OCT+ twice within 3 s), MANUAL (one screen: the reserved controls, the power-on keys, the menu's controls, the web address). ALGO steps the tabs, SELECT the rows (PRESET only steps patches since #114), K1..K4 / OCT- / OCT+ the value; SAVE saves and closes it, a HOME tap goes back out.
+- HOME held: tabs PANEL (LEDS, KNOB ACCEL), MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), SYSTEM (VERSION, CPU now, CPU PEAK, BANK SLOTS n OF 64, BATTERY (the smoothed reading 0..1023 and its bars n/3, or USB; [D-229](ledger/device-ui.md#D-229)), UPDATE MODE = update-only mode, FACTORY RESET; both OCT+ twice within 3 s), MANUAL (one screen: the reserved controls, the power-on keys, the menu's controls, the web address). ALGO steps the tabs, SELECT the rows (PRESET only steps patches since #114), K1..K4 / OCT- / OCT+ the value; SAVE saves and closes it, a HOME tap goes back out.
 - PLAY acts on its release; PLAY held + PRESET sets the Main module's tempo (1 bpm a click, x5 when turned fast), refused while MIDI clock drives the clock; such a release does not start / stop.
 
 ## Editor link both ways (#65, 2026-10-18)
@@ -641,6 +641,18 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
     `header_draw` waits for the redraw's end (`ui_yielding`, `ui_header_due`), and REC / SEQ held + a black key (an arm
     or a mute draws a message and a row) is left in the queue, with every edge behind it, for the next `keys_poll`.
     Buttons and knobs are still taken once a pass (their edges are latched: none is lost, only later).
+  - The battery (#240, [D-229](ledger/device-ui.md#D-229)): `batt_poll` (main.c) reads SARADC ch 3 (PB1's divider; PB1
+    stays an analog input) every 2 s from the loop: one conversion dropped after MASTER's, the mean of four, one MASTER
+    conversion dropped so `master_poll` reads ch 4 settled. Six polled conversions; their time is `batt_us` (DIAG page
+    127 words 5 and 6: the time in us and the smoothed reading; `tools/m1_link.py cpu` prints them). `ui_battery` (ui.c)
+    smooths it (a one-pole, a quarter of the way per reading, x16) and keeps the level: 0..3 bars at the stock firmware's
+    thresholds 531 / 561 / 591 (taken from Felucca's `ui_draw.c batt_level`; not yet confirmed on our device), 3 counts of
+    hysteresis on the way up. USB configured by a host and not suspended (`usb.config && !usb.suspended`) shows a bolt
+    instead: no pin tells a charger apart (Felucca's note), so a plain USB charger shows the battery. State only: the
+    loop's drawing (`panel_draw` -> `batt_draw`, menu.c) blits the 20 x 20 cell at the bar's right end (`BATT_X` 220;
+    no bar, card or message paints it) only when the shown level changes, says LOW BATTERY once when the level falls to
+    0 (again only after a bar or USB came back), and redraws the BATTERY row's value on an idle SYSTEM tab. Host builds
+    (host_ui.h `BATT_START` 900: the preview, the tests, EMU) start full; fm1-emu's ch 3 reads 640.
 - **Button kinds (#116, designs E / F):** each patch button has one kind per patch (`web/src/buttons.ts`): Nothing
   (unassigned, no role), Gate (on while held or switched; patch its jack) or Toggle (`bypass` in the model: bypasses a
   module or an assembly, the same bypass as the card's ⏻; on = its target bypassed). Every button keeps its jack, high

@@ -25,7 +25,7 @@ static void seq_draw(int full);
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
 
 /* the settings' rows (menu.c; GLO shows some of them: pages_ui.c glo_page) */
-enum { MR_LEDS, MR_ACCEL, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
+enum { MR_LEDS, MR_ACCEL, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {
     uint8_t leds;                       /* the idle buttons glow: 0 off, 1 dim low, 2 dim higher */
@@ -151,6 +151,101 @@ static uint32_t param_bar(const def_t *def, uint32_t j, int32_t q16, uint32_t wi
 /* ---- the picture of the patch: modules as coloured boxes in rows by depth (a vertical strip), cables as lines */
 
 #define BAR_H 20u
+#define BATT_X 220u                             /* the top bar's right end, x 220..239: the battery's cell, which no bar paints */
+
+/* The battery (#240): main.c reads SARADC ch 3 (the divider on PB1) every 2 s and hands the mean of a few conversions to
+ * ui_battery; it is smoothed here (a one-pole, x16) into batt_q16 (0: not read yet). Its level is 0..3 bars by the stock
+ * firmware's thresholds 531 / 561 / 591, as Felucca (hugelton/Felucca, GPL-3.0, firmware/src/ui_draw.c batt_level) has
+ * them; still to be confirmed on our device. BATT_HYST of hysteresis on the way up keeps a reading at a threshold from
+ * flickering. USB configured by a host (and not suspended) is shown as external power instead (a bolt): there is no
+ * charger status line (Felucca's note), so a plain USB charger is not told apart from the battery. The cell is drawn by
+ * the loop's drawing only, and only when the shown level changes (batt_mark_sync); under the lowest threshold the bar
+ * says LOW BATTERY once (again only after it rose to a bar or USB came). Host builds (host_ui.h) start from BATT_START. */
+#ifndef BATT_START
+#define BATT_START 0
+#endif
+#define BATT_HYST 3
+#define BATT_BG 0x08A2u                         /* the cell's ground on every bar: the device strip's (pages_ui.c P_STRIP) */
+#define BATT_USB 4u                             /* the shown level for external power */
+#define BATT_NONE 0xFFu                         /* not read yet: the cell stays blank */
+static const int16_t BATT_T[3] = {531, 561, 591};
+static int32_t batt_q16 = BATT_START * 16;      /* the smoothed raw reading x16 (0: none yet) */
+static uint8_t batt_lvl = BATT_START >= 591 ? 3u : BATT_START >= 561 ? 2u : BATT_START >= 531 ? 1u : 0u;
+static uint8_t batt_usb;                        /* a USB host powers it */
+static uint8_t batt_drawn = BATT_NONE;          /* the level the cell shows */
+static uint8_t batt_low_said, batt_low_due;     /* LOW BATTERY: said since the level fell to 0 / to say at the next draw */
+
+static int32_t batt_raw(void) { return (batt_q16 + 8) >> 4; }   /* 0..1023, 0 = not read yet */
+
+static uint8_t batt_shown(void)
+{
+    if (!batt_q16)
+        return BATT_NONE;
+    return batt_usb ? BATT_USB : batt_lvl;
+}
+
+/* a new reading (0..1023; <= 0: none, the conversion timed out) and whether a USB host is there. State only: drawn later */
+static void ui_battery(int32_t sample, int host)
+{
+    uint32_t l = 0;
+    batt_usb = (uint8_t)(host != 0);
+    if (sample > 0) {
+        sample = sample > 1023 ? 1023 : sample;
+        if (!batt_q16)
+            batt_q16 = sample * 16;             /* the first reading as it is */
+        else
+            batt_q16 += (sample * 16 - batt_q16) / 4;   /* then about 8 s (4 readings) to settle */
+        while (l < 3u && batt_raw() >= BATT_T[l] + (l >= batt_lvl ? BATT_HYST : 0))
+            l++;
+        batt_lvl = (uint8_t)l;
+    }
+    if (!batt_q16)
+        return;
+    if (batt_lvl || batt_usb)
+        batt_low_said = 0;
+    else if (!batt_low_said) {
+        batt_low_said = 1;
+        batt_low_due = 1;
+    }
+}
+
+/* the cell, 20 x 20: a battery 12 x 9 and its nub, 0..3 bars inside (one bar coral, empty: a red outline), a bolt in
+ * seafoam on USB power; one blit */
+static void batt_mark_draw(uint8_t lvl)
+{
+    static uint16_t px[20u * BAR_H];            /* (big endian, as the LCD takes it) */
+    static const char BOLT[5][11] = {".....##...", "...###....", ".#######..", "..###.....", ".##......."};
+    uint16_t ink = lvl == 0u ? C_RED : lvl == BATT_USB ? 0x7E38u : C_DIM, bar = lvl == 1u ? C_ACC : C_FG;
+    uint32_t x, y;
+    lcd_sync();                                 /* (the last blit of px may still run) */
+    for (y = 0; y < BAR_H; y++)
+        for (x = 0; x < 20u; x++) {
+            uint16_t c = BATT_BG;
+            int in = x > 2u && x < 13u && y > 6u && y < 14u;     /* inside the outline: x 3..12, y 7..13 */
+            if (lvl == BATT_NONE)
+                c = BATT_BG;                    /* (blank) */
+            else if ((x >= 2u && x <= 13u && (y == 6u || y == 14u)) || ((x == 2u || x == 13u) && y >= 6u && y <= 14u))
+                c = ink;                        /* the outline */
+            else if (x >= 14u && x < 16u && y >= 8u && y < 13u)
+                c = ink;                        /* the nub */
+            else if (in && lvl == BATT_USB)
+                c = y >= 8u && y < 13u && BOLT[y - 8u][x - 3u] == '#' ? ink : BATT_BG;
+            else if (in && y >= 8u && y < 13u && x >= 4u && x < 13u && (x - 4u) % 3u != 2u && (x - 4u) / 3u < lvl)
+                c = bar;                        /* bar k: x 4 + 3k, two wide */
+            px[y * 20u + x] = (uint16_t)((c >> 8) | (c << 8));
+        }
+    lcd_blit(BATT_X, 0, 20, BAR_H, px);
+    batt_drawn = lvl;
+}
+
+/* the cell as the level is now: drawn only when that changed (by the loop's drawing: panel_draw, screen_idle) */
+static void batt_mark_sync(void)
+{
+    uint8_t s = batt_shown();
+    if (s != batt_drawn && !booting)
+        batt_mark_draw(s);
+}
+
 static void bar_text(const char *s, uint16_t bg)
 {
     char b[28];
@@ -160,9 +255,9 @@ static void bar_text(const char *s, uint16_t bg)
         b[i] = s[i];
     b[n] = 0;
     (void)w;
-    lcd_fill(0, 0, 240, BAR_H, bg);
+    lcd_fill(0, 0, BATT_X, BAR_H, bg);
     if (n)
-        text_bc(&FONT_S, 0, 3, b, bg == C_FG || bg == C_ACC || bg == C_RED ? C_BG : C_FG, bg, 240, TA_CENTER);
+        text_bc(&FONT_S, 0, 3, b, bg == C_FG || bg == C_ACC || bg == C_RED ? C_BG : C_FG, bg, BATT_X, TA_CENTER);
 }
 
 static void pages_draw(int full);
@@ -289,4 +384,5 @@ static void screen_idle(void)                   /* redraws in place: every text 
     ui_full = 0;                                /* (a patch load's pending full redraw: this is it, not a second one) */
     header_draw();
     view_draw(1);
+    batt_mark_sync();
 }

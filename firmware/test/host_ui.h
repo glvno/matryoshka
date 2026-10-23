@@ -115,6 +115,7 @@ static void m1_preset_stored(uint32_t structure, const char *name) { (void)struc
 #include "../src/font5x7.c"
 #include "../src/font_bc.c"
 static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
+#define BATT_START 900                     /* the battery (ui.c): full, no USB host (fm1_open's simulator has 900 too) */
 #include "../src/ui.c"
 #include "../src/pages_ui.c"
 static const uint8_t *pages_src(uint32_t *len) { *len = pv_len; return pv_bin; }

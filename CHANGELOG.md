@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- FM-1: the battery in the top right corner of the screen: 0 to 3 bars, a bolt while a computer powers it over USB, and
+  LOW BATTERY in the top bar once when it runs low. MENU > SYSTEM > BATTERY shows the reading behind it. The thresholds
+  are the stock firmware's (via Felucca) and are still to be checked on a real FM-1 (#240).
 - The first community patch: **Lire + Elvira**, 8 Lire and Elvira 2 layered on one keyboard (slimmed to fit the FM-1),
   under Community in the Open picker and the palette.
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go

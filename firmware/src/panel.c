@@ -713,6 +713,7 @@ static void panel_draw(void)
         ui_header_due = 0;
         header_draw();
     }
+    batt_draw();                                    /* the battery's cell, LOW BATTERY, its menu row (menu.c) */
 }
 static void panel_draw_now(void)
 {
