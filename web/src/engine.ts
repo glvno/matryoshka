@@ -639,7 +639,24 @@ export class Engine {
     for (const node of this.tracks) this.thruOff(node.inst[0].state as StepsState);
     this.keysOff();
     this.armedKeys = list;
-    if (this.src) this.load(this.src, this.compiled);
+    if (this.src) this.load(this.liveSource(this.src), this.compiled);
+  }
+
+  /** the patch as it plays now: what setParam / setAtt / setRange / setBypass / setTrack changed since it was loaded put
+   * back into a copy, so a reload (arming) does not undo them */
+  private liveSource(src: Patch): Patch {
+    return {
+      ...src,
+      modules: src.modules.map((m) => {
+        const n = this.nodes.get(m.id);
+        if (!n) return m;
+        const out = { ...m, params: { ...m.params, ...n.params }, att: [n.att[0], n.att[1]] as [number, number], range: { p1: { ...n.range[0] }, p2: { ...n.range[1] } } };
+        if (n.bypass) out.bypass = true;
+        else delete out.bypass;
+        if (m.type === 'steps') out.notes = (n.inst[0].state as StepsState).notes.map((x) => ({ ...x }));
+        return out;
+      }),
+    };
   }
 
   /** live recording on the armed track (#135): while the track runs, the notes played through it are recorded (the editor
