@@ -44,11 +44,15 @@ static int sent(int from, uint32_t s, uint32_t a, uint32_t b)
             return 1;
     return 0;
 }
-/* PRESET: counted; with preset_loads the next factory patch runs, as main.c preset_load does with the bank's */
+#include "../src/live.c"                            /* the editor's Live (#185, #200): main.c's, as on the device */
+/* PRESET: counted; with preset_loads the next factory patch runs, as main.c preset_load does with the bank's; under the
+ * editor's Live it waits, as main.c preset_step */
 static int preset_loads;
 static int load(const char *name);
 static void preset_step(int32_t d)
 {
+    if (live_holds_preset())
+        return;
     presets_stepped += d;
     if (preset_loads) {
         uint32_t n = (uint32_t)(((int32_t)cur_preset + d % (int32_t)N_PRESETS + (int32_t)N_PRESETS) % (int32_t)N_PRESETS);
@@ -1001,6 +1005,40 @@ int main(void)
         check("SELECT during it: the device card takes over", fm1_ms >= pg_patch_until && pages_carding()
               && px(4, 4) == P_CARD_DEV);
         later(1100);
+        preset_loads = 0;
+    }
+
+    {                                                       /* #200: the editor's Live, its patch over the FM-1's budget (paused) */
+        uint32_t slot = cur_preset;
+        int stepped = presets_stepped;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+        later(2000);
+        preset_loads = 1;
+        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
+        m1_live(1);                                         /* LIVE paused: the FM-1 says so at once */
+        check("LIVE paused: EDITOR PATCH TOO BIG at once", !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
+        later(3000);
+        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
+        m1_live(1);                                         /* every 2 s again: no new toast */
+        check("LIVE paused again: no new message", msg_text[0] == 0);
+        enc(6, 1);
+        check("PRESET under a paused Live: no slot change, EDITOR PATCH TOO BIG", cur_preset == slot
+              && presets_stepped == stepped && !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
+        later(1600);
+        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
+        m1_live(0);                                         /* the patch fits again: Live resumes */
+        check("LIVE resumed: no message of its own", msg_text[0] == 0);
+        enc(6, -1);
+        check("PRESET under Live (resumed): still held, EDITOR LIVE: NO PRESET", cur_preset == slot
+              && presets_stepped == stepped && !strcmp(msg_text, "EDITOR LIVE: NO PRESET"));
+        later(1600);
+        m1_live(1);                                         /* over the budget once more: says so again */
+        check("LIVE paused after a resume: the message again", !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
+        later(LIVE_HOLD_MS + 100u);                          /* no LIVE for 5 s (a closed tab): PRESET is free */
+        enc(6, 1);
+        check("Live lapsed: PRESET steps again", presets_stepped == stepped + 1 && cur_preset != slot);
         preset_loads = 0;
     }
 

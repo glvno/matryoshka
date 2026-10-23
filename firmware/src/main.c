@@ -283,38 +283,15 @@ static int preset_load(uint32_t n)
     return 0;
 }
 
-/* the editor's Live (proto.c LIVE, sent every 2 s while it is on): the FM-1 plays the editor's patch, so PRESET and program
- * change do not load a slot under it (the two would edit different patches, #185); it lapses 5 s after the last LIVE, so a
- * closed tab or a pulled cable frees them */
-#define LIVE_HOLD_MS 5000u
-static uint32_t live_until;
-static uint8_t live_seen, live_paused;
-/* paused (#200): the editor's patch is over the FM-1's budget, so it is not here; PRESET waits all the same (the editor's
- * Live is on) and the FM-1 says why */
-static void m1_live(uint32_t paused)
-{
-    if (paused && (!live_paused || !live_seen))
-        ui_msg("EDITOR PATCH TOO BIG", 2500);
-    live_until = fm1_ms + LIVE_HOLD_MS;
-    live_seen = 1;
-    live_paused = paused != 0u;
-}
-static int editor_live(void)
-{
-    if (live_seen && (int32_t)(live_until - fm1_ms) <= 0)
-        live_seen = 0;
-    return live_seen;
-}
+#include "live.c"                                   /* the editor's Live: PRESET and program change wait (#185, #200) */
 
 static void preset_step(int32_t d)                  /* the PRESET knob: the next / previous occupied slot */
 {
     uint32_t s = cur_preset, i;
     if (!bank_mask)
         return;
-    if (editor_live()) {
-        ui_msg(live_paused ? "EDITOR PATCH TOO BIG" : "EDITOR LIVE: NO PRESET", 1500);
+    if (live_holds_preset())
         return;
-    }
     for (i = 0; i < M1_SLOTS; i++) {
         s = (s + (d > 0 ? 1u : M1_SLOTS - 1u)) % M1_SLOTS;
         if (slot_used(s))
