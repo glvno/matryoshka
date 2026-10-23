@@ -9,6 +9,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go
   during a full redraw used to be missed, and any key waited for the redraw to end; now every press and release plays,
   in order, within a moment of the press (#230).
+- A new factory patch, **Groove Box** (patch 23, after the 909 Kit): the 909 Kit's drums and the Silver Box playing a
+  16-step acid bass line in B flat minor on its own PATTERN track, at 124 BPM. PLAY starts both, Main's keys play the
+  bass, arming DRUMS (REC held + its black key on the FM-1) puts the keys on the kit, and the kit's mixer balances kick,
+  snare, hats and bass. An FM-1 in use gets it only from MENU > SYSTEM > FACTORY RESET, which rewrites the whole bank;
+  a normal update leaves the saved slots as they are.
 - The SEQ page's white keys: B now switches its step, and A# (a black key) no longer does; before, every B did nothing
   and every A# both picked a track and switched the next step (since 1.0, on the FM-1 and in EMU).
 - The tutorial's text follows the new navigation and the removed Riff button (play notes on the keys, or Note for a
