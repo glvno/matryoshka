@@ -1792,6 +1792,161 @@ asm('Elvira 2', 'Voices', (b) => {
   b.param('out', scope, 'view', { col: true });
 });
 
+// Scrounge, after the neutral labs Scrooge (its manual v1.1): five voices that live on their control voltage. On the
+// original each sequencer step is a voltage curve (POKE its height, TILT its slope, GATE its length) that both powers a
+// voice's starved CMOS circuit and sets its pitch and timbre; here a Drum map row plays a one-shot curve (an Env L/R:
+// tilt = the rise, gate = the fall) whose height is the row's velocity (a pin on l1: the step's accent is its POKE), and
+// the curve, summed with the two modulation tracks, drives the voice's level, pitch and tone all at once. Voices: 1 a
+// boomy sine with a pitch drop (kick), 2 a high square through a Bitcrusher (hats to drones), 3 noise through a band pass
+// (snare), 4 a triangle bent by a square (growls, chirps), 5 a saw into a ladder (squelchy bass); each with the two
+// unlabelled knobs of the original, its volume slider and the A-B switch (a pan: left = A, right = B). Rows 6 and 7 are
+// MOD X and MOD Y: their own curves through a slew limiter (SLEW), into every voice by its X / Y amount (the X-Y switch).
+// The mix saturates; CHOP (a square LFO opening and closing both outputs, the CTL ALL gesture on all five voices) and MELT
+// (both outputs' sample rate, by a pin) after it. Mod wheel = the MOD X input. Row 8 (EXT) stays free. The sequencer is the
+// patch's Steps track, not part of the engine.
+asm('Scrounge', 'Drums', (b) => {
+  const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
+  b.module(map).names = ['VOICE 1', 'VOICE 2', 'VOICE 3', 'VOICE 4', 'VOICE 5', 'MOD X', 'MOD Y', 'EXT'];
+  const curveOf = (col: number, row: number, gate: number) =>
+    b.add('env', col, row, { l1: 0, r1: 0.001, l2: 0, r2: gate, l3: 0, r3: 0.001, l4: 0, r4: 0.001 }, { p1: 'l1' });
+  const modX = curveOf(0, 1, 0.4);
+  const modY = curveOf(0, 2, 0.2);
+  const slewX = b.add('glide', 0, 3, { time: 0.05 });
+  const slewY = b.add('glide', 0, 4, { time: 0.2 });
+  for (const [r, env, slew] of [[6, modX, slewX], [7, modY, slewY]] as const) {
+    b.wire(map, `g${r}`, env, 'gate');
+    b.wire(map, `v${r}`, env, 'p1');
+    b.wire(env, 'env', slew, 'in');
+  }
+  const L = b.add('shape', 7, 0, { drive: 1.5, mode: 0, level: 0.8 });
+  const R = b.add('shape', 7, 1, { drive: 1.5, mode: 0, level: 0.8 });
+  type V = { env: number; curve: number; vca: number; pan: number; members: number[]; k1: [number, string, string]; k2: [number, string, string] };
+  const voice = (i: number, gate: number, xy: [number, number], build: (col: number, curve: number, vca: number) => Omit<V, 'env' | 'curve' | 'vca' | 'pan'>): V => {
+    const col = 1 + i;
+    const env = curveOf(col, 0, gate);
+    const curve = b.add('mixer', col, 1, { l1: 1, l2: xy[0], l3: xy[1], l4: 0 });
+    const vca = b.add('vca', col, 5, { gain: 0.8 });
+    const pan = b.add('pan', col, 6, { pan: 0 });
+    b.wire(map, `g${i + 1}`, env, 'gate');
+    b.wire(map, `v${i + 1}`, env, 'p1');
+    b.wire(env, 'env', curve, 'in1');
+    b.wire(slewX, 'out', curve, 'in2');
+    b.wire(slewY, 'out', curve, 'in3');
+    b.wire(curve, 'out', vca, 'cv');
+    b.wire(vca, 'out', pan, 'in');
+    b.wire(pan, 'l', L, 'in');
+    b.wire(pan, 'r', R, 'in');
+    const v = build(col, curve, vca);
+    return { env, curve, vca, pan, ...v, members: [env, curve, ...v.members, vca, pan] };
+  };
+  const voices: V[] = [
+    // 1: boom (a sine whose pitch rides the curve: the voltage drops, so does the pitch)
+    voice(0, 0.35, [0, 0], (col, curve, vca) => {
+      const osc = b.add('osc', col, 2, { wave: 0, coarse: -31, level: 1 });
+      const boom = b.add('scale', col, 3, { gain: 1.5, offset: 0 });
+      b.wire(curve, 'out', boom, 'in');
+      b.wire(boom, 'out', osc, 'pitch');
+      b.wire(osc, 'out', vca, 'in');
+      return { members: [osc, boom], k1: [osc, 'coarse', 'pitch'], k2: [boom, 'gain', 'boom'] };
+    }),
+    // 2: a high square, starved: the curve bends it and the Bitcrusher folds it into metal (a drone at low pitch)
+    voice(1, 0.06, [0, 0.15], (col, curve, vca) => {
+      const osc = b.add('osc', col, 2, { wave: 3, coarse: 30, pw: 0.3, level: 0.7 });
+      const bend = b.add('scale', col, 3, { gain: 1, offset: 0 });
+      const crush = b.add('crush', col, 4, { bits: 16, rate: 6 });
+      b.wire(curve, 'out', bend, 'in');
+      b.wire(bend, 'out', osc, 'pitch');
+      b.wire(osc, 'out', crush, 'in');
+      b.wire(crush, 'out', vca, 'in');
+      return { members: [osc, bend, crush], k1: [osc, 'coarse', 'pitch'], k2: [crush, 'rate', 'grit'] };
+    }),
+    // 3: noise through a band pass the curve opens (a snare's crack, a hiss)
+    voice(2, 0.15, [0, 0], (col, curve, vca) => {
+      const nz = b.add('noise', col, 2, { level: 1 });
+      const bp = b.add('filter', col, 3, { cutoff: 1800, res: 0.5, cvamt: 2 });
+      b.wire(nz, 'out', bp, 'in');
+      b.wire(curve, 'out', bp, 'cv');
+      b.wire(bp, 'bp', vca, 'in');
+      return { members: [nz, bp], k1: [bp, 'cutoff', 'tone'], k2: [bp, 'res', 'ring'] };
+    }),
+    // 4: a triangle whose phase a square bends (growl), both pitched up hard by the curve (chirp)
+    voice(3, 0.12, [0, 0.4], (col, curve, vca) => {
+      const sq = b.add('osc', col, 2, { wave: 3, coarse: -5, level: 1 });
+      const tri = b.add('osc', col, 3, { wave: 1, coarse: 7, pm: 2, level: 0.9 });
+      const chirp = b.add('scale', col, 4, { gain: 2.5, offset: 0 });
+      b.wire(curve, 'out', chirp, 'in');
+      b.wire(chirp, 'out', tri, 'pitch');
+      b.wire(chirp, 'out', sq, 'pitch');
+      b.wire(sq, 'out', tri, 'pm');
+      b.wire(tri, 'out', vca, 'in');
+      return { members: [sq, tri, chirp], k1: [tri, 'coarse', 'pitch'], k2: [tri, 'pm', 'growl'] };
+    }),
+    // 5: a saw into a ladder whose cutoff follows the curve (squelch)
+    voice(4, 0.25, [0.35, 0], (col, curve, vca) => {
+      const osc = b.add('osc', col, 2, { wave: 2, coarse: -24, level: 0.9 });
+      const lad = b.add('ladder', col, 3, { cutoff: 180, res: 0.7, cvamt: 4, drive: 2 });
+      b.wire(osc, 'out', lad, 'in');
+      b.wire(curve, 'out', lad, 'cv');
+      b.wire(lad, 'lp24', vca, 'in');
+      return { members: [osc, lad], k1: [osc, 'coarse', 'pitch'], k2: [lad, 'res', 'squelch'] };
+    }),
+  ];
+  // CHOP: a square LFO (rate, depth) made unipolar (max(0, lfo)) and turned into a gain of 1 or 1 - depth, on both outputs
+  const chop = b.add('lfo', 8, 0, { wave: 3, rate: 8, depth: 0 });
+  const half = b.add('math', 8, 1, { ka: 0, kb: 1, off: 0 });
+  const gain = b.add('math', 8, 2, { ka: 0, kb: 1, off: 1 });
+  const vcaL = b.add('vca', 9, 0, { gain: 1 });
+  const vcaR = b.add('vca', 9, 1, { gain: 1 });
+  const melt = b.add('macro', 8, 3, { value: 0 });
+  const meltL = b.add('crush', 10, 0, { bits: 16, rate: 1 }, { p1: 'rate' });
+  const meltR = b.add('crush', 10, 1, { bits: 16, rate: 1 }, { p1: 'rate' });
+  const scope = b.add('scope', 11, 0, { time: 16 });
+  b.wire(chop, 'out', half, 'b');
+  b.wire(half, 'max', gain, 'b');
+  b.wire(gain, 'sub', vcaL, 'cv');
+  b.wire(gain, 'sub', vcaR, 'cv');
+  b.wire(L, 'out', vcaL, 'in');
+  b.wire(R, 'out', vcaR, 'in');
+  b.wire(vcaL, 'out', meltL, 'in');
+  b.wire(vcaR, 'out', meltR, 'in');
+  b.wire(melt, 'out', meltL, 'p1');
+  b.wire(melt, 'out', meltR, 'p1');
+  b.wire(meltL, 'out', scope, 'a');
+  b.wire(meltR, 'out', scope, 'b');
+  voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, v.members));
+  voices.forEach((v) => {
+    b.nestInput('gate', v.env, 'gate');
+    b.nestInput('poke', v.env, 'p1');
+    b.nestInput('mod', v.curve, 'in2', [v.curve, 'in3']);
+    b.nestOutput('a', v.pan, 'l');
+    b.nestOutput('b', v.pan, 'r');
+  });
+  b.input('keys', map, 'keys');
+  b.input('wheel', slewX, 'in');
+  b.output('l', meltL, 'out');
+  b.output('r', meltR, 'out');
+  voices.forEach((v, i) => {
+    b.param(v.k1[2], v.k1[0], v.k1[1], { head: `voice ${i + 1}`, ...(i === 0 || i === 3 ? { col: true } : {}) });
+    b.param(v.k2[2], v.k2[0], v.k2[1]);
+    b.param('tilt', v.env, 'r1');
+    b.param('gate', v.env, 'r2');
+    b.param('vol', v.vca, 'gain');
+    b.param('a-b', v.pan, 'pan');
+    b.param('x', v.curve, 'l2');
+    b.param('y', v.curve, 'l3');
+  });
+  b.param('x gate', modX, 'r2', { col: true, head: 'mod' });
+  b.param('x slew', slewX, 'time');
+  b.param('y gate', modY, 'r2');
+  b.param('y slew', slewY, 'time');
+  b.param('chop', chop, 'rate', { head: 'ctl all' });
+  b.param('chop depth', chop, 'depth');
+  b.param('melt', melt, 'value');
+  b.param('vol a', L, 'level', { head: 'out' });
+  b.param('vol b', R, 'level');
+  b.param('out', scope, 'view', { col: true });
+});
+
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep
 asm('vibrato', 'Utilities', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 5, depth: 1 });
@@ -2253,6 +2408,7 @@ const BLURBS: Record<string, string> = {
   'Vernon 100': 'ElectroComp 100 type shit',
   '8 Lire': 'Lyra-8 type shit',
   'Elvira 2': 'Elmyra 2 type shit',
+  Scrounge: 'Scrooge type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',

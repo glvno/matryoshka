@@ -1504,3 +1504,37 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
 - **The release build:** release.yml run 39871109097 from 6d2d067, v1.1.0 / FM-1_711, package sha256 8e3cf32a…; emu:smoke 124 / 0 on matryoshka-1.1-app.bin. **Not device-checked on these exact bytes** (they differ from the checked CI build in the version string and identity only): the owner chose to release; installing 1.1.0 from the Flash view is that check.
 - **Ship:** db2ce1d (the Flash view: Patch | FM-1 | Flash), `npm run firmware -- build/release-1.1/matryoshka-1.1.fwsc`, web 1.1.0, CHANGELOG 1.1.0 dated 2026-10-22 (3075b24); `git diff 6d2d067 3075b24 -- firmware tools` empty; tag `v1.1.0` on 3075b24; GitHub release with matryoshka-1.1.fwsc, SHA256SUMS, matryoshka-1.1.zip.
 - **After:** main at 1.2.0-dev / v1.2.0-DEV. Still to check on a device: MIDI clock in, program change (and that LIVE holds it), a power cut mid-write.
+
+## 2026-10-23: Scrounge, a factory engine after the neutral labs Scrooge
+
+- **Source:** the Scrooge manual v1.1 (neutral-labs.com/scrooge/downloads/Scrooge-v1.1-manual.pdf): 5 passive voices of
+  starved CMOS circuits (1 kick-ish, 2 hats to drones, 3 snare-ish, 4 growls / chirps, 5 squelchy bass), 2 unlabelled
+  knobs, a volume slider and a 3-way A-B switch each (A, mute, B), an X-Y switch each (MOD X, none, MOD Y); a step
+  sequencer whose step is a control voltage curve that both gates and shapes the voice (POKE height, TILT slope, GATE
+  length up to 8 steps, CHOP ratchets up to audio rate, MELT bit mangling, PROB), 2 MOD tracks with SLEW, CTL ALL over
+  all steps of the selected tracks, a mixer that saturates, A / B outputs and VOL.
+- **Built:** `asm('Scrounge', 'Drums', …)` in gen-assemblies.ts (blurb "Scrooge type shit") and its patch (slot 17, after
+  Elvira 2; the kits move to 18 / 19). One Drum map on the kits' rows (`PLATE_KEYS[1]`, F3..F4) with row names VOICE 1..5,
+  MOD X, MOD Y, EXT. A curve = an `env` (one-shot as every env in a Drums assembly; l1 pinned to the row's velocity, so
+  the step's velocity is its POKE; r1 = tilt, r2 = gate) into a per-voice `mixer` (in1 the curve, in2 / in3 MOD X / Y by
+  the voice's x / y amounts); its sum is the VCA's cv and drives pitch (a Scale into the oscillator), the band pass or the
+  ladder. Voices: 1 sine + pitch Scale (pitch, boom); 2 square at +30 st → `crush` (pitch, grit = rate); 3 noise → `filter`
+  bp (tone, ring); 4 a square into a triangle's pm, both pitched by the curve (pitch, growl = pm); 5 saw → `ladder`
+  (pitch, squelch = res). Each voice → `vca` (vol) → `pan` (a-b) → the A and B saturators (`shape` soft; vol a / vol b).
+  MOD X / Y: rows 6 / 7, their own curves → `glide` (x / y slew); the mod wheel goes into MOD X's slew. CHOP: a square
+  LFO (rate, depth) → `math` max(0, lfo) → `math` 1 − that → a VCA on each output. MELT: a Macro pinned to both outputs'
+  Bitcrusher rate. A gen-presets helper `sequenced()` puts a Steps track (SCROUNGE) between Main's keys and the engine
+  (as the 808 Kit) with a 16-step pattern on all seven rows; the level comes from a 4 s transport render.
+- **Left out:** per-step TILT / GATE / CHOP / MELT / PROB / microtiming (the curve settings are per voice; CHOP and MELT
+  act on the whole mix, as CTL ALL on all five voices would), CHOP above 40 Hz (the LFO's limit; the original reaches
+  audio rate), tracks over 16 steps and per-track lengths in the factory pattern (Steps can do 64), the RND PTN
+  generator, the EXT track, the passive POKE inputs and the voices' high-impedance outputs, the mute position of A-B
+  (vol 0 instead), one VOL for both outputs (two rows), the unstable behaviour of the starved chips beyond what the
+  curve does.
+- **Numbers:** estimate 72 %, memory 78 % (modules 50 / 64; bytes 2953 / 3840); counted engine 432,916 cycles = 65 %
+  (the model reads +11.6 %). Output level 0.56 from the pattern. Each row alone peaks 0.28..0.43 (the MOD rows 0.09 /
+  0.10 through their default x / y); everything up (x / y 1, growl 8, res 1, CHOP 40 Hz full depth, MELT 1, both
+  saturators at drive 32): no NaN, peak 0.56.
+- **Checked:** vitest 70 files / 851 tests (catalog.test: the second drum engine on Engines and Drums),
+  `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 17 (pages VOICE 1..5, MOD, CTL ALL, OUT).
+  **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.

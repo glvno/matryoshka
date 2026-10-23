@@ -29612,6 +29612,10 @@
    "cycles": 311453
   },
   {
+   "name": "Scrounge",
+   "cycles": 432916
+  },
+  {
    "name": "808 Kit",
    "cycles": 475655
   },
@@ -29798,6 +29802,10 @@
   {
    "name": "assembly Sallen 20",
    "cycles": 187186
+  },
+  {
+   "name": "assembly Scrounge",
+   "cycles": 417193
   },
   {
    "name": "assembly shimmer",

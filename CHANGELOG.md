@@ -6,6 +6,14 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- A new engine and factory patch, **Scrounge**, after the neutral labs Scrooge: five voices played by their control
+  voltage, a curve per hit (its height from the velocity, TILT its rise, GATE its fall) that sets each voice's level, pitch
+  and tone at once (a boomy kick, a starved square for hats and drones, a noise snare, a growl / chirp, a squelchy bass),
+  two unlabelled knobs, a volume and an A-B switch per voice, the MOD X and MOD Y tracks with their slew, a saturating
+  mix, CHOP and MELT. The patch plays a pattern on PLAY; the white keys from F3 play the voices and the modulation tracks.
+  A new or factory-reset FM-1 has it as patch 18 (the 808 and 909 Kits move to 19 and 20); an FM-1 already in use keeps
+  its bank: send it from the editor.
+
 ## 1.1.0 — 2026-10-22
 
 - Modules are named after the hardware they stand for: Scale is now Attenuverter, Constant Offset, Shaper Waveshaper,
