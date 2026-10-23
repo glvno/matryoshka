@@ -9,7 +9,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { muteFrame, trackFrame, parseTrack, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit), `too-big` leaves it off because the patch does not fit */
@@ -54,7 +54,9 @@ export type DeviceEvent =
   | { kind: 'track'; module: number; notes: StepNote[] }
   | { kind: 'mute'; module: number; on: boolean }
   | { kind: 'param'; module: number; param: number; value: number }
-  | { kind: 'focus'; device: number; page: number };
+  | { kind: 'focus'; device: number; page: number }
+  /** a preset stored on the FM-1 (#195, ENV held + SAVE) */
+  | { kind: 'presetStored'; structure: string; name: string };
 
 export class DeviceLink {
   private out: MIDIOutput | null = null;
@@ -64,6 +66,8 @@ export class DeviceLink {
   private paramQueue = new Map<string, [number, number, number]>();
   private paramTimer = 0;
   info: Info | null = null;
+  /** PRESETS's answers, one frame each, while listPresets waits for them */
+  private collecting: ((e: DevicePresetEntry) => void) | null = null;
   onStatus: (s: string) => void = () => {};
   /** what the FM-1 does on its own (#65): a knob or patch button as MIDI CC, the slot it plays now */
   onEvent: (e: DeviceEvent) => void = () => {};
@@ -95,6 +99,10 @@ export class DeviceLink {
         return this.onEvent({ kind: 'param', module: p.payload[0], param: p.payload[1], value: v });
       }
       if (p?.cmd === CMD.focusNow && p.payload.length >= 2) return this.onEvent({ kind: 'focus', device: p.payload[0], page: p.payload[1] });
+      const stored = p ? parsePresetStored(p) : null;
+      if (stored) return this.onEvent({ kind: 'presetStored', ...stored });
+      const entry = p && this.collecting ? parsePresetEntry(p) : null;
+      if (entry && this.collecting) return this.collecting(entry);
       if (p && this.waiter?.match(p)) {
         const w = this.waiter;
         this.waiter = null;
@@ -248,6 +256,45 @@ export class DeviceLink {
     if (mi < 0) return;
     const pi = DEFS[patch.modules.find((m) => m.id === moduleId)!.type].params.findIndex((q) => q.name === name);
     if (pi >= 0) this.out!.send(rangeFrame(mi, index, pi, range));
+  }
+
+  /** the firmware keeps presets (#195, INFO feature bit 7) */
+  get hasPresets(): boolean {
+    return !!(this.info && this.info.features & 128);
+  }
+
+  /** the FM-1's user presets (name, structure, how many values) */
+  listPresets(): Promise<DevicePresetEntry[]> {
+    return this.serial(() => new Promise<DevicePresetEntry[]>((resolve, reject) => {
+      const got: DevicePresetEntry[] = [];
+      const t = window.setTimeout(() => { this.collecting = null; reject(new Error('no answer from the FM-1')); }, ACK_TIMEOUT * TRIES);
+      this.collecting = (e) => {
+        if (e.count) got[e.index] = e;
+        if (!e.count || got.filter(Boolean).length >= e.count) {
+          clearTimeout(t);
+          this.collecting = null;
+          resolve(got.filter(Boolean));
+        }
+      };
+      this.out!.send(presetsFrame());
+    }));
+  }
+
+  /** one of the FM-1's presets' values (real numbers, canonical row order); null: it has none of that name */
+  getPreset(structure: string, name: string): Promise<number[] | null> {
+    return this.serial(async () => {
+      const key = devicePresetName(name);
+      const p = await this.request(presetGetFrame(structure, name), (x) => !!x && x.cmd === CMD.presetData && parsePresetData(x)?.name === key);
+      return parsePresetData(p)?.values ?? null;
+    });
+  }
+
+  putPreset(structure: string, name: string, values: number[]): Promise<void> {
+    return this.serial(async () => { await this.ackFor(presetPutFrame(structure, name, values), CMD.presetPut, undefined, FLASH_TIMEOUT); });
+  }
+
+  deletePreset(structure: string, name: string): Promise<void> {
+    return this.serial(async () => { await this.ackFor(presetDelFrame(structure, name), CMD.presetDel, undefined, FLASH_TIMEOUT); });
   }
 
   /** the firmware takes MUTE (INFO feature bit 2) */

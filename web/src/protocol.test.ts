@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { chunkFrames, commitFrame, crc16, frame, liveFrame, LIVE_MS, pack7, paramFrame, parse, parseSlot, slotEraseFrame, slotFrame, slotInfoFrame, unpack7, CMD } from './protocol';
+import { chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
 
 describe('SysEx protocol', () => {
   it('packs and unpacks every length without loss and with 7-bit bytes only', () => {
@@ -66,5 +66,21 @@ describe('SysEx protocol', () => {
     expect(parse(slotInfoFrame(31))!.payload).toEqual([31]);
     const reply = frame(CMD.slotReply, [5, 1, 200, 0, ...Array.from('KICK', (c) => c.charCodeAt(0)), ...new Array(16).fill(0)]);
     expect(parseSlot(parse(reply)!)).toEqual({ slot: 5, used: true, length: 200, name: 'KICK' });
+  });
+});
+
+describe('presets on the FM-1 (#195)', () => {
+  it('PRESET_PUT carries the key and Q16 values; PRESET_DATA and PRESET come back as the editor keeps them', () => {
+    const put = parse(presetPutFrame('12345678', 'Glass', [1, -0.5, 6]))!;
+    expect(put.cmd).toBe(CMD.presetPut);
+    expect(put.payload.slice(0, 4)).toEqual([0x78, 0x56, 0x34, 0x12]);
+    expect(String.fromCharCode(...put.payload.slice(4, 9))).toBe('Glass');
+    expect(put.payload[20]).toBe(3);
+    const data = { cmd: CMD.presetData, payload: [...put.payload.slice(0, 20), 3, ...put.payload.slice(21)] };
+    expect(parsePresetData(data)).toEqual({ structure: '12345678', name: 'Glass', values: [1, -0.5, 6] });
+    expect(parsePresetData({ cmd: CMD.presetData, payload: [...put.payload.slice(0, 20), 0xff] })!.values).toBeNull();
+    expect(parsePresetEntry({ cmd: CMD.preset, payload: [0, 2, ...put.payload.slice(0, 20), 3] })).toEqual({ index: 0, count: 2, structure: '12345678', name: 'Glass', n: 3 });
+    expect(parsePresetStored({ cmd: CMD.presetStored, payload: put.payload.slice(0, 20) })).toEqual({ structure: '12345678', name: 'Glass' });
+    expect(devicePresetName('a name longer than sixteen')).toBe('a name longer th');
   });
 });

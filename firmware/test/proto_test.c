@@ -14,7 +14,7 @@ static int slot_writes, slot_erases;
 static uint32_t last_slot, last_len;
 static char last_name[32];
 static uint8_t last_data[3072];
-static uint8_t replies[64][64];
+static uint8_t replies[64][512];
 static uint32_t reply_len[64], nreplies;
 static int m1_apply(const uint8_t *p, uint32_t n)
 {
@@ -66,6 +66,63 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)   /* two pages of 32, 7 */
     for (i = 0; i < n; i++)
         out[i] = (uint8_t)(page * 32u + i);
     return n;
+}
+/* the presets (#195): a RAM store of up to 4 */
+static struct { uint32_t st, n; char name[17]; int32_t v[88]; uint8_t used; } pst[4];
+static uint32_t m1_presets(uint32_t k, uint32_t *structure, char *name, uint32_t *n)
+{
+    uint32_t i, c = 0;
+    for (i = 0; i < 4u; i++)
+        if (pst[i].used) {
+            if (c == k && structure) {
+                *structure = pst[i].st;
+                strcpy(name, pst[i].name);
+                *n = pst[i].n;
+            }
+            c++;
+        }
+    return c;
+}
+static int pst_find(uint32_t st, const char *name)
+{
+    int i;
+    for (i = 0; i < 4; i++)
+        if (pst[i].used && pst[i].st == st && !strncmp(pst[i].name, name, 16))
+            return i;
+    return -1;
+}
+static int m1_preset_get(uint32_t structure, const char *name, int32_t *vals, uint32_t *n)
+{
+    int i = pst_find(structure, name);
+    if (i < 0)
+        return -1;
+    *n = pst[i].n;
+    memcpy(vals, pst[i].v, 4u * pst[i].n);
+    return 0;
+}
+static int m1_preset_put(uint32_t structure, const char *name, const int32_t *vals, uint32_t n)
+{
+    int i = pst_find(structure, name);
+    if (i < 0)
+        for (i = 0; i < 4 && pst[i].used; i++)
+            ;
+    if (i >= 4)
+        return -2;
+    pst[i].used = 1;
+    pst[i].st = structure;
+    pst[i].n = n;
+    strncpy(pst[i].name, name, 16);
+    pst[i].name[16] = 0;
+    memcpy(pst[i].v, vals, 4u * n);
+    return 0;
+}
+static int m1_preset_del(uint32_t structure, const char *name)
+{
+    int i = pst_find(structure, name);
+    if (i < 0)
+        return -1;
+    pst[i].used = 0;
+    return 0;
 }
 static void m1_send(const uint8_t *f, uint32_t n)
 {
@@ -331,6 +388,45 @@ int main(int argc, char **argv)
         m1_cur[1] = 30;                                          /* format 30 had step values there */
         CHECK(!m1_valid(m1_cur, m1_cur_len));
         printf("track notes ok\n");
+    }
+    {   /* the presets (#195): PUT, PRESETS, GET, DEL, the full store, PRESET_STORED */
+        uint8_t pl[4 + 16 + 1 + 4 * 88], fr[8 + (8 * sizeof pl + 6) / 7], got[sizeof pl];
+        uint32_t w, k, n0;
+        int32_t vals[3] = {65536, -2, 123456};
+        memset(pl, 0, sizeof pl);
+        pl[0] = 0x78; pl[1] = 0x56; pl[2] = 0x34; pl[3] = 0x12;   /* structure 0x12345678 */
+        memcpy(pl + 4, "GLASS", 5);
+        pl[20] = 3;
+        for (k = 0; k < 3u; k++) {
+            uint32_t x = (uint32_t)vals[k];
+            pl[21 + 4 * k] = (uint8_t)x; pl[22 + 4 * k] = (uint8_t)(x >> 8); pl[23 + 4 * k] = (uint8_t)(x >> 16); pl[24 + 4 * k] = (uint8_t)(x >> 24);
+        }
+        fr[0] = 0x7D; fr[1] = 0x4D; fr[2] = 0x31; fr[3] = C_PRESET_PUT;
+        w = 4 + m1_pack7(pl, 21 + 12, fr + 4);
+        n0 = nreplies;
+        CHECK(m1_handle(fr, w) == 1 && nreplies == n0 + 1 && replies[n0][4] == R_ACK);
+        CHECK(m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 3 && got[0] == C_PRESET_PUT && got[2] == S_OK);
+        fr[3] = C_PRESETS;
+        n0 = nreplies;
+        CHECK(m1_handle(fr, 4) == 1 && nreplies == n0 + 1 && replies[n0][4] == R_PRESET);
+        CHECK(m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 23 && got[1] == 1 && !memcmp(got + 6, "GLASS", 5) && got[22] == 3);
+        fr[3] = C_PRESET_GET;
+        w = 4 + m1_pack7(pl, 20, fr + 4);
+        n0 = nreplies;
+        CHECK(m1_handle(fr, w) == 1 && replies[n0][4] == R_PRESET_DATA);
+        CHECK(m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 33 && got[20] == 3 && !memcmp(got + 21, pl + 21, 12));
+        fr[3] = C_PRESET_DEL;
+        n0 = nreplies;
+        CHECK(m1_handle(fr, w) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 3 && got[2] == S_OK);
+        n0 = nreplies;
+        CHECK(m1_handle(fr, w) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 3 && got[2] == S_MISSING);
+        fr[3] = C_PRESET_GET;
+        n0 = nreplies;
+        CHECK(m1_handle(fr, w) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 21 && got[20] == 0xFF);
+        n0 = nreplies;
+        m1_preset_stored(0x12345678u, "DUSK");
+        CHECK(nreplies == n0 + 1 && replies[n0][4] == R_PRESET_STORED);
+        printf("presets ok\n");
     }
     printf("proto ok: %u acks, %ld patch bytes, render identical\n", acks_ok, np);
     return 0;

@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Presets between the editor and the FM-1 (#195): Library > Presets on the FM-1 reads the FM-1's own presets, gets one
+  into this browser or deletes it there, and sends all of yours to it. Under Live, a preset stored on the FM-1 (ENV held
+  + SAVE) comes into your presets by itself. Nothing else syncs.
 - Arming on the FM-1 is a set too (#191): REC on an environment row arms or disarms that device, REC held + a black key
   adds or removes a track, several at once; only armed devices hear the keys, ARMED shows on their rows. The FM-1 tab
   and the editor arm the same devices. On the FM-1 a device can be armed when something in it already takes Main's keys

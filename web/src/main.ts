@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // first: migrate.ts notes which storage keys the page found before anything here writes one
-import { exportPresets, importPresets } from './device-presets';
+import { addUserPreset, exportPresets, importPresets } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
 import { applyImport, backupKeys, importSummary, OLD_ORIGIN, receiveMigration } from './migrate';
@@ -180,6 +180,15 @@ device.onEvent = (e) => {
     if (e.kind === 'focus') emu.ui?.focus(e.device, e.page);   // (the mirror's copy of the panel logic too)
     fromDevice = true;
     try { fm1Event(e, 'device'); } finally { fromDevice = false; }
+    return;
+  }
+  if (e.kind === 'presetStored') {   // a preset stored on the FM-1 (#195): under Live it comes into the editor's library
+    if (!live()) return;
+    void device.getPreset(e.structure, e.name).then((v) => {
+      if (!v || !addUserPreset(e.structure, e.name, v)) return;
+      editor.rebuild();
+      devStatus(`preset "${e.name}" stored on the FM-1: now in your presets too`);
+    }).catch(() => {});
     return;
   }
   if (!live()) return;

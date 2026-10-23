@@ -7,7 +7,10 @@ import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
 import { PRESETS } from './presets';
-import { NAME_BYTES, SLOTS, type SlotInfo } from './protocol';
+import { devicePresetName, NAME_BYTES, SLOTS, type DevicePresetEntry, type SlotInfo } from './protocol';
+import { addUserPreset, userPresets } from './device-presets';
+import { FACTORY } from './assemblies';
+import { defStructure } from './structure';
 import { renamedKey } from './storage-key';
 import { removeSaved, savedPatches, onSavedChange } from './saved';
 import { decodeShare, isShareLink, openShareLink } from './share';
@@ -120,6 +123,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLEl
 /** builds the page; returns a refresh that rereads both lists (another part of the app may have saved to them) */
 /** `open` loads a patch into the editor (`from`: the Your patches name it came from); `remove` deletes one of Your patches
  *  (main.ts: at once, with an Undo toast) */
+/** which engine (or factory assembly) a structure is, by name; '' when it is the user's own */
+function engineOf(structure: string): string {
+  return FACTORY.find((d) => defStructure(d) === structure)?.name ?? '';
+}
+
 export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch: () => Patch, onConnected: (msg: string) => void, open: (p: Patch, from?: string) => void, remove: (name: string) => void = (n) => void removeSaved(n)): () => void {
   let list = load();
   let over = loadOver();
@@ -147,6 +155,11 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
   const upload = el('button', { class: 'primary', textContent: 'Upload bank to FM-1', disabled: true });
   const read = el('button', { textContent: 'Read FM-1 bank', disabled: true });
   const clear = el('button', { textContent: 'Empty the FM-1 bank', disabled: true });
+  // presets on the FM-1 (#195): its own store, separate from the editor's library; explicit transfer
+  const presetsEl = el('div', { class: 'bank-list' });
+  const readPresets = el('button', { textContent: 'Read FM-1 presets', disabled: true });
+  const sendPresets = el('button', { textContent: 'Send my presets', disabled: true });
+  let onFm1: DevicePresetEntry[] = [];
   let busy = false;
 
   const refresh = (): void => {
@@ -192,6 +205,22 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
     upload.disabled = !ready || list.length === 0;
     read.disabled = !ready;
     clear.disabled = !ready;
+    readPresets.disabled = sendPresets.disabled = !ready || !device.hasPresets;
+    const kept = new Set(userPresets().map((x) => `${x.structure}/${devicePresetName(x.name)}`));
+    presetsEl.replaceChildren(...(onFm1.length ? onFm1.map((e) => el('div', { class: 'bank-row' },
+      el('span', { class: 'grow', textContent: e.name }),
+      el('span', { class: 'muted', textContent: engineOf(e.structure) }),
+      el('button', { textContent: kept.has(`${e.structure}/${e.name}`) ? 'Get again' : 'Get', title: 'copy it into your presets in this browser', disabled: !ready, onclick: () => void run('Get preset', async () => {
+        const v = await device.getPreset(e.structure, e.name);
+        if (!v) throw new Error('the FM-1 has no such preset any more');
+        status.textContent = addUserPreset(e.structure, e.name, v) ? `"${e.name}" is in your presets` : `"${e.name}" is a factory preset's name: not copied`;
+      }) }),
+      el('button', { class: 'delete', textContent: 'Delete', title: 'delete it on the FM-1', disabled: !ready, onclick: () => void run('Delete preset', async () => {
+        await device.deletePreset(e.structure, e.name);
+        onFm1 = onFm1.filter((x) => x !== e);
+        status.textContent = `"${e.name}" deleted on the FM-1`;
+      }) }),
+    )) : [el('p', { class: 'muted', textContent: device.connected && !device.hasPresets ? 'This firmware keeps no presets: update it.' : 'Read them from a connected FM-1.' })]));
   };
   const changed = (): void => {
     save(list);
@@ -211,6 +240,21 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       refresh();
     }
   };
+
+  readPresets.onclick = () => void run('Read presets', async () => {
+    onFm1 = await device.listPresets();
+    status.textContent = `${onFm1.length} preset${onFm1.length === 1 ? '' : 's'} on the FM-1`;
+  });
+  sendPresets.onclick = () => void run('Send presets', async () => {
+    const mine = userPresets();
+    for (const [i, x] of mine.entries()) {
+      bar.value = (100 * i) / Math.max(1, mine.length);
+      await device.putPreset(x.structure, x.name, x.values);
+    }
+    bar.value = 100;
+    onFm1 = await device.listPresets();
+    status.textContent = `${mine.length} preset${mine.length === 1 ? '' : 's'} sent; ${onFm1.length} on the FM-1`;
+  });
 
   connect.onclick = () =>
     void run('connect', async () => {
@@ -315,6 +359,7 @@ export function buildBankTab(root: HTMLElement, device: DeviceLink, currentPatch
       el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag src', textContent: 'PATCHES' }), 'Factory patches'), el('div', { class: 'toolbar' }, addCurrent), el('div', { class: 'toolbar' }, linkIn, importLink), libEl),
       el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag shp', textContent: 'BANK' }), 'Bank to upload ', countEl), el('div', { class: 'toolbar' }, reset, empty), bankEl),
     ),
+    el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'Presets on the FM-1'), el('p', { class: 'muted', textContent: 'The FM-1 keeps its own presets (ENV held + SAVE stores one there). Send yours to it, or get its into this browser; nothing syncs by itself.' }), el('div', { class: 'toolbar' }, readPresets, sendPresets), presetsEl),
     el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag fx', textContent: 'OVER' }), 'Over budget (browser only)'), el('p', { class: 'muted', textContent: 'Patches too big for the FM-1. They play in the browser; they are never uploaded. One that fits again moves to the bank when you save it.' }), overEl),
     el('div', { class: 'card' }, el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'On the FM-1'), onDevice),
   );

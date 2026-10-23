@@ -12,6 +12,11 @@
  *   static uint32_t m1_diag(uint32_t page, uint8_t *out);       DIAG: up to 32 bytes of page n of the diagnostics, 0 = past the end
  *   static void m1_ui_rows(void);                               a live parameter changed: the page's rows need a redraw
  *   static void m1_live(void);                                  LIVE: the editor drives the FM-1 (PRESET and program change wait)
+ *   static uint32_t m1_presets(uint32_t k, uint32_t *structure, char *name, uint32_t *n);   the FM-1's user presets (#195): how
+ *                                                               many; with k below that, preset k's structure, name (17 bytes), value count
+ *   static int  m1_preset_get(uint32_t structure, const char *name, int32_t *vals, uint32_t *n);   0 = found
+ *   static int  m1_preset_put(uint32_t structure, const char *name, const int32_t *vals, uint32_t n);   0 = ok, -2 full, else flash
+ *   static int  m1_preset_del(uint32_t structure, const char *name);   0 = ok, -1 none
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"
@@ -19,11 +24,13 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B };
-#define M1_FEATURES 118u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E };
+#define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
+#define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
+#define M1_PVALS 88u                                         /* a preset's values at most (presetstore.c PS_MAXV) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
 #define M1_NAME 20u
-enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE };
+enum { S_OK, S_RANGE, S_CRC, S_LOAD, S_FLASH, S_CMD, S_NONE, S_FULL, S_MISSING };
 
 static uint8_t m1_up[M1_PATCH_MAX] ENG_POOL, m1_cur[M1_PATCH_MAX] ENG_POOL;     /* the patch as it runs (parameter edits included) */
 static uint32_t m1_up_got, m1_up_total, m1_cur_len;
@@ -407,11 +414,54 @@ static void m1_splice(uint32_t at, uint32_t old, uint32_t len)
     m1_cur_len = m1_cur_len + len - old;
 }
 
-/* a preset was stored on the FM-1 (#194): the editor hears of it (#195; nothing yet) */
+static uint32_t m1_presets(uint32_t k, uint32_t *structure, char *name, uint32_t *n);
+static int m1_preset_get(uint32_t structure, const char *name, int32_t *vals, uint32_t *n);
+static int m1_preset_put(uint32_t structure, const char *name, const int32_t *vals, uint32_t n);
+static int m1_preset_del(uint32_t structure, const char *name);
+
+/* a preset's key in a frame: u32 LE structure, M1_PNAME name bytes (zero padded) */
+static void m1_pkey(uint8_t *p, uint32_t structure, const char *name)
+{
+    uint32_t i, end = 0;
+    p[0] = (uint8_t)structure;
+    p[1] = (uint8_t)(structure >> 8);
+    p[2] = (uint8_t)(structure >> 16);
+    p[3] = (uint8_t)(structure >> 24);
+    for (i = 0; i < M1_PNAME; i++) {
+        end |= !name[i];
+        p[4u + i] = end ? 0u : (uint8_t)name[i];
+    }
+}
+static uint32_t m1_pkey_get(const uint8_t *d, char *name)
+{
+    uint32_t i;
+    for (i = 0; i < M1_PNAME; i++)
+        name[i] = (char)d[4u + i];
+    name[M1_PNAME] = 0;
+    return (uint32_t)d[0] | (uint32_t)d[1] << 8 | (uint32_t)d[2] << 16 | (uint32_t)d[3] << 24;
+}
+
+/* a long frame to the host (a preset's values) */
+static void m1_reply_long(uint32_t cmd, const uint8_t *payload, uint32_t n)
+{
+    static uint8_t f[8u + (8u * (21u + 4u * M1_PVALS) + 6u) / 7u];
+    uint32_t w = 0;
+    f[w++] = 0xF0;
+    f[w++] = 0x7D;
+    f[w++] = 0x4D;
+    f[w++] = 0x31;
+    f[w++] = (uint8_t)cmd;
+    w += m1_pack7(payload, n, f + w);
+    f[w++] = 0xF7;
+    m1_send(f, w);
+}
+
+/* a preset was stored on the FM-1 (#194): the editor hears of it (#195: PRESET_STORED, unasked) */
 static void m1_preset_stored(uint32_t structure, const char *name)
 {
-    (void)structure;
-    (void)name;
+    uint8_t p[4u + M1_PNAME];
+    m1_pkey(p, structure, name);
+    m1_reply(R_PRESET_STORED, p, sizeof p);
 }
 
 /* the name of the preset device `dev` (the device pages section's index) was set to, into its device extras (format 34,
@@ -719,6 +769,75 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         if (len >= 2u)
             m1_focus(d[0], d[1]);
         break;
+    case C_PRESETS: {                                        /* #195: one PRESET frame per user preset (one with count 0: none) */
+        uint8_t p[2u + 4u + M1_PNAME + 1u];
+        char name[M1_PNAME + 1u];
+        uint32_t cnt = m1_presets(0xFFFFFFFFu, 0, 0, 0), k, st, nv;
+        for (k = 0; k == 0u || k < cnt; k++) {
+            p[0] = (uint8_t)k;
+            p[1] = (uint8_t)cnt;
+            if (cnt && m1_presets(k, &st, name, &nv) > k) {
+                m1_pkey(p + 2, st, name);
+                p[2u + 4u + M1_PNAME] = (uint8_t)nv;
+            } else {
+                uint32_t i;
+                for (i = 2; i < sizeof p; i++)
+                    p[i] = 0;
+            }
+            m1_reply(R_PRESET, p, sizeof p);
+        }
+        break;
+    }
+    case C_PRESET_GET: {                                     /* #195: structure, name -> PRESET_DATA (count 0xFF: none) */
+        static uint8_t p[4u + M1_PNAME + 1u + 4u * M1_PVALS];
+        static int32_t v[M1_PVALS];
+        char name[M1_PNAME + 1u];
+        uint32_t st, nv = 0, i;
+        if (len < 4u + M1_PNAME)
+            break;
+        st = m1_pkey_get(d, name);
+        m1_pkey(p, st, name);
+        if (m1_preset_get(st, name, v, &nv) || nv > M1_PVALS) {
+            p[4u + M1_PNAME] = 0xFF;
+            m1_reply_long(R_PRESET_DATA, p, 4u + M1_PNAME + 1u);
+            break;
+        }
+        p[4u + M1_PNAME] = (uint8_t)nv;
+        for (i = 0; i < nv; i++) {
+            uint32_t x = (uint32_t)v[i];
+            p[5u + M1_PNAME + 4u * i] = (uint8_t)x;
+            p[6u + M1_PNAME + 4u * i] = (uint8_t)(x >> 8);
+            p[7u + M1_PNAME + 4u * i] = (uint8_t)(x >> 16);
+            p[8u + M1_PNAME + 4u * i] = (uint8_t)(x >> 24);
+        }
+        m1_reply_long(R_PRESET_DATA, p, 5u + M1_PNAME + 4u * nv);
+        break;
+    }
+    case C_PRESET_PUT: {                                     /* #195: structure, name, n, n i32 values -> ACK */
+        static int32_t v[M1_PVALS];
+        char name[M1_PNAME + 1u];
+        uint32_t st, nv, i;
+        int rc;
+        if (len < 5u + M1_PNAME || (nv = d[4u + M1_PNAME]) > M1_PVALS || len < 5u + M1_PNAME + 4u * nv) {
+            m1_ack(C_PRESET_PUT, 0, S_RANGE, 0);
+            break;
+        }
+        st = m1_pkey_get(d, name);
+        for (i = 0; i < nv; i++)
+            v[i] = (int32_t)((uint32_t)d[5u + M1_PNAME + 4u * i] | (uint32_t)d[6u + M1_PNAME + 4u * i] << 8 | (uint32_t)d[7u + M1_PNAME + 4u * i] << 16 | (uint32_t)d[8u + M1_PNAME + 4u * i] << 24);
+        rc = name[0] ? m1_preset_put(st, name, v, nv) : -3;
+        m1_ack(C_PRESET_PUT, 0, rc == 0 ? S_OK : rc == -2 ? S_FULL : rc == -3 ? S_RANGE : S_FLASH, 0);
+        break;
+    }
+    case C_PRESET_DEL: {                                     /* #195: structure, name -> ACK */
+        char name[M1_PNAME + 1u];
+        if (len < 4u + M1_PNAME) {
+            m1_ack(C_PRESET_DEL, 0, S_RANGE, 0);
+            break;
+        }
+        m1_ack(C_PRESET_DEL, 0, m1_preset_del(m1_pkey_get(d, name), name) ? S_MISSING : S_OK, 0);
+        break;
+    }
     case C_LIVE:                                             /* no payload, every 2 s while the editor's Live is on: no reply */
         m1_live();
         break;

@@ -112,6 +112,15 @@ export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
   return n;
 }
 
+/** a user preset from elsewhere (the FM-1, #195): stored under its name (over one of the same structure and name);
+ * false when a factory one has that name */
+export function addUserPreset(structure: string, name: string, values: number[]): boolean {
+  const n = fixName(name);
+  if (!n || factory.some((f) => f.structure === structure && f.name === n)) return false;
+  writeUser([...userPresets().filter((x) => !(x.structure === structure && x.name === n)), { structure, name: n, values: [...values] }]);
+  return true;
+}
+
 /** rename a user preset; false when it is a factory one, missing, or the new name is taken */
 export function renamePreset(structure: string, from: string, to: string): boolean {
   const n = fixName(to);

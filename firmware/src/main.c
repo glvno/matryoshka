@@ -315,6 +315,47 @@ static void preset_step(int32_t d)                  /* the PRESET knob: the next
 }
 
 /* proto.c hooks: the bank */
+/* the preset store for the editor link (proto.c, #195) */
+static uint32_t m1_presets(uint32_t k, uint32_t *structure, char *name, uint32_t *n)
+{
+    static uint8_t list[PS_SLOTS];
+    uint32_t cnt = ps_list(0, list, PS_SLOTS);
+    if (k < cnt && structure && name && n)
+        (void)ps_read(list[k], structure, name, n);
+    return cnt;
+}
+static int m1_preset_get(uint32_t structure, const char *name, int32_t *vals, uint32_t *n)
+{
+    char nm[PS_NAME + 1u];
+    uint32_t st, i;
+    int s = ps_find(structure, name);
+    if (s < 0 || ps_read((uint32_t)s, &st, nm, n))
+        return -1;
+    for (i = 0; i < *n; i++)
+        vals[i] = ps_vbuf[i];
+    return 0;
+}
+static int m1_preset_put(uint32_t structure, const char *name, const int32_t *vals, uint32_t n)
+{
+    int rc;
+    if (!flash_ok)
+        return -1;
+    eng_run = 0;
+    rc = ps_put(structure, name, vals, n);
+    eng_resume();
+    return rc;
+}
+static int m1_preset_del(uint32_t structure, const char *name)
+{
+    int rc;
+    if (!flash_ok)
+        return -1;
+    eng_run = 0;
+    rc = ps_del(structure, name);
+    eng_resume();
+    return rc;
+}
+
 static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
 {
     return store_write(slot, name, p, len);
