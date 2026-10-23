@@ -47,6 +47,7 @@ typedef struct {
     const char *lab[PG_ROWS];
 } ppage_t;
 static pdev_t pg_dev[PG_DEVS] UI_POOL;
+static char pg_tname[PG_DEVS][9] UI_POOL;              /* a Steps track's name, for its device (m1_track_name: 8 characters) */
 static ppage_t pg_page[PG_PAGES] UI_POOL;
 static uint32_t pg_ndev, pg_npage, pg_built_gen = 0xFFFFFFFFu, pg_built_at;
 static uint32_t pg_cur_dev, pg_cur_page;                /* the focus: the device and its page K1..K4 turn */
@@ -61,6 +62,7 @@ static uint8_t pg_patch_ask;
 static int8_t pg_list_btn = -1;
 static uint8_t pg_list_step, pg_list_peek;
 
+static void m1_track_name(uint32_t mod, char *out);     /* proto.c: a Steps track's name ("" none) */
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
 static uint32_t pages_gen(void);                        /* changes when another patch becomes current */
 
@@ -123,15 +125,20 @@ static void pages_plain(uint32_t m)
     if (!n || pg_npage + n > PG_PAGES)
         return;
     pg_dev[pg_ndev].name = d->name;
-    pg_dev[pg_ndev].nlen = (uint8_t)str_len(d->name);
+    if (t == T_STEPS) {                                 /* a Steps track: its name if it has one, else STEPS (#196) */
+        m1_track_name(m, pg_tname[pg_ndev]);
+        if (pg_tname[pg_ndev][0])
+            pg_dev[pg_ndev].name = pg_tname[pg_ndev];
+    }
+    pg_dev[pg_ndev].nlen = (uint8_t)str_len(pg_dev[pg_ndev].name);
     pg_dev[pg_ndev].pg0 = (uint8_t)pg_npage;
     pg_dev[pg_ndev].npg = (uint8_t)n;
     pg_dev[pg_ndev].module = (int16_t)m;
     for (j = 0; j < n; j++) {
         ppage_t *pg = &pg_page[pg_npage + j];
         uint32_t r;
-        pg->name = d->name;
-        pg->nlen = (uint8_t)str_len(d->name);
+        pg->name = pg_dev[pg_ndev].name;
+        pg->nlen = pg_dev[pg_ndev].nlen;
         pg->part = (uint8_t)j;
         pg->parts = (uint8_t)n;
         pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV) ? m + 1u : 0u);
@@ -214,6 +221,38 @@ static void pages_build(void)
         pg_cur_page = 0;
 }
 
+/* Main, a Steps track or the Output: the environment's frame, not where a patch opens (pages.ts homeDevice, #196) */
+static int pages_frame(uint32_t d)
+{
+    int t = pg_dev[d].module >= 0 ? eng_type((uint32_t)pg_dev[d].module) : -1;
+    return t == T_FM1 || t == T_STEPS || t == T_OUTPUT;
+}
+
+/* where a fresh patch's focus goes: the first device that is no frame, else the first */
+static uint32_t pages_home(void)
+{
+    uint32_t d;
+    for (d = 0; d < pg_ndev; d++)
+        if (!pages_frame(d))
+            return d;
+    return 0;
+}
+
+/* the Steps track (its index among the patch's tracks) the device in focus is, -1 when it is none (#196) */
+static int pages_focus_track(void)
+{
+    int m, t;
+    if (pg_cur_dev >= pg_ndev || pg_dev[pg_cur_dev].module < 0)
+        return -1;
+    m = pg_dev[pg_cur_dev].module;
+    if (eng_type((uint32_t)m) != T_STEPS)
+        return -1;
+    for (t = 0; t < eng_steps_count(); t++)
+        if (eng_steps_module((uint32_t)t) == m)
+            return t;
+    return -1;
+}
+
 /* the model, current with the running patch */
 static void pages_ensure(void)
 {
@@ -222,8 +261,9 @@ static void pages_ensure(void)
     int fresh = pg_built_gen != pages_gen();
     if (fresh || (p && pages_at(p, len) != pg_built_at)) {
         pages_build();
-        if (fresh) {                                    /* another patch: its first device's first page, no list */
-            pg_cur_dev = pg_cur_page = 0;
+        if (fresh) {                                    /* another patch: its home device's first page, no list */
+            pg_cur_dev = pages_home();
+            pg_cur_page = 0;
             pg_list_btn = -1;
             pg_list_peek = 0;
             if (pg_patch_ask && fm1_ms - pg_patch_ask_ms < 2000u) {   /* PRESET loaded it: its name over the bars */

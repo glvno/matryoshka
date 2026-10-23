@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Main, the Steps tracks and the Output are devices too (#196): SELECT steps through all of them in the environment's
+  order: Main first, each Steps track followed by what it plays, then the rest, the Output last. A patch still opens on
+  its first instrument. A track's page is LEN RATE SWING GATE, named after the track; SEL or SEQ there opens its steps.
+  The editor's DEVICE picker follows the same order.
 - Presets (#192): store an assembly's card values as a named preset (its menu: Store as a preset…), and every copy of the
   same assembly, in any patch and under any name, can load it. An assembly with presets shows ‹ name › on its header:
   the arrows step through them, the name opens the list (store over, store as new, rename, delete); a star means a value

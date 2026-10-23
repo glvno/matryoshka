@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Devices and their pages: what the FM-1 lets you play with K1..K4, and what Main's knobs in the editor's dock turn.
 //
-// Every top-level thing on the canvas, a module or an assembly, is a device, unless it is the Main panel, the Output (the
-// MASTER pot), a Steps track (the SEQ page) or editor-only (a Scope); one with no rows is left out too. Devices come in
-// the canvas's reading order (columns from the left, as Tidy reads them, each from the top). A device's rows are the rows
+// Every top-level thing on the canvas, a module or an assembly, is a device (CONTEXT.md "Device"), unless it is editor-only
+// (a Scope) or a Part; one with no rows is left out too. Devices come in the environment's grouped order (#196): Main
+// first; then each Steps track (its page: LEN RATE SWING GATE) followed by the devices it drives (a cable from it into
+// them); then the others; the Output last. Tracks and the rest go in the canvas's reading order (columns from the left,
+// as Tidy reads them, each from the top). A device's rows are the rows
 // of its collapsed card: an assembly's promoted parameters, a plain module's every parameter. A heading starts a section;
 // a section holds groups of at most PAGE_ROWS rows (`groupStarts`), and each group is one page ("Filter 2/2" = the
 // section's second group). Groups fill in fours; a row's `group` flag (Arrange's "new group") or a column break ends one
@@ -18,7 +20,7 @@ export const PAGE_ROWS = 4;
 /** characters of a device, page or row name the binary carries (the FM-1's screen) */
 export const NAME_MAX = 12;
 /** top-level modules that are no devices */
-export const NOT_DEVICES = new Set(['fm1', 'output', 'steps', 'part', ...EDITOR_ONLY]);
+export const NOT_DEVICES = new Set(['part', ...EDITOR_ONLY]);
 /** module types whose card display is an envelope shape the FM-1 draws */
 export const ENVELOPES = new Set(['adsr', 'env']);
 /** how far right a card may start and still be in the column of the card above it (half a card, as tidy.ts reads it) */
@@ -43,7 +45,14 @@ export interface Device {
   asm?: number;
   module?: number;
   pages: Page[];
+  /** Main, a Steps track or the Output (else an instrument, an effect, ...) */
+  kind?: 'main' | 'steps' | 'output';
+  /** the Steps track (module id) that drives it: it follows the track in the environment (#196) */
+  track?: number;
 }
+
+/** where focus goes on a fresh patch: the first device that is not Main, a Steps track or the Output, else the first */
+export const homeDevice = (devices: Device[]): number => Math.max(0, devices.findIndex((d) => !d.kind));
 
 /** a page's title as the editor and the FM-1 show it: the name, and "2/3" when its group spans pages */
 export const pageTitle = (pg: Page): string => (pg.parts > 1 ? `${pg.name} ${pg.part + 1}/${pg.parts}` : pg.name);
@@ -168,14 +177,16 @@ export const modulePages = (p: Patch, m: ModuleInst, defs: Record<string, Module
 /** an assembly's pages, as its device would have them (the patch card draws them for a nested one too) */
 export const assemblyPages = (p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Page[] => paginate(assemblySections(p, a, defs), typeIn(p));
 
-/** the patch's devices in reading order (see the top of this file) */
+/** the patch's devices in the environment's grouped order (see the top of this file) */
 export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
   const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
   const items: { x: number; y: number; dev: Device }[] = [];
+  const KINDS: Record<string, Device['kind']> = { fm1: 'main', steps: 'steps', output: 'output' };
   for (const m of p.modules) {
     if (inAsm.has(m.id) || NOT_DEVICES.has(m.type) || !defs[m.type]) continue;
     const pages = modulePages(p, m, defs);
-    if (pages.length) items.push({ x: m.x, y: m.y, dev: { key: `m${m.id}`, name: moduleName(m.type, defs[m.type].label), module: m.id, pages } });
+    const name = m.type === 'steps' && m.name ? m.name : moduleName(m.type, defs[m.type].label);
+    if (pages.length) items.push({ x: m.x, y: m.y, dev: { key: `m${m.id}`, name, module: m.id, pages, ...(KINDS[m.type] ? { kind: KINDS[m.type] } : {}) } });
   }
   for (const a of assembliesOf(p)) {
     if (parentOf(p, a.id)) continue;
@@ -189,7 +200,25 @@ export function devicesOf(p: Patch, defs: Record<string, ModuleDef>): Device[] {
     if (col && it.x < col[0].x + COLUMN_SLACK) col.push(it);
     else cols.push([it]);
   }
-  return cols.flatMap((col) => col.sort((u, v) => u.y - v.y || u.x - v.x).map((it) => it.dev));
+  const reading = cols.flatMap((col) => col.sort((u, v) => u.y - v.y || u.x - v.x).map((it) => it.dev));
+  // the device each module belongs to: its outermost assembly's, else its own
+  const deviceOf = new Map<number, Device>();
+  for (const d of reading) for (const id of d.asm !== undefined ? allModules(p, assembliesOf(p).find((a) => a.id === d.asm)!) : [d.module!]) deviceOf.set(id, d);
+  const out: Device[] = reading.filter((d) => d.kind === 'main');
+  const placed = new Set<Device>(out);
+  for (const t of reading.filter((d) => d.kind === 'steps')) {
+    out.push(t);
+    placed.add(t);
+    const driven = reading.filter((d) => !placed.has(d) && !d.kind && p.cables.some((c) => c.from.module === t.module && deviceOf.get(c.to.module) === d));
+    for (const d of driven) {
+      d.track = t.module;
+      out.push(d);
+      placed.add(d);
+    }
+  }
+  out.push(...reading.filter((d) => !placed.has(d) && d.kind !== 'output'));
+  out.push(...reading.filter((d) => d.kind === 'output'));
+  return out;
 }
 
 /** the device, page and row a module's parameter is on, if it is on one */
@@ -206,6 +235,6 @@ export function findRow(devices: Device[], module: number, param: string): { dev
 export function fixFocus(devices: Device[], focus: { device: string; page: number } | null): { device: string; page: number } | null {
   if (!devices.length) return null;
   const d = devices.find((x) => x.key === focus?.device);
-  if (!d) return { device: devices[0].key, page: 0 };
+  if (!d) return { device: devices[homeDevice(devices)].key, page: 0 };
   return { device: d.key, page: Math.max(0, Math.min(d.pages.length - 1, focus!.page)) };
 }

@@ -197,11 +197,19 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    check("the device page: the first device in focus", page == 0 && pg_cur_dev == 0 && pg_cur_page == 0 && pg_ndev > 2);
-    check("the LCD: the tab in focus is ivory, K1's bar shows its hue", px(2, 1) == P_INK && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (2 pages), boom kick, snare ... Output */
+    check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
+    {
+        uint32_t x, ink = 0;                                /* (the third tab now: somewhere along the strip) */
+        for (x = 0; x < 240u; x++)
+            ink += px(x, 1) == P_INK;
+        check("the LCD: the tab in focus is ivory, K1's bar shows its hue", ink > 10u && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+    }
 
-    enc(0, 1);                                              /* SELECT */
-    check("SELECT: the next device, the editor told", pg_cur_dev == 1 && pg_cur_page == 0 && focus_dev == 1 && focus_pg == 0);
+    enc(0, 1);                                              /* SELECT: the boom kick, and back to the Drum map */
+    check("SELECT: the next device, the editor told", pg_cur_dev == 3 && pg_cur_page == 0 && focus_dev == 3 && focus_pg == 0);
+    enc(0, -1);
+    check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2);
     check("SELECT: the device's name over the bars", px(12, ROWS_Y + 15) == P_NIGHT);
     fb_watch_reset();
     ui_dirty = 1;                                           /* a redraw while it shows (the beat's, a Live edit) */
@@ -212,7 +220,7 @@ int main(void)
 
     memcpy(before, fb, sizeof before);
     enc(1, 1);                                              /* ALGO */
-    check("ALGO: the device's next page", pg_cur_dev == 1 && pg_cur_page == 1 && focus_pg == 1);
+    check("ALGO: the device's next page", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1);
     check("ALGO: the chips and bars are redrawn", memcmp(before, fb, sizeof before) != 0);
 
     {
@@ -235,7 +243,7 @@ int main(void)
 
     memcpy(before, fb, sizeof before);
     tap(BTN_HOME);
-    check("HOME on the device pages, nothing to go back to: nothing", page == 0 && pg_cur_dev == 1 && pg_cur_page == 1
+    check("HOME on the device pages, nothing to go back to: nothing", page == 0 && pg_cur_dev == 2 && pg_cur_page == 1
           && trail_n == 0 && memcmp(before, fb, sizeof before) == 0);
 
     panel_held |= 1u << BTN_HOME;                           /* HOME held: the menu after 0.7 s */
@@ -304,7 +312,7 @@ int main(void)
     tap(BTN_HOME);
     check("HOME: back to the menu", page == PAGE_MENU && trail_n == 1);
     tap(BTN_HOME);
-    check("HOME tapped: the menu closes, back on the page it was opened from", page == 0 && trail_n == 0 && pg_cur_dev == 1 && pg_cur_page == 1);
+    check("HOME tapped: the menu closes, back on the page it was opened from", page == 0 && trail_n == 0 && pg_cur_dev == 2 && pg_cur_page == 1);
     panel_held |= 1u << BTN_HOME;                           /* the menu again, then SAVE */
     panel_edges(1u << BTN_HOME, 0);
     later(800);
@@ -394,8 +402,8 @@ int main(void)
     if (pv_bin[6] & 2u) {                                   /* Page buttons (#117), spliced into the 808 Kit's binary */
         check("(the 808 Kit has no macro ranges: the button kinds section goes last)", 0);
     } else {
-        /* SCL (button 1) a Page button: device 1 page 0, then device 1 page 1 */
-        static const uint8_t sec[] = {0, 3, 0, 0, 0, 0, 0, 2, 1, 0, 1, 1};
+        /* SCL (button 1) a Page button: device 2 (the Drum map) page 0, then its page 1 */
+        static const uint8_t sec[] = {0, 3, 0, 0, 0, 0, 0, 2, 2, 0, 2, 1};
         uint32_t at = pv_len, n;
         if (pv_bin[6] & 128u)                               /* before the Drum maps' row names, last here (format 33): */
             for (n = 1; n < 16u; n++)                       /* u8 count, count x (1 + 64) bytes */
@@ -411,34 +419,50 @@ int main(void)
         check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(1) == ENG_BTN_PAGE);
         page_show(0);
         trail_n = 0;
-        pages_focus(2, 0);
+        pages_focus(4, 0);                                  /* (the snare) */
         loop();
         tap(3);
-        check("SCL tapped: its list's first page, a step on the trail, lit", pg_list_btn == 1 && pg_cur_dev == 1 && pg_cur_page == 0
-              && trail_n == 1 && (eng_buttons_get() >> 1 & 1u) && focus_dev == 1);
+        check("SCL tapped: its list's first page, a step on the trail, lit", pg_list_btn == 1 && pg_cur_dev == 2 && pg_cur_page == 0
+              && trail_n == 1 && (eng_buttons_get() >> 1 & 1u) && focus_dev == 2);
         later(2000);                                        /* (a message from before ends) */
         check("the top bar names the list", px(120, 2) == P_SEA);
         snap();
         tap(3);
-        check("SCL again: the next page", pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1 && trail_n == 1);
+        check("SCL again: the next page", pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1 && trail_n == 1);
         tap(3);
-        check("... round the list", pg_list_step == 0 && pg_cur_dev == 1 && pg_cur_page == 0);
+        check("... round the list", pg_list_step == 0 && pg_cur_dev == 2 && pg_cur_page == 0);
         enc(1, 1);
-        check("ALGO inside the list: its next step", pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1);
+        check("ALGO inside the list: its next step", pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1);
         panel_held |= 1u << 3;                              /* held: the first page while it is down */
         panel_edges(1u << 3, 0);
         later(500);
-        check("SCL held: the list's first page", pg_list_peek && pg_cur_dev == 1 && pg_cur_page == 0);
+        check("SCL held: the list's first page", pg_list_peek && pg_cur_dev == 2 && pg_cur_page == 0);
         panel_held &= ~(1u << 3);
         panel_edges(0, 1u << 3);
         loop();
-        check("let go: back to the step it was on", !pg_list_peek && pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1);
+        check("let go: back to the step it was on", !pg_list_peek && pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1);
         tap(BTN_HOME);
-        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 2 && pg_cur_page == 0
+        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 4 && pg_cur_page == 0
               && trail_n == 0 && !(eng_buttons_get() >> 1 & 1u));
         tap(3);
         enc(0, 1);
         check("SELECT inside the list leaves it", pg_list_btn < 0 && !(eng_buttons_get() >> 1 & 1u));
+        trail_n = 0;
+    }
+
+    {                                                       /* SEL on a Steps track's device page (#196): its steps */
+        pages_focus(1, 0);                                  /* DRUMS */
+        loop();
+        check("the track's device page: LEN RATE SWING GATE", pages_now()->nrows == 4u && pages_focus_track() == 0);
+        tap(3);
+        check("SEL there: the SEQ page on that track", page == PAGE_SEQ && seq_trk == 0);
+        tap(BTN_HOME);
+        check("HOME: back to the track's page", page == 0 && pg_cur_dev == 1);
+        tap(BTN_SEQ);
+        check("SEQ there: the same", page == PAGE_SEQ && seq_trk == 0);
+        tap(BTN_HOME);
+        pages_focus(2, 0);
+        loop();
         trail_n = 0;
     }
 

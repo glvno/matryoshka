@@ -32,6 +32,7 @@ static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};  
 #define BTN_OCT_UP 1u
 #define BTN_SAVE 9u
 #define BTN_HOME 8u
+#define BTN_SEL 3u                    /* SEL (SCL in Felucca's table): on a Steps track's page it opens the track's steps (#196) */
 
 /* MIDI out (#115, MENU > MIDI OUT; docs/ARCHITECTURE.md "MIDI out map"): every panel control as it is touched, whatever
  * it does here, so a host can mirror or replay the panel. Buttons: CC 127 on the press, 0 on the release (by matrix id
@@ -461,8 +462,19 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     /* SEQ and REC act on release, unless a black key muted / armed a track meanwhile; the flag is cleared at the release,
      * not the press: panel_keys runs first in a pass, so a key that lands in the same pass as the press has set it (#179) */
-    if ((rel & (1u << BTN_SEQ)) && !seq_held_used)
+    if ((rel & (1u << BTN_SEQ)) && !seq_held_used) {
+        if (page == 0 && pages_focus_track() >= 0)  /* from a Steps track's device page: that track's steps (#196) */
+            seq_select((uint32_t)pages_focus_track());
         page_set(PAGE_SEQ);
+    }
+    if (page == 0 && pages_focus_track() >= 0 && ((p | rel) & (1u << BTN_SEL))) {   /* SEL there: the same, not the patch's button */
+        if (rel & (1u << BTN_SEL)) {
+            seq_select((uint32_t)pages_focus_track());
+            page_set(PAGE_SEQ);
+        }
+        p &= ~(1u << BTN_SEL);
+        rel &= ~(1u << BTN_SEL);
+    }
     if (rel & (1u << BTN_SEQ))
         seq_held_used = 0;
     if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, step entry) */

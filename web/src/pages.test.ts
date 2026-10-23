@@ -3,17 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch } from './patch';
 import { makeAssembly, fixAssemblies, keepParams, moveParam, promote, setColumnBreak, setGroupBreak, setHeading } from './assembly';
-import { devicesOf, findRow, fixFocus, groupStarts, LABEL_MAX, pageLabel, pageTitle } from './pages';
+import { devicesOf, findRow, fixFocus, homeDevice, groupStarts, LABEL_MAX, pageLabel, pageTitle } from './pages';
 import { PRESETS } from './presets';
 import { demoPatch } from './demo';
 import { encodePatch } from './patchbin';
 
 describe('device pages', () => {
-  it('a plain module is a device of its parameters, four to a page; Main, Output, Steps and scopes are none', () => {
+  it('a plain module is a device of its parameters, four to a page; scopes are none', () => {
     const p = emptyPatch();
-    addModule(p, DEFS.fm1, 20, 20);
-    addModule(p, DEFS.output, 900, 20);
-    addModule(p, DEFS.steps, 600, 20);
     addModule(p, DEFS.scope, 600, 400);
     const osc = addModule(p, DEFS.osc, 300, 20);
     const devs = devicesOf(p, DEFS);
@@ -22,6 +19,26 @@ describe('device pages', () => {
     expect(devs[0].pages.flatMap((pg) => pg.rows.map((r) => r.param))).toEqual(names);
     expect(devs[0].pages.every((pg) => pg.rows.length <= 4)).toBe(true);
     expect(devs[0].pages.map(pageTitle)[0]).toBe(`Oscillator 1/${Math.ceil(names.length / 4)}`);
+  });
+
+  it('the environment\'s grouped order (#196): Main, each Steps track and what it drives, the rest, the Output', () => {
+    const p = emptyPatch();
+    const out = addModule(p, DEFS.output, 20, 20); // first on the canvas, last in the list
+    const lfo = addModule(p, DEFS.lfo, 100, 20);
+    const st = addModule(p, DEFS.steps, 600, 20);
+    st.name = 'DRUMS';
+    const main = addModule(p, DEFS.fm1, 900, 20);
+    const osc = addModule(p, DEFS.osc, 300, 20);
+    connect(p, DEFS, { module: st.id, port: 'pitch' }, { module: osc.id, port: 'pitch' });
+    const devs = devicesOf(p, DEFS);
+    expect(devs.map((d) => d.module)).toEqual([main.id, st.id, osc.id, lfo.id, out.id]);
+    expect(devs.map((d) => d.kind ?? '')).toEqual(['main', 'steps', '', '', 'output']);
+    expect(devs[1].name).toBe('DRUMS');
+    expect(devs[1].pages[0].rows.map((r) => r.param)).toEqual(['len', 'rate', 'swing', 'gate']);
+    expect(devs[2].track).toBe(st.id);
+    expect(devs[3].track).toBeUndefined();
+    expect(homeDevice(devs)).toBe(2); // a fresh patch's focus: the first that is not Main, a track or the Output
+    expect(fixFocus(devs, null)).toEqual({ device: `m${osc.id}`, page: 0 });
   });
 
   it('an assembly is a device of its card: a heading starts a page, a long group spills, an envelope shape lands on its rows', () => {
@@ -123,7 +140,7 @@ describe('knob migration', () => {
     expect(p.cables.some((c) => c.from.module === macro.id && c.to.module === 2 && c.to.port === 'p1')).toBe(true);
     const flt = p.modules.find((m) => m.type === 'filter')!;
     expect(flt.x).toBeGreaterThan(300); // moved aside for the Macros card
-    const devs = devicesOf(p, DEFS);
+    const devs = devicesOf(p, DEFS).filter((d) => !d.kind); // (Main first, the Output last)
     expect(devs[0].name).toBe('Macros');
     expect(devs[0].pages[0].rows).toEqual([{ module: macro.id, param: 'value', label: 'cutoff' }]);
     expect(() => encodePatch(p)).not.toThrow();
