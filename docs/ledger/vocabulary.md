@@ -384,7 +384,7 @@ The About card's section of AI-usage figures: Blood (time), Sweat (human interve
 
 ### Slot
 
-One of the bank's 64 patch places on the FM-1; program change n selects slot n.
+One of the bank's 64 patch places on the FM-1, shown numbered 01..64. Program change 0 selects slot 01.
 
 ### Source
 
