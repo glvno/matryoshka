@@ -391,7 +391,8 @@ def main():
         (rel / name).with_suffix(".json").write_text(side)
         (rel / "SHA256SUMS").write_text("".join(f"{hashlib.sha256(b).hexdigest()}  {n}\n"
                                                 for n, b in ((name, pkg), (app, bytes(img)))))
-        for f in sorted((SRC / "LICENSES").glob("*.txt")):
+        # only the texts for what the package embeds (LICENSING.md): the JieLi SDK files and the LCD font's bitmaps
+        for f in (SRC / "LICENSES" / "Apache-2.0.txt", SRC / "web" / "public" / "fonts" / "OFL-BarlowCondensed.txt"):
             shutil.copy(f, rel / "LICENSES" / f.name)
         for doc in ("LICENSE", "LICENSING.md"):
             shutil.copy(SRC / doc, rel / doc)
