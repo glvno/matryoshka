@@ -1737,9 +1737,7 @@ const noteKeys = attachKeyboard(sink, () => currentTab === 'patch' && !document.
   if (stampOctave(editor.patch)) queueSave(editor.patch);
 });
 noteKeys.set(editor.patch.octave ?? 0);
-// Web MIDI is only asked for on request: while a page holds MIDI access, Chromium's ALSA backend tracks every MIDI port on the
-// system and aborts the whole browser (SIGILL in midi::MidiManager::SetInputPortState) when the ports change, for example when
-// the FM-1 re-enumerates after a reset or a firmware update.
+// Web MIDI: asked for at start (below) unless the user switched it off with the MIDI button, which also switches it back on.
 const midiBtn = $('midi-btn');
 let midiSwitch: ((on: boolean) => void) | null = null;
 let midiOn = false;
@@ -1785,8 +1783,7 @@ midiBtn.onclick = () => {
   }
   void setMidi(on);
 };
-// MIDI is on by default (the browser asks once), unless the user switched it off. Not on Linux: there Chromium's ALSA
-// backend crashes the browser when ports change while a page holds MIDI access (see above), so it waits for the button.
+// MIDI is on by default (the browser asks once), unless the user switched it off or denied the permission.
 const midiOffChosen = ((): boolean => {
   try {
     return localStorage.getItem(MIDI_OFF) === '1';
@@ -1794,7 +1791,7 @@ const midiOffChosen = ((): boolean => {
     return false;
   }
 })();
-if (!midiOffChosen && !/Linux/.test(navigator.userAgent) && 'requestMIDIAccess' in navigator) {
+if (!midiOffChosen && 'requestMIDIAccess' in navigator) {
   void (async () => {
     try {
       const p = await navigator.permissions.query({ name: 'midi' as PermissionName });
