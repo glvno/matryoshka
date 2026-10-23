@@ -40,7 +40,7 @@ The **factory patches** are Matryoshka's own, generated from the **factory assem
 | <a id="D-331"></a>D-331 | The Demo's XYLO and OPER melodies are final, not placeholders. | Decided | 2026-10-23 | PR #205 |
 | <a id="D-332"></a>D-332 | Assemblies nest at most 64 deep (`MAX_DEPTH`): a safety cap, not a limit users are told about. | Decided | 2026-10-23 | `web/src/assembly.ts`; PR #205 |
 | <a id="D-333"></a>D-333 | The factory patch `<7PH` is a test patch for playing and recording on the FM-1 as a groove box. It holds the 909 Kit's DRUMS track, Drum map and kit, plus the Silver Box on its own Steps track named PATTERN, at one tempo (124 BPM), so PLAY starts both. Main's keys go into PATTERN only: unarmed they play the bass, and arming DRUMS puts them on the kit. The bass joins the kit's mixer. | Decided | 2026-10-23 | PR #234 |
-| <a id="D-334"></a>D-334 | A new factory patch is added after the last one, so the slot numbers of the factory patches already there never change. | Decided | 2026-10-23 | owner in chat 2026-10-23; PR #TBD |
+| <a id="D-334"></a>D-334 | A new factory patch is added after the last one, so the slot numbers of the factory patches already there never change. | Decided | 2026-10-23 | owner in chat 2026-10-23; PR #235 |
 
 ## Not yet settled
 
