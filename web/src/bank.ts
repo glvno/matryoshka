@@ -321,7 +321,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
             title: !ok ? 'Too big for the FM-1' : live() ? 'Add it to the FM-1’s bank (written on the FM-1)' : 'Add it to the bank (the offline copy)',
             disabled: !ok || busy || full || waiting, onclick: () => toFm1(e.name, e.patch, false) }),
         );
-      }) : [el('p', { class: 'muted', textContent: 'None yet. Save (next to the patch name, or Ctrl/Cmd+S) keeps the open patch here.' })]),
+      }) : [el('p', { class: 'muted', textContent: 'None yet. Save (beside New patch, or Ctrl/Cmd+S) keeps the open patch here.' })]),
     );
     factorySel.replaceChildren(new Option('Add from factory ▾', ''), ...Object.keys(PRESETS).map((n) => new Option(n, n)));
     factorySel.disabled = busy || full || waiting;
@@ -451,8 +451,8 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       ),
       el('section', { class: 'card lib-col', ariaLabel: 'FM-1' },
         el('h2', {}, el('span', { class: 'mtag util', textContent: 'FM-1' }), 'FM-1', stateEl, saveAs),
-        // (the bank picker of #220 takes the bank's name's place, before Send bank to FM-1)
-        el('div', { class: 'toolbar' }, el('span', { class: 'lib-bank', textContent: BANK_NAME, title: 'The bank kept in this browser (one for now)' }), send, readBtn, erase, resetList, emptyList),
+        // (the bank picker of #220 goes before Send bank to FM-1; with one bank the header's state names it)
+        el('div', { class: 'toolbar' }, send, readBtn, erase, resetList, emptyList),
         bar,
         bankEl,
         countEl,

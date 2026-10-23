@@ -701,7 +701,7 @@ const saveCurrent = (): void => {
 };
 saveBtn.onclick = saveCurrent;
 $('share-patch-btn').onclick = () => shareSheet.open();
-// the patch menu (#152): the PATCH header's ⋯ and the mobile bar's Patch ⋯ reach what moves a patch in or out of the
+// the patch menu (#152): the PATCH panel's ⋯ (beside New patch) and the mobile bar's Patch ⋯ reach what moves a patch in or out of the
 // browser without the palette. Its results also show in a toast: the status line is narrow on a phone, and the FM-1
 // answers in the FM-1 & MIDI dialog (#dev-status), which is closed.
 const toastResult = (run: () => unknown) => async (): Promise<void> => {
@@ -1466,6 +1466,7 @@ let currentView: View = 'patch';
 const viewBtns = [...document.querySelectorAll<HTMLButtonElement>('#view-switch [data-view]')];
 const workspace = document.querySelector<HTMLElement>('.workspace')!;
 function setView(v: View): void {
+  if (installOpen()) closeInstall(); // any view navigation closes the Install panel; a running install keeps going (and its guard)
   currentView = v;
   currentTab = v === 'library' ? 'library' : 'patch';
   closeSidebar();
@@ -1483,8 +1484,10 @@ function setView(v: View): void {
   for (const el of document.querySelectorAll<HTMLElement>('.patch-controls [data-views]')) el.hidden = !el.dataset.views!.split(' ').includes(v);
   document.querySelector<HTMLElement>('.add-row')!.hidden = v !== 'patch';
   document.querySelector<HTMLElement>('.library-side')!.hidden = v !== 'library';
-  // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go
+  // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go;
+  // LIBRARY plays nothing, so they go there too and it has the full height
   workspace.classList.toggle('fm1-mode', v === 'emu');
+  workspace.classList.toggle('library-mode', v === 'library');
   host.setMaster(v === 'emu' ? emuLevel : 1);
   if (v === 'emu') void emu.show();
   else emu.hide();
@@ -1546,8 +1549,10 @@ function setLibrarySection(section: LibrarySection): void {
   } catch {
     /* storage blocked: remembered until the page is reloaded */
   }
-  if (currentView === 'library') showLibrarySection();
-  else setView('library');
+  if (currentView === 'library') {
+    if (installOpen()) closeInstall();
+    showLibrarySection();
+  } else setView('library');
 }
 for (const b of sectionBtns) b.onclick = () => setLibrarySection(b.dataset.section as LibrarySection);
 
@@ -1743,7 +1748,7 @@ const loadFromHash = (): void => {
 loadFromHash();
 window.addEventListener('hashchange', loadFromHash);
 
-// the share sheet (#165): the PATCH header's Share, the ⋯ menu's Share… and the palette
+// the share sheet (#165): the PATCH panel's Share (beside New patch), the ⋯ menu's Share… and the palette
 const shareSheet = new ShareSheet($<HTMLDialogElement>('share-sheet'), {
   patch: () => editor.patch,
   rename: (name) => { editor.patch.name = name; nameInput.value = name; queueSave(editor.patch); },

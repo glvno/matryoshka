@@ -11,7 +11,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   FM-1 drives it); LIBRARY lists its sections Patches, Assemblies and Presets. The Open picker moved next to New patch.
   Flash left the switch: **Install firmware** (Get started, the palette, `#flash`) opens the install page as a panel
   over the main area, and Connect FM-1 offers it when the FM-1 runs other firmware. `#emu`, `#library`,
-  `#assemblies` and `#presets` open those views.
+  `#assemblies` and `#presets` open those views, and going to a view closes the install panel. LIBRARY hides the
+  keyboard and takes the full height. The PATCH panel's header shows the whole patch name; Save, Share and ⋯ sit beside
+  New patch.
 - The Library manages what is stored and opens nothing (#218). **Patches** and **Presets** show two columns, In this
   browser and FM-1, with → (onto the FM-1) and ← (into this browser) on each row. The FM-1 column always shows: without
   an FM-1 it is the bank's offline copy (order, rename, remove, Add from factory ▾); with one it shows what the FM-1's

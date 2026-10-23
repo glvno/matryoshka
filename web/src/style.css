@@ -1160,10 +1160,11 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 input#patch-name { height: 24px; padding: 0 4px; margin-left: -4px; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: text; }
 input#patch-name:hover { border-color: var(--line); }
 input#patch-name:focus { border-color: var(--secondary); background: var(--bar); outline: none; }
-#save-patch-btn, #share-patch-btn, #patch-menu-btn { flex: none; display: grid; place-items: center; width: 22px; height: 24px; padding: 0; background: transparent; border: 1px solid transparent; border-radius: 4px; color: var(--muted); }
-/* save, share and ⋯ close together, so the name keeps what it can */
-#share-patch-btn, #patch-menu-btn { margin-left: -4px; }
-#save-patch-btn:hover, #share-patch-btn:hover, #patch-menu-btn:hover, #patch-menu-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--line); }
+/* New patch, then Save, Share and ⋯ as square buttons: the header strip keeps the whole width for the name */
+.patch-row { display: flex; gap: 4px; }
+.patch-row #new-patch-btn { flex: 1; min-width: 0; }
+#save-patch-btn, #share-patch-btn, #patch-menu-btn { flex: none; display: grid; place-items: center; width: 30px; padding: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); }
+#save-patch-btn:hover, #share-patch-btn:hover, #patch-menu-btn:hover, #patch-menu-btn[aria-expanded="true"] { color: var(--ink); border-color: var(--secondary); filter: none; }
 #save-patch-btn.saved { color: var(--secondary); }
 /* the Undo toast (toast.ts) */
 .toast { position: fixed; z-index: 60; left: 50%; bottom: calc(var(--piano-h, 0px) + 16px); transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
@@ -1249,9 +1250,6 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
   background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 #tab-library .card > h2 .lib-saveas[hidden] { display: none; }
 #tab-library .toolbar button[hidden] { display: none; }
-/* where the bank picker of #220 goes: the bank's name for now */
-#tab-library .lib-bank { padding: 4px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--bar); font: 600 13.5px/1.2 'Barlow Condensed', system-ui, sans-serif;
-  text-transform: uppercase; letter-spacing: .06em; }
 #tab-library .lib-foot { margin: 10px 0 0; }
 #tab-library .lib-factory { min-height: 28px; padding: 2px 8px; border-radius: 5px; background: var(--bar); border-color: var(--line); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
 #tab-library .lib-count, #tab-library .lib-status, #tab-library .lib-note { margin: 8px 0 0; font-size: 12px; }
@@ -1500,8 +1498,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 #fm1-view { position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 10px; padding: 52px 16px 16px; box-sizing: border-box; }
 #fm1-view[hidden] { display: none; }
-/* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it */
-.workspace.fm1-mode > :is(.wheels, .dock-wrap, .deck) { display: none; }
+/* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it; LIBRARY plays nothing and takes the full height */
+.workspace:is(.fm1-mode, .library-mode) > :is(.wheels, .dock-wrap, .deck) { display: none; }
 /* the Install panel: the install page over the whole main area (the switch and Connect FM-1 too), closed with its Close */
 #flash-view { position: absolute; inset: 0; z-index: 8; overflow: auto; background: var(--bg); padding: 16px 16px 24px; }
 #flash-view[hidden] { display: none; }
