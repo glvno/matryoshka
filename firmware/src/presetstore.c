@@ -34,7 +34,7 @@ typedef struct {
 _Static_assert(sizeof(ps_hdr_t) == 32u, "preset header");
 _Static_assert(32u + 4u * PS_MAXV <= PS_SLOT && PS_SLOT * PS_PER_SEC <= 0x1000u, "preset slots");
 
-enum { PS_CLEAN, PS_LIVE, PS_DEAD };
+enum { PS_CLEAN, PS_LIVE, PS_DEAD, PS_BLANK };      /* PS_BLANK: its header is all 0xFF (clean unless a cut write left values: checked before use) */
 static uint8_t ps_state[PS_SLOTS];
 static uint32_t ps_seq = 1;
 static int32_t ps_vbuf[PS_MAXV];
@@ -119,7 +119,13 @@ static void ps_scan(void)
             if (h.seq >= ps_seq)
                 ps_seq = h.seq + 1u;
         } else {
-            ps_state[i] = ps_clean(i) ? PS_CLEAN : PS_DEAD;
+            const uint32_t *w = (const uint32_t *)&h;
+            uint32_t k, ff = 1;
+            if (st_read(ps_addr(i), &h, sizeof h))
+                ff = 0;
+            for (k = 0; ff && k < sizeof h / 4u; k++)
+                ff = w[k] == 0xFFFFFFFFu;
+            ps_state[i] = ff ? PS_BLANK : PS_DEAD;      /* (the whole slot is read only when it is about to be written: boot stays quick) */
         }
     }
     for (i = 0; i < PS_SLOTS; i++) {                    /* duplicates (a write cut before the old one was killed) */
@@ -139,9 +145,14 @@ static void ps_scan(void)
 static int ps_clean_slot(uint32_t avoid_sec)
 {
     uint32_t i;
-    for (i = 0; i < PS_SLOTS; i++)
-        if (ps_state[i] == PS_CLEAN && i / PS_PER_SEC != avoid_sec)
+    for (i = 0; i < PS_SLOTS; i++) {
+        if (i / PS_PER_SEC == avoid_sec)
+            continue;
+        if (ps_state[i] == PS_BLANK)                    /* a blank header: the rest must be blank too */
+            ps_state[i] = ps_clean(i) ? PS_CLEAN : PS_DEAD;
+        if (ps_state[i] == PS_CLEAN)
             return (int)i;
+    }
     return -1;
 }
 
@@ -206,7 +217,7 @@ static uint32_t ps_count(uint32_t state)
 {
     uint32_t i, n = 0;
     for (i = 0; i < PS_SLOTS; i++)
-        n += ps_state[i] == state;
+        n += ps_state[i] == state || (state == PS_CLEAN && ps_state[i] == PS_BLANK);
     return n;
 }
 
