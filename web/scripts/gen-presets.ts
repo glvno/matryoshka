@@ -8,10 +8,10 @@
 // and comes after it. Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { addModule, connect, emptyPatch, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, connect, emptyPatch, removeModule, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
 import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track';
 import { FACTORY } from '../src/assemblies';
-import { insertAssembly, type AssemblyInst } from '../src/assembly';
+import { insertAssembly, makeAssembly, reconcileAll, ungroup, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
 import { setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
@@ -440,6 +440,85 @@ after.push(() => {
   mix.params.l4 = GROOVE_BASS;
   if (!p.cables.some((c) => c.from.module === mix.id && c.to.module === out.id && c.to.port === 'r')) wire(p, mix.id, 'out', out.id, 'r');
   level(p, { drums: true });
+  p.octave = -1;
+  return p;
+});
+
+// Lire+Elvira: 8 Lire and Elvira 2 layered on Main's keys, slimmed to fit the FM-1 (the two as they are need 85 modules,
+// 5916 patch bytes and two delays): Lire keeps four voices, its pairs 1-2 and 7-8 (one of each quad, so the two pairs
+// still modulate each other, now voices 1-2 and 3-4), each pair with its SHARP, MOD and HOLD, the Hyper LFO and the delay;
+// Elvira keeps its four voices without the SRR stage (MOD), and its delay goes: both play into a two-row mixer
+// (LIRE, ELVIRA) into Lire's delay, so one delay holds both. Lire's Drum maps F3..F4 and G4..G5 (the FM-1's keybed at
+// octave 0) gate both instruments: a white key's row r plays Lire voice r and Elvira voice r (rows 5-8 again 1-4). No
+// scopes; no fine-tune, ping-pong or LFO 2 wave rows (their values stay), which leaves room for the devices' preset names;
+// the voices are no nested cards.
+after.push(() => {
+  const p = emptyPatch('Lire+Elvira');
+  const main = addModule(p, DEFS.fm1, 20, 20);
+  const n0 = p.modules.length;
+  const L = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === '8 Lire')!, 20, 60);
+  const n1 = p.modules.length;
+  const E = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Elvira 2')!, 20, 3000);
+  const lIds = p.modules.slice(n0, n1).map((m) => m.id), eIds = p.modules.slice(n1).map((m) => m.id);
+  const of = (ids: number[], t: string): number[] => ids.filter((id) => p.modules.find((m) => m.id === id)?.type === t);
+  const drop = (ids: number[]): void => { for (const id of ids) removeModule(p, id); };
+  L.label = 'Lire';
+  E.label = 'Elvira';
+  // Lire: voices 3-6 and the SHARP / MOD of pairs 3-4, 5-6 out; the scope out; F3..F4 and G4..G5 kept of its Drum maps
+  const [osc, env, vca, sharp, scl] = ['osc', 'adsr', 'vca', 'shape', 'scale'].map((t) => of(lIds, t));
+  const maps = of(lIds, 'drummap');
+  drop([2, 3, 4, 5].flatMap((i) => [osc[i], env[i], vca[i]]));
+  drop([sharp[1], sharp[2], scl[2], scl[3], maps[0], maps[3], ...of(lIds, 'scope')]);
+  const keep = [maps[1], maps[2]];
+  const lEnv = [env[0], env[1], env[6], env[7]], eEnv = of(eIds, 'adsr');
+  p.cables = p.cables.filter((c) => !keep.includes(c.from.module));
+  // Elvira: its Drum maps, scope, delay and SRR stages out
+  const [wt, crush, eVca] = ['wavetable', 'crush', 'vca'].map((t) => of(eIds, t));
+  const lpf = of(eIds, 'ladder')[0], bite = of(eIds, 'shape')[1], choke = of(eIds, 'filter')[0];
+  drop([...of(eIds, 'drummap'), ...of(eIds, 'scope'), ...of(eIds, 'delay'), ...crush]);
+  wt.forEach((w, i) => wire(p, w, 'out', eVca[i], 'in'));
+  wire(p, lpf, 'lp24', bite, 'in');
+  for (const m of keep) for (let k = 0; k < 4; k++) for (const r of [k + 1, k + 5]) {
+    wire(p, m, `g${r}`, lEnv[k], 'gate');
+    wire(p, m, `g${r}`, eEnv[k], 'gate');
+  }
+  // the mix: Lire's drive and Elvira's choke into a mixer, into Lire's delay, to the Output
+  const dly = of(lIds, 'delay')[0], drive = sharp[4];
+  p.cables = p.cables.filter((c) => !(c.to.module === dly && c.to.port === 'in'));
+  reconcileAll(p, DEFS); // (before new modules: they may take a dropped module's id)
+  const mix = addModule(p, DEFS.mixer, 3600, 20);
+  Object.assign(mix.params, { l1: 0.7, l2: 0.7, l3: 0, l4: 0 });
+  const out = addModule(p, DEFS.output, 4000, 20);
+  wire(p, drive, 'out', mix.id, 'in1');
+  wire(p, choke, 'lp12', mix.id, 'in2');
+  wire(p, mix.id, 'out', dly, 'in');
+  wire(p, dly, 'out', out.id, 'l');
+  wire(p, dly, 'r', out.id, 'r');
+  for (const m of keep) wire(p, main.id, 'keys', m, 'keys');
+  const mixer = makeAssembly(p, [mix.id], 'Mix');
+  mixer.params = [{ module: mix.id, param: 'l1', label: 'lire' }, { module: mix.id, param: 'l2', label: 'elvira' }];
+  // the cards: no fine rows; Lire's rows renamed for its four voices (old 7, 8 = 3, 4; quads = pairs)
+  const rename: Record<string, string> = {
+    '1-4': '1-2', '5-8': '3-4', 'from 5-8': 'from 3-4', 'from 1-4': 'from 1-2', 'mod 7-8': 'mod 3-4', 'sharp 7-8': 'sharp 3-4',
+    'voice 7': 'voice 3', 'voice 8': 'voice 4',
+  };
+  for (const a of [L, E]) a.params = a.params.filter((r) => !['fine', 'ping-pong', 'lfo 2 wav'].includes(r.label));
+  for (const r of L.params) {
+    r.label = rename[r.label] ?? r.label;
+    if (r.head) r.head = rename[r.head] ?? r.head;
+  }
+  // the voices' nested cards dissolved into their instrument (the patch's share link stays under half the link limit)
+  for (const a of [L, E]) for (const id of [...(a.children ?? [])]) ungroup(p, id);
+  // the levels: each instrument alone to the same peak (four voices held), then the Output as 8 Lire's
+  const held = KIT_NOTES.slice(0, 4);
+  mix.params.l2 = 0;
+  const lp = peakOf(p, held, 3);
+  Object.assign(mix.params, { l1: 0, l2: 0.7 });
+  const ep = peakOf(p, held, 3);
+  const soft = Math.min(lp, ep);
+  Object.assign(mix.params, { l1: Math.round((100 * soft) / lp) / 100, l2: Math.round((100 * soft) / ep) / 100 });
+  out.params.level = 0.1;
+  out.params.level = Math.round(Math.max(0.05, Math.min(1, 0.85 / (peakOf(p, held, 3) / 0.1))) * 100) / 100;
   p.octave = -1;
   return p;
 });

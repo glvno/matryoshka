@@ -92,8 +92,9 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
     return { p, mix, drums, pattern };
   };
 
-  it('is the last factory patch and fits the FM-1', () => {
-    expect(Object.keys(PRESETS).at(-1)).toBe('<7PH');
+  it('follows the 909 Kit and fits the FM-1', () => {
+    const names = Object.keys(PRESETS);
+    expect(names.indexOf('<7PH')).toBe(names.indexOf('909 Kit') + 1);
     const b = deviceBudget(PRESETS['<7PH']());
     expect(b.fits, JSON.stringify(b.over)).toBe(true);
   });
@@ -137,5 +138,55 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
     expect(render(drumsOnly, false, 53)).toBe(0);
     expect(render(drumsOnly, false, 53, drums)).toBeGreaterThan(0.01);
     expect(render(bassOnly, false, 53, drums)).toBe(0);
+  });
+});
+
+describe('factory Lire+Elvira: 8 Lire and Elvira 2 layered on the keys, slimmed to fit', () => {
+  const NAME = 'Lire+Elvira';
+  const parts = (): { p: Patch; mix: number } => {
+    const p = PRESETS[NAME]();
+    const mix = (p.assemblies ?? []).find((a) => a.label === 'Mix')!.modules[0];
+    return { p, mix };
+  };
+
+  it('is the last factory patch and fits the FM-1, with room for a preset name on each device', () => {
+    expect(Object.keys(PRESETS).at(-1)).toBe(NAME);
+    const b = deviceBudget(PRESETS[NAME]());
+    expect(b.fits, JSON.stringify(b.over)).toBe(true);
+    expect(b.items.find((i) => i.key === 'bytes')!.used).toBeLessThanOrEqual(3840 - 3 * 12);
+    expect(b.cpu.use).toBeLessThan(0.8);
+  });
+
+  it("Main's keys into the Drum maps only; the devices: Lire, Elvira, the mix (one row each), the Output", () => {
+    const { p, mix } = parts();
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    const into = p.cables.filter((c) => c.from.module === main.id && c.from.port === 'keys').map((c) => p.modules.find((m) => m.id === c.to.module)!.type);
+    expect(into).toEqual(['drummap', 'drummap']);
+    expect(p.modules.filter((m) => m.type === 'delay')).toHaveLength(1);
+    const devs = devicesOf(p, DEFS);
+    expect(devs.map((d) => d.name)).toEqual(['Main', 'Lire', 'Elvira', 'Mix', 'Output']);
+    expect(devs[3].pages.flatMap((pg) => pg.rows.map((r) => [r.module, r.param, r.label]))).toEqual([[mix, 'l1', 'lire'], [mix, 'l2', 'elvira']]);
+  });
+
+  it('every white key from F3 to G5 (the FM-1 at octave 0) plays both instruments; nothing sounds unplayed', () => {
+    const { p, mix } = parts();
+    const only = (l1: number, l2: number): Patch => {
+      const q = structuredClone(p);
+      Object.assign(q.modules.find((m) => m.id === mix)!.params, { l1, l2 });
+      return q;
+    };
+    const render = (q: Patch, key?: number): number => {
+      const e = new Engine(SR);
+      e.load(q);
+      if (key !== undefined) e.noteOn(key, 1);
+      return peak(e, SR / 2);
+    };
+    const lire = only(1, 0), elvira = only(0, 1);
+    expect(render(p)).toBe(0);
+    for (let k = 53; k <= 79; k++) {
+      if (!WHITE.has(k % 12)) continue;
+      expect(render(lire, k), `Lire, key ${k}`).toBeGreaterThan(0.02);
+      expect(render(elvira, k), `Elvira, key ${k}`).toBeGreaterThan(0.02);
+    }
   });
 });

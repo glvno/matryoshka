@@ -14,6 +14,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   bass, arming DRUMS (REC held + its black key on the FM-1) puts the keys on the kit, and the kit's mixer balances kick,
   snare, hats and bass. An FM-1 in use gets it only from MENU > SYSTEM > FACTORY RESET, which rewrites the whole bank;
   a normal update leaves the saved slots as they are.
+- A new factory patch, **Lire+Elvira** (patch 24, the last): 8 Lire and Elvira 2 played together, every white key from
+  F3 to G5 sounding one voice of each. To fit the FM-1, 8 Lire keeps four of its eight voices (two pairs that still
+  modulate each other), Elvira 2 loses its per-voice SRR stage (MOD), and both play through 8 Lire's delay; a Mix
+  page sets their balance. An FM-1 in use gets it only from MENU > SYSTEM > FACTORY RESET, which rewrites the whole
+  bank; a normal update leaves the saved slots as they are.
 - The SEQ page's white keys: B now switches its step, and A# (a black key) no longer does; before, every B did nothing
   and every A# both picked a track and switched the next step (since 1.0, on the FM-1 and in EMU).
 - The tutorial's text follows the new navigation and the removed Riff button (play notes on the keys, or Note for a
