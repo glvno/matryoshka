@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Presets (#192, CONTEXT.md "Preset"): stored sets of card row values for one structure (structure.ts). Any assembly
+// Presets (#192, docs/ledger/vocabulary.md "Preset"): stored sets of card row values for one structure (structure.ts). Any assembly
 // device of that structure can load them, whatever its name or patch; a plain module never has any. The user's own are
 // kept in the browser (localStorage `matryoshka.presets`); factory ones (#193) come with the app, read-only (storing over
 // one makes a new one). A patch remembers which preset each assembly was set to (AssemblyInst.preset), for display only:

@@ -1191,7 +1191,7 @@ static void pages_ticks(void)
     was = now;
 }
 
-/* ---- the environment (#197, CONTEXT.md "Environment"): every device of the patch as a rack of equipment, Main first, the
+/* ---- the environment (#197, docs/ledger/vocabulary.md "Environment"): every device of the patch as a rack of equipment, Main first, the
  * Output last, in the device pages' grouped order (pages.ts devicesOf). ENV opens it from any page, on the device you were
  * on; ENV or HOME goes back. SELECT moves the row (the device in focus: K1..K4 turn its first page), SEL opens its device
  * pages. A Steps track's row reads its name; the devices it drives follow it, indented, with a stripe in the track's hue
@@ -1382,7 +1382,7 @@ static void env_knob_msg(uint32_t k)
     ui_msg(m, 1000);
 }
 
-/* ---- presets on the FM-1 (#194, CONTEXT.md "Preset"): an assembly device's card row values under a name, for its
+/* ---- presets on the FM-1 (#194, docs/ledger/vocabulary.md "Preset"): an assembly device's card row values under a name, for its
  * structure. The factory engines' come in ROM (presets.h FPRESET_LIST, read-only), the user's from the preset store
  * (presetstore.c). A device's list: the factory ones in their order, then the user's by name. Loading sets the device's
  * rows (format 34's extras say which, in canonical order) as K1..K4 would, the editor told; ENV held + SAVE stores the

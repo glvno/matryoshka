@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Devices and their pages: what the FM-1 lets you play with K1..K4, and what Main's knobs in the editor's dock turn.
 //
-// Every top-level thing on the canvas, a module or an assembly, is a device (CONTEXT.md "Device"), unless it is editor-only
+// Every top-level thing on the canvas, a module or an assembly, is a device (docs/ledger/vocabulary.md "Device"), unless it is editor-only
 // (a Scope) or a Part; one with no rows is left out too. Devices come in the environment's grouped order (#196): Main
 // first; then each Steps track (its page: LEN RATE SWING GATE) followed by the devices it drives (a cable from it into
 // them); then the others; the Output last. Tracks and the rest go in the canvas's reading order (columns from the left,

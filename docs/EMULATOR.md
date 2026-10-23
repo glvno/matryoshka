@@ -35,14 +35,14 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
 ## The smoke test (`tools/emu/src/smoke.rs`)
 
 It reads the LCD with the firmware's own font (`font.rs` parses `font5x7.c` and finds a string drawn by
-`text_dots` exactly), so it needs no symbols and runs on the release binary. Steps: the loading screen, the main page
-of factory patch 0; silence, a panel key, silence after the release; GLO, ENV, ARP, SEQ, LFO, HOME, HOME held (the
-menu), HOME; the PRESET encoder; TRS MIDI program change and notes, then every factory patch in turn (name shown,
-sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning); SAVE, the
-flash kept, a restart (STATE RESTORED, the same patch diagram, the octave); a preset bank written straight into the
-flash (three slots and one with a bad CRC; PRESET and program change step through the three and wrap); no register
-fm1-emu does not model besides P33. In the four-voice build also SEL. Snapshots of each step, a WAV and the levels
-table go to `build/emu/`.
+`text_dots` exactly), so it needs no symbols and runs on the release binary. Steps (the list at the top of `tools/emu/src/smoke.rs`): the loading screen, the
+device page of factory patch 0; silence, a panel key, silence after the release; GLO (Main's global page), PLAY, HOME,
+HOME held (the menu), HOME; the PRESET encoder; TRS MIDI program change and notes, then every factory patch in turn
+(name shown, sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning);
+SAVE, the flash kept, a restart (STATE RESTORED and the state back); a patch bank written straight into the flash
+(three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the safety steps
+(shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; no register
+fm1-emu does not model besides P33. Snapshots of each step, a WAV and the levels table go to `build/emu/`.
 
 ## What it does not cover
 

@@ -1096,7 +1096,7 @@ export class Editor {
     return grid;
   }
 
-  /** the armed devices (#190, CONTEXT.md "Arm"; `m<id>` / `a<id>`): Main's keys go to them, cable or not (Engine.arm).
+  /** the armed devices (#190, docs/ledger/vocabulary.md "Arm"; `m<id>` / `a<id>`): Main's keys go to them, cable or not (Engine.arm).
    * Editor state: independent toggles, not saved, no undo step; another patch disarms them */
   armedSet = new Set<DeviceKey>();
 

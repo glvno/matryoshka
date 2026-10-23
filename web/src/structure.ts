@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// An assembly's structure (#192, CONTEXT.md "Structure"): what makes two assemblies the same, so that a preset made on one
+// An assembly's structure (#192, docs/ledger/vocabulary.md "Structure"): what makes two assemblies the same, so that a preset made on one
 // loads on every other: their module types, the cables among them, the nesting and which (module, parameter) pairs are
 // card rows. Not values, positions, labels, names or row order. Module ids differ between copies, so the fingerprint
 // never reads them: every module gets a label from its type, its card rows and its depth, refined a few rounds by the

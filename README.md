@@ -15,20 +15,20 @@ A recursively modular and **FM1**-friendly synth framework, with a browser patch
 
 **Modules** are the building blocks -- a single oscillator, a VCA, a filter, a delay, whatever.
 
-**Assemblies** are groups of modules. The provided "operator" assembly, for example, is a single oscillator, an eight-step envelope, and a VCA. Like presets, they can be saved and reused. Did you build a really perverted granular synth that sounds like the voice of the metatron? Select its modules, save it as an assembly, and now that's an instrument you can use in your presets whenever you want.
+**Assemblies** are groups of modules. The provided "operator" assembly, for example, is a single oscillator, an eight-step envelope, and a VCA. Like patches, they can be saved and reused. Did you build a really perverted granular synth that sounds like the voice of the metatron? Select its modules, save it as an assembly, and now that's an instrument you can use in your patches whenever you want.
 
 Assembly inputs, outputs, and sliders are just whatever inputs, outputs, and sliders from its contained modules you want to promote to being part of the assembly's user interface.
 
-A handful of patch presets are provided. Use them to learn, then replace them with something you made.
+A handful of factory patches are provided. Use them to learn, then replace them with something you made.
 
 
 ## Webapp
 
-[Open the Matryoshka editor](https://matry0shka.pages.dev/) to make patches and upload them to the FM-1. The editor deploys from branch `main` to Cloudflare Pages and carries the newest firmware package for the FM-1 (see [Install on the FM-1](#install-on-the-fm-1)). The [original Modular-1 editor](https://wiggismodular.github.io/Modular-1/) is also available.
+[Open the Matryoshka editor](https://matry0shka.pages.dev/) to make patches and upload them to the FM-1. The site on Cloudflare Pages serves the newest release (pushing its tag deploys it; see [D-112](docs/ledger/releases.md#D-112)) and carries the newest firmware package for the FM-1 (see [Install on the FM-1](#install-on-the-fm-1)). The [original Modular-1 editor](https://wiggismodular.github.io/Modular-1/) is also available.
 
 **The editor moved** with 1.0, from glvno.github.io/matryoshka to matry0shka.pages.dev. The old address forwards to the new one, so bookmarks and share links made before (`https://glvno.github.io/matryoshka/#p=…`) keep working. The browser keeps the editor's data (Your patches, the FM-1 bank, the library, the tutorial progress, settings) separately for each address. If you used the old address, open it once: it offers **Bring my patches**, which opens the new address and copies your data over without replacing anything already there, and a toast lists what came over. **Download a backup** there saves the same data as a file, which the new editor reads with **Load .json** (or **Import browser backup** in the command palette).
 
-The site counts visits with Cloudflare Web Analytics, which uses no cookies and stores nothing in your browser. Your patches stay in your browser; a share link's patch is in the part after `#`, which never reaches a server.
+The site counts visits with Cloudflare Web Analytics, which uses no cookies and stores nothing in your browser. Your patches stay in your browser; a share link's patch is in the part after `#`, which never reaches a server, except a link over 8,000 characters, which is kept on the site as a stored link (see [D-586](docs/ledger/editor.md#D-586)).
 
 Start with **How a patch works** in the sidebar: play a four-module voice, trace the signals, and turn the voice into an assembly. Browser audio is enabled automatically; a fresh browser may wait for your first interaction. Enabling the arpeggiator plays only held keys.
 
@@ -38,33 +38,32 @@ The sidebar holds the logo with **About** under it (the theme toggle and the col
 
 Slider thumbs are input jacks: **drag normally to adjust, Alt-drag to patch**, or drop an output cable onto a thumb. External cables plug into side jacks, which route to the moving thumbs through internal cables. **Click an internal cable to disconnect that parameter**, leaving the incoming cable and other destinations intact. **Drag the same side input to several thumbs to add multiple destinations** (or Alt-drag from the thumb to the side input). Thumb positions pause while patching so the targets stay still.
 
-Open the **⋯** menu beside a parameter for p1/p2 routing, modulation depth, macro ranges and K1–K4 hardware assignments. Any side input can also feed additional parameters; these extra routes add the signal’s block average across the parameter range. Dedicated controls use their own input (for example, Multimode cutoff uses `cv`). Other thumbs reuse a suitable p1/p2 route or allocate an unused input; the editor reports when both are occupied. Depth is shared by every parameter assigned to that input. K1–K4 assignments apply while that module is selected on the FM-1.
+Open the **⋯** menu beside a parameter for p1/p2 routing, modulation depth and macro ranges. Any side input can also feed additional parameters; these extra routes add the signal’s block average across the parameter range. Dedicated controls use their own input (for example, Multimode cutoff uses `cv`). Other thumbs reuse a suitable p1/p2 route or allocate an unused input; the editor reports when both are occupied. Depth is shared by every parameter assigned to that input. On the FM-1, K1–K4 turn the rows of the page in focus.
 
 ### Voices
 
-A patch is mono unless you pick a voice count (2..8) on the Main module's card (or on the FM-1: GLO opens the mixer, where the ALGORITHM encoder sets the polyphony of the patch, SAVE keeps it). Like on the Nord Modular you don't patch the voices yourself: every module that hears the Main module's pitch, gate or vel (through any chain of cables, p1 / p2 included) runs once per voice, marked `×4` on its card. Delay, reverb and output always run once and receive the sum of the voices; a module that hears no voice signal (a free-running LFO, a noise) runs once and feeds every voice. Notes take a free voice first, then the oldest sounding one. On the FM-1 each voice costs the CPU time of the per-voice modules, so 3 or 4 voices of a typical patch is the realistic range; the voices row on the Main card shows the buffer count and turns red when a patch needs more than the firmware has.
+A patch is mono unless it has a **Voicing** module: Main's `keys` feed the Voicing (`voices` 1..16, the FM-1 plays 8), and the poly assembly it drives runs once per voice, like on a polysynth. There is no patch-wide voice count. Delay, reverb, chorus, granular, Arpeggiator, Steps and Output always run once and receive the sum of the voices; a module outside the poly assembly (a free-running LFO, a noise) runs once and feeds every voice. Notes take a free voice first, then the oldest sounding one. On the FM-1 each voice costs the CPU time of the poly assembly, so 3 or 4 voices of a typical patch is the realistic range; the FM-1 takes at most 4 poly assemblies per patch, and the budget meter shows when a patch needs more than the firmware has.
 
-The firmware plays one patch at a time (the default build). The four-patch firmware of upstream 1.0.2, where the panel calls the four patches voices 1..4 (SEL switches between them, each with its own MIDI channel, arpeggiator and mixer level, the pools shared between them), is a build switch: `M1_VOICES=4 python3 tools/build.py`.
+The firmware plays one patch at a time. See [D-202](docs/ledger/device-ui.md#D-202).
 
 ## FM-1
 
-> **Coming from Felucca?** Matryoshka keeps its patches in flash sectors that Felucca uses for its projects, samples and user presets (0x97000, 0x98000, 0xA0000-0xDFFFF). Its first start writes the 64 factory patches there (that erases almost all of those sectors) and every SAVE writes there again, so the Felucca data in them is lost. Save them with Felucca before you install; the Flash tab asks again when the FM-1 reports a Felucca identity. Patches stored by the official M-VAVE firmware are not touched.
+> **Coming from Felucca?** Matryoshka keeps its patches in flash sectors that Felucca uses for its projects, samples and user presets (0x97000, 0x98000, 0xA0000-0xDFFFF). Its first start writes the 22 factory patches into the 64-slot bank there (that erases almost all of those sectors) and every SAVE writes there again, so the Felucca data in them is lost. Save them with Felucca before you install; the Flash tab asks again when the FM-1 reports a Felucca identity. Patches stored by the official M-VAVE firmware are not touched.
 
-In addition to the modular synth engine, there's also a deep arpeggiator.
+The arpeggiator is a module in the patch, not part of the firmware. See [D-415](docs/ledger/modules.md#D-415).
 
-Knobs and stuff.
+Knobs and stuff. Every top-level module or assembly with card rows is a device, and so are Main, each Steps track and the Output.
 
-* **PRESETS** scrolls trough the patches
-* **SELECT** scrolls trough the modules in the patch
-* **KNOB1 - 4** do what's described
-* **ARP** opens the arpeggiator's melody page (mode, rate, octaves, speed)
-* **SEQ** opens the arpeggiator's rhythm page (euclid steps, pulses, rotation, rate)
-* **LFO** opens arpeggiator's chaos page, adds some randomness and lets select how many octaves the arpeggio spans.
-* **HOME** opens the main page of the patch
-* **ENV** opens the performance page: the four knob destinations with big values and bars, the patch strip with bypassed modules dim, and one line with the arpeggiator's state, the polyphony, the octave and how many modules are off. K1–K4 turn the Main module's knobs there; ENV again goes back.
-* **SAVE held at power-on** boots in safe mode: the stored state is skipped and the factory patch plays (`SAFE MODE: STATE SKIPPED`); the state stays in flash for the next normal boot, MENU > SYSTEM > DEFAULTS erases it. A boot that did not get through makes the next one safe by itself; two in a row still go to the update loader.
-* **GLO** opens the mixer: K1 sets the level, the black key F# mutes, ALGORITHM sets the polyphony (the patch reloads with the new count). Four-voice build: K1-K4 and F# G# A# C# for the four voices (patches), ALGORITHM acts on the selected one
-* **SEL** switches to the next voice (patch) in the four-voice build; keys, knobs, LCD and the editor act on it. Unused in the one-voice build
+* **PRESET** steps through the patches (it skips empty slots)
+* **SELECT** steps through the devices, **ALGO** through the pages of the device
+* **KNOB1 - 4** turn the four rows of the page in focus
+* **HOME** goes back one step; HOME held opens the settings menu
+* **ENV** opens the environment page: one row per device, opening on the current one. SELECT moves the row, K1–K4 turn the row's first page, PRESET or ALGO step the row's presets, SEL opens its device pages; ENV or HOME goes back.
+* **GLO** opens the FM-1's own page: K1–K4 set the MIDI channel, clock in, MIDI out and the LEDs
+* **SEL** on an assembly device's page opens its preset list; on a Steps track's page it opens the SEQ page on that track
+* **SEQ** opens and closes the SEQ page, where the white keys are the track's steps
+* **FX, LFO, EDIT, ARP** are patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages)
+* **SAVE held at power-on** boots in safe mode: it plays the fallback patch compiled into the firmware and reads nothing from flash (`SAFE MODE: FALLBACK PATCH`); the stored state stays in flash for the next normal boot, MENU > SYSTEM > FACTORY RESET erases it. A boot that did not get through makes the next one safe by itself; two failed boots in a row go to update mode. See [D-154](docs/ledger/firmware-install.md#D-154) and [D-155](docs/ledger/firmware-install.md#D-155).
 
 ## Install on the FM-1
 
@@ -73,7 +72,7 @@ Two ways, the same update protocol (Felucca's, over USB MIDI):
 - **The Flash tab** of the editor: **Commands** (Ctrl/Cmd+K) > **Flash firmware**, or open the editor with `#flash` at the end of the address. It needs Web MIDI with SysEx (Chrome or Edge). Tick "I understand and accept the risk", then **Install Matryoshka firmware**; **Return to official V15** puts M-VAVE's firmware back. Keep the tab open until it says done.
 - **`tools/fm1_install.py`** from a checkout of this repository: `python3 tools/fm1_install.py web/public/firmware/matryoshka.fwsc`, or `FM-1_015.fwsc` from the same folder to return to stock.
 
-**Return to stock first** if the FM-1 runs anything other than the official V15 or Matryoshka (Felucca, Sloop, M-VAVE Open or another build): Return to official V15, check that it boots, then install Matryoshka. The Flash tab says so when it sees such an identity (`fm1_install.py --info` prints it); nothing is refused, but over Felucca read the note above first.
+**Return to stock first** if the FM-1 runs anything other than the official V15 or Matryoshka (Felucca, Sloop, M-VAVE Open or another build): Return to official V15, check that it boots, then install Matryoshka. The Flash tab says so when it sees such an identity (`fm1_install.py --info` prints it); nothing else is refused, but over Felucca (read the note above first) it installs only after you tick its warning.
 
 **Update mode:** hold OCT- and OCT+ while switching the FM-1 on, or choose MENU > SYSTEM > UPDATE MODE. An install works from there too, and it is the way in when the firmware does not start.
 
@@ -110,9 +109,9 @@ GPL-3.0-only. The flasher, loader, hardware layer and tools are copied from [Fel
 
 **Ctrl/Cmd+K** searches the command palette directly: `module` lists modules, `assembly` lists factory and saved assemblies alongside assembly actions, and `assembly drums` or `assembly kick` narrows the list. Names, type tags, shelves and the modules / ports inside a prefab are searchable. Arrow keys select a result; Enter inserts it without opening the assembly browser.
 
-A **patch** is a complete sound: it starts from Main and Output ("New patch" in the toolbar's patch select) and is what the bank and the FM-1 hold. An **assembly** is a building block: a group of prewired modules that appears as one card with the ports and parameters it exposes: an "operator" of oscillator, envelope and VCA, a whole subtractive voice, an echo. Select modules in the editor (shift-click, or drag a box on the canvas) and click **Make assembly**: the ports that had cables to the outside become the card's ports (Main and Output never join: they stay outside, and a `.json` with them in loses them). **open** shows the modules inside a frame, where ○ / ● next to a port or a parameter puts it on the card; drag cards into or out of the frame to change what belongs to it. **save** puts the assembly into the library (your shelf of the **Insert assembly** browser and of the Library page), from where it can be inserted into any patch, exported as a `.json` file and imported again. Forty-three come with the editor, on the shelves Drums, Voices, Effects, Textures and Utilities.
+A **patch** is a complete sound: it starts from Main and Output ("New patch" in the toolbar's patch select) and is what the bank and the FM-1 hold. An **assembly** is a building block: a group of prewired modules that appears as one card with the ports and parameters it exposes: an "operator" of oscillator, envelope and VCA, a whole subtractive voice, an echo. Select modules in the editor (shift-click, or drag a box on the canvas) and click **Make assembly**: the ports that had cables to the outside become the card's ports (Main and Output never join: they stay outside, and a `.json` with them in loses them). **open** shows the modules inside a frame, where ○ / ● next to a port or a parameter puts it on the card; drag cards into or out of the frame to change what belongs to it. **save** puts the assembly into the library (your shelf of the **Insert assembly** browser and of the Library page), from where it can be inserted into any patch, exported as a `.json` file and imported again. Sixty-six come with the editor, on the shelves Drums, Voices, Effects, Textures and Utilities.
 
-Assemblies are an editor-only overlay: the patch stays a flat list of modules and cables, the FM-1 receives it unchanged, and an older editor loads such a patch and only loses the grouping. Knob assignments (K1..K4) are not part of a saved assembly, since the knobs belong to the patch. Ctrl/Cmd+Z undoes structural changes, Shift redoes.
+Assemblies are an editor-only overlay: the patch stays a flat list of modules and cables, the FM-1 receives it with only what it needs from the assemblies (each one's poly setting, the device pages and the device extras), and an older editor loads such a patch and only loses the grouping. Knob assignments (K1..K4) are not part of a saved assembly, since the knobs belong to the patch. Ctrl/Cmd+Z undoes structural changes, Shift redoes.
 
 ## Sync, glide, shaper, spread
 
@@ -125,7 +124,7 @@ Assemblies are an editor-only overlay: the patch stays a flat list of modules an
 ## Level/rate envelope, string, wavetable, chorus
 
 - **Env L/R** is the DX7 envelope: on a gate it runs to `l1`, `l2`, `l3` in `r1`, `r2`, `r3`, holds `l3`, and releases to `l4` in `r4`. Rising segments are linear (the rate that covers 0..1 in `r`), falling ones exponential (99 % in `r`). Put it on a VCA for percussion, and through an Attenuverter on an oscillator's `pitch` for a drum's pitch drop.
-- **String** is a plucked string (Karplus-Strong). Main `pitch` and `gate` play it: a `gate` fires a one-period burst of `noise` or a `pulse` into a loop that decays to −60 dB in `decay`; `damp` darkens it. Anything into `exc` plucks or rings it too, so a short oscillator click is a different pick, and a steady signal makes it a tuned resonator. Lowest note 40 Hz; the FM-1 has 8 string lines (6 in the four-voice build, shared by its voices).
+- **String** is a plucked string (Karplus-Strong). Main `pitch` and `gate` play it: a `gate` fires a one-period burst of `noise` or a `pulse` into a loop that decays to −60 dB in `decay`; `damp` darkens it. Anything into `exc` plucks or rings it too, so a short oscillator click is a different pick, and a steady signal makes it a tuned resonator. Lowest note 40 Hz; the FM-1 has 8 string lines.
 - **Wavetable** is an oscillator with four banks of eight single-cycle frames (`analog`: sine, triangle, saw, square, pulses; `organ`: drawbar sets; `formant`: a moving bump of harmonics; `digital`: steps and corners). `pos` sweeps the frames with crossfades; an LFO into `p1` on `pos` is the classic wavetable sweep. It has `pm` and `sync` like the Oscillator (the FM path is not oversampled), and it is band-limited in three steps so high notes stay clean.
 - **Chorus** is a stereo chorus (two taps in quadrature around 12 ms, swept up to ±8 ms) with `l` and `r` outputs for the Output. Like the Delay it runs once for all voices; one per patch on the FM-1.
 
@@ -156,7 +155,7 @@ Assemblies are an editor-only overlay: the patch stays a flat list of modules an
 
 During browser playback, sliders and their readouts follow dedicated CV inputs (including filter cutoff and VCA envelopes), parameter-input modulation, macro ranges and patch morphing, including parameters exposed on assembly cards. A moving value uses the teal accent; hover it to see its saved base value. Dragging or using the keyboard edits that base value, and animation resumes when you release the control. Fast modulation is sampled as often as the display can update. Polyphonic parameters show the newest held note (or its release when no notes are held). These displays follow the browser engine; the FM-1 does not send live parameter telemetry back.
 
-- Pitch bend moves the Main module's `pitch` by ±2 semitones in every patch; the wheel is also a `bend` output (−1..1). The mod wheel (CC 1) is the `mod` output, channel aftertouch the `at` output: patch them into any `p1` / `p2`. CC 16..19 turn the Main module's K1..K4 from a controller. During browser playback, the Main sliders follow incoming CC values.
+- Pitch bend moves the Main module's `pitch` by ±2 semitones in every patch; the wheel is also a `bend` output (−1..1). The mod wheel (CC 1) is the `mod` output, channel aftertouch the `at` output: patch them into any `p1` / `p2`. CC 16..19 turn the rows of the page in focus from a controller.
 
 ## Comb filter and modal resonator
 
@@ -165,7 +164,7 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 
 ## Granular
 
-- **Granular** records whatever is patched into it (one second, `freeze` stops the recording) and plays grains from it: `density` grains per second or one per rising edge on `trig`, each reading `size` seconds from `position` back in the buffer (0 = the newest audio) scattered by `spray`, at `pitch` semitones, under a smooth window, up to eight at once, mixed with the input by `mix`. A frozen chord into a cloud, a stutter from a square LFO on `trig`, a pitch-shifted echo. One per patch on the FM-1 (not in the four-voice build).
+- **Granular** records whatever is patched into it (one second, `freeze` stops the recording) and plays grains from it: `density` grains per second or one per rising edge on `trig`, each reading `size` seconds from `position` back in the buffer (0 = the newest audio) scattered by `spray`, at `pitch` semitones, under a smooth window, up to eight at once, mixed with the input by `mix`. A frozen chord into a cloud, a stutter from a square LFO on `trig`, a pitch-shifted echo. One per patch on the FM-1.
 
 ## Math and logic
 
@@ -182,7 +181,7 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 
 ## Share a patch as a link
 
-- **Commands → Share patch link** copies a link that opens this patch: the JSON, layout and assemblies included, deflated into the URL fragment (`#p=…`, about 800 characters for a factory patch). Opening the link loads the patch into the editor without replacing the patch the browser remembers until you change something; the Patches page has an "Import link" field that puts a linked patch into the bank list. A patch too big for a link (over 8000 characters) travels without its card positions and assembly overlay, and opens on a grid.
+- **Commands → Share patch link** copies a link that opens this patch: the JSON, layout and assemblies included, deflated into the URL fragment (`#p=…`, about 800 characters for a factory patch). Opening the link loads the patch into the editor without replacing the patch the browser remembers until you change something; the Patches page has an "Import link" field that puts a linked patch into the bank list. A patch too big for a link (over 8,000 characters) is stored on the site as a short `#s=` link and keeps everything; when the site cannot be reached, the link drops only the card positions.
 
 ## Community patches
 
@@ -198,7 +197,7 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 
 - `/` or Ctrl/Cmd+K opens a **command palette**: type part of a name to add a module, insert an assembly (library or factory), load a patch or start a new one; Enter runs the first match, arrows choose. `?` lists every shortcut.
 - Note keys keep playing after using a dropdown, checkbox, slider or button. A closed dropdown keeps focus but does not use note keys to select another option. Open dropdowns, text fields and dialogs keep their normal keyboard behavior; arrows and Tab still navigate controls. Z / X change octave.
-- Click a jack, then a jack of the other kind, to connect them (Esc cancels; dragging works as before). With cards selected (shift-click or a box): Delete removes them, B bypasses them, G groups them into an assembly, Ctrl/Cmd+D duplicates them with their settings and the cables among them, the arrows nudge them (Shift: ×10). Space starts and stops the arpeggiator, Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z undo and redo. The shortcuts are off while a text field has focus; the note keys (A W S E D F T G Y H U J K) still play when they are not taken.
+- Click a jack, then a jack of the other kind, to connect them (Esc cancels; dragging works as before). With cards selected (shift-click or a box): Delete removes them, B bypasses them, Ctrl/Cmd+G groups them into an assembly, Ctrl/Cmd+D duplicates them with their settings and the cables among them, the arrows nudge them (Shift: ×10). Space starts and stops the transport, Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z undo and redo. The shortcuts are off while a text field has focus; the note keys (A W S E D F T G Y H U J K) still play when they are not taken.
 
 ## Scope
 
@@ -206,7 +205,7 @@ Add a **Scope** module and cable up to two signals into its `a` and `b` inputs; 
 
 ## Arpeggiator in the editor
 
-- The FM-1's arpeggiator (MELODY / RHYTHM / CHAOS pages) is on the Main card too, under **Arpeggiator**: mode, scale (the device's 67 scales and chords), root, bpm, rate, Euclidean steps / pulses / rotation, octaves and the three chaos amounts, plus a **play** switch. The browser runs the same arpeggiator (the same clock, modes, random generator and 65 % gate), so a patch grooves the same way on both. The settings are saved with the patch (`arp` in the JSON; the binary patch does not carry them) and reach the FM-1 with every upload and with every change (the ARP command); play starts and stops the device's arpeggiator as the PLAY button does. A patch without the section leaves the FM-1's settings alone.
+- The arpeggiator is an **Arpeggiator** module between Main's `keys` and the Voicing. The ARP button in the Main dock offers **+ Add arpeggiator**, which puts one there as one undo step and makes ARP its Toggle. A patch may hold several; the FM-1 takes 2. See [D-574](docs/ledger/editor.md#D-574) and [D-415](docs/ledger/modules.md#D-415).
 
 ## Macro ranges
 
@@ -214,7 +213,7 @@ Add a **Scope** module and cable up to two signals into its `a` and `b` inputs; 
 
 ## Patch morphing
 
-- A patch can carry a **B side**: the parameters of another stored patch with the same modules and cables. Pick it on the Main card ("B side": the Library page and the factory list are offered, only those of the same structure), then the Main module's `morph` slider fades every parameter from this patch (A, at 0) to the other (B, at 1): linearly, in octaves for a logarithmic one (a cutoff morphs musically), a choice or a switch flips at the midpoint. Notes keep sounding while you morph: only the parameters move. The Main module has a `morph` input as well; it adds to the slider, so an LFO, an envelope or a sequencer can morph the patch (block rate, one block late). On the FM-1 the mixer page's K2 is the morph (one-voice build) and CC 20 sets it; the B side travels with the patch (binary format 14) and is saved with it. To get a B side: save the patch under a second name, change its sounds, come back to the first and pick the copy.
+- A patch can carry a **B side**: the parameters of another stored patch with the same modules and cables. Pick it in the Main dock ("B side": the Library page and the factory list are offered, only those of the same structure), then the Main module's `morph` slider fades every parameter from this patch (A, at 0) to the other (B, at 1): linearly, in octaves for a logarithmic one (a cutoff morphs musically), a choice or a switch flips at the midpoint. Notes keep sounding while you morph: only the parameters move. The Main module has a `morph` input as well; it adds to the slider, so an LFO, an envelope or a sequencer can morph the patch (block rate, one block late). On the FM-1 CC 22 sets the morph; the B side travels with the patch (binary format 14) and is saved with it. To get a B side: save the patch under a second name, change its sounds, come back to the first and pick the copy.
 
 ## Reverb
 
@@ -234,13 +233,13 @@ Add a **Scope** module and cable up to two signals into its `a` and `b` inputs; 
 
 - **Merged ports.** On an expanded assembly, every exposed input has a `merge…` list of the card's other inputs of the same kind. Merging turns two jacks into one that feeds both (the factory `voice` has one `gate` for its two envelopes); the card shows `×2` and a `split` button. A cable into a merged jack goes to every input behind it, and removing it takes them all.
 - **Placement.** "Add module" (a select by kind; picking inserts) and "Insert assembly" (a browser: shelves on the left, entries with their ports on the right, a search across all) put the new card on the first free grid cell instead of on top of what is there.
-- **Nesting.** An assembly can hold assemblies, three levels deep: select modules inside an expanded assembly and "Make assembly", or drop a collapsed card into an expanded frame. The parent's card may show whatever its children expose; collapsing the parent hides everything inside. Ungroup dissolves one level, delete keeps the nested ones. Saved assemblies carry their nested ones.
+- **Nesting.** An assembly can hold assemblies, with no depth limit: select modules inside an expanded assembly and "Make assembly", or drop a collapsed card into an expanded frame. The parent's card may show whatever its children expose; collapsing the parent hides everything inside. Ungroup dissolves one level, delete keeps the nested ones. Saved assemblies carry their nested ones.
 
 ## Factory assemblies
 
-The browser's factory shelves hold sixty-one, made by `web/scripts/gen-assemblies.ts` (edit the script, rerun it, commit the files; `voice` and `echo` are kept by hand):
+The browser's factory shelves hold sixty-six, made by `web/scripts/gen-assemblies.ts` (edit the script, rerun it, commit the files; `voice` and `echo` are kept by hand):
 
-- The recipes of the factory patches: **filter voice** (oscillator, filter, one ADSR on the VCA, the filter's cv exposed), **adsr operator** (oscillator into a VCA with an ADSR: the operator of the FM patches), **noise voice**, **stack voice** (two oscillators, mixer, filter, ADSR, VCA, with `in3` for a third oscillator), **vibrato** (LFO through an Attenuverter). The factory patches open as their instrument's assembly card (Init stays flat); the overlay is editor-only, so the sound and the binary patch are unchanged, and a patch saved from the editor keeps its grouping in the JSON and the bank while the FM-1 and the binary form drop it.
+- The recipes of the factory patches: **filter voice** (oscillator, filter, one ADSR on the VCA, the filter's cv exposed), **adsr operator** (oscillator into a VCA with an ADSR: the operator of the FM patches), **noise voice**, **stack voice** (two oscillators, mixer, filter, ADSR, VCA, with `in3` for a third oscillator), **vibrato** (LFO through an Attenuverter). The factory patches open as their instrument's assembly card (Init stays flat); a patch saved from the editor keeps its grouping in the JSON and the bank, and the binary patch for the FM-1 carries only each assembly's poly setting, the device pages and the device extras from it.
 
 - Voices: **operator** (oscillator, level/rate envelope, VCA: an FM operator, with `pm` in and `level cv`), **fm pair** (a modulator with its own envelope into a carrier: one `pitch`, one `gate`), **voice** (subtractive: oscillator, filter, two ADSRs), **sub bass** (glide, square an octave down, dark tracking filter), **wavetable pad** (slow frame sweep, filter, slow ADSR), **vowel voice** (saw through the vowel filter swept by an LFO), **pluck** (string into a tracking low pass).
 - Drums (no samples: modal bodies, noise and envelopes): **kick** (sine with a pitch drop, a 1 ms click, decay envelope, drive), **snare** (noise through a high pass plus a sine body), **hihat** (noise through a high pass, very short), **hats** (a detuned square cluster plus noise through a 7 kHz high pass: `gate` is the closed hat, `open` the open one, and the closed hat chokes the open one), **clap** (a noise band with a flam and a tail), **rim** (a strike into a short inharmonic body and a tuned comb), **cowbell** (two squares a sixth apart, band pass, short envelope), **tom** (a harmonic modal body with a pitch drop; `tune` picks the size), **tabla** (a slightly inharmonic head with a slap; velocity opens `bright`, a slow envelope bends the pitch down). All take one `gate`; the drums ignore pitch (tabla takes it), so one key per drum through a Sequencer's gate or the Main gate. The factory patch **909 Kit** plays kick, snare and hihat from three sequencers on one clock; the **808 Kit** plays the **boom kick** (a long, low sine with a shallow drop, no click), snare, hihat and cowbell the same way.
@@ -254,4 +253,10 @@ The browser's factory shelves hold sixty-one, made by `web/scripts/gen-assemblie
 
 ## Module on / off
 
-Every module except Main and Output has a power button in its card header: off, the module is bypassed like a device in a DAW rack. Its main input (`in`, the mixer's `in1`, the crossfade's `a`) goes straight to every output, so a filter, delay, reverb, shaper or compressor drops out of the chain without a repatch; a module without such an input (an oscillator, LFO or envelope) is muted. The module keeps its state and resumes when turned on again. On the FM-1 the FX button toggles the selected module; the switch is saved with the patch. An assembly has the same button: it switches every module inside, and remembers the ones you had switched off yourself so they stay off when the group comes back.
+Every module except Main and Output has a power button in its card header: off, the module is bypassed like a device in a DAW rack. Its main input (`in`, the mixer's `in1`, the crossfade's `a`) goes straight to every output, so a filter, delay, reverb, shaper or compressor drops out of the chain without a repatch; a module without such an input (an oscillator, LFO or envelope) is muted. The module keeps its state and resumes when turned on again. On the FM-1 a patch button set to Toggle bypasses its module or assembly; the switch is saved with the patch. An assembly has the same button: it switches every module inside, and remembers the ones you had switched off yourself so they stay off when the group comes back.
+
+<!-- decision-ledger:start -->
+## Decisions
+
+Project decisions live in [`docs/ledger/`](docs/ledger/) as rows with stable `D-###` IDs; start with [its README](docs/ledger/README.md). Cite a row as `([D-###](docs/ledger/<file>.md#D-###), Status)`. If a decision is not a row there, it has not been decided.
+<!-- decision-ledger:end -->

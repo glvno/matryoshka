@@ -3,7 +3,7 @@
 // M-VAVE's identity handshake (flasher/fm1ota.js: FM-1_015 stock, FM-1_8xx M-VAVE Open, FM-1_9XY Felucca or Sloop (the
 // same identity), FM-1_7XY ours) or picked by hand; a profile per firmware turns its messages into panel inputs, which the
 // page runs through Matryoshka's own panel logic (the firmware UI's WebAssembly copy, fm1-ui.ts) and the editor. What each
-// firmware sends: the survey in docs/NOTES.md (2026-10-19) and Matryoshka's map in docs/ARCHITECTURE.md "MIDI out map".
+// firmware sends: the 2026-10-19 survey in the old session log (`git show 057c70d:docs/NOTES.md`) and Matryoshka's map in docs/ARCHITECTURE.md "MIDI out map".
 
 import { BUTTONS, ENCODERS } from './fm1-ui';
 

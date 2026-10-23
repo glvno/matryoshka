@@ -622,7 +622,7 @@ export class Engine {
   private keyArps = (): ArpRun[] => (this.arpHears ? this.arps.filter((a) => this.arpHears!.has(a.node.id)) : this.arps);
   private arpHears: Set<number> | null = null;
 
-  /** the armed devices (#190; `a<id>` / `m<id>`, CONTEXT.md "Arm"), none: the cables decide */
+  /** the armed devices (#190; `a<id>` / `m<id>`, docs/ledger/vocabulary.md "Arm"), none: the cables decide */
   private armedKeys: DeviceKey[] = [];
 
   /**
