@@ -12,6 +12,15 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   Flash left the switch: **Install firmware** (Get started, the palette, `#flash`) opens the install page as a panel
   over the main area, and Connect FM-1 offers it when the FM-1 runs other firmware. `#emu`, `#library`,
   `#assemblies` and `#presets` open those views.
+- The Library manages what is stored and opens nothing (#218). **Patches** and **Presets** show two columns, In this
+  browser and FM-1, with → (onto the FM-1) and ← (into this browser) on each row. The FM-1 column always shows: without
+  an FM-1 it is the bank's offline copy (order, rename, remove, Add from factory ▾); with one it shows what the FM-1's
+  slots really hold, named Bank when that is the offline copy, else Unsaved bank with Save as bank…. A patch too big for
+  the FM-1 stays in this browser marked "browser only" (the Over budget card is gone). **Assemblies** lists only your
+  own, with rename. Factory assemblies and Community patches are in the Open picker, the palette and the assembly
+  browser. Deleting a patch, preset or assembly kept in this browser, or replacing an assembly, acts at once with Undo;
+  only replacing something on the FM-1 asks first. The Import link field and "Add the patch from the editor" are gone
+  (open the link, or Save, then →).
 - The tutorial has no Riff button any more: Note (a held C4) is its playback, and the intro's preview holds it too.
 - The FM-1's SEQ page hints name FX, the key that really sets accents and rests (they said ENV).
 - Factory patches: Simple FM's modulator now gets pitch and gate from the keys, and the 808 Kit's kick, snare, clap and
