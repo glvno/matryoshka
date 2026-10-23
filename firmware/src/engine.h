@@ -122,7 +122,9 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
 /* the end of the device extras section (patchbin.ts, header flag bit 8 = bit 0 of p[7], format 34; right after the device
  * pages) that starts at `at`, 0 when it is cut short: u8 devices (the device pages section's count), per device u8 track (the
  * device index of the Steps track that drives it, ENG_NO_TRACK none), u32 LE structure (an assembly's fingerprint,
- * structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none) */
+ * structure.ts; 0 a plain module), a text: the name of the preset it was set to (u8 length + that many bytes, 0 none),
+ * u8 n and n (u8 module, u8 parameter byte as a page row's): its card rows in the canonical order of a preset's values
+ * (0xFF 0xFF: a row the FM-1 has not got) */
 #define ENG_FLAG_EXTRAS 1u                      /* in p[7] */
 #define ENG_NO_TRACK 0xFFu
 static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t at)
@@ -136,6 +138,9 @@ static inline uint32_t eng_extras_end(const uint8_t *p, uint32_t len, uint32_t a
         if (at >= len)
             return 0;
         at += 1u + p[at];
+        if (at >= len)
+            return 0;
+        at += 1u + 2u * p[at];
     }
     return at <= len ? at : 0;
 }

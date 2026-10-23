@@ -33,7 +33,9 @@
 //   with flag bit 8 (format 34; with the device pages, right after them): the device extras: u8 device count, then per
 //                device u8 track (the device index of the Steps track that drives it, pages.ts Device.track; 0xFF none),
 //                u32 LE structure (an assembly's fingerprint, structure.ts; 0 a plain module), the name of the preset it was
-//                set to (a text, AssemblyInst.preset; empty none)
+//                set to (a text, AssemblyInst.preset; empty none), u8 n and n (u8 module index, u8 parameter byte as a page
+//                row's): its card rows in canonical order (structure.ts rowOrder: the order of a preset's values; 0xFF 0xFF a
+//                row the FM-1 has not got); n is 0 for a plain module
 //   with flag bit 6: the button kinds (buttons.ts): PANEL_BUTTONS.length u8 kinds (0 Gate, 1 Nothing, 2 Toggle, 3 Page),
 //                then in button order per Toggle button u8 n (0..), n u8 module indices: the modules it bypasses (buttons.ts
 //                toggleTargets); per Page button u8 n, n (u8 device, u8 page): its list, in the device pages section's
@@ -56,7 +58,7 @@ import { noteWord } from './track';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup } from './poly';
 import { devicesOf, NAME_MAX, type Device } from './pages';
 import { assemblyById } from './assembly';
-import { structureOf } from './structure';
+import { rowOrder, structureOf } from './structure';
 import { cpuEstimate, type CpuEstimate } from './cpu';
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t));
@@ -183,7 +185,7 @@ export function editorPage(source: Patch, device: number, page: number): { devic
 /** bytes of a patch's device pages section (0 without one) */
 export const deviceBytes = (source: Patch): number => { const p = deviceView(source, true).patch; return devicesSize(deviceSection(source, p), p, source); };
 
-const devicesSize = (devs: Device[], p: Patch, source?: Patch): number => deviceRecord(devs, p).length + (source ? extrasRecord(devs, source).length : 0);
+const devicesSize = (devs: Device[], p: Patch, source?: Patch): number => deviceRecord(devs, p).length + (source ? extrasRecord(devs, source, p).length : 0);
 
 /** the device pages section's bytes (see the top of this file) */
 export function deviceRecord(devs: Device[], p: Patch): number[] {
@@ -209,9 +211,10 @@ export function deviceRecord(devs: Device[], p: Patch): number[] {
   return out;
 }
 
-/** the device extras section's bytes (see the top of this file) */
-export function extrasRecord(devs: Device[], source: Patch): number[] {
+/** the device extras section's bytes (see the top of this file); `dev` is the device form (its module indices) */
+export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceView(source, true).patch): number[] {
   if (!devs.length) return [];
+  const index = new Map(dev.modules.map((m, i) => [m.id, i]));
   const out = [devs.length];
   for (const d of devs) {
     const t = d.track === undefined ? -1 : devs.findIndex((x) => x.module === d.track);
@@ -219,6 +222,13 @@ export function extrasRecord(devs: Device[], source: Patch): number[] {
     const h = a ? parseInt(structureOf(source, a), 16) >>> 0 : 0;
     const name = deviceText(a?.preset ?? '');
     out.push(t < 0 ? 0xff : t, h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, name.length, ...Array.from(name, (c) => c.charCodeAt(0)));
+    const rows = a ? rowOrder(source, a) : [];
+    out.push(rows.length);
+    for (const r of rows) {
+      const i = index.get(r.module);
+      const par = i === undefined ? -1 : rowParam(dev.modules[i].type, r.param);
+      out.push(par < 0 ? 0xff : i!, par < 0 ? 0xff : par);
+    }
   }
   return out;
 }
@@ -361,7 +371,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
     }
   }
   if (devs.length) {
-    const rec = [...deviceRecord(devs, p), ...extrasRecord(devs, source)];
+    const rec = [...deviceRecord(devs, p), ...extrasRecord(devs, source, p)];
     out.set(rec, at);
     at += rec.length;
   }

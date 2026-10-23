@@ -1148,6 +1148,7 @@ static uint32_t env_extras(uint32_t d, const char **name, uint32_t *n)
             return p[at];
         }
         at += 6u + p[at + 5u];
+        at += 1u + 2u * p[at];
     }
     return ENG_NO_TRACK;
 }

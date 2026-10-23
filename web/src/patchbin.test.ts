@@ -113,6 +113,9 @@ describe('binary patch format', () => {
       expect(h).toBe(d.asm === undefined ? 0 : parseInt(structureOf(p, a), 16) >>> 0);
       at += 5;
       expect(text()).toBe('');
+      const n = b[at++];
+      expect(n).toBe(d.asm === undefined ? 0 : a.params.length); // the card rows in canonical order
+      at += 2 * n;
     }
     expect(at).toBe(b.length);
     const named = encodePatch(p); // the remembered preset name goes along
@@ -126,7 +129,7 @@ describe('binary patch format', () => {
     const track = devs.findIndex((d) => d.kind === 'steps');
     const map = devs.findIndex((d) => d.module !== undefined && p.modules.find((m) => m.id === d.module)?.type === 'drummap');
     expect(track).toBeGreaterThanOrEqual(0);
-    const entry = (i: number): number => { let at = 1; for (let k = 0; k < i; k++) at += 6 + rec[at + 5]; return at; };
+    const entry = (i: number): number => { let at = 1; for (let k = 0; k < i; k++) { at += 6 + rec[at + 5]; at += 1 + 2 * rec[at]; } return at; };
     expect(rec[entry(map)]).toBe(track);
     expect(rec[entry(track)]).toBe(0xff);
   });
@@ -168,7 +171,7 @@ describe('binary patch format', () => {
       const devs = deviceSection(make(), p);
       const txt = (t: string): number => 1 + deviceText(t).length;
       const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label), 0), 0)), 0)
-        + 1 + devs.reduce((n, d) => n + 6 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length, 0) : 0; // and the extras
+        + 1 + devs.reduce((n, d) => n + 7 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
       const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
