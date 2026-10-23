@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- After an update to a new version, a returning visitor sees a short "what's new" card once, linking to the full
+  release notes; the About card has a What's new link too.
 - New navigation (#218): one switch at the top, PATCH | EMU | LIBRARY, replaces the sidebar's Patch / Library tabs, and
   the sidebar shows the current view's panels. EMU is the FM-1 view renamed ("Mirroring your FM-1" while a connected
   FM-1 drives it); LIBRARY lists its sections Patches, Assemblies and Presets. The Open picker moved next to New patch.

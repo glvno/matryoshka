@@ -58,6 +58,7 @@ import { addableModules, assemblyShelves, openableByValue, openableGroups } from
 import { binaryPage, deviceBudget, editorPage, encodePatch, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
+import { whatsNew } from './whats-new';
 import { demoPatch } from './demo';
 import { renamedKey } from './storage-key';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
@@ -2039,7 +2040,8 @@ openFromAddress();
 window.addEventListener('hashchange', openFromAddress);
 
 
-if (currentView === 'patch' && !installOpen() && !isShareLink(location.href)) tutorial.welcome();
+// a returning visitor on a new version sees what changed, once, instead of the tutorial's welcome
+if (currentView === 'patch' && !installOpen() && !isShareLink(location.href) && !whatsNew()) tutorial.welcome();
 // the old address's hand-off (?migrate=1), and the toast of an import before the reload
 receiveMigration((keys) => importBrowserData(keys, new URL(OLD_ORIGIN).host));
 try {
