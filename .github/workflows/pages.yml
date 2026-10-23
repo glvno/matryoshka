@@ -7,19 +7,16 @@ name: deploy
 # tools/build.py + npm run firmware), so the site never carries a package no device has run.
 # The site serves the latest release, not main: the editor and the firmware are released together, so the site always
 # pairs an editor with the firmware package it was released with. Pushing a release tag vX.Y.Z deploys it (only when it
-# is the newest release: an older tag pushed later leaves the site alone); the daily run and a manual run build the
-# newest release tag (a manual run may name another tag, e.g. to roll back). Merging to main deploys nothing; unreleased
+# is the newest release: an older tag pushed later leaves the site alone); a manual run builds the newest release tag
+# or the one it names (to roll back). Nothing else deploys: the About card's AI usage figures are as of the last deploy. Merging to main deploys nothing; unreleased
 # work is tried on the dev server (npm run dev). Tags with a suffix (v1.2.0-rc1) are not releases.
 # One-time setup: the repository secret CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit) and the variable CLOUDFLARE_ACCOUNT_ID;
 # repository Settings > Pages > Source: GitHub Actions (the github-pages environment deploys only main, so the forwarder
-# is published by the daily and manual runs, which run on main; a tag push publishes only the app).
+# is published by a manual run on main; a tag push publishes only the app).
 # Runs only in glvno/matryoshka.
-# Also daily (schedule), so the About card's AI usage figures stay fresh between releases.
 on:
   push:
     tags: ['v*']
-  schedule:
-    - cron: '17 5 * * *'
   workflow_dispatch:
     inputs:
       tag:
@@ -35,8 +32,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # which release: the pushed tag if it is the newest release, else nothing; the daily or a manual run: the newest (or the
-  # one asked for)
+  # which release: the pushed tag if it is the newest release, else nothing; a manual run: the newest (or the one asked for)
   pick:
     if: github.repository == 'glvno/matryoshka'
     runs-on: ubuntu-latest
