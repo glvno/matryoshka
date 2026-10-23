@@ -309,7 +309,7 @@ The browser, the palette and the Library put the engines on an **Engines** shelf
 
 - `web/src/community.json` is a curated list bundled with the app; `web/src/community.ts` reads it. No live fetching (the shelf reads only the JSON; the subreddit search is a plain link), so later GitHub or Reddit sources can feed the same entry shape. Entries are third-party data under CC BY-SA 4.0 (LICENSING.md), not GPL code.
 - Entry: `{ title, author, licence: "CC-BY-SA-4.0", source (https URL), code (a share link's #p= value), added (YYYY-MM-DD), notes? }`. `entryProblems` names what is wrong; `communityEntries` keeps the good ones, newest first. `loadCommunity` decodes them once (`decodeShare`, so `validatePatch` runs) and caches; `communityPatches()` is that cache, read synchronously by `openableGroups()` (catalog.ts) for the Open picker's Community group, which main.ts refills when the list is ready. The emulated PRESET knob skips the group.
-- The shelf (`buildCommunityShelf`, the first card of the Library tab): a canvas thumbnail (a box per module, its cables), title, "by author · CC BY-SA 4.0 · age", the notes' first line (the patch's own `notes` once #165 adds them, else the entry's), "Engines: …" (top-level assemblies that pass `instIsEngine`) and the FM-1 fit (`deviceBudget`, computed when shown, never stored). Open goes through `loadNamed(p, { once: true })`, as a share link. An empty list shows "None yet: post yours". Under the list: the form link, "More on r/MVaveFM1 ↗" (always there) and Post yours.
+- The shelf (`buildCommunityShelf`, the first card of the Library): a canvas thumbnail (a box per module, its cables), title, "by author · CC BY-SA 4.0 · age", the notes' first line (the patch's own `notes` once #165 adds them, else the entry's), "Engines: …" (top-level assemblies that pass `instIsEngine`) and the FM-1 fit (`deviceBudget`, computed when shown, never stored). Open goes through `loadNamed(p, { once: true })`, as a share link. An empty list shows "None yet: post yours". Under the list: the form link, "More on r/MVaveFM1 ↗" (always there) and Post yours.
 - Submissions: `.github/ISSUE_TEMPLATE/community-patch.yml` (label `community-patch`; fields `patch-title`, `link`, `reddit`, `author`, `notes`, a required CC BY-SA 4.0 checkbox). `submitUrl(patch, link)` builds the form's URL with those fields filled in (GitHub fills form fields from query parameters named after their ids). An accepted submission is added to the JSON in a commit; `community.test.ts` decodes every entry.
 
 ## Diff, A/B, shortcuts, palette
@@ -510,7 +510,8 @@ CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in
   and the patch buttons also through `Editor.pressButton`; K1..K4 positions through `Editor.turnKnob`; keys, the
   modulation wheel, MASTER and the transport to the page. Nothing is sent back to the FM-1 (`fromDevice`). PRESET is
   not followed while Live is on (the FM-1 then plays the editor's patch; its slots are its own).
-- The FM-1 tab names the firmware and greys the controls it does not report (`Fm1View.following`).
+- The Emulator view shows a "Mirroring your FM-1" marker over the panel (its tooltip names the firmware) and greys the
+  controls that firmware does not report (`Fm1View.following`).
 - The FM-1's CC on the Live link are not used by the page. A knob's value arrives as its row's 7-bit position (CC 16..19),
   not the exact value, and turns K1..K4 of the editor's page in focus; except under Live with the FM-1 on the editor's
   patch (`exactKnobs` in main.ts, #185): then PARAM_NOW (module, parameter, value) moves the parameter and FOCUS_NOW the
@@ -686,8 +687,12 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   editor, framebuffer, LEDs, page, focus); imports `fm1.focus / param / preset / save / midi / poly`. TS wrapper
   `web/src/fm1-ui.ts` (`Fm1Ui`, `ENCODERS`, `BUTTONS`); `fm1-ui.test.ts` checks a device page pixel for pixel against
   ui_preview and drives the panel (it rebuilds the wasm when a source is newer).
-- The editor's FM-1 tab (#110): a Patch | FM-1 | Flash switch over the canvas (`#view-switch`, Patch by default, not
-  remembered). `web/src/fm1-view.ts` `Fm1View` draws the FM-1's front panel laid out as the device (the geometry of
+- The editor's Emulator view (EMU, #110): one of the PATCH | EMU | LIBRARY switch's views over the main area
+  (`#view-switch`, main.ts `setView`; PATCH on a page load, not remembered; #218). Firmware installs are the Install
+  panel (`#flash-view`, `openInstall` / `closeInstall`), over the main area and not a view: Get started > Install
+  firmware, the palette's Install firmware, `#flash`, and Connect FM-1 when the FM-1 answers M-VAVE's identity handshake
+  with other firmware (`identifyFm1`, mirror.ts). Addresses: `#library` / `#assemblies` / `#presets` open LIBRARY on
+  that section (the last one is remembered per browser, `matryoshka.library-section`), `#emu` and `#fm1` EMU. `web/src/fm1-view.ts` `Fm1View` draws the FM-1's front panel laid out as the device (the geometry of
   fm1-emu's fm1-live, after Felucca's controls diagram, in 1280 x 820 panel units scaled with `cqw`): MASTER / SELECT /
   PRESETS / ALGORITHM and OCT- / OCT+ top left, the LCD (2x, pixelated) in the middle, KNOB1..4 and the two rows of six
   buttons on the right, the 27 pill keys across the bottom; device colours, not the theme's. While it shows, the Main

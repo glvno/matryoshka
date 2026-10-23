@@ -6,6 +6,12 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- New navigation (#218): one switch at the top, PATCH | EMU | LIBRARY, replaces the sidebar's Patch / Library tabs, and
+  the sidebar shows the current view's panels. EMU is the FM-1 view renamed ("Mirroring your FM-1" while a connected
+  FM-1 drives it); LIBRARY lists its sections Patches, Assemblies and Presets. The Open picker moved next to New patch.
+  Flash left the switch: **Install firmware** (Get started, the palette, `#flash`) opens the install page as a panel
+  over the main area, and Connect FM-1 offers it when the FM-1 runs other firmware. `#emu`, `#library`,
+  `#assemblies` and `#presets` open those views.
 - The tutorial has no Riff button any more: Note (a held C4) is its playback, and the intro's preview holds it too.
 - The FM-1's SEQ page hints name FX, the key that really sets accents and rests (they said ENV).
 - Factory patches: Simple FM's modulator now gets pitch and gate from the keys, and the 808 Kit's kick, snare, clap and
