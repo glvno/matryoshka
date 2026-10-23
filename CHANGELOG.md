@@ -49,6 +49,22 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - An engine is now what its insides make it (keys → voicing → voices): an assembly whose keys reach a Voicing module or
   a Drum map, through an Arpeggiator or a Steps track if need be, and that makes audio. Assemblies with a keys input that
   nothing voices are no longer engines. The Voice assigner is now called **Voicing** (patches load as before).
+- A new engine and factory patch, **Scrounge**, after the neutral labs Scrooge: five voices played by their control
+  voltage, a curve per hit (its height from the velocity, TILT its rise, GATE its fall) that sets each voice's level, pitch
+  and tone at once (a boomy kick, a starved square for hats and drones, a noise snare, a growl / chirp, a squelchy bass),
+  two unlabelled knobs, a volume and an A-B switch per voice, the MOD X and MOD Y tracks with their slew, a saturating
+  mix, CHOP and MELT. The patch plays a pattern on PLAY; the white keys from F3 play the voices and the modulation tracks.
+- A new engine and factory patch, **Meridian 8**, after the Landscape NOON: eight channels powered by their gates (DOT,
+  DUAL, SYS, PLAST, CYMPATH, CYRINX, LARYNX, BACID), each with two tone sliders and a volume; the power also bends the
+  pitch or the filter, so a short gate starves the sound and a held key drones. LINK lets a channel half-power its
+  neighbour, ODD / EVEN CV hold the odd or even channels up; the odd channels play on the left, the even ones on the
+  right, squashed a little as the passive mix is. The patch plays a pattern on PLAY.
+- A new engine and factory patch, **Perun 4**, after the Erica Synths PERKONS HD-01: four drum voices with the same
+  controls (tune, decay, param 1 and 2, a filter from low pass to high pass, drive, an FX send and a level): a folded
+  kick, a wavetable drum, a snare of body and noise, a hat of noise and a pulse stack; a delay on the sends with an LFO on
+  its time, and a master compressor. Accented steps play louder. The patch plays a pattern on PLAY.
+- A new or factory-reset FM-1 has Scrounge, Meridian 8 and Perun 4 as patches 18, 19 and 20 (the 808 and 909 Kits move
+  to 21 and 22); an FM-1 already in use keeps its bank: send them from the editor.
 
 ## 1.1.0 — 2026-10-22
 
