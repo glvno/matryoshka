@@ -5,6 +5,7 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { FACTORY, loadLibrary, removeAssembly, renameAssembly, storeAssembly } from './assemblies';
 import { buildPatchesSection } from './bank';
 import type { DeviceLink } from './device';
+import type { Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { PRESETS } from './presets';
 import { SLOTS, type SlotInfo } from './protocol';
@@ -21,7 +22,7 @@ function fakeDevice(connected: boolean): DeviceLink & { slots: SlotInfo[] } {
     get connected() { return connected; },
     readBank: async () => slots.map((s) => ({ ...s })),
     readSlot: async (i: number) => ({ ...slots[i] }),
-    uploadSlot: async (i: number, name: string, p) => void (slots[i] = { slot: i, used: true, name: name.slice(0, 20), length: encodePatch(p).length }),
+    uploadSlot: async (i: number, name: string, p: Patch) => void (slots[i] = { slot: i, used: true, name: name.slice(0, 20), length: encodePatch(p).length }),
     eraseSlot: async (i: number) => void (slots[i] = { slot: i, used: false, length: 0, name: '' }),
   } as unknown as DeviceLink & { slots: SlotInfo[] };
 }
