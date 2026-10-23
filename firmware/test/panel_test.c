@@ -190,6 +190,7 @@ int main(void)
     uint32_t mod, par;
     int32_t v0;
     fm1_ms = 10000;
+    host_ps_init();
     if (load("808 KIT")) {
         printf("FAIL  the 808 Kit loads\n");
         return 1;
@@ -197,11 +198,19 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    check("the device page: the first device in focus", page == 0 && pg_cur_dev == 0 && pg_cur_page == 0 && pg_ndev > 2);
-    check("the LCD: the tab in focus is ivory, K1's bar shows its hue", px(2, 1) == P_INK && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (2 pages), boom kick, snare ... Output */
+    check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
+    {
+        uint32_t x, ink = 0;                                /* (the third tab now: somewhere along the strip) */
+        for (x = 0; x < 240u; x++)
+            ink += px(x, 1) == P_INK;
+        check("the LCD: the tab in focus is ivory, K1's bar shows its hue", ink > 10u && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+    }
 
-    enc(0, 1);                                              /* SELECT */
-    check("SELECT: the next device, the editor told", pg_cur_dev == 1 && pg_cur_page == 0 && focus_dev == 1 && focus_pg == 0);
+    enc(0, 1);                                              /* SELECT: the boom kick, and back to the Drum map */
+    check("SELECT: the next device, the editor told", pg_cur_dev == 3 && pg_cur_page == 0 && focus_dev == 3 && focus_pg == 0);
+    enc(0, -1);
+    check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2);
     check("SELECT: the device's name over the bars", px(12, ROWS_Y + 15) == P_NIGHT);
     fb_watch_reset();
     ui_dirty = 1;                                           /* a redraw while it shows (the beat's, a Live edit) */
@@ -212,7 +221,7 @@ int main(void)
 
     memcpy(before, fb, sizeof before);
     enc(1, 1);                                              /* ALGO */
-    check("ALGO: the device's next page", pg_cur_dev == 1 && pg_cur_page == 1 && focus_pg == 1);
+    check("ALGO: the device's next page", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1);
     check("ALGO: the chips and bars are redrawn", memcmp(before, fb, sizeof before) != 0);
 
     {
@@ -235,7 +244,7 @@ int main(void)
 
     memcpy(before, fb, sizeof before);
     tap(BTN_HOME);
-    check("HOME on the device pages, nothing to go back to: nothing", page == 0 && pg_cur_dev == 1 && pg_cur_page == 1
+    check("HOME on the device pages, nothing to go back to: nothing", page == 0 && pg_cur_dev == 2 && pg_cur_page == 1
           && trail_n == 0 && memcmp(before, fb, sizeof before) == 0);
 
     panel_held |= 1u << BTN_HOME;                           /* HOME held: the menu after 0.7 s */
@@ -304,7 +313,7 @@ int main(void)
     tap(BTN_HOME);
     check("HOME: back to the menu", page == PAGE_MENU && trail_n == 1);
     tap(BTN_HOME);
-    check("HOME tapped: the menu closes, back on the page it was opened from", page == 0 && trail_n == 0 && pg_cur_dev == 1 && pg_cur_page == 1);
+    check("HOME tapped: the menu closes, back on the page it was opened from", page == 0 && trail_n == 0 && pg_cur_dev == 2 && pg_cur_page == 1);
     panel_held |= 1u << BTN_HOME;                           /* the menu again, then SAVE */
     panel_edges(1u << BTN_HOME, 0);
     later(800);
@@ -394,8 +403,8 @@ int main(void)
     if (pv_bin[6] & 2u) {                                   /* Page buttons (#117), spliced into the 808 Kit's binary */
         check("(the 808 Kit has no macro ranges: the button kinds section goes last)", 0);
     } else {
-        /* SCL (button 1) a Page button: device 1 page 0, then device 1 page 1 */
-        static const uint8_t sec[] = {0, 3, 0, 0, 0, 0, 0, 2, 1, 0, 1, 1};
+        /* LFO (button 3) a Page button: device 2 (the Drum map) page 0, then its page 1 (SEL is fixed since #197) */
+        static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
         uint32_t at = pv_len, n;
         if (pv_bin[6] & 128u)                               /* before the Drum maps' row names, last here (format 33): */
             for (n = 1; n < 16u; n++)                       /* u8 count, count x (1 + 64) bytes */
@@ -408,51 +417,269 @@ int main(void)
         pv_len += sizeof sec;
         pv_bin[6] |= 64u;
         pv_gen++;
-        check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(1) == ENG_BTN_PAGE);
+        check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(3) == ENG_BTN_PAGE);
         page_show(0);
         trail_n = 0;
-        pages_focus(2, 0);
+        pages_focus(4, 0);                                  /* (the snare) */
         loop();
-        tap(3);
-        check("SCL tapped: its list's first page, a step on the trail, lit", pg_list_btn == 1 && pg_cur_dev == 1 && pg_cur_page == 0
-              && trail_n == 1 && (eng_buttons_get() >> 1 & 1u) && focus_dev == 1);
+        tap(5);
+        check("LFO tapped: its list's first page, a step on the trail, lit", pg_list_btn == 3 && pg_cur_dev == 2 && pg_cur_page == 0
+              && trail_n == 1 && (eng_buttons_get() >> 3 & 1u) && focus_dev == 2);
         later(2000);                                        /* (a message from before ends) */
         check("the top bar names the list", px(120, 2) == P_SEA);
         snap();
-        tap(3);
-        check("SCL again: the next page", pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1 && trail_n == 1);
-        tap(3);
-        check("... round the list", pg_list_step == 0 && pg_cur_dev == 1 && pg_cur_page == 0);
+        tap(5);
+        check("LFO again: the next page", pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1 && trail_n == 1);
+        tap(5);
+        check("... round the list", pg_list_step == 0 && pg_cur_dev == 2 && pg_cur_page == 0);
         enc(1, 1);
-        check("ALGO inside the list: its next step", pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1);
-        panel_held |= 1u << 3;                              /* held: the first page while it is down */
-        panel_edges(1u << 3, 0);
+        check("ALGO inside the list: its next step", pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1);
+        panel_held |= 1u << 5;                              /* held: the first page while it is down */
+        panel_edges(1u << 5, 0);
         later(500);
-        check("SCL held: the list's first page", pg_list_peek && pg_cur_dev == 1 && pg_cur_page == 0);
-        panel_held &= ~(1u << 3);
-        panel_edges(0, 1u << 3);
+        check("LFO held: the list's first page", pg_list_peek && pg_cur_dev == 2 && pg_cur_page == 0);
+        panel_held &= ~(1u << 5);
+        panel_edges(0, 1u << 5);
         loop();
-        check("let go: back to the step it was on", !pg_list_peek && pg_list_step == 1 && pg_cur_dev == 1 && pg_cur_page == 1);
+        check("let go: back to the step it was on", !pg_list_peek && pg_list_step == 1 && pg_cur_dev == 2 && pg_cur_page == 1);
         tap(BTN_HOME);
-        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 2 && pg_cur_page == 0
-              && trail_n == 0 && !(eng_buttons_get() >> 1 & 1u));
-        tap(3);
+        check("HOME: back to where it was before the list, unlit", pg_list_btn < 0 && pg_cur_dev == 4 && pg_cur_page == 0
+              && trail_n == 0 && !(eng_buttons_get() >> 3 & 1u));
+        tap(5);
         enc(0, 1);
-        check("SELECT inside the list leaves it", pg_list_btn < 0 && !(eng_buttons_get() >> 1 & 1u));
+        check("SELECT inside the list leaves it", pg_list_btn < 0 && !(eng_buttons_get() >> 3 & 1u));
         trail_n = 0;
     }
 
-    {                                                       /* GLO (#118): Main's global page */
+    {                                                       /* SEL on a Steps track's device page (#196): its steps */
+        pages_focus(1, 0);                                  /* DRUMS */
+        loop();
+        check("the track's device page: LEN RATE SWING GATE", pages_now()->nrows == 4u && pages_focus_track() == 0);
+        tap(3);
+        check("SEL there: the SEQ page on that track", page == PAGE_SEQ && seq_trk == 0);
+        tap(BTN_HOME);
+        check("HOME: back to the track's page", page == 0 && pg_cur_dev == 1);
+        tap(BTN_SEQ);
+        check("SEQ there: the same", page == PAGE_SEQ && seq_trk == 0);
+        tap(BTN_HOME);
+        pages_focus(2, 0);
+        loop();
+        trail_n = 0;
+    }
+
+    {                                                       /* ENV (#197): the environment */
+        uint32_t d0, n0 = trail_n;
+        pages_focus(2, 1);                                  /* the Drum map, its second page */
+        loop();
+        d0 = pg_cur_dev;
+        tap(4);
+        check("ENV: the environment, on the device you were on, its first page on the knobs", page == PAGE_ENV && pg_cur_dev == d0 && pg_cur_page == 0 && trail_n == n0 + 1u);
+        check("its bar: ENVIRONMENT on lilac", px(2, 2) == P_LILAC);
+        if (getenv("PANEL_SNAP_ENV")) {
+            const char *keep = getenv("PANEL_SNAP");
+            setenv("PANEL_SNAP", getenv("PANEL_SNAP_ENV"), 1);
+            snap();
+            if (keep) setenv("PANEL_SNAP", keep, 1);
+        }
+        enc(0, 1);
+        check("SELECT: the next row", page == PAGE_ENV && pg_cur_dev == d0 + 1u && pg_cur_page == 0);
+        {
+            const ppage_t *pg = pages_now();
+            int32_t v = eng_get_param(pg->mod[0], pg->par[0]);
+            enc(2, 3);
+            check("K1 there: the row's first page", eng_get_param(pg->mod[0], pg->par[0]) != v && page == PAGE_ENV);
+            {
+                char want[40];
+                uint32_t dn = pg_dev[pg_cur_dev].nlen < 8u ? pg_dev[pg_cur_dev].nlen : 8u;
+                caps(want, pg_dev[pg_cur_dev].name, dn, dn);
+                printf("      (the bar: \"%s\")\n", msg_text);
+                check("its bar: the device, \": \", the row's name, the value (26 characters at most)",
+                      !strncmp(msg_text, want, dn) && strstr(msg_text, ": ") && str_len(msg_text) <= 26u);
+            }
+            enc(2, -3);
+        }
+        tap(3);
+        check("SEL: the row's device pages", page == 0 && pg_cur_dev == d0 + 1u);
+        tap(BTN_HOME);
+        check("HOME: back to the environment", page == PAGE_ENV);
+        tap(4);
+        check("ENV again: back where it came from", page == 0 && trail_n == n0);
+        pages_focus(1, 0);                                  /* REC on a row (#191): DRUMS armed, then disarmed */
+        loop();
+        tap(4);
+        tap(BTN_REC);
+        check("REC on the environment's track row: armed (the set), no recording", eng_armed() == eng_steps_module(0) && seq_rec == 0 && page == PAGE_ENV);
+        pages_focus(2, 0);                                  /* the Drum map: its keys come from the track, not Main */
+        tap(BTN_REC);
+        check("REC on a row with nothing on Main's keys: nothing armed there", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0));
+        pages_focus(1, 0);
+        tap(BTN_REC);
+        check("REC again on the track: disarmed", eng_arm_mask_get() == 0u && eng_armed() < 0);
+        tap(4);
+        panel_held |= 1u << 4;                              /* ENV held + SAVE: no environment on the release */
+        panel_edges(1u << 4, 0);
+        panel_edges(1u << BTN_SAVE, 0);
+        panel_edges(0, 1u << BTN_SAVE);
+        panel_held &= ~(1u << 4);
+        panel_edges(0, 1u << 4);
+        loop();
+        check("ENV held + SAVE: the release opens nothing", page == 0);
+        later(1500);
+        pages_focus(2, 0);
+        loop();
+    }
+
+    {                                                       /* presets (#194): Oracle V's, SEL's list, ENV held + SAVE */
+        uint32_t d, n0;
+        char was[17];
+        int r = -1;
+        if (load("ORACLE V") == 0) {
+            pv_gen++;
+            page = 0;
+            trail_n = 0;
+            loop();
+            pages_ensure();
+            for (d = 0; d < pg_ndev && !pg_dev[d].structure; d++)
+                ;
+            check("Oracle V: an assembly device with a structure and its rows (format 34's extras)", d < pg_ndev && pg_dev[d].nrows > 0);
+            pages_focus(d, 0);
+            loop();
+            n0 = dp_list(d);
+            check("its factory presets in ROM", n0 >= 2u);
+            tap(3);
+            check("SEL on it: the preset list", page == PAGE_PRESETS);
+            if (getenv("PANEL_SNAP_PRESETS")) {
+                const char *keep = getenv("PANEL_SNAP");
+                setenv("PANEL_SNAP", getenv("PANEL_SNAP_PRESETS"), 1);
+                snap();
+                if (keep) setenv("PANEL_SNAP", keep, 1);
+            }
+            {
+                uint32_t i, mod = 0, par = 0;
+                for (i = 0; i < pg_dev[d].nrows; i++)
+                    if (pg_dev[d].rows[2u * i] != 0xFFu && !(pg_dev[d].rows[2u * i + 1u] & POLY_ROW)) {
+                        mod = pg_dev[d].rows[2u * i];
+                        par = pg_dev[d].rows[2u * i + 1u];
+                        break;
+                    }
+                (void)mod; (void)par;
+                param_now = 0;
+                enc(0, 1);                                  /* SELECT: the next preset, loaded */
+                check("SELECT on the list: the next preset loaded, the editor told", pg_pname[d][0] && param_now > 0);
+            }
+            for (r = 0; r < 17; r++)
+                was[r] = pg_pname[d][r];
+            panel_held |= 1u << 4;                          /* ENV held + SAVE: stored as a new user preset */
+            panel_edges(1u << 4, 0);
+            panel_edges(1u << BTN_SAVE, 0);
+            panel_edges(0, 1u << BTN_SAVE);
+            panel_held &= ~(1u << 4);
+            panel_edges(0, 1u << 4);
+            loop();
+            check("ENV held + SAVE on a factory preset: a new user preset (its name and a number), the editor told",
+                  ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 1u && ps_name_cmp(pg_pname[d], was) != 0 && dp_list(d) == n0 + 1u);
+            {                                           /* its name: the preset it was based on and 2; its values: the device's */
+                char want[24], got[17];
+                uint32_t st, nv, i, nd = dp_values(d);
+                int32_t now[PS_MAXV];
+                int same = 1, at = ps_find(pg_dev[d].structure, pg_pname[d]);
+                for (i = 0; i < nd; i++)
+                    now[i] = pr_vals[i];
+                put(put(want, was), " 2")[0] = 0;
+                printf("      (based on \"%s\": stored as \"%s\")\n", was, pg_pname[d]);
+                if (at < 0 || ps_read((uint32_t)at, &st, got, &nv) || nv != nd)
+                    same = 0;
+                for (i = 0; same && i < nd; i++)
+                    same = ps_vbuf[i] == now[i];
+                check("the new preset: named after the one it was based on with 2, holding the device's own values",
+                      !ps_name_cmp(pg_pname[d], want) && same);
+            }
+            panel_held |= 1u << 4;                          /* again: over it */
+            panel_edges(1u << 4, 0);
+            panel_edges(1u << BTN_SAVE, 0);
+            panel_edges(0, 1u << BTN_SAVE);
+            panel_held &= ~(1u << 4);
+            panel_edges(0, 1u << 4);
+            loop();
+            check("again: stored over it, still one", ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 2u);
+            {                                           /* a device with no preset remembered (a factory patch as it ships) */
+                char first[17], want[24];
+                (void)dp_list(d);
+                (void)dp_entry(pr_list[0], first);
+                put(put(want, first), " 2")[0] = 0;
+                pg_pname[d][0] = 0;
+                panel_held |= 1u << 4;
+                panel_edges(1u << 4, 0);
+                panel_edges(1u << BTN_SAVE, 0);
+                panel_edges(0, 1u << BTN_SAVE);
+                panel_held &= ~(1u << 4);
+                panel_edges(0, 1u << 4);
+                loop();
+                printf("      (no preset remembered: stored as \"%s\")\n", pg_pname[d]);
+                check("no preset remembered: named after the first of its list (Init) with 2, not the device's name",
+                      !ps_name_cmp(pg_pname[d], want) && ps_list(pg_dev[d].structure, 0, 0) == 2u);
+            }
+            {                                           /* the editor deletes the preset the device is set to (main.c m1_preset_del) */
+                int32_t before = eng_get_param(pg_dev[d].rows[0], pg_dev[d].rows[1]);
+                char gone[17];
+                strcpy(gone, pg_pname[d]);
+                check("the editor deletes the preset in use: deleted", ps_del(pg_dev[d].structure, gone) == 0);
+                dp_deleted(pg_dev[d].structure, gone);
+                check("  the device keeps its sound, no longer names it, the message says so",
+                      !pg_pname[d][0] && eng_get_param(pg_dev[d].rows[0], pg_dev[d].rows[1]) == before &&
+                      !strcmp(msg_text, "PRESET DELETED: SOUND KEPT") && ps_list(pg_dev[d].structure, 0, 0) == 1u);
+                msg_text[0] = 0;
+                dp_deleted(pg_dev[d].structure, "NOT IN USE");
+                check("  one no device is set to: no message", !msg_text[0]);
+            }
+            tap(3);
+            check("SEL on the list: back", page == 0);
+            {                                               /* a patch stored before format 34 (the bank keeps it): no structure */
+                uint32_t keep = pg_dev[d].structure;
+                pg_dev[d].structure = 0;
+                tap(3);
+                loop();
+                printf("      (the bar: \"%s\")\n", msg_text);
+                check("SEL on an assembly of an old patch: no list, the bar says why (not \"SEL ON\")",
+                      page == 0 && !strcmp(msg_text, "OLD PATCH: SEND + SAVE IT"));
+                pg_dev[d].structure = keep;
+            }
+            tap(4);                                         /* the environment (#198): ALGO and PRESET step the row's presets */
+            {
+                char before[17];
+                memcpy(before, pg_pname[d], sizeof before);
+                enc(1, 1);
+                check("ALGO on the environment's row: its next preset", page == PAGE_ENV && strcmp(before, pg_pname[d]) != 0);
+                memcpy(before, pg_pname[d], sizeof before);
+                enc(6, -1);
+                check("PRESET there: its previous one, not another patch", page == PAGE_ENV && strcmp(before, pg_pname[d]) != 0 && !strcmp(patch_label, "ORACLE V"));
+            }
+            tap(4);
+            later(2000);
+        } else {
+            check("(the Oracle V factory patch loads)", 0);
+        }
+        load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        loop();
+        pages_focus(2, 0);
+        loop();
+    }
+
+    {                                                       /* GLO (#199): the FM-1's own settings */
         int main = eng_find(T_FM1);
         int32_t bpm = eng_get_param((uint32_t)main, FM1_P_TEMPO);
-        uint32_t d = pg_cur_dev, g = pg_cur_page;
+        uint32_t d = pg_cur_dev, g = pg_cur_page, ch = cfg.ch;
         tap(7);
         check("GLO: the global page, a step on the trail, GLO's jack was high while held", page == PAGE_GLO && trail_n == 1);
         check("its bar: GLOBAL on coral", px(2, 2) == P_CORAL);
         enc(2, 4);
-        check("K1 on GLO: the tempo", eng_get_param((uint32_t)main, FM1_P_TEMPO) != bpm);
+        check("K1 on GLO: the MIDI channel one step a turn, not the patch's tempo", cfg.ch == (ch < 16u ? ch + 1u : 16u) && eng_get_param((uint32_t)main, FM1_P_TEMPO) == bpm);
+        enc(2, -4);
         later(1500);
-        check("the rows: tempo and morph, no arpeggiator in the 808 Kit", pages_now()->nrows == 2u);
+        check("the rows: MIDI channel, clock in, MIDI out, LEDs", pages_now()->nrows == 4u && pages_now()->mod[0] == SETTING_ROW && cfg.ch == ch);
         if (getenv("PANEL_SNAP_GLO")) {
             const char *keep = getenv("PANEL_SNAP");
             setenv("PANEL_SNAP", getenv("PANEL_SNAP_GLO"), 1);
@@ -491,12 +718,12 @@ int main(void)
         panel_keys(1u << 2);
         panel_keys(0);
         check("again: back", (eng_steps_note((uint32_t)drums, 1, 55) != 0) == (w != 0));
-        panel_held |= 1u << BTN_ENV;
-        panel_keys(1u << 4);                                /* ENV + A3: step 3 (index 2), accented */
+        panel_held |= 1u << BTN_ACC;
+        panel_keys(1u << 4);                                /* FX + A3: step 3 (index 2), accented (#197: FX, was ENV) */
         panel_keys(0);
-        panel_held &= ~(1u << BTN_ENV);
+        panel_held &= ~(1u << BTN_ACC);
         w = eng_steps_note((uint32_t)drums, 2, 55);
-        check("ENV + a white key: an accented hit (velocity 127)", w && ((w >> 19) & 127u) == ACCENT_VEL);
+        check("FX + a white key: an accented hit (velocity 127)", w && ((w >> 19) & 127u) == ACCENT_VEL);
         ui_dirty = 2;
         loop();
         snap_to(getenv("PANEL_SNAP_DRUMS"));
@@ -542,10 +769,10 @@ int main(void)
         panel_keys(0);
         loop();
         seq_cur_move(-1);                                   /* (its chord written into step 2, the cursor back) */
-        panel_held |= 1u << BTN_ENV;                        /* ENV + OCT+: a rest */
+        panel_held |= 1u << BTN_ACC;                        /* FX + OCT+: a rest */
         tap(BTN_OCT_UP);
-        panel_held &= ~(1u << BTN_ENV);
-        check("ENV + OCT: a rest, the cursor on (the octave stays)", seq_cur == 2 && !(eng_steps_get((uint32_t)drums, 1u) & 1) && octave == 0);
+        panel_held &= ~(1u << BTN_ACC);
+        check("FX + OCT: a rest, the cursor on (the octave stays)", seq_cur == 2 && !(eng_steps_get((uint32_t)drums, 1u) & 1) && octave == 0);
         enc(0, -2);
         check("SELECT moves the cursor", seq_cur == 0);
         tap(BTN_REC);

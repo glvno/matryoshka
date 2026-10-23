@@ -172,7 +172,15 @@ export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse'];
 /** the FM-1 panel's buttons a patch owns (#57 decision 4), gate outputs of the Main module; the device keeps PRESET, PLAY,
  * SAVE, HOME and OCT- / OCT+. The knobs K1..K4 are no signals: they edit the rows of the device page in focus (pages.ts),
  * and the SELECT / ALGO encoders pick the device and the page. */
-export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];   // SEQ and REC: the device's step page (#83)
+export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
+/** a panel button's name on screen: SEL for `scl` (Felucca's table spells it SCL; the button reads SEL), else the id in capitals */
+export const buttonLabel = (b: string): string => (b === 'scl' ? 'SEL' : b.toUpperCase());
+/** what a fixed button does, for the dock and the button editor */
+export const FIXED_DOES: Record<string, string> = {
+  glo: 'the FM-1’s own settings on its knobs (MIDI channel, clock in, MIDI out, LEDs; set them on the FM-1); again: back',
+  scl: 'one level deeper on the FM-1: an environment row’s pages, a track’s steps',
+  env: 'the environment on the FM-1: every device from Main to the Output (here the canvas is the environment); held + SAVE stores the device’s preset',
+};   // SEQ and REC: the device's step page (#83)
 /** the Main module's tempo range (bpm) */
 export const TEMPO_MIN = 20;
 export const TEMPO_MAX = 300;
@@ -2191,7 +2199,7 @@ export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES
 const alloc: ModuleImpl<null> = {
   def: {
     type: 'alloc',
-    label: 'Voice assigner',
+    label: 'Voicing',
     inputs: [keys('keys')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump')],
     params: [

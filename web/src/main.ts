@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // first: migrate.ts notes which storage keys the page found before anything here writes one
+import { addUserPreset, exportPresets, importPresets } from './device-presets';
+import { armedFromMask, armMask } from './arm';
+import './factory-presets'; // the factory engines' presets (#193)
 import { applyImport, backupKeys, importSummary, OLD_ORIGIN, receiveMigration } from './migrate';
 import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
@@ -106,8 +109,9 @@ let onEditorPatch = false;
  * a knob turn names its module and parameter, so it cannot land on another row (#185); otherwise (Live off, another firmware)
  * the mirror's K1..K4 positions turn the rows of the editor's page in focus */
 const exactKnobs = (): boolean => live() && onEditorPatch && device.hasPages;
-// while Live is on, the FM-1 holds PRESET and program change (LIVE, #185; it lapses 5 s after the last)
-window.setInterval(() => { if (live()) device.live(); }, LIVE_MS);
+// while Live is on, the FM-1 holds PRESET and program change (LIVE, #185; it lapses 5 s after the last); with the patch over
+// the budget too, paused (#200): nothing is sent, but PRESET still waits and the FM-1 says why
+window.setInterval(() => { if (device.connected && liveOn) device.live(!fitsDevice); }, LIVE_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
@@ -177,6 +181,16 @@ device.onEvent = (e) => {
     if (e.kind === 'focus') emu.ui?.focus(e.device, e.page);   // (the mirror's copy of the panel logic too)
     fromDevice = true;
     try { fm1Event(e, 'device'); } finally { fromDevice = false; }
+    return;
+  }
+  if (e.kind === 'presetStored') {   // a preset stored on the FM-1 (#195): under Live it comes into the editor's library
+    if (!live()) return;
+    void device.getPreset(e.structure, e.name).then((v) => {
+      const as = v && addUserPreset(e.structure, e.name, v);
+      if (!as) return;
+      editor.rebuild();
+      devStatus(`preset "${as}" stored on the FM-1: now in your presets too`);
+    }).catch(() => {});
     return;
   }
   if (!live()) return;
@@ -267,7 +281,7 @@ function setLive(on: boolean): void {
   liveOn = on;
   syncChip();
   if (!on) return;
-  if (live()) device.live();
+  if (device.connected) device.live(!fitsDevice);
   declineSync(false);
   void sendPatch();
 }
@@ -327,19 +341,23 @@ const sink = {
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
     if (live() && !fromDevice) {   // (what the FM-1 played itself is not sent back)
-      // (an armed track's keys stay here: the FM-1 does not arm, #139)
-      if (editor.armedTrack === null) device.note(msg as { t: string; note?: number; vel?: number });
+      // (the keys of an armed device stay here: the FM-1 does not take the editor's arm yet, #139 / #191)
+      if (!editor.armedSet.size) device.note(msg as { t: string; note?: number; vel?: number });
       if (msg.t === 'bend') device.bend(msg.v);
       else if (msg.t === 'cc') device.cc(msg.n, msg.v);
     }
   },
 };
-/** what the armed track plays (Editor onArm), for the status line */
+/** what the armed devices play (Editor onArm), for the status line */
 let armPlays: string[] = [];
-/** the status line while a track is armed (#134) or recording (#135): what the keys play and what REC does now */
+/** the status line while devices are armed (#134, #190) or a track records (#135): what the keys play and what REC does now */
 function showArmed(): void {
   const id = editor.armedTrack;
-  if (id === null) return pinStatus(null, 'arm');
+  if (!editor.armedSet.size) return pinStatus(null, 'arm');
+  if (id === null || editor.armedSet.size > 1 && !editor.recOn) {
+    const list = armPlays.length ? armPlays.join(', ') : 'nothing yet';
+    return pinStatus({ tag: `Armed: ${editor.armedSet.size}`, text: `Main’s keys play ${list}; only armed devices hear them.${id === null ? '' : ' Shift+R records on the armed track.'} ARM again to disarm.` }, 'arm');
+  }
   const name = trackLabel(editor.patch, id);
   const hear = armPlays.length ? `heard through ${armPlays.join(', ')}` : 'which plays nothing yet: cable its keys out (or trig / pitch) to an instrument';
   if (!editor.recOn) return pinStatus({ tag: `Armed: ${name}`, text: `Main’s keys play ${name}, ${hear}. Shift+R records; ARM again gives Main its keys back.` }, 'arm');
@@ -410,7 +428,7 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
-  arm: (m) => editor.armTrack(m < 0 ? null : deviceView(editor.patch, true).patch.modules[m]?.id ?? null),
+  arms: (lo, hi) => editor.setArmed(armedFromMask(editor.patch, lo, hi)),
   key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
     if (down) {
       const note = 53 + k + 12 * emu.octave;
@@ -477,8 +495,8 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (live() && !uploading) device.track(editor.patch, id, notes);
     else if (live()) dirty = true;
   },
-  onArm(id, plays) {
-    host.send({ t: 'arm', id });
+  onArm(armed, plays) {
+    host.send({ t: 'arm', devices: armed });
     emuArm();
     armPlays = plays;
     showArmed();
@@ -734,6 +752,7 @@ function showBudget(): void {
   const was = fitsDevice;
   fitsDevice = b.fits;
   syncChip();
+  if (was && !b.fits && device.connected && liveOn) device.live(true);   // (#200: the FM-1 says so at once)
   const el = $('budget');
   el.classList.toggle('over', !b.fits);
   const memOver = b.over.filter((i) => i.key !== 'cpu');
@@ -851,6 +870,14 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Save patch', keywords: 'keep store your patches', run: saveCurrent },
     { kind: 'command', label: 'Save patch as .json', keywords: 'export download file', run: savePatch },
     { kind: 'command', label: 'Load patch from .json', keywords: 'import open file', run: () => $('load-file').click() },
+    { kind: 'command', label: 'Export presets as .json', detail: 'your presets library', keywords: 'download file backup library device', run: () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(exportPresets(), null, 1)], { type: 'application/json' }));
+      a.download = 'matryoshka-presets.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } },
+    { kind: 'command', label: 'Import presets from .json', keywords: 'load file library device', run: () => $('load-file').click() },
     { kind: 'command', label: 'Import browser backup', detail: 'from the old address', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
     { kind: 'command', label: 'Share patch\u2026', keywords: 'link copy url clipboard reddit post card notes', run: () => shareSheet.open() },
     { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
@@ -1378,8 +1405,7 @@ function emuLoad(): void {
 }
 /** the emulated FM-1 arms the editor's armed track (#139), so its REC records into it */
 function emuArm(): void {
-  const id = editor.armedTrack;
-  emu.ui?.arm(id === null ? -1 : deviceView(editor.patch, true).patch.modules.findIndex((m) => m.id === id));
+  emu.ui?.armMask(...armMask(editor.patch, editor.armedSet));
 }
 function queueEmu(): void {
   if (!emu.ui) return;
@@ -1637,8 +1663,13 @@ $<HTMLInputElement>('load-file').onchange = async (e) => {
     const raw = JSON.parse(await f.text()) as unknown;
     // the old address's "Download a backup" (deploy/github-pages-forward): the browser data, not a patch
     const backup = backupKeys(raw);
+    const presets = backup ? null : importPresets(raw); // a preset library (#192)
     if (backup) importBrowserData(backup, 'the backup');
-    else loadNamed(validatePatch(raw, DEFS));
+    else if (presets !== null) {
+      editor.rebuild();
+      status.textContent = `${presets} preset${presets === 1 ? '' : 's'} imported`;
+      showToast(status.textContent);
+    } else loadNamed(validatePatch(raw, DEFS));
   } catch (err) {
     status.textContent = `load failed: ${(err as Error).message}`;
     showToast(status.textContent);

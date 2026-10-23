@@ -70,8 +70,8 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   const byName = new Map(Object.keys(PRESETS).map((n) => [n.toLowerCase(), n]));
   // patches changed since the survey (not measured as they are now): re-measure on the device, then drop them here
   const changed = new Set(['808 kit']); // re-measured 2026-10-21 after #141: the device reads 81 %, the model 74 % (out of the band): #178
-  // patches added since the survey (#182, Elvira 2): measure them on the device, then add them to the survey file
-  const unmeasured = new Set(['8 lire', 'elvira 2']);
+  // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4): measure them on the device, then add them to the survey file
+  const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4']);
   it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(PRESETS).length));
   for (const r of survey)
     it.skipIf(changed.has(r.name.toLowerCase()))(`is within -4 / +6 points of the device: ${r.name}`, () => {

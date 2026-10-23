@@ -11,6 +11,7 @@
 import { type DrumMapState, driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto } from './poly';
+import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
 import { fixNotes, type StepNote } from './track';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
@@ -210,6 +211,7 @@ export class Engine {
   load(source: Patch, compile = false): void {
     this.src = source;
     this.compiled = compile;
+    source = armView(source, this.armedKeys); // the armed devices hear Main's keys, the others not (#190); unchanged while none is
     const { patch, groups: pg } = deviceView(source, compile);
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
     this.groups = pg.map((x, i) => {
@@ -291,6 +293,9 @@ export class Engine {
       const old = oldArps.get(node.id);
       return old ? { ...old, node } : { node, st: arpInit(), clk: { hi: false } };
     });
+    // while anything is armed an Arpeggiator hears Main's keys only through a keys cable from Main (an armed device's)
+    const mainKeysTo = new Set(source.cables.filter((c) => c.from.port === 'keys' && source.modules.find((m) => m.id === c.from.module)?.type === 'fm1').map((c) => c.to.module));
+    this.arpHears = this.armedKeys.length ? new Set(this.arps.filter((a) => mainKeysTo.has(a.node.id)).map((a) => a.node.id)) : null;
     this.tracks = this.order.filter((n) => n.type === 'steps');
     // tracks whose keys in a cable from Main's keys feeds: those keys pass through them while no track is armed (#138)
     this.fed = this.tracks.filter((node) => source.cables.some((c) => c.to.module === node.id && c.to.port === 'keys' && c.from.port === 'keys' && source.modules.find((m) => m.id === c.from.module)?.type === 'fm1')).map((node) => node.inst[0].state as StepsState);
@@ -598,44 +603,60 @@ export class Engine {
    * and the Arpeggiators (on `channel`) play it.
    */
   noteOn(note: number, velocity = 1, ch = 1): void {
-    const t = this.armedTrack();
-    if (t) {
-      if (this.listens(ch)) t.thru.push(note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
-      return;
-    }
-    for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
-    if (this.listens(ch)) for (const a of this.arps) arpKeyOn(a.st, note, velocity, this.arpParams(a));
+    for (const g of this.keyGroups()) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
+    if (this.listens(ch)) for (const a of this.keyArps()) arpKeyOn(a.st, note, velocity, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
     if (this.listens(ch)) for (const t of this.fed) t.thru.push(note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
   }
 
   noteOff(note: number, ch = 1): void {
-    const t = this.armedTrack();
-    if (t) {
-      if (this.listens(ch)) t.thru.push(note, 0);
-      return;
-    }
-    for (const g of [this.kb, ...this.groups]) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
-    if (this.listens(ch)) for (const a of this.arps) arpKeyOff(a.st, note, this.arpParams(a));
+    for (const g of this.keyGroups()) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
+    if (this.listens(ch)) for (const a of this.keyArps()) arpKeyOff(a.st, note, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note, 0);
     if (this.listens(ch)) for (const t of this.fed) t.thru.push(note, 0);
   }
 
-  /** the armed Steps track (#134, the editor's ARM; the FM-1 has none): its id, -1 none */
-  private armedId = -1;
-  private armedTrack = (): StepsState | null => this.stepsOf(this.armedId);
+  /** the groups Main's keys may play: the shared keyboard (Main's pitch / gate) only while nothing is armed */
+  private keyGroups = (): Group[] => (this.armedKeys.length ? this.groups : [this.kb, ...this.groups]);
+  /** the Arpeggiators that hear Main's keys: all while nothing is armed, else the armed devices' */
+  private keyArps = (): ArpRun[] => (this.arpHears ? this.arps.filter((a) => this.arpHears!.has(a.node.id)) : this.arps);
+  private arpHears: Set<number> | null = null;
+
+  /** the armed devices (#190; `a<id>` / `m<id>`, CONTEXT.md "Arm"), none: the cables decide */
+  private armedKeys: DeviceKey[] = [];
 
   /**
-   * Arm a Steps track (null: none). While one is armed the keys (noteOn / noteOff: the computer keys, the on-screen keys,
-   * MIDI) go into its keys in and through to what it plays (modules.ts steps), not to the shared keyboard, the groups that
-   * play the keys, the Arpeggiators, the Drum maps or the tracks a cable from Main's keys feeds. What the keys held when the routing changes go quiet: the keys they sounded
-   * through let them go (a track's thru notes end, the keyboard's groups and the Arpeggiators let go of every key).
+   * Arm a set of devices (#190; a number arms that module alone, null none: #134's form). While any is armed Main's keys
+   * (noteOn / noteOff: the computer keys, the on-screen keys, MIDI) go to every armed device's keys input, cable or not, and
+   * to nothing else (not the shared keyboard, nor the devices only a cable from Main feeds); with none armed the cables
+   * decide. A Steps track armed plays the keys through to what it plays (modules.ts steps), as a cable from Main's keys does
+   * (#138). The keys held when the routing changes go quiet: the keys they sounded through let them go (a track's thru
+   * notes end, the groups and the Arpeggiators let go of every key).
    */
-  arm(id: number | null): void {
-    if ((id ?? -1) === this.armedId) return;
-    this.thruOff(this.armedTrack());
+  arm(devices: DeviceKey[] | number | null): void {
+    const list = devices === null ? [] : typeof devices === 'number' ? [`m${devices}`] : [...new Set(devices)].sort();
+    if (list.join() === this.armedKeys.join()) return;
+    for (const node of this.tracks) this.thruOff(node.inst[0].state as StepsState);
     this.keysOff();
-    this.armedId = id ?? -1;
+    this.armedKeys = list;
+    if (this.src) this.load(this.liveSource(this.src), this.compiled);
+  }
+
+  /** the patch as it plays now: what setParam / setAtt / setRange / setBypass / setTrack changed since it was loaded put
+   * back into a copy, so a reload (arming) does not undo them */
+  private liveSource(src: Patch): Patch {
+    return {
+      ...src,
+      modules: src.modules.map((m) => {
+        const n = this.nodes.get(m.id);
+        if (!n) return m;
+        const out = { ...m, params: { ...m.params, ...n.params }, att: [n.att[0], n.att[1]] as [number, number], range: { p1: { ...n.range[0] }, p2: { ...n.range[1] } } };
+        if (n.bypass) out.bypass = true;
+        else delete out.bypass;
+        if (m.type === 'steps') out.notes = (n.inst[0].state as StepsState).notes.map((x) => ({ ...x }));
+        return out;
+      }),
+    };
   }
 
   /** live recording on the armed track (#135): while the track runs, the notes played through it are recorded (the editor

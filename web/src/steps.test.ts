@@ -378,14 +378,13 @@ describe('the Steps module (#83, #133)', () => {
     expect(v.modules[1].name).toBe('KICK DRU');
     const bin = encodePatch(v);
     expect(bin[6] & FLAG_NOTES).toBeTruthy();
-    const tail = 2 + 4 * 2; // the notes section: count, then module 1, two notes
-    const notes = bin.length - tail;
+    // the track's record ends in its name; the notes section follows the records and cables (a device pages section after it)
+    const data = [...bin.keys()].find((i) => String.fromCharCode(...bin.slice(i, i + 8)) === 'KICK DRU')!;
+    const rec = data - recordSize('steps') + 8;
+    const notes = rec + recordSize('steps') + recordSize('output') + 4 * v.cables.length + 1;
     expect([...bin.slice(notes - 1, notes + 2)]).toEqual([1, 1, 2]);
     const w = new DataView(bin.buffer).getUint32(notes + 2, true);
     expect(w).toBe(noteWord(note(0, 1, 60, 127)));
-    const rec = notes - 1 - 4 * v.cables.length - recordSize('output') - recordSize('steps');
-    const data = rec + recordSize('steps') - 8;
-    expect(String.fromCharCode(...bin.slice(data, data + 8))).toBe('KICK DRU');
     const old = JSON.parse(JSON.stringify(p));
     old.cables.push({ from: { module: old.modules[0].id, port: 'rec' }, to: { module: st.id, port: 'reset' } });
     old.cables.push({ from: { module: st.id, port: 'acc' }, to: { module: old.modules[2].id, port: 'r' } });

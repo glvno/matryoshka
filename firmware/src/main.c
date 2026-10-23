@@ -180,9 +180,12 @@ static uint32_t popcount64(uint64_t v)
 static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u); }
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel, CPU in the bar, clock in, program change,
- * MIDI channel, level, mute, the selected module */
+ * MIDI channel, MIDI out, the bank's format, the selected module */
 #define SET_VERSION 1u
 #define SET_LEN 12u
+/* the patch format the bank's untouched factory slots were brought to (settings byte 10; 0 in a record from before):
+ * below ENG_PATCH_VERSION, the boot rewrites them once (bank_upgrade) */
+static uint8_t bank_fmt;
 static void settings_pack(uint8_t *d)
 {
     d[0] = SET_VERSION;
@@ -195,7 +198,7 @@ static void settings_pack(uint8_t *d)
     d[7] = cfg.prog_chg;
     d[8] = cfg.ch;
     d[9] = cfg.midi_out;                        /* (was the mixer's level before #60: values over 1 read as on) */
-    d[10] = 0;
+    d[10] = bank_fmt;
     d[11] = (uint8_t)sel;
 }
 static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint32_t *module)
@@ -209,6 +212,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     cfg.clock_in = d[6] & 1u;                   /* (bytes 5 and 7, CPU in the bar and program change, are no longer settings) */
     cfg.ch = d[8] > 16u ? 0u : d[8];
     cfg.midi_out = d[9] == 0u ? 0u : 1u;
+    bank_fmt = d[10];
     *module = d[11];
     return 0;
 }
@@ -284,11 +288,16 @@ static int preset_load(uint32_t n)
  * closed tab or a pulled cable frees them */
 #define LIVE_HOLD_MS 5000u
 static uint32_t live_until;
-static uint8_t live_seen;
-static void m1_live(void)
+static uint8_t live_seen, live_paused;
+/* paused (#200): the editor's patch is over the FM-1's budget, so it is not here; PRESET waits all the same (the editor's
+ * Live is on) and the FM-1 says why */
+static void m1_live(uint32_t paused)
 {
+    if (paused && (!live_paused || !live_seen))
+        ui_msg("EDITOR PATCH TOO BIG", 2500);
     live_until = fm1_ms + LIVE_HOLD_MS;
     live_seen = 1;
+    live_paused = paused != 0u;
 }
 static int editor_live(void)
 {
@@ -303,7 +312,7 @@ static void preset_step(int32_t d)                  /* the PRESET knob: the next
     if (!bank_mask)
         return;
     if (editor_live()) {
-        ui_msg("EDITOR LIVE: NO PRESET", 1500);
+        ui_msg(live_paused ? "EDITOR PATCH TOO BIG" : "EDITOR LIVE: NO PRESET", 1500);
         return;
     }
     for (i = 0; i < M1_SLOTS; i++) {
@@ -315,6 +324,49 @@ static void preset_step(int32_t d)                  /* the PRESET knob: the next
 }
 
 /* proto.c hooks: the bank */
+/* the preset store for the editor link (proto.c, #195) */
+static uint32_t m1_presets(uint32_t k, uint32_t *structure, char *name, uint32_t *n)
+{
+    static uint8_t list[PS_SLOTS];
+    uint32_t cnt = ps_list(0, list, PS_SLOTS);
+    if (k < cnt && structure && name && n)
+        (void)ps_read(list[k], structure, name, n);
+    return cnt;
+}
+static int m1_preset_get(uint32_t structure, const char *name, int32_t *vals, uint32_t *n)
+{
+    char nm[PS_NAME + 1u];
+    uint32_t st, i;
+    int s = ps_find(structure, name);
+    if (s < 0 || ps_read((uint32_t)s, &st, nm, n))
+        return -1;
+    for (i = 0; i < *n; i++)
+        vals[i] = ps_vbuf[i];
+    return 0;
+}
+static int m1_preset_put(uint32_t structure, const char *name, const int32_t *vals, uint32_t n)
+{
+    int rc;
+    if (!flash_ok)
+        return -1;
+    eng_run = 0;
+    rc = ps_put(structure, name, vals, n);
+    eng_resume();
+    return rc;
+}
+static int m1_preset_del(uint32_t structure, const char *name)
+{
+    int rc;
+    if (!flash_ok)
+        return -1;
+    eng_run = 0;
+    rc = ps_del(structure, name);
+    eng_resume();
+    if (!rc)
+        dp_deleted(structure, name);             /* (a device set to it drops the name: pages_ui.c) */
+    return rc;
+}
+
 static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
 {
     return store_write(slot, name, p, len);
@@ -390,8 +442,46 @@ static void factory_bank(void)
     }
     cur_preset = 0;
     sel = 0;
+    bank_fmt = ENG_PATCH_VERSION;
     settings_pack(set);
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
+}
+
+/* FNV-1a, 32 bits (web/scripts/legacy-factory.ts fnv32) */
+static uint32_t fnv32(const uint8_t *p, uint32_t n)
+{
+    uint32_t h = 0x811C9DC5u;
+    while (n--)
+        h = (h ^ *p++) * 0x01000193u;
+    return h;
+}
+
+/* after an update: every slot that is byte for byte a factory patch an earlier firmware wrote (presets.h LEGACY_FACTORY,
+ * so untouched since the factory bank or FACTORY RESET) gets today's patch of that name, in today's format (format 34's
+ * extras: presets, the environment); the slot keeps its name, anything edited and saved stays as it is. Once per format
+ * (bank_fmt). Returns how many slots were rewritten */
+static uint32_t bank_upgrade(void)
+{
+    uint32_t s, k, len, h, n = 0;
+    char name[M1_NAME + 1];
+    boot_step("FACTORY PATCHES");
+    for (s = 0; s < M1_SLOTS; s++) {
+        if (!slot_used(s))
+            continue;
+        fm1_wdt_feed();
+        for (k = 0; k <= M1_NAME; k++)
+            name[k] = 0;
+        if (sl_read(s, m1_up, &len, name) || len < 8u || m1_up[0] != 0xA1u || m1_up[1] >= ENG_PATCH_VERSION)
+            continue;
+        h = fnv32(m1_up, len);
+        for (k = 0; k < N_LEGACY_FACTORY; k++)
+            if (LEGACY_FACTORY[k].fnv == h && LEGACY_FACTORY[k].len == len)
+                break;
+        if (k < N_LEGACY_FACTORY && store_write(s, name, PRESET_LIST[LEGACY_FACTORY[k].now].data, PRESET_LIST[LEGACY_FACTORY[k].now].len) == 0)
+            n++;
+    }
+    bank_fmt = ENG_PATCH_VERSION;
+    return n;
 }
 
 /* safe mode: SAVE held while the loading screen is up, or the previous boot did not get through (bootguard): nothing is
@@ -429,6 +519,17 @@ static void patch_boot(void)                    /* the slot the settings record 
         boot_msg = "FACTORY BANK WRITTEN";
         boot_msg_ms = 2000;
     } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
+        if (bank_fmt < ENG_PATCH_VERSION) {           /* the first boot after an update that changed the format */
+            uint32_t n = bank_upgrade();
+            cur_preset = slot;
+            sel = module;
+            settings_pack(set);
+            (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
+            if (n) {
+                boot_msg = "FACTORY PATCHES UPDATED";
+                boot_msg_ms = 3000;
+            }
+        }
         leds_avail();
         leds_octave();
     }
@@ -668,7 +769,7 @@ static void leds_panel(void)
 {
     uint32_t b, mask = eng_buttons_get();
     for (b = 0; b < ENG_PANEL_BUTTONS; b++)
-        fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u) || (b == BTN_GLO_IDX && page == PAGE_GLO));   /* (GLO: lit on its page) */
+        fm1_led_key(PANEL_BTN_ID[b], (int)(mask >> b & 1u) || (b == BTN_GLO_IDX && page == PAGE_GLO) || (b == BTN_ENV_IDX && page == PAGE_ENV));   /* (GLO, ENV: lit on their pages) */
 }
 
 /* OCT- / OCT+ light up while the octave is shifted */

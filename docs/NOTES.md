@@ -1418,8 +1418,10 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
 - **Changed:** modules.ts labels, defs.h (export-defs), course.json bold module names (tutorial), the UI strings that named
   them (editor, flaws panel, tutorial parts / registry), README, ARCHITECTURE's per-module CPU table, 3 tests that spelled labels.
   Code comments and identifiers ("allocator", `alloc`) keep the old words.
-- **Episode 1:** `docs/video/ep01-oracle-5.assembly.json`, a Prophet-5 card of exactly the panel's 40 controls (25 modules,
-  4 voices: 85 % estimate, 5 voices 104 %). Script and teleprompter live outside the repo (claude.ai).
+- **Episode 1:** the video production files (prompter, script, the reference assembly and its builder, thumbnails) moved
+  to their own repo, `../videos` (side by side with this one; to be run with course-video-manager). The episode's card
+  is a Prophet-5 card of the panel's controls (41 rows, 29 modules, 16 per voice): Osc A's saw and pulse stack as two
+  oscillators on one pitch, A's frequency is an Offset snapped by a Quantizer, 3 voices at an 85 % estimate.
 - **Checked:** vitest 70 files / 843 tests, tools/panel_test.sh. **Not checked:** the editor in a browser, the device.
 
 ## 2026-10-22: 8 Lire, a factory engine after the SOMA Lyra-8 (#182)
@@ -1504,3 +1506,135 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
 - **The release build:** release.yml run 39871109097 from 6d2d067, v1.1.0 / FM-1_711, package sha256 8e3cf32a…; emu:smoke 124 / 0 on matryoshka-1.1-app.bin. **Not device-checked on these exact bytes** (they differ from the checked CI build in the version string and identity only): the owner chose to release; installing 1.1.0 from the Flash view is that check.
 - **Ship:** db2ce1d (the Flash view: Patch | FM-1 | Flash), `npm run firmware -- build/release-1.1/matryoshka-1.1.fwsc`, web 1.1.0, CHANGELOG 1.1.0 dated 2026-10-22 (3075b24); `git diff 6d2d067 3075b24 -- firmware tools` empty; tag `v1.1.0` on 3075b24; GitHub release with matryoshka-1.1.fwsc, SHA256SUMS, matryoshka-1.1.zip.
 - **After:** main at 1.2.0-dev / v1.2.0-DEV. Still to check on a device: MIDI clock in, program change (and that LIVE holds it), a power cut mid-write.
+
+## 2026-10-23: Scrounge, a factory engine after the neutral labs Scrooge
+
+- **Source:** the Scrooge manual v1.1 (neutral-labs.com/scrooge/downloads/Scrooge-v1.1-manual.pdf): 5 passive voices of
+  starved CMOS circuits (1 kick-ish, 2 hats to drones, 3 snare-ish, 4 growls / chirps, 5 squelchy bass), 2 unlabelled
+  knobs, a volume slider and a 3-way A-B switch each (A, mute, B), an X-Y switch each (MOD X, none, MOD Y); a step
+  sequencer whose step is a control voltage curve that both gates and shapes the voice (POKE height, TILT slope, GATE
+  length up to 8 steps, CHOP ratchets up to audio rate, MELT bit mangling, PROB), 2 MOD tracks with SLEW, CTL ALL over
+  all steps of the selected tracks, a mixer that saturates, A / B outputs and VOL.
+- **Built:** `asm('Scrounge', 'Drums', …)` in gen-assemblies.ts (blurb "Scrooge type shit") and its patch (slot 17, after
+  Elvira 2; the kits move to 18 / 19). One Drum map on the kits' rows (`PLATE_KEYS[1]`, F3..F4) with row names VOICE 1..5,
+  MOD X, MOD Y, EXT. A curve = an `env` (one-shot as every env in a Drums assembly; l1 pinned to the row's velocity, so
+  the step's velocity is its POKE; r1 = tilt, r2 = gate) into a per-voice `mixer` (in1 the curve, in2 / in3 MOD X / Y by
+  the voice's x / y amounts); its sum is the VCA's cv and drives pitch (a Scale into the oscillator), the band pass or the
+  ladder. Voices: 1 sine + pitch Scale (pitch, boom); 2 square at +30 st → `crush` (pitch, grit = rate); 3 noise → `filter`
+  bp (tone, ring); 4 a square into a triangle's pm, both pitched by the curve (pitch, growl = pm); 5 saw → `ladder`
+  (pitch, squelch = res). Each voice → `vca` (vol) → `pan` (a-b) → the A and B saturators (`shape` soft; vol a / vol b).
+  MOD X / Y: rows 6 / 7, their own curves → `glide` (x / y slew); the mod wheel goes into MOD X's slew. CHOP: a square
+  LFO (rate, depth) → `math` max(0, lfo) → `math` 1 − that → a VCA on each output. MELT: a Macro pinned to both outputs'
+  Bitcrusher rate. A gen-presets helper `sequenced()` puts a Steps track (SCROUNGE) between Main's keys and the engine
+  (as the 808 Kit) with a 16-step pattern on all seven rows; the level comes from a 4 s transport render.
+- **Left out:** per-step TILT / GATE / CHOP / MELT / PROB / microtiming (the curve settings are per voice; CHOP and MELT
+  act on the whole mix, as CTL ALL on all five voices would), CHOP above 40 Hz (the LFO's limit; the original reaches
+  audio rate), tracks over 16 steps and per-track lengths in the factory pattern (Steps can do 64), the RND PTN
+  generator, the EXT track, the passive POKE inputs and the voices' high-impedance outputs, the mute position of A-B
+  (vol 0 instead), one VOL for both outputs (two rows), the unstable behaviour of the starved chips beyond what the
+  curve does.
+- **Numbers:** estimate 72 %, memory 78 % (modules 50 / 64; bytes 2953 / 3840); counted engine 432,916 cycles = 65 %
+  (the model reads +11.6 %). Output level 0.56 from the pattern. Each row alone peaks 0.28..0.43 (the MOD rows 0.09 /
+  0.10 through their default x / y); everything up (x / y 1, growl 8, res 1, CHOP 40 Hz full depth, MELT 1, both
+  saturators at drive 32): no NaN, peak 0.56.
+- **Checked:** vitest 70 files / 851 tests (catalog.test: the second drum engine on Engines and Drums),
+  `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 17 (pages VOICE 1..5, MOD, CTL ALL, OUT).
+  **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.
+
+## 2026-10-23: Meridian 8, a factory engine after the Landscape NOON
+
+- **Source:** landscape.fm/noon (the product page and its manual text; NOON was made with Eli Pechman of Mystic Circuits):
+  a passive 8-channel drum synth with no supply, each channel a different circuit powered by its gate (DOT
+  knock / saw / divide, DUAL ping / boom / sine, SYS hollow / laser / wood, PLAST stretch / static / squish, CYMPATH metal
+  by voltage starvation, CYRINX avian / angular, LARYNX vocal / bubble, BACID bass / acid); three sliders per channel (two
+  for tone, one volume), a MOD button per channel, 9 LINK buttons (neighbours share voltage, 8 ↔ 1 too), 8 CV mute buttons,
+  ODD / EVEN CV inputs that power and modulate the odd / even channels (drones), touch plates, odd / even main outputs
+  (a passive mix that squashes). The task said to fall back to the 4-channel MOON (landscape.fm/moon: POLYMER, PLAS,
+  LAUB, CYS, four knobs each and four link knobs) if NOON did not fit; it fits, so NOON it is.
+- **Built:** `asm('Meridian 8', 'Drums', …)` (blurb "NOON type shit") and its patch (slot 18, after Scrounge; the kits move
+  to 19 / 20), through `sequenced()` (Steps track MERIDIAN, a 16-step pattern on all eight rows). A Drum map on the kits'
+  rows named after the channels; per channel an `adsr` = its power (held while the gate is: the Steps gate length or a held
+  key matters, unlike the one-shot `env` curves) into the VCA's cv and the circuit's "power inputs": DOT saw → `ladder`
+  (pitch, cv), DUAL sine with a pitch Scale (ping), SYS a `pulse` at the gate → Scale → `modal` (power into its pitch; the
+  power itself into `in` gave a DC offset of 0.22), PLAST noise → `comb` (power into its pitch; tone, squish = fb),
+  CYMPATH a narrow square → `crush` (crumble = rate), CYRINX triangle with a pitch Scale (chirp), LARYNX saw → `vowel`
+  (power into pitch and vowel), BACID saw → `ladder` (acid = res). LINK n-(n+1): an Attenuverter from channel n's ADSR (not
+  what it receives: no loops) into channel n + 1's power inputs. ODD / EVEN CV: Macros into the odd / even channels' power
+  inputs. Odd channels → left `shape`, even → right; one `main` Macro pinned to both shapes' level.
+- **First try read 85 %** (Multimodes with cv on DOT and PLAST cost about 60 k cycles each, the per-sample coefficient; a
+  3-voice unison on CYMPATH): the ladder, the comb and one square brought it to 73 %.
+- **Left out:** the MOD buttons, the CV mute buttons, the touch plates (no mod wheel input), the individual outputs, the
+  external audio input into DUAL, gate voltage as a power level (the gates are all equal: velocity is not used), links
+  both ways (one direction, n into n + 1), the circuits themselves (each channel is our two- or three-module sketch of the
+  words on the page, not a model of the schematic).
+- **Numbers:** estimate 73 %, memory 78 % (modules 50 / 64; bytes 2772 / 3840); counted engine 436,495 cycles = 65 % (the
+  model reads +12.2 %). Output level 0.56. Each channel held alone peaks 0.16 (LARYNX) .. 0.45; all links at 4, ODD / EVEN
+  at 1, comb fb 0.98, both ladders at res 1, crush rate 64: no NaN, peak 0.45 (the saturators hold it).
+- **Checked:** vitest 70 files / 853 tests, `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 18.
+  **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.
+
+## 2026-10-23: Perun 4, a factory engine after the Erica Synths PERKONS HD-01
+
+- **Sources:** the HD-01 manual's voice tables (as quoted by manualslib: voice 1 FOLD DRUM / WAVETABLE DRUM / RESONANT
+  BASSDRUM, voice 2 FOLD / WAVETABLE / COMPLEX DRUM, voice 3 RESONANT SNARE / SLAP / RESONANT BD (TOM), voice 4 NOISE HAT /
+  SAMPLE HATS / …, three modes each) and Sound On Sound's review: four hybrid voices with the same eight knobs (TUNE, DECAY,
+  PARAM 1 / 2, CUTOFF, DRIVE, FX SEND, LEVEL) and three switches (ALGO, MODE, the filter's LP / BP / HP), a filter without
+  resonance, a BBD-style delay (time, feedback, range, color, its own LFO), one global LFO (7 waves, 8 destinations), a
+  master compressor, a 4 x 16 sequencer with accents, ratchets, probability and per-step automation; mono.
+- **Built:** `asm('Perun 4', 'Drums', …)` (Perun: the Slavic thunder god, as Pērkons is the Latvian one; blurb "Perkons
+  HD-01 type shit") and its patch (slot 19, after Meridian 8; the kits move to 20 / 21) through `sequenced()` (Steps track
+  PERUN, accents on the kick, snare and hats). Drum map on F3..B3 (rows 5..8 unused). Per voice: an `env` (one-shot,
+  l1 pinned to the row's velocity: the accent) → `vca` → `filter` (res 0, `mix` output, MODE = morph, low pass to high
+  pass) → `shape` soft (DRIVE) → the main `mixer` (LEVEL) and the send `mixer` (SEND). Voice 1 FOLD DRUM: sine + its own
+  pitch `env` and Scale (param 1 = drop) → `shape` fold (param 2). Voice 2 WAVETABLE DRUM: `wavetable` with a small drop
+  (param 1 = pos, param 2 = bank). Voice 3 RESONANT SNARE: sine body and noise into an `xfade` (param 1 = mix, param 2 =
+  the noise's color). Voice 4 NOISE HAT: two squares and noise into an `xfade` (param 1 = mix, param 2 = the second
+  square's pitch). Sends → `delay` (mix 1, time pinned to the LFO through a Scale) → summed with the mix into `dyn`
+  (COMP = threshold, MASTER = make-up gain).
+- **Tried and dropped:** phase modulation (the COMPLEX DRUM on voice 2, a bent pulse stack on voice 4) and the LFO into the
+  four tunings: 76 %, the pm input alone costs about 40 k cycles per oscillator; the wavetable and summed squares read 61 %.
+- **Left out:** the two other algorithms and three modes per voice (one algorithm each), the filter's band pass (the
+  morph goes low pass → high pass), the BBD's range / color, the LFO's other destinations and waveforms beyond our five,
+  the sequencer's ratchets, probability, per-voice lengths and automation, the sample hats (SD card), send / return jacks.
+- **Test:** assembly.test plays each engine at C4; Perun 4 has no row there, so it plays F3 (as the drum kit plays 36).
+- **Numbers:** estimate 61 %, memory 67 % (bytes 2556 / 3840; modules 40 / 64); counted engine 387,313 cycles = 58 % (the
+  model reads +5.0 %). Output level 0.24 from the pattern (as the 808 Kit's 0.34). Each voice alone peaks 0.12 (hat) ..
+  0.22 (kick); everything up (sends 1, feedback 0.95, LFO 40 Hz at 4, drives 32, comp −40 dB / 20:1 / +24 dB, decay 10 s):
+  no NaN, the output reaches 1.
+- **Checked:** vitest 70 files / 855 tests, `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 19.
+  **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.
+
+## 2026-10-23: engines, presets, the environment, arming as a set (PRD #188, slices #189..#200)
+
+From the 2026-10-22 grill and domain model (CONTEXT.md, docs/adr/0001, canvas https://claude.ai/artifact/Jh7rjraMnL97pEwVwySyLS),
+done overnight while the owner slept, on branch `engines-presets` (merged with `factory-engines` as `engines-presets-all`).
+Design detail per slice is in docs/ARCHITECTURE.md (search the issue numbers).
+
+- **#189** engines derived (keys reach a Voicing / Drum map, audio out); the Voice assigner is labelled Voicing.
+- **#190** arm is a set in the editor (`arm.ts armView`: the engine plays a transform of the patch; virtual cables, muted
+  Main cables). The first push failed golden `steps-arm`: arming reloaded the engine from the patch it was given and lost a
+  recorded take; fixed with `Engine.liveSource`.
+- **#192 / #193** presets in the editor (structure fingerprint by label refinement, the library, the ‹ name › chip) and
+  rule-made factory presets for every factory engine.
+- **#196** Main, Steps tracks and the Output are devices in the grouped order; `homeDevice` keeps a fresh patch on its
+  first instrument; the panel test was re-indexed (the 808 Kit's devices: Main, DRUMS, Drum map, boom kick, snare ...).
+- **#199** GLO = the FM-1's own settings (MIDI channel, clock in, MIDI out, LEDs); level and speaker mute not done (no known
+  setting or hardware control; commented on the issue). SCL is shown as SEL.
+- **Format 34** (device extras: driving track, structure, preset name, card rows in canonical order, member modules).
+- **#197** the environment page (`PAGE_ENV`), ENV and SEL fixed, FX the SEQ page's accent key.
+- **#194** the preset store (presetstore.c, 0x99000..0x9FFFF; host test tools/preset_test.sh), ROM factory presets,
+  SEL's preset list, ENV held + SAVE. The first firmware build failed on a name clash (`preset_load` is main.c's slot
+  loader): the device preset helpers are `dp_*`. emu:smoke then failed one check (READY late at 1.2 s): the boot scan
+  read every slot whole; it now reads headers only.
+- **#191** arm set on the FM-1 (`eng_arm_mask`, golden kit `arm-set`), REC on an environment row, the FM-1 tab mirrors it.
+  Limitation: an engine with no keys cable has no group in the binary, so the FM-1 cannot arm it.
+- **#195** preset transfer (PRESETS / GET / PUT / DEL / STORED, feature bit 7), Library > Presets on the FM-1.
+- **#198** PRESET / ALGO step an environment row's presets.
+- **#200** the EMLYRA bug: LIVE carries a paused byte while the editor's patch is over budget; the FM-1 holds PRESET and
+  says EDITOR PATCH TOO BIG.
+- **Checks:** vitest, golden, panel_test, preset_test, proto_test, the wasm UI test and the firmware workflow (JieLi build,
+  pool headroom) after each slice; a local syntax check of the whole firmware that catches clashes before CI:
+  `clang -target i686-unknown-linux-gnu -ffreestanding -fsyntax-only -Wall -Wno-unused-function -I firmware/hal -I firmware/src -I firmware firmware/src/modular.c`.
+  **Not checked:** anything on a device (the preset store's kill-by-zeroing on the FM-1's flash in particular), the USB
+  link's preset transfer against a real FM-1.
+

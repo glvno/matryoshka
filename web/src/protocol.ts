@@ -29,9 +29,16 @@
 //                                                    TRACK_NOTES_MAX); no reply. Feature bit 5.
 //   29 FOCUS    device u8, page u8                   show this device page (indices into the binary's device pages section,
 //                                                    pages.ts) and put it on K1..K4; no reply. Feature bit 4.
-//   2C LIVE     (none)                               every LIVE_MS while the editor's Live is on: the FM-1 plays the
+//   2C LIVE     [paused u8]                          every LIVE_MS while the editor's Live is on: the FM-1 plays the
 //                                                    editor's patch, so PRESET and program change load no slot until
-//                                                    5 s after the last one; no reply. Feature bit 6.
+//                                                    5 s after the last one; no reply. Feature bit 6. paused 1 (#200): the
+//                                                    editor's patch is over the FM-1's budget and not sent: PRESET waits
+//                                                    still, and the FM-1 says EDITOR PATCH TOO BIG
+//   2D PRESETS  (none)                               the FM-1's user presets (#195): one PRESET (4C) per preset. Feature bit 7.
+//   2E PRESET_GET  structure u32, name 16 bytes      device answers PRESET_DATA (4D)
+//   2F PRESET_PUT  structure u32, name 16 bytes, n u8, n i32 values (Q16, canonical row order)   store it (over one of
+//                                                    that structure and name); ACK (7 = full)
+//   30 PRESET_DEL  structure u32, name 16 bytes      delete it; ACK (8 = no such preset)
 // device -> host
 //   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
 //   43 SLOT_NOW  slot u8, name 20 bytes                unasked: the slot the FM-1 plays now (a patch from its panel, program
@@ -43,6 +50,9 @@
 //                                                    its values, a hit recorded with REC)
 //   47 PARAM_NOW  module u8, param u8, value i32      unasked: a parameter turned on the FM-1 (K1..K4 on a device page)
 //   48 FOCUS_NOW  device u8, page u8                  unasked: the device page the FM-1 shows now (SELECT / ALGO / HOME)
+//   4C PRESET   index u8, count u8, structure u32, name 16 bytes, n u8   one of the FM-1's user presets (count 0: none)
+//   4D PRESET_DATA  structure u32, name 16 bytes, n u8 (0xFF: none), n i32 values
+//   4E PRESET_STORED  structure u32, name 16 bytes  unasked: a preset stored on the FM-1 (ENV held + SAVE)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW, bit5 TRACK / TRACK_NOW, bit6 LIVE]
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
@@ -50,10 +60,10 @@
 import { noteWord, TRACK_NOTES_MAX, wordNote, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
-export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store'];
+export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
 
 export function pack7(bytes: ArrayLike<number>): number[] {
   const out: number[] = [];
@@ -174,7 +184,7 @@ export const focusFrame = (device: number, page: number): Uint8Array => frame(CM
 export const muteFrame = (module: number, on: boolean): Uint8Array => frame(CMD.mute, [module, on ? 1 : 0]);
 /** the arpeggiator's settings, and its transport (null = leave it) */
 export const transportFrame = (run: boolean): Uint8Array => frame(CMD.transport, [run ? 1 : 0]);
-export const liveFrame = (): Uint8Array => frame(CMD.live);
+export const liveFrame = (paused = false): Uint8Array => frame(CMD.live, paused ? [1] : []);
 /** how often the editor says LIVE (the FM-1 holds it 5 s: firmware main.c LIVE_HOLD_MS) */
 export const LIVE_MS = 2000;
 /** a macro range of pin 0 / 1 on parameter `param`: ends 0..1, or null to remove it */
@@ -202,3 +212,40 @@ export const parseInfo = (p: Parsed): Info | null =>
     ? { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features: p.payload[5] ?? 0 }
     : null;
 export const parseAck = (p: Parsed): Ack | null => (p.cmd === CMD.ack && p.payload.length >= 4 ? { cmd: p.payload[0], seq: p.payload[1], status: p.payload[2], aux: p.payload[3] } : null);
+
+// ---- presets (#195): the FM-1's user presets, by structure (structure.ts, 8 hex digits) and name
+
+/** a preset name as the FM-1 keeps it: printable ASCII, 16 characters */
+export const PRESET_NAME_BYTES = 16;
+export const devicePresetName = (s: string): string => s.replace(/[^\x20-\x7e]/g, '').slice(0, PRESET_NAME_BYTES).trim();
+const presetKey = (structure: string, name: string): number[] => {
+  const h = parseInt(structure, 16) >>> 0;
+  const n = devicePresetName(name);
+  return [h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, ...Array.from({ length: PRESET_NAME_BYTES }, (_, i) => (i < n.length ? n.charCodeAt(i) : 0))];
+};
+const readKey = (p: number[], at: number): { structure: string; name: string } => ({
+  structure: (((p[at] | (p[at + 1] << 8) | (p[at + 2] << 16) | (p[at + 3] << 24)) >>> 0).toString(16).padStart(8, '0')),
+  name: String.fromCharCode(...p.slice(at + 4, at + 4 + PRESET_NAME_BYTES).filter((c) => c >= 32 && c < 127)),
+});
+const i32 = (v: number): number[] => { const x = v | 0; return [x & 0xff, (x >> 8) & 0xff, (x >> 16) & 0xff, (x >>> 24) & 0xff]; };
+export const presetsFrame = (): Uint8Array => frame(CMD.presets);
+export const presetGetFrame = (structure: string, name: string): Uint8Array => frame(CMD.presetGet, presetKey(structure, name));
+/** values as the editor keeps them (real numbers), sent as Q16 */
+export const presetPutFrame = (structure: string, name: string, values: number[]): Uint8Array =>
+  frame(CMD.presetPut, [...presetKey(structure, name), Math.min(values.length, 88), ...values.slice(0, 88).flatMap((v) => i32(Math.round(v * 65536)))]);
+export const presetDelFrame = (structure: string, name: string): Uint8Array => frame(CMD.presetDel, presetKey(structure, name));
+export interface DevicePresetEntry { index: number; count: number; structure: string; name: string; n: number }
+export const parsePresetEntry = (p: Parsed): DevicePresetEntry | null =>
+  p.cmd === CMD.preset && p.payload.length >= 23 ? { index: p.payload[0], count: p.payload[1], ...readKey(p.payload, 2), n: p.payload[22] } : null;
+/** a PRESET_DATA: the values back as real numbers; null values: the FM-1 has none of that name */
+export function parsePresetData(p: Parsed): { structure: string; name: string; values: number[] | null } | null {
+  if (p.cmd !== CMD.presetData || p.payload.length < 21) return null;
+  const key = readKey(p.payload, 0);
+  const n = p.payload[20];
+  if (n === 0xff) return { ...key, values: null };
+  if (p.payload.length < 21 + 4 * n) return null;
+  const dv = new DataView(Uint8Array.from(p.payload).buffer);
+  return { ...key, values: Array.from({ length: n }, (_, k) => dv.getInt32(21 + 4 * k, true) / 65536) };
+}
+export const parsePresetStored = (p: Parsed): { structure: string; name: string } | null =>
+  p.cmd === CMD.presetStored && p.payload.length >= 20 ? readKey(p.payload, 0) : null;

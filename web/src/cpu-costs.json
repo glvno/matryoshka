@@ -29612,6 +29612,18 @@
    "cycles": 311453
   },
   {
+   "name": "Scrounge",
+   "cycles": 432916
+  },
+  {
+   "name": "Meridian 8",
+   "cycles": 436495
+  },
+  {
+   "name": "Perun 4",
+   "cycles": 387313
+  },
+  {
    "name": "808 Kit",
    "cycles": 475655
   },
@@ -29752,6 +29764,10 @@
    "cycles": 110005
   },
   {
+   "name": "assembly Meridian 8",
+   "cycles": 437174
+  },
+  {
    "name": "assembly mono lead",
    "cycles": 93146
   },
@@ -29770,6 +29786,10 @@
   {
    "name": "assembly Oracle V",
    "cycles": 520860
+  },
+  {
+   "name": "assembly Perun 4",
+   "cycles": 369451
   },
   {
    "name": "assembly pluck",
@@ -29798,6 +29818,10 @@
   {
    "name": "assembly Sallen 20",
    "cycles": 187186
+  },
+  {
+   "name": "assembly Scrounge",
+   "cycles": 417193
   },
   {
    "name": "assembly shimmer",

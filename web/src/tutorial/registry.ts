@@ -52,7 +52,7 @@ export const ROLES: Record<string, CodeRole> = {
   modulator: { label: 'modulator', describe: 'the Oscillator feeding the carrier’s pm', module: modulator },
   keys: {
     label: 'the keyboard',
-    describe: 'Main, or a Voice assigner: what plays a module (inside a poly assembly its allocator gives pitch, gate and vel)',
+    describe: 'Main, or a Voicing module: what plays a module (inside a poly assembly its allocator gives pitch, gate and vel)',
     module: main,
     modules: (s) => [main(s), ...mods(s.patch, 'alloc')].filter((m): m is ModuleInst => !!m),
   },

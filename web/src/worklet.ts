@@ -23,8 +23,8 @@ export type HostMsg =
   /** a Steps module's notes edited (#133), a Steps module muted */
   | { t: 'track'; id: number; notes: StepNote[] | undefined }
   | { t: 'mute'; id: number; on: boolean }
-  /** the armed Steps track (#134): the keys go through it; null none */
-  | { t: 'arm'; id: number | null }
+  /** the armed devices (#190, `m<id>` / `a<id>`): only they hear Main's keys; none: the cables decide */
+  | { t: 'arm'; devices: string[] }
   /** live recording on a Steps track (#135) */
   | { t: 'rec'; id: number; on: boolean }
   /** a note into a Steps track's keys in, to hear its instrument (the roll, #136; vel 1..127, 0: let go) */
@@ -103,7 +103,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes);
         else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
-        else if (m.t === 'arm') this.engine.arm(m.id);
+        else if (m.t === 'arm') this.engine.arm(m.devices);
         else if (m.t === 'rec') this.engine.setRec(m.id, m.on);
         else if (m.t === 'thru') this.engine.thru(m.id, m.note, m.vel);
         else if (m.t === 'on') this.engine.noteOn(m.note, m.vel, m.ch);

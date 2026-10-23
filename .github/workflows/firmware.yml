@@ -14,6 +14,7 @@ on:
       - web/presets/**
       - web/package-lock.json
       - web/scripts/export-defs.ts
+      - web/scripts/legacy-factory.json
       - web/scripts/golden.ts
       - web/src/arpeggiator.ts
       - web/src/assembly.ts
@@ -34,6 +35,17 @@ on:
       - web/src/test-poly.ts
       - web/src/track.ts
       - web/src/wavetables.json
+      - web/src/arm.ts
+      - web/src/assemblies.ts
+      - web/src/assemblies/**
+      - web/src/buttons.ts
+      - web/src/device-presets.ts
+      - web/src/engines.ts
+      - web/src/factory-presets.ts
+      - web/src/knob-migrate.ts
+      - web/src/pages.ts
+      - web/src/storage-key.ts
+      - web/src/structure.ts
   pull_request:
     paths:
       - firmware/**
@@ -42,6 +54,7 @@ on:
       - web/presets/**
       - web/package-lock.json
       - web/scripts/export-defs.ts
+      - web/scripts/legacy-factory.json
       - web/scripts/golden.ts
       - web/src/arpeggiator.ts
       - web/src/assembly.ts
@@ -62,6 +75,17 @@ on:
       - web/src/test-poly.ts
       - web/src/track.ts
       - web/src/wavetables.json
+      - web/src/arm.ts
+      - web/src/assemblies.ts
+      - web/src/assemblies/**
+      - web/src/buttons.ts
+      - web/src/device-presets.ts
+      - web/src/engines.ts
+      - web/src/factory-presets.ts
+      - web/src/knob-migrate.ts
+      - web/src/pages.ts
+      - web/src/storage-key.ts
+      - web/src/structure.ts
   workflow_dispatch:
 
 # a newer run for the same branch / PR replaces an older one still running (a push that skips this workflow cancels nothing)
@@ -108,12 +132,13 @@ jobs:
           test "${PIPESTATUS[0]}" -eq 0
           if grep -E "warning:" build/build.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings"; exit 1; fi
           grep -E "pool [0-9]+ B of [0-9]+" build/build.log
-      - name: golden vectors, protocol, USB audio and panel tests, LCD preview
+      - name: golden vectors, protocol, USB audio, panel and preset store tests, LCD preview
         run: |
           export
           tools/golden.sh
           tools/usb_test.sh
           tools/panel_test.sh
+          tools/preset_test.sh
           tools/ui_preview.sh build/ui-preview.png 0 1
       - uses: actions/upload-artifact@v4
         with:

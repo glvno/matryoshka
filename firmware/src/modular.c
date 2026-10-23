@@ -71,9 +71,10 @@ static void m1_ui_changed(void);                               /* main.c: a live
 static void m1_ui_rows(void);                                  /* main.c: a live parameter changed: the rows */
 static void m1_transport(int run);                             /* main.c: the editor's TRANSPORT command (PLAY) */
 static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the editor's FOCUS command (a device page) */
-static void m1_live(void);                                     /* main.c: the editor's LIVE command (it drives the FM-1) */
+static void m1_live(uint32_t paused);                          /* main.c: the editor's LIVE command (it drives the FM-1; paused: its patch is too big, #200) */
 #include "proto.c"
 #include "slotstore.c"
+#include "presetstore.c"
 #ifdef M1_BENCH
 #include "bench.c"
 #endif

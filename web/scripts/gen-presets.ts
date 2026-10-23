@@ -253,6 +253,75 @@ presets.push(() => {
 });
 
 
+/** a drum engine on the transport, as the 808 Kit: Main's keys into a Steps track (`track`, so the keys play it unarmed),
+ * the track's keys into the engine; `rows` are the patterns of the engine's Drum map rows (X: an accent) */
+function sequenced(x: Inst, track: string, rows: Record<number, string>): void {
+  const p = x.p;
+  const into = x.a.inputs.find((r) => r.label === 'keys')!;
+  p.cables = p.cables.filter((c) => !(c.from.module === x.main.id && c.from.port === 'keys'));
+  const st = addModule(p, DEFS.steps, 20, 300);
+  st.name = track;
+  wire(p, x.main.id, 'keys', st.id, 'keys');
+  for (const t of [into, ...(into.also ?? [])]) wire(p, st.id, 'keys', t.module, t.port);
+  const map = mod(p, into.module);
+  const notes: StepNote[] = [];
+  for (const [r, steps] of Object.entries(rows)) {
+    const key = Math.round(map.params[`n${r}`]);
+    for (const n of patternNotes(steps) ?? []) notes.push({ ...n, note: key });
+  }
+  st.notes = fixNotes(notes);
+  level(p, { drums: true });
+  p.octave = -1;
+}
+
+// Scrounge: the five voices and the two modulation tracks on the white keys from F3 (as the kits), a pattern on the
+// transport (PLAY starts it) as the original's factory pattern starts on RUN
+presets.push(() => {
+  const x = around('Scrounge', 'Scrounge');
+  sequenced(x, 'PATTERN', {
+    1: 'X.....x...X..x..',
+    2: '..x...x...x.x.xx',
+    3: '....X.......X..x',
+    4: '.......x.....x..',
+    5: 'x..x..x..x.x..x.',
+    6: 'X.......x.......',
+    7: '....x.........x.',
+  });
+  return x.p;
+});
+
+
+// Meridian 8: the eight channels on the white keys from F3 (as the kits), a gate pattern on the transport (the original
+// needs a sequencer to power it); a held key keeps its channel powered
+presets.push(() => {
+  const x = around('Meridian 8', 'Meridian 8');
+  sequenced(x, 'PATTERN', {
+    1: 'x.....x...x.....',
+    2: '....x.......x...',
+    3: '..x.......x...x.',
+    4: '.x...x...x...x.x',
+    5: 'X.......X.......',
+    6: '.......x.....x..',
+    7: '...x.......x....',
+    8: 'x..x..x...x..x..',
+  });
+  return x.p;
+});
+
+
+// Perun 4: the four voices on F3 G3 A3 B3 (the kits' first rows), a pattern with accents (X) on the transport
+presets.push(() => {
+  const x = around('Perun 4', 'Perun 4');
+  sequenced(x, 'PATTERN', {
+    1: 'X...x...X...x..x',
+    2: '..x....x..x...x.',
+    3: '....X.......X.x.',
+    4: 'x.X.x.X.x.X.xxX.',
+  });
+  return x.p;
+});
+
+
 // 808 Kit: a drum machine on the transport (PLAY starts it, the Main module's tempo sets it): one DRUMS track (#138) into a
 // Drum map whose rows play the boom kick, a tonal snare, the clap, a closed and an open hat, the tom, the rim and the
 // two-square cowbell from the factory drum assemblies, each through a VCA on its row's velocity (gain 127 / 100: the

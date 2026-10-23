@@ -23,8 +23,9 @@ export interface Fm1Events {
   /** the SEQ page: a track's notes as they are after an edit there, a track muted (module = its index in the binary) */
   track?(module: number, notes: StepNote[]): void;
   mute?(module: number, on: boolean): void;
-  /** REC held + a black key armed a track (#139; its index in the binary, -1: disarmed) */
-  arm?(module: number): void;
+  /** the FM-1 armed or disarmed (#139, #191: REC held + a black key, REC on an environment row): the armed modules, by
+   * their index in the binary, as a mask in two halves */
+  arms?(lo: number, hi: number): void;
 }
 
 /** bits of lit buttons (matrix ids) and keys (key n = F3 + n) */
@@ -50,7 +51,7 @@ interface Exports {
   fm1w_focus(device: number, page: number): void;
   fm1w_param(module: number, param: number, value: number): void;
   fm1w_transport(run: number): void;
-  fm1w_arm(module: number): void;
+  fm1w_arm_mask(lo: number, hi: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
 }
 
@@ -69,7 +70,7 @@ export class Fm1Ui {
       transport: (r: number) => ev.transport?.(r !== 0),
       track: (m: number, at: number, n: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : []),
       mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
-      arm: (m: number) => ev.arm?.(m),
+      arms: (lo: number, hi: number) => ev.arms?.(lo >>> 0, hi >>> 0),
     };
     const { instance } = await WebAssembly.instantiate(bytes, { fm1: env });
     memory = (instance.exports as unknown as Exports).memory;
@@ -96,8 +97,8 @@ export class Fm1Ui {
   focus(device: number, page: number): void { this.x.fm1w_focus(device, page); }
   param(module: number, param: number, value: number): void { this.x.fm1w_param(module, param, value | 0); }
   transport(run: boolean): void { this.x.fm1w_transport(run ? 1 : 0); }
-  /** the editor's armed track (#139; its index in the binary, -1 none) */
-  arm(module: number): void { this.x.fm1w_arm(module | 0); }
+  /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask) */
+  armMask(lo: number, hi: number): void { this.x.fm1w_arm_mask(lo >>> 0, hi >>> 0); }
 
   get page(): number { return this.x.fm1w_page(); }
   get focusDevice(): number { return this.x.fm1w_focus_dev(); }

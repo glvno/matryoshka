@@ -6,6 +6,75 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- A patch too big for the FM-1 no longer lets PRESET step through the bank under Live (#200, the EMLYRA bug): Live
+  pauses, the editor keeps telling the FM-1 it is there, and the FM-1 says EDITOR PATCH TOO BIG (and again when PRESET
+  is turned) until the patch fits.
+- On the environment, PRESET or ALGO steps the row's presets, loading them as you turn (#198); REC arms the row.
+- Presets between the editor and the FM-1 (#195): Library > Presets on the FM-1 reads the FM-1's own presets, gets one
+  into this browser or deletes it there, and sends all of yours to it. Under Live, a preset stored on the FM-1 (ENV held
+  + SAVE) comes into your presets by itself. Nothing else syncs. Deleting asks first; a device set to the deleted preset
+  keeps its sound and no longer names it (the FM-1 shows PRESET DELETED: SOUND KEPT).
+- The factory engines' Steps modules are named PATTERN, not after the engine (ENV showed PERUN above PERUN 4).
+- Arming on the FM-1 is a set too (#191): REC on an environment row arms or disarms that device, REC held + a black key
+  adds or removes a track, several at once; only armed devices hear the keys, ARMED shows on their rows. The FM-1 tab
+  and the editor arm the same devices. On the FM-1 a device can be armed when something in it already takes Main's keys
+  by cable (or it is a Steps track): an engine with no cable from Main is not on the FM-1's keys at all.
+- Presets on the FM-1 (#194): SEL on an assembly's page lists its presets (the factory engines' come built in);
+  SELECT, ALGO or PRESET load them as you turn. ENV held + SAVE stores the device's values as a preset: over your
+  preset it was set to, else as a new one named after the preset it was based on with the next number (BRIGHT 2;
+  from a factory patch as it ships, INIT 2). The editor suggests the same name.
+  Preset names are one name in any case: the FM-1's BRIGHT 2 is the editor's Bright 2 (one replaces the other, never a
+  second copy), and a new one from the FM-1 comes into the editor as Bright 2. The FM-1 keeps about 60 of your presets in flash sectors nothing else
+  uses: your 64 patch slots stay as they are, nothing to reset. A patch remembers each device's preset name (patch
+  format 34: patches from this editor need this firmware). On the first start after the update, every slot still
+  holding a factory patch exactly as an earlier version wrote it gets today's version of that patch (FACTORY PATCHES
+  UPDATED); slots you edited and saved stay as they are, and have no presets until you send them from the editor and
+  SAVE: SEL says so (OLD PATCH: SEND + SAVE IT). The fixed buttons (GLO, SEL, ENV) no longer flash "ON" in the bar.
+- The environment on the FM-1 (#197): ENV opens a list of every device in the patch, Main first, each Steps track then
+  what it plays (indented, with a stripe in the track's colour), the Output last, with each device's preset name and
+  what it is doing. SELECT picks the row, K1..K4 turn its first page, SEL opens its pages; ENV or HOME goes back.
+  ENV and SEL are fixed buttons now (their jacks still go high while held; a patch's role for them is dropped), and FX
+  is the SEQ page's accent / rest key in place of ENV.
+- GLO is the FM-1's own quick page (#199): K1..K4 set the MIDI channel, MIDI clock in, MIDI out and the LEDs (saved with
+  SAVE), never the patch's. The patch's tempo and morph are on Main's device page. The SCL button is shown as SEL.
+- Main, the Steps tracks and the Output are devices too (#196): SELECT steps through all of them in the environment's
+  order: Main first, each Steps track followed by what it plays, then the rest, the Output last. A patch still opens on
+  its first instrument. A track's page is LEN RATE SWING GATE, named after the track; SEL or SEQ there opens its steps.
+  The editor's DEVICE picker follows the same order.
+- Presets (#192): store an assembly's card values as a named preset (its menu: Store as a preset…), and every copy of the
+  same assembly, in any patch and under any name, can load it. An assembly with presets shows a fixed-width ‹ name › picker on its header:
+  the arrows step through them, the name opens the list (store over, store as new, rename, delete); a star means a value
+  changed since. Loading is one undo step; the patch remembers the preset's name. Presets are matched by structure
+  (the modules, cables, nesting and which rows are on the card), so changing those makes a new kind with no presets
+  yet. Palette: Export presets as .json / Import presets from .json.
+- Every factory engine comes with presets (#193): Init (as it ships) and variations such as Bright, Dark, Pad, Pluck,
+  Tight, Long and Wet, where the engine has the rows for them. They are read-only: storing over one makes a new one.
+- Arm anything that takes keys, several at once (#190): ARM (a record-style dot, red while armed) is on every engine, Voicing, Drum map and
+  Steps track card, each its own toggle. While anything is armed Main's keys play only the armed devices, cabled or not (a layer: arm two
+  engines); with nothing armed the cables decide. Steps tracks keep playing what they drive. A dashed keys ribbon shows where
+  Main's keys go, and armed cards are edged in red; your own Main keys cables into unarmed devices are dimmed meanwhile. In the editor only for now: the
+  FM-1 still arms one Steps track from its panel.
+- An engine is now what its insides make it (keys → voicing → voices): an assembly whose keys reach a Voicing module or
+  a Drum map, through an Arpeggiator or a Steps track if need be, and that makes audio. Assemblies with a keys input that
+  nothing voices are no longer engines. The Voice assigner is now called **Voicing** (patches load as before).
+  An engine's card is tagged ENG instead of ASM.
+- A new engine and factory patch, **Scrounge**, after the neutral labs Scrooge: five voices played by their control
+  voltage, a curve per hit (its height from the velocity, TILT its rise, GATE its fall) that sets each voice's level, pitch
+  and tone at once (a boomy kick, a starved square for hats and drones, a noise snare, a growl / chirp, a squelchy bass),
+  two unlabelled knobs, a volume and an A-B switch per voice, the MOD X and MOD Y tracks with their slew, a saturating
+  mix, CHOP and MELT. The patch plays a pattern on PLAY; the white keys from F3 play the voices and the modulation tracks.
+- A new engine and factory patch, **Meridian 8**, after the Landscape NOON: eight channels powered by their gates (DOT,
+  DUAL, SYS, PLAST, CYMPATH, CYRINX, LARYNX, BACID), each with two tone sliders and a volume; the power also bends the
+  pitch or the filter, so a short gate starves the sound and a held key drones. LINK lets a channel half-power its
+  neighbour, ODD / EVEN CV hold the odd or even channels up; the odd channels play on the left, the even ones on the
+  right, squashed a little as the passive mix is. The patch plays a pattern on PLAY.
+- A new engine and factory patch, **Perun 4**, after the Erica Synths PERKONS HD-01: four drum voices with the same
+  controls (tune, decay, param 1 and 2, a filter from low pass to high pass, drive, an FX send and a level): a folded
+  kick, a wavetable drum, a snare of body and noise, a hat of noise and a pulse stack; a delay on the sends with an LFO on
+  its time, and a master compressor. Accented steps play louder. The patch plays a pattern on PLAY.
+- A new or factory-reset FM-1 has Scrounge, Meridian 8 and Perun 4 as patches 18, 19 and 20 (the 808 and 909 Kits move
+  to 21 and 22); an FM-1 already in use keeps its bank: send them from the editor.
+
 ## 1.1.0 — 2026-10-22
 
 - Modules are named after the hardware they stand for: Scale is now Attenuverter, Constant Offset, Shaper Waveshaper,

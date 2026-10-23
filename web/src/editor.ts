@@ -5,7 +5,8 @@ import { parseValue } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { isPile, tidy, tidyAssembly } from './tidy';
-import { DEFS, drumRowName, PANEL_BUTTONS } from './modules';
+import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS } from './modules';
+import { FIXED_BUTTONS } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
@@ -60,7 +61,10 @@ import {
   DRUM_ROWS,
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
-import { defIsEngine, wireEngine, wiredText, type Wired } from './engines';
+import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
+import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, stepPreset, storePreset } from './device-presets';
+import { structureOf } from './structure';
+import { armable, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
@@ -159,7 +163,8 @@ export interface EditorEvents {
   onTrack?(id: number, notes: StepNote[] | undefined): void;
   onMute?(id: number, on: boolean): void;
   /** the armed Steps track changed (#134; null: none) and what it plays (poly.ts trackTargets), or its cables changed */
-  onArm?(id: number | null, plays: string[]): void;
+  /** the armed set changed (#190): the armed devices, and what each plays by name (a Steps track: what it drives) */
+  onArm?(armed: DeviceKey[], plays: string[]): void;
   /** REC on the armed track went on or off (#135) */
   onRec?(id: number, on: boolean): void;
   /** a note into a Steps track's instrument, to hear it (the roll's keys and notes, #136; vel 0..127, 0: let go) */
@@ -693,9 +698,11 @@ export class Editor {
 
   rebuild(): void {
     this.cancelArm();
-    if (this.armedTrack !== null) {
-      if (this.patch.modules.some((m) => m.id === this.armedTrack && m.type === 'steps')) this.ev.onArm?.(this.armedTrack, this.trackPlays(this.armedTrack));
-      else this.armTrack(null); // (the track went)
+    this.chips.clear();
+    if (this.armedSet.size) {
+      const kept = keepArmed(this.patch, this.armedSet);
+      if (kept.length !== this.armedSet.size) this.setArmed(kept); // (a device went, or lost its keys input)
+      else this.ev.onArm?.([...this.armedSet], this.armPlays());
     }
     if (this.roll) {
       if (this.patch.modules.some((m) => m.id === this.roll!.id && m.type === 'steps')) queueMicrotask(() => this.roll?.view.render());
@@ -938,9 +945,9 @@ export class Editor {
     btn.type = 'button';
     btn.className = 'panel-btn device';
     btn.dataset.button = b;
-    btn.textContent = b.toUpperCase();
+    btn.textContent = buttonLabel(b);
     btn.disabled = true;
-    btn.title = `${b.toUpperCase()}: the FM-1's own button (not part of the patch)`;
+    btn.title = `${buttonLabel(b)}: the FM-1's own button (not part of the patch)`;
     return btn;
   }
 
@@ -969,7 +976,7 @@ export class Editor {
 
   private card(m: ModuleInst, def: ModuleDef, perVoice: number, open?: AssemblyInst): HTMLElement {
     const el = document.createElement('div');
-    el.className = 'module' + (this.selected.has(m.id) ? ' selected' : '') + (open ? ' member' : '') + (this.picking(open) ? ' picking' : '') + (m.id === this.armedTrack ? ' armed' : '');
+    el.className = 'module' + (this.selected.has(m.id) ? ' selected' : '') + (open ? ' member' : '') + (this.picking(open) ? ' picking' : '') + (this.armedSet.has(`m${m.id}`) ? ' armed' : '');
     el.style.left = `${m.x}px`;
     el.style.top = `${m.y}px`;
     el.dataset.id = String(m.id);
@@ -983,6 +990,7 @@ export class Editor {
     const tools = document.createElement('span');
     tools.className = 'tools';
     if (open) tools.append(this.outButton(open, () => this.takeOutModule(open, m)));
+    if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, moduleName(def.type, def.label)));
     if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def, el));
     const menu = (at: Pt): void => this.contextMenu(m, def, at);
     tools.append(this.moreButton(menu));
@@ -1074,8 +1082,8 @@ export class Editor {
         this.ev.onStructure(this.patch);
       },
       mute: (on) => this.ev.onMute?.(m.id, on),
-      arm: (on) => this.armTrack(on ? m.id : null),
-      armed: () => this.armedTrack === m.id,
+      arm: (on) => this.toggleArm(`m${m.id}`, on),
+      armed: () => this.armedSet.has(`m${m.id}`),
       rec: (on) => {
         if (on) this.armTrack(m.id);
         this.setRec(on && this.armedTrack === m.id);
@@ -1088,20 +1096,72 @@ export class Editor {
     return grid;
   }
 
-  /** the armed Steps track (#134): Main's keys go into it and through to what it plays (Engine.arm). Editor state: one
-   * track at a time, not saved, no undo step; another patch disarms it */
-  armedTrack: number | null = null;
+  /** the armed devices (#190, CONTEXT.md "Arm"; `m<id>` / `a<id>`): Main's keys go to them, cable or not (Engine.arm).
+   * Editor state: independent toggles, not saved, no undo step; another patch disarms them */
+  armedSet = new Set<DeviceKey>();
 
-  armTrack(id: number | null): void {
-    if (id !== null && !this.patch.modules.some((m) => m.id === id && m.type === 'steps')) id = null;
-    if (id === this.armedTrack) return;
-    this.setRec(false);
-    this.armedTrack = id;
-    for (const [k, g] of this.stepGrids) g.armed(k === id);
-    for (const [k, card] of this.cards) card.classList.toggle('armed', k === id);
-    this.ev.onArm?.(id, id === null ? [] : this.trackPlays(id));
+  /** the Steps track REC records into (#134 / #135): the armed Steps track, while exactly one is armed */
+  get armedTrack(): number | null {
+    return this.trackOf(this.armedSet);
+  }
+
+  private trackOf(keys: Iterable<DeviceKey>): number | null {
+    const ids = [...keys].filter((k) => k[0] === 'm').map((k) => Number(k.slice(1))).filter((id) => this.patch.modules.some((m) => m.id === id && m.type === 'steps'));
+    return ids.length === 1 ? ids[0] : null;
+  }
+
+  /** arm exactly these devices (the ones that cannot be armed are left out) */
+  setArmed(keys: Iterable<DeviceKey>): void {
+    const next = keepArmed(this.patch, keys);
+    if (next.length === this.armedSet.size && next.every((k) => this.armedSet.has(k))) return;
+    if (this.trackOf(next) !== this.armedTrack) this.setRec(false);
+    this.armedSet = new Set(next);
+    for (const [k, g] of this.stepGrids) g.armed(this.armedSet.has(`m${k}`));
+    for (const [k, card] of this.cards) card.classList.toggle('armed', this.armedSet.has(`m${k}`));
+    for (const [k, card] of this.containers) card.classList.toggle('armed', this.armedSet.has(`a${k}`));
+    for (const b of this.canvas.querySelectorAll<HTMLButtonElement>('button[data-arm]')) {
+      const on = this.armedSet.has(b.dataset.arm!);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    this.markMuted();
+    this.ev.onArm?.([...this.armedSet], this.armPlays());
     this.positionBindings();
     this.roll?.view.render();
+  }
+
+  /** ARM on one device: on / off, the others as they are */
+  toggleArm(key: DeviceKey, on = !this.armedSet.has(key)): void {
+    const next = new Set(this.armedSet);
+    if (on) next.add(key);
+    else next.delete(key);
+    this.setArmed(next);
+  }
+
+  /** #134's form: arm this Steps track as the one armed track (other armed devices stay), or null: disarm everything */
+  armTrack(id: number | null): void {
+    if (id === null) return this.setArmed([]);
+    if (!this.patch.modules.some((m) => m.id === id && m.type === 'steps')) return;
+    this.setArmed([...[...this.armedSet].filter((k) => this.trackOf([k]) === null), `m${id}`]);
+  }
+
+  /** what the armed devices play, by the names the canvas shows: a Steps track, what it drives; anything else, itself */
+  private armPlays(): string[] {
+    const out: string[] = [];
+    for (const k of this.armedSet) {
+      const id = Number(k.slice(1));
+      const names = k[0] === 'a' ? [assemblyById(this.patch, id)?.label ?? 'assembly']
+        : this.patch.modules.find((m) => m.id === id)?.type === 'steps' ? this.trackPlays(id)
+        : [moduleName(this.patch.modules.find((m) => m.id === id)?.type ?? '', DEFS[this.patch.modules.find((m) => m.id === id)?.type ?? '']?.label ?? '')];
+      for (const n of names) if (!out.includes(n)) out.push(n);
+    }
+    return out;
+  }
+
+  /** Main's keys cables the arm overrides, drawn muted (#190) */
+  private markMuted(): void {
+    const muted = new Set(mutedCables(this.patch, this.armedSet));
+    for (const { path, cable } of this.cablePaths) path.classList.toggle('muted', !!cable && muted.has(cable));
   }
 
   /** REC on the armed track (#135; editor state like the arming): stopped, step entry on its card; running, the engine
@@ -1179,8 +1239,8 @@ export class Editor {
       begin: () => this.beginEdit(),
       len: (n) => this.setParam(id, 'len', n),
       play: (note, vel) => this.ev.onThru?.(id, note, vel),
-      arm: (on) => this.armTrack(on ? id : null),
-      armed: () => this.armedTrack === id,
+      arm: (on) => this.toggleArm(`m${id}`, on),
+      armed: () => this.armedSet.has(`m${id}`),
       rec: (on) => {
         if (on) this.armTrack(id);
         this.setRec(on && this.armedTrack === id);
@@ -1362,12 +1422,15 @@ export class Editor {
     return bar;
   }
 
-  /** the tag before a card's title (VCO, VCF, ENV ...), coloured by the module's family */
-  private tag(type: string | null): HTMLElement {
+  /** the tag before a card's title (VCO, VCF, ENV ...), coloured by the module's family; an assembly's: ENG when it is an
+   * engine (it takes keys into a Voicing or Drum map and makes sound, ADR 0001), else ASM */
+  private tag(type: string | null, a?: AssemblyInst): HTMLElement {
     const t = document.createElement('span');
-    const { tag, family } = type ? moduleTag(type) : { tag: 'ASM', family: 'asm' };
+    const engine = !type && !!a && instIsEngine(this.patch, a);
+    const { tag, family } = type ? moduleTag(type) : { tag: engine ? 'ENG' : 'ASM', family: 'asm' };
     t.className = `mtag ${family}`;
     t.textContent = tag;
+    if (!type) t.title = engine ? 'Engine: an assembly that takes keys and makes sound' : 'Assembly';
     return t;
   }
 
@@ -1628,6 +1691,7 @@ export class Editor {
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? toUnit(pd, v) : null);
       this.ev.onParam(m.id, pd.name, v);
+      this.chipsSoon();
       this.syncDials();
       this.relock(m.id);
     };
@@ -1642,6 +1706,7 @@ export class Editor {
         show(v);
         for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // a toggle can change how its siblings show (altText)
         this.ev.onParam(m.id, pd.name, v);
+        this.chipsSoon();
         this.syncDials();
         this.relock(m.id);
       };
@@ -2158,6 +2223,7 @@ export class Editor {
       } },
       { text: 'Rename', key: 'dbl-click', run: () => this.rename(a) },
       { text: 'Save to library', rule: true, run: () => this.saveAssembly(a) },
+      ...(parentOf(this.patch, a.id) ? [] : this.presetItems(a)),
       { text: 'Ungroup', run: () => this.change(() => ungroup(this.patch, a.id)) },
       { text: 'Delete with its modules', danger: true, rule: true, run: () => this.change(() => deleteAssembly(this.patch, a.id)) },
     ], at);
@@ -2566,15 +2632,16 @@ export class Editor {
     btn.dataset.button = b;
     const panel = m.panel;
     const glo = b === 'glo';
-    const kind = kindOf(panel, b);
-    const name = b.toUpperCase();
+    const fixed = FIXED_BUTTONS.has(b);
+    const kind = fixed ? 'gate' : kindOf(panel, b);
+    const name = buttonLabel(b);
     const top = document.createElement('span');
     top.className = 'pb-face';
-    if (glo) top.append(kindMark('main'));
+    if (fixed) top.append(kindMark('main'));
     else if (kind !== 'nothing') top.append(kindMark(kind));
     const label = document.createElement('span');
     label.className = 'pb-label';
-    label.textContent = glo ? 'GLOBAL' : kind === 'nothing' ? name : panel?.labels?.[b] || name;
+    label.textContent = glo ? 'GLOBAL' : fixed ? name : kind === 'nothing' ? name : panel?.labels?.[b] || name;
     top.append(label);
     const under = document.createElement('span');
     under.className = 'pb-hw';
@@ -2587,8 +2654,8 @@ export class Editor {
     btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
     const engaged = glo ? this.gloOn : kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
     btn.setAttribute('aria-pressed', String(engaged));
-    const does = glo ? 'Main’s global page on the knobs (tempo, morph, the arpeggiator); again: back' : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
-    btn.title = glo ? `GLO: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
+    const does = fixed ? FIXED_DOES[b] : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
+    btn.title = fixed ? `${name}: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
     // touch (#153): the dock scrolls sideways from a button (touch-action: pan-x), so a switch flips when the finger is
     // let go, unless the browser took the touch for a scroll (pointercancel); a held button lets go on the cancel too
     let tap = false;
@@ -2727,7 +2794,7 @@ export class Editor {
       change: (fn) => { this.change(fn); },
       label: (text) => this.setPanelLabel(m, pop.b, text),
       devices: () => this.devices,
-    }, pop.b === 'glo'));
+    }, FIXED_BUTTONS.has(pop.b)));
     if (!pop.el.matches(':popover-open')) pop.el.showPopover();
     positionPopover(pop.el, anchor);
   }
@@ -2744,7 +2811,12 @@ export class Editor {
     if (!m || b === undefined) return;
     const btn = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${b}"]`);
     const kind = kindOf(m.panel, b);
-    if (b === 'glo') {                      // GLO (#118): Main's global page on the dock knobs; again: back
+    if (b !== 'glo' && FIXED_BUTTONS.has(b)) {   // SEL, ENV (#197): the FM-1's own; here only their jacks (high while held)
+      this.ev.onButton?.(i, down);
+      btn?.setAttribute('aria-pressed', String(down));
+      return;
+    }
+    if (b === 'glo') {                      // GLO (#199): the FM-1's own page (no rows here); again: back
       if (down) this.setGlo(!this.gloOn);
       this.ev.onButton?.(i, down);          // (its jack: high while held)
       btn?.setAttribute('aria-pressed', String(this.gloOn));
@@ -3006,7 +3078,96 @@ export class Editor {
     }, 'pw');
     pw.classList.toggle('on', !a.bypass);
     pw.setAttribute('aria-pressed', String(!a.bypass));
-    return [this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
+    const arm = !parentOf(this.patch, a.id) && armable(this.patch, `a${a.id}`) ? [this.armButton(`a${a.id}`, a.label)] : [];
+    return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
+  }
+
+  /** the preset chip on an assembly device that has presets (#192): ‹ name › steps through them (each load one undo
+   * step), the name opens the list; a star after it once a value differs from the preset */
+  private presetChip(a: AssemblyInst): HTMLElement | null {
+    const list = presetsOf(this.patch, a);
+    if (!list.length) return null;
+    const chip = document.createElement('span');
+    chip.className = 'preset-chip';
+    const step = (dir: 1 | -1): void => {
+      const pr = stepPreset(this.patch, a, dir);
+      if (pr) this.loadPreset(a, pr.name);
+    };
+    const name = this.button('', '', () => {
+        const r = name.getBoundingClientRect();
+        const w = this.world.getBoundingClientRect();
+        this.popMenu(this.presetItems(a), { x: (r.left - w.left) / this.zoom, y: (r.bottom - w.top) / this.zoom + 4 });
+      }, 'sm preset-name');
+    const show = (): void => {
+      const edited = !!a.preset && !matchesPreset(this.patch, a);
+      // (the preset's own spelling: the FM-1 names it in capitals)
+      const shown = a.preset && (presetsOf(this.patch, a).find((x) => sameName(x.name, a.preset))?.name ?? a.preset);
+      // (the star outside the cut text: a long name ends in "…" and keeps its star)
+      const text = document.createElement('span');
+      text.textContent = shown || `${list.length} preset${list.length === 1 ? '' : 's'}`;
+      name.replaceChildren(text, ...(edited ? ['*'] : []));
+      name.title = a.preset ? `Preset ${shown}${edited ? ' (edited since)' : ''}: click for the list` : 'Presets of this assembly: click for the list';
+    };
+    show();
+    this.chips.set(a.id, show);
+    chip.append(this.button('‹', 'Previous preset', () => step(-1), 'sm preset-step'), name, this.button('›', 'Next preset', () => step(1), 'sm preset-step'));
+    return chip;
+  }
+
+  /** the preset chips drawn, by assembly: redraw their names (the star once a value differs) */
+  private chips = new Map<number, () => void>();
+  private chipsQueued = false;
+  private chipsSoon(): void {
+    if (this.chipsQueued || !this.chips.size) return;
+    this.chipsQueued = true;
+    requestAnimationFrame(() => {
+      this.chipsQueued = false;
+      for (const show of this.chips.values()) show();
+    });
+  }
+
+  /** load a preset by name into an assembly: one undo step */
+  private loadPreset(a: AssemblyInst, name: string): void {
+    const pr = presetsOf(this.patch, a).find((x) => sameName(x.name, name));
+    if (!pr) return;
+    if (this.change(() => applyPreset(this.patch, a, pr))) this.ev.onError(`${a.label}: preset "${pr.name}"`);
+  }
+
+  /** the presets menu of an assembly device: load one, store, rename, delete */
+  private presetItems(a: AssemblyInst): MenuItem[] {
+    const list = presetsOf(this.patch, a);
+    const cur = list.find((x) => sameName(x.name, a.preset));
+    const items: MenuItem[] = list.map((pr) => ({ text: `${sameName(pr.name, a.preset) ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr.name) }));
+    items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store as a preset…', rule: !!list.length, run: () => {
+      const n = cur && !cur.factory ? cur.name : window.prompt('Store the card’s values as the preset', nextPresetName(this.patch, a))?.trim();
+      if (!n) return;
+      this.change(() => storePreset(this.patch, a, n));
+    } });
+    if (cur && !cur.factory) {
+      items.push({ text: 'Store as a new preset…', run: () => {
+        const n = window.prompt('Store the card’s values as the new preset', nextPresetName(this.patch, a))?.trim();
+        if (n) this.change(() => storePreset(this.patch, a, n));
+      } });
+      items.push({ text: 'Rename preset…', run: () => {
+        const n = window.prompt('Rename the preset', cur.name)?.trim();
+        if (n && n !== cur.name && renamePreset(structureOf(this.patch, a), cur.name, n)) this.change(() => (a.preset = n));
+      } });
+      items.push({ text: `Delete preset "${cur.name}"`, danger: true, run: () => {
+        if (deletePreset(structureOf(this.patch, a), cur.name)) this.change(() => delete a.preset);
+      } });
+    }
+    return items;
+  }
+
+  /** ARM on a device with a keys input (#190): an independent toggle; armed, Main's keys play it (and every other armed
+   * device), cable or not */
+  private armButton(key: DeviceKey, name: string): HTMLButtonElement {
+    const b = this.button('', `ARM: Main’s keys play ${name} (with any other armed device), cable or not; again to disarm`, () => this.toggleArm(key), 'sm arm-btn arm-dot');
+    b.setAttribute('aria-label', `Arm ${name}`);
+    b.dataset.arm = key;
+    b.classList.toggle('on', this.armedSet.has(key));
+    b.setAttribute('aria-pressed', String(this.armedSet.has(key)));
+    return b;
   }
 
   /** ▸ / ▾ before an assembly's title: expand or collapse */
@@ -3022,8 +3183,8 @@ export class Editor {
   /** the Poly switch: the modules inside run once per part, with their own allocator (poly.ts setPoly) */
   private polyButton(a: AssemblyInst): HTMLButtonElement {
     const b = this.button('poly', a.poly
-      ? 'Poly is on: these are voice cards, one copy per voice of the Voice assigner that feeds them. Click to turn it off (one copy, played by Main).'
-      : 'Make it a rack of voice cards: a Voice assigner is put beside it (Main\'s keys in, its pitch / gate / velocity into the cards), and the modules inside run once per voice.',
+      ? 'Poly is on: these are voice cards, one copy per voice of the Voicing that feeds them. Click to turn it off (one copy, played by Main).'
+      : 'Make it a rack of voice cards: a Voicing module is put beside it (Main\'s keys in, its pitch / gate / velocity into the cards), and the modules inside run once per voice.',
     () => this.change(() => setPoly(this.patch, DEFS, a, !a.poly)), 'sm poly-btn');
     b.setAttribute('aria-pressed', String(!!a.poly));
     b.dataset.asm = String(a.id);
@@ -3057,7 +3218,7 @@ export class Editor {
     const open = arranging ? undefined : parent;
     const ncols = paramColumns(a.params).length;
     const el = document.createElement('div');
-    el.className = 'module assembly' + (a.poly ? ' poly' : '') + (parent ? ' member' : '') + (a.bypass ? ' off' : '') + (this.picking(open) ? ' picking' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '') + (arranging ? ' arranging' : '') + (ncols > 1 ? ' cols' : '');
+    el.className = 'module assembly' + (this.armedSet.has(`a${a.id}`) ? ' armed' : '') + (a.poly ? ' poly' : '') + (parent ? ' member' : '') + (a.bypass ? ' off' : '') + (this.picking(open) ? ' picking' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '') + (arranging ? ' arranging' : '') + (ncols > 1 ? ' cols' : '');
     if (ncols > 1) el.style.setProperty('--cols', String(ncols));
     el.style.left = `${a.x}px`;
     el.style.top = `${a.y}px`;
@@ -3075,8 +3236,9 @@ export class Editor {
     if (parent) tools.append(this.outButton(parent, () => this.takeOutAssembly(parent, a)));
     tools.append(...this.assemblyButtons(a));
     const title = this.titleOf(a, perVoice);
-    title.prepend(this.tag(null));
-    head.append(this.chevron(a), title, tools);
+    title.prepend(this.tag(null, a));
+    const chip = parent ? null : this.presetChip(a);
+    head.append(this.chevron(a), title, ...(chip ? [chip] : []), tools);
     this.headMenu(head, (at) => this.assemblyMenu(a, at));
     this.assemblyDrag(el, head, a);
 
@@ -3341,8 +3503,9 @@ export class Editor {
     tools.append(this.pickButton(a), ...this.assemblyButtons(a));
     el.classList.toggle('picking', this.picking(a));
     const title = this.titleOf(a, perVoice);
-    title.prepend(this.tag(null));
-    head.append(this.chevron(a), title, tools);
+    title.prepend(this.tag(null, a));
+    const chip = parentOf(this.patch, a.id) ? null : this.presetChip(a);   // (expanded too: the same ‹ name › as its card)
+    head.append(this.chevron(a), title, ...(chip ? [chip] : []), tools);
     this.headMenu(head, (at) => this.assemblyMenu(a, at));
     el.append(head);
     this.frames.set(a.id, el);
@@ -3813,15 +3976,12 @@ export class Editor {
   private focusedDevice(): Device | undefined { return this.gloOn ? this.gloDevice() : this.devices.find((d) => d.key === this.focus?.device); }
   private focusedPage(): Page | undefined { return this.gloOn ? this.gloDevice().pages[0] : this.focusedDevice()?.pages[this.focus!.page]; }
 
-  // ---- GLO (#118): Main's global page on the knobs, as on the FM-1 (pages_ui.c glo_page): K1 tempo, K2 morph, K3 / K4 the
-  // first Arpeggiator's rate and gate. Not one of the devices: the pickers leave it, the focus stays where it was.
+  // ---- GLO (#199): the FM-1's own quick page (pages_ui.c glo_page: MIDI channel, clock in, MIDI out, LEDs), never the
+  // patch's: the editor has no rows for it (the patch's tempo and morph are on Main's device page, #196). Not one of the
+  // devices: the pickers leave it, the focus stays where it was.
   private gloOn = false;
   private gloDevice(): Device {
-    const main = this.patch.modules.find((m) => m.type === 'fm1');
-    const arp = this.patch.modules.find((m) => m.type === 'arp');
-    const rows: PageRow[] = main ? [{ module: main.id, param: 'tempo', label: 'Tempo' }, { module: main.id, param: 'morph', label: 'Morph' }] : [];
-    if (main && arp) rows.push({ module: arp.id, param: 'rate', label: 'Arp rate' }, { module: arp.id, param: 'gate', label: 'Arp gate' });
-    return { key: '$glo', name: 'Global', pages: [{ name: 'Global', part: 0, parts: 1, rows }] };
+    return { key: '$glo', name: 'Global (the FM-1’s own)', pages: [{ name: 'Global', part: 0, parts: 1, rows: [] }] };
   }
 
   /** GLO's page on (or off: back to the focus it left) */
@@ -4066,32 +4226,43 @@ export class Editor {
       path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x} ${b.y + lift} ${b.x} ${b.y}`);
       paths.push(path);
     });
-    const snap = this.armRoute(view);
-    if (snap) paths.push(snap);
+    paths.push(...this.armRoutes(view));
     layer.replaceChildren(...paths);
     // (the open roll covers them: the lines from the dock to the cards above it pass under it, the #136 follow-up)
     layer.style.clipPath = roll ? `path(evenodd, "M0 0H${innerWidth}V${innerHeight}H0Z M${roll.left} ${roll.top}H${roll.right}V${roll.bottom}H${roll.left}Z")` : '';
   }
 
-  /** the armed track's routing (#134): Main's keys into its keys in (on its card, else its grid, a collapsed assembly's card),
-   * dashed in the armed colour; not a cable (not saved, no undo, no click). None when either end is out of view */
-  private armRoute(view: DOMRect): SVGPathElement | null {
-    const id = this.armedTrack;
+  /** the armed devices' routing (#134, #190): Main's keys into each one's keys input (on its card, else a Steps track's grid,
+   * else its card), drawn as a keys ribbon cut into dashes (the ribbon, its core, its middle wire): virtual cables (not
+   * saved, no undo, no click). One is left out while either end is out of view */
+  private armRoutes(view: DOMRect): SVGPathElement[] {
     const main = this.patch.modules.find((m) => m.type === 'fm1');
-    if (id === null || !main || this.canvas.offsetParent === null) return null;
+    if (!this.armedSet.size || !main || this.canvas.offsetParent === null) return [];
     const from = this.ports.get(this.key(main.id, 'keys', 'out'));
-    const jack = this.inputJack({ module: id, port: 'keys' });
-    const to = [jack, this.stepGrids.get(id)?.el].find((e) => e?.isConnected && e.offsetParent !== null);
-    if (!from?.isConnected || !to) return null;
-    const f = from.getBoundingClientRect(), t = to.getBoundingClientRect();
+    if (!from?.isConnected) return [];
+    const f = from.getBoundingClientRect();
     const a = { x: f.left + f.width / 2, y: f.top + f.height / 2 };
-    const b = to === jack ? { x: t.left + t.width / 2, y: t.top + t.height / 2 } : { x: t.left, y: t.top + Math.min(12, t.height / 2) };
-    if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) return null;
-    const lift = Math.max(40, (a.y - b.y) * 0.45);
-    const path = document.createElementNS(SVGNS, 'path');
-    path.setAttribute('class', 'bind arm');
-    path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x - lift * 0.6} ${b.y} ${b.x} ${b.y}`);
-    return path;
+    const out: SVGPathElement[] = [];
+    for (const k of this.armedSet) {
+      const id = Number(k.slice(1));
+      const t0 = keysTargets(this.patch, k)[0];
+      const jack = t0 && this.inputJack(t0);
+      const card = k[0] === 'a' ? this.containers.get(id) : this.stepGrids.get(id)?.el ?? this.cards.get(id);
+      const to = [jack, card].find((e) => e?.isConnected && e.offsetParent !== null);
+      if (!to) continue;
+      const t = to.getBoundingClientRect();
+      const b = to === jack ? { x: t.left + t.width / 2, y: t.top + t.height / 2 } : { x: t.left, y: t.top + Math.min(12, t.height / 2) };
+      if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) continue;
+      const lift = Math.max(40, (a.y - b.y) * 0.45);
+      const d = `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x - lift * 0.6} ${b.y} ${b.x} ${b.y}`;
+      for (const part of ['arm', 'arm-core', 'arm-wire']) {
+        const path = document.createElementNS(SVGNS, 'path');
+        path.setAttribute('class', `bind ${part}`);
+        path.setAttribute('d', d);
+        out.push(path);
+      }
+    }
+    return out;
   }
 
   positionSideCables(): void {
@@ -4430,6 +4601,7 @@ export class Editor {
         for (const { jack, pd } of thumbs) add(a, jack, kind, () => this.change(() => removeRoute(this.patch, c, pd.name)), `Disconnect from ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}`, false, c);
     }
     this.positionCables();
+    this.markMuted();
   }
 
   /** set a parameter from outside the cards (the deck's knobs): as a slider would, the card follows on its next refresh */
@@ -4439,6 +4611,7 @@ export class Editor {
     this.touch();
     m.params[name] = v;
     this.ev.onParam(id, name, v);
+    this.chipsSoon();
     this.syncDials();
     for (const d of this.parameterDisplays) if (d.id === id) d.update(null);
     this.relock(id);

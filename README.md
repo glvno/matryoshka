@@ -79,17 +79,18 @@ Two ways, the same update protocol (Felucca's, over USB MIDI):
 
 **Recovery:** the FM-1 has one firmware slot and no rollback. If an install is cut off, the FM-1 waits in its update loader: run the same install again (Install for Matryoshka, Return to official V15 for a return to stock) and it finishes the write. The bundled official V15 always brings the stock firmware back.
 
-**Tested on a real FM-1** (with `tools/fm1_install.py`):
+**Tested on a real FM-1** (with the Flash tab and with `tools/fm1_install.py`):
 
 - installing Matryoshka over the official V15, and over Matryoshka;
 - update mode by OCT- + OCT+ at power-on and by MENU > SYSTEM > UPDATE MODE, and an install from there;
 - returning to the official V15 from Matryoshka, then installing Matryoshka again; the official firmware boots, plays and saves;
 - a write cut off from the computer (at 30 %): the FM-1 waits in its update loader, and running the install again finishes it;
-- safe mode (SAVE held at power-on) and the boot guard.
+- safe mode (SAVE held at power-on) and the boot guard;
+- FACTORY RESET: the bank erased and the factory patches written again.
 
 Partly tested: a power cut as the update loader started, and one halfway through a write of the same build; both booted.
 
-**Not tested:** the Flash tab against a real FM-1; a power cut while the firmware is half old and half new; installing over Felucca, Sloop or M-VAVE Open; FACTORY RESET.
+**Not tested:** a power cut while the firmware is half old and half new; installing over Felucca, Sloop or M-VAVE Open.
 
 ## Support
 

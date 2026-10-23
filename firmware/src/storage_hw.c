@@ -38,9 +38,26 @@ static int st_erase(uint32_t off)
     irq_restore(f);                             /* flash of the whole panel. Dark rows: the panel just drops out; the tick lights */
     return rc;                                  /* the rows again at its next pass */
 }
+/* fl_write reads its source with XIP off: a source in the flash (.rodata: a factory patch, presetstore's zero word) hangs
+ * the CPU on a cache miss (a preset delete froze the FM-1), so every write goes through a RAM copy, a page at a time */
 static int st_prog(uint32_t off, const void *src, uint32_t n)
 {
+    static uint8_t bounce[256];
+    const uint8_t *s = src;
     if (!FL_STORE_OK(off, n))                   /* only inside the storage areas */
         return -8;
-    return fl_write(off, src, n);
+    while (n) {
+        uint32_t k = 256u - (off & 0xFFu), i;
+        int rc;
+        if (k > n)
+            k = n;
+        for (i = 0; i < k; i++)
+            bounce[i] = s[i];
+        if ((rc = fl_write(off, bounce, k)))
+            return rc;
+        off += k;
+        s += k;
+        n -= k;
+    }
+    return 0;
 }

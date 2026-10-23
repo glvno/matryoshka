@@ -5,11 +5,18 @@ import { addModule, connect, type Patch } from './patch';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
 import { engineBytes } from './test-bin';
-import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, FLAG_DEVICES, FLAG_NAMES, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
+import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_NAMES, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
 import { PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
 import { subtractiveSaw, wobble } from './test-patches';
+import { structureOf } from './structure';
+import { allModules } from './assembly';
+/** how many device-form modules a device is made of (the extras' member list) */
+const extrasMembers = (src: Patch, dev: Patch, d: { asm?: number; module?: number }): number => {
+  const ids = new Set(dev.modules.map((m) => m.id));
+  return (d.asm !== undefined ? allModules(src, src.assemblies!.find((x) => x.id === d.asm)!) : [d.module!]).filter((id) => ids.has(id)).length;
+};
 
 describe('binary patch format', () => {
   it('the assembly overlay of the factory patches reaches the binary only as the device pages', () => {
@@ -102,7 +109,38 @@ describe('binary patch format', () => {
       expect(text()).toBe('res');
     }
     expect(devs.some((d) => d.asm === a.id)).toBe(true);
+    // the device extras (format 34, flag bit 8): per device its track, structure and preset name
+    expect(b[7] & (FLAG_EXTRAS >> 8)).toBe(1);
+    expect(b[at++]).toBe(devs.length);
+    a.preset = 'Warm';
+    for (const d of devs) {
+      expect(b[at], d.name).toBe(0xff); // no Steps track drives anything here
+      const h = new DataView(b.buffer).getUint32(at + 1, true);
+      expect(h).toBe(d.asm === undefined ? 0 : parseInt(structureOf(p, a), 16) >>> 0);
+      at += 5;
+      expect(text()).toBe('');
+      const n = b[at++];
+      expect(n).toBe(d.asm === undefined ? 0 : a.params.length); // the card rows in canonical order
+      at += 2 * n;
+      const m = b[at++];
+      expect(m).toBe(d.asm === undefined ? 1 : 2); // the modules it is made of
+      at += m;
+    }
     expect(at).toBe(b.length);
+    const named = encodePatch(p); // the remembered preset name goes along
+    expect(new TextDecoder().decode(named)).toContain('Warm');
+  });
+
+  it('the device extras say which Steps track drives a device (format 34)', () => {
+    const p = PRESETS['808 Kit']();
+    const devs = devicesOf(p, DEFS);
+    const rec = extrasRecord(devs, p);
+    const track = devs.findIndex((d) => d.kind === 'steps');
+    const map = devs.findIndex((d) => d.module !== undefined && p.modules.find((m) => m.id === d.module)?.type === 'drummap');
+    expect(track).toBeGreaterThanOrEqual(0);
+    const entry = (i: number): number => { let at = 1; for (let k = 0; k < i; k++) { at += 6 + rec[at + 5]; at += 1 + 2 * rec[at]; at += 1 + rec[at]; } return at; };
+    expect(rec[entry(map)]).toBe(track);
+    expect(rec[entry(track)]).toBe(0xff);
   });
 
   it('carries the Drum maps\' row names for the FM-1 (format 33, flag bit 7): their own, else the defaults', () => {
@@ -110,7 +148,7 @@ describe('binary patch format', () => {
     const map = p.modules.find((m) => m.type === 'drummap')!;
     map.names = ['boom'];
     const b = encodePatch(p);
-    expect(b[1]).toBe(33);
+    expect(b[1]).toBe(34);
     expect(b[6] & FLAG_NAMES).toBe(FLAG_NAMES);
     const text = new TextDecoder().decode(b);
     expect(text).toContain('BOOM\0\0\0\0SNARE\0\0\0CLAP');
@@ -141,7 +179,8 @@ describe('binary patch format', () => {
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
       const devs = deviceSection(make(), p);
       const txt = (t: string): number => 1 + deviceText(t).length;
-      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label), 0), 0)), 0) : 0;
+      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label), 0), 0)), 0)
+        + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
       const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length

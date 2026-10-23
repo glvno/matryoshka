@@ -49,6 +49,59 @@ static void lcd_sync(void) {}
 
 #include "../src/engine.c"
 #include "../src/presets.h"
+/* the preset store (presetstore.c, #194) over 7 sectors of RAM flash (all 0xFF until host_ps_init) */
+static uint8_t host_ps_flash[7u * 0x1000u];
+static void fm1_wdt_feed(void) {}
+static int host_ps_in(uint32_t off, uint32_t n) { return off >= 0x99000u && off + n <= 0x99000u + sizeof host_ps_flash; }
+static int st_read(uint32_t off, void *dst, uint32_t n)
+{
+    uint32_t i;
+    if (!host_ps_in(off, n))
+        return -8;
+    for (i = 0; i < n; i++)
+        ((uint8_t *)dst)[i] = host_ps_flash[off - 0x99000u + i];
+    return 0;
+}
+static int st_erase(uint32_t off)
+{
+    uint32_t i;
+    if (!host_ps_in(off, 0x1000u))
+        return -8;
+    for (i = 0; i < 0x1000u; i++)
+        host_ps_flash[off - 0x99000u + i] = 0xFFu;
+    return 0;
+}
+static int st_prog(uint32_t off, const void *src, uint32_t n)
+{
+    uint32_t i;
+    if (!host_ps_in(off, n))
+        return -8;
+    for (i = 0; i < n; i++)
+        host_ps_flash[off - 0x99000u + i] &= ((const uint8_t *)src)[i];
+    return 0;
+}
+static uint16_t m1_crc16(const uint8_t *p, uint32_t n)
+{
+    uint16_t c = 0xFFFFu;
+    while (n--) {
+        uint32_t b;
+        c ^= (uint16_t)(*p++ << 8);
+        for (b = 0; b < 8u; b++)
+            c = (uint16_t)(c & 0x8000u ? (c << 1) ^ 0x1021u : c << 1);
+    }
+    return c;
+}
+#include "../src/presetstore.c"
+static void host_ps_init(void)
+{
+    uint32_t i;
+    for (i = 0; i < sizeof host_ps_flash; i++)
+        host_ps_flash[i] = 0xFFu;
+    ps_scan();
+}
+static int m1_preset_name(uint32_t dev, const char *name) { (void)dev; (void)name; m1_edited = 1; return 0; }   /* (the preview keeps no patch) */
+static uint32_t host_preset_stored;         /* presets stored on the panel (#194) */
+static void m1_preset_stored(uint32_t structure, const char *name) { (void)structure; (void)name; host_preset_stored++; }
 #include "../src/font5x7.c"
 #include "../src/font_bc.c"
 static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
@@ -120,7 +173,7 @@ static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_n
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */
 static void m1_track_now(uint32_t mod) { (void)mod; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
-static void m1_arm_now(int mod) { (void)mod; }
+static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
 #endif
 #include "../src/seq_ui.c"
 static uint16_t lcd_fillbuf[240];          /* lcd.c's, the splash's row buffer */
