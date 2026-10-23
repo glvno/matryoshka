@@ -11,7 +11,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 - Aftermarket firmwares: Felucca (`hugelton/Felucca`, GPL-3.0, reference source at `a4d7ca2e`, in `~/.jieli/felucca`; the only documentation of the hardware), Sloop (`isod89/sloop-fm1`). M-VAVE's `m-vave/fm1_open` (Apache-2.0) gave the stock V15 and the I2S rate.
 - The device is a **patch player** (#57): top-level modules / assemblies are devices paged by SELECT / ALGO, K1..K4 edit the focused page (docs/ARCHITECTURE.md "Device pages").
 - Factory patches are our own (`web/scripts/gen-presets.ts` from the factory assemblies), not upstream's.
-- Wording: in user-visible text a stored sound is a "patch" (only the PRESET knob keeps its name); in the web app "voices" = polyphony.
+- Wording: in user-visible text a stored sound is a "patch" (the PRESET knob steps patches); a "preset" is one assembly device's stored card values (#192); in the web app "voices" = polyphony. Terms: `CONTEXT.md` (glossary), `docs/adr/`.
 - The user works on macOS only: Linux / NixOS notes in docs/NOTES.md are stale. The JieLi firmware build runs in CI (`.github/workflows/firmware.yml`).
 
 ## Not verified — do not claim otherwise

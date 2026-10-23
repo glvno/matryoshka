@@ -1601,3 +1601,38 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
   no NaN, the output reaches 1.
 - **Checked:** vitest 70 files / 855 tests, `npm run cpu-costs`, `export-defs`, tools/panel_test.sh, tools/ui_preview.sh 19.
   **Not checked:** the editor in a browser, golden (no engine change), emu:smoke, the device.
+
+## 2026-10-23: engines, presets, the environment, arming as a set (PRD #188, slices #189..#200)
+
+From the 2026-10-22 grill and domain model (CONTEXT.md, docs/adr/0001, canvas https://claude.ai/artifact/Jh7rjraMnL97pEwVwySyLS),
+done overnight while the owner slept, on branch `engines-presets` (merged with `factory-engines` as `engines-presets-all`).
+Design detail per slice is in docs/ARCHITECTURE.md (search the issue numbers).
+
+- **#189** engines derived (keys reach a Voicing / Drum map, audio out); the Voice assigner is labelled Voicing.
+- **#190** arm is a set in the editor (`arm.ts armView`: the engine plays a transform of the patch; virtual cables, muted
+  Main cables). The first push failed golden `steps-arm`: arming reloaded the engine from the patch it was given and lost a
+  recorded take; fixed with `Engine.liveSource`.
+- **#192 / #193** presets in the editor (structure fingerprint by label refinement, the library, the ‹ name › chip) and
+  rule-made factory presets for every factory engine.
+- **#196** Main, Steps tracks and the Output are devices in the grouped order; `homeDevice` keeps a fresh patch on its
+  first instrument; the panel test was re-indexed (the 808 Kit's devices: Main, DRUMS, Drum map, boom kick, snare ...).
+- **#199** GLO = the FM-1's own settings (MIDI channel, clock in, MIDI out, LEDs); level and speaker mute not done (no known
+  setting or hardware control; commented on the issue). SCL is shown as SEL.
+- **Format 34** (device extras: driving track, structure, preset name, card rows in canonical order, member modules).
+- **#197** the environment page (`PAGE_ENV`), ENV and SEL fixed, FX the SEQ page's accent key.
+- **#194** the preset store (presetstore.c, 0x99000..0x9FFFF; host test tools/preset_test.sh), ROM factory presets,
+  SEL's preset list, ENV held + SAVE. The first firmware build failed on a name clash (`preset_load` is main.c's slot
+  loader): the device preset helpers are `dp_*`. emu:smoke then failed one check (READY late at 1.2 s): the boot scan
+  read every slot whole; it now reads headers only.
+- **#191** arm set on the FM-1 (`eng_arm_mask`, golden kit `arm-set`), REC on an environment row, the FM-1 tab mirrors it.
+  Limitation: an engine with no keys cable has no group in the binary, so the FM-1 cannot arm it.
+- **#195** preset transfer (PRESETS / GET / PUT / DEL / STORED, feature bit 7), Library > Presets on the FM-1.
+- **#198** PRESET / ALGO step an environment row's presets.
+- **#200** the EMLYRA bug: LIVE carries a paused byte while the editor's patch is over budget; the FM-1 holds PRESET and
+  says EDITOR PATCH TOO BIG.
+- **Checks:** vitest, golden, panel_test, preset_test, proto_test, the wasm UI test and the firmware workflow (JieLi build,
+  pool headroom) after each slice; a local syntax check of the whole firmware that catches clashes before CI:
+  `clang -target i686-unknown-linux-gnu -ffreestanding -fsyntax-only -Wall -Wno-unused-function -I firmware/hal -I firmware/src -I firmware firmware/src/modular.c`.
+  **Not checked:** anything on a device (the preset store's kill-by-zeroing on the FM-1's flash in particular), the USB
+  link's preset transfer against a real FM-1.
+
