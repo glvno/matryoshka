@@ -33,4 +33,4 @@ Matryoshka installs over USB MIDI with Felucca's update protocol, from the edito
 
 - Whether the app can return a device with M-VAVE Official Open (a flash head that is not V15's) to stock — issue #71
 - Why Return to official V15 stops after 4 reads (update failed -5) on an FM-1 first flashed over non-stock firmware — issue #183
-- An `FM-1_800` identity reads as Matryoshka in the Flash view (`web/src/felucca-store.ts`) but as M-VAVE for the panel profile (`web/src/fm1-profiles.ts`) — to be filed as an issue; raised in PR #TBD
+- An `FM-1_800` identity reads as Matryoshka in the Flash view (`web/src/felucca-store.ts`) but as M-VAVE for the panel profile (`web/src/fm1-profiles.ts`) — to be filed as an issue; raised in PR #205

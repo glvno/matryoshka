@@ -27,6 +27,6 @@ The web editor and the FM-1 firmware are released together under one version, ta
 
 ## Not yet settled
 
-- `firmware.yml` must run on every pull request and pass at once when no firmware path changed before `firmware` and `ledger-check` can be required checks on `main` (branch protection waits for michael glaviano) — to be filed as an issue; raised in PR #TBD
-- The identity `FM-1_7XY` has one digit each for major and minor, so 1.10 or 10.0 cannot be expressed — to be filed as an issue; raised in PR #TBD
-- Whether a release may ship without a device check of its exact bytes when only the version and identity differ (done once for 1.1.0) — to be filed as an issue; raised in PR #TBD
+- `firmware.yml` must run on every pull request and pass at once when no firmware path changed before `firmware` and `ledger-check` can be required checks on `main` (branch protection waits for michael glaviano) — to be filed as an issue; raised in PR #205
+- The identity `FM-1_7XY` has one digit each for major and minor, so 1.10 or 10.0 cannot be expressed — to be filed as an issue; raised in PR #205
+- Whether a release may ship without a device check of its exact bytes when only the version and identity differ (done once for 1.1.0) — to be filed as an issue; raised in PR #205

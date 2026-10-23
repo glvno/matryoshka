@@ -54,4 +54,4 @@ The web editor is a canvas of cards: Main lives in the **Main dock** under it, a
 - When the A/B snapshot flip comes back, and how the engine and the FM-1 are kept in step with it — issue #103
 - Phones after 1.0: dialogs at 390 px, landscape, room for the canvas, where status messages go — issue #162
 - Multi-select and group drags on an assembly card when choosing and arranging — issue #186
-- Deleting or replacing an assembly in the library still asks with a browser dialog (`web/src/assemblies.ts`) — to be filed as an issue; raised in PR #TBD
+- Deleting or replacing an assembly in the library still asks with a browser dialog (`web/src/assemblies.ts`) — to be filed as an issue; raised in PR #205
