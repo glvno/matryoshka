@@ -5,7 +5,8 @@
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
 //! 3. pages: GLO (Main's global page, again: back), PLAY (the transport shows PLAY / STOP), HOME (nothing to go back
-//!    to: the page stays), HOME held (the menu), HOME again (back out of it)
+//!    to: the page stays), SELECT / ALGO (their red / blue card while they turn, the page once they stop), HOME held
+//!    (the menu), HOME again (back out of it)
 //! 4. PRESET encoder: forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
@@ -44,6 +45,10 @@ const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
 const SELECT: u8 = 0; // encoder
 const K1: u8 = 2;
+
+/// SELECT's device card and ALGO's page card (pages_ui.c P_CARD_DEV / P_CARD_PAGE, RGB565)
+const CARD_DEV: u16 = 0xB186;
+const CARD_PAGE: u16 = 0x4B52;
 
 /// Below this the output counts as silent, above `LOUD` as sounding (16-bit samples).
 const QUIET: i32 = 64;
@@ -563,6 +568,16 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     ] {
         m.tap(key, 120, 400)?;
         t.screen(&m, what, text);
+    }
+    // SELECT / ALGO (#221): their card alone while they turn, the device page again 400 ms after the last click
+    for (enc, name, colour) in [(SELECT, "SELECT", CARD_DEV), (ALGO, "ALGO", CARD_PAGE)] {
+        m.turn(enc, 1, 150)?;
+        let px = m.lcd()[4 * 240 + 4];
+        let card = px == colour && !font::on_screen(m.lcd(), DEVICE_PAGE);
+        t.snap(&m, &format!("{name}-card"));
+        t.check(&format!("{name}: its card, not the page"), card, format!("pixel {px:#06x} at {} ms", m.ms()));
+        m.turn(enc, -1, 700)?;
+        t.screen(&m, &format!("{name} stopped: the device page"), DEVICE_PAGE);
     }
     m.key(PLAY, true);                        // PLAY held + PRESET: the tempo; the release then does not start the transport
     m.run_for(200)?;

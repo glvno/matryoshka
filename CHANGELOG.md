@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- On the FM-1, turning SELECT or ALGO shows a quick card instead of redrawing the whole page on every click: the
+  device's name on red (SELECT), the page's name on blue (ALGO). The page comes back about 0.4 s after you stop, or at
+  once when you turn K1..K4 (#221).
 - The tutorial has no Riff button any more: Note (a held C4) is its playback, and the intro's preview holds it too.
 - The FM-1's SEQ page hints name FX, the key that really sets accents and rests (they said ENV).
 - Factory patches: Simple FM's modulator now gets pitch and gate from the keys, and the 808 Kit's kick, snare, clap and

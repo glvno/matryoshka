@@ -207,22 +207,58 @@ int main(void)
         check("the LCD: the tab in focus is ivory, K1's bar shows its hue", ink > 10u && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
     }
 
-    enc(0, 1);                                              /* SELECT: the boom kick, and back to the Drum map */
-    check("SELECT: the next device, the editor told", pg_cur_dev == 3 && pg_cur_page == 0 && focus_dev == 3 && focus_pg == 0);
-    enc(0, -1);
-    check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2);
-    check("SELECT: the device's name over the bars", px(12, ROWS_Y + 15) == P_NIGHT);
-    fb_watch_reset();
-    ui_dirty = 1;                                           /* a redraw while it shows (the beat's, a Live edit) */
-    later(100);
-    check("SELECT: a redraw under the device's name does not blink it", fb_blinked() == 0 && px(12, ROWS_Y + 15) == P_NIGHT);
-    later(1000);
-    check("the device toast ends: the bars come back", px(12, ROWS_Y + 15) == KNOB_HUE[0]);
-
-    memcpy(before, fb, sizeof before);
-    enc(1, 1);                                              /* ALGO */
-    check("ALGO: the device's next page", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1);
-    check("ALGO: the chips and bars are redrawn", memcmp(before, fb, sizeof before) != 0);
+    {   /* #221: while SELECT / ALGO turn, a card alone (red / blue), the page once they stop; lcd_px: the pixels sent */
+        uint32_t page_px, card1_px, card2_px, card3_px, settle_px;
+        lcd_px = lcd_xfers = 0;
+        ui_dirty = 2;                                       /* (today's cost of a click: the whole page) */
+        loop();
+        page_px = lcd_px;
+        lcd_px = lcd_xfers = 0;
+        enc(0, 1);                                          /* SELECT: the boom kick, and back to the Drum map */
+        card1_px = lcd_px;
+        check("SELECT: the next device, the editor told", pg_cur_dev == 3 && pg_cur_page == 0 && focus_dev == 3 && focus_pg == 0);
+        check("SELECT: the device card, red, from the top bar down", px(4, 4) == P_CARD_DEV && px(12, ROWS_Y + 15) == P_CARD_DEV
+              && px(4, 236) == P_CARD_DEV);
+        snap_to(getenv("PANEL_SNAP_DEVCARD"));
+        fb_watch_reset();
+        lcd_px = 0;
+        later(100);
+        enc(0, -1);
+        card2_px = lcd_px;
+        check("SELECT back: the device before, in place (no fill, no blink)", pg_cur_dev == 2 && focus_dev == 2
+              && fb_blinked() == 0 && fb_changed_in(0, 0, 240, CARD_Y0) == 0 && fb_changed_in(0, CARD_Y1, 240, CARD_Y1 + FONT_L.h) > 0);
+        fb_watch_reset();
+        ui_dirty = 1;                                       /* a redraw while it shows (the beat's, a Live edit) */
+        later(100);
+        check("SELECT: a redraw under the card leaves it be", fb_blinked() == 0 && fb_changed_in(0, 0, 240, 240) == 0);
+        later(200);
+        check("SELECT: 300 ms after the last click, still the card", px(12, ROWS_Y + 15) == P_CARD_DEV);
+        lcd_px = 0;
+        later(200);
+        settle_px = lcd_px;
+        check("SELECT stopped 400 ms: the page, whole (strip, bars, foot line)", px(12, ROWS_Y + 15) == KNOB_HUE[0]
+              && px(4, 236) == P_NIGHT && px(0, 0) != P_CARD_DEV);
+        enc(1, 1);                                          /* ALGO */
+        check("ALGO: the device's next page, its card blue", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1
+              && px(4, 4) == P_CARD_PAGE);
+        snap_to(getenv("PANEL_SNAP_PAGECARD"));
+        lcd_px = 0;
+        enc(1, -1);
+        card3_px = lcd_px;
+        enc(1, 1);
+        printf("      LCD pixels: a whole page %u, the first card %u, the next click %u (ALGO %u), the settle %u\n", page_px,
+               card1_px, card2_px, card3_px, settle_px);
+        check("a card costs under 60 % of a page, the next click under a fourth of the first", card1_px * 10u < page_px * 6u
+              && card2_px * 4u < card1_px && card3_px * 4u < card1_px);
+        memcpy(before, fb, sizeof before);
+        enc(4, 1);                                          /* K3 while the card shows: the page at once */
+        check("K3 during the card: the page it named, whole, at once", pg_cur_page == 1 && px(4, 4) != P_CARD_PAGE
+              && px(0, ROWS_END + 10u) == P_NIGHT);
+        enc(4, -1);
+        later(1100);
+        check("the knob's toast ends: the bars", px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+        param_now = 0;
+    }
 
     {
         const ppage_t *pg = pages_now();
@@ -961,8 +997,9 @@ int main(void)
         check("PLAY held + PRESET: the tempo, the patch and the bars stay", main >= 0 && cur_preset == 0
               && px(12, ROWS_Y + 15) != P_NIGHT && fm1_ms >= pg_patch_until);
         enc(6, -1);
-        enc(0, 1);                                          /* SELECT while it shows: the device's name instead */
-        check("SELECT during it: the device toast takes over", fm1_ms >= pg_patch_until && fm1_ms < pg_dev_toast_until);
+        enc(0, 1);                                          /* SELECT while it shows: the device card instead */
+        check("SELECT during it: the device card takes over", fm1_ms >= pg_patch_until && pages_carding()
+              && px(4, 4) == P_CARD_DEV);
         later(1100);
         preset_loads = 0;
     }
