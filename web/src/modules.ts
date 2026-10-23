@@ -2191,7 +2191,7 @@ export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES
 const alloc: ModuleImpl<null> = {
   def: {
     type: 'alloc',
-    label: 'Voice assigner',
+    label: 'Voicing',
     inputs: [keys('keys')],
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump')],
     params: [

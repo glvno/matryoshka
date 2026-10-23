@@ -1610,8 +1610,8 @@
           "id": "chords",
           "kind": "task",
           "title": "Play chords",
-          "text": "[Press **poly** on the Pluck card’s header.](req:poly-parts) Pluck becomes a *poly assembly*, a rack of voice cards: a **Voice assigner** appears inside and takes over its `pitch` and `gate` cables, **Main**’s `keys` go into it, and the card shows ×4. Hold a chord: four strings, each with its own note.",
-          "why": "The **Voice assigner** does what the processor of a polysynth does: it hands each key you hold to a voice, and a poly assembly runs everything inside it once per voice. Everything outside, the breathy **Comb filter** here, runs once, plays **Main**’s one note and hears the sum of the voices. The Pluck you saved stays a plain assembly: poly is a setting of this copy.",
+          "text": "[Press **poly** on the Pluck card’s header.](req:poly-parts) Pluck becomes a *poly assembly*, a rack of voice cards: a **Voicing** module appears inside and takes over its `pitch` and `gate` cables, **Main**’s `keys` go into it, and the card shows ×4. Hold a chord: four strings, each with its own note.",
+          "why": "The **Voicing** does what the processor of a polysynth does: it hands each key you hold to a voice, and a poly assembly runs everything inside it once per voice. Everything outside, the breathy **Comb filter** here, runs once, plays **Main**’s one note and hears the sum of the voices. The Pluck you saved stays a plain assembly: poly is a setting of this copy.",
           "parts": [
             { "id": "poly-parts", "kind": "poly", "setting": "parts", "op": "ge", "value": 2 }
           ]
@@ -1778,7 +1778,7 @@
           "id": "chords",
           "kind": "task",
           "title": "Play chords",
-          "text": "Select the **Wavetable**, the **VCA** and the **ADSR** (shift-click each, or drag a box around them) and press Ctrl+G (Cmd+G) to make them an assembly. [Press **poly** on its header.](req:poly-parts) A **Voice assigner** appears inside and takes over the `pitch` and `gate` cables; the card shows ×4. Hold a chord: four notes, each with its own slow envelope.",
+          "text": "Select the **Wavetable**, the **VCA** and the **ADSR** (shift-click each, or drag a box around them) and press Ctrl+G (Cmd+G) to make them an assembly. [Press **poly** on its header.](req:poly-parts) A **Voicing** module appears inside and takes over the `pitch` and `gate` cables; the card shows ×4. Hold a chord: four notes, each with its own slow envelope.",
           "why": "A poly assembly runs everything inside it once per voice, each voice playing its own note. The **LFO** stays outside: one sweep for every voice, as a polysynth’s front panel reaches every voice card. The **Granular** you add next goes outside too, so it hears the sum of the voices and records the whole chord.",
           "parts": [
             { "id": "poly-parts", "kind": "poly", "setting": "parts", "op": "ge", "value": 2 }
@@ -2878,7 +2878,7 @@
       "id": "voicing",
       "title": "Voicing",
       "unpublished": true,
-      "intro": "How a synth deals with *several keys*: one note or many, whether a new key restarts the envelopes (*legato*), which key wins, how pitch slides between notes (*portamento*), and how one oscillator becomes a thick stack. The voice here is a *poly assembly* fed by a **Voice assigner**, the synth’s processor: its settings and outputs decide all of that. At the end it drifts out of spec like an old analog polysynth.",
+      "intro": "How a synth deals with *several keys*: one note or many, whether a new key restarts the envelopes (*legato*), which key wins, how pitch slides between notes (*portamento*), and how one oscillator becomes a thick stack. The voice here is a *poly assembly* fed by a **Voicing** module, the synth’s processor: its settings and outputs decide all of that. At the end it drifts out of spec like an old analog polysynth.",
       "payoff": "Your voice glides only when you play legato, stacks detuned copies and drifts like real hardware.",
       "challenge": "Find the smallest depths for the two **Random** modules that still make a chord sound alive.",
       "patchName": "Tutorial voicing",
@@ -2893,8 +2893,8 @@
             "kind": "module",
             "ref": { "type": "alloc" }
           },
-          "text": "This voice is a *poly assembly* whose **Voice assigner** has one voice, so it is **mono**: one note at a time. The allocator’s card holds its settings: `voices`, `assign`, `legato`, `priority` and `unison`; the voice cards’ own flaws are under **voices ▾**, next to the frame’s name. Hold a key, then press a second one without letting go of the first, and release it again. The pitch jumps, but the envelope does not start over: the gate stays up while any key is down. That is **legato**, what `legato` `auto` does with one voice.",
-          "why": "Every analog monosynth had to decide what a second key does. Most of them (a Minimoog, an SH-101 in its default) simply re-pitch the oscillator: the filter and amplitude envelopes keep going. The **Voice assigner** takes **Main**’s `keys` and gives the modules around it their `pitch` and `gate`, one pair per voice."
+          "text": "This voice is a *poly assembly* whose **Voicing** has one voice, so it is **mono**: one note at a time. The allocator’s card holds its settings: `voices`, `assign`, `legato`, `priority` and `unison`; the voice cards’ own flaws are under **voices ▾**, next to the frame’s name. Hold a key, then press a second one without letting go of the first, and release it again. The pitch jumps, but the envelope does not start over: the gate stays up while any key is down. That is **legato**, what `legato` `auto` does with one voice.",
+          "why": "Every analog monosynth had to decide what a second key does. Most of them (a Minimoog, an SH-101 in its default) simply re-pitch the oscillator: the filter and amplitude envelopes keep going. The **Voicing** takes **Main**’s `keys` and gives the modules around it their `pitch` and `gate`, one pair per voice."
         },
         {
           "id": "retrigger",
@@ -2920,7 +2920,7 @@
           "id": "glide",
           "kind": "task",
           "title": "Portamento",
-          "text": "[Add a **Slew limiter**](req:add-glide) and [drag it into the voice’s frame](req:inside-poly-glide): now it belongs to the voice. Put it into the pitch path: [**Voice assigner** `pitch` → **Slew limiter** `in`](req:part-pitch-glide-in), [**Slew limiter** `out` → **Oscillator** `pitch`](req:glide-out-osc-pitch), and [remove the cable from the allocator’s `pitch` to the **Oscillator**](req:unplug-part-pitch-osc-pitch). Every note now slides from the last one.",
+          "text": "[Add a **Slew limiter**](req:add-glide) and [drag it into the voice’s frame](req:inside-poly-glide): now it belongs to the voice. Put it into the pitch path: [**Voicing** `pitch` → **Slew limiter** `in`](req:part-pitch-glide-in), [**Slew limiter** `out` → **Oscillator** `pitch`](req:glide-out-osc-pitch), and [remove the cable from the allocator’s `pitch` to the **Oscillator**](req:unplug-part-pitch-osc-pitch). Every note now slides from the last one.",
           "why": "Gliding on every note, overlapping or not, is what Serum calls *always*. The Slew limiter works on any control signal, not only pitch. Outside the frame it would run once and glide the sum of the voices’ pitches.",
           "parts": [
             { "id": "add-glide", "kind": "module", "type": "glide" },
@@ -2960,7 +2960,7 @@
           "id": "legato-glide",
           "kind": "task",
           "title": "Glide only when legato",
-          "text": "[Turn **Slew limiter** `time` all the way down](req:glide-time-short), then [drop the **Voice assigner**’s `legato` on the `time` thumb](req:part-legato-glide-time) and [set its depth in the `time` ⋮ menu to about 0.6](req:glide-time-depth). Detached notes now jump, overlapping notes slide.",
+          "text": "[Turn **Slew limiter** `time` all the way down](req:glide-time-short), then [drop the **Voicing**’s `legato` on the `time` thumb](req:part-legato-glide-time) and [set its depth in the `time` ⋮ menu to about 0.6](req:glide-time-depth). Detached notes now jump, overlapping notes slide.",
           "why": "The allocator’s `legato` output is high while a voice’s note started over a held one. Added to the glide time, it switches portamento on only when you play legato: the 303 slide, or Serum with *always* off.",
           "parts": [
             {
@@ -3061,7 +3061,7 @@
           "id": "poly",
           "kind": "task",
           "title": "Several notes",
-          "text": "[Set the **Voice assigner**’s `voices` to 4](req:poly-parts) and play a chord. Every note gets its own oscillator, glide, filter and envelope: the cards inside show ×4.",
+          "text": "[Set the **Voicing**’s `voices` to 4](req:poly-parts) and play a chord. Every note gets its own oscillator, glide, filter and envelope: the cards inside show ×4.",
           "why": "`assign` decides which free part a new note takes: `rotate` goes round like the voice cards of an old polysynth, `lowest` always tries the first part, `reuse` gives a key back the part that played it last. Each part glides from the note it played before.",
           "parts": [
             { "id": "poly-parts", "kind": "poly", "setting": "parts", "op": "ge", "value": 4 }
@@ -3192,7 +3192,7 @@
           "id": "main",
           "kind": "continue",
           "title": "The FM-1 on screen",
-          "text": "**Main** is the hardware: `pitch`, `gate` and `vel` from the keys. Its knobs `K1` to `K4` turn the four rows of the device page in focus, picked with DEVICE and PAGE (SELECT and ALGO on the FM-1) or by a click on a row. Every top-level module or assembly is a device, and an assembly’s card is its pages: you design the FM-1’s panel by choosing what the cards show.\n\nThe panel also holds the arpeggiator and *morph*: pick a patch of the same structure as the **B side** and the `morph` slider, or its input, glides every parameter between the two.\n\nPolyphony works as on a polysynth: **Main**’s `keys` go into a **Voice assigner**, which hands each key to a voice, and a *poly assembly* is the rack of voice cards (marked ×N), one copy per voice. Press *poly* on any assembly’s header and it gets an allocator.",
+          "text": "**Main** is the hardware: `pitch`, `gate` and `vel` from the keys. Its knobs `K1` to `K4` turn the four rows of the device page in focus, picked with DEVICE and PAGE (SELECT and ALGO on the FM-1) or by a click on a row. Every top-level module or assembly is a device, and an assembly’s card is its pages: you design the FM-1’s panel by choosing what the cards show.\n\nThe panel also holds the arpeggiator and *morph*: pick a patch of the same structure as the **B side** and the `morph` slider, or its input, glides every parameter between the two.\n\nPolyphony works as on a polysynth: **Main**’s `keys` go into a **Voicing** module, which hands each key to a voice, and a *poly assembly* is the rack of voice cards (marked ×N), one copy per voice. Press *poly* on any assembly’s header and it gets an allocator.",
           "why": "",
           "playback": true,
           "pointer": {

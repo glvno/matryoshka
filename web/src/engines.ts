@@ -1,17 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Engines (glvno/matryoshka#159): an engine is an assembly that takes keys and makes sound, a whole instrument you pick
-// and play. The rule reads port kinds only (never names or the shelf), so the user's own assemblies qualify too: a `keys`
-// input and at least one `audio` output. Pitch + gate assemblies stay voices. Inserting an engine wires it (wireEngine):
-// Main's keys into it, and its audio into the Output while nothing feeds the Output yet.
-import { targetsOf, type AssemblyDef, type AssemblyInst, type PortRef } from './assembly';
+// Engines (glvno/matryoshka#159, redefined by docs/adr/0001, #189): an engine is an assembly that takes keys and makes
+// audio: keys -> voicing -> voices. The rule is derived from what is inside (never names or the shelf), so the user's own
+// assemblies qualify too: a `keys` input whose keys reach a Voicing module (`alloc`) or a Drum map inside it (through an
+// Arpeggiator or a Steps track's keys out on the way), and at least one `audio` output. A lone voice (pitch + gate in) and
+// a self-playing assembly are not engines. Inserting an engine wires it (wireEngine): Main's keys into it, and its audio
+// into the Output while nothing feeds the Output yet.
+import { allModules, targetsOf, type AssemblyDef, type AssemblyInst, type PortRef } from './assembly';
 import { DEFS } from './modules';
-import { connect, type ModuleDef, type ModuleInst, type Patch, type SignalKind } from './patch';
+import { connect, type Cable, type ModuleDef, type ModuleInst, type Patch, type SignalKind } from './patch';
 
 type KindOf = (r: PortRef, dir: 'in' | 'out') => SignalKind | undefined;
 
-/** the rule: a keys input and an audio output */
-export const isEngine = (inputs: PortRef[], outputs: PortRef[], kindOf: KindOf): boolean =>
-  inputs.some((r) => kindOf(r, 'in') === 'keys') && outputs.some((r) => kindOf(r, 'out') === 'audio');
+/** the module types that voice keys: allocated (Voicing) and mapped (Drum map) */
+export const VOICING_TYPES = new Set(['alloc', 'drummap']);
+
+/** whether keys going into this input reach a voicing, following keys cables (an Arpeggiator's or a Steps track's keys out)
+ *  among these modules */
+function reachesVoicing(start: PortRef, modules: ModuleInst[], cables: Cable[], defs: Record<string, ModuleDef>): boolean {
+  const byId = new Map(modules.map((m) => [m.id, m]));
+  const seen = new Set<number>();
+  const todo = targetsOf(start).map((t) => t.module);
+  while (todo.length) {
+    const id = todo.pop()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const m = byId.get(id);
+    if (!m) continue;
+    if (VOICING_TYPES.has(m.type)) return true;
+    const keysOut = defs[m.type]?.outputs.filter((o) => o.kind === 'keys').map((o) => o.name) ?? [];
+    for (const c of cables) if (c.from.module === id && keysOut.includes(c.from.port) && byId.has(c.to.module)) todo.push(c.to.module);
+  }
+  return false;
+}
+
+/** the rule: a keys input that reaches a voicing, and an audio output */
+export const isEngine = (inputs: PortRef[], outputs: PortRef[], kindOf: KindOf, voiced: (r: PortRef) => boolean = () => true): boolean =>
+  inputs.some((r) => kindOf(r, 'in') === 'keys' && voiced(r)) && outputs.some((r) => kindOf(r, 'out') === 'audio');
 
 /** a port's kind, looked up on the module it points at */
 const kindIn = (modules: ModuleInst[], defs: Record<string, ModuleDef> = DEFS): KindOf => (r, dir) => {
@@ -19,9 +43,17 @@ const kindIn = (modules: ModuleInst[], defs: Record<string, ModuleDef> = DEFS): 
   return (dir === 'in' ? d?.inputs : d?.outputs)?.find((p) => p.name === r.port)?.kind;
 };
 
-export const defIsEngine = (def: AssemblyDef, defs: Record<string, ModuleDef> = DEFS): boolean => isEngine(def.inputs, def.outputs, kindIn(def.modules, defs));
+export const defIsEngine = (def: AssemblyDef, defs: Record<string, ModuleDef> = DEFS): boolean =>
+  isEngine(def.inputs, def.outputs, kindIn(def.modules, defs), (r) => reachesVoicing(r, def.modules, def.cables, defs));
 
-export const instIsEngine = (p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef> = DEFS): boolean => isEngine(a.inputs, a.outputs, kindIn(p.modules, defs));
+/** an assembly's own modules, nested ones included */
+const membersOf = (p: Patch, a: AssemblyInst): ModuleInst[] => {
+  const ids = new Set(allModules(p, a));
+  return p.modules.filter((m) => ids.has(m.id));
+};
+
+export const instIsEngine = (p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef> = DEFS): boolean =>
+  isEngine(a.inputs, a.outputs, kindIn(p.modules, defs), (r) => reachesVoicing(r, membersOf(p, a), p.cables, defs));
 
 /** an engine's audio outputs, as the Output takes them: [l, r] for stereo (the ones labelled l and r if there are), [l] for mono */
 export function audioOuts(outputs: PortRef[], kindOf: KindOf): PortRef[] {
@@ -53,7 +85,7 @@ export interface Wired {
 export function wireEngine(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef> = DEFS): Wired {
   const done: Wired = { keys: false, out: 0 };
   const kindOf = kindIn(p.modules, defs);
-  if (!isEngine(a.inputs, a.outputs, kindOf)) return done;
+  if (!instIsEngine(p, a, defs)) return done;
   const main = p.modules.find((m) => m.type === 'fm1');
   const keysIn = a.inputs.find((r) => kindOf(r, 'in') === 'keys')!;
   if (main) for (const t of targetsOf(keysIn)) done.keys = connect(p, defs, { module: main.id, port: 'keys' }, t) || done.keys;

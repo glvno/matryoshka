@@ -34,12 +34,20 @@ const mine = (type: string, inPort: string, inType = 'alloc'): AssemblyDef => ({
 } as AssemblyDef);
 
 describe('engines (#159)', () => {
-  it('are exactly the assemblies with a keys input and an audio output', () => {
+  it('are exactly the assemblies whose keys reach a voicing and that make audio (ADR 0001)', () => {
     expect(FACTORY.filter((d) => defIsEngine(d)).map((d) => d.name)).toEqual(ENGINES);
     expect(defIsEngine(mine('vca', 'keys'))).toBe(true); // a user's own qualifies: kinds, not names
     expect(defIsEngine(mine('lfo', 'keys'))).toBe(false); // keys in, control out
     expect(defIsEngine(mine('vca', 'pitch', 'osc'))).toBe(false); // pitch in
-    expect(defIsEngine(named('pluck'))).toBe(false); // pitch + gate
+    expect(defIsEngine(named('pluck'))).toBe(false); // pitch + gate: a voice, not an engine
+    expect(defIsEngine(mine('vca', 'keys', 'drummap'))).toBe(true); // mapped voicing
+    expect(defIsEngine(mine('vca', 'keys', 'steps'))).toBe(false); // keys in, but nothing voices them
+    // keys through an Arpeggiator into a Voicing still count
+    const arp = mine('vca', 'keys', 'arp');
+    arp.modules.push({ id: 3, type: 'alloc', x: 0, y: 0, params: {} } as AssemblyDef['modules'][number]);
+    expect(defIsEngine(arp)).toBe(false);
+    arp.cables.push({ from: { module: 1, port: 'keys' }, to: { module: 3, port: 'keys' } });
+    expect(defIsEngine(arp)).toBe(true);
     expect(['Hera 6', 'Io 4', 'Expander S', 'supersaw stack'].every((n) => defIsStereo(named(n)))).toBe(true);
     expect(defIsStereo(named('Oracle V'))).toBe(false);
   });

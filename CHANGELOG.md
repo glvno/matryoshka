@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- An engine is now what its insides make it (keys → voicing → voices): an assembly whose keys reach a Voicing module or
+  a Drum map, through an Arpeggiator or a Steps track if need be, and that makes audio. Assemblies with a keys input that
+  nothing voices are no longer engines. The Voice assigner is now called **Voicing** (patches load as before).
+
 ## 1.1.0 — 2026-10-22
 
 - Modules are named after the hardware they stand for: Scale is now Attenuverter, Constant Offset, Shaper Waveshaper,

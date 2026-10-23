@@ -241,9 +241,9 @@ export function partLabel(part: PartSpec, roles: Roles): string {
       const t = (v = 0) => names[part.setting]?.[v] ?? String(v);
       const name = part.setting === 'parts' ? 'voices' : part.setting;
       if (part.setting === 'parts' && part.op === 'ge') return `Make an assembly poly with ${part.value ?? 2} voices or more`;
-      if (part.op === 'changed') return `Change the Voice assigner’s ${name}`;
+      if (part.op === 'changed') return `Change the Voicing’s ${name}`;
       const op = { le: `to ${t(part.value)} or less`, ge: `to ${t(part.value)} or more`, eq: `to ${t(part.value)}`, ne: `off ${t(part.value)}`, between: `between ${t(part.value)} and ${t(part.max)}` }[part.op];
-      return `Set the Voice assigner’s ${name} ${op}`;
+      return `Set the Voicing’s ${name} ${op}`;
     }
     case 'event': {
       if (part.event === 'selected' && part.types) return `Select the ${part.types.map(typeLabel).join(', ')}`;

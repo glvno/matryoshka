@@ -225,7 +225,7 @@ Rules: `reconcile` keeps an assembly consistent after every structural change (d
 
 The words the editor uses for assemblies, as the FM-1 community uses "engine" (the instrument a track plays):
 
-- **Engine**: an assembly with a `keys` input and at least one `audio` output: a whole instrument with its own voicing (a Voice allocator, or the drum kit's Drum map). `web/src/engines.ts` checks it from the port kinds only (`isEngine`, `defIsEngine`, `instIsEngine`), never from names or `category`, so the user's own assemblies qualify too. Factory: 19 (8 Lire, Algo Four, basic poly, Briefcase 3, Canvas, drift poly, drum kit, Elvira 2, Expander S, Hera 6, Io 4, mono lead, Monolith D, Oracle V, Sallen 20, Silver Box, supersaw stack, Vernon 100, Wanderer).
+- **Engine** (redefined 2026-10-23, docs/adr/0001, #189): an assembly that takes keys and makes audio: keys → voicing → voices. `web/src/engines.ts` derives it from the contents (`isEngine`, `defIsEngine`, `instIsEngine`), never from names or `category`: a `keys` input whose keys reach a Voicing module (`alloc`, labelled Voicing, was Voice assigner) or a Drum map (`VOICING_TYPES`), following keys cables through an Arpeggiator or a Steps track's keys out, and at least one `audio` output. Factory: 19 (8 Lire, Algo Four, basic poly, Briefcase 3, Canvas, drift poly, drum kit, Elvira 2, Expander S, Hera 6, Io 4, mono lead, Monolith D, Oracle V, Sallen 20, Silver Box, supersaw stack, Vernon 100, Wanderer).
 - **Voice**: pitch + gate in, sound out: one note (pluck, kalimba, operator). Engines are built from voices; Poly turns one into voice cards. ("voices" alone in the web app still means polyphony.)
 - **Drum**: gate in, one hit (kick, snare). The drum kit, which takes keys, is an engine.
 

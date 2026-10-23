@@ -3022,8 +3022,8 @@ export class Editor {
   /** the Poly switch: the modules inside run once per part, with their own allocator (poly.ts setPoly) */
   private polyButton(a: AssemblyInst): HTMLButtonElement {
     const b = this.button('poly', a.poly
-      ? 'Poly is on: these are voice cards, one copy per voice of the Voice assigner that feeds them. Click to turn it off (one copy, played by Main).'
-      : 'Make it a rack of voice cards: a Voice assigner is put beside it (Main\'s keys in, its pitch / gate / velocity into the cards), and the modules inside run once per voice.',
+      ? 'Poly is on: these are voice cards, one copy per voice of the Voicing that feeds them. Click to turn it off (one copy, played by Main).'
+      : 'Make it a rack of voice cards: a Voicing module is put beside it (Main\'s keys in, its pitch / gate / velocity into the cards), and the modules inside run once per voice.',
     () => this.change(() => setPoly(this.patch, DEFS, a, !a.poly)), 'sm poly-btn');
     b.setAttribute('aria-pressed', String(!!a.poly));
     b.dataset.asm = String(a.id);
