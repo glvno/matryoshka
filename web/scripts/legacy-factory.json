@@ -1,0 +1,5483 @@
+{
+ "note": "web/scripts/legacy-factory.ts: the factory patches earlier firmwares wrote (name, length, FNV-1a of the bytes, format)",
+ "patches": [
+  {
+   "name": "303 ACID",
+   "len": 140,
+   "fnv": "1d419c2d",
+   "version": 1
+  },
+  {
+   "name": "303 ACID",
+   "len": 240,
+   "fnv": "a6f6c988",
+   "version": 3
+  },
+  {
+   "name": "303 ACID",
+   "len": 256,
+   "fnv": "f5c0ce9b",
+   "version": 4
+  },
+  {
+   "name": "303 ACID",
+   "len": 264,
+   "fnv": "0fb4204e",
+   "version": 5
+  },
+  {
+   "name": "303 ACID",
+   "len": 264,
+   "fnv": "8938461c",
+   "version": 6
+  },
+  {
+   "name": "303 ACID",
+   "len": 295,
+   "fnv": "d2fe81a8",
+   "version": 6
+  },
+  {
+   "name": "303 ACID",
+   "len": 299,
+   "fnv": "b6758c09",
+   "version": 7
+  },
+  {
+   "name": "303 ACID",
+   "len": 272,
+   "fnv": "31b7b54c",
+   "version": 8
+  },
+  {
+   "name": "303 ACID",
+   "len": 303,
+   "fnv": "5b65ca6e",
+   "version": 8
+  },
+  {
+   "name": "303 ACID",
+   "len": 299,
+   "fnv": "c356b6c2",
+   "version": 8
+  },
+  {
+   "name": "303 ACID",
+   "len": 341,
+   "fnv": "3e492c9b",
+   "version": 9
+  },
+  {
+   "name": "303 ACID",
+   "len": 349,
+   "fnv": "1e844179",
+   "version": 10
+  },
+  {
+   "name": "303 ACID",
+   "len": 357,
+   "fnv": "082c97b5",
+   "version": 11
+  },
+  {
+   "name": "303 ACID",
+   "len": 357,
+   "fnv": "113949de",
+   "version": 12
+  },
+  {
+   "name": "303 ACID",
+   "len": 357,
+   "fnv": "a03654e7",
+   "version": 13
+  },
+  {
+   "name": "303 ACID",
+   "len": 361,
+   "fnv": "e103c938",
+   "version": 14
+  },
+  {
+   "name": "303 ACID",
+   "len": 361,
+   "fnv": "7ca990c1",
+   "version": 15
+  },
+  {
+   "name": "303 ACID",
+   "len": 361,
+   "fnv": "6c35eaea",
+   "version": 16
+  },
+  {
+   "name": "303 ACID",
+   "len": 385,
+   "fnv": "85c4d8bd",
+   "version": 19
+  },
+  {
+   "name": "303 ACID",
+   "len": 369,
+   "fnv": "058068fb",
+   "version": 20
+  },
+  {
+   "name": "303 ACID",
+   "len": 369,
+   "fnv": "0a831f5a",
+   "version": 21
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3310,
+   "fnv": "6fe811d5",
+   "version": 33
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3306,
+   "fnv": "ed9f645e",
+   "version": 33
+  },
+  {
+   "name": "808 KIT",
+   "len": 1543,
+   "fnv": "222d5611",
+   "version": 21
+  },
+  {
+   "name": "808 KIT",
+   "len": 2234,
+   "fnv": "c921c34b",
+   "version": 21
+  },
+  {
+   "name": "808 KIT",
+   "len": 2238,
+   "fnv": "828bf731",
+   "version": 23
+  },
+  {
+   "name": "808 KIT",
+   "len": 2400,
+   "fnv": "f7f28bd4",
+   "version": 24
+  },
+  {
+   "name": "808 KIT",
+   "len": 2400,
+   "fnv": "57c58a47",
+   "version": 25
+  },
+  {
+   "name": "808 KIT",
+   "len": 2380,
+   "fnv": "30057d0a",
+   "version": 26
+  },
+  {
+   "name": "808 KIT",
+   "len": 2563,
+   "fnv": "f0863edb",
+   "version": 26
+  },
+  {
+   "name": "808 KIT",
+   "len": 2563,
+   "fnv": "55339e6e",
+   "version": 27
+  },
+  {
+   "name": "808 KIT",
+   "len": 2599,
+   "fnv": "43f56720",
+   "version": 28
+  },
+  {
+   "name": "808 KIT",
+   "len": 2803,
+   "fnv": "3727aa1c",
+   "version": 29
+  },
+  {
+   "name": "808 KIT",
+   "len": 2803,
+   "fnv": "6ad1cbba",
+   "version": 29
+  },
+  {
+   "name": "808 KIT",
+   "len": 2803,
+   "fnv": "e19aeaeb",
+   "version": 30
+  },
+  {
+   "name": "808 KIT",
+   "len": 2488,
+   "fnv": "e990d19e",
+   "version": 31
+  },
+  {
+   "name": "808 KIT",
+   "len": 2487,
+   "fnv": "aff67d60",
+   "version": 32
+  },
+  {
+   "name": "808 KIT",
+   "len": 2488,
+   "fnv": "f51b0b23",
+   "version": 32
+  },
+  {
+   "name": "808 KIT",
+   "len": 3146,
+   "fnv": "2712390e",
+   "version": 33
+  },
+  {
+   "name": "808 KIT",
+   "len": 3140,
+   "fnv": "81062966",
+   "version": 33
+  },
+  {
+   "name": "808 KIT",
+   "len": 2553,
+   "fnv": "f96752b5",
+   "version": 33
+  },
+  {
+   "name": "909 KIT",
+   "len": 1345,
+   "fnv": "61929948",
+   "version": 14
+  },
+  {
+   "name": "909 KIT",
+   "len": 1345,
+   "fnv": "4831f159",
+   "version": 15
+  },
+  {
+   "name": "909 KIT",
+   "len": 1353,
+   "fnv": "f34d4b5b",
+   "version": 16
+  },
+  {
+   "name": "909 KIT",
+   "len": 1389,
+   "fnv": "317420d4",
+   "version": 19
+  },
+  {
+   "name": "909 KIT",
+   "len": 1369,
+   "fnv": "aa27c4c2",
+   "version": 20
+  },
+  {
+   "name": "909 KIT",
+   "len": 1369,
+   "fnv": "5d0e85c3",
+   "version": 21
+  },
+  {
+   "name": "909 KIT",
+   "len": 1373,
+   "fnv": "59f5fe3d",
+   "version": 23
+  },
+  {
+   "name": "909 KIT",
+   "len": 1535,
+   "fnv": "38749f66",
+   "version": 24
+  },
+  {
+   "name": "909 KIT",
+   "len": 1535,
+   "fnv": "7f3f0fef",
+   "version": 25
+  },
+  {
+   "name": "909 KIT",
+   "len": 1578,
+   "fnv": "0dd87318",
+   "version": 26
+  },
+  {
+   "name": "909 KIT",
+   "len": 1515,
+   "fnv": "47bd05b0",
+   "version": 26
+  },
+  {
+   "name": "909 KIT",
+   "len": 1578,
+   "fnv": "748e1237",
+   "version": 27
+  },
+  {
+   "name": "909 KIT",
+   "len": 1602,
+   "fnv": "55225ada",
+   "version": 28
+  },
+  {
+   "name": "909 KIT",
+   "len": 1602,
+   "fnv": "f8f9da1a",
+   "version": 28
+  },
+  {
+   "name": "909 KIT",
+   "len": 1877,
+   "fnv": "1edea7b5",
+   "version": 29
+  },
+  {
+   "name": "909 KIT",
+   "len": 1877,
+   "fnv": "bc6da3ea",
+   "version": 30
+  },
+  {
+   "name": "909 KIT",
+   "len": 1748,
+   "fnv": "52f95da7",
+   "version": 31
+  },
+  {
+   "name": "909 KIT",
+   "len": 1748,
+   "fnv": "5847e2ea",
+   "version": 32
+  },
+  {
+   "name": "909 KIT",
+   "len": 1789,
+   "fnv": "f4ef7091",
+   "version": 32
+  },
+  {
+   "name": "909 KIT",
+   "len": 1865,
+   "fnv": "72f24d85",
+   "version": 33
+  },
+  {
+   "name": "909 KIT",
+   "len": 1855,
+   "fnv": "b10feadd",
+   "version": 33
+  },
+  {
+   "name": "909 KIT",
+   "len": 1859,
+   "fnv": "d6a0a698",
+   "version": 33
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 772,
+   "fnv": "bdf8c0cb",
+   "version": 21
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 777,
+   "fnv": "c41ddf71",
+   "version": 23
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 939,
+   "fnv": "78b9534e",
+   "version": 24
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 942,
+   "fnv": "4eea31fe",
+   "version": 25
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 922,
+   "fnv": "710119b7",
+   "version": 26
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 922,
+   "fnv": "298622c0",
+   "version": 27
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 930,
+   "fnv": "6e756dd1",
+   "version": 28
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1331,
+   "fnv": "47e622fb",
+   "version": 29
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1331,
+   "fnv": "7a9bbfd0",
+   "version": 30
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1331,
+   "fnv": "ce6adaf9",
+   "version": 31
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1331,
+   "fnv": "fd895efe",
+   "version": 32
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1331,
+   "fnv": "2184449f",
+   "version": 33
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1335,
+   "fnv": "45fbcb1c",
+   "version": 33
+  },
+  {
+   "name": "BRASS",
+   "len": 291,
+   "fnv": "ae93c99c",
+   "version": 3
+  },
+  {
+   "name": "BRASS",
+   "len": 307,
+   "fnv": "f761fc57",
+   "version": 4
+  },
+  {
+   "name": "BRASS",
+   "len": 315,
+   "fnv": "1df8d1c0",
+   "version": 5
+  },
+  {
+   "name": "BRASS",
+   "len": 315,
+   "fnv": "1597cc8b",
+   "version": 6
+  },
+  {
+   "name": "BRASS",
+   "len": 315,
+   "fnv": "5d39bfbe",
+   "version": 6
+  },
+  {
+   "name": "BRASS",
+   "len": 323,
+   "fnv": "90a3289f",
+   "version": 7
+  },
+  {
+   "name": "BRASS",
+   "len": 323,
+   "fnv": "232a9cdc",
+   "version": 8
+  },
+  {
+   "name": "BRASS",
+   "len": 315,
+   "fnv": "ec4e37c9",
+   "version": 8
+  },
+  {
+   "name": "BRASS",
+   "len": 365,
+   "fnv": "46dea6a5",
+   "version": 9
+  },
+  {
+   "name": "BRASS",
+   "len": 365,
+   "fnv": "3e3e7812",
+   "version": 10
+  },
+  {
+   "name": "BRASS",
+   "len": 381,
+   "fnv": "e615a7f5",
+   "version": 11
+  },
+  {
+   "name": "BRASS",
+   "len": 381,
+   "fnv": "60a4676a",
+   "version": 12
+  },
+  {
+   "name": "BRASS",
+   "len": 381,
+   "fnv": "8c90b59b",
+   "version": 13
+  },
+  {
+   "name": "BRASS",
+   "len": 385,
+   "fnv": "1f174338",
+   "version": 14
+  },
+  {
+   "name": "BRASS",
+   "len": 385,
+   "fnv": "03df5411",
+   "version": 15
+  },
+  {
+   "name": "BRASS",
+   "len": 385,
+   "fnv": "f9ddae06",
+   "version": 16
+  },
+  {
+   "name": "BRASS",
+   "len": 421,
+   "fnv": "54e2626d",
+   "version": 19
+  },
+  {
+   "name": "BRASS",
+   "len": 401,
+   "fnv": "8111fdcf",
+   "version": 20
+  },
+  {
+   "name": "BRASS",
+   "len": 401,
+   "fnv": "8729ccd6",
+   "version": 21
+  },
+  {
+   "name": "BREATH PAD",
+   "len": 326,
+   "fnv": "c6cb5f8e",
+   "version": 8
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 696,
+   "fnv": "805ee581",
+   "version": 21
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 700,
+   "fnv": "4ffc7357",
+   "version": 23
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 862,
+   "fnv": "ce2a3592",
+   "version": 24
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 862,
+   "fnv": "57356ec5",
+   "version": 25
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 842,
+   "fnv": "0cc198e0",
+   "version": 26
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 842,
+   "fnv": "cffd0f83",
+   "version": 27
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 846,
+   "fnv": "c8743cee",
+   "version": 28
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1060,
+   "fnv": "c401152f",
+   "version": 29
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1076,
+   "fnv": "d59194db",
+   "version": 29
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1076,
+   "fnv": "57f865ea",
+   "version": 30
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1076,
+   "fnv": "9de96cd5",
+   "version": 31
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1076,
+   "fnv": "20679eb4",
+   "version": 32
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1076,
+   "fnv": "64d313ff",
+   "version": 33
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1080,
+   "fnv": "de2d1ebc",
+   "version": 33
+  },
+  {
+   "name": "BRIGHT SAW",
+   "len": 354,
+   "fnv": "353751d2",
+   "version": 8
+  },
+  {
+   "name": "CANVAS",
+   "len": 550,
+   "fnv": "6fa74354",
+   "version": 21
+  },
+  {
+   "name": "CANVAS",
+   "len": 554,
+   "fnv": "a4b39d1e",
+   "version": 23
+  },
+  {
+   "name": "CANVAS",
+   "len": 716,
+   "fnv": "a9289c6b",
+   "version": 24
+  },
+  {
+   "name": "CANVAS",
+   "len": 716,
+   "fnv": "4fca0550",
+   "version": 25
+  },
+  {
+   "name": "CANVAS",
+   "len": 696,
+   "fnv": "16c7d705",
+   "version": 26
+  },
+  {
+   "name": "CANVAS",
+   "len": 696,
+   "fnv": "5e421272",
+   "version": 27
+  },
+  {
+   "name": "CANVAS",
+   "len": 696,
+   "fnv": "93921ee7",
+   "version": 28
+  },
+  {
+   "name": "CANVAS",
+   "len": 828,
+   "fnv": "3b0c5398",
+   "version": 29
+  },
+  {
+   "name": "CANVAS",
+   "len": 828,
+   "fnv": "c7f8afdd",
+   "version": 30
+  },
+  {
+   "name": "CANVAS",
+   "len": 828,
+   "fnv": "3df81566",
+   "version": 31
+  },
+  {
+   "name": "CANVAS",
+   "len": 828,
+   "fnv": "2c24d4bb",
+   "version": 32
+  },
+  {
+   "name": "CANVAS",
+   "len": 828,
+   "fnv": "5af3224c",
+   "version": 33
+  },
+  {
+   "name": "CANVAS",
+   "len": 832,
+   "fnv": "dea9e701",
+   "version": 33
+  },
+  {
+   "name": "CLAV",
+   "len": 272,
+   "fnv": "fb345c62",
+   "version": 8
+  },
+  {
+   "name": "DRONE",
+   "len": 252,
+   "fnv": "08e8d691",
+   "version": 3
+  },
+  {
+   "name": "DRONE",
+   "len": 268,
+   "fnv": "c7535085",
+   "version": 4
+  },
+  {
+   "name": "DRONE",
+   "len": 276,
+   "fnv": "894a5058",
+   "version": 5
+  },
+  {
+   "name": "DRONE",
+   "len": 276,
+   "fnv": "6c6a29f0",
+   "version": 6
+  },
+  {
+   "name": "DRONE",
+   "len": 276,
+   "fnv": "d64e443b",
+   "version": 6
+  },
+  {
+   "name": "DRONE",
+   "len": 284,
+   "fnv": "9af86123",
+   "version": 7
+  },
+  {
+   "name": "DRONE",
+   "len": 296,
+   "fnv": "37a6b040",
+   "version": 8
+  },
+  {
+   "name": "DRONE",
+   "len": 296,
+   "fnv": "5ddc6f6f",
+   "version": 8
+  },
+  {
+   "name": "DRONE",
+   "len": 284,
+   "fnv": "6b839b15",
+   "version": 8
+  },
+  {
+   "name": "DRONE",
+   "len": 320,
+   "fnv": "387f1e1a",
+   "version": 9
+  },
+  {
+   "name": "DRONE",
+   "len": 340,
+   "fnv": "8d975292",
+   "version": 10
+  },
+  {
+   "name": "DRONE",
+   "len": 356,
+   "fnv": "b95f711b",
+   "version": 11
+  },
+  {
+   "name": "DRONE",
+   "len": 356,
+   "fnv": "5a06ca5e",
+   "version": 12
+  },
+  {
+   "name": "DRONE",
+   "len": 356,
+   "fnv": "931923c9",
+   "version": 13
+  },
+  {
+   "name": "DRONE",
+   "len": 360,
+   "fnv": "27236924",
+   "version": 14
+  },
+  {
+   "name": "DRONE",
+   "len": 360,
+   "fnv": "0d76b11f",
+   "version": 15
+  },
+  {
+   "name": "DRONE",
+   "len": 360,
+   "fnv": "d32d6af2",
+   "version": 16
+  },
+  {
+   "name": "DRONE",
+   "len": 396,
+   "fnv": "729cdf23",
+   "version": 19
+  },
+  {
+   "name": "DRONE",
+   "len": 376,
+   "fnv": "3ed4a399",
+   "version": 20
+  },
+  {
+   "name": "DRONE",
+   "len": 376,
+   "fnv": "7188102e",
+   "version": 21
+  },
+  {
+   "name": "DUB STAB",
+   "len": 322,
+   "fnv": "b359ede9",
+   "version": 3
+  },
+  {
+   "name": "DUB STAB",
+   "len": 338,
+   "fnv": "37925023",
+   "version": 4
+  },
+  {
+   "name": "DUB STAB",
+   "len": 346,
+   "fnv": "97d2fe36",
+   "version": 5
+  },
+  {
+   "name": "DUB STAB",
+   "len": 346,
+   "fnv": "91f64548",
+   "version": 6
+  },
+  {
+   "name": "DUB STAB",
+   "len": 346,
+   "fnv": "d83325fb",
+   "version": 6
+  },
+  {
+   "name": "DUB STAB",
+   "len": 354,
+   "fnv": "bc031d57",
+   "version": 7
+  },
+  {
+   "name": "DUB STAB",
+   "len": 354,
+   "fnv": "0083b486",
+   "version": 8
+  },
+  {
+   "name": "DUB STAB",
+   "len": 354,
+   "fnv": "67fcc4c3",
+   "version": 8
+  },
+  {
+   "name": "DUB STAB",
+   "len": 402,
+   "fnv": "53e620ed",
+   "version": 9
+  },
+  {
+   "name": "DUB STAB",
+   "len": 410,
+   "fnv": "0e07a1de",
+   "version": 10
+  },
+  {
+   "name": "DUB STAB",
+   "len": 426,
+   "fnv": "69fcf3df",
+   "version": 11
+  },
+  {
+   "name": "DUB STAB",
+   "len": 426,
+   "fnv": "c50c381e",
+   "version": 12
+  },
+  {
+   "name": "DUB STAB",
+   "len": 426,
+   "fnv": "62397281",
+   "version": 13
+  },
+  {
+   "name": "DUB STAB",
+   "len": 430,
+   "fnv": "e3a625e0",
+   "version": 14
+  },
+  {
+   "name": "DUB STAB",
+   "len": 430,
+   "fnv": "25296f83",
+   "version": 15
+  },
+  {
+   "name": "DUB STAB",
+   "len": 430,
+   "fnv": "6f714162",
+   "version": 16
+  },
+  {
+   "name": "DUB STAB",
+   "len": 466,
+   "fnv": "5f122237",
+   "version": 19
+  },
+  {
+   "name": "DUB STAB",
+   "len": 446,
+   "fnv": "78de4e25",
+   "version": 20
+  },
+  {
+   "name": "DUB STAB",
+   "len": 446,
+   "fnv": "193f916a",
+   "version": 21
+  },
+  {
+   "name": "E-PIANO",
+   "len": 334,
+   "fnv": "28bc44c1",
+   "version": 8
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 170,
+   "fnv": "5740d19d",
+   "version": 3
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 186,
+   "fnv": "1915a2a7",
+   "version": 4
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 186,
+   "fnv": "6413cf10",
+   "version": 5
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 186,
+   "fnv": "a7bf7a7f",
+   "version": 6
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 186,
+   "fnv": "bf02fe54",
+   "version": 6
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 190,
+   "fnv": "c2e4bf98",
+   "version": 7
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 194,
+   "fnv": "0b9a2130",
+   "version": 8
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 190,
+   "fnv": "b153fa96",
+   "version": 8
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 214,
+   "fnv": "13c9979d",
+   "version": 9
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 222,
+   "fnv": "f99437aa",
+   "version": 10
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 230,
+   "fnv": "4172bfb2",
+   "version": 11
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 230,
+   "fnv": "1c722ae3",
+   "version": 12
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 230,
+   "fnv": "2781a098",
+   "version": 13
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 234,
+   "fnv": "f003f3b1",
+   "version": 14
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 234,
+   "fnv": "689d90ce",
+   "version": 15
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 234,
+   "fnv": "fd7afe0f",
+   "version": 16
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 258,
+   "fnv": "81e8531a",
+   "version": 19
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 242,
+   "fnv": "4b5ed62c",
+   "version": 20
+  },
+  {
+   "name": "ECHO PLUCK",
+   "len": 242,
+   "fnv": "4c213d1f",
+   "version": 21
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 248,
+   "fnv": "a0808f65",
+   "version": 3
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 295,
+   "fnv": "37ee9757",
+   "version": 4
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 295,
+   "fnv": "effbd36a",
+   "version": 5
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 295,
+   "fnv": "00c399ca",
+   "version": 6
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 295,
+   "fnv": "06b9eee3",
+   "version": 6
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 303,
+   "fnv": "d33ca91f",
+   "version": 7
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 295,
+   "fnv": "22164459",
+   "version": 8
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 303,
+   "fnv": "c346b303",
+   "version": 8
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 345,
+   "fnv": "9ff5584e",
+   "version": 9
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 345,
+   "fnv": "d235c97d",
+   "version": 10
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 361,
+   "fnv": "67bea40e",
+   "version": 11
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 361,
+   "fnv": "3cb2ce15",
+   "version": 12
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 369,
+   "fnv": "166de083",
+   "version": 13
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 361,
+   "fnv": "e1ccd474",
+   "version": 13
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 373,
+   "fnv": "45de11e4",
+   "version": 14
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 373,
+   "fnv": "dbbf7f81",
+   "version": 15
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 373,
+   "fnv": "e7aa6d32",
+   "version": 16
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 409,
+   "fnv": "d81f6ef5",
+   "version": 19
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 389,
+   "fnv": "13bdf76f",
+   "version": 20
+  },
+  {
+   "name": "ELECTRIC PIANO",
+   "len": 389,
+   "fnv": "12ed93e2",
+   "version": 21
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2329,
+   "fnv": "b961e783",
+   "version": 33
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2325,
+   "fnv": "ecfb5576",
+   "version": 33
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 642,
+   "fnv": "68723401",
+   "version": 21
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 647,
+   "fnv": "546a59b7",
+   "version": 23
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 809,
+   "fnv": "02c03a50",
+   "version": 24
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 812,
+   "fnv": "0955a070",
+   "version": 25
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 792,
+   "fnv": "75103559",
+   "version": 26
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 792,
+   "fnv": "683f4a32",
+   "version": 27
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 792,
+   "fnv": "7c4e9323",
+   "version": 28
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1020,
+   "fnv": "926299e0",
+   "version": 29
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1004,
+   "fnv": "a7b4a63e",
+   "version": 29
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1020,
+   "fnv": "225126b5",
+   "version": 30
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1020,
+   "fnv": "c1fa1a16",
+   "version": 31
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1020,
+   "fnv": "e26a36db",
+   "version": 32
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1020,
+   "fnv": "736d1334",
+   "version": 33
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1024,
+   "fnv": "ccf2f2b8",
+   "version": 33
+  },
+  {
+   "name": "FAT MONO",
+   "len": 338,
+   "fnv": "f16cf75c",
+   "version": 3
+  },
+  {
+   "name": "FAT MONO",
+   "len": 354,
+   "fnv": "21c306d6",
+   "version": 4
+  },
+  {
+   "name": "FAT MONO",
+   "len": 362,
+   "fnv": "73163fdf",
+   "version": 5
+  },
+  {
+   "name": "FAT MONO",
+   "len": 362,
+   "fnv": "29cffeec",
+   "version": 6
+  },
+  {
+   "name": "FAT MONO",
+   "len": 362,
+   "fnv": "8e29136f",
+   "version": 6
+  },
+  {
+   "name": "FAT MONO",
+   "len": 374,
+   "fnv": "49692518",
+   "version": 7
+  },
+  {
+   "name": "FAT MONO",
+   "len": 362,
+   "fnv": "56fea886",
+   "version": 8
+  },
+  {
+   "name": "FAT MONO",
+   "len": 374,
+   "fnv": "e8ba40b9",
+   "version": 8
+  },
+  {
+   "name": "FAT MONO",
+   "len": 422,
+   "fnv": "1c78a846",
+   "version": 9
+  },
+  {
+   "name": "FAT MONO",
+   "len": 422,
+   "fnv": "8c75c53f",
+   "version": 10
+  },
+  {
+   "name": "FAT MONO",
+   "len": 446,
+   "fnv": "9ee3d11b",
+   "version": 11
+  },
+  {
+   "name": "FAT MONO",
+   "len": 446,
+   "fnv": "78470802",
+   "version": 12
+  },
+  {
+   "name": "FAT MONO",
+   "len": 446,
+   "fnv": "1ec876f9",
+   "version": 13
+  },
+  {
+   "name": "FAT MONO",
+   "len": 450,
+   "fnv": "0f5c0948",
+   "version": 14
+  },
+  {
+   "name": "FAT MONO",
+   "len": 450,
+   "fnv": "f42ac31f",
+   "version": 15
+  },
+  {
+   "name": "FAT MONO",
+   "len": 450,
+   "fnv": "42e05db6",
+   "version": 16
+  },
+  {
+   "name": "FAT MONO",
+   "len": 498,
+   "fnv": "2df43da3",
+   "version": 19
+  },
+  {
+   "name": "FAT MONO",
+   "len": 474,
+   "fnv": "d7a64b6d",
+   "version": 20
+  },
+  {
+   "name": "FAT MONO",
+   "len": 474,
+   "fnv": "a196971e",
+   "version": 21
+  },
+  {
+   "name": "FAT UNISON",
+   "len": 393,
+   "fnv": "56d8ff6f",
+   "version": 8
+  },
+  {
+   "name": "FM BELL",
+   "len": 279,
+   "fnv": "adf0f255",
+   "version": 3
+  },
+  {
+   "name": "FM BELL",
+   "len": 326,
+   "fnv": "76999a8d",
+   "version": 4
+  },
+  {
+   "name": "FM BELL",
+   "len": 326,
+   "fnv": "76d68996",
+   "version": 5
+  },
+  {
+   "name": "FM BELL",
+   "len": 326,
+   "fnv": "6e96f6c0",
+   "version": 6
+  },
+  {
+   "name": "FM BELL",
+   "len": 326,
+   "fnv": "aea378e3",
+   "version": 6
+  },
+  {
+   "name": "FM BELL",
+   "len": 334,
+   "fnv": "2890465c",
+   "version": 7
+  },
+  {
+   "name": "FM BELL",
+   "len": 334,
+   "fnv": "0bd09c56",
+   "version": 8
+  },
+  {
+   "name": "FM BELL",
+   "len": 334,
+   "fnv": "5dd81885",
+   "version": 8
+  },
+  {
+   "name": "FM BELL",
+   "len": 334,
+   "fnv": "b0ea96c7",
+   "version": 8
+  },
+  {
+   "name": "FM BELL",
+   "len": 382,
+   "fnv": "6b836fdd",
+   "version": 9
+  },
+  {
+   "name": "FM BELL",
+   "len": 390,
+   "fnv": "8e1906f1",
+   "version": 10
+  },
+  {
+   "name": "FM BELL",
+   "len": 406,
+   "fnv": "6a6c1f28",
+   "version": 11
+  },
+  {
+   "name": "FM BELL",
+   "len": 406,
+   "fnv": "d9045385",
+   "version": 12
+  },
+  {
+   "name": "FM BELL",
+   "len": 406,
+   "fnv": "297c9b0e",
+   "version": 13
+  },
+  {
+   "name": "FM BELL",
+   "len": 414,
+   "fnv": "30f2dca5",
+   "version": 13
+  },
+  {
+   "name": "FM BELL",
+   "len": 418,
+   "fnv": "74603154",
+   "version": 14
+  },
+  {
+   "name": "FM BELL",
+   "len": 418,
+   "fnv": "c561ccdb",
+   "version": 15
+  },
+  {
+   "name": "FM BELL",
+   "len": 418,
+   "fnv": "514d9e2a",
+   "version": 16
+  },
+  {
+   "name": "FM BELL",
+   "len": 454,
+   "fnv": "ff76726f",
+   "version": 19
+  },
+  {
+   "name": "FM BELL",
+   "len": 434,
+   "fnv": "1516aa19",
+   "version": 20
+  },
+  {
+   "name": "FM BELL",
+   "len": 434,
+   "fnv": "b9f3de62",
+   "version": 21
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 147,
+   "fnv": "0f15aeea",
+   "version": 1
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 217,
+   "fnv": "b2c94184",
+   "version": 3
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 217,
+   "fnv": "1dd2c848",
+   "version": 4
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 225,
+   "fnv": "35fbaa57",
+   "version": 5
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 225,
+   "fnv": "08a0bd76",
+   "version": 6
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 225,
+   "fnv": "f2cf8483",
+   "version": 6
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 229,
+   "fnv": "42c220fb",
+   "version": 7
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 233,
+   "fnv": "0f48c313",
+   "version": 8
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 229,
+   "fnv": "a06892fc",
+   "version": 8
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 259,
+   "fnv": "e4800ba1",
+   "version": 9
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 267,
+   "fnv": "0f8f9b08",
+   "version": 10
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 275,
+   "fnv": "45a31f60",
+   "version": 11
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 275,
+   "fnv": "f1b206bb",
+   "version": 12
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 275,
+   "fnv": "d2d0f166",
+   "version": 13
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 279,
+   "fnv": "c62b92a1",
+   "version": 14
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 279,
+   "fnv": "ddbc29cc",
+   "version": 15
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 279,
+   "fnv": "53e42c07",
+   "version": 16
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 303,
+   "fnv": "8bdff788",
+   "version": 19
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 287,
+   "fnv": "cbb85736",
+   "version": 20
+  },
+  {
+   "name": "FM-1 PANEL SYNTH",
+   "len": 287,
+   "fnv": "6b3c506b",
+   "version": 21
+  },
+  {
+   "name": "GB ARP MINOR",
+   "len": 202,
+   "fnv": "42423d39",
+   "version": 8
+  },
+  {
+   "name": "GB WAVE BASS",
+   "len": 163,
+   "fnv": "65ee4d80",
+   "version": 8
+  },
+  {
+   "name": "GB WAVE LEAD",
+   "len": 272,
+   "fnv": "a02ebfaa",
+   "version": 8
+  },
+  {
+   "name": "GLASS",
+   "len": 252,
+   "fnv": "6f6b1474",
+   "version": 3
+  },
+  {
+   "name": "GLASS",
+   "len": 299,
+   "fnv": "98b943b7",
+   "version": 4
+  },
+  {
+   "name": "GLASS",
+   "len": 299,
+   "fnv": "c5b91ed2",
+   "version": 5
+  },
+  {
+   "name": "GLASS",
+   "len": 299,
+   "fnv": "5a2e5f61",
+   "version": 6
+  },
+  {
+   "name": "GLASS",
+   "len": 299,
+   "fnv": "920c0338",
+   "version": 6
+  },
+  {
+   "name": "GLASS",
+   "len": 307,
+   "fnv": "81e7e0c4",
+   "version": 7
+  },
+  {
+   "name": "GLASS",
+   "len": 307,
+   "fnv": "1f8ba46f",
+   "version": 8
+  },
+  {
+   "name": "GLASS",
+   "len": 307,
+   "fnv": "d96fca73",
+   "version": 8
+  },
+  {
+   "name": "GLASS",
+   "len": 349,
+   "fnv": "7f32106a",
+   "version": 9
+  },
+  {
+   "name": "GLASS",
+   "len": 357,
+   "fnv": "21050284",
+   "version": 10
+  },
+  {
+   "name": "GLASS",
+   "len": 373,
+   "fnv": "b3c4c7cb",
+   "version": 11
+  },
+  {
+   "name": "GLASS",
+   "len": 373,
+   "fnv": "d98631a0",
+   "version": 12
+  },
+  {
+   "name": "GLASS",
+   "len": 381,
+   "fnv": "a5c7da32",
+   "version": 13
+  },
+  {
+   "name": "GLASS",
+   "len": 373,
+   "fnv": "b242988d",
+   "version": 13
+  },
+  {
+   "name": "GLASS",
+   "len": 385,
+   "fnv": "bdef6f05",
+   "version": 14
+  },
+  {
+   "name": "GLASS",
+   "len": 385,
+   "fnv": "22886894",
+   "version": 15
+  },
+  {
+   "name": "GLASS",
+   "len": 385,
+   "fnv": "0884d19f",
+   "version": 16
+  },
+  {
+   "name": "GLASS",
+   "len": 421,
+   "fnv": "22a72ce8",
+   "version": 19
+  },
+  {
+   "name": "GLASS",
+   "len": 401,
+   "fnv": "bec9358e",
+   "version": 20
+  },
+  {
+   "name": "GLASS",
+   "len": 401,
+   "fnv": "478da44f",
+   "version": 21
+  },
+  {
+   "name": "GLASS LEAD",
+   "len": 272,
+   "fnv": "3ead60dc",
+   "version": 8
+  },
+  {
+   "name": "GLASS PAD",
+   "len": 397,
+   "fnv": "1a575aed",
+   "version": 8
+  },
+  {
+   "name": "HERA 6",
+   "len": 658,
+   "fnv": "8f7c0ae3",
+   "version": 21
+  },
+  {
+   "name": "HERA 6",
+   "len": 663,
+   "fnv": "cc1c5b91",
+   "version": 23
+  },
+  {
+   "name": "HERA 6",
+   "len": 825,
+   "fnv": "25229fea",
+   "version": 24
+  },
+  {
+   "name": "HERA 6",
+   "len": 828,
+   "fnv": "7595a576",
+   "version": 25
+  },
+  {
+   "name": "HERA 6",
+   "len": 828,
+   "fnv": "d04a09c8",
+   "version": 25
+  },
+  {
+   "name": "HERA 6",
+   "len": 808,
+   "fnv": "50ecc99b",
+   "version": 26
+  },
+  {
+   "name": "HERA 6",
+   "len": 808,
+   "fnv": "5e29e155",
+   "version": 26
+  },
+  {
+   "name": "HERA 6",
+   "len": 808,
+   "fnv": "b591ebca",
+   "version": 27
+  },
+  {
+   "name": "HERA 6",
+   "len": 808,
+   "fnv": "f8a551c7",
+   "version": 28
+  },
+  {
+   "name": "HERA 6",
+   "len": 974,
+   "fnv": "27153831",
+   "version": 29
+  },
+  {
+   "name": "HERA 6",
+   "len": 974,
+   "fnv": "0f3c61f8",
+   "version": 30
+  },
+  {
+   "name": "HERA 6",
+   "len": 974,
+   "fnv": "f5ee351b",
+   "version": 31
+  },
+  {
+   "name": "HERA 6",
+   "len": 974,
+   "fnv": "71a982ca",
+   "version": 32
+  },
+  {
+   "name": "HERA 6",
+   "len": 974,
+   "fnv": "42a80fb5",
+   "version": 33
+  },
+  {
+   "name": "HERA 6",
+   "len": 978,
+   "fnv": "721010e1",
+   "version": 33
+  },
+  {
+   "name": "HI-HAT",
+   "len": 146,
+   "fnv": "641c8e55",
+   "version": 3
+  },
+  {
+   "name": "HI-HAT",
+   "len": 162,
+   "fnv": "3016a12e",
+   "version": 4
+  },
+  {
+   "name": "HI-HAT",
+   "len": 170,
+   "fnv": "ef5f4a7f",
+   "version": 5
+  },
+  {
+   "name": "HI-HAT",
+   "len": 170,
+   "fnv": "623aeb0b",
+   "version": 6
+  },
+  {
+   "name": "HI-HAT",
+   "len": 170,
+   "fnv": "c754fe50",
+   "version": 6
+  },
+  {
+   "name": "HI-HAT",
+   "len": 170,
+   "fnv": "2bec77f4",
+   "version": 7
+  },
+  {
+   "name": "HI-HAT",
+   "len": 170,
+   "fnv": "04afb09d",
+   "version": 8
+  },
+  {
+   "name": "HI-HAT",
+   "len": 170,
+   "fnv": "ea72ce4a",
+   "version": 8
+  },
+  {
+   "name": "HI-HAT",
+   "len": 194,
+   "fnv": "6b753fa6",
+   "version": 9
+  },
+  {
+   "name": "HI-HAT",
+   "len": 198,
+   "fnv": "aad705d6",
+   "version": 9
+  },
+  {
+   "name": "HI-HAT",
+   "len": 198,
+   "fnv": "7cf207f7",
+   "version": 10
+  },
+  {
+   "name": "HI-HAT",
+   "len": 198,
+   "fnv": "eb8112b8",
+   "version": 11
+  },
+  {
+   "name": "HI-HAT",
+   "len": 198,
+   "fnv": "b6304069",
+   "version": 12
+  },
+  {
+   "name": "HI-HAT",
+   "len": 198,
+   "fnv": "4e0e3b82",
+   "version": 13
+  },
+  {
+   "name": "HI-HAT",
+   "len": 202,
+   "fnv": "7234f213",
+   "version": 14
+  },
+  {
+   "name": "HI-HAT",
+   "len": 202,
+   "fnv": "aa4802b4",
+   "version": 15
+  },
+  {
+   "name": "HI-HAT",
+   "len": 202,
+   "fnv": "a0086235",
+   "version": 16
+  },
+  {
+   "name": "HI-HAT",
+   "len": 214,
+   "fnv": "3868b540",
+   "version": 19
+  },
+  {
+   "name": "HI-HAT",
+   "len": 202,
+   "fnv": "a52d4bf6",
+   "version": 20
+  },
+  {
+   "name": "HI-HAT",
+   "len": 202,
+   "fnv": "9a203105",
+   "version": 21
+  },
+  {
+   "name": "HURDY GURDY",
+   "len": 731,
+   "fnv": "f6b4179c",
+   "version": 8
+  },
+  {
+   "name": "INIT",
+   "len": 246,
+   "fnv": "2c2601d8",
+   "version": 21
+  },
+  {
+   "name": "INIT",
+   "len": 250,
+   "fnv": "2d2d12c2",
+   "version": 23
+  },
+  {
+   "name": "INIT",
+   "len": 412,
+   "fnv": "2fd861bf",
+   "version": 24
+  },
+  {
+   "name": "INIT",
+   "len": 412,
+   "fnv": "daa9d7d4",
+   "version": 25
+  },
+  {
+   "name": "INIT",
+   "len": 392,
+   "fnv": "ee14bd91",
+   "version": 26
+  },
+  {
+   "name": "INIT",
+   "len": 392,
+   "fnv": "c8807876",
+   "version": 27
+  },
+  {
+   "name": "INIT",
+   "len": 392,
+   "fnv": "d8e6e513",
+   "version": 28
+  },
+  {
+   "name": "INIT",
+   "len": 301,
+   "fnv": "91c026b0",
+   "version": 29
+  },
+  {
+   "name": "INIT",
+   "len": 301,
+   "fnv": "6f9f330f",
+   "version": 30
+  },
+  {
+   "name": "INIT",
+   "len": 301,
+   "fnv": "e0a53e56",
+   "version": 31
+  },
+  {
+   "name": "INIT",
+   "len": 301,
+   "fnv": "bd1eddd5",
+   "version": 32
+  },
+  {
+   "name": "INIT",
+   "len": 301,
+   "fnv": "2255acfc",
+   "version": 33
+  },
+  {
+   "name": "INIT",
+   "len": 305,
+   "fnv": "97bc5689",
+   "version": 33
+  },
+  {
+   "name": "IO 4",
+   "len": 546,
+   "fnv": "2660bff9",
+   "version": 21
+  },
+  {
+   "name": "IO 4",
+   "len": 551,
+   "fnv": "1e203ec1",
+   "version": 23
+  },
+  {
+   "name": "IO 4",
+   "len": 713,
+   "fnv": "a72a70be",
+   "version": 24
+  },
+  {
+   "name": "IO 4",
+   "len": 716,
+   "fnv": "5e9cee28",
+   "version": 25
+  },
+  {
+   "name": "IO 4",
+   "len": 696,
+   "fnv": "0a5ba3d1",
+   "version": 26
+  },
+  {
+   "name": "IO 4",
+   "len": 696,
+   "fnv": "7dad1eb6",
+   "version": 27
+  },
+  {
+   "name": "IO 4",
+   "len": 696,
+   "fnv": "4c62e5c7",
+   "version": 28
+  },
+  {
+   "name": "IO 4",
+   "len": 856,
+   "fnv": "f3720109",
+   "version": 29
+  },
+  {
+   "name": "IO 4",
+   "len": 856,
+   "fnv": "3ea0ebdc",
+   "version": 30
+  },
+  {
+   "name": "IO 4",
+   "len": 856,
+   "fnv": "3c7a948b",
+   "version": 31
+  },
+  {
+   "name": "IO 4",
+   "len": 856,
+   "fnv": "dab20d16",
+   "version": 32
+  },
+  {
+   "name": "IO 4",
+   "len": 860,
+   "fnv": "3839b407",
+   "version": 33
+  },
+  {
+   "name": "IO 4",
+   "len": 856,
+   "fnv": "bc9e2ae5",
+   "version": 33
+  },
+  {
+   "name": "KICK",
+   "len": 201,
+   "fnv": "28569527",
+   "version": 3
+  },
+  {
+   "name": "KICK",
+   "len": 217,
+   "fnv": "503f72cf",
+   "version": 4
+  },
+  {
+   "name": "KICK",
+   "len": 217,
+   "fnv": "23e36e2e",
+   "version": 5
+  },
+  {
+   "name": "KICK",
+   "len": 217,
+   "fnv": "4bd263aa",
+   "version": 6
+  },
+  {
+   "name": "KICK",
+   "len": 217,
+   "fnv": "c0e234db",
+   "version": 6
+  },
+  {
+   "name": "KICK",
+   "len": 221,
+   "fnv": "343f9cf2",
+   "version": 7
+  },
+  {
+   "name": "KICK",
+   "len": 217,
+   "fnv": "6f9797a0",
+   "version": 8
+  },
+  {
+   "name": "KICK",
+   "len": 221,
+   "fnv": "d965d5e9",
+   "version": 8
+  },
+  {
+   "name": "KICK",
+   "len": 251,
+   "fnv": "7f4877c8",
+   "version": 9
+  },
+  {
+   "name": "KICK",
+   "len": 251,
+   "fnv": "ae8719c7",
+   "version": 10
+  },
+  {
+   "name": "KICK",
+   "len": 259,
+   "fnv": "daafbf73",
+   "version": 11
+  },
+  {
+   "name": "KICK",
+   "len": 259,
+   "fnv": "b06a75cc",
+   "version": 12
+  },
+  {
+   "name": "KICK",
+   "len": 259,
+   "fnv": "26d89fc5",
+   "version": 13
+  },
+  {
+   "name": "KICK",
+   "len": 263,
+   "fnv": "ba77699e",
+   "version": 14
+  },
+  {
+   "name": "KICK",
+   "len": 263,
+   "fnv": "e7a51bb7",
+   "version": 15
+  },
+  {
+   "name": "KICK",
+   "len": 263,
+   "fnv": "e43bf900",
+   "version": 16
+  },
+  {
+   "name": "KICK",
+   "len": 287,
+   "fnv": "a05b9c4b",
+   "version": 19
+  },
+  {
+   "name": "KICK",
+   "len": 271,
+   "fnv": "01f514d5",
+   "version": 20
+  },
+  {
+   "name": "KICK",
+   "len": 271,
+   "fnv": "fbfecbbc",
+   "version": 21
+  },
+  {
+   "name": "LASER",
+   "len": 236,
+   "fnv": "a6ebb9b4",
+   "version": 3
+  },
+  {
+   "name": "LASER",
+   "len": 252,
+   "fnv": "7640d134",
+   "version": 4
+  },
+  {
+   "name": "LASER",
+   "len": 252,
+   "fnv": "9987c577",
+   "version": 5
+  },
+  {
+   "name": "LASER",
+   "len": 252,
+   "fnv": "da69f716",
+   "version": 6
+  },
+  {
+   "name": "LASER",
+   "len": 252,
+   "fnv": "ef821dc9",
+   "version": 6
+  },
+  {
+   "name": "LASER",
+   "len": 256,
+   "fnv": "70a162a1",
+   "version": 7
+  },
+  {
+   "name": "LASER",
+   "len": 256,
+   "fnv": "6e382b70",
+   "version": 8
+  },
+  {
+   "name": "LASER",
+   "len": 260,
+   "fnv": "d81b81ee",
+   "version": 8
+  },
+  {
+   "name": "LASER",
+   "len": 292,
+   "fnv": "5857ebef",
+   "version": 9
+  },
+  {
+   "name": "LASER",
+   "len": 300,
+   "fnv": "ae80d653",
+   "version": 10
+  },
+  {
+   "name": "LASER",
+   "len": 308,
+   "fnv": "2b680e87",
+   "version": 11
+  },
+  {
+   "name": "LASER",
+   "len": 308,
+   "fnv": "0121e536",
+   "version": 12
+  },
+  {
+   "name": "LASER",
+   "len": 308,
+   "fnv": "cfa7e641",
+   "version": 13
+  },
+  {
+   "name": "LASER",
+   "len": 312,
+   "fnv": "1d0a3350",
+   "version": 14
+  },
+  {
+   "name": "LASER",
+   "len": 312,
+   "fnv": "4d2b971b",
+   "version": 15
+  },
+  {
+   "name": "LASER",
+   "len": 312,
+   "fnv": "ce99507a",
+   "version": 16
+  },
+  {
+   "name": "LASER",
+   "len": 336,
+   "fnv": "9061d3ef",
+   "version": 19
+  },
+  {
+   "name": "LASER",
+   "len": 320,
+   "fnv": "24406321",
+   "version": 20
+  },
+  {
+   "name": "LASER",
+   "len": 320,
+   "fnv": "f8c14df6",
+   "version": 21
+  },
+  {
+   "name": "MALLET",
+   "len": 354,
+   "fnv": "59374d3d",
+   "version": 8
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 2772,
+   "fnv": "b1eb51ec",
+   "version": 33
+  },
+  {
+   "name": "METAL",
+   "len": 186,
+   "fnv": "9a40869a",
+   "version": 3
+  },
+  {
+   "name": "METAL",
+   "len": 202,
+   "fnv": "633636ca",
+   "version": 4
+  },
+  {
+   "name": "METAL",
+   "len": 202,
+   "fnv": "19cf8ba1",
+   "version": 5
+  },
+  {
+   "name": "METAL",
+   "len": 202,
+   "fnv": "310cf117",
+   "version": 6
+  },
+  {
+   "name": "METAL",
+   "len": 202,
+   "fnv": "98b129cc",
+   "version": 6
+  },
+  {
+   "name": "METAL",
+   "len": 210,
+   "fnv": "8c9d3f3b",
+   "version": 7
+  },
+  {
+   "name": "METAL",
+   "len": 210,
+   "fnv": "3ef89816",
+   "version": 8
+  },
+  {
+   "name": "METAL",
+   "len": 202,
+   "fnv": "5106a7c5",
+   "version": 8
+  },
+  {
+   "name": "METAL",
+   "len": 234,
+   "fnv": "c5b39269",
+   "version": 9
+  },
+  {
+   "name": "METAL",
+   "len": 234,
+   "fnv": "a06d2ac0",
+   "version": 10
+  },
+  {
+   "name": "METAL",
+   "len": 250,
+   "fnv": "dad4b815",
+   "version": 11
+  },
+  {
+   "name": "METAL",
+   "len": 250,
+   "fnv": "c45177d4",
+   "version": 12
+  },
+  {
+   "name": "METAL",
+   "len": 250,
+   "fnv": "581d0ebb",
+   "version": 13
+  },
+  {
+   "name": "METAL",
+   "len": 254,
+   "fnv": "dfe4b012",
+   "version": 14
+  },
+  {
+   "name": "METAL",
+   "len": 254,
+   "fnv": "12264371",
+   "version": 15
+  },
+  {
+   "name": "METAL",
+   "len": 254,
+   "fnv": "adfacc10",
+   "version": 16
+  },
+  {
+   "name": "METAL",
+   "len": 290,
+   "fnv": "67b02a1d",
+   "version": 19
+  },
+  {
+   "name": "METAL",
+   "len": 270,
+   "fnv": "ae2ad69f",
+   "version": 20
+  },
+  {
+   "name": "METAL",
+   "len": 270,
+   "fnv": "f78b7420",
+   "version": 21
+  },
+  {
+   "name": "METAL DRONE",
+   "len": 436,
+   "fnv": "2f244845",
+   "version": 8
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 708,
+   "fnv": "d58675e3",
+   "version": 21
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 713,
+   "fnv": "982568b1",
+   "version": 23
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 875,
+   "fnv": "5c966c40",
+   "version": 24
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 878,
+   "fnv": "7c768f88",
+   "version": 25
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 858,
+   "fnv": "92cd2b5d",
+   "version": 26
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 858,
+   "fnv": "ad150126",
+   "version": 27
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 858,
+   "fnv": "c22c8c23",
+   "version": 28
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1140,
+   "fnv": "8cb13c59",
+   "version": 29
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1156,
+   "fnv": "c8ab1027",
+   "version": 29
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1156,
+   "fnv": "1423f2b6",
+   "version": 30
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1156,
+   "fnv": "7b3b9c99",
+   "version": 31
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1156,
+   "fnv": "c04050e8",
+   "version": 32
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1156,
+   "fnv": "0276cca3",
+   "version": 33
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1160,
+   "fnv": "751f237c",
+   "version": 33
+  },
+  {
+   "name": "NES ARP LEAD",
+   "len": 163,
+   "fnv": "2762afb6",
+   "version": 8
+  },
+  {
+   "name": "NES ARP LEAD",
+   "len": 163,
+   "fnv": "84d610d6",
+   "version": 8
+  },
+  {
+   "name": "NES TRIANGLE BASS",
+   "len": 163,
+   "fnv": "9cfd586c",
+   "version": 8
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 185,
+   "fnv": "0043c700",
+   "version": 3
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 201,
+   "fnv": "981711c8",
+   "version": 4
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 209,
+   "fnv": "f3662dab",
+   "version": 5
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 209,
+   "fnv": "069f3d8d",
+   "version": 6
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 209,
+   "fnv": "41005624",
+   "version": 6
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 209,
+   "fnv": "a27b578c",
+   "version": 7
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 240,
+   "fnv": "3ff44416",
+   "version": 8
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 209,
+   "fnv": "6dbca8e3",
+   "version": 8
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 209,
+   "fnv": "86abd41a",
+   "version": 8
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 239,
+   "fnv": "7e3278d6",
+   "version": 9
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 243,
+   "fnv": "a6233396",
+   "version": 9
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 243,
+   "fnv": "b78c6a0d",
+   "version": 10
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 243,
+   "fnv": "67043dd4",
+   "version": 11
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 243,
+   "fnv": "62a8106b",
+   "version": 12
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 243,
+   "fnv": "161e9f82",
+   "version": 13
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 247,
+   "fnv": "c2e86f69",
+   "version": 14
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 247,
+   "fnv": "a96dcbe0",
+   "version": 15
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 247,
+   "fnv": "afbd55f7",
+   "version": 16
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 259,
+   "fnv": "bab8b2ec",
+   "version": 19
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 247,
+   "fnv": "51bd6492",
+   "version": 20
+  },
+  {
+   "name": "NOISE SWEEP",
+   "len": 247,
+   "fnv": "bb27869b",
+   "version": 21
+  },
+  {
+   "name": "ORACLE V",
+   "len": 688,
+   "fnv": "40670e90",
+   "version": 21
+  },
+  {
+   "name": "ORACLE V",
+   "len": 688,
+   "fnv": "bd1f2c9d",
+   "version": 21
+  },
+  {
+   "name": "ORACLE V",
+   "len": 693,
+   "fnv": "f5ef7523",
+   "version": 23
+  },
+  {
+   "name": "ORACLE V",
+   "len": 855,
+   "fnv": "2dad62ba",
+   "version": 24
+  },
+  {
+   "name": "ORACLE V",
+   "len": 858,
+   "fnv": "ccb9fa1b",
+   "version": 25
+  },
+  {
+   "name": "ORACLE V",
+   "len": 858,
+   "fnv": "d180b72a",
+   "version": 25
+  },
+  {
+   "name": "ORACLE V",
+   "len": 838,
+   "fnv": "46bb8a1b",
+   "version": 26
+  },
+  {
+   "name": "ORACLE V",
+   "len": 838,
+   "fnv": "da436aba",
+   "version": 26
+  },
+  {
+   "name": "ORACLE V",
+   "len": 838,
+   "fnv": "ccbf8dc9",
+   "version": 27
+  },
+  {
+   "name": "ORACLE V",
+   "len": 838,
+   "fnv": "b6808cd0",
+   "version": 28
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1055,
+   "fnv": "da82cc60",
+   "version": 29
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1055,
+   "fnv": "cfb5b147",
+   "version": 30
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1055,
+   "fnv": "3eac89f6",
+   "version": 31
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1055,
+   "fnv": "1f36aca5",
+   "version": 32
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1059,
+   "fnv": "413cf13f",
+   "version": 33
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1055,
+   "fnv": "d5dfcdb4",
+   "version": 33
+  },
+  {
+   "name": "ORGAN",
+   "len": 268,
+   "fnv": "acb41837",
+   "version": 3
+  },
+  {
+   "name": "ORGAN",
+   "len": 284,
+   "fnv": "c9902d37",
+   "version": 4
+  },
+  {
+   "name": "ORGAN",
+   "len": 284,
+   "fnv": "d96d6c84",
+   "version": 5
+  },
+  {
+   "name": "ORGAN",
+   "len": 284,
+   "fnv": "87619b96",
+   "version": 6
+  },
+  {
+   "name": "ORGAN",
+   "len": 284,
+   "fnv": "c1ac7c79",
+   "version": 6
+  },
+  {
+   "name": "ORGAN",
+   "len": 296,
+   "fnv": "695d7cbe",
+   "version": 7
+  },
+  {
+   "name": "ORGAN",
+   "len": 296,
+   "fnv": "3f3882e7",
+   "version": 8
+  },
+  {
+   "name": "ORGAN",
+   "len": 362,
+   "fnv": "8e8e99b9",
+   "version": 8
+  },
+  {
+   "name": "ORGAN",
+   "len": 284,
+   "fnv": "f2b92d5c",
+   "version": 8
+  },
+  {
+   "name": "ORGAN",
+   "len": 332,
+   "fnv": "3a276658",
+   "version": 9
+  },
+  {
+   "name": "ORGAN",
+   "len": 332,
+   "fnv": "3431e5f9",
+   "version": 10
+  },
+  {
+   "name": "ORGAN",
+   "len": 356,
+   "fnv": "b1e5c791",
+   "version": 11
+  },
+  {
+   "name": "ORGAN",
+   "len": 356,
+   "fnv": "963ae798",
+   "version": 12
+  },
+  {
+   "name": "ORGAN",
+   "len": 356,
+   "fnv": "217b73f3",
+   "version": 13
+  },
+  {
+   "name": "ORGAN",
+   "len": 360,
+   "fnv": "8b8d014a",
+   "version": 14
+  },
+  {
+   "name": "ORGAN",
+   "len": 360,
+   "fnv": "c4acb755",
+   "version": 15
+  },
+  {
+   "name": "ORGAN",
+   "len": 360,
+   "fnv": "ded8d99c",
+   "version": 16
+  },
+  {
+   "name": "ORGAN",
+   "len": 408,
+   "fnv": "c064e2f9",
+   "version": 19
+  },
+  {
+   "name": "ORGAN",
+   "len": 384,
+   "fnv": "64150143",
+   "version": 20
+  },
+  {
+   "name": "ORGAN",
+   "len": 384,
+   "fnv": "57ef39a8",
+   "version": 21
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2556,
+   "fnv": "1c70c76e",
+   "version": 33
+  },
+  {
+   "name": "PHASE BASS",
+   "len": 241,
+   "fnv": "bfe126df",
+   "version": 8
+  },
+  {
+   "name": "PLUCK",
+   "len": 240,
+   "fnv": "74367d87",
+   "version": 3
+  },
+  {
+   "name": "PLUCK",
+   "len": 256,
+   "fnv": "60197e1d",
+   "version": 4
+  },
+  {
+   "name": "PLUCK",
+   "len": 264,
+   "fnv": "3885b6b4",
+   "version": 5
+  },
+  {
+   "name": "PLUCK",
+   "len": 264,
+   "fnv": "233b1972",
+   "version": 6
+  },
+  {
+   "name": "PLUCK",
+   "len": 264,
+   "fnv": "6f6fa2c9",
+   "version": 6
+  },
+  {
+   "name": "PLUCK",
+   "len": 268,
+   "fnv": "ba3309d1",
+   "version": 7
+  },
+  {
+   "name": "PLUCK",
+   "len": 272,
+   "fnv": "08d9ce48",
+   "version": 8
+  },
+  {
+   "name": "PLUCK",
+   "len": 268,
+   "fnv": "801809f4",
+   "version": 8
+  },
+  {
+   "name": "PLUCK",
+   "len": 272,
+   "fnv": "fadde5de",
+   "version": 8
+  },
+  {
+   "name": "PLUCK",
+   "len": 304,
+   "fnv": "398d78ef",
+   "version": 9
+  },
+  {
+   "name": "PLUCK",
+   "len": 312,
+   "fnv": "7a1e9757",
+   "version": 10
+  },
+  {
+   "name": "PLUCK",
+   "len": 320,
+   "fnv": "3a22ea2f",
+   "version": 11
+  },
+  {
+   "name": "PLUCK",
+   "len": 320,
+   "fnv": "72167e9d",
+   "version": 12
+  },
+  {
+   "name": "PLUCK",
+   "len": 320,
+   "fnv": "73d1281a",
+   "version": 13
+  },
+  {
+   "name": "PLUCK",
+   "len": 324,
+   "fnv": "a25eaad3",
+   "version": 14
+  },
+  {
+   "name": "PLUCK",
+   "len": 324,
+   "fnv": "eb101f90",
+   "version": 15
+  },
+  {
+   "name": "PLUCK",
+   "len": 324,
+   "fnv": "59759b29",
+   "version": 16
+  },
+  {
+   "name": "PLUCK",
+   "len": 348,
+   "fnv": "f3fcbe1c",
+   "version": 19
+  },
+  {
+   "name": "PLUCK",
+   "len": 332,
+   "fnv": "ec9ac48a",
+   "version": 20
+  },
+  {
+   "name": "PLUCK",
+   "len": 332,
+   "fnv": "125f6ced",
+   "version": 21
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 198,
+   "fnv": "0f2fcfc0",
+   "version": 21
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 203,
+   "fnv": "cff3191c",
+   "version": 23
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 365,
+   "fnv": "59837987",
+   "version": 24
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 368,
+   "fnv": "149d33dd",
+   "version": 25
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 348,
+   "fnv": "fe7f0cd8",
+   "version": 26
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 348,
+   "fnv": "27615c7f",
+   "version": 27
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 348,
+   "fnv": "7e899bca",
+   "version": 28
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 300,
+   "fnv": "dd7e67e6",
+   "version": 29
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 300,
+   "fnv": "6b520db3",
+   "version": 30
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 300,
+   "fnv": "0a2000ec",
+   "version": 31
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 300,
+   "fnv": "0dc58229",
+   "version": 32
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 300,
+   "fnv": "38ed0a72",
+   "version": 33
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 304,
+   "fnv": "b15bc239",
+   "version": 33
+  },
+  {
+   "name": "PULSE LEAD",
+   "len": 276,
+   "fnv": "a4db7692",
+   "version": 8
+  },
+  {
+   "name": "PWM PAD",
+   "len": 170,
+   "fnv": "b13b4aa8",
+   "version": 3
+  },
+  {
+   "name": "PWM PAD",
+   "len": 186,
+   "fnv": "a1a9babd",
+   "version": 4
+  },
+  {
+   "name": "PWM PAD",
+   "len": 186,
+   "fnv": "05319146",
+   "version": 5
+  },
+  {
+   "name": "PWM PAD",
+   "len": 186,
+   "fnv": "a62ac7ae",
+   "version": 6
+  },
+  {
+   "name": "PWM PAD",
+   "len": 186,
+   "fnv": "be41d0d1",
+   "version": 6
+  },
+  {
+   "name": "PWM PAD",
+   "len": 190,
+   "fnv": "f94e9b02",
+   "version": 7
+  },
+  {
+   "name": "PWM PAD",
+   "len": 354,
+   "fnv": "45c49e82",
+   "version": 8
+  },
+  {
+   "name": "PWM PAD",
+   "len": 198,
+   "fnv": "ad56bd3e",
+   "version": 8
+  },
+  {
+   "name": "PWM PAD",
+   "len": 190,
+   "fnv": "cf094acc",
+   "version": 8
+  },
+  {
+   "name": "PWM PAD",
+   "len": 214,
+   "fnv": "50b1241f",
+   "version": 9
+  },
+  {
+   "name": "PWM PAD",
+   "len": 226,
+   "fnv": "2cad7d16",
+   "version": 10
+  },
+  {
+   "name": "PWM PAD",
+   "len": 234,
+   "fnv": "c24414e2",
+   "version": 11
+  },
+  {
+   "name": "PWM PAD",
+   "len": 234,
+   "fnv": "e5af1637",
+   "version": 12
+  },
+  {
+   "name": "PWM PAD",
+   "len": 234,
+   "fnv": "8ea282dc",
+   "version": 13
+  },
+  {
+   "name": "PWM PAD",
+   "len": 238,
+   "fnv": "8ebea149",
+   "version": 14
+  },
+  {
+   "name": "PWM PAD",
+   "len": 238,
+   "fnv": "0793bb3e",
+   "version": 15
+  },
+  {
+   "name": "PWM PAD",
+   "len": 238,
+   "fnv": "1b2f4033",
+   "version": 16
+  },
+  {
+   "name": "PWM PAD",
+   "len": 262,
+   "fnv": "54397eaa",
+   "version": 19
+  },
+  {
+   "name": "PWM PAD",
+   "len": 246,
+   "fnv": "2c02a8d0",
+   "version": 20
+  },
+  {
+   "name": "PWM PAD",
+   "len": 246,
+   "fnv": "2d3c73c3",
+   "version": 21
+  },
+  {
+   "name": "REESE",
+   "len": 276,
+   "fnv": "1e1c257e",
+   "version": 8
+  },
+  {
+   "name": "RUBBER BASS",
+   "len": 233,
+   "fnv": "e04c2a43",
+   "version": 8
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 228,
+   "fnv": "e2d32546",
+   "version": 3
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 244,
+   "fnv": "5081430e",
+   "version": 4
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 244,
+   "fnv": "f422015d",
+   "version": 5
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 244,
+   "fnv": "a98667b5",
+   "version": 6
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 244,
+   "fnv": "a9ef9f76",
+   "version": 6
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 248,
+   "fnv": "b0d3eefd",
+   "version": 7
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 264,
+   "fnv": "2f225b32",
+   "version": 8
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 248,
+   "fnv": "4a923a3f",
+   "version": 8
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 264,
+   "fnv": "95fd0715",
+   "version": 8
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 284,
+   "fnv": "c3ab09cc",
+   "version": 9
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 304,
+   "fnv": "48d9244b",
+   "version": 10
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 312,
+   "fnv": "3ec2a087",
+   "version": 11
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 312,
+   "fnv": "6af9d72a",
+   "version": 12
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 312,
+   "fnv": "b0d4bc31",
+   "version": 13
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 316,
+   "fnv": "badb46f4",
+   "version": 14
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 316,
+   "fnv": "27b83753",
+   "version": 15
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 316,
+   "fnv": "1d178a16",
+   "version": 16
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 340,
+   "fnv": "e48907ef",
+   "version": 19
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 324,
+   "fnv": "fbd2eba1",
+   "version": 20
+  },
+  {
+   "name": "S&H BLEEPS",
+   "len": 324,
+   "fnv": "ddc1eb7a",
+   "version": 21
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 697,
+   "fnv": "c1e0f01f",
+   "version": 21
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 701,
+   "fnv": "d5b09609",
+   "version": 23
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 863,
+   "fnv": "f320c06a",
+   "version": 24
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 863,
+   "fnv": "a9d2b8eb",
+   "version": 25
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 843,
+   "fnv": "c1ed45bc",
+   "version": 26
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 843,
+   "fnv": "838e6b6d",
+   "version": 27
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 843,
+   "fnv": "590302be",
+   "version": 28
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1147,
+   "fnv": "851dd79f",
+   "version": 29
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1147,
+   "fnv": "c48366d0",
+   "version": 30
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1147,
+   "fnv": "b915be09",
+   "version": 31
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1147,
+   "fnv": "ff4af862",
+   "version": 32
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1147,
+   "fnv": "5738fcf3",
+   "version": 33
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1151,
+   "fnv": "64933f29",
+   "version": 33
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 2953,
+   "fnv": "7b2b7345",
+   "version": 33
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 452,
+   "fnv": "ba8e9ca7",
+   "version": 21
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 456,
+   "fnv": "03a10bf1",
+   "version": 23
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 618,
+   "fnv": "521db53c",
+   "version": 24
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 618,
+   "fnv": "1433639b",
+   "version": 25
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 598,
+   "fnv": "bdae91ee",
+   "version": 26
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 598,
+   "fnv": "53520fcd",
+   "version": 27
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 598,
+   "fnv": "2b27ab40",
+   "version": 28
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 652,
+   "fnv": "75d401f7",
+   "version": 29
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 652,
+   "fnv": "9e92c543",
+   "version": 29
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 652,
+   "fnv": "a154a462",
+   "version": 30
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 652,
+   "fnv": "788d9875",
+   "version": 31
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 652,
+   "fnv": "cf4e6ad0",
+   "version": 32
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 652,
+   "fnv": "588199ab",
+   "version": 33
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 656,
+   "fnv": "7c1f4a60",
+   "version": 33
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 372,
+   "fnv": "2e844979",
+   "version": 21
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 376,
+   "fnv": "dfe33983",
+   "version": 23
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 538,
+   "fnv": "8b3eed26",
+   "version": 24
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 538,
+   "fnv": "2ba5e92d",
+   "version": 25
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 518,
+   "fnv": "c6091758",
+   "version": 26
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 518,
+   "fnv": "068fd27f",
+   "version": 27
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 526,
+   "fnv": "0d2e05e2",
+   "version": 28
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 533,
+   "fnv": "64d34f9b",
+   "version": 29
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 533,
+   "fnv": "dec02688",
+   "version": 30
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 533,
+   "fnv": "6c7cde45",
+   "version": 31
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 533,
+   "fnv": "7278d90a",
+   "version": 32
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 537,
+   "fnv": "0c129bc4",
+   "version": 33
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 533,
+   "fnv": "3eecbaf7",
+   "version": 33
+  },
+  {
+   "name": "SIREN",
+   "len": 197,
+   "fnv": "f8e4d2a9",
+   "version": 3
+  },
+  {
+   "name": "SIREN",
+   "len": 213,
+   "fnv": "c27f6971",
+   "version": 4
+  },
+  {
+   "name": "SIREN",
+   "len": 213,
+   "fnv": "eaf824d8",
+   "version": 5
+  },
+  {
+   "name": "SIREN",
+   "len": 213,
+   "fnv": "64e62399",
+   "version": 6
+  },
+  {
+   "name": "SIREN",
+   "len": 213,
+   "fnv": "6954dc10",
+   "version": 6
+  },
+  {
+   "name": "SIREN",
+   "len": 217,
+   "fnv": "221b3c38",
+   "version": 7
+  },
+  {
+   "name": "SIREN",
+   "len": 225,
+   "fnv": "343e6be6",
+   "version": 8
+  },
+  {
+   "name": "SIREN",
+   "len": 256,
+   "fnv": "511fdc82",
+   "version": 8
+  },
+  {
+   "name": "SIREN",
+   "len": 217,
+   "fnv": "866c38c0",
+   "version": 8
+  },
+  {
+   "name": "SIREN",
+   "len": 247,
+   "fnv": "e421aced",
+   "version": 9
+  },
+  {
+   "name": "SIREN",
+   "len": 259,
+   "fnv": "5229edc9",
+   "version": 10
+  },
+  {
+   "name": "SIREN",
+   "len": 267,
+   "fnv": "025bf3f1",
+   "version": 11
+  },
+  {
+   "name": "SIREN",
+   "len": 267,
+   "fnv": "d7195a96",
+   "version": 12
+  },
+  {
+   "name": "SIREN",
+   "len": 267,
+   "fnv": "c0269083",
+   "version": 13
+  },
+  {
+   "name": "SIREN",
+   "len": 271,
+   "fnv": "e8139340",
+   "version": 14
+  },
+  {
+   "name": "SIREN",
+   "len": 271,
+   "fnv": "9db9fa8d",
+   "version": 15
+  },
+  {
+   "name": "SIREN",
+   "len": 271,
+   "fnv": "c304d952",
+   "version": 16
+  },
+  {
+   "name": "SIREN",
+   "len": 295,
+   "fnv": "14f396d9",
+   "version": 19
+  },
+  {
+   "name": "SIREN",
+   "len": 279,
+   "fnv": "a008d053",
+   "version": 20
+  },
+  {
+   "name": "SIREN",
+   "len": 279,
+   "fnv": "9b14d246",
+   "version": 21
+  },
+  {
+   "name": "SNARE",
+   "len": 228,
+   "fnv": "b5a8ab50",
+   "version": 3
+  },
+  {
+   "name": "SNARE",
+   "len": 244,
+   "fnv": "123fd48f",
+   "version": 4
+  },
+  {
+   "name": "SNARE",
+   "len": 252,
+   "fnv": "7be212b2",
+   "version": 5
+  },
+  {
+   "name": "SNARE",
+   "len": 252,
+   "fnv": "416625bb",
+   "version": 6
+  },
+  {
+   "name": "SNARE",
+   "len": 252,
+   "fnv": "6014a378",
+   "version": 6
+  },
+  {
+   "name": "SNARE",
+   "len": 256,
+   "fnv": "36a25eb3",
+   "version": 7
+  },
+  {
+   "name": "SNARE",
+   "len": 256,
+   "fnv": "cc36d46a",
+   "version": 8
+  },
+  {
+   "name": "SNARE",
+   "len": 252,
+   "fnv": "e367e94d",
+   "version": 8
+  },
+  {
+   "name": "SNARE",
+   "len": 292,
+   "fnv": "2661f5ad",
+   "version": 9
+  },
+  {
+   "name": "SNARE",
+   "len": 296,
+   "fnv": "5dd667fd",
+   "version": 9
+  },
+  {
+   "name": "SNARE",
+   "len": 296,
+   "fnv": "a80b8744",
+   "version": 10
+  },
+  {
+   "name": "SNARE",
+   "len": 304,
+   "fnv": "283895a0",
+   "version": 11
+  },
+  {
+   "name": "SNARE",
+   "len": 304,
+   "fnv": "5f73d1d1",
+   "version": 12
+  },
+  {
+   "name": "SNARE",
+   "len": 304,
+   "fnv": "79d14c46",
+   "version": 13
+  },
+  {
+   "name": "SNARE",
+   "len": 308,
+   "fnv": "2e3dbff7",
+   "version": 14
+  },
+  {
+   "name": "SNARE",
+   "len": 308,
+   "fnv": "d3abb864",
+   "version": 15
+  },
+  {
+   "name": "SNARE",
+   "len": 308,
+   "fnv": "9e18b1a5",
+   "version": 16
+  },
+  {
+   "name": "SNARE",
+   "len": 332,
+   "fnv": "caaf6aa8",
+   "version": 19
+  },
+  {
+   "name": "SNARE",
+   "len": 316,
+   "fnv": "ebcf2426",
+   "version": 20
+  },
+  {
+   "name": "SNARE",
+   "len": 316,
+   "fnv": "d96ed011",
+   "version": 21
+  },
+  {
+   "name": "SOFT LEAD",
+   "len": 381,
+   "fnv": "4ee6d864",
+   "version": 8
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 201,
+   "fnv": "cafafbbe",
+   "version": 3
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 217,
+   "fnv": "549cc41f",
+   "version": 4
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 225,
+   "fnv": "a5ab0fbc",
+   "version": 5
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 225,
+   "fnv": "b8c7aa05",
+   "version": 6
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 225,
+   "fnv": "fb81ab24",
+   "version": 6
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 229,
+   "fnv": "530c591c",
+   "version": 7
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 229,
+   "fnv": "89ab6fd8",
+   "version": 8
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 233,
+   "fnv": "bfb5a62b",
+   "version": 8
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 259,
+   "fnv": "cb3a7ad5",
+   "version": 9
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 267,
+   "fnv": "596dbd8f",
+   "version": 10
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 275,
+   "fnv": "7c34040b",
+   "version": 11
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 275,
+   "fnv": "aa3a0858",
+   "version": 12
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 275,
+   "fnv": "6a1e5a45",
+   "version": 13
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 279,
+   "fnv": "b5171a42",
+   "version": 14
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 279,
+   "fnv": "0c96ae67",
+   "version": 15
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 279,
+   "fnv": "8b2d0ae4",
+   "version": 16
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 303,
+   "fnv": "f01563d3",
+   "version": 19
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 287,
+   "fnv": "28055ed5",
+   "version": 20
+  },
+  {
+   "name": "SQUARE LEAD",
+   "len": 287,
+   "fnv": "97990f68",
+   "version": 21
+  },
+  {
+   "name": "STRING MACHINE",
+   "len": 471,
+   "fnv": "1724a434",
+   "version": 8
+  },
+  {
+   "name": "STRINGS",
+   "len": 361,
+   "fnv": "bbd2f68d",
+   "version": 3
+  },
+  {
+   "name": "STRINGS",
+   "len": 408,
+   "fnv": "acaa35b4",
+   "version": 4
+  },
+  {
+   "name": "STRINGS",
+   "len": 416,
+   "fnv": "2f96bed4",
+   "version": 5
+  },
+  {
+   "name": "STRINGS",
+   "len": 416,
+   "fnv": "a3d54a8b",
+   "version": 6
+  },
+  {
+   "name": "STRINGS",
+   "len": 416,
+   "fnv": "b67d0004",
+   "version": 6
+  },
+  {
+   "name": "STRINGS",
+   "len": 428,
+   "fnv": "110eecab",
+   "version": 7
+  },
+  {
+   "name": "STRINGS",
+   "len": 428,
+   "fnv": "e6ee82f5",
+   "version": 8
+  },
+  {
+   "name": "STRINGS",
+   "len": 436,
+   "fnv": "f9e96704",
+   "version": 8
+  },
+  {
+   "name": "STRINGS",
+   "len": 488,
+   "fnv": "8ea8f02a",
+   "version": 9
+  },
+  {
+   "name": "STRINGS",
+   "len": 508,
+   "fnv": "7c3e1035",
+   "version": 10
+  },
+  {
+   "name": "STRINGS",
+   "len": 532,
+   "fnv": "883cb6bd",
+   "version": 11
+  },
+  {
+   "name": "STRINGS",
+   "len": 532,
+   "fnv": "9f13c830",
+   "version": 12
+  },
+  {
+   "name": "STRINGS",
+   "len": 540,
+   "fnv": "11a28ad8",
+   "version": 13
+  },
+  {
+   "name": "STRINGS",
+   "len": 532,
+   "fnv": "c17fa503",
+   "version": 13
+  },
+  {
+   "name": "STRINGS",
+   "len": 544,
+   "fnv": "b8c75b91",
+   "version": 14
+  },
+  {
+   "name": "STRINGS",
+   "len": 544,
+   "fnv": "ad3acd0e",
+   "version": 15
+  },
+  {
+   "name": "STRINGS",
+   "len": 544,
+   "fnv": "5812dbbf",
+   "version": 16
+  },
+  {
+   "name": "STRINGS",
+   "len": 592,
+   "fnv": "60b9af8a",
+   "version": 19
+  },
+  {
+   "name": "STRINGS",
+   "len": 568,
+   "fnv": "46b44668",
+   "version": 20
+  },
+  {
+   "name": "STRINGS",
+   "len": 568,
+   "fnv": "5b9881d3",
+   "version": 21
+  },
+  {
+   "name": "SUB BASS",
+   "len": 252,
+   "fnv": "859b8c76",
+   "version": 3
+  },
+  {
+   "name": "SUB BASS",
+   "len": 268,
+   "fnv": "e92ef0ff",
+   "version": 4
+  },
+  {
+   "name": "SUB BASS",
+   "len": 276,
+   "fnv": "57e22f13",
+   "version": 5
+  },
+  {
+   "name": "SUB BASS",
+   "len": 276,
+   "fnv": "111a354d",
+   "version": 6
+  },
+  {
+   "name": "SUB BASS",
+   "len": 276,
+   "fnv": "2b6e782a",
+   "version": 6
+  },
+  {
+   "name": "SUB BASS",
+   "len": 284,
+   "fnv": "855cef45",
+   "version": 7
+  },
+  {
+   "name": "SUB BASS",
+   "len": 284,
+   "fnv": "1dd62d2b",
+   "version": 8
+  },
+  {
+   "name": "SUB BASS",
+   "len": 276,
+   "fnv": "99b8f49b",
+   "version": 8
+  },
+  {
+   "name": "SUB BASS",
+   "len": 276,
+   "fnv": "f7baf78b",
+   "version": 8
+  },
+  {
+   "name": "SUB BASS",
+   "len": 320,
+   "fnv": "3c0cbb24",
+   "version": 9
+  },
+  {
+   "name": "SUB BASS",
+   "len": 320,
+   "fnv": "2a8c38c5",
+   "version": 10
+  },
+  {
+   "name": "SUB BASS",
+   "len": 336,
+   "fnv": "6f6a7cdc",
+   "version": 11
+  },
+  {
+   "name": "SUB BASS",
+   "len": 336,
+   "fnv": "0c6796c5",
+   "version": 12
+  },
+  {
+   "name": "SUB BASS",
+   "len": 336,
+   "fnv": "802ae5aa",
+   "version": 13
+  },
+  {
+   "name": "SUB BASS",
+   "len": 340,
+   "fnv": "6f72fad3",
+   "version": 14
+  },
+  {
+   "name": "SUB BASS",
+   "len": 340,
+   "fnv": "7912bde0",
+   "version": 15
+  },
+  {
+   "name": "SUB BASS",
+   "len": 340,
+   "fnv": "95e63809",
+   "version": 16
+  },
+  {
+   "name": "SUB BASS",
+   "len": 376,
+   "fnv": "f8b02174",
+   "version": 19
+  },
+  {
+   "name": "SUB BASS",
+   "len": 356,
+   "fnv": "332c74ca",
+   "version": 20
+  },
+  {
+   "name": "SUB BASS",
+   "len": 356,
+   "fnv": "941b6fc5",
+   "version": 21
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 102,
+   "fnv": "7181cd1f",
+   "version": 1
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 174,
+   "fnv": "fb10dc54",
+   "version": 3
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 190,
+   "fnv": "358bcb85",
+   "version": 4
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 198,
+   "fnv": "6e9ccf98",
+   "version": 5
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 198,
+   "fnv": "b497929b",
+   "version": 6
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 198,
+   "fnv": "ff4abd8c",
+   "version": 6
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 202,
+   "fnv": "277fb807",
+   "version": 7
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 198,
+   "fnv": "28d68355",
+   "version": 8
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 202,
+   "fnv": "6615115e",
+   "version": 8
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 226,
+   "fnv": "02298ac5",
+   "version": 9
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 226,
+   "fnv": "4f5874e8",
+   "version": 10
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 234,
+   "fnv": "770f5c5c",
+   "version": 11
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 234,
+   "fnv": "126a2ba1",
+   "version": 12
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 234,
+   "fnv": "b56334c2",
+   "version": 13
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 238,
+   "fnv": "e2d271d7",
+   "version": 14
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 238,
+   "fnv": "55772060",
+   "version": 15
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 238,
+   "fnv": "6bbde815",
+   "version": 16
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 262,
+   "fnv": "f473e6b4",
+   "version": 19
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 246,
+   "fnv": "cf7667fe",
+   "version": 20
+  },
+  {
+   "name": "SUBTRACTIVE SAW",
+   "len": 246,
+   "fnv": "6904e3e5",
+   "version": 21
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 220,
+   "fnv": "8c3c2538",
+   "version": 3
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 236,
+   "fnv": "9d473279",
+   "version": 4
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 236,
+   "fnv": "be733f3a",
+   "version": 5
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 236,
+   "fnv": "61825343",
+   "version": 6
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 236,
+   "fnv": "edc21f64",
+   "version": 6
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 240,
+   "fnv": "3f5b119b",
+   "version": 7
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 240,
+   "fnv": "6bf8d349",
+   "version": 8
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 248,
+   "fnv": "ea96e54d",
+   "version": 8
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 276,
+   "fnv": "6eda5e0a",
+   "version": 9
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 288,
+   "fnv": "d9731d30",
+   "version": 10
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 296,
+   "fnv": "31299d78",
+   "version": 11
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 296,
+   "fnv": "f5f26f15",
+   "version": 12
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 296,
+   "fnv": "1140a93e",
+   "version": 13
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 300,
+   "fnv": "5df706f3",
+   "version": 14
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 300,
+   "fnv": "aef22d4c",
+   "version": 15
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 300,
+   "fnv": "7ea91179",
+   "version": 16
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 324,
+   "fnv": "ba3a3d70",
+   "version": 19
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 308,
+   "fnv": "0cc7101e",
+   "version": 20
+  },
+  {
+   "name": "TREMOLO KEYS",
+   "len": 308,
+   "fnv": "2b2ffcf5",
+   "version": 21
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 148,
+   "fnv": "933929b3",
+   "version": 1
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 248,
+   "fnv": "395d3b82",
+   "version": 3
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 264,
+   "fnv": "799433b2",
+   "version": 4
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 264,
+   "fnv": "b49e043d",
+   "version": 5
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 264,
+   "fnv": "0d55caa2",
+   "version": 6
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 264,
+   "fnv": "322163a1",
+   "version": 6
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 272,
+   "fnv": "c3d753b9",
+   "version": 7
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 264,
+   "fnv": "9158d91f",
+   "version": 8
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 272,
+   "fnv": "bf0c4dcc",
+   "version": 8
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 308,
+   "fnv": "08a137ab",
+   "version": 9
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 308,
+   "fnv": "27eea712",
+   "version": 10
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 324,
+   "fnv": "ba8ed74f",
+   "version": 11
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 324,
+   "fnv": "241112e6",
+   "version": 12
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 324,
+   "fnv": "23cca78d",
+   "version": 13
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 328,
+   "fnv": "4c4bc57c",
+   "version": 14
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 328,
+   "fnv": "beca6fb3",
+   "version": 15
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 328,
+   "fnv": "f2f158fa",
+   "version": 16
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 364,
+   "fnv": "a838b047",
+   "version": 19
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 344,
+   "fnv": "23d8176d",
+   "version": 20
+  },
+  {
+   "name": "TWO-OPERATOR FM",
+   "len": 344,
+   "fnv": "421045e6",
+   "version": 21
+  },
+  {
+   "name": "VERNON 100",
+   "len": 572,
+   "fnv": "0a84e0d2",
+   "version": 21
+  },
+  {
+   "name": "VERNON 100",
+   "len": 577,
+   "fnv": "597fd6a8",
+   "version": 23
+  },
+  {
+   "name": "VERNON 100",
+   "len": 739,
+   "fnv": "1c117c7b",
+   "version": 24
+  },
+  {
+   "name": "VERNON 100",
+   "len": 742,
+   "fnv": "7f39b07b",
+   "version": 25
+  },
+  {
+   "name": "VERNON 100",
+   "len": 722,
+   "fnv": "b045983e",
+   "version": 26
+  },
+  {
+   "name": "VERNON 100",
+   "len": 722,
+   "fnv": "8eeb8651",
+   "version": 27
+  },
+  {
+   "name": "VERNON 100",
+   "len": 722,
+   "fnv": "2fe0713c",
+   "version": 28
+  },
+  {
+   "name": "VERNON 100",
+   "len": 878,
+   "fnv": "47789cd9",
+   "version": 29
+  },
+  {
+   "name": "VERNON 100",
+   "len": 878,
+   "fnv": "dbbc6183",
+   "version": 29
+  },
+  {
+   "name": "VERNON 100",
+   "len": 878,
+   "fnv": "794062f5",
+   "version": 30
+  },
+  {
+   "name": "VERNON 100",
+   "len": 878,
+   "fnv": "9c535cc4",
+   "version": 30
+  },
+  {
+   "name": "VERNON 100",
+   "len": 878,
+   "fnv": "8376674e",
+   "version": 31
+  },
+  {
+   "name": "VERNON 100",
+   "len": 878,
+   "fnv": "b892524f",
+   "version": 32
+  },
+  {
+   "name": "VERNON 100",
+   "len": 882,
+   "fnv": "125d1371",
+   "version": 33
+  },
+  {
+   "name": "VERNON 100",
+   "len": 878,
+   "fnv": "c1455288",
+   "version": 33
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 228,
+   "fnv": "92e5bfbf",
+   "version": 3
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 244,
+   "fnv": "c990d7e2",
+   "version": 4
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 252,
+   "fnv": "4ca8ea2b",
+   "version": 5
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 252,
+   "fnv": "9e08d4ae",
+   "version": 6
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 252,
+   "fnv": "f33208ed",
+   "version": 6
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 256,
+   "fnv": "40341156",
+   "version": 7
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 256,
+   "fnv": "7cb838fc",
+   "version": 8
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 264,
+   "fnv": "f87bcf5c",
+   "version": 8
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 292,
+   "fnv": "db513227",
+   "version": 9
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 304,
+   "fnv": "d79dea59",
+   "version": 10
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 312,
+   "fnv": "44d7cb55",
+   "version": 11
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 312,
+   "fnv": "68279afc",
+   "version": 12
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 312,
+   "fnv": "1414e22b",
+   "version": 13
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 316,
+   "fnv": "2d8db432",
+   "version": 14
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 316,
+   "fnv": "03459c99",
+   "version": 15
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 316,
+   "fnv": "b9054a80",
+   "version": 16
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 340,
+   "fnv": "b261abfd",
+   "version": 19
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 324,
+   "fnv": "b258699b",
+   "version": 20
+  },
+  {
+   "name": "VIBRATO LEAD",
+   "len": 324,
+   "fnv": "08894aac",
+   "version": 21
+  },
+  {
+   "name": "WANDERER",
+   "len": 654,
+   "fnv": "8cd0cd24",
+   "version": 21
+  },
+  {
+   "name": "WANDERER",
+   "len": 659,
+   "fnv": "5b2a4b0a",
+   "version": 23
+  },
+  {
+   "name": "WANDERER",
+   "len": 821,
+   "fnv": "0c6c55fd",
+   "version": 24
+  },
+  {
+   "name": "WANDERER",
+   "len": 824,
+   "fnv": "bcec7cf1",
+   "version": 25
+  },
+  {
+   "name": "WANDERER",
+   "len": 804,
+   "fnv": "bae807c0",
+   "version": 26
+  },
+  {
+   "name": "WANDERER",
+   "len": 804,
+   "fnv": "56b6415f",
+   "version": 27
+  },
+  {
+   "name": "WANDERER",
+   "len": 804,
+   "fnv": "384831be",
+   "version": 28
+  },
+  {
+   "name": "WANDERER",
+   "len": 1042,
+   "fnv": "f38b0c4a",
+   "version": 29
+  },
+  {
+   "name": "WANDERER",
+   "len": 1042,
+   "fnv": "f8ccfef2",
+   "version": 29
+  },
+  {
+   "name": "WANDERER",
+   "len": 1042,
+   "fnv": "6bfeb8bb",
+   "version": 30
+  },
+  {
+   "name": "WANDERER",
+   "len": 1042,
+   "fnv": "baeb4b28",
+   "version": 31
+  },
+  {
+   "name": "WANDERER",
+   "len": 1042,
+   "fnv": "3de54af1",
+   "version": 32
+  },
+  {
+   "name": "WANDERER",
+   "len": 1046,
+   "fnv": "bdf8ddf2",
+   "version": 33
+  },
+  {
+   "name": "WANDERER",
+   "len": 1042,
+   "fnv": "f6abeabe",
+   "version": 33
+  },
+  {
+   "name": "WARM PAD",
+   "len": 314,
+   "fnv": "4d185f4f",
+   "version": 3
+  },
+  {
+   "name": "WARM PAD",
+   "len": 361,
+   "fnv": "a4f4683b",
+   "version": 4
+  },
+  {
+   "name": "WARM PAD",
+   "len": 369,
+   "fnv": "d84584e9",
+   "version": 5
+  },
+  {
+   "name": "WARM PAD",
+   "len": 369,
+   "fnv": "17f43d52",
+   "version": 6
+  },
+  {
+   "name": "WARM PAD",
+   "len": 369,
+   "fnv": "4604493b",
+   "version": 6
+  },
+  {
+   "name": "WARM PAD",
+   "len": 377,
+   "fnv": "f61eba92",
+   "version": 7
+  },
+  {
+   "name": "WARM PAD",
+   "len": 389,
+   "fnv": "c2fad911",
+   "version": 8
+  },
+  {
+   "name": "WARM PAD",
+   "len": 436,
+   "fnv": "cff2c030",
+   "version": 8
+  },
+  {
+   "name": "WARM PAD",
+   "len": 377,
+   "fnv": "e746f256",
+   "version": 8
+  },
+  {
+   "name": "WARM PAD",
+   "len": 431,
+   "fnv": "11b19613",
+   "version": 9
+  },
+  {
+   "name": "WARM PAD",
+   "len": 451,
+   "fnv": "fc7c7bc2",
+   "version": 10
+  },
+  {
+   "name": "WARM PAD",
+   "len": 467,
+   "fnv": "40b30e71",
+   "version": 11
+  },
+  {
+   "name": "WARM PAD",
+   "len": 467,
+   "fnv": "f61b28ca",
+   "version": 12
+  },
+  {
+   "name": "WARM PAD",
+   "len": 475,
+   "fnv": "3aae0ec4",
+   "version": 13
+  },
+  {
+   "name": "WARM PAD",
+   "len": 467,
+   "fnv": "cba6d47f",
+   "version": 13
+  },
+  {
+   "name": "WARM PAD",
+   "len": 479,
+   "fnv": "9babe77b",
+   "version": 14
+  },
+  {
+   "name": "WARM PAD",
+   "len": 479,
+   "fnv": "aebfb402",
+   "version": 15
+  },
+  {
+   "name": "WARM PAD",
+   "len": 479,
+   "fnv": "a5e9c0b9",
+   "version": 16
+  },
+  {
+   "name": "WARM PAD",
+   "len": 515,
+   "fnv": "e61781f6",
+   "version": 19
+  },
+  {
+   "name": "WARM PAD",
+   "len": 495,
+   "fnv": "59b15804",
+   "version": 20
+  },
+  {
+   "name": "WARM PAD",
+   "len": 495,
+   "fnv": "22d560c5",
+   "version": 21
+  },
+  {
+   "name": "WIND",
+   "len": 208,
+   "fnv": "1e268ffd",
+   "version": 3
+  },
+  {
+   "name": "WIND",
+   "len": 255,
+   "fnv": "922948cc",
+   "version": 4
+  },
+  {
+   "name": "WIND",
+   "len": 263,
+   "fnv": "e3332947",
+   "version": 5
+  },
+  {
+   "name": "WIND",
+   "len": 263,
+   "fnv": "de2022ec",
+   "version": 6
+  },
+  {
+   "name": "WIND",
+   "len": 263,
+   "fnv": "f42594a1",
+   "version": 6
+  },
+  {
+   "name": "WIND",
+   "len": 263,
+   "fnv": "13e066d5",
+   "version": 7
+  },
+  {
+   "name": "WIND",
+   "len": 283,
+   "fnv": "c977b2d8",
+   "version": 8
+  },
+  {
+   "name": "WIND",
+   "len": 283,
+   "fnv": "e5f1adcf",
+   "version": 8
+  },
+  {
+   "name": "WIND",
+   "len": 263,
+   "fnv": "eb2cca2a",
+   "version": 8
+  },
+  {
+   "name": "WIND",
+   "len": 305,
+   "fnv": "02b0e2df",
+   "version": 9
+  },
+  {
+   "name": "WIND",
+   "len": 309,
+   "fnv": "4db8f1df",
+   "version": 9
+  },
+  {
+   "name": "WIND",
+   "len": 329,
+   "fnv": "2d06400f",
+   "version": 10
+  },
+  {
+   "name": "WIND",
+   "len": 329,
+   "fnv": "136c8a0e",
+   "version": 11
+  },
+  {
+   "name": "WIND",
+   "len": 329,
+   "fnv": "1fa3fde5",
+   "version": 12
+  },
+  {
+   "name": "WIND",
+   "len": 337,
+   "fnv": "577cf92f",
+   "version": 13
+  },
+  {
+   "name": "WIND",
+   "len": 329,
+   "fnv": "66c2805c",
+   "version": 13
+  },
+  {
+   "name": "WIND",
+   "len": 341,
+   "fnv": "e9a55240",
+   "version": 14
+  },
+  {
+   "name": "WIND",
+   "len": 341,
+   "fnv": "225a37f5",
+   "version": 15
+  },
+  {
+   "name": "WIND",
+   "len": 341,
+   "fnv": "b4b2c07e",
+   "version": 16
+  },
+  {
+   "name": "WIND",
+   "len": 353,
+   "fnv": "179c2529",
+   "version": 19
+  },
+  {
+   "name": "WIND",
+   "len": 341,
+   "fnv": "e402addb",
+   "version": 20
+  },
+  {
+   "name": "WIND",
+   "len": 341,
+   "fnv": "d71a3bce",
+   "version": 21
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 201,
+   "fnv": "88d83fae",
+   "version": 3
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 217,
+   "fnv": "f8dd8c10",
+   "version": 4
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 225,
+   "fnv": "fc5041cb",
+   "version": 5
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 225,
+   "fnv": "a6c5ea7a",
+   "version": 6
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 225,
+   "fnv": "dc48a9ff",
+   "version": 6
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 229,
+   "fnv": "9599e867",
+   "version": 7
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 237,
+   "fnv": "2dd4b2e5",
+   "version": 8
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 229,
+   "fnv": "f6b47957",
+   "version": 8
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 259,
+   "fnv": "69f8e636",
+   "version": 9
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 271,
+   "fnv": "6637ef42",
+   "version": 10
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 279,
+   "fnv": "a58519a6",
+   "version": 11
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 279,
+   "fnv": "041ff1c1",
+   "version": 12
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 279,
+   "fnv": "faead6f0",
+   "version": 13
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 283,
+   "fnv": "21bbfb83",
+   "version": 14
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 283,
+   "fnv": "6732b57a",
+   "version": 15
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 283,
+   "fnv": "56c9c7f5",
+   "version": 16
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 307,
+   "fnv": "a1221a0e",
+   "version": 19
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 291,
+   "fnv": "f9b2e380",
+   "version": 20
+  },
+  {
+   "name": "WOBBLE 2",
+   "len": 291,
+   "fnv": "c4ce8331",
+   "version": 21
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 115,
+   "fnv": "30239a92",
+   "version": 1
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 201,
+   "fnv": "9aa79204",
+   "version": 3
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 217,
+   "fnv": "dca63401",
+   "version": 4
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 225,
+   "fnv": "e5fdd55e",
+   "version": 5
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 225,
+   "fnv": "09871d39",
+   "version": 6
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 225,
+   "fnv": "f80c59c8",
+   "version": 6
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 229,
+   "fnv": "eab44200",
+   "version": 7
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 229,
+   "fnv": "38b65624",
+   "version": 8
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 319,
+   "fnv": "483edfbc",
+   "version": 8
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 237,
+   "fnv": "a36d647e",
+   "version": 8
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 259,
+   "fnv": "1249cf31",
+   "version": 9
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 271,
+   "fnv": "71fa5efd",
+   "version": 10
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 279,
+   "fnv": "e75f6a31",
+   "version": 11
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 279,
+   "fnv": "4054cab2",
+   "version": 12
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 279,
+   "fnv": "ac49a137",
+   "version": 13
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 283,
+   "fnv": "88abf2f0",
+   "version": 14
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 283,
+   "fnv": "b7fb3745",
+   "version": 15
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 283,
+   "fnv": "11236df6",
+   "version": 16
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 307,
+   "fnv": "5bae4e89",
+   "version": 19
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 291,
+   "fnv": "2c0f4b57",
+   "version": 20
+  },
+  {
+   "name": "WOBBLE BASS",
+   "len": 291,
+   "fnv": "ad4c0412",
+   "version": 21
+  },
+  {
+   "name": "ZAP",
+   "len": 260,
+   "fnv": "96bc4149",
+   "version": 8
+  }
+ ]
+}

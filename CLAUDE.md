@@ -30,7 +30,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 
 ## Rules when changing things
 
-- Module types are appended to `ALL` in modules.ts; type / port indices are append-only. A format change: `patch.ts` (`validatePatch` migration), `patchbin.ts`, engine.c / proto.c (`ENG_PATCH_VERSION`, compat), presets, tests, golden kits, `export-defs` — together.
+- Module types are appended to `ALL` in modules.ts; type / port indices are append-only. A format change: `patch.ts` (`validatePatch` migration), `patchbin.ts`, engine.c / proto.c (`ENG_PATCH_VERSION`, compat), presets, tests, golden kits, `npx vite-node scripts/legacy-factory.ts` (so the FM-1 rewrites untouched factory slots in the new format, main.c `bank_upgrade`) then `export-defs` — together.
 - Keep both engines in step: `SCALES` order, quantized increments for anything driven by an accumulator, the same idle-part rule. Add a golden kit per new module / behaviour.
 - New module types need a cost in cpu-costs.json (`cpu.test.ts` fails otherwise).
 - Keep the LCD manual (`manual.c`: ≤ 35 chars, capitals, no `;`), the ? help card and the shortcut handler in step with what they describe.

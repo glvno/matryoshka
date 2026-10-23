@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Writes firmware/src/defs.h (module definitions for the C engine) and firmware/src/presets.h (the factory
 // patches as binary). Run from web/:  npx vite-node scripts/export-defs.ts
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { ASSIGN_MODES, DEFS, DELAY_DIVS, DELAY_CLK_PPQN, LEGATO_MODES, PRIORITIES, TRACK_POLY } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16 } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
@@ -135,6 +135,17 @@ P.push('};', '');
 { // safe mode's patch, and the last resort when nothing else loads (web/src/fallback.ts)
   const bin = encodePatch(fallbackPatch());
   P.push(`#define FALLBACK_NAME "${FALLBACK_NAME}"`, `static const uint8_t FALLBACK_PATCH[${bin.length}] = {${Array.from(bin).join(',')}};`, '');
+}
+{ // the factory patches earlier firmwares wrote (scripts/legacy-factory.ts): an untouched slot holding one is rewritten with
+  // today's patch of that name after an update (main.c bank_upgrade); `now` is its index in PRESET_LIST
+  const legacy = (JSON.parse(readFileSync(new URL('./legacy-factory.json', import.meta.url), 'utf8')) as { patches: { name: string; len: number; fnv: string }[] }).patches;
+  const now = new Map(presetNames.map((n, i) => [n.toUpperCase(), i]));
+  const rows = legacy.filter((x) => now.has(x.name)).sort((a, b) => parseInt(a.fnv, 16) - parseInt(b.fnv, 16) || a.len - b.len);
+  P.push('/* the factory patches earlier firmwares wrote (web/scripts/legacy-factory.json): FNV-1a of the bytes, length, today\'s', '   patch of that name (PRESET_LIST index); sorted by fnv */');
+  P.push(`#define N_LEGACY_FACTORY ${rows.length}`);
+  P.push('static const struct { uint32_t fnv; uint16_t len; uint8_t now; } LEGACY_FACTORY[N_LEGACY_FACTORY] = {');
+  for (let i = 0; i < rows.length; i += 4) P.push('    ' + rows.slice(i, i + 4).map((x) => `{0x${x.fnv}u, ${x.len}, ${now.get(x.name)}}`).join(', ') + ',');
+  P.push('};', '');
 }
 { // the factory engines' presets (#193, #194): read-only in ROM, values Q16 in canonical row order (structure.ts)
   P.push('/* the factory engines\' presets (web/src/factory-presets.ts): structure, name, values (Q16, canonical row order) */');

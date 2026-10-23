@@ -14,6 +14,7 @@ on:
       - web/presets/**
       - web/package-lock.json
       - web/scripts/export-defs.ts
+      - web/scripts/legacy-factory.json
       - web/scripts/golden.ts
       - web/src/arpeggiator.ts
       - web/src/assembly.ts
@@ -53,6 +54,7 @@ on:
       - web/presets/**
       - web/package-lock.json
       - web/scripts/export-defs.ts
+      - web/scripts/legacy-factory.json
       - web/scripts/golden.ts
       - web/src/arpeggiator.ts
       - web/src/assembly.ts
