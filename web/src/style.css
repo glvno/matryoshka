@@ -1355,6 +1355,15 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .module .param.bar > .arr-tools { position: absolute; z-index: 6; right: 0; top: -11px; display: none; gap: 2px; }
 .arranging .param.bar:hover > .arr-tools { display: flex; pointer-events: auto; }
 .arr-tools button.sm { height: 15px; padding: 0 5px; font-size: 9px; line-height: 1; background: var(--panel); }
+/* several rows at once (#186): a selected row in pick or arrange mode; a heading's or group chip's grip drags its section
+   or group; a member's header check box (all / none / some) */
+.row-sel { outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 1px;
+  background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
+.arr-grip { flex: none; padding: 0 3px; cursor: grab; touch-action: none; color: var(--muted); font-size: 11px; line-height: 1; }
+.arr-grip:hover { color: var(--accent); }
+.ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held { opacity: .5; }
+.pickbox.pickall { pointer-events: auto; cursor: pointer; padding: 0; margin-right: 5px; vertical-align: -1px; display: inline-block; }
+.pickbox.some { border-color: var(--accent); color: var(--accent); }
 
 /* ---- A Scope module's screen (scope-view.ts): a row of its card, or of an assembly card it is shown on ---- */
 .module .param.screen { position: relative; display: block; margin: 2px 0; }
