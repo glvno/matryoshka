@@ -1468,6 +1468,7 @@ const workspace = document.querySelector<HTMLElement>('.workspace')!;
 function setView(v: View): void {
   if (installOpen()) closeInstall(); // any view navigation closes the Install panel; a running install keeps going (and its guard)
   currentView = v;
+  if (v !== 'patch') tutorial.closeWelcome?.(); // the welcome card is PATCH's: leaving PATCH closes it for this visit
   currentTab = v === 'library' ? 'library' : 'patch';
   closeSidebar();
   for (const b of viewBtns) {
@@ -1494,6 +1495,16 @@ function setView(v: View): void {
   editor.positionSideCables();
   if (v === 'patch') requestAnimationFrame(() => editor.drawCables());
   if (v === 'library') showLibrarySection();
+  showAddress();
+}
+/** the address follows the view (#218), replaced, not pushed: PATCH has no fragment, EMU #emu, LIBRARY #library (Patches),
+ *  #assemblies or #presets. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
+ *  not a view's (a share link's #p= being opened) is left alone */
+const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#assemblies', '#flash', '#about'];
+function showAddress(): void {
+  if (!VIEW_HASHES.includes(location.hash)) return;
+  const want = currentView === 'emu' ? '#emu' : currentView === 'library' ? (librarySection === 'patches' ? '#library' : `#${librarySection}`) : '';
+  if (location.hash !== want) history.replaceState(history.state, '', location.pathname + location.search + want);
 }
 for (const b of viewBtns) {
   b.onclick = () => setView(b.dataset.view as View);
@@ -1552,6 +1563,7 @@ function setLibrarySection(section: LibrarySection): void {
   if (currentView === 'library') {
     if (installOpen()) closeInstall();
     showLibrarySection();
+    showAddress();
   } else setView('library');
 }
 for (const b of sectionBtns) b.onclick = () => setLibrarySection(b.dataset.section as LibrarySection);

@@ -96,8 +96,9 @@ html { touch-action: pan-x pan-y; }
 /* the cables' continuation from the canvas down to the docked jacks; drawn over the panel, never taking the pointer */
 .dock-cables { z-index: 3; overflow: visible; } /* visible: the wheels' jacks are left of the dock */
 .dock-cables .cable { pointer-events: none; }
-.sidebar { display: flex; flex-direction: column; gap: 12px; padding: 20px 14px 14px; min-height: 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
-/* only the logo gives way when the sidebar is short (down to 48 px), so the panels fit without a scroll bar from 1280 × 800 (#166) */
+.sidebar { display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 14px; min-height: 0; overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); }
+/* only the logo gives way when the sidebar is short (down to 48 px), so the panels fit without a scroll bar from 1280 × 800 (#166,
+   D-583: the PATCH view's three panels with the PATCH header strip came 7 px short, hence the tighter top padding and gaps) */
 .sidebar > * { flex-shrink: 0; }
 .sidebar > .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: calc(48px + 6px + 38px + 6px + 26px); flex-shrink: 1; } /* never below the 48 px logo + gap + the wordmark (38 px at the sidebar's width) + gap + About: below that they ran into the tabs */
 .brand img { width: 100%; height: auto; min-width: 0; object-fit: contain; }
@@ -118,7 +119,7 @@ svg.brand-mark .ink { fill: var(--ink); }
 svg.brand-mark .accent { fill: var(--secondary); }
 .brand h1 { flex-shrink: 0; width: 100%; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.045em; }
-.patch-controls { display: grid; gap: 8px; }
+.patch-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
 .patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden], .library-side[hidden] { display: none; }
 .patch-controls > * { width: 100%; min-width: 0; }
 /* the FM-1 budget meter at the right of the status line: memory (the fullest limit) and the estimated CPU load side by
@@ -1173,7 +1174,11 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast button { flex: none; min-height: 26px; padding: 0 10px; border: 1px solid var(--secondary); border-radius: 4px; background: transparent; color: var(--secondary); font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
 .toast button.toast-close { border-color: transparent; color: var(--muted); padding: 0 6px; }
-.sbody { display: grid; gap: 6px; padding: 8px; }
+/* a panel's contents never run past its edge, even when a scroll bar narrows the sidebar: the columns may shrink below
+   their content (a select's widest option, a button's label), and a label too long is cut with an ellipsis */
+.sbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 8px; }
+.sbody > *, .sbody select { min-width: 0; max-width: 100%; }
+.sbody button { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sidebar button { min-height: 30px; padding: 4px 8px; border-radius: 5px; white-space: nowrap; }
 /* the plain buttons in the (muted) gate colour: a grey fill read as a slider's bar */
 .sidebar button:not(.primary), .sidebar #tour-btn, .sidebar #palette-btn { background: var(--btn-yellow); border-color: var(--btn-yellow); color: var(--accent-ink); }
@@ -1183,11 +1188,11 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 /* the canvas panel's buttons (TIDY, FIT) look like the dock's octave buttons: outlined on the panel, the border teal on hover */
 .sidebar .view-row button { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; letter-spacing: .06em; }
 .sidebar .view-row button:hover { border-color: var(--secondary); color: var(--ink); filter: none; }
-.view-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.view-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* PATCH: + Module and + Assembly side by side (#166; their names still say Add module / Add assembly) */
-.add-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.add-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* LEARN: the tutorial and the demo side by side */
-.learn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.learn-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* the cable slack and zoom sliders are cards' value bars (sliderJack; main.ts sideSlider) with a small name and a thumb as tall
    as the bar. Their thumbs are jacks (the easter egg): a cable from any output dropped on one moves it (Patch.slackFrom / zoomFrom) */
 .side-bar > .slider-jack { --jack-size: 18px; }

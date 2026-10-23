@@ -22,7 +22,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   own, with rename. Factory assemblies and Community patches are in the Open picker, the palette and the assembly
   browser. Deleting a patch, preset or assembly kept in this browser, or replacing an assembly, acts at once with Undo;
   only replacing something on the FM-1 asks first. The Import link field and "Add the patch from the editor" are gone
-  (open the link, or Save, then →).
+  (open the link, or Save, then →). → onto a name the offline copy already holds (your "Vernon 100" over the factory
+  one) replaces that entry, with Undo, and every → says where the patch went (or that the bank is full). The switch
+  keeps the address in step (PATCH none, `#emu`, `#library` / `#assemblies` / `#presets`), and the tutorial's welcome
+  card shows only in PATCH.
 - The tutorial has no Riff button any more: Note (a held C4) is its playback, and the intro's preview holds it too.
 - The FM-1's SEQ page hints name FX, the key that really sets accents and rests (they said ENV).
 - Factory patches: Simple FM's modulator now gets pitch and gate from the keys, and the 808 Kit's kick, snare, clap and

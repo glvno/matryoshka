@@ -109,3 +109,45 @@ it('your assemblies: a delete and a replace act at once, each with an undo; a re
   expect(renameAssembly('One', 'Three')).toBe(true);
   expect(loadLibrary().map((d) => d.name)).toEqual(['Three', 'Two']);
 });
+
+it('→ onto a name the offline copy holds replaces that entry at once, with Undo; every → says what it did', () => {
+  savePatch({ ...PRESETS[names[1]](), name: names[1], notes: 'mine' });
+  const root = document.createElement('div');
+  buildPatchesSection(root, fakeDevice(false), { remove: () => {} });
+  const [browser, fm1] = cols(root);
+  const factoryTag = (): boolean => !!fm1.querySelectorAll('.bank-row')[1].querySelector('.muted');
+  expect(factoryTag()).toBe(true);
+  button(browser.querySelector('.bank-row')!, '→').click();
+  expect(rows(fm1)).toEqual(names);
+  expect(factoryTag()).toBe(false);
+  expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)[1].patch.notes).toBe('mine');
+  const toast = document.querySelector('.toast')!;
+  expect(toast.textContent).toContain(`"${names[1]}" replaced in slot 01`);
+  button(toast, 'Undo').click();
+  expect(factoryTag()).toBe(true);
+  expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)[1]).toEqual({ name: names[1] });
+  // a new name goes to the next slot, and says so
+  savePatch({ ...PRESETS[names[0]](), name: 'Other' });
+  const other = [...browser.querySelectorAll('.bank-row')].find((r) => r.querySelector('.grow')!.textContent === 'Other')!;
+  button(other, '→').click();
+  expect(rows(fm1)).toEqual([...names, 'Other']);
+  expect(document.querySelector('.toast')!.textContent).toContain('"Other" added to the bank, slot 02');
+});
+
+it('with an FM-1, → onto a used slot of that name asks first and says what it did', async () => {
+  const dev = fakeDevice(true);
+  await dev.uploadSlot(0, 'MINE', PRESETS[names[0]]());
+  savePatch({ ...PRESETS[names[1]](), name: 'Mine' });
+  const root = document.createElement('div');
+  const pane = buildPatchesSection(root, dev, { remove: () => {} });
+  pane.enter();
+  await flush();
+  const asked: string[] = [];
+  vi.stubGlobal('confirm', (q: string) => (asked.push(q), true));
+  button(cols(root)[0].querySelector('.bank-row')!, '→').click();
+  await flush();
+  await flush();
+  expect(asked[0]).toContain('slot 00');
+  expect(document.querySelector('.toast')!.textContent).toContain('"Mine" replaced FM-1 slot 00');
+  vi.unstubAllGlobals();
+});

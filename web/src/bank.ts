@@ -19,7 +19,7 @@ import { PRESETS } from './presets';
 import { NAME_BYTES, SLOTS, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
 import { isSaved, onSavedChange, putBackSaved, renameSaved, savedPatches, savePatch } from './saved';
-import { showUndo } from './toast';
+import { showToast, showUndo } from './toast';
 
 interface Entry {
   name: string;
@@ -93,10 +93,11 @@ function reread(): Entry[] {
   return list;
 }
 
-/** put `e` into the list under its name (replacing a copy of that name); an error line, or null when it went in */
-function putEntry(list: Entry[], e: Entry): string | null {
+/** put `e` into the list under its name (replacing a copy of that name; a factory entry of that name too when
+ *  `overFactory`); an error line, or null when it went in */
+function putEntry(list: Entry[], e: Entry, overFactory = false): string | null {
   const i = list.findIndex((x) => x.name === e.name);
-  if (i >= 0 && !list[i].patch && e.patch) return `"${e.name}" is a factory patch's name: rename yours to put it in the bank`;
+  if (i >= 0 && !list[i].patch && e.patch && !overFactory) return `"${e.name}" is a factory patch's name: rename yours to put it in the bank`;
   if (i >= 0) {
     list[i] = e;
     return null;
@@ -269,22 +270,44 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
   });
 
   /** a patch into the FM-1 column: the offline copy without a device, the FM-1's slots with one */
+  /** a result of → or Add from factory: in the column's status line and in a toast (the status line can be below the fold) */
+  const say = (msg: string): void => {
+    status.textContent = msg;
+    showToast(msg);
+  };
+  /** a patch into the FM-1 column: the offline copy without a device (an entry of that name, factory or not, is replaced
+   *  at once with Undo: it is kept in this browser), the FM-1's slots with one (a used slot of that name asks first) */
   const toFm1 = (name: string, patch: Patch, factory: boolean): void => {
     if (!live()) {
-      const err = putEntry(list, factory ? { name } : { name, patch: copyOf({ ...patch, name }) });
-      status.textContent = err ?? `"${name}" is in the offline copy`;
-      if (!err) changed();
+      const i = list.findIndex((e) => e.name === name);
+      const was = i >= 0 ? list[i] : null;
+      const err = putEntry(list, factory ? { name } : { name, patch: copyOf({ ...patch, name }) }, true);
+      if (err) return say(err);
+      changed();
+      if (!was) return say(`"${name}" added to the bank, slot ${two(list.length - 1)}`);
+      showUndo(`"${name}" replaced in slot ${two(i)} of the bank${was.patch ? '' : ' (it was the factory patch)'}`, () => {
+        const j = list.findIndex((e) => e.name === name);
+        if (j >= 0) list[j] = was;
+        changed();
+        status.textContent = `slot ${two(j)} holds "${name}" as it was`;
+      });
+      status.textContent = `"${name}" replaced in slot ${two(i)}`;
       return;
     }
-    if (!slots) return void (status.textContent = 'read the FM-1 first');
+    if (!slots) return say('Read the FM-1 first');
     const to = slotFor(slots, name);
-    if (!to) return void (status.textContent = `the FM-1's bank is full (${SLOTS} slots): "${name}" was not sent`);
-    if (to.replaces && !window.confirm(`FM-1 slot ${two(to.slot)} holds "${to.replaces.name}". Replace it with "${name}"?`)) return void (status.textContent = 'nothing was sent');
+    if (!to) return say(`The FM-1's bank is full (${SLOTS} slots): "${name}" was not sent`);
+    if (to.replaces && !window.confirm(`FM-1 slot ${two(to.slot)} holds "${to.replaces.name}". Replace it with "${name}"?`)) return say('Nothing was sent');
     void run('Sending', async () => {
       status.textContent = `Sending "${name}" to slot ${two(to.slot)}…`;
-      await device.uploadSlot(to.slot, name.toUpperCase(), patch);
-      slots![to.slot] = await device.readSlot(to.slot);
-      status.textContent = `"${name}" is in FM-1 slot ${two(to.slot)}`;
+      try {
+        await device.uploadSlot(to.slot, name.toUpperCase(), patch);
+        slots![to.slot] = await device.readSlot(to.slot);
+      } catch (e) {
+        showToast(`Sending "${name}" failed: ${(e as Error).message}`);
+        throw e;
+      }
+      say(to.replaces ? `"${name}" replaced FM-1 slot ${two(to.slot)}` : `"${name}" added to FM-1 slot ${two(to.slot)}`);
     });
   };
   /** a copy into Your patches; one of that name is replaced, with Undo */
@@ -302,6 +325,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     // In this browser: Your patches
     const mine = savedPatches();
     mineCount.textContent = `${mine.length} patch${mine.length === 1 ? '' : 'es'}`;
+    // a full bank leaves → working: it can still replace a patch of the same name, and else says the bank is full
     const full = live() ? !!slots && !slots.some((s) => !s.used) : list.length >= SLOTS;
     const waiting = live() && !slots;
     mineEl.replaceChildren(
@@ -318,8 +342,8 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
           } }),
           el('button', { class: 'delete', textContent: 'Delete', title: `delete "${e.name}" from Your patches (you can undo it)`, onclick: () => ev.remove(e.name) }),
           el('button', { class: 'lib-move', textContent: '→', ariaLabel: `add "${e.name}" to the FM-1's bank`,
-            title: !ok ? 'Too big for the FM-1' : live() ? 'Add it to the FM-1’s bank (written on the FM-1)' : 'Add it to the bank (the offline copy)',
-            disabled: !ok || busy || full || waiting, onclick: () => toFm1(e.name, e.patch, false) }),
+            title: !ok ? 'Too big for the FM-1' : live() ? 'Add it to the FM-1’s bank, or replace the slot of that name (written on the FM-1, asks first)' : 'Add it to the bank (the offline copy), or replace the entry of that name (you can undo it)',
+            disabled: !ok || busy || waiting, onclick: () => toFm1(e.name, e.patch, false) }),
         );
       }) : [el('p', { class: 'muted', textContent: 'None yet. Save (beside New patch, or Ctrl/Cmd+S) keeps the open patch here.' })]),
     );
@@ -386,7 +410,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     const name = factorySel.value;
     factorySel.value = '';
     if (!name) return;
-    if (!live() && list.some((e) => e.name === name)) return void (status.textContent = `"${name}" is already in the bank`);
+    if (!live() && list.some((e) => e.name === name && !e.patch)) return say(`"${name}" is already in the bank`);
     toFm1(name, PRESETS[name](), true);
   };
   saveAs.onclick = () => {
