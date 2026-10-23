@@ -101,9 +101,11 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
                                                  * (m1_set_current); drawn now, the old patch's rows met the new engine (#140) */
     return rc;
 }
+static uint32_t batt_us;                        /* the last battery read's time, us (batt_poll) */
 /* the DIAG command (proto.c): page 0 the reset cause and the crash record, pages 1.. the stall record, 32 bytes a page;
  * page 127 the CPU now: % of the half buffer, the longest audio ISR (us) since the last read of this page (then reset),
- * the half buffer's budget (us), the overload mute, the halves rendered;
+ * the half buffer's budget (us), the overload mute, the halves rendered, the battery read's time (us, batt_poll) and its
+ * smoothed reading (0..1023, 0 = none yet);
  * pages 125, 126 the USB audio stream (usb.c uac, FELUCCA_UAC; m1_link.py uac), 8 words each:
  *   125: flags (bit 0 presented, 1 alt 1 set by the host, 2 the host reads, 3 primed, 4 configured), streams started,
  *        packets, frames in them, SET_CUR requests, bus resets, last fill_min, USB frame number
@@ -142,12 +144,14 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
     }
 #endif
     if (page == 127u) {
-        uint32_t v[5];
+        uint32_t v[7];
         v[0] = cpu_pct;
         v[1] = diag_us_peak > eng_us_max ? diag_us_peak : eng_us_max;
         v[2] = 2902u;
         v[3] = eng_overload;
         v[4] = eng_halves;
+        v[5] = batt_us;
+        v[6] = (uint32_t)batt_raw();
         diag_us_peak = 0;
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
@@ -661,6 +665,30 @@ static void master_poll(void)
     }
 }
 
+/* The battery (#240; ui.c ui_battery keeps the level): SARADC ch 3, the divider on PB1, every 2 s. The conversion is
+ * polled, so the main loop waits for it: one dropped after MASTER's (the sample capacitor still holds ch 4), the mean of
+ * four, then one of MASTER dropped so the next master_poll reads ch 4 settled; batt_us is the time all six took (DIAG page
+ * 127, m1_link.py cpu). PB1 stays an analog input (fm1_adc_init: held low 8 s it would reset the chip). */
+static void batt_poll(void)
+{
+    static uint32_t t0;
+    uint32_t i, n = 0, c0;
+    int32_t a, sum = 0;
+    if (t0 && fm1_ms - t0 < 2000u)
+        return;
+    t0 = fm1_ms | 1u;
+    c0 = fm1_ticks();
+    (void)fm1_adc_read(FM1_ADC_BATT);
+    for (i = 0; i < 4u; i++)
+        if ((a = fm1_adc_read(FM1_ADC_BATT)) >= 0) {
+            sum += a;
+            n++;
+        }
+    (void)fm1_adc_read(FM1_ADC_MASTER);
+    batt_us = (fm1_ticks() - c0) / FM1_TICKS_PER_US;
+    ui_battery(n ? (sum + (int32_t)n / 2) / (int32_t)n : -1, usb.config && !usb.suspended);   /* USB: a host powers it */
+}
+
 static void master_boot(void)
 {
     uint32_t i;
@@ -963,6 +991,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     }
     booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
+    batt_drawn = BATT_NONE;                             /* (its cell too) */
     screen_idle();                                      /* the top bar and the page */
     if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
@@ -990,6 +1019,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         keys_poll();
         buttons_poll();
         knobs_poll();
+        batt_poll();
         master_poll();
         seq_poll();
         panel_draw();

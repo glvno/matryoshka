@@ -16,6 +16,20 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - A bypassed Arpeggiator (ARP as its Toggle, or its card's power switch) now plays the keys straight through instead of
   arpeggiating anyway; switching it lets go of what it was playing. An Arpeggiator can play a Steps track's notes (the
   track's keys out into its keys in) and can drive Drum maps, in the editor and on the FM-1.
+- FM-1: the battery in the top right corner of the screen: 0 to 3 bars, a bolt while a computer powers it over USB, and
+  LOW BATTERY in the top bar once when it runs low. MENU > SYSTEM > BATTERY shows the reading behind it. The thresholds
+  are the stock firmware's (via Felucca) and are still to be checked on a real FM-1 (#240).
+- FM-1 drums on the black keys everywhere: whenever the keys reach a Drum map (a drum patch like the 808 Kit, or an
+  armed drum track), black keys 1..8 play its rows 1..8 on every page, recording or not, and the white keys play nothing
+  (they still switch steps on the SEQ page). A melodic patch, or <7PH's PATTERN, still gets every key. MIDI
+  out sends the row's note for a black key and nothing for a white one, so a recording played back hits the same rows;
+  MIDI notes coming in still play a row by its note.
+- FM-1: a drum track's SEQ page is now an 8 × 16 grid, every row's hits at once with the row names at the left, the
+  selected row highlighted, the playhead's column, accents in coral and OCT- / OCT+ for steps past 16. A hit, a step or a
+  row pick redraws only its cell or two names, so recording hits no longer redraws the page or switches the row shown.
+  SELECT also picks the row, with REC on or off. REC on an armed drum track is this grid (step entry stays for melodic
+  tracks).
+- FM-1: REC with nothing armed opens the SEQ page on a drum track, so the hits are seen landing; REC off stays there.
 - The first community patch: **Lire + Elvira**, 8 Lire and Elvira 2 layered on one keyboard (slimmed to fit the FM-1),
   under Community in the Open picker and the palette.
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go

@@ -361,13 +361,14 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     Ok(())
 }
 
-/// The SEQ page (#83) on the factory 808 Kit (one DRUMS track since #138, its Drum map's rows on the black keys since
-/// the #139 follow-up; Main's keys into DRUMS since #141, so F3 on the device page plays the kick): SEQ opens it on the first row (KICK), a white key switches the kick on a step (its cell lights), a black key picks
-/// the snare row, PLAY runs the track (sound), SEQ held + a black key mutes it and again brings it back, REC records
-/// hits. Arming (#139): REC held + a black key arms the track (no recording; the bar and the track's line say ARM,
-/// #179); REC while stopped is step entry (a key
-/// fills the cursor's step and the cursor moves on), PLAY makes it a live take, the device pages name the armed track,
-/// REC held + the key again disarms. SEQ closes the page.
+/// The SEQ page (#83) on the factory 808 Kit (one DRUMS track since #138; Main's keys into DRUMS since #141): on the
+/// device page the black keys play the Drum map's rows (F#3 the kick), the white keys nothing (the owner, 2026-10-23).
+/// SEQ opens the drum grid (every row on 16 steps, row 1 selected), a white key switches the kick on a step (its cell
+/// lights), a black key picks the snare row (its name on coral), PLAY runs the track (sound), SEQ held + a black key
+/// mutes it and again brings it back, REC records hits. Arming (#139): REC held + a black key arms the track (no
+/// recording; the bar and the track's line say ARM, #179); REC on the armed drum track is its grid with REC on (no step
+/// entry), PLAY keeps it, the device pages name the armed track, REC held + the key again disarms. SEQ closes the page;
+/// REC with nothing armed opens the grid, REC again leaves it showing.
 fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let Some(kit) = presets.iter().position(|(n, _)| n == "808 KIT") else {
         t.check("seq: the factory 808 Kit is there", false, String::new());
@@ -379,20 +380,27 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.midi(&[0xC0, kit as u8], 500)?;
     t.screen(&m, "seq: the 808 Kit loads", "808 KIT");
     let mk = m.mark();
-    m.tap(14, 120, 300)?;                    // F3, the lowest key, on the device page: Main's keys into DRUMS (#141)
+    m.tap(14 + 1, 120, 300)?;                // F#3, black key 1, on the device page: the kick (Main's keys into DRUMS, #141)
     let p = m.peak_since(mk);
-    t.check("seq: the keys play the drums unarmed and stopped (F3: the kick)", p > LOUD, format!("peak {p}"));
+    t.check("seq: black key 1 plays the kick unarmed and stopped", p > LOUD, format!("peak {p}"));
+    m.run_for(1500)?;                        // (the kick dies away)
+    let mk = m.mark();
+    m.tap(14, 120, 300)?;                    // F3, a white key: nothing on a Drum map
+    let p = m.peak_since(mk);
+    t.check("seq: a white key plays nothing on a Drum map", p < QUIET, format!("peak {p}"));
     m.tap(SEQ, 120, 400)?;
-    t.screen(&m, "seq: SEQ opens the step page on its track's first drum row", "DRUMS: KICK");
-    t.screen(&m, "seq: the row names come with the patch (format 33)", "8 COWBELL");
-    let cell = |m: &Machine| m.lcd()[70 * 240 + 28]; // step 2's cell (x 22..33, y 52..85)
+    t.screen(&m, "seq: SEQ opens the drum grid on its track", "ALGO: TRACK");
+    t.screen(&m, "seq: the row names come with the patch (format 33)", "COWBELL");
+    let name = |m: &Machine, r: usize| m.lcd()[(44 + 19 * r + 1) * 240 + 49]; // a row name's field (x 4..49), coral when selected
+    t.check("seq: row 1 selected", name(&m, 0) == 0xe3ab && name(&m, 1) != 0xe3ab, format!("{:#06x}", name(&m, 0)));
+    let cell = |m: &Machine| m.lcd()[57 * 240 + 67]; // the kick's step 2 (x 63..72, y 44..58)
     let before = cell(&m);
     m.tap(14 + 2, 120, 300)?;                // G3: the second white key = step 2
     let after = cell(&m);                    // lit = C_FG (ui.c), ivory
     t.snap(&m, "seq-step-on");
     t.check("seq: a white key switches its step on (the cell lights)", before != after && after == 0xffbd, format!("{before:#06x} -> {after:#06x}"));
     m.tap(14 + 3, 120, 300)?;                // G#3: the second black key = the snare row
-    t.screen(&m, "seq: a black key picks a drum row", "DRUMS: SNARE");
+    t.check("seq: a black key picks a drum row (its name on coral)", name(&m, 1) == 0xe3ab && name(&m, 0) != 0xe3ab, format!("{:#06x}", name(&m, 1)));
     m.tap(14 + 1, 120, 300)?;                // (back to the kick row; stopped, picking a row sounds it)
     m.run_for(1500)?;                        // (the kick dies away)
     let mk = m.mark();
@@ -411,10 +419,10 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(14 + 1, 120, 100)?;
     m.key(SEQ, false);
     m.run_for(1200)?;
-    t.screen(&m, "seq: the page stays after the mute", "DRUMS: KICK");
+    t.screen(&m, "seq: the page stays after the mute", "ALGO: TRACK");
     m.tap(REC, 120, 300)?;
     m.run_for(1100)?;
-    t.screen(&m, "seq: REC on (black keys record hits on the rows)", "DRUMS: KICK REC");
+    t.screen(&m, "seq: REC on (black keys record hits on the rows)", "DRUMS REC");
     m.tap(REC, 120, 300)?;
     m.tap(PLAY, 120, 300)?;
     m.key(REC, true);                        // REC held + F#3: DRUMS armed, REC's release records nothing
@@ -423,16 +431,13 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "arm: REC held + a black key arms the track", "DRUMS ARMED");
     m.key(REC, false);
     m.run_for(1300)?;
-    t.screen(&m, "arm: REC's release after arming records nothing, the bar says ARM", "DRUMS: KICK ARM");
+    t.screen(&m, "arm: REC's release after arming records nothing, the bar says ARM", "DRUMS ARM");
     t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/1  ARMED");
-    m.tap(REC, 120, 1300)?;                  // stopped: step entry on the armed track
-    t.screen(&m, "arm: REC with a track armed, stopped: step entry", "DRUMS WRITE REC");
-    t.screen(&m, "arm: the cursor on step 1", "WRITE 1");
-    m.tap(14 + 3, 120, 300)?;                // G#3 (56): into step 1
-    t.snap(&m, "arm-step-entry");
-    t.screen(&m, "arm: a key fills the step, the cursor moves on", "WRITE 2");
+    m.tap(REC, 120, 1300)?;                  // stopped: the armed drum track's grid, REC on (no step entry)
+    t.screen(&m, "arm: REC with a drum track armed, stopped: its grid, REC on", "DRUMS REC");
+    t.snap(&m, "arm-drum-grid-rec");
     m.tap(PLAY, 120, 600)?;
-    t.screen(&m, "arm: PLAY makes it a live take", "DRUMS KEYS REC");
+    t.screen(&m, "arm: PLAY keeps the grid (REC)", "DRUMS REC");
     m.tap(REC, 120, 300)?;
     m.tap(PLAY, 120, 300)?;
     m.tap(SEQ, 120, 400)?;
@@ -443,7 +448,12 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(14 + 1, 120, 100)?;
     t.screen(&m, "arm: REC held + the armed track's key disarms it", "DRUMS DISARMED");
     m.key(REC, false);
-    m.run_for(300)?;
+    m.run_for(1300)?;
+    m.tap(REC, 120, 1300)?;                  // nothing armed: REC opens the grid
+    t.screen(&m, "seq: REC with nothing armed opens the drum grid", "DRUMS REC");
+    m.tap(REC, 120, 1300)?;
+    t.screen(&m, "seq: REC again: off, the grid stays", "ALGO: TRACK");
+    m.tap(SEQ, 120, 400)?;
     *emulated += m.ms();
     Ok(())
 }
@@ -520,7 +530,8 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     m.turn(ALGO, 2, 400)?;
     t.screen(&m, "menu: the SYSTEM tab", "UPDATE MODE");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
-    m.turn(SELECT, 4, 400)?;
+    t.screen(&m, "menu: the battery's reading (fm1-emu's ch 3: 640, 3 bars)", "640  3/3");
+    m.turn(SELECT, 5, 400)?;
     m.tap(OCT_UP, 120, 300)?;
     m.tap(OCT_UP, 120, 800)?;
     t.screen(&m, "menu: UPDATE MODE enters update mode", "FROM THE MENU");
@@ -540,6 +551,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
     m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
     t.screen(&m, "factory patch 0 loaded", &presets[0].0);
+    let cell = m.lcd()[10 * 240 + 224]; // the battery's cell (ui.c batt_mark_draw): its first bar, ivory
+    t.check("the battery in the top bar: 3 bars (fm1-emu's ch 3 reads 640)", cell == 0xFFBD, format!("{cell:#06x} at 224, 10"));
     if let Some(c) = cpu_figure(&m) {
         println!("     CPU figure in the top bar: {c} %");
     }

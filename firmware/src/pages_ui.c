@@ -658,10 +658,10 @@ static void pages_strip(void)
     char t[20];
     uint32_t first = 0, x, i, w[PG_DEVS];
     if (pages_carding()) {                              /* (a message ended over the card: the card's colour back) */
-        lcd_fill(0, 0, 240, 20, pg_card == PG_CARD_PAGE ? P_CARD_PAGE : P_CARD_DEV);
+        lcd_fill(0, 0, BATT_X, 20, pg_card == PG_CARD_PAGE ? P_CARD_PAGE : P_CARD_DEV);
         return;
     }
-    lcd_fill(0, 0, 240, 20, P_STRIP);
+    lcd_fill(0, 0, BATT_X, 20, P_STRIP);                /* (x BATT_X on: the battery's cell, ui.c) */
     if (page == PAGE_GLO || page == PAGE_ENV) {         /* GLO: GLOBAL and the patch, on coral; the environment's on lilac */
         uint16_t bg = page == PAGE_ENV ? P_LILAC : P_CORAL;
         char nm[32], num[8], *q = nm;
@@ -674,9 +674,9 @@ static void pages_strip(void)
         }
         put(q, patch_label ? patch_label : "")[0] = 0;
         nm[22] = 0;
-        lcd_fill(0, 0, 240, 20, bg);
+        lcd_fill(0, 0, BATT_X, 20, bg);
         text_bc(&FONT_S, 8, 3, page == PAGE_ENV ? "ENVIRONMENT" : "GLOBAL", P_NIGHT, bg, 100, TA_LEFT);
-        text_bc(&FONT_S, 108, 3, nm, P_NIGHT, bg, 124, TA_RIGHT);
+        text_bc(&FONT_S, 108, 3, nm, P_NIGHT, bg, 106, TA_RIGHT);
         return;
     }
     if (pg_list_btn >= 0 && pg_ndev) {                  /* a Page button's list: "SEL 2/3 · AMP ENV" */
@@ -705,8 +705,8 @@ static void pages_strip(void)
             q = put(q, num);
         }
         *q = 0;
-        lcd_fill(0, 0, 240, 20, P_SEA);
-        text_bc(&FONT_S, 0, 3, bar, P_NIGHT, P_SEA, 240, TA_CENTER);
+        lcd_fill(0, 0, BATT_X, 20, P_SEA);
+        text_bc(&FONT_S, 0, 3, bar, P_NIGHT, P_SEA, BATT_X, TA_CENTER);
         return;
     }
     if (!pg_ndev) {
@@ -721,21 +721,21 @@ static void pages_strip(void)
         uint32_t end = 0;
         for (i = first; i <= pg_cur_dev; i++)
             end += w[i];
-        if (end <= 228u || first >= pg_cur_dev)
+        if (end <= BATT_X - 12u || first >= pg_cur_dev)
             break;
         first++;
     }
     x = first ? 10u : 0u;
     if (first)
         text_bc(&FONT_S, 1, 3, "<", P_FAINT, P_STRIP, 8, TA_LEFT);
-    for (i = first; i < pg_ndev && x < 240u; i++) {
+    for (i = first; i < pg_ndev && x < BATT_X; i++) {
         int on = i == pg_cur_dev;
         uint16_t bg = on ? P_INK : P_STRIP, fg = on ? P_NIGHT : pg_dev[i].module >= 0 ? P_SKY : P_DIM;
         caps(t, pg_dev[i].name, pg_dev[i].nlen, 14);
-        text_bc(&FONT_S, x, 3, t, fg, bg, w[i] > 240u - x ? 240u - x : w[i], TA_CENTER);
+        text_bc(&FONT_S, x, 3, t, fg, bg, w[i] > BATT_X - x ? BATT_X - x : w[i], TA_CENTER);
         if (on) {
-            lcd_fill(x, 0, w[i] > 240u - x ? 240u - x : w[i], 3, bg);
-            lcd_fill(x, 17, w[i] > 240u - x ? 240u - x : w[i], 3, bg);
+            lcd_fill(x, 0, w[i] > BATT_X - x ? BATT_X - x : w[i], 3, bg);
+            lcd_fill(x, 17, w[i] > BATT_X - x ? BATT_X - x : w[i], 3, bg);
         }
         x += w[i];
     }
@@ -1068,7 +1068,8 @@ static void pages_card_draw(int full)
     int pgc = pg_card == PG_CARD_PAGE;
     uint16_t bg = pgc ? P_CARD_PAGE : P_CARD_DEV;
     if (full) {                                         /* around the bands (they paint their own rows) */
-        lcd_fill(0, 0, 240, CARD_Y0, bg);
+        lcd_fill(0, 0, BATT_X, BAR_H, bg);           /* (not the battery's cell, ui.c) */
+        lcd_fill(0, BAR_H, 240, CARD_Y0 - BAR_H, bg);
         lcd_fill(0, CARD_Y0 + FONT_S.h, 240, CARD_Y1 - CARD_Y0 - FONT_S.h, bg);
         lcd_fill(0, CARD_Y1 + FONT_L.h, 240, CARD_Y2 - CARD_Y1 - FONT_L.h, bg);
         lcd_fill(0, CARD_Y2 + FONT_S.h, 240, 240u - CARD_Y2 - FONT_S.h, bg);
@@ -1656,12 +1657,12 @@ static void presets_draw(int full)
     uint32_t n, i, first;
     (void)full;
     pages_ensure();
-    lcd_fill(0, 0, 240, 20, P_GOLD);
+    lcd_fill(0, 0, BATT_X, 20, P_GOLD);
     {
         char t[20];
         caps(t, pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].name : "", pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].nlen : 0, 16);
         text_bc(&FONT_S, 8, 3, "PRESETS", P_NIGHT, P_GOLD, 80, TA_LEFT);
-        text_bc(&FONT_S, 88, 3, t, P_NIGHT, P_GOLD, 144, TA_RIGHT);
+        text_bc(&FONT_S, 88, 3, t, P_NIGHT, P_GOLD, 126, TA_RIGHT);
     }
     n = dp_list(pg_cur_dev);
     if (pr_sel >= n)

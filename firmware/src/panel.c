@@ -325,9 +325,11 @@ static void panel_encoders(int32_t *st)
         return;
     }
     if (page == PAGE_SEQ && seq_rec == 2u) {        /* the keys record into the armed track: ALGO keeps it, SELECT moves */
-        if (st[0] && seq_entry())                   /* step entry's cursor */
+        if (st[0] && seq_entry())                   /* step entry's cursor (an armed drum track's grid: SELECT its row) */
             seq_cur_move(st[0]);
-        st[0] = st[1] = 0;
+        if (seq_kbd())
+            st[0] = 0;
+        st[1] = 0;
     }
     if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track, SELECT with a step held its chance */
         if (st[1] && eng_steps_count())
@@ -335,6 +337,10 @@ static void panel_encoders(int32_t *st)
         st[1] = 0;
         if (st[0] && seq_held >= 0) {
             seq_chance(st[0]);
+            st[0] = 0;
+        }
+        if (st[0] && seq_map() >= 0) {              /* a drum grid, no step held: SELECT picks the row (REC on or off) */
+            seq_row_step(st[0]);
             st[0] = 0;
         }
         if ((st[2] || st[3]) && seq_held >= 0) {   /* K1 / K2 with a step held: its note / velocity (not the Main knobs) */
@@ -414,6 +420,8 @@ static void panel_encoders(int32_t *st)
 }
 
 static uint8_t key_note[27];                     /* the note each held key started, so a release (or an octave change in between) ends the right one */
+static uint8_t key_eng[27];                      /* the note it played in the engine: key_note, a Drum map row's (eng_keys_drummap), */
+#define KEY_SILENT 0xFFu                         /* or none (a white key on a Drum map) */
 static uint32_t key_sounding;                    /* bit n: key n started a note (not a key pressed on the SEQ page) */
 static uint8_t seq_held_used;                    /* SEQ is held and a black key muted a track: its release does not switch the page */
 static uint8_t rec_held_used;                    /* REC is held and a black key armed a track: its release does not record */
@@ -453,16 +461,25 @@ static int panel_key(uint32_t n, int down, int quick)
         /* into an armed track at the default velocity (ENV held on its keyboard: full), so a take records what a step
          * entered would be; else at full velocity as always */
         uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
+        int map = seq_kbd() ? -1 : eng_keys_drummap(), b = seq_black(n);
         key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
+        /* the keys reach a Drum map (the owner, 2026-10-23): black keys 1..8 play its rows 1..8 at any octave, as on the
+         * SEQ page, the white keys nothing; MIDI out sends what plays: the row's note, nothing for a white key, so a
+         * recording played back into a Drum map hits the same rows */
+        key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b) : KEY_SILENT;
         key_sounding |= bit;
-        eng_note_on(key_note[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
-        midi_send(0x90u, key_note[n], 100u);
+        if (key_eng[n] != KEY_SILENT)
+            eng_note_on(key_eng[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
+        if (key_eng[n] != KEY_SILENT)
+            midi_send(0x90u, key_eng[n], 100u);
         if (seq_kbd())
             seq_kbd_key(n, key_note[n], 1, vel);
     } else {
         key_sounding &= ~bit;
-        eng_note_off(key_note[n], cfg.ch ? cfg.ch : 1u);
-        midi_send(0x80u, key_note[n], 0u);
+        if (key_eng[n] != KEY_SILENT)
+            eng_note_off(key_eng[n], cfg.ch ? cfg.ch : 1u);
+        if (key_eng[n] != KEY_SILENT)
+            midi_send(0x80u, key_eng[n], 0u);
         if (seq_kbd())
             seq_kbd_key(n, key_note[n], 0, 0u);
     }
@@ -577,8 +594,10 @@ static void panel_edges(uint32_t p, uint32_t rel)
         ui_dirty = 2;
     }
     if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, step entry) */
-        if (seq_rec_page() && page != PAGE_SEQ)
+        if (seq_rec_page() && page != PAGE_SEQ) {
+            seq_rec_aim();                          /* (nothing armed: on a drum track, the hits seen landing) */
             page_set(PAGE_SEQ);
+        }
         seq_rec_press();
     }
     if (rel & (1u << BTN_REC))
@@ -713,6 +732,7 @@ static void panel_draw(void)
         ui_header_due = 0;
         header_draw();
     }
+    batt_draw();                                    /* the battery's cell, LOW BATTERY, its menu row (menu.c) */
 }
 static void panel_draw_now(void)
 {

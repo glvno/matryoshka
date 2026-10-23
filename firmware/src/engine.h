@@ -267,6 +267,10 @@ uint64_t eng_arm_mask_get(void);
 /* whether module m hears Main's keys when armed: a Steps track, a Part or card of a group that takes the keys, a Drum map on
  * the keys, an Arpeggiator */
 int eng_listens(uint32_t m);
+/* the Drum map Main's keys reach (the armed set's, else the ones cabled), when they reach one and nothing that plays them as
+ * notes (a group, the shared keyboard, an Arpeggiator, a track into no Drum map): the panel's black keys 1..8 play its rows
+ * (panel.c panel_key); -1 none */
+int eng_keys_drummap(void);
 void eng_steps_rec(uint32_t module, int on);
 int eng_steps_take(uint32_t *module, uint32_t *word);
 void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t n, uint32_t vel);
