@@ -38,6 +38,8 @@ enum { PS_CLEAN, PS_LIVE, PS_DEAD, PS_BLANK };      /* PS_BLANK: its header is a
 static uint8_t ps_state[PS_SLOTS];
 static uint32_t ps_seq = 1;
 static int32_t ps_vbuf[PS_MAXV];
+static uint8_t ps_scanned;                      /* ps_scan ran (it runs on the first use) */
+static void ps_scan(void);
 
 static uint32_t ps_addr(uint32_t i) { return PS_BASE + (i / PS_PER_SEC) * 0x1000u + (i % PS_PER_SEC) * PS_SLOT; }
 
@@ -95,8 +97,15 @@ static int ps_name_cmp(const char *a, const char *b)
 }
 
 /* the live slot of (structure, name), -1 none */
+static void ps_ensure(void)
+{
+    if (!ps_scanned)
+        ps_scan();
+}
+
 static int ps_find(uint32_t structure, const char *name)
 {
+    ps_ensure();
     ps_hdr_t h;
     uint32_t i;
     for (i = 0; i < PS_SLOTS; i++)
@@ -105,11 +114,13 @@ static int ps_find(uint32_t structure, const char *name)
     return -1;
 }
 
-/* find the records at power-on: the newest of each (structure, name) lives, older copies are killed */
+/* find the records (on the first use after power-on, not at boot: the loading screen stays as quick as before): the newest
+ * of each (structure, name) lives, older copies are killed */
 static void ps_scan(void)
 {
     ps_hdr_t h, o;
     uint32_t i, j;
+    ps_scanned = 1;
     ps_seq = 1;
     for (i = 0; i < PS_SLOTS; i++) {
         if ((i % PS_PER_SEC) == 0u)
@@ -225,7 +236,7 @@ static uint32_t ps_count(uint32_t state)
  * Before it, PS_KEEP clean slots are kept (compacting while there are dead ones), so a compaction always has room. */
 static int ps_put(uint32_t structure, const char *name, const int32_t *vals, uint32_t n)
 {
-    int old = ps_find(structure, name), s;
+    int old = ps_find(structure, name), s;   /* (ps_find scans first) */
     if (n > PS_MAXV)
         return -3;
     if (old < 0 && ps_count(PS_LIVE) >= PS_MAX)
@@ -259,6 +270,7 @@ static uint32_t ps_list(uint32_t structure, uint8_t *out, uint32_t max)
 {
     uint32_t i, n = 0, k;
     ps_hdr_t h, o;
+    ps_ensure();
     for (i = 0; i < PS_SLOTS; i++) {
         if (ps_state[i] != PS_LIVE || ps_check(i, &h, 0) || (structure && h.structure != structure))
             continue;
@@ -277,6 +289,7 @@ static int ps_read(uint32_t i, uint32_t *structure, char *name, uint32_t *n)
 {
     ps_hdr_t h;
     uint32_t k;
+    ps_ensure();
     if (i >= PS_SLOTS || ps_state[i] != PS_LIVE || ps_check(i, &h, 1))
         return -1;
     *structure = h.structure;
