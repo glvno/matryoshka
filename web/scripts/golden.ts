@@ -4,12 +4,12 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { encodePatch, toQ16 } from '../src/patchbin';
+import { encodePatch, FLAG_INPUTS, PANEL_BYTES, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
-import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, stepByte, type Patch, type PolyCfg } from '../src/patch';
+import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, type StepNote } from '../src/track';
 import { makeAssembly } from '../src/assembly';
 import { withParts } from '../src/test-poly';
@@ -51,6 +51,8 @@ const tests: Record<string, Patch> = {};
 const events: Record<string, Ev[]> = {};
 /** a kit's length in frames, when not END */
 const ends: Record<string, number> = {};
+/** a kit's binary, when not encodePatch of its patch */
+const bins: Record<string, Uint8Array> = {};
 for (const [n, p] of Object.entries(PRESETS)) tests[n] = p();
 tests['acid'] = acid(); // also the protocol test's upload (golden.sh hands acid.m1p to proto_test)
 
@@ -1659,6 +1661,48 @@ tests['arm-set'] = make('arm-set', (add, wire) => {
   ends['arm-set'] = 128 * 200;
 }
 
+// disabled fixed links (format 17's flag bit 2, never written since the links became permanent; the firmware still reads
+// it): the binary carries the LFO -> filter cv cable with the filter's cv input masked off (the VCA's mask 0 keeps its cv),
+// so the firmware must play the reference, which is the same patch without that cable
+{
+  const build = (masked: boolean): Patch =>
+    make('disabled-inputs', (add, wire) => {
+      const kb = add('fm1', 0, 0);
+      const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+      const lfo = add('lfo', 0, 0, { wave: 0, rate: 3, depth: 1 });
+      const flt = add('filter', 0, 0, { cutoff: 600, res: 0.5, cvamt: 2 });
+      const vca = add('vca', 0, 0);
+      const out = add('output', 0, 0, { level: 0.8 });
+      wire(kb, 'pitch', osc, 'pitch');
+      wire(osc, 'out', flt, 'in');
+      if (masked) wire(lfo, 'out', flt, 'cv');
+      wire(flt, 'lp24', vca, 'in');
+      wire(kb, 'gate', vca, 'cv');
+      wire(vca, 'out', out, 'l');
+      wire(vca, 'out', out, 'r');
+    });
+  tests['disabled-inputs'] = build(false);
+  const p = build(true);
+  const enc = encodePatch(p, true);
+  if (enc[3] !== 0 || enc[6] & 1) throw new Error('disabled-inputs: the mask section goes after the cables (no groups, no morph)');
+  let at = 8 + PANEL_BYTES;
+  for (const m of p.modules) {
+    const d = DEFS[m.type];
+    at += 1 + 4 * d.params.length + (d.paramInputs ? 8 + 2 * SOURCES.length : 0) + (d.data ?? 0);
+  }
+  at += 4 * p.cables.length;
+  const last = p.cables[p.cables.length - 1];
+  const idx = (id: number): number => p.modules.findIndex((m) => m.id === id);
+  if (enc[at - 4] !== idx(last.from.module) || enc[at - 2] !== idx(last.to.module)) throw new Error('disabled-inputs: the cables do not end where expected');
+  const masks = p.modules.map((m) => (m.type === 'filter' ? 1 << DEFS.filter.inputs.findIndex((i) => i.name === 'cv') : 0));
+  const bin = new Uint8Array(enc.length + masks.length);
+  bin.set(enc.subarray(0, at));
+  bin.set(masks, at);
+  bin.set(enc.subarray(at), at + masks.length);
+  bin[6] |= FLAG_INPUTS;
+  bins['disabled-inputs'] = bin;
+}
+
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
   if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];
@@ -1708,7 +1752,7 @@ for (const [name, patch] of Object.entries(tests)) {
   const f = slug(name);
   const cpu = cpuEstimate(patch).use;
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
-  writeFileSync(new URL(`${f}.m1p`, OUT), encodePatch(patch, true));
+  writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true));
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
   writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' ? `${fr} ${k} ${n}` : k === 'rec' ? `${fr} rec ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }

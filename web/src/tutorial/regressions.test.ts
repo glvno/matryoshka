@@ -105,18 +105,18 @@ describe('manual tutorial regressions', () => {
 
 describe('audition lifetime', () => {
   afterEach(() => vi.useRealTimers());
-  it('stops every chord note and all recurring riff callbacks', async () => {
+  it('stops every chord note and leaves no timers', async () => {
     vi.useFakeTimers(); const send = vi.fn(); const a = new Audition(send, async () => {});
     await a.play('chord'); a.stop();
     expect(send.mock.calls).toEqual([[true, 60], [true, 64], [true, 67], [false, 60], [false, 64], [false, 67]]);
-    await a.play('riff'); await vi.advanceTimersByTimeAsync(1000); a.stop();
+    await a.play('note'); a.stop();
     const calls = send.mock.calls.length; await vi.advanceTimersByTimeAsync(10000);
     expect(send).toHaveBeenCalledTimes(calls); expect(vi.getTimerCount()).toBe(0);
   });
   it('never starts notes after Stop while audio unlock is pending', async () => {
     let unlock!: () => void; const send = vi.fn();
     const a = new Audition(send, () => new Promise<void>((r) => { unlock = r; }));
-    const pending = a.play('riff'); a.stop(); unlock(); await pending;
+    const pending = a.play('note'); a.stop(); unlock(); await pending;
     expect(send).not.toHaveBeenCalled();
   });
 });

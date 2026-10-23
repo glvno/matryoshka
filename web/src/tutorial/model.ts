@@ -5,7 +5,6 @@
 import { DEFS } from '../modules';
 import { addModule, connect, disconnect, newPatch, sameEnd, type ModuleInst, type Patch } from '../patch';
 import { allModules, assembliesOf, freeSpot, hiddenModules, reconcileAll, toDef, type AssemblyDef, type AssemblyInst, type Rect } from '../assembly';
-import type { Riff } from './riff';
 
 /** events counted since the current step was entered */
 export interface Seen {
@@ -74,8 +73,6 @@ export interface Step {
   focus?(s: TutorialState): Target[];
   /** a Continue step shows the playback buttons */
   playback?: boolean;
-  /** what the Riff button loops; absent = the built-in riff */
-  riff?: Riff;
   /** fallback highlight when `focus` gives nothing */
   target?(s: TutorialState): Target[];
 }

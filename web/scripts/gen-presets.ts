@@ -36,7 +36,7 @@ const wire = (p: Patch, a: number, ap: string, b: number, bp: string): void => {
 function plugIn(p: Patch, from: number, port: string, a: AssemblyInst, label: string): void {
   const r = a.inputs.find((x) => x.label === label);
   if (!r) throw new Error(`${p.name}: no input ${label}`);
-  wire(p, from, port, r.module, r.port);
+  for (const t of [r, ...(r.also ?? [])]) wire(p, from, port, t.module, t.port); // an input may feed several ports
 }
 function plugOut(p: Patch, a: AssemblyInst, label: string, to: number, port: string): void {
   const r = a.outputs.find((x) => x.label === label);
@@ -232,7 +232,6 @@ presets.push(() => {
 // octave -1 as the kits
 presets.push(() => {
   const x = around('8 Lire', '8 Lire');
-  for (const t of x.a.inputs.find((r) => r.label === 'keys')!.also ?? []) wire(x.p, x.main.id, 'keys', t.module, t.port); // the other blocks' maps
   // the level: all eight plates held (from F3, as the kits)
   const out = x.out;
   out.params.level = 0.1;
@@ -245,7 +244,6 @@ presets.push(() => {
 // Elvira 2: the four voices on the white keys from F3 (twice: F G A B, C D E F), repeated over the keybed as 8 Lire's
 presets.push(() => {
   const x = around('Elvira 2', 'Elvira 2');
-  for (const t of x.a.inputs.find((r) => r.label === 'keys')!.also ?? []) wire(x.p, x.main.id, 'keys', t.module, t.port); // the other blocks' maps
   x.out.params.level = 0.1;
   x.out.params.level = Math.round(Math.max(0.05, Math.min(1, 0.85 / (peakOf(x.p, KIT_NOTES.slice(0, 4), 3) / 0.1))) * 100) / 100;
   x.p.octave = -1;

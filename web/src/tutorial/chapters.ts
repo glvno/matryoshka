@@ -29,7 +29,7 @@ export function compileStep(st: StepData, roles: Roles): Step {
   return {
     id: st.id, kind: st.kind, title: st.title, text: st.text, why: st.why || undefined,
     listen: st.kind === 'continue' || !st.advance, optional: !!st.optional, superseded: !!st.superseded,
-    transient: st.kind === 'continue' || parts.some(momentary), playback: st.kind === 'continue' ? !!st.playback : true, riff: st.riff,
+    transient: st.kind === 'continue' || parts.some(momentary), playback: st.kind === 'continue' ? !!st.playback : true,
     check: (s) => ok(s).every(Boolean),
     todo: (s) => { const r = ok(s); return parts.filter((_, i) => !r[i]).map((p) => partLabel(p, roles)); },
     met: (s) => { const r = ok(s); return Object.fromEntries(parts.map((p, i) => [p.id, r[i]])); },

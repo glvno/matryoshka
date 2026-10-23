@@ -20,7 +20,7 @@ describe('the firmware an FM-1 runs (#161)', () => {
     expect(firmwareKind('FM-1_015')).toBe('stock');
     expect(firmwareKind('FM-1_700')).toBe('matryoshka');
     expect(firmwareKind('FM-1_710')).toBe('matryoshka');
-    expect(firmwareKind('FM-1_800')).toBe('matryoshka'); // ours before #79
+    expect(firmwareKind('FM-1_800')).toBe('other'); // M-VAVE (#217)
     expect(firmwareKind('FM-1_901')).toBe('felucca');
     expect(firmwareKind('FM-1_8123456')).toBe('other'); // M-VAVE Open
     expect(firmwareKind('FM1C_0123456789abcdef')).toBe('other');

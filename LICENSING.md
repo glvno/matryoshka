@@ -17,7 +17,9 @@ Every one of these keeps its original `SPDX-License-Identifier` and copyright he
 
 ## JieLi SDK files (Apache-2.0)
 
-Packages made by `tools/build.py` embed three files from the JieLi AC79 SDK (`uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin`), Apache-2.0. They are not in this repository as files, but the prebuilt package that the web app bundles (`web/public/firmware/matryoshka.fwsc`, made by `tools/build.py` and `npm run firmware`, published on Cloudflare Pages) contains them, so the licence texts (`LICENSE-GPL-3.0.txt`, `LICENSE-Apache-2.0.txt`) are published next to it and linked from the Flash tab. Ship `LICENSES/Apache-2.0.txt` with every package. The other texts in `LICENSES/` belong to Felucca's own bundled material (fonts, DSP ports) and apply only to files not copied here; they are kept so any later copy stays correctly attributed.
+Packages made by `tools/build.py` embed three files from the JieLi AC79 SDK (`uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin`), Apache-2.0. They are not in this repository as files, but the prebuilt package that the web app bundles (`web/public/firmware/matryoshka.fwsc`, made by `tools/build.py` and `npm run firmware`, published on Cloudflare Pages) contains them, so the licence texts (`LICENSE-GPL-3.0.txt`, `LICENSE-Apache-2.0.txt`) are published next to it and linked from the Flash tab. Ship `LICENSES/Apache-2.0.txt` with every package. The other texts in `LICENSES/` belong to Felucca's own bundled material (fonts, DSP ports) and apply only to files not copied here; they are kept so any later copy stays correctly attributed, and releases do not ship them.
+
+**What a release ships** (`tools/build.py --release`, the folder `release-X.Y/`): the package, its sidecar and the app image, `SHA256SUMS`, `LICENSE` (GPL-3.0), this file, and in `LICENSES/` exactly the texts for what the package embeds: `Apache-2.0.txt` (the JieLi SDK files) and `OFL-BarlowCondensed.txt` (the LCD font's bitmaps, below).
 
 ## M-VAVE stock firmware V15 (Apache-2.0)
 
@@ -27,7 +29,7 @@ The self-hosted Alegreya SC Bold heading font is by Juan Pablo del Peral / Huert
 
 The patch editor and earlier wordmark use Barlow Semi Condensed Bold, Barlow Condensed SemiBold and Barlow Medium by Jeremy Tribby, distributed under the SIL Open Font License 1.1. Their licences are included at `web/public/fonts/OFL-BarlowSemiCondensed.txt`, `web/public/fonts/OFL-BarlowCondensed.txt` and `web/public/fonts/OFL-Barlow.txt`; sources: https://github.com/google/fonts/tree/main/ofl/barlowsemicondensed, https://github.com/google/fonts/tree/main/ofl/barlowcondensed and https://github.com/google/fonts/tree/main/ofl/barlow. `web/scripts/wordmark.py` regenerates the legacy K-stem wordmark as a study without replacing the current branding.
 
-The firmware's LCD type (`firmware/src/font_bc.h`) is Barlow Condensed SemiBold rasterised to bitmaps by `tools/gen_font.py` from `web/public/fonts/BarlowCondensed-SemiBold.ttf`; the bitmaps are a derivative of the font and stay under the SIL Open Font License 1.1 (`web/public/fonts/OFL-BarlowCondensed.txt`), named as such in the header. Firmware packages that embed it should ship that licence with the others.
+The firmware's LCD type (`firmware/src/font_bc.h`) is Barlow Condensed SemiBold rasterised to bitmaps by `tools/gen_font.py` from `web/public/fonts/BarlowCondensed-SemiBold.ttf`; the bitmaps are a derivative of the font and stay under the SIL Open Font License 1.1 (`web/public/fonts/OFL-BarlowCondensed.txt`), named as such in the header. Every release ships that licence in `LICENSES/`.
 
 The active SVG wordmark uses Roboto Flex under SIL OFL 1.1, with the selected axes and preset recorded in `web/public/brand/wordmark-settings.json`. `npm run brand:flex` generates its outlines from preset `p13` and promotes `round-three/29-hidden-arm-ends.png` to the app’s `brand/matryoshka.png`. The app displays the outlined SVG without loading a font renderer or the variable font at runtime.
 
