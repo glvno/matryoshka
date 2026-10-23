@@ -9,7 +9,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go
   during a full redraw used to be missed, and any key waited for the redraw to end; now every press and release plays,
   in order, within a moment of the press (#230).
-- A new factory patch, **Groove Box** (patch 23, after the 909 Kit): the 909 Kit's drums and the Silver Box playing a
+- A new factory patch, **<7PH** (patch 23, a groove box, after the 909 Kit): the 909 Kit's drums and the Silver Box playing a
   16-step acid bass line in B flat minor on its own PATTERN track, at 124 BPM. PLAY starts both, Main's keys play the
   bass, arming DRUMS (REC held + its black key on the FM-1) puts the keys on the kit, and the kit's mixer balances kick,
   snare, hats and bass. An FM-1 in use gets it only from MENU > SYSTEM > FACTORY RESET, which rewrites the whole bank;

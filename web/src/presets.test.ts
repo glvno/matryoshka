@@ -82,9 +82,9 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
   });
 });
 
-describe('factory Groove Box: the 909 Kit\'s drums and a Silver Box on PATTERN, PLAY starts both', () => {
+describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on PATTERN, PLAY starts both', () => {
   const parts = (): { p: Patch; mix: number; drums: number; pattern: number } => {
-    const p = PRESETS['Groove Box']();
+    const p = PRESETS['<7PH']();
     const out = p.modules.find((m) => m.type === 'output')!.id;
     const mix = p.cables.find((c) => c.to.module === out && p.modules.find((m) => m.id === c.from.module)!.type === 'mixer')!.from.module;
     const drums = p.modules.find((m) => m.type === 'steps' && m.name === 'DRUMS')!.id;
@@ -93,8 +93,8 @@ describe('factory Groove Box: the 909 Kit\'s drums and a Silver Box on PATTERN, 
   };
 
   it('is the last factory patch and fits the FM-1', () => {
-    expect(Object.keys(PRESETS).at(-1)).toBe('Groove Box');
-    const b = deviceBudget(PRESETS['Groove Box']());
+    expect(Object.keys(PRESETS).at(-1)).toBe('<7PH');
+    const b = deviceBudget(PRESETS['<7PH']());
     expect(b.fits, JSON.stringify(b.over)).toBe(true);
   });
 
