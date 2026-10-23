@@ -24,7 +24,7 @@ A second set of parameter values for the same modules and cables; patch morphing
 
 ### Bank
 
-The FM-1's 64 patch slots, its only patch list; PRESET steps the occupied slots.
+The FM-1's 64 patch slots, its only patch list; PRESET steps the occupied slots. The editor keeps one bank, its offline copy in the browser (several named banks: issue #220).
 
 ### Blurb
 
@@ -56,7 +56,7 @@ The searchable list of every editor action, module, assembly and patch, opened w
 
 ### Community shelf
 
-The first card of the Library: patches other people submitted, from the curated `community.json`.
+Patches other people submitted, from the curated `community.json`, listed under Community in the Open picker and the palette.
 
 ### Course
 
@@ -108,7 +108,7 @@ An assembly that takes keys and makes audio: its voicing turns the keys into not
 
 ### Engines shelf
 
-The derived first shelf of the assembly browser, palette and Library, listing every engine.
+The derived first shelf of the assembly browser and the palette, listing every engine.
 
 ### Environment
 
@@ -204,7 +204,7 @@ The dev-server-only page (`/lesson-editor`) where the course is written and save
 
 ### Library
 
-The editor's view for managing what is stored, in the browser and on the FM-1 (`#library`). Its sections are Patches, Assemblies and Presets.
+The editor's view for managing what is stored, in the browser and on the FM-1 (`#library`). Its sections are Patches, Assemblies and Presets; Patches and Presets show this browser and the FM-1 side by side. It opens nothing.
 
 ### Live
 
@@ -234,9 +234,13 @@ A per-firmware table that turns a connected FM-1's MIDI messages into panel inpu
 
 The list at the end of every subject file: questions we know we have not answered, each with the ticket where it is being worked. Not rows; no IDs.
 
+### Offline copy
+
+The bank as the editor keeps it in the browser (`matryoshka.bank`): what Send bank to FM-1 writes, and what the Library's FM-1 column shows while no FM-1 is connected.
+
 ### Over budget
 
-A patch that exceeds the FM-1's limits (modules, cables, bytes, CPU). It plays in the browser only.
+A patch that exceeds the FM-1's limits (modules, cables, bytes, CPU). It plays in the browser only; the Library marks it "browser only".
 
 ### Overlay
 
