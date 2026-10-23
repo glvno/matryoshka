@@ -1390,6 +1390,10 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .steps-screen .steps-head .steps-arm.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
 .steps-screen.armed { box-shadow: inset 0 0 0 2px var(--secondary); }
 .module.armed:not(.selected) { outline: 2px solid var(--secondary); outline-offset: 1px; }
+/* ARM on any device with a keys input (#190): independent toggles; Main's keys cables into unarmed devices are muted while any is armed */
+.mhead .tools .arm-btn { font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.mhead .tools .arm-btn.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
+.cable.muted { opacity: .25; }
 /* step entry's cursor (#127): the step the next note goes into */
 .step.cursor::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
 .steps-lanes { display: flex; }

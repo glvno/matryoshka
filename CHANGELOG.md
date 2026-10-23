@@ -6,6 +6,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Arm anything that takes keys, several at once (#190): ARM is on every engine, Voicing, Drum map and Steps track card,
+  each its own toggle. While anything is armed Main's keys play only the armed devices, cabled or not (a layer: arm two
+  engines); with nothing armed the cables decide. Steps tracks keep playing what they drive. Dashed lines show where
+  Main's keys go; your own Main keys cables into unarmed devices are dimmed meanwhile. In the editor only for now: the
+  FM-1 still arms one Steps track from its panel.
 - An engine is now what its insides make it (keys → voicing → voices): an assembly whose keys reach a Voicing module or
   a Drum map, through an Arpeggiator or a Steps track if need be, and that makes audio. Assemblies with a keys input that
   nothing voices are no longer engines. The Voice assigner is now called **Voicing** (patches load as before).

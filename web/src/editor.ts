@@ -61,6 +61,7 @@ import {
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
 import { defIsEngine, wireEngine, wiredText, type Wired } from './engines';
+import { armable, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
@@ -159,7 +160,8 @@ export interface EditorEvents {
   onTrack?(id: number, notes: StepNote[] | undefined): void;
   onMute?(id: number, on: boolean): void;
   /** the armed Steps track changed (#134; null: none) and what it plays (poly.ts trackTargets), or its cables changed */
-  onArm?(id: number | null, plays: string[]): void;
+  /** the armed set changed (#190): the armed devices, and what each plays by name (a Steps track: what it drives) */
+  onArm?(armed: DeviceKey[], plays: string[]): void;
   /** REC on the armed track went on or off (#135) */
   onRec?(id: number, on: boolean): void;
   /** a note into a Steps track's instrument, to hear it (the roll's keys and notes, #136; vel 0..127, 0: let go) */
@@ -693,9 +695,10 @@ export class Editor {
 
   rebuild(): void {
     this.cancelArm();
-    if (this.armedTrack !== null) {
-      if (this.patch.modules.some((m) => m.id === this.armedTrack && m.type === 'steps')) this.ev.onArm?.(this.armedTrack, this.trackPlays(this.armedTrack));
-      else this.armTrack(null); // (the track went)
+    if (this.armedSet.size) {
+      const kept = keepArmed(this.patch, this.armedSet);
+      if (kept.length !== this.armedSet.size) this.setArmed(kept); // (a device went, or lost its keys input)
+      else this.ev.onArm?.([...this.armedSet], this.armPlays());
     }
     if (this.roll) {
       if (this.patch.modules.some((m) => m.id === this.roll!.id && m.type === 'steps')) queueMicrotask(() => this.roll?.view.render());
@@ -969,7 +972,7 @@ export class Editor {
 
   private card(m: ModuleInst, def: ModuleDef, perVoice: number, open?: AssemblyInst): HTMLElement {
     const el = document.createElement('div');
-    el.className = 'module' + (this.selected.has(m.id) ? ' selected' : '') + (open ? ' member' : '') + (this.picking(open) ? ' picking' : '') + (m.id === this.armedTrack ? ' armed' : '');
+    el.className = 'module' + (this.selected.has(m.id) ? ' selected' : '') + (open ? ' member' : '') + (this.picking(open) ? ' picking' : '') + (this.armedSet.has(`m${m.id}`) ? ' armed' : '');
     el.style.left = `${m.x}px`;
     el.style.top = `${m.y}px`;
     el.dataset.id = String(m.id);
@@ -983,6 +986,7 @@ export class Editor {
     const tools = document.createElement('span');
     tools.className = 'tools';
     if (open) tools.append(this.outButton(open, () => this.takeOutModule(open, m)));
+    if (!open && def.type !== 'steps' && armable(this.patch, `m${m.id}`)) tools.append(this.armButton(`m${m.id}`, moduleName(def.type, def.label)));
     if (def.type !== 'fm1' && def.type !== 'output' && !EDITOR_ONLY.has(def.type)) tools.append(this.bypassButton(m, def, el));
     const menu = (at: Pt): void => this.contextMenu(m, def, at);
     tools.append(this.moreButton(menu));
@@ -1074,8 +1078,8 @@ export class Editor {
         this.ev.onStructure(this.patch);
       },
       mute: (on) => this.ev.onMute?.(m.id, on),
-      arm: (on) => this.armTrack(on ? m.id : null),
-      armed: () => this.armedTrack === m.id,
+      arm: (on) => this.toggleArm(`m${m.id}`, on),
+      armed: () => this.armedSet.has(`m${m.id}`),
       rec: (on) => {
         if (on) this.armTrack(m.id);
         this.setRec(on && this.armedTrack === m.id);
@@ -1088,20 +1092,72 @@ export class Editor {
     return grid;
   }
 
-  /** the armed Steps track (#134): Main's keys go into it and through to what it plays (Engine.arm). Editor state: one
-   * track at a time, not saved, no undo step; another patch disarms it */
-  armedTrack: number | null = null;
+  /** the armed devices (#190, CONTEXT.md "Arm"; `m<id>` / `a<id>`): Main's keys go to them, cable or not (Engine.arm).
+   * Editor state: independent toggles, not saved, no undo step; another patch disarms them */
+  armedSet = new Set<DeviceKey>();
 
-  armTrack(id: number | null): void {
-    if (id !== null && !this.patch.modules.some((m) => m.id === id && m.type === 'steps')) id = null;
-    if (id === this.armedTrack) return;
-    this.setRec(false);
-    this.armedTrack = id;
-    for (const [k, g] of this.stepGrids) g.armed(k === id);
-    for (const [k, card] of this.cards) card.classList.toggle('armed', k === id);
-    this.ev.onArm?.(id, id === null ? [] : this.trackPlays(id));
+  /** the Steps track REC records into (#134 / #135): the armed Steps track, while exactly one is armed */
+  get armedTrack(): number | null {
+    return this.trackOf(this.armedSet);
+  }
+
+  private trackOf(keys: Iterable<DeviceKey>): number | null {
+    const ids = [...keys].filter((k) => k[0] === 'm').map((k) => Number(k.slice(1))).filter((id) => this.patch.modules.some((m) => m.id === id && m.type === 'steps'));
+    return ids.length === 1 ? ids[0] : null;
+  }
+
+  /** arm exactly these devices (the ones that cannot be armed are left out) */
+  setArmed(keys: Iterable<DeviceKey>): void {
+    const next = keepArmed(this.patch, keys);
+    if (next.length === this.armedSet.size && next.every((k) => this.armedSet.has(k))) return;
+    if (this.trackOf(next) !== this.armedTrack) this.setRec(false);
+    this.armedSet = new Set(next);
+    for (const [k, g] of this.stepGrids) g.armed(this.armedSet.has(`m${k}`));
+    for (const [k, card] of this.cards) card.classList.toggle('armed', this.armedSet.has(`m${k}`));
+    for (const [k, card] of this.containers) card.classList.toggle('armed', this.armedSet.has(`a${k}`));
+    for (const b of this.canvas.querySelectorAll<HTMLButtonElement>('button[data-arm]')) {
+      const on = this.armedSet.has(b.dataset.arm!);
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    this.markMuted();
+    this.ev.onArm?.([...this.armedSet], this.armPlays());
     this.positionBindings();
     this.roll?.view.render();
+  }
+
+  /** ARM on one device: on / off, the others as they are */
+  toggleArm(key: DeviceKey, on = !this.armedSet.has(key)): void {
+    const next = new Set(this.armedSet);
+    if (on) next.add(key);
+    else next.delete(key);
+    this.setArmed(next);
+  }
+
+  /** #134's form: arm this Steps track as the one armed track (other armed devices stay), or null: disarm everything */
+  armTrack(id: number | null): void {
+    if (id === null) return this.setArmed([]);
+    if (!this.patch.modules.some((m) => m.id === id && m.type === 'steps')) return;
+    this.setArmed([...[...this.armedSet].filter((k) => this.trackOf([k]) === null), `m${id}`]);
+  }
+
+  /** what the armed devices play, by the names the canvas shows: a Steps track, what it drives; anything else, itself */
+  private armPlays(): string[] {
+    const out: string[] = [];
+    for (const k of this.armedSet) {
+      const id = Number(k.slice(1));
+      const names = k[0] === 'a' ? [assemblyById(this.patch, id)?.label ?? 'assembly']
+        : this.patch.modules.find((m) => m.id === id)?.type === 'steps' ? this.trackPlays(id)
+        : [moduleName(this.patch.modules.find((m) => m.id === id)?.type ?? '', DEFS[this.patch.modules.find((m) => m.id === id)?.type ?? '']?.label ?? '')];
+      for (const n of names) if (!out.includes(n)) out.push(n);
+    }
+    return out;
+  }
+
+  /** Main's keys cables the arm overrides, drawn muted (#190) */
+  private markMuted(): void {
+    const muted = new Set(mutedCables(this.patch, this.armedSet));
+    for (const { path, cable } of this.cablePaths) path.classList.toggle('muted', !!cable && muted.has(cable));
   }
 
   /** REC on the armed track (#135; editor state like the arming): stopped, step entry on its card; running, the engine
@@ -1179,8 +1235,8 @@ export class Editor {
       begin: () => this.beginEdit(),
       len: (n) => this.setParam(id, 'len', n),
       play: (note, vel) => this.ev.onThru?.(id, note, vel),
-      arm: (on) => this.armTrack(on ? id : null),
-      armed: () => this.armedTrack === id,
+      arm: (on) => this.toggleArm(`m${id}`, on),
+      armed: () => this.armedSet.has(`m${id}`),
       rec: (on) => {
         if (on) this.armTrack(id);
         this.setRec(on && this.armedTrack === id);
@@ -3006,7 +3062,18 @@ export class Editor {
     }, 'pw');
     pw.classList.toggle('on', !a.bypass);
     pw.setAttribute('aria-pressed', String(!a.bypass));
-    return [this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
+    const arm = !parentOf(this.patch, a.id) && armable(this.patch, `a${a.id}`) ? [this.armButton(`a${a.id}`, a.label)] : [];
+    return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
+  }
+
+  /** ARM on a device with a keys input (#190): an independent toggle; armed, Main's keys play it (and every other armed
+   * device), cable or not */
+  private armButton(key: DeviceKey, name: string): HTMLButtonElement {
+    const b = this.button('arm', `ARM: Main’s keys play ${name} (with any other armed device), cable or not; again to disarm`, () => this.toggleArm(key), 'sm arm-btn');
+    b.dataset.arm = key;
+    b.classList.toggle('on', this.armedSet.has(key));
+    b.setAttribute('aria-pressed', String(this.armedSet.has(key)));
+    return b;
   }
 
   /** ▸ / ▾ before an assembly's title: expand or collapse */
@@ -3057,7 +3124,7 @@ export class Editor {
     const open = arranging ? undefined : parent;
     const ncols = paramColumns(a.params).length;
     const el = document.createElement('div');
-    el.className = 'module assembly' + (a.poly ? ' poly' : '') + (parent ? ' member' : '') + (a.bypass ? ' off' : '') + (this.picking(open) ? ' picking' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '') + (arranging ? ' arranging' : '') + (ncols > 1 ? ' cols' : '');
+    el.className = 'module assembly' + (this.armedSet.has(`a${a.id}`) ? ' armed' : '') + (a.poly ? ' poly' : '') + (parent ? ' member' : '') + (a.bypass ? ' off' : '') + (this.picking(open) ? ' picking' : '') + (this.selectedAsm.has(a.id) ? ' selected' : '') + (arranging ? ' arranging' : '') + (ncols > 1 ? ' cols' : '');
     if (ncols > 1) el.style.setProperty('--cols', String(ncols));
     el.style.left = `${a.x}px`;
     el.style.top = `${a.y}px`;
@@ -4066,32 +4133,40 @@ export class Editor {
       path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x} ${b.y + lift} ${b.x} ${b.y}`);
       paths.push(path);
     });
-    const snap = this.armRoute(view);
-    if (snap) paths.push(snap);
+    paths.push(...this.armRoutes(view));
     layer.replaceChildren(...paths);
     // (the open roll covers them: the lines from the dock to the cards above it pass under it, the #136 follow-up)
     layer.style.clipPath = roll ? `path(evenodd, "M0 0H${innerWidth}V${innerHeight}H0Z M${roll.left} ${roll.top}H${roll.right}V${roll.bottom}H${roll.left}Z")` : '';
   }
 
-  /** the armed track's routing (#134): Main's keys into its keys in (on its card, else its grid, a collapsed assembly's card),
-   * dashed in the armed colour; not a cable (not saved, no undo, no click). None when either end is out of view */
-  private armRoute(view: DOMRect): SVGPathElement | null {
-    const id = this.armedTrack;
+  /** the armed devices' routing (#134, #190): Main's keys into each one's keys input (on its card, else a Steps track's grid,
+   * else its card), dashed in the armed colour: virtual cables (not saved, no undo, no click). One is left out while
+   * either end is out of view */
+  private armRoutes(view: DOMRect): SVGPathElement[] {
     const main = this.patch.modules.find((m) => m.type === 'fm1');
-    if (id === null || !main || this.canvas.offsetParent === null) return null;
+    if (!this.armedSet.size || !main || this.canvas.offsetParent === null) return [];
     const from = this.ports.get(this.key(main.id, 'keys', 'out'));
-    const jack = this.inputJack({ module: id, port: 'keys' });
-    const to = [jack, this.stepGrids.get(id)?.el].find((e) => e?.isConnected && e.offsetParent !== null);
-    if (!from?.isConnected || !to) return null;
-    const f = from.getBoundingClientRect(), t = to.getBoundingClientRect();
+    if (!from?.isConnected) return [];
+    const f = from.getBoundingClientRect();
     const a = { x: f.left + f.width / 2, y: f.top + f.height / 2 };
-    const b = to === jack ? { x: t.left + t.width / 2, y: t.top + t.height / 2 } : { x: t.left, y: t.top + Math.min(12, t.height / 2) };
-    if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) return null;
-    const lift = Math.max(40, (a.y - b.y) * 0.45);
-    const path = document.createElementNS(SVGNS, 'path');
-    path.setAttribute('class', 'bind arm');
-    path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x - lift * 0.6} ${b.y} ${b.x} ${b.y}`);
-    return path;
+    const out: SVGPathElement[] = [];
+    for (const k of this.armedSet) {
+      const id = Number(k.slice(1));
+      const t0 = keysTargets(this.patch, k)[0];
+      const jack = t0 && this.inputJack(t0);
+      const card = k[0] === 'a' ? this.containers.get(id) : this.stepGrids.get(id)?.el ?? this.cards.get(id);
+      const to = [jack, card].find((e) => e?.isConnected && e.offsetParent !== null);
+      if (!to) continue;
+      const t = to.getBoundingClientRect();
+      const b = to === jack ? { x: t.left + t.width / 2, y: t.top + t.height / 2 } : { x: t.left, y: t.top + Math.min(12, t.height / 2) };
+      if (b.x < view.left || b.x > view.right || b.y < view.top || b.y > view.bottom) continue;
+      const lift = Math.max(40, (a.y - b.y) * 0.45);
+      const path = document.createElementNS(SVGNS, 'path');
+      path.setAttribute('class', 'bind arm');
+      path.setAttribute('d', `M${a.x} ${a.y} C${a.x} ${a.y - lift} ${b.x - lift * 0.6} ${b.y} ${b.x} ${b.y}`);
+      out.push(path);
+    }
+    return out;
   }
 
   positionSideCables(): void {
@@ -4430,6 +4505,7 @@ export class Editor {
         for (const { jack, pd } of thumbs) add(a, jack, kind, () => this.change(() => removeRoute(this.patch, c, pd.name)), `Disconnect from ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}`, false, c);
     }
     this.positionCables();
+    this.markMuted();
   }
 
   /** set a parameter from outside the cards (the deck's knobs): as a slider would, the card follows on its next refresh */

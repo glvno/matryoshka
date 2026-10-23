@@ -327,19 +327,23 @@ const sink = {
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
     if (live() && !fromDevice) {   // (what the FM-1 played itself is not sent back)
-      // (an armed track's keys stay here: the FM-1 does not arm, #139)
-      if (editor.armedTrack === null) device.note(msg as { t: string; note?: number; vel?: number });
+      // (the keys of an armed device stay here: the FM-1 does not take the editor's arm yet, #139 / #191)
+      if (!editor.armedSet.size) device.note(msg as { t: string; note?: number; vel?: number });
       if (msg.t === 'bend') device.bend(msg.v);
       else if (msg.t === 'cc') device.cc(msg.n, msg.v);
     }
   },
 };
-/** what the armed track plays (Editor onArm), for the status line */
+/** what the armed devices play (Editor onArm), for the status line */
 let armPlays: string[] = [];
-/** the status line while a track is armed (#134) or recording (#135): what the keys play and what REC does now */
+/** the status line while devices are armed (#134, #190) or a track records (#135): what the keys play and what REC does now */
 function showArmed(): void {
   const id = editor.armedTrack;
-  if (id === null) return pinStatus(null, 'arm');
+  if (!editor.armedSet.size) return pinStatus(null, 'arm');
+  if (id === null || editor.armedSet.size > 1 && !editor.recOn) {
+    const list = armPlays.length ? armPlays.join(', ') : 'nothing yet';
+    return pinStatus({ tag: `Armed: ${editor.armedSet.size}`, text: `Main’s keys play ${list}; only armed devices hear them.${id === null ? '' : ' Shift+R records on the armed track.'} ARM again to disarm.` }, 'arm');
+  }
   const name = trackLabel(editor.patch, id);
   const hear = armPlays.length ? `heard through ${armPlays.join(', ')}` : 'which plays nothing yet: cable its keys out (or trig / pitch) to an instrument';
   if (!editor.recOn) return pinStatus({ tag: `Armed: ${name}`, text: `Main’s keys play ${name}, ${hear}. Shift+R records; ARM again gives Main its keys back.` }, 'arm');
@@ -477,8 +481,8 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (live() && !uploading) device.track(editor.patch, id, notes);
     else if (live()) dirty = true;
   },
-  onArm(id, plays) {
-    host.send({ t: 'arm', id });
+  onArm(armed, plays) {
+    host.send({ t: 'arm', devices: armed });
     emuArm();
     armPlays = plays;
     showArmed();
