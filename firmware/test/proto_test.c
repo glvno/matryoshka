@@ -35,8 +35,8 @@ static int transport_calls;
 static void m1_transport(int run) { (void)run; transport_calls++; }
 static uint32_t focus_calls, focus_dev, focus_page;
 static void m1_focus(uint32_t dev, uint32_t pg) { focus_calls++; focus_dev = dev; focus_page = pg; }
-static uint32_t live_calls;
-static void m1_live(uint32_t paused) { (void)paused; live_calls++; }
+static uint32_t live_calls, live_paused_arg;
+static void m1_live(uint32_t paused) { live_paused_arg = paused; live_calls++; }
 static int m1_slot_write(uint32_t slot, const char *name, const uint8_t *p, uint32_t len)
 {
     slot_writes++;
@@ -232,7 +232,15 @@ int main(int argc, char **argv)
         uint8_t q[4] = {0x7D, 0x4D, 0x31, C_LIVE};
         nreplies = 0;
         CHECK(m1_handle(q, sizeof q) == 1);
-        CHECK(live_calls == 1 && nreplies == 0);
+        CHECK(live_calls == 1 && live_paused_arg == 0u && nreplies == 0);
+    }
+    /* LIVE paused (#200): its byte reaches the hook (the editor's patch is over the budget), and still no reply */
+    {
+        uint8_t q[16] = {0x7D, 0x4D, 0x31, C_LIVE}, one = 1;
+        uint32_t n = 4u + m1_pack7(&one, 1u, q + 4);
+        nreplies = 0;
+        CHECK(m1_handle(q, n) == 1);
+        CHECK(live_calls == 2 && live_paused_arg == 1u && nreplies == 0);
     }
     if (argc > 9) {                                              /* the preset bank commands */
         long ns2;
