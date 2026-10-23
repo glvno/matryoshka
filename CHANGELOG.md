@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The tutorial's text follows the new navigation and the removed Riff button (play notes on the keys, or Note for a
+  held C4; LIBRARY → Assemblies; + Module and New patch in the PATCH panel).
 - After an update to a new version, a returning visitor sees a short "what's new" card once, linking to the full
   release notes; the About card has a What's new link too.
 - New navigation (#218): one switch at the top, PATCH | EMU | LIBRARY, replaces the sidebar's Patch / Library tabs, and

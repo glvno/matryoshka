@@ -52,7 +52,7 @@
           "id": "new",
           "kind": "task",
           "title": "The patch",
-          "text": "A *patch* is a catch-all term for any configuration of interconnected synth modules. The term comes from the *patch cables* we use to connect analog synth modules.[^1]\n\n[Click `NEW PATCH` in the sidebar.](req:new-patch)\n\n[^1]: Long ago, patch cables were used to hot-swap spare equipment into vital communications systems in which something had melted, burned out, or exploded.\n\n    These days, patch cables are mostly used by recreational drug users, commodity fetishists, and the neurodivergent in order to make things go *wubwubwubwub*\n",
+          "text": "A *patch* is a catch-all term for any configuration of interconnected synth modules. The term comes from the *patch cables* we use to connect analog synth modules.[^1]\n\n[Click `New patch` in the PATCH panel.](req:new-patch)\n\n[^1]: Long ago, patch cables were used to hot-swap spare equipment into vital communications systems in which something had melted, burned out, or exploded.\n\n    These days, patch cables are mostly used by recreational drug users, commodity fetishists, and the neurodivergent in order to make things go *wubwubwubwub*\n",
           "why": "",
           "superseded": true,
           "parts": [
@@ -63,7 +63,7 @@
           "id": "osc",
           "kind": "task",
           "title": "Add an Oscillator",
-          "text": "**Main** here is what is going to send the information from our keyboard circulating through our patch.\n\nIts two most important functions are to send `pitch` (i.e., what note is being played) and `gate`, which answers yes or no to the question, \"Is a key being held down right now?\"[^1]\n\nThe output of **Output** is what you hear. It's can be thought of as the rectum of a patch. A synth patch poops sound into the toilet of the ear.\n\n[Add an **Oscillator** module using the sidebar button or command palette (`Ctrl/Cmd+K` or the `/` key).](req:add-osc)\n\nAny module on the canvas can be moved around by clicking on its header and dragging it around.\n\n[^1]: The caveats, exceptions, and backpedaling that go here are on our feature roadmap and are slated to be added in Q3 of FY 2029",
+          "text": "**Main** here is what is going to send the information from our keyboard circulating through our patch.\n\nIts two most important functions are to send `pitch` (i.e., what note is being played) and `gate`, which answers yes or no to the question, \"Is a key being held down right now?\"[^1]\n\nThe output of **Output** is what you hear. It's can be thought of as the rectum of a patch. A synth patch poops sound into the toilet of the ear.\n\n[Add an **Oscillator** module with `+ Module` in the PATCH panel or the command palette (`Ctrl/Cmd+K` or the `/` key).](req:add-osc)\n\nAny module on the canvas can be moved around by clicking on its header and dragging it around.\n\n[^1]: The caveats, exceptions, and backpedaling that go here are on our feature roadmap and are slated to be added in Q3 of FY 2029",
           "why": "",
           "parts": [
             { "id": "add-osc", "kind": "module", "type": "osc" }
@@ -320,7 +320,7 @@
           "id": "compare",
           "kind": "continue",
           "title": "A pluck or a pad?",
-          "text": "Start Riff and hear the pluck die before the next note. Optional: compare `attack` 0.3 s, `sustain` 0.6, `release` 1 s for a swelling pad; then restore `attack` 0.005 s and `sustain` 0 to continue the pluck lesson. The contrast is time and shape, not a new oscillator.",
+          "text": "Play a few short notes on the keys and hear the pluck die before the next one. Optional: compare `attack` 0.3 s, `sustain` 0.6, `release` 1 s for a swelling pad; then restore `attack` 0.005 s and `sustain` 0 to continue the pluck lesson. The contrast is time and shape, not a new oscillator.",
           "why": "",
           "playback": true,
           "pointer": {
@@ -422,7 +422,7 @@
           "id": "cutoff",
           "kind": "task",
           "title": "Sweep the cutoff",
-          "text": "Start Riff and [drag `cutoff` down from 16 kHz to about 400 Hz](req:filter-cutoff): the tone gets darker. Move slowly and hear the upper harmonics disappear. Leave `cutoff` below 800 Hz.",
+          "text": "Play notes on the keys as you [drag `cutoff` down from 16 kHz to about 400 Hz](req:filter-cutoff): the tone gets darker. Move slowly and hear the upper harmonics disappear. Leave `cutoff` below 800 Hz.",
           "why": "The `cutoff` slider is logarithmic, like pitch: every octave gets the same distance. Resonance feeds a little of the output back, which makes the filter ring at its cutoff.",
           "parts": [
             {
@@ -439,7 +439,7 @@
           "id": "resonance",
           "kind": "task",
           "title": "Give the cutoff a voice",
-          "text": "Keep Riff playing and [raise **Multimode** `res` to about 0.6](req:filter-res). A whistle appears at the cutoff. Optional: sweep `cutoff` to hear the peak travel, then return it below 800 Hz before continuing.",
+          "text": "Keep playing notes and [raise **Multimode** `res` to about 0.6](req:filter-res). A whistle appears at the cutoff. Optional: sweep `cutoff` to hear the peak travel, then return it below 800 Hz before continuing.",
           "why": "",
           "parts": [
             {
@@ -516,7 +516,7 @@
           "id": "wobble",
           "kind": "continue",
           "title": "From a slow wah to a wobble",
-          "text": "Start Riff. Optional: try **LFO** `rate` 0.5 Hz, then 4 Hz. The same cutoff movement becomes a rhythm. Return to 0.5 Hz before continuing; keep notes short if the high resonance is sharp.",
+          "text": "Play a run of notes on the keys. Optional: try **LFO** `rate` 0.5 Hz, then 4 Hz. The same cutoff movement becomes a rhythm. Return to 0.5 Hz before continuing; keep notes short if the high resonance is sharp.",
           "why": "",
           "playback": true,
           "pointer": {
@@ -720,7 +720,7 @@
           "id": "save",
           "kind": "task",
           "title": "Save it to your library",
-          "text": "[Open the card’s ⋯ menu, choose Save to library and keep the name My voice.](req:my-voice-saved) It is now in the Library tab and in + Assembly, under Your library, ready for any patch.",
+          "text": "[Open the card’s ⋯ menu, choose Save to library and keep the name My voice.](req:my-voice-saved) It is now in + Assembly, under Your library, ready for any patch. LIBRARY → Assemblies is where you rename, export or delete it.",
           "why": "",
           "parts": [
             {
@@ -829,7 +829,7 @@
           "id": "chorus",
           "kind": "task",
           "title": "Spread the sound",
-          "text": "[Add **Chorus**](req:add-chorus). Cable [**Reverb** `out` → **Chorus** `in`](req:reverb-out-chorus-in), [**Chorus** `l` → **Output** `l`](req:chorus-l-output-l) and [**Chorus** `r` → **Output** `r`](req:chorus-r-output-r); [remove **Reverb** `out` → **Output** `l`](req:unplug-reverb-out-output-l). Start Riff and compare **Chorus** `mix` 0 and 0.5: the sound widens. Leave the `mix` you like.",
+          "text": "[Add **Chorus**](req:add-chorus). Cable [**Reverb** `out` → **Chorus** `in`](req:reverb-out-chorus-in), [**Chorus** `l` → **Output** `l`](req:chorus-l-output-l) and [**Chorus** `r` → **Output** `r`](req:chorus-r-output-r); [remove **Reverb** `out` → **Output** `l`](req:unplug-reverb-out-output-l). Play a few notes and compare **Chorus** `mix` 0 and 0.5: the sound widens. Leave the `mix` you like.",
           "why": "",
           "parts": [
             { "id": "add-chorus", "kind": "module", "type": "chorus" },
@@ -1106,7 +1106,7 @@
           "id": "colors",
           "kind": "continue",
           "title": "Three colors from two sines",
-          "text": "Start Riff. Optional: compare modulator `coarse` +12 with `pm` 1 (hollow), `coarse` +7 with `pm` 4 (metallic), then `coarse` +12 with `pm` 0.3 (mellow). Return `pm` to 2 and `coarse` to +12 before continuing. Save your favorite as a named variation.",
+          "text": "Press Note to hold a C4. Optional: compare modulator `coarse` +12 with `pm` 1 (hollow), `coarse` +7 with `pm` 4 (metallic), then `coarse` +12 with `pm` 0.3 (mellow). Return `pm` to 2 and `coarse` to +12 before continuing. Save your favorite as a named variation.",
           "why": "",
           "playback": true,
           "pointer": {
@@ -2137,7 +2137,7 @@
           "id": "layers",
           "kind": "continue",
           "title": "Hear what each layer contributes",
-          "text": "Start Riff. Optional: put **Mixer** `l2` and `l3` at 0 to hear My voice alone; restore them, then put `l1` at 0 to hear FM keys alone. Bring `l1` back up until neither layer hides the other. This balance is your choice.",
+          "text": "Play a few notes on the keys. Optional: put **Mixer** `l2` and `l3` at 0 to hear My voice alone; restore them, then put `l1` at 0 to hear FM keys alone. Bring `l1` back up until neither layer hides the other. This balance is your choice.",
           "why": "",
           "playback": true,
           "pointer": {
@@ -2185,7 +2185,7 @@
           "id": "snapshots",
           "kind": "task",
           "title": "Keep a variation",
-          "text": "Press **Save** (the sidebar’s Save button, or Commands → Save patch): Your patches now keeps this sound as \"Tutorial duo\". Then change a few sliders, the mixer levels for one. [Change My voice’s `cutoff` too](req:my-voice-cutoff-changed). The saved copy is a *variation*: the next step fades between it and what you hear now.",
+          "text": "Press **Save** (in the PATCH panel, or Commands → Save patch): Your patches now keeps this sound as \"Tutorial duo\". Then change a few sliders, the mixer levels for one. [Change My voice’s `cutoff` too](req:my-voice-cutoff-changed). The saved copy is a *variation*: the next step fades between it and what you hear now.",
           "why": "",
           "parts": [
             {
@@ -2534,7 +2534,7 @@
       "id": "drums-from-noise",
       "title": "Drums from noise",
       "unpublished": true,
-      "intro": "Most drum sounds are noise or a short tone with a very fast envelope. A hi-hat is filtered noise that dies in a tenth of a second; a kick is a sine whose pitch drops; a snare is both. You build the hat, borrow the kick and snare from the library, and clock them from a divider.",
+      "intro": "Most drum sounds are noise or a short tone with a very fast envelope. A hi-hat is filtered noise that dies in a tenth of a second; a kick is a sine whose pitch drops; a snare is both. You build the hat, borrow the kick and snare from the factory assemblies, and clock them from a divider.",
       "payoff": "Noise became a hat, a kit, and a small performance with your own instruments.",
       "challenge": "Perform eight bars: establish the beat, bring in the melody, add a fill, return home.",
       "patchName": "Tutorial drums",
@@ -3166,7 +3166,7 @@
           "kind": "task",
           "title": "Modules inside modules",
           "text": "stack voice and echo are *assemblies*: groups of modules that behave as one. A closed assembly shows only the jacks and sliders its author brought out, so stack voice reads like a single voice module and echo like a single effect.\n\n[Expand stack voice with ▸ before its name](req:stack-voice-open). Inside are the oscillators, mixer, filter, envelope and VCA.",
-          "why": "Assemblies nest up to three deep, save to the Library and insert like a module. Inside an expanded assembly the frame’s **card** button (or Cmd/Ctrl-click) picks which ports and sliders the closed card shows. Select some cards and press Ctrl/Cmd+G to make your own. The FM-1 never sees assemblies: on the FM-1 the patch is the plain modules underneath.",
+          "why": "Assemblies nest, save to your library and insert like a module with + Assembly or the palette. Inside an expanded assembly the frame’s **card** button (or Cmd/Ctrl-click) picks which ports and sliders the closed card shows. Select some cards and press Ctrl/Cmd+G to make your own. The FM-1 never sees assemblies: on the FM-1 the patch is the plain modules underneath.",
           "parts": [
             { "id": "stack-voice-open", "kind": "assembly", "role": "stackVoice", "fact": "open" }
           ]
@@ -3214,7 +3214,7 @@
           "id": "modules",
           "kind": "continue",
           "title": "Modules worth a detour",
-          "text": "Beyond oscillators, filters, envelopes and VCAs:\n\n- **Wavetable** sweeps its tables with `pos`; **Granular** makes clouds from any input.\n- **String** (Karplus-Strong) and **Resonator** (six tuned resonators) are plucked and struck physical models; **Comb filter** adds metallic resonance.\n- **Ladder** is a 4-pole filter with drive in the loop; **Multimode** morphs from a 24 dB low pass to a high pass.\n- **Freq shifter** is a frequency shifter and **Waveshaper** folds in stages; **Bitcrusher**, **Formant filter** and **Phaser** colour the sound, and the **Compressor** takes a `side` input.\n- **Oscillator** does FM: a `pm` input and `fb` feedback, oversampled, plus `unison` and `detune`. **Env L/R** is a DX7-style level/rate envelope.\n- **Sequencer**, **Clock divider**, **S&H**, **Quantizer**, **Math** and **Logic** build your own sequencers.\n\nThe factory assemblies in the Library show many of them at work.",
+          "text": "Beyond oscillators, filters, envelopes and VCAs:\n\n- **Wavetable** sweeps its tables with `pos`; **Granular** makes clouds from any input.\n- **String** (Karplus-Strong) and **Resonator** (six tuned resonators) are plucked and struck physical models; **Comb filter** adds metallic resonance.\n- **Ladder** is a 4-pole filter with drive in the loop; **Multimode** morphs from a 24 dB low pass to a high pass.\n- **Freq shifter** is a frequency shifter and **Waveshaper** folds in stages; **Bitcrusher**, **Formant filter** and **Phaser** colour the sound, and the **Compressor** takes a `side` input.\n- **Oscillator** does FM: a `pm` input and `fb` feedback, oversampled, plus `unison` and `detune`. **Env L/R** is a DX7-style level/rate envelope.\n- **Sequencer**, **Clock divider**, **S&H**, **Quantizer**, **Math** and **Logic** build your own sequencers.\n\nThe factory assemblies under + Assembly show many of them at work.",
           "why": "",
           "playback": false,
           "pointer": {
