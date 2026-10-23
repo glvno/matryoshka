@@ -758,6 +758,20 @@ int main(void)
         panel_keys(1u << 2);
         panel_keys(0);
         check("again: back", (eng_steps_note((uint32_t)drums, 1, 55) != 0) == (w != 0));
+        {                                                   /* every white key is one step, in order; no black key is a step (A# was step 4, B none) */
+            int next = 0, ok = 1;
+            for (uint32_t k = 0; k < 27u; k++) {
+                if (seq_white(k) >= 0) ok &= seq_white(k) == next++ && seq_black(k) < 0;
+                else ok &= seq_black(k) >= 0;
+            }
+            check("the 16 white keys are steps 1..16 in order, the black keys none", ok && next == 16);
+        }
+        w = eng_steps_note((uint32_t)drums, 3, 55);
+        panel_keys(1u << 6);                                /* B3: the fourth white key, step 4 (index 3) */
+        panel_keys(0);
+        check("B switches its step (it did nothing)", (eng_steps_note((uint32_t)drums, 3, 55) != 0) != (w != 0));
+        panel_keys(1u << 6);
+        panel_keys(0);
         panel_held |= 1u << BTN_ACC;
         panel_keys(1u << 4);                                /* FX + A3: step 3 (index 2), accented (#197: FX, was ENV) */
         panel_keys(0);
