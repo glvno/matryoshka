@@ -26,7 +26,17 @@
  *                   cursor moves on; FX + OCT a rest, LFO + OCT a tie, SELECT moves the cursor, OCT- / OCT+ the octave.
  *                   Running, the page stays: the keys play and the engine records them live onto the nearest step
  *                   (eng_steps_rec); on the SEQ page they are the track's keyboard. PLAY / stop switches between the two.
- *                   REC again, or another arm, ends it; leaving the page ends step entry (a live take goes on). Key LEDs: the selected track's steps bright, the step playing at the mid level (dark
+ *                   REC again, or another arm, ends it; leaving the page ends step entry (a live take goes on).
+ *   REC with nothing armed: the black keys record hits; from another page it opens this one on the selected track if it
+ *                   is a drum track, else the first drum track (seq_rec_aim), so the hits are seen landing.
+ *
+ * A drum track (its keys out into a Drum map; the #139 follow-up, the owner's grid of 2026-10-23): the page is an 8 x 16
+ * grid of the map's rows (seq_grid_draw), the same for editing and recording. Black keys 1..8 pick the row (stopped: it
+ * sounds), SELECT moves it with no step held (seq_row_step, REC on or off); with REC on they are hits on their rows instead (heard; while running into the nearest step), the row picked
+ * stays. White keys switch the selected row's hit on a step (FX held: its accent). REC with a drum track armed is this
+ * grid with REC on, not step entry. Off this page the keys play a Drum map the same way (panel.c panel_key).
+ *
+ * Key LEDs: the selected track's steps bright, the step playing at the mid level (dark
  * on a step that is on), the selected track's black key bright, tracks with hits glowing, muted ones blinking. The top bar
  * shows the track's name (STEPS n without one). Edits go into the running patch (SAVE keeps them) and to the editor. */
 
@@ -91,8 +101,9 @@ static int seq_armed_trk(void)
             return t;
     return -1;
 }
-/* the keys are the armed track's keyboard (REC on it, on this page); step entry: that, stopped */
-static int seq_kbd(void) { return seq_rec == 2u && page == PAGE_SEQ; }
+/* the keys are the armed track's keyboard (REC on it, on this page; not a drum track: its grid takes the keys, seq_drum_key);
+ * step entry: that, stopped */
+static int seq_kbd(void) { return seq_rec == 2u && page == PAGE_SEQ && (eng_armed() < 0 || eng_steps_drummap((uint32_t)eng_armed()) < 0); }
 static int seq_entry(void) { return seq_kbd() && !eng_transport_running(); }
 
 static int32_t seq_len(int mod)
@@ -231,6 +242,14 @@ static void seq_select(uint32_t t)
     ui_dirty = 2;
 }
 
+/* SELECT on a drum grid with no step held (the owner, 2026-10-23): the selected row, d rows down (clamped at the first and
+ * the last, no wrap; REC on or off); only the two names are redrawn (seq_grid_draw) */
+static void seq_row_step(int32_t d)
+{
+    seq_row = (uint8_t)clampi((int32_t)seq_row + d, 0, (int32_t)ENG_DRUM_ROWS - 1);
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+
 /* SEQ / REC held + a black key past the patch's tracks: say so, instead of nothing (#179: on a drum track's page the black
  * keys are its rows, but held with SEQ or REC they count tracks, black key 1 = track 1) */
 static int seq_no_track(int b)
@@ -290,14 +309,15 @@ static void seq_drum_key(int map, uint32_t n, int down)
     if (b >= 0) {
         if (b >= (int)ENG_DRUM_ROWS)
             return;
-        seq_row = (uint8_t)b;
-        if (seq_rec) {
-            if (eng_steps_hit_note((uint32_t)mod, seq_row_note(map, seq_row), env, 1) >= 0)
+        if (seq_rec) {                           /* REC on: a hit on that row, the row picked stays (only its cell is drawn) */
+            if (eng_steps_hit_note((uint32_t)mod, seq_row_note(map, (uint32_t)b), env, 1) >= 0)
                 seq_sync(mod);
-        } else if (!eng_transport_running())
-            (void)eng_steps_hit_note((uint32_t)mod, seq_row_note(map, seq_row), 0, 0);
-        header_draw();
-        ui_dirty = 2;
+        } else {                                 /* else the row picked (stopped: heard); its name and the last one redrawn */
+            seq_row = (uint8_t)b;
+            if (!eng_transport_running())
+                (void)eng_steps_hit_note((uint32_t)mod, seq_row_note(map, seq_row), 0, 0);
+        }
+        ui_dirty = ui_dirty ? ui_dirty : 1;
         return;
     }
     if (w < 0)
@@ -513,7 +533,7 @@ static void seq_page_step(int d)
     fmt_int(num, pg * 16 + 16);
     put(q, num)[0] = 0;
     ui_msg(m, 800);
-    ui_dirty = 2;
+    ui_dirty = seq_map() >= 0 && ui_dirty < 2u ? 1 : 2;   /* (a drum grid redraws its cells in place) */
 }
 
 /* the running patch's copy of a track after an engine edit of its notes (proto.c), and the editor */
@@ -551,6 +571,21 @@ static void seq_rec_press(void)
         ui_dirty = 2;
         return;
     }
+    if (eng_steps_drummap((uint32_t)eng_armed()) >= 0) {   /* an armed drum track: its grid, the black keys its hits */
+        seq_rec = 2;
+        eng_steps_rec((uint32_t)eng_armed(), 1);
+        if ((uint32_t)t != seq_trk) {
+            seq_pg = 0;
+            seq_row = 0;
+        }
+        seq_trk = (uint8_t)t;
+        seq_held = -1;
+        seq_name((uint32_t)t, name);
+        put(put(m, "REC "), name)[0] = 0;
+        ui_msg(m, 1000);
+        ui_dirty = 2;
+        return;
+    }
     seq_rec = 2;
     eng_steps_rec((uint32_t)eng_armed(), 1);
     if ((uint32_t)t != seq_trk)
@@ -563,6 +598,23 @@ static void seq_rec_press(void)
     put(put(m, eng_transport_running() ? "REC " : "WRITE "), name)[0] = 0;
     ui_msg(m, 1000);
     ui_dirty = 2;
+}
+
+/* REC about to open the SEQ page with nothing armed (panel.c, before page_set): the selected track if it is a drum track,
+ * else the first drum track, so the hits are seen landing on its grid */
+static void seq_rec_aim(void)
+{
+    int t, n = eng_steps_count();
+    if (seq_rec || eng_armed() >= 0 || (seq_trk < (uint32_t)n && seq_map() >= 0))
+        return;
+    for (t = 0; t < n; t++)
+        if (eng_steps_drummap((uint32_t)eng_steps_module((uint32_t)t)) >= 0) {
+            seq_trk = (uint8_t)t;
+            seq_pg = 0;
+            seq_row = 0;
+            seq_held = -1;
+            return;
+        }
 }
 
 /* REC held + a black key (any page): that track armed, or disarmed if it was */
@@ -696,12 +748,9 @@ static void seq_bar(void)
     *p++ = ' ';
     if (seq_kbd())                               /* the keys record into the armed track: step entry's cursor, or live */
         p = put(p, seq_entry() ? "WRITE" : "KEYS");
-    else if (seq_map() >= 0) {                   /* a drum track: the row the white keys edit (DRUMS: SNARE) */
-        p[-1] = ':';
-        *p++ = ' ';
-        seq_row_name(seq_map(), seq_row, name);
-        p = put(p, name);
-    } else {
+    else if (seq_map() >= 0)                     /* a drum track: its name (the grid shows the row; a row pick leaves the bar) */
+        p--;
+    else {
         fmt_int(num, (int32_t)seq_trk + 1);
         p = put(p, num);
         *p++ = '/';
@@ -716,12 +765,157 @@ static void seq_bar(void)
     bar_text(b, seq_rec ? C_RED : C_ACC);
 }
 
+/* A drum track's grid (the owner, 2026-10-23): every Drum map row's hits on the page's 16 steps at once, drawn in place
+ * against what is on the LCD (seq_grid_*), so a hit, a step or a row pick redraws only its cells or two names, the
+ * playhead its two columns:
+ *   y  26  the page's steps, rate, swing (as for any track)
+ *   y  44  8 rows of 19 px: the row's name (8 characters, 46 px; the selected row ivory on coral) and 16 cells of 10 x 15
+ *          (11 px apart, 2 px more between beats): empty = the panel colour (a beat's first a shade lighter, the step
+ *          playing grey), a hit = ivory, an accent = coral, a chance fills it part way up, past the length = nothing
+ *   y 196  the playhead: a coral tick under its column
+ *   y 202  TRACK n/m, ARMED, MUTED
+ *   y 222  the hint line */
+#define GRID_X 52u
+#define GRID_Y 44u
+#define GRID_RH 19u
+#define GRID_CW 10u
+#define GRID_CH 15u
+#define GRID_NAME_W 46u
+#define GRID_TICK_Y (GRID_Y + GRID_RH * ENG_DRUM_ROWS)
+#define GRID_NONE 0xFEu                 /* a cell not drawn yet */
+#define GRID_PAST 0xFFu                 /* past the track's length */
+#define C_BEAT 0x31C8u                  /* a beat's first empty cell */
+static uint8_t seq_grid_cell[ENG_DRUM_ROWS][16];   /* the cells as drawn (seq_grid_state's codes) */
+static int8_t seq_grid_row = -1, seq_grid_tick = -2; /* the selected row, the playhead's column as drawn (-1 none) */
+static uint8_t seq_grid_ok;             /* the grid is on the LCD (else the next draw is a whole one) */
+static char seq_grid_text[3][48];       /* the info, track and hint lines as drawn */
+
+static uint32_t seq_grid_x(uint32_t i) { return GRID_X + 11u * i + 2u * (i / 4u); }
+
+/* a cell's code: GRID_PAST, else bit 0 a hit, bit 1 its accent, bits 2..6 its chance code, bit 7 the step playing */
+static uint32_t seq_grid_state(uint32_t w, int k, int32_t len, int pos)
+{
+    uint32_t s = 0;
+    if (k >= len)
+        return GRID_PAST;
+    if (w) {
+        uint32_t ch = (w >> 26) & 31u;
+        s = 1u | (((w >> 19) & 127u) == ACCENT_VEL ? 2u : 0u) | (ch > 19u ? 19u : ch) << 2;
+    }
+    return s | (k == pos && (!(s & 1u) || s >> 2) ? 0x80u : 0u);   /* (a full hit looks the same under the playhead) */
+}
+
+static void seq_grid_paint(uint32_t r, uint32_t i, uint32_t s)
+{
+    uint32_t x = seq_grid_x(i), y = GRID_Y + GRID_RH * r, fill;
+    uint16_t empty = (s & 0x80u) ? C_HINT : (i & 3u) ? C_TRACK : C_BEAT;
+    if (s == GRID_PAST) {
+        lcd_fill(x, y, GRID_CW, GRID_CH, C_BG);
+        return;
+    }
+    fill = (s & 1u) ? GRID_CH * (100u - 5u * ((s >> 2) & 31u)) / 100u : 0u;
+    if (fill < GRID_CH)
+        lcd_fill(x, y, GRID_CW, GRID_CH - fill, empty);
+    if (fill)
+        lcd_fill(x, y + GRID_CH - fill, GRID_CW, fill, (s & 2u) ? C_ACC : C_FG);
+}
+
+static void seq_grid_name(int map, uint32_t r)
+{
+    char name[16];
+    int sel = r == seq_row;
+    seq_row_name(map, r, name);
+    name[8] = 0;
+    text_bc(&FONT_S, 4, GRID_Y + GRID_RH * r, name, sel ? C_BG : C_FG, sel ? C_ACC : C_BG, GRID_NAME_W, TA_LEFT);
+}
+
+/* a text line of the grid page, drawn when it is not on the LCD as it is */
+static void seq_grid_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, uint32_t field)
+{
+    uint32_t i;
+    for (i = 0; s[i] && s[i] == seq_grid_text[n][i]; i++)
+        ;
+    if (seq_grid_ok && s[i] == seq_grid_text[n][i])
+        return;
+    for (i = 0; s[i] && i < sizeof seq_grid_text[n] - 1u; i++)
+        seq_grid_text[n][i] = s[i];
+    seq_grid_text[n][i] = 0;
+    text_bc(&FONT_S, 8, y, s, fg, C_BG, field, TA_LEFT);
+}
+
+static void seq_grid_draw(int full, int mod, int map, const char *info)
+{
+    uint32_t cell[ENG_DRUM_ROWS][16], note[ENG_DRUM_ROWS], r, i;
+    const uint32_t *ws;
+    int nn = eng_steps_notes((uint32_t)mod, &ws), j, pos = eng_steps_pos((uint32_t)mod), tick;
+    int32_t len = seq_len(mod), k0 = seq_pg * 16;
+    char line[40], num[8], *p;
+    if (full || !seq_grid_ok) {
+        if (full)
+            lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+        for (r = 0; r < ENG_DRUM_ROWS; r++)
+            for (i = 0; i < 16u; i++)
+                seq_grid_cell[r][i] = GRID_NONE;
+        seq_grid_row = -1;
+        seq_grid_tick = -2;
+        seq_grid_ok = 0;
+    }
+    for (r = 0; r < ENG_DRUM_ROWS; r++) {        /* the page's hits, by row, from one pass over the track's notes */
+        note[r] = seq_row_note(map, r);
+        for (i = 0; i < 16u; i++)
+            cell[r][i] = 0;
+    }
+    for (j = 0; j < nn; j++) {
+        int k = (int)(ws[j] & 63u) - k0;
+        if (k >= 0 && k < 16)
+            for (r = 0; r < ENG_DRUM_ROWS; r++)
+                if (((ws[j] >> 12) & 127u) == note[r] && !cell[r][k])
+                    cell[r][k] = ws[j];
+    }
+    seq_grid_line(0, 26, info, C_FG, 224);
+    for (r = 0; r < ENG_DRUM_ROWS; r++) {
+        if (!seq_grid_ok || ((int)r == seq_grid_row) != (r == seq_row))
+            seq_grid_name(map, r);
+        for (i = 0; i < 16u; i++) {
+            uint32_t s = seq_grid_state(cell[r][i], k0 + (int)i, len, pos);
+            if (s != seq_grid_cell[r][i]) {
+                seq_grid_paint(r, i, s);
+                seq_grid_cell[r][i] = (uint8_t)s;
+            }
+        }
+    }
+    seq_grid_row = (int8_t)seq_row;
+    tick = pos >= k0 && pos < k0 + 16 ? pos - k0 : -1;
+    if (tick != seq_grid_tick) {                 /* the playhead's tick: off the old column, onto the new */
+        if (seq_grid_tick >= 0)
+            lcd_fill(seq_grid_x((uint32_t)seq_grid_tick), GRID_TICK_Y, GRID_CW, 3, C_BG);
+        if (tick >= 0)
+            lcd_fill(seq_grid_x((uint32_t)tick), GRID_TICK_Y, GRID_CW, 3, C_ACC);
+        seq_grid_tick = (int8_t)tick;
+    }
+    seq_shown_pos = (int8_t)pos;
+    fmt_int(num, (int32_t)seq_trk + 1);
+    p = put(line, "TRACK ");
+    p = put(p, num);
+    *p++ = '/';
+    fmt_int(num, eng_steps_count());
+    p = put(p, num);
+    if (seq_armed_trk() == (int)seq_trk)        /* the track row's marks: ARMED (#179), MUTED */
+        p = put(p, "  ARMED");
+    if (eng_steps_muted((uint32_t)mod))
+        p = put(p, "  MUTED");
+    put(p, seq_armed_trk() == (int)seq_trk || eng_steps_muted((uint32_t)mod) ? "" : "  ALGO: TRACK")[0] = 0;
+    seq_grid_line(1, 202, line, C_DIM, 224);
+    seq_grid_line(2, 222, seq_rec ? "BLACK hit  SEL row  WHITE step  FX acc" : "BLACK/SEL row  WHITE step  FX acc  K2 vel", C_HINT, 228);
+    seq_grid_ok = 1;
+}
+
 /*   y  32  the page's steps of the track's length, its rate and swing (when not straight)
  *   y  52  the 16 steps of the page: a cell each (filled = on, accent = the accent colour, a chance fills it part way up),
  *          the step playing underlined
- *   y 100  every track: number, name, M when muted, ARM when armed (the selected one in the accent colour); a drum
- *          track: its map's rows, and at y 172 its number of how many, ARMED, MUTED
- *   y 228  the hint line */
+ *   y 100  every track: number, name, M when muted, ARM when armed (the selected one in the accent colour)
+ *   y 228  the hint line
+ * A drum track: its grid instead (seq_grid_draw, above). */
 static void seq_draw(int full)
 {
     char line[40], num[8], name[TRACK_NAME_MAX + 8], *p;
@@ -760,16 +954,17 @@ static void seq_draw(int full)
         }
     }
     *p = 0;
+    if (map >= 0) {                              /* a drum track: the grid of its map's rows */
+        seq_grid_draw(full, mod, map, line);
+        return;
+    }
+    seq_grid_ok = 0;
     if (full)
         lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
     text_bc(&FONT_S, 8, 28, line, C_FG, C_BG, 224, TA_LEFT);
     for (i = 0; i < 16; i++) {
         int k = seq_pg * 16 + i;
         uint32_t x = 8u + 14u * (uint32_t)i, s = k < len ? (uint32_t)eng_steps_get((uint32_t)mod, (uint32_t)k) : 0u;
-        if (map >= 0 && k < len) {               /* a drum track: the row's hit, as a step byte (on, accent, chance) */
-            uint32_t w = eng_steps_note((uint32_t)mod, (uint32_t)k, seq_row_note(map, seq_row));
-            s = w ? 1u | (((w >> 19) & 127u) == ACCENT_VEL ? 2u : 0u) | (((w >> 26) & 31u) > 19u ? 19u : (w >> 26) & 31u) << 2 : 0u;
-        }
         uint32_t h = 34u, fill = (s & 1u) ? h * (100u - 5u * ((s >> 2) & 31u)) / 100u : 0u;
         uint16_t c = (s & 2u) ? C_ACC : C_FG;
         if (k >= len) {
@@ -815,32 +1010,6 @@ static void seq_draw(int full)
         text_bc(&FONT_S, 8, 128, line, C_DIM, C_BG, 224, TA_LEFT);
         if (full)
             text_bc(&FONT_S, 8, 222, "FX+OCT rest  LFO+OCT tie  SEL move", C_HINT, C_BG, 228, TA_LEFT);
-        return;
-    }
-    if (map >= 0) {                              /* a drum track: its map's rows, two columns of four (black keys 1-8) */
-        for (t = 0; t < ENG_DRUM_ROWS; t++) {
-            uint32_t x = 12u + 112u * (t / 4u), y = 100u + 16u * (t % 4u);
-            fmt_int(num, (int32_t)t + 1);
-            p = put(line, num);
-            *p++ = ' ';
-            seq_row_name(map, t, name);
-            put(p, name)[0] = 0;
-            text_bc(&FONT_S, x, y, line, t == seq_row ? C_ACC : C_FG, C_BG, 108, TA_LEFT);
-        }
-        fmt_int(num, (int32_t)seq_trk + 1);
-        p = put(line, "TRACK ");
-        p = put(p, num);
-        *p++ = '/';
-        fmt_int(num, eng_steps_count());
-        p = put(p, num);
-        if (seq_armed_trk() == (int)seq_trk)    /* the track row's marks: ARMED (#179), MUTED */
-            p = put(p, "  ARMED");
-        if (eng_steps_muted((uint32_t)mod))
-            p = put(p, "  MUTED");
-        put(p, seq_armed_trk() == (int)seq_trk || eng_steps_muted((uint32_t)mod) ? "" : "  ALGO: TRACK")[0] = 0;
-        text_bc(&FONT_S, 12, 172, line, C_DIM, C_BG, 216, TA_LEFT);
-        if (full)
-            text_bc(&FONT_S, 8, 222, seq_rec ? "BLACK  hit on a row   FX  accent" : "BLACK row  WHITE hit  FX acc  K2 vel", C_HINT, C_BG, 228, TA_LEFT);
         return;
     }
     for (t = 0; t < 12u; t++) {                  /* the tracks, two columns of six */

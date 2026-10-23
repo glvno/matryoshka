@@ -1926,6 +1926,39 @@ int eng_listens(uint32_t m)
 }
 int eng_armed(void) { return E.loaded && E.arm ? (int)E.arm - 1 : -1; }   /* (the first armed track: REC records into it) */
 
+/* the Drum map the keys reach (engine.h; the panel's black keys play its rows): of what hears Main's keys now (the armed
+ * set, else what is cabled to them) at least one Drum map, on the keys or behind a track, and nothing that plays them as
+ * notes: a group taking the keys, the shared keyboard with Main's pitch / gate / velocity cabled, an Arpeggiator, a track
+ * into no Drum map. The first such map, -1 none */
+int eng_keys_drummap(void)
+{
+    uint32_t m, g;
+    int map = -1;
+    if (!E.loaded)
+        return -1;
+    if (!E.armm && E.main >= 0) {
+        esig_t *const *o = inst_pool[E.node[E.main].inst0].out;
+        if (o[FM1_O_PITCH] != dummy_out || o[FM1_O_GATE] != dummy_out || o[FM1_O_VEL] != dummy_out)
+            return -1;
+    }
+    for (g = 1; g <= E.ngrp; g++)
+        if (!E.grp[g].src && hears_grp(g))
+            return -1;
+    for (g = 0; g < E.narp; g++)
+        if (!E.armm || ARMED(E.arp[g].node))
+            return -1;
+    for (m = 0; m < E.nmod; m++) {
+        int d = -1;
+        if (E.node[m].type == T_DRUMMAP && E.node[m].ksrc == 1u && (!E.armm || ARMED(m)))
+            d = (int)m;
+        else if (E.node[m].type == T_STEPS && hears_trk(m) && (d = eng_steps_drummap(m)) < 0)
+            return -1;
+        if (map < 0)
+            map = d;
+    }
+    return map;
+}
+
 /* live recording on a track (#135, #139; engine.ts setRec): while it runs, the notes played through it land on the
  * nearest step and last the whole steps they were held (at least one); eng_steps_take hands them out. Off: the notes still
  * held are recorded when let go. */
