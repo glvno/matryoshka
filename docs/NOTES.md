@@ -1418,8 +1418,10 @@ Builds: main a01b8a3, then fad8be8 (#177). Checklist artifact https://claude.ai/
 - **Changed:** modules.ts labels, defs.h (export-defs), course.json bold module names (tutorial), the UI strings that named
   them (editor, flaws panel, tutorial parts / registry), README, ARCHITECTURE's per-module CPU table, 3 tests that spelled labels.
   Code comments and identifiers ("allocator", `alloc`) keep the old words.
-- **Episode 1:** `docs/video/ep01-oracle-5.assembly.json`, a Prophet-5 card of exactly the panel's 40 controls (25 modules,
-  4 voices: 85 % estimate, 5 voices 104 %). Script and teleprompter live outside the repo (claude.ai).
+- **Episode 1:** the video production files (prompter, script, the reference assembly and its builder, thumbnails) moved
+  to their own repo, `../videos` (side by side with this one; to be run with course-video-manager). The episode's card
+  is a Prophet-5 card of the panel's controls (41 rows, 29 modules, 16 per voice): Osc A's saw and pulse stack as two
+  oscillators on one pitch, A's frequency is an Offset snapped by a Quantizer, 3 voices at an 85 % estimate.
 - **Checked:** vitest 70 files / 843 tests, tools/panel_test.sh. **Not checked:** the editor in a browser, the device.
 
 ## 2026-10-22: 8 Lire, a factory engine after the SOMA Lyra-8 (#182)
