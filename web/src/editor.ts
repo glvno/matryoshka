@@ -61,6 +61,8 @@ import {
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
 import { defIsEngine, wireEngine, wiredText, type Wired } from './engines';
+import { applyPreset, deletePreset, matchesPreset, presetsOf, renamePreset, stepPreset, storePreset } from './device-presets';
+import { structureOf } from './structure';
 import { armable, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type StepGrid } from './step-grid';
@@ -695,6 +697,7 @@ export class Editor {
 
   rebuild(): void {
     this.cancelArm();
+    this.chips.clear();
     if (this.armedSet.size) {
       const kept = keepArmed(this.patch, this.armedSet);
       if (kept.length !== this.armedSet.size) this.setArmed(kept); // (a device went, or lost its keys input)
@@ -1684,6 +1687,7 @@ export class Editor {
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? toUnit(pd, v) : null);
       this.ev.onParam(m.id, pd.name, v);
+      this.chipsSoon();
       this.syncDials();
       this.relock(m.id);
     };
@@ -1698,6 +1702,7 @@ export class Editor {
         show(v);
         for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // a toggle can change how its siblings show (altText)
         this.ev.onParam(m.id, pd.name, v);
+        this.chipsSoon();
         this.syncDials();
         this.relock(m.id);
       };
@@ -2214,6 +2219,7 @@ export class Editor {
       } },
       { text: 'Rename', key: 'dbl-click', run: () => this.rename(a) },
       { text: 'Save to library', rule: true, run: () => this.saveAssembly(a) },
+      ...(parentOf(this.patch, a.id) ? [] : this.presetItems(a)),
       { text: 'Ungroup', run: () => this.change(() => ungroup(this.patch, a.id)) },
       { text: 'Delete with its modules', danger: true, rule: true, run: () => this.change(() => deleteAssembly(this.patch, a.id)) },
     ], at);
@@ -3066,6 +3072,78 @@ export class Editor {
     return [...arm, this.polyButton(a), pw, this.moreButton((at) => this.assemblyMenu(a, at))];
   }
 
+  /** the preset chip on an assembly device that has presets (#192): ‹ name › steps through them (each load one undo
+   * step), the name opens the list; a star after it once a value differs from the preset */
+  private presetChip(a: AssemblyInst): HTMLElement | null {
+    const list = presetsOf(this.patch, a);
+    if (!list.length) return null;
+    const chip = document.createElement('span');
+    chip.className = 'preset-chip';
+    const step = (dir: 1 | -1): void => {
+      const pr = stepPreset(this.patch, a, dir);
+      if (pr) this.loadPreset(a, pr.name);
+    };
+    const name = this.button('', '', () => {
+        const r = name.getBoundingClientRect();
+        const w = this.world.getBoundingClientRect();
+        this.popMenu(this.presetItems(a), { x: (r.left - w.left) / this.zoom, y: (r.bottom - w.top) / this.zoom + 4 });
+      }, 'sm preset-name');
+    const show = (): void => {
+      const edited = !!a.preset && !matchesPreset(this.patch, a);
+      name.textContent = a.preset ? `${a.preset}${edited ? '*' : ''}` : `${list.length} preset${list.length === 1 ? '' : 's'}`;
+      name.title = a.preset ? `Preset ${a.preset}${edited ? ' (edited since)' : ''}: click for the list` : 'Presets of this assembly: click for the list';
+    };
+    show();
+    this.chips.set(a.id, show);
+    chip.append(this.button('‹', 'Previous preset', () => step(-1), 'sm preset-step'), name, this.button('›', 'Next preset', () => step(1), 'sm preset-step'));
+    return chip;
+  }
+
+  /** the preset chips drawn, by assembly: redraw their names (the star once a value differs) */
+  private chips = new Map<number, () => void>();
+  private chipsQueued = false;
+  private chipsSoon(): void {
+    if (this.chipsQueued || !this.chips.size) return;
+    this.chipsQueued = true;
+    requestAnimationFrame(() => {
+      this.chipsQueued = false;
+      for (const show of this.chips.values()) show();
+    });
+  }
+
+  /** load a preset by name into an assembly: one undo step */
+  private loadPreset(a: AssemblyInst, name: string): void {
+    const pr = presetsOf(this.patch, a).find((x) => x.name === name);
+    if (!pr) return;
+    if (this.change(() => applyPreset(this.patch, a, pr))) this.ev.onError(`${a.label}: preset "${pr.name}"`);
+  }
+
+  /** the presets menu of an assembly device: load one, store, rename, delete */
+  private presetItems(a: AssemblyInst): MenuItem[] {
+    const list = presetsOf(this.patch, a);
+    const cur = list.find((x) => x.name === a.preset);
+    const items: MenuItem[] = list.map((pr) => ({ text: `${pr.name === a.preset ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr.name) }));
+    items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store as a preset…', rule: !!list.length, run: () => {
+      const n = cur && !cur.factory ? cur.name : window.prompt('Store the card’s values as the preset', a.preset ?? '')?.trim();
+      if (!n) return;
+      this.change(() => storePreset(this.patch, a, n));
+    } });
+    if (cur && !cur.factory) {
+      items.push({ text: 'Store as a new preset…', run: () => {
+        const n = window.prompt('Store the card’s values as the new preset', `${cur.name} 2`)?.trim();
+        if (n) this.change(() => storePreset(this.patch, a, n));
+      } });
+      items.push({ text: 'Rename preset…', run: () => {
+        const n = window.prompt('Rename the preset', cur.name)?.trim();
+        if (n && n !== cur.name && renamePreset(structureOf(this.patch, a), cur.name, n)) this.change(() => (a.preset = n));
+      } });
+      items.push({ text: `Delete preset "${cur.name}"`, danger: true, run: () => {
+        if (deletePreset(structureOf(this.patch, a), cur.name)) this.change(() => delete a.preset);
+      } });
+    }
+    return items;
+  }
+
   /** ARM on a device with a keys input (#190): an independent toggle; armed, Main's keys play it (and every other armed
    * device), cable or not */
   private armButton(key: DeviceKey, name: string): HTMLButtonElement {
@@ -3143,7 +3221,8 @@ export class Editor {
     tools.append(...this.assemblyButtons(a));
     const title = this.titleOf(a, perVoice);
     title.prepend(this.tag(null));
-    head.append(this.chevron(a), title, tools);
+    const chip = parent ? null : this.presetChip(a);
+    head.append(this.chevron(a), title, ...(chip ? [chip] : []), tools);
     this.headMenu(head, (at) => this.assemblyMenu(a, at));
     this.assemblyDrag(el, head, a);
 
@@ -4515,6 +4594,7 @@ export class Editor {
     this.touch();
     m.params[name] = v;
     this.ev.onParam(id, name, v);
+    this.chipsSoon();
     this.syncDials();
     for (const d of this.parameterDisplays) if (d.id === id) d.update(null);
     this.relock(id);

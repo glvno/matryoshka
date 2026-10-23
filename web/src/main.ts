@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // first: migrate.ts notes which storage keys the page found before anything here writes one
+import { exportPresets, importPresets } from './device-presets';
 import { applyImport, backupKeys, importSummary, OLD_ORIGIN, receiveMigration } from './migrate';
 import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
@@ -855,6 +856,14 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Save patch', keywords: 'keep store your patches', run: saveCurrent },
     { kind: 'command', label: 'Save patch as .json', keywords: 'export download file', run: savePatch },
     { kind: 'command', label: 'Load patch from .json', keywords: 'import open file', run: () => $('load-file').click() },
+    { kind: 'command', label: 'Export presets as .json', detail: 'your presets library', keywords: 'download file backup library device', run: () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([JSON.stringify(exportPresets(), null, 1)], { type: 'application/json' }));
+      a.download = 'matryoshka-presets.json';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } },
+    { kind: 'command', label: 'Import presets from .json', keywords: 'load file library device', run: () => $('load-file').click() },
     { kind: 'command', label: 'Import browser backup', detail: 'from the old address', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
     { kind: 'command', label: 'Share patch\u2026', keywords: 'link copy url clipboard reddit post card notes', run: () => shareSheet.open() },
     { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
@@ -1641,8 +1650,13 @@ $<HTMLInputElement>('load-file').onchange = async (e) => {
     const raw = JSON.parse(await f.text()) as unknown;
     // the old address's "Download a backup" (deploy/github-pages-forward): the browser data, not a patch
     const backup = backupKeys(raw);
+    const presets = backup ? null : importPresets(raw); // a preset library (#192)
     if (backup) importBrowserData(backup, 'the backup');
-    else loadNamed(validatePatch(raw, DEFS));
+    else if (presets !== null) {
+      editor.rebuild();
+      status.textContent = `${presets} preset${presets === 1 ? '' : 's'} imported`;
+      showToast(status.textContent);
+    } else loadNamed(validatePatch(raw, DEFS));
   } catch (err) {
     status.textContent = `load failed: ${(err as Error).message}`;
     showToast(status.textContent);

@@ -6,6 +6,12 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Presets (#192): store an assembly's card values as a named preset (its menu: Store as a preset…), and every copy of the
+  same assembly, in any patch and under any name, can load it. An assembly with presets shows ‹ name › on its header:
+  the arrows step through them, the name opens the list (store over, store as new, rename, delete); a star means a value
+  changed since. Loading is one undo step; the patch remembers the preset's name. Presets are matched by structure
+  (the modules, cables, nesting and which rows are on the card), so changing those makes a new kind with no presets
+  yet. Palette: Export presets as .json / Import presets from .json.
 - Arm anything that takes keys, several at once (#190): ARM is on every engine, Voicing, Drum map and Steps track card,
   each its own toggle. While anything is armed Main's keys play only the armed devices, cabled or not (a layer: arm two
   engines); with nothing armed the cables decide. Steps tracks keep playing what they drive. Dashed lines show where

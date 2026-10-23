@@ -279,6 +279,8 @@ export interface AssemblyInst extends AssemblyLayout {
   /** a poly assembly, a rack of voice cards: its members run once per voice of the allocator that feeds it (poly.ts).
    * Unlike the rest of the overlay, the engine reads this. */
   poly?: PolyCards;
+  /** the preset it was last set to (#192, device-presets.ts): shown by name, for display only (the patch plays its values) */
+  preset?: string;
 }
 
 /** a nested assembly inside a saved definition: local module ids and local assembly ids, positions relative like the modules */
@@ -1278,6 +1280,7 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
       params: tidyRows(refs(e.params, 'param') as unknown as ParamRef[]),
     };
     if (e.poly) a.poly = fixCards(e.poly);
+    if (typeof e.preset === 'string' && e.preset.trim()) a.preset = e.preset.trim().slice(0, 24);
     if (e.bypass) {
       // the group switch is off: without it the card read on while every member stayed off, and the switch could not bring them back
       a.bypass = true;

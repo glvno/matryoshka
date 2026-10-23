@@ -1394,6 +1394,10 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .mhead .tools .arm-btn { font: var(--cap); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
 .mhead .tools .arm-btn.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
 .cable.muted { opacity: .25; }
+/* the preset chip on an assembly device's header (#192): ‹ name › */
+.mhead .preset-chip { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; margin-right: 6px; min-width: 0; }
+.mhead .preset-chip .preset-name { max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); }
+.mhead .preset-chip .preset-step { padding: 0 5px; }
 /* step entry's cursor (#127): the step the next note goes into */
 .step.cursor::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
 .steps-lanes { display: flex; }
