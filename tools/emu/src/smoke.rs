@@ -191,8 +191,16 @@ pub fn run(app: &[u8], out: &str, levels: Option<&str>, strict: bool) -> ExitCod
     let mut t = Run { out: out.to_string(), fails: Vec::new(), warns: Vec::new(), checks: 0, shot: 0 };
     let t0 = std::time::Instant::now();
     let mut emulated = 0;
-    let levels: Vec<(String, i32)> = levels
-        .map(|txt| txt.lines().filter_map(|l| l.split_once('\t')).filter_map(|(n, v)| Some((n.to_string(), v.trim().parse().ok()?))).collect())
+    // NAME, peak, and whether it has Steps tracks (PLAY around its note); an old two-field file reads as no tracks
+    let levels: Vec<(String, i32, bool)> = levels
+        .map(|txt| {
+            txt.lines()
+                .filter_map(|l| {
+                    let mut f = l.split('\t');
+                    Some((f.next()?.to_string(), f.next()?.trim().parse().ok()?, f.next().map_or(false, |s| s.trim() == "1")))
+                })
+                .collect()
+        })
         .unwrap_or_default();
     let r = steps(app, &mut t, &mut emulated, &levels);
     if let Err(e) = r {
@@ -515,12 +523,14 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     Ok(())
 }
 
-fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) -> Result<(), String> {
+fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bool)]) -> Result<(), String> {
     let presets = factory();
     // ---- 1. boot
     let mut m = Machine::boot(app, None);
-    m.run_to(1200)?;
-    t.screen(&m, "loading screen", "READY"); // (the splash logo and wordmark are pictures; by 1.2 s the line reads READY)
+    m.run_to(1500)?;
+    // (the splash logo and wordmark are pictures; by 1.5 s the line reads READY: 1.25 s since patch format 34's device extras
+    // and the ROM presets, #194; it was 1.2 s)
+    t.screen(&m, "loading screen", "READY");
     let up = wait_text(&mut m, DEVICE_PAGE, 8000)?;
     t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
     m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
@@ -586,7 +596,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
         m.midi(&[0xC0, i as u8], 300)?;
         let shown = font::on_screen(m.lcd(), name);
         let cpu = cpu_figure(&m);
-        let kit = name.ends_with(" KIT"); // the drum kits play on the transport (Steps tracks): PLAY around the note
+        // the drum kits and the sequenced engines play on the transport (Steps tracks): PLAY around the note
+        let kit = name.ends_with(" KIT") || levels.iter().any(|(n, _, s)| n == name && *s);
         if kit {
             m.tap(PLAY, 120, 0)?;
         }
@@ -595,7 +606,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32)]) 
         if kit {
             m.tap(PLAY, 120, 0)?;
         }
-        let want = levels.iter().find(|(n, _)| n == name).map(|l| l.1);
+        let want = levels.iter().find(|(n, _, _)| n == name).map(|l| l.1);
         println!(
             "       {i:2} {name:24} peak {p:6}  reference {:>6}  cpu {:>4} / {:>4}",
             want.map_or("-".into(), |w| w.to_string()),
