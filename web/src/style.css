@@ -1503,6 +1503,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 #flash-view { position: absolute; inset: 0; z-index: 5; overflow: auto; background: var(--bg); padding: 52px 16px 24px; }
 #flash-view[hidden] { display: none; }
 #flash-view > * { max-width: 640px; margin-inline: auto; }
+/* the warning's details (flasher.ts more): one line each until opened */
+#flash-view .flash-more { border-top: 1px solid var(--line); padding-block: 6px; }
+#flash-view .flash-more:last-of-type { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+#flash-view .flash-more summary { cursor: pointer; font-weight: 600; }
+#flash-view .flash-more[open] summary { margin-bottom: 4px; }
+#flash-view .flash-more > :is(p, ul) { margin-block: 4px; }
 .workspace.flash-mode > :is(.wheels, .dock-wrap, .deck) { display: none; }
 /* the panel: 1280 x 678 units (fm1-view.ts places everything in them), scaled to the view. "The doll" (decided with the
    user from the colourways canvas https://claude.ai/artifact/Kkg2ghED6iJq1XVxHjV6sJ, C6): a coral shell, an ivory face with the logo under the left section and the

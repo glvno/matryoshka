@@ -267,6 +267,8 @@ export function buildFlashTab(root: HTMLElement): void {
 
   const licences = el('p', { class: 'muted' }, 'Licences: ', el('a', { href: './firmware/LICENSE-GPL-3.0.txt', textContent: 'GPL-3.0' }), ', ', el('a', { href: './firmware/LICENSE-Apache-2.0.txt', textContent: 'Apache-2.0' }), '. Source: ', el('a', { href: 'https://github.com/glvno/matryoshka', textContent: 'Matryoshka source' }), '.');
   const list = (...items: string[]): HTMLElement => el('ul', {}, ...items.map((t) => el('li', { textContent: t })));
+  /** a collapsed detail of the warning: its title, opened on a click */
+  const more = (title: string, ...kids: Node[]): HTMLElement => el('details', { class: 'flash-more' }, el('summary', { textContent: title }), ...kids);
 
   root.replaceChildren(
     ...(supported ? [] : [el('div', { class: 'card warn', textContent: 'Web MIDI with SysEx is needed: use Chrome, Edge or Firefox over https (or localhost).' })]),
@@ -274,40 +276,35 @@ export function buildFlashTab(root: HTMLElement): void {
       'div',
       { class: 'card warn' },
       el('h2', { textContent: 'Before you flash' }),
-      el('h4', { textContent: 'Recommended: return to stock first' }),
       el('p', {
         textContent:
-          'If the FM-1 runs anything other than the official V15 or Matryoshka (Felucca, Sloop, M-VAVE Open or another build), press Return to official V15 first, check that it boots, then install Matryoshka. Installing from the official V15 and installing Matryoshka over Matryoshka are tested.',
+          'Flashing replaces the FM-1 firmware. You can always go back with Return to official V15 below. If the FM-1 runs Felucca, Sloop or another build, return to stock first. Keep the USB cable connected and this page open until it says done.',
       }),
-      el('h4', { textContent: 'Tested on a real FM-1' }),
-      el('p', { class: 'muted', textContent: 'With tools/fm1_install.py, which speaks the same update protocol as this page:' }),
-      list(
-        'installing Matryoshka over the official V15, and over Matryoshka;',
-        'update mode, by OCT- and OCT+ held at power-on and by MENU > SYSTEM > UPDATE MODE, and an install from there;',
-        'returning to the official V15 from Matryoshka, then installing Matryoshka again; the official firmware boots, plays and saves;',
-        'a write cut off from the computer (at 30 %): the FM-1 waits in its update loader and the same install run again finishes it;',
-        'safe mode (SAVE held at power-on) and the boot guard.',
+      more(
+        'If an install is cut off',
+        el('p', { textContent: 'The FM-1 has one firmware slot and no rollback. A cut-off install leaves it waiting in its update loader: press the same button again to finish (Install for Matryoshka, Return to official V15 for a return to stock; this page refuses the wrong one).' }),
       ),
-      el('p', { class: 'muted', textContent: 'Partly: a power cut as the update loader started, and one halfway through a write of the same build; both booted.' }),
-      el('h4', { textContent: 'Not tested' }),
-      list(
-        'this page against a real FM-1;',
-        'a power cut while the firmware is half old and half new;',
-        'installing over Felucca, Sloop or M-VAVE Open;',
-        'FACTORY RESET.',
+      more(
+        'What has been tested on a real FM-1',
+        el('p', { class: 'muted', textContent: 'With this page and with tools/fm1_install.py (the same update protocol):' }),
+        list(
+          'installing Matryoshka over the official V15, and over Matryoshka;',
+          'update mode (OCT- + OCT+ at power-on, or MENU > SYSTEM > UPDATE MODE) and an install from there;',
+          'returning to the official V15 and back; the official firmware boots, plays and saves;',
+          'a write cut off at 30 %: the same install run again finishes it;',
+          'safe mode (SAVE held at power-on), the boot guard and FACTORY RESET.',
+        ),
+        el('p', { class: 'muted', textContent: 'Partly: a power cut as the update loader started, and one halfway through a write of the same build; both booted.' }),
+        el('p', { class: 'muted', textContent: 'Not tested: a power cut while the firmware is half old and half new; installing over Felucca, Sloop or M-VAVE Open.' }),
       ),
-      el('p', {
-        textContent:
-          'Flashing replaces the FM-1 firmware. It has one firmware slot and no rollback. If an update is cut off the FM-1 waits in its update loader: the same button finishes it (Install for Matryoshka, Return to official V15 for a return to stock; this page refuses the wrong one). The official V15 file brings the stock firmware back. Keep the USB cable and the battery connected and keep this page open.',
-      }),
-      el('p', {
-        textContent:
-          'Coming from Felucca: Matryoshka stores its patches in flash sectors that hold Felucca projects, samples and user presets, and overwrites them on its first start. Save them with Felucca first; this page asks again when it sees a Felucca identity.',
-      }),
-      el('p', {
-        textContent:
-          'The FM-1 disconnects and comes back several times. Chromium on Linux can close the whole browser when that happens (a bug in its MIDI backend): close other tabs first, or install with tools/fm1_install.py.',
-      }),
+      more(
+        'Coming from Felucca',
+        el('p', { textContent: 'Matryoshka stores its patches where Felucca keeps its projects, samples and user presets, and overwrites them on its first start. Save them with Felucca first; this page asks again when it sees Felucca.' }),
+      ),
+      more(
+        'Chromium on Linux',
+        el('p', { textContent: 'The FM-1 disconnects and comes back several times during an install. Chromium on Linux can close the whole browser when that happens (a bug in its MIDI backend): close other tabs first, or install with tools/fm1_install.py.' }),
+      ),
       el('label', {}, ack, ' I understand and accept the risk'),
     ),
     foreignNote,
