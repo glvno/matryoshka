@@ -1491,8 +1491,9 @@ static uint32_t dp_values(uint32_t d)
     return n;
 }
 
-/* ENV held + SAVE: the device in focus's values as a preset: over the user preset it was set to, else under a new name (a
- * factory one's name, or the device's, with a number). The message says what happened. */
+/* ENV held + SAVE: the device in focus's values as a preset: over the user preset it was set to, else under a new name:
+ * the preset it was based on (the one it was set to; none: the first of its list, a factory engine's Init; none either:
+ * the device's name) with the next free number ("BRIGHT 2", from "BRIGHT 2": "BRIGHT 3"). The message says what happened. */
 static void dp_store(uint32_t d)
 {
     char nm[17], base[17], num[8];
@@ -1503,19 +1504,24 @@ static void dp_store(uint32_t d)
         ui_msg("PRESETS: ASSEMBLIES ONLY", 1200);
         return;
     }
-    n = dp_values(d);
     for (k = 0; k < 16u && pg_pname[d][k]; k++)
         nm[k] = pg_pname[d][k];
     nm[k] = 0;
     if (!nm[0] || ps_find(pg_dev[d].structure, nm) < 0) {   /* no user preset of that name: a new one */
         int taken;
+        uint32_t m = dp_list(d);
+        if (!nm[0] && (!m || dp_entry(pr_list[0], nm) < 0))
+            nm[0] = 0;
         caps(base, nm[0] ? nm : pg_dev[d].name, nm[0] ? str_len(nm) : pg_dev[d].nlen, 12);
+        len = str_len(base);                            /* (a number at its end goes: BRIGHT 2 -> BRIGHT 3) */
+        for (k = len; k > 0u && base[k - 1u] >= '0' && base[k - 1u] <= '9'; k--)
+            ;
+        if (k < len && k >= 2u && base[k - 1u] == ' ')
+            base[k - 1u] = 0;
         for (k = 2; k < 100u; k++) {
-            uint32_t i, m = dp_list(d);
+            uint32_t i;
             fmt_int(num, (int32_t)k);
-            len = str_len(base);
             put(put(put(nm, base), " "), num)[0] = 0;
-            (void)len;
             taken = 0;
             for (i = 0; i < m && !taken; i++) {
                 char other[17];
@@ -1525,6 +1531,7 @@ static void dp_store(uint32_t d)
                 break;
         }
     }
+    n = dp_values(d);                                   /* (after the names: dp_entry reads each one's values into pr_vals) */
     rc = ps_put(pg_dev[d].structure, nm, pr_vals, n);
     if (rc) {
         ui_msg(rc == -2 ? "PRESETS FULL" : "PRESET NOT STORED", 1500);

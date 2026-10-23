@@ -19,7 +19,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   by cable (or it is a Steps track): an engine with no cable from Main is not on the FM-1's keys at all.
 - Presets on the FM-1 (#194): SEL on an assembly's page lists its presets (the factory engines' come built in);
   SELECT, ALGO or PRESET load them as you turn. ENV held + SAVE stores the device's values as a preset: over your
-  preset it was set to, else under a new name. The FM-1 keeps about 60 of your presets in flash sectors nothing else
+  preset it was set to, else as a new one named after the preset it was based on with the next number (BRIGHT 2;
+  from a factory patch as it ships, INIT 2). The editor suggests the same name. The FM-1 keeps about 60 of your presets in flash sectors nothing else
   uses: your 64 patch slots stay as they are, nothing to reset. A patch remembers each device's preset name (patch
   format 34: patches from this editor need this firmware). On the first start after the update, every slot still
   holding a factory patch exactly as an earlier version wrote it gets today's version of that patch (FACTORY PATCHES

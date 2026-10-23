@@ -578,6 +578,22 @@ int main(void)
             loop();
             check("ENV held + SAVE on a factory preset: a new user preset (its name and a number), the editor told",
                   ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 1u && ps_name_cmp(pg_pname[d], was) != 0 && dp_list(d) == n0 + 1u);
+            {                                           /* its name: the preset it was based on and 2; its values: the device's */
+                char want[24], got[17];
+                uint32_t st, nv, i, nd = dp_values(d);
+                int32_t now[PS_MAXV];
+                int same = 1, at = ps_find(pg_dev[d].structure, pg_pname[d]);
+                for (i = 0; i < nd; i++)
+                    now[i] = pr_vals[i];
+                put(put(want, was), " 2")[0] = 0;
+                printf("      (based on \"%s\": stored as \"%s\")\n", was, pg_pname[d]);
+                if (at < 0 || ps_read((uint32_t)at, &st, got, &nv) || nv != nd)
+                    same = 0;
+                for (i = 0; same && i < nd; i++)
+                    same = ps_vbuf[i] == now[i];
+                check("the new preset: named after the one it was based on with 2, holding the device's own values",
+                      !ps_name_cmp(pg_pname[d], want) && same);
+            }
             panel_held |= 1u << 4;                          /* again: over it */
             panel_edges(1u << 4, 0);
             panel_edges(1u << BTN_SAVE, 0);
@@ -586,6 +602,23 @@ int main(void)
             panel_edges(0, 1u << 4);
             loop();
             check("again: stored over it, still one", ps_list(pg_dev[d].structure, 0, 0) == 1u && host_preset_stored == 2u);
+            {                                           /* a device with no preset remembered (a factory patch as it ships) */
+                char first[17], want[24];
+                (void)dp_list(d);
+                (void)dp_entry(pr_list[0], first);
+                put(put(want, first), " 2")[0] = 0;
+                pg_pname[d][0] = 0;
+                panel_held |= 1u << 4;
+                panel_edges(1u << 4, 0);
+                panel_edges(1u << BTN_SAVE, 0);
+                panel_edges(0, 1u << BTN_SAVE);
+                panel_held &= ~(1u << 4);
+                panel_edges(0, 1u << 4);
+                loop();
+                printf("      (no preset remembered: stored as \"%s\")\n", pg_pname[d]);
+                check("no preset remembered: named after the first of its list (Init) with 2, not the device's name",
+                      !ps_name_cmp(pg_pname[d], want) && ps_list(pg_dev[d].structure, 0, 0) == 2u);
+            }
             tap(3);
             check("SEL on the list: back", page == 0);
             {                                               /* a patch stored before format 34 (the bank keeps it): no structure */

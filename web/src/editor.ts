@@ -62,7 +62,7 @@ import {
 } from './patch';
 import { fixNotes, overdub, type StepNote } from './track';
 import { defIsEngine, wireEngine, wiredText, type Wired } from './engines';
-import { applyPreset, deletePreset, matchesPreset, presetsOf, renamePreset, stepPreset, storePreset } from './device-presets';
+import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, renamePreset, stepPreset, storePreset } from './device-presets';
 import { structureOf } from './structure';
 import { armable, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
@@ -3134,13 +3134,13 @@ export class Editor {
     const cur = list.find((x) => x.name === a.preset);
     const items: MenuItem[] = list.map((pr) => ({ text: `${pr.name === a.preset ? '● ' : ''}${pr.name}${pr.factory ? ' (factory)' : ''}`, run: () => this.loadPreset(a, pr.name) }));
     items.push({ text: cur && !cur.factory ? `Store over "${cur.name}"` : 'Store as a preset…', rule: !!list.length, run: () => {
-      const n = cur && !cur.factory ? cur.name : window.prompt('Store the card’s values as the preset', a.preset ?? '')?.trim();
+      const n = cur && !cur.factory ? cur.name : window.prompt('Store the card’s values as the preset', nextPresetName(this.patch, a))?.trim();
       if (!n) return;
       this.change(() => storePreset(this.patch, a, n));
     } });
     if (cur && !cur.factory) {
       items.push({ text: 'Store as a new preset…', run: () => {
-        const n = window.prompt('Store the card’s values as the new preset', `${cur.name} 2`)?.trim();
+        const n = window.prompt('Store the card’s values as the new preset', nextPresetName(this.patch, a))?.trim();
         if (n) this.change(() => storePreset(this.patch, a, n));
       } });
       items.push({ text: 'Rename preset…', run: () => {

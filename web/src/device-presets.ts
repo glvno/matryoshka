@@ -155,6 +155,18 @@ export function importPresets(raw: unknown): number | null {
   return incoming.length;
 }
 
+/** the name a new preset of the assembly gets by default (the FM-1's ENV + SAVE names it the same way, pages_ui.c
+ * dp_store): the preset it is based on (the one it remembers; none: the first of its list, a factory engine's Init; none
+ * either: "Preset") with the next free number; a number already at its end is replaced ("Bright 2" -> "Bright 3") */
+export function nextPresetName(p: Patch, a: AssemblyInst): string {
+  const list = presetsOf(p, a);
+  const base = (a.preset ?? list[0]?.name ?? 'Preset').replace(/ \d+$/, '').slice(0, PRESET_NAME_MAX - 3) || 'Preset';
+  const taken = new Set(list.map((x) => x.name.toLowerCase()));
+  let k = 2;
+  while (taken.has(`${base} ${k}`.toLowerCase())) k++;
+  return `${base} ${k}`;
+}
+
 /** step from the assembly's remembered preset to the next (dir 1) or previous (-1) one, round; null when it has none */
 export function stepPreset(p: Patch, a: AssemblyInst, dir: 1 | -1): Preset | null {
   const list = presetsOf(p, a);

@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { insertAssembly, promote, toDef, type AssemblyDef } from './assembly';
-import { applyPreset, currentValues, deletePreset, exportPresets, importPresets, matchesPreset, presetsOf, renamePreset, setFactoryPresets, stepPreset, storePreset, userPresets } from './device-presets';
+import { applyPreset, currentValues, deletePreset, exportPresets, importPresets, matchesPreset, nextPresetName, presetsOf, renamePreset, setFactoryPresets, stepPreset, storePreset, userPresets } from './device-presets';
 import { DEFS } from './modules';
 import { connect, newPatch, validatePatch } from './patch';
 import { defStructure, structureOf } from './structure';
@@ -112,6 +112,18 @@ describe('presets (#192)', () => {
     expect(stepPreset(p, a, -1)!.name).toBe('Strings');
     a.preset = undefined;
     expect(stepPreset(p, a, 1)!.name).toBe('Init');
+  });
+
+  it('a new preset\'s default name: the one it is based on and the next free number, as the FM-1 names it', () => {
+    const p = newPatch(DEFS);
+    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    setFactoryPresets([{ structure: structureOf(p, a), name: 'Init', values: currentValues(p, a) }, { structure: structureOf(p, a), name: 'Bright', values: currentValues(p, a) }]);
+    expect(nextPresetName(p, a)).toBe('Init 2');                 // none remembered: the first of its list
+    a.preset = 'Bright';
+    expect(nextPresetName(p, a)).toBe('Bright 2');
+    storePreset(p, a, 'Bright 2');
+    expect(nextPresetName(p, a)).toBe('Bright 3');               // based on Bright 2: its number is replaced
+    expect(a.preset).toBe('Bright 2');
   });
 
   it('export and import the library', () => {
