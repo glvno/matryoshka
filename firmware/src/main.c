@@ -101,6 +101,7 @@ static int m1_apply(const uint8_t *patch, uint32_t len)
                                                  * (m1_set_current); drawn now, the old patch's rows met the new engine (#140) */
     return rc;
 }
+static uint32_t batt_us;                        /* the last battery read's time, us (batt_poll) */
 /* the DIAG command (proto.c): page 0 the reset cause and the crash record, pages 1.. the stall record, 32 bytes a page;
  * page 127 the CPU now: % of the half buffer, the longest audio ISR (us) since the last read of this page (then reset),
  * the half buffer's budget (us), the overload mute, the halves rendered, the battery read's time (us, batt_poll) and its
@@ -668,7 +669,6 @@ static void master_poll(void)
  * polled, so the main loop waits for it: one dropped after MASTER's (the sample capacitor still holds ch 4), the mean of
  * four, then one of MASTER dropped so the next master_poll reads ch 4 settled; batt_us is the time all six took (DIAG page
  * 127, m1_link.py cpu). PB1 stays an analog input (fm1_adc_init: held low 8 s it would reset the chip). */
-static uint32_t batt_us;
 static void batt_poll(void)
 {
     static uint32_t t0;
