@@ -50,6 +50,10 @@ interface Bundle {
   product: string;
   size: number;
   sha256: string;
+  /** the dev server's branch build (dev/branch-firmware.ts): where it comes from */
+  dev?: string;
+  /** set while it cannot be installed yet (the dev server's smoke test running or failed): why */
+  wait?: string;
 }
 
 async function loadBundle(): Promise<Bundle | null> {
@@ -193,13 +197,19 @@ export function buildFlashTab(root: HTMLElement): void {
       if (sum !== bundle.sha256) throw new Error('the bundled firmware package does not match its checksum');
       await install(raw);
     }, true);
-  void loadBundle().then((b) => {
+  const showBundle = (b: Bundle | null): void => {
     bundle = b;
-    bundleInfo.textContent = b
-      ? `${/^matryoshka/i.test(b.version) ? b.version : `Matryoshka ${b.version}`} (${b.product}, ${Math.round(b.size / 1024)} KB) comes with this app. GPL-3.0; three JieLi SDK files inside are Apache-2.0.`
-      : 'No firmware package comes with this copy of the app. Run npm run firmware -- --ci in web/ (the newest CI build) and reload; or choose a .fwsc file below.';
+    const what = b && `${/^matryoshka/i.test(b.version) ? b.version : `Matryoshka ${b.version}`} (${b.product}, ${Math.round(b.size / 1024)} KB)`;
+    bundleInfo.textContent = !b
+      ? 'No firmware package comes with this copy of the app. Run npm run firmware -- --ci in web/ (the newest CI build) and reload; or choose a .fwsc file below.'
+      : b.dev
+        ? `${b.size ? `${what}: ` : ''}${b.dev}.${b.wait ? ` ${b.wait}` : ''}`
+        : `${what} comes with this app. GPL-3.0; three JieLi SDK files inside are Apache-2.0.`;
     setButtons();
-  });
+    // (the dev server's smoke test: asked again until it is done)
+    if (b?.wait && /running/.test(b.wait)) setTimeout(() => void loadBundle().then(showBundle), 5000);
+  };
+  void loadBundle().then(showBundle);
 
   const findBtn = el('button', { textContent: 'Check the connection' });
   findBtn.onclick = () =>
@@ -248,7 +258,7 @@ export function buildFlashTab(root: HTMLElement): void {
 
   function setButtons(): void {
     findBtn.disabled = busy || !supported;
-    installBtn.disabled = busy || !supported || !accepted() || !bundle;
+    installBtn.disabled = busy || !supported || !accepted() || !bundle || !!bundle.wait;
     for (const b of [pkgBtn, stockBtn, stockFileBtn]) b.disabled = busy || !supported || !accepted();
   }
   ack.onchange = setButtons;
