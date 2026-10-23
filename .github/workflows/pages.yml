@@ -5,16 +5,27 @@ name: deploy
 #   https://glvno.github.io/matryoshka/  (the old address: forwards there, and offers to bring the browser data along)
 # The firmware is not built here: Pages publishes the committed, device-tested package in web/public/firmware/ (made with
 # tools/build.py + npm run firmware), so the site never carries a package no device has run.
+# The site serves the latest release, not main: the editor and the firmware are released together, so the site always
+# pairs an editor with the firmware package it was released with. Pushing a release tag vX.Y.Z deploys it (only when it
+# is the newest release: an older tag pushed later leaves the site alone); the daily run and a manual run build the
+# newest release tag (a manual run may name another tag, e.g. to roll back). Merging to main deploys nothing; unreleased
+# work is tried on the dev server (npm run dev). Tags with a suffix (v1.2.0-rc1) are not releases.
 # One-time setup: the repository secret CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit) and the variable CLOUDFLARE_ACCOUNT_ID;
-# repository Settings > Pages > Source: GitHub Actions (the github-pages environment deploys only main).
-# Runs only on main of glvno/matryoshka; workflow_dispatch on any other branch or in a fork is skipped.
-# Also daily (schedule), so the About card's AI usage figures stay fresh between pushes.
+# repository Settings > Pages > Source: GitHub Actions (the github-pages environment deploys only main, so the forwarder
+# is published by the daily and manual runs, which run on main; a tag push publishes only the app).
+# Runs only in glvno/matryoshka.
+# Also daily (schedule), so the About card's AI usage figures stay fresh between releases.
 on:
   push:
-    branches: [main]
+    tags: ['v*']
   schedule:
     - cron: '17 5 * * *'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'release tag to deploy (empty: the newest release)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -24,14 +35,46 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # which release: the pushed tag if it is the newest release, else nothing; the daily or a manual run: the newest (or the
+  # one asked for)
+  pick:
+    if: github.repository == 'glvno/matryoshka'
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: release
+        env:
+          ASKED: ${{ inputs.tag }}
+        run: |
+          newest=$(git tag -l 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag=$GITHUB_REF_NAME
+            if [ "$tag" != "$newest" ]; then
+              echo "::notice::$tag is not the newest release ($newest): the site stays as it is"
+              exit 0
+            fi
+          else
+            tag=${ASKED:-$newest}
+          fi
+          git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "::error::no tag $tag"; exit 1; }
+          echo "::notice::deploying $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
   build:
-    if: github.ref == 'refs/heads/main' && github.repository == 'glvno/matryoshka'
+    needs: pick
+    if: needs.pick.outputs.tag != ''
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: web
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.pick.outputs.tag }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -81,9 +124,10 @@ jobs:
           workingDirectory: web
           command: pages deploy dist --project-name=matry0shka --branch=main
 
-  # the old address serves only the forwarder, after the app is up at the new one
+  # the old address serves only the forwarder, after the app is up at the new one (from main's copy of it)
   forward:
     needs: build
+    if: github.ref == 'refs/heads/main'                # (the github-pages environment deploys only main: not on a tag push)
     runs-on: ubuntu-latest
     permissions:
       contents: read
