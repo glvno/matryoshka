@@ -2,8 +2,8 @@
  * Copyright (C) 2026 morgulbrut */
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
- * Environment: TOAST=k shows knob k's toast on the device page, DEVTOAST=1 the device just picked, PATCHTOAST=1 the
- * patch PRESET just loaded (the factory bank's slot)
+ * Environment: TOAST=k shows knob k's toast on the device page, CARD=1 SELECT's device card, CARD=2 ALGO's page
+ * card (#221), PATCHTOAST=1 the patch PRESET just loaded (the factory bank's slot)
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -61,13 +61,15 @@ int main(int argc, char **argv)
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     if (argc > 3 && strchr(argv[3], ':'))                   /* the device page: DEVICE:PAGE */
         pages_focus((uint32_t)atoi(argv[3]), (uint32_t)atoi(strchr(argv[3], ':') + 1));
-    pg_dev_toast_until = 0;
+    pg_card_until = 0;
     if (getenv("TOAST")) {                                  /* knob n just turned: its toast */
         pg_toast_k = (uint8_t)atoi(getenv("TOAST"));
         pg_toast_until = 1000;
     }
-    if (getenv("DEVTOAST"))
-        pg_dev_toast_until = 1000;
+    if (getenv("CARD")) {                                   /* 1: SELECT's device card, 2: ALGO's page card (#221) */
+        pages_ensure();                                     /* (a fresh patch would end it) */
+        pages_card((uint32_t)atoi(getenv("CARD")));
+    }
     if (getenv("PATCHTOAST")) {
         bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
         cur_preset = p;
