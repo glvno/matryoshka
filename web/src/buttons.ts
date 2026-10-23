@@ -70,7 +70,7 @@ export function buttonLight(p: Patch, b: string, engaged: boolean): 'dark' | 'di
   return kindOf(main?.panel, b) !== 'nothing' || cabled ? 'dim' : 'dark';
 }
 
-/** the patch buttons a Toggle may name: every button but GLO (#118: it is Main's global page) */
+/** the patch buttons a Toggle may name: every button but GLO (#199: the FM-1's own page) */
 export const EDITABLE_BUTTONS = PANEL_BUTTONS.filter((b) => b !== 'glo');
 
 // ---- the button editor's edits (button-editor.ts): each keeps the panel valid (patch.ts fixPanel's rules)

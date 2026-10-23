@@ -33,7 +33,7 @@ const BTNS: { label: string; id: number; x: number; y: number; w: number; h: num
   { label: 'Oct-', id: BUTTONS.octDown, x: 62, y: 328, w: 112, h: 44 },
   { label: 'Oct+', id: BUTTONS.octUp, x: 186, y: 328, w: 112, h: 44 },
   ...([
-    [['FX', BUTTONS.fx], ['SCL', BUTTONS.scl], ['ENV', BUTTONS.env], ['LFO', BUTTONS.lfo], ['EDIT', BUTTONS.edit], ['GLO', BUTTONS.glo]],
+    [['FX', BUTTONS.fx], ['SEL', BUTTONS.scl], ['ENV', BUTTONS.env], ['LFO', BUTTONS.lfo], ['EDIT', BUTTONS.edit], ['GLO', BUTTONS.glo]],
     [['HOME', BUTTONS.home], ['SAVE', BUTTONS.save], ['ARP', BUTTONS.arp], ['SEQ', BUTTONS.seq], ['PLAY', BUTTONS.play], ['REC', BUTTONS.rec]],
   ] as [string, number][][]).flatMap((row, r) => row.map(([label, id], i) => ({ label, id, x: 906 + i * 58, y: 232 + r * 76, w: 50, h: 64 }))),
 ];

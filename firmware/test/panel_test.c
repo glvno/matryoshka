@@ -466,17 +466,18 @@ int main(void)
         trail_n = 0;
     }
 
-    {                                                       /* GLO (#118): Main's global page */
+    {                                                       /* GLO (#199): the FM-1's own settings */
         int main = eng_find(T_FM1);
         int32_t bpm = eng_get_param((uint32_t)main, FM1_P_TEMPO);
-        uint32_t d = pg_cur_dev, g = pg_cur_page;
+        uint32_t d = pg_cur_dev, g = pg_cur_page, ch = cfg.ch;
         tap(7);
         check("GLO: the global page, a step on the trail, GLO's jack was high while held", page == PAGE_GLO && trail_n == 1);
         check("its bar: GLOBAL on coral", px(2, 2) == P_CORAL);
         enc(2, 4);
-        check("K1 on GLO: the tempo", eng_get_param((uint32_t)main, FM1_P_TEMPO) != bpm);
+        check("K1 on GLO: the MIDI channel one step a turn, not the patch's tempo", cfg.ch == (ch < 16u ? ch + 1u : 16u) && eng_get_param((uint32_t)main, FM1_P_TEMPO) == bpm);
+        enc(2, -4);
         later(1500);
-        check("the rows: tempo and morph, no arpeggiator in the 808 Kit", pages_now()->nrows == 2u);
+        check("the rows: MIDI channel, clock in, MIDI out, LEDs", pages_now()->nrows == 4u && pages_now()->mod[0] == SETTING_ROW && cfg.ch == ch);
         if (getenv("PANEL_SNAP_GLO")) {
             const char *keep = getenv("PANEL_SNAP");
             setenv("PANEL_SNAP", getenv("PANEL_SNAP_GLO"), 1);

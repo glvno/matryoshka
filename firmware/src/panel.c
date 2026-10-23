@@ -358,6 +358,11 @@ static void panel_encoders(int32_t *st)
         if (!c || (r = pages_turn(k, c, cfg.accel && fm1_ms - last_ms[2u + k] < 80u, &mod, &par, &v)) < 0)
             continue;
         last_ms[2u + k] = fm1_ms;
+        if (r == 2) {                               /* GLO: an FM-1 setting (pages_turn set it): not the patch's, not the editor's */
+            if (!ui_dirty)
+                ui_dirty = 1;
+            continue;
+        }
         if (r == 1)
             poly_row_set(mod, par & 0x7Fu, v);      /* a poly group's setting (the Voice allocator's in the editor) */
         else {

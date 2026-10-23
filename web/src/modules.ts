@@ -172,7 +172,9 @@ export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse'];
 /** the FM-1 panel's buttons a patch owns (#57 decision 4), gate outputs of the Main module; the device keeps PRESET, PLAY,
  * SAVE, HOME and OCT- / OCT+. The knobs K1..K4 are no signals: they edit the rows of the device page in focus (pages.ts),
  * and the SELECT / ALGO encoders pick the device and the page. */
-export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];   // SEQ and REC: the device's step page (#83)
+export const PANEL_BUTTONS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
+/** a panel button's name on screen: SEL for `scl` (Felucca's table spells it SCL; the button reads SEL), else the id in capitals */
+export const buttonLabel = (b: string): string => (b === 'scl' ? 'SEL' : b.toUpperCase());   // SEQ and REC: the device's step page (#83)
 /** the Main module's tempo range (bpm) */
 export const TEMPO_MIN = 20;
 export const TEMPO_MAX = 300;

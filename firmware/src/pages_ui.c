@@ -282,35 +282,38 @@ static void pages_patch_ask(void)
     pg_patch_ask_ms = fm1_ms;
 }
 
-/* GLO (#118): Main's global page. K1 the tempo, K2 the morph, K3 / K4 the first Arpeggiator's rate and gate (a patch
- * without one: two rows) */
+/* GLO (#199): the FM-1's own quick page, never a patch's (the patch's tempo and morph are on Main's device page, #196).
+ * K1 the MIDI channel, K2 MIDI clock in, K3 MIDI out, K4 the LEDs: the menu's settings (menu.c setting_step), saved with
+ * the state (SAVE). A row of it is a setting, not a module's parameter: SETTING_ROW in its module byte. */
+#define SETTING_ROW 0xFFu
+static void setting_step(uint32_t row, int32_t s);      /* menu.c */
+static void menu_value(uint32_t row, char *out);
 static ppage_t pg_glo;
 static const ppage_t *glo_page(void)
 {
-    static const char *const LAB[4] = {"TEMPO", "MORPH", "ARP RATE", "ARP GATE"};
-    int main = eng_find(T_FM1), arp = eng_find(T_ARP);
+    static const char *const LAB[4] = {"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "LEDS"};
+    static const uint8_t ROW[4] = {MR_CH, MR_CLOCK, MR_MOUT, MR_LEDS};
     uint32_t k;
     pg_glo.name = "GLOBAL";
     pg_glo.nlen = 6;
     pg_glo.part = 0;
     pg_glo.parts = 1;
     pg_glo.display = 0;
-    pg_glo.nrows = 0;
-    if (main < 0)
-        return &pg_glo;
-    pg_glo.mod[0] = (uint8_t)main, pg_glo.par[0] = FM1_P_TEMPO;
-    pg_glo.mod[1] = (uint8_t)main, pg_glo.par[1] = FM1_P_MORPH;
-    pg_glo.nrows = 2;
-    if (arp >= 0) {
-        pg_glo.mod[2] = (uint8_t)arp, pg_glo.par[2] = ARP_P_RATE;
-        pg_glo.mod[3] = (uint8_t)arp, pg_glo.par[3] = ARP_P_GATE;
-        pg_glo.nrows = 4;
-    }
+    pg_glo.nrows = PG_ROWS;
     for (k = 0; k < PG_ROWS; k++) {
+        pg_glo.mod[k] = SETTING_ROW;
+        pg_glo.par[k] = ROW[k];
         pg_glo.lab[k] = LAB[k];
         pg_glo.llen[k] = (uint8_t)str_len(LAB[k]);
     }
     return &pg_glo;
+}
+
+/* a setting's place in its range, 0..width (its bar) */
+static uint32_t setting_bar(uint32_t row, uint32_t width)
+{
+    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u
+         : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : cfg.accel) ? width : 0u;
 }
 
 static const ppage_t *pages_now(void)
@@ -397,6 +400,11 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
     pg_patch_until = 0;
     *mod = m;
     *par = j;
+    if (m == SETTING_ROW) {                             /* GLO: an FM-1 setting, one step a click, applied here */
+        setting_step(j, clicks);
+        *v = 0;
+        return 2;
+    }
     if (j & POLY_ROW) {                                 /* a poly group's setting: one step a click (main.c applies it) */
         *v = clampi(poly_value(m, j & 0x7Fu) + (clicks > 0 ? 1 : -1), (j & 0x7Fu) == 0u ? 1 : 0, poly_max(j & 0x7Fu));
         return 1;
@@ -426,6 +434,8 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
         return -1;
     m = pg->mod[k];
     j = pg->par[k];
+    if (m == SETTING_ROW)                               /* (an FM-1 setting: not from MIDI) */
+        return -1;
     pg_toast_k = (uint8_t)k;
     pg_toast_until = fm1_ms + 1000u;
     pg_patch_until = 0;
@@ -454,6 +464,8 @@ static uint32_t pages_cc(uint32_t k)
     const ppage_t *pg = pages_now();
     if (!pg || k >= pg->nrows)
         return 0;
+    if (pg->mod[k] == SETTING_ROW)
+        return setting_bar(pg->par[k], 127u);
     if (pg->par[k] & POLY_ROW)
         return (uint32_t)(poly_value(pg->mod[k], pg->par[k] & 0x7Fu) * 127 / poly_max(pg->par[k] & 0x7Fu));
     return (uint32_t)((unit_of(&DEFS[eng_type(pg->mod[k])], pg->par[k], eng_get_param(pg->mod[k], pg->par[k])) * 127 + 32768) >> 16);
@@ -508,6 +520,12 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
 static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint32_t width, uint32_t *base, uint32_t *live)
 {
     uint32_t m = pg->mod[k], j = pg->par[k];
+    if (m == SETTING_ROW) {                             /* GLO: one of the FM-1's settings */
+        menu_value(j, num);
+        unit[0] = 0;
+        *base = *live = setting_bar(j, width);
+        return;
+    }
     if (j & POLY_ROW) {
         uint32_t f = j & 0x7Fu;
         int32_t v = poly_value(m, f);
@@ -557,7 +575,7 @@ static void pages_strip(void)
         text_bc(&FONT_S, 88, 3, nm, P_NIGHT, P_CORAL, 144, TA_RIGHT);
         return;
     }
-    if (pg_list_btn >= 0 && pg_ndev) {                  /* a Page button's list: "SCL 2/3 · AMP ENV" */
+    if (pg_list_btn >= 0 && pg_ndev) {                  /* a Page button's list: "SEL 2/3 · AMP ENV" */
         char bar[48], num[8], *q = bar;
         const uint8_t *l;
         uint32_t n = pages_list((uint32_t)pg_list_btn, &l);

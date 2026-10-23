@@ -19,7 +19,6 @@ static void defaults_now(void);
 
 /* ---- settings menu */
 
-enum { MR_LEDS, MR_ACCEL, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
 enum { MT_PANEL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "UPDATE MODE", "FACTORY RESET"};
@@ -217,10 +216,15 @@ static void menu_open(void)             /* via page_show (panel.c): the tab and 
 
 static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value, s < 0: the previous (stopping at the ends) */
 {
-    int up = s > 0;
-    int32_t d = s > 0 ? 1 : -1;
     if (menu_tab == MT_MANUAL)
         return;                                     /* (no row: the buttons do nothing on the manual) */
+    setting_step(row, s);
+}
+
+static void setting_step(uint32_t row, int32_t s)       /* a setting's next / previous value (the menu's and GLO's rows) */
+{
+    int up = s > 0;
+    int32_t d = s > 0 ? 1 : -1;
     switch (row) {
     case MR_LEDS: {
         int32_t v = (int32_t)cfg.leds + d;

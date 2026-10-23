@@ -5,7 +5,7 @@ import { parseValue } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { isPile, tidy, tidyAssembly } from './tidy';
-import { DEFS, drumRowName, PANEL_BUTTONS } from './modules';
+import { buttonLabel, DEFS, drumRowName, PANEL_BUTTONS } from './modules';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
@@ -944,9 +944,9 @@ export class Editor {
     btn.type = 'button';
     btn.className = 'panel-btn device';
     btn.dataset.button = b;
-    btn.textContent = b.toUpperCase();
+    btn.textContent = buttonLabel(b);
     btn.disabled = true;
-    btn.title = `${b.toUpperCase()}: the FM-1's own button (not part of the patch)`;
+    btn.title = `${buttonLabel(b)}: the FM-1's own button (not part of the patch)`;
     return btn;
   }
 
@@ -2629,7 +2629,7 @@ export class Editor {
     const panel = m.panel;
     const glo = b === 'glo';
     const kind = kindOf(panel, b);
-    const name = b.toUpperCase();
+    const name = buttonLabel(b);
     const top = document.createElement('span');
     top.className = 'pb-face';
     if (glo) top.append(kindMark('main'));
@@ -2649,7 +2649,7 @@ export class Editor {
     btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
     const engaged = glo ? this.gloOn : kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
     btn.setAttribute('aria-pressed', String(engaged));
-    const does = glo ? 'Main’s global page on the knobs (tempo, morph, the arpeggiator); again: back' : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
+    const does = glo ? 'the FM-1’s own settings on its knobs (MIDI channel, clock in, MIDI out, LEDs; set them on the FM-1); again: back' : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
     btn.title = glo ? `GLO: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
     // touch (#153): the dock scrolls sideways from a button (touch-action: pan-x), so a switch flips when the finger is
     // let go, unless the browser took the touch for a scroll (pointercancel); a held button lets go on the cancel too
@@ -2806,7 +2806,7 @@ export class Editor {
     if (!m || b === undefined) return;
     const btn = this.dock?.querySelector<HTMLElement>(`.panel-btn[data-button="${b}"]`);
     const kind = kindOf(m.panel, b);
-    if (b === 'glo') {                      // GLO (#118): Main's global page on the dock knobs; again: back
+    if (b === 'glo') {                      // GLO (#199): the FM-1's own page (no rows here); again: back
       if (down) this.setGlo(!this.gloOn);
       this.ev.onButton?.(i, down);          // (its jack: high while held)
       btn?.setAttribute('aria-pressed', String(this.gloOn));
@@ -3959,15 +3959,12 @@ export class Editor {
   private focusedDevice(): Device | undefined { return this.gloOn ? this.gloDevice() : this.devices.find((d) => d.key === this.focus?.device); }
   private focusedPage(): Page | undefined { return this.gloOn ? this.gloDevice().pages[0] : this.focusedDevice()?.pages[this.focus!.page]; }
 
-  // ---- GLO (#118): Main's global page on the knobs, as on the FM-1 (pages_ui.c glo_page): K1 tempo, K2 morph, K3 / K4 the
-  // first Arpeggiator's rate and gate. Not one of the devices: the pickers leave it, the focus stays where it was.
+  // ---- GLO (#199): the FM-1's own quick page (pages_ui.c glo_page: MIDI channel, clock in, MIDI out, LEDs), never the
+  // patch's: the editor has no rows for it (the patch's tempo and morph are on Main's device page, #196). Not one of the
+  // devices: the pickers leave it, the focus stays where it was.
   private gloOn = false;
   private gloDevice(): Device {
-    const main = this.patch.modules.find((m) => m.type === 'fm1');
-    const arp = this.patch.modules.find((m) => m.type === 'arp');
-    const rows: PageRow[] = main ? [{ module: main.id, param: 'tempo', label: 'Tempo' }, { module: main.id, param: 'morph', label: 'Morph' }] : [];
-    if (main && arp) rows.push({ module: arp.id, param: 'rate', label: 'Arp rate' }, { module: arp.id, param: 'gate', label: 'Arp gate' });
-    return { key: '$glo', name: 'Global', pages: [{ name: 'Global', part: 0, parts: 1, rows }] };
+    return { key: '$glo', name: 'Global (the FM-1’s own)', pages: [{ name: 'Global', part: 0, parts: 1, rows: [] }] };
   }
 
   /** GLO's page on (or off: back to the focus it left) */

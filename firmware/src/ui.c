@@ -22,6 +22,8 @@ static void seq_bar(void);
 static void seq_draw(int full);
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
 
+/* the settings' rows (menu.c; GLO shows some of them: pages_ui.c glo_page) */
+enum { MR_LEDS, MR_ACCEL, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {
     uint8_t leds;                       /* the idle buttons glow: 0 off, 1 dim low, 2 dim higher */
@@ -253,7 +255,7 @@ static int panel_label(uint32_t i, char *out)
     return k > 0;
 }
 
-static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SCL", "ENV", "LFO", "EDIT", "GLO", "ARP"};
+static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "ARP"};
 
 static void view_draw(int full)                 /* whichever page is showing */
 {
