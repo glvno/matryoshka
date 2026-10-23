@@ -6,6 +6,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The tutorial has no Riff button any more: Note (a held C4) is its playback, and the intro's preview holds it too.
 - The FM-1's SEQ page hints name FX, the key that really sets accents and rests (they said ENV).
 - Factory patches: Simple FM's modulator now gets pitch and gate from the keys, and the 808 Kit's kick, snare, clap and
   tom get every gate their drum takes (both were wired to the first target only). An FM-1 picks them up on FACTORY

@@ -324,7 +324,7 @@ A cable passing an open assembly frame's border; also the three-wire look of a k
 
 ### Riff
 
-A short looped phrase the tutorial plays so the learner can hear the patch.
+A loop of notes (from a MIDI file) a tutorial step may store in the course. The course still validates and saves it, but nothing plays it: the tutorial has no Riff button ([D-663](tutorial.md#D-663)).
 
 ### Row
 

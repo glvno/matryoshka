@@ -20,8 +20,6 @@ export default defineConfig({
   // index.html's link previews name the published address (src/site.ts), never the address it is served from
   plugins: [lessonEditor(), branchFirmware(), { name: 'site-url', transformIndexHtml: { order: 'pre', handler: (html: string) => html.replaceAll('%SITE_URL%', SITE_URL) } }],
   define: { __BUILD__: JSON.stringify(buildSha()) },
-  // the tutorial's built-in riff is a MIDI file, imported as bytes (`?inline`)
-  assetsInclude: ['**/*.mid'],
   build: { target: 'es2022' },
   // stored share links (functions/, src/share-store.ts) in dev: `npm run api` serves them on 8788 (else storing fails and
   // the share sheet falls back to a link without the layout)

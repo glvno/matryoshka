@@ -100,11 +100,11 @@ export interface StepData {
   /** a later step of the chapter undoes this one's state: not re-checked afterwards */
   superseded?: boolean;
   parts?: Part[];
-  /** a Continue step shows Note / Riff */
+  /** a Continue step shows the playback buttons (Note) */
   playback?: boolean;
   /** a Continue step's highlight */
   pointer?: Pointer;
-  /** what the Riff button loops on this step (from a MIDI file); absent = the built-in riff */
+  /** a loop from a MIDI file, kept from the removed Riff button (D-663): still validated and saved, never played */
   riff?: Riff;
 }
 
