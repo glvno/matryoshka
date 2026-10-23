@@ -488,6 +488,14 @@ int main(void)
             int32_t v = eng_get_param(pg->mod[0], pg->par[0]);
             enc(2, 3);
             check("K1 there: the row's first page", eng_get_param(pg->mod[0], pg->par[0]) != v && page == PAGE_ENV);
+            {
+                char want[40];
+                uint32_t dn = pg_dev[pg_cur_dev].nlen < 8u ? pg_dev[pg_cur_dev].nlen : 8u;
+                caps(want, pg_dev[pg_cur_dev].name, dn, dn);
+                printf("      (the bar: \"%s\")\n", msg_text);
+                check("its bar: the device, \": \", the row's name, the value (26 characters at most)",
+                      !strncmp(msg_text, want, dn) && strstr(msg_text, ": ") && str_len(msg_text) <= 26u);
+            }
             enc(2, -3);
         }
         tap(3);

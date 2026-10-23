@@ -1351,24 +1351,33 @@ static void env_open(void)
     env_first = pg_cur_dev >= ENV_ROWS ? pg_cur_dev + 1u - ENV_ROWS : 0u;
 }
 
-/* K turned on the environment: its row and value in the top bar for a second */
+/* K turned on the environment: "DEVICE: ROW VALUE" in the top bar for a second. The bar takes 26 characters: the value
+ * whole (up to 14), the device's name cut to 8 when both names do not fit, the row's name to what is left, and a short
+ * row name leaves the device more */
 static void env_knob_msg(uint32_t k)
 {
     const ppage_t *pg = pages_now();
-    char m[40], num[20], unit[8], *q = m;
-    uint32_t base, live;
+    const pdev_t *dv = &pg_dev[pg_cur_dev];
+    char m[40], num[20], unit[8], val[30], *q;
+    uint32_t base, live, room, d, r;
     if (!pg || k >= pg->nrows)
         return;
     row_show(pg, k, num, unit, 100, &base, &live);
-    *q++ = 'K';
-    *q++ = (char)('1' + k);
-    *q++ = ' ';
-    caps(q, pg->lab[k], pg->llen[k], 14);
-    q += str_len(q);
-    *q++ = ' ';
-    q = put(q, num);
+    q = put(val, num);
     if (unit[0])
         q = put(put(q, " "), unit);
+    *q = 0;
+    if (str_len(val) > 14u)
+        val[14] = 0;
+    room = 26u - 3u - str_len(val);                    /* (": " and " ") */
+    d = dv->nlen < 8u ? dv->nlen : 8u;
+    r = pg->llen[k] < room - d ? pg->llen[k] : room - d;
+    d = dv->nlen < room - r ? dv->nlen : room - r;
+    caps(m, dv->name, d, d);
+    q = put(m + str_len(m), ": ");
+    caps(q, pg->lab[k], r, r);
+    q = put(q + str_len(q), " ");
+    q = put(q, val);
     *q = 0;
     ui_msg(m, 1000);
 }
