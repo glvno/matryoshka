@@ -963,6 +963,7 @@ int main(void)
         tap(BTN_OCT_DOWN);
         panel_held &= ~(1u << BTN_ACC);
         check("FX held + OCT- on the roll: the keys' octave (not the page)", octave == -1 && seq_pg == 0u);
+        check("the octave message ends after its number (it showed a stray character)", !strcmp(msg_text, "OCTAVE -1"));
         lo0 = seq_roll_lo;
         panel_held |= 1u << BTN_SEL;
         panel_keys(1u << 5);                                /* A#2 at octave -1 (out of the window) */

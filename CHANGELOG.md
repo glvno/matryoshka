@@ -6,6 +6,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The FM-1's OCTAVE message no longer shows a stray character after the number.
 - FM-1: the battery in the top right corner of the screen: 0 to 3 bars, a bolt while a computer powers it over USB, and
   LOW BATTERY in the top bar once when it runs low. MENU > SYSTEM > BATTERY shows the reading behind it. The thresholds
   are the stock firmware's (via Felucca) and are still to be checked on a real FM-1 (#240).
