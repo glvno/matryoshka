@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- A new community patch, **Sol 29N**, recalls the Elta Music Solar 42N: two banks of detuned saws drone from the start
+  (FX and LFO switch them), a noise voice in sample & hold bursts (EDIT), a keyboard voice with a sub and a 5-step line
+  on PLAY, through drive, two band-pass filters swept together, a long reverb and a ping-pong delay. It plays on the FM-1.
+
 ## 1.2.1 — 2026-10-23
 
 - **Return to official V15** on an FM-1 whose boot code is not V15's (the FM-1 shows "update failed -5") now says so in
