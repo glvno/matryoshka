@@ -362,13 +362,13 @@ int main(void)
         lcd_px = 0;
         enc(1, 1);                                          /* ALGO */
         check("ALGO: the device's next page, the editor told", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1);
-        check("ALGO: its title toast on blue, in the bar of K2 or K3 or the foot band", fb_has(P_CARD_PAGE)
+        check("ALGO: its title toast on blue, in its fixed rectangle", px(TTL_X + 4u, TTL_Y + 2u) == P_CARD_PAGE
               && on_screen(pg_ttl_t) && pg_ttl_scr != 0u);
         check("ALGO: no card (the strip and the bars stay the page's)", px(4, 4) != P_CARD_PAGE && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
         printf("      LCD pixels for one ALGO click: the title %u, the rows' type %u, the page %u (a whole page %u; before #298:"
                " the card 57,600, then the page 400 ms later)\n", stop_px[0], stop_px[5], lcd_px, page_px);
-        check("one ALGO click: the title within 4,000 px (5 ms at 750 px/ms), the rows' type within 26,000 (35 ms)",
-              stop_n >= 6u && stop_px[0] < 4000u && stop_px[5] < 26000u);
+        check("one ALGO click: the title its rectangle alone (4,400 px, 6 ms at 750 px/ms), the rows' type within 30,400 (41 ms)",
+              stop_n >= 6u && stop_px[0] == TTL_W * TTL_H && stop_px[5] < 30400u);
         check("one ALGO click: the page complete under 55 % of a whole page's pixels (nothing cleared first)",
               lcd_px * 100u < page_px * 55u);
         snap_to(getenv("PANEL_SNAP_PAGECARD"));
@@ -382,7 +382,7 @@ int main(void)
         lcd_px = lcd_xfers = 0;
         enc(1, 1);
         printf("      LCD pixels for an ALGO click while the next one waits: %u\n", lcd_px);
-        check("ALGO turning fast: only the toast drawn (under 4,000 px), its title the new page's", lcd_px < 4000u
+        check("ALGO turning fast: only the toast's rectangle drawn, its title the new page's", lcd_px == TTL_W * TTL_H
               && pg_cur_page == 0 && on_screen(pg_ttl_t) && pg_algo_due && ui_dirty);
         stop_answer = 0;
         loop();                                             /* it stops: the page */
@@ -395,7 +395,7 @@ int main(void)
         lcd_px = 0;
         later(700);
         check("600 ms after the last click: the toast gone, only its rectangle redrawn", !fb_has(P_CARD_PAGE)
-              && lcd_px < 4000u && pg_ttl_scr == 0u);
+              && lcd_px == TTL_W * TTL_H && pg_ttl_scr == 0u);
         memcpy(staged, fb, sizeof staged);
         ui_dirty = 2;
         loop();
@@ -2020,7 +2020,7 @@ int main(void)
         enc(6, 1);
         printf("      LCD pixels for a PRESET click while the next one waits: %u\n", lcd_px);
         check("PRESET turning fast: the next name, only the toast drawn", cur_preset == 0 && !strcmp(patch_label, "ORACLE V")
-              && on_screen("ORACLE V") && lcd_px < 4000u);
+              && on_screen("ORACLE V") && lcd_px == TTL_W * TTL_H);
         stop_answer = 0;
         loop();
         pages_waiting = 0;
@@ -2439,9 +2439,77 @@ int main(void)
     }
 
     lcd_sync();
-    {   /* #298: on every page of every factory patch, the title toast covers no type of the page (the screen's texts as
-         * the renderers list them, screen_text.h) and holds its own whole */
-        uint32_t p, d, g, i, pages = 0, foot = 0, hit = 0, own = 0;
+    {   /* #298 follow-up: K1..K4 turned in steps both ways, slow and fast, across every page of every factory patch (the
+         * values crossing the name and value, the live tick, the hue's edge), with and without the audio's blocks between
+         * the clicks and the ten-a-second tick pass: the screen after the bars' redraws in place is the screen drawn whole,
+         * pixel for pixel (the owner saw thin ivory stripes left in the bars on 1.3.0-dev) */
+        static uint16_t inc[240 * 240];
+        static const int32_t TURN[] = {1, 1, 1, -1, -1, 3, -2, 5, 5, -5, 1, -1, 12, -12, 30, -30, 2, -7, 1, 1};
+        static int32_t al[128], ar[128];
+        uint32_t p, d, g, k, t, i, n, bad = 0, runs = 0, worst = 0, mode, clicks = 0;
+        uint64_t click_px = 0;
+        uint8_t accel_was = cfg.accel;
+        sb_on = 0;
+        page = 0;
+        cfg.accel = 1;
+        for (mode = 0; mode < 3u; mode++)                   /* 0: no audio between clicks, 1: a block before each, 2: some */
+            for (p = 0; p < N_PRESETS; p++) {
+                if (load_at(p))
+                    continue;
+                pv_gen++;
+                screen_idle();
+                for (d = 0; d < pg_ndev; d++)
+                    for (g = 0; g < pg_dev[d].npg; g++) {
+                        (void)pages_focus(d, g);
+                        ui_dirty = 2;
+                        loop();
+                        for (k = 0; k < pg_page[pg_dev[d].pg0 + g].nrows; k++) {
+                            for (t = 0; t < sizeof TURN / sizeof TURN[0]; t++) {
+                                if (mode == 1u || (mode == 2u && t % 3u != 2u))
+                                    eng_render(al, ar, 128);
+                                fm1_ms += (t & 4u) ? 10u : 150u;  /* (fast: within 80 ms, five steps a click) */
+                                lcd_px = 0;
+                                enc(2u + k, TURN[t]);
+                                click_px += lcd_px;
+                                clicks++;
+                                if (mode == 2u && t % 5u == 4u)
+                                    later(120);             /* (the live ticks' pass) */
+                                if (t != 9u && t + 1u != sizeof TURN / sizeof TURN[0])
+                                    continue;
+                                later(120);                 /* (the other rows' live ticks follow the audio) */
+                                memcpy(inc, fb, sizeof inc);
+                                ui_dirty = 2;
+                                loop();
+                                runs++;
+                                for (i = 0, n = 0; i < 240u * 240u; i++)
+                                    n += inc[i] != fb[i];
+                                if (n) {
+                                    if (bad < 6u) {
+                                        for (i = 0; inc[i] == fb[i]; i++)
+                                            ;
+                                        printf("      (%s device %u page %u K%u, audio %u: %u px differ, the first at %u,%u: %#06x, drawn"
+                                               " whole %#06x)\n", PRESET_LIST[p].name, d, g, k + 1u, mode, n, i % 240u, i / 240u, inc[i], fb[i]);
+                                    }
+                                    bad++;
+                                    worst = n > worst ? n : worst;
+                                }
+                            }
+                        }
+                    }
+            }
+        printf("      knob turns: %u compared on %u factory patches, %u differ (worst %u px); %u LCD px a click on average\n",
+               runs, (unsigned)N_PRESETS, bad, worst, (unsigned)(click_px / (clicks ? clicks : 1u)));
+        check("K1..K4 turned on every factory page: the bars moved in place are the screen drawn whole, pixel for pixel",
+              runs > 1000u && bad == 0u);
+        cfg.accel = accel_was;
+    }
+    {   /* #298 follow-up: the title toast is one fixed rectangle. On every page of every factory patch, SELECT's and ALGO's
+         * toasts (and PRESET's on each patch's first page) change exactly the pixels of TTL_X, TTL_Y, TTL_W x TTL_H (its
+         * corners excepted), hold their title whole; when it goes, only that rectangle is drawn, and the screen is then
+         * the page drawn whole, pixel for pixel */
+        static uint16_t plain[240 * 240], left[240 * 240];
+        uint32_t p, d, g, i, kind, toasts = 0, moved = 0, outside = 0, own = 0, leave_bad = 0, leave_out = 0, leave_px = 0,
+                 x0 = 240, y0 = 240, x1 = 0, y1 = 0, longest = 0, cut = 0;
         sb_on = 0;
         page = 0;
         for (p = 0; p < N_PRESETS; p++) {
@@ -2450,39 +2518,86 @@ int main(void)
             pv_gen++;
             screen_idle();
             for (d = 0; d < pg_ndev; d++)
-                for (g = 0; g < pg_dev[d].npg; g++) {
-                    uint32_t x0, y0, x1, y1;
-                    (void)pages_focus(d, g);
-                    ui_dirty = 2;                           /* the page alone: its texts */
-                    loop();
-                    pages_title(TT_PAGE);
-                    pages++;
-                    if (pg_ttl_k == TTL_FOOT) {
-                        foot++;
-                        continue;
-                    }
-                    x0 = BAR_X + pg_ttl_x;
-                    x1 = x0 + pg_ttl_w;
-                    y0 = ROWS_Y + pg_ttl_k * (ROW_H + ROW_GAP) + TTL_DY;
-                    y1 = y0 + TTL_H;
-                    for (i = 0; i < SCR_N; i++)
-                        if (scr_meets(&scr_text[i], x0, y0, x1 - x0, y1 - y0)) {
-                            if (!hit)
-                                printf("      covered: %s, device %u page %u: \"%s\"\n", PRESET_LIST[p].name, d, g, scr_text[i].s);
-                            hit++;
+                for (g = 0; g < pg_dev[d].npg; g++)
+                    for (kind = TT_DEV; kind <= TT_PATCH; kind++) {
+                        uint32_t bx0 = 240, by0 = 240, bx1 = 0, by1 = 0, w;
+                        if (kind == TT_PATCH && (d != pages_home() || g != 0u))
+                            continue;
+                        (void)pages_focus(d, g);
+                        ui_dirty = 2;                       /* the page alone */
+                        loop();
+                        memcpy(plain, fb, sizeof plain);
+                        pages_title(kind);                  /* its toast, drawn as a click draws it */
+                        ui_dirty = 1;
+                        loop();
+                        toasts++;
+                        w = text_w(&FONT_M, pg_ttl_t, -1) + (pg_ttl_i[0] ? 8u + text_w(&FONT_S, pg_ttl_i, -1) : 0u);
+                        longest = w > longest ? w : longest;
+                        {                                   /* its title as long as the name (not cut to fit) */
+                            const ppage_t *pp = &pg_page[pg_dev[d].pg0 + g];
+                            uint32_t want = kind == TT_PATCH ? (uint32_t)strlen(patch_label)
+                                          : kind == TT_DEV ? (pg_dev[d].nlen < 16u ? pg_dev[d].nlen : 16u)
+                                          : (pages_unheaded(pp, &pg_dev[d]) ? 4u : pp->nlen < 16u ? pp->nlen : 16u)
+                                            + (pp->parts > 1u ? 4u + (pp->part + 1u >= 10u) + (pp->parts >= 10u) : 0u);
+                            if (strlen(pg_ttl_t) != (want > 24u ? 24u : want)) {
+                                if (!cut)
+                                    printf("      (cut: \"%s\")\n", pg_ttl_t);
+                                cut++;
+                            }
                         }
-                    ui_dirty = 2;                           /* with it: its title inside it */
-                    loop();
-                    for (i = 0; i < SCR_N; i++)
-                        if (scr_text[i].w && !strcmp(scr_text[i].s, pg_ttl_t) && scr_text[i].x >= x0 && scr_text[i].x + scr_text[i].w <= x1
-                            && scr_text[i].y >= y0 && scr_text[i].y + scr_text[i].h <= y1)
-                            own++;
-                    ttl_end();
-                }
+                        for (i = 0; i < 240u * 240u; i++)
+                            if (plain[i] != fb[i]) {
+                                uint32_t x = i % 240u, y = i / 240u;
+                                bx0 = x < bx0 ? x : bx0;
+                                by0 = y < by0 ? y : by0;
+                                bx1 = x + 1u > bx1 ? x + 1u : bx1;
+                                by1 = y + 1u > by1 ? y + 1u : by1;
+                                outside += x < TTL_X || x >= TTL_X + TTL_W || y < TTL_Y || y >= TTL_Y + TTL_H;
+                            }
+                        if (toasts == 1u) {
+                            x0 = bx0;
+                            y0 = by0;
+                            x1 = bx1;
+                            y1 = by1;
+                        } else if (bx0 != x0 || by0 != y0 || bx1 != x1 || by1 != y1) {
+                            if (!moved)
+                                printf("      (moved: %s device %u page %u kind %u: %u,%u..%u,%u)\n", PRESET_LIST[p].name, d, g, kind,
+                                       bx0, by0, bx1, by1);
+                            moved++;
+                        }
+                        for (i = 0; i < SCR_N; i++)
+                            if (scr_text[i].w && !strcmp(scr_text[i].s, pg_ttl_t) && scr_text[i].x >= TTL_X
+                                && scr_text[i].x + scr_text[i].w <= TTL_X + TTL_W && scr_text[i].y >= TTL_Y
+                                && scr_text[i].y + scr_text[i].h <= TTL_Y + TTL_H)
+                                own++;
+                        fb_watch_reset();                   /* it goes: its rectangle alone */
+                        lcd_px = 0;
+                        later(kind == TT_PATCH ? 1100u : 700u);
+                        leave_px = lcd_px > leave_px ? lcd_px : leave_px;
+                        leave_out += fb_changed_in(0, 0, 240, TTL_Y) + fb_changed_in(0, TTL_Y + TTL_H, 240, 240)
+                                     + fb_changed_in(0, TTL_Y, TTL_X, TTL_Y + TTL_H) + fb_changed_in(TTL_X + TTL_W, TTL_Y, 240, TTL_Y + TTL_H);
+                        memcpy(left, fb, sizeof left);
+                        ui_dirty = 2;
+                        loop();
+                        for (i = 0; i < 240u * 240u; i++)
+                            if (left[i] != fb[i]) {
+                                if (!leave_bad)
+                                    printf("      (left behind: %s device %u page %u kind %u at %u,%u)\n", PRESET_LIST[p].name, d, g,
+                                           kind, i % 240u, i / 240u);
+                                leave_bad++;
+                            }
+                    }
         }
-        printf("      title toasts: %u pages of %u factory patches, %u in the foot band\n", pages, (unsigned)N_PRESETS, foot);
-        check("the title toast covers no text of any factory page, and holds its title whole", pages > 50u && hit == 0u
-              && own == pages - foot);
+        printf("      title toasts: %u on %u factory patches, all at %u,%u %ux%u (TTL %u,%u %ux%u); the widest title and count %u px;"
+               " a toast leaving: at most %u LCD px\n", toasts, (unsigned)N_PRESETS, x0, y0, x1 - x0, y1 - y0, TTL_X, TTL_Y, TTL_W,
+               TTL_H, longest, leave_px);
+        check("the title toast: the same rectangle on every page of every factory patch, nothing outside it changed",
+              toasts > 600u && moved == 0u && outside == 0u && x0 == TTL_X && y0 == TTL_Y && x1 == TTL_X + TTL_W
+              && y1 == TTL_Y + TTL_H);
+        check("the title toast holds its title whole, and every factory title fits it uncut", own == toasts
+              && cut == 0u);
+        check("the toast gone: only its rectangle drawn, the screen then the page drawn whole, pixel for pixel",
+              leave_out == 0u && leave_bad == 0u && leave_px <= TTL_W * TTL_H);
     }
     check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
           lcd_line_clobbers == 0u);
