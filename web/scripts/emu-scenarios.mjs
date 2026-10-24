@@ -137,6 +137,17 @@ class RigTarget extends Target {
   async peak() { return (await this.page.evaluate(() => window.__rig.peak())).peak; }
   async snap(name) { writeFileSync(join(OUT, `${name}.json`), JSON.stringify(await this.screen(), null, 1)); }
   quit() {}
+  /** back to the device page from wherever the FM-1 was left (the menu, GLO, SEQ, the environment, a preset list): HOME taps,
+   *  one step back each, reading the screen between; false after `tries` */
+  async home(tries = 6) {
+    for (let i = 0; i <= tries; i++) {
+      const h = await this.screen();
+      if (h.booting) { await sleep(500); continue; }
+      if (h.page === 0) return true;
+      if (i < tries) { await this.tap(B.home); await sleep(300); }
+    }
+    return false;
+  }
 }
 
 /** m1emu serve: one command line out, one answer line back (serve.rs) */
@@ -316,6 +327,10 @@ async function main() {
       await rp.evaluate((x) => window.__rig.pick(x), pair);
     }
     emu = new RigTarget(rp);
+    // a known start: the device page (the owner's rig was once left on HOME held's SYSTEM page, and every check failed)
+    if (!(await emu.home())) throw new Error(`the FM-1 did not come back to its device page with HOME (screen page ${(await emu.screen()).page}): bring it there by hand and run again`);
+    // MASTER does not matter to the checks (TEST_PEAK reads before it), but say so when nothing can be heard
+    if ((await rp.evaluate(() => window.__rig.peak())).masterDown) console.log('  note: MASTER is all the way down: the checks do not depend on it, but you will hear nothing');
   } else {
     await context.addInitScript(FILTER_MIDI, { name: PORT_NAME });
   }

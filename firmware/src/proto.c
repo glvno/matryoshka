@@ -25,8 +25,9 @@
  *   static int  m1_test_turn(uint32_t enc, int32_t clicks);     an encoder turned (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET); 0 = ok
  *   static uint32_t m1_test_screen(uint32_t k, uint8_t *out);   the screen as text: k 0xFF its head (count, page, flags), else
  *                                                               text k (x, y, w, h, n, n characters); the bytes written, 0 = none
- *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit) since the last call, bit 16 the engine
- *                                                               runs, bit 17 the sound is muted (sandbox mode)
+ *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit, before MASTER) since the last call, bit
+ *                                                               16 the engine runs, 17 the sound is muted (sandbox mode), 18 MASTER
+ *                                                               is all the way down
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"

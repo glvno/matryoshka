@@ -132,7 +132,7 @@ const rig = {
   /** the screen as text: the head, then the texts in reading order */
   screen: (): Promise<ScreenHead & { texts: ScreenText[] }> => retry(screenOnce),
   /** the output's peak (16 bit) since the last call */
-  async peak(): Promise<{ peak: number; running: boolean; muted: boolean }> {
+  async peak(): Promise<{ peak: number; running: boolean; muted: boolean; masterDown: boolean }> {
     return parsePeak(await retry(() => ask(testPeakFrame(), (p) => p.cmd === CMD.peak, 2000)))!;
   },
 };
