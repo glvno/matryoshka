@@ -2,7 +2,8 @@
 /* Host test of the update check in ota.c (ota_stage, steps 1-2): the device side of an update session run against the
  * real packages, with a simulated flash and a simulated host answering its read requests. Covers the size check and
  * the head check, including Matryoshka's change for M-VAVE Official Open (#183): a shorter flash.bin passes only with
- * M-VAVE's loader and a head equal to the device's; the head is never replaced by another.
+ * M-VAVE's loader and a head equal to the device's; the head is never replaced by another. Also the head read (cmd 0x12,
+ * #264) that tells a host which head the device has.
  *   tools/ota_test.sh */
 #include <stdint.h>
 #include <stdio.h>
@@ -17,6 +18,8 @@ static uint32_t img_len;
 static uint8_t pend[700];                /* the reply waiting for ota_frame_get (7-bit bytes between F0 and F7) */
 static uint32_t pend_n, now, committed;
 static uint32_t addrs[64], naddr;
+static uint8_t head_reply[80];           /* the last cmd 0x12 answer (decoded), head_n its length */
+static uint32_t head_n;
 
 static int ota_wire_send(const uint8_t *p, uint32_t n);
 static int ota_frame_get(const uint8_t **p, uint32_t *n) { if (!pend_n) return 0; *p = pend; *n = pend_n; return 1; }
@@ -46,8 +49,13 @@ static void ota_commit(const uint8_t *parm) { (void)parm; committed = 1; }
 /* the host: answers a read request (cmd 0x30) from the image, the check step's finish address with "success" */
 static int ota_wire_send(const uint8_t *p, uint32_t n)
 {
-    uint8_t m[64], r[540];
+    uint8_t m[96], r[540];
     uint32_t d = ota_unpack7(p + 1, n - 2u, m, sizeof m), addr, len, i, s = 0;
+    if (d <= sizeof head_reply && d >= 7u && m[2] == 0x12) {
+        memcpy(head_reply, m, d);
+        head_n = d;
+        return 0;
+    }
     if (d < 15u || m[2] != 0x30)
         return 0;
     addr = ota_rd32(m + 7);
@@ -161,6 +169,36 @@ static void run(const char *what, uint8_t *im, uint32_t n, const uint8_t *head, 
     printf("ok   %s: %s\n", what, rc ? (rc == -5 ? "refused (-5), nothing erased" : "refused (-15), nothing erased") : "staged and committed");
 }
 
+/* the host asks for 64 bytes of the head at `off` (cmd 0x12); -> 1 if it got exactly those bytes, 0 if no answer */
+static int head_read(uint32_t off)
+{
+    uint8_t q[9] = {0, 0x59, 0x12, 2, 0, 0, (uint8_t)off, (uint8_t)(off >> 8), 0}, s;
+    s = (uint8_t)~(q[6] + q[7]);
+    q[8] = s;
+    pend_n = ota_pack7(q, 9, pend);
+    head_n = 0;
+    ota_service();
+    if (!head_n)
+        return 0;
+    return head_n == 73u && ota_rd24(head_reply + 3) == 66u && ota_rd16(head_reply + 6) == off &&
+           !memcmp(head_reply + 8, flash + off, 64);
+}
+
+static void head_reads(const uint8_t *head)
+{
+    uint32_t off, all = 1;
+    memset(flash, 0xFF, sizeof flash);
+    memcpy(flash, head, 0x4000);
+    for (off = 0; off < 0x4000u; off += 64u)
+        all &= (uint32_t)head_read(off);
+    if (!all || head_read(0x4000u) || head_read(0x20u) || head_read(0xFFC0u)) {
+        printf("FAIL head read: %s\n", all ? "answered outside the head or off the 64-byte grid" : "wrong bytes");
+        fails++;
+        return;
+    }
+    printf("ok   head read: the whole head, nothing outside it\n");
+}
+
 int main(int argc, char **argv)
 {
     static uint8_t v15_head[0x4000], open_head[0x4000], other_head[0x4000], mat_head[0x4000];
@@ -205,6 +243,7 @@ int main(int argc, char **argv)
     run("Open (V12 size) over Open's head", open12, vn, open_head, 0);
     run("Open over V15's head", open14, vn, v15_head, -5);
     run("Open over another head", open14, vn, other_head, -5);
+    head_reads(v15_head);
     if (!fails)
         printf("ota test passed\n");
     return fails ? 1 : 0;

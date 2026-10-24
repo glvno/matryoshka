@@ -29,21 +29,32 @@ const ROM_BOOT =
 /** M-VAVE's own web page, which installs the V15 from Official Open (that rewrites the start-up part: M-VAVE's call) */
 export const MVAVE_WORKBENCH = 'https://open.m-vave.com/fm1-workbench';
 
-/** #183: the running firmware refused the official V15 because its start-up part differs from the package's
- *  (fm1ota.js bootMismatch). The only other one known is Official Open's: restore that; from Official Open, M-VAVE's
- *  own Workbench goes back to V15. */
+/** #183: the running firmware refused an M-VAVE package because its start-up part differs from the package's
+ *  (fm1ota.js bootMismatch). Firmware before Matryoshka 1.3 cannot tell which one it has (#264), so this does not guess. */
 export const BOOT_CODE_HELP =
-  `Nothing was changed: the FM-1 refused the official V15 (its screen says "update failed -5"), because ${STARTUP} is not ` +
-  "V15's. It still runs its firmware. Most likely it was set up by M-VAVE's Official Open. Two safe ways on: keep " +
-  `Matryoshka, or put Official Open back with Restore Official Open below (M-VAVE's file: ${OPEN_RELEASES}). If you ` +
-  `then want V15, use M-VAVE's own Workbench (${MVAVE_WORKBENCH}) while the FM-1 runs Official Open. ${ROM_BOOT}`;
+  `Nothing was changed: the FM-1 refused this package (its screen says "update failed -5"), because ${STARTUP} is not ` +
+  'the one inside it. It still runs its firmware. Which one it has could not be read: install the current Matryoshka, ' +
+  'then try again, and this page will say which one it is.';
 
-/** the reverse: Official Open refused, so the FM-1 most likely has V15's start-up part */
-export const BOOT_CODE_HELP_OPEN =
-  `Nothing was changed: the FM-1 refused Official Open (its screen says "update failed -5"), because ${STARTUP} is not ` +
-  "Official Open's. It still runs its firmware. Most likely it came with V15's (from the factory, or after Return to " +
-  "official V15): use Return to official V15 instead. To get Official Open on it, install Open with M-VAVE's own " +
-  'Workbench while the FM-1 runs V15.';
+/** #264, read before sending: the FM-1 has Official Open's start-up part, the package is the V15. Restore Official Open;
+ *  from Official Open, M-VAVE's own Workbench goes back to V15. */
+export const BOOT_CODE_IS_OPEN =
+  `Nothing was sent: ${STARTUP} is Official Open's, and the official V15 carries a different one, so the FM-1 would ` +
+  'refuse it ("update failed -5"). Two safe ways on: keep Matryoshka, or put Official Open back with Restore Official ' +
+  `Open below (M-VAVE's file: ${OPEN_RELEASES}). If you then want V15, use M-VAVE's own Workbench ` +
+  `(${MVAVE_WORKBENCH}) while the FM-1 runs Official Open. ${ROM_BOOT}`;
+
+/** the reverse: the FM-1 has V15's start-up part, the package is Official Open */
+export const BOOT_CODE_IS_V15 =
+  `Nothing was sent: ${STARTUP} is V15's, and Official Open carries a different one, so the FM-1 would refuse it ` +
+  '("update failed -5"). Use Return to official V15 instead. To get Official Open on it, install Open with ' +
+  "M-VAVE's own Workbench while the FM-1 runs V15.";
+
+/** neither known start-up part: nothing of M-VAVE's may be written over it; we want to see it */
+export const BOOT_CODE_IS_OTHER =
+  `Nothing was sent: ${STARTUP} is neither V15's nor Official Open's, so the FM-1 would refuse both M-VAVE packages ` +
+  '("update failed -5"). Keep Matryoshka. Please report it at https://github.com/glvno/matryoshka/issues with the ' +
+  'code below; "tools/fm1_install.py --info --save-head boot.bin" saves the start-up part to a file to attach.';
 
 const ERRORS: Record<string, string> = {
   notfound: 'FM-1 not found. Check the USB data cable and close other apps that use the MIDI port.',
@@ -57,7 +68,9 @@ const ERRORS: Record<string, string> = {
   phase: 'The device asked to finish a step other than the one running. Nothing more was sent.',
   felucca: 'Nothing was sent. Read the note above Install, tick its box and press Install again.',
   bootcode: BOOT_CODE_HELP,
-  'bootcode-open': BOOT_CODE_HELP_OPEN,
+  'bootcode-is-open': BOOT_CODE_IS_OPEN,
+  'bootcode-is-v15': BOOT_CODE_IS_V15,
+  'bootcode-is-other': BOOT_CODE_IS_OTHER,
 };
 
 /** an interrupted write can only be finished with a package the waiting loader may write (fm1ota.js loaderFits) */

@@ -4,6 +4,8 @@
  *
  * The updater talks SysEx (F0 pack7(00 59 cmd len24 body chk) F7):
  *   cmd 0x11  handshake -> we answer our package identity (FELUCCA_ID)
+ *   cmd 0x12  (Matryoshka change, #264) body: offset (2 bytes, a multiple of 64 below 0x4000) -> we answer the offset
+ *     and 64 bytes of our head from there: read only, so a host can tell which boot code the FM-1 has before an update
  *   F0 22 24 35 7F F7  upgrade -> ota_session(): pull parts of the package
  *     with cmd 0x30 read requests, check them, stage the package's update
  *     loader at 0xE0000 (outside Felucca's store), ask 0xE0000000 ("success"),
@@ -111,10 +113,10 @@ static uint32_t ota_unpack7(const uint8_t *in, uint32_t n, uint8_t *out, uint32_
     return o;
 }
 
-static uint8_t ota_msg[8 + 32], ota_wire[2 + 48];
+static uint8_t ota_msg[8 + 66], ota_wire[2 + 84];   /* Matryoshka (#264): 66-byte bodies (was 32) */
 static uint8_t ota_dec[OTA_FRAME_MAX] __attribute__((section(".pool")));   /* decoded host message */
 
-static int ota_send_msg(uint32_t cmd, const uint8_t *body, uint32_t n)   /* n <= 32 */
+static int ota_send_msg(uint32_t cmd, const uint8_t *body, uint32_t n)   /* n <= 66 */
 {
     uint32_t i, s = 0, w;
     ota_msg[0] = 0;
@@ -162,12 +164,25 @@ static uint32_t ota_take(void)
     return d;
 }
 
-/* main loop, outside a session: answer handshakes */
+/* Matryoshka change (#264): 64 bytes of the head (flash 0x0000-0x3FFF) for a host; nothing else is readable */
+static void ota_reply_head(void)
+{
+    uint8_t r[66];
+    uint32_t off = ota_rd16(ota_dec + 6);
+    if ((off & 63u) || off >= 0x4000u || ota_fread(off, r + 2, 64))
+        return;
+    ota_wr16(r, off);
+    ota_send_msg(0x12, r, sizeof r);
+}
+
+/* main loop, outside a session: answer handshakes (and head reads) */
 static void ota_service(void)
 {
     uint32_t d = ota_take();
     if (d == 7u && ota_dec[2] == 0x11)
         ota_reply_identity();
+    if (d == 9u && ota_dec[2] == 0x12)
+        ota_reply_head();
 }
 
 /* one read request (3 tries x 5 s); data -> dst */

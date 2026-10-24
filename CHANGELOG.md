@@ -11,6 +11,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   own file (its Workbench page or `.fwsc`); from there, M-VAVE's Workbench goes back to V15. Official Open does not come
   with Matryoshka: it includes M-VAVE's own sound engine, which is not open source. Needs this firmware.
 - A cut-off return to stock is finished only with the package it was writing (V15 or Official Open).
+- Before it sends the official V15 or Official Open, the Install panel and `tools/fm1_install.py` read the FM-1's
+  start-up software (its boot code) and say which one it has: V15's, Official Open's, or neither. A package the FM-1
+  would refuse is not sent. `fm1_install.py --info` shows it, and `--save-head FILE` saves it for a bug report. Needs
+  this firmware.
 
 ## 1.2.2 — 2026-10-24
 

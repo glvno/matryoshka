@@ -15,7 +15,9 @@ the FM-1 restarts and the installed identity is checked.
                                       for an FM-1 set up by Official Open, #183; not shipped with Matryoshka:
                                       it includes M-VAVE's own sound engine, which is not open source, so
                                       download it from https://github.com/m-vave/fm1_open/releases)
-  fm1_install.py --info [--port NAME]
+  fm1_install.py --info [--port NAME] [--save-head FILE]
+                                      (--info also names the FM-1's boot code: V15's, Official Open's or another;
+                                      --save-head writes it, flash 0x0000-0x3FFF, to FILE; Matryoshka 1.3 and later)
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
 install finishes the write, when that loader may write this package. Needs mido with python-rtmidi.
@@ -25,12 +27,14 @@ Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
 loader / no restart), 6 wrong model, or another identity after the install,
 7 the FM-1 waits in an update loader that must not write this package (an
 M-VAVE loader only gets M-VAVE's packages, and only the one it was writing; a
-Felucca-type one everything else).
+Felucca-type one everything else), 8 the FM-1's boot code is not the one in this M-VAVE package (nothing was sent).
 
 M-VAVE's loader also writes the small piece of software at the start of the FM-1's memory
 that starts it when switched on (its boot code, flash 0x0000-0x3FFF), from its package, and
 V15 and Official Open carry different ones. The running firmware refuses a package whose one
-differs ("update failed -5"), so it is never replaced by another. Which package an install was
+differs ("update failed -5"), so it is never replaced by another. Matryoshka 1.3 and later also let the
+tool read the boot code (#264), so such a package is refused before anything is sent, with which boot code
+the FM-1 has. Which package an install was
 writing is kept in ~/.config/matryoshka/fm1-mvave-target until the FM-1 is back, so a cut-off
 install is finished only with the same package (--sure: you know which one it was).
 """
@@ -45,6 +49,7 @@ import time
 
 HS_QUERY = bytes([0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7])
 UPGRADE = bytes([0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7])
+HEAD_LEN, HEAD_PIECE = 0x4000, 64           # the boot code, read 64 bytes at a time (ota.c ota_reply_head, #264)
 FINISH_CHECK, FINISH_WRITE = 0xE0000000, 0xF0000000
 SUCCESS = b"success\0"
 MAXDATA = 512
@@ -66,10 +71,11 @@ PORT_RE = re.compile(r"fm-1|felucca|matryoshka|modular|ota|composite|sinco|usb-m
 # seconds; the tests shorten them
 DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0, "retry": 1.0,
          "poll": 1.0, "hs": 1.0, "idle_check": 8.0, "idle_write": 180.0,
-         "wait_loader": 30.0, "wait_reboot": 40.0, "settle": 0.6}
+         "wait_loader": 30.0, "wait_reboot": 40.0, "settle": 0.6, "head": 1.0}
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
-        "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7, "wrongtarget": 7, "whichtarget": 7}
+        "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7, "wrongtarget": 7, "whichtarget": 7,
+        "bootcode": 8}
 
 
 class InstallError(Exception):
@@ -149,6 +155,56 @@ def parse_identity(pkt):
     return Identity(txt, m[1], int(m[2])) if m else None
 
 
+def head_request(off):
+    body = bytearray([0x00, 0x59, 0x12, 2, 0, 0, off & 0xFF, off >> 8])
+    body.append(~sum(body[6:]) & 0xFF)
+    return b"\xF0" + pack7(body) + b"\xF7"
+
+
+def parse_head_piece(pkt):
+    """-> (offset, 64 bytes) or None"""
+    if len(pkt) < 2 or pkt[0] != 0xF0 or pkt[-1] != 0xF7:
+        return None
+    d = unpack7(pkt[1:-1])
+    if len(d) < 73 or d[:6] != bytes([0x00, 0x59, 0x12, 66, 0, 0]) or ~sum(d[6:72]) & 0xFF != d[72]:
+        return None
+    return int.from_bytes(d[6:8], "little"), d[8:72]
+
+
+def read_head(link, tries=2):
+    """the FM-1's boot code (flash 0x0000-0x3FFF), or None when its firmware does not answer (before Matryoshka 1.3,
+    Felucca, Sloop, stock; the update loaders)"""
+    link.drain()
+    out = bytearray()
+    for off in range(0, HEAD_LEN, HEAD_PIECE):
+        for _ in range(tries):
+            if not link.send(head_request(off)):
+                return None
+            end, got = time.monotonic() + DELAY["head"], None
+            while got is None and (left := end - time.monotonic()) > 0:
+                p = link.read(left)
+                if p is None:
+                    break
+                r = parse_head_piece(p)
+                if r and r[0] == off:
+                    got = r[1]
+            if got is not None:
+                break
+        if got is None:
+            return None
+        out += got
+    return bytes(out)
+
+
+HEAD_NAMES = {V15_HEAD_SHA256: "V15's", OPEN_HEAD_SHA256: "Official Open's"}
+
+
+def head_text(head):
+    """which boot code this is, for the terminal"""
+    sha = hashlib.sha256(head).hexdigest()
+    return HEAD_NAMES.get(sha) or f"neither V15's nor Official Open's (SHA-256 {sha})"
+
+
 # --------------------------------------------------------------- package ---
 
 def product_of(raw):
@@ -201,14 +257,27 @@ MVAVE_WORKBENCH = "https://open.m-vave.com/fm1-workbench"
 ROM_BOOT = ("As a last resort: put the FM-1 in the chip's own repair mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) "
             "and write V15's firmware part (0x4000-0x92FFF) with MvaveFM1Unbricker; that leaves the start-up part as "
             "it is. Details: https://github.com/glvno/matryoshka/issues/183")
-BOOT_MISMATCH = ("nothing was changed: the FM-1 refused the official V15 (its screen says \"update failed -5\"), because "
-                 f"{STARTUP} is not V15's. Most likely it was set up by M-VAVE's Official Open. Two safe ways on: keep "
-                 f"Matryoshka, or put Official Open back (M-VAVE's Workbench page or .fwsc from {OPEN_RELEASES}) and, if "
-                 f"you then want V15, use M-VAVE's own Workbench ({MVAVE_WORKBENCH}) while it runs Official Open. "
-                 f"{ROM_BOOT}")
-BOOT_MISMATCH_OPEN = ("nothing was changed: the FM-1 refused Official Open (its screen says \"update failed -5\"), "
-                      f"because {STARTUP} is not Official Open's. Most likely it came with V15's: return to the "
-                      "official V15 (FM-1.fwsc) instead.")
+ISSUES = "https://github.com/glvno/matryoshka/issues"
+# #264: the ways on, by the boot code the FM-1 has; a package of M-VAVE's is written only over its own boot code
+WAY_OPEN_HEAD = (f"Two safe ways on: keep Matryoshka, or put Official Open back (M-VAVE's Workbench page or .fwsc from "
+                 f"{OPEN_RELEASES}) and, if you then want V15, use M-VAVE's own Workbench ({MVAVE_WORKBENCH}) while it "
+                 f"runs Official Open. {ROM_BOOT}")
+WAY_V15_HEAD = "Return to the official V15 (FM-1.fwsc) instead."
+WAY_OTHER_HEAD = ("Neither M-VAVE package can be installed over it. Keep Matryoshka, save the boot code with "
+                  f"\"fm1_install.py --info --save-head boot.bin\" and attach it to an issue at {ISSUES}.")
+
+
+def boot_refusal(product, head=None):
+    """the message for an M-VAVE package whose boot code is not the FM-1's: head = the FM-1's, when it could be read"""
+    name = "the official V15" if product == STOCK_PRODUCT else "Official Open"
+    if head is None:     # refused by the running firmware: which boot code it has is not known here
+        return (f"nothing was changed: the FM-1 refused {name} (its screen says \"update failed -5\"), because "
+                f"{STARTUP} is not the one in this package. Which one it has could not be read: install the current "
+                "Matryoshka, then run \"fm1_install.py --info\" to see it.")
+    sha = hashlib.sha256(head).hexdigest()
+    way = WAY_OPEN_HEAD if sha == OPEN_HEAD_SHA256 else WAY_V15_HEAD if sha == V15_HEAD_SHA256 else WAY_OTHER_HEAD
+    return (f"nothing was sent: {STARTUP} is {head_text(head)}, and {name} carries a different one, so the FM-1 "
+            f"would refuse it (\"update failed -5\"). {way}")
 
 
 # ------------------------------------------------- which M-VAVE package ---
@@ -439,7 +508,7 @@ class Updater:
                                             lambda k, end: step("check", k))
         dev.link.close()
         if not finished and not lost and is_mvave(self.product) and boot_mismatch(self.addrs):
-            raise InstallError("stopped", BOOT_MISMATCH if self.product == STOCK_PRODUCT else BOOT_MISMATCH_OPEN)
+            raise InstallError("stopped", boot_refusal(self.product))
         if not finished:
             raise InstallError("lost" if lost else "stopped",
                                f"the FM-1 {'was disconnected' if lost else 'stopped answering'} after "
@@ -501,6 +570,12 @@ class Updater:
             if not was and not sure:
                 dev.link.close()
                 raise InstallError("whichtarget", WHICH_TARGET)
+        if target and not dev.id.loader:      # #264: the FM-1's boot code against the package's, before anything is sent
+            head = read_head(dev.link)
+            want = V15_HEAD_SHA256 if target == "v15" else OPEN_HEAD_SHA256
+            if head is not None and hashlib.sha256(head).hexdigest() != want:
+                dev.link.close()
+                raise InstallError("bootcode", boot_refusal(product, head))
         if target:
             remember_target(target, state)
         ota = dev if dev.id.loader else self.check(dev, image, step)
@@ -640,9 +715,23 @@ def run(a, backend, out, ask):
         dev = up.find()
         if not dev:
             raise not_found(up)
-        dev.link.close()
         mode = "update loader (update not finished)" if dev.id.loader else "running"
         print(f"{dev.id.text}  [{mode}]  port: {dev.name}", file=out)
+        head = None if dev.id.loader else read_head(dev.link)
+        dev.link.close()
+        if head is None:
+            print("boot code: not readable (needs Matryoshka 1.3 or later running)", file=out)
+            if a.save_head:
+                raise InstallError("usage", "the boot code could not be read, nothing was saved")
+            return 0
+        print(f"boot code: {head_text(head)}", file=out)
+        if a.save_head:
+            try:
+                with open(a.save_head, "wb") as f:
+                    f.write(head)
+            except OSError as e:
+                raise InstallError("usage", f"cannot write {a.save_head}: {e.strerror}")
+            print(f"saved to {a.save_head} ({len(head)} bytes)", file=out)
         return 0
     product, image, target = load_package(a.package, a.force)
     print(f"package: {product}  ({a.package})", file=out)
@@ -674,6 +763,7 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("package", nargs="?", help="Felucca package (.fwsc)")
     ap.add_argument("--info", action="store_true", help="print the identity of the connected FM-1")
+    ap.add_argument("--save-head", metavar="FILE", help="with --info: write the FM-1's boot code (0x0000-0x3FFF) to FILE")
     ap.add_argument("--port", metavar="NAME", help="MIDI port to use (part of its name)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
@@ -682,6 +772,8 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     a = ap.parse_args(argv)
     if bool(a.info) == bool(a.package):
         ap.error("give a PACKAGE.fwsc or --info")
+    if a.save_head and not a.info:
+        ap.error("--save-head goes with --info")
     try:
         if backend is None:
             try:
