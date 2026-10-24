@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **The FM-1's battery mark sits on the top bar's colour:** on the sandbox page's gold bar, GLO's coral, ENV's lilac,
+  the preset list's gold, a Page button list's sea, the SELECT / ALGO cards and every message, the battery's corner
+  takes the bar's colour instead of staying a dark square, and its outline and bars turn dark (or light on the cards)
+  so they still read. Host-tested only.
 - **Less work per block in the FM-1 firmware, the same sound:** the engine stops redoing work that only changes when a
   setting does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output
   is bit for bit the same. On the CPU model the factory patches count about 8 % fewer cycles (up to 13 %: 8 Lire, the
