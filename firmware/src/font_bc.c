@@ -45,6 +45,7 @@ static uint32_t text_bcn(const font_t *f, uint32_t x, uint32_t y, const char *s,
         w = 240u - x;
     x0 = align == TA_RIGHT ? (tw < w ? w - tw : 0u) : align == TA_CENTER ? (tw < w ? (w - tw) / 2u : 0u) : 0u;
     text_ramp(lut, fg, bg);
+    scr_pend(x0, tw, f->h, s, n);
     for (r = 0; r < f->h; r++) {
         uint32_t px = x0;
         lcd_sync();                             /* the last row may still be on its way out of lcd_line */

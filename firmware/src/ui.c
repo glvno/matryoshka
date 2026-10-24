@@ -51,6 +51,11 @@ static uint8_t ui_full;                         /* a patch was loaded: the whole
 static uint32_t panel_held;                     /* the buttons held now, matrix ids as bits (main.c sets it from the HAL, panel.c) */
 static int32_t octave;                          /* the keys' octave shift, -3..3 (OCT- / OCT+) */
 static uint32_t msg_until;                      /* a message in the top bar (SAVED ...) until this fm1_ms */
+/* the device test mode (#291): the last fm1_ms a key or knob came over the editor link (main.c m1_test_key / m1_test_turn),
+ * 0 none. Within TEST_HOLD_MS of it the panel refuses what a script must never do: UPDATE MODE, FACTORY RESET (menu.c) */
+#define TEST_HOLD_MS 10000u
+static uint32_t test_input_ms;
+static int test_input_recent(void) { return test_input_ms && fm1_ms - test_input_ms < TEST_HOLD_MS; }
 
 static char *put(char *d, const char *s)
 {

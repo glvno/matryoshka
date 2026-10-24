@@ -842,6 +842,67 @@ static void m1_focus(uint32_t dev, uint32_t pg)
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
 static void m1_ui_rows(void) { ui_dirty = ui_dirty ? ui_dirty : 1; }   /* proto.c: the editor moved a parameter (Live) */
 
+/* The device test mode (#291): a script on the Mac drives the panel over the editor link and reads the screen and the
+ * output level, as `m1emu serve` does the emulator's. A key goes into the HAL's scan as a closed contact (fm1_input.h
+ * fm1_virt_btn / fm1_virt_note), an encoder's clicks into its steps, so both take the panel's own paths (debounce, the
+ * MIDI out, the pages). For TEST_HOLD_MS after one, the panel refuses UPDATE MODE and FACTORY RESET (menu.c). */
+static int m1_test_key(uint32_t id, int down)
+{
+    if (id >= FM1_NKEY)
+        return -1;
+    if (id < 14u)
+        fm1_virt_btn = down ? fm1_virt_btn | 1u << id : fm1_virt_btn & ~(1u << id);
+    else
+        fm1_virt_note = down ? fm1_virt_note | 1u << (id - 14u) : fm1_virt_note & ~(1u << (id - 14u));
+    test_input_ms = fm1_ms ? fm1_ms : 1u;
+    return 0;
+}
+static int m1_test_turn(uint32_t enc, int32_t clicks)
+{
+    uint32_t k;
+    if (enc >= FM1_NENC)
+        return -1;
+    k = fm1__lock();
+    fm1_virt_enc[enc] = (int16_t)(fm1_virt_enc[enc] + clicks);
+    fm1__unlock(k);
+    test_input_ms = fm1_ms ? fm1_ms : 1u;
+    return 0;
+}
+/* k 0xFF: the head (texts, the page, flags: bit 0 sandbox mode, bit 1 the boot screen), else text k (x, y, w, h, n, text) */
+static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
+{
+    static uint8_t idx[SCR_N];
+    static uint32_t n;
+    uint32_t i;
+    const scr_text_t *t;
+    if (k == 0xFFu) {
+        n = scr_list(idx);
+        out[0] = (uint8_t)n;
+        out[1] = page;
+        out[2] = (uint8_t)((sb_on ? 1u : 0u) | (booting ? 2u : 0u));
+        return 3;
+    }
+    if (k >= n)
+        return 0;
+    t = &scr_text[idx[k]];
+    out[0] = t->x;
+    out[1] = t->y;
+    out[2] = t->w;
+    out[3] = t->h;
+    for (i = 0; i < SCR_CH && t->s[i]; i++)
+        out[5u + i] = (uint8_t)t->s[i];
+    out[4] = (uint8_t)i;
+    return 5u + i;
+}
+static uint32_t m1_test_peak(void)
+{
+    uint32_t p;
+    tp_on = 1;
+    p = tp_peak;
+    tp_peak = 0;
+    return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u);
+}
+
 /* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No
  * tool of this project (nor M-VAVE's web updater) talks to that mode: jl-uboot-tool / FM-1 Transporter do. A power cycle
  * should start the firmware again (not verified). */

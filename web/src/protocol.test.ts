@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
+import { parsePeak, parseScreen, testKeyFrame, testScreenFrame, testTurnFrame, fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
 
 describe('SysEx protocol', () => {
   it('packs and unpacks every length without loss and with 7-bit bytes only', () => {
@@ -127,5 +127,22 @@ describe('sandbox mode on the wire', () => {
     expect(info([1, 64, 255, 1, 8, 246, 1]).midiOut).toBe(false);
     expect(info([1, 64, 255, 1 | 4, 8, 246]).midiOut).toBeNull();   // 1.2 firmware: it does not say
     expect(info([1, 64, 255, 1, 8, 246]).features).toBe(246);
+  });
+});
+
+describe('the device test mode on the wire (#291)', () => {
+  it('builds TEST_KEY / TEST_TURN as proto.c reads them (a negative turn as i8)', () => {
+    expect(Array.from(testKeyFrame(10, true))).toEqual([0xf0, 0x7d, 0x4d, 0x31, 0x32, ...pack7([10, 1]), 0xf7]);
+    expect(unpack7(Array.from(testTurnFrame(6, -2)).slice(5, -1))).toEqual([6, 0xfe]);
+    expect(unpack7(Array.from(testTurnFrame(2, 500)).slice(5, -1))).toEqual([2, 127]);
+    expect(Array.from(testScreenFrame())).toEqual([0xf0, 0x7d, 0x4d, 0x31, 0x34, 0xf7]);
+  });
+  it('reads SCREEN (the head, a text) and PEAK', () => {
+    const head = parse(frame(CMD.screen, [0xff, 2, 0, 1]))!;
+    expect(parseScreen(head)).toEqual({ head: { count: 2, page: 0, sandbox: true, booting: false } });
+    const t = parse(frame(CMD.screen, [1, 11, 20, 60, 11, 13, ...Array.from('BROWSER PLAYS', (c) => c.charCodeAt(0))]))!;
+    expect(parseScreen(t)).toEqual({ k: 1, text: { x: 11, y: 20, w: 60, h: 11, s: 'BROWSER PLAYS' } });
+    expect(parseScreen(parse(frame(CMD.screen, [1, 11, 20, 60, 11, 13, 65]))!)).toBeNull();
+    expect(parsePeak(parse(frame(CMD.peak, [1234 & 255, 1234 >> 8, 3]))!)).toEqual({ peak: 1234, running: true, muted: true });
   });
 });

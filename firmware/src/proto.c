@@ -20,6 +20,13 @@
  *   static int  m1_preset_del(uint32_t structure, const char *name);   0 = ok, -1 none
  *   static void m1_sandbox(const sb_page_t *s);                 SANDBOX: the editor's page while its patch is a sandbox patch
  *   static int  m1_midi_out(void);                              MENU > MIDI OUT is on (INFO says so, with feature bit 8)
+ *   static int  m1_test_key(uint32_t id, int down);             the device test mode (#291): a panel key held / let go as if
+ *                                                               by a hand (ids as the HAL's: 0..13 buttons, 14..40 the keys); 0 = ok
+ *   static int  m1_test_turn(uint32_t enc, int32_t clicks);     an encoder turned (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET); 0 = ok
+ *   static uint32_t m1_test_screen(uint32_t k, uint8_t *out);   the screen as text: k 0xFF its head (count, page, flags), else
+ *                                                               text k (x, y, w, h, n, n characters); the bytes written, 0 = none
+ *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit) since the last call, bit 16 the engine
+ *                                                               runs, bit 17 the sound is muted (sandbox mode)
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"
@@ -28,9 +35,9 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
-#define M1_FEATURES2 1u                                      /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag) */
+#define M1_FEATURES2 3u                                      /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
 #define M1_PVALS 88u                                         /* a preset's values at most (presetstore.c PS_MAXV) */
@@ -861,6 +868,35 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         static sb_page_t s;
         if (!sb_parse(d, len, &s))
             m1_sandbox(&s);
+        break;
+    }
+    case C_TEST_KEY:                                         /* #291: id u8, down u8 -> ACK */
+        m1_ack(C_TEST_KEY, len >= 1u ? d[0] : 0u, len >= 2u && !m1_test_key(d[0], d[1] != 0u) ? S_OK : S_RANGE, 0);
+        break;
+    case C_TEST_TURN:                                        /* #291: encoder u8, clicks i8 -> ACK */
+        m1_ack(C_TEST_TURN, len >= 1u ? d[0] : 0u, len >= 2u && !m1_test_turn(d[0], (int8_t)d[1]) ? S_OK : S_RANGE, 0);
+        break;
+    case C_TEST_SCREEN: {                                    /* #291: SCREEN 0xFF (count, page, flags), then one SCREEN per text */
+        uint8_t p[1u + 6u + 32u];
+        uint32_t n, k, cnt;
+        p[0] = 0xFF;
+        n = m1_test_screen(0xFFu, p + 1);
+        m1_reply_long(R_SCREEN, p, 1u + n);
+        cnt = n ? p[1] : 0u;
+        for (k = 0; k < cnt; k++) {
+            p[0] = (uint8_t)k;
+            n = m1_test_screen(k, p + 1);
+            m1_reply_long(R_SCREEN, p, 1u + n);
+        }
+        break;
+    }
+    case C_TEST_PEAK: {                                      /* #291: -> PEAK peak u16, flags u8 */
+        uint32_t v = m1_test_peak();
+        uint8_t p[3];
+        p[0] = (uint8_t)v;
+        p[1] = (uint8_t)(v >> 8);
+        p[2] = (uint8_t)(v >> 16);
+        m1_reply(R_PEAK, p, 3);
         break;
     }
     case C_MUTE:                                             /* module u8, on u8: not saved */

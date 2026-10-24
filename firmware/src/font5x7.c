@@ -70,6 +70,7 @@ static void text_dots(uint32_t x, uint32_t y, const char *s, uint32_t size2, uin
     uint32_t n = 0, r, c, i, k, cell = 3u * size2, gw = (5u * size2 + 1u) / 2u, gh = (7u * size2 + 1u) / 2u;
     for (; s[n]; n++)
         ;
+    scr_pend(0, n * cell, gh, s, -1);
     for (r = 0; r < gh; r++) {
         uint32_t w = n * cell;
         if (w > 240u)
