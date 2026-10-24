@@ -69,7 +69,8 @@ link as `m1emu serve` drives the emulator:
   encoder's clicks into the HAL's scan (`fm1_virt_btn`, `fm1_virt_note`, `fm1_virt_enc` in `firmware/hal/fm1_input.h`),
   so they take the panel's own paths. TEST_SCREEN reports the texts on the LCD with their boxes: every text the fonts
   draw is noted as it goes out and dropped when something is drawn over it (`firmware/src/screen_text.h`). TEST_PEAK
-  reports the loudest output sample since the last ask, at the same 16-bit scale as the emulator's `peak`. INFO feature
+  reports the loudest sample since the last ask, read before the MASTER knob as if it sat at its default, so a knob
+  left down fails nothing ([D-124](ledger/releases.md#D-124)); a flag says when MASTER is all the way down. INFO feature
   bit 9 says the firmware has them. For 10 s after a test key or turn, the panel refuses UPDATE MODE and FACTORY RESET.
 - **The rig** ([D-122](ledger/releases.md#D-122)): the owner's second FM-1, kept on the Mac. `npm run rig -- register`,
   with the rig the only FM-1 connected, writes a hidden preset (`RIG_STRUCTURE`, values at random) and keeps the values
@@ -80,7 +81,8 @@ link as `m1emu serve` drives the emulator:
   asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
   `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
   and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. Results and the
-  screen as text go to `build/device/scenarios/`.
+  screen as text go to `build/device/scenarios/`. Before the scenarios the runner taps HOME until the screen reports
+  the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does.
 - **`npm run device:scenarios -- --via-emu`:** the device path against the emulator (its build has the test mode too),
   to check the runner and the firmware's side without a rig.
 

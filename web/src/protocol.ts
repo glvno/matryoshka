@@ -70,7 +70,8 @@
 //   4E PRESET_STORED  structure u32, name 16 bytes  unasked: a preset stored on the FM-1 (ENV held + SAVE)
 //   50 SCREEN   k u8 = 0xFF, count u8, page u8, flags u8 (bit0 sandbox mode, bit1 the boot screen); then k = 0..count-1:
 //               x u8, y u8, w u8, h u8, n u8, n characters   a text on the LCD and its box (firmware/src/screen_text.h)
-//   51 PEAK     peak u16 (16 bit), flags u8 (bit0 the engine runs, bit1 the sound is muted: sandbox mode)
+//   51 PEAK     peak u16 (16 bit, before MASTER: as at its default), flags u8 (bit0 the engine runs, bit1 the sound is muted:
+//               sandbox mode, bit2 MASTER is all the way down)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
@@ -349,8 +350,10 @@ export function parseScreen(p: Parsed): { head: ScreenHead } | { k: number; text
   if (d.length < 6 || d.length < 6 + d[5]) return null;
   return { k: d[0], text: { x: d[1], y: d[2], w: d[3], h: d[4], s: String.fromCharCode(...d.slice(6, 6 + d[5])) } };
 }
-export const parsePeak = (p: Parsed): { peak: number; running: boolean; muted: boolean } | null =>
-  p.cmd === CMD.peak && p.payload.length >= 3 ? { peak: p.payload[0] | (p.payload[1] << 8), running: !!(p.payload[2] & 1), muted: !!(p.payload[2] & 2) } : null;
+export const parsePeak = (p: Parsed): { peak: number; running: boolean; muted: boolean; masterDown: boolean } | null =>
+  p.cmd === CMD.peak && p.payload.length >= 3
+    ? { peak: p.payload[0] | (p.payload[1] << 8), running: !!(p.payload[2] & 1), muted: !!(p.payload[2] & 2), masterDown: !!(p.payload[2] & 4) }
+    : null;
 /** the test rig's mark (#291): a user preset of no structure the editor makes (scripts/rig.mjs registers it); the
  *  Library hides it */
 export const RIG_STRUCTURE = '7e57417e';
