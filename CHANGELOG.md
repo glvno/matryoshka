@@ -9,6 +9,17 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs (FM-1s are
   ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the editor's Play
   (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), which is the default.
+- **Restore Official Open** (Install panel, and `tools/fm1_install.py`): an FM-1 that was set up by M-VAVE's Official
+  Open refuses the official V15 ("update failed -5", nothing changed). It can now take Official Open back from M-VAVE's
+  own file (its Workbench page or `.fwsc`); from there, M-VAVE's Workbench goes back to V15. Official Open does not come
+  with Matryoshka: it includes M-VAVE's own sound engine, which is not open source. Needs this firmware.
+- A cut-off return to stock is finished only with the package it was writing (V15 or Official Open).
+- Before it sends the official V15 or Official Open, the Install panel and `tools/fm1_install.py` read the FM-1's
+  start-up software (its boot code) and say which one it has: V15's, Official Open's, or neither. A package the FM-1
+  would refuse is not sent, and a refusal no longer guesses which one it is (1.2.2 guessed Official Open's).
+  `fm1_install.py --info` shows it, and `--save-head FILE` saves it for a bug report. Needs this firmware.
+- An FM-1 whose start-up software has its chip-key block written again (seen after the chip's repair mode) is no longer
+  refused Official Open or V15 for that alone, when the block holds the same key.
 
 ## 1.2.2 — 2026-10-24
 
