@@ -1054,6 +1054,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
     batt_drawn = BATT_NONE;                             /* (its cell too) */
+    batt_bg_drawn = C_BG;
     screen_idle();                                      /* the top bar and the page */
     if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);

@@ -658,10 +658,10 @@ static void pages_strip(void)
     char t[20];
     uint32_t first = 0, x, i, w[PG_DEVS];
     if (pages_carding()) {                              /* (a message ended over the card: the card's colour back) */
-        lcd_fill(0, 0, BATT_X, 20, pg_card == PG_CARD_PAGE ? P_CARD_PAGE : P_CARD_DEV);
+        bar_fill(pg_card == PG_CARD_PAGE ? P_CARD_PAGE : P_CARD_DEV);
         return;
     }
-    lcd_fill(0, 0, BATT_X, 20, P_STRIP);                /* (x BATT_X on: the battery's cell, ui.c) */
+    bar_fill(P_STRIP);                                  /* (x BATT_X on: the battery's cell, ui.c) */
     if (page == PAGE_GLO || page == PAGE_ENV) {         /* GLO: GLOBAL and the patch, on coral; the environment's on lilac */
         uint16_t bg = page == PAGE_ENV ? P_LILAC : P_CORAL;
         char nm[32], num[8], *q = nm;
@@ -674,7 +674,7 @@ static void pages_strip(void)
         }
         put(q, patch_label ? patch_label : "")[0] = 0;
         nm[22] = 0;
-        lcd_fill(0, 0, BATT_X, 20, bg);
+        bar_fill(bg);
         text_bc(&FONT_S, 8, 3, page == PAGE_ENV ? "ENVIRONMENT" : "GLOBAL", P_NIGHT, bg, 100, TA_LEFT);
         text_bc(&FONT_S, 108, 3, nm, P_NIGHT, bg, 106, TA_RIGHT);
         return;
@@ -705,7 +705,7 @@ static void pages_strip(void)
             q = put(q, num);
         }
         *q = 0;
-        lcd_fill(0, 0, BATT_X, 20, P_SEA);
+        bar_fill(P_SEA);
         text_bc(&FONT_S, 0, 3, bar, P_NIGHT, P_SEA, BATT_X, TA_CENTER);
         return;
     }
@@ -1074,7 +1074,7 @@ static void pages_card_draw(int full)
     int pgc = pg_card == PG_CARD_PAGE;
     uint16_t bg = pgc ? P_CARD_PAGE : P_CARD_DEV;
     if (full) {                                         /* around the bands (they paint their own rows) */
-        lcd_fill(0, 0, BATT_X, BAR_H, bg);           /* (not the battery's cell, ui.c) */
+        bar_fill(bg);                                /* (not the battery's cell: ui.c gives it this ground) */
         lcd_fill(0, BAR_H, 240, CARD_Y0 - BAR_H, bg);
         lcd_fill(0, CARD_Y0 + FONT_S.h, 240, CARD_Y1 - CARD_Y0 - FONT_S.h, bg);
         lcd_fill(0, CARD_Y1 + FONT_L.h, 240, CARD_Y2 - CARD_Y1 - FONT_L.h, bg);
@@ -1721,7 +1721,7 @@ static void presets_bar(void)
     char t[20];
     pages_ensure();
     caps(t, pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].name : "", pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].nlen : 0, 16);
-    lcd_fill(0, 0, BATT_X, 20, P_GOLD);
+    bar_fill(P_GOLD);
     text_bc(&FONT_S, 8, 3, "PRESETS", P_NIGHT, P_GOLD, 80, TA_LEFT);
     text_bc(&FONT_S, 88, 3, t, P_NIGHT, P_GOLD, 126, TA_RIGHT);
 }
