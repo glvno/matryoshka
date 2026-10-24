@@ -9,21 +9,21 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 ### On the FM-1
 
 - **Paging is about ten times faster.** SELECT, ALGO and PRESET no longer cover the screen with a card and wait 400 ms.
-  A small toast names what you reached (the device on red, the page on blue, the patch on ivory) in the middle of the
-  bars, clear of every name and value, and the page is drawn under it at once. Turning fast redraws only the toast.
-  For one ALGO click:
+  A small toast names what you reached (the device on red, the page on blue, the patch on ivory), and the page is drawn
+  under it at once. The toast always sits in the same place, in the middle of the bars between K2's and K3's names and
+  values, and only that spot is redrawn when it goes. Turning fast redraws only the toast. For one ALGO click:
 
   | | 1.2 | 1.3 |
   |---|---|---|
-  | The page's title on screen | about 77 ms | about 4 ms |
-  | Names and values readable | about 545 ms | about 33 ms |
-  | The whole page | about 545 ms | about 62 ms |
+  | The page's title on screen | about 77 ms | about 6 ms |
+  | Names and values readable | about 545 ms | about 35 ms |
+  | The whole page | about 545 ms | about 59 ms |
 
-  The pixel counts are from the host panel test (3,060 pixels for the title instead of 57,600; 46,652 for the page
+  The pixel counts are from the host panel test (4,400 pixels for the title instead of 57,600; 44,392 for the page
   instead of 108,210, which started only 400 ms after the click). The times assume the LCD link's 750 pixels per ms and
   were not timed on an FM-1.
 - **Turning K1..K4 no longer shows a full-size toast.** The bar moves in place and only what changed is redrawn: about
-  1 ms per click instead of 22 to 76 ms (702 pixels instead of 16,464 to 57,068, plus 39,792 when the toast ended).
+  1 ms per click instead of 22 to 76 ms (684 pixels instead of 16,464 to 57,068, plus 39,792 when the toast ended).
 - **The engine does less work per block, with the same sound.** It stops redoing work that only changes when a setting
   does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output is bit
   for bit the same. On the CPU model, the busiest block of each factory patch:

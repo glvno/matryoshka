@@ -660,22 +660,30 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   with a slimmer header): strip of device tabs (y 0), the page chips by heading (y 22, the current one in seafoam), four
   full-width knob bars (y 41, 36 px each, 4 px apart: the K-number square and the fill in the knob's hue, name left, value
   and unit right, ivory tick = live; an empty slot where the page has fewer rows; `pages_bar` composes each bar a scanline
-  at a time and blends the type onto it, `text_onto`; modulated bars are redrawn ten times a second), the page rail
+  at a time and blends the type onto it, `text_onto`; ten times a second a bar whose fill or live tick moved is updated in
+  place, `pages_ticks`), the page rail
   (y 206: a segment per page, the focus coral, its heading's others dim) and the patch / transport line (y 214). A turned
   knob moves its own bar in place (#298, `pages_row_update`): only the columns its fill's end and live tick crossed, and
-  its value and unit, are redrawn (about 700 px a click), from what the bar showed (`pg_drawn`); there is no knob toast.
+  its value and unit when they changed, are redrawn (about 700 px a click), from what the bar showed (`pg_drawn`), with
+  the same values the bar is then noted with; there is no knob toast. The live tick comes from the engine's effective
+  value (`eng_get_eff`), which lags a turn until the next audio block: `eff_now` moves it by the turn meanwhile
+  (`lag_note`), so a bar drawn whole and one moved in place agree pixel for pixel (`tools/panel_test.sh` turns every
+  knob of every factory page and compares; before this, a bar redrawn in that gap left thin ivory ticks behind).
   SELECT, ALGO and PRESET (#298) name what they
-  reached in a title toast (`pages_title`): 30 px high in the bar of K2 or K3 whose name and value leave the widest room,
-  in the middle as far as that room allows (`ttl_place`; on 40 of the 321 factory pages none does, and it covers the foot
-  band instead); SELECT's on red (`P_CARD_DEV`, the device's name and "n/m" of the devices), ALGO's on blue
+  reached in a title toast (`pages_title`), always in the same rectangle whatever the page has there (`TTL_X`, `TTL_Y`,
+  `TTL_W` x `TTL_H` = 20, 108, 200 x 22 px: centred in the bars' area, below the type of K2's bar and above K3's, so on
+  the factory pages it covers only the bars' fill); SELECT's on red (`P_CARD_DEV`, the device's name and "n/m" of the devices), ALGO's on blue
   (`P_CARD_PAGE`, the page as its chip names it and "n/m" of its pages), PRESET's on ivory (the patch's name and its slot
   of the bank's, #170); 600 ms after the last click (PRESET's: a second). The page they reached is drawn at once under it
-  (`pages_staged`, over the page that was there: `pg_plain`): the toast first (about 3,000 px to the LCD), then the strip
-  for another device or patch, the chips and the band of each bar that holds its type (about 24,500 px in all: the rows
-  readable), then the rest of the bars, the rail and the foot line (about 47,000 px for ALGO, against 108,000 for a whole
-  page drawn over a cleared screen); nothing is cleared first, and each bar composes the toast into its own scanlines
-  (`ttl_onto`). Between bands it gives way when an encoder has a step waiting (`pages_waiting`, main.c `encs_waiting`):
-  turning fast redraws only the toast. When the toast's time is up only its rectangle is redrawn. Preview: `TITLE=1` /
+  (`pages_staged`, over the page that was there: `pg_plain`): the toast first (`ttl_first`: its rectangle, 4,400 px to
+  the LCD, with the page's pixels at its rounded corners), then the strip for another device or patch, the chips and the
+  band of each bar that holds its type (about 26,000 px in all: the rows readable), then the rest of the bars, the rail
+  and the foot line (about 44,000 px for ALGO, against 108,000 for a whole page drawn over a cleared screen); nothing is
+  cleared first, and while the toast is up every scanline of the page leaves its columns alone (`line_out`). Between
+  bands it gives way when an encoder has a step waiting (`pages_waiting`, main.c `encs_waiting`): turning fast redraws
+  only the toast. When the toast's time is up only its rectangle is redrawn from the page (`ttl_restore`, 4,400 px).
+  The panel test checks the rectangle on every page of every factory patch, and that the screen after it is the page
+  drawn whole. Preview: `TITLE=1` /
   `TITLE=2` / `PATCHTOAST=1 tools/ui_preview.sh`. There is
   no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
   HOME goes back along the trail (below; on the device pages with nothing to go back to it does nothing; the legend is
