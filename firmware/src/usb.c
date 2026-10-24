@@ -1294,6 +1294,68 @@ static void uac_service(void)
 }
 #endif
 
+#ifndef M1_EMU_MIDI
+#define M1_EMU_MIDI 0
+#endif
+#if M1_EMU_MIDI && !defined(FELUCCA_LOADER)
+/* The emulator's MIDI bridge (#290; a build with M1_EMU_MIDI=1, never installed): fm1-emu has no USB controller, so the
+ * USB-MIDI event packets go through this mailbox in RAM instead of EP1. m1emu finds it by its two magic words, writes
+ * packets from the host into in[] (then in_w), reads out[] (then advances out_r). Both indices count up; slots are
+ * index % EMB_N. Everything else (the rings, SysEx, the OTA frames, the editor link) is the normal path. */
+#define EMB_N 256u
+static struct {
+    uint32_t magic0, magic1;
+    volatile uint32_t in_w, in_r, out_w, out_r;
+    uint32_t in[EMB_N], out[EMB_N];
+} m1_emu_mb __attribute__((used)) = {0x4D31454Du, 0x4D494449u, 0, 0, 0, 0, {0}, {0}};   /* "M1EM" "MIDI" */
+
+static void emu_mb_put(uint32_t pkt)
+{
+    m1_emu_mb.out[m1_emu_mb.out_w % EMB_N] = pkt;
+    RING_PUBLISH();
+    m1_emu_mb.out_w++;
+}
+
+static void emu_midi_poll(void)
+{
+    usb.config = 1;                                     /* a host is there for as long as the emulator runs */
+    usb.suspended = 0;
+    while (m1_emu_mb.in_r != m1_emu_mb.in_w && MQ - (mi_w - mi_r) >= 8u) {   /* 8 slots stay for TRS MIDI (ep1_take) */
+        RING_PUBLISH();
+        midi_in_event(m1_emu_mb.in[m1_emu_mb.in_r % EMB_N]);
+        RING_PUBLISH();
+        m1_emu_mb.in_r++;
+    }
+#if FELUCCA_OTA
+    while (so_r != so_w && m1_emu_mb.out_w - m1_emu_mb.out_r < EMB_N) {   /* SysEx first, never split by notes */
+        RING_PUBLISH();
+        emu_mb_put(sx_out_q[so_r % SXQ]);
+        so_r++;
+    }
+    while (!sx_busy && so_r == so_w && mo_r != mo_w && m1_emu_mb.out_w - m1_emu_mb.out_r < EMB_N) {
+#else
+    while (mo_r != mo_w && m1_emu_mb.out_w - m1_emu_mb.out_r < EMB_N) {
+#endif
+        RING_PUBLISH();
+        emu_mb_put(midi_out_q[mo_r % MQ]);
+        RING_PUBLISH();
+        mo_r++;
+    }
+}
+#endif
+
+#if M1_EMU_MIDI && !defined(FELUCCA_LOADER)
+static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz: the mailbox instead of the SIE */
+{
+    (void)ep0_service;                                  /* the SIE path stays compiled, unused here */
+    (void)ep1_rx;
+    (void)ep1_tx;
+#if FELUCCA_UAC
+    (void)uac_service;
+#endif
+    emu_midi_poll();
+}
+#else
 static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
 {
     uint32_t iu, it, ir;
@@ -1387,6 +1449,8 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
     uac_service();
 #endif
 }
+
+#endif
 
 static void usb_start(void)                             /* boot, or main-loop retry while usb.up == 0 */
 {
