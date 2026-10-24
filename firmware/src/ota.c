@@ -13,6 +13,7 @@
  * staging began erases the staging area, and Felucca carries on. A package
  * whose flash.bin is not exactly this board's size (OTA_FL_LEN: another
  * board's package) is refused in step 1, before anything is erased.
+ * (Matryoshka change, #183: except a shorter one with M-VAVE's loader whose head equals ours: Official Open's.)
  *
  * Portable core: the firmware (felucca.c) and the Mac test (ota_test.c)
  * supply these hooks:
@@ -29,6 +30,9 @@
 #define OTA_RES (OTA_AREA + OTA_AREA_LEN - 0x100u)  /* 0xE4F00 = 4K boundary - 256: SPL scan */
 #define OTA_FL_LEN 0x93000u                      /* flash.bin = [0, the PRCT end): the head and this board's app area,
                                                   * the size the update loader writes (ldr_core.c LDR_APP_HI) */
+/* Matryoshka change (#183): M-VAVE Official Open's flash.bin is shorter (0x6F000 in V12, 0x73000 in V14); a shorter one
+ * is whole 4 KiB sectors past the 16 KiB head */
+#define OTA_FL_SHORT_OK(n) ((n) < OTA_FL_LEN && (n) > 0x4000u && !((n) & 0xFFFu))
 #define OTA_LDR_HCRC 0xEBAAu                     /* official update loader (usb_hid_ota.bin) */
 #define OTA_LDR_DCRC 0x5881u
 #define OTA_LDR_LEN 0x4DE1u
@@ -272,7 +276,9 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         return rc;
     if (!fl_off || !ota_off)
         return -3;
-    if (fl_len != OTA_FL_LEN)
+    /* Matryoshka change (#183): a shorter flash.bin (M-VAVE Official Open's) is let through to step 2, which takes
+     * it only with the official loader and only when the whole head equals ours; any other size: as Felucca */
+    if (fl_len != OTA_FL_LEN && !OTA_FL_SHORT_OK(fl_len))
         return -15;                                         /* another board's package: nothing staged, nothing erased */
     /* 2. which loader: the official one (known CRCs; it rewrites the whole flash.bin
      *    including the head) or Felucca's own (app area only, checks the chip key) */
@@ -288,6 +294,8 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         own = ota_memeq(b + i, (const uint8_t *)"FELUCCA-LOADER-1", 16) && ota_rd32(b + 0x20 + 4) <= 0x14000u;
     if (!official && !own)
         return -7;
+    if (fl_len != OTA_FL_LEN && !official)
+        return -15;                                         /* Matryoshka (#183): a shorter one only with M-VAVE's loader */
     if (official) {                    /* the official loader writes the head: it must equal ours */
         ota_show(2, 0);
         for (i = 0; i < 0x4000u; i += 512u) {

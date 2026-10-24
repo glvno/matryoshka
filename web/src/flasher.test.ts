@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 // @ts-ignore untyped JS module
-import { STOCK_V15_SHA256, logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
+import { OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, loaderFits, pack7, unpack7 } from './flasher/fm1ota.js';
-import { BOOT_CODE_HELP, OPEN_WHY, guardUnload } from './flasher';
+import { BOOT_CODE_HELP, BOOT_CODE_HELP_OPEN, MVAVE_WORKBENCH, OPEN_WHY, guardUnload } from './flasher';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
 
@@ -53,6 +53,8 @@ describe('finishing an interrupted write (resume)', () => {
     expect(loaderFits('ota-FM-1_800', 'FM-1_015')).toBe(false);
     expect(loaderFits('ota-FM-1_8123456', 'FM-1_800')).toBe(false); // M-VAVE Official Open
     expect(loaderFits('ota-FM1C_0123456789abcdef', 'FM-1_800')).toBe(false);
+    expect(loaderFits('ota-FM-1_015', 'FM-1_8000014')).toBe(true); // Official Open carries M-VAVE's loader (#183)
+    expect(loaderFits('ota-FM-1_700', 'FM-1_8000014')).toBe(false);
   });
 
   const parked = (text: string) => {
@@ -156,6 +158,7 @@ describe('a boot code that is not V15\'s (#183)', () => {
     expect(await run(refused, 'FM-1_015')).toBe('bootcode');
     expect(await run([0, 512], 'FM-1_015')).toBe('stopped');
     expect(await run(refused, 'FM-1_712')).toBe('stopped');
+    expect(await run([0, 512, 472064, 1024], 'FM-1_8000014')).toBe('bootcode-open'); // Official Open on V15's boot code
   }, 10000);
 
   it('the Install panel explains it and names the way back', () => {
@@ -165,12 +168,53 @@ describe('a boot code that is not V15\'s (#183)', () => {
     expect(BOOT_CODE_HELP).toContain('issues/183');
   });
 
-  it('says plainly what the start-up software is before it says boot code, and why Official Open is not shipped', () => {
-    expect(BOOT_CODE_HELP.indexOf('starts the FM-1')).toBeGreaterThan(-1);
-    expect(BOOT_CODE_HELP.indexOf('starts the FM-1')).toBeLessThan(BOOT_CODE_HELP.indexOf('boot code'));
+  it('a refused V15 points to Official Open, a refused Open to the V15', () => {
     expect(BOOT_CODE_HELP).toContain("Most likely it was set up by M-VAVE's Official Open");
-    expect(BOOT_CODE_HELP).toContain(OPEN_WHY);
+    expect(BOOT_CODE_HELP).toContain(OPEN_RELEASES);
+    expect(BOOT_CODE_HELP).toContain(MVAVE_WORKBENCH);
+    expect(BOOT_CODE_HELP_OPEN).toMatch(/update failed -5/);
+    expect(BOOT_CODE_HELP_OPEN).toContain('use Return to official V15 instead');
+  });
+
+  it('says what the start-up software is before it says boot code', () => {
+    for (const t of [BOOT_CODE_HELP, BOOT_CODE_HELP_OPEN]) {
+      expect(t.indexOf('starts the FM-1')).toBeGreaterThan(-1);
+      expect(t.indexOf('starts the FM-1')).toBeLessThan(t.indexOf('boot code'));
+    }
+  });
+
+
+  it('says why Official Open does not come with the app', () => {
     expect(OPEN_WHY).toMatch(/not open source/);
+  });
+});
+
+describe("Restore Official Open: the user's own M-VAVE file (#183)", () => {
+  const good = { product: 'FM-1_8000014', flashSize: 0x73000, headSha: OPEN_HEAD_SHA256, loaderSha: MVAVE_LOADER_SHA256 };
+
+  it("takes Official Open's identity, M-VAVE's loader, a fitting image and Open's boot code, nothing else", () => {
+    expect(openPackageProblem(good)).toBeNull();
+    expect(openPackageProblem({ ...good, product: 'FM-1_8000012', flashSize: 0x6f000 })).toBeNull(); // V12
+    expect(openPackageProblem({ ...good, product: 'FM-1_015' })).toMatch(/identity/);
+    expect(openPackageProblem({ ...good, product: 'FM-1_800' })).toMatch(/identity/); // ours, before #79
+    expect(openPackageProblem({ ...good, loaderSha: '0'.repeat(64) })).toMatch(/loader/);
+    expect(openPackageProblem({ ...good, flashSize: 0x94000 })).toMatch(/does not fit/);
+    expect(openPackageProblem({ ...good, flashSize: 0x73001 })).toMatch(/does not fit/);
+    expect(openPackageProblem({ ...good, headSha: V15_HEAD_SHA256 })).toMatch(/V15's/); // never crossed over
+    expect(openPackageProblem({ ...good, headSha: '0'.repeat(64) })).toMatch(/boot code/);
+  });
+
+  it("refuses the V15, Matryoshka's package and a page without firmware", async () => {
+    await expect(validateOpenPackage(stock())).rejects.toThrow(/FM-1_015/);
+    const ours = new Uint8Array(readFileSync(new URL('../public/firmware/matryoshka.fwsc', import.meta.url)));
+    await expect(validateOpenPackage(ours)).rejects.toThrow(/not M-VAVE Official Open/);
+    await expect(validateOpenPackage(new TextEncoder().encode('<!doctype html><p>no firmware here'))).rejects.toThrow(/not an FM-1 package/);
+  });
+
+  // M-VAVE's files are not in the repository (licence): FM1_OPEN_FILE names a local copy, a .fwsc or the Workbench page
+  it.skipIf(!process.env.FM1_OPEN_FILE)("takes M-VAVE's own Official Open", async () => {
+    const v = await validateOpenPackage(new Uint8Array(readFileSync(process.env.FM1_OPEN_FILE!)));
+    expect(v.product).toMatch(/^FM-1_8\d{6}$/);
   });
 });
 

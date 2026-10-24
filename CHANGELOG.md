@@ -6,10 +6,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
-- **"update failed -5"** on Return to official V15 is now explained in plain words: the FM-1 was most likely set up by
-  M-VAVE's Official Open, whose start-up software differs from V15's, and nothing was changed. Putting Official Open
-  back or going back to V15 from the Install panel comes with a later firmware; the README says why Official Open will
-  not come with Matryoshka (its sound engine is M-VAVE's own, not open source).
+- **Restore Official Open** (Install panel, and `tools/fm1_install.py`): an FM-1 that was set up by M-VAVE's Official
+  Open refuses the official V15 ("update failed -5", nothing changed). It can now take Official Open back from M-VAVE's
+  own file (its Workbench page or `.fwsc`); from there, M-VAVE's Workbench goes back to V15. Official Open does not come
+  with Matryoshka: it includes M-VAVE's own sound engine, which is not open source. Needs this firmware.
+- A cut-off return to stock is finished only with the package it was writing (V15 or Official Open).
 - A new community patch, **Sol 29N**, recalls the Elta Music Solar 42N in stereo: three saw drones that swell on their
   own pulse generators (FX, LFO and EDIT switch them), two noise voices with sample & hold (ARP), two keyboard voices with
   a morphing wavetable, a sub and pulse-width modulation, a 5-step line on PLAY, a distortion and a band-pass filter per

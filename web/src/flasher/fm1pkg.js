@@ -245,6 +245,56 @@ export async function validateStockPackage(bytes) {
   return { product: pkg.product, image: logicalImage(bytes), sha256: STOCK_V15_SHA256 };
 }
 
+// M-VAVE Official Open (#183): its identity, the update loader all M-VAVE packages carry, and the boot code (flash head,
+// 0x0000-0x3FFF) every Open release writes (V12 and V14 alike; the same bytes fm1_open's Package.cs builds). V15's head
+// is the other known one. Open is not bundled (its engine is proprietary): the user brings M-VAVE's own file.
+export const OPEN_PRODUCT_RE = /^FM-1_8\d{6}$/;
+export const MVAVE_LOADER_SHA256 = "ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541";
+export const OPEN_HEAD_SHA256 = "2981ccf8d12a132c82d8b5e959c2d27d62f13bc51419225cacc87a6e82d58171";
+export const V15_HEAD_SHA256 = "d9f43191777656de01c7bed4f9e9ba2e34e94832c5d2ed02c3fc7ab7a6d9bd67";
+export const FL_LEN = 0x93000;                 // this board's flash.bin (ota.c OTA_FL_LEN); Open's is shorter
+export const OPEN_RELEASES = "https://github.com/m-vave/fm1_open/releases";
+
+// what is wrong with a package offered as Official Open, or null (the facts come from validateOpenPackage)
+export function openPackageProblem({ product, flashSize, headSha, loaderSha }) {
+  if (!OPEN_PRODUCT_RE.test(product)) return `its identity is ${product}, not M-VAVE Official Open's (FM-1_8xxxxxx)`;
+  if (loaderSha !== MVAVE_LOADER_SHA256) return "it does not carry M-VAVE's update loader";
+  if (!(flashSize > 0x4000 && flashSize <= FL_LEN && flashSize % 0x1000 === 0)) return `its firmware image (${flashSize} bytes) does not fit the FM-1`;
+  if (headSha !== OPEN_HEAD_SHA256) return headSha === V15_HEAD_SHA256 ? "its boot code is V15's, not Official Open's" : "its boot code is not Official Open's";
+  return null;
+}
+
+// M-VAVE publishes Official Open inside its Workbench page (FM1-Open-Vxx-Workbench.html), as base64: the packages in it
+export function workbenchPackages(bytes) {
+  const start = new TextDecoder("latin1").decode(bytes.subarray(0, Math.min(bytes.length, 64)));
+  if (!/^\s*</.test(start)) return [bytes];
+  const html = new TextDecoder("latin1").decode(bytes), out = [];
+  for (const m of html.matchAll(/"data":"([A-Za-z0-9+/=]{100000,})"/g)) {
+    try { out.push(Uint8Array.from(atob(m[1]), (c) => c.charCodeAt(0))); } catch (_) { /* not base64 */ }
+  }
+  return out;
+}
+
+// the user's Official Open: a .fwsc, or M-VAVE's Workbench page with Open inside. Every CRC on the way (Package), the
+// identity, M-VAVE's loader, the image size and the boot code are checked before anything is sent.
+export async function validateOpenPackage(bytes) {
+  let why = "it is not an FM-1 package";
+  for (const raw of workbenchPackages(new Uint8Array(bytes))) {
+    let pkg;
+    try { pkg = new Package(raw); } catch (e) { why = e.message; continue; }
+    const loader = pkg.entries.find((e) => e.type === 100 && e.name === "ota.bin");
+    const at = loader ? loader.dataOff + pkg.skew : 0;
+    const problem = openPackageProblem({
+      product: pkg.product, flashSize: pkg.flashSize,
+      headSha: await sha256hex(pkg.flash.subarray(0, 0x4000)),
+      loaderSha: loader ? await sha256hex(raw.subarray(at, at + loader.size)) : "",
+    });
+    if (!problem) return { product: pkg.product, image: logicalImage(raw), size: raw.length };
+    why = problem;
+  }
+  throw new Error(`Select M-VAVE Official Open (its .fwsc, or the Workbench page from ${OPEN_RELEASES}): ${why}.`);
+}
+
 // official V15 + Felucca app -> installable package (Uint8Array)
 export async function buildFeluccaPackage(stockBytes, appBytes, product) {
   const sha = await sha256hex(stockBytes);
