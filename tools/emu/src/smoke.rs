@@ -369,7 +369,7 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
 /// recording; the bar and the track's line say ARM, #179); REC on the armed drum track is its grid with REC on (no step
 /// entry), PLAY keeps it, the device pages name the armed track, REC held + the key again disarms. SEQ closes the page;
 /// REC with nothing armed opens the grid, REC again leaves it showing. Then the piano roll (#241) on <7PH's melodic
-/// PATTERN: its pitch rows, a white key switches the selected pitch on a step, REC on the armed track stopped is the roll
+/// PATTERN: its pitch rows, a marker under a step with a note below the window, a white key switches the selected pitch on a step, REC on the armed track stopped is the roll
 /// with REC on (no step entry).
 fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let Some(kit) = presets.iter().position(|(n, _)| n == "808 KIT") else {
@@ -465,6 +465,10 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         m.turn(ALGO, 1, 600)?;               // DRUMS, then PATTERN
         t.screen(&m, "roll: PATTERN's piano roll", "BLACK/ALGO: TRACK");
         t.screen(&m, "roll: its pitch rows (A#3 the median)", "A#3");
+        let below = m.lcd()[192 * 240 + 57]; // step 1's marker under the bottom row: A#2 is below the window
+        let above = m.lcd()[42 * 240 + 57]; // (nothing above it on step 1)
+        t.check("roll: a marker under a step with a note below the window", below == 0x9cf2 && above != 0x9cf2,
+            format!("{below:#06x} / {above:#06x}"));
         let cell = |m: &Machine| m.lcd()[(44 + 19 * 4 + 14) * 240 + 79]; // A#3 (row 5) on step 3 (x 74..83)
         let before = cell(&m);
         m.tap(14 + 4, 120, 300)?;            // A3: the third white key = step 3

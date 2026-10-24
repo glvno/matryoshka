@@ -257,6 +257,28 @@ static int roll_shows(int mod)
     return ok;
 }
 
+/* the roll's markers on the LCD (#241): a dim triangle over a step with a note sounding above the window, under one with
+ * a note below, else the background */
+static int marks_ok(int mod)
+{
+    const uint32_t *w;
+    int nn = eng_steps_notes((uint32_t)mod, &w), i, ok = 1;
+    uint32_t st, lo = seq_roll_lo;
+    for (st = 0; st < 16u; st++) {
+        uint32_t k = seq_pg * 16u + st, up = 0, dn = 0;
+        for (i = 0; i < nn && (int32_t)k < seq_len(mod); i++)
+            if ((w[i] & 63u) <= k && k <= (w[i] & 63u) + ((w[i] >> 6) & 63u)) {
+                up |= ((w[i] >> 12) & 127u) > lo + 7u;
+                dn |= ((w[i] >> 12) & 127u) < lo;
+            }
+        if (px(seq_grid_x(st) + 5u, MARK_UP_Y + 2u) != (up ? C_DIM : C_BG) || px(seq_grid_x(st) + 5u, MARK_DN_Y) != (dn ? C_DIM : C_BG)) {
+            printf("      (markers: step %u: up %u down %u not drawn so)\n", (unsigned)k, (unsigned)up, (unsigned)dn);
+            ok = 0;
+        }
+    }
+    return ok;
+}
+
 int main(void)
 {
     static uint16_t before[240 * 240];
@@ -886,6 +908,9 @@ int main(void)
               page == PAGE_SEQ && seq_map() < 0 && seq_roll_lo == 55u && seq_row == 4u && seq_grid_note(-1, seq_row) == 58u);
         check("the roll: each pitch's notes on the 16 steps, a 2-step note runs on dim, the C row tinted", roll_shows(pat)
               && px(seq_grid_x(4) + GRID_CW, GRID_Y + GRID_RH * 4u + 5u) == C_DIM);
+        check("the markers: over the steps with notes above (D#4, F4), under those with notes below (A#2)", marks_ok(pat)
+              && px(seq_grid_x(0) + 5u, MARK_DN_Y) == C_DIM && px(seq_grid_x(11) + 5u, MARK_UP_Y + 2u) == C_DIM
+              && px(seq_grid_x(1) + 5u, MARK_DN_Y) == C_BG);
         check("the names: pitches top down (D4 .. G3), the selected one on coral, C4's tinted",
               px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 4u + 1u) == C_ACC && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 2u + 1u) == C_CROW
               && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 3u + 1u) == C_BG);
@@ -926,24 +951,30 @@ int main(void)
         lcd_px = lcd_xfers = 0;
         enc(0, -1);
         all = fb_changed_in(0, 0, 240, 240);
-        part = fb_changed_in(0, GRID_Y, 240, GRID_Y + GRID_RH * 8u);
+        part = fb_changed_in(0, MARK_UP_Y, 240, GRID_TICK_Y);
         printf("      (roll, a scroll: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
         check("SELECT past the top row: the window scrolls (D#4 on top), only the rows redrawn (not the bar, the lines)",
               seq_row == 0u && seq_roll_lo == 56u && seq_grid_note(-1, 0) == 63u && all > 0u && all == part && fb_blinked() == 0
-              && roll_shows(pat));
+              && roll_shows(pat) && marks_ok(pat));
 
-        steps_inst((uint32_t)pat)->s.stp.hit = 0;           /* the pen: FX held + OCT-, then a key */
+        steps_inst((uint32_t)pat)->s.stp.hit = 0;           /* FX held + OCT-: the keys' octave; then the pen, SEL held + a key */
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
         panel_held |= 1u << BTN_ACC;
         tap(BTN_OCT_DOWN);
+        panel_held &= ~(1u << BTN_ACC);
         check("FX held + OCT- on the roll: the keys' octave (not the page)", octave == -1 && seq_pg == 0u);
         lo0 = seq_roll_lo;
+        panel_held |= 1u << BTN_SEL;
         panel_keys(1u << 5);                                /* A#2 at octave -1 (out of the window) */
         panel_keys(0);
         loop();
-        check("FX + a key (the pen): the selected row is its pitch (A#2), the window opens around it, heard, no note written",
+        check("SEL + a key (the pen): the selected row is its pitch (A#2), the window opens around it, heard, no note written",
               seq_grid_note(-1, seq_row) == 46u && seq_roll_lo == 43u && lo0 != 43u && steps_inst((uint32_t)pat)->s.stp.hit
               && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before && roll_shows(pat));
+        check("  the markers: a triangle over each step with notes above the window (A#3 on step 2), none below",
+              marks_ok(pat) && px(seq_grid_x(1) + 5u, MARK_UP_Y + 2u) == C_DIM && px(seq_grid_x(2) + 5u, MARK_UP_Y + 2u) == C_BG
+              && px(seq_grid_x(0) + 5u, MARK_DN_Y) == C_BG);
+        snap_to(getenv("PANEL_SNAP_ROLL_MARKS"));
         r0 = seq_row;
         fb_watch_reset();
         lcd_px = lcd_xfers = 0;
@@ -956,6 +987,11 @@ int main(void)
                  + fb_changed_in(4, GRID_Y + GRID_RH * seq_row, 4 + GRID_NAME_W, GRID_Y + GRID_RH * seq_row + FONT_S.h));
         panel_keys(1u << 5);                                /* (A#2 again) */
         panel_keys(0);
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);                      /* (SEL let go on the SEQ page: nothing) */
+        loop();
+        check("  SEL let go: the page stays", page == PAGE_SEQ);
+        panel_held |= 1u << BTN_ACC;
         tap(BTN_OCT_UP);
         panel_held &= ~(1u << BTN_ACC);
         loop();
@@ -972,15 +1008,27 @@ int main(void)
         enc(3, -5);                                         /* + K2: its velocity (it was accented: 127) */
         hw = eng_steps_note((uint32_t)pat, 0u, 46u);
         check("+ K1 back, + K2: its velocity (122)", hw && ((hw >> 19) & 127u) == 122u && seq_grid_note(-1, seq_row) == 46u);
-        panel_held |= 1u << BTN_ACC;                        /* + FX pressed: its accent */
-        panel_edges(1u << BTN_ACC, 0);
+        panel_keys(0);
         loop();
+        panel_held |= 1u << BTN_ACC;                        /* FX + the white key: its accent (as on drums) */
+        panel_keys(1u << 0);
+        panel_keys(0);
         panel_held &= ~(1u << BTN_ACC);
-        panel_edges(0, 1u << BTN_ACC);
         loop();
         hw = eng_steps_note((uint32_t)pat, 0u, 46u);
-        check("+ FX pressed: an accent (127, coral)", hw && ((hw >> 19) & 127u) == ACCENT_VEL
+        check("FX + a white key on a note: its accent (127, coral)", hw && ((hw >> 19) & 127u) == ACCENT_VEL
               && px(seq_grid_x(0) + 5u, GRID_Y + GRID_RH * seq_row + GRID_CH - 1u) == C_ACC);
+        panel_held |= 1u << BTN_ACC;                        /* FX + an empty step: an accented note */
+        panel_keys(1u << 4);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_ACC);
+        loop();
+        hw = eng_steps_note((uint32_t)pat, 2u, 46u);
+        check("FX + a white key on an empty step: an accented note", hw && ((hw >> 19) & 127u) == ACCENT_VEL);
+        panel_keys(1u << 4);                                /* (off again) */
+        panel_keys(0);
+        panel_keys(1u << 0);                                /* step 1 held again */
+        loop();
         enc(0, -2);                                         /* + SELECT: its chance */
         hw = eng_steps_note((uint32_t)pat, 0u, 46u);
         check("+ SELECT: its chance (90 %), the row stays", hw && ((hw >> 26) & 31u) == 2u && seq_grid_note(-1, seq_row) == 46u);
@@ -1018,12 +1066,12 @@ int main(void)
         loop();
         check("  the pass shows it", !strcmp(msg_text, "NOTHING TO TIE"));
         panel_held &= ~(1u << BTN_LFO);
-        panel_held |= 1u << BTN_ACC;
-        kq_edge(7, 1);                                      /* FX + C4 (the pen) during a redraw */
+        panel_held |= 1u << BTN_SEL;
+        kq_edge(7, 1);                                      /* SEL + C4 (the pen) during a redraw */
         kq_edge(7, 0);
         ui_dirty = 2;
         panel_draw();
-        panel_held &= ~(1u << BTN_ACC);
+        panel_held &= ~(1u << BTN_SEL);
         hw = eng_steps_note((uint32_t)pat, 2u, 60u);
         kq_edge(4, 1);                                      /* A3: C4 on step 3, during a redraw */
         kq_edge(4, 0);

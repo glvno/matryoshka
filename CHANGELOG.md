@@ -20,9 +20,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   SELECT also picks the row, with REC on or off. REC on an armed drum track is this grid.
 - FM-1: a melodic track's SEQ page is now a piano roll on the same grid: 8 pitch rows (C4, C#4 ..., the C rows tinted)
   across 16 steps, opened around the track's notes, chords as several cells in a column and long notes drawn running on.
-  SELECT moves the row and scrolls at the edges, white keys switch the selected pitch on a step, FX held + any key jumps
-  to that key's pitch and plays it (FX + OCT: the octave), LFO held + a white key ties the note through that step, and a
-  held step + K1 / K2 / SELECT / FX sets that note's pitch, velocity, chance and accent. REC on an armed melodic track
+  SELECT moves the row and scrolls at the edges, white keys switch the selected pitch on a step (FX held: accented), SEL
+  held + any key jumps to that key's pitch and plays it (FX + OCT: the octave), LFO held + a white key ties the note
+  through that step, and a held step + K1 / K2 / SELECT sets that note's pitch, velocity and chance. Small triangles over
+  or under a step show notes above or below the 8 rows on screen. REC on an armed melodic track
   while stopped shows the roll with REC on (black keys sound, white keys place notes); running, every key records. This
   replaces step entry (the cursor, FX + OCT rest, LFO + OCT tie), which is gone from the FM-1 (#241).
 - FM-1: REC with nothing armed opens the SEQ page on a drum track, so the hits are seen landing; REC off stays there.

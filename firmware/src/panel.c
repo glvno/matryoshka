@@ -555,7 +555,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * page's */
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track (the roll with FX held:
-                                                     * the keys' octave, the pen's), FX the accent / pen key, LFO the roll's tie */
+                                                     * the keys' octave, the pen's), FX the accent key, LFO the roll's tie */
         int roll = seq_module() >= 0 && seq_map() < 0;
         if (!roll || !(panel_held >> BTN_ACC & 1u)) {
             if (p & (1u << BTN_OCT_DOWN))
@@ -564,8 +564,6 @@ static void panel_edges(uint32_t p, uint32_t rel)
                 seq_page_step(1);
             p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
         }
-        if ((p & (1u << BTN_ACC)) && roll && seq_held >= 0)   /* FX pressed with a step held on the roll: its accent */
-            seq_accent();
         p &= ~((1u << BTN_ACC) | (roll ? 1u << BTN_LFO : 0u));
     }
     /* SEQ and REC act on release, unless a black key muted / armed a track meanwhile; the flag is cleared at the release,
