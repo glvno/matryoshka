@@ -12,11 +12,11 @@ const USED = ['matryoshka.patch', 'matryoshka.patches', 'modular-1.patch', 'modu
 /** the main changes, by "major.minor"; a version without an entry shows no card */
 export const HIGHLIGHTS: Record<string, string[]> = {
   '1.2': [
-    'One switch at the top: PATCH | EMU | LIBRARY. EMU is the FM-1 view, renamed.',
+    'One switch at the top: PATCH | EMU | LIBRARY. EMU is the FM-1 view, renamed; installing firmware is under Get started → Install firmware.',
     'LIBRARY manages what is stored: your patches, assemblies and presets, in this browser and on the FM-1, side by side. Open a patch with Open in the PATCH panel.',
-    'Installing firmware is under Get started → Install firmware.',
-    'Choose and arrange several rows of an assembly card at once.',
-    'New FM-1 firmware: turning SELECT or ALGO shows a quick card with the device or page name. Install it from Get started.',
+    'Sequencing on the FM-1: drums on the black keys, an 8 × 16 drum grid and a piano roll on the SEQ page (SEL + a key picks the pitch); hold SEQ and press REC twice to clear a track.',
+    'Every melodic factory patch has an arpeggiator (ARP) and an empty PATTERN track to fill; a new factory patch, <7PH (909 drums and an acid bass), and the first community patch, Lire + Elvira.',
+    'New FM-1 firmware: quick SELECT and ALGO cards, a battery mark, and no key press lost while the screen draws. Install it from Get started; FACTORY RESET brings the new factory patches.',
   ],
 };
 
