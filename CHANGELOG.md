@@ -4,6 +4,12 @@ What changed in Matryoshka for the people who use it: the web editor and the FM-
 The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The development log from before 1.0 is in
 [docs/CHANGELOG-pre-1.0.md](docs/CHANGELOG-pre-1.0.md).
 
+## 1.2.1 — 2026-10-23
+
+- **Return to official V15** on an FM-1 whose boot code is not V15's (the FM-1 shows "update failed -5") now says so in
+  the Install panel and in `tools/fm1_install.py`: nothing was erased, and the way back is the chip's boot mode with
+  MvaveFM1Unbricker (#183). It used to say only that the device stopped answering.
+
 ## 1.2.0 — 2026-10-23
 
 - On battery after the USB cable was pulled, turning SELECT on the FM-1's preset list no longer freezes the screen for

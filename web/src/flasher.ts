@@ -7,6 +7,13 @@ import { Updater, STOCK_PRODUCT } from './flasher/fm1ota.js';
 import { logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
 import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
 
+/** #183: the running firmware refused the official V15 because this FM-1's boot code differs from the package's
+ *  (fm1ota.js bootMismatch); the way back is the chip's ROM boot */
+export const BOOT_CODE_HELP =
+  "This FM-1's boot code (flash 0x0000–0x3FFF) is not the one inside the official V15 package, so it refused the update " +
+  'before erasing anything (its screen says "update failed -5"). The FM-1 is safe and still runs its firmware. To return ' +
+  "to V15 anyway: put it in chip boot mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) and write V15's 0x4000–0x92FFF " +
+  'region with MvaveFM1Unbricker. Details: https://github.com/glvno/matryoshka/issues/183';
 
 const ERRORS: Record<string, string> = {
   notfound: 'FM-1 not found. Check the USB data cable and close other apps that use the MIDI port.',
@@ -19,6 +26,7 @@ const ERRORS: Record<string, string> = {
   badreq: 'The device asked for data outside the package.',
   phase: 'The device asked to finish a step other than the one running. Nothing more was sent.',
   felucca: 'Nothing was sent. Read the note above Install, tick its box and press Install again.',
+  bootcode: BOOT_CODE_HELP,
 };
 
 /** an interrupted write can only be finished with a package the waiting loader may write (fm1ota.js loaderFits) */
