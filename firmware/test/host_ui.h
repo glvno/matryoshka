@@ -26,12 +26,42 @@ static uint32_t pv_len;
 #define FELUCCA_VERSION "v1.2.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
+/* lcd.c's shared line buffer and its rule: on the device the DMA reads it after the transfer call returns, until the next
+ * lcd_sync (or LCD access). Here a transfer from it keeps a copy, and the next sync / transfer counts a change made
+ * meanwhile in lcd_line_clobbers (panel_test.c wants none) */
+static uint16_t lcd_line[240];
+static uint16_t lcd_line_sent[240];
+static uint32_t lcd_line_busy, lcd_line_clobbers;  /* pixels of lcd_line the transfer still reads; writes into them */
+static void lcd_line_done(void)
+{
+    uint32_t i;
+    for (i = 0; i < lcd_line_busy; i++)
+        if (lcd_line[i] != lcd_line_sent[i]) {
+            lcd_line_clobbers++;
+            break;
+        }
+    lcd_line_busy = 0;
+}
+static void lcd_line_sending(uint32_t n)
+{
+    uint32_t i;
+    lcd_line_busy = n < 240u ? n : 240u;
+    for (i = 0; i < lcd_line_busy; i++)
+        lcd_line_sent[i] = lcd_line[i];
+}
 static void (*lcd_yield)(void);            /* lcd.c's: called before each transfer here (on the device while one runs) */
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, j;
     if (lcd_yield)
         lcd_yield();
+    lcd_line_done();
+    if (w && h && x < 240u && y < 240u) {  /* lcd.c fills lcd_line with whole rows of the colour and sends from it */
+        uint32_t ww = x + w > 240u ? 240u - x : w, k = 240u / ww * ww;
+        for (i = 0; i < k; i++)
+            lcd_line[i] = (uint16_t)((c >> 8) | (c << 8));
+        lcd_line_sending(k);
+    }
     lcd_px += w * h;
     lcd_xfers++;
     for (j = 0; j < h; j++)
@@ -45,6 +75,9 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
     uint32_t i, j;
     if (lcd_yield)
         lcd_yield();
+    lcd_line_done();
+    if (px == lcd_line)
+        lcd_line_sending(w * h);
     lcd_px += w * h;
     lcd_xfers++;
     for (j = 0; j < h; j++)
@@ -55,7 +88,14 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
             }
     fb_dirty = 1;
 }
-static void lcd_sync(void) {}
+static void lcd_sync(void) { lcd_line_done(); }
+static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
+{
+    uint32_t i;
+    for (i = 0; i < w; i++)
+        lcd_line[i] = (uint16_t)((lcd_line[i] >> 8) | (lcd_line[i] << 8));
+    lcd_blit(x, y, w, 1, lcd_line);
+}
 
 #include "../src/engine.c"
 #include "../src/presets.h"
@@ -115,7 +155,6 @@ static void m1_preset_stored(uint32_t structure, const char *name) { (void)struc
 #include "../src/font5x7.c"
 #include "../src/font_bc.c"
 static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
-static uint16_t lcd_fillbuf[240];          /* lcd.c's: the splash's row buffer, the battery mark's (ui.c) */
 #define BATT_START 900                     /* the battery (ui.c): full, no USB host (fm1_open's simulator has 900 too) */
 #include "../src/ui.c"
 #include "../src/pages_ui.c"
@@ -179,7 +218,6 @@ static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the pre
     out[i] = 0;
 }
 static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
-static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { eng_steps_value_set(mod, k, note, vel); }
 static void m1_patch_notes(uint32_t mod) { (void)mod; }
 static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_name(pv_bin, pv_len, map, r, out); }
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */

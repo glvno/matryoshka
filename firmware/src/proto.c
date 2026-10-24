@@ -242,26 +242,30 @@ static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }   /* (
 /* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
 static void m1_track_now(uint32_t mod)
 {
-    static uint8_t p[2u + 4u * TRACK_NOTES_MAX], f[8u + (8u * sizeof p + 6u) / 7u];
+    static uint8_t f[8u + (8u * (2u + 4u * TRACK_NOTES_MAX) + 6u) / 7u];
     const uint32_t *w;
-    int n = eng_steps_notes(mod, &w), i;
-    uint32_t o = 0;
+    int n = eng_steps_notes(mod, &w);
+    uint32_t o = 0, k, len, acc = 0, nb = 0;
     if (n < 0)
         return;
-    p[0] = (uint8_t)mod;
-    p[1] = (uint8_t)n;
-    for (i = 0; i < n; i++) {
-        p[2 + 4 * i] = (uint8_t)w[i];
-        p[3 + 4 * i] = (uint8_t)(w[i] >> 8);
-        p[4 + 4 * i] = (uint8_t)(w[i] >> 16);
-        p[5 + 4 * i] = (uint8_t)(w[i] >> 24);
-    }
     f[o++] = 0xF0;
     f[o++] = 0x7D;
     f[o++] = 0x4D;
     f[o++] = 0x31;
     f[o++] = R_TRACK;
-    o += m1_pack7(p, 2u + 4u * (uint32_t)n, f + o);
+    len = 2u + 4u * (uint32_t)n;
+    for (k = 0; k < len; k++) {   /* m1_pack7 of the payload, a byte at a time from the engine's words (no 514 B copy) */
+        uint32_t b = k == 0u ? mod & 255u : k == 1u ? (uint32_t)n & 255u : (w[(k - 2u) >> 2] >> (8u * ((k - 2u) & 3u))) & 255u;
+        acc |= b << nb;
+        nb += 8u;
+        while (nb >= 7u) {
+            f[o++] = (uint8_t)(acc & 0x7Fu);
+            acc >>= 7;
+            nb -= 7u;
+        }
+    }
+    if (nb)
+        f[o++] = (uint8_t)(acc & 0x7Fu);
     f[o++] = 0xF7;
     m1_send(f, o);
 }

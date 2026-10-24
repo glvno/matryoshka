@@ -225,6 +225,60 @@ static int load_at(uint32_t p)
     return 0;
 }
 
+/* the roll (#241) on the LCD as the track holds it: a note's first step ivory (an accent coral), the steps it goes on
+ * through dim, the rest empty (a C row tinted, a beat's first lighter, the step playing grey), past the length nothing */
+static int roll_shows(int mod)
+{
+    const uint32_t *w;
+    int nn = eng_steps_notes((uint32_t)mod, &w), i, pos = eng_steps_pos((uint32_t)mod), ok = 1;
+    uint32_t row, st;
+    for (row = 0; row < 8u; row++)
+        for (st = 0; st < 16u; st++) {
+            uint32_t k = seq_pg * 16u + st, p = seq_grid_note(-1, row), hw = eng_steps_note((uint32_t)mod, k, p), tie = 0;
+            uint16_t want;
+            for (i = 0; i < nn; i++)
+                tie |= ((w[i] >> 12) & 127u) == p && (w[i] & 63u) < k && k <= (w[i] & 63u) + ((w[i] >> 6) & 63u);
+            if ((int32_t)k >= seq_len(mod))
+                want = C_BG;
+            else if (hw)
+                want = ((hw >> 19) & 127u) == ACCENT_VEL ? C_ACC : C_FG;
+            else if (tie)
+                want = C_DIM;
+            else if ((int)k == pos)
+                want = C_HINT;
+            else
+                want = p % 12u ? ((st & 3u) ? C_TRACK : C_BEAT) : ((st & 3u) ? C_CROW : C_CBEAT);
+            if (px(seq_grid_x(st) + 5u, GRID_Y + GRID_RH * row + GRID_CH - 1u) != want) {
+                printf("      (roll: row %u (%u) step %u: %#06x, not %#06x)\n", (unsigned)row, (unsigned)p, (unsigned)k,
+                       px(seq_grid_x(st) + 5u, GRID_Y + GRID_RH * row + GRID_CH - 1u), want);
+                ok = 0;
+            }
+        }
+    return ok;
+}
+
+/* the roll's markers on the LCD (#241): a dim triangle over a step with a note sounding above the window, under one with
+ * a note below, else the background */
+static int marks_ok(int mod)
+{
+    const uint32_t *w;
+    int nn = eng_steps_notes((uint32_t)mod, &w), i, ok = 1;
+    uint32_t st, lo = seq_roll_lo;
+    for (st = 0; st < 16u; st++) {
+        uint32_t k = seq_pg * 16u + st, up = 0, dn = 0;
+        for (i = 0; i < nn && (int32_t)k < seq_len(mod); i++)
+            if ((w[i] & 63u) <= k && k <= (w[i] & 63u) + ((w[i] >> 6) & 63u)) {
+                up |= ((w[i] >> 12) & 127u) > lo + 7u;
+                dn |= ((w[i] >> 12) & 127u) < lo;
+            }
+        if (px(seq_grid_x(st) + 5u, MARK_UP_Y + 2u) != (up ? C_DIM : C_BG) || px(seq_grid_x(st) + 5u, MARK_DN_Y) != (dn ? C_DIM : C_BG)) {
+            printf("      (markers: step %u: up %u down %u not drawn so)\n", (unsigned)k, (unsigned)up, (unsigned)dn);
+            ok = 0;
+        }
+    }
+    return ok;
+}
+
 int main(void)
 {
     static uint16_t before[240 * 240];
@@ -823,12 +877,15 @@ int main(void)
         tap(BTN_SEQ);
     }
 
-    {                                                       /* arming and recording from the keys (#139), on a melodic track: the
-                                                             * <7PH's PATTERN (a drum track's REC is its grid, below) */
+    {                                                       /* the piano roll (#241) on <7PH's PATTERN (melodic, 46..65): 8 pitches
+                                                             * x 16 steps, drawn in place; then arming and recording from the keys
+                                                             * (#139): REC on the armed track stopped is the roll with REC on (no
+                                                             * step entry), running a live take */
         static int32_t l[128], r[128];
-        int pat, i;
+        static uint32_t keep[TRACK_NOTES_MAX];
+        int pat, i, keep_n, k, pos;
         const uint32_t *w;
-        uint32_t before, base;
+        uint32_t before, base, n, all, part, x, y, hw, r0, lo0;
         while (page != 0u && trail_n)
             tap(BTN_HOME);
         if (eng_transport_running())
@@ -836,9 +893,222 @@ int main(void)
         check("(<7PH, the last factory patch, loads: DRUMS, then PATTERN into the Silver Box)", !load_at(N_PRESETS - 1u)
               && eng_steps_count() == 2 && eng_steps_drummap((uint32_t)eng_steps_module(0)) >= 0
               && eng_steps_drummap((uint32_t)eng_steps_module(1)) < 0);
+        pv_gen++;
         page = 0;
+        trail_n = 0;
         screen_idle();
         pat = eng_steps_module(1);
+        keep_n = eng_steps_notes((uint32_t)pat, &w);
+        for (i = 0; i < keep_n; i++)
+            keep[i] = w[i];
+        seq_select(1);
+        page_set(PAGE_SEQ);
+        later(1500);
+        check("SEQ on PATTERN: the roll (no Drum map), opened around its notes: the median A#3 on the middle row",
+              page == PAGE_SEQ && seq_map() < 0 && seq_roll_lo == 55u && seq_row == 4u && seq_grid_note(-1, seq_row) == 58u);
+        check("the roll: each pitch's notes on the 16 steps, a 2-step note runs on dim, the C row tinted", roll_shows(pat)
+              && px(seq_grid_x(4) + GRID_CW, GRID_Y + GRID_RH * 4u + 5u) == C_DIM);
+        check("the markers: over the steps with notes above (D#4, F4), under those with notes below (A#2)", marks_ok(pat)
+              && px(seq_grid_x(0) + 5u, MARK_DN_Y) == C_DIM && px(seq_grid_x(11) + 5u, MARK_UP_Y + 2u) == C_DIM
+              && px(seq_grid_x(1) + 5u, MARK_DN_Y) == C_BG);
+        check("the names: pitches top down (D4 .. G3), the selected one on coral, C4's tinted",
+              px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 4u + 1u) == C_ACC && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 2u + 1u) == C_CROW
+              && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * 3u + 1u) == C_BG);
+        snap_to(getenv("PANEL_SNAP_ROLL"));
+
+        k = 2;                                              /* a white key: A#3 on step 3 (it has none) */
+        for (n = 0; seq_white(n) != k; n++)
+            ;
+        x = seq_grid_x((uint32_t)k);
+        y = GRID_Y + GRID_RH * 4u;
+        fb_watch_reset();
+        lcd_px = lcd_xfers = 0;
+        panel_keys(1u << n);
+        panel_keys(0);
+        loop();
+        all = fb_changed_in(0, 0, 240, 240);
+        part = fb_changed_in(x, y, x + GRID_CW, y + GRID_CH);
+        printf("      (roll, a step: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+        check("a white key: the selected pitch's note on its step, that cell alone redrawn (ivory)", eng_steps_note((uint32_t)pat, 2u, 58u)
+              && all > 0u && all == part && lcd_px <= GRID_CW * GRID_CH && px(x + 5u, y + GRID_CH - 1u) == C_FG);
+        panel_keys(1u << n);                                /* again: gone */
+        panel_keys(0);
+        loop();
+        check("again: off", !eng_steps_note((uint32_t)pat, 2u, 58u) && roll_shows(pat));
+
+        fb_watch_reset();                                   /* SELECT: the next row down (A3) */
+        lcd_px = lcd_xfers = 0;
+        enc(0, 1);
+        all = fb_changed_in(0, 0, 240, 240);
+        part = fb_changed_in(4, GRID_Y + GRID_RH * 4u, 4 + GRID_NAME_W, GRID_Y + GRID_RH * 4u + FONT_S.h)
+             + fb_changed_in(4, GRID_Y + GRID_RH * 5u, 4 + GRID_NAME_W, GRID_Y + GRID_RH * 5u + FONT_S.h);
+        printf("      (roll, SELECT a row on: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+        check("SELECT: the next pitch down, only the two names redrawn", seq_row == 5u && seq_grid_note(-1, seq_row) == 57u
+              && all > 0u && all == part && fb_blinked() == 0 && lcd_px <= 2u * GRID_NAME_W * FONT_S.h);
+        enc(0, -5);
+        check("SELECT back up to the top row (D4)", seq_row == 0u && seq_roll_lo == 55u);
+        fb_watch_reset();                                   /* past the top: the window scrolls a semitone */
+        lcd_px = lcd_xfers = 0;
+        enc(0, -1);
+        all = fb_changed_in(0, 0, 240, 240);
+        part = fb_changed_in(0, MARK_UP_Y, 240, GRID_TICK_Y);
+        printf("      (roll, a scroll: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+        check("SELECT past the top row: the window scrolls (D#4 on top), only the rows redrawn (not the bar, the lines)",
+              seq_row == 0u && seq_roll_lo == 56u && seq_grid_note(-1, 0) == 63u && all > 0u && all == part && fb_blinked() == 0
+              && roll_shows(pat) && marks_ok(pat));
+
+        steps_inst((uint32_t)pat)->s.stp.hit = 0;           /* FX held + OCT-: the keys' octave; then the pen, SEL held + a key */
+        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
+        panel_held |= 1u << BTN_ACC;
+        tap(BTN_OCT_DOWN);
+        panel_held &= ~(1u << BTN_ACC);
+        check("FX held + OCT- on the roll: the keys' octave (not the page)", octave == -1 && seq_pg == 0u);
+        check("the octave message ends after its number (it showed a stray character)", !strcmp(msg_text, "OCTAVE -1"));
+        lo0 = seq_roll_lo;
+        panel_held |= 1u << BTN_SEL;
+        panel_keys(1u << 5);                                /* A#2 at octave -1 (out of the window) */
+        panel_keys(0);
+        loop();
+        check("SEL + a key (the pen): the selected row is its pitch (A#2), the window opens around it, heard, no note written",
+              seq_grid_note(-1, seq_row) == 46u && seq_roll_lo == 43u && lo0 != 43u && steps_inst((uint32_t)pat)->s.stp.hit
+              && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before && roll_shows(pat));
+        check("  the markers: a triangle over each step with notes above the window (A#3 on step 2), none below",
+              marks_ok(pat) && px(seq_grid_x(1) + 5u, MARK_UP_Y + 2u) == C_DIM && px(seq_grid_x(2) + 5u, MARK_UP_Y + 2u) == C_BG
+              && px(seq_grid_x(0) + 5u, MARK_DN_Y) == C_BG);
+        snap_to(getenv("PANEL_SNAP_ROLL_MARKS"));
+        r0 = seq_row;
+        fb_watch_reset();
+        lcd_px = lcd_xfers = 0;
+        panel_keys(1u << 7);                                /* the pen on C3, in the window: the row moves, no scroll */
+        panel_keys(0);
+        loop();
+        printf("      (roll, the pen in the window: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+        check("the pen in the window: the row moves, only the two names redrawn", seq_grid_note(-1, seq_row) == 48u && seq_roll_lo == 43u
+              && fb_changed_in(0, 0, 240, 240) == fb_changed_in(4, GRID_Y + GRID_RH * r0, 4 + GRID_NAME_W, GRID_Y + GRID_RH * r0 + FONT_S.h)
+                 + fb_changed_in(4, GRID_Y + GRID_RH * seq_row, 4 + GRID_NAME_W, GRID_Y + GRID_RH * seq_row + FONT_S.h));
+        panel_keys(1u << 5);                                /* (A#2 again) */
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);                      /* (SEL let go on the SEQ page: nothing) */
+        loop();
+        check("  SEL let go: the page stays", page == PAGE_SEQ);
+        panel_held |= 1u << BTN_ACC;
+        tap(BTN_OCT_UP);
+        panel_held &= ~(1u << BTN_ACC);
+        loop();
+        check("(FX + OCT+: octave 0 again)", octave == 0 && seq_grid_note(-1, seq_row) == 46u);
+
+        panel_keys(1u << 0);                                /* step 1 held (its A#2 switched off by the press) */
+        loop();
+        enc(2, 1);                                          /* + K1: the note back, a semitone up, the row follows */
+        check("a held step + K1: its note in the selected row a semitone up (B2), the row follows it",
+              eng_steps_note((uint32_t)pat, 0u, 47u) && !eng_steps_note((uint32_t)pat, 0u, 46u) && seq_grid_note(-1, seq_row) == 47u
+              && !strcmp(msg_text, "STEP 1  B2  VEL 127"));
+        enc(2, -1);
+        later(200);                                         /* (not turned fast) */
+        enc(3, -5);                                         /* + K2: its velocity (it was accented: 127) */
+        hw = eng_steps_note((uint32_t)pat, 0u, 46u);
+        check("+ K1 back, + K2: its velocity (122)", hw && ((hw >> 19) & 127u) == 122u && seq_grid_note(-1, seq_row) == 46u);
+        panel_keys(0);
+        loop();
+        panel_held |= 1u << BTN_ACC;                        /* FX + the white key: its accent (as on drums) */
+        panel_keys(1u << 0);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_ACC);
+        loop();
+        hw = eng_steps_note((uint32_t)pat, 0u, 46u);
+        check("FX + a white key on a note: its accent (127, coral)", hw && ((hw >> 19) & 127u) == ACCENT_VEL
+              && px(seq_grid_x(0) + 5u, GRID_Y + GRID_RH * seq_row + GRID_CH - 1u) == C_ACC);
+        panel_held |= 1u << BTN_ACC;                        /* FX + an empty step: an accented note */
+        panel_keys(1u << 4);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_ACC);
+        loop();
+        hw = eng_steps_note((uint32_t)pat, 2u, 46u);
+        check("FX + a white key on an empty step: an accented note", hw && ((hw >> 19) & 127u) == ACCENT_VEL);
+        panel_keys(1u << 4);                                /* (off again) */
+        panel_keys(0);
+        panel_keys(1u << 0);                                /* step 1 held again */
+        loop();
+        enc(0, -2);                                         /* + SELECT: its chance */
+        hw = eng_steps_note((uint32_t)pat, 0u, 46u);
+        check("+ SELECT: its chance (90 %), the row stays", hw && ((hw >> 26) & 31u) == 2u && seq_grid_note(-1, seq_row) == 46u);
+        panel_keys(0);
+        loop();
+
+        panel_held |= 1u << BTN_LFO;                        /* LFO + step 11: A#2 on step 9 (2 steps) goes on through it */
+        panel_keys(1u << 18);
+        panel_keys(0);
+        loop();
+        hw = eng_steps_note((uint32_t)pat, 8u, 46u);
+        check("LFO + a white key: the note sounding on the step before tied through it (3 steps), drawn dim",
+              seq_white(18) == 10 && hw && ((hw >> 6) & 63u) == 2u && roll_shows(pat)
+              && px(seq_grid_x(10) + 5u, GRID_Y + GRID_RH * seq_row + 5u) == C_DIM);
+        panel_keys(1u << 16);                               /* LFO + step 10 (tied): cut before it */
+        panel_keys(0);
+        loop();
+        hw = eng_steps_note((uint32_t)pat, 8u, 46u);
+        check("LFO + a tied step: the note ends before it", seq_white(16) == 9 && hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
+              && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG);
+        msg_text[0] = 0;
+        panel_keys(1u << 9);                                /* LFO + step 6: no A#2 on step 5 */
+        panel_keys(0);
+        loop();
+        check("LFO + a step after nothing: NOTHING TO TIE", seq_white(9) == 5 && !strcmp(msg_text, "NOTHING TO TIE"));
+        later(1000);
+        panel_yield = keys_yield_q;                         /* the roll's keys during a full redraw (D-228): nothing drawn from inside */
+        yield_xfers = 0;
+        msg_text[0] = 0;
+        kq_edge(9, 1);                                      /* LFO + step 6 again: its message waits for the loop's pass */
+        kq_edge(9, 0);
+        ui_dirty = 2;
+        panel_draw();
+        check("in a redraw, LFO + a step: taken, its message left for the pass", kq_r == kq_w && yield_xfers == 0u && !msg_text[0]);
+        loop();
+        check("  the pass shows it", !strcmp(msg_text, "NOTHING TO TIE"));
+        panel_held &= ~(1u << BTN_LFO);
+        panel_held |= 1u << BTN_SEL;
+        kq_edge(7, 1);                                      /* SEL + C4 (the pen) during a redraw */
+        kq_edge(7, 0);
+        ui_dirty = 2;
+        panel_draw();
+        panel_held &= ~(1u << BTN_SEL);
+        hw = eng_steps_note((uint32_t)pat, 2u, 60u);
+        kq_edge(4, 1);                                      /* A3: C4 on step 3, during a redraw */
+        kq_edge(4, 0);
+        ui_dirty = 2;
+        panel_draw();
+        check("in a redraw, the pen and a white key: the row C4, its note on step 3 switched, nothing drawn from inside",
+              seq_grid_note(-1, seq_row) == 60u && !hw == !!eng_steps_note((uint32_t)pat, 2u, 60u) && kq_r == kq_w && yield_xfers == 0u);
+        panel_yield = 0;
+        loop();
+        check("  the next pass draws the roll as it is", roll_shows(pat));
+
+        tap(BTN_PLAY);                                      /* the playhead moves on: its two columns */
+        for (i = 0; i < 20; i++)
+            eng_render(l, r, 128);
+        later(1100);
+        pos = eng_steps_pos((uint32_t)pat);
+        for (i = 0; i < 400 && eng_steps_pos((uint32_t)pat) == pos; i++)
+            eng_render(l, r, 128);
+        fb_watch_reset();
+        lcd_px = lcd_xfers = 0;
+        loop();
+        {
+            uint32_t xo = seq_grid_x((uint32_t)pos % 16u), xn = seq_grid_x((uint32_t)eng_steps_pos((uint32_t)pat) % 16u);
+            all = fb_changed_in(0, 0, 240, 240);
+            part = fb_changed_in(xo, GRID_Y, xo + GRID_CW, GRID_TICK_Y + 3u) + fb_changed_in(xn, GRID_Y, xn + GRID_CW, GRID_TICK_Y + 3u);
+            printf("      (roll, the playhead a step on: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+            check("roll: the playhead a step on, only its old and new columns redrawn", pos >= 0 && eng_steps_pos((uint32_t)pat) != pos
+                  && all > 0u && all == part && lcd_xfers <= 2u * (2u * ENG_DRUM_ROWS + 1u));
+        }
+        tap(BTN_PLAY);
+        (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
+        seq_sync(pat);
+        ui_dirty = 2;
+        loop();
+        tap(BTN_HOME);
+
         base = (uint32_t)(53 + 12 * octave);
         panel_held |= 1u << BTN_REC;                        /* REC held + black key 2 (G#3): PATTERN armed, no recording */
         panel_edges(1u << BTN_REC, 0);
@@ -849,33 +1119,49 @@ int main(void)
         loop();
         check("REC held + a black key: the track armed, REC's release records nothing", pat >= 0 && eng_armed() == pat && seq_rec == 0 && page == 0u);
         tap(BTN_REC);
-        check("REC with a track armed, stopped: step entry on the SEQ page at step 1", page == PAGE_SEQ && seq_rec == 2u && seq_entry() && seq_cur == 0);
+        check("REC with a melodic track armed, stopped: its roll with REC on (no step entry)", page == PAGE_SEQ && seq_rec == 2u
+              && seq_trk == 1u && seq_map() < 0 && !seq_kbd());
+        later(1100);
+        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC", C_RED));
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
-        panel_keys(1u << 7);                                /* C4 and E4 held, C4 let go: the chord into step 1 */
-        panel_keys(1u << 7 | 1u << 11);
-        panel_keys(1u << 11);
+        steps_inst((uint32_t)pat)->s.stp.hit = 0;
+        r0 = seq_row;
+        panel_keys(1u << 8);                                /* black key C#4: heard, nothing recorded, the row stays */
+        panel_keys(0);
+        check("a black key there: its pitch heard, nothing recorded, the row stays", steps_inst((uint32_t)pat)->s.stp.hit
+              && E.trk_last[E.node[pat].trk] == base + 8u && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before && seq_row == r0);
+        hw = eng_steps_note((uint32_t)pat, 1u, seq_grid_note(-1, seq_row));
+        panel_keys(1u << 2);                                /* a white key: step 2, the selected pitch */
+        panel_keys(0);
+        loop();
+        check("a white key: the selected pitch's note on its step switched", !hw == !!eng_steps_note((uint32_t)pat, 1u, seq_grid_note(-1, seq_row)));
+        snap_to(getenv("PANEL_SNAP_ROLL_REC"));
+        tap(BTN_PLAY);                                      /* PLAY: a live take on the roll, the 27 keys its keyboard */
+        loop();
+        check("PLAY with REC on: the keys are the armed track's keyboard (the hint says so)", seq_kbd()
+              && !strcmp(seq_grid_text[2], "KEYS record  SEL row  OCT octave"));
+        for (i = 0; i < 40; i++)
+            eng_render(l, r, 128);
+        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
+        panel_keys(1u << 1);                                /* F#3: a note the track did not have */
+        for (i = 0; i < 10; i++)
+            eng_render(l, r, 128);
+        panel_keys(0);
+        eng_render(l, r, 128);
+        loop();
         {
-            int n = eng_steps_notes((uint32_t)pat, &w), on1 = 0;
-            for (i = 0; i < n; i++)
-                on1 += (w[i] & 63u) == 0u && (((w[i] >> 12) & 127u) == base + 7u || ((w[i] >> 12) & 127u) == base + 11u) && ((w[i] >> 19) & 127u) == STEP_VEL;
-            check("step entry: the keys held at the first release fill the step, the cursor moves on", on1 == 2 && seq_cur == 1);
+            int nn = eng_steps_notes((uint32_t)pat, &w), got = 0;
+            for (i = 0; i < nn; i++)
+                got |= ((w[i] >> 12) & 127u) == base + 1u;
+            check("the live take on the roll: the played note in the track", got && (uint32_t)nn == before + 1u);
         }
-        panel_keys(0);
-        check("the last key let go writes nothing more", seq_cur == 1);
-        panel_keys(1u << 14);                               /* (G4 held, for the picture: the chord being played) */
+        tap(BTN_PLAY);
         loop();
-        snap_to(getenv("PANEL_SNAP_ENTRY"));
-        panel_keys(0);
-        loop();
-        seq_cur_move(-1);                                   /* (its chord written into step 2, the cursor back) */
-        panel_held |= 1u << BTN_ACC;                        /* FX + OCT+: a rest */
-        tap(BTN_OCT_UP);
-        panel_held &= ~(1u << BTN_ACC);
-        check("FX + OCT: a rest, the cursor on (the octave stays)", seq_cur == 2 && !(eng_steps_get((uint32_t)pat, 1u) & 1) && base == (uint32_t)(53 + 12 * octave));
-        enc(0, -2);
-        check("SELECT moves the cursor", seq_cur == 0);
+        check("stopped again: the roll with REC on", !seq_kbd() && seq_rec == 2u && page == PAGE_SEQ);
         tap(BTN_REC);
         check("REC again: off", seq_rec == 0 && !seq_kbd());
+        (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
+        seq_sync(pat);
         tap(BTN_HOME);
         tap(BTN_PLAY);
         tap(BTN_REC);
@@ -890,10 +1176,10 @@ int main(void)
         eng_render(l, r, 128);
         loop();
         {
-            int n = eng_steps_notes((uint32_t)pat, &w), got = 0;
-            for (i = 0; i < n; i++)
+            int nn = eng_steps_notes((uint32_t)pat, &w), got = 0;
+            for (i = 0; i < nn; i++)
                 got |= ((w[i] >> 12) & 127u) == base;
-            check("the live take: the played note in the track", got && (uint32_t)n == before + 1u);
+            check("the live take: the played note in the track", got && (uint32_t)nn == before + 1u);
         }
         check("REC's LED lit on the device page while the take goes on", host_led_mask(fm1_led, 0) >> BTN_REC & 1u);
         ui_dirty = 2;
@@ -908,9 +1194,26 @@ int main(void)
         loop();
         check("REC held + the armed track's key: disarmed, REC off", eng_armed() < 0 && seq_rec == 0);
         tap(BTN_PLAY);
+        (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+
+        (void)load("SCROUNGE");                             /* the factory Scrounge's PATTERN: it drives a Drum map, so its grid */
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+        check("(Scrounge: one track, PATTERN, into its Drum map)", eng_steps_count() == 1 && eng_steps_drummap((uint32_t)eng_steps_module(0)) >= 0);
+        seq_select(0);
+        page_set(PAGE_SEQ);
+        later(1500);
+        check("Scrounge's PATTERN: the drum grid of its map's rows, not the roll", page == PAGE_SEQ && seq_map() >= 0
+              && px(4u + GRID_NAME_W - 1u, GRID_Y + 1u) == C_ACC && !strcmp(seq_grid_text[2], "BLACK/SEL row  WHITE step  FX acc  K2 vel"));
+        snap_to(getenv("PANEL_SNAP_SCROUNGE"));
         while (page != 0u && trail_n)
             tap(BTN_HOME);
         (void)load("808 KIT");                              /* (the 808 Kit again for what follows) */
+        pv_gen++;
         page = 0;
         screen_idle();
     }
@@ -1112,32 +1415,32 @@ int main(void)
         later(1500);
         check("device page, unmuted and disarmed: as it was", eng_armed() < 0 && !memcmp(base, fb, sizeof base));
 
-        E.node[map].ksrc = 0;                               /* the Drum map off DRUMS: a plain track, its row in the track list */
+        E.node[map].ksrc = 0;                               /* the Drum map off DRUMS: a melodic track, its roll (#241) */
         tap(BTN_SEQ);
         later(1500);
-        check("(DRUMS a plain track now)", page == PAGE_SEQ && seq_map() < 0);
+        check("(DRUMS a melodic track now: the roll)", page == PAGE_SEQ && seq_map() < 0);
         memcpy(base, fb, sizeof base);
         fb_watch_reset();
         held_key(BTN_REC, 1);
         all = fb_changed_in(0, 0, 240, 240);
         bar = fb_changed_in(0, 0, 240, BAR_H);
-        line = fb_changed_in(12, 100, 120, 114);
-        check("plain track: REC held + black key 1 arms it, the bar's message and its row (1 DRUMS ARM) only, no blink",
+        line = fb_changed_in(0, 202, 240, 216);
+        check("melodic track: REC held + black key 1 arms it, the bar's message and the track's line (ARMED) only, no blink",
               eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        check("plain track: the bar says ARM", bar_shows("DRUMS 1/1 ARM", C_ACC));
+        check("melodic track: the bar says ARM", bar_shows("DRUMS ARM", C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM_TRACK"));
         fb_watch_reset();
         held_key(BTN_SEQ, 1);
         all = fb_changed_in(0, 0, 240, 240);
         bar = fb_changed_in(0, 0, 240, BAR_H);
-        line = fb_changed_in(12, 100, 120, 114);
-        check("plain track: a mute redraws the bar's message and its row only, no blink", eng_steps_muted((uint32_t)drums)
+        line = fb_changed_in(0, 202, 240, 216);
+        check("melodic track: a mute redraws the bar's message and the track's line only, no blink", eng_steps_muted((uint32_t)drums)
               && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         held_key(BTN_SEQ, 1);
         held_key(BTN_REC, 1);
         later(1500);
-        check("plain track, unmuted and disarmed: the page as it was", eng_armed() < 0 && !memcmp(base, fb, sizeof base));
+        check("melodic track, unmuted and disarmed: the page as it was", eng_armed() < 0 && !memcmp(base, fb, sizeof base));
         tap(BTN_SEQ);
         E.node[map].ksrc = 2u + (uint32_t)drums;
     }
@@ -1444,7 +1747,7 @@ int main(void)
         held_key(BTN_REC, 1);                               /* DRUMS armed, stopped: REC opens its grid */
         tap(BTN_REC);
         check("REC with a drum track armed, stopped: its grid (no step entry), REC on", page == PAGE_SEQ && seq_trk == 0u
-              && seq_rec == 2u && !seq_kbd() && !seq_entry() && seq_map() == map);
+              && seq_rec == 2u && !seq_kbd() && seq_map() == map);
         n0 = eng_steps_notes((uint32_t)drums, &w);
         steps_inst((uint32_t)drums)->s.stp.hit = 0;
         panel_keys(1u << 3);                                /* black key 2: a hit, heard, nothing recorded while stopped */
@@ -1697,6 +2000,9 @@ int main(void)
               load("8 LIRE") == 0 && eng_keys_drummap() >= 0 && load("SCROUNGE") == 0 && eng_keys_drummap() >= 0);
     }
 
+    lcd_sync();
+    check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
+          lcd_line_clobbers == 0u);
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

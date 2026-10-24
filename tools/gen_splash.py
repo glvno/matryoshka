@@ -247,7 +247,7 @@ def rle(idx):
 
 
 def emit(name, w, h, px):
-    assert w <= 240, "splash.c decodes a row into lcd_fillbuf (240 px)"
+    assert w <= 240, "splash.c decodes a row into lcd_line (240 px)"
     pal, idx = quantize(px)
     data = rle(idx)
     lines = [f"static const uint16_t {name}_PAL[{len(pal)}] = {{"]

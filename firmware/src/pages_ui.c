@@ -858,7 +858,7 @@ static void fit(char *s, const font_t *f, uint32_t max)
  * fill's edge */
 static void pages_bar(const ppage_t *pg, uint32_t k)
 {
-    static uint16_t row[BAR_W], sw[BAR_W];
+    uint16_t *row = lcd_line;                           /* (lcd.c's; BAR_W <= 240) */
     char name[24], num[20], unit[8], kn[2];
     uint32_t y0 = ROWS_Y + k * (ROW_H + ROW_GAP), base = 0, live = 0, r, i, vx = 0, ux = 0, nx = 22u;
     int used = pg && k < pg->nrows;
@@ -878,6 +878,7 @@ static void pages_bar(const ppage_t *pg, uint32_t k)
         fit(name, &FONT_M, vx > nx + 6u ? vx - nx - 6u : 0u);
     }
     for (r = 0; r < ROW_H; r++) {
+        lcd_sync();                                     /* the last row may still be on its way out of lcd_line */
         for (i = 0; i < BAR_W; i++)
             row[i] = used && i < base ? fill : track;
         if (used) {
@@ -903,10 +904,7 @@ static void pages_bar(const ppage_t *pg, uint32_t k)
         if (r == 0u || r == ROW_H - 1u) {               /* rounded corners: the night shows at the four corner pixels */
             row[0] = row[BAR_W - 1u] = P_NIGHT;
         }
-        for (i = 0; i < BAR_W; i++)
-            sw[i] = (uint16_t)((row[i] >> 8) | (row[i] << 8));
-        lcd_blit(BAR_X, y0 + r, BAR_W, 1, sw);
-        lcd_sync();                                     /* sw is reused by the next row */
+        lcd_line_out(BAR_X, y0 + r, BAR_W);
     }
 }
 
@@ -980,17 +978,6 @@ static void pages_info(void)
 /* the toasts: over the bars, centred in their height */
 #define TOAST_Y (ROWS_Y + 26u)
 
-/* one scanline of row[] (w px) out to the LCD at x, y (big endian) */
-static void row_out(const uint16_t *row, uint32_t x, uint32_t y, uint32_t w)
-{
-    static uint16_t sw[240];
-    uint32_t i;
-    for (i = 0; i < w; i++)
-        sw[i] = (uint16_t)((row[i] >> 8) | (row[i] << 8));
-    lcd_blit(x, y, w, 1, sw);
-    lcd_sync();                                         /* sw is reused by the next row */
-}
-
 /* the toast on screen (k, page) or 0xFF: a turn of the same knob redraws only the value and the bar, a scanline at a
  * time, so what does not change does not blink */
 static uint8_t pg_toast_shown = 0xFFu;
@@ -1001,7 +988,7 @@ static uint32_t pg_patch_shown;                         /* the patch whose name 
 /* knob k's row at full size: its name, the value in the big type, the range bar with the live tick */
 static void pages_toast(const ppage_t *pg, uint32_t k, int full)
 {
-    static uint16_t row[240];
+    uint16_t *row = lcd_line;                           /* (lcd.c's: written after an lcd_sync) */
     char t[24], num[20], unit[8], lo_n[20], lo_u[8], hi_n[20], hi_u[8];
     uint32_t m = pg->mod[k], j = pg->par[k], xw, i, r, ok = 1, bw = 216, base, live, nx, ny, ux, uy;
     const font_t *nf;
@@ -1035,20 +1022,22 @@ static void pages_toast(const ppage_t *pg, uint32_t k, int full)
     ux = nx + xw + 6u;
     uy = ok ? 20u : 14u;
     for (r = 0; r < FONT_XL.h; r++) {
+        lcd_sync();                                     /* the last transfer may still read lcd_line */
         for (i = 0; i < 240u; i++)
             row[i] = P_NIGHT;
         if (r >= ny)
             text_onto(row, 240, nf, r - ny, num, nx, P_INK);
         if (r >= uy)
             text_onto(row, 240, &FONT_M, r - uy, unit, ux, P_DIM);
-        row_out(row, 0, TOAST_Y + 16u + r, 240);
+        lcd_line_out(0, TOAST_Y + 16u + r, 240);
     }
     for (r = 0; r < 14u; r++) {                         /* the bar (rows 3..10) and the live tick across it */
+        lcd_sync();
         for (i = 0; i < bw; i++)
             row[i] = r >= 3u && r < 11u ? (i < base ? KNOB_HUE[k] : P_TRACK) : P_NIGHT;
         if (live != base)
             row[live > 1u ? live - 1u : 0u] = row[live > 1u ? live : 1u] = P_INK;
-        row_out(row, 12, TOAST_Y + 61u + r, bw);
+        lcd_line_out(12, TOAST_Y + 61u + r, bw);
     }
 }
 

@@ -280,7 +280,7 @@ Fading every parameter of a patch towards its B side with Main's `morph` paramet
 
 ### Piano roll
 
-The editor's drawer for editing a Steps track's notes on a pitch-by-step grid.
+A pitch-by-step grid for a Steps track's notes: the editor's drawer, and on the FM-1 a melodic track's SEQ page, 8 pitches at a time.
 
 ### Pick mode
 
@@ -356,7 +356,7 @@ The control for a choice parameter: a notched groove with the jack on the live c
 
 ### SEQ page
 
-The FM-1 screen, opened by SEQ, where white keys are a track's steps and black keys pick tracks; on a drum track it is a grid of the Drum map's rows and the black keys pick rows.
+The FM-1 screen, opened by SEQ, where a track is an 8 × 16 grid and the white keys are the selected row's steps: on a drum track the rows are the Drum map's and the black keys pick them; on a melodic track it is a piano roll and the black keys pick tracks.
 
 ### Settings record
 
@@ -396,7 +396,7 @@ The line under the deck with hover help, messages, the FM-1 budget and the FM-1 
 
 ### Step entry
 
-Recording with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on.
+Recording in the editor with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on. The FM-1 has none.
 
 ### Steps track
 
