@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_700"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v1.2.1-DEV"
+#define FELUCCA_VERSION "v1.2.2-DEV"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1

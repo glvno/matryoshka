@@ -4,6 +4,17 @@ What changed in Matryoshka for the people who use it: the web editor and the FM-
 The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The development log from before 1.0 is in
 [docs/CHANGELOG-pre-1.0.md](docs/CHANGELOG-pre-1.0.md).
 
+## 1.2.2 — 2026-10-24
+
+- **"update failed -5"** on Return to official V15 is now explained in plain words: the FM-1 was most likely set up by
+  M-VAVE's Official Open, whose start-up software differs from V15's, and nothing was changed. Putting Official Open
+  back or going back to V15 from the Install panel comes with a later firmware; the README says why Official Open will
+  not come with Matryoshka (its sound engine is M-VAVE's own, not open source).
+- A new community patch, **Sol 29N**, recalls the Elta Music Solar 42N in stereo: three saw drones that swell on their
+  own pulse generators (FX, LFO and EDIT switch them), two noise voices with sample & hold (ARP), two keyboard voices with
+  a morphing wavetable, a sub and pulse-width modulation, a 5-step line on PLAY, a distortion and a band-pass filter per
+  side swept together, a long reverb and a ping-pong delay. It plays on the FM-1.
+
 ## 1.2.1 — 2026-10-23
 
 - **Return to official V15** on an FM-1 whose boot code is not V15's (the FM-1 shows "update failed -5") now says so in
