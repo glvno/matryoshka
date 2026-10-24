@@ -134,8 +134,8 @@ svg.brand-mark .accent { fill: var(--secondary); }
 .budget-bar > span { display: block; height: 100%; background: var(--secondary); }
 .budget-pct { min-width: 30px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
 .budget-row.near .budget-bar > span { background: var(--accent); }
-.budget-row.over .budget-bar > span { width: 100% !important; background: var(--danger); }
-.budget-row.over .budget-pct, .budget-row.over .budget-name { color: var(--danger); }
+.budget-row.over .budget-bar > span { width: 100% !important; background: var(--sandbox); }
+.budget-row.over .budget-pct, .budget-row.over .budget-name { color: var(--sandbox-text); }
 .budget[open] summary .budget-title { color: var(--secondary); }
 .budget-list { position: fixed; z-index: 30; bottom: 32px; width: 260px; max-height: calc(100dvh - 48px); overflow: auto;
   display: grid; gap: 2px; padding: 8px 12px; font-size: 11.5px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 4px 16px var(--shadow); }
@@ -147,8 +147,8 @@ svg.brand-mark .accent { fill: var(--secondary); }
 .budget-mini { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .budget-mini > span { display: block; height: 100%; background: var(--secondary); }
 .budget-item.near .budget-mini > span { background: var(--accent); }
-.budget-item.over { color: var(--danger); font-weight: 650; }
-.budget-item.over .budget-mini > span { background: var(--danger); }
+.budget-item.over { color: var(--sandbox-text); font-weight: 650; }
+.budget-item.over .budget-mini > span { background: var(--sandbox); }
 .budget-item.pick { cursor: pointer; }
 .budget-item.pick:hover > :first-child { color: var(--ink); text-decoration: underline; }
 .budget-list p { margin: 4px 0 0; font-size: 11px; }
@@ -413,7 +413,7 @@ dialog.share-sheet { width: 800px; }
 .share-field textarea { resize: vertical; min-height: 64px; }
 .share-facts { display: flex; flex-wrap: wrap; gap: 6px; }
 .share-chip { padding: 3px 8px; border-radius: 99px; background: var(--bar); font-size: 12px; overflow-wrap: anywhere; }
-.share-chip.over { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+.share-chip.over { background: var(--sandbox); color: var(--sandbox-ink); }   /* a sandbox patch (sandbox.ts) */
 .share-check { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; }
 .share-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--secondary); }
 .share-check:has(input:disabled) { color: var(--muted); }
@@ -1266,9 +1266,6 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 #tab-library .lib-factory { min-height: 28px; padding: 2px 8px; border-radius: 5px; background: var(--bar); border-color: var(--line); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
 #tab-library .lib-count, #tab-library .lib-status, #tab-library .lib-note { margin: 8px 0 0; font-size: 12px; }
 #tab-library .lib-status:empty, #tab-library .lib-count:empty { display: none; }
-/* "browser only": a patch too big for the FM-1 (its tooltip says so) */
-#tab-library .bank-row .lib-badge { padding: 2px 6px; border: 1px solid var(--danger); border-radius: 3px; color: var(--danger); cursor: help;
-  font: 600 10.5px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; }
 #tab-library .lib-section .bank-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* the transfer arrows: the row's last tool, a little stronger than the rest */
 #tab-library .bank-row button.lib-move { min-width: 26px; color: var(--secondary); font-size: 14px; }
@@ -1521,8 +1518,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-connect.connected:hover { filter: none; border-color: var(--secondary); }
 .fm1-connect.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .fm1-connect.idle .sl-dot { border: 2px solid var(--secondary); }
-.fm1-connect.over .sl-dot { background: var(--gate); border-color: var(--gate); }
-.fm1-connect.sandbox .sl-dot { background: var(--gate); border-color: var(--gate); }
+.fm1-connect.over .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
+.fm1-connect.sandbox .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
 /* narrow: the switch moves to the left, so Connect FM-1 fits beside it */
 @media (max-width: 700px) {
   .fm1-connect { right: 8px; height: 30px; padding: 0 8px; gap: 5px; font-size: 11px; letter-spacing: .06em; }
@@ -1638,11 +1635,16 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .statusline .sl-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
 .statusline .sl-chip.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .statusline .sl-chip.idle .sl-dot { border: 2px solid var(--secondary); }   /* connected, not synced (#171) */
-.statusline .sl-chip.over .sl-dot { background: var(--gate); border-color: var(--gate); }   /* a sandbox patch, not synced */
-.statusline .sl-chip.sandbox { color: var(--gate); }   /* sandbox mode: the FM-1 is the browser patch's controller */
-.statusline .sl-chip.sandbox .sl-dot { background: var(--gate); border-color: var(--gate); }
+.statusline .sl-chip.over .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }   /* a sandbox patch, not synced */
+.statusline .sl-chip.sandbox { color: var(--sandbox-text); }   /* sandbox mode: the FM-1 is the browser patch's controller */
+.statusline .sl-chip.sandbox .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
 @media (max-width: 700px) { .statusline .sl-chip-text { display: none; } .statusline .sl-chip { height: 24px; padding: 0 8px; } }
-.statusline:has(.budget.over) .sl-tag { color: var(--danger); }
+/* a sandbox patch (main.ts showSandbox): the gold SANDBOX pill opens the "No limits here" card; "What sandbox means" too */
+.statusline .sl-sandbox { flex: none; min-height: 0; height: 18px; padding: 0 7px; cursor: pointer; }
+.statusline .sl-sandbox[hidden] { display: none; }
+.statusline .sl-sandbox:hover { filter: brightness(1.08); }
+.statusline .sl-more { min-height: 0; padding: 0; border: 0; background: none; color: var(--secondary); font: inherit; text-decoration: underline; cursor: pointer; }
+.statusline .sl-more:hover { color: var(--ink); }
 .statusline .budget { padding-left: 12px; border-left: 1px solid var(--line); }
 
 /* the hovered cable's glow (design A), over the cards: a soft halo in its colour, a fine light core, rings on its jacks */
@@ -1760,3 +1762,55 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .steps-screen .steps-head .steps-roll.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
 .share-submit { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
 .share-submit:disabled { color: var(--muted); text-decoration: none; cursor: default; }
+
+/* ---- Sandbox (sandbox.ts): a patch over the FM-1 budget plays here with no limits. Gold is its colour (red stays for
+   real failures). Every patch list shows one chip: FM-1 · NN % in a teal outline, or SANDBOX filled gold ---- */
+/* --sandbox fills (gold in both themes, night ink on it), --sandbox-text is gold as text: the theme's --gate, which is a
+   darker ochre on the light theme's paper */
+:root { --sandbox: var(--ref-gold); --sandbox-ink: var(--ref-night); --sandbox-text: var(--gate); }
+.fit-chip { display: inline-flex; align-items: center; flex: none; padding: 2px 6px; border: 1px solid var(--secondary); border-radius: 3px;
+  font: 600 10.5px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; color: var(--secondary); }
+.fit-chip.sandbox { border-color: var(--sandbox); background: var(--sandbox); color: var(--sandbox-ink); }
+/* the "No limits here" card: the what's-new card's frame, its edge gold */
+.sandbox-card { border-color: var(--sandbox); }
+.sandbox-card .shead .fit-chip { margin-right: 4px; }
+.sandbox-card .tutorial-body > p { color: var(--ink); margin-bottom: 10px; }
+.sandbox-lines { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px 8px; margin-bottom: 12px; color: var(--muted); }
+.sandbox-lines b { color: var(--ink); font-weight: 650; }
+.sandbox-icon { color: var(--sandbox-text); text-align: center; }
+
+/* the Open picker (main.ts fillPicker): where the browser draws a select's options itself, each row is its name and its
+   chip at the end; elsewhere the options read "name — chip" */
+@supports (appearance: base-select) {
+  #preset, #preset::picker(select) { appearance: base-select; }
+  #preset::picker(select) { width: max-content; min-width: 280px; max-width: min(440px, calc(100vw - 16px)); max-height: min(70dvh, 560px); padding: 4px 0; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--ink); box-shadow: 0 8px 28px var(--shadow); }
+  #preset optgroup { font: var(--cap); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  #preset option { display: flex; align-items: center; gap: 10px; padding: 4px 10px; font: 500 13px/1.3 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; color: var(--ink); }
+  #preset option::checkmark { display: none; }
+  #preset option:is(:hover, :focus-visible) { background: var(--surface-tint); }
+  #preset .o-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #preset .o-by { color: var(--muted); }
+  #preset .o-sep { display: none; }
+}
+
+/* Library > Community (library-community.ts): the filters, a card per family, the links at the foot */
+.comm-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 14px; }
+.comm-top > p { flex: 1 1 320px; margin: 0; font-size: 13px; line-height: 1.45; }
+.comm-filters { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--bar); }
+#tab-library .comm-filters button { min-height: 24px; padding: 2px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--muted);
+  font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
+#tab-library .comm-filters button[aria-pressed="true"] { background: var(--secondary); color: var(--accent-ink); }
+.comm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+#tab-library .comm-card { margin: 0; }
+#tab-library .comm-card > p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+#tab-library .comm-card > h2 .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tab-library .comm-card .bank-row { gap: 8px; }
+#tab-library .comm-card .bank-row a { font-size: 12px; }
+#tab-library .comm-card .bank-row button.comm-add { min-width: 64px; color: var(--accent-ink); background: var(--btn-yellow); }
+#tab-library .comm-card .bank-row button.comm-add.added { color: var(--secondary); background: transparent; border: 1px solid var(--secondary); }
+#tab-library .comm-card .bank-row button.comm-add:hover:not(:disabled) { filter: brightness(1.08); color: var(--accent-ink); background: var(--btn-yellow); }
+#tab-library .comm-card .bank-row button.comm-add.added:hover:not(:disabled) { color: var(--ink); background: transparent; }
+.comm-source { margin: 8px 0 0; font-size: 12px; }
+.comm-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 18px 0 0; font-size: 13px; }
+#tab-library .lib-section .bank-row > .fit-chip { cursor: help; }

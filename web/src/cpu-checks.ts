@@ -6,7 +6,7 @@ import { insertAssembly } from './assembly';
 import { DEFS } from './modules';
 import { connect, newPatch, type Patch } from './patch';
 import { deviceBudget } from './patchbin';
-import { PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import { deviceView } from './poly';
 import { withParts } from './test-poly';
 import { acid } from './test-patches';
@@ -19,7 +19,7 @@ export function cpuChecks(note: number): { name: string; patch: Patch; notes: nu
     const n = Math.max(1, ...deviceView(p, true).groups.map((g) => g.cfg.parts));
     return Array.from({ length: n }, (_, i) => note + [0, 4, 7, 11, 14, 17, 21, 24][i % 8] - (i >= 8 ? 12 : 0));
   };
-  const out = Object.entries(PRESETS).map(([name, make]) => { const patch = make(); return { name, patch, notes: voices(patch) }; });
+  const out = Object.entries(FM1_PRESETS).map(([name, make]) => { const patch = make(); return { name, patch, notes: voices(patch) }; });
   out.push({ name: 'Acid, 4 parts', patch: withParts(acid(), 4), notes: chord });
   const morph = acid();
   for (const m of morph.modules) if (m.type !== 'fm1') m.paramsB = { ...m.params };

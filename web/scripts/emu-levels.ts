@@ -7,14 +7,14 @@
 // Run from web/:  npx vite-node scripts/emu-levels.ts   (npm run emu:smoke does this)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { PRESETS } from '../src/presets';
+import { FM1_PRESETS } from '../src/presets';
 
 const SR = 44100;
 const FULL = 12656;
 const out = new URL('../../build/emu/', import.meta.url);
 mkdirSync(out, { recursive: true });
 const lines: string[] = [];
-for (const [name, make] of Object.entries(PRESETS)) {
+for (const [name, make] of Object.entries(FM1_PRESETS)) {
   const e = new Engine(SR);
   const p = make();
   e.load(p);

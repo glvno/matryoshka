@@ -29,6 +29,7 @@ import { isPin, PinsInUse, removeRoute } from './parameter-routing';
 import {
   addModule,
   fromUnit,
+  topOf,
   toUnit,
   connect,
   disconnect,
@@ -1661,7 +1662,7 @@ export class Editor {
       input.value = String(Math.round(toUnit(pd, m.params[pd.name]) * 1000));
     } else {
       input.min = String(pd.min);
-      input.max = String(pd.max);
+      input.max = String(topOf(pd)); // (the browser-only stretch too: the Delay's time to 1.6 s)
       input.step = String(pd.step ?? (pd.max - pd.min) / 200);
       input.value = String(m.params[pd.name]);
     }
@@ -1672,6 +1673,8 @@ export class Editor {
     let editing = false;
     let offset = 0;
     const posOf = (v: number): number => (pd.log ? Math.round(toUnit(pd, v) * 1000) : v);
+    /** a value's place on the slider, 0..1 (its track spans the browser-only stretch too) */
+    const trackOf = (v: number): number => (pd.log ? toUnit(pd, v) : (v - pd.min) / (topOf(pd) - pd.min));
     const begin = (): void => {
       if (!editing) offset = Number(input.value) - posOf(m.params[pd.name]);
       editing = true;
@@ -1706,7 +1709,7 @@ export class Editor {
       // (the engine's reports run a poll behind, so they are not shown until the edit ends)
       const at = Number(input.value);
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
-      thumb?.setBase(offset ? toUnit(pd, v) : null);
+      thumb?.setBase(offset ? trackOf(v) : null);
       this.ev.onParam(m.id, pd.name, v);
       this.chipsSoon();
       this.syncDials();
@@ -1789,7 +1792,7 @@ export class Editor {
         if (pd.toggle) input.checked = v >= 0.5;
         else if (input.value !== position) input.value = position;
         thumb?.update();
-        thumb?.setBase(automated ? toUnit(pd, base) : null);
+        thumb?.setBase(automated ? trackOf(base) : null);
         sel?.update(Math.round(v), Math.round(base));
         input.title = automated ? `Live: ${text}. Base: ${fmt(base)}. ${gesture || 'Drag to edit the base value.'}` : gesture;
       }

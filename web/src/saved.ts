@@ -14,7 +14,7 @@ export interface SavedPatch {
 }
 
 const listeners = new Set<() => void>();
-/** called after every save or removal (the examples picker and the Library list rebuild) */
+/** called after every save or removal (the Open picker and the Library list rebuild) */
 export const onSavedChange = (fn: () => void): void => void listeners.add(fn);
 
 function write(list: SavedPatch[]): boolean {

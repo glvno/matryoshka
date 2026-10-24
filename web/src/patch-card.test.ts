@@ -129,7 +129,7 @@ describe('the patch card', () => {
     expect(init.fits).toBe(true);
     expect(fitLine(init)).toMatch(/^Plays on the FM-1 · \d+ %$/);
     const demo = patchFacts(demoPatch(), DEFS);
-    expect(fitLine(demo)).toMatch(/^Browser only/);
+    expect(fitLine(demo)).toMatch(/^Sandbox/);
     expect(patchFacts(PRESETS['Hera 6'](), DEFS).engines.length).toBeLessThanOrEqual(1);
   });
 

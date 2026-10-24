@@ -97,7 +97,7 @@ export function stepStart(ci: number, si: number, course: CourseData = COURSE): 
   return r ? clone(r) : chapterStart(ci, course);
 }
 
-/** a chapter's canned end: its last reference patch (the Examples entries, the intro's preview, the next chapter's start) */
+/** a chapter's canned end: its last reference patch (the intro's preview, the next chapter's start) */
 export function chapterEnd(i: number, course: CourseData = COURSE): Patch {
   return stepStart(i, course.chapters[i].steps.length, course);
 }

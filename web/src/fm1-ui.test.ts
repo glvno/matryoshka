@@ -9,7 +9,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { BUTTONS, ENCODERS, Fm1Ui } from './fm1-ui';
 import { encodePatch } from './patchbin';
 import { PROFILES } from './fm1-profiles';
-import { PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import { buildFm1Wasm } from '../scripts/fm1-wasm.mjs';
 
 const ROOT = resolve(__dirname, '../..');
@@ -33,8 +33,8 @@ beforeAll(() => {
 describe('the FM-1 UI as WebAssembly', () => {
   it('draws a device page pixel for pixel as the host preview of the same firmware', async () => {
     const ui = await Fm1Ui.create(bytes);
-    const name = Object.keys(PRESETS)[0];
-    expect(ui.load(encodePatch(PRESETS[name]()), name.toUpperCase(), { slot: 0 })).toBe(0);
+    const name = Object.keys(FM1_PRESETS)[0];
+    expect(ui.load(encodePatch(FM1_PRESETS[name]()), name.toUpperCase(), { slot: 0 })).toBe(0);
     ui.focus(1, 4); // (device 0 is Main: #196)
     const rgba = ui.rgba();
     const want = preview(['0', '1:4', '0']);
@@ -48,8 +48,8 @@ describe('the FM-1 UI as WebAssembly', () => {
     const focus: [number, number][] = [];
     const params: number[][] = [];
     const ui = await Fm1Ui.create(bytes, { focus: (d, g) => focus.push([d, g]), param: (m, p, v) => params.push([m, p, v]) });
-    const kit = Object.keys(PRESETS).find((n) => /808/.test(n))!;
-    expect(ui.load(encodePatch(PRESETS[kit]()), '808 KIT')).toBe(0);
+    const kit = Object.keys(FM1_PRESETS).find((n) => /808/.test(n))!;
+    expect(ui.load(encodePatch(FM1_PRESETS[kit]()), '808 KIT')).toBe(0);
     ui.tick(10_000);
     expect([ui.focusDevice, ui.focusPage]).toEqual([2, 0]); // the home device (#196): the Drum map, after Main and the track
     ui.encoder(ENCODERS.algo, 1);
@@ -85,8 +85,8 @@ describe('the FM-1 UI as WebAssembly', () => {
   it('a Matryoshka FM-1\'s MIDI out, fed back through its profile, does what its panel did (#120)', async () => {
     const focus: [number, number][] = [];
     const ui = await Fm1Ui.create(bytes, { focus: (d, g) => focus.push([d, g]) });
-    const kit = Object.keys(PRESETS).find((n) => /808/.test(n))!;
-    expect(ui.load(encodePatch(PRESETS[kit]()), '808 KIT')).toBe(0);
+    const kit = Object.keys(FM1_PRESETS).find((n) => /808/.test(n))!;
+    expect(ui.load(encodePatch(FM1_PRESETS[kit]()), '808 KIT')).toBe(0);
     let t = 10_000;
     // recorded from the panel: SELECT +1, ALGO +1 (CC 20 / 21), SEQ pressed and let go (CC 89), HOME pressed and let go (CC 87)
     const recorded = [[0xb0, 20, 1], [0xb0, 21, 1], [0xb0, 89, 127], [0xb0, 89, 0], [0xb0, 87, 127], [0xb0, 87, 0]];

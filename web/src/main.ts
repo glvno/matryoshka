@@ -9,7 +9,7 @@ import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
 import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
-import { sandboxKey, sandboxPage, sandboxStep } from './sandbox';
+import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
 import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
@@ -17,6 +17,7 @@ import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
+import { buildCommunitySection } from './library-community';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
 import { showAction, showToast, showUndo } from './toast';
 import { popMenu, type MenuItem } from './menu';
@@ -44,7 +45,8 @@ import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
-import { loadCommunity } from './community';
+import { addedTitles, loadCommunity, onAddedChange, unlinkSaved } from './community';
+import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard } from './sandbox';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
 import { starterPatch } from './starter';
@@ -55,7 +57,7 @@ import { PRESETS } from './presets';
 import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
+import { binaryPage, browserOnly, deviceBudget, editorPage, encodePatch, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
 import { whatsNew } from './whats-new';
@@ -548,6 +550,14 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
       queueEmu();
       return;
     }
+    // a parameter with a browser-only stretch (the Delay's time past 520 ms) can take the patch over the FM-1 budget or
+    // back under it: the budget first, so Live pauses before the value would go out (and sends the patch again once it fits)
+    const pd = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']?.params.find((q) => q.name === name);
+    if (pd?.browserMax !== undefined && (browserOnly(editor.patch).length > 0) === fitsDevice) {
+      const was = fitsDevice;
+      showBudget();
+      if (!was && fitsDevice && live() && !fromDevice) queueUpload();
+    }
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
     if (live() && !uploading) device.param(editor.patch, id, name, value);
@@ -694,24 +704,44 @@ host.onValues = (values) => {
 // Sidebar
 setupPopoverPositioning();
 const presetSel = $<HTMLSelectElement>('preset');
-/** the Open picker: the user's saved patches (rebuilt on every save), the examples, the tutorial chapters' ends (catalog.ts) */
+/** the Open picker: Your patches (rebuilt on every save, and when a community patch is added or removed) and the factory
+ *  patches (catalog.ts), each row with its chip, FM-1 · NN % or SANDBOX, worked out as the list is built. Where the browser
+ *  draws a select's options itself (appearance: base-select) the chip is a pill at the row's end; elsewhere the row reads
+ *  "name — chip" */
 const fillPicker = (): void => {
   presetSel.replaceChildren(
     new Option('Open a patch…', ''),
     ...openableGroups().map(({ label, items }) => {
       const g = document.createElement('optgroup');
       g.label = label;
-      g.append(...items.map((o) => new Option(o.name, o.value)));
+      g.append(...items.map((o) => {
+        const opt = new Option('', o.value);
+        const name = document.createElement('span');
+        name.className = 'o-name';
+        name.textContent = `${o.xl ? '└ ' : ''}${o.name}`;
+        if (o.author) {
+          const by = document.createElement('span');
+          by.className = 'o-by';
+          by.textContent = ` · ${o.author}`;
+          name.append(by);
+        }
+        const sep = document.createElement('span');
+        sep.className = 'o-sep';
+        sep.textContent = ' — ';
+        opt.append(name, sep, chipEl(o.chip()));
+        return opt;
+      }));
       return g;
     }),
   );
 };
 fillPicker();
-onSavedChange(fillPicker);
+onSavedChange(() => { unlinkSaved(savedPatches().map((e) => e.name)); fillPicker(); });
+onAddedChange(fillPicker);
 void inlineWordmarks(); // the sidebar's wordmark in the theme's colours
 presetSel.onchange = () => {
   const o = openableByValue(presetSel.value);
-  if (o) { loadNamed(o.load(), { from: o.value.startsWith('saved:') ? o.name : undefined }); closeSidebar(); }
+  if (o) { loadNamed(o.load(), { from: o.from }); closeSidebar(); }
   presetSel.value = '';
 };
 /** delete one of Your patches at once, with an Undo toast instead of a question (Library rows, the trash icon) */
@@ -823,7 +853,7 @@ function showBudget(): void {
   if (liveSync.pausesNow(device.connected, liveOn, was, b.fits)) device.live(true);   // (#200: the FM-1 says so at once)
   const el = $('budget');
   el.classList.toggle('over', !b.fits);
-  const memOver = b.over.filter((i) => i.key !== 'cpu');
+  const memOver = b.over.filter((i) => i.key !== 'cpu' && i.key !== 'browser');
   const fullest = memOver[0] ?? b.fullest;
   const [mem, cpu] = el.querySelectorAll('.budget-row');
   meterRow(mem, 'MEM', memOver.length ? 1.01 : b.memory, memOver.length ? 'over' : `${Math.round(b.memory * 100)} %`);
@@ -852,16 +882,31 @@ function showBudget(): void {
     ...b.items.filter((i) => i.used > 0).map((i) => budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)),
     head('CPU, estimated'),
     ...costly,
+    ...(b.over.some((i) => i.key === 'browser') ? [head('Browser only'), ...b.over.filter((i) => i.key === 'browser').map((i) => budgetLine(i.label, 1.01, 'over', '', false))] : []),
   );
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
     ? 'The CPU figure is an estimate: counted on a model of the FM-1\'s processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
-    : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and Library > Patches marks it "browser only".';
+    : 'A sandbox patch: it plays here in the browser with no FM-1 limits. It goes to the FM-1 once it fits under the bars; Library > Patches marks it SANDBOX.';
   list.append(note);
-  pinStatus(b.fits ? null : { tag: 'Too much for the FM-1', text: `${b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} of ${i.max}`).join(', ')}. It plays here; click the budget for what costs most.` });
+  showSandbox(b);
   if (was && !b.fits && device.connected) devStatus('over the FM-1 budget: Live paused until the patch fits');
   requestAnimationFrame(placeBudget);
+}
+// a sandbox patch (over the FM-1 budget, sandbox.ts): the status line's gold SANDBOX pill and its plain words; the first
+// time in this browser the "No limits here" card shows, afterwards the pill opens it
+function sandboxCard(): void {
+  showSandboxCard({ costs: () => { ($('budget') as HTMLDetailsElement).open = true; } });
+}
+function showSandbox(b: ReturnType<typeof deviceBudget>): void {
+  const pill = $<HTMLButtonElement>('sandbox-pill');
+  pill.hidden = b.fits;
+  pill.onclick = sandboxCard;
+  pinStatus(b.fits ? null : { tag: '', text: sandboxWords(b), more: { label: 'What sandbox means', run: sandboxCard } });
+  // after this turn, so a card the page load shows (the tutorial's welcome, what's new) is up first: the sandbox card does
+  // not go over another card, and waits for the next sandbox patch
+  if (!b.fits && sandboxCardDue()) setTimeout(() => { if (sandboxCardDue() && !document.querySelector('.tutorial-offer')) sandboxCard(); });
 }
 // the open budget is a card above the status line, over the meter; a
 // click elsewhere or Escape closes it
@@ -971,6 +1016,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Keyboard shortcuts', keywords: 'help', detail: '?', run: () => help.showModal() },
     { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
     ...(themeChoice() ? [{ kind: 'command' as const, label: 'Theme: follow the system', keywords: 'theme dark light mode auto os appearance', run: () => setTheme(null) }] : []),
+    { kind: 'command', label: 'Browse community patches', keywords: 'community shared players reddit add library others', run: () => setLibrarySection('community') },
     { kind: 'command', label: 'Open the demo patch', keywords: 'demo example song listen play showcase', run: () => openDemo() },
     { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
     { kind: 'command', label: 'Expand all assemblies', keywords: 'open frames nested show inside', run: inPatch(() => editor.setAllOpen(true)) },
@@ -987,7 +1033,7 @@ const commands = (): Command[] => {
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
     ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: m.def.label, run: () => editor.add(m.type) })),
     ...assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => assembly(a.def, a.shelf)), // the drum kit once
-    ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.name, detail: g.label, run: () => loadNamed(o.load(), { from: g.label === 'Your patches' ? o.name : undefined }) }))),
+    ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.author ? `${o.name} · ${o.author}` : o.name, detail: g.label, run: () => loadNamed(o.load(), { from: o.from }) }))),
   ];
 };
 /**
@@ -1453,7 +1499,7 @@ function emuLoad(): void {
   // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
   // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
   const b = deviceBudget(editor.patch);
-  const over = b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
     err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });
@@ -1494,13 +1540,15 @@ function emuParam(id: number, name: string, value: number): void {
   const pi = m ? DEFS[m.type].params.findIndex((q) => q.name === name) : -1;
   if (mi >= 0 && pi >= 0) emu.ui.param(mi, pi, toQ16(value));
 }
-/** the emulated PRESET knob: the next / previous entry of the Open list's Your patches and Examples (not Community) */
+/** the emulated PRESET knob: the next / previous entry of the Open list (Your patches, then the factory patches), stepping
+ *  over sandbox patches as the FM-1's PRESET does: they never go into its bank */
 function stepOpenList(d: number): void {
-  const list = openableGroups().filter((g) => g.label !== 'Tutorial' && g.label !== 'Community').flatMap((g) => g.items.map((o) => ({ ...o, mine: g.label === 'Your patches' })));
-  if (!list.length || !d) return;
+  if (!d) return;
+  const list = openableGroups().flatMap((g) => g.items).filter((o) => o.chip().fits);
+  if (!list.length) return;
   const i = list.findIndex((o) => o.name === editor.patch.name);
   const next = list[(((i < 0 ? (d > 0 ? -1 : 0) : i) + d) % list.length + list.length) % list.length];
-  loadNamed(next.load(), { from: next.mine ? next.name : undefined, stay: true });
+  loadNamed(next.load(), { from: next.from, stay: true });
   status.textContent = `FM-1: ${next.name}`;
 }
 /** the keyboard's notes are the emulated FM-1's keys while its tab shows; on its SEQ page they enter steps and do not
@@ -1554,9 +1602,9 @@ function setView(v: View): void {
   showAddress();
 }
 /** the address follows the view (#218), replaced, not pushed: PATCH has no fragment, EMU #emu, LIBRARY #library (Patches),
- *  #assemblies or #presets. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
+ *  #assemblies, #presets or #community. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
  *  not a view's (a share link's #p= being opened) is left alone */
-const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#assemblies', '#flash', '#about'];
+const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#assemblies', '#community', '#flash', '#about'];
 function showAddress(): void {
   if (!VIEW_HASHES.includes(location.hash)) return;
   const want = currentView === 'emu' ? '#emu' : currentView === 'library' ? (librarySection === 'patches' ? '#library' : `#${librarySection}`) : '';
@@ -1580,12 +1628,12 @@ function toPatch(): void {
   if (currentView === 'library') setView('patch');
 }
 
-// LIBRARY's sections (#218): Patches, Assemblies, Presets in the sidebar, the last one remembered per browser; one shows
+// LIBRARY's sections (#218): Patches, Assemblies, Presets, Community in the sidebar, the last one remembered per browser; one shows
 // at a time (bank.ts, assemblies.ts, library-presets.ts build them below). Entering one rereads it, and reads the FM-1
 // when one is connected
-type LibrarySection = 'patches' | 'assemblies' | 'presets';
+type LibrarySection = 'patches' | 'assemblies' | 'presets' | 'community';
 const LIBRARY_SECTION = 'matryoshka.library-section';
-const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets';
+const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets' || v === 'community';
 let librarySection: LibrarySection = (() => {
   try {
     const v = localStorage.getItem(LIBRARY_SECTION);
@@ -1595,7 +1643,7 @@ let librarySection: LibrarySection = (() => {
   }
 })();
 const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('.library-nav [data-section]')];
-const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets') };
+const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), community: $('lib-community') };
 /** the sections' panes with an FM-1 column (set when they are built, below) */
 const libraryPanes: Partial<Record<LibrarySection, LibraryPane>> = {};
 function showLibrarySection(): void {
@@ -2160,10 +2208,12 @@ try {
   /* storage blocked: start expanded */
 }
 
-// LIBRARY's sections (#218): it manages what is stored and opens nothing. The Community patches are in the Open picker and
-// the palette, which refill once they are decoded
-void loadCommunity().then(fillPicker);
+// LIBRARY's sections (#218): it manages what is stored and opens nothing. Community is opt-in: its patches are decoded
+// when Library > Community first shows, or now when some were added to Your patches (the Open picker, the palette and
+// Library > Patches list those, once decoded)
 libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: deleteSaved });
+if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
+libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } });
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
 refreshAssemblies = buildAssembliesSection($('lib-assemblies'), {
   status(msg) {
@@ -2180,13 +2230,13 @@ $('about-btn').onclick = (e) => {
   void about.open();
 };
 
-// the address (#218): #library opens LIBRARY on Patches, #presets and #assemblies on those sections, #emu (and the old #fm1)
+// the address (#218): #library opens LIBRARY on Patches, #presets, #assemblies and #community on those sections, #emu (and the old #fm1)
 // EMU, #flash the Install panel, #about the About card. Other sites link here (fm1-editor.com/firmware: #flash and #fm1).
 // Without one a page load opens PATCH
 const openFromAddress = (): void => {
   const h = location.hash.slice(1);
   if (h === 'patch') setView('patch');
-  if (h === 'library' || h === 'presets' || h === 'assemblies') setLibrarySection(h === 'library' ? 'patches' : h);
+  if (h === 'library' || h === 'presets' || h === 'assemblies' || h === 'community') setLibrarySection(h === 'library' ? 'patches' : h);
   if (h === 'emu' || h === 'fm1') setView('emu');
   if (h === 'flash') openInstall();
   if (h === 'about') void about.open();

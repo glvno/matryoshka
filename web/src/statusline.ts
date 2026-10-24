@@ -7,20 +7,35 @@ const IDLE = 'Hover over anything to see what it does.';
 
 let tagEl: HTMLElement | null = null;
 let textEl: HTMLElement | null = null;
-/** messages set by the app (the armed track, an over-budget warning) by key; the first set shows while nothing is hovered */
-const pinned = new Map<string, { tag: string; text: string }>();
+/** a message the app sets; `more`: a link after the text (it carries no title, so hovering it keeps the message up) */
+interface Pinned { tag: string; text: string; more?: { label: string; run: () => void } }
+/** messages set by the app (the armed track, a sandbox patch) by key; the first set shows while nothing is hovered */
+const pinned = new Map<string, Pinned>();
+/** the pinned message on show, so going back to it leaves its link in place */
+let showing: Pinned | null = null;
 
-function show(tag: string, text: string, idle = false): void {
+function show(tag: string, text: string, idle = false, more?: Pinned['more']): void {
   if (!tagEl || !textEl) return;
   tagEl.textContent = tag;
   textEl.textContent = text;
   textEl.classList.toggle('idle', idle);
+  if (more) {
+    const a = document.createElement('button');
+    a.type = 'button';
+    a.className = 'sl-more';
+    a.textContent = more.label;
+    a.onclick = more.run;
+    textEl.append(' ', a);
+  }
+  showing = null;
 }
 
 function rest(): void {
   const first = [...pinned.values()][0];
-  if (first) show(first.tag, first.text);
+  if (first && first === showing) return;
+  if (first) show(first.tag, first.text, false, first.more);
   else show('', IDLE, true);
+  showing = first ?? null;
 }
 
 /** the help an element carries, or null: data-help, a title, an SVG element's <title> child */
@@ -50,7 +65,7 @@ export function initStatusline(el: HTMLElement): void {
 }
 
 /** a message to show while nothing is hovered, under a key ('arm' before 'budget'); null takes it away */
-export function pinStatus(msg: { tag: string; text: string } | null, key = 'budget'): void {
+export function pinStatus(msg: Pinned | null, key = 'budget'): void {
   if (msg) pinned.set(key, msg);
   else pinned.delete(key);
   const order = ['arm', 'budget'];
