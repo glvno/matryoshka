@@ -2122,6 +2122,9 @@ int main(void)
         tap(BTN_HOME);
         check("  HOME: back to the sandbox page", page == 0u && px(4, 4) == P_GOLD && px(12, ROWS_Y + 15) != P_NIGHT);
         check("  the screen as text: the sandbox page, the device page's texts gone", on_screen("BROWSER PLAYS") && !on_screen("OCT "));
+        loop();
+        check("  the battery's cell on the bar's gold, its bars in night", px(BATT_X + 18u, 2) == P_GOLD
+              && px(BATT_X + 4u, 10) == C_BG && px(BATT_X + 2u, 10) == C_BG);
         from = mlen;
         panel_keys(1u);                                     /* a key: the note goes out (the FM-1 itself is muted) */
         panel_keys(0u);
@@ -2211,6 +2214,7 @@ int main(void)
         batt_q16 = 600 * 16;
         ui_battery(600, 0);
         loop();
+        later(3100);                                        /* (the LOW BATTERY the readings under 531 gave: ended) */
         fb_watch_reset();
         lcd_xfers = 0;
         ui_battery(598, 0);                                 /* another reading, the same level */
@@ -2227,12 +2231,25 @@ int main(void)
         ui_battery(540, 0);
         loop();
         check("one bar: in the accent", px(BATT_X + 4u, 10) == C_ACC && px(BATT_X + 7u, 10) == BATT_BG);
+        page_set(PAGE_GLO);
+        ui_dirty = 2;
+        loop();
+        check("GLO: the cell on the bar's coral, its bar in night", px(BATT_X + 18u, 2) == P_CORAL
+              && px(BATT_X + 4u, 10) == C_BG && px(BATT_X + 2u, 10) == C_BG);
+        page_set(0);
+        ui_dirty = 2;
+        loop();
+        check("  back on the device page: the strip's ground, the bar in the accent again", px(BATT_X + 18u, 2) == BATT_BG
+              && px(BATT_X + 4u, 10) == C_ACC);
         msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
         batt_q16 = 520 * 16;
         ui_battery(520, 0);                                 /* under 531: LOW BATTERY */
         later(10);
-        check("under the lowest threshold: LOW BATTERY in the bar, the outline red", !strcmp(msg_text, "LOW BATTERY")
-              && bar_shows("LOW BATTERY", C_FG) && px(BATT_X + 2u, 10) == C_RED);
+        check("under the lowest threshold: LOW BATTERY in the bar, the cell on its ivory, the outline in night",
+              !strcmp(msg_text, "LOW BATTERY") && bar_shows("LOW BATTERY", C_FG) && px(BATT_X + 18u, 2) == C_FG
+              && px(BATT_X + 2u, 10) == C_BG);
+        later(3100);
+        check("  the message gone: the strip's ground, the outline red", px(BATT_X + 18u, 2) == BATT_BG && px(BATT_X + 2u, 10) == C_RED);
         later(3100);
         msg_text[0] = 0;
         ui_battery(518, 0);

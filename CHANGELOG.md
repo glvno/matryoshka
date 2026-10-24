@@ -11,6 +11,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   of every name and value, and the page is drawn under it at once: its names and values are readable in about 35 ms
   instead of about half a second. Turning fast redraws only the toast. A turned K1..K4 no longer shows a full-size
   toast: its bar moves in place, and only what changed is redrawn (FM-1 firmware).
+- **The FM-1's battery mark sits on the top bar's colour:** on the sandbox page's gold bar, GLO's coral, ENV's lilac,
+  the preset list's gold, a Page button list's sea and every message, the battery's corner takes the bar's colour
+  instead of staying a dark square, and its outline and bars turn dark so they still read. Host-tested only.
 - **Less work per block in the FM-1 firmware, the same sound:** the engine stops redoing work that only changes when a
   setting does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output
   is bit for bit the same. On the CPU model the factory patches count about 8 % fewer cycles (up to 13 %: 8 Lire, the

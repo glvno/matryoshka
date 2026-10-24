@@ -708,8 +708,12 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
     hysteresis on the way up. USB configured by a host and not suspended (`usb.config && !usb.suspended`) shows a bolt
     instead: no pin tells a charger apart (Felucca's note), so a plain USB charger shows the battery. State only: the
     loop's drawing (`panel_draw` -> `batt_draw`, menu.c) blits the 20 x 20 cell at the bar's right end (`BATT_X` 220;
-    no bar, card or message paints it) only when the shown level changes, says LOW BATTERY once when the level falls to
-    0 (again only after a bar or USB came back), and redraws the BATTERY row's value on an idle SYSTEM tab. Host builds
+    no bar, card or message paints it) only when the shown level or the bar's ground changes, says LOW BATTERY once
+    when the level falls to 0 (again only after a bar or USB came back), and redraws the BATTERY row's value on an idle
+    SYSTEM tab. The cell takes the ground of the bar beside it: every bar fills through `bar_fill` (ui.c), which records
+    its colour. On the device strip (and night) the cell keeps its own colours (a red outline when empty, one bar coral,
+    a seafoam bolt); on any other bar it is drawn in one ink that reads there: night on a light bar (sandbox and preset
+    gold, GLO coral, ENV lilac, a list's sea, a message's ivory or red), ivory on a dark bar. Host builds
     (host_ui.h `BATT_START` 900: the preview, the tests, EMU) start full; fm1-emu's ch 3 reads 640.
 - **Button kinds (#116, designs E / F):** each patch button has one kind per patch (`web/src/buttons.ts`): Nothing
   (unassigned, no role), Gate (on while held or switched; patch its jack) or Toggle (`bypass` in the model: bypasses a

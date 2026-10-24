@@ -25,8 +25,9 @@
  *   static int  m1_test_turn(uint32_t enc, int32_t clicks);     an encoder turned (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET); 0 = ok
  *   static uint32_t m1_test_screen(uint32_t k, uint8_t *out);   the screen as text: k 0xFF its head (count, page, flags), else
  *                                                               text k (x, y, w, h, n, n characters); the bytes written, 0 = none
- *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit) since the last call, bit 16 the engine
- *                                                               runs, bit 17 the sound is muted (sandbox mode)
+ *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit, before MASTER) since the last call, bit
+ *                                                               16 the engine runs, 17 the sound is muted (sandbox mode), 18 MASTER
+ *                                                               is all the way down
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"
@@ -37,7 +38,7 @@
 
 enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
-#define M1_FEATURES2 3u                                      /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291) */
+#define M1_FEATURES2 7u                                      /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
 #define M1_PVALS 88u                                         /* a preset's values at most (presetstore.c PS_MAXV) */

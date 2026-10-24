@@ -911,7 +911,7 @@ static uint32_t m1_test_peak(void)
     tp_on = 1;
     p = tp_peak;
     tp_peak = 0;
-    return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u);
+    return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u) | (master_q12 < 64u ? 1u << 18 : 0u);
 }
 
 /* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No
@@ -1065,6 +1065,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
     batt_drawn = BATT_NONE;                             /* (its cell too) */
+    batt_bg_drawn = C_BG;
     screen_idle();                                      /* the top bar and the page */
     if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
