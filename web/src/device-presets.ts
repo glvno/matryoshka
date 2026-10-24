@@ -6,7 +6,7 @@
 // the patch plays its own values. Not the A/B snapshot, not a patch (a patch is the whole stored thing).
 import { type AssemblyInst } from './assembly';
 import { DEFS } from './modules';
-import type { Patch } from './patch';
+import { topOf, type Patch } from './patch';
 import { rowOrder, structureOf } from './structure';
 
 export interface Preset {
@@ -86,7 +86,7 @@ export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean 
   rows.forEach((r, i) => {
     const m = p.modules.find((x) => x.id === r.module);
     const pd = m && DEFS[m.type]?.params.find((d) => d.name === r.param);
-    if (m && pd) m.params[r.param] = Math.min(pd.max, Math.max(pd.min, preset.values[i]));
+    if (m && pd) m.params[r.param] = Math.min(topOf(pd), Math.max(pd.min, preset.values[i]));
   });
   a.preset = preset.name;
   return true;

@@ -386,9 +386,16 @@ export const DELAY_DIVS: { name: string; num: number; den: number }[] = [
 /** the clock input is the Main module's clock: 24 pulses per quarter note */
 export const DELAY_CLK_PPQN = 24;
 
-/** the delay's time knob, ms: as long as its line (DELAY_LEN; ping-pong halves it) */
+/** the delay's time knob, ms: as long as the FM-1's line (DELAY_LEN, 23000 samples at DEVICE_SR; ping-pong halves it) */
 export const DELAY_TIME_MIN = 1;
 export const DELAY_TIME_MAX = 520;
+/** the browser's delay reaches further (a browser-only ability: a patch past DELAY_TIME_MAX is over the FM-1 budget); its
+ * line holds this much */
+export const DELAY_TIME_BROWSER = 1600;
+/** the FM-1's delay line, samples at DEVICE_SR (engine.c DELAY_LEN) */
+const DELAY_LEN = 23000;
+/** the browser's line: DELAY_TIME_BROWSER and a little (as the FM-1's line is 520 ms and a little) */
+const DELAY_LEN_BROWSER = Math.ceil((DELAY_TIME_BROWSER / 1000) * DEVICE_SR) + 60;
 
 /** which note length the time knob selects when the delay is synced: its range split into DELAY_DIVS.length steps */
 export function delayDivIndex(time: number, tmin: number, tmax: number): number {
@@ -1133,7 +1140,9 @@ interface DelayState {
  * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Ping-pong splits the
  * one buffer in two halves (A, B): the input enters A, A's echo goes to B, B's back to A, so the echoes alternate out
  * (left) and r (right), each with feedback `fb`; the dry/wet `mix` applies to both. Each half is at most half the buffer, so
- * the delay time is limited to about 525 ms then. Without ping-pong r is the same as out.
+ * the delay time is limited to about 260 ms then (800 ms past the FM-1's range). Without ping-pong r is the same as out.
+ * The browser's `time` reaches DELAY_TIME_BROWSER (1.6 s), the FM-1's DELAY_TIME_MAX: within that the browser plays as the
+ * FM-1 (its line's length bounds a synced note length too); past it the patch is browser only (patchbin.ts browserOnly).
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1142,18 +1151,22 @@ const delay: ModuleImpl<DelayState> = {
     inputs: [audio('in'), gate('clk')],
     outputs: [audio('out'), audio('r')],
     params: [
-      param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_TIME_MAX)].name } }),
+      param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_TIME_BROWSER, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_TIME_MAX)].name } }),
       param('fb', 0, 0.95, 0.4, { step: 0.01 }),
       param('mix', 0, 1, 0.3, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
     ],
   },
-  init: (sr) => ({ buf: new Float32Array(Math.round((sr * 23000) / DEVICE_SR)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
+  init: (sr) => ({ buf: new Float32Array(Math.round((sr * DELAY_LEN_BROWSER) / DEVICE_SR)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
   process(c, s) {
     const len = s.buf.length;
     const half = Math.floor(len / 2);
     const pp = (c.p.pingpong ?? 0) >= 0.5;
+    // a time within the FM-1's range plays as on the FM-1, whose line is shorter: a synced note length longer than that
+    // line is cut to it there, so here too. Only a time past it (browser only) reaches the longer line.
+    const fm1 = (c.p.time ?? 250) <= DELAY_TIME_MAX;
+    const lim = fm1 ? Math.round((c.sr * DELAY_LEN) / DEVICE_SR) : len;
     if (c.connected.clk) {
       for (let i = 0; i < c.n; i++) {
         s.t++;
@@ -1180,7 +1193,7 @@ const delay: ModuleImpl<DelayState> = {
     const o = c.out.out;
     const r = c.out.r;
     if (!pp) {
-      const d = Math.max(1, Math.min(len - 1, samples));
+      const d = Math.max(1, Math.min(lim - 1, samples));
       for (let i = 0; i < c.n; i++) {
         const e = s.buf[(s.w - d + len) % len];
         s.buf[s.w] = c.inp.in[i] + e * fb;
@@ -1190,7 +1203,7 @@ const delay: ModuleImpl<DelayState> = {
       }
       return;
     }
-    const d = Math.max(1, Math.min(half - 1, samples));
+    const d = Math.max(1, Math.min(Math.floor(lim / 2) - 1, samples));
     if (s.w >= half) s.w = 0;
     for (let i = 0; i < c.n; i++) {
       const rp = (s.w - d + half) % half;

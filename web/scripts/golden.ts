@@ -8,7 +8,7 @@ import { encodePatch, FLAG_INPUTS, PANEL_BYTES, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
-import { make, PRESETS, type Build } from '../src/presets';
+import { make, FM1_PRESETS, type Build } from '../src/presets';
 import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, type StepNote } from '../src/track';
 import { makeAssembly } from '../src/assembly';
@@ -53,7 +53,7 @@ const events: Record<string, Ev[]> = {};
 const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
-for (const [n, p] of Object.entries(PRESETS)) tests[n] = p();
+for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
 tests['acid'] = acid(); // also the protocol test's upload (golden.sh hands acid.m1p to proto_test)
 
 /**

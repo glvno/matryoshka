@@ -9,6 +9,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs (FM-1s are
   ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the editor's Play
   (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), which is the default.
+- **The browser's Delay reaches 1.6 s** (the FM-1's stops at 520 ms): drag its time past 520 ms on the card. Such a
+  patch is a sandbox patch: it plays in the browser and is not sent to the FM-1, and the budget's details say why
+  ("Delay over 520 ms: browser only"). Patches with shorter delays sound exactly as before.
 
 ## 1.2.2 — 2026-10-24
 

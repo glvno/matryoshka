@@ -7,11 +7,11 @@ import { buildPatchesSection } from './bank';
 import type { DeviceLink } from './device';
 import type { Patch } from './patch';
 import { encodePatch } from './patchbin';
-import { PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import { SLOTS, slotLabel, type SlotInfo } from './protocol';
 import { savePatch } from './saved';
 
-const names = Object.keys(PRESETS).slice(0, 2);
+const names = Object.keys(FM1_PRESETS).slice(0, 2);
 const empty = (): SlotInfo[] => Array.from({ length: SLOTS }, (_, slot) => ({ slot, used: false, length: 0, name: '' }));
 
 /** an FM-1 that keeps its slots in memory */
@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 
 it('without an FM-1 the FM-1 column is the offline copy: → adds to it, ← copies into Your patches, Delete is the host’s', () => {
-  savePatch({ ...PRESETS[names[0]](), name: 'Mine' });
+  savePatch({ ...FM1_PRESETS[names[0]](), name: 'Mine' });
   const removed: string[] = [];
   const root = document.createElement('div');
   buildPatchesSection(root, fakeDevice(false), { remove: (n) => removed.push(n) });
@@ -56,7 +56,7 @@ it('without an FM-1 the FM-1 column is the offline copy: → adds to it, ← cop
 });
 
 it('a patch over the FM-1 budget is marked browser only and cannot go to the FM-1; the old over-budget list folds into Your patches', () => {
-  const huge = PRESETS[names[0]]();
+  const huge = FM1_PRESETS[names[0]]();
   huge.modules = [...huge.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...huge.modules.find((m) => m.type === 'output')!, id: 1000 + i }))];
   localStorage.setItem('matryoshka.bank-over', JSON.stringify([{ name: 'Huge', patch: huge }]));
   const root = document.createElement('div');
@@ -69,7 +69,7 @@ it('a patch over the FM-1 budget is marked browser only and cannot go to the FM-
 
 it('with an FM-1 the column shows its slots: named when they hold the bank, else Unsaved bank with Save as bank…', async () => {
   const dev = fakeDevice(true);
-  for (const [i, n] of names.entries()) await dev.uploadSlot(i, n.toUpperCase(), PRESETS[n]());
+  for (const [i, n] of names.entries()) await dev.uploadSlot(i, n.toUpperCase(), FM1_PRESETS[n]());
   const root = document.createElement('div');
   const pane = buildPatchesSection(root, dev, { remove: () => {} });
   pane.enter();
@@ -80,7 +80,7 @@ it('with an FM-1 the column shows its slots: named when they hold the bank, else
   expect(fm1.querySelector<HTMLButtonElement>('.lib-saveas')!.hidden).toBe(true);
   // a factory patch added on the FM-1 goes to its first empty slot, and the bank no longer matches
   const sel = cols(root)[0].querySelector<HTMLSelectElement>('.lib-factory')!;
-  sel.value = Object.keys(PRESETS)[2];
+  sel.value = Object.keys(FM1_PRESETS)[2];
   sel.dispatchEvent(new Event('change'));
   await flush();
   expect(dev.slots[2].used).toBe(true);
@@ -88,7 +88,7 @@ it('with an FM-1 the column shows its slots: named when they hold the bank, else
   // Save as bank… makes the offline copy what the FM-1 holds (after a confirm)
   vi.stubGlobal('confirm', () => true);
   fm1.querySelector<HTMLButtonElement>('.lib-saveas')!.click();
-  expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)).toEqual(Object.keys(PRESETS).slice(0, 3).map((name) => ({ name })));
+  expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)).toEqual(Object.keys(FM1_PRESETS).slice(0, 3).map((name) => ({ name })));
   expect(fm1.querySelector('.lib-state')!.textContent).toBe('On the FM-1 · Bank');
   vi.unstubAllGlobals();
 });
@@ -111,7 +111,7 @@ it('your assemblies: a delete and a replace act at once, each with an undo; a re
 });
 
 it('→ onto a name the offline copy holds replaces that entry at once, with Undo; every → says what it did', () => {
-  savePatch({ ...PRESETS[names[1]](), name: names[1], notes: 'mine' });
+  savePatch({ ...FM1_PRESETS[names[1]](), name: names[1], notes: 'mine' });
   const root = document.createElement('div');
   buildPatchesSection(root, fakeDevice(false), { remove: () => {} });
   const [browser, fm1] = cols(root);
@@ -127,7 +127,7 @@ it('→ onto a name the offline copy holds replaces that entry at once, with Und
   expect(factoryTag()).toBe(true);
   expect(JSON.parse(localStorage.getItem('matryoshka.bank')!)[1]).toEqual({ name: names[1] });
   // a new name goes to the next slot, and says so
-  savePatch({ ...PRESETS[names[0]](), name: 'Other' });
+  savePatch({ ...FM1_PRESETS[names[0]](), name: 'Other' });
   const other = [...browser.querySelectorAll('.bank-row')].find((r) => r.querySelector('.grow')!.textContent === 'Other')!;
   button(other, '→').click();
   expect(rows(fm1)).toEqual([...names, 'Other']);
@@ -136,8 +136,8 @@ it('→ onto a name the offline copy holds replaces that entry at once, with Und
 
 it('with an FM-1, → onto a used slot of that name asks first and says what it did', async () => {
   const dev = fakeDevice(true);
-  await dev.uploadSlot(0, 'MINE', PRESETS[names[0]]());
-  savePatch({ ...PRESETS[names[1]](), name: 'Mine' });
+  await dev.uploadSlot(0, 'MINE', FM1_PRESETS[names[0]]());
+  savePatch({ ...FM1_PRESETS[names[1]](), name: 'Mine' });
   const root = document.createElement('div');
   const pane = buildPatchesSection(root, dev, { remove: () => {} });
   pane.enter();
@@ -155,8 +155,8 @@ it('with an FM-1, → onto a used slot of that name asks first and says what it 
 it('slots show as 01..64: the first is 01, the last 64, and erasing the row shown as 01 erases slot 0', async () => {
   expect([slotLabel(0), slotLabel(SLOTS - 1)]).toEqual(['01', '64']);
   const dev = fakeDevice(true);
-  await dev.uploadSlot(0, 'FIRST', PRESETS[names[0]]());
-  await dev.uploadSlot(SLOTS - 1, 'LAST', PRESETS[names[1]]());
+  await dev.uploadSlot(0, 'FIRST', FM1_PRESETS[names[0]]());
+  await dev.uploadSlot(SLOTS - 1, 'LAST', FM1_PRESETS[names[1]]());
   const root = document.createElement('div');
   const pane = buildPatchesSection(root, dev, { remove: () => {} });
   pane.enter();
