@@ -1438,7 +1438,7 @@
    "id": 55,
    "type": "shape",
    "x": 2580,
-   "y": 2160,
+   "y": 1740,
    "params": {
     "drive": 2,
     "mode": 0,
@@ -2790,6 +2790,26 @@
   },
   {
    "from": {
+    "module": 52,
+    "port": "out"
+   },
+   "to": {
+    "module": 55,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 55,
+    "port": "out"
+   },
+   "to": {
+    "module": 51,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
     "module": 50,
     "port": "env"
    },
@@ -2815,26 +2835,6 @@
    },
    "to": {
     "module": 6,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 52,
-    "port": "out"
-   },
-   "to": {
-    "module": 55,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 55,
-    "port": "out"
-   },
-   "to": {
-    "module": 51,
     "port": "in"
    }
   },
@@ -3704,17 +3704,17 @@
     {
      "module": 10,
      "port": "cv",
-     "label": "power",
-     "also": [
-      {
-       "module": 12,
-       "port": "pitch"
-      },
-      {
-       "module": 13,
-       "port": "cv"
-      }
-     ]
+     "label": "power"
+    },
+    {
+     "module": 12,
+     "port": "pitch",
+     "label": "pitch"
+    },
+    {
+     "module": 13,
+     "port": "cv",
+     "label": "cv"
     }
    ],
    "outputs": [
@@ -3777,13 +3777,12 @@
     {
      "module": 15,
      "port": "cv",
-     "label": "power",
-     "also": [
-      {
-       "module": 19,
-       "port": "cv"
-      }
-     ]
+     "label": "power"
+    },
+    {
+     "module": 19,
+     "port": "cv",
+     "label": "cv"
     }
    ],
    "outputs": [
@@ -3847,18 +3846,17 @@
     {
      "module": 21,
      "port": "cv",
-     "label": "power",
-     "also": [
-      {
-       "module": 25,
-       "port": "pitch"
-      }
-     ]
+     "label": "power"
     },
     {
      "module": 23,
      "port": "trig",
      "label": "trig"
+    },
+    {
+     "module": 25,
+     "port": "pitch",
+     "label": "pitch"
     }
    ],
    "outputs": [
@@ -3921,13 +3919,12 @@
     {
      "module": 28,
      "port": "cv",
-     "label": "power",
-     "also": [
-      {
-       "module": 31,
-       "port": "pitch"
-      }
-     ]
+     "label": "power"
+    },
+    {
+     "module": 31,
+     "port": "pitch",
+     "label": "pitch"
     }
    ],
    "outputs": [
@@ -3989,13 +3986,12 @@
     {
      "module": 34,
      "port": "cv",
-     "label": "power",
-     "also": [
-      {
-       "module": 36,
-       "port": "pitch"
-      }
-     ]
+     "label": "power"
+    },
+    {
+     "module": 36,
+     "port": "pitch",
+     "label": "pitch"
     }
    ],
    "outputs": [
@@ -4121,17 +4117,17 @@
     {
      "module": 45,
      "port": "cv",
-     "label": "power",
-     "also": [
-      {
-       "module": 47,
-       "port": "pitch"
-      },
-      {
-       "module": 48,
-       "port": "vowel"
-      }
-     ]
+     "label": "power"
+    },
+    {
+     "module": 47,
+     "port": "pitch",
+     "label": "pitch"
+    },
+    {
+     "module": 48,
+     "port": "vowel",
+     "label": "vowel"
     }
    ],
    "outputs": [
@@ -4194,13 +4190,12 @@
     {
      "module": 51,
      "port": "cv",
-     "label": "power",
-     "also": [
-      {
-       "module": 54,
-       "port": "cv"
-      }
-     ]
+     "label": "power"
+    },
+    {
+     "module": 54,
+     "port": "cv",
+     "label": "cv"
     }
    ],
    "outputs": [

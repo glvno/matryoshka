@@ -19,7 +19,7 @@ import { addModule } from '../../src/patch';
 import { DEFS } from '../../src/modules';
 import { level, players, wire } from '../factory-build';
 import type { Xl } from './xl';
-import { aroundDef, blank, type Ed } from './asm-edit';
+import { around, define, type Def } from './def';
 
 /** the white keys from F3 (gen-assemblies.ts PLATE_KEYS[1], the drum kits' rows) */
 const ROW_KEYS = [53, 55, 57, 59, 60, 62, 64, 65];
@@ -37,17 +37,20 @@ interface Ch {
   mod: number;
 }
 
-function build(e: Ed): void {
+function build(e: Def): void {
   const map = e.add('drummap', 0, 0, Object.fromEntries(ROW_KEYS.map((n, r) => [`n${r + 1}`, n])));
-  e.m(map).names = ['DOT', 'DUAL', 'SYS', 'PLAST', 'CYMPATH', 'CYRINX', 'LARYNX', 'BACID'];
+  e.module(map).names = ['DOT', 'DUAL', 'SYS', 'PLAST', 'CYMPATH', 'CYRINX', 'LARYNX', 'BACID'];
   const odd = e.add('macro', 0, 1, { value: 0 });
   const even = e.add('macro', 0, 2, { value: 0 });
-  const L = e.add('shape', 9, 0, { drive: 1.5, mode: 0, level: 0 }, { p1: 'level' });
-  const R = e.add('shape', 9, 1, { drive: 1.5, mode: 0, level: 0 }, { p1: 'level' });
+  const L = e.add('shape', 9, 0, { drive: 1.5, mode: 0, level: 0 });
+  const R = e.add('shape', 9, 1, { drive: 1.5, mode: 0, level: 0 });
+  e.pin(L, 'p1', 'level');
+  e.pin(R, 'p1', 'level');
   const main = e.add('macro', 9, 2, { value: 0.8 });
   const scope = e.add('scope', 10, 0, { time: 16 });
-  /** a channel: its power (an ADSR on its gate) into its VCA and `power`; `pick` makes the MOD crossfade's two inputs */
-  const channel = (i: number, name: string, adsr: Record<string, number>, f: (col: number, env: number) => Omit<Ch, 'name' | 'env' | 'vca' | 'mod'> & { a: [number, string]; b: [number, string] }): Ch => {
+  /** a channel: its power (an ADSR on its gate) into its VCA and `power`; `a` / `b` are the MOD crossfade's two inputs,
+   * `post` a module between the crossfade and the VCA */
+  const channel = (i: number, name: string, adsr: Record<string, number>, f: (col: number, env: number) => Omit<Ch, 'name' | 'env' | 'vca' | 'mod'> & { a: [number, string]; b: [number, string]; post?: number }): Ch => {
     const col = 1 + i;
     const env = e.add('adsr', col, 0, adsr);
     const vca = e.add('vca', col, 4, { gain: 0.8 });
@@ -56,10 +59,13 @@ function build(e: Ed): void {
     const c = f(col, env);
     e.wire(c.a[0], c.a[1], mod, 'a');
     e.wire(c.b[0], c.b[1], mod, 'b');
-    e.wire(mod, 'out', vca, 'in');
+    if (c.post) {
+      e.wire(mod, 'out', c.post, 'in');
+      e.wire(c.post, 'out', vca, 'in');
+    } else e.wire(mod, 'out', vca, 'in');
     for (const [m, port] of [[vca, 'cv'] as [number, string], ...c.power]) e.wire(env, 'env', m, port);
     e.wire(vca, 'out', i % 2 === 0 ? L : R, 'in');
-    return { name, env, vca, mod, s1: c.s1, s2: c.s2, power: [[vca, 'cv'], ...c.power], members: [env, ...c.members, mod, vca] };
+    return { name, env, vca, mod, s1: c.s1, s2: c.s2, power: [[vca, 'cv'], ...c.power], members: [env, ...c.members, mod, ...(c.post ? [c.post] : []), vca] };
   };
   const chs: Ch[] = [
     // DOT: knock / tap / flutter / filter / saw: a saw through a Multimode the power sweeps; MOD: the filter pinged
@@ -127,21 +133,16 @@ function build(e: Ed): void {
       e.wire(vow, 'out', sq, 'in');
       return { members: [osc, vow, sq], power: [[osc, 'pitch'], [vow, 'vowel']], s1: [osc, 'coarse', 'pitch'], s2: [vow, 'vowel', 'vowel'], a: [vow, 'out'], b: [sq, 'out'] };
     }),
-    // BACID: bass / slam / acidic: a saw into a resonant 24 dB Multimode the power sweeps, driven; MOD: its band pass
+    // BACID: bass / slam / acidic: a saw into a resonant 24 dB Multimode the power sweeps, then the drive (the FM-1 version's
+    // Ladder drive 2: the slam); MOD: its band pass
     channel(7, 'bacid', { a: 0.001, d: 0.18, s: 0.4, r: 0.2 }, (col) => {
       const osc = e.add('osc', col, 1, { wave: 2, coarse: -29, level: 0.9 });
       const lp = e.add('filter', col, 2, { cutoff: 150, res: 0.75, cvamt: 4 });
+      const slam = e.add('shape', col, 3, { drive: 2, mode: 0, level: 0.8 });
       e.wire(osc, 'out', lp, 'in');
-      return { members: [osc, lp], power: [[lp, 'cv']], s1: [osc, 'coarse', 'pitch'], s2: [lp, 'res', 'acid'], a: [lp, 'lp24'], b: [lp, 'bp'] };
+      return { members: [osc, lp], power: [[lp, 'cv']], s1: [osc, 'coarse', 'pitch'], s2: [lp, 'res', 'acid'], a: [lp, 'lp24'], b: [lp, 'bp'], post: slam };
     }),
   ];
-  // BACID's slam: the drive after its filter (the FM-1 version's Ladder drive 2)
-  const bacid = chs[7];
-  const slam = e.add('shape', 8, 3.75, { drive: 2, mode: 0, level: 0.8 });
-  e.unwire(bacid.mod, 'out', bacid.vca, 'in');
-  e.wire(bacid.mod, 'out', slam, 'in');
-  e.wire(slam, 'out', bacid.vca, 'in');
-  bacid.members.splice(bacid.members.length - 1, 0, slam);
   // the links: both neighbours' power, shared into both
   const links = chs.map((c, i) => {
     const to = chs[(i + 1) % chs.length];
@@ -162,12 +163,7 @@ function build(e: Ed): void {
   e.wire(main, 'out', R, 'p1');
   e.wire(L, 'out', scope, 'a');
   e.wire(R, 'out', scope, 'b');
-  chs.forEach((c, i) => e.newNest(`${i + 1} ${c.name}`, 1 + i, 0, c.members));
-  chs.forEach((c) => {
-    e.nestInput('gate', c.env, 'gate');
-    e.nestInput('power', c.vca, 'cv', ...c.power.slice(1));
-    e.nestOutput('out', c.vca, 'out');
-  });
+  chs.forEach((c, i) => e.nest(`${i + 1} ${c.name}`, 1 + i, 0, c.members, { inputs: [['gate', c.env, 'gate'], ['power', c.vca, 'cv']], outputs: [['out', c.vca, 'out']] }));
   e.input('keys', map, 'keys');
   e.output('l', L, 'out');
   e.output('r', R, 'out');
@@ -188,7 +184,7 @@ function build(e: Ed): void {
 export const xl: Xl = {
   base: 'Meridian 8',
   build: (fm1) => {
-    const x = aroundDef('Meridian 8', blank('Meridian 8', build));
+    const x = around('Meridian 8', define('Meridian 8', build));
     const p = x.p;
     // the pattern on a Steps track, as the FM-1 version (gen-presets.ts `sequenced`): Main's keys into PATTERN, PATTERN into
     // the channels; its notes and the tempo are the FM-1 version's

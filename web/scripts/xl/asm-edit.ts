@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Editing a factory assembly's definition for an XL (scripts/xl/xl.ts): start from a copy of the FM-1 version's assembly
-// (`edit`) or from nothing (`blank`), add modules, cables, ports and card rows the way gen-assemblies.ts builds them (grid
-// columns of GX, rows of GY; local ids 1..n), then put the definition in a patch with `aroundDef` (factory-build.ts
-// `around`, for a definition that is not a factory assembly). The FM-1 version's assembly is never changed: the XL's
-// definition lives only in its patch.
+// Editing a factory assembly's definition for an XL (scripts/xl/xl.ts): a copy of the FM-1 version's assembly (`edit`) gets
+// modules, cables, retyped modules and card rows the way gen-assemblies.ts builds them (grid columns of GX, rows of GY;
+// local ids 1..n, the definition's own), then goes into a patch with `aroundDef` (factory-build.ts `around`, for a
+// definition that is not on the shelves). The FM-1 version's assembly is never changed: the XL's definition lives only in
+// its patch. An XL that builds its assembly anew uses def.ts.
 import { DEFS } from '../../src/modules';
-import { addModule, defaultMap, defaultParams, emptyPatch, rowDef, type ModuleInst, type PolyCards, type Source } from '../../src/patch';
+import { addModule, defaultMap, defaultParams, emptyPatch, rowDef, type ModuleInst, type Source } from '../../src/patch';
 import { FACTORY } from '../../src/assemblies';
 import { insertAssembly, type AssemblyDef, type NestedDef, type ParamRef, type PortRef } from '../../src/assembly';
 import { mod, plugIn, plugOut, row, type Inst } from '../factory-build';
@@ -66,12 +66,6 @@ export class Ed {
     if (i < 0) throw new Error(`${this.def.name}: no cable ${a}.${ap} -> ${b}.${bp}`);
     this.def.cables.splice(i, 1);
   }
-  /** the cables into an input, taken out (their sources returned) */
-  unplug(b: number, bp: string): { module: number; port: string }[] {
-    const out = this.def.cables.filter((c) => c.to.module === b && c.to.port === bp).map((c) => c.from);
-    this.def.cables = this.def.cables.filter((c) => !(c.to.module === b && c.to.port === bp));
-    return out;
-  }
   nest(label: string): NestedDef {
     const n = this.nests.find((x) => x.label === label);
     if (!n) throw new Error(`${this.def.name}: no nested ${label}`);
@@ -84,34 +78,12 @@ export class Ed {
     // a parent shows only what its children show: the card's rows of a module that joins go on the nested card too
     for (const r of this.def.params) if (ids.includes(r.module) && !n.params.some((q) => q.module === r.module && q.param === r.param)) n.params.push({ module: r.module, param: r.param, label: r.label });
   }
-  /** a nested assembly of these modules */
-  newNest(label: string, col: number, r: number, ids: number[], poly?: PolyCards): void {
-    const list = (this.def.assemblies ??= []);
-    const id = list.reduce((a, n) => Math.max(a, n.id), 0) + 1;
-    list.push({ id, name: label, label, x: col * GX, y: r * GY, open: false, modules: ids, inputs: [], outputs: [], params: [], ...(poly ? { poly } : {}) });
-    (this.def.children ??= []).push(id);
-  }
   private nestOf(id: number): NestedDef | undefined {
     return this.nests.find((n) => n.modules.includes(id));
   }
   input(label: string, module: number, port: string, ...also: [number, string][]): void {
     const ref: In = { module, port, label, ...(also.length ? { also: also.map(([m, p]) => ({ module: m, port: p })) } : {}) };
     this.def.inputs.push(ref);
-  }
-  output(label: string, module: number, port: string): void {
-    this.def.outputs.push({ module, port, label });
-  }
-  /** an input of the nested assembly that holds `module` only */
-  nestInput(label: string, module: number, port: string, ...also: [number, string][]): void {
-    const n = this.nestOf(module);
-    if (!n) throw new Error(`${this.def.name}: ${label} is not on a nested assembly`);
-    n.inputs.push({ module, port, label, ...(also.length ? { also: also.map(([m, p]) => ({ module: m, port: p })) } : {}) });
-  }
-  /** an output of the nested assembly that holds `module` only */
-  nestOutput(label: string, module: number, port: string): void {
-    const n = this.nestOf(module);
-    if (!n) throw new Error(`${this.def.name}: ${label} is not on a nested assembly`);
-    n.outputs.push({ module, port, label });
   }
   private ref(label: string, module: number, param: string, o: RowOpts): ParamRef {
     if (!rowDef(DEFS[this.m(module).type], param)) throw new Error(`${this.def.name}: no parameter ${param} on ${module}`);
@@ -147,15 +119,6 @@ export function edit(name: string, f: (e: Ed) => void): AssemblyDef {
   const src = FACTORY.find((d) => d.name === name);
   if (!src) throw new Error(`no factory assembly ${name}`);
   const def = structuredClone(src);
-  f(new Ed(def));
-  return def;
-}
-
-/** a new definition under a factory assembly's name, shelf and blurb (the XL's own build of it) */
-export function blank(name: string, f: (e: Ed) => void): AssemblyDef {
-  const src = FACTORY.find((d) => d.name === name);
-  if (!src) throw new Error(`no factory assembly ${name}`);
-  const def: AssemblyDef = { format: src.format, version: 1, name, category: src.category, ...(src.blurb ? { blurb: src.blurb } : {}), modules: [], cables: [], inputs: [], outputs: [], params: [] };
   f(new Ed(def));
   return def;
 }

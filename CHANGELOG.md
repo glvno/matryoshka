@@ -34,6 +34,17 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   and NOISE programs beside SRR, the mix saturation, both LFOs into any of six destinations, and an 8-step sequence per
   voice that plays with the transport, quantized to a scale (CHRM).
 - **Community: Lire + Elvira XL**, the two XLs layered on one keyboard with a two-row Mix, beside the FM-1 version.
+- **Oracle V XL** (browser only): the Prophet-5's full modulation. Poly Mod (the filter envelope and oscillator B into
+  oscillator A's pitch, its pulse width and the filter, per voice and at audio rate), Wheel-Mod (the LFO and noise mixed,
+  into both pitches, both pulse widths and the filter, with an initial amount), oscillator A's saw and pulse together,
+  and oscillator B's keyboard switch and lo freq. Vibrato now moves the pitch smoothly. Five voices, as the original.
+- **Hera 6 XL** (browser only): the Juno-106 from its owner's manual. Each voice's filter follows its envelope and the
+  LFO smoothly, the DCO plays saw and pulse together, and it adds the envelope polarity switch, the VCA's gate mode, the
+  LFO delay, the HPF's bass boost and the bender lever's vibrato on the mod wheel. Six voices.
+- **Expander S XL** (browser only): the Oberheim Eight Voice. Eight voices, each a whole SEM with its own LFO, envelope 1
+  or the LFO into its filter (smoothly), each oscillator's FM and pulse-width modulation, sync, and the band pass switch.
+- **Meridian 8 XL** (browser only): the Landscape NOON. DOT and BACID through filters the power sweeps smoothly and
+  CYMPATH a three-voice cluster, each channel's MOD button, the eight CV mute buttons, and LINK sharing power both ways.
 
 ## 1.2.2 — 2026-10-24
 
