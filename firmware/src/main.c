@@ -710,7 +710,7 @@ static int encs_waiting(void)
 {
     uint32_t e;
     for (e = 0; e < 7u; e++)
-        if (((volatile int16_t *)fm1_in.enc_steps)[e] + fm1_virt_enc[e])
+        if (fm1_enc_waiting(e))
             return 1;
     return 0;
 }
