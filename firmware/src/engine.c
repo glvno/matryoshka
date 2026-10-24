@@ -109,6 +109,16 @@ static void walk_step(walk_t *w, uint32_t hold)          /* one block; hold 1..6
     }
     w->y += ((w->t - w->y) * (k > 32768 ? 32768 : k)) >> 15;
 }
+/* a part's drift in Q16 octaves (engine.ts render: y drift 1092 / 3276800, truncated). |y| <= 32768 and drift <= 255, so
+ * y drift fits 32 bits; 1092 / 3276800 = 273 / 819200 gives the same quotient, in 32 bits while y drift 273 does */
+static int32_t flaw_drift(int32_t y, uint32_t drift)
+{
+    int32_t p = y * (int32_t)drift;
+    if (p >= -7866000 && p <= 7866000)
+        return p * 273 / 819200;
+    return (int32_t)(((int64_t)p * 1092) / 3276800);
+}
+
 /* blocks between a walk's targets at `rate` Hz (Q16): round(ENG_SR / (128 rate)), 1..65535 */
 static uint32_t walk_hold(int32_t rate)
 {
@@ -207,10 +217,10 @@ HOT int32_t wave_square(uint32_t ph, uint32_t dt, uint32_t pw, uint32_t *rc)
 {
     int32_t v = ph < pw ? ENG_ONE : -ENG_ONE;
     v += poly_blep(ph, dt, rc);
-    v -= poly_blep(ph - pw, dt, rc + 2);
+    v -= poly_blep(ph - pw, dt, rc);                      /* the same increment: one cache serves both edges */
     return v;
 }
-/* rc: four words of blep_pos cache for this phase */
+/* rc: two words of blep_pos cache for this phase */
 static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw, uint32_t *rc)
 {
     switch (kind) {
@@ -303,7 +313,7 @@ typedef struct {
     const esig_t *in[MAX_IN];
     esig_t *out[MAX_OUT];
     union {
-        struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path) */
+        struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks */
         struct { uint32_t seed; walk_t w; } rnd;   /* seed: engine.ts instSeed */
         struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi; } lfo;   /* interval: clock edge distance in samples, Q8 */
         struct { int32_t y; } gld;         /* Q24 */
@@ -312,16 +322,19 @@ typedef struct {
         struct { uint32_t phase; int32_t ap[8], fbv; } phs;   /* the sweep LFO, x1 / y1 of the four allpasses, the feedback sample */
         struct { int32_t held, cnt, xb, ap[16]; } crush;   /* xb, ap: the 2x oversampling (os_up / os_down) */
         struct { int32_t xb, ap[16]; } shp;
-        struct { int32_t v; uint8_t stage, prev; } adsr;
+        struct { int32_t v, ka, kd, kr, ainc, ad, ar; uint8_t stage, prev, ok; } adsr;   /* k*: the A D R the rates (ainc, ad, ar) were
+                                                                                       * worked out for, ok: which are (the divisions run only on a change) */
         struct { int32_t ic1, ic2, jc1, jc2; } flt;   /* stage 1 and stage 2 integrators */
         struct { int32_t s[4]; } lad;                 /* the four one-pole states, Q20 */
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
-        struct { int32_t y1[6], y2[6]; } mod;         /* the modal resonators, Q20 */
+        struct { int32_t y1[6], y2[6], r30[6], gn[6], kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators, Q20; r30, gn: the
+                                                    * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
         struct { struct grain_line *ln; uint32_t w, acc, seed; uint8_t prev; } gr;   /* acc: grains per sample, Q24 */
         struct { int16_t *buf; uint32_t w, t, seen, beat; uint32_t ring[DELAY_CLK_PPQN]; uint8_t prev; } dly;   /* t, ring, seen, beat: the clock tempo */
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
-        struct { int32_t v; uint32_t t; uint8_t stage, prev; } env;  /* Q30, like the ADSR; t: samples in the segment */
+        struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
+                                                    * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
         struct { int16_t *buf; uint32_t w, seed; int32_t lp, s1, err, burst, blen; } str;   /* Q13 line with error feedback */
         struct { uint32_t phase; int32_t s1; } wt;
         struct { int16_t *buf; uint32_t w, phase; } ch;
@@ -2598,7 +2611,7 @@ static void m_part(const node_t *nd, inst_t *it, uint32_t n)
     if (x->retrig)
         it->out[PART_O_GATE][0] = 0;
     fill(it->out[PART_O_VEL], x->vel, n);
-    fill(it->out[PART_O_INDEX], np > 1 ? (int32_t)((((int64_t)2 * (int32_t)cur_v - (np - 1)) << 16) / (np - 1)) : 0, n);
+    fill(it->out[PART_O_INDEX], np > 1 ? (2 * (int32_t)cur_v - (np - 1)) * 65536 / (np - 1) : 0, n);   /* |.| < 2^24: 32 bits */
     fill(it->out[PART_O_LEGATO], x->legato ? ENG_ONE : 0, n);
     fill(it->out[PART_O_JUMP], x->jump, n);
 }
@@ -2662,7 +2675,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
             for (j = 0; j < nu; j++)
                 wq[j] = (int32_t)(((int64_t)w[j] << 16) / sum);
         }
-        uint32_t dts[5], rc[5][4] = {{0}};
+        uint32_t dts[5], (*rc)[2] = it->s.osc.rc;
         int32_t lastp = 0;
         if (nu == 1) {                                                      /* one phase: the wave picked once a block */
             uint32_t dt = 0, *r = rc[0];
@@ -2770,7 +2783,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
     y2 = it->s.osc.y2;
     pm1 = it->s.osc.pm1;
     xb = it->s.osc.xb;
-    uint32_t frc[4] = {0};
+    uint32_t *frc = it->s.osc.rc[0];                  /* blep_pos's cache, kept across blocks */
     for (i = 0; i < n; i++) {
         uint32_t dt, sub;
         int32_t pm_now = idx > 0 ? pm[i] : 0, pm_mid = (pm1 + pm_now) >> 1, ya = 0;
@@ -3031,8 +3044,9 @@ static int32_t env_rate_q8(uint64_t tsr)
         tsr = 256u;
     y = 1264438371942ull / tsr;                                       /* 4.6 in Q30 / samples */
     if (y < (1ull << 26)) {                                           /* series: y - y^2/2 + y^3/6 - y^4/24 */
-        int64_t y2 = (int64_t)((y * y) >> 30), y3 = (y2 * (int64_t)y) >> 30, y4 = (y3 * (int64_t)y) >> 30;
-        return (int32_t)((int64_t)y - y2 / 2 + y3 / 6 - y4 / 24);
+        /* y < 2^26, so y2 < 2^22, y3 < 2^18, y4 < 2^14, all >= 0: 32-bit divisions, the same quotients as 64-bit ones */
+        uint32_t y2 = (uint32_t)((y * y) >> 30), y3 = (uint32_t)(((uint64_t)y2 * y) >> 30), y4 = (uint32_t)(((uint64_t)y3 * y) >> 30);
+        return (int32_t)((uint32_t)y - y2 / 2u + y3 / 6u - y4 / 24u);
     } else {                                                          /* exp(-y) = 2^(-y log2 e) */
         uint64_t z = (y * 1549082005ull) >> 30;                       /* Q30 */
         uint32_t n = (uint32_t)(z >> 30), f = (uint32_t)z & 0x3FFFFFFFu, i = f >> 22, r = (f >> 14) & 255u;
@@ -3051,14 +3065,29 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *gate = it->in[ADSR_I_GATE];
     esig_t *out = it->out[0];
-    int32_t ad = env_rate(EF(it, ADSR_P_D)), ar = env_rate(EF(it, ADSR_P_R));
-    uint64_t asr = ((uint64_t)(uint32_t)EF(it, ADSR_P_A) * ENG_SR) >> 8;
-    int32_t ainc, sus = EF(it, ADSR_P_S) << 14, v = it->s.adsr.v;
+    int32_t pa = EF(it, ADSR_P_A), pd = EF(it, ADSR_P_D), pr = EF(it, ADSR_P_R);
+    int32_t ainc, ad, ar, sus = EF(it, ADSR_P_S) << 14, v = it->s.adsr.v;
     uint8_t stage = it->s.adsr.stage, prev = it->s.adsr.prev;
     uint32_t i;
-    if (asr < 256u)
-        asr = 256u;
-    ainc = (int32_t)((1ull << 38) / asr);
+    if (!(it->s.adsr.ok & 1u) || it->s.adsr.ka != pa) {
+        uint64_t asr = ((uint64_t)(uint32_t)pa * ENG_SR) >> 8;
+        if (asr < 256u)
+            asr = 256u;
+        it->s.adsr.ainc = (int32_t)((1ull << 38) / asr);
+        it->s.adsr.ka = pa;
+    }
+    if (!(it->s.adsr.ok & 2u) || it->s.adsr.kd != pd) {
+        it->s.adsr.ad = env_rate(pd);
+        it->s.adsr.kd = pd;
+    }
+    if (!(it->s.adsr.ok & 4u) || it->s.adsr.kr != pr) {
+        it->s.adsr.ar = env_rate(pr);
+        it->s.adsr.kr = pr;
+    }
+    it->s.adsr.ok = 7u;
+    ainc = it->s.adsr.ainc;
+    ad = it->s.adsr.ad;
+    ar = it->s.adsr.ar;
     for (i = 0; i < n; i++) {
         uint8_t g = gate[i] > 32768 ? 1 : 0;
         if (g && !prev)
@@ -3706,20 +3735,30 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
     int shot = EF(it, ENV_P_SHOT) >= 32768;   /* one-shot: the gate only starts it, the segments run through, then the release */
     static const uint8_t LP[6] = {ENV_P_L4, ENV_P_L1, ENV_P_L2, ENV_P_L3, ENV_P_L3, ENV_P_L4};
     static const uint8_t RP[6] = {0, ENV_P_R1, ENV_P_R2, ENV_P_R3, 0, ENV_P_R4};
+    static const uint8_t SL[6] = {0, 0, 1, 2, 0, 3};   /* the segment's cache slot */
     for (st = 0; st < 6u; st++) {
-        uint64_t tsr;
+        uint32_t sl = SL[st];
+        int32_t r;
         lv[st] = EF(it, LP[st]) << 14;
         if (st == 0 || st == 4) {
             inc[st] = k[st] = 0;
             len[st] = 1;
             continue;
         }
-        tsr = ((uint64_t)(uint32_t)EF(it, RP[st]) * ENG_SR + 32768u) >> 16;   /* round(r * sr) samples */
-        if (tsr < 1u)
-            tsr = 1u;
-        len[st] = (uint32_t)tsr;
-        inc[st] = (int32_t)((1ull << 30) / tsr);
-        k[st] = env_rate_n((uint32_t)tsr);
+        r = EF(it, RP[st]);
+        if (!(it->s.env.ok >> sl & 1u) || it->s.env.rk[sl] != r) {   /* the divisions only when the rate changed */
+            uint64_t tsr = ((uint64_t)(uint32_t)r * ENG_SR + 32768u) >> 16;   /* round(r * sr) samples */
+            if (tsr < 1u)
+                tsr = 1u;
+            it->s.env.len[sl] = (uint32_t)tsr;
+            it->s.env.inc[sl] = (int32_t)((1ull << 30) / tsr);
+            it->s.env.k[sl] = env_rate_n((uint32_t)tsr);
+            it->s.env.rk[sl] = r;
+            it->s.env.ok |= (uint8_t)(1u << sl);
+        }
+        len[st] = it->s.env.len[sl];
+        inc[st] = it->s.env.inc[sl];
+        k[st] = it->s.env.k[sl];
     }
     for (i = 0; i < n; i++) {
         uint8_t g = gate[i] > 32768 ? 1 : 0;
@@ -3880,29 +3919,43 @@ static void m_modal(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *out = it->out[0];
     int32_t *y1 = it->s.mod.y1, *y2 = it->s.mod.y2;
     int32_t st = EF(it, MODAL_P_STRUCT), damp = EF(it, MODAL_P_DAMP), decay = EF(it, MODAL_P_DECAY);
-    int32_t bw = 19661 + mul16(EF(it, MODAL_P_BRIGHT), 45875), amp[MODAL_N], g[MODAL_N], c1[MODAL_N], c2[MODAL_N], sum = 0, a = ENG_ONE;
+    int32_t br = EF(it, MODAL_P_BRIGHT), g[MODAL_N], c1[MODAL_N], c2[MODAL_N];
     int32_t base = pitch[0] + EF(it, MODAL_P_COARSE) / 12;
+    int32_t *r30c = it->s.mod.r30, *gn = it->s.mod.gn;
     uint32_t i, k;
-    for (i = 0; i < MODAL_N; i++) {
-        amp[i] = a;
-        sum += a;
-        a = mul16(a, bw);
+    if (!(it->s.mod.ok & 1u) || it->s.mod.kdec != decay || it->s.mod.kdamp != damp) {   /* the divisions only on a change */
+        for (i = 0; i < MODAL_N; i++) {
+            int32_t dec_i = (int32_t)(((int64_t)decay << 16) / (ENG_ONE + 2 * (int32_t)i * damp));   /* decay / (1 + 2 damp i) */
+            int64_t e = -(((int64_t)LOG2_1000_Q16 << 16) / ((int64_t)dec_i * ENG_SR));              /* octaves per sample, Q16 */
+            r30c[i] = (int32_t)exp2_scale(1u << 30, (int32_t)(e < -(47 << 16) ? -(47 << 16) : e));
+        }
+        it->s.mod.kdec = decay;
+        it->s.mod.kdamp = damp;
+        it->s.mod.ok |= 1u;
+    }
+    if (!(it->s.mod.ok & 2u) || it->s.mod.kbr != br) {
+        int32_t bw = 19661 + mul16(br, 45875), amp[MODAL_N], sum = 0, a = ENG_ONE;
+        for (i = 0; i < MODAL_N; i++) {
+            amp[i] = a;
+            sum += a;
+            a = mul16(a, bw);
+        }
+        for (i = 0; i < MODAL_N; i++)
+            gn[i] = (int32_t)(((int64_t)amp[i] << 16) / sum);
+        it->s.mod.kbr = br;
+        it->s.mod.ok |= 2u;
     }
     for (i = 0; i < MODAL_N; i++) {
         int32_t ratio = ((int32_t)(i + 1u) << 16) + mul16(st, MODAL_BAR_Q16[i] - ((int32_t)(i + 1u) << 16));
         uint32_t dt = exp2_scale(INC_C4, base + log2_q16((uint32_t)ratio) - (16 << 16));   /* f0 x ratio as a phase increment */
-        int32_t r30, s30, sh, co30, dec_i;
-        int64_t e;
+        int32_t r30 = r30c[i], s30, sh, co30;
         g[i] = c1[i] = c2[i] = 0;
         if (dt >= DT_MAX)
             continue;
-        dec_i = (int32_t)(((int64_t)decay << 16) / (ENG_ONE + 2 * (int32_t)i * damp));      /* decay / (1 + 2 damp i) */
-        e = -(((int64_t)LOG2_1000_Q16 << 16) / ((int64_t)dec_i * ENG_SR));                   /* octaves per sample, Q16 */
-        r30 = (int32_t)exp2_scale(1u << 30, (int32_t)(e < -(47 << 16) ? -(47 << 16) : e));
         s30 = sin_turn30(dt);
         sh = sin_turn30(dt >> 1);                                                            /* cos th = 1 - 2 sin^2(th / 2): the pole's */
         co30 = (1 << 30) - mulq(sh, sh, 29);                                                 /* frequency needs cos accurate near 1 */
-        g[i] = mulq((int32_t)(((int64_t)amp[i] << 16) / sum), s30, 16);
+        g[i] = mulq(gn[i], s30, 16);
         c1[i] = 2 * mulq(r30, co30, 30);
         c2[i] = mulq(r30, r30, 30);
     }
@@ -4626,7 +4679,7 @@ static void m_crush(const node_t *nd, inst_t *it, uint32_t n)
 static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
 {
     const def_t *d = &DEFS[nd->type];
-    int32_t mean[2] = {0, 0}, extra[MAX_IN] = {0};
+    int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
     uint32_t j, i, s, have = 0;
     if (d->cvbase >= 0)
         for (s = 0; s < 2u; s++) {
@@ -4910,7 +4963,7 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
             for (v = 0; v < g->parts; v++) {
                 pv_t *x = &E.pv[g->pv0 + v];
                 walk_step(&x->dw, DRIFT_HOLD);           /* every block, so the wander does not depend on the amount */
-                x->flaw = (int32_t)g->detune[v] * 65536 / 1200 + (int32_t)(((int64_t)x->dw.y * g->drift[v] * 1092) / 3276800);
+                x->flaw = (int32_t)g->detune[v] * 65536 / 1200 + flaw_drift(x->dw.y, g->drift[v]);
             }
         }
         for (k = 1; k <= E.ngrp; k++) {                 /* idle parts: woken by a note, else run every IDLE_CHECK-th block */
@@ -4942,8 +4995,21 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                             dst[i] = 0;
                         continue;
                     }
-                    {
-                        const esig_t *a = E.sum_src[sm->first];   /* the first source copied, the rest added: one pass less */
+                    if (sm->n >= 2) {                           /* the first two sources in one pass, the rest added */
+                        const esig_t *a = E.sum_src[sm->first], *b = E.sum_src[sm->first + 1u];
+                        const int32_t wa = E.sum_w[sm->first], wb = E.sum_w[sm->first + 1u];
+                        if (!wa && !wb)
+                            for (i = 0; i < n; i++)
+                                dst[i] = a[i] + b[i];
+                        else if (wa && wb)
+                            for (i = 0; i < n; i++)
+                                dst[i] = mul16(a[i], wa) + mul16(b[i], wb);
+                        else
+                            for (i = 0; i < n; i++)
+                                dst[i] = (wa ? mul16(a[i], wa) : a[i]) + (wb ? mul16(b[i], wb) : b[i]);
+                        q = 2;
+                    } else {
+                        const esig_t *a = E.sum_src[sm->first];
                         const int32_t w = E.sum_w[sm->first];
                         if (w)
                             for (i = 0; i < n; i++)
@@ -4951,8 +5017,9 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         else
                             for (i = 0; i < n; i++)
                                 dst[i] = a[i];
+                        q = 1;
                     }
-                    for (q = 1; q < sm->n; q++) {
+                    for (; q < sm->n; q++) {
                         const esig_t *src = E.sum_src[sm->first + q];
                         const int32_t w = E.sum_w[sm->first + q];
                         if (w)

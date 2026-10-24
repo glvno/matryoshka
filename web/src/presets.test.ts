@@ -145,9 +145,10 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 
 // the owner, 2026-10-23 (docs/ledger/patches-and-presets.md D-336): every melodic factory patch that can afford them has an
 // Arpeggiator on ARP, bypassed, and a 16-step PATTERN track feeding it: Main's keys -> PATTERN -> the arpeggiator -> the
-// voice. The drum patches get neither; Oracle V and Algo Four run past the CPU estimate's warning with them (accepted)
+// voice. The drum patches get neither. Oracle V and Algo Four ran past the CPU estimate's warning with them (accepted);
+// since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %)
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH'];
-const PAST_WARNING = ['Oracle V', 'Algo Four'];
+const PAST_WARNING: string[] = [];
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */
 const OWN_PATTERN = ['Scrounge', 'Meridian 8', 'Perun 4'];
@@ -200,7 +201,7 @@ function play(p: Patch, notes: number[], opts: { at?: number; arpAt?: number; ru
 const loudest = (x: Float32Array): number => x.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
 
 describe('factory patches: an arpeggiator on ARP and a PATTERN track where they fit (D-336)', () => {
-  it('every melodic patch has them, the drum patches do not; only Oracle V and Algo Four pass the CPU warning (accepted)', () => {
+  it('every melodic patch has them, the drum patches do not; none passes the CPU warning', () => {
     expect(PLAYED).toHaveLength(20);
     for (const name of NO_PLAYERS) expect(FM1_PRESETS[name]().modules.some((m) => m.type === 'arp'), name).toBe(false);
     expect(PLAYED.filter((name) => deviceBudget(FM1_PRESETS[name]()).cpu.use > CPU_WARN)).toEqual(PAST_WARNING);

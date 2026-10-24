@@ -427,8 +427,15 @@ const table: CpuTable = {
 
 // whole patches: the plain engine's peak against the model
 const checks = cpuChecks(NOTE).map(({ name, patch, notes }): [string, Patch, number[]] => [name, patch, notes]);
-// a check's peak includes the note-on block: envelopes and glides moving there are what the FM-1 must keep up with
-const totals = await Promise.all(checks.map(([, p, notes]) => run(ELF.plain, p, notes).then((r) => Math.max(...r.totals))));
+// a check's peak includes the note-on block: envelopes and glides moving there are what the FM-1 must keep up with. The
+// patch loads one silent block before the notes, as on the FM-1 (a patch is loaded before it is played): the load block
+// works out what the engine then keeps until a setting changes (#289), which is no part of playing
+const checkRun = async (p: Patch, notes: number[]): Promise<number> => {
+  const r = await emulate(ELF.plain, encodePatch(p, true), [RENDER, ...notes.map(ON), ...Array(BLOCKS).fill(RENDER)]);
+  if (r.exit) throw new Error(`${p.name}: the engine refused the patch (${r.exit})`);
+  return Math.max(...r.blocks.slice(1).map((b) => b.total));
+};
+const totals = await Promise.all(checks.map(([, p, notes]) => checkRun(p, notes)));
 let worst = 0;
 checks.forEach(([name, p], i) => {
   const cycles = totals[i];
