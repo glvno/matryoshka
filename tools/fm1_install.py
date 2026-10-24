@@ -11,6 +11,12 @@ the FM-1 restarts and the installed identity is checked.
 
   fm1_install.py PACKAGE.fwsc [--port NAME] [--yes] [--force]
   fm1_install.py FM-1.fwsc            (the official V15 file: back to the stock firmware)
+  fm1_install.py FM1-Open-V14-Workbench.html   (M-VAVE Official Open, from its Workbench page or its .fwsc:
+                                      for an FM-1 set up by Official Open, #183; not shipped with Matryoshka:
+                                      it includes M-VAVE's own sound engine, which is not open source, so
+                                      download it from https://github.com/m-vave/fm1_open/releases)
+  fm1_install.py FM-1.fwsc --cross-boot   (back to V15 on an FM-1 set up by Official Open: also replaces
+                                      the software that starts the FM-1; read the warning it prints)
   fm1_install.py --info [--port NAME]
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
@@ -20,10 +26,21 @@ Exit codes: 0 done, 1 cancelled or other error, 2 bad arguments or package,
 3 FM-1 not found, 4 connection lost or the device stopped, 5 timeout (no
 loader / no restart), 6 wrong model, or another identity after the install,
 7 the FM-1 waits in an update loader that must not write this package (an
-M-VAVE loader only gets the official V15, a Felucca-type one everything else).
+M-VAVE loader only gets M-VAVE's packages, and only the one it was writing; a
+Felucca-type one everything else).
+
+M-VAVE's loader also writes the small piece of software at the start of the FM-1's memory
+that starts it when switched on (its boot code, flash 0x0000-0x3FFF), from its package, and
+V15 and Official Open carry different ones. The running firmware refuses a package whose one
+differs ("update failed -5"), except the V15 over Official Open's with --cross-boot. Which
+package an install was writing is kept in ~/.config/matryoshka/fm1-mvave-target until the FM-1
+is back, so a cut-off install is finished only with the same package (--sure: you know which
+one it was); a cut-off --cross-boot only with --cross-boot again.
 """
 import argparse
+import base64
 import hashlib
+import os
 import queue
 import re
 import sys
@@ -31,6 +48,8 @@ import time
 
 HS_QUERY = bytes([0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7])
 UPGRADE = bytes([0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7])
+# the same, with the go-ahead to replace Official Open's start-up software with V15's (#183, Matryoshka 1.3 and later)
+CROSS = bytes([0xF0, 0x22, 0x24, 0x35, 0x7C, 0xF7])
 FINISH_CHECK, FINISH_WRITE = 0xE0000000, 0xF0000000
 SUCCESS = b"success\0"
 MAXDATA = 512
@@ -39,6 +58,14 @@ LOADER_MARK = b"FELUCCA-LOADER-1"
 # the unmodified official FM-1 V15 (FM-1.fwsc from M-VAVE): returning to it is allowed without --force,
 # as the web installer's "Return to official V15" (web/fm1pkg.js validateStockPackage)
 STOCK_V15_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
+# M-VAVE Official Open (#183, as web/src/flasher/fm1pkg.js validateOpenPackage): the user's own file, never bundled
+OPEN_PRODUCT_RE = re.compile(r"FM-1_8\d{6}")
+MVAVE_LOADER_SHA256 = "ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541"
+OPEN_HEAD_SHA256 = "2981ccf8d12a132c82d8b5e959c2d27d62f13bc51419225cacc87a6e82d58171"
+V15_HEAD_SHA256 = "d9f43191777656de01c7bed4f9e9ba2e34e94832c5d2ed02c3fc7ab7a6d9bd67"
+FL_LEN = 0x93000
+OPEN_RELEASES = "https://github.com/m-vave/fm1_open/releases"
+TARGET_FILE = os.path.join(os.path.expanduser("~"), ".config", "matryoshka", "fm1-mvave-target")
 PORT_RE = re.compile(r"fm-1|felucca|matryoshka|modular|ota|composite|sinco|usb-midi", re.I)   # never probe other gear
 
 # seconds; the tests shorten them
@@ -47,7 +74,7 @@ DELAY = {"open": 0.3, "start": 2.0, "reply": 0.01, "loader": 3.0, "reboot": 3.0,
          "wait_loader": 30.0, "wait_reboot": 40.0, "settle": 0.6}
 
 EXIT = {"usage": 2, "badpkg": 2, "notfound": 3, "model": 6, "lost": 4, "stopped": 4, "badreq": 4,
-        "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7}
+        "phase": 4, "noloader": 5, "noreturn": 5, "mismatch": 6, "otherloader": 7, "wrongtarget": 7, "whichtarget": 7, "crossresume": 7}
 
 
 class InstallError(Exception):
@@ -151,12 +178,17 @@ def model_of(text):
 STOCK_PRODUCT = "FM-1_015"
 
 
+def is_mvave(product):
+    """M-VAVE's own packages: the official V15 and Official Open, written by M-VAVE's loader"""
+    return product == STOCK_PRODUCT or OPEN_PRODUCT_RE.fullmatch(product) is not None
+
+
 def loader_fits(loader, product):
     """may this waiting loader finish a write of this package? (as web/src/flasher/fm1ota.js loaderFits)
-    M-VAVE's loader (ota-FM-1_015) writes the flash head from the package: only the official V15.
+    M-VAVE's loader (ota-FM-1_015) writes the flash head from the package: only M-VAVE's packages (V15, Official Open).
     Felucca-lineage loaders (ota-FM-1_7XX ours since #79, _8XX ours before, _9XY Felucca; three digits; ours reports ota-FM-1_700 for release
     builds too) never write the head: every other package. Unknown loaders: nothing."""
-    if product == STOCK_PRODUCT:
+    if is_mvave(product):
         return loader == "ota-" + STOCK_PRODUCT
     return re.fullmatch(r"ota-FM-1_[789]\d\d", loader) is not None
 
@@ -169,11 +201,67 @@ def boot_mismatch(addrs):
     return len(addrs) >= 4 and addrs[0] == 0 and addrs[1] == 512 and addrs[-1] < addrs[2]
 
 
-BOOT_MISMATCH = ("this FM-1's boot code (flash 0x0000-0x3FFF) is not the one inside the official V15 package, so it "
-                 "refused the update before erasing anything (its screen says \"update failed -5\"); the FM-1 is safe. "
-                 "To return to V15 anyway: put it in chip boot mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) and "
-                 "write V15's 0x4000-0x92FFF region with MvaveFM1Unbricker. "
-                 "Details: https://github.com/glvno/matryoshka/issues/183")
+STARTUP = "the small piece of software at the start of its memory that starts the FM-1 (its boot code)"
+REPAIR_URL = "https://github.com/glvno/matryoshka#if-going-back-to-v15-was-cut-off"
+ROM_BOOT = ("As a last resort: put the FM-1 in the chip's own repair mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) "
+            "and write V15's firmware part (0x4000-0x92FFF) with MvaveFM1Unbricker; that leaves the start-up part as "
+            "it is. Details: https://github.com/glvno/matryoshka/issues/183")
+BOOT_MISMATCH = ("nothing was changed: the FM-1 refused the official V15 (its screen says \"update failed -5\"), because "
+                 f"{STARTUP} is not V15's. Most likely it was set up by M-VAVE's Official Open. Two safe ways on: keep "
+                 f"Matryoshka, or restore Official Open (M-VAVE's Workbench page or .fwsc from {OPEN_RELEASES}). Or go "
+                 f"back to V15 anyway: run this again with --cross-boot and read its warning. {ROM_BOOT}")
+BOOT_MISMATCH_OPEN = ("nothing was changed: the FM-1 refused Official Open (its screen says \"update failed -5\"), "
+                      f"because {STARTUP} is not Official Open's. Most likely it came with V15's: return to the "
+                      "official V15 (FM-1.fwsc) instead.")
+BOOT_MISMATCH_CROSS = (f"nothing was changed: {STARTUP} is neither V15's nor Official Open's, so it is not replaced. "
+                       f"{ROM_BOOT}")
+CROSS_WARNING = (f"This FM-1 was set up by M-VAVE's Official Open firmware. Going back to V15 also replaces {STARTUP}. "
+                 "Replacing that part takes a second or two, somewhere in the middle of the install. Keep the USB "
+                 "cable plugged in and the computer awake until this says done (about two minutes).\n\n"
+                 "If the power is cut during those seconds, the FM-1 will most likely not start any more: the screen "
+                 "stays dark and nothing happens when you switch it on. It is not broken for good, but getting it back "
+                 "is a repair job: it needs the chip's own repair mode, a Windows or Linux computer and separate repair "
+                 f"tools (see {REPAIR_URL}). If you are not comfortable with that, keep Matryoshka or restore Official "
+                 "Open instead: both are safe.")
+
+
+# ------------------------------------------------- which M-VAVE package ---
+
+POWER_CUT = ("if the power is cut while that part is being replaced, the FM-1 will most likely not start any more "
+             "until it is repaired in the chip's own repair mode")
+WRONG_TARGET = ("the FM-1 waits in M-VAVE's update loader from an unfinished install of {was}; nothing was sent. "
+                "Finish it with {was}. The other package would also replace " + STARTUP + ", and " + POWER_CUT)
+WHICH_TARGET = ("the FM-1 waits in M-VAVE's update loader from an unfinished install, and it is not recorded whether "
+                "that was the official V15 or Official Open; nothing was sent. Run the same command again with --sure "
+                "if this is the package that was cut off. The loader takes the other one too, but then also replaces "
+                + STARTUP + ", and " + POWER_CUT)
+CROSS_RESUME = ("the FM-1 waits in M-VAVE's update loader from an unfinished --cross-boot; nothing was sent: an "
+                "interrupted crossing is never finished on its own. The loader is running, so " + STARTUP + " works, "
+                "whichever one it is now. To finish with V15, run the official V15 again with --cross-boot")
+TARGET_NAMES = {"v15": "the official V15", "open": "Official Open", "v15-cross": "the official V15 (--cross-boot)"}
+
+
+def remembered_target(path=None):
+    try:
+        with open(path or TARGET_FILE) as f:
+            v = f.read().strip()
+        return v if v in TARGET_NAMES else None
+    except OSError:
+        return None
+
+
+def remember_target(target, path=None):
+    """target None forgets it (the install finished)"""
+    path = path or TARGET_FILE
+    try:
+        if target:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as f:
+                f.write(target + "\n")
+        elif os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
 
 
 # ------------------------------------------------------------------ MIDI ---
@@ -359,16 +447,20 @@ class Updater:
             if r and r[1] == finish and r[2] == len(SUCCESS):
                 link.send(response(finish, SUCCESS, r[0]))
 
-    def check(self, dev, image, step):
-        """step 1: the running firmware checks the package and starts the loader"""
+    def check(self, dev, image, step, cross=False):
+        """step 1: the running firmware checks the package and starts the loader (cross: with the go-ahead)"""
         step("start", dev.id.text)
-        dev.link.send(UPGRADE)
+        dev.link.send(CROSS if cross else UPGRADE)
         time.sleep(DELAY["start"])
         served, finished, lost = self.serve(dev.link, image, FINISH_CHECK, DELAY["idle_check"],
                                             lambda k, end: step("check", k))
         dev.link.close()
-        if not finished and not lost and LOADER_MARK not in image and boot_mismatch(self.addrs):
-            raise InstallError("stopped", BOOT_MISMATCH)
+        if cross and not finished and not lost and served == 0:
+            raise InstallError("stopped", f"{dev.id.text} did not take the --cross-boot go-ahead: it needs Matryoshka "
+                                          "1.3 or later. Install Matryoshka first, then run this again. Nothing was written")
+        if not finished and not lost and is_mvave(self.product) and boot_mismatch(self.addrs):
+            raise InstallError("stopped", BOOT_MISMATCH_CROSS if cross else
+                               BOOT_MISMATCH if self.product == STOCK_PRODUCT else BOOT_MISMATCH_OPEN)
         if not finished:
             raise InstallError("lost" if lost else "stopped",
                                f"the FM-1 {'was disconnected' if lost else 'stopped answering'} after "
@@ -407,9 +499,11 @@ class Updater:
         step("done", back.id.text)
         return back.id.text
 
-    def install(self, dev, image, product, step=lambda *a: None):
+    def install(self, dev, image, product, step=lambda *a: None, target=None, sure=False, state=None, cross=False):
         """running firmware -> loader -> new firmware; dev from find(). A device already in
-        update mode only needs the write."""
+        update mode only needs the write. target: "v15" / "open" for M-VAVE's packages (kept in `state` until
+        the FM-1 is back, so a cut-off install is finished only with the same one)."""
+        self.product = product
         if model_of(dev.id.text) != model_of(product):
             dev.link.close()
             raise InstallError("model", f"the device is {dev.id.text}, the package is for {product}")
@@ -420,27 +514,118 @@ class Updater:
                     if re.fullmatch(r"ota-FM-1_[789]\d\d", dev.id.text) else "finish it with the tool that started it")
             raise InstallError("otherloader", f"the FM-1 waits in the update loader {dev.id.text} from an unfinished "
                                               f"update, which must not be given {product}: nothing was sent; {hint}")
-        ota = dev if dev.id.loader else self.check(dev, image, step)
+        if cross:
+            target = "v15-cross"
+        if target and dev.id.loader and dev.id.text == "ota-" + STOCK_PRODUCT:
+            was = remembered_target(state)
+            if was == "v15-cross" and not cross:
+                dev.link.close()
+                raise InstallError("crossresume", CROSS_RESUME)
+            if was and was.split("-")[0] != target.split("-")[0]:
+                dev.link.close()
+                raise InstallError("wrongtarget", WRONG_TARGET.format(was=TARGET_NAMES[was]))
+            if not was and not sure:
+                dev.link.close()
+                raise InstallError("whichtarget", WHICH_TARGET)
+        if target:
+            remember_target(target, state)
+        ota = dev if dev.id.loader else self.check(dev, image, step, cross)
         self.write(ota, image, step)
-        return self.verify(product, step)
+        back = self.verify(product, step)
+        if target:
+            remember_target(None, state)
+        return back
 
 
 # ------------------------------------------------------------------- CLI ---
 
+def crc16(d, c=0):
+    for b in d:
+        c ^= b << 8
+        for _ in range(8):
+            c = ((c << 1) ^ 0x1021) if c & 0x8000 else c << 1
+        c &= 0xFFFF
+    return c
+
+
+def jl_dec(b):
+    b, k = bytearray(b), 0xFFFF
+    for i in range(len(b)):
+        b[i] ^= k & 0xFF
+        k = ((k << 1) ^ (0x1021 if k & 0x8000 else 0)) & 0xFFFF
+    return b
+
+
+def open_problem(raw):
+    """what is wrong with this as M-VAVE Official Open, or None (as fm1pkg.js validateOpenPackage)"""
+    if len(raw) < 2048:
+        return "it is not an FM-1 package"
+    product = product_of(raw)
+    if not OPEN_PRODUCT_RE.fullmatch(product):
+        return f"its identity is {product}, not M-VAVE Official Open's (FM-1_8xxxxxx)"
+    im = logical_image(raw)
+    h = jl_dec(im[:0x40])
+    n = int.from_bytes(h[8:10], "little")
+    if crc16(h[2:0x40]) != int.from_bytes(h[0:2], "little") or not 0 < n <= 11 or \
+            crc16(im[0x40:0x40 + n * 0x50]) != int.from_bytes(h[2:4], "little"):
+        return "its header does not check out"
+    flash = loader = None
+    for i in range(n):
+        e = jl_dec(im[0x40 + i * 0x50:0x90 + i * 0x50])
+        typ, off, size = int.from_bytes(e[0:2], "little"), int.from_bytes(e[8:12], "little"), int.from_bytes(e[12:16], "little")
+        if typ == 0:
+            flash = (off, size, int.from_bytes(e[4:6], "little"))
+        if typ == 100:
+            loader = im[off:off + size]
+    if not flash or crc16(im[flash[0]:flash[0] + flash[1]]) != flash[2]:
+        return "its firmware image does not check out"
+    if not loader or hashlib.sha256(loader).hexdigest() != MVAVE_LOADER_SHA256:
+        return "it does not carry M-VAVE's update loader"
+    if not (0x4000 < flash[1] <= FL_LEN and flash[1] % 0x1000 == 0):
+        return f"its firmware image ({flash[1]} bytes) does not fit the FM-1"
+    head = hashlib.sha256(im[flash[0]:flash[0] + 0x4000]).hexdigest()
+    if head != OPEN_HEAD_SHA256:
+        return "its boot code is V15's, not Official Open's" if head == V15_HEAD_SHA256 else "its boot code is not Official Open's"
+    return None
+
+
+def workbench_packages(raw):
+    """M-VAVE publishes Official Open inside its Workbench page as base64: the packages in it (a .fwsc: itself)"""
+    if not raw[:64].lstrip().startswith(b"<"):
+        return [raw]
+    out = []
+    for m in re.finditer(rb'"data":"([A-Za-z0-9+/=]{100000,})"', raw):
+        try:
+            out.append(base64.b64decode(m[1]))
+        except ValueError:
+            pass
+    return out
+
+
 def load_package(path, force):
+    """-> (product, logical image, target): target "v15" / "open" for M-VAVE's packages, else None"""
     try:
         raw = open(path, "rb").read()
     except OSError as e:
         raise InstallError("badpkg", f"cannot read {path}: {e.strerror}")
+    why = None
+    for pkg in workbench_packages(raw):
+        why = open_problem(pkg)
+        if why is None:
+            return product_of(pkg), logical_image(pkg), "open"
+    if raw[:64].lstrip().startswith(b"<"):
+        raise InstallError("badpkg", f"{path}: no M-VAVE Official Open in this page ({why or 'no packages'})")
     product = product_of(raw)
+    if OPEN_PRODUCT_RE.fullmatch(product):
+        raise InstallError("badpkg", f"{path}: not M-VAVE's Official Open as published: {why}")
     if not re.fullmatch(r"[^_]+_\d+", product):
         raise InstallError("badpkg", f"{path}: not an FM-1 package (identity {product!r})")
     official = hashlib.sha256(raw).hexdigest() == STOCK_V15_SHA256
     if LOADER_MARK not in raw and not official and not force:
         raise InstallError("badpkg", f"{path}: no Felucca update loader in this package; only Felucca's own "
-                                     "packages and the unmodified official V15 (FM-1.fwsc) are installed "
-                                     "(--force overrides)")
-    return product, logical_image(raw)
+                                     "packages, the unmodified official V15 (FM-1.fwsc) and M-VAVE Official Open "
+                                     "are installed (--force overrides)")
+    return product, logical_image(raw), "v15" if official else None
 
 
 def not_found(up):
@@ -485,20 +670,28 @@ def run(a, backend, out, ask):
         mode = "update loader (update not finished)" if dev.id.loader else "running"
         print(f"{dev.id.text}  [{mode}]  port: {dev.name}", file=out)
         return 0
-    product, image = load_package(a.package, a.force)
+    product, image, target = load_package(a.package, a.force)
+    if a.cross_boot and target != "v15":
+        raise InstallError("usage", "--cross-boot goes with the official V15 (FM-1.fwsc) only")
     print(f"package: {product}  ({a.package})", file=out)
     dev = up.find()
     if not dev:
         raise not_found(up)
     print(f"device:  {dev.id.text}  ({dev.name})" + ("  in update mode: the write will be finished" if dev.id.loader else ""),
           file=out)
-    if not a.yes and not ask("Install? Do not unplug the FM-1 while writing. [y/N] "):
+    if a.cross_boot:
+        print("\n" + CROSS_WARNING + "\n", file=out)
+        if not a.yes and not ask("Go back to V15? [y/N] "):
+            dev.link.close()
+            print("cancelled: nothing was sent", file=out)
+            return 1
+    elif not a.yes and not ask("Install? Do not unplug the FM-1 while writing. [y/N] "):
         dev.link.close()
         print("cancelled", file=out)
         return 1
     prog = Progress(out)
     try:
-        up.install(dev, image, product, prog)
+        up.install(dev, image, product, prog, target=target, sure=a.sure, cross=a.cross_boot)
     finally:
         prog.end()
     return 0
@@ -518,6 +711,11 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--port", metavar="NAME", help="MIDI port to use (part of its name)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
+    ap.add_argument("--cross-boot", action="store_true",
+                    help="with the official V15 on an FM-1 set up by Official Open: also replace the software that "
+                         "starts the FM-1 (prints a warning and asks first)")
+    ap.add_argument("--sure", action="store_true", help="finish a cut-off install in M-VAVE's loader with this package "
+                                                        "although it is not recorded which one it was writing")
     a = ap.parse_args(argv)
     if bool(a.info) == bool(a.package):
         ap.error("give a PACKAGE.fwsc or --info")

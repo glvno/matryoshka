@@ -427,8 +427,13 @@ static void test_midi_in_quiet(void)
 
     /* the running firmware between sessions (the main loop drains): TRS and USB realtime inside the SysEx change nothing */
     CHECK(host_sysex(HS, sizeof HS, 1, 1) && frame_is(HS, sizeof HS), "running: the handshake with realtime around it");
-    CHECK(host_sysex(UPGRADE, sizeof UPGRADE, 1, 1) && usb.ota_req, "running: UPGRADE with realtime around it");
+    CHECK(host_sysex(UPGRADE, sizeof UPGRADE, 1, 1) && usb.ota_req == 1u, "running: UPGRADE with realtime around it");
     usb.ota_req = 0;
+    {   /* #183: the crossing go-ahead is its own command, and the plain one never carries it */
+        static const uint8_t CROSS[6] = {0xF0, 0x22, 0x24, 0x35, 0x7C, 0xF7};
+        CHECK(host_sysex(CROSS, sizeof CROSS, 0, 0) && usb.ota_req == 2u, "running: UPGRADE with the crossing go-ahead (7C)");
+        usb.ota_req = 0;
+    }
     CHECK(host_sysex(resp, sizeof resp, 5, 1) && frame_is(resp, sizeof resp), "running: a 605-byte answer, TRS + realtime");
     CHECK(um.msgs > 0u && !midi_in_overflow, "running: the TRS messages were queued");
 

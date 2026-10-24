@@ -72,13 +72,33 @@ Two ways, the same update protocol (Felucca's, over USB MIDI):
 - **The Install panel** of the editor: **Get started** > **Install firmware**, **Commands** (Ctrl/Cmd+K) > **Install firmware**, or open the editor with `#flash` at the end of the address. It needs Web MIDI with SysEx (Chrome or Edge). Tick "I understand and accept the risk", then **Install Matryoshka firmware**; **Return to official V15** puts M-VAVE's firmware back. Keep the tab open until it says done.
 - **`tools/fm1_install.py`** from a checkout of this repository: `python3 tools/fm1_install.py web/public/firmware/matryoshka.fwsc`, or `FM-1_015.fwsc` from the same folder to return to stock.
 
-**Return to stock first** if the FM-1 runs anything other than the official V15 or Matryoshka (Felucca, Sloop, M-VAVE Open or another build): Return to official V15, check that it boots, then install Matryoshka. The Install panel says so when it sees such an identity (`fm1_install.py --info` prints it); nothing else is refused, but over Felucca (read the note above first) it installs only after you tick its warning.
+**Return to stock first** if the FM-1 runs anything other than the official V15 or Matryoshka (Felucca, Sloop, M-VAVE Open or another build): Return to official V15, check that it boots, then install Matryoshka (an FM-1 that runs M-VAVE Official Open: see below). The Install panel says so when it sees such an identity (`fm1_install.py --info` prints it); nothing else is refused, but over Felucca (read the note above first) it installs only after you tick its warning.
 
 **Update mode:** hold OCT- and OCT+ while switching the FM-1 on, or choose MENU > SYSTEM > UPDATE MODE. An install works from there too, and it is the way in when the firmware does not start.
 
-**Recovery:** the FM-1 has one firmware slot and no rollback. If an install is cut off, the FM-1 waits in its update loader: run the same install again (Install for Matryoshka, Return to official V15 for a return to stock) and it finishes the write. The bundled official V15 brings the stock firmware back on an FM-1 that still has V15's boot code.
+**Recovery:** the FM-1 has one firmware slot and no rollback. If an install is cut off, the FM-1 waits in its update loader: run the same install again (Install for Matryoshka; Return to official V15 or Restore Official Open, whichever was cut off) and it finishes the write. The page remembers which of M-VAVE's two packages it was writing and refuses the other one; `fm1_install.py` keeps the same note in `~/.config/matryoshka/fm1-mvave-target`.
 
-**"update failed -5" on Return to official V15:** this FM-1's boot code (flash 0x0000–0x3FFF) is not the one inside the official V15 package, for example after M-VAVE Official Open. The firmware refuses the update before it erases anything, so the FM-1 is safe and keeps running. To return to V15 anyway, put it in chip boot mode (from Matryoshka, the SysEx `F0 22 24 35 7D F7`) and write V15's 0x4000–0x92FFF region with MvaveFM1Unbricker. See [issue #183](https://github.com/glvno/matryoshka/issues/183).
+### The software that starts the FM-1, and M-VAVE Official Open
+
+The first 16 KB of the FM-1's memory hold a small piece of software that starts the FM-1 when you switch it on (its boot code, flash 0x0000–0x3FFF). Matryoshka never changes it. M-VAVE's own firmware packages bring their own, and M-VAVE's installer writes it along with the firmware: the official V15 has one, M-VAVE Official Open another. So the FM-1 refuses an M-VAVE package whose start-up part differs from the one it has, before it erases anything; its screen says **"update failed -5"**, and it keeps running what it ran.
+
+- **An FM-1 that was set up by Official Open** (for example: Official Open, then Matryoshka) refuses Return to official V15. Two safe ways on: keep Matryoshka, or put Official Open back with **Restore Official Open** in the Install panel (`fm1_install.py FM1-Open-V14-Workbench.html`).
+- **Restore Official Open** takes M-VAVE's own file: the Workbench page (`FM1-Open-…-Workbench.html`) from [M-VAVE's release page](https://github.com/m-vave/fm1_open/releases), or its `.fwsc`. It does not come with Matryoshka. Official Open includes M-VAVE's own sound engine, which is not open source: M-VAVE's [licence for it](https://github.com/m-vave/fm1_open/blob/main/THIRD_PARTY.md) lets anyone pass it on inside FM-1 firmware, but Matryoshka ships only open-source files (see [LICENSING.md](LICENSING.md)). The page checks that the file is M-VAVE's Official Open, with M-VAVE's installer and Official Open's start-up part, before anything is sent. On an FM-1 with V15's start-up part it is refused the same way: use Return to official V15 there.
+- **Cross back to V15** goes back to V15 on an FM-1 set up by Official Open, and replaces its start-up part with V15's. It is offered after Return to official V15 was refused, and only after a warning; `fm1_install.py FM-1.fwsc --cross-boot` prints the same warning and asks. It needs Matryoshka 1.3 or later on the FM-1, which only lets this one swap through (V15's start-up part over Official Open's) and only when asked this way. Replacing the start-up part takes a second or two, somewhere in the middle of the install (about two minutes in all). Keep the cable in and the computer awake.
+
+#### If going back to V15 was cut off
+
+What a cut leaves depends on when it happened:
+
+1. **While the FM-1 prepared the install** (the first seconds, the screen shows the update steps): nothing was changed. It starts Matryoshka as before.
+2. **While M-VAVE's installer wrote the firmware, outside those seconds:** the FM-1 starts M-VAVE's installer again by itself (it shows up as `ota-FM-1_015`). The page does not finish it on its own: press **Cross back to V15** again, read the warning, and confirm (or `--cross-boot` again).
+3. **During the second or two in which the start-up part is replaced:** the FM-1 will most likely not start any more. The screen stays dark and nothing happens when you switch it on. It is not broken for good, but getting it back is a repair job, and it has not been tried on an FM-1 yet:
+   - The chip has its own repair mode that a computer sees as a USB disk named `WL82 UBOOT1.00`. With no working start-up part, the chip most likely goes there by itself (not yet checked on an FM-1).
+   - The repair writes V15's first 16 KB back at address 0, then its firmware part. [MvaveFM1Unbricker](https://github.com/Quixotic7/MvaveFM1Unbricker) (Windows, Linux; on a Mac with [SIDOU's fm1-unbrick-mac](https://github.com/dsablic/sidou/tree/main/tools/fm1-unbrick-mac)) reaches that repair mode and writes the firmware part, but as published it does not write the start-up part; [jl-uboot-tool](https://github.com/kagaimiq/jl-uboot-tool), which it is built on, can write any address (Windows or Linux). Ask in [issue #183](https://github.com/glvno/matryoshka/issues/183) before trying it.
+
+If you are not comfortable with that, keep Matryoshka or restore Official Open instead: both are safe.
+
+**Last resort for "update failed -5"** without Official Open's file: put the FM-1 in the chip's repair mode (from Matryoshka, the SysEx `F0 22 24 35 7D F7`) and write only V15's firmware part (0x4000–0x92FFF) with MvaveFM1Unbricker. That leaves the start-up part as it is, which V15 starts from too. See [issue #183](https://github.com/glvno/matryoshka/issues/183).
 
 **Tested on a real FM-1** (with the Install panel and with `tools/fm1_install.py`):
 
@@ -91,7 +111,7 @@ Two ways, the same update protocol (Felucca's, over USB MIDI):
 
 Partly tested: a power cut as the update loader started, and one halfway through a write of the same build; both booted.
 
-**Not tested:** a power cut while the firmware is half old and half new; installing over Felucca, Sloop or M-VAVE Open.
+**Not tested:** a power cut while the firmware is half old and half new; installing over Felucca, Sloop or M-VAVE Open; Restore Official Open and Cross back to V15 (host and emulator tests only so far).
 
 ## Support
 
