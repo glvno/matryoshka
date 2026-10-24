@@ -11,11 +11,12 @@
  *   y  20  the pages of the device in focus, by heading (the current one in seafoam, "FILTER 1/2")
  *   y  41  K1..K4: four full-width bars, each tinted in its knob's hue: the row's name left, value and unit right, the
  *          fill to the base value, an ivory tick where modulation has it; an empty slot where the page has no row. A knob
- *          just turned shows at full size over them (the toast)
+ *          turned moves its own bar in place: the slider and the number (#298)
  *   y 206  the page rail: a segment per page of the device, the one in focus lit, its section's others dimmer
  *   y 214  the patch (slot, name, * when edited) and the transport, the parts, the octave
- * While SELECT or ALGO turns, a card fills the screen instead (#221): the device's name on red (SELECT) or the page's on
- * blue (ALGO); the page above is drawn once, PG_CARD_MS after the last click (or at once when K1..K4 turn). */
+ * SELECT, ALGO and PRESET (#298) draw what they reached at once: its name first in a small toast clear of the rows' type
+ * (the device on red, the page on blue, the patch on ivory), then the bands of the bars that hold their type, then the
+ * rest; a newer click stops a draw, so turning fast redraws only the toast. */
 
 /* ---- colours (RGB565): web/src/style.css's dark theme */
 #define P_NIGHT 0x10E4u
@@ -32,8 +33,8 @@
 #define P_LILAC 0xC55Bu
 #define P_SKY 0x9DFCu
 #define P_REDC 0xE249u
-#define P_CARD_DEV 0xB186u                              /* SELECT's device card: --ref-red #b33135 (ivory on it 5.8:1) */
-#define P_CARD_PAGE 0x4B52u                             /* ALGO's page card: --ref-blue #486b96 (ivory on it 5.3:1) */
+#define P_CARD_DEV 0xB186u                              /* SELECT's title toast: --ref-red #b33135 (ivory on it 5.8:1) */
+#define P_CARD_PAGE 0x4B52u                             /* ALGO's: --ref-blue #486b96 (ivory on it 5.3:1) */
 static const uint16_t KNOB_HUE[4] = {P_CORAL, P_GOLD, P_SEA, P_SAND};   /* K1..K4: the logo's colours (style.css --k1..--k4) */
 
 /* ---- the model, read from the running patch's binary (in the pool on the device: modular.c UI_POOL) */
@@ -66,19 +67,35 @@ static ppage_t pg_page[PG_PAGES] UI_POOL;
 static uint32_t pg_ndev, pg_npage, pg_built_gen = 0xFFFFFFFFu, pg_built_at;
 static uint32_t pg_cur_dev, pg_cur_page;                /* the focus: the device and its page K1..K4 turn */
 static uint8_t pg_strip_dirty = 1;                      /* the tabs and chips need a redraw (the focus moved) */
-static uint32_t pg_toast_until;                         /* a knob just turned: its toast shown until fm1_ms */
-static uint8_t pg_toast_k;
-/* SELECT / ALGO turning (#221): their card (PG_CARD_DEV, PG_CARD_PAGE) alone on the screen until pg_card_until; the page
- * once they stop */
-#define PG_CARD_MS 400u
-#define PG_CARD_DEV 1u
-#define PG_CARD_PAGE 2u
-static uint32_t pg_card_until;
-static uint8_t pg_card;
-/* PRESET turned (#170): the next patch's name, big, until pg_patch_until; asked before the load (pg_patch_ask, at
+static uint8_t pg_row_dirty;                            /* K1..K4 turned these rows: redrawn where they changed (#298) */
+static struct {
+    uint16_t base, live, vx;                            /* as the bar was drawn: its fill's end, live tick, value's x */
+    uint8_t nlen, used, ok;                             /* its name's length as cut, whether the page has the row; ok: known */
+} pg_drawn[4];
+/* SELECT, ALGO and PRESET turning (#298): what they reached named in a small toast (TTL_H high, in the bar of row pg_ttl_k
+ * where its name and value leave room, else over the foot band: TTL_FOOT) until pg_ttl_until; the page itself drawn at
+ * once (pg_algo_due), in passes a newer click stops (pages_waiting) */
+#define TT_DEV 1u                                       /* SELECT: the device, on red */
+#define TT_PAGE 2u                                      /* ALGO: the page, on blue */
+#define TT_PATCH 3u                                     /* PRESET: the patch, on ivory (#170) */
+#define PG_TTL_MS 600u
+#define TTL_FOOT 0xFFu
+#define TTL_H 30u
+#define TTL_DY 3u                                       /* its top, rows into the bar */
+static uint32_t pg_ttl_until;
+static uint8_t pg_ttl_kind, pg_ttl_k, pg_ttl_scr;      /* which; where it goes; where it is on screen (0 none, 1 a bar, 2 the foot) */
+static uint8_t pg_ttl_sk;                               /* (the bar it is in on the screen) */
+static uint16_t pg_ttl_x, pg_ttl_w, pg_ttl_sx, pg_ttl_sw;   /* its x in the bar and width; the same on the screen */
+static char pg_ttl_t[28], pg_ttl_i[8];                  /* "FILTER 1/2", "3/7" */
+static uint8_t pg_algo_due;                             /* the page they reached is still to be drawn (pages_staged) */
+static uint8_t pg_foot_dirty;                           /* the foot band lost the toast elsewhere: night, the rail, the foot line */
+static uint8_t pg_stage_strip;                          /* the staged draw redraws the strip (another device or patch) */
+static int (*pages_waiting)(void);                      /* main.c: an encoder's step waits (a draw gives way to it) */
+/* PRESET turned (#170): the next patch's name in the title toast; asked before the load (pg_patch_ask, at
  * pg_patch_ask_ms), started when the new patch's pages are built */
-static uint32_t pg_patch_until, pg_patch_ask_ms;
+static uint32_t pg_patch_ask_ms;
 static uint8_t pg_patch_ask;
+static void pages_title(uint32_t kind);
 /* a Page button's list on K1..K4 (#117): its button (-1: none), the step showing, whether a hold peeks at its first page */
 static int8_t pg_list_btn = -1;
 static uint8_t pg_list_step, pg_list_peek;
@@ -336,6 +353,16 @@ static int pages_focus_track(void)
     return -1;
 }
 
+/* the title toast is no longer wanted (another focus, a knob, another patch): the foot band gets its own back if it had it */
+static void ttl_end(void)
+{
+    pg_ttl_until = 0;
+    if (pg_ttl_scr == 2u) {
+        pg_ttl_scr = 0;
+        pg_foot_dirty = 1;
+    }
+}
+
 /* the model, current with the running patch */
 static void pages_ensure(void)
 {
@@ -351,10 +378,10 @@ static void pages_ensure(void)
             pg_cur_page = 0;
             pg_list_btn = -1;
             pg_list_peek = 0;
-            pg_card_until = 0;
-            if (pg_patch_ask && fm1_ms - pg_patch_ask_ms < 2000u) {   /* PRESET loaded it: its name over the bars */
-                pg_patch_until = fm1_ms + 1000u;
-                pg_toast_until = 0;
+            ttl_end();
+            if (pg_patch_ask && fm1_ms - pg_patch_ask_ms < 2000u) {   /* PRESET loaded it: its name in the title toast */
+                pg_patch_ask = 0;
+                pages_title(TT_PATCH);
             }
             pg_patch_ask = 0;
         }
@@ -433,7 +460,7 @@ static uint32_t pages_list(uint32_t b, const uint8_t **l)
 }
 
 /* put a device page on K1..K4 (indices into the section, clamped); returns whether it moved. The page shows at once
- * (the editor, a Page button, HOME's trail): a card of SELECT / ALGO ends */
+ * (the editor, a Page button, HOME's trail): a title toast ends (SELECT and ALGO put theirs up after) */
 static int pages_focus(uint32_t d, uint32_t g)
 {
     pages_ensure();
@@ -443,24 +470,12 @@ static int pages_focus(uint32_t d, uint32_t g)
     g = g < pg_dev[d].npg ? g : pg_dev[d].npg - 1u;
     if (d == pg_cur_dev && g == pg_cur_page)
         return 0;
-    pg_patch_until = 0;
-    pg_card_until = 0;
     pg_cur_dev = d;
     pg_cur_page = g;
     pg_strip_dirty = 1;
-    pg_toast_until = 0;
+    ttl_end();
     return 1;
 }
-
-/* SELECT (PG_CARD_DEV) or ALGO (PG_CARD_PAGE) just moved the focus on the device page: its card until they stop (#221) */
-static void pages_card(uint32_t kind)
-{
-    pg_card = (uint8_t)kind;
-    pg_card_until = fm1_ms + PG_CARD_MS;
-    pg_patch_until = 0;
-    pg_toast_until = 0;
-}
-static int pages_carding(void) { return page == 0 && pg_card && fm1_ms < pg_card_until; }
 
 /* SELECT: the next / previous device (wrapping), on its first page */
 static int pages_select(int32_t s)
@@ -492,10 +507,8 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
         return -1;
     m = pg->mod[k];
     j = pg->par[k];
-    pg_toast_k = (uint8_t)k;
-    pg_toast_until = fm1_ms + 1000u;
-    pg_patch_until = 0;
-    pg_card_until = 0;                                  /* (turning SELECT / ALGO: the page they reached, whole, at once) */
+    pg_row_dirty |= (uint8_t)(1u << k);                 /* (the row moves where it is, #298) */
+    ttl_end();
     *mod = m;
     *par = j;
     if (m == SETTING_ROW) {                             /* GLO: an FM-1 setting, one step a click, applied here */
@@ -534,10 +547,8 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
     j = pg->par[k];
     if (m == SETTING_ROW)                               /* (an FM-1 setting: not from MIDI) */
         return -1;
-    pg_toast_k = (uint8_t)k;
-    pg_toast_until = fm1_ms + 1000u;
-    pg_patch_until = 0;
-    pg_card_until = 0;                                  /* (turning SELECT / ALGO: the page they reached, whole, at once) */
+    pg_row_dirty |= (uint8_t)(1u << k);                 /* (the row moves where it is, #298) */
+    ttl_end();
     *mod = m;
     *par = j;
     if (j & POLY_ROW) {
@@ -657,10 +668,6 @@ static void pages_strip(void)
 {
     char t[20];
     uint32_t first = 0, x, i, w[PG_DEVS];
-    if (pages_carding()) {                              /* (a message ended over the card: the card's colour back) */
-        lcd_fill(0, 0, BATT_X, 20, pg_card == PG_CARD_PAGE ? P_CARD_PAGE : P_CARD_DEV);
-        return;
-    }
     lcd_fill(0, 0, BATT_X, 20, P_STRIP);                /* (x BATT_X on: the battery's cell, ui.c) */
     if (page == PAGE_GLO || page == PAGE_ENV) {         /* GLO: GLOBAL and the patch, on coral; the environment's on lilac */
         uint16_t bg = page == PAGE_ENV ? P_LILAC : P_CORAL;
@@ -856,31 +863,46 @@ static void fit(char *s, const font_t *f, uint32_t max)
     s[n] = 0;
 }
 
+/* where a bar's type goes: name and num cut to fit, the x of the name, the value and the unit */
+static void row_layout(int used, char *name, char *num, const char *unit, uint32_t *nx, uint32_t *vx, uint32_t *ux)
+{
+    *nx = 22u;
+    *vx = *ux = 0;
+    if (used) {
+        uint32_t uw, vw;
+        uw = unit[0] ? text_w(&FONT_S, unit, -1) + 2u : 0u;
+        fit(num, &FONT_M, 110u);
+        vw = text_w(&FONT_M, num, -1);
+        *ux = BAR_W - 7u - uw + 2u;
+        *vx = BAR_W - 7u - uw - vw;
+        fit(name, &FONT_M, *vx > *nx + 6u ? *vx - *nx - 6u : 0u);
+    }
+}
+
+static int ttl_wanted(void);
+static void ttl_onto(uint16_t *row, uint32_t tr);
+
 /* knob k's bar: drawn a scanline at a time (fill, ticks, then the type blended onto them), so the text reads across the
  * fill's edge. used: the page has a row for it (its name, value and unit; the fill to base, the live tick at live, of
- * BAR_W px); name and num are cut to fit here. The device page's (pages_bar) and the sandbox page's (sandbox_ui.c) */
-static void row_bar(uint32_t k, int used, char *name, char *num, const char *unit, uint32_t base, uint32_t live)
+ * BAR_W px); name and num are cut to fit here. Its rows r0..r1 (of ROW_H), and of each only the pixels s0..s1 of the bar
+ * (0, BAR_W: all); ALGO's title toast over it when it is in this bar (#298). The device page's (pages_bar) and the
+ * sandbox page's (sandbox_ui.c, all of it: row_bar) */
+static void row_bar_part(uint32_t k, int used, char *name, char *num, const char *unit, uint32_t base, uint32_t live,
+                         uint32_t r0, uint32_t r1, uint32_t s0, uint32_t s1)
 {
     uint16_t *row = lcd_line;                           /* (lcd.c's; BAR_W <= 240) */
     char kn[2];
-    uint32_t y0 = ROWS_Y + k * (ROW_H + ROW_GAP), r, i, vx = 0, ux = 0, nx = 22u;
+    uint32_t y0 = ROWS_Y + k * (ROW_H + ROW_GAP), r, i, vx, ux, nx;
     uint16_t hue = KNOB_HUE[k], track = used ? P_PANEL : P_STRIP, fill = mix565(hue, P_PANEL, 6u);
+    int ttl = page == 0 && ttl_wanted() && pg_ttl_k == k;
     kn[0] = (char)('1' + k);
     kn[1] = 0;
     if (base > BAR_W)
         base = BAR_W;
     if (live > BAR_W)
         live = BAR_W;
-    if (used) {
-        uint32_t uw, vw;
-        uw = unit[0] ? text_w(&FONT_S, unit, -1) + 2u : 0u;
-        fit(num, &FONT_M, 110u);
-        vw = text_w(&FONT_M, num, -1);
-        ux = BAR_W - 7u - uw + 2u;
-        vx = BAR_W - 7u - uw - vw;
-        fit(name, &FONT_M, vx > nx + 6u ? vx - nx - 6u : 0u);
-    }
-    for (r = 0; r < ROW_H; r++) {
+    row_layout(used, name, num, unit, &nx, &vx, &ux);
+    for (r = r0; r < r1; r++) {
         lcd_sync();                                     /* the last row may still be on its way out of lcd_line */
         for (i = 0; i < BAR_W; i++)
             row[i] = used && i < base ? fill : track;
@@ -907,23 +929,60 @@ static void row_bar(uint32_t k, int used, char *name, char *num, const char *uni
         if (r == 0u || r == ROW_H - 1u) {               /* rounded corners: the night shows at the four corner pixels */
             row[0] = row[BAR_W - 1u] = P_NIGHT;
         }
-        lcd_line_out(BAR_X, y0 + r, BAR_W);
+        if (ttl && r >= TTL_DY && r < TTL_DY + TTL_H)
+            ttl_onto(row, r - TTL_DY);
+        if (s0 || s1 < BAR_W) {                         /* a part of the scanline: its pixels to the front (the texts */
+            for (i = s0; i < s1; i++)                   /* announced still count from the whole one's x: scr_ox) */
+                row[i - s0] = row[i];
+            scr_ox = BAR_X;
+        }
+        lcd_line_out(BAR_X + s0, y0 + r, s1 - s0);
+        scr_ox = 0xFFFFu;
     }
+    if (ttl && r0 <= TTL_DY && r1 >= TTL_DY + TTL_H && s0 <= pg_ttl_x && s1 >= pg_ttl_x + pg_ttl_w) {
+        pg_ttl_scr = 1;                                 /* (the toast now there, whole) */
+        pg_ttl_sk = (uint8_t)k;
+        pg_ttl_sx = pg_ttl_x;
+        pg_ttl_sw = pg_ttl_w;
+    }
+}
+static void row_bar(uint32_t k, int used, char *name, char *num, const char *unit, uint32_t base, uint32_t live)
+{
+    row_bar_part(k, used, name, num, unit, base, live, 0, ROW_H, 0, BAR_W);
 }
 
-/* knob k's bar on the device page: the row of page pg (or an empty slot) */
-static void pages_bar(const ppage_t *pg, uint32_t k)
+/* knob k's row of page pg (or an empty slot): its type and where its fill and live tick end; returns whether it is used */
+static int pages_row(const ppage_t *pg, uint32_t k, char *name, char *num, char *unit, uint32_t *base, uint32_t *live)
 {
-    char name[24], num[20], unit[8];
-    uint32_t base = 0, live = 0;
     int used = pg && k < pg->nrows;
     name[0] = num[0] = unit[0] = 0;
+    *base = *live = 0;
     if (used) {
-        row_show(pg, k, num, unit, BAR_W, &base, &live);
+        row_show(pg, k, num, unit, BAR_W, base, live);
         caps(name, pg->lab[k], pg->llen[k], 16);
     }
-    row_bar(k, used, name, num, unit, base, live);
+    return used;
 }
+
+/* knob k's bar on the device page, rows r0..r1 of it, pixels s0..s1 */
+static void pages_bar_part(const ppage_t *pg, uint32_t k, uint32_t r0, uint32_t r1, uint32_t s0, uint32_t s1)
+{
+    char name[24], num[20], unit[8];
+    uint32_t base, live;
+    int used = pages_row(pg, k, name, num, unit, &base, &live);
+    row_bar_part(k, used, name, num, unit, base, live, r0, r1, s0, s1);
+    if (!s0 && s1 == BAR_W && k < PG_ROWS) {            /* (the whole width: what the bar now shows) */
+        uint32_t nx, vx, ux;
+        row_layout(used, name, num, unit, &nx, &vx, &ux);
+        pg_drawn[k].base = (uint16_t)(base > BAR_W ? BAR_W : base);
+        pg_drawn[k].live = (uint16_t)(live > BAR_W ? BAR_W : live);
+        pg_drawn[k].vx = (uint16_t)vx;
+        pg_drawn[k].nlen = (uint8_t)str_len(name);
+        pg_drawn[k].used = (uint8_t)used;
+        pg_drawn[k].ok = 1;
+    }
+}
+static void pages_bar(const ppage_t *pg, uint32_t k) { pages_bar_part(pg, k, 0, ROW_H, 0, BAR_W); }
 
 /* the page rail: one segment per page of the device, the one in focus in coral, the others of its heading dimmer */
 static void pages_rail(void)
@@ -992,164 +1051,69 @@ static void pages_info(void)
     }
 }
 
-/* the toasts: over the bars, centred in their height */
-#define TOAST_Y (ROWS_Y + 26u)
-
-/* the toast on screen (k, page) or 0xFF: a turn of the same knob redraws only the value and the bar, a scanline at a
- * time, so what does not change does not blink */
-static uint8_t pg_toast_shown = 0xFFu;
-static const ppage_t *pg_toast_pg;
-static uint8_t pg_card_shown, pg_card_dev, pg_card_pg;  /* the card on screen (its kind, 0 none) and what it names */
-static uint32_t pg_patch_shown;                         /* the patch whose name is on show: pages_gen() + 1, 0 none */
-
-/* knob k's row at full size: its name, the value in the big type, the range bar with the live tick */
-static void pages_toast(const ppage_t *pg, uint32_t k, int full)
+/* K1..K4 turned (#298): the row moves where it is, the slider and the number: only the columns its fill's end and live
+ * tick moved across (the whole height) and its value and unit (their band), from what the bar showed (pg_drawn); a row
+ * whose name or kind changed is drawn whole */
+static void pages_row_update(const ppage_t *pg, uint32_t k)
 {
-    uint16_t *row = lcd_line;                           /* (lcd.c's: written after an lcd_sync) */
-    char t[24], num[20], unit[8], lo_n[20], lo_u[8], hi_n[20], hi_u[8];
-    uint32_t m = pg->mod[k], j = pg->par[k], xw, i, r, ok = 1, bw = 216, base, live, nx, ny, ux, uy;
-    const font_t *nf;
-    row_show(pg, k, num, unit, bw, &base, &live);
-    if (full || pg_toast_shown != k || pg_toast_pg != pg) {
-        pg_toast_shown = (uint8_t)k;
-        pg_toast_pg = pg;
-        lcd_fill(0, ROWS_Y, 240, ROWS_END - ROWS_Y, P_NIGHT);
-        t[0] = 'K';
-        t[1] = (char)('1' + k);
-        t[2] = ' ';
-        caps(t + 3, pg->lab[k], pg->llen[k], 16);
-        text_bc(&FONT_S, 12, TOAST_Y + 2u, t, KNOB_HUE[k], P_NIGHT, 0, TA_LEFT);
-        if (!(j & POLY_ROW) && eng_type(m) >= 0 && j < DEFS[eng_type(m)].npar) {
-            const def_t *d = &DEFS[eng_type(m)];
-            value_parts(d, j, d->pmin[j], lo_n, lo_u);
-            value_parts(d, j, d->pmax[j], hi_n, hi_u);
-            put(put(put(t, lo_n), " "), lo_u)[0] = 0;
-            text_bc(&FONT_S, 12, TOAST_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_LEFT);
-            put(put(put(t, hi_n), " "), hi_u)[0] = 0;
-            text_bc(&FONT_S, 128, TOAST_Y + 75u, t, P_FAINT, P_NIGHT, 100, TA_RIGHT);
-        }
+    char name[24], num[20], unit[8];
+    uint32_t base, live, nx, vx, ux, n = 0, i, j, sp[4][4];
+    int used = pages_row(pg, k, name, num, unit, &base, &live);
+    row_layout(used, name, num, unit, &nx, &vx, &ux);
+    if (base > BAR_W)
+        base = BAR_W;
+    if (live > BAR_W)
+        live = BAR_W;
+    if (pg_drawn[k].live == pg_drawn[k].base)           /* (not modulated: the engine's effective value catches up in */
+        live = base;                                    /* its next block; no tick at the old place meanwhile) */
+    if (!pg_drawn[k].ok || pg_drawn[k].used != (uint8_t)used || pg_drawn[k].nlen != str_len(name)) {
+        pages_bar(pg, k);
+        return;
     }
-    for (i = 0; num[i]; i++)                            /* the big type has digits and a few letters: else the large one */
-        if (num[i] < 0x20 || num[i] > 0x7E || FONT_XL.map[num[i] - 0x20] == 255u)
-            ok = 0;
-    nf = ok ? &FONT_XL : &FONT_L;                       /* the value line's band: 42 rows from TOAST_Y + 16 */
-    xw = text_w(nf, num, -1);
-    nx = ok ? 10u : 12u;
-    ny = ok ? 0u : 10u;
-    ux = nx + xw + 6u;
-    uy = ok ? 20u : 14u;
-    for (r = 0; r < FONT_XL.h; r++) {
-        lcd_sync();                                     /* the last transfer may still read lcd_line */
-        for (i = 0; i < 240u; i++)
-            row[i] = P_NIGHT;
-        if (r >= ny)
-            text_onto(row, 240, nf, r - ny, num, nx, P_INK);
-        if (r >= uy)
-            text_onto(row, 240, &FONT_M, r - uy, unit, ux, P_DIM);
-        lcd_line_out(0, TOAST_Y + 16u + r, 240);
+#define SPAN(a, b, r0, r1) do { uint32_t a_ = (a), b_ = (b) > BAR_W ? BAR_W : (b); if (b_ > a_) { sp[n][0] = a_; \
+        sp[n][1] = b_; sp[n][2] = (r0); sp[n][3] = (r1); n++; } } while (0)
+    {
+        uint32_t lo = pg_drawn[k].base < base ? pg_drawn[k].base : base, hi = pg_drawn[k].base < base ? base : pg_drawn[k].base;
+        if (lo != hi)                                   /* the fill's end (and its 2 px edge in the hue) */
+            SPAN(lo >= 2u ? lo - 2u : 0u, hi + 1u, 0u, ROW_H);
     }
-    for (r = 0; r < 14u; r++) {                         /* the bar (rows 3..10) and the live tick across it */
-        lcd_sync();
-        for (i = 0; i < bw; i++)
-            row[i] = r >= 3u && r < 11u ? (i < base ? KNOB_HUE[k] : P_TRACK) : P_NIGHT;
-        if (live != base)
-            row[live > 1u ? live - 1u : 0u] = row[live > 1u ? live : 1u] = P_INK;
-        lcd_line_out(12, TOAST_Y + 61u + r, bw);
-    }
+    if (pg_drawn[k].live != pg_drawn[k].base)           /* the live ticks, the old and the new */
+        SPAN(pg_drawn[k].live >= 2u ? pg_drawn[k].live - 2u : 0u, pg_drawn[k].live + 2u, 4u, ROW_H - 4u);
+    if (live != base)
+        SPAN(live >= 2u ? live - 2u : 0u, live + 2u, 4u, ROW_H - 4u);
+    if (used)                                           /* the value and unit */
+        SPAN(pg_drawn[k].vx < vx ? pg_drawn[k].vx : vx, BAR_W - 4u, 9u, 27u);
+#undef SPAN
+    for (i = 0; i < n; i++)                             /* overlapping spans merge (their rows too) */
+        for (j = i + 1u; j < n; j++)
+            if (sp[j][0] < sp[i][1] && sp[i][0] < sp[j][1]) {
+                sp[i][0] = sp[i][0] < sp[j][0] ? sp[i][0] : sp[j][0];
+                sp[i][1] = sp[i][1] > sp[j][1] ? sp[i][1] : sp[j][1];
+                sp[i][2] = sp[i][2] < sp[j][2] ? sp[i][2] : sp[j][2];
+                sp[i][3] = sp[i][3] > sp[j][3] ? sp[i][3] : sp[j][3];
+                sp[j][0] = sp[j][1] = 0;
+                j = i;                                  /* (again from the start: the bigger span may meet another) */
+            }
+    for (i = 0; i < n; i++)
+        if (sp[i][1] > sp[i][0])
+            pages_bar_part(pg, k, sp[i][2], sp[i][3], sp[i][0], sp[i][1]);
+    pg_drawn[k].base = (uint16_t)base;
+    pg_drawn[k].live = (uint16_t)live;
+    pg_drawn[k].vx = (uint16_t)vx;
 }
 
-/* SELECT / ALGO turning (#221): the card alone on the whole screen, fill and type only. SELECT's: the device's name big
- * and "2/5" small, on red; ALGO's: the device's name small, the page's big ("FILTER 1/2" as the chips name it), "3/7"
- * of the device's pages small, on blue. Three bands of type (CARD_Y0, CARD_Y1, CARD_Y2), each painting the full width in
- * the card's colour. full: the rest of the screen filled too (the first click, another kind of card); else only the
- * bands (the next click: no blink) */
-#define CARD_Y0 84u
-#define CARD_Y1 104u
-#define CARD_Y2 134u
-static void pages_card_draw(int full)
-{
-    char t[40], num[8], *p;
-    const pdev_t *dv = &pg_dev[pg_cur_dev];
-    const ppage_t *pg = &pg_page[dv->pg0 + pg_cur_page];
-    int pgc = pg_card == PG_CARD_PAGE;
-    uint16_t bg = pgc ? P_CARD_PAGE : P_CARD_DEV;
-    if (full) {                                         /* around the bands (they paint their own rows) */
-        lcd_fill(0, 0, BATT_X, BAR_H, bg);           /* (not the battery's cell, ui.c) */
-        lcd_fill(0, BAR_H, 240, CARD_Y0 - BAR_H, bg);
-        lcd_fill(0, CARD_Y0 + FONT_S.h, 240, CARD_Y1 - CARD_Y0 - FONT_S.h, bg);
-        lcd_fill(0, CARD_Y1 + FONT_L.h, 240, CARD_Y2 - CARD_Y1 - FONT_L.h, bg);
-        lcd_fill(0, CARD_Y2 + FONT_S.h, 240, 240u - CARD_Y2 - FONT_S.h, bg);
-    }
-    caps(t, dv->name, dv->nlen, 16);
-    if (pgc)
-        text_bc(&FONT_S, 0, CARD_Y0, t, P_INK, bg, 240, TA_CENTER);
-    else if (full)
-        text_bc(&FONT_S, 0, CARD_Y0, "", P_INK, bg, 240, TA_CENTER);
-    if (pgc) {                                          /* the page as the chips name it */
-        if (pages_unheaded(pg, dv))
-            caps(t, "PAGE", 4u, 4u);
-        else
-            caps(t, pg->name, pg->nlen, 16);
-        p = t + str_len(t);
-        if (pg->parts > 1u) {
-            *p++ = ' ';
-            fmt_int(num, pg->part + 1);
-            p = put(p, num);
-            *p++ = '/';
-            fmt_int(num, pg->parts);
-            p = put(p, num);
-            *p = 0;
-        }
-    }
-    fit(t, &FONT_L, 228);
-    text_bc(&FONT_L, 0, CARD_Y1, t, P_INK, bg, 240, TA_CENTER);
-    fmt_int(num, (int32_t)(pgc ? pg_cur_page : pg_cur_dev) + 1);
-    p = put(t, num);
-    *p++ = '/';
-    fmt_int(num, (int32_t)(pgc ? dv->npg : pg_ndev));
-    put(p, num)[0] = 0;
-    text_bc(&FONT_S, 0, CARD_Y2, t, P_INK, bg, 240, TA_CENTER);
-}
-
-/* the patch PRESET just loaded, big: its name, under it the slot and how many the bank holds. full: the band cleared
- * first; else only the two lines, each painting its own field (a turn while it shows: no blink) */
-static void pages_patch_toast(int full)
-{
-    char t[40], num[8], *p;
-    const char *nm = patch_label && patch_label[0] ? patch_label : "EMPTY";
-    if (full)
-        lcd_fill(0, ROWS_Y, 240, ROWS_END - ROWS_Y, P_NIGHT);
-    caps(t, nm, str_len(nm), 24);
-    fit(t, &FONT_L, 228);
-    text_bc(&FONT_L, 0, TOAST_Y + 24u, t, P_INK, P_NIGHT, 240, TA_CENTER);
-    p = t;
-    if (cur_preset < M1_SLOTS) {
-        uint64_t b = bank_mask;
-        uint32_t n = 0;
-        for (; b; b &= b - 1u)
-            n++;
-        fmt_int(num, (int32_t)cur_preset + 1);
-        p = put(p, num);
-        p = put(p, " / ");
-        fmt_int(num, (int32_t)n);
-        p = put(p, num);
-    }
-    *p = 0;
-    text_bc(&FONT_S, 0, TOAST_Y + 54u, t, P_DIM, P_NIGHT, 240, TA_CENTER);
-}
-
-/* a patch loaded (main.c preset_load): the whole screen, or, while the last one's name shows, the strip, the chips, the
- * rail, the foot line and the new name in place */
+/* a patch loaded (main.c preset_load): PRESET's (its title toast, then the page drawn in passes by panel_draw, #298), or
+ * the whole screen */
 static void screen_patch(void)
 {
     pages_ensure();
-    if (booting || (page != 0 && page != PAGE_GLO) || !pg_patch_shown || fm1_ms >= pg_patch_until) {
-        screen_idle();
+    if (!booting && page == 0 && !sb_on && pg_plain && ttl_wanted() && pg_ttl_kind == TT_PATCH) {
+        ui_full = 0;
+        if (!ui_dirty)
+            ui_dirty = 1;
         return;
     }
-    ui_full = 0;
-    pg_strip_dirty = 1;
-    pages_draw(0);
+    screen_idle();
 }
 
 /* GLO's footer: what each patch button does in this patch (its label; else its kind; "-" for Nothing) */
@@ -1177,30 +1141,253 @@ static void glo_footer(void)
     }
 }
 
+/* ---- the title toast (#298): SELECT, ALGO and PRESET name what they reached in a small toast drawn first, clear of the
+ * rows' type; the page under it is drawn at once, a newer click stopping the draw */
+
+/* its words: the device's name and "2/5" of the devices (SELECT), the page's as the chips name it and "3/7" of the
+ * device's pages (ALGO), the patch's name and its slot of the bank's (PRESET) */
+static void ttl_words(void)
+{
+    char num[8], *p;
+    const pdev_t *dv = &pg_dev[pg_cur_dev];
+    const ppage_t *pg = &pg_page[dv->pg0 + pg_cur_page];
+    uint32_t i = pg_cur_page, n = dv->npg;
+    if (pg_ttl_kind == TT_PATCH) {
+        const char *nm = patch_label && patch_label[0] ? patch_label : "EMPTY";
+        uint64_t b = bank_mask;
+        caps(pg_ttl_t, nm, str_len(nm), 24);
+        for (n = 0; b; b &= b - 1u)
+            n++;
+        i = cur_preset;
+        if (cur_preset >= M1_SLOTS)
+            n = 0;
+    } else if (pg_ttl_kind == TT_DEV) {
+        caps(pg_ttl_t, dv->name, dv->nlen, 16);
+        i = pg_cur_dev;
+        n = pg_ndev;
+    } else {
+        if (pages_unheaded(pg, dv))
+            caps(pg_ttl_t, "PAGE", 4u, 4u);
+        else
+            caps(pg_ttl_t, pg->name, pg->nlen, 16);
+        p = pg_ttl_t + str_len(pg_ttl_t);
+        if (pg->parts > 1u) {
+            *p++ = ' ';
+            fmt_int(num, pg->part + 1);
+            p = put(p, num);
+            *p++ = '/';
+            fmt_int(num, pg->parts);
+            p = put(p, num);
+            *p = 0;
+        }
+    }
+    pg_ttl_i[0] = 0;
+    if (n) {
+        fmt_int(num, (int32_t)i + 1);
+        p = put(pg_ttl_i, num);
+        *p++ = '/';
+        fmt_int(num, (int32_t)n);
+        put(p, num)[0] = 0;
+    }
+    fit(pg_ttl_t, &FONT_M, 200u);
+}
+
+/* where it goes on page pg: in the bar of row 2 or 3 (K2, K3) whose name and value leave the widest room between them, in
+ * the middle of the bar as far as that room allows; else the foot band (TTL_FOOT) */
+static void ttl_place(const ppage_t *pg)
+{
+    char name[24], num[20], unit[8];
+    uint32_t base, live, nx, vx, ux, k, a, b, best = 0, need;
+    need = 10u + text_w(&FONT_M, pg_ttl_t, -1) + (pg_ttl_i[0] ? 10u + text_w(&FONT_S, pg_ttl_i, -1) : 0u) + 10u;
+    pg_ttl_k = TTL_FOOT;
+    pg_ttl_w = (uint16_t)need;
+    for (k = 1; k <= 2u; k++) {
+        int used = pages_row(pg, k, name, num, unit, &base, &live);
+        row_layout(used, name, num, unit, &nx, &vx, &ux);
+        a = nx + text_w(&FONT_M, used ? name : "-", -1) + 8u;
+        b = used ? (vx > 8u ? vx - 8u : 0u) : BAR_W - 8u;
+        if (b > a && b - a >= need && b - a > best) {
+            uint32_t x = (BAR_W - need) / 2u;
+            best = b - a;
+            pg_ttl_k = (uint8_t)k;
+            pg_ttl_x = (uint16_t)(x < a ? a : x + need > b ? b - need : x);
+        }
+    }
+}
+
+static int ttl_wanted(void) { return pg_ttl_until && fm1_ms < pg_ttl_until && !sb_on; }
+
+/* SELECT (TT_DEV), ALGO (TT_PAGE) or PRESET (TT_PATCH) reached what is in focus now: its title toast, and the page to
+ * draw in passes (pages_staged) */
+static void pages_title(uint32_t kind)
+{
+    const ppage_t *pg = pages_now();
+    if (!pg)
+        return;
+    pg_ttl_kind = (uint8_t)kind;
+    pg_ttl_until = fm1_ms + (kind == TT_PATCH ? 1000u : PG_TTL_MS);
+    ttl_words();
+    ttl_place(pg);
+    pg_algo_due = 1;
+    if (kind != TT_PAGE)
+        pg_stage_strip = 1;
+}
+
+/* its colours */
+static uint16_t ttl_bg(void) { return pg_ttl_kind == TT_DEV ? P_CARD_DEV : pg_ttl_kind == TT_PATCH ? P_INK : P_CARD_PAGE; }
+static uint16_t ttl_fg(void) { return pg_ttl_kind == TT_PATCH ? P_NIGHT : P_INK; }
+
+/* its row tr (0..TTL_H) onto a bar's scanline (row_bar_part): the box, rounded, the title and the count */
+static void ttl_onto(uint16_t *row, uint32_t tr)
+{
+    uint32_t i, x0 = pg_ttl_x, x1 = pg_ttl_x + pg_ttl_w, edge = tr == 0u || tr == TTL_H - 1u;
+    uint16_t bg = ttl_bg(), fg = ttl_fg();
+    for (i = x0 + (edge ? 1u : 0u); i < x1 - (edge ? 1u : 0u) && i < BAR_W; i++)
+        row[i] = bg;
+    if (tr >= 6u)
+        text_onto(row, BAR_W, &FONT_M, tr - 6u, pg_ttl_t, x0 + 10u, fg);
+    if (tr >= 10u && pg_ttl_i[0])
+        text_onto(row, BAR_W, &FONT_S, tr - 10u, pg_ttl_i, x1 - 10u - text_w(&FONT_S, pg_ttl_i, -1), fg);
+}
+
+/* the foot band's version: the band below the bars in the toast's colour, title and count on one line */
+static void ttl_foot_draw(void)
+{
+    char t[40];
+    uint16_t bg = ttl_bg();
+    uint32_t y = ROWS_END + 12u;
+    put(put(put(t, pg_ttl_t), pg_ttl_i[0] ? "  " : ""), pg_ttl_i)[0] = 0;
+    lcd_fill(0, ROWS_END, 240, y - ROWS_END, bg);
+    text_bc(&FONT_M, 0, y, t, ttl_fg(), bg, 240, TA_CENTER);
+    lcd_fill(0, y + FONT_M.h, 240, 240u - y - FONT_M.h, bg);
+    pg_ttl_scr = 2;
+}
+
+/* the foot band as the page has it (the toast was over it) */
+static void foot_restore(int glo)
+{
+    lcd_fill(0, ROWS_END, 240, 240u - ROWS_END, P_NIGHT);
+    if (glo)
+        glo_footer();
+    else {
+        pages_rail();
+        pages_info();
+    }
+}
+
+/* the toast, first: its rectangle alone (the bar under it composed with it) or the foot band */
+static void ttl_first(const ppage_t *pg)
+{
+    if (pg_ttl_k == TTL_FOOT)
+        ttl_foot_draw();
+    else
+        pages_bar_part(pg, pg_ttl_k, TTL_DY, TTL_DY + TTL_H, pg_ttl_x, pg_ttl_x + pg_ttl_w);
+}
+
+/* its time is up: what it covered, alone */
+static void ttl_restore(const ppage_t *pg, int glo)
+{
+    if (pg_ttl_scr == 1u && pg)
+        pages_bar_part(pg, pg_ttl_sk, TTL_DY, TTL_DY + TTL_H, pg_ttl_sx, pg_ttl_sx + pg_ttl_sw);
+    else if (pg_ttl_scr == 2u)
+        foot_restore(glo);
+    pg_ttl_scr = 0;
+}
+
+/* a newer click waits: the draw gives way (and comes back through ui_dirty) */
+static int pages_stop(void)
+{
+    if (!pages_waiting || !pages_waiting())
+        return 0;
+    if (!ui_dirty)
+        ui_dirty = 1;
+    return 1;
+}
+
+/* the page SELECT, ALGO or PRESET reached, over the page that was there (pg_plain): the toast, then the strip (another
+ * device or patch) and the chips with the band of each bar that holds its type, then the rest of the bars, the rail and
+ * the foot line; each pixel once, nothing cleared first. A click waiting stops it between bands (pages_stop) */
+static void pages_staged(const ppage_t *pg, int glo)
+{
+    uint32_t k;
+    if (ttl_wanted())
+        ttl_first(pg);
+    if (pages_stop())
+        return;
+    if (pg_stage_strip && !msg_until)
+        header_draw();                                  /* (page 0: the strip; or OVERLOAD, LOAD ERR) */
+    pg_stage_strip = 0;
+    if (glo)
+        lcd_fill(0, 20, 240, 18, P_NIGHT);
+    else
+        pages_chips();
+    if (pages_stop())
+        return;
+    for (k = 0; k < PG_ROWS; k++) {                     /* the name, value and unit of each */
+        pages_bar_part(pg, k, 9u, 27u, 0, BAR_W);
+        if (pages_stop())
+            return;
+    }
+    for (k = 0; k < PG_ROWS; k++) {                     /* the rest: above and below the type */
+        pages_bar_part(pg, k, 0, 9u, 0, BAR_W);
+        pages_bar_part(pg, k, 27u, ROW_H, 0, BAR_W);
+        if (k < 3u && pages_stop())
+            return;
+    }
+    if (!(ttl_wanted() && pg_ttl_k == TTL_FOOT)) {
+        if (glo)
+            glo_footer();
+        else {
+            pages_rail();
+            pages_info();
+        }
+    }
+    pg_strip_dirty = 0;
+    pg_algo_due = 0;
+    pg_row_dirty = 0;
+    pg_plain = 1;
+    if (pg_ttl_scr == 1u && (!ttl_wanted() || pg_ttl_k != pg_ttl_sk))
+        pg_ttl_scr = 0;                                 /* (its old place: the bars drawn over it) */
+}
+
 /* the device page (page 0) and GLO's (PAGE_GLO); full: everything, else what moves (the bars or a toast, the rail, the
  * foot line) */
 static void pages_draw(int full)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
-    int glo = page == PAGE_GLO;
-    if (pg && pages_carding()) {                        /* SELECT / ALGO turning: the card alone (a beat's redraw leaves it be) */
-        if (full || pg_card_shown != pg_card)
-            pages_card_draw(1);
-        else if (pg_card_dev != pg_cur_dev || pg_card_pg != pg_cur_page)
-            pages_card_draw(0);
-        pg_card_shown = pg_card;
-        pg_card_dev = (uint8_t)pg_cur_dev;
-        pg_card_pg = (uint8_t)pg_cur_page;
+    int glo = page == PAGE_GLO, foot, railed;
+    if (pg_foot_dirty && !full) {                       /* the foot band lost its toast elsewhere */
+        pg_foot_dirty = 0;
+        foot_restore(glo);
+    }
+    pg_foot_dirty = 0;
+    if (!full && pg && pg_algo_due && pg_plain) {
+        pages_staged(pg, glo);                          /* SELECT, ALGO or PRESET reached it (#298) */
         return;
     }
-    if (pg_card_shown) {                                /* they stopped (or a knob turned): the page, whole, once */
-        pg_card_shown = 0;
-        full = 1;
+    if (!full && pg_ttl_scr && !ttl_wanted() && !pg_strip_dirty) {
+        ttl_restore(pg, glo);                           /* the title toast's time is up: what it covered, alone */
+        if (!pg_row_dirty)
+            return;
     }
-    if (full)
+    if (!full && pg && pg_row_dirty && pg_plain && !pg_strip_dirty) {
+        for (k = 0; k < PG_ROWS; k++)                   /* K1..K4 turned: their rows where they changed */
+            if (pg_row_dirty & (1u << k))
+                pages_row_update(pg, k);
+        pg_row_dirty = 0;
+        return;
+    }
+    pg_algo_due = 0;
+    pg_row_dirty = 0;
+    pg_stage_strip = 0;
+    if (full) {
         lcd_fill(0, 20, 240, 220, P_NIGHT);
-    if (full || pg_strip_dirty) {
+        pg_ttl_scr = 0;
+    }
+    foot = ttl_wanted() && pg_ttl_k == TTL_FOOT;
+    railed = full || pg_strip_dirty;
+    if (railed) {
         if (!msg_until)
             pages_strip();
         if (pg && !glo)
@@ -1213,37 +1400,26 @@ static void pages_draw(int full)
             pages_rail();
         pg_strip_dirty = 0;
     }
-    if (!glo)
+    if (!glo && !foot)
         pages_info();
-    if (pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows) {
-        pg_patch_shown = 0;
-        pages_toast(pg, pg_toast_k, full);
-        return;
-    }
-    pg_toast_shown = 0xFFu;
-    if (fm1_ms < pg_patch_until) {                      /* (a beat's redraw leaves it be) */
-        if (full || !pg_patch_shown)
-            pages_patch_toast(1);
-        else if (pg_patch_shown != pages_gen() + 1u)
-            pages_patch_toast(0);
-        pg_patch_shown = pages_gen() + 1u;
-        return;
-    }
-    pg_patch_shown = 0;
     lcd_fill(0, ROWS_Y - 3u, 240, 3, P_NIGHT);
     for (k = 0; k < PG_ROWS; k++) {
         pages_bar(pg, k);
         if (k < 3u)
             lcd_fill(0, ROWS_Y + k * (ROW_H + ROW_GAP) + ROW_H, 240, ROW_GAP, P_NIGHT);
     }
+    pg_plain = 1;
+    if (pg_ttl_scr == 1u && (!ttl_wanted() || pg_ttl_k != pg_ttl_sk))
+        pg_ttl_scr = 0;
+    if (foot && (railed || pg_ttl_scr != 2u))
+        ttl_foot_draw();
 }
 
-/* the toasts or a card end: the bars come back (main loop) */
+/* a title toast ends: what it covered comes back (main loop) */
 static int pages_expired(void)
 {
     static uint8_t was;
-    uint8_t now = (uint8_t)((fm1_ms < pg_toast_until ? 1u : 0u) | (pages_carding() ? 2u : 0u)
-                            | (fm1_ms < pg_patch_until ? 4u : 0u));
+    uint8_t now = (uint8_t)(ttl_wanted() ? 1u : 0u);
     int out = now != was;
     was = now;
     return out;
@@ -1254,7 +1430,7 @@ static void pages_ticks(void)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
-    if (!pg || sb_on || fm1_ms < pg_toast_until || pages_carding() || pg_card_shown || fm1_ms < pg_patch_until)
+    if (!pg || sb_on || pg_algo_due)
         return;
     static uint8_t was;                                 /* bars that had a tick last time: redrawn once more to clear it */
     uint8_t now = 0;
