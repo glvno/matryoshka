@@ -72,7 +72,8 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   // 808 Kit: re-measured 2026-10-21 after #141: the device reads 81 %, the model 74 % (out of the band): #178. Oracle V:
   // the melodic patches gained an Arpeggiator and PATTERN (D-336, #243; 2 to 4 points of estimate each), which takes Oracle V
   // past the band's top (est 84 %, the survey 75 %)
-  const changed = new Set(['808 kit', 'oracle v']);
+  // 909 Kit: rows 3 and 5..8 got their voices (the survey measured its first three only; est 59 %)
+  const changed = new Set(['808 kit', 'oracle v', '909 kit']);
   // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH): measure them on the device, then add them to the survey file
   const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph']);
   it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(PRESETS).length));

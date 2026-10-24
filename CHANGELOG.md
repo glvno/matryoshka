@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The **909 Kit** plays all eight drum rows: CLAP, OPEN HAT, LOW TOM, RIM and COWBELL were silent (the kit only ever had a
+  kick, a snare and a hat). Its rows are now in the 808 Kit's order, so the hat moved from the third black key / white
+  key to the fourth (its pattern moved with it); the new voices' decays are on one card, PERC. <7PH has the same kit. An
+  FM-1 gets the new kit from MENU > SYSTEM > FACTORY RESET.
 - **Connect FM-1** on an FM-1 that runs other firmware now always says so and offers **Install Matryoshka**: it names
   M-VAVE's official firmware or Felucca, and an FM-1 that does not answer at all is named by its port. FM-1 & MIDI's
   Connect says the same in its status line.
