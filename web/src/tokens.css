@@ -1,0 +1,85 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* The colour tokens (light, dark, and the theme toggle's data-theme) and the logo / wordmark colouring: shared by the app
+   (style.css imports this) and the changelog page (changelog.css) */
+:root {
+  /* Logo palette; darker shades keep small controls readable on paper. */
+  --ref-coral: #e7775d; --ref-teal: #287d80; --ref-gold: #e8b65a;
+  --ref-ivory: #fff7e8; --ref-ink: #202a2c;
+  --ref-paper: #f3eddf; --ref-white: #fffcf5; --ref-stone: #68665e; --ref-sand: #cfc6b5;
+  --ref-rust: #ad432e; --ref-deep-teal: #226669; --ref-ochre: #80560f;
+  --ref-night: #171f21; --ref-slate: #344345; --ref-mist: #b4b8ad;
+  --ref-seafoam: #79c7c1; --ref-lilac: #795c97; --ref-lilac-light: #c6abdf;
+  --ref-blue: #486b96; --ref-blue-light: #9dbde6; --ref-rose: #96546a; --ref-rose-light: #e7a6b8;
+  --ref-red: #b33135; --ref-red-light: #ff9992;
+  --bg: var(--ref-paper); --panel: var(--ref-white); --ink: var(--ref-ink);
+  --muted: var(--ref-stone); --line: var(--ref-sand);
+  --accent: var(--ref-rust); --accent-ink: var(--ref-white);
+  --secondary: var(--ref-deep-teal); --audio: var(--accent); --control: var(--secondary); --gate: var(--ref-ochre);
+  /* The FM-1 knobs K1..K4 in the logo's colours (coral, gold, teal, sand; K5 / K6 the lilac and blue of the tags),
+     darkened for paper. A knob mark always carries its number too, so the colour is never the only cue. */
+  --k1: var(--ref-rust); --k2: var(--ref-ochre); --k3: var(--ref-deep-teal); --k4: #7d7058; --k5: var(--ref-lilac); --k6: var(--ref-blue);
+  /* a poly assembly's voices V1..V8 (voice-colors.ts: scope traces, voices panel): the knob hues, then rose and blue */
+  --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose); --voice8: var(--ref-blue);
+  --danger: var(--ref-red); --warning: var(--gate);
+  /* armed devices (#190): a record-style red, on the ARM dot, the armed edges and the dashed keys ribbons */
+  --arm: var(--ref-red);
+  /* filled yellow buttons: the gate colour, greyed down so it does not shout */
+  --btn-yellow: color-mix(in oklab, var(--ref-ochre) 70%, var(--ref-stone));
+  /* the Demo button (LEARN): the palette's blue */
+  --piano-h: 160px;
+  /* The on-screen keyboard: paper and ink keys, the lettered range tinted teal, held keys in the accent. */
+  --key-white: var(--ref-white); --key-black: var(--ref-ink); --key-edge: var(--ref-sand);
+  --key-white-mapped: color-mix(in oklab, var(--ref-deep-teal) 12%, var(--ref-white));
+  --key-black-mapped: var(--ref-slate);
+  --key-white-letter: var(--ref-deep-teal); --key-black-letter: var(--ref-seafoam);
+  --key-held: var(--accent); --key-held-ink: var(--accent-ink); --key-name: var(--ref-stone);
+  --shadow: color-mix(in srgb, var(--ref-ink) 16%, transparent);
+  --backdrop: color-mix(in srgb, var(--ref-night) 45%, transparent);
+  --surface-tint: color-mix(in oklab, var(--secondary) 5%, var(--panel));
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: var(--ref-night); --panel: var(--ref-ink); --ink: var(--ref-ivory);
+    --muted: var(--ref-mist); --line: var(--ref-slate);
+    --accent: var(--ref-coral); --accent-ink: var(--ref-night);
+    --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light); --arm: var(--ref-red-light);
+    --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
+    --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand); --k5: var(--ref-lilac-light); --k6: var(--ref-blue-light);
+    --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
+    --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
+    --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
+    --key-black-mapped: color-mix(in oklab, var(--ref-seafoam) 22%, var(--ref-night));
+    --key-white-letter: var(--ref-deep-teal); --key-black-letter: var(--ref-seafoam);
+    color-scheme: dark;
+  }
+}
+/* the theme toggle (theme.ts): the same dark tokens when chosen, whatever the system prefers */
+:root[data-theme="dark"] {
+  --bg: var(--ref-night); --panel: var(--ref-ink); --ink: var(--ref-ivory);
+  --muted: var(--ref-mist); --line: var(--ref-slate);
+  --accent: var(--ref-coral); --accent-ink: var(--ref-night);
+  --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light); --arm: var(--ref-red-light);
+  --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
+  --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand); --k5: var(--ref-lilac-light); --k6: var(--ref-blue-light);
+  --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
+  --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
+  --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
+  --key-black-mapped: color-mix(in oklab, var(--ref-seafoam) 22%, var(--ref-night));
+  --key-white-letter: var(--ref-deep-teal); --key-black-letter: var(--ref-seafoam);
+  color-scheme: dark;
+}
+/* the logo: colour masks (brand.ts, scripts/logo-layers.ts) filled with the theme's button colours, so it follows the theme
+   switch; cream, rim and the dark line work are the art's own */
+.logo { position: relative; display: block; aspect-ratio: 1; min-width: 0; }
+.logo i { position: absolute; inset: 0; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
+.logo .l-coral { -webkit-mask-image: url('/brand/layers/coral.png'); mask-image: url('/brand/layers/coral.png'); background: var(--accent); }
+.logo .l-gold { -webkit-mask-image: url('/brand/layers/gold.png'); mask-image: url('/brand/layers/gold.png'); background: var(--btn-yellow); }
+.logo .l-shade { -webkit-mask-image: url('/brand/layers/shade.png'); mask-image: url('/brand/layers/shade.png'); background: color-mix(in oklab, var(--btn-yellow) 78%, #000); }
+.logo .l-teal { -webkit-mask-image: url('/brand/layers/teal.png'); mask-image: url('/brand/layers/teal.png'); background: var(--secondary); }
+.logo .l-rim { -webkit-mask-image: url('/brand/layers/rim.png'); mask-image: url('/brand/layers/rim.png'); background: var(--ref-sand); }
+.logo .l-cream { -webkit-mask-image: url('/brand/layers/cream.png'); mask-image: url('/brand/layers/cream.png'); background: var(--ref-ivory); }
+.logo .l-ink { -webkit-mask-image: url('/brand/layers/ink.png'); mask-image: url('/brand/layers/ink.png'); background: var(--ref-ink); }
+/* the inline wordmark (brand.ts inlineWordmarks): ink and the teal M */
+svg.brand-mark .ink { fill: var(--ink); }
+svg.brand-mark .accent { fill: var(--secondary); }

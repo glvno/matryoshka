@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **A changelog page on the site:** https://matry0shka.pages.dev/changelog lists what changed in each release, newest
+  first, and each release has its own link (`changelog#v1.3.0`) with a Copy link button. Get started has a Changelog
+  link under Install, and Install now names the firmware it installs: "Install v1.2".
 - **Faster paging on the FM-1:** SELECT, ALGO and PRESET no longer cover the screen with a card and wait 400 ms. A small
   toast names what you reached (the device on red, the page on blue, the patch on ivory) in the middle of the bars, clear
   of every name and value, and the page is drawn under it at once. Turning fast redraws only the toast. A turned K1..K4

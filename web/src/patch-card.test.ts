@@ -133,8 +133,8 @@ describe('the patch card', () => {
     expect(patchFacts(PRESETS['Hera 6'](), DEFS).engines.length).toBeLessThanOrEqual(1);
   });
 
-  it('uses the dark theme\'s token values from style.css', () => {
-    const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
+  it('uses the dark theme\'s token values from tokens.css', () => {
+    const css = readFileSync(new URL('./tokens.css', import.meta.url), 'utf8');
     const ref = (name: string): string => new RegExp(`--ref-${name}: (#[0-9a-f]{6})`).exec(css)![1];
     const dark = /:root\[data-theme="dark"\] \{([^}]*)\}/.exec(css)![1];
     const tok = (name: string): string => ref(new RegExp(`--${name}: var\\(--ref-([a-z-]+)\\)`).exec(dark)![1]);
