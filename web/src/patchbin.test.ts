@@ -266,3 +266,13 @@ describe('binary patch format', () => {
     expect(deviceBudget(two).over.map((i) => i.key)).toEqual(['reverbs']);
   });
 });
+
+describe('the budget\'s memory reading', () => {
+  it('a slot of one or two (one reverb, one of two arpeggiators) counts only when exceeded', () => {
+    const p = FM1_PRESETS.Init();
+    const b = deviceBudget(p);
+    expect(b.items.find((i) => i.key === 'arps')?.used).toBe(1);
+    expect(b.fullest?.key).not.toBe('arps');
+    expect(b.memory).toBeLessThan(0.5);
+  });
+});
