@@ -276,6 +276,11 @@ async function installOnRig(run, url) {
   console.log('emu:scenarios on its M1_EMU_MIDI build (about four minutes)');
   if (spawnSync('node', [fileURLToPath(import.meta.url), join(emuDir, 'matryoshka-emu.bin')], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0)
     throw new Error(`the gate: emu:scenarios failed on run ${run}: nothing installed`);
+  // the gate's own emulator ("FM-1 (emu …)") can outlive its run by a moment: wait for its port to go, so it is not counted as
+  // a second FM-1 (the first try on the owner's rig was refused for it); a real second FM-1 still refuses the install below
+  const emuPorts = () => spawnSync(PY, ['-c', 'import mido; print(sum("(emu " in n for n in mido.get_input_names()))'], { encoding: 'utf8' }).stdout.trim();
+  if (!existsSync(PY)) throw new Error('build/venv is missing: run npm run flash -- --info once (it sets it up)');
+  for (let t = Date.now(); emuPorts() !== '0' && Date.now() - t < 15000; ) await sleep(500);
   const { browser, context } = await launch(url);
   try {
     const s = await survey(await rigPage(context, url));
