@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { attachKeyboard } from './input';
+import { attachKeyboard, attachMidi } from './input';
 
 // Exercise the installed event handlers without an audio device or a DOM dependency.
 class Control extends EventTarget {
@@ -94,5 +94,24 @@ describe('computer keyboard focus', () => {
     expect(seen).toEqual([-1, -2, -3]);
     key('keydown', new Control('BUTTON'), 'a');
     expect(send).toHaveBeenLastCalledWith({ t: 'on', note: 24, vel: 0.8 });
+  });
+});
+
+describe('attachMidi', () => {
+  it('ignores the input it is told to skip (the followed FM-1: its panel comes in through the mirror)', async () => {
+    const mk = (id: string) => ({ id, name: 'FM-1', state: 'connected', onmidimessage: null as ((ev: unknown) => void) | null });
+    const fm1 = mk('fm1'), keys = mk('keys');
+    const nav = navigator as unknown as { requestMIDIAccess?: unknown };
+    const saved = nav.requestMIDIAccess;
+    nav.requestMIDIAccess = async () => ({ inputs: new Map([['fm1', fm1], ['keys', keys]]), outputs: new Map() });
+    const sent: unknown[] = [];
+    try {
+      await attachMidi({ send: (m: unknown) => void sent.push(m) } as never, () => {}, undefined, (p) => p.id === 'fm1');
+      fm1.onmidimessage!({ target: fm1, data: new Uint8Array([0xb0, 86, 127]) });
+      keys.onmidimessage!({ target: keys, data: new Uint8Array([0x90, 60, 100]) });
+    } finally {
+      nav.requestMIDIAccess = saved;
+    }
+    expect(sent).toEqual([{ t: 'on', note: 60, vel: 100 / 127, ch: 1 }]);
   });
 });

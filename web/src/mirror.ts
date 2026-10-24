@@ -57,6 +57,9 @@ export class Fm1Mirror {
 
   get following(): boolean { return !!this.input && this.input.state !== 'disconnected' && !!this.profile; }
 
+  /** whether `port` is the input being followed (another MIDIAccess's object for the same port has the same id) */
+  follows(port: MIDIPort | null | undefined): boolean { return this.following && !!port && port.id === this.input!.id; }
+
   /** find the FM-1 and start following it; `firmware`: the user's choice, else what its identity says. Throws with a
    * readable message when there is no FM-1 or its firmware is not known (then it has to be picked) */
   async follow(firmware?: Firmware): Promise<Profile> {
