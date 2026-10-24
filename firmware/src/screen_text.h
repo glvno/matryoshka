@@ -33,6 +33,8 @@ static struct {
 static uint32_t scr_npend;
 static uint16_t scr_band;
 static uint32_t scr_lx = 0xFFFFu, scr_ly, scr_lw;   /* the last scanline (a band goes on below it) */
+static uint32_t scr_ox = 0xFFFFu;                   /* a part of a scanline goes out: x of the whole one, which the texts
+                                                     * announced count from (pages_ui.c row_bar_part); 0xFFFF none */
 
 static int scr_meets(const scr_text_t *t, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
@@ -77,10 +79,10 @@ static void scr_line(uint32_t x, uint32_t y, uint32_t w)
         if (scr_text[i].band != scr_band && scr_meets(&scr_text[i], x, y, w, 1))
             scr_text[i].w = 0;
     for (j = 0; j < scr_npend; j++) {
-        uint32_t tx = x + scr_pending[j].x, tw = scr_pending[j].w, th = scr_pending[j].h, k;
-        if (scr_pending[j].x >= w || tx >= 240u || y >= 240u)
+        uint32_t tx = (scr_ox != 0xFFFFu ? scr_ox : x) + scr_pending[j].x, tw = scr_pending[j].w, th = scr_pending[j].h, k;
+        if ((scr_ox == 0xFFFFu && scr_pending[j].x >= w) || tx >= 240u || y >= 240u)
             continue;
-        if (tw > w - scr_pending[j].x)
+        if (scr_ox == 0xFFFFu && tw > w - scr_pending[j].x)
             tw = w - scr_pending[j].x;
         for (i = 0; i < SCR_N; i++)              /* a text drawn over another in the same band replaces it */
             if (scr_meets(&scr_text[i], tx, y, tw, th))

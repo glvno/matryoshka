@@ -640,7 +640,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
             } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
                 eng_ctl(ENG_CTL_AT, (int32_t)(n * 65536u / 127u));
             } else if (st == 0xC0u && cfg.prog_chg && slot_used(n) && !editor_live()) {   /* program change n: bank slot n (an empty one, or the editor's Live: nothing) */
-                pages_patch_ask();                     /* its name over the bars, as PRESET (#170) */
+                pages_patch_ask();                     /* its name in the title toast, as PRESET (#170, #298) */
                 preset_load(n);
             }
         }
@@ -702,6 +702,17 @@ static void master_boot(void)
             return;
         }
     }
+}
+
+/* a draw of the device page gives way when an encoder has a step waiting (pages_ui.c pages_staged, #298): SELECT, ALGO,
+ * K1..K4, PRESET. Only looks (knobs_poll takes them) */
+static int encs_waiting(void)
+{
+    uint32_t e;
+    for (e = 0; e < 7u; e++)
+        if (fm1_enc_waiting(e))
+            return 1;
+    return 0;
 }
 
 /* the HAL's inputs into the panel core (panel.c) */
@@ -1067,6 +1078,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
             fm1_input_key_pop();
     }
     panel_yield = keys_yield;
+    pages_waiting = encs_waiting;
     diag_alive = fm1_ms;
     diag_armed = 1;
     for (;;) {

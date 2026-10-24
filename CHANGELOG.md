@@ -9,10 +9,18 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - **A changelog page on the site:** https://matry0shka.pages.dev/changelog lists what changed in each release, newest
   first, and each release has its own link (`changelog#v1.3.0`) with a Copy link button. Get started has a Changelog
   link under Install, and Install now names the firmware it installs: "Install v1.2".
+- **Faster paging on the FM-1:** SELECT, ALGO and PRESET no longer cover the screen with a card and wait 400 ms. A small
+  toast names what you reached (the device on red, the page on blue, the patch on ivory) in the middle of the bars, clear
+  of every name and value, and the page is drawn under it at once. Turning fast redraws only the toast. A turned K1..K4
+  no longer shows a full-size toast: its bar moves in place, and only what changed is redrawn. For one ALGO click the
+  title is on screen after about 4 ms instead of 77 ms (3,060 pixels sent to the LCD instead of 57,600), and the whole
+  page after about 62 ms instead of about 545 ms (46,652 pixels at once, instead of 108,210 starting 400 ms after the
+  click). A knob click costs about 1 ms instead of 22 to 76 ms (702 pixels instead of 16,464 to 57,068, plus 39,792 when
+  the toast ended). The pixel counts are from the host panel test; the times assume the LCD link's 750 pixels per ms and
+  were not measured on an FM-1 or in the emulator (FM-1 firmware).
 - **The FM-1's battery mark sits on the top bar's colour:** on the sandbox page's gold bar, GLO's coral, ENV's lilac,
-  the preset list's gold, a Page button list's sea, the SELECT / ALGO cards and every message, the battery's corner
-  takes the bar's colour instead of staying a dark square, and its outline and bars turn dark (or light on the cards)
-  so they still read. Host-tested only.
+  the preset list's gold, a Page button list's sea and every message, the battery's corner takes the bar's colour
+  instead of staying a dark square, and its outline and bars turn dark so they still read. Host-tested only.
 - **Less work per block in the FM-1 firmware, the same sound:** the engine stops redoing work that only changes when a
   setting does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output
   is bit for bit the same. On the CPU model the factory patches count about 8 % fewer cycles (up to 13 %: 8 Lire, the
