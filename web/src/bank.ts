@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Library > Patches (#218): two columns. "In this browser" lists Your patches (saved.ts): each has → (into the FM-1
-// column), Rename and Delete (at once, with Undo); one over the FM-1's budget (patchbin.ts deviceBudget) is marked
-// "browser only" and has no working →. Add from factory ▾ under the list puts a factory patch into the FM-1 column (the
+// column), Rename and Delete (at once, with Undo); a sandbox patch (over the FM-1's budget, patchbin.ts deviceBudget) is
+// marked SANDBOX and has no working →. The community patches added in Library > Community (community.ts) are listed there
+// too, with their authors, until saved as the user's own: their Delete takes them out again (un-adds them). Add from factory ▾ under the list puts a factory patch into the FM-1 column (the
 // factory patches are only a source for it). "FM-1" always shows: without a device it is the offline copy of the bank
 // (`matryoshka.bank`, up to 64 entries, each a factory patch by name or a copy of a patch), edited here (order, rename,
 // remove) and sent whole with Send bank to FM-1; with a device it is what the FM-1's slots really hold (readBank: read on
@@ -18,6 +19,8 @@ import { deviceBudget, encodePatch } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { NAME_BYTES, SLOTS, slotLabel, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
+import { addCommunity, addedCommunity, onAddedChange, openCommunity, removeCommunity } from './community';
+import { chipEl } from './sandbox';
 import { isSaved, onSavedChange, putBackSaved, renameSaved, savedPatches, savePatch } from './saved';
 import { showToast, showUndo } from './toast';
 
@@ -112,7 +115,7 @@ function putEntry(list: Entry[], e: Entry, overFactory = false): string | null {
 export function addToBank(p: Patch): string {
   const name = p.name.trim() || 'PATCH';
   const copy = copyOf({ ...p, name });
-  if (!fits(copy)) return `"${name}" is too big for the FM-1, so it cannot go into the bank: Your patches keep it, marked "browser only"`;
+  if (!fits(copy)) return `"${name}" is a sandbox patch, too big for the FM-1, so it cannot go into the bank: Your patches keep it, marked SANDBOX`;
   const list = load();
   const had = list.some((e) => e.name === name);
   const err = putEntry(list, { name, patch: copy });
@@ -232,6 +235,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
   const candidates = (): Candidate[] => [
     ...list.map((e) => ({ name: e.name, patch: () => patchOf(e), factory: !e.patch })),
     ...savedPatches().map((s) => ({ name: s.name, patch: () => s.patch })),
+    ...addedCommunity().map((c) => ({ name: c.entry.title, patch: () => openCommunity(c) })),
     ...Object.entries(FM1_PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
   ];
   const factoryLength = new Map<string, number>(); // a factory patch's binary length, by name
@@ -319,18 +323,25 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
 
   const refresh = (): void => {
     const ready = live() && !busy;
-    // In this browser: Your patches
+    // In this browser: Your patches, then the community patches added to them (not those saved as the user's own since)
     const mine = savedPatches();
-    mineCount.textContent = `${mine.length} patch${mine.length === 1 ? '' : 'es'}`;
+    const added = addedCommunity().filter((c) => !mine.some((e) => e.name === c.entry.title));
+    const total = mine.length + added.length;
+    mineCount.textContent = `${total} patch${total === 1 ? '' : 'es'}`;
     // a full bank leaves → working: it can still replace a patch of the same name, and else says the bank is full
     const full = live() ? !!slots && !slots.some((s) => !s.used) : list.length >= SLOTS;
     const waiting = live() && !slots;
+    const sandbox = (): HTMLElement => chipEl({ fits: false, text: 'SANDBOX' });
+    const toFm1Btn = (name: string, ok: boolean, patch: () => Patch): HTMLElement =>
+      el('button', { class: 'lib-move', textContent: '→', ariaLabel: `add "${name}" to the FM-1's bank`,
+        title: !ok ? 'A sandbox patch: too big for the FM-1, it plays in the browser' : live() ? 'Add it to the FM-1’s bank, or replace the slot of that name (written on the FM-1, asks first)' : 'Add it to the bank (the offline copy), or replace the entry of that name (you can undo it)',
+        disabled: !ok || busy || waiting, onclick: () => toFm1(name, patch(), false) });
     mineEl.replaceChildren(
-      ...(mine.length ? mine.map((e) => {
+      ...(total ? [...mine.map((e) => {
         const ok = fits(e.patch);
         return el('div', { class: 'bank-row' },
           el('span', { class: 'grow', textContent: e.name }),
-          ...(ok ? [] : [el('span', { class: 'lib-badge', textContent: 'browser only', title: 'Too big for the FM-1' })]),
+          ...(ok ? [] : [sandbox()]),
           el('span', { class: 'muted', textContent: e.saved ? new Date(e.saved).toLocaleDateString() : '' }),
           el('button', { textContent: 'Rename', title: `rename "${e.name}"`, onclick: () => {
             const to = window.prompt(`Rename "${e.name}" to:`, e.name)?.trim();
@@ -338,11 +349,22 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
             status.textContent = renameSaved(e.name, to) ? `"${e.name}" is now "${to}"` : `"${to}" is taken in Your patches`;
           } }),
           el('button', { class: 'delete', textContent: 'Delete', title: `delete "${e.name}" from Your patches (you can undo it)`, onclick: () => ev.remove(e.name) }),
-          el('button', { class: 'lib-move', textContent: '→', ariaLabel: `add "${e.name}" to the FM-1's bank`,
-            title: !ok ? 'Too big for the FM-1' : live() ? 'Add it to the FM-1’s bank, or replace the slot of that name (written on the FM-1, asks first)' : 'Add it to the bank (the offline copy), or replace the entry of that name (you can undo it)',
-            disabled: !ok || busy || waiting, onclick: () => toFm1(e.name, e.patch, false) }),
+          toFm1Btn(e.name, ok, () => e.patch),
         );
-      }) : [el('p', { class: 'muted', textContent: 'None yet. Save (beside New patch, or Ctrl/Cmd+S) keeps the open patch here.' })]),
+      }), ...added.map((c) => {
+        const name = c.entry.title;
+        const ok = fits(c.patch);
+        return el('div', { class: 'bank-row' },
+          el('span', { class: 'grow' }, name, el('span', { class: 'muted', textContent: ` · ${c.entry.author}` })),
+          ...(ok ? [] : [sandbox()]),
+          el('span', { class: 'muted', textContent: 'community', title: 'Added from Library > Community: it follows the bundled patch until you save it as your own' }),
+          el('button', { class: 'delete', textContent: 'Remove', title: `take "${name}" out of Your patches (you can undo it; Library > Community still has it)`, onclick: () => {
+            if (!removeCommunity(name)) return;
+            showUndo(`"${name}" taken out of Your patches`, () => { addCommunity(name); });
+          } }),
+          toFm1Btn(name, ok, () => openCommunity(c)),
+        );
+      })] : [el('p', { class: 'muted', textContent: 'None yet. Save (beside New patch, or Ctrl/Cmd+S) keeps the open patch here.' })]),
     );
     factorySel.replaceChildren(new Option('Add from factory ▾', ''), ...Object.keys(FM1_PRESETS).map((n) => new Option(n, n)));
     factorySel.disabled = busy || full || waiting;
@@ -462,11 +484,12 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
   emptyList.onclick = () => { list = []; changed(); };
 
   onSavedChange(refresh);
+  onAddedChange(refresh);
   root.append(
     el('div', { class: 'lib-cols' },
       el('section', { class: 'card lib-col', ariaLabel: 'In this browser' },
         el('h2', {}, el('span', { class: 'mtag src', textContent: 'MINE' }), 'In this browser', mineCount),
-        el('p', { class: 'muted', textContent: 'Your patches, kept in this browser. → adds one to the FM-1’s bank; one marked "browser only" is too big for the FM-1.' }),
+        el('p', { class: 'muted', textContent: 'Your patches, kept in this browser. → adds one to the FM-1’s bank; one marked SANDBOX is too big for the FM-1 and plays here in the browser.' }),
         mineEl,
         el('div', { class: 'toolbar lib-foot' }, factorySel),
       ),

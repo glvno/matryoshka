@@ -39,7 +39,6 @@ export const DARK = {
   accent: '#e7775d', // --ref-coral: the signal cables
   secondary: '#79c7c1', // --ref-seafoam: modulation
   gate: '#e8b65a', // --ref-gold: gates, triggers, clocks
-  warn: '#ffb3a1',
   map: '#1b2426', // the map's ground, between --ref-night and --ref-ink
 } as const;
 
@@ -474,15 +473,16 @@ export function patchFacts(p: Patch, defs: Record<string, ModuleDef>): PatchFact
     fits = b.fits;
     cpu = Math.round(b.cpu.use * 100);
   } catch {
-    /* cannot be counted: shown as "Browser only" */
+    /* cannot be counted: shown as a sandbox patch */
   }
   return { modules: p.modules.length, cables: p.cables.length, engines, fits, cpu };
 }
 
-/** the FM-1 line, as the budget panel says it: "Plays on the FM-1 · 71 %", or "Browser only" with how far over the CPU is */
+/** the FM-1 line, as the budget panel says it: "Plays on the FM-1 · 71 %", or "Sandbox" (too big for the FM-1, it plays in
+ *  the browser, sandbox.ts) with how far over the CPU is */
 export function fitLine(f: PatchFacts): string {
   if (f.fits) return f.cpu === null ? 'Plays on the FM-1' : `Plays on the FM-1 · ${f.cpu} %`;
-  return f.cpu !== null && f.cpu > 100 ? `Browser only · ${f.cpu} % of the FM-1` : 'Browser only · too much for the FM-1';
+  return f.cpu !== null && f.cpu > 100 ? `Sandbox · ${f.cpu} % of the FM-1` : 'Sandbox · bigger than the FM-1 holds';
 }
 
 const plural = (n: number, one: string): string => `${n.toLocaleString('en')} ${one}${n === 1 ? '' : 's'}`;
@@ -539,15 +539,9 @@ function pill(ctx: Ctx, x: number, y: number, text: string, warn: boolean): numb
   ctx.font = F_BODY(17);
   const w = ctx.measureText(text).width + 28;
   roundRect(ctx, x, y, w, 36, 18);
-  if (warn) {
-    ctx.strokeStyle = DARK.accent;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = DARK.line;
-    ctx.fill();
-  }
-  ctx.fillStyle = warn ? DARK.warn : DARK.ink;
+  ctx.fillStyle = warn ? DARK.gate : DARK.line; // a sandbox patch: gold, as in the app
+  ctx.fill();
+  ctx.fillStyle = warn ? DARK.bg : DARK.ink;
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x + 14, y + 19);
   return w;

@@ -60,7 +60,7 @@ The searchable list of every editor action, module, assembly and patch, opened w
 
 ### Community shelf
 
-Patches other people submitted, from the curated `community.json`, listed under Community in the Open picker and the palette.
+Patches other people submitted, from the curated `community.json`, shown in Library > Community. A user adds the ones they want, and only those appear in Your patches and the palette.
 
 ### Course
 
@@ -244,7 +244,7 @@ The bank as the editor keeps it in the browser (`matryoshka.bank`): what Send ba
 
 ### Over budget
 
-A patch that exceeds the FM-1's limits (modules, cables, bytes, CPU) or uses a browser-only ability. It plays in the browser only, as a sandbox patch; the Library marks it "browser only".
+A patch that exceeds the FM-1's limits (modules, cables, bytes, CPU) or uses a browser-only ability. It plays in the browser only, as a sandbox patch; the editor marks it SANDBOX.
 
 ### Overlay
 
