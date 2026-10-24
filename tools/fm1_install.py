@@ -161,6 +161,21 @@ def loader_fits(loader, product):
     return re.fullmatch(r"ota-FM-1_[789]\d\d", loader) is not None
 
 
+def boot_mismatch(addrs):
+    """#183 (as fm1ota.js bootMismatch): before staging M-VAVE's loader, which rewrites the flash head from the
+    package, the running firmware (ota.c ota_stage) compares the package's head with its own and stops answering
+    when they differ ("update failed -5" on its screen, nothing erased). No code reaches the host: it sees the entry
+    list (0, 512), the loader's header, head reads below it, then silence."""
+    return len(addrs) >= 4 and addrs[0] == 0 and addrs[1] == 512 and addrs[-1] < addrs[2]
+
+
+BOOT_MISMATCH = ("this FM-1's boot code (flash 0x0000-0x3FFF) is not the one inside the official V15 package, so it "
+                 "refused the update before erasing anything (its screen says \"update failed -5\"); the FM-1 is safe. "
+                 "To return to V15 anyway: put it in chip boot mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) and "
+                 "write V15's 0x4000-0x92FFF region with MvaveFM1Unbricker. "
+                 "Details: https://github.com/glvno/matryoshka/issues/183")
+
+
 # ------------------------------------------------------------------ MIDI ---
 
 class MidoLink:
@@ -302,6 +317,7 @@ class Updater:
     def serve(self, link, image, finish, idle, progress):
         """answer read requests until the device asks for `finish`; -> (served, finished, lost)"""
         served, last = 0, time.monotonic()
+        self.addrs = []
         while True:
             pkt = link.read(DELAY["poll"])
             if pkt is None:
@@ -331,6 +347,7 @@ class Updater:
             if not link.send(response(addr, image[addr:addr + n], fl)):
                 return served, False, True
             served += 1
+            self.addrs.append(addr)
             progress(served, addr + n)
 
     def settle(self, link, finish):
@@ -350,6 +367,8 @@ class Updater:
         served, finished, lost = self.serve(dev.link, image, FINISH_CHECK, DELAY["idle_check"],
                                             lambda k, end: step("check", k))
         dev.link.close()
+        if not finished and not lost and LOADER_MARK not in image and boot_mismatch(self.addrs):
+            raise InstallError("stopped", BOOT_MISMATCH)
         if not finished:
             raise InstallError("lost" if lost else "stopped",
                                f"the FM-1 {'was disconnected' if lost else 'stopped answering'} after "

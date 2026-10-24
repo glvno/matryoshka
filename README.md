@@ -76,7 +76,9 @@ Two ways, the same update protocol (Felucca's, over USB MIDI):
 
 **Update mode:** hold OCT- and OCT+ while switching the FM-1 on, or choose MENU > SYSTEM > UPDATE MODE. An install works from there too, and it is the way in when the firmware does not start.
 
-**Recovery:** the FM-1 has one firmware slot and no rollback. If an install is cut off, the FM-1 waits in its update loader: run the same install again (Install for Matryoshka, Return to official V15 for a return to stock) and it finishes the write. The bundled official V15 always brings the stock firmware back.
+**Recovery:** the FM-1 has one firmware slot and no rollback. If an install is cut off, the FM-1 waits in its update loader: run the same install again (Install for Matryoshka, Return to official V15 for a return to stock) and it finishes the write. The bundled official V15 brings the stock firmware back on an FM-1 that still has V15's boot code.
+
+**"update failed -5" on Return to official V15:** this FM-1's boot code (flash 0x0000–0x3FFF) is not the one inside the official V15 package, for example after M-VAVE Official Open. The firmware refuses the update before it erases anything, so the FM-1 is safe and keeps running. To return to V15 anyway, put it in chip boot mode (from Matryoshka, the SysEx `F0 22 24 35 7D F7`) and write V15's 0x4000–0x92FFF region with MvaveFM1Unbricker. See [issue #183](https://github.com/glvno/matryoshka/issues/183).
 
 **Tested on a real FM-1** (with the Install panel and with `tools/fm1_install.py`):
 

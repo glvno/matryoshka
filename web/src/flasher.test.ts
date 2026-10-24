@@ -3,10 +3,10 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 // @ts-ignore untyped JS module
-import { STOCK_V15_SHA256, productOf, validateStockPackage } from './flasher/fm1pkg.js';
+import { STOCK_V15_SHA256, logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
-import { Updater, loaderFits, pack7, unpack7 } from './flasher/fm1ota.js';
-import { guardUnload } from './flasher';
+import { Updater, bootMismatch, loaderFits, pack7, unpack7 } from './flasher/fm1ota.js';
+import { BOOT_CODE_HELP, guardUnload } from './flasher';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
 
@@ -109,7 +109,7 @@ describe('serving read requests', () => {
 
   it('answers data, then this step\'s finish request and its repeats', async () => {
     const link = fakeLink([request(0, 16), request(0xe0000000, 8), request(0xe0000000, 8)]);
-    expect(await up.serve(link, image, 0xe0000000, 1000)).toEqual({ served: 1, finished: true });
+    expect(await up.serve(link, image, 0xe0000000, 1000)).toEqual({ served: 1, finished: true, addrs: [0] });
     expect(link.sent.map(answered)).toEqual([0, 0xe0000000, 0xe0000000]);
   });
 
@@ -122,6 +122,47 @@ describe('serving read requests', () => {
   it('refuses zero-length requests and finish requests of the wrong length', async () => {
     await expect(up.serve(fakeLink([request(0, 0)]), image, 0xe0000000, 1000)).rejects.toMatchObject({ code: 'badreq' });
     await expect(up.serve(fakeLink([request(0xe0000000, 4)]), image, 0xe0000000, 1000)).rejects.toMatchObject({ code: 'phase' });
+  });
+});
+
+describe('a boot code that is not V15\'s (#183)', () => {
+  // what issue #183's FM-1 asked for before it went silent ("update failed -5" on its screen)
+  const refused = [0, 512, 679680, 1024];
+
+  it('is told by the reads: the entry list, the loader\'s header, then the head below it', () => {
+    expect(bootMismatch(refused)).toBe(true);
+    expect(bootMismatch([0, 512, 679680, 1024, 1536])).toBe(true);           // refused at a later head block
+    expect(bootMismatch([0, 512, 679680, 679712])).toBe(false);              // head equal: staging the loader
+    expect(bootMismatch([0, 512, 679680])).toBe(false);
+    expect(bootMismatch([])).toBe(false);
+  });
+
+  it('serving the official V15 records those reads in order', async () => {
+    const image = logicalImage(stock());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const up: any = new Updater({ inputs: new Map(), outputs: new Map() });
+    const r = await up.serve(fakeLink(refused.map((a) => request(a, 512))), image, 0xe0000000, 0);
+    expect(r).toMatchObject({ served: 4, finished: false, addrs: refused });
+  });
+
+  it('a return to V15 that stops so ends with the bootcode error, other stops stay generic', async () => {
+    const run = async (addrs: number[], product: string): Promise<unknown> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const up: any = new Updater({ inputs: new Map(), outputs: new Map() });
+      up.find = async () => ({ link: { send: () => true, close: () => {} }, id: { text: 'FM-1_712', model: 'FM-1' } });
+      up.serve = async () => ({ served: addrs.length, finished: false, addrs });
+      return up.install(new Uint8Array(0), product).catch((e: { code: string }) => e.code);
+    };
+    expect(await run(refused, 'FM-1_015')).toBe('bootcode');
+    expect(await run([0, 512], 'FM-1_015')).toBe('stopped');
+    expect(await run(refused, 'FM-1_712')).toBe('stopped');
+  }, 10000);
+
+  it('the Install panel explains it and names the way back', () => {
+    expect(BOOT_CODE_HELP).toMatch(/update failed -5/);
+    expect(BOOT_CODE_HELP).toContain('F0 22 24 35 7D F7');
+    expect(BOOT_CODE_HELP).toContain('MvaveFM1Unbricker');
+    expect(BOOT_CODE_HELP).toContain('issues/183');
   });
 });
 

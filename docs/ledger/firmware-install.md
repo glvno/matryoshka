@@ -33,5 +33,4 @@ Matryoshka installs over USB MIDI with Felucca's update protocol, from the edito
 
 ## Not yet settled
 
-- Whether the app can return a device with M-VAVE Official Open (a flash head that is not V15's) to stock — issue #71
-- Why Return to official V15 stops after 4 reads (update failed -5) on an FM-1 first flashed over non-stock firmware — issue #183
+- Whether the app can return to stock an FM-1 whose flash head (its boot code) is not V15's, such as one that ran M-VAVE Official Open — issues #71 and #183. Today the running firmware refuses such a return before it erases anything, and the screen says "update failed -5". The Install panel and `tools/fm1_install.py` then explain it and point to the chip's boot mode.
