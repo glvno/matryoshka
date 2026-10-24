@@ -35,7 +35,7 @@ static void text_ramp(uint16_t *lut, uint16_t fg, uint16_t bg)
  * TA_LEFT / TA_RIGHT / TA_CENTER and cut at the field's edge; the field is painted bg first. Returns the text's width. */
 static uint32_t text_bcn(const font_t *f, uint32_t x, uint32_t y, const char *s, int32_t n, uint16_t fg, uint16_t bg, uint32_t field, uint32_t align)
 {
-    static uint16_t row[240], sw[240];
+    uint16_t *row = lcd_line;                   /* (lcd.c's) */
     uint16_t lut[16];
     uint32_t tw = text_w(f, s, n), w = field ? field : tw, x0, r, i;
     int32_t k;
@@ -47,6 +47,7 @@ static uint32_t text_bcn(const font_t *f, uint32_t x, uint32_t y, const char *s,
     text_ramp(lut, fg, bg);
     for (r = 0; r < f->h; r++) {
         uint32_t px = x0;
+        lcd_sync();                             /* the last row may still be on its way out of lcd_line */
         for (i = 0; i < w; i++)
             row[i] = bg;
         for (k = 0; s[k] && (n < 0 || k < n); k++) {
@@ -69,10 +70,7 @@ static uint32_t text_bcn(const font_t *f, uint32_t x, uint32_t y, const char *s,
             if (px >= w)
                 break;
         }
-        for (i = 0; i < w; i++)                 /* RGB565 goes out big endian */
-            sw[i] = (uint16_t)((row[i] >> 8) | (row[i] << 8));
-        lcd_blit(x, y + r, w, 1, sw);
-        lcd_sync();                             /* sw is reused by the next row */
+        lcd_line_out(x, y + r, w);
     }
     return tw;
 }

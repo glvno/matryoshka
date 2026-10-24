@@ -63,8 +63,6 @@ static const uint8_t FONT5X7[59][5] = {
     {0x61, 0x51, 0x49, 0x45, 0x43},   /* Z */
 };
 
-static uint16_t font_row[240];
-
 /* draws s at (x, y); size2 is the size in half dots per pixel step: 2 = 1x, 3 = 1.5x, 4 = 2x. Characters outside the table
  * (and lower case) map to upper case or blank */
 static void text_dots(uint32_t x, uint32_t y, const char *s, uint32_t size2, uint16_t fg, uint16_t bg)
@@ -76,8 +74,9 @@ static void text_dots(uint32_t x, uint32_t y, const char *s, uint32_t size2, uin
         uint32_t w = n * cell;
         if (w > 240u)
             w = 240u;
+        lcd_sync();                         /* (lcd.c's lcd_line: the last row may still be on its way out) */
         for (i = 0; i < w; i++)
-            font_row[i] = bg;
+            lcd_line[i] = bg;
         for (c = 0; c < n; c++) {
             uint32_t ch = (uint8_t)s[c];
             if (ch >= 'a' && ch <= 'z')
@@ -87,16 +86,10 @@ static void text_dots(uint32_t x, uint32_t y, const char *s, uint32_t size2, uin
             for (k = 0; k < gw; k++) {
                 uint32_t px = c * cell + k;
                 if (px < 240u && (FONT5X7[ch - 0x20u][k * 2u / size2] >> (r * 2u / size2)) & 1u)
-                    font_row[px] = fg;
+                    lcd_line[px] = fg;
             }
         }
-        {   /* RGB565 goes out big endian */
-            static uint16_t sw[240];
-            for (i = 0; i < w; i++)
-                sw[i] = (uint16_t)((font_row[i] >> 8) | (font_row[i] << 8));
-            lcd_blit(x, y + r, w, 1, sw);
-            lcd_sync();                     /* sw is reused by the next row */
-        }
+        lcd_line_out(x, y + r, w);
     }
 }
 
