@@ -703,6 +703,11 @@ static void panel_status(void)
     static uint8_t ovl_seen;
     static uint32_t shed_seen;
     sandbox_poll();                                 /* (no LIVE for 5 s: the FM-1 sounds again) */
+    if (sb_home_due) {                              /* sandbox mode began: its page, unless the FM-1's own settings show */
+        sb_home_due = 0;
+        if (sb_on && page != 0u && page != PAGE_MENU && page != PAGE_GLO)
+            page_show(0u);
+    }
     if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
         char m[40], name[16], num[12], *q = m;
         (void)num;

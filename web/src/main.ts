@@ -141,6 +141,7 @@ function sandboxCheck(): void {
       sandboxFollows = true;
       void followFm1('matryoshka');
     }
+    setPlaying(liveSync.sandboxRuns(device.running, editor.playing));   // (one transport: a sequence the FM-1 played goes on here)
     sandboxSend();
     return;
   }
@@ -1479,7 +1480,7 @@ function setPlaying(on: boolean): void {
   if (on) host.mute(false);
   editor.playing = on;
   host.transport(on);
-  if (live()) device.transport(on);
+  if (liveSync.transports(device.connected, liveOn)) device.transport(on);   // (sandbox mode too: the FM-1's PLAY in step)
   clockOut.transport(on);
   if (!fromEmu) emu.ui?.transport(on);
   syncPlayBtn();

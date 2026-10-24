@@ -12,6 +12,8 @@
  * Before the editor's first page, a card says what is going on. K1..K4 turn the editor's rows from the positions it sent
  * (panel.c: CC 16..19, which the editor takes as positions), and the bars follow at once; the editor's page then brings
  * the values. Only the FM-1's own controls act here (OCT, HOME, PLAY, GLO, the menu); the other buttons go to the editor.
+ * Sandbox mode beginning brings the sandbox page up from any screen but the menu and GLO (the FM-1's own settings): the
+ * SEQ page, say, would otherwise stay up, its steps running on unheard, and SEQ goes to the editor here.
  * Sandbox mode ends with a LIVE not paused, or 5 s without LIVE (a closed tab, a pulled cable), and the FM-1 sounds again. */
 #define SB_HOLD_MS 5000u                                /* (live.c LIVE_HOLD_MS) */
 #define SB_ECHO_MS 400u                                 /* a knob turned here: the editor's position for it waits this long */
@@ -22,6 +24,7 @@ static uint8_t sb_dirty;                                /* bit k: row k needs a 
 static uint32_t sb_until;                               /* sandbox mode lapses at this fm1_ms */
 static uint8_t sb_cc[SB_ROWS];                          /* K1..K4's positions as CC 16..19 carry them, 0..127 */
 static uint32_t sb_turned[SB_ROWS];                     /* fm1_ms | 1 of the last turn here, 0 none */
+static uint8_t sb_home_due;                             /* sandbox mode began: panel_status brings the sandbox page up */
 
 /* sandbox mode on or off: the sound, and the whole screen at the next panel_draw */
 static void sandbox_set(int on)
@@ -29,6 +32,7 @@ static void sandbox_set(int on)
     if (!on == !sb_on)
         return;
     sb_on = (uint8_t)(on != 0);
+    sb_home_due = sb_on;
     snd_muted = sb_on;
     sb_have = 0;
     sb_dirty = 0;

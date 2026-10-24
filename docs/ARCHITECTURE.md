@@ -538,12 +538,15 @@ Rows: [D-467](ledger/link-and-midi.md#D-467) (the mode), [D-468](ledger/link-and
 
 - **When.** The editor's patch is over the FM-1's budget (`deviceBudget(p).fits === false`) while it is connected with
   Live on: `liveSync.sandbox` (device.ts). LIVE keeps its paused flag (byte 1). With Live off, the sync line's Sync
-  (`syncLine`: "Sandbox patch, not synced") starts it; the connect offer still skips such a patch
+  (`syncLine`: "Sandbox patch, not synced") starts it, and so does the connect offer's Sync
   ([D-460](ledger/link-and-midi.md#D-460)). It ends when the patch fits (Live then uploads as before), when Live is
   turned off, or, on the FM-1, 5 s after the last LIVE (`SB_HOLD_MS`, the same as `LIVE_HOLD_MS`).
 - **Editor** (main.ts `sandboxCheck`, called by `syncChip` on every link, Live and budget change): entering it starts
   following the FM-1's panel (the mirror, `followFm1('matryoshka')`) unless it already follows, and leaving it stops what
-  it started (a user's Stop following wins). Its knobs come as CC 16..19 positions (`Editor.turnKnob`); SELECT / ALGO move
+  it started (a user's Stop following wins). One transport: entering it runs both the editor's and the FM-1's if
+  either ran (`liveSync.sandboxRuns`; `DeviceLink.running` is the FM-1's last MIDI Start / Stop or TRANSPORT), and the
+  editor's PLAY and Space send TRANSPORT in sandbox mode as under Live (`liveSync.transports`), so a sequence the FM-1 was
+  playing goes on in the browser and the FM-1's PLAY stays in step. Its knobs come as CC 16..19 positions (`Editor.turnKnob`); SELECT / ALGO move
   the editor's own focus (`sandboxStep`, wrapping as the FM-1 does: the firmware UI's WebAssembly copy may have refused a
   patch this big); the buttons go through that copy as before, the keys to the browser engine; PRESET is not followed. Every
   `SANDBOX_MS` (80 ms) `sandboxSend` builds the page in focus (`sandbox.ts` `sandboxPage`: the device, its page as the
@@ -562,7 +565,8 @@ Rows: [D-467](ledger/link-and-midi.md#D-467) (the mode), [D-468](ledger/link-and
   takes an unasked INFO as an `info` event. Tests: `protocol.test.ts`, proto_test (`tools/golden.sh` feeds it the frame
   golden.ts writes, `proto-sandbox.syx`).
 - **Firmware** (`sandbox_ui.c`, live.c, panel.c, audio.c). `m1_live(1)` turns sandbox mode on (`sb_on`); audio.c's
-  `snd_muted` zeroes the output (the FM-1's own patch keeps running, unheard). Page 0 draws `sandbox_draw` instead of the
+  `snd_muted` zeroes the output (the FM-1's own patch keeps running, unheard). Entering it brings page 0 up
+  (`sb_home_due`, panel.c `panel_status`) from any screen but the menu and GLO, so the SEQ page does not stay up. Page 0 draws `sandbox_draw` instead of the
   device page (ui.c `view_draw`, `header_draw`): the gold bar with SANDBOX and the patch, the device and page header, the
   rows through pages_ui.c's `row_bar` (the device page's bar, now shared), the rail, `BROWSER PLAYS · FM-1 MUTED` (or
   `TURN ON MIDI OUT: GLO, K3`); before the first page a card. A page redraws only the rows and header that changed. K1..K4
@@ -570,7 +574,7 @@ Rows: [D-467](ledger/link-and-midi.md#D-467) (the mode), [D-468](ledger/link-and
   16..19, the bar moving at once; the editor's next page does not take a turned knob's position back for 400 ms
   (`SB_ECHO_MS`). Only OCT, HOME, PLAY, GLO and the menu act on the FM-1 (`SB_OWN_BTNS`); every control still goes out as
   MIDI first (with MENU > MIDI OUT on). The keys play no Drum map and arm or mute nothing. PRESET waits
-  (`SANDBOX: NO PRESET`). Tests: panel_test.c (mute on / off, the card, the page, the knobs, the buttons, the lapse),
+  (`SANDBOX: NO PRESET`). Tests: panel_test.c (mute on / off, the card, the page, the knobs, the buttons, the lapse, the page coming up),
   `tools/ui_preview.sh` with `SANDBOX=1` / `SANDBOX=2` (`MIDIOUT=0`).
 
 ## Voicing key range: channel, low, high (#57 decision 13, 2026-10-18)
