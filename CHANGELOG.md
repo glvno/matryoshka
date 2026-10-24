@@ -26,6 +26,14 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - **The browser's Delay reaches 1.6 s** (the FM-1's stops at 520 ms): drag its time past 520 ms on the card. Such a
   patch is a sandbox patch: it plays in the browser and is not sent to the FM-1, and the budget's details say why
   ("Delay over 520 ms: browser only"). Patches with shorter delays sound exactly as before.
+- **8 Lire XL** (browser only): the SOMA Lyra-8 as its manual describes it. Two delay lines with their own TIME and MOD,
+  SELF / LFO and TRIANGLE / SQUARE modulation and cross-feedback, the distortion after the delay with its MIX, the FM
+  structure switch (34>56 78>12), an FM or LFO source per pair, PITCH per group, TOTAL FB, VIBRATO and the Hyper LFO's
+  LINK. SHARP now turns each voice's triangle into a square.
+- **Elvira 2 XL** (browser only): the neutral labs Elmyra 2 with its 1.6 s delay, OUCH's feedback loop, the BITMANGLER
+  and NOISE programs beside SRR, the mix saturation, both LFOs into any of six destinations, and an 8-step sequence per
+  voice that plays with the transport, quantized to a scale (CHRM).
+- **Community: Lire + Elvira XL**, the two XLs layered on one keyboard with a two-row Mix, beside the FM-1 version.
 
 ## 1.2.2 — 2026-10-24
 
