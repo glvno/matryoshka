@@ -495,9 +495,9 @@ export function deviceBudget(source: Patch): Budget {
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));
   const over: BudgetItem[] = items.filter((i) => i.used > i.max);
-  // a one-of-a-kind line (one delay, one reverb ...) is either there or not: it shows only when exceeded, so a patch with
-  // its one reverb does not read as full
-  const counted = items.filter((i) => i.max > 1 || i.used > i.max);
+  // a one- or two-of-a-kind slot (one delay, one reverb, two arpeggiators ...) is either there or not: it shows only when
+  // exceeded, so a patch with its one reverb or one of its two arpeggiators does not read as half full or full
+  const counted = items.filter((i) => i.max > 2 || i.used > i.max);
   const fullest = counted.reduce<BudgetItem | undefined>((a, i) => (!a || i.used / i.max > a.used / a.max ? i : a), undefined);
   const memory = fullest ? fullest.used / fullest.max : 0;
   const cpu = cpuEstimate(source);

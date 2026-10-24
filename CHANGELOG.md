@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The FM-1 budget no longer reads every patch with an arpeggiator as half full: a slot the FM-1 has one or two of (a
+  reverb, the arpeggiators) counts only when a patch goes over it.
+
 - **Sandbox patches:** a patch too big for the FM-1 is now a sandbox patch, shown in gold instead of red: it plays here
   in the browser with no limits. The status line shows a SANDBOX button and how far past the FM-1 it goes, the budget
   bars turn gold when over, and the first time a card ("No limits here") explains what that means.
