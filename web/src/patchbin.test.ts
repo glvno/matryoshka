@@ -184,7 +184,8 @@ describe('binary patch format', () => {
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
       const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
-        + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0);
+        + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0)
+        + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0); // the macro ranges (the 909 Kit's velocity VCAs)
       expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);
       expect(!!(b[6] & FLAG_NAMES), name).toBe(drumMaps(p).length > 0);
