@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
+import { fm1Ascii, parseInfo, parseSandbox, SANDBOX_BYTES, sandboxFrame, sandboxPayload, type SandboxPage, chunkFrames, CMD, commitFrame, crc16, devicePresetName, frame, LIVE_MS, liveFrame, pack7, paramFrame, parse, parsePresetData, parsePresetEntry, parsePresetStored, parseSlot, presetPutFrame, slotEraseFrame, slotFrame, slotInfoFrame, unpack7 } from './protocol';
 
 describe('SysEx protocol', () => {
   it('packs and unpacks every length without loss and with 7-bit bytes only', () => {
@@ -89,5 +89,43 @@ describe('LIVE paused (#200)', () => {
   it('carries a paused byte when the editor\'s patch is over the budget, none otherwise', () => {
     expect(parse(liveFrame())!.payload).toEqual([]);
     expect(parse(liveFrame(true))!.payload).toEqual([1]);
+  });
+});
+
+describe('sandbox mode on the wire', () => {
+  const page: SandboxPage = {
+    patch: 'Sol 29N XL', device: 'Sol filter', page: 'FILTER 1/2', index: 2, count: 5,
+    rows: [{ label: 'Cutoff', value: '2.40', unit: 'kHz', pos: 150 / 255, steps: 0 }, { label: 'Res', value: '\u221212', unit: 'dB', pos: 1, steps: 0 },
+      { label: 'Wave', value: 'SAW', unit: '', pos: 0, steps: 4 }, null],
+  };
+
+  it('SANDBOX carries the page in fixed fields and parses back', () => {
+    const f = sandboxFrame(page);
+    const p = parse(f)!;
+    expect(p.cmd).toBe(CMD.sandbox);
+    expect(p.cmd).toBe(0x31);
+    expect(p.payload.length).toBe(SANDBOX_BYTES);
+    expect(SANDBOX_BYTES).toBe(171);   // (firmware/src/sandbox_msg.h SB_BYTES)
+    expect(f.length).toBe(202);   // small (a CHUNK is up to 445 bytes): a page on every change is cheap
+    const back = parseSandbox(p.payload)!;
+    expect(back).toEqual({ ...page, rows: [{ ...page.rows[0]!, pos: 150 / 255 }, { ...page.rows[1]!, value: '-12' }, page.rows[2], null] });
+    expect(sandboxPayload(page)[0]).toBe(0b0111);
+    expect(parseSandbox(p.payload.slice(0, -1))).toBeNull();
+  });
+
+  it('cuts names to their fields and keeps to the FM-1\'s ASCII', () => {
+    const long = sandboxPayload({ ...page, patch: 'A very long patch name indeed', device: 'Oscillators \u00b7 two' });
+    const back = parseSandbox(long)!;
+    expect(back.patch).toBe('A very long patch na');
+    expect(back.device).toBe('Oscillators ');
+    expect(fm1Ascii('\u22121.5 \u00b5s \u00d72 \u2019a\u2019 \u00e9')).toBe("-1.5 us x2 'a' ");
+  });
+
+  it('INFO: feature bits 8..15 in byte 6, MIDI OUT in flag bit 2 only with feature bit 8', () => {
+    const info = (payload: number[]) => parseInfo({ cmd: CMD.info, payload })!;
+    expect(info([1, 64, 255, 1 | 4, 8, 246, 1])).toMatchObject({ features: 246 | 256, midiOut: true, flashOk: true });
+    expect(info([1, 64, 255, 1, 8, 246, 1]).midiOut).toBe(false);
+    expect(info([1, 64, 255, 1 | 4, 8, 246]).midiOut).toBeNull();   // 1.2 firmware: it does not say
+    expect(info([1, 64, 255, 1, 8, 246]).features).toBe(246);
   });
 });

@@ -82,6 +82,7 @@ static void fm1_fault(const fm1_crash_t *c)
 
 /* proto.c hooks */
 static int m1_flash_ok(void) { return flash_ok; }
+static int m1_midi_out(void) { return cfg.midi_out; }   /* proto.c INFO: MENU > MIDI OUT (sandbox mode needs it) */
 static void m1_send(const uint8_t *f, uint32_t n) { (void)ota_wire_send(f, n); }
 static int m1_apply(const uint8_t *patch, uint32_t len)
 {
@@ -287,7 +288,7 @@ static int preset_load(uint32_t n)
     return 0;
 }
 
-#include "live.c"                                   /* the editor's Live: PRESET and program change wait (#185, #200) */
+#include "live.c"                                   /* the editor's Live: PRESET and program change wait (#185); sandbox mode */
 
 static void preset_step(int32_t d)                  /* the PRESET knob: the next / previous occupied slot */
 {

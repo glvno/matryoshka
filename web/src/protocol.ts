@@ -32,8 +32,16 @@
 //   2C LIVE     [paused u8]                          every LIVE_MS while the editor's Live is on: the FM-1 plays the
 //                                                    editor's patch, so PRESET and program change load no slot until
 //                                                    5 s after the last one; no reply. Feature bit 6. paused 1 (#200): the
-//                                                    editor's patch is over the FM-1's budget and not sent: PRESET waits
-//                                                    still, and the FM-1 says EDITOR PATCH TOO BIG
+//                                                    editor's patch is a sandbox patch (over the FM-1's budget) and not
+//                                                    sent: PRESET waits still. With feature bit 8 it is sandbox mode: the
+//                                                    FM-1 mutes its own sound and shows the editor's page (SANDBOX); older
+//                                                    firmware says EDITOR PATCH TOO BIG
+//   31 SANDBOX  rows u8, index u8, count u8, patch 20, device 12, page 16, 4 x (label 12, value 10, unit 6, position u8,
+//               steps u8)                            the editor's device page in sandbox mode, sent when it changes; no reply.
+//                                                    rows: bit k row k is there; index / count: the page among its device's;
+//                                                    page: its title as the FM-1's chips show it; position 0..255 of the
+//                                                    row's range; steps 0 continuous, n: n choices. Names zero padded
+//                                                    ASCII. Feature bit 8 (firmware/src/sandbox_msg.h)
 //   2D PRESETS  (none)                               the FM-1's user presets (#195): one PRESET (4C) per preset. Feature bit 7.
 //   2E PRESET_GET  structure u32, name 16 bytes      device answers PRESET_DATA (4D)
 //   2F PRESET_PUT  structure u32, name 16 bytes, n u8, n i32 values (Q16, canonical row order)   store it (over one of
@@ -53,14 +61,17 @@
 //   4C PRESET   index u8, count u8, structure u32, name 16 bytes, n u8   one of the FM-1's user presets (count 0: none)
 //   4D PRESET_DATA  structure u32, name 16 bytes, n u8 (0xFF: none), n i32 values
 //   4E PRESET_STORED  structure u32, name 16 bytes  unasked: a preset stored on the FM-1 (ENV held + SAVE)
-//   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW, bit5 TRACK / TRACK_NOW, bit6 LIVE]
+//   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
+//               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
+//               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode]. Also unasked
+//               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
 import { noteWord, TRACK_NOTES_MAX, wordNote, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
@@ -200,8 +211,11 @@ export interface Info {
   flashOk: boolean;
   patchLoaded: boolean;
   delays: number;
-  /** feature bits: 2 = the TRANSPORT command, 4 = MUTE, 32 = TRACK (1 ARP, 8 STEPVAL are retired; STEP went with 4's meaning) */
+  /** feature bits: 2 = the TRANSPORT command, 4 = MUTE, 32 = TRACK, 256 = sandbox mode (1 ARP, 8 STEPVAL are retired;
+   *  STEP went with 4's meaning) */
   features: number;
+  /** MENU > MIDI OUT is on (the FM-1's panel reaches the editor); null: the firmware does not say (no feature bit 8) */
+  midiOut: boolean | null;
 }
 export interface Ack {
   cmd: number;
@@ -209,10 +223,13 @@ export interface Ack {
   status: number;
   aux: number;
 }
-export const parseInfo = (p: Parsed): Info | null =>
-  p.cmd === CMD.info && p.payload.length >= 5
-    ? { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features: p.payload[5] ?? 0 }
-    : null;
+export const FEATURE_SANDBOX = 256;
+export function parseInfo(p: Parsed): Info | null {
+  if (p.cmd !== CMD.info || p.payload.length < 5) return null;
+  const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8);
+  return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
+    midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null };
+}
 export const parseAck = (p: Parsed): Ack | null => (p.cmd === CMD.ack && p.payload.length >= 4 ? { cmd: p.payload[0], seq: p.payload[1], status: p.payload[2], aux: p.payload[3] } : null);
 
 // ---- presets (#195): the FM-1's user presets, by structure (structure.ts, 8 hex digits) and name
@@ -251,3 +268,55 @@ export function parsePresetData(p: Parsed): { structure: string; name: string; v
 }
 export const parsePresetStored = (p: Parsed): { structure: string; name: string } | null =>
   p.cmd === CMD.presetStored && p.payload.length >= 20 ? readKey(p.payload, 0) : null;
+
+// ---- sandbox mode: the editor's device page for the FM-1 to draw (SANDBOX, firmware/src/sandbox_msg.h)
+
+/** a row of the page: its name, its value as text and its unit apart ("2.40", "kHz"), where it sits in its range (0..1),
+ *  and its choices (0: continuous) */
+export interface SandboxRow { label: string; value: string; unit: string; pos: number; steps: number }
+/** the page: the patch, the device, the page's title, its place among the device's pages; four rows, null where none */
+export interface SandboxPage { patch: string; device: string; page: string; index: number; count: number; rows: (SandboxRow | null)[] }
+/** the fields' widths in bytes */
+export const SANDBOX_FIELDS = { patch: 20, device: 12, page: 16, label: 12, value: 10, unit: 6 } as const;
+const SANDBOX_ROW_BYTES = SANDBOX_FIELDS.label + SANDBOX_FIELDS.value + SANDBOX_FIELDS.unit + 2;
+export const SANDBOX_BYTES = 3 + SANDBOX_FIELDS.patch + SANDBOX_FIELDS.device + SANDBOX_FIELDS.page + 4 * SANDBOX_ROW_BYTES;
+/** text as the FM-1's font has it: printable ASCII (a minus sign, a micro sign and a few others by their look-alikes) */
+export const fm1Ascii = (s: string): string =>
+  s.replace(/[\u2212\u2013\u2014]/g, '-').replace(/\u00b5/g, 'u').replace(/\u00d7/g, 'x').replace(/\u00b7/g, '-').replace(/[\u2018\u2019]/g, "'")
+    .replace(/[^\x20-\x7e]/g, '');
+const field = (s: string, n: number): number[] => {
+  const t = fm1Ascii(s).slice(0, n);
+  return Array.from({ length: n }, (_, i) => (i < t.length ? t.charCodeAt(i) : 0));
+};
+export function sandboxPayload(pg: SandboxPage): number[] {
+  const F = SANDBOX_FIELDS;
+  const rows = [0, 1, 2, 3].map((k) => pg.rows[k] ?? null);
+  return [
+    rows.reduce((m, r, k) => (r ? m | (1 << k) : m), 0), pg.index & 0xff, pg.count & 0xff,
+    ...field(pg.patch, F.patch), ...field(pg.device, F.device), ...field(pg.page, F.page),
+    ...rows.flatMap((r) => r
+      ? [...field(r.label, F.label), ...field(r.value, F.value), ...field(r.unit, F.unit), Math.max(0, Math.min(255, Math.round(r.pos * 255))), Math.max(0, Math.min(255, r.steps | 0))]
+      : new Array<number>(SANDBOX_ROW_BYTES).fill(0)),
+  ];
+}
+export const sandboxFrame = (pg: SandboxPage): Uint8Array => frame(CMD.sandbox, sandboxPayload(pg));
+/** a SANDBOX payload back (positions to the nearest 1/255); null when it is short */
+export function parseSandbox(payload: number[]): SandboxPage | null {
+  if (payload.length < SANDBOX_BYTES) return null;
+  const F = SANDBOX_FIELDS;
+  let at = 3;
+  const str = (n: number): string => {
+    const b = payload.slice(at, at + n);
+    at += n;
+    const end = b.indexOf(0);
+    return String.fromCharCode(...(end < 0 ? b : b.slice(0, end)));
+  };
+  const patch = str(F.patch), device = str(F.device), page = str(F.page);
+  const rows = [0, 1, 2, 3].map((k): SandboxRow | null => {
+    const label = str(F.label), value = str(F.value), unit = str(F.unit);
+    const pos = payload[at] / 255, steps = payload[at + 1];
+    at += 2;
+    return payload[0] & (1 << k) ? { label, value, unit, pos, steps } : null;
+  });
+  return { patch, device, page, index: payload[1], count: payload[2], rows };
+}

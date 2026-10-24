@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, liveSync, sameBinary, syncLine, syncOnConnect } from './device';
+import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
@@ -49,15 +49,18 @@ describe('chipState', () => {
     expect(chipState(false, true, true)).toBe('not connected');
     expect(chipState(true, true, true)).toBe('synced');
     expect(chipState(true, false, true)).toBe('not synced');
-    expect(chipState(true, true, false)).toBe('patch too big to sync');
+    expect(chipState(true, false, false)).toBe('patch too big to sync');
+    expect(chipState(true, true, false)).toBe('sandbox controller');
+    expect(chipState(false, true, false)).toBe('not connected');
   });
 });
 
 describe('syncLine', () => {
-  it('shows what the chip shows, with Sync or Stop syncing only while connected and the patch fits', () => {
+  it('shows what the chip shows, with Sync or Stop syncing while connected (Sync on a sandbox patch: sandbox mode)', () => {
     expect(syncLine(chipState(true, true, true))).toEqual({ text: 'Synced with the FM-1', action: 'stop' });
     expect(syncLine(chipState(true, false, true))).toEqual({ text: 'Not synced', action: 'sync' });
-    expect(syncLine(chipState(true, true, false))).toEqual({ text: 'Patch too big to sync', action: null });
+    expect(syncLine(chipState(true, true, false))).toEqual({ text: 'Sandbox controller: the browser plays, the FM-1 drives it', action: 'stop' });
+    expect(syncLine(chipState(true, false, false))).toEqual({ text: 'Sandbox patch, not synced: Sync makes the FM-1 its controller', action: 'sync' });
     expect(syncLine(chipState(false, true, true))).toEqual({ text: 'Not connected', action: null });
   });
 });
@@ -86,7 +89,8 @@ describe('Live over the FM-1 budget (#200)', () => {
     expect(liveSync.pausesNow(true, true, fits0, fits1)).toBe(true); // the FM-1 is told at once
     expect(said(true, true, fits1)).toEqual([1]);                // and every LIVE_MS after: paused, PRESET still held
     expect(liveSync.syncs(true, true, fits1)).toBe(false);       // nothing is uploaded
-    expect(chipState(true, true, fits1)).toBe('patch too big to sync');
+    expect(chipState(true, true, fits1)).toBe('sandbox controller');   // sandbox mode: the FM-1 drives the browser's patch
+    expect(liveSync.sandbox(true, true, fits1)).toBe(true);
     expect(liveSync.pausesNow(true, true, fits1, fits1)).toBe(false); // still over: no second at-once LIVE
     removeModule(p, reverbs[1]);
     const fits2 = deviceBudget(p).fits;                          // back under
@@ -95,6 +99,7 @@ describe('Live over the FM-1 budget (#200)', () => {
     expect(said(true, true, fits2)).toEqual([]);                 // LIVE without paused: resumed
     expect(liveSync.syncs(true, true, fits2)).toBe(true);        // the edit's upload sends the patch again
     expect(chipState(true, true, fits2)).toBe('synced');
+    expect(liveSync.sandbox(true, true, fits2)).toBe(false);     // sandbox mode ends
   });
 
   it('says nothing with Live off or not connected, over the budget or not', () => {
@@ -105,5 +110,28 @@ describe('Live over the FM-1 budget (#200)', () => {
     }
     expect(liveSync.pausesNow(true, false, true, false)).toBe(false);
     expect(liveSync.pausesNow(false, true, true, false)).toBe(false);
+  });
+});
+
+describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
+  it('is on only connected, with Live on and the patch over the budget', () => {
+    expect(liveSync.sandbox(true, true, false)).toBe(true);
+    expect(liveSync.sandbox(true, false, false)).toBe(false);
+    expect(liveSync.sandbox(false, true, false)).toBe(false);
+    expect(liveSync.sandbox(true, true, true)).toBe(false);
+  });
+
+  it('labels the chip SANDBOX CONTROLLER, and says how to turn MIDI OUT on when the FM-1 reports it off', () => {
+    expect(sandboxChip({ hasSandbox: true, midiOut: true })).toEqual({ text: 'FM-1 \u00b7 SANDBOX CONTROLLER', title: SANDBOX_HOVER, midiOff: false });
+    const off = sandboxChip({ hasSandbox: true, midiOut: false });
+    expect(off.text).toBe('FM-1 \u00b7 turn on MIDI OUT (GLO, K3) to control the sandbox');
+    expect(off.midiOff).toBe(true);
+    expect(off.title.startsWith(SANDBOX_HOVER)).toBe(true);
+  });
+
+  it('asks for the 1.3 firmware when the FM-1 has no sandbox mode (it keeps its sound)', () => {
+    const old = sandboxChip({ hasSandbox: false, midiOut: null });
+    expect(old.text).toBe('FM-1 \u00b7 SANDBOX CONTROLLER');
+    expect(old.title).toBe(`${SANDBOX_HOVER} Update the FM-1 to 1.3 to mute it and show the page.`);
   });
 });

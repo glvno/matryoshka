@@ -129,6 +129,12 @@ static void m1_send(const uint8_t *f, uint32_t n)
     memcpy(replies[nreplies], f, n);
     reply_len[nreplies++] = n;
 }
+static int midi_out_on = 1;                                   /* MENU > MIDI OUT (INFO's flag bit 2) */
+static int m1_midi_out(void) { return midi_out_on; }
+#include "../src/sandbox_msg.h"
+static sb_page_t sb_got;                                      /* the last SANDBOX page */
+static int sb_calls;
+static void m1_sandbox(const sb_page_t *s) { sb_got = *s; sb_calls++; }
 #include "../src/proto.c"
 
 static uint8_t *slurp(const char *path, long *n)
@@ -241,6 +247,46 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, n) == 1);
         CHECK(live_calls == 2 && live_paused_arg == 1u && nreplies == 0);
+    }
+    /* HELLO: INFO with feature bit 8 (sandbox mode, INFO byte 6) and MENU > MIDI OUT in flag bit 2 */
+    {
+        uint8_t q[4] = {0x7D, 0x4D, 0x31, C_HELLO}, p[16];
+        uint32_t n;
+        nreplies = 0;
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 1 && replies[0][4] == R_INFO);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 7u && p[5] == M1_FEATURES && p[6] == 1u && (p[3] & M1_INFO_MIDI_OUT));
+        midi_out_on = 0;
+        nreplies = 0;
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 1);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 7u && !(p[3] & M1_INFO_MIDI_OUT));
+        midi_out_on = 1;
+    }
+    /* SANDBOX: the frame web/src/protocol.ts made (golden.ts), parsed field by field; one byte short: not taken, no reply */
+    if (argc > 11) {
+        long nsb;
+        uint8_t *sb = slurp(argv[11], &nsb);
+        CHECK(nsb > 6 && sb[0] == 0xF0 && sb[nsb - 1] == 0xF7);
+        nreplies = 0;
+        CHECK(m1_handle(sb + 1, (uint32_t)nsb - 2u) == 1 && nreplies == 0 && sb_calls == 1);
+        CHECK(sb_got.rows == 7u && sb_got.index == 2u && sb_got.count == 5u);
+        CHECK(!strcmp(sb_got.patch, "SOL 29N XL") && !strcmp(sb_got.dev, "Sol filter") && !strcmp(sb_got.page, "FILTER 1/2"));
+        CHECK(!strcmp(sb_got.label[0], "Cutoff") && !strcmp(sb_got.value[0], "2.40") && !strcmp(sb_got.unit[0], "kHz")
+              && sb_got.pos[0] == 150u && sb_got.steps[0] == 0u);
+        CHECK(!strcmp(sb_got.label[1], "Res") && !strcmp(sb_got.value[1], "-12") && !strcmp(sb_got.unit[1], "dB") && sb_got.pos[1] == 255u);
+        CHECK(!strcmp(sb_got.label[2], "Wave") && !strcmp(sb_got.value[2], "SAW") && !sb_got.unit[2][0] && sb_got.pos[2] == 0u
+              && sb_got.steps[2] == 4u);
+        CHECK(!sb_got.label[3][0] && !sb_got.value[3][0]);
+        {
+            uint8_t d[SB_BYTES], fr[8u + (8u * SB_BYTES + 6u) / 7u];
+            uint32_t w;
+            memset(d, 0, sizeof d);
+            fr[0] = 0x7D; fr[1] = 0x4D; fr[2] = 0x31; fr[3] = C_SANDBOX;
+            w = 4u + m1_pack7(d, SB_BYTES - 1u, fr + 4);
+            CHECK(m1_handle(fr, w) == 1 && sb_calls == 1 && nreplies == 0);
+        }
+        printf("sandbox ok\n");
     }
     if (argc > 9) {                                              /* the preset bank commands */
         long ns2;

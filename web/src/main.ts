@@ -8,7 +8,8 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, liveSync, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
+import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
 import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
@@ -122,6 +123,41 @@ const sayLive = (): void => {
   if (f) device.live(f.paused);
 };
 window.setInterval(sayLive, LIVE_MS);
+/** sandbox mode: the patch is a sandbox patch while Live is on (LIVE paused): the FM-1 is its controller. The editor
+ *  follows its panel (the mirror, as Follow its panel does) and sends it the page in focus (SANDBOX) whenever that page or
+ *  a row's value changed; a 1.3 FM-1 mutes itself and draws it */
+const sandboxOn = (): boolean => liveSync.sandbox(device.connected, liveOn, fitsDevice);
+/** sandbox mode as last seen (sandboxCheck), whether it started following the FM-1 (it stops it again), the page last sent */
+let sandboxWas = false;
+let sandboxFollows = false;
+let sandboxSent = '';
+function sandboxCheck(): void {
+  const on = sandboxOn();
+  if (on === sandboxWas) return;
+  sandboxWas = on;
+  sandboxSent = '';
+  if (on) {
+    if (!mirror.following) {
+      sandboxFollows = true;
+      void followFm1('matryoshka');
+    }
+    sandboxSend();
+    return;
+  }
+  if (sandboxFollows && mirror.following) unfollowFm1('sandbox mode ended: not following the FM-1');
+  sandboxFollows = false;
+}
+/** the page in focus to the FM-1, when it differs from the last one sent (checked every SANDBOX_MS while in sandbox mode) */
+function sandboxSend(): void {
+  if (!sandboxOn() || !device.hasSandbox) return;
+  const pg = sandboxPage(editor.patch, editor.devices, editor.focus);
+  const key = sandboxKey(pg);
+  if (key === sandboxSent) return;
+  sandboxSent = key;
+  device.sandboxPage(pg);
+}
+const SANDBOX_MS = 80;
+window.setInterval(sandboxSend, SANDBOX_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
@@ -143,6 +179,7 @@ const syncChip = (): void => {
     el.classList.toggle('on', s === 'synced');
     el.classList.toggle('idle', s === 'not synced');
     el.classList.toggle('over', s === 'patch too big to sync');
+    el.classList.toggle('sandbox', s === 'sandbox controller');
   }
   fm1Connect.classList.toggle('connected', device.connected);
   fm1Connect.querySelector('.fm1-connect-text')!.textContent = device.connected ? 'FM-1 connected' : 'Connect FM-1';
@@ -153,13 +190,21 @@ const syncChip = (): void => {
   fm1Chip.title = s === 'not synced' ? 'Sync with the FM-1: it plays the editor\'s patch, and changes on either side follow the other'
     : s === 'patch too big to sync' ? 'The patch is over the FM-1 budget: it plays here only (the budget beside says what is over). FM-1 & MIDI'
     : 'FM-1 & MIDI: connect, send, store, follow its panel';
+  if (s === 'sandbox controller') {   // (sandbox mode: the FM-1 drives the browser's patch)
+    const c = sandboxChip({ hasSandbox: device.hasSandbox, midiOut: device.info?.midiOut ?? null });
+    fm1Chip.querySelector('.sl-chip-text')!.textContent = c.text;
+    fm1Chip.setAttribute('aria-label', `${c.text}: open FM-1 & MIDI`);
+    fm1Chip.title = fm1Connect.title = c.title;
+  }
   const line = syncLine(s);
   $('dev-sync-text').textContent = line.text;
   const btn = $<HTMLButtonElement>('dev-sync-btn');
   btn.hidden = $('dev-sync-sep').hidden = !line.action;
   btn.textContent = line.action === 'stop' ? 'Stop syncing' : 'Sync';
   btn.title = line.action === 'stop' ? 'The FM-1 keeps the patch it has; edits here stay in the browser'
+    : s === 'patch too big to sync' ? 'The FM-1 becomes this sandbox patch\'s controller: the browser plays it. Once the patch fits, the FM-1 plays it and changes on either side follow the other'
     : 'The FM-1 plays the editor\'s patch, and changes on either side follow the other';
+  sandboxCheck();
 };
 fm1Chip.onclick = () => {
   if (fm1State() === 'not synced') offerSync(true);
@@ -189,6 +234,7 @@ let fromDevice = false;
 let fromEmu = false;
 let deviceSlot: { slot: number; name: string } | null = null;
 device.onEvent = (e) => {
+  if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
   if (e.kind === 'slot') {
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
@@ -1711,7 +1757,12 @@ async function mirrorInput(i: PanelInput): Promise<void> {
       case 'master': emu.setMaster(i.v); host.setMaster(i.v); break;
       case 'transport': setPlaying(i.run); break;
       case 'enc':
-        if (i.n === ENCODERS.preset && live()) break;          // (with Live the FM-1 plays the editor's patch: its slots are its own)
+        if (i.n === ENCODERS.preset && (live() || sandboxOn())) break;   // (with Live the FM-1 plays the editor's patch: its slots are its own)
+        if (sandboxOn() && (i.n === ENCODERS.select || i.n === ENCODERS.algo)) {   // sandbox mode: the editor's own focus moves
+          const f = sandboxStep(editor.devices, editor.focus, i.n === ENCODERS.select, i.clicks);
+          if (f) editor.setFocus(f);
+          break;
+        }
         emu.drive(i);
         break;
       case 'button': {
@@ -1735,12 +1786,16 @@ async function followFm1(fw?: Firmware): Promise<void> {
     devStatus((e as Error).message);
   }
 }
+function unfollowFm1(why = 'not following the FM-1'): void {
+  mirror.stop();
+  emu.following(null, null);
+  $('mirror-btn').textContent = 'Follow its panel';
+  devStatus(why);
+}
 $('mirror-btn').onclick = () => {
   if (mirror.following) {
-    mirror.stop();
-    emu.following(null, null);
-    $('mirror-btn').textContent = 'Follow its panel';
-    devStatus('not following the FM-1');
+    sandboxFollows = false;   // (the user's choice: sandbox mode leaves it be)
+    unfollowFm1();
     return;
   }
   const v = $<HTMLSelectElement>('mirror-fw').value;

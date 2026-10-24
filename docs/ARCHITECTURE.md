@@ -523,12 +523,55 @@ CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in
   not the exact value, and turns K1..K4 of the editor's page in focus; except under Live with the FM-1 on the editor's
   patch (`exactKnobs` in main.ts, #185): then PARAM_NOW (module, parameter, value) moves the parameter and FOCUS_NOW the
   page (the editor and the mirror's panel copy), so a turn cannot land on another row when the two disagree on the page.
-- **LIVE** (#185, protocol 0x2C, feature bit 6): every 2 s while Live is on (`LIVE_MS`) the editor tells the FM-1; until 5 s
+- **LIVE** (#185, protocol 0x2C, feature bit 6): every 2 s while Live is on (`LIVE_MS`) the editor tells the FM-1; paused
+  (the patch over the budget) it is sandbox mode (below); until 5 s
   after the last (`LIVE_HOLD_MS`, main.c `editor_live`) PRESET and program change load no slot (`EDITOR LIVE: NO PRESET`),
   so the FM-1 cannot leave the editor's patch under it. An FM-1 without LIVE (1.0.0) still can: its SLOT_NOW then ends
   `exactKnobs` until the next upload.
 - Connect FM-1 (it answers HELLO, so it runs Matryoshka) also starts following it; FM-1 & MIDI > Follow the FM-1 does
   it for any firmware, with a firmware list (detect, or by hand).
+
+### Sandbox mode: the FM-1 as a sandbox patch's controller (2026-10-24)
+
+Rows: [D-467](ledger/link-and-midi.md#D-467) (the mode), [D-468](ledger/link-and-midi.md#D-468) (the message, INFO),
+[D-232](ledger/device-ui.md#D-232) (the FM-1's screen and controls). Not checked on a device.
+
+- **When.** The editor's patch is over the FM-1's budget (`deviceBudget(p).fits === false`) while it is connected with
+  Live on: `liveSync.sandbox` (device.ts). LIVE keeps its paused flag (byte 1). With Live off, the sync line's Sync
+  (`syncLine`: "Sandbox patch, not synced") starts it; the connect offer still skips such a patch
+  ([D-460](ledger/link-and-midi.md#D-460)). It ends when the patch fits (Live then uploads as before), when Live is
+  turned off, or, on the FM-1, 5 s after the last LIVE (`SB_HOLD_MS`, the same as `LIVE_HOLD_MS`).
+- **Editor** (main.ts `sandboxCheck`, called by `syncChip` on every link, Live and budget change): entering it starts
+  following the FM-1's panel (the mirror, `followFm1('matryoshka')`) unless it already follows, and leaving it stops what
+  it started (a user's Stop following wins). Its knobs come as CC 16..19 positions (`Editor.turnKnob`); SELECT / ALGO move
+  the editor's own focus (`sandboxStep`, wrapping as the FM-1 does: the firmware UI's WebAssembly copy may have refused a
+  patch this big); the buttons go through that copy as before, the keys to the browser engine; PRESET is not followed. Every
+  `SANDBOX_MS` (80 ms) `sandboxSend` builds the page in focus (`sandbox.ts` `sandboxPage`: the device, its page as the
+  FM-1's chips title it, the page's place, four rows with the value and unit as the dock shows them, the position 0..1 and
+  the choice count) and sends it when `sandboxKey` differs from the last one sent (a fresh sandbox mode or reconnect sends
+  it again). The FM-1 chip: `FM-1 · SANDBOX CONTROLLER` in gold (`sandboxChip`); with MENU > MIDI OUT reported off,
+  "turn on MIDI OUT (GLO, K3) to control the sandbox"; with firmware older than 1.3 (no feature bit 8) its hover asks for
+  the update (that FM-1 keeps its sound and shows `EDITOR PATCH TOO BIG`, and the CC 16..19 it sends are its own rows'
+  positions, so a knob jumps the editor's row as on any Live-off follow).
+- **Protocol.** SANDBOX 0x31 (host to device, no reply, feature bit 8; `protocol.ts` `sandboxFrame` / `parseSandbox`,
+  `firmware/src/sandbox_msg.h` `sb_parse`): rows u8 (bit k: row k), index u8, count u8, patch 20, device 12, page 16, then
+  four rows of label 12, value 10, unit 6, position u8 (0..255), steps u8 (0 continuous, n choices); names zero padded
+  ASCII (`fm1Ascii`: a minus sign becomes `-`). 171 bytes, 202 on the wire. INFO grows a seventh byte (feature bits
+  8..15; `M1_FEATURES2` = 1: bit 8) and flag bit 2 = MENU > MIDI OUT on (`Info.midiOut`, null without bit 8); the FM-1
+  sends INFO unasked after a LIVE when MIDI OUT changed since it last told (live.c `live_mout_told`), and `DeviceLink`
+  takes an unasked INFO as an `info` event. Tests: `protocol.test.ts`, proto_test (`tools/golden.sh` feeds it the frame
+  golden.ts writes, `proto-sandbox.syx`).
+- **Firmware** (`sandbox_ui.c`, live.c, panel.c, audio.c). `m1_live(1)` turns sandbox mode on (`sb_on`); audio.c's
+  `snd_muted` zeroes the output (the FM-1's own patch keeps running, unheard). Page 0 draws `sandbox_draw` instead of the
+  device page (ui.c `view_draw`, `header_draw`): the gold bar with SANDBOX and the patch, the device and page header, the
+  rows through pages_ui.c's `row_bar` (the device page's bar, now shared), the rail, `BROWSER PLAYS · FM-1 MUTED` (or
+  `TURN ON MIDI OUT: GLO, K3`); before the first page a card. A page redraws only the rows and header that changed. K1..K4
+  (`sandbox_knob`): from the position the editor sent, a choice a click (steps > 1) or 1/127 (5/127 fast), sent as CC
+  16..19, the bar moving at once; the editor's next page does not take a turned knob's position back for 400 ms
+  (`SB_ECHO_MS`). Only OCT, HOME, PLAY, GLO and the menu act on the FM-1 (`SB_OWN_BTNS`); every control still goes out as
+  MIDI first (with MENU > MIDI OUT on). The keys play no Drum map and arm or mute nothing. PRESET waits
+  (`SANDBOX: NO PRESET`). Tests: panel_test.c (mute on / off, the card, the page, the knobs, the buttons, the lapse),
+  `tools/ui_preview.sh` with `SANDBOX=1` / `SANDBOX=2` (`MIDIOUT=0`).
 
 ## Voicing key range: channel, low, high (#57 decision 13, 2026-10-18)
 
@@ -544,7 +587,7 @@ CC 80..86 coming in the same way, so a switch is one press). CC 22 (morph) is in
 
 ## Editor link both ways (#65, 2026-10-18)
 
-- **Live sync is the default on connect (#171).** Connecting (FM-1 & MIDI's Connect or the Connect FM-1 button at the main area's top right) runs `offerSync` (main.ts): `syncOnConnect` (device.ts, pure) gives `too-big` (the patch does not fit: no question, Live stays off), `off` (Not now was chosen in this visit: `sessionStorage['matryoshka.sync-declined']`) or `ask` (the `#sync-ask` dialog: Sync, Enter; Not now, Esc). The FM-1's patch cannot be read (SLOT_INFO gives a slot's name and length, not its data): main.ts passes no device binary, so a patch that fits always asks, and "Open the FM-1's patch" is left out. `syncOnConnect` also has a `sync` result (the FM-1's patch equals the editor's binary: on without asking) that nothing reaches until the patch can be read (#176). A reconnect with Live on sends the patch again. The FM-1 chip (`chipState`) reads FM-1 · not connected / synced / not synced / patch too big to sync; a click while not synced offers sync, otherwise opens FM-1 & MIDI. FM-1 & MIDI has no checkbox (#180): its sync line shows the chip's state (`syncLine`, device.ts: "Synced with the FM-1 · Stop syncing", "Not synced · Sync", or the text alone while not connected or too big), and its button calls the same `setLive` (the one switch; the state is `liveOn` in main.ts).
+- **Live sync is the default on connect (#171).** Connecting (FM-1 & MIDI's Connect or the Connect FM-1 button at the main area's top right) runs `offerSync` (main.ts): `syncOnConnect` (device.ts, pure) gives `too-big` (the patch does not fit: no question, Live stays off), `off` (Not now was chosen in this visit: `sessionStorage['matryoshka.sync-declined']`) or `ask` (the `#sync-ask` dialog: Sync, Enter; Not now, Esc). The FM-1's patch cannot be read (SLOT_INFO gives a slot's name and length, not its data): main.ts passes no device binary, so a patch that fits always asks, and "Open the FM-1's patch" is left out. `syncOnConnect` also has a `sync` result (the FM-1's patch equals the editor's binary: on without asking) that nothing reaches until the patch can be read (#176). A reconnect with Live on sends the patch again. The FM-1 chip (`chipState`) reads FM-1 · not connected / synced / not synced / patch too big to sync, or `FM-1 · SANDBOX CONTROLLER` in sandbox mode ("Sandbox mode" above); a click while not synced offers sync, otherwise opens FM-1 & MIDI. FM-1 & MIDI has no checkbox (#180): its sync line shows the chip's state (`syncLine`, device.ts: "Synced with the FM-1 · Stop syncing", "Not synced · Sync", a sandbox patch's "Sync" into sandbox mode and its "Stop syncing", or the text alone while not connected), and its button calls the same `setLive` (the one switch; the state is `liveOn` in main.ts).
 - The FM-1 tells the editor which slot it plays: SysEx SLOT_NOW (0x43: slot, name) whenever it loads a slot (PRESET, program change, boot) or SAVEs. Its K1..K4 and patch buttons reach the editor as the USB MIDI CC of the MIDI out map (MENU > MIDI OUT on). With Live on, its knob turns move the rows of the editor's page in focus (CC 16..19), or arrive as PARAM_NOW while the FM-1 plays the editor's patch ([D-457](ledger/link-and-midi.md#D-457)), without being sent back and presses its patch buttons (`Editor.pressButton`: a switch flips on the press); the status line names the slot.
 - The editor's patch buttons go to the FM-1 as CC 80..86 presses / releases (a switch: one press and release); its knob turns as PARAM as before. STORE writes the running patch into the slot the FM-1 plays; "Store to an FM-1 slot…" (palette) writes the open patch into any slot (SLOT command) without switching to it; the Library's bank upload writes all 64.
 - Not verified on a device: USB is not emulated.

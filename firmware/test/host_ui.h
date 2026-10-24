@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* The device's UI on a host: the stand-ins for the HAL, the LCD (a 240 x 240 RGB565 framebuffer `fb`) and the parts of
- * proto.c the UI reads, then the UI itself (ui.c, pages_ui.c, menu.c, seq_ui.c, splash.c) on the engine. No libc: the
+ * proto.c the UI reads, then the UI itself (ui.c, pages_ui.c, sandbox_ui.c, menu.c, seq_ui.c, splash.c) on the engine. No libc: the
  * includer brings libc.c (and stdint.h) first. Used by ui_preview.c, panel_test.c and the WebAssembly build
  * (firmware/wasm/fm1_ui.c). The running patch is pv_bin / pv_len (bump pv_gen when another one goes in). */
 static uint16_t fb[240 * 240];
@@ -18,6 +18,7 @@ static uint32_t fm1_ticks(void) { return 0; }
 static uint32_t eng_us_last = 316, eng_us_max = 358;
 static uint8_t eng_overload;               /* audio.c: the overload guard muted the patch */
 static int32_t patch_gain;                 /* audio.c: the mixer level */
+static volatile uint8_t snd_muted;         /* audio.c: sandbox mode muted the FM-1 */
 static uint8_t m1_edited;                  /* proto.c: the running patch was edited */
 #define M1_SLOTS 64u
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
@@ -156,8 +157,10 @@ static void m1_preset_stored(uint32_t structure, const char *name) { (void)struc
 #include "../src/font_bc.c"
 static const uint8_t *m1_panel(void) { uint32_t at = eng_panel_at(pv_bin, pv_len); return at ? pv_bin + at : 0; }
 #define BATT_START 900                     /* the battery (ui.c): full, no USB host (fm1_open's simulator has 900 too) */
+#include "../src/sandbox_msg.h"
 #include "../src/ui.c"
 #include "../src/pages_ui.c"
+#include "../src/sandbox_ui.c"
 static const uint8_t *pages_src(uint32_t *len) { *len = pv_len; return pv_bin; }
 static uint32_t pv_gen = 1;               /* another patch in pv_bin: +1 */
 static uint32_t pages_gen(void) { return pv_gen; }
