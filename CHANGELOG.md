@@ -4,7 +4,7 @@ What changed in Matryoshka for the people who use it: the web editor and the FM-
 The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The development log from before 1.0 is in
 [docs/CHANGELOG-pre-1.0.md](docs/CHANGELOG-pre-1.0.md).
 
-## Unreleased
+## 1.2.0 — 2026-10-23
 
 - On battery after the USB cable was pulled, turning SELECT on the FM-1's preset list no longer freezes the screen for
   several hundred milliseconds: messages to a computer that is gone are dropped at once instead of waited on.
