@@ -6,6 +6,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **Faster paging on the FM-1:** SELECT, ALGO and PRESET no longer cover the screen with a card and wait 400 ms. A small
+  toast names what you reached (the device on red, the page on blue, the patch on ivory) in the middle of the bars, clear
+  of every name and value, and the page is drawn under it at once: its names and values are readable in about 35 ms
+  instead of about half a second. Turning fast redraws only the toast. A turned K1..K4 no longer shows a full-size
+  toast: its bar moves in place, and only what changed is redrawn (FM-1 firmware).
 - **Less work per block in the FM-1 firmware, the same sound:** the engine stops redoing work that only changes when a
   setting does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output
   is bit for bit the same. On the CPU model the factory patches count about 8 % fewer cycles (up to 13 %: 8 Lire, the
