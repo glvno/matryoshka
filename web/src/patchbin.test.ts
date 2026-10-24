@@ -6,7 +6,7 @@ import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
 import { engineBytes } from './test-bin';
 import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_NAMES, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
-import { PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
 import { subtractiveSaw, wobble } from './test-patches';
@@ -21,7 +21,7 @@ const extrasMembers = (src: Patch, dev: Patch, d: { asm?: number; module?: numbe
 describe('binary patch format', () => {
   it('the assembly overlay of the factory patches reaches the binary only as the device pages', () => {
     let grouped = 0;
-    for (const [name, make] of Object.entries(PRESETS)) {
+    for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       if (polyGroups(p).length) continue; // a poly assembly is not only layout: its cards run once per voice
       const flat = { ...p, assemblies: undefined };
@@ -132,7 +132,7 @@ describe('binary patch format', () => {
   });
 
   it('the device extras say which Steps track drives a device (format 34)', () => {
-    const p = PRESETS['808 Kit']();
+    const p = FM1_PRESETS['808 Kit']();
     const devs = devicesOf(p, DEFS);
     const rec = extrasRecord(devs, p);
     const track = devs.findIndex((d) => d.kind === 'steps');
@@ -144,7 +144,7 @@ describe('binary patch format', () => {
   });
 
   it('carries the Drum maps\' row names for the FM-1 (format 33, flag bit 7): their own, else the defaults', () => {
-    const p = PRESETS['808 Kit']();
+    const p = FM1_PRESETS['808 Kit']();
     const map = p.modules.find((m) => m.type === 'drummap')!;
     map.names = ['boom'];
     const b = encodePatch(p);
@@ -167,7 +167,7 @@ describe('binary patch format', () => {
   });
 
   it('encodes every preset with the documented layout', () => {
-    for (const [name, make] of Object.entries(PRESETS)) {
+    for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const b = encodePatch(make());
       const { patch: p, groups } = deviceView(make()); // what the device gets: the allocator as a Part per poly group
       const g = groups.length;
@@ -194,7 +194,7 @@ describe('binary patch format', () => {
   });
 
   it('counts what a patch costs on the device: every factory preset fits, and voices multiply the per-voice part', () => {
-    for (const [name, make] of Object.entries(PRESETS)) expect(deviceBudget(make()).fits, name).toBe(true);
+    for (const [name, make] of Object.entries(FM1_PRESETS)) expect(deviceBudget(make()).fits, name).toBe(true);
     const mono = deviceBudget(subtractiveSaw());
     const p = withParts(subtractiveSaw(), 4);
     const poly = deviceBudget(p);

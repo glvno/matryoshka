@@ -5,7 +5,7 @@ import { CPU, cpuEstimate } from './cpu';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { EDITOR_ONLY } from './patch';
-import { PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import { withParts } from './test-poly';
 import { acid, twoOpFM } from './test-patches';
 
@@ -67,7 +67,7 @@ describe('CPU estimate', () => {
 describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2026-10-20.json)', () => {
   type Reading = { name: string; idle_us: number; n1_us: number; n4_us: number; n8_us: number; budget_us: number };
   const survey = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-10-20.json', import.meta.url), 'utf8')) as Reading[];
-  const byName = new Map(Object.keys(PRESETS).map((n) => [n.toLowerCase(), n]));
+  const byName = new Map(Object.keys(FM1_PRESETS).map((n) => [n.toLowerCase(), n]));
   // patches changed since the survey (not measured as they are now): re-measure on the device, then drop them here
   // 808 Kit: re-measured 2026-10-21 after #141: the device reads 81 %, the model 74 % (out of the band): #178. Oracle V:
   // the melodic patches gained an Arpeggiator and PATTERN (D-336, #243; 2 to 4 points of estimate each), which takes Oracle V
@@ -76,13 +76,13 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   const changed = new Set(['808 kit', 'oracle v', '909 kit']);
   // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH): measure them on the device, then add them to the survey file
   const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph']);
-  it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(PRESETS).length));
+  it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(FM1_PRESETS).length));
   for (const r of survey)
     it.skipIf(changed.has(r.name.toLowerCase()))(`is within -4 / +6 points of the device: ${r.name}`, () => {
       const name = byName.get(r.name.toLowerCase());
       if (!name) throw new Error(`the survey's ${r.name} is not a factory patch`);
       const device = (100 * Math.max(r.idle_us, r.n1_us, r.n4_us, r.n8_us)) / r.budget_us;
-      const est = 100 * cpuEstimate(PRESETS[name]()).use;
+      const est = 100 * cpuEstimate(FM1_PRESETS[name]()).use;
       expect(est).toBeGreaterThanOrEqual(device - 4);
       expect(est).toBeLessThanOrEqual(device + 6);
     });

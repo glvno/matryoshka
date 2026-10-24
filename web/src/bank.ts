@@ -15,7 +15,7 @@ import type { DeviceLink } from './device';
 import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
-import { PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import { NAME_BYTES, SLOTS, slotLabel, type SlotInfo } from './protocol';
 import { renamedKey } from './storage-key';
 import { isSaved, onSavedChange, putBackSaved, renameSaved, savedPatches, savePatch } from './saved';
@@ -23,7 +23,7 @@ import { showToast, showUndo } from './toast';
 
 interface Entry {
   name: string;
-  /** a patch of the editor, kept as a copy; factory patches are rebuilt from PRESETS */
+  /** a patch of the editor, kept as a copy; factory patches are rebuilt from FM1_PRESETS */
   patch?: Patch;
 }
 
@@ -50,7 +50,7 @@ function load(): Entry[] {
     const raw = JSON.parse(localStorage.getItem(STORE) ?? 'null') as Entry[] | null;
     if (Array.isArray(raw)) {
       const ok = raw
-        .filter((e) => typeof e?.name === 'string' && (e.patch ? true : e.name in PRESETS))
+        .filter((e) => typeof e?.name === 'string' && (e.patch ? true : e.name in FM1_PRESETS))
         .map((e) => (e.patch ? { name: e.name, patch: validatePatch(e.patch, DEFS) } : { name: e.name }))
         .slice(0, SLOTS);
       return ok;
@@ -58,7 +58,7 @@ function load(): Entry[] {
   } catch {
     /* fall through to the default */
   }
-  return Object.keys(PRESETS).slice(0, SLOTS).map((name) => ({ name }));
+  return Object.keys(FM1_PRESETS).slice(0, SLOTS).map((name) => ({ name }));
 }
 
 function save(list: Entry[]): void {
@@ -69,7 +69,7 @@ function save(list: Entry[]): void {
   }
 }
 
-const patchOf = (e: Entry): Patch => (e.patch ? e.patch : PRESETS[e.name]());
+const patchOf = (e: Entry): Patch => (e.patch ? e.patch : FM1_PRESETS[e.name]());
 const copyOf = (p: Patch): Patch => validatePatch(JSON.parse(JSON.stringify(p)), DEFS);
 
 /** the bank, with the patches that cannot go to the FM-1 moved out: the old over-budget list, and a copy that no longer
@@ -232,7 +232,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
   const candidates = (): Candidate[] => [
     ...list.map((e) => ({ name: e.name, patch: () => patchOf(e), factory: !e.patch })),
     ...savedPatches().map((s) => ({ name: s.name, patch: () => s.patch })),
-    ...Object.entries(PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
+    ...Object.entries(FM1_PRESETS).map(([name, make]) => ({ name, patch: make, factory: true })),
   ];
   const factoryLength = new Map<string, number>(); // a factory patch's binary length, by name
   const lengthOf = (e: Entry): number => {
@@ -344,7 +344,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
         );
       }) : [el('p', { class: 'muted', textContent: 'None yet. Save (beside New patch, or Ctrl/Cmd+S) keeps the open patch here.' })]),
     );
-    factorySel.replaceChildren(new Option('Add from factory ▾', ''), ...Object.keys(PRESETS).map((n) => new Option(n, n)));
+    factorySel.replaceChildren(new Option('Add from factory ▾', ''), ...Object.keys(FM1_PRESETS).map((n) => new Option(n, n)));
     factorySel.disabled = busy || full || waiting;
 
     // FM-1: the device's slots, or the offline copy
@@ -408,7 +408,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
     factorySel.value = '';
     if (!name) return;
     if (!live() && list.some((e) => e.name === name && !e.patch)) return say(`"${name}" is already in the bank`);
-    toFm1(name, PRESETS[name](), true);
+    toFm1(name, FM1_PRESETS[name](), true);
   };
   saveAs.onclick = () => {
     if (!slots) return;
@@ -458,7 +458,7 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
       status.textContent = 'The FM-1 bank is empty.';
     });
   };
-  resetList.onclick = () => { list = Object.keys(PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); };
+  resetList.onclick = () => { list = Object.keys(FM1_PRESETS).slice(0, SLOTS).map((name) => ({ name })); changed(); };
   emptyList.onclick = () => { list = []; changed(); };
 
   onSavedChange(refresh);

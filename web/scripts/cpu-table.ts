@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { CPU, cpuEstimate } from '../src/cpu';
 import { DEFS } from '../src/modules';
-import { PRESETS } from '../src/presets';
+import { FM1_PRESETS } from '../src/presets';
 
 type Reading = { name: string; idle_us: number; n1_us: number; n4_us: number; n8_us: number; budget_us: number };
 const survey = JSON.parse(readFileSync(new URL('../../docs/measurements/cpu-survey-2026-10-20.json', import.meta.url), 'utf8')) as Reading[];
@@ -15,10 +15,10 @@ const pct = (x: number): string => x.toFixed(1);
 console.log('| patch | device peak % | estimate % | difference |');
 console.log('|---|---:|---:|---:|');
 for (const r of survey) {
-  const name = Object.keys(PRESETS).find((n) => n.toLowerCase() === r.name.toLowerCase());
+  const name = Object.keys(FM1_PRESETS).find((n) => n.toLowerCase() === r.name.toLowerCase());
   if (!name) throw new Error(`the survey's ${r.name} is not a factory patch`);
   const device = (100 * Math.max(r.idle_us, r.n1_us, r.n4_us, r.n8_us)) / r.budget_us;
-  const est = 100 * cpuEstimate(PRESETS[name]()).use;
+  const est = 100 * cpuEstimate(FM1_PRESETS[name]()).use;
   console.log(`| ${name} | ${pct(device)} | ${pct(est)} | ${est >= device ? '+' : ''}${pct(est - device)} |`);
 }
 

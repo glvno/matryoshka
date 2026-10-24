@@ -28,7 +28,11 @@ export interface ParamDef {
   /** with `input`: the value the module settles on with a steady signal `cv` on that input (the editor's knob ticks) */
   rest?: (params: Record<string, number>, cv: number) => number;
   min: number;
+  /** the top of the range the FM-1 has too: the knobs, modulation, macro ranges and the synced delay's note lengths span min..max */
   max: number;
+  /** a browser-only stretch: the browser's engine takes values up to this (the card's slider reaches it). A value past
+   * `max` is a browser-only ability: the patch is over the FM-1 budget (patchbin.ts browserOnly). Linear parameters only. */
+  browserMax?: number;
   default: number;
   step?: number;
   unit?: string;
@@ -63,9 +67,13 @@ export function fromUnit(pd: ParamDef, u: number): number {
   return pd.min * Math.pow(pd.max / pd.min, pd.bend ? x * x : x);
 }
 
-/** a parameter's base value moved by `mod` of its range (mean of a parameter input x attenuverter), clamped */
+/** the most a parameter takes in the browser: its browser-only stretch (browserMax) or its max */
+export const topOf = (pd: ParamDef): number => pd.browserMax ?? pd.max;
+
+/** a parameter's base value moved by `mod` of its range (mean of a parameter input x attenuverter), clamped to the range; a
+ * base past max (a browser-only stretch) is clamped to the stretch instead, so modulation does not pull it back to max */
 export function modulate(pd: ParamDef, base: number, mod: number): number {
-  if (!pd.log) return Math.min(pd.max, Math.max(pd.min, base + mod * (pd.max - pd.min)));
+  if (!pd.log) return Math.min(base > pd.max ? topOf(pd) : pd.max, Math.max(pd.min, base + mod * (pd.max - pd.min)));
   return fromUnit(pd, toUnit(pd, base) + mod);
 }
 
@@ -337,6 +345,7 @@ export const hasMorph = (p: Patch): boolean => p.modules.some((m) => m.paramsB);
  * slider's bend: the midpoint of 200 and 3200 Hz is 800 Hz); a choice or switch snaps at 0.5 */
 export function morphValue(pd: ParamDef, a: number, b: number, t: number): number {
   if (pd.choices || pd.toggle) return t < 0.5 ? a : b;
+  if (!pd.log && Math.max(a, b) > pd.max) return a + (b - a) * t; // (a browser-only stretch: past the range paramUnit clamps to)
   return paramValue(pd, paramUnit(pd, a) + (paramUnit(pd, b) - paramUnit(pd, a)) * t);
 }
 

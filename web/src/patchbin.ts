@@ -267,7 +267,7 @@ export const drumMaps = (p: Patch): number[] => p.modules.flatMap((m, i) => (m.t
  * estimate has not seen yet: scripts/cpu-costs.ts) */
 export function encodePatch(source: Patch, anyway = false): Uint8Array {
   const budget = deviceBudget(source);
-  if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => `${i.label} ${i.used} of ${i.max}`).join(', ')}`);
+  if (!budget.fits && !anyway) throw new Error(`over the FM-1 budget: ${budget.over.map((i) => (i.key === 'browser' ? i.label : `${i.label} ${i.used} of ${i.max}`)).join(', ')}`);
   const { patch: p, groups } = deviceView(source, true);
   const index = new Map(p.modules.map((m, i) => [m.id, i]));
   const morph = hasMorph(p);
@@ -409,8 +409,30 @@ export const DEVICE = {
 } as const;
 
 export type BudgetKey = keyof typeof DEVICE;
-/** one line of the budget: what the patch uses of one FM-1 limit (`cpu`: the estimated load in percent of 100) */
-export interface BudgetItem { key: BudgetKey | 'cpu'; label: string; used: number; max: number }
+/** one line of the budget: what the patch uses of one FM-1 limit (`cpu`: the estimated load in percent of 100; `browser`: a
+ * browser-only ability the patch uses, `label` says which, used 1 of 0) */
+export interface BudgetItem { key: BudgetKey | 'cpu' | 'browser'; label: string; used: number; max: number }
+
+/** a budget line over its limit in words: "CPU 130 %", "Delay over 520 ms: browser only", "70 modules of 64" */
+export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.used} %` : i.key === 'browser' ? i.label : `${i.used} ${i.label} of ${i.max}`);
+
+/**
+ * The browser-only abilities a patch uses, one reason each ("Delay over 520 ms: browser only"); none: the FM-1 can play
+ * everything in it. Today: a parameter past the FM-1's range into its browser-only stretch (ParamDef.browserMax), on either
+ * morph side. A patch with any is over the FM-1 budget (deviceBudget), so it is never sent.
+ */
+export function browserOnly(p: Patch): string[] {
+  const out = new Set<string>();
+  for (const m of p.modules) {
+    const def = DEFS[m.type];
+    if (!def) continue;
+    for (const pd of def.params) {
+      if (pd.browserMax === undefined) continue;
+      if ([m.params[pd.name], m.paramsB?.[pd.name]].some((v) => v !== undefined && v > pd.max)) out.add(`${def.label} over ${pd.max}${pd.unit ? ` ${pd.unit}` : ''}: browser only`);
+    }
+  }
+  return [...out];
+}
 
 const LABELS: Record<BudgetKey, string> = {
   modules: 'modules', cables: 'cables', poly: 'poly assemblies', parts: 'parts', instances: 'module instances', buffers: 'signal buffers',
@@ -424,7 +446,8 @@ const LABELS: Record<BudgetKey, string> = {
  * lines (delay, reverb, chorus, granular) once each, a string or comb line per copy. `items` lists every limit, `over`
  * those the patch exceeds, `memory` the fullest one as a fraction (single lines count only when exceeded) and `fullest` that
  * line; `cpu` the estimated processor load (cpu.ts); `use` the larger of the two. `fits` is false when the firmware would
- * refuse the patch or, by the estimate, could not render it in time.
+ * refuse the patch or, by the estimate, could not render it in time, or when the patch uses a browser-only ability
+ * (browserOnly: a `browser` line in `over`).
  * The editor and the browser engine have none of these limits.
  */
 export interface Budget {
@@ -479,6 +502,7 @@ export function deviceBudget(source: Patch): Budget {
   const memory = fullest ? fullest.used / fullest.max : 0;
   const cpu = cpuEstimate(source);
   if (cpu.use > 1) over.push({ key: 'cpu', label: 'CPU (estimate)', used: Math.round(cpu.use * 100), max: 100 });
+  for (const label of browserOnly(source)) over.push({ key: 'browser', label, used: 1, max: 0 });
   return { buffers, instances, fits: !over.length, items, over, memory, fullest, cpu, use: Math.max(memory, cpu.use) };
 }
 
