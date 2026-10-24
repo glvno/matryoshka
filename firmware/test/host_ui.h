@@ -218,7 +218,6 @@ static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the pre
     out[i] = 0;
 }
 static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
-static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t vel) { eng_steps_value_set(mod, k, note, vel); }
 static void m1_patch_notes(uint32_t mod) { (void)mod; }
 static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_name(pv_bin, pv_len, map, r, out); }
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */

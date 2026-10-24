@@ -324,13 +324,8 @@ static void panel_encoders(int32_t *st)
         preset_step(st[6]);
         return;
     }
-    if (page == PAGE_SEQ && seq_rec == 2u) {        /* the keys record into the armed track: ALGO keeps it, SELECT moves */
-        if (st[0] && seq_entry())                   /* step entry's cursor (an armed drum track's grid: SELECT its row) */
-            seq_cur_move(st[0]);
-        if (seq_kbd())
-            st[0] = 0;
+    if (page == PAGE_SEQ && seq_rec == 2u)          /* the keys record into the armed track: ALGO keeps it */
         st[1] = 0;
-    }
     if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track, SELECT with a step held its chance */
         if (st[1] && eng_steps_count())
             seq_select((uint32_t)((seq_trk + (uint32_t)eng_steps_count() * 8u + (uint32_t)st[1]) % (uint32_t)eng_steps_count()));
@@ -339,7 +334,7 @@ static void panel_encoders(int32_t *st)
             seq_chance(st[0]);
             st[0] = 0;
         }
-        if (st[0] && seq_map() >= 0) {              /* a drum grid, no step held: SELECT picks the row (REC on or off) */
+        if (st[0] && seq_module() >= 0) {           /* no step held: SELECT moves the row (REC on or off; the roll scrolls) */
             seq_row_step(st[0]);
             st[0] = 0;
         }
@@ -473,7 +468,7 @@ static int panel_key(uint32_t n, int down, int quick)
         if (key_eng[n] != KEY_SILENT)
             midi_send(0x90u, key_eng[n], 100u);
         if (seq_kbd())
-            seq_kbd_key(n, key_note[n], 1, vel);
+            seq_kbd_key(n, 1);
     } else {
         key_sounding &= ~bit;
         if (key_eng[n] != KEY_SILENT)
@@ -481,7 +476,7 @@ static int panel_key(uint32_t n, int down, int quick)
         if (key_eng[n] != KEY_SILENT)
             midi_send(0x80u, key_eng[n], 0u);
         if (seq_kbd())
-            seq_kbd_key(n, key_note[n], 0, 0u);
+            seq_kbd_key(n, 0);
     }
     return 1;
 }
@@ -556,19 +551,20 @@ static void panel_edges(uint32_t p, uint32_t rel)
             menu_set_row(menu_sel, 1);
         p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
     }
-    if (page == PAGE_SEQ && seq_kbd()) {            /* the armed track's keyboard: OCT the octave (step entry: ENV + OCT a rest, LFO
-                                                     * + OCT a tie), ENV and LFO are the page's */
-        if ((p & (1u << BTN_OCT_DOWN)) && seq_entry_oct())
-            p &= ~(1u << BTN_OCT_DOWN);
-        if ((p & (1u << BTN_OCT_UP)) && seq_entry_oct())
-            p &= ~(1u << BTN_OCT_UP);
+    if (page == PAGE_SEQ && seq_kbd()) {            /* the armed track's keyboard (a live take): OCT the octave, FX and LFO are the
+                                                     * page's */
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
-    } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track, ENV is the accent key */
-        if (p & (1u << BTN_OCT_DOWN))
-            seq_page_step(-1);
-        if (p & (1u << BTN_OCT_UP))
-            seq_page_step(1);
-        p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_ACC));
+    } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track (the roll with FX held:
+                                                     * the keys' octave, the pen's), FX the accent key, LFO the roll's tie */
+        int roll = seq_module() >= 0 && seq_map() < 0;
+        if (!roll || !(panel_held >> BTN_ACC & 1u)) {
+            if (p & (1u << BTN_OCT_DOWN))
+                seq_page_step(-1);
+            if (p & (1u << BTN_OCT_UP))
+                seq_page_step(1);
+            p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
+        }
+        p &= ~((1u << BTN_ACC) | (roll ? 1u << BTN_LFO : 0u));
     }
     /* SEQ and REC act on release, unless a black key muted / armed a track meanwhile; the flag is cleared at the release,
      * not the press: panel_keys runs first in a pass, so a key that lands in the same pass as the press has set it (#179) */
@@ -593,7 +589,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
         rel &= ~(1u << BTN_REC);
         ui_dirty = 2;
     }
-    if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, step entry) */
+    if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, the armed track) */
         if (seq_rec_page() && page != PAGE_SEQ) {
             seq_rec_aim();                          /* (nothing armed: on a drum track, the hits seen landing) */
             page_set(PAGE_SEQ);
@@ -614,7 +610,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
             if (octave > 0)
                 *q++ = '+';
             fmt_int(num, octave);
-            put(q, num);
+            put(q, num)[0] = 0;                 /* (put does not end the text) */
             ui_msg(m, 1000);
         }
     }
