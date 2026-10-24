@@ -83,9 +83,19 @@ async function ask(frame: Uint8Array, match: (p: Parsed) => boolean, ms = 1500):
   if (!r) throw new Error('the rig did not answer');
   return r.p;
 }
-async function acked(frame: Uint8Array, cmd: number): Promise<void> {
-  const a = parseAck(await ask(frame, (p) => p.cmd === CMD.ack && p.payload[0] === cmd));
+async function acked(frame: Uint8Array, cmd: number, tries = 3): Promise<void> {
+  const a = parseAck(await retry(() => ask(frame, (p) => p.cmd === CMD.ack && p.payload[0] === cmd, 2000), tries));
   if (!a || a.status !== 0) throw new Error(`the rig refused command ${cmd.toString(16)} (status ${a?.status})`);
+}
+/** again when no answer came: while the editor uploads a patch the FM-1 can be slow to answer, or miss a frame */
+async function retry<T>(f: () => Promise<T>, tries = 3): Promise<T> {
+  for (let k = 1; ; k++) {
+    try {
+      return await f();
+    } catch (e) {
+      if (k >= tries || !/did not|came short/.test(String(e))) throw e;
+    }
+  }
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -112,37 +122,39 @@ const rig = {
     const ack = r ? parseAck(r.p) : null;
     if (!ack || ack.status !== 0) throw new Error(`the FM-1 did not store the mark (status ${ack?.status ?? 'no answer'})`);
   },
-  key: (id: number, down: boolean): Promise<void> => acked(testKeyFrame(id, down), CMD.testKey),
+  key: (id: number, down: boolean): Promise<void> => acked(testKeyFrame(id, down), CMD.testKey),   // (held or not: safe to send again)
   async tap(id: number, hold = 80): Promise<void> {
     await rig.key(id, true);
     await sleep(hold);
     await rig.key(id, false);
   },
-  turn: (enc: number, clicks: number): Promise<void> => acked(testTurnFrame(enc, clicks), CMD.testTurn),
+  turn: (enc: number, clicks: number): Promise<void> => acked(testTurnFrame(enc, clicks), CMD.testTurn, 1),   // (once: a lost ACK must not turn twice)
   /** the screen as text: the head, then the texts in reading order */
-  async screen(): Promise<ScreenHead & { texts: ScreenText[] }> {
-    const pr = pair;
-    if (!pr) throw new Error('no rig picked');
-    const isScreen: Match = (inId, x) => inId === pr.inp.id && x.cmd === CMD.screen;
-    const first = wait(isScreen, 1500);
-    pr.out.send(testScreenFrame());
-    const h = await first;
-    const hs = h ? parseScreen(h.p) : null;
-    if (!hs || !('head' in hs)) throw new Error('the rig did not send its screen');
-    const texts: ScreenText[] = [];
-    for (let k = 0; k < hs.head.count; k++) {
-      const r = await wait(isScreen, 1000);
-      const t = r ? parseScreen(r.p) : null;
-      if (!t || !('text' in t)) throw new Error('the rig\'s screen came short');
-      texts[t.k] = t.text;
-    }
-    return { ...hs.head, texts: texts.filter(Boolean) };
-  },
+  screen: (): Promise<ScreenHead & { texts: ScreenText[] }> => retry(screenOnce),
   /** the output's peak (16 bit) since the last call */
   async peak(): Promise<{ peak: number; running: boolean; muted: boolean }> {
-    return parsePeak(await ask(testPeakFrame(), (p) => p.cmd === CMD.peak))!;
+    return parsePeak(await retry(() => ask(testPeakFrame(), (p) => p.cmd === CMD.peak, 2000)))!;
   },
 };
+
+async function screenOnce(): Promise<ScreenHead & { texts: ScreenText[] }> {
+  const pr = pair;
+  if (!pr) throw new Error('no rig picked');
+  const isScreen = (head: boolean): Match => (inId, x) => inId === pr.inp.id && x.cmd === CMD.screen && (x.payload[0] === 0xff) === head;
+  const first = wait(isScreen(true), 2500);
+  pr.out.send(testScreenFrame());
+  const h = await first;
+  const hs = h ? parseScreen(h.p) : null;
+  if (!hs || !('head' in hs)) throw new Error('the rig did not send its screen');
+  const texts: ScreenText[] = [];
+  for (let k = 0; k < hs.head.count; k++) {
+    const r = await wait(isScreen(false), 1500);
+    const t = r ? parseScreen(r.p) : null;
+    if (!t || !('text' in t)) throw new Error('the rig\'s screen came short');
+    texts[t.k] = t.text;
+  }
+  return { ...hs.head, texts: texts.filter(Boolean) };
+}
 
 (window as unknown as { __rig: typeof rig }).__rig = rig;
 document.title = 'rig ready';

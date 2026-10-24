@@ -40,6 +40,8 @@ const freePort = () => new Promise((res) => {
 export async function startEditor() {
   const port = await freePort();
   const vite = spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'] });
+  process.on('exit', () => { try { vite.kill(); } catch { /* gone */ } });   // (however the script ends)
+  for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) if (!process.listenerCount(s)) process.on(s, () => process.exit(130));
   await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
   return { url: `http://[::1]:${port}/`, stop: () => vite.kill() };
 }

@@ -15,7 +15,8 @@
 // HELLO and PRESET_GET (to tell it from the rig) and nothing else. --install RUN first installs that firmware CI run on
 // the rig, after the gate of D-120 (emu:smoke and these scenarios in the emulator, on that run's builds) passed, and only
 // when the rig is the one FM-1 connected (the installer takes the first FM-1 it finds). --via-emu: the device path against
-// the emulator (m1emu serve), to check the runner itself without a rig. Results go to build/device/scenarios/.
+// the emulator (m1emu serve), to check the runner itself without a rig. --port NAME: the rig's page looks only at that
+// MIDI port (an emulator serving as a registered rig, to check the rig's path). Results go to build/device/scenarios/.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -31,7 +32,7 @@ const REPO = 'glvno/matryoshka';
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url'].includes(args[i - 1]));
+const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port'].includes(args[i - 1]));
 const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode's path (a rig, or the emulator through it)
 const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
 const OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
@@ -57,6 +58,11 @@ function diff(a, b, path = '', out = [], n = 6) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** child processes (the dev server, m1emu serve): killed however this script ends, so none is left running */
+const children = [];
+const own = (c) => { children.push(c); return c; };
+process.on('exit', () => { for (const c of children) try { c.kill(); } catch { /* gone */ } });
+for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(s, () => process.exit(130));
 
 function firmware() {
   if (given) return resolve(process.cwd(), given);
@@ -137,7 +143,7 @@ class RigTarget extends Target {
 class Emu extends Target {
   constructor(bin, fw) {
     super();
-    this.proc = spawn(bin, ['serve', fw, '--name', PORT_NAME], { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] });
+    this.proc = own(spawn(bin, ['serve', fw, '--name', PORT_NAME], { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] }));
     this.waiting = [];
     this.ready = new Promise((res, rej) => {
       this.proc.on('exit', (c) => rej(new Error(`m1emu exited (${c})`)));
@@ -271,7 +277,7 @@ async function main() {
   let vite;
   if (!url) {
     const port = await freePort();
-    vite = spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'] });
+    vite = own(spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'] }));
     url = `http://[::1]:${port}/`;
     await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
   }
@@ -293,9 +299,10 @@ async function main() {
   }
 
   const { browser, context } = await launch(url);
+  process.on('exit', () => { try { browser.process()?.kill(); } catch { /* gone */ } });
   let emu = emuProc;
   if (DEVICE) {
-    if (!REAL) await context.addInitScript(FILTER_MIDI, { name: PORT_NAME });
+    if (!REAL || opt('--port')) await context.addInitScript(FILTER_MIDI, { name: REAL ? opt('--port') : PORT_NAME });
     const rp = await rigPage(context, url);
     let pair;
     if (REAL) {
