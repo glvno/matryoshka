@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { parseChangelog, releaseAnchor, renderBody } from './changelog';
+import { parseChangelog, releaseAnchor, renderBody, slug } from './changelog';
 import { installLabel, shortVersion } from './version';
 
 const SAMPLE = `# Changelog
@@ -80,6 +80,70 @@ describe('renderBody', () => {
     expect(html).not.toContain('<img');
     expect(html).not.toContain('href="javascript:');
     expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+// the 1.3 layout: group headings, paragraphs between them, tables nested in list items
+const GROUPED = `### On the FM-1
+
+- **Paging is faster.** For one ALGO click:
+
+  | | 1.2 | 1.3 |
+  |---|---|---|
+  | The page's title on screen | about 77 ms | about 4 ms |
+  | <7PH | 69 % | 61 % |
+
+  The pixel counts are from the host panel test.
+- **Second item.**
+
+### XLs: the full instruments, in the browser
+
+Each XL is the full version of a factory patch.
+
+- **Oracle V XL:** the Prophet-5.
+
+### In the editor
+
+- One.
+
+### In the editor
+
+- Two.
+`;
+
+describe('a release with group headings and tables', () => {
+  const html = renderBody(GROUPED, 'v1.3.0');
+
+  it('gives each group heading the anchor <release>-<slug>, linked to itself, a repeated one numbered', () => {
+    expect(html).toContain('<h3 id="v1.3.0-on-the-fm-1"><a class="cl-anchor" href="#v1.3.0-on-the-fm-1">On the FM-1</a></h3>');
+    expect(html).toContain('id="v1.3.0-xls-the-full-instruments-in-the-browser"');
+    expect(html).toContain('id="v1.3.0-in-the-editor"');
+    expect(html).toContain('id="v1.3.0-in-the-editor-2"');
+  });
+
+  it('renders a table nested in a list item, escaped, and the paragraph after it in the same item', () => {
+    const item = /<li>[\s\S]*?<\/li>/.exec(html)![0];
+    expect(item).toContain('<div class="cl-table"><table>');
+    expect(item).toMatch(/<th>1\.2<\/th>/);
+    expect(item).toContain('<td>about 4 ms</td>');
+    expect(item).toContain('<td>&lt;7PH</td>');
+    expect(item).toContain('The pixel counts are from the host panel test.');
+    expect(html).not.toContain('|---|');
+  });
+
+  it('keeps a plain paragraph between a heading and its list', () => {
+    expect(html).toMatch(/in the browser<\/a><\/h3>\s*<p>Each XL is the full version of a factory patch\.<\/p>\s*<ul>/);
+  });
+
+  it('parses such a release out of the file whole', () => {
+    const r = parseChangelog(`# Changelog\n\n## Unreleased\n\n## 1.3.0 — 2026-10-30\n\n${GROUPED}\n## 1.2.2 — 2026-10-24\n\n- x\n`);
+    expect(r.map((x) => x.version)).toEqual(['1.3.0', '1.2.2']);
+    expect(r[0].body).toBe(GROUPED.trim());
+  });
+
+  it('gives headings no anchor without a release', () => {
+    expect(renderBody('### A b')).toBe('<h3>A b</h3>\n');
+    expect(slug('Sandbox patches: Délai, <b>!')).toBe('sandbox-patches-delai-b');
   });
 });
 

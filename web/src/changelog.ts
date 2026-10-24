@@ -56,5 +56,29 @@ markdown.renderer.rules.link_open = (tokens, index, options, _env, renderer) => 
   }
   return renderer.renderToken(tokens, index, options);
 };
-/** a release's notes as HTML */
-export const renderBody = (body: string): string => markdown.render(body);
+/** a group heading's slug: "XLs: the full instruments" → "xls-the-full-instruments" */
+export const slug = (text: string): string =>
+  text.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+interface Anchors { anchor: string; used: Set<string> }
+// a heading inside a release (### On the FM-1) gets the anchor <release>-<slug>, v1.3.0-on-the-fm-1, and links to itself
+markdown.renderer.rules.heading_open = (tokens, index, options, menv, renderer) => {
+  const t = tokens[index], env = menv as Anchors | undefined;
+  if (env?.anchor) {
+    const base = `${env.anchor}-${slug(tokens[index + 1]?.content ?? '') || 'section'}`;
+    let id = base;
+    for (let n = 2; env.used.has(id); n++) id = `${base}-${n}`;
+    env.used.add(id);
+    t.attrSet('id', id);
+    return `${renderer.renderToken(tokens, index, options)}<a class="cl-anchor" href="#${id}">`;
+  }
+  return renderer.renderToken(tokens, index, options);
+};
+markdown.renderer.rules.heading_close = (tokens, index, options, env, renderer) =>
+  `${(env as Anchors | undefined)?.anchor ? '</a>' : ''}${renderer.renderToken(tokens, index, options)}`;
+// a table (also one inside a list item) scrolls sideways on its own on a narrow screen instead of widening the page
+markdown.renderer.rules.table_open = (tokens, index, options, _env, renderer) => `<div class="cl-table">${renderer.renderToken(tokens, index, options)}`;
+markdown.renderer.rules.table_close = (tokens, index, options, _env, renderer) => `${renderer.renderToken(tokens, index, options)}</div>`;
+
+/** a release's notes as HTML; with the release's anchor ("v1.3.0"), its headings get anchors under it */
+export const renderBody = (body: string, anchor = ''): string => markdown.render(body, { anchor, used: new Set<string>() } satisfies Anchors);

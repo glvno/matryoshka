@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // changelog.html: the released versions of CHANGELOG.md (changelog.ts), one section per release with the anchor
-// #v1.2.0 and a button that copies the release's link, for announcing it.
+// #v1.2.0 and a button that copies the release's link, for announcing it; its group headings (### On the FM-1) have
+// anchors under it, #v1.3.0-on-the-fm-1.
 import changelogMd from '../../CHANGELOG.md?raw';
 import { inlineWordmarks } from './brand';
 import { parseChangelog, releaseAnchor, renderBody } from './changelog';
@@ -48,7 +49,7 @@ for (const r of parseChangelog(changelogMd)) {
   };
   head.append(copy);
   const body = el('div', 'cl-body');
-  body.innerHTML = renderBody(r.body); // markdown-it with raw HTML off: the file's text is escaped (changelog.ts)
+  body.innerHTML = renderBody(r.body, anchor); // markdown-it with raw HTML off: the file's text is escaped (changelog.ts)
   section.append(head, body);
   list.append(section);
 
