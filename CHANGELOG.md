@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- On battery after the USB cable was pulled, turning SELECT on the FM-1's preset list no longer freezes the screen for
+  several hundred milliseconds: messages to a computer that is gone are dropped at once instead of waited on.
 - The **909 Kit** plays all eight drum rows: CLAP, OPEN HAT, LOW TOM, RIM and COWBELL were silent (the kit only ever had a
   kick, a snare and a hat). Its rows are now in the 808 Kit's order, so the hat moved from the third black key / white
   key to the fourth (its pattern moved with it); the new voices' decays are on one card, PERC. <7PH has the same kit. An

@@ -936,9 +936,13 @@ static void ep1_rx(void)                                /* leaves the packet (NA
 static uint32_t ota_now_ms(void);
 static void ota_idle(void);
 
-static int ota_wire_send(const uint8_t *p, uint32_t n)   /* F0..F7 -> USB-MIDI SysEx packets */
+/* F0..F7 -> USB-MIDI SysEx packets. Refused at once with no host: not configured, or suspended (unplugged after it was
+ * configured, or the host asleep: usb.config stays set then, and waiting for room would cost 200 ms per message) */
+static int ota_wire_send(const uint8_t *p, uint32_t n)
 {
     uint32_t i = 0, t0 = ota_now_ms();
+    if (!*(volatile uint8_t *)&usb.config || usb.suspended)
+        return -1;
     sx_busy = 1;
     while (i < n) {
         uint32_t k = n - i >= 3u ? 3u : n - i, pkt;
@@ -946,7 +950,7 @@ static int ota_wire_send(const uint8_t *p, uint32_t n)   /* F0..F7 -> USB-MIDI S
         pkt = cin | (uint32_t)p[i] << 8 | (k > 1u ? (uint32_t)p[i + 1] << 16 : 0u) |
               (k > 2u ? (uint32_t)p[i + 2] << 24 : 0u);
         while (so_w - so_r >= SXQ) {
-            if (!*(volatile uint8_t *)&usb.config || ota_now_ms() - t0 > 200u) {
+            if (!*(volatile uint8_t *)&usb.config || usb.suspended || ota_now_ms() - t0 > 200u) {
                 sx_busy = 0;
                 return -1;
             }
