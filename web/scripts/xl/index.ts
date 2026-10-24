@@ -5,8 +5,16 @@
 import type { Xl } from './xl';
 import { xl as lire } from './8-lire';
 import { xl as elvira } from './elvira-2';
+import { xl as oracleV } from './oracle-v';
+import { xl as hera6 } from './hera-6';
+import { xl as expanderS } from './expander-s';
+import { xl as meridian8 } from './meridian-8';
 
 export const XLS: Xl[] = [
   lire,
   elvira,
+  oracleV,
+  hera6,
+  expanderS,
+  meridian8,
 ];
