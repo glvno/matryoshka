@@ -329,13 +329,19 @@ static void panel_encoders(int32_t *st)
     }
     if (page == PAGE_SEQ && seq_rec == 2u)          /* the keys record into the armed track: ALGO keeps it */
         st[1] = 0;
-    if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track, SELECT with a step held its chance */
+    if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track; a step held: its chance, SELECT on a
+                                                     * drum grid, K3 on the roll (the owner, 2026-10-24: there SELECT moves the row) */
+        int roll = seq_module() >= 0 && seq_map() < 0;
         if (st[1] && eng_steps_count())
             seq_select((uint32_t)((seq_trk + (uint32_t)eng_steps_count() * 8u + (uint32_t)st[1]) % (uint32_t)eng_steps_count()));
         st[1] = 0;
-        if (st[0] && seq_held >= 0) {
+        if (st[0] && seq_held >= 0 && !roll) {
             seq_chance(st[0]);
             st[0] = 0;
+        }
+        if (st[4] && seq_held >= 0 && roll) {
+            seq_chance(st[4]);
+            st[4] = 0;
         }
         if (st[0] && seq_module() >= 0) {           /* no step held: SELECT moves the row (REC on or off; the roll scrolls) */
             seq_row_step(st[0]);
