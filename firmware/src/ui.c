@@ -210,16 +210,16 @@ static void ui_battery(int32_t sample, int host)
 }
 
 /* the cell, 20 x 20: a battery 12 x 9 and its nub, 0..3 bars inside (one bar coral, empty: a red outline), a bolt in
- * seafoam on USB power; two blits of ten rows through lcd.c's lcd_fillbuf (240 pixels; a buffer of its own would cost
+ * seafoam on USB power; two blits of ten rows through lcd.c's lcd_line (240 pixels; a buffer of its own would cost
  * 800 B of RAM, which the build's 4 KB headroom check does not have) */
 static void batt_mark_draw(uint8_t lvl)
 {
-    uint16_t *px = lcd_fillbuf;                 /* (big endian, as the LCD takes it; rows y0..y0+9 of the cell) */
+    uint16_t *px = lcd_line;                    /* (big endian, as the LCD takes it; rows y0..y0+9 of the cell) */
     static const char BOLT[5][11] = {".....##...", "...###....", ".#######..", "..###.....", ".##......."};
     uint16_t ink = lvl == 0u ? C_RED : lvl == BATT_USB ? 0x7E38u : C_DIM, bar = lvl == 1u ? C_ACC : C_FG;
     uint32_t x, y, y0;
     for (y0 = 0; y0 < BAR_H; y0 += 10u) {
-        lcd_sync();                                 /* (the last transfer from lcd_fillbuf may still run) */
+        lcd_sync();                                 /* (the last transfer from lcd_line may still run) */
         for (y = y0; y < y0 + 10u && y < BAR_H; y++)
             for (x = 0; x < 20u; x++) {
                 uint16_t c = BATT_BG;

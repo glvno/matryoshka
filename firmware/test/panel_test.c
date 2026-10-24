@@ -1980,6 +1980,9 @@ int main(void)
         snap_to(getenv("PANEL_SNAP_BATTERY"));
     }
 
+    lcd_sync();
+    check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
+          lcd_line_clobbers == 0u);
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

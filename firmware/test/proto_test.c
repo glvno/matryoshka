@@ -354,6 +354,23 @@ int main(int argc, char **argv)
         n0 = eng_steps_notes((uint32_t)t0, &w);
         n1 = eng_steps_notes((uint32_t)t1, &w);
         CHECK(n0 > 0 && n1 > 0);
+        {                                                        /* R_TRACK (m1_track_now): module, n, n words LE, 7-bit packed */
+            uint8_t d[2u + 4u * TRACK_NOTES_MAX];
+            uint32_t r0 = nreplies, len, i;
+            n0 = eng_steps_notes((uint32_t)t0, &w);
+            CHECK(n0 <= 100);                                    /* (a reply buffer holds 512 B) */
+            m1_track_now((uint32_t)t0);
+            CHECK(nreplies == r0 + 1u && reply_len[r0] > 6u);
+            CHECK(replies[r0][0] == 0xF0 && replies[r0][1] == 0x7D && replies[r0][2] == 0x4D && replies[r0][3] == 0x31
+                  && replies[r0][4] == R_TRACK && replies[r0][reply_len[r0] - 1u] == 0xF7);
+            len = m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d);
+            CHECK(len == 2u + 4u * (uint32_t)n0 && d[0] == (uint8_t)t0 && d[1] == (uint8_t)n0);
+            for (i = 0; i < (uint32_t)n0; i++)
+                CHECK((d[2 + 4 * i] | d[3 + 4 * i] << 8 | d[4 + 4 * i] << 16 | (uint32_t)d[5 + 4 * i] << 24) == w[i]);
+            CHECK(reply_len[r0] == 6u + m1_pack7(d, len, replies[63])           /* byte for byte what m1_pack7 gives */
+                  && !memcmp(replies[r0] + 5, replies[63], reply_len[r0] - 6u));
+            nreplies = r0;
+        }
         base = m1_notes_at();
         end = eng_notes_end(m1_cur, m1_cur_len, base);
         devb = (m1_cur[6] & 32u) ? eng_devices_end(m1_cur, m1_cur_len, end) - end : 0u;   /* the device pages follow */

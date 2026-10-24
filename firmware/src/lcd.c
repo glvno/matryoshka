@@ -68,7 +68,11 @@ static void lcd_window(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1)
     lcd_cmd(0x2C);
 }
 
-static uint16_t lcd_fillbuf[240];
+/* THE line buffer: one scanline, shared by every renderer (lcd_fill's colour, the text rows of font5x7.c / font_bc.c,
+ * pages_ui.c's bars and toast, the splash, the battery mark). The DMA reads it after lcd_data returns, so a renderer
+ * calls lcd_sync() before writing it, and keeps no row of its own (480 B of RAM each). Nothing draws from
+ * lcd_yield (panel.c), so a row being built is never clobbered from inside a transfer's wait. */
+static uint16_t lcd_line[240];
 
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
@@ -82,12 +86,12 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
     lcd_sync();
     k = 240u / w * w;                       /* whole rows per transfer (narrow fills: one DMA) */
     for (i = 0; i < k; i++)
-        lcd_fillbuf[i] = (uint16_t)sw;
+        lcd_line[i] = (uint16_t)sw;
     lcd_window(x, y, x + w - 1u, y + h - 1u);
     for (n = w * h; n; n -= k) {
         if (k > n)
             k = n;
-        lcd_data(lcd_fillbuf, k * 2u);
+        lcd_data(lcd_line, k * 2u);
     }
 }
 
@@ -97,6 +101,16 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
         return;
     lcd_window(x, y, x + w - 1u, y + h - 1u);
     lcd_data(px, w * h * 2u);
+}
+
+/* lcd_line's first w pixels (RGB565, native order) out as one scanline at x, y: swapped to big endian in place, so the
+ * buffer is the LCD's until the next lcd_sync */
+static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)
+{
+    uint32_t i;
+    for (i = 0; i < w; i++)
+        lcd_line[i] = (uint16_t)((lcd_line[i] >> 8) | (lcd_line[i] << 8));
+    lcd_blit(x, y, w, 1, lcd_line);
 }
 
 /* ST7789V init: reset, then 16-bit colour, scan direction and IPS inversion;
