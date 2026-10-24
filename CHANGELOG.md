@@ -18,6 +18,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs (FM-1s are
   ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the editor's Play
   (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), which is the default.
+- **Sandbox mode:** a patch too big for the FM-1 no longer just pauses Live. With Live on, the FM-1 becomes the patch's
+  controller: the browser plays it, and the FM-1's keys, knobs, SELECT and ALGO drive it. The FM-1 mutes its own sound and
+  shows the page you are on, with a gold SANDBOX bar; the FM-1 chip reads FM-1 · SANDBOX CONTROLLER. Its knobs need MIDI
+  OUT on (GLO, K3), and the chip says so when it is off. With Live off, Sync in FM-1 & MIDI starts it. The muting and
+  the page need the 1.3 firmware; an older FM-1 keeps its sound and says EDITOR PATCH TOO BIG. Not yet checked on a device.
 - **The browser's Delay reaches 1.6 s** (the FM-1's stops at 520 ms): drag its time past 520 ms on the card. Such a
   patch is a sandbox patch: it plays in the browser and is not sent to the FM-1, and the budget's details say why
   ("Delay over 520 ms: browser only"). Patches with shorter delays sound exactly as before.
@@ -30,6 +35,14 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   them, or let AUTO swell them. The keys from C3 up play VCO A and B as one voice, with cross-modulation, a sub and
   sync. There is a mixer with pan per channel, a dual LP / BP filter with LINK, distortion after the filter, and a
   shimmer reverb on each side.
+- **8 Lire XL** (browser only): the SOMA Lyra-8 as its manual describes it. Two delay lines with their own TIME and MOD,
+  SELF / LFO and TRIANGLE / SQUARE modulation and cross-feedback, the distortion after the delay with its MIX, the FM
+  structure switch (34>56 78>12), an FM or LFO source per pair, PITCH per group, TOTAL FB, VIBRATO and the Hyper LFO's
+  LINK. SHARP now turns each voice's triangle into a square.
+- **Elvira 2 XL** (browser only): the neutral labs Elmyra 2 with its 1.6 s delay, OUCH's feedback loop, the BITMANGLER
+  and NOISE programs beside SRR, the mix saturation, both LFOs into any of six destinations, and an 8-step sequence per
+  voice that plays with the transport, quantized to a scale (CHRM).
+- **Community: Lire + Elvira XL**, the two XLs layered on one keyboard with a two-row Mix, beside the FM-1 version.
 
 ## 1.2.2 — 2026-10-24
 

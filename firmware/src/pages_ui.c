@@ -855,21 +855,22 @@ static void fit(char *s, const font_t *f, uint32_t max)
 }
 
 /* knob k's bar: drawn a scanline at a time (fill, ticks, then the type blended onto them), so the text reads across the
- * fill's edge */
-static void pages_bar(const ppage_t *pg, uint32_t k)
+ * fill's edge. used: the page has a row for it (its name, value and unit; the fill to base, the live tick at live, of
+ * BAR_W px); name and num are cut to fit here. The device page's (pages_bar) and the sandbox page's (sandbox_ui.c) */
+static void row_bar(uint32_t k, int used, char *name, char *num, const char *unit, uint32_t base, uint32_t live)
 {
     uint16_t *row = lcd_line;                           /* (lcd.c's; BAR_W <= 240) */
-    char name[24], num[20], unit[8], kn[2];
-    uint32_t y0 = ROWS_Y + k * (ROW_H + ROW_GAP), base = 0, live = 0, r, i, vx = 0, ux = 0, nx = 22u;
-    int used = pg && k < pg->nrows;
+    char kn[2];
+    uint32_t y0 = ROWS_Y + k * (ROW_H + ROW_GAP), r, i, vx = 0, ux = 0, nx = 22u;
     uint16_t hue = KNOB_HUE[k], track = used ? P_PANEL : P_STRIP, fill = mix565(hue, P_PANEL, 6u);
     kn[0] = (char)('1' + k);
     kn[1] = 0;
-    name[0] = num[0] = unit[0] = 0;
+    if (base > BAR_W)
+        base = BAR_W;
+    if (live > BAR_W)
+        live = BAR_W;
     if (used) {
         uint32_t uw, vw;
-        row_show(pg, k, num, unit, BAR_W, &base, &live);
-        caps(name, pg->lab[k], pg->llen[k], 16);
         uw = unit[0] ? text_w(&FONT_S, unit, -1) + 2u : 0u;
         fit(num, &FONT_M, 110u);
         vw = text_w(&FONT_M, num, -1);
@@ -906,6 +907,20 @@ static void pages_bar(const ppage_t *pg, uint32_t k)
         }
         lcd_line_out(BAR_X, y0 + r, BAR_W);
     }
+}
+
+/* knob k's bar on the device page: the row of page pg (or an empty slot) */
+static void pages_bar(const ppage_t *pg, uint32_t k)
+{
+    char name[24], num[20], unit[8];
+    uint32_t base = 0, live = 0;
+    int used = pg && k < pg->nrows;
+    name[0] = num[0] = unit[0] = 0;
+    if (used) {
+        row_show(pg, k, num, unit, BAR_W, &base, &live);
+        caps(name, pg->lab[k], pg->llen[k], 16);
+    }
+    row_bar(k, used, name, num, unit, base, live);
 }
 
 /* the page rail: one segment per page of the device, the one in focus in coral, the others of its heading dimmer */
@@ -1237,7 +1252,7 @@ static void pages_ticks(void)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
-    if (!pg || fm1_ms < pg_toast_until || pages_carding() || pg_card_shown || fm1_ms < pg_patch_until)
+    if (!pg || sb_on || fm1_ms < pg_toast_until || pages_carding() || pg_card_shown || fm1_ms < pg_patch_until)
         return;
     static uint8_t was;                                 /* bars that had a tick last time: redrawn once more to clear it */
     uint8_t now = 0;

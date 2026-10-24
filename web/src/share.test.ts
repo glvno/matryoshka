@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeShare, encodeShare, handOut, LINK_MAX, openShareLink, PAGES_URL, shareCodeOf, shareLink, storedIdOf, storedLink } from './share';
 import { fetchCode, storeCode, type Kv } from './share-store';
 import { DEFS } from './modules';
-import { PRESETS } from './presets';
+import { PRESETS, xlBase } from './presets';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { demoPatch } from './demo';
@@ -21,7 +21,7 @@ describe('share links', () => {
       const s = await encodeShare(p, { base: 'https://example.test/x/' });
       expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
       expect(s.length).toBe(s.link.length);
-      expect(s.length).toBeLessThan(LINK_MAX * 0.6); // (Meridian 8 with its arpeggiator: about 4100)
+      if (!xlBase(p.name)) expect(s.length).toBeLessThan(LINK_MAX * 0.6); // an FM-1 version (Meridian 8 with its arpeggiator: about 4100); an XL may be longer
       expect(/^[A-Za-z0-9_-]+$/.test(s.code)).toBe(true);
       expect(await decodeShare(s.code, DEFS)).toEqual(p);
       expect(shareCodeOf(s.link)).toBe(s.code);
