@@ -32,3 +32,4 @@ The editor and the FM-1 talk over a SysEx protocol on USB MIDI, and new capabili
 - Shipping 24-bit USB audio out — issue #143
 - Muting the FM-1's speaker while a computer records its USB audio — issue #169
 - Connect FM-1 fails on macOS Sequoia after flashing (only plain MIDI is seen) — issue #187
+- Whether Matryoshka uses the FM-1's Bluetooth (Bluetooth MIDI for a shared clock first), or recommends a Bluetooth MIDI adapter on the TRS input — issue #266

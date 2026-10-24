@@ -44,4 +44,3 @@ The FM-1 is a patch player: patches are built in the browser, and the device pla
 - Whether the stock battery thresholds (531 / 561 / 591) match this FM-1's readings on USB, unplugged full, later and near shutdown — issue #240
 - Whether GLO's page gets a level and a speaker mute (no such setting or hardware control is known) — issue #199
 - Whether device page bars for envelopes draw a faint envelope shape — issue #112
-- Whether Main and the Output as devices settle SELECT on patches with a single instrument, and what SELECT does on a factory patch that is a single device — issue #142
