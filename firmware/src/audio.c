@@ -86,6 +86,9 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
                 }
                 tp_peak = pk;
             }
+        } else {
+            for (i = 0; i < HALF_WORDS; i++)
+                o[i] = 0;
         }
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);

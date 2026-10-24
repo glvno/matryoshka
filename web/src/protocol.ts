@@ -75,7 +75,7 @@
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
-//               test mode]. Also unasked
+//               test mode, bit10 TEST_PEAK reads before MASTER]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
@@ -336,6 +336,8 @@ export function parseSandbox(payload: number[]): SandboxPage | null {
 // ---- the device test mode (#291): a script drives the FM-1's panel and reads its screen and level (scripts/device-scenarios.mjs)
 
 export const FEATURE_TEST = 512;
+/** INFO feature bit 10: TEST_PEAK reads before the MASTER knob, so where it sits changes no check (PEAK's flags bit 2: it is down) */
+export const FEATURE_PEAK_PRE = 1024;
 export const testKeyFrame = (id: number, down: boolean): Uint8Array => frame(CMD.testKey, [id & 0xff, down ? 1 : 0]);
 export const testTurnFrame = (enc: number, clicks: number): Uint8Array => frame(CMD.testTurn, [enc & 0xff, Math.max(-128, Math.min(127, clicks | 0)) & 0xff]);
 export const testScreenFrame = (): Uint8Array => frame(CMD.testScreen);

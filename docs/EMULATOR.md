@@ -82,7 +82,9 @@ link as `m1emu serve` drives the emulator:
   `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
   and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. Results and the
   screen as text go to `build/device/scenarios/`. Before the scenarios the runner taps HOME until the screen reports
-  the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does.
+  the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does. The volume
+  never stops a run ([D-125](ledger/releases.md#D-125)): on a rig whose firmware reads its peak after MASTER (no INFO
+  feature bit 10), a check that hears nothing is skipped as "MASTER down"; skips are counted apart and are no failure.
 - **`npm run device:scenarios -- --via-emu`:** the device path against the emulator (its build has the test mode too),
   to check the runner and the firmware's side without a rig.
 

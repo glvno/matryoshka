@@ -218,8 +218,20 @@ const FILTER_MIDI = (only) => {
 
 const results = [];
 async function check(name, ok, detail = '') {
-  results.push({ name, ok, detail });
+  results.push({ name, status: ok ? 'pass' : 'fail', ok, detail });
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`);
+}
+/** a check that hears the FM-1. It needs MASTER up only on a rig whose TEST_PEAK reads after MASTER (firmware without INFO
+ *  feature bit 10): there a silent result is skipped, not failed, since a knob left down is no fault (the owner's rule:
+ *  the run never stops for the volume) */
+let masterMatters = false;
+async function loudCheck(name, p, ok, detail) {
+  if (!ok && masterMatters && p < QUIET) {
+    results.push({ name, status: 'skip', ok: true, skipped: true, reason: 'MASTER down', detail });
+    console.log(`SKIP ${name}: MASTER down? (this firmware reads its peak after MASTER) ${detail}`);
+    return;
+  }
+  await check(name, ok, detail);
 }
 const until = async (f, ms = 3000) => {
   const t = Date.now();
@@ -320,6 +332,7 @@ async function main() {
       const s = await pickRig(rp);
       pair = s.rig;
       console.log(`rig: ${pair.name} (firmware ${pair.info?.version ?? '?'}), ${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
+      masterMatters = !((pair.info?.features ?? 0) & 1024);   // (protocol.ts FEATURE_PEAK_PRE)
       await context.addInitScript(FILTER_MIDI, { ids: [pair.inId, pair.outId], except: '/__rig' });
     } else {
       [pair] = await rp.evaluate(() => window.__rig.pairs());
@@ -366,7 +379,7 @@ async function main() {
       await until(async () => !/sending/i.test((await T()).status ?? ''), 8000);
       await check('connect: the FM-1 shows its device page', await emu.waitText('OCT ', 6000));
       const p = await emu.notePeak();
-      await check('connect: the FM-1 plays Init from a key', p > LOUD, `peak ${p}`);
+      await loudCheck('connect: the FM-1 plays Init from a key', p, p > LOUD, `peak ${p}`);
       await emu.snap('connect');
     },
     async sandbox() {
@@ -427,7 +440,7 @@ async function main() {
       await check('leave: the FM-1 shows its device page', await emu.waitText('OCT '));
       await sleep(500);
       const p = await emu.notePeak();
-      await check('leave: the FM-1 sounds again', p > LOUD, `peak ${p}`);
+      await loudCheck('leave: the FM-1 sounds again', p, p > LOUD, `peak ${p}`);
     },
     async reconnect() {
       await open('Hera 6 XL');
@@ -467,7 +480,7 @@ async function main() {
       }
       await emu.snap('switch-0');
       const s0 = await T();
-      await check('switch: Elvira 2 runs and sounds on the FM-1', p > LOUD && s0.deviceRunning, `peak ${p}${held >= 0 ? ` (key ${held})` : ''}, running ${s0.deviceRunning}`);
+      await loudCheck('switch: Elvira 2 runs and sounds on the FM-1', s0.deviceRunning ? p : LOUD, p > LOUD && s0.deviceRunning, `peak ${p}${held >= 0 ? ` (key ${held})` : ''}, running ${s0.deviceRunning}`);
       await page.evaluate(() => window.__sent.splice(0));
       const t0 = Date.now();
       await open('Elvira 2 XL');
@@ -516,9 +529,10 @@ async function main() {
       vite?.kill();
     }
   }
-  const failed = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - failed.length} of ${results.length} checks passed${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`);
-  process.exit(failed.length ? 1 : 0);
+  const failed = results.filter((r) => !r.ok), skipped = results.filter((r) => r.skipped);
+  const passed = results.length - failed.length - skipped.length;
+  console.log(`\n${passed} of ${results.length} checks passed${skipped.length ? `, ${skipped.length} skipped (${skipped.map((f) => `${f.name}: ${f.reason}`).join('; ')})` : ''}${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`);
+  process.exit(failed.length ? 1 : 0);   // (a skip is no failure)
 }
 
 main().catch((e) => {
