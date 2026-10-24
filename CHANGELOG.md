@@ -6,9 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
-- A new community patch, **Sol 29N**, recalls the Elta Music Solar 42N: two banks of detuned saws drone from the start
-  (FX and LFO switch them), a noise voice in sample & hold bursts (EDIT), a keyboard voice with a sub and a 5-step line
-  on PLAY, through drive, two band-pass filters swept together, a long reverb and a ping-pong delay. It plays on the FM-1.
+- A new community patch, **Sol 29N**, recalls the Elta Music Solar 42N in stereo: three saw drones that swell on their
+  own pulse generators (FX, LFO and EDIT switch them), two noise voices with sample & hold (ARP), two keyboard voices with
+  a morphing wavetable, a sub and pulse-width modulation, a 5-step line on PLAY, a distortion and a band-pass filter per
+  side swept together, a long reverb and a ping-pong delay. It plays on the FM-1.
 
 ## 1.2.1 — 2026-10-23
 
