@@ -265,6 +265,7 @@ static void bar_text(const char *s, uint16_t bg)
 
 static void pages_draw(int full);
 static void pages_strip(void);
+static void presets_bar(void);
 static uint8_t ui_yielding;                     /* panel.c: keys are taken from inside a redraw (#230): nothing may draw */
 static uint8_t ui_header_due;                   /* a header_draw asked for meanwhile: panel_draw does it at the end */
 static void header_draw(void)
@@ -304,6 +305,8 @@ static void header_draw(void)
         msg_until = 0;
         if (page == 0 || page == PAGE_GLO || page == PAGE_ENV)   /* the device page: the devices strip; GLO's and ENV's bars */
             pages_strip();
+        else if (page == PAGE_PRESETS)          /* the preset list: PRESETS and the device, on gold */
+            presets_bar();
         else
             bar_text(b, C_ACC);
         return;
