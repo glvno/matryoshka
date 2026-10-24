@@ -12,21 +12,20 @@ export const deviceIndex = (patch: Patch, moduleId: number): number => deviceVie
 import { sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
- *  `off` leaves it off (Not now was chosen in this visit), `too-big` leaves it off because the patch does not fit */
-export type ConnectSync = 'sync' | 'ask' | 'off' | 'too-big';
+ *  `off` leaves it off (Not now was chosen in this visit) */
+export type ConnectSync = 'sync' | 'ask' | 'off';
 
 /** the FM-1's binary holds the same patch as the editor's (encodePatch has no layout in it) */
 export const sameBinary = (a: Uint8Array | null, b: Uint8Array | null): boolean => !!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]);
 
 /**
- * The choice on connect (#171). A patch that does not fit is never offered; Not now holds for the visit; with the FM-1's
- * current slot known to hold the editor's patch (`deviceBin`, null when it cannot be read) nothing is lost, so it syncs
- * without asking; anything else asks.
+ * The choice on connect (#171). Not now holds for the visit; with the FM-1's current slot known to hold the editor's patch
+ * (`deviceBin`, null when it cannot be read) nothing is lost, so it syncs without asking; anything else asks. A sandbox
+ * patch (one that does not fit) always asks: Sync makes the FM-1 its controller (sandbox mode), and nothing is sent.
  */
 export function syncOnConnect(o: { fits: boolean; declined: boolean; editorBin: Uint8Array; deviceBin: Uint8Array | null }): ConnectSync {
-  if (!o.fits) return 'too-big';
   if (o.declined) return 'off';
-  return sameBinary(o.editorBin, o.deviceBin) ? 'sync' : 'ask';
+  return o.fits && sameBinary(o.editorBin, o.deviceBin) ? 'sync' : 'ask';
 }
 
 /** the FM-1 chip's state (#152, #171): a sandbox patch (over the budget) with Live on is sandbox mode, the FM-1 its

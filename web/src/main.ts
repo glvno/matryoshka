@@ -351,7 +351,7 @@ function setLive(on: boolean): void {
   if (!on) return;
   sayLive();
   declineSync(false);
-  void sendPatch();
+  if (fitsDevice) void sendPatch();   // (a sandbox patch is not sent: the FM-1 becomes its controller)
 }
 const syncAsk = $<HTMLDialogElement>('sync-ask');
 syncAsk.onclose = () => {
@@ -374,11 +374,12 @@ function offerSync(asked = false): void {
   const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch) : new Uint8Array(), deviceBin: null });
   if (d === 'sync') return setLive(true);
   if (d === 'ask' && !syncAsk.open) {
-    $('sync-ask-text').textContent = `The editor's patch "${editor.patch.name.trim() || 'Untitled'}" will play on the FM-1, and changes on either side follow the other.`;
+    const name = editor.patch.name.trim() || 'Untitled';
+    $('sync-ask-text').textContent = fitsDevice ? `The editor's patch "${name}" will play on the FM-1, and changes on either side follow the other.`
+      : `"${name}" is a sandbox patch: the browser plays it, and the FM-1 becomes its controller (its keys, knobs and pages drive it here).`;
     syncAsk.returnValue = '';
     syncAsk.showModal();
   }
-  if (d === 'too-big') devStatus('over the FM-1 budget: Live sync stays off until the patch fits');
   syncChip();
 }
 /** the on-screen keyboard plays through the sink like the letter keys; Z / X and its buttons share the octave */

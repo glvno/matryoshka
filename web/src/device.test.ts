@@ -25,9 +25,10 @@ describe('syncOnConnect', () => {
     expect(syncOnConnect({ fits: true, declined: true, editorBin: a, deviceBin: b })).toBe('off');
     expect(syncOnConnect({ fits: true, declined: true, editorBin: a, deviceBin: null })).toBe('off');
   });
-  it('never offers a patch that does not fit', () => {
-    expect(syncOnConnect({ fits: false, declined: false, editorBin: a, deviceBin: a })).toBe('too-big');
-    expect(syncOnConnect({ fits: false, declined: true, editorBin: a, deviceBin: null })).toBe('too-big');
+  it('offers a sandbox patch too (Sync makes the FM-1 its controller), and never syncs it unasked', () => {
+    expect(syncOnConnect({ fits: false, declined: false, editorBin: a, deviceBin: a })).toBe('ask');
+    expect(syncOnConnect({ fits: false, declined: false, editorBin: new Uint8Array(), deviceBin: null })).toBe('ask');
+    expect(syncOnConnect({ fits: false, declined: true, editorBin: a, deviceBin: null })).toBe('off');
   });
 });
 
