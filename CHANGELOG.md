@@ -10,6 +10,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   kick, a snare and a hat). Its rows are now in the 808 Kit's order, so the hat moved from the third black key / white
   key to the fourth (its pattern moved with it); the new voices' decays are on one card, PERC. <7PH has the same kit. An
   FM-1 gets the new kit from MENU > SYSTEM > FACTORY RESET.
+- **Connect FM-1** on an FM-1 that runs other firmware now always says so and offers **Install Matryoshka**: it names
+  M-VAVE's official firmware or Felucca, and an FM-1 that does not answer at all is named by its port. FM-1 & MIDI's
+  Connect says the same in its status line.
 - Every melodic factory patch (all but the 808 Kit, the 909 Kit and <7PH) has an **arpeggiator on ARP** and an empty
   16-step **PATTERN** track: Main's keys go through PATTERN into the arpeggiator, then the voice. The arpeggiator starts
   off, so a patch sounds as before (a few milliseconds later, through PATTERN) until ARP is pressed; notes entered on
@@ -42,9 +45,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   across 16 steps, opened around the track's notes, chords as several cells in a column and long notes drawn running on.
   SELECT moves the row and scrolls at the edges, white keys switch the selected pitch on a step (FX held: accented), SEL
   held + any key jumps to that key's pitch and plays it (FX + OCT: the octave), LFO held + a white key ties the note
-  through that step, and a held step + K1 / K2 / SELECT sets that note's pitch, velocity and chance. Small triangles over
-  or under a step show notes above or below the 8 rows on screen. REC on an armed melodic track
-  while stopped shows the roll with REC on (black keys sound, white keys place notes); running, every key records. This
+  through that step, and a held step + K1 / K2 / K3 sets that note's pitch, velocity and chance (SELECT still moves the
+  row). Small triangles over or under a step show notes above or below the 8 rows on screen. REC on the roll records
+  its track, arming it if nothing is armed (REC off disarms it again); stopped, black keys sound and white keys place
+  notes; running, every key records its own pitch into the nearest step. This
   replaces step entry (the cursor, FX + OCT rest, LFO + OCT tie), which is gone from the FM-1 (#241).
 - FM-1: REC with nothing armed opens the SEQ page on a drum track, so the hits are seen landing; REC off stays there.
 - FM-1: clear a whole track from the SEQ page: hold SEQ and press REC; the bar asks (CLEAR DRUMS? REC AGAIN) and REC

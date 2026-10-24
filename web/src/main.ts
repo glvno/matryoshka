@@ -29,8 +29,7 @@ import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
 import { switches } from './buttons';
-import { Fm1Mirror, identifyFm1 } from './mirror';
-import { firmwareKind } from './felucca-store';
+import { Fm1Mirror, identifyFm1, installOffer } from './mirror';
 import { BUTTONS, ENCODERS } from './fm1-ui';
 import type { Firmware, PanelInput } from './fm1-profiles';
 import { longName, moduleName } from './labels';
@@ -171,9 +170,9 @@ fm1Connect.onclick = async () => {
 /** Connect FM-1 got no answer from Matryoshka: the FM-1 is asked who it is (M-VAVE's identity handshake, as the Install
  *  panel asks), and one on other firmware, or waiting in its update loader, gets Install Matryoshka in a toast */
 async function offerInstall(): Promise<void> {
-  const id = await identifyFm1();
-  if (!id || (!id.loader && firmwareKind(id.text) === 'matryoshka')) return;
-  const text = id.loader ? 'The FM-1 waits in its update loader: an install was not finished' : `This FM-1 runs ${id.text}, not Matryoshka`;
+  const text = installOffer(await identifyFm1());
+  if (!text) return;
+  devStatus(text);   // (FM-1 & MIDI's Connect: its status line)
   showAction(text, 'Install Matryoshka', openInstall, 12000);
 }
 syncChip();
@@ -1638,7 +1637,10 @@ async function connectFm1(): Promise<void> {
     devStatus((e as Error).message);
   }
 }
-$('dev-btn').onclick = () => void connectFm1();
+$('dev-btn').onclick = async () => {
+  await connectFm1();
+  if (!device.connected) void offerInstall();
+};
 
 // ---- following the FM-1's panel (#120): any firmware, through plain MIDI (fm1-profiles.ts, mirror.ts). Its inputs go
 // through Matryoshka's panel logic (the FM-1 tab's WebAssembly copy, which tells the editor its focus and page) and the
