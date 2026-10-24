@@ -610,7 +610,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
             if (octave > 0)
                 *q++ = '+';
             fmt_int(num, octave);
-            put(q, num);
+            put(q, num)[0] = 0;                 /* (put does not end the text) */
             ui_msg(m, 1000);
         }
     }
