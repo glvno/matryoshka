@@ -1518,7 +1518,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-connect.connected:hover { filter: none; border-color: var(--secondary); }
 .fm1-connect.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .fm1-connect.idle .sl-dot { border: 2px solid var(--secondary); }
-.fm1-connect.over .sl-dot { background: var(--danger); border-color: var(--danger); }
+.fm1-connect.over .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
+.fm1-connect.sandbox .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
 /* narrow: the switch moves to the left, so Connect FM-1 fits beside it */
 @media (max-width: 700px) {
   .fm1-connect { right: 8px; height: 30px; padding: 0 8px; gap: 5px; font-size: 11px; letter-spacing: .06em; }
@@ -1634,7 +1635,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .statusline .sl-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
 .statusline .sl-chip.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .statusline .sl-chip.idle .sl-dot { border: 2px solid var(--secondary); }   /* connected, not synced (#171) */
-.statusline .sl-chip.over .sl-dot { background: var(--danger); border-color: var(--danger); }   /* too big to sync */
+.statusline .sl-chip.over .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }   /* a sandbox patch, not synced */
+.statusline .sl-chip.sandbox { color: var(--sandbox-text); }   /* sandbox mode: the FM-1 is the browser patch's controller */
+.statusline .sl-chip.sandbox .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
 @media (max-width: 700px) { .statusline .sl-chip-text { display: none; } .statusline .sl-chip { height: 24px; padding: 0 8px; } }
 /* a sandbox patch (main.ts showSandbox): the gold SANDBOX pill opens the "No limits here" card; "What sandbox means" too */
 .statusline .sl-sandbox { flex: none; min-height: 0; height: 18px; padding: 0 7px; cursor: pointer; }

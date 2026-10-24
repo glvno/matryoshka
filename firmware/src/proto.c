@@ -18,15 +18,20 @@
  *   static int  m1_preset_get(uint32_t structure, const char *name, int32_t *vals, uint32_t *n);   0 = found
  *   static int  m1_preset_put(uint32_t structure, const char *name, const int32_t *vals, uint32_t n);   0 = ok, -2 full, else flash
  *   static int  m1_preset_del(uint32_t structure, const char *name);   0 = ok, -1 none
+ *   static void m1_sandbox(const sb_page_t *s);                 SANDBOX: the editor's page while its patch is a sandbox patch
+ *   static int  m1_midi_out(void);                              MENU > MIDI OUT is on (INFO says so, with feature bit 8)
  * and calls m1_handle() with every received frame (the bytes between F0 and F7). */
 #include "engine.h"
 #include "defs.h"
+#include "sandbox_msg.h"
 
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
+#define M1_FEATURES2 1u                                      /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag) */
+#define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
 #define M1_PVALS 88u                                         /* a preset's values at most (presetstore.c PS_MAXV) */
 #define M1_SLOTS 64u                                         /* the bank (slotstore.c) */
@@ -104,6 +109,20 @@ static void m1_slot_now(uint32_t slot, const char *name)
     for (i = 0; i < M1_NAME; i++)
         p[1u + i] = name && name[i] && (!i || p[i]) ? (uint8_t)name[i] : 0u;
     m1_reply(R_SLOT_NOW, p, sizeof p);
+}
+
+/* INFO: the answer to HELLO, and unasked when MENU > MIDI OUT changed under the editor's Live (live.c) */
+static void m1_info(void)
+{
+    uint8_t p[7];
+    p[0] = M1_VERSION;
+    p[1] = ENG_MAX_MODULES;
+    p[2] = ENG_MAX_CABLES;
+    p[3] = (uint8_t)((m1_flash_ok() ? 1u : 0u) | (m1_cur_len ? 2u : 0u) | (m1_midi_out() ? M1_INFO_MIDI_OUT : 0u));
+    p[4] = ENG_NDELAY;                                       /* delay lines (shared by the voices) */
+    p[5] = M1_FEATURES;
+    p[6] = M1_FEATURES2;
+    m1_reply(R_INFO, p, 7);
 }
 
 static void m1_ack(uint32_t cmd, uint32_t seq, uint32_t status, uint32_t aux)
@@ -598,17 +617,9 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     if (len > sizeof d)
         return 1;                                            /* more than any of our frames carries */
     switch (f[3]) {
-    case C_HELLO: {
-        uint8_t p[6];
-        p[0] = M1_VERSION;
-        p[1] = ENG_MAX_MODULES;
-        p[2] = ENG_MAX_CABLES;
-        p[3] = (uint8_t)((m1_flash_ok() ? 1u : 0u) | (m1_cur_len ? 2u : 0u));
-        p[4] = ENG_NDELAY;                                   /* delay lines (shared by the voices) */
-        p[5] = M1_FEATURES;
-        m1_reply(R_INFO, p, 6);
+    case C_HELLO:
+        m1_info();
         break;
-    }
     case C_DIAG: {                                           /* bring-up diagnostics (main.c m1_diag): [page, bytes] */
         uint8_t p[33];
         p[0] = len ? d[0] : 0u;
@@ -846,6 +857,12 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     case C_LIVE:                                             /* every 2 s while the editor's Live is on: no reply; [paused u8] (#200) */
         m1_live(len >= 1u ? d[0] : 0u);
         break;
+    case C_SANDBOX: {                                        /* the editor's page in sandbox mode (sandbox_msg.h): no reply */
+        static sb_page_t s;
+        if (!sb_parse(d, len, &s))
+            m1_sandbox(&s);
+        break;
+    }
     case C_MUTE:                                             /* module u8, on u8: not saved */
         if (len >= 2u) {
             eng_steps_mute(d[0], d[1] != 0u);

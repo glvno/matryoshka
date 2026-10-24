@@ -23,6 +23,9 @@ static uint8_t page;                            /* 0: the device page, 5 menu, 6
 static void seq_bar(void);
 static void seq_draw(int full);
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
+static uint8_t sb_on;                           /* sandbox mode (sandbox_ui.c): the device page shows the editor's page instead */
+static void sandbox_draw(int full);
+static void sandbox_bar(void);
 
 /* the settings' rows (menu.c; GLO shows some of them: pages_ui.c glo_page) */
 enum { MR_LEDS, MR_ACCEL, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
@@ -274,6 +277,11 @@ static void header_draw(void)
         ui_header_due = 1;
         return;
     }
+    if (sb_on && page == 0u) {                  /* sandbox: SANDBOX and the editor's patch, on gold (sandbox_ui.c) */
+        sandbox_bar();
+        msg_until = 0;
+        return;
+    }
     if (page == 8u && !eng_overload && !load_err) {     /* the SEQ page: the track's name (seq_ui.c PAGE_SEQ) */
         seq_bar();
         msg_until = 0;
@@ -378,6 +386,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         env_draw(full);
     else if (page == PAGE_PRESETS)
         presets_draw(full);
+    else if (sb_on && page == 0u)
+        sandbox_draw(full);
     else
         pages_draw(full);
 }

@@ -9,7 +9,7 @@ import { deviceView } from './poly';
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit), `too-big` leaves it off because the patch does not fit */
@@ -29,10 +29,11 @@ export function syncOnConnect(o: { fits: boolean; declined: boolean; editorBin: 
   return sameBinary(o.editorBin, o.deviceBin) ? 'sync' : 'ask';
 }
 
-/** the FM-1 chip's state (#152, #171) */
-export type ChipState = 'not connected' | 'synced' | 'not synced' | 'patch too big to sync';
+/** the FM-1 chip's state (#152, #171): a sandbox patch (over the budget) with Live on is sandbox mode, the FM-1 its
+ *  controller; with Live off it is too big to sync */
+export type ChipState = 'not connected' | 'synced' | 'not synced' | 'patch too big to sync' | 'sandbox controller';
 export const chipState = (connected: boolean, live: boolean, fits: boolean): ChipState =>
-  !connected ? 'not connected' : !fits ? 'patch too big to sync' : live ? 'synced' : 'not synced';
+  !connected ? 'not connected' : !fits ? (live ? 'sandbox controller' : 'patch too big to sync') : live ? 'synced' : 'not synced';
 /** the editor's Live (#185, #200), what main.ts does each LIVE_MS, on Sync and on a budget change, kept pure for the tests */
 export const liveSync = {
   /** edits and uploads go to the FM-1: connected, Live on and the patch within its budget */
@@ -43,13 +44,31 @@ export const liveSync = {
     connected && live ? { paused: !fits } : null,
   /** a budget change that pauses Live: say so at once (LIVE paused), not only at the next LIVE_MS */
   pausesNow: (connected: boolean, live: boolean, was: boolean, fits: boolean): boolean => was && !fits && connected && live,
+  /** sandbox mode: Live paused because the patch is a sandbox patch; the editor follows the FM-1's panel and sends it its
+   *  page (SANDBOX), and the FM-1 (feature bit 8) mutes itself */
+  sandbox: (connected: boolean, live: boolean, fits: boolean): boolean => connected && live && !fits,
 };
+/** the hover of the chip in sandbox mode */
+export const SANDBOX_HOVER = 'Your patch is a sandbox patch, so the FM-1 plays it as a controller: the browser makes the sound. It syncs normally again once the patch fits.';
+/**
+ * The FM-1 chip in sandbox mode: its text and hover. An FM-1 that reports MENU > MIDI OUT off (INFO, feature bit 8) sends
+ * nothing to follow, so the chip says how to turn it on. Firmware without sandbox mode keeps its own sound and shows
+ * EDITOR PATCH TOO BIG; its panel is followed all the same.
+ */
+export function sandboxChip(o: { hasSandbox: boolean; midiOut: boolean | null }): { text: string; title: string; midiOff: boolean } {
+  if (o.midiOut === false)
+    return { text: 'FM-1 \u00b7 turn on MIDI OUT (GLO, K3) to control the sandbox', midiOff: true,
+      title: `${SANDBOX_HOVER} Its MIDI OUT is off, so its keys and knobs reach nothing here: GLO, then K3, turns it on.` };
+  return { text: 'FM-1 \u00b7 SANDBOX CONTROLLER', midiOff: false,
+    title: o.hasSandbox ? SANDBOX_HOVER : `${SANDBOX_HOVER} Update the FM-1 to 1.3 to mute it and show the page.` };
+}
 /** FM-1 & MIDI's sync line (#180), what the chip shows: its text and its button (`sync` turns Live on, `stop` off; none
  *  while not connected or while the patch does not fit) */
 export const syncLine = (s: ChipState): { text: string; action: 'sync' | 'stop' | null } =>
   s === 'synced' ? { text: 'Synced with the FM-1', action: 'stop' }
   : s === 'not synced' ? { text: 'Not synced', action: 'sync' }
-  : s === 'patch too big to sync' ? { text: 'Patch too big to sync', action: null }
+  : s === 'sandbox controller' ? { text: 'Sandbox controller: the browser plays, the FM-1 drives it', action: 'stop' }
+  : s === 'patch too big to sync' ? { text: 'Sandbox patch, not synced: Sync makes the FM-1 its controller', action: 'sync' }
   : { text: 'Not connected', action: null };
 
 const NAME = /felucca|fm-?1|matryoshka|modular/i;
@@ -67,7 +86,9 @@ export type DeviceEvent =
   | { kind: 'param'; module: number; param: number; value: number }
   | { kind: 'focus'; device: number; page: number }
   /** a preset stored on the FM-1 (#195, ENV held + SAVE) */
-  | { kind: 'presetStored'; structure: string; name: string };
+  | { kind: 'presetStored'; structure: string; name: string }
+  /** an INFO nobody asked for: MENU > MIDI OUT changed under Live (feature bit 8; `info` has it) */
+  | { kind: 'info' };
 
 export class DeviceLink {
   private out: MIDIOutput | null = null;
@@ -118,6 +139,12 @@ export class DeviceLink {
         const w = this.waiter;
         this.waiter = null;
         w.done(p);
+        return;
+      }
+      const info = p?.cmd === CMD.info ? parseInfo(p) : null;
+      if (info) {   // unasked (sandbox mode's MIDI OUT flag)
+        this.info = info;
+        this.onEvent({ kind: 'info' });
       }
     };
     access.onstatechange = () => {
@@ -346,6 +373,17 @@ export class DeviceLink {
   live(paused = false): void {
     if (!this.connected || !this.hasLive) return;
     this.out!.send(liveFrame(paused));
+  }
+
+  /** the firmware has sandbox mode (INFO feature bit 8): LIVE paused mutes it, and it draws SANDBOX pages */
+  get hasSandbox(): boolean {
+    return !!(this.info && this.info.features & FEATURE_SANDBOX);
+  }
+
+  /** the editor's page in sandbox mode (the caller sends it when it changed) */
+  sandboxPage(pg: SandboxPage): void {
+    if (!this.connected || !this.hasSandbox) return;
+    this.out!.send(sandboxFrame(pg));
   }
 
   /** show a device page on the FM-1 (indices into the binary's device pages section) */

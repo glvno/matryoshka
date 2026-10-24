@@ -71,7 +71,10 @@ static void m1_ui_changed(void);                               /* main.c: a live
 static void m1_ui_rows(void);                                  /* main.c: a live parameter changed: the rows */
 static void m1_transport(int run);                             /* main.c: the editor's TRANSPORT command (PLAY) */
 static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the editor's FOCUS command (a device page) */
-static void m1_live(uint32_t paused);                          /* live.c: the editor's LIVE command (it drives the FM-1; paused: its patch is too big, #200) */
+static void m1_live(uint32_t paused);                          /* live.c: the editor's LIVE command (it drives the FM-1; paused: its patch is a sandbox patch) */
+static int m1_midi_out(void);                                  /* main.c: MENU > MIDI OUT (INFO says it) */
+#include "sandbox_msg.h"
+static void m1_sandbox(const sb_page_t *s);                    /* sandbox_ui.c: the editor's page in sandbox mode */
 #include "proto.c"
 #include "slotstore.c"
 #include "presetstore.c"
@@ -81,6 +84,7 @@ static void m1_live(uint32_t paused);                          /* live.c: the ed
 #define UI_POOL __attribute__((section(".pool")))
 #include "ui.c"
 #include "pages_ui.c"
+#include "sandbox_ui.c"
 static const uint8_t *pages_src(uint32_t *len) { *len = m1_cur_len; return m1_cur_len ? m1_cur : 0; }
 static uint32_t pages_gen(void) { return m1_gen; }
 #include "menu.c"
