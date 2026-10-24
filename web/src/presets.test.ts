@@ -31,7 +31,7 @@ function peak(e: Engine, n: number): number {
 }
 
 describe('factory drum kits: the keys play the drums out of the box (#141)', () => {
-  for (const [name, wired] of [['808 Kit', [1, 2, 3, 4, 5, 6, 7, 8]], ['909 Kit', [1, 2, 3]]] as const) {
+  for (const [name, wired] of [['808 Kit', [1, 2, 3, 4, 5, 6, 7, 8]], ['909 Kit', [1, 2, 3, 4, 5, 6, 7, 8]]] as const) {
     it(`${name}: Main's keys into DRUMS, the rows on the white keys from F3, the steps on the rows, octave -1`, () => {
       const { p, rows } = kit(name);
       const main = p.modules.find((m) => m.type === 'fm1')!;
@@ -69,14 +69,15 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
     });
   }
 
-  it('row names: the 808 rows are the defaults; the 909 names row 3 HAT', () => {
+  it('row names: both kits\' rows are the defaults (the 909 Kit\'s hat on row 4, CL HAT, as the 808\'s)', () => {
     const names = (n: string): string[] => {
       const m = PRESETS[n]().modules.find((x) => x.type === 'drummap')!;
       return [0, 1, 2].map((r) => drumRowName(m.names, r));
     };
-    expect(PRESETS['808 Kit']().modules.find((x) => x.type === 'drummap')!.names).toBeUndefined();
-    expect(names('808 Kit')).toEqual(DRUM_MAP_DEFAULT.slice(0, 3).map((d) => d.name));
-    expect(names('909 Kit')).toEqual(['KICK', 'SNARE', 'HAT']);
+    for (const k of ['808 Kit', '909 Kit']) {
+      expect(PRESETS[k]().modules.find((x) => x.type === 'drummap')!.names, k).toBeUndefined();
+      expect(names(k), k).toEqual(DRUM_MAP_DEFAULT.slice(0, 3).map((d) => d.name));
+    }
   });
 
   it('a Drum map\'s own defaults stay General MIDI', () => {

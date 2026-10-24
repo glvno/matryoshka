@@ -1776,6 +1776,10 @@ tests['arm-set'] = make('arm-set', (add, wire) => {
   bins['disabled-inputs'] = bin;
 }
 
+// the 909 Kit: every Drum map row by its key on the running pattern (rows 3 and 5..8 are lean voices whose VCA gain the
+// row's velocity sets through a macro range)
+events['909 Kit'] = [[0, 'run', 0], ...[53, 55, 57, 59, 60, 62, 64, 65].flatMap((n, i): Ev[] => [[128 * (10 + 20 * i), 'on', n], [128 * (20 + 20 * i), 'off', n]])];
+
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
   if (!events[name] && patch.modules.some((m) => m.type === 'steps')) events[name] = [[0, 'run', 0], ...EVENTS];

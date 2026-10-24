@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- The **909 Kit** plays all eight drum rows: CLAP, OPEN HAT, LOW TOM, RIM and COWBELL were silent (the kit only ever had a
+  kick, a snare and a hat). Its rows are now in the 808 Kit's order, so the hat moved from the third black key / white
+  key to the fourth (its pattern moved with it); the new voices' decays are on one card, PERC. <7PH has the same kit. An
+  FM-1 gets the new kit from MENU > SYSTEM > FACTORY RESET.
 - Every melodic factory patch (all but the 808 Kit, the 909 Kit and <7PH) has an **arpeggiator on ARP** and an empty
   16-step **PATTERN** track: Main's keys go through PATTERN into the arpeggiator, then the voice. The arpeggiator starts
   off, so a patch sounds as before (a few milliseconds later, through PATTERN) until ARP is pressed; notes entered on
