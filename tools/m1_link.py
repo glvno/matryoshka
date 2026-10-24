@@ -15,6 +15,10 @@
   tools/m1_link.py cpu                    (the audio ISR's load: now, and the peak since the last cpu read)
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
+  tools/m1_link.py mem                    (#273: how deep each stack has gone since boot; .lowram's size)
+  tools/m1_link.py canary [--json]        (#273 canary build: the words of the unused SRAM below the RAM region that changed
+                                           since boot (count, first / last address, runs, samples) and what OTA stage 1 saw)
+  tools/m1_link.py --port NAME ...        (talk only to the MIDI port of that name; default: the first FM-1 port)
   tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
@@ -74,8 +78,9 @@ def frame(cmd, payload=()):
 
 
 class Link:
-    def __init__(self):
-        pick = lambda names: next((n for n in names if "Felucca" in n or "Matryoshka" in n or "Modular" in n or "FM-1" in n), None)
+    def __init__(self, port=None):
+        pick = lambda names: next((n for n in names if (n == port if port else
+                                                         "Felucca" in n or "Matryoshka" in n or "Modular" in n or "FM-1" in n)), None)
         o, i = pick(mido.get_output_names()), pick(mido.get_input_names())
         if not o or not i:
             sys.exit("FM-1 not found")
@@ -121,9 +126,12 @@ def factory_presets():
 
 def main():
     a = sys.argv[1:]
+    port = None
+    if a[:1] == ["--port"] and len(a) > 1:
+        port, a = a[1], a[2:]
     if not a:
         sys.exit(__doc__)
-    link = Link()
+    link = Link(port)
     if a[0] == "info":
         p = link.ask(frame(0x01), (0x41,))
         print(f"protocol {p[0]}, max modules {p[1]}, max cables {p[2]}, flash {'ok' if p[3] & 1 else 'no'}, "
@@ -204,6 +212,24 @@ def main():
                   f"{f' ({fr / pk * 1000:.1f} Hz per packet ms)' if pk else ''}; underruns +{d[8]}, overruns +{d[9]}, "
                   f"missed +{d[10]}, stalls +{d[11]}, adj_up {d[12] / dt:.2f}/s, adj_down {d[13] / dt:.2f}/s "
                   f"(net {(d[12] - d[13]) / dt:+.2f} frames/s: the I2S clock against the host's)")
+    elif a[0] == "mem":
+        w = diag_words(link, 124)
+        state = {1: "proved", 2: "FAILED its pattern test", 3: "nothing placed (canary build)"}
+        print(f".lowram {w[1]} B used ({state.get(w[0], w[0])}), {w[2]} B free after it; pool {w[7]} B free")
+        for name, size, used in (("main", w[3], w[4]), ("supervisor", w[5], w[6])):
+            print(f"{name} stack: {used} of {size} B at most since boot ({size - used} B never reached)")
+    elif a[0] == "canary":
+        now, smp, ota = diag_words(link, 123), diag_words(link, 122), diag_words(link, 121)
+        r = {"armed": now[0] == 0x43414E41, "span_bytes": now[1], "start": now[7], "changed_words": now[2],
+             "first": now[3], "last": now[4], "runs": now[5], "ms_since_boot": now[6],
+             "samples": [{"addr": smp[2 * i], "value": smp[2 * i + 1]} for i in range(min(4, now[5]))],
+             "ota_stage1": {"valid": bool(ota[0]), "changed_words": ota[1], "first": ota[2], "last": ota[3],
+                            "runs": ota[4], "sample": {"addr": ota[5], "value": ota[6]}, "ms_since_boot": ota[7]}}
+        if "--json" in a:
+            import json
+            print(json.dumps(r))
+        else:
+            print_canary(r)
     elif a[0] == "diag":
         raw = []
         for page in range(32):
@@ -214,6 +240,35 @@ def main():
         print_diag(raw, a[1] if len(a) > 1 else None)
     else:
         sys.exit(__doc__)
+
+
+def diag_words(link, page):
+    """one DIAG page (main.c m1_diag) as eight little-endian words"""
+    p = link.ask(frame(0x2B, [page]), (0x4B, page))
+    if len(p) < 33:
+        sys.exit(f"no DIAG page {page} (a firmware without it: the #273 canary build has pages 121..124)")
+    return [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
+
+
+def print_canary(r):
+    """main.c canary_scan: DIAG pages 121..123"""
+    if not r["armed"]:
+        print("canary: not armed (not the #273 canary build?)")
+        return
+    end = r["start"] + r["span_bytes"]
+    print(f"canary {r['start']:#010x}..{end:#010x} ({r['span_bytes']} B), {r['ms_since_boot'] / 60000:.1f} min since boot: "
+          + ("no word changed" if not r["changed_words"] else
+             f"{r['changed_words']} words changed in {r['runs']} runs, {r['first']:#010x}..{r['last']:#010x}"))
+    for x in r["samples"]:
+        print(f"  run at {x['addr']:#010x}: {x['value']:#010x} (the canary there is {x['addr'] ^ 0x6A3C95C3:#010x})")
+    o = r["ota_stage1"]
+    if not o["valid"]:
+        print("OTA stage 1: no record (no install from this build since power-on, or the loader overwrote it)")
+    else:
+        print(f"OTA stage 1 at its commit ({o['ms_since_boot'] / 1000:.0f} s after that boot): "
+              + ("no word changed" if not o["changed_words"] else
+                 f"{o['changed_words']} words changed in {o['runs']} runs, {o['first']:#010x}..{o['last']:#010x}, "
+                 f"first run {o['sample']['addr']:#010x} = {o['sample']['value']:#010x}"))
 
 
 def print_uac(w):

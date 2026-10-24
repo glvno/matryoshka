@@ -52,10 +52,12 @@ static void ota_show(uint32_t step, int32_t code)
     ota_text(124, b);
     fm1_delay_ms(1500);
 }
+static void canary_at_commit(void);                    /* main.c (#273 canary build) */
 static void ota_commit(const uint8_t *parm)
 {
     bootguard.pending = 0;                              /* intentional reset */
     usb_detach();
     fm1_delay_ms(30);
+    canary_at_commit();                                 /* stage 1 done: what it left in .lowram, into .noinit */
     fm1_enter_update(parm);                             /* record into RAM, core reset (fm1_sys.h) */
 }

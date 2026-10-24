@@ -23,6 +23,94 @@ diag_t diag __attribute__((section(".noinit")));        /* (not static: see fm1_
 static volatile uint32_t diag_alive, diag_armed;      /* fm1_ms of the main loop's last pass; set once the loop runs */
 static struct { uint32_t p3, src, wdt; diag_t stall; fm1_crash_t crash; } diag_prev;   /* (m1_link.py diag reads it as u32s) */
 
+/* #273 canary build: is the SRAM below the RAM region (app.ld .lowram, _lr_start.._lr_limit: what .ram_text leaves up to
+ * 0x01C07F00) really unused at run time? Nothing is placed there. The boot fills every word with canary_word(its address);
+ * canary_scan counts the words that no longer hold it, the first and last such address and the runs of them (the first
+ * CANARY_SAMPLES runs' start and value). DIAG pages (tools/m1_link.py canary): 123 a scan now, 122 that scan's samples,
+ * 121 the scan OTA stage 1 made at its commit (ota_hw.c ota_commit), kept in .noinit through the reset into the loader;
+ * 124 the stacks' deepest use since boot (the boot paints them with STACK_PAINT, below its own frame). */
+extern uint32_t _lr_start[], _lr_end[], _lr_limit[];
+extern char _ustack_top[];
+#define CANARY_KEY 0x6A3C95C3u
+#define CANARY_MAGIC 0x43414E41u                /* "CANA": armed (the boot filled the span) */
+#define CANARY_OTA_MAGIC 0x4F544143u            /* "OTAC": canary_ota holds stage 1's scan */
+#define CANARY_SAMPLES 4u
+#define STACK_PAINT 0x5AC3A55Cu
+typedef struct { uint32_t changed, first, last, runs, ms, sa[CANARY_SAMPLES], sv[CANARY_SAMPLES]; } canary_t;
+static uint32_t canary_armed;
+static canary_t canary_last;                    /* the last scan page 123 made (page 122 reads its samples) */
+static struct { uint32_t magic, sum; canary_t c; } canary_ota __attribute__((section(".noinit")));
+
+static uint32_t canary_word(const volatile uint32_t *d) { return (uint32_t)(uintptr_t)d ^ CANARY_KEY; }
+
+static void canary_fill(void)
+{
+    volatile uint32_t *d;
+    for (d = _lr_start; d < _lr_limit; d++)
+        *d = canary_word(d);
+    canary_armed = CANARY_MAGIC;
+}
+
+static void canary_scan(canary_t *c)
+{
+    const volatile uint32_t *d;
+    uint32_t i, was = 0;
+    for (i = 0; i < sizeof *c / 4u; i++)
+        ((uint32_t *)c)[i] = 0;
+    c->ms = fm1_ms;
+    if (canary_armed != CANARY_MAGIC)
+        return;
+    for (d = _lr_start; d < _lr_limit; d++) {
+        uint32_t v = *d, bad = v != canary_word(d);
+        if (bad) {
+            if (!c->changed)
+                c->first = (uint32_t)(uintptr_t)d;
+            c->changed++;
+            c->last = (uint32_t)(uintptr_t)d;
+            if (!was) {
+                if (c->runs < CANARY_SAMPLES) {
+                    c->sa[c->runs] = (uint32_t)(uintptr_t)d;
+                    c->sv[c->runs] = v;
+                }
+                c->runs++;
+            }
+        }
+        was = bad;
+    }
+}
+
+static uint32_t canary_sum(const canary_t *c)
+{
+    uint32_t i, s = CANARY_OTA_MAGIC;
+    for (i = 0; i < sizeof *c / 4u; i++)
+        s = (s << 5 | s >> 27) ^ ((const uint32_t *)c)[i];
+    return s;
+}
+
+static void canary_at_commit(void)              /* ota_hw.c ota_commit: OTA stage 1's last moment before the reset */
+{
+    canary_scan(&canary_ota.c);
+    canary_ota.sum = canary_sum(&canary_ota.c);
+    canary_ota.magic = canary_armed == CANARY_MAGIC ? CANARY_OTA_MAGIC : 0u;
+}
+
+static void stack_paint(char *lo, char *top)
+{
+    volatile uint32_t here = 0, *d, *end = (uint32_t *)top;
+    if ((char *)&here >= lo && (char *)&here < top)
+        end = (uint32_t *)&here - 64;           /* the stack this runs on: this frame and 256 B under it stay */
+    for (d = (uint32_t *)lo; d < end; d++)
+        *d = STACK_PAINT;
+}
+
+static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the stack has held since boot */
+{
+    const volatile uint32_t *d = (const uint32_t *)lo;
+    while ((char *)d < top && *d == STACK_PAINT)
+        d++;
+    return (uint32_t)(top - (char *)d);
+}
+
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
     static uint32_t sub, last, acc, next;
@@ -144,6 +232,48 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         return sizeof v;
     }
 #endif
+    if (page >= 121u && page <= 124u) {         /* #273 canary build: .lowram and the stacks (see canary_scan) */
+        uint32_t v[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+        const canary_t *c = &canary_last;
+        if (page == 123u) {
+            canary_scan(&canary_last);
+            v[0] = canary_armed;
+            v[1] = (uint32_t)((uintptr_t)_lr_limit - (uintptr_t)_lr_start);
+            v[2] = c->changed;
+            v[3] = c->first;
+            v[4] = c->last;
+            v[5] = c->runs;
+            v[6] = c->ms;
+            v[7] = (uint32_t)(uintptr_t)_lr_start;
+        } else if (page == 122u) {
+            for (i = 0; i < CANARY_SAMPLES; i++) {
+                v[2u * i] = c->sa[i];
+                v[2u * i + 1u] = c->sv[i];
+            }
+        } else if (page == 121u) {
+            c = &canary_ota.c;
+            v[0] = canary_ota.magic == CANARY_OTA_MAGIC && canary_ota.sum == canary_sum(c);
+            v[1] = c->changed;
+            v[2] = c->first;
+            v[3] = c->last;
+            v[4] = c->runs;
+            v[5] = c->sa[0];
+            v[6] = c->sv[0];
+            v[7] = c->ms;
+        } else {
+            v[0] = 3u;                          /* (the #304 layout; 3: a canary build, nothing placed in .lowram) */
+            v[1] = (uint32_t)((uintptr_t)_lr_end - (uintptr_t)_lr_start);
+            v[2] = (uint32_t)((uintptr_t)_lr_limit - (uintptr_t)_lr_end);
+            v[3] = (uint32_t)(_ustack_top - _ustack_lo);
+            v[4] = stack_deepest(_ustack_lo, _ustack_top);
+            v[5] = (uint32_t)(_sstack_top - _sstack_lo);
+            v[6] = stack_deepest(_sstack_lo, _sstack_top);
+            v[7] = (uint32_t)((uintptr_t)_guard0 - (uintptr_t)_pool_end);   /* the pool left free */
+        }
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 127u) {
         uint32_t v[7];
         v[0] = cpu_pct;
@@ -1135,6 +1265,9 @@ void fm1_cstart(void)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
         *d = *s;                                /* flash driver code that must run from RAM */
+    canary_fill();                              /* #273 canary build: after .ram_text, up to 0x01C07F00 */
+    stack_paint(_ustack_lo, _ustack_top);
+    stack_paint(_sstack_lo, _sstack_top);
     fm1_mailbox_clear();
     diag_prev.p3 = p3;                          /* (diag_prev is in .bss: after the clear above) */
     diag_prev.src = src;

@@ -281,6 +281,8 @@ def check(img, syms, dis, rt):
     bss = sym("_bss_end") - ram_org
     pool = sym("_pool_end") - sym("_pool_start")
     notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of {ram_len}; pool {pool} B of {pool_len}")
+    lowram, lr_free = sym("_lr_end") - sym("_lr_start"), sym("_lr_limit") - sym("_lr_end")
+    notes.append(f".lowram {lowram} B ({lr_free} B free after it and .ram_text, up to {sym('_lr_limit'):#010x})")
     if region["RAM"][0] + ram_len != region["POOL"][0]:
         errors.append("app.ld: POOL does not start where RAM ends")
     if ram_len - bss < 4096:                      # keep >= 4 KiB of .bss spare (state the audio side touches)
