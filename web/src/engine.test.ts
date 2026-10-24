@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCK, Engine } from './engine';
 import { devicesOf } from './pages';
-import { DEFS, DELAY_TIME_MAX, DELAY_TIME_MIN } from './modules';
+import { DEFS, DELAY_SYNC_TOP, DELAY_TIME_MIN } from './modules';
 import { EDITOR_MAX_PARTS, addModule, clearMorph, connect, disconnect, emptyPatch, fromUnit, hasMorph, modulate, morphValue, paramUnit, paramValue, processingOrder, removeModule, sameStructure, setMorphTarget, toUnit, validatePatch, type Patch, type PolyCfg } from './patch';
 import { copiesOf, polyGroups } from './poly';
 import { fixAssemblies, makeAssembly } from './assembly';
@@ -2295,7 +2295,7 @@ describe('delay sync and ping-pong', () => {
   };
   it('a synced delay follows the clock: 1/4 is one beat', () => {
     // 24 ticks per beat, a tick every 460 samples = 11040 samples per beat; the delayed constant 1 appears after that
-    const { first } = run({ sync: 1, time: DELAY_TIME_MIN + (6 / 10) * (DELAY_TIME_MAX - DELAY_TIME_MIN) }, 460);
+    const { first } = run({ sync: 1, time: DELAY_TIME_MIN + (6 / 10) * (DELAY_SYNC_TOP - DELAY_TIME_MIN) }, 460);
     const at = first.findIndex((v) => v > 0.5);
     expect(at * 128).toBeGreaterThan(11040 - 400);
     expect(at * 128).toBeLessThan(11040 + 400);

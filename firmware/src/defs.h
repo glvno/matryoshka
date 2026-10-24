@@ -793,6 +793,7 @@ enum {
 
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
+#define DELAY_SYNC_TOP 520   /* ms: the synced note lengths spread over 1..this (modules.ts) */
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
 static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {6, 4, 3, 8, 2, 4, 1, 2, 1, 2, 1};
 static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1"};
@@ -932,9 +933,9 @@ static const char *const MIXER_UNIT[] = {"", "", "", ""};
 static const char *const *const MIXER_CH[] = {0, 0, 0, 0};
 static const char *const DELAY_INNAMES[] = {"IN", "CLK", "P1", "P2"};
 static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0};
-static const int32_t DELAY_MAX[] = {34078720, 62259, 65536, 65536, 65536};
+static const int32_t DELAY_MAX[] = {65536000, 62259, 65536, 65536, 65536};
 static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0};
-static const int32_t DELAY_INC[] = {340132, 655, 655, 65536, 65536};
+static const int32_t DELAY_INC[] = {654705, 655, 655, 65536, 65536};
 static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG"};
 static const uint8_t DELAY_LOG[] = {0, 0, 0, 0, 0};
 static const char *const DELAY_UNIT[] = {"MS", "", "", "", ""};

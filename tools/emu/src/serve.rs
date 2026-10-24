@@ -18,7 +18,8 @@
 //!   peak MARK           the loudest sample since MARK (16 bit)                                           -> peak N
 //!   wav MARK PATH       the audio since MARK as a WAV                                                    -> ok
 //!   ms                  emulated time                                                                    -> ms N
-//!   quit
+//!   stacks              the stack paint not yet reached (machine.rs `untouched`)                          -> stack paint: ..
+//!   quit                (writes the same line to stderr first)
 //! Lines on stdout that are not answers start with "# " (with M1EMU_TRACE set: every short message the FM-1 sends).
 
 use crate::machine::Machine;
@@ -306,7 +307,11 @@ pub fn run(app: &[u8], flash: Option<&[u8]>, name: &str) -> std::process::ExitCo
                             say("ok".into());
                         }
                         Some("ms") => say(format!("ms {}", m.ms())),
-                        Some("quit") => return std::process::ExitCode::SUCCESS,
+                        Some("stacks") => say(m.stack_report()),
+                        Some("quit") => {
+                            eprintln!("# {}", m.stack_report());
+                            return std::process::ExitCode::SUCCESS;
+                        }
                         Some(c) => say(format!("err unknown command {c}")),
                         None => {}
                     }

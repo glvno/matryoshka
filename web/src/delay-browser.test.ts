@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// The browser's long Delay (docs/ledger/modules.md D-426): its time reaches 1.6 s here, the FM-1's 520 ms. Within 520 ms the
-// browser plays as before (and as the FM-1); past it the patch is browser only, so over the FM-1 budget and never sent.
+// The browser's long Delay (docs/ledger/modules.md D-426): its time reaches 1.6 s here, the FM-1's 1000 ms (520 ms until #273).
+// Within 1000 ms the browser plays as the FM-1; past it the patch is browser only, so over the FM-1 budget and never sent.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { DEFS, DELAY_TIME_BROWSER, DELAY_TIME_MAX, DEVICE_SR } from './modules';
+import { DEFS, DELAY_SYNC_TOP, DELAY_TIME_BROWSER, DELAY_TIME_MAX, DEVICE_SR } from './modules';
 import { addModule, connect, emptyPatch, modulate, morphValue, topOf, type Patch } from './patch';
 import { browserOnly, deviceBudget, encodePatch, toQ16 } from './patchbin';
 import { Engine } from './engine';
@@ -38,23 +38,32 @@ function echoAt(params: Record<string, number>, secs = 2.5): { l: number; r: num
 }
 
 /** the FM-1's line in samples at SR (engine.c DELAY_LEN) */
-const FM1_LINE = Math.round((SR * 23000) / DEVICE_SR);
+const FM1_LINE = Math.round((SR * 44178) / DEVICE_SR);
+/** the synced delay's beat with no clock: 120 bpm */
+const BEAT = Math.round(SR / 2);
 
 describe('the browser-only long Delay', () => {
   it('keeps the FM-1 range for everything the FM-1 shares, and stretches only in the browser', () => {
     expect(delayPd.max).toBe(DELAY_TIME_MAX);
-    expect(DELAY_TIME_MAX).toBe(520);
+    expect(DELAY_TIME_MAX).toBe(1000);
     expect(topOf(delayPd)).toBe(DELAY_TIME_BROWSER);
     expect(DELAY_TIME_BROWSER).toBe(1600);
-    // defs.h (export-defs) keeps 520 ms: the firmware is unchanged
+    // defs.h (export-defs) has the FM-1's 1000 ms, and the 520 ms the synced note lengths spread over
     const defs = readFileSync(new URL('../../firmware/src/defs.h', import.meta.url), 'utf8');
-    expect(defs).toMatch(new RegExp(`DELAY_MAX\\[\\] = \\{${toQ16(520)},`));
+    expect(defs).toMatch(new RegExp(`DELAY_MAX\\[\\] = \\{${toQ16(1000)},`));
+    expect(defs).toMatch(/#define DELAY_SYNC_TOP 520\b/);
   });
 
-  it('plays a time within 520 ms as before: free, and synced (a note length longer than the FM-1 line is cut to it)', () => {
+  it('plays a time within 1000 ms as the FM-1: free, and synced (a note length longer than the FM-1 line is cut to it)', () => {
     expect(echoAt({ time: 500 }).l).toBe(Math.round(0.5 * SR));
     expect(echoAt({ time: 250 }).l).toBe(Math.round(0.25 * SR));
-    // synced, no clock (120 bpm): the top of the range is 1/1, two seconds, cut to the FM-1's line
+    expect(echoAt({ time: 1000 }).l).toBe(Math.round(1.0 * SR));
+    // synced, no clock (120 bpm): the note lengths stay spread over 1..520 ms, so 250 ms still picks a dotted eighth
+    expect(DELAY_SYNC_TOP).toBe(520);
+    expect(echoAt({ time: 250, sync: 1 }).l).toBe(Math.round((3 * BEAT) / 4));
+    // a half note (1 s at 120 bpm) fits the FM-1's line now; 1/1 (two seconds) is cut to it
+    expect(echoAt({ time: 1 + (8 / 10) * (DELAY_SYNC_TOP - 1), sync: 1 }).l).toBe(2 * BEAT);
+    expect(echoAt({ time: DELAY_SYNC_TOP, sync: 1 }).l).toBe(FM1_LINE - 1);
     expect(echoAt({ time: DELAY_TIME_MAX, sync: 1 }).l).toBe(FM1_LINE - 1);
     // ping-pong: half the FM-1's line
     const pp = echoAt({ time: DELAY_TIME_MAX, pingpong: 1 });
@@ -64,13 +73,13 @@ describe('the browser-only long Delay', () => {
   it('reaches 1.6 s past the FM-1 range', () => {
     expect(echoAt({ time: 1200 }).l).toBe(Math.round(1.2 * SR));
     expect(echoAt({ time: 1600 }).l).toBe(Math.round(1.6 * SR));
-    // synced past 520 ms: still the longest note length (1/1), now on the longer line
+    // synced past 1000 ms: still the longest note length (1/1), now on the longer line
     expect(echoAt({ time: 1200, sync: 1 }, 3).l).toBeGreaterThan(Math.round(1.6 * SR) - 1);
     // ping-pong: half the longer line
     expect(echoAt({ time: 1600, pingpong: 1 }).l).toBeGreaterThan(Math.round(0.8 * SR) - 1);
   });
 
-  it('modulation and morph past 520 ms stay in the stretch; within the range they are as before', () => {
+  it('modulation and morph past 1000 ms stay in the stretch; within the range they are as before', () => {
     expect(modulate(delayPd, 300, 1)).toBe(DELAY_TIME_MAX);
     expect(modulate(delayPd, 300, -1)).toBe(1);
     expect(modulate(delayPd, 1200, 0)).toBe(1200);
@@ -81,19 +90,19 @@ describe('the browser-only long Delay', () => {
 
   it('a 1.2 s Delay is browser only: over the FM-1 budget with its reason, and never encoded', () => {
     const p = delayPatch({ time: 1200 });
-    expect(browserOnly(p)).toEqual(['Delay over 520 ms: browser only']);
+    expect(browserOnly(p)).toEqual(['Delay over 1000 ms: browser only']);
     const b = deviceBudget(p);
     expect(b.fits).toBe(false);
-    expect(b.over).toContainEqual({ key: 'browser', label: 'Delay over 520 ms: browser only', used: 1, max: 0 });
-    expect(() => encodePatch(p)).toThrow(/over the FM-1 budget: Delay over 520 ms: browser only/);
+    expect(b.over).toContainEqual({ key: 'browser', label: 'Delay over 1000 ms: browser only', used: 1, max: 0 });
+    expect(() => encodePatch(p)).toThrow(/over the FM-1 budget: Delay over 1000 ms: browser only/);
     // the morph's B side counts too
     const q = delayPatch({ time: 400 });
-    q.modules.find((m) => m.type === 'delay')!.paramsB = { time: 900 };
+    q.modules.find((m) => m.type === 'delay')!.paramsB = { time: 1100 };
     expect(deviceBudget(q).fits).toBe(false);
   });
 
-  it('a Delay within 520 ms fits as before', () => {
-    for (const time of [1, 250, 520]) {
+  it('a Delay within 1000 ms fits', () => {
+    for (const time of [1, 250, 520, 521, 900, 1000]) {
       const p = delayPatch({ time });
       expect(browserOnly(p)).toEqual([]);
       expect(deviceBudget(p).fits).toBe(true);

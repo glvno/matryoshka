@@ -15,7 +15,8 @@
   tools/m1_link.py cpu                    (the audio ISR's load: now, and the peak since the last cpu read)
   tools/m1_link.py uac [SECONDS]          (the USB audio stream: state, glitch counters, rate adjustments, the ring's fill
                                            range; SECONDS: read again after that long and print the changes per second)
-  tools/m1_link.py diag [DIS]             (what the last reset left: its cause, the crash record, where a stalled main loop
+  tools/m1_link.py mem                    (#273: the boot's proof of .lowram and how deep each stack has gone since boot)
+  tools/m1_link.py diag [DIS]           (what the last reset left: its cause, the crash record, where a stalled main loop
                                            was; DIS = the build's matryoshka.dis (CI artifact matryoshka-elf) names the functions)
 Needs mido and python-rtmidi (the Nix dev shell has them).
 """
@@ -180,6 +181,15 @@ def main():
               f"overload {'MUTED' if w[3] else 'no'}, halves {w[4]}")
         if len(w) >= 7:                                 # (firmware with the battery, #240)
             print(f"battery {w[6]} of 1023 (smoothed; 0 = not read yet), its read took {w[5]} us")
+    elif a[0] == "mem":
+        p = link.ask(frame(0x2B, [124]), (0x4B, 124))
+        if len(p) < 33:
+            sys.exit("no memory page (a firmware from before #273)")
+        w = [int.from_bytes(bytes(p[1 + 4 * i:5 + 4 * i]), "little") for i in range(8)]
+        state = {0: "not proved", 1: "proved", 2: "FAILED its pattern test: do not use this build on this FM-1"}
+        print(f".lowram {w[1]} B {state.get(w[0], w[0])}, {w[2]} B free after it; pool {w[7]} B free")
+        for name, size, used in (("main", w[3], w[4]), ("supervisor", w[5], w[6])):
+            print(f"{name} stack: {used} of {size} B at most since boot ({size - used} B never reached)")
     elif a[0] == "uac":
         def read():
             w = []

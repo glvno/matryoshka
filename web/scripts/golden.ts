@@ -717,6 +717,11 @@ const delayKit = (name: string, params: Record<string, number>): void =>
 delayKit('delay-pingpong', { time: 120, pingpong: 1 });
 delayKit('delay-sync', { sync: 1, div: 5, bpm: 133 });
 delayKit('delay-sync-pingpong', { sync: 1, div: 6, bpm: 90, pingpong: 1 });
+// the FM-1's 1 s line (#273): echoes past the old 521 ms, free, synced (a half note at 120 bpm) and ping-pong (half the line)
+delayKit('delay-long', { time: 900 });
+delayKit('delay-long-sync', { sync: 1, time: 416 });
+delayKit('delay-long-pingpong', { time: 1000, pingpong: 1 });
+for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong']) ends[n] = 128 * 800;
 kit('feedback-pm', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 0, pm: 2 });

@@ -212,6 +212,7 @@ pub fn run(app: &[u8], out: &str, levels: Option<&str>, strict: bool) -> ExitCod
         t.check("the firmware keeps running", false, format!("halt: {e}"));
     }
     let wall = t0.elapsed().as_secs_f64();
+    println!("\n{} (every machine of the run; a stack's run ends where its deepest use began)", crate::machine::report(&crate::machine::untouched_all()));
     println!(
         "\n{} checks, {} failed, {} level warnings; {:.1} s emulated in {wall:.1} s; snapshots in {out}",
         t.checks,

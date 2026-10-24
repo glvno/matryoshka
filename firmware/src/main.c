@@ -23,6 +23,50 @@ diag_t diag __attribute__((section(".noinit")));        /* (not static: see fm1_
 static volatile uint32_t diag_alive, diag_armed;      /* fm1_ms of the main loop's last pass; set once the loop runs */
 static struct { uint32_t p3, src, wdt; diag_t stall; fm1_crash_t crash; } diag_prev;   /* (m1_link.py diag reads it as u32s) */
 
+/* #273: the SRAM below the RAM region (app.ld .lowram: the reverb and chorus lines) and the two stacks. The boot proves
+ * .lowram word by word (two patterns, then zero) and paints both stacks with STACK_PAINT (on the stack it runs on, only
+ * below its own frame); DIAG page 124 (tools/m1_link.py mem) reports the proof and how deep each stack has gone since boot.
+ * The emulator reads the same paint (tools/emu/src/machine.rs PAINT). */
+extern uint32_t _lr_start[], _lr_end[], _lr_limit[];
+extern char _ustack_top[];
+#define STACK_PAINT 0x5AC3A55Cu
+#define LOWRAM_PAT 0xA5A55A5Au
+static uint8_t lowram_state;                    /* 1: every word of .lowram took and gave back both patterns; 2: one did not */
+
+static void lowram_prove(void)
+{
+    volatile uint32_t *d;
+    uint32_t bad = 0;
+    for (d = _lr_start; d < _lr_end; d++)
+        *d = (uint32_t)(uintptr_t)d ^ LOWRAM_PAT;
+    for (d = _lr_start; d < _lr_end; d++) {
+        bad |= *d ^ ((uint32_t)(uintptr_t)d ^ LOWRAM_PAT);
+        *d = ~((uint32_t)(uintptr_t)d ^ LOWRAM_PAT);
+    }
+    for (d = _lr_start; d < _lr_end; d++) {
+        bad |= *d ^ ~((uint32_t)(uintptr_t)d ^ LOWRAM_PAT);
+        *d = 0;
+    }
+    lowram_state = bad ? 2u : 1u;
+}
+
+static void stack_paint(char *lo, char *top)
+{
+    volatile uint32_t here = 0, *d, *end = (uint32_t *)top;
+    if ((char *)&here >= lo && (char *)&here < top)
+        end = (uint32_t *)&here - 64;           /* the stack this runs on: this frame and 256 B under it stay */
+    for (d = (uint32_t *)lo; d < end; d++)
+        *d = STACK_PAINT;
+}
+
+static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the stack has held since boot */
+{
+    const volatile uint32_t *d = (const uint32_t *)lo;
+    while ((char *)d < top && *d == STACK_PAINT)
+        d++;
+    return (uint32_t)(top - (char *)d);
+}
+
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
     static uint32_t sub, last, acc, next;
@@ -144,6 +188,20 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         return sizeof v;
     }
 #endif
+    if (page == 124u) {                         /* #273: .lowram and the stacks */
+        uint32_t v[8];
+        v[0] = lowram_state;
+        v[1] = (uint32_t)((uintptr_t)_lr_end - (uintptr_t)_lr_start);
+        v[2] = (uint32_t)((uintptr_t)_lr_limit - (uintptr_t)_lr_end);
+        v[3] = (uint32_t)(_ustack_top - _ustack_lo);
+        v[4] = stack_deepest(_ustack_lo, _ustack_top);
+        v[5] = (uint32_t)(_sstack_top - _sstack_lo);
+        v[6] = stack_deepest(_sstack_lo, _sstack_top);
+        v[7] = (uint32_t)((uintptr_t)_guard0 - (uintptr_t)_pool_end);   /* the pool left free */
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 127u) {
         uint32_t v[7];
         v[0] = cpu_pct;
@@ -1118,6 +1176,9 @@ void fm1_cstart(void)
         *d = 0;
     for (d = _pool_start; d < _pool_end; d++)
         *d = 0;
+    lowram_prove();
+    stack_paint(_ustack_lo, _ustack_top);
+    stack_paint(_sstack_lo, _sstack_top);
     for (s = _data_load, d = _data_start; d < _data_end; s++, d++)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)
