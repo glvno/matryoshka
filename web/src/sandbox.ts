@@ -38,9 +38,14 @@ export function chipEl(c: Chip): HTMLSpanElement {
 /** how many times the FM-1's budget, rounded up to a tenth so a patch just over never reads 1.0× */
 const times = (x: number): string => `${(Math.ceil(x * 10 - 1e-9) / 10).toFixed(1)}×`;
 
-/** the status line's words for a sandbox patch: "Plays here, with no FM-1 limits: 2.7× its CPU, 2.1× its memory." */
-export function sandboxWords(b: Pick<Budget, 'memory' | 'cpu'>): string {
-  const parts = [...(b.cpu.use > 1 ? [`${times(b.cpu.use)} its CPU`] : []), ...(b.memory > 1 ? [`${times(b.memory)} its memory`] : [])];
+/** the status line's words for a sandbox patch: "Plays here, with no FM-1 limits: 2.7× its CPU, 2.1× its memory." (and any
+ *  browser-only ability it uses: "Delay over 520 ms") */
+export function sandboxWords(b: Pick<Budget, 'memory' | 'cpu'> & { over?: Budget['over'] }): string {
+  const parts = [
+    ...(b.cpu.use > 1 ? [`${times(b.cpu.use)} its CPU`] : []),
+    ...(b.memory > 1 ? [`${times(b.memory)} its memory`] : []),
+    ...(b.over ?? []).filter((i) => i.key === 'browser').map((i) => i.label.replace(/: browser only$/, '')),
+  ];
   return parts.length ? `Plays here, with no FM-1 limits: ${parts.join(', ')}.` : 'Plays here, with no FM-1 limits.';
 }
 

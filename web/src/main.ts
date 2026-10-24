@@ -56,7 +56,7 @@ import { PRESETS } from './presets';
 import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
+import { binaryPage, browserOnly, deviceBudget, editorPage, encodePatch, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
 import { whatsNew } from './whats-new';
@@ -504,6 +504,14 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
       queueEmu();
       return;
     }
+    // a parameter with a browser-only stretch (the Delay's time past 520 ms) can take the patch over the FM-1 budget or
+    // back under it: the budget first, so Live pauses before the value would go out (and sends the patch again once it fits)
+    const pd = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']?.params.find((q) => q.name === name);
+    if (pd?.browserMax !== undefined && (browserOnly(editor.patch).length > 0) === fitsDevice) {
+      const was = fitsDevice;
+      showBudget();
+      if (!was && fitsDevice && live() && !fromDevice) queueUpload();
+    }
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
     if (live() && !uploading) device.param(editor.patch, id, name, value);
@@ -799,7 +807,7 @@ function showBudget(): void {
   if (liveSync.pausesNow(device.connected, liveOn, was, b.fits)) device.live(true);   // (#200: the FM-1 says so at once)
   const el = $('budget');
   el.classList.toggle('over', !b.fits);
-  const memOver = b.over.filter((i) => i.key !== 'cpu');
+  const memOver = b.over.filter((i) => i.key !== 'cpu' && i.key !== 'browser');
   const fullest = memOver[0] ?? b.fullest;
   const [mem, cpu] = el.querySelectorAll('.budget-row');
   meterRow(mem, 'MEM', memOver.length ? 1.01 : b.memory, memOver.length ? 'over' : `${Math.round(b.memory * 100)} %`);
@@ -828,6 +836,7 @@ function showBudget(): void {
     ...b.items.filter((i) => i.used > 0).map((i) => budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)),
     head('CPU, estimated'),
     ...costly,
+    ...(b.over.some((i) => i.key === 'browser') ? [head('Browser only'), ...b.over.filter((i) => i.key === 'browser').map((i) => budgetLine(i.label, 1.01, 'over', '', false))] : []),
   );
   const note = document.createElement('p');
   note.className = 'muted';
@@ -1444,7 +1453,7 @@ function emuLoad(): void {
   // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
   // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
   const b = deviceBudget(editor.patch);
-  const over = b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
     err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });

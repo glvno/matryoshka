@@ -6,7 +6,7 @@ import { devicesOf, homeDevice } from './pages';
 import { deviceBudget } from './patchbin';
 import { kindOf, switches, toggleTargets } from './buttons';
 import { CPU_WARN } from './cpu';
-import { PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import type { Patch } from './patch';
 
 const SR = 48000;
@@ -15,7 +15,7 @@ const WHITE = new Set([0, 2, 4, 5, 7, 9, 11]);
 
 /** a kit's Drum map, DRUMS track and Main, and the rows (1..8) with a gate cable */
 function kit(name: string): { p: Patch; rows: number[] } {
-  const p = PRESETS[name]();
+  const p = FM1_PRESETS[name]();
   const map = p.modules.find((m) => m.type === 'drummap')!;
   const rows = [...new Set(p.cables.filter((c) => c.from.module === map.id && /^g\d$/.test(c.from.port)).map((c) => +c.from.port.slice(1)))].sort();
   return { p, rows };
@@ -71,11 +71,11 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
 
   it('row names: both kits\' rows are the defaults (the 909 Kit\'s hat on row 4, CL HAT, as the 808\'s)', () => {
     const names = (n: string): string[] => {
-      const m = PRESETS[n]().modules.find((x) => x.type === 'drummap')!;
+      const m = FM1_PRESETS[n]().modules.find((x) => x.type === 'drummap')!;
       return [0, 1, 2].map((r) => drumRowName(m.names, r));
     };
     for (const k of ['808 Kit', '909 Kit']) {
-      expect(PRESETS[k]().modules.find((x) => x.type === 'drummap')!.names, k).toBeUndefined();
+      expect(FM1_PRESETS[k]().modules.find((x) => x.type === 'drummap')!.names, k).toBeUndefined();
       expect(names(k), k).toEqual(DRUM_MAP_DEFAULT.slice(0, 3).map((d) => d.name));
     }
   });
@@ -87,7 +87,7 @@ describe('factory drum kits: the keys play the drums out of the box (#141)', () 
 
 describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on PATTERN, PLAY starts both', () => {
   const parts = (): { p: Patch; mix: number; drums: number; pattern: number } => {
-    const p = PRESETS['<7PH']();
+    const p = FM1_PRESETS['<7PH']();
     const out = p.modules.find((m) => m.type === 'output')!.id;
     const mix = p.cables.find((c) => c.to.module === out && p.modules.find((m) => m.id === c.from.module)!.type === 'mixer')!.from.module;
     const drums = p.modules.find((m) => m.type === 'steps' && m.name === 'DRUMS')!.id;
@@ -96,8 +96,8 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
   };
 
   it('is the last factory patch and fits the FM-1', () => {
-    expect(Object.keys(PRESETS).at(-1)).toBe('<7PH');
-    const b = deviceBudget(PRESETS['<7PH']());
+    expect(Object.keys(FM1_PRESETS).at(-1)).toBe('<7PH');
+    const b = deviceBudget(FM1_PRESETS['<7PH']());
     expect(b.fits, JSON.stringify(b.over)).toBe(true);
   });
 
@@ -148,7 +148,7 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // voice. The drum patches get neither; Oracle V and Algo Four run past the CPU estimate's warning with them (accepted)
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH'];
 const PAST_WARNING = ['Oracle V', 'Algo Four'];
-const PLAYED = Object.keys(PRESETS).filter((n) => !NO_PLAYERS.includes(n));
+const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */
 const OWN_PATTERN = ['Scrounge', 'Meridian 8', 'Perun 4'];
 /** the patches whose keys play voices on the white keys from F3 (Drum maps) */
@@ -202,13 +202,13 @@ const loudest = (x: Float32Array): number => x.reduce((m, v) => Math.max(m, Math
 describe('factory patches: an arpeggiator on ARP and a PATTERN track where they fit (D-336)', () => {
   it('every melodic patch has them, the drum patches do not; only Oracle V and Algo Four pass the CPU warning (accepted)', () => {
     expect(PLAYED).toHaveLength(20);
-    for (const name of NO_PLAYERS) expect(PRESETS[name]().modules.some((m) => m.type === 'arp'), name).toBe(false);
-    expect(PLAYED.filter((name) => deviceBudget(PRESETS[name]()).cpu.use > CPU_WARN)).toEqual(PAST_WARNING);
+    for (const name of NO_PLAYERS) expect(FM1_PRESETS[name]().modules.some((m) => m.type === 'arp'), name).toBe(false);
+    expect(PLAYED.filter((name) => deviceBudget(FM1_PRESETS[name]()).cpu.use > CPU_WARN)).toEqual(PAST_WARNING);
   });
 
   for (const name of PLAYED)
     it(`${name}: Main's keys -> PATTERN (16 steps${OWN_PATTERN.includes(name) ? ', its pattern' : ', empty'}) -> an Arpeggiator, bypassed, on ARP; it fits; ARP off it plays as before, on it arpeggiates`, () => {
-      const p = PRESETS[name]();
+      const p = FM1_PRESETS[name]();
       const main = p.modules.find((m) => m.type === 'fm1')!;
       const arps = p.modules.filter((m) => m.type === 'arp');
       expect(arps).toHaveLength(1);
@@ -251,7 +251,7 @@ describe('factory patches: an arpeggiator on ARP and a PATTERN track where they 
     });
 
   it('notes entered on PATTERN play the voice on PLAY, through the arpeggiator when ARP is on; empty, PLAY alone is silent', () => {
-    const p = PRESETS['Monolith D']();
+    const p = FM1_PRESETS['Monolith D']();
     expect(loudest(play(p, [], { run: true }))).toBe(0);
     p.modules.find((m) => m.type === 'steps' && m.name === 'PATTERN')!.notes = [{ at: 0, len: 8, note: 48, vel: 100 }, { at: 0, len: 8, note: 55, vel: 100 }];
     const straight = play(p, [], { run: true }), arped = play(p, [], { run: true, arpAt: 0 });

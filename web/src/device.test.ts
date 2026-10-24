@@ -5,13 +5,13 @@ import { chipState, liveSync, sameBinary, syncLine, syncOnConnect } from './devi
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
-import { PRESETS } from './presets';
+import { FM1_PRESETS } from './presets';
 import { liveFrame, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
 
-const names = Object.keys(PRESETS);
-const a = encodePatch(PRESETS[names[0]]());
-const b = encodePatch(PRESETS[names[1]]());
+const names = Object.keys(FM1_PRESETS);
+const a = encodePatch(FM1_PRESETS[names[0]]());
+const b = encodePatch(FM1_PRESETS[names[1]]());
 
 describe('syncOnConnect', () => {
   it('syncs without asking when the FM-1 already holds the same patch', () => {
@@ -33,7 +33,7 @@ describe('syncOnConnect', () => {
 
 describe('sameBinary', () => {
   it('ignores the layout: moving cards does not change the binary', () => {
-    const p = PRESETS[names[0]]();
+    const p = FM1_PRESETS[names[0]]();
     const q = structuredClone(p);
     for (const m of q.modules) { m.x += 40; m.y += 20; }
     expect(sameBinary(encodePatch(p), encodePatch(q))).toBe(true);
