@@ -597,6 +597,36 @@ kit('modal', (add, wire) => {
   wire(kb, 'pitch', md, 'pitch');
   wire(md, 'out', out, 'l');
 });
+// rates and modal settings that move every block (LFOs into p1 / p2): the firmware works their divisions out only when
+// they change (#289), so this kit checks it notices each change
+kit('moving-rates', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const l1 = add('lfo', 0, 0, { wave: 1, rate: 3.1, depth: 0.9 });
+  const l2 = add('lfo', 0, 0, { wave: 4, rate: 7, depth: 0.7 });
+  const ad = add('adsr', 0, 0, { a: 0.02, d: 0.15, s: 0.5, r: 0.2 }, { map: { p1: ['a', 'r'], p2: ['d'] } });
+  const en = add('env', 0, 0, {}, { map: { p1: ['r1', 'r3'], p2: ['r2', 'r4'] } });
+  const nz = add('noise', 0, 0, { level: 0.3 });
+  const md = add('modal', 0, 0, { decay: 0.8, struct: 0.3, bright: 0.5, damp: 0.3 }, { map: { p1: ['decay'], p2: ['bright', 'damp'] } });
+  const o = add('osc', 0, 0, { wave: 3, pw: 0.4, level: 0.7 });
+  const va = add('vca', 0, 0);
+  const vb = add('vca', 0, 0);
+  const mix = add('mixer', 0, 0, { l1: 0.4, l2: 0.4, l3: 0.4 });
+  const out = add('output', 0, 0);
+  [ad, en, md].forEach((m) => { wire(l1, 'out', m, 'p1'); wire(l2, 'out', m, 'p2'); });
+  wire(kb, 'gate', ad, 'gate');
+  wire(kb, 'gate', en, 'gate');
+  wire(kb, 'pitch', o, 'pitch');
+  wire(o, 'out', va, 'in');
+  wire(ad, 'env', va, 'cv');
+  wire(o, 'out', vb, 'in');
+  wire(en, 'env', vb, 'cv');
+  wire(nz, 'out', md, 'in');   // a steady input, so the gains (bright) count all the time
+  wire(kb, 'pitch', md, 'pitch');
+  wire(va, 'out', mix, 'in1');
+  wire(vb, 'out', mix, 'in2');
+  wire(md, 'out', mix, 'in3');
+  wire(mix, 'out', out, 'l');
+});
 kit('shift', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });

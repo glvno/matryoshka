@@ -6,6 +6,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **Less work per block in the FM-1 firmware, the same sound:** the engine stops redoing work that only changes when a
+  setting does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output
+  is bit for bit the same. On the CPU model the factory patches count about 8 % fewer cycles (up to 13 %: 8 Lire, the
+  909 Kit), so the editor's CPU estimates drop too: Oracle V and Algo Four now sit under the warning. Not yet measured
+  on an FM-1.
 - **The XLs have presets:** each XL's engine card offers the same factory presets as its FM-1 version (Init, Bright,
   Dark, Pad, Pluck and so on, where its rows allow). They are browser only, like the XLs.
 - Following the FM-1's panel (and sandbox mode): OCT- / OCT+ on the FM-1 now move the editor's octave too, so the

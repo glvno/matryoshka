@@ -73,7 +73,9 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   // the melodic patches gained an Arpeggiator and PATTERN (D-336, #243; 2 to 4 points of estimate each), which takes Oracle V
   // past the band's top (est 84 %, the survey 75 %)
   // 909 Kit: rows 3 and 5..8 got their voices (the survey measured its first three only; est 59 %)
-  const changed = new Set(['808 kit', 'oracle v', '909 kit']);
+  // Hera 6, Expander S, Algo Four: the engine's overhead cut (#289) took about 8 % off every patch's count, which puts these
+  // three under the band's bottom; the survey measured the engine before it (re-measure: #289's device step)
+  const changed = new Set(['808 kit', 'oracle v', '909 kit', 'hera 6', 'expander s', 'algo four']);
   // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH): measure them on the device, then add them to the survey file
   const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph']);
   it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(FM1_PRESETS).length));
