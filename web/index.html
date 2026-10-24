@@ -146,6 +146,11 @@
         <span id="dev-status" class="muted" role="status"></span>
         <span class="menu-heading">MIDI keyboard</span>
         <button id="dev-release" title="Release MIDI ports by reloading the page. Use before unplugging or flashing the FM-1.">Release MIDI</button>
+        <!-- MIDI clock out (main.ts, clock-out.ts): the ticked outputs get clock at Main's tempo and Start / Stop with Play -->
+        <span class="menu-heading">MIDI clock out</span>
+        <button id="clock-out-btn" type="button" aria-pressed="false">Send MIDI clock: off</button>
+        <div id="clock-out-ports" class="clock-ports" role="group" aria-label="MIDI outputs that get the clock"></div>
+        <p class="muted">Clock at Main’s tempo, and Start / Stop with Play (Space): several FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2; on unless you switched it off). The clock stops when this page closes.</p>
         <form method="dialog"><button>Close</button></form>
       </dialog>
       <!-- connecting the FM-1 (#171, main.ts offerSync): Sync (Enter) or Not now (Esc); the close's returnValue says which -->
