@@ -4,7 +4,8 @@
  * a drum track's Drum map rows, a melodic track's piano roll (#241). The page's 16 steps run across, OCT- / OCT+ page
  * through a track longer than 16 steps (17-32 ...).
  *
- *   SEQ             opens / closes the page; held + a black key: mute / unmute that track (from any page, not saved)
+ *   SEQ             opens / closes the page; held + a black key: mute / unmute that track (from any page, not saved);
+ *                   held + REC (here): clear the selected track, asked first (REC again within 3 s: seq_clear_press)
  *   ALGO            steps through the tracks (not while REC records the armed one)
  *   SELECT          the selected row, a row a click (a drum track: clamped at the first and the last; the roll scrolls
  *                   its window of 8 pitches when it reaches an edge); with a white key held: that step's chance
@@ -71,6 +72,11 @@ static uint8_t seq_held_n;
 static uint8_t seq_held_turned;         /* a knob turned while it is held (the press's switch is undone once) */
 static int8_t seq_shown_pos = -2;       /* the playhead as last drawn */
 static const char *seq_msg_due;         /* a key's message for the bar, shown by the loop's pass (a key never draws: D-228) */
+static uint16_t seq_msg_ms;             /* ... its time on show (0: 800 ms) */
+static char seq_msg_buf[28];            /* ... a message made up of a track's name */
+static uint32_t seq_clear_at;           /* SEQ held + REC (#231): fm1_ms | 1 of the press that asked, 0 none */
+static uint32_t seq_clear_gen;          /* ... the patch then */
+static uint8_t seq_clear_trk;           /* ... the track it asked for */
 
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's track (0..10), else -1 */
 static int seq_white(uint32_t n)
@@ -717,6 +723,47 @@ static void seq_arm_key(uint32_t n)
     seq_track_redraw();
 }
 
+/* SEQ held + REC on the SEQ page (#231, the owner, 2026-10-23): clear the selected track, as FACTORY RESET asks first.
+ * The first press asks in the bar (CLEAR name? REC AGAIN, 3 s); REC again within them, SEQ still held and nothing else
+ * pressed or turned meanwhile (seq_clear_cancel), removes all its notes: a drum grid's hits and a roll's notes, the cells
+ * cleared in place, the editor told (one step in its undo). A key handler: state only, the bar is the loop's (D-228) */
+#define SEQ_CLEAR_MS 3000u
+static void seq_clear_press(void)
+{
+    int mod = seq_module();
+    char name[TRACK_NAME_MAX + 8];
+    if (mod < 0)
+        return;
+    seq_name(seq_trk, name);
+    if (seq_clear_at && seq_clear_trk == seq_trk && seq_clear_gen == pages_gen() && fm1_ms - (seq_clear_at & ~1u) < SEQ_CLEAR_MS) {
+        static const uint32_t none[1];
+        seq_clear_at = 0;
+        (void)eng_steps_set_notes((uint32_t)mod, none, 0);
+        seq_held = -1;
+        seq_sync(mod);
+        put(put(seq_msg_buf, name), " CLEARED")[0] = 0;
+        seq_msg_due = seq_msg_buf;
+        seq_msg_ms = 1200;
+        ui_dirty = ui_dirty ? ui_dirty : 1;      /* (the cells that had notes) */
+        return;
+    }
+    seq_clear_at = fm1_ms | 1u;
+    seq_clear_gen = pages_gen();
+    seq_clear_trk = seq_trk;
+    put(put(put(seq_msg_buf, "CLEAR "), name), "? REC AGAIN")[0] = 0;   /* (26 characters at most: a name has 8) */
+    seq_msg_due = seq_msg_buf;
+    seq_msg_ms = SEQ_CLEAR_MS;
+}
+/* anything else pressed or turned, or SEQ let go, while the clear asks: not cleared */
+static void seq_clear_cancel(void)
+{
+    if (!seq_clear_at)
+        return;
+    seq_clear_at = 0;
+    seq_msg_due = "NOT CLEARED";
+    seq_msg_ms = 0;
+}
+
 /* the page is left: REC on the armed track while stopped and the black keys' recording end (a live take goes on) */
 static void seq_leave(void)
 {
@@ -917,7 +964,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     const uint32_t *ws;
     int nn = eng_steps_notes((uint32_t)mod, &ws), j, pos = eng_steps_pos((uint32_t)mod), tick;
     int32_t len = seq_len(mod), k0 = seq_pg * 16;
-    char line[40], num[8], *p;
+    char line[48], num[8], *p;
     const char *hint;
     int remark = !full && !seq_grid_ok;          /* the markers' columns unknown: each drawn or cleared */
     if (full || !seq_grid_ok) {
@@ -992,7 +1039,13 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         p = put(p, "  ARMED");
     if (eng_steps_muted((uint32_t)mod))
         p = put(p, "  MUTED");
-    put(p, seq_armed_trk() == (int)seq_trk || eng_steps_muted((uint32_t)mod) ? "" : map >= 0 ? "  ALGO: TRACK" : "  BLACK/ALGO: TRACK")[0] = 0;
+    if (seq_armed_trk() != (int)seq_trk && !eng_steps_muted((uint32_t)mod)) {
+        p = put(p, map >= 0 ? "  ALGO: TRACK" : "  BLACK/ALGO: TRACK");
+        *put(p, "  SEQ+REC: CLEAR") = 0;           /* (#231: where it fits) */
+        if (text_w(&FONT_S, line, -1) > 224u)
+            *p = 0;
+    } else
+        *p = 0;
     seq_grid_line(1, 202, line, C_DIM, 224);
     if (map >= 0)
         hint = seq_rec ? "BLACK hit  SEL row  WHITE step  FX acc" : "BLACK/SEL row  WHITE step  FX acc  K2 vel";
@@ -1056,9 +1109,12 @@ static void seq_poll(void)
     int mod;
     seq_take();
     if (seq_msg_due) {
-        ui_msg(seq_msg_due, 800);
+        ui_msg(seq_msg_due, seq_msg_ms ? seq_msg_ms : 800u);
         seq_msg_due = 0;
+        seq_msg_ms = 0;
     }
+    if (seq_clear_at && fm1_ms - (seq_clear_at & ~1u) >= SEQ_CLEAR_MS)
+        seq_clear_at = 0;                        /* (the clear asked in vain: its message ends with it) */
     if (page != PAGE_SEQ) {
         kbd_was = -1;
         return;

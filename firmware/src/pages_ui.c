@@ -1341,65 +1341,122 @@ static void env_status(uint32_t d, char *out)
     }
 }
 
-static void env_row(uint32_t d, uint32_t y)
+/* a list row's look as a number (FNV-1a over what it shows), so a redraw paints only the rows whose look changed (#229) */
+static uint32_t row_sig(uint32_t h, const char *s, uint32_t n)
+{
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        h = (h ^ (uint8_t)s[i]) * 16777619u;
+    return h;
+}
+static uint32_t row_sig_word(uint32_t h, uint32_t v)
+{
+    uint32_t i;
+    for (i = 0; i < 4u; i++, v >>= 8)
+        h = (h ^ (v & 0xFFu)) * 16777619u;
+    return h;
+}
+
+/* a row of the environment or the preset list (#229), drawn a scanline at a time into lcd.c's line (the frame, the
+ * square or stripe, the type blended onto them), so every pixel goes out once and a row that changes does not blink.
+ * frame 0: none, 1: ivory lines over and under, 2: and at the sides. mark_w 8: a track's square, 3: a stripe, 0 none.
+ * a in afg, then b (0 none) in coral; c (0 none) in the small type, 3 px lower */
+static void list_row(uint32_t y, int frame, uint16_t bg, uint32_t mark_x, uint32_t mark_w, uint16_t mark, const char *a,
+                     uint32_t ax, uint16_t afg, const char *b, uint32_t bx, const char *c, uint32_t cx, uint16_t cfg)
+{
+    uint16_t *row = lcd_line;
+    uint32_t r, i;
+    for (r = 0; r < ENV_ROW_H; r++) {
+        lcd_sync();                                     /* the last row may still be on its way out of lcd_line */
+        for (i = 0; i < 240u; i++)
+            row[i] = P_NIGHT;
+        if (r >= 1u && r < ENV_ROW_H - 1u) {
+            int edge = frame && (r < 3u || r >= ENV_ROW_H - 3u);
+            for (i = 2; i < 238u; i++)
+                row[i] = edge || (frame > 1 && (i < 4u || i >= 236u)) ? P_INK : bg;
+            if (mark_w == 8u && r >= 9u && r < 17u)
+                for (i = mark_x; i < mark_x + 8u; i++)
+                    row[i] = mark;
+            else if (mark_w == 3u && r >= 4u && r < ENV_ROW_H - 4u)
+                for (i = mark_x; i < mark_x + 3u; i++)
+                    row[i] = mark;
+        }
+        if (r >= 4u) {
+            text_onto(row, 240, &FONT_M, r - 4u, a, ax, afg);
+            if (b)
+                text_onto(row, 240, &FONT_M, r - 4u, b, bx, P_CORAL);
+        }
+        if (c && r >= 7u)
+            text_onto(row, 240, &FONT_S, r - 7u, c, cx, cfg);
+        lcd_line_out(0, y + r, 240);
+    }
+}
+
+/* the environment's or the preset list's rows as on the LCD: their looks (row_sig), 0 not drawn, 1 an empty row */
+static uint32_t list_shown[ENV_ROWS];
+
+/* screen row i of the environment: device d (none past pg_ndev), drawn only when its look changed */
+static void env_row(uint32_t d, uint32_t i)
 {
     char name[24], pre[24], st[16];
     const char *pn;
-    uint32_t pl, tr = env_extras(d, &pn, &pl), x = 6u, right, w;
-    int on = d == pg_cur_dev, tn = env_track_no(d);
-    uint16_t bg = on ? P_TRACK : P_PANEL;
-    lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
-    lcd_fill(2, y + 1u, 236, ENV_ROW_H - 2u, bg);
-    if (on) {                                           /* the row in focus: an ivory frame */
-        lcd_fill(2, y + 1u, 236, 2, P_INK);
-        lcd_fill(2, y + ENV_ROW_H - 3u, 236, 2, P_INK);
-        lcd_fill(2, y + 1u, 2, ENV_ROW_H - 2u, P_INK);
-        lcd_fill(236, y + 1u, 2, ENV_ROW_H - 2u, P_INK);
+    uint32_t pl, tr, x = 6u, right, w, mark_x = 0, mark_w = 0, h, y = ENV_Y0 + i * ENV_ROW_H;
+    int on, tn, hue = 0;
+    if (d >= pg_ndev) {
+        if (list_shown[i] != 1u)
+            lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
+        list_shown[i] = 1u;
+        return;
     }
+    tr = env_extras(d, &pn, &pl);
+    on = d == pg_cur_dev;
+    tn = env_track_no(d);
     if (tn >= 0)                                        /* a track: a square in its hue */
-        lcd_fill(x + 2u, y + 9u, 8, 8, TRACK_HUE[tn & 3]), x += 14u;
+        mark_x = x + 2u, mark_w = 8u, hue = tn, x += 14u;
     else if (tr != ENG_NO_TRACK && tr < pg_ndev) {      /* driven by a track: indented, a stripe in the track's hue */
-        int h = env_track_no(tr);
-        lcd_fill(x + 2u, y + 4u, 3, ENV_ROW_H - 8u, TRACK_HUE[(h < 0 ? 0 : h) & 3]);
-        x += 12u;
+        int t = env_track_no(tr);
+        mark_x = x + 2u, mark_w = 3u, hue = t < 0 ? 0 : t, x += 12u;
     }
     caps(name, pg_dev[d].name, pg_dev[d].nlen, 16);
     env_status(d, st);
     right = st[0] ? text_w(&FONT_S, st, -1) + 10u : 6u;
     fit(name, &FONT_M, 236u - right - x);
     w = text_w(&FONT_M, name, -1);
-    text_bc(&FONT_M, x, y + 4u, name, P_INK, bg, w, TA_LEFT);
-    x += w + 8u;
-    if (pn && x + 20u < 236u - right) {                 /* the preset's name: what room is left (cut first) */
+    pre[0] = 0;
+    if (pn && x + w + 8u + 20u < 236u - right) {        /* the preset's name: what room is left (cut first) */
         caps(pre, pn, pl, 16);
-        fit(pre, &FONT_M, 236u - right - x);
-        text_bc(&FONT_M, x, y + 4u, pre, P_CORAL, bg, text_w(&FONT_M, pre, -1), TA_LEFT);
+        fit(pre, &FONT_M, 236u - right - x - w - 8u);
     }
-    if (st[0])
-        text_bc(&FONT_S, 236u - right + 4u, y + 7u, st, env_armed(d) ? P_SEA : P_DIM, bg, right - 8u, TA_RIGHT);
+    h = row_sig_word(row_sig_word(2166136261u, d), (uint32_t)on << 16 | mark_w << 8 | (uint32_t)hue);
+    h = row_sig(row_sig(row_sig(h, name, str_len(name) + 1u), pre, str_len(pre) + 1u), st, str_len(st) + 1u);
+    h = row_sig_word(h, (uint32_t)env_armed(d)) | 2u;   /* (never 0 or 1) */
+    if (list_shown[i] == h)
+        return;
+    list_shown[i] = h;
+    list_row(y, on ? 2 : 0, on ? P_TRACK : P_PANEL, mark_x, mark_w, TRACK_HUE[hue & 3], name, x, P_INK,
+             pre[0] ? pre : 0, x + w + 8u, st[0] ? st : 0, 242u - right, env_armed(d) ? P_SEA : P_DIM);
 }
 
+/* the environment: whole, or the rows whose look changed (SELECT: the old and the new row; past the window: the list,
+ * not the bar; #229) */
 static void env_draw(int full)
 {
     uint32_t i;
     pages_ensure();
-    if (full || pg_strip_dirty) {
+    if (full) {
         if (!msg_until)
             pages_strip();
-        pg_strip_dirty = 0;
+        for (i = 0; i < ENV_ROWS; i++)
+            list_shown[i] = 0;
     }
+    pg_strip_dirty = 0;                                 /* (the bar here does not show the focus) */
     if (pg_cur_dev < env_first)
         env_first = pg_cur_dev;
     if (pg_cur_dev >= env_first + ENV_ROWS)
         env_first = pg_cur_dev + 1u - ENV_ROWS;
-    for (i = 0; i < ENV_ROWS; i++) {
-        uint32_t y = ENV_Y0 + i * ENV_ROW_H;
-        if (env_first + i < pg_ndev)
-            env_row(env_first + i, y);
-        else
-            lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
-    }
-    if (!pg_ndev)
+    for (i = 0; i < ENV_ROWS; i++)
+        env_row(env_first + i, i);
+    if (!pg_ndev && full)
         text_bc(&FONT_S, 8, ENV_Y0 + 4u, "NO DEVICES ON THIS PATCH", P_FAINT, P_NIGHT, 0, TA_LEFT);
 }
 
@@ -1641,42 +1698,56 @@ static int presets_turn(int32_t s)
     return dp_load(pg_cur_dev, pr_sel) == 0;
 }
 
+/* the preset list's bar: PRESETS and the device, on gold (ui.c header_draw: a message's end puts it back) */
+static void presets_bar(void)
+{
+    char t[20];
+    pages_ensure();
+    caps(t, pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].name : "", pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].nlen : 0, 16);
+    lcd_fill(0, 0, BATT_X, 20, P_GOLD);
+    text_bc(&FONT_S, 8, 3, "PRESETS", P_NIGHT, P_GOLD, 80, TA_LEFT);
+    text_bc(&FONT_S, 88, 3, t, P_NIGHT, P_GOLD, 126, TA_RIGHT);
+}
+
+/* the list: whole, or the rows whose look changed (SELECT: the old and the new row, the one named coral; past the
+ * window: the list; #229). The bar is header_draw's */
 static void presets_draw(int full)
 {
     uint32_t n, i, first;
-    (void)full;
     pages_ensure();
-    lcd_fill(0, 0, BATT_X, 20, P_GOLD);
-    {
-        char t[20];
-        caps(t, pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].name : "", pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].nlen : 0, 16);
-        text_bc(&FONT_S, 8, 3, "PRESETS", P_NIGHT, P_GOLD, 80, TA_LEFT);
-        text_bc(&FONT_S, 88, 3, t, P_NIGHT, P_GOLD, 126, TA_RIGHT);
-    }
+    if (full)
+        for (i = 0; i < ENV_ROWS; i++)
+            list_shown[i] = 0;
     n = dp_list(pg_cur_dev);
     if (pr_sel >= n)
         pr_sel = 0;
     first = pr_sel >= ENV_ROWS ? pr_sel + 1u - ENV_ROWS : 0u;
     for (i = 0; i < ENV_ROWS; i++) {
-        uint32_t y = ENV_Y0 + i * ENV_ROW_H, k = first + i;
+        uint32_t y = ENV_Y0 + i * ENV_ROW_H, k = first + i, h;
         char nm[17], t[20];
+        int on = k == pr_sel, named;
         if (k >= n) {
-            lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
+            if (list_shown[i] != 1u)
+                lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
+            list_shown[i] = 1u;
             continue;
-        }
-        lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
-        lcd_fill(2, y + 1u, 236, ENV_ROW_H - 2u, k == pr_sel ? P_TRACK : P_PANEL);
-        if (k == pr_sel) {
-            lcd_fill(2, y + 1u, 236, 2, P_INK);
-            lcd_fill(2, y + ENV_ROW_H - 3u, 236, 2, P_INK);
         }
         if (dp_entry(pr_list[k], nm) < 0)
             put(nm, "?")[0] = 0;
         caps(t, nm, str_len(nm), 16);
-        text_bc(&FONT_M, 10, y + 4u, t, ps_name_cmp(nm, pg_pname[pg_cur_dev]) ? P_INK : P_CORAL, k == pr_sel ? P_TRACK : P_PANEL, 160, TA_LEFT);
-        text_bc(&FONT_S, 170, y + 7u, (pr_list[k] & PR_USER) ? "YOURS" : "FACTORY", P_DIM, k == pr_sel ? P_TRACK : P_PANEL, 60, TA_RIGHT);
+        fit(t, &FONT_M, 160);
+        named = !ps_name_cmp(nm, pg_pname[pg_cur_dev]);
+        h = row_sig_word(row_sig_word(2166136261u, k), (uint32_t)on | (uint32_t)named << 1 | (pr_list[k] & PR_USER));
+        h = row_sig(h, t, str_len(t) + 1u) | 2u;
+        if (list_shown[i] == h)
+            continue;
+        list_shown[i] = h;
+        {
+            const char *src = (pr_list[k] & PR_USER) ? "YOURS" : "FACTORY";
+            list_row(y, on, on ? P_TRACK : P_PANEL, 0, 0, 0, t, 10, named ? P_CORAL : P_INK, 0, 0, src, 230u - text_w(&FONT_S, src, -1), P_DIM);
+        }
     }
-    if (!n)
+    if (!n && full)
         text_bc(&FONT_S, 8, ENV_Y0 + 4u, "NO PRESETS: ENV HELD + SAVE STORES ONE", P_FAINT, P_NIGHT, 0, TA_LEFT);
 }
 

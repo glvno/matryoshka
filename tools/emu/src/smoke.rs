@@ -455,6 +455,18 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "seq: REC with nothing armed opens the drum grid", "DRUMS REC");
     m.tap(REC, 120, 1300)?;
     t.screen(&m, "seq: REC again: off, the grid stays", "ALGO: TRACK");
+    t.screen(&m, "clear: the track line names it (#231)", "SEQ+REC: CLEAR");
+    m.key(SEQ, true);                        // SEQ held + REC: the track's clear asks; REC again within 3 s clears it (#231)
+    m.run_for(200)?;
+    m.tap(REC, 120, 300)?;
+    t.screen(&m, "clear: SEQ held + REC asks first", "CLEAR DRUMS? REC AGAIN");
+    m.tap(REC, 120, 300)?;
+    t.screen(&m, "clear: REC again clears the track", "DRUMS CLEARED");
+    let c = cell(&m);
+    t.check("clear: the grid's hits are gone (the kick's step 2 dark)", c != 0xffbd, format!("{c:#06x}"));
+    m.key(SEQ, false);
+    m.run_for(1500)?;
+    t.screen(&m, "clear: the page stays after it", "ALGO: TRACK");
     m.tap(SEQ, 120, 400)?;
     if let Some(gb) = presets.iter().position(|(n, _)| n == "<7PH") {
         // the piano roll (#241): <7PH's PATTERN (melodic) on 8 pitch rows; a white key switches the selected pitch
