@@ -73,6 +73,8 @@ static const char *const MANUAL[] = {
     " REC: BLACK KEYS RECORD HITS (FROM",
     "   ANOTHER PAGE: A DRUM TRACK'S)",
     " SEQ HELD + BLACK KEY: MUTE TRACK",
+    " SEQ HELD + REC: CLEAR THE TRACK",
+    "   (IT ASKS: REC AGAIN WITHIN 3 S)",
     " REC HELD + BLACK KEY: ARM TRACK",
     "   (KEY 1 = TRACK 1, ON A DRUM PAGE",
     "   TOO), THE KEYS PLAY THROUGH IT.",

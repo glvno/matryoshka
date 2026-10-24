@@ -284,6 +284,9 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 7u; k++)                        /* MIDI out: the encoders as they turn, before anything uses them */
         if (ENC_CC[k] && st[k])
             midi_send(0xB0u, ENC_CC[k], rel_cc(st[k]));
+    for (k = 0; k < 7u; k++)                        /* a turn while the track's clear asks: not cleared (#231) */
+        if (st[k])
+            seq_clear_cancel();
     if (page == PAGE_MENU) {                        /* the settings menu: ALGO tabs, SELECT rows, K1..K4 the value */
         menu_knobs(st);
         if (st[6])                                  /* (PRESET only ever steps the patches) */
@@ -435,6 +438,8 @@ static int panel_key(uint32_t n, int down, int quick)
     if (quick && down && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ)))
         return 0;
     keys_now ^= bit;
+    if (down)                                       /* a key while the track's clear asks: not cleared (#231) */
+        seq_clear_cancel();
     eng_midi_channel(cfg.ch);
     if (down && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
         seq_arm_key(n);
@@ -543,6 +548,14 @@ static void panel_edges(uint32_t p, uint32_t rel)
             if (rel >> id & 1u)
                 midi_send(0xB0u, BTN_CC[id], 0u);
         }
+    }
+    if ((p & ~(1u << BTN_REC)) || (rel & (1u << BTN_SEQ)))   /* the track's clear asks: another button, or SEQ let go, */
+        seq_clear_cancel();                                   /* and it is not cleared (#231) */
+    if (page == PAGE_SEQ && (p & (1u << BTN_REC)) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + REC: clear the track,
+                                                     * asked first (#231); neither SEQ's nor REC's release does its own */
+        seq_held_used = rec_held_used = 1;
+        p &= ~(1u << BTN_REC);
+        seq_clear_press();
     }
     if (page == PAGE_MENU) {                        /* the menu: OCT- / OCT+ step the selected row's value */
         if (p & (1u << BTN_OCT_DOWN))

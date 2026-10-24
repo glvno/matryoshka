@@ -43,6 +43,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   while stopped shows the roll with REC on (black keys sound, white keys place notes); running, every key records. This
   replaces step entry (the cursor, FX + OCT rest, LFO + OCT tie), which is gone from the FM-1 (#241).
 - FM-1: REC with nothing armed opens the SEQ page on a drum track, so the hits are seen landing; REC off stays there.
+- FM-1: clear a whole track from the SEQ page: hold SEQ and press REC; the bar asks (CLEAR DRUMS? REC AGAIN) and REC
+  again within 3 s, SEQ still held, removes all the track's hits or notes. Any other key, button or knob, or letting go
+  of SEQ, leaves the track as it was (NOT CLEARED). The editor follows, as one undo step with Live on (#231).
+- FM-1: turning SELECT on the ENV page or a device's preset list redraws only the old and the new row instead of the
+  whole screen (a scroll redraws the list, never the bar), so the list no longer flickers as it turns (#229).
 - The first community patch: **Lire + Elvira**, 8 Lire and Elvira 2 layered on one keyboard (slimmed to fit the FM-1),
   under Community in the Open picker and the palette.
 - FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go

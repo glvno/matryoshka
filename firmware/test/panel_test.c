@@ -2051,6 +2051,121 @@ int main(void)
               load("8 LIRE") == 0 && eng_keys_drummap() >= 0 && load("SCROUNGE") == 0 && eng_keys_drummap() >= 0);
     }
 
+    {                                                       /* #231: SEQ held + REC clears the selected track, asked first */
+        static uint32_t keep[TRACK_NOTES_MAX];
+        const uint32_t *w;
+        int kit, mod, keep_n, i, n;
+        for (kit = 0; kit < 2; kit++) {
+            const char *what = kit ? "<7PH's PATTERN (the roll)" : "the 808 Kit's DRUMS (the grid)";
+            char want[32], name[TRACK_NAME_MAX + 8];
+            uint32_t all, bar;
+            while (page != 0u && trail_n)
+                tap(BTN_HOME);
+            if (eng_transport_running())
+                tap(BTN_PLAY);
+            if (kit)
+                (void)load_at(N_PRESETS - 1u);
+            else
+                (void)load("808 KIT");
+            pv_gen++;
+            page = 0;
+            trail_n = 0;
+            screen_idle();
+            seq_select(kit ? 1u : 0u);
+            page_set(PAGE_SEQ);
+            later(2000);
+            mod = seq_module();
+            keep_n = eng_steps_notes((uint32_t)mod, &w);
+            for (i = 0; i < keep_n; i++)
+                keep[i] = w[i];
+            seq_name(seq_trk, name);
+            printf("      (%s: %d notes)\n", what, keep_n);
+            check(kit ? "(<7PH's PATTERN on the SEQ page, notes on it)" : "(the 808 Kit's DRUMS on the SEQ page, hits on it)",
+                  page == PAGE_SEQ && keep_n > 0 && (kit ? seq_map() < 0 : seq_map() >= 0));
+
+            panel_held |= 1u << BTN_SEQ;                    /* SEQ held, REC: it asks */
+            panel_edges(1u << BTN_SEQ, 0);
+            loop();
+            tap(BTN_REC);
+            put(put(put(want, "CLEAR "), name), "? REC AGAIN")[0] = 0;
+            printf("      (the bar: \"%s\")\n", msg_text);
+            check("SEQ held + REC: the bar asks (CLEAR name? REC AGAIN), nothing cleared, REC not switched on",
+                  !strcmp(msg_text, want) && eng_steps_notes((uint32_t)mod, &w) == keep_n && seq_rec == 0u && page == PAGE_SEQ);
+            later(SEQ_CLEAR_MS + 100u);                     /* the 3 s run out: REC asks again, it does not clear */
+            tap(BTN_REC);
+            check("  after 3 s: REC asks again, nothing cleared", !strcmp(msg_text, want) && eng_steps_notes((uint32_t)mod, &w) == keep_n);
+            fb_watch_reset();
+            lcd_px = lcd_xfers = 0;
+            tap(BTN_REC);                                   /* REC again within them: cleared */
+            all = fb_changed_in(0, BAR_H, 240, 240);
+            bar = fb_changed_in(0, BAR_H, 240, MARK_UP_Y) + fb_changed_in(0, GRID_TICK_Y, 240, 240);   /* (the roll's markers go too) */
+            put(put(want, name), " CLEARED")[0] = 0;
+            printf("      (cleared: %u LCD transfers, %u pixels; the bar: \"%s\")\n", (unsigned)lcd_xfers, (unsigned)lcd_px, msg_text);
+            check(kit ? "  REC again: the roll's notes all gone, its cells cleared in place (no blink, nothing else below the bar)"
+                      : "  REC again: the grid's hits all gone, its cells cleared in place (no blink, nothing else below the bar)",
+                  eng_steps_notes((uint32_t)mod, &w) == 0 && !strcmp(msg_text, want) && all > 0u && bar == 0u && fb_blinked_below(BAR_H) == 0u
+                  && (kit ? roll_shows(mod) && marks_ok(mod) : 1) && seq_rec == 0u);
+            {
+                uint16_t keep_fb[240 * 240];
+                memcpy(keep_fb, fb, sizeof keep_fb);
+                ui_dirty = 2;
+                loop();
+                check("  what it drew is what a whole redraw draws", !memcmp(keep_fb + 240u * BAR_H, fb + 240u * BAR_H, sizeof keep_fb - 480u * BAR_H));
+            }
+            panel_held &= ~(1u << BTN_SEQ);
+            panel_edges(0, 1u << BTN_SEQ);
+            loop();
+            check("  SEQ let go: the page stays, REC off", page == PAGE_SEQ && seq_rec == 0u && !strcmp(msg_text, want));
+
+            (void)eng_steps_set_notes((uint32_t)mod, keep, (uint32_t)keep_n);   /* a key between: not cleared */
+            seq_sync(mod);
+            ui_dirty = 2;
+            later(2000);
+            panel_held |= 1u << BTN_SEQ;
+            panel_edges(1u << BTN_SEQ, 0);
+            loop();
+            tap(BTN_REC);
+            for (n = 0; seq_white(n) != 15; n++)            /* (the last white key: a step on, then off again) */
+                ;
+            panel_keys(1u << n);
+            panel_keys(0);
+            loop();
+            check("  a key while it asks: NOT CLEARED", !strcmp(msg_text, "NOT CLEARED"));
+            panel_keys(1u << n);
+            panel_keys(0);
+            loop();
+            (void)eng_steps_set_notes((uint32_t)mod, keep, (uint32_t)keep_n);
+            seq_sync(mod);
+            tap(BTN_REC);
+            check("  then REC asks again, nothing cleared", eng_steps_notes((uint32_t)mod, &w) == keep_n && !strncmp(msg_text, "CLEAR ", 6));
+            enc(0, 1);
+            check("  a knob turned while it asks: NOT CLEARED", !strcmp(msg_text, "NOT CLEARED"));
+            enc(0, -1);
+            tap(BTN_REC);
+            panel_held &= ~(1u << BTN_SEQ);                 /* SEQ let go while it asks: not cleared */
+            panel_edges(0, 1u << BTN_SEQ);
+            loop();
+            check("  SEQ let go while it asks: NOT CLEARED, the page stays", !strcmp(msg_text, "NOT CLEARED") && page == PAGE_SEQ);
+            panel_held |= 1u << BTN_SEQ;
+            panel_edges(1u << BTN_SEQ, 0);
+            loop();
+            tap(BTN_REC);
+            check("  held again, REC: it asks again (the first press never clears)", eng_steps_notes((uint32_t)mod, &w) == keep_n && !strncmp(msg_text, "CLEAR ", 6));
+            panel_held &= ~(1u << BTN_SEQ);
+            panel_edges(0, 1u << BTN_SEQ);
+            loop();
+            tap(BTN_REC);                                   /* REC alone: recording on / off as before */
+            check("  REC alone after it: recording on, nothing cleared", seq_rec != 0u && eng_steps_notes((uint32_t)mod, &w) == keep_n);
+            tap(BTN_REC);
+            later(2000);
+        }
+        (void)load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+    }
+
     lcd_sync();
     check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
           lcd_line_clobbers == 0u);
