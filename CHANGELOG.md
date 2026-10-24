@@ -10,6 +10,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   Dark, Pad, Pluck and so on, where its rows allow). They are browser only, like the XLs.
 - Following the FM-1's panel (and sandbox mode): OCT- / OCT+ on the FM-1 now move the editor's octave too, so the
   on-screen keyboard shows the notes you are playing and the computer keys shift with it.
+- Sandbox mode beginning while the FM-1 shows another screen (its SEQ page, say) now brings the sandbox page up at once;
+  before, it waited for HOME. The editor and the FM-1 keep one transport in sandbox mode: a sequence the FM-1 was playing
+  goes on in the browser, and the editor's PLAY and Space start and stop the FM-1's too (FM-1 firmware and editor).
 - Connecting the FM-1 while the editor holds a sandbox patch now offers Sync, as for any patch: Sync makes the FM-1
   its controller (sandbox mode). Before, it made no offer and the FM-1 stayed unsynced.
 - Following the FM-1's panel (and sandbox mode, which follows it by itself) no longer takes each key and button twice: the

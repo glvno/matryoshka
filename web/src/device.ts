@@ -46,7 +46,16 @@ export const liveSync = {
   /** sandbox mode: Live paused because the patch is a sandbox patch; the editor follows the FM-1's panel and sends it its
    *  page (SANDBOX), and the FM-1 (feature bit 8) mutes itself */
   sandbox: (connected: boolean, live: boolean, fits: boolean): boolean => connected && live && !fits,
+  /** the editor's PLAY (and Space) starts and stops the FM-1's transport too: Live on, in sandbox mode as well, so the FM-1's
+   *  PLAY and its steps stay in step with the browser's */
+  transports: (connected: boolean, live: boolean): boolean => connected && live,
+  /** sandbox mode began: the transport both run from now (the FM-1's as last heard, its Start / Stop, and the editor's), so
+   *  a sequence the FM-1 was playing goes on in the browser and the FM-1's steps do not run on, silent, on their own */
+  sandboxRuns: (fm1Runs: boolean, editorPlays: boolean): boolean => fm1Runs || editorPlays,
 };
+/** a MIDI Start or Continue (true), Stop (false), or neither (null): the FM-1's PLAY as it goes out (panel.c play_toggle) */
+export const transportOf = (data: ArrayLike<number> | null | undefined): boolean | null =>
+  !data || data.length !== 1 ? null : data[0] === 0xfa || data[0] === 0xfb ? true : data[0] === 0xfc ? false : null;
 /** the hover of the chip in sandbox mode */
 export const SANDBOX_HOVER = 'Your patch is a sandbox patch, so the FM-1 plays it as a controller: the browser makes the sound. It syncs normally again once the patch fits.';
 /**
@@ -97,6 +106,8 @@ export class DeviceLink {
   private paramQueue = new Map<string, [number, number, number]>();
   private paramTimer = 0;
   info: Info | null = null;
+  /** the FM-1's transport runs, as its last Start / Stop said or the editor last set it (transport) */
+  running = false;
   /** PRESETS's answers, one frame each, while listPresets waits for them */
   private collecting: ((e: DevicePresetEntry) => void) | null = null;
   onStatus: (s: string) => void = () => {};
@@ -115,7 +126,13 @@ export class DeviceLink {
     this.out = pick(access.outputs.values());
     this.inp = pick(access.inputs.values());
     if (!this.out || !this.inp) throw new Error('FM-1 not found. Is it connected and running the Matryoshka firmware?');
+    this.running = false;
     this.inp.onmidimessage = (ev) => {
+      const run = transportOf(ev.data);
+      if (run !== null) {
+        this.running = run;
+        return;
+      }
       if (ev.data && ev.data.length === 3 && (ev.data[0] & 0xf0) === 0xb0) return this.onEvent({ kind: 'cc', n: ev.data[1], v: ev.data[2] });
       const p = ev.data ? parse(ev.data) : null;
       if (p?.cmd === CMD.slotNow && p.payload.length >= 1) {
@@ -208,6 +225,7 @@ export class DeviceLink {
   transport(run: boolean): void {
     if (!this.connected || !this.hasTransport) return;
     this.out!.send(transportFrame(run));
+    this.running = run;
   }
 
   private async sendChunks(bin: Uint8Array): Promise<void> {

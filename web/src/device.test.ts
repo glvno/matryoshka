@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect } from './device';
+import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, transportOf } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
@@ -128,6 +128,23 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
     expect(off.text).toBe('FM-1 \u00b7 turn on MIDI OUT (GLO, K3) to control the sandbox');
     expect(off.midiOff).toBe(true);
     expect(off.title.startsWith(SANDBOX_HOVER)).toBe(true);
+  });
+
+  it('keeps one transport: the editor\'s PLAY reaches the FM-1 in sandbox mode, and either one running runs both', () => {
+    expect(liveSync.transports(true, true)).toBe(true);
+    expect(liveSync.transports(true, false)).toBe(false);
+    expect(liveSync.transports(false, true)).toBe(false);
+    expect(liveSync.sandboxRuns(true, false)).toBe(true);   // (the FM-1's sequence was playing: the browser's goes on)
+    expect(liveSync.sandboxRuns(false, true)).toBe(true);
+    expect(liveSync.sandboxRuns(false, false)).toBe(false);
+  });
+
+  it('hears the FM-1\'s PLAY as MIDI Start / Continue / Stop', () => {
+    expect(transportOf([0xfa])).toBe(true);
+    expect(transportOf([0xfb])).toBe(true);
+    expect(transportOf([0xfc])).toBe(false);
+    expect(transportOf([0xf8])).toBe(null);
+    expect(transportOf([0xb0, 89, 127])).toBe(null);
   });
 
   it('asks for the 1.3 firmware when the FM-1 has no sandbox mode (it keeps its sound)', () => {

@@ -2045,6 +2045,21 @@ int main(void)
         check("Live lapsed: sandbox mode ends", !sb_on && !snd_muted);
         enc(6, 1);
         check("Live lapsed: PRESET steps again", presets_stepped == stepped + 1 && cur_preset != slot);
+        later(1600);
+        tap(BTN_SEQ);                                       /* the SEQ page up (its steps may run) when the patch goes over */
+        check("SEQ without sandbox mode: the SEQ page", page == PAGE_SEQ);
+        m1_live(1);
+        loop();
+        check("sandbox mode begun on the SEQ page: the sandbox page comes up at once", sb_on && page == 0u && px(4, 4) == P_GOLD);
+        m1_live(0);
+        loop();
+        tap(BTN_GLO);
+        m1_live(1);
+        loop();
+        check("  begun on GLO (the FM-1's own page): GLO stays", sb_on && page == PAGE_GLO);
+        tap(BTN_HOME);
+        m1_live(0);
+        loop();
         preset_loads = 0;
     }
 
