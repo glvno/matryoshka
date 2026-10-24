@@ -2280,3 +2280,25 @@ if (import.meta.env.DEV) {
   link.textContent = 'Edit lessons';
   document.querySelector('.sidebar-bottom')?.append(link);
 }
+
+// the emulator scenarios (npm run emu:scenarios, docs/EMULATOR.md, #290): open a patch by name, read the editor's side of
+// the link. Development server only
+if (import.meta.env.DEV) {
+  const inputs: unknown[] = [];   // what the followed FM-1's panel did, as the mirror read it
+  const onInput = mirror.onInput;
+  mirror.onInput = (i) => { inputs.push({ at: Math.round(performance.now()), ...i }); onInput(i); };
+  (window as unknown as { __m1test?: unknown }).__m1test = {
+    inputs: (): unknown[] => inputs.splice(0),
+    open: (name: string): boolean => {
+      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      if (o) loadNamed(o.load(), { from: o.from });
+      return !!o;
+    },
+    state: () => ({
+      connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
+      playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
+      syncAsk: syncAsk.open, status: $('dev-status').textContent,
+    }),
+    patchJson: (): string => JSON.stringify(editor.patch),
+  };
+}

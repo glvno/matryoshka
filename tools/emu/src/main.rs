@@ -7,19 +7,23 @@
 //!       a free run: SCRIPT is fm1-emu's (`800:n7,1500:n7^,2000:e6:1,2500:mc005`,
 //!       times in ms: key down, `^` up, encoder clicks, MIDI bytes); snapshots go to lcd_MS.png;
 //!       --text prints whether the string is on the screen at the end
+//!   m1emu serve BIN [--flash-in F] [--name NAME]
+//!       real time, USB MIDI on a virtual MIDI port NAME ("FM-1 (emu)"), commands on stdin (serve.rs); BIN must be an
+//!       M1_EMU_MIDI=1 build (CI artifact matryoshka-emu-midi)
 //!
 //! BIN is the build's matryoshka.bin (app.bin, runs from 0x02000120).
 
 mod font;
 mod machine;
 mod png;
+mod serve;
 mod smoke;
 
 use machine::Machine;
 use std::process::ExitCode;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]");
+    eprintln!("usage: m1emu smoke BIN [--out DIR] [--levels FILE] [--strict]\n       m1emu run BIN [--ms N] [--keys SCRIPT] [--snap MS,..] [--wav FILE] [--flash-in F] [--flash-out F] [--text S]\n       m1emu serve BIN [--flash-in F] [--name NAME]");
     ExitCode::from(2)
 }
 
@@ -44,6 +48,10 @@ fn main() -> ExitCode {
             smoke::run(&app, out, levels.as_deref(), a.iter().any(|x| x == "--strict"))
         }
         "run" => run(&app, &a),
+        "serve" => {
+            let flash = opt(&a, "--flash-in").map(|p| std::fs::read(p).expect("--flash-in"));
+            serve::run(&app, flash.as_deref(), opt(&a, "--name").unwrap_or("FM-1 (emu)"))
+        }
         "xip" => {
             // BIN may be an update package: its app area is the XIP window as it stands
             let xip = if app.len() > 4 && bin.ends_with(".fwsc") {

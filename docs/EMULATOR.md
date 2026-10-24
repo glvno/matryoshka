@@ -32,6 +32,34 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
   --flash-in F --flash-out F --text S` is a free run (SCRIPT as fm1-emu's: `800:n7,1500:n7^,2000:e6:1,2500:mc005`;
   snapshots as `lcd_MS.png` in the current directory).
 
+## The editor link: `m1emu serve` and the scenarios
+
+fm1-emu has no USB controller, so the checks that cross the editor link (Sync, Live, sandbox mode, PRESET with the
+editor, the reconnect) run against a firmware built for it ([D-119](ledger/releases.md#D-119), issue #290):
+
+- **The firmware:** `M1_EMU_MIDI=1 python3 tools/build.py` (CI does this after the normal build: artifact
+  `matryoshka-emu-midi`, `matryoshka-emu.bin` and its ELF). Its `usb_poll` moves USB-MIDI event packets through a mailbox
+  in RAM (`m1_emu_mb` in `firmware/src/usb.c`, found by its magic words `M1EM` `MIDI`) instead of EP1; the rest of the
+  MIDI path (the rings, SysEx, the editor protocol) is the normal one. It is never packaged or installed. The normal
+  build does not change: the flag defaults to 0 (checked by comparing the CI builds' sha256 before and after).
+- **`m1emu serve BIN [--name NAME]`:** the firmware in real time (the interpreter runs at about 0.75x, so emulated time
+  falls behind under load), its MIDI on a CoreMIDI virtual source and destination named `NAME` (default `FM-1 (emu)`,
+  which the editor's port match takes like a real FM-1), and a line protocol on stdin for the panel, the LCD and the
+  audio (`tools/emu/src/serve.rs` lists it). `M1EMU_TRACE=1` prints every short message the FM-1 sends.
+- **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--headed]`:** builds m1emu and the panel WebAssembly,
+  starts this checkout's dev server on a free port, starts `m1emu serve`, and drives the editor in Chrome (playwright-core
+  with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
+  over-budget patch is sandbox mode (the sandbox page on the LCD, the FM-1 silent under a key); ARP twice; OCT; PRESET;
+  back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL. The page sees
+  only the emulator's MIDI port, so a real FM-1 plugged in is never touched. A development-server hook (`__m1test` in
+  `main.ts`) opens patches by name and reports the link's state. Without BIN it fetches the `matryoshka-emu-midi`
+  artifact of this commit's firmware run (else its branch's, else main's). Results and LCD snapshots go to
+  `build/emu/scenarios/`; about four minutes.
+- **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
+  merges ([D-120](ledger/releases.md#D-120)).
+
+Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.
+
 ## The smoke test (`tools/emu/src/smoke.rs`)
 
 It reads the LCD with the firmware's own font (`font.rs` parses `font5x7.c` and finds a string drawn by
@@ -46,7 +74,7 @@ fm1-emu does not model besides P33. Snapshots of each step, a WAV and the levels
 
 ## What it does not cover
 
-- **USB is not emulated**: the editor's SysEx link, USB MIDI, firmware installs (M-UPGRADE, the loader), recovery and
+- **USB is not emulated**: the smoke test leaves out the editor's SysEx link and USB MIDI (`emu:scenarios` covers them, above), firmware installs (M-UPGRADE, the loader), recovery and
   the UBOOT SysEx are untested by it. The bank is therefore seeded in the flash image, not uploaded.
 - **P33** (watchdog, reset reason, reboot, UBOOT entry: `firmware/hal/fm1_sys.h`) is not modelled: the boot-loop
   guard and MENU > UPDATE MODE cannot be checked.
