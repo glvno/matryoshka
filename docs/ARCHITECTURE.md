@@ -663,15 +663,21 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   and unit right, ivory tick = live; an empty slot where the page has fewer rows; `pages_bar` composes each bar a scanline
   at a time and blends the type onto it, `text_onto`; modulated bars are redrawn ten times a second), the page rail
   (y 206: a segment per page, the focus coral, its heading's others dim) and the patch / transport line (y 214). A turned
-  knob's toast (full size with its range bar, one second) covers the bars. While SELECT or ALGO turns (#221) a card fills
-  the whole screen instead, fill and type only (`pages_card`, `pages_card_draw`): SELECT's device card on red
-  (`P_CARD_DEV`, `--ref-red`), the device's name big and "n/m" of the devices; ALGO's page card on blue (`P_CARD_PAGE`,
-  `--ref-blue`), the device's name small, the page's big (as its chip names it) and "n/m" of its pages; ivory type on
-  both (5.8:1 and 5.3:1). PRESET's patch name (#170) keeps the night. The first click fills the screen (57,600 px to the
-  LCD, against 108,000 for the whole page), the next ones repaint only the type's bands (9,000 to 12,500 px); nothing
-  else is drawn while it shows. The page (strip, chips, bars, rail, foot line) is drawn once, `PG_CARD_MS` (400 ms) after
-  the last click, or at once when K1..K4 turn (on the page the card named) or when the focus moves another way (the
-  editor, a Page button, HOME's trail). Preview: `CARD=1` / `CARD=2 tools/ui_preview.sh`. There is
+  knob moves its own bar in place (#298, `pages_row_update`): only the columns its fill's end and live tick crossed, and
+  its value and unit, are redrawn (about 700 px a click), from what the bar showed (`pg_drawn`); there is no knob toast.
+  SELECT, ALGO and PRESET (#298) name what they
+  reached in a title toast (`pages_title`): 30 px high in the bar of K2 or K3 whose name and value leave the widest room,
+  in the middle as far as that room allows (`ttl_place`; on 40 of the 321 factory pages none does, and it covers the foot
+  band instead); SELECT's on red (`P_CARD_DEV`, the device's name and "n/m" of the devices), ALGO's on blue
+  (`P_CARD_PAGE`, the page as its chip names it and "n/m" of its pages), PRESET's on ivory (the patch's name and its slot
+  of the bank's, #170); 600 ms after the last click (PRESET's: a second). The page they reached is drawn at once under it
+  (`pages_staged`, over the page that was there: `pg_plain`): the toast first (about 3,000 px to the LCD), then the strip
+  for another device or patch, the chips and the band of each bar that holds its type (about 24,500 px in all: the rows
+  readable), then the rest of the bars, the rail and the foot line (about 47,000 px for ALGO, against 108,000 for a whole
+  page drawn over a cleared screen); nothing is cleared first, and each bar composes the toast into its own scanlines
+  (`ttl_onto`). Between bands it gives way when an encoder has a step waiting (`pages_waiting`, main.c `encs_waiting`):
+  turning fast redraws only the toast. When the toast's time is up only its rectangle is redrawn. Preview: `TITLE=1` /
+  `TITLE=2` / `PATCHTOAST=1 tools/ui_preview.sh`. There is
   no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
   HOME goes back along the trail (below; on the device pages with nothing to go back to it does nothing; the legend is
   gone); MIDI CC 16..19 set the rows (absolute). A poly row writes the
@@ -703,8 +709,12 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
     hysteresis on the way up. USB configured by a host and not suspended (`usb.config && !usb.suspended`) shows a bolt
     instead: no pin tells a charger apart (Felucca's note), so a plain USB charger shows the battery. State only: the
     loop's drawing (`panel_draw` -> `batt_draw`, menu.c) blits the 20 x 20 cell at the bar's right end (`BATT_X` 220;
-    no bar, card or message paints it) only when the shown level changes, says LOW BATTERY once when the level falls to
-    0 (again only after a bar or USB came back), and redraws the BATTERY row's value on an idle SYSTEM tab. Host builds
+    no bar, card or message paints it) only when the shown level or the bar's ground changes, says LOW BATTERY once
+    when the level falls to 0 (again only after a bar or USB came back), and redraws the BATTERY row's value on an idle
+    SYSTEM tab. The cell takes the ground of the bar beside it: every bar fills through `bar_fill` (ui.c), which records
+    its colour. On the device strip (and night) the cell keeps its own colours (a red outline when empty, one bar coral,
+    a seafoam bolt); on any other bar it is drawn in one ink that reads there: night on a light bar (sandbox and preset
+    gold, GLO coral, ENV lilac, a list's sea, a message's ivory or red), ivory on a dark bar. Host builds
     (host_ui.h `BATT_START` 900: the preview, the tests, EMU) start full; fm1-emu's ch 3 reads 640.
 - **Button kinds (#116, designs E / F):** each patch button has one kind per patch (`web/src/buttons.ts`): Nothing
   (unassigned, no role), Gate (on while held or switched; patch its jack) or Toggle (`bypass` in the model: bypasses a
@@ -779,8 +789,8 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   ui_preview and drives the panel (it rebuilds the wasm when a source is newer).
 - The editor's Emulator view (EMU, #110): one of the PATCH | EMU | LIBRARY switch's views over the main area
   (`#view-switch`, main.ts `setView`; PATCH on a page load, not remembered; #218). Firmware installs are the Install
-  panel (`#flash-view`, `openInstall` / `closeInstall`), over the main area and not a view: Get started > Install
-  firmware, the palette's Install firmware, `#flash`, and Connect FM-1 when the FM-1 answers M-VAVE's identity handshake
+  panel (`#flash-view`, `openInstall` / `closeInstall`), over the main area and not a view: Get started >
+  Install (it reads "Install v1.2": the bundled package's version, `__INSTALL_VERSION__`), the palette's Install firmware, `#flash`, and Connect FM-1 when the FM-1 answers M-VAVE's identity handshake
   with other firmware (`identifyFm1`, mirror.ts). Addresses: `#library` / `#assemblies` / `#presets` / `#community` open LIBRARY on
   that section (the last one is remembered per browser, `matryoshka.library-section`), `#emu` and `#fm1` EMU.
 - The Library (#218, part 2): it manages what is stored and opens or inserts nothing (opening is the Open picker's, the

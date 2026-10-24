@@ -128,7 +128,7 @@ static int32_t sandbox_knob(uint32_t k, int32_t c, int fast)
 static void sandbox_bar(void)
 {
     char nm[SB_PATCH + 1u];
-    lcd_fill(0, 0, BATT_X, BAR_H, P_GOLD);              /* (x BATT_X on: the battery's cell, ui.c) */
+    bar_fill(P_GOLD);                                   /* (x BATT_X on: the battery's cell, ui.c) */
     text_bc(&FONT_S, 8, 3, "SANDBOX", P_NIGHT, P_GOLD, 72, TA_LEFT);
     caps(nm, sb.patch, sb_have ? str_len(sb.patch) : 0u, SB_PATCH);
     fit(nm, &FONT_S, BATT_X - 92u);

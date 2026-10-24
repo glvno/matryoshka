@@ -698,7 +698,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
             } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
                 eng_ctl(ENG_CTL_AT, (int32_t)(n * 65536u / 127u));
             } else if (st == 0xC0u && cfg.prog_chg && slot_used(n) && !editor_live()) {   /* program change n: bank slot n (an empty one, or the editor's Live: nothing) */
-                pages_patch_ask();                     /* its name over the bars, as PRESET (#170) */
+                pages_patch_ask();                     /* its name in the title toast, as PRESET (#170, #298) */
                 preset_load(n);
             }
         }
@@ -760,6 +760,17 @@ static void master_boot(void)
             return;
         }
     }
+}
+
+/* a draw of the device page gives way when an encoder has a step waiting (pages_ui.c pages_staged, #298): SELECT, ALGO,
+ * K1..K4, PRESET. Only looks (knobs_poll takes them) */
+static int encs_waiting(void)
+{
+    uint32_t e;
+    for (e = 0; e < 7u; e++)
+        if (fm1_enc_waiting(e))
+            return 1;
+    return 0;
 }
 
 /* the HAL's inputs into the panel core (panel.c) */
@@ -958,7 +969,7 @@ static uint32_t m1_test_peak(void)
     tp_on = 1;
     p = tp_peak;
     tp_peak = 0;
-    return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u);
+    return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u) | (master_q12 < 64u ? 1u << 18 : 0u);
 }
 
 /* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No
@@ -1112,6 +1123,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
     batt_drawn = BATT_NONE;                             /* (its cell too) */
+    batt_bg_drawn = C_BG;
     screen_idle();                                      /* the top bar and the page */
     if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
@@ -1124,6 +1136,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
             fm1_input_key_pop();
     }
     panel_yield = keys_yield;
+    pages_waiting = encs_waiting;
     diag_alive = fm1_ms;
     diag_armed = 1;
     for (;;) {

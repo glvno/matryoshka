@@ -65,6 +65,7 @@ import { demoPatch } from './demo';
 import { renamedKey } from './storage-key';
 import { ClockOut, isFm1Out, portLabels } from './clock-out';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
+import { installLabel } from './version';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
@@ -1171,6 +1172,8 @@ $('fit-btn').onclick = () => editor.zoomToFit();
 $('expand-all-btn').onclick = () => editor.setAllOpen(true);
 $('collapse-all-btn').onclick = () => editor.setAllOpen(false);
 $('tour-btn').onclick = () => { toPatch(); tutorial.open(); };
+// Get started > Install names the firmware it installs: "Install v1.2" (version.ts installLabel)
+$('install-btn').textContent = installLabel();
 $('install-btn').onclick = () => openInstall();
 /** the demo patch, with the audio and the transport started (the click is the gesture the browser wants; its drums
  * and the drone's pump are Steps tracks, which play while the transport runs) */

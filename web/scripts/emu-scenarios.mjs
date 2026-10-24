@@ -137,6 +137,23 @@ class RigTarget extends Target {
   async peak() { return (await this.page.evaluate(() => window.__rig.peak())).peak; }
   async snap(name) { writeFileSync(join(OUT, `${name}.json`), JSON.stringify(await this.screen(), null, 1)); }
   quit() {}
+  /** back to the device page from wherever the FM-1 was left (the menu, GLO, SEQ, the environment, a preset list): HOME taps,
+   *  one step back each, reading the screen between; false after `tries` */
+  async home(tries = 6, bootMs = 20000) {
+    const t0 = Date.now();
+    for (let i = 0; ; ) {
+      const h = await this.screen();
+      if (h.booting) {                              // (the boot screen: wait, it is no wrong page)
+        if (Date.now() - t0 > bootMs) return false;
+        await sleep(500);
+        continue;
+      }
+      if (h.page === 0) return true;
+      if (i++ >= tries) return false;
+      await this.tap(B.home);
+      await sleep(300);
+    }
+  }
 }
 
 /** m1emu serve: one command line out, one answer line back (serve.rs) */
@@ -207,8 +224,20 @@ const FILTER_MIDI = (only) => {
 
 const results = [];
 async function check(name, ok, detail = '') {
-  results.push({ name, ok, detail });
+  results.push({ name, status: ok ? 'pass' : 'fail', ok, detail });
   console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`);
+}
+/** a check that hears the FM-1. It needs MASTER up only on a rig whose TEST_PEAK reads after MASTER (firmware without INFO
+ *  feature bit 10): there a silent result is skipped, not failed, since a knob left down is no fault (the owner's rule:
+ *  the run never stops for the volume) */
+let masterMatters = false;
+async function loudCheck(name, p, ok, detail) {
+  if (!ok && masterMatters && p < QUIET) {
+    results.push({ name, status: 'skip', ok: true, skipped: true, reason: 'MASTER down', detail });
+    console.log(`SKIP ${name}: MASTER down? (this firmware reads its peak after MASTER) ${detail}`);
+    return;
+  }
+  await check(name, ok, detail);
 }
 const until = async (f, ms = 3000) => {
   const t = Date.now();
@@ -247,6 +276,11 @@ async function installOnRig(run, url) {
   console.log('emu:scenarios on its M1_EMU_MIDI build (about four minutes)');
   if (spawnSync('node', [fileURLToPath(import.meta.url), join(emuDir, 'matryoshka-emu.bin')], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0)
     throw new Error(`the gate: emu:scenarios failed on run ${run}: nothing installed`);
+  // the gate's own emulator ("FM-1 (emu …)") can outlive its run by a moment: wait for its port to go, so it is not counted as
+  // a second FM-1 (the first try on the owner's rig was refused for it); a real second FM-1 still refuses the install below
+  const emuPorts = () => spawnSync(PY, ['-c', 'import mido; print(sum("(emu " in n for n in mido.get_input_names()))'], { encoding: 'utf8' }).stdout.trim();
+  if (!existsSync(PY)) throw new Error('build/venv is missing: run npm run flash -- --info once (it sets it up)');
+  for (let t = Date.now(); emuPorts() !== '0' && Date.now() - t < 15000; ) await sleep(500);
   const { browser, context } = await launch(url);
   try {
     const s = await survey(await rigPage(context, url));
@@ -309,6 +343,7 @@ async function main() {
       const s = await pickRig(rp);
       pair = s.rig;
       console.log(`rig: ${pair.name} (firmware ${pair.info?.version ?? '?'}), ${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
+      masterMatters = !((pair.info?.features ?? 0) & 1024);   // (protocol.ts FEATURE_PEAK_PRE)
       await context.addInitScript(FILTER_MIDI, { ids: [pair.inId, pair.outId], except: '/__rig' });
     } else {
       [pair] = await rp.evaluate(() => window.__rig.pairs());
@@ -316,6 +351,10 @@ async function main() {
       await rp.evaluate((x) => window.__rig.pick(x), pair);
     }
     emu = new RigTarget(rp);
+    // a known start: the device page (the owner's rig was once left on HOME held's SYSTEM page, and every check failed)
+    if (!(await emu.home())) { const h = await emu.screen(); throw new Error(`the FM-1 did not come back to its device page with HOME (screen page ${h.page}${h.booting ? ', still booting' : ''}): bring it there by hand and run again`); }
+    // MASTER does not matter to the checks (TEST_PEAK reads before it), but say so when nothing can be heard
+    if ((await rp.evaluate(() => window.__rig.peak())).masterDown) console.log('  note: MASTER is all the way down: the checks do not depend on it, but you will hear nothing');
   } else {
     await context.addInitScript(FILTER_MIDI, { name: PORT_NAME });
   }
@@ -351,7 +390,7 @@ async function main() {
       await until(async () => !/sending/i.test((await T()).status ?? ''), 8000);
       await check('connect: the FM-1 shows its device page', await emu.waitText('OCT ', 6000));
       const p = await emu.notePeak();
-      await check('connect: the FM-1 plays Init from a key', p > LOUD, `peak ${p}`);
+      await loudCheck('connect: the FM-1 plays Init from a key', p, p > LOUD, `peak ${p}`);
       await emu.snap('connect');
     },
     async sandbox() {
@@ -412,7 +451,7 @@ async function main() {
       await check('leave: the FM-1 shows its device page', await emu.waitText('OCT '));
       await sleep(500);
       const p = await emu.notePeak();
-      await check('leave: the FM-1 sounds again', p > LOUD, `peak ${p}`);
+      await loudCheck('leave: the FM-1 sounds again', p, p > LOUD, `peak ${p}`);
     },
     async reconnect() {
       await open('Hera 6 XL');
@@ -452,7 +491,7 @@ async function main() {
       }
       await emu.snap('switch-0');
       const s0 = await T();
-      await check('switch: Elvira 2 runs and sounds on the FM-1', p > LOUD && s0.deviceRunning, `peak ${p}${held >= 0 ? ` (key ${held})` : ''}, running ${s0.deviceRunning}`);
+      await loudCheck('switch: Elvira 2 runs and sounds on the FM-1', s0.deviceRunning ? p : LOUD, p > LOUD && s0.deviceRunning, `peak ${p}${held >= 0 ? ` (key ${held})` : ''}, running ${s0.deviceRunning}`);
       await page.evaluate(() => window.__sent.splice(0));
       const t0 = Date.now();
       await open('Elvira 2 XL');
@@ -503,9 +542,10 @@ async function main() {
       vite?.kill();
     }
   }
-  const failed = results.filter((r) => !r.ok);
-  console.log(`\n${results.length - failed.length} of ${results.length} checks passed${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`);
-  process.exit(failed.length ? 1 : 0);
+  const failed = results.filter((r) => !r.ok), skipped = results.filter((r) => r.skipped);
+  const passed = results.length - failed.length - skipped.length;
+  console.log(`\n${passed} of ${results.length} checks passed${skipped.length ? `, ${skipped.length} skipped (${skipped.map((f) => `${f.name}: ${f.reason}`).join('; ')})` : ''}${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`);
+  process.exit(failed.length ? 1 : 0);   // (a skip is no failure)
 }
 
 main().catch((e) => {

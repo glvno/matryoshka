@@ -70,11 +70,12 @@
 //   4E PRESET_STORED  structure u32, name 16 bytes  unasked: a preset stored on the FM-1 (ENV held + SAVE)
 //   50 SCREEN   k u8 = 0xFF, count u8, page u8, flags u8 (bit0 sandbox mode, bit1 the boot screen); then k = 0..count-1:
 //               x u8, y u8, w u8, h u8, n u8, n characters   a text on the LCD and its box (firmware/src/screen_text.h)
-//   51 PEAK     peak u16 (16 bit), flags u8 (bit0 the engine runs, bit1 the sound is muted: sandbox mode)
+//   51 PEAK     peak u16 (16 bit, before MASTER: as at its default), flags u8 (bit0 the engine runs, bit1 the sound is muted:
+//               sandbox mode, bit2 MASTER is all the way down)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
-//               test mode]. Also unasked
+//               test mode, bit10 TEST_PEAK reads before MASTER]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
@@ -335,6 +336,8 @@ export function parseSandbox(payload: number[]): SandboxPage | null {
 // ---- the device test mode (#291): a script drives the FM-1's panel and reads its screen and level (scripts/device-scenarios.mjs)
 
 export const FEATURE_TEST = 512;
+/** INFO feature bit 10: TEST_PEAK reads before the MASTER knob, so where it sits changes no check (PEAK's flags bit 2: it is down) */
+export const FEATURE_PEAK_PRE = 1024;
 export const testKeyFrame = (id: number, down: boolean): Uint8Array => frame(CMD.testKey, [id & 0xff, down ? 1 : 0]);
 export const testTurnFrame = (enc: number, clicks: number): Uint8Array => frame(CMD.testTurn, [enc & 0xff, Math.max(-128, Math.min(127, clicks | 0)) & 0xff]);
 export const testScreenFrame = (): Uint8Array => frame(CMD.testScreen);
@@ -349,8 +352,10 @@ export function parseScreen(p: Parsed): { head: ScreenHead } | { k: number; text
   if (d.length < 6 || d.length < 6 + d[5]) return null;
   return { k: d[0], text: { x: d[1], y: d[2], w: d[3], h: d[4], s: String.fromCharCode(...d.slice(6, 6 + d[5])) } };
 }
-export const parsePeak = (p: Parsed): { peak: number; running: boolean; muted: boolean } | null =>
-  p.cmd === CMD.peak && p.payload.length >= 3 ? { peak: p.payload[0] | (p.payload[1] << 8), running: !!(p.payload[2] & 1), muted: !!(p.payload[2] & 2) } : null;
+export const parsePeak = (p: Parsed): { peak: number; running: boolean; muted: boolean; masterDown: boolean } | null =>
+  p.cmd === CMD.peak && p.payload.length >= 3
+    ? { peak: p.payload[0] | (p.payload[1] << 8), running: !!(p.payload[2] & 1), muted: !!(p.payload[2] & 2), masterDown: !!(p.payload[2] & 4) }
+    : null;
 /** the test rig's mark (#291): a user preset of no structure the editor makes (scripts/rig.mjs registers it); the
  *  Library hides it */
 export const RIG_STRUCTURE = '7e57417e';
