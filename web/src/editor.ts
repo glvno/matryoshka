@@ -8,7 +8,7 @@ import { isPile, tidy, tidyAssembly } from './tidy';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS } from './modules';
 import { FIXED_BUTTONS } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
-import { buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
+import { arpLitInverted, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
 import { arpChoices, arpFree, type ArpChoice } from './arp-button';
 import { showUndo } from './toast';
@@ -23,7 +23,7 @@ import { deviceBudget, DEVICE } from './patchbin';
 import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
 import { picker } from './picker';
 import { selector } from './selector';
-import { ALLOC, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackTargets } from './poly';
+import { ALLOC, copiesOf, makeRoom, polyGroups, polyOfModule, setPoly, trackDrumMap, trackTargets } from './poly';
 import { dragControl } from './deck';
 import { isPin, PinsInUse, removeRoute } from './parameter-routing';
 import {
@@ -1244,8 +1244,7 @@ export class Editor {
       label: () => trackLabel(this.patch, id),
       plays: () => this.trackPlays(id),
       drums: () => {
-        const c = this.patch.cables.find((x) => x.from.module === id && x.from.port === 'keys' && this.patch.modules.find((q) => q.id === x.to.module)?.type === 'drummap');
-        const map = c && this.patch.modules.find((q) => q.id === c.to.module);
+        const map = trackDrumMap(this.patch, id);
         return map ? Array.from({ length: DRUM_ROWS }, (_, r) => ({ name: drumRowName(map.names, r), note: Math.round(map.params[`n${r + 1}`] ?? 0) })) : null;
       },
       notes: (n) => {
@@ -2671,7 +2670,7 @@ export class Editor {
     btn.classList.toggle('unassigned', kind === 'nothing');
     btn.classList.toggle('assigned', buttonLight(this.patch, b, false) === 'dim');
     const engaged = glo ? this.gloOn : kind === 'page' ? this.pageOn?.b === b : kind === 'bypass' ? switches(panel, b) && toggleEngaged(this.patch, b) : switches(panel, b) && !!panel?.on?.includes(b);
-    btn.setAttribute('aria-pressed', String(engaged));
+    btn.setAttribute('aria-pressed', String(arpLitInverted(this.patch, b) ? !engaged : engaged));   // (ARP on Arpeggiators: lit while they play)
     const does = fixed ? FIXED_DOES[b] : kind === 'nothing' ? 'does nothing (its jack is high while held)' : kind === 'gate' ? 'a gate' : kind === 'page' ? 'a list of device pages (press: the next, hold: the first)' : 'bypasses its target';
     btn.title = fixed ? `${name}: ${does}` : `${name}: ${does}${kind === 'page' ? '' : switches(panel, b) ? ', switches on / off' : ', while held'} (right-click: edit the button)`;
     // touch (#153): the dock scrolls sideways from a button (touch-action: pan-x), so a switch flips when the finger is
@@ -2687,7 +2686,7 @@ export class Editor {
       tap = false;
     });
     btn.addEventListener('pointercancel', () => { tap = false; });
-    for (const ev of ['pointerup', 'pointerleave', 'pointercancel'] as const) btn.addEventListener(ev, () => { if (!switches(m.panel, b) && btn.getAttribute('aria-pressed') === 'true') this.pressButton(i, false); });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel'] as const) btn.addEventListener(ev, () => { if (!switches(m.panel, b) && btn.dataset.down === 'true') this.pressButton(i, false); });
     btn.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       if (!glo) this.openButtonEditor(b);
@@ -2844,7 +2843,8 @@ export class Editor {
     const t = kind === 'bypass' ? m.panel?.targets?.[b] : undefined;
     const a = t && 'asm' in t ? assembliesOf(this.patch).find((x) => x.id === t.asm) : undefined;
     if (!switches(m.panel, b)) {
-      btn?.setAttribute('aria-pressed', String(down));
+      if (btn) btn.dataset.down = String(down);
+      btn?.setAttribute('aria-pressed', String(kind === 'bypass' && arpLitInverted(this.patch, b) ? !down : down));
       if (kind === 'bypass') this.showBypass(toggleTargets(this.patch, b), down, a);
       this.ev.onButton?.(i, down);
       return;
@@ -2869,7 +2869,7 @@ export class Editor {
       panel.on = on ? [...(panel.on ?? []), b] : (panel.on ?? []).filter((x) => x !== b);
       if (!panel.on.length) delete panel.on;
     }
-    btn?.setAttribute('aria-pressed', String(on));
+    btn?.setAttribute('aria-pressed', String(kind === 'bypass' && arpLitInverted(this.patch, b) ? !on : on));
     this.ev.onButton?.(i, on);
     this.ev.onLayout(this.patch);           // saved with the patch (the device keeps switched buttons too)
   }

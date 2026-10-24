@@ -1980,6 +1980,26 @@ int main(void)
         snap_to(getenv("PANEL_SNAP_BATTERY"));
     }
 
+    {   /* ARP on a factory patch's Arpeggiator (D-231): its LED dark while the arpeggiator is bypassed (as saved), lit while
+         * it plays; another Toggle keeps its rule (lit = its target bypassed) */
+        uint32_t m, arp = 0xFFu;
+        check("(Monolith D loads)", load("MONOLITH D") == 0);
+        loop();
+        for (m = 0; m < 64u; m++)
+            if (eng_type(m) == T_ARP)
+                arp = m;
+        check("Monolith D: an Arpeggiator, saved bypassed; ARP's Toggle engaged, its LED dark", arp != 0xFFu && eng_bypass(arp)
+              && (eng_buttons_get() >> 6 & 1u) && !(eng_buttons_lit() >> 6 & 1u));
+        tap(10);
+        check("ARP pressed: the arpeggiator plays, ARP lit", !eng_bypass(arp) && (eng_buttons_lit() >> 6 & 1u) && !(eng_buttons_get() >> 6 & 1u));
+        tap(10);
+        check("ARP again: bypassed, dark", eng_bypass(arp) && !(eng_buttons_lit() >> 6 & 1u));
+        check("(the other buttons' LEDs as their state)", (eng_buttons_lit() & 0x3Fu) == (eng_buttons_get() & 0x3Fu));
+        check("Monolith D: the keys play notes (no Drum map on the black keys)", eng_keys_drummap() < 0);
+        check("8 Lire, Scrounge: PATTERN plays their Drum maps through the arpeggiator: the black keys play the rows",
+              load("8 LIRE") == 0 && eng_keys_drummap() >= 0 && load("SCROUNGE") == 0 && eng_keys_drummap() >= 0);
+    }
+
     lcd_sync();
     check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
           lcd_line_clobbers == 0u);

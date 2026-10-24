@@ -113,11 +113,15 @@ interface Group {
   src: number;
 }
 
-/** an Arpeggiator module as it runs: its note logic (arpeggiator.ts) and the groups it plays */
+/** an Arpeggiator module as it runs: its note logic (arpeggiator.ts) and the groups it plays. `feed`: the Steps track
+ * cabled into its keys in (its id: it plays that track's notes, not Main's keys), -1 Main's keys. Bypassed it hands the
+ * keys it hears straight on (`byp`: the bypass it last ran with; a change lets go of what it played: arpSwitched) */
 interface ArpRun {
   node: Node;
   st: ArpState;
   clk: { hi: boolean };
+  feed: number;
+  byp: boolean;
 }
 
 /** idle parts (Engine.partQuiet): an output within this counts as silent (6 in Q16, engine.c IDLE_Q16); every IDLE_CHECK-th
@@ -291,11 +295,14 @@ export class Engine {
     const oldArps = new Map(this.arps.map((a) => [a.node.id, a]));
     this.arps = this.order.filter((n) => n.type === 'arp').map((node) => {
       const old = oldArps.get(node.id);
-      return old ? { ...old, node } : { node, st: arpInit(), clk: { hi: false } };
+      const fed = patch.cables.find((c) => c.to.module === node.id && c.to.port === 'keys' && c.from.port === 'keys' && next.get(c.from.module)?.type === 'steps');
+      const feed = fed ? fed.from.module : -1;
+      return old ? { ...old, node, feed } : { node, st: arpInit(), clk: { hi: false }, feed, byp: node.bypass };
     });
     // while anything is armed an Arpeggiator hears Main's keys only through a keys cable from Main (an armed device's)
     const mainKeysTo = new Set(source.cables.filter((c) => c.from.port === 'keys' && source.modules.find((m) => m.id === c.from.module)?.type === 'fm1').map((c) => c.to.module));
     this.arpHears = this.armedKeys.length ? new Set(this.arps.filter((a) => mainKeysTo.has(a.node.id)).map((a) => a.node.id)) : null;
+    this.arpById = new Map(this.arps.map((a) => [a.node.id, a]));
     this.tracks = this.order.filter((n) => n.type === 'steps');
     // tracks whose keys in a cable from Main's keys feeds: those keys pass through them while no track is armed (#138)
     this.fed = this.tracks.filter((node) => source.cables.some((c) => c.to.module === node.id && c.to.port === 'keys' && c.from.port === 'keys' && source.modules.find((m) => m.id === c.from.module)?.type === 'fm1')).map((node) => node.inst[0].state as StepsState);
@@ -304,6 +311,36 @@ export class Engine {
       const from = m && keysInto(source, m);
       return from ? [{ st: node.inst[0].state as DrumMapState, src: from.type === 'fm1' ? -1 : from.id }] : [];
     });
+    for (const a of this.arps) if (a.byp !== a.node.bypass) this.arpSwitched(a); // (an edit switched it while the patch reloaded)
+  }
+
+  private arpById = new Map<number, ArpRun>();
+  /** a bypassed Arpeggiator that hears Main's keys: its groups and Drum maps play the keys straight, as Main's own */
+  private passesMain = (a: ArpRun | undefined): boolean => !!a && a.node.bypass && a.feed < 0 && this.keyArps().includes(a);
+  /** where the notes of a group or Drum map fed by `src` (-1 Main's keys, else a module id) come from now: a bypassed
+   * Arpeggiator's are its own source's (-1 Main's keys, a track's id), -2 nothing (it does not hear Main's keys now) */
+  private effSrc(src: number): number {
+    const a = this.arpById.get(src);
+    if (!a || !a.node.bypass) return src;
+    return a.feed >= 0 ? a.feed : this.passesMain(a) ? -1 : -2;
+  }
+
+  /** an Arpeggiator was switched (bypassed, or back): what it played lets go, its groups' parts and its Drum maps' rows
+   * (the keys held stay with it: switched on it plays them) */
+  private arpSwitched(a: ArpRun): void {
+    a.byp = a.node.bypass;
+    a.st.cur = -1;
+    a.st.running = false;
+    for (const x of this.maps) if (x.src === a.node.id) x.st.gate.fill(0);
+    for (const g of this.groups) {
+      if (g.src !== a.node.id) continue;
+      g.held = [];
+      for (const x of g.parts) {
+        x.on = false;
+        x.gate = 0;
+        x.retrig = false;
+      }
+    }
   }
 
   /** the Steps tracks Main's keys reach by a cable into their keys in */
@@ -314,7 +351,7 @@ export class Engine {
 
   /** a note on (key | 0x80, velocity 1..127) or off (key, 0) into the Drum maps fed by `src`, taken at their next block */
   private mapKeys(src: number, key: number, vel: number): void {
-    for (const x of this.maps) if (x.src === src) x.st.ev.push(key, vel);
+    for (const x of this.maps) if (this.effSrc(x.src) === src) x.st.ev.push(key, vel);
   }
 
   /** the Steps modules, in processing order (their keys go out in this order: engine.c the same) */
@@ -330,11 +367,16 @@ export class Engine {
     for (const node of this.tracks) {
       const st = node.inst[0].state as StepsState;
       if (!st.ev.length) continue;
-      const gs = this.groups.filter((g) => g.src === node.id);
+      const gs = this.groups.filter((g) => this.effSrc(g.src) === node.id);
+      const arps = this.arps.filter((a) => a.feed === node.id);
       const freed = gs.map(() => 0);
       for (let i = 0; i < st.ev.length; i += 2) {
         this.mapKeys(node.id, st.ev[i], st.ev[i + 1]);
         const key = st.ev[i] & 0x7f;
+        for (const a of arps) {
+          if (st.ev[i] & 0x80) arpKeyOn(a.st, key, st.ev[i + 1] / 127, this.arpParams(a));
+          else arpKeyOff(a.st, key, this.arpParams(a));
+        }
         gs.forEach((g, gi) => {
           if (!(st.ev[i] & 0x80)) {
             const was = g.parts.map((x) => x.on);
@@ -511,6 +553,8 @@ export class Engine {
   setBypass(id: number, on: boolean): void {
     const n = this.nodes.get(id);
     if (n && n.type !== 'fm1' && n.type !== 'output') n.bypass = on;
+    const a = this.arpById.get(id);
+    if (a && a.byp !== a.node.bypass) this.arpSwitched(a);
     this.syncToggles();
   }
 
@@ -603,14 +647,14 @@ export class Engine {
    * and the Arpeggiators (on `channel`) play it.
    */
   noteOn(note: number, velocity = 1, ch = 1): void {
-    for (const g of this.keyGroups()) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
+    for (const g of this.keyGroups()) if ((g.src < 0 || this.passesMain(this.arpById.get(g.src))) && takesKey(g.cfg, note, ch, this.channel)) this.groupOn(g, note, velocity);
     if (this.listens(ch)) for (const a of this.keyArps()) arpKeyOn(a.st, note, velocity, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
     if (this.listens(ch)) for (const t of this.fed) t.thru.push(note | 0x80, Math.max(1, Math.min(127, Math.round(velocity * 127))));
   }
 
   noteOff(note: number, ch = 1): void {
-    for (const g of this.keyGroups()) if (g.src < 0 && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
+    for (const g of this.keyGroups()) if ((g.src < 0 || this.passesMain(this.arpById.get(g.src))) && takesKey(g.cfg, note, ch, this.channel)) this.groupOff(g, note);
     if (this.listens(ch)) for (const a of this.keyArps()) arpKeyOff(a.st, note, this.arpParams(a));
     if (this.listens(ch)) this.mapKeys(-1, note, 0);
     if (this.listens(ch)) for (const t of this.fed) t.thru.push(note, 0);
@@ -619,7 +663,7 @@ export class Engine {
   /** the groups Main's keys may play: the shared keyboard (Main's pitch / gate) only while nothing is armed */
   private keyGroups = (): Group[] => (this.armedKeys.length ? this.groups : [this.kb, ...this.groups]);
   /** the Arpeggiators that hear Main's keys: all while nothing is armed, else the armed devices' */
-  private keyArps = (): ArpRun[] => (this.arpHears ? this.arps.filter((a) => this.arpHears!.has(a.node.id)) : this.arps);
+  private keyArps = (): ArpRun[] => this.arps.filter((a) => a.feed < 0 && (!this.arpHears || this.arpHears.has(a.node.id)));
   private arpHears: Set<number> | null = null;
 
   /** the armed devices (#190; `a<id>` / `m<id>`, docs/ledger/vocabulary.md "Arm"), none: the cables decide */
@@ -690,7 +734,7 @@ export class Engine {
 
   /** the keys' own listeners let go of every key: the shared keyboard, the groups that play the keys, the Arpeggiators */
   private keysOff(): void {
-    for (const x of this.maps) if (x.src < 0) x.st.gate.fill(0);
+    for (const x of this.maps) if (this.effSrc(x.src) === -1) x.st.gate.fill(0);
     for (const t of this.fed) this.thruOff(t);
     for (const a of this.arps) {
       arpClear(a.st);
@@ -698,7 +742,7 @@ export class Engine {
       a.st.running = false;
     }
     for (const g of [this.kb, ...this.groups]) {
-      if (g.src >= 0) continue;
+      if (g.src >= 0 && !this.passesMain(this.arpById.get(g.src))) continue;
       g.held = [];
       for (const x of g.parts) {
         x.on = false;
@@ -716,6 +760,7 @@ export class Engine {
   /** an arpeggiator's note into its groups; a part it lands on restarts its envelopes (one note after another, also
    * at gate 100 %, where the next note follows the last in the same block) */
   private arpOn(a: ArpRun, note: number, vel: number): void {
+    this.mapKeys(a.node.id, note | 0x80, Math.max(1, Math.min(127, Math.round(vel * 127))));
     for (const g of this.arpGroups(a)) {
       if (!takesKey(g.cfg, note)) continue; // an arpeggiated allocator's key range judges the arpeggiator's notes
       this.groupOn(g, note, vel);
@@ -1007,8 +1052,9 @@ export class Engine {
       const clock = seen && this.running; // the Main module's clock output: one pulse per block that saw a tick while running
       this.trackKeys();
       for (const a of this.arps)
-        arpBlock(a.st, this.arpParams(a), n, this.ticks, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk, bpm, this.sampleRate,
-          (note, vel) => this.arpOn(a, note, vel), (note) => { for (const g of this.arpGroups(a)) this.groupOff(g, note); });
+        if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
+          arpBlock(a.st, this.arpParams(a), n, this.ticks, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk, bpm, this.sampleRate,
+            (note, vel) => this.arpOn(a, note, vel), (note) => { this.mapKeys(a.node.id, note, 0); for (const g of this.arpGroups(a)) this.groupOff(g, note); });
       this.morphT = this.hasB ? this.morphPosition(n) : 0;
       const hold = walkHold(this.sampleRate, DRIFT_RATE);
       for (const g of this.groups)

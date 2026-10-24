@@ -10,6 +10,19 @@
    "params": {
     "morph": 0,
     "tempo": 120
+   },
+   "panel": {
+    "toggle": [
+     "arp"
+    ],
+    "kinds": {
+     "arp": "bypass"
+    },
+    "targets": {
+     "arp": {
+      "module": 11
+     }
+    }
    }
   },
   {
@@ -202,6 +215,73 @@
    "params": {
     "level": 0.56
    }
+  },
+  {
+   "id": 9,
+   "type": "alloc",
+   "x": 20,
+   "y": 940,
+   "params": {
+    "voices": 1,
+    "assign": 0,
+    "legato": 0,
+    "priority": 0,
+    "unison": 0,
+    "channel": 0,
+    "low": 0,
+    "high": 127
+   }
+  },
+  {
+   "id": 10,
+   "type": "steps",
+   "x": 20,
+   "y": 920,
+   "params": {
+    "len": 16,
+    "rate": 4,
+    "swing": 50,
+    "gate": 0.25
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "len"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "swing"
+    ],
+    "k4": [
+     "gate"
+    ]
+   },
+   "name": "PATTERN"
+  },
+  {
+   "id": 11,
+   "type": "arp",
+   "x": 1040,
+   "y": 920,
+   "params": {
+    "mode": 0,
+    "rate": 4,
+    "octaves": 1,
+    "gate": 0.5,
+    "latch": 0
+   },
+   "bypass": true
   }
  ],
  "cables": [
@@ -257,7 +337,7 @@
   },
   {
    "from": {
-    "module": 1,
+    "module": 9,
     "port": "pitch"
    },
    "to": {
@@ -267,7 +347,7 @@
   },
   {
    "from": {
-    "module": 1,
+    "module": 9,
     "port": "pitch"
    },
    "to": {
@@ -277,7 +357,7 @@
   },
   {
    "from": {
-    "module": 1,
+    "module": 9,
     "port": "gate"
    },
    "to": {
@@ -287,7 +367,7 @@
   },
   {
    "from": {
-    "module": 1,
+    "module": 9,
     "port": "gate"
    },
    "to": {
@@ -314,6 +394,36 @@
     "module": 8,
     "port": "r"
    }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
+    "module": 10,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 11,
+    "port": "keys"
+   },
+   "to": {
+    "module": 9,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 10,
+    "port": "keys"
+   },
+   "to": {
+    "module": 11,
+    "port": "keys"
+   }
   }
  ],
  "assemblies": [
@@ -331,30 +441,14 @@
     4,
     5,
     6,
-    7
+    7,
+    9
    ],
    "inputs": [
     {
-     "module": 5,
-     "port": "pitch",
-     "label": "pitch",
-     "also": [
-      {
-       "module": 2,
-       "port": "pitch"
-      }
-     ]
-    },
-    {
-     "module": 6,
-     "port": "gate",
-     "label": "gate",
-     "also": [
-      {
-       "module": 3,
-       "port": "gate"
-      }
-     ]
+     "module": 9,
+     "port": "keys",
+     "label": "keys"
     }
    ],
    "outputs": [
@@ -400,7 +494,8 @@
      "param": "r4",
      "label": "release"
     }
-   ]
+   ],
+   "poly": {}
   }
  ]
 }

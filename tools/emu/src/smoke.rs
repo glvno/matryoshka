@@ -567,6 +567,10 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     // update mode from the menu: HOME held, ALGO to SYSTEM, SELECT to UPDATE MODE, OCT+ twice
     let mut m = Machine::boot(app, None);
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    // (step 1 waits the same way: since patch 0, Oracle V, got its arpeggiator and PATTERN (D-336, about 84 % of the CPU
+    // estimate), a key held the moment its page first shows is not taken until the panel's loop runs again: 400 ms after
+    // the page was enough in the emulator, without it HOME held for 1.2 s did nothing)
+    m.run_for(2500)?;
     m.tap(HOME, 1000, 400)?;
     m.turn(ALGO, 2, 400)?;
     t.screen(&m, "menu: the SYSTEM tab", "UPDATE MODE");

@@ -10,6 +10,19 @@
    "params": {
     "morph": 0,
     "tempo": 120
+   },
+   "panel": {
+    "toggle": [
+     "arp"
+    ],
+    "kinds": {
+     "arp": "bypass"
+    },
+    "targets": {
+     "arp": {
+      "module": 17
+     }
+    }
    }
   },
   {
@@ -347,6 +360,57 @@
    "params": {
     "level": 1
    }
+  },
+  {
+   "id": 16,
+   "type": "steps",
+   "x": 20,
+   "y": 2040,
+   "params": {
+    "len": 16,
+    "rate": 4,
+    "swing": 50,
+    "gate": 0.25
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "len"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "swing"
+    ],
+    "k4": [
+     "gate"
+    ]
+   },
+   "name": "PATTERN"
+  },
+  {
+   "id": 17,
+   "type": "arp",
+   "x": 2000,
+   "y": 2040,
+   "params": {
+    "mode": 0,
+    "rate": 4,
+    "octaves": 1,
+    "gate": 0.5,
+    "latch": 0
+   },
+   "bypass": true
   }
  ],
  "cables": [
@@ -522,16 +586,6 @@
   },
   {
    "from": {
-    "module": 1,
-    "port": "keys"
-   },
-   "to": {
-    "module": 8,
-    "port": "keys"
-   }
-  },
-  {
-   "from": {
     "module": 13,
     "port": "out"
    },
@@ -548,6 +602,36 @@
    "to": {
     "module": 15,
     "port": "r"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
+    "module": 16,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 17,
+    "port": "keys"
+   },
+   "to": {
+    "module": 8,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 16,
+    "port": "keys"
+   },
+   "to": {
+    "module": 17,
+    "port": "keys"
    }
   }
  ],

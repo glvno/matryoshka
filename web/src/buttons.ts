@@ -63,6 +63,15 @@ export function toggleEngaged(p: Patch, b: string): boolean {
   return ids.length > 0 && ids.every((id) => !!p.modules.find((m) => m.id === id)?.bypass);
 }
 
+/** ARP as a Toggle of Arpeggiators lights while they play, not while they are bypassed (D-231): its light is the
+ * inverse of its engaged state. Every other Toggle (and ARP on anything else) is lit while engaged. The FM-1 the same
+ * (engine.c eng_buttons_lit) */
+export function arpLitInverted(p: Patch, b: string): boolean {
+  if (b !== 'arp') return false;
+  const ids = toggleTargets(p, b);
+  return ids.length > 0 && ids.every((id) => p.modules.find((m) => m.id === id)?.type === 'arp');
+}
+
 /** a button's LED (and the dock face's light): dark = unassigned and uncabled, dim = assigned or cabled, lit = engaged */
 export function buttonLight(p: Patch, b: string, engaged: boolean): 'dark' | 'dim' | 'lit' {
   if (engaged) return 'lit';
