@@ -627,6 +627,12 @@ static inline void fm1__unlock(uint32_t v)
     __asm__ volatile("csync\n\tsti" ::: "memory");
 }
 
+/* whether encoder e has steps waiting (fm1_enc_take would return them); only looks */
+static int fm1_enc_waiting(uint32_t e)
+{
+    return ((volatile int16_t *)fm1_in.enc_steps)[e] + fm1_virt_enc[e] != 0;
+}
+
 /* detent steps turned since the last call, + = clockwise */
 static int32_t fm1_enc_take(uint32_t e)
 {

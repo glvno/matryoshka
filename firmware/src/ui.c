@@ -231,7 +231,7 @@ static void bar_fill(uint16_t bg)
 
 /* the cell, 20 x 20, on the bar's ground: a battery 12 x 9 and its nub, 0..3 bars inside (one bar coral, empty: a red
  * outline), a bolt in seafoam on USB power. On any other ground than the strip's (or night) all of it is one ink that
- * reads there: night on a light bar (gold, coral, lilac, sea, ivory, red), ivory on a dark one (the SELECT / ALGO cards).
+ * reads there: night on a light bar (gold, coral, lilac, sea, ivory, red), ivory on a dark one.
  * Two blits of ten rows through lcd.c's lcd_line (240 pixels; a buffer of its own would cost 800 B of RAM, which the
  * build's 4 KB headroom check does not have) */
 static void batt_mark_draw(uint8_t lvl)
@@ -401,8 +401,11 @@ static int panel_label(uint32_t i, char *out)
 
 static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "ARP"};
 
+static uint8_t pg_plain;                        /* pages_ui.c: the device page's bars are on screen as it draws them */
 static void view_draw(int full)                 /* whichever page is showing */
 {
+    if ((page != 0u && page != PAGE_GLO) || sb_on)
+        pg_plain = 0;
     if (page == PAGE_MENU)
         menu_draw(full);
     else if (page == 8u)
