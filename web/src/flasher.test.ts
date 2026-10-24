@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { STOCK_V15_SHA256, logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, loaderFits, pack7, unpack7 } from './flasher/fm1ota.js';
-import { BOOT_CODE_HELP, guardUnload } from './flasher';
+import { BOOT_CODE_HELP, OPEN_WHY, guardUnload } from './flasher';
 
 const stock = (): Uint8Array => new Uint8Array(readFileSync(new URL('../public/firmware/FM-1_015.fwsc', import.meta.url)));
 
@@ -163,6 +163,14 @@ describe('a boot code that is not V15\'s (#183)', () => {
     expect(BOOT_CODE_HELP).toContain('F0 22 24 35 7D F7');
     expect(BOOT_CODE_HELP).toContain('MvaveFM1Unbricker');
     expect(BOOT_CODE_HELP).toContain('issues/183');
+  });
+
+  it('says plainly what the start-up software is before it says boot code, and why Official Open is not shipped', () => {
+    expect(BOOT_CODE_HELP.indexOf('starts the FM-1')).toBeGreaterThan(-1);
+    expect(BOOT_CODE_HELP.indexOf('starts the FM-1')).toBeLessThan(BOOT_CODE_HELP.indexOf('boot code'));
+    expect(BOOT_CODE_HELP).toContain("Most likely it was set up by M-VAVE's Official Open");
+    expect(BOOT_CODE_HELP).toContain(OPEN_WHY);
+    expect(OPEN_WHY).toMatch(/not open source/);
   });
 });
 

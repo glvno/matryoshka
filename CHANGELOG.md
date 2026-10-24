@@ -6,6 +6,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **"update failed -5"** on Return to official V15 is now explained in plain words: the FM-1 was most likely set up by
+  M-VAVE's Official Open, whose start-up software differs from V15's, and nothing was changed. Putting Official Open
+  back or going back to V15 from the Install panel comes with a later firmware; the README says why Official Open will
+  not come with Matryoshka (its sound engine is M-VAVE's own, not open source).
+
 ## 1.2.1 — 2026-10-23
 
 - **Return to official V15** on an FM-1 whose boot code is not V15's (the FM-1 shows "update failed -5") now says so in
