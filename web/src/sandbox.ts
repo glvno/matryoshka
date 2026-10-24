@@ -39,7 +39,7 @@ export function chipEl(c: Chip): HTMLSpanElement {
 const times = (x: number): string => `${(Math.ceil(x * 10 - 1e-9) / 10).toFixed(1)}×`;
 
 /** the status line's words for a sandbox patch: "Plays here, with no FM-1 limits: 2.7× its CPU, 2.1× its memory." (and any
- *  browser-only ability it uses: "Delay over 520 ms") */
+ *  browser-only ability it uses: "Delay over 1000 ms") */
 export function sandboxWords(b: Pick<Budget, 'memory' | 'cpu'> & { over?: Budget['over'] }): string {
   const parts = [
     ...(b.cpu.use > 1 ? [`${times(b.cpu.use)} its CPU`] : []),

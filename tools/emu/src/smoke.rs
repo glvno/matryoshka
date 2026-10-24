@@ -16,7 +16,8 @@
 //!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank); OCT- +
 //!    OCT+ held at power-on and MENU > UPDATE MODE = update mode (no engine)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
-//! 10. hardware the emulator does not model: any register besides P33 fails the test
+//! 10. the Delay's longest time (#273): its echo 1 s after the note, ping-pong half of it on the left and 1 s on the right
+//! 11. hardware the emulator does not model: any register besides P33 fails the test
 //!
 //! Snapshots of every step go to OUT (PNG); a WAV of the first run too.
 
@@ -359,6 +360,35 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let p = hold(&mut m, true)?;
     t.check("panel: ARP switched on again", p > LOUD, format!("peak {p}"));
     *emulated += m.ms();
+    Ok(())
+}
+
+/// The Delay at its longest time (#273, web/scripts/emu-patches.ts): a short burst on a note, all wet (ping-pong with feedback 0.5). The
+/// echo comes 1 s after the note (the FM-1's 44178-sample line); with ping-pong the left one after half the line, the right
+/// one after the whole. Nothing is heard before the first echo.
+fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    for (file, name, left, right) in [("long-delay.m1p", "EMU LONG DELAY", 1000u64, 1000u64), ("long-delay-pp.m1p", "EMU LONG PINGPONG", 500, 1001)] {
+        let patch = std::fs::read(format!("build/emu/{file}")).map_err(|e| format!("build/emu/{file}: {e} (run web/scripts/emu-patches.ts)"))?;
+        let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+        flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, name, &patch, false));
+        let mut m = Machine::boot(app, Some(&flash));
+        wait_text(&mut m, DEVICE_PAGE, 9000)?;
+        m.run_for(2500)?;
+        t.screen(&m, &format!("long delay: {name} loads"), name);
+        let mk = m.mark();
+        m.midi(&[0x90, 60, 100], 60)?;
+        m.midi(&[0x80, 60, 0], 1500)?;
+        let first = |ch: usize| -> Option<u64> {
+            m.audio[mk..].iter().skip(ch).step_by(2).position(|s| (*s as i32).abs() > LOUD / 4).map(|i| i as u64 * 1000 / AUDIO_RATE as u64)
+        };
+        let (l, r) = (first(0), first(1));
+        // (a quarter of LOUD: ping-pong's right echo is half its left one) the note reaches the engine a few ms after the MIDI
+        // bytes (UART, the next block): an echo within 30 ms of its time
+        let near = |got: Option<u64>, want: u64| got.is_some_and(|g| g >= want && g <= want + 30);
+        t.check(&format!("long delay: {name}'s left echo after {left} ms"), near(l, left), format!("first heard at {l:?} ms"));
+        t.check(&format!("long delay: {name}'s right echo after {right} ms"), near(r, right), format!("first heard at {r:?} ms"));
+        *emulated += m.ms();
+    }
     Ok(())
 }
 
@@ -770,6 +800,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     store(app, t, emulated, &presets)?;
     panel(app, t, emulated)?;
     seq(app, t, emulated, &presets)?;
+    long_delay(app, t, emulated)?;
 
     // ---- 9. unmodelled hardware
     let known = [0x13e08u32, 0x13e0c]; // P33 (watchdog, reset reason, reboot): fm1_sys.h

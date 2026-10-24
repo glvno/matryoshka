@@ -3,6 +3,8 @@
 //   build/emu/heavy-poly.m1p   eight parts of a heavy voice (oversampled unison oscillators): far over the CPU budget,
 //                              the overload guard must drop parts until it plays
 //   build/emu/heavy-mono.m1p   one part of many such oscillators: nothing to drop, the guard must mute it (OVERLOAD)
+//   build/emu/panel.m1p        the patch buttons
+//   build/emu/long-delay.m1p, long-delay-pp.m1p   the Delay at the FM-1's longest time, plain and ping-pong (#273)
 // encodePatch(p, true) skips the budget check (these are meant to be too heavy). Run from web/:
 //   npx vite-node scripts/emu-patches.ts   (tools/emu_smoke.sh does this)
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -54,6 +56,26 @@ function panel(): Patch {
   return p;
 }
 writeFileSync(new URL('panel.m1p', out), encodePatch(panel()));
+
+/** the long delay (#273): a 30 ms saw burst on each note into a Delay at the FM-1's longest time (`time` ms, all wet; ping-pong with
+ * feedback 0.5, so the right side hears the second echo): silent until the first echo arrives `time` ms after the note */
+function longDelay(name: string, time: number, pingpong: number): Patch {
+  const p = emptyPatch(name);
+  const main = addModule(p, DEFS.fm1, 0, 0);
+  const osc = addModule(p, DEFS.osc, 300, 0);
+  const env = addModule(p, DEFS.adsr, 300, 300);
+  const v = addModule(p, DEFS.vca, 600, 0);
+  const d = addModule(p, DEFS.delay, 900, 0);
+  const o = addModule(p, DEFS.output, 1200, 0);
+  Object.assign(osc.params, { wave: 2, level: 0.8 });
+  Object.assign(env.params, { a: 0.001, d: 0.03, s: 0, r: 0.01 });
+  Object.assign(d.params, { time, fb: pingpong ? 0.5 : 0, mix: 1, pingpong });
+  for (const [a, ap, b, bp] of [[main, 'pitch', osc, 'pitch'], [main, 'gate', env, 'gate'], [osc, 'out', v, 'in'], [env, 'env', v, 'cv'], [v, 'out', d, 'in'], [d, 'out', o, 'l'], [d, 'r', o, 'r']] as const)
+    if (!connect(p, DEFS, { module: a.id, port: ap }, { module: b.id, port: bp })) throw new Error(`${name}: ${ap} -> ${bp}`);
+  return p;
+}
+writeFileSync(new URL('long-delay.m1p', out), encodePatch(longDelay('EMU LONG DELAY', DEFS.delay.params.find((q) => q.name === 'time')!.max, 0)));
+writeFileSync(new URL('long-delay-pp.m1p', out), encodePatch(longDelay('EMU LONG PINGPONG', DEFS.delay.params.find((q) => q.name === 'time')!.max, 1)));
 
 for (const [file, p] of [
   ['heavy-poly.m1p', withParts(heavy('EMU HEAVY POLY', 3), 8)],

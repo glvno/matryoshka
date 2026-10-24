@@ -552,7 +552,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
       queueEmu();
       return;
     }
-    // a parameter with a browser-only stretch (the Delay's time past 520 ms) can take the patch over the FM-1 budget or
+    // a parameter with a browser-only stretch (the Delay's time past 1000 ms) can take the patch over the FM-1 budget or
     // back under it: the budget first, so Live pauses before the value would go out (and sends the patch again once it fits)
     const pd = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']?.params.find((q) => q.name === name);
     if (pd?.browserMax !== undefined && (browserOnly(editor.patch).length > 0) === fitsDevice) {

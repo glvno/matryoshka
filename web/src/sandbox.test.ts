@@ -21,7 +21,7 @@ describe('sandbox patches', () => {
   it('says how far over the FM-1 a sandbox patch is, rounded up so it never reads 1.0×', () => {
     expect(sandboxWords(budget(2.66, 2.05))).toBe('Plays here, with no FM-1 limits: 2.7× its CPU, 2.1× its memory.');
     expect(sandboxWords(budget(0.5, 1.01))).toBe('Plays here, with no FM-1 limits: 1.1× its memory.');
-    expect(sandboxWords({ ...budget(0.5, 0.4), over: [{ key: 'browser', label: 'Delay over 520 ms: browser only', used: 1, max: 0 }] })).toBe('Plays here, with no FM-1 limits: Delay over 520 ms.');
+    expect(sandboxWords({ ...budget(0.5, 0.4), over: [{ key: 'browser', label: 'Delay over 1000 ms: browser only', used: 1, max: 0 }] })).toBe('Plays here, with no FM-1 limits: Delay over 1000 ms.');
     expect(sandboxWords(budget(1.3, 0.9))).toBe('Plays here, with no FM-1 limits: 1.3× its CPU.');
     expect(sandboxWords(budget(0.5, 0.5))).toBe('Plays here, with no FM-1 limits.');
   });

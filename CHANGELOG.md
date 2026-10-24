@@ -6,6 +6,16 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **The FM-1's Delay reaches 1000 ms** (it stopped at 520 ms): the firmware now uses 44.9 KB of RAM it had left unused
+  (28.9 KB kept for a debug build, 16 KB of a main stack that never used more than 2.5 KB of its 24 KB), and gives
+  41.4 KB of it to the delay line. 31.4 KB stay free for more buffers or the second core (20.1 KB of pool beyond the
+  build's 8 KB margin, 11.3 KB below the RAM region). The memory figures are from the CI build, the stack depths and the
+  echo arriving 1 s after the note from the emulator (`emu:smoke`, `emu:scenarios`). On the FM-1 and in the editor a
+  Delay time up to 1000 ms fits the FM-1; past that it stays a browser-only sandbox patch. Ping-pong reaches 500 ms a side.
+  A synced Delay keeps the note length it had: the note lengths still spread over the first 520 ms of the knob, and the
+  rest of it picks the longest. A synced note length that used to be cut at 520 ms (a dotted quarter or a half note at
+  120 bpm) now plays in full. One knob click is now 10 ms. Emulator-tested only, not yet on an FM-1.
+
 - **Less work per block in the FM-1 firmware, the same sound:** the engine stops redoing work that only changes when a
   setting does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output
   is bit for bit the same. On the CPU model the factory patches count about 8 % fewer cycles (up to 13 %: 8 Lire, the
