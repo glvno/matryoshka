@@ -17,13 +17,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const IS_OTA = (id) => /^ota-/i.test(id.model);
 
 // errors carry a code the pages translate: notfound, model, stopped, noloader, lost, noreturn,
-// mismatch (detail: the identity the device reports), badreq, phase
+// mismatch (detail: the identity the device reports), badreq, phase, bootcode (bootMismatch)
 // Which loader may finish an interrupted write of which package. M-VAVE's loader (ota-FM-1_015)
 // writes the flash head (boot code) from the package, so it only ever gets the official V15.
 // Felucca-lineage loaders (Felucca FM-1_9XY, ours FM-1_7XY since #79 and FM-1_800 before; three digits) never write the head
 // and get every other package; their identity does not follow the package's (ours reports
 // ota-FM-1_700 for release builds too). Unknown loaders (M-VAVE Official Open, others) get nothing.
 export const STOCK_PRODUCT = "FM-1_015";
+
+// #183: before a package with M-VAVE's loader is staged, the running firmware (ota.c ota_stage, step 2) compares the
+// package's flash head (boot code, 0x0000-0x3FFF) with its own, because that loader rewrites the head from the package;
+// when they differ it stops answering, erases nothing and shows "update failed -5". No error code reaches the host:
+// it sees the entry list (0, 512), the loader's header, head reads below it, then silence. `addrs`: the read requests
+// served in the check step, in order.
+export function bootMismatch(addrs) {
+  return addrs.length >= 4 && addrs[0] === 0 && addrs[1] === 512 && addrs[addrs.length - 1] < addrs[2];
+}
+export const BOOT_MISMATCH =
+  "this FM-1's boot code (flash 0x0000-0x3FFF) is not the one inside the official V15 package, so it refused the " +
+  "update before erasing anything (its screen says update failed -5); the device is safe";
 export function loaderFits(loader, product) {
   if (product === STOCK_PRODUCT) return loader === "ota-" + STOCK_PRODUCT;
   return /^ota-FM-1_[789]\d\d$/.test(loader);
@@ -163,11 +175,12 @@ export class Updater {
   // out idleMs
   async serve(link, image, finishAddr, idleMs, onProgress) {
     let served = 0, last = Date.now();
+    const addrs = [];
     for (;;) {
       const pkt = await link.read(1000);
       if (!pkt) {
-        if (link.lost) return { served, finished: false, lost: true };
-        if (Date.now() - last > idleMs) return { served, finished: false };
+        if (link.lost) return { served, finished: false, lost: true, addrs };
+        if (Date.now() - last > idleMs) return { served, finished: false, addrs };
         continue;
       }
       const r = parseRequest(pkt);
@@ -178,14 +191,15 @@ export class Updater {
         if (r.addr !== finishAddr || r.len !== SUCCESS.length) throw fail("phase", `finish request ${r.addr.toString(16)}+${r.len} in the ${finishAddr === FINISH_CHECK ? "check" : "write"} step`);
         link.send(response(r.addr, SUCCESS, r.fl));
         await this.settle(link, finishAddr);
-        return { served, finished: true };
+        return { served, finished: true, addrs };
       }
       if (r.addr + r.len > image.length) throw fail("badreq", `bad request ${r.addr.toString(16)}+${r.len}`);
       await sleep(10);
       if (!link.send(response(r.addr, Array.from(image.subarray(r.addr, r.addr + r.len)), r.fl))) {
-        return { served, finished: false, lost: true };
+        return { served, finished: false, lost: true, addrs };
       }
       served++;
+      addrs.push(r.addr);
       if (onProgress) onProgress(served, r.addr);
     }
   }
@@ -212,6 +226,7 @@ export class Updater {
     await sleep(2000);
     const s1 = await this.serve(dev.link, image, FINISH_CHECK, 8000, (n) => step("verify", n));
     dev.link.close();
+    if (!s1.finished && !s1.lost && product === STOCK_PRODUCT && bootMismatch(s1.addrs)) throw fail("bootcode", BOOT_MISMATCH);
     if (!s1.finished) throw fail(s1.lost ? "lost" : "stopped", `the device ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests: nothing was written`);
     step("loader");
     await sleep(3000);
