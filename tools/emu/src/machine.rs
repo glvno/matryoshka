@@ -140,21 +140,26 @@ impl Machine {
 
     /// Write the audio so far as a 16-bit stereo WAV.
     pub fn write_wav(&self, path: &str, rate: u32) -> std::io::Result<()> {
-        let data: Vec<u8> = self.audio.iter().flat_map(|s| s.to_le_bytes()).collect();
-        let mut h = Vec::with_capacity(44 + data.len());
-        h.extend_from_slice(b"RIFF");
-        h.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
-        h.extend_from_slice(b"WAVEfmt ");
-        h.extend_from_slice(&16u32.to_le_bytes());
-        h.extend_from_slice(&1u16.to_le_bytes());
-        h.extend_from_slice(&2u16.to_le_bytes());
-        h.extend_from_slice(&rate.to_le_bytes());
-        h.extend_from_slice(&(rate * 4).to_le_bytes());
-        h.extend_from_slice(&4u16.to_le_bytes());
-        h.extend_from_slice(&16u16.to_le_bytes());
-        h.extend_from_slice(b"data");
-        h.extend_from_slice(&(data.len() as u32).to_le_bytes());
-        h.extend_from_slice(&data);
-        std::fs::write(path, h)
+        write_wav(&self.audio, path, rate)
     }
+}
+
+/// 16-bit stereo samples (interleaved) as a WAV file.
+pub fn write_wav(audio: &[i16], path: &str, rate: u32) -> std::io::Result<()> {
+    let data: Vec<u8> = audio.iter().flat_map(|s| s.to_le_bytes()).collect();
+    let mut h = Vec::with_capacity(44 + data.len());
+    h.extend_from_slice(b"RIFF");
+    h.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+    h.extend_from_slice(b"WAVEfmt ");
+    h.extend_from_slice(&16u32.to_le_bytes());
+    h.extend_from_slice(&1u16.to_le_bytes());
+    h.extend_from_slice(&2u16.to_le_bytes());
+    h.extend_from_slice(&rate.to_le_bytes());
+    h.extend_from_slice(&(rate * 4).to_le_bytes());
+    h.extend_from_slice(&4u16.to_le_bytes());
+    h.extend_from_slice(&16u16.to_le_bytes());
+    h.extend_from_slice(b"data");
+    h.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    h.extend_from_slice(&data);
+    std::fs::write(path, h)
 }

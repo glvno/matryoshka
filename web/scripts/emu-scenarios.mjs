@@ -1,0 +1,400 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// The device checks that cross the editor link, scripted (#290): the real editor (this checkout's dev server, in Chrome)
+// against our firmware on the emulated FM-1, whose USB MIDI is a virtual MIDI port (`m1emu serve`, docs/EMULATOR.md).
+//   npm run emu:scenarios [-- FIRMWARE] [--only NAME,..] [--headed] [--keep]
+// FIRMWARE: an M1_EMU_MIDI=1 build (matryoshka-emu.bin). Without one: the `matryoshka-emu-midi` artifact of the firmware
+// CI run of this checkout's commit, else its branch, else main (needs gh). --url: an editor already running (default: a
+// dev server of this checkout on a free port). --headed shows Chrome.
+// Chrome sees only the emulator's port (the page's Web MIDI is filtered), so a real FM-1 plugged in is never touched.
+// Results, LCD snapshots and page screenshots go to build/emu/scenarios/. Exit code 1 when a check fails.
+import { spawn, spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { dirname, join, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright-core';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const OUT = join(ROOT, 'build/emu/scenarios');
+const REPO = 'glvno/matryoshka';
+const args = process.argv.slice(2);
+const flag = (n) => args.includes(n);
+const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
+const given = args.find((a, i) => !a.startsWith('--') && !['--only'].includes(args[i - 1]));
+const only = opt('--only')?.split(',');
+const PORT_NAME = `FM-1 (emu ${process.pid})`;
+
+// panel ids (web/src/fm1-ui.ts BUTTONS, fm1-emu's key matrix): 14.. the note keys from F3
+const B = { octDown: 0, octUp: 1, fx: 2, scl: 3, env: 4, lfo: 5, edit: 6, glo: 7, home: 8, save: 9, arp: 10, seq: 11, play: 12, rec: 13 };
+const C4 = 14 + 7;
+const ENC = { select: 0, algo: 1, k1: 2, preset: 6 };
+const QUIET = 64;
+const LOUD = 1000;
+
+/** where two JSON values differ: paths with the two values, at most `n` */
+function diff(a, b, path = '', out = [], n = 6) {
+  if (out.length >= n) return out;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
+    if (a !== b) out.push(`${path || '.'}: ${JSON.stringify(a)} -> ${JSON.stringify(b)}`);
+    return out;
+  }
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) diff(a[k], b[k], `${path}.${k}`, out, n);
+  return out;
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function firmware() {
+  if (given) return resolve(process.cwd(), given);
+  // the CI build of this checkout's commit, else the newest of its branch, else the newest of main
+  const dir = join(ROOT, 'build/emu/bridge/ci');
+  const git = (a) => (spawnSync('git', a, { cwd: ROOT, encoding: 'utf8' }).stdout ?? '').trim();
+  const tries = [['--commit', git(['rev-parse', 'HEAD'])], ['--branch', git(['rev-parse', '--abbrev-ref', 'HEAD'])], ['--branch', 'main']]
+    .filter(([, v]) => v && v !== 'HEAD');
+  for (const [f, v] of tries) {
+    const id = spawnSync('gh', ['run', 'list', '-R', REPO, '--workflow', 'firmware', f, v, '--status', 'success', '-L', '1',
+      '--json', 'databaseId', '--jq', '.[0].databaseId'], { encoding: 'utf8' });
+    if (id.status !== 0 || !id.stdout.trim()) continue;
+    rmSync(dir, { recursive: true, force: true });  // gh run download refuses to overwrite
+    mkdirSync(dir, { recursive: true });
+    spawnSync('gh', ['run', 'download', id.stdout.trim(), '-R', REPO, '-n', 'matryoshka-emu-midi', '-D', dir], { stdio: 'inherit' });
+    if (existsSync(join(dir, 'matryoshka-emu.bin'))) {
+      console.log(`firmware: CI run ${id.stdout.trim()} (${f.slice(2)} ${v}), artifact matryoshka-emu-midi`);
+      return join(dir, 'matryoshka-emu.bin');
+    }
+  }
+  throw new Error('no M1_EMU_MIDI firmware: pass a matryoshka-emu.bin (CI artifact matryoshka-emu-midi; needs gh to fetch it)');
+}
+
+function buildEmu() {
+  const isa = spawnSync('tools/emu/isa_fix.sh', { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  if (isa.status !== 0) throw new Error('tools/emu/isa_fix.sh failed');
+  const r = spawnSync('cargo', ['build', '--release', '--quiet', '--manifest-path', 'tools/emu/Cargo.toml', '--config', isa.stdout.trim()],
+    { cwd: ROOT, stdio: 'inherit' });
+  if (r.status !== 0) throw new Error('cargo build of tools/emu failed');
+  return join(ROOT, 'tools/emu/target/release/m1emu');
+}
+
+const freePort = () => new Promise((res) => {
+  const s = createServer();
+  s.listen(0, '::1', () => { const p = s.address().port; s.close(() => res(p)); });
+});
+
+/** m1emu serve: one command line out, one answer line back (serve.rs) */
+class Emu {
+  constructor(bin, fw) {
+    this.proc = spawn(bin, ['serve', fw, '--name', PORT_NAME], { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] });
+    this.waiting = [];
+    this.ready = new Promise((res, rej) => {
+      this.proc.on('exit', (c) => rej(new Error(`m1emu exited (${c})`)));
+      createInterface({ input: this.proc.stdout }).on('line', (l) => {
+        if (l.startsWith('# ')) {
+          console.log(`  emu ${l.slice(2)}`);
+          if (l.startsWith('# ready')) res();
+          return;
+        }
+        this.waiting.shift()?.(l);
+      });
+    });
+  }
+  cmd(line) {
+    return new Promise((res) => { this.waiting.push(res); this.proc.stdin.write(line + '\n'); });
+  }
+  /** press and let go; resolves once the key is up again (a press of a key still held would be no press) */
+  async tap(id, hold = 80) { await this.cmd(`tap ${id} ${hold}`); await sleep(hold + 120); }
+  key(id, down) { return this.cmd(`key ${id} ${down ? 1 : 0}`); }
+  turn(enc, clicks) { return this.cmd(`turn ${enc} ${clicks}`); }
+  async text(s) { return (await this.cmd(`text ${s}`)) === 'text 1'; }
+  async mark() { return Number((await this.cmd('mark')).split(' ')[1]); }
+  async peak(m) { return Number((await this.cmd(`peak ${m}`)).split(' ')[1]); }
+  snap(name) { return this.cmd(`snap ${join(OUT, `${name}.png`)}`); }
+  /** the loudest output while `id` (a note key) is held for `ms` */
+  async notePeak(id = C4, ms = 400) {
+    const m = await this.mark();
+    await this.key(id, true);
+    await sleep(ms);
+    const p = await this.peak(m);
+    await this.key(id, false);
+    await sleep(150);
+    return p;
+  }
+  /** wait up to `ms` for `s` on the LCD */
+  async waitText(s, ms = 3000) {
+    const t = Date.now();
+    do {
+      if (await this.text(s)) return true;
+      await sleep(100);
+    } while (Date.now() - t < ms);
+    return false;
+  }
+  quit() { try { this.proc.stdin.write('quit\n'); } catch { /* gone */ } }
+}
+
+// ---- the page: only the emulator's MIDI ports, a dev hook (main.ts __m1test)
+const FILTER_MIDI = (name) => {
+  const orig = navigator.requestMIDIAccess?.bind(navigator);
+  if (!orig) return;
+  navigator.requestMIDIAccess = async (o) => {
+    const a = await orig(o);
+    const keep = (m) => new Map([...m].filter(([, p]) => p.name === name));
+    window.__midiLog = window.__midiLog ?? [];
+    window.__midiLogged = window.__midiLogged ?? new Set();
+    for (const p of keep(a.inputs).values()) {
+      if (window.__midiLogged.has(p.id)) continue;
+      window.__midiLogged.add(p.id);
+      p.addEventListener('midimessage', (e) => { if (e.data[0] === 0xb0) window.__midiLog.push([Math.round(performance.now()), ...e.data]); });
+    }
+    // what the editor sends: the protocol's command bytes (F0 7D 4D 31 CMD ..), for the reports
+    window.__sent = window.__sent ?? [];
+    for (const p of keep(a.outputs).values()) {
+      if (p.__wrapped) continue;
+      const send = p.send.bind(p);
+      p.send = (d, t) => { if (d[0] === 0xf0 && d[1] === 0x7d) window.__sent.push([Math.round(performance.now()), d[4], d.length]); return send(d, t); };
+      p.__wrapped = true;
+    }
+    return new Proxy(a, {
+      get(t, k) {
+        if (k === 'inputs') return keep(t.inputs);
+        if (k === 'outputs') return keep(t.outputs);
+        const v = Reflect.get(t, k, t);
+        return typeof v === 'function' ? v.bind(t) : v;
+      },
+      set(t, k, v) { return Reflect.set(t, k, v, t); },
+    });
+  };
+};
+
+const results = [];
+async function check(name, ok, detail = '') {
+  results.push({ name, ok, detail });
+  console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${detail ? `: ${detail}` : ''}`);
+}
+const until = async (f, ms = 3000) => {
+  const t = Date.now();
+  do {
+    const v = await f();
+    if (v) return v;
+    await sleep(100);
+  } while (Date.now() - t < ms);
+  return f();
+};
+
+async function main() {
+  const fw = firmware();
+  console.log(`firmware: ${fw}`);
+  rmSync(OUT, { recursive: true, force: true });
+  mkdirSync(OUT, { recursive: true });
+  const m1emu = buildEmu();
+  // the editor's copy of the panel logic (the FM-1 tab, following the FM-1): built from this checkout, not committed
+  if (spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
+
+  let url = opt('--url');
+  let vite;
+  if (!url) {
+    const port = await freePort();
+    vite = spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'] });
+    url = `http://[::1]:${port}/`;
+    await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
+  }
+  console.log(`editor: ${url}`);
+
+  const emu = new Emu(m1emu, fw);
+  await emu.ready;
+  await sleep(1500);   // the boot screen, then the device page
+
+  const browser = await chromium.launch({ channel: 'chrome', headless: !flag('--headed'), args: ['--autoplay-policy=no-user-gesture-required'] });
+  const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+  await context.grantPermissions(['midi', 'midi-sysex'], { origin: new URL(url).origin });
+  await context.addInitScript(FILTER_MIDI, PORT_NAME);
+  let page = await context.newPage();
+  page.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
+  const T = () => page.evaluate(() => window.__m1test.state());
+  const open = (name) => page.evaluate((n) => window.__m1test.open(n), name);
+  const patchJson = () => page.evaluate(() => window.__m1test.patchJson());
+  const shot = (n) => page.screenshot({ path: join(OUT, `${n}-page.png`) }).catch(() => {});
+  async function load() {
+    await page.goto(url);
+    await page.waitForFunction(() => !!window.__m1test, null, { timeout: 20000 });
+    await page.keyboard.press('Escape');   // a welcome card or dialog of a first visit
+    await sleep(300);
+  }
+  async function connect(sync = true) {
+    await page.evaluate(() => document.getElementById('fm1-connect')?.click());
+    const asked = await until(async () => (await T()).syncAsk || (await T()).live, 4000);
+    if (sync && (await T()).syncAsk) await page.click('#sync-ask button[value="sync"]');
+    await sleep(500);
+    return asked;
+  }
+
+  const scenarios = {
+    async connect() {
+      await load();
+      await open('Init');
+      await connect();
+      const s = (await until(async () => { const x = await T(); return x.live ? x : null; })) ?? (await T());
+      await emu.snap('connect-0');
+      await check('connect: the editor finds the emulated FM-1', s.connected, s.status ?? '');
+      await check('connect: Sync turns Live on', s.live && s.chip === 'synced', `chip ${s.chip}`);
+      await until(async () => !/sending/i.test((await T()).status ?? ''), 8000);
+      await check('connect: the FM-1 shows its device page', await emu.waitText('OCT ', 6000));
+      const p = await emu.notePeak();
+      await check('connect: the FM-1 plays Init from a key', p > LOUD, `peak ${p}`);
+      await emu.snap('connect');
+    },
+    async sandbox() {
+      await open('Hera 6 XL');
+      const s = await until(async () => { const x = await T(); return x.sandbox ? x : null; });
+      await check('sandbox: over budget with Live on is sandbox mode', !!s?.sandbox, `chip ${(await T()).chip}`);
+      await check('sandbox: the FM-1 shows the sandbox page', await emu.waitText('BROWSER PLAYS'));
+      await emu.snap('sandbox');
+      const p = await emu.notePeak();
+      await check('sandbox: the FM-1 is silent under a key', p < QUIET, `peak ${p}`);
+      await check('sandbox: the editor follows the FM-1', (await T()).following);
+      await shot('sandbox');
+    },
+    async arp() {
+      const before = await patchJson();
+      await emu.tap(B.arp);
+      const changed = await until(async () => (await patchJson()) !== before, 1500);
+      await sleep(700);
+      await emu.tap(B.arp);
+      const mid = await patchJson();
+      const back = await until(async () => (await patchJson()) === before, 3000);
+      if (changed && !back) console.log(`  ARP 1: ${diff(JSON.parse(before), JSON.parse(mid)).join('; ')}\n  ARP 2: ${diff(JSON.parse(mid), JSON.parse(await patchJson())).join('; ')}`);
+      if (!changed) return check('sandbox: ARP (skipped: ARP changes nothing in this patch)', true);
+      await check('sandbox: ARP toggles on, and off again', changed && back, `first press ${changed ? 'changed the patch' : 'changed nothing'}, second ${back ? 'undid it' : 'did not undo it'}`);
+    },
+    async arpQuick() {   // a quick second press, as a hand does it (300 ms apart)
+      await page.evaluate(() => { window.__midiLog.splice(0); window.__m1test.inputs(); });
+      const before = await patchJson();
+      await emu.tap(B.arp);
+      await sleep(100);
+      await emu.tap(B.arp);
+      await sleep(1500);
+      const after = await patchJson();
+      const log = await page.evaluate(() => window.__midiLog.splice(0).filter((x) => x[2] === 86));
+      await check('sandbox: ARP pressed twice quickly ends where it began', after === before, after === before ? '' : `${diff(JSON.parse(before), JSON.parse(after)).join('; ')} (CC 86 seen: ${log.map((x) => `${x[3]}@${x[0]}`).join(' ')})`);
+      if (after !== before) { await emu.tap(B.arp); await sleep(1500); }
+    },
+    async oct() {
+      const o0 = (await T()).octave;
+      await emu.tap(B.octUp);
+      const up = await until(async () => (await T()).octave === o0 + 1, 1500);
+      await emu.tap(B.octDown);
+      const down = await until(async () => (await T()).octave === o0, 1500);
+      await check('sandbox: OCT+ / OCT- move the editor\'s octave', !!up && !!down, `from ${o0}: after OCT+ ${up ? o0 + 1 : 'unchanged'}, then ${(await T()).octave}`);
+    },
+    async preset() {
+      const name = (await T()).patch;
+      await emu.turn(ENC.preset, 1);
+      await check('sandbox: PRESET says SANDBOX: NO PRESET', await emu.waitText('SANDBOX: NO PRESET', 1500));
+      await emu.snap('preset');
+      await sleep(300);
+      await check('sandbox: PRESET leaves the editor\'s patch', (await T()).patch === name);
+    },
+    async leave() {
+      await open('Init');
+      const s = await until(async () => { const x = await T(); return !x.sandbox && x.live ? x : null; });
+      await check('leave: under budget again, synced', !!s, `chip ${(await T()).chip}`);
+      await check('leave: the FM-1 shows its device page', await emu.waitText('OCT '));
+      await sleep(500);
+      const p = await emu.notePeak();
+      await check('leave: the FM-1 sounds again', p > LOUD, `peak ${p}`);
+    },
+    async reconnect() {
+      await open('Hera 6 XL');
+      await until(async () => (await T()).sandbox);
+      await sleep(1500);   // (the open patch is saved for the next visit)
+      await page.close();   // the tab goes: the FM-1 plays its own patch again after about 5 s
+      const own = await emu.waitText('OCT ', 9000);
+      await check('reconnect: the tab closed, the FM-1 leaves sandbox mode', own);
+      page = await context.newPage();
+      page.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
+      await load();
+      const s0 = await T();
+      await check('reconnect: the editor reopens on the sandbox patch', s0.patch === 'Hera 6 XL' && !s0.fits, s0.patch);
+      const asked = await connect();
+      await check('reconnect: connecting offers Sync', !!asked);
+      const s = await until(async () => { const x = await T(); return x.sandbox ? x : null; });
+      await check('reconnect: Sync starts sandbox mode', !!s?.sandbox, `chip ${(await T()).chip}`);
+      await check('reconnect: the FM-1 shows the sandbox page', await emu.waitText('BROWSER PLAYS'));
+      await shot('reconnect');
+    },
+    async switchPlaying() {   // the owner's 1.3 session: Elvira 2 running, then Elvira 2 XL opened
+      await open('Elvira 2');
+      await until(async () => { const x = await T(); return !x.sandbox && x.live; });
+      await until(async () => !/sending/i.test((await T()).status ?? ''), 8000);
+      await emu.waitText('OCT ', 6000);
+      await emu.tap(B.play);
+      // its PATTERN is empty: a held key sounds while the transport runs (the first of these keys that does, and stays held)
+      let held = -1, p = 0;
+      for (const k of [C4, C4 + 1, C4 + 2, C4 + 3, C4 + 4, C4 + 5, C4 - 2, C4 - 4]) {
+        await emu.key(k, true);
+        await sleep(300);
+        const m = await emu.mark();
+        await sleep(700);
+        p = await emu.peak(m);
+        if (p > LOUD) { held = k; break; }
+        await emu.key(k, false);
+      }
+      await emu.snap('switch-0');
+      const s0 = await T();
+      await check('switch: Elvira 2 runs and sounds on the FM-1', p > LOUD && s0.deviceRunning, `peak ${p}${held >= 0 ? ` (key ${held})` : ''}, running ${s0.deviceRunning}`);
+      await page.evaluate(() => window.__sent.splice(0));
+      const t0 = Date.now();
+      await open('Elvira 2 XL');
+      const s = await until(async () => { const x = await T(); return x.sandbox ? x : null; }, 2000);
+      await check('switch: Elvira 2 XL mid-sequence is sandbox mode', !!s?.sandbox);
+      const shown = await emu.waitText('BROWSER PLAYS', 6000);
+      const took = Date.now() - t0;
+      const sent = await page.evaluate(() => window.__sent.splice(0));
+      const cmds = [...new Set(sent.map((x) => x[1].toString(16)))].join(' ');
+      let afterHome = '';
+      if (!shown) {
+        await emu.snap('switch-stuck');
+        await emu.tap(B.home);
+        afterHome = (await emu.waitText('BROWSER PLAYS', 3000)) ? '; after HOME it shows' : '; not even after HOME';
+      }
+      await check('switch: the FM-1 shows the sandbox page without HOME', shown, `${shown ? `after ${took} ms` : 'not within 6 s'}; the editor sent commands ${cmds}${afterHome}`);
+      await emu.snap('switch');
+      const m2 = await emu.mark();
+      await sleep(800);
+      const p2 = await emu.peak(m2);
+      await check('switch: the FM-1 goes silent', p2 < QUIET, `peak ${p2}`);
+      const s2 = await T();
+      await check('switch: the browser\'s transport runs on', s2.playing, `playing ${s2.playing}`);
+      await shot('switch');
+      if (held >= 0) await emu.key(held, false);
+      await emu.tap(B.play);   // stop
+    },
+  };
+
+  try {
+    for (const [name, run] of Object.entries(scenarios)) {
+      if (only && !only.includes(name)) continue;
+      console.log(`-- ${name}`);
+      try {
+        await run();
+      } catch (e) {
+        await check(`${name}: ran to the end`, false, e.message.split('\n')[0]);
+        await shot(`${name}-error`);
+      }
+    }
+  } finally {
+    writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));
+    if (!flag('--keep')) {
+      await browser.close().catch(() => {});
+      emu.quit();
+      vite?.kill();
+    }
+  }
+  const failed = results.filter((r) => !r.ok);
+  console.log(`\n${results.length - failed.length} of ${results.length} checks passed${failed.length ? `; failed: ${failed.map((f) => f.name).join('; ')}` : ''}`);
+  process.exit(failed.length ? 1 : 0);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(2);
+});
