@@ -1081,9 +1081,15 @@ int main(void)
         panel_keys(0);
         panel_keys(1u << 0);                                /* step 1 held again */
         loop();
-        enc(0, -2);                                         /* + SELECT: its chance */
+        enc(4, -2);                                         /* + K3: its chance (the owner, 2026-10-24: not SELECT on the roll) */
         hw = eng_steps_note((uint32_t)pat, 0u, 46u);
-        check("+ SELECT: its chance (90 %), the row stays", hw && ((hw >> 26) & 31u) == 2u && seq_grid_note(-1, seq_row) == 46u);
+        check("+ K3: its chance (90 %), the row stays", hw && ((hw >> 26) & 31u) == 2u && seq_grid_note(-1, seq_row) == 46u
+              && !strcmp(msg_text, "CHANCE 90%"));
+        enc(0, 1);                                          /* + SELECT: the row moves, the chance stays */
+        hw = eng_steps_note((uint32_t)pat, 0u, 46u);
+        check("+ SELECT with a step held on the roll: the row moves (A2), the chance stays", seq_grid_note(-1, seq_row) == 45u
+              && hw && ((hw >> 26) & 31u) == 2u);
+        enc(0, -1);
         panel_keys(0);
         loop();
 
@@ -1211,6 +1217,36 @@ int main(void)
         check("stopped again: the roll with REC on", !seq_kbd() && seq_rec == 2u && page == PAGE_SEQ);
         tap(BTN_REC);
         check("REC again: off", seq_rec == 0 && !seq_kbd());
+
+        eng_arm_mask(0);                                    /* nothing armed, the roll shown (the owner's 1.2.0 device check) */
+        loop();
+        tap(BTN_PLAY);
+        tap(BTN_REC);
+        loop();
+        check("PLAY, REC on the roll with nothing armed: REC arms the track shown, the keys its keyboard", eng_armed() == pat
+              && seq_rec == 2u && seq_kbd() && page == PAGE_SEQ && seq_trk == 1u);
+        for (i = 0; i < 40; i++)
+            eng_render(l, r, 128);
+        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
+        panel_keys(1u << 2);                                /* a white key (G3): its own pitch, not a step of the selected row */
+        for (i = 0; i < 10; i++)
+            eng_render(l, r, 128);
+        panel_keys(0);
+        eng_render(l, r, 128);
+        loop();
+        {
+            int nn = eng_steps_notes((uint32_t)pat, &w), got = 0;
+            for (i = 0; i < nn; i++)
+                got += ((w[i] >> 12) & 127u) == base + 2u;
+            check("  a white key: its own pitch (G3, not the selected row's A#2) recorded once into the nearest step",
+                  got == 1 && (uint32_t)nn == before + 1u && seq_grid_note(-1, seq_row) != base + 2u);
+        }
+        tap(BTN_REC);
+        loop();
+        check("  REC off: the track disarmed again", seq_rec == 0 && eng_armed() < 0 && !seq_kbd());
+        tap(BTN_PLAY);
+        loop();
+        eng_arm_mask((uint64_t)1 << pat);                   /* (PATTERN armed again for what follows) */
         (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
         seq_sync(pat);
         tap(BTN_HOME);

@@ -8,11 +8,13 @@
  *                   held + REC (here): clear the selected track, asked first (REC again within 3 s: seq_clear_press)
  *   ALGO            steps through the tracks (not while REC records the armed one)
  *   SELECT          the selected row, a row a click (a drum track: clamped at the first and the last; the roll scrolls
- *                   its window of 8 pitches when it reaches an edge); with a white key held: that step's chance
- *   white keys      the 16 steps of the page: the selected row's note on the step on / off (FX held: its accent). A held white key + SELECT: the note's chance, 100 % .. 5 % in steps of 5; + K2: its velocity;
- *                   on the roll + K1: its pitch (a semitone a click, past the step's other notes; the selected row
- *                   follows it). Turning a knob on a held step undoes the press: the track's
- *                   notes as they were, the note there.
+ *                   its window of 8 pitches when it reaches an edge); on a drum track with a white key held: that
+ *                   step's chance (the roll: always the row)
+ *   white keys      the 16 steps of the page: the selected row's note on the step on / off (FX held: its accent). A held
+ *                   white key + K2: its velocity; + SELECT (a drum track) or K3 (the roll; the owner, 2026-10-24): the
+ *                   note's chance, 100 % .. 5 % in steps of 5; on the roll + K1: its pitch (a semitone a click, past the
+ *                   step's other notes; the selected row follows it). Turning a knob on a held step undoes the press:
+ *                   the track's notes as they were, the note there.
  *   REC             live recording on / off (its LED is lit while on); it acts on its release
  *
  * A drum track (its keys out into a Drum map; the #139 follow-up, the owner's grid of 2026-10-23): the rows are the map's
@@ -42,7 +44,9 @@
  *                   nearest step (eng_steps_rec); on a melodic track's roll all 27 keys are its keyboard (seq_kbd) and OCT-
  *                   / OCT+ the octave. REC again, or another arm, ends it; leaving the page stopped ends it (a live take
  *                   goes on).
- *   REC with nothing armed: the black keys record hits; from another page it opens this one on the selected track if it
+ *   REC with nothing armed: on a melodic track's roll it arms that track and records it as above (the owner's 1.2.0
+ *                   device check: the keys are notes there, not track hits), REC off disarms it again (seq_rec_arms);
+ *                   else the black keys record hits; from another page it opens this one on the selected track if it
  *                   is a drum track, else the first drum track (seq_rec_aim), so the hits are seen landing.
  *
  * Key LEDs: the selected row's notes on the page bright, the step playing at the mid level (dark on a step that is on),
@@ -61,12 +65,13 @@
 static uint8_t seq_trk;                 /* the selected track (index among the patch's Steps modules) */
 static uint8_t seq_pg;                  /* the page of 16 steps */
 static uint8_t seq_rec;                 /* REC: 1 black keys record hits, 2 the keys record into the armed track (#139) */
+static int8_t seq_rec_arms = -1;        /* the module REC armed itself on the roll (seq_rec_press), disarmed when REC ends */
 static uint8_t seq_row;                 /* the grid's selected row: a Drum map's row, or the roll's (0 the top: its highest pitch) */
 static uint8_t seq_roll_lo = 57;        /* the roll (#241): the pitch of its lowest row (0..120) */
 static int8_t seq_roll_trk = -1;        /* the track its window was opened for (-1: open it again), and the patch then */
 static uint32_t seq_roll_gen;
 static uint32_t ent_keys;               /* the keys held while they are the armed track's keyboard (bit n: key n) */
-static int8_t seq_held = -1;            /* the step whose white key is held (SELECT sets its chance, K1 / K2 its values), -1 none */
+static int8_t seq_held = -1;            /* the step whose white key is held (SELECT / the roll's K3 its chance, K1 / K2 its values), -1 none */
 static uint32_t seq_held_notes[TRACK_NOTES_MAX];   /* the track's notes before the held step's press switched it */
 static uint8_t seq_held_n;
 static uint8_t seq_held_turned;         /* a knob turned while it is held (the press's switch is undone once) */
@@ -543,7 +548,7 @@ static uint32_t seq_grid_held(int map, int mod)
     return w;
 }
 
-/* SELECT turned with a step held: the selected row's note's chance, 5 % a click */
+/* SELECT (a drum track) or K3 (the roll) turned with a step held: the selected row's note's chance, 5 % a click */
 static void seq_chance(int32_t clicks)
 {
     int mod = seq_module(), map = seq_map();
@@ -650,6 +655,11 @@ static void seq_rec_off(void)
 {
     if (seq_rec == 2u && eng_armed() >= 0)
         eng_steps_rec((uint32_t)eng_armed(), 0);
+    if (seq_rec_arms >= 0 && (eng_arm_mask_get() >> seq_rec_arms & 1u)) {
+        eng_arm_mask(eng_arm_mask_get() & ~((uint64_t)1 << seq_rec_arms));
+        m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+    }
+    seq_rec_arms = -1;
     seq_rec = 0;
     ent_keys = 0;
     ui_dirty = 2;
@@ -666,6 +676,15 @@ static void seq_rec_press(void)
         seq_rec_off();
         ui_msg("REC OFF", 1000);
         return;
+    }
+    if (t < 0 && page == PAGE_SEQ && seq_module() >= 0 && seq_map() < 0) {
+        /* nothing armed, a melodic track's roll shown (the owner's 1.2.0 device check): REC records that track, so the
+         * keys play its pitches and a running take records them, as if it were armed; REC off disarms it again */
+        int mod = seq_module();
+        eng_arm_mask(eng_arm_mask_get() | (uint64_t)1 << mod);
+        m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+        seq_rec_arms = (int8_t)mod;
+        t = seq_armed_trk();
     }
     if (t < 0) {
         seq_rec = 1;
