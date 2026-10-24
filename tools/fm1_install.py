@@ -169,10 +169,13 @@ def boot_mismatch(addrs):
     return len(addrs) >= 4 and addrs[0] == 0 and addrs[1] == 512 and addrs[-1] < addrs[2]
 
 
-BOOT_MISMATCH = ("this FM-1's boot code (flash 0x0000-0x3FFF) is not the one inside the official V15 package, so it "
-                 "refused the update before erasing anything (its screen says \"update failed -5\"); the FM-1 is safe. "
-                 "To return to V15 anyway: put it in chip boot mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) and "
-                 "write V15's 0x4000-0x92FFF region with MvaveFM1Unbricker. "
+BOOT_MISMATCH = ("nothing was changed: the FM-1 refused the official V15 (its screen says \"update failed -5\"), "
+                 "because the small piece of software at the start of its memory that starts the FM-1 (its boot code) "
+                 "is not V15's. It still runs its firmware. Most likely it was set up by M-VAVE's Official Open. The safe "
+                 "way on is to keep Matryoshka; a later Matryoshka firmware will put Official Open back, or go back to "
+                 "V15 after a warning (issue #183). As a last resort today: put the FM-1 in the chip's own repair mode "
+                 "(from Matryoshka, the SysEx F0 22 24 35 7D F7) and write V15's firmware part (0x4000-0x92FFF) with "
+                 "MvaveFM1Unbricker; that leaves the start-up part as it is. "
                  "Details: https://github.com/glvno/matryoshka/issues/183")
 
 

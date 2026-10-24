@@ -34,8 +34,8 @@ export function bootMismatch(addrs) {
   return addrs.length >= 4 && addrs[0] === 0 && addrs[1] === 512 && addrs[addrs.length - 1] < addrs[2];
 }
 export const BOOT_MISMATCH =
-  "this FM-1's boot code (flash 0x0000-0x3FFF) is not the one inside the official V15 package, so it refused the " +
-  "update before erasing anything (its screen says update failed -5); the device is safe";
+  "nothing was changed: the FM-1 refused the official V15 (its screen says update failed -5), because the small piece " +
+  "of software that starts it (its boot code) is not V15's; most likely it was set up by M-VAVE's Official Open";
 export function loaderFits(loader, product) {
   if (product === STOCK_PRODUCT) return loader === "ota-" + STOCK_PRODUCT;
   return /^ota-FM-1_[789]\d\d$/.test(loader);

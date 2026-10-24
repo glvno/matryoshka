@@ -7,13 +7,25 @@ import { Updater, STOCK_PRODUCT } from './flasher/fm1ota.js';
 import { logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
 import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
 
-/** #183: the running firmware refused the official V15 because this FM-1's boot code differs from the package's
- *  (fm1ota.js bootMismatch); the way back is the chip's ROM boot */
+/** the start-up software, said plainly first: the first 16 KB of the FM-1's memory (flash 0x0000–0x3FFF) */
+const STARTUP = 'the small piece of software at the start of its memory that starts the FM-1 when you switch it on (its boot code)';
+
+/** why Official Open will not come with the app (fm1_open's THIRD_PARTY.md allows passing the engine on inside FM-1
+ *  firmware; Matryoshka ships only open-source files) */
+export const OPEN_WHY =
+  "Official Open includes M-VAVE's own sound engine, which is not open source. M-VAVE's licence would allow passing it " +
+  'on, but Matryoshka ships only open-source files, so you will download it from M-VAVE yourself.';
+
+/** #183: the running firmware refused the official V15 because its start-up part differs from the package's
+ *  (fm1ota.js bootMismatch). The only other one known is Official Open's. Putting Open back, or crossing back to V15,
+ *  needs a later firmware (not offered here before then); the last resort is the chip's repair mode. */
 export const BOOT_CODE_HELP =
-  "This FM-1's boot code (flash 0x0000–0x3FFF) is not the one inside the official V15 package, so it refused the update " +
-  'before erasing anything (its screen says "update failed -5"). The FM-1 is safe and still runs its firmware. To return ' +
-  "to V15 anyway: put it in chip boot mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) and write V15's 0x4000–0x92FFF " +
-  'region with MvaveFM1Unbricker. Details: https://github.com/glvno/matryoshka/issues/183';
+  `Nothing was changed: the FM-1 refused the official V15 (its screen says "update failed -5"), because ${STARTUP} is not ` +
+  "V15's. It still runs its firmware. Most likely it was set up by M-VAVE's Official Open. The safe way on is to keep " +
+  'Matryoshka. A later Matryoshka firmware will let this page put Official Open back, or go back to V15 after a warning ' +
+  `(issue #183). ${OPEN_WHY} As a last resort today: put the FM-1 in the chip's own repair mode (from Matryoshka, the ` +
+  "SysEx F0 22 24 35 7D F7) and write V15's firmware part (0x4000–0x92FFF) with MvaveFM1Unbricker; that leaves the " +
+  'start-up part as it is. Details: https://github.com/glvno/matryoshka/issues/183';
 
 const ERRORS: Record<string, string> = {
   notfound: 'FM-1 not found. Check the USB data cable and close other apps that use the MIDI port.',
