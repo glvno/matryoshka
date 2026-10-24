@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs (FM-1s are
+  ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the editor's Play
+  (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), which is the default.
+
 ## 1.2.2 — 2026-10-24
 
 - **"update failed -5"** on Return to official V15 is now explained in plain words: the FM-1 was most likely set up by

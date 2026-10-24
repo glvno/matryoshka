@@ -60,6 +60,7 @@ import { AboutCard } from './about';
 import { whatsNew } from './whats-new';
 import { demoPatch } from './demo';
 import { renamedKey } from './storage-key';
+import { ClockOut, isFm1Out, portLabels } from './clock-out';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -1375,6 +1376,8 @@ function panic(): void {
   host.mute(true);
   sink.send({ t: 'panic' });
 }
+/** MIDI clock out (FM-1 & MIDI, wired below): clock at Main's tempo to the ticked outputs, Start / Stop with Play */
+const clockOut = new ClockOut(() => editor.patch.modules.find((m) => m.type === 'fm1')?.params.tempo ?? 120);
 // PLAY in the dock's button block and Space are one switch: the transport (Main's run output and clock)
 function syncPlayBtn(): void {
   arpBtn.setAttribute('aria-pressed', String(editor.playing));
@@ -1384,6 +1387,7 @@ function setPlaying(on: boolean): void {
   editor.playing = on;
   host.transport(on);
   if (live()) device.transport(on);
+  clockOut.transport(on);
   if (!fromEmu) emu.ui?.transport(on);
   syncPlayBtn();
   showArmed(); // (REC: step entry stopped, live running)
@@ -1946,6 +1950,100 @@ $('dev-release').onclick = () => {
   save(editor.patch); // the patch is remembered; reloading the page is what drops the MIDI access
   location.reload();
 };
+
+// MIDI clock out: on, the ticked MIDI outputs get clock at Main's tempo and Start / Stop with Play, so several FM-1s play in
+// time with this page and each other. An output nobody ticked or unticked is ticked when it looks like an FM-1. The switch
+// and the ticks are remembered by this browser; switched on, the clock starts again with the page.
+const CLOCK_OUT = 'matryoshka.clock-out';
+const clockBtn = $('clock-out-btn');
+const clockList = $('clock-out-ports');
+let clockAccess: MIDIAccess | null = null;
+let clockTimer: Worker | number | null = null;
+const clockPrefs = ((): { on: boolean; picks: Record<string, boolean> } => {
+  try {
+    const v = JSON.parse(localStorage.getItem(CLOCK_OUT) ?? 'null');
+    if (v && typeof v === 'object') return { on: v.on === true, picks: v.picks && typeof v.picks === 'object' ? v.picks : {} };
+  } catch {
+    /* storage blocked or unreadable: off */
+  }
+  return { on: false, picks: {} };
+})();
+const saveClockPrefs = (): void => {
+  try {
+    localStorage.setItem(CLOCK_OUT, JSON.stringify(clockPrefs));
+  } catch {
+    /* storage blocked: the choice lasts until the page is reloaded */
+  }
+};
+const clockPicked = (p: MIDIOutput): boolean => clockPrefs.picks[p.id] ?? isFm1Out(p.name);
+function showClockPorts(): void {
+  const outs = clockAccess ? [...clockAccess.outputs.values()].filter((p) => p.state !== 'disconnected') : [];
+  const picked = outs.filter(clockPicked);
+  const labels = portLabels(outs);
+  clockOut.setPorts(picked);
+  clockBtn.setAttribute('aria-pressed', String(clockOut.running));
+  clockBtn.textContent = clockOut.running ? `Send MIDI clock: on, to ${picked.length} output${picked.length === 1 ? '' : 's'}` : 'Send MIDI clock: off';
+  clockList.replaceChildren();
+  if (clockAccess && !outs.length) {
+    const none = document.createElement('span');
+    none.className = 'muted';
+    none.textContent = 'No MIDI outputs: plug in an FM-1.';
+    clockList.append(none);
+  }
+  for (const p of outs) {
+    const label = document.createElement('label');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = clockPicked(p);
+    box.onchange = () => {
+      clockPrefs.picks[p.id] = box.checked;
+      saveClockPrefs();
+      showClockPorts();
+    };
+    label.append(box, labels.get(p.id) ?? '');
+    clockList.append(label);
+  }
+}
+/** the clock's timer: a worker's (it keeps its pace in a background tab), else the page's */
+function clockTimerOn(on: boolean): void {
+  if (on && clockTimer === null) {
+    try {
+      const w = new Worker(new URL('./clock-tick.ts', import.meta.url), { type: 'module' });
+      w.onmessage = () => clockOut.pump();
+      clockTimer = w;
+    } catch {
+      clockTimer = window.setInterval(() => clockOut.pump(), 25);
+    }
+  } else if (!on && clockTimer !== null) {
+    if (typeof clockTimer === 'number') clearInterval(clockTimer);
+    else clockTimer.terminate();
+    clockTimer = null;
+  }
+}
+async function setClockOut(on: boolean): Promise<void> {
+  if (on && !clockAccess) {
+    if (!navigator.requestMIDIAccess) {
+      devStatus('Web MIDI is not available in this browser (use Chrome or Edge)');
+      return;
+    }
+    try {
+      clockAccess = await navigator.requestMIDIAccess();
+      clockAccess.addEventListener('statechange', showClockPorts);
+    } catch (e) {
+      devStatus(`MIDI access denied: ${e}`);
+      return;
+    }
+  }
+  clockPrefs.on = on;
+  saveClockPrefs();
+  showClockPorts(); // (the ports first: switched on, the first clocks go out at once)
+  clockOut.enable(on);
+  clockTimerOn(on);
+  showClockPorts();
+}
+clockBtn.onclick = () => void setClockOut(!clockOut.running);
+showClockPorts();
+if (clockPrefs.on && 'requestMIDIAccess' in navigator) void setClockOut(true);
 
 // The compact workspace drawer leaves the whole patch usable on small screens.
 const sidebar = $('workspace-sidebar');
