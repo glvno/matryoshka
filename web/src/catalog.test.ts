@@ -6,7 +6,7 @@ import { addableModules, assemblyShelves, openableByValue, openableGroups, SHELV
 import { DEFS } from './modules';
 import { validatePatch, type Patch } from './patch';
 import { addCommunity, loadCommunity } from './community';
-import { PRESETS } from './presets';
+import { PRESETS, xlBase } from './presets';
 import { savePatch } from './saved';
 
 const mem = new Map<string, string>();
@@ -47,7 +47,7 @@ describe('what the editor offers (#84)', () => {
       expect(() => validatePatch(o.load(), DEFS)).not.toThrow();
       expect(o.chip().text).toMatch(/^(FM-1 · \d+ %|SANDBOX)$/);
     }
-    expect(groups[1].items.every((o) => o.chip().fits)).toBe(true); // every factory FM-1 version fits
+    expect(groups[1].items.filter((o) => !xlBase(o.name)).every((o) => o.chip().fits)).toBe(true); // every factory FM-1 version fits (an XL need not)
   });
 
   it('lists a factory XL right under its FM-1 version, and its chip comes from the patch, not the name', () => {
