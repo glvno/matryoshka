@@ -5,21 +5,42 @@
 // port: the editor's Live link (device.ts) and a MIDI keyboard may use the same one.
 
 import { Updater } from './flasher/fm1ota.js';
+import { firmwareKind } from './felucca-store';
 import { PROFILES, firmwareOf, type Firmware, type PanelInput, type Profile } from './fm1-profiles';
 
 const PORT = /fm-?1|felucca|matryoshka|modular|sloop|baud/i;
 
+/** the port names an FM-1 shows on USB MIDI, whatever firmware runs (the Install panel's list, flasher/fm1ota.js) */
+const ANY_FM1 = /fm-?1|felucca|matryoshka|modular|ota|composite|sinco|usb-midi/i;
+
 /** who the FM-1 on USB MIDI is, by M-VAVE's identity handshake (as the Install panel asks): its identity, whether that is
- *  an update loader, and its port; null when nothing answers */
-export async function identifyFm1(access?: MIDIAccess): Promise<{ text: string; loader: boolean; port: string } | null> {
+ *  an update loader, and its port. `text` is null when a port that looks like an FM-1 is there but nothing answers the
+ *  handshake (still starting, or a firmware that does not answer it); null when there is no such port */
+export async function identifyFm1(access?: MIDIAccess): Promise<{ text: string | null; loader: boolean; port: string } | null> {
   try {
-    const dev = await new Updater(access ?? await navigator.requestMIDIAccess({ sysex: true })).find();
-    if (!dev) return null;
-    dev.link.close();
-    return { text: dev.id.text, loader: /^ota-/i.test(dev.id.model), port: dev.name };
+    const midi = access ?? await navigator.requestMIDIAccess({ sysex: true });
+    const dev = await new Updater(midi).find();
+    if (dev) {
+      dev.link.close();
+      return { text: dev.id.text, loader: /^ota-/i.test(dev.id.model), port: dev.name };
+    }
+    const port = [...midi.inputs.values()].find((p) => p.state !== 'disconnected' && ANY_FM1.test(p.name ?? ''));
+    return port ? { text: null, loader: false, port: port.name ?? '' } : null;
   } catch {
     return null;
   }
+}
+
+/** what Connect FM-1 says when Matryoshka did not answer, with Install Matryoshka beside it; null: nothing to offer (no
+ *  FM-1 on USB, the connect error says so, or it runs Matryoshka after all) */
+export function installOffer(id: Awaited<ReturnType<typeof identifyFm1>>): string | null {
+  if (!id) return null;
+  if (id.loader) return `The FM-1 waits in its update loader (${id.text}): an install was not finished`;
+  if (id.text === null) return `An FM-1 is on USB MIDI (${id.port}) but does not answer as Matryoshka: it runs other firmware, or is still starting`;
+  const kind = firmwareKind(id.text);
+  if (kind === 'matryoshka') return null;
+  const what = kind === 'stock' ? `M-VAVE's official firmware (${id.text})` : kind === 'felucca' ? `Felucca (${id.text})` : id.text;
+  return `This FM-1 runs ${what}, not Matryoshka`;
 }
 
 export class Fm1Mirror {
@@ -44,7 +65,7 @@ export class Fm1Mirror {
     const access = await navigator.requestMIDIAccess({ sysex: true });
     const found = await identifyFm1(access);   // (no answer to the handshake: by port name only)
     const id = found?.text ?? null;
-    const name = found?.port ?? null;
+    const name = found?.text ? found.port : null;
     const input = [...access.inputs.values()].find((p) => (name ? p.name === name : PORT.test(p.name ?? '')) && !/ota-/i.test(p.name ?? '') && p.state !== 'disconnected');
     if (!input) throw new Error('no FM-1 found among the MIDI inputs');
     const fw = firmware ?? firmwareOf(id);
