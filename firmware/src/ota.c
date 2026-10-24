@@ -13,6 +13,8 @@
  * staging began erases the staging area, and Felucca carries on. A package
  * whose flash.bin is not exactly this board's size (OTA_FL_LEN: another
  * board's package) is refused in step 1, before anything is erased.
+ * (Matryoshka changes, #183: except a shorter one with M-VAVE's loader whose head equals ours: Official Open's. And
+ * the official V15 over Open's head, in a session started with F0 22 24 35 7C F7 only: ota_cross_ok.)
  *
  * Portable core: the firmware (felucca.c) and the Mac test (ota_test.c)
  * supply these hooks:
@@ -29,7 +31,23 @@
 #define OTA_RES (OTA_AREA + OTA_AREA_LEN - 0x100u)  /* 0xE4F00 = 4K boundary - 256: SPL scan */
 #define OTA_FL_LEN 0x93000u                      /* flash.bin = [0, the PRCT end): the head and this board's app area,
                                                   * the size the update loader writes (ldr_core.c LDR_APP_HI) */
-#define OTA_LDR_HCRC 0xEBAAu                     /* official update loader (usb_hid_ota.bin) */
+/* Matryoshka change (#183): M-VAVE Official Open's flash.bin is shorter (0x6F000 in V12, 0x73000 in V14); a shorter one
+ * is whole 4 KiB sectors past the 16 KiB head */
+#define OTA_FL_SHORT_OK(n) ((n) < OTA_FL_LEN && (n) > 0x4000u && !((n) & 0xFFFu))
+/* Matryoshka change (#183): the one boot code crossing allowed. The official V15 package may replace M-VAVE Official
+ * Open's head (an FM-1 that ran Open) with V15's, and only in a session the host started with the crossing go-ahead
+ * (F0 22 24 35 7C F7, sent after the person confirmed; M-UPGRADE's 7F never crosses). The heads are told by the
+ * CRC-16 of each 512-byte block (V15 package 0x0000..0x3FFF; Open's head as V12 and V14 both write it). */
+static uint8_t ota_cross_ok;
+static const uint16_t OTA_HEAD_V15[32] = {
+    0x87AC, 0x6674, 0xE46C, 0x0F72, 0x4C09, 0xEFCB, 0xD00A, 0x5A6A, 0x6858, 0x597B, 0xFF06, 0x813A, 0xF927, 0x1BE4,
+    0xB263, 0xDEBF, 0x6F74, 0x758A, 0x958E, 0xFC31, 0x41FF, 0x7139, 0x9F23, 0x1D30, 0xEF17, 0x07F6, 0xA738, 0x564F,
+    0xF732, 0x8D2B, 0x7FA1, 0x7FA1};
+static const uint16_t OTA_HEAD_OPEN[32] = {
+    0xF0A6, 0x50B8, 0x5026, 0xDE38, 0x012C, 0x1594, 0x9C22, 0xFCAE, 0x6764, 0x0424, 0xF81F, 0xDA6C, 0xF85E, 0x51D2,
+    0x6E0B, 0x2BC7, 0x41CE, 0x7ECC, 0xD4CF, 0x1541, 0xCD11, 0xE609, 0x4EE3, 0x39C3, 0x1FC5, 0x977D, 0xD0F5, 0x1CE7,
+    0xD57B, 0xA4B7, 0x251E, 0x7FA1};
+#define OTA_LDR_HCRC 0xEBAAu                   /* official update loader (usb_hid_ota.bin) */
 #define OTA_LDR_DCRC 0x5881u
 #define OTA_LDR_LEN 0x4DE1u
 #define OTA_FRAME_MAX 640u                       /* 512-B response = 605 wire bytes */
@@ -272,7 +290,9 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         return rc;
     if (!fl_off || !ota_off)
         return -3;
-    if (fl_len != OTA_FL_LEN)
+    /* Matryoshka change (#183): a shorter flash.bin (M-VAVE Official Open's) is let through to step 2, which takes
+     * it only with the official loader and only when the whole head equals ours; any other size: as Felucca */
+    if (fl_len != OTA_FL_LEN && !OTA_FL_SHORT_OK(fl_len))
         return -15;                                         /* another board's package: nothing staged, nothing erased */
     /* 2. which loader: the official one (known CRCs; it rewrites the whole flash.bin
      *    including the head) or Felucca's own (app area only, checks the chip key) */
@@ -288,12 +308,17 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         own = ota_memeq(b + i, (const uint8_t *)"FELUCCA-LOADER-1", 16) && ota_rd32(b + 0x20 + 4) <= 0x14000u;
     if (!official && !own)
         return -7;
+    if (fl_len != OTA_FL_LEN && !official)
+        return -15;                                         /* Matryoshka (#183): a shorter one only with M-VAVE's loader */
     if (official) {                    /* the official loader writes the head: it must equal ours */
+        uint32_t same = 1, cross = ota_cross_ok && fl_len == OTA_FL_LEN;   /* Matryoshka (#183): or the one crossing */
         ota_show(2, 0);
         for (i = 0; i < 0x4000u; i += 512u) {
             if (ota_read(fl_off + i, b, 512) || ota_fread(i, mine, 512))
                 return -4;
-            if (!ota_memeq(b, mine, 512))
+            same = same && ota_memeq(b, mine, 512);
+            cross = cross && ota_crc16(b, 512, 0) == OTA_HEAD_V15[i >> 9] && ota_crc16(mine, 512, 0) == OTA_HEAD_OPEN[i >> 9];
+            if (!same && !cross)
                 return -5;
         }
     }

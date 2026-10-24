@@ -895,9 +895,11 @@ static void update_only(const char *why)
             ota_frame_done();                   /* the editor's SysEx: not in this mode */
         ota_service();                          /* M-UPGRADE handshake */
         if (usb.ota_req) {                      /* M-UPGRADE upgrade command */
+            ota_cross_ok = usb.ota_req == 2u;   /* the host's go-ahead to cross back to V15's boot code (#183) */
             usb.ota_req = 0;
             if (flash_ok)
                 ota_session();                  /* returns only if nothing was committed */
+            ota_cross_ok = 0;
             update_screen(why);
         }
         if (usb.uboot_req)
@@ -918,11 +920,13 @@ static void host_poll(void)
     }
     ota_service();                                  /* M-UPGRADE handshake */
     if (usb.ota_req) {                              /* M-UPGRADE upgrade command */
+        ota_cross_ok = usb.ota_req == 2u;           /* the host's go-ahead to cross back to V15's boot code (#183) */
         usb.ota_req = 0;
         eng_run = 0;
         midi_in_quiet();                            /* the session does not drain MIDI in: TRS / USB events must not */
         if (flash_ok)                               /* fill the ring and hold the SysEx back (usb.c ep1_take, #177) */
             ota_session();                          /* returns only if nothing was committed */
+        ota_cross_ok = 0;
         midi_in_resume();
         if (patches_up) {                           /* (before patch_boot: it loads them next) */
             if (m1_apply(m1_cur, m1_cur_len) == 0)

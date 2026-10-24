@@ -165,7 +165,7 @@ static struct {
     uint8_t sx_len, sx_on;
     uint8_t rx_pend;             /* EP1 OUT packet seen, not yet taken (the MIDI ring was too full) */
     volatile uint8_t uboot_req;
-    volatile uint8_t ota_req;    /* F0 22 24 35 7F F7: M-UPGRADE upgrade command (FELUCCA_OTA) */
+    volatile uint8_t ota_req;    /* F0 22 24 35 7F F7: M-UPGRADE upgrade command (FELUCCA_OTA); 2: 7C, crossing allowed */
 } usb;
 
 #if FELUCCA_OTA
@@ -853,8 +853,8 @@ static void sysex_byte(uint8_t b)
             usb.uboot_req = 1;
 #if FELUCCA_OTA
         else if (usb.sx_len == 6u && usb.sysex[1] == 0x22 && usb.sysex[2] == 0x24 && usb.sysex[3] == 0x35 &&
-                 usb.sysex[4] == 0x7F)
-            usb.ota_req = 1;
+                 (usb.sysex[4] == 0x7F || usb.sysex[4] == 0x7C))
+            usb.ota_req = usb.sysex[4] == 0x7C ? 2u : 1u;   /* 7C: the same, with the boot code crossing allowed (#183) */
         else if (sx_collect && sx_pos) {
             sx_frame_len = sx_pos;
             RING_PUBLISH();

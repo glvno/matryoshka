@@ -6,6 +6,15 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **Restore Official Open** (Install panel, and `tools/fm1_install.py`): an FM-1 that was set up by M-VAVE's Official Open
+  refuses the official V15, and can now take Official Open back from M-VAVE's own file (its Workbench page or `.fwsc`).
+  It does not come with Matryoshka: Official Open includes M-VAVE's own sound engine, which is not open source.
+- **Cross back to V15** on such an FM-1: after a plain warning, going back to V15 also replaces the small piece of
+  software that starts the FM-1 (its boot code). If the power is cut during the second or two that takes, the FM-1 will
+  most likely not start until it is repaired in the chip's own repair mode; the README says how. Needs this firmware.
+- A cut-off return to stock is finished only with the package it was writing (V15 or Official Open); a cut-off crossing
+  never on its own.
+
 ## 1.2.1 — 2026-10-23
 
 - **Return to official V15** on an FM-1 whose boot code is not V15's (the FM-1 shows "update failed -5") now says so in

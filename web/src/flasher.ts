@@ -4,16 +4,52 @@
 // @ts-ignore untyped JS modules
 import { Updater, STOCK_PRODUCT } from './flasher/fm1ota.js';
 // @ts-ignore untyped JS modules
-import { logicalImage, productOf, validateStockPackage } from './flasher/fm1pkg.js';
+import { OPEN_RELEASES, logicalImage, productOf, validateOpenPackage, validateStockPackage } from './flasher/fm1pkg.js';
 import { FELUCCA_WARNING, firmwareKind, runsFelucca } from './felucca-store';
+import { type MvaveTarget, TARGET_NAME, WHICH_TARGET, rememberTarget, targetGuard } from './mvave-target';
 
-/** #183: the running firmware refused the official V15 because this FM-1's boot code differs from the package's
- *  (fm1ota.js bootMismatch); the way back is the chip's ROM boot */
+/** why Official Open does not come with the app (fm1_open's THIRD_PARTY.md allows passing the engine on inside FM-1
+ *  firmware; Matryoshka ships only open-source files) */
+export const OPEN_WHY =
+  "Official Open includes M-VAVE's own sound engine, which is not open source. M-VAVE's licence would allow passing it " +
+  'on, but Matryoshka ships only open-source files, so you download it from M-VAVE yourself.';
+
+/** where the README tells how to get an FM-1 back whose start-up software was cut off mid-write (#183) */
+export const REPAIR_URL = 'https://github.com/glvno/matryoshka#if-going-back-to-v15-was-cut-off';
+
+/** the start-up software, said plainly first: the first 16 KB of the FM-1's memory (flash 0x0000–0x3FFF) */
+const STARTUP = 'the small piece of software at the start of its memory that starts the FM-1 when you switch it on (its boot code)';
+
+/** the confirm before the one boot code crossing (#183): what happens, and what a power cut at the wrong moment means */
+export const CROSS_CONFIRM =
+  "Your FM-1 was set up by M-VAVE's Official Open firmware. Going back to V15 also replaces " + STARTUP + '. ' +
+  'Replacing that part takes a second or two, somewhere in the middle of the install. Keep the USB cable plugged in and ' +
+  'the computer awake until this page says done (about two minutes).\n\n' +
+  'If the power is cut during those seconds, the FM-1 will most likely not start any more: the screen stays dark and ' +
+  'nothing happens when you switch it on. It is not broken for good, but getting it back is a repair job: it needs the ' +
+  "chip's own repair mode, a Windows or Linux computer and separate repair tools (see " + REPAIR_URL + '). If you are not ' +
+  'comfortable with that, keep Matryoshka or restore Official Open instead: both are safe.';
+
+/** the last resort when neither M-VAVE package is taken: the firmware part written in the chip's repair mode */
+const ROM_BOOT =
+  "As a last resort: put the FM-1 in the chip's own repair mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) and write " +
+  "V15's firmware part (0x4000–0x92FFF) with MvaveFM1Unbricker; that leaves the start-up part as it is. Details: " +
+  'https://github.com/glvno/matryoshka/issues/183';
+
+/** #183: the running firmware refused the official V15 because its start-up part differs from the package's
+ *  (fm1ota.js bootMismatch). The only other one known is Official Open's: restore that, or cross back with the confirm. */
 export const BOOT_CODE_HELP =
-  "This FM-1's boot code (flash 0x0000–0x3FFF) is not the one inside the official V15 package, so it refused the update " +
-  'before erasing anything (its screen says "update failed -5"). The FM-1 is safe and still runs its firmware. To return ' +
-  "to V15 anyway: put it in chip boot mode (from Matryoshka, the SysEx F0 22 24 35 7D F7) and write V15's 0x4000–0x92FFF " +
-  'region with MvaveFM1Unbricker. Details: https://github.com/glvno/matryoshka/issues/183';
+  `Nothing was changed: the FM-1 refused the official V15 (its screen says "update failed -5"), because ${STARTUP} is not ` +
+  "V15's. It still runs its firmware. Most likely it was set up by M-VAVE's Official Open. Two safe ways on: keep " +
+  `Matryoshka, or restore Official Open with Restore Official Open below (M-VAVE's file: ${OPEN_RELEASES}). Or go back ` +
+  `to V15 anyway with Cross back to V15, shown below: read its warning first. ${ROM_BOOT}`;
+
+/** the reverse: Official Open refused, so the FM-1 most likely has V15's start-up part */
+export const BOOT_CODE_HELP_OPEN =
+  `Nothing was changed: the FM-1 refused Official Open (its screen says "update failed -5"), because ${STARTUP} is not ` +
+  "Official Open's. It still runs its firmware. Most likely it came with V15's (from the factory, or after Return to " +
+  "official V15): use Return to official V15 instead. To get Official Open on it, install Open with M-VAVE's own " +
+  'Workbench while the FM-1 runs V15.';
 
 const ERRORS: Record<string, string> = {
   notfound: 'FM-1 not found. Check the USB data cable and close other apps that use the MIDI port.',
@@ -27,11 +63,14 @@ const ERRORS: Record<string, string> = {
   phase: 'The device asked to finish a step other than the one running. Nothing more was sent.',
   felucca: 'Nothing was sent. Read the note above Install, tick its box and press Install again.',
   bootcode: BOOT_CODE_HELP,
+  'bootcode-open': BOOT_CODE_HELP_OPEN,
+  'bootcode-unknown': `Nothing was changed: ${STARTUP} is neither V15's nor Official Open's, so this page does not replace it. ${ROM_BOOT}`,
+  crossold: 'The FM-1 did not take the crossing go-ahead: it needs Matryoshka 1.3 or later. Install Matryoshka first, then press Cross back to V15 again. Nothing was written.',
 };
 
 /** an interrupted write can only be finished with a package the waiting loader may write (fm1ota.js loaderFits) */
 function otherLoader(loader: string): string {
-  if (loader === 'ota-' + STOCK_PRODUCT) return `The FM-1 waits in M-VAVE's update loader (${loader}) from an unfinished return to stock. Finish it with Return to official V15; nothing else may be written by that loader.`;
+  if (loader === 'ota-' + STOCK_PRODUCT) return `The FM-1 waits in M-VAVE's update loader (${loader}) from an unfinished return to stock. Finish it with the one you started, Return to official V15 or Restore Official Open; nothing else may be written by that loader.`;
   if (/^ota-FM-1_[789]\d\d$/.test(loader)) return `The FM-1 waits in a Felucca-type update loader (${loader}) from an unfinished install. Finish it with Install Matryoshka or the package you were installing; the official V15 cannot be written by it.`;
   return `The FM-1 waits in an update loader this page does not know (${loader}). Nothing was written. Finish that update with the tool that started it.`;
 }
@@ -137,6 +176,8 @@ export function buildFlashTab(root: HTMLElement): void {
       await fn();
     } catch (e) {
       const err = e as Error & { code?: string; detail?: string };
+      if (err.code === 'whichtarget') (sureRow.hidden = false), sureRow.scrollIntoView({ block: 'nearest' });
+      if (err.code === 'bootcode' || err.code === 'crossresume') (crossCard.hidden = false), crossCard.scrollIntoView({ block: 'nearest' });
       if (err.code === 'otherloader') log(`ERROR: ${otherLoader(err.detail ?? '')}`);
       else log(`ERROR: ${(err.code && ERRORS[err.code]) || err.message}${err.detail ? ` (${err.detail})` : ''}`);
     } finally {
@@ -159,9 +200,9 @@ export function buildFlashTab(root: HTMLElement): void {
 
   /** install an image; if an earlier install was cut off (the FM-1 sits in an update loader) finish that write
    *  instead, but only when that loader may write this package (otherwise an 'otherloader' error, nothing sent) */
-  const installImage = async (image: Uint8Array, product: string): Promise<void> => {
+  const installImage = async (image: Uint8Array, product: string, guard?: (loader: string) => void): Promise<void> => {
     const up = await access();
-    if (await up.resume(image, step, product)) {
+    if (await up.resume(image, step, product, guard)) {
       log('an earlier update was unfinished: it is finished now');
       return;
     }
@@ -243,11 +284,72 @@ export function buildFlashTab(root: HTMLElement): void {
 
   // ---- return to stock: M-VAVE's V15 comes with the app (Apache-2.0, from m-vave/fm1_open); validateStockPackage checks
   // its size, SHA-256 and layout before anything is sent, for the bundled file and for one the user picks alike
+  /** an M-VAVE package through M-VAVE's loader: a cut-off one is finished only with the package it started with
+   *  (mvave-target.ts), so the target is remembered from just before the loader is staged until the FM-1 is back */
+  const mvaveInstall = async (target: MvaveTarget, image: Uint8Array, product: string): Promise<void> => {
+    const crossing = target === 'v15-cross';
+    const guard = targetGuard(target, crossing ? crossOk.checked : sure.checked);
+    sure.checked = false;
+    crossOk.checked = false;
+    setButtons();
+    const up = await access();
+    if (await up.resume(image, step, product, guard)) {
+      log('an earlier update was unfinished: it is finished now');
+    } else {
+      rememberTarget(target);
+      await up.install(image, product, step, crossing);
+    }
+    rememberTarget(null);
+    sureRow.hidden = true;
+    crossCard.hidden = true;
+  };
   const returnToStock = async (raw: Uint8Array): Promise<void> => {
     const v = await validateStockPackage(raw);
     log(`package: ${v.product}, ${raw.length} bytes, SHA-256 checked`);
-    await installImage(v.image, v.product); // also finishes a return to stock that was cut off
+    await mvaveInstall('v15', v.image, v.product); // also finishes a return to stock that was cut off
   };
+  // ---- restore Official Open (#183): M-VAVE's own file, not bundled (its engine is proprietary); for an FM-1 whose
+  // boot code is Official Open's, which refuses the V15
+  const openFile = el('input', { type: 'file', accept: '.fwsc,.html' });
+  const openBtn = el('button', { textContent: TARGET_NAME.open });
+  openBtn.onclick = () =>
+    run('restore Official Open', async () => {
+      const f = openFile.files?.[0];
+      if (!f) throw new Error("choose M-VAVE's Official Open: the Workbench page (.html) or its .fwsc");
+      const v = await validateOpenPackage(await readFile(f));
+      log(`package: ${v.product} (M-VAVE Official Open), ${v.size} bytes, its boot code and loader checked`);
+      await mvaveInstall('open', v.image, v.product);
+    }, true);
+  // ---- cross back to V15 (#183): the one boot code crossing, Official Open's to V15's. Offered after a Return to official
+  // V15 was refused for Open's boot code; sent with the crossing go-ahead (fm1ota.js CROSS) only once confirmed here
+  // the confirm: pressing Go back to V15 on this card is the go-ahead, for this one run
+  const crossOk = { checked: false };
+  const crossBtn = el('button', { textContent: 'Go back to V15', class: 'primary' });
+  const crossCancel = el('button', { textContent: 'Cancel' });
+  crossBtn.onclick = () =>
+    run('cross back to V15', async () => {
+      crossOk.checked = true;
+      const r = await fetch(`./firmware/${STOCK_FILE}`, { cache: 'no-cache' });
+      if (!r.ok) throw new Error('the bundled official V15 could not be loaded');
+      const v = await validateStockPackage(new Uint8Array(await r.arrayBuffer()));
+      log(`package: ${v.product}, SHA-256 checked; going back to V15 replaces the start-up part (boot code) as well`);
+      await mvaveInstall('v15-cross', v.image, v.product);
+    }, true);
+  crossCancel.onclick = () => {
+    crossCard.hidden = true;
+    log('Cross back to V15: cancelled, nothing was sent');
+  };
+  const crossCard = el(
+    'div',
+    { class: 'card warn', hidden: true },
+    el('h2', { textContent: TARGET_NAME['v15-cross'] }),
+    ...CROSS_CONFIRM.split('\n\n').map((t) => el('p', { textContent: t })),
+    el('div', { class: 'row' }, crossBtn, crossCancel),
+    el('p', { class: 'muted', textContent: 'Needs Matryoshka 1.3 or later on the FM-1. If it is cut off, it is never finished on its own: this card asks again.' }),
+  );
+  // shown when M-VAVE's loader waits and this browser does not remember for which package
+  const sure = el('input', { type: 'checkbox', id: 'mvave-sure' });
+  const sureRow = el('div', { class: 'card warn', hidden: true }, el('p', { textContent: WHICH_TARGET }), el('label', {}, sure, ' I know which one was cut off: I press that one next'));
   const stockBtn = el('button', { textContent: 'Return to official V15' });
   stockBtn.onclick = () =>
     run('return to official V15', async () => {
@@ -267,7 +369,9 @@ export function buildFlashTab(root: HTMLElement): void {
   function setButtons(): void {
     findBtn.disabled = busy || !supported;
     installBtn.disabled = busy || !supported || !accepted() || !bundle || !!bundle.wait;
-    for (const b of [pkgBtn, stockBtn, stockFileBtn]) b.disabled = busy || !supported || !accepted();
+    for (const b of [pkgBtn, stockBtn, stockFileBtn, openBtn]) b.disabled = busy || !supported || !accepted();
+    crossBtn.disabled = busy || !supported || !accepted();
+    crossCancel.disabled = busy;
   }
   ack.onchange = setButtons;
 
@@ -286,11 +390,11 @@ export function buildFlashTab(root: HTMLElement): void {
       el('h2', { textContent: 'Before you flash' }),
       el('p', {
         textContent:
-          'Flashing replaces the FM-1 firmware. You can always go back with Return to official V15 below. If the FM-1 runs Felucca, Sloop or another build, return to stock first. Keep the USB cable connected and this page open until it says done.',
+          'Flashing replaces the FM-1 firmware. You can go back with Return to stock below: the official V15, or Official Open for an FM-1 that came from M-VAVE Official Open. If the FM-1 runs Felucca, Sloop or another build, return to stock first. Keep the USB cable connected and this page open until it says done.',
       }),
       more(
         'If an install is cut off',
-        el('p', { textContent: 'The FM-1 has one firmware slot and no rollback. A cut-off install leaves it waiting in its update loader: press the same button again to finish (Install for Matryoshka, Return to official V15 for a return to stock; this page refuses the wrong one).' }),
+        el('p', { textContent: 'The FM-1 has one firmware slot and no rollback. A cut-off install leaves it waiting in its update loader: press the same button again to finish (Install for Matryoshka; Return to official V15 or Restore Official Open, whichever was cut off; this page refuses the wrong one).' }),
       ),
       more(
         'What has been tested on a real FM-1',
@@ -324,7 +428,13 @@ export function buildFlashTab(root: HTMLElement): void {
       el('div', { class: 'row' }, stockBtn),
       el('p', { class: 'muted' }, 'FM-1_015.fwsc © M-VAVE, ', el('a', { href: './firmware/LICENSE-Apache-2.0.txt', textContent: 'Apache-2.0' }), ' (', el('a', { href: './firmware/NOTICE-FM-1_015.txt', textContent: 'notice' }), ', ', el('a', { href: 'https://github.com/m-vave/fm1_open', textContent: 'source' }), '). Matryoshka is not affiliated with M-VAVE.'),
       el('details', {}, el('summary', { textContent: 'Use your own copy' }), el('p', { class: 'muted', textContent: 'The unmodified official FM-1.fwsc (V15); anything else is refused.' }), el('div', { class: 'row' }, stockOnly, stockFileBtn)),
+      el('h3', { textContent: TARGET_NAME.open }),
+      el('p', { class: 'muted', textContent: "For an FM-1 that was set up by M-VAVE's Official Open: it refuses the V15 and takes Official Open back safely." }),
+      el('p', { class: 'muted' }, OPEN_WHY, ' Download the Workbench page (FM1-Open-…-Workbench.html) from ', el('a', { href: OPEN_RELEASES, textContent: "M-VAVE's release page" }), ' and choose it here (its .fwsc works too). Before anything is sent, this page checks that it is M-VAVE\'s Official Open and that it fits this FM-1.'),
+      el('div', { class: 'row' }, openFile, openBtn),
     ),
+    crossCard,
+    sureRow,
     el(
       'details',
       { class: 'card' },
