@@ -14,7 +14,7 @@ mkdir -p build
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/host_test firmware/test/host_test.c -lm
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/proto_test firmware/test/proto_test.c -lm
 fail=0
-build/proto_test build/golden/acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx build/golden/steps-kit.m1p || fail=1
+build/proto_test build/golden/acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx build/golden/steps-kit.m1p build/golden/proto-sandbox.syx || fail=1
 for p in build/golden/*.m1p; do
   n="${p%.m1p}"
   out="$(build/host_test "$p" "$n.ev" "$n.f32")" || { echo "FAIL $(basename "$n"): $out"; fail=1; continue; }

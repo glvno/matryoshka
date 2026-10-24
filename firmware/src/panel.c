@@ -36,6 +36,9 @@ static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};  
 #define BTN_SAVE 9u
 #define BTN_HOME 8u
 #define BTN_SEL 3u                    /* SEL (SCL in Felucca's table): on a Steps track's page it opens the track's steps (#196) */
+#define BTN_GLO 7u
+/* the buttons that act on the FM-1 itself in sandbox mode (sandbox_ui.c); the others only go out as MIDI */
+#define SB_OWN_BTNS ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_HOME) | (1u << BTN_PLAY) | (1u << BTN_GLO))
 
 /* MIDI out (#115, MENU > MIDI OUT; docs/ARCHITECTURE.md "MIDI out map"): every panel control as it is touched, whatever
  * it does here, so a host can mirror or replay the panel. Buttons: CC 127 on the press, 0 on the release (by matrix id
@@ -323,8 +326,23 @@ static void panel_encoders(int32_t *st)
         return;
     }
     if (st[6]) {                                    /* PRESET: the next patch, its name over the bars (#170) */
-        pages_patch_ask();
-        preset_step(st[6]);
+        if (!sb_on)
+            pages_patch_ask();
+        preset_step(st[6]);                         /* (in sandbox mode the editor's Live holds it: live.c) */
+        return;
+    }
+    if (sb_on && page == 0u && sb_have) {           /* sandbox mode: SELECT / ALGO went out as MIDI (the editor's page follows),
+                                                     * K1..K4 turn the editor's rows from the positions it sent (sandbox_ui.c) */
+        for (k = 0; k < 4u; k++) {
+            int32_t v = sandbox_knob(k, st[2u + k], cfg.accel && fm1_ms - last_ms[2u + k] < 80u);
+            if (st[2u + k])
+                last_ms[2u + k] = fm1_ms;
+            if (v >= 0) {
+                midi_send(0xB0u, 16u + k, (uint32_t)v);
+                if (!ui_dirty)
+                    ui_dirty = 1;
+            }
+        }
         return;
     }
     if (page == PAGE_SEQ && seq_rec == 2u)          /* the keys record into the armed track: ALGO keeps it */
@@ -441,18 +459,18 @@ static int panel_key(uint32_t n, int down, int quick)
     uint32_t bit = 1u << n;
     if (n >= 27u || !(keys_now & bit) == !down)
         return 1;
-    if (quick && down && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ)))
+    if (quick && down && !sb_on && seq_black(n) >= 0 && (panel_held & (1u << BTN_REC | 1u << BTN_SEQ)))
         return 0;
     keys_now ^= bit;
     if (down)                                       /* a key while the track's clear asks: not cleared (#231) */
         seq_clear_cancel();
     eng_midi_channel(cfg.ch);
-    if (down && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
+    if (down && !sb_on && (panel_held >> BTN_REC & 1u) && seq_black(n) >= 0) {   /* REC held + a black key: arm (#139) */
         seq_arm_key(n);
         rec_held_used = 1;
         return 1;
     }
-    if (down && (panel_held >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
+    if (down && !sb_on && (panel_held >> BTN_SEQ & 1u) && seq_black(n) >= 0) {   /* SEQ held + a black key: a mute */
         seq_mute_key(n);
         seq_held_used = 1;
         return 1;
@@ -467,7 +485,7 @@ static int panel_key(uint32_t n, int down, int quick)
         /* into an armed track at the default velocity (ENV held on its keyboard: full), so a take records what a step
          * entered would be; else at full velocity as always */
         uint32_t vel = eng_armed() < 0 ? 127u : seq_kbd() && (panel_held >> BTN_ACC & 1u) ? ACCENT_VEL : STEP_VEL;
-        int map = seq_kbd() ? -1 : eng_keys_drummap(), b = seq_black(n);
+        int map = seq_kbd() || sb_on ? -1 : eng_keys_drummap(), b = seq_black(n);   /* (sandbox mode: the plain notes) */
         key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
         /* the keys reach a Drum map (the owner, 2026-10-23): black keys 1..8 play its rows 1..8 at any octave, as on the
          * SEQ page, the white keys nothing; MIDI out sends what plays: the row's note, nothing for a white key, so a
@@ -554,6 +572,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
             if (rel >> id & 1u)
                 midi_send(0xB0u, BTN_CC[id], 0u);
         }
+    }
+    if (sb_on && page != PAGE_MENU) {               /* sandbox mode: the buttons went out as MIDI for the editor's patch; here only
+                                                     * the FM-1's own (OCT, HOME, PLAY, GLO) */
+        p &= SB_OWN_BTNS;
+        rel &= SB_OWN_BTNS;
     }
     if ((p & ~(1u << BTN_REC)) || (rel & (1u << BTN_SEQ)))   /* the track's clear asks: another button, or SEQ let go, */
         seq_clear_cancel();                                   /* and it is not cleared (#231) */
@@ -679,6 +702,7 @@ static void panel_status(void)
 {
     static uint8_t ovl_seen;
     static uint32_t shed_seen;
+    sandbox_poll();                                 /* (no LIVE for 5 s: the FM-1 sounds again) */
     if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
         char m[40], name[16], num[12], *q = m;
         (void)num;

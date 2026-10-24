@@ -7,7 +7,7 @@ import { Engine } from '../src/engine';
 import { encodePatch, FLAG_INPUTS, PANEL_BYTES, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
-import { attFrame, chunkFrames, commitFrame, paramFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
+import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
 import { make, PRESETS, type Build } from '../src/presets';
 import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTarget, SOURCES, stepByte, type Patch, type PolyCfg } from '../src/patch';
 import { migrateSteps, overdub, type StepNote } from '../src/track';
@@ -1850,4 +1850,11 @@ for (const [name, patch] of Object.entries(tests)) {
   writeFileSync(new URL('proto-slot.syx', OUT), Buffer.concat(slotFrames));
   writeFileSync(new URL('proto.args', OUT), `${mod} ${par} ${val} ${mod} 0 ${attVal}\n`);
 }
+// sandbox mode: a SANDBOX page as the editor sends it (proto_test checks every field the firmware parses; a minus sign
+// arrives as '-')
+writeFileSync(new URL('proto-sandbox.syx', OUT), sandboxFrame({
+  patch: 'SOL 29N XL', device: 'Sol filter', page: 'FILTER 1/2', index: 2, count: 5,
+  rows: [{ label: 'Cutoff', value: '2.40', unit: 'kHz', pos: 150 / 255, steps: 0 }, { label: 'Res', value: '\u221212', unit: 'dB', pos: 1, steps: 0 },
+    { label: 'Wave', value: 'SAW', unit: '', pos: 0, steps: 4 }, null],
+}));
 console.log(`golden vectors for ${Object.keys(tests).length} patches in build/golden/`);

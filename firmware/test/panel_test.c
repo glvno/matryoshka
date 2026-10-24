@@ -44,7 +44,9 @@ static int sent(int from, uint32_t s, uint32_t a, uint32_t b)
             return 1;
     return 0;
 }
-#include "../src/live.c"                            /* the editor's Live (#185, #200): main.c's, as on the device */
+static int info_told;                               /* proto.c's INFO, unasked (live.c: MIDI OUT changed) */
+static void m1_info(void) { info_told++; }
+#include "../src/live.c"                            /* the editor's Live (#185) and sandbox mode: main.c's, as on the device */
 /* PRESET: counted; with preset_loads the next factory patch runs, as main.c preset_load does with the bank's; under the
  * editor's Live it waits, as main.c preset_step */
 static int preset_loads;
@@ -102,6 +104,15 @@ static void later(uint32_t ms)
     loop();
 }
 static uint16_t px(uint32_t x, uint32_t y) { return fb[y * 240u + x]; }
+/* a pixel of colour c in the text line from row y (14 rows) */
+static int fb_has_hue(uint32_t y, uint16_t c)
+{
+    uint32_t i;
+    for (i = y * 240u; i < (y + 14u) * 240u && i < 240u * 240u; i++)
+        if (fb[i] == c)
+            return 1;
+    return 0;
+}
 /* the pixels that blinked since fb_watch_reset(): changed value twice or more (cleared, then drawn again) */
 static void fb_watch_reset(void) { memset(fb_changes, 0, sizeof fb_changes); }
 static uint32_t fb_blinked(void)
@@ -1921,35 +1932,117 @@ int main(void)
         preset_loads = 0;
     }
 
-    {                                                       /* #200: the editor's Live, its patch over the FM-1's budget (paused) */
-        uint32_t slot = cur_preset;
-        int stepped = presets_stepped;
+    {                                                       /* sandbox mode: the editor's Live paused (its patch is a sandbox
+                                                             * patch): the FM-1 muted, the editor's page drawn, PRESET held */
+        uint32_t slot = cur_preset, y, x, gold;
+        int stepped = presets_stepped, from, pn;
+        sb_page_t pg;
         page = 0;
         trail_n = 0;
         screen_idle();
         later(2000);
         preset_loads = 1;
-        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
-        m1_live(1);                                         /* LIVE paused: the FM-1 says so at once */
-        check("LIVE paused: EDITOR PATCH TOO BIG at once", !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
-        later(3000);
-        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
-        m1_live(1);                                         /* every 2 s again: no new toast */
-        check("LIVE paused again: no new message", msg_text[0] == 0);
+        info_told = 0;
+        m1_live(1);                                         /* LIVE paused: sandbox mode */
+        check("LIVE paused: sandbox mode, the FM-1 muted", sb_on && snd_muted && !sb_have);
+        check("  the MIDI OUT setting told once (INFO)", info_told == 1);
+        loop();
+        for (gold = 0, y = 70; y < 100u; y++)
+            for (x = 0; x < 240u; x++)
+                gold += px(x, y) == P_GOLD;
+        check("  the screen: the gold SANDBOX bar and the card (no bars yet)", px(4, 4) == P_GOLD && gold > 30u
+              && px(12, ROWS_Y + 15) == P_NIGHT);
+        later(1000);
+        m1_live(1);                                         /* every 2 s again */
+        check("  LIVE paused again: no INFO", info_told == 1);
+        {                                                   /* the editor's page (SANDBOX), through sb_parse */
+            uint8_t d[SB_BYTES];
+            uint32_t k;
+            static const char *const LAB[4] = {"Cutoff", "Res", "Wave", ""};
+            memset(d, 0, sizeof d);
+            d[0] = 7;                                       /* rows 1..3 */
+            d[1] = 2;
+            d[2] = 5;
+            memcpy(d + 3, "SOL 29N XL", 10);
+            memcpy(d + 3 + SB_PATCH, "Sol filter", 10);
+            memcpy(d + 3 + SB_PATCH + SB_DEV, "FILTER 1/2", 10);
+            for (k = 0; k < 3u; k++) {
+                uint8_t *r = d + SB_HEAD_BYTES + k * SB_ROW_BYTES;
+                memcpy(r, LAB[k], strlen(LAB[k]));
+                memcpy(r + SB_LABEL, k == 2u ? "SAW" : "2.40", k == 2u ? 3 : 4);
+                if (k == 0u)
+                    memcpy(r + SB_LABEL + SB_VALUE, "kHz", 3);
+                r[SB_LABEL + SB_VALUE + SB_UNIT] = k == 0u ? 128u : k == 1u ? 255u : 0u;
+                r[SB_LABEL + SB_VALUE + SB_UNIT + 1u] = k == 2u ? 3u : 0u;   /* Wave: three choices */
+            }
+            check("SANDBOX parses (and a short one does not)", sb_parse(d, sizeof d, &pg) == 0 && sb_parse(d, sizeof d - 1u, &pg) < 0
+                  && pg.rows == 7u && pg.index == 2u && pg.count == 5u && !strcmp(pg.patch, "SOL 29N XL") && !strcmp(pg.dev, "Sol filter")
+                  && !strcmp(pg.label[0], "Cutoff") && !strcmp(pg.unit[0], "kHz") && pg.pos[0] == 128u && pg.steps[2] == 3u);
+        }
+        m1_sandbox(&pg);
+        loop();
+        for (gold = 0, x = 0; x < 240u; x++)
+            gold += px(x, RAIL_Y) == P_GOLD;
+        check("the page: its bars (K4 empty), the third page of five lit in gold", sb_have && px(12, ROWS_Y + 15) != P_NIGHT
+              && px(BAR_X + 2u, ROWS_Y + 3u * (ROW_H + ROW_GAP) + 2u) == P_STRIP && gold > 20u && px(4, 4) == P_GOLD);
+        check("  K1 half way: its fill to the middle", px(BAR_X + BAR_W / 2u - 8u, ROWS_Y + 4u) != px(BAR_X + BAR_W / 2u + 8u, ROWS_Y + 4u));
+        from = mlen;
+        pn = param_now;
+        enc(2, 1);                                          /* K1: one click from the editor's position (128 = CC 64) */
+        check("K1 in sandbox mode: CC 16 one up from the editor's position, the FM-1's patch untouched",
+              sent(from, 0xB0u, 16u, 65u) && param_now == pn && sb_cc[0] == 65u);
+        from = mlen;
+        enc(4, 1);                                          /* K3 on a row of three choices: the next one */
+        check("K3 on three choices: CC 18 a choice up (64)", sent(from, 0xB0u, 18u, 64u));
+        from = mlen;
+        enc(3, 1);                                          /* K2 at its end: nothing to send */
+        enc(5, 1);                                          /* K4: no row */
+        check("K2 at its end, K4 with no row: no CC", mlen == from);
+        pg.pos[0] = 10u;                                    /* the editor's page brings K1's old position back at once: */
+        m1_sandbox(&pg);                                    /* the turn here wins for a moment */
+        check("  an echo right after a turn keeps the turned position", sb_cc[0] == 65u);
+        later(SB_ECHO_MS + 10u);
+        m1_sandbox(&pg);
+        check("  later the editor's position counts", sb_cc[0] == (10u * 127u + 127u) / 255u);
+        from = mlen;
+        tap(BTN_SEQ);                                       /* SEQ: out as MIDI only */
+        check("SEQ in sandbox mode: its CC goes out, the page stays", sent(from, 0xB0u, 89u, 127u) && page == 0u && sb_on);
+        tap(BTN_GLO);                                       /* GLO: the FM-1's own page (MIDI OUT is there) */
+        check("GLO in sandbox mode: the FM-1's own page", page == PAGE_GLO);
+        tap(BTN_HOME);
+        check("  HOME: back to the sandbox page", page == 0u && px(4, 4) == P_GOLD && px(12, ROWS_Y + 15) != P_NIGHT);
+        from = mlen;
+        panel_keys(1u);                                     /* a key: the note goes out (the FM-1 itself is muted) */
+        panel_keys(0u);
+        loop();
+        check("a key in sandbox mode: its note out", sent(from, 0x90u, (uint32_t)(53 + 12 * octave), 100u));
         enc(6, 1);
-        check("PRESET under a paused Live: no slot change, EDITOR PATCH TOO BIG", cur_preset == slot
-              && presets_stepped == stepped && !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
+        check("PRESET in sandbox mode: no slot change, SANDBOX: NO PRESET", cur_preset == slot
+              && presets_stepped == stepped && !strcmp(msg_text, "SANDBOX: NO PRESET"));
         later(1600);
-        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
+        check("  the message ends: the gold bar again", px(4, 4) == P_GOLD);
+        cfg.midi_out = 0;                                   /* MIDI OUT off on the GLO page: the editor hears of it */
+        m1_live(1);
+        ui_dirty = 2;
+        loop();
+        check("MIDI OUT off: INFO again, the foot line says how to turn it on", info_told == 2 && fb_has_hue(FOOT_Y, P_REDC));
+        cfg.midi_out = 1;
+        m1_live(1);
+        msg_text[0] = 0;
         m1_live(0);                                         /* the patch fits again: Live resumes */
-        check("LIVE resumed: no message of its own", msg_text[0] == 0);
+        loop();
+        check("LIVE not paused: sandbox mode ends, the sound and the device page back", !sb_on && !snd_muted
+              && px(4, 4) != P_GOLD && px(12, ROWS_Y + 15) != P_NIGHT && msg_text[0] == 0);
+        m1_sandbox(&pg);
+        check("  a page after it: not taken", !sb_have);
         enc(6, -1);
         check("PRESET under Live (resumed): still held, EDITOR LIVE: NO PRESET", cur_preset == slot
               && presets_stepped == stepped && !strcmp(msg_text, "EDITOR LIVE: NO PRESET"));
         later(1600);
-        m1_live(1);                                         /* over the budget once more: says so again */
-        check("LIVE paused after a resume: the message again", !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
-        later(LIVE_HOLD_MS + 100u);                          /* no LIVE for 5 s (a closed tab): PRESET is free */
+        m1_live(1);                                         /* over the budget once more */
+        check("LIVE paused after a resume: sandbox mode again", sb_on && snd_muted);
+        later(LIVE_HOLD_MS + 100u);                          /* no LIVE for 5 s (a closed tab): the sound and PRESET are free */
+        check("Live lapsed: sandbox mode ends", !sb_on && !snd_muted);
         enc(6, 1);
         check("Live lapsed: PRESET steps again", presets_stepped == stepped + 1 && cur_preset != slot);
         preset_loads = 0;

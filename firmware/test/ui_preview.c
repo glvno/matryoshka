@@ -3,7 +3,8 @@
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
  * Environment: TOAST=k shows knob k's toast on the device page, CARD=1 SELECT's device card, CARD=2 ALGO's page
- * card (#221), PATCHTOAST=1 the patch PRESET just loaded (the factory bank's slot)
+ * card (#221), PATCHTOAST=1 the patch PRESET just loaded (the factory bank's slot), SANDBOX=1 sandbox mode before the
+ * editor's first page (the card), SANDBOX=2 with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off)
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -98,6 +99,31 @@ int main(int argc, char **argv)
         man_top = (uint32_t)(t < 0 ? 0 : t > max ? max : t);
     }
     patch_label = PRESET_LIST[p].name;
+    if (getenv("MIDIOUT"))
+        cfg.midi_out = (uint8_t)atoi(getenv("MIDIOUT"));
+    if (getenv("SANDBOX")) {                                /* sandbox mode: the card, or (2) a page of the editor's */
+        sandbox_live(1, 5000);
+        if (atoi(getenv("SANDBOX")) == 2) {
+            static sb_page_t s;
+            static const char *const LAB[3] = {"Cutoff", "Resonance", "Wave"}, *const VAL[3] = {"2.40", "0.62", "SAW"};
+            static const uint8_t POS[3] = {150, 158, 0};
+            uint32_t k;
+            s.rows = 7;
+            s.index = 2;
+            s.count = 5;
+            strcpy(s.patch, "Sol 29N XL");
+            strcpy(s.dev, "Sol filter");
+            strcpy(s.page, "FILTER 1/2");
+            for (k = 0; k < 3u; k++) {
+                strcpy(s.label[k], LAB[k]);
+                strcpy(s.value[k], VAL[k]);
+                s.pos[k] = POS[k];
+                s.steps[k] = k == 2u ? 4u : 0u;
+            }
+            strcpy(s.unit[0], "kHz");
+            m1_sandbox(&s);
+        }
+    }
     if (page == 9u) {                                       /* the loading screen, the bar 60 % in */
         splash_draw();
         splash_line("LOADING PATCH");

@@ -9,6 +9,11 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs (FM-1s are
   ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the editor's Play
   (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), which is the default.
+- **Sandbox mode:** a patch too big for the FM-1 no longer just pauses Live. With Live on, the FM-1 becomes the patch's
+  controller: the browser plays it, and the FM-1's keys, knobs, SELECT and ALGO drive it. The FM-1 mutes its own sound and
+  shows the page you are on, with a gold SANDBOX bar; the FM-1 chip reads FM-1 · SANDBOX CONTROLLER. Its knobs need MIDI
+  OUT on (GLO, K3), and the chip says so when it is off. With Live off, Sync in FM-1 & MIDI starts it. The muting and
+  the page need the 1.3 firmware; an older FM-1 keeps its sound and says EDITOR PATCH TOO BIG. Not yet checked on a device.
 
 ## 1.2.2 — 2026-10-24
 

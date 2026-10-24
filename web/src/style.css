@@ -1521,7 +1521,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-connect.connected:hover { filter: none; border-color: var(--secondary); }
 .fm1-connect.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .fm1-connect.idle .sl-dot { border: 2px solid var(--secondary); }
-.fm1-connect.over .sl-dot { background: var(--danger); border-color: var(--danger); }
+.fm1-connect.over .sl-dot { background: var(--gate); border-color: var(--gate); }
+.fm1-connect.sandbox .sl-dot { background: var(--gate); border-color: var(--gate); }
 /* narrow: the switch moves to the left, so Connect FM-1 fits beside it */
 @media (max-width: 700px) {
   .fm1-connect { right: 8px; height: 30px; padding: 0 8px; gap: 5px; font-size: 11px; letter-spacing: .06em; }
@@ -1637,7 +1638,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .statusline .sl-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
 .statusline .sl-chip.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .statusline .sl-chip.idle .sl-dot { border: 2px solid var(--secondary); }   /* connected, not synced (#171) */
-.statusline .sl-chip.over .sl-dot { background: var(--danger); border-color: var(--danger); }   /* too big to sync */
+.statusline .sl-chip.over .sl-dot { background: var(--gate); border-color: var(--gate); }   /* a sandbox patch, not synced */
+.statusline .sl-chip.sandbox { color: var(--gate); }   /* sandbox mode: the FM-1 is the browser patch's controller */
+.statusline .sl-chip.sandbox .sl-dot { background: var(--gate); border-color: var(--gate); }
 @media (max-width: 700px) { .statusline .sl-chip-text { display: none; } .statusline .sl-chip { height: 24px; padding: 0 8px; } }
 .statusline:has(.budget.over) .sl-tag { color: var(--danger); }
 .statusline .budget { padding-left: 12px; border-left: 1px solid var(--line); }
