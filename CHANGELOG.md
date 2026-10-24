@@ -6,6 +6,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Following the FM-1's panel (and sandbox mode, which follows it by itself) no longer takes each key and button twice: the
+  MIDI keyboard input ignores the followed FM-1. ARP and the other switch buttons toggle off again, and keys no longer
+  double.
+
 - The FM-1 budget no longer reads every patch with an arpeggiator as half full: a slot the FM-1 has one or two of (a
   reverb, the arpeggiators) counts only when a patch goes over it.
 

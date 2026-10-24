@@ -68,12 +68,14 @@ export function attachKeyboard(host: Pick<AudioHost, 'send'>, isActive: () => bo
 /**
  * Asks for Web MIDI and plays from every input. Resolves to a switch (off: incoming messages are ignored and the notes
  * MIDI holds are released; the access itself stays until the page reloads), or null when MIDI could not be had.
- * `inputs` hears the number of inputs as it changes.
+ * `inputs` hears the number of inputs as it changes; `skip` names an input to ignore for now (an FM-1 whose panel the
+ * mirror follows: its keys, knobs and buttons come in through the mirror, and here they would arrive twice).
  */
 export async function attachMidi(
   host: Pick<AudioHost, 'send'>,
   status: (s: string) => void,
   inputs?: (n: number) => void,
+  skip: (port: MIDIInput) => boolean = () => false,
 ): Promise<((on: boolean) => void) | null> {
   if (!navigator.requestMIDIAccess) {
     status('Web MIDI is not available in this browser');
@@ -89,7 +91,7 @@ export async function attachMidi(
   let on = true;
   const held = new Set<number>();
   const message = (ev: MIDIMessageEvent): void => {
-    if (!on) return;
+    if (!on || skip(ev.target as MIDIInput)) return;
     const [s, a, b] = ev.data ?? [];
     if (s === 0xf8) return void host.send({ t: 'clock' });
     if (s === 0xfa || s === 0xfb || s === 0xfc) return void host.send({ t: 'clockrun', on: s !== 0xfc });

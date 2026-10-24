@@ -2015,6 +2015,7 @@ const setMidi = async (on: boolean): Promise<void> => {
       midiInputs = n;
       showMidi();
     },
+    (port) => mirror.follows(port),   // (the followed FM-1's panel comes in through the mirror: not twice)
   );
   midiAsking = false;
   midiOn = !!midiSwitch;
