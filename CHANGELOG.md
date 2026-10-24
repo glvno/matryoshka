@@ -6,111 +6,145 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
-- **A changelog page on the site:** https://matry0shka.pages.dev/changelog lists what changed in each release, newest
-  first, and each release has its own link (`changelog#v1.3.0`) with a Copy link button. Get started has a Changelog
-  link under Install, and Install now names the firmware it installs: "Install v1.2".
-- **Faster paging on the FM-1:** SELECT, ALGO and PRESET no longer cover the screen with a card and wait 400 ms. A small
-  toast names what you reached (the device on red, the page on blue, the patch on ivory) in the middle of the bars, clear
-  of every name and value, and the page is drawn under it at once. Turning fast redraws only the toast. A turned K1..K4
-  no longer shows a full-size toast: its bar moves in place, and only what changed is redrawn. For one ALGO click the
-  title is on screen after about 4 ms instead of 77 ms (3,060 pixels sent to the LCD instead of 57,600), and the whole
-  page after about 62 ms instead of about 545 ms (46,652 pixels at once, instead of 108,210 starting 400 ms after the
-  click). A knob click costs about 1 ms instead of 22 to 76 ms (702 pixels instead of 16,464 to 57,068, plus 39,792 when
-  the toast ended). The pixel counts are from the host panel test; the times assume the LCD link's 750 pixels per ms and
-  were not measured on an FM-1 or in the emulator (FM-1 firmware).
-- **The FM-1's battery mark sits on the top bar's colour:** on the sandbox page's gold bar, GLO's coral, ENV's lilac,
-  the preset list's gold, a Page button list's sea and every message, the battery's corner takes the bar's colour
-  instead of staying a dark square, and its outline and bars turn dark so they still read. Host-tested only.
-- **The FM-1's Delay reaches 1000 ms** (it stopped at 520 ms): the firmware now uses 44.9 KB of RAM it had left unused
-  (28.9 KB kept for a debug build, 16 KB of a main stack that never used more than 2.5 KB of its 24 KB), and gives
-  41.4 KB of it to the delay line. 31.4 KB stay free for more buffers or the second core (20.1 KB of pool beyond the
-  build's 8 KB margin, 11.3 KB below the RAM region). The memory figures are from the CI build, the stack depths and the
-  echo arriving 1 s after the note from the emulator (`emu:smoke`, `emu:scenarios`). On the FM-1 and in the editor a
-  Delay time up to 1000 ms fits the FM-1; past that it stays a browser-only sandbox patch. Ping-pong reaches 500 ms a side.
-  A synced Delay keeps the note length it had: the note lengths still spread over the first 520 ms of the knob, and the
-  rest of it picks the longest. A synced note length that used to be cut at 520 ms (a dotted quarter or a half note at
-  120 bpm) now plays in full. One knob click is now 10 ms. Emulator-tested only, not yet on an FM-1.
-- **Less work per block in the FM-1 firmware, the same sound:** the engine stops redoing work that only changes when a
-  setting does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output
-  is bit for bit the same. On the CPU model the factory patches count about 8 % fewer cycles (up to 13 %: 8 Lire, the
-  909 Kit), so the editor's CPU estimates drop too: Oracle V and Algo Four now sit under the warning. Not yet measured
-  on an FM-1.
-- **The XLs have presets:** each XL's engine card offers the same factory presets as its FM-1 version (Init, Bright,
-  Dark, Pad, Pluck and so on, where its rows allow). They are browser only, like the XLs.
-- Following the FM-1's panel (and sandbox mode): OCT- / OCT+ on the FM-1 now move the editor's octave too, so the
-  on-screen keyboard shows the notes you are playing and the computer keys shift with it.
-- Sandbox mode beginning while the FM-1 shows another screen (its SEQ page, say) now brings the sandbox page up at once;
-  before, it waited for HOME. The editor and the FM-1 keep one transport in sandbox mode: a sequence the FM-1 was playing
-  goes on in the browser, and the editor's PLAY and Space start and stop the FM-1's too (FM-1 firmware and editor).
-- Connecting the FM-1 while the editor holds a sandbox patch now offers Sync, as for any patch: Sync makes the FM-1
-  its controller (sandbox mode). Before, it made no offer and the FM-1 stayed unsynced.
-- Following the FM-1's panel (and sandbox mode, which follows it by itself) no longer takes each key and button twice: the
-  MIDI keyboard input ignores the followed FM-1. ARP and the other switch buttons toggle off again, and keys no longer
-  double.
+### On the FM-1
 
+- **The Delay reaches 1000 ms** (it stopped at 520 ms). The firmware now uses RAM it had left unused and gives most of
+  it to the delay line:
+
+  | | KB |
+  |---|---|
+  | Reclaimed: kept for a debug build, below the RAM region | 28.9 |
+  | Reclaimed: the main stack, 24 KB to 8 KB (it never held more than 2.5 KB) | 16.0 |
+  | Given to the delay line (520 ms to 1000 ms) | 41.4 |
+  | Left for more buffers or the second core (20.1 KB of pool beyond the build's 8 KB margin, 11.3 KB below the RAM region) | 31.4 |
+
+  The memory figures are from the CI build; the stack depths and the echo arriving 1 s after the note (1006 ms, with the
+  note's own few ms) are from the emulator (`emu:smoke`, `emu:scenarios`). On the FM-1 and in the editor a Delay time up
+  to 1000 ms fits the FM-1; past that it stays a browser-only sandbox patch. Ping-pong reaches 500 ms a side. A synced
+  Delay keeps the note length it had: the note lengths still spread over the first 520 ms of the knob, and the rest of it
+  picks the longest. A synced note length that used to be cut at 520 ms (a dotted quarter or a half note at 120 bpm) now
+  plays in full. One knob click is now 10 ms. Emulator-tested only, not yet on an FM-1.
+- **Paging is about ten times faster.** SELECT, ALGO and PRESET no longer cover the screen with a card and wait 400 ms.
+  A small toast names what you reached (the device on red, the page on blue, the patch on ivory) in the middle of the
+  bars, clear of every name and value, and the page is drawn under it at once. Turning fast redraws only the toast.
+  For one ALGO click:
+
+  | | 1.2 | 1.3 |
+  |---|---|---|
+  | The page's title on screen | about 77 ms | about 4 ms |
+  | Names and values readable | about 545 ms | about 33 ms |
+  | The whole page | about 545 ms | about 62 ms |
+
+  The pixel counts are from the host panel test (3,060 pixels for the title instead of 57,600; 46,652 for the page
+  instead of 108,210, which started only 400 ms after the click). The times assume the LCD link's 750 pixels per ms and
+  were not timed on an FM-1.
+- **Turning K1..K4 no longer shows a full-size toast.** The bar moves in place and only what changed is redrawn: about
+  1 ms per click instead of 22 to 76 ms (702 pixels instead of 16,464 to 57,068, plus 39,792 when the toast ended).
+- **The engine does less work per block, with the same sound.** It stops redoing work that only changes when a setting
+  does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output is bit
+  for bit the same. On the CPU model, the busiest block of each factory patch:
+
+  | Patch | 1.2 | 1.3 |
+  |---|---|---|
+  | Algo Four | 86 % | 80 % |
+  | Hera 6 | 78 % | 71 % |
+  | Oracle V | 73 % | 66 % |
+  | 808 Kit | 71 % | 64 % |
+  | <7PH | 69 % | 61 % |
+  | 8 Lire | 56 % | 49 % |
+  | 909 Kit | 55 % | 48 % |
+
+  About 8 % fewer cycles over all patches, up to 13 % (8 Lire, the 909 Kit). No factory patch is over the CPU warning
+  now. These are the CPU model's figures, not yet measured on an FM-1.
+- **The battery mark takes the top bar's colour:** on the sandbox page's gold bar, GLO's coral, ENV's lilac, the preset
+  list's gold, a Page button list's sea and every message, the battery's corner is no longer a dark square, and its
+  outline and bars turn dark so they still read.
+- **Sandbox mode on the FM-1:** while the editor plays a sandbox patch (below), the FM-1 mutes its own sound and shows
+  the page you are on, with a gold SANDBOX bar. The page comes up at once from any screen, not only after HOME. The
+  editor and the FM-1 keep one transport: a sequence the FM-1 was playing goes on in the browser, and the editor's PLAY
+  and Space start and stop the FM-1's too. An FM-1 with older firmware keeps its sound and says EDITOR PATCH TOO BIG.
+
+### Sandbox patches
+
+- **A patch too big for the FM-1 is now a sandbox patch,** shown in gold instead of red: it plays here in the browser
+  with no limits. The status line shows a SANDBOX button and how far past the FM-1 it goes, the budget bars turn gold
+  when over, and the first time a card ("No limits here") explains what that means.
+- **Sandbox mode:** with Live on, a connected FM-1 becomes the sandbox patch's controller. The browser plays it, and the
+  FM-1's keys, knobs, SELECT and ALGO drive it; the FM-1 chip reads FM-1 · SANDBOX CONTROLLER. Its knobs need MIDI OUT
+  on (GLO, K3), and the chip says so when it is off. With Live off, Sync in FM-1 & MIDI starts it, and connecting the
+  FM-1 while a sandbox patch is open offers Sync too. Checked on an FM-1 by the automated test rig.
+- **The browser's Delay reaches 1.6 s** (the FM-1's stops at 520 ms): drag its time past 520 ms on the card. Such a
+  patch is a sandbox patch, and the budget's details say why ("Delay over 520 ms: browser only"). Patches with shorter
+  delays sound exactly as before.
+
+### XLs: the full instruments, in the browser
+
+Each XL is the full version of a factory patch that had to leave parts out to fit the FM-1. It is listed right under
+its FM-1 version in Open, plays in the browser only, and comes with the same factory presets as its FM-1 version (Init,
+Bright, Dark, Pad, Pluck and so on, where its rows allow).
+
+- **Oracle V XL:** the Prophet-5's full modulation. Poly Mod (the filter envelope and oscillator B into oscillator A's
+  pitch, its pulse width and the filter, per voice and at audio rate), Wheel-Mod (the LFO and noise mixed, into both
+  pitches, both pulse widths and the filter, with an initial amount), oscillator A's saw and pulse together, and
+  oscillator B's keyboard switch and lo freq. Vibrato now moves the pitch smoothly. Five voices, as the original.
+- **Hera 6 XL:** the Juno-106 from its owner's manual. Each voice's filter follows its envelope and the LFO smoothly,
+  the DCO plays saw and pulse together, and it adds the envelope polarity switch, the VCA's gate mode, the LFO delay,
+  the HPF's bass boost and the bender lever's vibrato on the mod wheel. Six voices.
+- **Expander S XL:** the Oberheim Eight Voice. Eight voices, each a whole SEM with its own LFO, envelope 1 or the LFO
+  into its filter (smoothly), each oscillator's FM and pulse-width modulation, sync, and the band pass switch.
+- **Algo Four XL:** the Yamaha DX100 as its manual describes it. 8 voices, an envelope of attack, two decays and
+  release on all four operators, feedback on operator 4, and all 8 algorithms: each path between operators and each
+  operator's output is a row, and the patch notes list which rows make which algorithm. One LFO for vibrato (pmd),
+  tremolo (amd) and the wheel.
+- **8 Lire XL:** the SOMA Lyra-8 as its manual describes it. Two delay lines with their own TIME and MOD, SELF / LFO and
+  TRIANGLE / SQUARE modulation and cross-feedback, the distortion after the delay with its MIX, the FM structure switch
+  (34>56 78>12), an FM or LFO source per pair, PITCH per group, TOTAL FB, VIBRATO and the Hyper LFO's LINK. SHARP now
+  turns each voice's triangle into a square.
+- **Elvira 2 XL:** the neutral labs Elmyra 2 with its 1.6 s delay, OUCH's feedback loop, the BITMANGLER and NOISE
+  programs beside SRR, the mix saturation, both LFOs into any of six destinations, and an 8-step sequence per voice
+  that plays with the transport, quantized to a scale (CHRM).
+- **Meridian 8 XL:** the Landscape NOON. DOT and BACID through filters the power sweeps smoothly and CYMPATH a
+  three-voice cluster, each channel's MOD button, the eight CV mute buttons, and LINK sharing power both ways.
+- **Perun 4 XL:** the Erica Synths PERKONS HD-01 with its three algorithms per voice (algo 1..3), each with its mode
+  and PARAM 1 / 2 as the manual lists them, among them voice 2's COMPLEX DRUM and voice 4's NOISE/TONE with phase
+  modulation. The filter switches between low pass, band pass and high pass (no resonance, as on the original), DRIVE
+  is the overdrive's dry / wet, and the modulation LFO reaches each voice's tune.
+- **909 Kit XL:** every row has a full voice with its own sources: the clap with its own noise and three bursts, an
+  open hat with its own metal and noise that the closed hat cuts, low and high toms with a pitch drop, a rim shot. Row
+  8 is the high tom (the TR-909 has no cowbell). TOTAL ACCENT on the Macros card sets how much louder an accented step
+  plays.
+
+### Community
+
+- **Library > Community:** the community patches have their own Library section, one card per patch, filters, and
+  Add. A community patch that also has a browser-only XL (Sol 29N, Lire + Elvira) shows both on its card. Nothing
+  community shows elsewhere until you add it: it then appears in Your patches with its author. The palette's "Browse
+  community patches" opens the section.
+- **Sol 29N** fits the FM-1 again: its delay is back at 520 ms. You now play its drones by hand: hold FX, LFO or EDIT
+  to swell a drone and ARP for the noise voices (set a button to switch and it holds). AUTO, on the Mod page, brings
+  back the slow swells that play on their own. The distortion now comes after the filters, as on the Solar 42N, with a
+  balance between the clean and the distorted sound. The keys play one voice instead of two.
+- **Sol 29N XL** (browser only): the whole Elta Music SOLAR 42N. Six drones, each with its own envelope: four of five
+  tuned saws and two noise voices. You play them on the keys C2 to A2 or the patch buttons, hold them, or let AUTO
+  swell them. The keys from C3 up play VCO A and B as one voice, with cross-modulation, a sub and sync. A mixer with pan
+  per channel, a dual LP / BP filter with LINK, distortion after the filter, and a shimmer reverb on each side.
+- **Lire + Elvira XL:** the two XLs layered on one keyboard with a two-row Mix, beside the FM-1 version.
+
+### In the editor
+
+- **Open** in the PATCH panel lists Your patches and the factory patches, each with a chip: FM-1 and how full it is, or
+  SANDBOX. A factory patch's XL sits right under it. The tutorial's chapters open from the tutorial only.
+- **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs
+  (FM-1s are ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the
+  editor's Play (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), the default.
+- **Changelog:** Get started has a Changelog link under Install, and each release has its own link to share. Install
+  names the firmware version it installs ("Install v1.3").
+- OCT- / OCT+ on the FM-1 now move the editor's octave too, so the on-screen keyboard shows the notes you are playing
+  and the computer keys shift with it.
+- Following the FM-1's panel (and sandbox mode) no longer takes each key and button twice: ARP and the other switch
+  buttons toggle off again, and keys no longer double.
 - The FM-1 budget no longer reads every patch with an arpeggiator as half full: a slot the FM-1 has one or two of (a
   reverb, the arpeggiators) counts only when a patch goes over it.
-
-- **Sandbox patches:** a patch too big for the FM-1 is now a sandbox patch, shown in gold instead of red: it plays here
-  in the browser with no limits. The status line shows a SANDBOX button and how far past the FM-1 it goes, the budget
-  bars turn gold when over, and the first time a card ("No limits here") explains what that means.
-- **Open** in the PATCH panel lists Your patches and the factory patches, each with a chip: FM-1 and how full it is, or
-  SANDBOX. A factory patch's XL version (its full browser version) will sit right under it. The tutorial's chapters
-  open from the tutorial only.
-- **Library > Community:** the community patches have their own Library section, one card per patch with its XL
-  version beside it, filters, and Add. Nothing community shows elsewhere until you add it: it then appears in Your
-  patches with its author. The palette's "Browse community patches" opens the section.
-- **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs (FM-1s are
-  ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the editor's Play
-  (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), which is the default.
-- **Sandbox mode:** a patch too big for the FM-1 no longer just pauses Live. With Live on, the FM-1 becomes the patch's
-  controller: the browser plays it, and the FM-1's keys, knobs, SELECT and ALGO drive it. The FM-1 mutes its own sound and
-  shows the page you are on, with a gold SANDBOX bar; the FM-1 chip reads FM-1 · SANDBOX CONTROLLER. Its knobs need MIDI
-  OUT on (GLO, K3), and the chip says so when it is off. With Live off, Sync in FM-1 & MIDI starts it. The muting and
-  the page need the 1.3 firmware; an older FM-1 keeps its sound and says EDITOR PATCH TOO BIG. Not yet checked on a device.
-- **The browser's Delay reaches 1.6 s** (the FM-1's stops at 520 ms): drag its time past 520 ms on the card. Such a
-  patch is a sandbox patch: it plays in the browser and is not sent to the FM-1, and the budget's details say why
-  ("Delay over 520 ms: browser only"). Patches with shorter delays sound exactly as before.
-- **Sol 29N** (Community) fits the FM-1 again: its delay is back at 520 ms. You now play its drones by hand: hold FX,
-  LFO or EDIT to swell a drone and ARP for the noise voices (set a button to switch and it holds). AUTO, on the Mod
-  page, brings back the slow swells that play on their own. The distortion now comes after the filters, as on the
-  Solar 42N, with a balance between the clean and the distorted sound. The keys play one voice instead of two.
-- **Sol 29N XL** (Community, browser only): the whole Elta Music SOLAR 42N. It has six drones, each with its own
-  envelope: four of five tuned saws and two noise voices. You play them on the keys C2 to A2 or the patch buttons, hold
-  them, or let AUTO swell them. The keys from C3 up play VCO A and B as one voice, with cross-modulation, a sub and
-  sync. There is a mixer with pan per channel, a dual LP / BP filter with LINK, distortion after the filter, and a
-  shimmer reverb on each side.
-- **8 Lire XL** (browser only): the SOMA Lyra-8 as its manual describes it. Two delay lines with their own TIME and MOD,
-  SELF / LFO and TRIANGLE / SQUARE modulation and cross-feedback, the distortion after the delay with its MIX, the FM
-  structure switch (34>56 78>12), an FM or LFO source per pair, PITCH per group, TOTAL FB, VIBRATO and the Hyper LFO's
-  LINK. SHARP now turns each voice's triangle into a square.
-- **Elvira 2 XL** (browser only): the neutral labs Elmyra 2 with its 1.6 s delay, OUCH's feedback loop, the BITMANGLER
-  and NOISE programs beside SRR, the mix saturation, both LFOs into any of six destinations, and an 8-step sequence per
-  voice that plays with the transport, quantized to a scale (CHRM).
-- **Community: Lire + Elvira XL**, the two XLs layered on one keyboard with a two-row Mix, beside the FM-1 version.
-- **Oracle V XL** (browser only): the Prophet-5's full modulation. Poly Mod (the filter envelope and oscillator B into
-  oscillator A's pitch, its pulse width and the filter, per voice and at audio rate), Wheel-Mod (the LFO and noise mixed,
-  into both pitches, both pulse widths and the filter, with an initial amount), oscillator A's saw and pulse together,
-  and oscillator B's keyboard switch and lo freq. Vibrato now moves the pitch smoothly. Five voices, as the original.
-- **Hera 6 XL** (browser only): the Juno-106 from its owner's manual. Each voice's filter follows its envelope and the
-  LFO smoothly, the DCO plays saw and pulse together, and it adds the envelope polarity switch, the VCA's gate mode, the
-  LFO delay, the HPF's bass boost and the bender lever's vibrato on the mod wheel. Six voices.
-- **Expander S XL** (browser only): the Oberheim Eight Voice. Eight voices, each a whole SEM with its own LFO, envelope 1
-  or the LFO into its filter (smoothly), each oscillator's FM and pulse-width modulation, sync, and the band pass switch.
-- **Meridian 8 XL** (browser only): the Landscape NOON. DOT and BACID through filters the power sweeps smoothly and
-  CYMPATH a three-voice cluster, each channel's MOD button, the eight CV mute buttons, and LINK sharing power both ways.
-- **Algo Four XL** (browser only): the Yamaha DX100 as its manual describes it. 8 voices, an envelope of attack, two
-  decays and release on all four operators, feedback on operator 4, and all 8 algorithms: each path between operators
-  and each operator's output is a row, and the patch notes list which rows make which algorithm. One LFO for vibrato
-  (pmd), tremolo (amd) and the wheel.
-- **Perun 4 XL** (browser only): the Erica Synths PERKONS HD-01 with its three algorithms per voice (algo 1..3), each
-  with its mode and PARAM 1 / 2 as the manual lists them, among them voice 2's COMPLEX DRUM and voice 4's NOISE/TONE
-  with phase modulation. The filter switches between low pass, band pass and high pass (no resonance, as on the
-  original), DRIVE is the overdrive's dry / wet, and the modulation LFO reaches each voice's tune.
-- **909 Kit XL** (browser only): every row has a full voice with its own sources: the clap with its own noise and three
-  bursts, an open hat with its own metal and noise that the closed hat cuts, low and high toms with a pitch drop, a rim
-  shot. Row 8 is the high tom (the TR-909 has no cowbell). TOTAL ACCENT on the Macros card sets how much louder an
-  accented step plays.
 
 ## 1.2.2 — 2026-10-24
 
