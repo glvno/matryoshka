@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- On battery after the USB cable was pulled, turning SELECT on the FM-1's preset list no longer freezes the screen for
+  several hundred milliseconds: messages to a computer that is gone are dropped at once instead of waited on.
 - **Connect FM-1** on an FM-1 that runs other firmware now always says so and offers **Install Matryoshka**: it names
   M-VAVE's official firmware or Felucca, and an FM-1 that does not answer at all is named by its port. FM-1 & MIDI's
   Connect says the same in its status line.
