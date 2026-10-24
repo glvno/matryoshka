@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **Connect FM-1** on an FM-1 that runs other firmware now always says so and offers **Install Matryoshka**: it names
+  M-VAVE's official firmware or Felucca, and an FM-1 that does not answer at all is named by its port. FM-1 & MIDI's
+  Connect says the same in its status line.
 - Every melodic factory patch (all but the 808 Kit, the 909 Kit and <7PH) has an **arpeggiator on ARP** and an empty
   16-step **PATTERN** track: Main's keys go through PATTERN into the arpeggiator, then the voice. The arpeggiator starts
   off, so a patch sounds as before (a few milliseconds later, through PATTERN) until ARP is pressed; notes entered on
