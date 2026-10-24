@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Following the FM-1's panel (and sandbox mode): OCT- / OCT+ on the FM-1 now move the editor's octave too, so the
+  on-screen keyboard shows the notes you are playing and the computer keys shift with it.
 - Connecting the FM-1 while the editor holds a sandbox patch now offers Sync, as for any patch: Sync makes the FM-1
   its controller (sandbox mode). Before, it made no offer and the FM-1 stayed unsynced.
 - Following the FM-1's panel (and sandbox mode, which follows it by itself) no longer takes each key and button twice: the
