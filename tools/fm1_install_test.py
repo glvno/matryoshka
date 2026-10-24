@@ -55,6 +55,24 @@ def head_of(path):
     raise AssertionError("no flash.bin")
 
 
+def rekey(head, key, bad_crc=False):
+    """the boot code with its chip-key block written again in other bytes for `key` (as a JieLi tool did, #264)"""
+    h = bytearray(head)
+    for off in range(32, 0x400, 32):
+        e = fi.jl_dec(h[off:off + 32])
+        if e[16:31] == b"isd_config.ini\0":
+            break
+    blk, size = int.from_bytes(e[4:8], "little"), int.from_bytes(e[8:12], "little")
+    h[blk:blk + 16] = bytes([0x20]) * 16
+    for i in range(16):
+        h[blk + 16 + i] = h[blk + 15 - i] ^ (0x01 if key >> i & 1 else 0xF0)
+    h[blk + 32:blk + 34] = (fi.crc16(h[blk:blk + 32]) ^ bad_crc).to_bytes(2, "little")
+    e[2:4] = fi.crc16(h[blk:blk + size]).to_bytes(2, "little")
+    e[0:2] = fi.crc16(e[2:32]).to_bytes(2, "little")
+    h[off:off + 32] = fi.jl_dec(e)
+    return bytes(h)
+
+
 def running(text, head=None):
     """an FM-1 running firmware `text`, with this boot code (None: firmware that does not tell)"""
     return fi.Device(Link(head), fi.Identity(text, text.split("_")[0], 0), "FM-1")
@@ -201,6 +219,29 @@ class BootCode(unittest.TestCase):
             with self.assertRaises(fi.InstallError):
                 self.up.install(running("FM-1_712", head), b"", "FM-1_015", target="v15", state=self.state)
             self.assertTrue(self.sent)
+
+    def test_a_rewritten_key_block_with_the_same_key_is_still_the_same_boot_code(self):
+        v15 = head_of(V15)
+        rk = rekey(v15, 0x980F)
+        self.assertNotEqual(rk, v15)
+        self.assertEqual(fi.head_is(v15, "v15"), "exact")
+        self.assertEqual(fi.head_is(rk, "v15"), "rekeyed")
+        self.assertIn("V15's, with its chip-key block written again", fi.head_text(rk))
+        self.assertIsNone(fi.head_is(rekey(v15, 0x980F ^ 0x100), "v15"))       # another key
+        self.assertIsNone(fi.head_is(rekey(v15, 0x980F, True), "v15"))         # its CRC broken
+        other = bytearray(rk)
+        other[0x1234] ^= 0x5A
+        self.assertIsNone(fi.head_which(bytes(other)))
+        self.sent = False
+        with self.assertRaises(fi.InstallError):
+            self.up.install(running("FM-1_712", rk), b"", "FM-1_015", target="v15", state=self.state)
+        self.assertTrue(self.sent)                                              # sent: the firmware takes it too
+
+    @unittest.skipUnless(os.environ.get("FM1_HEAD_FILES"), "FM1_HEAD_FILES not set")
+    def test_issue_264s_boot_codes(self):
+        """FM1_HEAD_FILES=a:b: boot codes (or flash backups) that must both count as Official Open's"""
+        for p in os.environ["FM1_HEAD_FILES"].split(":"):
+            self.assertEqual(fi.head_which(open(p, "rb").read()[:0x4000]), "open", p)
 
     def test_info_saves_the_head(self):
         head = head_of(V15)

@@ -18,6 +18,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   start-up software (its boot code) and say which one it has: V15's, Official Open's, or neither. A package the FM-1
   would refuse is not sent, and a refusal no longer guesses which one it is (1.2.2 guessed Official Open's).
   `fm1_install.py --info` shows it, and `--save-head FILE` saves it for a bug report. Needs this firmware.
+- An FM-1 whose start-up software has its chip-key block written again (seen after the chip's repair mode) is no longer
+  refused Official Open or V15 for that alone, when the block holds the same key.
 
 ## 1.2.2 — 2026-10-24
 

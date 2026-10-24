@@ -252,6 +252,44 @@ export const OPEN_PRODUCT_RE = /^FM-1_8\d{6}$/;
 export const MVAVE_LOADER_SHA256 = "ef1f2db89b011fa53e71df363f0122de0ea896618c53fb53e8da676322004541";
 export const OPEN_HEAD_SHA256 = "2981ccf8d12a132c82d8b5e959c2d27d62f13bc51419225cacc87a6e82d58171";
 export const V15_HEAD_SHA256 = "d9f43191777656de01c7bed4f9e9ba2e34e94832c5d2ed02c3fc7ab7a6d9bd67";
+// #264: a JieLi tool may write the boot code's chip-key block again, other bytes for the same key. As ota.c ota_stage, a
+// boot code is still V15's / Official Open's when it is apart from that block and its isd_config.ini entry's two CRCs,
+// and the block holds the same key: SHA-256 with those bytes zeroed, and the key (0x980F in both)
+export const HEADS = {
+  v15: { sha: V15_HEAD_SHA256, core: "fc767f6fcc5dbd69adbc4a5bc7b8d56d68516bb7d5b1a3a84d615140b2c481a0", key: 0x980F },
+  open: { sha: OPEN_HEAD_SHA256, core: "70f51774cbc1ed1b8b41c272c5b8eebee49bf620e45543a86336fd090cf3b30c", key: 0x980F },
+};
+/** { core: SHA-256 with the chip-key block and its entry's CRCs zeroed, key } or null (as ota.c ota_key_area) */
+export async function headCore(head) {
+  for (let off = 32; off < 0x400; off += 32) {
+    const e = head.slice(off, off + 32);
+    enc(e, 0, 32);
+    if (crc16(e.subarray(2, 32)) !== u16(e, 0)) return null;
+    if (String.fromCharCode(...e.subarray(16, 31)) === "isd_config.ini\0") {
+      const blk = u32(e, 4);
+      if (blk < 0x400 || blk + 34 > head.length) return null;
+      const x = head.slice();
+      x.fill(0, off, off + 4);
+      x.fill(0, blk, blk + 34);
+      const b = head.subarray(blk, blk + 34);
+      return { core: await sha256hex(x), key: crc16(b.subarray(0, 32)) === u16(b, 32) ? chipkeyDecode(b) : null };
+    }
+    if (u16(e, 14)) return null;
+  }
+  return null;
+}
+/** "exact" / "rekeyed" (the same apart from the chip-key block, the same key) / null */
+export async function headIs(head, which) {
+  const h = HEADS[which];
+  if (await sha256hex(head) === h.sha) return "exact";
+  const c = await headCore(head);
+  return c && c.core === h.core && c.key === h.key ? "rekeyed" : null;
+}
+export async function headWhich(head) {
+  for (const w of Object.keys(HEADS)) if (await headIs(head, w)) return w;
+  return null;
+}
+
 export const FL_LEN = 0x93000;                 // this board's flash.bin (ota.c OTA_FL_LEN); Open's is shorter
 export const OPEN_RELEASES = "https://github.com/m-vave/fm1_open/releases";
 

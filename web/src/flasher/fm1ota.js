@@ -7,7 +7,7 @@
 // the loader reads the whole image and writes it. Both steps are "the device
 // asks, we answer": cmd 0x30 read requests on the logical image.
 
-import { OPEN_HEAD_SHA256, V15_HEAD_SHA256, sha256hex } from "./fm1pkg.js";
+import { headIs, headWhich, sha256hex } from "./fm1pkg.js";
 
 const HS_QUERY = [0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7];
 const UPGRADE = [0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7];
@@ -86,9 +86,9 @@ export async function readHead(link, ms = 1000) {
 /** -> null when the FM-1's boot code is the package's or could not be read, else the error code naming it */
 export async function headProblem(head, product) {
   if (!head) return null;
-  const sha = await sha256hex(head);
-  if (sha === (product === STOCK_PRODUCT ? V15_HEAD_SHA256 : OPEN_HEAD_SHA256)) return null;
-  return { code: sha === V15_HEAD_SHA256 ? "bootcode-is-v15" : sha === OPEN_HEAD_SHA256 ? "bootcode-is-open" : "bootcode-is-other", sha };
+  if (await headIs(head, product === STOCK_PRODUCT ? "v15" : "open")) return null;
+  const w = await headWhich(head);
+  return { code: w === "v15" ? "bootcode-is-v15" : w === "open" ? "bootcode-is-open" : "bootcode-is-other", sha: await sha256hex(head) };
 }
 export function loaderFits(loader, product) {
   if (isMvaveProduct(product)) return loader === "ota-" + STOCK_PRODUCT;

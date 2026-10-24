@@ -196,13 +196,62 @@ def read_head(link, tries=2):
     return bytes(out)
 
 
-HEAD_NAMES = {V15_HEAD_SHA256: "V15's", OPEN_HEAD_SHA256: "Official Open's"}
+# #264: a JieLi tool may write the boot code's chip-key block again, other bytes for the same key. As ota.c ota_stage,
+# a boot code is still V15's / Official Open's when it is apart from that block and its entry's two CRCs, and the block
+# holds the same key: SHA-256 with those bytes zeroed, and the key (0x980F in both)
+HEADS = {"v15": (V15_HEAD_SHA256, "fc767f6fcc5dbd69adbc4a5bc7b8d56d68516bb7d5b1a3a84d615140b2c481a0", 0x980F),
+         "open": (OPEN_HEAD_SHA256, "70f51774cbc1ed1b8b41c272c5b8eebee49bf620e45543a86336fd090cf3b30c", 0x980F)}
+HEAD_NAMES = {"v15": "V15's", "open": "Official Open's"}
+
+
+def chip_key(blob):
+    """the chip key a 34-byte key block decodes to (ota.c ota_key_of), None if its CRC fails"""
+    if crc16(blob[:32]) != int.from_bytes(blob[32:34], "little"):
+        return None
+    t = sum(blob[:16]) & 0xFF
+    t = 0xAA if t >= 0xE0 else 0x55 if t <= 0x10 else t
+    return sum(1 << i for i in range(16) if (blob[16 + i] ^ blob[15 - i]) < t)
+
+
+def head_core(head):
+    """(SHA-256 with the chip-key block and its entry's CRCs zeroed, the key), or None (as ota.c ota_key_area)"""
+    for off in range(32, 0x400, 32):
+        e = jl_dec(head[off:off + 32])
+        if crc16(e[2:32]) != int.from_bytes(e[0:2], "little"):
+            return None
+        if e[16:31] == b"isd_config.ini\0":
+            blk = int.from_bytes(e[4:8], "little")
+            if not 0x400 <= blk <= len(head) - 34:
+                return None
+            x = bytearray(head)
+            x[off:off + 4] = bytes(4)
+            x[blk:blk + 34] = bytes(34)
+            return hashlib.sha256(x).hexdigest(), chip_key(head[blk:blk + 34])
+        if int.from_bytes(e[14:16], "little"):
+            return None
+    return None
+
+
+def head_is(head, which):
+    """"exact" / "rekeyed" (the same apart from the chip-key block, same key) / None"""
+    sha, core, key = HEADS[which]
+    if hashlib.sha256(head).hexdigest() == sha:
+        return "exact"
+    return "rekeyed" if head_core(head) == (core, key) else None
+
+
+def head_which(head):
+    return next((w for w in HEADS if head_is(head, w)), None)
 
 
 def head_text(head):
     """which boot code this is, for the terminal"""
-    sha = hashlib.sha256(head).hexdigest()
-    return HEAD_NAMES.get(sha) or f"neither V15's nor Official Open's (SHA-256 {sha})"
+    w = head_which(head)
+    if w is None:
+        return f"neither V15's nor Official Open's (SHA-256 {hashlib.sha256(head).hexdigest()})"
+    if head_is(head, w) == "rekeyed":
+        return HEAD_NAMES[w] + ", with its chip-key block written again in other bytes (the same key)"
+    return HEAD_NAMES[w]
 
 
 # --------------------------------------------------------------- package ---
@@ -274,8 +323,8 @@ def boot_refusal(product, head=None):
         return (f"nothing was changed: the FM-1 refused {name} (its screen says \"update failed -5\"), because "
                 f"{STARTUP} is not the one in this package. Which one it has could not be read: install the current "
                 "Matryoshka, then run \"fm1_install.py --info\" to see it.")
-    sha = hashlib.sha256(head).hexdigest()
-    way = WAY_OPEN_HEAD if sha == OPEN_HEAD_SHA256 else WAY_V15_HEAD if sha == V15_HEAD_SHA256 else WAY_OTHER_HEAD
+    w = head_which(head)
+    way = WAY_OPEN_HEAD if w == "open" else WAY_V15_HEAD if w == "v15" else WAY_OTHER_HEAD
     return (f"nothing was sent: {STARTUP} is {head_text(head)}, and {name} carries a different one, so the FM-1 "
             f"would refuse it (\"update failed -5\"). {way}")
 
@@ -572,8 +621,7 @@ class Updater:
                 raise InstallError("whichtarget", WHICH_TARGET)
         if target and not dev.id.loader:      # #264: the FM-1's boot code against the package's, before anything is sent
             head = read_head(dev.link)
-            want = V15_HEAD_SHA256 if target == "v15" else OPEN_HEAD_SHA256
-            if head is not None and hashlib.sha256(head).hexdigest() != want:
+            if head is not None and not head_is(head, target):
                 dev.link.close()
                 raise InstallError("bootcode", boot_refusal(product, head))
         if target:

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 // @ts-ignore untyped JS module
-import { OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage } from './flasher/fm1pkg.js';
+import { OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, crc16, headIs, headWhich, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, headProblem, loaderFits, pack7, readHead, unpack7 } from './flasher/fm1ota.js';
 import { BOOT_CODE_HELP, BOOT_CODE_IS_OPEN, BOOT_CODE_IS_OTHER, BOOT_CODE_IS_V15, MVAVE_WORKBENCH, OPEN_WHY, guardUnload } from './flasher';
@@ -235,6 +235,52 @@ describe('the boot code read from the FM-1 (#264)', () => {
     expect(await headProblem(null, 'FM-1_015')).toBeNull();
     expect(await headProblem(v15, 'FM-1_8000014')).toMatchObject({ code: 'bootcode-is-v15' });
     expect(await headProblem(new Uint8Array(0x4000), 'FM-1_015')).toMatchObject({ code: 'bootcode-is-other' });
+  });
+
+  // the chip-key block written again in other bytes for `key`, its CRC and its entry's CRCs made to hold (#264)
+  const rekey = (head: Uint8Array, key: number, badCrc = false): Uint8Array => {
+    const h = head.slice();
+    const jl = (b: Uint8Array): void => {
+      let k = 0xffff;
+      for (let i = 0; i < b.length; i++) (b[i] ^= k & 0xff), (k = ((k << 1) ^ (k & 0x8000 ? 0x1021 : 0)) & 0xffff);
+    };
+    let off = 32, e = new Uint8Array(32);
+    for (; off < 0x400; off += 32) {
+      e = h.slice(off, off + 32);
+      jl(e);
+      if (String.fromCharCode(...e.subarray(16, 30)) === 'isd_config.ini') break;
+    }
+    const dv = new DataView(e.buffer);
+    const blk = dv.getUint32(4, true), size = dv.getUint32(8, true);
+    h.fill(0x20, blk, blk + 16);
+    for (let i = 0; i < 16; i++) h[blk + 16 + i] = h[blk + 15 - i] ^ ((key >> i) & 1 ? 0x01 : 0xf0);
+    new DataView(h.buffer).setUint16(blk + 32, crc16(h.subarray(blk, blk + 32)) ^ (badCrc ? 1 : 0), true);
+    dv.setUint16(2, crc16(h.subarray(blk, blk + size)), true);
+    dv.setUint16(0, crc16(e.subarray(2, 32)), true);
+    jl(e);
+    h.set(e, off);
+    return h;
+  };
+
+  it('a chip-key block written again with the same key is still the same boot code (#264)', async () => {
+    const v15 = v15Head(), rk = rekey(v15, 0x980f);
+    expect(rk).not.toEqual(v15);
+    expect(await headIs(v15, 'v15')).toBe('exact');
+    expect(await headIs(rk, 'v15')).toBe('rekeyed');
+    expect(await headIs(rekey(v15, 0x990f), 'v15')).toBeNull();
+    expect(await headIs(rekey(v15, 0x980f, true), 'v15')).toBeNull();
+    const other = rk.slice();
+    other[0x1234] ^= 0x5a;
+    expect(await headWhich(other)).toBeNull();
+    expect(await headProblem(rk, 'FM-1_015')).toBeNull();
+    expect(await headProblem(rk, 'FM-1_8000014')).toMatchObject({ code: 'bootcode-is-v15' });
+  });
+
+  // FM1_HEAD_FILES=a:b: boot codes (or flash backups) that must count as Official Open's (issue #264's are not ours to ship)
+  it.skipIf(!process.env.FM1_HEAD_FILES)("issue #264's boot codes are Official Open's", async () => {
+    for (const p of (process.env.FM1_HEAD_FILES ?? '').split(':')) {
+      expect(await headWhich(new Uint8Array(readFileSync(p)).slice(0, 0x4000))).toBe('open');
+    }
   });
 
   it('refuses before sending anything', async () => {

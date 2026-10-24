@@ -3,7 +3,8 @@
  * real packages, with a simulated flash and a simulated host answering its read requests. Covers the size check and
  * the head check, including Matryoshka's change for M-VAVE Official Open (#183): a shorter flash.bin passes only with
  * M-VAVE's loader and a head equal to the device's; the head is never replaced by another. Also the head read (cmd 0x12,
- * #264) that tells a host which head the device has.
+ * #264) that tells a host which head the device has, and a head whose chip-key block holds the same key in other bytes
+ * (#264).
  *   tools/ota_test.sh */
 #include <stdint.h>
 #include <stdio.h>
@@ -147,6 +148,30 @@ static void open_like_head(uint8_t *h)
         h[y] = (uint8_t)(y * 7u + 3u);
 }
 
+/* `h` with its chip-key block written again (as a JieLi tool did on an FM-1, #264): other bytes for `key`, the block's CRC
+ * and its isd_config.ini entry's two CRCs made to hold; bad_crc leaves the block's CRC wrong */
+static void rekey(uint8_t *h, uint32_t key, int bad_crc)
+{
+    uint8_t e[32];
+    uint32_t off, blk, size, i;
+    for (off = 32; off < 0x400u; off += 32u) {
+        memcpy(e, h + off, 32);
+        ota_jl_enc(e, 32);
+        if (ota_memeq(e + 16, (const uint8_t *)"isd_config.ini", 15))
+            break;
+    }
+    blk = ota_rd32(e + 4), size = ota_rd32(e + 8);
+    for (i = 0; i < 16u; i++)
+        h[blk + i] = 0x20;                                  /* sum 0x00 -> threshold 0x55 */
+    for (i = 0; i < 16u; i++)
+        h[blk + 16 + i] = h[blk + 15 - i] ^ (key >> i & 1u ? 0x01u : 0xF0u);
+    ota_wr16(h + blk + 32, ota_crc16(h + blk, 32, 0) ^ (bad_crc ? 1u : 0u));
+    ota_wr16(e + 2, ota_crc16(h + blk, size, 0));
+    ota_wr16(e, ota_crc16(e + 2, 30, 0));
+    ota_jl_enc(e, 32);
+    memcpy(h + off, e, 32);
+}
+
 /* one update session: the device holds `head` (0x0000-0x3FFF) */
 static void run(const char *what, uint8_t *im, uint32_t n, const uint8_t *head, int want)
 {
@@ -201,7 +226,7 @@ static void head_reads(const uint8_t *head)
 
 int main(int argc, char **argv)
 {
-    static uint8_t v15_head[0x4000], open_head[0x4000], other_head[0x4000], mat_head[0x4000];
+    static uint8_t v15_head[0x4000], open_head[0x4000], other_head[0x4000], mat_head[0x4000], rk[0x4000];
     uint32_t vn, mn;
     uint8_t *v15, *mat, *open14, *open12;
     if (argc < 3) {
@@ -243,6 +268,24 @@ int main(int argc, char **argv)
     run("Open (V12 size) over Open's head", open12, vn, open_head, 0);
     run("Open over V15's head", open14, vn, v15_head, -5);
     run("Open over another head", open14, vn, other_head, -5);
+    /* #264: the chip key's block written again with other bytes */
+    memcpy(rk, v15_head, sizeof rk);
+    rekey(rk, 0x980Fu, 0);
+    if (!memcmp(rk, v15_head, sizeof rk)) {
+        printf("FAIL the re-keyed head is the same bytes\n");
+        fails++;
+    }
+    run("V15 over V15's head, its key block in other bytes, the same key", v15, vn, rk, 0);
+    memcpy(rk, v15_head, sizeof rk);
+    rekey(rk, 0x980Fu ^ 0x0100u, 0);
+    run("V15 over V15's head, its key block holding another key", v15, vn, rk, -5);
+    memcpy(rk, v15_head, sizeof rk);
+    rekey(rk, 0x980Fu, 1);
+    run("V15 over V15's head, its key block's CRC broken", v15, vn, rk, -5);
+    memcpy(rk, v15_head, sizeof rk);
+    rekey(rk, 0x980Fu, 0);
+    rk[0x1234] ^= 0x5A;
+    run("V15 over a re-keyed head that differs elsewhere too", v15, vn, rk, -5);
     head_reads(v15_head);
     if (!fails)
         printf("ota test passed\n");
