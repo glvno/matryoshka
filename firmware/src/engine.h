@@ -237,6 +237,9 @@ uint32_t eng_button_targets(uint32_t b, const uint8_t **list);
 uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quarter note) */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
 uint32_t eng_buttons_get(void);
+/* the patch buttons' LEDs (the FM-1, the EMU view): eng_buttons_get, but ARP as a Toggle of Arpeggiators is lit while
+ * they play, not while they are bypassed (D-231; the editor: buttons.ts arpLitInverted) */
+uint32_t eng_buttons_lit(void);
 /* Steps modules (the SEQ page): how many the patch has and the module of the t-th (patch order); a step as a byte (the
  * step view of its notes, track.ts: bit 0 on, bit 1 accent, bits 2..6 the chance code, bit 7 tie; -1 if no such module /
  * step) and setting it, a step's note / velocity (note | vel << 8) and setting them (the running track; the caller keeps

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { kindOf, setKind, switches, toggleTargets } from './buttons';
+import { arpLitInverted, kindOf, setKind, setTarget, switches, toggleEngaged, toggleTargets } from './buttons';
 import { arpChoices, arpFree, arpsOf, insertArpeggiator } from './arp-button';
-import { DEFS } from './modules';
+import { DEFS, PANEL_BUTTONS } from './modules';
+import { Engine } from './engine';
 import { addModule, connect, emptyPatch } from './patch';
 
 describe('+ Add arpeggiator (#119)', () => {
@@ -18,6 +19,41 @@ describe('+ Add arpeggiator (#119)', () => {
     expect(kindOf(panel, 'arp')).toBe('bypass');
     expect(switches(panel, 'arp')).toBe(true);
     expect(toggleTargets(p, 'arp')).toEqual([arp.id]);
+  });
+
+  it('bypassed (ARP engaged) the keys play straight, as without it; ARP released, it arpeggiates (D-425)', () => {
+    const voice = (): ReturnType<typeof emptyPatch> => {
+      const p = emptyPatch('t');
+      const main = addModule(p, DEFS.fm1, 0, 0);
+      const alloc = addModule(p, DEFS.alloc, 600, 0);
+      alloc.params.voices = 3;
+      const osc = addModule(p, DEFS.osc, 900, 0);
+      const out = addModule(p, DEFS.output, 1200, 0);
+      connect(p, DEFS, { module: main.id, port: 'keys' }, { module: alloc.id, port: 'keys' });
+      connect(p, DEFS, { module: alloc.id, port: 'pitch' }, { module: osc.id, port: 'pitch' });
+      connect(p, DEFS, { module: alloc.id, port: 'gate' }, { module: osc.id, port: 'p1' });
+      connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' });
+      return p;
+    };
+    const render = (p: ReturnType<typeof emptyPatch>, press?: boolean): Float32Array => {
+      const e = new Engine(44118);
+      e.load(p);
+      if (press !== undefined) e.setButton(PANEL_BUTTONS.indexOf('arp'), press);
+      e.noteOn(48);
+      e.noteOn(55);
+      const l = new Float32Array(44118 / 2), r = new Float32Array(l.length);
+      e.render(l, r);
+      return l;
+    };
+    const plain = render(voice());
+    const p = voice();
+    insertArpeggiator(p)!.bypass = true;
+    expect(render(p)).toEqual(plain);                         // saved bypassed: ARP is engaged
+    expect(render(p, false)).not.toEqual(plain);              // ARP released: the arpeggiator plays
+    const q = voice();
+    insertArpeggiator(q);
+    expect(render(q)).not.toEqual(plain);
+    expect(render(q, true)).toEqual(plain);                   // ARP pressed before the keys: straight
   });
 
   it('with nothing on Main\'s keys it is just fed by them', () => {
@@ -97,5 +133,22 @@ describe('ARP with nothing on it: what a click does', () => {
 
   it('no Main module: nothing to offer', () => {
     expect(arpChoices(emptyPatch('t'))).toEqual([]);
+  });
+});
+
+describe('ARP\'s light (D-231): lit while its Arpeggiator plays', () => {
+  it('ARP on an Arpeggiator: the light is the inverse of the Toggle (lit = not bypassed); on anything else, or another button, as the Toggle', () => {
+    const p = emptyPatch('t');
+    addModule(p, DEFS.fm1, 0, 0);
+    const arp = insertArpeggiator(p)!;
+    expect(arpLitInverted(p, 'arp')).toBe(true);
+    arp.bypass = true;
+    expect(toggleEngaged(p, 'arp')).toBe(true); // (engaged: its target bypassed; so the light is dark)
+    const fold = addModule(p, DEFS.shape, 300, 0);
+    setTarget(p, 'arp', { module: fold.id });
+    expect(arpLitInverted(p, 'arp')).toBe(false);
+    setKind(p, 'fx', 'bypass');
+    setTarget(p, 'fx', { module: arp.id });
+    expect(arpLitInverted(p, 'fx')).toBe(false);
   });
 });

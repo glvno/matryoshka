@@ -58,7 +58,7 @@ it('the bank takes patches that fit, never one over the FM-1 budget', () => {
   expect(addToBank({ ...make(), name: 'Mine' })).toMatch(/updated in the bank/);
   expect(addToBank({ ...make(), name })).toMatch(/factory patch/); // the factory entry of that name stays
   const huge = make();
-  huge.modules = [...huge.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...huge.modules[huge.modules.length - 1], id: 1000 + i }))];
+  huge.modules = [...huge.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...huge.modules.find((m) => m.type === 'output')!, id: 1000 + i }))];
   expect(addToBank({ ...huge, name: 'Huge' })).toMatch(/too big/);
   expect(bankPatches().map((e) => e.name)).not.toContain('Huge');
 });

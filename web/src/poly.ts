@@ -106,14 +106,21 @@ export const maxParts = (p: Patch): number => Math.max(1, ...p.modules.filter((m
 /** a poly assembly that no allocator feeds: it runs once */
 export const unfed = (p: Patch, a: AssemblyInst): boolean => !!a.poly && !polyAncestor(p, a) && !allocatorOf(p, a);
 
+/** what feeds an Arpeggiator's keys in: the Main module or a Steps track (its keys out), else null */
+export function arpFeed(p: Patch, arp: ModuleInst): ModuleInst | null {
+  const c = p.cables.find((x) => x.to.module === arp.id && x.to.port === 'keys' && x.from.port === 'keys');
+  const from = c && p.modules.find((m) => m.id === c.from.module);
+  return from && (from.type === 'fm1' || from.type === 'steps') ? from : null;
+}
+
 /** where an allocator's keys come from: the Main module, a Steps track (#133), or an Arpeggiator that the Main module's
- * keys feed; null: none */
+ * keys or a Steps track feed; null: none */
 export function keySource(p: Patch, alloc: ModuleInst): ModuleInst | null {
   const cable = p.cables.find((c) => c.to.module === alloc.id && c.to.port === 'keys');
   const from = cable && p.modules.find((m) => m.id === cable.from.module);
   if (!from) return null;
   if (from.type === 'fm1' || from.type === 'steps') return from;
-  if (from.type === 'arp' && p.cables.some((c) => c.to.module === from.id && c.to.port === 'keys' && p.modules.find((m) => m.id === c.from.module)?.type === 'fm1')) return from;
+  if (from.type === 'arp' && arpFeed(p, from)) return from;
   return null;
 }
 
@@ -127,11 +134,29 @@ export function arpOf(p: Patch, alloc: ModuleInst): ModuleInst | null {
   return s?.type === 'arp' || s?.type === 'steps' ? s : null;
 }
 
-/** where a Drum map's keys come from (#137): the Main module or a Steps track (its keys out), else null */
+/** where a Drum map's keys come from (#137): the Main module, a Steps track (its keys out) or an Arpeggiator that Main or
+ * a track feeds, else null */
 export function keysInto(p: Patch, m: ModuleInst): ModuleInst | null {
   const c = p.cables.find((x) => x.to.module === m.id && x.to.port === 'keys');
   const from = c && p.modules.find((x) => x.id === c.from.module);
-  return from && c.from.port === 'keys' && (from.type === 'fm1' || from.type === 'steps') ? from : null;
+  if (!from || c.from.port !== 'keys') return null;
+  return from.type === 'fm1' || from.type === 'steps' || (from.type === 'arp' && arpFeed(p, from)) ? from : null;
+}
+
+/** the Drum map a Steps track plays: cabled from its keys out, or through the Arpeggiator it feeds (the roll's rows) */
+export function trackDrumMap(p: Patch, steps: number): ModuleInst | null {
+  const into = (from: number): ModuleInst | undefined => {
+    const c = p.cables.find((x) => x.from.module === from && x.from.port === 'keys' && p.modules.find((q) => q.id === x.to.module)?.type === 'drummap');
+    return c && p.modules.find((q) => q.id === c.to.module);
+  };
+  const direct = into(steps);
+  if (direct) return direct;
+  for (const c of p.cables)
+    if (c.from.module === steps && c.from.port === 'keys' && c.to.port === 'keys' && p.modules.find((q) => q.id === c.to.module)?.type === 'arp') {
+      const m = into(c.to.module);
+      if (m) return m;
+    }
+  return null;
 }
 
 /** what a Steps track plays (#134, the status line while it is armed): the instruments its outputs go into, by the
@@ -145,10 +170,12 @@ export function trackTargets(p: Patch, steps: number, label: (m: ModuleInst) => 
   };
   const top = (id: number): AssemblyInst | undefined => { const a = assemblyOf(p, id); return a && outer(a); };
   const groups = polyGroups(p);
+  // (through an Arpeggiator the track feeds: what the arpeggiator plays)
+  const via = new Set(p.cables.filter((c) => c.from.module === steps && c.from.port === 'keys' && c.to.port === 'keys' && p.modules.find((x) => x.id === c.to.module)?.type === 'arp').map((c) => c.to.module));
   for (const c of p.cables) {
-    if (c.from.module !== steps) continue;
+    if (c.from.module !== steps && !(via.has(c.from.module) && c.from.port === 'keys')) continue;
     const m = p.modules.find((x) => x.id === c.to.module);
-    if (!m || m.id === steps) continue;
+    if (!m || m.id === steps || via.has(m.id)) continue;
     const fed = m.type === ALLOC ? groups.filter((g) => g.alloc === m).map((g) => outer(g.asm)) : [];
     if (fed.length) fed.forEach((a) => add(a.label));
     else add(top(m.id)?.label ?? label(m));
@@ -184,10 +211,12 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
   const out: DeviceGroup[] = groups.map((g) => ({ key: `${g.asm.id}:${g.cfg.parts}`, cfg: g.cfg, modules: new Set(g.modules) }));
   const modules = p.modules.map((m) => m);
   // keys cables are not signals: the groups take the notes (from the keys, or an Arpeggiator or a Steps track: DeviceGroup.src).
-  // One stays: Main's keys into a Steps track's keys in (#138), which tells the C engine that the keys pass through the
-  // track (engine.c ksrc; no signal flows on it)
+  // Some stay: Main's keys into a Steps track's keys in (#138), which tells the C engine that the keys pass through the
+  // track; a track's keys into an Arpeggiator's keys in, which tells it the arpeggiator plays the track (engine.c ksrc);
+  // an Arpeggiator's keys into a Drum map, which keeps the arpeggiator live (device-compile.ts). No signal flows on them
   const typeOf = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
-  const keysFrom = (c: Cable): boolean => { const t = typeOf(c.from.module); return (t === 'fm1' || t === 'arp' || t === 'steps') && c.from.port === 'keys' && !(t === 'fm1' && c.to.port === 'keys' && typeOf(c.to.module) === 'steps'); };
+  const kept = (c: Cable, t: string | undefined): boolean => c.to.port === 'keys' && ((t === 'fm1' && typeOf(c.to.module) === 'steps') || (t === 'steps' && typeOf(c.to.module) === 'arp') || (t === 'arp' && typeOf(c.to.module) === 'drummap'));
+  const keysFrom = (c: Cable): boolean => { const t = typeOf(c.from.module); return (t === 'fm1' || t === 'arp' || t === 'steps') && c.from.port === 'keys' && !kept(c, t); };
   let cables: Cable[] = p.cables.filter((c) => !keysFrom(c));
   let next = p.modules.reduce((m, x) => Math.max(m, x.id), 0) + 1;
   const partAt = (alloc: ModuleInst, id: number): ModuleInst => ({ id, type: 'part', x: alloc.x, y: alloc.y, params: {} });

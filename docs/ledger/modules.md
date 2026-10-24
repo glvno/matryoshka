@@ -31,6 +31,7 @@ Keys and MIDI reach a patch only through the **Main** module, whose `pitch` alre
 | <a id="D-422"></a>D-422 | Module labels name the hardware they stand for (Attenuverter, Offset, Waveshaper, Bitcrusher, Resonator, Formant filter, Freq shifter, Clock divider, Crossfader, Comb filter, Multimode, Slew limiter), and type ids never change with a label. **Amended 2026-10-23 (michael glaviano):** the voice allocation module (`alloc`) is labelled [**Voicing**](vocabulary.md#voicing) in all user-visible text. | Decided, amended | 2026-10-22 → 2026-10-23 | commit 49e9d96; issue #189; commit a67a07c; commit 6d48a95 |
 | <a id="D-423"></a>D-423 | A module's `label` is also its name on the FM-1's LCD, in capitals, at most 14 characters. | Decided | 2026-10-22 | commit 49e9d96; PR #205 |
 | <a id="D-424"></a>D-424 | Drum map row names are editor-only: only the notes and outputs reach the FM-1. | Decided | 2026-10-23 | `ModuleInst.names`; PR #205 |
+| <a id="D-425"></a>D-425 | A bypassed Arpeggiator hands the keys it hears straight on: the Voicings and Drum maps it plays get them as if it were not there. Switching it, by its bypass or its Toggle, lets go of what it was playing, and the keys still held stay with it. An Arpeggiator whose `keys` input is cabled from a Steps track plays that track's notes instead of Main's keys. An Arpeggiator can drive Drum maps as well as Voicings, so a Drum map's keys can also come from an Arpeggiator. Both engines do the same. | Decided | 2026-10-23 | owner in chat 2026-10-23; PR #243 |
 
 ## Not yet settled
 

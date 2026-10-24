@@ -3,7 +3,7 @@
 // fixed-point engine's instructions on an rv32im model (tools/cpu, `npm run cpu-costs`), calibrated on the factory patches
 // measured on the device (a scale plus a fixed time per block); a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
-import { DEFS, STACKS } from './modules';
+import { DEFS, STACKS, TRACK_POLY } from './modules';
 import { hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
 
@@ -32,6 +32,9 @@ export interface TypeCost {
    * some inputs patched (firstOffWith: the filter's second stage also works out its own coefficients while the cv moves) */
   firstOff?: number;
   firstOffWith?: Record<string, number>;
+  /** a Steps track that Main's keys pass through (a cable into its keys in): cycles per key sounding through it, counted
+   * for as many keys as the patch's largest poly group has parts (the worst case the checks hold too) */
+  thru?: number;
 }
 
 export interface CpuTable {
@@ -219,6 +222,7 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
     // a pitch input that keeps moving: something that never holds still reaches it (an envelope or a glide only moves for a moment)
     if (t.moving && !m.bypass && p.cables.some((c) => c.to.module === m.id && c.to.port === 'pitch' && keepsMoving(p, c.from.module)))
       one += t.moving * (m.type === 'osc' ? Math.max(Math.round(m.params.unison ?? 1), STACKS[Math.round(m.params.stack ?? 0)]?.length ?? 1) : 1);
+    if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
     if (m.type === 'output') total += table.output;
     const k = ninst(m.id);
     modules.push({ id: m.id, type: m.type, copies: k, cycles: one * k });

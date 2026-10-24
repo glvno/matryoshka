@@ -6,6 +6,21 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- Every melodic factory patch (all but the 808 Kit, the 909 Kit and <7PH) has an **arpeggiator on ARP** and an empty
+  16-step **PATTERN** track: Main's keys go through PATTERN into the arpeggiator, then the voice. The arpeggiator starts
+  off, so a patch sounds as before (a few milliseconds later, through PATTERN) until ARP is pressed; notes entered on
+  PATTERN play on PLAY, through the arpeggiator when ARP is on. Scrounge, Meridian 8 and Perun 4 keep their pattern
+  and get the arpeggiator. Oracle V and Algo Four now estimate at about 84 % and 86 % of the FM-1's CPU. On the FM-1
+  the arpeggiator comes after the voice in the device order and a patch still opens on the voice (Init opens on its
+  new one-voice Voicing). An FM-1 in use gets the new patches only from MENU > SYSTEM > FACTORY RESET; a normal update
+  leaves the saved slots as they are.
+- ARP's light, when ARP switches an arpeggiator: lit while it arpeggiates, dark while it is off (the LED, the bar's
+  ARP ON / OFF, the editor's dock and EMU agree). Other Toggles keep their light: lit while their target is bypassed.
+- A bypassed Arpeggiator (ARP as its Toggle, or its card's power switch) now plays the keys straight through instead of
+  arpeggiating anyway; switching it lets go of what it was playing. An Arpeggiator can play a Steps track's notes (the
+  track's keys out into its keys in) and can drive Drum maps, in the editor and on the FM-1. On the FM-1 the black
+  keys still play the Drum map's rows when a track plays it through an arpeggiator (8 Lire, Elvira 2, Scrounge,
+  Meridian 8, Perun 4).
 - The FM-1's OCTAVE message no longer shows a stray character after the number.
 - FM-1: the battery in the top right corner of the screen: 0 to 3 bars, a bolt while a computer powers it over USB, and
   LOW BATTERY in the top bar once when it runs low. MENU > SYSTEM > BATTERY shows the reading behind it. The thresholds
