@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The patch card (glvno/matryoshka#163): a 1200 x 900 PNG of the patch, drawn from the patch data (never a screenshot of
-// the page), for a post. Always the dark theme, whatever the app shows: the colours are the dark tokens of style.css,
+// the page), for a post. Always the dark theme, whatever the app shows: the colours are the dark tokens of tokens.css,
 // copied here once (patch-card.test.ts checks they still match). Header: MATRYOSHKA PATCH, the title, the notes, "by"
 // and the engines; the map: the canvas's top-level cards (collapsed assemblies and the modules not inside one) in their
 // saved arrangement, each box showing what a player knows it by (an engine's blurb, its pages of knobs as the FM-1 has
@@ -28,7 +28,7 @@ const MAX_SCALE = 0.8;
 /** a box's label: its font size, the room either side, and a generous width per (upper-case, condensed) character */
 export const LABEL_PX = 13, LABEL_PAD = 8, LABEL_CHAR = 8;
 
-/** the dark theme's tokens (style.css, `:root[data-theme="dark"]` and the --ref-* palette) */
+/** the dark theme's tokens (tokens.css, `:root[data-theme="dark"]` and the --ref-* palette) */
 export const DARK = {
   bg: '#171f21', // --ref-night
   panel: '#202a2c', // --ref-ink

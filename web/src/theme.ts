@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The colour theme: light, dark or the system's (no choice stored). The choice is `data-theme` on <html>, which the
-// tokens in style.css follow; index.html applies a stored choice before the first paint, so a reload does not flash.
+// tokens in tokens.css follow; index.html applies a stored choice before the first paint, so a reload does not flash.
 export type Theme = 'light' | 'dark';
 
 const STORE = 'matryoshka.theme';

@@ -782,8 +782,8 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   ui_preview and drives the panel (it rebuilds the wasm when a source is newer).
 - The editor's Emulator view (EMU, #110): one of the PATCH | EMU | LIBRARY switch's views over the main area
   (`#view-switch`, main.ts `setView`; PATCH on a page load, not remembered; #218). Firmware installs are the Install
-  panel (`#flash-view`, `openInstall` / `closeInstall`), over the main area and not a view: Get started > Install
-  firmware, the palette's Install firmware, `#flash`, and Connect FM-1 when the FM-1 answers M-VAVE's identity handshake
+  panel (`#flash-view`, `openInstall` / `closeInstall`), over the main area and not a view: Get started >
+  Install (it reads "Install v1.2": the bundled package's version, `__INSTALL_VERSION__`), the palette's Install firmware, `#flash`, and Connect FM-1 when the FM-1 answers M-VAVE's identity handshake
   with other firmware (`identifyFm1`, mirror.ts). Addresses: `#library` / `#assemblies` / `#presets` / `#community` open LIBRARY on
   that section (the last one is remembered per browser, `matryoshka.library-section`), `#emu` and `#fm1` EMU.
 - The Library (#218, part 2): it manages what is stored and opens or inserts nothing (opening is the Open picker's, the

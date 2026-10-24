@@ -6,6 +6,9 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **A changelog page on the site:** https://matry0shka.pages.dev/changelog lists what changed in each release, newest
+  first, and each release has its own link (`changelog#v1.3.0`) with a Copy link button. Get started has a Changelog
+  link under Install, and Install now names the firmware it installs: "Install v1.2".
 - **The FM-1's battery mark sits on the top bar's colour:** on the sandbox page's gold bar, GLO's coral, ENV's lilac,
   the preset list's gold, a Page button list's sea, the SELECT / ALGO cards and every message, the battery's corner
   takes the bar's colour instead of staying a dark square, and its outline and bars turn dark (or light on the cards)
