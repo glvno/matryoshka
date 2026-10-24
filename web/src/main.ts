@@ -26,7 +26,7 @@ import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { buildFlashTab } from './flasher';
-import { attachKeyboard, attachMidi, isTextEntry } from './input';
+import { attachKeyboard, attachMidi, followOctave, isTextEntry } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
@@ -1768,7 +1768,7 @@ async function mirrorInput(i: PanelInput): Promise<void> {
         break;
       case 'button': {
         const b = PANEL_OF_ID.get(i.id);
-        emu.drive(i);
+        followOctave(noteKeys, () => emu.octave, () => emu.drive(i));   // (OCT- / OCT+: the editor's keys follow the FM-1's)
         if (b !== undefined) editor.pressButton(b, i.down);
         break;
       }

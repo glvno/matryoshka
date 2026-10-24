@@ -65,6 +65,15 @@ export function attachKeyboard(host: Pick<AudioHost, 'send'>, isActive: () => bo
   return { octave: () => octave, shift, set };
 }
 
+/** a followed FM-1's button through its panel logic (`drive`): when that moved the panel's octave (OCT- / OCT+, not on
+ * the SEQ page), the note keys and their display move by as much */
+export function followOctave(keys: Pick<NoteKeys, 'shift'>, panelOctave: () => number, drive: () => void): void {
+  const before = panelOctave();
+  drive();
+  const d = panelOctave() - before;
+  if (d) keys.shift(d);
+}
+
 /**
  * Asks for Web MIDI and plays from every input. Resolves to a switch (off: incoming messages are ignored and the notes
  * MIDI holds are released; the access itself stays until the page reloads), or null when MIDI could not be had.

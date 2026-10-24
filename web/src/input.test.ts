@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { attachKeyboard, attachMidi } from './input';
+import { attachKeyboard, attachMidi, followOctave } from './input';
 
 // Exercise the installed event handlers without an audio device or a DOM dependency.
 class Control extends EventTarget {
@@ -113,5 +113,21 @@ describe('attachMidi', () => {
       nav.requestMIDIAccess = saved;
     }
     expect(sent).toEqual([{ t: 'on', note: 60, vel: 100 / 127, ch: 1 }]);
+  });
+});
+
+describe('followOctave', () => {
+  it('moves the note keys by as much as the panel logic moved its octave', () => {
+    let panel = 0;
+    const shift = vi.fn();
+    followOctave({ shift }, () => panel, () => { panel += 1; });
+    expect(shift).toHaveBeenCalledWith(1);
+    followOctave({ shift }, () => panel, () => { panel -= 2; });
+    expect(shift).toHaveBeenLastCalledWith(-2);
+  });
+  it('leaves them alone when the button did not move the octave (another button, OCT on the SEQ page)', () => {
+    const shift = vi.fn();
+    followOctave({ shift }, () => 0, () => {});
+    expect(shift).not.toHaveBeenCalled();
   });
 });
