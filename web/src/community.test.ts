@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import RAW from './community.json';
-import { ageOf, communityEntries, enginesOf, entryProblems, fitOf, ISSUE_FORM, loadCommunity, submitUrl } from './community';
+import {
+  addCommunity, addedCommunity, addedTitles, ageOf, communityEntries, enginesOf, entryProblems, familiesOf, ISSUE_FORM, isAdded, loadCommunity, pairXl,
+  removeCommunity, submitUrl, unlinkSaved, xlBase, type CommunityEntry,
+} from './community';
+import { chipOf } from './sandbox';
 import { DEFS } from './modules';
 import { PRESETS } from './presets';
 import { decodeShare, encodeShare } from './share';
@@ -35,7 +39,7 @@ describe('the community list (#157)', () => {
     expect(list.map((e) => e.title)).toEqual(['new', 'old']);
   });
 
-  it('shows age, engines and the FM-1 fit', () => {
+  it('shows age, engines and the chip', () => {
     const now = Date.parse('2026-10-21');
     expect(ageOf('2026-10-21', now)).toBe('today');
     expect(ageOf('2026-10-18', now)).toBe('3 d');
@@ -44,7 +48,7 @@ describe('the community list (#157)', () => {
     expect(ageOf('2024-10-01', now)).toBe('2 y');
     for (const make of Object.values(PRESETS)) {
       const p = make();
-      expect(fitOf(p).text).toMatch(/^(plays on FM-1 · \d+ %|browser only)$/);
+      expect(chipOf(p).text).toMatch(/^(FM-1 · \d+ %|SANDBOX)$/);
       expect(enginesOf(p).every((n) => typeof n === 'string' && n.length > 0)).toBe(true);
     }
   });
@@ -61,5 +65,69 @@ describe('the community list (#157)', () => {
     expect(form).toContain('CC BY-SA 4.0');
     expect(form).toMatch(/required: true/);
     expect(form).toContain('community-patch');
+  });
+});
+
+describe('families and XL pairing', () => {
+  it('reads an XL name', () => {
+    expect(xlBase('Sol 29N XL')).toBe('Sol 29N');
+    expect(xlBase(' Algo Four XL ')).toBe('Algo Four');
+    expect(xlBase('XL')).toBeNull();
+    expect(xlBase('Sol 29NXL')).toBeNull();
+    expect(xlBase('Sol 29N')).toBeNull();
+  });
+
+  it('moves each XL right under its FM-1 version, and leaves an XL without one where it is', () => {
+    expect(pairXl(['A XL', 'B', 'A', 'C XL', 'B XL'])).toEqual([
+      { name: 'B', xl: false }, { name: 'B XL', xl: true }, { name: 'A', xl: false }, { name: 'A XL', xl: true }, { name: 'C XL', xl: false },
+    ]);
+  });
+
+  it('makes one family of an FM-1 version and its XL, the FM-1 version first', () => {
+    const e = (title: string): { entry: CommunityEntry } => ({ entry: { title } as CommunityEntry });
+    const fams = familiesOf([e('Sol 29N XL'), e('Lire + Elvira'), e('Sol 29N')]);
+    expect(fams.map((f) => [f.name, f.members.map((m) => m.entry.title)])).toEqual([
+      ['Sol 29N', ['Sol 29N', 'Sol 29N XL']],
+      ['Lire + Elvira', ['Lire + Elvira']],
+    ]);
+  });
+});
+
+describe('adding community patches to Your patches', () => {
+  const mem = new Map<string, string>();
+  beforeEach(() => {
+    mem.clear();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (k: string) => mem.get(k) ?? null,
+      setItem: (k: string, v: string) => void mem.set(k, v),
+      removeItem: (k: string) => void mem.delete(k),
+    };
+  });
+
+  it('keeps the added titles in this browser, the latest first; removing un-adds', async () => {
+    const [a, b] = (await loadCommunity()).map((c) => c.entry.title);
+    expect(addedTitles()).toEqual([]);
+    expect(addCommunity(a)).toBe(true);
+    expect(addCommunity(b)).toBe(true);
+    expect(addCommunity(a)).toBe(true); // already there: no second copy
+    expect(addedTitles()).toEqual([b, a]);
+    expect(JSON.parse(mem.get('matryoshka.community-added')!)).toEqual([b, a]);
+    expect(addedCommunity().map((c) => c.entry.title)).toEqual([b, a]);
+    expect(removeCommunity(b)).toBe(true);
+    expect(isAdded(b)).toBe(false);
+    expect(addedTitles()).toEqual([a]);
+  });
+
+  it('drops the link once the user saves a patch of that name, and leaves out titles no longer in the list', async () => {
+    const [a, b] = (await loadCommunity()).map((c) => c.entry.title);
+    mem.set('matryoshka.community-added', JSON.stringify([a, 'Gone from the list', b]));
+    expect(addedCommunity().map((c) => c.entry.title)).toEqual([a, b]);
+    unlinkSaved(['Mine', a]);
+    expect(addedTitles()).toEqual(['Gone from the list', b]);
+  });
+
+  it('reads nothing when the storage holds garbage', () => {
+    mem.set('matryoshka.community-added', '{"no": 1}');
+    expect(addedTitles()).toEqual([]);
   });
 });

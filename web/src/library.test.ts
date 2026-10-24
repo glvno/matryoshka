@@ -9,7 +9,12 @@ import type { Patch } from './patch';
 import { encodePatch } from './patchbin';
 import { PRESETS } from './presets';
 import { SLOTS, slotLabel, type SlotInfo } from './protocol';
+import { addedTitles, loadCommunity } from './community';
 import { savePatch } from './saved';
+
+// jsdom's streams cannot inflate a share code: the community entries decode to a factory patch here (community.test.ts
+// decodes the real ones)
+vi.mock('./share', async (real) => ({ ...(await real<typeof import('./share')>()), decodeShare: async () => PRESETS.Init() }));
 
 const names = Object.keys(PRESETS).slice(0, 2);
 const empty = (): SlotInfo[] => Array.from({ length: SLOTS }, (_, slot) => ({ slot, used: false, length: 0, name: '' }));
@@ -55,14 +60,14 @@ it('without an FM-1 the FM-1 column is the offline copy: → adds to it, ← cop
   expect(button(fm1, 'Send bank to FM-1').disabled).toBe(true);
 });
 
-it('a patch over the FM-1 budget is marked browser only and cannot go to the FM-1; the old over-budget list folds into Your patches', () => {
+it('a patch over the FM-1 budget is marked SANDBOX and cannot go to the FM-1; the old over-budget list folds into Your patches', () => {
   const huge = PRESETS[names[0]]();
   huge.modules = [...huge.modules, ...Array.from({ length: 400 }, (_, i) => ({ ...huge.modules.find((m) => m.type === 'output')!, id: 1000 + i }))];
   localStorage.setItem('matryoshka.bank-over', JSON.stringify([{ name: 'Huge', patch: huge }]));
   const root = document.createElement('div');
   buildPatchesSection(root, fakeDevice(false), { remove: () => {} });
   const row = [...cols(root)[0].querySelectorAll('.bank-row')].find((r) => r.querySelector('.grow')!.textContent === 'Huge')!;
-  expect(row.querySelector('.lib-badge')!.getAttribute('title')).toBe('Too big for the FM-1');
+  expect(row.querySelector('.fit-chip.sandbox')!.textContent).toBe('SANDBOX');
   expect(button(row, '→').disabled).toBe(true);
   expect(localStorage.getItem('matryoshka.bank-over')).toBeNull();
 });
@@ -173,4 +178,21 @@ it('slots show as 01..64: the first is 01, the last 64, and erasing the row show
   expect(dev.slots[0].used).toBe(false);
   expect(dev.slots[SLOTS - 1].used).toBe(true);
   vi.unstubAllGlobals();
+});
+
+it('lists the community patches added to Your patches with their authors; Remove un-adds one, with Undo', async () => {
+  const [c] = await loadCommunity();
+  localStorage.setItem('matryoshka.community-added', JSON.stringify([c.entry.title]));
+  const root = document.createElement('div');
+  buildPatchesSection(root, fakeDevice(false), { remove: () => {} });
+  const browser = cols(root)[0];
+  const row = [...browser.querySelectorAll('.bank-row')].find((r) => r.querySelector('.grow')!.textContent === `${c.entry.title} · ${c.entry.author}`)!;
+  expect(row).toBeDefined();
+  button(row, 'Remove').click();
+  expect(addedTitles()).toEqual([]);
+  expect(rows(browser)).not.toContain(`${c.entry.title} · ${c.entry.author}`);
+  // saved under its name, it is the user's own: listed once, as a saved patch
+  localStorage.setItem('matryoshka.community-added', JSON.stringify([c.entry.title]));
+  savePatch({ ...c.patch!, name: c.entry.title });
+  expect(rows(cols(root)[0]).filter((r) => r.startsWith(c.entry.title))).toEqual([c.entry.title]);
 });

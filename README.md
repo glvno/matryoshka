@@ -192,7 +192,7 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 
 ## Community patches
 
-- **Community patches** (patches players shared, each credited to its author under CC BY-SA 4.0) are listed under **Community** in the Open picker and the command palette; one opens like a patch link (nothing is saved until you save it).
+- **Community patches** (patches players shared, each credited to its author under CC BY-SA 4.0) are listed in **Library > Community**, one card per patch with its XL version (the full browser version) beside it. Nothing from there shows anywhere else until you **Add** it: it then appears in Your patches with its author (the Open picker, the palette, Library > Patches), following the bundled entry until you save it as your own. The palette's "Browse community patches" opens the section.
 - **Submit to the Community shelf** in the share sheet opens the [issue form](https://github.com/glvno/matryoshka/issues/new?template=community-patch.yml) filled in with the open patch's link.
 - The list is `web/src/community.json`, bundled with the app (no server). Accepted submissions are added to it in a commit, one entry each (`title`, `author`, `licence: "CC-BY-SA-4.0"`, `source`: the Reddit post or the issue, `code`: the link's `#p=` value, `added`: YYYY-MM-DD, optional `notes`); `community.test.ts` decodes every entry and fails on a broken code or a missing author or licence.
 

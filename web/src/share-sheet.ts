@@ -114,7 +114,7 @@ export class ShareSheet {
         el('div', { class: 'share-actions' }, this.postBtn, this.copyBtn, this.cardBtn, this.fileBtn),
         this.msg,
         el('p', { class: 'share-hint', textContent: `Post to Reddit copies the link, opens a new post on r/${SUBREDDIT} with the title filled in and saves the card. Drop the card in as the image and paste the link as the first comment.` }),
-        el('p', { class: 'share-hint' }, this.submitBtn, ' opens the form (a GitHub issue) with this patch filled in; accepted patches are listed under Community in the Open picker and the palette, under CC BY-SA 4.0 (#157).'),
+        el('p', { class: 'share-hint' }, this.submitBtn, ' opens the form (a GitHub issue) with this patch filled in; accepted patches are listed in Library > Community, under CC BY-SA 4.0 (#157).'),
       ),
     );
     dlg.setAttribute('aria-labelledby', 'share-title');

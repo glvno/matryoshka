@@ -6,8 +6,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for sharing a patch. Accepted patches are added to `web/src/community.json` and shown on the Library tab
-        and in the Open picker, with your name and the licence.
+        Thanks for sharing a patch. Accepted patches are added to `web/src/community.json` and shown in the app's
+        Library > Community, with your name and the licence; players add the ones they want to their own patches.
 
         Patches on the list are licensed under **CC BY-SA 4.0** ([Creative Commons Attribution-ShareAlike 4.0](https://creativecommons.org/licenses/by-sa/4.0/)):
         anyone may play, change and share them, crediting you and sharing changes under the same licence. The app's code

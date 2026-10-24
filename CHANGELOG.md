@@ -6,6 +6,15 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **Sandbox patches:** a patch too big for the FM-1 is now a sandbox patch, shown in gold instead of red: it plays here
+  in the browser with no limits. The status line shows a SANDBOX button and how far past the FM-1 it goes, the budget
+  bars turn gold when over, and the first time a card ("No limits here") explains what that means.
+- **Open** in the PATCH panel lists Your patches and the factory patches, each with a chip: FM-1 and how full it is, or
+  SANDBOX. A factory patch's XL version (its full browser version) will sit right under it. The tutorial's chapters
+  open from the tutorial only.
+- **Library > Community:** the community patches have their own Library section, one card per patch with its XL
+  version beside it, filters, and Add. Nothing community shows elsewhere until you add it: it then appears in Your
+  patches with its author. The palette's "Browse community patches" opens the section.
 - **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs (FM-1s are
   ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the editor's Play
   (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), which is the default.
