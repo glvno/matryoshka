@@ -3,6 +3,14 @@
 // one: write scripts/xl/<slug>.ts exporting `xl` (xl.ts), import it here and add it to the list, then run
 // `npx vite-node scripts/gen-xl.ts` from web/ and commit web/presets/xl/<slug>.json.
 import type { Xl } from './xl';
+import { xl as oracleV } from './oracle-v';
+import { xl as hera6 } from './hera-6';
+import { xl as expanderS } from './expander-s';
+import { xl as meridian8 } from './meridian-8';
 
 export const XLS: Xl[] = [
+  oracleV,
+  hera6,
+  expanderS,
+  meridian8,
 ];

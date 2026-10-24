@@ -1,0 +1,2272 @@
+{
+ "version": 2,
+ "name": "Oracle V XL",
+ "modules": [
+  {
+   "id": 1,
+   "type": "fm1",
+   "x": 20,
+   "y": 20,
+   "params": {
+    "morph": 0,
+    "tempo": 120
+   },
+   "panel": {
+    "toggle": [
+     "arp"
+    ],
+    "kinds": {
+     "arp": "bypass"
+    },
+    "targets": {
+     "arp": {
+      "module": 42
+     }
+    }
+   }
+  },
+  {
+   "id": 2,
+   "type": "lfo",
+   "x": 20,
+   "y": 60,
+   "params": {
+    "wave": 1,
+    "rate": 5,
+    "depth": 1,
+    "sync": 0,
+    "div": 6,
+    "bpm": 120
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "wave"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 3,
+   "type": "vca",
+   "x": 20,
+   "y": 620,
+   "params": {
+    "gain": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 4,
+   "type": "scale",
+   "x": 20,
+   "y": 1180,
+   "params": {
+    "gain": 1,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "noise",
+   "x": 340,
+   "y": 60,
+   "params": {
+    "level": 1,
+    "color": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "level"
+    ],
+    "p2": [
+     "color"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 6,
+   "type": "alloc",
+   "x": 340,
+   "y": 1180,
+   "params": {
+    "voices": 5,
+    "assign": 0,
+    "legato": 0,
+    "priority": 0,
+    "unison": 0,
+    "channel": 0,
+    "low": 0,
+    "high": 127
+   }
+  },
+  {
+   "id": 7,
+   "type": "glide",
+   "x": 660,
+   "y": 620,
+   "params": {
+    "time": 0.001,
+    "curve": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "time"
+    ],
+    "p2": [
+     "curve"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 8,
+   "type": "osc",
+   "x": 660,
+   "y": 60,
+   "params": {
+    "wave": 2,
+    "pw": 0.5,
+    "coarse": 0,
+    "fine": 7,
+    "pm": 0,
+    "level": 1,
+    "fb": 0,
+    "unison": 1,
+    "detune": 10,
+    "blend": 0.5,
+    "stack": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "fine"
+    ],
+    "p2": [
+     "pw"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 9,
+   "type": "osc",
+   "x": 980,
+   "y": 60,
+   "params": {
+    "wave": 2,
+    "pw": 0.5,
+    "coarse": 0,
+    "fine": 0,
+    "pm": 6.28,
+    "level": 1,
+    "fb": 0,
+    "unison": 1,
+    "detune": 10,
+    "blend": 0.5,
+    "stack": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "fine"
+    ],
+    "p2": [
+     "pw"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 10,
+   "type": "scale",
+   "x": 980,
+   "y": 620,
+   "params": {
+    "gain": 0,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 11,
+   "type": "scale",
+   "x": 980,
+   "y": 1180,
+   "params": {
+    "gain": 0,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 12,
+   "type": "adsr",
+   "x": 1300,
+   "y": 620,
+   "params": {
+    "a": 0.01,
+    "d": 0.6,
+    "s": 0.35,
+    "r": 0.4
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "a"
+    ],
+    "p2": [
+     "d"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 13,
+   "type": "filter",
+   "x": 1620,
+   "y": 60,
+   "params": {
+    "cutoff": 600,
+    "res": 0.2,
+    "cvamt": 1,
+    "track": 0,
+    "morph": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "cutoff"
+    ],
+    "p2": [
+     "res"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 14,
+   "type": "adsr",
+   "x": 1620,
+   "y": 620,
+   "params": {
+    "a": 0.01,
+    "d": 0.5,
+    "s": 0.8,
+    "r": 0.4
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "a"
+    ],
+    "p2": [
+     "d"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 15,
+   "type": "vca",
+   "x": 1940,
+   "y": 60,
+   "params": {
+    "gain": 0.6
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 16,
+   "type": "scope",
+   "x": 2260,
+   "y": 60,
+   "params": {
+    "time": 16,
+    "mode": 0,
+    "voices": 0
+   }
+  },
+  {
+   "id": 17,
+   "type": "scope",
+   "x": 2260,
+   "y": 620,
+   "params": {
+    "time": 16,
+    "mode": 0,
+    "voices": 0
+   }
+  },
+  {
+   "id": 18,
+   "type": "scope",
+   "x": 2260,
+   "y": 1180,
+   "params": {
+    "time": 500,
+    "mode": 0,
+    "voices": 0
+   }
+  },
+  {
+   "id": 19,
+   "type": "const",
+   "x": 20,
+   "y": 1740,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 20,
+   "type": "osc",
+   "x": 980,
+   "y": 340,
+   "params": {
+    "wave": 2,
+    "pw": 0.5,
+    "coarse": 0,
+    "fine": 0,
+    "pm": 6.28,
+    "level": 1,
+    "fb": 0,
+    "unison": 1,
+    "detune": 10,
+    "blend": 0.5,
+    "stack": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "wave"
+    ],
+    "p2": [
+     "pw"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 21,
+   "type": "math",
+   "x": 1140,
+   "y": 340,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 22,
+   "type": "math",
+   "x": 1140,
+   "y": 620,
+   "params": {
+    "ka": 1,
+    "kb": 0,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 23,
+   "type": "mixer",
+   "x": 1300,
+   "y": 340,
+   "params": {
+    "l1": 0.55,
+    "l2": 0.45,
+    "l3": 0,
+    "l4": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "l1"
+    ],
+    "p2": [
+     "l2"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 24,
+   "type": "scale",
+   "x": 1460,
+   "y": 620,
+   "params": {
+    "gain": 3.5,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 25,
+   "type": "scale",
+   "x": 820,
+   "y": 900,
+   "params": {
+    "gain": 0,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 26,
+   "type": "scale",
+   "x": 980,
+   "y": 900,
+   "params": {
+    "gain": 1,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 27,
+   "type": "scale",
+   "x": 1140,
+   "y": 900,
+   "params": {
+    "gain": 1,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 28,
+   "type": "scale",
+   "x": 1140,
+   "y": 1180,
+   "params": {
+    "gain": 0,
+    "offset": 0.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 29,
+   "type": "scale",
+   "x": 1300,
+   "y": 1180,
+   "params": {
+    "gain": 0,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 30,
+   "type": "xfade",
+   "x": 660,
+   "y": 900,
+   "params": {
+    "mix": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mix"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 31,
+   "type": "const",
+   "x": 20,
+   "y": 2300,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 32,
+   "type": "noise",
+   "x": 20,
+   "y": 2020,
+   "params": {
+    "level": 1,
+    "color": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "level"
+    ],
+    "p2": [
+     "color"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 33,
+   "type": "xfade",
+   "x": 180,
+   "y": 340,
+   "params": {
+    "mix": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mix"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 34,
+   "type": "const",
+   "x": 20,
+   "y": 2580,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 35,
+   "type": "scale",
+   "x": 180,
+   "y": 1460,
+   "params": {
+    "gain": 0.24,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 36,
+   "type": "scale",
+   "x": 180,
+   "y": 1740,
+   "params": {
+    "gain": 0.24,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 37,
+   "type": "scale",
+   "x": 180,
+   "y": 2020,
+   "params": {
+    "gain": 0,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 38,
+   "type": "scale",
+   "x": 180,
+   "y": 2300,
+   "params": {
+    "gain": 0,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 39,
+   "type": "scale",
+   "x": 180,
+   "y": 2580,
+   "params": {
+    "gain": 0,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 40,
+   "type": "output",
+   "x": 2640,
+   "y": 20,
+   "params": {
+    "level": 0.39
+   }
+  },
+  {
+   "id": 41,
+   "type": "steps",
+   "x": 20,
+   "y": 2880,
+   "params": {
+    "len": 16,
+    "rate": 4,
+    "swing": 50,
+    "gate": 0.25
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "len"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "swing"
+    ],
+    "k4": [
+     "gate"
+    ]
+   },
+   "name": "PATTERN"
+  },
+  {
+   "id": 42,
+   "type": "arp",
+   "x": 2640,
+   "y": 2880,
+   "params": {
+    "mode": 0,
+    "rate": 4,
+    "octaves": 1,
+    "gate": 0.5,
+    "latch": 0
+   },
+   "bypass": true
+  }
+ ],
+ "cables": [
+  {
+   "from": {
+    "module": 6,
+    "port": "pitch"
+   },
+   "to": {
+    "module": 7,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 7,
+    "port": "out"
+   },
+   "to": {
+    "module": 9,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "gate"
+   },
+   "to": {
+    "module": 12,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "gate"
+   },
+   "to": {
+    "module": 14,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 13,
+    "port": "lp24"
+   },
+   "to": {
+    "module": 15,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 14,
+    "port": "env"
+   },
+   "to": {
+    "module": 15,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 12,
+    "port": "env"
+   },
+   "to": {
+    "module": 10,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "out"
+   },
+   "to": {
+    "module": 11,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 11,
+    "port": "out"
+   },
+   "to": {
+    "module": 9,
+    "port": "sync"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "out"
+   },
+   "to": {
+    "module": 4,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 13,
+    "port": "lp24"
+   },
+   "to": {
+    "module": 16,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 17,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "out"
+   },
+   "to": {
+    "module": 18,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "out"
+   },
+   "to": {
+    "module": 18,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 19,
+    "port": "out"
+   },
+   "to": {
+    "module": 9,
+    "port": "pm"
+   }
+  },
+  {
+   "from": {
+    "module": 7,
+    "port": "out"
+   },
+   "to": {
+    "module": 20,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 11,
+    "port": "out"
+   },
+   "to": {
+    "module": 20,
+    "port": "sync"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "out"
+   },
+   "to": {
+    "module": 21,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 20,
+    "port": "out"
+   },
+   "to": {
+    "module": 21,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "out"
+   },
+   "to": {
+    "module": 22,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 21,
+    "port": "sub"
+   },
+   "to": {
+    "module": 22,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 22,
+    "port": "add"
+   },
+   "to": {
+    "module": 23,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "out"
+   },
+   "to": {
+    "module": 23,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 5,
+    "port": "out"
+   },
+   "to": {
+    "module": 23,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 23,
+    "port": "out"
+   },
+   "to": {
+    "module": 13,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 12,
+    "port": "env"
+   },
+   "to": {
+    "module": 24,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 24,
+    "port": "out"
+   },
+   "to": {
+    "module": 13,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "out"
+   },
+   "to": {
+    "module": 25,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 10,
+    "port": "out"
+   },
+   "to": {
+    "module": 26,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 25,
+    "port": "out"
+   },
+   "to": {
+    "module": 26,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 26,
+    "port": "out"
+   },
+   "to": {
+    "module": 27,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 27,
+    "port": "out"
+   },
+   "to": {
+    "module": 9,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 27,
+    "port": "out"
+   },
+   "to": {
+    "module": 20,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 26,
+    "port": "out"
+   },
+   "to": {
+    "module": 28,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 28,
+    "port": "out"
+   },
+   "to": {
+    "module": 20,
+    "port": "pm"
+   }
+  },
+  {
+   "from": {
+    "module": 26,
+    "port": "out"
+   },
+   "to": {
+    "module": 29,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 29,
+    "port": "out"
+   },
+   "to": {
+    "module": 13,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 7,
+    "port": "out"
+   },
+   "to": {
+    "module": 30,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 30,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 31,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "out"
+   },
+   "to": {
+    "module": 33,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 32,
+    "port": "out"
+   },
+   "to": {
+    "module": 33,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 33,
+    "port": "out"
+   },
+   "to": {
+    "module": 3,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 34,
+    "port": "out"
+   },
+   "to": {
+    "module": 3,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
+    "module": 35,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 35,
+    "port": "out"
+   },
+   "to": {
+    "module": 9,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 35,
+    "port": "out"
+   },
+   "to": {
+    "module": 20,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
+    "module": 36,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 36,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
+    "module": 37,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 37,
+    "port": "out"
+   },
+   "to": {
+    "module": 20,
+    "port": "pm"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
+    "module": 38,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 38,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
+    "port": "p2"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "out"
+   },
+   "to": {
+    "module": 39,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 39,
+    "port": "out"
+   },
+   "to": {
+    "module": 13,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "mod"
+   },
+   "to": {
+    "module": 3,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 40,
+    "port": "l"
+   }
+  },
+  {
+   "from": {
+    "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 40,
+    "port": "r"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
+    "module": 41,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 42,
+    "port": "keys"
+   },
+   "to": {
+    "module": 6,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 41,
+    "port": "keys"
+   },
+   "to": {
+    "module": 42,
+    "port": "keys"
+   }
+  }
+ ],
+ "assemblies": [
+  {
+   "v": 1,
+   "id": 1,
+   "name": "voice",
+   "label": "voice",
+   "x": 340,
+   "y": 620,
+   "open": false,
+   "modules": [
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30
+   ],
+   "inputs": [
+    {
+     "module": 7,
+     "port": "in",
+     "label": "pitch"
+    },
+    {
+     "module": 12,
+     "port": "gate",
+     "label": "gate",
+     "also": [
+      {
+       "module": 14,
+       "port": "gate"
+      }
+     ]
+    },
+    {
+     "module": 13,
+     "port": "in",
+     "label": "noise"
+    },
+    {
+     "module": 9,
+     "port": "pm",
+     "label": "pm"
+    },
+    {
+     "module": 23,
+     "port": "in3",
+     "label": "in3"
+    },
+    {
+     "module": 8,
+     "port": "pitch",
+     "label": "pitch 2"
+    },
+    {
+     "module": 9,
+     "port": "pitch",
+     "label": "pitch 3"
+    },
+    {
+     "module": 20,
+     "port": "pitch",
+     "label": "pitch 4"
+    },
+    {
+     "module": 20,
+     "port": "pm",
+     "label": "pm 2"
+    },
+    {
+     "module": 13,
+     "port": "cv",
+     "label": "cv"
+    }
+   ],
+   "outputs": [
+    {
+     "module": 15,
+     "port": "out",
+     "label": "out"
+    },
+    {
+     "module": 13,
+     "port": "lp24",
+     "label": "filter"
+    },
+    {
+     "module": 9,
+     "port": "out",
+     "label": "osc A"
+    }
+   ],
+   "params": [
+    {
+     "module": 7,
+     "param": "time",
+     "label": "glide"
+    },
+    {
+     "module": 11,
+     "param": "gain",
+     "label": "sync"
+    },
+    {
+     "module": 8,
+     "param": "wave",
+     "label": "B wave"
+    },
+    {
+     "module": 8,
+     "param": "coarse",
+     "label": "B freq"
+    },
+    {
+     "module": 8,
+     "param": "fine",
+     "label": "B fine"
+    },
+    {
+     "module": 13,
+     "param": "cutoff",
+     "label": "cutoff"
+    },
+    {
+     "module": 13,
+     "param": "res",
+     "label": "res"
+    },
+    {
+     "module": 13,
+     "param": "track",
+     "label": "kbd track"
+    },
+    {
+     "module": 12,
+     "param": "view",
+     "label": "filter env"
+    },
+    {
+     "module": 12,
+     "param": "a",
+     "label": "filter a"
+    },
+    {
+     "module": 12,
+     "param": "d",
+     "label": "filter d"
+    },
+    {
+     "module": 12,
+     "param": "s",
+     "label": "filter s"
+    },
+    {
+     "module": 12,
+     "param": "r",
+     "label": "filter r"
+    },
+    {
+     "module": 14,
+     "param": "view",
+     "label": "amp env"
+    },
+    {
+     "module": 14,
+     "param": "a",
+     "label": "amp a"
+    },
+    {
+     "module": 14,
+     "param": "d",
+     "label": "amp d"
+    },
+    {
+     "module": 14,
+     "param": "s",
+     "label": "amp s"
+    },
+    {
+     "module": 14,
+     "param": "r",
+     "label": "amp r"
+    },
+    {
+     "module": 9,
+     "param": "fine",
+     "label": "fine tune"
+    },
+    {
+     "module": 22,
+     "param": "ka",
+     "label": "A saw"
+    },
+    {
+     "module": 22,
+     "param": "kb",
+     "label": "A pulse"
+    },
+    {
+     "module": 28,
+     "param": "offset",
+     "label": "A pw"
+    },
+    {
+     "module": 23,
+     "param": "l1",
+     "label": "A level"
+    },
+    {
+     "module": 23,
+     "param": "l2",
+     "label": "B level"
+    },
+    {
+     "module": 23,
+     "param": "l3",
+     "label": "noise"
+    },
+    {
+     "module": 24,
+     "param": "gain",
+     "label": "env amt"
+    },
+    {
+     "module": 10,
+     "param": "gain",
+     "label": "pmod env"
+    },
+    {
+     "module": 25,
+     "param": "gain",
+     "label": "pmod osc B"
+    },
+    {
+     "module": 27,
+     "param": "gain",
+     "label": "pmod → freq A"
+    },
+    {
+     "module": 28,
+     "param": "gain",
+     "label": "pmod → pw A"
+    },
+    {
+     "module": 29,
+     "param": "gain",
+     "label": "pmod → filter"
+    },
+    {
+     "module": 30,
+     "param": "mix",
+     "label": "B kbd"
+    },
+    {
+     "module": 8,
+     "param": "pw",
+     "label": "pulse width"
+    }
+   ],
+   "poly": {
+    "flaws": [
+     {
+      "detune": 3,
+      "drift": 20,
+      "bright": 1,
+      "env": 4,
+      "level": 100
+     },
+     {
+      "detune": -4,
+      "drift": 25,
+      "bright": -1,
+      "env": -5,
+      "level": 97
+     },
+     {
+      "detune": 1,
+      "drift": 15,
+      "bright": 0,
+      "env": 6,
+      "level": 100
+     },
+     {
+      "detune": -2,
+      "drift": 20,
+      "bright": 2,
+      "env": -3,
+      "level": 95
+     },
+     {
+      "detune": 5,
+      "drift": 30,
+      "bright": -2,
+      "env": 2,
+      "level": 98
+     }
+    ]
+   }
+  },
+  {
+   "v": 1,
+   "id": 2,
+   "name": "Oracle V",
+   "label": "Oracle V",
+   "x": 20,
+   "y": 60,
+   "open": false,
+   "modules": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    16,
+    17,
+    18,
+    19,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39
+   ],
+   "inputs": [
+    {
+     "module": 6,
+     "port": "keys",
+     "label": "keys"
+    },
+    {
+     "module": 3,
+     "port": "cv",
+     "label": "wheel"
+    }
+   ],
+   "outputs": [
+    {
+     "module": 15,
+     "port": "out",
+     "label": "out"
+    }
+   ],
+   "params": [
+    {
+     "module": 6,
+     "param": "voices",
+     "label": "voices",
+     "head": "voice"
+    },
+    {
+     "module": 6,
+     "param": "unison",
+     "label": "unison"
+    },
+    {
+     "module": 7,
+     "param": "time",
+     "label": "glide"
+    },
+    {
+     "module": 22,
+     "param": "ka",
+     "label": "saw",
+     "head": "osc A"
+    },
+    {
+     "module": 22,
+     "param": "kb",
+     "label": "pulse"
+    },
+    {
+     "module": 28,
+     "param": "offset",
+     "label": "pw"
+    },
+    {
+     "module": 11,
+     "param": "gain",
+     "label": "sync"
+    },
+    {
+     "module": 8,
+     "param": "wave",
+     "label": "wave",
+     "head": "osc B"
+    },
+    {
+     "module": 8,
+     "param": "coarse",
+     "label": "freq"
+    },
+    {
+     "module": 8,
+     "param": "fine",
+     "label": "fine"
+    },
+    {
+     "module": 23,
+     "param": "l1",
+     "label": "A level",
+     "head": "mixer"
+    },
+    {
+     "module": 23,
+     "param": "l2",
+     "label": "B level"
+    },
+    {
+     "module": 23,
+     "param": "l3",
+     "label": "noise"
+    },
+    {
+     "module": 17,
+     "param": "view",
+     "label": "out",
+     "span": 3
+    },
+    {
+     "module": 13,
+     "param": "cutoff",
+     "label": "cutoff",
+     "col": true,
+     "head": "filter"
+    },
+    {
+     "module": 13,
+     "param": "res",
+     "label": "res"
+    },
+    {
+     "module": 24,
+     "param": "gain",
+     "label": "env amt"
+    },
+    {
+     "module": 13,
+     "param": "track",
+     "label": "kbd track"
+    },
+    {
+     "module": 12,
+     "param": "view",
+     "label": "filter env"
+    },
+    {
+     "module": 12,
+     "param": "a",
+     "label": "a"
+    },
+    {
+     "module": 12,
+     "param": "d",
+     "label": "d"
+    },
+    {
+     "module": 12,
+     "param": "s",
+     "label": "s"
+    },
+    {
+     "module": 12,
+     "param": "r",
+     "label": "r"
+    },
+    {
+     "module": 16,
+     "param": "view",
+     "label": "filter"
+    },
+    {
+     "module": 14,
+     "param": "view",
+     "label": "amp env",
+     "col": true,
+     "head": "amp"
+    },
+    {
+     "module": 14,
+     "param": "a",
+     "label": "a"
+    },
+    {
+     "module": 14,
+     "param": "d",
+     "label": "d"
+    },
+    {
+     "module": 14,
+     "param": "s",
+     "label": "s"
+    },
+    {
+     "module": 14,
+     "param": "r",
+     "label": "r"
+    },
+    {
+     "module": 10,
+     "param": "gain",
+     "label": "pmod env",
+     "head": "mod"
+    },
+    {
+     "module": 25,
+     "param": "gain",
+     "label": "pmod osc B"
+    },
+    {
+     "module": 2,
+     "param": "rate",
+     "label": "lfo rate"
+    },
+    {
+     "module": 2,
+     "param": "wave",
+     "label": "lfo wave"
+    },
+    {
+     "module": 4,
+     "param": "gain",
+     "label": "wheel amt"
+    },
+    {
+     "module": 18,
+     "param": "view",
+     "label": "lfo / osc A"
+    },
+    {
+     "module": 27,
+     "param": "gain",
+     "label": "→ freq A",
+     "col": true,
+     "head": "poly mod"
+    },
+    {
+     "module": 28,
+     "param": "gain",
+     "label": "→ pw A"
+    },
+    {
+     "module": 29,
+     "param": "gain",
+     "label": "→ filter"
+    },
+    {
+     "module": 33,
+     "param": "mix",
+     "label": "source mix",
+     "head": "wheel mod"
+    },
+    {
+     "module": 34,
+     "param": "value",
+     "label": "lfo amount"
+    },
+    {
+     "module": 35,
+     "param": "gain",
+     "label": "freq A"
+    },
+    {
+     "module": 36,
+     "param": "gain",
+     "label": "freq B"
+    },
+    {
+     "module": 37,
+     "param": "gain",
+     "label": "pw A"
+    },
+    {
+     "module": 38,
+     "param": "gain",
+     "label": "pw B"
+    },
+    {
+     "module": 39,
+     "param": "gain",
+     "label": "filter"
+    },
+    {
+     "module": 30,
+     "param": "mix",
+     "label": "B kbd",
+     "head": "osc B mode"
+    },
+    {
+     "module": 31,
+     "param": "value",
+     "label": "B lo freq"
+    }
+   ],
+   "children": [
+    1
+   ]
+  }
+ ],
+ "notes": "The full Prophet-5 modulation (Sequential Prophet-5 User’s Guide): Poly Mod (filter envelope and oscillator B into oscillator A’s frequency, pulse width and the filter, per voice, at audio rate) and Wheel-Mod (LFO / noise mix into both frequencies, both pulse widths and the filter), oscillator A’s saw and pulse together, oscillator B’s keyboard switch and lo freq. Five voices, as the original."
+}
