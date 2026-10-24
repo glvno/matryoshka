@@ -612,8 +612,41 @@ int main(void)
             snap();
             if (keep) setenv("PANEL_SNAP", keep, 1);
         }
-        enc(0, 1);
-        check("SELECT: the next row", page == PAGE_ENV && pg_cur_dev == d0 + 1u && pg_cur_page == 0);
+        {                                                   /* #229: SELECT redraws the old and the new row alone */
+            uint32_t ya = ENV_Y0 + (d0 - env_first) * ENV_ROW_H, all, part;
+            later(2000);                                    /* (no message on show) */
+            fb_watch_reset();
+            lcd_px = lcd_xfers = 0;
+            enc(0, 1);
+            all = fb_changed_in(0, 0, 240, 240);
+            part = fb_changed_in(0, ya, 240, ya + 2u * ENV_ROW_H);
+            printf("      (ENV, SELECT a row on: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+            check("SELECT: the next row", page == PAGE_ENV && pg_cur_dev == d0 + 1u && pg_cur_page == 0);
+            check("  only the old and the new row redrawn (not the bar, not the other rows), no blink",
+                  all > 0u && all == part && fb_blinked() == 0u && lcd_px <= 2u * 240u * ENV_ROW_H);
+        }
+        if (pg_ndev > ENV_ROWS) {                           /* past the last row shown: the list scrolls, the bar stays */
+            uint32_t d1 = pg_cur_dev, all, list, i;
+            for (i = 0; pg_cur_dev < env_first + ENV_ROWS - 1u && i < 16u; i++)
+                enc(0, 1);
+            fb_watch_reset();
+            lcd_px = lcd_xfers = 0;
+            enc(0, 1);
+            all = fb_changed_in(0, 0, 240, 240);
+            list = fb_changed_in(0, ENV_Y0, 240, ENV_Y0 + ENV_ROWS * ENV_ROW_H);
+            printf("      (ENV, SELECT scrolls the list: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+            check("  SELECT past the window: the list scrolls, only its area redrawn (the bar stays), no blink",
+                  env_first > 0u && all > 0u && all == list && fb_blinked() == 0u);
+            {
+                uint16_t keep[240 * 240];
+                memcpy(keep, fb, sizeof keep);
+                ui_dirty = 2;
+                loop();
+                check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
+            }
+            while (pg_cur_dev != d1)
+                enc(0, -1);
+        }
         {
             const ppage_t *pg = pages_now();
             int32_t v = eng_get_param(pg->mod[0], pg->par[0]);
@@ -695,8 +728,26 @@ int main(void)
                     }
                 (void)mod; (void)par;
                 param_now = 0;
-                enc(0, 1);                                  /* SELECT: the next preset, loaded */
-                check("SELECT on the list: the next preset loaded, the editor told", pg_pname[d][0] && param_now > 0);
+                {                                           /* #229: the old and the new row alone */
+                    uint32_t s0 = pr_sel, ya = ENV_Y0 + s0 * ENV_ROW_H, all, part;
+                    later(2000);
+                    fb_watch_reset();
+                    lcd_px = lcd_xfers = 0;
+                    enc(0, 1);                              /* SELECT: the next preset, loaded */
+                    all = fb_changed_in(0, 0, 240, 240);
+                    part = fb_changed_in(0, ya, 240, ya + 2u * ENV_ROW_H);
+                    printf("      (presets, SELECT a row on: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+                    check("SELECT on the list: the next preset loaded, the editor told", pg_pname[d][0] && param_now > 0 && pr_sel == s0 + 1u);
+                    check("  only the old and the new row redrawn (not the bar), no blink",
+                          all > 0u && all == part && fb_blinked() == 0u && lcd_px <= 2u * 240u * ENV_ROW_H);
+                    {
+                        uint16_t keep[240 * 240];
+                        memcpy(keep, fb, sizeof keep);
+                        ui_dirty = 2;
+                        loop();
+                        check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
+                    }
+                }
             }
             for (r = 0; r < 17; r++)
                 was[r] = pg_pname[d][r];

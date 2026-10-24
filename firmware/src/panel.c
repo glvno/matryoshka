@@ -311,12 +311,12 @@ static void panel_encoders(int32_t *st)
     }
     if (page == PAGE_ENV && st[6]) {                /* PRESET on the environment: the row's presets (#198), not the patch */
         if (env_preset_step(st[6]))
-            ui_dirty = 2;
+            ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the rows that changed: #229) */
         return;
     }
     if (page == PAGE_PRESETS && st[6]) {            /* PRESET on the preset list: the presets too (#194) */
         if (presets_turn(st[6]))
-            ui_dirty = 2;
+            ui_dirty = ui_dirty ? ui_dirty : 1;
         return;
     }
     if (st[6]) {                                    /* PRESET: the next patch, its name over the bars (#170) */
@@ -348,16 +348,16 @@ static void panel_encoders(int32_t *st)
         screen_back();
     if (page == PAGE_PRESETS) {                     /* the preset list: SELECT / ALGO load the next / previous as they turn */
         if (presets_turn(st[0] + st[1]))
-            ui_dirty = 2;
+            ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the old and the new row: #229) */
         return;
     }
     if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO its presets */
         if (st[0] && pages_select(st[0])) {
             m1_focus_now(pg_cur_dev, pg_cur_page);
-            ui_dirty = 2;
+            ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the old and the new row: #229) */
         }
         if (st[1] && env_preset_step(st[1]))
-            ui_dirty = 2;
+            ui_dirty = ui_dirty ? ui_dirty : 1;
         st[0] = st[1] = 0;
     }
     if (page != 0 && page != PAGE_GLO && page != PAGE_ENV)
@@ -587,7 +587,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
     if ((rel & (1u << BTN_REC)) && !rec_held_used && page == PAGE_ENV) {   /* REC on the environment: the row's arm (#191, #198) */
         env_arm_toggle();
         rel &= ~(1u << BTN_REC);
-        ui_dirty = 2;
+        ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
     }
     if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, the armed track) */
         if (seq_rec_page() && page != PAGE_SEQ) {
