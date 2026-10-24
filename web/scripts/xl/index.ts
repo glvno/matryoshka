@@ -5,8 +5,14 @@
 import type { Xl } from './xl';
 import { xl as lire } from './8-lire';
 import { xl as elvira } from './elvira-2';
+import { xl as algoFour } from './algo-four';
+import { xl as perun4 } from './perun-4';
+import { xl as kit909 } from './909-kit';
 
 export const XLS: Xl[] = [
   lire,
   elvira,
+  algoFour,
+  perun4,
+  kit909,
 ];
