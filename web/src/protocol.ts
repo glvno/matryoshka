@@ -47,6 +47,13 @@
 //   2F PRESET_PUT  structure u32, name 16 bytes, n u8, n i32 values (Q16, canonical row order)   store it (over one of
 //                                                    that structure and name); ACK (7 = full)
 //   30 PRESET_DEL  structure u32, name 16 bytes      delete it; ACK (8 = no such preset)
+//   32 TEST_KEY    id u8, down u8                    the device test mode (#291, feature bit 9; the editor never sends it):
+//                                                    a panel key held / let go as a hand would (0..13 the buttons, 14..40 the
+//                                                    keys from F3); ACK (seq = id; 1 = no such key). For 10 s after a test
+//                                                    key or turn the FM-1 refuses UPDATE MODE and FACTORY RESET
+//   33 TEST_TURN   encoder u8, clicks i8             an encoder turned (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET); ACK
+//   34 TEST_SCREEN (none)                            device answers SCREEN (50): the head, then one per text on the LCD
+//   35 TEST_PEAK   (none)                            device answers PEAK (51): the output's peak since the last TEST_PEAK
 // device -> host
 //   42 SLOT    slot u8, used u8 (0/1), length u16, name 20 bytes
 //   43 SLOT_NOW  slot u8, name 20 bytes                unasked: the slot the FM-1 plays now (a patch from its panel, program
@@ -61,9 +68,13 @@
 //   4C PRESET   index u8, count u8, structure u32, name 16 bytes, n u8   one of the FM-1's user presets (count 0: none)
 //   4D PRESET_DATA  structure u32, name 16 bytes, n u8 (0xFF: none), n i32 values
 //   4E PRESET_STORED  structure u32, name 16 bytes  unasked: a preset stored on the FM-1 (ENV held + SAVE)
+//   50 SCREEN   k u8 = 0xFF, count u8, page u8, flags u8 (bit0 sandbox mode, bit1 the boot screen); then k = 0..count-1:
+//               x u8, y u8, w u8, h u8, n u8, n characters   a text on the LCD and its box (firmware/src/screen_text.h)
+//   51 PEAK     peak u16 (16 bit), flags u8 (bit0 the engine runs, bit1 the sound is muted: sandbox mode)
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
-//               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode]. Also unasked
+//               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
+//               test mode]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
@@ -71,7 +82,7 @@
 import { noteWord, TRACK_NOTES_MAX, wordNote, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
@@ -320,3 +331,27 @@ export function parseSandbox(payload: number[]): SandboxPage | null {
   });
   return { patch, device, page, index: payload[1], count: payload[2], rows };
 }
+
+// ---- the device test mode (#291): a script drives the FM-1's panel and reads its screen and level (scripts/device-scenarios.mjs)
+
+export const FEATURE_TEST = 512;
+export const testKeyFrame = (id: number, down: boolean): Uint8Array => frame(CMD.testKey, [id & 0xff, down ? 1 : 0]);
+export const testTurnFrame = (enc: number, clicks: number): Uint8Array => frame(CMD.testTurn, [enc & 0xff, Math.max(-128, Math.min(127, clicks | 0)) & 0xff]);
+export const testScreenFrame = (): Uint8Array => frame(CMD.testScreen);
+export const testPeakFrame = (): Uint8Array => frame(CMD.testPeak);
+export interface ScreenText { x: number; y: number; w: number; h: number; s: string }
+export interface ScreenHead { count: number; page: number; sandbox: boolean; booting: boolean }
+/** a SCREEN frame: the head (k 0xFF) or text k */
+export function parseScreen(p: Parsed): { head: ScreenHead } | { k: number; text: ScreenText } | null {
+  if (p.cmd !== CMD.screen || p.payload.length < 1) return null;
+  const d = p.payload;
+  if (d[0] === 0xff) return d.length >= 4 ? { head: { count: d[1], page: d[2], sandbox: !!(d[3] & 1), booting: !!(d[3] & 2) } } : null;
+  if (d.length < 6 || d.length < 6 + d[5]) return null;
+  return { k: d[0], text: { x: d[1], y: d[2], w: d[3], h: d[4], s: String.fromCharCode(...d.slice(6, 6 + d[5])) } };
+}
+export const parsePeak = (p: Parsed): { peak: number; running: boolean; muted: boolean } | null =>
+  p.cmd === CMD.peak && p.payload.length >= 3 ? { peak: p.payload[0] | (p.payload[1] << 8), running: !!(p.payload[2] & 1), muted: !!(p.payload[2] & 2) } : null;
+/** the test rig's mark (#291): a user preset of no structure the editor makes (scripts/rig.mjs registers it); the
+ *  Library hides it */
+export const RIG_STRUCTURE = '7e57417e';
+export const RIG_PRESET = 'MATRYOSHKA RIG';

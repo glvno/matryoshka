@@ -25,7 +25,9 @@
     "ai-stats": "vite-node scripts/ai-stats.ts",
     "ai-prompts": "vite-node scripts/ai-prompts.ts",
     "coverage": "vitest run --testTimeout=60000 --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary --coverage.include='src/**' && vite-node scripts/coverage-stats.ts",
-    "emu:scenarios": "node scripts/emu-scenarios.mjs"
+    "emu:scenarios": "node scripts/emu-scenarios.mjs",
+    "device:scenarios": "node scripts/emu-scenarios.mjs --device",
+    "rig": "node scripts/rig.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

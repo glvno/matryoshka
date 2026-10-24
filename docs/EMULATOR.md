@@ -60,6 +60,33 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
 
 Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.
 
+## The test rig: the same scenarios on a real FM-1
+
+The device test mode (issue #291, [D-121](ledger/releases.md#D-121)) lets a script drive a real FM-1 over the editor
+link as `m1emu serve` drives the emulator:
+
+- **The firmware's side:** TEST_KEY and TEST_TURN (`firmware/src/proto.c`, `web/src/protocol.ts`) put a key or an
+  encoder's clicks into the HAL's scan (`fm1_virt_btn`, `fm1_virt_note`, `fm1_virt_enc` in `firmware/hal/fm1_input.h`),
+  so they take the panel's own paths. TEST_SCREEN reports the texts on the LCD with their boxes: every text the fonts
+  draw is noted as it goes out and dropped when something is drawn over it (`firmware/src/screen_text.h`). TEST_PEAK
+  reports the loudest output sample since the last ask, at the same 16-bit scale as the emulator's `peak`. INFO feature
+  bit 9 says the firmware has them. For 10 s after a test key or turn, the panel refuses UPDATE MODE and FACTORY RESET.
+- **The rig** ([D-122](ledger/releases.md#D-122)): the owner's second FM-1, kept on the Mac. `npm run rig -- register`,
+  with the rig the only FM-1 connected, writes a hidden preset (`RIG_STRUCTURE`, values at random) and keeps the values
+  in `~/.config/matryoshka/rig.json`; the Library does not list that preset. `npm run rig -- check` names the rig among
+  the connected FM-1s.
+- **`cd web && npm run device:scenarios [-- --install RUN] [--only NAME,..] [--headed]`:** the scenarios of
+  `emu-scenarios.mjs` on the rig. The rig's page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
+  asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
+  `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
+  and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. Results and the
+  screen as text go to `build/device/scenarios/`.
+- **`npm run device:scenarios -- --via-emu`:** the device path against the emulator (its build has the test mode too),
+  to check the runner and the firmware's side without a rig.
+
+Not covered: the audio leaving the FM-1 (the peak is read inside the firmware, before the codec and USB audio), USB
+plugging, the scenarios' sound judged by ear.
+
 ## The smoke test (`tools/emu/src/smoke.rs`)
 
 It reads the LCD with the firmware's own font (`font.rs` parses `font5x7.c` and finds a string drawn by

@@ -8,6 +8,7 @@
  * while the last strip of a frame goes out. lcd_yield (panel.c panel_draw, #230), when set, is called
  * while a transfer runs, before it is waited for: the keys are taken there during a long redraw. */
 /* pins and SPI1: hal/fm1_lcd_hw.h */
+#include "screen_text.h"          /* the texts on the screen, as text (#291) */
 #ifndef LCD_BAUD
 #define LCD_BAUD 4u                /* lsb/(BAUD+1): 4 = 12 MHz */
 #endif
@@ -83,6 +84,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
         w = 240u - x;
     if (y + h > 240u)
         h = 240u - y;
+    scr_erase(x, y, w, h);
     lcd_sync();
     k = 240u / w * w;                       /* whole rows per transfer (narrow fills: one DMA) */
     for (i = 0; i < k; i++)
@@ -110,6 +112,7 @@ static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)
     uint32_t i;
     for (i = 0; i < w; i++)
         lcd_line[i] = (uint16_t)((lcd_line[i] >> 8) | (lcd_line[i] << 8));
+    scr_line(x, y, w);
     lcd_blit(x, y, w, 1, lcd_line);
 }
 

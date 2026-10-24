@@ -7,6 +7,16 @@
 // dev server of this checkout on a free port). --headed shows Chrome.
 // Chrome sees only the emulator's port (the page's Web MIDI is filtered), so a real FM-1 plugged in is never touched.
 // Results, LCD snapshots and page screenshots go to build/emu/scenarios/. Exit code 1 when a check fails.
+//
+// The same scenarios on the test rig, a real FM-1 (the device test mode, #291; npm run device:scenarios):
+//   npm run device:scenarios [-- --install RUN] [--only NAME,..] [--headed]
+// drives the registered rig (scripts/rig.mjs) over the editor link: its panel (TEST_KEY / TEST_TURN), its screen as text
+// (TEST_SCREEN) and its output's peak (TEST_PEAK). The page sees only the rig's ports; another FM-1 connected is asked
+// HELLO and PRESET_GET (to tell it from the rig) and nothing else. --install RUN first installs that firmware CI run on
+// the rig, after the gate of D-120 (emu:smoke and these scenarios in the emulator, on that run's builds) passed, and only
+// when the rig is the one FM-1 connected (the installer takes the first FM-1 it finds). --via-emu: the device path against
+// the emulator (m1emu serve), to check the runner itself without a rig. --port NAME: the rig's page looks only at that
+// MIDI port (an emulator serving as a registered rig, to check the rig's path). Results go to build/device/scenarios/.
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -14,14 +24,18 @@ import { dirname, join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
+import { download, smoke, smokeState } from './branch-firmware.mjs';
+import { loadRig, pickRig, rigPage, survey } from './rig-link.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const OUT = join(ROOT, 'build/emu/scenarios');
 const REPO = 'glvno/matryoshka';
 const args = process.argv.slice(2);
 const flag = (n) => args.includes(n);
 const opt = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const given = args.find((a, i) => !a.startsWith('--') && !['--only'].includes(args[i - 1]));
+const given = args.find((a, i) => !a.startsWith('--') && !['--only', '--install', '--url', '--port'].includes(args[i - 1]));
+const DEVICE = flag('--device') || flag('--via-emu');   // the device test mode's path (a rig, or the emulator through it)
+const REAL = flag('--device') && !flag('--via-emu');    // a real FM-1: the registered rig
+const OUT = join(ROOT, DEVICE ? 'build/device/scenarios' : 'build/emu/scenarios');
 const only = opt('--only')?.split(',');
 const PORT_NAME = `FM-1 (emu ${process.pid})`;
 
@@ -44,6 +58,11 @@ function diff(a, b, path = '', out = [], n = 6) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** child processes (the dev server, m1emu serve): killed however this script ends, so none is left running */
+const children = [];
+const own = (c) => { children.push(c); return c; };
+process.on('exit', () => { for (const c of children) try { c.kill(); } catch { /* gone */ } });
+for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(s, () => process.exit(130));
 
 function firmware() {
   if (given) return resolve(process.cwd(), given);
@@ -81,34 +100,10 @@ const freePort = () => new Promise((res) => {
   s.listen(0, '::1', () => { const p = s.address().port; s.close(() => res(p)); });
 });
 
-/** m1emu serve: one command line out, one answer line back (serve.rs) */
-class Emu {
-  constructor(bin, fw) {
-    this.proc = spawn(bin, ['serve', fw, '--name', PORT_NAME], { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] });
-    this.waiting = [];
-    this.ready = new Promise((res, rej) => {
-      this.proc.on('exit', (c) => rej(new Error(`m1emu exited (${c})`)));
-      createInterface({ input: this.proc.stdout }).on('line', (l) => {
-        if (l.startsWith('# ')) {
-          console.log(`  emu ${l.slice(2)}`);
-          if (l.startsWith('# ready')) res();
-          return;
-        }
-        this.waiting.shift()?.(l);
-      });
-    });
-  }
-  cmd(line) {
-    return new Promise((res) => { this.waiting.push(res); this.proc.stdin.write(line + '\n'); });
-  }
+/** what both targets do with these (Emu's own, RigTarget's through the device test mode) */
+class Target {
   /** press and let go; resolves once the key is up again (a press of a key still held would be no press) */
-  async tap(id, hold = 80) { await this.cmd(`tap ${id} ${hold}`); await sleep(hold + 120); }
-  key(id, down) { return this.cmd(`key ${id} ${down ? 1 : 0}`); }
-  turn(enc, clicks) { return this.cmd(`turn ${enc} ${clicks}`); }
-  async text(s) { return (await this.cmd(`text ${s}`)) === 'text 1'; }
-  async mark() { return Number((await this.cmd('mark')).split(' ')[1]); }
-  async peak(m) { return Number((await this.cmd(`peak ${m}`)).split(' ')[1]); }
-  snap(name) { return this.cmd(`snap ${join(OUT, `${name}.png`)}`); }
+  async tap(id, hold = 80) { await this.press(id, hold); await sleep(hold + 120); }
   /** the loudest output while `id` (a note key) is held for `ms` */
   async notePeak(id = C4, ms = 400) {
     const m = await this.mark();
@@ -128,16 +123,61 @@ class Emu {
     } while (Date.now() - t < ms);
     return false;
   }
+}
+
+/** a real FM-1 (or the emulator) over the editor link's device test mode (#291): the rig's page (dev/rig-client.ts) */
+class RigTarget extends Target {
+  constructor(page) { super(); this.page = page; }
+  press(id, hold) { return this.page.evaluate(([i, h]) => window.__rig.tap(i, h), [id, hold]); }
+  key(id, down) { return this.page.evaluate(([i, d]) => window.__rig.key(i, d), [id, down]); }
+  turn(enc, clicks) { return this.page.evaluate(([e, c]) => window.__rig.turn(e, c), [enc, clicks]); }
+  screen() { return this.page.evaluate(() => window.__rig.screen()); }
+  async text(s) { return (await this.screen()).texts.some((t) => t.s.includes(s.trim()) && (s === s.trim() || `${t.s} `.includes(s))); }
+  async mark() { await this.page.evaluate(() => window.__rig.peak()); return 0; }   // (reads and so resets the peak)
+  async peak() { return (await this.page.evaluate(() => window.__rig.peak())).peak; }
+  async snap(name) { writeFileSync(join(OUT, `${name}.json`), JSON.stringify(await this.screen(), null, 1)); }
+  quit() {}
+}
+
+/** m1emu serve: one command line out, one answer line back (serve.rs) */
+class Emu extends Target {
+  constructor(bin, fw) {
+    super();
+    this.proc = own(spawn(bin, ['serve', fw, '--name', PORT_NAME], { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] }));
+    this.waiting = [];
+    this.ready = new Promise((res, rej) => {
+      this.proc.on('exit', (c) => rej(new Error(`m1emu exited (${c})`)));
+      createInterface({ input: this.proc.stdout }).on('line', (l) => {
+        if (l.startsWith('# ')) {
+          console.log(`  emu ${l.slice(2)}`);
+          if (l.startsWith('# ready')) res();
+          return;
+        }
+        this.waiting.shift()?.(l);
+      });
+    });
+  }
+  cmd(line) {
+    return new Promise((res) => { this.waiting.push(res); this.proc.stdin.write(line + '\n'); });
+  }
+  press(id, hold) { return this.cmd(`tap ${id} ${hold}`); }
+  key(id, down) { return this.cmd(`key ${id} ${down ? 1 : 0}`); }
+  turn(enc, clicks) { return this.cmd(`turn ${enc} ${clicks}`); }
+  async text(s) { return (await this.cmd(`text ${s}`)) === 'text 1'; }
+  async mark() { return Number((await this.cmd('mark')).split(' ')[1]); }
+  async peak(m) { return Number((await this.cmd(`peak ${m}`)).split(' ')[1]); }
+  snap(name) { return this.cmd(`snap ${join(OUT, `${name}.png`)}`); }
   quit() { try { this.proc.stdin.write('quit\n'); } catch { /* gone */ } }
 }
 
 // ---- the page: only the emulator's MIDI ports, a dev hook (main.ts __m1test)
-const FILTER_MIDI = (name) => {
+const FILTER_MIDI = (only) => {
   const orig = navigator.requestMIDIAccess?.bind(navigator);
   if (!orig) return;
   navigator.requestMIDIAccess = async (o) => {
     const a = await orig(o);
-    const keep = (m) => new Map([...m].filter(([, p]) => p.name === name));
+    if (only.except && location.pathname === only.except) return a;   // (the rig's page tells the rig from other FM-1s itself)
+    const keep = (m) => new Map([...m].filter(([, p]) => (only.ids ? only.ids.includes(p.id) : p.name === only.name)));
     window.__midiLog = window.__midiLog ?? [];
     window.__midiLogged = window.__midiLogged ?? new Set();
     for (const p of keep(a.inputs).values()) {
@@ -180,12 +220,56 @@ const until = async (f, ms = 3000) => {
   return f();
 };
 
+const PY = join(ROOT, 'build/venv/bin/python');   // fm1_install.py's (mido + python-rtmidi; npm run flash -- --info sets it up)
+
+async function launch(url) {
+  const browser = await chromium.launch({ channel: 'chrome', headless: !flag('--headed'), args: ['--autoplay-policy=no-user-gesture-required'] });
+  const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+  await context.grantPermissions(['midi', 'midi-sysex'], { origin: new URL(url).origin });
+  return { browser, context };
+}
+
+/** --install RUN: that firmware CI run onto the rig, once the gate (D-120) passed on its builds and the rig is the one
+ *  FM-1 connected (fm1_install.py takes the first FM-1 that answers) */
+async function installOnRig(run, url) {
+  console.log(`-- install: firmware CI run ${run} on the rig`);
+  const dir = await download(run);
+  if (smokeState(dir) !== 'passed') {
+    console.log('emu:smoke on its build (about two minutes)');
+    if (!(await smoke(dir))) throw new Error(`the gate: emu:smoke failed on run ${run} (${dir}/smoke.log): nothing installed`);
+  }
+  const emuDir = join(dir, 'emu-midi');
+  if (!existsSync(join(emuDir, 'matryoshka-emu.bin'))) {
+    mkdirSync(emuDir, { recursive: true });
+    spawnSync('gh', ['run', 'download', String(run), '-R', REPO, '-n', 'matryoshka-emu-midi', '-D', emuDir], { stdio: 'inherit' });
+  }
+  if (!existsSync(join(emuDir, 'matryoshka-emu.bin'))) throw new Error(`run ${run} has no matryoshka-emu-midi artifact: no gate, nothing installed`);
+  console.log('emu:scenarios on its M1_EMU_MIDI build (about four minutes)');
+  if (spawnSync('node', [fileURLToPath(import.meta.url), join(emuDir, 'matryoshka-emu.bin')], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0)
+    throw new Error(`the gate: emu:scenarios failed on run ${run}: nothing installed`);
+  const { browser, context } = await launch(url);
+  try {
+    const s = await survey(await rigPage(context, url));
+    if (!s.rig) throw new Error('the registered rig is not connected: nothing installed');
+    if (s.ports !== 1 || s.pairs.length !== 1) throw new Error(`${s.ports} FM-1 ports are connected: the rig must be the only FM-1 for an install (unplug the other): nothing installed`);
+  } finally {
+    await browser.close();
+  }
+  if (!existsSync(PY)) throw new Error('build/venv is missing: run npm run flash -- --info once (it sets it up)');
+  console.log(`installing ${join(dir, 'matryoshka.fwsc')} on the rig`);
+  if (spawnSync(PY, [join(ROOT, 'tools/fm1_install.py'), join(dir, 'matryoshka.fwsc'), '--yes'], { cwd: ROOT, stdio: 'inherit' }).status !== 0)
+    throw new Error('fm1_install.py failed (the rig stays in update mode until an install finishes: run it again)');
+  await sleep(4000);   // (its restart)
+}
+
 async function main() {
-  const fw = firmware();
-  console.log(`firmware: ${fw}`);
+  if (flag('--install') && !REAL) throw new Error('--install is for the rig: npm run device:scenarios -- --install RUN');
+  if (REAL && !loadRig()) throw new Error('no rig registered: connect the rig alone and run npm run rig -- register');
+  const fw = REAL ? null : firmware();
+  if (fw) console.log(`firmware: ${fw}`);
   rmSync(OUT, { recursive: true, force: true });
   mkdirSync(OUT, { recursive: true });
-  const m1emu = buildEmu();
+  const m1emu = REAL ? null : buildEmu();
   // the editor's copy of the panel logic (the FM-1 tab, following the FM-1): built from this checkout, not committed
   if (spawnSync('npm', ['run', '-s', 'fm1-wasm'], { cwd: join(ROOT, 'web'), stdio: 'inherit' }).status !== 0) throw new Error('npm run fm1-wasm failed');
 
@@ -193,20 +277,48 @@ async function main() {
   let vite;
   if (!url) {
     const port = await freePort();
-    vite = spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'] });
+    vite = own(spawn('npx', ['vite', '--port', String(port), '--strictPort', '--host', '::1'], { cwd: join(ROOT, 'web'), stdio: ['ignore', 'pipe', 'inherit'] }));
     url = `http://[::1]:${port}/`;
     await new Promise((res) => vite.stdout.on('data', (d) => { if (/ready in|Local:/.test(String(d))) res(); }));
   }
   console.log(`editor: ${url}`);
+  if (flag('--install')) {
+    try {
+      await installOnRig(opt('--install'), url);
+    } catch (e) {
+      vite?.kill();
+      throw e;
+    }
+  }
 
-  const emu = new Emu(m1emu, fw);
-  await emu.ready;
-  await sleep(1500);   // the boot screen, then the device page
+  let emuProc = null;
+  if (!REAL) {
+    emuProc = new Emu(m1emu, fw);
+    await emuProc.ready;
+    await sleep(1500);   // the boot screen, then the device page
+  }
 
-  const browser = await chromium.launch({ channel: 'chrome', headless: !flag('--headed'), args: ['--autoplay-policy=no-user-gesture-required'] });
-  const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-  await context.grantPermissions(['midi', 'midi-sysex'], { origin: new URL(url).origin });
-  await context.addInitScript(FILTER_MIDI, PORT_NAME);
+  const { browser, context } = await launch(url);
+  process.on('exit', () => { try { browser.process()?.kill(); } catch { /* gone */ } });
+  let emu = emuProc;
+  if (DEVICE) {
+    if (!REAL || opt('--port')) await context.addInitScript(FILTER_MIDI, { name: REAL ? opt('--port') : PORT_NAME });
+    const rp = await rigPage(context, url);
+    let pair;
+    if (REAL) {
+      const s = await pickRig(rp);
+      pair = s.rig;
+      console.log(`rig: ${pair.name} (firmware ${pair.info?.version ?? '?'}), ${s.pairs.length - 1} other FM-1${s.pairs.length === 2 ? '' : 's'} left alone`);
+      await context.addInitScript(FILTER_MIDI, { ids: [pair.inId, pair.outId], except: '/__rig' });
+    } else {
+      [pair] = await rp.evaluate(() => window.__rig.pairs());
+      if (!pair) throw new Error('the emulated FM-1 did not answer on its port');
+      await rp.evaluate((x) => window.__rig.pick(x), pair);
+    }
+    emu = new RigTarget(rp);
+  } else {
+    await context.addInitScript(FILTER_MIDI, { name: PORT_NAME });
+  }
   let page = await context.newPage();
   page.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
   const T = () => page.evaluate(() => window.__m1test.state());
@@ -385,7 +497,7 @@ async function main() {
     writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));
     if (!flag('--keep')) {
       await browser.close().catch(() => {});
-      emu.quit();
+      emuProc?.quit();
       vite?.kill();
     }
   }

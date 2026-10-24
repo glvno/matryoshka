@@ -264,6 +264,11 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     case MR_DEFAULTS:
         if (!up)
             break;
+        if (test_input_recent()) {                  /* the device test mode (#291): a script never wipes or leaves the FM-1 */
+            update_arm = 0;
+            ui_msg("TEST INPUT: REFUSED", 2000);
+            break;
+        }
         if (update_arm && fm1_ms - (update_arm & ~1u) < 3000u) {
             update_arm = 0;
             if (row == MR_UPDATE)
