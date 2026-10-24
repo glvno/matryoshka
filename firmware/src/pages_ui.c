@@ -894,7 +894,7 @@ static void row_bar_part(uint32_t k, int used, char *name, char *num, const char
     char kn[2];
     uint32_t y0 = ROWS_Y + k * (ROW_H + ROW_GAP), r, i, vx, ux, nx;
     uint16_t hue = KNOB_HUE[k], track = used ? P_PANEL : P_STRIP, fill = mix565(hue, P_PANEL, 6u);
-    int ttl = page == 0 && ttl_wanted() && pg_ttl_k == k;
+    int ttl = ttl_wanted() && pg_ttl_k == k;
     kn[0] = (char)('1' + k);
     kn[1] = 0;
     if (base > BAR_W)
@@ -1215,7 +1215,7 @@ static void ttl_place(const ppage_t *pg)
     }
 }
 
-static int ttl_wanted(void) { return pg_ttl_until && fm1_ms < pg_ttl_until && !sb_on; }
+static int ttl_wanted(void) { return pg_ttl_until && fm1_ms < pg_ttl_until && !sb_on && page == 0; }   /* (not on GLO's page) */
 
 /* SELECT (TT_DEV), ALGO (TT_PAGE) or PRESET (TT_PATCH) reached what is in focus now: its title toast, and the page to
  * draw in passes (pages_staged) */
