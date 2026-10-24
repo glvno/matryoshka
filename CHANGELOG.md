@@ -10,6 +10,10 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   M-VAVE's Official Open, whose start-up software differs from V15's, and nothing was changed. Putting Official Open
   back or going back to V15 from the Install panel comes with a later firmware; the README says why Official Open will
   not come with Matryoshka (its sound engine is M-VAVE's own, not open source).
+- A new community patch, **Sol 29N**, recalls the Elta Music Solar 42N in stereo: three saw drones that swell on their
+  own pulse generators (FX, LFO and EDIT switch them), two noise voices with sample & hold (ARP), two keyboard voices with
+  a morphing wavetable, a sub and pulse-width modulation, a 5-step line on PLAY, a distortion and a band-pass filter per
+  side swept together, a long reverb and a ping-pong delay. It plays on the FM-1.
 
 ## 1.2.1 — 2026-10-23
 
