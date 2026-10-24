@@ -9,6 +9,9 @@ import { xl as oracleV } from './oracle-v';
 import { xl as hera6 } from './hera-6';
 import { xl as expanderS } from './expander-s';
 import { xl as meridian8 } from './meridian-8';
+import { xl as algoFour } from './algo-four';
+import { xl as perun4 } from './perun-4';
+import { xl as kit909 } from './909-kit';
 
 export const XLS: Xl[] = [
   lire,
@@ -17,4 +20,7 @@ export const XLS: Xl[] = [
   hera6,
   expanderS,
   meridian8,
+  algoFour,
+  perun4,
+  kit909,
 ];

@@ -4,7 +4,7 @@
 // (one Macro turning several parameters, as one switch of the original does). `place` puts the assembly into a patch and
 // sets those ranges, which insertAssembly does not copy.
 import { DEFS } from '../../src/modules';
-import { addModule, connect, defaultMap, defaultParams, emptyPatch, rowDef, type ModuleInst, type Patch, type Source } from '../../src/patch';
+import { addModule, connect, defaultMap, defaultParams, emptyPatch, rowDef, type ModuleInst, type Patch, type PolyCards, type Source } from '../../src/patch';
 import { Engine } from '../../src/engine';
 import { insertAssembly, type AssemblyDef, type AssemblyInst, type NestedDef, type ParamRef, type PortRef } from '../../src/assembly';
 
@@ -22,8 +22,9 @@ export interface Def {
   input(label: string, module: number, port: string, ...also: [number, string][]): void;
   output(label: string, module: number, port: string): void;
   param(label: string, module: number, param: string, o?: { col?: boolean; head?: string; group?: boolean }): void;
-  /** a nested assembly (collapsed) of these modules, with these of their ports and rows */
-  nest(label: string, col: number, row: number, members: number[], o?: { inputs?: [string, number, string][]; outputs?: [string, number, string][]; params?: [string, number, string][] }): void;
+  /** a nested assembly (collapsed) of these modules, with these of their ports and rows; `poly`: a rack of voice cards (its
+   * members run once per voice of the Voicing that feeds them), with their flaws */
+  nest(label: string, col: number, row: number, members: number[], o?: { inputs?: [string, number, string][]; outputs?: [string, number, string][]; params?: [string, number, string][]; poly?: PolyCards }): void;
   module(id: number): ModuleInst;
 }
 
@@ -98,7 +99,7 @@ export function define(name: string, f: (b: Def) => void): Built {
     },
     nest(label, col, row, members, o = {}) {
       for (const m of members) if (!modules[m - 1] || nested.some((n) => n.modules.includes(m))) throw new Error(`${name}: module ${m} cannot join ${label}`);
-      const n: NestedDef = { id: nested.length + 1, name: label, label, x: col * GX, y: row * GY, open: false, modules: members, inputs: [], outputs: [], params: [] };
+      const n: NestedDef = { id: nested.length + 1, name: label, label, x: col * GX, y: row * GY, open: false, modules: members, inputs: [], outputs: [], params: [], ...(o.poly ? { poly: structuredClone(o.poly) } : {}) };
       for (const [l, m, p] of o.inputs ?? []) (check(m, p, 'inputs'), n.inputs.push({ module: m, port: p, label: l }));
       for (const [l, m, p] of o.outputs ?? []) (check(m, p, 'outputs'), n.outputs.push({ module: m, port: p, label: l }));
       for (const [l, m, p] of o.params ?? []) (checkParam(m, p), n.params.push({ module: m, param: p, label: l }));

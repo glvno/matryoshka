@@ -54,6 +54,18 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   or the LFO into its filter (smoothly), each oscillator's FM and pulse-width modulation, sync, and the band pass switch.
 - **Meridian 8 XL** (browser only): the Landscape NOON. DOT and BACID through filters the power sweeps smoothly and
   CYMPATH a three-voice cluster, each channel's MOD button, the eight CV mute buttons, and LINK sharing power both ways.
+- **Algo Four XL** (browser only): the Yamaha DX100 as its manual describes it. 8 voices, an envelope of attack, two
+  decays and release on all four operators, feedback on operator 4, and all 8 algorithms: each path between operators
+  and each operator's output is a row, and the patch notes list which rows make which algorithm. One LFO for vibrato
+  (pmd), tremolo (amd) and the wheel.
+- **Perun 4 XL** (browser only): the Erica Synths PERKONS HD-01 with its three algorithms per voice (algo 1..3), each
+  with its mode and PARAM 1 / 2 as the manual lists them, among them voice 2's COMPLEX DRUM and voice 4's NOISE/TONE
+  with phase modulation. The filter switches between low pass, band pass and high pass (no resonance, as on the
+  original), DRIVE is the overdrive's dry / wet, and the modulation LFO reaches each voice's tune.
+- **909 Kit XL** (browser only): every row has a full voice with its own sources: the clap with its own noise and three
+  bursts, an open hat with its own metal and noise that the closed hat cuts, low and high toms with a pitch drop, a rim
+  shot. Row 8 is the high tom (the TR-909 has no cowbell). TOTAL ACCENT on the Macros card sets how much louder an
+  accented step plays.
 
 ## 1.2.2 — 2026-10-24
 
