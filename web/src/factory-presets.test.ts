@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { applyPreset, deletePreset, presetsOf, renamePreset, storePreset } from './device-presets';
-import { defIsEngine } from './engines';
-import { FACTORY_PRESETS, presetsOfDef } from './factory-presets';
+import { defIsEngine, instIsEngine } from './engines';
+import { FACTORY_PRESETS, presetsOfDef, XL_ENGINE_PRESETS } from './factory-presets';
 import { DEFS } from './modules';
 import { newPatch } from './patch';
-import { defStructure } from './structure';
+import { FM1_PRESETS, XL_PRESETS, xlBase } from './presets';
+import { defStructure, structureOf } from './structure';
 
 const mem = new Map<string, string>();
 beforeEach(() => {
@@ -43,5 +44,24 @@ describe('factory presets (#193)', () => {
     expect(renamePreset(list[0].structure, 'Init', 'x')).toBe(false);
     expect(deletePreset(list[0].structure, 'Bright')).toBe(false);
     expect(storePreset(p, a, 'Bright')).toBe('Bright 2');
+  });
+
+  it('every XL engine has at least as many presets as its FM-1 version, loadable on the XL as it opens', () => {
+    expect(Object.keys(XL_ENGINE_PRESETS).length).toBe(Object.keys(XL_PRESETS).length);
+    for (const [name, make] of Object.entries(XL_PRESETS)) {
+      const fm1 = FM1_PRESETS[xlBase(name)!]();
+      const fm1Count = (fm1.assemblies ?? []).filter((a) => instIsEngine(fm1, a)).flatMap((a) => presetsOf(fm1, a)).length;
+      const p = make();
+      const engines = (p.assemblies ?? []).filter((a) => instIsEngine(p, a));
+      // a drum kit has no engine, so neither version has presets
+      expect(engines.length > 0, name).toBe(fm1Count > 0);
+      for (const a of engines) {
+        const list = presetsOf(p, a);
+        expect(list[0]?.name, name).toBe('Init');
+        expect(list.length, name).toBeGreaterThanOrEqual(fm1Count);
+        expect(list.every((x) => x.structure === structureOf(p, a))).toBe(true);
+        expect(applyPreset(p, a, list[list.length - 1]), name).toBe(true);
+      }
+    }
   });
 });

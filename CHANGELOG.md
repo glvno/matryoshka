@@ -6,6 +6,8 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ## Unreleased
 
+- **The XLs have presets:** each XL's engine card offers the same factory presets as its FM-1 version (Init, Bright,
+  Dark, Pad, Pluck and so on, where its rows allow). They are browser only, like the XLs.
 - Following the FM-1's panel (and sandbox mode): OCT- / OCT+ on the FM-1 now move the editor's octave too, so the
   on-screen keyboard shows the notes you are playing and the computer keys shift with it.
 - Connecting the FM-1 while the editor holds a sandbox patch now offers Sync, as for any patch: Sync makes the FM-1
