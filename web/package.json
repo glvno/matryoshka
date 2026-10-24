@@ -18,6 +18,7 @@
     "export-defs": "vite-node scripts/export-defs.ts",
     "cpu-costs": "vite-node scripts/cpu-costs.ts",
     "cpu-hot": "vite-node scripts/cpu-hot.ts",
+    "listen-renders": "vite-node scripts/listen-renders.ts",
     "fm1-wasm": "node scripts/fm1-wasm.mjs",
     "emu": "node scripts/emu.mjs",
     "emu:smoke": "node scripts/emu.mjs --smoke",
