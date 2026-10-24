@@ -7529,6 +7529,6 @@
    ]
   }
  ],
- "notes": "After the Erica Synths PERKONS HD-01 manual (1.3): per voice three algorithms (algo 1..3) with three modes and their PARAM 1 / 2, tune, decay, cutoff, VCF LP / BP / HP (no resonance, as the original), drive (dry / wet), send, level. Voice 2's COMPLEX DRUM phase-modulates. The modulation LFO reaches every tune; the delay keeps its own LFO. Voice 4's ACOUSTIC HATS are samples on the original, synthesized here.",
+ "notes": "After the Erica Synths PERKONS HD-01 manual (1.3): per voice three algorithms (algo 1..3) with three modes and their PARAM 1 / 2, tune, decay, cutoff, VCF LP / BP / HP (no resonance, as the original), drive (dry / wet), send, level. Voice 2's COMPLEX DRUM and voice 4's NOISE/TONE phase-modulate. The modulation LFO reaches every tune; the delay keeps its own LFO. Voice 4's ACOUSTIC HATS are samples on the original, synthesized here.",
  "octave": -1
 }

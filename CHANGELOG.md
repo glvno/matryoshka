@@ -26,6 +26,15 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - **The browser's Delay reaches 1.6 s** (the FM-1's stops at 520 ms): drag its time past 520 ms on the card. Such a
   patch is a sandbox patch: it plays in the browser and is not sent to the FM-1, and the budget's details say why
   ("Delay over 520 ms: browser only"). Patches with shorter delays sound exactly as before.
+- **Sol 29N** (Community) fits the FM-1 again: its delay is back at 520 ms. You now play its drones by hand: hold FX,
+  LFO or EDIT to swell a drone and ARP for the noise voices (set a button to switch and it holds). AUTO, on the Mod
+  page, brings back the slow swells that play on their own. The distortion now comes after the filters, as on the
+  Solar 42N, with a balance between the clean and the distorted sound. The keys play one voice instead of two.
+- **Sol 29N XL** (Community, browser only): the whole Elta Music SOLAR 42N. It has six drones, each with its own
+  envelope: four of five tuned saws and two noise voices. You play them on the keys C2 to A2 or the patch buttons, hold
+  them, or let AUTO swell them. The keys from C3 up play VCO A and B as one voice, with cross-modulation, a sub and
+  sync. There is a mixer with pan per channel, a dual LP / BP filter with LINK, distortion after the filter, and a
+  shimmer reverb on each side.
 - **8 Lire XL** (browser only): the SOMA Lyra-8 as its manual describes it. Two delay lines with their own TIME and MOD,
   SELF / LFO and TRIANGLE / SQUARE modulation and cross-feedback, the distortion after the delay with its MIX, the FM
   structure switch (34>56 78>12), an FM or LFO source per pair, PITCH per group, TOTAL FB, VIBRATO and the Hyper LFO's
@@ -34,6 +43,17 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   and NOISE programs beside SRR, the mix saturation, both LFOs into any of six destinations, and an 8-step sequence per
   voice that plays with the transport, quantized to a scale (CHRM).
 - **Community: Lire + Elvira XL**, the two XLs layered on one keyboard with a two-row Mix, beside the FM-1 version.
+- **Oracle V XL** (browser only): the Prophet-5's full modulation. Poly Mod (the filter envelope and oscillator B into
+  oscillator A's pitch, its pulse width and the filter, per voice and at audio rate), Wheel-Mod (the LFO and noise mixed,
+  into both pitches, both pulse widths and the filter, with an initial amount), oscillator A's saw and pulse together,
+  and oscillator B's keyboard switch and lo freq. Vibrato now moves the pitch smoothly. Five voices, as the original.
+- **Hera 6 XL** (browser only): the Juno-106 from its owner's manual. Each voice's filter follows its envelope and the
+  LFO smoothly, the DCO plays saw and pulse together, and it adds the envelope polarity switch, the VCA's gate mode, the
+  LFO delay, the HPF's bass boost and the bender lever's vibrato on the mod wheel. Six voices.
+- **Expander S XL** (browser only): the Oberheim Eight Voice. Eight voices, each a whole SEM with its own LFO, envelope 1
+  or the LFO into its filter (smoothly), each oscillator's FM and pulse-width modulation, sync, and the band pass switch.
+- **Meridian 8 XL** (browser only): the Landscape NOON. DOT and BACID through filters the power sweeps smoothly and
+  CYMPATH a three-voice cluster, each channel's MOD button, the eight CV mute buttons, and LINK sharing power both ways.
 - **Algo Four XL** (browser only): the Yamaha DX100 as its manual describes it. 8 voices, an envelope of attack, two
   decays and release on all four operators, feedback on operator 4, and all 8 algorithms: each path between operators
   and each operator's output is a row, and the patch notes list which rows make which algorithm. One LFO for vibrato
