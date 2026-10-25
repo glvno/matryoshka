@@ -5,7 +5,8 @@
 //   npm run flash -- --ci RUN           the matryoshka-firmware artifact of that firmware CI run
 //   npm run flash -- path/to/x.fwsc     that package (the smoke test runs on x.bin or x-app.bin next to it, else on the package)
 //   npm run flash -- --info             print the connected FM-1's identity, install nothing
-// --no-smoke skips the smoke test; --port NAME and --force go to fm1_install.py, which asks before it writes.
+// --no-smoke skips the smoke test; --port NAME, --force and --yes go to fm1_install.py, which asks before it writes unless
+// --yes (a shell with no prompt, such as Claude Code's `!`, answers no).
 // fm1_install.py needs mido + python-rtmidi: build/venv (made with uv on the first run when it is missing).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -32,7 +33,7 @@ const valueOf = (name) => {
   const i = args.indexOf(name);
   return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : undefined;
 };
-const passed = [...(valueOf('--port') ? ['--port', valueOf('--port')] : []), ...(flag('--force') ? ['--force'] : [])];
+const passed = [...(valueOf('--port') ? ['--port', valueOf('--port')] : []), ...(flag('--force') ? ['--force'] : []), ...(flag('--yes') ? ['--yes'] : [])];
 const taken = new Set([valueOf('--port'), valueOf('--ci')]);
 const given = args.find((a) => !a.startsWith('--') && !taken.has(a));
 
