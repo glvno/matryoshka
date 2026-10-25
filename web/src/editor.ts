@@ -525,15 +525,12 @@ export class Editor {
     if (!set.mods.length && !set.asms.length) return this.ev.onError('select the modules first: shift-click them, or drag a box on the canvas');
     // a patch's own modules never go into a building block: they stay outside, the rest is grouped
     const ids = set.mods.filter((m) => !EXCLUDED_TYPES.has(m.type)).map((m) => m.id);
-    if (!ids.length) return this.ev.onError(set.asms.length ? 'select at least one module with the assemblies: they go inside the new one' : 'the Main panel and the Output stay outside an assembly: select other modules');
+    if (!ids.length && !set.asms.length) return this.ev.onError('the Main panel and the Output stay outside an assembly: select other modules');
     const name = window.prompt('Name of the assembly', 'assembly')?.trim();
     if (!name) return;
     const kept = ids.length < set.mods.length;
-    // selected assemblies become children of the new one
-    if (this.change(() => {
-      const made = makeAssembly(this.patch, ids, name);
-      for (const a of set.asms) addChild(this.patch, made, a.id);
-    })) {
+    // selected assemblies become children of the new one (it may hold assemblies only)
+    if (this.change(() => makeAssembly(this.patch, ids, name, set.asms.map((a) => a.id)))) {
       this.selected.clear();
       this.selectedAsm.clear();
       if (kept) this.ev.onError('Main and Output stay outside');

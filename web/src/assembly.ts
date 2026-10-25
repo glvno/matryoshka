@@ -788,27 +788,29 @@ const nextAssemblyId = (p: Patch): number => assembliesOf(p).reduce((m, a) => Ma
 const instanceLabel = (p: Patch, name: string): string => uniqueLabel(assembliesOf(p).map((a) => a.label), name);
 
 /**
- * Group the given modules into a new, collapsed assembly: the ports with outside cables are exposed. Modules that are all
- * direct members of one assembly form a child of it (nesting).
+ * Group the given modules and assemblies (`childIds`, which become its children) into a new, collapsed assembly: the
+ * ports with outside cables are exposed. One may hold assemblies only. Modules that are all direct members of one
+ * assembly form a child of it (nesting); assemblies only, a child of their parent.
  */
-export function makeAssembly(p: Patch, memberIds: number[], name = 'assembly'): AssemblyInst {
+export function makeAssembly(p: Patch, memberIds: number[], name = 'assembly', childIds: number[] = []): AssemblyInst {
   const ids = [...new Set(memberIds)];
-  if (!ids.length) throw new Error('select the modules first (shift-click, or drag a box on the canvas)');
-  const parent = assemblyOf(p, ids[0]);
+  const kids = [...new Set(childIds)];
+  if (!ids.length && !kids.length) throw new Error('select the modules first (shift-click, or drag a box on the canvas)');
+  const parent = ids.length ? assemblyOf(p, ids[0]) : parentOf(p, kids[0]);
   for (const id of ids) {
     const why = memberProblem(p, id, parent);
     if (why) throw new Error(why);
     if (parent && !parent.modules.includes(id)) throw new Error(`${describe(p, p.modules.find((m) => m.id === ids[0])!)} is already in "${parent.label}": to nest, select modules inside it only`);
   }
   if (parent && depthOf(p, parent) + 1 > MAX_DEPTH) throw new Error(`assemblies nest at most ${MAX_DEPTH} deep`);
-  const ms = ids.map((id) => p.modules.find((m) => m.id === id)!);
+  const at = [...ids.map((id) => p.modules.find((m) => m.id === id)!), ...kids.map((id) => assemblyById(p, id) ?? { x: Infinity, y: Infinity })];
   const a: AssemblyInst = {
     v: 1,
     id: nextAssemblyId(p),
     name,
     label: instanceLabel(p, name),
-    x: Math.min(...ms.map((m) => m.x)),
-    y: Math.min(...ms.map((m) => m.y)),
+    x: Math.min(...at.map((m) => m.x)),
+    y: Math.min(...at.map((m) => m.y)),
     open: false,
     modules: ids,
     inputs: [],
@@ -820,6 +822,7 @@ export function makeAssembly(p: Patch, memberIds: number[], name = 'assembly'): 
     parent.modules = parent.modules.filter((id) => !ids.includes(id));
     parent.children = [...(parent.children ?? []), a.id];
   }
+  for (const id of kids) addChild(p, a, id);
   reconcile(p, a);
   if (parent) reconcile(p, parent);
   return a;

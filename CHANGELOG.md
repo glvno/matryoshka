@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Make assembly (Ctrl/Cmd+G) works on a selection of assemblies alone: group two engines into one and promote just
+  the controls you want.
+
 ## 1.3.2 — 2026-10-25
 
 - FM-1: the footer's octave (= OCT =, OCT +, - OCT) changes as soon as you press OCT- / OCT+, not only once something
