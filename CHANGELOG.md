@@ -8,22 +8,33 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ### On the FM-1
 
-- **Paging is about ten times faster.** SELECT, ALGO and PRESET no longer cover the screen with a card and wait 400 ms.
-  A small toast names what you reached (the device on red, the page on blue, the patch on ivory), and the page is drawn
-  under it at once. The toast always sits in the same place, in the middle of the bars between K2's and K3's names and
-  values, and only that spot is redrawn when it goes. Turning fast redraws only the toast. For one ALGO click:
+- **A new device page, and paging about ten times faster.** The screen has a header, four bars and a footer:
+  - The header shows the device, its page group and the group's pages. A dash under each name shows where you are among
+    the devices (gold) and the groups (blue), and a stack of bars shows the page within its group. SELECT and ALGO no
+    longer show a toast: the header changes, and only the parts of it that changed are redrawn.
+  - Each knob has a full-width bar in its colour with an accent tab, the row's name, its value and unit. Turning a knob
+    moves its own bar in place.
+  - A sand footer shows the patch, the tempo, the octave (= OCT =, OCT +, - OCT ...) and the battery. The battery has
+    left the top bar; the other pages (menu, SEQ, ENV) no longer show it. The footer no longer shows PLAY / STOP or the
+    number of parts.
+  - PRESET grows the footer into a toast for a second: the slot's number, the patch's name, and a dash for each filled
+    slot of the bank. When it goes, only that band is redrawn.
+
+  For one ALGO click, and one knob click:
 
   | | 1.2 | 1.3 |
   |---|---|---|
-  | The page's title on screen | about 77 ms | about 6 ms |
-  | Names and values readable | about 545 ms | about 35 ms |
-  | The whole page | about 545 ms | about 59 ms |
+  | Where you are on screen (ALGO) | about 77 ms | about 2 ms |
+  | Names and values readable (ALGO) | about 545 ms | about 37 ms |
+  | The whole page (ALGO) | about 545 ms | about 53 ms |
+  | A knob click | 22 to 76 ms | about 2 ms |
+  | The whole screen redrawn | about 144 ms | about 77 ms |
 
-  The pixel counts are from the host panel test (4,400 pixels for the title instead of 57,600; 44,392 for the page
-  instead of 108,210, which started only 400 ms after the click). The times assume the LCD link's 750 pixels per ms and
-  were not timed on an FM-1.
-- **Turning K1..K4 no longer shows a full-size toast.** The bar moves in place and only what changed is redrawn: about
-  1 ms per click instead of 22 to 76 ms (684 pixels instead of 16,464 to 57,068, plus 39,792 when the toast ended).
+  The pixel counts are from the host panel test: for ALGO 1,440 pixels for the header's stack (instead of the 57,600 of a
+  card) and 39,744 for the page (instead of 108,210, which started only 400 ms after the click); for a knob 1,218 pixels
+  (instead of 16,464 to 57,068 plus 39,792 when the toast ended); a whole screen 57,600 (instead of 107,810). PRESET draws
+  its toast first (14,400 pixels, about 19 ms) and the whole new page in 46,992 pixels (about 63 ms). The times assume
+  the LCD link's 750 pixels per ms and were not timed on an FM-1 (`npm run rig:bench` times them on one).
 - **The engine does less work per block, with the same sound.** It stops redoing work that only changes when a setting
   does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output is bit
   for bit the same. On the CPU model, the busiest block of each factory patch:
@@ -40,9 +51,6 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
   About 8 % fewer cycles over all patches, up to 13 % (8 Lire, the 909 Kit). No factory patch is over the CPU warning
   now. These are the CPU model's figures, not yet measured on an FM-1.
-- **The battery mark takes the top bar's colour:** on the sandbox page's gold bar, GLO's coral, ENV's lilac, the preset
-  list's gold, a Page button list's sea and every message, the battery's corner is no longer a dark square, and its
-  outline and bars turn dark so they still read.
 - **Sandbox mode on the FM-1:** while the editor plays a sandbox patch (below), the FM-1 mutes its own sound and shows
   the page you are on, with a gold SANDBOX bar. The page comes up at once from any screen, not only after HOME. The
   editor and the FM-1 keep one transport: a sequence the FM-1 was playing goes on in the browser, and the editor's PLAY

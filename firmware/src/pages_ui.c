@@ -1303,6 +1303,9 @@ typedef struct {
 } foot_t;
 static uint32_t ft_drawn;                               /* the hash of the footer as drawn (0: not on the screen) */
 #define BATT_FX (240u - 6u - 13u)                       /* the battery's x: 11 x 6 and its nub 2 px */
+#define FOOT_OCT_W 40u                                  /* the octave's slot: its widest state in FONT_F, "OCT +++" (the
+                                                         * octave runs -3..3: panel.c), the text centred in it, so the
+                                                         * tempo stays put when the octave changes (panel_test.c checks) */
 #define BATT_FY (FOOT_MID - 3u)
 static int seq_arm_label(char *out, int *rec);          /* (seq_ui.c) */
 static const uint8_t NOTE_A[9][6] = {                   /* the quarter note as the mock draws it (4-bit coverage), x - 1 .. x + 4 */
@@ -1342,13 +1345,13 @@ static uint32_t foot_layout(foot_t *f)
             *q++ = '+';
         *q = 0;
         wt = text_w(&FONT_F, f->t, -1) + 8u;
-        wo = text_w(&FONT_F, f->o, -1);
+        wo = FOOT_OCT_W;
         fit(f->a, &FONT_F, 240u - 12u - 13u - wt - wo - 3u * 6u);
         wa = text_w(&FONT_F, f->a, -1);
         gap16 = (228u - wa - wt - wo - 13u) * 16u / 3u;  /* (space between: the battery ends at the right margin) */
         f->xa = 6u;
         f->xt = 6u + ((wa * 16u + gap16 + 8u) >> 4);
-        f->xo = 6u + (((wa + wt) * 16u + 2u * gap16 + 8u) >> 4);
+        f->xo = 6u + (((wa + wt) * 16u + 2u * gap16 + 8u) >> 4) + (FOOT_OCT_W - text_w(&FONT_F, f->o, -1)) / 2u;
     }
     for (s = (const char *)f; s < (const char *)(f + 1); s++)   /* (what it shows, the battery apart: foot_batt) */
         h = (h ^ (uint8_t)*s) * 16777619u;

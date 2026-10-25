@@ -344,6 +344,23 @@ int main(void)
         check("the LCD: the header's dash of the device in focus gold, its name; K1's tab in its hue", gold >= 2u
               && on_screen("DRUM MAP") && K1_TAB == KNOB_HUE[0]);
     }
+    {                                                       /* the footer: the octave in a slot of its own, so the tempo stays
+                                                             * put whatever the octave (the owner, 2026-10-24) */
+        foot_t f;
+        uint32_t xt = 0, widest = 0, moved = 0;
+        int32_t o, was = octave;
+        for (o = -3; o <= 3; o++) {
+            octave = o;
+            (void)foot_layout(&f);
+            if (o == -3)
+                xt = f.xt;
+            moved += f.xt != xt;
+            widest = text_w(&FONT_F, f.o, -1) > widest ? text_w(&FONT_F, f.o, -1) : widest;
+        }
+        octave = was;
+        check("the footer: the tempo at the same x in every octave state, the octave's slot its widest", moved == 0u
+              && widest == FOOT_OCT_W);
+    }
     {                                                       /* #291: the screen as text, as SCREEN reports it */
         uint8_t idx[SCR_N];
         uint32_t n = scr_list(idx), i, ordered = 1;
