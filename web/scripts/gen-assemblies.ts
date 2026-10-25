@@ -2197,6 +2197,197 @@ asm('Perun 4', 'Drums', (b) => {
   b.param('out', scope, 'view', { col: true });
 });
 
+// Spokes 6, after the Elektron Model:Cycles (its user manual's track parameters, the reviews' account of the machines):
+// six tracks of FM voices, one machine each, with the original's six synthesis controls on every track: PITCH (an
+// offset in octaves on every oscillator of the voice), DECAY (the amp envelope), COLOR, SHAPE, SWEEP and CONTOUR, which
+// do a different thing per machine (Elektron does not publish the engines; these follow what the manual and the reviews
+// say each one does), then VOLUME and the DELAY and REVERB sends. 1 KICK: a sine carrier phase-modulated by a sine
+// (color = the index, shape = the modulator's interval), a pitch envelope (sweep = its depth, contour = its time).
+// 2 SNARE: a phase-modulated body (color = the inharmonic index) and a noise burst (shape = the noise level, contour =
+// its decay), the amp envelope sweeping the pitch (sweep). 3 METAL: a square phase-modulated by a sine at an inharmonic
+// interval (color = the interval, contour = the index) through a high pass (shape = the cutoff) the envelope opens
+// (sweep). 4 PERC: an FM pair whose index has its own envelope (color = the index, shape = the ratio, contour = the
+// index's decay: ringing to damped), sweep = the pitch drop. A Drum map row each (the white keys from F3); the velocity
+// is the hit's height (a pin on the amp envelope's l1): a Steps accent is the original's PUNCH. 5 TONE: a two-operator
+// FM voice on its own keys (color = the ratio, shape = the index, sweep = noise into the carrier's phase for grit,
+// contour = the index's decay). 6 CHORD: three saws on its own keys (shape = the chord's middle note in semitones, 3
+// minor, 4 major, 5 sus4; color = the top note, 7 a fifth, 10 a minor seventh), a low pass (sweep), the attack
+// (contour). The sends feed one delay (time, feedback) and one reverb (size, tone); both return into the mix, which
+// goes through the master saturator (dist, the original's VOLUME + DIST past 60) to the output.
+asm('Spokes 6', 'Drums', (b) => {
+  const map = b.add('drummap', 0, 0, Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])));
+  b.module(map).names = ['KICK', 'SNARE', 'METAL', 'PERC', 'ROW 5', 'ROW 6', 'ROW 7', 'ROW 8'];
+  const mixA = b.add('mixer', 7, 0, { l1: 0.9, l2: 0.85, l3: 0.9, l4: 0.6 });
+  const mixB = b.add('mixer', 7, 1, { l1: 0.35, l2: 0.7, l3: 1, l4: 1 });
+  const dsA = b.add('mixer', 7, 2, { l1: 0, l2: 0.15, l3: 0.1, l4: 0.3 });
+  const dsB = b.add('mixer', 7, 3, { l1: 0.25, l2: 0.2, l3: 1, l4: 0 });
+  const dly = b.add('delay', 8, 2, { time: 375, fb: 0.4, mix: 1 });
+  const master = b.add('shape', 8, 0, { drive: 1, mode: 0, level: 0.8 });
+  const scope = b.add('scope', 9, 0, { time: 16 });
+  b.wire(mixA, 'out', mixB, 'in3');
+  b.wire(dsA, 'out', dsB, 'in3');
+  b.wire(dsB, 'out', dly, 'in');
+  b.wire(dly, 'out', mixB, 'in4');
+  b.wire(mixB, 'out', master, 'in');
+  b.wire(master, 'out', scope, 'a');
+  type Row = [number, string];
+  type T = { name: string; members: number[]; pitchIn?: number; out: number[]; gate: [number, string][]; rows: Record<'pitch' | 'decay' | 'color' | 'shape' | 'sweep' | 'contour', Row>; mix: [number, string]; ds: [number, string] };
+  const tracks: T[] = [];
+  /** a track's voice into its mixer, delay send and reverb send inputs (tracks 1..4 on the A mixers, 5 and 6 on the B) */
+  const track = (i: number, name: string, make: (col: number) => Omit<T, 'name' | 'mix' | 'ds'>): void => {
+    const t = make(1 + i);
+    const [mix, ds] = i < 4 ? [mixA, dsA] : [mixB, dsB];
+    const n = i < 4 ? i + 1 : i - 3;
+    for (const o of t.out) for (const m of [mix, ds]) b.wire(o, 'out', m, `in${n}`);
+    tracks.push({ name, ...t, mix: [mix, `l${n}`], ds: [ds, `l${n}`] });
+  };
+  /** a drum track's amp envelope: a Drum map row's gate, its velocity the height (pin p1 on l1) */
+  const ampEnv = (col: number, r: number, decay: number): number => {
+    const env = b.add('env', col, 0, { l1: 0, r1: 0.001, l2: 0, r2: decay, l3: 0, r3: 0.001, l4: 0, r4: 0.001 }, { p1: 'l1' });
+    b.wire(map, `g${r}`, env, 'gate');
+    b.wire(map, `v${r}`, env, 'p1');
+    return env;
+  };
+  // 1 KICK
+  track(0, 'kick', (col) => {
+    const env = ampEnv(col, 1, 0.45);
+    const penv = b.add('adsr', col, 1, { a: 0.001, d: 0.05, s: 0, r: 0.08 });
+    const sweep = b.add('scale', col, 2, { gain: 2.5, offset: -2.25 });
+    const car = b.add('osc', col, 3, { wave: 0, coarse: 0, pm: 0.4, level: 1 });
+    const op = b.add('osc', col, 3.5, { wave: 0, coarse: 12, level: 1 });
+    const vca = b.add('vca', col, 4, { gain: 1 });
+    b.wire(map, 'g1', penv, 'gate');
+    b.wire(penv, 'env', sweep, 'in');
+    b.wire(sweep, 'out', car, 'pitch');
+    b.wire(sweep, 'out', op, 'pitch');
+    b.wire(op, 'out', car, 'pm');
+    b.wire(car, 'out', vca, 'in');
+    b.wire(env, 'env', vca, 'cv');
+    return { members: [env, penv, sweep, car, op, vca], out: [vca], gate: [[env, 'gate'], [penv, 'gate']], rows: { pitch: [sweep, 'offset'], decay: [env, 'r2'], color: [car, 'pm'], shape: [op, 'coarse'], sweep: [sweep, 'gain'], contour: [penv, 'd'] } };
+  });
+  // 2 SNARE
+  track(1, 'snare', (col) => {
+    const env = ampEnv(col, 2, 0.16);
+    const sweep = b.add('scale', col, 1, { gain: 0.5, offset: -0.75 });
+    const body = b.add('osc', col, 2, { wave: 0, coarse: 0, level: 0.8 });
+    const vca = b.add('vca', col, 3, { gain: 1 });
+    const nz = b.add('noise', col, 3.5, { level: 0.8, color: 0.3 });
+    const nenv = b.add('adsr', col, 4, { a: 0.001, d: 0.12, s: 0, r: 0.15 });
+    const nvca = b.add('vca', col, 4.5, { gain: 1 });
+    b.wire(env, 'env', sweep, 'in');
+    b.wire(sweep, 'out', body, 'pitch');
+    b.wire(body, 'out', vca, 'in');
+    b.wire(env, 'env', vca, 'cv');
+    b.wire(map, 'g2', nenv, 'gate');
+    b.wire(nz, 'out', nvca, 'in');
+    b.wire(nenv, 'env', nvca, 'cv');
+    return { members: [env, sweep, body, vca, nz, nenv, nvca], out: [vca, nvca], gate: [[env, 'gate'], [nenv, 'gate']], rows: { pitch: [sweep, 'offset'], decay: [env, 'r2'], color: [nz, 'color'], shape: [nz, 'level'], sweep: [sweep, 'gain'], contour: [nenv, 'd'] } };
+  });
+  // 3 METAL
+  track(2, 'metal', (col) => {
+    const env = ampEnv(col, 3, 0.12);
+    const sq1 = b.add('osc', col, 2, { wave: 3, coarse: 30, pw: 0.5, level: 0.8 });
+    const sq2 = b.add('osc', col, 2.5, { wave: 3, coarse: 37, fine: 35, pw: 0.4, level: 0.8 });
+    const open = b.add('scale', col, 3, { gain: 1, offset: 0 });
+    const hp = b.add('filter', col, 3.5, { cutoff: 2500, res: 0.1, cvamt: 2 });
+    const vca = b.add('vca', col, 4, { gain: 1 });
+    b.wire(env, 'env', open, 'in');
+    b.wire(open, 'out', hp, 'cv');
+    b.wire(sq1, 'out', hp, 'in');
+    b.wire(sq2, 'out', hp, 'in');
+    b.wire(hp, 'hp', vca, 'in');
+    b.wire(env, 'env', vca, 'cv');
+    return { members: [env, sq1, sq2, open, hp, vca], out: [vca], gate: [[env, 'gate']], rows: { pitch: [sq1, 'coarse'], decay: [env, 'r2'], color: [sq2, 'coarse'], shape: [hp, 'cutoff'], sweep: [open, 'gain'], contour: [hp, 'res'] } };
+  });
+  // 4 PERC
+  track(3, 'perc', (col) => {
+    const env = ampEnv(col, 4, 0.25);
+    const sweep = b.add('scale', col, 1, { gain: 0.3, offset: -0.5 });
+    const ienv = b.add('adsr', col, 1.5, { a: 0.001, d: 0.08, s: 0, r: 0.1 });
+    const car = b.add('osc', col, 2, { wave: 0, coarse: 0, pm: 2.5, level: 1 });
+    const op = b.add('osc', col, 2.5, { wave: 0, coarse: 19, level: 1 });
+    const ivca = b.add('vca', col, 3, { gain: 1 });
+    const vca = b.add('vca', col, 4, { gain: 1 });
+    b.wire(map, 'g4', ienv, 'gate');
+    b.wire(env, 'env', sweep, 'in');
+    b.wire(sweep, 'out', car, 'pitch');
+    b.wire(sweep, 'out', op, 'pitch');
+    b.wire(op, 'out', ivca, 'in');
+    b.wire(ienv, 'env', ivca, 'cv');
+    b.wire(ivca, 'out', car, 'pm');
+    b.wire(car, 'out', vca, 'in');
+    b.wire(env, 'env', vca, 'cv');
+    return { members: [env, sweep, ienv, car, op, ivca, vca], out: [vca], gate: [[env, 'gate'], [ienv, 'gate']], rows: { pitch: [sweep, 'offset'], decay: [env, 'r2'], color: [car, 'pm'], shape: [op, 'coarse'], sweep: [sweep, 'gain'], contour: [ienv, 'd'] } };
+  });
+  // 5 TONE: its own pitch and gate (a Steps track's)
+  track(4, 'tone', (col) => {
+    const pitch = b.add('scale', col, 0, { gain: 1, offset: 0 });
+    const env = b.add('adsr', col, 1, { a: 0.002, d: 0.5, s: 0, r: 0.3 });
+    const ienv = b.add('adsr', col, 1.5, { a: 0.001, d: 0.3, s: 0, r: 0.3 });
+    const op = b.add('osc', col, 2, { wave: 0, coarse: 12, level: 1 });
+    const nz = b.add('noise', col, 2.5, { level: 0, color: 0 });
+    const ivca = b.add('vca', col, 3, { gain: 1 });
+    const car = b.add('osc', col, 3.5, { wave: 0, coarse: 0, pm: 1.5, level: 1 });
+    const vca = b.add('vca', col, 4, { gain: 1 });
+    b.wire(pitch, 'out', op, 'pitch');
+    b.wire(pitch, 'out', car, 'pitch');
+    b.wire(op, 'out', ivca, 'in');
+    b.wire(nz, 'out', ivca, 'in');
+    b.wire(ienv, 'env', ivca, 'cv');
+    b.wire(ivca, 'out', car, 'pm');
+    b.wire(car, 'out', vca, 'in');
+    b.wire(env, 'env', vca, 'cv');
+    return { pitchIn: pitch, members: [pitch, env, ienv, op, nz, ivca, car, vca], out: [vca], gate: [[env, 'gate'], [ienv, 'gate']], rows: { pitch: [pitch, 'offset'], decay: [env, 'd'], color: [op, 'coarse'], shape: [car, 'pm'], sweep: [nz, 'level'], contour: [ienv, 'd'] } };
+  });
+  // 6 CHORD: its own pitch and gate (a Steps track's), a stacked saw and the chord's middle note
+  track(5, 'chord', (col) => {
+    const pitch = b.add('scale', col, 0, { gain: 1, offset: 0 });
+    const env = b.add('adsr', col, 1, { a: 0.005, d: 0.8, s: 0, r: 0.4 });
+    const o1 = b.add('osc', col, 2, { wave: 2, coarse: 0, stack: 2, level: 0.5 });
+    const o2 = b.add('osc', col, 2.5, { wave: 2, coarse: 3, fine: 4, level: 0.3 });
+    const lp = b.add('filter', col, 3, { cutoff: 2000, res: 0.2 });
+    const vca = b.add('vca', col, 4, { gain: 1 });
+    for (const o of [o1, o2]) {
+      b.wire(pitch, 'out', o, 'pitch');
+      b.wire(o, 'out', lp, 'in');
+    }
+    b.wire(lp, 'lp24', vca, 'in');
+    b.wire(env, 'env', vca, 'cv');
+    return { pitchIn: pitch, members: [pitch, env, o1, o2, lp, vca], out: [vca], gate: [[env, 'gate']], rows: { pitch: [pitch, 'offset'], decay: [env, 'd'], color: [o1, 'stack'], shape: [o2, 'coarse'], sweep: [lp, 'cutoff'], contour: [env, 'a'] } };
+  });
+  tracks.forEach((t, i) => b.nest(`${i + 1} ${t.name}`, 1 + i, 0, t.members));
+  tracks.forEach((t, i) => {
+    // (the tone and chord tracks' pitch and gate are the engine's own inputs: they show on their cards as those)
+    if (i < 4) {
+      b.nestInput('gate', ...t.gate[0], ...t.gate.slice(1));
+      b.nestInput('accent', t.gate[0][0], 'p1');
+    }
+    b.nestOutput('out', t.out[0], 'out');
+  });
+  b.input('keys', map, 'keys');
+  b.input('tone pitch', tracks[4].pitchIn!, 'in');
+  b.input('tone gate', ...tracks[4].gate[0], ...tracks[4].gate.slice(1));
+  b.input('chord pitch', tracks[5].pitchIn!, 'in');
+  b.input('chord gate', ...tracks[5].gate[0], ...tracks[5].gate.slice(1));
+  b.output('out', master, 'out');
+  tracks.forEach((t, i) => {
+    const r = t.rows;
+    b.param('pitch', ...r.pitch, { head: `${i + 1} ${t.name}`, ...(i % 2 === 0 ? { col: true } : {}) });
+    b.param('decay', ...r.decay);
+    b.param('color', ...r.color);
+    b.param('shape', ...r.shape);
+    b.param('sweep', ...r.sweep);
+    b.param('contour', ...r.contour);
+    b.param('volume', ...t.mix);
+    b.param('delay', ...t.ds);
+  });
+  b.param('time', dly, 'time', { col: true, head: 'delay' });
+  b.param('feedback', dly, 'fb');
+  b.param('dist', master, 'drive', { head: 'master' });
+  b.param('master', master, 'level');
+  b.param('out', scope, 'view', { col: true });
+});
+
 // an LFO through a Scale: vibrato (into a pitch input), tremolo (into a VCA's cv with an offset), a filter sweep
 asm('vibrato', 'Utilities', (b) => {
   const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 5, depth: 1 });
@@ -2661,6 +2852,7 @@ const BLURBS: Record<string, string> = {
   Scrounge: 'Scrooge type shit',
   'Meridian 8': 'NOON type shit',
   'Perun 4': 'Perkons HD-01 type shit',
+  'Spokes 6': 'Model:Cycles type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',

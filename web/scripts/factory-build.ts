@@ -108,9 +108,10 @@ export function level(p: Patch, opts: { chord?: boolean; drums?: boolean } = {})
 // arpeggiator. A patch with a PATTERN already (Scrounge, Meridian 8, Perun 4) gets the arpeggiator after it. One that
 // played Main's pitch / gate gets a one-voice Voicing for the arpeggiator to play. Oracle V and Algo Four run past the CPU
 // estimate's warning with them (the owner accepts it); one that would not fit the FM-1's limits would get the arpeggiator
-// alone, else neither. The drum kits and <7PH get neither on the FM-1; an XL is the kitchen sink and gets both, a kit's
-// arpeggiator between its DRUMS track and its Drum map.
-export const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH']);
+// alone, else neither. The drum kits, <7PH and Spokes 6 get neither on the FM-1 (Spokes 6's melodic voices play their
+// Steps tracks' pitch and gate, which an arpeggiator's keys cannot reach); an XL is the kitchen sink and gets both, a
+// kit's arpeggiator between its DRUMS track and its Drum map.
+export const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH', 'Spokes 6']);
 export type Player = 'both' | 'arp' | 'none';
 export function withPlayers(src: Patch, what: Player): Patch {
   const p = structuredClone(src);

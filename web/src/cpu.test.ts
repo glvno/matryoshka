@@ -76,8 +76,8 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   // Hera 6, Expander S, Algo Four: the engine's overhead cut (#289) took about 8 % off every patch's count, which puts these
   // three under the band's bottom; the survey measured the engine before it (re-measure: #289's device step)
   const changed = new Set(['808 kit', 'oracle v', '909 kit', 'hera 6', 'expander s', 'algo four']);
-  // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH): measure them on the device, then add them to the survey file
-  const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph']);
+  // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH, Spokes 6): measure them on the device, then add them to the survey file
+  const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6']);
   it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(FM1_PRESETS).length));
   for (const r of survey)
     it.skipIf(changed.has(r.name.toLowerCase()))(`is within -4 / +6 points of the device: ${r.name}`, () => {
