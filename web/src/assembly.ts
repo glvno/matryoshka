@@ -260,10 +260,10 @@ export function pickState(a: AssemblyInst, rows: readonly PickRow[]): 'all' | 'n
 
 /** one action on several rows in pick mode (#186): if any is off the card they all go on (the new ones in the given
  * order), if all are on they all come off. False when there are no rows */
-export function pickRows(a: AssemblyInst, rows: readonly PickRow[]): boolean {
+export function pickRows(a: AssemblyInst, rows: readonly PickRow[], p?: Patch): boolean {
   if (!rows.length) return false;
   const off = rows.filter((r) => !isPromoted(a, r.module, r.param));
-  if (off.length) for (const r of off) promote(a, r.module, r.param);
+  if (off.length) for (const r of off) promote(a, r.module, r.param, p);
   else {
     const gone = new Set(rows.map((r) => `${r.module}:${r.param}`));
     a.params = keepParams(a.params, (r) => !gone.has(`${r.module}:${r.param}`));
@@ -628,8 +628,8 @@ export function pinsToParams(inputs: PortRef[], params: ParamRef[], moduleOf: (i
   return out;
 }
 
-const promoteOnce = (params: ParamRef[], m: ModuleInst, param: string): void => {
-  if (!params.some((q) => q.module === m.id && q.param === param)) params.push({ module: m.id, param, label: longName(m.type, param) });
+const promoteOnce = (params: ParamRef[], m: ModuleInst, param: string, label?: string): void => {
+  if (!params.some((q) => q.module === m.id && q.param === param)) params.push({ module: m.id, param, label: label ?? longName(m.type, param) });
 };
 
 /** the inner ports with a cable to or from outside: the ports an assembly must expose */
@@ -748,11 +748,11 @@ export function reconcile(p: Patch, a: AssemblyInst, defs?: Record<string, Modul
     const m = moduleOf(r.module);
     const routed = isPin(r.port) && m?.map?.[r.port]?.length ? m.map[r.port] : null;
     if (routed && m) for (const param of routed) {
-      if (reachableParam(p, a, m.id, param)) promoteOnce(a.params, m, param);
+      if (reachableParam(p, a, m.id, param)) promoteOnce(a.params, m, param, childLabel(p, a, 'param', m.id, param));
     }
-    else if (!isExposed(a, 'in', r.module, r.port)) a.inputs.push({ ...r, label: uniqueLabel(a.inputs.map((x) => x.label), r.port) });
+    else if (!isExposed(a, 'in', r.module, r.port)) a.inputs.push({ ...r, label: uniqueLabel(a.inputs.map((x) => x.label), childLabel(p, a, 'in', r.module, r.port) ?? r.port) });
   }
-  for (const r of b.outputs) if (!isExposed(a, 'out', r.module, r.port)) a.outputs.push({ ...r, label: uniqueLabel(a.outputs.map((x) => x.label), r.port) });
+  for (const r of b.outputs) if (!isExposed(a, 'out', r.module, r.port)) a.outputs.push({ ...r, label: uniqueLabel(a.outputs.map((x) => x.label), childLabel(p, a, 'out', r.module, r.port) ?? r.port) });
   return true;
 }
 
@@ -905,11 +905,20 @@ export function removeChild(p: Patch, parent: AssemblyInst, childId: number): vo
   ungroup(p, parent.id);
 }
 
-/** show an inner port on the card; `also` merges further inner inputs into the same jack */
-export function exposePort(a: AssemblyInst, dir: 'in' | 'out', module: number, port: string, also?: Target[]): void {
+/** the label a nested assembly gives an inner row or jack it shows, which a parent showing it too takes over */
+function childLabel(p: Patch | undefined, a: AssemblyInst, kind: 'param' | 'in' | 'out', module: number, name: string): string | undefined {
+  if (!p || a.modules.includes(module)) return undefined;
+  const c = childrenOf(p, a).find((x) => allModules(p, x).includes(module));
+  if (!c) return undefined;
+  return kind === 'param' ? c.params.find((r) => r.module === module && r.param === name)?.label : findRef(c, kind, module, name)?.label;
+}
+
+/** show an inner port on the card; `also` merges further inner inputs into the same jack. With the patch, a port a nested
+ * assembly shows keeps that assembly's label */
+export function exposePort(a: AssemblyInst, dir: 'in' | 'out', module: number, port: string, also?: Target[], p?: Patch): void {
   if (isExposed(a, dir, module, port)) return;
   const list = dir === 'in' ? a.inputs : a.outputs;
-  const r: PortRef = { module, port, label: uniqueLabel(list.map((x) => x.label), port) };
+  const r: PortRef = { module, port, label: uniqueLabel(list.map((x) => x.label), childLabel(p, a, dir, module, port) ?? port) };
   const extra = dir === 'in' ? (also ?? []).filter((t) => !isExposed(a, 'in', t.module, t.port) && !(t.module === module && t.port === port)) : [];
   if (extra.length) r.also = extra;
   list.push(r);
@@ -950,8 +959,10 @@ export function unmergePort(a: AssemblyInst, module: number, port: string): void
   a.inputs = list;
 }
 
-export function promote(a: AssemblyInst, module: number, param: string): void {
-  if (!isPromoted(a, module, param)) a.params.push({ module, param, label: uniqueLabel(a.params.map((r) => r.label), param) });
+/** put a parameter on the card. With the patch, a row a nested assembly shows keeps that assembly's label ("hold pitch",
+ * not the Macro's "value") */
+export function promote(a: AssemblyInst, module: number, param: string, p?: Patch): void {
+  if (!isPromoted(a, module, param)) a.params.push({ module, param, label: uniqueLabel(a.params.map((r) => r.label), childLabel(p, a, 'param', module, param) ?? param) });
 }
 
 export function demote(a: AssemblyInst, module: number, param: string): void {

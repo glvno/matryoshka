@@ -21,6 +21,7 @@ import {
   unmergePort,
   deleteAssembly,
   exposePort,
+  findRef,
   fixAssemblies,
   hiddenModules,
   hidePort,
@@ -134,6 +135,25 @@ describe('assemblies', () => {
     expect(parentOf(q, pair.id)).toBe(outer);
     expect(outer.children).toEqual([pair.id]);
     expect(pair.children).toEqual([x.id, y.id]);
+  });
+
+  it('a row or jack shown from a nested assembly keeps the label that assembly gave it', () => {
+    const { p, osc, env } = voice();
+    const a = makeAssembly(p, [osc], 'a');
+    const b = makeAssembly(p, [env], 'b');
+    promote(a, osc, 'coarse');
+    a.params.find((r) => r.param === 'coarse')!.label = 'hold pitch';
+    findRef(b, 'out', env, 'env')!.label = 'contour';
+    const outer = makeAssembly(p, [], 'pair', [a.id, b.id]);
+    promote(outer, osc, 'coarse', p);
+    expect(outer.params.find((r) => r.param === 'coarse')!.label).toBe('hold pitch');
+    // the envelope's cable to the VCA crosses both frames: the outer jack comes from reconcile
+    expect(findRef(outer, 'out', env, 'env')!.label).toBe('contour');
+    // a row picked straight from a member module still takes the parameter's name
+    const q = voice();
+    const c = makeAssembly(q.p, [q.osc], 'c');
+    promote(c, q.osc, 'coarse', q.p);
+    expect(c.params.find((r) => r.param === 'coarse')!.label).toBe('coarse');
   });
 
   it('the group switch bypasses every member and restores their own switches', () => {

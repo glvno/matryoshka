@@ -1340,7 +1340,7 @@ export class Editor {
       if (open) {
         const on = isPromoted(open, m.id, pd.name);
         row.classList.toggle('shown', on);
-        this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)), { module: m.id, param: pd.name });
+        this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name, this.patch)), { module: m.id, param: pd.name });
         if (this.picking(open)) row.append(this.pickBox(on));
       }
       return row;
@@ -1364,7 +1364,7 @@ export class Editor {
     if (open) {
       const on = isPromoted(open, m.id, pd.name);
       row.classList.toggle('shown', on);
-      this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)), { module: m.id, param: pd.name });
+      this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name, this.patch)), { module: m.id, param: pd.name });
       if (this.picking(open)) row.append(this.pickBox(on));
     }
     if (!isScope) {
@@ -1617,7 +1617,7 @@ export class Editor {
       const a = o.open;
       const on = isPromoted(a, m.id, pd.name);
       row.classList.toggle('shown', on);
-      this.promoteClick(row, a, () => (on ? demote(a, m.id, pd.name) : promote(a, m.id, pd.name)), { module: m.id, param: pd.name });
+      this.promoteClick(row, a, () => (on ? demote(a, m.id, pd.name) : promote(a, m.id, pd.name, this.patch)), { module: m.id, param: pd.name });
       if (this.picking(a)) pickBox = this.pickBox(on);
     }
     if (o.rename) {
@@ -2586,7 +2586,7 @@ export class Editor {
       const on = isExposed(a, dir, m.id, p.name);
       const ref = findRef(a, dir, m.id, p.name);
       row.classList.toggle('shown', on);
-      this.promoteClick(row, a, () => (on ? hidePort(this.patch, a, dir, m.id, p.name) : exposePort(a, dir, m.id, p.name, o.also)));
+      this.promoteClick(row, a, () => (on ? hidePort(this.patch, a, dir, m.id, p.name) : exposePort(a, dir, m.id, p.name, o.also, this.patch)));
       // pick mode: the check box between the label and the jack
       if (this.picking(a)) parts.splice(1, 0, this.pickBox(on));
       if (dir === 'in') parts.push(...this.mergeTools(a, m, p, ref, this.picking(a)));
@@ -3175,7 +3175,7 @@ export class Editor {
     const a = this.pickAsm !== null ? assemblyById(this.patch, this.pickAsm) : undefined;
     const rows = this.selectedRows();
     if (!a || !rows.length) return false;
-    this.change(() => pickRows(a, rows));
+    this.change(() => pickRows(a, rows, this.patch));
     return true;
   }
 
@@ -3194,7 +3194,7 @@ export class Editor {
   private pickBar(a: AssemblyInst): HTMLElement[] {
     const all = this.button('select all', `Select all: every parameter of the members goes on the "${a.label}" card (jacks stay one click each)`, () => {
       const off = this.selRows.filter((r) => !isPromoted(a, r.module, r.param));
-      if (off.length) this.change(() => off.forEach((r) => promote(a, r.module, r.param)));
+      if (off.length) this.change(() => off.forEach((r) => promote(a, r.module, r.param, this.patch)));
     }, 'sm pick-all');
     const none = this.button('select none', `Select none: no parameter on the "${a.label}" card (jacks stay one click each)`, () => {
       if (a.params.length) this.change(() => (a.params = []));
@@ -3222,7 +3222,7 @@ export class Editor {
     box.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.change(() => pickRows(a, rows));
+      this.change(() => pickRows(a, rows, this.patch));
     };
     return box;
   }
