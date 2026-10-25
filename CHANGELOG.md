@@ -1,6 +1,10 @@
 # Changelog
 
 
+## 1.3.1 — 2026-10-24
+
+- **A new link card:** DO YOUR WORST.
+
 ## 1.3.0 — 2026-10-24
 
 ### On the literal physical FM-1 device
