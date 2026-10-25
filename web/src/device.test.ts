@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, transportOf } from './device';
+import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, transportOf } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
@@ -151,5 +151,18 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
     const old = sandboxChip({ hasSandbox: false, midiOut: null });
     expect(old.text).toBe('FM-1 \u00b7 SANDBOX CONTROLLER');
     expect(old.title).toBe(`${SANDBOX_HOVER} Update the FM-1 to 1.3 to mute it and show the page.`);
+  });
+});
+
+describe('syncsWith', () => {
+  const info = (features: number) => ({ version: 1, maxModules: 64, maxCables: 128, flashOk: true, patchLoaded: true, delays: 4, features, midiOut: null });
+  it('holds back firmware older than 1.2 (no presets bit): it refuses patch format 34', () => {
+    expect(syncsWith(info(54))).toBe(false);    // 1.0.0
+    expect(syncsWith(info(118))).toBe(false);   // 1.1.0
+  });
+  it('lets 1.2 and newer sync, and an FM-1 not heard from yet', () => {
+    expect(syncsWith(info(246))).toBe(true);           // 1.2.0
+    expect(syncsWith(info(246 | (7 << 8)))).toBe(true); // 1.3.0
+    expect(syncsWith(null)).toBe(true);
   });
 });
