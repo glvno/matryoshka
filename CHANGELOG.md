@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Arrange mode: the ⠿ grips on headings and page strips drag again; pressing one used to start a selection box.
+
 ## 1.3.4 — 2026-10-25
 
 Web only: the FM-1 firmware is 1.3.3's.

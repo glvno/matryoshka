@@ -750,6 +750,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .internal-cables { overflow: hidden; border-radius: inherit; }
 .module .mbody { position: relative; pointer-events: none; }
 .module .mbody :is(input, select, button, summary, label, .dot:not(.slider-port), .rename, .param > span:not(.slider-jack), output) { pointer-events: auto; }
+/* Arrange mode: a grip and a whole row take the press (the body above lets it through to the card, where it starts a band) */
+.module.arranging .mbody :is(.arr-grip, .arr-item) { pointer-events: auto; }
 /* Only solid controls mask routes. Labels, values and ranges span grid cells;
    keep their backgrounds transparent so they cannot cut gaps in the cables. */
 .module .mbody :is(input:not(.jack-range), select, button, summary) { background-color: var(--panel); }
