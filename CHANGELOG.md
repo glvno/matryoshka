@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- An assembly made of assemblies keeps the names they gave their controls and jacks: promoting a nested
+  "hold pitch" slider onto the outer card shows "hold pitch", not the Macro's "value".
+
 ## 1.3.3 — 2026-10-25
 
 - Syncing with an FM-1 on firmware older than 1.2 now says to update it (with a button to the install panel),
