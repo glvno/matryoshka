@@ -47,6 +47,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 
 #include "libc.c"
 #include "div64.c"           /* 64-bit division in 32-bit steps, ahead of libcompiler-rt.a in the link */
+#define SCR_POOL __attribute__((section(".pool")))   /* screen_text.h: the texts on the screen, as text (#291) */
 #include "lcd.c"
 #include "font5x7.c"
 #include "font_bc.c"
@@ -72,6 +73,10 @@ static void m1_ui_rows(void);                                  /* main.c: a live
 static void m1_transport(int run);                             /* main.c: the editor's TRANSPORT command (PLAY) */
 static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the editor's FOCUS command (a device page) */
 static void m1_live(uint32_t paused);                          /* live.c: the editor's LIVE command (it drives the FM-1; paused: its patch is too big, #200) */
+static int m1_test_key(uint32_t id, int down);                 /* main.c: the device test mode (#291) */
+static int m1_test_turn(uint32_t enc, int32_t clicks);
+static uint32_t m1_test_screen(uint32_t k, uint8_t *out);
+static uint32_t m1_test_peak(void);
 #include "proto.c"
 #include "slotstore.c"
 #include "presetstore.c"

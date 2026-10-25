@@ -49,6 +49,7 @@ static void lcd_line_sending(uint32_t n)
     for (i = 0; i < lcd_line_busy; i++)
         lcd_line_sent[i] = lcd_line[i];
 }
+#include "../src/screen_text.h"           /* the texts on the screen, as text (#291): lcd.c's */
 static void (*lcd_yield)(void);            /* lcd.c's: called before each transfer here (on the device while one runs) */
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
@@ -56,6 +57,8 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
     if (lcd_yield)
         lcd_yield();
     lcd_line_done();
+    if (w && h && x < 240u && y < 240u)
+        scr_erase(x, y, x + w > 240u ? 240u - x : w, y + h > 240u ? 240u - y : h);
     if (w && h && x < 240u && y < 240u) {  /* lcd.c fills lcd_line with whole rows of the colour and sends from it */
         uint32_t ww = x + w > 240u ? 240u - x : w, k = 240u / ww * ww;
         for (i = 0; i < k; i++)
@@ -94,6 +97,7 @@ static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
     uint32_t i;
     for (i = 0; i < w; i++)
         lcd_line[i] = (uint16_t)((lcd_line[i] >> 8) | (lcd_line[i] << 8));
+    scr_line(x, y, w);
     lcd_blit(x, y, w, 1, lcd_line);
 }
 
@@ -200,8 +204,9 @@ static void leds_octave(void) {}
 static void leds_avail(void);
 static void leds_octave(void);
 #endif
-static void update_only(const char *why) { (void)why; }
-static void defaults_now(void) {}
+static int host_updates, host_defaults;    /* UPDATE MODE / FACTORY RESET reached (panel_test.c) */
+static void update_only(const char *why) { (void)why; host_updates++; }
+static void defaults_now(void) { host_defaults++; }
 #include "../src/menu.c"
 /* what seq_ui.c reaches in proto.c and the HAL, for the preview */
 static struct { uint32_t buttons; } fm1_in;

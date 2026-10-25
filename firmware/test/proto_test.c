@@ -129,6 +129,46 @@ static void m1_send(const uint8_t *f, uint32_t n)
     memcpy(replies[nreplies], f, n);
     reply_len[nreplies++] = n;
 }
+/* the device test mode (#291): the last key / turn, a screen of two texts, a peak */
+static int test_key_id = -1, test_key_down, test_turn_enc = -1, test_turn_clicks;
+static int m1_test_key(uint32_t id, int down)
+{
+    if (id >= 41u)
+        return -1;
+    test_key_id = (int)id;
+    test_key_down = down;
+    return 0;
+}
+static int m1_test_turn(uint32_t enc, int32_t clicks)
+{
+    if (enc >= 7u)
+        return -1;
+    test_turn_enc = (int)enc;
+    test_turn_clicks = clicks;
+    return 0;
+}
+static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
+{
+    static const char *const T[2] = {"OCT 0", "BROWSER PLAYS"};
+    uint32_t i;
+    if (k == 0xFFu) {
+        out[0] = 2;
+        out[1] = 0;
+        out[2] = 1;
+        return 3;
+    }
+    if (k >= 2u)
+        return 0;
+    out[0] = (uint8_t)(10u + k);
+    out[1] = (uint8_t)(20u * k);
+    out[2] = 60;
+    out[3] = 11;
+    for (i = 0; T[k][i]; i++)
+        out[5u + i] = (uint8_t)T[k][i];
+    out[4] = (uint8_t)i;
+    return 5u + i;
+}
+static uint32_t m1_test_peak(void) { return 1234u | 1u << 16; }
 #include "../src/proto.c"
 
 static uint8_t *slurp(const char *path, long *n)
@@ -241,6 +281,15 @@ int main(int argc, char **argv)
         nreplies = 0;
         CHECK(m1_handle(q, n) == 1);
         CHECK(live_calls == 2 && live_paused_arg == 1u && nreplies == 0);
+    }
+    /* HELLO: INFO with feature bit 9 (the device test mode, INFO byte 6) */
+    {
+        uint8_t q[4] = {0x7D, 0x4D, 0x31, C_HELLO}, p[16];
+        uint32_t n;
+        nreplies = 0;
+        CHECK(m1_handle(q, sizeof q) == 1 && nreplies == 1 && replies[0][4] == R_INFO);
+        n = m1_unpack7(replies[0] + 5, reply_len[0] - 6u, p, sizeof p);
+        CHECK(n == 7u && p[5] == M1_FEATURES && p[6] == M1_FEATURES2 && (p[6] & 2u));
     }
     if (argc > 9) {                                              /* the preset bank commands */
         long ns2;
@@ -452,6 +501,38 @@ int main(int argc, char **argv)
         m1_preset_stored(0x12345678u, "DUSK");
         CHECK(nreplies == n0 + 1 && replies[n0][4] == R_PRESET_STORED);
         printf("presets ok\n");
+    }
+    {   /* the device test mode (#291): TEST_KEY / TEST_TURN answer ACK, SCREEN a head and one frame per text, PEAK */
+        uint8_t fr[64], pl[4], got[64];
+        uint32_t w, n0;
+        nreplies = 0;
+        fr[0] = 0x7D; fr[1] = 0x4D; fr[2] = 0x31; fr[3] = C_TEST_KEY;
+        pl[0] = 10; pl[1] = 1;
+        w = 4 + m1_pack7(pl, 2, fr + 4);
+        CHECK(m1_handle(fr, w) == 1 && test_key_id == 10 && test_key_down == 1 && nreplies == 1 && replies[0][4] == R_ACK);
+        CHECK(m1_unpack7(replies[0] + 5, reply_len[0] - 6, got, sizeof got) >= 3 && got[0] == C_TEST_KEY && got[1] == 10 && got[2] == S_OK);
+        pl[0] = 41;
+        w = 4 + m1_pack7(pl, 2, fr + 4);
+        CHECK(m1_handle(fr, w) == 1 && m1_unpack7(replies[1] + 5, reply_len[1] - 6, got, sizeof got) >= 3 && got[2] == S_RANGE);
+        fr[3] = C_TEST_TURN;
+        pl[0] = 6; pl[1] = 0xFE;                             /* PRESET, -2 */
+        w = 4 + m1_pack7(pl, 2, fr + 4);
+        CHECK(m1_handle(fr, w) == 1 && test_turn_enc == 6 && test_turn_clicks == -2);
+        CHECK(m1_unpack7(replies[2] + 5, reply_len[2] - 6, got, sizeof got) >= 3 && got[0] == C_TEST_TURN && got[2] == S_OK);
+        fr[3] = C_TEST_SCREEN;
+        n0 = nreplies;
+        CHECK(m1_handle(fr, 4) == 1 && nreplies == n0 + 3 && replies[n0][4] == R_SCREEN && replies[n0 + 2][4] == R_SCREEN);
+        CHECK(m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 4 && got[0] == 0xFF && got[1] == 2 && got[3] == 1);
+        CHECK(m1_unpack7(replies[n0 + 2] + 5, reply_len[n0 + 2] - 6, got, sizeof got) >= 19 && got[0] == 1 && got[1] == 11 && got[2] == 20
+              && got[5] == 13 && !memcmp(got + 6, "BROWSER PLAYS", 13));
+        fr[3] = C_TEST_PEAK;
+        n0 = nreplies;
+        CHECK(m1_handle(fr, 4) == 1 && nreplies == n0 + 1 && replies[n0][4] == R_PEAK);
+        CHECK(m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 3 && got[0] == (1234 & 255) && got[1] == (1234 >> 8) && got[2] == 1);
+        fr[3] = C_HELLO;
+        n0 = nreplies;
+        CHECK(m1_handle(fr, 4) == 1 && m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 7 && (got[6] & 2u));
+        printf("test mode ok\n");
     }
     printf("proto ok: %u acks, %ld patch bytes, render identical\n", acks_ok, np);
     return 0;

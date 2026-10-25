@@ -12,6 +12,8 @@ static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
 static volatile uint8_t eng_run;
 static volatile uint32_t master_q12 = 2048;        /* the MASTER pot, 0..4088 (Q12), square law */
 static volatile int32_t patch_gain = 65536;        /* the mixer page's level of the patch, Q16 (0 = muted; menu.c) */
+static volatile uint8_t tp_on;                     /* the device test mode (#291) asked for the output's level: tp_peak is kept */
+static volatile uint32_t tp_peak;                  /* the loudest output sample since the last TEST_PEAK, 16 bit */
 static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 #if FELUCCA_UAC
@@ -72,6 +74,16 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         } else {
             for (i = 0; i < HALF_WORDS; i++)
                 o[i] = 0;
+        }
+        if (tp_on) {                                    /* (only once a script asked: no cost otherwise) */
+            uint32_t pk = tp_peak;
+            for (i = 0; i < HALF_WORDS; i++) {
+                int32_t v = o[i] >> 8;                  /* 24 bit -> 16 */
+                uint32_t a = (uint32_t)(v < 0 ? -v : v);
+                if (a > pk)
+                    pk = a;
+            }
+            tp_peak = pk;
         }
 #if FELUCCA_UAC
         uac_tap(o, HALF_FRAMES);

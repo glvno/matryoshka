@@ -823,6 +823,8 @@ static void text_onto(uint16_t *row, uint32_t w, const font_t *f, uint32_t r, co
     int32_t k;
     if (r >= f->h)
         return;
+    if (r == 0u)
+        scr_pend(x, text_w(f, s, -1), f->h, s, -1);
     for (k = 0; s[k]; k++) {
         uint32_t c = (uint8_t)s[k], gw, rb, j;
         const fglyph_t *g;

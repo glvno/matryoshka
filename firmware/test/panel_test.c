@@ -102,6 +102,15 @@ static void later(uint32_t ms)
     loop();
 }
 static uint16_t px(uint32_t x, uint32_t y) { return fb[y * 240u + x]; }
+/* the screen as text (screen_text.h, the device test mode's SCREEN, #291) holds a text containing s */
+static int on_screen(const char *s)
+{
+    uint32_t i;
+    for (i = 0; i < SCR_N; i++)
+        if (scr_text[i].w && strstr(scr_text[i].s, s))
+            return 1;
+    return 0;
+}
 /* the pixels that blinked since fb_watch_reset(): changed value twice or more (cleared, then drawn again) */
 static void fb_watch_reset(void) { memset(fb_changes, 0, sizeof fb_changes); }
 static uint32_t fb_blinked(void)
@@ -301,6 +310,13 @@ int main(void)
             ink += px(x, 1) == P_INK;
         check("the LCD: the tab in focus is ivory, K1's bar shows its hue", ink > 10u && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
     }
+    {                                                       /* #291: the screen as text, as SCREEN reports it */
+        uint8_t idx[SCR_N];
+        uint32_t n = scr_list(idx), i, ordered = 1;
+        for (i = 1; i < n; i++)
+            ordered &= scr_text[idx[i - 1]].y <= scr_text[idx[i]].y;
+        check("the screen as text: the device page's octave and K1's row, in reading order", on_screen("OCT ") && n > 4u && ordered);
+    }
 
     {   /* #221: while SELECT / ALGO turn, a card alone (red / blue), the page once they stop; lcd_px: the pixels sent */
         uint32_t page_px, card1_px, card2_px, card3_px, settle_px;
@@ -434,6 +450,24 @@ int main(void)
         for (i = 0; i < 240u * 240u; i++)
             n += fb_changes[i] != 0u;
         check("PANEL idle, the CPU changed: nothing redrawn", n == 0u);
+        menu_tab = MT_SYSTEM;                               /* the device test mode (#291): no FACTORY RESET or UPDATE MODE */
+        menu_sel = MR_DEFAULTS;
+        ui_dirty = 2;
+        loop();
+        check("the screen as text: the menu's rows", on_screen("FACTORY RESET") && on_screen("UPDATE MODE") && !on_screen("OCT "));
+        test_input_ms = fm1_ms ? fm1_ms : 1u;
+        setting_step(MR_DEFAULTS, 1);
+        setting_step(MR_DEFAULTS, 1);
+        setting_step(MR_UPDATE, 1);
+        setting_step(MR_UPDATE, 1);
+        loop();
+        check("test input: FACTORY RESET and UPDATE MODE refused, and said so", host_defaults == 0 && host_updates == 0 && on_screen("TEST INPUT: REFUSED"));
+        fm1_ms += TEST_HOLD_MS;
+        setting_step(MR_DEFAULTS, 1);
+        setting_step(MR_DEFAULTS, 1);
+        check("  10 s after the last test input: FACTORY RESET by hand again", host_defaults == 1);
+        host_defaults = 0;
+        test_input_ms = 0;
         menu_tab = tab;
         menu_sel = row;
         ui_dirty = 2;
