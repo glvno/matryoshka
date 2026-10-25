@@ -17,12 +17,18 @@ ROOT = Path(__file__).resolve().parent.parent
 TTF = ROOT / "web/public/fonts/BarlowCondensed-SemiBold.ttf"
 OUT = ROOT / "firmware/src/font_bc.h"
 ASCII = "".join(chr(c) for c in range(0x20, 0x7F))
-# name, pixels per em, the characters it carries (others draw as nothing)
+CAPS = "".join(chr(c) for c in range(0x20, 0x60))      # space .. _: capitals, digits, signs (a lowercase letter draws as its capital)
+# name, pixels per em, the characters it carries (others draw as nothing). The device page's sizes (FONT_F .. FONT_T) are
+# the owner's mock's (pages_ui.c's look constants check them against the _PX defines written here)
 SIZES = [
-    ("FONT_S", 13, ASCII),     # small captions, the footer, chips
-    ("FONT_M", 17, ASCII),     # names, values, the menu
-    ("FONT_L", 24, ASCII),     # the knob columns' values, the top bar
-    ("FONT_XL", 46, "0123456789.,:+-%/ kHzmsctbpoBPMNOFSTL"),   # the toast's number (and short words: ON OFF)
+    ("FONT_S", 13, ASCII),     # small captions, the menu's lines, the lists' notes
+    ("FONT_M", 17, ASCII),     # the lists' names, the menu
+    ("FONT_L", 24, ASCII),     # the menu's title, the sandbox card
+    ("FONT_F", 14, CAPS + "bcdkmopstz"),   # the device page's footer (its height - 1) and the bars' units (kHz ms dB bpm ct st oct)
+    ("FONT_H", 16, CAPS),      # the header's device and page names
+    ("FONT_N", 20, CAPS),      # a bar's name
+    ("FONT_V", 26, CAPS),      # a bar's value
+    ("FONT_T", 32, CAPS),      # PRESET's toast: the slot and the patch's name
 ]
 SS = 4
 
@@ -279,8 +285,12 @@ def main():
                     hi = cov[r * w + 2 * k] if 2 * k < w else 0
                     lo = cov[r * w + 2 * k + 1] if 2 * k + 1 < w else 0
                     bits.append(hi << 4 | lo)
+        for c in range(ord("a"), ord("z") + 1):     # a font of capitals: a lowercase letter it lacks draws as its capital
+            if cmap[c - 0x20] == 255 and chr(c).upper() in chars:
+                cmap[c - 0x20] = cmap[ord(chr(c).upper()) - 0x20]
         lname = name.lower()
         lines.append(f"/* {name}: {px} px per em, line box {h} px, baseline at {base} */")
+        lines.append(f"#define {name}_PX {px}")
         lines.append(f"static const uint8_t {lname}_map[95] = {{{', '.join(str(v) for v in cmap)}}};")
         lines.append(f"static const fglyph_t {lname}_g[{len(glyphs)}] = {{")
         for i in range(0, len(glyphs), 8):
@@ -292,7 +302,9 @@ def main():
         lines.append("};")
         lines.append(f"static const font_t {name} = {{{h}, {base}, {lname}_map, {lname}_g, {lname}_bits}};")
         lines.append("")
-        total += len(bits) + 95 + 5 * len(glyphs)
+        size = len(bits) + 95 + 5 * len(glyphs)
+        print(f"  {name}: {px} px, {len(glyphs)} glyphs, {size} bytes")
+        total += size
     OUT.write_text("\n".join(lines))
     print(f"wrote {OUT.relative_to(ROOT)}: {total} bytes")
 

@@ -4,11 +4,11 @@
  * and the FM-1 is its controller. While the editor's LIVE says paused (live.c) the FM-1's own sound is muted (audio.c
  * snd_muted: its patch runs on, unheard), its controls go out over MIDI as always (MENU > MIDI OUT, panel.c), and the
  * device page shows the editor's page (SANDBOX, proto.c, sandbox_msg.h) in the device page's look:
- *   y   0  SANDBOX and the editor's patch, on gold
- *   y  20  the device's name, the page's title and "3/7" of its pages
- *   y  41  K1..K4: the page's four rows, as the device page's bars
- *   y 206  the page rail, the page in gold
- *   y 214  BROWSER PLAYS . FM-1 MUTED (or how to turn MIDI OUT on)
+ *   y   0  the header: SANDBOX and the editor's patch, on gold
+ *   y  39  the device's name, the page's title and "3/7" of its pages
+ *   y  58  K1..K4: the page's four rows, as the device page's bars
+ *   y 218  the page rail, the page in gold
+ *   y 225  the footer: BROWSER PLAYS . FM-1 MUTED (or how to turn MIDI OUT on), the battery
  * Before the editor's first page, a card says what is going on. K1..K4 turn the editor's rows from the positions it sent
  * (panel.c: CC 16..19, which the editor takes as positions), and the bars follow at once; the editor's page then brings
  * the values. Only the FM-1's own controls act here (OCT, HOME, PLAY, GLO, the menu); the other buttons go to the editor.
@@ -124,23 +124,25 @@ static int32_t sandbox_knob(uint32_t k, int32_t c, int fast)
     return v;
 }
 
-/* the top bar: SANDBOX and the editor's patch, on gold */
+/* the editor's patch's name, for the header (pages_ui.c head_layout) */
+static const char *sb_patch_name(void) { return sb_have ? sb.patch : ""; }
+
+/* the header: SANDBOX and the editor's patch, on gold (pages_ui.c head_row, HM_SANDBOX) */
 static void sandbox_bar(void)
 {
-    char nm[SB_PATCH + 1u];
-    bar_fill(P_GOLD);                                   /* (x BATT_X on: the battery's cell, ui.c) */
-    text_bc(&FONT_S, 8, 3, "SANDBOX", P_NIGHT, P_GOLD, 72, TA_LEFT);
-    caps(nm, sb.patch, sb_have ? str_len(sb.patch) : 0u, SB_PATCH);
-    fit(nm, &FONT_S, BATT_X - 92u);
-    text_bc(&FONT_S, 80, 3, nm, P_NIGHT, P_GOLD, BATT_X - 88u, TA_RIGHT);
+    head_draw(1);
 }
 
-/* the header under it: the device, the page's title in a chip, "3/7" of the device's pages */
+#define SB_HEAD_Y (LK_HH + 3u)                          /* the line under the header */
+#define SB_RAIL_Y (FOOT_Y - 7u)                         /* the page rail, 3 px, 4 above the footer */
+static void sandbox_geo(void) { geo_set(LK_HH + 22u, SB_RAIL_Y - 4u); }
+
+/* the line under it: the device, the page's title in a chip, "3/7" of the device's pages */
 static void sandbox_head(void)
 {
     char dev[SB_DEV + 1u], pg[SB_PAGE + 1u], kn[12], num[8], *q;
     uint32_t wk, wp, xp;
-    lcd_fill(0, 20, 240, 18, P_NIGHT);
+    lcd_fill(0, SB_HEAD_Y - 1u, 240, 16, P_NIGHT);
     q = put(kn, "");
     if (sb.count) {
         fmt_int(num, (int32_t)sb.index + 1);
@@ -157,40 +159,23 @@ static void sandbox_head(void)
     xp = 234u - wk - (wk ? 6u : 0u) - wp;
     caps(dev, sb.dev, str_len(sb.dev), SB_DEV);
     fit(dev, &FONT_S, xp > 16u ? xp - 12u : 0u);
-    text_bc(&FONT_S, 6, 22, dev, P_INK, P_NIGHT, 0, TA_LEFT);
+    text_bc(&FONT_S, 6, SB_HEAD_Y, dev, P_INK, P_NIGHT, 0, TA_LEFT);
     if (wp)
-        text_bc(&FONT_S, xp, 22, pg, P_NIGHT, P_SEA, wp, TA_CENTER);
+        text_bc(&FONT_S, xp, SB_HEAD_Y, pg, P_NIGHT, P_SEA, wp, TA_CENTER);
     if (wk)
-        text_bc(&FONT_S, 234u - wk, 22, kn, P_DIM, P_NIGHT, wk, TA_LEFT);
+        text_bc(&FONT_S, 234u - wk, SB_HEAD_Y, kn, P_DIM, P_NIGHT, wk, TA_LEFT);
 }
 
 /* the page rail: a segment per page of the device, the one shown in gold */
 static void sandbox_rail(void)
 {
     uint32_t i, n = sb.count;
-    lcd_fill(0, RAIL_Y - 2u, 240, 7, P_NIGHT);
+    lcd_fill(0, SB_RAIL_Y, 240, 3, P_NIGHT);
     if (n > BAR_W / 3u)
         n = BAR_W / 3u;
     for (i = 0; i < n; i++) {
         uint32_t a = BAR_X + i * BAR_W / n, b = BAR_X + (i + 1u) * BAR_W / n;
-        lcd_fill(a, RAIL_Y, b - a > 2u ? b - a - 2u : 1u, 3, i == sb.index ? P_GOLD : P_TRACK);
-    }
-}
-
-/* the foot line: who plays (or how to turn MIDI OUT on: without it the keys and knobs reach nothing) */
-static void sandbox_foot(void)
-{
-    static const char *const A = "BROWSER PLAYS", *const B = "FM-1 MUTED";
-    lcd_fill(0, FOOT_Y - 2u, 240, 240u - (FOOT_Y - 2u), P_NIGHT);
-    if (!cfg.midi_out) {
-        text_bc(&FONT_S, 0, FOOT_Y, "TURN ON MIDI OUT: GLO, K3", P_REDC, P_NIGHT, 240, TA_CENTER);
-        return;
-    }
-    {
-        uint32_t wa = text_w(&FONT_S, A, -1), wb = text_w(&FONT_S, B, -1), x = (240u - (wa + 14u + wb)) / 2u;
-        text_bc(&FONT_S, x, FOOT_Y, A, P_GOLD, P_NIGHT, 0, TA_LEFT);
-        lcd_fill(x + wa + 6u, FOOT_Y + 6u, 3, 3, P_GOLD);   /* (the font has no middle dot) */
-        text_bc(&FONT_S, x + wa + 14u, FOOT_Y, B, P_GOLD, P_NIGHT, 0, TA_LEFT);
+        lcd_fill(a, SB_RAIL_Y, b - a > 2u ? b - a - 2u : 1u, 3, i == sb.index ? P_GOLD : P_TRACK);
     }
 }
 
@@ -207,17 +192,20 @@ static void sandbox_card(void)
     text_bc(&FONT_S, 0, 132, t, P_DIM, P_NIGHT, 240, TA_CENTER);
 }
 
-/* the sandbox page (page 0 in sandbox mode): full, or what changed */
+/* the sandbox page (page 0 in sandbox mode): full, or what changed. Its footer (pages_ui.c foot_draw): who plays, or how
+ * to turn MIDI OUT on (without it the keys and knobs reach nothing), and the battery */
 static void sandbox_draw(int full)
 {
     uint32_t k;
+    sandbox_geo();
     if (full) {
-        lcd_fill(0, BAR_H, 240, 240u - BAR_H, P_NIGHT);
         if (!msg_until)
             sandbox_bar();
-        sandbox_foot();
+        lcd_fill(0, LK_HH, 240, FOOT_Y - LK_HH, P_NIGHT);
+        foot_draw(1);
         sb_dirty = 0xFFu;
-    }
+    } else
+        foot_draw(0);                                   /* (MIDI OUT turned on or off) */
     if (!sb_have) {
         if (full)
             sandbox_card();
@@ -226,18 +214,20 @@ static void sandbox_draw(int full)
     }
     if (sb_dirty & SB_DIRTY_HEAD) {
         if (!full && !msg_until)
-            sandbox_bar();                              /* (another patch name) */
+            head_draw(0);                               /* (another patch name) */
         sandbox_head();
         sandbox_rail();
     }
     for (k = 0; k < SB_ROWS; k++)
         if (sb_dirty >> k & 1u) {
-            char name[SB_LABEL + 1u], num[SB_VALUE + 1u];
-            uint32_t at = (uint32_t)sb.pos[k] * BAR_W / 255u;
-            int used = sb.rows >> k & 1u;
-            caps(name, sb.label[k], used ? str_len(sb.label[k]) : 0u, SB_LABEL);
-            put(num, used ? sb.value[k] : "")[0] = 0;
-            row_bar(k, used, name, num, used ? sb.unit[k] : "", at, at);
+            bar_t b;
+            b.used = (uint8_t)(sb.rows >> k & 1u);
+            caps(b.name, sb.label[k], b.used ? str_len(sb.label[k]) : 0u, SB_LABEL);
+            put(b.num, b.used ? sb.value[k] : "")[0] = 0;
+            put(b.unit, b.used ? sb.unit[k] : "")[0] = 0;
+            b.base = b.live = (uint32_t)sb.pos[k] * BAR_W / 255u;
+            bar_layout(&b);
+            row_bar(k, &b);
         }
     sb_dirty = 0;
 }

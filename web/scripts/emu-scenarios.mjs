@@ -388,7 +388,7 @@ async function main() {
       await check('connect: the editor finds the emulated FM-1', s.connected, s.status ?? '');
       await check('connect: Sync turns Live on', s.live && s.chip === 'synced', `chip ${s.chip}`);
       await until(async () => !/sending/i.test((await T()).status ?? ''), 8000);
-      await check('connect: the FM-1 shows its device page', await emu.waitText('OCT ', 6000));
+      await check('connect: the FM-1 shows its device page', await emu.waitText('= OCT =', 6000));
       const p = await emu.notePeak();
       await loudCheck('connect: the FM-1 plays Init from a key', p, p > LOUD, `peak ${p}`);
       await emu.snap('connect');
@@ -448,7 +448,7 @@ async function main() {
       await open('Init');
       const s = await until(async () => { const x = await T(); return !x.sandbox && x.live ? x : null; });
       await check('leave: under budget again, synced', !!s, `chip ${(await T()).chip}`);
-      await check('leave: the FM-1 shows its device page', await emu.waitText('OCT '));
+      await check('leave: the FM-1 shows its device page', await emu.waitText('= OCT ='));
       await sleep(500);
       const p = await emu.notePeak();
       await loudCheck('leave: the FM-1 sounds again', p, p > LOUD, `peak ${p}`);
@@ -458,7 +458,7 @@ async function main() {
       await until(async () => (await T()).sandbox);
       await sleep(1500);   // (the open patch is saved for the next visit)
       await page.close();   // the tab goes: the FM-1 plays its own patch again after about 5 s
-      const own = await emu.waitText('OCT ', 9000);
+      const own = await emu.waitText('= OCT =', 9000);
       await check('reconnect: the tab closed, the FM-1 leaves sandbox mode', own);
       page = await context.newPage();
       page.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
@@ -476,7 +476,7 @@ async function main() {
       await open('Elvira 2');
       await until(async () => { const x = await T(); return !x.sandbox && x.live; });
       await until(async () => !/sending/i.test((await T()).status ?? ''), 8000);
-      await emu.waitText('OCT ', 6000);
+      await emu.waitText('= OCT =', 6000);
       await emu.tap(B.play);
       // its PATTERN is empty: a held key sounds while the transport runs (the first of these keys that does, and stays held)
       let held = -1, p = 0;

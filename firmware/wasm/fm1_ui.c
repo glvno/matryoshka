@@ -187,7 +187,7 @@ WASM_EXPORT("fm1w_load") int32_t fm1w_load(uint32_t len, uint32_t slot, uint32_t
     pages_ensure();
     if (!fresh)
         (void)pages_focus(dev, pg);
-    ttl_end();
+    toast_end();
     play_was = eng_transport_running();         /* (a load is no PLAY: the page sets the transport with fm1w_transport) */
     leds_play();
     leds_avail();

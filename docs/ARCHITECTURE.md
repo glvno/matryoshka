@@ -567,9 +567,10 @@ Rows: [D-467](ledger/link-and-midi.md#D-467) (the mode), [D-468](ledger/link-and
 - **Firmware** (`sandbox_ui.c`, live.c, panel.c, audio.c). `m1_live(1)` turns sandbox mode on (`sb_on`); audio.c's
   `snd_muted` zeroes the output (the FM-1's own patch keeps running, unheard). Entering it brings page 0 up
   (`sb_home_due`, panel.c `panel_status`) from any screen but the menu and GLO, so the SEQ page does not stay up. Page 0 draws `sandbox_draw` instead of the
-  device page (ui.c `view_draw`, `header_draw`): the gold bar with SANDBOX and the patch, the device and page header, the
-  rows through pages_ui.c's `row_bar` (the device page's bar, now shared), the rail, `BROWSER PLAYS · FM-1 MUTED` (or
-  `TURN ON MIDI OUT: GLO, K3`); before the first page a card. A page redraws only the rows and header that changed. K1..K4
+  device page (ui.c `view_draw`, `header_draw`): the gold band with SANDBOX and the patch as its header (pages_ui.c
+  `head_row`, 36 px), a line with the device and the page, the rows through pages_ui.c's `row_bar` (the device page's
+  bar, now shared), the rail, and the device page's sand footer saying `BROWSER PLAYS · FM-1 MUTED` (or
+  `TURN ON MIDI OUT: GLO, K3`) with the battery; before the first page a card. A page redraws only the rows and header that changed. K1..K4
   (`sandbox_knob`): from the position the editor sent, a choice a click (steps > 1) or 1/127 (5/127 fast), sent as CC
   16..19, the bar moving at once; the editor's next page does not take a turned knob's position back for 400 ms
   (`SB_ECHO_MS`). Only OCT, HOME, PLAY, GLO and the menu act on the FM-1 (`SB_OWN_BTNS`); every control still goes out as
@@ -656,35 +657,68 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
 - Protocol: FOCUS 0x29 (host → device: show a page), PARAM_NOW 0x47 (a row turned on the FM-1: module, parameter, Q16)
   and FOCUS_NOW 0x48 (the page the FM-1 shows) from the device; INFO feature bit 4. With Live on the editor follows the
   FM-1's page and turns, and sends its own focus; an upload is followed by the focus.
-- Firmware (`firmware/src/pages_ui.c`): the device page is page 0. Layout "A+" (#107, board OptionA of the design canvas
-  with a slimmer header): strip of device tabs (y 0), the page chips by heading (y 22, the current one in seafoam), four
-  full-width knob bars (y 41, 36 px each, 4 px apart: the K-number square and the fill in the knob's hue, name left, value
-  and unit right, ivory tick = live; an empty slot where the page has fewer rows; `pages_bar` composes each bar a scanline
-  at a time and blends the type onto it, `text_onto`; ten times a second a bar whose fill or live tick moved is updated in
-  place, `pages_ticks`), the page rail
-  (y 206: a segment per page, the focus coral, its heading's others dim) and the patch / transport line (y 214). A turned
-  knob moves its own bar in place (#298, `pages_row_update`): only the columns its fill's end and live tick crossed, and
-  its value and unit when they changed, are redrawn (about 700 px a click), from what the bar showed (`pg_drawn`), with
-  the same values the bar is then noted with; there is no knob toast. The live tick comes from the engine's effective
-  value (`eng_get_eff`), which lags a turn until the next audio block: `eff_now` moves it by the turn meanwhile
-  (`lag_note`), so a bar drawn whole and one moved in place agree pixel for pixel (`tools/panel_test.sh` turns every
-  knob of every factory page and compares; before this, a bar redrawn in that gap left thin ivory ticks behind).
-  SELECT, ALGO and PRESET (#298) name what they
-  reached in a title toast (`pages_title`), always in the same rectangle whatever the page has there (`TTL_X`, `TTL_Y`,
-  `TTL_W` x `TTL_H` = 20, 108, 200 x 22 px: centred in the bars' area, below the type of K2's bar and above K3's, so on
-  the factory pages it covers only the bars' fill); SELECT's on red (`P_CARD_DEV`, the device's name and "n/m" of the devices), ALGO's on blue
-  (`P_CARD_PAGE`, the page as its chip names it and "n/m" of its pages), PRESET's on ivory (the patch's name and its slot
-  of the bank's, #170); 600 ms after the last click (PRESET's: a second). The page they reached is drawn at once under it
-  (`pages_staged`, over the page that was there: `pg_plain`): the toast first (`ttl_first`: its rectangle, 4,400 px to
-  the LCD, with the page's pixels at its rounded corners), then the strip for another device or patch, the chips and the
-  band of each bar that holds its type (about 26,000 px in all: the rows readable), then the rest of the bars, the rail
-  and the foot line (about 44,000 px for ALGO, against 108,000 for a whole page drawn over a cleared screen); nothing is
-  cleared first, and while the toast is up every scanline of the page leaves its columns alone (`line_out`). Between
-  bands it gives way when an encoder has a step waiting (`pages_waiting`, main.c `encs_waiting`): turning fast redraws
-  only the toast. When the toast's time is up only its rectangle is redrawn from the page (`ttl_restore`, 4,400 px).
-  The panel test checks the rectangle on every page of every factory patch, and that the screen after it is the page
-  drawn whole. Preview: `TITLE=1` /
-  `TITLE=2` / `PATCHTOAST=1 tools/ui_preview.sh`. There is
+- Firmware (`firmware/src/pages_ui.c`): the device page is page 0. The layout is michael glaviano's design of 2026-10-24
+  ([D-234](ledger/device-ui.md#D-234)); every number of it is one of the `LK_*` constants at the top of the drawing code
+  (point depth 18, header 36, footer 15, tab at 2, header strength 15 %, edge 2, stack gap and inset 3, value 26 px,
+  the toast 60 / 6 / 32 / -5 / 6 / 1 / 5), and the type sizes are fonts of their own (`tools/gen_font.py`: `FONT_F` 14,
+  `FONT_H` 16, `FONT_N` 20, `FONT_V` 26, `FONT_T` 32, capitals, digits and signs; a check in pages_ui.c fails the build
+  when a constant and its font disagree). Text sits as the mock's canvas puts it: a text's middle at the mock's y, its
+  baseline a third of its size below (`BASE6`).
+  - The header (y 0..35, `head_row`, a scanline at a time): three sections, the device | its page group | the group's
+    pages, widths 2 : 3 : 1 of the screen. A section whose name needs more (its width + 14, + the point for the second;
+    the third 12 + the point) grows and the others give the rest up evenly, never below their own need; two names too
+    long for the screen together are cut, the longer first (`head_layout`). The first two sections end in a point 18 px
+    deep at mid-height, the next one notched to match, a 2.5 px band of the strip colour between (the edges blended over
+    the pixel they cross). Fills: lilac over night at 26 / 17 / 10 % times the header strength / 45 %. The names in
+    ivory; under them a dash per device (the current gold) and per page group (the current sky), the others the
+    section's lilac at 14 % more. The third section stacks one bar per page of the group, its left end along the notch,
+    the current mist, the others dark; a group of one page is one mist bar. A page before its device's first heading is
+    in the group PAGE. The header redraws only the sections that changed since it was drawn (`head_draw`, `hd_drawn`):
+    the stack for another page of the group (about 1,400 px), the second section for another group, all of it (8,640 px)
+    when a boundary moves or for another device. GLO's header is a coral band (GLOBAL and the patch), the sandbox page's a
+    gold one, a Page button's list a seafoam one, their text centred in it; a message (`bar_text`) covers the whole band.
+  - The bars (y 40..220, `bar_row`): four equal bars 4 px apart in the area between the header and the footer (4 px from
+    each; GLO's ends above its button list, the sandbox page's above its rail: `geo_set`). A bar: the panel colour, the
+    fill to the value in the knob's hue mixed 40 % with it, its last 2 px in the hue, an ivory tick where modulation has
+    the parameter (rows 4..h-4); an accent tab in the hue, 4 px wide, 45 % of the bar high, 2 px from its left; the name
+    10 px after it, the value right, 6 px from the bar's end, its unit after it in mist (`FONT_F`). A row the page lacks
+    is a bar of the strip colour with a faint "-". Ten times a second a bar whose fill or live tick moved is updated in
+    place (`pages_ticks`).
+  - The footer (y 225..239, sand, `foot_row`): the patch's name (ARM / REC and the track's name while one is armed, red
+    for REC; " *" when edited), the tempo with a quarter note (a bitmap: the mock's oval head and stem; "MIDI" on MIDI
+    clock), the octave (= OCT =, OCT +, OCT ++, - OCT, -- OCT, centred in a slot as wide as its widest state, `FOOT_OCT_W`
+    40 px, so the tempo stays put) and the battery, spread margin to margin (6 px). It is
+    drawn whole (3,600 px) when its text changes (`foot_draw`, a hash of what it shows). The transport and the part count
+    are not shown.
+  - Everything goes through one scanline composer per region (`page_row`, `bar_row`, `head_row`, `foot_row`,
+    `toast_row`) into lcd.c's `lcd_line` and out through `line_out`, so a part drawn alone is the same pixels as the page
+    drawn whole. A whole page (`pages_draw(1)`) is every row of the screen once, nothing cleared first: 57,600 px.
+  - A turned knob moves its own bar in place (#298, `pages_row_update`): only the columns its fill's end and live tick
+    crossed (the whole height), and its value and unit when they changed (their band), are redrawn (about 1,200 px a
+    click), from what the bar showed (`pg_drawn`), with the same values the bar is then noted with. The live tick comes
+    from the engine's effective value (`eng_get_eff`), which lags a turn until the next audio block: `eff_now` moves it
+    by the turn meanwhile (`lag_note`), so a bar drawn whole and one moved in place agree pixel for pixel.
+  - SELECT and ALGO show no toast: the header shows where they went. The page they reached is drawn at once
+    (`pages_staged`, over the page that was there: `pg_plain`): the header's sections that changed, the band of each
+    bar that holds its type (the rows readable), then the rest of the bars; nothing is cleared first. Between bands it
+    gives way when an encoder has a step waiting (`pages_waiting`, main.c `encs_waiting`): turning fast redraws only the
+    header.
+  - PRESET (and a program change, #170) grows the footer into a toast for 1 s (`toast_row`, `toast_first`): 60 px of
+    sand, the slot's number ("07.") at the left margin and the patch's name at the right one in 32 px type (26 px when
+    the two do not fit together, so a name stays whole), and along its bottom a dash per filled slot of the bank (the
+    current one night, the others night at 22 % over sand), whole pixels, all as wide, the row centred. Above 32 filled
+    slots the dashes take two balanced rows 2 px apart and the toast is 4 px taller. The toast is drawn first (14,400 px),
+    then the page around it (`line_out` leaves the toast's rows alone while it stays); a waiting click stops after the
+    toast. When its time is up only its band is drawn again from the page (`toast_restore`, 14,400 px); a knob turned or
+    SELECT / ALGO meanwhile ends it.
+  - `tools/panel_test.sh` turns every knob of every factory page (both ways, slow and fast, with and without audio blocks
+    between the clicks), reaches every page of every factory patch with SELECT and ALGO (some draws stopped by a waiting
+    click) and every patch with PRESET, lets each toast end, and checks that the screen is then the screen drawn whole,
+    pixel for pixel. Host pixel counts (main before the redesign → after; ms at 750 px/ms, the SPI's 12 MHz): one ALGO
+    click on the 808 Kit 44,392 → 39,744 (59 → 53 ms; over every factory page 41,661 on average, at most 44,100); one
+    SELECT 51,976 → 46,944; one K1 click 684 → 1,218 (0.9 → 1.6 ms; the bars are taller); one PRESET 52,210 → 46,992;
+    the toast's end 4,400 → 14,400 (it is a band now); a whole page 107,810 → 57,600 (144 → 77 ms). Preview:
+    `PATCHTOAST=1 [BANK=n SLOT=s] tools/ui_preview.sh`, `BATT=0..4`. There is
   no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
   HOME goes back along the trail (below; on the device pages with nothing to go back to it does nothing; the legend is
   gone); MIDI CC 16..19 set the rows (absolute). A poly row writes the
@@ -715,13 +749,11 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
     thresholds 531 / 561 / 591 (taken from Felucca's `ui_draw.c batt_level`; not yet confirmed on our device), 3 counts of
     hysteresis on the way up. USB configured by a host and not suspended (`usb.config && !usb.suspended`) shows a bolt
     instead: no pin tells a charger apart (Felucca's note), so a plain USB charger shows the battery. State only: the
-    loop's drawing (`panel_draw` -> `batt_draw`, menu.c) blits the 20 x 20 cell at the bar's right end (`BATT_X` 220;
-    no bar, card or message paints it) only when the shown level or the bar's ground changes, says LOW BATTERY once
-    when the level falls to 0 (again only after a bar or USB came back), and redraws the BATTERY row's value on an idle
-    SYSTEM tab. The cell takes the ground of the bar beside it: every bar fills through `bar_fill` (ui.c), which records
-    its colour. On the device strip (and night) the cell keeps its own colours (a red outline when empty, one bar coral,
-    a seafoam bolt); on any other bar it is drawn in one ink that reads there: night on a light bar (sandbox and preset
-    gold, GLO coral, ENV lilac, a list's sea, a message's ivory or red), ivory on a dark bar. Host builds
+    loop's drawing (`panel_draw` -> `batt_draw`, menu.c) draws the battery at the right end of the device page's footer
+    (GLO's and the sandbox page's too: `foot_batt_sync`, pages_ui.c; 11 x 6 and a 2 px nub, night on sand, 0..3 bars,
+    a bolt on USB power, the outline red when empty) only when the shown level changes, says LOW BATTERY once when the
+    level falls to 0 (again only after a bar or USB came back), and redraws the BATTERY row's value on an idle SYSTEM
+    tab. The other pages (menu, SEQ, ENV, a preset list) show no battery ([D-229](ledger/device-ui.md#D-229)). Host builds
     (host_ui.h `BATT_START` 900: the preview, the tests, EMU) start full; fm1-emu's ch 3 reads 640.
 - **Button kinds (#116, designs E / F):** each patch button has one kind per patch (`web/src/buttons.ts`): Nothing
   (unassigned, no role), Gate (on while held or switched; patch its jack) or Toggle (`bypass` in the model: bypasses a
