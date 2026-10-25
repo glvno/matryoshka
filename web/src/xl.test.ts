@@ -37,7 +37,7 @@ describe('XLs', () => {
     expect(x.patch.name).toBe('Init XL');
     expect(x.patch.modules.some((m) => m.type === 'delay')).toBe(true);
     expect(x.budget.fits).toBe(false); // a sandbox patch: allowed
-    expect(x.budget.over.map((i) => i.label)).toContain('Delay over 1000 ms: browser only');
+    expect(x.budget.over.map((i) => i.label)).toContain('Delay over 700 ms: browser only');
     expect(() => buildXls([{ ...initXl, base: 'No Such Patch' }], FM1_PRESETS)).toThrow(/no FM-1 factory patch/);
     expect(() => buildXls([initXl, initXl], FM1_PRESETS)).toThrow(/two XLs/);
     // an XL that fits the FM-1 is allowed too

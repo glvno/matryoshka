@@ -26405,7 +26405,7 @@
    "cv": 681
   },
   "delay": {
-   "run": 7327,
+   "run": 7323,
    "cv": 672,
    "dims": [
     {
@@ -26420,10 +26420,10 @@
     }
    ],
    "grid": [
-    7327,
-    9263,
-    10531,
-    12467
+    7323,
+    9259,
+    10532,
+    12468
    ]
   },
   "reverb": {
@@ -28371,11 +28371,11 @@
   },
   {
    "name": "8 Lire",
-   "cycles": 330479
+   "cycles": 330480
   },
   {
    "name": "Elvira 2",
-   "cycles": 311121
+   "cycles": 311117
   },
   {
    "name": "Scrounge",
@@ -28387,7 +28387,7 @@
   },
   {
    "name": "Perun 4",
-   "cycles": 367831
+   "cycles": 367827
   },
   {
    "name": "808 Kit",
@@ -28403,15 +28403,15 @@
   },
   {
    "name": "Acid, 4 parts",
-   "cycles": 385264
+   "cycles": 385260
   },
   {
    "name": "Acid, morph",
-   "cycles": 109019
+   "cycles": 109015
   },
   {
    "name": "assembly 8 Lire",
-   "cycles": 311621
+   "cycles": 311622
   },
   {
    "name": "assembly adsr operator",
@@ -28479,11 +28479,11 @@
   },
   {
    "name": "assembly echo",
-   "cycles": 134984
+   "cycles": 134980
   },
   {
    "name": "assembly Elvira 2",
-   "cycles": 290923
+   "cycles": 290919
   },
   {
    "name": "assembly Expander S",
@@ -28559,7 +28559,7 @@
   },
   {
    "name": "assembly Perun 4",
-   "cycles": 348389
+   "cycles": 348385
   },
   {
    "name": "assembly pluck",
@@ -28643,7 +28643,7 @@
   },
   {
    "name": "assembly time smear",
-   "cycles": 51123
+   "cycles": 51119
   },
   {
    "name": "assembly tom",

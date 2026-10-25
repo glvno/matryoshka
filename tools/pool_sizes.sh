@@ -31,7 +31,7 @@ for line in open(sys.argv[1]):
         low.append((int(m.group(2)), m.group(1)))
 for n, name in sorted(items, reverse=True)[:14]:
     print(f"{n:8d}  {name}")
-total = 434176                       # firmware/app.ld POOL
+total = 417792                       # firmware/app.ld POOL
 print(f"pool {pool} B of {total} ({total - pool} B free)")
 print(f".lowram {sum(n for n, _ in low)} B: " + ", ".join(f"{name} {n}" for n, name in low))
 PY

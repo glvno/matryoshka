@@ -386,19 +386,19 @@ export const DELAY_DIVS: { name: string; num: number; den: number }[] = [
 /** the clock input is the Main module's clock: 24 pulses per quarter note */
 export const DELAY_CLK_PPQN = 24;
 
-/** the delay's time knob, ms: as long as the FM-1's line (DELAY_LEN, 44178 samples at DEVICE_SR; ping-pong halves it).
+/** the delay's time knob, ms: as long as the FM-1's line (DELAY_LEN, 30944 samples at DEVICE_SR; ping-pong halves it).
  * 520 ms until #273 gave the FM-1's line the RAM it had left unused */
 export const DELAY_TIME_MIN = 1;
-export const DELAY_TIME_MAX = 1000;
+export const DELAY_TIME_MAX = 700;
 /** synced, the time knob's note lengths stay spread over DELAY_TIME_MIN..DELAY_SYNC_TOP ms (the FM-1's range before #273), so a
  * stored synced delay keeps its note length; a time past it picks the longest (export-defs: defs.h DELAY_SYNC_TOP) */
 export const DELAY_SYNC_TOP = 520;
 /** the browser's delay reaches further (a browser-only ability: a patch past DELAY_TIME_MAX is over the FM-1 budget); its
  * line holds this much */
 export const DELAY_TIME_BROWSER = 1600;
-/** the FM-1's delay line, samples at DEVICE_SR (engine.c DELAY_LEN): 1 s and 60 samples */
-const DELAY_LEN = 44178;
-/** the browser's line: DELAY_TIME_BROWSER and a little (as the FM-1's line is 1000 ms and a little) */
+/** the FM-1's delay line, samples at DEVICE_SR (engine.c DELAY_LEN): 700 ms and 61 samples (even: ping-pong halves it) */
+const DELAY_LEN = 30944;
+/** the browser's line: DELAY_TIME_BROWSER and a little (as the FM-1's line is 700 ms and a little) */
 const DELAY_LEN_BROWSER = Math.ceil((DELAY_TIME_BROWSER / 1000) * DEVICE_SR) + 60;
 
 /** which note length the time knob selects when the delay is synced: its range split into DELAY_DIVS.length steps */
@@ -1144,7 +1144,7 @@ interface DelayState {
  * clock; 120 bpm until 24 pulses have come in). The tempo is the time of the last 24 pulses, smoothed. Ping-pong splits the
  * one buffer in two halves (A, B): the input enters A, A's echo goes to B, B's back to A, so the echoes alternate out
  * (left) and r (right), each with feedback `fb`; the dry/wet `mix` applies to both. Each half is at most half the buffer, so
- * the delay time is limited to about 500 ms then (800 ms past the FM-1's range). Without ping-pong r is the same as out.
+ * the delay time is limited to about 350 ms then (800 ms past the FM-1's range). Without ping-pong r is the same as out.
  * The browser's `time` reaches DELAY_TIME_BROWSER (1.6 s), the FM-1's DELAY_TIME_MAX: within that the browser plays as the
  * FM-1 (its line's length bounds a synced note length too); past it the patch is browser only (patchbin.ts browserOnly).
  */

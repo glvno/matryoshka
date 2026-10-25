@@ -16,7 +16,7 @@
 //!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank); OCT- +
 //!    OCT+ held at power-on and MENU > UPDATE MODE = update mode (no engine)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
-//! 10. the Delay's longest time (#273): its echo 1 s after the note, ping-pong half of it on the left and 1 s on the right
+//! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
 //! 11. hardware the emulator does not model: any register besides P33 fails the test
 //!
 //! Snapshots of every step go to OUT (PNG); a WAV of the first run too.
@@ -363,10 +363,10 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
 }
 
 /// The Delay at its longest time (#273, web/scripts/emu-patches.ts): a short burst on a note, all wet (ping-pong with feedback 0.5). The
-/// echo comes 1 s after the note (the FM-1's 44178-sample line); with ping-pong the left one after half the line, the right
+/// echo comes 700 ms after the note (the FM-1's 30944-sample line); with ping-pong the left one after half the line, the right
 /// one after the whole. Nothing is heard before the first echo.
 fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
-    for (file, name, left, right) in [("long-delay.m1p", "EMU LONG DELAY", 1000u64, 1000u64), ("long-delay-pp.m1p", "EMU LONG PINGPONG", 500, 1001)] {
+    for (file, name, left, right) in [("long-delay.m1p", "EMU LONG DELAY", 700u64, 700u64), ("long-delay-pp.m1p", "EMU LONG PINGPONG", 350, 701)] {
         let patch = std::fs::read(format!("build/emu/{file}")).map_err(|e| format!("build/emu/{file}: {e} (run web/scripts/emu-patches.ts)"))?;
         let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
         flash[0xA0000..0xA1000].copy_from_slice(&slot_sector(0, name, &patch, false));

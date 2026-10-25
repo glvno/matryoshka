@@ -9,17 +9,16 @@
  * RAM  : .data/.bss (24 KiB): what the audio and key-scan interrupts touch, small variables
  * POOL : big zero-initialised buffers (FX lines, canvases, the parts' engine memory, the main loop's work
  *        buffers), section .pool. The same SRAM: the RAM / POOL boundary only splits the budget (1.5: 96 / 336
- *        KiB -> 24 / 408 KiB: the four voices' state and buffers live in the pool); tools/build.py reads both lengths from here.
- *        #273: 424 KiB, 16 KiB taken from the main stack.
- * STACKS with 256-byte guard bands; NOINIT survives resets and UBOOT entry. Main stack 8 KiB (was 24: #273), supervisor
- *        stack 8 KiB; both painted at boot and their deepest use reported (main.c stack_paint, DIAG page 124).
+ *        KiB -> 24 / 408 KiB: the four voices' state and buffers live in the pool); tools/build.py reads both lengths from here
+ * STACKS with 256-byte guard bands; NOINIT survives resets and UBOOT entry. Main stack 24,320 B, supervisor stack 7,936 B;
+ *        both painted at boot and their deepest use reported (#273: main.c stack_paint, DIAG page 124).
  * 0x01C7FD50.. is reserved: boot_info, boot-state mailbox, vector table. */
 MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
     RAMTEXT (rwx): ORIGIN = 0x01C00000, LENGTH = 0x7F00
     RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 24K
-    POOL   (rw)  : ORIGIN = 0x01C0E000, LENGTH = 0x6A000
+    POOL   (rw)  : ORIGIN = 0x01C0E000, LENGTH = 0x66000
     NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS
@@ -34,7 +33,7 @@ SECTIONS
     .bss (NOLOAD) : { _bss_start = .; *(.bss*) *(.sbss*) *(COMMON) . = ALIGN(4); _bss_end = .; } > RAM
     .pool (NOLOAD) : { _pool_start = .; *(.pool*) . = ALIGN(4); _pool_end = .; } > POOL
     .noinit (NOLOAD) : { *(.noinit*) } > NOINIT
-    _guard0 = 0x01C78000; _ustack_lo = 0x01C78100; _ustack_top = 0x01C7A000;
+    _guard0 = 0x01C74000; _ustack_lo = 0x01C74100; _ustack_top = 0x01C7A000;
     _guard1 = 0x01C7A000; _sstack_lo = 0x01C7A100; _sstack_top = 0x01C7C000;
     /DISCARD/ : { *(.comment) *(.note*) }
 }

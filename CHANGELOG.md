@@ -1,6 +1,10 @@
 # Changelog
 
 
+## Unreleased
+
+- FM-1 delay goes to 700 ms (was 520), on RAM the firmware never used
+
 ## 1.3.0 — 2026-10-24
 
 ### On the literal physical FM-1 device

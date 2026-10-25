@@ -39,7 +39,7 @@
 #define GRAIN_MAX 8
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
 #define RV_LEN 8074u                /* the eight FDN lines (5740), two input allpasses (570) and the 40 ms pre-delay (1764), int16 Q13 */
-#define DELAY_LEN 44178u            /* 1 s and 60 samples at ENG_SR (#273; the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
+#define DELAY_LEN 30944u            /* 700 ms and 61 samples at ENG_SR (#273; the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 16
