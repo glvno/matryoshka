@@ -39,7 +39,17 @@
     "n6": 48,
     "n7": 50,
     "n8": 52
-   }
+   },
+   "names": [
+    "VOICE 1",
+    "VOICE 2",
+    "VOICE 3",
+    "VOICE 4",
+    "VOICE 5",
+    "VOICE 6",
+    "VOICE 7",
+    "VOICE 8"
+   ]
   },
   {
    "id": 3,
@@ -55,7 +65,17 @@
     "n6": 62,
     "n7": 64,
     "n8": 65
-   }
+   },
+   "names": [
+    "VOICE 1",
+    "VOICE 2",
+    "VOICE 3",
+    "VOICE 4",
+    "VOICE 5",
+    "VOICE 6",
+    "VOICE 7",
+    "VOICE 8"
+   ]
   },
   {
    "id": 4,
@@ -71,7 +91,17 @@
     "n6": 76,
     "n7": 77,
     "n8": 79
-   }
+   },
+   "names": [
+    "VOICE 1",
+    "VOICE 2",
+    "VOICE 3",
+    "VOICE 4",
+    "VOICE 5",
+    "VOICE 6",
+    "VOICE 7",
+    "VOICE 8"
+   ]
   },
   {
    "id": 5,
@@ -87,7 +117,17 @@
     "n6": 89,
     "n7": 91,
     "n8": 93
-   }
+   },
+   "names": [
+    "VOICE 1",
+    "VOICE 2",
+    "VOICE 3",
+    "VOICE 4",
+    "VOICE 5",
+    "VOICE 6",
+    "VOICE 7",
+    "VOICE 8"
+   ]
   },
   {
    "id": 6,

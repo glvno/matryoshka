@@ -4,6 +4,8 @@
 
 - Emu: muting a track on a synced FM-1 (SEQ + a black key) now blinks that key on the emulator too, and letting go of
   SEQ no longer flips the emulator to the SEQ page.
+- 8 Lire and Elvira 2 (and their XLs) call their piano roll rows VOICE 1, VOICE 2, ... instead of KICK, SNARE, ...;
+  the browser's roll and the FM-1's SEQ page now show the same names on the same notes.
 
 ## 1.3.2 — 2026-10-25
 

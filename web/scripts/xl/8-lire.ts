@@ -29,6 +29,7 @@ import type { Xl } from './xl';
 export function lireXl(maps: Record<string, number>[]): Built {
   return define('8 Lire XL', (b) => {
     const plate = maps.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i] ?? 9 + i, keys));
+    for (const map of plate) b.module(map).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (as the FM-1 version: the rows are the voices)
     // the Hyper LFO: two triangles; their squares (Logic, just above zero) multiplied (AND) or added (and + or = a + b)
     const lfoA = b.add('lfo', 0, 1, { wave: 1, rate: 0.7, depth: 1 });
     const lfoB = b.add('lfo', 0, 2, { wave: 1, rate: 1.9, depth: 1 });
