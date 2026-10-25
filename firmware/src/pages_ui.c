@@ -1375,10 +1375,12 @@ static void ttl_onto(uint16_t *row, uint32_t x0, uint32_t tr)
 /* the toast, first: its rectangle alone, with the page's pixels at its corners; from then on the page draws around it */
 static void ttl_first(const ppage_t *pg)
 {
+    ut_begin(UT_TOAST);
     pg_ttl_compose = 1;
     page_rect(pg, TTL_X, TTL_Y, TTL_X + TTL_W, TTL_Y + TTL_H);
     pg_ttl_compose = 0;
     pg_ttl_scr = 1;
+    ut_end(UT_TOAST);
 }
 
 /* its time is up: the page in its rectangle, alone */
@@ -1388,10 +1390,12 @@ static void ttl_restore(const ppage_t *pg)
     pg_ttl_scr = 0;
     if (!pg)
         return;
+    ut_begin(UT_TOAST_END);
     page_rect(pg, TTL_X, TTL_Y, TTL_X + TTL_W, TTL_Y + TTL_H);
     for (k = 0; k < PG_ROWS && pg_plain; k++)           /* (a bar it met drawn there as it is now: the rest of it too) */
         if (ROWS_Y + k * (ROW_H + ROW_GAP) < TTL_Y + TTL_H && TTL_Y < ROWS_Y + k * (ROW_H + ROW_GAP) + ROW_H)
             pages_row_update(pg, k);
+    ut_end(UT_TOAST_END);
 }
 
 /* a newer click waits: the draw gives way (and comes back through ui_dirty) */
@@ -1464,7 +1468,9 @@ static void pages_draw(int full)
     uint32_t k;
     int glo = page == PAGE_GLO, railed;
     if (!full && pg && pg_algo_due && pg_plain) {
+        ut_begin(UT_PAGE);
         pages_staged(pg, glo);                          /* SELECT, ALGO or PRESET reached it (#298) */
+        ut_end(UT_PAGE);
         return;
     }
     if (!full && pg_ttl_scr && !ttl_wanted() && !pg_strip_dirty) {
@@ -1473,17 +1479,21 @@ static void pages_draw(int full)
             return;
     }
     if (!full && pg && pg_row_dirty && pg_plain && !pg_strip_dirty) {
+        ut_begin(UT_KNOB);
         for (k = 0; k < PG_ROWS; k++)                   /* K1..K4 turned: their rows where they changed */
             if (pg_row_dirty & (1u << k))
                 pages_row_update(pg, k);
         pg_row_dirty = 0;
         if (!glo)
             pages_info(0);                              /* (Main's tempo, a poly group's voices) */
+        ut_end(UT_KNOB);
         return;
     }
     pg_algo_due = 0;
     pg_row_dirty = 0;
     pg_stage_strip = 0;
+    if (full)
+        ut_begin(UT_FULL);
     if (full) {
         lcd_fill(0, 20, 240, 220, P_NIGHT);
         pg_ttl_scr = 0;
@@ -1515,6 +1525,8 @@ static void pages_draw(int full)
             night_rows(ROWS_Y + k * (ROW_H + ROW_GAP) + ROW_H, ROW_GAP, 0, 240);
     }
     pg_plain = 1;
+    if (full)
+        ut_end(UT_FULL);
 }
 
 /* a title toast ends: what it covered comes back (main loop) */
