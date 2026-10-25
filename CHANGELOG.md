@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.3.4 — 2026-10-25
+
+Web only: the FM-1 firmware is 1.3.3's.
 
 - An assembly made of assemblies keeps the names they gave their controls and jacks: promoting a nested
   "hold pitch" slider onto the outer card shows "hold pitch", not the Macro's "value".
