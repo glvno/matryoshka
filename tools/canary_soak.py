@@ -10,7 +10,7 @@ RUN: the firmware CI run of the canary build (branch canary-lowram). The phases,
                       emu:scenarios), the install onto the rig (only when it is the one FM-1 connected), then every
                       device scenario. Covers the boot and the full device:scenarios.
   heavy       10 min  every bank slot by program change, a four-note chord held and retriggered, 15 s each, twice round
-  xl          10 min  device:scenarios --only sandbox,switchPlaying,reconnect again and again: XL / sandbox link traffic
+  xl          10 min  device:scenarios --only connect,sandbox,switchPlaying,reconnect again and again: XL / sandbox link traffic
   usb-audio    6 min  ffmpeg records the "Matryoshka" audio device for 5 min while the heavy loop plays; uac counters
   clock        5 min  MIDI Start, 24 ppqn clock at 120 bpm, notes and program changes, then Stop
   stage1     ~10 min  device:scenarios --install RUN --only connect: the gate again, then an install of the canary build
@@ -166,7 +166,7 @@ def phase_xl(minutes):
     t_end, runs = time.time() + minutes * 60, []
     while time.time() < t_end:
         rig_alone()
-        runs.append(scenarios("--only", "sandbox,switchPlaying,reconnect"))
+        runs.append(scenarios("--only", "connect,sandbox,switchPlaying,reconnect"))
     return {"scenario_runs": len(runs), "failed_runs": sum(1 for r in runs if r)}
 
 
