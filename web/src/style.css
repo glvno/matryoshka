@@ -35,11 +35,11 @@ html { touch-action: pan-x pan-y; }
 .sidebar > * { flex-shrink: 0; }
 .sidebar > .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: calc(48px + 6px + 38px + 6px + 26px); flex-shrink: 1; } /* never below the 48 px logo + gap + the wordmark (38 px at the sidebar's width) + gap + About: below that they ran into the tabs */
 .brand img { width: 100%; height: auto; min-width: 0; object-fit: contain; }
-.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 48px; }
+.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 48px; cursor: pointer; }
 .brand h1 { flex-shrink: 0; width: 100%; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.045em; }
 .patch-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden], .library-side[hidden] { display: none; }
+.patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden] { display: none; }
 .patch-controls > * { width: 100%; min-width: 0; }
 /* the FM-1 budget meter at the right of the status line: memory (the fullest limit) and the estimated CPU load side by
  * side; open, a card above the status line with every limit and the costliest modules */
@@ -111,7 +111,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* the main area: the views fill it and scroll themselves; the view switch, Connect FM-1 and the Install panel sit over it */
 main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-.tab:not(#tab-patch) { height: 100%; overflow: auto; padding: 56px 24px 24px; }
+.tab:not(#tab-patch) { height: 100%; overflow: auto; padding: 84px 24px 24px; }
 .tab[hidden] { display: none; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 /* touch-action: none: the canvas's own pinch, two-finger pan and one-finger pan (editor.ts touchGestures, rubberBand)
@@ -1134,12 +1134,6 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 #palette-btn kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
 .sidebar #tour-btn { padding-inline: 8px; text-align: center; }
 /* the LIBRARY view's sidebar (main.ts setLibrarySection): its sections as a list, the current one marked like a selected row */
-.library-side { display: grid; gap: 10px; }
-.library-nav { display: grid; gap: 2px; }
-#workspace-sidebar .library-nav button { min-height: 34px; padding: 6px 10px; text-align: left; background: transparent; border: 1px solid transparent; color: var(--ink); font-size: 14px; }
-#workspace-sidebar .library-nav button:hover { border-color: var(--line); filter: none; color: var(--ink); }
-#workspace-sidebar .library-nav button[aria-current="true"] { background: var(--surface-tint); border-color: var(--line); color: var(--secondary); }
-.library-note { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* ---- Library in the cards' style: each card a module-like panel with a header strip (family tag + condensed title), rows on
    the bar shade, toolbar buttons yellow like the sidebar's, the row tools quiet ---- */
@@ -1429,6 +1423,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .view-switch button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
 .view-switch button:not([aria-selected="true"]):hover { color: var(--ink); }
+/* LIBRARY's sections: a second switch under PATCH | EMU | LIBRARY */
+.library-tabs { top: 46px; }
+.library-tabs[hidden] { display: none; }
+.library-tabs button { min-width: 0; height: 24px; font-size: 11px; }
+.library-tabs button[aria-current="true"] { background: var(--surface-tint); color: var(--secondary); }
+.library-tabs button:not([aria-current="true"]):hover { color: var(--ink); }
 /* Connect FM-1 (main.ts syncChip): the main area's top right in every view, the view switch's frame; a primary button until
    connected, then quiet with the status line chip's dot (teal: synced, ring: not synced, red: too big) */
 .fm1-connect { position: absolute; top: 10px; right: 12px; z-index: 7; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
@@ -1452,7 +1452,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   gap: 10px; padding: 52px 16px 16px; box-sizing: border-box; }
 #fm1-view[hidden] { display: none; }
 /* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it; LIBRARY plays nothing and takes the full height */
-.workspace:is(.fm1-mode, .library-mode) > :is(.wheels, .dock-wrap, .deck) { display: none; }
+.workspace:is(.fm1-mode, .library-mode) > :is(.wheels, .dock-wrap) { display: none; }
+/* there the deck keeps Audio on / Panic and MIDI, in one short row */
+.workspace:is(.fm1-mode, .library-mode) :is(#keys-btn, .piano) { display: none; }
+.workspace:is(.fm1-mode, .library-mode) .deck-row { height: auto; }
+.workspace:is(.fm1-mode, .library-mode) .deck-controls { grid-template-rows: none; grid-template-columns: auto auto; }
+.workspace:is(.fm1-mode, .library-mode) .deck-controls #audio-btn { grid-column: auto; }
 /* the Install panel: the install page over the whole main area (the switch and Connect FM-1 too), closed with its Close */
 #flash-view { position: absolute; inset: 0; z-index: 8; overflow: auto; background: var(--bg); padding: 16px 16px 24px; }
 #flash-view[hidden] { display: none; }

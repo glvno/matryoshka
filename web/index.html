@@ -33,7 +33,7 @@
       <button id="sidebar-collapse" class="side-collapse" aria-expanded="true" aria-controls="workspace-sidebar" title="Collapse the sidebar (Ctrl/Cmd+B)" aria-label="Collapse the sidebar">«</button>
       <button id="theme-btn" class="side-collapse theme-toggle" title="Dark theme" aria-label="Switch to the dark theme">☾</button>
       <div class="brand">
-        <span class="logo" aria-hidden="true"><i class="l-coral"></i><i class="l-gold"></i><i class="l-shade"></i><i class="l-teal"></i><i class="l-rim"></i><i class="l-cream"></i><i class="l-ink"></i></span>
+        <span class="logo" aria-hidden="true" title="Back to the canvas"><i class="l-coral"></i><i class="l-gold"></i><i class="l-shade"></i><i class="l-teal"></i><i class="l-rim"></i><i class="l-cream"></i><i class="l-ink"></i></span>
         <h1 class="wordmark"><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" /></h1>
         <!-- About under the logo (as before #166; the word only, no heart): in the collapsed strip it stays under the logo -->
         <button id="about-btn" type="button" title="About Matryoshka, the AI usage figures, the credits, and support">About</button>
@@ -49,7 +49,7 @@
             <div class="add-row"><button id="add-btn" class="primary" title="Add module" aria-label="Add module">+ Module</button><button id="add-assembly-btn" class="primary" title="Add assembly" aria-label="Add assembly">+ Assembly</button></div>
           </div>
         </section>
-        <section class="spanel" aria-label="View" data-views="patch">
+        <section class="spanel" aria-label="View">
           <div class="shead"><span class="mtag shp">VIEW</span><span class="stitle">Canvas</span></div>
           <div class="sbody">
             <div class="view-row"><button id="tidy-btn" title="Line the cards up in columns, keeping their order (undo with Ctrl/Cmd+Z)">TIDY</button><button id="fit-btn" title="Zoom so every card is in view">FIT</button></div>
@@ -58,7 +58,7 @@
             <div id="zoom-bar" class="param bar side-bar"><span>Zoom</span><output id="zoom-out">100 %</output><input id="zoom-input" type="range" min="0" max="1" step="any" value="0.63" aria-label="Zoom" /></div>
           </div>
         </section>
-        <section class="spanel" aria-label="Learn" data-views="patch">
+        <section class="spanel" aria-label="Learn">
           <div class="shead"><span class="mtag mod">LEARN</span><span class="stitle">Get started</span></div>
           <div class="sbody">
             <div class="learn-row"><button id="tour-btn">Tutorial ↗</button><button id="demo-btn" title="Open the demo patch and start the audio: a drone plays at once, the keys play the bassline">Demo</button></div>
@@ -67,16 +67,6 @@
             <a id="changelog-link" class="side-link" href="./changelog" target="_blank" rel="noopener" title="What changed in each release (opens in a new tab)">Changelog ↗</a>
           </div>
         </section>
-      </div>
-      <!-- the LIBRARY view's sidebar: its sections (main.ts setLibrarySection) -->
-      <div class="library-side" hidden>
-        <nav class="library-nav" aria-label="Library sections">
-          <button type="button" data-section="patches" aria-current="true">Patches</button>
-          <button type="button" data-section="assemblies" aria-current="false">Assemblies</button>
-          <button type="button" data-section="presets" aria-current="false">Presets</button>
-          <button type="button" data-section="community" aria-current="false">Community</button>
-        </nav>
-        <p class="library-note">Manage what is stored, in this browser and on the FM-1.</p>
       </div>
       <div class="sidebar-bottom">
         <button id="palette-btn" title="All commands (Ctrl/Cmd+K)">Commands <kbd>⌘ / Ctrl K</kbd></button>
@@ -100,6 +90,8 @@
     </section>
     <!-- the views (main.ts setView): centred over the main area; Install firmware is a panel over all three, not a view -->
     <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true" title="The patch: the canvas of cards">Patch</button><button type="button" role="tab" data-view="emu" aria-selected="false" tabindex="-1" title="The FM-1's firmware, emulated in the browser">Emu</button><button type="button" role="tab" data-view="library" aria-selected="false" tabindex="-1" title="Manage what is stored, in this browser and on the FM-1">Library</button></div>
+    <!-- LIBRARY's sections, tabs under the switch while LIBRARY shows (main.ts setLibrarySection) -->
+    <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
     <!-- Connect FM-1 (top right, in every view): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
     <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
     <!-- the Install panel (Get started > Install firmware, the palette, #flash): flasher.ts's page over the main area -->
