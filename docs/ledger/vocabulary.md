@@ -492,7 +492,7 @@ The part of an engine that turns keys into notes for its voices. Allocated voici
 
 ### XL
 
-The full browser version of a factory patch that was cut down to fit the FM-1, named after it with "XL" ("Algo Four XL"). It is the original instrument's full specification, no more. An XL never goes into the FM-1's bank. "XL" is only a name: whether a patch is a sandbox patch is worked out from the patch itself.
+The full browser version of a factory patch that was cut down to fit the FM-1, named after it with "XL" ("Algo Four XL"). It is the original instrument's full specification, no less, and always has a Steps track and an Arpeggiator in front of its sound. An XL never goes into the FM-1's bank. "XL" is only a name: whether a patch is a sandbox patch is worked out from the patch itself.
 
 ### Your patches
 
