@@ -57,6 +57,45 @@ static uint32_t msg_until;                      /* a message in the top bar (SAV
 static uint32_t test_input_ms;
 static int test_input_recent(void) { return test_input_ms && fm1_ms - test_input_ms < TEST_HOLD_MS; }
 
+/* The draw times (the owner's benchmark, 2026-10-24): fm1_ticks around each kind of redraw, the last and the worst in
+ * microseconds and how many, LCD transfers included (the SPI's DMA is waited for inside the draw). Read over the link:
+ * DIAG pages 121 (the last of each), 122 (the worst), 123 (the counts), page 120 resets them (main.c m1_diag;
+ * tools/m1_link.py uitime; npm run rig:bench). UT_FULL: the device page drawn whole (pages_draw(1)); UT_HEADER: the top bar
+ * (header_draw); UT_KNOB: K1..K4's bars moved in place; UT_PAGE: the page SELECT, ALGO or PRESET reached; UT_TOAST:
+ * PRESET's toast drawn; UT_TOAST_END: the page put back where it was */
+enum { UT_FULL, UT_HEADER, UT_KNOB, UT_PAGE, UT_TOAST, UT_TOAST_END, UT_N };
+static struct {
+    uint32_t last, worst, n;
+} ui_time[UT_N];
+static uint32_t ui_time_t0[UT_N];
+static void ut_begin(uint32_t k) { ui_time_t0[k] = fm1_ticks(); }
+static void ut_end(uint32_t k)
+{
+    uint32_t us = (fm1_ticks() - ui_time_t0[k]) / FM1_TICKS_PER_US;
+    ui_time[k].last = us;
+    ui_time[k].worst = us > ui_time[k].worst ? us : ui_time[k].worst;
+    ui_time[k].n++;
+}
+/* DIAG page p (120..123) of the draw times into out: its length (0: no such page) */
+static uint32_t ui_time_diag(uint32_t p, uint8_t *out)
+{
+    uint32_t k, i, v;
+    if (p == 120u) {
+        for (k = 0; k < UT_N; k++)
+            ui_time[k].last = ui_time[k].worst = ui_time[k].n = 0;
+        out[0] = UT_N;
+        return 1;
+    }
+    if (p < 121u || p > 123u)
+        return 0;
+    for (k = 0; k < UT_N; k++) {
+        v = p == 121u ? ui_time[k].last : p == 122u ? ui_time[k].worst : ui_time[k].n;
+        for (i = 0; i < 4u; i++)
+            out[4u * k + i] = (uint8_t)(v >> (8u * i));
+    }
+    return 4u * UT_N;
+}
+
 static char *put(char *d, const char *s)
 {
     while (*s)
@@ -296,12 +335,19 @@ static void pages_strip(void);
 static void presets_bar(void);
 static uint8_t ui_yielding;                     /* panel.c: keys are taken from inside a redraw (#230): nothing may draw */
 static uint8_t ui_header_due;                   /* a header_draw asked for meanwhile: panel_draw does it at the end */
+static void header_draw_now(void);
 static void header_draw(void)
 {
     if (ui_yielding) {
         ui_header_due = 1;
         return;
     }
+    ut_begin(UT_HEADER);
+    header_draw_now();
+    ut_end(UT_HEADER);
+}
+static void header_draw_now(void)
+{
     if (sb_on && page == 0u) {                  /* sandbox: SANDBOX and the editor's patch, on gold (sandbox_ui.c) */
         sandbox_bar();
         msg_until = 0;
