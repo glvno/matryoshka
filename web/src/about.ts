@@ -170,7 +170,7 @@ export class AboutCard {
         <div class="about-main">
           <div class="about-brand-row">${logoHtml()}
             <div><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" />
-            <p class="muted">A recursively modular and FM1-friendly synth framework</p></div></div>
+            <p class="muted">A recursively modular and FM1-friendly synth engine framework</p></div></div>
           <p class="about-sponsor">${link(SPONSORS, 'Sponsor on GitHub')}</p>
           ${passage(COPY.intro, 'Your words for supporters go here')}
           <section class="hsec ai-usage"><h3>Slop Disclosure</h3><div class="ai-live"></div>
