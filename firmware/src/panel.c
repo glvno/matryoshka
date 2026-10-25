@@ -649,6 +649,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
         octave = octave < 3 ? octave + 1 : octave;
     if (p & ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP))) {
         leds_octave();
+        ui_dirty = ui_dirty ? ui_dirty : 1;         /* (the footer's octave) */
         {
             char m[12], num[8], *q = m;
             q = put(q, "OCTAVE ");
