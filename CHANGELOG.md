@@ -8,7 +8,7 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 
 ### On the FM-1
 
-- **A new device page, and paging about ten times faster.** The screen has a header, four bars and a footer:
+- **A new device page, and paging about six times faster.** The screen has a header, four bars and a footer:
   - The header shows the device, its page group and the group's pages. A dash under each name shows where you are among
     the devices (gold) and the groups (blue), and a stack of bars shows the page within its group. SELECT and ALGO no
     longer show a toast: the header changes, and only the parts of it that changed are redrawn.
@@ -20,21 +20,18 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
   - PRESET grows the footer into a toast for a second: the slot's number, the patch's name, and a dash for each filled
     slot of the bank. When it goes, only that band is redrawn.
 
-  For one ALGO click, and one knob click:
+  Timed on an FM-1 (the test rig, `npm run rig:bench`, five rounds):
 
-  | | 1.2 | 1.3 |
+  | | 1.2.2 | 1.3 |
   |---|---|---|
-  | Where you are on screen (ALGO) | about 77 ms | about 2 ms |
-  | Names and values readable (ALGO) | about 545 ms | about 37 ms |
-  | The whole page (ALGO) | about 545 ms | about 53 ms |
-  | A knob click | 22 to 76 ms | about 2 ms |
-  | The whole screen redrawn | about 144 ms | about 77 ms |
+  | SELECT / ALGO: from the click to the whole page | about 590 ms (a 400 ms wait, then 192 ms to draw) | about 96 ms (at most 137) |
+  | A knob click | about 29 ms (at most 94) | under 1 ms (at most 22) |
+  | PRESET: the patch's name on screen | 74 ms | 27 ms |
+  | PRESET: the name gone, the page back | 71 ms | 27 ms |
+  | The whole page drawn | 180 ms | 100 ms |
 
-  The pixel counts are from the host panel test: for ALGO 1,440 pixels for the header's stack (instead of the 57,600 of a
-  card) and 39,744 for the page (instead of 108,210, which started only 400 ms after the click); for a knob 1,218 pixels
-  (instead of 16,464 to 57,068 plus 39,792 when the toast ended); a whole screen 57,600 (instead of 107,810). PRESET draws
-  its toast first (14,400 pixels, about 19 ms) and the whole new page in 46,992 pixels (about 63 ms). The times assume
-  the LCD link's 750 pixels per ms and were not timed on an FM-1 (`npm run rig:bench` times them on one).
+  1.2.2 was timed with a build of the release that adds only the timers and the rig's test mode. The 400 ms is the wait
+  1.2 kept after each SELECT or ALGO click before it drew the page; 1.3 has none.
 - **The engine does less work per block, with the same sound.** It stops redoing work that only changes when a setting
   does (envelope and resonator rates, oscillator edge smoothing) and sums its inputs in fewer passes. The output is bit
   for bit the same. On the CPU model, the busiest block of each factory patch:
