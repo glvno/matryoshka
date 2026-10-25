@@ -156,6 +156,37 @@ describe('assemblies', () => {
     expect(c.params.find((r) => r.param === 'coarse')!.label).toBe('coarse');
   });
 
+  it('a row promoted from a nested assembly goes under "<its label> <its page there>", in one block per heading', () => {
+    const { p, osc, env } = voice();
+    const lire = makeAssembly(p, [osc], 'Lire');
+    const elv = makeAssembly(p, [env], 'Elvira');
+    lire.params = [
+      { module: osc, param: 'wave', label: 'shape' },
+      { module: osc, param: 'coarse', label: 'hold', head: '1-4' },
+      { module: osc, param: 'fine', label: 'hold', head: '5-8' },
+      { module: osc, param: 'pw', label: 'width' },
+    ];
+    elv.params = [{ module: env, param: 'a', label: 'attack', head: 'voice 1' }];
+    const top = makeAssembly(p, [], 'pair', [lire.id, elv.id]);
+    promote(top, osc, 'fine', p);
+    promote(top, env, 'a', p);
+    promote(top, osc, 'pw', p);      // joins "Lire 5-8", before the Elvira block
+    promote(top, osc, 'coarse', p);  // "hold" again, under its own heading: no "hold 2"
+    promote(top, osc, 'wave', p);    // above Lire's first heading: just "Lire"
+    expect(top.params.map((r) => [r.label, r.head])).toEqual([
+      ['hold', 'Lire 5-8'], ['width', undefined], ['attack', 'Elvira voice 1'], ['hold', 'Lire 1-4'], ['shape', 'Lire'],
+    ]);
+    // one more level up, the names stack
+    const { p: q, osc: o2 } = voice();
+    const inner = makeAssembly(q, [o2], 'Lire');
+    inner.params = [{ module: o2, param: 'fine', label: 'hold', head: '5-8' }];
+    const mid = makeAssembly(q, [], 'Pair', [inner.id]);
+    promote(mid, o2, 'fine', q);
+    const outer = makeAssembly(q, [], 'Top', [mid.id]);
+    promote(outer, o2, 'fine', q);
+    expect(outer.params).toEqual([{ module: o2, param: 'fine', label: 'hold', head: 'Pair Lire 5-8' }]);
+  });
+
   it('the group switch bypasses every member and restores their own switches', () => {
     const p = emptyPatch();
     addModule(p, DEFS.fm1, 0, 0);

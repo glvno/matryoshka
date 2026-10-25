@@ -959,10 +959,34 @@ export function unmergePort(a: AssemblyInst, module: number, port: string): void
   a.inputs = list;
 }
 
-/** put a parameter on the card. With the patch, a row a nested assembly shows keeps that assembly's label ("hold pitch",
- * not the Macro's "value") */
+/** the heading each row of a card sits under: its own, else the last one above it (undefined before the first) */
+function headings(params: readonly ParamRef[]): (string | undefined)[] {
+  let h: string | undefined;
+  return params.map((r) => (h = r.head ?? h));
+}
+
+/**
+ * Put a parameter on the card. With the patch, a row a nested assembly shows comes over named as it is there: the
+ * heading is that assembly's label and the page it sits on ("Lire 5-8", or just "Lire" above its first heading), the
+ * label stays its own ("hold"). It joins the rows already under that heading, else starts a block of its own at the end.
+ * Names are copied once; a row from a direct member takes the parameter's name.
+ */
 export function promote(a: AssemblyInst, module: number, param: string, p?: Patch): void {
-  if (!isPromoted(a, module, param)) a.params.push({ module, param, label: uniqueLabel(a.params.map((r) => r.label), childLabel(p, a, 'param', module, param) ?? param) });
+  if (isPromoted(a, module, param)) return;
+  const c = p && !a.modules.includes(module) ? childrenOf(p, a).find((x) => allModules(p, x).includes(module)) : undefined;
+  if (!c) {
+    a.params.push({ module, param, label: uniqueLabel(a.params.map((r) => r.label), param) });
+    return;
+  }
+  const at = c.params.findIndex((r) => r.module === module && r.param === param);
+  const page = at < 0 ? undefined : headings(c.params)[at];
+  const head = (page ? `${c.label} ${page}` : c.label).slice(0, HEAD_MAX);
+  const heads = headings(a.params);
+  const last = heads.lastIndexOf(head);
+  const block = a.params.filter((_, i) => heads[i] === head).map((r) => r.label);
+  const r: ParamRef = { module, param, label: uniqueLabel(block, at < 0 ? param : c.params[at].label) };
+  if (last < 0) a.params.push({ ...r, head });
+  else a.params.splice(last + 1, 0, r);
 }
 
 export function demote(a: AssemblyInst, module: number, param: string): void {
