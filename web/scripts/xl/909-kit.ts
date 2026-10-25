@@ -23,7 +23,7 @@ import { DEFS } from '../../src/modules';
 import { addModule, STEP_VEL, type Patch } from '../../src/patch';
 import { assembliesOf, deleteAssembly, insertAssembly } from '../../src/assembly';
 import type { AssemblyDef } from '../../src/assembly';
-import { mod, plugIn, plugOut, wire } from '../factory-build';
+import { mod, players, plugIn, plugOut, wire } from '../factory-build';
 import { define, KIT_NOTES, matchLevel, type Def } from './def';
 import type { Xl } from './xl';
 
@@ -212,7 +212,7 @@ export const xl: Xl = {
       plugOut(p, a, 'out', mix.id, 'in3');
     });
     matchLevel(p, before, KIT_NOTES);
-    return p;
+    return players(p, true);   // (an Arpeggiator, bypassed, between DRUMS and the Drum map)
   },
 };
 

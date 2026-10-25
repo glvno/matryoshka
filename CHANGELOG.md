@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- 909 Kit XL has an arpeggiator (ARP, off until pressed) between its DRUMS track and the drum map, like every other XL.
+
 ## 1.3.2 — 2026-10-25
 
 - FM-1: the footer's octave (= OCT =, OCT +, - OCT) changes as soon as you press OCT- / OCT+, not only once something

@@ -108,7 +108,8 @@ export function level(p: Patch, opts: { chord?: boolean; drums?: boolean } = {})
 // arpeggiator. A patch with a PATTERN already (Scrounge, Meridian 8, Perun 4) gets the arpeggiator after it. One that
 // played Main's pitch / gate gets a one-voice Voicing for the arpeggiator to play. Oracle V and Algo Four run past the CPU
 // estimate's warning with them (the owner accepts it); one that would not fit the FM-1's limits would get the arpeggiator
-// alone, else neither. The drum kits and <7PH get neither.
+// alone, else neither. The drum kits and <7PH get neither on the FM-1; an XL is the kitchen sink and gets both, a kit's
+// arpeggiator between its DRUMS track and its Drum map.
 export const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH']);
 export type Player = 'both' | 'arp' | 'none';
 export function withPlayers(src: Patch, what: Player): Patch {
@@ -117,7 +118,7 @@ export function withPlayers(src: Patch, what: Player): Patch {
   const main = p.modules.find((m) => m.type === 'fm1')!;
   const below = Math.max(...p.modules.map((m) => m.y)) + 300;
   const keysOut = (id: number): Cable[] => p.cables.filter((c) => c.from.module === id && c.from.port === 'keys' && mod(p, c.to.module).type !== 'steps');
-  let track = p.modules.find((m) => m.type === 'steps' && m.name === 'PATTERN');
+  let track = p.modules.find((m) => m.type === 'steps' && (m.name === 'PATTERN' || m.name === 'DRUMS'));
   let into = keysOut(track?.id ?? main.id);
   if (!into.length) {
     // Main's pitch / gate played the voice: a one-voice Voicing between (its pitch and gate as Main's were), inside the
@@ -156,10 +157,10 @@ export function withPlayers(src: Patch, what: Player): Patch {
   return p;
 }
 /** the most a patch takes: the players that fit the FM-1 (its limits; the CPU estimate's warning is no bar); with
- * `browser` (an XL: it never goes to the FM-1) both, whatever the budget */
+ * `browser` (an XL: it never goes to the FM-1) both, whatever the budget, the drum kits too */
 export function players(p: Patch, browser = false): Patch {
-  if (DRUMS.has(p.name)) return p;
   if (browser) return validatePatch(withPlayers(p, 'both'), DEFS);
+  if (DRUMS.has(p.name)) return p;
   for (const what of ['both', 'arp'] as const) {
     const q = validatePatch(withPlayers(p, what), DEFS);
     if (deviceBudget(q).fits) return q;
