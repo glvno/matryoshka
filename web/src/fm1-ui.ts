@@ -51,6 +51,7 @@ interface Exports {
   fm1w_focus(device: number, page: number): void;
   fm1w_param(module: number, param: number, value: number): void;
   fm1w_transport(run: number): void;
+  fm1w_mute(module: number, on: number): void;
   fm1w_arm_mask(lo: number, hi: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
 }
@@ -97,6 +98,8 @@ export class Fm1Ui {
   focus(device: number, page: number): void { this.x.fm1w_focus(device, page); }
   param(module: number, param: number, value: number): void { this.x.fm1w_param(module, param, value | 0); }
   transport(run: boolean): void { this.x.fm1w_transport(run ? 1 : 0); }
+  /** a track muted / unmuted on the FM-1 it follows (MUTE_NOW): its black key's light follows */
+  mute(module: number, on: boolean): void { this.x.fm1w_mute(module, on ? 1 : 0); }
   /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask) */
   armMask(lo: number, hi: number): void { this.x.fm1w_arm_mask(lo >>> 0, hi >>> 0); }
 

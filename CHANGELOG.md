@@ -9,6 +9,10 @@
 - 909 Kit XL has an arpeggiator (ARP, off until pressed) between its DRUMS track and the drum map, like every other XL.
 - Make assembly (Ctrl/Cmd+G) works on a selection of assemblies alone: group two engines into one and promote just
   the controls you want.
+- Emu: muting a track on a synced FM-1 (SEQ + a black key) now blinks that key on the emulator too, and letting go of
+  SEQ no longer flips the emulator to the SEQ page.
+- 8 Lire and Elvira 2 (and their XLs) call their piano roll rows VOICE 1, VOICE 2, ... instead of KICK, SNARE, ...;
+  the browser's roll and the FM-1's SEQ page now show the same names on the same notes.
 
 ## 1.3.2 — 2026-10-25
 

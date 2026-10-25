@@ -34,6 +34,7 @@ import type { Xl } from './xl';
 export function elviraXl(maps: Record<string, number>[]): Built {
   return define('Elvira 2 XL', (b) => {
     const plate = maps.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i] ?? 9 + i, keys));
+    for (const map of plate) b.module(map).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`);   // (as the FM-1 version)
     const lfo1 = b.add('lfo', 0, 1, { wave: 0, rate: 0.2, depth: 1 });
     const lfo2 = b.add('lfo', 0, 2, { wave: 2, rate: 3, depth: 1 });
     const noise = b.add('noise', 0, 3, { level: 0.8, color: 0 });

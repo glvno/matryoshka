@@ -1620,6 +1620,7 @@ asm('Vernon 100', 'Voices', (b) => {
 // engine's l / r). Cross-quad and feedback modulation run one block late (the cables close loops).
 asm('8 Lire', 'Voices', (b) => {
   const maps = PLATE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
+  for (const map of maps) b.module(map).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (the rows are the voices, not drums)
   const lfoA = b.add('lfo', 0, 1, { wave: 3, rate: 0.7, depth: 1 });
   const lfoB = b.add('lfo', 0, 2, { wave: 3, rate: 1.9, depth: 1 });
   const logic = b.add('logic', 0, 3, {});
@@ -1720,6 +1721,7 @@ asm('8 Lire', 'Voices', (b) => {
 // TUNE is in semitones.
 asm('Elvira 2', 'Voices', (b) => {
   const maps = PLATE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
+  for (const map of maps) b.module(map).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`);   // (rows 5-8 play voices 1-4 again)
   const lfo1 = b.add('lfo', 0, 1, { wave: 0, rate: 0.2, depth: 1 });
   const lfo2 = b.add('lfo', 0, 2, { wave: 2, rate: 3, depth: 1 });
   const toCutoff = b.add('scale', 0, 3, { gain: 0, offset: 0 });
