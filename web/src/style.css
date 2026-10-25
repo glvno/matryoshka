@@ -1287,16 +1287,41 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* the band that selects rows (pick / arrange mode) in the selection's teal, not the modules' coral band */
 .rubber.rows { border-color: var(--secondary); background: color-mix(in srgb, var(--secondary) 10%, transparent); }
 .arr-grip { flex: none; padding: 0 3px; cursor: grab; touch-action: none; color: var(--muted); font-size: 14px; line-height: 1; }
-/* Arrange mode: the strip above every group (one FM-1 page), named as the FM-1 names it; its grip drags that page */
-.ebreak.epage { justify-content: flex-start; gap: 4px; height: 21px; margin-top: 3px; padding: 0 2px; border-color: var(--line);
-  font-size: 13px; letter-spacing: .1em; color: var(--muted); white-space: nowrap; overflow: hidden; }
-/* the focused page's label above its first row would repeat the strip's name */
+/* while arranging, the focused page's label above its first row is not drawn */
 .arranging .param.bar.page-start { margin-top: 0; }
 .arranging .param.bar.page-start::before { content: none; }
-.epage-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.epage-flag { display: flex; align-items: center; gap: 2px; font-size: 9px; letter-spacing: .08em; color: var(--accent); }
 .arr-grip:hover { color: var(--accent); }
-.ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held { opacity: .5; }
+.ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held, .eempty.arr-dragging, .arr-pgbox.arr-dragging { opacity: .5; }
+/* Arrange mode (arrange.ts, D-616): sections and pages get room for their outlines and the tools between them; an
+   overlay (.arr-ov) draws a faint outline around each section and each page, the page's handle in a strip on its
+   outline's left, the one line where a drag would land, + heading, + page break and a hand-set break's × */
+.arranging .param.arr-row, .arranging .eempty { margin-left: 14px; }
+.arranging .arr-secstart { margin-top: 16px; }
+.arranging .arr-pgstart { margin-top: 14px; }
+.arranging .arr-colend { margin-bottom: 18px; }
+.ehead.arr-head { border-bottom: 0; overflow: visible; }
+.ehead.arr-head .hfield { flex: 1; min-width: 0; display: flex; align-items: center; height: 21px; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); }
+.ehead.arr-head .hfield:focus-within { border-color: var(--accent); }
+.ehead.arr-head .hfield input { flex: 1; min-width: 0; height: 19px; padding: 0; border: 0; outline: 0; background: transparent; }
+.ehead.arr-head .fm1 { flex: none; padding-left: 4px; font: 10px ui-monospace, monospace; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.eempty { padding: 5px 6px; border: 1px dashed var(--line); border-radius: 4px; font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.arr-ov { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.arr-ov > * { position: absolute; box-sizing: border-box; }
+.arr-secbox { border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--secondary) 4%, transparent); z-index: -1; }
+.arr-pgbox { border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 5px; }
+.arr-pghandle { display: grid; place-items: center; border-right: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 5px 0 0 0;
+  font-size: 11px; line-height: 1; color: var(--muted); cursor: grab; touch-action: none; pointer-events: auto; user-select: none; }
+.arr-pghandle:hover { color: var(--accent); }
+.arr-ov:has(.arr-pghandle:hover) .arr-pgbox { border-color: color-mix(in srgb, var(--muted) 30%, transparent); }
+.arr-zone { display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.arr-zone .arr-zbtn { display: none; height: 15px; padding: 0 6px; font-size: 9px; line-height: 1; border-style: dashed; color: var(--secondary); background: var(--panel); }
+.arr-zone:hover .arr-zbtn { display: block; }
+.arr-brk { display: flex; align-items: center; justify-content: flex-end; pointer-events: none; }
+.arr-brk::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed color-mix(in srgb, var(--secondary) 60%, transparent); }
+.arr-brk .arr-brkx { position: relative; height: 14px; margin-right: 6px; padding: 0 5px; font-size: 9px; line-height: 1; border-style: dashed; color: var(--secondary); background: var(--panel); pointer-events: auto; }
+.arr-brk .arr-brkx:hover { color: var(--danger); border-color: var(--danger); }
+.arr-line { height: 3px; border-radius: 2px; background: var(--accent); box-shadow: none !important; z-index: 2; }
+.arr-ov:has(.arr-line:not([hidden])) :is(.arr-zone, .arr-brk) { visibility: hidden; }
 .pickbox.pickall { pointer-events: auto; cursor: pointer; padding: 0; margin-right: 5px; vertical-align: -1px; display: inline-block; }
 .pickbox.some { border-color: var(--accent); color: var(--accent); }
 

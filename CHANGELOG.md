@@ -2,7 +2,13 @@
 
 ## Unreleased
 
-- Arrange mode: the ⠿ grips on headings and page strips drag again; pressing one used to start a selection box.
+- Arrange mode is redone. Each heading and its pages sit in a faint outline, each FM-1 page in a fainter one with its
+  own ⠿ handle, and the heading field shows the FM-1's name for its pages, "filter (FILTER)". A drag shows one line where
+  it will land: a row can go to the start, middle or end of any page that has room, a page anywhere between pages, a
+  section to the top of any column. Moving things never reshuffles the other pages.
+- Arrange mode: + heading under any section or at the top of a column, and + page break between any two rows of a page;
+  a page break you added has a × to join the pages again. A heading keeps its place when you move all its rows away, and
+  is saved with the patch (the FM-1 and the normal card skip it).
 
 ## 1.3.4 — 2026-10-25
 

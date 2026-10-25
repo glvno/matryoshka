@@ -16,8 +16,9 @@ import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
-import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageLabel, pageTitle, paramPageTitles, paramStarts, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
+import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, NAME_MAX, pageLabel, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
 import { cableRole } from './cable-role';
+import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
 import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
@@ -115,8 +116,8 @@ import { EXCLUDED_TYPES,
   type AssemblyInst,
   type PortRef,
   type Rect,
-  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setGroupBreak, setHeading, setSpan, spanPlan, type SpanBlock,
-  keepParams, moveBlock, moveGroup, moveSection, sectionRows, groupRows, blockDropOk, pickRows, pickState, keyRange, type PickRow } from './assembly';
+  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveRef, setColumnBreak, setHeading, setSpan, spanPlan, type SpanBlock,
+  keepParams, pickRows, pickState, keyRange, type PickRow } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** a Page button held this long shows its list's first page while it is down (panel.c PAGE_HOLD_MS) */
@@ -234,7 +235,16 @@ const EDGE_JACKS = 4;
 type EdgePort = { el: HTMLElement; module: number; port: string };
 /** a parameter for a card's edge layout: its row, its dedicated input, a column break before it, rows above it (a heading) */
 /** `gap`: a new group (FM-1 page) starts at this row within its column, drawn as a divider above it */
-type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; span?: number; gap?: boolean };
+type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; below?: HTMLElement[]; span?: number; gap?: boolean };
+/** a section of the card being arranged, as drawn: its heading, its empty box (no rows), its pages' rows and their elements */
+type ArrSec = { sec: Sec; col: number; index: number; head: HTMLElement | null; empty: HTMLElement | null; pages: { rows: ParamRef[]; drawn: ParamRef[]; els: HTMLElement[] }[] };
+/** Arrange mode's state for one rebuild: the card's layout tree (arrange.ts), the sections as drawn, the overlay's line */
+type ArrangeCtx = { a: AssemblyInst; layout: Layout; knob: KnobOf; body: HTMLElement; secs: ArrSec[]; transient: Sec | null; line: HTMLElement | null };
+/** a place an arrange drag can land: a line from x1 to x2 at y (client coordinates), and what a drop there does */
+type ArrSpot = { x1: number; x2: number; y: number; act: () => void };
+type Box = { left: number; top: number; right: number; bottom: number };
+/** the width of a page outline's handle strip, left of its rows (px) */
+const ARR_HANDLE = 14;
 /** an entry of a card's menu: `key` is the shortcut shown at the right, `rule` a line above it */
 type MenuItem = { text: string; run: () => void; key?: string; danger?: boolean; rule?: boolean };
 /** a drop is judged by the card's header (where it is held), this far below its top */
@@ -1459,14 +1469,14 @@ export class Editor {
    */
   private edgeLayout(ins: EdgePort[], outs: HTMLElement[], params: EdgeParam[], extra: HTMLElement[] = []): HTMLElement[] {
     // a row of the card: a parameter (with its headings above it) or a row only for a jack; `l` / `r` are its jacks
-    type Item = { el: HTMLElement | null; above: HTMLElement[]; param?: EdgeParam; l?: HTMLElement; r?: HTMLElement };
+    type Item = { el: HTMLElement | null; above: HTMLElement[]; below?: HTMLElement[]; param?: EdgeParam; l?: HTMLElement; r?: HTMLElement };
     const cols: Item[][] = [[]];
     for (const p of params) {
       if (p.col && cols[cols.length - 1].length) cols.push([]);
-      cols[cols.length - 1].push({ el: p.el, above: p.above ?? [], param: p });
+      cols[cols.length - 1].push({ el: p.el, above: p.above ?? [], below: p.below, param: p });
     }
     const n = cols.length;
-    const height = (c: Item[]): number => c.reduce((h, it) => h + 1 + it.above.length, 0);
+    const height = (c: Item[]): number => c.reduce((h, it) => h + 1 + it.above.length + (it.below?.length ?? 0), 0);
     const cap = n > 1 ? Math.max(EDGE_JACKS, ...cols.map(height)) : EDGE_JACKS;
     // the k-th place for a jack on a side edge: the column's k-th row, then rows for jacks only under it
     const slot = (ci: number, k: number): Item => {
@@ -1509,7 +1519,8 @@ export class Editor {
       return el;
     };
     const rowsOf = (it: Item, first: boolean, last: boolean, across = 1): HTMLElement[] => {
-      const els = [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across)];
+      const els = [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across),
+        ...(it.below ?? []).map((h) => rowEl(h, first, last, undefined, undefined, across))];
       if (it.param?.gap) els[0].classList.add('gstart');
       return els;
     };
@@ -3186,7 +3197,12 @@ export class Editor {
     if (!a || !this.rowSel.size) return false;
     const gone = new Set(this.rowSel);
     this.dropRows();
-    this.change(() => (a.params = keepParams(a.params, (r) => !gone.has(`${r.module}:${r.param}`))));
+    this.change(() => {
+      // through the layout tree: a heading whose rows all go stays, empty
+      const layout = layoutOf(a.params, a.heads);
+      removeRows(layout, [...gone], this.knobOf());
+      setLayout(a, layout);
+    });
     return true;
   }
 
@@ -3464,26 +3480,14 @@ export class Editor {
     const shown = a.params.map((r) => rowDef(DEFS[mod(r.module).type], r.param)!);
     const kept = a.params.map((_, i) => i).filter((i) => !shown[i].onScreen);
     const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
-    // while arranging, every group (one FM-1 page) has a strip above it that names the page and drags it
-    const pageTitles = arranging ? paramPageTitles(this.patch, a, DEFS) : [];
-    const pageStarts = arranging ? paramStarts(this.patch, a, DEFS) : [];
-    const params = a.params.flatMap((r, i): EdgeParam[] => {
+    const params = arranging ? this.arrangeRows(a, body, spanRoom) : a.params.flatMap((r, i): EdgeParam[] => {
       const m = mod(r.module);
       const def = DEFS[m.type];
       const pd = shown[i];
       if (pd.onScreen) return [];
       const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open });
-      const above: HTMLElement[] = [];
-      if (arranging && r.col) above.push(this.columnChip(a, i));
-      if (r.head || (arranging && this.newHeading === `${a.id}:${i}`)) above.push(this.heading(a, i, arranging));
-      // a group with no knob (a display alone) is no FM-1 page: no strip; it drags as a row
-      if (arranging && pageStarts[i] && pageTitles[i]) above.push(this.pageStrip(a, i, pageTitles[i]!));
-      else if (arranging && r.group && !r.head && !r.col) above.push(this.pageStrip(a, i, ''));
-      if (arranging) {
-        this.arrangeItem(row, a, 'param', i, this.selectable(row, r));
-        row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
-      }
-      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !arranging && !!starts.get(i) && !r.col && !r.head }];
+      const above = r.head ? [this.heading(a, i)] : [];
+      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(i) && !r.col && !r.head }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
     if (!a.inputs.length && !a.outputs.length && !a.params.length) {
@@ -3501,7 +3505,6 @@ export class Editor {
   /** the collapsed assembly whose card is being arranged (its menu's Arrange the card), else null */
   private arrangeAsm: number | null = null;
   /** a heading just added (`asm:row`): drawn as an empty field with the focus until it gets a text */
-  private newHeading: string | null = null;
 
   /** a layout change of an assembly card: undoable, saved, no engine reload */
   private layoutChange(fn: () => void): void {
@@ -3512,44 +3515,17 @@ export class Editor {
     this.ev.onLayout(this.patch);
   }
 
-  /** a heading above row `i`: plain text, a field while arranging (empty = gone) */
-  private heading(a: AssemblyInst, i: number, arranging: boolean): HTMLElement {
+  /** a heading above row `i` on the collapsed card: plain text (double-click renames; empty removes it) */
+  private heading(a: AssemblyInst, i: number): HTMLElement {
     const r = a.params[i];
     const h = document.createElement('div');
     h.className = 'ehead';
-    h.dataset.arrKind = 'param';
-    h.dataset.arrIndex = String(i);
-    h.dataset.arrBefore = '1'; // a row dropped on a heading goes under it
-    if (!arranging) {
-      h.textContent = r.head ?? '';
-      h.title = 'double-click to rename';
-      h.ondblclick = () => {
-        const v = window.prompt('Heading (empty removes it)', r.head ?? '');
-        if (v !== null) this.layoutChange(() => setHeading(a.params, i, v));
-      };
-      return h;
-    }
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = r.head ?? '';
-    input.placeholder = 'heading';
-    input.maxLength = 40;
-    input.setAttribute('aria-label', 'Heading');
-    const commit = (): void => {
-      if (this.newHeading === `${a.id}:${i}`) this.newHeading = null;
-      this.layoutChange(() => setHeading(a.params, i, input.value));
+    h.textContent = r.head ?? '';
+    h.title = 'double-click to rename';
+    h.ondblclick = () => {
+      const v = window.prompt('Heading (empty removes it)', r.head ?? '');
+      if (v !== null) this.layoutChange(() => setHeading(a.params, i, v));
     };
-    input.onchange = commit;
-    input.onblur = () => { if (!input.value.trim()) commit(); };
-    input.onkeydown = (e) => {
-      e.stopPropagation(); // typing is not shortcuts
-      if (e.key === 'Enter' || e.key === 'Escape') input.blur();
-    };
-    input.onpointerdown = (e) => e.stopPropagation();
-    const x = this.button('×', 'Remove the heading', () => this.layoutChange(() => setHeading(a.params, i, '')), 'sm arr-x');
-    if (r.head) h.append(this.blockGrip(a, 'section', i));
-    h.append(input, x);
-    if (this.newHeading === `${a.id}:${i}`) requestAnimationFrame(() => input.focus());
     return h;
   }
 
@@ -3562,47 +3538,12 @@ export class Editor {
     return c;
   }
 
-  /**
-   * While arranging: the strip above each group (one FM-1 page), whether it starts at a heading, a group flag, a column
-   * or because the page before is full. Its grip drags that page alone (#186); it names the page as the FM-1 does
-   * ("FILTER 2/3", "PAGE 1/2"); a group flag (`ParamRef.group`, "new group") has its × here.
-   */
-  private pageStrip(a: AssemblyInst, i: number, title: string): HTMLElement {
-    const r = a.params[i];
-    const c = document.createElement('div');
-    c.className = 'ebreak epage';
-    c.dataset.page = String(i);
-    const name = document.createElement('span');
-    name.className = 'epage-name';
-    name.textContent = title;
-    c.append(this.blockGrip(a, 'group', i), name);
-    if (r.group && !r.head && !r.col) {
-      const flag = document.createElement('span');
-      flag.className = 'epage-flag';
-      flag.textContent = 'new group';
-      flag.append(this.button('×', 'Let the groups fill in fours here again', () => this.layoutChange(() => setGroupBreak(a.params, i, false)), 'sm arr-x'));
-      c.append(flag);
-    }
-    return c;
-  }
-
-  /** whether a group already starts at row `i` of an assembly card on its own (the one before it is full) */
-  private groupStartAt(a: AssemblyInst, i: number): boolean {
-    const starts = paramStarts(this.patch, a, DEFS);
-    return starts[i] && starts.indexOf(true) < i;
-  }
-
-  /** while arranging: on a row's top edge, + heading and a column break before it; on a display that could reach across
-   * `room` columns, ↔ steps how many it spans (1 .. room, then back to 1) */
+  /** while arranging: on a row's top edge, a column break before it; on a display that could reach across `room`
+   * columns, ↔ steps how many it spans (1 .. room, then back to 1) */
   private arrangeTools(a: AssemblyInst, i: number, room = 0): HTMLElement {
     const t = document.createElement('span');
     t.className = 'arr-tools';
     const r = a.params[i];
-    if (!r.head) t.append(this.button('+ heading', 'A heading above this row', () => {
-      this.newHeading = `${a.id}:${i}`;
-      this.rebuild();
-    }, 'sm'));
-    if (i > 0 && !r.col && !r.head && !r.group && !this.groupStartAt(a, i)) t.append(this.button('↵ new group', 'End the group before this row: this row starts the next FM-1 page', () => this.layoutChange(() => setGroupBreak(a.params, i, true)), 'sm'));
     if (i > 0 && !r.col) t.append(this.button('↦ column', 'Start a new column with this row', () => this.layoutChange(() => setColumnBreak(a.params, i, true)), 'sm'));
     if (room > 1) {
       const now = Math.min(r.span ?? 1, room);
@@ -3613,13 +3554,417 @@ export class Editor {
     return t;
   }
 
+  // ---- Arrange mode's rows (D-616): sections (a heading and its rows) cut into pages (one FM-1 page each), read from
+  // and written back through arrange.ts. An overlay over the card draws a faint outline around each section and each
+  // page, the page's handle on its outline, the one line where a drag would land, + heading, + page break and the × of
+  // a page break set by hand.
+
+  /** "ci:at" of the heading field Arrange mode shows before it exists (+ heading): `${assembly id}:${column}:${index}` */
+  private newHeading: string | null = null;
+
+  /** whether a row takes a knob, is a display, or is not drawn (set from a module's screen, or gone): arrange.ts KnobOf */
+  private knobOf(): KnobOf {
+    return (r) => {
+      const m = this.patch.modules.find((x) => x.id === r.module);
+      const pd = m && rowDef(DEFS[m.type], r.param);
+      return !pd || pd.onScreen ? null : !pd.screen;
+    };
+  }
+
+  /** the rows of the card being arranged, from its layout tree; the overlay follows once the card is on the page */
+  private arrangeRows(a: AssemblyInst, body: HTMLElement, spanRoom: number[]): EdgeParam[] {
+    const knob = this.knobOf();
+    const layout = layoutOf(a.params, a.heads);
+    // + heading clicked: a field with no name yet, a new section there (or the name of the rows a column starts with)
+    let transient: Sec | null = null;
+    const want = this.newHeading?.startsWith(`${a.id}:`) ? this.newHeading.split(':').slice(1).map(Number) : null;
+    if (want && layout[want[0]]) {
+      const col = layout[want[0]];
+      if (want[1] === 0 && col.secs[0]?.head === undefined) transient = col.secs[0];
+      else col.secs.splice(want[1], 0, (transient = { rows: [] }));
+      transient.head = '';
+    }
+    const ctx: ArrangeCtx = { a, layout, knob, body, secs: [], transient, line: null };
+    const idx = new Map(a.params.map((r, i) => [rowKey(r), i]));
+    const out: EdgeParam[] = [];
+    layout.forEach((col, ci) => {
+      let pending: HTMLElement[] = [];
+      let firstInCol = true;
+      let last: EdgeParam | null = null;
+      col.secs.forEach((sec, si) => {
+        const head = sec.head !== undefined ? this.arrangeHeading(ctx, sec, ci, si) : null;
+        const entry: ArrSec = { sec, col: ci, index: si, head, empty: null,
+          pages: pagesOf(sec, knob).map((rows) => ({ rows, drawn: rows.filter((r) => knob(r) !== null), els: [] })) };
+        ctx.secs.push(entry);
+        if (!entry.pages.some((pg) => pg.drawn.length)) {
+          if (!head) return;
+          const box = document.createElement('div');
+          box.className = 'eempty';
+          box.textContent = 'empty: drop rows here';
+          entry.empty = box;
+          head.classList.add('arr-secstart');
+          pending.push(head, box);
+          return;
+        }
+        let firstRow = true;
+        for (const pg of entry.pages) for (const r of pg.drawn) {
+          const i = idx.get(rowKey(r))!;
+          const orig = a.params[i];
+          const m = this.patch.modules.find((x) => x.id === r.module)!;
+          const def = DEFS[m.type];
+          const pd = rowDef(def, r.param)!;
+          const row = this.paramRow(m, def, pd, { label: orig.label, rename: () => this.renameRef(orig, 'parameter') });
+          row.classList.add('arr-row');
+          const above: HTMLElement[] = [];
+          if (firstInCol && ci > 0) above.push(this.columnChip(a, i));
+          above.push(...pending);
+          pending = [];
+          if (firstRow) {
+            if (head) above.push(head);
+            (head ?? row).classList.add('arr-secstart');
+          } else if (!pg.els.length) row.classList.add('arr-pgstart');
+          pg.els.push(row);
+          this.arrangeRow(row, ctx, rowKey(r), this.selectable(row, orig));
+          row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
+          last = { el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: firstInCol && out.length > 0, above, span: pd.screen ? orig.span : undefined };
+          out.push(last);
+          firstInCol = false;
+          firstRow = false;
+        }
+      });
+      // headings with no rows at the column's end; the column's last element leaves room for + heading under it
+      const tail = last as EdgeParam | null;
+      if (tail && pending.length) tail.below = pending;
+      if (tail) (tail.below?.[tail.below.length - 1] ?? tail.el).classList.add('arr-colend');
+    });
+    requestAnimationFrame(() => this.drawArrange(ctx));
+    return out;
+  }
+
+  /** a heading of the card being arranged: its grip (drags the section), the field with the FM-1's page name in it, × */
+  private arrangeHeading(ctx: ArrangeCtx, sec: Sec, ci: number, si: number): HTMLElement {
+    const fresh = sec === ctx.transient;
+    const h = document.createElement('div');
+    h.className = 'ehead arr-head';
+    if (!fresh) {
+      const grip = document.createElement('span');
+      grip.className = 'arr-grip';
+      grip.textContent = '⠿';
+      grip.title = 'Drag: move this section with its pages (between sections, in any column)';
+      grip.addEventListener('pointerdown', (e) => this.dragSection(e, ctx, sec, h));
+      h.append(grip);
+    }
+    const field = document.createElement('label');
+    field.className = 'hfield';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = sec.head ?? '';
+    input.placeholder = 'heading';
+    input.maxLength = 40;
+    input.setAttribute('aria-label', 'Heading');
+    const fm = document.createElement('span');
+    fm.className = 'fm1';
+    fm.title = "The FM-1's name for these pages";
+    const name = (): void => { fm.textContent = `(${fm1Name(input.value, NAME_MAX)})`; };
+    name();
+    let done = false;
+    const commit = (): void => {
+      if (done) return;
+      done = true;
+      if (fresh && !input.value.trim()) {
+        this.newHeading = null;
+        this.rebuild();
+        return;
+      }
+      if (!fresh && input.value.trim() === sec.head) return;
+      this.arrangeChange(ctx, () => renameHeading(ctx.layout, sec, input.value));
+    };
+    input.oninput = name;
+    input.onchange = commit;
+    input.onblur = () => { if (fresh || !input.value.trim()) commit(); };
+    input.onkeydown = (e) => {
+      e.stopPropagation(); // typing is not shortcuts
+      if (e.key === 'Enter' || e.key === 'Escape') input.blur();
+    };
+    input.onpointerdown = (e) => e.stopPropagation();
+    field.append(input, fm);
+    const x = this.button('×', sec.rows.length ? 'Remove the heading (its rows join the section above)' : 'Remove the heading', () => {
+      if (fresh) { this.newHeading = null; this.rebuild(); return; }
+      this.arrangeChange(ctx, () => removeHeading(ctx.layout, sec));
+    }, 'sm arr-x');
+    h.append(field, x);
+    h.dataset.sec = `${ci}:${si}`;
+    if (fresh) requestAnimationFrame(() => input.focus());
+    return h;
+  }
+
+  /** an edit of the layout tree, written back to the card as one undo step */
+  private arrangeChange(ctx: ArrangeCtx, fn: () => void): void {
+    this.newHeading = null;
+    this.layoutChange(() => {
+      fn();
+      // a + heading field that got no name is not part of the card
+      const t = ctx.transient;
+      if (t?.head === '') {
+        if (t.rows.length) delete t.head;
+        else for (const col of ctx.layout) col.secs = col.secs.filter((s) => s !== t);
+      }
+      setLayout(ctx.a, ctx.layout);
+    });
+  }
+
+  /** the outlines of the sections and pages in client coordinates, measured now */
+  private arrangeBoxes(ctx: ArrangeCtx): { sec: Box | null; pages: (Box | null)[] }[] {
+    const rect = (el: HTMLElement): Box => el.getBoundingClientRect();
+    const union = (bs: Box[]): Box | null => (bs.length ? { left: Math.min(...bs.map((b) => b.left)), top: Math.min(...bs.map((b) => b.top)),
+      right: Math.max(...bs.map((b) => b.right)), bottom: Math.max(...bs.map((b) => b.bottom)) } : null);
+    return ctx.secs.map((e) => {
+      const pages = e.pages.map((pg) => {
+        const u = union(pg.els.map(rect));
+        return u && { left: u.left - ARR_HANDLE, top: u.top - 2, right: u.right + 2, bottom: u.bottom + 2 };
+      });
+      const u = union([...(e.head ? [rect(e.head)] : []), ...(e.empty ? [rect(e.empty)] : []), ...pages.filter((b): b is Box => !!b)]);
+      return { sec: u && { left: u.left - 3, top: u.top - 3, right: u.right + 3, bottom: u.bottom + 3 }, pages };
+    });
+  }
+
+  /** draw the overlay of the card being arranged (after layout: it measures the rows) */
+  private drawArrange(ctx: ArrangeCtx): void {
+    const body = ctx.body;
+    if (!body.isConnected) return;
+    body.querySelector(':scope > .arr-ov')?.remove();
+    const ov = document.createElement('div');
+    ov.className = 'arr-ov';
+    body.append(ov);
+    const br = body.getBoundingClientRect();
+    const k = br.width / (body.offsetWidth || 1) || 1;
+    const put = (el: HTMLElement, b: Box): HTMLElement => {
+      Object.assign(el.style, { left: `${(b.left - br.left) / k}px`, top: `${(b.top - br.top) / k}px`, width: `${(b.right - b.left) / k}px`, height: `${(b.bottom - b.top) / k}px` });
+      ov.append(el);
+      return el;
+    };
+    const div = (cls: string): HTMLElement => { const d = document.createElement('div'); d.className = cls; return d; };
+    const boxes = this.arrangeBoxes(ctx);
+    const act = (fn: () => void) => () => this.arrangeChange(ctx, fn);
+    ctx.secs.forEach((e, si) => {
+      const b = boxes[si];
+      if (b.sec) put(div('arr-secbox'), b.sec);
+      e.pages.forEach((pg, pi) => {
+        const pb = b.pages[pi];
+        if (!pb) return;
+        const box = put(div('arr-pgbox'), pb);
+        const grip = div('arr-pghandle');
+        grip.textContent = '⠿';
+        grip.title = 'Drag: move this page (one FM-1 page)';
+        grip.addEventListener('pointerdown', (ev) => this.dragPage(ev, ctx, e, pi, box));
+        put(grip, { left: pb.left, top: pb.top, right: pb.left + ARR_HANDLE * k, bottom: pb.top + 20 * k });
+        // between two rows of a page: + page break
+        pg.els.forEach((el, j) => {
+          if (j === 0) return;
+          const y = (pg.els[j - 1].getBoundingClientRect().bottom + el.getBoundingClientRect().top) / 2;
+          const z = put(div('arr-zone'), { left: pb.left + ARR_HANDLE * k, top: y - 5 * k, right: pb.right, bottom: y + 5 * k });
+          const key = rowKey(pg.drawn[j]);
+          z.append(this.button('+ page break', 'Start a new FM-1 page here', act(() => addBreak(ctx.layout, key, ctx.knob)), 'sm arr-zbtn'));
+        });
+        // a page break set by hand: its × between the two pages
+        const prev = b.pages[pi - 1];
+        if (pi > 0 && prev && pg.rows[0].group) {
+          const y = (prev.bottom + pb.top) / 2;
+          const z = put(div('arr-brk'), { left: pb.left + ARR_HANDLE * k, top: y - 7 * k, right: pb.right, bottom: y + 7 * k });
+          const key = rowKey(pg.rows[0]);
+          z.append(this.button('page break ×', 'Remove this page break: the two pages join', act(() => removeBreak(ctx.layout, key)), 'sm arr-brkx'));
+        }
+      });
+    });
+    // + heading: at the top of each column and under each section
+    ctx.layout.forEach((col, ci) => {
+      const own = ctx.secs.map((e, i) => ({ e, b: boxes[i].sec })).filter((x) => x.e.col === ci && x.b);
+      if (!own.length) return;
+      const add = (at: number, y: number, b: Box): void => {
+        const z = put(div('arr-zone arr-hzone'), { left: b.left, top: y - 6 * k, right: b.right, bottom: y + 6 * k });
+        z.append(this.button('+ heading', 'A heading here (it stays when it has no rows)', () => {
+          this.newHeading = `${ctx.a.id}:${ci}:${at}`;
+          this.rebuild();
+        }, 'sm arr-zbtn'));
+      };
+      if (!ctx.transient || ctx.secs.find((e) => e.sec === ctx.transient)?.col !== ci) add(0, own[0].b!.top - 8 * k, own[0].b!);
+      own.forEach((x) => add(x.e.index + 1, x.b!.bottom + 8 * k, x.b!));
+    });
+    ctx.line = div('arr-line');
+    ctx.line.hidden = true;
+    ov.append(ctx.line);
+  }
+
+  /** show the drop line at a spot (none: hide it); what arrangeDrag marks */
+  private arrangeLine(ctx: ArrangeCtx, spot: ArrSpot | null): { el: HTMLElement; after: boolean } | null {
+    const line = ctx.line;
+    if (!line) return null;
+    line.hidden = !spot;
+    if (!spot) return null;
+    const br = ctx.body.getBoundingClientRect();
+    const k = br.width / (ctx.body.offsetWidth || 1) || 1;
+    Object.assign(line.style, { left: `${(spot.x1 - br.left) / k}px`, top: `${(spot.y - br.top) / k - 1.5}px`, width: `${(spot.x2 - spot.x1) / k}px` });
+    return { el: line, after: false };
+  }
+
+  /** the spot nearest the pointer, if one is close */
+  private nearestSpot(spots: ArrSpot[], x: number, y: number): ArrSpot | null {
+    let best: ArrSpot | null = null;
+    let dist = 80;
+    for (const s of spots) {
+      const dx = Math.max(s.x1 - x, 0, x - s.x2);
+      const d = Math.hypot(dx * 2, y - s.y);
+      if (d < dist) { dist = d; best = s; }
+    }
+    return best;
+  }
+
+  /** where rows (their keys) can land: inside a page at its start, between its rows or at its end; into an empty
+   * section. Never where nothing would change, and one knob row never into another page that has PAGE_ROWS knobs */
+  private rowSpots(ctx: ArrangeCtx, keys: string[]): ArrSpot[] {
+    const set = new Set(keys);
+    const one = keys.length === 1 ? keys[0] : null;
+    const oneKnob = one ? !!ctx.secs.flatMap((e) => e.sec.rows).find((r) => rowKey(r) === one && ctx.knob(r)) : false;
+    const boxes = this.arrangeBoxes(ctx);
+    const spots: ArrSpot[] = [];
+    const go = (to: RowSpot) => () => moveRows(ctx.layout, keys, to, ctx.knob);
+    ctx.secs.forEach((e, si) => {
+      if (e.empty) {
+        const r = e.empty.getBoundingClientRect();
+        spots.push({ x1: r.left, x2: r.right, y: (r.top + r.bottom) / 2, act: go({ sec: e.sec }) });
+        return;
+      }
+      e.pages.forEach((pg, pi) => {
+        const b = boxes[si].pages[pi];
+        if (!b) return;
+        const own = pg.rows.some((r) => set.has(rowKey(r)));
+        if (one && oneKnob && !own && pg.rows.filter((r) => ctx.knob(r)).length >= PAGE_ROWS) return;
+        const x1 = b.left + ARR_HANDLE;
+        const first = rowKey(pg.rows[0]);
+        if (!set.has(first)) spots.push({ x1, x2: b.right, y: b.top + 3, act: go({ sec: e.sec, before: first, start: true }) });
+        pg.drawn.forEach((r, j) => {
+          if (j === 0) return;
+          const key = rowKey(r);
+          if (set.has(key) || set.has(rowKey(pg.drawn[j - 1]))) return;
+          const y = (pg.els[j - 1].getBoundingClientRect().bottom + pg.els[j].getBoundingClientRect().top) / 2;
+          spots.push({ x1, x2: b.right, y, act: go({ sec: e.sec, before: key }) });
+        });
+        const lastKey = rowKey(pg.rows[pg.rows.length - 1]);
+        if (!set.has(lastKey)) spots.push({ x1, x2: b.right, y: b.bottom - 3, act: go({ sec: e.sec, after: lastKey }) });
+      });
+    });
+    return spots;
+  }
+
+  /** a row of the card being arranged: dragging it (or the selection it is in) to a spot; Shift / Cmd / Ctrl-click
+   * selects (#186); a finger drags after a long press */
+  private arrangeRow(el: HTMLElement, ctx: ArrangeCtx, key: string, sel: string): void {
+    el.classList.add('arr-item');
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('.arr-tools, input[type=text]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey || e.metaKey || e.ctrlKey) return this.rowClick(sel, e.shiftKey);
+      const card = el.closest<HTMLElement>('.module')!;
+      const touch = e.pointerType === 'touch';
+      const block = (): boolean => this.rowSel.has(sel) && this.rowSel.size > 1;
+      const keys = (): string[] => (block() ? ctx.secs.flatMap((s) => s.sec.rows.map(rowKey)).filter((k) => this.rowSel.has(k)) : [key]);
+      let spots: ArrSpot[] | null = null;
+      let spot: ArrSpot | null = null;
+      this.arrangeDrag(e, card, {
+        live: !touch || (this.rowTouch && this.rowSel.has(sel)),
+        moving: () => (block() ? this.selRows.filter((r) => this.rowSel.has(r.key)).map((r) => r.el) : [el]),
+        held: () => this.rowHeld(sel),
+        tap: () => touch && this.rowTouch && this.rowClick(sel, false),
+        aim: (x, y) => {
+          spots ??= this.rowSpots(ctx, keys());
+          spot = this.nearestSpot(spots, x, y);
+          return this.arrangeLine(ctx, spot);
+        },
+        drop: () => { const s = spot; if (s) this.arrangeChange(ctx, s.act); },
+      });
+    }, true);
+  }
+
+  /** a page's handle: the page moves whole, between pages or into an empty section */
+  private dragPage(e: PointerEvent, ctx: ArrangeCtx, entry: ArrSec, pi: number, box: HTMLElement): void {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const keys = entry.pages[pi].rows.map(rowKey);
+    let spot: ArrSpot | null = null;
+    let spots: ArrSpot[] | null = null;
+    const make = (): ArrSpot[] => {
+      const boxes = this.arrangeBoxes(ctx);
+      const out: ArrSpot[] = [];
+      ctx.secs.forEach((e2, si) => {
+        const go = (to: RowSpot) => () => moveRows(ctx.layout, keys, to, ctx.knob, true);
+        if (e2.empty) {
+          const r = e2.empty.getBoundingClientRect();
+          out.push({ x1: r.left, x2: r.right, y: (r.top + r.bottom) / 2, act: go({ sec: e2.sec }) });
+          return;
+        }
+        const pbs = boxes[si].pages;
+        const n = pbs.length;
+        for (let q = 0; q <= n; q++) {
+          if (e2 === entry && (q === pi || q === pi + 1)) continue;
+          const b = pbs[Math.min(q, n - 1)];
+          if (!b) continue;
+          const y = q === 0 ? b.top - 4 : q === n ? b.bottom + 4 : (pbs[q - 1]!.bottom + b.top) / 2;
+          out.push({ x1: b.left, x2: b.right, y, act: go(q < n ? { sec: e2.sec, before: rowKey(e2.pages[q].rows[0]) } : { sec: e2.sec }) });
+        }
+      });
+      return out;
+    };
+    this.arrangeDrag(e, ctx.body.closest<HTMLElement>('.module')!, {
+      live: e.pointerType !== 'touch',
+      moving: () => [box, ...entry.pages[pi].els],
+      aim: (x, y) => { spots ??= make(); spot = this.nearestSpot(spots, x, y); return this.arrangeLine(ctx, spot); },
+      drop: () => { const s = spot; if (s) this.arrangeChange(ctx, s.act); },
+    });
+  }
+
+  /** a heading's grip: the section moves whole, to the top or end of a column or between two sections */
+  private dragSection(e: PointerEvent, ctx: ArrangeCtx, sec: Sec, head: HTMLElement): void {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const entry = ctx.secs.find((x) => x.sec === sec)!;
+    let spot: ArrSpot | null = null;
+    let spots: ArrSpot[] | null = null;
+    const make = (): ArrSpot[] => {
+      const boxes = this.arrangeBoxes(ctx);
+      const out: ArrSpot[] = [];
+      ctx.layout.forEach((_, ci) => {
+        const own = ctx.secs.map((x, i) => ({ x, b: boxes[i].sec })).filter((y) => y.x.col === ci && y.b);
+        const n = own.length;
+        for (let q = 0; q <= n; q++) {
+          if (q < n && own[q].x.sec.head === undefined) continue; // never above the rows a column goes on with
+          if (q < n && own[q].x === entry) continue;
+          if (q > 0 && own[q - 1].x === entry) continue;
+          const b = own[Math.min(q, n - 1)].b!;
+          const y = q === 0 ? b.top - 5 : q === n ? b.bottom + 5 : (own[q - 1].b!.bottom + b.top) / 2;
+          const before = q < n ? own[q].x.sec : undefined;
+          out.push({ x1: b.left, x2: b.right, y, act: () => moveSection(ctx.layout, sec, { col: ci, before }) });
+        }
+      });
+      return out;
+    };
+    this.arrangeDrag(e, ctx.body.closest<HTMLElement>('.module')!, {
+      live: e.pointerType !== 'touch',
+      moving: () => [head, ...(entry.empty ? [entry.empty] : []), ...entry.pages.flatMap((pg) => pg.els)],
+      aim: (x, y) => { spots ??= make(); spot = this.nearestSpot(spots, x, y); return this.arrangeLine(ctx, spot); },
+      drop: () => { const s = spot; if (s) this.arrangeChange(ctx, s.act); },
+    });
+  }
+
   /**
    * While arranging, a row or jack can be dragged before or after another of its kind (rows among rows, inputs among
    * inputs, outputs among outputs). A mouse drags at once, a finger after a long press. A selected row (`key`, #186)
    * drags the whole selection as one block; Shift / Cmd / Ctrl-click selects. A finger's long press starts a selection
    * (and can drag on at once), then taps add or remove rows and a selected row drags at once.
    */
-  private arrangeItem(el: HTMLElement, a: AssemblyInst, kind: 'param' | 'in' | 'out', index: number, key?: string): void {
+  private arrangeItem(el: HTMLElement, a: AssemblyInst, kind: 'in' | 'out', index: number, key?: string): void {
     el.dataset.arrKind = kind;
     el.dataset.arrIndex = String(index);
     el.classList.add('arr-item');
@@ -3651,9 +3996,7 @@ export class Editor {
           const after = t.after && !t.el.dataset.arrBefore;
           const b = block();
           this.layoutChange(() => {
-            if (b) a.params = moveBlock(a.params, b, to, after);
-            else if (kind === 'param') a.params = moveParam(a.params, index, to, after);
-            else if (kind === 'in') a.inputs = moveRef(a.inputs, index, to, after);
+            if (kind === 'in') a.inputs = moveRef(a.inputs, index, to, after);
             else a.outputs = moveRef(a.outputs, index, to, after);
           });
         },
@@ -3744,61 +4087,6 @@ export class Editor {
       best = { el: c, after: across ? x > r.left + r.width / 2 : y > r.top + r.height / 2 };
     }
     return best;
-  }
-
-  /**
-   * While arranging: the grip of a heading (drags its section) or of a page strip (drags its group, one FM-1 page). A
-   * section lands only between sections or at the end, a group only between groups (#186).
-   */
-  private blockGrip(a: AssemblyInst, whole: 'section' | 'group', i: number): HTMLElement {
-    const grip = document.createElement('span');
-    grip.className = 'arr-grip';
-    grip.textContent = '⠿';
-    grip.title = whole === 'section' ? 'Drag: move this section (between sections or to the end)' : 'Drag: move this group, one FM-1 page (between groups)';
-    grip.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const starts = whole === 'group' ? paramStarts(this.patch, a, DEFS) : undefined;
-      const rows = starts ? groupRows(starts, i) : sectionRows(a.params, i);
-      if (!rows.length) return;
-      const card = grip.closest<HTMLElement>('.module')!;
-      const items = (): HTMLElement[] => [...card.querySelectorAll<HTMLElement>('.arr-item[data-arr-kind="param"]')];
-      let slot: { to: number; after: boolean } | null = null;
-      this.arrangeDrag(e, card, {
-        live: e.pointerType !== 'touch',
-        moving: () => [...new Set([grip.parentElement!, ...items().filter((c) => rows.includes(Number(c.dataset.arrIndex))),
-          ...[...card.querySelectorAll<HTMLElement>('.epage')].filter((c) => rows.includes(Number(c.dataset.page)))])],
-        aim: (x, y) => {
-          let best: { el: HTMLElement; after: boolean } | null = null;
-          let dist = Infinity;
-          slot = null;
-          for (const c of items()) {
-            const k = Number(c.dataset.arrIndex);
-            const r = c.getBoundingClientRect();
-            const dx = Math.max(r.left - x, 0, x - r.right);
-            for (const after of [false, true]) {
-              if (!blockDropOk(a.params, rows, k, after, starts)) continue;
-              const d = Math.hypot(dx, y - (after ? r.bottom : r.top));
-              if (d >= dist) continue;
-              dist = d;
-              slot = { to: k, after };
-              // before a row: a section lands above its heading, a group under the heading, on the row's page strip
-              const head = !after && whole === 'section' ? card.querySelector<HTMLElement>(`.ehead[data-arr-index="${k}"]`) : null;
-              const strip = !after ? card.querySelector<HTMLElement>(`.epage[data-page="${k}"]`) : null;
-              best = { el: head ?? strip ?? c, after };
-            }
-          }
-          return best;
-        },
-        drop: () => {
-          const t = slot;
-          if (!t) return;
-          this.layoutChange(() => (a.params = starts ? moveGroup(a.params, rows, starts, t.to, t.after) : moveSection(a.params, rows, t.to, t.after)));
-        },
-      });
-    });
-    return grip;
   }
 
   /** a Drum map row's name (the roll shows it; at most TRACK_NAME_MAX characters, empty: the default) */
