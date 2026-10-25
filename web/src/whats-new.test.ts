@@ -11,6 +11,8 @@ describe('whats-new', () => {
   });
   it('shows once to a returning visitor on a newer minor version', () => {
     expect(HIGHLIGHTS['1.2']).toBeDefined();
+    expect(HIGHLIGHTS['1.3']).toBeDefined();
+    expect(shouldShow('1.2.2', '1.3.1', true)).toBe(true);
     expect(shouldShow(null, '1.2.0', true)).toBe(true); // used 1.1, which kept no record
     expect(shouldShow('1.1.0', '1.2.0', true)).toBe(true);
     expect(shouldShow('1.2.0-dev', '1.2.0', true)).toBe(false);

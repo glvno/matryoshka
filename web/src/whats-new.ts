@@ -11,6 +11,13 @@ const USED = ['matryoshka.patch', 'matryoshka.patches', 'modular-1.patch', 'modu
 
 /** the main changes, by "major.minor"; a version without an entry shows no card */
 export const HIGHLIGHTS: Record<string, string[]> = {
+  '1.3': [
+    'A big UI overhaul on the FM-1: paging is 6x faster, knobs answer 29x faster, and the header always shows your patch, device and page. Install the new firmware from Get started → Install firmware.',
+    'Sandbox mode: a patch too big for the FM-1 plays here with no limits, and your FM-1 becomes its controller.',
+    'XL patches: browser-only versions of the factory patches modeled on synths too big for the FM-1, faithful to the original architecture. In Open, each sits right under its FM-1 version.',
+    'Community patches have their own section in LIBRARY.',
+    'MIDI clock out (FM-1 & MIDI) keeps several FM-1s in time.',
+  ],
   '1.2': [
     'One switch at the top: PATCH | EMU | LIBRARY. EMU is the FM-1 view, renamed; installing firmware is under Get started → Install firmware.',
     'LIBRARY manages what is stored: your patches, assemblies and presets, in this browser and on the FM-1, side by side. Open a patch with Open in the PATCH panel.',
