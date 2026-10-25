@@ -427,6 +427,12 @@ int main(void)
         pages_waiting = 0;
         enc(1, 1);                                          /* (on the Drum map's second page, as the tests below expect) */
         later(700);
+        tap(BTN_OCT_UP);                                    /* the transport stopped, nothing else to redraw: the footer at once */
+        check("OCT+: the footer's octave at once (it stayed = OCT =), the message kept", octave == 1 && on_screen("OCT +")
+              && !on_screen("= OCT =") && on_screen("OCTAVE +1"));
+        tap(BTN_OCT_DOWN);
+        check("OCT-: = OCT = again", octave == 0 && on_screen("= OCT ="));
+        later(1100);                                        /* (the OCTAVE message ends) */
         param_now = 0;
     }
 
