@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.3.5 — 2026-10-25
+
+Web only: the FM-1 firmware is 1.3.3's.
 
 - Arrange mode is redone. Each heading and its pages sit in a faint outline, each FM-1 page in a fainter one with its
   own ⠿ handle, and the heading field shows the FM-1's name for its pages, "filter (FILTER)". A drag shows one line where
