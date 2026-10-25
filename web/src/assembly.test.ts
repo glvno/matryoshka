@@ -37,14 +37,7 @@ import {
   validateAssemblyDef,
   demote,
   keepParams,
-  moveParam,
   moveRef,
-  moveBlock,
-  moveGroup,
-  moveSection,
-  sectionRows,
-  groupRows,
-  blockDropOk,
   pickRows,
   pickState,
   keyRange,
@@ -812,16 +805,6 @@ describe('assembly card columns and headings', () => {
     expect(show(keepParams(list, (r) => r.label !== 'a'))).toEqual(['[B] b', 'c', '[D] d', '| e']); // no break on the first row
   });
 
-  it('moves a row: before a row takes over its place (under its heading), after joins its section', () => {
-    const list = rows(['a', { head: 'A' }], 'b', ['c', { col: true, head: 'C' }], 'd');
-    expect(show(moveParam(list, 3, 0, false))).toEqual(['[A] d', 'a', 'b', '| [C] c']);
-    expect(show(moveParam(list, 0, 1, true))).toEqual(['[A] b', 'a', '| [C] c', 'd']);
-    expect(show(moveParam(list, 2, 1, true))).toEqual(['[A] a', 'b', 'c', '| [C] d']);
-    expect(show(moveParam(list, 2, 3, true))).toEqual(['[A] a', 'b', '| [C] d', 'c']);
-    expect(show(moveParam(list, 1, 3, true))).toEqual(['[A] a', '| [C] c', 'd', 'b']);
-    expect(moveParam(list, 1, 1, false)).toBe(list);
-  });
-
   it('a spanning row cuts the columns it covers: as many rows above as it has in its own column, the rest below', () => {
     // column 0: a b S(2) c | column 1: d e f g | column 2: h
     const list = rows('a', 'b', ['s', { span: 2 }], 'c', ['d', { col: true }], 'e', 'f', 'g', ['h', { col: true }]);
@@ -849,12 +832,10 @@ describe('assembly card columns and headings', () => {
     expect(plan(rows(['s', { span: 2 }], ['t', { span: 3 }], ['a', { col: true }], ['b', { col: true }]))).toBe('{0-2 S {0-2 T 1:a}} 2:b');
   });
 
-  it('a span belongs to its place: a removed row hands it on, a moved row takes over the place it lands on', () => {
+  it('a span belongs to its place when a row is taken off: the next row gets it', () => {
     const list = rows('a', ['s', { span: 2 }], 't', ['b', { col: true }]);
     expect(show(keepParams(list, (r) => r.label !== 's'))).toEqual(['a', 't <2>', '| b']);
     expect(show(keepParams(list, (r) => r.label !== 'a'))).toEqual(['s <2>', 't', '| b']);
-    expect(show(moveParam(list, 2, 1, false))).toEqual(['a', 't <2>', 's', '| b']);
-    expect(show(moveParam(list, 1, 3, true))).toEqual(['a', 't <2>', '| b', 's']);
     setSpan(list, 2, 3);
     setSpan(list, 1, 1);
     expect(show(list)).toEqual(['a', 's', 't <3>', '| b']);
@@ -936,93 +917,6 @@ describe('several rows of an assembly card at once (#186)', () => {
   const show = (list: ParamRef[]): string[] =>
     list.map((r) => `${r.col ? '| ' : ''}${r.group ? '/ ' : ''}${r.head ? `[${r.head}] ` : ''}${r.label}${r.span ? ` <${r.span}>` : ''}`);
   const idx = (list: ParamRef[], ...labels: string[]): number[] => labels.map((l) => list.findIndex((r) => r.label === l));
-
-  it('a block keeps its order, its headings, group flags and spans, and the column breaks inside it', () => {
-    // column 0: [A] a b c | column 1: d [D] e f
-    const list = rows(['a', { head: 'A' }], 'b', 'c', ['d', { col: true }], ['e', { head: 'D' }], ['f', { span: 2 }]);
-    // b and e: e's heading goes with it
-    expect(show(moveBlock(list, idx(list, 'b', 'e'), idx(list, 'f')[0], true))).toEqual(['[A] a', 'c', '| d', 'f <2>', 'b', '[D] e']);
-    // c and d: the break between them is inside the block and goes with it
-    expect(show(moveBlock(list, idx(list, 'c', 'd'), 0, true))).toEqual(['[A] a', 'c', '| d', 'b', '[D] e', 'f <2>']);
-    // d and e (d tops column 1): that break stays at its place and goes to f, the next row left there
-    expect(show(moveBlock(list, idx(list, 'd', 'e'), 0, true))).toEqual(['[A] a', 'd', '[D] e', 'b', 'c', '| f <2>']);
-    // a block spanning the break keeps it inside
-    expect(show(moveBlock(list, idx(list, 'c', 'd', 'e'), idx(list, 'f')[0], true))).toEqual(['[A] a', 'b', 'f <2>', 'c', '| d', '[D] e']);
-    // nothing to do: the target is in the block, or nothing is picked
-    expect(moveBlock(list, [1, 2], 2, true)).toBe(list);
-    expect(moveBlock(list, [], 2, true)).toBe(list);
-  });
-
-  it('dropped before a row the block takes its column break, and its heading when the block has none of its own', () => {
-    const list = rows(['a', { head: 'A' }], 'b', ['c', { col: true, head: 'C' }], 'd', 'e');
-    // d e before c: the top of column 1, under the heading C
-    expect(show(moveBlock(list, idx(list, 'd', 'e'), 2, false))).toEqual(['[A] a', 'b', '| [C] d', 'e', 'c']);
-    // a block whose first row has a heading of its own goes before the row's heading; the column top is still taken
-    const two = rows('a', ['b', { head: 'B' }], 'c', ['d', { col: true, head: 'D' }], 'e');
-    expect(show(moveBlock(two, idx(two, 'b', 'c'), 3, false))).toEqual(['a', '| [B] b', 'c', '[D] d', 'e']);
-    // the same for a group flag of its own
-    const three = rows('a', ['b', { group: true }], 'c', ['d', { head: 'D' }]);
-    expect(show(moveBlock(three, idx(three, 'b', 'c'), 3, false))).toEqual(['a', '/ b', 'c', '[D] d']);
-    expect(show(moveBlock(three, idx(three, 'c'), 1, false))).toEqual(['a', '/ c', 'b', '[D] d']);
-  });
-
-  it('a heading moves its section; sections drop only between sections or at the end', () => {
-    const list = rows('x', ['a', { head: 'A' }], 'b', ['c', { head: 'C' }], 'd', ['e', { head: 'E' }]);
-    const a = sectionRows(list, 1);
-    expect(a).toEqual([1, 2]);
-    expect(sectionRows(list, 2)).toEqual([]);
-    expect(sectionRows(list, 5)).toEqual([5]);
-    // between sections: before a heading, after the row before one, after the last
-    expect(blockDropOk(list, a, 5, false)).toBe(true);
-    expect(blockDropOk(list, a, 4, true)).toBe(true);
-    // never above the rows before the first heading (they would join the section)
-    expect(blockDropOk(list, a, 0, false)).toBe(false);
-    expect(blockDropOk(list, a, 5, true)).toBe(true);
-    // not inside a section, not inside itself, not where it already is
-    expect(blockDropOk(list, a, 4, false)).toBe(false);
-    expect(blockDropOk(list, a, 3, true)).toBe(false);
-    expect(blockDropOk(list, a, 2, true)).toBe(false);
-    expect(blockDropOk(list, a, 3, false)).toBe(false);
-    expect(blockDropOk(list, a, 0, true)).toBe(false);
-    expect(show(moveSection(list, a, 5, true))).toEqual(['x', '[C] c', 'd', '[E] e', '[A] a', 'b']);
-    expect(moveSection(list, a, 0, false)).toBe(list);
-    const top = rows(['a', { head: 'A' }], ['c', { head: 'C' }]);
-    expect(show(moveSection(top, [1], 0, false))).toEqual(['[C] c', '[A] a']);
-    expect(show(moveSection(list, sectionRows(list, 5), 3, false))).toEqual(['x', '[A] a', 'b', '[E] e', '[C] c', 'd']);
-    expect(moveSection(list, a, 4, false)).toBe(list);
-  });
-
-  it('a group chip moves its group; groups drop only between groups and keep the pages around them', () => {
-    // groups: a b c d | e f (full four, then the rest) | / g h
-    const list = rows('a', 'b', 'c', 'd', 'e', 'f', ['g', { group: true }], 'h');
-    const starts = [true, false, false, false, true, false, true, false];
-    const g = groupRows(starts, 6);
-    expect(g).toEqual([6, 7]);
-    expect(groupRows(starts, 5)).toEqual([]);
-    expect(blockDropOk(list, g, 4, false, starts)).toBe(true);
-    expect(blockDropOk(list, g, 3, true, starts)).toBe(true);
-    expect(blockDropOk(list, g, 2, true, starts)).toBe(false);
-    expect(blockDropOk(list, g, 5, true, starts)).toBe(false); // where it already is
-    // before e: e started its group only because a..d was full; it gets a flag so it still does after g h
-    expect(show(moveGroup(list, g, starts, 4, false))).toEqual(['a', 'b', 'c', 'd', '/ g', 'h', '/ e', 'f']);
-    // the first group to the end: e keeps its page start, now the first row (no flag there)
-    expect(show(moveGroup(list, groupRows(starts, 0), starts, 7, true))).toEqual(['e', 'f', '/ g', 'h', '/ a', 'b', 'c', 'd']);
-    expect(moveGroup(list, g, starts, 2, false)).toBe(list);
-    // before a row with a heading: under the heading, and that row starts the next page
-    const headed = rows('a', ['b', { head: 'B' }], 'c', ['d', { group: true }]);
-    const hs = [true, true, false, true];
-    expect(show(moveGroup(headed, groupRows(hs, 3), hs, 1, false))).toEqual(['a', '[B] d', '/ b', 'c']);
-    expect(show(moveGroup(headed, groupRows(hs, 3), hs, 0, true))).toEqual(['a', '/ d', '[B] b', 'c']);
-    // an automatic page (no flag anywhere) moves alone; the pages it leaves and joins stay whole
-    const plain = rows('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i');
-    const ps = [true, false, false, false, true, false, false, false, true];
-    expect(show(moveGroup(plain, groupRows(ps, 4), ps, 0, false))).toEqual(['e', 'f', 'g', 'h', '/ a', 'b', 'c', 'd', '/ i']);
-    expect(show(moveGroup(plain, groupRows(ps, 8), ps, 4, false))).toEqual(['a', 'b', 'c', 'd', '/ i', '/ e', 'f', 'g', 'h']);
-    // a section's first page: its heading stays with the section's next page, the page goes alone
-    const sec = rows('x', ['a', { head: 'A' }], 'b', ['c', { group: true }], 'd');
-    const ss = [true, true, false, true, false];
-    expect(show(moveGroup(sec, groupRows(ss, 1), ss, 0, false))).toEqual(['a', 'b', '/ x', '[A] c', 'd']);
-  });
 
   it('pick mode: one action on several rows shows them all if any is hidden, else hides them all', () => {
     const { p, osc, env } = voice();

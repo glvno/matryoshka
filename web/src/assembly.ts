@@ -47,12 +47,20 @@ export interface ParamRef {
   col?: true;
   /** a heading above this row on the collapsed card */
   head?: string;
-  /** a new group (one FM-1 page, pages.ts `groupStarts`) starts at this row, before the four of the last one are full */
+  /** a new group (one FM-1 page, pages.ts `groupStarts`) starts at this row, before the four of the last one are full:
+   * a page break the user set (Arrange mode shows it with a ×) */
   group?: true;
+  /** a group starts at this row because Arrange mode kept the pages around a move as they were (arrange.ts pinPages): a
+   * start like `group`, but not one the user set, so it has no × */
+  pin?: true;
   /** a display on this row reaches across this many columns of the collapsed card, its own and those to its right (2..;
    * see `spanPlan`; cut short where the card has fewer columns or another span is in the way) */
   span?: number;
 }
+
+/** a heading with no rows on an assembly card (Arrange mode keeps it, arrange.ts): it sits before the section that the
+ * row (module, param) opens, or with `after` after the last row of that row's column. The FM-1 has no page for it. */
+export interface EmptyHead { head: string; module: number; param: string; after?: true }
 
 /** the longest heading kept */
 const HEAD_MAX = 40;
@@ -62,10 +70,11 @@ const SPAN_MAX = 16;
 
 /** the layout fields of a promoted parameter from a file: a column break, a heading, a group start and a span, each only
  * when well formed */
-function rowLayout(r: Record<string, unknown>): Pick<ParamRef, 'col' | 'head' | 'group' | 'span'> {
-  const out: Pick<ParamRef, 'col' | 'head' | 'group' | 'span'> = {};
+function rowLayout(r: Record<string, unknown>): Pick<ParamRef, 'col' | 'head' | 'group' | 'pin' | 'span'> {
+  const out: Pick<ParamRef, 'col' | 'head' | 'group' | 'pin' | 'span'> = {};
   if (r.col === true) out.col = true;
   if (r.group === true) out.group = true;
+  else if (r.pin === true) out.pin = true;
   const head = typeof r.head === 'string' ? r.head.trim().slice(0, HEAD_MAX) : '';
   if (head) out.head = head;
   if (Number.isInteger(r.span) && (r.span as number) >= 2) out.span = Math.min(r.span as number, SPAN_MAX);
@@ -74,8 +83,8 @@ function rowLayout(r: Record<string, unknown>): Pick<ParamRef, 'col' | 'head' | 
 
 /** a column break or group start on the first row means nothing: drop them */
 function tidyRows(list: ParamRef[]): ParamRef[] {
-  if (list[0]?.col || list[0]?.group) {
-    const { col: _, group: _g, ...rest } = list[0];
+  if (list[0]?.col || list[0]?.group || list[0]?.pin) {
+    const { col: _, group: _g, pin: _p, ...rest } = list[0];
     list[0] = rest;
   }
   return list;
@@ -90,163 +99,34 @@ export function keepParams(list: ParamRef[], keep: (r: ParamRef) => boolean): Pa
   const out: ParamRef[] = [];
   let col = false;
   let group = false;
+  let pin = false;
   let head: string | undefined;
   let span: number | undefined;
   for (const r of list) {
     if (!keep(r)) {
       col ||= !!r.col;
       group ||= !!r.group;
+      pin ||= !!r.pin;
       if (r.head) head = r.head;
       if (r.span) span = r.span;
       continue;
     }
-    if (col || group || head || span) {
+    if (col || group || pin || head || span) {
       const n: ParamRef = { ...r };
       if (col) n.col = true;
       if (group) n.group = true;
+      else if (pin && !n.group) n.pin = true;
       if (head && !n.head) n.head = head;
       if (span && !n.span) n.span = span;
       out.push(n);
       col = false;
       group = false;
+      pin = false;
       head = undefined;
       span = undefined;
     } else out.push(r);
   }
   return tidyRows(out);
-}
-
-/**
- * Move the promoted parameter at `from` next to the one at `to`: before it, where it takes over that row's place (the
- * top of a column or section stays the top: the moved row goes under the heading), or after it.
- */
-export function moveParam(list: ParamRef[], from: number, to: number, after: boolean): ParamRef[] {
-  if (from === to || !list[from] || !list[to]) return list;
-  const moving = list[from];
-  const target = list[to];
-  const same = (a: ParamRef, b: ParamRef): boolean => a.module === b.module && a.param === b.param;
-  const rest = keepParams(list, (r) => r !== moving);
-  const i = rest.findIndex((r) => same(r, target));
-  const { col: _c, head: _h, group: _g, span: _s, ...plain } = moving;
-  if (after) rest.splice(i + 1, 0, plain);
-  else {
-    const { col, head, group, span, ...was } = rest[i];
-    rest.splice(i, 1, { ...plain, ...(col ? { col } : {}), ...(head ? { head } : {}), ...(group ? { group } : {}), ...(span ? { span } : {}) }, was);
-  }
-  return tidyRows(rest);
-}
-
-/**
- * Move several promoted parameters (`picked`, indices into `list`) as one block next to the row at `to` (not one of them),
- * before or after it (#186). The block keeps its rows' order and their own headings, group flags, spans and the column
- * breaks inside it, so a block that spans a column break still does. Its first row's column break stays where it was:
- * the next row left there takes it. Dropped before a row, the block takes that row's column break (the top of a column
- * stays the top), and, when its first row has no heading or group flag of its own, that row's heading and group flag too
- * (it goes under the heading, as one row does); otherwise the row keeps them and the block goes before it.
- */
-export function moveBlock(list: ParamRef[], picked: readonly number[], to: number, after: boolean): ParamRef[] {
-  const set = new Set(picked.filter((i) => list[i]));
-  if (!set.size || set.has(to) || !list[to]) return list;
-  const idx = [...set].sort((x, y) => x - y);
-  const block = idx.map((i) => ({ ...list[i] }));
-  let handCol = !!block[0].col;
-  delete block[0].col;
-  const rest: ParamRef[] = [];
-  const restIdx: number[] = [];
-  list.forEach((r, i) => {
-    if (set.has(i)) return;
-    if (handCol && i > idx[0]) {
-      rest.push(r.col ? r : { ...r, col: true });
-      handCol = false;
-    } else rest.push(r);
-    restIdx.push(i);
-  });
-  const k = restIdx.indexOf(to);
-  if (after) rest.splice(k + 1, 0, ...block);
-  else {
-    const t = { ...rest[k] };
-    if (t.col) {
-      block[0].col = true;
-      delete t.col;
-    }
-    if (!block[0].head && !block[0].group && (t.head || t.group)) {
-      if (t.head) block[0].head = t.head;
-      if (t.group) block[0].group = true;
-      delete t.head;
-      delete t.group;
-    }
-    rest.splice(k, 1, ...block, t);
-  }
-  return tidyRows(rest);
-}
-
-/** the rows of the section whose heading is on row `i` (up to the next heading), or [] when row `i` has none */
-export function sectionRows(list: ParamRef[], i: number): number[] {
-  if (!list[i]?.head) return [];
-  const out = [i];
-  for (let j = i + 1; j < list.length && !list[j].head; j++) out.push(j);
-  return out;
-}
-
-/** the rows of the group (one FM-1 page) that starts at row `i`, given where groups start (`starts[j]` per row of the
- * list; a row no group counts, such as one set from the screen, is false), or [] when no group starts there */
-export function groupRows(starts: readonly boolean[], i: number): number[] {
-  if (!starts[i]) return [];
-  const out = [i];
-  for (let j = i + 1; j < starts.length && !starts[j]; j++) out.push(j);
-  return out;
-}
-
-/**
- * Where a dragged section (`rows` from `sectionRows`; boundaries at headings) or group (from `groupRows`, with its
- * `starts`) may land (#186): before a row that starts one, or after the row before such a row or after the last row.
- * Never inside the rows it moves or right next to them (that would change nothing), and a section never above the rows
- * before the first heading.
- */
-export function blockDropOk(list: ParamRef[], rows: readonly number[], to: number, after: boolean, starts?: readonly boolean[]): boolean {
-  if (!rows.length || !list[to] || rows.includes(to)) return false;
-  const slot = after ? to + 1 : to;
-  // a section never goes above rows that have no heading: they would join it
-  const boundary = slot === list.length || (starts ? slot === 0 || !!starts[slot] : !!list[slot].head);
-  return boundary && slot !== rows[0] && slot !== rows[rows.length - 1] + 1;
-}
-
-/** move a whole section (`rows` from `sectionRows`) to a place `blockDropOk` allows */
-export function moveSection(list: ParamRef[], rows: readonly number[], to: number, after: boolean): ParamRef[] {
-  return blockDropOk(list, rows, to, after) ? moveBlock(list, rows, to, after) : list;
-}
-
-/**
- * Move a whole group (one FM-1 page, `rows` from `groupRows`) to a place `blockDropOk` allows. The pages around it stay
- * as they were: the group's first row, the row after it and the row it lands against get a group flag where they
- * started a group only because the group before them was full. Before a row with a heading it goes under the heading.
- * A section's first page leaves its heading to the section's next page, if it has one: one page moves, not the section.
- */
-export function moveGroup(list: ParamRef[], rows: readonly number[], starts: readonly boolean[], to: number, after: boolean): ParamRef[] {
-  if (!blockDropOk(list, rows, to, after, starts)) return list;
-  const out = list.map((r) => ({ ...r }));
-  const pin = (j: number): void => {
-    if (out[j] && starts[j] && !out[j].head && !out[j].group) out[j].group = true;
-  };
-  // the first page of a section with more pages: the heading stays with the pages left, the page goes alone
-  const first = out[rows[0]];
-  const next = out[rows[rows.length - 1] + 1];
-  if (first.head && next && !next.head) {
-    next.head = first.head;
-    delete next.group;
-    delete first.head;
-  }
-  pin(rows[0]);
-  pin(rows[rows.length - 1] + 1);
-  pin(after ? to + 1 : to);
-  // before a section's first row: under its heading, as the section's first page (that row starts the next one)
-  if (!after && out[to].head && !out[rows[0]].head) {
-    out[rows[0]].head = out[to].head;
-    delete out[rows[0]].group;
-    delete out[to].head;
-    out[to].group = true;
-  }
-  return moveBlock(out, rows, to, after);
 }
 
 /** a parameter row of a member card, as pick mode selects it */
@@ -286,14 +166,6 @@ export function setColumnBreak(list: ParamRef[], i: number, on: boolean): void {
   if (!r) return;
   if (on && i > 0) r.col = true;
   else delete r.col;
-}
-
-/** start a new group (FM-1 page) at row `i` (not the first), or let the groups fill in fours again there */
-export function setGroupBreak(list: ParamRef[], i: number, on: boolean): void {
-  const r = list[i];
-  if (!r) return;
-  if (on && i > 0) r.group = true;
-  else delete r.group;
 }
 
 /** the heading above row `i`; an empty text removes it */
@@ -416,6 +288,8 @@ export interface AssemblyInst extends AssemblyLayout {
   inputs: PortRef[];
   outputs: PortRef[];
   params: ParamRef[];
+  /** headings with no rows (Arrange mode, arrange.ts) */
+  heads?: EmptyHead[];
   /** the group switch is off: every member module is bypassed (editor only, like the rest of the overlay) */
   bypass?: boolean;
   /** with `bypass`: the members that were bypassed on their own before the group went off; they stay off when it comes back */
@@ -440,6 +314,7 @@ export interface NestedDef extends AssemblyLayout {
   inputs: PortRef[];
   outputs: PortRef[];
   params: ParamRef[];
+  heads?: EmptyHead[];
   poly?: PolyCards;
 }
 
@@ -461,6 +336,7 @@ export interface AssemblyDef extends AssemblyLayout {
   inputs: PortRef[];
   outputs: PortRef[];
   params: ParamRef[];
+  heads?: EmptyHead[];
   /** the top level's direct children (ids in `assemblies`); modules not claimed by a nested assembly are its direct members */
   children?: number[];
   assemblies?: NestedDef[];
@@ -1128,6 +1004,7 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
     outputs: a.outputs.map(port),
     params: a.params.map(remap),
   };
+  if (a.heads?.length) def.heads = a.heads.map(remap);
   if (a.poly) def.poly = { ...a.poly };
   if (nested.length) {
     def.children = (a.children ?? []).map((id) => localAsm.get(id)!);
@@ -1145,6 +1022,7 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
         outputs: d.outputs.map(port),
         params: d.params.map(remap),
       };
+      if (d.heads?.length) n.heads = d.heads.map(remap);
       if (d.children?.length) n.children = d.children.map((id) => localAsm.get(id)!);
       if (d.poly) n.poly = { ...d.poly };
       return n;
@@ -1204,6 +1082,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
       outputs: d.outputs.map(port),
       params: d.params.map(remap),
     };
+    if (d.heads?.length) n.heads = d.heads.map(remap);
     taken.push(n.label);
     if (d.children?.length) n.children = d.children.map((id) => freshAsm.get(id)!);
     if (d.poly) n.poly = fixCards(d.poly);
@@ -1223,6 +1102,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     outputs: def.outputs.map(port),
     params: def.params.map(remap),
   };
+  if (def.heads?.length) a.heads = def.heads.map(remap);
   if (def.children?.length) a.children = def.children.map((id) => freshAsm.get(id)!);
   if (def.poly) a.poly = fixCards(def.poly);
   p.assemblies = [...assembliesOf(p), ...made, a];
@@ -1347,6 +1227,8 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
     }));
   const moduleOf = (id: number): ModuleInst | undefined => d.modules.find((m) => m.id === id);
   d.params = params(d.params);
+  const dh = emptyHeads(d.heads, d.params);
+  if (dh) d.heads = dh; else delete d.heads;
   d.inputs = pinsToParams(ports(d.inputs, 'in'), d.params, moduleOf);
   d.outputs = ports(d.outputs, 'out');
   // nested assemblies: local ids, disjoint direct members, a tree of at most MAX_DEPTH levels
@@ -1377,6 +1259,8 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
         outputs: ports(e.outputs, 'out'),
         params: params(e.params),
       };
+      const nh = emptyHeads(e.heads, n.params);
+      if (nh) n.heads = nh;
       n.inputs = pinsToParams(ports(e.inputs, 'in'), n.params, moduleOf);
       if (Array.isArray(e.children) && e.children.length) n.children = e.children.map(Number);
       if (e.poly) n.poly = fixCards(e.poly);
@@ -1461,6 +1345,8 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
       outputs: refs(e.outputs, 'port').map((r) => ({ module: r.module, port: r.port, label: r.label })),
       params: tidyRows(refs(e.params, 'param') as unknown as ParamRef[]),
     };
+    const ah = emptyHeads(e.heads, a.params);
+    if (ah) a.heads = ah;
     if (e.poly) a.poly = fixCards(e.poly);
     if (typeof e.preset === 'string' && e.preset.trim()) a.preset = e.preset.trim().slice(0, 24);
     if (e.bypass) {
@@ -1513,6 +1399,20 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
     }
   reconcileAll(p, defs);
   return msgs;
+}
+
+/** the well-formed empty headings of a file: a heading of up to HEAD_MAX characters at a row the card has; none: undefined */
+function emptyHeads(list: unknown, params: readonly ParamRef[]): EmptyHead[] | undefined {
+  if (!Array.isArray(list)) return undefined;
+  const out = list.flatMap((h: unknown): EmptyHead[] => {
+    if (!isRec(h) || typeof h.head !== 'string') return [];
+    const head = h.head.trim().slice(0, HEAD_MAX);
+    const module = Number(h.module);
+    const param = String(h.param);
+    if (!head || !params.some((r) => r.module === module && r.param === param)) return [];
+    return [{ head, module, param, ...(h.after === true ? { after: true as const } : {}) }];
+  });
+  return out.length ? out : undefined;
 }
 
 function refs(list: unknown, key: 'port' | 'param'): PortRef[] {
