@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Emu: muting a track on a synced FM-1 (SEQ + a black key) now blinks that key on the emulator too, and letting go of
+  SEQ no longer flips the emulator to the SEQ page.
+
 ## 1.3.2 — 2026-10-25
 
 - FM-1: the footer's octave (= OCT =, OCT +, - OCT) changes as soon as you press OCT- / OCT+, not only once something

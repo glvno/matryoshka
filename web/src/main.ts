@@ -276,7 +276,10 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     mark(true);
     try {
       if (e.kind === 'track') editor.trackFromDevice(id, e.notes);
-      else host.send({ t: 'mute', id, on: e.on });
+      else {
+        host.send({ t: 'mute', id, on: e.on });
+        if (from === 'device') emu.ui?.mute(e.module, e.on);   // (the emulator's black key lights follow the FM-1's mute)
+      }
     } finally { mark(false); }
     return;
   }

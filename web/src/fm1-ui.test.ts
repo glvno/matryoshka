@@ -8,6 +8,7 @@ import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { BUTTONS, ENCODERS, Fm1Ui } from './fm1-ui';
 import { encodePatch } from './patchbin';
+import { deviceView } from './poly';
 import { PROFILES } from './fm1-profiles';
 import { FM1_PRESETS } from './presets';
 import { buildFm1Wasm } from '../scripts/fm1-wasm.mjs';
@@ -44,6 +45,26 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect(off).toBe(0);
   }, 120_000);
 
+  it('a track muted on the FM-1 it follows blinks its black key; SEQ held there does not switch the page on its release', async () => {
+    const ui = await Fm1Ui.create(bytes);
+    const patch = FM1_PRESETS['Oracle V']();
+    const track = deviceView(patch, true).patch.modules.findIndex((m) => m.type === 'steps');
+    expect(ui.load(encodePatch(patch), 'ORACLE V')).toBe(0);
+    ui.tick(1000);
+    const home = ui.page;
+    ui.button(BUTTONS.seq, true);   // (the FM-1's SEQ held, mirrored; its black key mutes the track there: MUTE_NOW)
+    ui.mute(track, true);
+    ui.button(BUTTONS.seq, false);
+    ui.tick(1100);
+    expect(ui.page).toBe(home);
+    ui.button(BUTTONS.seq, true);   // the SEQ page: the first black key is the first track's
+    ui.button(BUTTONS.seq, false);
+    expect(ui.page).not.toBe(home);
+    const key = (ms: number): number => { ui.tick(ms); return ui.lights().keys.lit >> 1 & 1; };
+    expect([key(2000), key(2200)].sort()).toEqual([0, 1]);   // muted: it blinks (200 ms)
+    ui.mute(track, false);
+    expect([key(2400), key(2600)]).toEqual([1, 1]);          // the selected track, playing: steady
+  }, 120_000);
   it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes back along the trail', async () => {
     const focus: [number, number][] = [];
     const params: number[][] = [];

@@ -263,6 +263,18 @@ WASM_EXPORT("fm1w_param") void fm1w_param(uint32_t mod, uint32_t par, int32_t v)
             ui_dirty = 1;
     }
 }
+/* a track muted / unmuted on the FM-1 the page follows (its MUTE_NOW): the black key's light follows. SEQ held here
+ * (the FM-1's SEQ, mirrored): the black key that muted was the FM-1's, so SEQ's release does not switch the page */
+WASM_EXPORT("fm1w_mute") void fm1w_mute(uint32_t mod, uint32_t on)
+{
+    if ((int)mod >= eng_nmodules())
+        return;
+    eng_steps_mute(mod, (int)on);
+    if (panel_held >> BTN_SEQ & 1u)
+        seq_held_used = 1;
+    ui_dirty = 2;
+    panel_draw();
+}
 /* the page's transport (its Play button, Space) */
 WASM_EXPORT("fm1w_transport") void fm1w_transport(uint32_t run)
 {
