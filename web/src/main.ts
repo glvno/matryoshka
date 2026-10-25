@@ -8,7 +8,7 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, UPDATE_TO_SYNC, type ChipState, type DeviceEvent } from './device';
 import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
 import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
@@ -348,12 +348,19 @@ const declineSync = (on: boolean): void => {
 /** Live sync on or off: the one switch for the connect dialog, the chip and FM-1 & MIDI's sync line (on: the FM-1 gets the
  *  editor's patch) */
 function setLive(on: boolean): void {
+  if (on && device.connected && !syncsWith(device.info)) return sayUpdate();
   liveOn = on;
   syncChip();
   if (!on) return;
   sayLive();
   declineSync(false);
   if (fitsDevice) void sendPatch();   // (a sandbox patch is not sent: the FM-1 becomes its controller)
+}
+/** firmware too old for the editor's patch format (syncsWith): Live stays off, and the toast opens the install panel */
+function sayUpdate(): void {
+  liveOn = false;
+  devStatus(UPDATE_TO_SYNC);
+  showAction(UPDATE_TO_SYNC, 'Update the FM-1', openInstall, 12000);
 }
 const syncAsk = $<HTMLDialogElement>('sync-ask');
 syncAsk.onclose = () => {
@@ -369,6 +376,7 @@ syncAsk.onclose = () => {
  */
 function offerSync(asked = false): void {
   if (!device.connected) return syncChip();
+  if (!syncsWith(device.info)) return sayUpdate();
   if (liveOn && !asked) {
     if (fitsDevice) void sendPatch();
     return syncChip();

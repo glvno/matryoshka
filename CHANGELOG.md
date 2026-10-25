@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Syncing with an FM-1 on firmware older than 1.2 now says to update it (with a button to the install panel),
+  instead of failing with "the firmware refused the patch".
+
 ## 1.3.2 — 2026-10-25
 
 - FM-1: the footer's octave (= OCT =, OCT +, - OCT) changes as soon as you press OCT- / OCT+, not only once something
