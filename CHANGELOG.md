@@ -4,6 +4,8 @@
 
 - An assembly made of assemblies keeps the names they gave their controls and jacks: promoting a nested
   "hold pitch" slider onto the outer card shows "hold pitch", not the Macro's "value".
+- A control promoted from a nested assembly lands under a heading named after it and its page there ("Lire 5-8",
+  label "hold"), next to the other controls from that page. Factory assemblies and saved patches are unchanged.
 
 ## 1.3.3 — 2026-10-25
 
