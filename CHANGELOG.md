@@ -6,6 +6,7 @@
   instead of failing with "the firmware refused the patch".
 - The sidebar stays the same in Patch, Emu and Library; Get started, Audio on / Panic and MIDI are there in all three.
   Library's Patches, Assemblies, Presets and Community are tabs at the top. The logo takes you back to the canvas.
+- 909 Kit XL has an arpeggiator (ARP, off until pressed) between its DRUMS track and the drum map, like every other XL.
 
 ## 1.3.2 — 2026-10-25
 
