@@ -16,6 +16,8 @@
 
 ## 1.3.2 — 2026-10-25
 
+Not released on its own: it ships in 1.3.3.
+
 - FM-1: the footer's octave (= OCT =, OCT +, - OCT) changes as soon as you press OCT- / OCT+, not only once something
   else redraws the screen.
 
