@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Syncing with an FM-1 on firmware older than 1.2 now says to update it (with a button to the install panel),
+  instead of failing with "the firmware refused the patch".
+- The sidebar stays the same in Patch, Emu and Library; Get started, Audio on / Panic and MIDI are there in all three.
+  Library's Patches, Assemblies, Presets and Community are tabs at the top. The logo takes you back to the canvas.
+- 909 Kit XL has an arpeggiator (ARP, off until pressed) between its DRUMS track and the drum map, like every other XL.
+- Make assembly (Ctrl/Cmd+G) works on a selection of assemblies alone: group two engines into one and promote just
+  the controls you want.
 - Emu: muting a track on a synced FM-1 (SEQ + a black key) now blinks that key on the emulator too, and letting go of
   SEQ no longer flips the emulator to the SEQ page.
 - 8 Lire and Elvira 2 (and their XLs) call their piano roll rows VOICE 1, VOICE 2, ... instead of KICK, SNARE, ...;

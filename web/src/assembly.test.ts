@@ -116,6 +116,26 @@ describe('assemblies', () => {
     expect(() => makeAssembly(p, [osc, env])).toThrow(/already in/);
   });
 
+  it('groups assemblies alone into a new one, at top level or inside their parent', () => {
+    const { p, osc, env, vca } = voice();
+    const a = makeAssembly(p, [osc], 'a');
+    const b = makeAssembly(p, [env], 'b');
+    const c = makeAssembly(p, [], 'pair', [a.id, b.id]);
+    expect(c.modules).toEqual([]);
+    expect(c.children).toEqual([a.id, b.id]);
+    expect(parentOf(p, a.id)).toBe(c);
+    expect(allModules(p, c).sort()).toEqual([osc, env].sort());
+    const q = voice().p;
+    const outer = makeAssembly(q, [osc, env, vca], 'voice');
+    const x = makeAssembly(q, [osc], 'x');
+    const y = makeAssembly(q, [env], 'y');
+    expect(parentOf(q, x.id)).toBe(outer);
+    const pair = makeAssembly(q, [], 'pair', [x.id, y.id]);
+    expect(parentOf(q, pair.id)).toBe(outer);
+    expect(outer.children).toEqual([pair.id]);
+    expect(pair.children).toEqual([x.id, y.id]);
+  });
+
   it('the group switch bypasses every member and restores their own switches', () => {
     const p = emptyPatch();
     addModule(p, DEFS.fm1, 0, 0);
