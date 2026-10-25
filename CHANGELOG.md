@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.3 — 2026-10-25
 
 - Syncing with an FM-1 on firmware older than 1.2 now says to update it (with a button to the install panel),
   instead of failing with "the firmware refused the patch".
@@ -15,6 +15,8 @@
   the browser's roll and the FM-1's SEQ page now show the same names on the same notes.
 
 ## 1.3.2 — 2026-10-25
+
+Not released on its own: it ships in 1.3.3.
 
 - FM-1: the footer's octave (= OCT =, OCT +, - OCT) changes as soon as you press OCT- / OCT+, not only once something
   else redraws the screen.

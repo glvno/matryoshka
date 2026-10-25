@@ -24,7 +24,7 @@ static uint8_t m1_edited;                  /* proto.c: the running patch was edi
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
-#define FELUCCA_VERSION "v1.3.2-DEV"
+#define FELUCCA_VERSION "v1.3.3-DEV"
 #define FM1_TICKS_PER_US 24u
 
 /* lcd.c's shared line buffer and its rule: on the device the DMA reads it after the transfer call returns, until the next
