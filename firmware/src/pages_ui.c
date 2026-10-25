@@ -67,6 +67,7 @@ static uint32_t pg_ndev, pg_npage, pg_built_gen = 0xFFFFFFFFu, pg_built_at;
 static uint32_t pg_cur_dev, pg_cur_page;                /* the focus: the device and its page K1..K4 turn */
 static uint8_t pg_strip_dirty = 1;                      /* the tabs and chips need a redraw (the focus moved) */
 static uint32_t pg_toast_until;                         /* a knob just turned: its toast shown until fm1_ms */
+static uint8_t pg_knob_due;                              /* bench-1.2.2: a knob turned, its toast not drawn yet (ui.c UT_KNOB) */
 static uint8_t pg_toast_k;
 /* SELECT / ALGO turning (#221): their card (PG_CARD_DEV, PG_CARD_PAGE) alone on the screen until pg_card_until; the page
  * once they stop */
@@ -494,6 +495,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
     j = pg->par[k];
     pg_toast_k = (uint8_t)k;
     pg_toast_until = fm1_ms + 1000u;
+    pg_knob_due = 1;
     pg_patch_until = 0;
     pg_card_until = 0;                                  /* (turning SELECT / ALGO: the page they reached, whole, at once) */
     *mod = m;
@@ -536,6 +538,7 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
         return -1;
     pg_toast_k = (uint8_t)k;
     pg_toast_until = fm1_ms + 1000u;
+    pg_knob_due = 1;
     pg_patch_until = 0;
     pg_card_until = 0;                                  /* (turning SELECT / ALGO: the page they reached, whole, at once) */
     *mod = m;
@@ -1162,9 +1165,35 @@ static void glo_footer(void)
     }
 }
 
+static void pages_draw_now(int full);
+/* bench-1.2.2: the draw times (ui.c ui_time_diag) around the whole draw, by what it is: the page SELECT / ALGO reached (their
+ * card ends) or PRESET reached (its name not drawn yet); else the page whole; a knob's toast; PRESET's name gone. The card
+ * itself (SELECT / ALGO turning) and the end of a knob's toast are not timed (1.3 has neither) */
+static void pages_draw(int full)
+{
+    const ppage_t *pg = pages_now();
+    int k = -1;
+    if (pg && pages_carding())
+        k = -1;
+    else if (pg_card_shown || (pg && fm1_ms < pg_patch_until && pg_patch_shown != pages_gen() + 1u))
+        k = UT_PAGE;
+    else if (full)
+        k = UT_FULL;
+    else if (pg && pg_knob_due && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows)
+        k = UT_KNOB;
+    else if (pg_patch_shown && fm1_ms >= pg_patch_until && !(pg && fm1_ms < pg_toast_until && pg_toast_k < pg->nrows))
+        k = UT_TOAST_END;
+    pg_knob_due = 0;
+    if (k >= 0)
+        ut_begin((uint32_t)k);
+    pages_draw_now(full);
+    if (k >= 0)
+        ut_end((uint32_t)k);
+}
+
 /* the device page (page 0) and GLO's (PAGE_GLO); full: everything, else what moves (the bars or a toast, the rail, the
  * foot line) */
-static void pages_draw(int full)
+static void pages_draw_now(int full)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
@@ -1207,10 +1236,15 @@ static void pages_draw(int full)
     }
     pg_toast_shown = 0xFFu;
     if (fm1_ms < pg_patch_until) {                      /* (a beat's redraw leaves it be) */
+        int fresh = pg_patch_shown != pages_gen() + 1u;
+        if (fresh)
+            ut_begin(UT_TOAST);                         /* (bench-1.2.2: PRESET's name drawn, ui.c) */
         if (full || !pg_patch_shown)
             pages_patch_toast(1);
-        else if (pg_patch_shown != pages_gen() + 1u)
+        else if (fresh)
             pages_patch_toast(0);
+        if (fresh)
+            ut_end(UT_TOAST);
         pg_patch_shown = pages_gen() + 1u;
         return;
     }

@@ -54,6 +54,47 @@ static uint32_t msg_until;                      /* a message in the top bar (SAV
 static uint32_t test_input_ms;
 static int test_input_recent(void) { return test_input_ms && fm1_ms - test_input_ms < TEST_HOLD_MS; }
 
+/* The draw times (the owner's benchmark, 2026-10-24; bench-1.2.2: the DIAG pages and kinds of the ui-timing branch, placed
+ * in 1.2.2's screens): fm1_ticks around each kind of redraw, the last and the worst in microseconds and how many, LCD
+ * transfers included (the SPI's DMA is waited for inside the draw). Read over the link: DIAG pages 121 (the last of each),
+ * 122 (the worst), 123 (the counts), page 120 resets them (main.c m1_diag; tools/m1_link.py uitime; npm run rig:bench).
+ * Placed in pages_ui.c pages_draw: UT_FULL: the device page drawn whole (pages_draw(1)); UT_HEADER: the top bar
+ * (header_draw); UT_KNOB: a K1..K4 click: its toast with the value and the bar; UT_PAGE: the page SELECT or ALGO reached
+ * (drawn once their card's 400 ms ran out) or PRESET reached (the page with the patch's name over the bars); UT_TOAST:
+ * PRESET's name over the bars drawn (inside UT_PAGE); UT_TOAST_END: its 1 s up, the bars drawn back */
+enum { UT_FULL, UT_HEADER, UT_KNOB, UT_PAGE, UT_TOAST, UT_TOAST_END, UT_N };
+static struct {
+    uint32_t last, worst, n;
+} ui_time[UT_N];
+static uint32_t ui_time_t0[UT_N];
+static void ut_begin(uint32_t k) { ui_time_t0[k] = fm1_ticks(); }
+static void ut_end(uint32_t k)
+{
+    uint32_t us = (fm1_ticks() - ui_time_t0[k]) / FM1_TICKS_PER_US;
+    ui_time[k].last = us;
+    ui_time[k].worst = us > ui_time[k].worst ? us : ui_time[k].worst;
+    ui_time[k].n++;
+}
+/* DIAG page p (120..123) of the draw times into out: its length (0: no such page) */
+static uint32_t ui_time_diag(uint32_t p, uint8_t *out)
+{
+    uint32_t k, i, v;
+    if (p == 120u) {
+        for (k = 0; k < UT_N; k++)
+            ui_time[k].last = ui_time[k].worst = ui_time[k].n = 0;
+        out[0] = UT_N;
+        return 1;
+    }
+    if (p < 121u || p > 123u)
+        return 0;
+    for (k = 0; k < UT_N; k++) {
+        v = p == 121u ? ui_time[k].last : p == 122u ? ui_time[k].worst : ui_time[k].n;
+        for (i = 0; i < 4u; i++)
+            out[4u * k + i] = (uint8_t)(v >> (8u * i));
+    }
+    return 4u * UT_N;
+}
+
 static char *put(char *d, const char *s)
 {
     while (*s)
@@ -273,12 +314,19 @@ static void pages_strip(void);
 static void presets_bar(void);
 static uint8_t ui_yielding;                     /* panel.c: keys are taken from inside a redraw (#230): nothing may draw */
 static uint8_t ui_header_due;                   /* a header_draw asked for meanwhile: panel_draw does it at the end */
+static void header_draw_now(void);
 static void header_draw(void)
 {
     if (ui_yielding) {
         ui_header_due = 1;
         return;
     }
+    ut_begin(UT_HEADER);
+    header_draw_now();
+    ut_end(UT_HEADER);
+}
+static void header_draw_now(void)
+{
     if (page == 8u && !eng_overload && !load_err) {     /* the SEQ page: the track's name (seq_ui.c PAGE_SEQ) */
         seq_bar();
         msg_until = 0;

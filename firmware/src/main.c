@@ -143,6 +143,8 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         return sizeof v;
     }
 #endif
+    if (page >= 120u && page <= 123u)                    /* the draw times (ui.c ui_time_diag) */
+        return ui_time_diag(page, out);
     if (page == 127u) {
         uint32_t v[7];
         v[0] = cpu_pct;
