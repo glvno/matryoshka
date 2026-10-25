@@ -146,10 +146,14 @@ static void page_show(uint32_t p)
         seq_leave();
         seq_leds_off();
     }
-    header_draw();
+    if (dev_like() && !sb_on && !eng_overload && !load_err)
+        msg_until = 0;                              /* (the device page and GLO's draw their header with the rest) */
+    else
+        header_draw();
     leds_play();
     leds_panel();                                   /* (GLO is lit while its page shows) */
-    lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+    if (!dev_like())
+        lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
     view_draw(1);
 }
 
@@ -403,11 +407,11 @@ static void panel_encoders(int32_t *st)
         }
         st[1] = 0;
     }
-    if (page == 0) {                                /* SELECT: the device, ALGO: its page (the editor follows), named in a toast
-                                                     * while the page is drawn under it (#298) */
+    if (page == 0) {                                /* SELECT: the device, ALGO: its page (the editor follows); the header shows
+                                                     * which, the page is drawn in passes (#298) */
         int dev = pages_select(st[0]), pg = pages_page(st[1]);
         if (dev | pg) {
-            pages_title(dev ? TT_DEV : TT_PAGE);
+            pages_moved();
             m1_focus_now(pg_cur_dev, pg_cur_page);
             if (!ui_dirty)
                 ui_dirty = 1;
@@ -739,7 +743,7 @@ static void panel_status(void)
         if (shed_seen)
             ui_msg("OVERLOAD: A PART LESS", 1500);
     }
-    if ((page == 0 || page == PAGE_GLO) && pages_expired())   /* a toast ended: the picture comes back */
+    if ((page == 0 || page == PAGE_GLO) && pages_expired())   /* PRESET's toast ended: the page comes back */
         ui_dirty = ui_dirty ? ui_dirty : 1;
     {                                               /* the live ticks of modulated rows, ten times a second */
         static uint32_t tick_ms;
