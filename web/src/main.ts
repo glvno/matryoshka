@@ -1165,12 +1165,17 @@ const engineStart = new EngineStart($<HTMLDialogElement>('engine-start'), {
 });
 const startNew = (): void => (tutorial.active ? emptyNew() : engineStart.open());
 $('new-patch-btn').onclick = () => { closeSidebar(); startNew(); };
-$('add-btn').onclick = () => openPalette('module');
-$('add-assembly-btn').onclick = () => openPalette('assembly');
-$('tidy-btn').onclick = () => editor.tidyUp();
-$('fit-btn').onclick = () => editor.zoomToFit();
-$('expand-all-btn').onclick = () => editor.setAllOpen(true);
-$('collapse-all-btn').onclick = () => editor.setAllOpen(false);
+// the sidebar is the same in every view: + Module, + Assembly and the Canvas panel go to the canvas first
+const onCanvas = (run: () => void) => (): void => {
+  if (currentView !== 'patch') setView('patch');
+  run();
+};
+$('add-btn').onclick = onCanvas(() => openPalette('module'));
+$('add-assembly-btn').onclick = onCanvas(() => openPalette('assembly'));
+$('tidy-btn').onclick = onCanvas(() => editor.tidyUp());
+$('fit-btn').onclick = onCanvas(() => editor.zoomToFit());
+$('expand-all-btn').onclick = onCanvas(() => editor.setAllOpen(true));
+$('collapse-all-btn').onclick = onCanvas(() => editor.setAllOpen(false));
 $('tour-btn').onclick = () => { toPatch(); tutorial.open(); };
 // Get started > Install names the firmware it installs: "Install v1.2" (version.ts installLabel)
 $('install-btn').textContent = installLabel();
@@ -1588,14 +1593,10 @@ function setView(v: View): void {
   $('tab-library').hidden = v !== 'library';
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
-  // the sidebar per view: PATCH has the PATCH, Canvas and Get started panels; EMU the PATCH panel without + Module /
-  // + Assembly; LIBRARY its section list
-  document.querySelector<HTMLElement>('.patch-controls')!.hidden = v === 'library';
-  for (const el of document.querySelectorAll<HTMLElement>('.patch-controls [data-views]')) el.hidden = !el.dataset.views!.split(' ').includes(v);
-  document.querySelector<HTMLElement>('.add-row')!.hidden = v !== 'patch';
-  document.querySelector<HTMLElement>('.library-side')!.hidden = v !== 'library';
+  // the sidebar is the same in every view; LIBRARY's sections are tabs under the switch
+  $('library-tabs').hidden = v !== 'library';
   // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go;
-  // LIBRARY plays nothing, so they go there too and it has the full height
+  // LIBRARY plays nothing, so they go there too. Audio on / Panic and MIDI stay
   workspace.classList.toggle('fm1-mode', v === 'emu');
   workspace.classList.toggle('library-mode', v === 'library');
   host.setMaster(v === 'emu' ? emuLevel : 1);
@@ -1633,7 +1634,7 @@ function toPatch(): void {
   if (currentView === 'library') setView('patch');
 }
 
-// LIBRARY's sections (#218): Patches, Assemblies, Presets, Community in the sidebar, the last one remembered per browser; one shows
+// LIBRARY's sections (#218): Patches, Assemblies, Presets, Community as tabs under the switch, the last one remembered per browser; one shows
 // at a time (bank.ts, assemblies.ts, library-presets.ts build them below). Entering one rereads it, and reads the FM-1
 // when one is connected
 type LibrarySection = 'patches' | 'assemblies' | 'presets' | 'community';
@@ -1647,7 +1648,7 @@ let librarySection: LibrarySection = (() => {
     return 'patches'; // storage blocked: Patches every time
   }
 })();
-const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('.library-nav [data-section]')];
+const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('#library-tabs [data-section]')];
 const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), community: $('lib-community') };
 /** the sections' panes with an FM-1 column (set when they are built, below) */
 const libraryPanes: Partial<Record<LibrarySection, LibraryPane>> = {};
@@ -2205,8 +2206,9 @@ onThemeChange(showTheme);
 showTheme();
 const toggleSidebarCollapsed = (): void => setSidebarCollapsed(!sidebar.parentElement!.classList.contains('side-collapsed'));
 collapseBtn.onclick = toggleSidebarCollapsed;
-sidebar.querySelector<HTMLElement>('.brand')!.addEventListener('click', () => {
+sidebar.querySelector<HTMLElement>('.brand')!.addEventListener('click', (e) => {
   if (sidebar.parentElement!.classList.contains('side-collapsed')) setSidebarCollapsed(false);
+  if ((e.target as Element).closest('.logo, .wordmark') && currentView !== 'patch') setView('patch');   // the logo: back to the canvas
 });
 try {
   if (localStorage.getItem(SIDEBAR_COLLAPSED)) setSidebarCollapsed(true);
