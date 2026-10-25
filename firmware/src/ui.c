@@ -57,6 +57,45 @@ static uint32_t msg_until;                      /* a message in the top bar (SAV
 static uint32_t test_input_ms;
 static int test_input_recent(void) { return test_input_ms && fm1_ms - test_input_ms < TEST_HOLD_MS; }
 
+/* The draw times (the owner's benchmark, 2026-10-24): fm1_ticks around each kind of redraw, the last and the worst in
+ * microseconds and how many, LCD transfers included (the SPI's DMA is waited for inside the draw). Read over the link:
+ * DIAG pages 121 (the last of each), 122 (the worst), 123 (the counts), page 120 resets them (main.c m1_diag;
+ * tools/m1_link.py uitime; npm run rig:bench). UT_FULL: the device page drawn whole (pages_draw(1)); UT_HEADER: the top bar
+ * (header_draw); UT_KNOB: K1..K4's bars moved in place; UT_PAGE: the page SELECT, ALGO or PRESET reached; UT_TOAST:
+ * PRESET's toast drawn; UT_TOAST_END: the page put back where it was */
+enum { UT_FULL, UT_HEADER, UT_KNOB, UT_PAGE, UT_TOAST, UT_TOAST_END, UT_N };
+static struct {
+    uint32_t last, worst, n;
+} ui_time[UT_N];
+static uint32_t ui_time_t0[UT_N];
+static void ut_begin(uint32_t k) { ui_time_t0[k] = fm1_ticks(); }
+static void ut_end(uint32_t k)
+{
+    uint32_t us = (fm1_ticks() - ui_time_t0[k]) / FM1_TICKS_PER_US;
+    ui_time[k].last = us;
+    ui_time[k].worst = us > ui_time[k].worst ? us : ui_time[k].worst;
+    ui_time[k].n++;
+}
+/* DIAG page p (120..123) of the draw times into out: its length (0: no such page) */
+static uint32_t ui_time_diag(uint32_t p, uint8_t *out)
+{
+    uint32_t k, i, v;
+    if (p == 120u) {
+        for (k = 0; k < UT_N; k++)
+            ui_time[k].last = ui_time[k].worst = ui_time[k].n = 0;
+        out[0] = UT_N;
+        return 1;
+    }
+    if (p < 121u || p > 123u)
+        return 0;
+    for (k = 0; k < UT_N; k++) {
+        v = p == 121u ? ui_time[k].last : p == 122u ? ui_time[k].worst : ui_time[k].n;
+        for (i = 0; i < 4u; i++)
+            out[4u * k + i] = (uint8_t)(v >> (8u * i));
+    }
+    return 4u * UT_N;
+}
+
 static char *put(char *d, const char *s)
 {
     while (*s)
@@ -158,33 +197,29 @@ static uint32_t param_bar(const def_t *def, uint32_t j, int32_t q16, uint32_t wi
 
 /* ---- the picture of the patch: modules as coloured boxes in rows by depth (a vertical strip), cables as lines */
 
-#define BAR_H 20u
-#define BATT_X 220u                             /* the top bar's right end, x 220..239: the battery's cell (no bar paints it; its
-                                                 * ground follows the bar's, bar_fill) */
+#define BAR_H 20u                               /* the top bar of the menu, SEQ, ENV and the preset list (the device page's
+                                                 * header is taller: pages_ui.c LK_HH) */
 
 /* The battery (#240): main.c reads SARADC ch 3 (the divider on PB1) every 2 s and hands the mean of a few conversions to
  * ui_battery; it is smoothed here (a one-pole, x16) into batt_q16 (0: not read yet). Its level is 0..3 bars by the stock
  * firmware's thresholds 531 / 561 / 591, as Felucca (hugelton/Felucca, GPL-3.0, firmware/src/ui_draw.c batt_level) has
  * them; still to be confirmed on our device. BATT_HYST of hysteresis on the way up keeps a reading at a threshold from
  * flickering. USB configured by a host (and not suspended) is shown as external power instead (a bolt): there is no
- * charger status line (Felucca's note), so a plain USB charger is not told apart from the battery. The cell is drawn by
- * the loop's drawing only, and only when the shown level or the bar's ground changes (batt_mark_sync: every bar is filled
- * by bar_fill, which records its colour); under the lowest threshold the bar
- * says LOW BATTERY once (again only after it rose to a bar or USB came). Host builds (host_ui.h) start from BATT_START. */
+ * charger status line (Felucca's note), so a plain USB charger is not told apart from the battery. It shows at the right
+ * end of the device page's footer (pages_ui.c foot_batt), drawn by the loop's drawing only and only when the shown level
+ * changes (batt_mark_sync); under the lowest threshold the top bar says LOW BATTERY once (again only after it rose to a
+ * bar or USB came). Host builds (host_ui.h) start from BATT_START. */
 #ifndef BATT_START
 #define BATT_START 0
 #endif
 #define BATT_HYST 3
-#define BATT_BG 0x08A2u                         /* the device strip's ground (pages_ui.c P_STRIP): the cell's own colours */
 #define BATT_USB 4u                             /* the shown level for external power */
-#define BATT_NONE 0xFFu                         /* not read yet: the cell stays blank */
+#define BATT_NONE 0xFFu                         /* not read yet: no battery drawn */
 static const int16_t BATT_T[3] = {531, 561, 591};
 static int32_t batt_q16 = BATT_START * 16;      /* the smoothed raw reading x16 (0: none yet) */
 static uint8_t batt_lvl = BATT_START >= 591 ? 3u : BATT_START >= 561 ? 2u : BATT_START >= 531 ? 1u : 0u;
 static uint8_t batt_usb;                        /* a USB host powers it */
-static uint8_t batt_drawn = BATT_NONE;          /* the level the cell shows */
-static uint16_t batt_bg = BATT_BG;              /* the ground of the bar now (bar_fill) */
-static uint16_t batt_bg_drawn = BATT_BG;        /* the ground the cell was drawn on */
+static uint8_t batt_drawn = BATT_NONE;          /* the level the footer shows */
 static uint8_t batt_low_said, batt_low_due;     /* LOW BATTERY: said since the level fell to 0 / to say at the next draw */
 
 static int32_t batt_raw(void) { return (batt_q16 + 8) >> 4; }   /* 0..1023, 0 = not read yet */
@@ -221,74 +256,37 @@ static void ui_battery(int32_t sample, int host)
     }
 }
 
-/* a top bar's ground, x 0..BATT_X: filled, and recorded, so the battery's cell takes the same ground at the loop's
- * next drawing (batt_mark_sync; a bar painted from a key path only marks it) */
+/* the device page, GLO's and the sandbox page (page 0 in sandbox mode): a header and a footer of their own (pages_ui.c);
+ * the other pages have the 20 px top bar */
+static int dev_like(void) { return page == 0u || page == PAGE_GLO; }
+static uint32_t page_bar_h(void);               /* pages_ui.c: the header's height (LK_HH) */
+static uint32_t bar_h(void) { return dev_like() ? page_bar_h() : BAR_H; }
+
+/* a top bar's ground, the whole width (on the device page the header's height: a message covers it) */
 static void bar_fill(uint16_t bg)
 {
-    lcd_fill(0, 0, BATT_X, BAR_H, bg);
-    batt_bg = bg;
+    lcd_fill(0, 0, 240, bar_h(), bg);
 }
 
-/* the cell, 20 x 20, on the bar's ground: a battery 12 x 9 and its nub, 0..3 bars inside (one bar coral, empty: a red
- * outline), a bolt in seafoam on USB power. On any other ground than the strip's (or night) all of it is one ink that
- * reads there: night on a light bar (gold, coral, lilac, sea, ivory, red), ivory on a dark one.
- * Two blits of ten rows through lcd.c's lcd_line (240 pixels; a buffer of its own would cost 800 B of RAM, which the
- * build's 4 KB headroom check does not have) */
-static void batt_mark_draw(uint8_t lvl)
-{
-    uint16_t *px = lcd_line;                    /* (big endian, as the LCD takes it; rows y0..y0+9 of the cell) */
-    static const char BOLT[5][11] = {".....##...", "...###....", ".#######..", "..###.....", ".##......."};
-    uint16_t bg = batt_bg, ink = lvl == 0u ? C_RED : lvl == BATT_USB ? 0x7E38u : C_DIM, bar = lvl == 1u ? C_ACC : C_FG;
-    uint32_t x, y, y0;
-    if (bg != BATT_BG && bg != C_BG) {          /* a coloured bar: its luma (x1000, 8-bit channels) picks the ink */
-        uint32_t luma = 299u * ((bg >> 11) & 31u) * 8u + 587u * ((bg >> 5) & 63u) * 4u + 114u * (bg & 31u) * 8u;
-        ink = bar = luma >= 110000u ? C_BG : C_FG;
-    }
-    for (y0 = 0; y0 < BAR_H; y0 += 10u) {
-        lcd_sync();                                 /* (the last transfer from lcd_line may still run) */
-        for (y = y0; y < y0 + 10u && y < BAR_H; y++)
-            for (x = 0; x < 20u; x++) {
-                uint16_t c = bg;
-                int in = x > 2u && x < 13u && y > 6u && y < 14u;     /* inside the outline: x 3..12, y 7..13 */
-                if (lvl == BATT_NONE)
-                    c = bg;                         /* (blank) */
-                else if ((x >= 2u && x <= 13u && (y == 6u || y == 14u)) || ((x == 2u || x == 13u) && y >= 6u && y <= 14u))
-                    c = ink;                        /* the outline */
-                else if (x >= 14u && x < 16u && y >= 8u && y < 13u)
-                    c = ink;                        /* the nub */
-                else if (in && lvl == BATT_USB)
-                    c = y >= 8u && y < 13u && BOLT[y - 8u][x - 3u] == '#' ? ink : bg;
-                else if (in && y >= 8u && y < 13u && x >= 4u && x < 13u && (x - 4u) % 3u != 2u && (x - 4u) / 3u < lvl)
-                    c = bar;                        /* bar k: x 4 + 3k, two wide */
-                px[(y - y0) * 20u + x] = (uint16_t)((c >> 8) | (c << 8));
-            }
-        lcd_blit(BATT_X, y0, 20, y - y0, px);
-    }
-    batt_drawn = lvl;
-    batt_bg_drawn = bg;
-}
-
-/* the cell as the level and the bar's ground are now: drawn only when one changed (by the loop's drawing: panel_draw,
- * screen_idle) */
+/* the battery as it is now, when its level changed (by the loop's drawing: panel_draw, screen_idle) */
+static void foot_batt_sync(void);               /* pages_ui.c: the footer's battery */
 static void batt_mark_sync(void)
 {
-    uint8_t s = batt_shown();
-    if ((s != batt_drawn || batt_bg != batt_bg_drawn) && !booting)
-        batt_mark_draw(s);
+    if (batt_shown() != batt_drawn && !booting && dev_like())
+        foot_batt_sync();
 }
 
 static void bar_text(const char *s, uint16_t bg)
 {
     char b[28];
-    uint32_t n = str_len(s), w, i;
+    uint32_t n = str_len(s), i;
     n = n > 26u ? 26u : n;
     for (i = 0; i < n; i++)
         b[i] = s[i];
     b[n] = 0;
-    (void)w;
     bar_fill(bg);
     if (n)
-        text_bc(&FONT_S, 0, 3, b, bg == C_FG || bg == C_ACC || bg == C_RED ? C_BG : C_FG, bg, BATT_X, TA_CENTER);
+        text_bc(&FONT_S, 0, (bar_h() - FONT_S.h) / 2u, b, bg == C_FG || bg == C_ACC || bg == C_RED ? C_BG : C_FG, bg, 240, TA_CENTER);
 }
 
 static void pages_draw(int full);
@@ -296,12 +294,19 @@ static void pages_strip(void);
 static void presets_bar(void);
 static uint8_t ui_yielding;                     /* panel.c: keys are taken from inside a redraw (#230): nothing may draw */
 static uint8_t ui_header_due;                   /* a header_draw asked for meanwhile: panel_draw does it at the end */
+static void header_draw_now(void);
 static void header_draw(void)
 {
     if (ui_yielding) {
         ui_header_due = 1;
         return;
     }
+    ut_begin(UT_HEADER);
+    header_draw_now();
+    ut_end(UT_HEADER);
+}
+static void header_draw_now(void)
+{
     if (sb_on && page == 0u) {                  /* sandbox: SANDBOX and the editor's patch, on gold (sandbox_ui.c) */
         sandbox_bar();
         msg_until = 0;
@@ -426,7 +431,10 @@ static void screen_idle(void)                   /* redraws in place: every text 
     if (booting)
         return;
     ui_full = 0;                                /* (a patch load's pending full redraw: this is it, not a second one) */
-    header_draw();
+    if (dev_like() && !sb_on && !eng_overload && !load_err && !ui_yielding)
+        msg_until = 0;                          /* (the device page draws its header with the rest: pages_draw) */
+    else
+        header_draw();
     view_draw(1);
     batt_mark_sync();
 }

@@ -2,9 +2,9 @@
 // The test rig's side of the device test mode (#291), in a page of its own on the dev server (/__rig, dev/rig-page.ts):
 // the scripts (scripts/rig.mjs, scripts/device-scenarios.mjs) drive it through Playwright. It finds the FM-1s on Web
 // MIDI, tells the registered rig from any other FM-1, and talks to that one alone: the panel (TEST_KEY / TEST_TURN), the
-// screen as text (TEST_SCREEN), the output's peak (TEST_PEAK), the rig's mark (a preset of RIG_STRUCTURE). Until a rig is
+// screen as text (TEST_SCREEN), the output's peak (TEST_PEAK), the draw times (DIAG 120..123), the rig's mark (a preset of RIG_STRUCTURE). Until a rig is
 // picked it sends only HELLO and PRESET_GET, which change nothing, so an FM-1 that is not the rig is never driven.
-import { CMD, FEATURE_TEST, RIG_PRESET, RIG_STRUCTURE, helloFrame, parse, parseAck, parseInfo, parsePeak, parsePresetData, parseScreen,
+import { CMD, FEATURE_TEST, frame, RIG_PRESET, RIG_STRUCTURE, helloFrame, parse, parseAck, parseInfo, parsePeak, parsePresetData, parseScreen,
   presetGetFrame, presetPutFrame, testKeyFrame, testPeakFrame, testScreenFrame, testTurnFrame, type Info, type Parsed, type ScreenHead,
   type ScreenText } from '../src/protocol';
 
@@ -131,6 +131,11 @@ const rig = {
   turn: (enc: number, clicks: number): Promise<void> => acked(testTurnFrame(enc, clicks), CMD.testTurn, 1),   // (once: a lost ACK must not turn twice)
   /** the screen as text: the head, then the texts in reading order */
   screen: (): Promise<ScreenHead & { texts: ScreenText[] }> => retry(screenOnce),
+  /** DIAG page n (bring-up diagnostics; 120..123: the LCD's draw times, ui.c ui_time_diag): its bytes after the page */
+  async diag(n: number): Promise<number[]> {
+    const p = await retry(() => ask(frame(CMD.diag, [n]), (x) => x.cmd === CMD.diagReply && x.payload[0] === n, 2000));
+    return [...p.payload.slice(1)];
+  },
   /** the output's peak (16 bit) since the last call */
   async peak(): Promise<{ peak: number; running: boolean; muted: boolean; masterDown: boolean }> {
     return parsePeak(await retry(() => ask(testPeakFrame(), (p) => p.cmd === CMD.peak, 2000)))!;

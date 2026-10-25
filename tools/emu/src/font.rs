@@ -137,7 +137,15 @@ pub fn bc_fonts() -> &'static Vec<BcFont> {
     static F: OnceLock<Vec<BcFont>> = OnceLock::new();
     F.get_or_init(|| {
         let mut out = Vec::new();
-        for name in ["FONT_S", "FONT_M", "FONT_L", "FONT_XL"] {
+        // every size font_bc.h has (tools/gen_font.py), in its order
+        let names: Vec<&str> = BC
+            .match_indices("static const font_t ")
+            .map(|(i, m)| {
+                let rest = &BC[i + m.len()..];
+                &rest[..rest.find(' ').unwrap()]
+            })
+            .collect();
+        for name in names {
             let l = name.to_lowercase();
             let head = &BC[BC.find(&format!("static const font_t {name} = {{")).unwrap_or_else(|| panic!("{name}"))..];
             let h = numbers(&head[..head.find('}').unwrap()])[0] as usize;
@@ -183,7 +191,8 @@ pub fn render_bc(s: &str, f: usize) -> (usize, usize, Vec<u8>) {
     (w, font.h, px)
 }
 
-/// Where `s` is on the screen in brand font `f`: (x, y, fg, bg).
+/// Where `s` is on the screen in brand font `f`: (x, y, fg, bg). The line box may run up to 3 rows past the screen's
+/// bottom (the footer's type: its descenders' rows are not drawn), as long as no ink falls there.
 pub fn find_bc(fb: &[u16], s: &str, f: usize) -> Option<(usize, usize, u16, u16)> {
     let (w, h, px) = render_bc(s, f);
     if w == 0 || w > W || h > H {
@@ -191,14 +200,18 @@ pub fn find_bc(fb: &[u16], s: &str, f: usize) -> Option<(usize, usize, u16, u16)
     }
     let first = px.iter().position(|&a| a == 15)?;
     let empty = px.iter().position(|&a| a == 0)?;
-    for y in 0..=H - h {
+    let ink_rows = px.chunks(w).rposition(|row| row.iter().any(|&a| a != 0)).map_or(h, |r| r + 1);
+    for y in 0..=H - h.min(ink_rows).max(1) {
+        if y + h > H + 3 || y + ink_rows > H || y + empty / w >= H {
+            continue;
+        }
         'x: for x in 0..=W - w {
             let fg = fb[(y + first / w) * W + x + first % w];
             let bg = fb[(y + empty / w) * W + x + empty % w];
             if fg == bg {
                 continue;
             }
-            for r in 0..h {
+            for r in 0..h.min(H - y) {
                 for c in 0..w {
                     let p = fb[(y + r) * W + x + c];
                     match px[r * w + c] {
@@ -221,7 +234,7 @@ mod tests {
     #[test]
     fn brand_type_parses() {
         let f = bc_fonts();
-        assert_eq!(f.len(), 4);
+        assert!(f.len() >= 4);
         assert_eq!(f[0].map.len(), 95);
         let (w, h, px) = render_bc("OCT 0", 0);
         assert!(w > 10 && h == f[0].h && px.iter().any(|&a| a == 15));
@@ -239,8 +252,8 @@ mod tests {
             let b = (c[2] as u32 * 31 + 127) / 255;
             (r << 11 | g << 5 | b) as u16
         }).collect();
-        assert!(on_screen(&fb, "OCT "), "the info line");
-        assert!(on_screen(&fb, "CUTOFF"), "a column's name");
+        assert!(on_screen(&fb, "= OCT ="), "the footer's octave");
+        assert!(on_screen(&fb, "ORACLE V"), "the patch's name");
         assert!(!on_screen(&fb, "NOT THERE"));
     }
 }

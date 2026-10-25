@@ -2,9 +2,9 @@
  * Copyright (C) 2026 morgulbrut */
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
- * Environment: TITLE=1 SELECT's title toast on the device page, TITLE=2 ALGO's (#298),
- * PATCHTOAST=1 PRESET's (the factory bank's slot), SANDBOX=1 sandbox mode before the
- * editor's first page (the card), SANDBOX=2 with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off)
+ * Environment: PATCHTOAST=1 PRESET's toast (the factory bank's slot; BANK=n: a bank of n filled slots instead, the patch
+ * in slot SLOT, default the preset index), SANDBOX=1 sandbox mode before the editor's first page (the card), SANDBOX=2
+ * with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off), BATT=0..3 or 4 (USB) the battery's level
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -62,14 +62,18 @@ int main(int argc, char **argv)
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     if (argc > 3 && strchr(argv[3], ':'))                   /* the device page: DEVICE:PAGE */
         pages_focus((uint32_t)atoi(argv[3]), (uint32_t)atoi(strchr(argv[3], ':') + 1));
-    if (getenv("TITLE") || getenv("PATCHTOAST")) {         /* the title toast (#298): 1 SELECT's, 2 ALGO's, 3 PRESET's */
+    if (getenv("PATCHTOAST")) {                             /* PRESET's toast (#170) */
+        uint32_t n = getenv("BANK") ? (uint32_t)atoi(getenv("BANK")) : N_PRESETS;
         pages_ensure();                                     /* (a fresh patch would end it) */
-        if (getenv("PATCHTOAST")) {
-            bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
-            cur_preset = p;
-        }
+        bank_mask = n >= 64u ? ~(uint64_t)0 : ((uint64_t)1 << n) - 1u;
+        cur_preset = getenv("SLOT") ? (uint32_t)atoi(getenv("SLOT")) - 1u : p;
         fm1_ms = 1;
-        pages_title(getenv("PATCHTOAST") ? TT_PATCH : (uint32_t)atoi(getenv("TITLE")));
+        toast_start();
+    }
+    if (getenv("BATT")) {                                   /* the battery's level (4: USB) */
+        int b = atoi(getenv("BATT"));
+        batt_usb = b == 4;
+        batt_lvl = (uint8_t)(b >= 0 && b <= 3 ? b : 3);
     }
     octave = argc > 4 ? atoi(argv[4]) : 0;
     page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 8: SEQ (SELECTED_MODULE = the track) */

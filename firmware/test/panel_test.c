@@ -67,6 +67,9 @@ static void preset_step(int32_t d)
 static void save_state(void) { saved++; }
 static void poly_row_set(uint32_t mod, uint32_t field, int32_t v) { (void)mod; (void)field; (void)v; }
 
+#define ROWS_Y (LK_HH + 4u)                            /* the device page's first bar */
+#define K1_TAB px(BAR_X + LK_VP + 1u, row_y(0) + row_h() / 2u)   /* K1's accent tab (the page drawn last: its bars) */
+#define BPX(x, y) px(BATT_FX + (x), BATT_FY + (y))      /* the footer's battery */
 static int failed;
 static void check(const char *what, int ok)
 {
@@ -183,7 +186,7 @@ static void held_key(uint32_t btn, uint32_t n)
 /* the top bar shows what bar_text(s, bg) draws */
 static int bar_shows(const char *s, uint16_t bg)
 {
-    static uint16_t was[240 * BAR_H];
+    static uint16_t was[240 * LK_HH];
     int same;
     memcpy(was, fb, sizeof was);
     bar_text(s, bg);
@@ -334,56 +337,71 @@ int main(void)
     screen_idle();
     /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (2 pages), boom kick, snare ... Output */
     check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
-    {
-        uint32_t x, ink = 0;                                /* (the third tab now: somewhere along the strip) */
-        for (x = 0; x < 240u; x++)
-            ink += px(x, 1) == P_INK;
-        check("the LCD: the tab in focus is ivory, K1's bar shows its hue", ink > 10u && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+    {                                                       /* the header (the owner's design, 2026-10-24) */
+        uint32_t x, gold = 0;
+        for (x = 0; x < 120u; x++)
+            gold += px(x, LK_HH - 6u) == P_GOLD;
+        check("the LCD: the header's dash of the device in focus gold, its name; K1's tab in its hue", gold >= 2u
+              && on_screen("DRUM MAP") && K1_TAB == KNOB_HUE[0]);
+    }
+    {                                                       /* the footer: the octave in a slot of its own, so the tempo stays
+                                                             * put whatever the octave (the owner, 2026-10-24) */
+        foot_t f;
+        uint32_t xt = 0, widest = 0, moved = 0;
+        int32_t o, was = octave;
+        for (o = -3; o <= 3; o++) {
+            octave = o;
+            (void)foot_layout(&f);
+            if (o == -3)
+                xt = f.xt;
+            moved += f.xt != xt;
+            widest = text_w(&FONT_F, f.o, -1) > widest ? text_w(&FONT_F, f.o, -1) : widest;
+        }
+        octave = was;
+        check("the footer: the tempo at the same x in every octave state, the octave's slot its widest", moved == 0u
+              && widest == FOOT_OCT_W);
     }
     {                                                       /* #291: the screen as text, as SCREEN reports it */
         uint8_t idx[SCR_N];
         uint32_t n = scr_list(idx), i, ordered = 1;
         for (i = 1; i < n; i++)
             ordered &= scr_text[idx[i - 1]].y <= scr_text[idx[i]].y;
-        check("the screen as text: the device page's octave and K1's row, in reading order", on_screen("OCT ") && n > 4u && ordered);
+        check("the screen as text: the device page's octave and K1's row, in reading order", on_screen("= OCT =") && n > 4u && ordered);
     }
 
-    {   /* #298: SELECT / ALGO name what they reached in a small toast, drawn first; the page under it at once, in passes a
-         * newer click stops; lcd_px: the pixels sent */
+    {   /* SELECT / ALGO (the owner's design, 2026-10-24): no toast, the header shows where they went; the header's sections
+         * that changed, then the bars, in passes a newer click stops; lcd_px: the pixels sent */
         static uint16_t staged[240 * 240];
         uint32_t page_px, i, n;
         lcd_px = lcd_xfers = 0;
-        ui_dirty = 2;                                       /* (a whole page, as every click cost before) */
+        ui_dirty = 2;                                       /* (a whole page) */
         loop();
         page_px = lcd_px;
         stop_n = 0;
         stop_answer = 0;
         pages_waiting = stop_probe;                         /* records lcd_px at each place a draw may give way */
         lcd_px = 0;
+        fb_watch_reset();
         enc(1, 1);                                          /* ALGO */
         check("ALGO: the device's next page, the editor told", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1);
-        check("ALGO: its title toast on blue, in the bar of K2 or K3 or the foot band", fb_has(P_CARD_PAGE)
-              && on_screen(pg_ttl_t) && pg_ttl_scr != 0u);
-        check("ALGO: no card (the strip and the bars stay the page's)", px(4, 4) != P_CARD_PAGE && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
-        printf("      LCD pixels for one ALGO click: the title %u, the rows' type %u, the page %u (a whole page %u; before #298:"
-               " the card 57,600, then the page 400 ms later)\n", stop_px[0], stop_px[5], lcd_px, page_px);
-        check("one ALGO click: the title within 4,000 px (5 ms at 750 px/ms), the rows' type within 26,000 (35 ms)",
-              stop_n >= 6u && stop_px[0] < 4000u && stop_px[5] < 26000u);
-        check("one ALGO click: the page complete under 55 % of a whole page's pixels (nothing cleared first)",
-              lcd_px * 100u < page_px * 55u);
-        snap_to(getenv("PANEL_SNAP_PAGECARD"));
+        printf("      LCD pixels for one ALGO click: the header %u, the rows' type %u, the page %u (a whole page %u)\n",
+               stop_px[0], stop_px[5], lcd_px, page_px);
+        check("ALGO: the header's sections and the bars, nothing below them, no pixel twice", stop_n >= 6u
+              && stop_px[0] <= 240u * LK_HH && fb_changed_in(0, FOOT_Y, 240, 240) == 0u && fb_blinked() == 0u);
+        check("one ALGO click: the page under 80 % of a whole page's pixels (nothing cleared first)", lcd_px * 100u < page_px * 80u);
+        snap_to(getenv("PANEL_SNAP_ALGO"));
         memcpy(staged, fb, sizeof staged);
         ui_dirty = 2;                                       /* the same state drawn whole: the same picture */
         loop();
         for (i = 0, n = 0; i < 240u * 240u; i++)
             n += staged[i] != fb[i];
-        check("the staged page is the page drawn whole, pixel for pixel (toast included)", n == 0u);
+        check("the staged page is the page drawn whole, pixel for pixel", n == 0u);
         stop_answer = 1;                                    /* a newer click waits: fast scrolling */
         lcd_px = lcd_xfers = 0;
         enc(1, 1);
         printf("      LCD pixels for an ALGO click while the next one waits: %u\n", lcd_px);
-        check("ALGO turning fast: only the toast drawn (under 4,000 px), its title the new page's", lcd_px < 4000u
-              && pg_cur_page == 0 && on_screen(pg_ttl_t) && pg_algo_due && ui_dirty);
+        check("ALGO turning fast: only the header drawn, the page still due", lcd_px <= 240u * LK_HH && lcd_px > 0u
+              && pg_cur_page == 0 && pg_algo_due && ui_dirty);
         stop_answer = 0;
         loop();                                             /* it stops: the page */
         memcpy(staged, fb, sizeof staged);
@@ -394,25 +412,16 @@ int main(void)
         check("a stopped draw, then drawn: the page whole, nothing left of the one before", n == 0u && !pg_algo_due);
         lcd_px = 0;
         later(700);
-        check("600 ms after the last click: the toast gone, only its rectangle redrawn", !fb_has(P_CARD_PAGE)
-              && lcd_px < 4000u && pg_ttl_scr == 0u);
-        memcpy(staged, fb, sizeof staged);
-        ui_dirty = 2;
-        loop();
-        for (i = 0, n = 0; i < 240u * 240u; i++)
-            n += staged[i] != fb[i];
-        check("the page without it: as drawn whole", n == 0u);
+        check("700 ms later: nothing redrawn (no toast)", lcd_px == 0u);
         lcd_px = 0;
         stop_n = 0;
         enc(0, 1);                                          /* SELECT: the boom kick, and back */
-        check("SELECT: the next device, the editor told, its toast on red, the strip's tab moved", pg_cur_dev == 3
-              && focus_dev == 3 && fb_has(P_CARD_DEV) && px(4, 4) != P_CARD_DEV && on_screen(pg_ttl_t));
-        printf("      LCD pixels for one SELECT click: the title %u, the page %u\n", stop_px[0], lcd_px);
+        check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 3 && focus_dev == 3
+              && on_screen("BOOM KICK") && !on_screen("DRUM MAP"));
+        printf("      LCD pixels for one SELECT click: the header %u, the page %u\n", stop_px[0], lcd_px);
         enc(0, -1);
         check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2 && pg_cur_page == 0);
-        enc(4, 1);                                          /* K3 while the toast shows: the toast goes, K3's row moves */
-        check("K3 during the title toast: the toast gone, the bars", !fb_has(P_CARD_DEV) && !ttl_wanted()
-              && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+        enc(4, 1);
         enc(4, -1);
         later(1100);
         pages_waiting = 0;
@@ -429,7 +438,7 @@ int main(void)
     }
     {   /* #298: a knob turned moves its own bar where it is: the slider and the number, nothing else on the screen */
         static uint16_t was[240 * 240];
-        uint32_t i, outside = 0, k1_px, y_lo = ROWS_Y, y_hi = ROWS_Y + ROW_H, n;
+        uint32_t i, outside = 0, k1_px, y_lo = row_y(0), y_hi = row_y(0) + row_h(), n;
         memcpy(was, fb, sizeof was);
         lcd_px = lcd_xfers = 0;
         enc(2, 5);                                          /* K1 */
@@ -439,7 +448,7 @@ int main(void)
             outside += was[i] != fb[i] && (i / 240u < y_lo || i / 240u >= y_hi || i % 240u < BAR_X || i % 240u >= BAR_X + BAR_W);
         printf("      LCD pixels for a K1 turn: %u in %u transfers\n", k1_px, lcd_xfers);
         check("K1: no pixel outside its bar changes, and the bar moves (no toast)", outside == 0u
-              && memcmp(was, fb, sizeof was) != 0 && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+              && memcmp(was, fb, sizeof was) != 0 && K1_TAB == KNOB_HUE[0]);
         memcpy(was, fb, sizeof was);
         lcd_px = 0;
         enc(2, 1);                                          /* K1 again: one click */
@@ -464,7 +473,7 @@ int main(void)
         lcd_px = 0;
         later(1100);
         printf("      (a second later: %u px)\n", lcd_px);
-        check("a second later: nothing redrawn (no toast to end)", lcd_px == 0u && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+        check("a second later: nothing redrawn (no toast to end)", lcd_px == 0u && K1_TAB == KNOB_HUE[0]);
     }
 
     memcpy(before, fb, sizeof before);
@@ -1601,14 +1610,15 @@ int main(void)
         fb_watch_reset();
         held_key(BTN_REC, 1);
         all = fb_changed_in(0, 0, 240, 240);
-        bar = fb_changed_in(0, 0, 240, BAR_H);
-        line = fb_changed_in(0, FOOT_Y, 240, FOOT_Y + FONT_S.h);
-        check("device page: the arm redraws the bar's message and the info line (ARM DRUMS) only, no blink",
-              eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
+        bar = fb_changed_in(0, 0, 240, LK_HH);
+        line = fb_changed_in(0, FOOT_Y, 240, 240);
+        check("device page: the arm redraws the header's message and the footer (ARM DRUMS) only, no blink",
+              eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(LK_HH) == 0
+              && on_screen("ARM DRUMS"));
         fb_watch_reset();
         held_key(BTN_SEQ, 1);
-        check("device page: a mute draws only the bar's message", eng_steps_muted((uint32_t)drums)
-              && fb_changed_in(0, 0, 240, 240) == fb_changed_in(0, 0, 240, BAR_H) && fb_blinked_below(BAR_H) == 0);
+        check("device page: a mute draws only the header's message", eng_steps_muted((uint32_t)drums)
+              && fb_changed_in(0, 0, 240, 240) == fb_changed_in(0, 0, 240, LK_HH) && fb_blinked_below(LK_HH) == 0);
         held_key(BTN_SEQ, 1);
         held_key(BTN_REC, 1);
         later(1500);
@@ -1983,8 +1993,9 @@ int main(void)
             tap(BTN_HOME);
     }
 
-    {                                                       /* #170, #298: PRESET names the patch in the title toast (ivory),
-                                                             * the new patch's page drawn under it at once */
+    {                                                       /* #170, the owner's design (2026-10-24): PRESET grows the footer
+                                                             * into a toast (the slot, the name, the filled slots), the new
+                                                             * patch's page drawn around it at once */
         static uint16_t staged[240 * 240];
         uint32_t i, n;
         int main;
@@ -1999,9 +2010,9 @@ int main(void)
         preset_loads = 1;
         lcd_px = 0;
         enc(6, 1);
-        check("PRESET: the next patch, its name in the ivory toast, its page under it", cur_preset == N_PRESETS - 1u
-              && !strcmp(patch_label, "<7PH") && on_screen("<7PH") && pg_ttl_kind == TT_PATCH && pg_ttl_scr != 0u
-              && fb_has(P_INK) && px(12, ROWS_Y + 15) != P_NIGHT);
+        check("PRESET: the next patch, its slot and name in the footer's toast, its page around it", cur_preset == N_PRESETS - 1u
+              && !strcmp(patch_label, "<7PH") && on_screen("<7PH") && on_screen("23.") && toast_scr != 0u
+              && px(0, 240u - LK_TOH) == P_SAND && px(0, 239u - LK_TOH) != P_SAND && K1_TAB == KNOB_HUE[0]);
         printf("      LCD pixels for one PRESET click: %u\n", lcd_px);
         snap_to(getenv("PANEL_SNAP_PATCH"));
         memcpy(staged, fb, sizeof staged);
@@ -2020,12 +2031,23 @@ int main(void)
         enc(6, 1);
         printf("      LCD pixels for a PRESET click while the next one waits: %u\n", lcd_px);
         check("PRESET turning fast: the next name, only the toast drawn", cur_preset == 0 && !strcmp(patch_label, "ORACLE V")
-              && on_screen("ORACLE V") && lcd_px < 4000u);
+              && on_screen("ORACLE V") && lcd_px == 240u * LK_TOH);
         stop_answer = 0;
         loop();
         pages_waiting = 0;
+        fb_watch_reset();
+        lcd_px = 0;
         later(1100);
-        check("the toast ends: the device page's bars, whole", pg_ttl_scr == 0u && px(12, ROWS_Y + 15) != P_NIGHT);
+        printf("      LCD pixels for the toast's end: %u\n", lcd_px);
+        check("the toast ends: only its band drawn again, the footer and the bars under it", toast_scr == 0u
+              && fb_changed_in(0, 0, 240, 240u - LK_TOH) == 0u && lcd_px <= 240u * LK_TOH && px(0, 239) == P_SAND
+              && px(0, 240u - LK_TOH) != P_SAND && on_screen("ORACLE V"));
+        memcpy(staged, fb, sizeof staged);
+        ui_dirty = 2;
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += staged[i] != fb[i];
+        check("  then the page drawn whole, pixel for pixel", n == 0u);
         main = eng_find(T_FM1);
         panel_held |= 1u << BTN_PLAY;                       /* PLAY held + PRESET: the tempo, no patch, no toast */
         panel_edges(1u << BTN_PLAY, 0);
@@ -2034,10 +2056,11 @@ int main(void)
         panel_edges(0, 1u << BTN_PLAY);
         loop();
         check("PLAY held + PRESET: the tempo, the patch and the bars stay", main >= 0 && cur_preset == 0
-              && px(12, ROWS_Y + 15) != P_NIGHT && !ttl_wanted());
+              && K1_TAB != P_NIGHT && !toast_wanted());
         enc(6, -1);
-        enc(0, 1);                                          /* SELECT while it shows: the device's toast instead */
-        check("SELECT during it: the device's toast takes over", pg_ttl_kind == TT_DEV && fb_has(P_CARD_DEV));
+        enc(0, 1);                                          /* SELECT while it shows: the toast goes */
+        check("SELECT during it: the toast gone, the footer back", !toast_wanted() && toast_scr == 0u
+              && px(0, 240u - LK_TOH) != P_SAND);
         later(1100);
         preset_loads = 0;
     }
@@ -2061,7 +2084,7 @@ int main(void)
             for (x = 0; x < 240u; x++)
                 gold += px(x, y) == P_GOLD;
         check("  the screen: the gold SANDBOX bar and the card (no bars yet)", px(4, 4) == P_GOLD && gold > 30u
-              && px(12, ROWS_Y + 15) == P_NIGHT);
+              && K1_TAB == P_NIGHT);
         later(1000);
         m1_live(1);                                         /* every 2 s again */
         check("  LIVE paused again: no INFO", info_told == 1);
@@ -2092,10 +2115,10 @@ int main(void)
         m1_sandbox(&pg);
         loop();
         for (gold = 0, x = 0; x < 240u; x++)
-            gold += px(x, RAIL_Y) == P_GOLD;
-        check("the page: its bars (K4 empty), the third page of five lit in gold", sb_have && px(12, ROWS_Y + 15) != P_NIGHT
-              && px(BAR_X + 2u, ROWS_Y + 3u * (ROW_H + ROW_GAP) + 2u) == P_STRIP && gold > 20u && px(4, 4) == P_GOLD);
-        check("  K1 half way: its fill to the middle", px(BAR_X + BAR_W / 2u - 8u, ROWS_Y + 4u) != px(BAR_X + BAR_W / 2u + 8u, ROWS_Y + 4u));
+            gold += px(x, SB_RAIL_Y) == P_GOLD;
+        check("the page: its bars (K4 empty), the third page of five lit in gold", sb_have && K1_TAB != P_NIGHT
+              && px(BAR_X + 2u, row_y(3) + 2u) == P_STRIP && gold > 20u && px(4, 4) == P_GOLD);
+        check("  K1 half way: its fill to the middle", px(BAR_X + BAR_W / 2u - 8u, row_y(0) + 4u) != px(BAR_X + BAR_W / 2u + 8u, row_y(0) + 4u));
         from = mlen;
         pn = param_now;
         enc(2, 1);                                          /* K1: one click from the editor's position (128 = CC 64) */
@@ -2120,11 +2143,10 @@ int main(void)
         tap(BTN_GLO);                                       /* GLO: the FM-1's own page (MIDI OUT is there) */
         check("GLO in sandbox mode: the FM-1's own page", page == PAGE_GLO);
         tap(BTN_HOME);
-        check("  HOME: back to the sandbox page", page == 0u && px(4, 4) == P_GOLD && px(12, ROWS_Y + 15) != P_NIGHT);
-        check("  the screen as text: the sandbox page, the device page's texts gone", on_screen("BROWSER PLAYS") && !on_screen("OCT "));
+        check("  HOME: back to the sandbox page", page == 0u && px(4, 4) == P_GOLD && K1_TAB != P_NIGHT);
+        check("  the screen as text: the sandbox page, the device page's texts gone", on_screen("BROWSER PLAYS") && !on_screen("= OCT ="));
         loop();
-        check("  the battery's cell on the bar's gold, its bars in night", px(BATT_X + 18u, 2) == P_GOLD
-              && px(BATT_X + 4u, 10) == C_BG && px(BATT_X + 2u, 10) == C_BG);
+        check("  the battery in the footer, night on sand", px(BATT_FX, BATT_FY) == P_NIGHT && px(BATT_FX - 2u, BATT_FY) == P_SAND);
         from = mlen;
         panel_keys(1u);                                     /* a key: the note goes out (the FM-1 itself is muted) */
         panel_keys(0u);
@@ -2139,14 +2161,14 @@ int main(void)
         m1_live(1);
         ui_dirty = 2;
         loop();
-        check("MIDI OUT off: INFO again, the foot line says how to turn it on", info_told == 2 && fb_has_hue(FOOT_Y, P_REDC));
+        check("MIDI OUT off: INFO again, the foot line says how to turn it on", info_told == 2 && fb_has_hue(FOOT_Y, P_WARN));
         cfg.midi_out = 1;
         m1_live(1);
         msg_text[0] = 0;
         m1_live(0);                                         /* the patch fits again: Live resumes */
         loop();
         check("LIVE not paused: sandbox mode ends, the sound and the device page back", !sb_on && !snd_muted
-              && px(4, 4) != P_GOLD && px(12, ROWS_Y + 15) != P_NIGHT && msg_text[0] == 0);
+              && px(4, 4) != P_GOLD && K1_TAB != P_NIGHT && msg_text[0] == 0);
         m1_sandbox(&pg);
         check("  a page after it: not taken", !sb_have);
         enc(6, -1);
@@ -2185,8 +2207,8 @@ int main(void)
         trail_n = 0;
         screen_idle();
         later(3000);
-        check("host builds start full (BATT_START 900): 3 bars in the bar's cell", batt_shown() == 3u && batt_drawn == 3u
-              && px(BATT_X + 4u, 10) == C_FG && px(BATT_X + 10u, 10) == C_FG);
+        check("host builds start full (BATT_START 900): 3 bars in the footer's battery", batt_shown() == 3u && batt_drawn == 3u
+              && BPX(2, 2) == P_NIGHT && BPX(8, 2) == P_NIGHT && BPX(4, 2) == P_SAND);
         batt_q16 = 0;                                       /* (not read yet) */
         ui_battery(600, 0);
         ok = batt_raw() == 600;
@@ -2224,32 +2246,29 @@ int main(void)
         ui_battery(570, 0);                                 /* 2 bars */
         loop();
         all = fb_changed_in(0, 0, 240, 240);
-        cell = fb_changed_in(BATT_X, 0, 240, BAR_H);
-        check("a level change: the cell alone, two transfers (its halves), no blink", lcd_xfers == 2u && all > 0u && all == cell
-              && fb_blinked() == 0 && px(BATT_X + 10u, 10) == BATT_BG && px(BATT_X + 7u, 10) == C_FG);
+        cell = fb_changed_in(BATT_FX, BATT_FY, BATT_FX + 13u, BATT_FY + 6u);
+        check("a level change: the battery alone, a transfer a row, no blink", lcd_xfers == 6u && all > 0u && all == cell
+              && fb_blinked() == 0 && BPX(8, 2) == P_SAND && BPX(5, 2) == P_NIGHT);
         batt_q16 = 540 * 16;
         ui_battery(540, 0);
         loop();
-        check("one bar: in the accent", px(BATT_X + 4u, 10) == C_ACC && px(BATT_X + 7u, 10) == BATT_BG);
+        check("one bar", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND);
         page_set(PAGE_GLO);
         ui_dirty = 2;
         loop();
-        check("GLO: the cell on the bar's coral, its bar in night", px(BATT_X + 18u, 2) == P_CORAL
-              && px(BATT_X + 4u, 10) == C_BG && px(BATT_X + 2u, 10) == C_BG);
+        check("GLO: the battery in its footer too", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND && px(4, 4) == P_CORAL);
         page_set(0);
         ui_dirty = 2;
         loop();
-        check("  back on the device page: the strip's ground, the bar in the accent again", px(BATT_X + 18u, 2) == BATT_BG
-              && px(BATT_X + 4u, 10) == C_ACC);
+        check("  back on the device page: the same", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND);
         msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
         batt_q16 = 520 * 16;
         ui_battery(520, 0);                                 /* under 531: LOW BATTERY */
         later(10);
-        check("under the lowest threshold: LOW BATTERY in the bar, the cell on its ivory, the outline in night",
-              !strcmp(msg_text, "LOW BATTERY") && bar_shows("LOW BATTERY", C_FG) && px(BATT_X + 18u, 2) == C_FG
-              && px(BATT_X + 2u, 10) == C_BG);
+        check("under the lowest threshold: LOW BATTERY over the header, the battery's outline red",
+              !strcmp(msg_text, "LOW BATTERY") && bar_shows("LOW BATTERY", C_FG) && BPX(0, 0) == P_WARN && BPX(2, 2) == P_SAND);
         later(3100);
-        check("  the message gone: the strip's ground, the outline red", px(BATT_X + 18u, 2) == BATT_BG && px(BATT_X + 2u, 10) == C_RED);
+        check("  the message gone: the header again", px(4, 4) != C_FG && BPX(0, 0) == P_WARN);
         later(3100);
         msg_text[0] = 0;
         ui_battery(518, 0);
@@ -2259,8 +2278,8 @@ int main(void)
         check("LOW BATTERY once: not again while it stays low", msg_text[0] == 0);
         ui_battery(515, 1);                                 /* a USB host: external power, a bolt */
         loop();
-        check("USB power: the bolt (seafoam), no message", msg_text[0] == 0 && batt_shown() == BATT_USB
-              && px(BATT_X + 2u, 10) == 0x7E38u && px(BATT_X + 6u, 10) == 0x7E38u);
+        check("USB power: the bolt, no message", msg_text[0] == 0 && batt_shown() == BATT_USB
+              && BPX(5, 1) == P_NIGHT && BPX(1, 1) == P_SAND && BPX(0, 0) == P_NIGHT);
         ui_battery(515, 0);                                 /* unplugged, still low: says so again */
         later(10);
         check("USB gone while low: LOW BATTERY again", !strcmp(msg_text, "LOW BATTERY"));
@@ -2288,12 +2307,12 @@ int main(void)
             loop();
             for (i = 0; i < 240u * 240u; i++) {
                 uint32_t x = i % 240u, y = i / 240u;
-                int in = (x >= 150u && x < 228u && y >= y0 + MENU_TXT && y < y0 + MENU_TXT + 18u) || (x >= BATT_X && y < BAR_H);
+                int in = (x >= 150u && x < 228u && y >= y0 + MENU_TXT && y < y0 + MENU_TXT + 18u);
                 n += fb_changes[i] != 0u;
                 outside += fb_changes[i] != 0u && !in;
             }
             menu_value(MR_BATT, v);
-            check("SYSTEM idle, a new reading: only its value (and the cell) redrawn, no blink", n > 0u && outside == 0u
+            check("SYSTEM idle, a new reading: only its value redrawn (the menu has no battery), no blink", n > 0u && outside == 0u
                   && fb_blinked() == 0 && !strcmp(v, "590  2/3"));
             menu_tab = tab;
             menu_sel = row;
@@ -2439,50 +2458,172 @@ int main(void)
     }
 
     lcd_sync();
-    {   /* #298: on every page of every factory patch, the title toast covers no type of the page (the screen's texts as
-         * the renderers list them, screen_text.h) and holds its own whole */
-        uint32_t p, d, g, i, pages = 0, foot = 0, hit = 0, own = 0;
+    {   /* #298 follow-up: K1..K4 turned in steps both ways, slow and fast, across every page of every factory patch (the
+         * values crossing the name and value, the live tick, the hue's edge), with and without the audio's blocks between
+         * the clicks and the ten-a-second tick pass: the screen after the bars' redraws in place is the screen drawn whole,
+         * pixel for pixel (the owner saw thin ivory stripes left in the bars on 1.3.0-dev) */
+        static uint16_t inc[240 * 240];
+        static const int32_t TURN[] = {1, 1, 1, -1, -1, 3, -2, 5, 5, -5, 1, -1, 12, -12, 30, -30, 2, -7, 1, 1};
+        static int32_t al[128], ar[128];
+        uint32_t p, d, g, k, t, i, n, bad = 0, runs = 0, worst = 0, mode, clicks = 0;
+        uint64_t click_px = 0;
+        uint8_t accel_was = cfg.accel;
         sb_on = 0;
         page = 0;
+        cfg.accel = 1;
+        for (mode = 0; mode < 3u; mode++)                   /* 0: no audio between clicks, 1: a block before each, 2: some */
+            for (p = 0; p < N_PRESETS; p++) {
+                if (load_at(p))
+                    continue;
+                pv_gen++;
+                screen_idle();
+                for (d = 0; d < pg_ndev; d++)
+                    for (g = 0; g < pg_dev[d].npg; g++) {
+                        (void)pages_focus(d, g);
+                        ui_dirty = 2;
+                        loop();
+                        for (k = 0; k < pg_page[pg_dev[d].pg0 + g].nrows; k++) {
+                            for (t = 0; t < sizeof TURN / sizeof TURN[0]; t++) {
+                                if (mode == 1u || (mode == 2u && t % 3u != 2u))
+                                    eng_render(al, ar, 128);
+                                fm1_ms += (t & 4u) ? 10u : 150u;  /* (fast: within 80 ms, five steps a click) */
+                                lcd_px = 0;
+                                enc(2u + k, TURN[t]);
+                                click_px += lcd_px;
+                                clicks++;
+                                if (mode == 2u && t % 5u == 4u)
+                                    later(120);             /* (the live ticks' pass) */
+                                if (t != 9u && t + 1u != sizeof TURN / sizeof TURN[0])
+                                    continue;
+                                later(120);                 /* (the other rows' live ticks follow the audio) */
+                                memcpy(inc, fb, sizeof inc);
+                                ui_dirty = 2;
+                                loop();
+                                runs++;
+                                for (i = 0, n = 0; i < 240u * 240u; i++)
+                                    n += inc[i] != fb[i];
+                                if (n) {
+                                    if (bad < 6u) {
+                                        for (i = 0; inc[i] == fb[i]; i++)
+                                            ;
+                                        printf("      (%s device %u page %u K%u, audio %u: %u px differ, the first at %u,%u: %#06x, drawn"
+                                               " whole %#06x)\n", PRESET_LIST[p].name, d, g, k + 1u, mode, n, i % 240u, i / 240u, inc[i], fb[i]);
+                                    }
+                                    bad++;
+                                    worst = n > worst ? n : worst;
+                                }
+                            }
+                        }
+                    }
+            }
+        printf("      knob turns: %u compared on %u factory patches, %u differ (worst %u px); %u LCD px a click on average\n",
+               runs, (unsigned)N_PRESETS, bad, worst, (unsigned)(click_px / (clicks ? clicks : 1u)));
+        check("K1..K4 turned on every factory page: the bars moved in place are the screen drawn whole, pixel for pixel",
+              runs > 1000u && bad == 0u);
+        cfg.accel = accel_was;
+    }
+    {   /* the owner's design (2026-10-24): on every page of every factory patch, reached by SELECT and ALGO (drawn in
+         * passes, now and then stopped by a waiting click), and on every patch reached by PRESET (its toast first, the page
+         * around it) and when its toast ends, the screen is the screen drawn whole, pixel for pixel; and the pixels each
+         * costs, on average and at most */
+        static uint16_t inc[240 * 240];
+        uint32_t p, d, g, i, n, runs = 0, bad = 0, algo_n = 0, sel_n = 0, pre_n = 0, end_n = 0, outside_toast = 0;
+        uint64_t algo_px = 0, sel_px = 0, pre_px = 0, end_px = 0;
+        uint32_t algo_max = 0, sel_max = 0, pre_max = 0, end_max = 0;
+#define SAME_AS_WHOLE(what) do { memcpy(inc, fb, sizeof inc); ui_dirty = 2; loop(); runs++; \
+            for (i = 0, n = 0; i < 240u * 240u; i++) n += inc[i] != fb[i]; \
+            if (n) { if (bad < 6u) { for (i = 0; inc[i] == fb[i]; i++) ; \
+                printf("      (%s: %s device %u page %u: %u px differ, the first at %u,%u: %#06x, drawn whole %#06x)\n", what, \
+                       PRESET_LIST[cur_preset].name, pg_cur_dev, pg_cur_page, n, i % 240u, i / 240u, inc[i], fb[i]); } bad++; } } while (0)
+        sb_on = 0;
+        page = 0;
+        trail_n = 0;
+        bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
+        pages_waiting = stop_probe;
         for (p = 0; p < N_PRESETS; p++) {
             if (load_at(p))
                 continue;
+            cur_preset = p;
             pv_gen++;
             screen_idle();
+            later(1100);
             for (d = 0; d < pg_ndev; d++)
                 for (g = 0; g < pg_dev[d].npg; g++) {
-                    uint32_t x0, y0, x1, y1;
-                    (void)pages_focus(d, g);
-                    ui_dirty = 2;                           /* the page alone: its texts */
-                    loop();
-                    pages_title(TT_PAGE);
-                    pages++;
-                    if (pg_ttl_k == TTL_FOOT) {
-                        foot++;
+                    if (!d && !g)
                         continue;
+                    stop_answer = (d + g) % 5u == 3u;       /* (now and then a click waits: the draw stops, then goes on) */
+                    lcd_px = 0;
+                    if (g)
+                        enc(1, 1);                          /* ALGO */
+                    else {
+                        (void)pages_focus(d - 1u, pg_dev[d - 1u].npg - 1u);   /* (from the last page of the device before) */
+                        ui_dirty = 2;
+                        loop();
+                        lcd_px = 0;
+                        enc(0, 1);                          /* SELECT */
                     }
-                    x0 = BAR_X + pg_ttl_x;
-                    x1 = x0 + pg_ttl_w;
-                    y0 = ROWS_Y + pg_ttl_k * (ROW_H + ROW_GAP) + TTL_DY;
-                    y1 = y0 + TTL_H;
-                    for (i = 0; i < SCR_N; i++)
-                        if (scr_meets(&scr_text[i], x0, y0, x1 - x0, y1 - y0)) {
-                            if (!hit)
-                                printf("      covered: %s, device %u page %u: \"%s\"\n", PRESET_LIST[p].name, d, g, scr_text[i].s);
-                            hit++;
+                    if (!stop_answer) {
+                        if (g) {
+                            algo_px += lcd_px;
+                            algo_n++;
+                            algo_max = lcd_px > algo_max ? lcd_px : algo_max;
+                        } else {
+                            sel_px += lcd_px;
+                            sel_n++;
+                            sel_max = lcd_px > sel_max ? lcd_px : sel_max;
                         }
-                    ui_dirty = 2;                           /* with it: its title inside it */
+                    }
+                    stop_answer = 0;
                     loop();
-                    for (i = 0; i < SCR_N; i++)
-                        if (scr_text[i].w && !strcmp(scr_text[i].s, pg_ttl_t) && scr_text[i].x >= x0 && scr_text[i].x + scr_text[i].w <= x1
-                            && scr_text[i].y >= y0 && scr_text[i].y + scr_text[i].h <= y1)
-                            own++;
-                    ttl_end();
+                    if (pg_cur_dev != d || pg_cur_page != g) {
+                        printf("      (%s: SELECT / ALGO reached device %u page %u, not %u %u)\n", PRESET_LIST[p].name, pg_cur_dev,
+                               pg_cur_page, d, g);
+                        bad++;
+                    }
+                    SAME_AS_WHOLE(g ? "ALGO" : "SELECT");
                 }
         }
-        printf("      title toasts: %u pages of %u factory patches, %u in the foot band\n", pages, (unsigned)N_PRESETS, foot);
-        check("the title toast covers no text of any factory page, and holds its title whole", pages > 50u && hit == 0u
-              && own == pages - foot);
+        preset_loads = 1;                                   /* PRESET through the bank, every patch in turn */
+        cur_preset = N_PRESETS - 1u;
+        (void)load_at(cur_preset);
+        pv_gen++;
+        screen_idle();
+        later(1100);
+        for (p = 0; p < N_PRESETS; p++) {
+            static uint16_t plain[240 * 240];
+            memcpy(plain, fb, sizeof plain);
+            fb_watch_reset();
+            lcd_px = 0;
+            enc(6, 1);
+            pre_px += lcd_px;
+            pre_n++;
+            pre_max = lcd_px > pre_max ? lcd_px : pre_max;
+            if (cur_preset != p || !toast_scr || !on_screen(PRESET_LIST[p].name)) {
+                printf("      (PRESET to %s: slot %u, toast %u, its name %s)\n", PRESET_LIST[p].name, (unsigned)cur_preset, toast_scr,
+                       on_screen(PRESET_LIST[p].name) ? "shown" : "not shown");
+                bad++;
+            }
+            SAME_AS_WHOLE("PRESET");
+            fb_watch_reset();
+            lcd_px = 0;
+            later(1100);                                    /* the toast's end: its band alone */
+            end_px += lcd_px;
+            end_n++;
+            end_max = lcd_px > end_max ? lcd_px : end_max;
+            outside_toast += fb_changed_in(0, 0, 240, toast_top);
+            SAME_AS_WHOLE("the toast's end");
+            (void)plain;
+        }
+        preset_loads = 0;
+        pages_waiting = 0;
+#undef SAME_AS_WHOLE
+        printf("      pages and patches: %u compared, %u differ; LCD px a click: ALGO %u (most %u), SELECT %u (most %u), PRESET %u"
+               " (most %u), the toast's end %u (most %u)\n", runs, bad, (unsigned)(algo_px / (algo_n ? algo_n : 1u)), algo_max,
+               (unsigned)(sel_px / (sel_n ? sel_n : 1u)), sel_max, (unsigned)(pre_px / (pre_n ? pre_n : 1u)), pre_max,
+               (unsigned)(end_px / (end_n ? end_n : 1u)), end_max);
+        check("SELECT, ALGO and PRESET on every page of every factory patch, and the toast's end: the screen drawn whole, pixel"
+              " for pixel", runs > 200u && bad == 0u);
+        check("the toast's end: only its band drawn again", outside_toast == 0u && end_max <= 240u * (LK_TOH + 4u));
     }
     check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
           lcd_line_clobbers == 0u);

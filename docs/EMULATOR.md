@@ -85,6 +85,12 @@ link as `m1emu serve` drives the emulator:
   the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does. The volume
   never stops a run ([D-125](ledger/releases.md#D-125)): on a rig whose firmware reads its peak after MASTER (no INFO
   feature bit 10), a check that hears nothing is skipped as "MASTER down"; skips are counted apart and are no failure.
+- **`cd web && npm run rig:bench [-- --patch NAME] [--rounds N]`:** the LCD's draw times on the rig, with the rig the
+  only FM-1 connected (it refuses otherwise, before sending anything but INFO and the mark's read). It zeroes the times,
+  pages with ALGO and SELECT, turns K1..K4, opens and closes GLO and steps PRESET on and back, then prints the last and
+  the worst time of each kind of draw. The firmware keeps them (`ui_time` in `firmware/src/ui.c`: `fm1_ticks` around
+  each draw, the LCD's transfers included) and reports them as DIAG pages 121..123 (page 120 zeroes them);
+  `tools/m1_link.py uitime` reads the same. Run on two builds, it compares them.
 - **`npm run device:scenarios -- --via-emu`:** the device path against the emulator (its build has the test mode too),
   to check the runner and the firmware's side without a rig.
 

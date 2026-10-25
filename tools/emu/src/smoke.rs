@@ -4,9 +4,9 @@
 //!
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
-//! 3. pages: GLO (Main's global page, again: back), PLAY (the transport shows PLAY / STOP), HOME (nothing to go back
-//!    to: the page stays), SELECT / ALGO (their red / blue title toast over the page, gone once they stop), HOME held
-//!    (the menu), HOME again (back out of it)
+//! 3. pages: GLO (Main's global page, again: back), PLAY twice, HOME (nothing to go back to: the page stays), SELECT /
+//!    ALGO (the header shows where they went, no toast; back again: as it was), HOME held (the menu), HOME again (back
+//!    out of it)
 //! 4. PRESET encoder: forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
@@ -47,17 +47,16 @@ const ALGO: u8 = 1; // encoder
 const SELECT: u8 = 0; // encoder
 const K1: u8 = 2;
 
-/// SELECT's and ALGO's title toasts (pages_ui.c P_CARD_DEV / P_CARD_PAGE, RGB565, #298)
-const CARD_DEV: u16 = 0xB186;
-const CARD_PAGE: u16 = 0x4B52;
+/// The device page's header, its rows (pages_ui.c LK_HH)
+const HEADER_ROWS: usize = 36;
 
 /// Below this the output counts as silent, above `LOUD` as sounding (16-bit samples).
 const QUIET: i32 = 64;
 const LOUD: i32 = 1000;
 
 /// (name, binary) of every factory patch in presets.h
-/// on the device page (pages_ui.c): the info line's octave ("STOP 120  OCT 0")
-const DEVICE_PAGE: &str = "OCT ";
+/// on the device page (pages_ui.c): the footer's octave at 0 ("= OCT =")
+const DEVICE_PAGE: &str = "= OCT =";
 
 fn factory() -> Vec<(String, Vec<u8>)> {
     let list = &PRESETS_H[PRESETS_H.find("PRESET_LIST[").expect("PRESET_LIST")..];
@@ -639,8 +638,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.check("the main page after the loading screen", up, format!("at {} ms", m.ms()));
     m.run_for(2500)?;                         // (the first boot's FACTORY BANK WRITTEN leaves the bar after 2 s)
     t.screen(&m, "factory patch 0 loaded", &presets[0].0);
-    let cell = m.lcd()[10 * 240 + 224]; // the battery's cell (ui.c batt_mark_draw): its first bar, ivory
-    t.check("the battery in the top bar: 3 bars (fm1-emu's ch 3 reads 640)", cell == 0xFFBD, format!("{cell:#06x} at 224, 10"));
+    let cell = m.lcd()[232 * 240 + 229]; // the footer's battery (pages_ui.c foot_row): its third bar, night on sand
+    t.check("the battery in the footer: 3 bars (fm1-emu's ch 3 reads 640)", cell == 0x10E4, format!("{cell:#06x} at 229, 232"));
     if let Some(c) = cpu_figure(&m) {
         println!("     CPU figure in the top bar: {c} %");
     }
@@ -663,26 +662,25 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     for (key, what, text) in [
         (GLO, "GLO: Main's global page", "GLOBAL"),
         (GLO, "GLO again: back to the device page", DEVICE_PAGE),
-        (PLAY, "PLAY: the transport runs", "PLAY 120"),
-        (PLAY, "PLAY again: it stops", "STOP 120"),
+        (PLAY, "PLAY: the device page stays", DEVICE_PAGE),
+        (PLAY, "PLAY again: it stops, the page stays", DEVICE_PAGE),
         (HOME, "HOME on the device page, nothing to go back to: the page stays", DEVICE_PAGE),
     ] {
         m.tap(key, 120, 400)?;
         t.screen(&m, what, text);
     }
-    // SELECT / ALGO (#298): what they reached named in a small toast (red / blue) over the page drawn at once, gone 600 ms
-    // after the last click
-    for (enc, name, colour) in [(SELECT, "SELECT", CARD_DEV), (ALGO, "ALGO", CARD_PAGE)] {
-        m.turn(enc, 1, 150)?;
-        let n = m.lcd().iter().filter(|&&p| p == colour).count();
-        let corner = m.lcd()[4 * 240 + 4];
-        t.snap(&m, &format!("{name}-toast"));
-        t.check(&format!("{name}: its toast over the page, no card"), n > 500 && n < 12000 && corner != colour,
-                format!("{n} pixels of {colour:#06x}, corner {corner:#06x} at {} ms", m.ms()));
-        m.turn(enc, -1, 900)?;
-        let n = m.lcd().iter().filter(|&&p| p == colour).count();
-        t.check(&format!("{name} stopped: the toast gone"), n == 0, format!("{n} pixels of {colour:#06x}"));
-        t.screen(&m, &format!("{name} stopped: the device page"), DEVICE_PAGE);
+    // SELECT / ALGO (the owner's design, 2026-10-24): no toast; the header shows the device and the page they reached,
+    // the footer stays; back again, the header as it was
+    for (enc, name) in [(SELECT, "SELECT"), (ALGO, "ALGO")] {
+        let head = m.lcd()[..240 * HEADER_ROWS].to_vec();
+        let foot = m.lcd()[225 * 240..].to_vec();
+        m.turn(enc, 1, 300)?;
+        t.snap(&m, &format!("{name}-header"));
+        t.check(&format!("{name}: the header shows where it went, the footer stays"),
+                m.lcd()[..240 * HEADER_ROWS] != head[..] && m.lcd()[225 * 240..] == foot[..], format!("at {} ms", m.ms()));
+        m.turn(enc, -1, 300)?;
+        t.check(&format!("{name} back: the header as it was"), m.lcd()[..240 * HEADER_ROWS] == head[..], String::new());
+        t.screen(&m, &format!("{name} back: the device page"), DEVICE_PAGE);
     }
     m.key(PLAY, true);                        // PLAY held + PRESET: the tempo; the release then does not start the transport
     m.run_for(200)?;
@@ -690,7 +688,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "PLAY held + PRESET: the tempo", "TEMPO 121");
     m.key(PLAY, false);
     m.run_for(1300)?;
-    t.screen(&m, "the release after a tempo turn does not start", "STOP 121");
+    t.screen(&m, "the release after a tempo turn: the footer's tempo 121", "121");
     m.tap(HOME, 1000, 400)?;
     t.screen(&m, "HOME held: settings menu", "PANEL");
     m.tap(HOME, 120, 400)?;
@@ -766,12 +764,12 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.check("SAVE wrote the flash", same > 0, format!("{same} bytes not erased"));
 
     let mut m = Machine::boot(app, Some(&flash));
-    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    wait_text(&mut m, "OCT +", 9000)?;                   // (the octave saved at +1)
     m.run_for(2500)?;
     t.screen(&m, "restart: the saved slot opens", &presets[target].0);
     t.check("restart: no edit mark", !font::on_screen(m.lcd(), &edited), String::new());
     t.check("restart: the same patch as saved (the diagram)", diagram(&m) == before, String::new());
-    t.screen(&m, "restart: the saved octave", "OCT +1");
+    t.screen(&m, "restart: the saved octave", "OCT +");
     *emulated += m.ms();
 
     // ---- 7. the preset bank in flash
