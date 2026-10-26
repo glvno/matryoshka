@@ -19,11 +19,18 @@ describe('share links', () => {
     for (const make of Object.values(PRESETS)) {
       const p = make();
       const s = await encodeShare(p, { base: 'https://example.test/x/' });
-      expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
       expect(s.length).toBe(s.link.length);
-      if (!xlBase(p.name)) expect(s.length).toBeLessThan(LINK_MAX * 0.6); // an FM-1 version (Meridian 8 with its arpeggiator: about 4100); an XL may be longer
+      if (xlBase(p.name)) {
+        // an XL may pass LINK_MAX: it is then shared as a stored link (docs/ledger/editor.md D-586), whose full form must
+        // stay under the store's limit and round-trip with its layout
+        expect(s.tooLong).toBe(false);
+        expect(await decodeShare(s.full, DEFS)).toEqual(p);
+      } else {
+        expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
+        expect(s.length).toBeLessThan(LINK_MAX * 0.6); // an FM-1 version (Meridian 8 with its arpeggiator: about 4100)
+      }
       expect(/^[A-Za-z0-9_-]+$/.test(s.code)).toBe(true);
-      expect(await decodeShare(s.code, DEFS)).toEqual(p);
+      if (s.layout) expect(await decodeShare(s.code, DEFS)).toEqual(p);
       expect(shareCodeOf(s.link)).toBe(s.code);
       expect(s.link).toBe(shareLink(s.code, 'https://example.test/x/'));
     }
