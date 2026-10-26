@@ -645,6 +645,18 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
     put(unit, str_eq(u, "HZ") ? "Hz" : str_eq(u, "S") ? "s" : str_eq(u, "MS") ? "ms" : str_eq(u, "DB") ? "dB" : str_eq(u, "BPM") ? "bpm" : str_eq(u, "CT") ? "ct" : str_eq(u, "ST") ? "st" : str_eq(u, "OCT") ? "oct" : u)[0] = 0;
 }
 
+/* the value a row plays, where a switch of its module stretches it (the editor's card shows the same): the ADSR's long
+ * (decay and release x 2.4) and the Delay's swell (feedback x 198 / 95); the bar keeps the knob's range */
+static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
+{
+    int t = eng_type(m);
+    if (t == T_ADSR && (j == ADSR_P_D || j == ADSR_P_R) && eng_get_param(m, ADSR_P_LONG) >= 32768)
+        return (int32_t)(((int64_t)v * ADSR_LONG_Q16) >> 16);
+    if (t == T_DELAY && j == DELAY_P_FB && eng_get_param(m, DELAY_P_SWELL) >= 32768)
+        return (int32_t)((int64_t)v * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    return v;
+}
+
 /* a row's value as text and its bar positions (base, live) over `width` px: a parameter, or a poly group's setting */
 static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint32_t width, uint32_t *base, uint32_t *live)
 {
@@ -676,7 +688,7 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
     {
         const def_t *d = &DEFS[eng_type(m)];
         int32_t v = eng_get_param(m, j), e = eff_now(m, j, d, v);
-        value_parts(d, j, v, num, unit);
+        value_parts(d, j, stretched(m, j, v), num, unit);
         *base = param_bar(d, j, v, width);
         *live = param_bar(d, j, e, width);
     }
