@@ -4,7 +4,7 @@
 // kept in the browser (localStorage `matryoshka.presets`); factory ones (#193) come with the app, read-only (storing over
 // one makes a new one). A patch remembers which preset each assembly was set to (AssemblyInst.preset), for display only:
 // the patch plays its own values. Not the A/B snapshot, not a patch (a patch is the whole stored thing).
-import { type AssemblyInst } from './assembly';
+import { tiedTo, type AssemblyInst } from './assembly';
 import { DEFS } from './modules';
 import { topOf, type Patch } from './patch';
 import { rowOrder, structureOf } from './structure';
@@ -77,16 +77,18 @@ export function currentValues(p: Patch, a: AssemblyInst): number[] {
   return rowOrder(p, a).map((r) => p.modules.find((m) => m.id === r.module)?.params[r.param] ?? 0);
 }
 
-/** load a preset into an assembly: its card rows take the preset's values (clamped to each parameter's range); the
- * assembly remembers its name. False when it does not fit (another structure). */
+/** load a preset into an assembly: its card rows take the preset's values (clamped to each parameter's range), every
+ * parameter a row sets (#357) too; the assembly remembers its name. False when it does not fit (another structure). */
 export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean {
   if (preset.structure !== structureOf(p, a)) return false;
   const rows = rowOrder(p, a);
   if (rows.length !== preset.values.length) return false;
   rows.forEach((r, i) => {
-    const m = p.modules.find((x) => x.id === r.module);
-    const pd = m && DEFS[m.type]?.params.find((d) => d.name === r.param);
-    if (m && pd) m.params[r.param] = Math.min(topOf(pd), Math.max(pd.min, preset.values[i]));
+    for (const t of tiedTo(p, r.module, r.param)) {
+      const m = p.modules.find((x) => x.id === t.module);
+      const pd = m && DEFS[m.type]?.params.find((d) => d.name === t.param);
+      if (m && pd) m.params[t.param] = Math.min(topOf(pd), Math.max(pd.min, preset.values[i]));
+    }
   });
   a.preset = preset.name;
   return true;

@@ -10,7 +10,7 @@
 #define ENG_SR 44118u          /* the FM-1's I2S rate (M-VAVE fm1_open, FM1_AUDIO_HARDWARE_RATE); was 44100 until 1.1 */
 #define ENG_BLOCK 128u
 #define ENG_ONE 65536
-#define ENG_PATCH_VERSION 35   /* 35: Tier 1 of #351: the types pd, env8, select; a type with more than 16 parameters writes its masks as u32; parameters appended to adsr (long), lfo (phase, range, dir, mult), delay (note, swell), reverb (freeze), pulse (inf), drummap (repeat): an older binary's record holds the parameters of its own format (eng_npar, defs.h psince) and the rest take their defaults; the Steps rates 7..8 and swing past 75 (ptop); 34: the device extras section (flag bit 8: p[7] bit 0; #194, #197): per device its driving Steps track, its structure, its preset's name; 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
+#define ENG_PATCH_VERSION 35   /* 35: Tier 1 of #351: the types pd, env8, select; a device page row's extras (bit 6 of its parameter byte, ENG_ROW_MORE: the further parameters it sets, its positions' names; #357, #358); a type with more than 16 parameters writes its masks as u32; parameters appended to adsr (long), lfo (phase, range, dir, mult), delay (note, swell), reverb (freeze), pulse (inf), drummap (repeat): an older binary's record holds the parameters of its own format (eng_npar, defs.h psince) and the rest take their defaults; the Steps rates 7..8 and swing past 75 (ptop); 34: the device extras section (flag bit 8: p[7] bit 0; #194, #197): per device its driving Steps track, its structure, its preset's name; 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte: where its keys come from); 31: the Steps module holds notes (#133: its record only its name, the notes section at flag bit 4, a keys output instead of acc, a group's note source may be a Steps module); 30: the button kinds section (flag bit 6); 29: the device pages section (flag bit 5), the Main module without the knob outputs / parameters k1..k6, the panel section with 7 labels, the Macro module; 28: env shot (one-shot); 27: step values (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (name + pattern in its record), 7 panel buttons; 25: the group record's MIDI channel and key range; 24: the panel section, the Main module's k5 / k6 and button outputs; 23: the group record's note source */
 #define ENG_PATCH_COMPAT_VERSION 31   /* (a format 31 patch reads the same; 31..34 with the parameter counts of their format) */
 #define ENG_MAX_PARTS 8               /* parts of a poly group (notes it plays at once) */
 #define ENG_GROUP_REC (8u + 5u * ENG_MAX_PARTS)   /* a poly group record: parts, assign, legato (bit 7: unison), priority, five flaw bytes per part, the note source, MIDI channel, lowest and highest key (patchbin.ts GROUP_REC) */
@@ -78,9 +78,30 @@ static inline uint32_t eng_notes_end(const uint8_t *p, uint32_t len, uint32_t at
     }
     return at <= len ? at : 0;
 }
+/* bit 6 of a page row's parameter byte (format 35, #357 / #358): the row's extras follow its label: u8 n, n (u8 module,
+ * u8 parameter): the further parameters it sets to its value; u8 k, k texts: its positions' names */
+#define ENG_ROW_MORE 0x40u
+/* the end of a page row's extras that start at `at`, 0 when they are cut short */
+static inline uint32_t eng_row_more_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t k;
+    if (at >= len)
+        return 0;
+    at += 1u + 2u * p[at];
+    if (at >= len)
+        return 0;
+    k = p[at++];
+    while (k--) {
+        if (at >= len)
+            return 0;
+        at += 1u + p[at];
+    }
+    return at <= len ? at : 0;
+}
 /* the end of the device pages section (patchbin.ts, header flag bit 5) that starts at `at`, 0 when it is cut short:
  * u8 devices; per device u8 kind (0: u8 a plain module's index; 1: a text name, u8 pages, per page a text name, u8 part,
- * u8 parts, u8 display, u8 rows, per row u8 module, u8 parameter, a text label); a text is u8 length + that many bytes */
+ * u8 parts, u8 display, u8 rows, per row u8 module, u8 parameter, a text label, with ENG_ROW_MORE in the parameter its
+ * extras); a text is u8 length + that many bytes */
 static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t at)
 {
     uint32_t n, d, g, r, np, nr;
@@ -109,10 +130,16 @@ static inline uint32_t eng_devices_end(const uint8_t *p, uint32_t len, uint32_t 
             nr = p[at + 3u];
             at += 4u;
             for (r = 0; r < nr; r++) {
+                uint32_t more;
+                if (at + 2u > len)
+                    return 0;
+                more = (p[at + 1u] & 0x80u) == 0u && (p[at + 1u] & ENG_ROW_MORE);
                 at += 2u;
                 if (at >= len)
                     return 0;
                 at += 1u + p[at];
+                if (more && !(at = eng_row_more_end(p, len, at)))
+                    return 0;
             }
         }
     }

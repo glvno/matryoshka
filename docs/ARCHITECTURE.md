@@ -269,6 +269,30 @@ The assembly browser and the palette put the engines on an **Engines** shelf, fi
 ## Assemblies: merged ports, placement, nesting
 
 - Merged ports: `PortRef.also` (inputs only) lists the further inner inputs a container jack feeds; `targetsOf` / `findRef` resolve them, `mergePorts` / `unmergePort` edit them, `hidePort` treats a group as one and refuses while any target has an outside cable. Cables stay per inner input: the editor creates one per target when a cable lands on the jack (`dot.dataset.also`) and removes the hidden siblings when the drawn one is clicked. Dedupe on the canvas is free: only the primary's dot exists while the assembly is collapsed.
+- Rows that set several parameters (#357): `ParamRef.also` lists the further parameters a card row sets; each has the
+  same range as the row's first (`sameRange`: min, max, top, step, curve, unit, choices), none is a Voice allocator's or
+  another row's. `rowTargets` / `rowOf` resolve them, `mergeRows` / `splitRow` edit them (pick mode's "one row with…"
+  and split), `demote` takes one parameter off (the row's first hands the row to the next), `cleanRows` (in `reconcile`)
+  drops what no longer fits. The parameters are tied: `ties(p)` / `tiedTo` gives a parameter's tied set across nested
+  cards (a parent's row on a child's row ties what the child's row sets). The editor writes a value to all of them
+  (`Editor.mirror`, after `setParam` and a slider; the FM-1's PARAM_NOW comes through `setParam` too), a cable dropped on
+  the row reaches each (`connectParameter` per parameter; removing it takes the same output's cables into the others,
+  `tiedCables`), and `syncTied` (after every `change`, and on load in `fixAssemblies`) makes each follow the row's
+  first: its value, p1 / p2 routing, macro range, the pin's depth where the pin routes to it alone, side-input routes.
+  Card presets (`applyPreset`) set every tied parameter; the morph needs nothing (both sides keep them equal). The
+  [**structure fingerprint**](ledger/vocabulary.md#structure-fingerprint) counts a row's parameters joined with `+`, so a card without such rows keeps its fingerprint.
+- Named positions (#358): `ParamRef.names` (only on a Selector module's `pos` row; `ROW_NAMES_MAX` 8 names of
+  `ROW_NAME_MAX` 12 characters, `fixNames`) turns the row into a row of named choices: the collapsed card, the Selector's
+  own card inside the frame (`rowNames`, through a parent's row too), the patch card, the dock's dials and the FM-1 page.
+  `rowRange` (modules.ts) limits a `pos` row to 1..count everywhere a row is edited (slider, typed value, the dials,
+  CC); the engines already clamp. Pick mode's "names" button sets them (`setRowNames`).
+- Copies shown one at a time ([D-347](ledger/patches-and-presets.md#D-347) amended: the CZ edits one envelope step at a time): `ParamRef.copies` = `{ rows,
+  count, name }` on a run's first row, layout only like a heading. `copyRuns` finds the runs that hold together (no
+  heading, column break or other run inside, all rows on the card; `keepParams` drops the flag when a row of the run
+  goes). The collapsed card shows one copy under a picker row named `name` ("step"; `Editor.copyPicker`, the choice is
+  editor state, not saved); every copy, and the row after the run, starts a group (`copyStarts` into `groupStarts` and
+  Arrange's `pagesOf`), so the FM-1 gives each copy a page and ALGO steps through them. Arrange mode's "⧉ one at a time"
+  sets it (`setCopies`). Presets, the morph, cables and the binary see every row.
 - Placement: `freeSpot(occupied, w, h)` scans `GRID` cells in reading order against the rectangles of the visible cards, containers and frames (the editor measures the DOM, or the model before the first layout).
 - Nesting: `AssemblyInst.children` (ids), `allModules` / `descendants` / `parentOf` / `depthOf`, `MAX_DEPTH` 3. `boundary` and `outsideCables` use all modules; a parent's `inputs` / `outputs` / `params` may point at a descendant's module only while the direct child exposes / promotes it (`reconcile` enforces, so `reconcileAll` goes children first and loops until stable). `makeAssembly` nests when the selection is inside one assembly; `addChild` / `removeChild` move an assembly (the editor calls them after a container drag, judged by the card header). `ungroup` lifts members one level, `deleteAssembly` removes direct modules only. Saved files gain `children` and `assemblies` (NestedDef with local ids); `validateAssemblyDef` checks the tree, `fixAssemblies` repairs a loaded overlay (missing children, two parents, loops, depth).
 
@@ -680,6 +704,14 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   assign, legato, priority, unison) name its group setting: in the device form the allocator is its group's Part, and
   the parameter byte is 0x80 + the field (`POLY_ROW_PARAMS`). `binaryPage` / `editorPage` map the editor's focus to the
   binary's indices. `eng_devices_end` (engine.h) walks the section; `eng_load` skips it.
+- Page row extras (format 35, #357, #358): bit 6 of a row's parameter byte (`ROW_MORE`, engine.h `ENG_ROW_MORE`; never on
+  a poly row) says the row's extras follow its label: u8 n and n (module index, parameter index) pairs, the further
+  parameters the row sets, then u8 k and k texts, its positions' names in capitals. A row without them is written as
+  before, so every binary written before them is unchanged. The FM-1 keeps where each row's extras start (`ppage_t.xo`,
+  an offset into the running binary): K1..K4 and MIDI CC 16..19 write the row's value to each further parameter too
+  (`pages_also`, after the first; PARAM_NOW names only the first, the editor sets the rest), a preset loaded on the FM-1
+  does the same (`dp_load`, `dev_row_more`), and a named position shows its name for the value (`row_name`). A Selector
+  module's `pos` row spans 1..count on the FM-1 (`row_top`: the knobs, CC, the bar and MIDI out), as on the card.
 - Protocol: FOCUS 0x29 (host → device: show a page), PARAM_NOW 0x47 (a row turned on the FM-1: module, parameter, Q16)
   and FOCUS_NOW 0x48 (the page the FM-1 shows) from the device; INFO feature bit 4. With Live on the editor follows the
   FM-1's page and turns, and sends its own focus; an upload is followed by the focus.
