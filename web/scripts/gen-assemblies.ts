@@ -1528,7 +1528,7 @@ asm('Algo Four', 'Voices', (b) => {
 //   filter.
 // - Output: `chan a` (gate 1), `chan b` (gate 2, 180 degrees out of phase), `reverb` (our reverb, mono).
 // Not here (the FM-1): the patch field and the inverter (Canvas XL's), the preamp / envelope detector (audio input); the
-// trim pots. The switches are numbered: their names would cost about 280 of the 74 bytes left (#358's names are Canvas XL's).
+// trim pots. The switches are numbered: their names would cost about 280 of the 65 bytes left (#358's names are Canvas XL's).
 asm('Canvas', 'Voices', (b) => {
   // ---- keyboard: MAIN = the keys through the portamento
   const part = b.add('alloc', 0, 0, { voices: 1 });
