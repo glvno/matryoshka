@@ -31,10 +31,20 @@ export const RULES: { name: string; rule: Rule }[] = [
   { name: 'Wet', rule: (r) => (r.type === 'delay' || r.type === 'reverb' || r.type === 'chorus') && r.param === 'mix' ? Math.min(1, Math.max(0.35, r.value * 1.6)) : r.type === 'delay' && r.param === 'fb' ? r.value + 0.15 : undefined },
 ];
 
+/** a cutoff factor as a move of a Macro spanning the filters' cutoff range (0..1 over 20..16000 Hz, log) */
+const CUTOFF_UNIT = (k: number): number => {
+  const pd = DEFS.filter.params.find((d) => d.name === 'cutoff')!;
+  return Math.log(k) / Math.log(pd.max / pd.min);
+};
+
 /** the XLs' rules: the same variations, also reaching controls only an XL has (a DX envelope's levels and rates, a
  * delay's wet mix and feedback on a Crossfader or a Macro), so an XL keeps every preset its FM-1 version has. Kept apart
  * from RULES so the FM-1's list (its ROM) stays as it is. */
 const XL_EXTRA: Record<string, Rule> = {
+  // a cutoff or resonance on a Macro that sets filters over their whole range (Oracle V XL: one knob for two filters);
+  // the cutoff moves by the same factor as a filter's own, in its range's unit (log 20..16000 Hz)
+  Bright: (r) => (r.type !== 'macro' ? undefined : r.label === 'cutoff' ? r.value + CUTOFF_UNIT(2.2) : r.label === 'res' ? r.value + 0.1 : undefined),
+  Dark: (r) => (r.type === 'macro' && r.label === 'cutoff' ? r.value + CUTOFF_UNIT(0.4) : undefined),
   Pluck: (r) => (r.type !== 'env' ? undefined : r.param === 'r1' ? 0.002 : r.param === 'r2' || r.param === 'r3' ? Math.min(0.35, r.value) : r.param === 'l3' ? 0 : r.param === 'r4' ? Math.min(0.3, r.value) : undefined),
   Wet: (r) => (r.type === 'xfade' && r.label === 'mix' ? Math.min(1, Math.max(0.35, r.value * 1.6)) : r.type === 'macro' && r.label === 'feedback' ? r.value + 0.15 : undefined),
 };
