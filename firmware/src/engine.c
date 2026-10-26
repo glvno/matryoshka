@@ -22,8 +22,6 @@
  * of manual.c in step. */
 #define ENG_MAX_MODULES 64          /* (the module list, `order`, `outputs` are uint8 indices; the binary header byte 2) */
 #define ENG_MAX_RANGES 48           /* macro ranges (patch.ts ModuleInst.range) */
-#define ENG_MASK_PARAMS 16u         /* parameters the u16 matrix / route / range masks reach (patch.ts MASK_PARAMS): the eight-step
-                                     * envelope's sus and end, past them, are never modulated */
 #define ENG_MAX_CABLES 255           /* (the HELLO reply carries it in a byte) */
 #define MAX_SUM 160                 /* summed inputs (an input of an instance with two or more sources) */
 #define MAX_SRC 320                 /* their sources: a shared input reading a per-note output has one per note */
@@ -364,12 +362,12 @@ typedef struct {
     uint8_t bypass;                  /* 1: process() is skipped, the outputs copy the through input (DEFS[].thru) or are silent */
     uint8_t inst0, ninst;            /* its instances in inst_pool[]: one per part of its poly group, else one */
     uint8_t grp;                     /* its poly group (E.grp[]): 0 = it runs once and plays the shared keyboard */
-    uint16_t map[6];                 /* the matrix: bit j of map[s] = source s controls parameter j. s: p1 p2 k1 k2 k3 k4 */
-    uint16_t input_map[MAX_IN];      /* additional side-input destinations, independent of fixed links */
+    uint32_t map[6];                 /* the matrix: bit j of map[s] = source s controls parameter j. s: p1 p2 k1 k2 k3 k4 */
+    uint32_t input_map[MAX_IN];      /* additional side-input destinations, independent of fixed links */
     int32_t att[2];                  /* attenuverters of p1, p2: Q16, -1..1 */
     int32_t par[MAX_PAR];
     uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
-    uint16_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
+    uint32_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
     uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
     uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's or an
                                       * Arpeggiator's index); a Steps module: 1 = a cable from Main's keys into its keys in
@@ -669,8 +667,46 @@ static inline int32_t rd32(const uint8_t *p)
     return (int32_t)((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24);
 }
 
-/* bytes a module record has beyond its type byte and parameters: the attenuverters and the matrix */
-static inline uint32_t eng_record_extra(const def_t *d) { return (d->cvbase >= 0 ? 20u : 0u) + d->ndata; }
+/* bytes of a parameter mask of this type (the matrix, an input route): u16, u32 for a type with more than 16 parameters
+ * (patchbin.ts maskBytes) */
+static inline uint32_t eng_mask_bytes(const def_t *d) { return d->npar > 16u ? 4u : 2u; }
+static inline uint32_t eng_rdmask(const uint8_t *p, uint32_t bytes) { return bytes == 4u ? (uint32_t)rd32(p) : ((uint32_t)p[0] | (uint32_t)p[1] << 8); }
+/* bytes a module record has beyond its type byte and parameters: the attenuverters and the matrix, then its data */
+static inline uint32_t eng_record_extra(const def_t *d) { return (d->cvbase >= 0 ? 8u + 6u * eng_mask_bytes(d) : 0u) + d->ndata; }
+/* a module record's size, its type byte included */
+static inline uint32_t eng_record_size(const def_t *d) { return 1u + 4u * d->npar + eng_record_extra(d); }
+
+/* the type of module `mod` in a patch binary, -1 if the binary is malformed (a route's mask width depends on it) */
+static int eng_type_at(const uint8_t *p, uint32_t len, uint32_t mod)
+{
+    uint32_t at = eng_records_at(p, len), i;
+    if (!at || mod >= p[2])
+        return -1;
+    for (i = 0; i <= mod; i++) {
+        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
+            return -1;
+        if (i == mod)
+            return p[at] & 0x7Fu;
+        at += eng_record_size(&DEFS[p[at] & 0x7Fu]);
+    }
+    return -1;
+}
+/* the end of the side-input routes section (flag bit 3) that starts at `at`: u8 count, then per route u8 module, u8 input
+ * and its mask (eng_mask_bytes of the module's type); 0 if malformed */
+static uint32_t eng_routes_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n, i;
+    if (at >= len)
+        return 0;
+    n = p[at++];
+    for (i = 0; i < n; i++) {
+        int t;
+        if (at + 2u > len || (t = eng_type_at(p, len, p[at])) < 0)
+            return 0;
+        at += 2u + eng_mask_bytes(&DEFS[t]);
+    }
+    return at <= len ? at : 0;
+}
 
 static int32_t morph_unit(const def_t *d, uint32_t j, int32_t v);
 
@@ -817,8 +853,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             nd->att[0] = rd32(p + at);
             nd->att[1] = rd32(p + at + 4);
             at += 8;
-            for (j = 0; j < 6u; j++, at += 2)
-                nd->map[j] = (uint16_t)((uint32_t)p[at] | (uint32_t)p[at + 1] << 8);
+            for (j = 0; j < 6u; j++, at += eng_mask_bytes(d))
+                nd->map[j] = eng_rdmask(p + at, eng_mask_bytes(d));
         }
         if (nd->type == T_STEPS) {               /* its name (the panel reads it from the binary); its notes come after the cables */
             if (E.ntrk >= ENG_MAX_TRACKS)
@@ -895,18 +931,24 @@ int eng_load(const uint8_t *p, uint32_t len)
             nd->conn &= (uint8_t)~mask;
         }
     }
-    if (p[6] & 8u) {                             /* additional side-input routes: module, input, u16 parameter mask */
+    if (p[6] & 8u) {                             /* additional side-input routes: module, input, parameter mask (u16, u32 past
+                                                  * 16 parameters: eng_mask_bytes) */
         uint32_t count;
         if (at >= len) return -3;
         count = p[at++];
-        if (at + 4u * count > len) return -3;
-        for (i = 0; i < count; i++, at += 4) {
-            uint32_t mod = p[at], input = p[at + 1];
-            uint16_t mask = (uint16_t)((uint32_t)p[at + 2] | (uint32_t)p[at + 3] << 8);
+        for (i = 0; i < count; i++) {
+            uint32_t mod, input, mask, mb;
             const def_t *d;
+            if (at + 2u > len) return -3;
+            mod = p[at];
+            input = p[at + 1];
             if (mod >= E.nmod) return -3;
             d = &DEFS[E.node[mod].type];
-            if (input >= d->nin || (d->cvbase >= 0 && input >= (uint32_t)d->cvbase) || !mask || (mask >> d->npar)) return -3;
+            mb = eng_mask_bytes(d);
+            if (at + 2u + mb > len) return -3;
+            mask = eng_rdmask(p + at + 2u, mb);
+            at += 2u + mb;
+            if (input >= d->nin || (d->cvbase >= 0 && input >= (uint32_t)d->cvbase) || !mask || (d->npar < 32u && (mask >> d->npar))) return -3;
             E.node[mod].input_map[input] |= mask;
         }
     }
@@ -1008,7 +1050,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.ranges[E.nranges].lo = p[at + 3];
             E.ranges[E.nranges].hi = p[at + 4];
             E.nranges++;
-            E.node[mod].ranged[pin] |= (uint16_t)(1u << par);
+            E.node[mod].ranged[pin] |= 1u << par;
         }
     }
     /* the instances: state, the delay / reverb / string / chorus memories from the shared pools */
@@ -1299,13 +1341,13 @@ int eng_range(uint32_t module, uint32_t input, uint32_t param, uint32_t *lo, uin
 int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint32_t lo, uint32_t hi)
 {
     range_t *r;
-    if (module >= E.nmod || input > 1u || param >= DEFS[E.node[module].type].npar || param >= ENG_MASK_PARAMS)
+    if (module >= E.nmod || input > 1u || param >= DEFS[E.node[module].type].npar)
         return 0;
     r = range_find(module, input, param);
     if (!on) {
         if (r) {
             *r = E.ranges[--E.nranges];
-            E.node[module].ranged[input] &= (uint16_t)~(1u << param);
+            E.node[module].ranged[input] &= ~(1u << param);
         }
         return 1;
     }
@@ -1319,7 +1361,7 @@ int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint3
     }
     r->lo = (uint8_t)(lo > 255u ? 255u : lo);
     r->hi = (uint8_t)(hi > 255u ? 255u : hi);
-    E.node[module].ranged[input] |= (uint16_t)(1u << param);
+    E.node[module].ranged[input] |= 1u << param;
     return 1;
 }
 
@@ -2354,17 +2396,14 @@ static uint32_t names_at(const uint8_t *p, uint32_t len)
         if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
             return 0;
         d = &DEFS[p[at] & 0x7Fu];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        at += eng_record_size(d);
         npar += d->npar;
     }
     at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);
     if (p[6] & 4u)
         at += nmod;
-    if (p[6] & 8u) {
-        if (at >= len)
-            return 0;
-        at += 1u + 4u * p[at];
-    }
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
+        return 0;
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
         return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))

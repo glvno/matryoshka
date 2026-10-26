@@ -106,15 +106,13 @@ static uint32_t pages_at(const uint8_t *p, uint32_t len)
         if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
             return 0;
         d = &DEFS[p[at] & 0x7Fu];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        at += eng_record_size(d);
         npar += d->npar;
     }
     at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);
     if (p[6] & 4u) at += nmod;
-    if (p[6] & 8u) {
-        if (at >= len) return 0;
-        at += 1u + 4u * p[at];
-    }
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
+        return 0;
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
         return 0;
     return at < len ? at : 0;

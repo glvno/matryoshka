@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { longName, moduleName } from './labels';
-import { connect, routable, sameEnd, type Cable, type Endpoint, type ModuleDef, type ModuleInst, type ParamDef, type Patch } from './patch';
+import { connect, sameEnd, type Cable, type Endpoint, type ModuleDef, type ModuleInst, type ParamDef, type Patch } from './patch';
 
 // The pins p1 / p2 are a module's two modulation inputs. The editor shows no jacks for them: a cable to a parameter's
 // thumb (or a knob's / picker's jack) is routed through a pin here, one source per pin, so a module takes at most two
@@ -38,7 +38,6 @@ export function setParameterInput(m: ModuleInst, pin: 'p1' | 'p2', param: string
 export function setInputRoute(m: ModuleInst, def: ModuleDef, port: string, param: string, on: boolean): void {
   const pd = def.params.find((pd) => pd.name === param);
   if (!pd || !def.inputs.some((p) => p.name === port)) throw new Error('This input or parameter is no longer available.');
-  if (on && port !== pd.input && !routable(def, param)) throw new Error(`${longName(def.type, param)} cannot be modulated.`);
   if (port === 'p1' || port === 'p2') return setParameterInput(m, port, param, on);
   if (port === pd.input) {
     if (on) return; // built in: a dedicated input always feeds its parameter
@@ -59,7 +58,6 @@ export function connectParameter(p: Patch, defs: Record<string, ModuleDef>, from
   const def = m && defs[m.type];
   const pd = def?.params.find((pd) => pd.name === param);
   if (!m || !def || !pd) throw new Error('This parameter is no longer available.');
-  if (!pd.input && !routable(def, param)) throw new Error(`${longName(def.type, param)} cannot be modulated: set it on the card.`);
   if (from.module === module || !p.modules.some((m) => m.id === from.module && defs[m.type].outputs.some((o) => o.name === from.port)))
     throw new Error('Connect an output from another module.');
   const fromHere = (port: string): boolean => into(p, module, port).some((c) => sameEnd(c.from, from));

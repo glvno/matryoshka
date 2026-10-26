@@ -173,7 +173,7 @@ static uint32_t m1_record(uint32_t mod)
         if (at >= m1_cur_len || M1_TYPE(m1_cur[at]) >= N_TYPES)
             return 0;
         d = &DEFS[M1_TYPE(m1_cur[at])];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        at += eng_record_size(d);
     }
     return at < m1_cur_len && M1_TYPE(m1_cur[at]) < N_TYPES ? at : 0;
 }
@@ -231,7 +231,7 @@ static uint32_t m1_track_at(uint32_t mod)
     if (!at || M1_TYPE(m1_cur[at]) != T_STEPS)
         return 0;
     d = &DEFS[T_STEPS];
-    at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u);
+    at += eng_record_size(d) - d->ndata;
     return at + TRACK_NAME_MAX <= m1_cur_len ? at : 0;
 }
 
@@ -350,15 +350,13 @@ static int m1_valid(const uint8_t *p, uint32_t len)
         if (at >= len || M1_TYPE(p[at]) >= N_TYPES)
             return 0;
         d = &DEFS[M1_TYPE(p[at])];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        at += eng_record_size(d);
         npar += d->npar;
     }
     at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);           /* flag bit 0: the morph B set after the cables */
     if (p[6] & 4u) at += nmod;                              /* switched fixed-input links, before ranges */
-    if (p[6] & 8u) {
-        if (at >= len) return 0;
-        at += 1u + 4u * p[at];
-    }
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
+        return 0;
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))      /* flag bit 4: the tracks' notes */
         return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))    /* flag bit 5: the device pages */
@@ -391,15 +389,13 @@ static uint32_t m1_notes_at(void)
         if (at >= m1_cur_len || M1_TYPE(m1_cur[at]) >= N_TYPES)
             return 0;
         d = &DEFS[M1_TYPE(m1_cur[at])];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        at += eng_record_size(d);
         npar += d->npar;
     }
     at += 4u * ncab + ((m1_cur[6] & 1u) ? 4u * npar : 0u);
     if (m1_cur[6] & 4u) at += nmod;
-    if (m1_cur[6] & 8u) {
-        if (at >= m1_cur_len) return 0;
-        at += 1u + 4u * m1_cur[at];
-    }
+    if ((m1_cur[6] & 8u) && !(at = eng_routes_end(m1_cur, m1_cur_len, at)))
+        return 0;
     return at <= m1_cur_len ? at : 0;
 }
 

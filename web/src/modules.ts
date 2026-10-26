@@ -2576,7 +2576,7 @@ const scope: ModuleImpl<null> = {
  * whose level holds while the gate stays up; the gate's fall jumps to the step after it, which runs to the end (sus = end:
  * the gate's fall ends it where it is). Sus off, or past the end: the gate only starts it, every step runs through (the
  * CZ without a sustain point; Env L/R's one-shot). Stage: 0 resting at the end's level, 1..8 the steps, 9 (ENV8_HOLD) holding.
- * sus and end come after the 16 levels and rates: past the 16th parameter nothing modulates them (patch.ts MASK_PARAMS).
+ * With 18 parameters its masks in the binary are u32 (patchbin.ts maskBytes), so pins can move sus and end too.
  */
 export const ENV8_STEPS = 8;
 /** the envelopes: a poly part goes idle only once all of its envelopes have finished (stage 0; engine.ts partQuiet) */

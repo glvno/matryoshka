@@ -4,7 +4,7 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { encodePatch, FLAG_INPUTS, PANEL_BYTES, toQ16 } from '../src/patchbin';
+import { encodePatch, FLAG_INPUTS, PANEL_BYTES, recordSize, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
@@ -634,11 +634,13 @@ kit('env8', (add, wire) => {
   const l1 = add('lfo', 0, 0, { wave: 1, rate: 2.3, depth: 0.8 });
   const steps = { l1: 1, r1: 0.004, l2: 0.3, r2: 0.05, l3: 0.7, r3: 0.08, l4: 0.5, r4: 0.03, l5: 0.9, r5: 0.06, l6: 0.2, r6: 0.1, l7: 0.6, r7: 0.02, l8: 0, r8: 0.15 };
   const ea = add('env8', 0, 0, { ...steps, sus: 3, end: 8 }, { map: { p1: ['r2', 'r5', 'l4'] } });
-  const eb = add('env8', 0, 0, { ...steps, sus: 0, end: 6 });
+  const l2 = add('lfo', 0, 0, { wave: 3, rate: 1.7, depth: 1 });
+  const eb = add('env8', 0, 0, { ...steps, sus: 1, end: 6 }, { map: { p2: ['sus', 'end'] }, att: [1, 0.25] }); // sus and end moved (u32 masks)
   const ec = add('env8', 0, 0, { ...steps, sus: 5, end: 5 });
   const mix = add('mixer', 0, 0, { l1: 0.4, l2: 0.4, l3: 0.4 });
   const out = add('output', 0, 0);
   wire(l1, 'out', ea, 'p1');
+  wire(l2, 'out', eb, 'p2');
   [ea, eb, ec].forEach((e, i) => {
     const o = add('osc', 0, 0, { wave: i + 1, coarse: i * 7 - 7, level: 0.7 });
     const v = add('vca', 0, 0);
@@ -650,6 +652,8 @@ kit('env8', (add, wire) => {
   });
   wire(mix, 'out', out, 'l');
 });
+// the gate also routed to ec's end (a u32 route mask): held, all eight steps; let go, the end is 5
+tests['env8'].modules.filter((m) => m.type === 'env8')[2].inputMap = { gate: ['end'] };
 // in a poly assembly, with the env flaw: released parts go idle once their steps have run
 const env8Parts: number[] = [];
 kit('env8-poly', (add, wire) => {
@@ -1830,10 +1834,7 @@ tests['arm-set'] = make('arm-set', (add, wire) => {
   const enc = encodePatch(p, true);
   if (enc[3] !== 0 || enc[6] & 1) throw new Error('disabled-inputs: the mask section goes after the cables (no groups, no morph)');
   let at = 8 + PANEL_BYTES;
-  for (const m of p.modules) {
-    const d = DEFS[m.type];
-    at += 1 + 4 * d.params.length + (d.paramInputs ? 8 + 2 * SOURCES.length : 0) + (d.data ?? 0);
-  }
+  for (const m of p.modules) at += recordSize(m.type);
   at += 4 * p.cables.length;
   const last = p.cables[p.cables.length - 1];
   const idx = (id: number): number => p.modules.findIndex((m) => m.id === id);

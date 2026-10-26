@@ -519,15 +519,6 @@ export function defaultParams(def: ModuleDef): Record<string, number> {
   return out;
 }
 
-/** parameters a module's matrix and input routes can reach: the binary's masks are u16 (patchbin.ts), so a parameter past
- * the 16th (the eight-step envelope's sus and end) is set on its card or a page row only, never modulated */
-export const MASK_PARAMS = 16;
-/** can p1 / p2, the knobs' matrix or an input route reach this parameter (MASK_PARAMS)? */
-export const routable = (def: ModuleDef, name: string): boolean => {
-  const i = def.params.findIndex((q) => q.name === name);
-  return i >= 0 && i < MASK_PARAMS;
-};
-
 /** the default matrix: p1 and p2 control the first two parameters, knob n the n-th */
 export function defaultMap(def: ModuleDef): Record<Source, string[]> {
   const at = (i: number): string[] => (def.params[i] ? [def.params[i].name] : []);
@@ -543,7 +534,7 @@ export function fixInputRoutes(m: ModuleInst, def: ModuleDef): void {
     if (port.name === 'p1' || port.name === 'p2') continue;
     const names = m.inputMap?.[port.name];
     if (!Array.isArray(names)) continue;
-    const targets = [...new Set(names.filter((name) => routable(def, name) && def.params.some((pd) => pd.name === name && pd.input !== port.name)))];
+    const targets = [...new Set(names.filter((name) => def.params.some((pd) => pd.name === name && pd.input !== port.name)))];
     if (targets.length) routes[port.name] = targets;
   }
   if (Object.keys(routes).length) m.inputMap = routes;
@@ -559,7 +550,7 @@ export function fixMatrix(m: ModuleInst, def: ModuleDef): void {
   }
   const a = Array.isArray(m.att) ? m.att : [1, 1];
   m.att = [0, 1].map((i) => Math.max(-1, Math.min(1, Number.isFinite(Number(a[i])) ? Number(a[i]) : 1))) as [number, number];
-  const names = new Set(def.params.slice(0, MASK_PARAMS).map((q) => q.name));
+  const names = new Set(def.params.map((q) => q.name));
   const dm = defaultMap(def);
   const map = {} as Record<Source, string[]>;
   for (const s of SOURCES) map[s] = Array.isArray(m.map?.[s]) ? m.map![s].filter((n) => names.has(n)) : dm[s];

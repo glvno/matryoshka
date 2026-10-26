@@ -6,7 +6,7 @@ import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { isPile, tidy, tidyAssembly } from './tidy';
 import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS } from './modules';
-import { FIXED_BUTTONS, routable } from './patch';
+import { FIXED_BUTTONS } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { arpLitInverted, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
 import { buttonEditor } from './button-editor';
@@ -1741,8 +1741,7 @@ export class Editor {
     }
     // a thumb or a picker is a jack only where a cable dropped on it has somewhere to go: the module's parameter inputs,
     // the parameter's dedicated input, or a side input already routed to it
-    // (a parameter past MASK_PARAMS never: nothing modulates it)
-    const canPatch = (routable(def, pd.name) || !!pd.input) && (!!def.paramInputs || !!pd.input || parameterInputs(m, pd).length > 0);
+    const canPatch = !!def.paramInputs || !!pd.input || parameterInputs(m, pd).length > 0;
     const thumb = canPatch && !pd.toggle && !choice ? sliderJack(input, (e, jack) => this.beginDrag(e, jack)) : null;
     // a slider with nothing to patch keeps the bar and a plain thumb (not a jack: no cable lands on it)
     const plain = !thumb && !pd.toggle && !choice ? sliderJack(input, () => {}) : null;
