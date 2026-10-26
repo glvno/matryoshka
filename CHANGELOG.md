@@ -112,9 +112,10 @@
   estimate). Host and firmware-engine tested only (`tools/golden.sh`), not yet on a device.
 - **808 Kit XL** (browser only): every TR-808 voice, knob and switch. The mid and high toms and the cymbal play from a
   second track, DRUMS 2, whose Drum map also has the ACCENT row: a step on it accents every voice on that step by
-  ACCENT LEVEL, and the rows' velocities no longer accent. The tom / conga, rim / claves and clap / maracas switches are
-  Selectors (1 or 2). The cymbal and hihats share six square oscillators at the TR-808's frequencies; the cymbal has
-  TONE and DECAY. A pre-scale row sets both tracks' rate (3, 4, 6 or 8 steps a beat). The TR-808's rhythm memory (A /
+  ACCENT LEVEL, and the rows' velocities no longer accent. The tom / conga, rim shot / claves and hand clap / maracas
+  switches are rows of named choices. The cymbal and hihats share six square oscillators at the TR-808's frequencies;
+  the cymbal has TONE and DECAY. A pre-scale row (1/8T, 1/16, 1/16T, 1/32: 3, 4, 6 or 8 steps a beat) sets both
+  tracks' rate. The TR-808's rhythm memory (A /
   B variations, fill-ins, auto fill, rhythm tracks) needs Steps features we lack (#351). 132 modules, an estimated 150 %
   of the FM-1's CPU.
 

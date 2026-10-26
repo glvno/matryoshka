@@ -174,7 +174,7 @@
    "range": {
     "p1": {
      "rate": [
-      0.5,
+      0,
       1
      ]
     }
@@ -1830,7 +1830,7 @@
    "range": {
     "p1": {
      "rate": [
-      0.5,
+      0,
       1
      ]
     }
@@ -1865,11 +1865,21 @@
   },
   {
    "id": 65,
-   "type": "macro",
+   "type": "select",
    "x": 380,
    "y": 2400,
    "params": {
-    "value": 0.3333333333333333
+    "pos": 2,
+    "count": 4,
+    "fade": 0,
+    "v1": 0.5,
+    "v2": 0.6666666666666666,
+    "v3": 0.8333333333333334,
+    "v4": 1,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
    },
    "att": [
     1,
@@ -1877,15 +1887,23 @@
    ],
    "map": {
     "p1": [
-     "value"
+     "pos"
     ],
-    "p2": [],
+    "p2": [
+     "count"
+    ],
     "k1": [
-     "value"
+     "pos"
     ],
-    "k2": [],
-    "k3": [],
-    "k4": []
+    "k2": [
+     "count"
+    ],
+    "k3": [
+     "fade"
+    ],
+    "k4": [
+     "v1"
+    ]
    }
   },
   {
@@ -6751,7 +6769,11 @@
     {
      "module": 89,
      "param": "pos",
-     "label": "tom/conga"
+     "label": "tom/conga",
+     "names": [
+      "tom",
+      "conga"
+     ]
     },
     {
      "module": 81,
@@ -6767,7 +6789,11 @@
     {
      "module": 102,
      "param": "pos",
-     "label": "tom/conga"
+     "label": "tom/conga",
+     "names": [
+      "tom",
+      "conga"
+     ]
     },
     {
      "module": 81,
@@ -6783,7 +6809,11 @@
     {
      "module": 115,
      "param": "pos",
-     "label": "tom/conga"
+     "label": "tom/conga",
+     "names": [
+      "tom",
+      "conga"
+     ]
     },
     {
      "module": 5,
@@ -6794,7 +6824,11 @@
     {
      "module": 121,
      "param": "pos",
-     "label": "rim/claves"
+     "label": "rim/claves",
+     "names": [
+      "rim shot",
+      "claves"
+     ]
     },
     {
      "module": 4,
@@ -6805,7 +6839,11 @@
     {
      "module": 128,
      "param": "pos",
-     "label": "clap/maraca"
+     "label": "clap/maraca",
+     "names": [
+      "hand clap",
+      "maracas"
+     ]
     },
     {
      "module": 5,
@@ -6848,9 +6886,15 @@
     },
     {
      "module": 65,
-     "param": "value",
+     "param": "pos",
      "label": "pre-scale",
-     "head": "pre-scale"
+     "head": "pre-scale",
+     "names": [
+      "1/8T",
+      "1/16",
+      "1/16T",
+      "1/32"
+     ]
     }
    ],
    "children": [
@@ -7225,5 +7269,5 @@
   }
  ],
  "octave": -1,
- "notes": "Every TR-808 voice, knob and switch. Two tracks: DRUMS (the 808 Kit's rows) and DRUMS 2 (mid tom, hi tom, cymbal, ACCENT). Only the AC row accents (by the accent level), as on the TR-808. Switches (a Selector each, 1 or 2): tom / conga for the three toms, rim / claves, clap / maracas. pre-scale sets both tracks' rate. The step count is each track's len: set them alike. Not here: the rhythm memory (A / B variations, fill-ins, auto fill, rhythm tracks)."
+ "notes": "Every TR-808 voice, knob and switch. Two tracks: DRUMS (the 808 Kit's rows) and DRUMS 2 (mid tom, hi tom, cymbal, ACCENT). Only the AC row accents (by the accent level), as on the TR-808. Switches: tom / conga for the three toms, rim shot / claves, hand clap / maracas. pre-scale sets both tracks' rate. The step count is each track's len: set them alike. Not here: the rhythm memory (A / B variations, fill-ins, auto fill, rhythm tracks)."
 }

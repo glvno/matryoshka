@@ -16,14 +16,15 @@
 //   accent: level. A step of the AC row accents every voice on it: each voice holds the level it was hit with (a sample
 //     and hold on its row's trigger), 1 or, accented, 1 + ACCENT LEVEL. The rows' own velocities do nothing (the TR-808
 //     has none): only the AC row accents.
-//   the tom / conga, rim / claves and clap / maracas switches: a Selector each (1: the first sound, 2: the switched one;
-//     both sound, the Selector picks one). A pair shares its LEVEL and, for the toms, its TUNING (a Macro moving both
+//   the tom / conga, rim / claves and clap / maracas switches: a Selector each, its positions named (tom / conga,
+//     rim shot / claves, hand clap / maracas; both sound, the Selector picks one). A pair shares its LEVEL and, for the toms, its TUNING (a Macro moving both
 //     voices' pitch, -7..+7 semitones).
 //   the cymbal and the hihats share one metallic source, six square oscillators at the TR-808's frequencies (205, 304,
 //     370, 523, 540 and 800 Hz). The cymbal is that source through a band pass (its low band, DECAY sets its length) and a
 //     high pass (its high band, short), TONE the balance between the two. The hihats are the FM-1 version's hats on that
 //     source (it had a detuned square cluster and noise).
-//   pre-scale: a Macro into both tracks' rate, from 1/8 triplets to 1/32 (3, 4, 6, 8 steps a beat).
+//   pre-scale: a Selector into both tracks' rate, its positions named 1/8T 1/16 1/16T 1/32 (3, 4, 6, 8 steps a beat; the
+//     manual gives the divisions, not which panel position is which, so the order is by division).
 // New voices (stand-ins for the TR-808's circuits, which the manual does not describe; the tunings are estimates):
 //   mid and high tom: the factory tom as the low tom, higher; the congas: the same, higher still, shorter, with less drop
 //   claves: a sine at about 2.5 kHz with a 35 ms decay; maracas: high-passed noise with a 30 ms decay
@@ -44,9 +45,12 @@ import { define, KIT_NOTES, matchLevel, place, type Built } from './def';
 import type { Xl } from './xl';
 
 const NOTES = 'Every TR-808 voice, knob and switch. Two tracks: DRUMS (the 808 Kit\'s rows) and DRUMS 2 (mid tom, hi tom, ' +
-  'cymbal, ACCENT). Only the AC row accents (by the accent level), as on the TR-808. Switches (a Selector each, 1 or 2): ' +
-  'tom / conga for the three toms, rim / claves, clap / maracas. pre-scale sets both tracks\' rate. The step count is ' +
+  'cymbal, ACCENT). Only the AC row accents (by the accent level), as on the TR-808. Switches: ' +
+  'tom / conga for the three toms, rim shot / claves, hand clap / maracas. pre-scale sets both tracks\' rate. The step count is ' +
   'each track\'s len: set them alike. Not here: the rhythm memory (A / B variations, fill-ins, auto fill, rhythm tracks).';
+
+/** a card row: heading, label, module, parameter and, for a Selector, its positions' names */
+type Row = [string, string, ModuleInst, string, string[]?];
 
 /** the FM-1 version's accent: velocity 127 plays 127 / 100 of a plain step (gen-presets.ts) */
 const FM1_ACCENT = 127 / 100;
@@ -159,11 +163,12 @@ export const xl: Xl = {
     MAP2.forEach(([, note], r) => (map2.params[`n${r + 1}`] = note));
     wire(p, main.id, 'keys', t2.id, 'keys');
     wire(p, t2.id, 'keys', map2.id, 'keys');
-    // ---- pre-scale: one Macro into both tracks' rate (1/8T 1/16 1/16T 1/32)
-    const preScale = add('macro', 0, 0, { value: 1 / 3 });
+    // ---- pre-scale: a Selector of four rates into both tracks' rate (its values: the rates' unit positions, 1/8T 1/16
+    // 1/16T 1/32 of the seven 1/4 .. 1/32; the range 0..1 reads them as they are)
+    const preScale = add('select', 0, 0, { count: 4, pos: 2, fade: 0, v1: 3 / 6, v2: 4 / 6, v3: 5 / 6, v4: 1 });
     for (const t of [drumsTrack, t2]) {
       t.map = { ...t.map!, p1: ['rate'] };
-      t.range = { p1: { rate: [3 / 6, 1] } };
+      t.range = { p1: { rate: [0, 1] } };
       wire(p, preScale.id, 'out', t.id, 'p1');
     }
     // ---- the accent: 0.5 + ACCENT LEVEL / 2 on a step of the AC row, else 0.5 (the level stage's pins read 0..1, gain 0..2)
@@ -267,7 +272,7 @@ export const xl: Xl = {
       { lane: gateOf(map2, 1), coarse: ltBody.params.coarse + 5, head: 'mid tom', level: [mixC, 'l1'] },
       { lane: gateOf(map2, 2), coarse: ltBody.params.coarse + 10, head: 'hi tom', level: [mixC, 'l2'] },
     ];
-    const tomRows: [string, string, ModuleInst, string][] = [];
+    const tomRows: Row[] = [];
     toms.forEach((t, i) => {
       const held = hold(t.lane);
       const tuning = add('macro', 3 + i, 2, { value: 0.5 });
@@ -288,10 +293,10 @@ export const xl: Xl = {
       for (const g of [conga.inputs.find((r) => r.label === 'gate')!]) for (const x of [g, ...(g.also ?? [])]) wire(p, t.lane[0], t.lane[1], x.module, x.port);
       const sel = switchOf(body, conga, 3 * i + 2);
       wire(p, sel.id, 'out', t.level[0].id, t.level[1].replace('l', 'in'));
-      tomRows.push([t.head, 'level', t.level[0], t.level[1]], ['', 'tuning', tuning, 'value'], ['', 'tom/conga', sel, 'pos']);
+      tomRows.push([t.head, 'level', t.level[0], t.level[1]], ['', 'tuning', tuning, 'value'], ['', 'tom/conga', sel, 'pos', ['tom', 'conga']]);
     });
     // rim shot / claves (DRUMS row 7), hand clap / maracas (row 3), each pair on the FM-1 version's channel
-    const pairRows: [string, string, ModuleInst, string][] = [];
+    const pairRows: Row[] = [];
     for (const [label, alt, r, built, mix, ch, sw] of [
       ['rim shot', 'claves', 7, CLAVES, mixB, 'l3', 'rim/claves'],
       ['hand clap', 'maracas', 3, MARACAS, mixA, 'l3', 'clap/maraca'],
@@ -306,7 +311,7 @@ export const xl: Xl = {
       voiceIn(second, gateOf(map1, r), held);
       const sel = switchOf(first, second, r === 7 ? 14 : 17);
       wire(p, sel.id, 'out', mix.id, ch.replace('l', 'in'));
-      pairRows.push([label, 'level', mix, ch], ['', sw, sel, 'pos']);
+      pairRows.push([label, 'level', mix, ch], ['', sw, sel, 'pos', [label, alt]]);
     }
     // the cymbal (DRUMS 2 row 3)
     const cy = place(p, CYMBAL, at.x + 18 * 320, at.y + 1200).a;
@@ -316,24 +321,24 @@ export const xl: Xl = {
     wire(p, cy.outputs.find((r) => r.label === 'out')!.module, 'out', mixC.id, 'in3');
     // ---- the card: the TR-808's panel, left to right (its jacks first: every cable from outside it)
     reconcile(p, card, DEFS);
-    const fm1Rows = (head: string): [string, string, ModuleInst, string][] => {
+    const fm1Rows = (head: string): Row[] => {
       const i = card.params.findIndex((r) => r.head === head);
       const j = card.params.findIndex((r, k) => k > i && r.head);
       return card.params.slice(i, j < 0 ? undefined : j).map((r) => [r.head ?? '', r.label, mod(p, r.module), r.param]);
     };
-    const rows: [string, string, ModuleInst, string][] = [
+    const rows: Row[] = [
       ['accent', 'level', accLevel, 'value'],
       ...fm1Rows('bass drum'),
       ...fm1Rows('snare drum'),
       ...tomRows,
       ...pairRows,
       ...fm1Rows('cow bell'),
-      ['cymbal', 'level', mixC, 'l3'], ...cy.params.map((r): [string, string, ModuleInst, string] => ['', r.label, mod(p, r.module), r.param]),
+      ['cymbal', 'level', mixC, 'l3'], ...cy.params.map((r): Row => ['', r.label, mod(p, r.module), r.param]),
       ...fm1Rows('open hihat'),
       ...fm1Rows('closed hihat'),
-      ['pre-scale', 'pre-scale', preScale, 'value'],
+      ['pre-scale', 'pre-scale', preScale, 'pos', ['1/8T', '1/16', '1/16T', '1/32']],
     ];
-    card.params = rows.map(([head, label, m, param]) => ({ module: m.id, param, label, ...(head ? { head } : {}) }));
+    card.params = rows.map(([head, label, m, param, names]) => ({ module: m.id, param, label, ...(head ? { head } : {}), ...(names ? { names: [...names] } : {}) }));
     // each nested card shows its own of these rows (a card shows only what its nested cards show)
     for (const a of assembliesOf(p).filter((x) => x.id !== card.id && allModules(p, card).includes(allModules(p, x)[0])))
       a.params = card.params.filter((r) => allModules(p, a).includes(r.module)).map(({ module, param, label }) => ({ module, param, label }));

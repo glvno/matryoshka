@@ -4,7 +4,8 @@
 // XL's switches, ACCENT row and extra voices play.
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
-import { deviceBudget } from './patchbin';
+import { readFileSync } from 'node:fs';
+import { deviceBudget, encodePatch, rangeList } from './patchbin';
 import { cpuEstimate } from './cpu';
 import { FM1_PRESETS, XL_PRESETS } from './presets';
 import { assembliesOf } from './assembly';
@@ -80,6 +81,17 @@ describe('808 Kit (the FM-1 version)', () => {
     expect(cpuEstimate(p).use).toBeLessThanOrEqual(1);
   });
 
+  it('its velocity macro ranges reach the FM-1: in the patch and in presets.h (#367)', () => {
+    const p = kit();
+    expect(p.modules.filter((m) => m.range?.p1?.gain).length).toBe(8);
+    expect(rangeList(p).length).toBe(8);
+    const bin = encodePatch(p);
+    expect(bin[6] & 2).toBe(2);   // (the macro ranges section's flag)
+    const h = readFileSync(new URL('../../firmware/src/presets.h', import.meta.url), 'utf8');
+    const shipped = [...h.matchAll(/static const uint8_t PRESET_\d+\[\d+\] = \{([^}]*)\}/g)].map((m) => m[1].split(',').map(Number));
+    expect(shipped.some((b) => b.length === bin.length && b.every((x, i) => x === bin[i]))).toBe(true);
+  });
+
   it('the closed hihat cuts the open one, and an open hit after it sounds again', () => {
     const open = play(kit(), [[0, OH, 0.79]], 0.8);
     const cut = play(kit(), [[0, OH, 0.79], [0.1, CH, 0.79]], 0.8);
@@ -124,6 +136,31 @@ describe('808 Kit XL', () => {
       'closed hihat: level',
       'pre-scale: pre-scale',
     ]);
+  });
+
+  it('names its switches\' positions and pre-scale\'s four rates', () => {
+    const card = assembliesOf(xl()).find((a) => a.name === '808 kit')!;
+    const names = Object.fromEntries(card.params.filter((r) => r.names).map((r, i) => [`${i} ${r.label}`, r.names]));
+    expect(names).toEqual({
+      '0 tom/conga': ['tom', 'conga'], '1 tom/conga': ['tom', 'conga'], '2 tom/conga': ['tom', 'conga'],
+      '3 rim/claves': ['rim shot', 'claves'], '4 clap/maraca': ['hand clap', 'maracas'],
+      '5 pre-scale': ['1/8T', '1/16', '1/16T', '1/32'],
+    });
+  });
+
+  it('pre-scale sets both tracks\' rate: 3, 4, 6 or 8 steps a beat', () => {
+    const p = xl();
+    const card = assembliesOf(p).find((a) => a.name === '808 kit')!;
+    const sel = p.modules.find((m) => m.id === card.params.find((r) => r.label === 'pre-scale')!.module)!;
+    const tracks = p.modules.filter((m) => m.type === 'steps' && (m.name === 'DRUMS' || m.name === 'DRUMS 2'));
+    expect(tracks.length).toBe(2);
+    for (const t of tracks) {
+      expect(p.cables.some((c) => c.from.module === sel.id && c.to.module === t.id && c.to.port === 'p1')).toBe(true);
+      expect(t.range!.p1!.rate).toEqual([0, 1]);
+    }
+    // the positions' values are the rates' places among 1/4 1/4T 1/8 1/8T 1/16 1/16T 1/32 (0..6), over 6
+    expect([1, 2, 3, 4].map((k) => Math.round(sel.params[`v${k}`] * 6))).toEqual([3, 4, 5, 6]);
+    expect(sel.params.pos).toBe(2);   // (1/16 as it ships)
   });
 
   it('plays all eleven voices', () => {
