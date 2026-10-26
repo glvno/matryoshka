@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
-import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
+import { addModule, connect, defaultMap, emptyPatch, validatePatch, type Patch } from './patch';
 import { connectParameter, setInputRoute } from './parameter-routing';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
@@ -70,6 +70,22 @@ describe('binary patch format', () => {
       expect(dv.getUint16(at + 2, true)).toBe(DEFS.filter.params.reduce((mask, pd, j) => mask | (filter.inputMap![port].includes(pd.name) ? 1 << j : 0), 0));
     }
     expect(b[b.length - 6]).toBe(1); // the macro ranges, last
+  });
+
+  it('marks the parameters appended since format 34 (`since`), which the FM-1 reads an older binary without', () => {
+    // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
+    const v34: Record<string, number> = { lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8 };
+    const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
+    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select']);
+    for (const t of TYPE_ORDER.slice(0, nTypes34)) {
+      const ps = DEFS[t].params;
+      expect(ps.filter((q) => (q.since ?? 0) <= 34).length, t).toBe(v34[t] ?? ps.length);
+      ps.forEach((q, i) => expect((q.since ?? 0) >= (ps[i - 1]?.since ?? 0), `${t}.${q.name}`).toBe(true));
+      expect(ps.every((q) => (q.since ?? 0) <= VERSION), t).toBe(true);
+    }
+    for (const t of TYPE_ORDER.slice(nTypes34)) expect(DEFS[t].params.some((q) => q.since !== undefined), t).toBe(false);
+    // a module without a stored matrix routes as before: a Pulse's p2 does not reach its new `inf`
+    expect(defaultMap(DEFS.pulse).p2).toEqual([]);
   });
 
   it('a type with more than 16 parameters (Env 8) writes its matrix and route masks as u32, every other type as u16', () => {
@@ -183,7 +199,7 @@ describe('binary patch format', () => {
     const map = p.modules.find((m) => m.type === 'drummap')!;
     map.names = ['boom'];
     const b = encodePatch(p);
-    expect(b[1]).toBe(34);
+    expect(b[1]).toBe(VERSION);
     expect(b[6] & FLAG_NAMES).toBe(FLAG_NAMES);
     const text = new TextDecoder().decode(b);
     expect(text).toContain('BOOM\0\0\0\0SNARE\0\0\0CLAP');

@@ -699,14 +699,26 @@ static inline int32_t rd32(const uint8_t *p)
     return (int32_t)((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24);
 }
 
+/* Every walk over a patch binary's records goes through these: the layout depends on the binary's format (p[1], `ver`).
+ * A parameter appended to a type in a later format (ParamDef.since, defs.h psince) is not in an older binary: such a
+ * record holds the parameters of its own format, and the reader gives the rest their defaults. */
+/* the parameters a record of this type holds in a binary of format `ver` (the first ones of the type: they are appended) */
+static inline uint32_t eng_npar(const def_t *d, uint32_t ver)
+{
+    uint32_t n = d->npar;
+    if (d->psince)
+        while (n && d->psince[n - 1u] > ver)
+            n--;
+    return n;
+}
 /* bytes of a parameter mask of this type (the matrix, an input route): u16, u32 for a type with more than 16 parameters
- * (patchbin.ts maskBytes) */
-static inline uint32_t eng_mask_bytes(const def_t *d) { return d->npar > 16u ? 4u : 2u; }
+ * in that format (patchbin.ts maskBytes) */
+static inline uint32_t eng_mask_bytes(const def_t *d, uint32_t ver) { return eng_npar(d, ver) > 16u ? 4u : 2u; }
 static inline uint32_t eng_rdmask(const uint8_t *p, uint32_t bytes) { return bytes == 4u ? (uint32_t)rd32(p) : ((uint32_t)p[0] | (uint32_t)p[1] << 8); }
 /* bytes a module record has beyond its type byte and parameters: the attenuverters and the matrix, then its data */
-static inline uint32_t eng_record_extra(const def_t *d) { return (d->cvbase >= 0 ? 8u + 6u * eng_mask_bytes(d) : 0u) + d->ndata; }
-/* a module record's size, its type byte included */
-static inline uint32_t eng_record_size(const def_t *d) { return 1u + 4u * d->npar + eng_record_extra(d); }
+static inline uint32_t eng_record_extra(const def_t *d, uint32_t ver) { return (d->cvbase >= 0 ? 8u + 6u * eng_mask_bytes(d, ver) : 0u) + d->ndata; }
+/* a module record's size in a binary of format `ver`, its type byte included */
+static inline uint32_t eng_record_size(const def_t *d, uint32_t ver) { return 1u + 4u * eng_npar(d, ver) + eng_record_extra(d, ver); }
 
 /* the type of module `mod` in a patch binary, -1 if the binary is malformed (a route's mask width depends on it) */
 static int eng_type_at(const uint8_t *p, uint32_t len, uint32_t mod)
@@ -719,7 +731,7 @@ static int eng_type_at(const uint8_t *p, uint32_t len, uint32_t mod)
             return -1;
         if (i == mod)
             return p[at] & 0x7Fu;
-        at += eng_record_size(&DEFS[p[at] & 0x7Fu]);
+        at += eng_record_size(&DEFS[p[at] & 0x7Fu], p[1]);
     }
     return -1;
 }
@@ -735,9 +747,107 @@ static uint32_t eng_routes_end(const uint8_t *p, uint32_t len, uint32_t at)
         int t;
         if (at + 2u > len || (t = eng_type_at(p, len, p[at])) < 0)
             return 0;
-        at += 2u + eng_mask_bytes(&DEFS[t]);
+        at += 2u + eng_mask_bytes(&DEFS[t], p[1]);
     }
     return at <= len ? at : 0;
+}
+/* the end of the module records and the parameters they hold in all (`npar`, for the morph B set's size), 0 if malformed */
+static uint32_t eng_records_end(const uint8_t *p, uint32_t len, uint32_t *npar)
+{
+    uint32_t at = eng_records_at(p, len), i, n = 0;
+    if (!at)
+        return 0;
+    for (i = 0; i < p[2]; i++) {
+        const def_t *d;
+        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
+            return 0;
+        d = &DEFS[p[at] & 0x7Fu];
+        at += eng_record_size(d, p[1]);
+        n += eng_npar(d, p[1]);
+    }
+    if (npar)
+        *npar = n;
+    return at <= len ? at : 0;
+}
+/* where the sections after the cables start (the fixed links, flag bit 2, first): past the records, the cables and the
+ * morph B set (flag bit 0: one value per parameter the records hold); 0 if malformed */
+static uint32_t eng_cables_end(const uint8_t *p, uint32_t len)
+{
+    uint32_t npar, at = eng_records_end(p, len, &npar);
+    if (!at)
+        return 0;
+    at += 4u * ((uint32_t)p[4] | (uint32_t)p[5] << 8) + ((p[6] & 1u) ? 4u * npar : 0u);
+    return at <= len ? at : 0;
+}
+
+/* Rewrite a binary of an older format in place into today's (ENG_PATCH_VERSION): every record and the morph B set get
+ * the parameters added since, at their defaults (the encoder writes a B side equal to the value), everything else stays.
+ * It plays the same: eng_load gives the missing parameters those defaults too. *len grows; cap: the buffer's size. 0 =
+ * done (or already today's format), -1 malformed or it would not fit (the binary is left as it was). */
+static void eng_put32(uint8_t *p, int32_t v)
+{
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)((uint32_t)v >> 8);
+    p[2] = (uint8_t)((uint32_t)v >> 16);
+    p[3] = (uint8_t)((uint32_t)v >> 24);
+}
+static void eng_open_gap(uint8_t *p, uint32_t len, uint32_t at, uint32_t n)   /* bytes at..len move up by n */
+{
+    uint32_t k;
+    for (k = len; k > at; k--)
+        p[k - 1u + n] = p[k - 1u];
+}
+int eng_upgrade(uint8_t *p, uint32_t *len, uint32_t cap)
+{
+    uint32_t ver, at, i, j, grow = 0, n0, morph, ncab;
+    if (*len < 8u || p[0] != 0xA1u || p[1] >= ENG_PATCH_VERSION)
+        return *len >= 8u && p[0] == 0xA1u ? 0 : -1;
+    ver = p[1];
+    morph = p[6] & 1u;
+    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
+    if (!(at = eng_records_end(p, *len, 0)) || at + 4u * ncab > *len)
+        return -1;
+    at = eng_records_at(p, *len);
+    for (i = 0; i < p[2]; i++) {                 /* what it grows by */
+        const def_t *d = &DEFS[p[at] & 0x7Fu];
+        grow += 4u * (d->npar - eng_npar(d, ver)) * (morph ? 2u : 1u);
+        if (eng_mask_bytes(d, ver) != eng_mask_bytes(d, ENG_PATCH_VERSION))
+            return -1;                           /* (a type whose masks widened: none so far) */
+        at += eng_record_size(d, ver);
+    }
+    if (*len + grow > cap)
+        return -1;
+    at = eng_records_at(p, *len);
+    for (i = 0; i < p[2]; i++) {                 /* the records: the new parameters after the old ones */
+        const def_t *d = &DEFS[p[at] & 0x7Fu];
+        n0 = eng_npar(d, ver);
+        at += 1u + 4u * n0;
+        if (n0 < d->npar) {
+            eng_open_gap(p, *len, at, 4u * (d->npar - n0));
+            *len += 4u * (d->npar - n0);
+            for (j = n0; j < d->npar; j++, at += 4)
+                eng_put32(p + at, d->pdef[j]);
+        }
+        at += eng_record_extra(d, ENG_PATCH_VERSION);
+    }
+    at += 4u * ncab;
+    if (morph) {                                 /* the morph B set, the same way (the records are today's now) */
+        uint32_t r = eng_records_at(p, *len);
+        for (i = 0; i < p[2]; i++) {
+            const def_t *d = &DEFS[p[r] & 0x7Fu];
+            r += eng_record_size(d, ENG_PATCH_VERSION);
+            n0 = eng_npar(d, ver);
+            at += 4u * n0;
+            if (n0 < d->npar) {
+                eng_open_gap(p, *len, at, 4u * (d->npar - n0));
+                *len += 4u * (d->npar - n0);
+                for (j = n0; j < d->npar; j++, at += 4)
+                    eng_put32(p + at, d->pdef[j]);
+            }
+        }
+    }
+    p[1] = ENG_PATCH_VERSION;
+    return 0;
 }
 
 static int32_t morph_unit(const def_t *d, uint32_t j, int32_t v);
@@ -765,7 +875,7 @@ static void groups_reset(void)
 
 int eng_load(const uint8_t *p, uint32_t len)
 {
-    uint32_t i, j, c, k, v, at, ncab;
+    uint32_t i, j, c, k, v, at, ncab, n0;
     uint8_t st[ENG_MAX_MODULES], member[ENG_MAX_MODULES];
     E.loaded = 0;
     E.stamp = 0;
@@ -883,21 +993,27 @@ int eng_load(const uint8_t *p, uint32_t len)
         nd->bypass = (uint8_t)(p[at] >> 7 && nd->type != T_FM1 && nd->type != T_OUTPUT);   /* bit 7: bypassed (never the panel or the output) */
         at++;
         d = &DEFS[nd->type];
-        if (at + eng_record_extra(d) + 4u * d->npar > len)
+        n0 = eng_npar(d, p[1]);                  /* (an older format's record: the parameters it had then) */
+        if (at + eng_record_size(d, p[1]) - 1u > len)
             return -3;
         nd->par = par_take((p[6] & 1u) ? 2u * d->npar : d->npar);   /* (with the morph B side, flag bit 0) */
         if (!nd->par) {
             nd->par = par_spare;
             return -8;
         }
-        for (j = 0; j < d->npar; j++, at += 4)
-            nd->par[j] = rd32(p + at);
+        for (j = 0; j < d->npar; j++)
+            if (j < n0) {
+                nd->par[j] = rd32(p + at);
+                at += 4;
+            } else
+                nd->par[j] = d->pdef[j];          /* added since the binary's format */
         if (d->cvbase >= 0) {
+            uint32_t mb = eng_mask_bytes(d, p[1]);
             nd->att[0] = rd32(p + at);
             nd->att[1] = rd32(p + at + 4);
             at += 8;
-            for (j = 0; j < 6u; j++, at += eng_mask_bytes(d))
-                nd->map[j] = eng_rdmask(p + at, eng_mask_bytes(d));
+            for (j = 0; j < 6u; j++, at += mb)
+                nd->map[j] = eng_rdmask(p + at, mb);
         }
         if (nd->type == T_STEPS) {               /* its name (the panel reads it from the binary); its notes come after the cables */
             if (E.ntrk >= ENG_MAX_TRACKS)
@@ -956,11 +1072,14 @@ int eng_load(const uint8_t *p, uint32_t len)
             node_t *nd = &E.node[i];
             const def_t *d = &DEFS[nd->type];
             int32_t *pb = PARB(nd);
-            if (at + 4u * d->npar > len)
+            uint32_t n0 = eng_npar(d, p[1]);     /* (an older format: its parameters then; the rest at their defaults) */
+            if (at + 4u * n0 > len)
                 return -3;
             nd->over = 0;
-            for (j = 0; j < d->npar; j++, at += 4) {
-                int32_t b = rd32(p + at);
+            for (j = 0; j < d->npar; j++) {
+                int32_t b = j < n0 ? rd32(p + at) : d->pdef[j];
+                if (j < n0)
+                    at += 4;
                 if (d->ptop && b > d->pmax[j]) {          /* past the range (a stretch, under 32 wide: export-defs): B - pmin in 1/2048 */
                     nd->over |= 1u << j;
                     pb[j] = (clampi(b, d->pmin[j], d->ptop[j]) - d->pmin[j]) >> 5;
@@ -995,11 +1114,11 @@ int eng_load(const uint8_t *p, uint32_t len)
             input = p[at + 1];
             if (mod >= E.nmod) return -3;
             d = &DEFS[E.node[mod].type];
-            mb = eng_mask_bytes(d);
+            mb = eng_mask_bytes(d, p[1]);
             if (at + 2u + mb > len) return -3;
             mask = eng_rdmask(p + at + 2u, mb);
             at += 2u + mb;
-            if (input >= d->nin || (d->cvbase >= 0 && input >= (uint32_t)d->cvbase) || !mask || (d->npar < 32u && (mask >> d->npar))) return -3;
+            if (input >= d->nin || (d->cvbase >= 0 && input >= (uint32_t)d->cvbase) || !mask || (eng_npar(d, p[1]) < 32u && (mask >> eng_npar(d, p[1])))) return -3;
             E.node[mod].input_map[input] |= mask;
         }
     }
@@ -2499,22 +2618,11 @@ int eng_steps_hit(uint32_t module, int accent, int record)
 /* where the Drum maps' row names section of a patch binary starts (flag bit 7), 0 none or malformed */
 static uint32_t names_at(const uint8_t *p, uint32_t len)
 {
-    uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
-    if (!at || len < 8u || p[1] < 33u || !(p[6] & 128u))
+    uint32_t at;
+    if (len < 8u || p[1] < 33u || !(p[6] & 128u) || !(at = eng_cables_end(p, len)))
         return 0;
-    nmod = p[2];
-    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
-    for (i = 0; i < nmod; i++) {
-        const def_t *d;
-        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
-            return 0;
-        d = &DEFS[p[at] & 0x7Fu];
-        at += eng_record_size(d);
-        npar += d->npar;
-    }
-    at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);
     if (p[6] & 4u)
-        at += nmod;
+        at += p[2];
     if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
         return 0;
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))

@@ -203,8 +203,72 @@ static void run(int32_t *l, int32_t *r)
 
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #c); return 1; } } while (0)
 
+/* proto_test --old OLD.m1p NEW.m1p ... (tools/old_format.sh): binaries of an older patch format (an earlier release's
+ * encoder) against today's firmware. Each must pass m1_valid; m1_set_current must upgrade it (eng_upgrade) into a valid
+ * binary of today's format that renders bit-identically to the older binary loaded as it is, and whose Drum map row names
+ * read the same; NEW (today's encoding of the same patch, "-" none) shows whether the upgrade writes what the encoder
+ * writes (a kit changed since the older release differs, so that is counted, not checked). */
+static int old_format(int n, char **argv)
+{
+    static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];
+    static uint8_t old[M1_PATCH_MAX];
+    int k, same = 0, other = 0, kept = 0;
+    for (k = 0; k + 1 < n; k += 2) {
+        long no, nn = 0;
+        uint8_t *o = slurp(argv[k], &no), *nw = strcmp(argv[k + 1], "-") ? slurp(argv[k + 1], &nn) : 0;
+        uint32_t m, r;
+        if (no > (long)M1_PATCH_MAX || o[1] >= ENG_PATCH_VERSION) {
+            fprintf(stderr, "%s: not an older format that fits a slot\n", argv[k]);
+            return 1;
+        }
+        memcpy(old, o, (size_t)no);
+        if (!m1_valid(old, (uint32_t)no)) {
+            fprintf(stderr, "FAIL %s: m1_valid refuses the older binary\n", argv[k]);
+            return 1;
+        }
+        CHECK(eng_load(old, (uint32_t)no) == 0);
+        E.tick_acc = E.ticks = 0;                             /* (the tempo clock runs on across loads: both from 0) */
+        run(a_l, a_r);
+        eng_all_notes_off();
+        m1_set_current(old, (uint32_t)no);
+        if (m1_cur[1] != ENG_PATCH_VERSION) {
+            kept++;                                           /* (too big to upgrade: it stays in its format) */
+            CHECK(m1_cur_len == (uint32_t)no && !memcmp(m1_cur, old, (size_t)no));
+            continue;
+        }
+        CHECK(m1_valid(m1_cur, m1_cur_len));
+        CHECK(eng_load(m1_cur, m1_cur_len) == 0);
+        E.tick_acc = E.ticks = 0;
+        run(b_l, b_r);
+        eng_all_notes_off();
+        if (memcmp(a_l, b_l, sizeof a_l) || memcmp(a_r, b_r, sizeof a_r)) {
+            fprintf(stderr, "FAIL %s: the upgraded binary renders differently\n", argv[k]);
+            return 1;
+        }
+        for (m = 0; m < old[2]; m++)
+            for (r = 0; r < 8u; r++) {
+                char x[32], y[32];
+                int hx = eng_drum_name(old, (uint32_t)no, m, r, x), hy = eng_drum_name(m1_cur, m1_cur_len, m, r, y);
+                CHECK(hx == hy && (!hx || !strcmp(x, y)));
+            }
+        if (nw && nn == (long)m1_cur_len && !memcmp(nw, m1_cur, (size_t)nn))
+            same++;
+        else if (nw) {
+            other++;
+            printf("upgraded %s differs from today's encoding (%ld vs %u bytes)\n", argv[k], nn, (unsigned)m1_cur_len);
+        }
+        free(o);
+        free(nw);
+    }
+    printf("older format ok: %d binaries load, upgrade and render bit-identically; %d upgraded as today's encoder writes them, %d differ, %d too big to upgrade\n",
+           n / 2, same, other, kept);
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
+    if (argc >= 2 && !strcmp(argv[1], "--old"))
+        return old_format(argc - 2, argv + 2);
     long np, ns, i, at = 0;
     uint8_t *patch, *syx;
     static int32_t a_l[128 * 40], a_r[128 * 40], b_l[128 * 40], b_r[128 * 40];

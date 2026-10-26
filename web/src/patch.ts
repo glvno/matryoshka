@@ -57,6 +57,10 @@ export interface ParamDef {
   screen?: true;
   /** set from its module's screen (the Scope's hover toolbar), never a row of a card nor promoted */
   onScreen?: true;
+  /** the patch format (patchbin.ts VERSION) that appended this parameter to a type that existed before it. A binary of an
+   * older format holds the type's parameters of its own format; the FM-1 reads it that way and gives this one its default
+   * (engine.c eng_npar, defs.h psince). Only on the last parameters of a type, never decreasing. */
+  since?: number;
 }
 
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */
@@ -525,9 +529,11 @@ export function defaultParams(def: ModuleDef): Record<string, number> {
   return out;
 }
 
-/** the default matrix: p1 and p2 control the first two parameters, knob n the n-th */
+/** the default matrix: p1 and p2 control the first two parameters, knob n the n-th. A parameter appended to its type later
+ * (`since`) never joins it, so a module whose patch has no matrix routes as it did (a Pulse's p2 stays unrouted, not `inf`) */
 export function defaultMap(def: ModuleDef): Record<Source, string[]> {
-  const at = (i: number): string[] => (def.params[i] ? [def.params[i].name] : []);
+  const ps = def.params.filter((q) => q.since === undefined);
+  const at = (i: number): string[] => (ps[i] ? [ps[i].name] : []);
   return { p1: at(0), p2: at(1), k1: at(0), k2: at(1), k3: at(2), k4: at(3) };
 }
 

@@ -96,21 +96,10 @@ static uint32_t pages_gen(void);                        /* changes when another 
 /* where the device pages section starts in (p, len), 0 if there is none (proto.c m1_devices_at, on any binary) */
 static uint32_t pages_at(const uint8_t *p, uint32_t len)
 {
-    uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
-    if (!at || !(p[6] & 32u))
+    uint32_t at;
+    if (len < 8u || !(p[6] & 32u) || !(at = eng_cables_end(p, len)))
         return 0;
-    nmod = p[2];
-    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
-    for (i = 0; i < nmod; i++) {
-        const def_t *d;
-        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
-            return 0;
-        d = &DEFS[p[at] & 0x7Fu];
-        at += eng_record_size(d);
-        npar += d->npar;
-    }
-    at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);
-    if (p[6] & 4u) at += nmod;
+    if (p[6] & 4u) at += p[2];
     if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
         return 0;
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))

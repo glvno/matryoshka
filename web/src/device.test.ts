@@ -156,13 +156,14 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
 
 describe('syncsWith', () => {
   const info = (features: number) => ({ version: 1, maxModules: 64, maxCables: 128, flashOk: true, patchLoaded: true, delays: 4, features, midiOut: null });
-  it('holds back firmware older than 1.2 (no presets bit): it refuses patch format 34', () => {
+  it('holds back firmware that does not read patch format 35 (no bit 11): it refuses every patch the editor sends', () => {
     expect(syncsWith(info(54))).toBe(false);    // 1.0.0
     expect(syncsWith(info(118))).toBe(false);   // 1.1.0
+    expect(syncsWith(info(246))).toBe(false);           // 1.2.0 (format 34)
+    expect(syncsWith(info(246 | (7 << 8)))).toBe(false); // 1.3.0 .. 1.4 (format 34)
   });
-  it('lets 1.2 and newer sync, and an FM-1 not heard from yet', () => {
-    expect(syncsWith(info(246))).toBe(true);           // 1.2.0
-    expect(syncsWith(info(246 | (7 << 8)))).toBe(true); // 1.3.0
+  it('lets firmware that reads format 35 sync, and an FM-1 not heard from yet', () => {
+    expect(syncsWith(info(246 | (15 << 8)))).toBe(true); // format 35
     expect(syncsWith(null)).toBe(true);
   });
 });

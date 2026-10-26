@@ -38,7 +38,7 @@
 
 enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
-#define M1_FEATURES2 7u                                      /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down */
+#define M1_FEATURES2 15u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads patch format 35 (device.ts FEATURE_SYNC) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
 #define M1_PNAME 16u                                         /* a preset's name (presetstore.c PS_NAME) */
 #define M1_PVALS 88u                                         /* a preset's values at most (presetstore.c PS_MAXV) */
@@ -155,6 +155,8 @@ static void m1_set_current(const uint8_t *p, uint32_t len)
     for (i = 0; i < len; i++)
         m1_cur[i] = p[i];
     m1_cur_len = len;
+    (void)eng_upgrade(m1_cur, &m1_cur_len, M1_PATCH_MAX);   /* an older format's patch in today's (SAVE keeps edits of the
+                                                         * parameters added since); one that would not fit stays as it is */
     m1_edited = 0;
     m1_gen++;
 }
@@ -173,7 +175,7 @@ static uint32_t m1_record(uint32_t mod)
         if (at >= m1_cur_len || M1_TYPE(m1_cur[at]) >= N_TYPES)
             return 0;
         d = &DEFS[M1_TYPE(m1_cur[at])];
-        at += eng_record_size(d);
+        at += eng_record_size(d, m1_cur[1]);
     }
     return at < m1_cur_len && M1_TYPE(m1_cur[at]) < N_TYPES ? at : 0;
 }
@@ -190,7 +192,8 @@ static void m1_put32(uint32_t at, int32_t v)
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
 {
     uint32_t at = m1_record(mod);
-    if (!at || par >= DEFS[M1_TYPE(m1_cur[at])].npar)
+    if (!at || par >= eng_npar(&DEFS[M1_TYPE(m1_cur[at])], m1_cur[1]))   /* (an older format's record without it: m1_set_current
+                                                                         * upgrades the binary, unless it would not fit) */
         return;
     m1_put32(at + 1u + 4u * par, v);
     m1_edited = 1;
@@ -219,7 +222,7 @@ static void m1_patch_att(uint32_t mod, uint32_t input, int32_t v)
     uint32_t at = m1_record(mod);
     if (!at || input >= 2u || DEFS[M1_TYPE(m1_cur[at])].cvbase < 0)
         return;
-    m1_put32(at + 1u + 4u * DEFS[M1_TYPE(m1_cur[at])].npar + 4u * input, v);
+    m1_put32(at + 1u + 4u * eng_npar(&DEFS[M1_TYPE(m1_cur[at])], m1_cur[1]) + 4u * input, v);
     m1_edited = 1;
 }
 
@@ -231,7 +234,7 @@ static uint32_t m1_track_at(uint32_t mod)
     if (!at || M1_TYPE(m1_cur[at]) != T_STEPS)
         return 0;
     d = &DEFS[T_STEPS];
-    at += eng_record_size(d) - d->ndata;
+    at += eng_record_size(d, m1_cur[1]) - d->ndata;
     return at + TRACK_NAME_MAX <= m1_cur_len ? at : 0;
 }
 
@@ -336,25 +339,16 @@ static void m1_patch_bypass(uint32_t mod, int on)
 /* a patch binary that eng_load would at least not reject for its framing: header, record sizes add up to the length */
 static int m1_valid(const uint8_t *p, uint32_t len)
 {
-    uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
+    uint32_t at = eng_records_at(p, len);
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
     if ((p[7] & ~ENG_FLAG_EXTRAS) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return 0;
-    nmod = p[2];
-    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
-    if (nmod > ENG_MAX_MODULES || ncab > ENG_MAX_CABLES)
+    if (p[2] > ENG_MAX_MODULES || ((uint32_t)p[4] | (uint32_t)p[5] << 8) > ENG_MAX_CABLES)
         return 0;
-    for (i = 0; i < nmod; i++) {
-        const def_t *d;
-        if (at >= len || M1_TYPE(p[at]) >= N_TYPES)
-            return 0;
-        d = &DEFS[M1_TYPE(p[at])];
-        at += eng_record_size(d);
-        npar += d->npar;
-    }
-    at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);           /* flag bit 0: the morph B set after the cables */
-    if (p[6] & 4u) at += nmod;                              /* switched fixed-input links, before ranges */
+    if (!(at = eng_cables_end(p, len)))                         /* the records (in the binary's format), cables, morph B set */
+        return 0;
+    if (p[6] & 4u) at += p[2];                              /* switched fixed-input links, before ranges */
     if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
         return 0;
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))      /* flag bit 4: the tracks' notes */
@@ -379,21 +373,10 @@ static int m1_valid(const uint8_t *p, uint32_t len)
  * the binary is malformed */
 static uint32_t m1_notes_at(void)
 {
-    uint32_t at = eng_records_at(m1_cur, m1_cur_len), i, nmod, ncab, npar = 0;
+    uint32_t at = m1_cur_len >= 8u ? eng_cables_end(m1_cur, m1_cur_len) : 0;
     if (!at)
         return 0;
-    nmod = m1_cur[2];
-    ncab = (uint32_t)m1_cur[4] | (uint32_t)m1_cur[5] << 8;
-    for (i = 0; i < nmod; i++) {
-        const def_t *d;
-        if (at >= m1_cur_len || M1_TYPE(m1_cur[at]) >= N_TYPES)
-            return 0;
-        d = &DEFS[M1_TYPE(m1_cur[at])];
-        at += eng_record_size(d);
-        npar += d->npar;
-    }
-    at += 4u * ncab + ((m1_cur[6] & 1u) ? 4u * npar : 0u);
-    if (m1_cur[6] & 4u) at += nmod;
+    if (m1_cur[6] & 4u) at += m1_cur[2];
     if ((m1_cur[6] & 8u) && !(at = eng_routes_end(m1_cur, m1_cur_len, at)))
         return 0;
     return at <= m1_cur_len ? at : 0;

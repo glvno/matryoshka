@@ -37,9 +37,13 @@
   - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
   - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
 - **FM-1 memory:** each module now takes only the parameter slots its type needs, from a shared store of 1536 values,
-  instead of room for the largest module's twelve. The engine's memory goes from 381,038 to 377,198 bytes
-  (`tools/pool_sizes.sh`, the stand-in estimate), and modules with more parameters no longer cost every module room.
-  The editor's budget shows the new "parameter values" line; no factory patch uses more than 558 of them.
+  instead of room for the largest module's (18 with Env 8). With all of the above the engine's memory goes from 381,038
+  to 383,086 bytes, where room for 18 parameters in every module would have taken about 9 KB more
+  (`tools/pool_sizes.sh`, the stand-in estimate). The editor's budget shows the new "parameter values" line; no factory
+  patch uses more than 564 of them (<7PH).
+- **Patches saved on the FM-1 before this release still load and sound the same.** The new parameters above take their
+  defaults in them, and saving such a patch again stores it in the new format. The editor needs this firmware to sync:
+  it tells an FM-1 on an older firmware to update.
 
 ## 1.4.1 — 2026-10-26
 

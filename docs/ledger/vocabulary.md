@@ -146,7 +146,7 @@ Per-part offsets of a poly assembly (detune, drift, brightness, envelope times, 
 
 The status-line indicator that shows the editor's link to the FM-1 (not connected, synced, not synced, patch too big to sync) and opens FM-1 & MIDI.
 
-### Format 34
+### Format 35
 
 The current binary patch format (`VERSION` in `web/src/patchbin.ts`, `ENG_PATCH_VERSION` in `firmware/src/engine.h`).
 
