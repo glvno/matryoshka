@@ -6,8 +6,29 @@
   from a sine to the CZ saw or square, line 2 is the CZ's resonance waveform, a resonant peak that sweeps. Each line
   has its DCW envelope, with one DCA envelope, line mix, line 2 detune, key follow, velocity and vibrato. Three voices on the
   FM-1 (75 % of its CPU, estimated).
-- **Cassia 1 XL** in the browser: eight voices, each line either kind (resonance with the ramp or triangle window), its
-  own DCW and DCA envelopes, a pitch envelope, ring and noise modulation, vibrato delay and key follow on the DCA.
+- **Cassia 1 XL** in the browser: all eight CZ waveforms (saw, square, pulse, double sine, saw-pulse; resonance I, II
+  and III) and a second waveform on every other cycle, both lines with their own DCW and DCA envelopes of six steps
+  (the CZ has eight), the 1+1' line mode, a pitch envelope, ring and noise modulation, vibrato with delay, key follow,
+  velocity and aftertouch. Four voices with two lines, as the CZ-1; eight with one.
+- **Every XL now has its original's whole panel**, after the original's manual; what is still missing is listed in the
+  XL's notes with the reason (a module we do not have yet, hardware, or samples). Among the additions:
+  - **Oracle V XL:** saw, triangle and pulse on oscillator B, the Rev 3 filter, velocity and aftertouch, unison detune,
+    chord memory, the release switch, the Vintage knob.
+  - **Hera 6 XL:** the DCO range, PWM mode, key transpose, bender amounts, portamento, assign modes, hold.
+  - **Expander S XL:** eight SEMs, each with its own knobs, and the Eight Voice keyboard (split, unison, portamento).
+  - **Algo Four XL:** one algorithm row (1 to 8), velocity, level and rate scaling, LFO delay and sync, portamento,
+    pitch bend range, key shift.
+  - **8 Lire XL:** the FAST switches, touch (velocity and pressure per plate), the rear jacks as inputs.
+  - **Elvira 2 XL:** all eleven MOD programs, twelve filter types, the reverb, the ATT and ADD utilities, the jacks.
+  - **Meridian 8 XL:** mute and CV mute buttons, nine LINK buttons, the touch plates, individual outputs.
+  - **Perun 4 XL:** the LFO on any knob, CONTROL ALL, CHORD and DIGITAL NOISE modes, four sequencer tracks with
+    chance, groove and fill, the BBD's controls and the compressor.
+  - **909 Kit XL:** mid tom, crash and ride, TOTAL ACCENT and per-drum accent, flam, shuffle and scale.
+  - **Spokes 6 XL:** all six machines on every track, chance, fill lanes, retrigs, the LFO on any destination,
+    velocity routes, pads.
+- The XLs are heavier in the browser. With four notes held, in Chrome on a recent Mac, as a share of real time:
+  Spokes 6 XL 61 %, Cassia 1 XL 39 %, Elvira 2 XL 37 %, Expander S XL 23 %, the others 6 % to 20 %. Big XLs share as a
+  stored link.
 
 ## 1.4.0 — 2026-10-25
 
