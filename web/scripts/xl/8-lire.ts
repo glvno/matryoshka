@@ -8,9 +8,8 @@
 //    manual says: it bends the pitch a little (up to 6 cents) and sharpens the wave a little as it opens;
 //  - the plates: how hard a plate is touched (its velocity, held from the touch on, plus Main's aftertouch as the
 //    pressure) sets how far its envelope opens and how fast: a light touch opens it partly and slowly. TOUCH sets how
-//    much (0 = every touch opens it fully). Each copy of a plate gives its velocity only while its gate is up (a VCA per
-//    copy), so the held velocity is the plate's own, whichever copy was touched (#184, one Drum map repeating its rows,
-//    would make those VCAs unneeded);
+//    much (0 = every touch opens it fully). The Drum map holds each plate's velocity from its touch on, whichever key
+//    played it (another key on a plate already held neither restarts it nor changes its velocity);
 //  - each pair: SHARP, MOD (depth), the modulation source switch (up FM from a pair of the other half of its group,
 //    centre off, down LFO CV: the Hyper LFO, or the output with TOTAL FB) and FAST: down, the pair's release is short
 //    (flipping it cuts a ringing voice short), its plates need more pressure (they open less and more slowly) and its
@@ -32,8 +31,9 @@
 // Switches are rows 0..1 (a Crossfader or a Macro: in between mixes the two positions; the three-way source switch is
 // FM at 0, off at 0.5, LFO CV at 1). Cables that close a loop (FM between pairs, TOTAL FB, the delay's cross-feedback and
 // SELF) run one block late, as on the FM-1 version. SELF reads the line's output level (rectified), since a parameter
-// input takes one value per block. The keys stay as on the FM-1 version: four Drum maps put the eight plates on the white
-// keys from F3, repeated over the keybed (#184 will let one map repeat its rows). Not here: EXT IN from outside the
+// input takes one value per block. The keys are as on the FM-1 version: one Drum map with `repeat` on puts the eight
+// plates on the white keys from F3 and repeats them over the keybed in blocks of eight white keys, a black key playing the
+// plate of the white key below it. Not here: EXT IN from outside the
 // browser (a live audio input needs a new module type, an audio input in both engines), the phones and balanced outputs
 // and the power (hardware), the plates' response to skin moisture (hardware: velocity and aftertouch stand in for it).
 import { DEFS } from '../../src/modules';
@@ -42,10 +42,10 @@ import { players } from '../factory-build';
 import { around, define, KIT_NOTES, matchLevel, type Built } from './def';
 import type { Xl } from './xl';
 
-export function lireXl(maps: Record<string, number>[]): Built {
+export function lireXl(keys: Record<string, number>): Built {
   return define('8 Lire XL', (b) => {
-    const plate = maps.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i] ?? 9 + i, keys));
-    for (const map of plate) b.module(map).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (as the FM-1 version: the rows are the voices)
+    const plate = b.add('drummap', 0, 0, { ...keys, repeat: 1 });
+    b.module(plate).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (as the FM-1 version: the rows are the voices)
     // the Hyper LFO: two triangles; their squares (Logic, just above zero) multiplied (AND) or added (and + or = a + b)
     const lfoA = b.add('lfo', 0, 1, { wave: 1, rate: 0.7, depth: 1 });
     const lfoB = b.add('lfo', 0, 2, { wave: 1, rate: 1.9, depth: 1 });
@@ -137,26 +137,17 @@ export function lireXl(maps: Record<string, number>[]): Built {
       b.wire(env, 'env', shp, 'p2');
       b.pin(shp, 'p2', 'drive');
       b.module(shp).att = [1, 0.05];
-      // the touch: each copy of the plate gives its velocity while its gate is up (a VCA), held from the touch on (S&H)
-      const held = b.add('sh', 1 + i, 12, { mode: 0 });
-      const velOf = plate.map((m, k) => {
-        const v = b.add('vca', 1 + i, 13 + k, { gain: 1 });
-        b.wire(m, `v${i + 1}`, v, 'in');
-        b.wire(m, `g${i + 1}`, v, 'cv');
-        b.wire(v, 'out', held, 'in');
-        b.wire(m, `g${i + 1}`, env, 'gate'); // (any copy of the plate holds the gate up)
-        b.wire(m, `g${i + 1}`, held, 'clock');
-        return v;
-      });
+      // the touch: the plate's gate, and its velocity, which the Drum map holds from the touch on
+      b.wire(plate, `g${i + 1}`, env, 'gate');
       // how far the plate opens the envelope: (1 - TOUCH + TOUCH x (velocity + pressure)) x the pair's sensitivity
-      const open = b.add('math', 1 + i, 17, { ka: 0, kb: 1, off: 1 });
-      b.wire(held, 'out', open, 'a');
+      const open = b.add('math', 1 + i, 12, { ka: 0, kb: 1, off: 1 });
+      b.wire(plate, `v${i + 1}`, open, 'a');
       b.wire(touch, 'out', open, 'p1');
       b.pin(open, 'p1', 'ka', [0.5, 0.5 + 1 / 8]); // 0 .. 1
       b.wire(touch, 'out', open, 'p2');
       b.pin(open, 'p2', 'off', [0.5 + 1 / 8, 0.5]); // 1 .. 0
       b.wire(sens[p], 'out', open, 'b');
-      const level = b.add('math', 1 + i, 18, { ka: 1, kb: 1, off: 0 });
+      const level = b.add('math', 1 + i, 13, { ka: 1, kb: 1, off: 0 });
       b.wire(open, 'mul', level, 'a');
       b.wire(env, 'env', level, 'b');
       b.wire(level, 'mul', vca, 'cv');
@@ -168,7 +159,7 @@ export function lireXl(maps: Record<string, number>[]): Built {
       b.wire(fast[p], 'out', env, 'p2');
       b.pin(env, 'p2', 'r');
       b.module(env).att = [-0.3, -0.35];
-      return { osc, shp, env, vca, vlfo, held, velOf, open, level };
+      return { osc, shp, env, vca, vlfo, open, level };
     });
     // pairs: the FM source (another pair's voices, after their VCAs: an operator fades with its envelope), the source
     // switch (FM / off / LFO CV at 0 / 0.5 / 1: two Crossfaders, each moved twice as far as the switch: its value on the
@@ -256,11 +247,11 @@ export function lireXl(maps: Record<string, number>[]): Built {
     b.wire(vol, 'out', lfoCv, 'b'); // TOTAL FB
     const scope = b.add('scope', 16, 2, { time: 16 });
     b.wire(vol, 'out', scope, 'a');
-    voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, [v.osc, v.shp, v.env, v.vca, v.vlfo, v.held, ...v.velOf, v.open, v.level], {
+    voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, [v.osc, v.shp, v.env, v.vca, v.vlfo, v.open, v.level], {
       inputs: [['mod', v.osc, 'pitch'], ['hold', v.vca, 'cv'], ['sharp', v.shp, 'p1'], ['vibrato', v.vlfo, 'p1']],
       outputs: [['out', v.vca, 'out']],
     }));
-    b.input('keys', plate[1], 'keys', ...plate.filter((_, i) => i !== 1).map((m) => [m, 'keys'] as [number, string]));
+    b.input('keys', plate, 'keys');
     // the plates' pressure (Main's aftertouch, wired by the XL) and the rear jacks
     b.input('pressure', voices[0].open, 'a', ...voices.slice(1).map((v) => [v.open, 'a'] as [number, string]));
     b.input('ext in', mix, 'in1');
@@ -313,13 +304,16 @@ export function lireXl(maps: Record<string, number>[]): Built {
   });
 }
 
-/** the Drum maps' rows of the FM-1 version, in its order (the plates' keys) */
-export const platesOf = (fm1: Patch): Record<string, number>[] =>
-  fm1.modules.filter((m) => m.type === 'drummap').map((m) => Object.fromEntries(Object.entries(m.params).filter(([k]) => /^n\d$/.test(k))));
+/** the rows of the FM-1 version's Drum map (the plates' keys, which it repeats over the keybed) */
+export const platesOf = (fm1: Patch): Record<string, number> => {
+  const map = fm1.modules.find((m) => m.type === 'drummap');
+  if (!map) throw new Error(`${fm1.name}: no Drum map`);
+  return Object.fromEntries(Object.entries(map.params).filter(([k]) => /^n\d$/.test(k)));
+};
 
 /** the patch's notes (Patch.notes, at most 500 characters) */
 const NOTES =
-  'The SOMA Lyra-8 in full, after its manual (v2.1): two delay lines with cross-feedback, LFO / SELF, TRI / SQ and hiss, the distortion after it, FM / off / LFO per pair, FAST per pair, the 34>56 78>12 switch, PITCH and HOLD per group, TOTAL FB, VIBRATO, the Hyper LFO, touch (velocity and aftertouch open the envelopes), bleed. The rear jacks are inputs of the assembly, each with a "plugged" row. Switches are 0..1 rows (the source switch: FM 0, off 0.5, LFO 1).';
+  'The SOMA Lyra-8 after its manual (v2.1): two delay lines with cross-feedback, LFO / SELF, TRI / SQ, hiss, distortion, FM / off / LFO and FAST per pair, 34>56 78>12, PITCH and HOLD per group, TOTAL FB, VIBRATO, the Hyper LFO, touch, bleed. The rear jacks are inputs with a "plugged" row. Switches are 0..1 rows (source: FM 0, off 0.5, LFO 1). Not here: outside audio into EXT IN (no audio input module), the plates\' skin response (velocity and aftertouch stand in).';
 
 export const xl: Xl = {
   base: '8 Lire',
