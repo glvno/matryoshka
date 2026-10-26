@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 44
+#define N_TYPES 45
 enum {
     T_FM1,
     T_OSC,
@@ -49,6 +49,7 @@ enum {
     T_STEPS,
     T_MACRO,
     T_DRUMMAP,
+    T_ENV8,
 };
 
 /* fm1: Main */
@@ -791,6 +792,35 @@ enum {
 #define DRUMMAP_CVBASE -1
 #define DRUMMAP_NDATA 1
 
+/* env8: Env 8 */
+#define ENV8_I_GATE 0
+#define ENV8_I_P1 1
+#define ENV8_I_P2 2
+#define ENV8_O_ENV 0
+#define ENV8_P_L1 0
+#define ENV8_P_R1 1
+#define ENV8_P_L2 2
+#define ENV8_P_R2 3
+#define ENV8_P_L3 4
+#define ENV8_P_R3 5
+#define ENV8_P_L4 6
+#define ENV8_P_R4 7
+#define ENV8_P_L5 8
+#define ENV8_P_R5 9
+#define ENV8_P_L6 10
+#define ENV8_P_R6 11
+#define ENV8_P_L7 12
+#define ENV8_P_R7 13
+#define ENV8_P_L8 14
+#define ENV8_P_R8 15
+#define ENV8_P_SUS 16
+#define ENV8_P_END 17
+#define ENV8_NIN 3
+#define ENV8_NOUT 1
+#define ENV8_NPAR 18
+#define ENV8_CVBASE 1
+#define ENV8_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -816,7 +846,7 @@ static const char *const POLY_PRIORITY_NAME[3] = {"LAST", "LOW", "HIGH"};
 
 #define MAX_IN 6
 #define MAX_OUT 16
-#define MAX_PAR 12
+#define MAX_PAR 18
 
 typedef struct {
     uint8_t nin, nout, npar;
@@ -1244,6 +1274,16 @@ static const char *const DRUMMAP_PN[] = {"N1", "N2", "N3", "N4", "N5", "N6", "N7
 static const uint8_t DRUMMAP_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const DRUMMAP_UNIT[] = {"", "", "", "", "", "", "", ""};
 static const char *const *const DRUMMAP_CH[] = {ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6};
+static const char *const ENV8_INNAMES[] = {"GATE", "P1", "P2"};
+static const int32_t ENV8_MIN[] = {0, 66, 0, 66, 0, 66, 0, 66, 0, 66, 0, 66, 0, 66, 0, 66, 0, 65536};
+static const int32_t ENV8_MAX[] = {65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 524288, 524288};
+static const int32_t ENV8_DEF[] = {65536, 655, 39322, 19661, 0, 32768, 0, 13107, 0, 13107, 0, 13107, 0, 13107, 0, 13107, 131072, 196608};
+static const int32_t ENV8_INC[] = {655, 6553, 655, 6553, 655, 6553, 655, 6553, 655, 6553, 655, 6553, 655, 6553, 655, 6553, 65536, 65536};
+static const char *const ENV8_PN[] = {"L1", "R1", "L2", "R2", "L3", "R3", "L4", "R4", "L5", "R5", "L6", "R6", "L7", "R7", "L8", "R8", "SUS", "END"};
+static const uint8_t ENV8_LOG[] = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0};
+static const char *const ENV8_UNIT[] = {"", "S", "", "S", "", "S", "", "S", "", "S", "", "S", "", "S", "", "S", "", ""};
+static const char *const ENV8_CH16[] = {"OFF", "1", "2", "3", "4", "5", "6", "7", "8", 0};
+static const char *const *const ENV8_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ENV8_CH16, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */
@@ -1290,4 +1330,5 @@ static const def_t DEFS[N_TYPES] = {
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH},   /* macro */
     {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH},   /* drummap */
+    {ENV8_NIN, ENV8_NOUT, ENV8_NPAR, 0, ENV8_CVBASE, -1, ENV8_NDATA, 0, ENV8_MIN, ENV8_MAX, ENV8_DEF, ENV8_INC, "ENV 8", ENV8_PN, ENV8_INNAMES, ENV8_LOG, ENV8_UNIT, ENV8_CH},   /* env8 */
 };

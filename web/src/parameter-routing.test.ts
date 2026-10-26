@@ -2,8 +2,26 @@
 import { describe, expect, it } from 'vitest';
 import { makeAssembly, toDef, validateAssemblyDef, insertAssembly } from './assembly';
 import { DEFS } from './modules';
-import { addModule, connect, emptyPatch, validatePatch } from './patch';
+import { addModule, connect, emptyPatch, fixMatrix, MASK_PARAMS, routable, validatePatch } from './patch';
 import { canSeparate, connectParameter, parameterInputs, PinsInUse, removeRoute, separateDepth, setParameterInput, setInputRoute } from './parameter-routing';
+
+describe('parameters past the masks (MASK_PARAMS)', () => {
+  it('nothing modulates them: the matrix drops them, a cable or a route to one is refused', () => {
+    for (const def of Object.values(DEFS)) for (const pd of def.params.slice(MASK_PARAMS)) expect(pd.step, `${def.type} ${pd.name}`).toBe(1); // only settings past them
+    const p = emptyPatch();
+    const lfo = addModule(p, DEFS.lfo, 0, 0);
+    const e = addModule(p, DEFS.env8, 0, 0);
+    expect(routable(DEFS.env8, 'r8')).toBe(true);
+    expect(routable(DEFS.env8, 'sus')).toBe(false);
+    e.map!.p1 = ['r1', 'sus', 'end'];
+    e.map!.k1 = ['end'];
+    fixMatrix(e, DEFS.env8);
+    expect(e.map!.p1).toEqual(['r1']);
+    expect(e.map!.k1).toEqual([]);
+    expect(() => connectParameter(p, DEFS, { module: lfo.id, port: 'out' }, e.id, 'sus')).toThrow(/cannot be modulated/);
+    expect(() => setInputRoute(e, DEFS.env8, 'gate', 'end', true)).toThrow(/cannot be modulated/);
+  });
+});
 
 function setup() {
   const p = emptyPatch();

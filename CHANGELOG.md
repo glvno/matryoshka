@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Env 8, an eight-step envelope** after the Casio CZ's: eight levels and rates, a sustain step that holds while the
+  key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off it
+  runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then
+  sustain and end). About 1 to 1.4 % of the FM-1's CPU per copy, estimated.
 - **A new engine, Cassia 1,** after the Casio CZ-1: phase distortion. Each voice has the CZ's two lines: line 1 sweeps
   from a sine to the CZ saw or square, line 2 is the CZ's resonance waveform, a resonant peak that sweeps. Each line
   has its DCW envelope, with one DCA envelope, line mix, line 2 detune, key follow, velocity and vibrato. Three voices on the

@@ -168,7 +168,7 @@ static void pages_plain(uint32_t m)
         pg->nlen = pg_dev[pg_ndev].nlen;
         pg->part = (uint8_t)j;
         pg->parts = (uint8_t)n;
-        pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV) ? m + 1u : 0u);
+        pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV || t == T_ENV8) ? m + 1u : 0u);
         pg->nrows = 0;
         for (r = 0; r < PG_ROWS && j * PG_ROWS + r < d->npar; r++) {
             pg->mod[r] = (uint8_t)m;

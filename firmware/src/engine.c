@@ -22,6 +22,8 @@
  * of manual.c in step. */
 #define ENG_MAX_MODULES 64          /* (the module list, `order`, `outputs` are uint8 indices; the binary header byte 2) */
 #define ENG_MAX_RANGES 48           /* macro ranges (patch.ts ModuleInst.range) */
+#define ENG_MASK_PARAMS 16u         /* parameters the u16 matrix / route / range masks reach (patch.ts MASK_PARAMS): the eight-step
+                                     * envelope's sus and end, past them, are never modulated */
 #define ENG_MAX_CABLES 255           /* (the HELLO reply carries it in a byte) */
 #define MAX_SUM 160                 /* summed inputs (an input of an instance with two or more sources) */
 #define MAX_SRC 320                 /* their sources: a shared input reading a per-note output has one per note */
@@ -335,6 +337,9 @@ typedef struct {
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
+        struct { int32_t v, rk, inc, k; uint32_t t, len; uint8_t stage, prev, cst; } env8;   /* Q30, as env; one step's rates
+                                                    * cached (cst: its step, 0 none; rk: the rate they are for): worked out
+                                                    * again when the step changes or its rate moves */
         struct { int16_t *buf; uint32_t w, seed; int32_t lp, s1, err, burst, blen; } str;   /* Q13 line with error feedback */
         struct { uint32_t phase; int32_t s1; } wt;
         struct { int16_t *buf; uint32_t w, phase; } ch;
@@ -1294,7 +1299,7 @@ int eng_range(uint32_t module, uint32_t input, uint32_t param, uint32_t *lo, uin
 int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint32_t lo, uint32_t hi)
 {
     range_t *r;
-    if (module >= E.nmod || input > 1u || param >= DEFS[E.node[module].type].npar)
+    if (module >= E.nmod || input > 1u || param >= DEFS[E.node[module].type].npar || param >= ENG_MASK_PARAMS)
         return 0;
     r = range_find(module, input, param);
     if (!on) {
@@ -3799,6 +3804,91 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
     it->s.env.prev = prev;
 }
 
+/* The eight-step envelope (modules.ts env8): step k runs to lk in rk by m_env's segment rules; the gate starts step 1, the
+ * sustain step's level holds while it stays up, its fall jumps to the step after the sustain (sus = end: rest), the end
+ * step's level is where it rests. Sus off or past the end: every step runs through, the gate's fall does nothing. Stage
+ * 0 resting, 1..8 the steps, ENV8_HOLD holding. Q30. */
+#define ENV8_HOLD 9u
+static void env8_rates(inst_t *it, uint32_t st)
+{
+    int32_t r = EF(it, ENV8_P_R1 + 2u * (st - 1u));
+    uint64_t tsr = ((uint64_t)(uint32_t)r * ENG_SR + 32768u) >> 16;   /* round(r * sr) samples */
+    if (tsr < 1u)
+        tsr = 1u;
+    it->s.env8.len = (uint32_t)tsr;
+    it->s.env8.inc = (int32_t)((1ull << 30) / tsr);
+    it->s.env8.k = env_rate_n((uint32_t)tsr);
+    it->s.env8.rk = r;
+    it->s.env8.cst = (uint8_t)st;
+}
+static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *gate = it->in[ENV8_I_GATE];
+    esig_t *out = it->out[0];
+    int32_t v = it->s.env8.v;
+    uint32_t tt = it->s.env8.t, i;
+    uint32_t end = (uint32_t)clampi((EF(it, ENV8_P_END) + 32768) >> 16, 1, 8);
+    uint32_t hs = (uint32_t)clampi((EF(it, ENV8_P_SUS) + 32768) >> 16, 0, 8);
+    uint8_t stage = it->s.env8.stage, prev = it->s.env8.prev;
+    (void)nd;
+    if (hs > end)
+        hs = 0;
+    if (it->s.env8.cst && it->s.env8.rk != EF(it, ENV8_P_R1 + 2u * (it->s.env8.cst - 1u)))
+        it->s.env8.cst = 0;                       /* the cached step's rate moved */
+    for (i = 0; i < n; i++) {
+        uint8_t g = gate[i] > 32768 ? 1 : 0;
+        uint32_t guard;
+        if (g && !prev) {
+            stage = 1;
+            tt = 0;
+        } else if (!g && prev && hs && (stage == ENV8_HOLD || (stage >= 1u && stage <= hs))) {
+            stage = (uint8_t)(hs < end ? hs + 1u : 0u);
+            tt = 0;
+        }
+        prev = g;
+        for (guard = 0; guard < 10u; guard++) {
+            int32_t t;
+            uint32_t st = stage;
+            if (st == 0) {
+                v = EF(it, ENV8_P_L1 + 2u * (end - 1u)) << 14;
+                break;
+            }
+            if (st == ENV8_HOLD) {
+                if (hs) {
+                    v = EF(it, ENV8_P_L1 + 2u * (hs - 1u)) << 14;
+                    break;
+                }
+                stage = 0;                        /* the sustain was switched off while holding: rest */
+                continue;
+            }
+            if (st > end) {
+                stage = 0;                        /* the end was moved before this step */
+                continue;
+            }
+            if (it->s.env8.cst != st)
+                env8_rates(it, st);
+            t = EF(it, ENV8_P_L1 + 2u * (st - 1u)) << 14;
+            tt++;
+            if (v < t) {
+                v += it->s.env8.inc;
+                if (v < t)
+                    break;
+            } else if (tt < it->s.env8.len) {
+                v += mulq(t - v, it->s.env8.k, 30);
+                break;
+            }
+            v = t;
+            stage = (uint8_t)(st == hs && g ? ENV8_HOLD : st == end ? 0u : st + 1u);
+            tt = 0;
+        }
+        out[i] = v >> 14;
+    }
+    it->s.env8.t = tt;
+    it->s.env8.v = v;
+    it->s.env8.stage = stage;
+    it->s.env8.prev = prev;
+}
+
 #define LOG2_1000_Q16 653124        /* log2(1000): decay is the time to -60 dB */
 
 /* The plucked string (modules.ts string): a Q13 delay line of one period with a one-pole in the loop, written with
@@ -4762,6 +4852,12 @@ static void apply_flaws(const node_t *nd, inst_t *it)
         flaw_scale(d, it, ENV_P_R3, ke);
         flaw_scale(d, it, ENV_P_R4, ke);
         break;
+    case T_ENV8: {
+        uint32_t s;
+        for (s = 0; s < 8u; s++)
+            flaw_scale(d, it, ENV8_P_R1 + 2u * s, ke);
+        break;
+    }
     case T_VCA:
         flaw_scale(d, it, VCA_P_GAIN, kl);
         break;
@@ -4808,6 +4904,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_GLIDE: m_glide(nd, it, n); break;
     case T_SHAPE: m_shape(nd, it, n); break;
     case T_ENV: m_env(nd, it, n); break;
+    case T_ENV8: m_env8(nd, it, n); break;
     case T_STRING: m_string(nd, it, n); break;
     case T_WAVETABLE: m_wavetable(nd, it, n); break;
     case T_CHORUS: m_chorus(nd, it, n); break;
@@ -4844,7 +4941,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
 #define cur_g_parts(nd) ((uint32_t)E.grp[(nd)->grp].parts)
 
 /* Idle parts (engine.ts partIdle, the same rule): a part of a poly group whose gate is low, whose envelopes (ADSR / level
- * envelope, at least one) have all finished, and whose outputs that leave the group stayed within IDLE_Q16 for a whole block
+ * envelope, eight-step envelope, at least one) have all finished, and whose outputs that leave the group stayed within IDLE_Q16 for a whole block
  * is idle: those outputs are set to 0 and its modules are skipped until a note reaches it, except every IDLE_CHECK-th block,
  * which runs it and checks again (a part that sounds without its envelopes, a knob opening a drone, comes back). */
 #define IDLE_Q16 6
@@ -4855,10 +4952,10 @@ static int part_quiet(uint32_t k, uint32_t v)
     for (i = 0; i < E.nmod; i++) {
         const node_t *nd = &E.node[i];
         const inst_t *it;
-        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV))
+        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV && nd->type != T_ENV8))
             continue;
         it = &inst_pool[nd->inst0 + v];
-        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : it->s.env.stage != 0)
+        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : nd->type == T_ENV ? it->s.env.stage != 0 : it->s.env8.stage != 0)
             return 0;
         envs++;
     }
