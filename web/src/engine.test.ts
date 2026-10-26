@@ -2167,6 +2167,53 @@ describe('pan, crossfade, vowel, phaser, digitizer, noise colour', () => {
     expect(run(0.5)).toBeCloseTo(0.1, 5);
   });
 
+  it('selector: pos chooses an input plus its value, that position\'s gate is high, its pos input spans the count', () => {
+    const run = (params: Record<string, number>, cv = 0, port = 'out'): number => {
+      const { p, out, add } = start();
+      const a = add('const', { value: 0.4 });
+      const b = add('const', { value: -0.2 });
+      const c = add('const', { value: cv });
+      const x = add('select', params);
+      wire(p, a, 'out', x, 'in1');
+      wire(p, b, 'out', x, 'in3');
+      wire(p, c, 'out', x, 'pos');
+      wire(p, x, port, out, 'l');
+      return play(p, 256).l[200];
+    };
+    expect(run({ pos: 1 })).toBeCloseTo(0.4, 5);
+    expect(run({ pos: 3, v3: 0.1 })).toBeCloseTo(-0.1, 5);
+    expect(run({ pos: 5, v5: 0.25 })).toBeCloseTo(0.25, 5); // nothing patched in: the value
+    expect(run({ pos: 8, count: 3 })).toBeCloseTo(-0.2, 5); // clamped to the count
+    expect(run({ pos: 1, count: 3 }, 0.5)).toBeCloseTo(0, 5); // 0..1 spans 1..3: 0.5 = 2
+    expect(run({ pos: 1, count: 3 }, 1)).toBeCloseTo(-0.2, 5);
+    expect(run({ pos: 3 }, 0, 'g3')).toBe(1);
+    expect(run({ pos: 3 }, 0, 'g1')).toBe(0);
+  });
+
+  it('selector: fade crossfades linearly over its time when the position changes; 0 switches at once', () => {
+    const run = (fade: number): Float32Array => {
+      const { p, out, add } = start();
+      const a = add('const', { value: 1 });
+      const x = add('select', { pos: 2, fade });
+      const e = new Engine(SR);
+      wire(p, a, 'out', x, 'in1');
+      wire(p, x, 'out', out, 'l');
+      e.load(p);
+      render(e, 128); // settled on 2 (nothing patched: 0)
+      e.setParam(x, 'pos', 1);
+      const l = new Float32Array(1024), r = new Float32Array(1024);
+      e.render(l, r);
+      return l;
+    };
+    const now = run(0);
+    expect(now[0]).toBeCloseTo(1, 5);
+    const slow = run(10); // 480 samples at 48 kHz
+    expect(slow[0]).toBeLessThan(0.01);
+    expect(slow[240]).toBeCloseTo(0.5, 1);
+    expect(slow[300]).toBeLessThan(slow[400]);
+    expect(slow[700]).toBeCloseTo(1, 5);
+  });
+
   it('vowel: the A vowel passes its first formant and not 3 kHz; finite at full resonance', () => {
     const run = (f: number, res: number): Float32Array => {
       const { p, out, add } = start();
@@ -2459,6 +2506,7 @@ describe('dedicated CV parameter displays', () => {
     ['vca', 'cv', 'gain', 1.5, 0.75],
     ['pan', 'pos', 'pan', 0, 0.5],
     ['xfade', 'pos', 'mix', 0.2, 0.7],
+    ['select', 'pos', 'pos', 1, 5],
     ['vowel', 'vowel', 'vowel', 1, 1.5],
     ['shift', 'cv', 'shift', 100, 150],
     ['filter', 'morph', 'morph', 0.2, 0.7],

@@ -141,6 +141,7 @@ The editor estimates how much of the 2901 us audio interrupt a patch needs (`web
   | VCA | `vca` | 3317 | 14 | 0.5 |
   | Pulse | `pulse` | 2930 | 13 | 0.4 |
   | S&H | `sh` | 2690 | 12 | 0.4 |
+  | Selector | `select` | 2494 | 11 | 0.4 |
   | Attenuverter | `scale` | 2491 | 11 | 0.4 |
   | Drum map | `drummap` | 1740 | 7 | 0.3 |
   | Random | `random` | 1326 | 6 | 0.2 |
@@ -304,6 +305,13 @@ The assembly browser and the palette put the engines on an **Engines** shelf, fi
 ## Math and logic
 
 - `math`: a' = a·ka + off, b' = b·kb; outputs add, sub, mul, min, max, abs (of a'), cmp (1 while a' > b'). `logic`: inputs high at or above `thresh`; outputs and, or, xor, not (of a). Both stateless, per sample, Q16 in C. Golden kit `math-logic` (xor of two square LFOs gates an ADSR; max / abs of the math module on a VCA and a pitch).
+
+## Selector (#351)
+
+- `select` (Selector): a stepped switch of eight positions. k = clamp(floor(pos + cv·(count − 1) + ½), 1, count), cv = the `pos` input's first sample of the block (0..1 spans 1..count, so a 0..1 row read in N steps is one cable). `out` = in_k + v_k (with nothing patched in, a table of eight values); gate g_k is 1, the other seven 0. `fade` (0..100 ms) crossfades: every input's weight (Q16) moves towards 1 (chosen) or 0 by inc = floor(65536 / samples) per sample, samples = floor(fade_Q16 · 2891317 / 2³²) (2891317 = (44118 << 16) / 1000; `selectFadeInc`), the same integers in both engines; a change during a fade keeps fading from where the weights are. Settled, it copies one input; the gates are written only where cabled (C).
+- Eleven inputs (`pos`, in1..in8, p1, p2): `MAX_IN` became 11 and `node_t.conn` 16 bits wide (an input past the eighth has its bit). That is 3.3 KB more of the pool (`tools/pool_sizes.sh`: 128 instances × five more input pointers, 64 nodes × five more side-route masks).
+- CPU: 2494 cycles alone (0.4 % of the block), 640 more per gate cabled, about 30 per sample more while fading. `apply_cv` skips the side-route loop when no input has one (bit-identical: `tools/engine_exact.sh`); with eleven inputs and eleven parameters it cost the Selector 1300 cycles a block.
+- Golden kit `select` (three voices): a stepped LFO on a's pos with a 4 ms fade, a value table moved by p1 that transposes an oscillator with its gates on VCAs, an instant switch on a triangle.
 
 ## Envelope follower and compressor
 

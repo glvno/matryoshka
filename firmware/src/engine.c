@@ -357,11 +357,13 @@ typedef struct {
         struct { int32_t count, c1, r1; } cdv;
         struct { int32_t v, c1; } sh;
         struct { int32_t rem, t1; } pls;
+        struct { int32_t w[SELECT_NOUT - 1]; int8_t k; uint8_t fading; } sel;   /* Selector: each input's weight (Q16), the position (-1: none yet) */
     } s;
 } inst_t;
 
 typedef struct {
-    uint8_t type, conn, disabled_inputs;
+    uint8_t type, disabled_inputs;
+    uint16_t conn;                   /* bit i: input i has a cable (the Selector has 11 inputs) */
     uint8_t bypass;                  /* 1: process() is skipped, the outputs copy the through input (DEFS[].thru) or are silent */
     uint8_t inst0, ninst;            /* its instances in inst_pool[]: one per part of its poly group, else one */
     uint8_t grp;                     /* its poly group (E.grp[]): 0 = it runs once and plays the shared keyboard */
@@ -637,6 +639,9 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
     case T_CLKDIV:
         it->s.cdv.count = -1;
         break;
+    case T_SELECT:
+        it->s.sel.k = -1;
+        break;
     default:
         break;
     }
@@ -906,7 +911,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         E.from_p[c] = fp;
         E.to_m[c] = tm;
         E.to_p[c] = tp;
-        E.node[tm].conn |= (uint8_t)(1u << tp);
+        E.node[tm].conn |= (uint16_t)(1u << tp);
         if (E.node[fm].type == T_FM1 && fp == FM1_O_KEYS && E.node[tm].type == T_STEPS && tp == STEPS_I_KEYS)
             E.node[tm].ksrc = 1u;                /* Main's keys pass through the track while none is armed (#138) */
         if (E.node[fm].type == T_STEPS && fp == STEPS_O_KEYS && E.node[tm].type == T_ARP && tp == ARP_I_KEYS)
@@ -939,7 +944,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             if (mask & ~DEFS[nd->type].fixed_inputs)
                 return -3;
             nd->disabled_inputs = mask;
-            nd->conn &= (uint8_t)~mask;
+            nd->conn &= (uint16_t)~mask;
         }
     }
     if (p[6] & 8u) {                             /* additional side-input routes: module, input, parameter mask (u16, u32 past
@@ -4991,6 +4996,62 @@ static void m_xfade(const node_t *nd, inst_t *it, uint32_t n)
     }
 }
 
+/* Selector (modules.ts select): `pos` plus the `pos` input (read once per block; 0..1 spans 1..count), rounded, chooses
+ * one of in1..in8; out = that input + its value v1..v8, its gate high, the others low. `fade` (ms) moves every input's
+ * weight towards 1 (chosen) or 0 by a fixed Q16 increment per sample (modules.ts selectFadeInc) */
+#define SEL_N (SELECT_NOUT - 1)   /* its positions: the outputs less out */
+static void m_select(inst_t *it, uint32_t n)
+{
+    esig_t *out = it->out[SELECT_O_OUT];
+    int32_t cnt = clampi(round_q16(EF(it, SELECT_P_COUNT)), 2, SEL_N);
+    int32_t pos = EF(it, SELECT_P_POS) + it->in[SELECT_I_POS][0] * (cnt - 1);
+    int32_t k = clampi((pos + 32768) >> 16, 1, cnt) - 1;
+    /* samples of the fade: fade (Q16 ms) x ENG_SR / 1000, as (ENG_SR << 16) / 1000 = 2891317 in Q16 */
+    uint32_t fs = (uint32_t)(((int64_t)clampi(EF(it, SELECT_P_FADE), 0, 100 << 16) * 2891317) >> 32);
+    int32_t inc = fs ? (int32_t)(65536u / fs) : ENG_ONE;
+    uint32_t i, j;
+    if (it->s.sel.k < 0 || (k != it->s.sel.k && inc >= ENG_ONE)) {
+        for (j = 0; j < SEL_N; j++)
+            it->s.sel.w[j] = 0;
+        it->s.sel.w[k] = ENG_ONE;
+        it->s.sel.fading = 0;
+    } else if (k != it->s.sel.k) {
+        it->s.sel.fading = 1;
+    }
+    it->s.sel.k = (int8_t)k;
+    if (!it->s.sel.fading) {
+        const esig_t *x = it->in[SELECT_I_IN1 + k];
+        int32_t v = EF(it, SELECT_P_V1 + k);
+        for (i = 0; i < n; i++)
+            out[i] = x[i] + v;
+    } else {
+        int32_t *w = it->s.sel.w;
+        uint32_t busy = 0;
+        for (i = 0; i < n; i++) {
+            int32_t y = 0;
+            for (j = 0; j < SEL_N; j++) {
+                int32_t t = (int32_t)j == k ? ENG_ONE : 0, wj = w[j];
+                if (wj == 0 && t == 0)
+                    continue;
+                wj = wj < t ? (wj + inc < t ? wj + inc : t) : (wj - inc > t ? wj - inc : t);
+                w[j] = wj;
+                y += mul16(it->in[SELECT_I_IN1 + j][i] + EF(it, SELECT_P_V1 + j), wj);
+            }
+            out[i] = y;
+        }
+        for (j = 0; j < SEL_N; j++)
+            busy |= (uint32_t)(w[j] != ((int32_t)j == k ? ENG_ONE : 0));
+        it->s.sel.fading = (uint8_t)busy;
+    }
+    for (j = 0; j < SEL_N; j++) {
+        esig_t *g = it->out[SELECT_O_G1 + j], v = (int32_t)j == k ? ENG_ONE : 0;
+        if (g == dummy_out)
+            continue;
+        for (i = 0; i < n; i++)
+            g[i] = v;
+    }
+}
+
 /* the formants (Hz) of A E I O U; gains 1, 1/2, 1/4 */
 static const int16_t FORMANT_HZ[5][3] = {{730, 1090, 2440}, {530, 1840, 2480}, {390, 1990, 2550}, {570, 840, 2410}, {440, 1020, 2240}};
 
@@ -5106,7 +5167,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
 {
     const def_t *d = &DEFS[nd->type];
     int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
-    uint32_t j, i, s, have = 0;
+    uint32_t j, i, s, have = 0, side = 0;   /* side: some input has side routes (input_map) */
     if (d->cvbase >= 0)
         for (s = 0; s < 2u; s++) {
             const esig_t *cv;
@@ -5123,6 +5184,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
         int64_t sum = 0;
         for (i = 0; i < n; i++) sum += it->in[s][i];
         extra[s] = block_mean(sum, n);
+        side = 1;
     }
     for (j = 0; j < d->npar; j++) {
         int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, nd->par[j], nd->parb[j], E.morph, nd->over >> j & 1u) : nd->par[j];
@@ -5142,7 +5204,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
                 mod += mean[s];
                 touched = 1;
             }
-        for (s = 0; s < d->nin; s++) if (nd->input_map[s] >> j & 1u) {
+        if (side) for (s = 0; s < d->nin; s++) if (nd->input_map[s] >> j & 1u) {
             mod += extra[s];
             touched = 1;
         }
@@ -5254,6 +5316,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_PULSE: m_pulse(nd, it, n); break;
     case T_PAN: m_pan(nd, it, n); break;
     case T_XFADE: m_xfade(nd, it, n); break;
+    case T_SELECT: m_select(it, n); break;
     case T_VOWEL: m_vowel(nd, it, n); break;
     case T_PHASER: m_phaser(nd, it, n); break;
     case T_LADDER: m_ladder(nd, it, n); break;

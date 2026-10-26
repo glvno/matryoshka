@@ -15,6 +15,27 @@
   cycle, the resonance's range, `pm` and `sync`. High notes stay clean: the bend is held back as the note rises. One
   module plays what took Cassia 1 XL about 60 modules per line. On the FM-1 it costs about 2 to 4 % of the CPU per copy,
   estimated (host-tested only, not yet on a device).
+- **A new module, the Selector:** one stepped row (1..8, or a cable: 0..1 covers the positions in use) picks one of eight
+  inputs, each with a value added (with nothing patched in it is a table of eight values), and raises that position's gate
+  so one choice can switch several things at once. An optional crossfade (up to 100 ms) avoids clicks. It costs about
+  0.4 % of the FM-1's CPU, plus 0.1 % per gate cabled. Algo Four XL's algorithm row, built today from a Sequencer, an
+  S&H, an LFO, seven comparators and seven Logic modules, would go from about 14 % to about 1 % (the CPU model's
+  per-module figures, not measured on the FM-1).
+- **A Drum map can repeat its rows across the keybed** (its new REPEAT switch, off by default), so every key plays a
+  row. Rows on white keys repeat in blocks of white keys, and a black key plays the row of the white key below it: rows
+  on F3 to F4 come again from G4 and below E3. On the FM-1, the keys that play nothing on a Drum map (the white keys and
+  black keys 9 to 11) then play a row too. Needs the firmware of the next release; not yet played on a device.
+- Longer and wider ranges on five modules, on the FM-1 too (#351). Each is a new row whose default plays as before:
+  - **ADSR `long`:** decay and release times 2.4 times as long, up to 12 s and 19.2 s (the Juno-106 reaches 12 s).
+  - **LFO:** `phase` sets where a reset or a clock restart starts the wave (90 degrees starts a sine at its peak, as the
+    DX100). `range` slow divides the rate by 25 (down to 0.0008 Hz), fast doubles it (up to 80 Hz). `dir` back runs
+    the wave backward (a saw falls). `mult` makes a synced cycle up to 8 times longer (/8) or shorter (x8): a 1/16
+    triplet at x8 is a 1/128 triplet, for fast synced retrigs.
+  - **Delay:** `note` gives the synced delay 1/32, 1/2T, 1/2 dotted, 1/1T and 1/1 dotted in place of the time knob's
+    length. `swell` scales the feedback up to 1.98 (the Model:Cycles' 198) with a soft clip in the loop, so the echoes
+    grow to about full level and hold there.
+  - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
+  - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
 
 ## 1.4.1 — 2026-10-26
 
@@ -47,24 +68,9 @@ factory patches with its next firmware release.
   - **909 Kit XL:** mid tom, crash and ride, TOTAL ACCENT and per-drum accent, flam, shuffle and scale.
   - **Spokes 6 XL:** all six machines on every track, chance, fill lanes, retrigs, the LFO on any destination,
     velocity routes, pads.
-- **A Drum map can repeat its rows across the keybed** (its new REPEAT switch, off by default), so every key plays a
-  row. Rows on white keys repeat in blocks of white keys, and a black key plays the row of the white key below it: rows
-  on F3 to F4 come again from G4 and below E3. On the FM-1, the keys that play nothing on a Drum map (the white keys and
-  black keys 9 to 11) then play a row too. Needs the firmware of the next release; not yet played on a device.
 - The XLs are heavier in the browser. With four notes held, in Chrome on a recent Mac, as a share of real time:
   Spokes 6 XL 61 %, Cassia 1 XL 39 %, Elvira 2 XL 37 %, Expander S XL 23 %, the others 6 % to 20 %. Big XLs share as a
   stored link.
-- Longer and wider ranges on five modules, on the FM-1 too (#351). Each is a new row whose default plays as before:
-  - **ADSR `long`:** decay and release times 2.4 times as long, up to 12 s and 19.2 s (the Juno-106 reaches 12 s).
-  - **LFO:** `phase` sets where a reset or a clock restart starts the wave (90 degrees starts a sine at its peak, as the
-    DX100). `range` slow divides the rate by 25 (down to 0.0008 Hz), fast doubles it (up to 80 Hz). `dir` back runs
-    the wave backward (a saw falls). `mult` makes a synced cycle up to 8 times longer (/8) or shorter (x8): a 1/16
-    triplet at x8 is a 1/128 triplet, for fast synced retrigs.
-  - **Delay:** `note` gives the synced delay 1/32, 1/2T, 1/2 dotted, 1/1T and 1/1 dotted in place of the time knob's
-    length. `swell` scales the feedback up to 1.98 (the Model:Cycles' 198) with a soft clip in the loop, so the echoes
-    grow to about full level and hold there.
-  - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
-  - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
 
 ## 1.4.0 — 2026-10-25
 
