@@ -65,7 +65,7 @@ export function presetsOfDef(def: AssemblyDef, rules = RULES): Preset[] {
   });
   const clamp = (r: Row, v: number): number => {
     const pd = DEFS[r.type]?.params.find((d) => d.name === r.param);
-    return pd ? Math.min(pd.max, Math.max(pd.min, v)) : v;
+    return pd ? Math.min(pd.top ?? pd.max, Math.max(pd.min, v)) : v;
   };
   const out: Preset[] = [{ structure, name: 'Init', values: rows.map((r) => r.value), factory: true }];
   for (const { name, rule } of rules) {

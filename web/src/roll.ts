@@ -15,11 +15,10 @@
 //   copy / cut / paste (at the insert marker), Cmd-D the selection again after itself, B draw mode, Esc deselect /
 //   close. Every gesture is one undo step. While the focus is in the roll it keeps these keys (none reaches the canvas).
 // The editor owns the patch: the roll reads the track through `ops.track()` and writes through `ops.notes`.
-import { ARP_RATES } from './arpeggiator';
 import { NOTE_NAMES } from './modules';
 import type { ModuleInst } from './patch';
 import { renamedKey } from './storage-key';
-import { fixNotes, STEP_VEL, STEPS_MAX, type StepNote } from './track';
+import { fixNotes, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './track';
 
 export interface RollOps {
   /** the track as it is now (null: it is gone) and its label */
@@ -310,7 +309,7 @@ export class PianoRoll {
     this.recBtn.classList.toggle('on', rec);
     this.recBtn.setAttribute('aria-pressed', String(rec));
     this.el.classList.toggle('armed', armed);
-    this.lenEl.textContent = `length ${this.len} · rate ${ARP_RATES[clamp(Math.round(m.params.rate ?? 4), 0, ARP_RATES.length - 1)]}`;
+    this.lenEl.textContent = `length ${this.len} · rate ${STEPS_RATES[clamp(Math.round(m.params.rate ?? 4), 0, STEPS_RATES.length - 1)]}`;
     const drums = this.ops.drums();
     this.foldBtn.hidden = !!drums;
     if (!this.centred && this.grid.clientHeight > 0) this.centre();

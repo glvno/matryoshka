@@ -2,10 +2,10 @@
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS, DRUM_MAP_DEFAULT, drumRowsOf, notePlays } from './modules';
-import { addModule, connect, emptyPatch, stepByte, validatePatch, type ModuleInst, type Patch } from './patch';
+import { addModule, connect, emptyPatch, modulate, morphValue, stepByte, topOf, validatePatch, type ModuleInst, type Patch } from './patch';
 import { deviceBudget, encodePatch, FLAG_NOTES, recordSize } from './patchbin';
 import { deviceView } from './poly';
-import { migrateSteps, noteWord, type StepNote } from './track';
+import { migrateSteps, noteWord, STEPS_RATES, type StepNote } from './track';
 
 const SR = 48000; // 120 bpm: a tick every 1000 samples, a 1/16 step every 6000
 
@@ -83,6 +83,37 @@ describe('the Steps module (#83, #133)', () => {
     f.load(b.p);
     f.transport(true);
     expect(edges(f, 24000).trig).toEqual([0, 5999 + 3000, 11999, 17999 + 3000]); // half a step late at 75 %
+  });
+
+  it('1/64 steps every tick and a half (every second step half a tick after a tick), 1/2 every 48 ticks; swing reaches 80 % (#351)', () => {
+    const fast = rig([ON, ON, ON, ON, ON, ON], { rate: STEPS_RATES.indexOf('1/64') });
+    const e = new Engine(SR);
+    e.load(fast.p);
+    e.transport(true);
+    expect(edges(e, 7000).trig).toEqual([0, 999 + 500, 2999, 3999 + 500, 5999]);
+    const slow = rig([ON, ON], { rate: STEPS_RATES.indexOf('1/2'), len: 2 });
+    const f = new Engine(SR);
+    f.load(slow.p);
+    f.transport(true);
+    expect(edges(f, 100000).trig).toEqual([0, 47999, 95999]);
+    const sw = rig([ON, ON, ON, ON], { swing: 80 });
+    const g = new Engine(SR);
+    g.load(sw.p);
+    g.transport(true);
+    expect(edges(g, 24000).trig).toEqual([0, 5999 + 3600, 11999, 17999 + 3600]); // 0.6 of a step late at 80 %
+  });
+
+  it('the rates and swing past the old ranges are a stretch: pins and the morph span the old range, stored values keep their meaning (#351)', () => {
+    const rate = DEFS.steps.params.find((d) => d.name === 'rate')!, swing = DEFS.steps.params.find((d) => d.name === 'swing')!;
+    expect(STEPS_RATES.slice(0, 7)).toEqual(['1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32']); // (appended: indices keep their meaning)
+    expect([rate.max, topOf(rate), swing.max, topOf(swing)]).toEqual([6, 8, 75, 80]);
+    expect(modulate(swing, 60, 0.5)).toBe(72.5); // half the old span (25 %), as before the stretch
+    expect(modulate(swing, 60, 1)).toBe(75);
+    expect(modulate(swing, 80, -0.2)).toBe(75);
+    expect(modulate(swing, 78, 0.5)).toBe(80); // a base past max is clamped to the stretch, not pulled back to max
+    expect(modulate(rate, 8, 0.1)).toBe(8);
+    expect(morphValue(rate, 4, 8, 0.6)).toBe(8);
+    expect(morphValue(swing, 60, 80, 0.5)).toBe(70);
   });
 
   it('stop and run again start from step 1; reset makes the next step the first', () => {

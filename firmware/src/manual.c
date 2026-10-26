@@ -60,6 +60,8 @@ static const char *const MANUAL[] = {
     "#SEQ: THE PATCH'S TRACKS",
     " SEQ: OPEN / CLOSE THE STEP PAGE",
     " ALGO: PICK A TRACK",
+    " INFO LINE: ITS STEPS, RATE (1/2",
+    "   TO 1/64) AND SWING (UP TO 80%)",
     " AN 8 X 16 GRID: THE WHITE KEYS ARE",
     "   THE SELECTED ROW'S 16 STEPS",
     " SELECT: THE ROW (REC ON OR OFF)",

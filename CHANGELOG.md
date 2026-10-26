@@ -6,6 +6,10 @@
   key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off it
   runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then
   sustain and end). About 1 to 1.4 % of the FM-1's CPU per copy, estimated.
+- **Steps: two more rates and more swing.** A track also runs at 1/2 (eight times slower than 1/16, the Model:Cycles'
+  1/8X and the PERKONS' ÷8) and at 1/64 (four times faster than 1/16), and its swing goes up to 80 % (75 % before), on
+  the card, in the roll and on the FM-1's SEQ page. Cables and macros into rate and swing still cover 1/4 to 1/32 and
+  50 to 75 %, so every patch made before plays exactly as it did.
 
 ## 1.4.1 — 2026-10-26
 
