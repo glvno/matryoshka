@@ -44,6 +44,17 @@
 - **Patches saved on the FM-1 before this release still load and sound the same.** The new parameters above take their
   defaults in them, and saving such a patch again stores it in the new format. The editor needs this firmware to sync:
   it tells an FM-1 on an older firmware to update.
+- **8 Lire and Elvira 2 play their plates from one repeating Drum map** in place of four copies, so every key now plays
+  a plate (a black key the plate of the white key below it); the sound is unchanged. On the FM-1 that saves CPU and
+  memory: 8 Lire goes from 49 % to 42 % of the CPU and from 96 % to 85 % of the memory, Elvira 2 from 47 % to 40 % and
+  from 69 % to 58 % (the editor's estimate; the counted engine: 328,704 to 282,338 and 310,792 to 265,742 cycles a
+  block). Not yet checked on a device.
+- **8 Lire XL and Elvira 2 XL rebuilt on the new modules.** 8 Lire XL's plates are one repeating Drum map, which holds
+  each plate's velocity, so its 32 velocity VCAs and 8 S&Hs are gone (185 to 142 modules); a plate held on two keys now
+  keeps its own velocity instead of adding the two. Elvira 2 XL's choices (programs, chords, filter types, tunings,
+  LFO waves, reverb, tune follow, MODP chaining) are Selectors in place of comparator and Crossfader chains (702 to 475
+  modules). Both sound as before and render faster in the browser: 8 Lire XL from 11.7 % to 9.9 % of real time,
+  Elvira 2 XL from 41 % to 32 % (four notes, 3 s, Node on an Apple Silicon Mac).
 
 ## 1.4.1 — 2026-10-26
 

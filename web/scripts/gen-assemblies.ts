@@ -9,9 +9,9 @@ import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
-/** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES),
- * repeated over the keybed in blocks of eight white keys (E2..E3, F3..F4, G4..G5, A5..A6), one Drum map per block, so
- * every white key plays a plate (a stopgap until the Drum map repeats its rows itself, #184) */
+/** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES); their
+ * Drum map repeats them over the keybed in blocks of eight white keys (`repeat`, #184: E2..E3, F3..F4, G4..G5, ..), a
+ * black key playing the plate of the white key below it. PLATE_KEYS[1] is the F3 block. */
 const WHITE = [0, 2, 4, 5, 7, 9, 11];
 const whiteFrom = (note: number, n: number): number[] => {
   const out: number[] = [];
@@ -1701,18 +1701,22 @@ asm('Vernon 100', 'Voices', (b) => {
   b.param('out', scope, 'view');
 });
 
+/** the touch plates' Drum map: the eight rows on the white keys F3..F4, repeated over the keybed (PLATE_KEYS) */
+const plates = (b: B): number => b.add('drummap', 0, 0, { ...Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])), repeat: 1 });
+
 // 8 Lire, after the SOMA Laboratory Lyra-8 (#182; the panel as we remember it, not checked against SOMA's manual): eight
-// voices, no keyboard. Drum maps turn the white keys into eight gates, one per touch plate (F3..F4 as the drum kits'
-// rows, repeated in blocks of eight white keys: PLATE_KEYS); each voice keeps its own tuning and plays a triangle through a VCA on its own envelope (attack / release
-// for the FAST / SLOW switch). Voices come in pairs (1-2, 3-4, 5-6, 7-8): a pair shares a waveshaper (SHARP) and a
+// voices, no keyboard. A Drum map turns the keys into eight gates, one per touch plate (F3..F4 as the drum kits' rows,
+// repeated over the keybed in blocks of eight white keys, a black key playing the white key's below: PLATE_KEYS); each
+// voice keeps its own tuning and plays a triangle through a VCA on its own envelope (attack / release for the FAST / SLOW
+// switch). Voices come in pairs (1-2, 3-4, 5-6, 7-8): a pair shares a waveshaper (SHARP) and a
 // modulation depth (MOD, into both voices' pitch); pairs come in quads (1-4, 5-8): a quad shares HOLD (an offset into its
 // voices' VCAs, so they drone with nothing held) and its modulation bus, a mix of the other quad, the Hyper LFO and the
 // total feedback (the delay's output). The Hyper LFO: two square LFOs combined, AND crossfaded into OR, into the bus and
 // the delay time. The drive, then the delay (the FM-1 holds one Delay: the Lyra's two lines are its ping-pong taps, the
 // engine's l / r). Cross-quad and feedback modulation run one block late (the cables close loops).
 asm('8 Lire', 'Voices', (b) => {
-  const maps = PLATE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
-  for (const map of maps) b.module(map).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (the rows are the voices, not drums)
+  const map = plates(b);
+  b.module(map).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (the rows are the voices, not drums)
   const lfoA = b.add('lfo', 0, 1, { wave: 3, rate: 0.7, depth: 1 });
   const lfoB = b.add('lfo', 0, 2, { wave: 3, rate: 1.9, depth: 1 });
   const logic = b.add('logic', 0, 3, {});
@@ -1729,7 +1733,7 @@ asm('8 Lire', 'Voices', (b) => {
     const vca = b.add('vca', 1 + i, 2, { gain: 1 });
     b.wire(osc, 'out', vca, 'in');
     b.wire(env, 'env', vca, 'cv');
-    for (const map of maps) b.wire(map, `g${i + 1}`, env, 'gate'); // (any copy of the plate holds the gate up)
+    b.wire(map, `g${i + 1}`, env, 'gate');
     return { osc, env, vca };
   });
   const sharp = [0, 1, 2, 3].map((p) => b.add('shape', 1 + 2 * p, 3, { drive: 2, mode: 0, level: 0.7 }));
@@ -1772,7 +1776,7 @@ asm('8 Lire', 'Voices', (b) => {
     b.nestInput('hold', v.vca, 'cv');
     b.nestOutput('out', v.vca, 'out');
   });
-  b.input('keys', maps[1], 'keys', ...maps.filter((_, i) => i !== 1).map((m) => [m, 'keys'] as [number, string]));
+  b.input('keys', map, 'keys');
   b.output('l', dly, 'out');
   b.output('r', dly, 'r');
   for (const [q, name, other] of [[0, '1-4', '5-8'], [1, '5-8', '1-4']] as const) {
@@ -1805,15 +1809,15 @@ asm('8 Lire', 'Voices', (b) => {
 // Elvira 2, after the neutral labs Elmyra 2 (its manual v2.4): four voices, each a wavetable oscillator (PG's four pages
 // = `bank`, WAVE = `pos`, TUNE) through its MOD program (here the SRR one, a Bitcrusher's rate: clean at the left) into a
 // VCA on its own envelope (the ENV knob's attack and release as two rows) plus DRONE (an offset into the VCA: the
-// envelope held at the top). The keys play the voices as touchpads: the Drum maps' rows 1-4 and 5-8 are voices 1-4 (the
-// white keys from E2 to A6, as 8 Lire). The mix is saturated, then the ladder low pass (CUTOFF, RESO), the delay (TIME,
-// FDBK, MIX; ours reaches 520 ms, the original 1.6 s) and OUCH: BITE (a folding Waveshaper) into CHOKE (a low pass, open
+// envelope held at the top). The keys play the voices as touchpads: the Drum map's rows 1-4 and 5-8 are voices 1-4 (the
+// white keys from F3, repeated over the keybed as 8 Lire's). The mix is saturated, then the ladder low pass (CUTOFF,
+// RESO), the delay (TIME, FDBK, MIX; ours reaches 520 ms, the original 1.6 s) and OUCH: BITE (a folding Waveshaper) into CHOKE (a low pass, open
 // at the right), without the original's analog feedback loop or modifier ports; VOL. LFO 1 (sine) into the cutoff, LFO 2
 // (a wave choice) into the bite, each by an amount (on the original they are patched by hand). No sequencer, no CHRM:
 // TUNE is in semitones.
 asm('Elvira 2', 'Voices', (b) => {
-  const maps = PLATE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
-  for (const map of maps) b.module(map).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`);   // (rows 5-8 play voices 1-4 again)
+  const map = plates(b);
+  b.module(map).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`);   // (rows 5-8 play voices 1-4 again)
   const lfo1 = b.add('lfo', 0, 1, { wave: 0, rate: 0.2, depth: 1 });
   const lfo2 = b.add('lfo', 0, 2, { wave: 2, rate: 3, depth: 1 });
   const toCutoff = b.add('scale', 0, 3, { gain: 0, offset: 0 });
@@ -1832,7 +1836,7 @@ asm('Elvira 2', 'Voices', (b) => {
     b.wire(srr, 'out', vca, 'in');
     b.wire(env, 'env', vca, 'cv');
     b.wire(drone, 'out', vca, 'cv');
-    for (const map of maps) for (const row of [i + 1, i + 5]) b.wire(map, `g${row}`, env, 'gate'); // (any key of the voice holds the gate up)
+    for (const row of [i + 1, i + 5]) b.wire(map, `g${row}`, env, 'gate'); // (either row of the voice holds the gate up)
     return { wt, srr, env, drone, vca };
   });
   const mix = b.add('mixer', 5, 0, { l1: 0.7, l2: 0.7, l3: 0.7, l4: 0.7 });
@@ -1858,7 +1862,7 @@ asm('Elvira 2', 'Voices', (b) => {
     b.nestInput('gate', v.env, 'gate');
     b.nestOutput('out', v.vca, 'out');
   });
-  b.input('keys', maps[1], 'keys', ...maps.filter((_, i) => i !== 1).map((m) => [m, 'keys'] as [number, string]));
+  b.input('keys', map, 'keys');
   b.output('out', choke, 'lp12');
   voices.forEach((v, i) => {
     b.param('tune', v.wt, 'coarse', { head: `voice ${i + 1}`, ...(i % 2 === 0 ? { col: true } : {}) });
