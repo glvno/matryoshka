@@ -1128,6 +1128,47 @@ kit(
   },
   3,
 );
+// Selectors (#351): a = four inputs (three oscillators and a value) stepped by an LFO on its pos input, with a crossfade
+// that a fast triangle on b's pos changes mid-way; b = a value table (no inputs) moved by p1 (an LFO) that transposes an
+// oscillator, its gates opening VCAs; c = the poly copy (three voices), instant switching
+kit(
+  'select',
+  (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const o1 = add('osc', 0, 0, { wave: 2, level: 0.3 });
+    const o2 = add('osc', 0, 0, { wave: 1, coarse: 7, level: 0.3 });
+    const o3 = add('osc', 0, 0, { wave: 3, coarse: -12, pw: 0.3, level: 0.3 });
+    const step = add('lfo', 0, 0, { wave: 2, rate: 3.1, depth: 1 });
+    const a = add('select', 0, 0, { pos: 1, count: 4, fade: 4, v4: 0.2 });
+    const tri = add('lfo', 0, 0, { wave: 1, rate: 0.9, depth: 0.8 });
+    const b = add('select', 0, 0, { pos: 1, count: 3, fade: 0, v1: 0, v2: 7 / 12, v3: 1 }, { map: { p1: ['pos'] } });
+    const tone = add('osc', 0, 0, { wave: 0, level: 0.4 });
+    const va = add('vca', 0, 0, { gain: 1 });
+    const vb = add('vca', 0, 0, { gain: 1 });
+    const c = add('select', 0, 0, { pos: 2, count: 8, fade: 30 });
+    const out = add('output', 0, 0, { level: 0.4 });
+    for (const o of [o1, o2, o3, tone]) wire(kb, 'pitch', o, 'pitch');
+    wire(o1, 'out', a, 'in1');
+    wire(o2, 'out', a, 'in2');
+    wire(o3, 'out', a, 'in3');
+    wire(step, 'out', a, 'pos');
+    wire(tri, 'out', b, 'p1');
+    wire(b, 'out', tone, 'pitch');
+    wire(tone, 'out', va, 'in');
+    wire(o1, 'out', vb, 'in');
+    wire(b, 'g2', va, 'cv');
+    wire(b, 'g3', va, 'cv');
+    wire(b, 'g1', vb, 'cv');
+    wire(o2, 'out', c, 'in1');
+    wire(o3, 'out', c, 'in3');
+    wire(tri, 'out', c, 'pos');
+    wire(a, 'out', out, 'l');
+    wire(va, 'out', out, 'r');
+    wire(vb, 'out', out, 'r');
+    wire(c, 'out', out, 'r');
+  },
+  3,
+);
 // a saw through the vowel filter swept A -> U by an LFO, then the phaser
 kit('vowel-phaser', (add, wire) => {
   const kb = add('fm1', 0, 0);

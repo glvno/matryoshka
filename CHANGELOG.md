@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **A new module, the Selector:** one stepped row (1..8, or a cable: 0..1 covers the positions in use) picks one of eight
+  inputs, each with a value added (with nothing patched in it is a table of eight values), and raises that position's gate
+  so one choice can switch several things at once. An optional crossfade (up to 100 ms) avoids clicks. It costs about
+  0.4 % of the FM-1's CPU, plus 0.1 % per gate cabled. Algo Four XL's algorithm row, built today from a Sequencer, an
+  S&H, an LFO, seven comparators and seven Logic modules, would go from about 14 % to about 1 % (the CPU model's
+  per-module figures, not measured on the FM-1).
 - **A new engine, Cassia 1,** after the Casio CZ-1: phase distortion. Each voice has the CZ's two lines: line 1 sweeps
   from a sine to the CZ saw or square, line 2 is the CZ's resonance waveform, a resonant peak that sweeps. Each line
   has its DCW envelope, with one DCA envelope, line mix, line 2 detune, key follow, velocity and vibrato. Three voices on the

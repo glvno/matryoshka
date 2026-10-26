@@ -2541,6 +2541,79 @@ const drummap: ModuleImpl<DrumMapState> = {
   },
 };
 
+/** the Selector's positions: inputs in1..in8, gates g1..g8, values v1..v8 */
+export const SELECT_N = 8;
+/** the position a Selector plays (1..count): `pos` plus the `pos` input, which spans the positions in use (0..1 = 1..count),
+ * rounded to the nearest (the firmware: round_q16) */
+export const selectPos = (pos: number, count: number, cv: number): number => {
+  const n = Math.min(SELECT_N, Math.max(2, Math.round(count)));
+  return Math.min(n, Math.max(1, Math.floor(pos + cv * (n - 1) + 0.5)));
+};
+/** what a Selector's crossfade moves its weights by each sample (Q16, as the firmware: an integer increment, so both engines
+ * fade alike); 65536 or more: it switches at once */
+export const selectFadeInc = (fade: number, sr: number): number => {
+  const samples = Math.floor((Math.round(fade * 65536) * Math.floor((sr * 65536) / 1000)) / 2 ** 32);
+  return samples > 0 ? Math.floor(65536 / samples) : 65536;
+};
+/** a Selector as it runs: each input's weight (Q16 integers; one of them 65536 when settled), the position chosen (0-based,
+ * -1 before the first block) and whether a crossfade is under way */
+export interface SelectState { w: number[]; k: number; fading: boolean }
+
+/**
+ * Selector (#351): a stepped switch. `pos` (1..8, with the `pos` input: 0..1 spans 1..count) chooses one of the inputs
+ * in1..in8; `out` is that input plus its value (v1..v8: with nothing patched in, the Selector is a table of values), and
+ * the gate of that position (g1..g8) is high, the others low, so one choice can switch several things at once. The
+ * position is read once per block (the `pos` input's first sample). `fade` (ms) crossfades from the inputs playing to the
+ * chosen one when the position changes, against clicks; 0 switches at once.
+ */
+const select: ModuleImpl<SelectState> = {
+  def: {
+    type: 'select',
+    label: 'Selector',
+    inputs: [control('pos'), ...Array.from({ length: SELECT_N }, (_, k) => audio(`in${k + 1}`))],
+    thru: 'in1',
+    outputs: [audio('out'), ...Array.from({ length: SELECT_N }, (_, k) => gate(`g${k + 1}`))],
+    params: [
+      param('pos', 1, SELECT_N, 1, { step: 1, input: 'pos', rest: (p, cv) => selectPos(p.pos ?? 1, p.count ?? SELECT_N, cv) }),
+      param('count', 2, SELECT_N, SELECT_N, { step: 1 }),
+      param('fade', 0, 100, 0, { step: 0.1, unit: 'ms' }),
+      ...Array.from({ length: SELECT_N }, (_, k) => param(`v${k + 1}`, -4, 4, 0, { step: 0.001 })),
+    ],
+  },
+  init: () => ({ w: Array(SELECT_N).fill(0), k: -1, fading: false }),
+  process(c, s) {
+    const k = selectPos(c.p.pos ?? 1, c.p.count ?? SELECT_N, c.inp.pos[0]) - 1;
+    const inc = selectFadeInc(c.p.fade ?? 0, c.sr);
+    if (s.k < 0 || (k !== s.k && inc >= 65536)) {
+      s.w.fill(0);
+      s.w[k] = 65536;
+      s.fading = false;
+    } else if (k !== s.k) s.fading = true;
+    s.k = k;
+    const out = c.out.out;
+    if (!s.fading) {
+      const x = c.inp[`in${k + 1}`], v = c.p[`v${k + 1}`] ?? 0;
+      for (let i = 0; i < c.n; i++) out[i] = x[i] + v;
+    } else {
+      const xs = Array.from({ length: SELECT_N }, (_, j) => c.inp[`in${j + 1}`]);
+      const vs = Array.from({ length: SELECT_N }, (_, j) => c.p[`v${j + 1}`] ?? 0);
+      for (let i = 0; i < c.n; i++) {
+        let y = 0;
+        for (let j = 0; j < SELECT_N; j++) {
+          const t = j === k ? 65536 : 0, w = s.w[j];
+          if (w === t && w === 0) continue;
+          s.w[j] = w < t ? Math.min(t, w + inc) : Math.max(t, w - inc);
+          y += (xs[j][i] + vs[j]) * (s.w[j] / 65536);
+        }
+        out[i] = y;
+      }
+      s.fading = s.w.some((w, j) => w !== (j === k ? 65536 : 0));
+    }
+    for (let j = 0; j < SELECT_N; j++) c.out[`g${j + 1}`].fill(j === k ? 1 : 0, 0, c.n);
+    if (c.display) c.display.pos = k + 1;
+  },
+};
+
 export const SCOPE_MODES = ['time', 'spectrum'];
 /** the shortest / longest window of a Scope (ms) */
 export const SCOPE_TIME_MIN = 1;
@@ -2569,7 +2642,7 @@ const scope: ModuleImpl<null> = {
   process: () => {},
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, select];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

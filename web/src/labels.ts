@@ -20,6 +20,10 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   env: { l1: 'level 1', r1: 'rate 1', l2: 'level 2', r2: 'rate 2', l3: 'level 3', r3: 'rate 3', l4: 'level 4', r4: 'rate 4', shot: 'one-shot' },
   seq: { s1: 'step 1', s2: 'step 2', s3: 'step 3', s4: 'step 4', s5: 'step 5', s6: 'step 6', s7: 'step 7', s8: 'step 8' },
   math: { ka: 'a gain', kb: 'b gain', off: 'offset', sub: 'subtract', mul: 'multiply', abs: 'absolute', cmp: 'compare' },
+  select: {
+    count: 'positions', fade: 'crossfade',
+    ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].flatMap((k) => [[`in${k}`, `in ${k}`], [`g${k}`, `gate ${k}`], [`v${k}`, `value ${k}`]])),
+  },
 };
 
 const MODULES: Record<string, string> = {
@@ -57,7 +61,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   comb: ['COMB', 'fx'], modal: ['MODAL', 'fx'],
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
-  drummap: ['MAP', 'mod'],
+  drummap: ['MAP', 'mod'], select: ['SEL', 'util'],
 };
 
 /** the short tag before a card's title and the family that colours it */

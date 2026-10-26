@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 44
+#define N_TYPES 45
 enum {
     T_FM1,
     T_OSC,
@@ -49,6 +49,7 @@ enum {
     T_STEPS,
     T_MACRO,
     T_DRUMMAP,
+    T_SELECT,
 };
 
 /* fm1: Main */
@@ -791,6 +792,44 @@ enum {
 #define DRUMMAP_CVBASE -1
 #define DRUMMAP_NDATA 1
 
+/* select: Selector */
+#define SELECT_I_POS 0
+#define SELECT_I_IN1 1
+#define SELECT_I_IN2 2
+#define SELECT_I_IN3 3
+#define SELECT_I_IN4 4
+#define SELECT_I_IN5 5
+#define SELECT_I_IN6 6
+#define SELECT_I_IN7 7
+#define SELECT_I_IN8 8
+#define SELECT_I_P1 9
+#define SELECT_I_P2 10
+#define SELECT_O_OUT 0
+#define SELECT_O_G1 1
+#define SELECT_O_G2 2
+#define SELECT_O_G3 3
+#define SELECT_O_G4 4
+#define SELECT_O_G5 5
+#define SELECT_O_G6 6
+#define SELECT_O_G7 7
+#define SELECT_O_G8 8
+#define SELECT_P_POS 0
+#define SELECT_P_COUNT 1
+#define SELECT_P_FADE 2
+#define SELECT_P_V1 3
+#define SELECT_P_V2 4
+#define SELECT_P_V3 5
+#define SELECT_P_V4 6
+#define SELECT_P_V5 7
+#define SELECT_P_V6 8
+#define SELECT_P_V7 9
+#define SELECT_P_V8 10
+#define SELECT_NIN 11
+#define SELECT_NOUT 9
+#define SELECT_NPAR 11
+#define SELECT_CVBASE 9
+#define SELECT_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -814,7 +853,7 @@ static const char *const POLY_ASSIGN_NAME[3] = {"ROTATE", "LOWEST", "REUSE"};
 static const char *const POLY_LEGATO_NAME[3] = {"AUTO", "OFF", "ON"};
 static const char *const POLY_PRIORITY_NAME[3] = {"LAST", "LOW", "HIGH"};
 
-#define MAX_IN 6
+#define MAX_IN 11
 #define MAX_OUT 16
 #define MAX_PAR 12
 
@@ -1244,6 +1283,15 @@ static const char *const DRUMMAP_PN[] = {"N1", "N2", "N3", "N4", "N5", "N6", "N7
 static const uint8_t DRUMMAP_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const DRUMMAP_UNIT[] = {"", "", "", "", "", "", "", ""};
 static const char *const *const DRUMMAP_CH[] = {ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6};
+static const char *const SELECT_INNAMES[] = {"POS", "IN1", "IN2", "IN3", "IN4", "IN5", "IN6", "IN7", "IN8", "P1", "P2"};
+static const int32_t SELECT_MIN[] = {65536, 131072, 0, -262144, -262144, -262144, -262144, -262144, -262144, -262144, -262144};
+static const int32_t SELECT_MAX[] = {524288, 524288, 6553600, 262144, 262144, 262144, 262144, 262144, 262144, 262144, 262144};
+static const int32_t SELECT_DEF[] = {65536, 524288, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t SELECT_INC[] = {65536, 65536, 65536, 5243, 5243, 5243, 5243, 5243, 5243, 5243, 5243};
+static const char *const SELECT_PN[] = {"POS", "COUNT", "FADE", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8"};
+static const uint8_t SELECT_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const SELECT_UNIT[] = {"", "", "MS", "", "", "", "", "", "", "", ""};
+static const char *const *const SELECT_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */
@@ -1290,4 +1338,5 @@ static const def_t DEFS[N_TYPES] = {
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH},   /* macro */
     {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH},   /* drummap */
+    {SELECT_NIN, SELECT_NOUT, SELECT_NPAR, 1, SELECT_CVBASE, 1, SELECT_NDATA, 1, SELECT_MIN, SELECT_MAX, SELECT_DEF, SELECT_INC, "SELECTOR", SELECT_PN, SELECT_INNAMES, SELECT_LOG, SELECT_UNIT, SELECT_CH},   /* select */
 };
