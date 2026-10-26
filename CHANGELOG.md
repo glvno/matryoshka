@@ -5,7 +5,9 @@
 - **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
   same range: turning it moves both (two filters' cutoff, say), and so do a cable or
   a macro on it, a card preset and the FM-1's knob on its page. "split" gives each its own row again. A row that sets
-  several shows ×2, ×3 … after its name. Host- and emulator-tested only, not yet on a device.
+  several shows ×2, ×3 … after its name. On the FM-1 each page row keeps where its extras are: 1,280 bytes more of the
+  pool (384,360 of 417,792 bytes, from 383,080; the CI build) and 916 bytes more firmware (353,076). Host-tested
+  (`tools/panel_test.sh` turns such rows), not yet on a device.
 - **A Selector's positions can have names** (#358): pick mode's "names" on a card row of its position, such as SAW,
   SQUARE, PULSE. The card, the Selector's own card, Main's knobs and the FM-1's page show the names (in capitals on the
   FM-1). The position row now offers only the positions in use (1 to its count), on the card, the knobs and the FM-1.

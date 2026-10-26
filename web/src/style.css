@@ -1069,6 +1069,7 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 /* pick mode's tools for such a row and a Selector's position names (#358), at the bar's right over the value */
 .module .param.bar > .row-tools { position: absolute; z-index: 6; right: 4px; top: 1px; display: flex; gap: 3px; align-items: center; }
 .picking .param.bar > .row-tools :is(button, select) { pointer-events: auto; height: 16px; padding: 0 4px; font-size: 9px; }
+.picking .param.bar > .row-tools select.merge { width: 20px; max-width: 20px; padding: 0; text-indent: -999px; }
 .picking .port { cursor: pointer; }
 .fhead .pick-btn[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .frame.picking { border-color: var(--accent); }
