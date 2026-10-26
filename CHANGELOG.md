@@ -27,9 +27,7 @@
 - **A new module, the Selector:** one stepped row (1..8, or a cable: 0..1 covers the positions in use) picks one of eight
   inputs, each with a value added (with nothing patched in it is a table of eight values), and raises that position's gate
   so one choice can switch several things at once. An optional crossfade (up to 100 ms) avoids clicks. It costs about
-  0.4 % of the FM-1's CPU, plus 0.1 % per gate cabled. Algo Four XL's algorithm row, built today from a Sequencer, an
-  S&H, an LFO, seven comparators and seven Logic modules, would go from about 14 % to about 1 % (the CPU model's
-  per-module figures, not measured on the FM-1). In the browser a Selector writes only the gates that are cabled (or
+  0.4 % of the FM-1's CPU, plus 0.1 % per gate cabled (the CPU model's figures, not measured on the FM-1). In the browser a Selector writes only the gates that are cabled (or
   watched), as the FM-1 does.
 - **A Drum map can repeat its rows across the keybed** (its new REPEAT switch, off by default), so every key plays a
   row. Rows on white keys repeat in blocks of white keys, and a black key plays the row of the white key below it: rows
@@ -55,7 +53,7 @@
   defaults in them, and saving such a patch again stores it in the new format. The editor needs this firmware to sync:
   it tells an FM-1 on an older firmware to update.
 - **8 Lire and Elvira 2 play their plates from one repeating Drum map** in place of four copies, so every key now plays
-  a plate (a black key the plate of the white key below it); the sound is unchanged. On the FM-1 that saves CPU and
+  a plate (a black key the plate of the white key below it). On the FM-1 that saves CPU and
   memory: 8 Lire goes from 49 % to 42 % of the CPU and from 96 % to 85 % of the memory, Elvira 2 from 47 % to 40 % and
   from 69 % to 58 % (the editor's estimate; the counted engine: 328,704 to 282,338 and 310,792 to 265,742 cycles a
   block). Not yet checked on a device.
@@ -82,8 +80,9 @@
   each plate's velocity, so its 32 velocity VCAs and 8 S&Hs are gone (185 to 142 modules); a plate held on two keys now
   keeps its own velocity instead of adding the two. Elvira 2 XL's choices (programs, chords, filter types, tunings,
   LFO waves, reverb, tune follow, MODP chaining) are Selectors in place of comparator and Crossfader chains (702 to 475
-  modules). Elvira 2 XL plays a test phrase slightly louder than before (peak 0.50 to 0.54). Both render faster in the browser: 8 Lire XL from 11.7 % to 9.9 % of real time,
-  Elvira 2 XL from 41 % to 32 % (four notes, 3 s, Node on an Apple Silicon Mac).
+  modules). Elvira 2 XL plays a test phrase slightly louder than before (peak 0.50 to 0.54). Both render faster in
+  the browser: 8 Lire XL from 11.7 % to 9.9 % of real time, Elvira 2 XL from 41 % to 32 % (four notes, 3 s, Node on an
+  Apple Silicon Mac).
 - **Hera 6 XL:** decay and release now reach 12 s, as on the Juno-106 (the ADSR's long times; the patch sounds as before).
   The range switch and the portamento switch are Selectors: `range` 1 is 16', 2 is 8', 3 is 4'; `portamento` 1 is off,
   2 is on. On the FM-1's CPU estimate it went from 194 % to 177 % (module instances from 136 to 120 of 128), still too
