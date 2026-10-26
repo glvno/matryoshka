@@ -36,6 +36,10 @@
     grow to about full level and hold there.
   - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
   - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
+- **FM-1 memory:** each module now takes only the parameter slots its type needs, from a shared store of 1536 values,
+  instead of room for the largest module's twelve. The engine's memory goes from 381,038 to 377,198 bytes
+  (`tools/pool_sizes.sh`, the stand-in estimate), and modules with more parameters no longer cost every module room.
+  The editor's budget shows the new "parameter values" line; no factory patch uses more than 558 of them.
 
 ## 1.4.1 — 2026-10-26
 

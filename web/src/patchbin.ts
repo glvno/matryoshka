@@ -410,10 +410,10 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
 }
 
 /** the FM-1's limits (firmware/src/engine.c, the one-voice build: ENG_MAX_MODULES, ENG_MAX_CABLES, POLY_MAX_GROUPS,
- * POLY_MAX_PARTS, ENG_MAX_INST, ENG_NBUF, ENG_NDELAY, ENG_NREV, ENG_NSTRING, ENG_NCHORUS, ENG_NGRAIN, ENG_MAX_TRACKS, ENG_MAX_NOTES; proto.c M1_PATCH_MAX).
+ * POLY_MAX_PARTS, ENG_MAX_INST, ENG_NBUF, ENG_PAR_WORDS, ENG_NDELAY, ENG_NREV, ENG_NSTRING, ENG_NCHORUS, ENG_NGRAIN, ENG_MAX_TRACKS, ENG_MAX_NOTES; proto.c M1_PATCH_MAX).
  */
 export const DEVICE = {
-  modules: MAX_MODULES, cables: MAX_CABLES, poly: MAX_POLY, parts: MAX_PARTS, instances: 128, buffers: 255,
+  modules: MAX_MODULES, cables: MAX_CABLES, poly: MAX_POLY, parts: MAX_PARTS, instances: 128, buffers: 255, params: 1536,
   delays: 1, reverbs: 1, strings: 8, chorus: 1, grains: 1, arps: 2, tracks: 16, notes: 512, bytes: 3840,
 } as const;
 
@@ -444,14 +444,15 @@ export function browserOnly(p: Patch): string[] {
 }
 
 const LABELS: Record<BudgetKey, string> = {
-  modules: 'modules', cables: 'cables', poly: 'poly assemblies', parts: 'parts', instances: 'module instances', buffers: 'signal buffers',
+  modules: 'modules', cables: 'cables', poly: 'poly assemblies', parts: 'parts', instances: 'module instances', buffers: 'signal buffers', params: 'parameter values',
   delays: 'delays', reverbs: 'reverbs', strings: 'string / comb lines', chorus: 'choruses', grains: 'granular lines', arps: 'arpeggiators', tracks: 'step tracks', notes: 'step notes', bytes: 'patch bytes',
 };
 
 /**
  * What a patch costs on the FM-1, counted the way eng_load allocates: one instance per copy of a module (a module in a
  * poly assembly has one per part); one signal buffer per connected output port and copy, plus one per input copy with
- * two or more sources (a module outside a poly assembly reading a per-part output has one source per part); the shared
+ * two or more sources (a module outside a poly assembly reading a per-part output has one source per part); per module its
+ * type's parameters (twice that when the patch has a morph B side) and per copy their effective values; the shared
  * lines (delay, reverb, chorus, granular) once each, a string or comb line per copy. `items` lists every limit, `over`
  * those the patch exceeds, `memory` the fullest one as a fraction (single lines count only when exceeded) and `fullest` that
  * line; `cpu` the estimated processor load (cpu.ts); `use` the larger of the two. `fits` is false when the firmware would
@@ -496,10 +497,13 @@ export function deviceBudget(source: Patch): Budget {
       if (sources >= 2) buffers += n;
     }
   }
+  let params = 0; // engine.c par_take: a node's values (and morph B side), each instance's effective values
+  const morph = hasMorph(p);
+  for (const m of p.modules) params += DEFS[m.type].params.length * ((morph ? 2 : 1) + ninst(m.id));
   const count = (...types: string[]): number => p.modules.filter((m) => types.includes(m.type)).reduce((n, m) => n + ninst(m.id), 0);
   const used: Record<BudgetKey, number> = {
     modules: p.modules.length, cables: p.cables.length, poly: groups.length, parts: Math.max(1, ...[...copies.values()]),
-    instances, buffers, delays: count('delay'), reverbs: count('reverb'), strings: count('string', 'comb'), chorus: count('chorus'),
+    instances, buffers, params, delays: count('delay'), reverbs: count('reverb'), strings: count('string', 'comb'), chorus: count('chorus'),
     grains: count('grain'), arps: count('arp'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? m.notes?.length ?? 0 : 0), 0), bytes: sizeOf(p, groups, deviceSection(source, p), source),
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));

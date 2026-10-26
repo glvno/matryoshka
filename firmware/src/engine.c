@@ -18,7 +18,7 @@
 
 /* The patch: modules, cables, summed inputs; below them the memories (pools of slots with an owner, slot_take; a load
  * frees them and takes what it needs). A patch that finds no free slot does not load (-4 lines, -6 buffers, -7
- * instances): NO ROOM on the panel. Keep DEVICE in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines
+ * instances, -8 parameter slots): NO ROOM on the panel. Keep DEVICE in web/src/patchbin.ts, the HELLO reply (proto.c) and the MEMORY lines
  * of manual.c in step. */
 #define ENG_MAX_MODULES 64          /* (the module list, `order`, `outputs` are uint8 indices; the binary header byte 2) */
 #define ENG_MAX_RANGES 48           /* macro ranges (patch.ts ModuleInst.range) */
@@ -309,7 +309,7 @@ static int32_t value_of(const def_t *d, uint32_t j, int32_t u)
  * module one per voice (engine.ts: Inst) */
 typedef struct {
     uint8_t sum0, nsum;              /* its summed inputs in E.sum[] */
-    int32_t eff[MAX_PAR];
+    int32_t *eff;                    /* its type's npar effective values, in par_pool (par_spare until it loads) */
     const esig_t *in[MAX_IN];
     esig_t *out[MAX_OUT];
     union {
@@ -370,9 +370,9 @@ typedef struct {
     uint32_t map[6];                 /* the matrix: bit j of map[s] = source s controls parameter j. s: p1 p2 k1 k2 k3 k4 */
     uint32_t input_map[MAX_IN];      /* additional side-input destinations, independent of fixed links */
     int32_t att[2];                  /* attenuverters of p1, p2: Q16, -1..1 */
-    int32_t par[MAX_PAR];
-    uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
-    uint32_t over;                   /* bit j: parameter j's B side is past pmax (a stretch, DEF_TOP): parb[j] is B - pmin in 1/2048 */
+    int32_t *par;                    /* its type's npar values in par_pool, then, when E.has_b, the morph B side (PARB): npar unit
+                                      * positions (0..65535 of the range, octaves for a log parameter); par_spare until it loads */
+    uint32_t over;                   /* bit j: parameter j's B side is past pmax (a stretch, DEF_TOP): PARB(nd)[j] is B - pmin in 1/2048 */
     uint32_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
     uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
     uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's or an
@@ -380,6 +380,9 @@ typedef struct {
                                       * (engine.ts fed); an Arpeggiator: 0 Main's keys, 2 + the Steps module cabled into its
                                       * keys in (engine.ts ArpRun.feed: it plays that track's notes) */
 } node_t;
+
+/* a node's morph B side: right after its parameters (eng_load gives it twice its type's npar when the patch has one) */
+#define PARB(nd) ((nd)->par + DEFS[(nd)->type].npar)
 
 /* a macro range: input `pin` (0 p1, 1 p2) of module `mod` moves parameter `par` between lo and hi (0..255 of the range,
  * octaves for a log parameter, morph_unit space) instead of adding to its base */
@@ -504,7 +507,7 @@ typedef struct {
     uint8_t narp;
     arp_t arp[ENG_MAX_ARPS];
     int32_t ctl[ENG_NCTL];           /* pitch bend, mod wheel, aftertouch (engine.h ENG_CTL_*), Q16 */
-    uint8_t has_b;                   /* the patch carries a morph B set (node_t.parb) */
+    uint8_t has_b;                   /* the patch carries a morph B set (PARB) */
     uint8_t nranges;
     range_t ranges[ENG_MAX_RANGES];
     uint8_t btn_kind[ENG_PANEL_BUTTONS];   /* the button kinds (ENG_BTN_*, flag bit 6; without it every one is a Gate) */
@@ -548,6 +551,26 @@ typedef struct grain_line { int16_t buf[GRAIN_LEN]; grain_t g[GRAIN_MAX]; } grai
 static grain_line_t gr_pool[ENG_NGRAIN] ENG_POOL;
 static uint8_t gr_own[ENG_NGRAIN];
 #endif
+/* the parameter slots (#351): each node gets its type's npar values (twice that with a morph B side), each instance its
+ * type's npar effective values, taken in order at eng_load; a patch that needs more does not load (-8). Not MAX_PAR per
+ * node and instance: most types have far fewer (patchbin.ts DEVICE.params, the editor's budget, counts the same). */
+#define ENG_PAR_WORDS 1536u
+static int32_t par_pool[ENG_PAR_WORDS] ENG_POOL;
+static uint32_t par_used;
+static int32_t par_spare[2u * MAX_PAR];     /* what a node or instance points at before it is loaded (eng_get_param after a failed load) */
+
+static int32_t *par_take(uint32_t n)        /* n zeroed values, 0 if they do not fit */
+{
+    int32_t *q = par_pool + par_used;
+    uint32_t i;
+    if (n > ENG_PAR_WORDS - par_used)
+        return 0;
+    par_used += n;
+    for (i = 0; i < n; i++)
+        q[i] = 0;
+    return q;
+}
+
 static const esig_t zero_buf[ENG_BLOCK];
 static esig_t dummy_out[ENG_BLOCK];
 
@@ -766,6 +789,11 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.grp[0].hi = 127u;
     groups_reset();
     pool_free(inst_own, ENG_MAX_INST);           /* what this voice's old patch held */
+    par_used = 0;
+    for (i = 0; i < ENG_MAX_MODULES; i++)
+        E.node[i].par = par_spare;
+    for (i = 0; i < ENG_MAX_INST; i++)
+        inst_pool[i].eff = par_spare;
     pool_free(buf_own, ENG_NBUF);
     pool_free(dly_own, ENG_NDELAY);
     pool_free(rev_own, ENG_NREV);
@@ -848,6 +876,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         uint8_t *z = (uint8_t *)nd;
         for (j = 0; j < sizeof *nd; j++)
             z[j] = 0;
+        nd->par = par_spare;
         if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
             return -3;
         nd->type = p[at] & 0x7Fu;
@@ -856,6 +885,11 @@ int eng_load(const uint8_t *p, uint32_t len)
         d = &DEFS[nd->type];
         if (at + eng_record_extra(d) + 4u * d->npar > len)
             return -3;
+        nd->par = par_take((p[6] & 1u) ? 2u * d->npar : d->npar);   /* (with the morph B side, flag bit 0) */
+        if (!nd->par) {
+            nd->par = par_spare;
+            return -8;
+        }
         for (j = 0; j < d->npar; j++, at += 4)
             nd->par[j] = rd32(p + at);
         if (d->cvbase >= 0) {
@@ -921,6 +955,7 @@ int eng_load(const uint8_t *p, uint32_t len)
         for (i = 0; i < E.nmod; i++) {
             node_t *nd = &E.node[i];
             const def_t *d = &DEFS[nd->type];
+            int32_t *pb = PARB(nd);
             if (at + 4u * d->npar > len)
                 return -3;
             nd->over = 0;
@@ -928,9 +963,9 @@ int eng_load(const uint8_t *p, uint32_t len)
                 int32_t b = rd32(p + at);
                 if (d->ptop && b > d->pmax[j]) {          /* past the range (a stretch, under 32 wide: export-defs): B - pmin in 1/2048 */
                     nd->over |= 1u << j;
-                    nd->parb[j] = (uint16_t)((clampi(b, d->pmin[j], d->ptop[j]) - d->pmin[j]) >> 5);
+                    pb[j] = (clampi(b, d->pmin[j], d->ptop[j]) - d->pmin[j]) >> 5;
                 } else
-                    nd->parb[j] = (uint16_t)clampi(morph_unit(d, j, b), 0, 65535);
+                    pb[j] = clampi(morph_unit(d, j, b), 0, 65535);
             }
         }
         E.has_b = 1;
@@ -1082,6 +1117,11 @@ int eng_load(const uint8_t *p, uint32_t len)
             uint8_t *z = (uint8_t *)it;
             for (j = 0; j < sizeof *it; j++)
                 z[j] = 0;
+            it->eff = par_take(DEFS[nd->type].npar);
+            if (!it->eff) {
+                it->eff = par_spare;
+                return -8;
+            }
             init_state(nd, it, i, k);
             if (nd->type == T_REVERB) {
                 int s = slot_take(rev_own, ENG_NREV);
@@ -1427,7 +1467,7 @@ static int32_t morph_value(const def_t *d, uint32_t j, int32_t u)
 }
 
 /* a parameter at morph position t between its value and its B side (patch.ts morphValue): a choice or switch snaps at
- * 0.5, the rest moves in morph_unit space; with either side past pmax (a stretch: `over`, the B side's parb is B - pmin
+ * 0.5, the rest moves in morph_unit space; with either side past pmax (a stretch: `over`, the B side (PARB) is B - pmin
  * in 1/2048) linearly between the values */
 static int32_t morph_of(const def_t *d, uint32_t j, int32_t a, uint32_t ub, int32_t t, int over)
 {
@@ -4790,6 +4830,7 @@ static void m_seq(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *clock = it->in[SEQ_I_CLOCK], *reset = it->in[SEQ_I_RESET];
     esig_t *out = it->out[SEQ_O_OUT], *gate = it->out[SEQ_O_GATE];
+    const int32_t *steps = it->eff + SEQ_P_S1;   /* (read per sample: the pointer kept in a register) */
     int32_t len = clampi(round_q16(EF(it, SEQ_P_LEN)), 1, 8), dir = round_q16(EF(it, SEQ_P_DIR));
     int32_t pos = it->s.seq.pos, down = it->s.seq.down, c1 = it->s.seq.c1, r1 = it->s.seq.r1;
     int32_t y = it->s.seq.y, period = it->s.seq.period, since = it->s.seq.since, gleft = it->s.seq.gleft;
@@ -4839,7 +4880,7 @@ static void m_seq(const node_t *nd, inst_t *it, uint32_t n)
             } else
                 pos = (pos + 1) % len;
         }
-        v = EF(it, SEQ_P_S1 + (pos < len ? pos : len - 1));
+        v = steps[pos < len ? pos : len - 1];
         if (k > 0) {
             y += mulq(k, (v << 8) - y, 30);
             out[i] = (y + 128) >> 8;
@@ -5168,6 +5209,8 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
     const def_t *d = &DEFS[nd->type];
     int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
     uint32_t j, i, s, have = 0, side = 0;   /* side: some input has side routes (input_map) */
+    const int32_t *par = nd->par, *parb = par + d->npar;   /* (the node's and the instance's slots, kept in registers; PARB) */
+    int32_t *eff = it->eff;
     if (d->cvbase >= 0)
         for (s = 0; s < 2u; s++) {
             const esig_t *cv;
@@ -5187,7 +5230,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
         side = 1;
     }
     for (j = 0; j < d->npar; j++) {
-        int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, nd->par[j], nd->parb[j], E.morph, nd->over >> j & 1u) : nd->par[j];
+        int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, par[j], (uint32_t)parb[j], E.morph, nd->over >> j & 1u) : par[j];
         uint32_t touched = 0;
         int32_t mod = 0, rv = 0;
         const range_t *rg = 0;
@@ -5213,11 +5256,11 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
             v = morph_value(d, j, lo + mul16(clampi(rv, 0, ENG_ONE), hi - lo));
         }
         if (!touched)
-            it->eff[j] = v;
+            eff[j] = v;
         else if (d->plog && d->plog[j])
-            it->eff[j] = value_of(d, j, unit_of(d, j, v) + mod);            /* in octaves */
+            eff[j] = value_of(d, j, unit_of(d, j, v) + mod);            /* in octaves */
         else
-            it->eff[j] = clampi(v + mul16(mod, d->pmax[j] - d->pmin[j]), d->pmin[j], v > d->pmax[j] ? DEF_TOP(d, j) : d->pmax[j]);   /* (a base past pmax: a stretch) */
+            eff[j] = clampi(v + mul16(mod, d->pmax[j] - d->pmin[j]), d->pmin[j], v > d->pmax[j] ? DEF_TOP(d, j) : d->pmax[j]);   /* (a base past pmax: a stretch) */
     }
 }
 
