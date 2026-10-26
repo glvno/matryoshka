@@ -379,7 +379,7 @@ static int32_t eff_now(uint32_t m, uint32_t j, const def_t *d, int32_t v)
                 pg_lag[k].on = 0;
                 return e;
             }
-            return clampi(e + (v - pg_lag[k].was), d->pmin[j], d->pmax[j]);
+            return clampi(e + (v - pg_lag[k].was), d->pmin[j], DEF_TOP(d, j));
         }
     return e;
 }
@@ -552,7 +552,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
     } else if (eng_param_is_log(m, j)) {
         *v = eng_step_param(m, j, clicks * (fast ? 5 : 1), 655);   /* 1/100 of the octaves a click */
     } else {
-        *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], d->pmax[j]);
+        *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], DEF_TOP(d, j));   /* (past pmax: a stretch) */
     }
     return 0;
 }
@@ -601,7 +601,16 @@ static uint32_t pages_cc(uint32_t k)
         return setting_bar(pg->par[k], 127u);
     if (pg->par[k] & POLY_ROW)
         return (uint32_t)(poly_value(pg->mod[k], pg->par[k] & 0x7Fu) * 127 / poly_max(pg->par[k] & 0x7Fu));
-    return (uint32_t)((unit_of(&DEFS[eng_type(pg->mod[k])], pg->par[k], eng_get_param(pg->mod[k], pg->par[k])) * 127 + 32768) >> 16);
+    {
+        const def_t *d = &DEFS[eng_type(pg->mod[k])];
+        uint32_t j = pg->par[k];
+        int32_t v = eng_get_param(pg->mod[k], j), lo = d->pmin[j], u;
+        if (d->ptop && d->pchoice && d->pchoice[j])     /* a choice list past pmax (a stretch): over every choice, as pages_set_unit */
+            u = (int32_t)(((int64_t)(clampi(v, lo, d->ptop[j]) - lo) << 16) / (d->ptop[j] - lo));
+        else
+            u = unit_of(d, j, v);
+        return (uint32_t)((u * 127 + 32768) >> 16);
+    }
 }
 
 /* ---- drawing */

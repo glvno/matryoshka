@@ -339,12 +339,13 @@ typedef struct {
         struct { uint32_t phase; int32_t s1; } wt;
         struct { int16_t *buf; uint32_t w, phase; } ch;
         struct { uint32_t seed; int32_t c1, r1, y, period, since, gleft; int8_t pos, down; } seq;
-        /* Steps (modules.ts StepsState): ticks since the step, the step (-1: the next is the first), times round the pattern,
+        /* Steps (modules.ts StepsState): half ticks since the step (-1: the step came half a tick after a tick), the step
+         * (-1: the next is the first), times round the pattern, half: samples to a step half a tick after a tick (1/64),
          * a swung step waiting (samples, which), clk mode's edge distance; slen / sst: the step's length and samples since
          * it began (live recording rounds to the nearest step); skip: a step recorded ahead, its notes not played again
          * when reached; hit: 1 / 2 (accented) = sound now (eng_steps_hit); pitch / vel: the outputs' held values (Q16, the
          * last note that started); the notes sounding are the track's (E.trk_snd) */
-        struct { uint32_t seed, loop; int32_t c1, r1, since, period, pend, slen, sst, pitch, vel; uint16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit, skipn; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
+        struct { uint32_t seed, loop; int32_t c1, r1, since, period, half, pend, slen, sst, pitch, vel; int16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit, skipn; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
         /* Drum map (modules.ts DrumMapState): its rows' velocities (Q16), the rows whose gate is up, the rows that restart
          * this block (a low first sample) */
         struct { int32_t vel[DRUMMAP_NOUT / 2]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last block */
@@ -364,6 +365,7 @@ typedef struct {
     int32_t att[2];                  /* attenuverters of p1, p2: Q16, -1..1 */
     int32_t par[MAX_PAR];
     uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
+    uint16_t over;                   /* bit j: parameter j's B side is past pmax (a stretch, DEF_TOP): parb[j] is B - pmin in 1/2048 */
     uint16_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
     uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
     uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's or an
@@ -873,8 +875,15 @@ int eng_load(const uint8_t *p, uint32_t len)
             const def_t *d = &DEFS[nd->type];
             if (at + 4u * d->npar > len)
                 return -3;
-            for (j = 0; j < d->npar; j++, at += 4)
-                nd->parb[j] = (uint16_t)clampi(morph_unit(d, j, rd32(p + at)), 0, 65535);
+            nd->over = 0;
+            for (j = 0; j < d->npar; j++, at += 4) {
+                int32_t b = rd32(p + at);
+                if (d->ptop && b > d->pmax[j]) {          /* past the range (a stretch, under 32 wide: export-defs): B - pmin in 1/2048 */
+                    nd->over |= (uint16_t)(1u << j);
+                    nd->parb[j] = (uint16_t)((clampi(b, d->pmin[j], d->ptop[j]) - d->pmin[j]) >> 5);
+                } else
+                    nd->parb[j] = (uint16_t)clampi(morph_unit(d, j, b), 0, 65535);
+            }
         }
         E.has_b = 1;
     }
@@ -1364,10 +1373,17 @@ static int32_t morph_value(const def_t *d, uint32_t j, int32_t u)
 }
 
 /* a parameter at morph position t between its value and its B side (patch.ts morphValue): a choice or switch snaps at
- * 0.5, the rest moves in morph_unit space */
-static int32_t morph_of(const def_t *d, uint32_t j, int32_t a, uint32_t ub, int32_t t)
+ * 0.5, the rest moves in morph_unit space; with either side past pmax (a stretch: `over`, the B side's parb is B - pmin
+ * in 1/2048) linearly between the values */
+static int32_t morph_of(const def_t *d, uint32_t j, int32_t a, uint32_t ub, int32_t t, int over)
 {
     int32_t ua;
+    if (over || (d->ptop && a > d->pmax[j])) {
+        int32_t b = over ? d->pmin[j] + (int32_t)(ub << 5) : morph_value(d, j, (int32_t)ub);
+        if (d->pchoice && d->pchoice[j])
+            return t < 32768 ? a : b;
+        return a + (int32_t)(((int64_t)(b - a) * t) >> 16);
+    }
     if (d->pchoice && d->pchoice[j])
         return t < 32768 ? a : morph_value(d, j, (int32_t)ub);
     ua = morph_unit(d, j, a);
@@ -4253,9 +4269,10 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         it->s.stp.gap = (uint8_t)was;
 }
 
-/* the Steps module (modules.ts steps): one step per `rate` of the clock while the transport runs (the first when it starts),
- * or per rising edge in clk; every second step late by the swing; its notes sound for their length (gate x their last
- * step); trig is up while any sounds, pitch / vel hold the last that started, keys out every note on / off */
+/* the Steps module (modules.ts steps): one step per `rate` of the clock while the transport runs (the first when it starts;
+ * 1/64 is a tick and a half, every second step half a tick after a tick), or per rising edge in clk; every second step
+ * late by the swing; its notes sound for their length (gate x their last step); trig is up while any sounds, pitch / vel
+ * hold the last that started, keys out every note on / off */
 /* Drum map (modules.ts drummap): each row's gate while its note is held (one low first sample when it restarts) and its
  * velocity; the notes come in through dm_keys */
 static void m_drummap(const node_t *nd, inst_t *it, uint32_t n)
@@ -4274,12 +4291,12 @@ static void m_drummap(const node_t *nd, inst_t *it, uint32_t n)
 
 static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
 {
-    static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};   /* arpeggiator.ts ARP_RATE_TICKS */
+    static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
     const esig_t *clk = it->in[STEPS_I_CLK], *reset = it->in[STEPS_I_RESET], *tr = it->in[STEPS_I_TRANSPOSE];
     esig_t *trig = it->out[STEPS_O_TRIG], *keys = it->out[STEPS_O_KEYS], *pitch = it->out[STEPS_O_PITCH], *vel = it->out[STEPS_O_VEL];
     uint32_t t = nd->trk, node = (uint32_t)(nd - E.node);
     int32_t len = clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
-    int32_t div = RATE_TICKS[clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 6)];
+    int32_t ht = RATE_HT[clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)], step = (ht * E.tick_len) >> 1;   /* a step's samples */
     int32_t swing = EF(it, STEPS_P_SWING) - 50 * ENG_ONE, gate = EF(it, STEPS_P_GATE);
     int ext = (nd->conn >> STEPS_I_CLK) & 1u;
     uint32_t i;
@@ -4303,19 +4320,30 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         } else {
             if (i == 0 && E.running && !it->s.stp.run) {
                 it->s.stp.count = 0;
+                it->s.stp.half = 0;
                 it->s.stp.pos = -1;
                 adv++;
             }
+            if (it->s.stp.half > 0 && E.running && --it->s.stp.half == 0)
+                adv++;
             if ((int32_t)i == E.tick_off) {
                 int32_t q;
+                if (it->s.stp.half > 0) {        /* (the clock came early: the step half a tick on is now) */
+                    it->s.stp.half = 0;
+                    adv++;
+                }
                 for (q = 0; q < E.tick_n; q++)
-                    if (++it->s.stp.count >= div) {
+                    if ((it->s.stp.count += 2) >= ht) {
                         it->s.stp.count = 0;
                         adv++;
                     }
+                if ((ht & 1) && it->s.stp.count + 1 == ht) {   /* the next step falls half a tick from now (1/64) */
+                    it->s.stp.half = E.tick_len >> 1 > 0 ? E.tick_len >> 1 : 1;
+                    it->s.stp.count = -1;
+                }
             }
         }
-        sl = ext && it->s.stp.period > 0 ? it->s.stp.period : (ext ? 6 : div) * E.tick_len;   /* the gate's step length */
+        sl = ext && it->s.stp.period > 0 ? it->s.stp.period : ext ? 6 * E.tick_len : step;   /* the gate's step length */
         if (i == 0 && it->s.stp.hit) {           /* a hit from the panel (eng_steps_hit): the last note sounds now, whatever the pattern */
             int was = steps_sounding(t);
             steps_start(t, node, (uint32_t)clampi((int32_t)E.trk_last[t] + (int32_t)(((int64_t)tr[i] * 12 + 32768) >> 16), 0, 127), it->s.stp.hit == 2u ? ACCENT_VEL : STEP_VEL, 0, steps_hold(0, gate, sl));
@@ -4326,7 +4354,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0)
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
         for (; adv > 0; adv--) {
-            int32_t sw = ext ? it->s.stp.period : div * E.tick_len, d = 0;
+            int32_t sw = ext ? it->s.stp.period : step, d = 0;
             it->s.stp.pos = (int8_t)(it->s.stp.pos + 1 >= len ? 0 : it->s.stp.pos + 1);
             if (it->s.stp.pos == 0)
                 it->s.stp.loop++;
@@ -4699,7 +4727,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
         extra[s] = block_mean(sum, n);
     }
     for (j = 0; j < d->npar; j++) {
-        int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, nd->par[j], nd->parb[j], E.morph) : nd->par[j];
+        int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, nd->par[j], nd->parb[j], E.morph, nd->over >> j & 1u) : nd->par[j];
         uint32_t touched = 0;
         int32_t mod = 0, rv = 0;
         const range_t *rg = 0;
@@ -4729,7 +4757,7 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
         else if (d->plog && d->plog[j])
             it->eff[j] = value_of(d, j, unit_of(d, j, v) + mod);            /* in octaves */
         else
-            it->eff[j] = clampi(v + mul16(mod, d->pmax[j] - d->pmin[j]), d->pmin[j], d->pmax[j]);
+            it->eff[j] = clampi(v + mul16(mod, d->pmax[j] - d->pmin[j]), d->pmin[j], v > d->pmax[j] ? DEF_TOP(d, j) : d->pmax[j]);   /* (a base past pmax: a stretch) */
     }
 }
 

@@ -1521,6 +1521,50 @@ tests['steps-clk'] = make('steps-clk', (add, wire) => {
   st[1].notes = pattern([0, 3, 5, 6, 9, 12, 14], [0, 9], { 5: 60, 14: 30 });
 }
 
+// the rates 1/2 and 1/64 and swing to 80 % (#351, past the range's max: ParamDef.top). A 1/64 track (every second step
+// half a tick after a tick) at 80 % swing, a 1/2 track, a track morphed past max (rate 1/16 -> 1/64, a choice: B; swing
+// 60 -> 80, linearly), and a track whose base is past max under its pins (rate 1/64 + p2, swing 78 - p1: clamped to the
+// stretch, not pulled back to max); stop and run; then MIDI clock with every seventh tick early (the half tick's step
+// comes with it). (The C engine morphs every module, the TS one only those with a B side: values here survive C's
+// round trip through morph_unit, so the morph adds no difference of its own.)
+tests['steps-rates'] = make('steps-rates', (add, wire) => {
+  const kb = add('fm1', 0, 0, { tempo: 133, morph: 0.6 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const mx = add('mixer', 1800, 0);
+  const a = drum(add, wire, 200, 0, -12, 0.03);
+  const b = drum(add, wire, 600, 3, 12, 0.2);
+  const c = drum(add, wire, 1000, 1, 0, 0.04);
+  const d = drum(add, wire, 1400, 0, -24, 0.02);
+  const up = add('const', 1400, 1200, { value: 0.125 });
+  const down = add('const', 1400, 1400, { value: -0.0625 });
+  wire(up, 'out', d.st, 'p2');
+  wire(down, 'out', d.st, 'p1');
+  wire(a.v, 'out', mx, 'in1');
+  wire(b.v, 'out', mx, 'in2');
+  wire(c.v, 'out', mx, 'in3');
+  wire(d.v, 'out', mx, 'in4');
+  wire(mx, 'out', out, 'l');
+  void kb;
+});
+{
+  const st = tests['steps-rates'].modules.filter((m) => m.type === 'steps');
+  Object.assign(st[0].params, { len: 16, rate: 8, swing: 80, gate: 0.5 });
+  st[0].notes = pattern([0, 1, 2, 3, 5, 6, 7, 9, 10, 12, 13, 15], [0, 8]);
+  Object.assign(st[1].params, { len: 4, rate: 7, gate: 0.3 });
+  st[1].notes = pattern([0, 1, 3], [1]);
+  Object.assign(st[2].params, { len: 8, rate: 4, swing: 60, gate: 0.4 });
+  st[2].paramsB = { ...st[2].params, rate: 8, swing: 80 };
+  st[2].notes = pattern([0, 1, 2, 3, 4, 5, 6, 7], [4]);
+  Object.assign(st[3].params, { len: 12, rate: 8, swing: 78, gate: 0.6 });
+  st[3].map = { ...st[3].map!, p1: ['swing'], p2: ['rate'] };
+  st[3].notes = pattern([0, 1, 3, 4, 5, 7, 8, 9, 11], [3], { 5: 50 });
+  const ev: Ev[] = [[128 * 4, 'run', 0], [128 * 300, 'stop', 0], [128 * 330, 'run', 0], [128 * 500, 'ext', 0]];
+  for (let t = 0; t < 160; t++) ev.push([128 * 500 + 900 * t - (t % 7 === 3 ? 600 : 0), 'tick', 0]);
+  ev.push([128 * 500 + 900 * 160 + 200, 'int', 0]);
+  events['steps-rates'] = ev;
+  ends['steps-rates'] = 128 * 500 + 900 * 160 + 128 * 100;
+}
+
 // keys out (#133): a Steps track of chords (notes of different lengths, one through the loop's end and cut there, a chance
 // per note, a note past len that never plays) into a Voice allocator of three voices in a poly assembly (osc, envelope,
 // VCA); transposed a fifth up by a Constant; four notes at once take a voice over

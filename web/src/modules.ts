@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The module library: definitions (shared with the editor) and DSP implementations.
 
-import { ARP_MODES, ARP_RATE_TICKS, ARP_RATES } from './arpeggiator';
+import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import type { StepNote } from './track';
+import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type StepNote } from './track';
 import WT from './wavetables.json';
 
 export interface Voice {
@@ -2276,10 +2276,13 @@ export interface StepsState {
   run: boolean;
   c1: number;
   r1: number;
-  /** ticks since the last step (its own clock), the step playing (-1: the next step is the first), times round the pattern */
+  /** half ticks since the last step (its own clock; -1 after a step half a tick past one), the step playing (-1: the next
+   * step is the first), times round the pattern */
   count: number;
   pos: number;
   loop: number;
+  /** a step half a tick after a tick (1/64): samples to go (0: none) */
+  half: number;
   /** a swung step waiting: samples to go (0: none) and which step */
   pend: number;
   pstep: number;
@@ -2321,9 +2324,11 @@ const stepPitch = (note: number): number => (Math.sign(note - STEP_NOTE) * Math.
  * Steps: a track of notes (#83, #133). Each note (ModuleInst.notes, track.ts) starts on a step, lasts a number of steps
  * and has a velocity and a chance; a step can hold several (a chord). `len` plays the first steps; a note is cut at the
  * end of the pattern. With nothing in clk it follows the engine's clock while the transport runs: the first step when
- * PLAY starts, then one step per `rate` (24 ppqn ticks, ARP_RATE_TICKS), each on the sample its tick falls on; a rising
- * edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 75 % the most) delays every
- * second step by (swing - 50) / 50 of a step. A note sounds for `gate` of its last step (a longer note holds through the
+ * PLAY starts, then one step per `rate` (STEPS_RATES: half ticks of the 24 ppqn clock, STEPS_RATE_HT), each on the sample
+ * its tick falls on; 1/64 is a tick and a half, so every second step lands half a tick (tickLen / 2 samples, rounded down)
+ * after a tick. A rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 80 % the
+ * most) delays every second step by (swing - 50) / 50 of a step. Rates 1/2 and 1/64 and swing past 75 % are a stretch of
+ * the range (ParamDef.top): pins, macro ranges and the morph span what they did before (#351). A note sounds for `gate` of its last step (a longer note holds through the
  * steps before it: two steps at most from the last, so a stopped clock lets it end).
  * keys out: every note on / off, transposed, like Main's keys (the instrument's allocator decides the voices; the engine
  * delivers them at the start of the next block). The mono outputs: trig is up while any note sounds (one low sample when
@@ -2344,23 +2349,24 @@ const steps: ModuleImpl<StepsState> = {
     views: [param('grid', 0, 0, 0, { screen: true })],
     params: [
       param('len', 1, STEPS_MAX, 16, { step: 1 }),
-      param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATES }),
-      param('swing', 50, 75, 50, { step: 1, unit: '%' }),
+      param('rate', 0, STEPS_RATE_PIN_MAX, 4, { step: 1, choices: STEPS_RATES, top: STEPS_RATES.length - 1 }),
+      param('swing', 50, SWING_PIN_MAX, 50, { step: 1, unit: '%', top: SWING_MAX }),
       param('gate', 0.01, 1, 0.25, { step: 0.01 }),
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
   process(c, s) {
     const q16 = (v: number | undefined): number => Math.round((v ?? 0) * 65536);
     const len = Math.min(STEPS_MAX, Math.max(1, Math.round(c.p.len ?? 16)));
-    const div = ARP_RATE_TICKS[Math.min(ARP_RATE_TICKS.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
+    const ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
     const swing = q16(c.p.swing ?? 50) - 50 * 65536;
     const gate = q16(c.p.gate ?? 0.25);
     const v = c.voice;
+    const step = Math.floor((ht * v.tickLen) / 2); // a step's samples at the clock's rate
     const ext = !!c.connected.clk;
     const { clk, reset, transpose } = c.inp;
     const end = (j: number): void => {
@@ -2368,7 +2374,7 @@ const steps: ModuleImpl<StepsState> = {
       s.snd.splice(j, 1);
     };
     const fire = (k: number, i: number): void => {
-      const sl = ext && s.period > 0 ? s.period : (ext ? 6 : div) * v.tickLen;
+      const sl = ext && s.period > 0 ? s.period : ext ? 6 * v.tickLen : step;
       // a note's samples from here: through to the next step while more follow (two steps at most), else gate of a step
       const hold = (left: number): number => (left > 0 ? 2 * sl : Math.max(1, Math.floor((gate * sl) / 65536)));
       for (const x of s.snd)
@@ -2442,22 +2448,33 @@ const steps: ModuleImpl<StepsState> = {
       } else {
         if (i === 0 && v.run && !s.run) {
           s.count = 0;
+          s.half = 0;
           s.pos = -1;
           adv++;
         }
-        if (v.run && i === v.tick)
+        if (s.half > 0 && v.run && --s.half === 0) adv++;
+        if (v.run && i === v.tick) {
+          if (s.half > 0) { // (the clock came early: the step half a tick on is now)
+            s.half = 0;
+            adv++;
+          }
           for (let t = 0; t < v.ticks; t++)
-            if (++s.count >= div) {
+            if ((s.count += 2) >= ht) {
               s.count = 0;
               adv++;
             }
+          if (ht & 1 && s.count + 1 === ht) { // the next step falls half a tick from now (1/64)
+            s.half = Math.max(1, v.tickLen >> 1);
+            s.count = -1;
+          }
+        }
       }
       if (s.pend > 0 && --s.pend === 0) fire(s.pstep, i);
       s.ago++;
       for (; adv > 0; adv--) {
         s.pos = s.pos + 1 >= len ? 0 : s.pos + 1;
         if (s.pos === 0) s.loop = (s.loop + 1) >>> 0;
-        const sl = ext ? s.period : div * v.tickLen;
+        const sl = ext ? s.period : step;
         s.ago = 0;
         s.sl = sl;
         const d = s.pos & 1 && swing > 0 && sl > 0 ? Math.floor((swing * sl) / (50 * 65536)) : 0;

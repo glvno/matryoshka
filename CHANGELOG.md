@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- **Steps: two more rates and more swing.** A track also runs at 1/2 (eight times slower than 1/16, the Model:Cycles'
+  1/8X and the PERKONS' ÷8) and at 1/64 (four times faster than 1/16), and its swing goes up to 80 % (75 % before), on
+  the card, in the roll and on the FM-1's SEQ page. Cables and macros into rate and swing still cover 1/4 to 1/32 and
+  50 to 75 %, so every patch made before plays exactly as it did.
 - **A new engine, Cassia 1,** after the Casio CZ-1: phase distortion. Each voice has the CZ's two lines: line 1 sweeps
   from a sine to the CZ saw or square, line 2 is the CZ's resonance waveform, a resonant peak that sweeps. Each line
   has its DCW envelope, with one DCA envelope, line mix, line 2 detune, key follow, velocity and vibrato. Three voices on the
