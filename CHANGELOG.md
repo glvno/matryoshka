@@ -100,6 +100,12 @@ factory patches with its next firmware release.
 - The XLs are heavier in the browser. With four notes held, in Chrome on a recent Mac, as a share of real time:
   Spokes 6 XL 61 %, Cassia 1 XL 39 %, Elvira 2 XL 37 %, Expander S XL 23 %, the others 6 % to 20 %. Big XLs share as a
   stored link.
+- **Perun 4 XL on the new modules:** its tracks reach the PERKONS' ÷8 and x4 rates (1/2 and 1/64), the modulation LFO
+  syncs x8 to ÷8 (`mod mult`), and the BBD syncs to 1/32, 1/2T, 1/2D, 1/1T and 1/1D (`sync note`). Its switches (algorithm,
+  mode, VCF, groove, LFO wave, chord) are Selectors: they step from one position to the next and no longer blend two.
+  345 modules before, 268 after; it sounds the same at every switch position. In the browser (Chrome, transport running,
+  four notes held) 19.5 % of real time before, 19.2 % after. Still far over the FM-1's budget (339 % of its CPU, 268 of
+  64 modules), so it stays an XL.
 
 ## 1.4.0 — 2026-10-25
 
