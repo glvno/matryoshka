@@ -44,6 +44,12 @@
 - **Patches saved on the FM-1 before this release still load and sound the same.** The new parameters above take their
   defaults in them, and saving such a patch again stores it in the new format. The editor needs this firmware to sync:
   it tells an FM-1 on an older firmware to update.
+- **Hera 6 XL:** decay and release now reach 12 s, as on the Juno-106 (the ADSR's long times; the patch sounds as before).
+  The range switch and the portamento switch are Selectors: `range` 1 is 16', 2 is 8', 3 is 4'; `portamento` 1 is off,
+  2 is on. On the FM-1's CPU estimate it went from 194 % to 177 % (module instances from 136 to 120 of 128), still too
+  much for the FM-1, so it stays a browser patch.
+- **Oracle V XL:** chord memory is one Selector per voice. `chord 2` to `chord 5` now set each voice's interval above
+  the key, not above the chord note before it. FM-1 CPU estimate: 420 % to 398 %.
 
 ## 1.4.1 — 2026-10-26
 
