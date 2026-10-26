@@ -2,10 +2,16 @@
 
 ## Unreleased
 
+## 1.4.1 — 2026-10-26
+
+Web only: the FM-1 firmware is 1.4.0's. New factory patches now ship in the browser first; the FM-1 gets them as
+factory patches with its next firmware release.
+
 - **A new engine, Cassia 1,** after the Casio CZ-1: phase distortion. Each voice has the CZ's two lines: line 1 sweeps
   from a sine to the CZ saw or square, line 2 is the CZ's resonance waveform, a resonant peak that sweeps. Each line
   has its DCW envelope, with one DCA envelope, line mix, line 2 detune, key follow, velocity and vibrato. Three voices on the
-  FM-1 (75 % of its CPU, estimated).
+  FM-1 (75 % of its CPU, estimated). Its factory patch is in the browser now and comes to the FM-1 with the next firmware
+  release; until then, send it to the FM-1 over the editor link.
 - **Cassia 1 XL** in the browser: all eight CZ waveforms (saw, square, pulse, double sine, saw-pulse; resonance I, II
   and III) and a second waveform on every other cycle, both lines with their own DCW and DCA envelopes of six steps
   (the CZ has eight), the 1+1' line mode, a pitch envelope, ring and noise modulation, vibrato with delay, key follow,
