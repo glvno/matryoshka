@@ -24,11 +24,16 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   env8: { ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [[`l${i + 1}`, `level ${i + 1}`], [`r${i + 1}`, `rate ${i + 1}`]]).flat()), sus: 'sustain step', end: 'end step' },
   seq: { s1: 'step 1', s2: 'step 2', s3: 'step 3', s4: 'step 4', s5: 'step 5', s6: 'step 6', s7: 'step 7', s8: 'step 8' },
   math: { ka: 'a gain', kb: 'b gain', off: 'offset', sub: 'subtract', mul: 'multiply', abs: 'absolute', cmp: 'compare' },
+  pd: { dcw: 'DCW (bend)', wave2: 'wave 2', range: 'resonance range' },
 };
 
 const MODULES: Record<string, string> = {
-  sh: 'Sample & hold', clkdiv: 'Clock divider', shift: 'Frequency shifter', env: 'Level/rate envelope',
+  sh: 'Sample & hold', clkdiv: 'Clock divider', shift: 'Frequency shifter', env: 'Level/rate envelope', pd: 'Phase distortion',
   env8: 'Eight-step envelope',
+};
+
+const PD_CHOICES: Record<string, string> = {
+  'dbl sine': 'double sine', 'reso 1': 'resonance I (ramp)', 'reso 2': 'resonance II (triangle)', 'reso 3': 'resonance III (trapezoid)',
 };
 
 const CHOICES: Record<string, Record<string, string>> = {
@@ -41,6 +46,8 @@ const CHOICES: Record<string, Record<string, string>> = {
   'glide.curve': { exp: 'exponential', lin: 'linear' },
   'seq.dir': { fwd: 'forward', back: 'backward' },
   'quant.scale': { 'pent maj': 'pentatonic major', 'pent min': 'pentatonic minor', whole: 'whole tone' },
+  'pd.wave': PD_CHOICES,
+  'pd.wave2': PD_CHOICES,
 };
 
 /** a port's or parameter's label on a module of `type` */
@@ -65,7 +72,7 @@ const TAGS: Record<string, [string, TagFamily]> = {
   comb: ['COMB', 'fx'], modal: ['MODAL', 'fx'],
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
-  drummap: ['MAP', 'mod'],
+  drummap: ['MAP', 'mod'], pd: ['PD', 'src'],
 };
 
 /** the short tag before a card's title and the family that colours it */

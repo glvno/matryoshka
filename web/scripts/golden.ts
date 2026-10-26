@@ -592,6 +592,37 @@ kit('comb', (add, wire) => {
   wire(osc, 'out', cb, 'in');
   wire(cb, 'out', out, 'l');
 });
+// the phase distortion oscillator: each bend at a fixed dcw, a second waveform on the odd cycles (a bend with a
+// resonance), one note three octaves up where the band limit holds the dcw back
+const pdMix = (oscs: Record<string, number>[], extra?: (add: Parameters<Build>[0], wire: Parameters<Build>[1], kb: number, ids: number[]) => void): Build =>
+  (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const mix = add('mixer', 0, 0, { l1: 0.25, l2: 0.25, l3: 0.25, l4: 0.25 });
+    const out = add('output', 0, 0);
+    const ids = oscs.map((p, i) => {
+      const o = add('pd', 0, 0, { level: 0.9, ...p });
+      wire(kb, 'pitch', o, 'pitch');
+      wire(o, 'out', mix, `in${i + 1}`);
+      return o;
+    });
+    extra?.(add, wire, kb, ids);
+    wire(mix, 'out', out, 'l');
+  };
+kit('pd-bends', pdMix([{ wave: 0, dcw: 1 }, { wave: 1, dcw: 0.7, coarse: -12 }, { wave: 2, dcw: 0.5 }, { wave: 3, dcw: 0.9, coarse: 12 }]));
+kit('pd-alt', pdMix([{ wave: 4, dcw: 0.8 }, { wave: 0, wave2: 3, dcw: 0.6 }, { wave: 1, wave2: 6, dcw: 0.7, range: 2 }, { wave: 2, dcw: 1, coarse: 36 }]));
+// the resonance windows with the dcw from an envelope (its input; the parameter 0), sync from a slower oscillator, phase
+// modulation from a sine
+kit('pd-reso', pdMix([{ wave: 5, dcw: 0, range: 3 }, { wave: 6, dcw: 0, range: 4 }, { wave: 7, dcw: 0.2, range: 2.5, coarse: 12 }, { wave: 0, dcw: 0.4, pm: 1.5 }], (add, wire, kb, ids) => {
+  const env = add('adsr', 0, 0, { a: 0.2, d: 0.6, s: 0.4, r: 0.3 });
+  wire(kb, 'gate', env, 'gate');
+  for (const o of ids.slice(0, 3)) wire(env, 'env', o, 'dcw');
+  const sy = add('osc', 0, 0, { wave: 3, coarse: -19, level: 1 });
+  wire(kb, 'pitch', sy, 'pitch');
+  wire(sy, 'out', ids[1], 'sync');
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 7, level: 1 });
+  wire(kb, 'pitch', mod, 'pitch');
+  wire(mod, 'out', ids[3], 'pm');
+}));
 kit('modal', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const pl = add('pulse', 0, 0, { time: 0.002 });

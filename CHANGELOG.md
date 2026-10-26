@@ -10,6 +10,11 @@
   1/8X and the PERKONS' ÷8) and at 1/64 (four times faster than 1/16), and its swing goes up to 80 % (75 % before), on
   the card, in the roll and on the FM-1's SEQ page. Cables and macros into rate and swing still cover 1/4 to 1/32 and
   50 to 75 %, so every patch made before plays exactly as it did.
+- **A new module, Phase distortion** (PD Osc on the FM-1), after the Casio CZ: all eight CZ waveforms (saw, square,
+  pulse, double sine, saw-pulse; resonance I, II and III) with a DCW amount and input, a second waveform on every other
+  cycle, the resonance's range, `pm` and `sync`. High notes stay clean: the bend is held back as the note rises. One
+  module plays what took Cassia 1 XL about 60 modules per line. On the FM-1 it costs about 2 to 4 % of the CPU per copy,
+  estimated (host-tested only, not yet on a device).
 
 ## 1.4.1 — 2026-10-26
 
