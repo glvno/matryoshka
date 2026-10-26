@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 — 2026-10-25
 
 - **A new engine, Spokes 6,** after the Elektron Model:Cycles: six FM tracks (kick, snare, metal, perc, tone, chord),
   each with pitch, decay, color, shape, sweep and contour, plus volume and a delay send. Its factory patch comes last,
