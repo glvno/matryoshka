@@ -404,24 +404,73 @@ export function delayDivIndex(time: number, tmin: number, tmax: number): number 
 
 const LFO_WAVES = [...WAVES, 'S&H'];
 
+/** the extra note lengths of the synced delay (its `note` row; 0 `time`: the time knob picks from DELAY_DIVS), in quarter
+ * notes = num / den. Appended to, never reordered (a patch stores the index). */
+export const DELAY_NOTES: { name: string; num: number; den: number }[] = [
+  { name: 'time', num: 0, den: 1 },
+  { name: '1/32', num: 1, den: 8 },
+  { name: '1/2T', num: 4, den: 3 },
+  { name: '1/2.', num: 3, den: 1 },
+  { name: '1/1T', num: 8, den: 3 },
+  { name: '1/1.', num: 6, den: 1 },
+];
+/** the delay's `swell`: the feedback times 198 / 95 (0.95 becomes 1.98, the Model:Cycles' most), the loop through delayClip */
+export const DELAY_SWELL_NUM = 198;
+export const DELAY_SWELL_DEN = 95;
+/** the soft clip in the swelling delay's loop: x - 4/27 x^3, flat at +-1 from |x| = 1.5 (engine.c dly_soft the same) */
+export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 : x - (4 / 27) * x * x * x);
+
+/** the free LFO's rate ranges: the `rate` row times LFO_RANGE_K (slow 0.0008..1.6 Hz, fast 0.04..80 Hz) */
+export const LFO_RANGES = ['norm', 'slow', 'fast'];
+export const LFO_RANGE_K = [1, 1 / 25, 2];
+/** the synced LFO's speed against its note length: ÷8 makes a cycle 8 times as long, x8 an eighth as long (a 1/16 triplet
+ * x8 is half a clock tick). The length is multiplied by num / den. Appended to, never reordered. */
+export const LFO_MULTS: { name: string; num: number; den: number }[] = [
+  { name: '/8', num: 8, den: 1 },
+  { name: '/4', num: 4, den: 1 },
+  { name: '/2', num: 2, den: 1 },
+  { name: 'x1', num: 1, den: 1 },
+  { name: 'x2', num: 1, den: 2 },
+  { name: 'x4', num: 1, den: 4 },
+  { name: 'x8', num: 1, den: 8 },
+];
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+/**
+ * A synced LFO's cycle against the 24 ppqn clock (engine.c m_lfo the same): per8 = 8 x the clock ticks per cycle (a whole
+ * number for every length and speed); snap = the ticks between restarts, where a whole number of cycles ends on a tick;
+ * cycles = the cycles per snap; num / den = the length in quarter notes. A length of whole ticks snaps every cycle
+ * (cycles 1), as before the speeds came.
+ */
+export function lfoSyncCycle(div: number, mult: number): { per8: number; snap: number; cycles: number; num: number; den: number } {
+  const d = DELAY_DIVS[Math.max(0, Math.min(DELAY_DIVS.length - 1, div))];
+  const m = LFO_MULTS[Math.max(0, Math.min(LFO_MULTS.length - 1, mult))];
+  const per8 = (192 * d.num * m.num) / (d.den * m.den);
+  const g = gcd(per8, 8);
+  return { per8, snap: per8 / g, cycles: 8 / g, num: d.num * m.num, den: d.den * m.den };
+}
+
 interface LfoState {
   phase: number;
   seed: number;
   held: number;
   clkHi: boolean;
   rstHi: boolean;
-  /** clk edges counted since the last cycle start (synced) */
+  /** clk edges counted since the last snap (synced) */
   ticks: number;
+  /** cycles ended since the last snap to the clock (synced, while the clock runs) */
+  wraps: number;
   /** samples since the last clk edge, and the smoothed distance between edges (0 = none seen yet) */
   since: number;
   interval: number;
 }
 
 /**
- * LFO. `rate` in Hz, or, with `sync`, one cycle per note length `div` (as the delay). The clk input is a 24 ppqn clock (the
- * Main module's clock output): the cycle snaps to every n-th edge (n = 24 x the note length in quarter notes) and runs at the
- * measured clock speed in between. Without a clock (none for half a second) it runs at `bpm`. A rising edge at reset restarts
- * the cycle. S&H draws a new value at every cycle start.
+ * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or, with `sync`, one cycle per note length `div` (as the delay)
+ * at the `mult` speed (÷8 .. x8). The clk input is a 24 ppqn clock (the Main module's clock output): the cycle snaps to every
+ * n-th edge (n = 24 x the note length in quarter notes; for a length that ends between ticks, to the first tick a whole
+ * number of cycles ends on) and runs at the measured clock speed in between. Without a clock (none for half a second) it
+ * runs at `bpm`. A rising edge at reset restarts the cycle. S&H draws a new value at every cycle start. `phase` moves where
+ * a cycle starts on the wave (90 degrees: a sine starts at its peak); `dir` back runs the wave backward (a saw falls).
  */
 const lfo: ModuleImpl<LfoState> = {
   def: {
@@ -436,17 +485,24 @@ const lfo: ModuleImpl<LfoState> = {
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('div', 0, DELAY_DIVS.length - 1, 6, { step: 1, choices: DELAY_DIVS.map((d) => d.name) }),
       param('bpm', 40, 300, 120, { step: 1 }),
+      param('phase', 0, 360, 0, { step: 1, unit: 'deg' }),
+      param('range', 0, LFO_RANGES.length - 1, 0, { step: 1, choices: LFO_RANGES }),
+      param('dir', 0, 1, 0, { step: 1, choices: ['fwd', 'back'], toggle: true }),
+      param('mult', 0, LFO_MULTS.length - 1, 3, { step: 1, choices: LFO_MULTS.map((m) => m.name) }),
     ],
   },
-  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, since: sr, interval: 0 }),
+  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0 }),
   process(c, s) {
     const kind = Math.round(c.p.wave ?? 0);
-    const depth = c.p.depth ?? 1;
+    // backward: the wave read at off - phase, which for these waves is -w(phase - off) (the triangle is the same both ways)
+    const back = (c.p.dir ?? 0) >= 0.5;
+    const depth = (c.p.depth ?? 1) * (back && kind !== 1 ? -1 : 1);
+    const off = ((c.p.phase ?? 0) / 360) * (back ? -1 : 1);
     const sync = (c.p.sync ?? 0) >= 0.5;
-    const { num, den } = DELAY_DIVS[Math.max(0, Math.min(DELAY_DIVS.length - 1, Math.round(c.p.div ?? 6)))];
-    const perCycle = (24 * num) / den; // clock ticks per cycle
-    const dtBpm = ((c.p.bpm ?? 120) * den) / (60 * num * c.sr);
-    const dtFree = (c.p.rate ?? 1) / c.sr;
+    const cyc = lfoSyncCycle(Math.round(c.p.div ?? 6), Math.round(c.p.mult ?? 3));
+    const perCycle = cyc.per8 / 8; // clock ticks per cycle
+    const dtBpm = ((c.p.bpm ?? 120) * cyc.den) / (60 * cyc.num * c.sr);
+    const dtFree = ((c.p.rate ?? 1) * LFO_RANGE_K[Math.max(0, Math.min(LFO_RANGES.length - 1, Math.round(c.p.range ?? 0)))]) / c.sr;
     const newCycle = (): void => {
       // sample & hold: new random value (-1..1) at every cycle start
       s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
@@ -460,8 +516,9 @@ const lfo: ModuleImpl<LfoState> = {
         if (s.since >= c.sr / 2) s.interval = 0;
         else s.interval = s.interval > 0 ? s.interval + (s.since - s.interval) / 8 : s.since;
         s.since = 0;
-        if (sync && ++s.ticks >= perCycle) {
+        if (sync && ++s.ticks >= cyc.snap) {
           s.ticks = 0;
+          s.wraps = 0;
           s.phase = 0;
           newCycle();
         }
@@ -470,6 +527,7 @@ const lfo: ModuleImpl<LfoState> = {
       if (rst && !s.rstHi) {
         s.phase = 0;
         s.ticks = 0;
+        s.wraps = 0;
         newCycle();
       }
       s.rstHi = rst;
@@ -477,13 +535,15 @@ const lfo: ModuleImpl<LfoState> = {
       const dt = !sync ? dtFree : live ? 1 / (perCycle * s.interval) : dtBpm;
       s.phase += dt;
       if (s.phase >= 1) {
-        if (live) s.phase = 1 - 1e-6; // wait for the clock's next cycle start
+        if (live && s.wraps + 1 >= cyc.cycles) s.phase = 1 - 1e-6; // wait for the clock's next snap
         else {
           s.phase -= 1;
+          if (live) s.wraps++;
           newCycle();
         }
       }
-      c.out.out[i] = (kind === 4 ? s.held : wave(kind, s.phase, dt)) * depth;
+      const ph = off ? s.phase + off - Math.floor(s.phase + off) : s.phase;
+      c.out.out[i] = (kind === 4 ? s.held : wave(kind, ph, dt)) * depth;
     }
   },
 };
@@ -534,6 +594,14 @@ const scale: ModuleImpl<null> = {
   },
 };
 
+/** the ADSR's `long`: decay and release times this (decay up to 12 s, release up to 19.2 s; the Juno-106's reach 12 s) */
+export const ADSR_LONG = 2.4;
+/** a decay or release time as `long` plays it, for the card ("12 s") */
+const longTime = (v: number): string => {
+  const t = v * ADSR_LONG;
+  return t < 1 ? `${Math.round(t * 1000)} ms` : `${t < 10 ? t.toFixed(2) : t.toFixed(1)} s`;
+};
+
 interface AdsrState {
   stage: 0 | 1 | 2 | 3 | 4; // idle, attack, decay, sustain, release
   v: number;
@@ -548,17 +616,19 @@ const adsr: ModuleImpl<AdsrState> = {
     outputs: [control('env')],
     params: [
       param('a', 0.001, 5, 0.01, { unit: 's', step: 0.001, log: true }),
-      param('d', 0.001, 5, 0.2, { unit: 's', step: 0.001, log: true }),
+      param('d', 0.001, 5, 0.2, { unit: 's', step: 0.001, log: true, altText: { when: 'long', text: longTime } }),
       param('s', 0, 1, 0.6, { step: 0.01 }),
-      param('r', 0.001, 8, 0.3, { unit: 's', step: 0.001, log: true }),
+      param('r', 0.001, 8, 0.3, { unit: 's', step: 0.001, log: true, altText: { when: 'long', text: longTime } }),
+      param('long', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
     ],
     views: [param('view', 0, 0, 0, { screen: true })],
   },
   init: () => ({ stage: 0, v: 0, prev: 0 }),
   process(c, s) {
     const rate = (t: number) => 1 - Math.exp(-4.6 / Math.max(t * c.sr, 1)); // reaches ~99% in t seconds
-    const ad = rate(c.p.d ?? 0.2);
-    const ar = rate(c.p.r ?? 0.3);
+    const k = (c.p.long ?? 0) >= 0.5 ? ADSR_LONG : 1;
+    const ad = rate((c.p.d ?? 0.2) * k);
+    const ar = rate((c.p.r ?? 0.3) * k);
     const aInc = 1 / Math.max((c.p.a ?? 0.01) * c.sr, 1);
     const sus = c.p.s ?? 0.6;
     for (let i = 0; i < c.n; i++) {
@@ -1143,6 +1213,8 @@ interface DelayState {
  * the delay time is limited to about 260 ms then (800 ms past the FM-1's range). Without ping-pong r is the same as out.
  * The browser's `time` reaches DELAY_TIME_BROWSER (1.6 s), the FM-1's DELAY_TIME_MAX: within that the browser plays as the
  * FM-1 (its line's length bounds a synced note length too); past it the patch is browser only (patchbin.ts browserOnly).
+ * `note` (synced): one of DELAY_NOTES in place of the time knob's length. `swell`: the feedback x 198 / 95 (0.95 reads
+ * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1152,10 +1224,12 @@ const delay: ModuleImpl<DelayState> = {
     outputs: [audio('out'), audio('r')],
     params: [
       param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_TIME_BROWSER, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_TIME_MAX)].name } }),
-      param('fb', 0, 0.95, 0.4, { step: 0.01 }),
+      param('fb', 0, 0.95, 0.4, { step: 0.01, altText: { when: 'swell', text: (v) => ((v * DELAY_SWELL_NUM) / DELAY_SWELL_DEN).toFixed(2) } }),
       param('mix', 0, 1, 0.3, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      param('note', 0, DELAY_NOTES.length - 1, 0, { step: 1, choices: DELAY_NOTES.map((d) => d.name) }),
+      param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
     ],
   },
   init: (sr) => ({ buf: new Float32Array(Math.round((sr * DELAY_LEN_BROWSER) / DEVICE_SR)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
@@ -1185,10 +1259,14 @@ const delay: ModuleImpl<DelayState> = {
     }
     let samples: number;
     if ((c.p.sync ?? 0) >= 0.5) {
-      const div = DELAY_DIVS[delayDivIndex(c.p.time ?? 250, DELAY_TIME_MIN, DELAY_TIME_MAX)];
+      const note = Math.max(0, Math.min(DELAY_NOTES.length - 1, Math.round(c.p.note ?? 0)));
+      const div = note ? DELAY_NOTES[note] : DELAY_DIVS[delayDivIndex(c.p.time ?? 250, DELAY_TIME_MIN, DELAY_TIME_MAX)];
       samples = Math.round((div.num * s.beat) / div.den);
     } else samples = Math.round(((c.p.time ?? 250) / 1000) * c.sr);
-    const fb = c.p.fb ?? 0;
+    const swell = (c.p.swell ?? 0) >= 0.5;
+    const fb = ((c.p.fb ?? 0) * (swell ? DELAY_SWELL_NUM : 1)) / (swell ? DELAY_SWELL_DEN : 1);
+    // swell: the loop through a soft clip (it holds a feedback past 1 at about full level instead of running away)
+    const clip = swell ? delayClip : (x: number): number => x;
     const mix = c.p.mix ?? 0;
     const o = c.out.out;
     const r = c.out.r;
@@ -1196,7 +1274,7 @@ const delay: ModuleImpl<DelayState> = {
       const d = Math.max(1, Math.min(lim - 1, samples));
       for (let i = 0; i < c.n; i++) {
         const e = s.buf[(s.w - d + len) % len];
-        s.buf[s.w] = c.inp.in[i] + e * fb;
+        s.buf[s.w] = clip(c.inp.in[i] + e * fb);
         s.w = (s.w + 1) % len;
         o[i] = c.inp.in[i] * (1 - mix) + e * mix;
         r[i] = o[i];
@@ -1209,8 +1287,8 @@ const delay: ModuleImpl<DelayState> = {
       const rp = (s.w - d + half) % half;
       const ea = s.buf[rp];
       const eb = s.buf[half + rp];
-      s.buf[half + s.w] = ea * fb;
-      s.buf[s.w] = c.inp.in[i] + eb * fb;
+      s.buf[half + s.w] = clip(ea * fb);
+      s.buf[s.w] = clip(c.inp.in[i] + eb * fb);
       s.w = (s.w + 1) % half;
       const dry = c.inp.in[i] * (1 - mix);
       o[i] = dry + ea * mix;
@@ -1226,7 +1304,8 @@ const delay: ModuleImpl<DelayState> = {
  * RV_LINE; the per-line gain g = 10^(-3 L / (T sr)) makes every line decay 60 dB in T = 0.2 x 2^(5 size) seconds
  * (0.2 .. 6.4 s). Input: x -> pre-delay -> two allpasses (g 0.5) -> x RV_GIN into every line; the feedback is
  * f_i = t_i - (sum of t) / 4 (Householder, lossless) with t_i = damped and decayed line output; wet = (sum of the raw
- * line outputs) x RV_GOUT. Lines 0 and 1 are read with a fractional delay that swings by mod x RV_MOD samples at
+ * line outputs) x RV_GOUT. `freeze` holds the tail: every g is 1, no damping, and the input stops entering the lines (the
+ * dry signal still passes). Lines 0 and 1 are read with a fractional delay that swings by mod x RV_MOD samples at
  * RV_MOD_HZ (sine, linear interpolation). Mono, shared per patch like the delay; the firmware keeps the same lines as
  * int16 (Q13) in one 16 KB block per instance.
  */
@@ -1263,6 +1342,7 @@ const reverb: ModuleImpl<ReverbState> = {
       param('mix', 0, 1, 0.3, { step: 0.01 }),
       param('pre', 0, RV_PRE_MS, 0, { unit: 'ms', step: 0.5 }),
       param('mod', 0, 1, 0.3, { step: 0.01 }),
+      param('freeze', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
     ],
   },
   init: (sr) => {
@@ -1279,9 +1359,12 @@ const reverb: ModuleImpl<ReverbState> = {
     };
   },
   process(c, s) {
+    // freeze: an infinite decay (every line's gain 1, no damping) and nothing new into the lines; the tail holds
+    const frz = (c.p.freeze ?? 0) >= 0.5;
     const T = 0.2 * Math.pow(2, 5 * (c.p.size ?? 0.5));
-    const g = s.line.map((b) => Math.pow(2, (-9.965784 * b.length) / (T * c.sr))); // 10^(-3 L / (T sr))
-    const d = (c.p.damp ?? 0.4) * 0.8;
+    const g = s.line.map((b) => (frz ? 1 : Math.pow(2, (-9.965784 * b.length) / (T * c.sr)))); // 10^(-3 L / (T sr))
+    const d = frz ? 0 : (c.p.damp ?? 0.4) * 0.8;
+    const gin = frz ? 0 : RV_GIN;
     const mix = c.p.mix ?? 0.3;
     const dpre = Math.min(s.pre.length - 1, Math.round(((c.p.pre ?? 0) / 1000) * c.sr));
     const depth = (c.p.mod ?? 0) * RV_MOD;
@@ -1306,7 +1389,7 @@ const reverb: ModuleImpl<ReverbState> = {
         if (++s.ai[k] === buf.length) s.ai[k] = 0;
         u = y;
       }
-      u *= RV_GIN;
+      u *= gin;
       // the lines: read (lines 0 and 1 at a modulated fractional delay), damp, decay, mix, write
       let wet = 0, sum = 0;
       for (let k = 0; k < 8; k++) {
@@ -1941,24 +2024,26 @@ const quant: ModuleImpl<null> = {
   },
 };
 
-/** a trigger to a gate of a set length: a rising edge on `trig` raises `out` for `time` (a new edge restarts it) */
+/** a trigger to a gate of a set length: a rising edge on `trig` raises `out` for `time` (a new edge restarts it). `inf`:
+ * the window does not end (the Model:Cycles' INF retrig length); switched off, it ends `time` later. */
 const pulse: ModuleImpl<{ rem: number; t1: number }> = {
   def: {
     type: 'pulse',
     label: 'Pulse',
     inputs: [gate('trig')],
     outputs: [gate('out')],
-    params: [param('time', 0.001, 2, 0.1, { unit: 's', step: 0.001, log: true })],
+    params: [param('time', 0.001, 2, 0.1, { unit: 's', step: 0.001, log: true }), param('inf', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true })],
   },
   init: () => ({ rem: 0, t1: 0 }),
   process(c, s) {
     const len = Math.max(1, Math.round((c.p.time ?? 0.1) * c.sr));
+    const inf = (c.p.inf ?? 0) >= 0.5;
     const { trig } = c.inp;
     for (let i = 0; i < c.n; i++) {
       if (trig[i] >= 0.5 && s.t1 < 0.5) s.rem = len;
       s.t1 = trig[i];
       c.out.out[i] = s.rem > 0 ? 1 : 0;
-      if (s.rem > 0) s.rem--;
+      if (s.rem > 0 && !inf) s.rem--;
     }
   },
 };

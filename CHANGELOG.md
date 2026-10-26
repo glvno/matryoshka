@@ -29,6 +29,17 @@
 - The XLs are heavier in the browser. With four notes held, in Chrome on a recent Mac, as a share of real time:
   Spokes 6 XL 61 %, Cassia 1 XL 39 %, Elvira 2 XL 37 %, Expander S XL 23 %, the others 6 % to 20 %. Big XLs share as a
   stored link.
+- Longer and wider ranges on five modules, on the FM-1 too (#351). Each is a new row whose default plays as before:
+  - **ADSR `long`:** decay and release times 2.4 times as long, up to 12 s and 19.2 s (the Juno-106 reaches 12 s).
+  - **LFO:** `phase` sets where a reset or a clock restart starts the wave (90 degrees starts a sine at its peak, as the
+    DX100). `range` slow divides the rate by 25 (down to 0.0008 Hz), fast doubles it (up to 80 Hz). `dir` back runs
+    the wave backward (a saw falls). `mult` makes a synced cycle up to 8 times longer (/8) or shorter (x8): a 1/16
+    triplet at x8 is a 1/128 triplet, for fast synced retrigs.
+  - **Delay:** `note` gives the synced delay 1/32, 1/2T, 1/2 dotted, 1/1T and 1/1 dotted in place of the time knob's
+    length. `swell` scales the feedback up to 1.98 (the Model:Cycles' 198) with a soft clip in the loop, so the echoes
+    grow to about full level and hold there.
+  - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
+  - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
 
 ## 1.4.0 — 2026-10-25
 

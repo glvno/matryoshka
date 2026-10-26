@@ -132,6 +132,15 @@ lfoKit('lfo-clk', { sync: 1, div: 2 }, (wire, clk, _r, lfo) => wire(clk, 'out', 
 lfoKit('lfo-clk-sh', { sync: 1, div: 4, wave: 4 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
 lfoKit('lfo-bpm', { sync: 1, div: 6, bpm: 140 }, () => undefined);
 lfoKit('lfo-reset', { rate: 5 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
+// #351: the start phase, backward, the rate ranges and the synced speeds (cycles that end between clock ticks)
+lfoKit('lfo-clk-x8', { sync: 1, div: 0, mult: 6, phase: 90 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-clk-x2-dotted', { sync: 1, div: 3, mult: 4, wave: 0, dir: 1, phase: 30 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-clk-div4', { sync: 1, div: 2, mult: 1, wave: 1, phase: 45 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-clk-x8-sh', { sync: 1, div: 1, mult: 6, wave: 4 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-bpm-x4', { sync: 1, div: 6, bpm: 140, mult: 5, wave: 3, dir: 1 }, () => undefined);
+lfoKit('lfo-reset-phase', { rate: 5, wave: 0, phase: 90, dir: 1 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
+lfoKit('lfo-fast-back', { rate: 20, range: 2, dir: 1, phase: 120 }, () => undefined);
+lfoKit('lfo-slow', { rate: 30, range: 1, wave: 0, phase: 90 }, () => undefined);
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });
@@ -717,6 +726,11 @@ const delayKit = (name: string, params: Record<string, number>): void =>
 delayKit('delay-pingpong', { time: 120, pingpong: 1 });
 delayKit('delay-sync', { sync: 1, div: 5, bpm: 133 });
 delayKit('delay-sync-pingpong', { sync: 1, div: 6, bpm: 90, pingpong: 1 });
+// #351: the extra note lengths (1/32; 1/2T, longer than the ping-pong half, is cut to it) and the swelling feedback
+delayKit('delay-sync-note', { sync: 1, note: 1 });
+delayKit('delay-sync-note-pingpong', { sync: 1, note: 2, pingpong: 1 });
+delayKit('delay-swell', { time: 60, fb: 0.8, swell: 1 });
+delayKit('delay-swell-pingpong', { time: 45, fb: 0.95, swell: 1, pingpong: 1 });
 kit('feedback-pm', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 0, pm: 2 });
@@ -865,6 +879,54 @@ kit('reverb', (add, wire) => {
   wire(env, 'env', vca, 'cv');
   wire(vca, 'out', rv, 'in');
   wire(rv, 'out', out, 'l');
+});
+// #351: the reverb frozen once the note has gone in (a slow envelope on p1 turns freeze on)
+kit('reverb-freeze', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+  const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
+  const slow = add('adsr', 0, 0, { a: 0.15, d: 0.1, s: 1, r: 0.05 });
+  const vca = add('vca', 0, 0);
+  const rv = add('reverb', 0, 0, { size: 0.5, damp: 0.5, mix: 0.7 }, { map: { p1: ['freeze'] } });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(kb, 'gate', slow, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', rv, 'in');
+  wire(slow, 'env', rv, 'p1');
+  wire(rv, 'out', out, 'l');
+});
+// #351: Pulse's inf switched on and off by a slow square on p1; the ADSR's long times, its decay also moved by an LFO
+kit('pulse-inf', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const trig = add('lfo', 0, 0, { wave: 3, rate: 9, depth: 1 });
+  const sw = add('lfo', 0, 0, { wave: 3, rate: 2.3, depth: 1 });
+  const pl = add('pulse', 0, 0, { time: 0.02 }, { map: { p1: ['inf'] } });
+  const osc = add('osc', 0, 0, { wave: 1, level: 0.7 });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(trig, 'out', pl, 'trig');
+  wire(sw, 'out', pl, 'p1');
+  wire(osc, 'out', vca, 'in');
+  wire(pl, 'out', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
+kit('adsr-long', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 3, depth: 0.5 });
+  const env = add('adsr', 0, 0, { a: 0.01, d: 0.06, s: 0.3, r: 0.07, long: 1 }, { map: { p1: ['d'] } });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(lfo, 'out', env, 'p1');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
 });
 
 // polyphony: osc -> filter (its own envelope on cv) -> vca (second envelope) per voice, one delay and the output shared
