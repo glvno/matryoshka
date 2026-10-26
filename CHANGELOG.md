@@ -11,13 +11,14 @@
   AR / ADSR switch, level and GAIN, the noise generator's white / pink, and the ring modulator as the Odyssey's (the two
   VCOs' square waves XORed). Main's mod wheel is the PPC's vibrato pad. The voices row is gone (the Odyssey has two).
   On the FM-1 each VCO is one oscillator, so the S/H mixer and the ring take the VCO's wave as the mixer has it, and the
-  ring plays at half a VCO's level. The FM-1 patch takes 50 modules (17 before), 3,658 patch bytes of 3,840 (1,260) and
-  an estimated 39 % of the CPU (30 %); the engine counted on the emulator's instruction model 39 %. Host-tested only, not
-  yet on a device.
+  ring plays at half a VCO's level. Every switch shows its positions by name (AUDIO / LF, SINE / SQUARE ...). The names
+  leave no room for the PATTERN track, so Wanderer has the Arpeggiator alone. The FM-1 patch takes 49 modules (17
+  before), 3,803 patch bytes of 3,840 (1,260) and an estimated 37 % of the CPU (30 %); the engine counted on the
+  emulator's instruction model 36 %. Host-tested only, not yet on a device.
 - **Wanderer XL**, the whole ARP Odyssey in the browser: each VCO has its saw and pulse at once, so the S/H mixer has
   its own VCO 1 saw / square switch and the ring and S/H always take the pulses with their width; coarse is continuous
-  and fine reaches the Odyssey's ±400 cents (the FM-1 version: semitones and ±100 cents). It takes 4,310 patch bytes,
-  over the FM-1's 3,840, so it stays in the browser. Not there: the external audio input (the engines have none), the
+  and fine reaches the Odyssey's ±400 cents (the FM-1 version: semitones and ±100 cents). Its switches show their
+  positions by name. It takes 4,572 patch bytes, over the FM-1's 3,840, so it stays in the browser. Not there: the external audio input (the engines have none), the
   pedal, footswitch and CV / gate / trigger jacks.
 - **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
   same range: turning it moves both (two filters' cutoff, say), and so do a cable or

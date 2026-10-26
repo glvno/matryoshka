@@ -1710,7 +1710,7 @@
    "x": 3920,
    "y": 20,
    "params": {
-    "level": 0.91
+    "level": 0.9
    }
   },
   {
@@ -2904,7 +2904,11 @@
      "module": 11,
      "param": "pos",
      "label": "kybd",
-     "head": "vco 1"
+     "head": "vco 1",
+     "names": [
+      "audio",
+      "lf"
+     ]
     },
     {
      "module": 15,
@@ -2924,7 +2928,11 @@
     {
      "module": 13,
      "param": "pos",
-     "label": "fm 1 src"
+     "label": "fm 1 src",
+     "names": [
+      "sine",
+      "square"
+     ]
     },
     {
      "module": 15,
@@ -2934,7 +2942,11 @@
     {
      "module": 14,
      "param": "pos",
-     "label": "fm 2 src"
+     "label": "fm 2 src",
+     "names": [
+      "s/h",
+      "adsr"
+     ]
     },
     {
      "module": 19,
@@ -2949,7 +2961,11 @@
     {
      "module": 16,
      "param": "pos",
-     "label": "pwm src"
+     "label": "pwm src",
+     "names": [
+      "lfo",
+      "adsr"
+     ]
     },
     {
      "module": 23,
@@ -2966,7 +2982,11 @@
     {
      "module": 26,
      "param": "pos",
-     "label": "sync"
+     "label": "sync",
+     "names": [
+      "off",
+      "on"
+     ]
     },
     {
      "module": 23,
@@ -2976,7 +2996,11 @@
     {
      "module": 21,
      "param": "pos",
-     "label": "fm 1 src"
+     "label": "fm 1 src",
+     "names": [
+      "sine",
+      "s/h mix"
+     ]
     },
     {
      "module": 23,
@@ -2986,7 +3010,11 @@
     {
      "module": 22,
      "param": "pos",
-     "label": "fm 2 src"
+     "label": "fm 2 src",
+     "names": [
+      "s/h",
+      "adsr"
+     ]
     },
     {
      "module": 28,
@@ -3001,7 +3029,11 @@
     {
      "module": 24,
      "param": "pos",
-     "label": "pwm src"
+     "label": "pwm src",
+     "names": [
+      "lfo",
+      "adsr"
+     ]
     },
     {
      "module": 9,
@@ -3018,7 +3050,11 @@
     {
      "module": 31,
      "param": "pos",
-     "label": "s/h 1 src"
+     "label": "s/h 1 src",
+     "names": [
+      "saw",
+      "square"
+     ]
     },
     {
      "module": 33,
@@ -3028,12 +3064,20 @@
     {
      "module": 32,
      "param": "pos",
-     "label": "s/h 2 src"
+     "label": "s/h 2 src",
+     "names": [
+      "noise",
+      "vco 2"
+     ]
     },
     {
      "module": 34,
      "param": "pos",
-     "label": "s/h trig"
+     "label": "s/h trig",
+     "names": [
+      "lfo",
+      "kybd"
+     ]
     },
     {
      "module": 36,
@@ -3055,7 +3099,11 @@
     {
      "module": 39,
      "param": "pos",
-     "label": "vco 1 wave"
+     "label": "vco 1 wave",
+     "names": [
+      "saw",
+      "square"
+     ]
     },
     {
      "module": 42,
@@ -3065,7 +3113,11 @@
     {
      "module": 40,
      "param": "pos",
-     "label": "vco 2 wave"
+     "label": "vco 2 wave",
+     "names": [
+      "saw",
+      "square"
+     ]
     },
     {
      "module": 42,
@@ -3075,12 +3127,20 @@
     {
      "module": 41,
      "param": "pos",
-     "label": "n/r src"
+     "label": "n/r src",
+     "names": [
+      "noise",
+      "ring"
+     ]
     },
     {
      "module": 30,
      "param": "pos",
-     "label": "noise"
+     "label": "noise",
+     "names": [
+      "white",
+      "pink"
+     ]
     },
     {
      "module": 47,
@@ -3102,7 +3162,11 @@
     {
      "module": 43,
      "param": "pos",
-     "label": "mod 1 src"
+     "label": "mod 1 src",
+     "names": [
+      "kybd",
+      "s/h mix"
+     ]
     },
     {
      "module": 46,
@@ -3112,7 +3176,11 @@
     {
      "module": 44,
      "param": "pos",
-     "label": "mod 2 src"
+     "label": "mod 2 src",
+     "names": [
+      "s/h",
+      "lfo"
+     ]
     },
     {
      "module": 46,
@@ -3122,7 +3190,11 @@
     {
      "module": 45,
      "param": "pos",
-     "label": "mod 3 src"
+     "label": "mod 3 src",
+     "names": [
+      "adsr",
+      "ar"
+     ]
     },
     {
      "module": 48,
@@ -3132,7 +3204,11 @@
     {
      "module": 49,
      "param": "pos",
-     "label": "vca eg"
+     "label": "vca eg",
+     "names": [
+      "ar",
+      "adsr"
+     ]
     },
     {
      "module": 50,
@@ -3164,7 +3240,11 @@
     {
      "module": 56,
      "param": "pos",
-     "label": "ar trig"
+     "label": "ar trig",
+     "names": [
+      "kybd",
+      "lfo"
+     ]
     },
     {
      "module": 52,
@@ -3194,12 +3274,20 @@
     {
      "module": 55,
      "param": "pos",
-     "label": "adsr trig"
+     "label": "adsr trig",
+     "names": [
+      "kybd",
+      "lfo"
+     ]
     },
     {
      "module": 54,
      "param": "pos",
-     "label": "repeat"
+     "label": "repeat",
+     "names": [
+      "kybd",
+      "auto"
+     ]
     },
     {
      "module": 57,

@@ -1769,6 +1769,23 @@ asm('Wanderer', 'Voices', (b) => {
   b.param('repeat', rep, 'pos');
   b.param('out', scope, 'view');
 });
+/** the Odyssey's switch positions (#358), on the rows of that label (the nth of them). All 18 fit the FM-1's patch bytes
+ * with the Arpeggiator alone: the PATTERN track does not fit beside them (D-336's fallback) */
+const WANDERER_SWITCHES: [string, number, string[]][] = [
+  ['kybd', 0, ['audio', 'lf']], ['sync', 0, ['off', 'on']], ['fm 1 src', 0, ['sine', 'square']], ['fm 2 src', 0, ['s/h', 'adsr']],
+  ['pwm src', 0, ['lfo', 'adsr']], ['fm 1 src', 1, ['sine', 's/h mix']], ['fm 2 src', 1, ['s/h', 'adsr']], ['pwm src', 1, ['lfo', 'adsr']],
+  ['s/h 2 src', 0, ['noise', 'vco 2']], ['s/h trig', 0, ['lfo', 'kybd']], ['n/r src', 0, ['noise', 'ring']],
+  ['mod 1 src', 0, ['kybd', 's/h mix']], ['mod 2 src', 0, ['s/h', 'lfo']], ['mod 3 src', 0, ['adsr', 'ar']], ['vca eg', 0, ['ar', 'adsr']],
+  ['ar trig', 0, ['kybd', 'lfo']], ['adsr trig', 0, ['kybd', 'lfo']], ['repeat', 0, ['kybd', 'auto']],
+];
+{
+  const d = defs.find((x) => x.name === 'Wanderer')!;
+  for (const [label, nth, names] of WANDERER_SWITCHES) {
+    const r = d.params.filter((q) => q.label === label)[nth];
+    if (!r) throw new Error(`Wanderer: no row ${label}`);
+    r.names = names;
+  }
+}
 
 // Briefcase 3, a monosynth after the EMS VCS3 / Synthi AKS: three oscillators (oscillator 1's sine and saw as two
 // modules on one pitch, oscillator 2's pulse, oscillator 3 an LFO: its slow range), noise and the ring modulator

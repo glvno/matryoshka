@@ -236,7 +236,7 @@ describe('binary patch format', () => {
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
       const devs = deviceSection(make(), p);
       const txt = (t: string): number => 1 + deviceText(t).length;
-      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label), 0), 0)), 0)
+      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label) + (r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k2, n) => k2 + txt(n), 0) : 0), 0), 0)), 0)
         + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
       const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length

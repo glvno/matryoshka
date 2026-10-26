@@ -269,6 +269,21 @@ const built = define('Wanderer XL', (b) => {
   b.param('out', scope, 'view');
 });
 
+// every switch's positions by name (#358), on the rows of that label (the nth of them)
+const SWITCHES: [string, number, string[]][] = [
+  ['kybd', 0, ['audio', 'lf']], ['sync', 0, ['off', 'on']], ['fm 1 src', 0, ['sine', 'square']], ['fm 2 src', 0, ['s/h', 'adsr']],
+  ['pwm src', 0, ['lfo', 'adsr']], ['fm 1 src', 1, ['sine', 's/h mix']], ['fm 2 src', 1, ['s/h', 'adsr']], ['pwm src', 1, ['lfo', 'adsr']],
+  ['s/h 1 src', 0, ['saw', 'square']], ['s/h 2 src', 0, ['noise', 'vco 2']], ['s/h trig', 0, ['lfo', 'kybd']],
+  ['vco 1 wave', 0, ['saw', 'square']], ['vco 2 wave', 0, ['saw', 'square']], ['n/r src', 0, ['noise', 'ring']], ['noise', 0, ['white', 'pink']],
+  ['mod 1 src', 0, ['kybd', 's/h mix']], ['mod 2 src', 0, ['s/h', 'lfo']], ['mod 3 src', 0, ['adsr', 'ar']], ['vca eg', 0, ['ar', 'adsr']],
+  ['ar trig', 0, ['kybd', 'lfo']], ['adsr trig', 0, ['kybd', 'lfo']], ['repeat', 0, ['kybd', 'auto']],
+];
+for (const [label, nth, names] of SWITCHES) {
+  const r = built.def.params.filter((q) => q.label === label)[nth];
+  if (!r) throw new Error(`Wanderer XL: no row ${label}`);
+  r.names = names;
+}
+
 export const xl: Xl = {
   base: 'Wanderer',
   build: (fm1: Patch): Patch => {
