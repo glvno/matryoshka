@@ -76,7 +76,7 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.encoder(ENCODERS.algo, 1);
     ui.encoder(ENCODERS.select, 1);
     ui.encoder(ENCODERS.algo, 1);
-    expect([ui.focusDevice, ui.focusPage]).toEqual([3, 0]); // (the boom kick has one page)
+    expect([ui.focusDevice, ui.focusPage]).toEqual([3, 1]); // (the 808 kit card: its snare drum page)
     ui.encoder(ENCODERS.select, -1);
     ui.encoder(ENCODERS.algo, 1);
     expect([ui.focusDevice, ui.focusPage]).toEqual([2, 1]);
@@ -120,7 +120,7 @@ describe('the FM-1 UI as WebAssembly', () => {
         ui.tick((t += 60));
         pages.push(ui.page);
       }
-    expect(focus).toEqual([[3, 0]]); // SELECT from the home device (2) to the boom kick, one page: ALGO stays
+    expect(focus).toEqual([[3, 0], [3, 1]]); // SELECT from the home device (2) to the 808 kit card, ALGO its next page
     expect(pages).toEqual([0, 0, 0, 8, 8, 0]);              // SEQ opens on its release, HOME goes back
   }, 30_000);
 });

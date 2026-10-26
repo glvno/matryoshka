@@ -340,7 +340,7 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (3 pages: its rows, then REPEAT, #184), boom kick, snare ... Output */
+    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (3 pages: its rows, then REPEAT, #184), the 808 kit card, Output */
     check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
     {                                                       /* the header (the owner's design, 2026-10-24) */
         uint32_t x, gold = 0;
@@ -420,9 +420,9 @@ int main(void)
         check("700 ms later: nothing redrawn (no toast)", lcd_px == 0u);
         lcd_px = 0;
         stop_n = 0;
-        enc(0, 1);                                          /* SELECT: the boom kick, and back */
+        enc(0, 1);                                          /* SELECT: the 808 kit card, and back */
         check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 3 && focus_dev == 3
-              && on_screen("BOOM KICK") && !on_screen("DRUM MAP"));
+              && on_screen("808 KIT") && !on_screen("DRUM MAP"));
         printf("      LCD pixels for one SELECT click: the header %u, the page %u\n", stop_px[0], lcd_px);
         enc(0, -1);
         check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2 && pg_cur_page == 0);
@@ -663,16 +663,20 @@ int main(void)
         }
     }
 
-    if (pv_bin[6] & 2u) {                                   /* Page buttons (#117), spliced into the 808 Kit's binary */
-        check("(the 808 Kit has no macro ranges: the button kinds section goes last)", 0);
-    } else {
+    {                                                       /* Page buttons (#117), spliced into the 808 Kit's binary */
         /* LFO (button 3) a Page button: device 2 (the Drum map) page 0, then its page 1 (SEL is fixed since #197) */
         static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
-        uint32_t at = pv_len, n;
-        if (pv_bin[6] & 128u)                               /* before the Drum maps' row names, last here (format 33): */
+        uint32_t at = pv_len, n, end = pv_len;
+        if (pv_bin[6] & 2u)                                 /* before the macro ranges, always last: u8 count, count x 5 bytes */
+            for (n = 1; n < 256u; n++)
+                if (pv_len >= 1u + n * 5u && pv_bin[pv_len - 1u - n * 5u] == n) {
+                    at = end = pv_len - 1u - n * 5u;
+                    break;
+                }
+        if (pv_bin[6] & 128u)                               /* and before the Drum maps' row names (format 33): */
             for (n = 1; n < 16u; n++)                       /* u8 count, count x (1 + 64) bytes */
-                if (pv_len >= 1u + n * 65u && pv_bin[pv_len - 1u - n * 65u] == n) {
-                    at = pv_len - 1u - n * 65u;
+                if (end >= 1u + n * 65u && pv_bin[end - 1u - n * 65u] == n) {
+                    at = end - 1u - n * 65u;
                     break;
                 }
         memmove(pv_bin + at + sizeof sec, pv_bin + at, pv_len - at);
@@ -683,7 +687,7 @@ int main(void)
         check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(3) == ENG_BTN_PAGE);
         page_show(0);
         trail_n = 0;
-        pages_focus(4, 0);                                  /* (the snare) */
+        pages_focus(4, 0);                                  /* (the Output) */
         loop();
         tap(5);
         check("LFO tapped: its list's first page, a step on the trail, lit", pg_list_btn == 3 && pg_cur_dev == 2 && pg_cur_page == 0
@@ -757,28 +761,6 @@ int main(void)
             check("  only the old and the new row redrawn (not the bar, not the other rows), no blink",
                   all > 0u && all == part && fb_blinked() == 0u && lcd_px <= 2u * 240u * ENV_ROW_H);
         }
-        if (pg_ndev > ENV_ROWS) {                           /* past the last row shown: the list scrolls, the bar stays */
-            uint32_t d1 = pg_cur_dev, all, list, i;
-            for (i = 0; pg_cur_dev < env_first + ENV_ROWS - 1u && i < 16u; i++)
-                enc(0, 1);
-            fb_watch_reset();
-            lcd_px = lcd_xfers = 0;
-            enc(0, 1);
-            all = fb_changed_in(0, 0, 240, 240);
-            list = fb_changed_in(0, ENV_Y0, 240, ENV_Y0 + ENV_ROWS * ENV_ROW_H);
-            printf("      (ENV, SELECT scrolls the list: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
-            check("  SELECT past the window: the list scrolls, only its area redrawn (the bar stays), no blink",
-                  env_first > 0u && all > 0u && all == list && fb_blinked() == 0u);
-            {
-                uint16_t keep[240 * 240];
-                memcpy(keep, fb, sizeof keep);
-                ui_dirty = 2;
-                loop();
-                check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
-            }
-            while (pg_cur_dev != d1)
-                enc(0, -1);
-        }
         {
             const ppage_t *pg = pages_now();
             int32_t v = eng_get_param(pg->mod[0], pg->par[0]);
@@ -821,6 +803,54 @@ int main(void)
         loop();
         check("ENV held + SAVE: the release opens nothing", page == 0);
         later(1500);
+        pages_focus(2, 0);
+        loop();
+    }
+
+    {                                                       /* ENV past the last row shown: the list scrolls, the bar stays.
+                                                             * On the 909 Kit: the 808 Kit has fewer devices than ENV shows */
+        if (load("909 KIT") == 0) {
+            pv_gen++;
+            page = 0;
+            trail_n = 0;
+            loop();
+            pages_focus(2, 0);
+            loop();
+            tap(4);
+            later(2000);
+            check("(the 909 Kit: ENV, more devices than it shows)", page == PAGE_ENV && pg_ndev > ENV_ROWS);
+            {
+                uint32_t d1 = pg_cur_dev, all, list, i;
+                for (i = 0; pg_cur_dev < env_first + ENV_ROWS - 1u && i < 16u; i++)
+                    enc(0, 1);
+                fb_watch_reset();
+                lcd_px = lcd_xfers = 0;
+                enc(0, 1);
+                all = fb_changed_in(0, 0, 240, 240);
+                list = fb_changed_in(0, ENV_Y0, 240, ENV_Y0 + ENV_ROWS * ENV_ROW_H);
+                printf("      (ENV, SELECT scrolls the list: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+                check("  SELECT past the window: the list scrolls, only its area redrawn (the bar stays), no blink",
+                      env_first > 0u && all > 0u && all == list && fb_blinked() == 0u);
+                {
+                    uint16_t keep[240 * 240];
+                    memcpy(keep, fb, sizeof keep);
+                    ui_dirty = 2;
+                    loop();
+                    check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
+                }
+                while (pg_cur_dev != d1)
+                    enc(0, -1);
+            }
+            tap(4);
+            later(1500);
+        } else {
+            check("(the 909 Kit loads)", 0);
+        }
+        load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        loop();
         pages_focus(2, 0);
         loop();
     }
