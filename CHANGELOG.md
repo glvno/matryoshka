@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **Inserted assemblies keep their macro ranges** (#367). Saving and inserting an assembly no longer turns a bounded
+  macro control into ordinary added modulation. Each inserted copy keeps its own ranges. A round-trip test checks
+  both the rendered sound and that editing one copy leaves the others unchanged.
 - **The patch-bytes budget counts the panel buttons' record.** A patch whose ARP, FX or LFO button is not a plain gate
   sends 9 more bytes than the editor counted, so one within 9 bytes of the 3,840 limit passed the budget and was then
   refused by the FM-1. The budget now equals what is sent (Oracle V: 1,290 → 1,299 bytes).

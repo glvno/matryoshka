@@ -1360,6 +1360,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     m.params = { ...m.params, ...clone(src.params) };
     if (src.att) m.att = [...src.att];
     if (src.map) m.map = clone(src.map);
+    if (src.range) m.range = clone(src.range);
     if (src.inputMap) m.inputMap = structuredClone(src.inputMap);
     if (src.bypass) m.bypass = true; // toDef writes the members' own switches
     if (src.type === 'steps') {   // a track's name and notes (a definition from before #133: its pattern and step values, migrated)

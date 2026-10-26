@@ -303,6 +303,35 @@ describe('assemblies', () => {
     expect(p.cables).toEqual([]);
   });
 
+  it('keeps macro ranges and their sound through save and repeated insertion', () => {
+    const { p, osc, env, vca } = voice();
+    const macro = addModule(p, DEFS.macro, 0, 0);
+    macro.params.value = 0.25;
+    const amp = p.modules.find(m => m.id === vca)!;
+    amp.map!.p1 = ['gain'];
+    amp.range = { p1: { gain: [0.1, 0.5] } };
+    connect(p, DEFS, { module: macro.id, port: 'out' }, { module: vca, port: 'p1' });
+    const a = makeAssembly(p, [osc, env, vca, macro.id], 'ranged voice');
+    const def = validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS);
+    const q = emptyPatch();
+    const main = addModule(q, DEFS.fm1, 0, 0);
+    const output = addModule(q, DEFS.output, 0, 0);
+    const b = insertAssembly(q, DEFS, def, 0, 0);
+    for (const r of b.inputs) {
+      if (r.port === 'pitch' || r.port === 'gate')
+        connect(q, DEFS, { module: main.id, port: r.port }, r);
+    }
+    connect(q, DEFS, b.outputs[0], { module: output.id, port: 'l' });
+    const inserted = q.modules.find(m => m.type === 'vca')!;
+    expect(inserted.range).toEqual(amp.range);
+    expect(render(q)).toEqual(render(p));
+    const again = insertAssembly(q, DEFS, def, 600, 0);
+    const second = q.modules.find(m => again.modules.includes(m.id) && m.type === 'vca')!;
+    inserted.range!.p1!.gain[0] = 0.4;
+    expect(second.range).toEqual(amp.range);
+    expect(def.modules.find(m => m.type === 'vca')!.range).toEqual(amp.range);
+  });
+
   it('saves to a definition with local ids and no knob assignments, and inserts it with fresh ids', () => {
     const { p, kb, osc, env, vca, out } = voice();
     const a = makeAssembly(p, [osc, env, vca], 'operator');
