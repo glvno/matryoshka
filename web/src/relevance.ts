@@ -6,6 +6,7 @@
 // parameters it reads is modulated; a cable that reaches one of them leaves the row live. No DOM.
 import type { ModuleInst, ParamDef, Patch } from './patch';
 import { parameterInputs } from './parameter-routing';
+import { PD_RESO } from './modules';
 
 interface Ctx {
   /** a parameter's base value */
@@ -37,6 +38,8 @@ export const RULES: Rule[] = [
   { type: 'osc', params: ['blend'], reads: ['unison', 'stack', 'fb', 'pm'], live: (c) => !fm(c) && (c.p('unison') >= 3 || c.p('stack') === STACK_OCT_FIFTH), why: 'Blend needs three copies or more: unison 3 or more, or the +oct+5th stack.' },
   { type: 'osc', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
   { type: 'wavetable', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
+  { type: 'pd', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
+  { type: 'pd', params: ['range'], reads: ['wave', 'wave2'], live: (c) => Math.round(c.p('wave')) >= PD_RESO || Math.round(c.p('wave2')) > PD_RESO, why: 'Range raises only the resonance waveforms (reso 1, 2, 3).' },
   { type: 'lfo', params: ['rate'], reads: ['sync'], live: (c) => c.p('sync') < 0.5, why: 'While synced the division sets the rate.' },
   { type: 'lfo', params: ['div', 'bpm'], reads: ['sync'], live: (c) => c.p('sync') >= 0.5, why: 'Only used while the LFO is synced.' },
   { type: 'adsr', params: ['d'], reads: ['s'], live: (c) => c.p('s') < 1, why: 'With the sustain at full the decay has nowhere to go.' },

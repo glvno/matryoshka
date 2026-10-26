@@ -169,6 +169,10 @@ During browser playback, sliders and their readouts follow dedicated CV inputs (
 - **Comb filter** is a tuned feedback comb: a delay of one period of the `pitch` (plus `coarse`) with `fb` (positive: a peak at every harmonic; negative: the odd ones, hollow) and `damp`, mixed by `mix`. A flanger with an LFO on `pitch`, a resonator on noise, a Karplus string without the pluck.
 - **Resonator** is a resonator of six partials at the `pitch`: harmonic at `struct` 0, a metal bar at 1; `decay` is the ring time, `damp` shortens the upper partials, `bright` their level. Hit it with a short burst (a pulse, a gated noise, a plucked string) for bells, bars and drums; a steady input makes it howl.
 
+## Phase distortion oscillator
+
+- **Phase distortion** is the Casio CZ's oscillator: a sine read with its phase bent. `wave` picks one of the CZ's eight waveforms: saw, square, pulse, double sine and saw-pulse bend the sine; reso 1, 2 and 3 are the resonance waveforms, a sine restarted every cycle under a falling ramp, a triangle or a trapezoid. `dcw` (the parameter plus the `dcw` input) is how far: 0 is a sine, 1 the full shape, and on a resonance waveform it raises the sine by up to `range` octaves. An envelope into `dcw` is the CZ's DCW envelope, the sweep from soft to bright. `wave2` plays a second waveform on every other cycle, as a CZ line does (two different ones sound an octave down). It has `pm` and `sync` like the Oscillator. High notes stay clean: the bend is held back as the note rises.
+
 ## Granular
 
 - **Granular** records whatever is patched into it (one second, `freeze` stops the recording) and plays grains from it: `density` grains per second or one per rising edge on `trig`, each reading `size` seconds from `position` back in the buffer (0 = the newest audio) scattered by `spray`, at `pitch` semitones, under a smooth window, up to eight at once, mixed with the input by `mix`. A frozen chord into a cloud, a stutter from a square LFO on `trig`, a pitch-shifted echo. One per patch on the FM-1.

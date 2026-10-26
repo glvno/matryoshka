@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 44
+#define N_TYPES 45
 enum {
     T_FM1,
     T_OSC,
@@ -49,6 +49,7 @@ enum {
     T_STEPS,
     T_MACRO,
     T_DRUMMAP,
+    T_PD,
 };
 
 /* fm1: Main */
@@ -791,6 +792,28 @@ enum {
 #define DRUMMAP_CVBASE -1
 #define DRUMMAP_NDATA 1
 
+/* pd: PD Osc */
+#define PD_I_PITCH 0
+#define PD_I_DCW 1
+#define PD_I_PM 2
+#define PD_I_SYNC 3
+#define PD_I_P1 4
+#define PD_I_P2 5
+#define PD_O_OUT 0
+#define PD_P_WAVE 0
+#define PD_P_WAVE2 1
+#define PD_P_DCW 2
+#define PD_P_RANGE 3
+#define PD_P_COARSE 4
+#define PD_P_FINE 5
+#define PD_P_PM 6
+#define PD_P_LEVEL 7
+#define PD_NIN 6
+#define PD_NOUT 1
+#define PD_NPAR 8
+#define PD_CVBASE 4
+#define PD_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -1244,6 +1267,17 @@ static const char *const DRUMMAP_PN[] = {"N1", "N2", "N3", "N4", "N5", "N6", "N7
 static const uint8_t DRUMMAP_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const DRUMMAP_UNIT[] = {"", "", "", "", "", "", "", ""};
 static const char *const *const DRUMMAP_CH[] = {ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6};
+static const char *const PD_INNAMES[] = {"PITCH", "DCW", "PM", "SYNC", "P1", "P2"};
+static const int32_t PD_MIN[] = {0, 0, 0, 0, -3145728, -6553600, 0, 0};
+static const int32_t PD_MAX[] = {458752, 524288, 65536, 327680, 3145728, 6553600, 524288, 65536};
+static const int32_t PD_DEF[] = {0, 0, 32768, 196608, 0, 0, 0, 52429};
+static const int32_t PD_INC[] = {65536, 65536, 655, 3277, 65536, 131072, 5243, 655};
+static const char *const PD_PN[] = {"WAVE", "WAVE2", "DCW", "RANGE", "COARSE", "FINE", "PM", "LEVEL"};
+static const uint8_t PD_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const PD_UNIT[] = {"", "", "", "OCT", "ST", "CT", "", ""};
+static const char *const PD_CH0[] = {"SAW", "SQUARE", "PULSE", "DBL SINE", "SAW-PULSE", "RESO 1", "RESO 2", "RESO 3", 0};
+static const char *const PD_CH1[] = {"OFF", "SAW", "SQUARE", "PULSE", "DBL SINE", "SAW-PULSE", "RESO 1", "RESO 2", "RESO 3", 0};
+static const char *const *const PD_CH[] = {PD_CH0, PD_CH1, 0, 0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */
@@ -1290,4 +1324,5 @@ static const def_t DEFS[N_TYPES] = {
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH},   /* macro */
     {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH},   /* drummap */
+    {PD_NIN, PD_NOUT, PD_NPAR, 2, PD_CVBASE, -1, PD_NDATA, 1, PD_MIN, PD_MAX, PD_DEF, PD_INC, "PD OSC", PD_PN, PD_INNAMES, PD_LOG, PD_UNIT, PD_CH},   /* pd */
 };

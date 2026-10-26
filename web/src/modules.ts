@@ -2541,6 +2541,127 @@ const drummap: ModuleImpl<DrumMapState> = {
   },
 };
 
+/** the phase distortion oscillator's waveforms, after the Casio CZ: five bends of a sine's phase, then the three resonance
+ * windows (falling ramp, triangle, trapezoid) */
+export const PD_WAVES = ['saw', 'square', 'pulse', 'dbl sine', 'saw-pulse', 'reso 1', 'reso 2', 'reso 3'];
+/** the first resonance waveform in PD_WAVES */
+export const PD_RESO = 5;
+/** the five bends at full DCW, as the bent phase minus the ramp u (cycles): from u = x on, b + slope (u - x). The bend is
+ * continuous (so is the wave); slope -1 holds the sine where it is. Saw: half the sine in 7/8 of the cycle, the rest in 1/8;
+ * square: the sine held at its peak and trough; pulse: the whole sine in the first 1/8, then held; double sine: each half
+ * of the cycle bent as the saw; saw-pulse: the saw's bend in the first half, then held. (engine.c PD_X, PD_B, PD_K) */
+export const PD_SEGS: [number, number, number][][] = [
+  [[0, 0, -3 / 7], [0.875, -0.375, 3]],
+  [[0, 0, 1], [0.125, 0.125, -1], [0.375, -0.125, 1], [0.625, 0.125, -1], [0.875, -0.125, 1]],
+  [[0, 0, 7], [0.125, 0.875, -1]],
+  [[0, 0, -3 / 7], [0.4375, -0.1875, 3], [0.5, 0, -3 / 7], [0.9375, -0.1875, 3]],
+  [[0, 0, 1 / 7], [0.4375, 0.0625, 7], [0.5, 0.5, -1]],
+];
+/** each bend's steepest slope: at full DCW the bent phase runs up to 1 + this many times as fast as the note */
+export const PD_STEEP = [3, 1, 7, 3, 7];
+/** the band limit: the fastest part of the bent wave (and the resonance sine) stays below this fraction of the sample rate */
+export const PD_FMAX = 0.25;
+/** the resonance range's top, octaves */
+export const PD_RANGE_MAX = 5;
+
+interface PdState {
+  phase: number;
+  /** the resonance sine's phase, restarted every cycle */
+  r: number;
+  /** the cycle is an odd one (the second waveform's) */
+  odd: number;
+  s1: number;
+}
+
+/**
+ * Phase distortion oscillator, after the Casio CZ. It reads a sine with its phase bent: `dcw` (the parameter plus the
+ * input, 0..1) scales the bend, 0 is a sine and 1 the full shape (PD_SEGS). The resonance waveforms are a sine restarted
+ * every cycle, raised by dcw x `range` octaves, faded by a window (reso 1 a falling ramp, 2 a triangle, 3 a trapezoid).
+ * `wave2` plays a second waveform on every other cycle, as the CZ's line does (so the pattern repeats every two cycles:
+ * an octave down when the two differ). The band limit: dcw is held back as the note rises so the bent sine never runs
+ * faster than PD_FMAX of the sample rate, and the resonance stops rising there; worked out once a block from the block's
+ * first pitch. pm: phase modulation in radians (x `pm`), as the oscillator's plain path (no oversampling). sync: a rising
+ * edge restarts the cycle (and the first waveform).
+ */
+const pd: ModuleImpl<PdState> = {
+  def: {
+    type: 'pd',
+    label: 'PD Osc',
+    inputs: [control('pitch'), control('dcw'), audio('pm'), gate('sync')],
+    outputs: [audio('out')],
+    params: [
+      param('wave', 0, PD_WAVES.length - 1, 0, { step: 1, choices: PD_WAVES }),
+      param('wave2', 0, PD_WAVES.length, 0, { step: 1, choices: ['off', ...PD_WAVES] }),
+      param('dcw', 0, 1, 0.5, { step: 0.01, input: 'dcw', rest: (p, cv) => (p.dcw ?? 0.5) + cv }),
+      param('range', 0, PD_RANGE_MAX, 3, { step: 0.01, unit: 'oct' }),
+      param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
+      param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
+      param('pm', 0, 8, 0, { step: 0.01 }),
+      param('level', 0, 1, 0.8, { step: 0.01 }),
+    ],
+  },
+  init: () => ({ phase: 0, r: 0, odd: 0, s1: 0 }),
+  process(c, s) {
+    const { pitch, dcw, pm, sync } = c.inp;
+    const out = c.out.out;
+    const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
+    const w1 = Math.min(PD_WAVES.length - 1, Math.max(0, Math.round(c.p.wave ?? 0)));
+    const w2p = Math.min(PD_WAVES.length, Math.max(0, Math.round(c.p.wave2 ?? 0)));
+    const alt = w2p > 0 ? 1 : 0;
+    const w2 = alt ? w2p - 1 : w1;
+    const d0 = c.p.dcw ?? 0.5;
+    const range = Math.min(PD_RANGE_MAX, Math.max(0, c.p.range ?? 3));
+    const idx = c.connected.pm ? (c.p.pm ?? 0) : 0;
+    const lvl = c.p.level ?? 1;
+    const K = 1 / (2 * Math.PI);
+    // the band limit from the block's first pitch: room = how many times the note fits below PD_FMAX; a bend's dcw at most
+    // (room - 1) / steepness, a resonance's rise at most log2(room) octaves
+    const room = PD_FMAX / Math.min((C4 * Math.pow(2, pitch[0] + base)) / c.sr, 0.45);
+    const cap = (w: number): number => (w < PD_RESO ? Math.min(1, Math.max(0, (room - 1) / PD_STEEP[w])) : 0);
+    const cap1 = cap(w1), cap2 = cap(w2);
+    // the resonance's ratio 2^(dcw x range): worked out at the block's first and last sample, a straight line between
+    const lim = Math.max(0, Math.log2(room));
+    const ratioAt = (i: number): number => Math.pow(2, Math.min(Math.min(1, Math.max(0, d0 + dcw[i])) * range, lim));
+    const m0 = ratioAt(0), dm = c.n ? (ratioAt(c.n - 1) - m0) / c.n : 0;
+    for (let i = 0; i < c.n; i++) {
+      const dt = Math.min((C4 * Math.pow(2, pitch[i] + base)) / c.sr, 0.45);
+      // a new cycle (or a sync) restarts the resonance sine at the phase the ramp has reached, times its ratio
+      let fresh = false;
+      if (sync[i] >= 0.5 && s.s1 < 0.5) {
+        s.phase = s.odd = 0;
+        fresh = true;
+      }
+      s.s1 = sync[i];
+      s.phase += dt;
+      if (s.phase >= 1) {
+        s.phase -= 1;
+        s.odd ^= 1;
+        fresh = true;
+      }
+      const second = s.odd & alt;
+      const w = second ? w2 : w1;
+      const d = Math.min(1, Math.max(0, d0 + dcw[i]));
+      const pmo = idx ? idx * pm[i] * K : 0;
+      const u = s.phase;
+      let y: number;
+      if (w < PD_RESO) {
+        const seg = PD_SEGS[w];
+        let j = seg.length - 1;
+        while (u < seg[j][0]) j--;
+        const [x, b, k] = seg[j];
+        y = Math.sin(2 * Math.PI * (u + Math.min(d, second ? cap2 : cap1) * (b + k * (u - x)) + pmo));
+      } else {
+        const ratio = m0 + dm * i;
+        s.r = fresh ? u * ratio : s.r + Math.min(dt * ratio, 0.45);
+        s.r -= Math.floor(s.r);
+        const win = w === PD_RESO ? 1 - u : w === PD_RESO + 1 ? 1 - Math.abs(2 * u - 1) : Math.min(4 * u, 2 - 2 * u, 1);
+        y = win * Math.sin(2 * Math.PI * (s.r + pmo));
+      }
+      out[i] = y * lvl;
+    }
+  },
+};
+
 export const SCOPE_MODES = ['time', 'spectrum'];
 /** the shortest / longest window of a Scope (ms) */
 export const SCOPE_TIME_MIN = 1;
@@ -2569,7 +2690,7 @@ const scope: ModuleImpl<null> = {
   process: () => {},
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap];
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

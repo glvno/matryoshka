@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **A new module, Phase distortion** (PD Osc on the FM-1), after the Casio CZ: all eight CZ waveforms (saw, square,
+  pulse, double sine, saw-pulse; resonance I, II and III) with a DCW amount and input, a second waveform on every other
+  cycle, the resonance's range, `pm` and `sync`. High notes stay clean: the bend is held back as the note rises. One
+  module plays what took Cassia 1 XL about 60 modules per line. On the FM-1 it costs about 2 to 4 % of the CPU per copy,
+  estimated (host-tested only, not yet on a device).
 - **A new engine, Cassia 1,** after the Casio CZ-1: phase distortion. Each voice has the CZ's two lines: line 1 sweeps
   from a sine to the CZ saw or square, line 2 is the CZ's resonance waveform, a resonant peak that sweeps. Each line
   has its DCW envelope, with one DCA envelope, line mix, line 2 detune, key follow, velocity and vibrato. Three voices on the

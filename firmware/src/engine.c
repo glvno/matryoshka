@@ -337,6 +337,7 @@ typedef struct {
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
         struct { int16_t *buf; uint32_t w, seed; int32_t lp, s1, err, burst, blen; } str;   /* Q13 line with error feedback */
         struct { uint32_t phase; int32_t s1; } wt;
+        struct { uint32_t phase, r; int32_t s1; uint8_t odd; } pd;   /* r: the resonance sine's phase, restarted every cycle; odd: the second waveform's cycle */
         struct { int16_t *buf; uint32_t w, phase; } ch;
         struct { uint32_t seed; int32_t c1, r1, y, period, since, gleft; int8_t pos, down; } seq;
         /* Steps (modules.ts StepsState): ticks since the step, the step (-1: the next is the first), times round the pattern,
@@ -4019,6 +4020,144 @@ static void m_wavetable(const node_t *nd, inst_t *it, uint32_t n)
     it->s.wt.s1 = s1;
 }
 
+/* The phase distortion oscillator (modules.ts pd, after the Casio CZ): a sine read with its phase bent, dcw (Q16 0..1)
+ * scaling the bend; the resonance waveforms a sine restarted every cycle, raised by dcw x range octaves, faded by a
+ * window; wave2 on every other cycle. The bends at full DCW (modules.ts PD_SEGS: the bent phase minus the ramp u) are
+ * straight between sixteenths of the cycle, so interval k = u >> 28 holds one line: PD_T its start (Q16 cycles), PD_S its
+ * slope (Q16), b = PD_T + PD_S x (u & 2^28 - 1) / 2^32, no search. The band limit (PD_FMAX, a quarter of the rate) once a
+ * block from the first pitch: room = 2^30 / increment, a bend's dcw at most (room - 1) / PD_STEEP, a resonance's rise at
+ * most log2(room) octaves. */
+#define PD_RESO 5
+static const int32_t PD_T[PD_RESO][16] = {
+    {0, -1755, -3511, -5266, -7022, -8777, -10533, -12288, -14043, -15799, -17554, -19310, -21065, -22821, -24576, -12288},
+    {0, 4096, 8192, 4096, 0, -4096, -8192, -4096, 0, 4096, 8192, 4096, 0, -4096, -8192, -4096},
+    {0, 28672, 57344, 53248, 49152, 45056, 40960, 36864, 32768, 28672, 24576, 20480, 16384, 12288, 8192, 4096},
+    {0, -1755, -3511, -5266, -7022, -8777, -10533, -12288, 0, -1755, -3511, -5266, -7022, -8777, -10533, -12288},
+    {0, 585, 1170, 1755, 2341, 2926, 3511, 4096, 32768, 28672, 24576, 20480, 16384, 12288, 8192, 4096}};
+#define PD_A (-28087)                /* -3/7 */
+#define PD_N (-65536)
+static const int32_t PD_S[PD_RESO][16] = {
+    {PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, 196608, 196608},
+    {65536, 65536, PD_N, PD_N, PD_N, PD_N, 65536, 65536, 65536, 65536, PD_N, PD_N, PD_N, PD_N, 65536, 65536},
+    {458752, 458752, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N},
+    {PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, 196608, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, PD_A, 196608},
+    {9362, 9362, 9362, 9362, 9362, 9362, 9362, 458752, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N, PD_N}};
+#undef PD_A
+#undef PD_N
+static const int32_t PD_STEEP[PD_RESO] = {3, 1, 7, 3, 7};
+
+/* the bent phase of a bend wave: dcw (already limited) x the bend, Q32 cycles modulo a cycle */
+HOT uint32_t pd_bent(const int32_t *t, const int32_t *s, uint32_t ph, int32_t d)
+{
+    uint32_t k = ph >> 28;
+    int32_t b = t[k] + mulq(s[k], (int32_t)(ph & 0x0FFFFFFFu), 32);
+    return ph + (uint32_t)d * (uint32_t)b;
+}
+
+static void m_pd(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *pitch = it->in[PD_I_PITCH], *dcw = it->in[PD_I_DCW], *pm = it->in[PD_I_PM], *sync = it->in[PD_I_SYNC];
+    esig_t *out = it->out[PD_O_OUT];
+    int32_t base = EF(it, PD_P_COARSE) / 12 + EF(it, PD_P_FINE) / 1200, lvl = EF(it, PD_P_LEVEL);
+    int32_t w1 = clampi(round_q16(EF(it, PD_P_WAVE)), 0, 7), w2 = clampi(round_q16(EF(it, PD_P_WAVE2)), 0, 8);
+    int32_t alt = w2 > 0, d0 = EF(it, PD_P_DCW), range = clampi(EF(it, PD_P_RANGE), 0, 5 * ENG_ONE);
+    int32_t idx = nd->conn & (1u << PD_I_PM) ? EF(it, PD_P_PM) : 0, s1 = it->s.pd.s1, lastp = 0, room, oct, cap[2], k, m0, dm;
+    int32_t has_sync = (nd->conn >> PD_I_SYNC) & 1u, w = 0, c = 0;
+    uint32_t phase = it->s.pd.phase, r = it->s.pd.r, odd = it->s.pd.odd, dt = 0, inc0, i;
+    const int32_t *ts = PD_T[0], *ss = PD_S[0];
+    w2 = alt ? w2 - 1 : w1;
+    inc0 = exp2_scale(INC_C4, pitch[0] + base);
+    if (inc0 > DT_MAX)
+        inc0 = DT_MAX;
+    oct = (30 << 16) - log2_q16(inc0);                                     /* log2(room), Q16 */
+    room = (int32_t)exp2_q16(oct + (16 << 16));                            /* room, Q16 */
+    for (k = 0; k < 2; k++) {
+        w = k ? w2 : w1;
+        cap[k] = w < PD_RESO ? clampi((room - ENG_ONE) / PD_STEEP[w], 0, ENG_ONE) : 0;   /* (a resonance: the ratio below) */
+    }
+    {   /* the resonance's ratio 2^(dcw x range), Q16: at the block's first and last sample, a straight line between */
+        int32_t lim = oct > 0 ? oct : 0, x0 = mul16(clampi(d0 + dcw[0], 0, ENG_ONE), range), x1 = n ? mul16(clampi(d0 + dcw[n - 1], 0, ENG_ONE), range) : x0;
+        m0 = (int32_t)exp2_q16((x0 < lim ? x0 : lim) + (16 << 16));
+        dm = n ? ((int32_t)exp2_q16((x1 < lim ? x1 : lim) + (16 << 16)) - m0) / (int32_t)n : 0;
+    }
+#define PD_PITCH                                                                        \
+        if (i == 0 || pitch[i] != lastp) {           /* the increment only when the pitch moves */ \
+            lastp = pitch[i];                                                           \
+            dt = exp2_scale(INC_C4, lastp + base);                                      \
+            if (dt > DT_MAX)                                                            \
+                dt = DT_MAX;                                                            \
+        }
+    if (!alt && !has_sync && !idx && w1 < PD_RESO) {                       /* one bend wave, nothing at sync or pm */
+        c = cap[0];
+        ts = PD_T[w1];
+        ss = PD_S[w1];
+        for (i = 0; i < n; i++) {
+            uint32_t old = phase;
+            int32_t d = clampi(d0 + dcw[i], 0, c);
+            PD_PITCH
+            phase += dt;
+            odd ^= phase < old;                                            /* (the cycles still counted: a wave2 set later) */
+            out[i] = mul16(sin_turn(pd_bent(ts, ss, phase, d)), lvl);
+        }
+        n = 0;
+        s1 = 0;
+    }
+    /* the waveform of this cycle (the second one on odd cycles): picked when a cycle starts */
+#define PD_PICK()                                                                       \
+    do {                                                                                \
+        int32_t s_ = (int32_t)odd & alt;                                                \
+        w = s_ ? w2 : w1;                                                               \
+        c = cap[s_];                                                                    \
+        if (w < PD_RESO) {                                                              \
+            ts = PD_T[w];                                                               \
+            ss = PD_S[w];                                                               \
+        }                                                                               \
+    } while (0)
+    PD_PICK();
+    for (i = 0; i < n; i++) {
+        uint32_t old, pmo = 0, fresh = 0;   /* fresh: a new cycle (or a sync): the resonance sine restarts */
+        int32_t d, y;
+        PD_PITCH
+        if (has_sync) {
+            if (sync[i] >= 32768 && s1 < 32768) {
+                phase = odd = 0;
+                fresh = 1;
+            }
+            s1 = sync[i];
+        }
+        old = phase;
+        phase += dt;
+        if (phase < old) {                                                 /* a new cycle */
+            odd ^= 1u;
+            fresh = 1;
+        }
+        if (fresh)
+            PD_PICK();
+        d = clampi(d0 + dcw[i], 0, ENG_ONE);
+        if (idx)
+            pmo = (uint32_t)(((int64_t)mul16(idx, pm[i]) * TURN_PER_RAD) >> 16);
+        if (w < PD_RESO) {
+            y = sin_turn(pd_bent(ts, ss, phase, d < c ? d : c) + pmo);
+        } else {
+            int32_t win, u = (int32_t)(phase >> 16);
+            uint32_t m = (uint32_t)(m0 + dm * (int32_t)i), rinc = (uint32_t)(((uint64_t)dt * m) >> 16);   /* the ratio, Q16 */
+            if (rinc > DT_MAX)
+                rinc = DT_MAX;
+            r = fresh ? (uint32_t)(((uint64_t)phase * m) >> 16) : r + rinc;   /* restarted at the ramp's phase times the ratio */
+            win = w == PD_RESO ? ENG_ONE - u : w == PD_RESO + 1 ? (u < 32768 ? 2 * u : 2 * (ENG_ONE - u))
+                : (4 * u < 2 * (ENG_ONE - u) ? (4 * u < ENG_ONE ? 4 * u : ENG_ONE) : (2 * (ENG_ONE - u) < ENG_ONE ? 2 * (ENG_ONE - u) : ENG_ONE));
+            y = mul16(sin_turn(r + pmo), win);
+        }
+        out[i] = mul16(y, lvl);
+    }
+#undef PD_PICK
+#undef PD_PITCH
+    it->s.pd.phase = phase;
+    it->s.pd.r = r;
+    it->s.pd.odd = (uint8_t)odd;
+    it->s.pd.s1 = has_sync ? s1 : 0;                                       /* (the unconnected sync input reads 0) */
+}
+
 #define CH_BASE_Q16 34695807u       /* 0.012 * ENG_SR samples, Q16 */
 #define CH_SWING_Q16 23130538u      /* 0.008 * ENG_SR samples, Q16 */
 
@@ -4810,6 +4949,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_ENV: m_env(nd, it, n); break;
     case T_STRING: m_string(nd, it, n); break;
     case T_WAVETABLE: m_wavetable(nd, it, n); break;
+    case T_PD: m_pd(nd, it, n); break;
     case T_CHORUS: m_chorus(nd, it, n); break;
     case T_SEQ: m_seq(nd, it, n); break;
     case T_STEPS: m_steps(nd, it, n); break;
