@@ -30,7 +30,7 @@ describe('share links', () => {
         expect(await decodeShare(s.full, DEFS)).toEqual(p);
       } else {
         expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
-        expect(s.length).toBeLessThan(LINK_MAX * 0.6); // an FM-1 version (Meridian 8 with its arpeggiator: about 4100)
+        expect(s.length).toBeLessThan(LINK_MAX * 0.75); // an FM-1 version (Briefcase 3, the VCS3's control columns: about 5800)
       }
       if (s.layout) expect(await decodeShare(s.code, DEFS)).toEqual(p);
       expect(shareCodeOf(s.link)).toBe(s.code);

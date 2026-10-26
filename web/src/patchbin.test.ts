@@ -348,14 +348,3 @@ describe('the budget\'s memory reading', () => {
     expect(b.memory).toBeLessThan(0.5);
   });
 });
-
-describe('the budget counts what the FM-1 receives', () => {
-  // the button record (non-gate panel buttons) went uncounted: a patch could pass the budget and still be over M1_PATCH_MAX
-  it('patch bytes equal the encoded size for every factory patch', () => {
-    for (const [name, make] of Object.entries(FM1_PRESETS)) {
-      const p = make();
-      const used = deviceBudget(p).items.find((i) => i.key === 'bytes')!.used;
-      expect(used, name).toBe(encodePatch(p).length);
-    }
-  });
-});

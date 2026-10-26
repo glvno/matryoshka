@@ -147,9 +147,12 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // Arpeggiator on ARP, bypassed, and a 16-step PATTERN track feeding it: Main's keys -> PATTERN -> the arpeggiator -> the
 // voice. The drum patches get neither. Oracle V and Algo Four ran past the CPU estimate's warning with them (accepted);
 // since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %). Cassia 1, the CZ-1 in full since it
-// replaced its XL (D-348), estimates about 88 % at three voices with them
+// replaced its XL (D-348), estimates about 88 % at three voices with them. Briefcase 3, with the VCS3's control columns
+// (#303), has room for the arpeggiator only (64 of 64 modules) and estimates about 89 % with it
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6'];
-const PAST_WARNING: string[] = ['Cassia 1'];
+const PAST_WARNING: string[] = ['Briefcase 3', 'Cassia 1'];
+/** an Arpeggiator on Main's keys, no PATTERN track: the most that fits (D-336) */
+const ARP_ONLY = ['Briefcase 3'];
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */
 const OWN_PATTERN = ['Scrounge', 'Meridian 8', 'Perun 4'];
@@ -208,7 +211,7 @@ describe('factory patches: an arpeggiator on ARP and a PATTERN track where they 
     expect(PLAYED.filter((name) => deviceBudget(FM1_PRESETS[name]()).cpu.use > CPU_WARN)).toEqual(PAST_WARNING);
   });
 
-  for (const name of PLAYED)
+  for (const name of PLAYED.filter((n) => !ARP_ONLY.includes(n)))
     it(`${name}: Main's keys -> PATTERN (16 steps${OWN_PATTERN.includes(name) ? ', its pattern' : ', empty'}) -> an Arpeggiator, bypassed, on ARP; it fits; ARP off it plays as before, on it arpeggiates`, () => {
       const p = FM1_PRESETS[name]();
       const main = p.modules.find((m) => m.type === 'fm1')!;
@@ -249,6 +252,29 @@ describe('factory patches: an arpeggiator on ARP and a PATTERN track where they 
       // ARP on (a little later): something else, one note at a time
       const arped = play(p, chord, { arpAt: 128 * 4, n: SR / 2 });
       expect(loudest(arped)).toBeGreaterThan(0.01);
+      expect(arped.some((x, i) => Math.abs(x - now[i]) > 1e-4)).toBe(true);
+    });
+
+  for (const name of ARP_ONLY)
+    it(`${name}: Main's keys -> an Arpeggiator, bypassed, on ARP (no PATTERN: it does not fit); ARP off it plays as before, on it arpeggiates`, () => {
+      const p = FM1_PRESETS[name]();
+      const main = p.modules.find((m) => m.type === 'fm1')!;
+      const arps = p.modules.filter((m) => m.type === 'arp');
+      expect(arps).toHaveLength(1);
+      const [arp] = arps;
+      expect(arp.bypass).toBe(true);
+      expect(kindOf(main.panel, 'arp')).toBe('bypass');
+      expect(toggleTargets(p, 'arp')).toEqual([arp.id]);
+      expect(p.modules.some((m) => m.type === 'steps')).toBe(false);
+      expect(p.cables.filter((c) => c.from.module === main.id && c.from.port === 'keys').map((c) => c.to.module)).toEqual([arp.id]);
+      const b = deviceBudget(p);
+      expect(b.fits, JSON.stringify(b.over)).toBe(true);
+      expect(b.cpu.use).toBeLessThanOrEqual(0.9);
+      const chord = [48, 55, 60];
+      const now = play(p, chord, { n: SR / 2 });
+      expect(loudest(now)).toBeGreaterThan(0.01);
+      expect(now).toEqual(play(withoutPlayers(p), chord, { n: SR / 2 }));
+      const arped = play(p, chord, { arpAt: 128 * 4, n: SR / 2 });
       expect(arped.some((x, i) => Math.abs(x - now[i]) > 1e-4)).toBe(true);
     });
 

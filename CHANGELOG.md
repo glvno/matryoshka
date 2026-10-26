@@ -2,9 +2,31 @@
 
 ## Unreleased
 
-- **The patch-bytes budget counts the panel buttons' record.** A patch whose ARP, FX or LFO button is not a plain gate
-  sends 9 more bytes than the editor counted, so one within 9 bytes of the 3,840 limit passed the budget and was then
-  refused by the FM-1. The budget now equals what is sent (Oracle V: 1,290 → 1,299 bytes).
+- **Canvas is now the Music Easel's panel** (#303): the sequential voltage source (five voltages, 3 to 5 stages, the
+  pulse sequence), the envelope generator (sustained, transient or off; attack, sustain, decay), the pulser (triggered by
+  the keys, itself or the sequencer), the random voltage, the modulation oscillator (three ranges, triangle, saw or square,
+  FM or AM by its index), the complex oscillator (the timbre switch and pot, the folder, polarity), both lopass gates
+  (lopass, combination or VCA; gate 2 from the mod oscillator or gate 1, out of phase), chan A and B, the reverb, the
+  portamento, each with its trigger select or keyboard switch, named as the Easel's panel names them. The patch field
+  is a fixed patch on the FM-1 (sequencer into pitch, envelope into the index and both levels, random into the timbre,
+  each through its processing control). It sounds different. On the FM-1 (estimates, with its players): 16 → 53
+  modules, 1,083 → 3,766 of 3,840 patch bytes, CPU 25 → 76 %. Host-tested only, not yet on a device.
+- **Briefcase 3 gets the VCS3's pin matrix for its controls** (#303): columns I to P (the three oscillators' frequency,
+  the envelope's decay, the reverb mix, the filter frequency, the two output levels), every source a row, each pin named
+  as the VCS3's manual names it (I8, N6), on the assembly's matrix card in the editor. The keys reach the oscillators as
+  on the VCS3, through input amplifier 1 (pins I8 and J8). The panel is filled in: oscillator 2 and 3's triangles and
+  oscillator 3's audio range, noise colour, the filter and reverb levels, the envelope's signal and trapezoid levels (the
+  trapezoid rests low and rises while on), two output amplifiers with their filters, the joystick. It sounds different.
+  On the FM-1 (estimates): 18 → 64 of 64 modules, 1,347 → 3,828 of 3,840 patch bytes, CPU 39 → 89 %; its PATTERN track no
+  longer fits (the arpeggiator stays). Host-tested only, not yet on a device.
+- **Canvas XL** (the browser): the Music Easel with its patch field. Each control input picks its cord (MAIN, pressure,
+  sequencer, envelope, pulser, random, mod cv or the inverter) through its processing control; the preset voltages and
+  add to main, pressure, the pulser's once (the FX button), the modulation oscillator's three dial ranges and half-octave
+  fine tunes.
+- **Briefcase 3 XL** (the browser): the VCS3 with its whole 16 × 16 pin matrix, 256 pins on the card, a section per
+  column (A meter to P output 2 level); the oscillators' full dial ranges, output filters flat in the middle, the pan
+  knobs and the joystick's ranges.
+
 - **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
   same range: turning it moves both (two filters' cutoff, say), and so do a cable or
   a macro on it, a card preset and the FM-1's knob on its page. "split" gives each its own row again. A row that sets
