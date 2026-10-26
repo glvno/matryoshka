@@ -16,6 +16,7 @@
     chord memory, the release switch, the Vintage knob.
   - **Hera 6 XL:** the DCO range, PWM mode, key transpose, bender amounts, portamento, assign modes, hold.
   - **Expander S XL:** eight SEMs, each with its own knobs, and the Eight Voice keyboard (split, unison, portamento).
+    An "all SEMs" section at the top moves each control on all eight at once, keeping their differences.
   - **Algo Four XL:** one algorithm row (1 to 8), velocity, level and rate scaling, LFO delay and sync, portamento,
     pitch bend range, key shift.
   - **8 Lire XL:** the FAST switches, touch (velocity and pressure per plate), the rear jacks as inputs.
