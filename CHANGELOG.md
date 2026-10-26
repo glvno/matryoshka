@@ -36,6 +36,11 @@
     grow to about full level and hold there.
   - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
   - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
+- **Spokes 6 XL** gains what the new ranges make possible: swing to 80 % and the 1/8X scale (Steps 1/2), the LFO's
+  start phase, backward speed, slow and fast ranges and synced speeds /8 to x8, synced retrigs down to a 1/128 triplet
+  and an INF retrig length, a delay `note` row and `swell` (feedback to 1.98), and a reverb `freeze`. Each track's machine
+  choice is now one Selector in place of ten comparators: 836 modules become 782, and it takes about 55 % of real time
+  in Chrome instead of 60 % (transport running, 4 s rendered by the engine; on a Mac). The sound as shipped is the same.
 - **FM-1 memory:** each module now takes only the parameter slots its type needs, from a shared store of 1536 values,
   instead of room for the largest module's (18 with Env 8). With all of the above the engine's memory goes from 381,038
   to 383,086 bytes, where room for 18 parameters in every module would have taken about 9 KB more
