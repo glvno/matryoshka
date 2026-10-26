@@ -13,7 +13,7 @@ import { addModule, defaultParams, emptyPatch, fixMatrix, paramUnit, setMorphTar
 import { migrateSteps, overdub, type StepNote } from '../src/track';
 import { makeAssembly } from '../src/assembly';
 import { withParts } from '../src/test-poly';
-import { acid } from '../src/test-patches';
+import { acid, cardRows } from '../src/test-patches';
 
 const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
@@ -55,6 +55,9 @@ const ends: Record<string, number> = {};
 const bins: Record<string, Uint8Array> = {};
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
 tests['acid'] = acid(); // also the protocol test's upload (golden.sh hands acid.m1p to proto_test)
+// one card row for two filters' cutoff and resonance, a Selector's named positions (#357, #358): the page rows' extras in
+// the device pages section (the engine plays it as any patch; panel_test.c turns its rows)
+tests['card-rows'] = cardRows();
 
 /**
  * A kit built the way patches were before poly assemblies (`voices`, the Main module's legato / priority / unit and its

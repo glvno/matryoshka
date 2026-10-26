@@ -624,6 +624,7 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                     else {
                         eng_set_param(mod, par, val);
                         m1_patch_param(mod, par, val);
+                        pages_also(n - 16u, val);       /* (the parameters the row also sets, #357) */
                     }
                     m1_param_now(mod, par, r == 1 ? val << 16 : val);
                     if (!ui_dirty)

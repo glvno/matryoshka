@@ -5,7 +5,7 @@ import { parseValue } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { isPile, tidy, tidyAssembly } from './tidy';
-import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS } from './modules';
+import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { arpLitInverted, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
@@ -117,7 +117,9 @@ import { EXCLUDED_TYPES,
   type PortRef,
   type Rect,
   type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveRef, setColumnBreak, setHeading, setSpan, spanPlan, type SpanBlock,
-  keepParams, pickRows, pickState, keyRange, type PickRow } from './assembly';
+  keepParams, pickRows, pickState, keyRange, type PickRow,
+  mergeRows, rowNames, rowOf, sameRange, setRowNames, splitRow, syncTied, tiedTo, ties, type Ties, ROW_NAMES_MAX, ROW_NAME_MAX,
+  copyRuns, copyStarts, setCopies, COPY_ROWS_MAX, COPIES_MAX } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** a Page button held this long shows its list's first page while it is down (panel.c PAGE_HOLD_MS) */
@@ -693,6 +695,7 @@ export class Editor {
       return false;
     }
     this.report(reconcileAll(this.patch, DEFS).map((l) => `assembly "${l}" is empty and was removed`));
+    syncTied(this.patch, DEFS);   // (what a card row sets follows its first: a cable, a route or a range made on it, #357)
     if (!this.commit(before)) return false;
     this.rebuild();
     this.ev.onStructure(this.patch);
@@ -1042,7 +1045,8 @@ export class Editor {
     const params = rows.map((pd, i) => {
       const r = row(pd.name);
       const named = r >= 0 ? { label: drumRowName(m.names, r), rename: () => this.renameDrumRow(m, r) } : {};
-      return { el: this.paramRow(m, def, pd, { open, ...named }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
+      const pos = m.type === 'select' && pd.name === 'pos' ? { names: rowNames(this.patch, m.id, pd.name) } : {};
+      return { el: this.paramRow(m, def, pd, { open, ...named, ...pos }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
     });
     // a second Main card (from an old patch) keeps its B side under the rows
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
@@ -1603,7 +1607,7 @@ export class Editor {
   /** redraws the value of a parameter row (the synced delay shows its time as a note length) */
   private refreshers = new WeakMap<HTMLElement, () => void>();
 
-  private paramRow(m: ModuleInst, def: ModuleDef, pd: ParamDef, o: { open?: AssemblyInst; label?: string; rename?: () => void } = {}): HTMLElement {
+  private paramRow(m: ModuleInst, def: ModuleDef, pd: ParamDef, o: { open?: AssemblyInst; label?: string; rename?: () => void; names?: string[]; ties?: number } = {}): HTMLElement {
     if (pd.screen) return this.screenRow(m, pd, o);
     const row = document.createElement('div');
     row.className = 'param bar';
@@ -1616,20 +1620,41 @@ export class Editor {
     }, true);
     const name = document.createElement('span');
     name.textContent = o.label ?? longName(def.type, pd.name);
+    // a card row that sets several parameters (#357): ×N on the collapsed card and on its first's member card, → the row's
+    // name on the others
+    const tie = o.open ? rowOf(o.open, m.id, pd.name) : undefined;
+    const tieText = o.ties && o.ties > 1 ? `×${o.ties}` : tie?.also?.length ? (tie.module === m.id && tie.param === pd.name ? `×${tie.also.length + 1}` : `→ ${tie.label}`) : '';
+    if (tieText) {
+      const badge = document.createElement('span');
+      badge.className = 'merged row-tie';
+      badge.textContent = ` ${tieText}`;
+      name.title = tieText.startsWith('×') ? `one row for ${tieText.slice(1)} parameters: turning it moves them all` : `set by the "${tie!.label}" row of the card`;
+      name.append(badge);
+    }
+    // a Selector's position: over the positions in use (1..count, #358), by the names its card row gives them
+    const range = (): ParamDef => rowRange(m.type, m.params, pd);
+    const posNames = o.names && m.type === 'select' && pd.name === 'pos' ? o.names : undefined;
+    const namesNow = (): string[] => Array.from({ length: range().max - pd.min + 1 }, (_, i) => posNames?.[i] || String(i + pd.min));
+    /** a selector's index for a value: the choice, or a named position counted from the first */
+    const off = posNames ? pd.min : 0;
     // an enum parameter is a selector (a detent rail, or a drum when the names do not fit) whose jack stands on the live choice
-    const choice = !!pd.choices && !pd.toggle;
+    const choice = (!!pd.choices && !pd.toggle) || !!posNames;
     // a switch has no thumb either: its jack stands the same way, above the check box
     const jacked = choice || !!pd.toggle;
     if (jacked) row.classList.add('choice');
     if (choice) row.classList.add('sel');
     if (pd.toggle) row.classList.add('toggle');
     let pickBox: HTMLElement | null = null; // pick mode's check box, last in the row (the name stays its first child)
+    let rowTools: HTMLElement[] = []; // pick mode's tools for a row that sets several parameters or names positions
     if (o.open) {
       const a = o.open;
       const on = isPromoted(a, m.id, pd.name);
       row.classList.toggle('shown', on);
       this.promoteClick(row, a, () => (on ? demote(a, m.id, pd.name) : promote(a, m.id, pd.name, this.patch)), { module: m.id, param: pd.name });
-      if (this.picking(a)) pickBox = this.pickBox(on);
+      if (this.picking(a)) {
+        pickBox = this.pickBox(on);
+        rowTools = this.rowTools(a, m, pd);
+      }
     }
     if (o.rename) {
       name.title = 'click to rename';
@@ -1644,6 +1669,7 @@ export class Editor {
     const parts = (v: number, params = m.params): { num: string; unit: string } =>
       pd.altText && params[pd.altText.when] >= 0.5 ? { num: pd.altText.text(v), unit: '' }
         : pd.choices ? { num: choiceName(def.type, pd.name, pd.choices[Math.round(v)] ?? ''), unit: '' }
+        : posNames ? { num: namesNow()[Math.round(v) - off] ?? String(Math.round(v)), unit: '' }
         : formatValue(v, pd.unit, pd.min < 0);
     const fmt = (v: number, params = m.params): string => { const p = parts(v, params); return p.unit ? `${p.num} ${p.unit}` : p.num; };
     let shown = '';
@@ -1670,7 +1696,7 @@ export class Editor {
       input.value = String(Math.round(toUnit(pd, m.params[pd.name]) * 1000));
     } else {
       input.min = String(pd.min);
-      input.max = String(topOf(pd)); // (the browser-only stretch too: the Delay's time to 1.6 s)
+      input.max = String(topOf(range())); // (the browser-only stretch too: the Delay's time to 1.6 s; a Selector's positions in use)
       input.step = String(pd.step ?? (pd.max - pd.min) / 200);
       input.value = String(m.params[pd.name]);
     }
@@ -1682,7 +1708,7 @@ export class Editor {
     let offset = 0;
     const posOf = (v: number): number => (pd.log ? Math.round(toUnit(pd, v) * 1000) : v);
     /** a value's place on the slider, 0..1 (its track spans the browser-only stretch too) */
-    const trackOf = (v: number): number => (pd.log ? toUnit(pd, v) : (v - pd.min) / (topOf(pd) - pd.min));
+    const trackOf = (v: number): number => (pd.log ? toUnit(pd, v) : (v - pd.min) / (topOf(range()) - pd.min));
     const begin = (): void => {
       if (!editing) offset = Number(input.value) - posOf(m.params[pd.name]);
       editing = true;
@@ -1719,6 +1745,7 @@ export class Editor {
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? trackOf(v) : null);
       this.ev.onParam(m.id, pd.name, v);
+      this.mirror(m.id, pd.name, v);
       this.chipsSoon();
       this.syncDials();
       this.relock(m.id);
@@ -1734,6 +1761,7 @@ export class Editor {
         show(v);
         for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // a toggle can change how its siblings show (altText)
         this.ev.onParam(m.id, pd.name, v);
+        this.mirror(m.id, pd.name, v);
         this.chipsSoon();
         this.syncDials();
         this.relock(m.id);
@@ -1749,11 +1777,11 @@ export class Editor {
     // the selector: its jack is the live choice's marker (routes and cables end on it, as on a slider's thumb)
     const sel = choice ? selector({
       label: longName(def.type, pd.name),
-      names: pd.choices!.map((c) => choiceName(def.type, pd.name, c)),
-      get: () => Math.round(m.params[pd.name]),
+      names: posNames ? namesNow() : pd.choices!.map((c) => choiceName(def.type, pd.name, c)),
+      get: () => Math.round(m.params[pd.name]) - off,
       set: (i) => {
         if (row.classList.contains('locked')) return;
-        input.value = String(i);
+        input.value = String(i + off);
         input.dispatchEvent(new Event('input'));
       },
       onPatch: canPatch ? (e, jack) => this.beginDrag(e, jack) : undefined,
@@ -1801,7 +1829,7 @@ export class Editor {
         else if (input.value !== position) input.value = position;
         thumb?.update();
         thumb?.setBase(automated ? trackOf(base) : null);
-        sel?.update(Math.round(v), Math.round(base));
+        sel?.update(Math.round(v) - off, Math.round(base) - off);
         input.title = automated ? `Live: ${text}. Base: ${fmt(base)}. ${gesture || 'Drag to edit the base value.'}` : gesture;
       }
       if (editing) return; // the edit shows its own value (oninput); a report taken before the last move would set it back
@@ -1833,10 +1861,14 @@ export class Editor {
       row.append(line);
     } else if (!choice) row.append(thumb?.element ?? plain?.element ?? input);
     if (plain) this.parameterDisplays.push({ id: m.id, update: () => { if (!editing) plain.update(); } });
-    if (pickBox) row.append(pickBox);
+    if (pickBox) row.append(pickBox, ...rowTools);
     // a parameter with no effect in the module's current setting is dimmed and takes no direct edits (relevance.ts);
     // cables still reach its jack
     const relock = (): void => {
+      if (range() !== pd && !pd.log) {   // a Selector's position: its count moved, so do the range and the names
+        input.max = String(range().max);
+        sel?.setNames(namesNow());
+      }
       const why = lockOf(this.patch, m, def.params, pd.name);
       row.classList.toggle('locked', !!why);
       input.disabled = !!why;
@@ -1852,7 +1884,14 @@ export class Editor {
         if (performance.now() - lastInput < TYPE_GAP_MS * 2 && m.params[pd.name] !== gestureFrom) this.setParam(m.id, pd.name, gestureFrom);
         this.endGesture(); // the double-click's own presses (moved and put back) leave no step
         this.typeValue(row, fmt(m.params[pd.name]), (text) => {
-          let v = parseValue(text, pd, names);
+          if (posNames) {   // a named position: by its name, or its number
+            const i = parseValue(text, { ...pd, choices: namesNow() }, namesNow());
+            if (i === null) return false;
+            this.setParam(m.id, pd.name, i + off);
+            this.endGesture();
+            return true;
+          }
+          let v = parseValue(text, range(), names);
           if (v === null) return false;
           if (pd.log) v = snapTo(pd, v);
           this.setParam(m.id, pd.name, v);
@@ -3479,15 +3518,25 @@ export class Editor {
     // where its groups (FM-1 pages) start: a divider above a group that has no heading or column of its own
     const shown = a.params.map((r) => rowDef(DEFS[mod(r.module).type], r.param)!);
     const kept = a.params.map((_, i) => i).filter((i) => !shown[i].onScreen);
-    const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
+    const copy = copyStarts(a.params);
+    const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], copy: copy[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
+    const tie = this.patch.assemblies?.some((x) => x.params.some((r) => r.also || r.names)) ? ties(this.patch) : null;
+    // copies shown one at a time (the CZ's envelope steps): only the picked one, under a row that picks it
+    const runs = copyRuns(a.params);
+    const runOf = (i: number) => runs.find((x) => i >= x.at && i < x.at + x.rows * x.count);
     const params = arranging ? this.arrangeRows(a, body, spanRoom) : a.params.flatMap((r, i): EdgeParam[] => {
       const m = mod(r.module);
       const def = DEFS[m.type];
       const pd = shown[i];
       if (pd.onScreen) return [];
-      const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open });
-      const above = r.head ? [this.heading(a, i)] : [];
-      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(i) && !r.col && !r.head }];
+      const run = runOf(i);
+      const picked = run ? this.copyPicked(a, run) : 0;
+      if (run && Math.floor((i - run.at) / run.rows) !== picked) return [];
+      const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open, ...this.rowShow(r, tie) });
+      const first = run && i === run.at + picked * run.rows;
+      const lead = first ? a.params[run.at] : r;   // (the run's heading and column break stay above whichever copy shows)
+      const above = [...(lead.head ? [this.heading(a, first ? run.at : i)] : []), ...(first ? [this.copyPicker(a, run)] : [])];
+      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!lead.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(first ? run.at : i) && !lead.col && !lead.head && !run }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
     if (!a.inputs.length && !a.outputs.length && !a.params.length) {
@@ -3550,8 +3599,21 @@ export class Editor {
       const next = now >= room ? 1 : now + 1;
       t.append(this.button(`↔ span ${now}`, next > 1 ? `Reach across ${next} columns` : 'Back to its own column', () => this.layoutChange(() => setSpan(a.params, i, next)), 'sm arr-span'));
     }
+    const c = r.copies;
+    t.append(this.button(c ? `⧉ ${c.count} × ${c.rows}` : '⧉ one at a time',
+      'Copies of the same controls the original edits one at a time (the CZ\'s envelope steps): the card shows one, picked by a step row; the FM-1 gives each a page',
+      () => this.askCopies(a, i), 'sm'));
     for (const b of t.querySelectorAll('button')) b.addEventListener('pointerdown', (e) => e.stopPropagation());
     return t;
+  }
+
+  /** ask how many copies of how many rows start at row `i` (`RowCopies`): "8 x 2 step" = eight steps of two rows */
+  private askCopies(a: AssemblyInst, i: number): void {
+    const c = a.params[i].copies;
+    const v = window.prompt(`Copies shown one at a time from this row: how many copies, of how many rows each, and the picker's name (e.g. "8 x 2 step": eight steps of a rate and a level; up to ${COPIES_MAX} of ${COPY_ROWS_MAX} rows). Empty: plain rows again`, c ? `${c.count} x ${c.rows} ${c.name ?? 'step'}` : '8 x 2 step');
+    if (v === null) return;
+    const m = /^\s*(\d+)\s*[x×*]\s*(\d+)\s*(.*)$/i.exec(v);
+    this.layoutChange(() => setCopies(a.params, i, m ? Number(m[2]) : 0, m ? Number(m[1]) : 0, m?.[3]));
   }
 
   // ---- Arrange mode's rows (D-616): sections (a heading and its rows) cut into pages (one FM-1 page each), read from
@@ -3613,7 +3675,7 @@ export class Editor {
           const m = this.patch.modules.find((x) => x.id === r.module)!;
           const def = DEFS[m.type];
           const pd = rowDef(def, r.param)!;
-          const row = this.paramRow(m, def, pd, { label: orig.label, rename: () => this.renameRef(orig, 'parameter') });
+          const row = this.paramRow(m, def, pd, { label: orig.label, rename: () => this.renameRef(orig, 'parameter'), ...this.rowShow(orig, null) });
           row.classList.add('arr-row');
           const above: HTMLElement[] = [];
           if (firstInCol && ci > 0) above.push(this.columnChip(a, i));
@@ -4100,6 +4162,88 @@ export class Editor {
       m.names = Array.from({ length: DRUM_ROWS }, (_, k) => (k === r ? name : m.names?.[k] ?? ''));
       fixTrack(m);
     });
+  }
+
+  /** the copy each run of copies on a card shows (by `asm:first row`), 0 until another is picked; not saved */
+  private copyAt = new Map<string, number>();
+  private copyPicked(a: AssemblyInst, run: { at: number; count: number }): number {
+    return Math.min(run.count - 1, this.copyAt.get(`${a.id}:${run.at}`) ?? 0);
+  }
+
+  /** the row that picks which copy of a run a collapsed card shows ("step 1 .. 8", the CZ's step select) */
+  private copyPicker(a: AssemblyInst, run: { at: number; count: number; name: string }): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'param bar choice sel copy-pick';
+    const name = document.createElement('span');
+    name.textContent = run.name;
+    const sel = selector({
+      label: `${a.label} ${run.name}`,
+      names: Array.from({ length: run.count }, (_, k) => String(k + 1)),
+      get: () => this.copyPicked(a, run),
+      set: (k) => {
+        this.copyAt.set(`${a.id}:${run.at}`, k);
+        this.rebuild();
+      },
+    });
+    row.title = `Which ${run.name} the rows below set: the card shows one at a time, as the original does (the FM-1: one page each)`;
+    row.append(name, sel.element);
+    return row;
+  }
+
+  /** what a collapsed card's row shows besides its parameter (#357, #358): how many parameters it sets (a nested card's
+   * row's too), its positions' names (its own, else a nested card's row's) */
+  private rowShow(r: ParamRef, tie: Ties | null): { names?: string[]; ties?: number } {
+    const n = tie ? tie.tied(r.module, r.param).length : 1 + (r.also?.length ?? 0);
+    const names = r.names ?? tie?.names(r.module, r.param);
+    return { ...(n > 1 ? { ties: n } : {}), ...(names ? { names } : {}) };
+  }
+
+  /** the names of a Selector's positions on its card row (#358): typed as a list, position 1 first */
+  private nameRow(a: AssemblyInst, r: ParamRef): void {
+    const v = window.prompt(`Names of the positions of "${r.label}", separated by commas, position 1 first (up to ${ROW_NAMES_MAX} of ${ROW_NAME_MAX} characters; none: the numbers)`, r.names?.join(', ') ?? '');
+    if (v === null) return;
+    const i = a.params.indexOf(r);
+    this.change(() => setRowNames(a.params, i, v.split(',')));
+  }
+
+  /**
+   * On a parameter of a card row inside an expanded assembly, in pick mode (#357, #358): a "one row with…" list of the
+   * card's other rows of the same range (the row then sets both), a button to split a row that sets several, and on a
+   * Selector's position row a button for its positions' names.
+   */
+  private rowTools(a: AssemblyInst, m: ModuleInst, pd: ParamDef): HTMLElement[] {
+    const ref = rowOf(a, m.id, pd.name);
+    if (!ref) return [];
+    const out: HTMLElement[] = [];
+    const primary = ref.module === m.id && ref.param === pd.name;
+    const stop = (el: HTMLElement): HTMLElement => {
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      el.addEventListener('click', (e) => e.stopPropagation());
+      return el;
+    };
+    if (primary && ref.also?.length) out.push(stop(this.button('split', `Split "${ref.label}": one row per parameter again`, () => this.change(() => splitRow(a, m.id, pd.name)), 'sm')));
+    if (primary && m.type === 'select' && pd.name === 'pos') out.push(stop(this.button('names', `Name the positions of "${ref.label}": the card, the Selector and the FM-1 show the names`, () => this.nameRow(a, ref), 'sm')));
+    const pdOf = (r: ParamRef): ParamDef | undefined => { const x = this.patch.modules.find((q) => q.id === r.module); return x && x.type !== 'alloc' ? rowDef(DEFS[x.type], r.param) : undefined; };
+    const others = m.type === 'alloc' ? [] : a.params.filter((r) => r !== ref && pdOf(r) && sameRange(pd, pdOf(r)!));
+    if (others.length) {
+      const sel = document.createElement('select');
+      sel.className = 'merge';
+      sel.title = `Let another row of the "${a.label}" card set this parameter too: one row for both (the same range only)`;
+      sel.setAttribute('aria-label', `set ${ref.label} with another row`);
+      sel.append(new Option('one row with…', ''));
+      for (const r of others) sel.append(new Option(r.label, `${r.module}:${r.param}`));
+      sel.onchange = () => {
+        const [mod, ...rest] = sel.value.split(':');
+        if (!mod) return;
+        this.change(() => mergeRows(this.patch, a, DEFS, { module: Number(mod), param: rest.join(':') }, { module: m.id, param: pd.name }));
+      };
+      out.push(stop(sel));
+    }
+    if (!out.length) return [];
+    const box = document.createElement('span');
+    box.className = 'row-tools';
+    box.append(...out);
+    return [box];
   }
 
   private renameRef(r: { label: string }, what: string): void {
@@ -4698,16 +4842,19 @@ export class Editor {
       return box;
     }
     caption.textContent = r.label;
-    // the dial is the row's position in its range (octaves for a log parameter); choices and switches snap
-    const unitOf = (v: number): number => (pd.choices ? (pd.choices.length > 1 ? Math.round(v) / (pd.choices.length - 1) : 0) : toUnit(pd, v));
+    // the dial is the row's position in its range (octaves for a log parameter; a Selector's positions in use, #358);
+    // choices and switches snap
+    const rd = (): ParamDef => rowRange(m.type, m.params, pd);
+    const unitOf = (v: number): number => (pd.choices ? (pd.choices.length > 1 ? Math.round(v) / (pd.choices.length - 1) : 0) : toUnit(rd(), v));
     const valueOf = (u: number): number => {
       if (pd.toggle) return u >= 0.5 ? 1 : 0;
       if (pd.choices) return Math.round(u * (pd.choices.length - 1));
-      const v = fromUnit(pd, u);
+      const v = fromUnit(rd(), u);
       return pd.log ? snapTo(pd, v) : pd.step ? Math.round(v / pd.step) * pd.step : Number(v.toFixed(6));
     };
     const text = (v: number): string => {
       if (pd.choices) return choiceName(m.type, pd.name, pd.choices[Math.round(v)] ?? '');
+      if (r.names?.[Math.round(v) - pd.min]) return r.names[Math.round(v) - pd.min];   // a Selector's named position (#358)
       const f = formatValue(v, pd.unit, pd.min < 0);
       return f.unit ? `${f.num} ${f.unit}` : f.num;
     };
@@ -4804,7 +4951,8 @@ export class Editor {
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) return false;
     const v = m.params[r.param];
-    const w = fromUnit(pd, Math.min(1, Math.max(0, toUnit(pd, v) + notches / 100)));
+    const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358)
+    const w = fromUnit(rd, Math.min(1, Math.max(0, toUnit(rd, v) + notches / 100)));
     this.setParam(m.id, r.param, pd.toggle ? (notches > 0 ? 1 : 0)
       : pd.choices ? Math.min(pd.choices.length - 1, Math.max(0, Math.round(v) + Math.sign(notches)))
       : pd.log ? snapTo(pd, w) : pd.step ? Math.round(w / pd.step) * pd.step : Number(w.toFixed(6)));
@@ -4823,7 +4971,9 @@ export class Editor {
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) return;
     const x = Math.min(1, Math.max(0, u));
-    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : pd.log ? snapTo(pd, fromUnit(pd, x)) : Number(fromUnit(pd, x).toFixed(6));
+    const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358: as the FM-1's pages_set_unit)
+    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : pd.log ? snapTo(pd, fromUnit(pd, x))
+      : rd !== pd ? Math.round(fromUnit(rd, x)) : Number(fromUnit(pd, x).toFixed(6));
     this.setParam(m.id, r.param, v);
   }
 
@@ -5236,7 +5386,12 @@ export class Editor {
         physicalCables.add(key);
       } else
         // a pin has no jack: its cable is drawn to every thumb it feeds, and each drawn cable removes just that route
-        for (const { jack, pd } of thumbs) add(a, jack, kind, () => this.change(() => removeRoute(this.patch, c, pd.name)), `Disconnect from ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}`, false, c);
+        for (const { jack, pd } of thumbs) add(a, jack, kind, () => this.change(() => {
+          // (a card row that sets several parameters, #357: the same output's routes into the others go too)
+          const tied = this.tiedCables(c).flatMap((end) => this.patch.cables.filter((x) => sameEnd(x.from, c.from) && sameEnd(x.to, end)));
+          removeRoute(this.patch, c, pd.name);
+          for (const x of tied) for (const t of tiedTo(this.patch, c.to.module, pd.name).slice(1)) if (t.module === x.to.module) removeRoute(this.patch, x, t.param);
+        }), `Disconnect from ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}`, false, c);
     }
     this.positionCables();
     this.markMuted();
@@ -5249,16 +5404,34 @@ export class Editor {
     this.touch();
     m.params[name] = v;
     this.ev.onParam(id, name, v);
+    this.mirror(id, name, v);
     this.chipsSoon();
     this.syncDials();
     for (const d of this.parameterDisplays) if (d.id === id) d.update(null);
     this.relock(id);
   }
 
-  /** remove a cable; one drawn to a merged jack whose other inputs are hidden takes their cables (from the same output) with it */
+  /** the parameters card rows tie to this one (#357) take its new value too, each clamped to its range (they share it) */
+  private mirror(id: number, name: string, v: number): void {
+    if (!assembliesOf(this.patch).some((a) => a.params.some((r) => r.also))) return;
+    for (const t of tiedTo(this.patch, id, name).slice(1)) {
+      const m = this.patch.modules.find((x) => x.id === t.module);
+      const pd = m && DEFS[m.type].params.find((q) => q.name === t.param);
+      if (!m || !pd) continue;
+      const w = Math.min(topOf(pd), Math.max(pd.min, v));
+      if (m.params[t.param] === w) continue;
+      m.params[t.param] = w;
+      this.ev.onParam(m.id, t.param, w);
+      for (const d of this.parameterDisplays) if (d.id === m.id) d.update(null);
+      this.relock(m.id);
+    }
+  }
+
+  /** remove a cable; one drawn to a merged jack whose other inputs are hidden takes their cables (from the same output) with it,
+   * and one into a parameter a card row ties to others (#357) takes the same output's cables into those */
   private removeCable(c: Cable): void {
     const hidden = hiddenModules(this.patch);
-    const more: Endpoint[] = [];
+    const more: Endpoint[] = [...this.tiedCables(c)];
     for (const a of assembliesOf(this.patch)) {
       const ref = findRef(a, 'in', c.to.module, c.to.port);
       if (!ref?.also?.length) continue;
@@ -5268,6 +5441,27 @@ export class Editor {
       disconnect(this.patch, c);
       for (const t of more) disconnect(this.patch, { from: c.from, to: t });
     });
+  }
+
+  /** the ends of the cables from c's output into the parameters tied to those c feeds (#357: a cable made on a row) */
+  private tiedCables(c: Cable): Endpoint[] {
+    const m = this.patch.modules.find((x) => x.id === c.to.module);
+    if (!m || !assembliesOf(this.patch).some((a) => a.params.some((r) => r.also))) return [];
+    const out: Endpoint[] = [];
+    const feeds = (x: ModuleInst, pd: ParamDef, port: string): boolean => pd.input === port || ((port === 'p1' || port === 'p2') && !!x.map?.[port]?.includes(pd.name));
+    for (const pd of DEFS[m.type].params) {
+      if (!feeds(m, pd, c.to.port)) continue;
+      for (const t of tiedTo(this.patch, m.id, pd.name).slice(1)) {
+        const tm = this.patch.modules.find((x) => x.id === t.module);
+        const tp = tm && DEFS[tm.type].params.find((q) => q.name === t.param);
+        if (!tm || !tp) continue;
+        for (const port of [tp.input, 'p1', 'p2']) {
+          const end = { module: tm.id, port: port ?? '' };
+          if (port && feeds(tm, tp, port) && this.patch.cables.some((x) => sameEnd(x.from, c.from) && sameEnd(x.to, end)) && !out.some((e) => sameEnd(e, end))) out.push(end);
+        }
+      }
+    }
+    return out;
   }
 
   private internalPair(a: HTMLElement, b: HTMLElement): [HTMLElement, HTMLElement] | null {
@@ -5297,6 +5491,8 @@ export class Editor {
       let to: Endpoint;
       if (input.dataset.param) {
         to = connectParameter(this.patch, DEFS, from, Number(input.dataset.mod), input.dataset.param);
+        // a card row that sets several parameters (#357): the cable reaches every one of them
+        for (const t of tiedTo(this.patch, Number(input.dataset.mod), input.dataset.param).slice(1)) connectParameter(this.patch, DEFS, from, t.module, t.param);
       } else {
         to = { module: Number(input.dataset.mod), port: input.dataset.port! };
         if (!this.patch.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to)) && !connect(this.patch, DEFS, from, to))

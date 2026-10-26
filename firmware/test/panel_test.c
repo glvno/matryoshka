@@ -2690,6 +2690,70 @@ int main(void)
     }
     check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
           lcd_line_clobbers == 0u);
+    {   /* a card row that sets several parameters and a Selector's named positions (#357, #358): golden.ts's card-rows kit
+         * (test-patches.ts cardRows): the voice's page is CUTOFF (both filters), RES (both), SOURCE (LOW HIGH RAW, 3 in use),
+         * COUNT */
+        FILE *f = fopen("build/golden/card-rows.m1p", "rb");
+        if (!f)
+            printf("skip  card rows: no build/golden/card-rows.m1p (tools/golden.sh writes it)\n");
+        else {
+            uint32_t d, mf, mg, ms, cut, res;
+            const ppage_t *pg;
+            const uint8_t *x;
+            uint32_t m, j;
+            int32_t v, was;
+            pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+            fclose(f);
+            check("card rows: the patch loads", eng_load(pv_bin, pv_len) == 0);
+            pv_gen++;
+            page = 0;
+            pg_list_btn = -1;
+            pages_ensure();
+            for (d = 0; d < pg_ndev && !(pg_dev[d].nlen == 5u && !memcmp(pg_dev[d].name, "voice", 5)); d++)
+                ;
+            check("card rows: the voice is a device", d < pg_ndev);
+            pages_focus(d, 0);
+            later(50);
+            pg = pages_now();
+            x = row_more(pg, 0);
+            check("card rows: its page has four rows; cutoff, res and source carry extras, count none",
+                  pg->nrows == 4u && x && x[0] == 1u && row_more(pg, 1) && row_more(pg, 2) && !row_more(pg, 3));
+            mf = pg->mod[0];
+            cut = pg->par[0];
+            mg = x[1];
+            res = pg->par[1];
+            ms = pg->mod[2];
+            check("card rows: the cutoff row's other parameter is the second filter's cutoff", x[2] == cut && mg != mf);
+            was = eng_get_param(mg, cut);
+            enc(2u, 4);                                     /* K1 */
+            check("card rows: K1 moves both filters' cutoff, to the same value",
+                  eng_get_param(mf, cut) != was && eng_get_param(mg, cut) == eng_get_param(mf, cut));
+            enc(3u, -3);                                    /* K2 */
+            check("card rows: K2 moves both resonances", eng_get_param(mg, res) == eng_get_param(mf, res) && eng_get_param(mf, res) != 26214);
+            pages_set_unit(0u, 0, &m, &j, &v);              /* MIDI CC 16 at 0: as main.c applies it */
+            eng_set_param(m, j, v);
+            pages_also(0u, v);
+            check("card rows: a MIDI CC on K1 moves both too", eng_get_param(mg, cut) == eng_get_param(mf, cut) && v == eng_get_param(mf, cut));
+            later(50);
+            check("card rows: SOURCE shows position 2 by its name, HIGH", eng_get_param(ms, 0) == (2 << 16) && on_screen("HIGH"));
+            enc(4u, 5);                                     /* K3, five clicks up: three positions in use */
+            later(50);
+            check("card rows: SOURCE stops at the last position in use, RAW", eng_get_param(ms, 0) == (3 << 16) && on_screen("RAW") && pages_cc(2u) == 127u);
+            enc(4u, -5);
+            later(50);
+            check("card rows: and at the first, LOW", eng_get_param(ms, 0) == (1 << 16) && on_screen("LOW") && pages_cc(2u) == 0u);
+            pages_set_unit(2u, 65536, &m, &j, &v);          /* MIDI CC 18 at 127: the last position in use */
+            check("card rows: CC 18 at its top is position 3", m == ms && v == (3 << 16));
+            enc(5u, 2);                                     /* K4: COUNT 3 -> 5 */
+            enc(4u, 9);
+            later(50);
+            check("card rows: with five in use SOURCE reaches 5, by its number (it has no name)",
+                  eng_get_param(ms, 0) == (5 << 16) && !on_screen("RAW") && !on_screen("HIGH"));
+            enc(4u, -3);                                    /* back to HIGH: PANEL_SNAP_ROWS=file.ppm shows the page */
+            later(50);
+            snap_to(getenv("PANEL_SNAP_ROWS"));
+        }
+    }
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

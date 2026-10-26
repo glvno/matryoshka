@@ -12,7 +12,7 @@
 // section's second group). Groups fill in fours; a row's `group` flag (Arrange's "new group") or a column break ends one
 // early. An envelope's shape on the card (adsr / env `view`) is drawn above the page that holds its rows. Pure model code: the editor, the binary
 // format (patchbin.ts) and the tests use it.
-import { allModules, assembliesOf, parentOf, type AssemblyInst } from './assembly';
+import { allModules, assembliesOf, copyStarts, parentOf, ties, type AssemblyInst, type RowTarget } from './assembly';
 import { longName, moduleName } from './labels';
 import { EDITOR_ONLY, rowDef, type ModuleDef, type ModuleInst, type Patch } from './patch';
 
@@ -27,7 +27,15 @@ export const ENVELOPES = new Set(['adsr', 'env', 'env8']);
 /** how far right a card may start and still be in the column of the card above it (half a card, as tidy.ts reads it) */
 const COLUMN_SLACK = 150;
 
-export interface PageRow { module: number; param: string; label: string }
+export interface PageRow {
+  module: number;
+  param: string;
+  label: string;
+  /** the further parameters the row sets (#357: its card row's, and those tied to it through nested cards) */
+  also?: RowTarget[];
+  /** its positions' names (#358: a Selector's, from its card row) */
+  names?: string[];
+}
 export interface Page {
   /** the heading, or the device's name for rows before the first heading */
   name: string;
@@ -80,8 +88,9 @@ export function pageLabel(dev: Device, i: number): string {
   return own && own !== dev.name ? own : fallback;
 }
 
-/** a row of a card as grouping sees it: its layout flags, and whether it takes a knob (a display does not) */
-export interface GroupItem { head?: string; group?: true; pin?: true; col?: true; knob: boolean }
+/** a row of a card as grouping sees it: its layout flags, and whether it takes a knob (a display does not); `copy`: a copy
+ * of a run shown one at a time starts here, or the run ended (assembly.ts copyStarts) */
+export interface GroupItem { head?: string; group?: true; pin?: true; col?: true; copy?: boolean; knob: boolean }
 
 /**
  * Where a card's groups start (true at the first item of each): at the first item, a heading, a `group` or `pin` flag, a column
@@ -91,7 +100,7 @@ export interface GroupItem { head?: string; group?: true; pin?: true; col?: true
 export function groupStarts(items: GroupItem[]): boolean[] {
   let n = 0;
   return items.map((it, i) => {
-    const start = i === 0 || !!it.head || !!it.group || !!it.pin || !!it.col || n >= PAGE_ROWS;
+    const start = i === 0 || !!it.head || !!it.group || !!it.pin || !!it.col || !!it.copy || n >= PAGE_ROWS;
     if (start) n = 0;
     if (it.knob) n++;
     return start;
@@ -155,14 +164,24 @@ function moduleSections(type: string, def: ModuleDef, id: number): Section[] {
 
 /** an assembly's sections: its promoted parameters, cut at the headings, in groups */
 function assemblySections(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Section[] {
-  const items = a.params.flatMap((r) => {
+  const copy = copyStarts(a.params);
+  const items = a.params.flatMap((r, i) => {
     const m = p.modules.find((x) => x.id === r.module);
     const def = m && defs[m.type];
     const pd = def && rowDef(def, r.param);
     if (!m || !pd || pd.onScreen) return [];
-    return [{ head: r.head, group: r.group, pin: r.pin, col: r.col, knob: !pd.screen, r, screen: !!pd.screen }];
+    return [{ head: r.head, group: r.group, pin: r.pin, col: r.col, copy: copy[i], knob: !pd.screen, r, screen: !!pd.screen }];
   });
-  return sectionsOf(a.label, items, (it) => (it.screen ? it.r.module : { module: it.r.module, param: it.r.param, label: it.r.label }));
+  const tie = items.some((it) => it.r.also || it.r.names) || assembliesOf(p).some((x) => x.params.some((r) => r.also || r.names)) ? ties(p) : null;
+  return sectionsOf(a.label, items, (it) => {
+    if (it.screen) return it.r.module;
+    const row: PageRow = { module: it.r.module, param: it.r.param, label: it.r.label };
+    const also = tie?.tied(row.module, row.param).slice(1) ?? [];
+    const names = it.r.names ?? tie?.names(row.module, row.param);
+    if (also.length) row.also = also;
+    if (names) row.names = names;
+    return row;
+  });
 }
 
 /** a page's title as the FM-1's page chip shows it in focus (pages_ui.c pages_chips): the heading in capitals, cut to
