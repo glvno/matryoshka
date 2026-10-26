@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **Wanderer is now duophonic, as the ARP Odyssey is** (#303). The lowest key held plays VCO 1 and the highest plays
+  VCO 2 (one key plays both), into one filter, one VCA, one ADSR and one AR; before, it was a two-voice polysynth with
+  both VCOs, a filter and both envelopes per voice. New, after the Odyssey's panel: portamento, VCO 1's AUDIO / LF
+  switch, both VCOs' FM (two depths each, each with its source switch), PWM (LFO / ADSR), sync, the S/H mixer (two
+  levels and the noise / VCO 2 switch), the S/H trigger (LFO / keyboard) and OUTPUT LAG, the LFO's sine and square, the
+  envelopes' LFO repeat (KYBD REPEAT / AUTO REPEAT), the VCF's three modulation sliders with their switches, the VCA's
+  AR / ADSR switch, level and GAIN, the noise generator's white / pink, and the ring modulator as the Odyssey's (the two
+  VCOs' square waves XORed). Main's mod wheel is the PPC's vibrato pad. The voices row is gone (the Odyssey has two).
+  On the FM-1 each VCO is one oscillator, so the S/H mixer and the ring take the VCO's wave as the mixer has it, and the
+  ring plays at half a VCO's level. The FM-1 patch takes 50 modules (17 before), 3,658 patch bytes of 3,840 (1,260) and
+  an estimated 39 % of the CPU (30 %); the engine counted on the emulator's instruction model 39 %. Host-tested only, not
+  yet on a device.
+- **Wanderer XL**, the whole ARP Odyssey in the browser: each VCO has its saw and pulse at once, so the S/H mixer has
+  its own VCO 1 saw / square switch and the ring and S/H always take the pulses with their width; coarse is continuous
+  and fine reaches the Odyssey's ±400 cents (the FM-1 version: semitones and ±100 cents). It takes 4,310 patch bytes,
+  over the FM-1's 3,840, so it stays in the browser. Not there: the external audio input (the engines have none), the
+  pedal, footswitch and CV / gate / trigger jacks.
 - **Cassia 1 is now the whole Casio CZ-1, on the FM-1 too.** Cassia 1 XL rebuilt on the PD Osc and Env 8 fits the FM-1,
   so it takes Cassia 1's slot (24) and name, and the XL is gone ([D-348](docs/ledger/patches-and-presets.md#D-348)). Both lines play all eight waveforms with a
   second one on every other cycle; line select 1, 2, 1 + 2 and 1 + 1'; ring and noise modulation on line 2; DCO, DCW and
