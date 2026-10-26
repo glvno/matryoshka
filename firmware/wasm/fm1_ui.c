@@ -112,29 +112,15 @@ static void preset_step(int32_t d) { js_preset(d); }
 static void save_state(void) { js_save(); }
 /* a poly group's setting from a device page: into the group record of the running patch, as main.c does on the device
  * (the page hears of it through m1_param_now and sends the edited patch again) */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+#include "../src/poly_edit.h"
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
 {
-    int g = eng_module_group(mod);
-    uint32_t at;
-    if (g <= 0 || !pv_len)
-        return;
-    at = 8u + ENG_GROUP_REC * (uint32_t)(g - 1);
-    if (at + 4u > pv_len)
-        return;
-    if (field == 0u)
-        pv_bin[at] = (uint8_t)clampi(v, 1, ENG_MAX_PARTS);
-    else if (field == 1u)
-        pv_bin[at + 1u] = (uint8_t)clampi(v, 0, 2);
-    else if (field == 2u)
-        pv_bin[at + 2u] = (uint8_t)((pv_bin[at + 2u] & 0x80u) | (uint32_t)clampi(v, 0, 2));
-    else if (field == 3u)
-        pv_bin[at + 3u] = (uint8_t)clampi(v, 0, 2);
-    else
-        pv_bin[at + 2u] = (uint8_t)((pv_bin[at + 2u] & 0x7Fu) | (v ? 0x80u : 0u));
-    if (field == 0u || field == 4u)
-        (void)eng_load(pv_bin, pv_len);
-    else
-        (void)eng_poly_set((uint32_t)g - 1u, field, (uint32_t)v);
+    if (poly_patch_set(pv_bin, pv_len, mod, field, v, eng_load)) {
+        ui_msg("NO ROOM", 1500);
+        ui_dirty = 2;
+        return -1;
+    }
+    return 0;
 }
 
 static char name_buf[24];                     /* the patch name the page writes (fm1w_name), NUL-terminated */

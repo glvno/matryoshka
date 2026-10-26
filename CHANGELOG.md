@@ -16,15 +16,17 @@
   FM-1). The position row now offers only the positions in use (1 to its count), on the card, the knobs and the FM-1.
 - **Controls the original edits one at a time can show one at a time** (Arrange mode's "⧉ one at a time"): the Casio
   CZ's eight envelope steps become one rate and one level under a "step" row, and the FM-1 gives each step a page.
-- **Cassia 1 is now the whole Casio CZ-1, on the FM-1 too.** Cassia 1 XL rebuilt on the PD Osc and Env 8 fits the FM-1,
-  so it takes Cassia 1's slot (24) and name, and the XL is gone ([D-348](docs/ledger/patches-and-presets.md#D-348)). Both lines play all eight waveforms with a
-  second one on every other cycle; line select 1, 2, 1 + 2 and 1 + 1'; ring and noise modulation on line 2; DCO, DCW and
-  DCA envelopes of eight steps with a sustain and an end step, as on the CZ (the six-step stand-in is gone); key follow,
-  velocity, aftertouch, vibrato with a delay. The XL took 230 modules, 10,809 patch bytes and an estimated 736 % of the
-  FM-1's CPU at four voices; Cassia 1 now takes 46 modules, 3,724 bytes of 3,840 and about 88 % at three voices (the
-  FM-1's old Cassia 1: 21 modules, 1,618 bytes, 74 %). In the browser four voices render in about 8 % of real time
-  (the XL took about 40 %), on a recent Mac. The envelope rows are short (r1, l1 .. r8, l8, sus, end) to fit the
-  patch bytes. Its presets gain Pluck (the variations now reach Env 8). Host-tested only, not yet on a device.
+- **Cassia 1 uses the PD Osc and Env 8 modules and plays two voices on the FM-1.** Its two lines have the eight
+  CZ waveforms, ring and noise modulation, and eight-step envelopes. It is an approximation of the CZ-1: the lines
+  share a pitch envelope, and portamento, chorus and several per-line controls are missing. It takes 46 modules and
+  3,733 of 3,840 patch bytes. Reducing three voices to two lowers the CPU estimate from 88 % to 62 %. On the test rig
+  running the card-rows firmware (CI run 40406160864), its measured peak over rest and 1 / 4 / 8 held notes fell from
+  2,920 to 2,219 microseconds (100.6 % to 76.5 % of a block). The three-voice run shed voices; the two-voice run did not
+  mute. Its presets include Pluck.
+- **Turning VOICES past available memory keeps the last playable setting.** Cassia's fifth voice could exhaust the
+  engine's memory, leaving the row at −1 and the instrument silent. A failed edit now restores the patch, shows
+  NO ROOM, and does not send the rejected value to the editor. Reloads pause audio processing while rebuilding the
+  engine. Checked with the host panel test; firmware and device checks pending.
 - **Env 8, an eight-step envelope** after the Casio CZ's: eight levels and rates, a sustain step that holds while the
   key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off it
   runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then

@@ -397,13 +397,12 @@ after.push(() => {
   return p;
 });
 
-// Cassia 1 (after the Casio CZ-1, in full since the PD Osc and Env 8: it was Cassia 1 XL, D-348): the factory assembly at
-// three voices (four read about 114 % of the CPU estimate, three about 88 %), Main's aftertouch into its `at`, and the
+// Cassia 1 (after the Casio CZ-1): two voices on the FM-1 (owner, 2026-10-26), Main's aftertouch into its `at`, and the
 // players (D-336) as every melodic patch
 after.push(() => {
   const x = around('Cassia 1', 'Cassia 1');
   plugIn(x.p, x.main.id, 'at', x.a, 'at');
-  x.set('voices', 3);
+  x.set('voices', 2);
   level(x.p, { chord: true });
   return players(validatePatch(structuredClone(x.p), DEFS));
 });

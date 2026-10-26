@@ -556,30 +556,29 @@ static uint8_t midi_clk_seen;
 
 /* a poly group's setting from a device page (pages_ui.c poly rows): voices, assign, legato, priority, unison, into the
  * group record of the running patch; the voices and unison are read at load: the engine loads the patch again */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+#include "poly_edit.h"
+/* Keep the audio interrupt out of eng_load, including the retry after a rejected edit. */
+static int poly_reload(const uint8_t *bin, uint32_t len)
 {
-    int g = eng_module_group(mod);
-    uint32_t at;
-    if (g <= 0 || !m1_cur_len)
-        return;
-    at = 8u + ENG_GROUP_REC * (uint32_t)(g - 1);
-    if (at + 4u > m1_cur_len)
-        return;
-    if (field == 0u)
-        m1_cur[at] = (uint8_t)clampi(v, 1, ENG_MAX_PARTS);
-    else if (field == 1u)
-        m1_cur[at + 1u] = (uint8_t)clampi(v, 0, 2);
-    else if (field == 2u)
-        m1_cur[at + 2u] = (uint8_t)((m1_cur[at + 2u] & 0x80u) | (uint32_t)clampi(v, 0, 2));
-    else if (field == 3u)
-        m1_cur[at + 3u] = (uint8_t)clampi(v, 0, 2);
-    else
-        m1_cur[at + 2u] = (uint8_t)((m1_cur[at + 2u] & 0x7Fu) | (v ? 0x80u : 0u));
+    int rc;
+    eng_run = 0;
+    __asm__ volatile("" ::: "memory");
+    rc = eng_load(bin, len);
+    if (!rc)
+        eng_overload_clear();
+    __asm__ volatile("" ::: "memory");
+    eng_run = (uint8_t)(rc == 0);
+    return rc;
+}
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+{
+    if (poly_patch_set(m1_cur, m1_cur_len, mod, field, v, poly_reload)) {
+        ui_msg("NO ROOM", 1500);
+        ui_dirty = 2;
+        return -1;
+    }
     m1_edited = 1;
-    if (field == 0u || field == 4u)
-        (void)eng_load(m1_cur, m1_cur_len);     /* (the parts sound again from the next note) */
-    else
-        (void)eng_poly_set((uint32_t)g - 1u, field, (uint32_t)v);
+    return 0;
 }
 
 static void midi_drain(void)                    /* USB-MIDI events -> the engine */
@@ -619,9 +618,10 @@ static void midi_drain(void)                    /* USB-MIDI events -> the engine
                 uint32_t mod, par;
                 int32_t val, r = pages_set_unit(n - 16u, (int32_t)(v * 65536u / 127u), &mod, &par, &val);
                 if (r >= 0) {
-                    if (r == 1)
-                        poly_row_set(mod, par & 0x7Fu, val);
-                    else {
+                    if (r == 1) {
+                        if (poly_row_set(mod, par & 0x7Fu, val))
+                            continue;
+                    } else {
                         eng_set_param(mod, par, val);
                         m1_patch_param(mod, par, val);
                         pages_also(n - 16u, val);       /* (the parameters the row also sets, #357) */

@@ -89,7 +89,7 @@ static uint8_t pg_list_step, pg_list_peek;
 static void m1_track_name(uint32_t mod, char *out);     /* proto.c: a Steps track's name ("" none) */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);   /* proto.c: a row turned here (the editor follows) */
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v); /* proto.c: the running binary follows */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
 static void m1_preset_stored(uint32_t structure, const char *name);   /* proto.c: a preset stored here (#195) */
 static void m1_arms_now(uint32_t lo, uint32_t hi);              /* proto.c: the armed modules changed here (#191) */
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
@@ -2248,7 +2248,8 @@ static int dp_load(uint32_t d, uint32_t k)
         if (par & POLY_ROW) {
             if (!row_ok(mod, par))
                 continue;
-            poly_row_set(mod, par & 0x7Fu, (v + 32768) >> 16);
+            if (poly_row_set(mod, par & 0x7Fu, (v + 32768) >> 16))
+                return -1;
             m1_param_now(mod, par, v);
         } else {
             if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar)

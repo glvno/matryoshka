@@ -1,0 +1,120 @@
+{
+  "date": "2026-10-26",
+  "device": "registered test rig",
+  "firmware": "card-rows CI 40406160864, per handoff; not reflashed during this survey",
+  "patch_source": "origin/main 639162e",
+  "method": "tools/rig_cpu_survey.py; peak DIAG 127 samples at rest, 1, 4 and 8 held keys; phases share one patch load, so later readings can follow voice shedding",
+  "results": [
+    {
+      "slot": 9,
+      "name": "Algo Four",
+      "n0_us": 2507,
+      "n0_samples": [
+        2507,
+        2497,
+        2505,
+        2505
+      ],
+      "n0_ovl": 0,
+      "n1_us": 2566,
+      "n1_samples": [
+        2566,
+        2528,
+        2514,
+        2511
+      ],
+      "n1_ovl": 0,
+      "n4_us": 2587,
+      "n4_samples": [
+        2587,
+        1814,
+        1798,
+        1783
+      ],
+      "n4_ovl": 0,
+      "n8_us": 1880,
+      "n8_samples": [
+        1880,
+        1856,
+        1856,
+        1823
+      ],
+      "n8_ovl": 0,
+      "budget_us": 2902
+    },
+    {
+      "slot": 23,
+      "name": "Spokes 6",
+      "n0_us": 2430,
+      "n0_samples": [
+        2414,
+        2418,
+        2430,
+        2418
+      ],
+      "n0_ovl": 0,
+      "n1_us": 2473,
+      "n1_samples": [
+        2470,
+        2455,
+        2464,
+        2473
+      ],
+      "n1_ovl": 0,
+      "n4_us": 2520,
+      "n4_samples": [
+        2520,
+        20,
+        18,
+        19
+      ],
+      "n4_ovl": 1,
+      "n8_us": 20,
+      "n8_samples": [
+        18,
+        19,
+        20,
+        19
+      ],
+      "n8_ovl": 1,
+      "budget_us": 2902
+    },
+    {
+      "slot": 24,
+      "name": "Cassia 1",
+      "n0_us": 2869,
+      "n0_samples": [
+        2859,
+        2863,
+        2869,
+        2869
+      ],
+      "n0_ovl": 0,
+      "n1_us": 2902,
+      "n1_samples": [
+        2902,
+        2900,
+        2896,
+        2899
+      ],
+      "n1_ovl": 0,
+      "n4_us": 2920,
+      "n4_samples": [
+        2920,
+        2126,
+        2125,
+        2125
+      ],
+      "n4_ovl": 0,
+      "n8_us": 2238,
+      "n8_samples": [
+        2238,
+        2155,
+        2155,
+        2145
+      ],
+      "n8_ovl": 0,
+      "budget_us": 2902
+    }
+  ]
+}
