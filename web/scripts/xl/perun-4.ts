@@ -11,8 +11,8 @@
 // algorithm: `1 transient`, `1 fold`, `1 pitch env`, `2 wavetable`, ...), CUTOFF, the VCF switch (row `vcf`: 1 low pass,
 // 2 band pass, 3 high pass), DRIVE (the overdrive's dry / wet), FX SEND and LEVEL. The VCF has no resonance control on the
 // original either (the manual lists none; Sound On Sound: "No resonance control exists"), so neither has this one. A
-// switch is an Offset (1, 2, 3, ...) into a chain of crossfaders (the module set has no switch); values between blend two
-// neighbours. DECAY all the way up turns a voice into a drone that sounds with the sequencer stopped: here the row `drone`.
+// switch is a Selector (its row `pos`: 1, 2, 3, ...); it steps from one position to the next, as the original's switches
+// do, and never blends two (a cable into its pos, such as the LFO on param 2, picks a position too). DECAY all the way up turns a voice into a drone that sounds with the sequencer stopped: here the row `drone`.
 //   voice 1: FOLD DRUM 1 (transient none / noise / pulse; fold, pitch env), WAVETABLE DRUM (wavetable 1..3: the wavetable
 //     oscillator's bank; surf = the position, pitch env), SIMPLE DRUM (waveform; pitch env decay, pitch env amount)
 //   voice 2: FOLD DRUM 2, WAVETABLE DRUM, COMPLEX DRUM (waveform; the modulating oscillator's frequency into the carrier's
@@ -21,7 +21,8 @@
 //     decay), SLAP (an analogue-style clap: a noise band retriggered while a 30 ms window is open; its three modes are
 //     three spaces between the repeats; reverb = its tail, crunch = drive), KARPLUS / CHORD (modes 1 and 2: a plucked
 //     string with a noise or a pulse burst, edge = damping, twang = a pitch envelope; mode 3, firmware 1.3's CHORD: four
-//     wavetable oscillators, param 1 morphs their waveform, param 2 picks the chord: major, minor, sus4, maj7, min7, 7)
+//     wavetable oscillators, param 1 morphs their waveform, param 2 picks the chord: major, minor, sus4, maj7, min7, 7,
+//     from two Selectors' value tables)
 //   voice 4: NOISE HAT (white / metallic / pulse stack noise; envelope amount = the envelope into its high pass, attack),
 //     NOISE/TONE (mode 1, firmware 1.1's DIGITAL NOISE: noise sampled at a rate the tune sets, through a low pass that
 //     follows the tune, its own row `2 timbre` for param 1, the attack row for param 2; modes 2 and 3: a phase-modulated
@@ -32,13 +33,13 @@
 // The modulation LFO has the original's seven waves (row `mod wave`: 1 sine, 2 ramp, 3 triangle, 4 pulse, 5 double decay
 // saw, 6 saw, 7 random, all made from one rising saw so they share its phase; the double decay saw is two falling squared
 // ramps a cycle, our reading of the name), its rate (0.1..20 Hz on the original), SYNC (`mod sync`, then `mod div` is a
-// note length on Main's clock) and MOD LVL. As on the original it reaches all eight knobs of every voice, each with its own
+// note length on Main's clock and `mod mult` its x8 .. ÷8: at 1/4, the original's x8 .. ÷8 of a beat) and MOD LVL. As on the original it reaches all eight knobs of every voice, each with its own
 // depth (`lfo → tune` .. `lfo → level`, the original's 10 .. 80 % of the knob's travel; tune in octaves). CONTROL ALL
 // (SHIFT and a knob moves that knob on all four voices) is a row per knob (`all tune` .. `all level`, 0 = as set), added
 // to the four voices' own. The realtime voice quantiser (firmware 1.3) is `quantise`: every voice's pitch to semitones.
 //
 // The sequencer: each voice plays its own Steps track (VOICE 1 .. VOICE 4, in front of the engine), so each has its own
-// last step (len), time division or multiplication (rate: 1/4 .. 1/32 = ÷4 .. x2, the triplet rates are ÷4/3 and x3/2),
+// last step (len), time division or multiplication (rate: 1/2 .. 1/64 = ÷8 .. x4, the triplet rates are ÷4/3 and x3/2),
 // shuffle (swing), mute, probability (a note's chance) and accent (its velocity). A note's pitch is a TUNE lock that lasts
 // until the next trigger, as in firmware 1.3 (C4 = the knob as set). GROOVE (A, B, C, RND: a slight volume variation on
 // some steps) is the voice's `groove` row, 1 off, 2 A, 3 B, 4 C, 5 RND; the original's tables are not published, so A, B
@@ -47,14 +48,12 @@
 // F4) are FILL: held, the voice repeats at its `fill` density (a note length on Main's clock) until let go.
 // The master section: the BBD (TIME and its short / long range in one row up to 1.6 s, FEEDBACK, its own sine LFO's rate
 // and MOD DEPTH on the time, the COLOUR switch `colour`, 0 bright / 1 dark, the VINTAGE BBD setting's noise `vintage`, BBD
-// SYNC `sync` on Main's clock), MASTER SEND (the voices' summed sends into the BBD), VOLUME, and the compressor's COMP.
+// SYNC `sync` on Main's clock, with 1/32, 1/2T, 1/2D, 1/1T and 1/1D on `sync note`), MASTER SEND (the voices' summed sends into the BBD), VOLUME, and the compressor's COMP.
 // THRSHLD (threshold and release on one knob) and COMP. AMT (ratio and make-up gain on one knob).
 // Not here: per-step ratchets (x2 .. x5), ODDS (play a step every 2nd .. 8th pass, and inverse odds), the play modes
-// (backward, ping-pong, random), per-step parameter locks and recorded automation for any control but TUNE, the ÷8 and x4
-// rates, pattern chaining and the master pattern length: each needs a new ability in the Steps module (per-note ratchet,
-// condition and parameter-lock fields, a direction, two more rates, a chain), in both engines. The synced modulation LFO
-// reaches x4 .. ÷4 of a quarter note (the original x8 .. ÷8) and BBD SYNC 1/16T .. 1/1 (the original 1/32 .. 1/1D, with
-// 1/2T, 1/2D and 1/1T): both need more note lengths in the LFO's and the Delay's list (DELAY_DIVS). The ACOUSTIC HATS samples
+// (backward, ping-pong, random), per-step parameter locks and recorded automation for any control but TUNE, pattern
+// chaining and the master pattern length: each needs a new ability in the Steps module (per-note ratchet, condition and
+// parameter-lock fields, a direction, a chain), in both engines (issue #351, tiers 2 and 3). The ACOUSTIC HATS samples
 // and the SAMPLER P2 CONFIG sample start need the original's samples. The trigger inputs, individual outputs, per-voice
 // and master send / return jacks, clock in / out and MIDI CC map are hardware.
 import { addModule, paramUnit, rowDef, type Patch } from '../../src/patch';
@@ -67,7 +66,8 @@ import type { Xl } from './xl';
 const NOTES = 'After the PERKONS HD-01 manual (1.3): per voice 3 algorithms of 3 modes (CHORD, DIGITAL NOISE too), param 1 / 2, ' +
   'tune, decay, drone, cutoff, VCF LP / BP / HP, drive, send, level. The mod LFO (7 waves, sync) reaches all 8 knobs of each ' +
   'voice; control all; quantiser. Each voice has a track (VOICE 1..4: length, rate, swing, chance, accent, pitch = tune lock), ' +
-  'groove, fills (C4..F4). BBD: colour, vintage, sync; compressor. Not here: ratchets, odds, play modes, other locks; hat samples.';
+  'rates ÷8..x4, groove, fills (C4..F4). Mod sync x8..÷8. BBD: colour, vintage, sync to 1/1D; compressor. Switches step, never ' +
+  'blend. Not here: ratchets, odds, play modes, other locks, pattern chains (need Steps features); hat samples.';
 
 type Pin = 'p1' | 'p2';
 type Src = [number, string];
@@ -113,24 +113,11 @@ const built = define('Perun 4 XL', (d) => {
   const map = add('drummap', 0, 0, Object.fromEntries(KIT_NOTES.map((n, r) => [`n${r + 1}`, n])));
   d.module(map).names = ['VOICE 1', 'VOICE 2', 'VOICE 3', 'VOICE 4', 'FILL 1', 'FILL 2', 'FILL 3', 'FILL 4'];
   const one = add('const', 0, 0.2, { value: 1 });
-  /** Offsets of -1 .. -6: a switch's crossfader k sits at its position less k */
-  const less = [1, 2, 3, 4, 5, 6].map((k) => add('const', 0, 0.3 + k * 0.05, { value: -k }));
-  /** an n-position switch: position `at` (1..n: an Offset, the switch's row, or a signal) picks one of n inputs through
-   * n - 1 crossfaders */
-  const switchN = (col: number, row: number, n: number, at: number | Src, ms: number[]): { sel: number; out: number; input: (k: number) => Src } => {
-    const sel = typeof at === 'number' ? add('const', col, row, { value: at }) : 0;
-    if (sel) ms.push(sel);
-    const src: Src = typeof at === 'number' ? [sel, 'out'] : at;
-    const xs: number[] = [];
-    for (let k = 1; k < n; k++) {
-      const x = add('xfade', col, row + 0.05 * k, { mix: 0 });
-      ms.push(x);
-      w(src[0], src[1], x, 'pos');
-      w(less[k - 1], 'out', x, 'pos');
-      if (k > 1) w(xs[k - 2], 'out', x, 'a');
-      xs.push(x);
-    }
-    return { sel, out: xs[n - 2], input: (k) => (k === 1 ? [xs[0], 'a'] : [xs[k - 2], 'b']) };
+  /** an n-position switch: a Selector of n positions set to `at` (its row `pos`); its gates g1..gn tell which is on */
+  const switchN = (col: number, row: number, n: number, at: number, ms: number[], p: Record<string, number> = {}): { sel: number; out: number; input: (k: number) => Src } => {
+    const sel = add('select', col, row, { pos: at, count: n, ...p });
+    ms.push(sel);
+    return { sel, out: sel, input: (k) => [sel, `in${k}`] };
   };
   const feed = (from: Out, into: Src): void => {
     for (const [m, port] of typeof from === 'number' ? [[from, 'out'] as Src] : from) w(m, port, into[0], into[1]);
@@ -342,9 +329,9 @@ const built = define('Perun 4 XL', (d) => {
       lfoRows.push([`lfo → ${k}`, dep, 'gain']);
     });
     const rows: Row[] = [
-      ['tune', pb, 'offset'], ['decay', env, 'r2'], ['algo', sw.sel, 'value'],
-      ['cutoff', flt, 'cutoff'], ['vcf', vsw.sel, 'value'], ['drive', drive, 'mix'], ['send', snd, 'gain'], ['level', lvl, 'gain'],
-      ['drone', drone, 'value'], ['groove', gsw.sel, 'value'], ['fill', fill, 'div'],
+      ['tune', pb, 'offset'], ['decay', env, 'r2'], ['algo', sw.sel, 'pos'],
+      ['cutoff', flt, 'cutoff'], ['vcf', vsw.sel, 'pos'], ['drive', drive, 'mix'], ['send', snd, 'gain'], ['level', lvl, 'gain'],
+      ['drone', drone, 'value'], ['groove', gsw.sel, 'pos'], ['fill', fill, 'div'],
     ];
     return { members: ms, hit, out: lvl, rows, algos, lfoRows, ins: { trig: [[hit, 'a'], [mv1, 'b']], accent: [[mv1, 'a']], lock: [[tsum, 'b']] } };
   };
@@ -378,7 +365,7 @@ const built = define('Perun 4 XL', (d) => {
     feed(pl, tr.input(3));
     w(tr.out, 'out', cv, 'in');
     w(cenv, 'env', cv, 'cv');
-    return [{ mode: ['transient', tr.sel, 'value'], p1: ['fold', fold, 'drive'], p2: ['pitch env', drop, 'gain'], t1: [{ m: fold, param: 'drive' }], t2: [{ m: drop, param: 'gain' }] }, [[fold, 'out'], [cv, 'out']]];
+    return [{ mode: ['transient', tr.sel, 'pos'], p1: ['fold', fold, 'drive'], p2: ['pitch env', drop, 'gain'], t1: [{ m: fold, param: 'drive' }], t2: [{ m: drop, param: 'gain' }] }, [[fold, 'out'], [cv, 'out']]];
   };
   const wavetableDrum = (v: V, coarse: number): [Algo, Out] => {
     const a = at(v, 0.6);
@@ -450,8 +437,8 @@ const built = define('Perun 4 XL', (d) => {
       const s = a(0.6);
       const win = s('pulse', 1, { time: 0.03 });
       const rate = s('osc', 1.1, { wave: 3, coarse: -24, level: 1 }); // (an Oscillator: an LFO stops at 40 Hz)
-      const spacing = s('const', 1.15, { value: 2 });
-      const spaced = s('scale', 1.17, { gain: 0.5, offset: -0.5 });
+      // the mode: a Selector's table of three places in the rate's range
+      const spacing = s('select', 1.15, { pos: 2, count: 3, v1: 0, v2: 0.5, v3: 1 });
       const and = s('logic', 1.2, { thresh: 0.5 });
       const benv = s('env', 1.3, { l1: 1, r1: 0.001, l2: 0, r2: 0.008, l3: 0, r3: 0.001, l4: 0, r4: 0.001 });
       const cbp = s('filter', 1.5, { cutoff: 1200, res: 0.5 });
@@ -460,8 +447,7 @@ const built = define('Perun 4 XL', (d) => {
       const tv = s('vca', 1.8, { gain: 0.5 });
       const crunch = s('shape', 1.9, { drive: 2, mode: 0, level: 0.7 });
       pin(rate, 'p1', 'coarse', [unit('osc', 'coarse', -36), unit('osc', 'coarse', -12)]); // 33, 65 or 131 repeats a second
-      w(spacing, 'out', spaced, 'in');
-      w(spaced, 'out', rate, 'p1');
+      w(spacing, 'out', rate, 'p1');
       w(v.hit, 'or', win, 'trig');
       w(v.hit, 'or', rate, 'sync');
       w(v.hit, 'or', tenv, 'gate');
@@ -488,31 +474,23 @@ const built = define('Perun 4 XL', (d) => {
       w(v.pb, 'out', str, 'pitch');
       w(v.penv, 'env', twang, 'in');
       w(twang, 'out', str, 'pitch');
-      pin(str, 'p1', 'burst', [0, 1]); // the mode less 1: 0 noise, 1 pulse
-      w(ks.sel, 'out', str, 'p1');
-      w(less[0], 'out', str, 'p1');
+      pin(str, 'p1', 'burst', [0, 1]); // mode 2's gate: 0 noise, 1 pulse
+      w(ks.sel, 'g2', str, 'p1');
       pin(str, 'p2', 'damp', [0, 1]);
       w(edge, 'out', str, 'p2');
       pin(twang, 'p1', 'gain', [unit('scale', 'gain', 0), unit('scale', 'gain', 0.4)]);
       w(twm, 'out', twang, 'p1');
-      // the chord: param 2 picks 1..6 (rounded by a chromatic quantiser on twelfths), each chord's third and top
-      const ci1 = k3('scale', 1.6, { gain: 5 / 12, offset: 1 / 12 });
-      const ciq = k3('quant', 1.65, { scale: 0, root: 0 });
-      const ci = k3('scale', 1.7, { gain: 12, offset: 0 });
-      w(twm, 'out', ci1, 'in');
-      w(ci1, 'out', ciq, 'in');
-      w(ciq, 'out', ci, 'in');
-      const ivs = new Map<number, number>();
-      const iv = (st: number): number => {
-        if (!ivs.has(st)) ivs.set(st, k3('const', 1.75 + ivs.size * 0.03, { value: st / 12 }));
-        return ivs.get(st)!;
+      // the chord: param 2 (0..1) picks 1..6 on two Selectors, each a table of the chords' third and top (octaves); the
+      // fifth is its oscillator's coarse tune
+      const chord = (row: number, sts: number[]): number => {
+        const sel = k3('select', row, { pos: 1, count: 6, ...Object.fromEntries(sts.map((st, k) => [`v${k + 1}`, st / 12])) });
+        w(twm, 'out', sel, 'pos');
+        return sel;
       };
-      const third = switchN(v.col + 0.9, 2, 6, [ci, 'out'], v.ms);
-      const top = switchN(v.col + 0.9, 2.4, 6, [ci, 'out'], v.ms);
-      [4, 3, 5, 4, 3, 4].forEach((st, k) => feed(iv(st), third.input(k + 1))); // major, minor, sus4, maj7, min7, 7
-      [12, 12, 12, 11, 10, 10].forEach((st, k) => feed(iv(st), top.input(k + 1)));
-      const wts = [undefined, third.out, iv(7), top.out].map((interval, k) => {
-        const wt = k3('wavetable', 2.8 + k * 0.05, { bank: 1, pos: 0.3, coarse: -5, level: 0.3 });
+      const third = chord(1.6, [4, 3, 5, 4, 3, 4]); // major, minor, sus4, maj7, min7, 7
+      const top = chord(1.7, [12, 12, 12, 11, 10, 10]);
+      const wts = [undefined, third, undefined, top].map((interval, k) => {
+        const wt = k3('wavetable', 2.8 + k * 0.05, { bank: 1, pos: 0.3, coarse: k === 2 ? 2 : -5, level: 0.3 });
         w(v.pb, 'out', wt, 'pitch');
         if (interval !== undefined) w(interval, 'out', wt, 'pitch');
         pin(wt, 'p1', 'pos', [0, 1]);
@@ -523,9 +501,9 @@ const built = define('Perun 4 XL', (d) => {
       feed(str, ks.input(2));
       feed(wts.map((x): Src => [x, 'out']), ks.input(3));
       return [
-        [{ mode: ['resonant', rd.sel, 'value'], p1: ['noise tone', nlp, 'cutoff'], p2: ['noise decay', nenv, 'r2'], t1: [{ m: nlp, param: 'cutoff' }], t2: [{ m: nenv, param: 'r2' }] }, rd.out],
-        [{ mode: ['spacing', spacing, 'value'], p1: ['reverb', tv, 'gain'], p2: ['crunch', crunch, 'drive'], t1: [{ m: tv, param: 'gain' }], t2: [{ m: crunch, param: 'drive' }] }, crunch],
-        [{ mode: ['mode', ks.sel, 'value'], p1: ['edge/wave', edge, 'value'], p2: ['twang/chord', twm, 'value'], t1: [{ m: str, port: 'p2' }, ...wts.map((x) => ({ m: x, port: 'p1' }))], t2: [{ m: twang, port: 'p1' }, { m: ci1, port: 'in' }] }, ks.out],
+        [{ mode: ['resonant', rd.sel, 'pos'], p1: ['noise tone', nlp, 'cutoff'], p2: ['noise decay', nenv, 'r2'], t1: [{ m: nlp, param: 'cutoff' }], t2: [{ m: nenv, param: 'r2' }] }, rd.out],
+        [{ mode: ['spacing', spacing, 'pos'], p1: ['reverb', tv, 'gain'], p2: ['crunch', crunch, 'drive'], t1: [{ m: tv, param: 'gain' }], t2: [{ m: crunch, param: 'drive' }] }, crunch],
+        [{ mode: ['mode', ks.sel, 'pos'], p1: ['edge/wave', edge, 'value'], p2: ['twang/chord', twm, 'value'], t1: [{ m: str, port: 'p2' }, ...wts.map((x) => ({ m: x, port: 'p1' }))], t2: [{ m: twang, port: 'p1' }, { m: third, port: 'pos' }, { m: top, port: 'pos' }] }, ks.out],
       ];
     }),
     voice(3, 0.06, 6000, 3, 1, 0.5, 0.15, (v) => {
@@ -565,9 +543,8 @@ const built = define('Perun 4 XL', (d) => {
       w(pamt, 'out', tone, 'p1');
       w(wn, 'out', nt, 'a');
       w(tone, 'out', nt, 'b');
-      pin(tmod, 'p1', 'coarse', [unit('osc', 'coarse', 37), unit('osc', 'coarse', 43)]); // the mode less 2: a fifth, an octave
-      w(ns.sel, 'out', tmod, 'p1');
-      w(less[1], 'out', tmod, 'p1');
+      pin(tmod, 'p1', 'coarse', [unit('osc', 'coarse', 37), unit('osc', 'coarse', 43)]); // mode 3's gate: a fifth, an octave
+      w(ns.sel, 'g3', tmod, 'p1');
       w(v.pb, 'out', dck, 'pitch');
       w(wn, 'out', dsh, 'in');
       w(dck, 'out', dsh, 'clock');
@@ -607,9 +584,9 @@ const built = define('Perun 4 XL', (d) => {
       w(as.out, 'out', sr, 'in');
       const attack: Target = { m: v.env, param: 'r1' };
       return [
-        [{ mode: ['noise', hs.sel, 'value'], p1: ['env amount', hamt, 'gain'], p2: ['attack', v.env, 'r1'], t1: [{ m: hamt, param: 'gain' }], t2: [attack] }, [[hp, 'hp']]],
-        [{ mode: ['mode', ns.sel, 'value'], p1: ['env amount', pamt, 'gain'], p2: ['noise/tone', nt, 'mix'], extra: [['timbre', dnf, 'cutoff']], t1: [{ m: pamt, param: 'gain' }, { m: dnf, param: 'cutoff' }], t2: [{ m: nt, port: 'pos' }, attack] }, ns.out],
-        [{ mode: ['sample', as.sel, 'value'], p1: ['sample rate', sr, 'rate'], p2: ['attack', v.env, 'r1'], t1: [{ m: sr, param: 'rate' }], t2: [attack] }, sr],
+        [{ mode: ['noise', hs.sel, 'pos'], p1: ['env amount', hamt, 'gain'], p2: ['attack', v.env, 'r1'], t1: [{ m: hamt, param: 'gain' }], t2: [attack] }, [[hp, 'hp']]],
+        [{ mode: ['mode', ns.sel, 'pos'], p1: ['env amount', pamt, 'gain'], p2: ['noise/tone', nt, 'mix'], extra: [['timbre', dnf, 'cutoff']], t1: [{ m: pamt, param: 'gain' }, { m: dnf, param: 'cutoff' }], t2: [{ m: nt, port: 'pos' }, attack] }, ns.out],
+        [{ mode: ['sample', as.sel, 'pos'], p1: ['sample rate', sr, 'rate'], p2: ['attack', v.env, 'r1'], t1: [{ m: sr, param: 'rate' }], t2: [attack] }, sr],
       ];
     }),
   ];
@@ -650,10 +627,12 @@ const built = define('Perun 4 XL', (d) => {
   d.param('colour', colour, 'mix');
   d.param('vintage', vintage, 'level');
   d.param('sync', dly, 'sync');
-  d.param('mod wave', wsw.sel, 'value', { head: 'modulation' });
+  d.param('sync note', dly, 'note');
+  d.param('mod wave', wsw.sel, 'pos', { head: 'modulation' });
   d.param('mod rate', mlfo, 'rate');
   d.param('mod sync', mlfo, 'sync');
   d.param('mod div', mlfo, 'div');
+  d.param('mod mult', mlfo, 'mult');
   d.param('mod lvl', modOut, 'gain');
   KNOBS.forEach((k, j) => d.param(`all ${k}`, all[k], 'value', j === 0 ? { head: 'control all' } : {}));
   d.param('quantise', quantOn, 'value');

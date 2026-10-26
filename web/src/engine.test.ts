@@ -2190,6 +2190,22 @@ describe('pan, crossfade, vowel, phaser, digitizer, noise colour', () => {
     expect(run({ pos: 3 }, 0, 'g1')).toBe(0);
   });
 
+  it('selector: a gate with no cable is not written (as engine.c skips dummy_out), a probe of it reads it from the next block', () => {
+    const { p, out, add } = start();
+    const x = add('select', { pos: 2 });
+    wire(p, x, 'g2', out, 'l');
+    const e = new Engine(SR);
+    e.load(p);
+    render(e, 128);
+    expect(e.probe(x, 'g2')![0]).toBe(1);
+    expect(e.probe(x, 'g1')![0]).toBe(0); // (never written yet)
+    expect(e.probe(x, 'g3')![0]).toBe(0);
+    e.setParam(x, 'pos', 3);
+    render(e, 128);
+    expect(e.probe(x, 'g3')![0]).toBe(1); // probed above: written since
+    expect(e.probe(x, 'g2')![0]).toBe(0);
+  });
+
   it('selector: fade crossfades linearly over its time when the position changes; 0 switches at once', () => {
     const run = (fade: number): Float32Array => {
       const { p, out, add } = start();

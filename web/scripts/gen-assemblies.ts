@@ -3,15 +3,15 @@
 // cables, the exposed ports (an input with `also` fans out to several inner inputs) and the promoted parameters.
 // `voice` and `echo` are kept as files. Run from web/:  npx vite-node scripts/gen-assemblies.ts
 import { writeFileSync } from 'node:fs';
-import { DEFS } from '../src/modules';
+import { DEFS, PD_RANGE_MAX, PD_WAVES } from '../src/modules';
 import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type PolyCards, type Source } from '../src/patch';
 import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
 
 const OUT = new URL('../src/assemblies/', import.meta.url);
-/** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES),
- * repeated over the keybed in blocks of eight white keys (E2..E3, F3..F4, G4..G5, A5..A6), one Drum map per block, so
- * every white key plays a plate (a stopgap until the Drum map repeats its rows itself, #184) */
+/** the touch plates of 8 Lire and Elvira 2: the white keys from F3 (the drum kits' rows, gen-presets.ts KIT_NOTES); their
+ * Drum map repeats them over the keybed in blocks of eight white keys (`repeat`, #184: E2..E3, F3..F4, G4..G5, ..), a
+ * black key playing the plate of the white key below it. PLATE_KEYS[1] is the F3 block. */
 const WHITE = [0, 2, 4, 5, 7, 9, 11];
 const whiteFrom = (note: number, n: number): number[] => {
   const out: number[] = [];
@@ -1082,95 +1082,204 @@ asm('Hera 6', 'Voices', (b) => {
   b.param('out', scope, 'view');
 });
 
-// Cassia 1, a phase distortion polysynth after the Casio CZ-1 (its operation manual: DCO, DCW and DCA, the waveforms,
-// line select, key follow, vibrato). A voice card has the CZ's two lines. Line 1 is phase distortion: a sine whose
-// phase a phase-locked saw bends (a Math module multiplies the saw by the DCW envelope; the sine's pm, pi / 2, is full
-// bend), which is the CZ's own method written as phase modulation: from a sine (DCW at 0) to the CZ saw (at the
-// top), or with the saw an octave up (`wave` 12) to the CZ square. Line 2 is the CZ's resonance waveform I: a sine
-// restarted every cycle (hard sync on a falling ramp of the note's period) and faded out by that same ramp, its pitch
-// raised by the DCW envelope (up to `res range` octaves): a resonant peak that sweeps. Each line has its DCW envelope
-// (an Env L/R: three rate / level steps, the third held, and a release; the CZ has eight steps); one DCA envelope shapes
-// both, `line` crossfades them (0 = line 1, 0.5 = 1 + 2, 1 = line 2), line 2 has its octave and detune. Key follow
-// lowers both DCWs on higher keys (from C4), the velocity opens the DCA, one LFO adds vibrato. The FM-1 version has no
-// pitch (DCO) envelope, no ring or noise modulation and three waveforms of the eight: Cassia 1 XL has the rest.
-asm('Cassia 1', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 3, { voices: 4 });
-  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 });
-  const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
-  const scope = b.add('scope', 6, 0, { time: 16 });
-  // line 1: phase distortion
-  const car = b.add('osc', 1, 0, { wave: 0, pm: Math.PI / 2, level: 1 });
-  const mod = b.add('osc', 1, 1, { wave: 2, coarse: 0, level: 1 });
-  const bend = b.add('math', 1, 2, { ka: -1, kb: 1, off: 0 });
-  const dcw1 = b.add('env', 1, 3, { l1: 0.9, r1: 0.05, l2: 0.6, r2: 0.6, l3: 0.4, r3: 1.5, l4: 0, r4: 0.3 });
-  // line 2: resonance (a sine synced and windowed by a falling ramp of the note's period)
-  const ramp = b.add('osc', 2, 0, { wave: 2, coarse: 0, fine: 0, level: 1 });
-  const win = b.add('math', 2, 1, { ka: -0.5, kb: 1, off: 0.5 });
-  const rs = b.add('osc', 2, 2, { wave: 0, level: 1 });
-  const rise = b.add('scale', 2, 3, { gain: 3, offset: 0 });
-  const dcw2 = b.add('env', 2, 4, { l1: 0.7, r1: 0.1, l2: 0.4, r2: 0.8, l3: 0.25, r3: 2, l4: 0, r4: 0.3 });
-  const wvca = b.add('vca', 2, 5, { gain: 1 });
-  // both: key follow, the line mix, the DCA (velocity on its gain)
-  const kf = b.add('scale', 3, 0, { gain: -0.15, offset: 0 });
-  const line = b.add('xfade', 3, 1, { mix: 0 });
-  const dca = b.add('env', 3, 2, { l1: 1, r1: 0.01, l2: 0.8, r2: 0.4, l3: 0.6, r3: 2, l4: 0, r4: 0.4 });
-  const vca = b.add('vca', 3, 3, { gain: 0.15 }, { p1: 'gain', att: [0.45, 1] }); // velocity 1 reaches 0.6
-  b.nest('voice', 1, 4, [car, mod, bend, dcw1, ramp, win, rs, rise, dcw2, wvca, kf, line, dca, vca], {});
-  for (const o of [car, mod, ramp, rs]) {
-    b.wire(part, 'pitch', o, 'pitch');
-    b.wire(vib, 'out', o, 'pitch');
+// Cassia 1, a phase distortion polysynth after the Casio CZ-1, in full (its operation manual and the CZ-101's: waveforms,
+// line select, DCO / DCW / DCA envelopes, key follow, vibrato, ring and noise modulation, velocity and aftertouch). It was
+// Cassia 1 XL until the PD Osc and Env 8 modules (#351) made it fit the FM-1 (D-348); the FM-1 plays three voices (the
+// CZ-1 four with two lines, eight with one: `voices`, in the browser).
+// A voice has both lines, each one PD Osc (the CZ's eight waveforms, a second waveform on every other cycle, the DCW
+// input) with its DCW and DCA envelopes; every envelope (the DCO's too) is an Env 8: eight rates and levels, a sustain
+// step and an end step, as on the CZ.
+//  - a line's waveforms (`wave`, `wave 2`) and resonance range are Offsets, once for all voices, that set the line's
+//    PD Osc through its pins: wave on p1 (x 1/7, so the Offset's 0..7 is the wave), wave 2 on p2 (x 1/8), the range
+//    through the pm input, routed to `range` (an Attenuverter makes it fifths of the range; the oscillator's own pm depth
+//    is 0, so pm does no phase modulation). That lets 1 + 1' hand line 1's settings to line 2.
+//  - the DCW: the line's DCW envelope plus key follow, velocity and aftertouch, summed into the PD Osc's dcw input.
+// Line select (`line`, a Selector): 1 line 1, 2 line 2, 3 both (1 + 2). `1+1'` (0 / 1) makes line 2 play line 1's
+// waveforms, range and DCW / DCA envelopes at line 2's pitch (`coarse`, `fine`): line 1'. Line 2's ring modulation
+// (times line 1) and noise modulation (times the noise) are Selectors too: 1 off, 2 on. The DCO envelope moves both
+// lines' pitch by `depth` octaves; vibrato's wave (the CZ's saw down is a negative `vib depth`), rate, depth and delay;
+// key follow lowers the DCW and DCA levels from C4; velocity opens the DCA (and the DCW by `vel dcw`); aftertouch reaches
+// DCW, DCA and vibrato depth (the `at` input).
+// Left out: the CZ has a DCO envelope per line (one here moves both); the CZ-1's velocity curves; its cartridge, tone
+// mix / split and multi-timbral MIDI modes (hardware and memory). The rows are short (r1, l1 ..) and the mode switches
+// are Selectors and Crossfaders, not Macros, to stay inside the FM-1's patch bytes (3,840) and 32 pages per device.
+const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<string, number> => {
+  const p: Record<string, number> = { sus, end };
+  for (let k = 0; k < 8; k++) {
+    const [r, l] = s[k] ?? [0.2, 0];
+    p[`r${k + 1}`] = r;
+    p[`l${k + 1}`] = l;
   }
-  b.wire(lfo, 'out', vib, 'in');
-  b.wire(part, 'gate', dcw1, 'gate');
-  b.wire(part, 'gate', dcw2, 'gate');
-  b.wire(part, 'gate', dca, 'gate');
-  b.wire(part, 'vel', vca, 'p1');
-  b.wire(part, 'pitch', kf, 'in');
-  b.wire(dcw1, 'env', bend, 'a');
-  b.wire(kf, 'out', bend, 'a');
-  b.wire(mod, 'out', bend, 'b');
-  b.wire(bend, 'mul', car, 'pm');
-  b.wire(ramp, 'out', win, 'a');
-  b.wire(win, 'add', rs, 'sync');
-  b.wire(win, 'add', wvca, 'cv');
-  b.wire(dcw2, 'env', rise, 'in');
-  b.wire(kf, 'out', rise, 'in');
-  b.wire(rise, 'out', rs, 'pitch');
-  b.wire(rs, 'out', wvca, 'in');
-  b.wire(car, 'out', line, 'a');
-  b.wire(wvca, 'out', line, 'b');
-  b.wire(line, 'out', vca, 'in');
-  b.wire(dca, 'env', vca, 'cv');
-  b.wire(vca, 'out', scope, 'a');
-  b.input('keys', part, 'keys');
-  b.nestInput('pitch', car, 'pitch', [mod, 'pitch'], [ramp, 'pitch'], [rs, 'pitch'], [kf, 'in']);
-  b.nestInput('gate', dcw1, 'gate', [dcw2, 'gate'], [dca, 'gate']);
-  b.nestInput('vel', vca, 'p1');
-  b.nestOutput('out', vca, 'out');
-  b.output('out', vca, 'out');
-  b.param('voices', part, 'voices', { head: 'voice' });
-  b.param('line', line, 'mix');
-  b.param('vibrato', vib, 'gain');
-  b.param('vib rate', lfo, 'rate');
-  b.param('wave', mod, 'coarse', { head: 'line 1' });
-  b.param('dcw', car, 'pm');
-  b.param('key follow', kf, 'gain');
-  b.param('octave', ramp, 'coarse', { head: 'line 2' });
-  b.param('detune', ramp, 'fine');
-  b.param('res range', rise, 'gain');
-  const envRows = (e: number, head: string, col = false): void => {
-    b.param(head, e, 'view', { head, ...(col ? { col: true } : {}) });
-    b.param('rate 1', e, 'r1');
-    b.param('level 1', e, 'l1');
-    b.param('rate 2', e, 'r2');
-    b.param('level 2', e, 'l2');
-    b.param('rate 3', e, 'r3');
-    b.param('sustain', e, 'l3');
-    b.param('release', e, 'r4');
+  return p;
+};
+asm('Cassia 1', 'Voices', (b) => {
+  const part = b.add('alloc', 0, 4, { voices: 4 });
+  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 });
+  const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // vib depth (negative: the CZ's saw down)
+  const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
+  const scope = b.add('scope', 12, 0, { time: 16 });
+  const atVib = b.add('scale', 0, 2.5, { gain: 0, offset: 0 });
+  const atW = b.add('scale', 0, 3, { gain: 0, offset: 0 });
+  const atA = b.add('scale', 0, 3.5, { gain: 0, offset: 0 });
+  b.wire(lfo, 'out', vibS, 'in');
+  const members: number[] = [];
+  const add = (type: string, col: number, row: number, p: Record<string, number> = {}, o: { p1?: string; p2?: string; att?: [number, number] } = {}): number => {
+    const id = b.add(type, col, row, p, o);
+    members.push(id);
+    return id;
   };
-  envRows(dcw1, 'dcw 1', true);
-  envRows(dcw2, 'dcw 2', true);
-  envRows(dca, 'dca', true);
+  type R = [number, string];
+  // ---- a line's settings, once for all voices: Offsets; line 2's go through a Crossfader each that hands it line 1's in
+  // 1 + 1' (pos 0: its own, 1: line 1's)
+  const mode = b.add('const', 5, 0, { value: 0 });
+  const consts = (col: number, wave: number): { wave: number; wave2: number; range: number } => ({
+    wave: b.add('const', col, 0, { value: wave }),
+    wave2: b.add('const', col, 0.3, { value: 0 }),
+    range: b.add('const', col, 0.6, { value: 3 }),
+  });
+  const fifths = (from: R, col: number): R => {
+    const s = b.add('scale', col, 1, { gain: 1 / PD_RANGE_MAX, offset: 0 });
+    b.wire(from[0], from[1], s, 'in');
+    return [s, 'out'];
+  };
+  const pick = (own: number, l1: number, row: number): R => {
+    const x = b.add('xfade', 5, row, { mix: 0 });
+    b.wire(own, 'out', x, 'a');
+    b.wire(l1, 'out', x, 'b');
+    b.wire(mode, 'out', x, 'pos');
+    return [x, 'out'];
+  };
+  const k1 = consts(1, 0);
+  const k2 = consts(2, PD_WAVES.indexOf('reso 1'));
+  const c1 = { wave: [k1.wave, 'out'] as R, wave2: [k1.wave2, 'out'] as R, range: fifths([k1.range, 'out'], 1) };
+  const c2 = { wave: pick(k2.wave, k1.wave, 0.3), wave2: pick(k2.wave2, k1.wave2, 0.6), range: fifths(pick(k2.range, k1.range, 0.9), 2) };
+
+  // ---- per voice: pitch (DCO envelope, vibrato after its delay), key follow, velocity
+  const pitch = add('scale', 1, 5, { gain: 1, offset: 0 });
+  const dco = add('env8', 1, 5.5, CZ_STEPS([[0.05, 0], [0.3, 0], [0.5, 0]], 2, 3));
+  const pdepth = add('scale', 1, 6, { gain: 1, offset: 0 });
+  const vdel = add('adsr', 1, 7, { a: 0.6, d: 0.001, s: 1, r: 0.3 });
+  const vgate = add('vca', 1, 7.5, { gain: 1 });
+  const kfw = add('scale', 1, 8.5, { gain: -0.15, offset: 0 });
+  const kfa = add('scale', 1, 9, { gain: -0.1, offset: 0 });
+  const velW = add('scale', 1, 9.5, { gain: 0, offset: 0 });
+  b.wire(part, 'gate', dco, 'gate');
+  b.wire(dco, 'env', pdepth, 'in');
+  b.wire(part, 'gate', vdel, 'gate');
+  b.wire(vibS, 'out', vgate, 'in');
+  b.wire(vdel, 'env', vgate, 'cv');
+  b.wire(atVib, 'out', vgate, 'cv');
+  b.wire(part, 'pitch', pitch, 'in');
+  b.wire(pdepth, 'out', pitch, 'in');
+  b.wire(vgate, 'out', pitch, 'in');
+  b.wire(part, 'pitch', kfw, 'in');
+  b.wire(part, 'pitch', kfa, 'in');
+  b.wire(part, 'vel', velW, 'in');
+  // ---- the envelopes: up to the sustain at step 3, then three steps down
+  const DCA = CZ_STEPS([[0.01, 1], [0.4, 0.8], [2, 0.6], [0.15, 0.3], [0.3, 0.09], [0.4, 0]], 3, 6);
+  const dcw1 = add('env8', 3, 0, CZ_STEPS([[0.05, 0.9], [0.6, 0.6], [1.5, 0.4], [0.15, 0.2], [0.3, 0.06], [0.4, 0]], 3, 6));
+  const dca1 = add('env8', 3, 1, DCA);
+  const dcw2 = add('env8', 4, 0, CZ_STEPS([[0.1, 0.7], [0.8, 0.4], [2, 0.25], [0.15, 0.125], [0.3, 0.04], [0.4, 0]], 3, 6));
+  const dca2 = add('env8', 4, 1, DCA);
+  for (const e of [dcw1, dca1, dcw2, dca2]) b.wire(part, 'gate', e, 'gate');
+  // 1 + 1': line 2 takes line 1's envelopes
+  const own = (e2: number, e1: number, row: number): R => {
+    const s = add('select', 4, row, { pos: 1, count: 2, fade: 0 });
+    b.wire(e2, 'env', s, 'in1');
+    b.wire(e1, 'env', s, 'in2');
+    b.wire(mode, 'out', s, 'pos');
+    return [s, 'out'];
+  };
+  const dcwX = own(dcw2, dcw1, 2);
+  const dcaX = own(dca2, dca1, 2.5);
+  // ---- a line: its PD Osc (dcw: the envelope plus the touch) and its DCA (velocity, key follow, aftertouch on its gain)
+  const line = (col: number, c: { wave: R; wave2: R; range: R }, dcw: R): number => {
+    const pd = add('pd', col, 3, { wave: 0, wave2: 0, dcw: 0, range: 0, pm: 0, level: 1 }, { p1: 'wave', p2: 'wave2', att: [1 / 7, 1 / 8] });
+    b.module(pd).inputMap = { pm: ['range'] };
+    b.wire(c.wave[0], c.wave[1], pd, 'p1');
+    b.wire(c.wave2[0], c.wave2[1], pd, 'p2');
+    b.wire(c.range[0], c.range[1], pd, 'pm');
+    b.wire(pitch, 'out', pd, 'pitch');
+    for (const [m, port] of [dcw, [kfw, 'out'], [velW, 'out'], [atW, 'out']] as R[]) b.wire(m, port, pd, 'dcw');
+    return pd;
+  };
+  const dcaVca = (col: number): number => {
+    const vca = add('vca', col, 5, { gain: 0.075 }, { p1: 'gain', att: [0.225, 1] }); // velocity 1 reaches 0.3 a line, 0.6 both
+    b.wire(part, 'vel', vca, 'p1');
+    b.wire(kfa, 'out', vca, 'p1');
+    b.wire(atA, 'out', vca, 'p1');
+    return vca;
+  };
+  const pd1 = line(6, c1, [dcw1, 'env']);
+  const pd2 = line(7, c2, dcwX);
+  const v1 = dcaVca(6);
+  const v2 = dcaVca(7);
+  b.wire(pd1, 'out', v1, 'in');
+  b.wire(dca1, 'env', v1, 'cv');
+  // line 2's modulation before its DCA: ring (times line 1), then noise
+  const ringV = add('vca', 9, 0, { gain: 1 });
+  const ring = add('select', 9, 0.5, { pos: 1, count: 2, fade: 0 });
+  const noiseV = add('vca', 9, 1, { gain: 1 });
+  const noise = add('select', 9, 1.5, { pos: 1, count: 2, fade: 0 });
+  b.wire(pd2, 'out', ringV, 'in');
+  b.wire(pd1, 'out', ringV, 'cv');
+  b.wire(pd2, 'out', ring, 'in1');
+  b.wire(ringV, 'out', ring, 'in2');
+  b.wire(ring, 'out', noiseV, 'in');
+  b.wire(nz, 'out', noiseV, 'cv');
+  b.wire(ring, 'out', noise, 'in1');
+  b.wire(noiseV, 'out', noise, 'in2');
+  b.wire(noise, 'out', v2, 'in');
+  b.wire(dcaX[0], dcaX[1], v2, 'cv');
+  // the line select: 1 line 1, 2 line 2, 3 both
+  const sel = add('select', 10, 0.5, { pos: 3, count: 3, fade: 0 });
+  b.wire(v1, 'out', sel, 'in1');
+  b.wire(v2, 'out', sel, 'in2');
+  b.wire(v1, 'out', sel, 'in3');
+  b.wire(v2, 'out', sel, 'in3');
+  b.wire(sel, 'out', scope, 'a');
+  b.nest('voice', 3, 6, members, {});
+  b.input('keys', part, 'keys');
+  b.input('at', atVib, 'in', [atW, 'in'], [atA, 'in']);
+  b.output('out', sel, 'out');
+
+  b.param('voices', part, 'voices', { head: 'voice' });
+  b.param('line', sel, 'pos');
+  b.param("1+1'", mode, 'value');
+  b.param('vib wave', lfo, 'wave', { head: 'vibrato' });
+  b.param('vib rate', lfo, 'rate');
+  b.param('vib depth', vibS, 'gain');
+  b.param('vib delay', vdel, 'a');
+  const envRows = (e: number, head: string, col: boolean): void => {
+    b.param(head, e, 'view', { head, ...(col ? { col: true } : {}) });
+    for (let k = 1; k <= 8; k++) {
+      b.param(`r${k}`, e, `r${k}`);
+      b.param(`l${k}`, e, `l${k}`);
+    }
+    b.param('sus', e, 'sus');
+    b.param('end', e, 'end');
+  };
+  envRows(dco, 'dco env', false);
+  b.param('depth', pdepth, 'gain');
+  b.param('dcw kf', kfw, 'gain', { head: 'touch' });
+  b.param('dca kf', kfa, 'gain');
+  b.param('vel dcw', velW, 'gain');
+  b.param('at dcw', atW, 'gain');
+  b.param('at dca', atA, 'gain');
+  b.param('at vib', atVib, 'gain');
+  for (const [n, k, dcw, dca] of [[1, k1, dcw1, dca1], [2, k2, dcw2, dca2]] as const) {
+    b.param('wave', k.wave, 'value', { head: `line ${n}`, col: true });
+    b.param('wave 2', k.wave2, 'value');
+    b.param('res range', k.range, 'value');
+    if (n === 2) {
+      b.param('ring', ring, 'pos');
+      b.param('noise', noise, 'pos');
+      b.param('coarse', pd2, 'coarse');
+      b.param('fine', pd2, 'fine');
+    }
+    envRows(dcw, `dcw ${n}`, true);
+    envRows(dca, `dca ${n}`, true);
+  }
   b.param('out', scope, 'view', { col: true });
 });
 
@@ -1701,18 +1810,22 @@ asm('Vernon 100', 'Voices', (b) => {
   b.param('out', scope, 'view');
 });
 
+/** the touch plates' Drum map: the eight rows on the white keys F3..F4, repeated over the keybed (PLATE_KEYS) */
+const plates = (b: B): number => b.add('drummap', 0, 0, { ...Object.fromEntries(PLATE_KEYS[1].map((n, r) => [`n${r + 1}`, n])), repeat: 1 });
+
 // 8 Lire, after the SOMA Laboratory Lyra-8 (#182; the panel as we remember it, not checked against SOMA's manual): eight
-// voices, no keyboard. Drum maps turn the white keys into eight gates, one per touch plate (F3..F4 as the drum kits'
-// rows, repeated in blocks of eight white keys: PLATE_KEYS); each voice keeps its own tuning and plays a triangle through a VCA on its own envelope (attack / release
-// for the FAST / SLOW switch). Voices come in pairs (1-2, 3-4, 5-6, 7-8): a pair shares a waveshaper (SHARP) and a
+// voices, no keyboard. A Drum map turns the keys into eight gates, one per touch plate (F3..F4 as the drum kits' rows,
+// repeated over the keybed in blocks of eight white keys, a black key playing the white key's below: PLATE_KEYS); each
+// voice keeps its own tuning and plays a triangle through a VCA on its own envelope (attack / release for the FAST / SLOW
+// switch). Voices come in pairs (1-2, 3-4, 5-6, 7-8): a pair shares a waveshaper (SHARP) and a
 // modulation depth (MOD, into both voices' pitch); pairs come in quads (1-4, 5-8): a quad shares HOLD (an offset into its
 // voices' VCAs, so they drone with nothing held) and its modulation bus, a mix of the other quad, the Hyper LFO and the
 // total feedback (the delay's output). The Hyper LFO: two square LFOs combined, AND crossfaded into OR, into the bus and
 // the delay time. The drive, then the delay (the FM-1 holds one Delay: the Lyra's two lines are its ping-pong taps, the
 // engine's l / r). Cross-quad and feedback modulation run one block late (the cables close loops).
 asm('8 Lire', 'Voices', (b) => {
-  const maps = PLATE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
-  for (const map of maps) b.module(map).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (the rows are the voices, not drums)
+  const map = plates(b);
+  b.module(map).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (the rows are the voices, not drums)
   const lfoA = b.add('lfo', 0, 1, { wave: 3, rate: 0.7, depth: 1 });
   const lfoB = b.add('lfo', 0, 2, { wave: 3, rate: 1.9, depth: 1 });
   const logic = b.add('logic', 0, 3, {});
@@ -1729,7 +1842,7 @@ asm('8 Lire', 'Voices', (b) => {
     const vca = b.add('vca', 1 + i, 2, { gain: 1 });
     b.wire(osc, 'out', vca, 'in');
     b.wire(env, 'env', vca, 'cv');
-    for (const map of maps) b.wire(map, `g${i + 1}`, env, 'gate'); // (any copy of the plate holds the gate up)
+    b.wire(map, `g${i + 1}`, env, 'gate');
     return { osc, env, vca };
   });
   const sharp = [0, 1, 2, 3].map((p) => b.add('shape', 1 + 2 * p, 3, { drive: 2, mode: 0, level: 0.7 }));
@@ -1772,7 +1885,7 @@ asm('8 Lire', 'Voices', (b) => {
     b.nestInput('hold', v.vca, 'cv');
     b.nestOutput('out', v.vca, 'out');
   });
-  b.input('keys', maps[1], 'keys', ...maps.filter((_, i) => i !== 1).map((m) => [m, 'keys'] as [number, string]));
+  b.input('keys', map, 'keys');
   b.output('l', dly, 'out');
   b.output('r', dly, 'r');
   for (const [q, name, other] of [[0, '1-4', '5-8'], [1, '5-8', '1-4']] as const) {
@@ -1805,15 +1918,15 @@ asm('8 Lire', 'Voices', (b) => {
 // Elvira 2, after the neutral labs Elmyra 2 (its manual v2.4): four voices, each a wavetable oscillator (PG's four pages
 // = `bank`, WAVE = `pos`, TUNE) through its MOD program (here the SRR one, a Bitcrusher's rate: clean at the left) into a
 // VCA on its own envelope (the ENV knob's attack and release as two rows) plus DRONE (an offset into the VCA: the
-// envelope held at the top). The keys play the voices as touchpads: the Drum maps' rows 1-4 and 5-8 are voices 1-4 (the
-// white keys from E2 to A6, as 8 Lire). The mix is saturated, then the ladder low pass (CUTOFF, RESO), the delay (TIME,
-// FDBK, MIX; ours reaches 520 ms, the original 1.6 s) and OUCH: BITE (a folding Waveshaper) into CHOKE (a low pass, open
+// envelope held at the top). The keys play the voices as touchpads: the Drum map's rows 1-4 and 5-8 are voices 1-4 (the
+// white keys from F3, repeated over the keybed as 8 Lire's). The mix is saturated, then the ladder low pass (CUTOFF,
+// RESO), the delay (TIME, FDBK, MIX; ours reaches 520 ms, the original 1.6 s) and OUCH: BITE (a folding Waveshaper) into CHOKE (a low pass, open
 // at the right), without the original's analog feedback loop or modifier ports; VOL. LFO 1 (sine) into the cutoff, LFO 2
 // (a wave choice) into the bite, each by an amount (on the original they are patched by hand). No sequencer, no CHRM:
 // TUNE is in semitones.
 asm('Elvira 2', 'Voices', (b) => {
-  const maps = PLATE_KEYS.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i], Object.fromEntries(keys.map((n, r) => [`n${r + 1}`, n]))));
-  for (const map of maps) b.module(map).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`);   // (rows 5-8 play voices 1-4 again)
+  const map = plates(b);
+  b.module(map).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`);   // (rows 5-8 play voices 1-4 again)
   const lfo1 = b.add('lfo', 0, 1, { wave: 0, rate: 0.2, depth: 1 });
   const lfo2 = b.add('lfo', 0, 2, { wave: 2, rate: 3, depth: 1 });
   const toCutoff = b.add('scale', 0, 3, { gain: 0, offset: 0 });
@@ -1832,7 +1945,7 @@ asm('Elvira 2', 'Voices', (b) => {
     b.wire(srr, 'out', vca, 'in');
     b.wire(env, 'env', vca, 'cv');
     b.wire(drone, 'out', vca, 'cv');
-    for (const map of maps) for (const row of [i + 1, i + 5]) b.wire(map, `g${row}`, env, 'gate'); // (any key of the voice holds the gate up)
+    for (const row of [i + 1, i + 5]) b.wire(map, `g${row}`, env, 'gate'); // (either row of the voice holds the gate up)
     return { wt, srr, env, drone, vca };
   });
   const mix = b.add('mixer', 5, 0, { l1: 0.7, l2: 0.7, l3: 0.7, l4: 0.7 });
@@ -1858,7 +1971,7 @@ asm('Elvira 2', 'Voices', (b) => {
     b.nestInput('gate', v.env, 'gate');
     b.nestOutput('out', v.vca, 'out');
   });
-  b.input('keys', maps[1], 'keys', ...maps.filter((_, i) => i !== 1).map((m) => [m, 'keys'] as [number, string]));
+  b.input('keys', map, 'keys');
   b.output('out', choke, 'lp12');
   voices.forEach((v, i) => {
     b.param('tune', v.wt, 'coarse', { head: `voice ${i + 1}`, ...(i % 2 === 0 ? { col: true } : {}) });

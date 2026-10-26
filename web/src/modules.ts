@@ -50,6 +50,9 @@ export interface Ctx {
   inp: Record<string, Float32Array>;
   out: Record<string, Float32Array>;
   connected: Record<string, boolean>;
+  /** the outputs something reads (a cable from it, a scope probe or a watch); a module may leave the others unwritten, as
+   * engine.c does with an output on dummy_out. Absent: every output is read. */
+  used?: Record<string, boolean>;
   p: Record<string, number>;
   voice: Voice;
   /** Display-only values after dedicated CV processing; never fed back into DSP parameters. */
@@ -2824,6 +2827,10 @@ export const selectFadeInc = (fade: number, sr: number): number => {
 /** a Selector as it runs: each input's weight (Q16 integers; one of them 65536 when settled), the position chosen (0-based,
  * -1 before the first block) and whether a crossfade is under way */
 export interface SelectState { w: number[]; k: number; fading: boolean }
+/** the Selector's port and parameter names by position (built once: no string is made per block) */
+const SEL_IN = Array.from({ length: SELECT_N }, (_, j) => `in${j + 1}`);
+const SEL_V = Array.from({ length: SELECT_N }, (_, j) => `v${j + 1}`);
+const SEL_G = Array.from({ length: SELECT_N }, (_, j) => `g${j + 1}`);
 
 /**
  * Selector (#351): a stepped switch. `pos` (1..8, with the `pos` input: 0..1 spans 1..count) chooses one of the inputs
@@ -2858,11 +2865,11 @@ const select: ModuleImpl<SelectState> = {
     s.k = k;
     const out = c.out.out;
     if (!s.fading) {
-      const x = c.inp[`in${k + 1}`], v = c.p[`v${k + 1}`] ?? 0;
+      const x = c.inp[SEL_IN[k]], v = c.p[SEL_V[k]] ?? 0;
       for (let i = 0; i < c.n; i++) out[i] = x[i] + v;
     } else {
-      const xs = Array.from({ length: SELECT_N }, (_, j) => c.inp[`in${j + 1}`]);
-      const vs = Array.from({ length: SELECT_N }, (_, j) => c.p[`v${j + 1}`] ?? 0);
+      const xs = SEL_IN.map((name) => c.inp[name]);
+      const vs = SEL_V.map((name) => c.p[name] ?? 0);
       for (let i = 0; i < c.n; i++) {
         let y = 0;
         for (let j = 0; j < SELECT_N; j++) {
@@ -2875,7 +2882,7 @@ const select: ModuleImpl<SelectState> = {
       }
       s.fading = s.w.some((w, j) => w !== (j === k ? 65536 : 0));
     }
-    for (let j = 0; j < SELECT_N; j++) c.out[`g${j + 1}`].fill(j === k ? 1 : 0, 0, c.n);
+    for (let j = 0; j < SELECT_N; j++) if (!c.used || c.used[SEL_G[j]]) c.out[SEL_G[j]].fill(j === k ? 1 : 0, 0, c.n);
     if (c.display) c.display.pos = k + 1;
   },
 };

@@ -20,8 +20,8 @@
 //   Wheel-Mod: the LFO / noise source mix, through the mod wheel plus the initial amount (and aftertouch), into frequency
 //   A, frequency B, pulse width A, pulse width B and the filter, each by its own amount (the original's switches).
 // - Keys: five voices; unison (the voices row is its voice count while it is on), its detune (semitones), chord memory
-//   (`chord 2`..`chord 5`: each chord note's interval above the one before, 0..1 octave, rounded to semitones; voice 1
-//   plays the key), key priority (low or last) and retrigger (`legato` off); glide; pitch wheel range (octaves: 0.08 a
+//   (`chord 2`..`chord 5`: each voice's interval above the key, octaves rounded to semitones, picked per voice by a
+//   Selector on its index; voice 1 plays the key), key priority (low or last) and retrigger (`legato` off); glide; pitch wheel range (octaves: 0.08 a
 //   semitone, 1 an octave); transpose (octaves rounded to semitones); master tune (semitones); MIDI channel.
 // - Vintage (0 the Rev 4's stability, 1 a Rev 1's): per voice, oscillator A and B drift, the cutoff, envelope times and
 //   amplifier gain spread, on top of the voice cards' flaws. A-440: the reference tone.
@@ -32,7 +32,8 @@
 //   whenever set, so set them to 0 for poly); the sustain / hold footswitch (Main would need a sustain output for MIDI CC
 //   64); the 16 alternative tunings (a tuning table); the seven velocity and eight aftertouch response curves (one curve
 //   here, linear to squared); Poly Mod into the Rev 3 filter at audio rate (the Ladder moves its cutoff once per
-//   128-sample block).
+//   128-sample block). The LFO stays three oscillators: the LFO module's fast range reaches 80 Hz, the original 500 Hz.
+// Over the FM-1 in modules, instances, buffers, bytes and CPU (Tier 1 of issue #351: 420 % -> 398 %), so it stays an XL.
 // - Hardware: the CV and gate jacks, the filter-envelope and volume pedal jacks, the Tune button (the analog
 //   oscillators' and filters' calibration), the pot modes, parameter transmission over MIDI and program dumps (the
 //   editor stores and sends patches).
@@ -82,14 +83,12 @@ export const xl: Xl = {
       const transQ = e.add('quant', 0.5, 6, { scale: 0, root: 0 }); // (octaves to whole semitones)
       e.wire(transpose, 'out', transQ, 'in');
       e.wire(transQ, 'out', GLIDE, 'in');
-      // chord memory: voice i (the Voicing's index, -1..1 over five voices) plays the sum of the intervals of chord notes
-      // 2..i+1, each 0..1 octave, rounded to semitones
-      const chordMix = per('mixer', 1.5, 6, { l1: 0, l2: 0, l3: 0, l4: 0 });
-      [0.75, 0.25, -0.25, -0.75].forEach((off, k) => {
-        const step = per('math', 1, 6 + k * 0.25, { ka: 1, kb: 0, off });
-        e.wire(ALLOC, 'index', step, 'a');
-        e.wire(step, 'cmp', chordMix, `in${k + 1}`);
-      });
+      // chord memory: a Selector per voice picks the voice's interval above the key (v2..v5, octaves rounded to semitones;
+      // voice 1 plays the key) by the Voicing's index (-1..1 over five voices, halved: positions 1..5 around 3)
+      const chordPos = per('scale', 1, 6, { gain: 0.5, offset: 0 });
+      e.wire(ALLOC, 'index', chordPos, 'in');
+      const chordMix = per('select', 1.5, 6, { count: 5, pos: 3 });
+      e.wire(chordPos, 'out', chordMix, 'pos');
       const chordQ = per('quant', 2, 6, { scale: 0, root: 0 });
       e.wire(chordMix, 'out', chordQ, 'in');
       e.wire(chordQ, 'out', GLIDE, 'in');
@@ -381,10 +380,10 @@ export const xl: Xl = {
       e.param('transpose', transpose, 'value');
       e.param('master tune', tune, 'value');
       e.param('channel', ALLOC, 'channel');
-      e.param('chord 2', chordMix, 'l1', { head: 'chord memory' });
-      e.param('chord 3', chordMix, 'l2');
-      e.param('chord 4', chordMix, 'l3');
-      e.param('chord 5', chordMix, 'l4');
+      e.param('chord 2', chordMix, 'v2', { head: 'chord memory' });
+      e.param('chord 3', chordMix, 'v3');
+      e.param('chord 4', chordMix, 'v4');
+      e.param('chord 5', chordMix, 'v5');
       e.param('vel curve', vel, 'mix', { col: true, head: 'touch' });
       e.param('vel → filter', velF, 'mix');
       e.param('vel → amp', velA, 'mix');

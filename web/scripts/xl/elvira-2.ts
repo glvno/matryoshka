@@ -3,10 +3,13 @@
 // and its product page (neutral-labs.com/elmyra2: 41 patch points, 31 modulation targets) describe it, where the FM-1's
 // Elvira 2 (gen-assemblies.ts) had to cut. The original's knobs have no scale, so most controls here are 0..1 rows
 // (Macros) too. A choice of N settings is one such row read in N even steps, 0, 1 / (N - 1), .. 1 (the eleven programs:
-// 0, 0.1, .. 1): comparators (Math) and a chain of Crossfaders pick the setting, as the module set has no switch.
+// 0, 0.1, .. 1), into a Selector's `pos` (count N): it plays the setting's input, or its value where a choice sets a
+// value (a chord's intervals). A choice of more than eight settings is two Selectors, the first's in8 taking the
+// second's output, each with the row rescaled to its own positions (an Offset).
 //
 // Each of the four voices:
-//  - the touchpads are the keys, as on the FM-1 version (rows 1-4 and 5-8 of four Drum maps are voices 1-4). A key's
+//  - the touchpads are the keys, as on the FM-1 version (rows 1-4 and 5-8 of the Drum map are voices 1-4, the map
+//    repeating its rows over the keybed, a black key playing the row of the white key below it). A key's
 //    velocity is the pressure on the pads and Main's aftertouch (input `pressure`) presses harder while it is held. The
 //    envelope (ENV as `attack` and `release`, down to 1 ms, which covers the short digital envelopes) times that
 //    pressure is the voice's ENV output (`env 1..4`). GATE (`gate 1..4`) is continuous, as the pads are. `drone` (PG's
@@ -74,6 +77,8 @@ import type { Xl } from './xl';
 
 /** an output port */
 type Out = [number, string];
+/** a setting of a choice: an input to play and / or a value */
+interface Opt { in?: Out; v?: number }
 
 /** the chords of CHORD (MOD from left to right): the two upper notes in octaves above the root, just intonation */
 const CHORDS: [number, number][] = [
@@ -85,7 +90,7 @@ const LFO_OCT = 15.6;
 const LFO_BASE = Math.log2(0.02 / 261.6256);
 const lfoFreq = (hz: number): number => Math.log2(hz / 0.02) / LFO_OCT;
 
-export function elviraXl(maps: Record<string, number>[]): Built {
+export function elviraXl(keys: Record<string, number>): Built {
   return define('Elvira 2 XL', (b) => {
     const rows = new Map<number, number>();
     const put = (type: string, col: number, p: Record<string, number> = {}): number => {
@@ -94,28 +99,41 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       return b.add(type, col, r, p);
     };
     const wire = (from: Out, to: number, port: string): void => b.wire(from[0], from[1], to, port);
-    /** comparators of a 0..1 choice of n: t[k] (k = 1..n - 1) is high from step k on (t[0] unused) */
-    const steps = (src: Out, n: number, col: number): Out[] => {
-      const t: Out[] = [['', ''] as unknown as Out];
-      for (let k = 1; k < n; k++) {
-        const m = put('math', col, { ka: 1, kb: 1, off: -(k - 0.5) / (n - 1) });
-        wire(src, m, 'a');
-        t.push([m, 'cmp']);
-      }
-      return t;
+    /** a 0..1 row rescaled (one Offset for each row, gain and offset) */
+    const rescaled = new Map<string, Out>();
+    const rescale = (src: Out, gain: number, offset: number, col: number): Out => {
+      if (Math.abs(gain - 1) < 1e-9 && Math.abs(offset) < 1e-9) return src;
+      const key = `${src[0]}.${src[1]}/${gain}/${offset}/${col}`;
+      let s = rescaled.get(key);
+      if (!s) rescaled.set(key, (s = scaled(src, col, gain, offset)));
+      return s;
     };
-    /** the option of the step chosen: a chain of Crossfaders, option k from t[k] on */
-    const pick = (opts: Out[], t: Out[], col: number, from = 1): Out => {
-      let y = opts[0];
-      for (let k = 1; k < opts.length; k++) {
-        const x = put('xfade', col, { mix: 0 });
-        wire(y, x, 'a');
-        wire(opts[k], x, 'b');
-        wire(t[from + k - 1], x, 'pos');
-        y = [x, 'out'];
+    /**
+     * A choice of opts.length settings, one per step of the 0..1 row `src` (step k at k / (n - 1)): a Selector playing
+     * the setting's input (`in`) plus its value (`v`). A run of equal settings at either end takes one position (the
+     * row rescaled so it lands on them, the Selector holding the end position past them); more than eight positions are
+     * two Selectors, the first's in8 taking the second's out. `fade` (ms) for an audio choice, against clicks.
+     */
+    const choose = (src: Out, opts: Opt[], col: number, fade = 0): Out => {
+      const n = opts.length;
+      const same = (a: Opt, b: Opt): boolean => (a.in?.[0] ?? 0) === (b.in?.[0] ?? 0) && (a.in?.[1] ?? '') === (b.in?.[1] ?? '') && (a.v ?? 0) === (b.v ?? 0);
+      let first = 0, last = n - 1;
+      if (n > 8) { // (only a choice that needs two Selectors is folded: below that, its cables are cheaper than an Offset)
+        while (first < last && same(opts[first], opts[first + 1])) first++;
+        while (last > first && same(opts[last], opts[last - 1])) last--;
       }
-      return y;
+      const sel = (o: Opt[], pos: Out): number => {
+        const m = put('select', col, { count: Math.max(2, o.length), fade, ...Object.fromEntries(o.map((x, k) => [`v${k + 1}`, x.v ?? 0])) });
+        o.forEach((x, k) => x.in && wire(x.in, m, `in${k + 1}`));
+        wire(pos, m, 'pos');
+        return m;
+      };
+      const c = last - first + 1;
+      if (c <= 8) return [sel(opts.slice(first, last + 1), rescale(src, (n - 1) / (c - 1), -first / (c - 1), col)), 'out'];
+      const second = sel(opts.slice(first + 7, last + 1), rescale(src, (n - 1) / (c - 8), -(first + 7) / (c - 8), col));
+      return [sel([...opts.slice(first, first + 7), { in: [second, 'out'] }], rescale(src, (n - 1) / 7, -first / 7, col)), 'out'];
     };
+    const opt = (o: Out): Opt => ({ in: o });
     const scaled = (src: Out, col: number, gain: number, offset = 0): Out => {
       const s = put('scale', col, { gain, offset });
       wire(src, s, 'in');
@@ -127,8 +145,8 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       return [m, 'out'];
     };
 
-    const plate = maps.map((keys, i) => b.add('drummap', 0, [6, 0, 7, 8][i] ?? 9 + i, keys));
-    for (const map of plate) b.module(map).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`); // (as the FM-1 version)
+    const plate = b.add('drummap', 0, 0, { ...keys, repeat: 1 });
+    b.module(plate).names = [1, 2, 3, 4, 1, 2, 3, 4].map((v, r) => `VOICE ${v}${r < 4 ? '' : 'B'}`); // (as the FM-1 version)
     const G = 1; // the global controls' column
     const noise = put('noise', G, { level: 0.8, color: 0 });
     const one = put('const', G, { value: 1 });
@@ -136,14 +154,8 @@ export function elviraXl(maps: Record<string, number>[]): Built {
     // the global choices
     const scaleM = macro(0), tuningM = macro(0), portaM = macro(0), followM = macro(0), chainM = macro(0);
     const filterM = macro(0), routeM = macro(0), revM = macro(0), cutoffM = macro(0.72), resoM = macro(0.25);
-    const tEdo = steps([tuningM, 'out'], 5, 2);
-    const tFollow = steps([followM, 'out'], 4, 2);
-    const tChain = steps([chainM, 'out'], 4, 2);
-    const chain2 = put('math', 2, { ka: 1, kb: 1, off: 0 }); // 1 > 2: the second step only
-    wire(tChain[2], chain2, 'a');
-    wire(tChain[3], chain2, 'b');
-    const chained: (Out | null)[] = [null, [chain2, 'sub'], tChain[3], tChain[1]];
-    const followed: (Out | null)[] = [null, tFollow[1], tFollow[2], tFollow[3]];
+    // MODP chaining (off, 3>4, 1>2 and 3>4, 2>3>4): the steps at which voice i takes the voice before it
+    const chainedAt: number[][] = [[], [2], [3], [1, 2, 3]];
 
     // ---- the LFOs: Oscillators (to audio rate) or, synced, LFOs on Main's clock; the waves derived from sine, saw, square
     const clockIn: [number, string][] = [];
@@ -224,7 +236,7 @@ export function elviraXl(maps: Record<string, number>[]): Built {
     };
     const lfo1Wave = macro(0), lfo2Mode = macro(0);
     // (voice sequences joined below, once the voices exist)
-    const lfo2 = pick([wave2, ranged(L2.sh), ranged(L2.sg)], steps([lfo2Mode, 'out'], 3, 4), 4);
+    const lfo2 = choose([lfo2Mode, 'out'], [wave2, ranged(L2.sh), ranged(L2.sg)].map(opt), 4);
 
     // ---- the patch points: LFO amounts into each destination (cutoff, bite, choke, time, wave, mod)
     const DEST = ['cutoff', 'bite', 'choke', 'time', 'wave', 'mod'] as const;
@@ -269,7 +281,7 @@ export function elviraXl(maps: Record<string, number>[]): Built {
         b.wire(q, 'out', post, 'in');
         return [post, 'out'];
       });
-      const quantized = pick([[q12, 'out'], ...edo], tEdo, col + 1);
+      const quantized = choose([tuningM, 'out'], [[q12, 'out'] as Out, ...edo].map(opt), col + 1);
       const chrm = P('xfade', { mix: 0 });
       b.wire(raw, 'out', chrm, 'a');
       wire(quantized, chrm, 'b');
@@ -281,12 +293,8 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       const pb = P('scale', { gain: 1, offset: 0 });
       b.wire(glide, 'out', pb, 'in');
       b.wire(octave, 'out', pb, 'in');
-      if (i > 0) {
-        const f = P('xfade', { mix: 0 }); // voice 1's pitch, when following
-        b.wire(voices[0].glide, 'out', f, 'b');
-        wire(followed[i]!, f, 'pos');
-        b.wire(f, 'out', raw, 'in');
-      }
+      if (i > 0) // voice 1's pitch, when following (off, 1>2, 1>2 3, 1>2 3 4: voice i from step i on)
+        wire(choose([followM, 'out'], [0, 1, 2, 3].map((k) => (k >= i ? opt([voices[0].glide, 'out']) : {})), col), raw, 'in');
       // WAVE, PG (page), MOD, MODP
       const wave = P('macro', { value: pos });
       const waveBus = P('scale', { gain: 1, offset: 0 });
@@ -297,7 +305,6 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       b.wire(mod, 'out', modBus, 'a');
       const M: Out = [modBus, 'max'];
       const modp = P('macro', { value: 0.8 }); // SRR, as the FM-1 version
-      const tProg = steps([modp, 'out'], 11, col + 1);
       const wt = (level = 0.8, offset?: Out, root: Out = [pb, 'out']): number => {
         const w = P('wavetable', { level });
         wire(root, w, 'pitch');
@@ -328,18 +335,8 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       b.wire(subSq, 'out', subV, 'in');
       wire(M, subV, 'cv');
       const subosc = mixOf(col, [[mainO, 1], [[subV, 'out'], 0.8]]);
-      // CHORD: the two upper notes step through CHORDS with MOD
-      const tChord = steps(M, 10, col + 1); // ten chords
-      const upper = [0, 1].map((n) => {
-        const w = wt(0.8, [P('const', { value: CHORDS[0][n] }), 'out']);
-        for (let k = 1; k < CHORDS.length; k++) {
-          if (CHORDS[k][n] === CHORDS[k - 1][n]) continue;
-          const s = P('scale', { gain: CHORDS[k][n] - CHORDS[k - 1][n], offset: 0 }, col + 1);
-          wire(tChord[k], s, 'in');
-          b.wire(s, 'out', w, 'pitch');
-        }
-        return [w, 'out'] as Out;
-      });
+      // CHORD: MOD steps the two upper notes through CHORDS (two Selectors each, as value tables)
+      const upper = [0, 1].map((n): Out => [wt(0.8, choose(M, CHORDS.map((c) => ({ v: c[n] })), col + 1)), 'out']);
       const chord = mixOf(col, [[mainO, 0.7], [upper[0], 0.7], [upper[1], 0.7]]);
       // DUAL
       const dual = mixOf(col, [[mainO, 0.8], [[wt(0.8, scaled(M, col, 2, -1)), 'out'], 0.8]]);
@@ -348,16 +345,11 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       b.wire(pb, 'out', master, 'pitch');
       const slave = wt(0.8, scaled(M, col, 3));
       b.wire(master, 'out', slave, 'sync');
-      const oscStage = pick([detune, subosc, chord, dual, [slave, 'out'], mainO], tProg, col + 1);
+      // the programs that are oscillators (MODP 0 .. 0.4); the main oscillator alone from 0.5 on
+      const PROGS = 11;
+      const oscStage = choose([modp, 'out'], [detune, subosc, chord, dual, [slave, 'out'] as Out, ...Array<Out>(PROGS - 5).fill(mainO)].map(opt), col + 1, 5);
       // MODP chaining: the voice before instead of this oscillator
-      let src = oscStage;
-      if (chained[i]) {
-        const x = P('xfade', { mix: 0 });
-        wire(oscStage, x, 'a');
-        wire(voices[i - 1].prog, x, 'b');
-        wire(chained[i]!, x, 'pos');
-        src = [x, 'out'];
-      }
+      const src = i === 0 ? oscStage : choose([chainM, 'out'], [0, 1, 2, 3].map((k) => opt(chainedAt[i].includes(k) ? voices[i - 1].prog : oscStage)), col + 1, 5);
       // SHAPER: the wave's upper half shifted down by MOD
       const upperHalf = P('math', { ka: 1, kb: 1, off: 0 });
       wire(src, upperHalf, 'a');
@@ -399,15 +391,16 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       b.wire(djLp, 'lp12', djHp, 'in');
       wire(scaled(M, col, 2, -1), djHp, 'p1');
       b.pin(djHp, 'p1', 'cutoff', [0, 1]);
-      const prog = pick([src, [shaper, 'sub'], [sat, 'out'], [bits, 'out'], [srr, 'out'], [nz, 'out'], [djHp, 'hp']], tProg, col + 1, 5);
+      // the programs that process it (MODP 0.5 .. 1), the oscillator as it is below 0.5
+      const prog = choose([modp, 'out'], ([...Array<Out>(5).fill(src), [shaper, 'sub'], [sat, 'out'], [bits, 'out'], [srr, 'out'], [nz, 'out'], [djHp, 'hp']] as Out[]).map(opt), col + 1, 5);
       // the touchpads: the keys' gates (and GATE) open the envelope, their velocity (and GATE, aftertouch) is the pressure
       const touch = P('scale', { gain: 1, offset: 0 });
       const press = P('scale', { gain: 1, offset: 0 });
-      for (const map of plate) for (const row of [i + 1, i + 5]) {
-        b.wire(map, `g${row}`, touch, 'in');
+      for (const row of [i + 1, i + 5]) { // (the velocity a row holds counts only while it is touched)
+        b.wire(plate, `g${row}`, touch, 'in');
         const v = P('math', {}, col + 2);
-        b.wire(map, `g${row}`, v, 'a');
-        b.wire(map, `v${row}`, v, 'b');
+        b.wire(plate, `g${row}`, v, 'a');
+        b.wire(plate, `v${row}`, v, 'b');
         b.wire(v, 'mul', press, 'in');
       }
       const env = P('adsr', { a, d: 0.2, s: 1, r });
@@ -428,7 +421,7 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       voices.push({ raw, glide, pb, prog, vca, envOut, seq, div, tune, fine, octave, wave, page, mod, modp, env, drone, chrm, waveBus, modBus, touch, press, q12 });
     });
     // LFO 1: the sine, LFO 2's wave, S&H, S&G, a voice's sequence
-    const lfo1 = pick([L1.sine, wave1, L1.sh, L1.sg, ...voices.map((v): Out => [v.seq, 'out'])], steps([lfo1Wave, 'out'], 8, 3), 3);
+    const lfo1 = choose([lfo1Wave, 'out'], [L1.sine, wave1, L1.sh, L1.sg, ...voices.map((v): Out => [v.seq, 'out'])].map(opt), 3);
     lfoOut.push(lfo1, lfo2);
     lfoOut.forEach((lfo, k) => {
       amt.push(Object.fromEntries(DEST.map((d) => {
@@ -513,8 +506,8 @@ export function elviraXl(maps: Record<string, number>[]): Built {
       b.wire(rbus, 'out', c, 'p1');
       b.pin(c, 'p1', 'damp', [0, 1]);
     }
-    const fout = pick([[ladder, 'lp24'], [bp4, 'bp'], [hp4, 'hp'], [svf, 'lp12'], [svf, 'bp'], [svf, 'hp'], [series, 'lp12'], parallel,
-      [width, 'lp12'], [notch, 'sub'], [comb, 'out'], [comb1, 'out']], steps([filterM, 'out'], 12, F + 1), F + 1);
+    const fout = choose([filterM, 'out'], ([[ladder, 'lp24'], [bp4, 'bp'], [hp4, 'hp'], [svf, 'lp12'], [svf, 'bp'], [svf, 'hp'], [series, 'lp12'], parallel,
+      [width, 'lp12'], [notch, 'sub'], [comb, 'out'], [comb1, 'out']] as Out[]).map(opt), F + 1, 5);
     // ---- the delay (its feedback outside it: the color low pass and past 100 %), the reverb
     const D = 10 + 3 * 4;
     const din = put('xfade', D, { mix: 0 }); // the filter, or the mix when reversed
@@ -543,7 +536,7 @@ export function elviraXl(maps: Record<string, number>[]): Built {
     const crush = put('crush', D, { bits: 6, rate: 4 });
     b.wire(lofi, 'out', crush, 'in');
     const lofiMix = mixOf(D, [[[dmix, 'out'], 1], [[crush, 'out'], 0.35]]);
-    const fx = pick([[dmix, 'out'], [rv, 'out'], lofiMix], steps([revM, 'out'], 3, D), D);
+    const fx = choose([revM, 'out'], ([[dmix, 'out'], [rv, 'out'], lofiMix] as Out[]).map(opt), D, 5);
     wire(fx, fin, 'b');
     const post = put('xfade', D, { mix: 0 });
     wire(fx, post, 'a');
@@ -581,7 +574,7 @@ export function elviraXl(maps: Record<string, number>[]): Built {
     const add = put('math', U, { ka: 1, kb: 1, off: 0 });
 
     // ---- ports: the original's jacks
-    b.input('keys', plate[1], 'keys', ...plate.filter((_, i) => i !== 1).map((m) => [m, 'keys'] as [number, string]));
+    b.input('keys', plate, 'keys');
     const clocks: [number, string][] = [...voices.map((v): [number, string] => [v.div, 'clock']), ...clockIn, [dly, 'clk']];
     b.input('clock', clocks[0][0], clocks[0][1], ...clocks.slice(1));
     b.input('pressure', voices[0].press, 'in', ...voices.slice(1).map((v) => [v.press, 'in'] as [number, string]));
@@ -711,7 +704,7 @@ export function elviraXl(maps: Record<string, number>[]): Built {
 
 /** the patch's notes (Patch.notes, at most 500 characters) */
 const NOTES =
-  "The neutral labs Elmyra 2 in full, after its manual (v2.4): per voice touch, ENV, drone, MOD with all eleven MODP programs (0 DETUNE .. 1 DJ in tenths), CHRM, scales and EDOs, octave, tune follow, an 8-step sequence; the twelve filter types, reversed routing, delay to 1.6 s with color and sync, reverb, OUCH, two LFOs to audio rate with S&H / S&G and sync, ATT, ADD, and the jacks as ports. A choice of N is a 0..1 row in N even steps. Not here: external audio, bit flipping, recording. Browser only.";
+  "The neutral labs Elmyra 2 after its manual (v2.4): per voice touch, ENV, drone, MOD with all eleven MODP programs (0 DETUNE .. 1 DJ in tenths), CHRM, scales and EDOs, octave, tune follow, an 8-step sequence; twelve filter types, reversed routing, delay to 1.6 s with color and sync, reverb, OUCH, two LFOs to audio rate with S&H / S&G and sync, ATT, ADD, the jacks as ports. A choice of N is a 0..1 row in N steps. Not here: outside audio (no audio input), bit flipping (no XOR), recording (no recorder). Browser only.";
 
 export const xl: Xl = {
   base: 'Elvira 2',

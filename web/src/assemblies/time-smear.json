@@ -14,7 +14,9 @@
         "fb": 0.5,
         "mix": 1,
         "sync": 0,
-        "pingpong": 0
+        "pingpong": 0,
+        "note": 0,
+        "swell": 0
       },
       "att": [
         1,
@@ -44,7 +46,11 @@
         "depth": 1,
         "sync": 0,
         "div": 6,
-        "bpm": 120
+        "bpm": 120,
+        "phase": 0,
+        "range": 0,
+        "dir": 0,
+        "mult": 3
       },
       "att": [
         1,

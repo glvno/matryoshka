@@ -7,16 +7,17 @@
 //   (the FM-1 version's env amount scaled the LFO too): ENV, the polarity switch (an attenuverter: -1 inverts the
 //   envelope), LFO, KYBD (0..1, the manual's key follow of 0 to 100 %).
 // - The DCO: saw and pulse sound together (the manual: "each switch can be individually turned on or off"); the range
-//   switch (16' 8' 4': an offset of -1, 0 or 1 octave, quantized to whole octaves); the PWM mode switch (MAN: the pw row
+//   switch (16' 8' 4': a Selector, 1 2 3, of -1, 0 or 1 octave); the PWM mode switch (MAN: the pw row
 //   sets the width; LFO: the pwm row is the depth); the LFO into the pitch per sample (the FM-1 version: the fine tune,
 //   once per block).
 // - The VCA by the envelope or by the gate.
+// - The envelope's decay and release to 12 s (the ADSR's long times; release reaches 19.2 s).
 // - The LFO's delay time (the LFO fades in after a key is pressed; an envelope on a VCA after the LFO, keyed by a one-voice
 //   allocator that holds while any key is down).
 // - The HPF's position 0, the bass boost (a low pass at 120 Hz mixed back in).
 // - The controller panel: the bender's DCO sensitivity (0..1 octave either way; Main's bend in, the 2 semitones a part
 //   always bends taken back out) and VCF sensitivity (octaves of cutoff); the lever's LFO (Main's mod wheel brings in
-//   vibrato by the LFO trigger depth); portamento, its on / off switch and time (a slew per voice: each voice glides from
+//   vibrato by the LFO trigger depth); portamento, its on / off switch (a Selector: 1 off, 2 on) and time (a slew per voice: each voice glides from
 //   its own last note, as on the original, whose manual suggests Poly 2 for it).
 // - Assign mode: Poly 1 (the next voice in turn, releases overlap), Poly 2 (the lowest free voice, so a note cuts the
 //   release of the one before), and both pressed, solo unison (all six voices on one key): the allocator's assign and
@@ -28,54 +29,58 @@
 // Kept as on the FM-1 version: six voices, one noise source, the chorus (its rate and depth reach the original's I and II),
 // the K1..K4 pages; the new rows come after.
 // Not here:
-// - Decay and release times reach 5 s and 8 s (the original: 12 s). It needs the ADSR's ranges extended, in both engines.
 // - Poly 2 with six keys down takes over a voice (the original then plays no more keys). It needs a "no take-over" choice
 //   on the Voice allocator, in both engines.
+// Over the FM-1's CPU (Tier 1 of issue #351, 2026-10-26: 194 % -> 177 %; module instances 136 -> 120 of 128): three
+// oscillators per voice whose pitch moves every sample (portamento, the LFO) and the per-sample filter. Even with the
+// Ladder (145 %) and no per-sample pitch (about 123 %) six voices do not fit, so it stays an XL (D-348 does not apply).
 // - The hold and patch shift pedal jacks, the tape interface, the memory and the MIDI function switch: hardware and
 //   storage, no part of the sound (the editor keeps the patches; MIDI's hold, CC 64, does not reach Main).
 import { level, players, plugIn } from '../factory-build';
 import type { Xl } from './xl';
 import { aroundDef, edit } from './asm-edit';
-import { BEND_OCT } from '../../src/modules';
+import { ADSR_LONG, BEND_OCT } from '../../src/modules';
 
 // the FM-1 version's local module ids (src/assemblies/hera-6.json)
 const LFO = 1, VIB = 2, PWM = 3, LFO_FILTER = 4, PART = 6, OSC = 7, SUB = 8, LADDER = 9, ENV = 10, VCA = 11, HPF = 12, CHORUS = 13, SCOPE = 14;
-/** the quantizer's scales (modules.ts SCALES): chromatic, octaves */
-const CHROMATIC = 0, OCTAVES = 10;
+/** the quantizer's scales (modules.ts SCALES): chromatic */
+const CHROMATIC = 0;
 
 export const xl: Xl = {
   base: 'Hera 6',
   build: () => {
     const def = edit('Hera 6', (e) => {
       const voice = e.nest('voice');
-      // ---- the keys' pitch per voice: the part's pitch less the bend it always carries, plus the key transpose; then the
-      // portamento (a slew, or straight through when off)
-      const keyPitch = e.add('scale', 1.5, 2, { gain: 1, offset: 0 });
-      e.unwire(PART, 'pitch', OSC, 'pitch');
-      e.unwire(PART, 'pitch', SUB, 'pitch');
-      e.wire(PART, 'pitch', keyPitch, 'in');
+      // ---- the keys' offsets, once for all voices: the bend a part always carries taken back out, plus the key transpose
+      const keyOffs = e.add('scale', 1.5, 4.5, { gain: 1, offset: 0 });
       const unbend = e.add('scale', 1, 4.5, { gain: -BEND_OCT, offset: 0 });
-      e.wire(unbend, 'out', keyPitch, 'in');
+      e.wire(unbend, 'out', keyOffs, 'in');
       const transpose = e.add('const', 1, 5, { value: 0 });
       const semis = e.add('quant', 1.5, 5, { scale: CHROMATIC, root: 0 });
       e.wire(transpose, 'out', semis, 'in');
-      e.wire(semis, 'out', keyPitch, 'in');
+      e.wire(semis, 'out', keyOffs, 'in');
+      // ---- the keys' pitch per voice, then the portamento: a slew, or straight through when off (a Selector: 1 off, 2 on)
+      e.unwire(PART, 'pitch', OSC, 'pitch');
+      e.unwire(PART, 'pitch', SUB, 'pitch');
       const porta = e.add('glide', 2, 2, { time: 0.2, curve: 0 });
-      e.wire(keyPitch, 'out', porta, 'in');
-      const portaOn = e.add('xfade', 2.5, 2, { mix: 0 });
-      e.wire(keyPitch, 'out', portaOn, 'a');
-      e.wire(porta, 'out', portaOn, 'b');
-      // ---- the DCO's pitch: the keys, the range switch, the tune, the LFO, the lever's LFO and the bender
+      const portaOn = e.add('select', 2.5, 2, { count: 2, pos: 1 });
+      for (const [m, port] of [[porta, 'in'], [portaOn, 'in1']] as const) {
+        e.wire(PART, 'pitch', m, port);
+        e.wire(keyOffs, 'out', m, port);
+      }
+      e.wire(porta, 'out', portaOn, 'in2');
+      // ---- the DCO's pitch: the keys plus, once for all voices, the range switch (a Selector: 1 16', 2 8', 3 4'), the
+      // tune, the LFO, the lever's LFO and the bender
+      const dcoMod = e.add('scale', 1.5, 6, { gain: 1, offset: 0 });
+      const range = e.add('select', 1, 5.5, { count: 3, pos: 2, v1: -1, v2: 0, v3: 1 });
+      e.wire(range, 'out', dcoMod, 'in');
+      const tune = e.add('const', 1, 6, { value: 0 });
+      e.wire(tune, 'out', dcoMod, 'in');
+      const dcoBend = e.add('scale', 1, 6.5, { gain: BEND_OCT, offset: 0 });
+      e.wire(dcoBend, 'out', dcoMod, 'in');
       const dcoPitch = e.add('scale', 3, 2, { gain: 1, offset: 0 });
       e.wire(portaOn, 'out', dcoPitch, 'in');
-      const range = e.add('const', 1, 5.5, { value: 0 });
-      const octs = e.add('quant', 1.5, 5.5, { scale: OCTAVES, root: 0 });
-      e.wire(range, 'out', octs, 'in');
-      e.wire(octs, 'out', dcoPitch, 'in');
-      const tune = e.add('const', 1, 6, { value: 0 });
-      e.wire(tune, 'out', dcoPitch, 'in');
-      const dcoBend = e.add('scale', 1, 6.5, { gain: BEND_OCT, offset: 0 });
-      e.wire(dcoBend, 'out', dcoPitch, 'in');
+      e.wire(dcoMod, 'out', dcoPitch, 'in');
       // ---- the DCO: saw and pulse together (OSC becomes the pulse, a new saw beside it)
       Object.assign(e.m(OSC).params, { wave: 3, level: 0 });
       const saw = e.add('osc', 2, 0.5, { wave: 2, level: 0.55 });
@@ -84,7 +89,7 @@ export const xl: Xl = {
       // ---- the LFO into the pitch per sample (the FM-1 version: the fine tune pin)
       e.unwire(VIB, 'out', OSC, 'p1');
       e.unwire(VIB, 'out', SUB, 'p1');
-      e.wire(VIB, 'out', dcoPitch, 'in');
+      e.wire(VIB, 'out', dcoMod, 'in');
       // ---- the filter: the Multimode, cutoff per sample, 1 octave per unit of its cv; each source by its own amount
       e.retype(LADDER, 'filter', { cutoff: 1400, res: 0.15, cvamt: 1, track: 0 });
       e.unwire(ENV, 'env', LADDER, 'cv');
@@ -99,17 +104,17 @@ export const xl: Xl = {
       const vcfBend = e.add('scale', 1, 7, { gain: 0, offset: 0 });
       e.wire(vcfBend, 'out', LADDER, 'cv');
       e.input('bend', unbend, 'in', [dcoBend, 'in'], [vcfBend, 'in']);
-      // ---- hold: the gate stays up while hold is on and the envelope still sounds
-      const sounds = e.add('math', 4, 2, { ka: 1, kb: 1, off: -0.001 });
-      e.wire(ENV, 'env', sounds, 'a');
+      // ---- hold: the gate stays up while hold is on and the envelope still sounds. One Logic per voice: its b is the hold
+      // level (just under the threshold while hold is on, far below it while off) plus the envelope, so b is high while
+      // hold is on and the envelope is above silence (1e-4); the gate is a or b
       const hold = e.add('macro', 1, 7.5, { value: 0 });
-      const holding = e.add('logic', 4, 2.5, { thresh: 0.5 });
-      e.wire(sounds, 'cmp', holding, 'a');
-      e.wire(hold, 'out', holding, 'b');
+      const holdLevel = e.add('scale', 1.5, 7.5, { gain: 4.4999, offset: -4 });
+      e.wire(hold, 'out', holdLevel, 'in');
       const gate = e.add('logic', 4.5, 2.5, { thresh: 0.5 });
       e.unwire(PART, 'gate', ENV, 'gate');
       e.wire(PART, 'gate', gate, 'a');
-      e.wire(holding, 'and', gate, 'b');
+      e.wire(holdLevel, 'out', gate, 'b');
+      e.wire(ENV, 'env', gate, 'b');
       e.wire(gate, 'or', ENV, 'gate');
       // ---- the VCA by the envelope or the gate
       e.unwire(ENV, 'env', VCA, 'cv');
@@ -117,9 +122,11 @@ export const xl: Xl = {
       e.wire(ENV, 'env', vcaMode, 'a');
       e.wire(gate, 'or', vcaMode, 'b');
       e.wire(vcaMode, 'out', VCA, 'cv');
-      e.join('voice', keyPitch, porta, portaOn, dcoPitch, saw, envAmt, polarity, kybd, sounds, holding, gate, vcaMode);
-      // the voice card's inputs: the pitch now goes into the key pitch, the gate into the hold's gate
-      voice.inputs = voice.inputs.map((r) => (r.label === 'pitch' ? { module: keyPitch, port: 'in', label: 'pitch' } : r.label === 'gate' ? { module: gate, port: 'a', label: 'gate' } : r));
+      // ---- decay and release to 12 s as on the original: the ADSR's long times (x 2.4), set to sound as before
+      Object.assign(e.m(ENV).params, { d: 0.8 / ADSR_LONG, r: 0.5 / ADSR_LONG, long: 1 });
+      e.join('voice', porta, portaOn, dcoPitch, saw, envAmt, polarity, kybd, gate, vcaMode);
+      // the voice card's inputs: the pitch now goes into the portamento, the gate into the hold's gate
+      voice.inputs = voice.inputs.map((r) => (r.label === 'pitch' ? { module: porta, port: 'in', label: 'pitch', also: [{ module: portaOn, port: 'in1' }] } : r.label === 'gate' ? { module: gate, port: 'a', label: 'gate' } : r));
       // ---- the LFO's delay: a one-voice allocator's gate (held while any key is) opens a VCA after the LFO
       const held = e.add('alloc', 0, 4, { voices: 1, legato: 2 });
       const keys = e.def.inputs.find((r) => r.label === 'keys')!;
@@ -143,7 +150,7 @@ export const xl: Xl = {
       e.input('wheel', lever, 'cv');
       const leverDepth = e.add('scale', 0.5, 4.5, { gain: 0.04, offset: 0 });
       e.wire(lever, 'out', leverDepth, 'in');
-      e.wire(leverDepth, 'out', dcoPitch, 'in');
+      e.wire(leverDepth, 'out', dcoMod, 'in');
       // ---- the HPF's bass boost: a low pass of the voices mixed in beside the high pass
       const boost = e.add('filter', 5, 1, { cutoff: 120, res: 0, cvamt: 1, track: 0 });
       e.wire(VCA, 'out', boost, 'in');
@@ -165,13 +172,13 @@ export const xl: Xl = {
       e.param('env polarity', polarity, 'gain', { head: 'vcf · vca' });
       e.param('vca gate', vcaMode, 'mix');
       e.param('bass boost', sum, 'l2');
-      e.param('range', range, 'value', { col: true, head: 'dco · keys' });
+      e.param('range', range, 'pos', { col: true, head: 'dco · keys' });
       e.param('pwm lfo', pwmMode, 'mix');
       e.param('transpose', transpose, 'value');
       e.param('tune', tune, 'value');
       e.param('dco bend', dcoBend, 'gain', { head: 'bender' });
       e.param('vcf bend', vcfBend, 'gain');
-      e.param('portamento', portaOn, 'mix', { col: true, head: 'portamento · assign' });
+      e.param('portamento', portaOn, 'pos', { col: true, head: 'portamento · assign' });
       e.param('porta time', porta, 'time');
       e.param('assign', PART, 'assign');
       e.param('unison', PART, 'unison');
@@ -187,4 +194,4 @@ export const xl: Xl = {
 };
 
 const NOTES =
-  'The Juno-106 as its owner’s manual describes it. DCO: saw and pulse together, range (-1 16’, 0 8’, 1 4’), pwm lfo (0 MAN: pw is the width, 1 LFO: pwm the depth). HPF 1..3 on hpf, 0 on bass boost. A 24 dB low pass per voice; env, polarity, lfo, kybd in octaves. VCA by env or gate. LFO delay. Bender: dco bend, vcf bend (octaves), the lever’s LFO on the mod wheel. Portamento. Assign: rotate Poly 1, lowest Poly 2, unison solo. Transpose (0.08 a semitone), tune, hold. Six voices, chorus.';
+  'The Juno-106 as its owner’s manual describes it. DCO: saw and pulse together, range (1 16’, 2 8’, 3 4’), pwm lfo (0 MAN: pw is the width, 1 LFO: pwm the depth). HPF 1..3 on hpf, 0 on bass boost. A 24 dB low pass per voice; env, polarity, lfo, kybd in octaves. VCA by env or gate. Decay and release to 12 s. LFO delay. Bender: dco bend, vcf bend (octaves), the lever’s LFO on the mod wheel. Portamento (1 off, 2 on). Assign: rotate Poly 1, lowest Poly 2, unison solo. Transpose (0.08 a semitone), tune, hold. Six voices, chorus.';
