@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Small patches the tests and the golden / CPU kits are built on (the factory patches change; these do not).
 import { make } from './presets';
+import { makeAssembly } from './assembly';
 import type { Patch } from './patch';
 
 /** saw → 24 dB low pass → VCA, an ADSR, one note from Main; modules[1] is the oscillator */
@@ -86,3 +87,43 @@ export const wobble = (): Patch =>
     wire(vca, 'out', out, 'l');
     wire(vca, 'out', out, 'r');
   });
+
+/**
+ * Card rows that set several parameters and name a Selector's positions (#357, #358): two saws a fifth apart, each
+ * through its own filter, a Selector picking the low filter, the high one or the raw saw. The "voice" card has one cutoff
+ * row and one resonance row for both filters, and a source row whose positions are named LOW, HIGH and RAW (three in use).
+ * Module ids: Main 1, saws 2 and 3, filters 4 and 5, the Selector 6.
+ */
+export const cardRows = (): Patch => {
+  const p = make('Card rows', (add, wire) => {
+    const kb = add('fm1', 20, 40);
+    const o1 = add('osc', 260, 40, { wave: 2, level: 0.7 });
+    const o2 = add('osc', 260, 260, { wave: 2, level: 0.7, coarse: 7 });
+    const f1 = add('filter', 500, 40, { cutoff: 900, res: 0.4 });
+    const f2 = add('filter', 500, 260, { cutoff: 900, res: 0.4 });
+    const sel = add('select', 740, 40, { pos: 2, count: 3 });
+    const env = add('adsr', 740, 260, { a: 0.005, d: 0.3, s: 0.6, r: 0.2 });
+    const vca = add('vca', 980, 40);
+    const out = add('output', 1220, 40, { level: 0.6 });
+    wire(kb, 'pitch', o1, 'pitch');
+    wire(kb, 'pitch', o2, 'pitch');
+    wire(kb, 'gate', env, 'gate');
+    wire(o1, 'out', f1, 'in');
+    wire(o2, 'out', f2, 'in');
+    wire(f1, 'lp24', sel, 'in1');
+    wire(f2, 'lp24', sel, 'in2');
+    wire(o1, 'out', sel, 'in3');
+    wire(sel, 'out', vca, 'in');
+    wire(env, 'env', vca, 'cv');
+    wire(vca, 'out', out, 'l');
+    wire(vca, 'out', out, 'r');
+  });
+  const a = makeAssembly(p, [2, 3, 4, 5, 6], 'voice');
+  a.params = [
+    { module: 4, param: 'cutoff', label: 'cutoff', also: [{ module: 5, param: 'cutoff' }] },
+    { module: 4, param: 'res', label: 'res', also: [{ module: 5, param: 'res' }] },
+    { module: 6, param: 'pos', label: 'source', names: ['low', 'high', 'raw'] },
+    { module: 6, param: 'count', label: 'count' },
+  ];
+  return p;
+};

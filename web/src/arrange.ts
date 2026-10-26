@@ -111,19 +111,33 @@ export function setLayout(a: AssemblyInst, layout: Layout): void {
   else delete a.heads;
 }
 
-/** a section's pages: one starts at its first row, at a page flag (`group` set by hand, `pin` kept), or when the page
- * already has PAGE_ROWS knob rows; a row not drawn rides with the page before it */
+/** a section's pages: one starts at its first row, at a page flag (`group` set by hand, `pin` kept), at each copy of a run
+ * shown one at a time and after it (assembly.ts copyStarts), or when the page already has PAGE_ROWS knob rows; a row not
+ * drawn rides with the page before it */
 export function pagesOf(sec: Sec, knob: KnobOf): ParamRef[][] {
   const out: ParamRef[][] = [];
   let cur: ParamRef[] | null = null;
   let n = 0;
-  for (const r of sec.rows) {
+  let left = 0, size = 1, at = 0, ended = false;   // a run of copies: rows left in it, rows per copy, the row's place in it
+  sec.rows.forEach((r, i) => {
+    if (r.copies && !left && i + r.copies.rows * r.copies.count <= sec.rows.length && !sec.rows.slice(i + 1, i + r.copies.rows * r.copies.count).some((x) => x.copies)) {
+      left = r.copies.rows * r.copies.count;
+      size = r.copies.rows;
+      at = 0;
+    }
+    const copy = (left > 0 && at % size === 0) || ended;
     const k = knob(r);
-    if (k !== null && (!cur || r.group || r.pin || n >= PAGE_ROWS)) { cur = []; out.push(cur); n = 0; }
+    if (k !== null && (!cur || r.group || r.pin || copy || n >= PAGE_ROWS)) { cur = []; out.push(cur); n = 0; }
     if (!cur) { cur = []; out.push(cur); }
     cur.push(r);
     if (k) n++;
-  }
+    ended = false;
+    if (left) {
+      at++;
+      left--;
+      ended = left === 0;
+    }
+  });
   return out;
 }
 
