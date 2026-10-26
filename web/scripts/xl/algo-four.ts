@@ -1,48 +1,231 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Algo Four XL: the Yamaha DX100 in full (Yamaha DX100 Owner's Manual: "up to 8 notes" in POLY mode, four operators,
-// "8 algorithm choices", feedback 0..7 on operator 4 in every algorithm, an envelope per operator of AR, D1R, D1L, D2R
-// and RR, one LFO with SAW UP / SQUARE / TRIANGLE / S/HOLD waves, a pitch depth (PMD) and an amplitude depth (AMD), the
-// modulation wheel adding to them). The FM-1 version (gen-assemblies.ts, Algo Four) plays three voices, gives the two
-// modulators ADSRs, keeps operator 4's feedback at 0 and wires one algorithm (5: 2 into 1, 4 into 3).
+// Algo Four XL: the Yamaha DX100 in full, after the Yamaha DX100 Owner's Manual (chapter III "The Function Mode", chapter
+// IV "The Voice Parameters", the specifications and the voice data tables 5-1 / 5-2; a copy:
+// homepages.abdn.ac.uk/d.j.benson/pages/dx7/manuals/dx100-man.pdf). The FM-1 version (gen-assemblies.ts,
+// Algo Four) plays three voices, gives the two modulators ADSRs, keeps operator 4's feedback at 0 and wires one algorithm
+// (5: 2 into 1, 4 into 3).
 //
-// The algorithms: an oscillator has one phase input, so each operator that can be modulated gets a Mixer 4 in front of
-// it, and every path one of the eight algorithms uses is a row of the card (its mixer level): 2→1, 3→1, 4→1, 3→2, 4→2,
-// 4→3. Which operators are heard is a second Mixer 4, one row per operator (out 1 .. out 4). An algorithm is a set of
-// those rows at 1 (or 0); the module set has no selector that switches several levels with one control, so the eight
-// algorithms are the table below, set by hand (the notes say the same). An operator's `level` row is its output level, as
-// on the DX100: how loud a carrier is and how deep a modulator modulates.
-//
-//   algorithm  paths at 1          heard
-//   1          4→3, 3→2, 2→1       1
-//   2          3→2, 4→2, 2→1       1
-//   3          3→2, 2→1, 4→1       1
-//   4          4→3, 3→1, 2→1       1
-//   5          2→1, 4→3            1, 3
-//   6          4→1, 4→2, 4→3       1, 2, 3
-//   7          4→3                 1, 2, 3
-//   8          (none)              1, 2, 3, 4
-//
-// The envelope: the Env L/R module, its first level at the top (the DX100's attack always reaches the maximum): r1 = AR
-// (the attack time), r2 = D1R and l2 = D1L, r3 = D2R towards l3 (0: the note decays while held, as a D2R above 0; l3 = l2
-// holds it at D1L, as D2R 0), r4 = RR. The DX100's rates are speeds 0..31; here they are times.
-// The LFO, once for all voices (as on the DX100): its pitch depth into every operator's fine tune, its amplitude depth into
-// every operator's level (all four AM switches on), the wheel adding to the pitch depth.
+// What is here, by the manual's parameter list:
+// - POLY / MONO: row `voices` (8 = POLY, "up to 8 notes"; 1 = MONO).
+// - ALGORITHM 1..8: row `algorithm`, a Sequencer's length (1..8, so the row reads the algorithm's number). The Sequencer
+//   is reset and clocked forwards by a 40 Hz square (an LFO and a Logic's not), so it always stands on its last step; a
+//   S&H takes that step while the clock is high. Seven comparators (Math cmp) and six Logic xors turn it into one gate
+//   per algorithm, and each path's VCA (per voice) opens for the algorithms that use it:
+//     algorithm  paths                heard
+//     1          4→3, 3→2, 2→1       1
+//     2          3→2, 4→2, 2→1       1
+//     3          3→2, 2→1, 4→1       1
+//     4          4→3, 3→1, 2→1       1
+//     5          2→1, 4→3            1, 3
+//     6          4→1, 4→2, 4→3       1, 2, 3
+//     7          4→3                 1, 2, 3
+//     8          (none)              1, 2, 3, 4
+// - FEEDBACK 0..7 on operator 4, in every algorithm: row `feedback`.
+// - Per operator: FREQUENCY RATIO (rows `ratio n`, semitones, and `detune n`, cents: 3.14 = 20 st - 19 ct; ratios past
+//   16.96 add `octave n`), DETUNE (+-2.6 cents: the same `detune n`), OPERATOR OUT LEVEL (`level n`), the envelope (AR =
+//   `r1`, D1R = `r2` towards D1L = `l2`, D2R = `r3` towards `l3` (0: it decays while held; l3 = l2: D2R 0), RR = `r4`;
+//   the Env L/R module, its first level at the top as the DX100's attack; the DX100's rates are speeds, here times), KEY
+//   VELOCITY 0..7 (`velocity n`: 0 none, 1 the full range; a note at velocity v plays at 1 - velocity x (1 - v)), KEYBOARD
+//   SCALING LEVEL (`level scaling n`: the level falls by that much over the four octaves above C2, the DX100's lowest
+//   key), RATE SCALING 0..3 (`rate scaling n`: every segment's time halves per octave above C2 at 3), the AMS switch
+//   (`am n`: 1 on, 0 off) and EG BIAS SENSITIVITY 0..7 (`eg bias n`). Velocity, level scaling, amplitude modulation and EG
+//   bias move the oscillator's level (its p2 pin, the four added).
+// - The LFO, once for all voices: LFO WAVE (`lfo wave`: saw = SAW UP, square, triangle, S&H; sine is extra), LFO SPEED,
+//   LFO DELAY (`lfo delay`: a Macro on an Env L/R that holds the LFO at 0 for that time, then fades it in over as long, as
+//   the manual's "initial delay ... which slowly increases over" the same time; 0 none, 1 = 10 s; it starts again on a key
+//   played after all were released), LFO SYNC (`lfo sync`: 1 restarts the LFO on every key played), LFO PMD and AMD, PITCH MODULATION SENSITIVITY (`pms`: 1 = 7, the PMD at 1 then
+//   +-800 cents) and AMPLITUDE MODULATION SENSITIVITY (`ams`: 1 = 3, the level then down to 0 at the LFO's peak).
+// - Performance (stored per voice on the DX100): PITCH BEND RANGE (`bend range`, octaves: 0.17 = 2 semitones, 1 = 12),
+//   PORTAMENTO TIME (`portamento`, seconds; 0.001 off) and MODE (`fingered`: 0 full time, 1 fingered: only from a held
+//   key; with more than one voice each voice glides from its own last note), FOOT SWITCH ASSIGN (`foot assign`: 0 sustain, 1 portamento; the footswitch is the FM-1's FX button, held, or MIDI
+//   CC 80: sustain holds the notes to the D2R limit; portamento glides only while it is down), MODULATION WHEEL RANGE
+//   PITCH and AMPLITUDE (`wheel → pitch`, `wheel → amp`), BREATH RANGE PITCH, AMPLITUDE, PITCH BIAS (+-4 octaves, as the
+//   manual) and EG BIAS (`breath → ...`): the breath controller is the keyboard's channel aftertouch (Main's `at`), as
+//   Main has no breath input (MIDI CC 2).
+// - Functions: KEY SHIFT (`transpose`, octaves, rounded to semitones by a Quantizer: 0.08 = +1, 2 = +24) and MASTER TUNE
+//   (`master tune`, semitones, +-1 as the manual's +-100 cents).
+// Not here, each for want of a module that does it: the pitch bend wheel's Low / High modes (only the lowest or highest
+// held note bends: a Voicing output that says which part plays the lowest or highest note; Kon, all notes, is what this
+// plays), LFO SYNC's start at the wave's peak (the LFO's reset starts its cycle at 0: an LFO phase parameter), the LFO's
+// speeds below 0.02 Hz and above 40 Hz (the DX100: 0.0008 to 55 Hz; the LFO's rate range), and a breath controller or
+// footswitch of its own (Main has outputs for neither MIDI CC 2 nor CC 64 / 65: aftertouch and the FX button stand in).
+// The cassette interface, the voice memories and the MIDI functions are the browser's patches and presets. The DX100 has
+// no chorus, pitch EG or foot volume (its voice data marks them "not used").
 import type { Patch } from '../../src/patch';
-import { players, wire } from '../factory-build';
+import { setKind } from '../../src/buttons';
+import { players, plugIn } from '../factory-build';
 import { around, define, matchLevel } from './def';
 import type { Xl } from './xl';
 
-const NOTES = 'After the Yamaha DX100 Owner\'s Manual: 8 voices, 4 operators with their own envelope (r1 attack, r2 decay 1 ' +
-  'to l2, r3 decay 2 to l3, r4 release), op 4 feedback, all 8 algorithms, an LFO (pmd, amd, wheel). Algorithm = rows at 1: ' +
-  '1 4→3 3→2 2→1 out 1 / 2 3→2 4→2 2→1 out 1 / 3 3→2 2→1 4→1 out 1 / 4 4→3 3→1 2→1 out 1 / 5 2→1 4→3 out 1 3 / ' +
-  '6 4→1 4→2 4→3 out 1 2 3 / 7 4→3 out 1 2 3 / 8 out 1 2 3 4.';
+const NOTES = 'After the Yamaha DX100 Owner\'s Manual: 8 voices (1 = mono), 4 operators, algorithm 1..8, op 4 feedback. Per ' +
+  'operator: ratio (st) + detune (ct) + octave, level, envelope (r1 AR, r2 D1R to l2 D1L, r3 D2R to l3, r4 RR), velocity, ' +
+  'level and rate scaling, AM switch, EG bias. LFO: wave, speed, delay, sync, PMD, AMD, PMS, AMS. Wheel and breath (= ' +
+  'aftertouch) to pitch and amp, breath pitch bias and EG bias, bend range (oct), portamento (full / fingered), footswitch ' +
+  '(FX button or CC 80: sustain or portamento), transpose (oct, in semitones), master tune.';
+
+/** each path's algorithms (1..8): the path is open when one of them is chosen */
+const PATHS: [string, number, number, number[]][] = [
+  // label, from operator, into operator (0: heard), algorithms
+  ['2→1', 2, 1, [1, 2, 3, 4, 5]],
+  ['3→1', 3, 1, [4]],
+  ['4→1', 4, 1, [3, 6]],
+  ['3→2', 3, 2, [1, 2, 3]],
+  ['4→2', 4, 2, [2, 6]],
+  ['4→3', 4, 3, [1, 4, 5, 6, 7]],
+  ['out 2', 2, 0, [6, 7, 8]],
+  ['out 3', 3, 0, [5, 6, 7, 8]],
+  ['out 4', 4, 0, [8]],
+];
 
 const built = define('Algo Four XL', (b) => {
-  const lfo = b.add('lfo', 0, 0, { wave: 2, rate: 5.5, depth: 1 });
-  const pmd = b.add('scale', 0, 1, { gain: 0, offset: 0 });
-  const wheel = b.add('vca', 0, 1.25, { gain: 0.3 });
-  const amd = b.add('scale', 0, 1.5, { gain: 0, offset: 0 });
   const part = b.add('alloc', 0, 2, { voices: 8 });
+
+  // ---- shared: the algorithm selector (one Sequencer step per algorithm, k / 10)
+  const clk = b.add('lfo', 8, 0, { wave: 3, rate: 40, depth: 1 });
+  const clkNot = b.add('logic', 8, 0.2, {});
+  const sel = b.add('seq', 8, 0.4, { ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((k) => [`s${k}`, k / 10])), len: 5, dir: 1, glide: 0, gate: 0 });
+  const held = b.add('sh', 8, 0.6, { mode: 1 });
+  b.wire(clk, 'out', clkNot, 'a');
+  b.wire(clk, 'out', sel, 'clock');
+  b.wire(clkNot, 'not', sel, 'reset');
+  b.wire(sel, 'out', held, 'in');
+  b.wire(clk, 'out', held, 'clock');
+  // g[k]: high for algorithm k and above (k = 2..8); is[k]: high for algorithm k alone
+  const g: number[] = [];
+  for (let k = 2; k <= 8; k++) {
+    g[k] = b.add('math', 9, 0.2 * k, { ka: 1, kb: 1, off: -(k - 0.5) / 10 });
+    b.wire(held, 'out', g[k], 'a');
+  }
+  const is: [number, string][] = [];
+  for (let k = 2; k <= 7; k++) {
+    const x = b.add('logic', 10, 0.2 * k, {});
+    b.wire(g[k], 'cmp', x, 'a');
+    b.wire(g[k + 1], 'cmp', x, 'b');
+    is[k] = [x, 'xor'];
+    if (k === 2) is[1] = [x, 'not'];
+  }
+  is[8] = [g[8], 'cmp'];
+
+  // ---- shared: the LFO with its delay and sync
+  const lfo = b.add('lfo', 0, 0, { wave: 2, rate: 5.5, depth: 1 });
+  const delayEnv = b.add('env', 0, 0.3, { l1: 0, r1: 0.001, l2: 1, r2: 0.001, l3: 1, r3: 0.001, l4: 0, r4: 0.5 });
+  const delay = b.add('macro', 0, 0.4, { value: 0 });
+  b.pin(delayEnv, 'p1', 'r1', [0, 1]);
+  b.pin(delayEnv, 'p1', 'r2', [0, 1]);
+  b.module(delayEnv).map!.p1 = ['r1', 'r2'];
+  b.wire(delay, 'out', delayEnv, 'p1');
+  b.wire(part, 'gate', delayEnv, 'gate'); // (the voices' gates summed: any key down)
+  const slew = b.add('glide', 0, 0.5, { time: 0.005, curve: 0 });
+  const keyOn = b.add('math', 0, 0.6, { ka: 1, kb: 1, off: -0.5 }); // high briefly whenever one more key is down
+  const sync = b.add('macro', 0, 0.7, { value: 1 });
+  const syncAnd = b.add('logic', 0, 0.8, {});
+  b.wire(part, 'gate', slew, 'in');
+  b.wire(part, 'gate', keyOn, 'a');
+  b.wire(slew, 'out', keyOn, 'b');
+  b.wire(keyOn, 'cmp', syncAnd, 'a');
+  b.wire(sync, 'out', syncAnd, 'b');
+  b.wire(syncAnd, 'and', lfo, 'reset');
+
+  // pitch modulation: LFO x (PMD + wheel + breath) x PMS, delayed, +-800 cents at 1 x 1
+  const pmd = b.add('macro', 0, 1, { value: 0 });
+  const wheelP = b.add('scale', 0, 1.1, { gain: 0.15, offset: 0 });
+  const breathP = b.add('scale', 0, 1.2, { gain: 0, offset: 0 });
+  const pms = b.add('vca', 0, 1.3, { gain: 0.5 });
+  const pmDel = b.add('vca', 0, 1.4, { gain: 1 });
+  const pmOct = b.add('scale', 0, 1.5, { gain: 800 / 1200, offset: 0 });
+  b.wire(lfo, 'out', pms, 'in');
+  for (const d of [pmd, wheelP, breathP]) b.wire(d, 'out', pms, 'cv');
+  b.wire(pms, 'out', pmDel, 'in');
+  b.wire(delayEnv, 'env', pmDel, 'cv');
+  b.wire(pmDel, 'out', pmOct, 'in');
+  // amplitude modulation: (LFO + 1) / 2 x (AMD + wheel + breath) x AMS, delayed, taken off the level of each AM operator
+  const uni = b.add('scale', 1, 1, { gain: -0.5, offset: -0.5 });
+  const amd = b.add('macro', 1, 1.1, { value: 0 });
+  const wheelA = b.add('scale', 1, 1.2, { gain: 0, offset: 0 });
+  const breathA = b.add('scale', 1, 1.3, { gain: 0, offset: 0 });
+  const ams = b.add('vca', 1, 1.4, { gain: 1 });
+  const amDel = b.add('vca', 1, 1.5, { gain: 1 });
+  b.wire(lfo, 'out', uni, 'in');
+  b.wire(uni, 'out', ams, 'in');
+  for (const d of [amd, wheelA, breathA]) b.wire(d, 'out', ams, 'cv');
+  b.wire(ams, 'out', amDel, 'in');
+  b.wire(delayEnv, 'env', amDel, 'cv');
+  // EG bias: breath range x (breath - 1): 0 with the breath at full, down to -range with none
+  const breathLess = b.add('scale', 2, 1, { gain: 1, offset: -1 });
+  const egBias = b.add('scale', 2, 1.1, { gain: 0, offset: 0 });
+  b.wire(breathLess, 'out', egBias, 'in');
+  // pitch bias: breath x +-4 octaves
+  const bias = b.add('scale', 2, 1.2, { gain: 0, offset: 0 });
+
+  // ---- shared: the pitch every operator adds (transpose, master tune, bend, LFO, bias), then each operator's octave
+  const transpose = b.add('const', 3, 1, { value: 0 });
+  const semis = b.add('quant', 3, 1.1, { scale: 0, root: 0 });
+  b.wire(transpose, 'out', semis, 'in');
+  const semitone = b.add('const', 3, 1.2, { value: 1 / 12 });
+  const tune = b.add('scale', 3, 1.3, { gain: 0, offset: 0 });
+  b.wire(semitone, 'out', tune, 'in');
+  const bend = b.add('math', 3, 1.4, { ka: 2 / 12, kb: 1, off: 0 });
+  const bendIn = b.add('scale', 3, 1.35, { gain: 1, offset: 0 }); // (the bend wheel: to the bend range and to each voice's key)
+  b.wire(bendIn, 'out', bend, 'a');
+  const bus = b.add('scale', 3, 1.5, { gain: 1, offset: 0 });
+  b.wire(semis, 'out', bus, 'in');
+  b.wire(tune, 'out', bus, 'in');
+  b.wire(bend, 'add', bus, 'in');
+  b.wire(pmOct, 'out', bus, 'in');
+  b.wire(bias, 'out', bus, 'in');
+
+  // ---- shared: the footswitch (sustain or portamento) and the portamento mode
+  const assign = b.add('macro', 4, 1, { value: 0 });
+  const fx = b.add('logic', 4, 1.1, {}); // a = assign, b = the switch: and = portamento pedal, not = assigned to sustain
+  const sus = b.add('logic', 4, 1.2, {}); // a = the switch, b = assigned to sustain: and = sustain pedal
+  const susNot = b.add('logic', 4, 1.3, {}); // not = no sustain pedal
+  const portaOn = b.add('logic', 4, 1.4, {}); // or: portamento allowed (the pedal down, or the switch is the sustain pedal)
+  const fingered = b.add('macro', 4, 1.5, { value: 0 });
+  const full = b.add('logic', 4, 1.6, {}); // not = full time
+  b.wire(assign, 'out', fx, 'a');
+  b.wire(fx, 'not', sus, 'b');
+  b.wire(sus, 'and', susNot, 'a');
+  b.wire(fx, 'and', portaOn, 'a');
+  b.wire(fx, 'not', portaOn, 'b');
+  b.wire(fingered, 'out', full, 'a');
+
+  // ---- per voice
+  const voice: number[] = [];
+  const v = (type: string, col: number, row: number, p: Record<string, number> = {}): number => {
+    const id = b.add(type, col, row, p);
+    voice.push(id);
+    return id;
+  };
+  // the key's pitch without the Voicing's own +-2 semitone bend (the bend range is the bus's), its portamento, the gate
+  // the sustain pedal holds, the velocity less 1, the keys above C2 (level scaling: a quarter per octave; rate scaling)
+  const key = v('math', 1, 4, { ka: 1, kb: -2 / 12, off: 0 });
+  const porta = v('glide', 1, 4.1, { time: 0.001, curve: 0 });
+  const portaPick = v('xfade', 1, 4.2, { mix: 0 });
+  const legatoOr = v('logic', 1, 4.3, {});
+  const portaAnd = v('logic', 1, 4.4, {});
+  const gateOr = v('logic', 1, 4.5, {});
+  const gate = v('sh', 1, 4.6, { mode: 1 });
+  const velLess = v('scale', 1, 4.7, { gain: 1, offset: -1 });
+  const kbLevel = v('math', 1, 4.8, { ka: -0.25, kb: 1, off: -0.5 });
+  const kbRate = v('math', 1, 4.9, { ka: -0.025, kb: 1, off: -0.05 });
+  b.wire(part, 'pitch', key, 'a');
+  b.wire(bendIn, 'out', key, 'b');
+  b.wire(key, 'add', porta, 'in');
+  b.wire(key, 'add', portaPick, 'a');
+  b.wire(porta, 'out', portaPick, 'b');
+  b.wire(part, 'legato', legatoOr, 'a');
+  b.wire(full, 'not', legatoOr, 'b');
+  b.wire(legatoOr, 'or', portaAnd, 'a');
+  b.wire(portaOn, 'or', portaAnd, 'b');
+  b.wire(portaAnd, 'and', portaPick, 'pos');
+  b.wire(part, 'gate', gate, 'in');
+  b.wire(part, 'gate', gateOr, 'b');
+  b.wire(susNot, 'not', gateOr, 'a');
+  b.wire(gateOr, 'or', gate, 'clock');
+  b.wire(part, 'vel', velLess, 'in');
+  b.wire(key, 'add', kbLevel, 'a');
+  b.wire(key, 'add', kbRate, 'a');
+
   // the FM-1 version's sound (algorithm 5), its modulators' envelopes as they were before they became ADSRs
   const setup: [Record<string, number>, Record<string, number>, number][] = [
     [{ wave: 0, level: 1, pm: 2.2 }, { l1: 1, r1: 0.002, l2: 0.6, r2: 1.2, l3: 0.35, r3: 1, l4: 0, r4: 0.5 }, 0.5],
@@ -53,76 +236,104 @@ const built = define('Algo Four XL', (b) => {
   const op: number[] = [];
   const env: number[] = [];
   const vca: number[] = [];
-  setup.forEach(([o, e, g], i) => {
-    op.push(b.add('osc', 1 + i, 0, o));
-    env.push(b.add('env', 1 + i, 1, e));
-    vca.push(b.add('vca', 1 + i, 2, { gain: g }));
-    b.pin(op[i], 'p1', 'fine');
-    b.pin(vca[i], 'p1', 'gain');
-  });
-  // the paths: into operator 1 (from 2, 3, 4), into 2 (from 3, 4), into 3 (from 4); then who is heard
-  const into1 = b.add('mixer', 1, 3, { l1: 1, l2: 0, l3: 0, l4: 0 });
-  const into2 = b.add('mixer', 2, 3, { l1: 0, l2: 0, l3: 0, l4: 0 });
-  const into3 = b.add('mixer', 3, 3, { l1: 1, l2: 0, l3: 0, l4: 0 });
-  const out = b.add('mixer', 5, 0, { l1: 0.7, l2: 0, l3: 0.7, l4: 0 });
-  const scope = b.add('scope', 6, 0, { time: 16 });
-  b.nest('voice', 1, 4, [...op, ...env, ...vca, into1, into2, into3, out], {
-    inputs: [['pitch', op[0], 'pitch'], ['gate', env[0], 'gate']],
-    poly: { flaws: Array.from({ length: 8 }, () => ({ detune: 0, drift: 0, bright: 0, env: 0, level: 100 })) },
-  });
-  for (let i = 0; i < 4; i++) {
-    b.wire(part, 'pitch', op[i], 'pitch');
-    b.wire(part, 'gate', env[i], 'gate');
+  const octave: number[] = [];
+  const ame: number[] = [];
+  const ebs: number[] = [];
+  const vel: number[] = [];
+  const kls: number[] = [];
+  const krs: number[] = [];
+  setup.forEach(([o, e, gain], i) => {
+    op.push(v('osc', 2 + i, 4, o));
+    env.push(v('env', 2 + i, 5, e));
+    vca.push(v('vca', 2 + i, 6, { gain }));
+    vel.push(v('xfade', 2 + i, 4.2, { mix: 0 }));
+    kls.push(v('scale', 2 + i, 4.4, { gain: 0, offset: 0 }));
+    krs.push(v('scale', 2 + i, 4.6, { gain: 0, offset: 0 }));
+    octave.push(b.add('scale', 2 + i, 2, { gain: 1, offset: 0 }));
+    ame.push(b.add('scale', 2 + i, 2.2, { gain: 1, offset: 0 }));
+    ebs.push(b.add('scale', 2 + i, 2.4, { gain: 0, offset: 0 }));
+    b.pin(op[i], 'p2', 'level');
+    b.pin(env[i], 'p1', 'r1');
+    b.module(env[i]).map!.p1 = ['r1', 'r2', 'r3', 'r4'];
+    b.wire(portaPick, 'out', op[i], 'pitch');
+    b.wire(bus, 'out', octave[i], 'in');
+    b.wire(octave[i], 'out', op[i], 'pitch');
+    b.wire(gate, 'out', env[i], 'gate');
     b.wire(op[i], 'out', vca[i], 'in');
     b.wire(env[i], 'env', vca[i], 'cv');
-    b.wire(pmd, 'out', op[i], 'p1');
-    b.wire(amd, 'out', vca[i], 'p1');
-    b.wire(vca[i], 'out', out, `in${i + 1}`);
+    b.wire(velLess, 'out', vel[i], 'b');
+    b.wire(kbLevel, 'min', kls[i], 'in');
+    b.wire(kbRate, 'min', krs[i], 'in');
+    b.wire(amDel, 'out', ame[i], 'in');
+    b.wire(egBias, 'out', ebs[i], 'in');
+    for (const [m, port] of [[vel[i], 'out'], [kls[i], 'out'], [ame[i], 'out'], [ebs[i], 'out']] as [number, string][]) b.wire(m, port, op[i], 'p2');
+    b.wire(krs[i], 'out', env[i], 'p1');
+  });
+  // the paths: a VCA each, open for its algorithms, into a Mixer 4 in front of each modulated operator or into the out mix
+  const into = [0, 1, 2].map((i) => v('mixer', 1 + i, 7, { l1: 1, l2: 1, l3: 1, l4: 1 }));
+  const out = v('mixer', 5, 7, { l1: 0.7, l2: 0.7, l3: 0.7, l4: 0.7 });
+  const free = [1, 1, 1, 1];
+  for (const [, from, to, algos] of PATHS) {
+    const path = v('vca', 1 + from, 6.5, { gain: 1 });
+    b.wire(vca[from - 1], 'out', path, 'in');
+    for (const k of algos) b.wire(is[k][0], is[k][1], path, 'cv');
+    if (to) b.wire(path, 'out', into[to - 1], `in${free[to - 1]++}`);
+    else b.wire(path, 'out', out, `in${from}`);
   }
-  b.wire(vca[1], 'out', into1, 'in1');
-  b.wire(vca[2], 'out', into1, 'in2');
-  b.wire(vca[3], 'out', into1, 'in3');
-  b.wire(vca[2], 'out', into2, 'in1');
-  b.wire(vca[3], 'out', into2, 'in2');
-  b.wire(vca[3], 'out', into3, 'in1');
-  b.wire(into1, 'out', op[0], 'pm');
-  b.wire(into2, 'out', op[1], 'pm');
-  b.wire(into3, 'out', op[2], 'pm');
-  b.wire(lfo, 'out', pmd, 'in');
-  b.wire(lfo, 'out', wheel, 'in');
-  for (const o of op) b.wire(wheel, 'out', o, 'p1');
-  b.wire(lfo, 'out', amd, 'in');
+  for (let i = 0; i < 3; i++) b.wire(into[i], 'out', op[i], 'pm');
+  b.wire(vca[0], 'out', out, 'in1');
+  const scope = b.add('scope', 6, 0, { time: 16 });
   b.wire(out, 'out', scope, 'a');
+  b.nest('voice', 1, 4, voice, {
+    inputs: [['pitch', key, 'a'], ['gate', gate, 'in']],
+    poly: { flaws: Array.from({ length: 8 }, () => ({ detune: 0, drift: 0, bright: 0, env: 0, level: 100 })) },
+  });
+
   b.input('keys', part, 'keys');
-  b.input('wheel', wheel, 'cv');
+  b.input('wheel', wheelP, 'in', [wheelA, 'in']);
+  b.input('breath', breathP, 'in', [breathA, 'in'], [breathLess, 'in'], [bias, 'in']);
+  b.input('bend', bendIn, 'in');
+  b.input('foot', fx, 'b', [sus, 'a']);
   b.output('out', out, 'out');
-  // the FM-1 version's rows first, in its order (the carrier mixes of algorithm 5 are out 1 and out 3)
+
   b.param('voices', part, 'voices', { head: 'voice' });
+  b.param('algorithm', sel, 'len');
   b.param('feedback', op[3], 'fb');
-  b.param('out 1', out, 'l1');
-  b.param('out 3', out, 'l3');
+  b.param('transpose', transpose, 'value');
+  b.param('master tune', tune, 'gain');
   for (let i = 0; i < 4; i++) {
     const n = i + 1;
     b.param(`ratio ${n}`, op[i], 'coarse', { col: true, head: `operator ${n}` });
     b.param(`detune ${n}`, op[i], 'fine');
+    b.param(`octave ${n}`, octave[i], 'offset');
     b.param(`level ${n}`, vca[i], 'gain');
     if (i < 3) b.param(`index ${n}`, op[i], 'pm');
+    b.param(`velocity ${n}`, vel[i], 'mix');
+    b.param(`level scaling ${n}`, kls[i], 'gain');
+    b.param(`rate scaling ${n}`, krs[i], 'gain');
+    b.param(`am ${n}`, ame[i], 'gain');
+    b.param(`eg bias ${n}`, ebs[i], 'gain');
     b.param(`env ${n}`, env[i], 'view');
     for (const q of ['r1', 'l2', 'r2', 'r3', 'l3', 'r4']) b.param(`${q} ${n}`, env[i], q);
   }
-  b.param('2→1', into1, 'l1', { col: true, head: 'algorithm' });
-  b.param('3→1', into1, 'l2');
-  b.param('4→1', into1, 'l3');
-  b.param('3→2', into2, 'l1');
-  b.param('4→2', into2, 'l2');
-  b.param('4→3', into3, 'l1');
-  b.param('out 2', out, 'l2');
-  b.param('out 4', out, 'l4');
   b.param('lfo wave', lfo, 'wave', { col: true, head: 'lfo' });
   b.param('lfo speed', lfo, 'rate');
-  b.param('pmd', pmd, 'gain');
-  b.param('amd', amd, 'gain');
-  b.param('wheel → pitch', wheel, 'gain');
+  b.param('lfo delay', delay, 'value');
+  b.param('lfo sync', sync, 'value');
+  b.param('pmd', pmd, 'value');
+  b.param('amd', amd, 'value');
+  b.param('pms', pms, 'gain');
+  b.param('ams', ams, 'gain');
+  b.param('bend range', bend, 'ka', { col: true, head: 'performance' });
+  b.param('portamento', porta, 'time');
+  b.param('fingered', fingered, 'value');
+  b.param('foot assign', assign, 'value');
+  b.param('wheel → pitch', wheelP, 'gain');
+  b.param('wheel → amp', wheelA, 'gain');
+  b.param('breath → pitch', breathP, 'gain');
+  b.param('breath → amp', breathA, 'gain');
+  b.param('breath → pitch bias', bias, 'gain');
+  b.param('breath → eg bias', egBias, 'gain');
   b.param('out', scope, 'view', { col: true });
 });
 
@@ -131,8 +342,11 @@ export const xl: Xl = {
   build: (fm1: Patch): Patch => {
     const x = around('Algo Four', built);
     x.p.notes = NOTES;
-    const wheel = x.a.inputs.find((r) => r.label === 'wheel')!;
-    wire(x.p, x.main.id, 'mod', wheel.module, wheel.port);
+    plugIn(x.p, x.main.id, 'mod', x.a, 'wheel');
+    plugIn(x.p, x.main.id, 'at', x.a, 'breath');
+    plugIn(x.p, x.main.id, 'bend', x.a, 'bend');
+    plugIn(x.p, x.main.id, 'fx', x.a, 'foot'); // the footswitch: FX held (or MIDI CC 80)
+    setKind(x.p, 'fx', 'gate');
     const p = players(x.p, true);
     matchLevel(p, fm1, [48, 55, 60, 64]);
     return p;
