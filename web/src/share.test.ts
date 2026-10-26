@@ -15,17 +15,24 @@ const memoryKv = (): Kv & { size(): number } => {
 };
 
 describe('share links', () => {
-  it('round-trips every factory patch through the fragment, well under the link limit', async () => {
+  it('round-trips every factory patch through the fragment, well under the link limit (an XL may be stored instead)', async () => {
     for (const make of Object.values(PRESETS)) {
       const p = make();
       const s = await encodeShare(p, { base: 'https://example.test/x/' });
-      expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
       expect(s.length).toBe(s.link.length);
-      if (!xlBase(p.name)) expect(s.length).toBeLessThan(LINK_MAX * 0.6); // an FM-1 version (Meridian 8 with its arpeggiator: about 4100); an XL may be longer
       expect(/^[A-Za-z0-9_-]+$/.test(s.code)).toBe(true);
-      expect(await decodeShare(s.code, DEFS)).toEqual(p);
       expect(shareCodeOf(s.link)).toBe(s.code);
       expect(s.link).toBe(shareLink(s.code, 'https://example.test/x/'));
+      if (xlBase(p.name)) {
+        // an XL may pass LINK_MAX: it is then shared as a stored link (docs/ledger/editor.md D-586), its full form kept
+        expect(s.tooLong, p.name).toBe(false);
+        expect(s.layoutFits || s.stores, p.name).toBe(true);
+        expect(await decodeShare(s.full, DEFS)).toEqual(p);
+        continue;
+      }
+      expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
+      expect(s.length).toBeLessThan(LINK_MAX * 0.6); // an FM-1 version (Meridian 8 with its arpeggiator: about 4100)
+      expect(await decodeShare(s.code, DEFS)).toEqual(p);
     }
     expect(shareCodeOf('https://example.test/')).toBeNull();
     expect(storedIdOf(storedLink('abcdefghijkl', 'https://example.test/x/#p=zz'))).toBe('abcdefghijkl');
