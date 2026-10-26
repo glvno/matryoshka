@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **FM-1 memory:** each module now takes only the parameter slots its type needs, from a shared store of 1536 values,
+  instead of room for the largest module's twelve. The engine's memory goes from 381,038 to 377,198 bytes
+  (`tools/pool_sizes.sh`, the stand-in estimate), and modules with more parameters no longer cost every module room.
+  The editor's budget shows the new "parameter values" line; no factory patch uses more than 558 of them.
+
 ## 1.4.1 — 2026-10-26
 
 Web only: the FM-1 firmware is 1.4.0's. New factory patches now ship in the browser first; the FM-1 gets them as

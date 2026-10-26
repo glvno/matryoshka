@@ -4,7 +4,7 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { encodePatch, FLAG_INPUTS, PANEL_BYTES, toQ16 } from '../src/patchbin';
+import { deviceBudget, encodePatch, FLAG_INPUTS, PANEL_BYTES, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
@@ -1860,6 +1860,8 @@ for (const [name, patch] of Object.entries(tests)) {
   const cpu = cpuEstimate(patch).use;
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true));
+  // the parameter values the editor's budget counts (DEVICE.params), which eng_load must take exactly (host_test checks)
+  if (!bins[name]) writeFileSync(new URL(`${f}.par`, OUT), `${deviceBudget(patch).items.find((i) => i.key === 'params')!.used}\n`);
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
   writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' ? `${fr} ${k} ${n}` : k === 'rec' ? `${fr} rec ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }

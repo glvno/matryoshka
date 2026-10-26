@@ -205,6 +205,20 @@ describe('binary patch format', () => {
     expect(deviceBudget(p).instances).toBeLessThanOrEqual(DEVICE.instances);
   });
 
+  it('counts parameter values as eng_load takes them: per module its type\'s, twice with a morph B side, plus per copy', () => {
+    const used = (q: Patch): number => deviceBudget(q).items.find((i) => i.key === 'params')!.used;
+    const mono = subtractiveSaw();
+    const npar = mono.modules.reduce((n, m) => n + DEFS[m.type].params.length, 0);
+    expect(used(mono)).toBe(2 * npar); // one copy each
+    const p = withParts(subtractiveSaw(), 4);
+    const { patch: dv, groups } = deviceView(p, true);
+    const copies = (id: number): number => (groups.some((g) => g.modules.has(id)) ? 4 : 1);
+    expect(used(p)).toBe(dv.modules.reduce((n, m) => n + DEFS[m.type].params.length * (1 + copies(m.id)), 0));
+    const filter = mono.modules.find((m) => m.type === 'filter')!;
+    filter.paramsB = { ...filter.params, cutoff: 4000 };
+    expect(used(mono)).toBe(3 * npar);
+  });
+
   it('unison: bit 7 of the group\'s legato byte', () => {
     const p = withParts(subtractiveSaw(), 4, { legato: 1 });
     expect(encodePatch(p)[10]).toBe(1);
