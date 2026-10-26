@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **The patch-bytes budget counts the panel buttons' record.** A patch whose ARP, FX or LFO button is not a plain gate
+  sends 9 more bytes than the editor counted, so one within 9 bytes of the 3,840 limit passed the budget and was then
+  refused by the FM-1. The budget now equals what is sent (Oracle V: 1,290 → 1,299 bytes).
 - **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
   same range: turning it moves both (two filters' cutoff, say), and so do a cable or
   a macro on it, a card preset and the FM-1's knob on its page. "split" gives each its own row again. A row that sets
