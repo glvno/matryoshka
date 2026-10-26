@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **A new engine, Cassia 1,** after the Casio CZ-1: phase distortion. Each voice has the CZ's two lines: line 1 sweeps
+  from a sine to the CZ saw or square, line 2 is the CZ's resonance waveform, a resonant peak that sweeps. Each line
+  has its DCW envelope, with one DCA envelope, line mix, line 2 detune, key follow, velocity and vibrato. Three voices on the
+  FM-1 (75 % of its CPU, estimated).
+- **Cassia 1 XL** in the browser: eight voices, each line either kind (resonance with the ramp or triangle window), its
+  own DCW and DCA envelopes, a pitch envelope, ring and noise modulation, vibrato delay and key follow on the DCA.
+
 ## 1.4.0 — 2026-10-25
 
 - **A new engine, Spokes 6,** after the Elektron Model:Cycles: six FM tracks (kick, snare, metal, perc, tone, chord),

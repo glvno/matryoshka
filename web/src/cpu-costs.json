@@ -28406,6 +28406,10 @@
    "cycles": 498114
   },
   {
+   "name": "Cassia 1",
+   "cycles": 506633
+  },
+  {
    "name": "Acid, 4 parts",
    "cycles": 385262
   },
@@ -28456,6 +28460,10 @@
   {
    "name": "assembly Canvas",
    "cycles": 148619
+  },
+  {
+   "name": "assembly Cassia 1",
+   "cycles": 638348
   },
   {
    "name": "assembly clap",

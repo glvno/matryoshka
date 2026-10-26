@@ -1082,6 +1082,98 @@ asm('Hera 6', 'Voices', (b) => {
   b.param('out', scope, 'view');
 });
 
+// Cassia 1, a phase distortion polysynth after the Casio CZ-1 (its operation manual: DCO, DCW and DCA, the waveforms,
+// line select, key follow, vibrato). A voice card has the CZ's two lines. Line 1 is phase distortion: a sine whose
+// phase a phase-locked saw bends (a Math module multiplies the saw by the DCW envelope; the sine's pm, pi / 2, is full
+// bend), which is the CZ's own method written as phase modulation: from a sine (DCW at 0) to the CZ saw (at the
+// top), or with the saw an octave up (`wave` 12) to the CZ square. Line 2 is the CZ's resonance waveform I: a sine
+// restarted every cycle (hard sync on a falling ramp of the note's period) and faded out by that same ramp, its pitch
+// raised by the DCW envelope (up to `res range` octaves): a resonant peak that sweeps. Each line has its DCW envelope
+// (an Env L/R: three rate / level steps, the third held, and a release; the CZ has eight steps); one DCA envelope shapes
+// both, `line` crossfades them (0 = line 1, 0.5 = 1 + 2, 1 = line 2), line 2 has its octave and detune. Key follow
+// lowers both DCWs on higher keys (from C4), the velocity opens the DCA, one LFO adds vibrato. The FM-1 version has no
+// pitch (DCO) envelope, no ring or noise modulation and three waveforms of the eight: Cassia 1 XL has the rest.
+asm('Cassia 1', 'Voices', (b) => {
+  const part = b.add('alloc', 0, 3, { voices: 4 });
+  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 });
+  const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
+  const scope = b.add('scope', 6, 0, { time: 16 });
+  // line 1: phase distortion
+  const car = b.add('osc', 1, 0, { wave: 0, pm: Math.PI / 2, level: 1 });
+  const mod = b.add('osc', 1, 1, { wave: 2, coarse: 0, level: 1 });
+  const bend = b.add('math', 1, 2, { ka: -1, kb: 1, off: 0 });
+  const dcw1 = b.add('env', 1, 3, { l1: 0.9, r1: 0.05, l2: 0.6, r2: 0.6, l3: 0.4, r3: 1.5, l4: 0, r4: 0.3 });
+  // line 2: resonance (a sine synced and windowed by a falling ramp of the note's period)
+  const ramp = b.add('osc', 2, 0, { wave: 2, coarse: 0, fine: 0, level: 1 });
+  const win = b.add('math', 2, 1, { ka: -0.5, kb: 1, off: 0.5 });
+  const rs = b.add('osc', 2, 2, { wave: 0, level: 1 });
+  const rise = b.add('scale', 2, 3, { gain: 3, offset: 0 });
+  const dcw2 = b.add('env', 2, 4, { l1: 0.7, r1: 0.1, l2: 0.4, r2: 0.8, l3: 0.25, r3: 2, l4: 0, r4: 0.3 });
+  const wvca = b.add('vca', 2, 5, { gain: 1 });
+  // both: key follow, the line mix, the DCA (velocity on its gain)
+  const kf = b.add('scale', 3, 0, { gain: -0.15, offset: 0 });
+  const line = b.add('xfade', 3, 1, { mix: 0 });
+  const dca = b.add('env', 3, 2, { l1: 1, r1: 0.01, l2: 0.8, r2: 0.4, l3: 0.6, r3: 2, l4: 0, r4: 0.4 });
+  const vca = b.add('vca', 3, 3, { gain: 0.15 }, { p1: 'gain', att: [0.45, 1] }); // velocity 1 reaches 0.6
+  b.nest('voice', 1, 4, [car, mod, bend, dcw1, ramp, win, rs, rise, dcw2, wvca, kf, line, dca, vca], {});
+  for (const o of [car, mod, ramp, rs]) {
+    b.wire(part, 'pitch', o, 'pitch');
+    b.wire(vib, 'out', o, 'pitch');
+  }
+  b.wire(lfo, 'out', vib, 'in');
+  b.wire(part, 'gate', dcw1, 'gate');
+  b.wire(part, 'gate', dcw2, 'gate');
+  b.wire(part, 'gate', dca, 'gate');
+  b.wire(part, 'vel', vca, 'p1');
+  b.wire(part, 'pitch', kf, 'in');
+  b.wire(dcw1, 'env', bend, 'a');
+  b.wire(kf, 'out', bend, 'a');
+  b.wire(mod, 'out', bend, 'b');
+  b.wire(bend, 'mul', car, 'pm');
+  b.wire(ramp, 'out', win, 'a');
+  b.wire(win, 'add', rs, 'sync');
+  b.wire(win, 'add', wvca, 'cv');
+  b.wire(dcw2, 'env', rise, 'in');
+  b.wire(kf, 'out', rise, 'in');
+  b.wire(rise, 'out', rs, 'pitch');
+  b.wire(rs, 'out', wvca, 'in');
+  b.wire(car, 'out', line, 'a');
+  b.wire(wvca, 'out', line, 'b');
+  b.wire(line, 'out', vca, 'in');
+  b.wire(dca, 'env', vca, 'cv');
+  b.wire(vca, 'out', scope, 'a');
+  b.input('keys', part, 'keys');
+  b.nestInput('pitch', car, 'pitch', [mod, 'pitch'], [ramp, 'pitch'], [rs, 'pitch'], [kf, 'in']);
+  b.nestInput('gate', dcw1, 'gate', [dcw2, 'gate'], [dca, 'gate']);
+  b.nestInput('vel', vca, 'p1');
+  b.nestOutput('out', vca, 'out');
+  b.output('out', vca, 'out');
+  b.param('voices', part, 'voices', { head: 'voice' });
+  b.param('line', line, 'mix');
+  b.param('vibrato', vib, 'gain');
+  b.param('vib rate', lfo, 'rate');
+  b.param('wave', mod, 'coarse', { head: 'line 1' });
+  b.param('dcw', car, 'pm');
+  b.param('key follow', kf, 'gain');
+  b.param('octave', ramp, 'coarse', { head: 'line 2' });
+  b.param('detune', ramp, 'fine');
+  b.param('res range', rise, 'gain');
+  const envRows = (e: number, head: string, col = false): void => {
+    b.param(head, e, 'view', { head, ...(col ? { col: true } : {}) });
+    b.param('rate 1', e, 'r1');
+    b.param('level 1', e, 'l1');
+    b.param('rate 2', e, 'r2');
+    b.param('level 2', e, 'l2');
+    b.param('rate 3', e, 'r3');
+    b.param('sustain', e, 'l3');
+    b.param('release', e, 'r4');
+  };
+  envRows(dcw1, 'dcw 1', true);
+  envRows(dcw2, 'dcw 2', true);
+  envRows(dca, 'dca', true);
+  b.param('out', scope, 'view', { col: true });
+});
+
 // Sallen 20, a semi-modular monosynth after the MS-20: one voice, two oscillators and their ring modulation (a VCA
 // with oscillator 2 as its cv) into a resonant high pass and a resonant 12 dB low pass in series, then a soft drive
 // (the screaming peak). Envelope 2 (an ADSR) sweeps both filters and opens the VCA; envelope 1 (attack / release)
@@ -2853,6 +2945,7 @@ const BLURBS: Record<string, string> = {
   'Meridian 8': 'NOON type shit',
   'Perun 4': 'Perkons HD-01 type shit',
   'Spokes 6': 'Model:Cycles type shit',
+  'Cassia 1': 'CZ-1 type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',

@@ -397,6 +397,15 @@ after.push(() => {
   return p;
 });
 
+// Cassia 1 (after the Casio CZ-1): the factory assembly at three voices (the phase distortion oscillator is the costly
+// part: four read about 98 %), and the players (D-336) as every melodic patch
+after.push(() => {
+  const x = around('Cassia 1', 'Cassia 1');
+  x.set('voices', 3);
+  level(x.p, { chord: true });
+  return players(validatePatch(structuredClone(x.p), DEFS));
+});
+
 // ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit
 // after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

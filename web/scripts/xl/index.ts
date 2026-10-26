@@ -13,6 +13,7 @@ import { xl as algoFour } from './algo-four';
 import { xl as perun4 } from './perun-4';
 import { xl as kit909 } from './909-kit';
 import { xl as spokes6 } from './spokes-6';
+import { xl as cassia1 } from './cassia-1';
 
 export const XLS: Xl[] = [
   lire,
@@ -25,4 +26,5 @@ export const XLS: Xl[] = [
   perun4,
   kit909,
   spokes6,
+  cassia1,
 ];
