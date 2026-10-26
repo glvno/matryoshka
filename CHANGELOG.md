@@ -82,7 +82,7 @@
   each plate's velocity, so its 32 velocity VCAs and 8 S&Hs are gone (185 to 142 modules); a plate held on two keys now
   keeps its own velocity instead of adding the two. Elvira 2 XL's choices (programs, chords, filter types, tunings,
   LFO waves, reverb, tune follow, MODP chaining) are Selectors in place of comparator and Crossfader chains (702 to 475
-  modules). Both sound as before and render faster in the browser: 8 Lire XL from 11.7 % to 9.9 % of real time,
+  modules). Elvira 2 XL plays a test phrase slightly louder than before (peak 0.50 to 0.54). Both render faster in the browser: 8 Lire XL from 11.7 % to 9.9 % of real time,
   Elvira 2 XL from 41 % to 32 % (four notes, 3 s, Node on an Apple Silicon Mac).
 - **Hera 6 XL:** decay and release now reach 12 s, as on the Juno-106 (the ADSR's long times; the patch sounds as before).
   The range switch and the portamento switch are Selectors: `range` 1 is 16', 2 is 8', 3 is 4'; `portamento` 1 is off,
