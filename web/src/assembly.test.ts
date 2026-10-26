@@ -398,7 +398,7 @@ describe('assemblies', () => {
 
   it('ships factory assemblies that load, insert and play', () => {
     expect(FACTORY.map((d) => d.name)).toEqual([
-      '8 Lire', 'adsr operator', 'Algo Four', 'auto pan', 'barber pole', 'basic poly', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'clap', 'clock', 'cloud', 'cowbell', 'drift poly', 'drum kit', 'echo', 'Elvira 2', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'Hera 6', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'Meridian 8', 'mono lead', 'Monolith D', 'noise voice', 'operator', 'Oracle V', 'Perun 4', 'pluck', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'Scrounge', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'stack voice', 'step sequencer', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
+      '8 Lire', 'adsr operator', 'Algo Four', 'auto pan', 'barber pole', 'basic poly', 'boom kick', 'bowed glass', 'bowed string', 'Briefcase 3', 'Canvas', 'clap', 'clock', 'cloud', 'cowbell', 'drift poly', 'drum kit', 'echo', 'Elvira 2', 'Expander S', 'filter voice', 'fm pair', 'gamelan', 'glass bell', 'hats', 'Hera 6', 'hihat', 'Io 4', 'kalimba', 'kick', 'marimba', 'Meridian 8', 'mono lead', 'Monolith D', 'noise voice', 'operator', 'Oracle V', 'Perun 4', 'pluck', 'rain', 'random melody', 'resonator bank', 'reverse pad', 'rim', 'Sallen 20', 'Scrounge', 'shimmer', 'sidechain pump', 'Silver Box', 'slicer', 'snare', 'Spokes 6', 'stack voice', 'step sequencer', 'stutter', 'sub bass', 'supersaw stack', 'tabla', 'talking filter', 'time smear', 'tom', 'Vernon 100', 'vibrato', 'voice', 'vowel voice', 'Wanderer', 'wavetable pad',
     ]);
     for (const d of FACTORY) {
       expect(d.modules.every((m) => m.map === undefined || ['k1', 'k2', 'k3', 'k4'].every((k) => m.map![k as 'k1'].length === 0)), d.name).toBe(true);
@@ -430,7 +430,7 @@ describe('assemblies', () => {
       }
       const o = a.outputs.find((r) => ['out', 'l', 'pitch', 'clock'].includes(r.label))!;
       expect(connect(p, DEFS, o, { module: out, port: 'l' }), d.name).toBe(true);
-      const l = render(p, 24000, d.name === 'drum kit' ? 36 : d.name === 'Perun 4' ? 53 : 60); // (the kit's kick is General MIDI's 36; Perun 4's four voices are F3..B3)
+      const l = render(p, 24000, d.name === 'drum kit' ? 36 : d.name === 'Perun 4' || d.name === 'Spokes 6' ? 53 : 60); // (the kit's kick is General MIDI's 36; Perun 4's four voices and Spokes 6's drums are F3..B3)
       if (inp('gate') || inp('keys') || o.label !== 'out') expect(Math.max(...Array.from(l).map(Math.abs)), d.name).toBeGreaterThan(0.05);
       // all of them: a finite output, nothing stuck at the clamp
       expect(l.every((v) => Number.isFinite(v)), d.name).toBe(true);

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- **A new engine, Spokes 6,** after the Elektron Model:Cycles: six FM tracks (kick, snare, metal, perc, tone, chord),
+  each with pitch, decay, color, shape, sweep and contour, plus volume and a delay send. Its factory patch comes last,
+  after <7PH: three Steps tracks (DRUMS, TONE, CHORD) play a 16-step groove in A minor at 120 BPM, and the keys play TONE.
+  It estimates 85 % of the FM-1's CPU (not yet measured on a device).
+- **Spokes 6 XL** in the browser: the same with a reverb, stereo pan, distortion and an LFO per track, and phase
+  modulation on the snare and metal. It is a sandbox patch (146 % of the FM-1's CPU).
+
 ## 1.3.5 — 2026-10-25
 
 Web only: the FM-1 firmware is 1.3.3's.

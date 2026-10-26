@@ -12,7 +12,7 @@ describe('"Start with an engine" (#160)', () => {
 
   it('has a tile per factory engine, with mono / stereo and a CPU figure', () => {
     expect(tiles.map((t) => t.name)).toEqual(FACTORY.filter((d) => defIsEngine(d)).map((d) => d.name));
-    expect(tiles).toHaveLength(22);
+    expect(tiles).toHaveLength(23);
     const by = (n: string) => tiles.find((t) => t.name === n)!;
     expect(by('Hera 6').stereo).toBe(true);
     expect(by('Oracle V').stereo).toBe(false);
@@ -20,6 +20,7 @@ describe('"Start with an engine" (#160)', () => {
     expect(by('Scrounge').stereo).toBe(true); // the A and B outputs
     expect(by('Meridian 8').stereo).toBe(true); // the odd and even outputs
     expect(by('Perun 4').stereo).toBe(false); // mono, as the original
+    expect(by('Spokes 6').stereo).toBe(false); // mono on the FM-1 (the XL has the pan)
     for (const t of tiles) {
       expect(t.line.length, t.name).toBeGreaterThan(0);
       if (t.cpu !== null) expect(t.cpu, t.name).toBeGreaterThan(0);
@@ -47,6 +48,7 @@ describe('"Start with an engine" (#160)', () => {
     expect(by('Scrounge')).toBe('Scrooge type shit');
     expect(by('Meridian 8')).toBe('NOON type shit');
     expect(by('Perun 4')).toBe('Perkons HD-01 type shit');
+    expect(by('Spokes 6')).toBe('Model:Cycles type shit');
     expect(by('Vernon 100')).toBe('ElectroComp 100 type shit');
     for (const t of tiles) {
       expect(t.def.blurb, t.name).toBeTruthy();

@@ -28402,6 +28402,10 @@
    "cycles": 415665
   },
   {
+   "name": "Spokes 6",
+   "cycles": 498114
+  },
+  {
    "name": "Acid, 4 parts",
    "cycles": 385262
   },
@@ -28612,6 +28616,10 @@
   {
    "name": "assembly snare",
    "cycles": 66526
+  },
+  {
+   "name": "assembly Spokes 6",
+   "cycles": 453774
   },
   {
    "name": "assembly stack voice",

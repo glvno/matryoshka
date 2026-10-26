@@ -95,8 +95,8 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
     return { p, mix, drums, pattern };
   };
 
-  it('is the last factory patch and fits the FM-1', () => {
-    expect(Object.keys(FM1_PRESETS).at(-1)).toBe('<7PH');
+  it('keeps its slot (23rd: new factory patches come after it, D-334) and fits the FM-1', () => {
+    expect(Object.keys(FM1_PRESETS).indexOf('<7PH')).toBe(22);
     const b = deviceBudget(FM1_PRESETS['<7PH']());
     expect(b.fits, JSON.stringify(b.over)).toBe(true);
   });
@@ -147,7 +147,7 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // Arpeggiator on ARP, bypassed, and a 16-step PATTERN track feeding it: Main's keys -> PATTERN -> the arpeggiator -> the
 // voice. The drum patches get neither. Oracle V and Algo Four ran past the CPU estimate's warning with them (accepted);
 // since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %)
-const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH'];
+const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6'];
 const PAST_WARNING: string[] = [];
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */

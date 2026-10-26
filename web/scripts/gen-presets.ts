@@ -353,6 +353,50 @@ after.push(() => {
   return p;
 });
 
+// Spokes 6 (after the Elektron Model:Cycles): three Steps tracks into the engine, as the original's tracks: DRUMS plays
+// its four drum machines (the Drum map's rows on the white keys from F3, X an accent: the original's PUNCH), TONE and
+// CHORD its two melodic ones (their pitch and gate outputs into the voice). Main's keys go into TONE (they play the FM voice
+// unarmed); DRUMS and CHORD are reached from the keys when armed. A 16-step groove in A minor at 120 BPM, the original's default tempo: the chord (a minor triad)
+// stabs on the offbeats into the delay.
+after.push(() => {
+  const x = around('Spokes 6', 'Spokes 6');
+  const p = x.p;
+  x.main.params.tempo = 120;
+  p.cables = p.cables.filter((c) => !(c.from.module === x.main.id && c.from.port === 'keys'));
+  /** a Steps track into the engine: its keys into the Drum map (`keys`), or its pitch and gate into a melodic voice */
+  const track = (name: string, y: number, input: string, notes: StepNote[]): void => {
+    const st = addModule(p, DEFS.steps, 20, y);
+    st.name = name;
+    st.notes = fixNotes(notes);
+    if (input === 'keys') plugIn(p, st.id, 'keys', x.a, input);
+    else {
+      plugIn(p, st.id, 'pitch', x.a, `${input} pitch`);
+      plugIn(p, st.id, 'trig', x.a, `${input} gate`);
+    }
+    if (name === 'TONE') wire(p, x.main.id, 'keys', st.id, 'keys');
+  };
+  const map = mod(p, x.a.inputs.find((r) => r.label === 'keys')!.module);
+  const drums: StepNote[] = [];
+  const rows: Record<number, string> = {
+    1: 'X...x...X...x..x',
+    2: '....X.......X...',
+    3: 'x.x.X.x.x.x.X.xx',
+    4: '...x..x....x.x..',
+  };
+  for (const [r, steps] of Object.entries(rows)) {
+    const key = Math.round(map.params[`n${r}`]);
+    for (const n of patternNotes(steps) ?? []) drums.push({ ...n, note: key });
+  }
+  track('DRUMS', 300, 'keys', drums);
+  //                         step, note, accent
+  const tone: [number, number, boolean][] = [[0, 45, true], [3, 45, false], [6, 57, false], [8, 45, true], [10, 48, false], [11, 52, false], [14, 55, false]];
+  track('TONE', 600, 'tone', tone.map(([at, note, acc]) => ({ at, len: 1, note, vel: acc ? ACCENT_VEL : STEP_VEL })));
+  track('CHORD', 900, 'chord', [[3, 57], [10, 57], [13, 55]].map(([at, note]) => ({ at, len: 1, note, vel: STEP_VEL })));
+  level(p, { drums: true });
+  p.octave = -1;
+  return p;
+});
+
 // ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit
 // after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');

@@ -243,12 +243,17 @@ static int sent_at(int from, uint32_t s, uint32_t a, uint32_t b)
 }
 
 static int load_at(uint32_t p);
-static int load(const char *name)
+/* the slot of the factory patch of this name (N_PRESETS: none) */
+static uint32_t preset_at(const char *name)
 {
     uint32_t p;
     for (p = 0; p < N_PRESETS && strcmp(PRESET_LIST[p].name, name); p++)
         ;
-    return load_at(p);
+    return p;
+}
+static int load(const char *name)
+{
+    return load_at(preset_at(name));
 }
 /* the factory patch p (0..N_PRESETS-1) running */
 static int load_at(uint32_t p)
@@ -1068,7 +1073,7 @@ int main(void)
             tap(BTN_HOME);
         if (eng_transport_running())
             tap(BTN_PLAY);
-        check("(<7PH, the last factory patch, loads: DRUMS, then PATTERN into the Silver Box)", !load_at(N_PRESETS - 1u)
+        check("(<7PH loads: DRUMS, then PATTERN into the Silver Box)", !load("<7PH")
               && eng_steps_count() == 2 && eng_steps_drummap((uint32_t)eng_steps_module(0)) >= 0
               && eng_steps_drummap((uint32_t)eng_steps_module(1)) < 0);
         pv_gen++;
@@ -1677,7 +1682,7 @@ int main(void)
             if (kit < 2u)
                 (void)load(kit ? "909 KIT" : "808 KIT");
             else
-                (void)load_at(N_PRESETS - 1u);              /* (the last factory patch: <7PH) */
+                (void)load("<7PH");
             page = 0;
             trail_n = 0;
             octave = 0;
@@ -1945,7 +1950,7 @@ int main(void)
             tap(BTN_HOME);
         if (eng_transport_running())
             tap(BTN_PLAY);
-        (void)load_at(N_PRESETS - 1u);                      /* <7PH: DRUMS, PATTERN */
+        (void)load("<7PH");                                  /* DRUMS, PATTERN */
         page = 0;
         trail_n = 0;
         screen_idle();
@@ -2007,7 +2012,7 @@ int main(void)
         int main;
         bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
         (void)load("909 KIT");
-        cur_preset = N_PRESETS - 2u;                        /* the 909 Kit, then <7PH, the last factory patch */
+        cur_preset = preset_at("<7PH") - 1u;               /* the 909 Kit, then <7PH */
         pv_gen++;
         page = 0;
         trail_n = 0;
@@ -2016,7 +2021,7 @@ int main(void)
         preset_loads = 1;
         lcd_px = 0;
         enc(6, 1);
-        check("PRESET: the next patch, its slot and name in the footer's toast, its page around it", cur_preset == N_PRESETS - 1u
+        check("PRESET: the next patch, its slot and name in the footer's toast, its page around it", cur_preset == preset_at("<7PH")
               && !strcmp(patch_label, "<7PH") && on_screen("<7PH") && on_screen("23.") && toast_scr != 0u
               && px(0, 240u - LK_TOH) == P_SAND && px(0, 239u - LK_TOH) != P_SAND && K1_TAB == KNOB_HUE[0]);
         printf("      LCD pixels for one PRESET click: %u\n", lcd_px);
@@ -2030,6 +2035,7 @@ int main(void)
         fb_watch_reset();
         later(300);
         check("a beat's redraw under it leaves it be", fb_blinked() == 0);
+        cur_preset = N_PRESETS - 1u;                        /* (the last slot: the next click wraps to the first) */
         stop_n = 0;
         stop_answer = 1;                                    /* PRESET turning fast: a newer click waits */
         pages_waiting = stop_probe;
@@ -2361,7 +2367,7 @@ int main(void)
             if (eng_transport_running())
                 tap(BTN_PLAY);
             if (kit)
-                (void)load_at(N_PRESETS - 1u);
+                (void)load("<7PH");
             else
                 (void)load("808 KIT");
             pv_gen++;
