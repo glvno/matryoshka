@@ -1721,6 +1721,38 @@ events['drummap'] = [[128 * 4, 'run', 0], [128 * 30, 'on', 60], [128 * 60, 'on',
   [128 * 120, 'off', 62], [128 * 140, 'off', 60], [128 * 300, 'stop', 0]];
 ends['drummap'] = 128 * 360;
 
+// Drum map repeat (#184): Main's keys into two maps that repeat their rows. The left one's rows are on the white keys
+// F3..F4 (blocks of eight white keys, a black key plays the white key's row below it): G4 and F3 both play row 1 (the
+// second held key neither restarts it nor lets it fall when the first goes), F#4 row 8, F2 row 2, F#5 row 7. The right
+// one keeps the General MIDI rows (not all white: blocks of 21 semitones): A3 and D#5 both play the kick, F2 nothing.
+tests['drummap-repeat'] = make('drummap-repeat', (add, wire) => {
+  const main = add('fm1', 0, 0, {});
+  const dw = add('drummap', 200, 0, { n1: 53, n2: 55, n3: 57, n4: 59, n5: 60, n6: 62, n7: 64, n8: 65, repeat: 1 });
+  const dg = add('drummap', 200, 400, { repeat: 1 });
+  const ml = add('mixer', 400, 0, { l1: 0.3, l2: 0.2, l3: 0.2, l4: 0.15 });
+  const ml2 = add('mixer', 400, 200, { l1: 0.1, l2: 0, l3: 0, l4: 0 });
+  const mr = add('mixer', 400, 400, { l1: 0.3, l2: 0.3, l3: 0.2, l4: 0 });
+  const out = add('output', 600, 0, { level: 1 });
+  wire(main, 'keys', dw, 'keys');
+  wire(main, 'keys', dg, 'keys');
+  wire(dw, 'g1', ml, 'in1');
+  wire(dw, 'v1', ml, 'in2');
+  wire(dw, 'g8', ml, 'in3');
+  wire(dw, 'g2', ml2, 'in2');
+  wire(dw, 'g7', ml2, 'in1');
+  wire(ml2, 'out', ml, 'in4');
+  wire(dg, 'g1', mr, 'in1');
+  wire(dg, 'v1', mr, 'in2');
+  wire(dg, 'g6', mr, 'in3');
+  wire(ml, 'out', out, 'l');
+  wire(mr, 'out', out, 'r');
+});
+events['drummap-repeat'] = [[128 * 10, 'on', 67], [128 * 30, 'on', 53], [128 * 50, 'off', 67], [128 * 70, 'off', 53],
+  [128 * 80, 'on', 67], [128 * 80 + 60, 'off', 67], [128 * 82, 'on', 79], [128 * 90, 'on', 66], [128 * 110, 'off', 66],
+  [128 * 130, 'on', 41], [128 * 150, 'on', 57], [128 * 160, 'on', 78], [128 * 170, 'off', 57], [128 * 190, 'off', 78],
+  [128 * 200, 'off', 41], [128 * 210, 'off', 79]];
+ends['drummap-repeat'] = 128 * 240;
+
 // an Arpeggiator on ARP, saved bypassed (the factory patches' arpeggiator): bypassed it hands Main's keys straight to the
 // Voicing (a chord sounds as played); ARP (index 6) switches it on (the straight notes let go, it arpeggiates the keys
 // still held) and off again (its note lets go, a key pressed after plays straight)
