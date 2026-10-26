@@ -63,5 +63,5 @@ describe('factory presets (#193)', () => {
         expect(applyPreset(p, a, list[list.length - 1]), name).toBe(true);
       }
     }
-  });
+  }, 30000); // (the XLs with their originals' whole panels are heavy: about 5 s on CI)
 });
