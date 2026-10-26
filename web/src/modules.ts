@@ -2818,6 +2818,17 @@ export const selectPos = (pos: number, count: number, cv: number): number => {
   const n = Math.min(SELECT_N, Math.max(2, Math.round(count)));
   return Math.min(n, Math.max(1, Math.floor(pos + cv * (n - 1) + 0.5)));
 };
+/** the positions a Selector uses (2..SELECT_N, its `count`) */
+export const selectCount = (params: Record<string, number>): number => Math.min(SELECT_N, Math.max(2, Math.round(params.count ?? SELECT_N)));
+/**
+ * The range a row of this module's parameter offers (#358): a Selector's position spans the positions in use, 1..count,
+ * so the card, the knobs and a typed value never pick one that plays nothing (the FM-1: pages_ui.c row_top). Any other
+ * parameter: its own definition.
+ */
+export function rowRange(type: string, params: Record<string, number>, pd: ParamDef): ParamDef {
+  if (type !== 'select' || pd.name !== 'pos') return pd;
+  return { ...pd, max: selectCount(params), top: undefined, browserMax: undefined };
+}
 /** what a Selector's crossfade moves its weights by each sample (Q16, as the firmware: an integer increment, so both engines
  * fade alike); 65536 or more: it switches at once */
 export const selectFadeInc = (fade: number, sr: number): number => {

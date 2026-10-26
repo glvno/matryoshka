@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
+  same range: turning it moves both (two filters' cutoff, say), and so do a cable or
+  a macro on it, a card preset and the FM-1's knob on its page. "split" gives each its own row again. A row that sets
+  several shows ×2, ×3 … after its name. On the FM-1 each page row keeps where its extras are: 1,280 bytes more of the
+  pool (384,360 of 417,792 bytes, from 383,080; the CI build) and 916 bytes more firmware (353,076). Host-tested
+  (`tools/panel_test.sh` turns such rows), not yet on a device.
+- **A Selector's positions can have names** (#358): pick mode's "names" on a card row of its position, such as SAW,
+  SQUARE, PULSE. The card, the Selector's own card, Main's knobs and the FM-1's page show the names (in capitals on the
+  FM-1). The position row now offers only the positions in use (1 to its count), on the card, the knobs and the FM-1.
+- **Controls the original edits one at a time can show one at a time** (Arrange mode's "⧉ one at a time"): the Casio
+  CZ's eight envelope steps become one rate and one level under a "step" row, and the FM-1 gives each step a page.
 - **Cassia 1 is now the whole Casio CZ-1, on the FM-1 too.** Cassia 1 XL rebuilt on the PD Osc and Env 8 fits the FM-1,
   so it takes Cassia 1's slot (24) and name, and the XL is gone ([D-348](docs/ledger/patches-and-presets.md#D-348)). Both lines play all eight waveforms with a
   second one on every other cycle; line select 1, 2, 1 + 2 and 1 + 1'; ring and noise modulation on line 2; DCO, DCW and

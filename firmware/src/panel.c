@@ -433,6 +433,7 @@ static void panel_encoders(int32_t *st)
         else {
             eng_set_param(mod, par, v);
             m1_patch_param(mod, par, v);
+            pages_also(k, v);                       /* (the parameters the row also sets, #357) */
         }
         m1_param_now(mod, par, r == 1 ? v << 16 : v);   /* the editor follows (Live) */
         if (page == PAGE_ENV)
