@@ -5,7 +5,7 @@
 // per copy that sounds (one per voice in a poly assembly, the newest held one brightest) streamed from the audio thread
 // while the shape is on screen; the live (modulated) values draw the curve, the settings a faint outline while they
 // differ; its corners drag the times (sideways) and levels (up / down).
-import { env8End, env8Sus, ENV8_HOLD, IMPLS } from './modules';
+import { ADSR_LONG, env8End, env8Sus, ENV8_HOLD, IMPLS } from './modules';
 import type { ModuleInst } from './patch';
 import type { HostMsg } from './worklet';
 
@@ -96,7 +96,8 @@ export function envShape(type: string, p: Record<string, number>): Segment[] {
   gate[0] = 1;
   for (const stage of moving) {
     const time = p[timeOf.get(stage)!] ?? 0.01;
-    const sr = SEG_SAMPLES / Math.max(time, 1e-4);
+    // (the ADSR's `long` stretches its decay and release: the segment runs at the rate of the time it plays)
+    const sr = SEG_SAMPLES / Math.max(time * (type === 'adsr' && stage !== 1 && (p.long ?? 0) >= 0.5 ? ADSR_LONG : 1), 1e-4);
     if (stage === spec.release) {
       // the sustain slot first: the level the held gate rests at
       raw.push({ stage: spec.sustain, ys: [level, level], time: 0 });

@@ -315,7 +315,7 @@ typedef struct {
     union {
         struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks */
         struct { uint32_t seed; walk_t w; } rnd;   /* seed: engine.ts instSeed */
-        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi; } lfo;   /* interval: clock edge distance in samples, Q8 */
+        struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap */
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
         struct { int32_t ic1[3], ic2[3]; } vow;       /* three band passes, Q20 */
@@ -2876,8 +2876,9 @@ static void lfo_cycle(inst_t *it)
 
 /* the free-running LFO (no sync, nothing in clk / reset): the wave picked once a block. A function of its own: inside
  * m_lfo the branch around it came out longer than 16 KB in the JieLi build, a form of `if ((R & #h) == #i) goto` that
- * fm1-emu (7ca5b96) does not decode yet (docs/ARCHITECTURE.md "Estimated CPU load") */
-static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t dt, int32_t kind, int32_t depth, uint32_t n)
+ * fm1-emu (7ca5b96) does not decode yet (docs/ARCHITECTURE.md "Estimated CPU load"). off: the start phase, added where
+ * the wave is read (u32 turns); depth comes negated for a backward wave. */
+static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t dt, int32_t kind, int32_t depth, uint32_t off, uint32_t n)
 {
     uint32_t phase = it->s.lfo.phase, since = it->s.lfo.since + n, i, lrc[4] = {0};
 #define LFO_FREE(Y)                                                                     \
@@ -2889,11 +2890,11 @@ static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t
         out[i] = mul16((Y), depth);                                                     \
     }
     switch (kind) {
-    case 0: LFO_FREE(sin_turn(phase)) break;
-    case 1: LFO_FREE(wave_tri(phase)) break;
-    case 2: LFO_FREE(wave_saw(phase, dt, lrc)) break;
+    case 0: LFO_FREE(sin_turn(phase + off)) break;
+    case 1: LFO_FREE(wave_tri(phase + off)) break;
+    case 2: LFO_FREE(wave_saw(phase + off, dt, lrc)) break;
     case 4: LFO_FREE(it->s.lfo.held) break;
-    default: LFO_FREE(wave_square(phase, dt, 0x80000000u, lrc)) break;
+    default: LFO_FREE(wave_square(phase + off, dt, 0x80000000u, lrc)) break;
     }
 #undef LFO_FREE
     it->s.lfo.since = since < ENG_SR ? since : ENG_SR;   /* as m_lfo's loop counts it, the clock and reset inputs low */
@@ -2902,22 +2903,37 @@ static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t
     it->s.lfo.phase = phase;
 }
 
-/* free: rate in Hz. sync: one cycle per note length (DELAY_DIV_NUM / DELAY_DIV_DEN, as the delay) that snaps to every n-th edge of clk
- * (24 ppqn, n = ticks per cycle), runs at the measured clock speed in between and at bpm when there is no clock. */
+/* free: rate in Hz times the range (slow / 25, fast x 2). sync: one cycle per note length (DELAY_DIV_NUM / DELAY_DIV_DEN,
+ * as the delay) times the speed (LFO_MULT_NUM / LFO_MULT_DEN) that snaps to clk (24 ppqn) every `snap` ticks, where a
+ * whole number (`cycles`) of cycles ends on a tick; it runs at the measured clock speed in between and at bpm when there
+ * is no clock (modules.ts lfoSyncCycle). per8 = 8 x ticks per cycle, a whole number. phase: where a cycle starts on the
+ * wave; dir back: the wave backward, read as -w(phase - off) (the triangle as it is). */
 static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
 {
     esig_t *out = it->out[0];
     const esig_t *clk = it->in[LFO_I_CLK], *rst = it->in[LFO_I_RESET];
-    uint32_t dtfree = hz_turns((uint32_t)EF(it, LFO_P_RATE)), phase = it->s.lfo.phase, i, dt;
+    uint32_t rate = (uint32_t)EF(it, LFO_P_RATE), dtfree, phase = it->s.lfo.phase, i, dt;
     int32_t kind = round_q16(EF(it, LFO_P_WAVE)), depth = EF(it, LFO_P_DEPTH);
-    int sync = EF(it, LFO_P_SYNC) >= 32768;
+    int sync = EF(it, LFO_P_SYNC) >= 32768, back = EF(it, LFO_P_DIR) >= 32768;
     int32_t div = clampi((EF(it, LFO_P_DIV) + 32768) >> 16, 0, DELAY_NDIV - 1), bpm = EF(it, LFO_P_BPM);
-    uint32_t per = 24u * DELAY_DIV_NUM[div] / DELAY_DIV_DEN[div], dtbpm, lrc[4] = {0};
+    int32_t mi = clampi((EF(it, LFO_P_MULT) + 32768) >> 16, 0, LFO_NMULT - 1), range = clampi((EF(it, LFO_P_RANGE) + 32768) >> 16, 0, LFO_NRANGE - 1);
+    uint32_t num = (uint32_t)DELAY_DIV_NUM[div] * LFO_MULT_NUM[mi], den = (uint32_t)DELAY_DIV_DEN[div] * LFO_MULT_DEN[mi];
+    uint32_t per8 = 192u * num / den, g = per8 & 7u ? (per8 & 3u ? (per8 & 1u ? 1u : 2u) : 4u) : 8u;   /* g = gcd(per8, 8) */
+    uint32_t snap = per8 / g, cycles = 8u / g, dtbpm = 0, lrc[4] = {0}, off = 0;
+    if (EF(it, LFO_P_PHASE))                     /* degrees Q16 -> u32 turns (x 2^16 / 360) */
+        off = (uint32_t)(((uint64_t)(uint32_t)EF(it, LFO_P_PHASE) * 11930465u) >> 16);
+    if (back) {
+        off = 0u - off;
+        if (kind != 1)
+            depth = -depth;
+    }
+    dtfree = range == 1 ? (uint32_t)(((uint64_t)rate << 16) / (25u * ENG_SR)) : range == 2 ? hz_turns(rate) << 1 : hz_turns(rate);
     if (bpm < 65536)
         bpm = 65536;
-    dtbpm = (uint32_t)(((uint64_t)(uint32_t)bpm * DELAY_DIV_DEN[div] << 16) / (60u * DELAY_DIV_NUM[div] * ENG_SR));
+    if (sync)                                    /* (a 64-bit division: only when it is used) */
+        dtbpm = (uint32_t)(((uint64_t)(uint32_t)bpm * den << 16) / ((uint64_t)60u * num * ENG_SR));
     if (!sync && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {   /* free running, nothing patched in */
-        lfo_free(it, out, dtfree, kind, depth, n);
+        lfo_free(it, out, dtfree, kind, depth, off, n);
         return;
     }
     for (i = 0; i < n; i++) {
@@ -2933,8 +2949,9 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
             else
                 it->s.lfo.interval = it->s.lfo.interval > 0 ? it->s.lfo.interval + (d8 - it->s.lfo.interval) / 8 : d8;
             it->s.lfo.since = 0;
-            if (sync && ++it->s.lfo.ticks >= per) {
+            if (sync && ++it->s.lfo.ticks >= snap) {
                 it->s.lfo.ticks = 0;
+                it->s.lfo.wraps = 0;
                 phase = prev = 0;
                 lfo_cycle(it);
             }
@@ -2943,19 +2960,23 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
         if (r && !it->s.lfo.rst_hi) {
             phase = prev = 0;
             it->s.lfo.ticks = 0;
+            it->s.lfo.wraps = 0;
             lfo_cycle(it);
         }
         it->s.lfo.rst_hi = (uint8_t)r;
         live = sync && it->s.lfo.interval > 0 && it->s.lfo.since < ENG_SR / 2;
-        dt = !sync ? dtfree : live ? (uint32_t)((1ull << 40) / ((uint64_t)per * (uint32_t)it->s.lfo.interval)) : dtbpm;
+        dt = !sync ? dtfree : live ? (uint32_t)((1ull << 43) / ((uint64_t)per8 * (uint32_t)it->s.lfo.interval)) : dtbpm;
         phase += dt;
         if (phase < prev) {
-            if (live)
-                phase = 0xFFFFFFFFu;        /* wait for the clock's next cycle start */
-            else
+            if (live && it->s.lfo.wraps + 1u >= cycles)
+                phase = 0xFFFFFFFFu;        /* wait for the clock's next snap */
+            else {
+                if (live)
+                    it->s.lfo.wraps++;
                 lfo_cycle(it);              /* a new cycle: sample & hold takes a new random value */
+            }
         }
-        w = kind == 4 ? it->s.lfo.held : wave(kind, phase, dt, 0x80000000u, lrc);
+        w = kind == 4 ? it->s.lfo.held : wave(kind, phase + off, dt, 0x80000000u, lrc);
         out[i] = mul16(w, depth);
     }
     it->s.lfo.phase = phase;
@@ -3111,6 +3132,10 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *out = it->out[0];
     int32_t pa = EF(it, ADSR_P_A), pd = EF(it, ADSR_P_D), pr = EF(it, ADSR_P_R);
     int32_t ainc, ad, ar, sus = EF(it, ADSR_P_S) << 14, v = it->s.adsr.v;
+    if (EF(it, ADSR_P_LONG) >= 32768) {          /* long: decay and release x 2.4 (modules.ts ADSR_LONG) */
+        pd = (int32_t)(((int64_t)pd * ADSR_LONG_Q16) >> 16);
+        pr = (int32_t)(((int64_t)pr * ADSR_LONG_Q16) >> 16);
+    }
     uint8_t stage = it->s.adsr.stage, prev = it->s.adsr.prev;
     uint32_t i;
     if (!(it->s.adsr.ok & 1u) || it->s.adsr.ka != pa) {
@@ -3158,13 +3183,15 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
         case 3:
             v = sus;
             break;
-        case 4:
-            v -= mulq(v, ar, 30);
+        case 4: {                    /* (at least one step: past about 11 s the product rounds to 0 above the end level) */
+            int32_t dv = mulq(v, ar, 30);
+            v -= dv > 0 ? dv : 1;
             if (v < 107374) {
                 v = 0;
                 stage = 0;
             }
             break;
+        }
         }
         out[i] = v >> 14;
     }
@@ -3577,7 +3604,19 @@ uint32_t delay_div(int32_t time_q16)
     return (uint32_t)(i < 0 ? 0 : i > DELAY_NDIV - 1 ? DELAY_NDIV - 1 : i);
 }
 
-/* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see modules.ts */
+/* the swelling delay's soft clip (modules.ts delayClip): x - 4/27 x^3, flat at +-1 from |x| = 1.5 */
+static inline int32_t dly_soft(int32_t x)
+{
+    if (x >= 98304)
+        return ENG_ONE;
+    if (x <= -98304)
+        return -ENG_ONE;
+    return x - mul16(mul16(mul16(x, x), x), 9709);       /* 4/27 Q16 */
+}
+
+/* free or synced time (see modules.ts); ping-pong splits the buffer in two halves, A (input, left) and B (right), see
+ * modules.ts. note: a synced length of its own (DELAY_NOTE_NUM / DEN) in place of the time knob's; swell: the feedback
+ * x 198 / 95 and the loop through dly_soft (the loops below, apart, so the plain one stays as it was) */
 static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[DELAY_I_IN];
@@ -3585,7 +3624,8 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
     int16_t *buf = it->s.dly.buf;
     uint32_t w = it->s.dly.w, i, d;
     int32_t fb = EF(it, DELAY_P_FB), mix = EF(it, DELAY_P_MIX), dry = ENG_ONE - mix;
-    int pp = EF(it, DELAY_P_PINGPONG) >= 32768;
+    int pp = EF(it, DELAY_P_PINGPONG) >= 32768, swell = EF(it, DELAY_P_SWELL) >= 32768;
+    int32_t note = clampi((EF(it, DELAY_P_NOTE) + 32768) >> 16, 0, DELAY_NNOTE - 1);
     int64_t smp, top = pp ? (int64_t)DELAY_HALF - 1 : (int64_t)DELAY_LEN - 1;
     if (nd->conn & (1u << DELAY_I_CLK)) {   /* tempo: the time of the last 24 clock pulses, smoothed */
         const esig_t *clk = it->in[DELAY_I_CLK];
@@ -3605,13 +3645,36 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
             it->s.dly.prev = (uint8_t)hi;
         }
     }
-    if (EF(it, DELAY_P_SYNC) >= 32768) {
+    if (EF(it, DELAY_P_SYNC) >= 32768 && note > 0)
+        smp = ((int64_t)DELAY_NOTE_NUM[note] * it->s.dly.beat * 2 + DELAY_NOTE_DEN[note]) / ((int64_t)DELAY_NOTE_DEN[note] * 2);
+    else if (EF(it, DELAY_P_SYNC) >= 32768) {
         uint32_t div = delay_div(EF(it, DELAY_P_TIME));
         smp = ((int64_t)DELAY_DIV_NUM[div] * it->s.dly.beat * 2 + DELAY_DIV_DEN[div]) / ((int64_t)DELAY_DIV_DEN[div] * 2);
     } else
         smp = ((int64_t)EF(it, DELAY_P_TIME) * ENG_SR + (int64_t)500 * 65536) / (1000 * 65536);   /* round(t_ms / 1000 * sr) */
     d = (uint32_t)(smp < 1 ? 1 : smp > top ? top : smp);
-    if (!pp) {
+    if (swell) {
+        fb = (int32_t)((int64_t)fb * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+        if (w >= (pp ? DELAY_HALF : DELAY_LEN))
+            w = 0;
+        for (i = 0; i < n; i++) {
+            uint32_t len = pp ? DELAY_HALF : DELAY_LEN, rp = w >= d ? w - d : w + len - d;
+            int32_t ea = (int32_t)buf[rp] * 8, dr = mul16(in[i], dry);
+            if (pp) {
+                int32_t eb = (int32_t)buf[DELAY_HALF + rp] * 8;
+                buf[DELAY_HALF + w] = dly_pack(dly_soft(mul16(ea, fb)));
+                buf[w] = dly_pack(dly_soft(in[i] + mul16(eb, fb)));
+                out[i] = dr + mul16(ea, mix);
+                outr[i] = dr + mul16(eb, mix);
+            } else {
+                buf[w] = dly_pack(dly_soft(in[i] + mul16(ea, fb)));
+                out[i] = dr + mul16(ea, mix);
+                outr[i] = out[i];
+            }
+            if (++w == len)
+                w = 0;
+        }
+    } else if (!pp) {
         for (i = 0; i < n; i++) {
             uint32_t rp = w >= d ? w - d : w + DELAY_LEN - d;
             int32_t r = (int32_t)buf[rp] * 8;
@@ -3641,7 +3704,7 @@ static void m_delay(const node_t *nd, inst_t *it, uint32_t n)
 
 /* ---- reverb: the same Freeverb-style network as modules.ts, in Q16 with int16 (Q13) delay memory */
 
-/* Reverb (modules.ts `reverb`): an eight-line FDN with a Householder feedback matrix (f_k = t_k - sum(t) / 4), a one-pole
+/* Reverb (modules.ts `reverb`; freeze holds the tail): an eight-line FDN with a Householder feedback matrix (f_k = t_k - sum(t) / 4), a one-pole
  * damping filter and a decay gain in every line (g_k = 2^(-9.966 L_k / (T sr)): 60 dB in T = 0.2 x 2^(5 size) s), two
  * input diffusion allpasses (g 0.5), a pre-delay of up to 40 ms, and a sine modulation of the read position of lines 0
  * and 1 (mod x 6 samples at 0.5 / 0.83 Hz, linear interpolation). All lines int16 Q13 in one block (RV_LEN). */
@@ -3664,13 +3727,17 @@ static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
     int32_t depth = mul16(EF(it, REVERB_P_MOD), RV_MOD), g[8], t[8];
     int32_t tq = (int32_t)exp2_q16(mul16(EF(it, REVERB_P_SIZE), 5 << 16) + RV_LOG2_T0 + (16 << 16));   /* T, seconds Q16 */
     uint32_t dpre = (uint32_t)((mulq(EF(it, REVERB_P_PRE), ENG_SR, 16) + 500) / 1000), i, k, off = 0;
+    int frz = EF(it, REVERB_P_FREEZE) >= 32768;   /* freeze: every gain 1, no damping, nothing new into the lines */
+    int32_t gin = frz ? 0 : RV_GIN;
+    if (frz)
+        d = 0;
     if (tq < 1)
         tq = 1;
     if (dpre > RV_PRE - 1u)
         dpre = RV_PRE - 1u;
     for (k = 0; k < 8u; k++) {
         int64_t e = -(((int64_t)RV_LINE[k] * RV_DB60) << 16) / ((int64_t)tq * ENG_SR);
-        g[k] = (int32_t)exp2_q16((int32_t)(e < -(16 << 16) ? -(16 << 16) : e) + (16 << 16));
+        g[k] = frz ? ENG_ONE : (int32_t)exp2_q16((int32_t)(e < -(16 << 16) ? -(16 << 16) : e) + (16 << 16));
         line[k] = base + off;
         off += RV_LINE[k];
     }
@@ -3710,7 +3777,7 @@ static void m_reverb(const node_t *nd, inst_t *it, uint32_t n)
             if (++ai1 == 347u)
                 ai1 = 0;
             u = y;
-            u = mulr(u, RV_GIN, 16);
+            u = mulr(u, gin, 16);
 #define RV_DAMP(k)                                                                      \
             wet += o;                                                                   \
             lp[k] = mulr(o, od, 16) + mulr(lp[k], d, 16);                               \
@@ -4655,14 +4722,22 @@ static void m_pulse(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t i;
     if (len < 1)
         len = 1;
-    for (i = 0; i < n; i++) {
-        if (trig[i] >= 32768 && t1 < 32768)
-            rem = len;
-        t1 = trig[i];
-        out[i] = rem > 0 ? ENG_ONE : 0;
-        if (rem > 0)
-            rem--;
-    }
+    if (EF(it, PULSE_P_INF) >= 32768) {          /* inf: the window does not count down */
+        for (i = 0; i < n; i++) {
+            if (trig[i] >= 32768 && t1 < 32768)
+                rem = len;
+            t1 = trig[i];
+            out[i] = rem > 0 ? ENG_ONE : 0;
+        }
+    } else
+        for (i = 0; i < n; i++) {
+            if (trig[i] >= 32768 && t1 < 32768)
+                rem = len;
+            t1 = trig[i];
+            out[i] = rem > 0 ? ENG_ONE : 0;
+            if (rem > 0)
+                rem--;
+        }
     it->s.pls.rem = rem;
     it->s.pls.t1 = t1;
 }

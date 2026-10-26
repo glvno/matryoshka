@@ -15,7 +15,10 @@ const GENERIC: Record<string, string> = {
 };
 
 const BY_TYPE: Record<string, Record<string, string>> = {
-  adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release' },
+  adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release', long: 'long times' },
+  lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed' },
+  delay: { note: 'note length' },
+  pulse: { inf: 'infinite' },
   mixer: { l1: 'level 1', l2: 'level 2', l3: 'level 3', l4: 'level 4' },
   env: { l1: 'level 1', r1: 'rate 1', l2: 'level 2', r2: 'rate 2', l3: 'level 3', r3: 'rate 3', l4: 'level 4', r4: 'rate 4', shot: 'one-shot' },
   env8: { ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [[`l${i + 1}`, `level ${i + 1}`], [`r${i + 1}`, `rate ${i + 1}`]]).flat()), sus: 'sustain step', end: 'end step' },
@@ -32,6 +35,9 @@ const CHOICES: Record<string, Record<string, string>> = {
   'osc.stack': { '+oct': '+octave', '+5th': '+fifth', '+oct+5th': '+octave +fifth', '-oct': '−octave' },
   'lfo.wave': { 'S&H': 'sample & hold' },
   'lfo.div': { '1/16T': '1/16 triplet', '1/8T': '1/8 triplet', '1/16.': '1/16 dotted', '1/8.': '1/8 dotted' },
+  'lfo.dir': { fwd: 'forward', back: 'backward' },
+  'lfo.mult': { '/8': '÷ 8', '/4': '÷ 4', '/2': '÷ 2' },
+  'delay.note': { time: 'time knob', '1/2T': '1/2 triplet', '1/2.': '1/2 dotted', '1/1T': '1/1 triplet', '1/1.': '1/1 dotted' },
   'glide.curve': { exp: 'exponential', lin: 'linear' },
   'seq.dir': { fwd: 'forward', back: 'backward' },
   'quant.scale': { 'pent maj': 'pentatonic major', 'pent min': 'pentatonic minor', whole: 'whole tone' },
