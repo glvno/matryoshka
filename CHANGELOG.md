@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Incoming MIDI notes keep playing during FM-1 screen redraws** (#363). USB and TRS notes and clock are taken
+  between screen transfers, including octave messages. Commands that change pages or patches keep their input order
+  and wait for the main loop so they cannot draw into an unfinished screen transfer. On the test rig, SELECT and ALGO
+  now play all 50 test notes rather than 25; octave changes play all 200 rather than 100 at 20 ms spacing.
+  See the [device measurements](docs/measurements/2026-10-26-midi-redraw.md).
+
 - **The patch-bytes budget counts the panel buttons' record.** A patch whose ARP, FX or LFO button is not a plain gate
   sends 9 more bytes than the editor counted, so one within 9 bytes of the 3,840 limit passed the budget and was then
   refused by the FM-1. The budget now equals what is sent (Oracle V: 1,290 → 1,299 bytes).

@@ -51,10 +51,20 @@ static void lcd_line_sending(uint32_t n)
         lcd_line_sent[i] = lcd_line[i];
 }
 #include "../src/screen_text.h"           /* the texts on the screen, as text (#291): lcd.c's */
+static void (*lcd_service)(void);
+#ifdef FB_WATCH
+static void (*lcd_test_transfer)(void); /* test arrival of input while a draw is in progress */
+#endif
 static void (*lcd_yield)(void);            /* lcd.c's: called before each transfer here (on the device while one runs) */
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, j;
+#ifdef FB_WATCH
+    if (lcd_test_transfer)
+        lcd_test_transfer();
+#endif
+    if (lcd_service)
+        lcd_service();
     if (lcd_yield)
         lcd_yield();
     lcd_line_done();
@@ -77,6 +87,12 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *px)
 {
     uint32_t i, j;
+#ifdef FB_WATCH
+    if (lcd_test_transfer)
+        lcd_test_transfer();
+#endif
+    if (lcd_service)
+        lcd_service();
     if (lcd_yield)
         lcd_yield();
     lcd_line_done();
