@@ -19,7 +19,7 @@ beforeEach(() => {
 });
 
 const ENGINES = [
-  '8 Lire', 'Algo Four', 'basic poly', 'Briefcase 3', 'Canvas', 'drift poly', 'drum kit', 'Elvira 2', 'Expander S', 'Hera 6', 'Io 4', 'Meridian 8', 'mono lead', 'Monolith D',
+  '8 Lire', 'Algo Four', 'basic poly', 'Briefcase 3', 'Canvas', 'Cassia 1', 'drift poly', 'drum kit', 'Elvira 2', 'Expander S', 'Hera 6', 'Io 4', 'Meridian 8', 'mono lead', 'Monolith D',
   'Oracle V', 'Perun 4', 'Sallen 20', 'Scrounge', 'Silver Box', 'Spokes 6', 'supersaw stack', 'Vernon 100', 'Wanderer',
 ];
 const named = (name: string): AssemblyDef => FACTORY.find((d) => d.name === name)!;
