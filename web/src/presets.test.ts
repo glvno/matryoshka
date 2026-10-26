@@ -146,9 +146,10 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // the owner, 2026-10-23 (docs/ledger/patches-and-presets.md D-336): every melodic factory patch that can afford them has an
 // Arpeggiator on ARP, bypassed, and a 16-step PATTERN track feeding it: Main's keys -> PATTERN -> the arpeggiator -> the
 // voice. The drum patches get neither. Oracle V and Algo Four ran past the CPU estimate's warning with them (accepted);
-// since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %)
+// since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %). Cassia 1, the CZ-1 in full since it
+// replaced its XL (D-348), estimates about 88 % at three voices with them
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6'];
-const PAST_WARNING: string[] = [];
+const PAST_WARNING: string[] = ['Cassia 1'];
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */
 const OWN_PATTERN = ['Scrounge', 'Meridian 8', 'Perun 4'];

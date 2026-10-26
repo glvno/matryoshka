@@ -20,14 +20,18 @@ const times = (k: number, floor = 0): ((v: number) => number) => (v) => Math.max
 const CUTOFF = (r: Row): boolean => r.param === 'cutoff' && (r.type === 'filter' || r.type === 'ladder');
 const ENV = (r: Row): boolean => r.type === 'adsr' || r.type === 'env' || r.type === 'env8';
 
+/** an Env 8 (Cassia 1: the CZ's envelopes, the sustain at step 3) plucked as an Env L/R: an instant first step, short
+ * second and third ones, nothing held at step 3, a short step 4 after the key is let go */
+const ENV8_PLUCK: Rule = (r) => (r.param === 'r1' ? 0.002 : r.param === 'r2' || r.param === 'r3' ? Math.min(0.35, r.value) : r.param === 'l3' ? 0 : r.param === 'r4' ? Math.min(0.3, r.value) : undefined);
+
 /** the variations, in the order they are listed */
 export const RULES: { name: string; rule: Rule }[] = [
   { name: 'Bright', rule: (r) => (CUTOFF(r) ? times(2.2)(r.value) : r.param === 'res' ? r.value + 0.1 : undefined) },
   { name: 'Dark', rule: (r) => (CUTOFF(r) ? times(0.4)(r.value) : undefined) },
   { name: 'Pad', rule: (r) => (!ENV(r) ? undefined : r.param === 'a' || r.param === 'r1' ? Math.max(0.4, r.value * 6) : r.param === 'r' || r.param === 'r4' ? Math.max(1.2, r.value * 2.5) : r.param === 's' ? Math.max(0.7, r.value) : undefined) },
-  { name: 'Pluck', rule: (r) => (!ENV(r) ? undefined : r.param === 'a' ? 0.002 : r.param === 'd' ? Math.min(0.35, r.value) : r.param === 's' ? 0 : r.param === 'r' ? Math.min(0.3, r.value) : undefined) },
-  { name: 'Tight', rule: (r) => (r.type === 'env' && /^r[23]$/.test(r.param) ? times(0.5)(r.value) : undefined) },
-  { name: 'Long', rule: (r) => (r.type === 'env' && /^r[23]$/.test(r.param) ? times(1.8)(r.value) : undefined) },
+  { name: 'Pluck', rule: (r) => (!ENV(r) ? undefined : r.param === 'a' ? 0.002 : r.param === 'd' ? Math.min(0.35, r.value) : r.param === 's' ? 0 : r.param === 'r' ? Math.min(0.3, r.value) : r.type === 'env8' ? ENV8_PLUCK(r) : undefined) },
+  { name: 'Tight', rule: (r) => ((r.type === 'env' || r.type === 'env8') && /^r[23]$/.test(r.param) ? times(0.5)(r.value) : undefined) },
+  { name: 'Long', rule: (r) => ((r.type === 'env' || r.type === 'env8') && /^r[23]$/.test(r.param) ? times(1.8)(r.value) : undefined) },
   { name: 'Wet', rule: (r) => (r.type === 'delay' || r.type === 'reverb' || r.type === 'chorus') && r.param === 'mix' ? Math.min(1, Math.max(0.35, r.value * 1.6)) : r.type === 'delay' && r.param === 'fb' ? r.value + 0.15 : undefined },
 ];
 

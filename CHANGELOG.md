@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Cassia 1 is now the whole Casio CZ-1, on the FM-1 too.** Cassia 1 XL rebuilt on the PD Osc and Env 8 fits the FM-1,
+  so it takes Cassia 1's slot (24) and name, and the XL is gone ([D-348](docs/ledger/patches-and-presets.md#D-348)). Both lines play all eight waveforms with a
+  second one on every other cycle; line select 1, 2, 1 + 2 and 1 + 1'; ring and noise modulation on line 2; DCO, DCW and
+  DCA envelopes of eight steps with a sustain and an end step, as on the CZ (the six-step stand-in is gone); key follow,
+  velocity, aftertouch, vibrato with a delay. The XL took 230 modules, 10,809 patch bytes and an estimated 736 % of the
+  FM-1's CPU at four voices; Cassia 1 now takes 46 modules, 3,724 bytes of 3,840 and about 88 % at three voices (the
+  FM-1's old Cassia 1: 21 modules, 1,618 bytes, 74 %). In the browser four voices render in about 8 % of real time
+  (the XL took about 40 %), on a recent Mac. The envelope rows are short (r1, l1 .. r8, l8, sus, end) to fit the
+  patch bytes. Its presets gain Pluck (the variations now reach Env 8). Host-tested only, not yet on a device.
 - **Env 8, an eight-step envelope** after the Casio CZ's: eight levels and rates, a sustain step that holds while the
   key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off it
   runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then

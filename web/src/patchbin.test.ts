@@ -19,6 +19,12 @@ const extrasMembers = (src: Patch, dev: Patch, d: { asm?: number; module?: numbe
   return (d.asm !== undefined ? allModules(src, src.assemblies!.find((x) => x.id === d.asm)!) : [d.module!]).filter((id) => ids.has(id)).length;
 };
 
+/** the side-input routes section: a count, then per route its module and input bytes and its parameter mask (patchbin.ts routesOf) */
+const routeBytes = (p: Patch): number => {
+  const masks = p.modules.flatMap((m) => Object.entries(m.inputMap ?? {}).filter(([, ps]) => ps.length).map(() => maskBytes(m.type)));
+  return masks.length ? 1 + masks.reduce((n: number, b) => n + 2 + b, 0) : 0;
+};
+
 describe('binary patch format', () => {
   it('the assembly overlay of the factory patches reaches the binary only as the device pages', () => {
     let grouped = 0;
@@ -233,10 +239,11 @@ describe('binary patch format', () => {
       const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label), 0), 0)), 0)
         + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
-      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 20 : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
+      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
         + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0)
-        + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0); // the macro ranges (the 909 Kit's velocity VCAs)
+        + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0) // the macro ranges (the 909 Kit's velocity VCAs)
+        + routeBytes(p); // the side-input routes (Cassia 1's PD Osc: pm to range)
       expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);
       expect(!!(b[6] & FLAG_NAMES), name).toBe(drumMaps(p).length > 0);
