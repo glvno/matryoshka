@@ -2804,7 +2804,6 @@ const pd: ModuleImpl<PdState> = {
       }
       out[i] = y * lvl;
     }
-    },
   },
 };
 
