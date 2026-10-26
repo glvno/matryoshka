@@ -7,44 +7,49 @@
 //
 // Six tracks, each the same: every track holds all six machines (KICK, SNARE, METAL, PERC, TONE, CHORD, each with its
 // pitch, decay, color, shape, sweep and contour rows) and `machine` picks the one its trigs play (0 kick, 0.2 snare,
-// 0.4 metal, 0.6 perc, 0.8 tone, 1 chord), as the original's MACHINES menu does; track n starts on machine n. Per track:
+// 0.4 metal, 0.6 perc, 0.8 tone, 1 chord), as the original's MACHINES menu does; track n starts on machine n. All six
+// play every trig and one Selector passes the chosen one's sound (with a 5 ms crossfade on a change). Per track:
 // - the sequencer: three Steps tracks (NAME, NAME FL, NAME NF: `build` below). Each has its own length, rate (the scale
-//   menu's per-track mode), swing and per-note chance, note, velocity and length (the trig's NOTE, VEL, LEN and its X %
-//   condition). FL plays only while the master `fill` is on (the FILL condition), NF only while it is off (not FILL).
-//   Arming a track plays the keys through it (chromatic mode; TONE also takes Main's keys unarmed, as on the FM-1).
+//   menu's per-track mode: 1/2 is the original's 1/8X, a step of a half note), swing (to 80 %, as the original) and
+//   per-note chance, note, velocity and length (the trig's NOTE, VEL, LEN and its X % condition). FL plays only while the
+//   master `fill` is on (the FILL condition), NF only while it is off (not FILL). Arming a track plays the keys through
+//   it (chromatic mode; TONE also takes Main's keys unarmed, as on the FM-1).
 // - pads: the empty DRUMS track's keys (arm it; its Arpeggiator, bypassed, in front) play the Drum map's rows 1..6 on the
 //   white keys from F3, one per track at its root note, with the key's velocity (the T1..T6 pads).
 // - `chance` (the probability every trig plays), `mute`, `fine` (a fine tune of up to a semitone and beyond), `level`
 //   (the track level), `volume` + `dist` (VOLUME + DIST: a waveshaper's level and drive), `pan`, the `delay` and `reverb`
 //   sends, `punch` (a compressor into a soft clip, crossfaded in), `gate` (GATE: 0 the envelope goes straight to its
 //   decay, 1 it holds at full while the note is held, then decays).
-// - retrigs: `retrig` on plays every trig as a roll at `retrig rate` (a note length synced to the tempo, or `retrig hz`
-//   with `retrig sync` off) for `retrig len`, its velocity fading over that length by `retrig fade` (0.5 none, below
-//   fades in, above fades out).
-// - the LFO: `lfo speed` (Hz) or, with `lfo sync`, `lfo mult` (a note length at the tempo), `lfo wave` (sine, triangle,
-//   saw, square, random), `lfo depth`, `lfo trig` (restart on every trig: the trig mode), `lfo env` (crossfades to a
-//   one-shot envelope of `lfo env time` from every trig: the Envelope wave), `lfo fade in` / `lfo fade out` (0 none, else
-//   the speed of the fade after every trig), and an amount per destination of appendix B's list: `lfo>pitch`, `fine`,
-//   `decay`, `color`, `shape`, `sweep`, `contour`, `delay`, `reverb`, `vol`, `pan`, `punch`, `gate` (bipolar: a negative
-//   amount inverts, so the Ramp wave is the saw inverted). The original's LFO has one destination: this one reaches each
-//   with its own amount (set one and the others at 0 to play it as the original).
+// - retrigs: `retrig` on plays every trig as a roll at `retrig rate` (a note length synced to the tempo, sped up or
+//   slowed down by `retrig x`: x8 of a 1/16 triplet is a 1/128 triplet; or `retrig hz` with `retrig sync` off) for
+//   `retrig len` (`retrig inf`: until the next trig, the original's INF), its velocity fading over that length by
+//   `retrig fade` (0.5 none, below fades in, above fades out).
+// - the LFO: `lfo speed` (Hz, `lfo range` slow / fast: 0.0008 to 80 Hz) or, with `lfo sync`, `lfo mult` (a note length
+//   at the tempo) times `lfo sync x` (/8 .. x8), `lfo back` (a negative speed: the wave runs backward), `lfo phase` (the
+//   start phase, where a trig or the clock restarts it), `lfo wave` (sine, triangle, saw, square, random), `lfo depth`,
+//   `lfo trig` (restart on every trig: the trig mode), `lfo env` (crossfades to a one-shot envelope of `lfo env time`
+//   from every trig: the Envelope wave), `lfo fade in` / `lfo fade out` (0 none, else the speed of the fade after every
+//   trig), and an amount per destination of appendix B's list: `lfo>pitch`, `fine`, `decay`, `color`, `shape`, `sweep`,
+//   `contour`, `delay`, `reverb`, `vol`, `pan`, `punch`, `gate` (bipolar: a negative amount inverts, so the Ramp wave is
+//   the saw inverted). The original's LFO has one destination: this one reaches each with its own amount (set one and
+//   the others at 0 to play it as the original).
 // - velocity: the same destinations plus the LFO's speed (and mult), wave, depth, fade and trig mode, `vel>...`, from the
 //   note's velocity (full velocity = no change); `vel>vol` starts at 1 (an accent is louder).
-// Master: the delay (`time`: a note length while `delay sync` is on, else ms; `feedback`), the reverb (`size`, `tone`:
-// its high damping, `low cut`: a high pass on its return, the two halves of the original's bipolar TONE), `fill`, `click`
-// (a metronome on the beat) and the scope.
+// Master: the delay (`time`: a note length while `delay sync` is on, else ms; `note`: 1/32, 1/2T, 1/2., 1/1T or 1/1.
+// in place of the time; `feedback`, which `swell` takes past 1 to 1.98 as the original's 100..198), the reverb (`size`,
+// `freeze`: an infinite decay, `tone`: its high damping, `low cut`: a high pass on its return, the two halves of the
+// original's bipolar TONE), `fill`, `click` (a metronome on the beat) and the scope.
 //
 // Not here, with why (the owner's rule for an XL: every feature of the original unless it needs a new module or Steps
 // feature, is hardware, or needs the original's samples):
 // - needs a Steps feature: parameter locks on any row but NOTE, VEL and LEN (and machine and preset locks); micro timing
-//   (trig nudge); the conditions PRE, NEI, 1ST and A:B (a note carries only a chance); swing past 75 % (the original
-//   reaches 80 %); the scale menu's 1/8X (a step of a half note: Steps' slowest rate is a quarter note); patterns, banks
-//   and chains (a Steps track holds one pattern).
-// - needs a module feature: the LFO's start phase (the LFO has no phase parameter), a backward speed (a negative SPD;
-//   for a saw an inverted amount sounds the same), delay feedback past 0.95 (the original's swelling 100..198), an
-//   infinite reverb (its longest is 6.4 s), a retrig longer than 2 s (the original's INF), retrig rates faster than a 1/16 triplet synced to the tempo (`retrig hz`
-//   reaches 40 Hz, a 1/80 at 120 BPM, but does not follow the tempo), the chord machine's 34 named chord types on one knob
-//   (here the chord's notes are three interval rows, `shape`, `note 3` and the `color` stack, which reach them all, and
+//   (trig nudge); the conditions PRE, NEI, 1ST and A:B (a note carries only a chance); patterns, banks and chains (a
+//   Steps track holds one pattern).
+// - needs a module feature: the retrig rates 1/5, 1/10, 1/20, 1/40 and 1/80 synced to the tempo (a synced LFO's lengths
+//   are halves and thirds, none a fifth; `retrig hz` reaches them at one tempo); a synced retrig length of up to 16 steps
+//   at any tempo (`retrig len` is in seconds, 2 s at most: 16 steps at 120 BPM); the chord machine's 34 named chord
+//   types on one knob (a Selector holds eight values: 34 shapes of three intervals would take a dozen and more per track;
+//   here the chord's notes are three interval rows, `shape`, `note 3` and the `color` stack, which reach them all, and
 //   `spread` detunes for the unisons).
 // - hardware: the pads' velocity curve, MIDI out per track, the click's own output, Control All, Overbridge and the +Drive.
 import { addModule, paramUnit, type Patch } from '../../src/patch';
@@ -57,12 +62,14 @@ import type { Xl } from './xl';
 
 const NOTES = 'After the Elektron Model:Cycles manual: six tracks, each able to play any of the six FM machines (kick, ' +
   'snare, metal, perc, tone, chord: pitch, decay, color, shape, sweep, contour), with fine tune, level, volume + dist, pan, ' +
-  'delay and reverb sends, punch, gate mode, chance, mute, retrigs (rate, length, fade) and an LFO (speed or a tempo ' +
-  'multiple, wave, depth, trig mode, envelope wave, fade in / out) and velocity, each reaching appendix B\'s destinations; ' +
-  'three Steps tracks per track (always, fill, not fill: per-track length, scale, swing and per-note chance), pads on ' +
-  'DRUMS, a tempo-synced delay and a reverb with low cut, fill and click. Elektron does not publish the engines: what ' +
-  'color, shape, sweep and contour do per machine follows the manual and reviews. Missing: parameter locks beyond note, ' +
-  'velocity and length, micro timing, the PRE / NEI / 1ST / A:B conditions, the LFO start phase.';
+  'delay and reverb sends, punch, gate mode, chance, mute, retrigs (rate to a 1/128 triplet, length or INF, fade) and an ' +
+  'LFO (speed or a tempo multiple, backward, start phase, wave, depth, trig mode, envelope wave, fade in / out) and ' +
+  'velocity, each reaching appendix B\'s destinations; three Steps tracks per track (always, fill, not fill: per-track ' +
+  'length, scale down to 1/8X, swing to 80 % and per-note chance), pads on DRUMS, a tempo-synced delay that swells past ' +
+  '100 %, a reverb with freeze and low cut, fill and click. Elektron does not publish the engines: what color, shape, ' +
+  'sweep and contour do per machine follows the manual and reviews. Missing (no module or Steps feature does it yet): ' +
+  'parameter locks beyond note, velocity and length, micro timing, the PRE / NEI / 1ST / A:B conditions, patterns and ' +
+  'chains, the quintuplet retrig rates synced, retrig lengths in steps, the 34 chord types on one knob.';
 
 const TEMPO = 120;
 type Ref = [number, string];
@@ -473,26 +480,19 @@ const built = define('Spokes 6 XL', (b) => {
     b.wire(fineSum, 'out', pbus, 'in');
     b.wire(note, 'out', pbus, 'in');
 
-    // the machines and which one plays: machine k's trigs pass while `machine` is within 0.1 of k / 5 (a compare against
-    // each edge, the first taking the gate x 10 so nothing passes without it; machines 0 and 5 have one edge)
+    // the machines and which one plays: every machine plays every trig, and a Selector passes the chosen one's sound
+    // (`machine` 0..1 spans its positions 1..6: within 0.1 of k / 5 plays machine k), with a short crossfade on a change
     const machine = add('macro', 3, { value: i / 5 });
     const gateMode = add('macro', 3.05, { value: 0 });
+    const choice = add('select', 3.1, { pos: 1, count: MACHINES.length, fade: 5 });
+    b.wire(machine, 'out', choice, 'pos');
     const ms: Machine[] = [];
     MACHINES.forEach((make, k) => {
       const m = make(col);
       members.push(...m.members);
-      // above the lower edge: 10 gate - (k + 9.5) > -5 machine; below the upper: 10 (that) + k - 9.5 > 5 machine
-      let g = add('math', 3.1 + k * 0.1, k === 0 ? { ka: 10, off: -9.5, kb: 5 } : { ka: 10, off: -k - 9.5, kb: -5 });
-      b.wire(gate, 'out', g, 'a');
-      b.wire(machine, 'out', g, 'b');
-      if (k > 0 && k < 5) {
-        const lo = g;
-        g = add('math', 3.15 + k * 0.1, { ka: 10, off: k - 9.5, kb: 5 });
-        b.wire(lo, 'cmp', g, 'a');
-        b.wire(machine, 'out', g, 'b');
-      }
-      for (const [id, port] of m.gates) b.wire(g, 'cmp', id, port);
+      for (const [id, port] of m.gates) b.wire(gate, 'out', id, port);
       for (const [id, port] of m.pitch) b.wire(pbus, 'out', id, port);
+      for (const o of m.out) b.wire(o, 'out', choice, `in${k + 1}`);
       modulate(gateMode, m.gate[0], Object.keys(m.gate[1]), m.gate[1]);
       ms.push(m);
     });
@@ -500,11 +500,8 @@ const built = define('Spokes 6 XL', (b) => {
     const punch = add('xfade', 4, { mix: 0 });
     const pdyn = add('dyn', 4.05, { thresh: -20, ratio: 8, attack: 0.003, release: 0.08, gain: 10 });
     const pclip = add('shape', 4.1, { drive: 1.6, mode: 0, level: 0.75 });
-    for (const m of ms)
-      for (const o of m.out) {
-        b.wire(o, 'out', punch, 'a');
-        b.wire(o, 'out', pdyn, 'in');
-      }
+    b.wire(choice, 'out', punch, 'a');
+    b.wire(choice, 'out', pdyn, 'in');
     b.wire(pdyn, 'out', pclip, 'in');
     b.wire(pclip, 'out', punch, 'b');
     const dist = add('shape', 4.15, { drive: 1, mode: 0, level: VOLUME[i] });
@@ -582,12 +579,18 @@ const built = define('Spokes 6 XL', (b) => {
       ['retrig', rtOn, 'value', { group: true }],
       ['retrig rate', rtLfo, 'div'],
       ['retrig sync', rtLfo, 'sync'],
+      ['retrig x', rtLfo, 'mult'],
       ['retrig hz', rtLfo, 'rate'],
       ['retrig len', rtLen, 'value'],
+      ['retrig inf', rtWin, 'inf'],
       ['retrig fade', rtFade, 'value'],
       ['lfo speed', lfo, 'rate', { head: `${i + 1} lfo` }],
       ['lfo sync', lfo, 'sync'],
       ['lfo mult', lfo, 'div'],
+      ['lfo sync x', lfo, 'mult'],
+      ['lfo range', lfo, 'range'],
+      ['lfo back', lfo, 'dir'],
+      ['lfo phase', lfo, 'phase'],
       ['lfo wave', lfo, 'wave'],
       ['lfo depth', depth, 'gain'],
       ['lfo trig', rstOn, 'value'],
@@ -611,8 +614,11 @@ const built = define('Spokes 6 XL', (b) => {
   for (const t of tracks) for (const [label, id, p, o] of t.rows) b.param(label, id, p, o);
   b.param('time', dly, 'time', { col: true, head: 'delay' });
   b.param('delay sync', dly, 'sync');
+  b.param('note', dly, 'note');
   b.param('feedback', dly, 'fb');
+  b.param('swell', dly, 'swell');
   b.param('size', rev, 'size', { head: 'reverb' });
+  b.param('freeze', rev, 'freeze');
   b.param('tone', rev, 'damp');
   b.param('low cut', lowcut, 'cutoff');
   b.param('fill', fill, 'value', { head: 'master' });
