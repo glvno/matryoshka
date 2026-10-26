@@ -23,32 +23,6 @@
     },
     {
       "id": 2,
-      "type": "scale",
-      "x": 0,
-      "y": 1120,
-      "params": {
-        "gain": 0.45,
-        "offset": 0
-      },
-      "att": [
-        1,
-        1
-      ],
-      "map": {
-        "p1": [
-          "gain"
-        ],
-        "p2": [
-          "offset"
-        ],
-        "k1": [],
-        "k2": [],
-        "k3": [],
-        "k4": []
-      }
-    },
-    {
-      "id": 3,
       "type": "glide",
       "x": 320,
       "y": 560,
@@ -57,7 +31,7 @@
         "curve": 0
       },
       "att": [
-        1,
+        0.45,
         1
       ],
       "map": {
@@ -74,7 +48,7 @@
       }
     },
     {
-      "id": 4,
+      "id": 3,
       "type": "osc",
       "x": 320,
       "y": 0,
@@ -109,6 +83,29 @@
       }
     },
     {
+      "id": 4,
+      "type": "logic",
+      "x": 0,
+      "y": 1120,
+      "params": {
+        "thresh": 0.9
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "thresh"
+        ],
+        "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
       "id": 5,
       "type": "adsr",
       "x": 640,
@@ -116,6 +113,35 @@
       "params": {
         "a": 0.001,
         "d": 0.3,
+        "s": 0,
+        "r": 0.05,
+        "long": 0
+      },
+      "att": [
+        -1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "d"
+        ],
+        "p2": [
+          "d"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "adsr",
+      "x": 640,
+      "y": 1120,
+      "params": {
+        "a": 0.001,
+        "d": 0.2,
         "s": 0,
         "r": 0.05,
         "long": 0
@@ -138,12 +164,12 @@
       }
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "scale",
-      "x": 320,
-      "y": 1120,
+      "x": 960,
+      "y": 560,
       "params": {
-        "gain": 0.25,
+        "gain": 2.6,
         "offset": 0
       },
       "att": [
@@ -164,15 +190,90 @@
       }
     },
     {
-      "id": 7,
+      "id": 8,
+      "type": "scale",
+      "x": 960,
+      "y": 1120,
+      "params": {
+        "gain": 1,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 9,
+      "type": "glide",
+      "x": 1280,
+      "y": 1120,
+      "params": {
+        "time": 0.02,
+        "curve": 0
+      },
+      "att": [
+        0.414,
+        1
+      ],
+      "map": {
+        "p1": [
+          "time"
+        ],
+        "p2": [
+          "curve"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 10,
+      "type": "macro",
+      "x": 1280,
+      "y": 560,
+      "params": {
+        "value": 0.75
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "value"
+        ],
+        "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 11,
       "type": "ladder",
-      "x": 640,
+      "x": 1280,
       "y": 0,
       "params": {
         "cutoff": 260,
-        "res": 0.75,
-        "drive": 1.6,
-        "cvamt": 2.6,
+        "res": 0,
+        "drive": 1,
+        "cvamt": 1,
         "track": 0
       },
       "att": [
@@ -181,7 +282,7 @@
       ],
       "map": {
         "p1": [
-          "cutoff"
+          "res"
         ],
         "p2": [
           "res"
@@ -193,9 +294,9 @@
       }
     },
     {
-      "id": 8,
+      "id": 12,
       "type": "adsr",
-      "x": 960,
+      "x": 1600,
       "y": 560,
       "params": {
         "a": 0.002,
@@ -222,15 +323,15 @@
       }
     },
     {
-      "id": 9,
+      "id": 13,
       "type": "vca",
-      "x": 960,
+      "x": 1600,
       "y": 0,
       "params": {
         "gain": 0.8
       },
       "att": [
-        0.5,
+        0.25,
         1
       ],
       "map": {
@@ -243,47 +344,6 @@
         "k3": [],
         "k4": []
       }
-    },
-    {
-      "id": 10,
-      "type": "shape",
-      "x": 1280,
-      "y": 0,
-      "params": {
-        "drive": 1.6,
-        "mode": 0,
-        "level": 0.75,
-        "os": 0,
-        "sym": 0,
-        "stages": 1
-      },
-      "att": [
-        1,
-        1
-      ],
-      "map": {
-        "p1": [
-          "drive"
-        ],
-        "p2": [
-          "mode"
-        ],
-        "k1": [],
-        "k2": [],
-        "k3": [],
-        "k4": []
-      }
-    },
-    {
-      "id": 11,
-      "type": "scope",
-      "x": 1600,
-      "y": 0,
-      "params": {
-        "time": 16,
-        "mode": 0,
-        "voices": 0
-      }
     }
   ],
   "cables": [
@@ -293,7 +353,7 @@
         "port": "pitch"
       },
       "to": {
-        "module": 3,
+        "module": 2,
         "port": "in"
       }
     },
@@ -304,7 +364,7 @@
       },
       "to": {
         "module": 2,
-        "port": "in"
+        "port": "p1"
       }
     },
     {
@@ -314,37 +374,7 @@
       },
       "to": {
         "module": 3,
-        "port": "p1"
-      }
-    },
-    {
-      "from": {
-        "module": 3,
-        "port": "out"
-      },
-      "to": {
-        "module": 4,
         "port": "pitch"
-      }
-    },
-    {
-      "from": {
-        "module": 1,
-        "port": "gate"
-      },
-      "to": {
-        "module": 5,
-        "port": "gate"
-      }
-    },
-    {
-      "from": {
-        "module": 1,
-        "port": "gate"
-      },
-      "to": {
-        "module": 8,
-        "port": "gate"
       }
     },
     {
@@ -353,18 +383,48 @@
         "port": "vel"
       },
       "to": {
-        "module": 6,
-        "port": "in"
+        "module": 4,
+        "port": "a"
+      }
+    },
+    {
+      "from": {
+        "module": 1,
+        "port": "gate"
+      },
+      "to": {
+        "module": 4,
+        "port": "b"
+      }
+    },
+    {
+      "from": {
+        "module": 1,
+        "port": "gate"
+      },
+      "to": {
+        "module": 5,
+        "port": "gate"
       }
     },
     {
       "from": {
         "module": 4,
-        "port": "out"
+        "port": "and"
       },
       "to": {
-        "module": 7,
-        "port": "in"
+        "module": 5,
+        "port": "p1"
+      }
+    },
+    {
+      "from": {
+        "module": 4,
+        "port": "and"
+      },
+      "to": {
+        "module": 6,
+        "port": "gate"
       }
     },
     {
@@ -374,33 +434,33 @@
       },
       "to": {
         "module": 7,
-        "port": "cv"
+        "port": "in"
       }
     },
     {
       "from": {
         "module": 6,
-        "port": "out"
+        "port": "env"
       },
       "to": {
         "module": 7,
-        "port": "cv"
+        "port": "in"
       }
     },
     {
       "from": {
         "module": 6,
-        "port": "out"
+        "port": "env"
       },
       "to": {
-        "module": 9,
-        "port": "p1"
+        "module": 8,
+        "port": "in"
       }
     },
     {
       "from": {
-        "module": 7,
-        "port": "lp24"
+        "module": 8,
+        "port": "out"
       },
       "to": {
         "module": 9,
@@ -410,21 +470,11 @@
     {
       "from": {
         "module": 8,
-        "port": "env"
-      },
-      "to": {
-        "module": 9,
-        "port": "cv"
-      }
-    },
-    {
-      "from": {
-        "module": 9,
         "port": "out"
       },
       "to": {
-        "module": 10,
-        "port": "in"
+        "module": 13,
+        "port": "p1"
       }
     },
     {
@@ -434,7 +484,77 @@
       },
       "to": {
         "module": 11,
-        "port": "a"
+        "port": "p1"
+      }
+    },
+    {
+      "from": {
+        "module": 10,
+        "port": "out"
+      },
+      "to": {
+        "module": 9,
+        "port": "p1"
+      }
+    },
+    {
+      "from": {
+        "module": 3,
+        "port": "out"
+      },
+      "to": {
+        "module": 11,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 7,
+        "port": "out"
+      },
+      "to": {
+        "module": 11,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 9,
+        "port": "out"
+      },
+      "to": {
+        "module": 11,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 11,
+        "port": "lp24"
+      },
+      "to": {
+        "module": 13,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 1,
+        "port": "gate"
+      },
+      "to": {
+        "module": 12,
+        "port": "gate"
+      }
+    },
+    {
+      "from": {
+        "module": 12,
+        "port": "env"
+      },
+      "to": {
+        "module": 13,
+        "port": "cv"
       }
     }
   ],
@@ -447,37 +567,36 @@
   ],
   "outputs": [
     {
-      "module": 10,
+      "module": 13,
       "port": "out",
       "label": "out"
     }
   ],
   "params": [
     {
-      "module": 4,
-      "param": "coarse",
-      "label": "tuning",
-      "head": "voice"
-    },
-    {
-      "module": 4,
+      "module": 3,
       "param": "wave",
-      "label": "waveform"
+      "label": "waveform",
+      "head": "tone"
     },
     {
-      "module": 7,
+      "module": 3,
+      "param": "fine",
+      "label": "tuning"
+    },
+    {
+      "module": 11,
       "param": "cutoff",
-      "label": "cutoff",
-      "group": true
+      "label": "cutoff"
     },
     {
-      "module": 7,
-      "param": "res",
+      "module": 10,
+      "param": "value",
       "label": "resonance"
     },
     {
       "module": 7,
-      "param": "cvamt",
+      "param": "gain",
       "label": "env mod"
     },
     {
@@ -486,42 +605,9 @@
       "label": "decay"
     },
     {
-      "module": 6,
-      "param": "gain",
-      "label": "accent",
-      "group": true
-    },
-    {
-      "module": 2,
-      "param": "gain",
-      "label": "slide"
-    },
-    {
-      "module": 10,
-      "param": "drive",
-      "label": "drive"
-    },
-    {
-      "module": 5,
-      "param": "view",
-      "label": "sweep",
-      "col": true,
-      "head": "envelopes"
-    },
-    {
       "module": 8,
-      "param": "view",
-      "label": "amp"
-    },
-    {
-      "module": 8,
-      "param": "d",
-      "label": "amp decay"
-    },
-    {
-      "module": 11,
-      "param": "view",
-      "label": "out"
+      "param": "gain",
+      "label": "accent"
     }
   ]
 }

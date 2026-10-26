@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- **Monolith D has the Minimoog Model D's panel.** Its card now holds the original's controls under their names:
+  TUNE and a half-octave PITCH wheel, GLIDE with its on / off switch, OSCILLATOR 3 CONTROL (oscillator 3 off the keys,
+  for a slow modulation source), RANGE as the six footages LO to 2', WAVEFORM as triangle, saw, square, wide and narrow
+  rectangle, the WHITE / PINK noise, KEYBOARD CONTROL off, 1, 2 or both, the DECAY switch (each contour's release takes
+  its decay time, or the note stops at once) and the A-440 tone. The modulation switches now switch, and the modulation
+  mix comes from oscillator 3 and the noise before the mixer's volumes, so a silent noise or a quiet oscillator 3 no
+  longer weakens it. Filter modulation no longer depends on the contour amount. Gone: the drive, release and scope rows,
+  which the original lacks. Still missing: the shark tooth and reverse saw waveforms and the external input. The patch
+  takes 36 modules (18 before), 2,703 patch bytes (1,371) and an estimated 34 % of the FM-1's CPU (22 %). Host-tested
+  only, not yet on a device.
+- **Silver Box accents like a TB-303.** An accented note (velocity 115 or more, a Steps accent) runs the filter
+  envelope at its shortest decay, 200 ms, and that envelope times ACCENT lifts the level and, through the accent sweep
+  circuit, the cutoff. At high RESONANCE the sweep is smoother and builds up over consecutive accents, as the original's
+  second resonance gang does. ENV MOD no longer scales the accent. The soft clip after the filter is gone (the 303 has
+  none), and so are the slide, drive and amp decay rows: the slide time and the volume envelope's decay are fixed, as on
+  the original. TUNING is now the oscillator's fine tune (±1 semitone; the original's reaches ±5). The patch takes 17
+  modules (14 before), 928 patch bytes (885) and an estimated 19 % of the FM-1's CPU (17 %); <7PH 63 modules (60),
+  3,831 bytes of 3,840 (3,788) and 68 % (66 %). Host-tested only, not yet on a device.
+- **Sallen 20 is the MS-20 as it plays with nothing patched.** The highest held key plays (the MS-20 mini's manual), VCO
+  1 and 2 have SCALE as footages and their own WAVEFORM switches (VCO 1's noise, VCO 2's narrow pulse and ring modulator
+  in place of the ring row), MASTER TUNE, EG 1's DELAY and EG 2's HOLD are new, and each filter has its own MG/T.EXT and
+  EG2/EXT amounts (the high pass had no MG amount, and the low pass's MG depended on its EG amount). The MG's frequency
+  modulation now reaches the oscillators' pitch, not just their fine tune. The soft drive after the low pass is gone.
+  Still missing: the patch panel's own sections, the ESP, the MG's variable waveform and the high pass's 6 dB slope
+  (ours is 12 dB). The patch takes 32 modules (19 before), 2,112 patch bytes (1,440) and an estimated 36 % of the
+  FM-1's CPU (29 %). Host-tested only, not yet on a device.
 - **Cassia 1 is now the whole Casio CZ-1, on the FM-1 too.** Cassia 1 XL rebuilt on the PD Osc and Env 8 fits the FM-1,
   so it takes Cassia 1's slot (24) and name, and the XL is gone ([D-348](docs/ledger/patches-and-presets.md#D-348)). Both lines play all eight waveforms with a
   second one on every other cycle; line select 1, 2, 1 + 2 and 1 + 1'; ring and noise modulation on line 2; DCO, DCW and

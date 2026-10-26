@@ -70,7 +70,8 @@ presets.push(() => {
 
 presets.push(() => {
   const x = around('Monolith D', 'Monolith D');
-  x.set('glide', 0.04);
+  x.set('glide on', 2); // a 40 ms glide, as this patch has always had
+  plugIn(x.p, x.main.id, 'bend', x.a, 'bend'); // the PITCH wheel's half octave
   level(x.p);
   return x.p;
 });
