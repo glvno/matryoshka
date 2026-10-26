@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.4.2 — 2026-10-26
+
+- **Incoming MIDI notes keep playing while the FM-1 screen redraws** (#363). USB and TRS notes and clock are taken
+  between screen transfers, including octave messages. This fixes short notes disappearing or arriving together
+  when turning SELECT or ALGO or pressing octave buttons. The development build played all 50 test notes during
+  page changes instead of 25, and all 200 during octave changes instead of 100 at 20 ms spacing, measured on the
+  test rig through USB audio. The release package is checked separately before publication.
+- **Cassia 1 joins the FM-1 factory patches.** This is the patch already published in the 1.4.1 browser, now included
+  in the firmware's factory set. Existing banks stay intact; Cassia can still be sent from the editor.
+  The browser keeps its 1.4.1 patches and features. The firmware engine and patch format stay
+  at 1.4.0's, with the MIDI redraw fix applied.
+
 ## 1.4.1 — 2026-10-26
 
 Web only: the FM-1 firmware is 1.4.0's. New factory patches now ship in the browser first; the FM-1 gets them as
