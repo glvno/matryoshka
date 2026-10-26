@@ -335,6 +335,9 @@ typedef struct {
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
+        struct { int32_t v, rk, inc, k; uint32_t t, len; uint8_t stage, prev, cst; } env8;   /* Q30, as env; one step's rates
+                                                    * cached (cst: its step, 0 none; rk: the rate they are for): worked out
+                                                    * again when the step changes or its rate moves */
         struct { int16_t *buf; uint32_t w, seed; int32_t lp, s1, err, burst, blen; } str;   /* Q13 line with error feedback */
         struct { uint32_t phase; int32_t s1; } wt;
         struct { int16_t *buf; uint32_t w, phase; } ch;
@@ -359,12 +362,12 @@ typedef struct {
     uint8_t bypass;                  /* 1: process() is skipped, the outputs copy the through input (DEFS[].thru) or are silent */
     uint8_t inst0, ninst;            /* its instances in inst_pool[]: one per part of its poly group, else one */
     uint8_t grp;                     /* its poly group (E.grp[]): 0 = it runs once and plays the shared keyboard */
-    uint16_t map[6];                 /* the matrix: bit j of map[s] = source s controls parameter j. s: p1 p2 k1 k2 k3 k4 */
-    uint16_t input_map[MAX_IN];      /* additional side-input destinations, independent of fixed links */
+    uint32_t map[6];                 /* the matrix: bit j of map[s] = source s controls parameter j. s: p1 p2 k1 k2 k3 k4 */
+    uint32_t input_map[MAX_IN];      /* additional side-input destinations, independent of fixed links */
     int32_t att[2];                  /* attenuverters of p1, p2: Q16, -1..1 */
     int32_t par[MAX_PAR];
     uint16_t parb[MAX_PAR];          /* the morph B side as unit positions (0..65535 of the range, octaves for a log parameter), when E.has_b */
-    uint16_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
+    uint32_t ranged[2];              /* bit j: input p1 / p2 has a macro range on parameter j (the entry is in E.ranges) */
     uint8_t trk;                     /* a Steps module: its track (E.trk_first / trk_n / trk_snd) */
     uint8_t ksrc;                    /* a Drum map: where its keys come from (0 none, 1 the keys, 2 + a Steps module's or an
                                       * Arpeggiator's index); a Steps module: 1 = a cable from Main's keys into its keys in
@@ -664,8 +667,46 @@ static inline int32_t rd32(const uint8_t *p)
     return (int32_t)((uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24);
 }
 
-/* bytes a module record has beyond its type byte and parameters: the attenuverters and the matrix */
-static inline uint32_t eng_record_extra(const def_t *d) { return (d->cvbase >= 0 ? 20u : 0u) + d->ndata; }
+/* bytes of a parameter mask of this type (the matrix, an input route): u16, u32 for a type with more than 16 parameters
+ * (patchbin.ts maskBytes) */
+static inline uint32_t eng_mask_bytes(const def_t *d) { return d->npar > 16u ? 4u : 2u; }
+static inline uint32_t eng_rdmask(const uint8_t *p, uint32_t bytes) { return bytes == 4u ? (uint32_t)rd32(p) : ((uint32_t)p[0] | (uint32_t)p[1] << 8); }
+/* bytes a module record has beyond its type byte and parameters: the attenuverters and the matrix, then its data */
+static inline uint32_t eng_record_extra(const def_t *d) { return (d->cvbase >= 0 ? 8u + 6u * eng_mask_bytes(d) : 0u) + d->ndata; }
+/* a module record's size, its type byte included */
+static inline uint32_t eng_record_size(const def_t *d) { return 1u + 4u * d->npar + eng_record_extra(d); }
+
+/* the type of module `mod` in a patch binary, -1 if the binary is malformed (a route's mask width depends on it) */
+static int eng_type_at(const uint8_t *p, uint32_t len, uint32_t mod)
+{
+    uint32_t at = eng_records_at(p, len), i;
+    if (!at || mod >= p[2])
+        return -1;
+    for (i = 0; i <= mod; i++) {
+        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
+            return -1;
+        if (i == mod)
+            return p[at] & 0x7Fu;
+        at += eng_record_size(&DEFS[p[at] & 0x7Fu]);
+    }
+    return -1;
+}
+/* the end of the side-input routes section (flag bit 3) that starts at `at`: u8 count, then per route u8 module, u8 input
+ * and its mask (eng_mask_bytes of the module's type); 0 if malformed */
+static uint32_t eng_routes_end(const uint8_t *p, uint32_t len, uint32_t at)
+{
+    uint32_t n, i;
+    if (at >= len)
+        return 0;
+    n = p[at++];
+    for (i = 0; i < n; i++) {
+        int t;
+        if (at + 2u > len || (t = eng_type_at(p, len, p[at])) < 0)
+            return 0;
+        at += 2u + eng_mask_bytes(&DEFS[t]);
+    }
+    return at <= len ? at : 0;
+}
 
 static int32_t morph_unit(const def_t *d, uint32_t j, int32_t v);
 
@@ -812,8 +853,8 @@ int eng_load(const uint8_t *p, uint32_t len)
             nd->att[0] = rd32(p + at);
             nd->att[1] = rd32(p + at + 4);
             at += 8;
-            for (j = 0; j < 6u; j++, at += 2)
-                nd->map[j] = (uint16_t)((uint32_t)p[at] | (uint32_t)p[at + 1] << 8);
+            for (j = 0; j < 6u; j++, at += eng_mask_bytes(d))
+                nd->map[j] = eng_rdmask(p + at, eng_mask_bytes(d));
         }
         if (nd->type == T_STEPS) {               /* its name (the panel reads it from the binary); its notes come after the cables */
             if (E.ntrk >= ENG_MAX_TRACKS)
@@ -890,18 +931,24 @@ int eng_load(const uint8_t *p, uint32_t len)
             nd->conn &= (uint8_t)~mask;
         }
     }
-    if (p[6] & 8u) {                             /* additional side-input routes: module, input, u16 parameter mask */
+    if (p[6] & 8u) {                             /* additional side-input routes: module, input, parameter mask (u16, u32 past
+                                                  * 16 parameters: eng_mask_bytes) */
         uint32_t count;
         if (at >= len) return -3;
         count = p[at++];
-        if (at + 4u * count > len) return -3;
-        for (i = 0; i < count; i++, at += 4) {
-            uint32_t mod = p[at], input = p[at + 1];
-            uint16_t mask = (uint16_t)((uint32_t)p[at + 2] | (uint32_t)p[at + 3] << 8);
+        for (i = 0; i < count; i++) {
+            uint32_t mod, input, mask, mb;
             const def_t *d;
+            if (at + 2u > len) return -3;
+            mod = p[at];
+            input = p[at + 1];
             if (mod >= E.nmod) return -3;
             d = &DEFS[E.node[mod].type];
-            if (input >= d->nin || (d->cvbase >= 0 && input >= (uint32_t)d->cvbase) || !mask || (mask >> d->npar)) return -3;
+            mb = eng_mask_bytes(d);
+            if (at + 2u + mb > len) return -3;
+            mask = eng_rdmask(p + at + 2u, mb);
+            at += 2u + mb;
+            if (input >= d->nin || (d->cvbase >= 0 && input >= (uint32_t)d->cvbase) || !mask || (d->npar < 32u && (mask >> d->npar))) return -3;
             E.node[mod].input_map[input] |= mask;
         }
     }
@@ -1003,7 +1050,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             E.ranges[E.nranges].lo = p[at + 3];
             E.ranges[E.nranges].hi = p[at + 4];
             E.nranges++;
-            E.node[mod].ranged[pin] |= (uint16_t)(1u << par);
+            E.node[mod].ranged[pin] |= 1u << par;
         }
     }
     /* the instances: state, the delay / reverb / string / chorus memories from the shared pools */
@@ -1300,7 +1347,7 @@ int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint3
     if (!on) {
         if (r) {
             *r = E.ranges[--E.nranges];
-            E.node[module].ranged[input] &= (uint16_t)~(1u << param);
+            E.node[module].ranged[input] &= ~(1u << param);
         }
         return 1;
     }
@@ -1314,7 +1361,7 @@ int eng_set_range(uint32_t module, uint32_t input, uint32_t param, int on, uint3
     }
     r->lo = (uint8_t)(lo > 255u ? 255u : lo);
     r->hi = (uint8_t)(hi > 255u ? 255u : hi);
-    E.node[module].ranged[input] |= (uint16_t)(1u << param);
+    E.node[module].ranged[input] |= 1u << param;
     return 1;
 }
 
@@ -2349,17 +2396,14 @@ static uint32_t names_at(const uint8_t *p, uint32_t len)
         if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
             return 0;
         d = &DEFS[p[at] & 0x7Fu];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        at += eng_record_size(d);
         npar += d->npar;
     }
     at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);
     if (p[6] & 4u)
         at += nmod;
-    if (p[6] & 8u) {
-        if (at >= len)
-            return 0;
-        at += 1u + 4u * p[at];
-    }
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
+        return 0;
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
         return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))
@@ -3799,6 +3843,91 @@ static void m_env(const node_t *nd, inst_t *it, uint32_t n)
     it->s.env.prev = prev;
 }
 
+/* The eight-step envelope (modules.ts env8): step k runs to lk in rk by m_env's segment rules; the gate starts step 1, the
+ * sustain step's level holds while it stays up, its fall jumps to the step after the sustain (sus = end: rest), the end
+ * step's level is where it rests. Sus off or past the end: every step runs through, the gate's fall does nothing. Stage
+ * 0 resting, 1..8 the steps, ENV8_HOLD holding. Q30. */
+#define ENV8_HOLD 9u
+static void env8_rates(inst_t *it, uint32_t st)
+{
+    int32_t r = EF(it, ENV8_P_R1 + 2u * (st - 1u));
+    uint64_t tsr = ((uint64_t)(uint32_t)r * ENG_SR + 32768u) >> 16;   /* round(r * sr) samples */
+    if (tsr < 1u)
+        tsr = 1u;
+    it->s.env8.len = (uint32_t)tsr;
+    it->s.env8.inc = (int32_t)((1ull << 30) / tsr);
+    it->s.env8.k = env_rate_n((uint32_t)tsr);
+    it->s.env8.rk = r;
+    it->s.env8.cst = (uint8_t)st;
+}
+static void m_env8(const node_t *nd, inst_t *it, uint32_t n)
+{
+    const esig_t *gate = it->in[ENV8_I_GATE];
+    esig_t *out = it->out[0];
+    int32_t v = it->s.env8.v;
+    uint32_t tt = it->s.env8.t, i;
+    uint32_t end = (uint32_t)clampi((EF(it, ENV8_P_END) + 32768) >> 16, 1, 8);
+    uint32_t hs = (uint32_t)clampi((EF(it, ENV8_P_SUS) + 32768) >> 16, 0, 8);
+    uint8_t stage = it->s.env8.stage, prev = it->s.env8.prev;
+    (void)nd;
+    if (hs > end)
+        hs = 0;
+    if (it->s.env8.cst && it->s.env8.rk != EF(it, ENV8_P_R1 + 2u * (it->s.env8.cst - 1u)))
+        it->s.env8.cst = 0;                       /* the cached step's rate moved */
+    for (i = 0; i < n; i++) {
+        uint8_t g = gate[i] > 32768 ? 1 : 0;
+        uint32_t guard;
+        if (g && !prev) {
+            stage = 1;
+            tt = 0;
+        } else if (!g && prev && hs && (stage == ENV8_HOLD || (stage >= 1u && stage <= hs))) {
+            stage = (uint8_t)(hs < end ? hs + 1u : 0u);
+            tt = 0;
+        }
+        prev = g;
+        for (guard = 0; guard < 10u; guard++) {
+            int32_t t;
+            uint32_t st = stage;
+            if (st == 0) {
+                v = EF(it, ENV8_P_L1 + 2u * (end - 1u)) << 14;
+                break;
+            }
+            if (st == ENV8_HOLD) {
+                if (hs) {
+                    v = EF(it, ENV8_P_L1 + 2u * (hs - 1u)) << 14;
+                    break;
+                }
+                stage = 0;                        /* the sustain was switched off while holding: rest */
+                continue;
+            }
+            if (st > end) {
+                stage = 0;                        /* the end was moved before this step */
+                continue;
+            }
+            if (it->s.env8.cst != st)
+                env8_rates(it, st);
+            t = EF(it, ENV8_P_L1 + 2u * (st - 1u)) << 14;
+            tt++;
+            if (v < t) {
+                v += it->s.env8.inc;
+                if (v < t)
+                    break;
+            } else if (tt < it->s.env8.len) {
+                v += mulq(t - v, it->s.env8.k, 30);
+                break;
+            }
+            v = t;
+            stage = (uint8_t)(st == hs && g ? ENV8_HOLD : st == end ? 0u : st + 1u);
+            tt = 0;
+        }
+        out[i] = v >> 14;
+    }
+    it->s.env8.t = tt;
+    it->s.env8.v = v;
+    it->s.env8.stage = stage;
+    it->s.env8.prev = prev;
+}
+
 #define LOG2_1000_Q16 653124        /* log2(1000): decay is the time to -60 dB */
 
 /* The plucked string (modules.ts string): a Q13 delay line of one period with a one-pole in the loop, written with
@@ -4762,6 +4891,12 @@ static void apply_flaws(const node_t *nd, inst_t *it)
         flaw_scale(d, it, ENV_P_R3, ke);
         flaw_scale(d, it, ENV_P_R4, ke);
         break;
+    case T_ENV8: {
+        uint32_t s;
+        for (s = 0; s < 8u; s++)
+            flaw_scale(d, it, ENV8_P_R1 + 2u * s, ke);
+        break;
+    }
     case T_VCA:
         flaw_scale(d, it, VCA_P_GAIN, kl);
         break;
@@ -4808,6 +4943,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_GLIDE: m_glide(nd, it, n); break;
     case T_SHAPE: m_shape(nd, it, n); break;
     case T_ENV: m_env(nd, it, n); break;
+    case T_ENV8: m_env8(nd, it, n); break;
     case T_STRING: m_string(nd, it, n); break;
     case T_WAVETABLE: m_wavetable(nd, it, n); break;
     case T_CHORUS: m_chorus(nd, it, n); break;
@@ -4844,7 +4980,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
 #define cur_g_parts(nd) ((uint32_t)E.grp[(nd)->grp].parts)
 
 /* Idle parts (engine.ts partIdle, the same rule): a part of a poly group whose gate is low, whose envelopes (ADSR / level
- * envelope, at least one) have all finished, and whose outputs that leave the group stayed within IDLE_Q16 for a whole block
+ * envelope, eight-step envelope, at least one) have all finished, and whose outputs that leave the group stayed within IDLE_Q16 for a whole block
  * is idle: those outputs are set to 0 and its modules are skipped until a note reaches it, except every IDLE_CHECK-th block,
  * which runs it and checks again (a part that sounds without its envelopes, a knob opening a drone, comes back). */
 #define IDLE_Q16 6
@@ -4855,10 +4991,10 @@ static int part_quiet(uint32_t k, uint32_t v)
     for (i = 0; i < E.nmod; i++) {
         const node_t *nd = &E.node[i];
         const inst_t *it;
-        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV))
+        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV && nd->type != T_ENV8))
             continue;
         it = &inst_pool[nd->inst0 + v];
-        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : it->s.env.stage != 0)
+        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : nd->type == T_ENV ? it->s.env.stage != 0 : it->s.env8.stage != 0)
             return 0;
         envs++;
     }

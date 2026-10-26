@@ -413,7 +413,7 @@ export const DRIFT_CENTS = 20;
 /** the parameters each flaw moves, by module type (engine.ts applyFlaws, engine.c apply_flaws) */
 export const FLAW_TARGETS: Record<'bright' | 'env' | 'level', Record<string, string[]>> = {
   bright: { filter: ['cutoff'], ladder: ['cutoff'] },
-  env: { adsr: ['a', 'd', 'r'], env: ['r1', 'r2', 'r3', 'r4'] },
+  env: { adsr: ['a', 'd', 'r'], env: ['r1', 'r2', 'r3', 'r4'], env8: ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'] },
   level: { vca: ['gain'] },
 };
 /** the FM-1's part limit (POLY_MAX_PARTS in defs.h); the editor and the browser engine go up to EDITOR_MAX_PARTS */

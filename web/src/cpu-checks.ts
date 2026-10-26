@@ -54,7 +54,7 @@ export function looseModel(p: Patch): boolean {
   const fromEnv = (id: number, seen = new Set<number>()): boolean => {
     if (seen.has(id)) return false;
     seen.add(id);
-    if (['adsr', 'env', 'glide'].includes(byId.get(id)?.type ?? '')) return true;
+    if (['adsr', 'env', 'env8', 'glide'].includes(byId.get(id)?.type ?? '')) return true;
     return p.cables.some((c) => c.to.module === id && fromEnv(c.from.module, seen));
   };
   if (p.cables.some((c) => c.to.port === 'pitch' && fromEnv(c.from.module))) return true;

@@ -14,14 +14,17 @@
 //                on, then PANEL_LABEL_KEYS.length labels of PANEL_LABEL_MAX bytes (ASCII, zero padded): the buttons
 //   per module:  u8 type index (bit 7 set: the module is bypassed), then one i32 LE per parameter (Q16.16), in the order of the definition;
 //                modules with parameter inputs (paramInputs) then add i32 att1, i32 att2 (Q16.16, -1..1) and
-//                six u16 LE matrix masks for the sources p1, p2, k1, k2, k3, k4 (bit n = the n-th parameter);
+//                six matrix masks for the sources p1, p2, k1, k2, k3, k4 (bit n = the n-th parameter), each u16 LE, or u32 LE
+//                for a type with more than 16 parameters (maskBytes; since the format of the eight-step envelope: every type of an older
+//                patch has at most 16, so the older layouts are unchanged);
 //                then the module's data (ModuleDef.data bytes): a Steps module's name (TRACK_NAME_MAX bytes, ASCII, zero
 //                padded); a Drum map's u8 keys source (0 none, 1 Main's keys, 2 + the module index of a Steps module)
 //   per cable:   u8 from module index, u8 from output index, u8 to module index, u8 to input index
 //   with flag bit 0, per module: one i32 LE per parameter (Q16.16), the B side of the morph (the Main module's morph
 //                parameter and input fade every parameter from the record's value to this one)
 //   with flag bit 2 (legacy, read by the firmware, never written since fixed links became permanent): one u8 disabled-input mask per module
-//   with flag bit 3: u8 count, then u8 module index, u8 input index, u16 LE parameter mask per routed input
+//   with flag bit 3: u8 count, then u8 module index, u8 input index, the parameter mask per routed input (u16 LE, or u32 LE
+//                when the module's type has more than 16 parameters: maskBytes)
 //   with flag bit 4: the tracks' notes (#133): u8 count, then per Steps module with notes, in module order: u8 module index,
 //                u8 n (1..TRACK_NOTES_MAX), n u32 LE notes (track.ts noteWord), sorted by start, then note
 //   with flag bit 5: the device pages (pages.ts): u8 device count, then per device u8 kind: 0 a plain module, then u8 its
@@ -71,7 +74,10 @@ export const PANEL_BYTES = 4 + PANEL_LABEL_KEYS.length * PANEL_LABEL_MAX;
 export const MAX_CABLES = 255;
 export const VERSION = 34; // 34: the device extras section (flag bit 8: per device its driving Steps track, structure and preset name; #194, #197); 33: the Drum maps' row names section (flag bit 7, the #139 follow-up); 32: the Drum map module (#137; its record's data byte is the source of its keys); 31: the Steps module holds notes (#133): its record carries only its name, the notes section (flag bit 4) replaces the step values, its acc output is gone and it has a keys output (a group's note source may be a Steps module); 30: the button kinds section (flag bit 6: Nothing / Gate / Toggle and a Toggle's modules); 29: the device pages section (flag bit 5); the Main module lost the knob outputs and parameters k1..k6 (its knobs edit the page in focus), the panel section the knob labels (7 labels); the Macro module; 28: the level / rate envelope (env) got the shot parameter; 27: the step values section (flag bit 4), the Steps module's transpose input and pitch / vel outputs; 26: the Steps module (its record ends with its name and pattern), the Main module lost the seq and rec button outputs (the panel section has 7 buttons, 13 labels); 25: a group record ends with its MIDI channel and key range (low, high); 24: the panel section (button modes, switched states, labels) after the group bytes, the Main module's k5 / k6 and button outputs; 23: the group record ends with its note source (an Arpeggiator), the Main module got the tempo parameter and the run output, the Arpeggiator module; 22: bit 7 of a group's legato byte = unison (a patch without unison still encodes as 21); 21: per-part flaws in the group record (GROUP_REC), the unit is gone; 20: poly assemblies (the group section after the header; the Main module lost legato, priority, unit and the spread, legato, jump, tol, drift outputs, the oscillator its drift; part and random modules); 19: voicing and drift: the Main module got legato, priority, unit (and the legato, jump, tol, drift outputs), the oscillator blend, stack, drift, the glide curve; 18: arbitrary side-input fan-out (flag bit 3); 17: switchable fixed input links (flag bit 2); unmodified patches still encode as 16; 16: the shaper got the sym and stages parameters; 15: macro ranges (flag bit 1); 14: the Main module got the morph input and parameter, header flag bit 0 = a morph B set follows the cables; 13: the shaper and the digitizer got the os (oversampling) parameter, the sequencer glide and gate; 12: bit 7 of the type byte marks a bypassed module; 11: the oscillator got the unison and detune parameters; 10: the merge of the two lines below: the Main module's clock output comes before spread, the lfo's inputs are clk, reset (the restart input was sync), the delay as in 8b, modules of the second and third batch; 9: the matrix masks are u16 (modules with more than 8 parameters), the modules of the second module batch; 8a: osc and lfo got the sync input (p1 / p2 moved), glide and shape modules, the panel's spread output; 8b: the delay has the clk input, r output and sync, pingpong parameters, the lfo got the clk and reset inputs and the sync, div, bpm parameters, the Main module's clock output; 7: the oscillator got the fb parameter; 6: the filter's outputs are lp24, lp12, bp, hp, mix; 5: the filter got the morph input (ports after cv moved), track and morph parameters; 4: the reverb module was added before the output
 /** bytes of a module record */
-export const recordSize = (type: string): number => 1 + 4 * DEFS[type].params.length + (DEFS[type].paramInputs ? 20 : 0) + (DEFS[type].data ?? 0);
+/** bytes of a parameter mask of this type (the matrix, an input route): u16, u32 past 16 parameters (engine.c eng_mask_bytes) */
+export const maskBytes = (type: string): 2 | 4 => (DEFS[type].params.length > 16 ? 4 : 2);
+export const recordSize = (type: string): number =>
+  1 + 4 * DEFS[type].params.length + (DEFS[type].paramInputs ? 8 + SOURCES.length * maskBytes(type) : 0) + (DEFS[type].data ?? 0);
 export const Q = 65536;
 
 /** bit 7 of a module record's type byte: the module is bypassed */
@@ -135,11 +141,11 @@ export function rangeList(p: Patch): { mod: number; pin: number; par: number; lo
 export const toQ16 = (v: number): number => Math.max(-0x80000000, Math.min(0x7fffffff, Math.round(v * Q)));
 
 /** the additional input routes the binary lists (flag bit 3): module index, input index, parameter mask */
-function routesOf(p: Patch): { mod: number; input: number; mask: number }[] {
+function routesOf(p: Patch): { mod: number; input: number; mask: number; bytes: 2 | 4 }[] {
   return p.modules.flatMap((m, mod) => DEFS[m.type].inputs.flatMap((port, input) => {
     if (port.name === 'p1' || port.name === 'p2') return [];
-    const mask = DEFS[m.type].params.reduce((mask, pd, i) => mask | (pd.input !== port.name && m.inputMap?.[port.name]?.includes(pd.name) ? 1 << i : 0), 0);
-    return mask ? [{ mod, input, mask }] : [];
+    const mask = DEFS[m.type].params.reduce((mask, pd, i) => (mask | (pd.input !== port.name && m.inputMap?.[port.name]?.includes(pd.name) ? 1 << i : 0)) >>> 0, 0);
+    return mask ? [{ mod, input, mask, bytes: maskBytes(m.type) }] : [];
   }));
 }
 
@@ -244,13 +250,13 @@ export function encodedSize(source: Patch): number {
 
 function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], source?: Patch): number {
   const groups = dg.length;
-  const routes = routesOf(p).length;
+  const routes = routesOf(p);
   const ranges = rangeList(p).length;
   let size = 8 + GROUP_REC * groups + (groups ? p.modules.length : 0) + PANEL_BYTES;
   for (const m of p.modules) size += recordSize(m.type);
   size += 4 * p.cables.length;
   if (hasMorph(p)) for (const m of p.modules) size += 4 * DEFS[m.type].params.length;
-  if (routes) size += 1 + 4 * routes;
+  if (routes.length) size += 1 + routes.reduce((n, r) => n + 2 + r.bytes, 0);
   const tracks = noteTracks(p);
   if (tracks.length) size += 1 + tracks.reduce((n, i) => n + trackRecSize(p.modules[i].notes!.length), 0);
   if (ranges) size += 1 + 5 * ranges;
@@ -326,10 +332,11 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
         let mask = 0;
         for (const name of m.map?.[s] ?? []) {
           const i = def.params.findIndex((q) => q.name === name);
-          if (i >= 0) mask |= 1 << i;
+          if (i >= 0) mask = (mask | (1 << i)) >>> 0;
         }
-        dv.setUint16(at, mask, true);
-        at += 2;
+        if (maskBytes(m.type) === 4) dv.setUint32(at, mask, true);
+        else dv.setUint16(at, mask, true);
+        at += maskBytes(m.type);
       }
     }
     if (m.type === 'steps') {
@@ -360,7 +367,9 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
     out[at++] = routes.length;
     for (const r of routes) {
       out[at++] = r.mod; out[at++] = r.input;
-      dv.setUint16(at, r.mask, true); at += 2;
+      if (r.bytes === 4) dv.setUint32(at, r.mask, true);
+      else dv.setUint16(at, r.mask, true);
+      at += r.bytes;
     }
   }
   if (valued.length) {

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
-import { addModule, connect, type Patch } from './patch';
+import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
+import { connectParameter, setInputRoute } from './parameter-routing';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
 import { engineBytes } from './test-bin';
-import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_NAMES, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
+import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -69,6 +70,40 @@ describe('binary patch format', () => {
       expect(dv.getUint16(at + 2, true)).toBe(DEFS.filter.params.reduce((mask, pd, j) => mask | (filter.inputMap![port].includes(pd.name) ? 1 << j : 0), 0));
     }
     expect(b[b.length - 6]).toBe(1); // the macro ranges, last
+  });
+
+  it('a type with more than 16 parameters (Env 8) writes its matrix and route masks as u32, every other type as u16', () => {
+    expect(maskBytes('env8')).toBe(4);
+    for (const t of TYPE_ORDER) expect(maskBytes(t), t).toBe(DEFS[t].params.length > 16 ? 4 : 2);
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0);
+    const lfo = addModule(p, DEFS.lfo, 0, 0);
+    const e = addModule(p, DEFS.env8, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    connect(p, DEFS, { module: e.id, port: 'env' }, { module: out.id, port: 'l' });
+    const before = encodePatch(p);
+    connectParameter(p, DEFS, { module: lfo.id, port: 'out' }, e.id, 'sus');
+    connectParameter(p, DEFS, { module: lfo.id, port: 'out' }, e.id, 'end'); // the same source: the same pin
+    e.map!.k4 = ['r8', 'end'];
+    connect(p, DEFS, { module: kb.id, port: 'gate' }, { module: e.id, port: 'gate' });
+    setInputRoute(e, DEFS.env8, 'gate', 'sus', true);
+    validatePatch(p, DEFS);
+    expect(e.map!.p1).toEqual(['sus', 'end']);
+    const b = encodePatch(p);
+    const dv = new DataView(b.buffer);
+    const rec = 8 + PANEL_BYTES + recordSize('fm1') + recordSize('lfo');
+    expect(recordSize('env8')).toBe(1 + 4 * 18 + 8 + 6 * 4);
+    expect(b[rec]).toBe(TYPE_ORDER.indexOf('env8'));
+    const masks = rec + 1 + 4 * 18 + 8;
+    const bit = (name: string): number => 2 ** DEFS.env8.params.findIndex((q) => q.name === name);
+    expect(dv.getUint32(masks, true)).toBe(bit('sus') + bit('end')); // p1
+    expect(dv.getUint32(masks + 5 * 4, true)).toBe(bit('r8') + bit('end')); // k4
+    // the route: module, input, u32 mask, right after the cables
+    const routes = rec + recordSize('env8') + recordSize('output') + 4 * p.cables.length;
+    expect(b[6] & FLAG_INPUT_MAP).toBe(FLAG_INPUT_MAP);
+    expect(Array.from(b.subarray(routes, routes + 3))).toEqual([1, 2, DEFS.env8.inputs.findIndex((q) => q.name === 'gate')]);
+    expect(dv.getUint32(routes + 3, true)).toBe(bit('sus'));
+    expect(b.length).toBeGreaterThan(before.length);
   });
 
   it('writes the device pages after the step values: a plain module by its index, an assembly with its pages and rows', () => {

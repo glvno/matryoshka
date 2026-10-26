@@ -1739,6 +1739,81 @@ describe('level/rate envelope, string, wavetable, chorus', () => {
     expect(render(en, 1000).l[999]).toBeCloseTo(0.1, 2);
   });
 
+  const env8Patch = (params: Record<string, number>): Engine => {
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0).id;
+    const e = addModule(p, DEFS.env8, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    out.params.level = 1;
+    Object.assign(e.params, params);
+    wire(p, kb, 'gate', e.id, 'gate');
+    wire(p, e.id, 'env', out.id, 'l');
+    const en = new Engine(SR);
+    en.load(p);
+    return en;
+  };
+  const last = (a: Float32Array): number => a[a.length - 1];
+  const steps5 = { l1: 1, r1: 0.01, l2: 0.25, r2: 0.1, l3: 0.75, r3: 0.1, l4: 0.4, r4: 0.1, l5: 0.1, r5: 0.1, l6: 0.9, r6: 0.1 };
+
+  it('env8 runs its steps to the sustain step, holds it, on release runs the steps after it to the end, rests there', () => {
+    const en = env8Patch({ ...steps5, sus: 3, end: 5 });
+    expect(render(en, 100).l[50]).toBeCloseTo(0.1, 5); // resting at the end's level
+    en.noteOn(60);
+    expect(Math.max(...render(en, Math.round(SR * 0.01)).l)).toBeCloseTo(1, 4);
+    expect(last(render(en, Math.round(SR * 0.1)).l)).toBeCloseTo(0.25, 1);
+    expect(last(render(en, Math.round(SR * 0.1)).l)).toBeCloseTo(0.75, 5);
+    expect(render(en, Math.round(SR * 0.3)).l[5000]).toBeCloseTo(0.75, 5); // held
+    en.noteOff(60);
+    expect(last(render(en, Math.round(SR * 0.1)).l)).toBeCloseTo(0.4, 1); // step 4
+    expect(last(render(en, Math.round(SR * 0.1)).l)).toBeCloseTo(0.1, 1); // step 5, the end
+    expect(render(en, 2000).l[1999]).toBeCloseTo(0.1, 5); // step 6 never runs
+  });
+
+  it('env8: a release before the sustain step jumps past it; sus off runs every step through the gate; sus = end holds the end', () => {
+    let en = env8Patch({ ...steps5, sus: 3, end: 5 });
+    en.noteOn(60);
+    render(en, Math.round(SR * 0.05)); // in step 2
+    en.noteOff(60);
+    const r = render(en, Math.round(SR * 0.2)).l;
+    expect(Math.max(...r)).toBeCloseTo(0.4, 2); // straight up to step 4's level, step 3 skipped
+    expect(last(r)).toBeCloseTo(0.1, 1); // then step 5
+    en = env8Patch({ ...steps5, sus: 0, end: 4 });
+    en.noteOn(60);
+    render(en, 128);
+    en.noteOff(60); // a short trig: the steps run on
+    expect(Math.max(...render(en, Math.round(SR * 0.2)).l)).toBeCloseTo(1, 2);
+    expect(last(render(en, Math.round(SR * 0.3)).l)).toBeCloseTo(0.4, 1);
+    en = env8Patch({ ...steps5, sus: 4, end: 4 });
+    en.noteOn(60);
+    expect(last(render(en, Math.round(SR * 0.5)).l)).toBeCloseTo(0.4, 1);
+    en.noteOff(60);
+    expect(render(en, 1000).l[999]).toBeCloseTo(0.4, 5); // resting at the end's level
+  });
+
+  it('env8 counts as an envelope for idle parts: a released part goes idle once its steps have run', () => {
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0).id;
+    const o = addModule(p, DEFS.osc, 0, 0);
+    const e = addModule(p, DEFS.env8, 0, 0);
+    const v = addModule(p, DEFS.vca, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    Object.assign(e.params, { r1: 0.005, r2: 0.05, l3: 0, r3: 0.05, sus: 2, end: 3 });
+    wire(p, kb, 'pitch', o.id, 'pitch');
+    wire(p, kb, 'gate', e.id, 'gate');
+    wire(p, o.id, 'out', v.id, 'in');
+    wire(p, e.id, 'env', v.id, 'cv');
+    wire(p, v.id, 'out', out.id, 'l');
+    const en = new Engine(SR);
+    en.load(withParts(p, 2));
+    const parts = (): { idle?: boolean }[] => (en as unknown as { groups: { parts: { idle?: boolean }[] }[] }).groups.find((g) => g.parts.length === 2)!.parts;
+    en.noteOn(60);
+    render(en, Math.round(SR * 0.2));
+    expect(parts()[0].idle).toBeFalsy(); // held at the sustain step
+    en.noteOff(60);
+    render(en, Math.round(SR * 0.2));
+    expect(parts()[0].idle).toBe(true);
+  });
+
   const stringPatch = (params: Record<string, number>, exc = false) => {
     const p = emptyPatch();
     const kb = addModule(p, DEFS.fm1, 0, 0).id;

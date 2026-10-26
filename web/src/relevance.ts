@@ -46,6 +46,7 @@ export const RULES: Rule[] = [
   { type: 'phaser', params: ['rate'], reads: ['depth'], live: (c) => c.p('depth') > 0, why: 'With no depth there is no sweep.' },
   { type: 'random', params: ['rate'], reads: ['mode'], live: (c) => c.p('mode') >= 0.5, why: 'A fixed value does not move.' },
   ...SEQ_STEPS.map((k): Rule => ({ type: 'seq', params: [`s${k}`], reads: ['len'], live: (c) => c.p('len') >= k, why: `Beyond the sequence's length: raise len to ${k} or more.` })),
+  ...SEQ_STEPS.map((k): Rule => ({ type: 'env8', params: [`l${k}`, `r${k}`], reads: ['end'], live: (c) => c.p('end') >= k, why: `After the end step: raise end to ${k} or more.` })),
   { type: 'seq', params: ['dir'], reads: ['len'], live: (c) => c.p('len') >= 2, why: 'A one-step sequence has no direction.' },
   { type: 'quant', params: ['root'], reads: ['scale'], live: (c) => c.p('scale') !== 0, why: 'The chromatic scale has every note: a root changes nothing.' },
   ...['filter', 'ladder', 'shift'].map((type): Rule => ({ type, params: ['cvamt'], reads: [], live: (c) => c.cabled('cv'), why: 'Patch the cv input to use its amount.' })),

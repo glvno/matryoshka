@@ -23,7 +23,7 @@ export const NAME_MAX = 12;
 /** top-level modules that are no devices */
 export const NOT_DEVICES = new Set(['part', ...EDITOR_ONLY]);
 /** module types whose card display is an envelope shape the FM-1 draws */
-export const ENVELOPES = new Set(['adsr', 'env']);
+export const ENVELOPES = new Set(['adsr', 'env', 'env8']);
 /** how far right a card may start and still be in the column of the card above it (half a card, as tidy.ts reads it) */
 const COLUMN_SLACK = 150;
 

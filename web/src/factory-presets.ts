@@ -18,7 +18,7 @@ type Rule = (r: Row) => number | undefined;
 
 const times = (k: number, floor = 0): ((v: number) => number) => (v) => Math.max(floor, v * k);
 const CUTOFF = (r: Row): boolean => r.param === 'cutoff' && (r.type === 'filter' || r.type === 'ladder');
-const ENV = (r: Row): boolean => r.type === 'adsr' || r.type === 'env';
+const ENV = (r: Row): boolean => r.type === 'adsr' || r.type === 'env' || r.type === 'env8';
 
 /** the variations, in the order they are listed */
 export const RULES: { name: string; rule: Rule }[] = [

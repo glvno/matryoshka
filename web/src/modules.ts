@@ -2569,7 +2569,108 @@ const scope: ModuleImpl<null> = {
   process: () => {},
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap];
+/**
+ * The eight-step envelope (the Casio CZ's DCO / DCW / DCA envelopes): step k runs to level lk in time rk, by the Env L/R's
+ * segment rules (rising linear, falling 99 % in rk then stepped, a finished step goes on to the next in the same sample).
+ * A gate starts step 1. `end` is the last step: after it the envelope rests at its level (normally 0). `sus` is the step
+ * whose level holds while the gate stays up; the gate's fall jumps to the step after it, which runs to the end (sus = end:
+ * the gate's fall ends it where it is). Sus off, or past the end: the gate only starts it, every step runs through (the
+ * CZ without a sustain point; Env L/R's one-shot). Stage: 0 resting at the end's level, 1..8 the steps, 9 (ENV8_HOLD) holding.
+ * With 18 parameters its masks in the binary are u32 (patchbin.ts maskBytes), so pins can move sus and end too.
+ */
+export const ENV8_STEPS = 8;
+/** the envelopes: a poly part goes idle only once all of its envelopes have finished (stage 0; engine.ts partQuiet) */
+export const ENVELOPE_TYPES = new Set(['adsr', 'env', 'env8']);
+export const ENV8_HOLD = 9;
+/** the step the sustain holds (0 none): sus, when it is not past the end */
+export const env8Sus = (sus: number, end: number): number => (sus >= 1 && sus <= end ? sus : 0);
+/** the last step, 1..8 */
+export const env8End = (end: number): number => Math.max(1, Math.min(ENV8_STEPS, Math.round(end)));
+
+interface Env8State {
+  stage: number;
+  v: number;
+  prev: number;
+  /** samples spent in the current step */
+  t: number;
+}
+
+const env8: ModuleImpl<Env8State> = {
+  def: {
+    type: 'env8',
+    label: 'Env 8',
+    inputs: [gate('gate')],
+    outputs: [control('env')],
+    params: [
+      ...Array.from({ length: ENV8_STEPS }, (_, i) => {
+        // the defaults: an ADSR (1 at once, 0.6 in 0.3 s held, 0 in 0.5 s), the steps after it at 0
+        const [l, r] = [[1, 0.01], [0.6, 0.3], [0, 0.5]][i] ?? [0, 0.2];
+        return [param(`l${i + 1}`, 0, 1, l, { step: 0.01 }), param(`r${i + 1}`, 0.001, 10, r, { unit: 's', step: 0.001, log: true })];
+      }).flat(),
+      param('sus', 0, ENV8_STEPS, 2, { step: 1, choices: ['off', ...Array.from({ length: ENV8_STEPS }, (_, i) => String(i + 1))] }),
+      param('end', 1, ENV8_STEPS, 3, { step: 1 }),
+    ],
+    views: [param('view', 0, 0, 0, { screen: true })],
+  },
+  init: () => ({ stage: 0, v: 0, prev: 0, t: 0 }),
+  process(c, s) {
+    const lv = [0];
+    const len = [1];
+    for (let k = 1; k <= ENV8_STEPS; k++) {
+      lv.push(c.p[`l${k}`] ?? 0);
+      len.push(Math.max(Math.round((c.p[`r${k}`] ?? 0.2) * c.sr), 1));
+    }
+    const inc = len.map((l) => 1 / l);
+    const kk = len.map((l) => 1 - Math.exp(-4.6 / l));
+    const end = env8End(c.p.end ?? 3);
+    const hs = env8Sus(Math.round(c.p.sus ?? 2), end);
+    for (let i = 0; i < c.n; i++) {
+      const g = c.inp.gate[i] > 0.5 ? 1 : 0;
+      if (g && !s.prev) {
+        s.stage = 1;
+        s.t = 0;
+      } else if (!g && s.prev && hs && (s.stage === ENV8_HOLD || (s.stage >= 1 && s.stage <= hs))) {
+        s.stage = hs < end ? hs + 1 : 0;
+        s.t = 0;
+      }
+      s.prev = g;
+      for (let guard = 0; guard < 10; guard++) {
+        const st = s.stage;
+        if (st === 0) {
+          s.v = lv[end];
+          break;
+        }
+        if (st === ENV8_HOLD) {
+          if (hs) {
+            s.v = lv[hs];
+            break;
+          }
+          s.stage = 0; // the sustain was switched off while holding: rest
+          continue;
+        }
+        if (st > end) {
+          s.stage = 0; // the end was moved before this step
+          continue;
+        }
+        const t = lv[st];
+        s.t++;
+        if (s.v < t) {
+          s.v += inc[st];
+          if (s.v < t) break;
+        } else if (s.t < len[st]) {
+          s.v += (t - s.v) * kk[st];
+          break;
+        }
+        s.v = t;
+        s.stage = st === hs && g ? ENV8_HOLD : st === end ? 0 : st + 1;
+        s.t = 0;
+      }
+      c.out.env[i] = s.v;
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, env8];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

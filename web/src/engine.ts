@@ -8,7 +8,7 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { type DrumMapState, driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { type DrumMapState, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
@@ -985,12 +985,12 @@ export class Engine {
   /** Render `left.length` frames (any length; processed in blocks of up to BLOCK). */
   /**
    * Is part v of poly group g idle (engine.c part_quiet, the same rule)? Its envelopes (ADSR / level envelope, at least one)
-   * have all finished and every output leaving the group stayed within IDLE (6 in Q16) for the whole block.
+   * have all finished (ENVELOPE_TYPES) and every output leaving the group stayed within IDLE (6 in Q16) for the whole block.
    */
   private partQuiet(g: number, v: number): boolean {
     let envs = 0;
     for (const node of this.order) {
-      if (node.group !== g || (node.type !== 'adsr' && node.type !== 'env')) continue;
+      if (node.group !== g || !ENVELOPE_TYPES.has(node.type)) continue;
       if ((node.inst[v].state as { stage: number }).stage !== 0) return false;
       envs++;
     }
