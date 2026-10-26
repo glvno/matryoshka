@@ -65,6 +65,8 @@ interface Node {
   att: [number, number];
   map: Record<Source, string[]>;
   connected: Record<string, boolean>;
+  /** its outputs something reads: a cable from it, or a probe / watch (probe marks it, so it is written from the next block) */
+  used: Record<string, boolean>;
   inputRoutes: { port: string; params: string[]; mean: number }[];
   /** w: the weight a summed source adds with (paraMix), else 1 */
   sources: { port: string; from: Node; fromPort: string; w: number }[];
@@ -245,6 +247,7 @@ export class Engine {
             att: [1, 1],
             map: defaultMap(impl.def),
             connected: {},
+            used: {},
             inputRoutes: [],
             sources: [],
             group,
@@ -271,6 +274,7 @@ export class Engine {
         }
       node.sources = [];
       node.connected = {};
+      node.used = {};
       next.set(m.id, node);
     }
     for (const c of patch.cables) {
@@ -278,6 +282,7 @@ export class Engine {
       const from = next.get(c.from.module)!;
       to.sources.push({ port: c.to.port, from, fromPort: c.from.port, w: 1 });
       to.connected[c.to.port] = true;
+      from.used[c.from.port] = true;
     }
     this.nodes = next;
     paraMix([...next.values()]);
@@ -419,6 +424,7 @@ export class Engine {
   probe(id: number, port: string): Float32Array | null {
     const node = this.nodes.get(id);
     if (!node) return null;
+    node.used[port] = true;
     if (node.group < 0 || node.inst.length < 2) return node.inst[0]?.out[port] ?? null;
     if (node.impl.def.outputs.find((o) => o.name === port)?.kind !== 'audio')
       return node.inst[this.shownPart(this.groups[node.group])]?.out[port] ?? null;
@@ -436,6 +442,7 @@ export class Engine {
    */
   probeVoices(id: number, port: string): Float32Array[] | null {
     const node = this.nodes.get(id);
+    if (node) node.used[port] = true;
     if (!node || node.group < 0 || node.inst.length < 2) return null;
     const audio = node.impl.def.outputs.find((o) => o.name === port)?.kind === 'audio';
     const parts = this.groups[node.group].parts;
@@ -977,7 +984,7 @@ export class Engine {
       else out[name].fill(0, 0, n);
       return;
     }
-    const ctx: Ctx = { sr: this.sampleRate, n, inp: inst.dspInp, out, connected: node.connected, p: inst.eff, voice, display: inst.display };
+    const ctx: Ctx = { sr: this.sampleRate, n, inp: inst.dspInp, out, connected: node.connected, used: node.used, p: inst.eff, voice, display: inst.display };
     node.impl.process(ctx, inst.state);
     if ((node.type === 'fm1' || node.type === 'part') && voice.retrig) out.gate[0] = 0; // one low sample: a taken-over part's envelopes see a new gate
   }

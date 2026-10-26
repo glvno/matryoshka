@@ -11,13 +11,6 @@
   FM-1's old Cassia 1: 21 modules, 1,618 bytes, 74 %). In the browser four voices render in about 8 % of real time
   (the XL took about 40 %), on a recent Mac. The envelope rows are short (r1, l1 .. r8, l8, sus, end) to fit the
   patch bytes. Its presets gain Pluck (the variations now reach Env 8). Host-tested only, not yet on a device.
-- **Algo Four XL: algorithms on Selectors, the DX100's LFO in full.** The algorithm row now moves one Selector per
-  route in each voice, in place of a sequencer, a sample and hold, 7 comparators, 6 logic gates and 9 path VCAs per
-  voice: 117 modules become 94, and the sound of every algorithm is unchanged (measured sample by sample against the
-  previous version). LFO SYNC now starts the wave at its peak, the LFO wave row follows the DX100's order (1 saw up,
-  2 square, 3 triangle, 4 sample and hold, 5 sine), and a new `lfo range` row reaches the DX100's 0.0008 to 55 Hz.
-  It still does not fit the FM-1: at its three voices it needs 94 modules of 64, 172 module instances of 128, 5,629
-  patch bytes of 3,840 and an estimated 235 % of the CPU (270 % before), so it stays an XL.
 - **Env 8, an eight-step envelope** after the Casio CZ's: eight levels and rates, a sustain step that holds while the
   key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off it
   runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then
@@ -36,7 +29,8 @@
   so one choice can switch several things at once. An optional crossfade (up to 100 ms) avoids clicks. It costs about
   0.4 % of the FM-1's CPU, plus 0.1 % per gate cabled. Algo Four XL's algorithm row, built today from a Sequencer, an
   S&H, an LFO, seven comparators and seven Logic modules, would go from about 14 % to about 1 % (the CPU model's
-  per-module figures, not measured on the FM-1).
+  per-module figures, not measured on the FM-1). In the browser a Selector writes only the gates that are cabled (or
+  watched), as the FM-1 does.
 - **A Drum map can repeat its rows across the keybed** (its new REPEAT switch, off by default), so every key plays a
   row. Rows on white keys repeat in blocks of white keys, and a black key plays the row of the white key below it: rows
   on F3 to F4 come again from G4 and below E3. On the FM-1, the keys that play nothing on a Drum map (the white keys and
@@ -52,11 +46,6 @@
     grow to about full level and hold there.
   - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
   - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
-- **Spokes 6 XL** gains what the new ranges make possible: swing to 80 % and the 1/8X scale (Steps 1/2), the LFO's
-  start phase, backward speed, slow and fast ranges and synced speeds /8 to x8, synced retrigs down to a 1/128 triplet
-  and an INF retrig length, a delay `note` row and `swell` (feedback to 1.98), and a reverb `freeze`. Each track's machine
-  choice is now one Selector in place of ten comparators: 836 modules become 782, and it takes about 55 % of real time
-  in Chrome instead of 60 % (transport running, 4 s rendered by the engine; on a Mac). The sound as shipped is the same.
 - **FM-1 memory:** each module now takes only the parameter slots its type needs, from a shared store of 1536 values,
   instead of room for the largest module's (18 with Env 8). With all of the above the engine's memory goes from 381,038
   to 383,086 bytes, where room for 18 parameters in every module would have taken about 9 KB more
@@ -70,6 +59,25 @@
   memory: 8 Lire goes from 49 % to 42 % of the CPU and from 96 % to 85 % of the memory, Elvira 2 from 47 % to 40 % and
   from 69 % to 58 % (the editor's estimate; the counted engine: 328,704 to 282,338 and 310,792 to 265,742 cycles a
   block). Not yet checked on a device.
+- **Algo Four XL: algorithms on Selectors, the DX100's LFO in full.** The algorithm row now moves one Selector per
+  route in each voice, in place of a sequencer, a sample and hold, 7 comparators, 6 logic gates and 9 path VCAs per
+  voice: 117 modules become 94, and the sound of every algorithm is unchanged (measured sample by sample against the
+  previous version). LFO SYNC now starts the wave at its peak, the LFO wave row follows the DX100's order (1 saw up,
+  2 square, 3 triangle, 4 sample and hold, 5 sine), and a new `lfo range` row reaches the DX100's 0.0008 to 55 Hz.
+  It still does not fit the FM-1: at the FM-1 version's three voices it needs 94 modules of 64, 172 module instances
+  of 128, 5,629 patch bytes of 3,840 and an estimated 235 % of the CPU (270 % before), so it stays an XL (at its own
+  eight voices: 569 %, 641 % before).
+- **Perun 4 XL on the new modules:** its tracks reach the PERKONS' ÷8 and x4 rates (1/2 and 1/64), the modulation LFO
+  syncs x8 to ÷8 (`mod mult`), and the BBD syncs to 1/32, 1/2T, 1/2D, 1/1T and 1/1D (`sync note`). Its switches (algorithm,
+  mode, VCF, groove, LFO wave, chord) are Selectors: they step from one position to the next and no longer blend two.
+  345 modules before, 268 after; it sounds the same at every switch position. In the browser (Chrome, transport running,
+  four notes held) 19.5 % of real time before, 19.2 % after. Still far over the FM-1's budget (339 % of its CPU, 268 of
+  64 modules), so it stays an XL.
+- **Spokes 6 XL** gains what the new ranges make possible: swing to 80 % and the 1/8X scale (Steps 1/2), the LFO's
+  start phase, backward speed, slow and fast ranges and synced speeds /8 to x8, synced retrigs down to a 1/128 triplet
+  and an INF retrig length, a delay `note` row and `swell` (feedback to 1.98), and a reverb `freeze`. Each track's machine
+  choice is now one Selector in place of ten comparators: 836 modules become 782, and it takes about 55 % of real time
+  in Chrome instead of 60 % (transport running, 4 s rendered by the engine; on a Mac). The sound as shipped is the same.
 - **8 Lire XL and Elvira 2 XL rebuilt on the new modules.** 8 Lire XL's plates are one repeating Drum map, which holds
   each plate's velocity, so its 32 velocity VCAs and 8 S&Hs are gone (185 to 142 modules); a plate held on two keys now
   keeps its own velocity instead of adding the two. Elvira 2 XL's choices (programs, chords, filter types, tunings,
@@ -117,12 +125,6 @@ factory patches with its next firmware release.
 - The XLs are heavier in the browser. With four notes held, in Chrome on a recent Mac, as a share of real time:
   Spokes 6 XL 61 %, Cassia 1 XL 39 %, Elvira 2 XL 37 %, Expander S XL 23 %, the others 6 % to 20 %. Big XLs share as a
   stored link.
-- **Perun 4 XL on the new modules:** its tracks reach the PERKONS' ÷8 and x4 rates (1/2 and 1/64), the modulation LFO
-  syncs x8 to ÷8 (`mod mult`), and the BBD syncs to 1/32, 1/2T, 1/2D, 1/1T and 1/1D (`sync note`). Its switches (algorithm,
-  mode, VCF, groove, LFO wave, chord) are Selectors: they step from one position to the next and no longer blend two.
-  345 modules before, 268 after; it sounds the same at every switch position. In the browser (Chrome, transport running,
-  four notes held) 19.5 % of real time before, 19.2 % after. Still far over the FM-1's budget (339 % of its CPU, 268 of
-  64 modules), so it stays an XL.
 
 ## 1.4.0 — 2026-10-25
 
