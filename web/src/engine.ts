@@ -8,7 +8,7 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { type DrumMapState, driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { type DrumMapState, dropRows, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
@@ -331,7 +331,7 @@ export class Engine {
     a.byp = a.node.bypass;
     a.st.cur = -1;
     a.st.running = false;
-    for (const x of this.maps) if (x.src === a.node.id) x.st.gate.fill(0);
+    for (const x of this.maps) if (x.src === a.node.id) dropRows(x.st);
     for (const g of this.groups) {
       if (g.src !== a.node.id) continue;
       g.held = [];
@@ -734,7 +734,7 @@ export class Engine {
 
   /** the keys' own listeners let go of every key: the shared keyboard, the groups that play the keys, the Arpeggiators */
   private keysOff(): void {
-    for (const x of this.maps) if (this.effSrc(x.src) === -1) x.st.gate.fill(0);
+    for (const x of this.maps) if (this.effSrc(x.src) === -1) dropRows(x.st);
     for (const t of this.fed) this.thruOff(t);
     for (const a of this.arps) {
       arpClear(a.st);
@@ -893,7 +893,7 @@ export class Engine {
 
   allNotesOff(): void {
     for (const node of this.tracks) this.thruOff(node.inst[0].state as StepsState);
-    for (const x of this.maps) x.st.gate.fill(0);
+    for (const x of this.maps) dropRows(x.st);
     for (const a of this.arps) {
       arpClear(a.st);
       a.st.cur = -1;
@@ -985,12 +985,12 @@ export class Engine {
   /** Render `left.length` frames (any length; processed in blocks of up to BLOCK). */
   /**
    * Is part v of poly group g idle (engine.c part_quiet, the same rule)? Its envelopes (ADSR / level envelope, at least one)
-   * have all finished and every output leaving the group stayed within IDLE (6 in Q16) for the whole block.
+   * have all finished (ENVELOPE_TYPES) and every output leaving the group stayed within IDLE (6 in Q16) for the whole block.
    */
   private partQuiet(g: number, v: number): boolean {
     let envs = 0;
     for (const node of this.order) {
-      if (node.group !== g || (node.type !== 'adsr' && node.type !== 'env')) continue;
+      if (node.group !== g || !ENVELOPE_TYPES.has(node.type)) continue;
       if ((node.inst[v].state as { stage: number }).stage !== 0) return false;
       envs++;
     }

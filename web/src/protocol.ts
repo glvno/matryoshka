@@ -75,7 +75,7 @@
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
-//               test mode, bit10 TEST_PEAK reads before MASTER]. Also unasked
+//               test mode, bit10 TEST_PEAK reads before MASTER, bit11 reads patch format 35]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store

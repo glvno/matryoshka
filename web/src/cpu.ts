@@ -3,7 +3,7 @@
 // fixed-point engine's instructions on an rv32im model (tools/cpu, `npm run cpu-costs`), calibrated on the factory patches
 // measured on the device (a scale plus a fixed time per block); a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
-import { DEFS, STACKS, TRACK_POLY } from './modules';
+import { DEFS, LFO_RANGE_K, STACKS, TRACK_POLY } from './modules';
 import { hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
 
@@ -140,7 +140,7 @@ export function runCost(m: ModuleInst, t: TypeCost, inputs: Set<string>, outputs
 
 /** modules whose output may move every sample (a noisy or audio-rate signal; a glide, an envelope or a Random walk while it
  * moves, which can be all the time: a slow or modulated glide is, and the estimate is a worst case) */
-const MOVERS = new Set(['osc', 'noise', 'wavetable', 'string', 'grain', 'glide', 'adsr', 'env', 'random']);
+const MOVERS = new Set(['osc', 'pd', 'noise', 'wavetable', 'string', 'grain', 'glide', 'adsr', 'env', 'env8', 'random']);
 
 /** outputs that need the same work as the first output (TypeCost.firstOff): the filter's mix is made from its lp24 */
 const FIRST_ALSO: Record<string, string[]> = { filter: ['mix'] };
@@ -160,7 +160,8 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
     const clocked = ins.some((c) => c.to.port === 'clk' || c.to.port === 'reset');
     if (wave === 4 && !clocked) return 0;                                            // sample & hold: a step per cycle, whatever its rate
     if (ins.length || wave === 2 || wave === 3) return Infinity;                    // modulated (a knob may turn the rate up), or a saw / square edge
-    return (4 * (m.params.rate ?? 4) * Math.abs(m.params.depth ?? 1) * 65536) / 44118; // a triangle's slope (a sine's is lower)
+    const k = (m.params.sync ?? 0) >= 0.5 ? 1 : LFO_RANGE_K[Math.round(m.params.range ?? 0)] ?? 1; // (the free rate's range)
+    return (4 * (m.params.rate ?? 4) * k * Math.abs(m.params.depth ?? 1) * 65536) / 44118; // a triangle's slope (a sine's is lower)
   }
   if (m.type === 'const' || m.type === 'fm1' || m.type === 'part') return 0;
   const inputs = p.cables.filter((c) => c.to.module === id).map((c) => slope(p, c.from.module, seen));

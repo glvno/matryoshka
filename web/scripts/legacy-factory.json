@@ -2,6 +2,36 @@
  "note": "web/scripts/legacy-factory.ts: the factory patches earlier firmwares wrote (name, length, FNV-1a of the bytes, format)",
  "patches": [
   {
+   "name": "<7PH",
+   "len": 3780,
+   "fnv": "2eda598b",
+   "version": 34
+  },
+  {
+   "name": "<7PH",
+   "len": 3788,
+   "fnv": "66fb3f8b",
+   "version": 34
+  },
+  {
+   "name": "<7PH",
+   "len": 3776,
+   "fnv": "7463219b",
+   "version": 34
+  },
+  {
+   "name": "<7PH",
+   "len": 2820,
+   "fnv": "b8496f42",
+   "version": 34
+  },
+  {
+   "name": "<7PH",
+   "len": 3784,
+   "fnv": "e7d0dc9b",
+   "version": 34
+  },
+  {
    "name": "303 ACID",
    "len": 140,
    "fnv": "1d419c2d",
@@ -140,6 +170,54 @@
    "version": 33
   },
   {
+   "name": "8 LIRE",
+   "len": 3503,
+   "fnv": "0226c477",
+   "version": 34
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3329,
+   "fnv": "1c4b0b14",
+   "version": 34
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3624,
+   "fnv": "4ce79b7d",
+   "version": 34
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3640,
+   "fnv": "531edb3d",
+   "version": 34
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3624,
+   "fnv": "7504105d",
+   "version": 34
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3450,
+   "fnv": "87b7e786",
+   "version": 34
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3696,
+   "fnv": "a854490b",
+   "version": 34
+  },
+  {
+   "name": "8 LIRE",
+   "len": 3712,
+   "fnv": "b17cb7eb",
+   "version": 34
+  },
+  {
    "name": "808 KIT",
    "len": 1543,
    "fnv": "222d5611",
@@ -246,6 +324,48 @@
    "len": 2553,
    "fnv": "f96752b5",
    "version": 33
+  },
+  {
+   "name": "808 KIT",
+   "len": 3420,
+   "fnv": "10141d23",
+   "version": 34
+  },
+  {
+   "name": "808 KIT",
+   "len": 3408,
+   "fnv": "12640ec3",
+   "version": 34
+  },
+  {
+   "name": "808 KIT",
+   "len": 3237,
+   "fnv": "3a2f021b",
+   "version": 34
+  },
+  {
+   "name": "808 KIT",
+   "len": 3318,
+   "fnv": "454a5cbb",
+   "version": 34
+  },
+  {
+   "name": "808 KIT",
+   "len": 3424,
+   "fnv": "57ec4ce3",
+   "version": 34
+  },
+  {
+   "name": "808 KIT",
+   "len": 3412,
+   "fnv": "c6a13683",
+   "version": 34
+  },
+  {
+   "name": "808 KIT",
+   "len": 3392,
+   "fnv": "f1543f5b",
+   "version": 34
   },
   {
    "name": "909 KIT",
@@ -380,6 +500,36 @@
    "version": 33
   },
   {
+   "name": "909 KIT",
+   "len": 2955,
+   "fnv": "1b654092",
+   "version": 34
+  },
+  {
+   "name": "909 KIT",
+   "len": 2959,
+   "fnv": "98837a22",
+   "version": 34
+  },
+  {
+   "name": "909 KIT",
+   "len": 1920,
+   "fnv": "b360c327",
+   "version": 34
+  },
+  {
+   "name": "909 KIT",
+   "len": 1971,
+   "fnv": "d3586a3b",
+   "version": 34
+  },
+  {
+   "name": "909 KIT",
+   "len": 2014,
+   "fnv": "ee0c5b74",
+   "version": 34
+  },
+  {
    "name": "ALGO FOUR",
    "len": 772,
    "fnv": "bdf8c0cb",
@@ -456,6 +606,36 @@
    "len": 1335,
    "fnv": "45fbcb1c",
    "version": 33
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1458,
+   "fnv": "0223d5e4",
+   "version": 34
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1565,
+   "fnv": "2932fb66",
+   "version": 34
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1439,
+   "fnv": "3186529a",
+   "version": 34
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1354,
+   "fnv": "492b95b2",
+   "version": 34
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1573,
+   "fnv": "dcc726d6",
+   "version": 34
   },
   {
    "name": "BRASS",
@@ -662,6 +842,36 @@
    "version": 33
   },
   {
+   "name": "BRIEFCASE 3",
+   "len": 1099,
+   "fnv": "2d366b3a",
+   "version": 34
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1336,
+   "fnv": "2d53c744",
+   "version": 34
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1165,
+   "fnv": "5489f48e",
+   "version": 34
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1356,
+   "fnv": "e5a9f59f",
+   "version": 34
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 1146,
+   "fnv": "f1226978",
+   "version": 34
+  },
+  {
    "name": "BRIGHT SAW",
    "len": 354,
    "fnv": "353751d2",
@@ -744,6 +954,48 @@
    "len": 832,
    "fnv": "dea9e701",
    "version": 33
+  },
+  {
+   "name": "CANVAS",
+   "len": 851,
+   "fnv": "0135cacd",
+   "version": 34
+  },
+  {
+   "name": "CANVAS",
+   "len": 1092,
+   "fnv": "11e9d5b6",
+   "version": 34
+  },
+  {
+   "name": "CANVAS",
+   "len": 886,
+   "fnv": "1c2869d4",
+   "version": 34
+  },
+  {
+   "name": "CANVAS",
+   "len": 1072,
+   "fnv": "3fa82b4d",
+   "version": 34
+  },
+  {
+   "name": "CANVAS",
+   "len": 903,
+   "fnv": "49000c57",
+   "version": 34
+  },
+  {
+   "name": "CASSIA 1",
+   "len": 1627,
+   "fnv": "55aec3e4",
+   "version": 34
+  },
+  {
+   "name": "CASSIA 1",
+   "len": 1611,
+   "fnv": "8bf12821",
+   "version": 34
   },
   {
    "name": "CLAV",
@@ -1238,6 +1490,54 @@
    "version": 33
   },
   {
+   "name": "ELVIRA 2",
+   "len": 2482,
+   "fnv": "32d79331",
+   "version": 34
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2659,
+   "fnv": "560afeb9",
+   "version": 34
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2603,
+   "fnv": "ab5bf393",
+   "version": 34
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2603,
+   "fnv": "caa42193",
+   "version": 34
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2348,
+   "fnv": "d7171bfd",
+   "version": 34
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2619,
+   "fnv": "e2a180b3",
+   "version": 34
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2675,
+   "fnv": "f6041bd9",
+   "version": 34
+  },
+  {
+   "name": "ELVIRA 2",
+   "len": 2443,
+   "fnv": "f710b861",
+   "version": 34
+  },
+  {
    "name": "EXPANDER S",
    "len": 642,
    "fnv": "68723401",
@@ -1320,6 +1620,36 @@
    "len": 1024,
    "fnv": "ccf2f2b8",
    "version": 33
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1120,
+   "fnv": "023c8e5e",
+   "version": 34
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1227,
+   "fnv": "3488e90b",
+   "version": 34
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1251,
+   "fnv": "5bad2fe0",
+   "version": 34
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1043,
+   "fnv": "f0d358a8",
+   "version": 34
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1102,
+   "fnv": "f24bf31a",
+   "version": 34
   },
   {
    "name": "FAT MONO",
@@ -1928,6 +2258,36 @@
    "version": 33
   },
   {
+   "name": "HERA 6",
+   "len": 1048,
+   "fnv": "5a9593f5",
+   "version": 34
+  },
+  {
+   "name": "HERA 6",
+   "len": 1173,
+   "fnv": "67ee4464",
+   "version": 34
+  },
+  {
+   "name": "HERA 6",
+   "len": 997,
+   "fnv": "a5eaaa9a",
+   "version": 34
+  },
+  {
+   "name": "HERA 6",
+   "len": 1066,
+   "fnv": "ba586017",
+   "version": 34
+  },
+  {
+   "name": "HERA 6",
+   "len": 1193,
+   "fnv": "f463e43f",
+   "version": 34
+  },
+  {
    "name": "HI-HAT",
    "len": 146,
    "fnv": "641c8e55",
@@ -2132,6 +2492,36 @@
    "version": 33
   },
   {
+   "name": "INIT",
+   "len": 360,
+   "fnv": "09970ed8",
+   "version": 34
+  },
+  {
+   "name": "INIT",
+   "len": 534,
+   "fnv": "3b85c6a3",
+   "version": 34
+  },
+  {
+   "name": "INIT",
+   "len": 342,
+   "fnv": "48ef41db",
+   "version": 34
+  },
+  {
+   "name": "INIT",
+   "len": 348,
+   "fnv": "52562165",
+   "version": 34
+  },
+  {
+   "name": "INIT",
+   "len": 538,
+   "fnv": "5f3cf303",
+   "version": 34
+  },
+  {
    "name": "IO 4",
    "len": 546,
    "fnv": "2660bff9",
@@ -2208,6 +2598,36 @@
    "len": 856,
    "fnv": "bc9e2ae5",
    "version": 33
+  },
+  {
+   "name": "IO 4",
+   "len": 1049,
+   "fnv": "0b257eca",
+   "version": 34
+  },
+  {
+   "name": "IO 4",
+   "len": 879,
+   "fnv": "41f0a742",
+   "version": 34
+  },
+  {
+   "name": "IO 4",
+   "len": 942,
+   "fnv": "5b398f17",
+   "version": 34
+  },
+  {
+   "name": "IO 4",
+   "len": 926,
+   "fnv": "d37cf4be",
+   "version": 34
+  },
+  {
+   "name": "IO 4",
+   "len": 1069,
+   "fnv": "da0ec235",
+   "version": 34
   },
   {
    "name": "KICK",
@@ -2438,6 +2858,12 @@
    "version": 21
   },
   {
+   "name": "LIRE+ELVIRA",
+   "len": 3802,
+   "fnv": "a55299d6",
+   "version": 34
+  },
+  {
    "name": "MALLET",
    "len": 354,
    "fnv": "59374d3d",
@@ -2448,6 +2874,42 @@
    "len": 2772,
    "fnv": "b1eb51ec",
    "version": 33
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 3018,
+   "fnv": "17d57cfa",
+   "version": 34
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 2933,
+   "fnv": "48a838ca",
+   "version": 34
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 3022,
+   "fnv": "837b6b8a",
+   "version": 34
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 2986,
+   "fnv": "93f6e46a",
+   "version": 34
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 2982,
+   "fnv": "aa44601a",
+   "version": 34
+  },
+  {
+   "name": "MERIDIAN 8",
+   "len": 2933,
+   "fnv": "cf338723",
+   "version": 34
   },
   {
    "name": "METAL",
@@ -2652,6 +3114,36 @@
    "len": 1160,
    "fnv": "751f237c",
    "version": 33
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1246,
+   "fnv": "7647678e",
+   "version": 34
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1372,
+   "fnv": "772fe076",
+   "version": 34
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1380,
+   "fnv": "b3ab3676",
+   "version": 34
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1179,
+   "fnv": "c7ab6da4",
+   "version": 34
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 1265,
+   "fnv": "dc4c0d94",
+   "version": 34
   },
   {
    "name": "NES ARP LEAD",
@@ -2894,6 +3386,36 @@
    "version": 33
   },
   {
+   "name": "ORACLE V",
+   "len": 1275,
+   "fnv": "2dd6673d",
+   "version": 34
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1168,
+   "fnv": "41ddc0f5",
+   "version": 34
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1299,
+   "fnv": "44349140",
+   "version": 34
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1078,
+   "fnv": "4e77a1ec",
+   "version": 34
+  },
+  {
+   "name": "ORACLE V",
+   "len": 1149,
+   "fnv": "b4b28f91",
+   "version": 34
+  },
+  {
    "name": "ORGAN",
    "len": 268,
    "fnv": "acb41837",
@@ -3018,6 +3540,42 @@
    "len": 2556,
    "fnv": "1c70c76e",
    "version": 33
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2775,
+   "fnv": "0cf9f2c5",
+   "version": 34
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2722,
+   "fnv": "2bc38636",
+   "version": 34
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2771,
+   "fnv": "6785c225",
+   "version": 34
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2722,
+   "fnv": "91c8ba0c",
+   "version": 34
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2799,
+   "fnv": "d481c40c",
+   "version": 34
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2795,
+   "fnv": "df96daec",
+   "version": 34
   },
   {
    "name": "PHASE BASS",
@@ -3222,6 +3780,30 @@
    "len": 304,
    "fnv": "b15bc239",
    "version": 33
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 334,
+   "fnv": "0c5a05b5",
+   "version": 34
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 342,
+   "fnv": "5e308536",
+   "version": 34
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 449,
+   "fnv": "7ce4ec0d",
+   "version": 34
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 323,
+   "fnv": "97ed6a33",
+   "version": 34
   },
   {
    "name": "PULSE LEAD",
@@ -3560,10 +4142,76 @@
    "version": 33
   },
   {
+   "name": "SALLEN 20",
+   "len": 1425,
+   "fnv": "47daa414",
+   "version": 34
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1170,
+   "fnv": "5f146bd8",
+   "version": 34
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1449,
+   "fnv": "8027a8c1",
+   "version": 34
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1233,
+   "fnv": "b7fa3d30",
+   "version": 34
+  },
+  {
+   "name": "SALLEN 20",
+   "len": 1253,
+   "fnv": "c3409c41",
+   "version": 34
+  },
+  {
    "name": "SCROUNGE",
    "len": 2953,
    "fnv": "7b2b7345",
    "version": 33
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 3195,
+   "fnv": "35bd67b4",
+   "version": 34
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 3142,
+   "fnv": "a27eff9f",
+   "version": 34
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 3191,
+   "fnv": "a6ede984",
+   "version": 34
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 3142,
+   "fnv": "b1314ff3",
+   "version": 34
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 3211,
+   "fnv": "cd5bd361",
+   "version": 34
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 3207,
+   "fnv": "d9a334b1",
+   "version": 34
   },
   {
    "name": "SILVER BOX",
@@ -3650,6 +4298,36 @@
    "version": 33
   },
   {
+   "name": "SILVER BOX",
+   "len": 894,
+   "fnv": "5b00ce2f",
+   "version": 34
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 886,
+   "fnv": "5f6a8f2f",
+   "version": 34
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 675,
+   "fnv": "8000f4d0",
+   "version": 34
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 704,
+   "fnv": "95ffe2cd",
+   "version": 34
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 719,
+   "fnv": "b7a36a91",
+   "version": 34
+  },
+  {
    "name": "SIMPLE FM",
    "len": 372,
    "fnv": "2e844979",
@@ -3726,6 +4404,36 @@
    "len": 533,
    "fnv": "3eecbaf7",
    "version": 33
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 592,
+   "fnv": "287b7046",
+   "version": 34
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 584,
+   "fnv": "925c97de",
+   "version": 34
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 556,
+   "fnv": "c0e759b0",
+   "version": 34
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 573,
+   "fnv": "df1c8200",
+   "version": 34
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 758,
+   "fnv": "e9949968",
+   "version": 34
   },
   {
    "name": "SIREN",
@@ -3972,6 +4680,30 @@
    "len": 381,
    "fnv": "4ee6d864",
    "version": 8
+  },
+  {
+   "name": "SPOKES 6",
+   "len": 3564,
+   "fnv": "14a84249",
+   "version": 34
+  },
+  {
+   "name": "SPOKES 6",
+   "len": 3532,
+   "fnv": "4a4f54a9",
+   "version": 34
+  },
+  {
+   "name": "SPOKES 6",
+   "len": 3536,
+   "fnv": "6579c199",
+   "version": 34
+  },
+  {
+   "name": "SPOKES 6",
+   "len": 3568,
+   "fnv": "cc3b4d79",
+   "version": 34
   },
   {
    "name": "SQUARE LEAD",
@@ -4778,6 +5510,36 @@
    "version": 33
   },
   {
+   "name": "VERNON 100",
+   "len": 1096,
+   "fnv": "00d4b80c",
+   "version": 34
+  },
+  {
+   "name": "VERNON 100",
+   "len": 901,
+   "fnv": "0302ea8d",
+   "version": 34
+  },
+  {
+   "name": "VERNON 100",
+   "len": 1072,
+   "fnv": "2761eaaf",
+   "version": 34
+  },
+  {
+   "name": "VERNON 100",
+   "len": 965,
+   "fnv": "64ac0a09",
+   "version": 34
+  },
+  {
+   "name": "VERNON 100",
+   "len": 948,
+   "fnv": "9808baaa",
+   "version": 34
+  },
+  {
    "name": "VIBRATO LEAD",
    "len": 228,
    "fnv": "92e5bfbf",
@@ -4974,6 +5736,36 @@
    "len": 1042,
    "fnv": "f6abeabe",
    "version": 33
+  },
+  {
+   "name": "WANDERER",
+   "len": 1138,
+   "fnv": "8bb959cf",
+   "version": 34
+  },
+  {
+   "name": "WANDERER",
+   "len": 1065,
+   "fnv": "d1cedbda",
+   "version": 34
+  },
+  {
+   "name": "WANDERER",
+   "len": 1269,
+   "fnv": "d9909cbd",
+   "version": 34
+  },
+  {
+   "name": "WANDERER",
+   "len": 1245,
+   "fnv": "e285db3a",
+   "version": 34
+  },
+  {
+   "name": "WANDERER",
+   "len": 1120,
+   "fnv": "f7849617",
+   "version": 34
   },
   {
    "name": "WARM PAD",

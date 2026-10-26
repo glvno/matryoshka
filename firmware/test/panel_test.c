@@ -340,7 +340,7 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (2 pages), boom kick, snare ... Output */
+    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (3 pages: its rows, then REPEAT, #184), boom kick, snare ... Output */
     check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
     {                                                       /* the header (the owner's design, 2026-10-24) */
         uint32_t x, gold = 0;
@@ -406,7 +406,7 @@ int main(void)
         enc(1, 1);
         printf("      LCD pixels for an ALGO click while the next one waits: %u\n", lcd_px);
         check("ALGO turning fast: only the header drawn, the page still due", lcd_px <= 240u * LK_HH && lcd_px > 0u
-              && pg_cur_page == 0 && pg_algo_due && ui_dirty);
+              && pg_cur_page == 2 && pg_algo_due && ui_dirty);
         stop_answer = 0;
         loop();                                             /* it stops: the page */
         memcpy(staged, fb, sizeof staged);
@@ -1734,6 +1734,27 @@ int main(void)
             }
             snprintf(what, sizeof what, "%s: white keys and black keys 9..11 play nothing, on MIDI out too", KIT[kit]);
             check(what, quiet);
+            if (kit == 0u) {                                /* the map repeats its rows (#184): those keys play their own note */
+                uint32_t rows = 0;
+                ok = 1;
+                eng_set_param((uint32_t)map, DRUMMAP_P_REPEAT, ENG_ONE);
+                for (n = 0; n < 27u; n++) {
+                    if (seq_black(n) >= 0 && seq_black(n) < (int)ENG_DRUM_ROWS)
+                        continue;
+                    m0 = mlen;
+                    panel_keys(1u << n);
+                    for (i = 0; i < 3; i++)
+                        eng_render(l, r, 128);
+                    rows |= inst_pool[E.node[map].inst0].s.dm.gate;
+                    ok &= inst_pool[E.node[map].inst0].s.dm.gate != 0 && key_eng[n] == key_note[n] && sent(m0, 0x90u, key_note[n], 100u);
+                    panel_keys(0);
+                    for (i = 0; i < 3; i++)
+                        eng_render(l, r, 128);
+                    ok &= inst_pool[E.node[map].inst0].s.dm.gate == 0;
+                }
+                eng_set_param((uint32_t)map, DRUMMAP_P_REPEAT, 0);
+                check("808 Kit, its Drum map's repeat on: every other key plays a row (its own note on MIDI out), all eight rows reached", ok && rows == 0xFFu);
+            }
             octave = 2;                                     /* at any octave: black key 2 is row 2 */
             panel_keys(1u << 3);
             for (i = 0; i < 3; i++)

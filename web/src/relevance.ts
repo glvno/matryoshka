@@ -6,6 +6,7 @@
 // parameters it reads is modulated; a cable that reaches one of them leaves the row live. No DOM.
 import type { ModuleInst, ParamDef, Patch } from './patch';
 import { parameterInputs } from './parameter-routing';
+import { PD_RESO } from './modules';
 
 interface Ctx {
   /** a parameter's base value */
@@ -37,8 +38,12 @@ export const RULES: Rule[] = [
   { type: 'osc', params: ['blend'], reads: ['unison', 'stack', 'fb', 'pm'], live: (c) => !fm(c) && (c.p('unison') >= 3 || c.p('stack') === STACK_OCT_FIFTH), why: 'Blend needs three copies or more: unison 3 or more, or the +oct+5th stack.' },
   { type: 'osc', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
   { type: 'wavetable', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
-  { type: 'lfo', params: ['rate'], reads: ['sync'], live: (c) => c.p('sync') < 0.5, why: 'While synced the division sets the rate.' },
-  { type: 'lfo', params: ['div', 'bpm'], reads: ['sync'], live: (c) => c.p('sync') >= 0.5, why: 'Only used while the LFO is synced.' },
+  { type: 'pd', params: ['pm'], reads: [], live: (c) => c.cabled('pm'), why: 'Patch the pm input to use the modulation index.' },
+  { type: 'pd', params: ['range'], reads: ['wave', 'wave2'], live: (c) => Math.round(c.p('wave')) >= PD_RESO || Math.round(c.p('wave2')) > PD_RESO, why: 'Range raises only the resonance waveforms (reso 1, 2, 3).' },
+  { type: 'lfo', params: ['rate', 'range'], reads: ['sync'], live: (c) => c.p('sync') < 0.5, why: 'While synced the division sets the rate.' },
+  { type: 'lfo', params: ['div', 'bpm', 'mult'], reads: ['sync'], live: (c) => c.p('sync') >= 0.5, why: 'Only used while the LFO is synced.' },
+  { type: 'delay', params: ['note'], reads: ['sync'], live: (c) => c.p('sync') >= 0.5, why: 'The note lengths are for the synced delay.' },
+  { type: 'reverb', params: ['size', 'damp'], reads: ['freeze'], live: (c) => c.p('freeze') < 0.5, why: 'While frozen the tail neither decays nor darkens.' },
   { type: 'adsr', params: ['d'], reads: ['s'], live: (c) => c.p('s') < 1, why: 'With the sustain at full the decay has nowhere to go.' },
   { type: 'dyn', params: ['thresh'], reads: ['ratio'], live: (c) => c.p('ratio') > 1, why: 'A ratio of 1 compresses nothing.' },
   { type: 'comb', params: ['coarse', 'damp'], reads: ['fb'], live: (c) => c.p('fb') !== 0, why: 'Without feedback the comb passes its input straight through.' },
@@ -46,6 +51,7 @@ export const RULES: Rule[] = [
   { type: 'phaser', params: ['rate'], reads: ['depth'], live: (c) => c.p('depth') > 0, why: 'With no depth there is no sweep.' },
   { type: 'random', params: ['rate'], reads: ['mode'], live: (c) => c.p('mode') >= 0.5, why: 'A fixed value does not move.' },
   ...SEQ_STEPS.map((k): Rule => ({ type: 'seq', params: [`s${k}`], reads: ['len'], live: (c) => c.p('len') >= k, why: `Beyond the sequence's length: raise len to ${k} or more.` })),
+  ...SEQ_STEPS.map((k): Rule => ({ type: 'env8', params: [`l${k}`, `r${k}`], reads: ['end'], live: (c) => c.p('end') >= k, why: `After the end step: raise end to ${k} or more.` })),
   { type: 'seq', params: ['dir'], reads: ['len'], live: (c) => c.p('len') >= 2, why: 'A one-step sequence has no direction.' },
   { type: 'quant', params: ['root'], reads: ['scale'], live: (c) => c.p('scale') !== 0, why: 'The chromatic scale has every note: a root changes nothing.' },
   ...['filter', 'ladder', 'shift'].map((type): Rule => ({ type, params: ['cvamt'], reads: [], live: (c) => c.cabled('cv'), why: 'Patch the cv input to use its amount.' })),

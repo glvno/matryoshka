@@ -33,6 +33,12 @@ export interface ParamDef {
   /** a browser-only stretch: the browser's engine takes values up to this (the card's slider reaches it). A value past
    * `max` is a browser-only ability: the patch is over the FM-1 budget (patchbin.ts browserOnly). Linear parameters only. */
   browserMax?: number;
+  /** a stretch both engines take, past `max` (defs.h ptop): the card's slider, a typed value and the FM-1's knobs reach it,
+   * while the parameter inputs, macro ranges and the morph keep moving over min..max, so patches made before the stretch
+   * play the same (the Steps rates 1/2 and 1/64, swing to 80 %). A base past max stays past it under modulation, and a
+   * morph with a side past max moves linearly. MIDI CC knobs span every choice of a choice list, else min..max. Linear
+   * parameters only. */
+  top?: number;
   default: number;
   step?: number;
   unit?: string;
@@ -51,6 +57,10 @@ export interface ParamDef {
   screen?: true;
   /** set from its module's screen (the Scope's hover toolbar), never a row of a card nor promoted */
   onScreen?: true;
+  /** the patch format (patchbin.ts VERSION) that appended this parameter to a type that existed before it. A binary of an
+   * older format holds the type's parameters of its own format; the FM-1 reads it that way and gives this one its default
+   * (engine.c eng_npar, defs.h psince). Only on the last parameters of a type, never decreasing. */
+  since?: number;
 }
 
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */
@@ -67,11 +77,11 @@ export function fromUnit(pd: ParamDef, u: number): number {
   return pd.min * Math.pow(pd.max / pd.min, pd.bend ? x * x : x);
 }
 
-/** the most a parameter takes in the browser: its browser-only stretch (browserMax) or its max */
-export const topOf = (pd: ParamDef): number => pd.browserMax ?? pd.max;
+/** the most a parameter takes in the browser: its browser-only stretch (browserMax), its stretch (top) or its max */
+export const topOf = (pd: ParamDef): number => pd.browserMax ?? pd.top ?? pd.max;
 
 /** a parameter's base value moved by `mod` of its range (mean of a parameter input x attenuverter), clamped to the range; a
- * base past max (a browser-only stretch) is clamped to the stretch instead, so modulation does not pull it back to max */
+ * base past max (a stretch, browserMax or top) is clamped to the stretch instead, so modulation does not pull it back to max */
 export function modulate(pd: ParamDef, base: number, mod: number): number {
   if (!pd.log) return Math.min(base > pd.max ? topOf(pd) : pd.max, Math.max(pd.min, base + mod * (pd.max - pd.min)));
   return fromUnit(pd, toUnit(pd, base) + mod);
@@ -345,7 +355,7 @@ export const hasMorph = (p: Patch): boolean => p.modules.some((m) => m.paramsB);
  * slider's bend: the midpoint of 200 and 3200 Hz is 800 Hz); a choice or switch snaps at 0.5 */
 export function morphValue(pd: ParamDef, a: number, b: number, t: number): number {
   if (pd.choices || pd.toggle) return t < 0.5 ? a : b;
-  if (!pd.log && Math.max(a, b) > pd.max) return a + (b - a) * t; // (a browser-only stretch: past the range paramUnit clamps to)
+  if (!pd.log && Math.max(a, b) > pd.max) return a + (b - a) * t; // (a stretch, browserMax or top: past the range paramUnit clamps to)
   return paramValue(pd, paramUnit(pd, a) + (paramUnit(pd, b) - paramUnit(pd, a)) * t);
 }
 
@@ -413,7 +423,7 @@ export const DRIFT_CENTS = 20;
 /** the parameters each flaw moves, by module type (engine.ts applyFlaws, engine.c apply_flaws) */
 export const FLAW_TARGETS: Record<'bright' | 'env' | 'level', Record<string, string[]>> = {
   bright: { filter: ['cutoff'], ladder: ['cutoff'] },
-  env: { adsr: ['a', 'd', 'r'], env: ['r1', 'r2', 'r3', 'r4'] },
+  env: { adsr: ['a', 'd', 'r'], env: ['r1', 'r2', 'r3', 'r4'], env8: ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'] },
   level: { vca: ['gain'] },
 };
 /** the FM-1's part limit (POLY_MAX_PARTS in defs.h); the editor and the browser engine go up to EDITOR_MAX_PARTS */
@@ -519,9 +529,11 @@ export function defaultParams(def: ModuleDef): Record<string, number> {
   return out;
 }
 
-/** the default matrix: p1 and p2 control the first two parameters, knob n the n-th */
+/** the default matrix: p1 and p2 control the first two parameters, knob n the n-th. A parameter appended to its type later
+ * (`since`) never joins it, so a module whose patch has no matrix routes as it did (a Pulse's p2 stays unrouted, not `inf`) */
 export function defaultMap(def: ModuleDef): Record<Source, string[]> {
-  const at = (i: number): string[] => (def.params[i] ? [def.params[i].name] : []);
+  const ps = def.params.filter((q) => q.since === undefined);
+  const at = (i: number): string[] => (ps[i] ? [ps[i].name] : []);
   return { p1: at(0), p2: at(1), k1: at(0), k2: at(1), k3: at(2), k4: at(3) };
 }
 

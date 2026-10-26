@@ -5,6 +5,8 @@
 // and the FM-1's SEQ page edit: a step is on when notes start there, tied when a note started before goes on through it.
 // engine.c (eng_steps_get / set / value / value_set) does the same edits on the device.
 
+import { ARP_RATE_TICKS, ARP_RATES } from './arpeggiator';
+
 /** a pattern is at most STEPS_MAX steps (the `len` parameter plays the first ones) */
 export const STEPS_MAX = 64;
 /** a Steps track holds at most this many notes, a patch at most DEVICE.notes (patchbin.ts) on the FM-1 */
@@ -13,6 +15,16 @@ export const TRACK_NOTES_MAX = 128;
 export const STEP_NOTE = 60;
 export const STEP_VEL = 100;
 export const ACCENT_VEL = 127;
+
+/** a track's rates: the Arpeggiator's, then 1/2 (÷8 at 1/16) and 1/64 (x4) appended, so a stored rate keeps its meaning
+ * (#351). Pins, macro ranges, the morph and MIDI CC knobs reach the first seven only (ParamDef.top) */
+export const STEPS_RATES = [...ARP_RATES, '1/2', '1/64'];
+/** half ticks of the 24 ppqn clock per step of each rate (1/64 is a tick and a half; engine.c RATE_HT) */
+export const STEPS_RATE_HT = [...ARP_RATE_TICKS.map((t) => 2 * t), 96, 3];
+/** the rate a pin or macro range reaches at most (1/32), and the swing (%) they reach and the most a track takes */
+export const STEPS_RATE_PIN_MAX = ARP_RATES.length - 1;
+export const SWING_PIN_MAX = 75;
+export const SWING_MAX = 80;
 
 export interface StepNote {
   /** the step it starts on (0..STEPS_MAX - 1) and how many steps it lasts (1..STEPS_MAX - at; cut at the track's len) */

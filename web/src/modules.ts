@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The module library: definitions (shared with the editor) and DSP implementations.
 
-import { ARP_MODES, ARP_RATE_TICKS, ARP_RATES } from './arpeggiator';
+import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import type { StepNote } from './track';
+import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type StepNote } from './track';
 import WT from './wavetables.json';
 
 export interface Voice {
@@ -404,24 +404,73 @@ export function delayDivIndex(time: number, tmin: number, tmax: number): number 
 
 const LFO_WAVES = [...WAVES, 'S&H'];
 
+/** the extra note lengths of the synced delay (its `note` row; 0 `time`: the time knob picks from DELAY_DIVS), in quarter
+ * notes = num / den. Appended to, never reordered (a patch stores the index). */
+export const DELAY_NOTES: { name: string; num: number; den: number }[] = [
+  { name: 'time', num: 0, den: 1 },
+  { name: '1/32', num: 1, den: 8 },
+  { name: '1/2T', num: 4, den: 3 },
+  { name: '1/2.', num: 3, den: 1 },
+  { name: '1/1T', num: 8, den: 3 },
+  { name: '1/1.', num: 6, den: 1 },
+];
+/** the delay's `swell`: the feedback times 198 / 95 (0.95 becomes 1.98, the Model:Cycles' most), the loop through delayClip */
+export const DELAY_SWELL_NUM = 198;
+export const DELAY_SWELL_DEN = 95;
+/** the soft clip in the swelling delay's loop: x - 4/27 x^3, flat at +-1 from |x| = 1.5 (engine.c dly_soft the same) */
+export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 : x - (4 / 27) * x * x * x);
+
+/** the free LFO's rate ranges: the `rate` row times LFO_RANGE_K (slow 0.0008..1.6 Hz, fast 0.04..80 Hz) */
+export const LFO_RANGES = ['norm', 'slow', 'fast'];
+export const LFO_RANGE_K = [1, 1 / 25, 2];
+/** the synced LFO's speed against its note length: ÷8 makes a cycle 8 times as long, x8 an eighth as long (a 1/16 triplet
+ * x8 is half a clock tick). The length is multiplied by num / den. Appended to, never reordered. */
+export const LFO_MULTS: { name: string; num: number; den: number }[] = [
+  { name: '/8', num: 8, den: 1 },
+  { name: '/4', num: 4, den: 1 },
+  { name: '/2', num: 2, den: 1 },
+  { name: 'x1', num: 1, den: 1 },
+  { name: 'x2', num: 1, den: 2 },
+  { name: 'x4', num: 1, den: 4 },
+  { name: 'x8', num: 1, den: 8 },
+];
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
+/**
+ * A synced LFO's cycle against the 24 ppqn clock (engine.c m_lfo the same): per8 = 8 x the clock ticks per cycle (a whole
+ * number for every length and speed); snap = the ticks between restarts, where a whole number of cycles ends on a tick;
+ * cycles = the cycles per snap; num / den = the length in quarter notes. A length of whole ticks snaps every cycle
+ * (cycles 1), as before the speeds came.
+ */
+export function lfoSyncCycle(div: number, mult: number): { per8: number; snap: number; cycles: number; num: number; den: number } {
+  const d = DELAY_DIVS[Math.max(0, Math.min(DELAY_DIVS.length - 1, div))];
+  const m = LFO_MULTS[Math.max(0, Math.min(LFO_MULTS.length - 1, mult))];
+  const per8 = (192 * d.num * m.num) / (d.den * m.den);
+  const g = gcd(per8, 8);
+  return { per8, snap: per8 / g, cycles: 8 / g, num: d.num * m.num, den: d.den * m.den };
+}
+
 interface LfoState {
   phase: number;
   seed: number;
   held: number;
   clkHi: boolean;
   rstHi: boolean;
-  /** clk edges counted since the last cycle start (synced) */
+  /** clk edges counted since the last snap (synced) */
   ticks: number;
+  /** cycles ended since the last snap to the clock (synced, while the clock runs) */
+  wraps: number;
   /** samples since the last clk edge, and the smoothed distance between edges (0 = none seen yet) */
   since: number;
   interval: number;
 }
 
 /**
- * LFO. `rate` in Hz, or, with `sync`, one cycle per note length `div` (as the delay). The clk input is a 24 ppqn clock (the
- * Main module's clock output): the cycle snaps to every n-th edge (n = 24 x the note length in quarter notes) and runs at the
- * measured clock speed in between. Without a clock (none for half a second) it runs at `bpm`. A rising edge at reset restarts
- * the cycle. S&H draws a new value at every cycle start.
+ * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or, with `sync`, one cycle per note length `div` (as the delay)
+ * at the `mult` speed (÷8 .. x8). The clk input is a 24 ppqn clock (the Main module's clock output): the cycle snaps to every
+ * n-th edge (n = 24 x the note length in quarter notes; for a length that ends between ticks, to the first tick a whole
+ * number of cycles ends on) and runs at the measured clock speed in between. Without a clock (none for half a second) it
+ * runs at `bpm`. A rising edge at reset restarts the cycle. S&H draws a new value at every cycle start. `phase` moves where
+ * a cycle starts on the wave (90 degrees: a sine starts at its peak); `dir` back runs the wave backward (a saw falls).
  */
 const lfo: ModuleImpl<LfoState> = {
   def: {
@@ -436,17 +485,24 @@ const lfo: ModuleImpl<LfoState> = {
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('div', 0, DELAY_DIVS.length - 1, 6, { step: 1, choices: DELAY_DIVS.map((d) => d.name) }),
       param('bpm', 40, 300, 120, { step: 1 }),
+      param('phase', 0, 360, 0, { step: 1, unit: 'deg', since: 35 }),
+      param('range', 0, LFO_RANGES.length - 1, 0, { step: 1, choices: LFO_RANGES, since: 35 }),
+      param('dir', 0, 1, 0, { step: 1, choices: ['fwd', 'back'], toggle: true, since: 35 }),
+      param('mult', 0, LFO_MULTS.length - 1, 3, { step: 1, choices: LFO_MULTS.map((m) => m.name), since: 35 }),
     ],
   },
-  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, since: sr, interval: 0 }),
+  init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0 }),
   process(c, s) {
     const kind = Math.round(c.p.wave ?? 0);
-    const depth = c.p.depth ?? 1;
+    // backward: the wave read at off - phase, which for these waves is -w(phase - off) (the triangle is the same both ways)
+    const back = (c.p.dir ?? 0) >= 0.5;
+    const depth = (c.p.depth ?? 1) * (back && kind !== 1 ? -1 : 1);
+    const off = ((c.p.phase ?? 0) / 360) * (back ? -1 : 1);
     const sync = (c.p.sync ?? 0) >= 0.5;
-    const { num, den } = DELAY_DIVS[Math.max(0, Math.min(DELAY_DIVS.length - 1, Math.round(c.p.div ?? 6)))];
-    const perCycle = (24 * num) / den; // clock ticks per cycle
-    const dtBpm = ((c.p.bpm ?? 120) * den) / (60 * num * c.sr);
-    const dtFree = (c.p.rate ?? 1) / c.sr;
+    const cyc = lfoSyncCycle(Math.round(c.p.div ?? 6), Math.round(c.p.mult ?? 3));
+    const perCycle = cyc.per8 / 8; // clock ticks per cycle
+    const dtBpm = ((c.p.bpm ?? 120) * cyc.den) / (60 * cyc.num * c.sr);
+    const dtFree = ((c.p.rate ?? 1) * LFO_RANGE_K[Math.max(0, Math.min(LFO_RANGES.length - 1, Math.round(c.p.range ?? 0)))]) / c.sr;
     const newCycle = (): void => {
       // sample & hold: new random value (-1..1) at every cycle start
       s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
@@ -460,8 +516,9 @@ const lfo: ModuleImpl<LfoState> = {
         if (s.since >= c.sr / 2) s.interval = 0;
         else s.interval = s.interval > 0 ? s.interval + (s.since - s.interval) / 8 : s.since;
         s.since = 0;
-        if (sync && ++s.ticks >= perCycle) {
+        if (sync && ++s.ticks >= cyc.snap) {
           s.ticks = 0;
+          s.wraps = 0;
           s.phase = 0;
           newCycle();
         }
@@ -470,6 +527,7 @@ const lfo: ModuleImpl<LfoState> = {
       if (rst && !s.rstHi) {
         s.phase = 0;
         s.ticks = 0;
+        s.wraps = 0;
         newCycle();
       }
       s.rstHi = rst;
@@ -477,13 +535,15 @@ const lfo: ModuleImpl<LfoState> = {
       const dt = !sync ? dtFree : live ? 1 / (perCycle * s.interval) : dtBpm;
       s.phase += dt;
       if (s.phase >= 1) {
-        if (live) s.phase = 1 - 1e-6; // wait for the clock's next cycle start
+        if (live && s.wraps + 1 >= cyc.cycles) s.phase = 1 - 1e-6; // wait for the clock's next snap
         else {
           s.phase -= 1;
+          if (live) s.wraps++;
           newCycle();
         }
       }
-      c.out.out[i] = (kind === 4 ? s.held : wave(kind, s.phase, dt)) * depth;
+      const ph = off ? s.phase + off - Math.floor(s.phase + off) : s.phase;
+      c.out.out[i] = (kind === 4 ? s.held : wave(kind, ph, dt)) * depth;
     }
   },
 };
@@ -534,6 +594,14 @@ const scale: ModuleImpl<null> = {
   },
 };
 
+/** the ADSR's `long`: decay and release times this (decay up to 12 s, release up to 19.2 s; the Juno-106's reach 12 s) */
+export const ADSR_LONG = 2.4;
+/** a decay or release time as `long` plays it, for the card ("12 s") */
+const longTime = (v: number): string => {
+  const t = v * ADSR_LONG;
+  return t < 1 ? `${Math.round(t * 1000)} ms` : `${t < 10 ? t.toFixed(2) : t.toFixed(1)} s`;
+};
+
 interface AdsrState {
   stage: 0 | 1 | 2 | 3 | 4; // idle, attack, decay, sustain, release
   v: number;
@@ -548,17 +616,19 @@ const adsr: ModuleImpl<AdsrState> = {
     outputs: [control('env')],
     params: [
       param('a', 0.001, 5, 0.01, { unit: 's', step: 0.001, log: true }),
-      param('d', 0.001, 5, 0.2, { unit: 's', step: 0.001, log: true }),
+      param('d', 0.001, 5, 0.2, { unit: 's', step: 0.001, log: true, altText: { when: 'long', text: longTime } }),
       param('s', 0, 1, 0.6, { step: 0.01 }),
-      param('r', 0.001, 8, 0.3, { unit: 's', step: 0.001, log: true }),
+      param('r', 0.001, 8, 0.3, { unit: 's', step: 0.001, log: true, altText: { when: 'long', text: longTime } }),
+      param('long', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
     ],
     views: [param('view', 0, 0, 0, { screen: true })],
   },
   init: () => ({ stage: 0, v: 0, prev: 0 }),
   process(c, s) {
     const rate = (t: number) => 1 - Math.exp(-4.6 / Math.max(t * c.sr, 1)); // reaches ~99% in t seconds
-    const ad = rate(c.p.d ?? 0.2);
-    const ar = rate(c.p.r ?? 0.3);
+    const k = (c.p.long ?? 0) >= 0.5 ? ADSR_LONG : 1;
+    const ad = rate((c.p.d ?? 0.2) * k);
+    const ar = rate((c.p.r ?? 0.3) * k);
     const aInc = 1 / Math.max((c.p.a ?? 0.01) * c.sr, 1);
     const sus = c.p.s ?? 0.6;
     for (let i = 0; i < c.n; i++) {
@@ -1143,6 +1213,8 @@ interface DelayState {
  * the delay time is limited to about 260 ms then (800 ms past the FM-1's range). Without ping-pong r is the same as out.
  * The browser's `time` reaches DELAY_TIME_BROWSER (1.6 s), the FM-1's DELAY_TIME_MAX: within that the browser plays as the
  * FM-1 (its line's length bounds a synced note length too); past it the patch is browser only (patchbin.ts browserOnly).
+ * `note` (synced): one of DELAY_NOTES in place of the time knob's length. `swell`: the feedback x 198 / 95 (0.95 reads
+ * 1.98) and the loop through a soft clip (delayClip), so a feedback past 1 swells to about full level and holds there.
  */
 const delay: ModuleImpl<DelayState> = {
   def: {
@@ -1152,10 +1224,12 @@ const delay: ModuleImpl<DelayState> = {
     outputs: [audio('out'), audio('r')],
     params: [
       param('time', DELAY_TIME_MIN, DELAY_TIME_MAX, 250, { unit: 'ms', step: 1, browserMax: DELAY_TIME_BROWSER, altText: { when: 'sync', text: (v) => DELAY_DIVS[delayDivIndex(v, DELAY_TIME_MIN, DELAY_TIME_MAX)].name } }),
-      param('fb', 0, 0.95, 0.4, { step: 0.01 }),
+      param('fb', 0, 0.95, 0.4, { step: 0.01, altText: { when: 'swell', text: (v) => ((v * DELAY_SWELL_NUM) / DELAY_SWELL_DEN).toFixed(2) } }),
       param('mix', 0, 1, 0.3, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('pingpong', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+      param('note', 0, DELAY_NOTES.length - 1, 0, { step: 1, choices: DELAY_NOTES.map((d) => d.name), since: 35 }),
+      param('swell', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
     ],
   },
   init: (sr) => ({ buf: new Float32Array(Math.round((sr * DELAY_LEN_BROWSER) / DEVICE_SR)), w: 0, t: 0, ring: new Float64Array(DELAY_CLK_PPQN), seen: 0, prev: false, beat: Math.round(sr / 2) }),
@@ -1185,10 +1259,14 @@ const delay: ModuleImpl<DelayState> = {
     }
     let samples: number;
     if ((c.p.sync ?? 0) >= 0.5) {
-      const div = DELAY_DIVS[delayDivIndex(c.p.time ?? 250, DELAY_TIME_MIN, DELAY_TIME_MAX)];
+      const note = Math.max(0, Math.min(DELAY_NOTES.length - 1, Math.round(c.p.note ?? 0)));
+      const div = note ? DELAY_NOTES[note] : DELAY_DIVS[delayDivIndex(c.p.time ?? 250, DELAY_TIME_MIN, DELAY_TIME_MAX)];
       samples = Math.round((div.num * s.beat) / div.den);
     } else samples = Math.round(((c.p.time ?? 250) / 1000) * c.sr);
-    const fb = c.p.fb ?? 0;
+    const swell = (c.p.swell ?? 0) >= 0.5;
+    const fb = ((c.p.fb ?? 0) * (swell ? DELAY_SWELL_NUM : 1)) / (swell ? DELAY_SWELL_DEN : 1);
+    // swell: the loop through a soft clip (it holds a feedback past 1 at about full level instead of running away)
+    const clip = swell ? delayClip : (x: number): number => x;
     const mix = c.p.mix ?? 0;
     const o = c.out.out;
     const r = c.out.r;
@@ -1196,7 +1274,7 @@ const delay: ModuleImpl<DelayState> = {
       const d = Math.max(1, Math.min(lim - 1, samples));
       for (let i = 0; i < c.n; i++) {
         const e = s.buf[(s.w - d + len) % len];
-        s.buf[s.w] = c.inp.in[i] + e * fb;
+        s.buf[s.w] = clip(c.inp.in[i] + e * fb);
         s.w = (s.w + 1) % len;
         o[i] = c.inp.in[i] * (1 - mix) + e * mix;
         r[i] = o[i];
@@ -1209,8 +1287,8 @@ const delay: ModuleImpl<DelayState> = {
       const rp = (s.w - d + half) % half;
       const ea = s.buf[rp];
       const eb = s.buf[half + rp];
-      s.buf[half + s.w] = ea * fb;
-      s.buf[s.w] = c.inp.in[i] + eb * fb;
+      s.buf[half + s.w] = clip(ea * fb);
+      s.buf[s.w] = clip(c.inp.in[i] + eb * fb);
       s.w = (s.w + 1) % half;
       const dry = c.inp.in[i] * (1 - mix);
       o[i] = dry + ea * mix;
@@ -1226,7 +1304,8 @@ const delay: ModuleImpl<DelayState> = {
  * RV_LINE; the per-line gain g = 10^(-3 L / (T sr)) makes every line decay 60 dB in T = 0.2 x 2^(5 size) seconds
  * (0.2 .. 6.4 s). Input: x -> pre-delay -> two allpasses (g 0.5) -> x RV_GIN into every line; the feedback is
  * f_i = t_i - (sum of t) / 4 (Householder, lossless) with t_i = damped and decayed line output; wet = (sum of the raw
- * line outputs) x RV_GOUT. Lines 0 and 1 are read with a fractional delay that swings by mod x RV_MOD samples at
+ * line outputs) x RV_GOUT. `freeze` holds the tail: every g is 1, no damping, and the input stops entering the lines (the
+ * dry signal still passes). Lines 0 and 1 are read with a fractional delay that swings by mod x RV_MOD samples at
  * RV_MOD_HZ (sine, linear interpolation). Mono, shared per patch like the delay; the firmware keeps the same lines as
  * int16 (Q13) in one 16 KB block per instance.
  */
@@ -1263,6 +1342,7 @@ const reverb: ModuleImpl<ReverbState> = {
       param('mix', 0, 1, 0.3, { step: 0.01 }),
       param('pre', 0, RV_PRE_MS, 0, { unit: 'ms', step: 0.5 }),
       param('mod', 0, 1, 0.3, { step: 0.01 }),
+      param('freeze', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
     ],
   },
   init: (sr) => {
@@ -1279,9 +1359,12 @@ const reverb: ModuleImpl<ReverbState> = {
     };
   },
   process(c, s) {
+    // freeze: an infinite decay (every line's gain 1, no damping) and nothing new into the lines; the tail holds
+    const frz = (c.p.freeze ?? 0) >= 0.5;
     const T = 0.2 * Math.pow(2, 5 * (c.p.size ?? 0.5));
-    const g = s.line.map((b) => Math.pow(2, (-9.965784 * b.length) / (T * c.sr))); // 10^(-3 L / (T sr))
-    const d = (c.p.damp ?? 0.4) * 0.8;
+    const g = s.line.map((b) => (frz ? 1 : Math.pow(2, (-9.965784 * b.length) / (T * c.sr)))); // 10^(-3 L / (T sr))
+    const d = frz ? 0 : (c.p.damp ?? 0.4) * 0.8;
+    const gin = frz ? 0 : RV_GIN;
     const mix = c.p.mix ?? 0.3;
     const dpre = Math.min(s.pre.length - 1, Math.round(((c.p.pre ?? 0) / 1000) * c.sr));
     const depth = (c.p.mod ?? 0) * RV_MOD;
@@ -1306,7 +1389,7 @@ const reverb: ModuleImpl<ReverbState> = {
         if (++s.ai[k] === buf.length) s.ai[k] = 0;
         u = y;
       }
-      u *= RV_GIN;
+      u *= gin;
       // the lines: read (lines 0 and 1 at a modulated fractional delay), damp, decay, mix, write
       let wet = 0, sum = 0;
       for (let k = 0; k < 8; k++) {
@@ -1941,24 +2024,26 @@ const quant: ModuleImpl<null> = {
   },
 };
 
-/** a trigger to a gate of a set length: a rising edge on `trig` raises `out` for `time` (a new edge restarts it) */
+/** a trigger to a gate of a set length: a rising edge on `trig` raises `out` for `time` (a new edge restarts it). `inf`:
+ * the window does not end (the Model:Cycles' INF retrig length); switched off, it ends `time` later. */
 const pulse: ModuleImpl<{ rem: number; t1: number }> = {
   def: {
     type: 'pulse',
     label: 'Pulse',
     inputs: [gate('trig')],
     outputs: [gate('out')],
-    params: [param('time', 0.001, 2, 0.1, { unit: 's', step: 0.001, log: true })],
+    params: [param('time', 0.001, 2, 0.1, { unit: 's', step: 0.001, log: true }), param('inf', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 })],
   },
   init: () => ({ rem: 0, t1: 0 }),
   process(c, s) {
     const len = Math.max(1, Math.round((c.p.time ?? 0.1) * c.sr));
+    const inf = (c.p.inf ?? 0) >= 0.5;
     const { trig } = c.inp;
     for (let i = 0; i < c.n; i++) {
       if (trig[i] >= 0.5 && s.t1 < 0.5) s.rem = len;
       s.t1 = trig[i];
       c.out.out[i] = s.rem > 0 ? 1 : 0;
-      if (s.rem > 0) s.rem--;
+      if (s.rem > 0 && !inf) s.rem--;
     }
   },
 };
@@ -2276,10 +2361,13 @@ export interface StepsState {
   run: boolean;
   c1: number;
   r1: number;
-  /** ticks since the last step (its own clock), the step playing (-1: the next step is the first), times round the pattern */
+  /** half ticks since the last step (its own clock; -1 after a step half a tick past one), the step playing (-1: the next
+   * step is the first), times round the pattern */
   count: number;
   pos: number;
   loop: number;
+  /** a step half a tick after a tick (1/64): samples to go (0: none) */
+  half: number;
   /** a swung step waiting: samples to go (0: none) and which step */
   pend: number;
   pstep: number;
@@ -2321,9 +2409,11 @@ const stepPitch = (note: number): number => (Math.sign(note - STEP_NOTE) * Math.
  * Steps: a track of notes (#83, #133). Each note (ModuleInst.notes, track.ts) starts on a step, lasts a number of steps
  * and has a velocity and a chance; a step can hold several (a chord). `len` plays the first steps; a note is cut at the
  * end of the pattern. With nothing in clk it follows the engine's clock while the transport runs: the first step when
- * PLAY starts, then one step per `rate` (24 ppqn ticks, ARP_RATE_TICKS), each on the sample its tick falls on; a rising
- * edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 75 % the most) delays every
- * second step by (swing - 50) / 50 of a step. A note sounds for `gate` of its last step (a longer note holds through the
+ * PLAY starts, then one step per `rate` (STEPS_RATES: half ticks of the 24 ppqn clock, STEPS_RATE_HT), each on the sample
+ * its tick falls on; 1/64 is a tick and a half, so every second step lands half a tick (tickLen / 2 samples, rounded down)
+ * after a tick. A rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 80 % the
+ * most) delays every second step by (swing - 50) / 50 of a step. Rates 1/2 and 1/64 and swing past 75 % are a stretch of
+ * the range (ParamDef.top): pins, macro ranges and the morph span what they did before (#351). A note sounds for `gate` of its last step (a longer note holds through the
  * steps before it: two steps at most from the last, so a stopped clock lets it end).
  * keys out: every note on / off, transposed, like Main's keys (the instrument's allocator decides the voices; the engine
  * delivers them at the start of the next block). The mono outputs: trig is up while any note sounds (one low sample when
@@ -2344,23 +2434,24 @@ const steps: ModuleImpl<StepsState> = {
     views: [param('grid', 0, 0, 0, { screen: true })],
     params: [
       param('len', 1, STEPS_MAX, 16, { step: 1 }),
-      param('rate', 0, ARP_RATES.length - 1, 4, { step: 1, choices: ARP_RATES }),
-      param('swing', 50, 75, 50, { step: 1, unit: '%' }),
+      param('rate', 0, STEPS_RATE_PIN_MAX, 4, { step: 1, choices: STEPS_RATES, top: STEPS_RATES.length - 1 }),
+      param('swing', 50, SWING_PIN_MAX, 50, { step: 1, unit: '%', top: SWING_MAX }),
       param('gate', 0.01, 1, 0.25, { step: 0.01 }),
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
   process(c, s) {
     const q16 = (v: number | undefined): number => Math.round((v ?? 0) * 65536);
     const len = Math.min(STEPS_MAX, Math.max(1, Math.round(c.p.len ?? 16)));
-    const div = ARP_RATE_TICKS[Math.min(ARP_RATE_TICKS.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
+    const ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
     const swing = q16(c.p.swing ?? 50) - 50 * 65536;
     const gate = q16(c.p.gate ?? 0.25);
     const v = c.voice;
+    const step = Math.floor((ht * v.tickLen) / 2); // a step's samples at the clock's rate
     const ext = !!c.connected.clk;
     const { clk, reset, transpose } = c.inp;
     const end = (j: number): void => {
@@ -2368,7 +2459,7 @@ const steps: ModuleImpl<StepsState> = {
       s.snd.splice(j, 1);
     };
     const fire = (k: number, i: number): void => {
-      const sl = ext && s.period > 0 ? s.period : (ext ? 6 : div) * v.tickLen;
+      const sl = ext && s.period > 0 ? s.period : ext ? 6 * v.tickLen : step;
       // a note's samples from here: through to the next step while more follow (two steps at most), else gate of a step
       const hold = (left: number): number => (left > 0 ? 2 * sl : Math.max(1, Math.floor((gate * sl) / 65536)));
       for (const x of s.snd)
@@ -2442,22 +2533,33 @@ const steps: ModuleImpl<StepsState> = {
       } else {
         if (i === 0 && v.run && !s.run) {
           s.count = 0;
+          s.half = 0;
           s.pos = -1;
           adv++;
         }
-        if (v.run && i === v.tick)
+        if (s.half > 0 && v.run && --s.half === 0) adv++;
+        if (v.run && i === v.tick) {
+          if (s.half > 0) { // (the clock came early: the step half a tick on is now)
+            s.half = 0;
+            adv++;
+          }
           for (let t = 0; t < v.ticks; t++)
-            if (++s.count >= div) {
+            if ((s.count += 2) >= ht) {
               s.count = 0;
               adv++;
             }
+          if (ht & 1 && s.count + 1 === ht) { // the next step falls half a tick from now (1/64)
+            s.half = Math.max(1, v.tickLen >> 1);
+            s.count = -1;
+          }
+        }
       }
       if (s.pend > 0 && --s.pend === 0) fire(s.pstep, i);
       s.ago++;
       for (; adv > 0; adv--) {
         s.pos = s.pos + 1 >= len ? 0 : s.pos + 1;
         if (s.pos === 0) s.loop = (s.loop + 1) >>> 0;
-        const sl = ext ? s.period : div * v.tickLen;
+        const sl = ext ? s.period : step;
         s.ago = 0;
         s.sl = sl;
         const d = s.pos & 1 && swing > 0 && sl > 0 ? Math.floor((swing * sl) / (50 * 65536)) : 0;
@@ -2494,7 +2596,34 @@ export const drumRowName = (names: readonly string[] | undefined, r: number): st
 
 /** a Drum map as it runs: each row's gate (0 / 1) and velocity (0..1), the rows whose gate restarts this block (a low first
  * sample), and the notes the engine delivered (key | 0x80, velocity 1..127 / key, 0), taken at the start of the block */
-export interface DrumMapState { gate: number[]; vel: number[]; gap: number; ev: number[] }
+export interface DrumMapState { gate: number[]; vel: number[]; gap: number; ev: number[]; held: number[] }
+
+/** a Drum map lets go of every row at once (all notes off, its keys' source switched): the keys it held too */
+export function dropRows(s: DrumMapState): void {
+  s.gate.fill(0);
+  s.held.fill(0);
+}
+
+/** a white key's place among the white keys of its octave, a black key's the white key's below it (#184) */
+const WHITE_AT = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+/** the white keys of an octave, bit n = semitone n (C D E F G A B) */
+const WHITE_KEYS = 0xab5;
+/**
+ * The rows a key plays on a Drum map with `repeat` on (#184; engine.c dm_rows the same), bit r = row r: the rows' keys,
+ * lowest to highest, are a block that repeats up and down the keybed, so every key plays a row. When every row is on a
+ * white key the block is counted in white keys and a black key plays the row of the white key below it (rows on F3..F4
+ * repeat every eight white keys: the next block starts on G4); otherwise it is counted in semitones, and keys that fall on
+ * no row in the block stay silent.
+ */
+export function drumRowsOf(notes: readonly number[], key: number): number {
+  const white = notes.every((n) => (WHITE_KEYS >> n % 12) & 1);
+  const place = (k: number): number => (white ? Math.floor(k / 12) * 7 + WHITE_AT[k % 12] : k);
+  const at = notes.map(place), lo = Math.min(...at), period = Math.max(...at) - lo + 1;
+  const x = (((place(key) - lo) % period) + period) % period;
+  let rows = 0;
+  at.forEach((a, r) => { if (a - lo === x) rows |= 1 << r; });
+  return rows;
+}
 
 /**
  * Drum map (#137): keys in, eight rows out. A row's note (n1..n8, General MIDI drums by default) held in the keys raises
@@ -2502,7 +2631,9 @@ export interface DrumMapState { gate: number[]; vel: number[]; gap: number; ev: 
  * while its gate is up (or let go and hit again in one block) gets one low sample first, so the drum restarts. The keys come as an allocator's do (Main's, or a
  * Steps track's keys out: the engines deliver the notes at the start of the next block; poly.ts keysInto); its record's
  * data byte says from where (0 none, 1 Main's keys, 2 + the module index of the Steps module). Row names (ModuleInst.names)
- * are the editor's (the roll's rows); it runs once.
+ * are the editor's (the roll's rows); it runs once. With `repeat` on (#184) the rows' keys repeat over the keybed
+ * (drumRowsOf), so every key plays a row; a row that another key still holds up neither restarts nor takes the new
+ * velocity, and its gate falls when the last of its keys is let go.
  */
 const drummap: ModuleImpl<DrumMapState> = {
   def: {
@@ -2510,16 +2641,30 @@ const drummap: ModuleImpl<DrumMapState> = {
     label: 'Drum map',
     inputs: [keys('keys')],
     outputs: Array.from({ length: DRUM_ROWS }, (_, r) => [gate(`g${r + 1}`), control(`v${r + 1}`)]).flat(),
-    params: DRUM_MAP_DEFAULT.map((d, r) => param(`n${r + 1}`, 0, 127, d.note, { step: 1, choices: NOTE_NAMES })),
+    params: [
+      ...DRUM_MAP_DEFAULT.map((d, r) => param(`n${r + 1}`, 0, 127, d.note, { step: 1, choices: NOTE_NAMES })),
+      // the rows repeat over the keybed, so every key plays one (#184; off: only the rows' own keys)
+      param('repeat', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 35 }),
+    ],
     data: 1,
   },
-  init: () => ({ gate: Array(DRUM_ROWS).fill(0), vel: Array(DRUM_ROWS).fill(0), gap: 0, ev: [] }),
+  init: () => ({ gate: Array(DRUM_ROWS).fill(0), vel: Array(DRUM_ROWS).fill(0), gap: 0, ev: [], held: Array(128).fill(0) }),
   process(c, s) {
     let fell = 0; // (a row let go and hit again in one block restarts too)
+    const notes = DRUM_MAP_DEFAULT.map((d, r) => Math.max(0, Math.min(127, Math.round(c.p[`n${r + 1}`] ?? d.note))));
+    const repeat = Math.round(c.p.repeat ?? 0) >= 1;
     for (let e = 0; e < s.ev.length; e += 2) {
       const key = s.ev[e] & 0x7f, on = s.ev[e] & 0x80;
+      const rows = repeat ? drumRowsOf(notes, key) : 0;
+      // (repeat: the rows another key still holds up, which this key neither restarts nor lets fall)
+      let other = 0;
+      if (repeat) {
+        s.held[key] = on ? 1 : 0;
+        for (let k = 0; k < 128; k++) if (s.held[k] && k !== key) other |= drumRowsOf(notes, k);
+      }
       for (let r = 0; r < DRUM_ROWS; r++) {
-        if (Math.round(c.p[`n${r + 1}`] ?? DRUM_MAP_DEFAULT[r].note) !== key) continue;
+        if (repeat ? !((rows >> r) & 1) : Math.round(c.p[`n${r + 1}`] ?? DRUM_MAP_DEFAULT[r].note) !== key) continue;
+        if ((other >> r) & 1) continue;
         if (!on) {
           if (s.gate[r]) fell |= 1 << r;
           s.gate[r] = 0;
@@ -2538,6 +2683,200 @@ const drummap: ModuleImpl<DrumMapState> = {
       v.fill(s.vel[r], 0, c.n);
     }
     s.gap = 0;
+  },
+};
+
+/** the phase distortion oscillator's waveforms, after the Casio CZ: five bends of a sine's phase, then the three resonance
+ * windows (falling ramp, triangle, trapezoid) */
+export const PD_WAVES = ['saw', 'square', 'pulse', 'dbl sine', 'saw-pulse', 'reso 1', 'reso 2', 'reso 3'];
+/** the first resonance waveform in PD_WAVES */
+export const PD_RESO = 5;
+/** the five bends at full DCW, as the bent phase minus the ramp u (cycles): from u = x on, b + slope (u - x). The bend is
+ * continuous (so is the wave); slope -1 holds the sine where it is. Saw: half the sine in 7/8 of the cycle, the rest in 1/8;
+ * square: the sine held at its peak and trough; pulse: the whole sine in the first 1/8, then held; double sine: each half
+ * of the cycle bent as the saw; saw-pulse: the saw's bend in the first half, then held. (engine.c PD_X, PD_B, PD_K) */
+export const PD_SEGS: [number, number, number][][] = [
+  [[0, 0, -3 / 7], [0.875, -0.375, 3]],
+  [[0, 0, 1], [0.125, 0.125, -1], [0.375, -0.125, 1], [0.625, 0.125, -1], [0.875, -0.125, 1]],
+  [[0, 0, 7], [0.125, 0.875, -1]],
+  [[0, 0, -3 / 7], [0.4375, -0.1875, 3], [0.5, 0, -3 / 7], [0.9375, -0.1875, 3]],
+  [[0, 0, 1 / 7], [0.4375, 0.0625, 7], [0.5, 0.5, -1]],
+];
+/** each bend's steepest slope: at full DCW the bent phase runs up to 1 + this many times as fast as the note */
+export const PD_STEEP = [3, 1, 7, 3, 7];
+/** the band limit: the fastest part of the bent wave (and the resonance sine) stays below this fraction of the sample rate */
+export const PD_FMAX = 0.25;
+/** the resonance range's top, octaves */
+export const PD_RANGE_MAX = 5;
+
+interface PdState {
+  phase: number;
+  /** the resonance sine's phase, restarted every cycle */
+  r: number;
+  /** the cycle is an odd one (the second waveform's) */
+  odd: number;
+  s1: number;
+}
+
+/**
+ * Phase distortion oscillator, after the Casio CZ. It reads a sine with its phase bent: `dcw` (the parameter plus the
+ * input, 0..1) scales the bend, 0 is a sine and 1 the full shape (PD_SEGS). The resonance waveforms are a sine restarted
+ * every cycle, raised by dcw x `range` octaves, faded by a window (reso 1 a falling ramp, 2 a triangle, 3 a trapezoid).
+ * `wave2` plays a second waveform on every other cycle, as the CZ's line does (so the pattern repeats every two cycles:
+ * an octave down when the two differ). The band limit: dcw is held back as the note rises so the bent sine never runs
+ * faster than PD_FMAX of the sample rate, and the resonance stops rising there; worked out once a block from the block's
+ * first pitch. pm: phase modulation in radians (x `pm`), as the oscillator's plain path (no oversampling). sync: a rising
+ * edge restarts the cycle (and the first waveform).
+ */
+const pd: ModuleImpl<PdState> = {
+  def: {
+    type: 'pd',
+    label: 'PD Osc',
+    inputs: [control('pitch'), control('dcw'), audio('pm'), gate('sync')],
+    outputs: [audio('out')],
+    params: [
+      param('wave', 0, PD_WAVES.length - 1, 0, { step: 1, choices: PD_WAVES }),
+      param('wave2', 0, PD_WAVES.length, 0, { step: 1, choices: ['off', ...PD_WAVES] }),
+      param('dcw', 0, 1, 0.5, { step: 0.01, input: 'dcw', rest: (p, cv) => (p.dcw ?? 0.5) + cv }),
+      param('range', 0, PD_RANGE_MAX, 3, { step: 0.01, unit: 'oct' }),
+      param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
+      param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
+      param('pm', 0, 8, 0, { step: 0.01 }),
+      param('level', 0, 1, 0.8, { step: 0.01 }),
+    ],
+  },
+  init: () => ({ phase: 0, r: 0, odd: 0, s1: 0 }),
+  process(c, s) {
+    const { pitch, dcw, pm, sync } = c.inp;
+    const out = c.out.out;
+    const base = (c.p.coarse ?? 0) / 12 + (c.p.fine ?? 0) / 1200;
+    const w1 = Math.min(PD_WAVES.length - 1, Math.max(0, Math.round(c.p.wave ?? 0)));
+    const w2p = Math.min(PD_WAVES.length, Math.max(0, Math.round(c.p.wave2 ?? 0)));
+    const alt = w2p > 0 ? 1 : 0;
+    const w2 = alt ? w2p - 1 : w1;
+    const d0 = c.p.dcw ?? 0.5;
+    const range = Math.min(PD_RANGE_MAX, Math.max(0, c.p.range ?? 3));
+    const idx = c.connected.pm ? (c.p.pm ?? 0) : 0;
+    const lvl = c.p.level ?? 1;
+    const K = 1 / (2 * Math.PI);
+    // the band limit from the block's first pitch: room = how many times the note fits below PD_FMAX; a bend's dcw at most
+    // (room - 1) / steepness, a resonance's rise at most log2(room) octaves
+    const room = PD_FMAX / Math.min((C4 * Math.pow(2, pitch[0] + base)) / c.sr, 0.45);
+    const cap = (w: number): number => (w < PD_RESO ? Math.min(1, Math.max(0, (room - 1) / PD_STEEP[w])) : 0);
+    const cap1 = cap(w1), cap2 = cap(w2);
+    // the resonance's ratio 2^(dcw x range): worked out at the block's first and last sample, a straight line between
+    const lim = Math.max(0, Math.log2(room));
+    const ratioAt = (i: number): number => Math.pow(2, Math.min(Math.min(1, Math.max(0, d0 + dcw[i])) * range, lim));
+    const m0 = ratioAt(0), dm = c.n ? (ratioAt(c.n - 1) - m0) / c.n : 0;
+    for (let i = 0; i < c.n; i++) {
+      const dt = Math.min((C4 * Math.pow(2, pitch[i] + base)) / c.sr, 0.45);
+      // a new cycle (or a sync) restarts the resonance sine at the phase the ramp has reached, times its ratio
+      let fresh = false;
+      if (sync[i] >= 0.5 && s.s1 < 0.5) {
+        s.phase = s.odd = 0;
+        fresh = true;
+      }
+      s.s1 = sync[i];
+      s.phase += dt;
+      if (s.phase >= 1) {
+        s.phase -= 1;
+        s.odd ^= 1;
+        fresh = true;
+      }
+      const second = s.odd & alt;
+      const w = second ? w2 : w1;
+      const d = Math.min(1, Math.max(0, d0 + dcw[i]));
+      const pmo = idx ? idx * pm[i] * K : 0;
+      const u = s.phase;
+      let y: number;
+      if (w < PD_RESO) {
+        const seg = PD_SEGS[w];
+        let j = seg.length - 1;
+        while (u < seg[j][0]) j--;
+        const [x, b, k] = seg[j];
+        y = Math.sin(2 * Math.PI * (u + Math.min(d, second ? cap2 : cap1) * (b + k * (u - x)) + pmo));
+      } else {
+        const ratio = m0 + dm * i;
+        s.r = fresh ? u * ratio : s.r + Math.min(dt * ratio, 0.45);
+        s.r -= Math.floor(s.r);
+        const win = w === PD_RESO ? 1 - u : w === PD_RESO + 1 ? 1 - Math.abs(2 * u - 1) : Math.min(4 * u, 2 - 2 * u, 1);
+        y = win * Math.sin(2 * Math.PI * (s.r + pmo));
+      }
+      out[i] = y * lvl;
+    }
+  },
+};
+
+/** the Selector's positions: inputs in1..in8, gates g1..g8, values v1..v8 */
+export const SELECT_N = 8;
+/** the position a Selector plays (1..count): `pos` plus the `pos` input, which spans the positions in use (0..1 = 1..count),
+ * rounded to the nearest (the firmware: round_q16) */
+export const selectPos = (pos: number, count: number, cv: number): number => {
+  const n = Math.min(SELECT_N, Math.max(2, Math.round(count)));
+  return Math.min(n, Math.max(1, Math.floor(pos + cv * (n - 1) + 0.5)));
+};
+/** what a Selector's crossfade moves its weights by each sample (Q16, as the firmware: an integer increment, so both engines
+ * fade alike); 65536 or more: it switches at once */
+export const selectFadeInc = (fade: number, sr: number): number => {
+  const samples = Math.floor((Math.round(fade * 65536) * Math.floor((sr * 65536) / 1000)) / 2 ** 32);
+  return samples > 0 ? Math.floor(65536 / samples) : 65536;
+};
+/** a Selector as it runs: each input's weight (Q16 integers; one of them 65536 when settled), the position chosen (0-based,
+ * -1 before the first block) and whether a crossfade is under way */
+export interface SelectState { w: number[]; k: number; fading: boolean }
+
+/**
+ * Selector (#351): a stepped switch. `pos` (1..8, with the `pos` input: 0..1 spans 1..count) chooses one of the inputs
+ * in1..in8; `out` is that input plus its value (v1..v8: with nothing patched in, the Selector is a table of values), and
+ * the gate of that position (g1..g8) is high, the others low, so one choice can switch several things at once. The
+ * position is read once per block (the `pos` input's first sample). `fade` (ms) crossfades from the inputs playing to the
+ * chosen one when the position changes, against clicks; 0 switches at once.
+ */
+const select: ModuleImpl<SelectState> = {
+  def: {
+    type: 'select',
+    label: 'Selector',
+    inputs: [control('pos'), ...Array.from({ length: SELECT_N }, (_, k) => audio(`in${k + 1}`))],
+    thru: 'in1',
+    outputs: [audio('out'), ...Array.from({ length: SELECT_N }, (_, k) => gate(`g${k + 1}`))],
+    params: [
+      param('pos', 1, SELECT_N, 1, { step: 1, input: 'pos', rest: (p, cv) => selectPos(p.pos ?? 1, p.count ?? SELECT_N, cv) }),
+      param('count', 2, SELECT_N, SELECT_N, { step: 1 }),
+      param('fade', 0, 100, 0, { step: 0.1, unit: 'ms' }),
+      ...Array.from({ length: SELECT_N }, (_, k) => param(`v${k + 1}`, -4, 4, 0, { step: 0.001 })),
+    ],
+  },
+  init: () => ({ w: Array(SELECT_N).fill(0), k: -1, fading: false }),
+  process(c, s) {
+    const k = selectPos(c.p.pos ?? 1, c.p.count ?? SELECT_N, c.inp.pos[0]) - 1;
+    const inc = selectFadeInc(c.p.fade ?? 0, c.sr);
+    if (s.k < 0 || (k !== s.k && inc >= 65536)) {
+      s.w.fill(0);
+      s.w[k] = 65536;
+      s.fading = false;
+    } else if (k !== s.k) s.fading = true;
+    s.k = k;
+    const out = c.out.out;
+    if (!s.fading) {
+      const x = c.inp[`in${k + 1}`], v = c.p[`v${k + 1}`] ?? 0;
+      for (let i = 0; i < c.n; i++) out[i] = x[i] + v;
+    } else {
+      const xs = Array.from({ length: SELECT_N }, (_, j) => c.inp[`in${j + 1}`]);
+      const vs = Array.from({ length: SELECT_N }, (_, j) => c.p[`v${j + 1}`] ?? 0);
+      for (let i = 0; i < c.n; i++) {
+        let y = 0;
+        for (let j = 0; j < SELECT_N; j++) {
+          const t = j === k ? 65536 : 0, w = s.w[j];
+          if (w === t && w === 0) continue;
+          s.w[j] = w < t ? Math.min(t, w + inc) : Math.max(t, w - inc);
+          y += (xs[j][i] + vs[j]) * (s.w[j] / 65536);
+        }
+        out[i] = y;
+      }
+      s.fading = s.w.some((w, j) => w !== (j === k ? 65536 : 0));
+    }
+    for (let j = 0; j < SELECT_N; j++) c.out[`g${j + 1}`].fill(j === k ? 1 : 0, 0, c.n);
+    if (c.display) c.display.pos = k + 1;
   },
 };
 
@@ -2569,7 +2908,108 @@ const scope: ModuleImpl<null> = {
   process: () => {},
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap];
+/**
+ * The eight-step envelope (the Casio CZ's DCO / DCW / DCA envelopes): step k runs to level lk in time rk, by the Env L/R's
+ * segment rules (rising linear, falling 99 % in rk then stepped, a finished step goes on to the next in the same sample).
+ * A gate starts step 1. `end` is the last step: after it the envelope rests at its level (normally 0). `sus` is the step
+ * whose level holds while the gate stays up; the gate's fall jumps to the step after it, which runs to the end (sus = end:
+ * the gate's fall ends it where it is). Sus off, or past the end: the gate only starts it, every step runs through (the
+ * CZ without a sustain point; Env L/R's one-shot). Stage: 0 resting at the end's level, 1..8 the steps, 9 (ENV8_HOLD) holding.
+ * With 18 parameters its masks in the binary are u32 (patchbin.ts maskBytes), so pins can move sus and end too.
+ */
+export const ENV8_STEPS = 8;
+/** the envelopes: a poly part goes idle only once all of its envelopes have finished (stage 0; engine.ts partQuiet) */
+export const ENVELOPE_TYPES = new Set(['adsr', 'env', 'env8']);
+export const ENV8_HOLD = 9;
+/** the step the sustain holds (0 none): sus, when it is not past the end */
+export const env8Sus = (sus: number, end: number): number => (sus >= 1 && sus <= end ? sus : 0);
+/** the last step, 1..8 */
+export const env8End = (end: number): number => Math.max(1, Math.min(ENV8_STEPS, Math.round(end)));
+
+interface Env8State {
+  stage: number;
+  v: number;
+  prev: number;
+  /** samples spent in the current step */
+  t: number;
+}
+
+const env8: ModuleImpl<Env8State> = {
+  def: {
+    type: 'env8',
+    label: 'Env 8',
+    inputs: [gate('gate')],
+    outputs: [control('env')],
+    params: [
+      ...Array.from({ length: ENV8_STEPS }, (_, i) => {
+        // the defaults: an ADSR (1 at once, 0.6 in 0.3 s held, 0 in 0.5 s), the steps after it at 0
+        const [l, r] = [[1, 0.01], [0.6, 0.3], [0, 0.5]][i] ?? [0, 0.2];
+        return [param(`l${i + 1}`, 0, 1, l, { step: 0.01 }), param(`r${i + 1}`, 0.001, 10, r, { unit: 's', step: 0.001, log: true })];
+      }).flat(),
+      param('sus', 0, ENV8_STEPS, 2, { step: 1, choices: ['off', ...Array.from({ length: ENV8_STEPS }, (_, i) => String(i + 1))] }),
+      param('end', 1, ENV8_STEPS, 3, { step: 1 }),
+    ],
+    views: [param('view', 0, 0, 0, { screen: true })],
+  },
+  init: () => ({ stage: 0, v: 0, prev: 0, t: 0 }),
+  process(c, s) {
+    const lv = [0];
+    const len = [1];
+    for (let k = 1; k <= ENV8_STEPS; k++) {
+      lv.push(c.p[`l${k}`] ?? 0);
+      len.push(Math.max(Math.round((c.p[`r${k}`] ?? 0.2) * c.sr), 1));
+    }
+    const inc = len.map((l) => 1 / l);
+    const kk = len.map((l) => 1 - Math.exp(-4.6 / l));
+    const end = env8End(c.p.end ?? 3);
+    const hs = env8Sus(Math.round(c.p.sus ?? 2), end);
+    for (let i = 0; i < c.n; i++) {
+      const g = c.inp.gate[i] > 0.5 ? 1 : 0;
+      if (g && !s.prev) {
+        s.stage = 1;
+        s.t = 0;
+      } else if (!g && s.prev && hs && (s.stage === ENV8_HOLD || (s.stage >= 1 && s.stage <= hs))) {
+        s.stage = hs < end ? hs + 1 : 0;
+        s.t = 0;
+      }
+      s.prev = g;
+      for (let guard = 0; guard < 10; guard++) {
+        const st = s.stage;
+        if (st === 0) {
+          s.v = lv[end];
+          break;
+        }
+        if (st === ENV8_HOLD) {
+          if (hs) {
+            s.v = lv[hs];
+            break;
+          }
+          s.stage = 0; // the sustain was switched off while holding: rest
+          continue;
+        }
+        if (st > end) {
+          s.stage = 0; // the end was moved before this step
+          continue;
+        }
+        const t = lv[st];
+        s.t++;
+        if (s.v < t) {
+          s.v += inc[st];
+          if (s.v < t) break;
+        } else if (s.t < len[st]) {
+          s.v += (t - s.v) * kk[st];
+          break;
+        }
+        s.v = t;
+        s.stage = st === hs && g ? ENV8_HOLD : st === end ? 0 : st + 1;
+        s.t = 0;
+      }
+      c.out.env[i] = s.v;
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

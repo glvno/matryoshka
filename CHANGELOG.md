@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+- **Env 8, an eight-step envelope** after the Casio CZ's: eight levels and rates, a sustain step that holds while the
+  key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off it
+  runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then
+  sustain and end). About 1 to 1.4 % of the FM-1's CPU per copy, estimated.
+- **Steps: two more rates and more swing.** A track also runs at 1/2 (eight times slower than 1/16, the Model:Cycles'
+  1/8X and the PERKONS' ÷8) and at 1/64 (four times faster than 1/16), and its swing goes up to 80 % (75 % before), on
+  the card, in the roll and on the FM-1's SEQ page. Cables and macros into rate and swing still cover 1/4 to 1/32 and
+  50 to 75 %, so every patch made before plays exactly as it did.
+- **A new module, Phase distortion** (PD Osc on the FM-1), after the Casio CZ: all eight CZ waveforms (saw, square,
+  pulse, double sine, saw-pulse; resonance I, II and III) with a DCW amount and input, a second waveform on every other
+  cycle, the resonance's range, `pm` and `sync`. High notes stay clean: the bend is held back as the note rises. One
+  module plays what took Cassia 1 XL about 60 modules per line. On the FM-1 it costs about 2 to 4 % of the CPU per copy,
+  estimated (host-tested only, not yet on a device).
+- **A new module, the Selector:** one stepped row (1..8, or a cable: 0..1 covers the positions in use) picks one of eight
+  inputs, each with a value added (with nothing patched in it is a table of eight values), and raises that position's gate
+  so one choice can switch several things at once. An optional crossfade (up to 100 ms) avoids clicks. It costs about
+  0.4 % of the FM-1's CPU, plus 0.1 % per gate cabled. Algo Four XL's algorithm row, built today from a Sequencer, an
+  S&H, an LFO, seven comparators and seven Logic modules, would go from about 14 % to about 1 % (the CPU model's
+  per-module figures, not measured on the FM-1).
+- **A Drum map can repeat its rows across the keybed** (its new REPEAT switch, off by default), so every key plays a
+  row. Rows on white keys repeat in blocks of white keys, and a black key plays the row of the white key below it: rows
+  on F3 to F4 come again from G4 and below E3. On the FM-1, the keys that play nothing on a Drum map (the white keys and
+  black keys 9 to 11) then play a row too. Needs the firmware of the next release; not yet played on a device.
+- Longer and wider ranges on five modules, on the FM-1 too (#351). Each is a new row whose default plays as before:
+  - **ADSR `long`:** decay and release times 2.4 times as long, up to 12 s and 19.2 s (the Juno-106 reaches 12 s).
+  - **LFO:** `phase` sets where a reset or a clock restart starts the wave (90 degrees starts a sine at its peak, as the
+    DX100). `range` slow divides the rate by 25 (down to 0.0008 Hz), fast doubles it (up to 80 Hz). `dir` back runs
+    the wave backward (a saw falls). `mult` makes a synced cycle up to 8 times longer (/8) or shorter (x8): a 1/16
+    triplet at x8 is a 1/128 triplet, for fast synced retrigs.
+  - **Delay:** `note` gives the synced delay 1/32, 1/2T, 1/2 dotted, 1/1T and 1/1 dotted in place of the time knob's
+    length. `swell` scales the feedback up to 1.98 (the Model:Cycles' 198) with a soft clip in the loop, so the echoes
+    grow to about full level and hold there.
+  - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
+  - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
+- **FM-1 memory:** each module now takes only the parameter slots its type needs, from a shared store of 1536 values,
+  instead of room for the largest module's (18 with Env 8). With all of the above the engine's memory goes from 381,038
+  to 383,086 bytes, where room for 18 parameters in every module would have taken about 9 KB more
+  (`tools/pool_sizes.sh`, the stand-in estimate). The editor's budget shows the new "parameter values" line; no factory
+  patch uses more than 564 of them (<7PH).
+- **Patches saved on the FM-1 before this release still load and sound the same.** The new parameters above take their
+  defaults in them, and saving such a patch again stores it in the new format. The editor needs this firmware to sync:
+  it tells an FM-1 on an older firmware to update.
+
 ## 1.4.1 — 2026-10-26
 
 Web only: the FM-1 firmware is 1.4.0's. New factory patches now ship in the browser first; the FM-1 gets them as

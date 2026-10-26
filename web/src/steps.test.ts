@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
-import { DEFS, notePlays } from './modules';
-import { addModule, connect, emptyPatch, stepByte, validatePatch, type ModuleInst, type Patch } from './patch';
+import { DEFS, DRUM_MAP_DEFAULT, drumRowsOf, notePlays } from './modules';
+import { addModule, connect, emptyPatch, modulate, morphValue, stepByte, topOf, validatePatch, type ModuleInst, type Patch } from './patch';
 import { deviceBudget, encodePatch, FLAG_NOTES, recordSize } from './patchbin';
 import { deviceView } from './poly';
-import { migrateSteps, noteWord, type StepNote } from './track';
+import { migrateSteps, noteWord, STEPS_RATES, type StepNote } from './track';
 
 const SR = 48000; // 120 bpm: a tick every 1000 samples, a 1/16 step every 6000
 
@@ -83,6 +83,37 @@ describe('the Steps module (#83, #133)', () => {
     f.load(b.p);
     f.transport(true);
     expect(edges(f, 24000).trig).toEqual([0, 5999 + 3000, 11999, 17999 + 3000]); // half a step late at 75 %
+  });
+
+  it('1/64 steps every tick and a half (every second step half a tick after a tick), 1/2 every 48 ticks; swing reaches 80 % (#351)', () => {
+    const fast = rig([ON, ON, ON, ON, ON, ON], { rate: STEPS_RATES.indexOf('1/64') });
+    const e = new Engine(SR);
+    e.load(fast.p);
+    e.transport(true);
+    expect(edges(e, 7000).trig).toEqual([0, 999 + 500, 2999, 3999 + 500, 5999]);
+    const slow = rig([ON, ON], { rate: STEPS_RATES.indexOf('1/2'), len: 2 });
+    const f = new Engine(SR);
+    f.load(slow.p);
+    f.transport(true);
+    expect(edges(f, 100000).trig).toEqual([0, 47999, 95999]);
+    const sw = rig([ON, ON, ON, ON], { swing: 80 });
+    const g = new Engine(SR);
+    g.load(sw.p);
+    g.transport(true);
+    expect(edges(g, 24000).trig).toEqual([0, 5999 + 3600, 11999, 17999 + 3600]); // 0.6 of a step late at 80 %
+  });
+
+  it('the rates and swing past the old ranges are a stretch: pins and the morph span the old range, stored values keep their meaning (#351)', () => {
+    const rate = DEFS.steps.params.find((d) => d.name === 'rate')!, swing = DEFS.steps.params.find((d) => d.name === 'swing')!;
+    expect(STEPS_RATES.slice(0, 7)).toEqual(['1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32']); // (appended: indices keep their meaning)
+    expect([rate.max, topOf(rate), swing.max, topOf(swing)]).toEqual([6, 8, 75, 80]);
+    expect(modulate(swing, 60, 0.5)).toBe(72.5); // half the old span (25 %), as before the stretch
+    expect(modulate(swing, 60, 1)).toBe(75);
+    expect(modulate(swing, 80, -0.2)).toBe(75);
+    expect(modulate(swing, 78, 0.5)).toBe(80); // a base past max is clamped to the stretch, not pulled back to max
+    expect(modulate(rate, 8, 0.1)).toBe(8);
+    expect(morphValue(rate, 4, 8, 0.6)).toBe(8);
+    expect(morphValue(swing, 60, 80, 0.5)).toBe(70);
   });
 
   it('stop and run again start from step 1; reset makes the next step the first', () => {
@@ -331,7 +362,7 @@ describe('the Steps module (#83, #133)', () => {
     connect(p, DEFS, { module: st.id, port: 'keys' }, { module: dm.id, port: 'keys' });
     connect(p, DEFS, { module: dm.id, port: 'g1' }, { module: out.id, port: 'l' });
     connect(p, DEFS, { module: dm.id, port: 'v1' }, { module: out.id, port: 'r' });
-    expect(DEFS.drummap.params.map((pd) => pd.default)).toEqual([36, 38, 39, 42, 46, 45, 37, 56]);
+    expect(DEFS.drummap.params.map((pd) => pd.default)).toEqual([36, 38, 39, 42, 46, 45, 37, 56, 0]); // (repeat off)
     const e = new Engine(SR);
     e.load(p);
     e.transport(true);
@@ -358,6 +389,60 @@ describe('the Steps module (#83, #133)', () => {
     const a = edges(e2, 512);
     expect(a.l[511]).toBe(0); // (Main's map: nothing, the keys go to the track)
     expect(a.r[511]).toBeCloseTo(64 / 127, 6); // the track's map: the kick row at the played velocity
+  });
+
+  it('Drum map repeat (#184): white-key rows repeat every eight white keys, a black key plays the row below; other rows every span of semitones', () => {
+    const white = [53, 55, 57, 59, 60, 62, 64, 65]; // F3..F4, the drum kits' rows
+    expect(drumRowsOf(white, 53)).toBe(1); // F3: row 1
+    expect(drumRowsOf(white, 65)).toBe(1 << 7); // F4: row 8
+    expect(drumRowsOf(white, 67)).toBe(1); // G4: the next block starts
+    expect(drumRowsOf(white, 52)).toBe(1 << 7); // E3: the block below ends on row 8
+    expect(drumRowsOf(white, 40)).toBe(1); // E2 (8 Lire's lowest block)
+    expect(drumRowsOf(white, 81)).toBe(1); // A5 (its highest)
+    expect(drumRowsOf(white, 54)).toBe(1); // F#3: the white key below
+    expect(drumRowsOf(white, 66)).toBe(1 << 7); // F#4
+    for (let k = 0; k < 128; k++) expect(drumRowsOf(white, k), `key ${k}`).not.toBe(0); // every key plays
+    const gm = DRUM_MAP_DEFAULT.map((d) => d.note); // 36..56, not all white: blocks of 21 semitones
+    expect(drumRowsOf(gm, 36)).toBe(1);
+    expect(drumRowsOf(gm, 57)).toBe(1);
+    expect(drumRowsOf(gm, 15)).toBe(1);
+    expect(drumRowsOf(gm, 41)).toBe(0); // (no row on F2 in the block)
+    expect(drumRowsOf([60, 60, 62, 62, 64, 64, 65, 65], 72)).toBe(0b11000000); // (rows on one key play together: C5 is F4 a block up)
+  });
+
+  it('Drum map repeat: a row held by one key is neither restarted nor let go by another; off, only the rows\' own keys', () => {
+    const p = emptyPatch('repeat');
+    const main = addModule(p, DEFS.fm1, 0, 0);
+    const dm = addModule(p, DEFS.drummap, 0, 0);
+    Object.assign(dm.params, { n1: 53, n2: 55, n3: 57, n4: 59, n5: 60, n6: 62, n7: 64, n8: 65, repeat: 1 });
+    const out = addModule(p, DEFS.output, 0, 0);
+    out.params.level = 1;
+    connect(p, DEFS, { module: main.id, port: 'keys' }, { module: dm.id, port: 'keys' });
+    connect(p, DEFS, { module: dm.id, port: 'g1' }, { module: out.id, port: 'l' });
+    connect(p, DEFS, { module: dm.id, port: 'v1' }, { module: out.id, port: 'r' });
+    const e = new Engine(SR);
+    e.load(p);
+    e.noteOn(67, 1); // G4: row 1
+    expect(edges(e, 256).l[255]).toBe(1);
+    e.noteOn(53, 0.5); // F3: row 1 again, held up already
+    const b = edges(e, 256);
+    expect(b.l[0]).toBe(1); // (no restart)
+    expect(b.r[255]).toBe(1); // (the first key's velocity)
+    e.noteOff(67);
+    expect(edges(e, 256).l[255]).toBe(1); // F3 still holds it
+    e.noteOff(53);
+    expect(edges(e, 256).l[255]).toBe(0);
+    e.noteOn(54, 0.5); // F#3: the row of F3
+    expect(edges(e, 256).r[255]).toBeCloseTo(64 / 127, 6);
+    e.allNotesOff();
+    edges(e, 256);
+    dm.params.repeat = 0;
+    const e2 = new Engine(SR);
+    e2.load(p);
+    e2.noteOn(67, 1);
+    expect(edges(e2, 256).l[255]).toBe(0); // off: G4 plays nothing
+    e2.noteOn(53, 1);
+    expect(edges(e2, 256).l[255]).toBe(1);
   });
 
   it('with a cable in clk it steps on every rising edge instead', () => {

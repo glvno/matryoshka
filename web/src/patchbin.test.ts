@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
-import { addModule, connect, type Patch } from './patch';
+import { addModule, connect, defaultMap, emptyPatch, validatePatch, type Patch } from './patch';
+import { connectParameter, setInputRoute } from './parameter-routing';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
 import { engineBytes } from './test-bin';
-import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_NAMES, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
+import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -69,6 +70,56 @@ describe('binary patch format', () => {
       expect(dv.getUint16(at + 2, true)).toBe(DEFS.filter.params.reduce((mask, pd, j) => mask | (filter.inputMap![port].includes(pd.name) ? 1 << j : 0), 0));
     }
     expect(b[b.length - 6]).toBe(1); // the macro ranges, last
+  });
+
+  it('marks the parameters appended since format 34 (`since`), which the FM-1 reads an older binary without', () => {
+    // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
+    const v34: Record<string, number> = { lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8 };
+    const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
+    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select']);
+    for (const t of TYPE_ORDER.slice(0, nTypes34)) {
+      const ps = DEFS[t].params;
+      expect(ps.filter((q) => (q.since ?? 0) <= 34).length, t).toBe(v34[t] ?? ps.length);
+      ps.forEach((q, i) => expect((q.since ?? 0) >= (ps[i - 1]?.since ?? 0), `${t}.${q.name}`).toBe(true));
+      expect(ps.every((q) => (q.since ?? 0) <= VERSION), t).toBe(true);
+    }
+    for (const t of TYPE_ORDER.slice(nTypes34)) expect(DEFS[t].params.some((q) => q.since !== undefined), t).toBe(false);
+    // a module without a stored matrix routes as before: a Pulse's p2 does not reach its new `inf`
+    expect(defaultMap(DEFS.pulse).p2).toEqual([]);
+  });
+
+  it('a type with more than 16 parameters (Env 8) writes its matrix and route masks as u32, every other type as u16', () => {
+    expect(maskBytes('env8')).toBe(4);
+    for (const t of TYPE_ORDER) expect(maskBytes(t), t).toBe(DEFS[t].params.length > 16 ? 4 : 2);
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0);
+    const lfo = addModule(p, DEFS.lfo, 0, 0);
+    const e = addModule(p, DEFS.env8, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    connect(p, DEFS, { module: e.id, port: 'env' }, { module: out.id, port: 'l' });
+    const before = encodePatch(p);
+    connectParameter(p, DEFS, { module: lfo.id, port: 'out' }, e.id, 'sus');
+    connectParameter(p, DEFS, { module: lfo.id, port: 'out' }, e.id, 'end'); // the same source: the same pin
+    e.map!.k4 = ['r8', 'end'];
+    connect(p, DEFS, { module: kb.id, port: 'gate' }, { module: e.id, port: 'gate' });
+    setInputRoute(e, DEFS.env8, 'gate', 'sus', true);
+    validatePatch(p, DEFS);
+    expect(e.map!.p1).toEqual(['sus', 'end']);
+    const b = encodePatch(p);
+    const dv = new DataView(b.buffer);
+    const rec = 8 + PANEL_BYTES + recordSize('fm1') + recordSize('lfo');
+    expect(recordSize('env8')).toBe(1 + 4 * 18 + 8 + 6 * 4);
+    expect(b[rec]).toBe(TYPE_ORDER.indexOf('env8'));
+    const masks = rec + 1 + 4 * 18 + 8;
+    const bit = (name: string): number => 2 ** DEFS.env8.params.findIndex((q) => q.name === name);
+    expect(dv.getUint32(masks, true)).toBe(bit('sus') + bit('end')); // p1
+    expect(dv.getUint32(masks + 5 * 4, true)).toBe(bit('r8') + bit('end')); // k4
+    // the route: module, input, u32 mask, right after the cables
+    const routes = rec + recordSize('env8') + recordSize('output') + 4 * p.cables.length;
+    expect(b[6] & FLAG_INPUT_MAP).toBe(FLAG_INPUT_MAP);
+    expect(Array.from(b.subarray(routes, routes + 3))).toEqual([1, 2, DEFS.env8.inputs.findIndex((q) => q.name === 'gate')]);
+    expect(dv.getUint32(routes + 3, true)).toBe(bit('sus'));
+    expect(b.length).toBeGreaterThan(before.length);
   });
 
   it('writes the device pages after the step values: a plain module by its index, an assembly with its pages and rows', () => {
@@ -148,7 +199,7 @@ describe('binary patch format', () => {
     const map = p.modules.find((m) => m.type === 'drummap')!;
     map.names = ['boom'];
     const b = encodePatch(p);
-    expect(b[1]).toBe(34);
+    expect(b[1]).toBe(VERSION);
     expect(b[6] & FLAG_NAMES).toBe(FLAG_NAMES);
     const text = new TextDecoder().decode(b);
     expect(text).toContain('BOOM\0\0\0\0SNARE\0\0\0CLAP');
@@ -203,6 +254,20 @@ describe('binary patch format', () => {
     expect(poly.fits).toBe(true);
     polyCfg(p).parts = 8;
     expect(deviceBudget(p).instances).toBeLessThanOrEqual(DEVICE.instances);
+  });
+
+  it('counts parameter values as eng_load takes them: per module its type\'s, twice with a morph B side, plus per copy', () => {
+    const used = (q: Patch): number => deviceBudget(q).items.find((i) => i.key === 'params')!.used;
+    const mono = subtractiveSaw();
+    const npar = mono.modules.reduce((n, m) => n + DEFS[m.type].params.length, 0);
+    expect(used(mono)).toBe(2 * npar); // one copy each
+    const p = withParts(subtractiveSaw(), 4);
+    const { patch: dv, groups } = deviceView(p, true);
+    const copies = (id: number): number => (groups.some((g) => g.modules.has(id)) ? 4 : 1);
+    expect(used(p)).toBe(dv.modules.reduce((n, m) => n + DEFS[m.type].params.length * (1 + copies(m.id)), 0));
+    const filter = mono.modules.find((m) => m.type === 'filter')!;
+    filter.paramsB = { ...filter.params, cutoff: 4000 };
+    expect(used(mono)).toBe(3 * npar);
   });
 
   it('unison: bit 7 of the group\'s legato byte', () => {

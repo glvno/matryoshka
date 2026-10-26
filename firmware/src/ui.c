@@ -184,7 +184,7 @@ static uint32_t log2_q8(uint32_t x)             /* log2 of x >= 1 in 1/256, line
 /* where parameter j stands in its range, 0..width pixels (logarithmic parameters on a log scale) */
 static uint32_t param_bar(const def_t *def, uint32_t j, int32_t q16, uint32_t width)
 {
-    int32_t lo = def->pmin[j], hi = def->pmax[j];
+    int32_t lo = def->pmin[j], hi = DEF_TOP(def, j);
     int64_t v = q16 < lo ? lo : q16 > hi ? hi : q16;
     if (hi <= lo)
         return 0;

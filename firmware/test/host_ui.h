@@ -218,9 +218,9 @@ static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the pre
     uint32_t at = eng_records_at(pv_bin, pv_len), i;
     for (i = 0; i < mod; i++) {
         const def_t *d = &DEFS[pv_bin[at] & 0x7Fu];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        at += eng_record_size(d, pv_bin[1]);
     }
-    at += 1u + 4u * DEFS[T_STEPS].npar + (DEFS[T_STEPS].cvbase >= 0 ? 20u : 0u);
+    at += eng_record_size(&DEFS[T_STEPS], pv_bin[1]) - DEFS[T_STEPS].ndata;
     for (i = 0; i < TRACK_NAME_MAX && pv_bin[at + i]; i++)
         out[i] = (char)pv_bin[at + i];
     out[i] = 0;

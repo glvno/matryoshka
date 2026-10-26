@@ -96,25 +96,12 @@ static uint32_t pages_gen(void);                        /* changes when another 
 /* where the device pages section starts in (p, len), 0 if there is none (proto.c m1_devices_at, on any binary) */
 static uint32_t pages_at(const uint8_t *p, uint32_t len)
 {
-    uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
-    if (!at || !(p[6] & 32u))
+    uint32_t at;
+    if (len < 8u || !(p[6] & 32u) || !(at = eng_cables_end(p, len)))
         return 0;
-    nmod = p[2];
-    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
-    for (i = 0; i < nmod; i++) {
-        const def_t *d;
-        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
-            return 0;
-        d = &DEFS[p[at] & 0x7Fu];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
-        npar += d->npar;
-    }
-    at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);
-    if (p[6] & 4u) at += nmod;
-    if (p[6] & 8u) {
-        if (at >= len) return 0;
-        at += 1u + 4u * p[at];
-    }
+    if (p[6] & 4u) at += p[2];
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
+        return 0;
     if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
         return 0;
     return at < len ? at : 0;
@@ -168,7 +155,7 @@ static void pages_plain(uint32_t m)
         pg->nlen = pg_dev[pg_ndev].nlen;
         pg->part = (uint8_t)j;
         pg->parts = (uint8_t)n;
-        pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV) ? m + 1u : 0u);
+        pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV || t == T_ENV8) ? m + 1u : 0u);
         pg->nrows = 0;
         for (r = 0; r < PG_ROWS && j * PG_ROWS + r < d->npar; r++) {
             pg->mod[r] = (uint8_t)m;
@@ -379,7 +366,7 @@ static int32_t eff_now(uint32_t m, uint32_t j, const def_t *d, int32_t v)
                 pg_lag[k].on = 0;
                 return e;
             }
-            return clampi(e + (v - pg_lag[k].was), d->pmin[j], d->pmax[j]);
+            return clampi(e + (v - pg_lag[k].was), d->pmin[j], DEF_TOP(d, j));
         }
     return e;
 }
@@ -552,7 +539,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
     } else if (eng_param_is_log(m, j)) {
         *v = eng_step_param(m, j, clicks * (fast ? 5 : 1), 655);   /* 1/100 of the octaves a click */
     } else {
-        *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], d->pmax[j]);
+        *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], DEF_TOP(d, j));   /* (past pmax: a stretch) */
     }
     return 0;
 }
@@ -601,7 +588,16 @@ static uint32_t pages_cc(uint32_t k)
         return setting_bar(pg->par[k], 127u);
     if (pg->par[k] & POLY_ROW)
         return (uint32_t)(poly_value(pg->mod[k], pg->par[k] & 0x7Fu) * 127 / poly_max(pg->par[k] & 0x7Fu));
-    return (uint32_t)((unit_of(&DEFS[eng_type(pg->mod[k])], pg->par[k], eng_get_param(pg->mod[k], pg->par[k])) * 127 + 32768) >> 16);
+    {
+        const def_t *d = &DEFS[eng_type(pg->mod[k])];
+        uint32_t j = pg->par[k];
+        int32_t v = eng_get_param(pg->mod[k], j), lo = d->pmin[j], u;
+        if (d->ptop && d->pchoice && d->pchoice[j])     /* a choice list past pmax (a stretch): over every choice, as pages_set_unit */
+            u = (int32_t)(((int64_t)(clampi(v, lo, d->ptop[j]) - lo) << 16) / (d->ptop[j] - lo));
+        else
+            u = unit_of(d, j, v);
+        return (uint32_t)((u * 127 + 32768) >> 16);
+    }
 }
 
 /* ---- drawing */
@@ -649,6 +645,18 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
     put(unit, str_eq(u, "HZ") ? "Hz" : str_eq(u, "S") ? "s" : str_eq(u, "MS") ? "ms" : str_eq(u, "DB") ? "dB" : str_eq(u, "BPM") ? "bpm" : str_eq(u, "CT") ? "ct" : str_eq(u, "ST") ? "st" : str_eq(u, "OCT") ? "oct" : u)[0] = 0;
 }
 
+/* the value a row plays, where a switch of its module stretches it (the editor's card shows the same): the ADSR's long
+ * (decay and release x 2.4) and the Delay's swell (feedback x 198 / 95); the bar keeps the knob's range */
+static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
+{
+    int t = eng_type(m);
+    if (t == T_ADSR && (j == ADSR_P_D || j == ADSR_P_R) && eng_get_param(m, ADSR_P_LONG) >= 32768)
+        return (int32_t)(((int64_t)v * ADSR_LONG_Q16) >> 16);
+    if (t == T_DELAY && j == DELAY_P_FB && eng_get_param(m, DELAY_P_SWELL) >= 32768)
+        return (int32_t)((int64_t)v * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    return v;
+}
+
 /* a row's value as text and its bar positions (base, live) over `width` px: a parameter, or a poly group's setting */
 static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint32_t width, uint32_t *base, uint32_t *live)
 {
@@ -680,7 +688,7 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
     {
         const def_t *d = &DEFS[eng_type(m)];
         int32_t v = eng_get_param(m, j), e = eff_now(m, j, d, v);
-        value_parts(d, j, v, num, unit);
+        value_parts(d, j, stretched(m, j, v), num, unit);
         *base = param_bar(d, j, v, width);
         *live = param_bar(d, j, e, width);
     }

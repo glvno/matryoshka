@@ -166,8 +166,8 @@ function bends(values: number[], costs: number[][], thr: number, step: boolean):
 
 const GRID_MAX = 16384;
 /** types whose outputs each cost the same whatever else is patched (a constant fill per output): their outputs are
- * additive, not dimensions of the grid (the Drum map's sixteen would make a grid of 2^14 points) */
-const ADDITIVE_OUTPUTS = new Set(['drummap']);
+ * additive, not dimensions of the grid (the Drum map's sixteen would make a grid of 2^14 points; the Selector's eight gates) */
+const ADDITIVE_OUTPUTS = new Set(['drummap', 'select']);
 /** `order`: where the setting stands in the definition, so that equal effects sort the same on every run (the probes finish
  * in any order) */
 type Dim = { dim: CostDim; values: number[]; effect: number; order: number; set: (cfg: KitCfg, v: number) => void };

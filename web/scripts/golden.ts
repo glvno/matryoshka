@@ -4,7 +4,7 @@
 // Run from web/:  npx vite-node scripts/golden.ts   (tools/golden.sh does this and runs the C comparison)
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { Engine } from '../src/engine';
-import { encodePatch, FLAG_INPUTS, PANEL_BYTES, toQ16 } from '../src/patchbin';
+import { deviceBudget, encodePatch, FLAG_INPUTS, PANEL_BYTES, recordSize, toQ16 } from '../src/patchbin';
 import { cpuEstimate } from '../src/cpu';
 import { DEFS, DEVICE_SR } from '../src/modules';
 import { attFrame, chunkFrames, commitFrame, paramFrame, sandboxFrame, slotEraseFrame, slotFrame, slotInfoFrame } from '../src/protocol';
@@ -132,6 +132,15 @@ lfoKit('lfo-clk', { sync: 1, div: 2 }, (wire, clk, _r, lfo) => wire(clk, 'out', 
 lfoKit('lfo-clk-sh', { sync: 1, div: 4, wave: 4 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
 lfoKit('lfo-bpm', { sync: 1, div: 6, bpm: 140 }, () => undefined);
 lfoKit('lfo-reset', { rate: 5 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
+// #351: the start phase, backward, the rate ranges and the synced speeds (cycles that end between clock ticks)
+lfoKit('lfo-clk-x8', { sync: 1, div: 0, mult: 6, phase: 90 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-clk-x2-dotted', { sync: 1, div: 3, mult: 4, wave: 0, dir: 1, phase: 30 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-clk-div4', { sync: 1, div: 2, mult: 1, wave: 1, phase: 45 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-clk-x8-sh', { sync: 1, div: 1, mult: 6, wave: 4 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-bpm-x4', { sync: 1, div: 6, bpm: 140, mult: 5, wave: 3, dir: 1 }, () => undefined);
+lfoKit('lfo-reset-phase', { rate: 5, wave: 0, phase: 90, dir: 1 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
+lfoKit('lfo-fast-back', { rate: 20, range: 2, dir: 1, phase: 120 }, () => undefined);
+lfoKit('lfo-slow', { rate: 30, range: 1, wave: 0, phase: 90 }, () => undefined);
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });
@@ -583,6 +592,37 @@ kit('comb', (add, wire) => {
   wire(osc, 'out', cb, 'in');
   wire(cb, 'out', out, 'l');
 });
+// the phase distortion oscillator: each bend at a fixed dcw, a second waveform on the odd cycles (a bend with a
+// resonance), one note three octaves up where the band limit holds the dcw back
+const pdMix = (oscs: Record<string, number>[], extra?: (add: Parameters<Build>[0], wire: Parameters<Build>[1], kb: number, ids: number[]) => void): Build =>
+  (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const mix = add('mixer', 0, 0, { l1: 0.25, l2: 0.25, l3: 0.25, l4: 0.25 });
+    const out = add('output', 0, 0);
+    const ids = oscs.map((p, i) => {
+      const o = add('pd', 0, 0, { level: 0.9, ...p });
+      wire(kb, 'pitch', o, 'pitch');
+      wire(o, 'out', mix, `in${i + 1}`);
+      return o;
+    });
+    extra?.(add, wire, kb, ids);
+    wire(mix, 'out', out, 'l');
+  };
+kit('pd-bends', pdMix([{ wave: 0, dcw: 1 }, { wave: 1, dcw: 0.7, coarse: -12 }, { wave: 2, dcw: 0.5 }, { wave: 3, dcw: 0.9, coarse: 12 }]));
+kit('pd-alt', pdMix([{ wave: 4, dcw: 0.8 }, { wave: 0, wave2: 3, dcw: 0.6 }, { wave: 1, wave2: 6, dcw: 0.7, range: 2 }, { wave: 2, dcw: 1, coarse: 36 }]));
+// the resonance windows with the dcw from an envelope (its input; the parameter 0), sync from a slower oscillator, phase
+// modulation from a sine
+kit('pd-reso', pdMix([{ wave: 5, dcw: 0, range: 3 }, { wave: 6, dcw: 0, range: 4 }, { wave: 7, dcw: 0.2, range: 2.5, coarse: 12 }, { wave: 0, dcw: 0.4, pm: 1.5 }], (add, wire, kb, ids) => {
+  const env = add('adsr', 0, 0, { a: 0.2, d: 0.6, s: 0.4, r: 0.3 });
+  wire(kb, 'gate', env, 'gate');
+  for (const o of ids.slice(0, 3)) wire(env, 'env', o, 'dcw');
+  const sy = add('osc', 0, 0, { wave: 3, coarse: -19, level: 1 });
+  wire(kb, 'pitch', sy, 'pitch');
+  wire(sy, 'out', ids[1], 'sync');
+  const mod = add('osc', 0, 0, { wave: 0, coarse: 7, level: 1 });
+  wire(kb, 'pitch', mod, 'pitch');
+  wire(mod, 'out', ids[3], 'pm');
+}));
 kit('modal', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const pl = add('pulse', 0, 0, { time: 0.002 });
@@ -627,6 +667,51 @@ kit('moving-rates', (add, wire) => {
   wire(md, 'out', mix, 'in3');
   wire(mix, 'out', out, 'l');
 });
+// the eight-step envelope: a sustain mid-way (the release jumps past it, rising and falling steps after it), sus off (the
+// steps run through the gate), sus = end; its rates moved by LFOs (the firmware caches one step's rates)
+kit('env8', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const l1 = add('lfo', 0, 0, { wave: 1, rate: 2.3, depth: 0.8 });
+  const steps = { l1: 1, r1: 0.004, l2: 0.3, r2: 0.05, l3: 0.7, r3: 0.08, l4: 0.5, r4: 0.03, l5: 0.9, r5: 0.06, l6: 0.2, r6: 0.1, l7: 0.6, r7: 0.02, l8: 0, r8: 0.15 };
+  const ea = add('env8', 0, 0, { ...steps, sus: 3, end: 8 }, { map: { p1: ['r2', 'r5', 'l4'] } });
+  const l2 = add('lfo', 0, 0, { wave: 3, rate: 1.7, depth: 1 });
+  const eb = add('env8', 0, 0, { ...steps, sus: 1, end: 6 }, { map: { p2: ['sus', 'end'] }, att: [1, 0.25] }); // sus and end moved (u32 masks)
+  const ec = add('env8', 0, 0, { ...steps, sus: 5, end: 5 });
+  const mix = add('mixer', 0, 0, { l1: 0.4, l2: 0.4, l3: 0.4 });
+  const out = add('output', 0, 0);
+  wire(l1, 'out', ea, 'p1');
+  wire(l2, 'out', eb, 'p2');
+  [ea, eb, ec].forEach((e, i) => {
+    const o = add('osc', 0, 0, { wave: i + 1, coarse: i * 7 - 7, level: 0.7 });
+    const v = add('vca', 0, 0);
+    wire(kb, 'pitch', o, 'pitch');
+    wire(kb, 'gate', e, 'gate');
+    wire(o, 'out', v, 'in');
+    wire(e, 'env', v, 'cv');
+    wire(v, 'out', mix, `in${i + 1}`);
+  });
+  wire(mix, 'out', out, 'l');
+});
+// the gate also routed to ec's end (a u32 route mask): held, all eight steps; let go, the end is 5
+tests['env8'].modules.filter((m) => m.type === 'env8')[2].inputMap = { gate: ['end'] };
+// in a poly assembly, with the env flaw: released parts go idle once their steps have run
+const env8Parts: number[] = [];
+kit('env8-poly', (add, wire) => {
+  add('fm1', 0, 0);
+  const pt = add('part', 0, 0);
+  const o = add('osc', 0, 0, { wave: 2, level: 0.5 });
+  const e = add('env8', 0, 0, { l1: 1, r1: 0.003, l2: 0.4, r2: 0.08, l3: 0.6, r3: 0.05, l4: 0.1, r4: 0.06, l5: 0.3, r5: 0.04, l6: 0, r6: 0.1, sus: 3, end: 6 });
+  const v = add('vca', 0, 0);
+  const out = add('output', 0, 0, { level: 0.6 });
+  wire(pt, 'pitch', o, 'pitch');
+  wire(pt, 'gate', e, 'gate');
+  wire(o, 'out', v, 'in');
+  wire(e, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+  env8Parts.push(pt, o, e, v);
+});
+polyAsm(tests['env8-poly'], env8Parts, { parts: 4, flaws: [{ detune: 0, drift: 0, bright: 0, env: 40, level: 100 }, { detune: 0, drift: 0, bright: 0, env: -30, level: 100 }] });
+events['env8-poly'] = POLY_EVENTS;
 kit('shift', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
@@ -717,6 +802,11 @@ const delayKit = (name: string, params: Record<string, number>): void =>
 delayKit('delay-pingpong', { time: 120, pingpong: 1 });
 delayKit('delay-sync', { sync: 1, div: 5, bpm: 133 });
 delayKit('delay-sync-pingpong', { sync: 1, div: 6, bpm: 90, pingpong: 1 });
+// #351: the extra note lengths (1/32; 1/2T, longer than the ping-pong half, is cut to it) and the swelling feedback
+delayKit('delay-sync-note', { sync: 1, note: 1 });
+delayKit('delay-sync-note-pingpong', { sync: 1, note: 2, pingpong: 1 });
+delayKit('delay-swell', { time: 60, fb: 0.8, swell: 1 });
+delayKit('delay-swell-pingpong', { time: 45, fb: 0.95, swell: 1, pingpong: 1 });
 kit('feedback-pm', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 0, pm: 2 });
@@ -865,6 +955,54 @@ kit('reverb', (add, wire) => {
   wire(env, 'env', vca, 'cv');
   wire(vca, 'out', rv, 'in');
   wire(rv, 'out', out, 'l');
+});
+// #351: the reverb frozen once the note has gone in (a slow envelope on p1 turns freeze on)
+kit('reverb-freeze', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
+  const env = add('adsr', 0, 0, { a: 0.002, d: 0.05, s: 0, r: 0.05 });
+  const slow = add('adsr', 0, 0, { a: 0.15, d: 0.1, s: 1, r: 0.05 });
+  const vca = add('vca', 0, 0);
+  const rv = add('reverb', 0, 0, { size: 0.5, damp: 0.5, mix: 0.7 }, { map: { p1: ['freeze'] } });
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(kb, 'gate', slow, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', rv, 'in');
+  wire(slow, 'env', rv, 'p1');
+  wire(rv, 'out', out, 'l');
+});
+// #351: Pulse's inf switched on and off by a slow square on p1; the ADSR's long times, its decay also moved by an LFO
+kit('pulse-inf', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const trig = add('lfo', 0, 0, { wave: 3, rate: 9, depth: 1 });
+  const sw = add('lfo', 0, 0, { wave: 3, rate: 2.3, depth: 1 });
+  const pl = add('pulse', 0, 0, { time: 0.02 }, { map: { p1: ['inf'] } });
+  const osc = add('osc', 0, 0, { wave: 1, level: 0.7 });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(trig, 'out', pl, 'trig');
+  wire(sw, 'out', pl, 'p1');
+  wire(osc, 'out', vca, 'in');
+  wire(pl, 'out', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
+kit('adsr-long', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
+  const lfo = add('lfo', 0, 0, { wave: 1, rate: 3, depth: 0.5 });
+  const env = add('adsr', 0, 0, { a: 0.01, d: 0.06, s: 0.3, r: 0.07, long: 1 }, { map: { p1: ['d'] } });
+  const vca = add('vca', 0, 0);
+  const out = add('output', 0, 0);
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', env, 'gate');
+  wire(lfo, 'out', env, 'p1');
+  wire(osc, 'out', vca, 'in');
+  wire(env, 'env', vca, 'cv');
+  wire(vca, 'out', out, 'l');
 });
 
 // polyphony: osc -> filter (its own envelope on cv) -> vca (second envelope) per voice, one delay and the output shared
@@ -1125,6 +1263,47 @@ kit(
     wire(pn, 'r', out, 'r');
     wire(xf, 'out', out, 'l');
     wire(xf, 'out', out, 'r');
+  },
+  3,
+);
+// Selectors (#351): a = four inputs (three oscillators and a value) stepped by an LFO on its pos input, with a crossfade
+// that a fast triangle on b's pos changes mid-way; b = a value table (no inputs) moved by p1 (an LFO) that transposes an
+// oscillator, its gates opening VCAs; c = the poly copy (three voices), instant switching
+kit(
+  'select',
+  (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const o1 = add('osc', 0, 0, { wave: 2, level: 0.3 });
+    const o2 = add('osc', 0, 0, { wave: 1, coarse: 7, level: 0.3 });
+    const o3 = add('osc', 0, 0, { wave: 3, coarse: -12, pw: 0.3, level: 0.3 });
+    const step = add('lfo', 0, 0, { wave: 2, rate: 3.1, depth: 1 });
+    const a = add('select', 0, 0, { pos: 1, count: 4, fade: 4, v4: 0.2 });
+    const tri = add('lfo', 0, 0, { wave: 1, rate: 0.9, depth: 0.8 });
+    const b = add('select', 0, 0, { pos: 1, count: 3, fade: 0, v1: 0, v2: 7 / 12, v3: 1 }, { map: { p1: ['pos'] } });
+    const tone = add('osc', 0, 0, { wave: 0, level: 0.4 });
+    const va = add('vca', 0, 0, { gain: 1 });
+    const vb = add('vca', 0, 0, { gain: 1 });
+    const c = add('select', 0, 0, { pos: 2, count: 8, fade: 30 });
+    const out = add('output', 0, 0, { level: 0.4 });
+    for (const o of [o1, o2, o3, tone]) wire(kb, 'pitch', o, 'pitch');
+    wire(o1, 'out', a, 'in1');
+    wire(o2, 'out', a, 'in2');
+    wire(o3, 'out', a, 'in3');
+    wire(step, 'out', a, 'pos');
+    wire(tri, 'out', b, 'p1');
+    wire(b, 'out', tone, 'pitch');
+    wire(tone, 'out', va, 'in');
+    wire(o1, 'out', vb, 'in');
+    wire(b, 'g2', va, 'cv');
+    wire(b, 'g3', va, 'cv');
+    wire(b, 'g1', vb, 'cv');
+    wire(o2, 'out', c, 'in1');
+    wire(o3, 'out', c, 'in3');
+    wire(tri, 'out', c, 'pos');
+    wire(a, 'out', out, 'l');
+    wire(va, 'out', out, 'r');
+    wire(vb, 'out', out, 'r');
+    wire(c, 'out', out, 'r');
   },
   3,
 );
@@ -1521,6 +1700,50 @@ tests['steps-clk'] = make('steps-clk', (add, wire) => {
   st[1].notes = pattern([0, 3, 5, 6, 9, 12, 14], [0, 9], { 5: 60, 14: 30 });
 }
 
+// the rates 1/2 and 1/64 and swing to 80 % (#351, past the range's max: ParamDef.top). A 1/64 track (every second step
+// half a tick after a tick) at 80 % swing, a 1/2 track, a track morphed past max (rate 1/16 -> 1/64, a choice: B; swing
+// 60 -> 80, linearly), and a track whose base is past max under its pins (rate 1/64 + p2, swing 78 - p1: clamped to the
+// stretch, not pulled back to max); stop and run; then MIDI clock with every seventh tick early (the half tick's step
+// comes with it). (The C engine morphs every module, the TS one only those with a B side: values here survive C's
+// round trip through morph_unit, so the morph adds no difference of its own.)
+tests['steps-rates'] = make('steps-rates', (add, wire) => {
+  const kb = add('fm1', 0, 0, { tempo: 133, morph: 0.6 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const mx = add('mixer', 1800, 0);
+  const a = drum(add, wire, 200, 0, -12, 0.03);
+  const b = drum(add, wire, 600, 3, 12, 0.2);
+  const c = drum(add, wire, 1000, 1, 0, 0.04);
+  const d = drum(add, wire, 1400, 0, -24, 0.02);
+  const up = add('const', 1400, 1200, { value: 0.125 });
+  const down = add('const', 1400, 1400, { value: -0.0625 });
+  wire(up, 'out', d.st, 'p2');
+  wire(down, 'out', d.st, 'p1');
+  wire(a.v, 'out', mx, 'in1');
+  wire(b.v, 'out', mx, 'in2');
+  wire(c.v, 'out', mx, 'in3');
+  wire(d.v, 'out', mx, 'in4');
+  wire(mx, 'out', out, 'l');
+  void kb;
+});
+{
+  const st = tests['steps-rates'].modules.filter((m) => m.type === 'steps');
+  Object.assign(st[0].params, { len: 16, rate: 8, swing: 80, gate: 0.5 });
+  st[0].notes = pattern([0, 1, 2, 3, 5, 6, 7, 9, 10, 12, 13, 15], [0, 8]);
+  Object.assign(st[1].params, { len: 4, rate: 7, gate: 0.3 });
+  st[1].notes = pattern([0, 1, 3], [1]);
+  Object.assign(st[2].params, { len: 8, rate: 4, swing: 60, gate: 0.4 });
+  st[2].paramsB = { ...st[2].params, rate: 8, swing: 80 };
+  st[2].notes = pattern([0, 1, 2, 3, 4, 5, 6, 7], [4]);
+  Object.assign(st[3].params, { len: 12, rate: 8, swing: 78, gate: 0.6 });
+  st[3].map = { ...st[3].map!, p1: ['swing'], p2: ['rate'] };
+  st[3].notes = pattern([0, 1, 3, 4, 5, 7, 8, 9, 11], [3], { 5: 50 });
+  const ev: Ev[] = [[128 * 4, 'run', 0], [128 * 300, 'stop', 0], [128 * 330, 'run', 0], [128 * 500, 'ext', 0]];
+  for (let t = 0; t < 160; t++) ev.push([128 * 500 + 900 * t - (t % 7 === 3 ? 600 : 0), 'tick', 0]);
+  ev.push([128 * 500 + 900 * 160 + 200, 'int', 0]);
+  events['steps-rates'] = ev;
+  ends['steps-rates'] = 128 * 500 + 900 * 160 + 128 * 100;
+}
+
 // keys out (#133): a Steps track of chords (notes of different lengths, one through the loop's end and cut there, a chance
 // per note, a note past len that never plays) into a Voice allocator of three voices in a poly assembly (osc, envelope,
 // VCA); transposed a fifth up by a Constant; four notes at once take a voice over
@@ -1613,6 +1836,38 @@ tests['drummap'].modules.find((m) => m.type === 'steps')!.notes = [n(0, 2, 36), 
 events['drummap'] = [[128 * 4, 'run', 0], [128 * 30, 'on', 60], [128 * 60, 'on', 62], [128 * 90, 'off', 60], [128 * 90 + 40, 'on', 60],
   [128 * 120, 'off', 62], [128 * 140, 'off', 60], [128 * 300, 'stop', 0]];
 ends['drummap'] = 128 * 360;
+
+// Drum map repeat (#184): Main's keys into two maps that repeat their rows. The left one's rows are on the white keys
+// F3..F4 (blocks of eight white keys, a black key plays the white key's row below it): G4 and F3 both play row 1 (the
+// second held key neither restarts it nor lets it fall when the first goes), F#4 row 8, F2 row 2, F#5 row 7. The right
+// one keeps the General MIDI rows (not all white: blocks of 21 semitones): A3 and D#5 both play the kick, F2 nothing.
+tests['drummap-repeat'] = make('drummap-repeat', (add, wire) => {
+  const main = add('fm1', 0, 0, {});
+  const dw = add('drummap', 200, 0, { n1: 53, n2: 55, n3: 57, n4: 59, n5: 60, n6: 62, n7: 64, n8: 65, repeat: 1 });
+  const dg = add('drummap', 200, 400, { repeat: 1 });
+  const ml = add('mixer', 400, 0, { l1: 0.3, l2: 0.2, l3: 0.2, l4: 0.15 });
+  const ml2 = add('mixer', 400, 200, { l1: 0.1, l2: 0, l3: 0, l4: 0 });
+  const mr = add('mixer', 400, 400, { l1: 0.3, l2: 0.3, l3: 0.2, l4: 0 });
+  const out = add('output', 600, 0, { level: 1 });
+  wire(main, 'keys', dw, 'keys');
+  wire(main, 'keys', dg, 'keys');
+  wire(dw, 'g1', ml, 'in1');
+  wire(dw, 'v1', ml, 'in2');
+  wire(dw, 'g8', ml, 'in3');
+  wire(dw, 'g2', ml2, 'in2');
+  wire(dw, 'g7', ml2, 'in1');
+  wire(ml2, 'out', ml, 'in4');
+  wire(dg, 'g1', mr, 'in1');
+  wire(dg, 'v1', mr, 'in2');
+  wire(dg, 'g6', mr, 'in3');
+  wire(ml, 'out', out, 'l');
+  wire(mr, 'out', out, 'r');
+});
+events['drummap-repeat'] = [[128 * 10, 'on', 67], [128 * 30, 'on', 53], [128 * 50, 'off', 67], [128 * 70, 'off', 53],
+  [128 * 80, 'on', 67], [128 * 80 + 60, 'off', 67], [128 * 82, 'on', 79], [128 * 90, 'on', 66], [128 * 110, 'off', 66],
+  [128 * 130, 'on', 41], [128 * 150, 'on', 57], [128 * 160, 'on', 78], [128 * 170, 'off', 57], [128 * 190, 'off', 78],
+  [128 * 200, 'off', 41], [128 * 210, 'off', 79]];
+ends['drummap-repeat'] = 128 * 240;
 
 // an Arpeggiator on ARP, saved bypassed (the factory patches' arpeggiator): bypassed it hands Main's keys straight to the
 // Voicing (a chord sounds as played); ARP (index 6) switches it on (the straight notes let go, it arpeggiates the keys
@@ -1789,10 +2044,7 @@ tests['arm-set'] = make('arm-set', (add, wire) => {
   const enc = encodePatch(p, true);
   if (enc[3] !== 0 || enc[6] & 1) throw new Error('disabled-inputs: the mask section goes after the cables (no groups, no morph)');
   let at = 8 + PANEL_BYTES;
-  for (const m of p.modules) {
-    const d = DEFS[m.type];
-    at += 1 + 4 * d.params.length + (d.paramInputs ? 8 + 2 * SOURCES.length : 0) + (d.data ?? 0);
-  }
+  for (const m of p.modules) at += recordSize(m.type);
   at += 4 * p.cables.length;
   const last = p.cables[p.cables.length - 1];
   const idx = (id: number): number => p.modules.findIndex((m) => m.id === id);
@@ -1860,6 +2112,8 @@ for (const [name, patch] of Object.entries(tests)) {
   const cpu = cpuEstimate(patch).use;
   if (cpu > 1) console.log(`${name}: estimated at ${Math.round(cpu * 100)} % of the FM-1's CPU (a correctness kit, not a real-time one)`);
   writeFileSync(new URL(`${f}.m1p`, OUT), bins[name] ?? encodePatch(patch, true));
+  // the parameter values the editor's budget counts (DEVICE.params), which eng_load must take exactly (host_test checks)
+  if (!bins[name]) writeFileSync(new URL(`${f}.par`, OUT), `${deviceBudget(patch).items.find((i) => i.key === 'params')!.used}\n`);
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
   writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' ? `${fr} ${k} ${n}` : k === 'rec' ? `${fr} rec ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
