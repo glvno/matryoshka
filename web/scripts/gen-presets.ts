@@ -126,6 +126,7 @@ presets.push(() => {
 
 presets.push(() => {
   const x = around('Io 4', 'Io 4');
+  plugIn(x.p, x.main.id, 'bend', x.a, 'bend'); // the lever's BEND (its LFO is the mod wheel: around)
   level(x.p, { chord: true });
   return x.p;
 });
