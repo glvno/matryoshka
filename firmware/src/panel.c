@@ -16,7 +16,7 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2);
 static void midi_send_rt(uint32_t b);                   /* a one-byte real-time message (Start 0xFA, Stop 0xFC) */
 static void preset_step(int32_t d);                     /* PRESET: the next / previous patch */
 static void save_state(void);                           /* SAVE */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v);
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v);
 
 static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button (1..7) last moved: the bar shows it */
 #define BTN_PLAY 12u                  /* PLAY: the transport; held, PRESET sets the tempo */
@@ -428,9 +428,10 @@ static void panel_encoders(int32_t *st)
                 ui_dirty = 1;
             continue;
         }
-        if (r == 1)
-            poly_row_set(mod, par & 0x7Fu, v);      /* a poly group's setting (the Voice allocator's in the editor) */
-        else {
+        if (r == 1) {
+            if (poly_row_set(mod, par & 0x7Fu, v))
+                continue;                         /* rejected: keep the old value in the editor too */
+        } else {
             eng_set_param(mod, par, v);
             m1_patch_param(mod, par, v);
             pages_also(k, v);                       /* (the parameters the row also sets, #357) */

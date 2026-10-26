@@ -1082,10 +1082,10 @@ asm('Hera 6', 'Voices', (b) => {
   b.param('out', scope, 'view');
 });
 
-// Cassia 1, a phase distortion polysynth after the Casio CZ-1, in full (its operation manual and the CZ-101's: waveforms,
+// Cassia 1, a phase distortion polysynth after the Casio CZ-1 (waveforms,
 // line select, DCO / DCW / DCA envelopes, key follow, vibrato, ring and noise modulation, velocity and aftertouch). It was
-// Cassia 1 XL until the PD Osc and Env 8 modules (#351) made it fit the FM-1 (D-348); the FM-1 plays three voices (the
-// CZ-1 four with two lines, eight with one: `voices`, in the browser).
+// Cassia 1 XL until the PD Osc and Env 8 modules (#351) made this version fit the FM-1 (D-348). The FM-1 plays two
+// voices; the original CZ-1 plays eight with two lines and sixteen with one. The missing features are listed below.
 // A voice has both lines, each one PD Osc (the CZ's eight waveforms, a second waveform on every other cycle, the DCW
 // input) with its DCW and DCA envelopes; every envelope (the DCO's too) is an Env 8: eight rates and levels, a sustain
 // step and an end step, as on the CZ.
@@ -1113,7 +1113,7 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
   return p;
 };
 asm('Cassia 1', 'Voices', (b) => {
-  const part = b.add('alloc', 0, 4, { voices: 4 });
+  const part = b.add('alloc', 0, 4, { voices: 2 });
   const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 });
   const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // vib depth (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });

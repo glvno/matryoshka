@@ -54,9 +54,10 @@ static void midi_drain_mode(int quick)
                 uint32_t mod, par;
                 int32_t val, r = pages_set_unit(n - 16u, (int32_t)(v * 65536u / 127u), &mod, &par, &val);
                 if (r >= 0) {
-                    if (r == 1)
-                        poly_row_set(mod, par & 0x7Fu, val);
-                    else {
+                    if (r == 1) {
+                        if (poly_row_set(mod, par & 0x7Fu, val))
+                            continue;
+                    } else {
                         eng_set_param(mod, par, val);
                         m1_patch_param(mod, par, val);
                         pages_also(n - 16u, val);       /* (the parameters the row also sets, #357) */

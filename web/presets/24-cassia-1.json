@@ -31,7 +31,7 @@
    "x": 20,
    "y": 2300,
    "params": {
-    "voices": 3,
+    "voices": 2,
     "assign": 0,
     "legato": 0,
     "priority": 0,
@@ -1237,7 +1237,7 @@
    "x": 4240,
    "y": 20,
    "params": {
-    "level": 0.34
+    "level": 0.51
    }
   },
   {

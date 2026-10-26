@@ -124,5 +124,31 @@ int main(void)
     eng_run = 1;
     midi_yield();
     check("queued note plays once the engine is running", mi_r == mi_w && E.grp[0].nheld == 1);
+    {
+        uint32_t d, g, k, found = 0;
+        check("Cassia loads for MIDI voice edit", load("CASSIA 1") == 0);
+        cfg.ch = 0;
+        pv_gen++;
+        screen_idle();
+        for (d = 0; d < pg_ndev && !found; d++)
+            for (g = 0; g < pg_dev[d].npg && !found; g++) {
+                const ppage_t *pg = &pg_page[pg_dev[d].pg0 + g];
+                for (k = 0; k < pg->nrows && !found; k++) {
+                    if (pg->par[k] != POLY_ROW)
+                        continue;
+                    found = 1;
+                    pages_focus(d, g);
+                    int told = param_now;
+                    midi_enqueue(0x0Bu | 0xB0u << 8 | (16u + k) << 16 | 127u << 24, 1);
+                    midi_enqueue(9u | 0x90u << 8 | 72u << 16 | 100u << 24, 1);
+                    midi_drain();
+                    check("rejected MIDI voice edit restores two voices and sends no rejected value",
+                          eng_poly_get(0, 0) == 2 && pv_bin[8] == 2 && param_now == told);
+                    check("note behind rejected MIDI voice edit plays, and the drain unlocks",
+                          mi_r == mi_w && E.grp[0].nheld == 1 && !midi_draining);
+                }
+            }
+        check("Cassia has a MIDI-editable voices row", found);
+    }
     return failed ? 1 : 0;
 }

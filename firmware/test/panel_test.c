@@ -65,7 +65,11 @@ static void preset_step(int32_t d)
     }
 }
 static void save_state(void) { saved++; }
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v) { (void)mod; (void)field; (void)v; }
+#include "../src/poly_edit.h"
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+{
+    return poly_patch_set(pv_bin, pv_len, mod, field, v, eng_load);
+}
 
 #define ROWS_Y (LK_HH + 4u)                            /* the device page's first bar */
 #define K1_TAB px(BAR_X + LK_VP + 1u, row_y(0) + row_h() / 2u)   /* K1's accent tab (the page drawn last: its bars) */
@@ -331,6 +335,16 @@ int main(void)
     static uint16_t before[240 * 240];
     uint32_t mod, par;
     int32_t v0;
+    /* The real reload path: adding voices past the pools must leave a playable patch. */
+    check("Cassia loads for voice edit", load("CASSIA 1") == 0);
+    for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
+        ;
+    poly_row_set(mod, 0, 4);
+    check("Cassia accepts four voices in memory", eng_poly_get(0, 0) == 4);
+    poly_row_set(mod, 0, 5);
+    check("a rejected fifth voice restores the engine and patch", eng_poly_get(0, 0) == 4 && pv_bin[8] == 4);
+    poly_row_set(mod, 0, 2);
+    check("voices can be reduced after a rejected edit", eng_poly_get(0, 0) == 2 && pv_bin[8] == 2);
     fm1_ms = 10000;
     host_ps_init();
     if (load("808 KIT")) {
