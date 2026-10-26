@@ -1064,6 +1064,11 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .picking .param.bar > span:first-child { padding-left: 21px; }
 .picking .param.bar :is(.slider-port, .slider-thumb, .picker-jack) { visibility: hidden; }
 .picking .param.bar :is(input, button, summary) { pointer-events: none; }
+/* a card row that sets several parameters (#357): its count, or the row that sets it, after the name */
+.param.bar .row-tie { font-size: 9.5px; letter-spacing: 0; }
+/* pick mode's tools for such a row and a Selector's position names (#358), at the bar's right over the value */
+.module .param.bar > .row-tools { position: absolute; z-index: 6; right: 4px; top: 1px; display: flex; gap: 3px; align-items: center; }
+.picking .param.bar > .row-tools :is(button, select) { pointer-events: auto; height: 16px; padding: 0 4px; font-size: 9px; }
 .picking .port { cursor: pointer; }
 .fhead .pick-btn[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .frame.picking { border-color: var(--accent); }
