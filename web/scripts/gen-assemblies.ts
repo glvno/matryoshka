@@ -937,6 +937,10 @@ asm('Monolith D', 'Voices', (b) => {
   const o2 = osc(1, { fine: 6 });
   const o3 = osc(2, { fine: -4 });
   const nz = b.add('noise', 3, 3, { level: 1, color: 0 });
+  // WHITE / PINK: a Selector's value into the noise's color through its pin (pink: the color's one-pole low pass at 0.6)
+  const pink = b.add('select', 2, 3, { count: 2, pos: 1, v1: 0, v2: 0.6 });
+  pins(nz, ['color'], [], [1, 1]);
+  b.wire(pink, 'out', nz, 'p1');
   const mix = b.add('mixer', 4, 0, { l1: 0.45, l2: 0.4, l3: 0.3, l4: 0 });
   const src = b.add('xfade', 4, 3, { mix: 0 });
   const wheel = b.add('vca', 5, 3, { gain: 1 });
@@ -1027,7 +1031,7 @@ asm('Monolith D', 'Voices', (b) => {
   b.param('osc 2', mix, 'l2');
   b.param('osc 3', mix, 'l3');
   b.param('noise', mix, 'l4');
-  b.param('white/pink', nz, 'color');
+  b.param('white/pink', pink, 'pos');
   b.param('cutoff', flt, 'cutoff', { head: 'filter' });
   b.param('emphasis', flt, 'res');
   b.param('contour', amount, 'gain');
@@ -1043,6 +1047,21 @@ asm('Monolith D', 'Voices', (b) => {
   b.param('sustain', aenv, 's');
   b.param('a-440', a440On, 'pos', { head: 'output' });
 });
+/** the names of the positions of a factory assembly's Selector rows (#358), by row label (every row of that label) */
+const namePositions = (asmName: string, names: Record<string, string[]>): void => {
+  const d = defs.find((x) => x.name === asmName)!;
+  for (const r of d.params) if (r.label && names[r.label]) r.names = names[r.label];
+};
+{
+  const OFF_ON = ['OFF', 'ON'];
+  const RANGE = ['LO', "32'", "16'", "8'", "4'", "2'"];
+  const WAVE = ['TRIANGLE', 'SAW', 'SQUARE', 'WIDE RECT', 'NARROW RECT'];
+  namePositions('Monolith D', {
+    'glide on': OFF_ON, 'osc mod': OFF_ON, 'osc 3 ctrl': OFF_ON, 'decay on': OFF_ON, 'filter mod': OFF_ON, 'a-440': OFF_ON,
+    'kbd control': ['OFF', '1', '2', '1+2'], 'white/pink': ['WHITE', 'PINK'],
+    'osc 1 range': RANGE, 'osc 2 range': RANGE, 'osc 3 range': RANGE, 'osc 1 wave': WAVE, 'osc 2 wave': WAVE, 'osc 3 wave': WAVE,
+  });
+}
 
 // Silver Box, the voice of the Roland TB-303 (its owner's manual, and Robin Whittle's description of the stock circuit in
 // the Devil Fish documents): one voice, a saw or square into the resonant 24 dB ladder, the main envelope (MEG, the decay
@@ -1056,8 +1075,9 @@ asm('Monolith D', 'Voices', (b) => {
 // original's diode, 47 kOhm and 1 uF), to the cutoff. RESONANCE is a Macro that sets the ladder's resonance and the sweep's
 // smoothing at once, as the original's resonance pot has a second gang in the sweep circuit: from 20 ms at 0 (the sweep
 // follows the MEG) to 0.68 s at 10 (99 % of a 147 kOhm x 1 uF charge), so at high resonance consecutive accents build up.
-// The ladder's cvamt is 1: ENV MOD and the accent each have their own amount. Left out: MIX IN (needs audio input, #351)
-// and the sequencer's pattern chaining and song mode (#351); the Steps track plays the patterns.
+// The ladder's cvamt is 1: ENV MOD and the accent each have their own amount. The sequencer is part of the instrument: a
+// patch's Steps track is it (a pattern's pitch, accent, slide, tie and rest, octave, triplet time, tempo). Left out:
+// MIX IN (needs audio input), the 64-pattern memory, the tracks that chain patterns with transpose, and song mode (#351).
 asm('Silver Box', 'Voices', (b) => {
   const glideUnit = (t: number): number => Math.log(t / 0.001) / Math.log(5000);
   const part = b.add('alloc', 0, 1, { voices: 1, legato: 0 });
@@ -1390,10 +1410,15 @@ asm('Cassia 1', 'Voices', (b) => {
 // (EG1/EXT). The VCO mixer, then the resonant high pass and the resonant 12 dB low pass in series, each with its own
 // MG/T.EXT and EG2/EXT amounts (the filters' cvamt is 1), then the VCA on EG 2. EG 1: DELAY (a Pulse holds the gate off at
 // the start, Math subtracts it), ATTACK, RELEASE (an ADSR at full sustain). EG 2: HOLD (a Pulse that keeps the gate up),
-// ATTACK, DECAY, SUSTAIN, RELEASE. The MG: FREQUENCY, WAVEFORM. Left out: the patch panel's own sections (sample and hold,
-// the noise generator's outputs, the MVCA, the wheel and the momentary switch, the reverse envelopes), the ESP (audio
-// input, a pitch-to-voltage converter: #351), the MG's continuously variable waveform (#351) and the high pass's 6 dB slope
-// (the Multimode filter's high pass is 12 dB).
+// ATTACK, DECAY, SUSTAIN, RELEASE. The MG: FREQUENCY, WAVEFORM. The patch panel's own sections, as its jacks (the
+// assembly's outputs and inputs, to patch in the browser): the sample and hold (white noise in, clocked by the MG's
+// rectangle, a comparator on its triangle), the noise generator's white and pink outputs, the MVCA (EG 1 normalled to its
+// control, its signal input open), EG 1 and EG 2's reverse outputs, the control wheel (Main's mod wheel) and the momentary
+// switch (Main's FX button), KBD CV and trigger, the MG's triangle and rectangle, and INITIAL GAIN into the VCA. Nothing
+// is patched, so they do not change the sound; their outputs meet at the VCO mixer's unused third input, at 0, so they run
+// on the FM-1 too (it leaves out a module nothing audible reads). Left out: the ESP (audio input, a pitch-to-voltage
+// converter: #351), the MG's continuously variable waveform (#351) and the high pass's 6 dB slope (the Multimode filter's
+// high pass is 12 dB).
 asm('Sallen 20', 'Voices', (b) => {
   const pins = (id: number, p1: string[], p2: string[], att: [number, number]): void => {
     const m = b.module(id);
@@ -1466,8 +1491,43 @@ asm('Sallen 20', 'Voices', (b) => {
     b.wire(src, src === mg ? 'out' : 'env', a, 'in');
     b.wire(a, 'out', f, 'cv');
   }
+  // the patch panel
+  const rect = b.add('math', 7, 3, { ka: 1, kb: 1, off: 0 });
+  const sh = b.add('sh', 8, 3, { mode: 0 });
+  const pink = b.add('noise', 0, 5, { level: 1, color: 0.6 });
+  const mvca = b.add('vca', 1, 5, { gain: 1 });
+  const eg1Rev = amt(2, 5, -1);
+  const eg2Rev = amt(3, 5, -1);
+  const wheel = amt(4, 5, 1);
+  const sw = amt(5, 5, 1);
+  const initGain = b.add('const', 6, 5, { value: 0 });
+  b.wire(mg, 'out', rect, 'a');
+  b.wire(nz, 'out', sh, 'in');
+  b.wire(rect, 'cmp', sh, 'clock');
+  b.wire(eg1, 'env', mvca, 'cv');
+  b.wire(eg1, 'env', eg1Rev, 'in');
+  b.wire(eg2, 'env', eg2Rev, 'in');
+  b.wire(initGain, 'out', vca, 'cv');
+  for (const [m, port] of [[rect, 'cmp'], [sh, 'out'], [pink, 'out'], [mvca, 'out'], [eg1Rev, 'out'], [eg2Rev, 'out'], [wheel, 'out'], [sw, 'out']] as const) b.wire(m, port, mix, 'in3');
   b.input('keys', part, 'keys');
+  b.input('mvca in', mvca, 'in');
+  b.input('wheel', wheel, 'in');
+  b.input('switch', sw, 'in');
   b.output('out', vca, 'out');
+  b.output('s&h out', sh, 'out');
+  b.output('white noise', nz, 'out');
+  b.output('pink noise', pink, 'out');
+  b.output('mvca out', mvca, 'out');
+  b.output('eg1 normal', eg1, 'env');
+  b.output('eg1 reverse', eg1Rev, 'out');
+  b.output('eg2 normal', eg2, 'env');
+  b.output('eg2 reverse', eg2Rev, 'out');
+  b.output('mg triangle', mg, 'out');
+  b.output('mg rectangle', rect, 'cmp');
+  b.output('wheel out', wheel, 'out');
+  b.output('switch out', sw, 'out');
+  b.output('kbd cv', part, 'pitch');
+  b.output('kbd trig', part, 'gate');
   b.param('portamento', gl, 'time', { head: 'vco' });
   b.param('master tune', egPitch, 'offset');
   b.param('vco 1 scale', s1, 'pos');
@@ -1501,6 +1561,11 @@ asm('Sallen 20', 'Voices', (b) => {
   b.param('release', eg2, 'r');
   b.param('frequency', mg, 'rate', { head: 'mg' });
   b.param('waveform', mg, 'wave');
+  b.param('initial gain', initGain, 'value', { head: 'patch panel' });
+});
+namePositions('Sallen 20', {
+  'vco 1 scale': ["32'", "16'", "8'", "4'"], 'vco 2 scale': ["16'", "8'", "4'", "2'"],
+  'vco 1 wave': ['TRIANGLE', 'SAW', 'PULSE', 'NOISE'], 'vco 2 wave': ['SAW', 'SQUARE', 'NARROW', 'RING'],
 });
 
 // Expander S, a four-voice polysynth of state-variable expander modules (after Oberheim's SEM and its Four Voice):

@@ -91,6 +91,11 @@ presets.push(() => {
 
 presets.push(() => {
   const x = around('Sallen 20', 'Sallen 20');
+  // the momentary switch: FX, a Gate button held down (the mod wheel is the control wheel: around() plugs it in)
+  const panel = (x.main.panel ??= {});
+  if (panel.kinds) delete panel.kinds.fx;
+  panel.labels = { ...panel.labels, fx: 'SWITCH' };
+  plugIn(x.p, x.main.id, 'fx', x.a, 'switch');
   level(x.p);
   return x.p;
 });

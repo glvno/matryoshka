@@ -781,6 +781,232 @@
         "k3": [],
         "k4": []
       }
+    },
+    {
+      "id": 29,
+      "type": "math",
+      "x": 2240,
+      "y": 1680,
+      "params": {
+        "ka": 1,
+        "kb": 1,
+        "off": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "ka"
+        ],
+        "p2": [
+          "kb"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 30,
+      "type": "sh",
+      "x": 2560,
+      "y": 1680,
+      "params": {
+        "mode": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "mode"
+        ],
+        "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 31,
+      "type": "noise",
+      "x": 0,
+      "y": 2800,
+      "params": {
+        "level": 1,
+        "color": 0.6
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "level"
+        ],
+        "p2": [
+          "color"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 32,
+      "type": "vca",
+      "x": 320,
+      "y": 2800,
+      "params": {
+        "gain": 1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 33,
+      "type": "scale",
+      "x": 640,
+      "y": 2800,
+      "params": {
+        "gain": -1,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 34,
+      "type": "scale",
+      "x": 960,
+      "y": 2800,
+      "params": {
+        "gain": -1,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 35,
+      "type": "scale",
+      "x": 1280,
+      "y": 2800,
+      "params": {
+        "gain": 1,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 36,
+      "type": "scale",
+      "x": 1600,
+      "y": 2800,
+      "params": {
+        "gain": 1,
+        "offset": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "gain"
+        ],
+        "p2": [
+          "offset"
+        ],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 37,
+      "type": "const",
+      "x": 1920,
+      "y": 2800,
+      "params": {
+        "value": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "value"
+        ],
+        "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
     }
   ],
   "cables": [
@@ -1213,6 +1439,156 @@
         "module": 15,
         "port": "cv"
       }
+    },
+    {
+      "from": {
+        "module": 22,
+        "port": "out"
+      },
+      "to": {
+        "module": 29,
+        "port": "a"
+      }
+    },
+    {
+      "from": {
+        "module": 9,
+        "port": "out"
+      },
+      "to": {
+        "module": 30,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 29,
+        "port": "cmp"
+      },
+      "to": {
+        "module": 30,
+        "port": "clock"
+      }
+    },
+    {
+      "from": {
+        "module": 19,
+        "port": "env"
+      },
+      "to": {
+        "module": 32,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 19,
+        "port": "env"
+      },
+      "to": {
+        "module": 33,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 21,
+        "port": "env"
+      },
+      "to": {
+        "module": 34,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 37,
+        "port": "out"
+      },
+      "to": {
+        "module": 16,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 29,
+        "port": "cmp"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 30,
+        "port": "out"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 31,
+        "port": "out"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 32,
+        "port": "out"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 33,
+        "port": "out"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 34,
+        "port": "out"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 35,
+        "port": "out"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 36,
+        "port": "out"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
     }
   ],
   "inputs": [
@@ -1220,6 +1596,21 @@
       "module": 1,
       "port": "keys",
       "label": "keys"
+    },
+    {
+      "module": 32,
+      "port": "in",
+      "label": "mvca in"
+    },
+    {
+      "module": 35,
+      "port": "in",
+      "label": "wheel"
+    },
+    {
+      "module": 36,
+      "port": "in",
+      "label": "switch"
     }
   ],
   "outputs": [
@@ -1227,6 +1618,76 @@
       "module": 16,
       "port": "out",
       "label": "out"
+    },
+    {
+      "module": 30,
+      "port": "out",
+      "label": "s&h out"
+    },
+    {
+      "module": 9,
+      "port": "out",
+      "label": "white noise"
+    },
+    {
+      "module": 31,
+      "port": "out",
+      "label": "pink noise"
+    },
+    {
+      "module": 32,
+      "port": "out",
+      "label": "mvca out"
+    },
+    {
+      "module": 19,
+      "port": "env",
+      "label": "eg1 normal"
+    },
+    {
+      "module": 33,
+      "port": "out",
+      "label": "eg1 reverse"
+    },
+    {
+      "module": 21,
+      "port": "env",
+      "label": "eg2 normal"
+    },
+    {
+      "module": 34,
+      "port": "out",
+      "label": "eg2 reverse"
+    },
+    {
+      "module": 22,
+      "port": "out",
+      "label": "mg triangle"
+    },
+    {
+      "module": 29,
+      "port": "cmp",
+      "label": "mg rectangle"
+    },
+    {
+      "module": 35,
+      "port": "out",
+      "label": "wheel out"
+    },
+    {
+      "module": 36,
+      "port": "out",
+      "label": "switch out"
+    },
+    {
+      "module": 1,
+      "port": "pitch",
+      "label": "kbd cv"
+    },
+    {
+      "module": 1,
+      "port": "gate",
+      "label": "kbd trig"
     }
   ],
   "params": [
@@ -1244,12 +1705,24 @@
     {
       "module": 3,
       "param": "pos",
-      "label": "vco 1 scale"
+      "label": "vco 1 scale",
+      "names": [
+        "32'",
+        "16'",
+        "8'",
+        "4'"
+      ]
     },
     {
       "module": 5,
       "param": "pos",
-      "label": "vco 1 wave"
+      "label": "vco 1 wave",
+      "names": [
+        "TRIANGLE",
+        "SAW",
+        "PULSE",
+        "NOISE"
+      ]
     },
     {
       "module": 7,
@@ -1260,12 +1733,24 @@
       "module": 4,
       "param": "pos",
       "label": "vco 2 scale",
-      "group": true
+      "group": true,
+      "names": [
+        "16'",
+        "8'",
+        "4'",
+        "2'"
+      ]
     },
     {
       "module": 6,
       "param": "pos",
-      "label": "vco 2 wave"
+      "label": "vco 2 wave",
+      "names": [
+        "SAW",
+        "SQUARE",
+        "NARROW",
+        "RING"
+      ]
     },
     {
       "module": 8,
@@ -1405,6 +1890,12 @@
       "module": 22,
       "param": "wave",
       "label": "waveform"
+    },
+    {
+      "module": 37,
+      "param": "value",
+      "label": "initial gain",
+      "head": "patch panel"
     }
   ]
 }
