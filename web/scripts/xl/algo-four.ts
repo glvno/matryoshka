@@ -5,11 +5,23 @@
 // Algo Four) plays three voices, gives the two modulators ADSRs, keeps operator 4's feedback at 0 and wires one algorithm
 // (5: 2 into 1, 4 into 3).
 //
-// What is here, by the manual's parameter list:
-// - POLY / MONO: row `voices` (8 = POLY, "up to 8 notes"; 1 = MONO).
-// - ALGORITHM 1..8: row `algorithm`, a Selector's position. Its value table puts the position on its out, which moves each
-//   voice's four route Selectors to the same position: one in front of the phase input of each of operators 1, 2 and 3
-//   and one for what is heard. Input k of each takes what algorithm k sends there, cables summed:
+// The card (docs/ledger/patches-and-presets.md D-347): one row per parameter of the DX100, named as its LCD names it
+// (lowercase), switches as named choices:
+//   voice        algorithm (1..8), feedback
+//   lfo          lfo wave (SAW UP, SQUARE, TRIANGLE, S/HOLD), lfo speed, lfo delay, pmd, amd, lfo sync (OFF, ON), pms, ams
+//   per operator freq ratio, detune, out level, key velocity; ar, d1r, d1l, d2r; rr, rate scaling, level scaling, eg bias
+//                sens; operator (the OPERATOR ON-OFF buttons: OFF, ON) and ams (AMS ON-OFF: OFF, ON). The DX100 edits one
+//                operator at a time (OPERATOR SELECT): the card shows the operators as copies, one at a time, picked on an
+//                `op` row (D-638), in four runs of at most four rows (one FM-1 page each), so the card has four `op` rows
+//                where the DX100 has one button
+//   performance  poly/mono, p bend range, porta mode (FULL TIME, FINGERED), porta time, foot sw (SUSTAIN, PORTAMENTO), mw
+//                pitch, mw ampli, bc pitch, bc ampli, bc p bias, bc e bias, transpose, m.tune
+// 79 rows for the DX100's 80 parameters (PB MODE is missing, below); 37 show at once, beside the four `op` rows.
+// How each is built:
+// - POLY/MONO: the Voicing's voice count (8 = POLY, "up to 8 notes"; 1 = MONO).
+// - ALGORITHM 1..8: a Selector's position. Its value table puts the position on its out, which moves each voice's four
+//   route Selectors to the same position: one in front of the phase input of each of operators 1, 2 and 3 and one for
+//   what is heard. Input k of each takes what algorithm k sends there, cables summed:
 //     algorithm  paths                heard
 //     1          4→3, 3→2, 2→1       1
 //     2          3→2, 4→2, 2→1       1
@@ -19,55 +31,60 @@
 //     6          4→1, 4→2, 4→3       1, 2, 3
 //     7          4→3                 1, 2, 3
 //     8          (none)              1, 2, 3, 4
-// - FEEDBACK 0..7 on operator 4, in every algorithm: row `feedback`.
-// - Per operator: FREQUENCY RATIO (rows `ratio n`, semitones, and `detune n`, cents: 3.14 = 20 st - 19 ct; ratios past
-//   16.96 add `octave n`), DETUNE (+-2.6 cents: the same `detune n`), OPERATOR OUT LEVEL (`level n`), the envelope (AR =
-//   `r1`, D1R = `r2` towards D1L = `l2`, D2R = `r3` towards `l3` (0: it decays while held; l3 = l2: D2R 0), RR = `r4`;
-//   the Env L/R module, its first level at the top as the DX100's attack; the DX100's rates are speeds, here times), KEY
-//   VELOCITY 0..7 (`velocity n`: 0 none, 1 the full range; a note at velocity v plays at 1 - velocity x (1 - v)), KEYBOARD
-//   SCALING LEVEL (`level scaling n`: the level falls by that much over the four octaves above C2, the DX100's lowest
-//   key), RATE SCALING 0..3 (`rate scaling n`: every segment's time halves per octave above C2 at 3), the AMS switch
-//   (`am n`: 1 on, 0 off) and EG BIAS SENSITIVITY 0..7 (`eg bias n`). Velocity, level scaling, amplitude modulation and EG
-//   bias move the oscillator's level (its p2 pin, the four added).
-// - The LFO, once for all voices: LFO WAVE (`lfo wave`, a Selector in the DX100's order: 1 SAW UP, 2 SQUARE, 3 TRIANGLE,
-//   4 S/HOLD; 5 sine is extra), LFO SPEED (`lfo speed` with `lfo range`: norm 0.02..40 Hz, slow 0.0008..1.6 Hz, fast
-//   0.04..80 Hz, so the DX100's 0.0008..55 Hz is there), LFO DELAY (`lfo delay`: a Macro on an Env L/R that holds the LFO at 0 for that time, then fades it in over as long, as
-//   the manual's "initial delay ... which slowly increases over" the same time; 0 none, 1 = 10 s; it starts again on a key
-//   played after all were released), LFO SYNC (`lfo sync`: 1 restarts the LFO on every key played, at the wave's peak: a second Selector, set by the wave,
-//   gives the LFO's `phase`; the saw starts at the foot of its ramp, just past its peak), LFO PMD and AMD, PITCH MODULATION SENSITIVITY (`pms`: 1 = 7, the PMD at 1 then
-//   +-800 cents) and AMPLITUDE MODULATION SENSITIVITY (`ams`: 1 = 3, the level then down to 0 at the LFO's peak).
-// - Performance (stored per voice on the DX100): PITCH BEND RANGE (`bend range`, octaves: 0.17 = 2 semitones, 1 = 12),
-//   PORTAMENTO TIME (`portamento`, seconds; 0.001 off) and MODE (`fingered`: 0 full time, 1 fingered: only from a held
-//   key; with more than one voice each voice glides from its own last note), FOOT SWITCH ASSIGN (`foot assign`: 0 sustain, 1 portamento; the footswitch is the FM-1's FX button, held, or MIDI
-//   CC 80: sustain holds the notes to the D2R limit; portamento glides only while it is down), MODULATION WHEEL RANGE
-//   PITCH and AMPLITUDE (`wheel → pitch`, `wheel → amp`), BREATH RANGE PITCH, AMPLITUDE, PITCH BIAS (+-4 octaves, as the
-//   manual) and EG BIAS (`breath → ...`): the breath controller is the keyboard's channel aftertouch (Main's `at`), as
-//   Main has no breath input (MIDI CC 2).
-// - Functions: KEY SHIFT (`transpose`, octaves, rounded to semitones by a Quantizer: 0.08 = +1, 2 = +24) and MASTER TUNE
-//   (`master tune`, semitones, +-1 as the manual's +-100 cents).
-// Not here, each for want of a module that does it: the pitch bend wheel's Low / High modes (only the lowest or highest
-// held note bends: a Voicing output that says which part plays the lowest or highest note; Kon, all notes, is what this
-// plays), and a breath controller or footswitch of its own (Main has outputs for neither MIDI CC 2 nor CC 64 / 65:
-// aftertouch and the FX button stand in). The LFO wave row reads the DX100's numbers, not the waves' names (a Selector's
-// position has no names).
+// - FEEDBACK 0..7 on operator 4, in every algorithm.
+// - Per operator: FREQUENCY RATIO (`freq ratio`, semitones, with `detune` in cents: 3.14 = 20 st - 19 ct), DETUNE
+//   (+-2.6 cents: the same `detune`), OPERATOR OUT LEVEL, the envelope (AR, D1R towards D1L, D2R towards the Env L/R's
+//   third level, RR; the Env L/R module, its first level at the top as the DX100's attack; the DX100's rates are speeds,
+//   here times), KEY VELOCITY 0..7 (0 none, 1 the full range; a note at velocity v plays at 1 - velocity x (1 - v)),
+//   KEYBOARD SCALING LEVEL (the level falls by that much over the four octaves above C2, the DX100's lowest key), RATE
+//   SCALING 0..3 (every segment's time halves per octave above C2 at 3), the AMS switch (a Selector in front of the
+//   amplitude modulation: OFF passes nothing), EG BIAS SENSITIVITY 0..7 and the operator's switch (a Selector after the
+//   oscillator: OFF silences it). Velocity, level scaling, amplitude modulation and EG bias move the oscillator's level
+//   (its p2 pin, the four added).
+// - The LFO, once for all voices: LFO WAVE (a Selector, the four waves the manual lists, in its order), LFO SPEED, LFO
+//   DELAY (a Macro on an Env L/R that holds the LFO at 0 for that time, then fades it in over as long, as the manual's
+//   "initial delay ... which slowly increases over" the same time; 0 none, 1 = 10 s; it starts again on a key played
+//   after all were released), LFO SYNC (ON restarts the LFO on every key played, at the wave's peak: a second Selector,
+//   set by the wave, gives the LFO's `phase`; the saw starts at the foot of its ramp, just past its peak), LFO PMD and
+//   AMD, PITCH MODULATION SENSITIVITY (`pms`: 1 = 7, the PMD at 1 then +-800 cents) and AMPLITUDE MODULATION
+//   SENSITIVITY (`ams`: 1 = 3, the level then down to 0 at the LFO's peak).
+// - Performance (stored per voice on the DX100): PITCH BEND RANGE (octaves: 0.17 = 2 semitones, 1 = 12), PORTAMENTO TIME
+//   (seconds; 0.001 off) and MODE (FINGERED glides only from a held key; with more than one voice each voice glides from
+//   its own last note), FOOT SWITCH ASSIGN (the footswitch is the FM-1's FX button, held, or MIDI CC 80: SUSTAIN holds
+//   the notes to the D2R limit; PORTAMENTO glides only while it is down), MODULATION WHEEL RANGE PITCH and AMPLITUDE,
+//   BREATH RANGE PITCH, AMPLITUDE, PITCH BIAS (+-4 octaves, as the manual) and EG BIAS: the breath controller is the
+//   keyboard's channel aftertouch (Main's `at`), as Main has no breath input (MIDI CC 2).
+// - KEY SHIFT and the voice's TRANSPOSE (`transpose`, octaves, rounded to semitones by a Quantizer: 0.08 = +1, 2 = +24)
+//   and MASTER TUNE (`m.tune`, semitones, +-1 as the manual's +-100 cents).
+// Not on the card, and why:
+// - Construction, kept at its values in the patch: each operator's octave (ratios past 16.96 need it on top of the freq
+//   ratio's semitones) and phase modulation index (the modulator's out level is the depth on the DX100), the Env L/R's
+//   third level (D2R decays towards it: 0 as on the DX100; a D2R of 0, holding at D1L, needs it at D1L, which the card
+//   cannot set), the LFO's range (`lfo speed` spans 0.02..40 Hz on its normal range; the DX100's 0.0008..55 Hz needs the
+//   range too), and the envelope and output displays.
+// - POLY/MONO is a number (8 or 1), not a switch: a Selector cannot set a Voicing's voice count (D-635 keeps a Voicing's
+//   settings off a shared row). Named choices need that in both engines.
+// - The pitch bend wheel's Low / High modes (PB MODE: only the lowest or highest held note bends) need a Voicing output
+//   that says which part plays the lowest or highest note; Kon, all notes, is what this plays. A breath controller and a
+//   footswitch of their own need Main outputs for MIDI CC 2 and CC 64 / 65: aftertouch and the FX button stand in.
 // Too big for the FM-1 (D-348), measured with gen-xl.ts and deviceBudget at the FM-1 version's three voices: 94 modules of
 // 64, 172 module instances of 128, a 5,629-byte patch of 3,840 and a CPU estimate of 235 %.
-// The cassette interface, the voice memories and the MIDI functions are the browser's patches and presets. The DX100 has
-// no chorus, pitch EG or foot volume (its voice data marks them "not used").
+// The cassette interface, the voice memories, VOICE NAME and the MIDI functions are the browser's patches and presets. The
+// DX100 has no chorus, pitch EG or foot volume (its voice data marks them "not used").
 import type { Patch } from '../../src/patch';
 import { setKind } from '../../src/buttons';
 import { players, plugIn } from '../factory-build';
-import { around, define, matchLevel } from './def';
+import { around, define, matchLevel, type Def } from './def';
+import { setCopies } from '../../src/assembly';
 import type { Xl } from './xl';
 
-const NOTES = 'After the Yamaha DX100 Owner\'s Manual: 8 voices (1 = mono), 4 operators, algorithm 1..8, op 4 feedback. Per ' +
-  'operator: ratio (st) + detune (ct) + octave, level, envelope (r1 AR, r2 D1R to l2 D1L, r3 D2R to l3, r4 RR), velocity, ' +
-  'level and rate scaling, AM switch, EG bias. LFO: wave (1 saw up, 2 square, 3 triangle, 4 S&H, 5 sine), speed with range ' +
-  '(slow down to 0.0008 Hz, fast up to 80), delay, sync (starts at the peak), PMD, AMD, PMS, AMS. Wheel and breath (= ' +
-  'aftertouch) to pitch and amp, breath pitch bias and EG bias, bend range (oct), portamento (full / fingered), footswitch ' +
-  '(FX button or CC 80: sustain or portamento), transpose (oct, in semitones), master tune. Not here: the bend Low / High ' +
-  'modes (no output for the lowest or highest note), a breath controller and footswitch of their own (Main has no CC 2 / ' +
-  '64 inputs: aftertouch and FX stand in).';
+const NOTES = 'After the Yamaha DX100 Owner\'s Manual, one card row per parameter, named as its LCD names it: algorithm 1..8, ' +
+  'op 4 feedback; LFO wave (saw up, square, triangle, S/hold), speed, delay, PMD, AMD, sync, PMS, AMS. Each operator, ' +
+  'picked on an op row: freq ratio (st) + detune (ct), out level, key velocity, AR D1R D1L D2R RR, rate and level scaling, ' +
+  'EG bias sens, operator and AMS on-off. Poly/mono (8 or 1 voices), pitch bend range (oct), porta mode and time, foot sw ' +
+  '(FX button or CC 80: sustain or portamento), MW and BC (= aftertouch) pitch and ampli, BC pitch bias and EG bias, ' +
+  'transpose (oct, in semitones), master tune. Not here: the bend Low / High modes (no output for the lowest or highest ' +
+  'note), a breath controller and footswitch of their own (Main has no CC 2 / 64 inputs: aftertouch and FX stand in).';
 
 /** each path's algorithms (1..8): the route Selectors' input k takes the path when algorithm k lists it */
 const PATHS: [string, number, number, number[]][] = [
@@ -83,6 +100,10 @@ const PATHS: [string, number, number, number[]][] = [
   ['out 4', 4, 0, [8]],
 ];
 
+/** position names and runs of copies by card row index, set on the definition after `define` */
+const NAMES = new Map<number, string[]>();
+const COPIES: { at: number; rows: number; head: string; col: boolean }[] = [];
+
 const built = define('Algo Four XL', (b) => {
   const part = b.add('alloc', 0, 2, { voices: 8 });
 
@@ -97,7 +118,7 @@ const built = define('Algo Four XL', (b) => {
   // peak is at (p2 turns `phase` across 0..360 degrees), so a reset (LFO SYNC) starts the wave at its peak
   const WAVE_OF = [2, 3, 1, 4, 0]; // the LFO's wave (sine, triangle, saw, square, S&H) of each DX100 position
   const PEAK_AT = [90, 180, 0, 0, 0]; // degrees, by the LFO's wave: the saw starts at the foot of its ramp, just past its peak
-  const lfoWave = b.add('select', 0, -0.4, { pos: 1, count: 5, ...Object.fromEntries(WAVE_OF.map((w, k) => [`v${k + 1}`, w / 4])) });
+  const lfoWave = b.add('select', 0, -0.4, { pos: 1, count: 4, ...Object.fromEntries(WAVE_OF.map((w, k) => [`v${k + 1}`, w / 4])) });
   const lfoPeak = b.add('select', 0, -0.2, { pos: 1, count: 5, ...Object.fromEntries(PEAK_AT.map((d, w) => [`v${w + 1}`, d / 360])) });
   b.pin(lfo, 'p1', 'wave');
   b.pin(lfo, 'p2', 'phase');
@@ -113,7 +134,7 @@ const built = define('Algo Four XL', (b) => {
   b.wire(part, 'gate', delayEnv, 'gate'); // (the voices' gates summed: any key down)
   const slew = b.add('glide', 0, 0.5, { time: 0.005, curve: 0 });
   const keyOn = b.add('math', 0, 0.6, { ka: 1, kb: 1, off: -0.5 }); // high briefly whenever one more key is down
-  const sync = b.add('macro', 0, 0.7, { value: 1 });
+  const sync = b.add('select', 0, 0.7, { pos: 2, count: 2, v1: 0, v2: 1 }); // OFF, ON
   const syncAnd = b.add('logic', 0, 0.8, {});
   b.wire(part, 'gate', slew, 'in');
   b.wire(part, 'gate', keyOn, 'a');
@@ -171,12 +192,12 @@ const built = define('Algo Four XL', (b) => {
   b.wire(bias, 'out', bus, 'in');
 
   // ---- shared: the footswitch (sustain or portamento) and the portamento mode
-  const assign = b.add('macro', 4, 1, { value: 0 });
+  const assign = b.add('select', 4, 1, { pos: 1, count: 2, v1: 0, v2: 1 }); // SUSTAIN, PORTAMENTO
   const fx = b.add('logic', 4, 1.1, {}); // a = assign, b = the switch: and = portamento pedal, not = assigned to sustain
   const sus = b.add('logic', 4, 1.2, {}); // a = the switch, b = assigned to sustain: and = sustain pedal
   const susNot = b.add('logic', 4, 1.3, {}); // not = no sustain pedal
   const portaOn = b.add('logic', 4, 1.4, {}); // or: portamento allowed (the pedal down, or the switch is the sustain pedal)
-  const fingered = b.add('macro', 4, 1.5, { value: 0 });
+  const fingered = b.add('select', 4, 1.5, { pos: 1, count: 2, v1: 0, v2: 1 }); // FULL TIME, FINGERED
   const full = b.add('logic', 4, 1.6, {}); // not = full time
   b.wire(assign, 'out', fx, 'a');
   b.wire(fx, 'not', sus, 'b');
@@ -234,6 +255,8 @@ const built = define('Algo Four XL', (b) => {
   const vca: number[] = [];
   const octave: number[] = [];
   const ame: number[] = [];
+  const ameOn: number[] = [];
+  const opOn: number[] = [];
   const ebs: number[] = [];
   const vel: number[] = [];
   const kls: number[] = [];
@@ -246,8 +269,10 @@ const built = define('Algo Four XL', (b) => {
     kls.push(v('scale', 2 + i, 4.4, { gain: 0, offset: 0 }));
     krs.push(v('scale', 2 + i, 4.6, { gain: 0, offset: 0 }));
     octave.push(b.add('scale', 2 + i, 2, { gain: 1, offset: 0 }));
-    ame.push(b.add('scale', 2 + i, 2.2, { gain: 1, offset: 0 }));
-    ebs.push(b.add('scale', 2 + i, 2.4, { gain: 0, offset: 0 }));
+    ame.push(v('scale', 2 + i, 2.2, { gain: 1, offset: 0 }));
+    ameOn.push(v('select', 2 + i, 2.1, { pos: 2, count: 2 })); // the AMS switch: OFF passes nothing
+    opOn.push(v('select', 2 + i, 4.1, { pos: 2, count: 2 })); // the operator's switch: OFF silences it
+    ebs.push(v('scale', 2 + i, 2.4, { gain: 0, offset: 0 }));
     b.pin(op[i], 'p2', 'level');
     b.pin(env[i], 'p1', 'r1');
     b.module(env[i]).map!.p1 = ['r1', 'r2', 'r3', 'r4'];
@@ -255,12 +280,14 @@ const built = define('Algo Four XL', (b) => {
     b.wire(bus, 'out', octave[i], 'in');
     b.wire(octave[i], 'out', op[i], 'pitch');
     b.wire(gate, 'out', env[i], 'gate');
-    b.wire(op[i], 'out', vca[i], 'in');
+    b.wire(op[i], 'out', opOn[i], 'in2');
+    b.wire(opOn[i], 'out', vca[i], 'in');
     b.wire(env[i], 'env', vca[i], 'cv');
     b.wire(velLess, 'out', vel[i], 'b');
     b.wire(kbLevel, 'min', kls[i], 'in');
     b.wire(kbRate, 'min', krs[i], 'in');
-    b.wire(amDel, 'out', ame[i], 'in');
+    b.wire(amDel, 'out', ameOn[i], 'in2');
+    b.wire(ameOn[i], 'out', ame[i], 'in');
     b.wire(egBias, 'out', ebs[i], 'in');
     for (const [m, port] of [[vel[i], 'out'], [kls[i], 'out'], [ame[i], 'out'], [ebs[i], 'out']] as [number, string][]) b.wire(m, port, op[i], 'p2');
     b.wire(krs[i], 'out', env[i], 'p1');
@@ -289,47 +316,83 @@ const built = define('Algo Four XL', (b) => {
   b.input('foot', fx, 'b', [sus, 'a']);
   b.output('out', out, 'out');
 
-  b.param('voices', part, 'voices', { head: 'voice' });
-  b.param('algorithm', algo, 'pos');
-  b.param('feedback', op[3], 'fb');
-  b.param('transpose', transpose, 'value');
-  b.param('master tune', tune, 'gain');
-  for (let i = 0; i < 4; i++) {
-    const n = i + 1;
-    b.param(`ratio ${n}`, op[i], 'coarse', { col: true, head: `operator ${n}` });
-    b.param(`detune ${n}`, op[i], 'fine');
-    b.param(`octave ${n}`, octave[i], 'offset');
-    b.param(`level ${n}`, vca[i], 'gain');
-    if (i < 3) b.param(`index ${n}`, op[i], 'pm');
-    b.param(`velocity ${n}`, vel[i], 'mix');
-    b.param(`level scaling ${n}`, kls[i], 'gain');
-    b.param(`rate scaling ${n}`, krs[i], 'gain');
-    b.param(`am ${n}`, ame[i], 'gain');
-    b.param(`eg bias ${n}`, ebs[i], 'gain');
-    b.param(`env ${n}`, env[i], 'view');
-    for (const q of ['r1', 'l2', 'r2', 'r3', 'l3', 'r4']) b.param(`${q} ${n}`, env[i], q);
-  }
-  b.param('lfo wave', lfoWave, 'pos', { col: true, head: 'lfo' });
-  b.param('lfo speed', lfo, 'rate');
-  b.param('lfo range', lfo, 'range');
-  b.param('lfo delay', delay, 'value');
-  b.param('lfo sync', sync, 'value');
-  b.param('pmd', pmd, 'value');
-  b.param('amd', amd, 'value');
-  b.param('pms', pms, 'gain');
-  b.param('ams', ams, 'gain');
-  b.param('bend range', bend, 'ka', { col: true, head: 'performance' });
-  b.param('portamento', porta, 'time');
-  b.param('fingered', fingered, 'value');
-  b.param('foot assign', assign, 'value');
-  b.param('wheel → pitch', wheelP, 'gain');
-  b.param('wheel → amp', wheelA, 'gain');
-  b.param('breath → pitch', breathP, 'gain');
-  b.param('breath → amp', breathA, 'gain');
-  b.param('breath → pitch bias', bias, 'gain');
-  b.param('breath → eg bias', egBias, 'gain');
-  b.param('out', scope, 'view', { col: true });
+  // ---- the card: the DX100's parameters, named as its LCD names them (lowercase). The four operators' parameters are
+  // copies the card shows one operator at a time (OPERATOR SELECT), in runs of four rows (one FM-1 page each)
+  // (def.ts's param takes no names or copies: they are noted by row index here and set on the definition after it)
+  let rowsSoFar = 0;
+  const param: Def['param'] = (label, module, p, o) => {
+    b.param(label, module, p, o);
+    rowsSoFar++;
+  };
+  const named = (label: string, module: number, names: string[], o: { col?: boolean; head?: string } = {}): void => {
+    NAMES.set(rowsSoFar, names);
+    param(label, module, 'pos', o);
+  };
+  param('algorithm', algo, 'pos', { head: 'voice' });
+  param('feedback', op[3], 'fb');
+  named('lfo wave', lfoWave, ['SAW UP', 'SQUARE', 'TRIANGLE', 'S/HOLD'], { head: 'lfo' });
+  param('lfo speed', lfo, 'rate');
+  param('lfo delay', delay, 'value');
+  param('pmd', pmd, 'value');
+  param('amd', amd, 'value');
+  named('lfo sync', sync, ['OFF', 'ON']);
+  param('pms', pms, 'gain');
+  param('ams', ams, 'gain');
+  const runs: [string, (i: number) => void][] = [
+    ['operator', (i) => {
+      param('freq ratio', op[i], 'coarse');
+      param('detune', op[i], 'fine');
+      param('out level', vca[i], 'gain');
+      param('key velocity', vel[i], 'mix');
+    }],
+    ['operator eg', (i) => {
+      param('ar', env[i], 'r1');
+      param('d1r', env[i], 'r2');
+      param('d1l', env[i], 'l2');
+      param('d2r', env[i], 'r3');
+    }],
+    ['operator scaling', (i) => {
+      param('rr', env[i], 'r4');
+      param('rate scaling', krs[i], 'gain');
+      param('level scaling', kls[i], 'gain');
+      param('eg bias sens', ebs[i], 'gain');
+    }],
+    ['operator on-off', (i) => {
+      named('operator', opOn[i], ['OFF', 'ON']);
+      named('ams', ameOn[i], ['OFF', 'ON']);
+    }],
+  ];
+  runs.forEach(([head, rows], k) => {
+    const at = rowsSoFar;
+    for (let i = 0; i < 4; i++) rows(i);
+    COPIES.push({ at, rows: (rowsSoFar - at) / 4, head, col: k === 0 });
+  });
+  param('poly/mono', part, 'voices', { col: true, head: 'performance' });
+  param('p bend range', bend, 'ka');
+  named('porta mode', fingered, ['FULL TIME', 'FINGERED']);
+  param('porta time', porta, 'time');
+  named('foot sw', assign, ['SUSTAIN', 'PORTAMENTO']);
+  param('mw pitch', wheelP, 'gain');
+  param('mw ampli', wheelA, 'gain');
+  param('bc pitch', breathP, 'gain');
+  param('bc ampli', breathA, 'gain');
+  param('bc p bias', bias, 'gain');
+  param('bc e bias', egBias, 'gain');
+  param('transpose', transpose, 'value');
+  param('m.tune', tune, 'gain');
 });
+for (const [i, names] of NAMES) built.def.params[i].names = names;
+for (const c of COPIES) {
+  const r = built.def.params[c.at];
+  r.head = c.head;
+  if (c.col) r.col = true;
+  setCopies(built.def.params, c.at, c.rows, 4, 'op');
+  // the voice card shows the same run one operator at a time when all of it is the voice's
+  const voice = built.def.assemblies!.find((n) => n.label === 'voice')!;
+  const run = built.def.params.slice(c.at, c.at + c.rows * 4);
+  const first = voice.params.findIndex((q) => q.module === run[0].module && q.param === run[0].param);
+  if (first >= 0 && run.every((x, k) => voice.params[first + k]?.module === x.module && voice.params[first + k]?.param === x.param)) setCopies(voice.params, first, c.rows, 4, 'op');
+}
 
 export const xl: Xl = {
   base: 'Algo Four',
