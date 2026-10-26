@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Algo Four XL: algorithms on Selectors, the DX100's LFO in full.** The algorithm row now moves one Selector per
+  route in each voice, in place of a sequencer, a sample and hold, 7 comparators, 6 logic gates and 9 path VCAs per
+  voice: 117 modules become 94, and the sound of every algorithm is unchanged (measured sample by sample against the
+  previous version). LFO SYNC now starts the wave at its peak, the LFO wave row follows the DX100's order (1 saw up,
+  2 square, 3 triangle, 4 sample and hold, 5 sine), and a new `lfo range` row reaches the DX100's 0.0008 to 55 Hz.
+  It still does not fit the FM-1: at its three voices it needs 94 modules of 64, 172 module instances of 128, 5,629
+  patch bytes of 3,840 and an estimated 235 % of the CPU (270 % before), so it stays an XL.
 - **Env 8, an eight-step envelope** after the Casio CZ's: eight levels and rates, a sustain step that holds while the
   key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off it
   runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then
