@@ -785,9 +785,10 @@ enum {
 #define DRUMMAP_P_N6 5
 #define DRUMMAP_P_N7 6
 #define DRUMMAP_P_N8 7
+#define DRUMMAP_P_REPEAT 8
 #define DRUMMAP_NIN 1
 #define DRUMMAP_NOUT 16
-#define DRUMMAP_NPAR 8
+#define DRUMMAP_NPAR 9
 #define DRUMMAP_CVBASE -1
 #define DRUMMAP_NDATA 1
 
@@ -1236,14 +1237,14 @@ static const uint8_t MACRO_LOG[] = {0};
 static const char *const MACRO_UNIT[] = {""};
 static const char *const *const MACRO_CH[] = {0};
 static const char *const DRUMMAP_INNAMES[] = {"KEYS"};
-static const int32_t DRUMMAP_MIN[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const int32_t DRUMMAP_MAX[] = {8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 8323072};
-static const int32_t DRUMMAP_DEF[] = {2359296, 2490368, 2555904, 2752512, 3014656, 2949120, 2424832, 3670016};
-static const int32_t DRUMMAP_INC[] = {83231, 83231, 83231, 83231, 83231, 83231, 83231, 83231};
-static const char *const DRUMMAP_PN[] = {"N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8"};
-static const uint8_t DRUMMAP_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const DRUMMAP_UNIT[] = {"", "", "", "", "", "", "", ""};
-static const char *const *const DRUMMAP_CH[] = {ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6};
+static const int32_t DRUMMAP_MIN[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t DRUMMAP_MAX[] = {8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 65536};
+static const int32_t DRUMMAP_DEF[] = {2359296, 2490368, 2555904, 2752512, 3014656, 2949120, 2424832, 3670016, 0};
+static const int32_t DRUMMAP_INC[] = {83231, 83231, 83231, 83231, 83231, 83231, 83231, 83231, 65536};
+static const char *const DRUMMAP_PN[] = {"N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "REPEAT"};
+static const uint8_t DRUMMAP_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const DRUMMAP_UNIT[] = {"", "", "", "", "", "", "", "", ""};
+static const char *const *const DRUMMAP_CH[] = {ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, ALLOC_CH6, FILTER_CH3};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH},   /* fm1 */

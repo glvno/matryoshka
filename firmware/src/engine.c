@@ -347,7 +347,8 @@ typedef struct {
         struct { uint32_t seed, loop; int32_t c1, r1, since, period, pend, slen, sst, pitch, vel; uint16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit, skipn; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
         /* Drum map (modules.ts DrumMapState): its rows' velocities (Q16), the rows whose gate is up, the rows that restart
          * this block (a low first sample) */
-        struct { int32_t vel[DRUMMAP_NOUT / 2]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last block */
+        struct { int32_t vel[DRUMMAP_NOUT / 2]; uint32_t held[4]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last
+                                                    * block; held: with repeat on (#184), the keys down (bit k & 31 of held[k >> 5]) */
         struct { int32_t count, c1, r1; } cdv;
         struct { int32_t v, c1; } sh;
         struct { int32_t rem, t1; } pls;
@@ -1713,20 +1714,70 @@ static void arp_emit_off(const arp_t *a, uint32_t note)
             group_off(&E.grp[g], note);
 }
 
+/* a Drum map lets go of every row at once (engine.ts dropRows): the keys it held too */
+static void dm_drop(inst_t *it)
+{
+    it->s.dm.gate = 0;
+    it->s.dm.held[0] = it->s.dm.held[1] = it->s.dm.held[2] = it->s.dm.held[3] = 0;
+}
+
+/* the rows key k plays on a Drum map with repeat on (#184; modules.ts drumRowsOf), bit r = row r. at[]: the rows' places
+ * (dm_places), lo / period: their block. A row's place is its white key's count when every row is on a white key (a
+ * black key counts as the white key below it), else its note */
+static const uint8_t WHITE_AT[12] = {0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6};
+static int32_t dm_place(uint32_t k, int white) { return white ? (int32_t)(k / 12u * 7u + WHITE_AT[k % 12u]) : (int32_t)k; }
+static uint32_t dm_rows(const int32_t *at, int32_t lo, int32_t period, uint32_t k, int white)
+{
+    uint32_t r, rows = 0;
+    int32_t x = (dm_place(k, white) - lo) % period;
+    if (x < 0)
+        x += period;
+    for (r = 0; r < DRUMMAP_NOUT / 2u; r++)
+        if (at[r] - lo == x)
+            rows |= 1u << r;
+    return rows;
+}
+
 /* a note on (key | 0x80, velocity 1..127) or off (key, 0) into the Drum maps whose keys come from `src` (1 the keys, 2 + a
  * Steps module's index; engine.ts mapKeys): a row on that note raises its gate (restarting it if it is up or fell since
- * the last block) and takes the velocity, or lets it fall */
+ * the last block) and takes the velocity, or lets it fall. With repeat on (#184) the rows' keys repeat over the keybed
+ * (dm_rows), and a row another key still holds up is left as it is */
 static void dm_keys(uint32_t src, uint32_t kv, uint32_t vel)
 {
     uint32_t i, r, key = kv & 0x7Fu;
     for (i = 0; i < E.nmod; i++) {
         const node_t *nd = &E.node[i];
         inst_t *it;
+        uint32_t rows = 0, other = 0;
+        int rep;
         if (nd->type != T_DRUMMAP || dm_src(nd) != src || (src == 1u && nd->ksrc == 1u && E.armm && !(E.armm >> i & 1u)))   /* (#191: armed ones only) */
             continue;
         it = &inst_pool[nd->inst0];
+        rep = round_q16(nd->par[DRUMMAP_P_REPEAT]) >= 1;
+        if (rep) {
+            int32_t at[DRUMMAP_NOUT / 2u], lo = 127, hi = 0;
+            uint32_t k, w, white = 1;
+            for (r = 0; r < DRUMMAP_NOUT / 2u; r++)
+                white &= 0xAB5u >> (uint32_t)clampi(round_q16(nd->par[r]), 0, 127) % 12u;   /* (C D E F G A B) */
+            for (r = 0; r < DRUMMAP_NOUT / 2u; r++) {
+                at[r] = dm_place((uint32_t)clampi(round_q16(nd->par[r]), 0, 127), (int)(white & 1u));
+                lo = at[r] < lo ? at[r] : lo;
+                hi = at[r] > hi ? at[r] : hi;
+            }
+            rows = dm_rows(at, lo, hi - lo + 1, key, (int)(white & 1u));
+            if (kv & 0x80u)
+                it->s.dm.held[key >> 5] |= 1u << (key & 31u);
+            else
+                it->s.dm.held[key >> 5] &= ~(1u << (key & 31u));
+            for (w = 0; w < 4u; w++)
+                for (k = 0; k < 32u; k++)
+                    if ((it->s.dm.held[w] >> k & 1u) && 32u * w + k != key)
+                        other |= dm_rows(at, lo, hi - lo + 1, 32u * w + k, (int)(white & 1u));
+        }
         for (r = 0; r < DRUMMAP_NOUT / 2u; r++) {
-            if ((uint32_t)clampi(round_q16(nd->par[r]), 0, 127) != key)
+            if (rep ? !(rows >> r & 1u) : (uint32_t)clampi(round_q16(nd->par[r]), 0, 127) != key)
+                continue;
+            if (other >> r & 1u)
                 continue;
             if (!(kv & 0x80u)) {
                 it->s.dm.fell |= (uint8_t)(it->s.dm.gate & (1u << r));
@@ -1938,7 +1989,7 @@ static void keys_off(void)
     }
     for (g = 0; g < E.nmod; g++)
         if (E.node[g].type == T_DRUMMAP && dm_src(&E.node[g]) == 1u)
-            inst_pool[E.node[g].inst0].s.dm.gate = 0;
+            dm_drop(&inst_pool[E.node[g].inst0]);
         else if (E.node[g].type == T_STEPS && (E.node[g].ksrc || ARMED(g)))
             E.thru_kill |= (uint16_t)(1u << E.node[g].trk);
 }
@@ -1965,7 +2016,7 @@ static void arp_switched(uint32_t m)
     }
     for (g = 0; g < E.nmod; g++)
         if (E.node[g].type == T_DRUMMAP && E.node[g].ksrc == 2u + m)
-            inst_pool[E.node[g].inst0].s.dm.gate = 0;
+            dm_drop(&inst_pool[E.node[g].inst0]);
 }
 
 /* Arm a set of modules (#191, engine.h). The keys held when the routing changes go quiet. Not saved; another patch disarms. */
@@ -2403,6 +2454,10 @@ int eng_drummap_note(uint32_t map, uint32_t r)
         return -1;
     return clampi(round_q16(E.node[map].par[r]), 0, 127);
 }
+int eng_drummap_repeat(uint32_t map)
+{
+    return E.loaded && map < E.nmod && E.node[map].type == T_DRUMMAP && round_q16(E.node[map].par[DRUMMAP_P_REPEAT]) >= 1;
+}
 uint32_t eng_steps_note(uint32_t module, uint32_t k, uint32_t note)
 {
     uint32_t i, t;
@@ -2538,7 +2593,7 @@ void eng_all_notes_off(void)
     }
     for (i = 0; i < E.nmod; i++)
         if (E.node[i].type == T_DRUMMAP)
-            inst_pool[E.node[i].inst0].s.dm.gate = 0;
+            dm_drop(&inst_pool[E.node[i].inst0]);
     E.thru_kill = 0xFFFFu;                       /* the keys played through the tracks end too */
 }
 

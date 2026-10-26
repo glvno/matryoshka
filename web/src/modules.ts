@@ -2494,7 +2494,34 @@ export const drumRowName = (names: readonly string[] | undefined, r: number): st
 
 /** a Drum map as it runs: each row's gate (0 / 1) and velocity (0..1), the rows whose gate restarts this block (a low first
  * sample), and the notes the engine delivered (key | 0x80, velocity 1..127 / key, 0), taken at the start of the block */
-export interface DrumMapState { gate: number[]; vel: number[]; gap: number; ev: number[] }
+export interface DrumMapState { gate: number[]; vel: number[]; gap: number; ev: number[]; held: number[] }
+
+/** a Drum map lets go of every row at once (all notes off, its keys' source switched): the keys it held too */
+export function dropRows(s: DrumMapState): void {
+  s.gate.fill(0);
+  s.held.fill(0);
+}
+
+/** a white key's place among the white keys of its octave, a black key's the white key's below it (#184) */
+const WHITE_AT = [0, 0, 1, 1, 2, 3, 3, 4, 4, 5, 5, 6];
+/** the white keys of an octave, bit n = semitone n (C D E F G A B) */
+const WHITE_KEYS = 0xab5;
+/**
+ * The rows a key plays on a Drum map with `repeat` on (#184; engine.c dm_rows the same), bit r = row r: the rows' keys,
+ * lowest to highest, are a block that repeats up and down the keybed, so every key plays a row. When every row is on a
+ * white key the block is counted in white keys and a black key plays the row of the white key below it (rows on F3..F4
+ * repeat every eight white keys: the next block starts on G4); otherwise it is counted in semitones, and keys that fall on
+ * no row in the block stay silent.
+ */
+export function drumRowsOf(notes: readonly number[], key: number): number {
+  const white = notes.every((n) => (WHITE_KEYS >> n % 12) & 1);
+  const place = (k: number): number => (white ? Math.floor(k / 12) * 7 + WHITE_AT[k % 12] : k);
+  const at = notes.map(place), lo = Math.min(...at), period = Math.max(...at) - lo + 1;
+  const x = (((place(key) - lo) % period) + period) % period;
+  let rows = 0;
+  at.forEach((a, r) => { if (a - lo === x) rows |= 1 << r; });
+  return rows;
+}
 
 /**
  * Drum map (#137): keys in, eight rows out. A row's note (n1..n8, General MIDI drums by default) held in the keys raises
@@ -2502,7 +2529,9 @@ export interface DrumMapState { gate: number[]; vel: number[]; gap: number; ev: 
  * while its gate is up (or let go and hit again in one block) gets one low sample first, so the drum restarts. The keys come as an allocator's do (Main's, or a
  * Steps track's keys out: the engines deliver the notes at the start of the next block; poly.ts keysInto); its record's
  * data byte says from where (0 none, 1 Main's keys, 2 + the module index of the Steps module). Row names (ModuleInst.names)
- * are the editor's (the roll's rows); it runs once.
+ * are the editor's (the roll's rows); it runs once. With `repeat` on (#184) the rows' keys repeat over the keybed
+ * (drumRowsOf), so every key plays a row; a row that another key still holds up neither restarts nor takes the new
+ * velocity, and its gate falls when the last of its keys is let go.
  */
 const drummap: ModuleImpl<DrumMapState> = {
   def: {
@@ -2510,16 +2539,30 @@ const drummap: ModuleImpl<DrumMapState> = {
     label: 'Drum map',
     inputs: [keys('keys')],
     outputs: Array.from({ length: DRUM_ROWS }, (_, r) => [gate(`g${r + 1}`), control(`v${r + 1}`)]).flat(),
-    params: DRUM_MAP_DEFAULT.map((d, r) => param(`n${r + 1}`, 0, 127, d.note, { step: 1, choices: NOTE_NAMES })),
+    params: [
+      ...DRUM_MAP_DEFAULT.map((d, r) => param(`n${r + 1}`, 0, 127, d.note, { step: 1, choices: NOTE_NAMES })),
+      // the rows repeat over the keybed, so every key plays one (#184; off: only the rows' own keys)
+      param('repeat', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
+    ],
     data: 1,
   },
-  init: () => ({ gate: Array(DRUM_ROWS).fill(0), vel: Array(DRUM_ROWS).fill(0), gap: 0, ev: [] }),
+  init: () => ({ gate: Array(DRUM_ROWS).fill(0), vel: Array(DRUM_ROWS).fill(0), gap: 0, ev: [], held: Array(128).fill(0) }),
   process(c, s) {
     let fell = 0; // (a row let go and hit again in one block restarts too)
+    const notes = DRUM_MAP_DEFAULT.map((d, r) => Math.max(0, Math.min(127, Math.round(c.p[`n${r + 1}`] ?? d.note))));
+    const repeat = Math.round(c.p.repeat ?? 0) >= 1;
     for (let e = 0; e < s.ev.length; e += 2) {
       const key = s.ev[e] & 0x7f, on = s.ev[e] & 0x80;
+      const rows = repeat ? drumRowsOf(notes, key) : 0;
+      // (repeat: the rows another key still holds up, which this key neither restarts nor lets fall)
+      let other = 0;
+      if (repeat) {
+        s.held[key] = on ? 1 : 0;
+        for (let k = 0; k < 128; k++) if (s.held[k] && k !== key) other |= drumRowsOf(notes, k);
+      }
       for (let r = 0; r < DRUM_ROWS; r++) {
-        if (Math.round(c.p[`n${r + 1}`] ?? DRUM_MAP_DEFAULT[r].note) !== key) continue;
+        if (repeat ? !((rows >> r) & 1) : Math.round(c.p[`n${r + 1}`] ?? DRUM_MAP_DEFAULT[r].note) !== key) continue;
+        if ((other >> r) & 1) continue;
         if (!on) {
           if (s.gate[r]) fell |= 1 << r;
           s.gate[r] = 0;

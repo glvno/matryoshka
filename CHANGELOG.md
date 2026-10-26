@@ -26,6 +26,10 @@
   - **909 Kit XL:** mid tom, crash and ride, TOTAL ACCENT and per-drum accent, flam, shuffle and scale.
   - **Spokes 6 XL:** all six machines on every track, chance, fill lanes, retrigs, the LFO on any destination,
     velocity routes, pads.
+- **A Drum map can repeat its rows across the keybed** (its new REPEAT switch, off by default), so every key plays a
+  row. Rows on white keys repeat in blocks of white keys, and a black key plays the row of the white key below it: rows
+  on F3 to F4 come again from G4 and below E3. On the FM-1, the keys that play nothing on a Drum map (the white keys and
+  black keys 9 to 11) then play a row too. Needs the firmware of the next release; not yet played on a device.
 - The XLs are heavier in the browser. With four notes held, in Chrome on a recent Mac, as a share of real time:
   Spokes 6 XL 61 %, Cassia 1 XL 39 %, Elvira 2 XL 37 %, Expander S XL 23 %, the others 6 % to 20 %. Big XLs share as a
   stored link.

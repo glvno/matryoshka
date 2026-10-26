@@ -491,9 +491,11 @@ static int panel_key(uint32_t n, int down, int quick)
         int map = seq_kbd() || sb_on ? -1 : eng_keys_drummap(), b = seq_black(n);   /* (sandbox mode: the plain notes) */
         key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
         /* the keys reach a Drum map (the owner, 2026-10-23): black keys 1..8 play its rows 1..8 at any octave, as on the
-         * SEQ page, the white keys nothing; MIDI out sends what plays: the row's note, nothing for a white key, so a
-         * recording played back into a Drum map hits the same rows */
-        key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b) : KEY_SILENT;
+         * SEQ page, the white keys nothing, or their own note when the map repeats its rows (#184: the repeat picks the
+         * row); MIDI out sends what plays: the row's note, the key's own, nothing for a silent key, so a recording played
+         * back into a Drum map hits the same rows */
+        key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b)
+            : eng_drummap_repeat((uint32_t)map) ? key_note[n] : KEY_SILENT;
         key_sounding |= bit;
         if (key_eng[n] != KEY_SILENT)
             eng_note_on(key_eng[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */

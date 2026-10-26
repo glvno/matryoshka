@@ -165,6 +165,8 @@ int eng_drum_name(const uint8_t *p, uint32_t len, uint32_t module, uint32_t r, c
 /* the Drum map a Steps module's keys out goes into (the #139 follow-up: the SEQ page shows its rows), -1 none; its row r's note */
 int eng_steps_drummap(uint32_t module);
 int eng_drummap_note(uint32_t map, uint32_t r);
+/* 1: the Drum map `map` repeats its rows over the keybed (#184: its repeat is on), so every key plays a row */
+int eng_drummap_repeat(uint32_t map);
 /* a drum track's step (the #139 follow-up): does a note on `note` start on step k (its note word, 0 none); switch it on (one step at
  * `vel`) / off; a hit on a row (sounds now, while the track plays into the nearest step: the step it went into, -1 heard
  * only) */
