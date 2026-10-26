@@ -137,7 +137,11 @@
         "depth": 1,
         "sync": 0,
         "div": 6,
-        "bpm": 120
+        "bpm": 120,
+        "phase": 0,
+        "range": 0,
+        "dir": 0,
+        "mult": 3
       },
       "att": [
         1,
@@ -381,7 +385,8 @@
         "damp": 0.25,
         "mix": 0.25,
         "pre": 0,
-        "mod": 0.6
+        "mod": 0.6,
+        "freeze": 0
       },
       "att": [
         1,
