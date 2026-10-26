@@ -5,11 +5,12 @@
 //  - each voice: TUNE (coarse / fine), its own envelope (attack / release per voice here: the Lyra's are fixed), a
 //    triangle that its pair's SHARP turns into a square (a Waveshaper per voice, so the shaped wave is also what it sends
 //    to FM), and its own vibrato LFO (eight, at eight rates), on with VIBRATO. The envelope is part of the voice, as the
-//    manual says: it bends the pitch a little (up to 6 cents) as it opens;
-//  - the plates: how hard a plate is touched (Main's velocity, plus its aftertouch as the pressure) sets how far the
-//    envelopes open and how fast: a light touch opens them partly and slowly. TOUCH sets how much (0 = every touch opens
-//    fully). The velocity is the last key's, for all eight: one held per plate would need a product per copy of the
-//    plate (32 more modules, past what a share link holds); one Drum map repeating its rows (#184) gives it for free;
+//    manual says: it bends the pitch a little (up to 6 cents) and sharpens the wave a little as it opens;
+//  - the plates: how hard a plate is touched (its velocity, held from the touch on, plus Main's aftertouch as the
+//    pressure) sets how far its envelope opens and how fast: a light touch opens it partly and slowly. TOUCH sets how
+//    much (0 = every touch opens it fully). Each copy of a plate gives its velocity only while its gate is up (a VCA per
+//    copy), so the held velocity is the plate's own, whichever copy was touched (#184, one Drum map repeating its rows,
+//    would make those VCAs unneeded);
 //  - each pair: SHARP, MOD (depth), the modulation source switch (up FM from a pair of the other half of its group,
 //    centre off, down LFO CV: the Hyper LFO, or the output with TOTAL FB) and FAST: down, the pair's release is short
 //    (flipping it cuts a ringing voice short), its plates need more pressure (they open less and more slowly) and its
@@ -102,19 +103,11 @@ export function lireXl(maps: Record<string, number>[]): Built {
     });
     const bleed = b.add('const', 9, 3, { value: 0.003 }); // the crosstalk: every voice sounds faintly all the time
     for (const h of holdPair) b.wire(bleed, 'out', h, 'b'); // (the floor under HOLD)
-    // the touch: how far a plate opens the envelope, min(1 - TOUCH + TOUCH x (velocity + pressure), 1) (Main's velocity
-    // and aftertouch, wired by the XL), times the pair's sensitivity: 1, or 0.7 with FAST down
-    const touched = b.add('math', 10, 4, { ka: 0, kb: 1, off: 1 });
-    b.wire(touch, 'out', touched, 'p1');
-    b.pin(touched, 'p1', 'ka', [0.5, 0.5 + 1 / 8]); // 0 .. 1
-    b.wire(touch, 'out', touched, 'p2');
-    b.pin(touched, 'p2', 'off', [0.5 + 1 / 8, 0.5]); // 1 .. 0
-    b.wire(one, 'out', touched, 'b');
-    const opens = fast.map((f, p) => {
-      const o = b.add('math', 2 + 2 * p, 11, { ka: -0.3, kb: 1, off: 1 });
-      b.wire(f, 'out', o, 'a');
-      b.wire(touched, 'min', o, 'b');
-      return o;
+    // a pair's plate sensitivity: 1, or 0.7 with FAST down (a plate opens less, and so more slowly)
+    const sens = fast.map((f, p) => {
+      const s = b.add('scale', 2 + 2 * p, 11, { gain: -0.3, offset: 1 });
+      b.wire(f, 'out', s, 'in');
+      return s;
     });
     //               coarse  fine attack release vibrato rate
     const tunes: [number, number, number, number, number][] = [
@@ -137,25 +130,45 @@ export function lireXl(maps: Record<string, number>[]): Built {
       b.pin(shp, 'p1', 'drive', [0, 0.8]); // triangle .. nearly square
       b.wire(vibrato, 'out', vlfo, 'p1');
       b.pin(vlfo, 'p1', 'depth', [0, 0.02]); // a quarter tone at the most
-      // the envelope is part of the voice: up to 6 cents sharper as it opens
+      // the envelope is part of the voice: up to 6 cents sharper and a little more drive as it opens
       b.wire(env, 'env', osc, 'p1');
       b.pin(osc, 'p1', 'fine');
       b.module(osc).att = [0.03, 1];
-      for (const m of plate) b.wire(m, `g${i + 1}`, env, 'gate'); // (any copy of the plate holds the gate up)
-      // the envelope, opened as far as the touch says
-      const level = b.add('math', 1 + i, 12, { ka: 1, kb: 1, off: 0 });
-      b.wire(opens[p], 'mul', level, 'a');
+      b.wire(env, 'env', shp, 'p2');
+      b.pin(shp, 'p2', 'drive');
+      b.module(shp).att = [1, 0.05];
+      // the touch: each copy of the plate gives its velocity while its gate is up (a VCA), held from the touch on (S&H)
+      const held = b.add('sh', 1 + i, 12, { mode: 0 });
+      const velOf = plate.map((m, k) => {
+        const v = b.add('vca', 1 + i, 13 + k, { gain: 1 });
+        b.wire(m, `v${i + 1}`, v, 'in');
+        b.wire(m, `g${i + 1}`, v, 'cv');
+        b.wire(v, 'out', held, 'in');
+        b.wire(m, `g${i + 1}`, env, 'gate'); // (any copy of the plate holds the gate up)
+        b.wire(m, `g${i + 1}`, held, 'clock');
+        return v;
+      });
+      // how far the plate opens the envelope: (1 - TOUCH + TOUCH x (velocity + pressure)) x the pair's sensitivity
+      const open = b.add('math', 1 + i, 17, { ka: 0, kb: 1, off: 1 });
+      b.wire(held, 'out', open, 'a');
+      b.wire(touch, 'out', open, 'p1');
+      b.pin(open, 'p1', 'ka', [0.5, 0.5 + 1 / 8]); // 0 .. 1
+      b.wire(touch, 'out', open, 'p2');
+      b.pin(open, 'p2', 'off', [0.5 + 1 / 8, 0.5]); // 1 .. 0
+      b.wire(sens[p], 'out', open, 'b');
+      const level = b.add('math', 1 + i, 18, { ka: 1, kb: 1, off: 0 });
+      b.wire(open, 'mul', level, 'a');
       b.wire(env, 'env', level, 'b');
       b.wire(level, 'mul', vca, 'cv');
       // a plate opened less also opens more slowly (attack + 0.3 x (1 - opening) of its range); FAST down shortens the
       // release (- 0.35 of its range: 1.2 s becomes 0.05 s)
-      b.wire(opens[p], 'mul', env, 'p1');
+      b.wire(open, 'mul', env, 'p1');
       b.wire(minusOne, 'out', env, 'p1');
       b.pin(env, 'p1', 'a');
       b.wire(fast[p], 'out', env, 'p2');
       b.pin(env, 'p2', 'r');
       b.module(env).att = [-0.3, -0.35];
-      return { osc, shp, env, vca, vlfo, level };
+      return { osc, shp, env, vca, vlfo, held, velOf, open, level };
     });
     // pairs: the FM source (another pair's voices, after their VCAs: an operator fades with its envelope), the source
     // switch (FM / off / LFO CV at 0 / 0.5 / 1: two Crossfaders, each moved twice as far as the switch: its value on the
@@ -243,13 +256,13 @@ export function lireXl(maps: Record<string, number>[]): Built {
     b.wire(vol, 'out', lfoCv, 'b'); // TOTAL FB
     const scope = b.add('scope', 16, 2, { time: 16 });
     b.wire(vol, 'out', scope, 'a');
-    voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, [v.osc, v.shp, v.env, v.vca, v.vlfo, v.level], {
+    voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, [v.osc, v.shp, v.env, v.vca, v.vlfo, v.held, ...v.velOf, v.open, v.level], {
       inputs: [['mod', v.osc, 'pitch'], ['hold', v.vca, 'cv'], ['sharp', v.shp, 'p1'], ['vibrato', v.vlfo, 'p1']],
       outputs: [['out', v.vca, 'out']],
     }));
     b.input('keys', plate[1], 'keys', ...plate.filter((_, i) => i !== 1).map((m) => [m, 'keys'] as [number, string]));
-    // the touch (Main's velocity and aftertouch, wired by the XL) and the rear jacks
-    b.input('touch', touched, 'a');
+    // the plates' pressure (Main's aftertouch, wired by the XL) and the rear jacks
+    b.input('pressure', voices[0].open, 'a', ...voices.slice(1).map((v) => [v.open, 'a'] as [number, string]));
     b.input('ext in', mix, 'in1');
     b.input('hold gate', holdGate, 'b');
     b.input('cv voices', cvVoices, 'b');
@@ -313,10 +326,10 @@ export const xl: Xl = {
   build: (fm1) => {
     const x = around('8 Lire XL', lireXl(platesOf(fm1)));
     x.p.octave = -1;
-    // the touch: Main's velocity and aftertouch
-    const t = x.a.inputs.find((r) => r.label === 'touch')!;
-    for (const port of ['vel', 'at'])
-      if (!connect(x.p, DEFS, { module: x.main.id, port }, { module: t.module, port: t.port })) throw new Error(`8 Lire XL: no ${port} cable`);
+    // the plates' pressure: Main's aftertouch
+    const pressure = x.a.inputs.find((r) => r.label === 'pressure') as { module: number; port: string; also?: { module: number; port: string }[] };
+    for (const t of [pressure, ...(pressure.also ?? [])])
+      if (!connect(x.p, DEFS, { module: x.main.id, port: 'at' }, { module: t.module, port: t.port })) throw new Error('8 Lire XL: no pressure cable');
     matchLevel(x.p, fm1, KIT_NOTES);
     x.p.notes = NOTES;
     return players(validatePatch(x.p, DEFS), true);
