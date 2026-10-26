@@ -19,6 +19,12 @@ describe('share links', () => {
     for (const make of Object.values(PRESETS)) {
       const p = make();
       const s = await encodeShare(p, { base: 'https://example.test/x/' });
+      if (xlBase(p.name) && !s.layoutFits) {
+        // an XL may pass LINK_MAX: it is handed out as a stored link (D-586), which holds the full form
+        expect(s).toMatchObject({ stores: true, tooLong: false });
+        expect(await decodeShare(s.full, DEFS)).toEqual(p);
+        continue;
+      }
       expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
       expect(s.length).toBe(s.link.length);
       if (!xlBase(p.name)) expect(s.length).toBeLessThan(LINK_MAX * 0.6); // an FM-1 version (Meridian 8 with its arpeggiator: about 4100); an XL may be longer
