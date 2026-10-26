@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Incoming MIDI notes keep playing during FM-1 screen redraws** (#363). USB and TRS notes and clock are taken
+  between screen transfers, including octave messages. Commands that change pages or patches keep their input order
+  and wait for the main loop so they cannot draw into an unfinished screen transfer. The regression passes on the
+  host; the updated firmware has not yet been checked on a device.
+
 - **The patch-bytes budget counts the panel buttons' record.** A patch whose ARP, FX or LFO button is not a plain gate
   sends 9 more bytes than the editor counted, so one within 9 bytes of the 3,840 limit passed the budget and was then
   refused by the FM-1. The budget now equals what is sent (Oracle V: 1,290 → 1,299 bytes).
