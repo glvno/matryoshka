@@ -669,9 +669,9 @@ static int m1_handle(const uint8_t *f, uint32_t n)
         m1_info();
         break;
     case C_DIAG: {                                           /* bring-up diagnostics (main.c m1_diag): [page, bytes] */
-        uint8_t p[33];
+        uint8_t p[1u + 64u];                                 /* (perf-diag: 12 draw-time kinds, 48 bytes) */
         p[0] = len ? d[0] : 0u;
-        m1_reply(R_DIAG, p, 1u + m1_diag(p[0], p + 1));
+        m1_reply_long(R_DIAG, p, 1u + m1_diag(p[0], p + 1));
         break;
     }
     case C_CHUNK: {
