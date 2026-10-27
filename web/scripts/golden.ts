@@ -156,7 +156,7 @@ const kit = (name: string, b: Build, voices = 1): void => {
 const polyAsm = (p: Patch, ids: number[], cfg: Partial<PolyCfg>): void => {
   const alloc = p.modules.find((m) => ids.includes(m.id) && m.type === 'part')!;
   alloc.type = 'alloc';
-  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unison ? 1 : 0, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
+  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unison ? 1 : 0, steal: cfg.steal === false ? 0 : 1, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
   fixMatrix(alloc, DEFS.alloc);
   const main = p.modules.find((m) => m.type === 'fm1')!;
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: alloc.id, port: 'keys' } });
@@ -439,6 +439,28 @@ events['poly-layers'] = [
   [128 * 108, 'off', 55],
   [128 * 112, 'off', 72],
 ];
+// Allocation is observable without oscillators: held voice indices left, their pitches right.
+for (const assign of [0, 1, 2, 3]) for (const priority of [0, 1, 2]) for (const steal of assign === 3 ? [false, true] : [false]) {
+  const name = `alloc-modes-${assign}-${priority}-${steal}`;
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    add('fm1', 0, 0);
+    const part = add('part', 0, 0), left = add('vca', 0, 0), right = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: 1 });
+    wire(part, 'index', left, 'in'); wire(part, 'gate', left, 'cv'); wire(left, 'out', out, 'l');
+    wire(part, 'pitch', right, 'in'); wire(part, 'gate', right, 'cv'); wire(right, 'out', out, 'r');
+    ids = [part, left, right];
+  });
+  polyAsm(tests[name], ids, { parts: 3, assign, priority, steal });
+  events[name] = [
+    [0, 'on', 60], [128, 'on', 61], [256, 'on', 62], [384, 'on', 63],
+    [512, 'off', 61], [640, 'off', 62], [768, 'off', 63],
+    [896, 'on', 64], [1024, 'off', 64], [1152, 'on', 65],
+    [1280, 'off', 60], [1408, 'off', 65], [1536, 'on', 67], [1664, 'off', 67],
+    [1792, 'on', 69], [1920, 'off', 69],
+  ];
+  ends[name] = 2048;
+}
 // four parts, lowest free, every part with its own flaws: a fixed Random (tolerance) on each part's cutoff, a walking one (drift, its rate swept
 // by a shared LFO) on its pitch, the Part's index on the pan; a walking Random outside (the shared keyboard's)
 // on every part's resonance

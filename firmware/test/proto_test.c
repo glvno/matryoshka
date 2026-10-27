@@ -284,6 +284,18 @@ int main(int argc, char **argv)
     amod = (uint32_t)atoi(argv[6]);
     ain = (uint32_t)atoi(argv[7]);
     aval = atoi(argv[8]);
+    /* A minimal poly group exercises protocol framing independently of module parameter counts. */
+    {
+        uint8_t bin[8u + ENG_GROUP_REC + ENG_PANEL_BYTES] = {0};
+        bin[0] = 0xA1u; bin[1] = 37u; bin[3] = 1u;
+        bin[8] = 3u; bin[9] = 3u; bin[11] = 0x82u;
+        CHECK(m1_valid(bin, sizeof bin));
+        bin[1] = 36u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[9] = 0u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[11] = 2u; CHECK(m1_valid(bin, sizeof bin));
+        bin[1] = 37u; bin[9] = 4u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[9] = 3u; bin[11] = 0x83u; CHECK(!m1_valid(bin, sizeof bin));
+    }
     /* reference: direct load + parameter */
     CHECK(eng_load(patch, (uint32_t)np) == 0);
     eng_set_param(mod, par, val);

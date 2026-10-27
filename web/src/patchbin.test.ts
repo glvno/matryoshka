@@ -94,7 +94,7 @@ describe('binary patch format', () => {
 
   it('marks the parameters appended since format 34 (`since`), which the FM-1 reads an older binary without', () => {
     // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
-    const v34: Record<string, number> = { lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8 };
+    const v34: Record<string, number> = { lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8 };
     const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
     expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select']);
     for (const t of TYPE_ORDER.slice(0, nTypes34)) {

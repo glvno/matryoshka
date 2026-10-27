@@ -87,6 +87,14 @@ describe('the patch card', () => {
     expect(l.boxes.some((b) => b.blurb)).toBe(false);
   });
 
+  it('extra module rows beyond the preview limit do not hide a neighboring envelope control', () => {
+    const p = PRESETS.Init();
+    const defs = { ...DEFS, alloc: { ...DEFS.alloc, params: [...DEFS.alloc.params, ...DEFS.alloc.params] } };
+    const l = cardLayout(p, defs);
+    inside(l);
+    expect(l.boxes.find((b) => b.label === 'ADSR')!.pages![0].rows.map((r) => r.label)).toEqual(['attack', 'decay', 'sustain', 'release']);
+  });
+
   it('shows less per box the more boxes there are', () => {
     expect(detailFor(5)).toBe('full');
     expect(detailFor(30)).toBe('compact');

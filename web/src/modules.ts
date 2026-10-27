@@ -181,7 +181,7 @@ export const LEGATO_MODES = ['auto', 'off', 'on'];
 export const PRIORITIES = ['last', 'low', 'high'];
 /** how a poly assembly hands notes to its parts (engine.ts allocate): the next part in turn, the lowest-numbered free
  * part, or a free part whose last note was the key (else the one free the longest) */
-export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse'];
+export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse', 'reset'];
 
 /** the FM-1 panel's buttons a patch owns (#57 decision 4), gate outputs of the Main module; the device keeps PRESET, PLAY,
  * SAVE, HOME and OCT- / OCT+. The knobs K1..K4 are no signals: they edit the rows of the device page in focus (pages.ts),
@@ -2361,13 +2361,14 @@ const alloc: ModuleImpl<null> = {
     outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig')],
     params: [
       param('voices', 1, 16, 4, { step: 1 }),
-      param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES }),
+      param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3 }),
       param('legato', 0, 2, 0, { step: 1, choices: LEGATO_MODES }),
       param('priority', 0, 2, 0, { step: 1, choices: PRIORITIES }),
       param('unison', 0, 1, 0, { step: 1, choices: UNISON_MODES, toggle: true }),
       param('channel', 0, 16, 0, { step: 1, choices: KEY_CHANNELS }),
       param('low', 0, 127, 0, { step: 1, choices: NOTE_NAMES }),
       param('high', 0, 127, 127, { step: 1, choices: NOTE_NAMES }),
+      param('steal', 0, 1, 1, { step: 1, choices: UNISON_MODES, toggle: true, since: 37 }),
     ],
   },
   init: () => null,

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Tutorial reference patches receive newly added module defaults when opened. Patch previews no longer let undisplayed module rows squeeze neighboring controls.
+- Voicing can disable voice stealing and reset its rotation to voice one after all keys are released. Both engines and device page rows support these settings. Older patches retain their allocation behavior.
+
 - Wavetable adds an EML COLOR bank, used by Vernon 100: triangle through sloped square, square and saw to double saw an octave higher.
 
 - Arpeggiator has a continuous rate input in hertz, with zero to pause and external-clock precedence. Its CPU estimate now includes note scheduling.
