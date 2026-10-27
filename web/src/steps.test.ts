@@ -490,12 +490,14 @@ describe('the Steps module (#83, #133)', () => {
     expect(v).not.toHaveProperty('vels');
   });
 
-  it('the FM-1 takes 16 tracks and 512 notes', () => {
+  it('the FM-1 takes 16 tracks and 1536 notes, every pattern counted', () => {
     const { p } = rig([ON]);
     for (let i = 0; i < 16; i++) addModule(p, DEFS.steps, 0, 0);
     expect(deviceBudget(p).over.map((o) => o.key)).toContain('tracks');
     const q = rig([]).p;
-    for (let i = 0; i < 5; i++) addModule(q, DEFS.steps, 0, 0).notes = Array.from({ length: 128 }, (_, k) => note(k >> 1, 1, 40 + (k & 1)));
+    const full = (): StepNote[] => Array.from({ length: 128 }, (_, k) => note(k >> 1, 1, 40 + (k & 1)));
+    for (let i = 0; i < 2; i++) Object.assign(addModule(q, DEFS.steps, 0, 0), { notes: full(), patterns: Array.from({ length: 6 }, () => ({ notes: full() })) });
+    expect(deviceBudget(q).items.find((x) => x.key === 'notes')!.used).toBe(2 * 7 * 128);
     expect(deviceBudget(q).over.map((o) => o.key)).toContain('notes');
   });
 });

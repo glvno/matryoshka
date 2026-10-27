@@ -1365,7 +1365,7 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     if (src.bypass) m.bypass = true; // toDef writes the members' own switches
     if (src.type === 'steps') {   // a track's name and notes (a definition from before #133: its pattern and step values, migrated)
       const old = src as typeof src & { steps?: unknown; vels?: unknown };
-      Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels }));
+      Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels, patterns: src.patterns }));
       fixTrack(m);
     }
     if (src.type === 'drummap' && src.names) {   // a Drum map's row names

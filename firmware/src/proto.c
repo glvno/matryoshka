@@ -36,7 +36,7 @@
 #define M1_PATCH_MAX 3840u                                   /* a bank slot is one 4 KB sector: 256 B of header, the patch */
 #define M1_VERSION 1
 
-enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51 };
+enum { C_HELLO = 0x01, C_CHUNK = 0x10, C_COMMIT = 0x11, C_STORE = 0x12, C_PARAM = 0x20, C_ATT = 0x21, C_BYPASS = 0x22, C_RANGE = 0x23, C_TRANSPORT = 0x25, C_MUTE = 0x27, C_FOCUS = 0x29, C_TRACK = 0x2A, C_DIAG = 0x2B, C_LIVE = 0x2C, C_PRESETS = 0x2D, C_PRESET_GET = 0x2E, C_PRESET_PUT = 0x2F, C_PRESET_DEL = 0x30, C_SANDBOX = 0x31, C_TEST_KEY = 0x32, C_TEST_TURN = 0x33, C_TEST_SCREEN = 0x34, C_TEST_PEAK = 0x35, C_PATTERN = 0x36, C_SONG = 0x37, C_SLOT = 0x13, C_SLOT_ERASE = 0x14, C_SLOT_INFO = 0x15, R_ACK = 0x40, R_INFO = 0x41, R_SLOT = 0x42, R_SLOT_NOW = 0x43, R_MUTE = 0x45, R_PARAM_NOW = 0x47, R_FOCUS_NOW = 0x48, R_TRACK = 0x49, R_DIAG = 0x4B, R_PRESET = 0x4C, R_PRESET_DATA = 0x4D, R_PRESET_STORED = 0x4E, R_SCREEN = 0x50, R_PEAK = 0x51, R_PATTERN_NOW = 0x52, R_SONG_NOW = 0x53 };
 #define M1_FEATURES 246u                                     /* INFO byte 5: bit 1 = the TRANSPORT command, bit 2 = MUTE, bit 4 = FOCUS / PARAM_NOW / FOCUS_NOW, bit 5 = TRACK / TRACK_NOW, bit 6 = LIVE, bit 7 = the presets (#195) (bit 0 ARP, bit 3 STEPVAL and STEP are retired) */
 #define M1_FEATURES2 255u                                     /* INFO byte 6, feature bits 8..15: bit 8 = sandbox mode (LIVE paused mutes the FM-1, SANDBOX, the MIDI OUT flag), bit 9 = the device test mode (TEST_KEY, TEST_TURN, TEST_SCREEN, TEST_PEAK; #291), bit 10 = TEST_PEAK reads before MASTER and flags MASTER down, bit 11 = reads format 35, bit 12 = reads format 36, bit 13 = reads format 37, bit 14 = reads format 38, bit 15 = reads format 39 (legacy editor compatibility; INFO bytes 7..8 report the readable range) */
 #define M1_INFO_MIDI_OUT 4u                                  /* INFO byte 3 (flags) bit 2: MENU > MIDI OUT is on (with feature bit 8) */
@@ -274,7 +274,7 @@ static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }   /* (
 /* unasked: a track's notes after an edit on the panel (the editor follows): module, n, n u32 LE */
 static void m1_track_now(uint32_t mod)
 {
-    static uint8_t f[8u + (8u * (2u + 4u * TRACK_NOTES_MAX) + 6u) / 7u];
+    static uint8_t f[8u + (8u * (3u + 4u * TRACK_NOTES_MAX) + 6u) / 7u];
     const uint32_t *w;
     int n = eng_steps_notes(mod, &w);
     uint32_t o = 0, k, len, acc = 0, nb = 0;
@@ -285,9 +285,10 @@ static void m1_track_now(uint32_t mod)
     f[o++] = 0x4D;
     f[o++] = 0x31;
     f[o++] = R_TRACK;
-    len = 2u + 4u * (uint32_t)n;
-    for (k = 0; k < len; k++) {   /* m1_pack7 of the payload, a byte at a time from the engine's words (no 514 B copy) */
-        uint32_t b = k == 0u ? mod & 255u : k == 1u ? (uint32_t)n & 255u : (w[(k - 2u) >> 2] >> (8u * ((k - 2u) & 3u))) & 255u;
+    len = 3u + 4u * (uint32_t)n;
+    for (k = 0; k < len; k++) {   /* m1_pack7 of the payload, a byte at a time from the engine's words (no 514 B copy); last
+                                   * the pattern they are (format 48: the one the track plays) */
+        uint32_t b = k == 0u ? mod & 255u : k == 1u ? (uint32_t)n & 255u : k == len - 1u ? (uint32_t)eng_pattern_playing(mod) & 255u : (w[(k - 2u) >> 2] >> (8u * ((k - 2u) & 3u))) & 255u;
         acc |= b << nb;
         nb += 8u;
         while (nb >= 7u) {
@@ -344,7 +345,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     uint32_t at = eng_records_at(p, len);
     if (!at || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION) || p[3] > POLY_MAX_GROUPS)
         return 0;
-    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return 0;
     if (p[2] > ENG_MAX_MODULES || ((uint32_t)p[4] | (uint32_t)p[5] << 8) > ENG_MAX_CABLES)
         return 0;
@@ -355,7 +356,7 @@ static int m1_valid(const uint8_t *p, uint32_t len)
     if (p[6] & 4u) at += p[2];                              /* switched fixed-input links, before ranges */
     if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
         return 0;
-    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))      /* flag bit 4: the tracks' notes */
+    if (!(at = eng_steps_end(p, len, at)))      /* flag bit 4: the tracks' notes; flag bit 10: the patterns and songs */
         return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))    /* flag bit 5: the device pages */
         return 0;
@@ -392,7 +393,7 @@ static uint32_t m1_devices_at(void)
     uint32_t at;
     if (!(m1_cur[6] & 32u) || !(at = m1_notes_at()))
         return 0;
-    if ((m1_cur[6] & 16u) && !(at = eng_notes_end(m1_cur, m1_cur_len, at)))
+    if (!(at = eng_steps_end(m1_cur, m1_cur_len, at)))
         return 0;
     return at < m1_cur_len ? at : 0;
 }
@@ -403,7 +404,7 @@ static uint32_t m1_range_section(void)
     uint32_t at;
     if (!(m1_cur[6] & 2u) || !(at = m1_notes_at()))
         return 0;
-    if ((m1_cur[6] & 16u) && !(at = eng_notes_end(m1_cur, m1_cur_len, at)))
+    if (!(at = eng_steps_end(m1_cur, m1_cur_len, at)))
         return 0;
     if ((m1_cur[6] & 32u) && !(at = eng_devices_end(m1_cur, m1_cur_len, at)))   /* the device pages come before the ranges */
         return 0;
@@ -510,13 +511,15 @@ static int m1_preset_name(uint32_t dev, const char *name)
 /* a track's notes as the engine has them into the binary (SAVE keeps them): its entry in the notes section replaced,
  * added in module order or removed; the section created or dropped; what follows (device pages, button kinds, macro
  * ranges) moves. A patch that would outgrow M1_PATCH_MAX keeps its old entry. */
+static void m1_patch_patterns(void);
 static void m1_patch_track(uint32_t mod)
 {
     const uint32_t *w;
-    int n = eng_steps_notes(mod, &w), i;
+    int n = eng_pattern_notes(mod, 0, &w), i;
     uint32_t sec, at, cnt, old = 0, len, has = m1_cur[6] & 16u;
     if (n < 0 || !m1_track_at(mod) || !(sec = m1_notes_at()) || (has && !eng_notes_end(m1_cur, m1_cur_len, sec)))
         return;
+    m1_patch_patterns();                             /* (the pattern edited may be any: both sections follow the engine) */
     cnt = has ? m1_cur[sec] : 0u;
     at = has ? sec + 1u : sec;
     for (i = 0; i < (int)cnt; i++) {                 /* the entry, or where it goes */
@@ -552,6 +555,60 @@ static void m1_patch_track(uint32_t mod)
         m1_cur[6] &= (uint8_t)~16u;
     }
     m1_edited = 1;
+}
+
+/* the patterns and songs as the engine has them into the binary (format 48, SAVE keeps them): the section replaced, made or
+ * dropped, what follows moves. A patch of an older format (one too big to upgrade) or one that would outgrow M1_PATCH_MAX
+ * keeps its old section. */
+static void m1_patch_patterns(void)
+{
+    uint32_t sec = m1_notes_at(), old = 0;
+    int n;
+    if (!sec || m1_cur[1] < 48u)
+        return;
+    if ((m1_cur[6] & 16u) && !(sec = eng_notes_end(m1_cur, m1_cur_len, sec)))
+        return;
+    if ((m1_cur[7] & ENG_FLAG_PATTERNS) && !(old = eng_patterns_end(m1_cur, m1_cur_len, sec)))
+        return;
+    old = old ? old - sec : 0u;
+    n = eng_patterns_record(0, 0);
+    if (n < 0 || (!n && !old) || m1_cur_len - old + (uint32_t)n > M1_PATCH_MAX)
+        return;
+    m1_splice(sec, old, (uint32_t)n);
+    (void)eng_patterns_record(m1_cur + sec, (uint32_t)n);
+    m1_cur[7] = (uint8_t)(n ? m1_cur[7] | ENG_FLAG_PATTERNS : m1_cur[7] & ~ENG_FLAG_PATTERNS);
+    m1_edited = 1;
+}
+
+/* unasked: the patch's pattern and song as the FM-1 chose them (PRESET on the SEQ page, the SONG page; the editor follows) */
+static void m1_pattern_now(void)
+{
+    uint8_t p[2];
+    p[0] = (uint8_t)eng_pattern();
+    p[1] = (uint8_t)eng_song();
+    m1_reply(R_PATTERN_NOW, p, 2);
+}
+/* unasked: song s's entries after an edit on the SONG page: s, n, n (pattern, shift) */
+static void m1_song_now(uint32_t s)
+{
+    static uint8_t p[2u + 2u * ENG_SONG_LEN];
+    static uint8_t f[8u + (8u * sizeof p + 6u) / 7u];
+    uint32_t n = (uint32_t)eng_song_len(s), k, w = 0;
+    p[0] = (uint8_t)s;
+    p[1] = (uint8_t)n;
+    for (k = 0; k < n; k++) {
+        int e = eng_song_get(s, k);
+        p[2u + 2u * k] = (uint8_t)e;
+        p[3u + 2u * k] = (uint8_t)(e >> 8);
+    }
+    f[w++] = 0xF0;
+    f[w++] = 0x7D;
+    f[w++] = 0x4D;
+    f[w++] = 0x31;
+    f[w++] = R_SONG_NOW;
+    w += m1_pack7(p, 2u + 2u * n, f + w);
+    f[w++] = 0xF7;
+    m1_send(f, w);
 }
 
 /* the stored copy follows a macro range edit: update, append or remove the entry (the section is last in the binary) */
@@ -762,13 +819,37 @@ static int m1_handle(const uint8_t *f, uint32_t n)
             m1_ui_changed();
         }
         break;
-    case C_TRACK:                                            /* module u8, n u8, n u32 LE notes (track.ts noteWord) */
+    case C_TRACK:                                            /* module u8, n u8, n u32 LE notes (track.ts noteWord), [pattern u8
+                                                              * (format 48; without it: the one the track plays)] */
         if (len >= 2u && len >= 2u + 4u * d[1]) {
             uint32_t w[TRACK_NOTES_MAX], i, n = d[1] < TRACK_NOTES_MAX ? d[1] : TRACK_NOTES_MAX;
+            int pat = len >= 3u + 4u * d[1] ? d[2u + 4u * d[1]] : eng_pattern_playing(d[0]);
             for (i = 0; i < n; i++)
                 w[i] = (uint32_t)d[2 + 4 * i] | (uint32_t)d[3 + 4 * i] << 8 | (uint32_t)d[4 + 4 * i] << 16 | (uint32_t)d[5 + 4 * i] << 24;
-            if (eng_steps_set_notes(d[0], w, n))
+            if (pat >= 0 && eng_pattern_set_notes(d[0], (uint32_t)pat, w, n))
                 m1_patch_track(d[0]);
+            m1_ui_changed();
+        }
+        break;
+    case C_PATTERN:                                          /* pattern u8 (0-based), song u8 (0 none): as PRESET / the SONG
+                                                              * page choose them (each track from the end of its pass) */
+        if (len >= 2u && d[0] < ENG_PATTERNS && d[1] <= ENG_SONGS) {
+            if ((int)d[0] != eng_pattern())
+                eng_pattern_set(d[0]);
+            if ((int)d[1] != eng_song())
+                eng_song_set(d[1]);
+            m1_patch_patterns();
+            m1_ui_changed();
+        }
+        break;
+    case C_SONG:                                             /* song u8 (0-based), n u8, n (pattern u8, shift i8): its entries */
+        if (len >= 2u && d[0] < ENG_SONGS && d[1] <= ENG_SONG_LEN && len >= 2u + 2u * d[1]) {
+            uint32_t k;
+            while (eng_song_len(d[0]) > 0)
+                (void)eng_song_delete(d[0], 0);
+            for (k = 0; k < d[1]; k++)
+                (void)eng_song_put(d[0], k, d[2u + 2u * k] < ENG_PATTERNS ? d[2u + 2u * k] : 0u, (int8_t)d[3u + 2u * k]);
+            m1_patch_patterns();
             m1_ui_changed();
         }
         break;

@@ -6,7 +6,7 @@ import { connectParameter, setInputRoute } from './parameter-routing';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
 import { engineBytes } from './test-bin';
-import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, WRITE_FLOOR } from './patchbin';
+import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -92,10 +92,11 @@ describe('binary patch format', () => {
     expect(b[b.length - 6]).toBe(1); // the macro ranges, last
   });
 
-  it('writes WRITE_FLOOR only while every later format just appends parameters (`since`)', () => {
-    // a format that changes anything else (a type, a port, a section) must raise WRITE_FLOOR to itself, or a patch that
-    // uses it would be written in an older format that does not have it
+  it('writes WRITE_FLOOR only while every later format just appends parameters (`since`) or a section written only when used', () => {
+    // a format that changes anything else (a type, a port, a section always written) must raise WRITE_FLOOR to itself, or
+    // a patch that uses it would be written in an older format that does not have it
     const later = new Set(Object.values(DEFS).flatMap((d) => d.params.map((q) => q.since ?? 0)).filter((v) => v > WRITE_FLOOR));
+    for (const v of Object.keys(SECTION_FORMATS)) later.add(Number(v));
     expect([...later].sort((a, b) => a - b)).toEqual(Array.from({ length: VERSION - WRITE_FLOOR }, (_, i) => WRITE_FLOOR + 1 + i));
   });
 

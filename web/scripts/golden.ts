@@ -21,7 +21,7 @@ mkdirSync(OUT, { recursive: true });
 
 /** [frame, kind, note (a button for bon / boff; a module index for arm, -1 none, and rec), MIDI channel of a note (absent:
  * 1; rec: 1 on, 0 off; cc: controller value 0..127)]; take: the notes recorded so far go into their tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc', number, number?];
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -2460,6 +2460,72 @@ for (const dir of [0, 1, 2, 3]) for (const len of [1, 2, 5, 64]) {
   ends[name] = 128 * 600;
 }
 
+// patterns (format 48): two tracks of different lengths, each switching at the end of its own pass (a pattern chosen while
+// running waits; stopped, it plays at once); a pattern with its own length, one with its own length and rate, long words
+// (a chance, an odd velocity) and short ones; a pattern a track has not got plays its first, an empty one is silent; the
+// same with the first track backwards and the second at random
+for (const dirs of [[0, 0], [1, 3]]) {
+  const name = dirs[0] ? 'steps-patterns-dir' : 'steps-patterns';
+  tests[name] = make(name, (add, wire) => {
+    add('fm1', 0, 0, { tempo: 240 });
+    const out = add('output', 2000, 0, { level: 0.6 });
+    const voice = (x: number, wave: number, p: Record<string, number>, port: string): void => {
+      const st = add('steps', x, 0, p);
+      const o = add('osc', x + 100, 0, { wave });
+      const env = add('adsr', x + 100, 200, { a: 0.002, d: 0.05, s: 0.5, r: 0.03 });
+      const v1 = add('vca', x + 200, 0);
+      const v2 = add('vca', x + 300, 0);
+      wire(st, 'pitch', o, 'pitch'); wire(st, 'trig', env, 'gate');
+      wire(o, 'out', v1, 'in'); wire(env, 'env', v1, 'cv'); wire(v1, 'out', v2, 'in'); wire(st, 'vel', v2, 'cv');
+      wire(v2, 'out', out, port);
+    };
+    voice(200, 1, { len: 8, rate: 6, gate: 0.5, dir: dirs[0] }, 'l');
+    voice(700, 2, { len: 6, rate: 6, gate: 0.7, swing: 60, dir: dirs[1] }, 'r');
+  });
+  const [a, b] = tests[name].modules.filter((m) => m.type === 'steps');
+  a.notes = [n(0, 1, 48), n(1, 1, 55, 127), n(2, 2, 60), n(4, 1, 63, 90), n(5, 1, 67), n(6, 2, 70, 40), n(7, 1, 72)];
+  a.patterns = [
+    { notes: [n(0, 2, 62, 127), n(2, 1, 65), n(3, 1, 67, 100, 50), n(4, 3, 70, 77)], len: 5 },
+    { notes: [n(0, 1, 48, 127), n(1, 1, 50), n(3, 2, 53), n(5, 1, 55, 127), n(9, 1, 57), n(11, 4, 60)], len: 12, rate: 5 },
+  ];
+  b.notes = [n(0, 1, 36), n(2, 1, 43, 70), n(3, 1, 39), n(5, 1, 36, 127)];
+  b.patterns = [{ notes: [n(0, 2, 41), n(2, 1, 41, 127), n(4, 1, 44)] }, null, {}];
+  events[name] = [[128 * 5, 'run', 0], [128 * 40, 'pat', 1], [128 * 200, 'pat', 2], [128 * 420, 'pat', 3], [128 * 600, 'stop', 0],
+    [128 * 620, 'pat', 1], [128 * 640, 'run', 0], [128 * 800, 'pat', 0]];
+  ends[name] = 128 * 1000;
+}
+
+// songs (format 48): a song's entries, a pass each (patterns with their shift, back to the first after the last), stop and
+// PLAY start it again; another song chosen while running, then none (the selected pattern again, unshifted); a track that
+// plays a Drum map is never shifted (its notes stay on their rows) and a pattern it has not got plays its first
+tests['steps-song'] = make('steps-song', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 240 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const st = add('steps', 200, 0, { len: 4, rate: 6, gate: 0.5 });
+  const o = add('osc', 300, 0, { wave: 1 });
+  const env = add('adsr', 300, 200, { a: 0.002, d: 0.05, s: 0.5, r: 0.03 });
+  const v = add('vca', 400, 0);
+  wire(st, 'pitch', o, 'pitch'); wire(st, 'trig', env, 'gate'); wire(o, 'out', v, 'in'); wire(env, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+  const dt = add('steps', 200, 600, { len: 4, rate: 6, gate: 0.5 });
+  const dm = add('drummap', 400, 600);
+  const mx = add('mixer', 600, 600, { l1: 0.4, l2: 0.3, l3: 0.3 });
+  wire(dt, 'keys', dm, 'keys'); wire(dm, 'g1', mx, 'in1'); wire(dm, 'g2', mx, 'in2'); wire(dm, 'v2', mx, 'in3');
+  wire(mx, 'out', out, 'r');
+});
+{
+  const p = tests['steps-song'];
+  const [a, d] = p.modules.filter((m) => m.type === 'steps');
+  a.notes = [n(0, 1, 60), n(1, 1, 64), n(2, 1, 67, 127), n(3, 1, 72)];
+  a.patterns = [{ notes: [n(0, 2, 48, 127), n(2, 2, 55)] }, { notes: [n(0, 1, 72), n(1, 1, 71), n(2, 1, 69, 127)], len: 3 }];
+  d.notes = [n(0, 1, 36), n(2, 1, 38)];
+  d.patterns = [{ notes: [n(0, 1, 36), n(1, 1, 36), n(3, 1, 38, 127)] }];
+  p.modules.find((m) => m.type === 'fm1')!.seq = { song: 1, songs: [[{ pat: 0, shift: 0 }, { pat: 1, shift: 5 }, { pat: 2, shift: -7 }, { pat: 1, shift: 12 }], [{ pat: 2, shift: 3 }, { pat: 0, shift: -12 }]] };
+  events['steps-song'] = [[128 * 5, 'run', 0], [128 * 300, 'stop', 0], [128 * 330, 'run', 0], [128 * 500, 'song', 2], [128 * 700, 'song', 0],
+    [128 * 760, 'pat', 1], [128 * 900, 'stop', 0]];
+  ends['steps-song'] = 128 * 960;
+}
+
 // arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
 // row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
 tests['arm-set'] = make('arm-set', (add, wire) => {
@@ -2576,6 +2642,8 @@ for (const [name, patch] of Object.entries(tests)) {
         e.setTrack(r.id, notes.get(r.id));
       }
     else if (kind === 'cc') e.cc(note, ch ?? 0);
+    else if (kind === 'pat') e.setPattern(note);
+    else if (kind === 'song') e.setSong(note);
     else if (kind === 'on') e.noteOn(note, 1, ch ?? 1);
     else if (kind === 'off') e.noteOff(note, ch ?? 1);
     else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
@@ -2596,7 +2664,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // the parameter values the editor's budget counts (DEVICE.params), which eng_load must take exactly (host_test checks)
   if (!bins[name]) writeFileSync(new URL(`${f}.par`, OUT), `${deviceBudget(patch).items.find((i) => i.key === 'params')!.used}\n`);
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

@@ -3,7 +3,7 @@
 
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type StepNote } from './track';
+import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepNote } from './track';
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
 import { formatValue } from './labels';
@@ -2456,9 +2456,26 @@ export interface StepsSound { key: number; left: number; cnt: number; thru?: num
 /** how many notes a Steps track sounds at once (a further note ends the oldest) */
 export const TRACK_POLY = 8;
 
-/** the Steps module's state: its notes (ModuleInst.notes, loaded by the engine) and where it plays */
+/** a track's pattern as the engine holds it (track.ts Pattern; pattern 1 has no length or rate of its own) */
+export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number }
+/** the patch's song state the engine shares with its tracks (Main's `seq`): the song playing (0 none) and the songs */
+export interface StepsSong { song: number; songs: SongEntry[][] }
+
+/** the Steps module's state: its patterns (ModuleInst.notes, .patterns, loaded by the engine), the notes of the one it
+ * plays, and where it plays */
 export interface StepsState {
   notes: StepNote[];
+  /** pattern k + 1 at k (null: the track has none of that number, which plays its pattern 1) */
+  pats: (StepsPattern | null)[];
+  /** the pattern playing (0-based; one the track has not got plays pattern 1), the one to play from the end of this pass
+   * (-1 none; with the transport stopped it plays from the next block), the song entry playing (-1: the next pass plays
+   * the first), the entry's shift (semitones; never on a track that plays a Drum map: `drum`) */
+  pat: number;
+  queued: number;
+  songPos: number;
+  shift: number;
+  drum: boolean;
+  song: StepsSong;
   /** what the pitch / vel outputs hold: the last note that started (before the first: STEP_NOTE / STEP_VEL), pitch in
    * octaves from C4 */
   pitch: number;
@@ -2513,6 +2530,30 @@ export function notePlays(seed: number, loop: number, k: number, j: number, chan
   return !code || hash32((seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(k + 1, 0x85ebca6b) ^ Math.imul(j, 0xc2b2ae35)) >>> 0) % 100 < 100 - 5 * code;
 }
 
+/** the pattern a track plays (pats[pat], else its pattern 1) */
+export const stepsPattern = (s: StepsState): StepsPattern => s.pats[s.pat] ?? s.pats[0] ?? { notes: [] };
+/** pattern p plays now: its notes are the track's */
+export function stepsGo(s: StepsState, p: number): void {
+  s.pat = p;
+  s.notes = stepsPattern(s).notes;
+}
+/** the end of a pass (engine.c steps_turn): in a song, the next entry's pattern and shift (after the last, the first
+ * again); else a queued pattern */
+function stepsTurn(s: StepsState): void {
+  const song = s.song.song > 0 ? s.song.songs[s.song.song - 1] : undefined;
+  if (song?.length) {
+    s.songPos = s.songPos + 1 >= song.length ? 0 : s.songPos + 1;
+    const e = song[s.songPos];
+    stepsGo(s, e.pat);
+    s.shift = s.drum ? 0 : e.shift;
+    s.queued = -1;
+    return;
+  }
+  s.shift = 0;
+  if (s.queued >= 0) stepsGo(s, s.queued);
+  s.queued = -1;
+}
+
 const stepCycle = (len: number, dir: number): number => dir === 2 && len > 1 ? 2 * (len - 1) : len;
 
 /** Preview the next visited step without consuming it, also used by live recording. */
@@ -2564,19 +2605,29 @@ const steps: ModuleImpl<StepsState> = {
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
   process(c, s) {
     const q16 = (v: number | undefined): number => Math.round((v ?? 0) * 65536);
-    const len = Math.min(STEPS_MAX, Math.max(1, Math.round(c.p.len ?? 16)));
+    const v = c.voice;
+    if (s.queued >= 0 && !v.run) { // stopped: a chosen pattern plays at once
+      stepsGo(s, s.queued);
+      s.queued = -1;
+    }
+    // the pattern's own length and rate, else the track's (a pattern switch at the end of a pass changes them)
+    let len = 0, ht = 0, step = 0;
+    const shape = (): void => {
+      const x = s.pat > 0 ? s.pats[s.pat] : null;
+      len = Math.min(STEPS_MAX, Math.max(1, x?.len ?? Math.round(c.p.len ?? 16)));
+      ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, x?.rate ?? Math.round(c.p.rate ?? 4)))];
+      step = Math.floor((ht * v.tickLen) / 2); // a step's samples at the clock's rate
+    };
+    shape();
     const dir = Math.max(0, Math.min(3, Math.round(c.p.dir ?? 0)));
-    const ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
     const swing = q16(c.p.swing ?? 50) - 50 * 65536;
     const gate = q16(c.p.gate ?? 0.25);
-    const v = c.voice;
-    const step = Math.floor((ht * v.tickLen) / 2); // a step's samples at the clock's rate
     const ext = !!c.connected.clk;
     const { clk, reset, transpose } = c.inp;
     const end = (j: number): void => {
@@ -2596,14 +2647,15 @@ const steps: ModuleImpl<StepsState> = {
       for (const n of s.notes) {
         if (n.at !== k) continue;
         if (notePlays(s.seed, s.loop, k, j++, n.chance)) {
-          const key = Math.max(0, Math.min(127, n.note + semis));
+          const note = Math.max(0, Math.min(127, n.note + s.shift)); // (a song entry's shift)
+          const key = Math.max(0, Math.min(127, note + semis));
           const same = s.snd.findIndex((x) => x.key === key);
           if (same >= 0) end(same);
           if (s.snd.length >= TRACK_POLY) end(0);
           const left = Math.min(n.len, Math.max(1, stepCycle(len, dir) - s.visit)) - 1;
           s.snd.push({ key, left, cnt: hold(left) });
           s.ev.push(key | 0x80, n.vel);
-          s.pitch = stepPitch(n.note);
+          s.pitch = stepPitch(note);
           s.vel = n.vel / 127;
           any = true;
         }
@@ -2660,6 +2712,7 @@ const steps: ModuleImpl<StepsState> = {
           s.count = 0;
           s.half = 0;
           s.pos = -1;
+          s.songPos = -1; // (a song starts again from its first entry)
           adv++;
         }
         if (s.half > 0 && v.run && --s.half === 0) adv++;
@@ -2682,7 +2735,12 @@ const steps: ModuleImpl<StepsState> = {
       if (s.pend > 0 && --s.pend === 0 && (dir === 0 || s.pstep < len)) fire(s.pstep, i);
       s.ago++;
       for (; adv > 0; adv--) {
-        const next = nextStep(s, len, dir);
+        let next = nextStep(s, len, dir);
+        if (next.visit === 0) { // the end of a pass: a song's next entry, a queued pattern
+          stepsTurn(s);
+          shape();
+          next = nextStep(s, len, dir);
+        }
         // In the new play modes a live length edit can end the pass before an old note's countdown does: such a note ends
         // after this sample, so a note starting now still gets its low trig sample. A note whose countdown ran out keeps
         // its gate tail. Forward keeps its older behaviour (D-538).

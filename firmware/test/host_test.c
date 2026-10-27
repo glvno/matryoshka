@@ -3,7 +3,8 @@
 /* Host test of the fixed-point engine against the TypeScript reference.
  *   host_test NAME.m1p NAME.ev NAME.f32 [NAME.par]
  * .par: the parameter values the editor's budget counts for the patch (patchbin.ts DEVICE.params); eng_load must take as many.
- * .ev: lines "frame on NOTE VEL" / "frame off NOTE" (frame a multiple of 128, ascending), last line "end FRAMES".
+ * .ev: lines "frame on NOTE VEL" / "frame off NOTE" (frame a multiple of 128, ascending), last line "end FRAMES"; "frame
+ * pat N" / "frame song N" choose the patch's pattern / song (format 48).
  * .f32: float32 stereo interleaved reference output. Prints max and rms error (full scale = 1.0). */
 #include <math.h>
 #include <stdio.h>
@@ -91,6 +92,8 @@ int main(int argc, char **argv)
             }
             else if (!strcmp(kind, "rec") || !strcmp(kind, "cc"))
                 fscanf(ev, "%u %u", &note, &vel);
+            else if (!strcmp(kind, "pat") || !strcmp(kind, "song"))
+                fscanf(ev, "%u", &note);
         }
         rewind(ev);
     }
@@ -137,6 +140,14 @@ int main(int argc, char **argv)
         } else if (!strcmp(kind, "rec")) {
             fscanf(ev, "%u %u", &note, &vel);
             eng_steps_rec(note, (int)vel);
+        } else if (!strcmp(kind, "pat") || !strcmp(kind, "song")) {   /* (format 48) the patch's pattern, the song */
+            fscanf(ev, "%u", &note);
+#ifdef ENG_PATTERNS /* engine_exact.sh also builds this harness with older engine headers */
+            if (!strcmp(kind, "pat"))
+                eng_pattern_set(note);
+            else
+                eng_song_set(note);
+#endif
         } else if (!strcmp(kind, "take")) {
             uint32_t m, w;
             while (eng_steps_take(&m, &w))
