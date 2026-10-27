@@ -15,7 +15,7 @@ import { DEFS } from './modules';
 import type { Patch } from './patch';
 import { chipOf, type Chip } from './sandbox';
 import { decodeShare } from './share';
-import { OLD_SITE_URL, SITE_URL } from './site';
+import { OLD_SITE_URL, PAGES_DEV_URL, SITE_URL } from './site';
 
 export interface CommunityEntry {
   title: string;
@@ -36,10 +36,10 @@ export const LICENCE = 'CC BY-SA 4.0';
 export const LICENCE_URL = 'https://creativecommons.org/licenses/by-sa/4.0/';
 export const ISSUE_FORM = 'https://github.com/glvno/matryoshka/issues/new?template=community-patch.yml';
 export const SUBREDDIT = 'r/MVaveFM1';
-/** the address without its scheme and trailing slash, as a search term (matry0shka.pages.dev) */
+/** the address without its scheme and trailing slash, as a search term (matryoshka.lol) */
 const bare = (url: string): string => url.replace(/^https:\/\//, '').replace(/\/$/, '');
-/** a search of the subreddit for posts that link the app, at its address or the old one (Reddit's search takes OR) */
-export const REDDIT_SEARCH = `https://www.reddit.com/r/MVaveFM1/search?q=${encodeURIComponent(`${bare(SITE_URL)} OR ${bare(OLD_SITE_URL)}`)}&restrict_sr=1`;
+/** a search of the subreddit for posts that link the app, at its address or an earlier one (Reddit's search takes OR) */
+export const REDDIT_SEARCH = `https://www.reddit.com/r/MVaveFM1/search?q=${encodeURIComponent([SITE_URL, PAGES_DEV_URL, OLD_SITE_URL].map(bare).join(' OR '))}&restrict_sr=1`;
 
 const isUrl = (s: unknown): boolean => typeof s === 'string' && /^https:\/\/\S+$/.test(s);
 const filled = (s: unknown): boolean => typeof s === 'string' && s.trim().length > 0;

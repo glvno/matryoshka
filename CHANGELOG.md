@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **The editor has its own address: [matryoshka.lol](https://matryoshka.lol/).** matry0shka.pages.dev serves the
+  same editor and keeps working, with your patches, bank and settings there; links to it still open. Share links made
+  in the editor use the address it is open at. The browser keeps the editor's data separately for each address, so the
+  new one starts empty: bring a patch over with **Save as .json** there and **Load .json** here, one patch at a time.
+
 - **Incoming MIDI notes keep playing during FM-1 screen redraws** (#363). USB and TRS notes and clock are taken
   between screen transfers, including octave messages. Commands that change pages or patches keep their input order
   and wait for the main loop so they cannot draw into an unfinished screen transfer. On the test rig, SELECT and ALGO

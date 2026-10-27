@@ -1,4 +1,4 @@
-# Cloudflare Pages project matry0shka (https://matry0shka.pages.dev/): deployed by .github/workflows/pages.yml from web/
+# Cloudflare Pages project matry0shka (https://matryoshka.lol/, also https://matry0shka.pages.dev/): deployed by .github/workflows/pages.yml from web/
 # (`wrangler pages deploy`), which also uploads web/functions/ (the stored share links, src/share-store.ts).
 # With this file the bindings below are the project's (the dashboard's are replaced on each deploy).
 name = "matry0shka"
