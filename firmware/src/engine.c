@@ -3766,6 +3766,11 @@ static int only_output(const inst_t *it, uint32_t count)
     return found;
 }
 
+HOT int32_t bit_xor(int32_t a, int32_t b)
+{
+    return (clampi(a >> 1, -32768, 32767) ^ clampi(b >> 1, -32768, 32767)) * 2;
+}
+
 static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts `math`: a' = a ka + off, b' = b kb */
 {
     const esig_t *ia = it->in[MATH_I_A], *ib = it->in[MATH_I_B];
@@ -3784,6 +3789,7 @@ static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts 
         case MATH_O_MAX: MATH_ONE(a > b ? a : b) break;
         case MATH_O_ABS: MATH_ONE(a < 0 ? -a : a) break;
         case MATH_O_CMP: MATH_ONE(a > b ? ENG_ONE : 0) break;
+        case MATH_O_XOR: MATH_ONE(bit_xor(a, b)) break;
         }
 #undef MATH_ONE
         return;
@@ -3797,6 +3803,8 @@ static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts 
         o[MATH_O_MAX][i] = a > b ? a : b;
         o[MATH_O_ABS][i] = a < 0 ? -a : a;
         o[MATH_O_CMP][i] = a > b ? ENG_ONE : 0;
+        if (o[MATH_O_XOR] != dummy_out)
+            o[MATH_O_XOR][i] = bit_xor(a, b);
     }
     (void)nd;
 }

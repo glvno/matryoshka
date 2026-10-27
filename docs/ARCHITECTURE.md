@@ -338,6 +338,7 @@ Ladder's `fm` input adds a sample-by-sample cutoff signal to its existing `cv` i
 
 ## Math and logic
 
+- Math's appended `xor` output applies exclusive OR to signed 16-bit audio samples. It first applies the gains and offset, multiplies by 32768, rounds down and clamps to −32768..32767. The result is divided by 32768. A zero mask preserves the quantized input. Elvira 2 XL uses this for BITMANGLER; its original mask sequence remains unverified ([D-437](ledger/modules.md#D-437), Proposed).
 - `math`: a' = a·ka + off, b' = b·kb; outputs add, sub, mul, min, max, abs (of a'), cmp (1 while a' > b'). `logic`: inputs high at or above `thresh`; outputs and, or, xor, not (of a). Both stateless, per sample, Q16 in C. Golden kit `math-logic` (xor of two square LFOs gates an ADSR; max / abs of the math module on a VCA and a pitch).
 
 ## Selector (#351)

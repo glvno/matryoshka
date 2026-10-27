@@ -4070,13 +4070,13 @@
   },
   {
    "id": 147,
-   "type": "crush",
+   "type": "math",
    "x": 3220,
    "y": 29180,
    "params": {
-    "bits": 16,
-    "rate": 1,
-    "os": 0
+    "ka": 1,
+    "kb": 1,
+    "off": 0
    },
    "att": [
     1,
@@ -4084,23 +4084,15 @@
    ],
    "map": {
     "p1": [
-     "bits"
+     "ka"
     ],
     "p2": [
-     "rate"
+     "kb"
     ],
     "k1": [],
     "k2": [],
     "k3": [],
     "k4": []
-   },
-   "range": {
-    "p1": {
-     "bits": [
-      1,
-      0.06666666666666667
-     ]
-    }
    }
   },
   {
@@ -6533,13 +6525,13 @@
   },
   {
    "id": 231,
-   "type": "crush",
+   "type": "math",
    "x": 4180,
    "y": 29740,
    "params": {
-    "bits": 16,
-    "rate": 1,
-    "os": 0
+    "ka": 1,
+    "kb": 1,
+    "off": 0
    },
    "att": [
     1,
@@ -6547,23 +6539,15 @@
    ],
    "map": {
     "p1": [
-     "bits"
+     "ka"
     ],
     "p2": [
-     "rate"
+     "kb"
     ],
     "k1": [],
     "k2": [],
     "k3": [],
     "k4": []
-   },
-   "range": {
-    "p1": {
-     "bits": [
-      1,
-      0.06666666666666667
-     ]
-    }
    }
   },
   {
@@ -8996,13 +8980,13 @@
   },
   {
    "id": 315,
-   "type": "crush",
+   "type": "math",
    "x": 5140,
    "y": 29740,
    "params": {
-    "bits": 16,
-    "rate": 1,
-    "os": 0
+    "ka": 1,
+    "kb": 1,
+    "off": 0
    },
    "att": [
     1,
@@ -9010,23 +8994,15 @@
    ],
    "map": {
     "p1": [
-     "bits"
+     "ka"
     ],
     "p2": [
-     "rate"
+     "kb"
     ],
     "k1": [],
     "k2": [],
     "k3": [],
     "k4": []
-   },
-   "range": {
-    "p1": {
-     "bits": [
-      1,
-      0.06666666666666667
-     ]
-    }
    }
   },
   {
@@ -11459,13 +11435,13 @@
   },
   {
    "id": 399,
-   "type": "crush",
+   "type": "math",
    "x": 6100,
    "y": 29740,
    "params": {
-    "bits": 16,
-    "rate": 1,
-    "os": 0
+    "ka": 1,
+    "kb": 1,
+    "off": 0
    },
    "att": [
     1,
@@ -11473,23 +11449,15 @@
    ],
    "map": {
     "p1": [
-     "bits"
+     "ka"
     ],
     "p2": [
-     "rate"
+     "kb"
     ],
     "k1": [],
     "k2": [],
     "k3": [],
     "k4": []
-   },
-   "range": {
-    "p1": {
-     "bits": [
-      1,
-      0.06666666666666667
-     ]
-    }
    }
   },
   {
@@ -16009,7 +15977,7 @@
    },
    "to": {
     "module": 147,
-    "port": "in"
+    "port": "a"
    }
   },
   {
@@ -16019,7 +15987,7 @@
    },
    "to": {
     "module": 147,
-    "port": "p1"
+    "port": "b"
    }
   },
   {
@@ -16175,7 +16143,7 @@
   {
    "from": {
     "module": 147,
-    "port": "out"
+    "port": "xor"
    },
    "to": {
     "module": 155,
@@ -17589,7 +17557,7 @@
    },
    "to": {
     "module": 231,
-    "port": "in"
+    "port": "a"
    }
   },
   {
@@ -17599,7 +17567,7 @@
    },
    "to": {
     "module": 231,
-    "port": "p1"
+    "port": "b"
    }
   },
   {
@@ -17755,7 +17723,7 @@
   {
    "from": {
     "module": 231,
-    "port": "out"
+    "port": "xor"
    },
    "to": {
     "module": 239,
@@ -19159,7 +19127,7 @@
    },
    "to": {
     "module": 315,
-    "port": "in"
+    "port": "a"
    }
   },
   {
@@ -19169,7 +19137,7 @@
    },
    "to": {
     "module": 315,
-    "port": "p1"
+    "port": "b"
    }
   },
   {
@@ -19325,7 +19293,7 @@
   {
    "from": {
     "module": 315,
-    "port": "out"
+    "port": "xor"
    },
    "to": {
     "module": 323,
@@ -20719,7 +20687,7 @@
    },
    "to": {
     "module": 399,
-    "port": "in"
+    "port": "a"
    }
   },
   {
@@ -20729,7 +20697,7 @@
    },
    "to": {
     "module": 399,
-    "port": "p1"
+    "port": "b"
    }
   },
   {
@@ -20885,7 +20853,7 @@
   {
    "from": {
     "module": 399,
-    "port": "out"
+    "port": "xor"
    },
    "to": {
     "module": 407,
@@ -25152,5 +25120,5 @@
   }
  ],
  "octave": -1,
- "notes": "The neutral labs Elmyra 2 after its manual (v2.4): per voice touch, ENV, drone, MOD with all eleven MODP programs (0 DETUNE .. 1 DJ in tenths), CHRM, scales and EDOs, octave, tune follow, an 8-step sequence; twelve filter types, reversed routing, delay to 1.6 s with color and sync, reverb, OUCH, two LFOs to audio rate with S&H / S&G and sync, ATT, ADD, the jacks as ports. A choice of N is a 0..1 row in N steps. Not here: outside audio (no audio input), bit flipping (no XOR), recording (no record"
+ "notes": "Elmyra 2 controls with eleven MODP programs, twelve filter types, microtonal scales, effects, two LFOs and patch jacks. BITMANGLER uses 16-bit XOR; the original's exact mask sequence is unverified. Missing: outside audio, control-motion recording and the full 128-step TUNE sequencer. The sequence here has eight steps. Browser only."
 }

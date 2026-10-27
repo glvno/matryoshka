@@ -23,7 +23,7 @@
 //    0.2 CHORD (two more copies in just intonation; MOD in ten steps picks 1-5-8, major, minor, diminished, sus2, sus4,
 //    augmented, major 7th, dominant 7th (with 7/4), minor 7th), 0.3 DUAL (a second copy from an octave below to an
 //    octave above), 0.4 HARDSYNC (a copy reset by the main pitch, up to three octaves above it), 0.5 SHAPER (the wave's
-//    upper half shifted down by MOD: the manual gives it one line), 0.6 SATURATOR, 0.7 BITMANGLER (as a bit depth), 0.8
+//    upper half shifted down by MOD: the manual gives it one line), 0.6 SATURATOR, 0.7 BITMANGLER (16-bit XOR), 0.8
 //    SRR, 0.9 NOISE, 1 DJ (a low pass left of the middle, a high pass right of it, no resonance). MODP chaining (codes
 //    421..424: `modp chain`, four steps: off, 3>4, 1>2 and 3>4, 2>3>4): a voice's program takes the voice before it
 //    in place of its own oscillator;
@@ -61,7 +61,8 @@
 //  - the external audio itself: the module set has no audio input (a module for the browser's and the FM-1's audio
 //    input would bring it; `ext in` takes any signal of the patch meanwhile);
 //  - the CV jacks to and from other gear, the modifier ports' cards and parts, the 1V/octave calibration: hardware;
-//  - BITMANGLER's flipped bits: a module that flips a sample's bits (XOR) is needed, so it is a bit depth here;
+//  - BITMANGLER flips signed 16-bit samples with a mask of MOD x 32768 (clamped to 32767). The original's exact mask
+//    sequence is undocumented in its manual and remains unverified;
 //  - the sequencer's 128 steps and its recording of the TUNE knob, and LFO 1's motion recording: a step sequencer
 //    longer than eight steps that records a control, and a recorder that loops a control signal, are needed;
 //  - LFO 2's four further wavetables (code 244), the exact complex waves and the oscillator pages: they are the
@@ -368,11 +369,10 @@ export function elviraXl(keys: Record<string, number>): Built {
       wire(src, sat, 'a');
       b.wire(satS, 'out', sat, 'b');
       wire(M, sat, 'pos');
-      // BITMANGLER (the bit depth), SRR
-      const bits = P('crush', { bits: 16, rate: 1 });
-      wire(src, bits, 'in');
-      wire(M, bits, 'p1');
-      b.pin(bits, 'p1', 'bits', [1, 1 / 15]); // 16 .. 2 bits
+      // BITMANGLER: MOD is a positive 15-bit mask; zero leaves the quantized sample unchanged.
+      const bits = P('math', { ka: 1, kb: 1, off: 0 });
+      wire(src, bits, 'a');
+      wire(M, bits, 'b');
       const srr = P('crush', { bits: 16, rate: 1 });
       wire(src, srr, 'in');
       wire(M, srr, 'p1');
@@ -392,7 +392,7 @@ export function elviraXl(keys: Record<string, number>): Built {
       wire(scaled(M, col, 2, -1), djHp, 'p1');
       b.pin(djHp, 'p1', 'cutoff', [0, 1]);
       // the programs that process it (MODP 0.5 .. 1), the oscillator as it is below 0.5
-      const prog = choose([modp, 'out'], ([...Array<Out>(5).fill(src), [shaper, 'sub'], [sat, 'out'], [bits, 'out'], [srr, 'out'], [nz, 'out'], [djHp, 'hp']] as Out[]).map(opt), col + 1, 5);
+      const prog = choose([modp, 'out'], ([...Array<Out>(5).fill(src), [shaper, 'sub'], [sat, 'out'], [bits, 'xor'], [srr, 'out'], [nz, 'out'], [djHp, 'hp']] as Out[]).map(opt), col + 1, 5);
       // the touchpads: the keys' gates (and GATE) open the envelope, their velocity (and GATE, aftertouch) is the pressure
       const touch = P('scale', { gain: 1, offset: 0 });
       const press = P('scale', { gain: 1, offset: 0 });
@@ -704,7 +704,7 @@ export function elviraXl(keys: Record<string, number>): Built {
 
 /** the patch's notes (Patch.notes, at most 500 characters) */
 const NOTES =
-  "The neutral labs Elmyra 2 after its manual (v2.4): per voice touch, ENV, drone, MOD with all eleven MODP programs (0 DETUNE .. 1 DJ in tenths), CHRM, scales and EDOs, octave, tune follow, an 8-step sequence; twelve filter types, reversed routing, delay to 1.6 s with color and sync, reverb, OUCH, two LFOs to audio rate with S&H / S&G and sync, ATT, ADD, the jacks as ports. A choice of N is a 0..1 row in N steps. Not here: outside audio (no audio input), bit flipping (no XOR), recording (no recorder). Browser only.";
+  "Elmyra 2 controls with eleven MODP programs, twelve filter types, microtonal scales, effects, two LFOs and patch jacks. BITMANGLER uses 16-bit XOR; the original's exact mask sequence is unverified. Missing: outside audio, control-motion recording and the full 128-step TUNE sequencer. The sequence here has eight steps. Browser only.";
 
 export const xl: Xl = {
   base: 'Elvira 2',
