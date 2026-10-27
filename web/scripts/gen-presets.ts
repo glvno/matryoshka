@@ -9,10 +9,10 @@
 // Run from web/:  npx vite-node scripts/gen-presets.ts
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { DEFS } from '../src/modules';
-import { addModule, emptyPatch, paramUnit, removeModule, rowDef, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
+import { addModule, defaultMap, emptyPatch, paramUnit, removeModule, rowDef, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
 import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track';
 import { FACTORY } from '../src/assemblies';
-import { allModules, insertAssembly, makeAssembly, type AssemblyInst } from '../src/assembly';
+import { allModules, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
 import { around, level, mod, peakOf, players, plugIn, plugOut, row, wire, type Inst } from './factory-build';
 
@@ -480,6 +480,17 @@ after.push(() => {
   st.notes = fixNotes(BASS.map(([at, note, len, acc]) => ({ at, len, note, vel: acc ? ACCENT_VEL : STEP_VEL })));
   const def = FACTORY.find((d) => d.name === 'Silver Box')!;
   const a = insertAssembly(p, DEFS, def, 920, 2600);
+  // This groove-box test patch is full. Keep the oscillator's plain waveform row here; the standalone instrument has
+  // the TB-303's named saw/square switch. Removing its helper preserves the existing sound and test-patch byte budget.
+  const waveform = a.params.find((r) => r.label === 'waveform')!;
+  const selector = waveform.module;
+  const oscillator = mod(p, p.cables.find((c) => c.from.module === selector && c.to.port === 'p1')!.to.module);
+  waveform.module = oscillator.id;
+  waveform.param = 'wave';
+  delete waveform.names;
+  removeMember(p, a, selector);
+  removeModule(p, selector);
+  oscillator.map!.p1 = defaultMap(DEFS.osc).p1;
   wire(p, main.id, 'keys', st.id, 'keys');
   plugIn(p, st.id, 'keys', a, 'keys');
   plugOut(p, a, 'out', mix.id, 'in4');

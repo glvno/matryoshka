@@ -96,6 +96,31 @@ describe('Briefcase 3 (the VCS3)', () => {
 });
 
 describe('Canvas (the Music Easel)', () => {
+  it('Canvas XL exposes four independent random voltages and accepts a patch cord from each', () => {
+    const p = XL_PRESETS['Canvas XL']();
+    const a = card(p);
+    const sources = [1, 2, 3, 4].map((n) => a.outputs.find((r) => r.label === `random ${n}`));
+    expect(sources.every(Boolean)).toBe(true);
+    const output = p.modules.find((m) => m.type === 'output')!;
+    const renders = sources.map((source) => {
+      const q = structuredClone(p);
+      q.cables = q.cables.filter((c) => c.to.module !== output.id);
+      q.cables.push({ from: { module: source!.module, port: source!.port }, to: { module: output.id, port: 'l' } });
+      return play(q, [48], SR / 2);
+    });
+    for (let i = 0; i < renders.length; i++) {
+      expect(peak(renders[i])).toBeGreaterThan(0.001);
+      for (let j = 0; j < i; j++) expect(renders[i]).not.toEqual(renders[j]);
+    }
+    const input = a.inputs.find((r) => r.label === 'pitch in')!;
+    expect(input).toBeDefined();
+    set(p, 'pitch in', 8); // PATCH: a cord into the assembly's corresponding input
+    set(p, 'pitch proc', 1);
+    const before = play(p, [48], SR / 2);
+    p.cables.push({ from: { module: sources[1]!.module, port: sources[1]!.port }, to: { module: input.module, port: input.port } });
+    expect(play(p, [48], SR / 2)).not.toEqual(before);
+  });
+
   it('on the FM-1: the card is the panel, section by section', () => {
     const heads = card(FM1_PRESETS.Canvas()).params.filter((r) => r.head).map((r) => r.head);
     expect(heads).toEqual(['sequencer', 'envelope', 'pulser', 'random', 'mod osc', 'complex osc', 'lopass gate', 'output', 'keyboard']);
@@ -125,7 +150,7 @@ describe('Canvas (the Music Easel)', () => {
     expect(row(p, 'range').names).toEqual(['- high', '+ hi', 'low']);
     const jacks = card(p).params.filter((r) => r.label.endsWith(' in'));
     expect(jacks.map((r) => r.label)).toEqual(['pitch in', 'freq in', 'index in', 'timbre in', 'level 1 in', 'level 2 in', 'period in', 'porta in', 'inverter in']);
-    expect(jacks[0].names).toEqual(['main', 'pressure', 'sequencer', 'envelope', 'pulser', 'random', 'mod cv', 'inverter']);
+    expect(jacks[0].names).toEqual(['main', 'pressure', 'sequencer', 'envelope', 'pulser', 'random 1', 'mod cv', 'patch']);
     const before = play(p, [48], SR / 2);
     set(p, 'pitch in', 4); // the envelope into the pitch
     set(p, 'pitch proc', 1);

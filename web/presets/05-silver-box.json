@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 17
+      "module": 18
      }
     }
    }
@@ -367,6 +367,41 @@
   },
   {
    "id": 15,
+   "type": "select",
+   "x": 340,
+   "y": -500,
+   "params": {
+    "pos": 1,
+    "count": 2,
+    "fade": 0,
+    "v1": 0,
+    "v2": 1,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 16,
    "type": "output",
    "x": 2000,
    "y": 20,
@@ -375,7 +410,7 @@
    }
   },
   {
-   "id": 16,
+   "id": 17,
    "type": "steps",
    "x": 20,
    "y": 1480,
@@ -412,7 +447,7 @@
    "name": "PATTERN"
   },
   {
-   "id": 17,
+   "id": 18,
    "type": "arp",
    "x": 2000,
    "y": 1480,
@@ -427,6 +462,16 @@
   }
  ],
  "cables": [
+  {
+   "from": {
+    "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 4,
+    "port": "p1"
+   }
+  },
   {
    "from": {
     "module": 2,
@@ -643,7 +688,7 @@
     "port": "out"
    },
    "to": {
-    "module": 15,
+    "module": 16,
     "port": "l"
    }
   },
@@ -653,7 +698,7 @@
     "port": "out"
    },
    "to": {
-    "module": 15,
+    "module": 16,
     "port": "r"
    }
   },
@@ -663,13 +708,13 @@
     "port": "keys"
    },
    "to": {
-    "module": 16,
+    "module": 17,
     "port": "keys"
    }
   },
   {
    "from": {
-    "module": 17,
+    "module": 18,
     "port": "keys"
    },
    "to": {
@@ -679,11 +724,11 @@
   },
   {
    "from": {
-    "module": 16,
+    "module": 17,
     "port": "keys"
    },
    "to": {
-    "module": 17,
+    "module": 18,
     "port": "keys"
    }
   }
@@ -710,7 +755,8 @@
     11,
     12,
     13,
-    14
+    14,
+    15
    ],
    "inputs": [
     {
@@ -728,10 +774,14 @@
    ],
    "params": [
     {
-     "module": 4,
-     "param": "wave",
+     "module": 15,
+     "param": "pos",
      "label": "waveform",
-     "head": "tone"
+     "head": "tone",
+     "names": [
+      "SAW",
+      "SQUARE"
+     ]
     },
     {
      "module": 4,

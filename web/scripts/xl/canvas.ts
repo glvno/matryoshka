@@ -7,10 +7,12 @@
 // - The switches are rows of named choices, as the panel names them (a Selector's positions, #358).
 // - The patch field: each control input takes one banana cord from one of the control outputs, through its processing
 //   control. Each input is a Selector (`... in`): main, pressure, sequencer, envelope, pulser (its ramp), random, mod cv
-//   (the modulation oscillator), inverter. The inputs: pitch (with the polarity switch), frequency (the
+//   (the modulation oscillator), or PATCH (a cord into the assembly input). The inputs: pitch (with the polarity switch), frequency (the
 //   modulation oscillator's, by `freq proc`), index, timbre, level 1, level 2, period (`period proc`: a voltage shortens
 //   the period, as the manual says), portamento (`porta proc`: a voltage shortens the glide) and the inverter's input
-//   (the inverter: 1 minus its input, the manual's 10 V minus it). An input left unpatched is its processing at 0.
+//   (the inverter: 1 minus its input, the manual's 10 V minus it). PATCH with no cord is unpatched.
+// - All control outputs are assembly ports, including four independently sampled random voltages, the inverter and
+//   preset voltage. Patch any output into any field input, then select PATCH on that input's row.
 // - The keyboard: the preset voltage source (`plate`: which of the four touch plates is held, the plates being hardware;
 //   `preset 1..4` its pots, 0..1) added to MAIN by `add to main` (1 octaves: the FM-1's octave buttons, 2 preset, 3
 //   none); pressure (Main's aftertouch) as a patch-field source.
@@ -25,8 +27,6 @@
 // - Needing a module, or a new ability of one, in both engines: the preamp and envelope detector, the modulation switch's
 //   bal. ext and gate 2's preamp source (audio input, #351 "Audio input", #274); the envelope generator's linear decay
 //   (Env L/R falls exponentially); the 218's arpeggiation rate as a control input (the Arpeggiator has no rate input).
-// - The random voltage's four outputs are one here (one S&H): two inputs patched from it get the same voltage. The preset
-//   voltages reach the patch field through MAIN only (add to main): a jack has eight positions and the eight are taken.
 // - Rows that read as numbers where the panel has switches: the pulse sequence (`pulse 1..5`: -1 off, anything else on; a
 //   Sequencer's step at -1 is a rest, and #358 names a Selector's positions only) and the two wave switches (`waveshape`,
 //   `timbre wave`: the Oscillator's waves, whose sine the Easel's switches have not got).
@@ -87,7 +87,18 @@ export const xl: Xl = {
       e.rebind(e.rowAt('fine tune', 1), 'fine tune', cFine, 'value');
       // ---- the patch field: the sources, the inverter, then one Selector per input
       const inv = e.add('scale', 10, 5, { gain: -1, offset: 1 });
-      const sources: [number, string][] = [[PORTA, 'out'], [pressure, 'out'], [SEQ, 'out'], [ENV, 'env'], [P_RAMP, 'mul'], [RND, 'out'], [MOSC, 'out'], [inv, 'out']];
+      const sources: [number, string][] = [[PORTA, 'out'], [pressure, 'out'], [SEQ, 'out'], [ENV, 'env'], [P_RAMP, 'mul'], [RND, 'out'], [MOSC, 'out']];
+      const randoms: [number, string][] = [[RND, 'out']];
+      for (let i = 0; i < 3; i++) {
+        const sample = e.add('random', 15 + i, 5);
+        e.wire(R_TRIG, 'out', sample, 'clock');
+        randoms.push([sample, 'held']);
+      }
+      const output = (label: string, module: number, port: string): void => { e.def.outputs.push({ label, module, port }); };
+      ['main', 'pressure', 'sequencer', 'envelope', 'pulser', 'random 1', 'mod cv'].forEach((label, i) => output(label, ...sources[i]));
+      randoms.slice(1).forEach(([m, port], i) => output(`random ${i + 2}`, m, port));
+      output('inverter', inv, 'out');
+      output('preset', preset, 'out');
       const jack = (row: number, pos: number, to: [number, string][]): number => {
         const s = e.add('select', row, 6, { count: 8, pos });
         sources.forEach(([m, port], i) => e.wire(m, port, s, `in${i + 1}`));
@@ -120,7 +131,7 @@ export const xl: Xl = {
       e.m(PORTA).att = [-1, 1];
       e.wire(portaProc, 'out', PORTA, 'p1');
       const portaIn = jack(7, 2, [[portaProc, 'in']]);
-      const invIn = e.add('select', 14, 5, { count: 7, pos: 4 });
+      const invIn = e.add('select', 14, 5, { count: 8, pos: 4 });
       sources.slice(0, 7).forEach(([m, port], i) => e.wire(m, port, invIn, `in${i + 1}`));
       e.wire(invIn, 'out', inv, 'in');
       // ---- the card: the new keyboard rows after the portamento, the processing controls in their sections, the patch
@@ -133,16 +144,19 @@ export const xl: Xl = {
       e.insertRow(e.rowAt('portamento') + 1, 'porta proc', portaProc, 'gain');
       const at = e.rowAt('out');
       const field: [string, number][] = [['pitch in', pitchIn], ['freq in', freqIn], ['index in', indexIn], ['timbre in', timbreIn], ['level 1 in', level1In], ['level 2 in', level2In], ['period in', periodIn], ['porta in', portaIn], ['inverter in', invIn]];
+      // The eighth choice accepts a real cord, so every output (including all randoms and preset voltage) can reach
+      // every input without a limit imposed by the Selector's eight positions.
+      field.forEach(([label, s]) => e.input(label, s, 'in8'));
       field.forEach(([label, s], i) => e.insertRow(at + i, label, s, 'pos', i === 0 ? { col: true, head: 'patch field' } : {}));
       // ---- the switches as the panel names their positions (a Selector's row of named choices, #358)
-      const SOURCES = ['main', 'pressure', 'sequencer', 'envelope', 'pulser', 'random', 'mod cv', 'inverter'];
+      const SOURCES = ['main', 'pressure', 'sequencer', 'envelope', 'pulser', 'random 1', 'mod cv', 'patch'];
       const names = new Map<number, string[]>([
         [S_TRIG, ['keyboard', 'pulser', 'off']], [STAGES, ['3', '4', '5']], [E_TRIG, ['keyboard', 'pulser', 'sequencer']],
         [E_MODE, ['sustained', 'transient', 'off']], [P_TRIG, ['keyboard', 'self', 'sequencer']], [P_MODE, ['triggered', 'off', 'once']],
         [R_TRIG, ['keyboard', 'pulser', 'sequencer']], [M_KBD, ['on', 'off']], [M_RANGE, ['- high', '+ hi', 'low']],
         [MOD_SEL, ['bal. ext', 'f.m. osc', 'a.m. osc']], [C_KBD, ['on', 'off']], [P_POL, ['-', '+']], [G1_MODE, ['lopass', 'combination', 'vca']],
         [G2_MODE, ['lopass', 'combination', 'vca']], [SRC2, ['preamp', 'mod osc', 'gate 1']], [addMain, ['octaves', 'preset', 'none']],
-        [preset, ['1', '2', '3', '4']], [invIn, SOURCES.slice(0, 7)], ...field.slice(0, 8).map(([, s]) => [s, SOURCES] as [number, string[]]),
+        [preset, ['1', '2', '3', '4']], ...field.map(([, s]) => [s, SOURCES] as [number, string[]]),
       ]);
       for (const r of e.def.params) if (r.param === 'pos' && names.has(r.module)) r.names = names.get(r.module);
     });
@@ -155,4 +169,4 @@ export const xl: Xl = {
   },
 };
 
-const NOTES = "Music Easel patch field; FX fires the pulser. Missing engine abilities: audio input/preamp/envelope detector, linear decay and arpeggiator rate input. Random jacks currently share one S&H; preset voltages reach the field through MAIN only (eight source choices). Pulse/wave switches use numbers; sine is extra. Touch plates, trims, program cards and local/remote switching are hardware/storage. Output split is unverified. Low modulation range starts at 0.22 Hz, not 0.17.";
+const NOTES = 'Music Easel patch field, four independent random outputs. Select PATCH on an input row to use a cord into that assembly input; all control sources, inverter and preset voltage have output jacks. FX fires the pulser. Missing engine abilities: audio/preamp/envelope detector, linear decay and arpeggiator rate input. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching are hardware/storage. Low range starts at 0.22 Hz, not 0.17; output split unverified.';

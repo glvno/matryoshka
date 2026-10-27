@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Canvas XL exposes all patch-field control sources, including four independent random voltages. Choose PATCH on an input row to connect an assembly patch cord.
+- Silver Box has a named SAW / SQUARE switch. Its lean copy inside `<7PH` keeps the plain waveform control to fit the device.
+
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
 - Monolith D has all six waveform positions on each oscillator, including the triangle/saw hybrid and oscillator 3's reverse saw. FILTER MODULATION uses Ladder's audio-rate input.
 

@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Run with build/venv/bin/python; only with the registered rig the ONLY FM-1 connected (npm run rig -- check).
-# usage: rig_cpu_survey.py PRESETS_H OUT.json [name,name,...]
+# usage: rig_cpu_survey.py PRESETS_H OUT.json [name,name,...] [--hold SECONDS]
 # For each factory patch in PRESETS_H: upload it (live), then the longest audio ISR (DIAG page 127) at rest and with
 # 1 / 4 / 8 notes held over USB MIDI, 2 s each, sampled every 0.5 s. Reload for EACH phase so a voice shed in an earlier
 # phase cannot make the next one look cheaper. Peaks include the first block; a sample need not precede shedding.
-import sys, time, json, re
+import sys, time, json, re, argparse
 import os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import m1_link as M
 import mido
@@ -47,24 +47,35 @@ def phase(link, n, data, hold=2.0):
     return max(samples), samples, muted, shed
 
 
+parser = argparse.ArgumentParser(description="Measure the registered rig after its identity has been checked.")
+parser.add_argument("presets")
+parser.add_argument("output")
+parser.add_argument("names", nargs="?")
+parser.add_argument("--hold", type=float, default=2.0)
+args = parser.parse_args()
+if not 1 <= args.hold <= 60:
+    parser.error("--hold must be between 1 and 60 seconds per phase")
+ps = presets(args.presets)
+filt = args.names.split(',') if args.names else None
+unknown = set(filt or []) - {name for name, _ in ps}
+if not ps or unknown:
+    parser.error("no patches found" if not ps else "unknown patch names: " + ", ".join(sorted(unknown)))
 link = M.Link()
-ps = presets(sys.argv[1])
-filt = sys.argv[3].split(',') if len(sys.argv) > 3 else None
 res = []
 for slot, (name, data) in enumerate(ps):
     if filt and name not in filt:
         continue
     r = {"slot": slot, "name": name}
     for n in (0, 1, 4, 8):
-        pk, s, ovl, shed = phase(link, n, data)
+        pk, s, ovl, shed = phase(link, n, data, args.hold)
         r[f"n{n}_us"] = pk
         r[f"n{n}_samples"] = s
         r[f"n{n}_ovl"] = ovl
         r[f"n{n}_shed"] = shed
     r["budget_us"] = 2902
     res.append(r)
-    json.dump(res, open(sys.argv[2], 'w'), indent=1)
+    json.dump(res, open(args.output, 'w'), indent=1)
     worst = max(r['n0_us'], r['n1_us'], r['n4_us'], r['n8_us'])
     print(f"{slot:2} {name:16} rest {r['n0_us']:5} 1 {r['n1_us']:5} 4 {r['n4_us']:5} 8 {r['n8_us']:5}  "
           f"({100 * worst / 2902:.1f} %)  s1 {r['n1_samples']} s8 {r['n8_samples']}", flush=True)
-json.dump(res, open(sys.argv[2], 'w'), indent=1)
+json.dump(res, open(args.output, 'w'), indent=1)

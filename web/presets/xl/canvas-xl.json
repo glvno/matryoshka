@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 79
+      "module": 82
      }
     }
    }
@@ -1846,6 +1846,84 @@
   },
   {
    "id": 65,
+   "type": "random",
+   "x": 4820,
+   "y": 2860,
+   "params": {
+    "mode": 0,
+    "rate": 1.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mode"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 66,
+   "type": "random",
+   "x": 5140,
+   "y": 2860,
+   "params": {
+    "mode": 0,
+    "rate": 1.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mode"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 67,
+   "type": "random",
+   "x": 5460,
+   "y": 2860,
+   "params": {
+    "mode": 0,
+    "rate": 1.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "mode"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 68,
    "type": "select",
    "x": 20,
    "y": 3420,
@@ -1880,7 +1958,7 @@
    }
   },
   {
-   "id": 66,
+   "id": 69,
    "type": "scale",
    "x": 3540,
    "y": 2860,
@@ -1906,7 +1984,7 @@
    }
   },
   {
-   "id": 67,
+   "id": 70,
    "type": "select",
    "x": 340,
    "y": 3420,
@@ -1941,7 +2019,7 @@
    }
   },
   {
-   "id": 68,
+   "id": 71,
    "type": "select",
    "x": 660,
    "y": 3420,
@@ -1976,7 +2054,7 @@
    }
   },
   {
-   "id": 69,
+   "id": 72,
    "type": "select",
    "x": 980,
    "y": 3420,
@@ -2011,7 +2089,7 @@
    }
   },
   {
-   "id": 70,
+   "id": 73,
    "type": "select",
    "x": 1300,
    "y": 3420,
@@ -2046,7 +2124,7 @@
    }
   },
   {
-   "id": 71,
+   "id": 74,
    "type": "select",
    "x": 1620,
    "y": 3420,
@@ -2081,7 +2159,7 @@
    }
   },
   {
-   "id": 72,
+   "id": 75,
    "type": "scale",
    "x": 3860,
    "y": 2860,
@@ -2107,7 +2185,7 @@
    }
   },
   {
-   "id": 73,
+   "id": 76,
    "type": "select",
    "x": 1940,
    "y": 3420,
@@ -2142,7 +2220,7 @@
    }
   },
   {
-   "id": 74,
+   "id": 77,
    "type": "scale",
    "x": 4180,
    "y": 2860,
@@ -2168,7 +2246,7 @@
    }
   },
   {
-   "id": 75,
+   "id": 78,
    "type": "select",
    "x": 2260,
    "y": 3420,
@@ -2203,13 +2281,13 @@
    }
   },
   {
-   "id": 76,
+   "id": 79,
    "type": "select",
    "x": 4500,
    "y": 2860,
    "params": {
     "pos": 4,
-    "count": 7,
+    "count": 8,
     "fade": 0,
     "v1": 0,
     "v2": 0,
@@ -2238,7 +2316,7 @@
    }
   },
   {
-   "id": 77,
+   "id": 80,
    "type": "output",
    "x": 9360,
    "y": 20,
@@ -2247,7 +2325,7 @@
    }
   },
   {
-   "id": 78,
+   "id": 81,
    "type": "steps",
    "x": 20,
    "y": 4840,
@@ -2284,7 +2362,7 @@
    "name": "PATTERN"
   },
   {
-   "id": 79,
+   "id": 82,
    "type": "arp",
    "x": 9360,
    "y": 4840,
@@ -3221,11 +3299,41 @@
   },
   {
    "from": {
-    "module": 3,
+    "module": 15,
     "port": "out"
    },
    "to": {
     "module": 65,
+    "port": "clock"
+   }
+  },
+  {
+   "from": {
+    "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 66,
+    "port": "clock"
+   }
+  },
+  {
+   "from": {
+    "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 67,
+    "port": "clock"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "out"
+   },
+   "to": {
+    "module": 68,
     "port": "in1"
    }
   },
@@ -3235,7 +3343,7 @@
     "port": "out"
    },
    "to": {
-    "module": 65,
+    "module": 68,
     "port": "in2"
    }
   },
@@ -3245,7 +3353,7 @@
     "port": "out"
    },
    "to": {
-    "module": 65,
+    "module": 68,
     "port": "in3"
    }
   },
@@ -3255,7 +3363,7 @@
     "port": "env"
    },
    "to": {
-    "module": 65,
+    "module": 68,
     "port": "in4"
    }
   },
@@ -3265,7 +3373,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 65,
+    "module": 68,
     "port": "in5"
    }
   },
@@ -3275,7 +3383,7 @@
     "port": "out"
    },
    "to": {
-    "module": 65,
+    "module": 68,
     "port": "in6"
    }
   },
@@ -3285,23 +3393,13 @@
     "port": "out"
    },
    "to": {
-    "module": 65,
+    "module": 68,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 64,
-    "port": "out"
-   },
-   "to": {
-    "module": 65,
-    "port": "in8"
-   }
-  },
-  {
-   "from": {
-    "module": 65,
+    "module": 68,
     "port": "out"
    },
    "to": {
@@ -3311,7 +3409,7 @@
   },
   {
    "from": {
-    "module": 66,
+    "module": 69,
     "port": "out"
    },
    "to": {
@@ -3325,7 +3423,7 @@
     "port": "out"
    },
    "to": {
-    "module": 67,
+    "module": 70,
     "port": "in1"
    }
   },
@@ -3335,7 +3433,7 @@
     "port": "out"
    },
    "to": {
-    "module": 67,
+    "module": 70,
     "port": "in2"
    }
   },
@@ -3345,7 +3443,7 @@
     "port": "out"
    },
    "to": {
-    "module": 67,
+    "module": 70,
     "port": "in3"
    }
   },
@@ -3355,7 +3453,7 @@
     "port": "env"
    },
    "to": {
-    "module": 67,
+    "module": 70,
     "port": "in4"
    }
   },
@@ -3365,7 +3463,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 67,
+    "module": 70,
     "port": "in5"
    }
   },
@@ -3375,7 +3473,7 @@
     "port": "out"
    },
    "to": {
-    "module": 67,
+    "module": 70,
     "port": "in6"
    }
   },
@@ -3385,27 +3483,17 @@
     "port": "out"
    },
    "to": {
-    "module": 67,
+    "module": 70,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 64,
+    "module": 70,
     "port": "out"
    },
    "to": {
-    "module": 67,
-    "port": "in8"
-   }
-  },
-  {
-   "from": {
-    "module": 67,
-    "port": "out"
-   },
-   "to": {
-    "module": 66,
+    "module": 69,
     "port": "in"
    }
   },
@@ -3415,7 +3503,7 @@
     "port": "out"
    },
    "to": {
-    "module": 68,
+    "module": 71,
     "port": "in1"
    }
   },
@@ -3425,7 +3513,7 @@
     "port": "out"
    },
    "to": {
-    "module": 68,
+    "module": 71,
     "port": "in2"
    }
   },
@@ -3435,7 +3523,7 @@
     "port": "out"
    },
    "to": {
-    "module": 68,
+    "module": 71,
     "port": "in3"
    }
   },
@@ -3445,7 +3533,7 @@
     "port": "env"
    },
    "to": {
-    "module": 68,
+    "module": 71,
     "port": "in4"
    }
   },
@@ -3455,7 +3543,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 68,
+    "module": 71,
     "port": "in5"
    }
   },
@@ -3465,7 +3553,7 @@
     "port": "out"
    },
    "to": {
-    "module": 68,
+    "module": 71,
     "port": "in6"
    }
   },
@@ -3475,23 +3563,13 @@
     "port": "out"
    },
    "to": {
-    "module": 68,
+    "module": 71,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 64,
-    "port": "out"
-   },
-   "to": {
-    "module": 68,
-    "port": "in8"
-   }
-  },
-  {
-   "from": {
-    "module": 68,
+    "module": 71,
     "port": "out"
    },
    "to": {
@@ -3505,7 +3583,7 @@
     "port": "out"
    },
    "to": {
-    "module": 69,
+    "module": 72,
     "port": "in1"
    }
   },
@@ -3515,7 +3593,7 @@
     "port": "out"
    },
    "to": {
-    "module": 69,
+    "module": 72,
     "port": "in2"
    }
   },
@@ -3525,7 +3603,7 @@
     "port": "out"
    },
    "to": {
-    "module": 69,
+    "module": 72,
     "port": "in3"
    }
   },
@@ -3535,7 +3613,7 @@
     "port": "env"
    },
    "to": {
-    "module": 69,
+    "module": 72,
     "port": "in4"
    }
   },
@@ -3545,7 +3623,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 69,
+    "module": 72,
     "port": "in5"
    }
   },
@@ -3555,7 +3633,7 @@
     "port": "out"
    },
    "to": {
-    "module": 69,
+    "module": 72,
     "port": "in6"
    }
   },
@@ -3565,23 +3643,13 @@
     "port": "out"
    },
    "to": {
-    "module": 69,
+    "module": 72,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 64,
-    "port": "out"
-   },
-   "to": {
-    "module": 69,
-    "port": "in8"
-   }
-  },
-  {
-   "from": {
-    "module": 69,
+    "module": 72,
     "port": "out"
    },
    "to": {
@@ -3595,7 +3663,7 @@
     "port": "out"
    },
    "to": {
-    "module": 70,
+    "module": 73,
     "port": "in1"
    }
   },
@@ -3605,7 +3673,7 @@
     "port": "out"
    },
    "to": {
-    "module": 70,
+    "module": 73,
     "port": "in2"
    }
   },
@@ -3615,7 +3683,7 @@
     "port": "out"
    },
    "to": {
-    "module": 70,
+    "module": 73,
     "port": "in3"
    }
   },
@@ -3625,7 +3693,7 @@
     "port": "env"
    },
    "to": {
-    "module": 70,
+    "module": 73,
     "port": "in4"
    }
   },
@@ -3635,7 +3703,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 70,
+    "module": 73,
     "port": "in5"
    }
   },
@@ -3645,7 +3713,7 @@
     "port": "out"
    },
    "to": {
-    "module": 70,
+    "module": 73,
     "port": "in6"
    }
   },
@@ -3655,23 +3723,13 @@
     "port": "out"
    },
    "to": {
-    "module": 70,
+    "module": 73,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 64,
-    "port": "out"
-   },
-   "to": {
-    "module": 70,
-    "port": "in8"
-   }
-  },
-  {
-   "from": {
-    "module": 70,
+    "module": 73,
     "port": "out"
    },
    "to": {
@@ -3685,7 +3743,7 @@
     "port": "out"
    },
    "to": {
-    "module": 71,
+    "module": 74,
     "port": "in1"
    }
   },
@@ -3695,7 +3753,7 @@
     "port": "out"
    },
    "to": {
-    "module": 71,
+    "module": 74,
     "port": "in2"
    }
   },
@@ -3705,7 +3763,7 @@
     "port": "out"
    },
    "to": {
-    "module": 71,
+    "module": 74,
     "port": "in3"
    }
   },
@@ -3715,7 +3773,7 @@
     "port": "env"
    },
    "to": {
-    "module": 71,
+    "module": 74,
     "port": "in4"
    }
   },
@@ -3725,7 +3783,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 71,
+    "module": 74,
     "port": "in5"
    }
   },
@@ -3735,7 +3793,7 @@
     "port": "out"
    },
    "to": {
-    "module": 71,
+    "module": 74,
     "port": "in6"
    }
   },
@@ -3745,23 +3803,13 @@
     "port": "out"
    },
    "to": {
-    "module": 71,
+    "module": 74,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 64,
-    "port": "out"
-   },
-   "to": {
-    "module": 71,
-    "port": "in8"
-   }
-  },
-  {
-   "from": {
-    "module": 71,
+    "module": 74,
     "port": "out"
    },
    "to": {
@@ -3771,7 +3819,7 @@
   },
   {
    "from": {
-    "module": 72,
+    "module": 75,
     "port": "out"
    },
    "to": {
@@ -3785,7 +3833,7 @@
     "port": "out"
    },
    "to": {
-    "module": 73,
+    "module": 76,
     "port": "in1"
    }
   },
@@ -3795,7 +3843,7 @@
     "port": "out"
    },
    "to": {
-    "module": 73,
+    "module": 76,
     "port": "in2"
    }
   },
@@ -3805,7 +3853,7 @@
     "port": "out"
    },
    "to": {
-    "module": 73,
+    "module": 76,
     "port": "in3"
    }
   },
@@ -3815,7 +3863,7 @@
     "port": "env"
    },
    "to": {
-    "module": 73,
+    "module": 76,
     "port": "in4"
    }
   },
@@ -3825,7 +3873,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 73,
+    "module": 76,
     "port": "in5"
    }
   },
@@ -3835,7 +3883,7 @@
     "port": "out"
    },
    "to": {
-    "module": 73,
+    "module": 76,
     "port": "in6"
    }
   },
@@ -3845,33 +3893,23 @@
     "port": "out"
    },
    "to": {
-    "module": 73,
+    "module": 76,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 64,
+    "module": 76,
     "port": "out"
    },
    "to": {
-    "module": 73,
-    "port": "in8"
-   }
-  },
-  {
-   "from": {
-    "module": 73,
-    "port": "out"
-   },
-   "to": {
-    "module": 72,
+    "module": 75,
     "port": "in"
    }
   },
   {
    "from": {
-    "module": 74,
+    "module": 77,
     "port": "out"
    },
    "to": {
@@ -3885,7 +3923,7 @@
     "port": "out"
    },
    "to": {
-    "module": 75,
+    "module": 78,
     "port": "in1"
    }
   },
@@ -3895,7 +3933,7 @@
     "port": "out"
    },
    "to": {
-    "module": 75,
+    "module": 78,
     "port": "in2"
    }
   },
@@ -3905,7 +3943,7 @@
     "port": "out"
    },
    "to": {
-    "module": 75,
+    "module": 78,
     "port": "in3"
    }
   },
@@ -3915,7 +3953,7 @@
     "port": "env"
    },
    "to": {
-    "module": 75,
+    "module": 78,
     "port": "in4"
    }
   },
@@ -3925,7 +3963,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 75,
+    "module": 78,
     "port": "in5"
    }
   },
@@ -3935,7 +3973,7 @@
     "port": "out"
    },
    "to": {
-    "module": 75,
+    "module": 78,
     "port": "in6"
    }
   },
@@ -3945,27 +3983,17 @@
     "port": "out"
    },
    "to": {
-    "module": 75,
+    "module": 78,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 64,
+    "module": 78,
     "port": "out"
    },
    "to": {
-    "module": 75,
-    "port": "in8"
-   }
-  },
-  {
-   "from": {
-    "module": 75,
-    "port": "out"
-   },
-   "to": {
-    "module": 74,
+    "module": 77,
     "port": "in"
    }
   },
@@ -3975,7 +4003,7 @@
     "port": "out"
    },
    "to": {
-    "module": 76,
+    "module": 79,
     "port": "in1"
    }
   },
@@ -3985,7 +4013,7 @@
     "port": "out"
    },
    "to": {
-    "module": 76,
+    "module": 79,
     "port": "in2"
    }
   },
@@ -3995,7 +4023,7 @@
     "port": "out"
    },
    "to": {
-    "module": 76,
+    "module": 79,
     "port": "in3"
    }
   },
@@ -4005,7 +4033,7 @@
     "port": "env"
    },
    "to": {
-    "module": 76,
+    "module": 79,
     "port": "in4"
    }
   },
@@ -4015,7 +4043,7 @@
     "port": "mul"
    },
    "to": {
-    "module": 76,
+    "module": 79,
     "port": "in5"
    }
   },
@@ -4025,7 +4053,7 @@
     "port": "out"
    },
    "to": {
-    "module": 76,
+    "module": 79,
     "port": "in6"
    }
   },
@@ -4035,13 +4063,13 @@
     "port": "out"
    },
    "to": {
-    "module": 76,
+    "module": 79,
     "port": "in7"
    }
   },
   {
    "from": {
-    "module": 76,
+    "module": 79,
     "port": "out"
    },
    "to": {
@@ -4055,7 +4083,7 @@
     "port": "out"
    },
    "to": {
-    "module": 77,
+    "module": 80,
     "port": "l"
    }
   },
@@ -4065,7 +4093,7 @@
     "port": "out"
    },
    "to": {
-    "module": 77,
+    "module": 80,
     "port": "r"
    }
   },
@@ -4095,13 +4123,13 @@
     "port": "keys"
    },
    "to": {
-    "module": 78,
+    "module": 81,
     "port": "keys"
    }
   },
   {
    "from": {
-    "module": 79,
+    "module": 82,
     "port": "keys"
    },
    "to": {
@@ -4111,11 +4139,11 @@
   },
   {
    "from": {
-    "module": 78,
+    "module": 81,
     "port": "keys"
    },
    "to": {
-    "module": 79,
+    "module": 82,
     "port": "keys"
    }
   }
@@ -4204,7 +4232,10 @@
     73,
     74,
     75,
-    76
+    76,
+    77,
+    78,
+    79
    ],
    "inputs": [
     {
@@ -4221,6 +4252,51 @@
      "module": 5,
      "port": "in3",
      "label": "once"
+    },
+    {
+     "module": 68,
+     "port": "in8",
+     "label": "pitch in"
+    },
+    {
+     "module": 70,
+     "port": "in8",
+     "label": "freq in"
+    },
+    {
+     "module": 71,
+     "port": "in8",
+     "label": "index in"
+    },
+    {
+     "module": 72,
+     "port": "in8",
+     "label": "timbre in"
+    },
+    {
+     "module": 73,
+     "port": "in8",
+     "label": "level 1 in"
+    },
+    {
+     "module": 74,
+     "port": "in8",
+     "label": "level 2 in"
+    },
+    {
+     "module": 76,
+     "port": "in8",
+     "label": "period in"
+    },
+    {
+     "module": 78,
+     "port": "in8",
+     "label": "porta in"
+    },
+    {
+     "module": 79,
+     "port": "in8",
+     "label": "inverter in"
     }
    ],
    "outputs": [
@@ -4228,6 +4304,66 @@
      "module": 50,
      "port": "out",
      "label": "out"
+    },
+    {
+     "module": 3,
+     "port": "out",
+     "label": "main"
+    },
+    {
+     "module": 54,
+     "port": "out",
+     "label": "pressure"
+    },
+    {
+     "module": 10,
+     "port": "out",
+     "label": "sequencer"
+    },
+    {
+     "module": 14,
+     "port": "env",
+     "label": "envelope"
+    },
+    {
+     "module": 55,
+     "port": "mul",
+     "label": "pulser"
+    },
+    {
+     "module": 17,
+     "port": "out",
+     "label": "random 1"
+    },
+    {
+     "module": 20,
+     "port": "out",
+     "label": "mod cv"
+    },
+    {
+     "module": 65,
+     "port": "held",
+     "label": "random 2"
+    },
+    {
+     "module": 66,
+     "port": "held",
+     "label": "random 3"
+    },
+    {
+     "module": 67,
+     "port": "held",
+     "label": "random 4"
+    },
+    {
+     "module": 64,
+     "port": "out",
+     "label": "inverter"
+    },
+    {
+     "module": 52,
+     "port": "out",
+     "label": "preset"
     }
    ],
    "params": [
@@ -4371,7 +4507,7 @@
      "label": "period"
     },
     {
-     "module": 72,
+     "module": 75,
      "param": "gain",
      "label": "period proc"
     },
@@ -4434,7 +4570,7 @@
      ]
     },
     {
-     "module": 66,
+     "module": 69,
      "param": "gain",
      "label": "freq proc"
     },
@@ -4581,7 +4717,7 @@
      "head": "keyboard"
     },
     {
-     "module": 74,
+     "module": 77,
      "param": "gain",
      "label": "porta proc"
     },
@@ -4627,7 +4763,7 @@
      "label": "preset 4"
     },
     {
-     "module": 65,
+     "module": 68,
      "param": "pos",
      "label": "pitch in",
      "col": true,
@@ -4638,13 +4774,13 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
+      "random 1",
       "mod cv",
-      "inverter"
+      "patch"
      ]
     },
     {
-     "module": 67,
+     "module": 70,
      "param": "pos",
      "label": "freq in",
      "names": [
@@ -4653,13 +4789,13 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
+      "random 1",
       "mod cv",
-      "inverter"
+      "patch"
      ]
     },
     {
-     "module": 68,
+     "module": 71,
      "param": "pos",
      "label": "index in",
      "names": [
@@ -4668,13 +4804,13 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
+      "random 1",
       "mod cv",
-      "inverter"
+      "patch"
      ]
     },
     {
-     "module": 69,
+     "module": 72,
      "param": "pos",
      "label": "timbre in",
      "names": [
@@ -4683,13 +4819,13 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
+      "random 1",
       "mod cv",
-      "inverter"
+      "patch"
      ]
     },
     {
-     "module": 70,
+     "module": 73,
      "param": "pos",
      "label": "level 1 in",
      "names": [
@@ -4698,13 +4834,13 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
+      "random 1",
       "mod cv",
-      "inverter"
+      "patch"
      ]
     },
     {
-     "module": 71,
+     "module": 74,
      "param": "pos",
      "label": "level 2 in",
      "names": [
@@ -4713,13 +4849,13 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
+      "random 1",
       "mod cv",
-      "inverter"
+      "patch"
      ]
     },
     {
-     "module": 73,
+     "module": 76,
      "param": "pos",
      "label": "period in",
      "names": [
@@ -4728,13 +4864,13 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
+      "random 1",
       "mod cv",
-      "inverter"
+      "patch"
      ]
     },
     {
-     "module": 75,
+     "module": 78,
      "param": "pos",
      "label": "porta in",
      "names": [
@@ -4743,13 +4879,13 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
+      "random 1",
       "mod cv",
-      "inverter"
+      "patch"
      ]
     },
     {
-     "module": 76,
+     "module": 79,
      "param": "pos",
      "label": "inverter in",
      "names": [
@@ -4758,8 +4894,9 @@
       "sequencer",
       "envelope",
       "pulser",
-      "random",
-      "mod cv"
+      "random 1",
+      "mod cv",
+      "patch"
      ]
     },
     {
@@ -4770,5 +4907,5 @@
    ]
   }
  ],
- "notes": "Music Easel patch field; FX fires the pulser. Missing engine abilities: audio input/preamp/envelope detector, linear decay and arpeggiator rate input. Random jacks currently share one S&H; preset voltages reach the field through MAIN only (eight source choices). Pulse/wave switches use numbers; sine is extra. Touch plates, trims, program cards and local/remote switching are hardware/storage. Output split is unverified. Low modulation range starts at 0.22 Hz, not 0.17."
+ "notes": "Music Easel patch field, four independent random outputs. Select PATCH on an input row to use a cord into that assembly input; all control sources, inverter and preset voltage have output jacks. FX fires the pulser. Missing engine abilities: audio/preamp/envelope detector, linear decay and arpeggiator rate input. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching are hardware/storage. Low range starts at 0.22 Hz, not 0.17; output split unverified."
 }

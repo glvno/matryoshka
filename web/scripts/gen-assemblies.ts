@@ -1082,7 +1082,7 @@ asm('Silver Box', 'Voices', (b) => {
   const glideUnit = (t: number): number => Math.log(t / 0.001) / Math.log(5000);
   const part = b.add('alloc', 0, 1, { voices: 1, legato: 0 });
   const gl = b.add('glide', 1, 1, { time: 0.001 }, { p1: 'time', att: [0.45, 1] });
-  const osc = b.add('osc', 1, 0, { wave: 2, level: 0.8, coarse: -12 });
+  const osc = b.add('osc', 1, 0, { wave: 2, level: 0.8, coarse: -12 }, { p1: 'wave' });
   const accOn = b.add('logic', 0, 2, { thresh: 0.9 });
   const meg = b.add('adsr', 2, 1, { a: 0.001, d: 0.3, s: 0, r: 0.05 }, { p1: 'd', att: [-1, 1] });
   const megAcc = b.add('adsr', 2, 2, { a: 0.001, d: 0.2, s: 0, r: 0.05 });
@@ -1093,6 +1093,8 @@ asm('Silver Box', 'Voices', (b) => {
   const flt = b.add('ladder', 4, 0, { cutoff: 260, res: 0, cvamt: 1, drive: 1 }, { p1: 'res' });
   const aenv = b.add('adsr', 5, 1, { a: 0.002, d: 2.5, s: 0, r: 0.02 });
   const vca = b.add('vca', 5, 0, { gain: 0.8 }, { p1: 'gain', att: [0.25, 1] });
+  const waveform = b.add('select', 1, -1, { count: 2, pos: 1, v1: 0, v2: 1 });
+  b.wire(waveform, 'out', osc, 'p1'); // saw at the base; the second position adds up to the square at the range's top
   b.wire(part, 'pitch', gl, 'in');
   b.wire(part, 'legato', gl, 'p1');
   b.wire(gl, 'out', osc, 'pitch');
@@ -1116,7 +1118,7 @@ asm('Silver Box', 'Voices', (b) => {
   b.wire(aenv, 'env', vca, 'cv');
   b.input('keys', part, 'keys');
   b.output('out', vca, 'out');
-  b.param('waveform', osc, 'wave', { head: 'tone' });
+  b.param('waveform', waveform, 'pos', { head: 'tone' });
   b.param('tuning', osc, 'fine');
   b.param('cutoff', flt, 'cutoff');
   b.param('resonance', res, 'value');
@@ -1124,6 +1126,7 @@ asm('Silver Box', 'Voices', (b) => {
   b.param('decay', meg, 'd');
   b.param('accent', accent, 'gain');
 });
+namePositions('Silver Box', { waveform: ['SAW', 'SQUARE'] });
 
 // Hera 6, a six-voice chorus polysynth after the Juno-106: the keys go into the Voice allocator, which plays six voice
 // cards (a poly assembly). A card: one oscillator (saw or pulse; its pulse width follows the LFO by `pwm`) with a
