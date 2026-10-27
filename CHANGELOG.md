@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The FM-1 no longer stalls when it is plugged into a computer where no app reads its MIDI. Each message for the editor (a step entered, a knob turned) waited up to 0.2 s for USB room there, so entering steps quickly froze the screen, the LEDs and the keys for seconds, and the sound cut out. Measured on the test rig with the step keys played by hand (Elvira 2, sequencer running): the longest pass of the main loop 7.46 s before. Now, once a message has waited 0.2 s with nothing read, the next ones are dropped at once until the computer reads again; the editor syncs when it connects.
+
 - Canvas XL exposes all patch-field control sources, including four independent random voltages. Choose PATCH on an input row to connect an assembly patch cord.
 - Silver Box has a named SAW / SQUARE switch. Its lean copy inside `<7PH` keeps the plain waveform control to fit the device.
 
