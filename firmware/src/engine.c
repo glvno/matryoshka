@@ -5316,32 +5316,44 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
 {
     const def_t *d = &DEFS[nd->type];
     int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
-    uint32_t j, i, s, have = 0, side = 0;   /* side: some input has side routes (input_map) */
+    uint32_t j, i, s, have = 0, side = 0, mapped = 0;   /* side: some input has side routes (input_map) */
     const int32_t *par = nd->par, *parb = par + d->npar;   /* (the node's and the instance's slots, kept in registers; PARB) */
     int32_t *eff = it->eff;
     if (d->cvbase >= 0)
         for (s = 0; s < 2u; s++) {
             const esig_t *cv;
             int64_t sum = 0;
-            if (!(nd->conn & (1u << (d->cvbase + s))))
+            if (!nd->map[s] || !(nd->conn & (1u << (d->cvbase + s))))
                 continue;
             cv = it->in[d->cvbase + s];
             for (i = 0; i < n; i++)
                 sum += cv[i];
             mean[s] = mul16(block_mean(sum, n), nd->att[s]);
             have |= 1u << s;
+            mapped |= nd->map[s];
         }
     for (s = 0; s < d->nin; s++) if (nd->input_map[s]) {
         int64_t sum = 0;
         for (i = 0; i < n; i++) sum += it->in[s][i];
         extra[s] = block_mean(sum, n);
         side = 1;
+        mapped |= nd->input_map[s];
+    }
+    /* Most modules have no parameter modulation. Copy their base values without visiting each parameter's routes. */
+    if (!have && !side && !(E.has_b && E.morph > 0 && nd->type != T_FM1)) {
+        for (j = 0; j < d->npar; j++)
+            eff[j] = par[j];
+        return;
     }
     for (j = 0; j < d->npar; j++) {
         int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, par[j], (uint32_t)parb[j], E.morph, nd->over >> j & 1u) : par[j];
         uint32_t touched = 0;
         int32_t mod = 0, rv = 0;
         const range_t *rg = 0;
+        if (!(mapped >> j & 1u)) {
+            eff[j] = v;
+            continue;
+        }
         for (s = 0; s < 2u; s++)
             if ((have >> s & 1u) && (nd->map[s] >> j & 1u)) {
                 if (nd->ranged[s] >> j & 1u) {   /* a macro range: the input's value lands between its ends (replacing the base) */

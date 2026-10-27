@@ -4770,5 +4770,5 @@
    ]
   }
  ],
- "notes": "The Buchla Music Easel with its patch field: each control input (… in) picks its cord from main, pressure, sequencer, envelope, pulser, random, mod cv or inverter, through its processing control (… proc). A pulse n at -1 skips that stage. FX fires the pulser once. Plate picks the preset touch plate; add to main adds its voltage to MAIN. Not here: the preamp and envelope detector (audio input), a linear envelope decay."
+ "notes": "Music Easel patch field; FX fires the pulser. Missing engine abilities: audio input/preamp/envelope detector, linear decay and arpeggiator rate input. Random jacks currently share one S&H; preset voltages reach the field through MAIN only (eight source choices). Pulse/wave switches use numbers; sine is extra. Touch plates, trims, program cards and local/remote switching are hardware/storage. Output split is unverified. Low modulation range starts at 0.22 Hz, not 0.17."
 }

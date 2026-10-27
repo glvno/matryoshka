@@ -107,7 +107,7 @@ static uint32_t batt_us;                        /* the last battery read's time,
 /* the DIAG command (proto.c): page 0 the reset cause and the crash record, pages 1.. the stall record, 32 bytes a page;
  * page 127 the CPU now: % of the half buffer, the longest audio ISR (us) since the last read of this page (then reset),
  * the half buffer's budget (us), the overload mute, the halves rendered, the battery read's time (us, batt_poll) and its
- * smoothed reading (0..1023, 0 = none yet);
+ * smoothed reading (0..1023, 0 = none yet), then voices shed since the last patch load;
  * pages 125, 126 the USB audio stream (usb.c uac, FELUCCA_UAC; m1_link.py uac), 8 words each:
  *   125: flags (bit 0 presented, 1 alt 1 set by the host, 2 the host reads, 3 primed, 4 configured), streams started,
  *        packets, frames in them, SET_CUR requests, bus resets, last fill_min, USB frame number
@@ -148,7 +148,7 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
     if (page >= 120u && page <= 123u)                    /* the draw times (ui.c ui_time_diag) */
         return ui_time_diag(page, out);
     if (page == 127u) {
-        uint32_t v[7];
+        uint32_t v[8];
         v[0] = cpu_pct;
         v[1] = diag_us_peak > eng_us_max ? diag_us_peak : eng_us_max;
         v[2] = 2902u;
@@ -156,6 +156,7 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         v[4] = eng_halves;
         v[5] = batt_us;
         v[6] = (uint32_t)batt_raw();
+        v[7] = eng_shed_count;
         diag_us_peak = 0;
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));

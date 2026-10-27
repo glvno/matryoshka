@@ -49,8 +49,10 @@ const XL_EXTRA: Record<string, Rule> = {
   // the cutoff moves by the same factor as a filter's own, in its range's unit (log 20..16000 Hz)
   Bright: (r) => (r.type !== 'macro' ? undefined : r.label === 'cutoff' ? r.value + CUTOFF_UNIT(2.2) : r.label === 'res' ? r.value + 0.1 : undefined),
   Dark: (r) => (r.type === 'macro' && r.label === 'cutoff' ? r.value + CUTOFF_UNIT(0.4) : undefined),
-  Pluck: (r) => (r.type !== 'env' ? undefined : r.param === 'r1' ? 0.002 : r.param === 'r2' || r.param === 'r3' ? Math.min(0.35, r.value) : r.param === 'l3' ? 0 : r.param === 'r4' ? Math.min(0.3, r.value) : undefined),
-  Wet: (r) => (r.type === 'xfade' && r.label === 'mix' ? Math.min(1, Math.max(0.35, r.value * 1.6)) : r.type === 'macro' && r.label === 'feedback' ? r.value + 0.15 : undefined),
+  // Lyra's card exposes FAST and SHARP, not its fixed envelope times: use its panel for the same musical variations.
+  Pad: (r) => (r.type === 'select' && r.label.startsWith('fast ') ? 1 : r.type === 'macro' && r.label.startsWith('sharp ') ? 0.05 : undefined),
+  Pluck: (r) => (r.type === 'select' && r.label.startsWith('fast ') ? 2 : r.type !== 'env' ? undefined : r.param === 'r1' ? 0.002 : r.param === 'r2' || r.param === 'r3' ? Math.min(0.35, r.value) : r.param === 'l3' ? 0 : r.param === 'r4' ? Math.min(0.3, r.value) : undefined),
+  Wet: (r) => (r.type === 'select' && r.label === 'chorus' ? 3 : r.type === 'xfade' && r.label === 'mix' ? Math.min(1, Math.max(0.35, r.value * 1.6)) : r.type === 'macro' && r.label === 'feedback' ? r.value + 0.15 : undefined),
 };
 export const XL_RULES: { name: string; rule: Rule }[] = RULES.map(({ name, rule }) => {
   const extra = XL_EXTRA[name];

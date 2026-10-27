@@ -9731,5 +9731,5 @@
   }
  ],
  "octave": -1,
- "notes": "The Landscape NOON, after its manual: eight channels with MOD, mute and CV mute buttons, velocity as the gate’s voltage (gate v), odd / even CV (drones), nine LINK buttons, CYMPATH’s voltage starving, the touch plates (touch, press, aftertouch, left plate), the audio input fed by the channels’ `to in` or a cable (the 1-2 link opens it), individual outputs, the passive mix’s bleed, mono. Not here: audio from outside the browser."
+ "notes": "The Landscape NOON, after its manual. The card is its 58 controls: per channel main, secondary, volume, MOD, mute and CV mute; nine LINK buttons; the main volume. Patch points are ports: odd / even cv, audio (opened by the 1-2 link; patch an output 1..8 into it for internal processing), outputs 1..8, l, r. Aftertouch presses all touch plates. Not here: audio from outside the browser; plug-sensing outputs (a level and a mono Macro inside stand in)."
 }

@@ -286,7 +286,12 @@ presets.push(() => {
     const a = insertAssembly(p, DEFS, def, 380 + 420 * i, 600);
     a.label = label;
     const fresh = p.modules.slice(before);
-    return { a, m: (local) => fresh[local - 1] };
+    const byId = new Map(def.modules.map((m, index) => [m.id, fresh[index]]));
+    return { a, m: (local) => {
+      const m = byId.get(local);
+      if (!m) throw new Error(`${name}: no module ${local} in the drum definition`);
+      return m;
+    } };
   };
   /** the drum's velocity (row r's v) sets `param` of `m` through a macro range: a plain step (velocity STEP_VEL) plays it
    * at its value, 127 at 127 / 100 of it */

@@ -2,11 +2,15 @@
 
 ## Unreleased
 
-- **Incoming MIDI notes keep playing during FM-1 screen redraws** (#363). USB and TRS notes and clock are taken
-  between screen transfers, including octave messages. Commands that change pages or patches keep their input order
-  and wait for the main loop so they cannot draw into an unfinished screen transfer. On the test rig, SELECT and ALGO
-  now play all 50 test notes rather than 25; octave changes play all 200 rather than 100 at 20 ms spacing.
-  See the [device measurements](docs/measurements/2026-10-26-midi-redraw.md).
+- **Lower CPU use for parameter updates.** Modules without parameter modulation copy their settings directly;
+  other modules skip parameters with no routes. The instruction model counts about 3.5 % less work across its
+  checks, with all 128 audio comparisons bit-identical. Device measurements are pending.
+- **8 Lire XL and Hera 6 XL keep their Pad, Pluck and Wet presets after the card changes.** The variations use
+  the panel controls: FAST and SHARP on 8 Lire, and chorus II on Hera.
+- **8 Lire XL and Meridian 8 XL show their original panel controls** (#359). 8 Lire has 47 rows instead of 141;
+  Meridian has 107 instead of 146, including its nested cards. Their patch points remain assembly ports.
+- **909 Kit XL groups the original drum controls on its cards** (#359): 30 rows instead of 43. FLAM, SHUFFLE
+  and SCALE use named choices. FLAM now defaults to about 22 ms (position 4), previously 24 ms.
 
 - **Inserted assemblies keep their macro ranges** (#367). Saving and inserting an assembly no longer turns a bounded
   macro control into ordinary added modulation. Each inserted copy keeps its own ranges. A round-trip test checks
@@ -246,6 +250,18 @@
   tracks' rate. The TR-808's rhythm memory (A /
   B variations, fill-ins, auto fill, rhythm tracks) needs Steps features we lack (#351). 132 modules, an estimated 150 %
   of the FM-1's CPU.
+
+## 1.4.2 — 2026-10-26
+
+- **Incoming MIDI notes keep playing while the FM-1 screen redraws** (#363). USB and TRS notes and clock are taken
+  between screen transfers, including octave messages. This fixes short notes disappearing or arriving together
+  when turning SELECT or ALGO or pressing octave buttons. On the exact release package, the test rig played all
+  50 notes during page changes and all 200 during octave changes at 20 ms spacing. Note spacing matched idle
+  playback. See the [release measurements](docs/measurements/2026-10-26-1.4.2.md).
+- **Cassia 1 joins the FM-1 factory patches.** This is the patch already published in the 1.4.1 browser, now included
+  in the firmware's factory set. Existing banks stay intact; Cassia can still be sent from the editor.
+  The browser keeps its 1.4.1 patches and features. The firmware engine and patch format stay
+  at 1.4.0's, with the MIDI redraw fix applied.
 
 ## 1.4.1 — 2026-10-26
 

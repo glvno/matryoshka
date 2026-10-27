@@ -8397,5 +8397,5 @@
    ]
   }
  ],
- "notes": "The EMS VCS3 with its whole pin matrix: a section per column (A meter, B C outputs, D envelope, E F ring mod, G reverb, H filter, I J K oscillator frequencies, L decay, M reverb mix, N filter frequency, O P output levels), a pin per source row (1 osc 1 sine … 16 stick y; row 8 is the keyboard, row 9 silent), 0 out, 1 in. Frequency dials -4..4 for the VCS3’s 0..10. Output filters flat at 0.5. Pan 1 left, 2 right."
+ "notes": "EMS VCS3 with all 256 matrix pins, 0 out/1 in. Missing engine abilities: external audio (input 1 carries keys, input 2 is silent), envelope repeat and decay beyond 10 s, variable sine/triangle shapes, and the 18 dB filter (24 dB here). The scope replaces the meter; speaker switches, headphone/control outputs and keyboard sockets are hardware, not reproduced. Output filters are flat at 0.5; pan is 0 left/1 right."
 }

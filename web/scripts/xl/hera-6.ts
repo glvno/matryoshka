@@ -285,5 +285,4 @@ export const xl: Xl = {
   },
 };
 
-const NOTES =
-  'The Juno-106 as its owner’s manual describes it, one card row per control. LFO rate and delay time. DCO: range (16’ 8’ 4’), lfo, one pwm slider with its mode (LFO: the depth, MAN: the width), pulse and saw switches (together or apart), sub, noise. HPF 0..3 (0: bass boost). A 24 dB low pass per voice: freq, res, polarity, env, lfo, kybd. VCA by env or gate, level. Decay and release to 12 s. Chorus off, I or II. Bender: dco, vcf, lfo (the mod wheel). Portamento and its switch. Assign: rotate Poly 1, lowest Poly 2, unison solo. Key transpose, tune. The hold pedal is the FX button. Six voices.';
+const NOTES = "Juno-106 panel, six voices. FX is the hold pedal; Output sets volume. Assign needs two rows: Selectors cannot set Voicing settings. Poly 2 steals when all voices are busy; the allocator lacks no-takeover mode. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.";

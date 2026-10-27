@@ -78,13 +78,8 @@ import { around, define, matchLevel, type Def } from './def';
 import { setCopies } from '../../src/assembly';
 import type { Xl } from './xl';
 
-const NOTES = 'After the Yamaha DX100 Owner\'s Manual, one card row per parameter, named as its LCD names it: algorithm 1..8, ' +
-  'op 4 feedback; LFO wave (saw up, square, triangle, S/hold), speed, delay, PMD, AMD, sync, PMS, AMS. Each operator, ' +
-  'picked on an op row: freq ratio (st) + detune (ct), out level, key velocity, AR D1R D1L D2R RR, rate and level scaling, ' +
-  'EG bias sens, operator and AMS on-off. Poly/mono (8 or 1 voices), pitch bend range (oct), porta mode and time, foot sw ' +
-  '(FX button or CC 80: sustain or portamento), MW and BC (= aftertouch) pitch and ampli, BC pitch bias and EG bias, ' +
-  'transpose (oct, in semitones), master tune. Not here: the bend Low / High modes (no output for the lowest or highest ' +
-  'note), a breath controller and footswitch of their own (Main has no CC 2 / 64 inputs: aftertouch and FX stand in).';
+const NOTES = "DX100 panel; operators use four pickers (card limit). POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). Bend Low/High needs allocator outputs. Main lacks breath/foot CC inputs: aftertouch/FX stand in. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
+
 
 /** each path's algorithms (1..8): the route Selectors' input k takes the path when algorithm k lists it */
 const PATHS: [string, number, number, number[]][] = [
