@@ -355,7 +355,12 @@ export function setPoly(p: Patch, defs: Record<string, ModuleDef>, a: AssemblyIn
 
 /** drop duplicate cables (two rewired ones that now join the same ports) */
 function dedupe(p: Patch): void {
-  p.cables = p.cables.filter((c, i) => p.cables.findIndex((d) => sameEnd(c.from, d.from) && sameEnd(c.to, d.to)) === i);
+  // the first of each (from, to) pair stays (a key per cable, not a scan of every cable for each)
+  const seen = new Set<string>();
+  p.cables = p.cables.filter((c) => {
+    const k = JSON.stringify([c.from.module, c.from.port, c.to.module, c.to.port]);
+    return !seen.has(k) && !!seen.add(k);
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------

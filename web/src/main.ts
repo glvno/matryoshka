@@ -50,14 +50,14 @@ import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
 import { addedTitles, loadCommunity, onAddedChange, unlinkSaved } from './community';
-import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard } from './sandbox';
+import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard, type Chip } from './sandbox';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
 import { starterPatch } from './starter';
 import { recordKey, recordNote, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
 import { synthLink } from './tutorial/link';
-import { PRESETS } from './presets';
+import { factoryShape, PRESETS, shapeOf } from './presets';
 import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
@@ -471,10 +471,13 @@ let refreshAssemblies: () => void = () => {};
 /** the factory patches and the Patches page's own copies (the morph picker keeps those of the same structure; the palette loads any) */
 // A/B is off for 1.0 (#103): nothing sets this, so Snapshot B is not offered as a B side until A/B returns
 let snapshotCandidates: () => { name: string; patch: Patch }[] = () => [];
-const patchCandidates = (): { name: string; patch: Patch }[] => {
+/** (`like`: only a factory patch of its shape is built, presets.ts shapeOf; the others could not be of its structure) */
+const patchCandidates = (like?: Patch): { name: string; patch: Patch }[] => {
   const seen = new Set<string>();
   const out: { name: string; patch: Patch }[] = [];
-  for (const c of [...snapshotCandidates(), ...savedPatches(), ...bankPatches(), ...Object.entries(PRESETS).map(([name, make]) => ({ name, patch: make() }))])
+  const shape = like && shapeOf(like);
+  const wanted = (name: string): boolean => !shape || factoryShape(name) === shape;
+  for (const c of [...snapshotCandidates(), ...savedPatches(), ...bankPatches(wanted), ...Object.entries(PRESETS).filter(([name]) => wanted(name)).map(([name, make]) => ({ name, patch: make() }))])
     if (!seen.has(c.name)) {
       seen.add(c.name);
       out.push(c);
@@ -754,10 +757,29 @@ host.onValues = (values) => {
 setupPopoverPositioning();
 const presetSel = $<HTMLSelectElement>('preset');
 /** the Open picker: Your patches (rebuilt on every save, and when a community patch is added or removed) and the factory
- *  patches (catalog.ts), each row with its chip, FM-1 · NN % or SANDBOX, worked out as the list is built. Where the browser
- *  draws a select's options itself (appearance: base-select) the chip is a pill at the row's end; elsewhere the row reads
- *  "name — chip" */
+ *  patches (catalog.ts), each row with its chip, FM-1 · NN % or SANDBOX. Where the browser draws a select's options itself
+ *  (appearance: base-select) the chip is a pill at the row's end; elsewhere the row reads "name — chip". Working a chip
+ *  out costs the patch's whole FM-1 budget, so the rows are listed at once and their chips are worked out after, a few at a
+ *  time while the page is idle, and every one still missing the moment the picker is focused or pressed (before it opens) */
+let chipsDue: { slot: HTMLSpanElement; chip: () => Chip }[] = [];
+const drawChip = ({ slot, chip }: { slot: HTMLSpanElement; chip: () => Chip }): void => slot.replaceWith(chipEl(chip()));
+const chipsNow = (): void => { const due = chipsDue; chipsDue = []; due.forEach(drawChip); };
+let chipsQueued = false;
+const chipsWhenIdle = (): void => {
+  if (chipsQueued || !chipsDue.length) return;
+  chipsQueued = true;
+  const step = (deadline?: IdleDeadline): void => {
+    chipsQueued = false;
+    do { const next = chipsDue.shift(); if (next) drawChip(next); } while (chipsDue.length && deadline && deadline.timeRemaining() > 4);
+    chipsWhenIdle();
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(step, { timeout: 4000 });
+  else setTimeout(step, 50);
+};
+presetSel.addEventListener('focus', chipsNow);
+presetSel.addEventListener('pointerdown', chipsNow);
 const fillPicker = (): void => {
+  chipsDue = [];
   presetSel.replaceChildren(
     new Option('Open a patch…', ''),
     ...openableGroups().map(({ label, items }) => {
@@ -777,12 +799,16 @@ const fillPicker = (): void => {
         const sep = document.createElement('span');
         sep.className = 'o-sep';
         sep.textContent = ' — ';
-        opt.append(name, sep, chipEl(o.chip()));
+        const slot = document.createElement('span');
+        chipsDue.push({ slot, chip: o.chip });
+        opt.append(name, sep, slot);
         return opt;
       }));
       return g;
     }),
   );
+  if (document.activeElement === presetSel) chipsNow();
+  else chipsWhenIdle();
 };
 fillPicker();
 onSavedChange(() => { unlinkSaved(savedPatches().map((e) => e.name)); fillPicker(); });

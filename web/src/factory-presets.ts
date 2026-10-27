@@ -10,7 +10,7 @@ import { setFactoryPresets, type Preset } from './device-presets';
 import { defIsEngine, instIsEngine } from './engines';
 import { DEFS } from './modules';
 import { XL_PRESETS } from './presets';
-import { defRowOrder, defStructure } from './structure';
+import { defStructureAndOrder } from './structure';
 
 /** a row as a rule sees it: its module's type, the parameter, its label on the card, the value now */
 interface Row { type: string; param: string; label: string; value: number }
@@ -68,8 +68,7 @@ export const XL_RULES: { name: string; rule: Rule }[] = RULES.map(({ name, rule 
 
 /** a factory engine's presets: Init and every rule that moves at least one row */
 export function presetsOfDef(def: AssemblyDef, rules = RULES): Preset[] {
-  const structure = defStructure(def);
-  const order = defRowOrder(def);
+  const { structure, order } = defStructureAndOrder(def);
   const rows: Row[] = order.map((i) => {
     const r = def.params[i];
     const m = def.modules.find((x) => x.id === r.module)!;
@@ -88,18 +87,33 @@ export function presetsOfDef(def: AssemblyDef, rules = RULES): Preset[] {
   return out;
 }
 
+/** worked out once, when first asked (not as the page loads) */
+const once = <T>(f: () => T): (() => T) => {
+  let v: T | undefined;
+  let done = false;
+  return () => (done ? v! : ((done = true), (v = f())));
+};
+
 /** every factory engine's presets (the FM-1's ROM list) */
-export const FACTORY_PRESETS: Preset[] = FACTORY.filter((d) => defIsEngine(d)).flatMap((d) => presetsOfDef(d));
+export const factoryPresets = once((): Preset[] => FACTORY.filter((d) => defIsEngine(d)).flatMap((d) => presetsOfDef(d)));
 
 /** the XL patches' engines' presets, by XL name: browser only */
-export const XL_ENGINE_PRESETS: Record<string, Preset[]> = Object.fromEntries(
+export const xlEnginePresets = once((): Record<string, Preset[]> => Object.fromEntries(
   Object.entries(XL_PRESETS).map(([name, make]) => {
     const p = make();
     return [name, (p.assemblies ?? []).filter((a) => instIsEngine(p, a)).flatMap((a) => presetsOfDef(toDef(p, a), XL_RULES))];
   }),
-);
+));
 
-/** an XL engine of a factory engine's structure already has that engine's presets; two XLs sharing an engine list it once */
-const seen = new Set(FACTORY_PRESETS.map((p) => p.structure));
-const xlOnly = Object.values(XL_ENGINE_PRESETS).flat().filter((p) => !seen.has(p.structure));
-setFactoryPresets([...FACTORY_PRESETS, ...xlOnly.filter((p, i) => xlOnly.findIndex((q) => q.structure === p.structure && q.name === p.name) === i)]);
+/** an XL engine of a factory engine's structure already has that engine's presets; two XLs sharing an engine list it once.
+ * By structure: a factory engine's structure needs no XL worked out, so the XLs' presets are made only when a structure no
+ * factory engine has is asked for */
+const fm1Structures = once(() => new Set(factoryPresets().map((p) => p.structure)));
+const xlOnly = once((): Preset[] => {
+  const seen = fm1Structures();
+  const list = Object.values(xlEnginePresets()).flat().filter((p) => !seen.has(p.structure));
+  return list.filter((p, i) => list.findIndex((q) => q.structure === p.structure && q.name === p.name) === i);
+});
+/** every factory preset the browser offers: the FM-1's, then the XLs' own */
+export const allFactoryPresets = (): Preset[] => [...factoryPresets(), ...xlOnly()];
+setFactoryPresets((structure) => (fm1Structures().has(structure) ? factoryPresets() : xlOnly()).filter((p) => p.structure === structure));

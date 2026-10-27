@@ -51,7 +51,7 @@ The doll-colored cable-arm variant, `web/public/brand/round-three/28-doll-colore
 
 The hidden cable-end revision, `web/public/brand/round-three/29-hidden-arm-ends.png`, was edited with the built-in image generator. Its prompt is in `web/public/brand/round-three/hidden-arm-ends-edit.json`.
 
-The active Matryoshka wordmark uses preset p13: the approved narrow Roboto Flex capitals, both T arms shortened to 55%, custom A–T / T–R spacing, and a small foot on the teal R/1. The earlier FM1 wordmarks remain historical studies. The active logo is `web/public/brand/matryoshka.png`.
+The active Matryoshka wordmark uses preset p13: the approved narrow Roboto Flex capitals, both T arms shortened to 55%, custom A–T / T–R spacing, and a small foot on the teal R/1. The earlier FM1 wordmarks remain historical studies. The active logo is `web/public/brand/matryoshka.png`. The browser tab icon, `web/public/brand/icon-96.png`, is that logo scaled to 96 px (`sips -Z 96`), so a visit does not download the full 1254 px picture.
 
 ## M-VAVE Official Open (not shipped)
 

@@ -9,7 +9,8 @@ import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
 import { MAX_POLY } from '../src/poly';
 import { FM1_PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
-import { FACTORY_PRESETS } from '../src/factory-presets';
+import { factoryPresets } from '../src/factory-presets';
+const FACTORY_PRESETS = factoryPresets();
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 const L: string[] = [];

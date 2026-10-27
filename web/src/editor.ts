@@ -200,7 +200,7 @@ export interface EditorEvents {
   /** undo or redo happened (the tutorial counts them) */
   onHistory?(kind: 'undo' | 'redo'): void;
   /** the patches the morph picker on the Main card offers as the B side (those of the same structure are listed) */
-  morphCandidates?(): { name: string; patch: Patch }[];
+  morphCandidates?(like: Patch): { name: string; patch: Patch }[];
 }
 
 /** an SVG path through a cubic Bézier's four points */
@@ -2283,7 +2283,7 @@ export class Editor {
     row.className = 'param bar morph-row';
     const name = document.createElement('span');
     name.textContent = 'B side';
-    const cands = (this.ev.morphCandidates?.() ?? []).filter((c) => sameStructure(this.patch, c.patch));
+    const cands = (this.ev.morphCandidates?.(this.patch) ?? []).filter((c) => sameStructure(this.patch, c.patch));
     // index 0 = none, then the candidates; the current B side is matched by name (it is a copy of a candidate's values)
     const current = (): number => (hasMorph(this.patch) ? cands.findIndex((c) => c.name === this.patch.morphName) + 1 : 0);
     const names = ['none', ...cands.map((c) => c.name)];
