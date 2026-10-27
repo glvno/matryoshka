@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Ladder has an audio-rate cutoff input for oscillator-speed filter modulation. Its existing cutoff input retains its block-rate behavior for saved patches.
+
 - Main exposes breath (CC 2), sustain (CC 64), and foot switch (CC 65) as independent patchable outputs in the browser and on the FM-1.
 
 - FM sine operators skip unused feedback and waveform selection work. Polyphonic modules reuse shared control averages. The instruction model counts 28% less work for Algo Four and 5% less for Io 4; all 130 audio kits and mode-change checks remain bit-identical.

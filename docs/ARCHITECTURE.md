@@ -310,6 +310,10 @@ Main provides `bend` (−1..1), `mod`, `at`, `breath`, `sustain` and `foot` (0..
 
 The browser parses these messages in `input.ts`, and `Engine.bend`, `cc` and `aftertouch` store one set of values for every voice. Firmware dispatch in `midi_input.h` respects MENU > MIDI CHANNEL for these controls. `eng_ctl` stores their values and `m_fm1` writes the outputs. The new outputs are appended after the panel-button outputs, preserving existing port numbers. `MAX_OUT` is 19; module parameter records are unchanged.
 
+## Audio-rate Ladder cutoff
+
+Ladder's `fm` input adds a sample-by-sample cutoff signal to its existing `cv` input, whose value is averaged over the block. Both use `cvamt` in octaves. Coefficients are reused while the sample value stays the same. The new input follows `p1` and `p2`, so old patches keep their cable numbers, parameter records and sound ([D-434](ledger/modules.md#D-434), Proposed).
+
 ## Comb filter and modal resonator
 
 - `comb`: the string's line (one period of pitch + coarse, 40 Hz lowest, linear interpolation, the damping one-pole's delay taken off the line) with signed feedback `fb` (−0.98..0.98) and no burst: y = clamp(in + fb·lp(y[n − period]), ±2), out = in·(1 − mix) + y·mix. C: `it->s.str` (buf, w, lp, err with the error feedback) and a string-pool line, so `ENG_NSTRING` is shared by strings and combs.

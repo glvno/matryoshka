@@ -778,6 +778,18 @@ kit('ladder', (add, wire) => {
   wire(lad, 'lp12', mix, 'in2');
   wire(mix, 'out', out, 'l');
 });
+kit('ladder-audio-fm', (add, wire) => {
+  const input = add('osc', 0, 0, { wave: 2, level: .4 });
+  const fm = add('osc', 0, 0, { wave: 0, coarse: 17, level: .6 });
+  const cv = add('const', 0, 0, { value: .15 });
+  const filter = add('ladder', 0, 0, { cutoff: 800, cvamt: 3, res: .3 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(input, 'out', filter, 'in');
+  wire(fm, 'out', filter, 'fm');
+  wire(cv, 'out', filter, 'cv');
+  wire(filter, 'lp24', out, 'l');
+  wire(filter, 'lp12', out, 'r');
+});
 kit('fm1-panel', (add, wire) => {
   const pn = add('fm1', 0, 0);
   const m3 = add('macro', 0, 0, { value: 0.4 }); // (Main's knobs were outputs once: Macro modules play their part)

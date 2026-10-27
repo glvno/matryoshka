@@ -3597,33 +3597,35 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
  * keeps that for audio-rate cutoff). States Q20, products rounded; the saturator bounds the states, so no clamps. */
 static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
 {
-    const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV];
+    const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
     esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
     int32_t *s = it->s.lad.s;
     int32_t drive = EF(it, LADDER_P_DRIVE), cvamt = EF(it, LADDER_P_CVAMT);
     int32_t k24 = EF(it, LADDER_P_RES) << 10;                                     /* 4 res, Q24 */
     int32_t tr = EF(it, LADDER_P_TRACK) >= 32768 ? cur_pv->pitch : 0, x = tr;
     uint32_t base = hz_turns((uint32_t)EF(it, LADDER_P_CUTOFF)), i;
-    int32_t g, G, G2, G3, G4, hG, F;
+    int audio = (nd->conn & (1u << LADDER_I_FM)) != 0;
+    int32_t G = 0, G2 = 0, G3 = 0, G4 = 0, hG = 0, F = 0;
     if (nd->conn & (1u << LADDER_I_CV)) {
         int64_t sum = 0;
         for (i = 0; i < n; i++)
             sum += cv[i];
         x += mul16(block_mean(sum, n), cvamt);
     }
-    if (x)
-        base = exp2_scale(base, x);
-    g = svf_g(base);
-    G = mulq(g, recip24((1 << 24) + g), 24);
-    G2 = mulq(G, G, 24);
-    G3 = mulq(G2, G, 24);
-    G4 = mulq(G3, G, 24);
-    hG = (1 << 24) - G;
-    F = recip24((1 << 24) + mulq(k24, G4, 24));
     {
         int32_t s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];     /* the states in registers, the four stages written out */
         for (i = 0; i < n; i++) {
             int32_t x20 = in[i] << 4, S, y4, u, v, y2;
+            if (i == 0 || (audio && fm[i] != fm[i - 1])) {
+                int32_t oct = x + (audio ? mul16(fm[i], cvamt) : 0);
+                int32_t g = svf_g(oct ? exp2_scale(base, oct) : base);
+                G = mulq(g, recip24((1 << 24) + g), 24);
+                G2 = mulq(G, G, 24);
+                G3 = mulq(G2, G, 24);
+                G4 = mulq(G3, G, 24);
+                hG = (1 << 24) - G;
+                F = recip24((1 << 24) + mulq(k24, G4, 24));
+            }
             S = mulr(G3, s0, 24) + mulr(G2, s1, 24) + mulr(G, s2, 24) + s3;
             S = mulr(S, hG, 24);
             y4 = mulr(F, mulr(G4, x20, 24) + S, 24);
