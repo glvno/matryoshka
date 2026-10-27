@@ -3204,9 +3204,25 @@ static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t
  * whole number (`cycles`) of cycles ends on a tick; it runs at the measured clock speed in between and at bpm when there
  * is no clock (modules.ts lfoSyncCycle). per8 = 8 x ticks per cycle, a whole number. phase: where a cycle starts on the
  * wave; dir back: the wave backward, read as -w(phase - off) (the triangle as it is). */
+static int32_t lfo_wave(int32_t kind, uint32_t phase, uint32_t dt, uint32_t duty, uint32_t rise, uint32_t fall, uint32_t *rc)
+{
+    if (kind == 3 && (!duty || duty == 65536u))
+        return duty ? ENG_ONE : -ENG_ONE;
+    if (kind != 1 || duty == 32768u)
+        return wave(kind, phase, dt, duty == 65536u ? 0xFFFFFFFFu : duty << 16, rc);
+    if (!duty)
+        return -wave_saw(phase, dt, rc);
+    if (duty == 65536u)
+        return wave_saw(phase, dt, rc);
+    if (phase < duty << 16)
+        return (int32_t)(((uint64_t)phase * rise) >> 31) - ENG_ONE;
+    return ENG_ONE - (int32_t)(((uint64_t)(phase - (duty << 16)) * fall) >> 31);
+}
+
 static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
 {
     esig_t *out = it->out[0];
+    esig_t *pulse = it->out[LFO_O_PULSE];
     const esig_t *clk = it->in[LFO_I_CLK], *rst = it->in[LFO_I_RESET];
     uint32_t rate = (uint32_t)EF(it, LFO_P_RATE), dtfree, phase = it->s.lfo.phase, i, dt;
     int32_t kind = round_q16(EF(it, LFO_P_WAVE)), depth = EF(it, LFO_P_DEPTH);
@@ -3216,19 +3232,29 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t num = (uint32_t)DELAY_DIV_NUM[div] * LFO_MULT_NUM[mi], den = (uint32_t)DELAY_DIV_DEN[div] * LFO_MULT_DEN[mi];
     uint32_t per8 = 192u * num / den, g = per8 & 7u ? (per8 & 3u ? (per8 & 1u ? 1u : 2u) : 4u) : 8u;   /* g = gcd(per8, 8) */
     uint32_t snap = per8 / g, cycles = 8u / g, dtbpm = 0, lrc[4] = {0}, off = 0;
+    uint32_t duty = 32768u;
+    if (nd->conn & (1u << LFO_I_SHAPE)) {
+        int64_t sum = 0;
+        for (i = 0; i < n; i++) sum += it->in[LFO_I_SHAPE][i];
+        duty = (uint32_t)clampi(block_mean(sum, n), 0, ENG_ONE);
+    }
     if (EF(it, LFO_P_PHASE))                     /* degrees Q16 -> u32 turns (x 2^16 / 360) */
         off = (uint32_t)(((uint64_t)(uint32_t)EF(it, LFO_P_PHASE) * 11930465u) >> 16);
     if (back) {
         off = 0u - off;
+        duty = 65536u - duty;
         if (kind != 1)
             depth = -depth;
     }
+    /* Reciprocal slopes once per block, within two Q16 steps of the exact per-sample division. */
+    uint32_t rise = duty && duty != 32768u ? 0xFFFFFFFFu / duty : 0;
+    uint32_t fall = duty != 65536u && duty != 32768u ? 0xFFFFFFFFu / (65536u - duty) : 0;
     dtfree = range == 1 ? (uint32_t)(((uint64_t)rate << 16) / (25u * ENG_SR)) : range == 2 ? hz_turns(rate) << 1 : hz_turns(rate);
     if (bpm < 65536)
         bpm = 65536;
     if (sync)                                    /* (a 64-bit division: only when it is used) */
         dtbpm = (uint32_t)(((uint64_t)(uint32_t)bpm * den << 16) / ((uint64_t)60u * num * ENG_SR));
-    if (!sync && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {   /* free running, nothing patched in */
+    if (!sync && duty == 32768u && pulse == dummy_out && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {
         lfo_free(it, out, dtfree, kind, depth, off, n);
         return;
     }
@@ -3272,8 +3298,12 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
                 lfo_cycle(it);              /* a new cycle: sample & hold takes a new random value */
             }
         }
-        w = kind == 4 ? it->s.lfo.held : wave(kind, phase + off, dt, 0x80000000u, lrc);
+        w = kind == 4 ? it->s.lfo.held : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc);
         out[i] = mul16(w, depth);
+        if (pulse != dummy_out) {
+            int32_t pw = !duty ? -ENG_ONE : duty == 65536u ? ENG_ONE : wave_square(phase + off, dt, duty << 16, lrc);
+            pulse[i] = mul16(pw, back ? -EF(it, LFO_P_DEPTH) : EF(it, LFO_P_DEPTH));
+        }
     }
     it->s.lfo.phase = phase;
     (void)nd;

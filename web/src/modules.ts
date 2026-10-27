@@ -479,6 +479,14 @@ interface LfoState {
   interval: number;
 }
 
+/** A triangle's rise occupies `duty` of its cycle; at the ends it becomes a falling or rising saw. */
+function lfoWave(kind: number, phase: number, dt: number, duty: number): number {
+  if (kind !== 1 || duty === .5) return wave(kind, phase, dt, duty);
+  if (duty === 0) return -wave(2, phase, dt);
+  if (duty === 1) return wave(2, phase, dt);
+  return phase < duty ? 2 * phase / duty - 1 : 1 - 2 * (phase - duty) / (1 - duty);
+}
+
 /**
  * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or, with `sync`, one cycle per note length `div` (as the delay)
  * at the `mult` speed (÷8 .. x8). The clk input is a 24 ppqn clock (the Main module's clock output): the cycle snaps to every
@@ -511,6 +519,13 @@ const lfo: ModuleImpl<LfoState> = {
     const kind = Math.round(c.p.wave ?? 0);
     // backward: the wave read at off - phase, which for these waves is -w(phase - off) (the triangle is the same both ways)
     const back = (c.p.dir ?? 0) >= 0.5;
+    let duty = .5;
+    if (c.connected.shape) {
+      let sum = 0;
+      for (let i = 0; i < c.n; i++) sum += c.inp.shape[i];
+      duty = Math.max(0, Math.min(1, Math.trunc(sum * 65536 / c.n) / 65536));
+    }
+    if (back) duty = 1 - duty;
     const depth = (c.p.depth ?? 1) * (back && kind !== 1 ? -1 : 1);
     const off = ((c.p.phase ?? 0) / 360) * (back ? -1 : 1);
     const sync = (c.p.sync ?? 0) >= 0.5;
@@ -558,7 +573,8 @@ const lfo: ModuleImpl<LfoState> = {
         }
       }
       const ph = off ? s.phase + off - Math.floor(s.phase + off) : s.phase;
-      c.out.out[i] = (kind === 4 ? s.held : wave(kind, ph, dt)) * depth;
+      c.out.out[i] = (kind === 4 ? s.held : lfoWave(kind, ph, dt, duty)) * depth;
+      c.out.pulse[i] = wave(3, ph, dt, duty) * (c.p.depth ?? 1) * (back ? -1 : 1);
     }
   },
 };
@@ -3079,6 +3095,8 @@ for (const m of ALL)
 steps.def.inputs.push(keys('keys'));
 random.def.inputs.push(gate('clock'));
 ladder.def.inputs.push(control('fm'));
+lfo.def.inputs.push(control('shape'));
+lfo.def.outputs.push(control('pulse'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 

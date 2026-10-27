@@ -18,7 +18,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   fm1: { breath: 'breath (CC 2)', sustain: 'sustain (CC 64)', foot: 'foot switch (CC 65)' },
   adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release', long: 'long times' },
   ladder: { fm: 'audio-rate cutoff' },
-  lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed' },
+  lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed', shape: 'shape (0..1)', pulse: 'pulse' },
   delay: { note: 'note length' },
   pulse: { inf: 'infinite' },
   mixer: { l1: 'level 1', l2: 'level 2', l3: 'level 3', l4: 'level 4' },

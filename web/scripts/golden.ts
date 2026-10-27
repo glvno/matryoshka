@@ -53,7 +53,29 @@ const events: Record<string, Ev[]> = {};
 const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
+for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
+  const name = `lfo-shape-${shape}-${back}`;
+  tests[name] = make(name, (add, wire) => {
+    const lfo = add('lfo', 0, 0, { wave: 1, rate: 7, depth: .5, dir: back });
+    const source = add('const', 0, 0, { value: shape }), out = add('output', 0, 0, { level: 1 });
+    wire(source, 'out', lfo, 'shape');
+    wire(lfo, 'out', out, 'l');
+    wire(lfo, 'pulse', out, 'r');
+  });
+}
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+tests['lfo-shape-sync'] = make('lfo-shape-sync', (add, wire) => {
+  const main = add('fm1', 0, 0);
+  const shape = add('const', 0, 0, { value: .37 });
+  const lfo = add('lfo', 0, 0, { wave: 3, sync: 1, div: 7, phase: 90, depth: .5 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(main, 'clock', lfo, 'clk');
+  wire(main, 'fx', lfo, 'reset');
+  wire(shape, 'out', lfo, 'shape');
+  wire(lfo, 'out', out, 'l');
+  wire(lfo, 'pulse', out, 'r');
+});
+events['lfo-shape-sync'] = [[0, 'run', 0], [128 * 80, 'bon', 0], [128 * 82, 'boff', 0]];
 for (let pos = 1; pos <= 6; pos++) {
   const name = `monolith-wave-${pos}`;
   const p = FM1_PRESETS['Monolith D']();

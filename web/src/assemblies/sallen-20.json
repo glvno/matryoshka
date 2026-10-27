@@ -628,12 +628,11 @@
     },
     {
       "id": 23,
-      "type": "scale",
-      "x": 960,
-      "y": 2240,
+      "type": "macro",
+      "x": 2240,
+      "y": 1680,
       "params": {
-        "gain": 0,
-        "offset": 0
+        "value": 0.5
       },
       "att": [
         1,
@@ -641,11 +640,9 @@
       ],
       "map": {
         "p1": [
-          "gain"
+          "value"
         ],
-        "p2": [
-          "offset"
-        ],
+        "p2": [],
         "k1": [],
         "k2": [],
         "k3": [],
@@ -655,7 +652,7 @@
     {
       "id": 24,
       "type": "scale",
-      "x": 1920,
+      "x": 960,
       "y": 2240,
       "params": {
         "gain": 0,
@@ -682,7 +679,7 @@
       "id": 25,
       "type": "scale",
       "x": 1920,
-      "y": 560,
+      "y": 2240,
       "params": {
         "gain": 0,
         "offset": 0
@@ -707,7 +704,7 @@
     {
       "id": 26,
       "type": "scale",
-      "x": 1600,
+      "x": 1920,
       "y": 560,
       "params": {
         "gain": 0,
@@ -733,7 +730,7 @@
     {
       "id": 27,
       "type": "scale",
-      "x": 2240,
+      "x": 1600,
       "y": 560,
       "params": {
         "gain": 0,
@@ -760,9 +757,9 @@
       "id": 28,
       "type": "scale",
       "x": 2240,
-      "y": 1120,
+      "y": 560,
       "params": {
-        "gain": 2.5,
+        "gain": 0,
         "offset": 0
       },
       "att": [
@@ -784,13 +781,12 @@
     },
     {
       "id": 29,
-      "type": "math",
+      "type": "scale",
       "x": 2240,
-      "y": 1680,
+      "y": 1120,
       "params": {
-        "ka": 1,
-        "kb": 1,
-        "off": 0
+        "gain": 2.5,
+        "offset": 0
       },
       "att": [
         1,
@@ -798,10 +794,10 @@
       ],
       "map": {
         "p1": [
-          "ka"
+          "gain"
         ],
         "p2": [
-          "kb"
+          "offset"
         ],
         "k1": [],
         "k2": [],
@@ -1012,6 +1008,16 @@
   "cables": [
     {
       "from": {
+        "module": 23,
+        "port": "out"
+      },
+      "to": {
+        "module": 22,
+        "port": "shape"
+      }
+    },
+    {
+      "from": {
         "module": 1,
         "port": "pitch"
       },
@@ -1042,7 +1048,7 @@
     },
     {
       "from": {
-        "module": 23,
+        "module": 24,
         "port": "out"
       },
       "to": {
@@ -1052,7 +1058,7 @@
     },
     {
       "from": {
-        "module": 24,
+        "module": 25,
         "port": "out"
       },
       "to": {
@@ -1092,7 +1098,7 @@
     },
     {
       "from": {
-        "module": 23,
+        "module": 24,
         "port": "out"
       },
       "to": {
@@ -1102,7 +1108,7 @@
     },
     {
       "from": {
-        "module": 24,
+        "module": 25,
         "port": "out"
       },
       "to": {
@@ -1346,16 +1352,6 @@
         "port": "env"
       },
       "to": {
-        "module": 23,
-        "port": "in"
-      }
-    },
-    {
-      "from": {
-        "module": 22,
-        "port": "out"
-      },
-      "to": {
         "module": 24,
         "port": "in"
       }
@@ -1372,18 +1368,8 @@
     },
     {
       "from": {
-        "module": 25,
+        "module": 22,
         "port": "out"
-      },
-      "to": {
-        "module": 14,
-        "port": "cv"
-      }
-    },
-    {
-      "from": {
-        "module": 21,
-        "port": "env"
       },
       "to": {
         "module": 26,
@@ -1402,8 +1388,8 @@
     },
     {
       "from": {
-        "module": 22,
-        "port": "out"
+        "module": 21,
+        "port": "env"
       },
       "to": {
         "module": 27,
@@ -1413,6 +1399,26 @@
     {
       "from": {
         "module": 27,
+        "port": "out"
+      },
+      "to": {
+        "module": 14,
+        "port": "cv"
+      }
+    },
+    {
+      "from": {
+        "module": 22,
+        "port": "out"
+      },
+      "to": {
+        "module": 28,
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 28,
         "port": "out"
       },
       "to": {
@@ -1424,30 +1430,20 @@
       "from": {
         "module": 21,
         "port": "env"
-      },
-      "to": {
-        "module": 28,
-        "port": "in"
-      }
-    },
-    {
-      "from": {
-        "module": 28,
-        "port": "out"
-      },
-      "to": {
-        "module": 15,
-        "port": "cv"
-      }
-    },
-    {
-      "from": {
-        "module": 22,
-        "port": "out"
       },
       "to": {
         "module": 29,
-        "port": "a"
+        "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 29,
+        "port": "out"
+      },
+      "to": {
+        "module": 15,
+        "port": "cv"
       }
     },
     {
@@ -1462,8 +1458,8 @@
     },
     {
       "from": {
-        "module": 29,
-        "port": "cmp"
+        "module": 22,
+        "port": "pulse"
       },
       "to": {
         "module": 30,
@@ -1512,8 +1508,8 @@
     },
     {
       "from": {
-        "module": 29,
-        "port": "cmp"
+        "module": 22,
+        "port": "pulse"
       },
       "to": {
         "module": 13,
@@ -1665,8 +1661,8 @@
       "label": "mg triangle"
     },
     {
-      "module": 29,
-      "port": "cmp",
+      "module": 22,
+      "port": "pulse",
       "label": "mg rectangle"
     },
     {
@@ -1698,7 +1694,7 @@
       "head": "vco"
     },
     {
-      "module": 23,
+      "module": 24,
       "param": "offset",
       "label": "master tune"
     },
@@ -1763,13 +1759,13 @@
       "label": "vco 2 fine"
     },
     {
-      "module": 24,
+      "module": 25,
       "param": "gain",
       "label": "mg/t.ext",
       "head": "freq mod"
     },
     {
-      "module": 23,
+      "module": 24,
       "param": "gain",
       "label": "eg1/ext"
     },
@@ -1797,12 +1793,12 @@
       "label": "peak"
     },
     {
-      "module": 25,
+      "module": 26,
       "param": "gain",
       "label": "mg/t.ext"
     },
     {
-      "module": 26,
+      "module": 27,
       "param": "gain",
       "label": "eg2/ext"
     },
@@ -1818,12 +1814,12 @@
       "label": "peak"
     },
     {
-      "module": 27,
+      "module": 28,
       "param": "gain",
       "label": "mg/t.ext"
     },
     {
-      "module": 28,
+      "module": 29,
       "param": "gain",
       "label": "eg2/ext"
     },
@@ -1887,8 +1883,8 @@
       "head": "mg"
     },
     {
-      "module": 22,
-      "param": "wave",
+      "module": 23,
+      "param": "value",
       "label": "waveform"
     },
     {
