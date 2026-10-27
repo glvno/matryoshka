@@ -1964,7 +1964,7 @@
   },
   {
    "from": {
-    "module": 36,
+    "module": 38,
     "port": "or"
    },
    "to": {
@@ -2465,11 +2465,6 @@
      "module": 38,
      "port": "b",
      "label": "b"
-    },
-    {
-     "module": 11,
-     "port": "hold",
-     "label": "hold"
     },
     {
      "module": 4,

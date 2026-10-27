@@ -161,7 +161,7 @@ export const xl: Xl = {
       e.wire(holdLevel, 'out', gate, 'b');
       e.wire(ENV, 'env', gate, 'b');
       // Envelope hold keeps the original key-gate edges, so reused voices still attack.
-      e.wire(hold, 'or', ENV, 'hold');
+      e.wire(gate, 'or', ENV, 'hold');
       // ---- the VCA by the envelope or the gate (a Selector: 1 ENV, 2 GATE)
       e.unwire(ENV, 'env', VCA, 'cv');
       const vcaMode = e.add('select', 4, 1, { count: 2, pos: 1 });
