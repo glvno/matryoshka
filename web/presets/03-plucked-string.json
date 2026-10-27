@@ -64,7 +64,8 @@
     "res": 0.1,
     "cvamt": 1,
     "track": 1,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,

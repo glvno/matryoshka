@@ -1181,7 +1181,8 @@
     "res": 0.4,
     "cvamt": 3,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -1558,7 +1559,8 @@
     "res": 0.9,
     "cvamt": 3,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -3888,7 +3890,8 @@
     "res": 0.75,
     "cvamt": 4,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,

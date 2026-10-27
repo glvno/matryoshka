@@ -329,7 +329,7 @@ int main(int argc, char **argv)
         acks_ok++;
     }
     CHECK(applied == 1);
-    CHECK(m1_cur_len == (uint32_t)np);
+    CHECK(m1_cur_len == (uint32_t)np || (patch[1] < ENG_PATCH_VERSION && m1_cur[1] == ENG_PATCH_VERSION));   /* (an older format's: upgraded) */
     run(b_l, b_r);
     CHECK(memcmp(a_l, b_l, sizeof a_l) == 0 && memcmp(a_r, b_r, sizeof a_r) == 0);
     /* the stored copy carries the live parameter */
@@ -460,7 +460,7 @@ int main(int argc, char **argv)
         flat[7] &= (uint8_t)~ENG_FLAG_EXTRAS;              /* (the device extras go with the pages) */
         memcpy(m1_cur, flat, base);
         memset(m1_cur + base, 0, count);
-        m1_cur[1] = ENG_PATCH_VERSION;
+        /* (the fixture's own format: a patch that uses nothing newer is written in an older one, patchbin.ts WRITE_FLOOR) */
         m1_cur[6] |= 4u;
         m1_cur[base + mod] = 1u << FILTER_I_CV;
         m1_cur_len = base + count;
@@ -483,7 +483,7 @@ int main(int argc, char **argv)
         /* Additional input routes (flag bit 3) retain the raw CV buffer for extra destinations when the fixed link is off. */
         memcpy(m1_cur, flat, base);
         memset(m1_cur + base, 0, count);
-        m1_cur[1] = ENG_PATCH_VERSION; m1_cur[6] |= 12u;
+        m1_cur[6] |= 12u;
         m1_cur[base + mod] = 1u << FILTER_I_CV;
         m1_cur_len = base + count + 5u;
         m1_cur[base + count] = 1;
@@ -502,7 +502,7 @@ int main(int argc, char **argv)
         m1_patch_range(mod, 0, par, 0, 0, 0);
         CHECK(m1_cur_len == base + count + 5u);
         m1_cur[1] = ENG_PATCH_COMPAT_VERSION - 1; CHECK(!m1_valid(m1_cur, m1_cur_len));   /* records of an older format */
-        CHECK(eng_load(m1_cur, m1_cur_len) != 0); m1_cur[1] = ENG_PATCH_VERSION;
+        CHECK(eng_load(m1_cur, m1_cur_len) != 0); m1_cur[1] = patch[1];
         m1_cur[base + count + 2] = FILTER_I_P1;
         CHECK(eng_load(m1_cur, m1_cur_len) != 0);
         m1_cur[base + count + 2] = FILTER_I_CV;

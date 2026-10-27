@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The Multimode filter has a self-oscillation switch (`osc`, off by default): on, it rings a steady sine-like tone at its cutoff near full resonance, as the Korg MS-20's filters do at full PEAK, even with nothing on its input. Sallen 20 turns it on in both filters, so its PEAK knobs now scream at the top; at its default settings it sounds exactly as before. A patch that leaves `osc` off is still written in patch format 46, so the switch costs FM-1 memory only in patches that use it: Sallen 20 goes from 2,740 to 2,748 bytes, every other factory patch keeps its size. Patches that turn it on need firmware with patch format 47.
+
 - Io 4's switches show the Jupiter-4 panel's legends instead of numbers: RANGE 16' / 8' / 4', both WAVE FORMs, PW and PW MODE, KYBD FOLLOW, POLARITY, NORM / WIDE, the lever's LFO / OFF / BEND switches and TRANSPOSE. The OFF / ON switches stay numbered (1 OFF, 2 ON): the FM-1's patch memory holds no more. LFO RATE now reaches 55 Hz (it stopped at 40 Hz; the Jupiter-4's reaches 80 Hz). NOISE moves onto the VCO's second page, and the portamento switch row is called SWITCH. The sound is unchanged. FM-1: 56 modules, 4 voices and CPU 93 % (estimate) as before, 3,667 → 3,838 of 3,840 bytes.
 
 - Silver Box's TUNING reaches ±5 semitones, as the TB-303's TUNING knob (±500 cents in its owner's manual); it reached one semitone. Its cutoff row is CUT OFF FREQ, as on the panel. The default sound is unchanged. FM-1: 17 → 18 modules, 941 → 978 bytes, CPU 18.5 → 18.9 % (estimate). In <7PH the bass keeps its one-semitone tuning to fit.

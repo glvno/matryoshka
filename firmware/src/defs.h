@@ -221,9 +221,10 @@ enum {
 #define FILTER_P_CVAMT 2
 #define FILTER_P_TRACK 3
 #define FILTER_P_MORPH 4
+#define FILTER_P_OSC 5
 #define FILTER_NIN 5
 #define FILTER_NOUT 9
-#define FILTER_NPAR 5
+#define FILTER_NPAR 6
 #define FILTER_CVBASE 3
 #define FILTER_NDATA 0
 
@@ -995,6 +996,11 @@ static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
 #define ESP_CLIP_Q16 1048576   /* amp is held to +-this (room for the Q24 band-pass states) */
 #define ESP_PEAK_SHIFT 9   /* the peak hold falls by 1 / 2^this per sample */
 #define ESP_GLIDE_SHIFT 6   /* the pitch output glides 1 / 2^this of the way per sample */
+#define FILTER_OSC_FROM_Q16 55706   /* the Multimode filter's self-oscillation (osc on): from this res up */
+#define FILTER_OSC_K_Q24 19964887   /* the damping's fall per unit of res past it */
+#define FILTER_OSC_GAIN_Q24 93952410   /* the damping's growth per unit of res past it, times the band pass squared */
+#define FILTER_OSC_CLIP_Q20 2097152   /* the band-pass state is held to +-this there */
+#define FILTER_OSC_SEED_Q20 1024   /* the band-pass state a filter at rest starts from */
 #define ADSR_LONG_Q16 157286   /* the ADSR's long: decay and release x 2.4 */
 
 #define TRACK_STEPS 64        /* a Steps track's most steps (track.ts); its name follows its pins in the record */
@@ -1125,14 +1131,15 @@ static const uint8_t VCA_LOG[] = {0};
 static const char *const VCA_UNIT[] = {""};
 static const char *const *const VCA_CH[] = {0};
 static const char *const FILTER_INNAMES[] = {"IN", "CV", "MORPH", "P1", "P2"};
-static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0};
-static const int32_t FILTER_MAX[] = {1048576000, 65536, 262144, 65536, 65536};
-static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0};
-static const int32_t FILTER_INC[] = {10472653, 655, 2621, 65536, 655};
-static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH"};
-static const uint8_t FILTER_LOG[] = {2, 0, 0, 0, 0};
-static const char *const FILTER_UNIT[] = {"HZ", "", "OCT", "", ""};
-static const char *const *const FILTER_CH[] = {0, 0, 0, ADSR_CH4, 0};
+static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0, 0};
+static const int32_t FILTER_MAX[] = {1048576000, 65536, 262144, 65536, 65536, 65536};
+static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0, 0};
+static const int32_t FILTER_INC[] = {10472653, 655, 2621, 65536, 655, 65536};
+static const uint8_t FILTER_SINCE[] = {0, 0, 0, 0, 0, 47};
+static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH", "OSC"};
+static const uint8_t FILTER_LOG[] = {2, 0, 0, 0, 0, 0};
+static const char *const FILTER_UNIT[] = {"HZ", "", "OCT", "", "", ""};
+static const char *const *const FILTER_CH[] = {0, 0, 0, ADSR_CH4, 0, ADSR_CH4};
 static const char *const MIXER_INNAMES[] = {"IN1", "IN2", "IN3", "IN4", "P1", "P2"};
 static const int32_t MIXER_MIN[] = {0, 0, 0, 0};
 static const int32_t MIXER_MAX[] = {65536, 65536, 65536, 65536};
@@ -1538,7 +1545,7 @@ static const def_t DEFS[N_TYPES] = {
     {SCALE_NIN, SCALE_NOUT, SCALE_NPAR, 0, SCALE_CVBASE, 0, SCALE_NDATA, 0, SCALE_MIN, SCALE_MAX, SCALE_DEF, SCALE_INC, "ATTENUVERTER", SCALE_PN, SCALE_INNAMES, SCALE_LOG, SCALE_UNIT, SCALE_CH, 0, 0},   /* scale */
     {ADSR_NIN, ADSR_NOUT, ADSR_NPAR, 0, ADSR_CVBASE, -1, ADSR_NDATA, 0, ADSR_MIN, ADSR_MAX, ADSR_DEF, ADSR_INC, "ADSR", ADSR_PN, ADSR_INNAMES, ADSR_LOG, ADSR_UNIT, ADSR_CH, 0, ADSR_SINCE},   /* adsr */
     {VCA_NIN, VCA_NOUT, VCA_NPAR, 2, VCA_CVBASE, 0, VCA_NDATA, 1, VCA_MIN, VCA_MAX, VCA_DEF, VCA_INC, "VCA", VCA_PN, VCA_INNAMES, VCA_LOG, VCA_UNIT, VCA_CH, 0, 0},   /* vca */
-    {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, 6, FILTER_CVBASE, 0, FILTER_NDATA, 511, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "MULTIMODE", FILTER_PN, FILTER_INNAMES, FILTER_LOG, FILTER_UNIT, FILTER_CH, 0, 0},   /* filter */
+    {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, 6, FILTER_CVBASE, 0, FILTER_NDATA, 511, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "MULTIMODE", FILTER_PN, FILTER_INNAMES, FILTER_LOG, FILTER_UNIT, FILTER_CH, 0, FILTER_SINCE},   /* filter */
     {MIXER_NIN, MIXER_NOUT, MIXER_NPAR, 0, MIXER_CVBASE, 0, MIXER_NDATA, 1, MIXER_MIN, MIXER_MAX, MIXER_DEF, MIXER_INC, "MIXER 4", MIXER_PN, MIXER_INNAMES, MIXER_LOG, MIXER_UNIT, MIXER_CH, 0, 0},   /* mixer */
     {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, 0, DELAY_CVBASE, 0, DELAY_NDATA, 3, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN, DELAY_INNAMES, DELAY_LOG, DELAY_UNIT, DELAY_CH, 0, DELAY_SINCE},   /* delay */
     {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, 0, REVERB_CVBASE, 0, REVERB_NDATA, 1, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH, 0, REVERB_SINCE},   /* reverb */

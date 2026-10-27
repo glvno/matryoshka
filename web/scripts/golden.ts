@@ -335,6 +335,25 @@ for (const res of [0.2, 0.95]) {
     wire(flt, 'hp6', out, 'l');
   });
 }
+// the filter's self-oscillation (osc on): alone at full resonance (it starts from rest and rings at the cutoff), and a
+// saw through it near the top with the cutoff swept
+kit('filter-osc-self', (add, wire) => {
+  add('fm1', 0, 0);
+  const flt = add('filter', 0, 0, { cutoff: 220, res: 1, osc: 1 });
+  const out = add('output', 0, 0, { level: 0.5 });
+  wire(flt, 'lp12', out, 'l');
+});
+kit('filter-osc-driven', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.3 });
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 0.9, depth: 1 });
+  const flt = add('filter', 0, 0, { cutoff: 600, res: 0.97, cvamt: 1, osc: 1 });
+  const out = add('output', 0, 0, { level: 0.5 });
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(osc, 'out', flt, 'in');
+  wire(lfo, 'out', flt, 'cv');
+  wire(flt, 'hp6', out, 'l');
+});
 kit('filter-morph', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });
@@ -2492,7 +2511,7 @@ tests['arm-set'] = make('arm-set', (add, wire) => {
   const enc = encodePatch(p, true);
   if (enc[3] !== 0 || enc[6] & 1) throw new Error('disabled-inputs: the mask section goes after the cables (no groups, no morph)');
   let at = 8 + PANEL_BYTES;
-  for (const m of p.modules) at += recordSize(m.type);
+  for (const m of p.modules) at += recordSize(m.type, enc[1]);
   at += 4 * p.cables.length;
   const last = p.cables[p.cables.length - 1];
   const idx = (id: number): number => p.modules.findIndex((m) => m.id === id);

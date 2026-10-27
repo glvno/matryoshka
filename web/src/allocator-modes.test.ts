@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
-import { encodePatch, VERSION } from './patchbin';
+import { encodePatch, formatOf } from './patchbin';
 
 function patch(assign: number, steal = 1, voices = 3) {
   const p = emptyPatch();
@@ -64,7 +64,7 @@ it('the group record carries no-steal separately from note priority and keeps ol
   const { p, alloc } = patch(3, 0);
   alloc.params.priority = 2;
   const bytes = encodePatch(p);
-  expect(bytes[1]).toBe(VERSION);
+  expect(bytes[1]).toBe(formatOf(p));
   expect(Array.from(bytes.slice(8, 12))).toEqual([3, 3, 0, 0x82]);
   const old = patch(0).p;
   expect(Array.from(encodePatch(old).slice(8, 12))).toEqual([3, 0, 0, 0]);
