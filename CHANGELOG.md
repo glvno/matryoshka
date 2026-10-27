@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Arpeggiator has a continuous rate input in hertz, with zero to pause and external-clock precedence. Its CPU estimate now includes note scheduling.
+
 - Voicing adds a key-press trigger. Wanderer and Wanderer XL retrigger their envelopes for every key press, including a note between two held notes, and no longer retrigger when releasing an outer note.
 
 - Math adds signed 16-bit audio XOR. Elvira 2 XL uses it for BITMANGLER; the original instrument's exact mask sequence remains unverified.

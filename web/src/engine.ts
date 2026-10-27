@@ -1068,7 +1068,7 @@ export class Engine {
       for (const a of this.arps)
         if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
           arpBlock(a.st, this.arpParams(a), n, this.ticks, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk, bpm, this.sampleRate,
-            (note, vel) => this.arpOn(a, note, vel), (note) => { this.mapKeys(a.node.id, note, 0); for (const g of this.arpGroups(a)) this.groupOff(g, note); });
+            (note, vel) => this.arpOn(a, note, vel), (note) => { this.mapKeys(a.node.id, note, 0); for (const g of this.arpGroups(a)) this.groupOff(g, note); }, a.node.connected.rate ? a.node.inst[0].inp.rate : null);
       this.morphT = this.hasB ? this.morphPosition(n) : 0;
       const hold = walkHold(this.sampleRate, DRIFT_RATE);
       for (const g of this.groups)

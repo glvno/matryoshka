@@ -1630,6 +1630,38 @@ ends['arp-random-latch'] = 128 * 300;
 arpVoice('arp-clk-played', { mode: 4, rate: 0, octaves: 1, gate: 0.3 }, 2, 120, true);
 events['arp-clk-played'] = [[0, 'on', 67], [128 * 5, 'on', 60], [128 * 9, 'on', 63], [128 * 180, 'off', 67], [128 * 180, 'off', 60], [128 * 180, 'off', 63]];
 ends['arp-clk-played'] = 128 * 240;
+for (const mode of ['fixed', 'moving', 'paused', 'clock'] as const) {
+  const name = `arp-rate-${mode}`;
+  arpVoice(name, { gate: .5 }, 2, 103, mode === 'clock');
+  const p = tests[name], arp = p.modules.find((m) => m.type === 'arp')!;
+  const cv = addModule(p, DEFS[mode === 'moving' ? 'lfo' : 'const'], 0, 0);
+  if (mode === 'moving') Object.assign(cv.params, { wave: 1, rate: 1.5, depth: 4 });
+  else cv.params.value = mode === 'fixed' ? 3.25 : 0;
+  p.cables.push({ from: { module: cv.id, port: 'out' }, to: { module: arp.id, port: 'rate' } });
+  events[name] = [[0, 'on', 60], [0, 'on', 64], [0, 'on', 67]];
+  ends[name] = 128 * 600;
+  if (mode === 'clock') {
+    // Exact clock edges and gate/trigger outputs isolate scheduling from oscillator pitch-grid drift.
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    const alloc = p.modules.find((m) => m.type === 'alloc')!;
+    const out = p.modules.find((m) => m.type === 'output')!;
+    alloc.params.voices = 1;
+    out.params.level = 1;
+    p.cables = p.cables.filter((c) => c.to.module !== out.id && !(c.to.module === arp.id && c.to.port === 'clk'));
+    p.cables.push(
+      { from: { module: main.id, port: 'fx' }, to: { module: arp.id, port: 'clk' } },
+      { from: { module: alloc.id, port: 'trig' }, to: { module: out.id, port: 'l' } },
+      { from: { module: alloc.id, port: 'gate' }, to: { module: out.id, port: 'r' } },
+    );
+    for (let block = 30; block < 600; block += 30)
+      events[name].push([128 * block, 'bon', 0], [128 * (block + 2), 'boff', 0]);
+    const control = structuredClone(p);
+    control.cables = control.cables.filter((c) => !(c.to.module === arp.id && c.to.port === 'rate'));
+    tests['arp-rate-clock-control'] = control;
+    events['arp-rate-clock-control'] = events[name];
+    ends['arp-rate-clock-control'] = ends[name];
+  }
+}
 // the Main module's clock (24 ppqn while the transport runs) through a divider into an envelope; run opens a second VCA
 tests['main-clock-run'] = make('main-clock-run', (add, wire) => {
   const kb = add('fm1', 0, 0, { tempo: 150 });

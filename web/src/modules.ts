@@ -2376,14 +2376,14 @@ const alloc: ModuleImpl<null> = {
 
 /**
  * Arpeggiator: keys in, keys out (between the Main module and a Voice allocator). It plays the held keys one at a time
- * (arpeggiator.ts: mode, octaves, rate of the engine's clock or one step per edge on clk, gate length, latch). It runs once
+ * (arpeggiator.ts: mode, octaves, tempo rate or continuous Hz input, clock-edge override, gate length, latch). It runs once
  * (SHARED_TYPES); the engine runs its notes, not process(): the keys output only shows the gate of the note it plays.
  */
 const arp: ModuleImpl<null> = {
   def: {
     type: 'arp',
     label: 'Arpeggiator',
-    inputs: [keys('keys'), gate('clk')],
+    inputs: [keys('keys'), gate('clk'), control('rate')],
     outputs: [keys('keys')],
     params: [
       param('mode', 0, ARP_MODES.length - 1, 0, { step: 1, choices: ARP_MODES }),

@@ -475,7 +475,7 @@ typedef struct {
     uint8_t node, n, running, clk_hi;
     int16_t cur;
     arp_key_t held[ARP_HELD];
-    uint32_t pos, since, interval, next, seed;
+    uint32_t pos, since, interval, next, seed, rate_phase;
 } arp_t;
 
 typedef struct {
@@ -2090,8 +2090,8 @@ static void steps_keys(void)
     E.nkev = 0;
 }
 
-/* one block (arpeggiator.ts arpBlock): steps on the clock at its rate, or one per block with a rising edge on clk (the
- * input as the last block left it); the gate a share of the last step's length */
+/* One block (arpeggiator.ts arpBlock): clk edges take precedence, then continuous rate in Hz, then tempo.
+ * Inputs are read as the last block left them. Gate length follows the continuous period or last clock interval. */
 static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
 {
     static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};
@@ -2099,12 +2099,33 @@ static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
     const inst_t *it = &inst_pool[nd->inst0];
     uint32_t rate = RATE_TICKS[clampi((nd->par[ARP_P_RATE] + 32768) >> 16, 0, 6)], i;
     int clk = (nd->conn >> ARP_I_CLK) & 1u, edge = 0, step = 0;
+    int continuous = !clk && ((nd->conn >> ARP_I_RATE) & 1u), rate_edge = 0;
+    uint32_t period = 0;
     if (!arp_latched(a)) {                       /* latch turned off: the keys let go meanwhile go */
         uint32_t k = 0;
         for (i = 0; i < a->n; i++)
             if (a->held[i].down)
                 a->held[k++] = a->held[i];
         a->n = (uint8_t)k;
+    }
+    if (continuous) {
+        int64_t sum = 0;
+        int32_t hz;
+        for (i = 0; i < n; i++) sum += it->in[ARP_I_RATE][i];
+        hz = block_mean(sum, n);
+        if (hz <= 0) {
+            if (a->cur >= 0) arp_emit_off(a, (uint32_t)a->cur);
+            a->cur = -1; a->running = 0; a->rate_phase = 0;
+            return;
+        }
+        hz = clampi(hz, 1311, 80 * ENG_ONE);
+        period = (uint32_t)(((uint64_t)ENG_SR << 16) / (uint32_t)hz);
+        if (a->running) {
+            uint32_t before = a->rate_phase;
+            a->rate_phase += hz_turns((uint32_t)hz) * n;
+            rate_edge = a->rate_phase < before;
+        }
+        a->interval = period;
     }
     if (clk) {
         const esig_t *c = it->in[ARP_I_CLK];
@@ -2127,16 +2148,17 @@ static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
         step = 1;
         a->pos = 0;
         a->next = E.ticks + rate;
-        a->interval = (uint32_t)((uint64_t)rate * 60u * ENG_SR / (24u * bpm));
+        a->interval = continuous ? period : (uint32_t)((uint64_t)rate * 60u * ENG_SR / (24u * bpm));
+        a->rate_phase = 0;
         a->since = 0;
-    } else if (clk ? edge : (int32_t)(E.ticks - a->next) >= 0) {
+    } else if (clk ? edge : continuous ? rate_edge : (int32_t)(E.ticks - a->next) >= 0) {
         step = 1;
-        if (!clk) {
+        if (!clk && !continuous) {
             a->next += rate;
             if ((int32_t)(E.ticks - a->next) >= 0)
                 a->next = E.ticks + rate;        /* fell behind (a tempo jump): from now */
         }
-        if (a->since > 0)
+        if (!continuous && a->since > 0)
             a->interval = a->since;
         a->since = 0;
     }
@@ -5815,8 +5837,11 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 thru_tail = q;
             }
             for (k = 0; k < E.narp; k++)
-                if (!E.node[E.arp[k].node].bypass)   /* (bypassed it plays nothing of its own: the keys it hears went straight on) */
+                if (!E.node[E.arp[k].node].bypass) { /* bypassed: its keys already went straight through */
+                    ENG_PROF(0, E.arp[k].node, 0);
                     arp_block(&E.arp[k], n, bpm);
+                    ENG_PROF(3, E.arp[k].node, 0);     /* include note scheduling in this module's CPU cost */
+                }
         }
         for (k = 1; k <= E.ngrp; k++) {                 /* the parts' pitch flaws: detune + drift (engine.ts render) */
             const grp_t *g = &E.grp[k];
