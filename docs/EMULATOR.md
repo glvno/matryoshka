@@ -50,11 +50,21 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   starts this checkout's dev server on a free port, starts `m1emu serve`, and drives the editor in Chrome (playwright-core
   with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
   over-budget patch is sandbox mode (the sandbox page on the LCD, the FM-1 silent under a key); ARP twice; OCT; PRESET;
-  back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL. The page sees
+  back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL; a computer
+  where no app reads the FM-1's MIDI (issue #375, `deafHost`, below). The page sees
   only the emulator's MIDI port, so a real FM-1 plugged in is never touched. A development-server hook (`__m1test` in
   `main.ts`) opens patches by name and reports the link's state. Without BIN it fetches the `matryoshka-emu-midi`
   artifact of this commit's firmware run (else its branch's, else main's). Results and LCD snapshots go to
   `build/emu/scenarios/`; about four minutes.
+- **A host that stops reading (`deafHost`, issue #375):** every other scenario has Chrome reading the FM-1's MIDI, so
+  the FM-1's queue for the editor always empties. `deaf 1` makes `m1emu serve` stop taking packets from the mailbox; the
+  firmware's SysEx queue then fills, as on a computer where no app reads the FM-1, and every message the FM-1 sends
+  unasked goes through the same `ota_wire_send` wait as over USB. The scenario enters 30 steps on the 808 Kit's SEQ
+  page at a hand's pace, then SEQ must close the page within 400 emulated ms (about 140 with a reading host; 2890
+  before the fix of #375). After `deaf 0` the editor must follow a step entered on the FM-1 and sync a patch again.
+  The first message after such a stall is a SysEx cut short (the FM-1 gave up halfway); `m1emu` drops it at the next
+  F0, as a MIDI receiver should (Chrome's Web MIDI parser, by its source, does the same), and says so on its output.
+  The host side alone is in `tools/usb_test.sh` (`firmware/test/usb_test.c`, `test_deaf_host`).
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 
