@@ -18,6 +18,10 @@
 //!   peak MARK           the loudest sample since MARK (16 bit)                                           -> peak N
 //!   wav MARK PATH       the audio since MARK as a WAV                                                    -> ok
 //!   ms                  emulated time                                                                    -> ms N
+//!   wait MS             answers after MS emulated ms (the commands after it wait too)                    -> ok
+//!   until MS STRING     waits up to MS emulated ms for STRING on the LCD; N: the emulated ms it took     -> until 1 N | until 0 MS
+//!   deaf 1|0            1: the host stops taking the FM-1's packets (a computer where no app reads its MIDI, #375):
+//!                       the mailbox's out[] fills, then the firmware's SysEx ring; 0: it reads again    -> ok
 //!   quit
 //! Lines on stdout that are not answers start with "# " (with M1EMU_TRACE set: every short message the FM-1 sends).
 
@@ -163,10 +167,14 @@ impl ToPackets {
     }
 }
 
-/// USB-MIDI event packets -> whole MIDI messages (SysEx sent once complete)
+/// USB-MIDI event packets -> whole MIDI messages (SysEx sent once complete). A SysEx cut short (no F7: the FM-1's
+/// ota_wire_send gives up mid-message when the host has stopped reading, #375) ends at the next F0, as a status byte
+/// ends a SysEx for a MIDI receiver (Chrome's Web MIDI parser, by its source, too): it is dropped, counted in `cut`, and
+/// the new message is kept.
 #[derive(Default)]
 struct ToBytes {
     sx: Vec<u8>,
+    cut: u32,
 }
 
 impl ToBytes {
@@ -187,6 +195,10 @@ impl ToBytes {
         let bytes = &b[..n];
         match cin {
             4..=7 => {
+                if bytes.first() == Some(&0xF0) && !self.sx.is_empty() {
+                    self.sx.clear();
+                    self.cut += 1;
+                }
                 self.sx.extend_from_slice(bytes);
                 if cin != 4 || bytes.contains(&0xF7) {
                     out.push(std::mem::take(&mut self.sx)); // a whole SysEx, or a lone system common byte (CIN 5)
@@ -201,6 +213,15 @@ impl ToBytes {
 enum Cmd {
     Line(String),
     Eof,
+}
+
+/// `wait` / `until`: the commands after it wait while the emulator runs on
+struct Pending {
+    start: u64,
+    end: u64,
+    text: Option<String>,
+    /// when the LCD was last looked at
+    seen_at: u64,
 }
 
 pub fn run(app: &[u8], flash: Option<&[u8]>, name: &str) -> std::process::ExitCode {
@@ -249,10 +270,12 @@ pub fn run(app: &[u8], flash: Option<&[u8]>, name: &str) -> std::process::ExitCo
     let e0 = m.ms();
     let mut announced = false;
     let trace = std::env::var_os("M1EMU_TRACE").is_some(); // short messages out, on stdout as comments
+    let mut pending: Option<Pending> = None;
+    let mut deaf = false; // the host takes nothing from the FM-1 (`deaf 1`)
 
     loop {
-        // commands
-        loop {
+        // commands (none while a `wait` / `until` runs)
+        while pending.is_none() {
             match rx.try_recv() {
                 Ok(Cmd::Eof) | Err(mpsc::TryRecvError::Disconnected) => return std::process::ExitCode::SUCCESS,
                 Ok(Cmd::Line(l)) => {
@@ -306,6 +329,19 @@ pub fn run(app: &[u8], flash: Option<&[u8]>, name: &str) -> std::process::ExitCo
                             say("ok".into());
                         }
                         Some("ms") => say(format!("ms {}", m.ms())),
+                        Some("wait") => {
+                            let now = m.ms();
+                            pending = Some(Pending { start: now, end: now + num(1).unwrap_or(0).max(0) as u64, text: None, seen_at: now });
+                        }
+                        Some("until") => {
+                            let now = m.ms();
+                            let s = l.trim().splitn(3, char::is_whitespace).nth(2).map(|t| t.trim().to_string());
+                            pending = Some(Pending { start: now, end: now + num(1).unwrap_or(0).max(0) as u64, text: s, seen_at: now });
+                        }
+                        Some("deaf") => {
+                            deaf = num(1).unwrap_or(1) != 0;
+                            say("ok".into());
+                        }
                         Some("quit") => return std::process::ExitCode::SUCCESS,
                         Some(c) => say(format!("err unknown command {c}")),
                         None => {}
@@ -329,6 +365,21 @@ pub fn run(app: &[u8], flash: Option<&[u8]>, name: &str) -> std::process::ExitCo
                 true
             }
         });
+        if let Some(p) = &mut pending {
+            // the LCD every 10 emulated ms (font::on_screen is not free), and at the end
+            let look = now >= p.end || now >= p.seen_at + 10;
+            let seen = look && p.text.as_deref().is_some_and(|t| crate::font::on_screen(m.lcd(), t));
+            if look {
+                p.seen_at = now;
+            }
+            if seen {
+                say(format!("until 1 {}", now - p.start));
+                pending = None;
+            } else if now >= p.end {
+                say(if p.text.is_some() { format!("until 0 {}", now - p.start) } else { "ok".into() });
+                pending = None;
+            }
+        }
         if m.audio.len() > KEEP * 2 {
             let cut = m.audio.len() - KEEP;
             m.audio.drain(..cut);
@@ -356,10 +407,16 @@ pub fn run(app: &[u8], flash: Option<&[u8]>, name: &str) -> std::process::ExitCo
             }
             b.push(&mut m, &mut q_in);
             let mut pk = Vec::new();
-            b.pull(&mut m, &mut pk);
+            if !deaf {
+                b.pull(&mut m, &mut pk);
+            }
             let mut msgs = Vec::new();
+            let cut = to_by.cut;
             for p in pk {
                 to_by.feed(p, &mut msgs);
+            }
+            if to_by.cut != cut {
+                say(format!("# {now} a SysEx from the FM-1 ended without F7 (dropped; the host had stopped reading)"));
             }
             for msg in msgs {
                 if trace && msg.len() < 8 {
@@ -445,6 +502,19 @@ mod tests {
         assert_eq!(out[1], vec![0x90, 0x3C, 0x64]);
         assert_eq!(out[2], vec![0x90, 0x3E, 0x00]);
         assert_eq!(out[3], vec![0xFA]);
+    }
+
+    #[test]
+    fn sysex_cut_short_ends_at_the_next_f0() {
+        // 0xF0 0x7D 0x01 0x02 0x03 0x04 with no F7 (the FM-1 gave up mid-message), then a whole SysEx
+        let q = [0x04 | 0xF0 << 8 | 0x7D << 16 | 0x01 << 24, 0x04 | 0x02 << 8 | 0x03 << 16 | 0x04 << 24, 0x04 | 0xF0 << 8 | 0x7D << 16 | 0x09 << 24, 0x05 | 0xF7 << 8];
+        let mut out = Vec::new();
+        let mut b = ToBytes::default();
+        for p in q {
+            b.feed(p, &mut out);
+        }
+        assert_eq!(out, vec![vec![0xF0, 0x7D, 0x09, 0xF7]]);
+        assert_eq!(b.cut, 1);
     }
 
     #[test]
