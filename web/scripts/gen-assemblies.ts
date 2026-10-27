@@ -2552,8 +2552,8 @@ asm('Io 4', 'Voices', (b) => {
 // PORTAMENTO glides both (slews; its knob reaches 5 s).
 // OSCILLATOR 1 (pitch source or control: HI / LO, 1 HI audio, 2 LO a hundred times slower): COLOR 1 falling ramp,
 // 2 ramp, 3 triangle, 4 square, 5 narrow pulse; TUNE; CONTROL MODE 1 OSC 4 / EXT, 2 ENV 1, 3 KB (KB1), CONTROL SENS the
-// depth of the first two. OSCILLATORS 2, 3, 4 (Wavetables on the analog bank: COLOR sweeps sine, triangle, saw, square,
-// narrow pulse; OCTAVE; TUNE): 2 plays KB1, CONTROL MODE 1 KB1, 2 KB1 + MIX; 3 plays KB2, 1 KB2, 2 KB2 + MIX, 3 MIX;
+// depth of the first two. OSCILLATORS 2, 3, 4 (Wavetables on the EML COLOR bank: triangle, sloped square, square, saw,
+// then double saw an octave up; OCTAVE; TUNE): 2 plays KB1, CONTROL MODE 1 KB1, 2 KB1 + MIX; 3 plays KB2, 1 KB2, 2 KB2 + MIX, 3 MIX;
 // 4 1 OSC 3 (oscillator 3's control), 2 MAN (its OCTAVE and TUNE alone), 3 MIX; its OCTAVE 1 LO (sub-audio), -1, 0, +1.
 // MIX is the OSCILLATOR MIXER: two centre-zero knobs, OSC 1 <- 0 -> ENV 1 and OSC 4 / EXT <- 0 -> ENV 2 (one octave at
 // full). The FILTER INPUT MIXER: OSC 2, OSC 3, OSC 4 / EXT, and the noise knob WHITE <- 0 -> PINK. The FILTER: 12 dB
@@ -2565,8 +2565,8 @@ asm('Io 4', 'Voices', (b) => {
 // A centre-zero knob is a Math (`off`, -1 .. 1): its min and max, times the two sources. Its OSC side reaches the
 // destination with that oscillator's polarity; the panel does not say which way the original's does.
 // Unsure (no 100 manual): whether the filter MODE sweeps between its legends (LP at both ends of the knob suggests it)
-// or switches (here it switches); the COLOR sweep's order (the 101 manual: triangle, sloped square, square, saw, then a
-// pulse an octave up; the Wavetable's analog bank runs sine, triangle, saw, square, narrow pulses); the ranges of TUNE,
+// or switches (here it switches); the COLOR knob's transition positions (its wave order follows the 101 owner's manual,
+// pp. 9-10, and the service notes identify the endpoint as double saw); the ranges of TUNE,
 // the mixers' depths and the envelopes; whether a key added under a held one retriggers the gate.
 // Not here: the PREAMP (an external input: the FM-1 has no audio in for a patch, #351), the jacks and multiples
 // (patching: the editor's own cables). The FM-1's pitch bend still bends both keys (2 semitones), as on every patch.
@@ -2635,7 +2635,7 @@ asm('Vernon 100', 'Voices', (b) => {
   b.wire(g1, 'out', kb1o1, 'b');
   b.wire(kb1o1, 'mul', o1, 'pitch');
   // ---- oscillators 2, 3, 4
-  const wt = (col: number, pos: number): number => b.add('wavetable', col, 0, { bank: 0, pos, level: 1 });
+  const wt = (col: number, pos: number): number => b.add('wavetable', col, 0, { bank: 4, pos, level: 1 });
   const [w2, w3, w4] = [wt(5, 0.45), wt(6, 0.45), wt(7, 0.3)];
   b.wire(w4, 'out', ctl1, 'in1');
   b.wire(env1, 'env', ctl1, 'in2');

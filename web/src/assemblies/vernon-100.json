@@ -606,7 +606,7 @@
       "x": 1920,
       "y": 1120,
       "params": {
-        "bank": 0,
+        "bank": 4,
         "pos": 0.45,
         "coarse": 0,
         "fine": 0,
@@ -636,7 +636,7 @@
       "x": 2240,
       "y": 1120,
       "params": {
-        "bank": 0,
+        "bank": 4,
         "pos": 0.45,
         "coarse": 0,
         "fine": 0,
@@ -666,7 +666,7 @@
       "x": 0,
       "y": 1680,
       "params": {
-        "bank": 0,
+        "bank": 4,
         "pos": 0.3,
         "coarse": 0,
         "fine": 0,

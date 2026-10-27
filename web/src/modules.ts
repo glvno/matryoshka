@@ -1748,7 +1748,7 @@ const string: ModuleImpl<StringState> = {
 };
 
 /**
- * The wavetables (tools/gen_wavetables.py): four banks of eight frames, each frame its first 32 harmonics, at three mip
+ * The wavetables (tools/gen_wavetables.py): banks of eight frames, each frame its first 32 harmonics, at three mip
  * levels (32, 16, 8 harmonics) so the high notes do not alias. Built once from the coefficients in wavetables.json; the
  * firmware has the same tables as int16 in wt_tables.h.
  */
@@ -1780,7 +1780,7 @@ const wavetable: ModuleImpl<WtState> = {
     inputs: [control('pitch'), audio('pm'), gate('sync')],
     outputs: [audio('out')],
     params: [
-      param('bank', 0, WT_BANKS.length - 1, 0, { step: 1, choices: WT_BANKS }),
+      param('bank', 0, 3, 0, { step: 1, choices: WT_BANKS, top: WT_BANKS.length - 1 }),
       param('pos', 0, 1, 0, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
