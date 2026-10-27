@@ -7,6 +7,8 @@
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
 
+- Sallen 20's ESP works on the FM-1, which has no audio input: a SIGNAL IN row picks what it hears (VCO 1, the noise or the MG) and an ESP ROUTE row patches one of its outputs as the MS-20 manual does (F-V into VCO 2's pitch, ENV into the initial gain, or TRIG into both EGs). Both start OFF, and then the patch sounds exactly as before. In the browser a cable into `esp signal in` adds to SIGNAL IN's choice. FM-1: 43 → 48 modules, 2,748 → 3,098 bytes, CPU 41.1 → 45.5 % (estimate: the ESP now always runs on the FM-1).
+
 - An LFO's rate row shows the rate the LFO runs at in its slow and fast ranges (the row's value / 25 or × 2), on the card and on the FM-1; the knob's range is unchanged. Io 4's LFO RATE uses the fast range, so it reaches 80 Hz like the Jupiter-4's; its sound and FM-1 size (3,838 bytes) are unchanged.
 
 - The Multimode filter has a self-oscillation switch (`osc`, off by default): on, it rings a steady sine-like tone at its cutoff near full resonance, as the Korg MS-20's filters do at full PEAK, even with nothing on its input. Sallen 20 turns it on in both filters, so its PEAK knobs now scream at the top; at its default settings it sounds exactly as before. A patch that leaves `osc` off is still written in patch format 46, so the switch costs FM-1 memory only in patches that use it: Sallen 20 goes from 2,740 to 2,748 bytes, every other factory patch keeps its size. Patches that turn it on need firmware with patch format 47.
