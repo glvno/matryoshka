@@ -8,12 +8,12 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { type DrumMapState, dropRows, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
-import { fixNotes, type StepNote } from './track';
+import { fixNotes, PATTERNS_MAX, SONGS_MAX, type StepNote } from './track';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
 export const BLOCK = 128;
@@ -41,6 +41,10 @@ function paraMix(nodes: Node[]): void {
 
 /** A display snapshot, detached from the patch and the audio thread's mutable state. */
 export type ParameterValues = { id: number; params: Record<string, number> }[];
+
+/** what the tracks play (Engine.patternView): the selected pattern, the song (0 none), per track the pattern playing, the
+ * queued one (-1 none) and the song entry (-1 none yet) */
+export interface PatternView { pattern: number; song: number; tracks: { id: number; pat: number; queued: number; entry: number }[] }
 
 /** one running copy of a module: one per part inside a poly assembly, else one */
 interface Inst {
@@ -234,6 +238,10 @@ export class Engine {
     const groupOf = new Map<number, number>();
     pg.forEach((x, i) => x.modules.forEach((id) => groupOf.set(id, i)));
     const next = new Map<number, Node>();
+    const mainSeq = source.modules.find((m) => m.type === 'fm1')?.seq;
+    this.song.song = mainSeq?.song ?? 0;
+    this.song.songs = (mainSeq?.songs ?? []).map((x) => x.map((e) => ({ ...e })));
+    this.pattern = mainSeq?.pattern ?? 0;
     for (const [mi, m] of patch.modules.entries()) {
       const impl = IMPLS[m.type];
       if (!impl) throw new Error(`unknown module type "${m.type}"`);
@@ -274,7 +282,13 @@ export class Engine {
       if (m.type === 'steps')
         for (const inst of node.inst) {
           const st = inst.state as StepsState;
-          st.notes = (m.notes ?? []).map((n) => ({ ...n }));
+          st.pats = [{ notes: (m.notes ?? []).map((n) => ({ ...n })) }, ...(m.patterns ?? []).map((x) => (x ? { ...x, notes: (x.notes ?? []).map((n) => ({ ...n })) } : null))];
+          st.song = this.song;
+          if (!keep) {
+            st.pat = Math.min(PATTERNS_MAX - 1, Math.max(0, mainSeq?.pattern ?? 0));
+            st.songPos = -1;
+          }
+          stepsGo(st, st.pat);
         }
       node.sources = [];
       node.connected = {};
@@ -320,6 +334,10 @@ export class Engine {
       const from = m && keysInto(source, m);
       return from ? [{ st: node.inst[0].state as DrumMapState, src: from.type === 'fm1' ? -1 : from.id }] : [];
     });
+    // a track that plays a Drum map (directly or through the Arpeggiator it feeds) is never shifted by a song (engine.c
+    // eng_steps_drummap)
+    for (const node of this.tracks)
+      (node.inst[0].state as StepsState).drum = this.maps.some((x) => x.src === node.id || (x.src >= 0 && this.arpById.get(x.src)?.feed === node.id));
     for (const a of this.arps) if (a.byp !== a.node.bypass) this.arpSwitched(a); // (an edit switched it while the patch reloaded)
   }
 
@@ -478,11 +496,46 @@ export class Engine {
     const node = this.nodes.get(id);
     return node?.type === 'steps' ? (node.inst[0].state as StepsState) : null;
   }
-  /** a Steps module's notes changed (ModuleInst.notes, track.ts): no reload, the track plays on; the notes sounding end
-   * as they would */
-  setTrack(id: number, notes: readonly StepNote[] | undefined): void {
+  /** a Steps module's notes changed (ModuleInst.notes, track.ts), of pattern `pat` (0-based; absent: the one it plays):
+   * no reload, the track plays on; the notes sounding end as they would */
+  setTrack(id: number, notes: readonly StepNote[] | undefined, pat?: number): void {
     const s = this.stepsOf(id);
-    if (s) s.notes = fixNotes(notes) ?? [];
+    if (!s) return;
+    const p = Math.min(PATTERNS_MAX - 1, Math.max(0, pat ?? s.pat));
+    while (s.pats.length <= p) s.pats.push(null);
+    const x = s.pats[p];
+    if (x) x.notes = fixNotes(notes) ?? [];
+    else s.pats[p] = { notes: fixNotes(notes) ?? [] };
+    s.notes = stepsPattern(s).notes;
+  }
+  /** the song state the tracks share (Main's `seq`) and the selected pattern */
+  private song: StepsSong = { song: 0, songs: [] };
+  private pattern = 0;
+  /** the patch's pattern (0-based; track.ts SeqState.pattern): each track plays it from the end of its pass, at once while
+   * the transport is stopped (from the next block) */
+  setPattern(p: number): void {
+    this.pattern = Math.min(PATTERNS_MAX - 1, Math.max(0, Math.round(p)));
+    for (const node of this.tracks) {
+      const s = node.inst[0].state as StepsState;
+      s.queued = this.pattern;
+    }
+  }
+  /** the song that plays (0: none, the selected pattern; 1..SONGS_MAX): from the end of each track's pass, its first entry */
+  setSong(n: number): void {
+    this.song.song = Math.min(SONGS_MAX, Math.max(0, Math.round(n)));
+    for (const node of this.tracks) {
+      const s = node.inst[0].state as StepsState;
+      s.songPos = -1;
+      s.queued = this.song.song ? -1 : this.pattern;
+    }
+  }
+  /** what the tracks play: the selected pattern, the song (0 none) and per track the pattern playing, the queued one (-1
+   * none) and the song entry (-1 none yet) */
+  patternView(): PatternView {
+    return { pattern: this.pattern, song: this.song.song, tracks: this.tracks.map((n) => {
+      const s = n.inst[0].state as StepsState;
+      return { id: n.id, pat: s.pat, queued: s.queued, entry: this.song.song ? s.songPos : -1 };
+    }) };
   }
   /** mute / unmute a Steps module (not part of the patch: a reload keeps it while the module stays) */
   setMute(id: number, on: boolean): void {
@@ -710,7 +763,16 @@ export class Engine {
         const out = { ...m, params: { ...m.params, ...n.params }, att: [n.att[0], n.att[1]] as [number, number], range: { p1: { ...n.range[0] }, p2: { ...n.range[1] } } };
         if (n.bypass) out.bypass = true;
         else delete out.bypass;
-        if (m.type === 'steps') out.notes = (n.inst[0].state as StepsState).notes.map((x) => ({ ...x }));
+        if (m.type === 'steps') {
+          const st = n.inst[0].state as StepsState;
+          const notes = (st.pats[0]?.notes ?? []).map((x) => ({ ...x }));
+          if (notes.length) out.notes = notes;
+          else delete out.notes;
+          const pats = st.pats.slice(1).map((x) => (x ? { ...x, notes: x.notes.map((y) => ({ ...y })) } : null));
+          while (pats.length && !pats[pats.length - 1]) pats.pop();
+          if (pats.length) out.patterns = pats.map((x) => (x ? { ...(x.notes.length ? { notes: x.notes } : {}), ...(x.len !== undefined ? { len: x.len } : {}), ...(x.rate !== undefined ? { rate: x.rate } : {}) } : null));
+          else delete out.patterns;
+        }
         return out;
       }),
     };

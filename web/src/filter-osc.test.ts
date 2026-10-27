@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS, FILTER_OSC_FROM } from './modules';
 import { addModule, connect, emptyPatch, type Patch } from './patch';
-import { encodePatch, encodedSize, formatOf, recordSize, VERSION, WRITE_FLOOR } from './patchbin';
+import { encodePatch, encodedSize, formatOf, recordSize, WRITE_FLOOR } from './patchbin';
 import { FM1_PRESETS } from './presets';
 
 const SR = 44118;
@@ -101,9 +101,9 @@ describe('Multimode self-oscillation (osc)', () => {
     const off = alone({ cutoff: 440, res: 1 });
     const on = alone({ cutoff: 440, res: 1, osc: 1 });
     expect(formatOf(off)).toBe(WRITE_FLOOR);
-    expect(formatOf(on)).toBe(VERSION);
+    expect(formatOf(on)).toBe(47);
     expect(encodePatch(off)[1]).toBe(WRITE_FLOOR);
-    expect(encodePatch(on)[1]).toBe(VERSION);
+    expect(encodePatch(on)[1]).toBe(47);
     expect(encodePatch(on).length - encodePatch(off).length).toBe(4);
     expect(recordSize('filter', WRITE_FLOOR)).toBe(recordSize('filter') - 4);
     for (const p of [off, on]) expect(encodePatch(p).length).toBe(encodedSize(p));
@@ -115,6 +115,6 @@ describe('Multimode self-oscillation (osc)', () => {
     expect(filters.length).toBe(2);
     expect(filters.every((m) => m.params.osc === 1)).toBe(true);
     expect(p.assemblies!.some((a) => a.params.some((r) => r.param === 'osc'))).toBe(false);
-    expect(encodePatch(p)[1]).toBe(VERSION);
+    expect(encodePatch(p)[1]).toBe(47);
   });
 });

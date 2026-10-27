@@ -104,7 +104,7 @@ static uint32_t pages_at(const uint8_t *p, uint32_t len)
     if (p[6] & 4u) at += p[2];
     if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
         return 0;
-    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
+    if (!(at = eng_steps_end(p, len, at)))
         return 0;
     return at < len ? at : 0;
 }

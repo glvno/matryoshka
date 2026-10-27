@@ -43,7 +43,7 @@
 #define MAX_HELD 128
 #define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
 #define ENG_MAX_TRACKS 16            /* Steps modules of a patch (their notes live in E.trk_note) */
-#define ENG_MAX_NOTES 512            /* the notes of all Steps tracks of a patch (patchbin.ts DEVICE.notes) */
+#define ENG_MAX_NOTES 1536           /* the notes of all Steps tracks of a patch, every pattern (patchbin.ts DEVICE.notes) */
 #define ENG_KEV 64                   /* Steps keys out (note on / off) one block holds; more are dropped */
 #define ARP_HELD 16                  /* keys an arpeggiator holds (arpeggiator.ts ARP_HELD) */
 #define ARP_LIST (ARP_HELD * 4u)     /* its notes over four octaves */
@@ -501,9 +501,23 @@ typedef struct {
     int32_t tick_off, tick_n, tick_len;   /* this block's ticks while running: the sample they fall on (-1 none), how many, samples per tick */
     uint32_t ext_since, ext_len;     /* MIDI clock: samples since its last tick, samples per tick as measured (0: not yet) */
     uint8_t ntrk;
-    uint16_t nnotes;                 /* the Steps tracks' notes (#133): track t's are trk_note[trk_first[t] .. + trk_n[t]), */
-    uint16_t trk_first[ENG_MAX_TRACKS];   /* sorted by step, then note (track.ts), the tracks in order */
-    uint8_t trk_n[ENG_MAX_TRACKS];
+    uint16_t nnotes;                 /* the Steps tracks' notes (#133): track t's pattern p are trk_note[pat_first[t][p] .. +
+                                      * pat_n[t][p]), sorted by step, then note (track.ts); the slices lie in the order of
+                                      * pat_layout: every track's pattern 0, then track by track its patterns 1.. */
+    uint16_t pat_first[ENG_MAX_TRACKS][ENG_PATTERNS];
+    uint8_t pat_n[ENG_MAX_TRACKS][ENG_PATTERNS];
+    uint8_t pat_len[ENG_MAX_TRACKS][ENG_PATTERNS];    /* its own length, 0 the track's */
+    uint8_t pat_rate[ENG_MAX_TRACKS][ENG_PATTERNS];   /* its own rate, 0xFF the track's */
+    uint64_t pat_has[ENG_MAX_TRACKS];    /* bit p: the track has pattern p (bit 0 always); one it has not got plays pattern 0 */
+    uint8_t trk_pat[ENG_MAX_TRACKS];     /* the pattern each track plays (TRK_P: the slice), the one it plays from the end */
+    uint8_t trk_q[ENG_MAX_TRACKS];       /* of its pass (0xFF none; stopped: from its next block), the song entry it plays */
+    int8_t trk_spos[ENG_MAX_TRACKS];     /* (-1: the next pass plays the first), the entry's shift (semitones; 0 on a track */
+    int8_t trk_shift[ENG_MAX_TRACKS];    /* that plays a Drum map: trk_drum) */
+    uint8_t trk_drum[ENG_MAX_TRACKS];
+    uint8_t pat_sel, song;               /* the patch's pattern (0-based), the song playing (0 none, 1..ENG_SONGS) */
+    uint8_t song_n[ENG_SONGS];           /* the songs: entries, each a pattern and a shift */
+    uint8_t song_pat[ENG_SONGS][ENG_SONG_LEN];
+    int8_t song_shift[ENG_SONGS][ENG_SONG_LEN];
     uint32_t trk_note[ENG_MAX_NOTES];
     snd_t trk_snd[ENG_MAX_TRACKS][TRACK_POLY];   /* the notes each track sounds, oldest first */
     uint8_t trk_nsnd[ENG_MAX_TRACKS];
@@ -533,6 +547,11 @@ typedef struct {
     int8_t main;                     /* the Main module, -1 without one */
     int32_t morph;                   /* the morph position of this block, Q16 0..1: the Main's MORPH parameter plus the mean of its morph input */
 } eng_t;
+
+/* the slice of the pattern track t plays (one it has not got: pattern 0), its first note and count */
+#define TRK_P(t) ((E.pat_has[t] >> E.trk_pat[t] & 1u) ? (uint32_t)E.trk_pat[t] : 0u)
+#define TRK_FIRST(t) E.pat_first[t][TRK_P(t)]
+#define TRK_N(t) E.pat_n[t][TRK_P(t)]
 
 /* the engine. The clock ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
 static eng_t eng_one ENG_POOL;
@@ -893,6 +912,22 @@ static void groups_reset(void)
             walk_init(&E.pv[E.grp[g].pv0 + v].dw, (0x51edu + g * 16u + v) * 0x9e3779b9u);
 }
 
+/* the note slices' firsts from their counts, in their order (E.nnotes): every track's pattern 0, then track by track its
+ * patterns 1.. (eng_load reads them in that order; trk_put keeps it) */
+static void pat_layout(void)
+{
+    uint32_t t, k, n = 0;
+    for (t = 0; t < E.ntrk; t++) {
+        E.pat_first[t][0] = (uint16_t)n;
+        n += E.pat_n[t][0];
+    }
+    for (t = 0; t < E.ntrk; t++)
+        for (k = 1; k < ENG_PATTERNS; k++) {
+            E.pat_first[t][k] = (uint16_t)n;
+            n += E.pat_n[t][k];
+        }
+}
+
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0;
@@ -904,6 +939,9 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.narp = 0;
     E.ntrk = 0;
     E.nnotes = 0;
+    E.pat_sel = E.song = 0;
+    for (i = 0; i < ENG_SONGS; i++)
+        E.song_n[i] = 0;
     E.nkev = 0;
     E.arm = 0;
     E.armm = 0;                                  /* (another patch disarms: #191) */
@@ -934,7 +972,7 @@ int eng_load(const uint8_t *p, uint32_t len)
 #endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
-    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return -1;
     for (i = 0; i < ENG_PANEL_BUTTONS; i++)      /* (before eng_buttons below: no Toggle of the last patch acts on this one) */
         E.btn_kind[i] = (uint8_t)ENG_BTN_GATE, E.btn_n[i] = 0;
@@ -1041,8 +1079,17 @@ int eng_load(const uint8_t *p, uint32_t len)
             if (E.ntrk >= ENG_MAX_TRACKS)
                 return -2;
             nd->trk = E.ntrk++;
-            E.trk_first[nd->trk] = 0;
-            E.trk_n[nd->trk] = E.trk_nsnd[nd->trk] = 0;
+            for (j = 0; j < ENG_PATTERNS; j++) {
+                E.pat_first[nd->trk][j] = 0;
+                E.pat_n[nd->trk][j] = E.pat_len[nd->trk][j] = 0;
+                E.pat_rate[nd->trk][j] = 0xFFu;
+            }
+            E.pat_has[nd->trk] = 1u;
+            E.trk_pat[nd->trk] = 0;
+            E.trk_q[nd->trk] = 0xFFu;
+            E.trk_spos[nd->trk] = -1;
+            E.trk_shift[nd->trk] = 0;
+            E.trk_nsnd[nd->trk] = 0;
             E.trk_last[nd->trk] = STEP_NOTE;
         }
         nd->ksrc = nd->type == T_DRUMMAP ? p[at] : 0u;   /* (checked once every module is read) */
@@ -1172,15 +1219,75 @@ int eng_load(const uint8_t *p, uint32_t len)
                 if ((p[1] < 44u && NW_AT(w) + NW_LEN(w) > TRACK_STEPS) || !NW_VEL(w)) return -3;
                 E.trk_note[E.nnotes + j] = w;
             }
-            E.trk_first[t] = E.nnotes;
-            E.trk_n[t] = (uint8_t)n;
+            E.pat_n[t][0] = (uint8_t)n;
             E.nnotes = (uint16_t)(E.nnotes + n);
         }
-        for (t = 0, n = 0; t < E.ntrk; t++) {    /* (a track without notes starts where the next would) */
-            E.trk_first[t] = (uint16_t)n;
-            n += E.trk_n[t];
+    }
+    if (p[7] & ENG_FLAG_PATTERNS) {              /* the patterns and songs (format 48, patchbin.ts patternRecord) */
+        uint32_t count, last = 0, t, n, np, k, ns;
+        if (at + 3u > len || p[at] >= ENG_PATTERNS || p[at + 1u] > ENG_SONGS) return -3;
+        E.pat_sel = p[at];
+        E.song = p[at + 1u];
+        count = p[at + 2u];
+        at += 3u;
+        for (i = 0; i < count; i++) {
+            uint32_t mod;
+            if (at + 2u > len) return -3;
+            mod = p[at];
+            np = p[at + 1u];
+            at += 2u;
+            if (mod >= E.nmod || E.node[mod].type != T_STEPS || !np || np >= ENG_PATTERNS) return -3;
+            t = E.node[mod].trk;
+            if (i && t <= last) return -3;       /* in track order */
+            last = t;
+            for (k = 1; k <= np; k++) {
+                uint32_t sh, ln, rt;
+                if (at >= len) return -3;
+                n = p[at++];
+                if (n == 0xFFu)
+                    continue;
+                if (at + 2u > len) return -3;
+                sh = p[at] >> 7;
+                ln = p[at] & 0x7Fu;
+                rt = p[at + 1u];
+                at += 2u;
+                if (n > TRACK_NOTES_MAX || ln > TRACK_STEPS || (rt != 0xFFu && rt > 8u) || at + (sh ? 2u : 4u) * n > len || E.nnotes + n > ENG_MAX_NOTES) return -3;
+                for (j = 0; j < n; j++) {
+                    uint32_t w;
+                    if (sh) {
+                        w = (uint32_t)p[at] | (uint32_t)p[at + 1u] << 8;
+                        w = NW(w & 15u, ((w >> 4) & 15u) + 1u, (w >> 8) & 127u, (w & 0x8000u) ? ACCENT_VEL : STEP_VEL, 0u);
+                        at += 2u;
+                    } else {
+                        w = (uint32_t)rd32(p + at);
+                        at += 4u;
+                        if (!NW_VEL(w)) return -3;
+                    }
+                    E.trk_note[E.nnotes + j] = w;
+                }
+                E.pat_n[t][k] = (uint8_t)n;
+                E.pat_len[t][k] = (uint8_t)ln;
+                E.pat_rate[t][k] = (uint8_t)rt;
+                E.pat_has[t] |= (uint64_t)1u << k;
+                E.nnotes = (uint16_t)(E.nnotes + n);
+            }
+        }
+        if (at >= len) return -3;
+        ns = p[at++];
+        if (ns > ENG_SONGS) return -3;
+        for (i = 0; i < ns; i++) {
+            if (at >= len || p[at] > ENG_SONG_LEN || at + 1u + 2u * p[at] > len) return -3;
+            E.song_n[i] = p[at++];
+            for (k = 0; k < E.song_n[i]; k++, at += 2u) {
+                if (p[at] >= ENG_PATTERNS || (int8_t)p[at + 1u] < -ENG_SHIFT_MAX || (int8_t)p[at + 1u] > ENG_SHIFT_MAX) return -3;
+                E.song_pat[i][k] = p[at];
+                E.song_shift[i][k] = (int8_t)p[at + 1u];
+            }
         }
     }
+    pat_layout();                                /* (the slices in their order: every track's first, then the rest) */
+    for (i = 0; i < E.ntrk; i++)                 /* every track plays the patch's pattern */
+        E.trk_pat[i] = E.pat_sel;
     if (p[6] & 32u) {                            /* the device pages (the LCD's, proto.c / pages_ui.c): not the engine's */
         uint32_t end = eng_devices_end(p, len, at);
         if (!end)
@@ -1405,6 +1512,9 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (E.node[E.order[i]].type == T_OUTPUT)
             E.outputs[E.nout++] = E.order[i];
     E.loaded = 1;
+    for (i = 0; i < E.nmod; i++)                 /* a track that plays a Drum map is never shifted by a song (engine.ts) */
+        if (E.node[i].type == T_STEPS)
+            E.trk_drum[E.node[i].trk] = (uint8_t)(eng_steps_drummap(i) >= 0);
     return 0;
 }
 
@@ -2517,18 +2627,20 @@ int eng_steps_module(uint32_t t)
             return (int)i;
     return -1;
 }
-/* A track's notes as a working copy and back (track.ts fixNotes): sorted by step, then note (stable: of two notes on the same
- * step and key the first stays), at most TRACK_NOTES_MAX, into the pool (the tracks after it move) */
+/* A track's notes (those of the pattern it plays) as a working copy and back (track.ts fixNotes): sorted by step, then note
+ * (stable: of two notes on the same step and key the first stays), at most TRACK_NOTES_MAX, into the pool (the slices after
+ * it move) */
 static uint32_t trk_copy(uint32_t t, uint32_t *w)
 {
     uint32_t i;
-    for (i = 0; i < E.trk_n[t]; i++)
-        w[i] = E.trk_note[E.trk_first[t] + i];
-    return E.trk_n[t];
+    for (i = 0; i < TRK_N(t); i++)
+        w[i] = E.trk_note[TRK_FIRST(t) + i];
+    return TRK_N(t);
 }
-static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
+/* pattern p of track t becomes these notes (the track gets that pattern if it had none); the slices after it move */
+static int trk_put_at(uint32_t t, uint32_t p, uint32_t *w, uint32_t n)
 {
-    uint32_t i, j, k, old = E.trk_n[t], first = E.trk_first[t];
+    uint32_t i, j, k, old = E.pat_n[t][p], first = E.pat_first[t][p];
     for (i = 1; i < n; i++)                       /* insertion sort by (step, note) */
         for (j = i; j > 0 && ((NW_AT(w[j - 1]) << 7 | NW_NOTE(w[j - 1])) > (NW_AT(w[j]) << 7 | NW_NOTE(w[j]))); j--) {
             uint32_t x = w[j];
@@ -2539,9 +2651,9 @@ static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
         if (!k || NW_AT(w[i]) != NW_AT(w[k - 1]) || NW_NOTE(w[i]) != NW_NOTE(w[k - 1]))
             w[k++] = w[i];
     n = k < TRACK_NOTES_MAX ? k : TRACK_NOTES_MAX;
-    if ((uint32_t)E.nnotes - old + n > ENG_MAX_NOTES)
+    if (p >= ENG_PATTERNS || (uint32_t)E.nnotes - old + n > ENG_MAX_NOTES)
         return 0;
-    if (n > old)                                  /* the tracks after it move up or down */
+    if (n > old)                                  /* the slices after it move up or down */
         for (i = E.nnotes; i-- > first + old;)
             E.trk_note[i + n - old] = E.trk_note[i];
     else if (n < old)
@@ -2550,11 +2662,14 @@ static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
     for (i = 0; i < n; i++)
         E.trk_note[first + i] = w[i];
     E.nnotes = (uint16_t)(E.nnotes - old + n);
-    E.trk_n[t] = (uint8_t)n;
-    for (i = t + 1u; i < E.ntrk; i++)
-        E.trk_first[i] = (uint16_t)(E.trk_first[i] + n - old);
+    E.pat_n[t][p] = (uint8_t)n;
+    E.pat_has[t] |= (uint64_t)1u << p;
+    pat_layout();
     return 1;
 }
+/* the notes of the pattern track t plays (an edit on the SEQ page): a pattern it had not got is made, from its pattern 0
+ * (trk_copy read that) */
+static int trk_put(uint32_t t, uint32_t *w, uint32_t n) { return trk_put_at(t, E.trk_pat[t], w, n); }
 
 /* the step view (track.ts stepView, setStep, setStepValue): the SEQ page edits a track's notes as steps. A step is on
  * when notes start there (its accent, chance, note and velocity are its lowest note's), tied when a note started before
@@ -2563,9 +2678,9 @@ static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
 static int steps_first(uint32_t t, uint32_t k)    /* the pool index of the first note on step k, -1 none */
 {
     uint32_t i;
-    for (i = 0; i < E.trk_n[t]; i++)
-        if (NW_AT(E.trk_note[E.trk_first[t] + i]) == k)
-            return (int)(E.trk_first[t] + i);
+    for (i = 0; i < TRK_N(t); i++)
+        if (NW_AT(E.trk_note[TRK_FIRST(t) + i]) == k)
+            return (int)(TRK_FIRST(t) + i);
     return -1;
 }
 static int steps_tied(uint32_t t, uint32_t k)     /* no note starts on k and one started before goes on through it */
@@ -2573,8 +2688,8 @@ static int steps_tied(uint32_t t, uint32_t k)     /* no note starts on k and one
     uint32_t i;
     if (steps_first(t, k) >= 0)
         return 0;
-    for (i = 0; i < E.trk_n[t]; i++) {
-        uint32_t w = E.trk_note[E.trk_first[t] + i];
+    for (i = 0; i < TRK_N(t); i++) {
+        uint32_t w = E.trk_note[TRK_FIRST(t) + i];
         if (NW_AT(w) < k && k < NW_AT(w) + NW_LEN(w))
             return 1;
     }
@@ -2677,8 +2792,8 @@ int eng_steps_notes(uint32_t module, const uint32_t **w)
 {
     if (!steps_inst(module))
         return -1;
-    *w = &E.trk_note[E.trk_first[E.node[module].trk]];
-    return E.trk_n[E.node[module].trk];
+    *w = &E.trk_note[TRK_FIRST(E.node[module].trk)];
+    return TRK_N(E.node[module].trk);
 }
 /* a track's notes replaced (the editor's TRACK): checked, sorted; 0 when they do not fit the pool */
 int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n)
@@ -2691,6 +2806,177 @@ int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n)
             w[m++] = notes[i] & 0x7FFFFFFFu;
     return trk_put(E.node[module].trk, w, m);
 }
+/* ------------------------------------------------------------------ patterns and songs (format 48) */
+void eng_pattern_set(uint32_t p)
+{
+    uint32_t t;
+    if (!E.loaded || p >= ENG_PATTERNS)
+        return;
+    E.pat_sel = (uint8_t)p;
+    for (t = 0; t < E.ntrk; t++)                  /* (m_steps: at the end of the pass, at once while stopped) */
+        E.trk_q[t] = (uint8_t)p;
+}
+int eng_pattern(void) { return E.loaded ? E.pat_sel : -1; }
+int eng_pattern_playing(uint32_t module) { return steps_inst(module) ? E.trk_pat[E.node[module].trk] : -1; }
+int eng_pattern_queued(uint32_t module)
+{
+    return steps_inst(module) && E.trk_q[E.node[module].trk] != 0xFFu ? E.trk_q[E.node[module].trk] : -1;
+}
+int eng_pattern_has(uint32_t module, uint32_t p)
+{
+    return steps_inst(module) && p < ENG_PATTERNS && (E.pat_has[E.node[module].trk] >> p & 1u);
+}
+int eng_pattern_len(uint32_t module, uint32_t p) { return eng_pattern_has(module, p) ? E.pat_len[E.node[module].trk][p] : 0; }
+int eng_pattern_rate(uint32_t module, uint32_t p)
+{
+    return eng_pattern_has(module, p) && E.pat_rate[E.node[module].trk][p] != 0xFFu ? E.pat_rate[E.node[module].trk][p] : -1;
+}
+/* the length of the pattern track t plays: its own, else the track's (modules.ts steps: shape) */
+static int32_t steps_len(const inst_t *it, uint32_t t)
+{
+    uint32_t p = TRK_P(t);
+    return p && E.pat_len[t][p] ? E.pat_len[t][p] : clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
+}
+int eng_steps_len(uint32_t module)
+{
+    inst_t *it = steps_inst(module);
+    return it ? steps_len(it, E.node[module].trk) : -1;
+}
+int eng_pattern_notes(uint32_t module, uint32_t p, const uint32_t **w)
+{
+    uint32_t t;
+    if (!steps_inst(module) || p >= ENG_PATTERNS)
+        return -1;
+    t = E.node[module].trk;
+    *w = &E.trk_note[E.pat_first[t][p]];
+    return E.pat_n[t][p];
+}
+int eng_pattern_set_notes(uint32_t module, uint32_t p, const uint32_t *notes, uint32_t n)
+{
+    uint32_t w[TRACK_NOTES_MAX], i, m = 0;
+    if (!steps_inst(module) || n > TRACK_NOTES_MAX || p >= ENG_PATTERNS)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (NW_VEL(notes[i]))
+            w[m++] = notes[i] & 0x7FFFFFFFu;
+    return trk_put_at(E.node[module].trk, p, w, m);
+}
+void eng_song_set(uint32_t n)
+{
+    uint32_t t;
+    if (!E.loaded || n > ENG_SONGS)
+        return;
+    E.song = (uint8_t)n;
+    for (t = 0; t < E.ntrk; t++) {                /* from the end of each pass: the first entry, or the patch's pattern */
+        E.trk_spos[t] = -1;
+        E.trk_q[t] = n ? 0xFFu : E.pat_sel;
+    }
+}
+int eng_song(void) { return E.loaded ? E.song : 0; }
+int eng_song_entry(uint32_t module) { return steps_inst(module) && E.song ? E.trk_spos[E.node[module].trk] : -1; }
+int eng_song_len(uint32_t s) { return E.loaded && s < ENG_SONGS ? E.song_n[s] : 0; }
+int eng_song_get(uint32_t s, uint32_t k)
+{
+    return E.loaded && s < ENG_SONGS && k < E.song_n[s] ? (int)(E.song_pat[s][k] | (uint32_t)(uint8_t)E.song_shift[s][k] << 8) : -1;
+}
+int eng_song_put(uint32_t s, uint32_t k, uint32_t pat, int32_t shift)
+{
+    if (!E.loaded || s >= ENG_SONGS || k > E.song_n[s] || k >= ENG_SONG_LEN || pat >= ENG_PATTERNS)
+        return -1;
+    E.song_pat[s][k] = (uint8_t)pat;
+    E.song_shift[s][k] = (int8_t)clampi(shift, -ENG_SHIFT_MAX, ENG_SHIFT_MAX);
+    if (k == E.song_n[s])
+        E.song_n[s]++;
+    return 0;
+}
+int eng_song_insert(uint32_t s, uint32_t k)
+{
+    uint32_t i;
+    if (!E.loaded || s >= ENG_SONGS || k >= E.song_n[s] || E.song_n[s] >= ENG_SONG_LEN)
+        return -1;
+    for (i = E.song_n[s]; i > k; i--) {
+        E.song_pat[s][i] = E.song_pat[s][i - 1u];
+        E.song_shift[s][i] = E.song_shift[s][i - 1u];
+    }
+    E.song_n[s]++;
+    return 0;
+}
+int eng_song_delete(uint32_t s, uint32_t k)
+{
+    uint32_t i;
+    if (!E.loaded || s >= ENG_SONGS || k >= E.song_n[s])
+        return -1;
+    for (i = k; i + 1u < E.song_n[s]; i++) {
+        E.song_pat[s][i] = E.song_pat[s][i + 1u];
+        E.song_shift[s][i] = E.song_shift[s][i + 1u];
+    }
+    E.song_n[s]--;
+    return 0;
+}
+/* the patterns and songs section (patchbin.ts patternRecord: byte for byte what the editor writes for the same patterns) */
+int eng_patterns_record(uint8_t *out, uint32_t cap)
+{
+    uint32_t t, k, j, n = 0, ns = 0, nt = 0, np;
+#define PUT(b) do { if (out && n < cap) out[n] = (uint8_t)(b); n++; } while (0)
+    if (!E.loaded)
+        return 0;
+    for (k = 0; k < ENG_SONGS; k++)
+        if (E.song_n[k])
+            ns = k + 1u;
+    for (t = 0; t < E.ntrk; t++)
+        nt += E.pat_has[t] > 1u;
+    if (!nt && !ns && !E.pat_sel && !E.song)
+        return 0;
+    PUT(E.pat_sel);
+    PUT(E.song);
+    PUT(nt);
+    for (t = 0; t < E.ntrk; t++) {
+        if (E.pat_has[t] <= 1u)
+            continue;
+        for (np = ENG_PATTERNS - 1u; !(E.pat_has[t] >> np & 1u); np--)
+            ;
+        PUT(eng_steps_module(t));
+        PUT(np);
+        for (k = 1; k <= np; k++) {
+            uint32_t sh = 1, first = E.pat_first[t][k];
+            if (!(E.pat_has[t] >> k & 1u)) {
+                PUT(0xFFu);
+                continue;
+            }
+            for (j = 0; j < E.pat_n[t][k]; j++) {   /* short words when every note fits one (track.ts isShortNote) */
+                uint32_t w = E.trk_note[first + j];
+                sh &= NW_AT(w) < 16u && NW_LEN(w) <= 16u && (NW_VEL(w) == STEP_VEL || NW_VEL(w) == ACCENT_VEL) && !NW_CODE(w);
+            }
+            PUT(E.pat_n[t][k]);
+            PUT(E.pat_len[t][k] | (sh ? 0x80u : 0u));
+            PUT(E.pat_rate[t][k]);
+            for (j = 0; j < E.pat_n[t][k]; j++) {
+                uint32_t w = E.trk_note[first + j];
+                if (sh) {
+                    w = NW_AT(w) | (NW_LEN(w) - 1u) << 4 | NW_NOTE(w) << 8 | (NW_VEL(w) == ACCENT_VEL ? 0x8000u : 0u);
+                    PUT(w);
+                    PUT(w >> 8);
+                } else {
+                    PUT(w);
+                    PUT(w >> 8);
+                    PUT(w >> 16);
+                    PUT(w >> 24);
+                }
+            }
+        }
+    }
+    PUT(ns);
+    for (k = 0; k < ns; k++) {
+        PUT(E.song_n[k]);
+        for (j = 0; j < E.song_n[k]; j++) {
+            PUT(E.song_pat[k][j]);
+            PUT((uint8_t)E.song_shift[k][j]);
+        }
+    }
+#undef PUT
+    return n <= cap || !out ? (int)n : -1;
+}
+
 int eng_steps_pos(uint32_t module)
 {
     inst_t *it = steps_inst(module);
@@ -2719,7 +3005,7 @@ int eng_steps_hit(uint32_t module, int accent, int record)
     it->s.stp.hit = accent ? 2u : 1u;
     if (!record || eng_steps_pos(module) < 0)
         return -1;
-    len = clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
+    len = steps_len(it, E.node[module].trk);
     k = it->s.stp.pos < 0 ? 0 : it->s.stp.pos;
     if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
         k = steps_next(it, len, clampi(round_q16(it->eff[STEPS_P_DIR]), 0, 3)).pos;
@@ -2744,7 +3030,7 @@ static uint32_t names_at(const uint8_t *p, uint32_t len)
         at += p[2];
     if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
         return 0;
-    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
+    if (!(at = eng_steps_end(p, len, at)))
         return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))
         return 0;
@@ -2797,8 +3083,8 @@ uint32_t eng_steps_note(uint32_t module, uint32_t k, uint32_t note)
     if (!steps_inst(module))
         return 0;
     t = E.node[module].trk;
-    for (i = 0; i < E.trk_n[t]; i++) {
-        uint32_t w = E.trk_note[E.trk_first[t] + i];
+    for (i = 0; i < TRK_N(t); i++) {
+        uint32_t w = E.trk_note[TRK_FIRST(t) + i];
         if (NW_AT(w) == k && NW_NOTE(w) == note)
             return w;
     }
@@ -2830,7 +3116,7 @@ int eng_steps_hit_note(uint32_t module, uint32_t note, int accent, int record)
     it->s.stp.hit = accent ? 2u : 1u;
     if (!record || eng_steps_pos(module) < 0)
         return -1;
-    len = clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
+    len = steps_len(it, E.node[module].trk);
     k = it->s.stp.pos < 0 ? 0 : it->s.stp.pos;
     if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
         k = steps_next(it, len, clampi(round_q16(it->eff[STEPS_P_DIR]), 0, 3)).pos;
@@ -5249,10 +5535,10 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         return;
     }
     was = steps_sounding(t);
-    end = (uint32_t)E.trk_first[t] + E.trk_n[t];
-    for (i = E.trk_first[t]; i < end && i < ENG_MAX_NOTES; i++) {
+    end = (uint32_t)TRK_FIRST(t) + TRK_N(t);
+    for (i = TRK_FIRST(t); i < end && i < ENG_MAX_NOTES; i++) {
         uint32_t w = E.trk_note[i], left;
-        int32_t key;
+        int32_t key, note;
         if (NW_AT(w) != (uint32_t)k)
             continue;
         if (it->s.stp.skip == k && it->s.stp.skipn == NW_NOTE(w) + 1u) {   /* (a drum hit recorded ahead: only its note) */
@@ -5261,14 +5547,15 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         }
         if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, j++, NW_CODE(w)))
             continue;
-        key = clampi((int32_t)NW_NOTE(w) + semis, 0, 127);
+        note = clampi((int32_t)NW_NOTE(w) + E.trk_shift[t], 0, 127);   /* (a song entry's shift) */
+        key = clampi(note + semis, 0, 127);
         {
             int32_t dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3);
             uint32_t remaining = (uint32_t)clampi(steps_cycle(len, dir) - it->s.stp.visit, 1, 126);
             left = (NW_LEN(w) < remaining ? NW_LEN(w) : remaining) - 1u;
         }
         steps_start(t, node, (uint32_t)key, NW_VEL(w), left, steps_hold(left, gate, sl));
-        it->s.stp.pitch = steps_pitch(NW_NOTE(w));
+        it->s.stp.pitch = steps_pitch((uint32_t)note);
         it->s.stp.vel = (int32_t)((NW_VEL(w) << 16) / 127u);
         E.trk_last[t] = (uint8_t)NW_NOTE(w);
         any = 1;
@@ -5299,18 +5586,42 @@ static void m_drummap(const node_t *nd, inst_t *it, uint32_t n)
     it->s.dm.gap = it->s.dm.fell = 0;
 }
 
+/* the end of a pass of track t (modules.ts stepsTurn): in a song, the next entry's pattern and shift (after the last, the
+ * first again); else a queued pattern */
+static void steps_turn(uint32_t t)
+{
+    uint32_t s = E.song;
+    if (s && E.song_n[s - 1u]) {
+        int32_t k = E.trk_spos[t] + 1 >= (int32_t)E.song_n[s - 1u] ? 0 : E.trk_spos[t] + 1;
+        E.trk_spos[t] = (int8_t)k;
+        E.trk_pat[t] = E.song_pat[s - 1u][k];
+        E.trk_shift[t] = E.trk_drum[t] ? 0 : E.song_shift[s - 1u][k];
+        E.trk_q[t] = 0xFFu;
+        return;
+    }
+    E.trk_shift[t] = 0;
+    if (E.trk_q[t] != 0xFFu)
+        E.trk_pat[t] = E.trk_q[t];
+    E.trk_q[t] = 0xFFu;
+}
+
 static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
 {
     static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
     const esig_t *clk = it->in[STEPS_I_CLK], *reset = it->in[STEPS_I_RESET], *tr = it->in[STEPS_I_TRANSPOSE];
     esig_t *trig = it->out[STEPS_O_TRIG], *keys = it->out[STEPS_O_KEYS], *pitch = it->out[STEPS_O_PITCH], *vel = it->out[STEPS_O_VEL];
     uint32_t t = nd->trk, node = (uint32_t)(nd - E.node);
-    int32_t len = clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
-    int32_t dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3);
-    int32_t ht = RATE_HT[clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)], step = (ht * E.tick_len) >> 1;   /* a step's samples */
+    int32_t len, dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3), ht, step;
     int32_t swing = EF(it, STEPS_P_SWING) - 50 * ENG_ONE, gate = EF(it, STEPS_P_GATE);
     int ext = (nd->conn >> STEPS_I_CLK) & 1u;
     uint32_t i;
+    if (E.trk_q[t] != 0xFFu && !E.running) {     /* stopped: a chosen pattern plays at once */
+        E.trk_pat[t] = E.trk_q[t];
+        E.trk_q[t] = 0xFFu;
+    }
+    len = steps_len(it, t);                      /* the pattern's own length and rate, else the track's (modules.ts shape) */
+    ht = RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
+    step = (ht * E.tick_len) >> 1;               /* a step's samples */
     if (E.nthru || E.thru_kill)
         steps_thru(nd, it, len, ext, tr[0]);
     for (i = 0; i < n; i++) {
@@ -5333,6 +5644,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 it->s.stp.count = 0;
                 it->s.stp.half = 0;
                 it->s.stp.pos = -1;
+                E.trk_spos[t] = -1;              /* (a song starts again from its first entry) */
                 adv++;
             }
             if (it->s.stp.half > 0 && E.running && --it->s.stp.half == 0)
@@ -5365,8 +5677,17 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
         if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
         for (; adv > 0; adv--) {
-            int32_t sw = ext ? it->s.stp.period : step, d = 0;
+            int32_t sw, d = 0;
             step_visit_t next = steps_next(it, len, dir);
+            if (next.visit == 0) {               /* the end of a pass: a song's next entry, a queued pattern */
+                steps_turn(t);
+                len = steps_len(it, t);
+                ht = RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
+                step = (ht * E.tick_len) >> 1;
+                sl = ext && it->s.stp.period > 0 ? it->s.stp.period : ext ? 6 * E.tick_len : step;
+                next = steps_next(it, len, dir);
+            }
+            sw = ext ? it->s.stp.period : step;
             /* In the new play modes a live length edit may end the pass before an old note's countdown: such a
              * note ends after this sample, so a note starting now still gets its low trig sample. A note whose
              * countdown ran out keeps its gate tail. Forward keeps its older behaviour (D-538). */

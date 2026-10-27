@@ -2,7 +2,7 @@
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
 import { migrateKnobs } from './knob-migrate';
-import { fixNotes, migrateSteps, type StepNote } from './track';
+import { fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepNote } from './track';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -169,6 +169,12 @@ export interface ModuleInst {
    * per step) instead: fixTrack turns them into notes. */
   name?: string;
   notes?: StepNote[];
+  /** a Steps module only: its patterns 2..PATTERNS_MAX (track.ts Pattern; null: it has none of that number, which then
+   * plays its pattern 1); absent while there are none */
+  patterns?: (Pattern | null)[];
+  /** the Main module only: the patch's selected pattern and its songs (track.ts SeqState); absent while pattern 1 is
+   * selected, no song plays and there are no songs */
+  seq?: SeqState;
   /** a Drum map only (#137): its rows' names (DRUM_ROWS, at most TRACK_NAME_MAX characters each; '' = the default name;
    * editor only: the roll shows them as its rows) */
   names?: string[];
@@ -236,8 +242,12 @@ export function fixTrack(m: ModuleInst): void {
   if (m.type !== 'steps') {
     delete m.name;
     delete m.notes;
+    delete m.patterns;
     return;
   }
+  const patterns = fixPatterns(m.patterns);
+  if (patterns) m.patterns = patterns;
+  else delete m.patterns;
   const name = trackName(m.name);
   if (name) m.name = name;
   else delete m.name;
@@ -705,7 +715,13 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
       const panel = fixPanel(m.panel);
       if (panel) m.panel = panel;
       else delete m.panel;
-    } else delete m.panel;
+      const seq = fixSeq(m.seq);
+      if (seq) m.seq = seq;
+      else delete m.seq;
+    } else {
+      delete m.panel;
+      delete m.seq;
+    }
     fixTrack(m);
     if (m.bypass && m.type !== 'fm1' && m.type !== 'output') m.bypass = true;
     else delete m.bypass;
