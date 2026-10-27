@@ -73,13 +73,13 @@ export interface ParamRef {
  * Copies of the same controls that the original instrument edits one at a time (D-347 amended: the Casio CZ's eight
  * envelope steps, each a rate and a level, picked with a step select): the row that carries it and the rows after it,
  * `count` copies of `rows` rows each, in order. The collapsed card shows one copy, picked on a row of its own named
- * `name` ("step"), and the FM-1 gives each copy a page of its own, so ALGO steps through them. Layout only, like a heading:
+ * `name` ("step"), and the FM-1 starts each copy on a new page, so ALGO steps through them. Layout only, like a heading:
  * every row stays a row (presets, the morph, cables and the binary see them all). A run broken by a heading, a column
  * break or a missing row is shown as plain rows (`copyRuns`).
  */
 export interface RowCopies { rows: number; count: number; name?: string }
-/** the most rows a copy has (one FM-1 page) and the most copies */
-export const COPY_ROWS_MAX = 4;
+/** the most rows a copy has (up to four FM-1 pages) and the most copies */
+export const COPY_ROWS_MAX = 16;
 export const COPIES_MAX = 16;
 
 /** a parameter a card row sets */

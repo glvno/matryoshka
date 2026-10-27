@@ -15,6 +15,7 @@ import { deviceView } from './poly';
 import { applyPreset, currentValues } from './device-presets';
 import { defStructure, structureOf } from './structure';
 import { cardRows } from './test-patches';
+import { XL_PRESETS } from './presets';
 
 const voice = (p: Patch): AssemblyInst => assembliesOf(p).find((a) => a.name === 'voice')!;
 const mod = (p: Patch, id: number) => p.modules.find((m) => m.id === id)!;
@@ -244,4 +245,40 @@ describe('copies shown one at a time (the Casio CZ\'s envelope steps)', () => {
     a.params[6].head = 'x';
     expect(copyRuns(a.params)).toEqual([]);
   });
+});
+
+
+it('Algo Four selects all fourteen controls with one operator picker and keeps each operator on its own pages', () => {
+  const p = load(XL_PRESETS['Algo Four XL']());
+  const cards = assembliesOf(p).filter(a => a.params.some(r => r.copies?.name === 'op'));
+  expect(cards).toHaveLength(2); // the instrument card and its nested voice card
+  const labels = ['freq ratio', 'detune', 'out level', 'key velocity', 'ar', 'd1r', 'd1l', 'd2r',
+    'rr', 'rate scaling', 'level scaling', 'eg bias sens', 'operator', 'ams'];
+  for (const a of cards) {
+    const runs = copyRuns(a.params);
+    expect(runs).toHaveLength(1);
+    const run = runs[0];
+    expect(run).toMatchObject({ rows: 14, count: 4, name: 'op' });
+    for (let i = 0; i < 4; i++) {
+      const rows = a.params.slice(run.at + 14 * i, run.at + 14 * (i + 1));
+      expect(rows.map(r => r.label)).toEqual(labels);
+      expect(rows.slice(-2).map(r => r.names)).toEqual([['OFF', 'ON'], ['OFF', 'ON']]);
+    }
+    const saved = validateAssemblyDef(JSON.parse(JSON.stringify(toDef(p, a))), DEFS);
+    expect(copyRuns(saved.params)).toEqual(runs);
+    const first = a.params[run.at];
+    const sections = layoutOf(a.params).flatMap(c => c.secs);
+    const section = sections.find(sec => sec.rows.some(r => r.module === first.module && r.param === first.param));
+    expect(section).toBeDefined();
+    const targets = new Set(a.params.slice(run.at, run.at + 56).map(r => `${r.module}:${r.param}`));
+    const operatorPages = pagesOf(section!, () => true).filter(pg => pg.some(r => targets.has(`${r.module}:${r.param}`)));
+    expect(operatorPages.map(pg => pg.length)).toEqual(Array(4).fill([4, 4, 4, 2]).flat());
+  }
+  const card = cards.find(a => devicesOf(p, DEFS).some(d => d.asm === a.id))!;
+  const run = copyRuns(card.params)[0];
+  const operatorTargets = new Set(card.params.slice(run.at, run.at + 56).map(r => `${r.module}:${r.param}`));
+  expect(operatorTargets.size).toBe(56);
+  const pages = devicesOf(p, DEFS).find(d => d.asm === card.id)!.pages;
+  const operatorPages = pages.filter(pg => pg.rows.some(r => operatorTargets.has(`${r.module}:${r.param}`)));
+  expect(operatorPages.map(pg => pg.rows.length)).toEqual(Array(4).fill([4, 4, 4, 2]).flat());
 });

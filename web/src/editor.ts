@@ -3601,7 +3601,7 @@ export class Editor {
     }
     const c = r.copies;
     t.append(this.button(c ? `⧉ ${c.count} × ${c.rows}` : '⧉ one at a time',
-      'Copies of the same controls the original edits one at a time (the CZ\'s envelope steps): the card shows one, picked by a step row; the FM-1 gives each a page',
+      'Copies of the same controls the original edits one at a time (the CZ\'s envelope steps): the card shows one, picked by a step row; the FM-1 starts each on a new page',
       () => this.askCopies(a, i), 'sm'));
     for (const b of t.querySelectorAll('button')) b.addEventListener('pointerdown', (e) => e.stopPropagation());
     return t;
@@ -4185,7 +4185,7 @@ export class Editor {
         this.rebuild();
       },
     });
-    row.title = `Which ${run.name} the rows below set: the card shows one at a time, as the original does (the FM-1: one page each)`;
+    row.title = `Which ${run.name} the rows below set: the card shows one at a time, as the original does (the FM-1: each starts a new page)`;
     row.append(name, sel.element);
     return row;
   }

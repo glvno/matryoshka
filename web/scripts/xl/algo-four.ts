@@ -12,11 +12,10 @@
 //   per operator freq ratio, detune, out level, key velocity; ar, d1r, d1l, d2r; rr, rate scaling, level scaling, eg bias
 //                sens; operator (the OPERATOR ON-OFF buttons: OFF, ON) and ams (AMS ON-OFF: OFF, ON). The DX100 edits one
 //                operator at a time (OPERATOR SELECT): the card shows the operators as copies, one at a time, picked on an
-//                `op` row (D-638), in four runs of at most four rows (one FM-1 page each), so the card has four `op` rows
-//                where the DX100 has one button
+//                `op` row (D-639) for all fourteen controls. Each operator occupies four FM-1 pages.
 //   performance  poly/mono, p bend range, porta mode (FULL TIME, FINGERED), porta time, foot sw (SUSTAIN, PORTAMENTO), mw
 //                pitch, mw ampli, bc pitch, bc ampli, bc p bias, bc e bias, transpose, m.tune
-// PB MODE offers LOW, HIGH and KON. The four `op` row runs remain a card limitation.
+// PB MODE offers LOW, HIGH and KON.
 // How each is built:
 // - POLY/MONO: the Voicing's voice count (8 = POLY, "up to 8 notes"; 1 = MONO).
 // - ALGORITHM 1..8: a Selector's position. Its value table puts the position on its out, which moves each voice's four
@@ -75,7 +74,7 @@ import { around, define, matchLevel, type Def } from './def';
 import { setCopies } from '../../src/assembly';
 import type { Xl } from './xl';
 
-const NOTES = "DX100 panel; operators use four pickers (card limit). POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
+const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
 
 
 /** each path's algorithms (1..8): the route Selectors' input k takes the path when algorithm k lists it */
@@ -315,7 +314,7 @@ const built = define('Algo Four XL', (b) => {
   b.output('out', out, 'out');
 
   // ---- the card: the DX100's parameters, named as its LCD names them (lowercase). The four operators' parameters are
-  // copies the card shows one operator at a time (OPERATOR SELECT), in runs of four rows (one FM-1 page each)
+  // copies the card shows one operator at a time (OPERATOR SELECT), fourteen rows per operator
   // (def.ts's param takes no names or copies: they are noted by row index here and set on the definition after it)
   let rowsSoFar = 0;
   const param: Def['param'] = (label, module, p, o) => {
@@ -336,35 +335,24 @@ const built = define('Algo Four XL', (b) => {
   named('lfo sync', sync, ['OFF', 'ON']);
   param('pms', pms, 'gain');
   param('ams', ams, 'gain');
-  const runs: [string, (i: number) => void][] = [
-    ['operator', (i) => {
-      param('freq ratio', op[i], 'coarse');
-      param('detune', op[i], 'fine');
-      param('out level', vca[i], 'gain');
-      param('key velocity', vel[i], 'mix');
-    }],
-    ['operator eg', (i) => {
-      param('ar', env[i], 'r1');
-      param('d1r', env[i], 'r2');
-      param('d1l', env[i], 'l2');
-      param('d2r', env[i], 'r3');
-    }],
-    ['operator scaling', (i) => {
-      param('rr', env[i], 'r4');
-      param('rate scaling', krs[i], 'gain');
-      param('level scaling', kls[i], 'gain');
-      param('eg bias sens', ebs[i], 'gain');
-    }],
-    ['operator on-off', (i) => {
-      named('operator', opOn[i], ['OFF', 'ON']);
-      named('ams', ameOn[i], ['OFF', 'ON']);
-    }],
-  ];
-  runs.forEach(([head, rows], k) => {
-    const at = rowsSoFar;
-    for (let i = 0; i < 4; i++) rows(i);
-    COPIES.push({ at, rows: (rowsSoFar - at) / 4, head, col: k === 0 });
-  });
+  const operatorAt = rowsSoFar;
+  for (let i = 0; i < 4; i++) {
+    param('freq ratio', op[i], 'coarse');
+    param('detune', op[i], 'fine');
+    param('out level', vca[i], 'gain');
+    param('key velocity', vel[i], 'mix');
+    param('ar', env[i], 'r1');
+    param('d1r', env[i], 'r2');
+    param('d1l', env[i], 'l2');
+    param('d2r', env[i], 'r3');
+    param('rr', env[i], 'r4');
+    param('rate scaling', krs[i], 'gain');
+    param('level scaling', kls[i], 'gain');
+    param('eg bias sens', ebs[i], 'gain');
+    named('operator', opOn[i], ['OFF', 'ON']);
+    named('ams', ameOn[i], ['OFF', 'ON']);
+  }
+  COPIES.push({ at: operatorAt, rows: 14, head: 'operator', col: true });
   param('poly/mono', part, 'voices', { col: true, head: 'performance' });
   param('p bend range', bend, 'ka');
   named('pb mode', bendMode, ['LOW', 'HIGH', 'KON']);
