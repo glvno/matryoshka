@@ -544,6 +544,7 @@ enum {
 #define LADDER_I_CV 1
 #define LADDER_I_P1 2
 #define LADDER_I_P2 3
+#define LADDER_I_FM 4
 #define LADDER_O_LP24 0
 #define LADDER_O_LP12 1
 #define LADDER_P_CUTOFF 0
@@ -551,7 +552,7 @@ enum {
 #define LADDER_P_DRIVE 2
 #define LADDER_P_CVAMT 3
 #define LADDER_P_TRACK 4
-#define LADDER_NIN 4
+#define LADDER_NIN 5
 #define LADDER_NOUT 2
 #define LADDER_NPAR 5
 #define LADDER_CVBASE 2
@@ -1240,7 +1241,7 @@ static const char *const CRUSH_PN[] = {"BITS", "RATE", "OS"};
 static const uint8_t CRUSH_LOG[] = {0, 0, 0};
 static const char *const CRUSH_UNIT[] = {"", "", ""};
 static const char *const *const CRUSH_CH[] = {0, 0, ADSR_CH4};
-static const char *const LADDER_INNAMES[] = {"IN", "CV", "P1", "P2"};
+static const char *const LADDER_INNAMES[] = {"IN", "CV", "P1", "P2", "FM"};
 static const int32_t LADDER_MIN[] = {1310720, 0, 65536, 0, 0};
 static const int32_t LADDER_MAX[] = {1048576000, 65536, 524288, 262144, 65536};
 static const int32_t LADDER_DEF[] = {78643200, 13107, 65536, 65536, 0};

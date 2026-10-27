@@ -780,19 +780,24 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
   init: () => ({ s: new Float64Array(4) }),
   process(c, st) {
     const s = st.s;
+    const audio = !!c.connected.fm;
     let cvm = 0;
     for (let i = 0; i < c.n; i++) cvm += c.inp.cv[i];
     cvm /= c.n;
     const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0;
-    const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, cvm * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
-    if (c.display) c.display.cutoff = fc;
-    const g = Math.tan((Math.PI * fc) / c.sr);
-    const G = g / (1 + g);
-    const G2 = G * G, G3 = G2 * G, G4 = G3 * G, hG = 1 - G;
     const k = 4 * (c.p.res ?? 0);
     const drive = c.p.drive ?? 1;
-    const F = 1 / (1 + k * G4);
+    let G = 0, G2 = 0, G3 = 0, G4 = 0, hG = 0, F = 0;
     for (let i = 0; i < c.n; i++) {
+      if (i === 0 || (audio && c.inp.fm[i] !== c.inp.fm[i - 1])) {
+        const cv = cvm + (audio ? c.inp.fm[i] : 0);
+        const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, cv * (c.p.cvamt ?? 1) + tr), c.sr * .45);
+        if (c.display) c.display.cutoff = fc;
+        const g = Math.tan((Math.PI * fc) / c.sr);
+        G = g / (1 + g);
+        G2 = G * G; G3 = G2 * G; G4 = G3 * G; hG = 1 - G;
+        F = 1 / (1 + k * G4);
+      }
       const x = c.inp.in[i];
       const S = (G3 * s[0] + G2 * s[1] + G * s[2] + s[3]) * hG;
       const y4 = (G4 * x + S) * F;
@@ -3068,6 +3073,7 @@ for (const m of ALL)
 // ports added after the pins (port indices are append-only): the Steps module's keys in (#134)
 steps.def.inputs.push(keys('keys'));
 random.def.inputs.push(gate('clock'));
+ladder.def.inputs.push(control('fm'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 
