@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CPU, cpuEstimate } from './cpu';
+import { CPU, cpuEstimate, runCost } from './cpu';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
 import { EDITOR_ONLY } from './patch';
@@ -10,6 +10,19 @@ import { withParts } from './test-poly';
 import { acid, twoOpFM } from './test-patches';
 
 describe('CPU estimate', () => {
+  it('only discounts exact fixed gains, not nearby values or modulated gains', () => {
+    const p = acid();
+    const m = p.modules.find((m) => m.type === 'vca')!;
+    const costs = { run: 500, cv: 0, dims: [{ param: 'gain', exact: [0, 1] }], grid: [100, 200, 500] };
+    const cost = (gain: number, moved = false): number => {
+      m.params.gain = gain;
+      return runCost(m, costs, new Set(['in', 'cv']), new Set(['out']), new Set(moved ? ['gain'] : []));
+    };
+    expect(cost(0)).toBeLessThan(cost(.01));
+    expect(cost(1)).toBeLessThan(cost(.99));
+    expect(cost(1, true)).toBe(cost(.99));
+    expect(cost(1 + 1e-7)).toBe(cost(1)); // both encode to the same Q16 gain
+  });
   it('has a cost for every module type (npm run cpu-costs after adding one)', () => {
     expect(Object.keys(CPU.types).sort()).toEqual(Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t)).sort()); // the Scope never runs
   });

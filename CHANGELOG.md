@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Ladder skips audio-rate checks when its FM input is unpatched. Selectors and gain modules avoid work for constant or unity-gain cases. All 150 audio kits and mode transitions remain bit-identical; CPU estimates distinguish the cheaper fixed gains from other or modulated gains.
+
 - Monolith D has all six waveform positions on each oscillator, including the triangle/saw hybrid and oscillator 3's reverse saw. FILTER MODULATION uses Ladder's audio-rate input.
 
 - Factory generation keeps Io 4's arpeggiator-only setup and four voices: the rig sheds a voice with an added PATTERN track despite its modeled fit.

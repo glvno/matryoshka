@@ -3303,8 +3303,14 @@ static void m_scale(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *out = it->out[0];
     int32_t g = EF(it, SCALE_P_GAIN), o = EF(it, SCALE_P_OFFSET);
     uint32_t i;
-    for (i = 0; i < n; i++)
-        out[i] = mul16(in[i], g) + o;
+    if (!g || in == zero_buf)
+        fill(out, o, n);
+    else if (g == ENG_ONE)
+        for (i = 0; i < n; i++)
+            out[i] = in[i] + o;
+    else
+        for (i = 0; i < n; i++)
+            out[i] = mul16(in[i], g) + o;
 }
 
 static int32_t env_rate(int32_t t_q16);
@@ -3503,8 +3509,14 @@ static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
     int32_t g = EF(it, VCA_P_GAIN);
     uint32_t i;
     (void)nd; /* an unplugged cv reads the zero buffer: a VCA with no control is closed */
-    for (i = 0; i < n; i++)
-        out[i] = mul16(mul16(in[i], cv[i]), g);
+    if (!g || in == zero_buf || cv == zero_buf)
+        fill(out, 0, n);
+    else if (g == ENG_ONE)
+        for (i = 0; i < n; i++)
+            out[i] = mul16(in[i], cv[i]);
+    else
+        for (i = 0; i < n; i++)
+            out[i] = mul16(mul16(in[i], cv[i]), g);
 }
 
 typedef struct {
@@ -3612,9 +3624,9 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
 /* Ladder filter with drive (modules.ts `ladder`): four TPT one-poles (G = g / (1 + g), Q24) in a loop with k = 4 res.
  * The loop is solved linearly per sample (y4 = F (G^4 x + S), S the states' share, F = 1 / (1 + k G^4)), the loop input
  * u = sat(drive x - k y4) then runs through the stages; sat is v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond. The
- * coefficients come once per block from the block mean of cv, cvamt and key tracking (no per-sample recip24: the SVF
- * keeps that for audio-rate cutoff). States Q20, products rounded; the saturator bounds the states, so no clamps. */
-static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
+ * ordinary cutoff comes once per block from the mean of cv, cvamt and key tracking. With fm connected the coefficients
+ * also follow each change in its samples. States Q20, products rounded; the saturator bounds the states, so no clamps. */
+HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
 {
     const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
     esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
@@ -3623,7 +3635,6 @@ static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
     int32_t k24 = EF(it, LADDER_P_RES) << 10;                                     /* 4 res, Q24 */
     int32_t tr = EF(it, LADDER_P_TRACK) >= 32768 ? cur_pv->pitch : 0, x = tr;
     uint32_t base = hz_turns((uint32_t)EF(it, LADDER_P_CUTOFF)), i;
-    int audio = (nd->conn & (1u << LADDER_I_FM)) != 0;
     int32_t G = 0, G2 = 0, G3 = 0, G4 = 0, hG = 0, F = 0;
     if (nd->conn & (1u << LADDER_I_CV)) {
         int64_t sum = 0;
@@ -3631,20 +3642,23 @@ static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
             sum += cv[i];
         x += mul16(block_mean(sum, n), cvamt);
     }
+#define LADDER_COEFF(octave) do {                             \
+        int32_t oct = (octave);                              \
+        int32_t g = svf_g(oct ? exp2_scale(base, oct) : base); \
+        G = mulq(g, recip24((1 << 24) + g), 24);              \
+        G2 = mulq(G, G, 24);                                 \
+        G3 = mulq(G2, G, 24);                                \
+        G4 = mulq(G3, G, 24);                                \
+        hG = (1 << 24) - G;                                  \
+        F = recip24((1 << 24) + mulq(k24, G4, 24));           \
+    } while (0)
+    LADDER_COEFF(x + (audio && n ? mul16(fm[0], cvamt) : 0));
     {
         int32_t s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];     /* the states in registers, the four stages written out */
         for (i = 0; i < n; i++) {
             int32_t x20 = in[i] << 4, S, y4, u, v, y2;
-            if (i == 0 || (audio && fm[i] != fm[i - 1])) {
-                int32_t oct = x + (audio ? mul16(fm[i], cvamt) : 0);
-                int32_t g = svf_g(oct ? exp2_scale(base, oct) : base);
-                G = mulq(g, recip24((1 << 24) + g), 24);
-                G2 = mulq(G, G, 24);
-                G3 = mulq(G2, G, 24);
-                G4 = mulq(G3, G, 24);
-                hG = (1 << 24) - G;
-                F = recip24((1 << 24) + mulq(k24, G4, 24));
-            }
+            if (audio && i && fm[i] != fm[i - 1])
+                LADDER_COEFF(x + mul16(fm[i], cvamt));
             S = mulr(G3, s0, 24) + mulr(G2, s1, 24) + mulr(G, s2, 24) + s3;
             S = mulr(S, hG, 24);
             y4 = mulr(F, mulr(G4, x20, 24) + S, 24);
@@ -3668,6 +3682,16 @@ static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
         s[2] = s2;
         s[3] = s3;
     }
+#undef LADDER_COEFF
+}
+
+static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
+{
+    /* Constant arguments remove all audio-rate checks from the ordinary filter loop. */
+    if (nd->conn & (1u << LADDER_I_FM))
+        ladder_run(nd, it, n, 1);
+    else
+        ladder_run(nd, it, n, 0);
 }
 
 #define DB_TO_LOG2 10885            /* 1 / 6.0206 in Q16: dB -> octaves (log2) */
@@ -5286,8 +5310,11 @@ static void m_select(inst_t *it, uint32_t n)
     if (!it->s.sel.fading) {
         const esig_t *x = it->in[SELECT_I_IN1 + k];
         int32_t v = EF(it, SELECT_P_V1 + k);
-        for (i = 0; i < n; i++)
-            out[i] = x[i] + v;
+        if (x == zero_buf)
+            fill(out, v, n);
+        else if (out != dummy_out)
+            for (i = 0; i < n; i++)
+                out[i] = x[i] + v;
     } else {
         int32_t *w = it->s.sel.w;
         uint32_t busy = 0;

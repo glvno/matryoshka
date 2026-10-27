@@ -14,6 +14,8 @@ export type CostDim =
   | { param: string; values: number[] }
   | { param: string; above: number }
   | { param: string; points: number[] }
+  /** exact fast paths, followed by one cell for every other value */
+  | { param: string; exact: number[] }
   | { input: string }
   | { output: string };
 
@@ -97,6 +99,10 @@ const paramOf = (m: ModuleInst, name: string): number => m.params[name] ?? DEFS[
 
 /** where a module's setting falls along a dim: [index into the dim's values, weight], two for a number between two points */
 function place(d: CostDim, m: ModuleInst, inputs: Set<string>, outputs: Set<string>, moved: Set<string>, shift: number): [number, number][] {
+  if ('exact' in d) {
+    const i = moved.has(d.param) ? -1 : d.exact.indexOf(Math.round(paramOf(m, d.param) * 65536) / 65536);
+    return [[i < 0 ? d.exact.length : i, 1]];
+  }
   if ('values' in d) {
     const v = paramOf(m, d.param);
     return [[d.values.indexOf(nearest(d.values, v)), 1]];
@@ -118,7 +124,7 @@ function place(d: CostDim, m: ModuleInst, inputs: Set<string>, outputs: Set<stri
   return [[outputs.has(d.output) ? 1 : 0, 1]];
 }
 
-export const dimSize = (d: CostDim): number => ('values' in d ? d.values.length : 'points' in d ? d.points.length : 2);
+export const dimSize = (d: CostDim): number => ('values' in d ? d.values.length : 'points' in d ? d.points.length : 'exact' in d ? d.exact.length + 1 : 2);
 
 /** the run cost of one instance of `m`; `moved`: the parameters a parameter input or the morph moves (a mode that turns on
  * above a minimum counts as on then: the modulation may take it there) */
