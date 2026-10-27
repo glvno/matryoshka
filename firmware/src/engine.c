@@ -337,6 +337,7 @@ typedef struct {
         struct { int32_t ic1, ic2, jc1, jc2; } flt;   /* stage 1 and stage 2 integrators */
         struct { int32_t s[4]; } lad;                 /* the four one-pole states, Q20 */
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
+        struct { int32_t env, lc, hc, pk, prev, y; uint32_t cnt; int32_t frac, t; uint8_t trig, arm, valid; } esp;   /* Q24: the envelope, the band pass's one-poles, its peak hold, its previous sample, the glided pitch; samples since the last crossing, that crossing's fraction (Q16), the measured pitch (Q16 octaves) */
         struct { int32_t y1[6], y2[6], r30[6], gn[6], kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators, Q20; r30, gn: the
                                                     * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
@@ -3903,6 +3904,111 @@ static void m_dyn(const node_t *nd, inst_t *it, uint32_t n)
     it->s.dyn.env = env;
 }
 
+#define LOG2_C4_Q16 526343            /* log2(261.6255653 Hz): pitch 0 */
+#define ESP_K_HZ 12282814ull          /* 4.6 / (2 pi) in Q24: a one-pole at f Hz is env_rate's curve over 4.6 / (2 pi f) s */
+
+/* a one-pole's coefficient for a corner at hz (Q16 Hz): 1 - exp(-2 pi f / sr), Q30 */
+static int32_t esp_k(int32_t hz)
+{
+    return env_rate_q8((ESP_K_HZ * ENG_SR) / (uint32_t)(hz < ENG_ONE ? ENG_ONE : hz));
+}
+
+/* Follower (modules.ts esp), after the Korg MS-20's External Signal Processor: amp = in x level; an envelope follower on
+ * |amp| (env) with a trigger (up above thresh, down below 3/4 of it); a band pass, a one-pole high pass at lowcut then a
+ * one-pole low pass at highcut (bp); a pitch to voltage converter: bp's period between rising crossings of +h after it went
+ * below -h (h = a quarter of bp's peak hold), each crossing placed between its samples, as log2(f / C4) + cvadj, through a
+ * short glide. One division per crossing (32-bit) and one log2_q16 per measured period. Nothing on `in`: it rests. */
+static void m_esp(const node_t *nd, inst_t *it, uint32_t n)
+{
+    esig_t *amp = it->out[ESP_O_AMP], *bp = it->out[ESP_O_BP], *po = it->out[ESP_O_PITCH], *eo = it->out[ESP_O_ENV], *to = it->out[ESP_O_TRIG];
+    int32_t adj = EF(it, ESP_P_CVADJ) / 12;                                    /* semitones -> octaves */
+    int32_t env = it->s.esp.env, lc = it->s.esp.lc, hc = it->s.esp.hc, pk = it->s.esp.pk, prev = it->s.esp.prev;
+    int32_t y = it->s.esp.y, frac = it->s.esp.frac, t = it->s.esp.t;
+    uint32_t cnt = it->s.esp.cnt, i;
+    uint8_t trig = it->s.esp.trig, arm = it->s.esp.arm, valid = it->s.esp.valid;
+    if (!(nd->conn & (1u << ESP_I_IN))) {                                      /* at rest, the pitch held (modules.ts espRest) */
+        it->s.esp.env = it->s.esp.lc = it->s.esp.hc = it->s.esp.pk = it->s.esp.prev = it->s.esp.frac = 0;
+        it->s.esp.cnt = 0;
+        it->s.esp.trig = it->s.esp.arm = it->s.esp.valid = 0;
+        fill(amp, 0, n);
+        fill(bp, 0, n);
+        fill(eo, 0, n);
+        fill(to, 0, n);
+        fill(po, ((y + 128) >> 8) + adj, n);
+        return;
+    }
+    {
+        const esig_t *in = it->in[ESP_I_IN];
+        int32_t level = EF(it, ESP_P_LEVEL), th = clampi(EF(it, ESP_P_THRESH), 0, ENG_ONE) << 8, off = th - (th >> 2);
+        int32_t ka = env_rate(ESP_ATTACK_Q16), kr = env_rate(ESP_RELEASE_Q16);
+        int32_t kl = esp_k(EF(it, ESP_P_LOWCUT)), kh = esp_k(EF(it, ESP_P_HIGHCUT));
+        int32_t base = log2_q16(ENG_SR) + (16 << 16) - LOG2_C4_Q16;            /* log2(sr / C4) + 16: per is Q16 */
+        for (i = 0; i < n; i++) {
+            int32_t x = clampi(mul16(in[i], level), -ESP_CLIP_Q16, ESP_CLIP_Q16), a, b, ab, h;
+            amp[i] = x;
+            x <<= 8;                                                           /* Q24, +-2^28 */
+            a = x < 0 ? -x : x;
+            env += mulq(a > env ? ka : kr, a - env, 30);
+            if (trig ? env < off : env > th)
+                trig ^= 1u;
+            lc += mulq(kl, x - lc, 30);
+            hc += mulq(kh, x - lc - hc, 30);
+            b = hc;
+            ab = b < 0 ? -b : b;
+            pk = ab > pk ? ab : pk - (pk >> ESP_PEAK_SHIFT);
+            h = pk >> 2;
+            if (++cnt > ESP_MAX_PERIOD) {
+                cnt = ESP_MAX_PERIOD;
+                valid = 0;
+            }
+            if (pk >= ESP_FLOOR_Q24) {
+                if (b < -h)
+                    arm = 1;
+                else if (arm && b >= h) {
+                    int32_t f = 0, per;
+                    if (b > prev) {                                            /* (b - h) / (b - prev), Q16, at most 1 */
+                        uint32_t num = (uint32_t)(b - h), den = (uint32_t)(b - prev);
+                        if (num >= den)
+                            f = ENG_ONE;
+                        else {
+                            while (den >= 1u << 15) {
+                                num >>= 1;
+                                den >>= 1;
+                            }
+                            f = (int32_t)((num << 16) / den);
+                        }
+                    }
+                    per = (int32_t)(cnt << 16) - f + frac;
+                    if (valid && per >= (ESP_MIN_PERIOD << 16))
+                        t = base - log2_q16((uint32_t)per);
+                    arm = 0;
+                    valid = 1;
+                    cnt = 0;
+                    frac = f;
+                }
+            }
+            prev = b;
+            y += ((t << 8) - y) >> ESP_GLIDE_SHIFT;
+            bp[i] = (b + 128) >> 8;
+            po[i] = ((y + 128) >> 8) + adj;
+            eo[i] = (env + 128) >> 8;
+            to[i] = trig ? ENG_ONE : 0;
+        }
+    }
+    it->s.esp.env = env;
+    it->s.esp.lc = lc;
+    it->s.esp.hc = hc;
+    it->s.esp.pk = pk;
+    it->s.esp.prev = prev;
+    it->s.esp.y = y;
+    it->s.esp.cnt = cnt;
+    it->s.esp.frac = frac;
+    it->s.esp.t = t;
+    it->s.esp.trig = trig;
+    it->s.esp.arm = arm;
+    it->s.esp.valid = valid;
+}
+
 /* Most utility modules feed one output. Pick that operation once per block instead of calculating every unused one. */
 static int only_output(const inst_t *it, uint32_t count)
 {
@@ -5847,6 +5953,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_PHASER: m_phaser(nd, it, n); break;
     case T_LADDER: m_ladder(nd, it, n); break;
     case T_DYN: m_dyn(nd, it, n); break;
+    case T_ESP: m_esp(nd, it, n); break;
     case T_MATH: m_math(nd, it, n); break;
     case T_LOGIC: m_logic(nd, it, n); break;
     case T_GRAIN: m_grain(nd, it, n); break;

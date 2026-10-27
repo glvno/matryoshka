@@ -2,7 +2,7 @@
 // Writes firmware/src/defs.h (module definitions for the C engine) and firmware/src/presets.h (the factory
 // patches as binary). Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ASSIGN_MODES, DEFS, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, TRACK_POLY } from '../src/modules';
+import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, TRACK_POLY } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -54,6 +54,14 @@ w(`static const uint8_t LFO_MULT_DEN[LFO_NMULT] = {${LFO_MULTS.map((d) => d.den)
 w(`#define LFO_NRANGE ${LFO_RANGE_K.length}   /* the free LFO's rate ranges: norm, slow (/ 25), fast (x 2), wide (separate rate) */`);
 w(`static const int32_t RATIO_OCT[${RATIO_OCT.length}] = {${RATIO_OCT.map(toQ16).join(', ')}};`);
 w(`static const int32_t RATIO_DETUNE_OCT[7] = {${RATIO_DETUNE_OCT.map(toQ16).join(', ')}};`);
+w(`#define ESP_ATTACK_Q16 ${Math.round(ESP_ATTACK * 65536)}   /* the Follower's envelope: attack and release, s (99 % of a step) */`);
+w(`#define ESP_RELEASE_Q16 ${Math.round(ESP_RELEASE * 65536)}`);
+w(`#define ESP_FLOOR_Q24 ${Math.round(ESP_FLOOR * (1 << 24))}   /* the band-passed peak below which no crossing counts */`);
+w(`#define ESP_MAX_PERIOD ${ESP_MAX_PERIOD}   /* samples: a longer gap starts the period measurement again */`);
+w(`#define ESP_MIN_PERIOD ${ESP_MIN_PERIOD}`);
+w(`#define ESP_CLIP_Q16 ${ESP_CLIP * 65536}   /* amp is held to +-this (room for the Q24 band-pass states) */`);
+w(`#define ESP_PEAK_SHIFT ${ESP_PEAK_SHIFT}   /* the peak hold falls by 1 / 2^this per sample */`);
+w(`#define ESP_GLIDE_SHIFT ${ESP_GLIDE_SHIFT}   /* the pitch output glides 1 / 2^this of the way per sample */`);
 w(`#define ADSR_LONG_Q16 ${Math.round(ADSR_LONG * 65536)}   /* the ADSR's long: decay and release x ${ADSR_LONG} */`);
 w();
 // poly assemblies (patch.ts PolyCfg): the group records of the binary

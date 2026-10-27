@@ -3174,7 +3174,105 @@ const ratio: ModuleImpl<null> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio];
+/** The Follower's fixed envelope times (99 % of a step, the ADSR's rate formula), its pitch detector's limits and smoothing. */
+export const ESP_ATTACK = 0.003;
+export const ESP_RELEASE = 0.08;
+/** the band-passed signal's peak must reach this (about -48 dB) before a crossing counts: silence gives no pitch */
+export const ESP_FLOOR = 1 / 256;
+/** the longest period measured, in samples (about 10.8 Hz at 44118 Hz); a longer gap starts the measurement again */
+export const ESP_MAX_PERIOD = 4096;
+/** the shortest period accepted, in samples */
+export const ESP_MIN_PERIOD = 2;
+/** amp is held to +-ESP_CLIP (room for the C engine's Q24 band-pass states) */
+export const ESP_CLIP = 16;
+/** the peak hold falls by 1 / 2^9 of itself per sample (about 12 ms); the pitch output glides 1 / 2^6 of the way per sample */
+export const ESP_PEAK_SHIFT = 9;
+export const ESP_GLIDE_SHIFT = 6;
+const C4_HZ = 261.6255653;
+
+interface EspState {
+  /** envelope follower (of amp), the low cut's one-pole, the high cut's one-pole, the band-passed peak hold */
+  env: number; lc: number; hc: number; pk: number;
+  /** the trigger, the detector armed (the band-passed signal went below -hysteresis), a previous crossing to measure from */
+  trig: boolean; arm: boolean; valid: boolean;
+  /** samples since the last crossing, its fraction of a sample back, the previous band-passed sample */
+  cnt: number; frac: number; prev: number;
+  /** the measured pitch (octaves from C4), the glided output */
+  t: number; y: number;
+}
+const espRest = (): Omit<EspState, 't' | 'y'> => ({ env: 0, lc: 0, hc: 0, pk: 0, trig: false, arm: false, valid: false, cnt: 0, frac: 0, prev: 0 });
+
+/**
+ * Follower, after the Korg MS-20's External Signal Processor (its owner's manual, 1978: "External Signal Processor (ESP)",
+ * "Using the External Signal Processor"). `in` x `level` is `amp` (the preamp out). An envelope follower on |amp| (attack
+ * ESP_ATTACK, release ESP_RELEASE) gives `env`; `trig` rises when env passes `thresh` and falls below 3/4 of it. A band pass,
+ * a one-pole high pass at `lowcut` then a one-pole low pass at `highcut` (6 dB per octave each side), gives `bp`. The pitch
+ * to voltage converter measures bp's period between rising crossings of +h after it went below -h (h = a quarter of bp's
+ * peak hold), each crossing placed between its two samples by linear interpolation, and outputs log2(f / C4) in octaves, as
+ * every pitch signal here, plus `cvadj` semitones, through a short glide. It holds the last pitch while bp's peak is below
+ * ESP_FLOOR or the period is out of range. With nothing patched to `in` it rests (outputs 0, the pitch held). Both engines do
+ * the same (engine.c m_esp).
+ */
+const esp: ModuleImpl<EspState> = {
+  def: {
+    type: 'esp',
+    label: 'Follower',
+    inputs: [audio('in')],
+    outputs: [audio('amp'), audio('bp'), control('pitch'), control('env'), gate('trig')],
+    params: [
+      param('level', 0, 4, 1, { step: 0.01 }),
+      param('lowcut', 20, 5000, 40, { unit: 'Hz', step: 1, log: true }),
+      param('highcut', 50, 10000, 2000, { unit: 'Hz', step: 1, log: true }),
+      param('cvadj', -12, 12, 0, { unit: 'st', step: 0.01 }),
+      param('thresh', 0, 1, 0.1, { step: 0.01 }),
+    ],
+  },
+  init: () => ({ ...espRest(), t: 0, y: 0 }),
+  process(c, s) {
+    const o = c.out, n = c.n;
+    const adj = (c.p.cvadj ?? 0) / 12;
+    if (!c.connected.in) {
+      Object.assign(s, espRest());
+      o.amp.fill(0, 0, n); o.bp.fill(0, 0, n); o.env.fill(0, 0, n); o.trig.fill(0, 0, n);
+      o.pitch.fill(s.y + adj, 0, n);
+      return;
+    }
+    const level = c.p.level ?? 1, th = c.p.thresh ?? 0.1, off = th * 0.75;
+    const ka = 1 - Math.exp(-4.6 / Math.max(ESP_ATTACK * c.sr, 1)), kr = 1 - Math.exp(-4.6 / Math.max(ESP_RELEASE * c.sr, 1));
+    const kl = 1 - Math.exp((-2 * Math.PI * (c.p.lowcut ?? 40)) / c.sr), kh = 1 - Math.exp((-2 * Math.PI * (c.p.highcut ?? 2000)) / c.sr);
+    const base = Math.log2(c.sr / C4_HZ);
+    for (let i = 0; i < n; i++) {
+      const x = Math.max(-ESP_CLIP, Math.min(ESP_CLIP, c.inp.in[i] * level));
+      o.amp[i] = x;
+      const a = Math.abs(x);
+      s.env += (a > s.env ? ka : kr) * (a - s.env);
+      if (s.trig ? s.env < off : s.env > th) s.trig = !s.trig;
+      s.lc += kl * (x - s.lc);
+      s.hc += kh * (x - s.lc - s.hc);
+      const b = s.hc, ab = Math.abs(b);
+      s.pk = ab > s.pk ? ab : s.pk - s.pk / (1 << ESP_PEAK_SHIFT);
+      const h = s.pk / 4;
+      if (++s.cnt > ESP_MAX_PERIOD) (s.cnt = ESP_MAX_PERIOD), (s.valid = false);
+      if (s.pk >= ESP_FLOOR) {
+        if (b < -h) s.arm = true;
+        else if (s.arm && b >= h) {
+          const f = b > s.prev ? Math.min(1, (b - h) / (b - s.prev)) : 0;
+          const per = s.cnt - f + s.frac;
+          if (s.valid && per >= ESP_MIN_PERIOD) s.t = base - Math.log2(per);
+          s.arm = false, s.valid = true, s.cnt = 0, s.frac = f;
+        }
+      }
+      s.prev = b;
+      s.y += (s.t - s.y) / (1 << ESP_GLIDE_SHIFT);
+      o.bp[i] = b;
+      o.pitch[i] = s.y + adj;
+      o.env[i] = s.env;
+      o.trig[i] = s.trig ? 1 : 0;
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

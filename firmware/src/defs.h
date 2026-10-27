@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 49
+#define N_TYPES 50
 enum {
     T_FM1,
     T_OSC,
@@ -54,6 +54,7 @@ enum {
     T_SELECT,
     T_RATEENV,
     T_RATIO,
+    T_ESP,
 };
 
 /* fm1: Main */
@@ -950,6 +951,26 @@ enum {
 #define RATIO_CVBASE 0
 #define RATIO_NDATA 0
 
+/* esp: Follower */
+#define ESP_I_IN 0
+#define ESP_I_P1 1
+#define ESP_I_P2 2
+#define ESP_O_AMP 0
+#define ESP_O_BP 1
+#define ESP_O_PITCH 2
+#define ESP_O_ENV 3
+#define ESP_O_TRIG 4
+#define ESP_P_LEVEL 0
+#define ESP_P_LOWCUT 1
+#define ESP_P_HIGHCUT 2
+#define ESP_P_CVADJ 3
+#define ESP_P_THRESH 4
+#define ESP_NIN 3
+#define ESP_NOUT 5
+#define ESP_NPAR 5
+#define ESP_CVBASE 1
+#define ESP_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -966,6 +987,14 @@ static const uint8_t LFO_MULT_DEN[LFO_NMULT] = {1, 1, 1, 1, 2, 4, 8};
 #define LFO_NRANGE 4   /* the free LFO's rate ranges: norm, slow (/ 25), fast (x 2), wide (separate rate) */
 static const int32_t RATIO_OCT[64] = {-65536, -32382, -23492, -13167, 0, 32486, 42649, 51824, 65536, 98022, 103872, 108185, 117360, 131072, 136581, 146521, 152170, 155696, 163725, 169408, 173721, 182896, 183983, 184924, 194818, 196608, 202117, 203994, 207744, 212057, 216660, 217706, 221232, 226631, 226717, 229261, 234944, 235807, 239257, 240453, 242512, 248432, 249519, 250192, 250393, 256042, 259447, 259568, 260354, 267653, 269366, 269530, 275204, 277593, 278541, 282196, 285161, 286768, 288751, 292167, 294336, 298690, 301343, 307866};
 static const int32_t RATIO_DETUNE_OCT[7] = {-142, -95, -47, 0, 47, 95, 142};
+#define ESP_ATTACK_Q16 197   /* the Follower's envelope: attack and release, s (99 % of a step) */
+#define ESP_RELEASE_Q16 5243
+#define ESP_FLOOR_Q24 65536   /* the band-passed peak below which no crossing counts */
+#define ESP_MAX_PERIOD 4096   /* samples: a longer gap starts the period measurement again */
+#define ESP_MIN_PERIOD 2
+#define ESP_CLIP_Q16 1048576   /* amp is held to +-this (room for the Q24 band-pass states) */
+#define ESP_PEAK_SHIFT 9   /* the peak hold falls by 1 / 2^this per sample */
+#define ESP_GLIDE_SHIFT 6   /* the pitch output glides 1 / 2^this of the way per sample */
 #define ADSR_LONG_Q16 157286   /* the ADSR's long: decay and release x 2.4 */
 
 #define TRACK_STEPS 64        /* a Steps track's most steps (track.ts); its name follows its pins in the record */
@@ -1490,6 +1519,15 @@ static const char *const RATIO_UNIT[] = {"", ""};
 static const char *const RATIO_CH0[] = {"0.50", "0.71", "0.78", "0.87", "1.00", "1.41", "1.57", "1.73", "2.00", "2.82", "3.00", "3.14", "3.46", "4.00", "4.24", "4.71", "5.00", "5.19", "5.65", "6.00", "6.28", "6.92", "7.00", "7.07", "7.85", "8.00", "8.48", "8.65", "9.00", "9.42", "9.89", "10.00", "10.38", "10.99", "11.00", "11.30", "12.00", "12.11", "12.56", "12.72", "13.00", "13.84", "14.00", "14.10", "14.13", "15.00", "15.55", "15.57", "15.70", "16.96", "17.27", "17.30", "18.37", "18.84", "19.03", "19.78", "20.41", "20.76", "21.20", "21.98", "22.49", "23.55", "24.22", "25.95", 0};
 static const char *const RATIO_CH1[] = {"-3", "-2", "-1", "0", "+1", "+2", "+3", 0};
 static const char *const *const RATIO_CH[] = {RATIO_CH0, RATIO_CH1};
+static const char *const ESP_INNAMES[] = {"IN", "P1", "P2"};
+static const int32_t ESP_MIN[] = {0, 1310720, 3276800, -786432, 0};
+static const int32_t ESP_MAX[] = {262144, 327680000, 655360000, 786432, 65536};
+static const int32_t ESP_DEF[] = {65536, 2621440, 131072000, 0, 6554};
+static const int32_t ESP_INC[] = {2621, 3263693, 6520832, 15729, 655};
+static const char *const ESP_PN[] = {"LEVEL", "LOWCUT", "HIGHCUT", "CVADJ", "THRESH"};
+static const uint8_t ESP_LOG[] = {0, 1, 1, 0, 0};
+static const char *const ESP_UNIT[] = {"", "HZ", "HZ", "ST", ""};
+static const char *const *const ESP_CH[] = {0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0},   /* fm1 */
@@ -1541,4 +1579,5 @@ static const def_t DEFS[N_TYPES] = {
     {SELECT_NIN, SELECT_NOUT, SELECT_NPAR, 1, SELECT_CVBASE, 1, SELECT_NDATA, 1, SELECT_MIN, SELECT_MAX, SELECT_DEF, SELECT_INC, "SELECTOR", SELECT_PN, SELECT_INNAMES, SELECT_LOG, SELECT_UNIT, SELECT_CH, 0, 0},   /* select */
     {RATEENV_NIN, RATEENV_NOUT, RATEENV_NPAR, 0, RATEENV_CVBASE, -1, RATEENV_NDATA, 0, RATEENV_MIN, RATEENV_MAX, RATEENV_DEF, RATEENV_INC, "RATE ENV", RATEENV_PN, RATEENV_INNAMES, RATEENV_LOG, RATEENV_UNIT, RATEENV_CH, 0, 0},   /* rateenv */
     {RATIO_NIN, RATIO_NOUT, RATIO_NPAR, 0, RATIO_CVBASE, -1, RATIO_NDATA, 0, RATIO_MIN, RATIO_MAX, RATIO_DEF, RATIO_INC, "RATIO", RATIO_PN, RATIO_INNAMES, RATIO_LOG, RATIO_UNIT, RATIO_CH, 0, 0},   /* ratio */
+    {ESP_NIN, ESP_NOUT, ESP_NPAR, 0, ESP_CVBASE, 0, ESP_NDATA, 3, ESP_MIN, ESP_MAX, ESP_DEF, ESP_INC, "FOLLOWER", ESP_PN, ESP_INNAMES, ESP_LOG, ESP_UNIT, ESP_CH, 0, 0},   /* esp */
 };

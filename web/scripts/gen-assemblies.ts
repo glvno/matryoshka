@@ -1417,10 +1417,13 @@ asm('Cassia 1', 'Voices', (b) => {
 // assembly's outputs and inputs, to patch in the browser): the sample and hold (white noise in, clocked by the MG's
 // rectangle), the noise generator's white and pink outputs, the MVCA (EG 1 normalled to its
 // control, its signal input open), EG 1 and EG 2's reverse outputs, the control wheel (Main's mod wheel) and the momentary
-// switch (Main's FX button), KBD CV and trigger, the MG's triangle and rectangle, and INITIAL GAIN into the VCA. Nothing
-// is patched, so they do not change the sound; their outputs meet at the VCO mixer's unused third input, at 0, so they run
-// on the FM-1 too (it leaves out a module nothing audible reads). Left out: the ESP (audio input, a pitch-to-voltage
-// converter: #351).
+// switch (Main's FX button), KBD CV and trigger, the MG's triangle and rectangle, and INITIAL GAIN into the VCA. The ESP
+// (external signal processor) is a Follower: its SIGNAL IN is the assembly's `esp signal in` (the FM-1 has no audio input,
+// #274, so there it only hears what the browser patches in), its rows SIGNAL LEVEL, LOW CUT FREQ, HIGH CUT FREQ, CV ADJUST and
+// THRESHOLD LEVEL, its jacks the amplifier and band-pass outs, F-V CV OUT, ENV OUT and TRIG OUT. The jacks its manual patches
+// them into are inputs too: VCO 1+2 CV IN (added to the keyboard's pitch), TRIGGER IN (a Logic or with the keyboard's gate,
+// into both EGs) and INITIAL GAIN (the VCA); VCO 2 CV IN is not (VCO 2's pitch input is VCO 1+2's). Nothing is patched, so they do not change the sound; their outputs meet at
+// the VCO mixer's unused third input, at 0, so they run on the FM-1 too (it leaves out a module nothing audible reads).
 asm('Sallen 20', 'Voices', (b) => {
   const pins = (id: number, p1: string[], p2: string[], att: [number, number]): void => {
     const m = b.module(id);
@@ -1481,12 +1484,15 @@ asm('Sallen 20', 'Voices', (b) => {
   b.wire(mix, 'out', hpf, 'in');
   b.wire(hpf, 'hp6', lpf, 'in'); // the MS-20's high pass is 6 dB per octave, resonant (Stinchcombe's MS-20 filter study)
   b.wire(lpf, 'lp12', vca, 'in');
-  b.wire(part, 'gate', delay, 'trig');
-  b.wire(part, 'gate', eg1Gate, 'a');
+  // the keyboard's gate or TRIGGER IN (the assembly input) triggers both EGs
+  const trig = b.add('logic', 0, 4, { thresh: 0.5 });
+  b.wire(part, 'gate', trig, 'a');
+  b.wire(trig, 'or', delay, 'trig');
+  b.wire(trig, 'or', eg1Gate, 'a');
   b.wire(delay, 'out', eg1Gate, 'b');
   b.wire(eg1Gate, 'sub', eg1, 'gate');
-  b.wire(part, 'gate', hold, 'trig');
-  b.wire(part, 'gate', eg2, 'gate');
+  b.wire(trig, 'or', hold, 'trig');
+  b.wire(trig, 'or', eg2, 'gate');
   b.wire(hold, 'out', eg2, 'gate');
   b.wire(eg2, 'env', vca, 'cv');
   b.wire(eg1, 'env', egPitch, 'in');
@@ -1504,17 +1510,22 @@ asm('Sallen 20', 'Voices', (b) => {
   const wheel = amt(4, 5, 1);
   const sw = amt(5, 5, 1);
   const initGain = b.add('const', 6, 5, { value: 0 });
+  const esp = b.add('esp', 7, 5, { level: 1, lowcut: 40, highcut: 2000, cvadj: 0, thresh: 0.1 });
   b.wire(nz, 'out', sh, 'in');
   b.wire(mg, 'pulse', sh, 'clock');
   b.wire(eg1, 'env', mvca, 'cv');
   b.wire(eg1, 'env', eg1Rev, 'in');
   b.wire(eg2, 'env', eg2Rev, 'in');
   b.wire(initGain, 'out', vca, 'cv');
-  for (const [m, port] of [[mg, 'pulse'], [sh, 'out'], [pink, 'out'], [mvca, 'out'], [eg1Rev, 'out'], [eg2Rev, 'out'], [wheel, 'out'], [sw, 'out']] as const) b.wire(m, port, mix, 'in3');
+  for (const [m, port] of [[mg, 'pulse'], [sh, 'out'], [pink, 'out'], [mvca, 'out'], [eg1Rev, 'out'], [eg2Rev, 'out'], [wheel, 'out'], [sw, 'out'], [esp, 'amp']] as const) b.wire(m, port, mix, 'in3');
   b.input('keys', part, 'keys');
   b.input('mvca in', mvca, 'in');
   b.input('wheel', wheel, 'in');
   b.input('switch', sw, 'in');
+  b.input('esp signal in', esp, 'in');
+  b.input('vco 1+2 cv in', o1, 'pitch', [o2, 'pitch']);
+  b.input('trigger in', trig, 'b');
+  b.input('initial gain', vca, 'cv');
   b.output('out', vca, 'out');
   b.output('s&h out', sh, 'out');
   b.output('white noise', nz, 'out');
@@ -1530,6 +1541,11 @@ asm('Sallen 20', 'Voices', (b) => {
   b.output('switch out', sw, 'out');
   b.output('kbd cv', part, 'pitch');
   b.output('kbd trig', part, 'gate');
+  b.output('esp amp out', esp, 'amp');
+  b.output('esp bpf out', esp, 'bp');
+  b.output('f-v cv out', esp, 'pitch');
+  b.output('env out', esp, 'env');
+  b.output('trig out', esp, 'trig');
   b.param('portamento', gl, 'time', { head: 'vco' });
   b.param('master tune', egPitch, 'offset');
   b.param('vco 1 scale', s1, 'pos');
@@ -1564,6 +1580,11 @@ asm('Sallen 20', 'Voices', (b) => {
   b.param('frequency', mg, 'rate', { head: 'mg' });
   b.param('waveform', mgShape, 'value');
   b.param('initial gain', initGain, 'value', { head: 'patch panel' });
+  b.param('signal level', esp, 'level', { head: 'esp' });
+  b.param('low cut', esp, 'lowcut');
+  b.param('high cut', esp, 'highcut');
+  b.param('cv adjust', esp, 'cvadj');
+  b.param('threshold', esp, 'thresh');
 });
 namePositions('Sallen 20', {
   'vco 1 scale': ["32'", "16'", "8'", "4'"], 'vco 2 scale': ["16'", "8'", "4'", "2'"],

@@ -96,7 +96,7 @@ describe('binary patch format', () => {
     // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
     const v34: Record<string, number> = { lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4 };
     const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
-    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select', 'rateenv', 'ratio']); // Rate Env in 42, Ratio in 43
+    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select', 'rateenv', 'ratio', 'esp']); // Rate Env in 42, Ratio in 43, Follower in 46
     for (const t of TYPE_ORDER.slice(0, nTypes34)) {
       const ps = DEFS[t].params;
       expect(ps.filter((q) => (q.since ?? 0) <= 34).length, t).toBe(v34[t] ?? ps.length);
