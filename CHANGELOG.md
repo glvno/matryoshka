@@ -7,6 +7,8 @@
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
 
+- The Multimode filter adds an hp6 output: a resonant high pass that falls 6 dB per octave below the cutoff, after the Korg MS-20's. Sallen 20 now runs its high pass through it (it was 12 dB per octave), so more low end passes below the high-pass cutoff. Its rows, voice and FM-1 size are unchanged; the FM-1's CPU estimate for it goes from 40.5 % to 40.2 % (the estimate's cycle count on the rv32 model, `npm run cpu-costs`). Patches that use hp6 need firmware with patch format 45.
+
 - Steps adds backward, ping-pong and random play modes alongside forward. Swing and live recording follow the visited steps. Perun 4 XL exposes the modes on each voice track. A note near the end of the grid can now last up to 64 steps, so a note at step 64 still lasts its full length when the track plays backward.
 
 - The new Ratio module supplies the DX100’s 64 frequency-ratio choices as a pitch offset. Algo Four XL exposes these choices and seven signed operator-detune positions; saved oscillator tuning stays unchanged.

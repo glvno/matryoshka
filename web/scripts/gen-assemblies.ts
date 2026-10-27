@@ -1410,7 +1410,7 @@ asm('Cassia 1', 'Voices', (b) => {
 // set the oscillator's wave and pulse width through its pins, and pick the noise for VCO 1's fourth position, the ring
 // modulator, VCO 1 times VCO 2, for VCO 2's), VCO 1's PW, VCO 2's PITCH (semitones and cents). PORTAMENTO, MASTER TUNE (the
 // offset of the EG 1 amount's Attenuverter). Frequency modulation of both VCOs by the MG's triangle (MG/T.EXT) and EG 1
-// (EG1/EXT). The VCO mixer, then the resonant high pass and the resonant 12 dB low pass in series, each with its own
+// (EG1/EXT). The VCO mixer, then the resonant 6 dB high pass and the resonant 12 dB low pass in series, each with its own
 // MG/T.EXT and EG2/EXT amounts (the filters' cvamt is 1), then the VCA on EG 2. EG 1: DELAY (a Pulse holds the gate off at
 // the start, Math subtracts it), ATTACK, RELEASE (an ADSR at full sustain). EG 2: HOLD (a Pulse that keeps the gate up),
 // ATTACK, DECAY, SUSTAIN, RELEASE. The MG: FREQUENCY, WAVEFORM. The patch panel's own sections, as its jacks (the
@@ -1420,8 +1420,7 @@ asm('Cassia 1', 'Voices', (b) => {
 // switch (Main's FX button), KBD CV and trigger, the MG's triangle and rectangle, and INITIAL GAIN into the VCA. Nothing
 // is patched, so they do not change the sound; their outputs meet at the VCO mixer's unused third input, at 0, so they run
 // on the FM-1 too (it leaves out a module nothing audible reads). Left out: the ESP (audio input, a pitch-to-voltage
-// converter: #351) and the high pass's 6 dB slope (the Multimode filter's
-// high pass is 12 dB).
+// converter: #351).
 asm('Sallen 20', 'Voices', (b) => {
   const pins = (id: number, p1: string[], p2: string[], att: [number, number]): void => {
     const m = b.module(id);
@@ -1480,7 +1479,7 @@ asm('Sallen 20', 'Voices', (b) => {
   b.wire(v1, 'out', mix, 'in1');
   b.wire(v2, 'out', mix, 'in2');
   b.wire(mix, 'out', hpf, 'in');
-  b.wire(hpf, 'hp', lpf, 'in');
+  b.wire(hpf, 'hp6', lpf, 'in'); // the MS-20's high pass is 6 dB per octave, resonant (Stinchcombe's MS-20 filter study)
   b.wire(lpf, 'lp12', vca, 'in');
   b.wire(part, 'gate', delay, 'trig');
   b.wire(part, 'gate', eg1Gate, 'a');

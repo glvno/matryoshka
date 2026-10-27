@@ -321,6 +321,20 @@ kit('filter-notch', (add, wire) => {
   wire(flt, 'ap', mix, 'in3');
   wire(mix, 'out', out, 'l');
 });
+// the hp6 output (the MS-20 filter's resonant 6 dB high pass) alone, swept by an LFO, at high and low resonance
+for (const res of [0.2, 0.95]) {
+  kit(`filter-hp6-${res}`, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 2, level: res > 0.5 ? 0.08 : 0.5 }); // (the resonance peak below the clamp)
+    const lfo = add('lfo', 0, 0, { wave: 0, rate: 0.9, depth: 1 });
+    const flt = add('filter', 0, 0, { cutoff: 400, res, cvamt: 2 });
+    const out = add('output', 0, 0, { level: 0.5 });
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', flt, 'in');
+    wire(lfo, 'out', flt, 'cv');
+    wire(flt, 'hp6', out, 'l');
+  });
+}
 kit('filter-morph', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 2, level: 0.8 });

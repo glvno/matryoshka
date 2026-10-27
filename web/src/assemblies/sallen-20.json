@@ -1252,7 +1252,7 @@
     {
       "from": {
         "module": 14,
-        "port": "hp"
+        "port": "hp6"
       },
       "to": {
         "module": 15,

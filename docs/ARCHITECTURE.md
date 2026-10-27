@@ -435,6 +435,7 @@ Wanderer and Wanderer XL use legato pitch selection and subtract this pulse from
 ## Filter: notch, peak, allpass outputs
 
 - `filter` outputs `notch`, `peak`, `ap` appended after `mix` (positions are append-only, so the binary patch format is unchanged). From stage 1's values (v0 = in, v1 = bp, v2 = lp12, k = 2 − 1.98·res): notch = v0 − k·v1 (= lp12 + hp), peak = v2 − hp (= lp12 − hp: unity far from the cutoff, 2/k at it), allpass = v0 − 2k·v1 (= notch − k·bp, |H| = 1). The C version computes them only when one of the three outputs has a cable (`dummy_out` check once per block). Golden kit `filter-notch` (saw, sine LFO on cv, the three outputs mixed): 0.2 % rel rms.
+- `filter` output `hp6` (patch format 45), appended after `ap`: hp + 2·bp = (s² + 2s) / (s² + k·s + 1), the high pass of the Korg MS-20's filter as T. E. Stinchcombe derives it ("A Study of the Korg MS10 & MS20 Filters", section 7): 6 dB per octave below the cutoff, √5 / k at it, unity above. The C version computes it in the same branch as notch / peak / allpass. Sallen 20 takes its high pass from it. Golden kits `filter-hp6-0.2` and `filter-hp6-0.95`.
 
 ## Ladder filter
 
