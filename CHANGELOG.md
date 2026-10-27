@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- On the FM-1, the SEQ page opens with about half the screen traffic, so it appears sooner while the sequencer plays. SEQ or SEL from a Steps track's device page drew the SEQ page twice (and the device page's header first). Opening the SEQ, SONG and menu pages cleared the screen twice, and a whole SEQ page cleared the ground under the cells it then painted over. Host pixel counts (`tools/panel_test.sh`, Elvira 2), not yet measured on a device: SEQ from a Steps track's device page 242,832 → 76,248 px; SEQ from another device page 147,576 → 76,248; the SONG page 136,664 → 83,864; ENV 118,592 → 68,672; the menu 166,922 → 114,122; one whole SEQ page 86,616 → 68,088. The screen looks the same.
+
 - The FM-1 no longer stalls when it is plugged into a computer where no app reads its MIDI. Each message for the editor (a step entered, a knob turned) waited up to 0.2 s for USB room there, so entering steps quickly froze the screen, the LEDs and the keys for seconds, and the sound cut out. Measured on the test rig with the step keys played by hand (Elvira 2, sequencer running): the longest pass of the main loop 7.46 s before, 0.33 s with the first version of this fix. Now a message waits at most 0.05 s, and once one has waited that long with nothing read, the next ones are dropped at once until the computer reads again; the editor syncs when it connects.
 
 - Canvas XL exposes all patch-field control sources, including four independent random voltages. Choose PATCH on an input row to connect an assembly patch cord.

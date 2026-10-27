@@ -152,8 +152,12 @@ static void page_show(uint32_t p)
         header_draw();
     leds_play();
     leds_panel();                                   /* (GLO is lit while its page shows) */
-    if (!dev_like())
-        lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+    if (page == PAGE_ENV || page == PAGE_PRESETS) {   /* their rows are drawn whole, edge to edge: only the strips above
+                                                     * and below them are cleared (the menu, SEQ and SONG pages clear their
+                                                     * own ground when drawn whole) */
+        lcd_fill(0, BAR_H, 240, ENV_Y0 - BAR_H, C_BG);
+        lcd_fill(0, ENV_Y0 + ENV_ROWS * ENV_ROW_H, 240, 240u - ENV_Y0 - ENV_ROWS * ENV_ROW_H, C_BG);
+    }
     view_draw(1);
 }
 
