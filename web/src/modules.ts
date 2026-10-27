@@ -727,7 +727,7 @@ const vca: ModuleImpl<null> = {
   },
 };
 
-/** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp, stage 2 takes lp12 and adds the other 12 dB (lp24) */
+/** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp (and hp6, a resonant 6 dB high pass, appended), stage 2 takes lp12 and adds the other 12 dB (lp24) */
 const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
   def: {
     type: 'filter',
@@ -779,6 +779,9 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
       c.out.notch[i] = v0 - kv1; // = lp12 + hp: a null at the cutoff
       c.out.peak[i] = v2 - hp; // = lp12 - hp: a resonant bump at the cutoff over a flat response
       c.out.ap[i] = v0 - 2 * kv1; // = notch - k bp: flat magnitude, the phase turns through 360 degrees around the cutoff
+      // hp + 2 bp: the high pass of the MS-20 filter (s^2 + 2s over the same resonant denominator; Stinchcombe, "A Study of
+      // the Korg MS10 & MS20 Filters", section 7): 6 dB per octave below the cutoff, the resonance peak at it, flat above
+      c.out.hp6[i] = hp + 2 * v1;
     }
     if (c.display) {
       c.display.cutoff = fc;
@@ -3194,6 +3197,7 @@ ladder.def.inputs.push(control('fm'));
 lfo.def.inputs.push(control('shape'));
 lfo.def.outputs.push(control('pulse'));
 adsr.def.inputs.push(gate('hold'));
+filter.def.outputs.push(audio('hp6'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 

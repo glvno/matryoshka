@@ -3726,8 +3726,8 @@ static int32_t svf_g(uint32_t rinc)
 
 #define SQRT2_24 23726566   /* stage 2's k: sqrt(2) in Q24 (Q 0.7), the resonance comes from stage 1 only */
 
-/* Two stages: stage 1 (12 dB) gives lp12, bp, hp (and notch, peak, allpass from the same values, only when a cable
- * leaves them); stage 2 filters lp12 again (lp24); mix fades lp24 -> hp by morph.
+/* Two stages: stage 1 (12 dB) gives lp12, bp, hp (and notch, peak, allpass, and hp6 = hp + 2 bp, a resonant 6 dB high
+ * pass, from the same values, only when a cable leaves them); stage 2 filters lp12 again (lp24); mix fades lp24 -> hp by morph.
  * The integrator states are Q20 (+-2048: room for the resonance peak), the signals Q16; products are rounded.
  * Key tracking moves the cutoff by the voice pitch (octaves, C4 = as set), like the host engine, once per block. */
 static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
@@ -3743,7 +3743,7 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
     svf_coef_t c, d;
     int fixed = !(nd->conn & (1u << FILTER_I_CV));
     int msig = nd->conn & (1u << FILTER_I_MORPH);
-    int ext = notch != dummy_out || peak != dummy_out || apo != dummy_out;   /* the notch / peak / allpass outputs are in use */
+    int ext = notch != dummy_out || peak != dummy_out || apo != dummy_out || it->out[FILTER_O_HP6] != dummy_out;   /* the notch / peak / allpass / hp6 outputs are in use */
     int st2 = lp24 != dummy_out || mix != dummy_out;     /* the second stage only feeds lp24 and mix: skipped when neither is */
     int32_t lcv = 0;
     if (tr)
@@ -3783,10 +3783,13 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
             lp24[i] = (w2 + 8) >> 4;
             mix[i] = (w2 + mul16(h - w2, m) + 8) >> 4;
         }
-        if (ext) {                                                        /* from the same states: notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp */
+        if (ext) {                                                        /* from the same states: notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
             notch[i] = (v0 - kv1 + 8) >> 4;
             peak[i] = (v2 - h + 8) >> 4;
             apo[i] = (v0 - 2 * kv1 + 8) >> 4;
+            /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). Read through it->out here, not a local: a ninth
+             * live pointer made every filter dearer (npm run cpu-costs: filter run 29567 -> 31116 cycles; this way 25987) */
+            it->out[FILTER_O_HP6][i] = (h + 2 * v1 + 8) >> 4;
         }
     }
     it->s.flt.ic1 = ic1;

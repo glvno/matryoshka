@@ -1036,7 +1036,7 @@
    "x": 2960,
    "y": 20,
    "params": {
-    "level": 0.63
+    "level": 1
    }
   },
   {
@@ -1336,7 +1336,7 @@
   {
    "from": {
     "module": 15,
-    "port": "hp"
+    "port": "hp6"
    },
    "to": {
     "module": 16,
