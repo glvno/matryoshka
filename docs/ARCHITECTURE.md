@@ -310,6 +310,10 @@ Main provides `bend` (−1..1), `mod`, `at`, `breath`, `sustain` and `foot` (0..
 
 The browser parses these messages in `input.ts`, and `Engine.bend`, `cc` and `aftertouch` store one set of values for every voice. Firmware dispatch in `midi_input.h` respects MENU > MIDI CHANNEL for these controls. `eng_ctl` stores their values and `m_fm1` writes the outputs. The new outputs are appended after the panel-button outputs, preserving existing port numbers. `MAX_OUT` is 19; module parameter records are unchanged.
 
+## Extended oscillator waveforms
+
+Oscillator adds sharktooth (the equal mix of its triangle and saw) and reverse saw (the negated saw). These are ideal waveforms after the Model D's triangle/saw hybrid and reverse saw, described in the [manufacturer's manual, oscillator bank](https://www.suonoelettronico.com/downloads/minimoog_manuale.pdf). They use the same edge smoothing, sync, unison and phase-modulation paths as the existing waves. The new choices use `top: 5` with the existing `max: 3`; old parameter routing and morphs retain their original range ([D-435](ledger/modules.md#D-435), Proposed).
+
 ## Audio-rate Ladder cutoff
 
 Ladder's `fm` input adds a sample-by-sample cutoff signal to its existing `cv` input, whose value is averaged over the block. Both use `cvamt` in octaves. Coefficients are reused while the sample value stays the same. The new input follows `p1` and `p2`, so old patches keep their cable numbers, parameter records and sound ([D-434](ledger/modules.md#D-434), Proposed).

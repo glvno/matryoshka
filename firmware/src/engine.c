@@ -220,6 +220,11 @@ HOT int32_t wave_square(uint32_t ph, uint32_t dt, uint32_t pw, uint32_t *rc)
     v -= poly_blep(ph - pw, dt, rc);                      /* the same increment: one cache serves both edges */
     return v;
 }
+HOT int32_t wave_shark(uint32_t ph, uint32_t dt, uint32_t *rc)
+{
+    return (wave_tri(ph) + wave_saw(ph, dt, rc)) >> 1;
+}
+
 /* rc: two words of blep_pos cache for this phase */
 static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw, uint32_t *rc)
 {
@@ -230,6 +235,10 @@ static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw, uint32_
         return wave_tri(ph);
     case 2:
         return wave_saw(ph, dt, rc);
+    case 4:
+        return wave_shark(ph, dt, rc);
+    case 5:
+        return -wave_saw(ph, dt, rc);
     default:
         return wave_square(ph, dt, pw, rc);
     }
@@ -3005,6 +3014,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 case 0: OSC_PLAIN(sin_turn(phase)) break;
                 case 1: OSC_PLAIN(wave_tri(phase)) break;
                 case 2: OSC_PLAIN(wave_saw(phase, dt, r)) break;
+                case 4: OSC_PLAIN(wave_shark(phase, dt, r)) break;
+                case 5: OSC_PLAIN(-wave_saw(phase, dt, r)) break;
                 default: OSC_PLAIN(wave_square(phase, dt, pw, r)) break;
                 }
                 s1 = n ? sync[n - 1] : s1;                                  /* (the unconnected sync input reads 0) */
@@ -3013,6 +3024,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 case 0: OSC_SYNC(sin_turn(phase)) break;
                 case 1: OSC_SYNC(wave_tri(phase)) break;
                 case 2: OSC_SYNC(wave_saw(phase, dt, r)) break;
+                case 4: OSC_SYNC(wave_shark(phase, dt, r)) break;
+                case 5: OSC_SYNC(-wave_saw(phase, dt, r)) break;
                 default: OSC_SYNC(wave_square(phase, dt, pw, r)) break;
                 }
             }
@@ -3029,6 +3042,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 #define OSC_TRI(p, d, r) wave_tri(p)
 #define OSC_SAW(p, d, r) wave_saw(p, d, r)
 #define OSC_SQR(p, d, r) wave_square(p, d, pw, r)
+#define OSC_SHARK(p, d, r) wave_shark(p, d, r)
+#define OSC_REVERSE(p, d, r) (-wave_saw(p, d, r))
 #define OSC_UNI(W)                                                                      \
             for (i = 0; i < n; i++) {                                                   \
                 int rst = sync[i] >= 32768 && s1 < 32768;   /* a rising edge on sync restarts the phases */ \
@@ -3059,6 +3074,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
             case 0: OSC_UNI(OSC_SIN) break;
             case 1: OSC_UNI(OSC_TRI) break;
             case 2: OSC_UNI(OSC_SAW) break;
+            case 4: OSC_UNI(OSC_SHARK) break;
+            case 5: OSC_UNI(OSC_REVERSE) break;
             default: OSC_UNI(OSC_SQR) break;
             }
 #undef OSC_UNI
@@ -3066,6 +3083,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 #undef OSC_TRI
 #undef OSC_SAW
 #undef OSC_SQR
+#undef OSC_SHARK
+#undef OSC_REVERSE
             for (j = 0; j < 4; j++)
                 ph[j] = lph[j];
         }

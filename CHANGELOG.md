@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Oscillator adds sharktooth (a triangle/saw hybrid) and reverse saw, including unison, sync and phase modulation. Existing waveform indices and parameter-input ranges stay unchanged.
+
 - Math and Logic calculate only the selected operation when one output is connected. The instruction model counts another 3% less work for Io 4, with all 134 audio kits unchanged.
 
 - Ladder has an audio-rate cutoff input for oscillator-speed filter modulation. Its existing cutoff input retains its block-rate behavior for saved patches.

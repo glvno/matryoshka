@@ -971,10 +971,11 @@ static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0
 static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144};
 static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429, 0, 65536, 655360, 32768, 0};
 static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655, 655, 65536, 65536, 655, 65536};
+static const int32_t OSC_TOP[] = {327680, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144};
 static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL", "FB", "UNISON", "DETUNE", "BLEND", "STACK"};
 static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "", "", "", "", "CT", "", ""};
-static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", 0};
+static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "SHARKTOOTH", "REVERSE SAW", 0};
 static const char *const OSC_CH10[] = {"OFF", "+OCT", "+5TH", "+OCT+5TH", "-OCT", 0};
 static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10};
 static const char *const LFO_INNAMES[] = {"CLK", "RESET", "P1", "P2"};
@@ -1412,7 +1413,7 @@ static const char *const *const SELECT_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0},   /* fm1 */
-    {OSC_NIN, OSC_NOUT, OSC_NPAR, 0, OSC_CVBASE, -1, OSC_NDATA, 1, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN, OSC_INNAMES, OSC_LOG, OSC_UNIT, OSC_CH, 0, 0},   /* osc */
+    {OSC_NIN, OSC_NOUT, OSC_NPAR, 0, OSC_CVBASE, -1, OSC_NDATA, 1, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN, OSC_INNAMES, OSC_LOG, OSC_UNIT, OSC_CH, OSC_TOP, 0},   /* osc */
     {LFO_NIN, LFO_NOUT, LFO_NPAR, 0, LFO_CVBASE, -1, LFO_NDATA, 0, LFO_MIN, LFO_MAX, LFO_DEF, LFO_INC, "LFO", LFO_PN, LFO_INNAMES, LFO_LOG, LFO_UNIT, LFO_CH, 0, LFO_SINCE},   /* lfo */
     {NOISE_NIN, NOISE_NOUT, NOISE_NPAR, 0, NOISE_CVBASE, -1, NOISE_NDATA, 1, NOISE_MIN, NOISE_MAX, NOISE_DEF, NOISE_INC, "NOISE", NOISE_PN, NOISE_INNAMES, NOISE_LOG, NOISE_UNIT, NOISE_CH, 0, 0},   /* noise */
     {CONST_NIN, CONST_NOUT, CONST_NPAR, 0, CONST_CVBASE, -1, CONST_NDATA, 0, CONST_MIN, CONST_MAX, CONST_DEF, CONST_INC, "OFFSET", CONST_PN, CONST_INNAMES, CONST_LOG, CONST_UNIT, CONST_CH, 0, 0},   /* const */

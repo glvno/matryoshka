@@ -871,6 +871,18 @@ kit('osc-feedback', (add, wire) => {
   wire(env, 'env', vca, 'cv');
   wire(vca, 'out', out, 'l');
 });
+for (const wave of [4, 5]) for (const mode of ['plain', 'unison', 'sync', 'fm', 'feedback']) {
+  kit(`osc-wave-${wave}-${mode}`, (add, wire) => {
+    const carrier = add('osc', 0, 0, { wave, level: .3, coarse: -12, unison: mode === 'unison' ? 3 : 1,
+      detune: 8, pm: mode === 'fm' ? .5 : 0, fb: mode === 'feedback' ? .1 : 0 });
+    if (mode === 'sync' || mode === 'fm') {
+      const mod = add('osc', 0, 0, { wave: mode === 'sync' ? 3 : 0, coarse: -19, level: .8 });
+      wire(mod, 'out', carrier, mode === 'sync' ? 'sync' : 'pm');
+    }
+    const out = add('output', 0, 0, { level: 1 });
+    wire(carrier, 'out', out, 'l');
+  });
+}
 kit('fm-2op', (add, wire) => {
   // two operators: modulator (ratio 2, its own envelope, velocity on the index) into the carrier's pm, carrier feedback 0.2
   const kb = add('fm1', 0, 0);

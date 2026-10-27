@@ -88,6 +88,7 @@ const param = (name: string, min: number, max: number, def: number, extra: Parti
 const cutoffRest = (p: Record<string, number>, cv: number): number => (p.cutoff ?? 1000) * Math.pow(2, cv * (p.cvamt ?? 1));
 
 const WAVES = ['sine', 'triangle', 'saw', 'square'];
+const OSC_WAVES = [...WAVES, 'sharktooth', 'reverse saw'];
 const C4 = 261.6255653;
 
 function polyBlep(t: number, dt: number): number {
@@ -110,6 +111,10 @@ function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
       return 4 * Math.abs(phase - Math.floor(phase + 0.5)) - 1;
     case 2:
       return 2 * phase - 1 - polyBlep(phase, dt);
+    case 4: // ideal triangle/saw hybrid: both odd and even harmonics, softer than the saw alone
+      return (wave(1, phase, dt) + wave(2, phase, dt)) / 2;
+    case 5:
+      return -wave(2, phase, dt);
     default: {
       let v = phase < pw ? 1 : -1;
       v += polyBlep(phase, dt);
@@ -286,7 +291,7 @@ const osc: ModuleImpl<OscState> = {
     inputs: [control('pitch'), audio('pm'), gate('sync')],
     outputs: [audio('out')],
     params: [
-      param('wave', 0, 3, 0, { step: 1, choices: WAVES }),
+      param('wave', 0, 3, 0, { step: 1, choices: OSC_WAVES, top: 5 }),
       param('pw', 0.05, 0.95, 0.5, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
