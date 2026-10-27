@@ -6,6 +6,8 @@
 - Silver Box has a named SAW / SQUARE switch. Its lean copy inside `<7PH` keeps the plain waveform control to fit the device.
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+- Arpeggiator has a continuous rate input in hertz, with zero to pause and external-clock precedence. Its CPU estimate now includes note scheduling.
+
 - Voicing adds a key-press trigger. Wanderer and Wanderer XL retrigger their envelopes for every key press, including a note between two held notes, and no longer retrigger when releasing an outer note.
 
 - Math adds signed 16-bit audio XOR. Elvira 2 XL uses it for BITMANGLER; the original instrument's exact mask sequence remains unverified.
