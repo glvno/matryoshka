@@ -1075,7 +1075,9 @@ const namePositions = (asmName: string, names: Record<string, string[]>): void =
 // original's diode, 47 kOhm and 1 uF), to the cutoff. RESONANCE is a Macro that sets the ladder's resonance and the sweep's
 // smoothing at once, as the original's resonance pot has a second gang in the sweep circuit: from 20 ms at 0 (the sweep
 // follows the MEG) to 0.68 s at 10 (99 % of a 147 kOhm x 1 uF charge), so at high resonance consecutive accents build up.
-// The ladder's cvamt is 1: ENV MOD and the accent each have their own amount. The sequencer is part of the instrument: a
+// The ladder's cvamt is 1: ENV MOD and the accent each have their own amount. TUNING is an Offset into the oscillator's
+// pitch (in octaves): the owner's manual gives the knob ±500 cents (specifications, p. 89), more than the oscillator's fine
+// tune reaches. The sequencer is part of the instrument: a
 // patch's Steps track is it (a pattern's pitch, accent, slide, tie and rest, octave, triplet time, tempo). Left out:
 // MIX IN (needs audio input), the 64-pattern memory, the tracks that chain patterns with transpose, and song mode (#351).
 asm('Silver Box', 'Voices', (b) => {
@@ -1095,7 +1097,9 @@ asm('Silver Box', 'Voices', (b) => {
   const vca = b.add('vca', 5, 0, { gain: 0.8 }, { p1: 'gain', att: [0.25, 1] });
   const waveform = b.add('select', 1, -1, { count: 2, pos: 1, v1: 0, v2: 1 });
   b.wire(waveform, 'out', osc, 'p1'); // saw at the base; the second position adds up to the square at the range's top
+  const tune = b.add('const', 1, 2, { value: 0 });
   b.wire(part, 'pitch', gl, 'in');
+  b.wire(tune, 'out', osc, 'pitch');
   b.wire(part, 'legato', gl, 'p1');
   b.wire(gl, 'out', osc, 'pitch');
   b.wire(part, 'vel', accOn, 'a');
@@ -1119,8 +1123,8 @@ asm('Silver Box', 'Voices', (b) => {
   b.input('keys', part, 'keys');
   b.output('out', vca, 'out');
   b.param('waveform', waveform, 'pos', { head: 'tone' });
-  b.param('tuning', osc, 'fine');
-  b.param('cutoff', flt, 'cutoff');
+  b.param('tuning', tune, 'value');
+  b.param('cut off freq', flt, 'cutoff');
   b.param('resonance', res, 'value');
   b.param('env mod', envMod, 'gain');
   b.param('decay', meg, 'd');

@@ -492,6 +492,16 @@ after.push(() => {
   removeMember(p, a, selector);
   removeModule(p, selector);
   oscillator.map!.p1 = defaultMap(DEFS.osc).p1;
+  // Also, its TUNING row stays on the oscillator's fine tune (a
+  // semitone either way), the Offset that gives the standalone Silver Box the TB-303's ±500 cents is left out (it plays 0
+  // there, so the sound is the same), and the cutoff row keeps its short name
+  a.params.find((r) => r.label === 'cut off freq')!.label = 'cutoff';
+  const tuning = a.params.find((r) => r.label === 'tuning')!;
+  const offset = tuning.module;
+  tuning.module = p.cables.find((c) => c.from.module === offset)!.to.module;
+  tuning.param = 'fine';
+  removeModule(p, offset);
+  removeMember(p, a, offset);
   wire(p, main.id, 'keys', st.id, 'keys');
   plugIn(p, st.id, 'keys', a, 'keys');
   plugOut(p, a, 'out', mix.id, 'in4');

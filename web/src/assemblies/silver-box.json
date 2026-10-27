@@ -381,6 +381,29 @@
         "k3": [],
         "k4": []
       }
+    },
+    {
+      "id": 15,
+      "type": "const",
+      "x": 320,
+      "y": 1120,
+      "params": {
+        "value": 0
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "value"
+        ],
+        "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
     }
   ],
   "cables": [
@@ -402,6 +425,16 @@
       "to": {
         "module": 2,
         "port": "in"
+      }
+    },
+    {
+      "from": {
+        "module": 15,
+        "port": "out"
+      },
+      "to": {
+        "module": 3,
+        "port": "pitch"
       }
     },
     {
@@ -631,14 +664,14 @@
       ]
     },
     {
-      "module": 3,
-      "param": "fine",
+      "module": 15,
+      "param": "value",
       "label": "tuning"
     },
     {
       "module": 11,
       "param": "cutoff",
-      "label": "cutoff"
+      "label": "cut off freq"
     },
     {
       "module": 10,
