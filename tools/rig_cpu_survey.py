@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Run with build/venv/bin/python; only with the registered rig the ONLY FM-1 connected (npm run rig -- check).
-# usage: rig_cpu_survey.py PRESETS_H OUT.json [name,name,...] [--hold SECONDS]
+# usage: rig_cpu_survey.py PRESETS_H OUT.json [name,name,...] [--hold SECONDS] [--run]
 # For each factory patch in PRESETS_H: upload it (live), then the longest audio ISR (DIAG page 127) at rest and with
 # 1 / 4 / 8 notes held over USB MIDI, 2 s each, sampled every 0.5 s. Reload for EACH phase so a voice shed in an earlier
 # phase cannot make the next one look cheaper. Peaks include the first block; a sample need not precede shedding.
@@ -25,13 +25,15 @@ def cpu(link):
 NOTES = [60, 64, 67, 71, 72, 76, 79, 83]
 
 
-def phase(link, n, data, hold=2.0):
+def phase(link, n, data, hold=2.0, run=False):
     M.upload_chunks(link, data)
     c = M.crc16(data)
     link.ack(M.frame(0x11, [len(data) & 0xFF, len(data) >> 8, c & 0xFF, c >> 8]), 0x11, wait=3.0)
     samples = []
     muted = shed = 0
     try:
+        if run:
+            link.out.send(mido.Message("start"))
         for k in NOTES[:n]:
             link.out.send(mido.Message("note_on", note=k, velocity=100))
         t = time.monotonic()
@@ -42,6 +44,8 @@ def phase(link, n, data, hold=2.0):
             muted = max(muted, w[3])
             shed = max(shed, w[7]) if len(w) > 7 else None
     finally:
+        if run:
+            link.out.send(mido.Message("stop"))
         for k in NOTES[:n]:
             link.out.send(mido.Message("note_off", note=k))
     return max(samples), samples, muted, shed
@@ -52,6 +56,7 @@ parser.add_argument("presets")
 parser.add_argument("output")
 parser.add_argument("names", nargs="?")
 parser.add_argument("--hold", type=float, default=2.0)
+parser.add_argument("--run", action="store_true", help="run each patch's transport during every phase")
 args = parser.parse_args()
 if not 1 <= args.hold <= 60:
     parser.error("--hold must be between 1 and 60 seconds per phase")
@@ -65,9 +70,9 @@ res = []
 for slot, (name, data) in enumerate(ps):
     if filt and name not in filt:
         continue
-    r = {"slot": slot, "name": name}
+    r = {"slot": slot, "name": name, "transport": args.run, "hold_seconds": args.hold}
     for n in (0, 1, 4, 8):
-        pk, s, ovl, shed = phase(link, n, data, args.hold)
+        pk, s, ovl, shed = phase(link, n, data, args.hold, args.run)
         r[f"n{n}_us"] = pk
         r[f"n{n}_samples"] = s
         r[f"n{n}_ovl"] = ovl
