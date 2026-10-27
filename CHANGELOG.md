@@ -90,6 +90,15 @@
   column (A meter to P output 2 level); the oscillators' full dial ranges, output filters flat in the middle, the pan
   knobs and the joystick's ranges.
 
+- **Hera 6 XL's card is the Juno-106's panel** (#359): one row per control of the owner's manual, named as the panel
+  names it. Range, PWM mode (LFO / MAN), pulse, saw, HPF (0 to 3, 0 the bass boost), VCF polarity, VCA mode (ENV /
+  GATE), chorus (OFF, I, II) and the portamento switch are named switches; one PWM slider sets the width on MAN and the
+  depth on LFO. The hold pedal is the FX button. 61 rows → 49 (the main card 41 → 33). The sound at the patch's values
+  is unchanged (the same samples).
+- **Algo Four XL's card is the DX100's parameter list** (#359), named as its display names them. Each operator's 14
+  parameters show one operator at a time under an "op" row. LFO wave (SAW UP, SQUARE, TRIANGLE, S/HOLD: the sine is
+  gone), LFO sync, porta mode, foot sw and each operator's on-off and AMS on-off are named switches. 153 rows → 137 (the
+  main card 92 → 79, 37 at a time). The sound at the patch's values is unchanged (the same samples).
 - **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
   same range: turning it moves both (two filters' cutoff, say), and so do a cable or
   a macro on it, a card preset and the FM-1's knob on its page. "split" gives each its own row again. A row that sets
