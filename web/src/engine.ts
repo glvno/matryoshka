@@ -224,7 +224,7 @@ export class Engine {
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
     this.groups = pg.map((x, i) => {
       const g = oldGroups.get(x.key) ?? newGroup(x.key, x.cfg, i);
-      const stackChanged = g.cfg.unisonParts !== x.cfg.unisonParts;
+      const stackChanged = g.cfg.unisonParts !== x.cfg.unisonParts || (g.cfg.unison && x.cfg.unison && g.cfg.unisonShare !== x.cfg.unisonShare);
       g.cfg = { ...x.cfg };
       if (stackChanged && g.cfg.unison) this.monoUpdate(g);
       g.src = x.src ?? -1;
@@ -940,6 +940,7 @@ export class Engine {
    * envelopes restart (one low gate sample); auto and on keep them running.
    */
   private monoUpdate(g: Group): void {
+    if (g.cfg.unisonShare) { this.sharedUnison(g); return; }
     const { legato, priority } = g.cfg;
     let top = g.held[g.held.length - 1];
     if (priority) for (const h of g.held) if (priority === 1 ? h.note < top.note : h.note > top.note) top = h;
@@ -953,6 +954,23 @@ export class Engine {
       this.monoPart(x, i < count ? top : undefined, legato);
       after = Math.max(after, this.stamp);
     }
+    this.stamp = after;
+  }
+
+  /** Equal-sized stacks for selected held notes, in keyboard order. Spare voices release. */
+  private sharedUnison(g: Group): void {
+    const slots = Math.min(g.parts.length, g.cfg.unisonParts || g.parts.length);
+    const { priority, legato } = g.cfg;
+    const selected = (priority ? [...g.held].sort((a, b) => priority === 1 ? a.note - b.note : b.note - a.note).slice(0, slots)
+      : g.held.slice(-slots)).sort((a, b) => a.note - b.note);
+    const copies = selected.length ? Math.floor(slots / selected.length) : 0;
+    const stamp = this.stamp;
+    let after = stamp;
+    g.parts.forEach((x, i) => {
+      this.stamp = stamp;
+      this.monoPart(x, copies && i < copies * selected.length ? selected[Math.floor(i / copies)] : undefined, legato);
+      after = Math.max(after, this.stamp);
+    });
     this.stamp = after;
   }
 

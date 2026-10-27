@@ -39,7 +39,7 @@
 #define DELAY_LEN 23000u            /* 521 ms at ENG_SR (the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
-#define MAX_HELD 16
+#define MAX_HELD 128
 #define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
 #define ENG_MAX_TRACKS 16            /* Steps modules of a patch (their notes live in E.trk_note) */
 #define ENG_MAX_NOTES 512            /* the notes of all Steps tracks of a patch (patchbin.ts DEVICE.notes) */
@@ -958,8 +958,8 @@ int eng_load(const uint8_t *p, uint32_t len)
         g->parts = q[0] & 15u;
         g->stack = q[0] >> 4;
         g->assign = q[1];
-        g->legato = q[2] & 0x7Fu;
-        g->unison = q[2] >> 7;
+        g->legato = q[2] & 0x3Fu;
+        g->unison = q[2] & 0x80u ? (q[2] & 0x40u ? 2u : 1u) : 0u;
         g->priority = q[3] & 0x7Fu;
         g->no_steal = q[3] >> 7;
         for (v = 0; v < ENG_MAX_PARTS; v++) {
@@ -1691,9 +1691,40 @@ static int32_t note_pitch(uint32_t note)
  * same stamps. (engine.ts monoUpdate / monoPart) */
 static void mono_part(const grp_t *g, pv_t *x, int k);
 
+/* Select by priority, then put the selected notes in keyboard order. Only the small voice pool is sorted. */
+static void shared_unison(grp_t *g)
+{
+    uint8_t keys[ENG_MAX_PARTS];
+    uint32_t i, j, at, nk = 0, slots = g->stack && g->stack < g->parts ? g->stack : g->parts;
+    uint32_t copies, s0 = E.stamp, s1 = s0;
+    for (i = 0; i < g->nheld; i++) {
+        for (at = 0; at < nk; at++) {
+            uint32_t prev = keys[at];
+            if (!g->priority || (g->priority == 1 ? g->held_note[i] < g->held_note[prev] : g->held_note[i] > g->held_note[prev])) break;
+        }
+        if (at >= slots) continue;
+        if (nk < slots) nk++;
+        for (j = nk - 1u; j > at; j--) keys[j] = keys[j - 1u];
+        keys[at] = (uint8_t)i;
+    }
+    for (i = 1; i < nk; i++) {
+        uint8_t k = keys[i];
+        for (j = i; j && g->held_note[keys[j - 1u]] > g->held_note[k]; j--) keys[j] = keys[j - 1u];
+        keys[j] = k;
+    }
+    copies = nk ? slots / nk : 0;
+    for (i = 0; i < g->parts; i++) {
+        E.stamp = s0;
+        mono_part(g, &E.pv[g->pv0 + i], copies && i < copies * nk ? keys[i / copies] : -1);
+        if (E.stamp > s1) s1 = E.stamp;
+    }
+    E.stamp = s1;
+}
+
 static void mono_update(grp_t *g)
 {
     int k = -1;
+    if (g->unison == 2u) { shared_unison(g); return; }
     uint32_t i, n = g->unison ? (g->stack && g->stack < g->parts ? g->stack : g->parts) : 1u, s0 = E.stamp, s1 = s0;
     if (g->nheld) {
         k = (int)g->nheld - 1;

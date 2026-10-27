@@ -2335,9 +2335,9 @@ asm('Briefcase 3', 'Voices', (b) => {
 // taken back out of the keys); PORTAMENTO (time; switch 1 off, 2 on: a slew per voice, each voice gliding from its own last
 // note); TRANSPOSE (1 normal, 2 one octave down); TUNING (+-50 cents: 0.04 octave). The KEY ASSIGNMENT MODE is two rows
 // of the Voice allocator: `assign` rotate is POLY I, lowest POLY II; `unison` on is UNISON I (all four voices on the
-// lowest key held). HOLD (1 off, 2 on): a voice whose key is let go keeps its gate while its VCA envelope still sounds.
-// Not here: UNISON II (one key four voices, two keys two each, three or four one each) needs a Voice allocator mode that
-// shares the voices among the held keys (#351). EXT CLOCK, the VCF CONT, EXP and DAMPER pedals, the memories and VOLUME
+// lowest key held); SHARE is UNISON II (four voices on one key, two each on two keys, one each on three or four).
+// HOLD (1 off, 2 on): a voice whose key is let go keeps its gate while its VCA envelope still sounds.
+// The combined four-position assignment control still uses separate assign/unison rows. EXT CLOCK, the VCF CONT, EXP and DAMPER pedals, the memories and VOLUME
 // (the patch's level) are hardware or storage. The LFO's rate reaches 40 Hz (the JP-4's 80 Hz).
 import { BEND_OCT } from '../src/modules';
 /** Io 4 and Vernon 100 have many small modules: lay them all out on the grid in the order they were added, eight a row */

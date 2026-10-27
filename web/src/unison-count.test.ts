@@ -77,7 +77,7 @@ it('preserves the poly count and other group settings in the compact device reco
   const { p, alloc } = setup();
   Object.assign(alloc.params, { assign: 3, priority: 2, steal: 0, legato: 1 });
   const b = encodePatch(p);
-  expect(b[1]).toBe(38);
+  expect(b[1]).toBe(39);
   expect([...b.slice(8, 12)]).toEqual([0x25, 3, 0x81, 0x82]);
   alloc.params.stack = 16;
   expect(encodePatch(p)[8]).toBe(0x85);

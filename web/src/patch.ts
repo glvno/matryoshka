@@ -380,6 +380,8 @@ export interface PolyCfg {
   unison?: boolean;
   /** voices stacked in unison; absent or zero: all poly voices, otherwise capped by parts */
   unisonParts?: number;
+  /** distribute the unison pool evenly over the held notes (Jupiter-4 UNISON II) */
+  unisonShare?: boolean;
   /** false: ignore new notes when all polyphonic voices are held; absent: steal by priority */
   steal?: boolean;
   /**
@@ -456,7 +458,9 @@ export function polyCfg(alloc: ModuleInst, cards: PolyCards = {}): PolyCfg {
   };
   const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 3, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
   if (!int('steal', 0, 1, 1)) cfg.steal = false;
-  if (int('unison', 0, 1, 0)) cfg.unison = true;
+  const unison = int('unison', 0, 2, 0);
+  if (unison) cfg.unison = true;
+  if (unison === 2) cfg.unisonShare = true;
   const stack = int('stack', 0, EDITOR_MAX_PARTS, 0);
   if (stack) cfg.unisonParts = stack;
   const ch = int('channel', 0, 16, 0), low = int('low', 0, 127, 0), high = int('high', 0, 127, 127);

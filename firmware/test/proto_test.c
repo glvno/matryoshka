@@ -300,6 +300,10 @@ int main(int argc, char **argv)
         bin[8] = 0x93u; CHECK(!m1_valid(bin, sizeof bin));
         bin[8] = 0x20u; CHECK(!m1_valid(bin, sizeof bin));
         bin[8] = 0x89u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[8] = 3u; bin[10] = 0xC2u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[1] = 39u; CHECK(m1_valid(bin, sizeof bin));
+        bin[10] = 0x42u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[10] = 0xC3u; CHECK(!m1_valid(bin, sizeof bin));
     }
     /* reference: direct load + parameter */
     CHECK(eng_load(patch, (uint32_t)np) == 0);
