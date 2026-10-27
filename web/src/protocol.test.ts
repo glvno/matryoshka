@@ -127,6 +127,9 @@ describe('sandbox mode on the wire', () => {
     expect(info([1, 64, 255, 1, 8, 246, 1]).midiOut).toBe(false);
     expect(info([1, 64, 255, 1 | 4, 8, 246]).midiOut).toBeNull();   // 1.2 firmware: it does not say
     expect(info([1, 64, 255, 1, 8, 246]).features).toBe(246);
+    expect(info([1, 64, 255, 1, 8, 246, 255]).patchFormats).toBeUndefined();
+    const extended = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 200]))!)!;
+    expect(extended).toMatchObject({ patchFormats: { min: 31, max: 200 }, features: 65526, midiOut: true });
   });
 });
 

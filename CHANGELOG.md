@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The editor checks the firmware’s supported patch-format range before syncing. Older firmware keeps its existing compatibility check.
+
 - Algo Four XL uses one operator picker for all fourteen operator controls. Copies of card controls can span multiple FM-1 pages.
 
 - Io 4 can share its four voices across held notes like Jupiter-4 UNISON II. Choose SHARE on its unison row. Both engines retain all 128 held MIDI keys.

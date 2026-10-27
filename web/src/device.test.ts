@@ -166,6 +166,16 @@ describe('syncsWith', () => {
     expect(syncsWith(info(246 | (15 << 8)))).toBe(false); // unreleased format 35 builds
     expect(syncsWith(info(246 | (7 << 8)))).toBe(false); // 1.3.0 .. 1.4 (format 34)
   });
+  it('uses the reported inclusive range instead of the legacy feature bits', () => {
+    const base = info(0);
+    expect(syncsWith({ ...base, patchFormats: { min: 31, max: 39 } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: 39, max: 39 } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: 31, max: 200 } })).toBe(true);
+    const legacy = info(246 | (255 << 8));
+    expect(syncsWith({ ...legacy, patchFormats: { min: 31, max: 38 } })).toBe(false);
+    expect(syncsWith({ ...legacy, patchFormats: { min: 40, max: 200 } })).toBe(false);
+    expect(syncsWith({ ...legacy, patchFormats: { min: 40, max: 38 } })).toBe(false);
+  });
   it('lets firmware that reads format 39 sync, and an FM-1 not heard from yet', () => {
     expect(syncsWith(info(246 | (255 << 8)))).toBe(true); // format 39
     expect(syncsWith(null)).toBe(true);

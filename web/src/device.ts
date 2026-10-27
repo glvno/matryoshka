@@ -3,7 +3,7 @@
 import { DEFS } from './modules';
 import type { Patch } from './patch';
 import type { StepNote } from './track';
-import { encodePatch, toQ16 } from './patchbin';
+import { encodePatch, toQ16, VERSION } from './patchbin';
 import { deviceView } from './poly';
 
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
@@ -56,12 +56,15 @@ export const liveSync = {
 /** a MIDI Start or Continue (true), Stop (false), or neither (null): the FM-1's PLAY as it goes out (panel.c play_toggle) */
 export const transportOf = (data: ArrayLike<number> | null | undefined): boolean | null =>
   !data || data.length !== 1 ? null : data[0] === 0xfa || data[0] === 0xfb ? true : data[0] === 0xfc ? false : null;
-/** INFO feature bit 15 came with the firmware that reads patch format 39 (#351 Tier 1), the format the editor writes:
- *  older firmware refuses every patch the editor sends, so it cannot sync. (Bit 7, the presets, marked format 34 from 1.2.0
- *  to 1.4.) A format bump raises it to a bit the new firmware brings. */
+/** Last legacy format capability bit: firmware with bit 15 reads formats 31..39. New firmware reports the range
+ *  directly in INFO, so later format changes need no additional feature bits. Keep this bit for older editors. */
 export const FEATURE_SYNC = 32768;
 /** the FM-1 can play the editor's patches (an FM-1 not heard from yet is not held back) */
-export const syncsWith = (info: Info | null): boolean => !info || !!(info.features & FEATURE_SYNC);
+export const syncsWith = (info: Info | null): boolean => {
+  if (!info) return true;
+  const range = info.patchFormats ?? { min: 31, max: info.features & FEATURE_SYNC ? 39 : 0 };
+  return range.min <= VERSION && VERSION <= range.max;
+};
 export const UPDATE_TO_SYNC = 'This FM-1 runs older Matryoshka firmware that cannot play the editor\'s patches: update it to sync.';
 /** the hover of the chip in sandbox mode */
 export const SANDBOX_HOVER = 'Your patch is a sandbox patch, so the FM-1 plays it as a controller: the browser makes the sound. It syncs normally again once the patch fits.';
