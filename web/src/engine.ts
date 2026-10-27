@@ -134,7 +134,7 @@ const IDLE = 6 / 65536;
 const IDLE_CHECK = 32;
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
-  pitch: 0, gate: 0, velocity: 0, keyTrig: false, low: false, high: false, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index, parts, legato: 0, jump: 0, flaw: 0,
+  pitch: 0, gate: 0, velocity: 0, keyTrig: false, low: false, high: false, unison: false, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index, parts, legato: 0, jump: 0, flaw: 0,
   note: -1, on: false, onStamp: 0, offStamp: 0, retrig: false, walk: walkInit(seed),
 });
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
@@ -224,7 +224,9 @@ export class Engine {
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
     this.groups = pg.map((x, i) => {
       const g = oldGroups.get(x.key) ?? newGroup(x.key, x.cfg, i);
+      const stackChanged = g.cfg.unisonParts !== x.cfg.unisonParts;
       g.cfg = { ...x.cfg };
+      if (stackChanged && g.cfg.unison) this.monoUpdate(g);
       g.src = x.src ?? -1;
       for (const v of g.parts) v.idle = false; // the patch changed: every part runs and is judged again
       return g;
@@ -941,13 +943,15 @@ export class Engine {
     const { legato, priority } = g.cfg;
     let top = g.held[g.held.length - 1];
     if (priority) for (const h of g.held) if (priority === 1 ? h.note < top.note : h.note > top.note) top = h;
-    // unison: every part as the one part would be (the same stamps, so the display and the allocator see one note)
+    // Unison uses its own count without changing the polyphonic voice pool.
+    const count = g.cfg.unison ? Math.min(g.parts.length, g.cfg.unisonParts || g.parts.length) : 1;
+    // The same stamps let the display and allocator see one note.
     const stamp = this.stamp;
     let after = stamp;
-    for (const x of g.parts) {
+    for (const [i, x] of g.parts.entries()) {
       this.stamp = stamp;
-      this.monoPart(x, top, legato);
-      after = this.stamp;
+      this.monoPart(x, i < count ? top : undefined, legato);
+      after = Math.max(after, this.stamp);
     }
     this.stamp = after;
   }
@@ -1092,6 +1096,7 @@ export class Engine {
         for (const x of g.parts) {
           x.low = x.on && x.note === low;
           x.high = x.on && x.note === high;
+          x.unison = !!g.cfg.unison;
           x.clock = clock;
           x.tick = this.running ? tick : -1;
           x.ticks = nt;

@@ -110,9 +110,9 @@ static uint32_t pages_at(const uint8_t *p, uint32_t len)
 }
 
 /* bit 7 of a row's parameter byte: a setting of the poly group of that Part (patchbin.ts POLY_ROW_PARAMS): the voices,
- * assign, legato, priority, unison */
+ * assign, legato, priority, unison, steal, stack */
 #define POLY_ROW 0x80u
-#define POLY_FIELDS 6u
+#define POLY_FIELDS ENG_NPOLY
 static int row_ok(uint32_t m, uint32_t par)
 {
     if (par & POLY_ROW)
@@ -126,7 +126,7 @@ static int32_t poly_value(uint32_t m, uint32_t f)
     uint32_t g = (uint32_t)eng_module_group(m) - 1u;
     return eng_poly_get(g, f);
 }
-static int32_t poly_max(uint32_t f) { return f == 0u ? ENG_MAX_PARTS : f >= 4u ? 1 : f == 1u ? 3 : 2; }
+static int32_t poly_max(uint32_t f) { return f == 0u || f == ENG_POLY_STACK ? ENG_MAX_PARTS : f >= 4u ? 1 : f == 1u ? 3 : 2; }
 
 static const ppage_t *pages_now(void);
 static void caps(char *out, const char *s, uint32_t n, uint32_t max);
@@ -752,7 +752,9 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
         int32_t v = poly_value(m, f);
         static const char *const UNI[2] = {"OFF", "ON"};
         unit[0] = 0;
-        if (f == 0u)
+        if (f == ENG_POLY_STACK && !v)
+            put(num, "ALL")[0] = 0;
+        else if (f == 0u || f == ENG_POLY_STACK)
             fmt_int(num, v);
         else
             put(num, f == 1u ? POLY_ASSIGN_NAME[clampi(v, 0, 3)] : f == 2u ? POLY_LEGATO_NAME[clampi(v, 0, 2)] : f == 3u ? POLY_PRIORITY_NAME[clampi(v, 0, 2)] : UNI[v ? 1 : 0])[0] = 0;

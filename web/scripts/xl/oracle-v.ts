@@ -19,7 +19,7 @@
 // - LFO: saw, triangle and square, each on or off, from 0.022 to 500 Hz (`lfo freq` -4..4, three oscillators in phase).
 //   Wheel-Mod: the LFO / noise source mix, through the mod wheel plus the initial amount (and aftertouch), into frequency
 //   A, frequency B, pulse width A, pulse width B and the filter, each by its own amount (the original's switches).
-// - Keys: five voices; unison (the voices row is its voice count while it is on), its detune (semitones), chord memory
+// - Keys: five voices; unison with a separate voice count, its detune (semitones), chord memory
 //   (`chord 2`..`chord 5`: each voice's interval above the key, octaves rounded to semitones, picked per voice by a
 //   Selector on its index; voice 1 plays the key), key priority (low or last) and retrigger (`legato` off); glide; pitch wheel range (octaves: 0.08 a
 //   semitone, 1 an octave); transpose (octaves rounded to semitones); master tune (semitones); MIDI channel.
@@ -27,12 +27,9 @@
 //   amplifier gain spread, on top of the voice cards' flaws. A-440: the reference tone.
 // Not here, and why:
 // - Needing a module type, or a new ability of one, in both engines: a chord learned from the held keys (the Voicing would
-//   need a chord memory; here the intervals are set by hand, and with five voices); a unison voice count apart from the
-//   poly voice count, and detune and chord intervals that act only in unison (the Voicing would need both; here they act
-//   whenever set, so set them to 0 for poly); the sustain / hold footswitch (Main would need a sustain output for MIDI CC
-//   64); the 16 alternative tunings (a tuning table); the seven velocity and eight aftertouch response curves (one curve
-//   here, linear to squared); Poly Mod into the Rev 3 filter at audio rate (the Ladder moves its cutoff once per
-//   128-sample block). The LFO stays three oscillators: the LFO module's fast range reaches 80 Hz, the original 500 Hz.
+//   need a chord memory; here the intervals are set by hand, and with five voices); the 16 alternative tunings and
+//   seven velocity / eight aftertouch curves. Sustain is available from Main but not wired here yet.
+// The LFO stays three oscillators: the LFO module's fast range reaches 80 Hz, the original 500 Hz.
 // Over the FM-1 in modules, instances, buffers, bytes and CPU (Tier 1 of issue #351: 420 % -> 398 %), so it stays an XL.
 // - Hardware: the CV and gate jacks, the filter-envelope and volume pedal jacks, the Tune button (the analog
 //   oscillators' and filters' calibration), the pot modes, parameter transmission over MIDI and program dumps (the
@@ -91,12 +88,18 @@ export const xl: Xl = {
       e.wire(chordPos, 'out', chordMix, 'pos');
       const chordQ = per('quant', 2, 6, { scale: 0, root: 0 });
       e.wire(chordMix, 'out', chordQ, 'in');
-      e.wire(chordQ, 'out', GLIDE, 'in');
+      const chordGate = per('vca', 2.25, 6);
+      e.wire(chordQ, 'out', chordGate, 'in');
+      e.wire(ALLOC, 'unison', chordGate, 'cv');
+      e.wire(chordGate, 'out', GLIDE, 'in');
       // unison detune: the voices spread by their index, semitones
       const detune = e.add('const', 0, 6.5, { value: 0 });
       const spread = per('math', 2, 6.5, { ka: 1, kb: 1 / 12, off: 0 });
       e.wire(ALLOC, 'index', spread, 'a');
       e.wire(detune, 'out', spread, 'b');
+      const uniSpread = per('vca', 2.25, 6.5);
+      e.wire(spread, 'mul', uniSpread, 'in');
+      e.wire(ALLOC, 'unison', uniSpread, 'cv');
       const tune = e.add('const', 0, 7, { value: 0 }); // master tune, semitones
       const tuneOct = e.add('scale', 0.5, 7, { gain: 1 / 12, offset: 0 });
       e.wire(tune, 'out', tuneOct, 'in');
@@ -118,7 +121,7 @@ export const xl: Xl = {
       e.unwire(GLIDE, 'out', OSC_A, 'pitch');
       e.unwire(POLY_ENV, 'out', OSC_A, 'pitch');
       e.wire(GLIDE, 'out', busA, 'in');
-      for (const [s, port] of [[tuneOct, 'out'], [bendAmt, 'out'], [spread, 'mul']] as const) {
+      for (const [s, port] of [[tuneOct, 'out'], [bendAmt, 'out'], [uniSpread, 'out']] as const) {
         e.wire(s, port, busA, 'in');
         e.wire(s, port, busB, 'in');
       }
@@ -375,6 +378,7 @@ export const xl: Xl = {
       e.param('B lo freq', lo, 'value');
       e.param('priority', ALLOC, 'priority', { col: true, head: 'keys' });
       e.param('legato', ALLOC, 'legato');
+      e.param('uni voices', ALLOC, 'stack');
       e.param('uni detune', detune, 'value');
       e.param('bend range', bendAmt, 'gain');
       e.param('transpose', transpose, 'value');
@@ -413,4 +417,4 @@ export const xl: Xl = {
 };
 
 const NOTES =
-  'The Prophet-5 Rev 4 whole (Sequential Prophet-5 User’s Guide): oscillator A saw and pulse, B saw, triangle and pulse, each on or off, sync, B’s keyboard switch and lo freq; the Rev 1/2 and Rev 3 filters, keyboard amount, velocity and aftertouch, the Release switch; Poly Mod (filter envelope and oscillator B into A’s frequency, pulse width and the filter, at audio rate) and Wheel-Mod (LFO saw / triangle / square, 0.022 to 500 Hz, or noise into both frequencies, both pulse widths and the filter); unison with voice count and detune, chord memory, key priority, pitch wheel range, transpose, master tune, vintage, A-440. Five voices. Not here: learning a chord from the keys (its intervals are set by hand), a unison voice count apart from the poly one, the sustain footswitch, the alternative tunings and response curves, the CV and gate jacks.';
+  'The Prophet-5 Rev 4 whole (Sequential Prophet-5 User’s Guide): oscillator A saw and pulse, B saw, triangle and pulse, each on or off, sync, B’s keyboard switch and lo freq; the Rev 1/2 and Rev 3 filters, keyboard amount, velocity and aftertouch, the Release switch; Poly Mod (filter envelope and oscillator B into A’s frequency, pulse width and the filter, at audio rate) and Wheel-Mod (LFO saw / triangle / square, 0.022 to 500 Hz, or noise into both frequencies, both pulse widths and the filter); unison with a separate voice count and detune, chord memory, key priority, pitch wheel range, transpose, master tune, vintage, A-440. Five voices. Not here: learning a chord from the keys (its intervals are set by hand), the sustain footswitch, the alternative tunings and response curves, the CV and gate jacks.';

@@ -58,6 +58,6 @@ it('marks every held unison voice, and the only mono voice, as both extremes', (
 
 it('keeps older output indices and parameter ranges unchanged', () => {
   for (const type of ['alloc', 'part']) {
-    expect(DEFS[type].outputs.map(o => o.name)).toEqual(['pitch', 'gate', 'vel', 'index', 'legato', 'jump', 'trig', 'low', 'high']);
+    expect(DEFS[type].outputs.map(o => o.name)).toEqual(['pitch', 'gate', 'vel', 'index', 'legato', 'jump', 'trig', 'low', 'high', 'unison']);
   }
 });

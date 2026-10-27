@@ -16,6 +16,8 @@ export interface Voice {
   /** this held voice is at the lowest/highest note currently assigned in its group */
   low: boolean;
   high: boolean;
+  /** the allocator is in unison mode, independent of held keys */
+  unison: boolean;
   /** a clock tick (24 per quarter note) falls in this block while the transport runs */
   clock: boolean;
   /** the transport runs (PLAY, MIDI Start / Stop): the Main module's run output */
@@ -2281,7 +2283,7 @@ const part: ModuleImpl<null> = {
     type: 'part',
     label: 'Part',
     inputs: [],
-    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high')],
+    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [],
   },
   init: () => null,
@@ -2297,6 +2299,7 @@ const part: ModuleImpl<null> = {
     if (v.keyTrig) c.out.trig[0] = 1;
     c.out.low.fill(v.low ? 1 : 0, 0, c.n);
     c.out.high.fill(v.high ? 1 : 0, 0, c.n);
+    c.out.unison.fill(v.unison ? 1 : 0, 0, c.n);
   },
 };
 
@@ -2352,7 +2355,7 @@ const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#
 export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES[n % 12]}${Math.floor(n / 12) - 1}`);
 /**
  * Voice allocator: a polysynth's CPU. It takes the keys held on its `keys` input (Main's keys) and hands them to `voices`
- * voices (assign, priority, legato as poly.ts describes; unison: every voice plays the one note the priority picks). Each
+ * voices (assign, priority, legato as poly.ts describes; unison: up to stack voices play the note the priority picks, with zero selecting all). Each
  * output is per voice: into a poly assembly voice i reaches copy i (the voice cards), into a module that runs once the
  * voices sum. The poly assemblies it feeds run once per voice. The engines run it in its Part form (poly.ts deviceView).
  * channel / low / high: it takes only the keys of that MIDI channel (all = the device's) between those notes (a split or
@@ -2363,7 +2366,7 @@ const alloc: ModuleImpl<null> = {
     type: 'alloc',
     label: 'Voicing',
     inputs: [keys('keys')],
-    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high')],
+    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [
       param('voices', 1, 16, 4, { step: 1 }),
       param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3 }),
@@ -2374,6 +2377,7 @@ const alloc: ModuleImpl<null> = {
       param('low', 0, 127, 0, { step: 1, choices: NOTE_NAMES }),
       param('high', 0, 127, 127, { step: 1, choices: NOTE_NAMES }),
       param('steal', 0, 1, 1, { step: 1, choices: UNISON_MODES, toggle: true, since: 37 }),
+      param('stack', 0, 16, 0, { step: 1, choices: ['all', ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)], since: 38 }),
     ],
   },
   init: () => null,

@@ -156,7 +156,7 @@ const kit = (name: string, b: Build, voices = 1): void => {
 const polyAsm = (p: Patch, ids: number[], cfg: Partial<PolyCfg>): void => {
   const alloc = p.modules.find((m) => ids.includes(m.id) && m.type === 'part')!;
   alloc.type = 'alloc';
-  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unison ? 1 : 0, steal: cfg.steal === false ? 0 : 1, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
+  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unison ? 1 : 0, stack: cfg.unisonParts ?? 0, steal: cfg.steal === false ? 0 : 1, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
   fixMatrix(alloc, DEFS.alloc);
   const main = p.modules.find((m) => m.type === 'fm1')!;
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: alloc.id, port: 'keys' } });
@@ -439,6 +439,23 @@ events['poly-layers'] = [
   [128 * 108, 'off', 55],
   [128 * 112, 'off', 72],
 ];
+// A separate unison count limits held voices without changing the allocated poly pool.
+for (const stack of [0, 1, 2, 4, 8]) for (const priority of [0, 1, 2]) {
+  const name = `unison-count-${stack}-${priority}`;
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    add('fm1', 0, 0);
+    const part = add('part', 0, 0), pitch = add('vca', 0, 0), mode = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: .2 });
+    wire(part, 'pitch', pitch, 'in'); wire(part, 'gate', pitch, 'cv'); wire(pitch, 'out', out, 'l');
+    wire(part, 'unison', mode, 'in'); wire(part, 'gate', mode, 'cv'); wire(mode, 'out', out, 'r');
+    ids = [part, pitch, mode];
+  });
+  polyAsm(tests[name], ids, { parts: 4, unison: true, unisonParts: stack, priority });
+  events[name] = [[0, 'on', 60], [128, 'on', 67], [256, 'on', 55], [384, 'off', 67],
+    [512, 'off', 55], [640, 'off', 60], [768, 'on', 72], [896, 'off', 72]];
+  ends[name] = 1024;
+}
 // Extreme-note flags are observable per voice: multiply by that voice's pitch before summing.
 for (const unison of [false, true]) for (const steal of [false, true]) {
   const name = `voice-extremes-${unison}-${steal}`;
