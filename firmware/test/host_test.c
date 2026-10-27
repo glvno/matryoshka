@@ -89,7 +89,7 @@ int main(int argc, char **argv)
                 unsigned long long m;
                 fscanf(ev, "%llu", &m);
             }
-            else if (!strcmp(kind, "rec"))
+            else if (!strcmp(kind, "rec") || !strcmp(kind, "cc"))
                 fscanf(ev, "%u %u", &note, &vel);
         }
         rewind(ev);
@@ -127,6 +127,13 @@ int main(int argc, char **argv)
             unsigned long long m;
             fscanf(ev, "%llu", &m);
             eng_arm_mask((uint64_t)m);
+        } else if (!strcmp(kind, "cc")) {
+            fscanf(ev, "%u %u", &note, &vel);
+#ifdef FM1_O_BREATH /* engine_exact.sh also builds this harness with older engine headers */
+            if (note == 1 || note == 2 || note == 64 || note == 65)
+                eng_ctl(note == 1 ? ENG_CTL_MOD : note == 2 ? ENG_CTL_BREATH : note == 64 ? ENG_CTL_SUSTAIN : ENG_CTL_FOOT,
+                        (int32_t)(vel * 65536u / 127u));
+#endif
         } else if (!strcmp(kind, "rec")) {
             fscanf(ev, "%u %u", &note, &vel);
             eng_steps_rec(note, (int)vel);

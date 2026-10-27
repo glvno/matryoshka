@@ -2852,6 +2852,9 @@ static void m_fm1(const node_t *nd, inst_t *it, uint32_t n)
     fill(it->out[FM1_O_BEND], E.ctl[ENG_CTL_BEND], n);
     fill(it->out[FM1_O_MOD], E.ctl[ENG_CTL_MOD], n);
     fill(it->out[FM1_O_AT], E.ctl[ENG_CTL_AT], n);
+    fill(it->out[FM1_O_BREATH], E.ctl[ENG_CTL_BREATH], n);
+    fill(it->out[FM1_O_SUSTAIN], E.ctl[ENG_CTL_SUSTAIN], n);
+    fill(it->out[FM1_O_FOOT], E.ctl[ENG_CTL_FOOT], n);
     fill(it->out[FM1_O_KEYS], x->gate, n);   /* the keys for Voice allocators (modules.ts): never patched in the binary, 1 while a key is down */
     fill(it->out[FM1_O_GATE], x->gate, n);
     fill(it->out[FM1_O_VEL], x->vel, n);

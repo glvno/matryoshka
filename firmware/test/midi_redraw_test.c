@@ -92,6 +92,23 @@ int main(void)
     fm1_ms += 501;
     midi_yield();
     check("clock timeout still restores the internal clock", !midi_clk_seen);
+    /* The performance controls pass through both physical parsers during a draw and obey the selected channel. */
+    for (source = 1; source <= 2; source++) {
+        const uint32_t cc[] = {2, 64, 65}, ctl[] = {ENG_CTL_BREATH, ENG_CTL_SUSTAIN, ENG_CTL_FOOT};
+        cfg.ch = 2;
+        for (uint32_t k = 0; k < 3; k++) {
+            eng_ctl(ctl[k], 0);
+            for (uint32_t ch = 1; ch <= 2; ch++) {
+                uint32_t st = 0xB0u + ch - 1u, xfers = lcd_xfers;
+                if (source == 2) { um_byte(st); um_byte(cc[k]); um_byte(63); }
+                else midi_enqueue(0xBu | st << 8 | cc[k] << 16 | 63u << 24, 1);
+                midi_yield();
+                check("performance CC obeys channel and reaches the engine without drawing",
+                      E.ctl[ctl[k]] == (ch == 2 ? 63 * 65536 / 127 : 0) && mi_r == mi_w && lcd_xfers == xfers);
+            }
+        }
+    }
+    cfg.ch = 0;
     for (uint32_t kind = 0; kind < 3; kind++) {
         uint32_t st = kind == 2 ? 0xC0u : 0xB0u, n = kind == 0 ? 16u : kind == 1 ? 80u : 0u;
         eng_all_notes_off();

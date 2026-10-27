@@ -72,10 +72,13 @@ enum {
 #define FM1_O_EDIT 13
 #define FM1_O_GLO 14
 #define FM1_O_ARP 15
+#define FM1_O_BREATH 16
+#define FM1_O_SUSTAIN 17
+#define FM1_O_FOOT 18
 #define FM1_P_MORPH 0
 #define FM1_P_TEMPO 1
 #define FM1_NIN 1
-#define FM1_NOUT 16
+#define FM1_NOUT 19
 #define FM1_NPAR 2
 #define FM1_CVBASE -1
 #define FM1_NDATA 0
@@ -929,7 +932,7 @@ static const char *const POLY_LEGATO_NAME[3] = {"AUTO", "OFF", "ON"};
 static const char *const POLY_PRIORITY_NAME[3] = {"LAST", "LOW", "HIGH"};
 
 #define MAX_IN 11
-#define MAX_OUT 16
+#define MAX_OUT 19
 #define MAX_PAR 18
 
 typedef struct {

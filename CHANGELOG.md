@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Main exposes breath (CC 2), sustain (CC 64), and foot switch (CC 65) as independent patchable outputs in the browser and on the FM-1.
+
 - FM sine operators skip unused feedback and waveform selection work. Polyphonic modules reuse shared control averages. The instruction model counts 28% less work for Algo Four and 5% less for Io 4; all 130 audio kits and mode-change checks remain bit-identical.
 
 - Morph leaves modules without a B side untouched on the FM-1, matching the browser (#355). Format 36 records which modules morph; older bank records retain their playback when loaded and upgraded.

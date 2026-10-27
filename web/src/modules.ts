@@ -26,6 +26,10 @@ export interface Voice {
   bend: number;
   mod: number;
   at: number;
+  /** MIDI CC 2, 64 and 65 as independent 0..1 patch controls */
+  breath: number;
+  sustain: number;
+  foot: number;
   /** the part's number in its poly assembly (0 first) and how many parts it has (1 for the shared keyboard) */
   index: number;
   parts: number;
@@ -197,7 +201,7 @@ const fm1: ModuleImpl<null> = {
     inputs: [control('morph')],
     // pitch / gate / vel: the shared keyboard (one note: the last held, legato); keys: the held keys for Voice allocators
     // (the keyboard's ribbon cable to a polysynth's CPU); clock: 24 ppqn while the transport runs; run: high while it runs
-    outputs: [control('pitch'), gate('gate'), control('vel'), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run'), ...PANEL_BUTTONS.map(gate)],
+    outputs: [control('pitch'), gate('gate'), control('vel'), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run'), ...PANEL_BUTTONS.map(gate), control('breath'), control('sustain'), control('foot')],
     params: [
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
       // the patch's tempo: the engine's clock (24 ppqn) runs from it unless MIDI clock comes in; arpeggiators and the clock output follow it
@@ -212,6 +216,9 @@ const fm1: ModuleImpl<null> = {
     c.out.bend.fill(c.voice.bend, 0, c.n); // the raw wheel, for other uses
     c.out.mod.fill(c.voice.mod, 0, c.n);
     c.out.at.fill(c.voice.at, 0, c.n);
+    c.out.breath.fill(c.voice.breath, 0, c.n);
+    c.out.sustain.fill(c.voice.sustain, 0, c.n);
+    c.out.foot.fill(c.voice.foot, 0, c.n);
     c.out.keys.fill(c.voice.gate, 0, c.n); // 1 while a key is down (a scope shows it; the allocators take the keys themselves)
     // clock: 24 ppqn (the tempo, or MIDI clock) while the transport runs, a pulse of half a block per block that saw a tick
     const hi = c.voice.clock ? Math.ceil(c.n / 2) : 0;
