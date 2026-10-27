@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { COURSE, CHAPTERS, bundledLibrary, chapterEnd, referenceOf, stepStart } from './chapters';
 import { byId, cabled, headlessState, loose, mod, mods, place } from './model';
 import { storeTutorialAssembly, loadLibrary } from '../assemblies';
-import { allModules, assembliesOf, toDef } from '../assembly';
+import { allModules, assembliesOf, toDef, validateAssemblyDef } from '../assembly';
 import { Engine } from '../engine';
 import { DEFS } from '../modules';
 import { paramValue, removeModule, validatePatch, type Patch } from '../patch';
@@ -150,7 +150,7 @@ it('tutorial saves preserve the previous instrument and leave only one active ta
     expect(library).toHaveLength(2);
     expect(library.filter((d) => d.tutorial === original.tutorial)).toHaveLength(1);
     expect(library.find((d) => d.tutorial === original.tutorial)?.name).toBe('My new voice');
-    expect(library.find((d) => d.name.includes('previous'))?.modules).toEqual(original.modules);
+    expect(library.find((d) => d.name.includes('previous'))?.modules).toEqual(validateAssemblyDef(original, DEFS).modules);
   } finally { vi.unstubAllGlobals(); }
 });
 

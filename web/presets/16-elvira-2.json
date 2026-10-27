@@ -67,7 +67,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -101,7 +102,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,

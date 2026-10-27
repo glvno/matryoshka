@@ -221,6 +221,27 @@ lfoKit('lfo-bpm-x4', { sync: 1, div: 6, bpm: 140, mult: 5, wave: 3, dir: 1 }, ()
 lfoKit('lfo-reset-phase', { rate: 5, wave: 0, phase: 90, dir: 1 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
 lfoKit('lfo-fast-back', { rate: 20, range: 2, dir: 1, phase: 120 }, () => undefined);
 lfoKit('lfo-slow', { rate: 30, range: 1, wave: 0, phase: 90 }, () => undefined);
+// The slow endpoint is amplified after removing its DC offset, so a stalled phase cannot pass as a flat wave.
+for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3]]) {
+  const name = `lfo-wide-${wide}-${back}`;
+  tests[name] = make(name, (add, wire) => {
+    const lfo = add('lfo', 0, 0, { wave: 2, range: 3, wide, dir: back });
+    const out = add('output', 0, 0, { level: 1 });
+    if (shape >= 0) {
+      const source = add('const', 0, 0, { value: shape });
+      wire(source, 'out', lfo, 'shape');
+      wire(lfo, 'pulse', out, 'r');
+    }
+    let source = lfo;
+    for (let i = 0; wide < .001 && i < 4; i++) {
+      const gain = add('scale', 0, 0, { gain: 4, offset: i === 0 ? 4 : 0 });
+      wire(source, 'out', gain, 'in'); source = gain;
+    }
+    wire(source, 'out', out, 'l');
+  });
+}
+lfoKit('lfo-wide-sync', { range: 3, wide: 55, sync: 1, div: 6 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-wide-reset', { range: 3, wide: 8, wave: 0, phase: 90 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });

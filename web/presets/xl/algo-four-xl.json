@@ -91,9 +91,10 @@
     "div": 6,
     "bpm": 120,
     "phase": 0,
-    "range": 0,
+    "range": 3,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 5.5
    },
    "att": [
     1,
@@ -5502,7 +5503,7 @@
     },
     {
      "module": 4,
-     "param": "rate",
+     "param": "wide",
      "label": "lfo speed"
     },
     {
@@ -5949,5 +5950,5 @@
    ]
   }
  ],
- "notes": "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced."
+ "notes": "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED covers 0.0008–55 Hz. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced."
 }

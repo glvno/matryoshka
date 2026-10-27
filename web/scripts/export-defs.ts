@@ -51,7 +51,7 @@ w(`#define DELAY_SWELL_DEN ${DELAY_SWELL_DEN}`);
 w(`#define LFO_NMULT ${LFO_MULTS.length}   /* the synced LFO's speeds: its note length x NUM / DEN */`);
 w(`static const uint8_t LFO_MULT_NUM[LFO_NMULT] = {${LFO_MULTS.map((d) => d.num).join(', ')}};`);
 w(`static const uint8_t LFO_MULT_DEN[LFO_NMULT] = {${LFO_MULTS.map((d) => d.den).join(', ')}};`);
-w(`#define LFO_NRANGE ${LFO_RANGE_K.length}   /* the free LFO's rate ranges: norm, slow (/ 25), fast (x 2) */`);
+w(`#define LFO_NRANGE ${LFO_RANGE_K.length}   /* the free LFO's rate ranges: norm, slow (/ 25), fast (x 2), wide (separate rate) */`);
 w(`#define ADSR_LONG_Q16 ${Math.round(ADSR_LONG * 65536)}   /* the ADSR's long: decay and release x ${ADSR_LONG} */`);
 w();
 // poly assemblies (patch.ts PolyCfg): the group records of the binary

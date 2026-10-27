@@ -6,6 +6,8 @@
 - Silver Box has a named SAW / SQUARE switch. Its lean copy inside `<7PH` keeps the plain waveform control to fit the device.
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+- LFO adds a continuous wide rate of 0.0008–55 Hz. Algo Four XL exposes the full range on LFO SPEED; existing patches retain their rate behavior.
+
 - The editor checks the firmware’s supported patch-format range before syncing. Older firmware keeps its existing compatibility check.
 
 - Algo Four XL uses one operator picker for all fourteen operator controls. Copies of card controls can span multiple FM-1 pages.

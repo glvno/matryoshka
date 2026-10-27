@@ -74,7 +74,7 @@ import { around, define, matchLevel, type Def } from './def';
 import { setCopies } from '../../src/assembly';
 import type { Xl } from './xl';
 
-const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
+const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED covers 0.0008–55 Hz. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
 
 
 /** each path's algorithms (1..8): the route Selectors' input k takes the path when algorithm k lists it */
@@ -103,7 +103,7 @@ const built = define('Algo Four XL', (b) => {
   const algo = b.add('select', 8, 0, { pos: 5, count: 8, ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((k) => [`v${k}`, (k - 1) / 7])) });
 
   // ---- shared: the LFO with its delay and sync
-  const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 5.5, depth: 1, phase: 0, range: 0 });
+  const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 5.5, wide: 5.5, depth: 1, phase: 0, range: 3 });
   // the wave in the DX100's order (1 SAW UP, 2 SQUARE, 3 TRIANGLE, 4 S/HOLD; 5 sine, extra): a Selector whose value is the
   // LFO's wave / 4 (p1 turns `wave` across its 0..4), and a second Selector, set by that value, gives the phase the wave's
   // peak is at (p2 turns `phase` across 0..360 degrees), so a reset (LFO SYNC) starts the wave at its peak
@@ -328,7 +328,7 @@ const built = define('Algo Four XL', (b) => {
   param('algorithm', algo, 'pos', { head: 'voice' });
   param('feedback', op[3], 'fb');
   named('lfo wave', lfoWave, ['SAW UP', 'SQUARE', 'TRIANGLE', 'S/HOLD'], { head: 'lfo' });
-  param('lfo speed', lfo, 'rate');
+  param('lfo speed', lfo, 'wide');
   param('lfo delay', delay, 'value');
   param('pmd', pmd, 'value');
   param('amd', amd, 'value');

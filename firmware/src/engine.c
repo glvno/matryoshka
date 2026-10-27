@@ -3346,6 +3346,8 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     /* Reciprocal slopes once per block, within two Q16 steps of the exact per-sample division. */
     uint32_t rise = duty && duty != 32768u ? 0xFFFFFFFFu / duty : 0;
     uint32_t fall = duty != 65536u && duty != 32768u ? 0xFFFFFFFFu / (65536u - duty) : 0;
+    if (range == 3)
+        rate = (uint32_t)EF(it, LFO_P_WIDE);
     dtfree = range == 1 ? (uint32_t)(((uint64_t)rate << 16) / (25u * ENG_SR)) : range == 2 ? hz_turns(rate) << 1 : hz_turns(rate);
     if (bpm < 65536)
         bpm = 65536;

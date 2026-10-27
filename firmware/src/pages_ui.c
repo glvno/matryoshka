@@ -706,6 +706,11 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
         put(unit, "kHz")[0] = 0;
         return;
     }
+    if (str_eq(u, "HZ") && q16 > 0 && q16 < 655) {      /* below 0.01 Hz: millihertz, so a slow LFO never displays zero */
+        *put_num(num, q16 * 1000) = 0;
+        put(unit, "mHz")[0] = 0;
+        return;
+    }
     if (str_eq(u, "S") && q16 < 65536) {                 /* below a second: milliseconds (to a tenth below 100) */
         int32_t t = (int32_t)(((int64_t)q16 * 10000 + 32768) >> 16);
         char *e;

@@ -443,8 +443,8 @@ export const DELAY_SWELL_DEN = 95;
 export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 : x - (4 / 27) * x * x * x);
 
 /** the free LFO's rate ranges: the `rate` row times LFO_RANGE_K (slow 0.0008..1.6 Hz, fast 0.04..80 Hz) */
-export const LFO_RANGES = ['norm', 'slow', 'fast'];
-export const LFO_RANGE_K = [1, 1 / 25, 2];
+export const LFO_RANGES = ['norm', 'slow', 'fast', 'wide'];
+export const LFO_RANGE_K = [1, 1 / 25, 2, 1];
 /** the synced LFO's speed against its note length: ÷8 makes a cycle 8 times as long, x8 an eighth as long (a 1/16 triplet
  * x8 is half a clock tick). The length is multiplied by num / den. Appended to, never reordered. */
 export const LFO_MULTS: { name: string; num: number; den: number }[] = [
@@ -495,7 +495,7 @@ function lfoWave(kind: number, phase: number, dt: number, duty: number): number 
 }
 
 /**
- * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or, with `sync`, one cycle per note length `div` (as the delay)
+ * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or `wide` from 0.0008 to 55 Hz in wide range. With `sync`, one cycle per note length `div` (as the delay)
  * at the `mult` speed (÷8 .. x8). The clk input is a 24 ppqn clock (the Main module's clock output): the cycle snaps to every
  * n-th edge (n = 24 x the note length in quarter notes; for a length that ends between ticks, to the first tick a whole
  * number of cycles ends on) and runs at the measured clock speed in between. Without a clock (none for half a second) it
@@ -516,9 +516,10 @@ const lfo: ModuleImpl<LfoState> = {
       param('div', 0, DELAY_DIVS.length - 1, 6, { step: 1, choices: DELAY_DIVS.map((d) => d.name) }),
       param('bpm', 40, 300, 120, { step: 1 }),
       param('phase', 0, 360, 0, { step: 1, unit: 'deg', since: 35 }),
-      param('range', 0, LFO_RANGES.length - 1, 0, { step: 1, choices: LFO_RANGES, since: 35 }),
+      param('range', 0, 2, 0, { step: 1, choices: LFO_RANGES, top: 3, since: 35 }),
       param('dir', 0, 1, 0, { step: 1, choices: ['fwd', 'back'], toggle: true, since: 35 }),
       param('mult', 0, LFO_MULTS.length - 1, 3, { step: 1, choices: LFO_MULTS.map((m) => m.name), since: 35 }),
+      param('wide', 0.0008, 55, 4, { unit: 'Hz', step: 0.0001, log: true, since: 40 }),
     ],
   },
   init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0 }),
@@ -539,7 +540,8 @@ const lfo: ModuleImpl<LfoState> = {
     const cyc = lfoSyncCycle(Math.round(c.p.div ?? 6), Math.round(c.p.mult ?? 3));
     const perCycle = cyc.per8 / 8; // clock ticks per cycle
     const dtBpm = ((c.p.bpm ?? 120) * cyc.den) / (60 * cyc.num * c.sr);
-    const dtFree = ((c.p.rate ?? 1) * LFO_RANGE_K[Math.max(0, Math.min(LFO_RANGES.length - 1, Math.round(c.p.range ?? 0)))]) / c.sr;
+    const range = Math.max(0, Math.min(LFO_RANGES.length - 1, Math.round(c.p.range ?? 0)));
+    const dtFree = (range === 3 ? (c.p.wide ?? 4) : (c.p.rate ?? 1) * LFO_RANGE_K[range]) / c.sr;
     const newCycle = (): void => {
       // sample & hold: new random value (-1..1) at every cycle start
       s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;

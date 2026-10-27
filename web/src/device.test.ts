@@ -156,7 +156,7 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
 
 describe('syncsWith', () => {
   const info = (features: number) => ({ version: 1, maxModules: 64, maxCables: 128, flashOk: true, patchLoaded: true, delays: 4, features, midiOut: null });
-  it('holds back firmware that does not read patch format 39 (no bit 15): it refuses every patch the editor sends', () => {
+  it('holds back firmware that does not report support for patch format 40: it refuses every patch the editor sends', () => {
     expect(syncsWith(info(246 | (63 << 8)))).toBe(false); // unreleased format 37 builds
     expect(syncsWith(info(246 | (127 << 8)))).toBe(false); // unreleased format 38 builds
     expect(syncsWith(info(54))).toBe(false);    // 1.0.0
@@ -168,24 +168,24 @@ describe('syncsWith', () => {
   });
   it('uses the reported inclusive range instead of the legacy feature bits', () => {
     const base = info(0);
-    expect(syncsWith({ ...base, patchFormats: { min: 31, max: 39 } })).toBe(true);
-    expect(syncsWith({ ...base, patchFormats: { min: 39, max: 39 } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: 31, max: 40 } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: 40, max: 40 } })).toBe(true);
     expect(syncsWith({ ...base, patchFormats: { min: 31, max: 200 } })).toBe(true);
     const legacy = info(246 | (255 << 8));
     expect(syncsWith({ ...legacy, patchFormats: { min: 31, max: 38 } })).toBe(false);
-    expect(syncsWith({ ...legacy, patchFormats: { min: 40, max: 200 } })).toBe(false);
+    expect(syncsWith({ ...legacy, patchFormats: { min: 41, max: 200 } })).toBe(false);
     expect(syncsWith({ ...legacy, patchFormats: { min: 40, max: 38 } })).toBe(false);
   });
   it('offers the matching update when either side is too old', () => {
     const oldFirmware = { ...info(0), patchFormats: { min: 31, max: 38 } };
     expect(syncUpdateNotice(oldFirmware)).toMatchObject({ target: 'firmware', label: 'Update the FM-1' });
     expect(syncUpdateNotice(info(246))).toMatchObject({ target: 'firmware' });
-    const newFirmware = { ...info(65526), patchFormats: { min: 40, max: 200 } };
+    const newFirmware = { ...info(65526), patchFormats: { min: 41, max: 200 } };
     expect(syncUpdateNotice(newFirmware)).toMatchObject({ target: 'editor', label: 'Open current editor' });
     expect(syncUpdateNotice(newFirmware).message).toContain('editor is older');
   });
-  it('lets firmware that reads format 39 sync, and an FM-1 not heard from yet', () => {
-    expect(syncsWith(info(246 | (255 << 8)))).toBe(true); // format 39
+  it('holds back legacy format 39 firmware, but not an FM-1 unheard from yet', () => {
+    expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 is not format 40
     expect(syncsWith(null)).toBe(true);
   });
 });
