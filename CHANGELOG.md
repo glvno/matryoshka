@@ -3,6 +3,10 @@
 ## Unreleased
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+- Monolith D has all six waveform positions on each oscillator, including the triangle/saw hybrid and oscillator 3's reverse saw. FILTER MODULATION uses Ladder's audio-rate input.
+
+- Factory generation keeps Io 4's arpeggiator-only setup and four voices: the rig sheds a voice with an added PATTERN track despite its modeled fit.
+
 - Oscillator adds sharktooth (a triangle/saw hybrid) and reverse saw, including unison, sync and phase modulation. Existing waveform indices and parameter-input ranges stay unchanged.
 
 - Math and Logic calculate only the selected operation when one output is connected. The instruction model counts another 3% less work for Io 4, with all 134 audio kits unchanged.

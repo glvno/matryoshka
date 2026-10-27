@@ -54,6 +54,15 @@ const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+for (let pos = 1; pos <= 6; pos++) {
+  const name = `monolith-wave-${pos}`;
+  const p = FM1_PRESETS['Monolith D']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'osc 1 wave'))!;
+  for (const row of card.params.filter((r) => /^osc [123] wave$/.test(r.label)))
+    p.modules.find((m) => m.id === row.module)!.params[row.param] = pos;
+  tests[name] = p;
+  events[name] = [[0, 'on', 60], [128 * 10, 'cc', 1, 16], [128 * 50, 'cc', 1, 0], [128 * 80, 'off', 60]];
+}
 for (const [cc, port] of [[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const) {
   const name = `main-${port}`;
   tests[name] = make(name, (add, wire) => {

@@ -32,3 +32,7 @@ There are two audio engines: the TypeScript **reference engine** in the browser 
 - Whether the FM-1 tab plays the C engine (wasm) in the AudioWorklet, and whether it replaces the browser engine there — issue #111
 - How to fix the CPU model's 7-point underestimate of the 808 Kit — issue #178
 - Whether a preset holding a browser-only value (a Delay time past 520 ms) may still be sent to the FM-1, which plays it at 520 ms — PR #269
+
+- Proposed amendment to [D-365](engine.md#D-365): use the measured 85% shedding threshold for the CPU budget and refit the model against the current factory patches. [The Io 4 survey](../measurements/2026-10-26-io-4-player-budget.json) shows that a modeled fit can still shed a voice. Factory generation keeps Io 4's existing arpeggiator without adding PATTERN while that discrepancy remains.
+
+- Proposed clarification of [D-363](engine.md#D-363): isolated engine behavior uses fixture patches, while factory fidelity tests exercise the generated factory patches and their actual cards. The existing factory audio comparisons and the Monolith D waveform checks exercise the latter.
