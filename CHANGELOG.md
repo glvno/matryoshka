@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- ADSR adds a hold input that defers release while preserving new-note attacks. Oracle V XL and Hera 6 XL use it for MIDI sustain.
+
+- Oracle V XL adds the original rEL / HLd pedal modes on MIDI sustain (CC 64), alongside a named OFF / ON Release switch.
+
 - Hera 6 XL uses MIDI sustain (CC 64) for its hold pedal. Values 64–127 hold sounding voices; values 0–63 release them.
 
 - LFO adds a continuous wide rate of 0.0008–55 Hz. Algo Four XL exposes the full range on LFO SPEED; existing patches retain their rate behavior.

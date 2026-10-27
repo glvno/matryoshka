@@ -149,7 +149,7 @@ export const xl: Xl = {
       const vcfBend = e.add('scale', 1, 7, { gain: 0, offset: 0 });
       e.wire(vcfBend, 'out', LADDER, 'cv');
       e.input('bend', unbend, 'in', [dcoBend, 'in'], [vcfBend, 'in']);
-      // ---- hold: the gate stays up while hold is on and the envelope still sounds. One Logic per voice: its b is the hold
+      // ---- gate-mode amplitude stays up while hold is on and the envelope still sounds. Its Logic b is the hold
       // level (just under the threshold while hold is on, far below it while off) plus the envelope, so b is high while
       // hold is on and the envelope is above silence (1e-4); the gate is a or b. The pedal (Main's sustain) switches at MIDI value 64.
       const hold = e.add('logic', 1, 7.5, { thresh: 0.5 });
@@ -157,11 +157,11 @@ export const xl: Xl = {
       e.wire(hold, 'or', holdLevel, 'in');
       e.input('hold', hold, 'a');
       const gate = e.add('logic', 4.5, 2.5, { thresh: 0.5 });
-      e.unwire(PART, 'gate', ENV, 'gate');
       e.wire(PART, 'gate', gate, 'a');
       e.wire(holdLevel, 'out', gate, 'b');
       e.wire(ENV, 'env', gate, 'b');
-      e.wire(gate, 'or', ENV, 'gate');
+      // Envelope hold keeps the original key-gate edges, so reused voices still attack.
+      e.wire(hold, 'or', ENV, 'hold');
       // ---- the VCA by the envelope or the gate (a Selector: 1 ENV, 2 GATE)
       e.unwire(ENV, 'env', VCA, 'cv');
       const vcaMode = e.add('select', 4, 1, { count: 2, pos: 1 });
@@ -171,8 +171,8 @@ export const xl: Xl = {
       // ---- decay and release to 12 s as on the original: the ADSR's long times (x 2.4), set to sound as before
       Object.assign(e.m(ENV).params, { d: 0.8 / ADSR_LONG, r: 0.5 / ADSR_LONG, long: 1 });
       e.join('voice', PWM, porta, portaOn, dcoPitch, saw, sawOn, pulseOn, envAmt, inverted, polSwitch, polarity, kybd, gate, vcaMode);
-      // the voice card's inputs: the pitch now goes into the portamento, the gate into the hold's gate
-      voice.inputs = voice.inputs.map((r) => (r.label === 'pitch' ? { module: porta, port: 'in', label: 'pitch', also: [{ module: portaOn, port: 'in1' }] } : r.label === 'gate' ? { module: gate, port: 'a', label: 'gate' } : r));
+      // the voice card's inputs: the pitch now goes into the portamento, the gate stays on the envelope and also drives gate-mode amplitude
+      voice.inputs = voice.inputs.map((r) => (r.label === 'pitch' ? { module: porta, port: 'in', label: 'pitch', also: [{ module: portaOn, port: 'in1' }] } : r.label === 'gate' ? { module: ENV, port: 'gate', label: 'gate', also: [{ module: gate, port: 'a' }] } : r));
       // ---- the LFO's delay: a one-voice allocator's gate (held while any key is) opens a VCA after the LFO
       const held = e.add('alloc', 0, 4, { voices: 1, legato: 2 });
       const keys = e.def.inputs.find((r) => r.label === 'keys')!;
