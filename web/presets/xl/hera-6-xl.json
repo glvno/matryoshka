@@ -970,11 +970,11 @@
   },
   {
    "id": 36,
-   "type": "macro",
+   "type": "logic",
    "x": 340,
    "y": 4260,
    "params": {
-    "value": 0
+    "thresh": 0.5
    },
    "att": [
     1,
@@ -982,7 +982,7 @@
    ],
    "map": {
     "p1": [
-     "value"
+     "thresh"
     ],
     "p2": [],
     "k1": [],
@@ -1915,7 +1915,7 @@
   {
    "from": {
     "module": 36,
-    "port": "out"
+    "port": "or"
    },
    "to": {
     "module": 37,
@@ -2335,11 +2335,11 @@
   {
    "from": {
     "module": 1,
-    "port": "fx"
+    "port": "sustain"
    },
    "to": {
-    "module": 37,
-    "port": "in"
+    "module": 36,
+    "port": "a"
    }
   },
   {
@@ -2684,8 +2684,8 @@
      ]
     },
     {
-     "module": 37,
-     "port": "in",
+     "module": 36,
+     "port": "a",
      "label": "hold"
     },
     {
@@ -2937,5 +2937,5 @@
    ]
   }
  ],
- "notes": "Juno-106 panel, six voices. FX is the hold pedal; Output sets volume. Assign needs two rows: Selectors cannot set Voicing settings. Poly 2 steals when all voices are busy; the allocator lacks no-takeover mode. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced."
+ "notes": "Juno-106 panel, six voices. MIDI CC 64 is the hold pedal; Output sets volume. Assign needs two rows: Selectors cannot set Voicing settings. Poly 2 steals when all voices are busy; its card still needs to select no-steal with Poly 2. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced."
 }
