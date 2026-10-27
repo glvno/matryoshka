@@ -427,7 +427,7 @@ typedef struct {
     uint8_t parts, assign, legato, priority;   /* patch.ts PolyCfg */
     uint8_t no_steal;               /* format 37: refuse extra polyphonic notes instead of taking a held voice */
     uint32_t down[4];               /* all 128 held input keys, even if stolen or refused */
-    uint8_t unison;                  /* every part plays the one note the priority picks (patch.ts PolyCfg.unison) */
+    uint8_t unison, stack;           /* unison mode and its voice count (0: all parts) */
     int8_t detune[ENG_MAX_PARTS];    /* each part's flaws (patch.ts PartFlaw): cents, */
     uint8_t drift[ENG_MAX_PARTS];    /* % of +-20 cents of wander, */
     int8_t bright[ENG_MAX_PARTS];    /* semitones on the filter cutoffs, */
@@ -955,10 +955,11 @@ int eng_load(const uint8_t *p, uint32_t len)
         grp_t *g = &E.grp[1u + i];
         if (!eng_group_valid(q, p[1]))
             return -3;
-        g->parts = q[0];
+        g->parts = q[0] & 15u;
+        g->stack = q[0] >> 4;
         g->assign = q[1];
         g->legato = q[2] & 0x7Fu;
-        g->unison = (q[2] >> 7) && q[0] > 1u;
+        g->unison = q[2] >> 7;
         g->priority = q[3] & 0x7Fu;
         g->no_steal = q[3] >> 7;
         for (v = 0; v < ENG_MAX_PARTS; v++) {
@@ -1407,13 +1408,15 @@ int eng_load(const uint8_t *p, uint32_t len)
 int eng_parts(void) { return !E.loaded ? 0 : E.ngrp ? E.grp[1].parts : 1; }
 int eng_groups(void) { return E.loaded ? E.ngrp : 0; }
 
+static void mono_update(grp_t *g);
+
 int eng_poly_get(uint32_t g, uint32_t field)
 {
     const grp_t *x;
     if (!E.loaded || g >= E.ngrp || field >= ENG_NPOLY)
         return -1;
     x = &E.grp[1u + g];
-    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison : !x->no_steal;
+    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison : field == ENG_POLY_STACK ? x->stack : !x->no_steal;
 }
 
 int eng_module_group(uint32_t module) { return E.loaded && module < E.nmod ? E.node[module].grp : 0; }
@@ -1422,13 +1425,18 @@ int eng_poly_set(uint32_t g, uint32_t field, uint32_t v)
 {
     grp_t *x;
     if (!E.loaded || g >= E.ngrp || field == ENG_POLY_PARTS || field == ENG_POLY_UNISON || field >= ENG_NPOLY
-        || v > (field == ENG_POLY_ASSIGN ? 3u : field == ENG_POLY_STEAL ? 1u : 2u))
+        || v > (field == ENG_POLY_STACK ? ENG_MAX_PARTS : field == ENG_POLY_ASSIGN ? 3u : field == ENG_POLY_STEAL ? 1u : 2u))
         return 0;
     x = &E.grp[1u + g];
     if (field == ENG_POLY_ASSIGN) x->assign = (uint8_t)v;
     else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
     else if (field == ENG_POLY_PRIORITY) x->priority = (uint8_t)v;
-    else x->no_steal = !v;
+    else if (field == ENG_POLY_STACK) {
+        uint32_t i;
+        x->stack = (uint8_t)v;
+        if (x->unison) mono_update(x);
+        for (i = 0; i < x->parts; i++) E.pv[x->pv0 + i].idle = 0;
+    } else x->no_steal = !v;
     return 1;
 }
 
@@ -1686,7 +1694,7 @@ static void mono_part(const grp_t *g, pv_t *x, int k);
 static void mono_update(grp_t *g)
 {
     int k = -1;
-    uint32_t i, n = g->unison ? g->parts : 1u, s0 = E.stamp, s1 = s0;
+    uint32_t i, n = g->unison ? (g->stack && g->stack < g->parts ? g->stack : g->parts) : 1u, s0 = E.stamp, s1 = s0;
     if (g->nheld) {
         k = (int)g->nheld - 1;
         if (g->priority)
@@ -1694,10 +1702,10 @@ static void mono_update(grp_t *g)
                 if (g->priority == 1 ? g->held_note[i] < g->held_note[k] : g->held_note[i] > g->held_note[k])
                     k = (int)i;
     }
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < g->parts; i++) {
         E.stamp = s0;
-        mono_part(g, &E.pv[g->pv0 + i], k);
-        s1 = E.stamp;
+        mono_part(g, &E.pv[g->pv0 + i], i < n ? k : -1);
+        if (E.stamp > s1) s1 = E.stamp;
     }
     E.stamp = s1;
 }
@@ -2949,6 +2957,7 @@ static void m_part(const node_t *nd, inst_t *it, uint32_t n)
     fill(it->out[PART_O_INDEX], np > 1 ? (2 * (int32_t)cur_v - (np - 1)) * 65536 / (np - 1) : 0, n);   /* |.| < 2^24: 32 bits */
     fill(it->out[PART_O_LEGATO], x->legato ? ENG_ONE : 0, n);
     fill(it->out[PART_O_JUMP], x->jump, n);
+    if (it->out[PART_O_UNISON] != dummy_out) fill(it->out[PART_O_UNISON], cur_g->unison ? ENG_ONE : 0, n);
     if (it->out[PART_O_TRIG] != dummy_out) {
         fill(it->out[PART_O_TRIG], 0, n);
         if (x->key_trig) it->out[PART_O_TRIG][0] = ENG_ONE;

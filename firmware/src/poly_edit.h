@@ -10,14 +10,14 @@ static int poly_patch_set(uint8_t *bin, uint32_t len, uint32_t mod, uint32_t fie
     if (g <= 0 || len < 8u || field >= ENG_NPOLY)
         return -1;
     at = 8u + ENG_GROUP_REC * (uint32_t)(g - 1);
-    if (at + 4u > len || (bin[1] < 37u && (field == ENG_POLY_STEAL || (field == ENG_POLY_ASSIGN && v > 2))))
+    if (at + 4u > len || (bin[1] < 38u && field == ENG_POLY_STACK) || (bin[1] < 37u && (field == ENG_POLY_STEAL || (field == ENG_POLY_ASSIGN && v > 2))))
         return -1;
     for (i = 0; i < 4u; i++)
         before[i] = bin[at + i];
     v = clampi(v, field == ENG_POLY_PARTS ? 1 : 0,
-               field == ENG_POLY_PARTS ? ENG_MAX_PARTS : field == ENG_POLY_ASSIGN ? 3 : field >= ENG_POLY_UNISON ? 1 : 2);
+               field == ENG_POLY_PARTS || field == ENG_POLY_STACK ? ENG_MAX_PARTS : field == ENG_POLY_ASSIGN ? 3 : field >= ENG_POLY_UNISON ? 1 : 2);
     if (field == 0u)
-        bin[at] = (uint8_t)clampi(v, 1, ENG_MAX_PARTS);
+        bin[at] = (uint8_t)((bin[at] & 0xF0u) | (uint32_t)v);
     else if (field == 1u)
         bin[at + 1u] = (uint8_t)v;
     else if (field == 2u)
@@ -26,6 +26,8 @@ static int poly_patch_set(uint8_t *bin, uint32_t len, uint32_t mod, uint32_t fie
         bin[at + 3u] = (uint8_t)((bin[at + 3u] & 0x80u) | (uint32_t)v);
     else if (field == 4u)
         bin[at + 2u] = (uint8_t)((bin[at + 2u] & 0x7Fu) | (v ? 0x80u : 0u));
+    else if (field == ENG_POLY_STACK)
+        bin[at] = (uint8_t)((bin[at] & 15u) | ((uint32_t)v << 4));
     else
         bin[at + 3u] = (uint8_t)((bin[at + 3u] & 0x7Fu) | (v ? 0u : 0x80u));
     if (field == 0u || field == 4u) {

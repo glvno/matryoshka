@@ -295,6 +295,11 @@ int main(int argc, char **argv)
         bin[11] = 2u; CHECK(m1_valid(bin, sizeof bin));
         bin[1] = 37u; bin[9] = 4u; CHECK(!m1_valid(bin, sizeof bin));
         bin[9] = 3u; bin[11] = 0x83u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[11] = 2u; bin[8] = 0x23u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[1] = 38u; CHECK(m1_valid(bin, sizeof bin));
+        bin[8] = 0x93u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[8] = 0x20u; CHECK(!m1_valid(bin, sizeof bin));
+        bin[8] = 0x89u; CHECK(!m1_valid(bin, sizeof bin));
     }
     /* reference: direct load + parameter */
     CHECK(eng_load(patch, (uint32_t)np) == 0);

@@ -376,8 +376,10 @@ export interface PolyCfg {
   legato: number;
   /** which held notes sound when there are more than parts: 0 last, 1 low, 2 high */
   priority: number;
-  /** every part plays the one note the priority picks (several parts only; the browser's engine, not yet the FM-1's) */
+  /** the selected unison voices play the one note the priority picks */
   unison?: boolean;
+  /** voices stacked in unison; absent or zero: all poly voices, otherwise capped by parts */
+  unisonParts?: number;
   /** false: ignore new notes when all polyphonic voices are held; absent: steal by priority */
   steal?: boolean;
   /**
@@ -454,7 +456,9 @@ export function polyCfg(alloc: ModuleInst, cards: PolyCards = {}): PolyCfg {
   };
   const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 3, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
   if (!int('steal', 0, 1, 1)) cfg.steal = false;
-  if (int('unison', 0, 1, 0) && cfg.parts > 1) cfg.unison = true;
+  if (int('unison', 0, 1, 0)) cfg.unison = true;
+  const stack = int('stack', 0, EDITOR_MAX_PARTS, 0);
+  if (stack) cfg.unisonParts = stack;
   const ch = int('channel', 0, 16, 0), low = int('low', 0, 127, 0), high = int('high', 0, 127, 127);
   if (ch) cfg.channel = ch;
   if (low) cfg.low = low;

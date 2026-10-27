@@ -240,7 +240,7 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
       modules[slot] = partAt(alloc, alloc.id);
       const cfg = polyCfg(alloc);
       // (an arpeggiated, sequenced or split allocator always gets a group of its own: the shared keyboard plays every key)
-      if (cfg.parts > 1 || cfg.legato || cfg.priority || arp || cfg.channel || cfg.low !== undefined || cfg.high !== undefined) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
+      if (cfg.parts > 1 || cfg.unison || cfg.unisonParts || cfg.legato || cfg.priority || arp || cfg.channel || cfg.low !== undefined || cfg.high !== undefined) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
     }
     if (arp) {
       for (const i of mine) out[i].src = arp.id;

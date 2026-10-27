@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Voicing can stack a separate number of voices in unison while preserving its polyphonic count. Oracle V XL exposes this count and applies detune and manual chord offsets only in unison.
+
 - Voicing adds lowest/highest held-voice gates. Algo Four XL uses them for LOW/HIGH/KON pitch bend and now receives breath and foot-switch MIDI controllers directly.
 
 - Tutorial reference patches receive newly added module defaults when opened. Patch previews no longer let undisplayed module rows squeeze neighboring controls.
