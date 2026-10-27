@@ -355,12 +355,12 @@ typedef struct {
         struct { int16_t *buf; uint32_t w, phase; } ch;
         struct { uint32_t seed; int32_t c1, r1, y, period, since, gleft; int8_t pos, down; } seq;
         /* Steps (modules.ts StepsState): half ticks since the step (-1: the step came half a tick after a tick), the step
-         * (-1: the next is the first), times round the pattern, half: samples to a step half a tick after a tick (1/64),
+         * (-1: the next is the first), times round the pattern, visit: ordinal within the traversal, half: samples to a step half a tick after a tick (1/64),
          * a swung step waiting (samples, which), clk mode's edge distance; slen / sst: the step's length and samples since
          * it began (live recording rounds to the nearest step); skip: a step recorded ahead, its notes not played again
          * when reached; hit: 1 / 2 (accented) = sound now (eng_steps_hit); pitch / vel: the outputs' held values (Q16, the
          * last note that started); the notes sounding are the track's (E.trk_snd) */
-        struct { uint32_t seed, loop; int32_t c1, r1, since, period, half, pend, slen, sst, pitch, vel; int16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit, skipn; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
+        struct { uint32_t seed, loop; int32_t c1, r1, since, period, half, pend, slen, sst, pitch, vel; int16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit, skipn, visit; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
         /* Drum map (modules.ts DrumMapState): its rows' velocities (Q16), the rows whose gate is up, the rows that restart
          * this block (a low first sample) */
         struct { int32_t vel[DRUMMAP_NOUT / 2]; uint32_t held[4]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last
@@ -1168,7 +1168,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             last = t;
             for (j = 0; j < n; j++, at += 4u) {
                 uint32_t w = (uint32_t)rd32(p + at);
-                if (NW_AT(w) + NW_LEN(w) > TRACK_STEPS || !NW_VEL(w)) return -3;
+                if ((p[1] < 44u && NW_AT(w) + NW_LEN(w) > TRACK_STEPS) || !NW_VEL(w)) return -3;
                 E.trk_note[E.nnotes + j] = w;
             }
             E.trk_first[t] = E.nnotes;
@@ -2486,6 +2486,23 @@ void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
 int eng_transport_running(void) { return transport_on; }
 
 /* ------------------------------------------------------------------ Steps modules (the SEQ page) */
+/* A traversal's visit number is independent of its chosen step: swing and note lengths follow time order. */
+static int32_t steps_cycle(int32_t len, int32_t dir)
+{
+    return dir == 2 && len > 1 ? 2 * (len - 1) : len;
+}
+typedef struct { int32_t visit, pos; uint32_t loop; } step_visit_t;
+/* Preview only: recording and playback must choose the same next step, including random mode. */
+static step_visit_t steps_next(const inst_t *it, int32_t len, int32_t dir)
+{
+    step_visit_t next;
+    next.visit = it->s.stp.pos < 0 || it->s.stp.visit + 1 >= steps_cycle(len, dir) ? 0 : it->s.stp.visit + 1;
+    next.loop = it->s.stp.loop + (next.visit == 0 ? 1u : 0u);
+    next.pos = dir == 3 ? (int32_t)(hash32(it->s.stp.seed ^ (next.loop * 0x9e3779b9u) ^ ((uint32_t)(next.visit + 1) * 0x85ebca6bu)) % (uint32_t)len)
+        : dir == 1 ? len - 1 - next.visit : dir == 2 && next.visit >= len ? 2 * (len - 1) - next.visit : next.visit;
+    return next;
+}
+
 static inst_t *steps_inst(uint32_t module)
 {
     return E.loaded && module < E.nmod && E.node[module].type == T_STEPS ? &inst_pool[E.node[module].inst0] : 0;
@@ -2669,7 +2686,7 @@ int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n)
     if (!steps_inst(module) || n > TRACK_NOTES_MAX)
         return 0;
     for (i = 0; i < n; i++)
-        if (NW_AT(notes[i]) + NW_LEN(notes[i]) <= TRACK_STEPS && NW_VEL(notes[i]))
+        if (NW_VEL(notes[i]))
             w[m++] = notes[i] & 0x7FFFFFFFu;
     return trk_put(E.node[module].trk, w, m);
 }
@@ -2704,7 +2721,7 @@ int eng_steps_hit(uint32_t module, int accent, int record)
     len = clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
     k = it->s.stp.pos < 0 ? 0 : it->s.stp.pos;
     if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
-        k = k + 1 >= len ? 0 : k + 1;
+        k = steps_next(it, len, clampi(round_q16(it->eff[STEPS_P_DIR]), 0, 3)).pos;
         it->s.stp.skip = (int8_t)k;
         it->s.stp.skipn = 0;                     /* (the whole step) */
     }
@@ -2815,7 +2832,7 @@ int eng_steps_hit_note(uint32_t module, uint32_t note, int accent, int record)
     len = clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
     k = it->s.stp.pos < 0 ? 0 : it->s.stp.pos;
     if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
-        k = k + 1 >= len ? 0 : k + 1;
+        k = steps_next(it, len, clampi(round_q16(it->eff[STEPS_P_DIR]), 0, 3)).pos;
         it->s.stp.skip = (int8_t)k;
         it->s.stp.skipn = (uint8_t)(note + 1u);
     }
@@ -2844,7 +2861,7 @@ void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t
 void eng_steps_overdub(uint32_t module, uint32_t word)
 {
     uint32_t w[TRACK_NOTES_MAX + 1u], n, i, m, t;
-    if (!steps_inst(module) || NW_AT(word) + NW_LEN(word) > TRACK_STEPS)
+    if (!steps_inst(module) || !NW_VEL(word))
         return;
     t = E.node[module].trk;
     n = trk_copy(t, w + 1);
@@ -5013,7 +5030,7 @@ static void steps_thru_off(uint32_t t, uint32_t node, const inst_t *it, uint32_t
             rin_t x = E.rin[j];
             int32_t sl = it->s.stp.slen, len = x.t > 0 && sl > 0 ? (int32_t)((x.t + sl / 2) / sl) : 1;
             uint8_t h = took_head;
-            len = clampi(len, 1, TRACK_STEPS - x.at);
+            len = clampi(len, 1, TRACK_STEPS);
             for (; j + 1u < E.nrin; j++)
                 E.rin[j] = E.rin[j + 1u];
             E.nrin--;
@@ -5044,11 +5061,12 @@ static void steps_thru(const node_t *nd, inst_t *it, int32_t len, int ext, int32
             continue;
         if (live && E.nrin < ENG_RIN) {
             int32_t ago = it->s.stp.sst, sl = it->s.stp.slen, pos = it->s.stp.pos;
-            int next = ago * 2 >= sl, wrap = next && pos + 1 >= len;
+            int next = ago * 2 >= sl;
+            int32_t target = next ? steps_next(it, len, clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3)).pos : pos;
             rin_t *x = &E.rin[E.nrin++];
             x->trk = (uint8_t)t;
             x->note = (uint8_t)note;
-            x->at = (uint8_t)(wrap ? 0 : next ? pos + 1 : pos);
+            x->at = (uint8_t)target;
             x->vel = (uint8_t)vel;
             x->t = next ? ago - sl : ago;
         }
@@ -5106,7 +5124,11 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, j++, NW_CODE(w)))
             continue;
         key = clampi((int32_t)NW_NOTE(w) + semis, 0, 127);
-        left = (NW_LEN(w) < (uint32_t)(len - k) ? NW_LEN(w) : (uint32_t)(len - k)) - 1u;
+        {
+            int32_t dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3);
+            uint32_t remaining = (uint32_t)clampi(steps_cycle(len, dir) - it->s.stp.visit, 1, 126);
+            left = (NW_LEN(w) < remaining ? NW_LEN(w) : remaining) - 1u;
+        }
         steps_start(t, node, (uint32_t)key, NW_VEL(w), left, steps_hold(left, gate, sl));
         it->s.stp.pitch = steps_pitch(NW_NOTE(w));
         it->s.stp.vel = (int32_t)((NW_VEL(w) << 16) / 127u);
@@ -5146,6 +5168,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *trig = it->out[STEPS_O_TRIG], *keys = it->out[STEPS_O_KEYS], *pitch = it->out[STEPS_O_PITCH], *vel = it->out[STEPS_O_VEL];
     uint32_t t = nd->trk, node = (uint32_t)(nd - E.node);
     int32_t len = clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
+    int32_t dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3);
     int32_t ht = RATE_HT[clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)], step = (ht * E.tick_len) >> 1;   /* a step's samples */
     int32_t swing = EF(it, STEPS_P_SWING) - 50 * ENG_ONE, gate = EF(it, STEPS_P_GATE);
     int ext = (nd->conn >> STEPS_I_CLK) & 1u;
@@ -5205,12 +5228,13 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
         for (; adv > 0; adv--) {
             int32_t sw = ext ? it->s.stp.period : step, d = 0;
-            it->s.stp.pos = (int8_t)(it->s.stp.pos + 1 >= len ? 0 : it->s.stp.pos + 1);
-            if (it->s.stp.pos == 0)
-                it->s.stp.loop++;
+            step_visit_t next = steps_next(it, len, dir);
+            it->s.stp.pos = (int8_t)next.pos;
+            it->s.stp.visit = (uint8_t)next.visit;
+            it->s.stp.loop = next.loop;
             it->s.stp.sst = 0;
             it->s.stp.slen = sw;
-            if ((it->s.stp.pos & 1) && swing > 0 && sw > 0)
+            if ((it->s.stp.visit & 1) && swing > 0 && sw > 0)
                 d = (int32_t)(((int64_t)swing * sw) / (50 * ENG_ONE));
             if (d > 0) {
                 it->s.stp.pend = d;

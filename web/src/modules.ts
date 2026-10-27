@@ -2440,6 +2440,8 @@ export interface StepsState {
    * step is the first), times round the pattern */
   count: number;
   pos: number;
+  /** ordinal visit within the current traversal, independent of the step chosen */
+  visit: number;
   loop: number;
   /** a step half a tick after a tick (1/64): samples to go (0: none) */
   half: number;
@@ -2477,13 +2479,25 @@ export function notePlays(seed: number, loop: number, k: number, j: number, chan
   return !code || hash32((seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(k + 1, 0x85ebca6b) ^ Math.imul(j, 0xc2b2ae35)) >>> 0) % 100 < 100 - 5 * code;
 }
 
+const stepCycle = (len: number, dir: number): number => dir === 2 && len > 1 ? 2 * (len - 1) : len;
+
+/** Preview the next visited step without consuming it, also used by live recording. */
+function nextStep(s: StepsState, len: number, dir: number): { visit: number; pos: number; loop: number } {
+  const visit = s.pos < 0 || s.visit + 1 >= stepCycle(len, dir) ? 0 : s.visit + 1;
+  const loop = (s.loop + (visit === 0 ? 1 : 0)) >>> 0;
+  const pos = dir === 3 ? hash32((s.seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(visit + 1, 0x85ebca6b)) >>> 0) % len
+    : dir === 1 ? len - 1 - visit : dir === 2 && visit >= len ? 2 * (len - 1) - visit : visit;
+  return { visit, pos, loop };
+}
+
 /** a MIDI note as the pitch output gives it: octaves from C4, Q16 rounded half away from zero (as engine.c) */
 const stepPitch = (note: number): number => (Math.sign(note - STEP_NOTE) * Math.round((Math.abs(note - STEP_NOTE) * 65536) / 12)) / 65536;
 
 /**
  * Steps: a track of notes (#83, #133). Each note (ModuleInst.notes, track.ts) starts on a step, lasts a number of steps
  * and has a velocity and a chance; a step can hold several (a chord). `len` plays the first steps; a note is cut at the
- * end of the pattern. With nothing in clk it follows the engine's clock while the transport runs: the first step when
+ * end of its traversal. `dir` selects forward, backward, ping-pong without repeated endpoints, or seeded random.
+ * Swing counts visits in time order; live recording previews the same next visit as playback. With nothing in clk it follows the engine's clock while the transport runs: the first step when
  * PLAY starts, then one step per `rate` (STEPS_RATES: half ticks of the 24 ppqn clock, STEPS_RATE_HT), each on the sample
  * its tick falls on; 1/64 is a tick and a half, so every second step lands half a tick (tickLen / 2 samples, rounded down)
  * after a tick. A rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 80 % the
@@ -2512,16 +2526,18 @@ const steps: ModuleImpl<StepsState> = {
       param('rate', 0, STEPS_RATE_PIN_MAX, 4, { step: 1, choices: STEPS_RATES, top: STEPS_RATES.length - 1 }),
       param('swing', 50, SWING_PIN_MAX, 50, { step: 1, unit: '%', top: SWING_MAX }),
       param('gate', 0.01, 1, 0.25, { step: 0.01 }),
+      param('dir', 0, 3, 0, { step: 1, choices: ['fwd', 'back', 'ping-pong', 'random'], since: 44 }),
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
   process(c, s) {
     const q16 = (v: number | undefined): number => Math.round((v ?? 0) * 65536);
     const len = Math.min(STEPS_MAX, Math.max(1, Math.round(c.p.len ?? 16)));
+    const dir = Math.max(0, Math.min(3, Math.round(c.p.dir ?? 0)));
     const ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
     const swing = q16(c.p.swing ?? 50) - 50 * 65536;
     const gate = q16(c.p.gate ?? 0.25);
@@ -2550,7 +2566,7 @@ const steps: ModuleImpl<StepsState> = {
           const same = s.snd.findIndex((x) => x.key === key);
           if (same >= 0) end(same);
           if (s.snd.length >= TRACK_POLY) end(0);
-          const left = Math.min(n.len, len - k) - 1;
+          const left = Math.min(n.len, Math.max(1, stepCycle(len, dir) - s.visit)) - 1;
           s.snd.push({ key, left, cnt: hold(left) });
           s.ev.push(key | 0x80, n.vel);
           s.pitch = stepPitch(n.note);
@@ -2572,13 +2588,13 @@ const steps: ModuleImpl<StepsState> = {
         const r = s.rin.findIndex((x) => x.note === note);
         if (r >= 0) {
           const x = s.rin.splice(r, 1)[0];
-          s.took.push({ note: { at: x.at, len: Math.min(STEPS_MAX - x.at, Math.max(1, Math.round(x.t / s.sl))), note, vel: x.vel }, loop: x.loop });
+          s.took.push({ note: { at: x.at, len: Math.min(STEPS_MAX, Math.max(1, Math.round(x.t / s.sl))), note, vel: x.vel }, loop: x.loop });
         }
         if (!(s.thru[e] & 0x80)) continue;
         if (live) {
           const next = s.ago * 2 >= s.sl;
-          const wrap = next && s.pos + 1 >= len;
-          s.rin.push({ note, at: wrap ? 0 : next ? s.pos + 1 : s.pos, t: next ? s.ago - s.sl : s.ago, vel: s.thru[e + 1], loop: wrap ? (s.loop + 1) >>> 0 : s.loop });
+          const target = next ? nextStep(s, len, dir) : s;
+          s.rin.push({ note, at: target.pos, t: next ? s.ago - s.sl : s.ago, vel: s.thru[e + 1], loop: target.loop });
         }
         const was = s.snd.some((x) => x.cnt > 0);
         const key = Math.max(0, Math.min(127, note + semis));
@@ -2632,12 +2648,12 @@ const steps: ModuleImpl<StepsState> = {
       if (s.pend > 0 && --s.pend === 0) fire(s.pstep, i);
       s.ago++;
       for (; adv > 0; adv--) {
-        s.pos = s.pos + 1 >= len ? 0 : s.pos + 1;
-        if (s.pos === 0) s.loop = (s.loop + 1) >>> 0;
+        const next = nextStep(s, len, dir);
+        s.pos = next.pos; s.visit = next.visit; s.loop = next.loop;
         const sl = ext ? s.period : step;
         s.ago = 0;
         s.sl = sl;
-        const d = s.pos & 1 && swing > 0 && sl > 0 ? Math.floor((swing * sl) / (50 * 65536)) : 0;
+        const d = s.visit & 1 && swing > 0 && sl > 0 ? Math.floor((swing * sl) / (50 * 65536)) : 0;
         if (d > 0) {
           s.pend = d;
           s.pstep = s.pos;

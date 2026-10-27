@@ -27,7 +27,7 @@ export const SWING_PIN_MAX = 75;
 export const SWING_MAX = 80;
 
 export interface StepNote {
-  /** the step it starts on (0..STEPS_MAX - 1) and how many steps it lasts (1..STEPS_MAX - at; cut at the track's len) */
+  /** the step it starts on (0..STEPS_MAX - 1) and how many visited steps it lasts (1..STEPS_MAX; cut at the end of a traversal) */
   at: number;
   len: number;
   /** MIDI note (60 = C4) and velocity (1..127) */
@@ -62,7 +62,7 @@ export function fixNotes(raw: unknown): StepNote[] | undefined {
     const o = r as Record<string, unknown>;
     const at = int(o.at, 0, STEPS_MAX - 1), note = int(o.note, 0, 127);
     if (at === null || note === null || Number(o.at) < 0 || Number(o.at) >= STEPS_MAX) continue;
-    const n: StepNote = { at, len: int(o.len, 1, STEPS_MAX - at) ?? 1, note, vel: int(o.vel, 1, 127) ?? STEP_VEL };
+    const n: StepNote = { at, len: int(o.len, 1, STEPS_MAX) ?? 1, note, vel: int(o.vel, 1, 127) ?? STEP_VEL };
     const chance = fixChance(o.chance);
     if (chance !== undefined) n.chance = chance;
     out.push(n);
