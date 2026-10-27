@@ -3426,6 +3426,14 @@ static void m_noise(const node_t *nd, inst_t *it, uint32_t n)
     it->s.noise.y = y;
 }
 
+static void m_ratio(const node_t *nd, inst_t *it, uint32_t n)
+{
+    (void)nd;
+    int32_t ratio = clampi(round_q16(EF(it, RATIO_P_RATIO)), 0, 63);
+    int32_t detune = clampi(round_q16(EF(it, RATIO_P_DETUNE)), 0, 6);
+    fill(it->out[0], RATIO_OCT[ratio] + RATIO_DETUNE_OCT[detune], n);
+}
+
 static void m_const(const node_t *nd, inst_t *it, uint32_t n) { fill(it->out[0], EF(it, 0), n); }
 
 static void m_scale(const node_t *nd, inst_t *it, uint32_t n)
@@ -5780,6 +5788,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_ENV: m_env(nd, it, n); break;
     case T_ENV8: m_env8(nd, it, n); break;
     case T_RATEENV: m_rateenv(nd, it, n); break;
+    case T_RATIO: m_ratio(nd, it, n); break;
     case T_STRING: m_string(nd, it, n); break;
     case T_WAVETABLE: m_wavetable(nd, it, n); break;
     case T_PD: m_pd(nd, it, n); break;

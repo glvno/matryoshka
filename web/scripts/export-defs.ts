@@ -2,7 +2,7 @@
 // Writes firmware/src/defs.h (module definitions for the C engine) and firmware/src/presets.h (the factory
 // patches as binary). Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ADSR_LONG, ASSIGN_MODES, DEFS, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, PRIORITIES, TRACK_POLY } from '../src/modules';
+import { ADSR_LONG, ASSIGN_MODES, DEFS, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, TRACK_POLY } from '../src/modules';
 import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
@@ -52,6 +52,8 @@ w(`#define LFO_NMULT ${LFO_MULTS.length}   /* the synced LFO's speeds: its note 
 w(`static const uint8_t LFO_MULT_NUM[LFO_NMULT] = {${LFO_MULTS.map((d) => d.num).join(', ')}};`);
 w(`static const uint8_t LFO_MULT_DEN[LFO_NMULT] = {${LFO_MULTS.map((d) => d.den).join(', ')}};`);
 w(`#define LFO_NRANGE ${LFO_RANGE_K.length}   /* the free LFO's rate ranges: norm, slow (/ 25), fast (x 2), wide (separate rate) */`);
+w(`static const int32_t RATIO_OCT[${RATIO_OCT.length}] = {${RATIO_OCT.map(toQ16).join(', ')}};`);
+w(`static const int32_t RATIO_DETUNE_OCT[7] = {${RATIO_DETUNE_OCT.map(toQ16).join(', ')}};`);
 w(`#define ADSR_LONG_Q16 ${Math.round(ADSR_LONG * 65536)}   /* the ADSR's long: decay and release x ${ADSR_LONG} */`);
 w();
 // poly assemblies (patch.ts PolyCfg): the group records of the binary

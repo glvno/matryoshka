@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The new Ratio module supplies the DX100’s 64 frequency-ratio choices as a pitch offset. Algo Four XL exposes these choices and seven signed operator-detune positions; saved oscillator tuning stays unchanged.
+
 - Rate Env adds original attack/decay/release rates, zero-rate holds, keyboard rate scaling and pedal hold. Algo Four XL uses it for all four operators with the original control ranges and eight voices.
 
 - ADSR adds a hold input that defers release while preserving new-note attacks. Oracle V XL and Hera 6 XL use it for MIDI sustain.

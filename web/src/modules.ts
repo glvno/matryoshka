@@ -3116,7 +3116,40 @@ const rateenv: ModuleImpl<ReturnType<typeof rateEnvelopeInit>> = {
   process: rateEnvelopeProcess,
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv];
+/** DX100 owner manual p.34: the displayed ratio table, used as rounded multipliers rather than a chip model.
+ * Output is a pitch offset in octaves, added by a cable to any oscillator pitch input. */
+export const RATIOS = [
+  0.50, 0.71, 0.78, 0.87, 1.00, 1.41, 1.57, 1.73,
+  2.00, 2.82, 3.00, 3.14, 3.46, 4.00, 4.24, 4.71,
+  5.00, 5.19, 5.65, 6.00, 6.28, 6.92, 7.00, 7.07,
+  7.85, 8.00, 8.48, 8.65, 9.00, 9.42, 9.89, 10.00,
+  10.38, 10.99, 11.00, 11.30, 12.00, 12.11, 12.56, 12.72,
+  13.00, 13.84, 14.00, 14.10, 14.13, 15.00, 15.55, 15.57,
+  15.70, 16.96, 17.27, 17.30, 18.37, 18.84, 19.03, 19.78,
+  20.41, 20.76, 21.20, 21.98, 22.49, 23.55, 24.22, 25.95,
+];
+/** Quantized octave offsets shared by both engines. */
+export const RATIO_OCT = RATIOS.map(r => Math.round(Math.log2(r) * 65536) / 65536);
+export const ratioIndex = (value = 4): number => Math.max(0, Math.min(RATIOS.length - 1, Math.round(value)));
+
+/** Seven detune positions, linearly spaced over the manual's ±2.6 cents. */
+export const RATIO_DETUNE_OCT = Array.from({ length: 7 }, (_, i) => Math.round((i - 3) * 2.6 / 3 / 1200 * 65536) / 65536);
+const ratio: ModuleImpl<null> = {
+  def: {
+    type: 'ratio', label: 'Ratio', inputs: [], outputs: [control('pitch')],
+    params: [
+      param('ratio', 0, 63, 4, { step: 1, choices: RATIOS.map(r => r.toFixed(2)) }),
+      param('detune', 0, 6, 3, { step: 1, choices: ['-3', '-2', '-1', '0', '+1', '+2', '+3'] }),
+    ],
+  },
+  init: () => null,
+  process(c) {
+    const detune = Math.max(0, Math.min(6, Math.round(c.p.detune ?? 3)));
+    c.out.pitch.fill(RATIO_OCT[ratioIndex(c.p.ratio)] + RATIO_DETUNE_OCT[detune], 0, c.n);
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

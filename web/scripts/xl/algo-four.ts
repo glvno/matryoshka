@@ -31,8 +31,8 @@
 //     7          4→3                 1, 2, 3
 //     8          (none)              1, 2, 3, 4
 // - FEEDBACK 0..7 on operator 4, in every algorithm.
-// - Per operator: FREQUENCY RATIO (`freq ratio`, semitones, with `detune` in cents: 3.14 = 20 st - 19 ct), DETUNE
-//   (+-2.6 cents: the same `detune`), OPERATOR OUT LEVEL, the Rate Env envelope (AR, D1R towards D1L, D2R towards silence, RR). AR/D1R/D2R
+// - Per operator: FREQUENCY RATIO (the original 64 displayed multipliers), DETUNE
+//   (seven signed positions, -3..+3, linearly spaced over +-2.6 cents), OPERATOR OUT LEVEL, the Rate Env envelope (AR, D1R towards D1L, D2R towards silence, RR). AR/D1R/D2R
 //   use original 0..31 rates, with 0 stopping that stage; D1L/RR use 0..15. KEY VELOCITY 0..7
 //   (0 none, 1 the full range; a note at velocity v plays at 1 - velocity x (1 - v)),
 //   KEYBOARD SCALING LEVEL (the level falls by that much over the four octaves above C2, the DX100's lowest key), RATE
@@ -58,8 +58,8 @@
 // - PB MODE gates the scaled bend per voice with Voicing low/high outputs, or a constant one for KON.
 //   Low/high follow held allocated notes; Kon keeps bending release tails too.
 // Not on the card, and why:
-// - Construction, kept at its values in the patch: each operator's octave (ratios past 16.96 need it on top of the freq
-//   ratio's semitones) and phase modulation index (the modulator's out level is the depth on the DX100), and output displays.
+// - Construction, kept at its values in the patch: the phase modulation index (the modulator's out level is the depth
+//   on the DX100), and output displays. Ratio playback uses the manual's rounded multipliers; detune spacing is linear.
 // - Rate Env follows the original rate architecture and Yamaha chip envelope-clock rules, not identical DAC character.
 //   Its maximum attack works when changed live too; the original register-write glitch is not reproduced.
 // - POLY/MONO is a number (8 or 1), not a switch: a Selector cannot set a Voicing's voice count (D-635 keeps a Voicing's
@@ -73,7 +73,7 @@ import { around, define, matchLevel, type Def } from './def';
 import { setCopies } from '../../src/assembly';
 import type { Xl } from './xl';
 
-const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED covers 0.0008–55 Hz. AR/D1R/D2R use 0..31 rates: zero stops the stage; D2R zero holds D1L. D1L/RR use 0..15. Rate scaling uses 0..3. PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
+const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED covers 0.0008–55 Hz. AR/D1R/D2R use 0..31 rates: zero stops the stage; D2R zero holds D1L. D1L/RR use 0..15. Rate scaling uses 0..3. PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio has the original 64 choices; detune has -3..+3 positions (up to 2.6 cents). Bend uses octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
 
 
 /** each path's algorithms (1..8): the route Selectors' input k takes the path when algorithm k lists it */
@@ -232,15 +232,16 @@ const built = define('Algo Four XL', (b) => {
 
   // Algorithm 5 and the FM-1 operator ratios, with native rate-envelope starting values.
   const setup: [Record<string, number>, Record<string, number>, number][] = [
-    [{ wave: 0, level: 1, pm: 2.2 }, { ar: 31, d1r: 10, d1l: 14, d2r: 6, rr: 7 }, 0.5],
-    [{ wave: 0, level: 1, coarse: 12, pm: 1.5 }, { ar: 31, d1r: 12, d1l: 12, d2r: 5, rr: 8 }, 0.8],
-    [{ wave: 0, level: 1, pm: 1.5 }, { ar: 31, d1r: 14, d1l: 13, d2r: 12, rr: 8 }, 0.35],
-    [{ wave: 0, level: 1, coarse: 45, fine: 70, fb: 0.2 }, { ar: 31, d1r: 17, d1l: 10, d2r: 14, rr: 9 }, 0.6],
+    [{ wave: 0, level: 1, ratio: 4, pm: 2.2 }, { ar: 31, d1r: 10, d1l: 14, d2r: 6, rr: 7 }, 0.5],
+    [{ wave: 0, level: 1, ratio: 8, pm: 1.5 }, { ar: 31, d1r: 12, d1l: 12, d2r: 5, rr: 8 }, 0.8],
+    [{ wave: 0, level: 1, ratio: 4, pm: 1.5 }, { ar: 31, d1r: 14, d1l: 13, d2r: 12, rr: 8 }, 0.35],
+    [{ wave: 0, level: 1, ratio: 42, fb: 0.2 }, { ar: 31, d1r: 17, d1l: 10, d2r: 14, rr: 9 }, 0.6],
   ];
   const op: number[] = [];
   const env: number[] = [];
   const vca: number[] = [];
   const octave: number[] = [];
+  const tuning: number[] = [];
   const ame: number[] = [];
   const ameOn: number[] = [];
   const opOn: number[] = [];
@@ -248,7 +249,10 @@ const built = define('Algo Four XL', (b) => {
   const vel: number[] = [];
   const kls: number[] = [];
   setup.forEach(([o, e, gain], i) => {
-    op.push(v('osc', 2 + i, 4, o));
+    const { ratio, ...oscParams } = o;
+    op.push(v('osc', 2 + i, 4, oscParams));
+    tuning.push(v('ratio', 2 + i, 4.05, { ratio, detune: 3 }));
+    b.wire(tuning[i], 'pitch', op[i], 'pitch');
     env.push(v('rateenv', 2 + i, 5, e));
     vca.push(v('vca', 2 + i, 6, { gain }));
     vel.push(v('xfade', 2 + i, 4.2, { mix: 0 }));
@@ -324,8 +328,8 @@ const built = define('Algo Four XL', (b) => {
   param('ams', ams, 'gain');
   const operatorAt = rowsSoFar;
   for (let i = 0; i < 4; i++) {
-    param('freq ratio', op[i], 'coarse');
-    param('detune', op[i], 'fine');
+    param('freq ratio', tuning[i], 'ratio');
+    param('detune', tuning[i], 'detune');
     param('out level', vca[i], 'gain');
     param('key velocity', vel[i], 'mix');
     param('ar', env[i], 'ar');
