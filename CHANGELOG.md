@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Voicing adds a key-press trigger. Wanderer and Wanderer XL retrigger their envelopes for every key press, including a note between two held notes, and no longer retrigger when releasing an outer note.
+
 - Math adds signed 16-bit audio XOR. Elvira 2 XL uses it for BITMANGLER; the original instrument's exact mask sequence remains unverified.
 
 - LFO adds a shape input and a simultaneous pulse output. Sallen 20's modulation-generator WAVEFORM knob now sweeps continuously from falling saw through triangle to rising saw and changes the pulse width.

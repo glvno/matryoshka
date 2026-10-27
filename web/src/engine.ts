@@ -132,7 +132,7 @@ const IDLE = 6 / 65536;
 const IDLE_CHECK = 32;
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
-  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index, parts, legato: 0, jump: 0, flaw: 0,
+  pitch: 0, gate: 0, velocity: 0, keyTrig: false, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index, parts, legato: 0, jump: 0, flaw: 0,
   note: -1, on: false, onStamp: 0, offStamp: 0, retrig: false, walk: walkInit(seed),
 });
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
@@ -344,6 +344,7 @@ export class Engine {
         x.on = false;
         x.gate = 0;
         x.retrig = false;
+        x.keyTrig = false;
       }
     }
   }
@@ -755,6 +756,7 @@ export class Engine {
         x.on = false;
         x.gate = 0;
         x.retrig = false;
+        x.keyTrig = false;
       }
     }
   }
@@ -783,6 +785,7 @@ export class Engine {
    * key; otherwise the key does not sound). A taken-over part restarts its envelopes unless legato is on.
    */
   private groupOn(g: Group, note: number, velocity: number): void {
+    for (const x of g.parts) x.keyTrig = true;
     if (g.parts.length === 1 || g.cfg.unison) {
       g.held = g.held.filter((h) => h.note !== note);
       g.held.push({ note, vel: velocity });
@@ -915,6 +918,7 @@ export class Engine {
         x.on = false;
         x.gate = 0;
         x.retrig = false;
+        x.keyTrig = false;
       }
     }
   }
@@ -1118,7 +1122,7 @@ export class Engine {
             } else x.idle = false;
           }),
         );
-      for (const g of all) for (const x of g.parts) x.retrig = false;
+      for (const g of all) for (const x of g.parts) { x.retrig = false; x.keyTrig = false; }
       for (const o of this.outputs) {
         const inst = o.inst[0];
         const lvl = inst.eff.level ?? 1;

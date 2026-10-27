@@ -410,6 +410,7 @@ typedef struct {
     int32_t jump;                    /* the last pitch step, octaves Q16 (the Part module's jump output) */
     uint8_t note, on, retrig;        /* note: the last key it played (255: none yet); on: a key holds it; retrig: taken over
                                         while sounding, this block's gate starts with one low sample */
+    uint8_t key_trig;                /* a key press reached the allocator in this block */
     uint8_t legato;                  /* the note began over a held one (the Part module's legato output) */
     uint32_t on_stamp, off_stamp;
     walk_t dw;                       /* the drift's random walk (modules.ts driftSeed), stepped every block */
@@ -1757,6 +1758,7 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
 {
     pv_t *vs = &E.pv[g->pv0], *x;
     uint32_t n = g->parts, i;
+    for (i = 0; i < n; i++) vs[i].key_trig = 1;
     int v = -1, nfree = 0;
     uint8_t over = 0;                            /* another key is down: this note overlaps it */
     if (n == 1 || g->unison) {                   /* the key again: to the top (no update in between) */
@@ -2235,6 +2237,7 @@ static void keys_off(void)
             E.pv[E.grp[g].pv0 + v].on = 0;
             E.pv[E.grp[g].pv0 + v].gate = 0;
             E.pv[E.grp[g].pv0 + v].retrig = 0;
+            E.pv[E.grp[g].pv0 + v].key_trig = 0;
         }
     }
     for (g = 0; g < E.nmod; g++)
@@ -2262,6 +2265,7 @@ static void arp_switched(uint32_t m)
             E.pv[E.grp[g].pv0 + v].on = 0;
             E.pv[E.grp[g].pv0 + v].gate = 0;
             E.pv[E.grp[g].pv0 + v].retrig = 0;
+            E.pv[E.grp[g].pv0 + v].key_trig = 0;
         }
     }
     for (g = 0; g < E.nmod; g++)
@@ -2826,6 +2830,7 @@ void eng_all_notes_off(void)
         E.pv[i].on = 0;
         E.pv[i].gate = 0;
         E.pv[i].retrig = 0;
+        E.pv[i].key_trig = 0;
     }
     for (i = 0; i < E.nmod; i++)
         if (E.node[i].type == T_DRUMMAP)
@@ -2908,6 +2913,10 @@ static void m_part(const node_t *nd, inst_t *it, uint32_t n)
     fill(it->out[PART_O_INDEX], np > 1 ? (2 * (int32_t)cur_v - (np - 1)) * 65536 / (np - 1) : 0, n);   /* |.| < 2^24: 32 bits */
     fill(it->out[PART_O_LEGATO], x->legato ? ENG_ONE : 0, n);
     fill(it->out[PART_O_JUMP], x->jump, n);
+    if (it->out[PART_O_TRIG] != dummy_out) {
+        fill(it->out[PART_O_TRIG], 0, n);
+        if (x->key_trig) it->out[PART_O_TRIG][0] = ENG_ONE;
+    }
 }
 
 /* Random: fixed or a walk on out, an independent draw on each rising clock edge on held. Q15 -> Q16. */
@@ -5921,8 +5930,10 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         x->idle = 0;
                 }
             }
-        for (k = 0; k < ENG_NPV; k++)                   /* a retrig lasts one block (every Main / Part module saw it) */
+        for (k = 0; k < ENG_NPV; k++) {                 /* both triggers last one block */
             E.pv[k].retrig = 0;
+            E.pv[k].key_trig = 0;
+        }
         for (k = 0; k < E.nout; k++) {
             const node_t *o = &E.node[E.outputs[k]];
             const inst_t *it = &inst_pool[o->inst0];

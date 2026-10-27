@@ -336,6 +336,12 @@ Ladder's `fm` input adds a sample-by-sample cutoff signal to its existing `cv` i
 
 - `grain` (shared like the delay: one instance per patch, `SHARED_TYPES`): records `in` into a 1 s line (`GRAIN_SECONDS`; int16 Q13 on the device, `grain_line_t` = 88,392 B with the eight grain records, pool `gr_pool`, `ENG_NGRAIN` 1: one granular per patch). `density` grains per second start from a Q24 accumulator (the reference quantizes its increment to 2^-24 too, so both engines spawn on the same samples), a rising edge on `trig` starts one as well; at most `GRAIN_MAX` 8 play at once, a ninth is dropped. A grain reads `size` s (len samples) at rate 2^(pitch/12) from start = w − back, back = span + min(avail, floor(position·avail) + floor(rnd·spray·0.25 s)), span = floor(len·rate) + 1 (clamped to the line), avail = LEN − 1 − span, rnd from the LCG (seed 0x7f4a7c15; drawn even when no grain is free); so a grain never crosses the write head. Window sin²(πt/len) (C: `sin_turn` over half a turn, `winc` = 2^31/len), linear interpolation, the grains summed unnormalised; out = in·(1 − mix) + grains·mix. `freeze` stops the recording (w stays; the grains keep reading). With spray 0 and a frozen line every grain reads the same segment, so periodic content can cancel between grains: use spray. Golden kit `grain` (gated saw, LFO trig, pitch +7, spray 0.3): 0.5 % rel rms.
 
+## Key-press trigger
+
+Voicing and Part append `trig`: one sample at one when a key press reaches their allocator, then zero. The allocator's channel and note range still filter incoming keys. The pulse is independent of which pitch wins the priority rule. Releases produce no pulse. Several presses arriving in one block share its pulse. Idle parts retain the existing skip rule; running parts receive the pulse ([D-438](ledger/modules.md#D-438), Proposed).
+
+Wanderer and Wanderer XL use legato pitch selection and subtract this pulse from the held gate. Their envelopes restart for a middle key press, but do not restart when an outer key is released. Existing gate outputs are unchanged in other patches.
+
 ## Math and logic
 
 - Math's appended `xor` output applies exclusive OR to signed 16-bit audio samples. It first applies the gains and offset, multiplies by 32768, rounds down and clamps to −32768..32767. The result is divided by 32768. A zero mask preserves the quantized input. Elvira 2 XL uses this for BITMANGLER; its original mask sequence remains unverified ([D-437](ledger/modules.md#D-437), Proposed).

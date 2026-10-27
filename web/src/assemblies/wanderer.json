@@ -13,7 +13,7 @@
       "params": {
         "voices": 1,
         "assign": 0,
-        "legato": 1,
+        "legato": 2,
         "priority": 1,
         "unison": 0,
         "channel": 0,
@@ -29,7 +29,7 @@
       "params": {
         "voices": 1,
         "assign": 0,
-        "legato": 1,
+        "legato": 2,
         "priority": 2,
         "unison": 0,
         "channel": 0,
@@ -39,11 +39,13 @@
     },
     {
       "id": 3,
-      "type": "logic",
+      "type": "math",
       "x": 0,
       "y": 1120,
       "params": {
-        "thresh": 0.5
+        "ka": 1,
+        "kb": 1,
+        "off": 0
       },
       "att": [
         1,
@@ -51,9 +53,11 @@
       ],
       "map": {
         "p1": [
-          "thresh"
+          "ka"
         ],
-        "p2": [],
+        "p2": [
+          "kb"
+        ],
         "k1": [],
         "k2": [],
         "k3": [],
@@ -1392,8 +1396,8 @@
     },
     {
       "from": {
-        "module": 2,
-        "port": "gate"
+        "module": 1,
+        "port": "trig"
       },
       "to": {
         "module": 3,
@@ -1803,7 +1807,7 @@
     {
       "from": {
         "module": 3,
-        "port": "and"
+        "port": "sub"
       },
       "to": {
         "module": 26,
@@ -2093,7 +2097,7 @@
     {
       "from": {
         "module": 3,
-        "port": "and"
+        "port": "sub"
       },
       "to": {
         "module": 43,
@@ -2123,7 +2127,7 @@
     {
       "from": {
         "module": 3,
-        "port": "and"
+        "port": "sub"
       },
       "to": {
         "module": 45,
@@ -2143,7 +2147,7 @@
     {
       "from": {
         "module": 3,
-        "port": "and"
+        "port": "sub"
       },
       "to": {
         "module": 46,
