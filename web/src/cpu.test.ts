@@ -10,6 +10,14 @@ import { withParts } from './test-poly';
 import { acid, twoOpFM } from './test-patches';
 
 describe('CPU estimate', () => {
+  it('counts Io 4 voice-level flaws before choosing the VCA gain fast path', () => {
+    const p = FM1_PRESETS['Io 4']();
+    const withFlaws = cpuEstimate(p);
+    for (const a of p.assemblies ?? []) for (const f of a.poly?.flaws ?? []) f.level = 100;
+    const withoutFlaws = cpuEstimate(p);
+    const cost = (e: typeof withFlaws): number => e.modules.filter((m) => m.type === 'vca').reduce((sum, m) => sum + m.cycles, 0);
+    expect(cost(withFlaws)).toBeGreaterThan(cost(withoutFlaws));
+  });
   it('only discounts exact fixed gains, not nearby values or modulated gains', () => {
     const p = acid();
     const m = p.modules.find((m) => m.type === 'vca')!;

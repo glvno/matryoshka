@@ -4,7 +4,7 @@
 // measured on the device (a scale plus a fixed time per block); a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
 import { DEFS, LFO_RANGE_K, STACKS, TRACK_POLY } from './modules';
-import { hasMorph, type ModuleInst, type Patch } from './patch';
+import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
 
 /** what changes a module's cost: a choice / switch / small integer (its measured values, the nearest one counts), a number
@@ -225,7 +225,20 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
       one += table.cv.morph * def.params.length;
       for (const [name, v] of Object.entries(m.paramsB ?? {})) if (v !== m.params[name]) moved.add(name);
     }
-    one += m.bypass ? table.bypass * outputs.size : runCost(m, t, inputs, outputs, moved, table.note);
+    const group = groups[groupOf.get(m.id) ?? -1];
+    if (!m.bypass && m.type === 'vca' && group) {
+      let work = 0;
+      const pd = def.params.find((p) => p.name === 'gain')!;
+      const base = Math.round(paramOf(m, 'gain') * 65536);
+      for (let part = 0; part < group.cfg.parts; part++) {
+        // Match apply_flaws: the level scales the Q16 base gain before the gain fast path is chosen.
+        const level = flawOf(group.cfg, part).level;
+        const scaled = Math.floor(base * Math.floor(level * 65536 / 100) / 65536) / 65536;
+        const gain = Math.max(pd.min, Math.min(pd.max, scaled));
+        work += runCost({ ...m, params: { ...m.params, gain } }, t, inputs, outputs, moved, table.note);
+      }
+      one += work / group.cfg.parts;
+    } else one += m.bypass ? table.bypass * outputs.size : runCost(m, t, inputs, outputs, moved, table.note);
     if (t.firstOff && !m.bypass && !outputs.has(def.outputs[0].name) && !(FIRST_ALSO[m.type] ?? []).some((o) => outputs.has(o)))
       one -= t.firstOff + Math.max(0, ...Object.entries(t.firstOffWith ?? {}).filter(([i]) => inputs.has(i)).map(([, v]) => v));
     // a pitch input that keeps moving: something that never holds still reaches it (an envelope or a glide only moves for a moment)
