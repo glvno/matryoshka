@@ -168,8 +168,11 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
     const clocked = ins.some((c) => c.to.port === 'clk' || c.to.port === 'reset');
     if (wave === 4 && !clocked) return 0;                                            // sample & hold: a step per cycle, whatever its rate
     if (ins.length || wave === 2 || wave === 3) return Infinity;                    // modulated (a knob may turn the rate up), or a saw / square edge
-    const k = (m.params.sync ?? 0) >= 0.5 ? 1 : LFO_RANGE_K[Math.round(m.params.range ?? 0)] ?? 1; // (the free rate's range)
-    return (4 * (m.params.rate ?? 4) * k * Math.abs(m.params.depth ?? 1) * 65536) / 44118; // a triangle's slope (a sine's is lower)
+    const sync = (m.params.sync ?? 0) >= 0.5;
+    const range = Math.round(m.params.range ?? 0);
+    const rate = !sync && range === 3 ? (m.params.wide ?? 4) : (m.params.rate ?? 4);
+    const k = sync ? 1 : LFO_RANGE_K[range] ?? 1; // (the free rate's range)
+    return (4 * rate * k * Math.abs(m.params.depth ?? 1) * 65536) / 44118; // a triangle's slope (a sine's is lower)
   }
   if (m.type === 'const' || m.type === 'fm1' || m.type === 'part') return 0;
   const inputs = p.cables.filter((c) => c.to.module === id).map((c) => slope(p, c.from.module, seen));
