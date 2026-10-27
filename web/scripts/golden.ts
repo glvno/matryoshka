@@ -94,6 +94,15 @@ const polyAsm = (p: Patch, ids: number[], cfg: Partial<PolyCfg>): void => {
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: alloc.id, port: 'keys' } });
   makeAssembly(p, ids, `poly ${ids.join(' ')}`).poly = cfg.flaws ? { flaws: cfg.flaws } : {};
 };
+kit('random-held', (add, wire) => {
+  const clock = add('lfo', 0, 0, { wave: 3, rate: 13, depth: 1 });
+  const out = add('output', 0, 0);
+  for (const port of ['l', 'r']) {
+    const r = add('random', 0, 0);
+    wire(clock, 'out', r, 'clock');
+    wire(r, 'held', out, port);
+  }
+});
 kit('waves', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const mix = add('mixer', 0, 0, { l1: 0.25, l2: 0.25, l3: 0.25, l4: 0.25 });

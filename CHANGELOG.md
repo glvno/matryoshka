@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Random has a `clock` input and a `held` output: each rising edge draws an independent random voltage for that instance, held until the next edge. Existing fixed and wandering outputs keep their sound.
+
 - **Lower CPU use for parameter updates.** Modules without parameter modulation copy their settings directly;
   other modules skip parameters with no routes. The instruction model counts about 3.5 % less work across its
   checks, with all 128 audio comparisons bit-identical. Device measurements are pending.

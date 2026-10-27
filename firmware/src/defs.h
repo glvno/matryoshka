@@ -693,11 +693,13 @@ enum {
 /* random: Random */
 #define RANDOM_I_P1 0
 #define RANDOM_I_P2 1
+#define RANDOM_I_CLOCK 2
 #define RANDOM_O_OUT 0
+#define RANDOM_O_HELD 1
 #define RANDOM_P_MODE 0
 #define RANDOM_P_RATE 1
-#define RANDOM_NIN 2
-#define RANDOM_NOUT 1
+#define RANDOM_NIN 3
+#define RANDOM_NOUT 2
 #define RANDOM_NPAR 2
 #define RANDOM_CVBASE 0
 #define RANDOM_NDATA 0
@@ -1308,7 +1310,7 @@ static const uint8_t SHIFT_LOG[] = {0, 0, 0};
 static const char *const SHIFT_UNIT[] = {"HZ", "HZ", ""};
 static const char *const *const SHIFT_CH[] = {0, 0, 0};
 static const char *const PART_INNAMES[] = {0};
-static const char *const RANDOM_INNAMES[] = {"P1", "P2"};
+static const char *const RANDOM_INNAMES[] = {"P1", "P2", "CLOCK"};
 static const int32_t RANDOM_MIN[] = {0, 3277};
 static const int32_t RANDOM_MAX[] = {65536, 1310720};
 static const int32_t RANDOM_DEF[] = {0, 98304};
