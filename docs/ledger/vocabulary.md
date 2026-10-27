@@ -148,7 +148,7 @@ The status-line indicator that shows the editor's link to the FM-1 (not connecte
 
 ### Format 35
 
-The current binary patch format (`VERSION` in `web/src/patchbin.ts`, `ENG_PATCH_VERSION` in `firmware/src/engine.h`).
+The binary patch format that added the PD Osc, Env 8 and Selector modules, the parameters appended to existing modules, and the device page row extras ([D-266](patch-format.md#D-266), [D-267](patch-format.md#D-267)). The current format is `VERSION` in `web/src/patchbin.ts` and `ENG_PATCH_VERSION` in `firmware/src/engine.h`.
 
 ### Forwarder
 
