@@ -4907,5 +4907,5 @@
    ]
   }
  ],
- "notes": "Music Easel patch field, four independent random outputs. Select PATCH on an input row to use a cord into that assembly input; all control sources, inverter and preset voltage have output jacks. FX fires the pulser. Missing engine abilities: audio/preamp/envelope detector, linear decay and arpeggiator rate input. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching are hardware/storage. Low range starts at 0.22 Hz, not 0.17; output split unverified."
+ "notes": "Music Easel patch field with four independent random outputs. Select PATCH to connect any control source to an input. FX fires the pulser. The Arpeggiator has a rate input in Hz. Missing: external audio/preamp/envelope detector and linear decay. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching need hardware or storage. Low range starts at 0.22 Hz, not 0.17. Output split remains unverified."
 }

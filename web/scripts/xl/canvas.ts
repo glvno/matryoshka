@@ -26,11 +26,12 @@
 // Not here, and why:
 // - Needing a module, or a new ability of one, in both engines: the preamp and envelope detector, the modulation switch's
 //   bal. ext and gate 2's preamp source (audio input, #351 "Audio input", #274); the envelope generator's linear decay
-//   (Env L/R falls exponentially); the 218's arpeggiation rate as a control input (the Arpeggiator has no rate input).
+//   (Env L/R falls exponentially).
 // - Rows that read as numbers where the panel has switches: the pulse sequence (`pulse 1..5`: -1 off, anything else on; a
 //   Sequencer's step at -1 is a rest, and #358 names a Selector's positions only) and the two wave switches (`waveshape`,
 //   `timbre wave`: the Oscillator's waves, whose sine the Easel's switches have not got).
-// - Where the 218's arpeggiator is: the patch's Arpeggiator (its own page, ARP; its rate and pattern are its rows there).
+// - The 218's arpeggiator uses the patch's Arpeggiator page. Its continuous rate input takes Hz; the original's
+//   external voltage scale is not calibrated here.
 // - Unsure: whether the 208's left and right outputs split the channels; here both carry the mix.
 // - Hardware and storage: the touch plates themselves, the monitor and master volume, the trim pots, the program card
 //   and the local / remote / both CONTROL switch (the editor keeps the patches).
@@ -169,4 +170,4 @@ export const xl: Xl = {
   },
 };
 
-const NOTES = 'Music Easel patch field, four independent random outputs. Select PATCH on an input row to use a cord into that assembly input; all control sources, inverter and preset voltage have output jacks. FX fires the pulser. Missing engine abilities: audio/preamp/envelope detector, linear decay and arpeggiator rate input. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching are hardware/storage. Low range starts at 0.22 Hz, not 0.17; output split unverified.';
+const NOTES = 'Music Easel patch field with four independent random outputs. Select PATCH to connect any control source to an input. FX fires the pulser. The Arpeggiator has a rate input in Hz. Missing: external audio/preamp/envelope detector and linear decay. Pulse/wave rows use numbers; sine is extra. Plates, trims, program cards and local/remote switching need hardware or storage. Low range starts at 0.22 Hz, not 0.17. Output split remains unverified.';
