@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 17
+      "module": 18
      }
     }
    }
@@ -369,6 +369,29 @@
   },
   {
    "id": 15,
+   "type": "const",
+   "x": 340,
+   "y": 1180,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 16,
    "type": "output",
    "x": 2000,
    "y": 20,
@@ -377,7 +400,7 @@
    }
   },
   {
-   "id": 16,
+   "id": 17,
    "type": "steps",
    "x": 20,
    "y": 1480,
@@ -415,7 +438,7 @@
    "name": "PATTERN"
   },
   {
-   "id": 17,
+   "id": 18,
    "type": "arp",
    "x": 2000,
    "y": 1480,
@@ -438,6 +461,16 @@
    "to": {
     "module": 3,
     "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 4,
+    "port": "pitch"
    }
   },
   {
@@ -646,7 +679,7 @@
     "port": "out"
    },
    "to": {
-    "module": 15,
+    "module": 16,
     "port": "l"
    }
   },
@@ -656,7 +689,7 @@
     "port": "out"
    },
    "to": {
-    "module": 15,
+    "module": 16,
     "port": "r"
    }
   },
@@ -666,13 +699,13 @@
     "port": "keys"
    },
    "to": {
-    "module": 16,
+    "module": 17,
     "port": "keys"
    }
   },
   {
    "from": {
-    "module": 17,
+    "module": 18,
     "port": "keys"
    },
    "to": {
@@ -682,11 +715,11 @@
   },
   {
    "from": {
-    "module": 16,
+    "module": 17,
     "port": "keys"
    },
    "to": {
-    "module": 17,
+    "module": 18,
     "port": "keys"
    }
   }
@@ -713,7 +746,8 @@
     11,
     12,
     13,
-    14
+    14,
+    15
    ],
    "inputs": [
     {
@@ -737,14 +771,14 @@
      "head": "tone"
     },
     {
-     "module": 4,
-     "param": "fine",
+     "module": 15,
+     "param": "value",
      "label": "tuning"
     },
     {
      "module": 12,
      "param": "cutoff",
-     "label": "cutoff"
+     "label": "cut off freq"
     },
     {
      "module": 11,
