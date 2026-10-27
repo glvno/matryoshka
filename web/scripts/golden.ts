@@ -2341,6 +2341,24 @@ events['steps-direction-live'] = [[0, 'run', 0], [128 * 40, 'cc', 1, 42], [128 *
   [128 * 220, 'cc', 2, 0], [128 * 260, 'cc', 1, 0]];
 ends['steps-direction-live'] = 128 * 300;
 
+// A shortened reverse pass cancels an out-of-range swung visit and releases old long notes.
+for (const long of [false, true]) {
+  const name = `steps-shorten-${long ? 'held' : 'swing'}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0, { tempo: 120 });
+    const st = add('steps', 0, 0, { len: 2, dir: 1, swing: long ? 50 : 75 }, { map: { p1: ['len'] } });
+    const scale = add('scale', 0, 0, { gain: (long ? 62 : 2) / 63 });
+    const out = add('output', 0, 0, { level: 1 });
+    wire(main, 'mod', scale, 'in'); wire(scale, 'out', st, 'p1');
+    wire(st, 'trig', out, 'l'); wire(st, 'vel', out, 'r');
+  });
+  tests[name].modules.find(m => m.type === 'steps')!.notes = long
+    ? [{ at: 63, len: 64, note: 63, vel: 100 }]
+    : Array.from({ length: 4 }, (_, at) => ({ at, len: 1, note: 60 + at, vel: 30 + at * 20 }));
+  events[name] = [[0, 'cc', 1, 127], [128, 'run', 0], [128 * (long ? 9 : 52), 'cc', 1, 0]];
+  ends[name] = 128 * 220;
+}
+
 // Direction changes affect traversal, swing, note duration and live recording in both engines.
 for (const dir of [1, 2, 3]) {
   for (const base of ['steps-notes', 'steps-clk', 'steps-arm']) {
@@ -2435,6 +2453,16 @@ events['909 Kit'] = [[0, 'run', 0], ...[53, 55, 57, 59, 60, 62, 64, 65].flatMap(
 // the 808 Kit: the same (each drum's velocity sets a VCA's gain through a macro range; the tom and rim strike through a
 // VCA on it; the closed hihat cuts the open one through a sample and hold)
 events['808 Kit'] = events['909 Kit'];
+
+// The standalone panel runner needs only these encoded patches, not an audio-golden run.
+if (process.argv.includes('--panel-fixtures')) {
+  const out = new URL('../../build/panel-fixtures/', import.meta.url);
+  mkdirSync(out, { recursive: true });
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64'])
+    writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
+  console.log('panel fixtures generated');
+  process.exit(0);
+}
 
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))

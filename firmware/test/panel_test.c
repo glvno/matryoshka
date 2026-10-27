@@ -259,7 +259,7 @@ static int load(const char *name)
 {
     return load_at(preset_at(name));
 }
-/* the factory patch p (0..N_PRESETS-1) running */
+/* An encoded test patch in the same buffer used by the panel reload path. */
 static int load_fixture(const char *path)
 {
     FILE *f = fopen(path, "rb");
@@ -269,6 +269,7 @@ static int load_fixture(const char *path)
     return eng_load(pv_bin, pv_len);
 }
 
+/* the factory patch p (0..N_PRESETS-1) running */
 static int load_at(uint32_t p)
 {
     if (p >= N_PRESETS)
@@ -385,7 +386,7 @@ int main(void)
     check("normal unison keeps legato and clears share", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && pv_bin[10] == 0x82u);
     /* Group-format guards use only stable Main/Part/VCA/Output records, independent of factory players.
      * Real older records and upgrades are checked by tools/old_format.sh. */
-    check("group compatibility fixture loads", load_fixture("build/golden/unison-count-0-0.m1p") == 0);
+    check("group compatibility fixture loads", load_fixture("build/panel-fixtures/unison-count-0-0.m1p") == 0);
     for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
         ;
     check("group compatibility fixture keeps the edited settings",
@@ -2838,7 +2839,7 @@ int main(void)
     }
     /* The panel's two recording entry points preview the same reverse step as playback. */
     {
-        FILE *f = fopen("build/golden/steps-direction-1-64.m1p", "rb");
+        FILE *f = fopen("build/panel-fixtures/steps-direction-1-64.m1p", "rb");
         check("direction fixture exists", f != 0);
         if (f) {
             uint32_t st, i, count;
