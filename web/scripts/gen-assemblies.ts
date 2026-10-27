@@ -2340,15 +2340,16 @@ asm('Briefcase 3', 'Voices', (b) => {
 
 // Io 4, a four-voice polysynth after the Roland Jupiter-4, from its owner's manual ("JP-4 OWNER'S MANUAL '82 AUG.": the
 // panel drawings, the functions of the components and the specifications). The card is the JP-4's panel, one row per
-// slider, knob or switch, under its section names; a switch is a Selector row (1, 2, .. in the panel's order) until
-// Selectors name their positions (#358).
+// slider, knob or switch, under its section names; a switch is a Selector row whose positions carry the panel's legends
+// (the specifications' names: 16' 8' 4', 50% .. 10%, NORM / WIDE, LFO / OFF / BEND, NORMAL / 1 OCT DOWN, OFF / ON).
 // A voice (four, as the JP-4's four modules): the VCO (WAVE FORM: 1 OFF, 2 SAW, 3 SQUARE, 4 PULSE; RANGE 1 16', 2 8',
 // 3 4'; SUB, a square one octave down, 1 off, 2 on; MOD, the LFO into the pitch), the pulse width (PW 1..4 = 50, 40, 20,
 // 10 %; PW MODE 1 MANUAL: that width, 2 MOD: the LFO swings the width from 50 % down to it), NOISE (1 off, 2 on) into the
 // resonant 24 dB low pass (a ladder: LPF CUTOFF, RES; KYBD FOLLOW 1..4 = 10, 40, 70, 100 %; MOD, the LFO; ENV MOD and
 // POLARITY 1 normal, 2 inverted, of the VCF's own ADSR), then the VCA with its own ADSR and LEVEL. The manual's
 // specifications list two envelope generators, "for the VCF, VCA", and its panel drawing shows an A D S R set in each
-// section. Once for all voices: the LFO (WAVE FORM 1 sine, 2 square, 3 saw, 4 reverse saw; RATE), the non-resonant HPF
+// section. Once for all voices: the LFO (WAVE FORM 1 sine, 2 square, 3 saw, 4 reverse saw; RATE on the LFO's wide range,
+// 0.0008 to 55 Hz, where the JP-4's specifications give 0.1 to 80 Hz: the LFO goes no higher), the non-resonant HPF
 // (after the voices: one cutoff for all, so the same filter), the ensemble (our chorus, 1 off, 2 on).
 // The modifier section: TRIGGER (RATE clocks the noise sample & hold into the cutoffs, VCF MOD its depth, and the
 // arpeggio: the `arp clock` output, which the factory patch plugs into its Arpeggiator); DELAY / BEND (DELAY TIME, the
@@ -2362,7 +2363,7 @@ asm('Briefcase 3', 'Voices', (b) => {
 // lowest key held); SHARE is UNISON II (four voices on one key, two each on two keys, one each on three or four).
 // HOLD (1 off, 2 on): a voice whose key is let go keeps its gate while its VCA envelope still sounds.
 // The combined four-position assignment control still uses separate assign/unison rows. EXT CLOCK, the VCF CONT, EXP and DAMPER pedals, the memories and VOLUME
-// (the patch's level) are hardware or storage. The LFO's rate reaches 40 Hz (the JP-4's 80 Hz).
+// (the patch's level) are hardware or storage. The LFO's rate reaches 55 Hz (the JP-4's 80 Hz).
 import { BEND_OCT } from '../src/modules';
 /** Io 4 and Vernon 100 have many small modules: lay them all out on the grid in the order they were added, eight a row */
 const gridAll = (b: B): void => {
@@ -2387,13 +2388,13 @@ asm('Io 4', 'Voices', (b) => {
   const portaSel = b.add('select', 0, 6, { count: 2, pos: 1, v1: -1, v2: 0 }); // 1 off: the slew's time at its 1 ms floor
   const holdSel = b.add('select', 0, 6.5, { count: 2, pos: 1, v1: -4, v2: 0.4999 });
   // ---- the LFO: wave (the reverse saw is the saw times -1), rate and its bend, the delay
-  const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 4.5, depth: 1 }, { p1: 'rate', p2: 'wave' });
+  const lfo = b.add('lfo', 0, 0, { wave: 0, range: 3, wide: 4.5, depth: 1 }, { p1: 'wide', p2: 'wave' });
   const lfoWave = b.add('select', 0, 0.5, { count: 4, pos: 1, v1: 0, v2: 0.75, v3: 0.5, v4: 0.5 }); // x 4: wave 0 3 2 2
   b.wire(lfoWave, 'out', lfo, 'p2');
   const lfoSig = b.add('math', 0.5, 0.5, { ka: -2, kb: 1, off: 1 }); // (1 - 2 x rev saw) x the LFO
   b.wire(lfoWave, 'g4', lfoSig, 'a');
   b.wire(lfo, 'out', lfoSig, 'b');
-  const bendSel = b.add('select', 0, 1, { count: 2, pos: 1, v1: 1 / Math.log2(2000), v2: 4 / Math.log2(2000) }); // octaves of the rate's span
+  const bendSel = b.add('select', 0, 1, { count: 2, pos: 1, v1: 1 / Math.log2(55 / 0.0008), v2: 4 / Math.log2(55 / 0.0008) }); // octaves of the wide rate's span
   const lfoBend = b.add('scale', 0.5, 1, { gain: 0, offset: 0 }); // LFO BEND: -1 .. 1 the reach down or up
   b.wire(bendSel, 'out', lfoBend, 'in');
   b.wire(lfoBend, 'out', lfo, 'p1');
@@ -2528,7 +2529,7 @@ asm('Io 4', 'Voices', (b) => {
   b.param('pw mode', pwMode, 'pos');
   b.param('pw', pwStep, 'pos');
   b.param('wave form', waveSel, 'pos');
-  b.param('noise', noiseSel, 'pos', { head: 'noise' });
+  b.param('noise', noiseSel, 'pos');
   b.param('hpf cutoff', hpf, 'cutoff', { col: true, head: 'vcf' });
   b.param('lpf cutoff', flt, 'cutoff');
   b.param('res', flt, 'res');
@@ -2542,19 +2543,19 @@ asm('Io 4', 'Voices', (b) => {
   for (const q of ['a', 'd', 's', 'r']) b.param(q, envA, q);
   b.param('level', vca, 'gain');
   b.param('wave form', lfoWave, 'pos', { head: 'lfo' });
-  b.param('rate', lfo, 'rate');
+  b.param('rate', lfo, 'wide');
   b.param('rate', trig, 'rate', { col: true, head: 'trigger' });
   b.param('vcf mod', trigAmt, 'gain');
-  b.param('delay time', delayEnv, 'a', { head: 'delay / bend' });
+  b.param('delay time', delayEnv, 'a', { head: 'delay/bend' });
   b.param('lfo bend', lfoBend, 'gain');
-  b.param('norm / wide', bendSel, 'pos');
-  b.param('bend sens', bendSens, 'gain', { head: 'bend / mod' });
+  b.param('norm/wide', bendSel, 'pos');
+  b.param('bend sens', bendSens, 'gain', { head: 'bend/mod' });
   b.param('lfo mod', leverLfo, 'gain');
   b.param('vco', leverVco, 'pos');
   b.param('vcf', leverVcf, 'pos');
   b.param('vca', leverVca, 'pos');
   b.param('portamento', glide, 'time', { col: true, head: 'portamento' });
-  b.param('porta switch', portaSel, 'pos');
+  b.param('switch', portaSel, 'pos');
   b.param('transpose', transSel, 'pos', { head: 'keys' });
   b.param('tuning', vcoMod, 'offset');
   b.param('assign', part, 'assign');
@@ -2564,6 +2565,24 @@ asm('Io 4', 'Voices', (b) => {
   b.param('out', scope, 'view');
   gridAll(b);
 });
+{
+  // the panel's legends, row by row in card order (two rows are called WAVE FORM: the VCO's, then the LFO's). The FM-1's
+  // 3,840 bytes hold no more: the OFF / ON switches (sub, noise, portamento, hold, ensemble) stay numbered, 1 OFF, 2 ON
+  const LEVER = ['LFO', 'OFF', 'BEND'];
+  const names: [string, string[]][] = [
+    ['range', ["16'", "8'", "4'"]], ['pw mode', ['MANUAL', 'MOD']], ['pw', ['50%', '40%', '20%', '10%']],
+    ['wave form', ['OFF', 'SAW', 'SQUARE', 'PULSE']], ['kybd follow', ['10%', '40%', '70%', '100%']],
+    ['polarity', ['NORM', 'INV']], ['wave form', ['SINE', 'SQUARE', 'SAW', 'REV SAW']], ['norm/wide', ['NORM', 'WIDE']],
+    ['vco', LEVER], ['vcf', LEVER], ['vca', LEVER], ['transpose', ['NORMAL', '-1 OCT']],
+  ];
+  const d = defs.find((x) => x.name === 'Io 4')!;
+  let at = 0;
+  for (const [label, n] of names) {
+    at = d.params.findIndex((r, i) => i >= at && r.label === label && r.param === 'pos');
+    if (at < 0) throw new Error(`Io 4: no switch row ${label}`);
+    d.params[at++].names = n;
+  }
+}
 
 // Vernon 100, a duophonic synth after the EML ElectroComp 100 (made in Vernon, Connecticut). After the panel, not a
 // manual: no manual for the 100 was found. The panel (a 100's photos and a redrawn 100 panel) gives the controls; the
