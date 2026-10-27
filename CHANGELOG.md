@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The editor has its own address: [matryoshka.lol](https://matryoshka.lol/).** The browser keeps the editor's data
+  separately for each address. If you used matry0shka.pages.dev, it keeps working, and a bar at the top offers **Move
+  them there**: one click opens matryoshka.lol and brings your patches, FM-1 bank, library, tutorial progress and
+  settings along, without replacing anything already there. A toast lists what came over. If you never used it, a
+  matry0shka.pages.dev link opens at matryoshka.lol instead, with its patch. The command palette has **Move to
+  matryoshka.lol** there, and **Save browser backup** everywhere: a .json file of all of it, which **Load .json** reads.
+
 - **Incoming MIDI notes keep playing during FM-1 screen redraws** (#363). USB and TRS notes and clock are taken
   between screen transfers, including octave messages. Commands that change pages or patches keep their input order
   and wait for the main loop so they cannot draw into an unfinished screen transfer. On the test rig, SELECT and ALGO

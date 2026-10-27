@@ -1,7 +1,8 @@
 name: deploy
 # Publishes the web app (editor, presets, flasher and the committed, device-tested firmware package in web/public/firmware/)
 # to Cloudflare Pages, and the forwarder (deploy/github-pages-forward) to GitHub Pages:
-#   https://matry0shka.pages.dev/  (the Cloudflare Pages project `matry0shka`; `matryoshka` was taken; the address is SITE_URL in web/src/site.ts)
+#   https://matryoshka.lol/  (the Cloudflare Pages project `matry0shka`; `matryoshka` was taken; the address is SITE_URL in web/src/site.ts;
+#   the custom domain is set in the Cloudflare dashboard, and the project's own https://matry0shka.pages.dev/ serves the same app)
 #   https://glvno.github.io/matryoshka/  (the old address: forwards there, and offers to bring the browser data along)
 # The firmware is not built here: Pages publishes the committed, device-tested package in web/public/firmware/ (made with
 # tools/build.py + npm run firmware), so the site never carries a package no device has run.

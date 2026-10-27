@@ -27,7 +27,7 @@ body:
     attributes:
       label: Patch link
       description: The share link from Matryoshka, with `#p=…` at the end.
-      placeholder: https://matry0shka.pages.dev/#p=…
+      placeholder: https://matryoshka.lol/#p=…
     validations:
       required: true
   - type: input
