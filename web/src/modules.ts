@@ -2258,28 +2258,43 @@ export const RANDOM_MODES = ['fixed', 'walk'];
 interface RandomState {
   seed: number;
   walk: Walk;
+  heldSeed: number;
+  held: number;
+  clock: number;
 }
 /**
  * A random value per copy, -1..1: `fixed` never changes (an analog part's tolerance), `walk` wanders slowly, a new target
- * every 1 / rate seconds (drift). Each copy has its own: the seed mixes the module's place in the patch and its part.
+ * every 1 / rate seconds (drift). `held` draws a new independent value on each rising `clock` edge. Each copy has its
+ * own stream: the seed mixes the module's place in the patch and its part. The clocked stream does not alter `out`.
  */
 const random: ModuleImpl<RandomState> = {
   def: {
     type: 'random',
     label: 'Random',
     inputs: [],
-    outputs: [control('out')],
+    outputs: [control('out'), control('held')],
     params: [param('mode', 0, 1, 0, { step: 1, choices: RANDOM_MODES }), param('rate', 0.05, 20, 1.5, { unit: 'Hz', step: 0.01, log: true })],
   },
-  init: () => ({ seed: 0, walk: walkInit(0) }),
+  init: () => ({ seed: 0, walk: walkInit(0), heldSeed: 0, held: 0, clock: 0 }),
   seed(s, seed) {
     s.seed = seed;
     s.walk = walkInit(seed ^ 0x2545f491);
+    s.heldSeed = hash32(seed ^ 0xa511e9b3);
   },
   process(c, s) {
     walkStep(s.walk, walkHold(c.sr, c.p.rate ?? 1.5)); // every block, so the wander does not depend on the mode
     const q = Math.round(c.p.mode ?? 0) ? s.walk.y : randomFixed(s.seed);
     c.out.out.fill(q / 32768, 0, c.n);
+    if (c.used?.held === false) return;
+    for (let i = 0; i < c.n; i++) {
+      const clock = c.inp.clock[i];
+      if (clock >= 0.5 && s.clock < 0.5) {
+        s.heldSeed = lcg(s.heldSeed);
+        s.held = q15(s.heldSeed) / 32768;
+      }
+      s.clock = clock;
+      c.out.held[i] = s.held;
+    }
   },
 };
 
@@ -3045,6 +3060,7 @@ for (const m of ALL)
 
 // ports added after the pins (port indices are append-only): the Steps module's keys in (#134)
 steps.def.inputs.push(keys('keys'));
+random.def.inputs.push(gate('clock'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 

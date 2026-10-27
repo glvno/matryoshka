@@ -314,7 +314,7 @@ typedef struct {
     esig_t *out[MAX_OUT];
     union {
         struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks */
-        struct { uint32_t seed; walk_t w; } rnd;   /* seed: engine.ts instSeed */
+        struct { uint32_t seed; walk_t w; uint32_t held_seed; int32_t held, clock; } rnd;   /* seed: engine.ts instSeed */
         struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap */
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
@@ -634,6 +634,7 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
     case T_RANDOM:                       /* modules.ts random.seed with engine.ts instSeed(module index, part) */
         it->s.rnd.seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
         walk_init(&it->s.rnd.w, it->s.rnd.seed ^ 0x2545f491u);
+        it->s.rnd.held_seed = hash32(it->s.rnd.seed ^ 0xa511e9b3u);
         break;
     case T_LFO:
         it->s.lfo.seed = 0x2545f491u;
@@ -2885,13 +2886,25 @@ static void m_part(const node_t *nd, inst_t *it, uint32_t n)
     fill(it->out[PART_O_JUMP], x->jump, n);
 }
 
-/* the Random module (modules.ts random): fixed (a hash of its seed) or a walk, Q15 -> Q16 */
+/* Random: fixed or a walk on out, an independent draw on each rising clock edge on held. Q15 -> Q16. */
 static void m_random(const node_t *nd, inst_t *it, uint32_t n)
 {
     int32_t q;
+    uint32_t i;
     walk_step(&it->s.rnd.w, walk_hold(EF(it, RANDOM_P_RATE)));   /* every block, so the wander does not depend on the mode */
     q = round_q16(EF(it, RANDOM_P_MODE)) ? it->s.rnd.w.y : q15(hash32(it->s.rnd.seed));
     fill(it->out[RANDOM_O_OUT], 2 * q, n);
+    if (it->out[RANDOM_O_HELD] == dummy_out)
+        return;
+    for (i = 0; i < n; i++) {
+        int32_t clock = it->in[RANDOM_I_CLOCK][i];
+        if (clock >= 32768 && it->s.rnd.clock < 32768) {
+            it->s.rnd.held_seed = lcg(it->s.rnd.held_seed);
+            it->s.rnd.held = 2 * q15(it->s.rnd.held_seed);
+        }
+        it->s.rnd.clock = clock;
+        it->out[RANDOM_O_HELD][i] = it->s.rnd.held;
+    }
 }
 
 /* The FM oscillator (pm connected with pm > 0, or feedback) runs at twice the rate: two waves per frame, the pm input
