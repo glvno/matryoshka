@@ -32,11 +32,11 @@
 //     8          (none)              1, 2, 3, 4
 // - FEEDBACK 0..7 on operator 4, in every algorithm.
 // - Per operator: FREQUENCY RATIO (`freq ratio`, semitones, with `detune` in cents: 3.14 = 20 st - 19 ct), DETUNE
-//   (+-2.6 cents: the same `detune`), OPERATOR OUT LEVEL, the envelope (AR, D1R towards D1L, D2R towards the Env L/R's
-//   third level, RR; the Env L/R module, its first level at the top as the DX100's attack; the DX100's rates are speeds,
-//   here times), KEY VELOCITY 0..7 (0 none, 1 the full range; a note at velocity v plays at 1 - velocity x (1 - v)),
+//   (+-2.6 cents: the same `detune`), OPERATOR OUT LEVEL, the Rate Env envelope (AR, D1R towards D1L, D2R towards silence, RR). AR/D1R/D2R
+//   use original 0..31 rates, with 0 stopping that stage; D1L/RR use 0..15. KEY VELOCITY 0..7
+//   (0 none, 1 the full range; a note at velocity v plays at 1 - velocity x (1 - v)),
 //   KEYBOARD SCALING LEVEL (the level falls by that much over the four octaves above C2, the DX100's lowest key), RATE
-//   SCALING 0..3 (every segment's time halves per octave above C2 at 3), the AMS switch (a Selector in front of the
+//   SCALING 0..3 (native key-code scaling, stronger at higher settings), the AMS switch (a Selector in front of the
 //   amplitude modulation: OFF passes nothing), EG BIAS SENSITIVITY 0..7 and the operator's switch (a Selector after the
 //   oscillator: OFF silences it). Velocity, level scaling, amplitude modulation and EG bias move the oscillator's level
 //   (its p2 pin, the four added).
@@ -59,10 +59,9 @@
 //   Low/high follow held allocated notes; Kon keeps bending release tails too.
 // Not on the card, and why:
 // - Construction, kept at its values in the patch: each operator's octave (ratios past 16.96 need it on top of the freq
-//   ratio's semitones) and phase modulation index (the modulator's out level is the depth on the DX100), the Env L/R's
-//   third level (D2R decays towards it: 0 as on the DX100; a D2R of 0, holding at D1L, needs it at D1L, which the card
-//   cannot set), the LFO's range (`lfo speed` spans 0.02..40 Hz on its normal range; the DX100's 0.0008..55 Hz needs the
-//   range too), and the envelope and output displays.
+//   ratio's semitones) and phase modulation index (the modulator's out level is the depth on the DX100), and output displays.
+// - Rate Env follows the original rate architecture and Yamaha chip envelope-clock rules, not identical DAC character.
+//   Its maximum attack works when changed live too; the original register-write glitch is not reproduced.
 // - POLY/MONO is a number (8 or 1), not a switch: a Selector cannot set a Voicing's voice count (D-635 keeps a Voicing's
 //   settings off a shared row). Named choices need that in both engines.
 // Too big for the FM-1. The browser version keeps all eight voices; deviceBudget reports its current limits.
@@ -74,7 +73,7 @@ import { around, define, matchLevel, type Def } from './def';
 import { setCopies } from '../../src/assembly';
 import type { Xl } from './xl';
 
-const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED covers 0.0008–55 Hz. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
+const NOTES = "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED covers 0.0008–55 Hz. AR/D1R/D2R use 0..31 rates: zero stops the stage; D2R zero holds D1L. D1L/RR use 0..15. Rate scaling uses 0..3. PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
 
 
 /** each path's algorithms (1..8): the route Selectors' input k takes the path when algorithm k lists it */
@@ -185,13 +184,11 @@ const built = define('Algo Four XL', (b) => {
   const assign = b.add('select', 4, 1, { pos: 1, count: 2, v1: 0, v2: 1 }); // SUSTAIN, PORTAMENTO
   const fx = b.add('logic', 4, 1.1, {}); // a = assign, b = the switch: and = portamento pedal, not = assigned to sustain
   const sus = b.add('logic', 4, 1.2, {}); // a = the switch, b = assigned to sustain: and = sustain pedal
-  const susNot = b.add('logic', 4, 1.3, {}); // not = no sustain pedal
   const portaOn = b.add('logic', 4, 1.4, {}); // or: portamento allowed (the pedal down, or the switch is the sustain pedal)
   const fingered = b.add('select', 4, 1.5, { pos: 1, count: 2, v1: 0, v2: 1 }); // FULL TIME, FINGERED
   const full = b.add('logic', 4, 1.6, {}); // not = full time
   b.wire(assign, 'out', fx, 'a');
   b.wire(fx, 'not', sus, 'b');
-  b.wire(sus, 'and', susNot, 'a');
   b.wire(fx, 'and', portaOn, 'a');
   b.wire(fx, 'not', portaOn, 'b');
   b.wire(fingered, 'out', full, 'a');
@@ -216,11 +213,9 @@ const built = define('Algo Four XL', (b) => {
   const portaPick = v('xfade', 1, 4.2, { mix: 0 });
   const legatoOr = v('logic', 1, 4.3, {});
   const portaAnd = v('logic', 1, 4.4, {});
-  const gateOr = v('logic', 1, 4.5, {});
-  const gate = v('sh', 1, 4.6, { mode: 1 });
+  const gate = v('scale', 1, 4.6, { gain: 1, offset: 0 });
   const velLess = v('scale', 1, 4.7, { gain: 1, offset: -1 });
   const kbLevel = v('math', 1, 4.8, { ka: -0.25, kb: 1, off: -0.5 });
-  const kbRate = v('math', 1, 4.9, { ka: -0.025, kb: 1, off: -0.05 });
   b.wire(part, 'pitch', key, 'a');
   b.wire(bendIn, 'out', key, 'b');
   b.wire(key, 'add', porta, 'in');
@@ -232,19 +227,15 @@ const built = define('Algo Four XL', (b) => {
   b.wire(portaOn, 'or', portaAnd, 'b');
   b.wire(portaAnd, 'and', portaPick, 'pos');
   b.wire(part, 'gate', gate, 'in');
-  b.wire(part, 'gate', gateOr, 'b');
-  b.wire(susNot, 'not', gateOr, 'a');
-  b.wire(gateOr, 'or', gate, 'clock');
   b.wire(part, 'vel', velLess, 'in');
   b.wire(key, 'add', kbLevel, 'a');
-  b.wire(key, 'add', kbRate, 'a');
 
-  // the FM-1 version's sound (algorithm 5), its modulators' envelopes as they were before they became ADSRs
+  // Algorithm 5 and the FM-1 operator ratios, with native rate-envelope starting values.
   const setup: [Record<string, number>, Record<string, number>, number][] = [
-    [{ wave: 0, level: 1, pm: 2.2 }, { l1: 1, r1: 0.002, l2: 0.6, r2: 1.2, l3: 0.35, r3: 1, l4: 0, r4: 0.5 }, 0.5],
-    [{ wave: 0, level: 1, coarse: 12, pm: 1.5 }, { l1: 1, r1: 0.002, l2: 0.4, r2: 0.6, l3: 0.2, r3: 2, l4: 0, r4: 0.4 }, 0.8],
-    [{ wave: 0, level: 1, pm: 1.5 }, { l1: 1, r1: 0.002, l2: 0.5, r2: 0.25, l3: 0, r3: 0.6, l4: 0, r4: 0.3 }, 0.35],
-    [{ wave: 0, level: 1, coarse: 45, fine: 70, fb: 0.2 }, { l1: 1, r1: 0.001, l2: 0.2, r2: 0.12, l3: 0, r3: 0.3, l4: 0, r4: 0.2 }, 0.6],
+    [{ wave: 0, level: 1, pm: 2.2 }, { ar: 31, d1r: 10, d1l: 14, d2r: 6, rr: 7 }, 0.5],
+    [{ wave: 0, level: 1, coarse: 12, pm: 1.5 }, { ar: 31, d1r: 12, d1l: 12, d2r: 5, rr: 8 }, 0.8],
+    [{ wave: 0, level: 1, pm: 1.5 }, { ar: 31, d1r: 14, d1l: 13, d2r: 12, rr: 8 }, 0.35],
+    [{ wave: 0, level: 1, coarse: 45, fine: 70, fb: 0.2 }, { ar: 31, d1r: 17, d1l: 10, d2r: 14, rr: 9 }, 0.6],
   ];
   const op: number[] = [];
   const env: number[] = [];
@@ -256,38 +247,34 @@ const built = define('Algo Four XL', (b) => {
   const ebs: number[] = [];
   const vel: number[] = [];
   const kls: number[] = [];
-  const krs: number[] = [];
   setup.forEach(([o, e, gain], i) => {
     op.push(v('osc', 2 + i, 4, o));
-    env.push(v('env', 2 + i, 5, e));
+    env.push(v('rateenv', 2 + i, 5, e));
     vca.push(v('vca', 2 + i, 6, { gain }));
     vel.push(v('xfade', 2 + i, 4.2, { mix: 0 }));
     kls.push(v('scale', 2 + i, 4.4, { gain: 0, offset: 0 }));
-    krs.push(v('scale', 2 + i, 4.6, { gain: 0, offset: 0 }));
     octave.push(b.add('scale', 2 + i, 2, { gain: 1, offset: 0 }));
     ame.push(v('scale', 2 + i, 2.2, { gain: 1, offset: 0 }));
     ameOn.push(v('select', 2 + i, 2.1, { pos: 2, count: 2 })); // the AMS switch: OFF passes nothing
     opOn.push(v('select', 2 + i, 4.1, { pos: 2, count: 2 })); // the operator's switch: OFF silences it
     ebs.push(v('scale', 2 + i, 2.4, { gain: 0, offset: 0 }));
     b.pin(op[i], 'p2', 'level');
-    b.pin(env[i], 'p1', 'r1');
-    b.module(env[i]).map!.p1 = ['r1', 'r2', 'r3', 'r4'];
     b.wire(portaPick, 'out', op[i], 'pitch');
     b.wire(voiceBend, 'out', op[i], 'pitch');
     b.wire(bus, 'out', octave[i], 'in');
     b.wire(octave[i], 'out', op[i], 'pitch');
     b.wire(gate, 'out', env[i], 'gate');
+    b.wire(sus, 'and', env[i], 'hold');
+    b.wire(key, 'add', env[i], 'pitch');
     b.wire(op[i], 'out', opOn[i], 'in2');
     b.wire(opOn[i], 'out', vca[i], 'in');
     b.wire(env[i], 'env', vca[i], 'cv');
     b.wire(velLess, 'out', vel[i], 'b');
     b.wire(kbLevel, 'min', kls[i], 'in');
-    b.wire(kbRate, 'min', krs[i], 'in');
     b.wire(amDel, 'out', ameOn[i], 'in2');
     b.wire(ameOn[i], 'out', ame[i], 'in');
     b.wire(egBias, 'out', ebs[i], 'in');
     for (const [m, port] of [[vel[i], 'out'], [kls[i], 'out'], [ame[i], 'out'], [ebs[i], 'out']] as [number, string][]) b.wire(m, port, op[i], 'p2');
-    b.wire(krs[i], 'out', env[i], 'p1');
   });
   // the paths: a Selector in front of each modulated operator's phase and one for what is heard, each input k the sum of
   // what algorithm k sends there (operator 1 is heard in every algorithm)
@@ -341,12 +328,12 @@ const built = define('Algo Four XL', (b) => {
     param('detune', op[i], 'fine');
     param('out level', vca[i], 'gain');
     param('key velocity', vel[i], 'mix');
-    param('ar', env[i], 'r1');
-    param('d1r', env[i], 'r2');
-    param('d1l', env[i], 'l2');
-    param('d2r', env[i], 'r3');
-    param('rr', env[i], 'r4');
-    param('rate scaling', krs[i], 'gain');
+    param('ar', env[i], 'ar');
+    param('d1r', env[i], 'd1r');
+    param('d1l', env[i], 'd1l');
+    param('d2r', env[i], 'd2r');
+    param('rr', env[i], 'rr');
+    param('rate scaling', env[i], 'krs');
     param('level scaling', kls[i], 'gain');
     param('eg bias sens', ebs[i], 'gain');
     named('operator', opOn[i], ['OFF', 'ON']);

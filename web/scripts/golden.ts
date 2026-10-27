@@ -53,6 +53,23 @@ const events: Record<string, Ev[]> = {};
 const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
+// Original rate-envelope extremes, pedal hold/retrigger, and key-rate scaling at low and high notes.
+for (const [suffix, params] of Object.entries({
+  hold: { ar: 31, d1r: 24, d1l: 10, d2r: 0, rr: 8, krs: 0 },
+  decay: { ar: 14, d1r: 16, d1l: 12, d2r: 14, rr: 0, krs: 3 },
+  stopped: { ar: 0, d1r: 0, d1l: 15, d2r: 0, rr: 15, krs: 3 },
+  fast: { ar: 31, d1r: 31, d1l: 0, d2r: 31, rr: 15, krs: 0 },
+})) {
+  const name = `rateenv-${suffix}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), env = add('rateenv', 0, 0, params), out = add('output', 0, 0, { level: 1 });
+    wire(main, 'gate', env, 'gate'); wire(main, 'pitch', env, 'pitch'); wire(main, 'sustain', env, 'hold');
+    wire(env, 'env', out, 'l');
+  });
+  events[name] = [[0, 'cc', 64, 127], [128 * 5, 'on', 36], [128 * 40, 'off', 36],
+    [128 * 65, 'on', 84], [128 * 90, 'off', 84], [128 * 110, 'cc', 64, 0],
+    [128 * 115, 'cc', 64, 127], [128 * 140, 'on', 60]];
+}
 // Pedal hold preserves the original gate's rising edges, including attacks during a sustained note.
 for (const sustain of [0, 0.3, 1]) {
   const name = `adsr-hold-${sustain}`;
@@ -901,6 +918,24 @@ kit('env8-poly', (add, wire) => {
 });
 polyAsm(tests['env8-poly'], env8Parts, { parts: 4, flaws: [{ detune: 0, drift: 0, bright: 0, env: 40, level: 100 }, { detune: 0, drift: 0, bright: 0, env: -30, level: 100 }] });
 events['env8-poly'] = POLY_EVENTS;
+const rateEnvParts: number[] = [];
+kit('rateenv-poly', (add, wire) => {
+  const main = add('fm1', 0, 0), pt = add('part', 0, 0), env = add('rateenv', 0, 0, { ar: 24, d1r: 24, d1l: 12, d2r: 0, rr: 15, krs: 2 });
+  const out = add('output', 0, 0, { level: 0.2 });
+  wire(pt, 'gate', env, 'gate'); wire(pt, 'pitch', env, 'pitch'); wire(main, 'sustain', env, 'hold');
+  wire(env, 'env', out, 'l'); rateEnvParts.push(pt, env);
+});
+polyAsm(tests['rateenv-poly'], rateEnvParts, { parts: 4 });
+events['rateenv-poly'] = POLY_EVENTS;
+kit('rateenv-live', (add, wire) => {
+  const main = add('fm1', 0, 0), env = add('rateenv', 0, 0, { ar: 0, d1r: 0, d1l: 0, d2r: 0, rr: 0, krs: 0 },
+    { map: { p1: ['ar', 'd1r', 'd1l', 'd2r', 'rr', 'krs'] } });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(main, 'gate', env, 'gate'); wire(main, 'pitch', env, 'pitch'); wire(main, 'mod', env, 'p1');
+  wire(env, 'env', out, 'l');
+});
+events['rateenv-live'] = [[0, 'on', 60], [128 * 20, 'cc', 1, 64], [128 * 50, 'cc', 1, 127],
+  [128 * 70, 'cc', 1, 0], [128 * 100, 'cc', 1, 96], [128 * 110, 'off', 60]];
 kit('shift', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });

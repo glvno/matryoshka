@@ -5,6 +5,7 @@ import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
 import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type StepNote } from './track';
 import WT from './wavetables.json';
+import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
 
 export interface Voice {
   /** octaves relative to middle C (MIDI 60) */
@@ -3008,7 +3009,7 @@ const scope: ModuleImpl<null> = {
  */
 export const ENV8_STEPS = 8;
 /** the envelopes: a poly part goes idle only once all of its envelopes have finished (stage 0; engine.ts partQuiet) */
-export const ENVELOPE_TYPES = new Set(['adsr', 'env', 'env8']);
+export const ENVELOPE_TYPES = new Set(['adsr', 'env', 'env8', 'rateenv']);
 export const ENV8_HOLD = 9;
 /** the step the sustain holds (0 none): sus, when it is not past the end */
 export const env8Sus = (sus: number, end: number): number => (sus >= 1 && sus <= end ? sus : 0);
@@ -3098,7 +3099,24 @@ const env8: ModuleImpl<Env8State> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select];
+const rateenv: ModuleImpl<ReturnType<typeof rateEnvelopeInit>> = {
+  def: {
+    type: 'rateenv', label: 'Rate Env',
+    inputs: [gate('gate'), control('pitch'), gate('hold')], outputs: [control('env')],
+    params: [
+      param('ar', 0, 31, 31, { step: 1 }),
+      param('d1r', 0, 31, 12, { step: 1 }),
+      param('d1l', 0, 15, 10, { step: 1 }),
+      param('d2r', 0, 31, 0, { step: 1 }),
+      param('rr', 0, 15, 8, { step: 1 }),
+      param('krs', 0, 3, 0, { step: 1 }),
+    ],
+  },
+  init: rateEnvelopeInit,
+  process: rateEnvelopeProcess,
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an

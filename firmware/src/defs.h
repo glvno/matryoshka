@@ -3,7 +3,7 @@
 #pragma once
 #include <stdint.h>
 
-#define N_TYPES 47
+#define N_TYPES 48
 enum {
     T_FM1,
     T_OSC,
@@ -52,6 +52,7 @@ enum {
     T_PD,
     T_ENV8,
     T_SELECT,
+    T_RATEENV,
 };
 
 /* fm1: Main */
@@ -915,6 +916,25 @@ enum {
 #define SELECT_CVBASE 9
 #define SELECT_NDATA 0
 
+/* rateenv: Rate Env */
+#define RATEENV_I_GATE 0
+#define RATEENV_I_PITCH 1
+#define RATEENV_I_HOLD 2
+#define RATEENV_I_P1 3
+#define RATEENV_I_P2 4
+#define RATEENV_O_ENV 0
+#define RATEENV_P_AR 0
+#define RATEENV_P_D1R 1
+#define RATEENV_P_D1L 2
+#define RATEENV_P_D2R 3
+#define RATEENV_P_RR 4
+#define RATEENV_P_KRS 5
+#define RATEENV_NIN 5
+#define RATEENV_NOUT 1
+#define RATEENV_NPAR 6
+#define RATEENV_CVBASE 3
+#define RATEENV_NDATA 0
+
 #define DELAY_NDIV 11
 #define DELAY_CLK_PPQN 24
 static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {1, 1, 1, 3, 1, 3, 1, 3, 2, 5, 4};
@@ -1431,6 +1451,15 @@ static const char *const SELECT_PN[] = {"POS", "COUNT", "FADE", "V1", "V2", "V3"
 static const uint8_t SELECT_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const SELECT_UNIT[] = {"", "", "MS", "", "", "", "", "", "", "", ""};
 static const char *const *const SELECT_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const RATEENV_INNAMES[] = {"GATE", "PITCH", "HOLD", "P1", "P2"};
+static const int32_t RATEENV_MIN[] = {0, 0, 0, 0, 0, 0};
+static const int32_t RATEENV_MAX[] = {2031616, 2031616, 983040, 2031616, 983040, 196608};
+static const int32_t RATEENV_DEF[] = {2031616, 786432, 655360, 0, 524288, 0};
+static const int32_t RATEENV_INC[] = {65536, 65536, 65536, 65536, 65536, 65536};
+static const char *const RATEENV_PN[] = {"AR", "D1R", "D1L", "D2R", "RR", "KRS"};
+static const uint8_t RATEENV_LOG[] = {0, 0, 0, 0, 0, 0};
+static const char *const RATEENV_UNIT[] = {"", "", "", "", "", ""};
+static const char *const *const RATEENV_CH[] = {0, 0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0},   /* fm1 */
@@ -1480,4 +1509,5 @@ static const def_t DEFS[N_TYPES] = {
     {PD_NIN, PD_NOUT, PD_NPAR, 2, PD_CVBASE, -1, PD_NDATA, 1, PD_MIN, PD_MAX, PD_DEF, PD_INC, "PD OSC", PD_PN, PD_INNAMES, PD_LOG, PD_UNIT, PD_CH, 0, 0},   /* pd */
     {ENV8_NIN, ENV8_NOUT, ENV8_NPAR, 0, ENV8_CVBASE, -1, ENV8_NDATA, 0, ENV8_MIN, ENV8_MAX, ENV8_DEF, ENV8_INC, "ENV 8", ENV8_PN, ENV8_INNAMES, ENV8_LOG, ENV8_UNIT, ENV8_CH, 0, 0},   /* env8 */
     {SELECT_NIN, SELECT_NOUT, SELECT_NPAR, 1, SELECT_CVBASE, 1, SELECT_NDATA, 1, SELECT_MIN, SELECT_MAX, SELECT_DEF, SELECT_INC, "SELECTOR", SELECT_PN, SELECT_INNAMES, SELECT_LOG, SELECT_UNIT, SELECT_CH, 0, 0},   /* select */
+    {RATEENV_NIN, RATEENV_NOUT, RATEENV_NPAR, 0, RATEENV_CVBASE, -1, RATEENV_NDATA, 0, RATEENV_MIN, RATEENV_MAX, RATEENV_DEF, RATEENV_INC, "RATE ENV", RATEENV_PN, RATEENV_INNAMES, RATEENV_LOG, RATEENV_UNIT, RATEENV_CH, 0, 0},   /* rateenv */
 };

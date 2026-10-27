@@ -17,9 +17,9 @@ Every one of these keeps its original `SPDX-License-Identifier` and copyright he
 
 ## JieLi SDK files (Apache-2.0)
 
-Packages made by `tools/build.py` embed three files from the JieLi AC79 SDK (`uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin`), Apache-2.0. They are not in this repository as files, but the prebuilt package that the web app bundles (`web/public/firmware/matryoshka.fwsc`, made by `tools/build.py` and `npm run firmware`, published on Cloudflare Pages) contains them, so the licence texts (`LICENSE-GPL-3.0.txt`, `LICENSE-Apache-2.0.txt`) are published next to it and linked from the Flash tab. Ship `LICENSES/Apache-2.0.txt` with every package. The other texts in `LICENSES/` belong to Felucca's own bundled material (fonts, DSP ports) and apply only to files not copied here; they are kept so any later copy stays correctly attributed, and releases do not ship them.
+Packages made by `tools/build.py` embed three files from the JieLi AC79 SDK (`uboot.boot`, `cfg_tool.bin`, `cfg/eq_cfg_hw.bin`), Apache-2.0. They are not in this repository as files, but the prebuilt package that the web app bundles (`web/public/firmware/matryoshka.fwsc`, made by `tools/build.py` and `npm run firmware`, published on Cloudflare Pages) contains them, so the licence texts (`LICENSE-GPL-3.0.txt`, `LICENSE-Apache-2.0.txt`) are published next to it and linked from the Flash tab. Ship `LICENSES/Apache-2.0.txt` with every package. Other than the ymfm notice described below, the remaining texts in `LICENSES/` belong to Felucca's own bundled material (fonts, DSP ports) and apply only to files not copied here; they are kept so any later copy stays correctly attributed, and releases do not ship them.
 
-**What a release ships** (`tools/build.py --release`, the folder `release-X.Y/`): the package, its sidecar and the app image, `SHA256SUMS`, `LICENSE` (GPL-3.0), this file, and in `LICENSES/` exactly the texts for what the package embeds: `Apache-2.0.txt` (the JieLi SDK files) and `OFL-BarlowCondensed.txt` (the LCD font's bitmaps, below).
+**What a release ships** (`tools/build.py --release`, the folder `release-X.Y/`): the package, its sidecar and the app image, `SHA256SUMS`, `LICENSE` (GPL-3.0), this file, and in `LICENSES/` exactly the texts for what the package embeds: `Apache-2.0.txt` (the JieLi SDK files), `OFL-BarlowCondensed.txt` (the LCD font's bitmaps, below), and `BSD-3-Clause-ymfm.txt` (the rate-envelope clock, below).
 
 ## M-VAVE stock firmware V15 (Apache-2.0)
 
@@ -68,3 +68,7 @@ The entries of `web/src/community.json` are patches made by other people, submit
 - The FM-1 tab's lights (the wasm exports the panel's LEDs as lit / dim / mid / breathing bits, the page colours buttons
   and keys from them) follow the browser emulator of [X0X](https://github.com/charlesvestal/fm1-x0x) by Charles Vestal
   (GPL-3.0-only), including its light colours.
+
+## Rate-envelope clock (BSD-3-Clause)
+
+The standalone rate envelope in `web/src/rate-envelope.ts` and `firmware/src/rate_envelope.h` adapts the envelope clock and increment patterns from Aaron Giles’s [ymfm](https://github.com/aaronsgiles/ymfm/blob/81aec25ccbb98f4873a255f7551ac4dadac59b4a/src/ymfm_fm.ipp), Copyright (c) 2021, Aaron Giles, BSD-3-Clause. The complete notice is in `LICENSES/BSD-3-Clause-ymfm.txt` and is published with the editor as `web/public/LICENSE-ymfm.txt`. Firmware release packages carry it in `LICENSES/`. The FM chip emulator is not included.
