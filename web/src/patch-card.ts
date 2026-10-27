@@ -67,8 +67,8 @@ export interface CardLayout { map: Rect; boxes: CardBox[]; lines: CardLine[]; sc
 /** a card's size on the canvas, estimated from its rows (the editor measures the DOM; the card has none) */
 function moduleSize(def: ModuleDef | undefined): { w: number; h: number } {
   if (!def) return { w: 236, h: 120 };
-  // Rows beyond the preview's page limit must not shrink neighboring cards.
-  const rows = Math.min(def.params.length, MODULE_PAGES * PAGE_ROWS) + (def.views?.length ?? 0) + Math.max(0, Math.max(def.inputs.length, def.outputs.length) - 4) / 2;
+  // The preview draws rows, not ports. Undisplayed ports/rows must not shrink neighboring cards.
+  const rows = Math.min(def.params.length, MODULE_PAGES * PAGE_ROWS) + (def.views?.length ?? 0);
   return { w: 236, h: Math.min(540, Math.max(90, 44 + 26 * rows)) };
 }
 function assemblySize(a: AssemblyInst): { w: number; h: number } {

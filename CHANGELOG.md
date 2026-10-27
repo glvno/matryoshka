@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Voicing adds lowest/highest held-voice gates. Algo Four XL uses them for LOW/HIGH/KON pitch bend and now receives breath and foot-switch MIDI controllers directly.
+
 - Tutorial reference patches receive newly added module defaults when opened. Patch previews no longer let undisplayed module rows squeeze neighboring controls.
 - Voicing can disable voice stealing and reset its rotation to voice one after all keys are released. Both engines and device page rows support these settings. Older patches retain their allocation behavior.
 

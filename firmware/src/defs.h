@@ -692,8 +692,10 @@ enum {
 #define PART_O_LEGATO 4
 #define PART_O_JUMP 5
 #define PART_O_TRIG 6
+#define PART_O_LOW 7
+#define PART_O_HIGH 8
 #define PART_NIN 0
-#define PART_NOUT 7
+#define PART_NOUT 9
 #define PART_NPAR 0
 #define PART_CVBASE -1
 #define PART_NDATA 0
@@ -721,6 +723,8 @@ enum {
 #define ALLOC_O_LEGATO 4
 #define ALLOC_O_JUMP 5
 #define ALLOC_O_TRIG 6
+#define ALLOC_O_LOW 7
+#define ALLOC_O_HIGH 8
 #define ALLOC_P_VOICES 0
 #define ALLOC_P_ASSIGN 1
 #define ALLOC_P_LEGATO 2
@@ -731,7 +735,7 @@ enum {
 #define ALLOC_P_HIGH 7
 #define ALLOC_P_STEAL 8
 #define ALLOC_NIN 1
-#define ALLOC_NOUT 7
+#define ALLOC_NOUT 9
 #define ALLOC_NPAR 9
 #define ALLOC_CVBASE -1
 #define ALLOC_NDATA 0

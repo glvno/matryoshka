@@ -87,9 +87,9 @@ describe('the patch card', () => {
     expect(l.boxes.some((b) => b.blurb)).toBe(false);
   });
 
-  it('extra module rows beyond the preview limit do not hide a neighboring envelope control', () => {
+  it('undisplayed module ports and rows do not hide a neighboring envelope control', () => {
     const p = PRESETS.Init();
-    const defs = { ...DEFS, alloc: { ...DEFS.alloc, params: [...DEFS.alloc.params, ...DEFS.alloc.params] } };
+    const defs = { ...DEFS, alloc: { ...DEFS.alloc, params: [...DEFS.alloc.params, ...DEFS.alloc.params], outputs: [...DEFS.alloc.outputs, ...DEFS.alloc.outputs] } };
     const l = cardLayout(p, defs);
     inside(l);
     expect(l.boxes.find((b) => b.label === 'ADSR')!.pages![0].rows.map((r) => r.label)).toEqual(['attack', 'decay', 'sustain', 'release']);

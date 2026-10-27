@@ -16,7 +16,7 @@
 //                where the DX100 has one button
 //   performance  poly/mono, p bend range, porta mode (FULL TIME, FINGERED), porta time, foot sw (SUSTAIN, PORTAMENTO), mw
 //                pitch, mw ampli, bc pitch, bc ampli, bc p bias, bc e bias, transpose, m.tune
-// 79 rows for the DX100's 80 parameters (PB MODE is missing, below); 37 show at once, beside the four `op` rows.
+// PB MODE offers LOW, HIGH and KON. The four `op` row runs remain a card limitation.
 // How each is built:
 // - POLY/MONO: the Voicing's voice count (8 = POLY, "up to 8 notes"; 1 = MONO).
 // - ALGORITHM 1..8: a Selector's position. Its value table puts the position on its out, which moves each voice's four
@@ -50,12 +50,14 @@
 //   SENSITIVITY (`ams`: 1 = 3, the level then down to 0 at the LFO's peak).
 // - Performance (stored per voice on the DX100): PITCH BEND RANGE (octaves: 0.17 = 2 semitones, 1 = 12), PORTAMENTO TIME
 //   (seconds; 0.001 off) and MODE (FINGERED glides only from a held key; with more than one voice each voice glides from
-//   its own last note), FOOT SWITCH ASSIGN (the footswitch is the FM-1's FX button, held, or MIDI CC 80: SUSTAIN holds
+//   its own last note), FOOT SWITCH ASSIGN (the footswitch is Main sustain, MIDI CC 64: SUSTAIN holds
 //   the notes to the D2R limit; PORTAMENTO glides only while it is down), MODULATION WHEEL RANGE PITCH and AMPLITUDE,
 //   BREATH RANGE PITCH, AMPLITUDE, PITCH BIAS (+-4 octaves, as the manual) and EG BIAS: the breath controller is the
-//   keyboard's channel aftertouch (Main's `at`), as Main has no breath input (MIDI CC 2).
+//   Main `breath` output (MIDI CC 2).
 // - KEY SHIFT and the voice's TRANSPOSE (`transpose`, octaves, rounded to semitones by a Quantizer: 0.08 = +1, 2 = +24)
 //   and MASTER TUNE (`m.tune`, semitones, +-1 as the manual's +-100 cents).
+// - PB MODE gates the scaled bend per voice with Voicing low/high outputs, or a constant one for KON.
+//   Low/high follow held allocated notes; Kon keeps bending release tails too.
 // Not on the card, and why:
 // - Construction, kept at its values in the patch: each operator's octave (ratios past 16.96 need it on top of the freq
 //   ratio's semitones) and phase modulation index (the modulator's out level is the depth on the DX100), the Env L/R's
@@ -64,21 +66,16 @@
 //   range too), and the envelope and output displays.
 // - POLY/MONO is a number (8 or 1), not a switch: a Selector cannot set a Voicing's voice count (D-635 keeps a Voicing's
 //   settings off a shared row). Named choices need that in both engines.
-// - The pitch bend wheel's Low / High modes (PB MODE: only the lowest or highest held note bends) need a Voicing output
-//   that says which part plays the lowest or highest note; Kon, all notes, is what this plays. A breath controller and a
-//   footswitch of their own need Main outputs for MIDI CC 2 and CC 64 / 65: aftertouch and the FX button stand in.
-// Too big for the FM-1 (D-348), measured with gen-xl.ts and deviceBudget at the FM-1 version's three voices: 94 modules of
-// 64, 172 module instances of 128, a 5,629-byte patch of 3,840 and a CPU estimate of 235 %.
+// Too big for the FM-1. The browser version keeps all eight voices; deviceBudget reports its current limits.
 // The cassette interface, the voice memories, VOICE NAME and the MIDI functions are the browser's patches and presets. The
 // DX100 has no chorus, pitch EG or foot volume (its voice data marks them "not used").
 import type { Patch } from '../../src/patch';
-import { setKind } from '../../src/buttons';
 import { players, plugIn } from '../factory-build';
 import { around, define, matchLevel, type Def } from './def';
 import { setCopies } from '../../src/assembly';
 import type { Xl } from './xl';
 
-const NOTES = "DX100 panel; operators use four pickers (card limit). POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). Bend Low/High needs allocator outputs. Main lacks breath/foot CC inputs: aftertouch/FX stand in. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
+const NOTES = "DX100 panel; operators use four pickers (card limit). POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced.";
 
 
 /** each path's algorithms (1..8): the route Selectors' input k takes the path when algorithm k lists it */
@@ -169,7 +166,7 @@ const built = define('Algo Four XL', (b) => {
   // pitch bias: breath x +-4 octaves
   const bias = b.add('scale', 2, 1.2, { gain: 0, offset: 0 });
 
-  // ---- shared: the pitch every operator adds (transpose, master tune, bend, LFO, bias), then each operator's octave
+  // ---- shared: the pitch every operator adds (transpose, master tune, LFO, bias), then each operator's octave
   const transpose = b.add('const', 3, 1, { value: 0 });
   const semis = b.add('quant', 3, 1.1, { scale: 0, root: 0 });
   b.wire(transpose, 'out', semis, 'in');
@@ -182,7 +179,6 @@ const built = define('Algo Four XL', (b) => {
   const bus = b.add('scale', 3, 1.5, { gain: 1, offset: 0 });
   b.wire(semis, 'out', bus, 'in');
   b.wire(tune, 'out', bus, 'in');
-  b.wire(bend, 'add', bus, 'in');
   b.wire(pmOct, 'out', bus, 'in');
   b.wire(bias, 'out', bus, 'in');
 
@@ -208,8 +204,14 @@ const built = define('Algo Four XL', (b) => {
     voice.push(id);
     return id;
   };
-  // the key's pitch without the Voicing's own +-2 semitone bend (the bend range is the bus's), its portamento, the gate
+  // the key's pitch without the Voicing's own +-2 semitone bend (bend is added per voice after portamento), its portamento, the gate
   // the sustain pedal holds, the velocity less 1, the keys above C2 (level scaling: a quarter per octave; rate scaling)
+  const bendMode = v('select', 0, 4, { pos: 3, count: 3, v1: 0, v2: 0, v3: 1, fade: 0 });
+  const voiceBend = v('vca', 0, 4.1, { gain: 1 });
+  b.wire(part, 'low', bendMode, 'in1');
+  b.wire(part, 'high', bendMode, 'in2');
+  b.wire(bend, 'add', voiceBend, 'in');
+  b.wire(bendMode, 'out', voiceBend, 'cv');
   const key = v('math', 1, 4, { ka: 1, kb: -2 / 12, off: 0 });
   const porta = v('glide', 1, 4.1, { time: 0.001, curve: 0 });
   const portaPick = v('xfade', 1, 4.2, { mix: 0 });
@@ -272,6 +274,7 @@ const built = define('Algo Four XL', (b) => {
     b.pin(env[i], 'p1', 'r1');
     b.module(env[i]).map!.p1 = ['r1', 'r2', 'r3', 'r4'];
     b.wire(portaPick, 'out', op[i], 'pitch');
+    b.wire(voiceBend, 'out', op[i], 'pitch');
     b.wire(bus, 'out', octave[i], 'in');
     b.wire(octave[i], 'out', op[i], 'pitch');
     b.wire(gate, 'out', env[i], 'gate');
@@ -364,6 +367,7 @@ const built = define('Algo Four XL', (b) => {
   });
   param('poly/mono', part, 'voices', { col: true, head: 'performance' });
   param('p bend range', bend, 'ka');
+  named('pb mode', bendMode, ['LOW', 'HIGH', 'KON']);
   named('porta mode', fingered, ['FULL TIME', 'FINGERED']);
   param('porta time', porta, 'time');
   named('foot sw', assign, ['SUSTAIN', 'PORTAMENTO']);
@@ -376,7 +380,12 @@ const built = define('Algo Four XL', (b) => {
   param('transpose', transpose, 'value');
   param('m.tune', tune, 'gain');
 });
-for (const [i, names] of NAMES) built.def.params[i].names = names;
+for (const [i, names] of NAMES) {
+  const row = built.def.params[i];
+  row.names = names;
+  for (const a of built.def.assemblies ?? []) for (const r of a.params)
+    if (r.module === row.module && r.param === row.param) r.names = [...names];
+}
 for (const c of COPIES) {
   const r = built.def.params[c.at];
   r.head = c.head;
@@ -395,10 +404,9 @@ export const xl: Xl = {
     const x = around('Algo Four', built);
     x.p.notes = NOTES;
     plugIn(x.p, x.main.id, 'mod', x.a, 'wheel');
-    plugIn(x.p, x.main.id, 'at', x.a, 'breath');
+    plugIn(x.p, x.main.id, 'breath', x.a, 'breath');
     plugIn(x.p, x.main.id, 'bend', x.a, 'bend');
-    plugIn(x.p, x.main.id, 'fx', x.a, 'foot'); // the footswitch: FX held (or MIDI CC 80)
-    setKind(x.p, 'fx', 'gate');
+    plugIn(x.p, x.main.id, 'sustain', x.a, 'foot'); // MIDI CC 64, routed by FOOT SW ASSIGN
     const p = players(x.p, true);
     matchLevel(p, fm1, [48, 55, 60, 64]);
     return p;
