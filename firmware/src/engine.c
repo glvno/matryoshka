@@ -2953,6 +2953,18 @@ static void m_part(const node_t *nd, inst_t *it, uint32_t n)
         fill(it->out[PART_O_TRIG], 0, n);
         if (x->key_trig) it->out[PART_O_TRIG][0] = ENG_ONE;
     }
+    if (it->out[PART_O_LOW] != dummy_out || it->out[PART_O_HIGH] != dummy_out) {
+        uint32_t i;
+        int low = x->on, high = x->on;
+        for (i = 0; i < cur_g->parts && (low || high); i++) {
+            const pv_t *other = &E.pv[cur_g->pv0 + i];
+            if (!other->on) continue;
+            if (other->note < x->note) low = 0;
+            if (other->note > x->note) high = 0;
+        }
+        if (it->out[PART_O_LOW] != dummy_out) fill(it->out[PART_O_LOW], low ? ENG_ONE : 0, n);
+        if (it->out[PART_O_HIGH] != dummy_out) fill(it->out[PART_O_HIGH], high ? ENG_ONE : 0, n);
+    }
 }
 
 /* Random: fixed or a walk on out, an independent draw on each rising clock edge on held. Q15 -> Q16. */

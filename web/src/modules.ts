@@ -13,6 +13,9 @@ export interface Voice {
   velocity: number;
   /** A key press reached this allocator in the current block; independent of pitch selection. */
   keyTrig: boolean;
+  /** this held voice is at the lowest/highest note currently assigned in its group */
+  low: boolean;
+  high: boolean;
   /** a clock tick (24 per quarter note) falls in this block while the transport runs */
   clock: boolean;
   /** the transport runs (PLAY, MIDI Start / Stop): the Main module's run output */
@@ -2278,7 +2281,7 @@ const part: ModuleImpl<null> = {
     type: 'part',
     label: 'Part',
     inputs: [],
-    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig')],
+    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high')],
     params: [],
   },
   init: () => null,
@@ -2292,6 +2295,8 @@ const part: ModuleImpl<null> = {
     c.out.jump.fill(v.jump, 0, c.n);
     c.out.trig.fill(0, 0, c.n);
     if (v.keyTrig) c.out.trig[0] = 1;
+    c.out.low.fill(v.low ? 1 : 0, 0, c.n);
+    c.out.high.fill(v.high ? 1 : 0, 0, c.n);
   },
 };
 
@@ -2358,7 +2363,7 @@ const alloc: ModuleImpl<null> = {
     type: 'alloc',
     label: 'Voicing',
     inputs: [keys('keys')],
-    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig')],
+    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high')],
     params: [
       param('voices', 1, 16, 4, { step: 1 }),
       param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3 }),

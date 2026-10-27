@@ -134,7 +134,7 @@ const IDLE = 6 / 65536;
 const IDLE_CHECK = 32;
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
-  pitch: 0, gate: 0, velocity: 0, keyTrig: false, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index, parts, legato: 0, jump: 0, flaw: 0,
+  pitch: 0, gate: 0, velocity: 0, keyTrig: false, low: false, high: false, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index, parts, legato: 0, jump: 0, flaw: 0,
   note: -1, on: false, onStamp: 0, offStamp: 0, retrig: false, walk: walkInit(seed),
 });
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
@@ -1086,8 +1086,12 @@ export class Engine {
           walkStep(x.walk, hold); // every block, so the wander does not depend on the amount
           x.flaw = flawQ16(f.detune, f.drift, x.walk.y) / 65536;
         });
-      for (const g of all)
+      for (const g of all) {
+        let low = Infinity, high = -Infinity;
+        for (const x of g.parts) if (x.on) { low = Math.min(low, x.note); high = Math.max(high, x.note); }
         for (const x of g.parts) {
+          x.low = x.on && x.note === low;
+          x.high = x.on && x.note === high;
           x.clock = clock;
           x.tick = this.running ? tick : -1;
           x.ticks = nt;
@@ -1101,6 +1105,7 @@ export class Engine {
           x.sustain = this.ctl.sustain;
           x.foot = this.ctl.foot;
         }
+      }
       // idle parts (partQuiet): woken by a note, else run every IDLE_CHECK-th block
       for (const g of this.groups)
         for (const x of g.parts) {

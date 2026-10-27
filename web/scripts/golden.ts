@@ -439,6 +439,23 @@ events['poly-layers'] = [
   [128 * 108, 'off', 55],
   [128 * 112, 'off', 72],
 ];
+// Extreme-note flags are observable per voice: multiply by that voice's pitch before summing.
+for (const unison of [false, true]) for (const steal of [false, true]) {
+  const name = `voice-extremes-${unison}-${steal}`;
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    add('fm1', 0, 0);
+    const part = add('part', 0, 0), low = add('vca', 0, 0), high = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: .2 });
+    wire(part, 'pitch', low, 'in'); wire(part, 'low', low, 'cv'); wire(low, 'out', out, 'l');
+    wire(part, 'pitch', high, 'in'); wire(part, 'high', high, 'cv'); wire(high, 'out', out, 'r');
+    ids = [part, low, high];
+  });
+  polyAsm(tests[name], ids, { parts: 3, unison, steal });
+  events[name] = [[0, 'on', 67], [128, 'on', 60], [256, 'on', 64], [384, 'on', 72], [512, 'off', 60],
+    [640, 'off', 67], [768, 'off', 72], [896, 'off', 64], [1280, 'on', 55], [1408, 'off', 55]];
+  ends[name] = 1536;
+}
 // Allocation is observable without oscillators: held voice indices left, their pitches right.
 for (const assign of [0, 1, 2, 3]) for (const priority of [0, 1, 2]) for (const steal of assign === 3 ? [false, true] : [false]) {
   const name = `alloc-modes-${assign}-${priority}-${steal}`;
