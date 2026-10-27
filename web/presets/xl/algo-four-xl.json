@@ -5031,7 +5031,7 @@
      "param": "coarse",
      "label": "freq ratio",
      "copies": {
-      "rows": 4,
+      "rows": 14,
       "count": 4,
       "name": "op"
      }
@@ -5050,6 +5050,64 @@
      "module": 57,
      "param": "mix",
      "label": "key velocity"
+    },
+    {
+     "module": 55,
+     "param": "r1",
+     "label": "ar"
+    },
+    {
+     "module": 55,
+     "param": "r2",
+     "label": "d1r"
+    },
+    {
+     "module": 55,
+     "param": "l2",
+     "label": "d1l"
+    },
+    {
+     "module": 55,
+     "param": "r3",
+     "label": "d2r"
+    },
+    {
+     "module": 55,
+     "param": "r4",
+     "label": "rr"
+    },
+    {
+     "module": 59,
+     "param": "gain",
+     "label": "rate scaling"
+    },
+    {
+     "module": 58,
+     "param": "gain",
+     "label": "level scaling"
+    },
+    {
+     "module": 64,
+     "param": "gain",
+     "label": "eg bias sens"
+    },
+    {
+     "module": 63,
+     "param": "pos",
+     "label": "operator",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 62,
+     "param": "pos",
+     "label": "ams",
+     "names": [
+      "OFF",
+      "ON"
+     ]
     },
     {
      "module": 65,
@@ -5072,71 +5130,6 @@
      "label": "key velocity"
     },
     {
-     "module": 76,
-     "param": "coarse",
-     "label": "freq ratio"
-    },
-    {
-     "module": 76,
-     "param": "fine",
-     "label": "detune"
-    },
-    {
-     "module": 78,
-     "param": "gain",
-     "label": "out level"
-    },
-    {
-     "module": 79,
-     "param": "mix",
-     "label": "key velocity"
-    },
-    {
-     "module": 87,
-     "param": "coarse",
-     "label": "freq ratio"
-    },
-    {
-     "module": 87,
-     "param": "fine",
-     "label": "detune"
-    },
-    {
-     "module": 89,
-     "param": "gain",
-     "label": "out level"
-    },
-    {
-     "module": 90,
-     "param": "mix",
-     "label": "key velocity"
-    },
-    {
-     "module": 55,
-     "param": "r1",
-     "label": "ar",
-     "copies": {
-      "rows": 4,
-      "count": 4,
-      "name": "op"
-     }
-    },
-    {
-     "module": 55,
-     "param": "r2",
-     "label": "d1r"
-    },
-    {
-     "module": 55,
-     "param": "l2",
-     "label": "d1l"
-    },
-    {
-     "module": 55,
-     "param": "r3",
-     "label": "d2r"
-    },
-    {
      "module": 66,
      "param": "r1",
      "label": "ar"
@@ -5155,71 +5148,6 @@
      "module": 66,
      "param": "r3",
      "label": "d2r"
-    },
-    {
-     "module": 77,
-     "param": "r1",
-     "label": "ar"
-    },
-    {
-     "module": 77,
-     "param": "r2",
-     "label": "d1r"
-    },
-    {
-     "module": 77,
-     "param": "l2",
-     "label": "d1l"
-    },
-    {
-     "module": 77,
-     "param": "r3",
-     "label": "d2r"
-    },
-    {
-     "module": 88,
-     "param": "r1",
-     "label": "ar"
-    },
-    {
-     "module": 88,
-     "param": "r2",
-     "label": "d1r"
-    },
-    {
-     "module": 88,
-     "param": "l2",
-     "label": "d1l"
-    },
-    {
-     "module": 88,
-     "param": "r3",
-     "label": "d2r"
-    },
-    {
-     "module": 55,
-     "param": "r4",
-     "label": "rr",
-     "copies": {
-      "rows": 4,
-      "count": 4,
-      "name": "op"
-     }
-    },
-    {
-     "module": 59,
-     "param": "gain",
-     "label": "rate scaling"
-    },
-    {
-     "module": 58,
-     "param": "gain",
-     "label": "level scaling"
-    },
-    {
-     "module": 64,
-     "param": "gain",
-     "label": "eg bias sens"
     },
     {
      "module": 66,
@@ -5242,6 +5170,64 @@
      "label": "eg bias sens"
     },
     {
+     "module": 74,
+     "param": "pos",
+     "label": "operator",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 73,
+     "param": "pos",
+     "label": "ams",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 76,
+     "param": "coarse",
+     "label": "freq ratio"
+    },
+    {
+     "module": 76,
+     "param": "fine",
+     "label": "detune"
+    },
+    {
+     "module": 78,
+     "param": "gain",
+     "label": "out level"
+    },
+    {
+     "module": 79,
+     "param": "mix",
+     "label": "key velocity"
+    },
+    {
+     "module": 77,
+     "param": "r1",
+     "label": "ar"
+    },
+    {
+     "module": 77,
+     "param": "r2",
+     "label": "d1r"
+    },
+    {
+     "module": 77,
+     "param": "l2",
+     "label": "d1l"
+    },
+    {
+     "module": 77,
+     "param": "r3",
+     "label": "d2r"
+    },
+    {
      "module": 77,
      "param": "r4",
      "label": "rr"
@@ -5262,6 +5248,64 @@
      "label": "eg bias sens"
     },
     {
+     "module": 85,
+     "param": "pos",
+     "label": "operator",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 84,
+     "param": "pos",
+     "label": "ams",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 87,
+     "param": "coarse",
+     "label": "freq ratio"
+    },
+    {
+     "module": 87,
+     "param": "fine",
+     "label": "detune"
+    },
+    {
+     "module": 89,
+     "param": "gain",
+     "label": "out level"
+    },
+    {
+     "module": 90,
+     "param": "mix",
+     "label": "key velocity"
+    },
+    {
+     "module": 88,
+     "param": "r1",
+     "label": "ar"
+    },
+    {
+     "module": 88,
+     "param": "r2",
+     "label": "d1r"
+    },
+    {
+     "module": 88,
+     "param": "l2",
+     "label": "d1l"
+    },
+    {
+     "module": 88,
+     "param": "r3",
+     "label": "d2r"
+    },
+    {
      "module": 88,
      "param": "r4",
      "label": "rr"
@@ -5280,65 +5324,6 @@
      "module": 97,
      "param": "gain",
      "label": "eg bias sens"
-    },
-    {
-     "module": 63,
-     "param": "pos",
-     "label": "operator",
-     "names": [
-      "OFF",
-      "ON"
-     ],
-     "copies": {
-      "rows": 2,
-      "count": 4,
-      "name": "op"
-     }
-    },
-    {
-     "module": 62,
-     "param": "pos",
-     "label": "ams",
-     "names": [
-      "OFF",
-      "ON"
-     ]
-    },
-    {
-     "module": 74,
-     "param": "pos",
-     "label": "operator",
-     "names": [
-      "OFF",
-      "ON"
-     ]
-    },
-    {
-     "module": 73,
-     "param": "pos",
-     "label": "ams",
-     "names": [
-      "OFF",
-      "ON"
-     ]
-    },
-    {
-     "module": 85,
-     "param": "pos",
-     "label": "operator",
-     "names": [
-      "OFF",
-      "ON"
-     ]
-    },
-    {
-     "module": 84,
-     "param": "pos",
-     "label": "ams",
-     "names": [
-      "OFF",
-      "ON"
-     ]
     },
     {
      "module": 96,
@@ -5561,7 +5546,7 @@
      "head": "operator",
      "col": true,
      "copies": {
-      "rows": 4,
+      "rows": 14,
       "count": 4,
       "name": "op"
      }
@@ -5580,6 +5565,64 @@
      "module": 57,
      "param": "mix",
      "label": "key velocity"
+    },
+    {
+     "module": 55,
+     "param": "r1",
+     "label": "ar"
+    },
+    {
+     "module": 55,
+     "param": "r2",
+     "label": "d1r"
+    },
+    {
+     "module": 55,
+     "param": "l2",
+     "label": "d1l"
+    },
+    {
+     "module": 55,
+     "param": "r3",
+     "label": "d2r"
+    },
+    {
+     "module": 55,
+     "param": "r4",
+     "label": "rr"
+    },
+    {
+     "module": 59,
+     "param": "gain",
+     "label": "rate scaling"
+    },
+    {
+     "module": 58,
+     "param": "gain",
+     "label": "level scaling"
+    },
+    {
+     "module": 64,
+     "param": "gain",
+     "label": "eg bias sens"
+    },
+    {
+     "module": 63,
+     "param": "pos",
+     "label": "operator",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 62,
+     "param": "pos",
+     "label": "ams",
+     "names": [
+      "OFF",
+      "ON"
+     ]
     },
     {
      "module": 65,
@@ -5602,72 +5645,6 @@
      "label": "key velocity"
     },
     {
-     "module": 76,
-     "param": "coarse",
-     "label": "freq ratio"
-    },
-    {
-     "module": 76,
-     "param": "fine",
-     "label": "detune"
-    },
-    {
-     "module": 78,
-     "param": "gain",
-     "label": "out level"
-    },
-    {
-     "module": 79,
-     "param": "mix",
-     "label": "key velocity"
-    },
-    {
-     "module": 87,
-     "param": "coarse",
-     "label": "freq ratio"
-    },
-    {
-     "module": 87,
-     "param": "fine",
-     "label": "detune"
-    },
-    {
-     "module": 89,
-     "param": "gain",
-     "label": "out level"
-    },
-    {
-     "module": 90,
-     "param": "mix",
-     "label": "key velocity"
-    },
-    {
-     "module": 55,
-     "param": "r1",
-     "label": "ar",
-     "head": "operator eg",
-     "copies": {
-      "rows": 4,
-      "count": 4,
-      "name": "op"
-     }
-    },
-    {
-     "module": 55,
-     "param": "r2",
-     "label": "d1r"
-    },
-    {
-     "module": 55,
-     "param": "l2",
-     "label": "d1l"
-    },
-    {
-     "module": 55,
-     "param": "r3",
-     "label": "d2r"
-    },
-    {
      "module": 66,
      "param": "r1",
      "label": "ar"
@@ -5686,72 +5663,6 @@
      "module": 66,
      "param": "r3",
      "label": "d2r"
-    },
-    {
-     "module": 77,
-     "param": "r1",
-     "label": "ar"
-    },
-    {
-     "module": 77,
-     "param": "r2",
-     "label": "d1r"
-    },
-    {
-     "module": 77,
-     "param": "l2",
-     "label": "d1l"
-    },
-    {
-     "module": 77,
-     "param": "r3",
-     "label": "d2r"
-    },
-    {
-     "module": 88,
-     "param": "r1",
-     "label": "ar"
-    },
-    {
-     "module": 88,
-     "param": "r2",
-     "label": "d1r"
-    },
-    {
-     "module": 88,
-     "param": "l2",
-     "label": "d1l"
-    },
-    {
-     "module": 88,
-     "param": "r3",
-     "label": "d2r"
-    },
-    {
-     "module": 55,
-     "param": "r4",
-     "label": "rr",
-     "head": "operator scaling",
-     "copies": {
-      "rows": 4,
-      "count": 4,
-      "name": "op"
-     }
-    },
-    {
-     "module": 59,
-     "param": "gain",
-     "label": "rate scaling"
-    },
-    {
-     "module": 58,
-     "param": "gain",
-     "label": "level scaling"
-    },
-    {
-     "module": 64,
-     "param": "gain",
-     "label": "eg bias sens"
     },
     {
      "module": 66,
@@ -5774,6 +5685,64 @@
      "label": "eg bias sens"
     },
     {
+     "module": 74,
+     "param": "pos",
+     "label": "operator",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 73,
+     "param": "pos",
+     "label": "ams",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 76,
+     "param": "coarse",
+     "label": "freq ratio"
+    },
+    {
+     "module": 76,
+     "param": "fine",
+     "label": "detune"
+    },
+    {
+     "module": 78,
+     "param": "gain",
+     "label": "out level"
+    },
+    {
+     "module": 79,
+     "param": "mix",
+     "label": "key velocity"
+    },
+    {
+     "module": 77,
+     "param": "r1",
+     "label": "ar"
+    },
+    {
+     "module": 77,
+     "param": "r2",
+     "label": "d1r"
+    },
+    {
+     "module": 77,
+     "param": "l2",
+     "label": "d1l"
+    },
+    {
+     "module": 77,
+     "param": "r3",
+     "label": "d2r"
+    },
+    {
      "module": 77,
      "param": "r4",
      "label": "rr"
@@ -5794,6 +5763,64 @@
      "label": "eg bias sens"
     },
     {
+     "module": 85,
+     "param": "pos",
+     "label": "operator",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 84,
+     "param": "pos",
+     "label": "ams",
+     "names": [
+      "OFF",
+      "ON"
+     ]
+    },
+    {
+     "module": 87,
+     "param": "coarse",
+     "label": "freq ratio"
+    },
+    {
+     "module": 87,
+     "param": "fine",
+     "label": "detune"
+    },
+    {
+     "module": 89,
+     "param": "gain",
+     "label": "out level"
+    },
+    {
+     "module": 90,
+     "param": "mix",
+     "label": "key velocity"
+    },
+    {
+     "module": 88,
+     "param": "r1",
+     "label": "ar"
+    },
+    {
+     "module": 88,
+     "param": "r2",
+     "label": "d1r"
+    },
+    {
+     "module": 88,
+     "param": "l2",
+     "label": "d1l"
+    },
+    {
+     "module": 88,
+     "param": "r3",
+     "label": "d2r"
+    },
+    {
      "module": 88,
      "param": "r4",
      "label": "rr"
@@ -5812,66 +5839,6 @@
      "module": 97,
      "param": "gain",
      "label": "eg bias sens"
-    },
-    {
-     "module": 63,
-     "param": "pos",
-     "label": "operator",
-     "names": [
-      "OFF",
-      "ON"
-     ],
-     "head": "operator on-off",
-     "copies": {
-      "rows": 2,
-      "count": 4,
-      "name": "op"
-     }
-    },
-    {
-     "module": 62,
-     "param": "pos",
-     "label": "ams",
-     "names": [
-      "OFF",
-      "ON"
-     ]
-    },
-    {
-     "module": 74,
-     "param": "pos",
-     "label": "operator",
-     "names": [
-      "OFF",
-      "ON"
-     ]
-    },
-    {
-     "module": 73,
-     "param": "pos",
-     "label": "ams",
-     "names": [
-      "OFF",
-      "ON"
-     ]
-    },
-    {
-     "module": 85,
-     "param": "pos",
-     "label": "operator",
-     "names": [
-      "OFF",
-      "ON"
-     ]
-    },
-    {
-     "module": 84,
-     "param": "pos",
-     "label": "ams",
-     "names": [
-      "OFF",
-      "ON"
-     ]
     },
     {
      "module": 96,
@@ -5982,5 +5949,5 @@
    ]
   }
  ],
- "notes": "DX100 panel; operators use four pickers (card limit). POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced."
+ "notes": "DX100 panel; one OP picker selects all fourteen operator controls. POLY/MONO is voice count (8/1): Selectors cannot set it. LFO SPEED is 0.02–40 Hz, not 0.0008–55; its range control is hidden. D2R zero cannot hold D1L from this card (linked level hidden). PB MODE selects LOW/HIGH/KON. Breath uses CC 2; foot uses CC 64. Ratio uses semitones, detune cents, bend octaves. Cartridge, MIDI settings and stored patch memory are hardware/storage, not reproduced."
 }
