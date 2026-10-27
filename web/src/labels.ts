@@ -15,6 +15,7 @@ const GENERIC: Record<string, string> = {
 };
 
 const BY_TYPE: Record<string, Record<string, string>> = {
+  fm1: { breath: 'breath (CC 2)', sustain: 'sustain (CC 64)', foot: 'foot switch (CC 65)' },
   adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release', long: 'long times' },
   lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed' },
   delay: { note: 'note length' },

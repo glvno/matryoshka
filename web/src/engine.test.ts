@@ -913,6 +913,19 @@ describe('bend, mod wheel, aftertouch, cc', () => {
     return { e, out: () => render(e, 128).l[100], kb: kb.id };
   }
 
+  it.each([[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const)('CC %i reaches Main %s independently', (cc, port) => {
+    const x = rig(port);
+    expect(x.out()).toBe(0);
+    x.e.cc(cc, 63);
+    expect(x.out()).toBeCloseTo(63 / 127, 6);
+    for (const other of [1, 2, 64, 65]) if (other !== cc) x.e.cc(other, 127);
+    expect(x.out()).toBeCloseTo(63 / 127, 6);
+    x.e.cc(cc, 127);
+    expect(x.out()).toBeCloseTo(1, 6);
+    x.e.cc(cc, 0);
+    expect(x.out()).toBe(0);
+  });
+
   it('bend moves the pitch output by up to two semitones and shows on the bend output', () => {
     const { e, out } = rig('pitch'); // (middle C: the engine clamps its output to +-1, so a high note would hide the bend)
     e.noteOn(60);

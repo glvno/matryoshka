@@ -132,7 +132,7 @@ const IDLE = 6 / 65536;
 const IDLE_CHECK = 32;
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
-  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
+  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index, parts, legato: 0, jump: 0, flaw: 0,
   note: -1, on: false, onStamp: 0, offStamp: 0, retrig: false, walk: walkInit(seed),
 });
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
@@ -175,7 +175,7 @@ export class Engine {
   private btnSwitch: boolean[] = [];
   private arps: ArpRun[] = [];
   /** the performance controls (pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1): one set, every part sees it */
-  private ctl = { bend: 0, mod: 0, at: 0 };
+  private ctl = { bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0 };
   /** the Main module, and the morph position of the current block (its morph parameter plus the block mean of its morph input, one block late) */
   private main: Node | null = null;
   private morphT = 0;
@@ -886,7 +886,7 @@ export class Engine {
     this.ctl.at = Math.max(0, Math.min(1, v));
   }
 
-  /** a control change: CC 1 (mod wheel) is the Main module's mod output, CC 22 its morph, CC 80..86 hold / release its
+  /** a control change: CC 1 / 2 / 64 / 65 drive Main mod / breath / sustain / foot; CC 22 its morph, CC 80..86 hold / release its
    * patch buttons (64 and up: on); others are ignored (CC 16..19, the knobs, edit the device page in focus: the editor's) */
   cc(n: number, v: number): void {
     const x = Math.max(0, Math.min(1, v / 127));
@@ -894,6 +894,9 @@ export class Engine {
       for (const node of this.nodes.values()) if (node.type === 'fm1') node.params[name] = x;
     };
     if (n === 1) this.ctl.mod = x;
+    else if (n === 2) this.ctl.breath = x;
+    else if (n === 64) this.ctl.sustain = x;
+    else if (n === 65) this.ctl.foot = x;
     else if (n === 22) main('morph');
     else if (n >= 80 && n < 80 + PANEL_BUTTONS.length) this.setButton(n - 80, v >= 64);
   }
@@ -1081,6 +1084,9 @@ export class Engine {
           x.bend = this.ctl.bend;
           x.mod = this.ctl.mod;
           x.at = this.ctl.at;
+          x.breath = this.ctl.breath;
+          x.sustain = this.ctl.sustain;
+          x.foot = this.ctl.foot;
         }
       // idle parts (partQuiet): woken by a note, else run every IDLE_CHECK-th block
       for (const g of this.groups)

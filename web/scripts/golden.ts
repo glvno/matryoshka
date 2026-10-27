@@ -20,8 +20,8 @@ const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
 /** [frame, kind, note (a button for bon / boff; a module index for arm, -1 none, and rec), MIDI channel of a note (absent:
- * 1; rec: 1 on, 0 off)]; take: the notes recorded so far go into their tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take', number, number?];
+ * 1; rec: 1 on, 0 off; cc: controller value 0..127)]; take: the notes recorded so far go into their tracks (the editor's overdub, the panel's) */
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -54,6 +54,15 @@ const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+for (const [cc, port] of [[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const) {
+  const name = `main-${port}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 1 });
+    wire(main, port, out, 'l');
+  });
+  events[name] = [[128, 'cc', cc, 63], [128 * 4, 'cc', cc, 127], [128 * 8, 'cc', cc, 0]];
+  ends[name] = 128 * 12;
+}
 tests['acid'] = acid(); // also the protocol test's upload (golden.sh hands acid.m1p to proto_test)
 // one card row for two filters' cutoff and resonance, a Selector's named positions (#357, #358): the page rows' extras in
 // the device pages section (the engine plays it as any patch; panel_test.c turns its rows)
@@ -2126,6 +2135,7 @@ for (const [name, patch] of Object.entries(tests)) {
         notes.set(r.id, overdub(notes.get(r.id), [r.note]));
         e.setTrack(r.id, notes.get(r.id));
       }
+    else if (kind === 'cc') e.cc(note, ch ?? 0);
     else if (kind === 'on') e.noteOn(note, 1, ch ?? 1);
     else if (kind === 'off') e.noteOff(note, ch ?? 1);
     else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
@@ -2146,7 +2156,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // the parameter values the editor's budget counts (DEVICE.params), which eng_load must take exactly (host_test checks)
   if (!bins[name]) writeFileSync(new URL(`${f}.par`, OUT), `${deviceBudget(patch).items.find((i) => i.key === 'params')!.used}\n`);
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' ? `${fr} ${k} ${n}` : k === 'rec' ? `${fr} rec ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

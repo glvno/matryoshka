@@ -314,8 +314,8 @@ int eng_steps_take(uint32_t *module, uint32_t *word);
 void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t n, uint32_t vel);
 void eng_steps_overdub(uint32_t module, uint32_t word);
 /* the performance controls: ENG_CTL_BEND (-1..1 Q16: +-2 semitones on the Main module's pitch and its bend
- * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch, 0..1, the at output) */
-enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_NCTL };
+ * output), ENG_CTL_MOD (the mod wheel, 0..1, the mod output), ENG_CTL_AT (channel aftertouch), ENG_CTL_BREATH / SUSTAIN / FOOT (CC 2 / 64 / 65), all 0..1 */
+enum { ENG_CTL_BEND, ENG_CTL_MOD, ENG_CTL_AT, ENG_CTL_BREATH, ENG_CTL_SUSTAIN, ENG_CTL_FOOT, ENG_NCTL };
 void eng_ctl(uint32_t which, int32_t q16);
 /* n frames of stereo, Q16, clamped to +-1.0; any n, processed in blocks of ENG_BLOCK */
 void eng_render(int32_t *l, int32_t *r, uint32_t n);
