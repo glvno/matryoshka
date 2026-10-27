@@ -24,6 +24,7 @@ const BY_TYPE: Record<string, Record<string, string>> = {
   mixer: { l1: 'level 1', l2: 'level 2', l3: 'level 3', l4: 'level 4' },
   env: { l1: 'level 1', r1: 'rate 1', l2: 'level 2', r2: 'rate 2', l3: 'level 3', r3: 'rate 3', l4: 'level 4', r4: 'rate 4', shot: 'one-shot' },
   ratio: { ratio: 'frequency ratio', detune: 'detune position' },
+  steps: { dir: 'play mode' },
   rateenv: { ar: 'attack rate', d1r: 'decay 1 rate', d1l: 'decay 1 level', d2r: 'decay 2 rate', rr: 'release rate', krs: 'key rate scaling' },
   env8: { ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [[`l${i + 1}`, `level ${i + 1}`], [`r${i + 1}`, `rate ${i + 1}`]]).flat()), sus: 'sustain step', end: 'end step' },
   seq: { s1: 'step 1', s2: 'step 2', s3: 'step 3', s4: 'step 4', s5: 'step 5', s6: 'step 6', s7: 'step 7', s8: 'step 8' },

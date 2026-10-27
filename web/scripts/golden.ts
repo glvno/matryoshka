@@ -2326,6 +2326,44 @@ tests['steps-arm'] = make('steps-arm', (add, wire) => {
   ends['steps-arm'] = 128 * 560;
 }
 
+tests['steps-direction-live'] = make('steps-direction-live', (add, wire) => {
+  const main = add('fm1', 0, 0, { tempo: 240 });
+  const st = add('steps', 0, 0, { len: 4, rate: 6, swing: 75 }, { map: { p1: ['dir'], p2: ['len'] } });
+  const scale = add('scale', 0, 0, { gain: 0.05 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(main, 'mod', st, 'p1'); wire(main, 'breath', scale, 'in'); wire(scale, 'out', st, 'p2');
+  wire(main, 'gate', st, 'reset'); wire(st, 'trig', out, 'l'); wire(st, 'vel', out, 'r');
+});
+tests['steps-direction-live'].modules.find(m => m.type === 'steps')!.notes = Array.from({ length: 7 }, (_, at) =>
+  ({ at, len: at % 3 + 1, note: 60 + at, vel: 30 + at * 10 }));
+events['steps-direction-live'] = [[0, 'run', 0], [128 * 40, 'cc', 1, 42], [128 * 80, 'cc', 1, 85],
+  [128 * 120, 'cc', 1, 127], [128 * 150, 'cc', 2, 127], [128 * 180, 'on', 60], [128 * 181, 'off', 60],
+  [128 * 220, 'cc', 2, 0], [128 * 260, 'cc', 1, 0]];
+ends['steps-direction-live'] = 128 * 300;
+
+// Direction changes affect traversal, swing, note duration and live recording in both engines.
+for (const dir of [1, 2, 3]) {
+  for (const base of ['steps-notes', 'steps-clk', 'steps-arm']) {
+    const name = `${base}-dir-${dir}`;
+    tests[name] = structuredClone(tests[base]); tests[name].name = name;
+    for (const m of tests[name].modules) if (m.type === 'steps') m.params.dir = dir;
+    events[name] = structuredClone(events[base]); ends[name] = ends[base];
+  }
+}
+for (const dir of [0, 1, 2, 3]) for (const len of [1, 2, 5, 64]) {
+  const name = `steps-direction-${dir}-${len}`;
+  tests[name] = make(name, (add, wire) => {
+    add('fm1', 0, 0, { tempo: 240 });
+    const st = add('steps', 0, 0, { dir, len, swing: 75, rate: 8, gate: 0.5 });
+    const out = add('output', 0, 0, { level: 1 });
+    wire(st, 'trig', out, 'l'); wire(st, 'vel', out, 'r');
+  });
+  tests[name].modules.find(m => m.type === 'steps')!.notes = Array.from({ length: len }, (_, at) =>
+    ({ at, len: at === len - 1 ? 4 : 1, note: 48 + at, vel: 20 + at, chance: at % 2 ? 50 : 100 }));
+  events[name] = [[0, 'run', 0], [128 * 300, 'stop', 0], [128 * 320, 'run', 0]];
+  ends[name] = 128 * 600;
+}
+
 // arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
 // row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
 tests['arm-set'] = make('arm-set', (add, wire) => {

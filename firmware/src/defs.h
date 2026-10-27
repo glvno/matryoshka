@@ -778,9 +778,10 @@ enum {
 #define STEPS_P_RATE 1
 #define STEPS_P_SWING 2
 #define STEPS_P_GATE 3
+#define STEPS_P_DIR 4
 #define STEPS_NIN 6
 #define STEPS_NOUT 4
-#define STEPS_NPAR 4
+#define STEPS_NPAR 5
 #define STEPS_CVBASE 3
 #define STEPS_NDATA 8
 
@@ -1407,16 +1408,18 @@ static const char *const ARP_CH0[] = {"UP", "DOWN", "UP-DOWN", "RANDOM", "AS PLA
 static const char *const ARP_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", 0};
 static const char *const *const ARP_CH[] = {ARP_CH0, ARP_CH1, 0, 0, ADSR_CH4};
 static const char *const STEPS_INNAMES[] = {"CLK", "RESET", "TRANSPOSE", "P1", "P2", "KEYS"};
-static const int32_t STEPS_MIN[] = {65536, 0, 3276800, 655};
-static const int32_t STEPS_MAX[] = {4194304, 393216, 4915200, 65536};
-static const int32_t STEPS_DEF[] = {1048576, 262144, 3276800, 16384};
-static const int32_t STEPS_INC[] = {65536, 65536, 65536, 655};
-static const int32_t STEPS_TOP[] = {4194304, 524288, 5242880, 65536};
-static const char *const STEPS_PN[] = {"LEN", "RATE", "SWING", "GATE"};
-static const uint8_t STEPS_LOG[] = {0, 0, 0, 0};
-static const char *const STEPS_UNIT[] = {"", "", "%", ""};
+static const int32_t STEPS_MIN[] = {65536, 0, 3276800, 655, 0};
+static const int32_t STEPS_MAX[] = {4194304, 393216, 4915200, 65536, 196608};
+static const int32_t STEPS_DEF[] = {1048576, 262144, 3276800, 16384, 0};
+static const int32_t STEPS_INC[] = {65536, 65536, 65536, 655, 65536};
+static const int32_t STEPS_TOP[] = {4194304, 524288, 5242880, 65536, 196608};
+static const uint8_t STEPS_SINCE[] = {0, 0, 0, 0, 44};
+static const char *const STEPS_PN[] = {"LEN", "RATE", "SWING", "GATE", "DIR"};
+static const uint8_t STEPS_LOG[] = {0, 0, 0, 0, 0};
+static const char *const STEPS_UNIT[] = {"", "", "%", "", ""};
 static const char *const STEPS_CH1[] = {"1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/2", "1/64", 0};
-static const char *const *const STEPS_CH[] = {0, STEPS_CH1, 0, 0};
+static const char *const STEPS_CH4[] = {"FWD", "BACK", "PING-PONG", "RANDOM", 0};
+static const char *const *const STEPS_CH[] = {0, STEPS_CH1, 0, 0, STEPS_CH4};
 static const char *const MACRO_INNAMES[] = {"P1", "P2"};
 static const int32_t MACRO_MIN[] = {0};
 static const int32_t MACRO_MAX[] = {65536};
@@ -1529,7 +1532,7 @@ static const def_t DEFS[N_TYPES] = {
     {RANDOM_NIN, RANDOM_NOUT, RANDOM_NPAR, 0, RANDOM_CVBASE, -1, RANDOM_NDATA, 0, RANDOM_MIN, RANDOM_MAX, RANDOM_DEF, RANDOM_INC, "RANDOM", RANDOM_PN, RANDOM_INNAMES, RANDOM_LOG, RANDOM_UNIT, RANDOM_CH, 0, 0},   /* random */
     {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 0, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, ALLOC_TOP, ALLOC_SINCE},   /* alloc */
     {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, 0, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH, 0, 0},   /* arp */
-    {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH, STEPS_TOP, 0},   /* steps */
+    {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH, STEPS_TOP, STEPS_SINCE},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH, 0, 0},   /* macro */
     {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH, 0, DRUMMAP_SINCE},   /* drummap */
     {PD_NIN, PD_NOUT, PD_NPAR, 2, PD_CVBASE, -1, PD_NDATA, 1, PD_MIN, PD_MAX, PD_DEF, PD_INC, "PD OSC", PD_PN, PD_INNAMES, PD_LOG, PD_UNIT, PD_CH, 0, 0},   /* pd */

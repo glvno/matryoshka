@@ -260,6 +260,15 @@ static int load(const char *name)
     return load_at(preset_at(name));
 }
 /* the factory patch p (0..N_PRESETS-1) running */
+static int load_fixture(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+    fclose(f);
+    return eng_load(pv_bin, pv_len);
+}
+
 static int load_at(uint32_t p)
 {
     if (p >= N_PRESETS)
@@ -374,9 +383,9 @@ int main(void)
     check("legato edit preserves shared unison", poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && pv_bin[10] == 0xC2u);
     check("unison mode row has three choices", poly_max(ENG_POLY_UNISON) == 2);
     check("normal unison keeps legato and clears share", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && pv_bin[10] == 0x82u);
-    /* Group-format guards use a patch without LFO records: their count changed in format 40.
-     * Real older LFO records and upgrades are checked by tools/old_format.sh. */
-    check("group compatibility fixture loads", load("PLUCKED STRING") == 0);
+    /* Group-format guards use only stable Main/Part/VCA/Output records, independent of factory players.
+     * Real older records and upgrades are checked by tools/old_format.sh. */
+    check("group compatibility fixture loads", load_fixture("build/golden/unison-count-0-0.m1p") == 0);
     for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
         ;
     check("group compatibility fixture keeps the edited settings",
@@ -2825,6 +2834,38 @@ int main(void)
             enc(4u, -3);                                    /* back to HIGH: PANEL_SNAP_ROWS=file.ppm shows the page */
             later(50);
             snap_to(getenv("PANEL_SNAP_ROWS"));
+        }
+    }
+    /* The panel's two recording entry points preview the same reverse step as playback. */
+    {
+        FILE *f = fopen("build/golden/steps-direction-1-64.m1p", "rb");
+        check("direction fixture exists", f != 0);
+        if (f) {
+            uint32_t st, i, count;
+            int32_t l[128], r[128];
+            const uint32_t *notes;
+            uint32_t held = NW(63u, 4u, 90u, 100u, 0u);
+            pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+            fclose(f);
+            check("format 44 loads a long note at the last step", eng_load(pv_bin, pv_len) == 0);
+            for (st = 0; st < E.nmod && E.node[st].type != T_STEPS; st++) ;
+            check("direction fixture has a track", st < E.nmod);
+            if (st < E.nmod) {
+                check("TRACK retains duration independently of start", eng_steps_set_notes(st, &held, 1u));
+                count = (uint32_t)eng_steps_notes(st, &notes);
+                check("a held reverse note retains all four steps", count == 1u && NW_AT(notes[0]) == 63u && NW_LEN(notes[0]) == 4u);
+                eng_set_param(0, FM1_P_TEMPO, 120 << 16);
+                eng_set_param(st, STEPS_P_LEN, 4 << 16);
+                eng_set_param(st, STEPS_P_RATE, 4 << 16);
+                eng_set_param(st, STEPS_P_SWING, 50 << 16);
+                eng_transport(1);
+                for (i = 0; i < 32u; i++) eng_render(l, r, 128);
+                check("reverse starts at the last step", eng_steps_pos(st) == 3);
+                check("panel hit records ahead at reverse step 3", eng_steps_hit(st, 0, 1) == 2);
+                check("panel drum hit records ahead at reverse step 3", eng_steps_hit_note(st, 61u, 0, 1) == 2);
+                for (i = 0; i < 24u; i++) eng_render(l, r, 128);
+                check("reverse reaches the recorded step next", eng_steps_pos(st) == 2);
+            }
         }
     }
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
