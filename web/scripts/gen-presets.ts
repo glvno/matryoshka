@@ -70,7 +70,8 @@ presets.push(() => {
 
 presets.push(() => {
   const x = around('Monolith D', 'Monolith D');
-  x.set('glide', 0.04);
+  x.set('glide on', 2); // a 40 ms glide, as this patch has always had
+  plugIn(x.p, x.main.id, 'bend', x.a, 'bend'); // the PITCH wheel's half octave
   level(x.p);
   return x.p;
 });
@@ -90,6 +91,11 @@ presets.push(() => {
 
 presets.push(() => {
   const x = around('Sallen 20', 'Sallen 20');
+  // the momentary switch: FX, a Gate button held down (the mod wheel is the control wheel: around() plugs it in)
+  const panel = (x.main.panel ??= {});
+  if (panel.kinds) delete panel.kinds.fx;
+  panel.labels = { ...panel.labels, fx: 'SWITCH' };
+  plugIn(x.p, x.main.id, 'fx', x.a, 'switch');
   level(x.p);
   return x.p;
 });

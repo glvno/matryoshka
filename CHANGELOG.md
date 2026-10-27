@@ -14,6 +14,39 @@
 - **The patch-bytes budget counts the panel buttons' record.** A patch whose ARP, FX or LFO button is not a plain gate
   sends 9 more bytes than the editor counted, so one within 9 bytes of the 3,840 limit passed the budget and was then
   refused by the FM-1. The budget now equals what is sent (Oracle V: 1,290 → 1,299 bytes).
+- **Monolith D has the Minimoog Model D's panel.** Its card now holds the original's controls under their names:
+  TUNE and a half-octave PITCH wheel, GLIDE with its on / off switch, OSCILLATOR 3 CONTROL (oscillator 3 off the keys,
+  for a slow modulation source), RANGE as the six footages LO to 2', WAVEFORM as triangle, saw, square, wide and narrow
+  rectangle, the WHITE / PINK switch, KEYBOARD CONTROL off, 1, 2 or both, the DECAY switch (each contour's release takes
+  its decay time, or the note stops at once) and the A-440 tone. The modulation switches now switch, and the modulation
+  mix comes from oscillator 3 and the noise before the mixer's volumes, so a silent noise or a quiet oscillator 3 no
+  longer weakens it. Filter modulation no longer depends on the contour amount. Gone: the drive, release and scope rows,
+  which the original lacks. The switches show their positions by name (LO .. 2', TRIANGLE .. NARROW RECT, OFF / ON).
+  Still missing: the shark tooth and reverse saw waveforms and the external input. The patch takes 37 modules (18
+  before), 3,053 patch bytes (1,371) and an estimated 35 % of the FM-1's CPU (22 %). Host-tested only, not yet on a
+  device.
+- **Silver Box accents like a TB-303.** An accented note (velocity 115 or more, a Steps accent) runs the filter
+  envelope at its shortest decay, 200 ms, and that envelope times ACCENT lifts the level and, through the accent sweep
+  circuit, the cutoff. At high RESONANCE the sweep is smoother and builds up over consecutive accents, as the original's
+  second resonance gang does. ENV MOD no longer scales the accent. The soft clip after the filter is gone (the 303 has
+  none), and so are the slide, drive and amp decay rows: the slide time and the volume envelope's decay are fixed, as on
+  the original. TUNING is now the oscillator's fine tune (±1 semitone; the original's reaches ±5). The patch takes 17
+  modules (14 before), 928 patch bytes (885) and an estimated 19 % of the FM-1's CPU (17 %); <7PH 63 modules (60),
+  3,831 bytes of 3,840 (3,788) and 68 % (66 %). The patch's Steps track is its sequencer; the 303's 64-pattern memory,
+  pattern chaining with transpose and song mode are still missing. WAVEFORM still offers the oscillator's four waves:
+  a saw / square switch does not fit <7PH's patch bytes. Host-tested only, not yet on a device.
+- **Sallen 20 is the MS-20 as it plays with nothing patched.** The highest held key plays (the MS-20 mini's manual), VCO
+  1 and 2 have SCALE as footages and their own WAVEFORM switches (VCO 1's noise, VCO 2's narrow pulse and ring modulator
+  in place of the ring row), MASTER TUNE, EG 1's DELAY and EG 2's HOLD are new, and each filter has its own MG/T.EXT and
+  EG2/EXT amounts (the high pass had no MG amount, and the low pass's MG depended on its EG amount). The MG's frequency
+  modulation now reaches the oscillators' pitch, not just their fine tune. The soft drive after the low pass is gone.
+  The patch panel's sections are there as the assembly's jacks, to patch in the browser: the sample and hold (white
+  noise, clocked by the MG's rectangle), white and pink noise, the MVCA (EG 1 on its control), both envelopes' normal
+  and reverse outputs, the control wheel (the mod wheel), the momentary switch (the FX button, labelled SWITCH), KBD CV
+  and trigger, the MG's triangle and rectangle, and INITIAL GAIN (a row). Unpatched they leave the sound as it was. The
+  scale and wave switches show their positions by name. Still missing: the ESP, the MG's variable waveform and the high
+  pass's 6 dB slope (ours is 12 dB). The patch takes 41 modules (19 before), 2,567 patch bytes (1,440) and an estimated
+  42 % of the FM-1's CPU (29 %). Host-tested only, not yet on a device.
 - **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
   same range: turning it moves both (two filters' cutoff, say), and so do a cable or
   a macro on it, a card preset and the FM-1's knob on its page. "split" gives each its own row again. A row that sets
