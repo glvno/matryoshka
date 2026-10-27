@@ -81,3 +81,20 @@ it('changing direction and shortening a pattern takes effect at the next step', 
   e.setParam(st.id, 'dir', 1); e.setParam(st.id, 'len', 2);
   expect(play(e, STEP * 4).steps).toEqual([1, 0, 1, 0]);
 });
+
+it('shortening a swung reverse pattern cancels a queued step outside its length', () => {
+  const { e, st } = rig(1, 4, 75); play(e, 7000);
+  e.setParam(st.id, 'len', 2);
+  const next = play(e, 6000);
+  expect(next.at).toEqual([4999]);
+  expect(next.steps).toEqual([1]);
+});
+it('shortening a pass releases its old notes at the new pass boundary', () => {
+  const { e, st } = rig(1, 64);
+  e.setTrack(st.id, [{ at: 63, len: 64, note: 63, vel: 50 }]);
+  play(e, 1000); e.setParam(st.id, 'len', 2);
+  const { l } = play(e, 24000);
+  expect(l[4000]).toBe(1);
+  expect(l[12000]).toBe(0);
+  expect(l[23999]).toBe(0);
+});

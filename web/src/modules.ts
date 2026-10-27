@@ -2645,10 +2645,15 @@ const steps: ModuleImpl<StepsState> = {
           }
         }
       }
-      if (s.pend > 0 && --s.pend === 0) fire(s.pstep, i);
+      if (s.pend > 0 && --s.pend === 0 && s.pstep < len) fire(s.pstep, i);
       s.ago++;
       for (; adv > 0; adv--) {
         const next = nextStep(s, len, dir);
+        // A live length edit can end the pass before an old note's countdown does: such a note ends after this sample,
+        // so a note starting now still gets its low trig sample. A note whose countdown ran out keeps its gate tail.
+        if (next.visit === 0)
+          for (const x of s.snd)
+            if (x.thru === undefined && x.left > 0 && x.cnt > 0) { x.left = 0; x.cnt = 1; }
         s.pos = next.pos; s.visit = next.visit; s.loop = next.loop;
         const sl = ext ? s.period : step;
         s.ago = 0;
