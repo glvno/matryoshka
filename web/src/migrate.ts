@@ -1,19 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// Bringing the browser data over from the old address. Before 1.0 the app lived on GitHub Pages (site.ts OLD_SITE_URL),
-// and the browser keeps localStorage per origin, so the patches, bank, library and settings stayed behind there. The old
-// address now serves a forwarder (deploy/github-pages-forward); with data present it offers "Bring my patches", which opens
-// this app with `?migrate=1`. The hand-off is window.open + postMessage (an iframe bridge reads partitioned storage in
-// Chrome, so it would see nothing):
-//   1. the app, seeing `migrate=1` and an opener, posts {type: READY} to the opener, targetOrigin OLD_ORIGIN;
-//   2. the forwarder checks the origin and source, and replies {type: DATA, keys: {key: value}}, targetOrigin the app's;
-//   3. the app takes the reply only from OLD_ORIGIN and the opener, imports it (planImport), answers {type: DONE}, and
-//      strips `migrate=1` from the address. No reply within MIGRATE_TIMEOUT: it stops listening, quietly.
-// The forwarder's "Download a backup" saves the same keys as a file (BACKUP_FORMAT), which "Load .json" takes as well.
-// The data never goes into a URL.
+// Bringing the browser data over from an earlier address. The browser keeps localStorage per origin, so the patches, bank,
+// library and settings stay behind when the app moves. Before 1.0 the app lived on GitHub Pages (site.ts OLD_SITE_URL),
+// which now serves a forwarder (deploy/github-pages-forward); with data present it offers "Bring my patches". From 1.0 to
+// 1.4 it lived at matry0shka.pages.dev (PAGES_DEV_URL), which still serves the app; with data present the app there offers
+// "Move them there" (move-offer.ts, sendMigration). Either opens this app with `?migrate=1`. The hand-off is window.open +
+// postMessage (an iframe bridge reads partitioned storage in Chrome, so it would see nothing):
+//   1. the app, seeing `migrate=1` and an opener, posts {type: READY} to the opener, once for each origin of MIGRATE_FROM
+//      (the browser delivers only the one that matches the opener);
+//   2. the sender checks the origin and source, and replies {type: DATA, keys: {key: value}}, targetOrigin the app's;
+//   3. the app takes the reply only from an origin of MIGRATE_FROM and the opener, imports it (planImport), answers
+//      {type: DONE} to that origin, and strips `migrate=1` from the address. No reply within MIGRATE_TIMEOUT: it stops
+//      listening, quietly.
+// "Download a backup" (the forwarder) and "Save browser backup" (the app) save the same keys as a file (BACKUP_FORMAT),
+// which "Load .json" takes as well. The data never goes into a URL.
 import { SLOTS } from './protocol';
+import { OLD_SITE_URL, PAGES_DEV_URL } from './site';
 
-/** the old address's origin. Only a test build sets VITE_MIGRATE_FROM (a forwarder served locally); the default is production */
-export const OLD_ORIGIN: string = (import.meta.env?.VITE_MIGRATE_FROM as string | undefined) || 'https://glvno.github.io';
+/** the earlier addresses' origins. Only a test build sets VITE_MIGRATE_FROM (a forwarder served locally); the default is
+ *  production */
+export const MIGRATE_FROM: readonly string[] = (import.meta.env?.VITE_MIGRATE_FROM as string | undefined)
+  ? [import.meta.env.VITE_MIGRATE_FROM as string]
+  : [new URL(OLD_SITE_URL).origin, new URL(PAGES_DEV_URL).origin];
 export const MIGRATE_READY = 'matryoshka-migrate-ready';
 export const MIGRATE_DATA = 'matryoshka-migrate-data';
 export const MIGRATE_DONE = 'matryoshka-migrate-done';
@@ -23,13 +30,15 @@ export const BACKUP_FORMAT = 'matryoshka-browser-backup';
 
 /** the app's storage keys: matryoshka.*, and the upstream names (modular-1.*) that storage-key.ts renamed */
 const ACCEPTED = /^(matryoshka|modular-1)\.[\w.-]+$/;
+/** what the pages.dev address remembers of its move offer (move-offer.ts): about that address only, never handed over */
+export const MOVE_OFFER = 'matryoshka.move-offer';
 
 /** the accepted keys of `raw` with string values; a legacy modular-1.x becomes matryoshka.x unless that is there too
  *  (the old site's renamedKey copied them, so the matryoshka.* value is the newer one) */
 export function acceptKeys(raw: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
-  const entries = Object.entries(raw as Record<string, unknown>).filter(([k, v]) => ACCEPTED.test(k) && typeof v === 'string') as [string, string][];
+  const entries = Object.entries(raw as Record<string, unknown>).filter(([k, v]) => ACCEPTED.test(k) && k !== MOVE_OFFER && typeof v === 'string') as [string, string][];
   for (const [k, v] of entries) if (k.startsWith('matryoshka.')) out[k] = v;
   for (const [k, v] of entries) {
     if (!k.startsWith('modular-1.')) continue;
@@ -37,6 +46,27 @@ export function acceptKeys(raw: unknown): Record<string, string> {
     if (!(key in out)) out[key] = v;
   }
   return out;
+}
+
+/** the app's keys and values in `storage` (acceptKeys): what a hand-off sends and a backup file holds; none when storage
+ *  is blocked */
+export function collectKeys(storage: Pick<Storage, 'length' | 'key' | 'getItem'> = localStorage): Record<string, string> {
+  const raw: Record<string, string> = {};
+  try {
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i);
+      const v = k === null ? null : storage.getItem(k);
+      if (k !== null && v !== null) raw[k] = v;
+    }
+  } catch {
+    /* storage blocked: nothing */
+  }
+  return acceptKeys(raw);
+}
+
+/** a backup file of `keys`, as the forwarder's "Download a backup" writes it */
+export function backupFile(keys: Record<string, string>, from: string, saved = new Date()): { format: string; version: 1; from: string; saved: string; keys: Record<string, string> } {
+  return { format: BACKUP_FORMAT, version: 1, from, saved: saved.toISOString(), keys };
 }
 
 /** a backup file's keys (acceptKeys), or null when `raw` is not a backup file */
@@ -226,11 +256,11 @@ export function withoutMigrate(href: string): string {
 }
 
 /**
- * The receiving end of the hand-off, when the address has `migrate=1`: asks the opener (the forwarder) for its data and
- * calls `onData` with the accepted keys, once. Anything from another origin or window is ignored. Returns whether it
- * listens. `from` is OLD_ORIGIN outside tests.
+ * The receiving end of the hand-off, when the address has `migrate=1`: asks the opener (the forwarder, or the app at the
+ * pages.dev address) for its data and calls `onData` with the accepted keys and the sender's origin, once. Anything from
+ * another origin or window is ignored. Returns whether it listens. `from` is MIGRATE_FROM outside tests.
  */
-export function receiveMigration(onData: (keys: Record<string, string>) => void, from = OLD_ORIGIN, timeout = MIGRATE_TIMEOUT): boolean {
+export function receiveMigration(onData: (keys: Record<string, string>, origin: string) => void, from: readonly string[] = MIGRATE_FROM, timeout = MIGRATE_TIMEOUT): boolean {
   if (typeof window === 'undefined' || new URLSearchParams(location.search).get('migrate') !== '1') return false;
   const strip = (): void => history.replaceState(history.state, '', withoutMigrate(location.href));
   const opener = window.opener as Window | null;
@@ -245,13 +275,13 @@ export function receiveMigration(onData: (keys: Record<string, string>) => void,
     strip();
   };
   const listen = (e: MessageEvent): void => {
-    if (e.origin !== from || e.source !== opener) return;
+    if (!from.includes(e.origin) || e.source !== opener) return;
     const data = e.data as { type?: unknown; keys?: unknown } | null;
     if (data?.type !== MIGRATE_DATA) return;
     stop();
-    onData(acceptKeys(data.keys));
+    onData(acceptKeys(data.keys), e.origin);
     try {
-      opener.postMessage({ type: MIGRATE_DONE }, from);
+      opener.postMessage({ type: MIGRATE_DONE }, e.origin);
     } catch {
       /* the forwarder's tab is gone */
     }
@@ -259,10 +289,36 @@ export function receiveMigration(onData: (keys: Record<string, string>) => void,
   window.addEventListener('message', listen);
   timer = window.setTimeout(stop, timeout);
   try {
-    opener.postMessage({ type: MIGRATE_READY }, from);
+    for (const origin of from) opener.postMessage({ type: MIGRATE_READY }, origin);
   } catch {
     stop();
     return false;
   }
+  return true;
+}
+
+/**
+ * The sending end, from the app at an earlier address: opens `target` with `migrate=1` in a new tab and answers its READY
+ * with `keys()`. `onState` hears 'sending' when the data went out and 'done' when the new tab stored it. Returns false
+ * when the browser blocked the tab. Call it from a click, so the tab is not a blocked popup; it is not `noopener`, as the
+ * new tab answers through window.opener.
+ */
+export function sendMigration(target: string, keys: () => Record<string, string>, onState: (state: 'sending' | 'done') => void): boolean {
+  const url = new URL(target);
+  url.searchParams.set('migrate', '1');
+  const opened = window.open(url.href, '_blank');
+  if (!opened) return false;
+  const listen = (e: MessageEvent): void => {
+    if (e.origin !== url.origin || e.source !== opened) return;
+    const type = (e.data as { type?: unknown } | null)?.type;
+    if (type === MIGRATE_READY) {
+      opened.postMessage({ type: MIGRATE_DATA, keys: keys() }, url.origin);
+      onState('sending');
+    } else if (type === MIGRATE_DONE) {
+      window.removeEventListener('message', listen);
+      onState('done');
+    }
+  };
+  window.addEventListener('message', listen);
   return true;
 }

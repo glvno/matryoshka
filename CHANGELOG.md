@@ -13,8 +13,8 @@ modules and patch bytes from its budget, CPU from its CPU model, both run on eac
   before the fix (Elvira 2, sequencer running, steps entered by hand), the main loop's longest pass took 7.46 s. Now a
   message waits at most 0.05 s. Once one has waited that long with nothing read, the next ones are dropped at once,
   until the computer reads again; the editor syncs when it connects. In the emulator, after 30 steps entered with
-  nothing reading, the SEQ page closes in 140 emulated ms (2,890 before). The final version is tested on the host and
-  in the emulator.
+  nothing reading, the SEQ page closes in 140 emulated ms (2,890 before). The final version is tested on the host, in
+  the emulator, and by hand on the test rig.
 - **USB MIDI keeps consecutive editor messages in order** instead of dropping one that arrives while the one before is
   still pending. Entering sandbox mode sends LIVE paused before its first page, so the FM-1 mutes and receives that
   page together.
@@ -328,6 +328,13 @@ Each of these was tested on the host (both engines), not yet on a device, unless
 - **Wavetable** adds the EML COLOR bank (see Vernon 100).
 
 ### The editor
+
+- **The editor has its own address: [matryoshka.lol](https://matryoshka.lol/).** The browser keeps the editor's data
+  separately for each address. If you used matry0shka.pages.dev, it keeps working, and a bar at the top offers **Move
+  them there**: one click opens matryoshka.lol and brings your patches, FM-1 bank, library, tutorial progress and
+  settings along, without replacing anything already there. A toast lists what came over. If you never used it, a
+  matry0shka.pages.dev link opens at matryoshka.lol instead, with its patch. The command palette has **Move to
+  matryoshka.lol** there, and **Save browser backup** everywhere: a .json file of all of it, which **Load .json** reads.
 
 - **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
   same range: turning it moves both (two filters' cutoff, say), and so do a cable or a macro on it, a card preset and

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// first: migrate.ts notes which storage keys the page found before anything here writes one
+// first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
+// everything else; then migrate.ts notes which storage keys the page found before anything here writes one
+import './site-move';
 import { addUserPreset, exportPresets, importPresets } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
-import { applyImport, backupKeys, importSummary, OLD_ORIGIN, receiveMigration } from './migrate';
+import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
+import { moveOffer, onPagesDev } from './move-offer';
 import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
@@ -1036,7 +1039,9 @@ const commands = (): Command[] => {
       URL.revokeObjectURL(a.href);
     } },
     { kind: 'command', label: 'Import presets from .json', keywords: 'load file library device', run: () => $('load-file').click() },
-    { kind: 'command', label: 'Import browser backup', detail: 'from the old address', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
+    { kind: 'command', label: 'Save browser backup', detail: 'everything this browser keeps here, as .json', keywords: 'export download file backup patches bank library settings move', run: saveBrowserBackup },
+    { kind: 'command', label: 'Import browser backup', detail: 'a backup .json', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
+    ...(onPagesDev() ? [{ kind: 'command' as const, label: 'Move to matryoshka.lol', detail: 'your patches, bank, library and settings', keywords: 'migrate moved address domain pages.dev bring', run: () => move.open() }] : []),
     { kind: 'command', label: 'Share patch\u2026', keywords: 'link copy url clipboard reddit post card notes', run: () => shareSheet.open() },
     { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
     { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { toPatch(); tutorial.open(); } },
@@ -2299,7 +2304,19 @@ window.addEventListener('hashchange', openFromAddress);
 // a returning visitor on a new version sees what changed, once, instead of the tutorial's welcome
 if (currentView === 'patch' && !installOpen() && !isShareLink(location.href) && !whatsNew()) tutorial.welcome();
 // the old address's hand-off (?migrate=1), and the toast of an import before the reload
-receiveMigration((keys) => importBrowserData(keys, new URL(OLD_ORIGIN).host));
+receiveMigration((keys, origin) => importBrowserData(keys, new URL(origin).host));
+/** everything the app keeps in this browser at this address, as a backup file ("Load .json" takes it) */
+function saveBrowserBackup(): void {
+  const file = backupFile(collectKeys(), location.origin);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+  a.download = `matryoshka-backup-${file.saved.slice(0, 10)}.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const move = moveOffer(saveBrowserBackup);
 try {
   const imported = sessionStorage.getItem(IMPORTED);
   if (imported) {
