@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- FM sine operators skip unused feedback and waveform selection work. Polyphonic modules reuse shared control averages. The instruction model counts 28% less work for Algo Four and 5% less for Io 4; all 130 audio kits and mode-change checks remain bit-identical.
+
 - Morph leaves modules without a B side untouched on the FM-1, matching the browser (#355). Format 36 records which modules morph; older bank records retain their playback when loaded and upgraded.
 
 - Random has a `clock` input and a `held` output: each rising edge draws an independent random voltage for that instance, held until the next edge. Existing fixed and wandering outputs keep their sound.
