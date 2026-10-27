@@ -2,7 +2,7 @@
 
 IDs: D-200–D-249
 
-The FM-1 is a patch player: patches are built in the browser, and the device plays them through one firmware build that runs one patch at a time. Every top-level module or assembly with card rows is a **device**, and Main, the Steps tracks and the Output are devices too, all in one **grouped order**. A device's card rows become **pages** of four, and K1..K4 are **edit bindings** to the page in focus. Navigation follows one rule: HOME goes back along a **trail**, ALGO moves sideways, SELECT picks, and PRESET only changes patches. GLO, SEL and ENV are **fixed buttons** (GLO opens the FM-1's own settings page, ENV the **environment** page of devices and their presets), while FX, LFO, EDIT and ARP stay patch buttons, each with a **button kind**. The settings menu, the device page layout with its header, bars and footer, PRESET's toast in the footer, the LCD manual rules and the **panel core** complete the panel. While the editor's patch is over budget under Live, the device page shows the editor's page instead, and the FM-1 acts as that patch's controller.
+The FM-1 is a patch player: patches are built in the browser, and the device plays them through one firmware build that runs one patch at a time. Every top-level module or assembly with card rows is a **device**, and Main, the Steps tracks and the Output are devices too, all in one **grouped order**. A device's card rows become **pages** of four, and K1..K4 are **edit bindings** to the page in focus. Navigation follows one rule: HOME goes back along a **trail**, ALGO moves sideways, SELECT picks, and PRESET changes patches, except on the **SEQ page**, where it steps the patch's pattern ([D-541](steps.md#D-541)). GLO, SEL and ENV are **fixed buttons** (GLO opens the FM-1's own settings page, ENV the **environment** page of devices and their presets), while FX, LFO, EDIT and ARP stay patch buttons, each with a **button kind**. The settings menu, the device page layout with its header, bars and footer, PRESET's toast in the footer, the LCD manual rules and the **panel core** complete the panel. While the editor's patch is over budget under Live, the device page shows the editor's page instead, and the FM-1 acts as that patch's controller.
 
 | ID | Decision | Status | Date | Source |
 |---|---|---|---|---|
@@ -44,6 +44,7 @@ The FM-1 is a patch player: patches are built in the browser, and the device pla
 
 ## Not yet settled
 
+- With [D-541](steps.md#D-541), amend [D-212](device-ui.md#D-212), which says PRESET only steps patches, to name the SEQ page's exception — issue #375
 - Whether the stock battery thresholds (531 / 561 / 591) match this FM-1's readings on USB, unplugged full, later and near shutdown — issue #240
 - Whether GLO's page gets a level and a speaker mute (no such setting or hardware control is known) — issue #199
 - Whether device page bars for envelopes draw a faint envelope shape — issue #112
