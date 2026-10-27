@@ -1774,3 +1774,13 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .comm-source { margin: 8px 0 0; font-size: 12px; }
 .comm-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 18px 0 0; font-size: 13px; }
 #tab-library .lib-section .bank-row > .fit-chip { cursor: help; }
+/* the move offer at the pages.dev address (move-offer.ts): a bar at the top, above the app, like a toast */
+.move-bar { position: fixed; z-index: 61; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 8px 8px 8px 14px; border: 1px solid var(--secondary); border-radius: 6px;
+  background: var(--panel); color: var(--ink); box-shadow: 0 6px 20px color-mix(in srgb, #000 25%, transparent); font-size: 13px; line-height: 1.4; }
+.move-bar > span[role=status] { flex: 1 1 22rem; min-width: 0; }
+.move-bar a { color: var(--secondary); }
+.move-bar .move-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.move-bar button { flex: none; min-height: 28px; padding: 0 10px; border: 1px solid var(--secondary); border-radius: 4px; background: var(--secondary); color: var(--panel);
+  font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; cursor: pointer; }
+.move-bar button.move-close { background: transparent; color: var(--secondary); }
