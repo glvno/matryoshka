@@ -243,7 +243,8 @@ async function typeCost(type: string): Promise<TypeCost> {
     if (moving > thr) out.moving = moving;
     // The unison loop has its own pitch-conversion overhead. Multiplying the single-copy difference undercounts it.
     if (type === 'osc') out.movingCopies = await Promise.all([1, 2, 3, 4, 5].map(async (unison) => {
-      const costs = await Promise.all([0, 1, 2, 3].map(async (wave) => {
+      const waves = def.params.find((p) => p.name === 'wave')!.choices!.map((_, i) => i);
+      const costs = await Promise.all(waves.map(async (wave) => {
         const params = { unison, wave };
         return (await measure(type, { params, moving: true })).run - (await measure(type, { params })).run;
       }));
