@@ -16,10 +16,48 @@ static uint32_t rnd(void)
     return (uint32_t)rs;
 }
 
+/* One patched output must equal that output with every port patched, including partial blocks. */
+static int single_outputs(void)
+{
+    int32_t a[128], b[128], reference[MATH_NOUT][128], actual[128], par[MATH_NPAR];
+    inst_t full = {0}, one = {0};
+    node_t node = {0};
+    uint32_t kind, trial, j, i, n, count;
+    full.in[0] = one.in[0] = a;
+    full.in[1] = one.in[1] = b;
+    full.eff = one.eff = par;
+    for (kind = 0; kind < 2; kind++) {
+        void (*run)(const node_t *, inst_t *, uint32_t) = kind ? m_logic : m_math;
+        count = kind ? LOGIC_NOUT : MATH_NOUT;
+        for (trial = 0; trial < 64; trial++) {
+            n = 1 + rnd() % 128;
+            for (i = 0; i < n; i++) {
+                a[i] = (int32_t)(rnd() % 262145) - 131072;
+                b[i] = (int32_t)(rnd() % 262145) - 131072;
+            }
+            for (j = 0; j < MATH_NPAR; j++) par[j] = (int32_t)(rnd() % 262145) - 131072;
+            for (j = 0; j < count; j++) full.out[j] = reference[j];
+            run(&node, &full, n);
+            for (j = 0; j < count; j++) {
+                uint32_t k;
+                for (k = 0; k < count; k++) one.out[k] = dummy_out;
+                one.out[j] = actual;
+                run(&node, &one, n);
+                for (i = 0; i < n; i++) if (actual[i] != reference[j][i]) {
+                    printf("single output mismatch type %u port %u sample %u\n", kind, j, i);
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     long cases = argc > 1 ? atol(argv[1]) : 20000000, k, bad = 0;
     uint32_t rc[2] = {0, 0};
+    bad += single_outputs();
     for (k = 0; k < cases; k++) {
         uint32_t dt = rnd() >> (rnd() % 32), t;
         if (!dt)

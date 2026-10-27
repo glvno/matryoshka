@@ -3680,12 +3680,41 @@ static void m_dyn(const node_t *nd, inst_t *it, uint32_t n)
     it->s.dyn.env = env;
 }
 
+/* Most utility modules feed one output. Pick that operation once per block instead of calculating every unused one. */
+static int only_output(const inst_t *it, uint32_t count)
+{
+    uint32_t i;
+    int found = -1;
+    for (i = 0; i < count; i++) if (it->out[i] != dummy_out) {
+        if (found >= 0)
+            return -1;
+        found = (int)i;
+    }
+    return found;
+}
+
 static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts `math`: a' = a ka + off, b' = b kb */
 {
     const esig_t *ia = it->in[MATH_I_A], *ib = it->in[MATH_I_B];
     esig_t **o = it->out;
     int32_t ka = EF(it, MATH_P_KA), kb = EF(it, MATH_P_KB), off = EF(it, MATH_P_OFF);
     uint32_t i;
+    int only = only_output(it, MATH_NOUT);
+    if (only >= 0) {
+        esig_t *dst = o[only];
+#define MATH_ONE(Y) for (i = 0; i < n; i++) { int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb); (void)b; dst[i] = (Y); }
+        switch (only) {
+        case MATH_O_ADD: MATH_ONE(a + b) break;
+        case MATH_O_SUB: MATH_ONE(a - b) break;
+        case MATH_O_MUL: MATH_ONE(mul16(a, b)) break;
+        case MATH_O_MIN: MATH_ONE(a < b ? a : b) break;
+        case MATH_O_MAX: MATH_ONE(a > b ? a : b) break;
+        case MATH_O_ABS: MATH_ONE(a < 0 ? -a : a) break;
+        case MATH_O_CMP: MATH_ONE(a > b ? ENG_ONE : 0) break;
+        }
+#undef MATH_ONE
+        return;
+    }
     for (i = 0; i < n; i++) {
         int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb);
         o[MATH_O_ADD][i] = a + b;
@@ -3705,6 +3734,19 @@ static void m_logic(const node_t *nd, inst_t *it, uint32_t n)     /* modules.ts 
     esig_t **o = it->out;
     int32_t t = EF(it, LOGIC_P_THRESH);
     uint32_t i;
+    int only = only_output(it, LOGIC_NOUT);
+    if (only >= 0) {
+        esig_t *dst = o[only];
+#define LOGIC_ONE(Y) for (i = 0; i < n; i++) { int a = ia[i] >= t, b = ib[i] >= t; (void)b; dst[i] = (Y) ? ENG_ONE : 0; }
+        switch (only) {
+        case LOGIC_O_AND: LOGIC_ONE(a && b) break;
+        case LOGIC_O_OR: LOGIC_ONE(a || b) break;
+        case LOGIC_O_XOR: LOGIC_ONE(a != b) break;
+        case LOGIC_O_NOT: LOGIC_ONE(!a) break;
+        }
+#undef LOGIC_ONE
+        return;
+    }
     for (i = 0; i < n; i++) {
         int a = ia[i] >= t, b = ib[i] >= t;
         o[LOGIC_O_AND][i] = a && b ? ENG_ONE : 0;

@@ -29187,12 +29187,119 @@
    ]
   },
   "math": {
-   "run": 6767,
-   "cv": 219
+   "run": 3150,
+   "cv": 219,
+   "dims": [
+    {
+     "output": "cmp"
+    },
+    {
+     "output": "abs"
+    },
+    {
+     "output": "max"
+    },
+    {
+     "output": "min"
+    },
+    {
+     "output": "mul"
+    },
+    {
+     "output": "sub"
+    }
+   ],
+   "grid": [
+    3150,
+    6795,
+    6807,
+    6795,
+    6819,
+    6795,
+    6807,
+    6795,
+    6831,
+    6795,
+    6807,
+    6795,
+    6819,
+    6795,
+    6807,
+    6795,
+    6843,
+    6795,
+    6807,
+    6795,
+    6819,
+    6795,
+    6807,
+    6795,
+    6831,
+    6795,
+    6807,
+    6795,
+    6819,
+    6795,
+    6807,
+    6795,
+    6855,
+    6795,
+    6807,
+    6795,
+    6819,
+    6795,
+    6807,
+    6795,
+    6831,
+    6795,
+    6807,
+    6795,
+    6819,
+    6795,
+    6807,
+    6795,
+    6843,
+    6795,
+    6807,
+    6795,
+    6819,
+    6795,
+    6807,
+    6795,
+    6831,
+    6795,
+    6807,
+    6795,
+    6819,
+    6795,
+    6807,
+    6795
+   ]
   },
   "logic": {
-   "run": 3685,
-   "cv": 195
+   "run": 2210,
+   "cv": 195,
+   "dims": [
+    {
+     "output": "not"
+    },
+    {
+     "output": "xor"
+    },
+    {
+     "output": "or"
+    }
+   ],
+   "grid": [
+    2210,
+    3713,
+    3725,
+    3713,
+    3737,
+    3713,
+    3725,
+    3713
+   ]
   },
   "grain": {
    "run": 29775,
@@ -37406,7 +37513,7 @@
   },
   {
    "name": "Silver Box",
-   "cycles": 115483
+   "cycles": 114008
   },
   {
    "name": "Hera 6",
@@ -37414,7 +37521,7 @@
   },
   {
    "name": "Sallen 20",
-   "cycles": 250653
+   "cycles": 243335
   },
   {
    "name": "Expander S",
@@ -37426,11 +37533,11 @@
   },
   {
    "name": "Canvas",
-   "cycles": 454628
+   "cycles": 438594
   },
   {
    "name": "Wanderer",
-   "cycles": 217947
+   "cycles": 204072
   },
   {
    "name": "Briefcase 3",
@@ -37438,15 +37545,15 @@
   },
   {
    "name": "Io 4",
-   "cycles": 593417
+   "cycles": 577712
   },
   {
    "name": "Vernon 100",
-   "cycles": 377309
+   "cycles": 340517
   },
   {
    "name": "8 Lire",
-   "cycles": 265710
+   "cycles": 265738
   },
   {
    "name": "Elvira 2",
@@ -37454,7 +37561,7 @@
   },
   {
    "name": "Scrounge",
-   "cycles": 388751
+   "cycles": 381517
   },
   {
    "name": "Meridian 8",
@@ -37474,7 +37581,7 @@
   },
   {
    "name": "<7PH",
-   "cycles": 403459
+   "cycles": 401984
   },
   {
    "name": "Spokes 6",
@@ -37494,7 +37601,7 @@
   },
   {
    "name": "assembly 8 Lire",
-   "cycles": 249386
+   "cycles": 249414
   },
   {
    "name": "assembly adsr operator",
@@ -37534,7 +37641,7 @@
   },
   {
    "name": "assembly Canvas",
-   "cycles": 438410
+   "cycles": 422436
   },
   {
    "name": "assembly Cassia 1",
@@ -37606,7 +37713,7 @@
   },
   {
    "name": "assembly Io 4",
-   "cycles": 593730
+   "cycles": 578025
   },
   {
    "name": "assembly kalimba",
@@ -37674,11 +37781,11 @@
   },
   {
    "name": "assembly Sallen 20",
-   "cycles": 252749
+   "cycles": 245431
   },
   {
    "name": "assembly Scrounge",
-   "cycles": 370562
+   "cycles": 363328
   },
   {
    "name": "assembly shimmer",
@@ -37690,7 +37797,7 @@
   },
   {
    "name": "assembly Silver Box",
-   "cycles": 99295
+   "cycles": 97820
   },
   {
    "name": "assembly slicer",
@@ -37742,7 +37849,7 @@
   },
   {
    "name": "assembly Vernon 100",
-   "cycles": 374588
+   "cycles": 337924
   },
   {
    "name": "assembly vibrato",
@@ -37758,7 +37865,7 @@
   },
   {
    "name": "assembly Wanderer",
-   "cycles": 206012
+   "cycles": 192137
   },
   {
    "name": "assembly wavetable pad",

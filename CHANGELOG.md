@@ -3,6 +3,8 @@
 ## Unreleased
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+- Math and Logic calculate only the selected operation when one output is connected. The instruction model counts another 3% less work for Io 4, with all 134 audio kits unchanged.
+
 - Ladder has an audio-rate cutoff input for oscillator-speed filter modulation. Its existing cutoff input retains its block-rate behavior for saved patches.
 
 - Main exposes breath (CC 2), sustain (CC 64), and foot switch (CC 65) as independent patchable outputs in the browser and on the FM-1.
