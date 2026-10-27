@@ -810,6 +810,29 @@
     },
     {
       "id": 30,
+      "type": "logic",
+      "x": 0,
+      "y": 2240,
+      "params": {
+        "thresh": 0.5
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "thresh"
+        ],
+        "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 31,
       "type": "sh",
       "x": 2560,
       "y": 1680,
@@ -832,7 +855,7 @@
       }
     },
     {
-      "id": 31,
+      "id": 32,
       "type": "noise",
       "x": 0,
       "y": 2800,
@@ -858,7 +881,7 @@
       }
     },
     {
-      "id": 32,
+      "id": 33,
       "type": "vca",
       "x": 320,
       "y": 2800,
@@ -881,7 +904,7 @@
       }
     },
     {
-      "id": 33,
+      "id": 34,
       "type": "scale",
       "x": 640,
       "y": 2800,
@@ -907,7 +930,7 @@
       }
     },
     {
-      "id": 34,
+      "id": 35,
       "type": "scale",
       "x": 960,
       "y": 2800,
@@ -933,7 +956,7 @@
       }
     },
     {
-      "id": 35,
+      "id": 36,
       "type": "scale",
       "x": 1280,
       "y": 2800,
@@ -959,7 +982,7 @@
       }
     },
     {
-      "id": 36,
+      "id": 37,
       "type": "scale",
       "x": 1600,
       "y": 2800,
@@ -985,7 +1008,7 @@
       }
     },
     {
-      "id": 37,
+      "id": 38,
       "type": "const",
       "x": 1920,
       "y": 2800,
@@ -1001,6 +1024,35 @@
           "value"
         ],
         "p2": [],
+        "k1": [],
+        "k2": [],
+        "k3": [],
+        "k4": []
+      }
+    },
+    {
+      "id": 39,
+      "type": "esp",
+      "x": 2240,
+      "y": 2800,
+      "params": {
+        "level": 1,
+        "lowcut": 40,
+        "highcut": 2000,
+        "cvadj": 0,
+        "thresh": 0.1
+      },
+      "att": [
+        1,
+        1
+      ],
+      "map": {
+        "p1": [
+          "level"
+        ],
+        "p2": [
+          "lowcut"
+        ],
         "k1": [],
         "k2": [],
         "k3": [],
@@ -1275,14 +1327,24 @@
         "port": "gate"
       },
       "to": {
+        "module": 30,
+        "port": "a"
+      }
+    },
+    {
+      "from": {
+        "module": 30,
+        "port": "or"
+      },
+      "to": {
         "module": 17,
         "port": "trig"
       }
     },
     {
       "from": {
-        "module": 1,
-        "port": "gate"
+        "module": 30,
+        "port": "or"
       },
       "to": {
         "module": 18,
@@ -1311,8 +1373,8 @@
     },
     {
       "from": {
-        "module": 1,
-        "port": "gate"
+        "module": 30,
+        "port": "or"
       },
       "to": {
         "module": 20,
@@ -1321,8 +1383,8 @@
     },
     {
       "from": {
-        "module": 1,
-        "port": "gate"
+        "module": 30,
+        "port": "or"
       },
       "to": {
         "module": 21,
@@ -1455,7 +1517,7 @@
         "port": "out"
       },
       "to": {
-        "module": 30,
+        "module": 31,
         "port": "in"
       }
     },
@@ -1465,7 +1527,7 @@
         "port": "pulse"
       },
       "to": {
-        "module": 30,
+        "module": 31,
         "port": "clock"
       }
     },
@@ -1475,7 +1537,7 @@
         "port": "env"
       },
       "to": {
-        "module": 32,
+        "module": 33,
         "port": "cv"
       }
     },
@@ -1485,7 +1547,7 @@
         "port": "env"
       },
       "to": {
-        "module": 33,
+        "module": 34,
         "port": "in"
       }
     },
@@ -1495,13 +1557,13 @@
         "port": "env"
       },
       "to": {
-        "module": 34,
+        "module": 35,
         "port": "in"
       }
     },
     {
       "from": {
-        "module": 37,
+        "module": 38,
         "port": "out"
       },
       "to": {
@@ -1513,16 +1575,6 @@
       "from": {
         "module": 22,
         "port": "pulse"
-      },
-      "to": {
-        "module": 13,
-        "port": "in3"
-      }
-    },
-    {
-      "from": {
-        "module": 30,
-        "port": "out"
       },
       "to": {
         "module": 13,
@@ -1588,6 +1640,26 @@
         "module": 13,
         "port": "in3"
       }
+    },
+    {
+      "from": {
+        "module": 37,
+        "port": "out"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
+        "module": 39,
+        "port": "amp"
+      },
+      "to": {
+        "module": 13,
+        "port": "in3"
+      }
     }
   ],
   "inputs": [
@@ -1597,19 +1669,45 @@
       "label": "keys"
     },
     {
-      "module": 32,
+      "module": 33,
       "port": "in",
       "label": "mvca in"
     },
     {
-      "module": 35,
+      "module": 36,
       "port": "in",
       "label": "wheel"
     },
     {
-      "module": 36,
+      "module": 37,
       "port": "in",
       "label": "switch"
+    },
+    {
+      "module": 39,
+      "port": "in",
+      "label": "esp signal in"
+    },
+    {
+      "module": 7,
+      "port": "pitch",
+      "label": "vco 1+2 cv in",
+      "also": [
+        {
+          "module": 8,
+          "port": "pitch"
+        }
+      ]
+    },
+    {
+      "module": 30,
+      "port": "b",
+      "label": "trigger in"
+    },
+    {
+      "module": 16,
+      "port": "cv",
+      "label": "initial gain"
     }
   ],
   "outputs": [
@@ -1619,7 +1717,7 @@
       "label": "out"
     },
     {
-      "module": 30,
+      "module": 31,
       "port": "out",
       "label": "s&h out"
     },
@@ -1629,12 +1727,12 @@
       "label": "white noise"
     },
     {
-      "module": 31,
+      "module": 32,
       "port": "out",
       "label": "pink noise"
     },
     {
-      "module": 32,
+      "module": 33,
       "port": "out",
       "label": "mvca out"
     },
@@ -1644,7 +1742,7 @@
       "label": "eg1 normal"
     },
     {
-      "module": 33,
+      "module": 34,
       "port": "out",
       "label": "eg1 reverse"
     },
@@ -1654,7 +1752,7 @@
       "label": "eg2 normal"
     },
     {
-      "module": 34,
+      "module": 35,
       "port": "out",
       "label": "eg2 reverse"
     },
@@ -1669,12 +1767,12 @@
       "label": "mg rectangle"
     },
     {
-      "module": 35,
+      "module": 36,
       "port": "out",
       "label": "wheel out"
     },
     {
-      "module": 36,
+      "module": 37,
       "port": "out",
       "label": "switch out"
     },
@@ -1687,6 +1785,31 @@
       "module": 1,
       "port": "gate",
       "label": "kbd trig"
+    },
+    {
+      "module": 39,
+      "port": "amp",
+      "label": "esp amp out"
+    },
+    {
+      "module": 39,
+      "port": "bp",
+      "label": "esp bpf out"
+    },
+    {
+      "module": 39,
+      "port": "pitch",
+      "label": "f-v cv out"
+    },
+    {
+      "module": 39,
+      "port": "env",
+      "label": "env out"
+    },
+    {
+      "module": 39,
+      "port": "trig",
+      "label": "trig out"
     }
   ],
   "params": [
@@ -1891,10 +2014,36 @@
       "label": "waveform"
     },
     {
-      "module": 37,
+      "module": 38,
       "param": "value",
       "label": "initial gain",
       "head": "patch panel"
+    },
+    {
+      "module": 39,
+      "param": "level",
+      "label": "signal level",
+      "head": "esp"
+    },
+    {
+      "module": 39,
+      "param": "lowcut",
+      "label": "low cut"
+    },
+    {
+      "module": 39,
+      "param": "highcut",
+      "label": "high cut"
+    },
+    {
+      "module": 39,
+      "param": "cvadj",
+      "label": "cv adjust"
+    },
+    {
+      "module": 39,
+      "param": "thresh",
+      "label": "threshold"
     }
   ]
 }

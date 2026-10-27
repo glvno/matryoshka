@@ -782,6 +782,51 @@ kit('dyn', (add, wire) => {
   wire(vca2, 'out', mix, 'in2');
   wire(mix, 'out', out, 'l');
 });
+// the Follower (the MS-20's ESP): its pitch and envelope outputs on a played saw (left: pitch in octaves, right: env)
+kit('esp-pitch', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.5 });
+  const adsr = add('adsr', 0, 0, { a: 0.01, d: 0.2, s: 0.5, r: 0.1 });
+  const vca = add('vca', 0, 0);
+  const esp = add('esp', 0, 0, { level: 1.5, lowcut: 60, highcut: 1500, thresh: 0.2 });
+  const out = add('output', 0, 0, { level: 0.5 });
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', adsr, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(adsr, 'env', vca, 'cv');
+  wire(vca, 'out', esp, 'in');
+  wire(esp, 'pitch', out, 'l');
+  wire(esp, 'env', out, 'r');
+});
+// the manual's patch (F-V CV OUT to a VCO, TRIG OUT to an envelope, ENV OUT to the VCA) with cv adjust a fifth up, and the
+// band-passed signal mixed in
+kit('esp-follow', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const src = add('osc', 0, 0, { wave: 0, level: 0.6, coarse: -12 });
+  const esp = add('esp', 0, 0, { level: 1, lowcut: 40, highcut: 800, cvadj: 7, thresh: 0.15 });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.5 });
+  const adsr = add('adsr', 0, 0, { a: 0.005, d: 0.1, s: 0.6, r: 0.2 });
+  const vca = add('vca', 0, 0);
+  const vca2 = add('vca', 0, 0);
+  const mix = add('mixer', 0, 0, { l1: 0.6, l2: 0.3 });
+  const out = add('output', 0, 0);
+  const gate = add('adsr', 0, 0, { a: 0.001, d: 0.001, s: 1, r: 0.05 });
+  const amp = add('vca', 0, 0);
+  wire(kb, 'pitch', src, 'pitch');
+  wire(kb, 'gate', gate, 'gate');
+  wire(src, 'out', amp, 'in');
+  wire(gate, 'env', amp, 'cv');
+  wire(amp, 'out', esp, 'in');
+  wire(esp, 'pitch', osc, 'pitch');
+  wire(esp, 'trig', adsr, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(adsr, 'env', vca, 'cv');
+  wire(vca, 'out', vca2, 'in');
+  wire(esp, 'env', vca2, 'cv');
+  wire(vca2, 'out', mix, 'in1');
+  wire(esp, 'bp', mix, 'in2');
+  wire(mix, 'out', out, 'l');
+});
 kit('math-logic', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const lfo1 = add('lfo', 0, 0, { wave: 3, rate: 3, depth: 1 });
