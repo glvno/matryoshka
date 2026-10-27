@@ -75,7 +75,8 @@
 //   41 INFO     version, max modules, max cables, flags (bit0 flash ok, bit1 patch loaded, bit2 MENU > MIDI OUT on: with
 //               feature bit 8), delay lines, [features: bit1 TRANSPORT, bit2 MUTE, bit4 FOCUS / PARAM_NOW / FOCUS_NOW,
 //               bit5 TRACK / TRACK_NOW, bit6 LIVE, bit7 presets], [features 8..15: bit8 sandbox mode, bit9 the device
-//               test mode, bit10 TEST_PEAK reads before MASTER, bit11 reads patch format 35]. Also unasked
+//               test mode, bit10 TEST_PEAK reads before MASTER, bits11..15 read patch formats35..39],
+//               [minimum readable patch format, maximum readable patch format]. Also unasked
 //               after a LIVE when MIDI OUT changed since the editor last heard (feature bit 8)
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
@@ -226,6 +227,8 @@ export interface Info {
   /** feature bits: 2 = the TRANSPORT command, 4 = MUTE, 32 = TRACK, 256 = sandbox mode (1 ARP, 8 STEPVAL are retired;
    *  STEP went with 4's meaning) */
   features: number;
+  /** Inclusive binary patch format range; absent from older firmware, whose feature bits describe compatibility. */
+  patchFormats?: { min: number; max: number };
   /** MENU > MIDI OUT is on (the FM-1's panel reaches the editor); null: the firmware does not say (no feature bit 8) */
   midiOut: boolean | null;
 }
@@ -240,7 +243,8 @@ export function parseInfo(p: Parsed): Info | null {
   if (p.cmd !== CMD.info || p.payload.length < 5) return null;
   const features = (p.payload[5] ?? 0) | ((p.payload[6] ?? 0) << 8);
   return { version: p.payload[0], maxModules: p.payload[1], maxCables: p.payload[2], flashOk: !!(p.payload[3] & 1), patchLoaded: !!(p.payload[3] & 2), delays: p.payload[4], features,
-    midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null };
+    midiOut: features & FEATURE_SANDBOX ? !!(p.payload[3] & 4) : null,
+    ...(p.payload.length >= 9 ? { patchFormats: { min: p.payload[7], max: p.payload[8] } } : {}) };
 }
 export const parseAck = (p: Parsed): Ack | null => (p.cmd === CMD.ack && p.payload.length >= 4 ? { cmd: p.payload[0], seq: p.payload[1], status: p.payload[2], aux: p.payload[3] } : null);
 
