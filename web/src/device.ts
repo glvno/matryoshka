@@ -56,10 +56,10 @@ export const liveSync = {
 /** a MIDI Start or Continue (true), Stop (false), or neither (null): the FM-1's PLAY as it goes out (panel.c play_toggle) */
 export const transportOf = (data: ArrayLike<number> | null | undefined): boolean | null =>
   !data || data.length !== 1 ? null : data[0] === 0xfa || data[0] === 0xfb ? true : data[0] === 0xfc ? false : null;
-/** INFO feature bit 14 came with the firmware that reads patch format 38 (#351 Tier 1), the format the editor writes:
+/** INFO feature bit 15 came with the firmware that reads patch format 39 (#351 Tier 1), the format the editor writes:
  *  older firmware refuses every patch the editor sends, so it cannot sync. (Bit 7, the presets, marked format 34 from 1.2.0
  *  to 1.4.) A format bump raises it to a bit the new firmware brings. */
-export const FEATURE_SYNC = 16384;
+export const FEATURE_SYNC = 32768;
 /** the FM-1 can play the editor's patches (an FM-1 not heard from yet is not held back) */
 export const syncsWith = (info: Info | null): boolean => !info || !!(info.features & FEATURE_SYNC);
 export const UPDATE_TO_SYNC = 'This FM-1 runs older Matryoshka firmware that cannot play the editor\'s patches: update it to sync.';

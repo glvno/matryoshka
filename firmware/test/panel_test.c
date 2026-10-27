@@ -363,6 +363,17 @@ int main(void)
     check("increasing unison count wakes held voices", poly_row_set(mod, ENG_POLY_STACK, 3) == 0 && E.pv[E.grp[1].pv0 + 2].on && !E.pv[E.grp[1].pv0 + 3].on);
     check("zero unison count means all", poly_row_set(mod, ENG_POLY_STACK, 0) == 0 && E.pv[E.grp[1].pv0 + 3].on);
     check("reducing unison count releases excess voices", poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && !E.pv[E.grp[1].pv0 + 1].on);
+    check("shared unison mode saves both flags", poly_row_set(mod, ENG_POLY_UNISON, 2) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 2 && (pv_bin[10] & 0xC0u) == 0xC0u);
+    check("legato edit preserves shared unison", poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && pv_bin[10] == 0xC2u);
+    check("unison mode row has three choices", poly_max(ENG_POLY_UNISON) == 2);
+    check("normal unison keeps legato and clears share", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && pv_bin[10] == 0x82u);
+    pv_bin[1] = 38;
+    check("format 38 cannot add shared unison", poly_row_set(mod, ENG_POLY_UNISON, 2) == -1 && pv_bin[10] == 0x82u);
+    pv_bin[10] |= 0x40u;
+    check("format 38 rejects shared unison flag", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[1] = ENG_PATCH_VERSION; pv_bin[10] = 0x42u;
+    check("share flag without unison is invalid", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[10] = 0x82u;
     pv_bin[1] = 37;
     check("format 37 rejects the new count flag", eng_load(pv_bin, pv_len) != 0);
     pv_bin[8] &= 15u;

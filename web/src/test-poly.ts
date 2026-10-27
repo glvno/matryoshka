@@ -36,6 +36,7 @@ export function addAlloc(p: Patch, cfg: Partial<PolyCfg> = {}): ModuleInst {
   if (cfg.parts !== undefined) a.params.voices = cfg.parts;
   for (const k of ['assign', 'legato', 'priority'] as const) if (cfg[k] !== undefined) a.params[k] = cfg[k]!;
   if (cfg.unison) a.params.unison = 1;
+  if (cfg.unisonShare) a.params.unison = 2;
   if (cfg.unisonParts !== undefined) a.params.stack = cfg.unisonParts;
   if (cfg.steal === false) a.params.steal = 0;
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: a.id, port: 'keys' } });

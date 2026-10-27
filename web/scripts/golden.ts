@@ -156,7 +156,7 @@ const kit = (name: string, b: Build, voices = 1): void => {
 const polyAsm = (p: Patch, ids: number[], cfg: Partial<PolyCfg>): void => {
   const alloc = p.modules.find((m) => ids.includes(m.id) && m.type === 'part')!;
   alloc.type = 'alloc';
-  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unison ? 1 : 0, stack: cfg.unisonParts ?? 0, steal: cfg.steal === false ? 0 : 1, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
+  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unisonShare ? 2 : cfg.unison ? 1 : 0, stack: cfg.unisonParts ?? 0, steal: cfg.steal === false ? 0 : 1, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
   fixMatrix(alloc, DEFS.alloc);
   const main = p.modules.find((m) => m.type === 'fm1')!;
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: alloc.id, port: 'keys' } });
@@ -439,6 +439,25 @@ events['poly-layers'] = [
   [128 * 108, 'off', 55],
   [128 * 112, 'off', 72],
 ];
+// Shared unison: hear the selected pitches and the number of held voices.
+for (const priority of [0, 1, 2]) {
+  const name = `unison-share-${priority}`;
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    add('fm1', 0, 0);
+    const part = add('part', 0, 0), pitch = add('vca', 0, 0), out = add('output', 0, 0, { level: .1 });
+    wire(part, 'pitch', pitch, 'in'); wire(part, 'gate', pitch, 'cv'); wire(pitch, 'out', out, 'l');
+    wire(part, 'gate', out, 'r'); ids = [part, pitch];
+  });
+  polyAsm(tests[name], ids, { parts: 4, unison: true, unisonShare: true, priority });
+  const keys = [72, 60, 64, 67, 55, 50];
+  events[name] = keys.map((key, i) => [i * 128, 'on', key] as Ev);
+  events[name].push(...[50, 55, 60, 64, 67, 72].map((key, i) => [(i + 6) * 128, 'off', key] as Ev));
+  // All 128 keys exercise the former C held-list limit and returning to notes that remain down.
+  for (let key = 0; key < 128; key++) events[name].push([(key + 12) * 128, 'on', key]);
+  for (let key = 0; key < 128; key++) events[name].push([(key + 140) * 128, 'off', key]);
+  ends[name] = 269 * 128;
+}
 // A separate unison count limits held voices without changing the allocated poly pool.
 for (const stack of [0, 1, 2, 4, 8]) for (const priority of [0, 1, 2]) {
   const name = `unison-count-${stack}-${priority}`;

@@ -132,6 +132,7 @@ presets.push(() => {
 
 presets.push(() => {
   const x = around('Io 4', 'Io 4');
+  x.p.notes = 'Jupiter-4 architecture, four voices. UNISON ON is UNISON I; SHARE is UNISON II: one key uses four voices, two keys use two each, three or four use one each. Assignment still uses separate assign and unison rows. Other control gaps remain under the 1.5 fidelity audit.';
   plugIn(x.p, x.main.id, 'bend', x.a, 'bend'); // the lever's BEND (its LFO is the mod wheel: around)
   level(x.p, { chord: true });
   return x.p;

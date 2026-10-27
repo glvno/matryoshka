@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Io 4 can share its four voices across held notes like Jupiter-4 UNISON II. Choose SHARE on its unison row. Both engines retain all 128 held MIDI keys.
+
 - Voicing can stack a separate number of voices in unison while preserving its polyphonic count. Oracle V XL exposes this count and applies detune and manual chord offsets only in unison.
 
 - Voicing adds lowest/highest held-voice gates. Algo Four XL uses them for LOW/HIGH/KON pitch bend and now receives breath and foot-switch MIDI controllers directly.

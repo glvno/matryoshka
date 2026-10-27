@@ -2348,6 +2348,7 @@ const random: ModuleImpl<RandomState> = {
 };
 
 export const UNISON_MODES = ['off', 'on'];
+export const UNISON_ASSIGN = [...UNISON_MODES, 'share'];
 /** a Voice allocator's MIDI channel: `all` = the device's channel (MENU > MIDI CHANNEL on the FM-1, every channel in the browser) */
 export const KEY_CHANNELS = ['all', ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)];
 const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -2372,7 +2373,7 @@ const alloc: ModuleImpl<null> = {
       param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3 }),
       param('legato', 0, 2, 0, { step: 1, choices: LEGATO_MODES }),
       param('priority', 0, 2, 0, { step: 1, choices: PRIORITIES }),
-      param('unison', 0, 1, 0, { step: 1, choices: UNISON_MODES, toggle: true }),
+      param('unison', 0, 1, 0, { step: 1, choices: UNISON_ASSIGN, top: 2 }),
       param('channel', 0, 16, 0, { step: 1, choices: KEY_CHANNELS }),
       param('low', 0, 127, 0, { step: 1, choices: NOTE_NAMES }),
       param('high', 0, 127, 127, { step: 1, choices: NOTE_NAMES }),
