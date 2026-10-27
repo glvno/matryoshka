@@ -98,3 +98,10 @@ it('shortening a pass releases its old notes at the new pass boundary', () => {
   expect(l[12000]).toBe(0);
   expect(l[23999]).toBe(0);
 });
+it('forward keeps an older note sounding across a shortened pass, as before play modes', () => {
+  const { e, st } = rig(0, 16);
+  e.setTrack(st.id, [{ at: 0, len: 8, note: 60, vel: 50 }]);
+  play(e, 1000); e.setParam(st.id, 'len', 2);
+  const { l } = play(e, 24000);
+  expect(l[12000]).toBe(1);
+});

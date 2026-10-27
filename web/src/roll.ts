@@ -558,7 +558,7 @@ export class PianoRoll {
       });
       this.sel = new Set(changed.map(id));
       this.newLen = changed.find((n) => n.note === lead.note)?.len ?? this.newLen;
-      this.infoEl.textContent = right ? `length ${lead.len + d < 1 ? 1 : lead.len + d}` : `start ${clamp(lead.at + d, 0, lead.at + lead.len - 1) + 1}`;
+      this.infoEl.textContent = right ? `length ${clamp(lead.len + d, 1, STEPS_MAX)}` : `start ${clamp(lead.at + d, Math.max(0, lead.at + lead.len - STEPS_MAX), Math.min(STEPS_MAX - 1, lead.at + lead.len - 1)) + 1}`;
       this.write(over(changed, others));
     });
   }

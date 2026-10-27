@@ -5224,15 +5224,15 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             it->s.stp.hit = 0;
         }
         it->s.stp.sst++;
-        if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && it->s.stp.pstep < len)
+        if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
         for (; adv > 0; adv--) {
             int32_t sw = ext ? it->s.stp.period : step, d = 0;
             step_visit_t next = steps_next(it, len, dir);
-            /* A live length edit may end the pass before an old note's countdown: such a note ends after this
-             * sample, so a note starting now still gets its low trig sample. A note whose countdown ran out keeps
-             * its gate tail. */
-            if (next.visit == 0) {
+            /* In the new play modes a live length edit may end the pass before an old note's countdown: such a
+             * note ends after this sample, so a note starting now still gets its low trig sample. A note whose
+             * countdown ran out keeps its gate tail. Forward keeps its older behaviour (D-538). */
+            if (next.visit == 0 && dir != 0) {
                 uint32_t j;
                 for (j = 0; j < E.trk_nsnd[t]; j++) {
                     snd_t *x = &E.trk_snd[t][j];

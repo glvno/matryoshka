@@ -432,8 +432,8 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
                     prev = m - 1;
             }
             nn = m;
-            if (end > TRACK_STEPS)
-                end = TRACK_STEPS;
+            if (end > at + TRACK_STEPS)         /* (a note lasts 64 steps at most, and may run past the last) */
+                end = at + TRACK_STEPS;
             w[prev] = (w[prev] & ~(63u << 6)) | (end - at - 1u) << 6;
         }
         seq_msg_due = "TIED";
