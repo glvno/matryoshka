@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Silver Box has four demo patterns in the TB-303's style (acid lines with accents and slides; the fourth in the 303's triplet mode, 12 steps of 1/16T) and a song that chains them with shifts; the editor names its patterns as the 303 does (I-A1 .. IV-B8). Pattern 1 stays empty, so the keys still play it as a synth and PLAY alone plays nothing: choose the song on the FM-1 (SEL on the SEQ page, then K4 right) or with SONG on its card. FM-1 size 1,013 → 1,150 bytes (patch format 46 → 48), 19 modules and CPU estimate 19.2 % unchanged
+
 - The editor edits patterns and songs: each Steps card and the piano roll have a pattern strip (‹ P01 ›, or `[` / `]`) that picks the patch's pattern, blinks while a track waits for the end of its pass, sets a pattern's own length and rate, copies every track's pattern to the next empty one and clears this track's; SONG opens a songs drawer (tabs 1 to 8, pattern / song switch, entries with a pattern and a shift to add, insert, delete and drag, the entry playing highlighted)
 
 - On the FM-1, PRESET on the SEQ page picks the patch's pattern (1 to 64): while playing, each track takes it at the end of its pass and the top bar shows both numbers (`P03>P04`) until then; stopped, it changes at once. Tapping SEL on the SEQ page opens the new SONG page: one row per entry, K1 sets the entry's pattern (on END it adds one, FX + K1 inserts a copy), K2 its shift, K4 switches between the song and the pattern, ALGO picks song 1 to 8, SEQ + REC deletes an entry (asked first). The editor follows the FM-1's choices and edits over the link (needs this firmware: patch format 48)
