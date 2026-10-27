@@ -232,3 +232,32 @@ describe('patterns and songs: playing', () => {
     expect(notes(e, 5)).toEqual([60, 51, 52, 53, 66]);
   });
 });
+
+describe('Silver Box: demo patterns and a song (#375)', () => {
+  it('holds four TB-303-style patterns in short words and a song, named as on the TB-303, within the FM-1 budget', () => {
+    const p = FM1_PRESETS['Silver Box']();
+    const t = p.modules.find((m) => m.type === 'steps')!;
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    expect(t.notes).toBeUndefined(); // (pattern 1 stays empty: the keys play it as a synth)
+    expect(t.patterns!.length).toBe(4);
+    expect(t.patterns!.every((x) => x!.notes!.every(isShortNote))).toBe(true);
+    expect(t.patterns![3]).toMatchObject({ len: 12, rate: 5 }); // (the TB-303's triplet mode)
+    expect(main.seq).toMatchObject({ names: '303' });
+    expect(main.seq!.songs![0].length).toBe(8);
+    expect(main.seq!.pattern ?? 0).toBe(0);
+    expect(main.seq!.song ?? 0).toBe(0);
+    expect(encodePatch(p).length).toBeLessThanOrEqual(3840);
+    expect(deviceBudget(p).fits).toBe(true);
+  });
+  it('its song plays: the voice sounds once song 1 is chosen and the transport runs', () => {
+    const p = FM1_PRESETS['Silver Box']();
+    const e = new Engine(SR);
+    e.load(p);
+    e.setSong(1);
+    e.transport(true);
+    const l = new Float32Array(SR), r = new Float32Array(SR);
+    e.render(l, r);
+    expect(Math.max(...l.map(Math.abs))).toBeGreaterThan(0.01);
+    expect(e.patternView().tracks[0].pat).toBe(1);
+  });
+});

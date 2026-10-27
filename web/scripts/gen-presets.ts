@@ -76,11 +76,33 @@ presets.push(() => {
   return x.p;
 });
 
+// Silver Box's demo patterns and song (#375): pattern 1 stays empty (the keys play it as a synth, PLAY plays nothing), I-A2
+// .. I-A5 are acid lines in C minor (the Silver Box plays an octave down: 36 = C2), X an accent, a note two steps long
+// into the next note a slide; I-A5 is in the TB-303's triplet mode (12 steps of 1/16T). Song 1 chains them with shifts;
+// the patterns are named as on the TB-303 (editor only). Choose the song on the FM-1: SEL on the SEQ page, K4 right.
+type Line = [number, number, number, boolean?][];
+const SB_LINES: { notes: Line; len?: number; rate?: number }[] = [
+  { notes: [[0, 36, 1, true], [2, 48, 1], [3, 36, 1], [4, 46, 2], [5, 48, 1, true], [7, 36, 1], [8, 51, 1], [9, 48, 2], [10, 46, 1], [12, 36, 1, true], [13, 39, 1], [14, 43, 2], [15, 46, 1]] },
+  { notes: [[0, 36, 2], [2, 36, 1, true], [3, 48, 1], [5, 36, 1], [6, 39, 2], [7, 41, 1, true], [8, 43, 1], [10, 36, 1], [11, 48, 1, true], [12, 46, 2], [13, 43, 1], [14, 39, 1], [15, 41, 1]] },
+  { notes: [[0, 36, 1, true], [1, 36, 1], [2, 48, 1, true], [4, 36, 1], [5, 36, 1], [6, 50, 2], [7, 51, 1, true], [9, 36, 1], [10, 34, 1], [12, 36, 1, true], [13, 48, 2], [14, 46, 1], [15, 43, 1]] },
+  { notes: [[0, 36, 1, true], [1, 43, 1], [2, 48, 2], [3, 46, 1], [4, 36, 1, true], [5, 39, 1], [6, 43, 1], [7, 51, 2], [8, 48, 1, true], [9, 36, 1], [10, 46, 1], [11, 48, 1]], len: 12, rate: 5 },
+];
 presets.push(() => {
   const x = around('Silver Box', 'Silver Box');
   level(x.p);
   return x.p;
 });
+/** the demo patterns and song into Silver Box's PATTERN track (players() makes the track) */
+function silverDemo(p: Patch): Patch {
+  if (p.name !== 'Silver Box') return p;
+  const track = p.modules.find((m) => m.type === 'steps')!;
+  track.patterns = SB_LINES.map((l) => ({
+    notes: l.notes.map(([at, note, len, acc]) => ({ at, len, note, vel: acc ? ACCENT_VEL : STEP_VEL })).sort((a, b) => a.at - b.at || a.note - b.note),
+    ...(l.len ? { len: l.len } : {}), ...(l.rate !== undefined ? { rate: l.rate } : {}),
+  }));
+  p.modules.find((m) => m.type === 'fm1')!.seq = { names: '303', songs: [[[1, 0], [1, 0], [2, 0], [2, 5], [3, 0], [1, 7], [4, 0], [1, 0]].map(([pat, shift]) => ({ pat, shift }))] };
+  return validatePatch(p, DEFS);
+}
 
 presets.push(() => {
   const x = around('Hera 6', 'Hera 6');
@@ -572,7 +594,7 @@ after.push(() => {
 // ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit
 // after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const made = presets.map((f) => players(validatePatch(structuredClone(f()), DEFS)));
+const made = presets.map((f) => silverDemo(players(validatePatch(structuredClone(f()), DEFS))));
 const later = after.map((f) => validatePatch(structuredClone(f()), DEFS));
 for (const p of [...made, ...later]) {
   const b = deviceBudget(p);

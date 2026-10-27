@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, defaultMap, emptyPatch, validatePatch, type Patch } from './patch';
+import { isShortNote } from './track';
 import { connectParameter, setInputRoute } from './parameter-routing';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
@@ -24,6 +25,15 @@ const routeBytes = (p: Patch): number => {
   const masks = p.modules.flatMap((m) => Object.entries(m.inputMap ?? {}).filter(([, ps]) => ps.length).map(() => maskBytes(m.type)));
   return masks.length ? 1 + masks.reduce((n: number, b) => n + 2 + b, 0) : 0;
 };
+
+/** bytes of the patterns and songs section as the top of patchbin.ts documents it (0 without patterns or songs) */
+function patternBytes(p: Patch): number {
+  const seq = p.modules.find((m) => m.type === 'fm1')?.seq;
+  const tracks = p.modules.filter((m) => m.type === 'steps' && m.patterns?.length);
+  if (!tracks.length && !seq?.pattern && !seq?.song && !seq?.songs?.length) return 0;
+  return 3 + tracks.reduce((n, m) => n + 2 + m.patterns!.reduce((k, x) => k + (x ? 3 + (x.notes ?? []).length * ((x.notes ?? []).every(isShortNote) ? 2 : 4) : 1), 0), 0)
+    + 1 + (seq?.songs ?? []).reduce((n, e) => n + 1 + 2 * e.length, 0);
+}
 
 describe('binary patch format', () => {
   it('marks exactly the modules with a morph B side, including modules after the first mask byte', () => {
@@ -267,7 +277,8 @@ describe('binary patch format', () => {
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
         + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0)
         + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0) // the macro ranges (the 909 Kit's velocity VCAs)
-        + routeBytes(p); // the side-input routes (Cassia 1's PD Osc: pm to range)
+        + routeBytes(p) // the side-input routes (Cassia 1's PD Osc: pm to range)
+        + patternBytes(make()); // the patterns and songs (format 48: Silver Box's demo)
       expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);
       expect(!!(b[6] & FLAG_NAMES), name).toBe(drumMaps(p).length > 0);
