@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Community patches (glvno/matryoshka#157): a curated list bundled with the app, `community.json`, fed by the GitHub issue
 // form `.github/ISSUE_TEMPLATE/community-patch.yml`. An accepted submission becomes one entry in a commit; the entries are
-// third-party patches under CC BY-SA 4.0 (LICENSING.md), not the GPL code. No live fetching: the app reads only the
+// third-party patches under CC BY-SA 4.0 or Matryoshka patches under GPL-3.0-only (LICENSING.md). No live fetching: the app reads only the
 // bundled JSON, and "More on r/MVaveFM1" is a plain link. Each entry's `code` is a share link's `#p=` value, decoded lazily
 // (share.ts) the first time Library > Community shows or an added entry is listed.
 // Community is opt-in: nothing from it shows anywhere until the user adds an entry in Library > Community. An added entry
@@ -21,7 +21,7 @@ export interface CommunityEntry {
   title: string;
   /** the name the author wants credited (a Reddit or GitHub handle is fine) */
   author: string;
-  licence: 'CC-BY-SA-4.0';
+  licence: keyof typeof LICENCES;
   /** where it was posted: the Reddit post or the GitHub issue */
   source: string;
   /** the share link's `#p=` value */
@@ -32,8 +32,11 @@ export interface CommunityEntry {
   notes?: string;
 }
 
-export const LICENCE = 'CC BY-SA 4.0';
-export const LICENCE_URL = 'https://creativecommons.org/licenses/by-sa/4.0/';
+const LICENCES = {
+  'CC-BY-SA-4.0': { name: 'CC BY-SA 4.0', url: 'https://creativecommons.org/licenses/by-sa/4.0/' },
+  'GPL-3.0-only': { name: 'GPL 3.0', url: 'https://www.gnu.org/licenses/gpl-3.0.html' },
+} as const;
+export const licenceOf = (entry: CommunityEntry): { name: string; url: string } => LICENCES[entry.licence];
 export const ISSUE_FORM = 'https://github.com/glvno/matryoshka/issues/new?template=community-patch.yml';
 export const SUBREDDIT = 'r/MVaveFM1';
 /** the address without its scheme and trailing slash, as a search term (matry0shka.pages.dev) */
@@ -50,7 +53,7 @@ export function entryProblems(raw: unknown): string[] {
   const out: string[] = [];
   if (!filled(e.title)) out.push('no title');
   if (!filled(e.author)) out.push('no author');
-  if (e.licence !== 'CC-BY-SA-4.0') out.push('the licence is not CC-BY-SA-4.0');
+  if (typeof e.licence !== 'string' || !Object.hasOwn(LICENCES, e.licence)) out.push('unsupported licence');
   if (!isUrl(e.source)) out.push('the source is not an https URL');
   if (typeof e.code !== 'string' || !/^[A-Za-z0-9_-]{16,}$/.test(e.code)) out.push('the code is not a share link value');
   if (typeof e.added !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.added) || Number.isNaN(Date.parse(e.added))) out.push('added is not a YYYY-MM-DD date');

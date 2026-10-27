@@ -13,4 +13,3 @@ Factory cards follow their original instruments' controls ([D-347](patches-and-p
 
 - Final fidelity verdicts for the smaller factory set, including original polyphony — issues #303 and #351.
 - The boundary between physical input jacks and the sound-processing features they feed, including the Model D external input — issue #303.
-- How first-party works in progress appear in Community while preserving their existing license; the third-party submission rule is [D-316](patches-and-presets.md#D-316).

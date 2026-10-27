@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import RAW from './community.json';
 import {
   addCommunity, addedCommunity, addedTitles, ageOf, communityEntries, enginesOf, entryProblems, familiesOf, ISSUE_FORM, isAdded, loadCommunity, pairXl,
-  removeCommunity, submitUrl, unlinkSaved, xlBase, type CommunityEntry,
+  removeCommunity, submitUrl, unlinkSaved, xlBase, licenceOf, type CommunityEntry,
 } from './community';
 import { chipOf } from './sandbox';
 import { DEFS } from './modules';
@@ -28,8 +28,13 @@ describe('the community list (#157)', () => {
     const good = { title: 'A patch', author: 'someone', licence: 'CC-BY-SA-4.0', source: 'https://www.reddit.com/r/MVaveFM1/comments/x', code, added: '2026-10-21' };
     expect(entryProblems(good)).toEqual([]);
     expect(entryProblems({ ...good, author: ' ' })).toEqual(['no author']);
-    expect(entryProblems({ ...good, licence: 'CC-BY-4.0' })).toEqual(['the licence is not CC-BY-SA-4.0']);
-    expect(entryProblems({ ...good, licence: undefined })).toEqual(['the licence is not CC-BY-SA-4.0']);
+    expect(entryProblems({ ...good, licence: 'CC-BY-4.0' })).toEqual(['unsupported licence']);
+    expect(entryProblems({ ...good, licence: undefined })).toEqual(['unsupported licence']);
+    expect(entryProblems({ ...good, licence: 'toString' })).toEqual(['unsupported licence']);
+    const project: CommunityEntry = { ...good, title: 'Project model', licence: 'GPL-3.0-only' };
+    expect(communityEntries([project])).toEqual([project]);
+    expect(licenceOf(project)).toEqual({ name: 'GPL 3.0', url: 'https://www.gnu.org/licenses/gpl-3.0.html' });
+    expect(licenceOf({ ...project, licence: 'CC-BY-SA-4.0' }).name).toBe('CC BY-SA 4.0');
     expect(entryProblems({ ...good, source: 'javascript:alert(1)' })).toEqual(['the source is not an https URL']);
     expect(entryProblems({ ...good, added: '21.10.2026' })).toEqual(['added is not a YYYY-MM-DD date']);
     expect(entryProblems({ ...good, code: 'x' })).toEqual(['the code is not a share link value']);

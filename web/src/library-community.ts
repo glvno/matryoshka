@@ -6,7 +6,7 @@
 // the Library it opens nothing: an added patch opens from the Open picker or the palette.
 import type { LibrarySection } from './bank';
 import {
-  addCommunity, addedTitles, ageOf, chipOfEntry, familiesOf, ISSUE_FORM, isAdded, LICENCE, LICENCE_URL, loadCommunity, notesOf, onAddedChange,
+  addCommunity, addedTitles, ageOf, chipOfEntry, familiesOf, ISSUE_FORM, isAdded, licenceOf, loadCommunity, notesOf, onAddedChange,
   REDDIT_SEARCH, removeCommunity, SUBREDDIT, type CommunityPatch,
 } from './community';
 import { chipEl } from './sandbox';
@@ -58,10 +58,12 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents): L
 
   const row = (c: CommunityPatch, base: CommunityPatch): HTMLElement => {
     const added = isAdded(c.entry.title) && !isSaved(c.entry.title);
+    const licence = licenceOf(c.entry);
     return el('div', { class: 'bank-row' },
       el('span', { class: 'grow', textContent: c.entry.title }),
       ...(c.entry.author !== base.entry.author ? [el('span', { class: 'muted', textContent: c.entry.author })] : []),
       ...(c.entry.source !== base.entry.source ? [el('a', { href: c.entry.source, target: '_blank', rel: 'noopener', textContent: 'Source ↗' })] : []),
+      el('a', { href: licence.url, target: '_blank', rel: 'noopener', textContent: licence.name }),
       chipEl(chipOfEntry(c)),
       el('button', {
         type: 'button',
@@ -103,8 +105,7 @@ export function buildCommunitySection(root: HTMLElement, ev: CommunityEvents): L
 
   root.append(
     el('div', { class: 'comm-top' },
-      el('p', { class: 'muted' }, 'Patches by players, shared under ', el('a', { href: LICENCE_URL, target: '_blank', rel: 'noopener', textContent: LICENCE }),
-        '. Add one and it shows in Your patches with its author; nothing from here shows anywhere until you add it.'),
+      el('p', { class: 'muted', textContent: 'Patches by players and Matryoshka works in progress. Each patch lists its author and license. Add one to make it available in Your patches.' }),
       el('div', { class: 'comm-filters', role: 'group', ariaLabel: 'Show' }, ...filterBtns),
     ),
     grid,
