@@ -47,6 +47,24 @@
   scale and wave switches show their positions by name. Still missing: the ESP, the MG's variable waveform and the high
   pass's 6 dB slope (ours is 12 dB). The patch takes 41 modules (19 before), 2,567 patch bytes (1,440) and an estimated
   42 % of the FM-1's CPU (29 %). Host-tested only, not yet on a device.
+- **Wanderer is now duophonic, as the ARP Odyssey is** (#303). The lowest key held plays VCO 1 and the highest plays
+  VCO 2 (one key plays both), into one filter, one VCA, one ADSR and one AR; before, it was a two-voice polysynth with
+  both VCOs, a filter and both envelopes per voice. New, after the Odyssey's panel: portamento, VCO 1's AUDIO / LF
+  switch, both VCOs' FM (two depths each, each with its source switch), PWM (LFO / ADSR), sync, the S/H mixer (two
+  levels and the noise / VCO 2 switch), the S/H trigger (LFO / keyboard) and OUTPUT LAG, the LFO's sine and square, the
+  envelopes' LFO repeat (KYBD REPEAT / AUTO REPEAT), the VCF's three modulation sliders with their switches, the VCA's
+  AR / ADSR switch, level and GAIN, the noise generator's white / pink, and the ring modulator as the Odyssey's (the two
+  VCOs' square waves XORed). Main's mod wheel is the PPC's vibrato pad. The voices row is gone (the Odyssey has two).
+  On the FM-1 each VCO is one oscillator, so the S/H mixer and the ring take the VCO's wave as the mixer has it, and the
+  ring plays at half a VCO's level. Every switch shows its positions by name (AUDIO / LF, SINE / SQUARE ...). The names
+  leave no room for the PATTERN track, so Wanderer has the Arpeggiator alone. The FM-1 patch takes 49 modules (17
+  before), 3,803 patch bytes of 3,840 (1,260) and an estimated 37 % of the CPU (30 %); the engine counted on the
+  emulator's instruction model 36 %. Host-tested only, not yet on a device.
+- **Wanderer XL**, the whole ARP Odyssey in the browser: each VCO has its saw and pulse at once, so the S/H mixer has
+  its own VCO 1 saw / square switch and the ring and S/H always take the pulses with their width; coarse is continuous
+  and fine reaches the Odyssey's ±400 cents (the FM-1 version: semitones and ±100 cents). Its switches show their
+  positions by name. It takes 4,572 patch bytes, over the FM-1's 3,840, so it stays in the browser. Not there: the external audio input (the engines have none), the
+  pedal, footswitch and CV / gate / trigger jacks.
 - **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
   same range: turning it moves both (two filters' cutoff, say), and so do a cable or
   a macro on it, a card preset and the FM-1's knob on its page. "split" gives each its own row again. A row that sets
