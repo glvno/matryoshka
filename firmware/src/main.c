@@ -1019,17 +1019,27 @@ static void fm1_main(int update)                    /* update: the boot guard sa
             bootguard.pending = 0;
             bootguard.failed = 0;
         }
+        ut_begin(UT_LOOP);
         panel_status();
         midi_drain();
+        ut_begin(UT_KEYS);
         keys_poll();
+        ut_end(UT_KEYS);
         buttons_poll();
         knobs_poll();
         batt_poll();
         master_poll();
+        ut_begin(UT_SEQPOLL);
         seq_poll();
+        ut_end(UT_SEQPOLL);
+        ut_begin(UT_DRAW);
         panel_draw();
+        ut_end(UT_DRAW);
         cpu_poll();
+        ut_begin(UT_HOST);
         host_poll();
+        ut_end(UT_HOST);
+        ut_end(UT_LOOP);
     }
 }
 

@@ -66,7 +66,7 @@ static int test_input_recent(void) { return test_input_ms && fm1_ms - test_input
  * tools/m1_link.py uitime; npm run rig:bench). UT_FULL: the device page drawn whole (pages_draw(1)); UT_HEADER: the top bar
  * (header_draw); UT_KNOB: K1..K4's bars moved in place; UT_PAGE: the page SELECT, ALGO or PRESET reached; UT_TOAST:
  * PRESET's toast drawn; UT_TOAST_END: the page put back where it was */
-enum { UT_FULL, UT_HEADER, UT_KNOB, UT_PAGE, UT_TOAST, UT_TOAST_END, UT_N };
+enum { UT_FULL, UT_HEADER, UT_KNOB, UT_PAGE, UT_TOAST, UT_TOAST_END, UT_SEQ, UT_LOOP, UT_KEYS, UT_SEQPOLL, UT_DRAW, UT_HOST, UT_N };
 static struct {
     uint32_t last, worst, n;
 } ui_time[UT_N];
@@ -421,8 +421,11 @@ static void view_draw(int full)                 /* whichever page is showing */
         pg_plain = 0;
     if (page == PAGE_MENU)
         menu_draw(full);
-    else if (page == 8u)
+    else if (page == 8u) {
+        ut_begin(UT_SEQ);
         seq_draw(full);
+        ut_end(UT_SEQ);
+    }
     else if (page == 11u)
         song_draw(full);
     else if (page == PAGE_ENV)
