@@ -176,7 +176,7 @@ A copy of a repository that goes its own way for good: it takes no regular updat
 
 ### ID block
 
-The range of `D-###` numbers a subject file owns, declared under its title. The ID alone tells you which file a row lives in.
+The range of `D-###` numbers a subject file owns, declared under its title. A file that fills its block gets a second one. The ID alone tells you which file a row lives in.
 
 ### Identity
 

@@ -20,7 +20,7 @@ One markdown file per subject. Every subject file has three parts, in this order
 2. **The table** — the rulings.
 3. **`## Not yet settled`** — the questions we know we have not answered, each with the ticket or link where it is being worked. These are not rows. Nothing here has an ID.
 
-Each file owns a block of IDs, declared on a line under its title (`IDs: D-050–D-099`), so the ID alone tells you which file a row lives in. ([D-003](process.md#D-003))
+Each file owns a block of IDs, declared on a line under its title (`IDs: D-050–D-099`), so the ID alone tells you which file a row lives in. A file that fills its block gets a second one on the same line, after a comma (`IDs: D-400–D-449, D-750–D-799`). ([D-003](process.md#D-003))
 
 Files that are not subject files:
 

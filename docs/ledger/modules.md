@@ -1,6 +1,6 @@
 # Modules
 
-IDs: D-400–D-449
+IDs: D-400–D-449, D-750–D-799
 
 Keys and MIDI reach a patch only through the **Main** module, whose `pitch` already carries pitch bend and whose `morph` drives **patch morphing** towards a **B side**. Most modules take two **parameter pins** with attenuverters, and a parameter's **dedicated input** is a permanent link, so a VCA with nothing at `cv` is closed. Every module except Main and Output can be bypassed and then passes its **through input**. Polyphony is built like a polysynth: Main's keys feed a **Voicing** module whose **poly assembly** runs once per voice, each part with its own **flaws**, and a Voicing can be limited to a channel and key range. The Arpeggiator, the **Drum map** and the Random module are ordinary patch modules, the Scope runs only in the editor, and shared effects run once per patch within the FM-1's per-patch limits. The browser's Delay reaches 1.6 s, the FM-1's 520 ms. Module labels name the hardware they stand for and are the modules' LCD names, and type ids never change with a label. The Selector picks one of eight inputs or values with one stepped row and raises that position's gate ([D-427](modules.md#D-427)).
 
