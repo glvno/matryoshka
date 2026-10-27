@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- LFO adds a continuous wide rate of 0.0008–55 Hz. Algo Four XL exposes the full range on LFO SPEED; existing patches retain their rate behavior.
+
 - The editor checks the firmware’s supported patch-format range before syncing. Older firmware keeps its existing compatibility check.
 
 - Algo Four XL uses one operator picker for all fourteen operator controls. Copies of card controls can span multiple FM-1 pages.

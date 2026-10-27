@@ -335,6 +335,13 @@ int main(void)
     static uint16_t before[240 * 240];
     uint32_t mod, par;
     int32_t v0;
+    {
+        char num[24], unit[8];
+        value_parts(&DEFS[T_LFO], LFO_P_WIDE, DEFS[T_LFO].pmin[LFO_P_WIDE], num, unit);
+        check("slow LFO endpoint displays millihertz instead of zero", !strcmp(num, "0.79") && !strcmp(unit, "mHz"));
+        value_parts(&DEFS[T_LFO], LFO_P_WIDE, 55 << 16, num, unit);
+        check("fast LFO endpoint displays hertz", !strcmp(num, "55.0") && !strcmp(unit, "Hz"));
+    }
     /* The real reload path: adding voices past the pools must leave a playable patch. */
     check("Cassia loads for voice edit", load("CASSIA 1") == 0);
     for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
@@ -367,6 +374,14 @@ int main(void)
     check("legato edit preserves shared unison", poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && pv_bin[10] == 0xC2u);
     check("unison mode row has three choices", poly_max(ENG_POLY_UNISON) == 2);
     check("normal unison keeps legato and clears share", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && pv_bin[10] == 0x82u);
+    /* Group-format guards use a patch without LFO records: their count changed in format 40.
+     * Real older LFO records and upgrades are checked by tools/old_format.sh. */
+    check("group compatibility fixture loads", load("PLUCKED STRING") == 0);
+    for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
+        ;
+    check("group compatibility fixture keeps the edited settings",
+          poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == 0
+          && poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && poly_row_set(mod, ENG_POLY_UNISON, 1) == 0);
     pv_bin[1] = 38;
     check("format 38 cannot add shared unison", poly_row_set(mod, ENG_POLY_UNISON, 2) == -1 && pv_bin[10] == 0x82u);
     pv_bin[10] |= 0x40u;

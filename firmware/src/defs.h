@@ -125,9 +125,10 @@ enum {
 #define LFO_P_RANGE 7
 #define LFO_P_DIR 8
 #define LFO_P_MULT 9
+#define LFO_P_WIDE 10
 #define LFO_NIN 5
 #define LFO_NOUT 2
-#define LFO_NPAR 10
+#define LFO_NPAR 11
 #define LFO_CVBASE 2
 #define LFO_NDATA 0
 
@@ -926,7 +927,7 @@ static const uint8_t DELAY_NOTE_DEN[DELAY_NNOTE] = {1, 8, 3, 1, 3, 1};
 #define LFO_NMULT 7   /* the synced LFO's speeds: its note length x NUM / DEN */
 static const uint8_t LFO_MULT_NUM[LFO_NMULT] = {8, 4, 2, 1, 1, 1, 1};
 static const uint8_t LFO_MULT_DEN[LFO_NMULT] = {1, 1, 1, 1, 2, 4, 8};
-#define LFO_NRANGE 3   /* the free LFO's rate ranges: norm, slow (/ 25), fast (x 2) */
+#define LFO_NRANGE 4   /* the free LFO's rate ranges: norm, slow (/ 25), fast (x 2), wide (separate rate) */
 #define ADSR_LONG_Q16 157286   /* the ADSR's long: decay and release x 2.4 */
 
 #define TRACK_STEPS 64        /* a Steps track's most steps (track.ts); its name follows its pins in the record */
@@ -993,21 +994,22 @@ static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "SHAR
 static const char *const OSC_CH10[] = {"OFF", "+OCT", "+5TH", "+OCT+5TH", "-OCT", 0};
 static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10};
 static const char *const LFO_INNAMES[] = {"CLK", "RESET", "P1", "P2", "SHAPE"};
-static const int32_t LFO_MIN[] = {0, 1311, 0, 0, 0, 2621440, 0, 0, 0, 0};
-static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 131072, 65536, 393216};
-static const int32_t LFO_DEF[] = {0, 262144, 65536, 0, 393216, 7864320, 0, 0, 0, 196608};
-static const int32_t LFO_INC[] = {65536, 26201, 655, 65536, 65536, 170394, 235930, 65536, 65536, 65536};
-static const uint8_t LFO_SINCE[] = {0, 0, 0, 0, 0, 0, 35, 35, 35, 35};
-static const char *const LFO_PN[] = {"WAVE", "RATE", "DEPTH", "SYNC", "DIV", "BPM", "PHASE", "RANGE", "DIR", "MULT"};
-static const uint8_t LFO_LOG[] = {0, 1, 0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const LFO_UNIT[] = {"", "HZ", "", "", "", "", "DEG", "", "", ""};
+static const int32_t LFO_MIN[] = {0, 1311, 0, 0, 0, 2621440, 0, 0, 0, 0, 52};
+static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 131072, 65536, 393216, 3604480};
+static const int32_t LFO_DEF[] = {0, 262144, 65536, 0, 393216, 7864320, 0, 0, 0, 196608, 262144};
+static const int32_t LFO_INC[] = {65536, 26201, 655, 65536, 65536, 170394, 235930, 65536, 65536, 65536, 36044};
+static const int32_t LFO_TOP[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 196608, 65536, 393216, 3604480};
+static const uint8_t LFO_SINCE[] = {0, 0, 0, 0, 0, 0, 35, 35, 35, 35, 40};
+static const char *const LFO_PN[] = {"WAVE", "RATE", "DEPTH", "SYNC", "DIV", "BPM", "PHASE", "RANGE", "DIR", "MULT", "WIDE"};
+static const uint8_t LFO_LOG[] = {0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+static const char *const LFO_UNIT[] = {"", "HZ", "", "", "", "", "DEG", "", "", "", "HZ"};
 static const char *const LFO_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "S&H", 0};
 static const char *const LFO_CH3[] = {"FREE", "SYNC", 0};
 static const char *const LFO_CH4[] = {"1/16T", "1/16", "1/8T", "1/16.", "1/8", "1/8.", "1/4", "3/8", "1/2", "5/8", "1/1", 0};
-static const char *const LFO_CH7[] = {"NORM", "SLOW", "FAST", 0};
+static const char *const LFO_CH7[] = {"NORM", "SLOW", "FAST", "WIDE", 0};
 static const char *const LFO_CH8[] = {"FWD", "BACK", 0};
 static const char *const LFO_CH9[] = {"/8", "/4", "/2", "X1", "X2", "X4", "X8", 0};
-static const char *const *const LFO_CH[] = {LFO_CH0, 0, 0, LFO_CH3, LFO_CH4, 0, 0, LFO_CH7, LFO_CH8, LFO_CH9};
+static const char *const *const LFO_CH[] = {LFO_CH0, 0, 0, LFO_CH3, LFO_CH4, 0, 0, LFO_CH7, LFO_CH8, LFO_CH9, 0};
 static const char *const NOISE_INNAMES[] = {"P1", "P2"};
 static const int32_t NOISE_MIN[] = {0, 0};
 static const int32_t NOISE_MAX[] = {65536, 65536};
@@ -1432,7 +1434,7 @@ static const char *const *const SELECT_CH[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const def_t DEFS[N_TYPES] = {
     {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0},   /* fm1 */
     {OSC_NIN, OSC_NOUT, OSC_NPAR, 0, OSC_CVBASE, -1, OSC_NDATA, 1, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN, OSC_INNAMES, OSC_LOG, OSC_UNIT, OSC_CH, OSC_TOP, 0},   /* osc */
-    {LFO_NIN, LFO_NOUT, LFO_NPAR, 0, LFO_CVBASE, -1, LFO_NDATA, 0, LFO_MIN, LFO_MAX, LFO_DEF, LFO_INC, "LFO", LFO_PN, LFO_INNAMES, LFO_LOG, LFO_UNIT, LFO_CH, 0, LFO_SINCE},   /* lfo */
+    {LFO_NIN, LFO_NOUT, LFO_NPAR, 0, LFO_CVBASE, -1, LFO_NDATA, 0, LFO_MIN, LFO_MAX, LFO_DEF, LFO_INC, "LFO", LFO_PN, LFO_INNAMES, LFO_LOG, LFO_UNIT, LFO_CH, LFO_TOP, LFO_SINCE},   /* lfo */
     {NOISE_NIN, NOISE_NOUT, NOISE_NPAR, 0, NOISE_CVBASE, -1, NOISE_NDATA, 1, NOISE_MIN, NOISE_MAX, NOISE_DEF, NOISE_INC, "NOISE", NOISE_PN, NOISE_INNAMES, NOISE_LOG, NOISE_UNIT, NOISE_CH, 0, 0},   /* noise */
     {CONST_NIN, CONST_NOUT, CONST_NPAR, 0, CONST_CVBASE, -1, CONST_NDATA, 0, CONST_MIN, CONST_MAX, CONST_DEF, CONST_INC, "OFFSET", CONST_PN, CONST_INNAMES, CONST_LOG, CONST_UNIT, CONST_CH, 0, 0},   /* const */
     {SCALE_NIN, SCALE_NOUT, SCALE_NPAR, 0, SCALE_CVBASE, 0, SCALE_NDATA, 0, SCALE_MIN, SCALE_MAX, SCALE_DEF, SCALE_INC, "ATTENUVERTER", SCALE_PN, SCALE_INNAMES, SCALE_LOG, SCALE_UNIT, SCALE_CH, 0, 0},   /* scale */

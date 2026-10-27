@@ -3,7 +3,7 @@ import { expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch } from './patch';
-import { encodePatch } from './patchbin';
+import { encodePatch, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
 
 function setup(priority = 1, voices = 4, stack = 0) {
@@ -64,7 +64,7 @@ it('honors the separate unison pool and live count edits without reducing polyph
 it('encodes shared unison without changing older unison or legato values', () => {
   const { p, alloc } = setup();
   alloc.params.legato = 2;
-  expect(encodePatch(p)[1]).toBe(39);
+  expect(encodePatch(p)[1]).toBe(VERSION);
   expect(encodePatch(p)[10]).toBe(0xC2);
   alloc.params.unison = 1; expect(encodePatch(p)[10]).toBe(0x82);
   alloc.params.unison = 0; expect(encodePatch(p)[10]).toBe(2);
