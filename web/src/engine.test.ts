@@ -291,7 +291,7 @@ describe('engine', () => {
       expect(rms(l), name).toBeGreaterThan(0.005);
       expect(rms(r), name).toBeGreaterThan(0.005);
     }
-  }, 30000); // (the XLs with their originals' whole panels are heavy: about 6 s on CI)
+  }, 120000); // (the XLs with their originals' whole panels are heavy: about 6 s on CI, and over 30 s under the deploy's coverage run)
 
   it('the filter cutoff is logarithmic: modulation moves it in octaves', () => {
     const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
