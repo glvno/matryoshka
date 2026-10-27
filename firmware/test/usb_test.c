@@ -9,7 +9,9 @@
  *     others), each tapped up to 2.6 ms after it started, one packet per 1 ms USB frame at 44100: every frame arrives
  *     exactly once, in order, no underrun / overrun, the fill stays in its band;
  *   - SysEx in on EP1 while the MIDI ring is full of TRS clock (#177): refused (NAK) while the ring holds back, taken
- *     once midi_in_quiet (an update session, update mode) drops MIDI in.
+ *     once midi_in_quiet (an update session, update mode) drops MIDI in;
+ *   - SysEx out to a host that stops reading (#375): ota_wire_send waits at most 50 ms once, then gives up at once until
+ *     the host takes a packet; a host that reads never loses a message.
  *   usb_test            (all of the above; built by tools/usb_test.sh in several configurations)
  *   usb_test dump       (the MIDI-only device + configuration descriptors as hex: the script compares them with a
  *                        FELUCCA_UAC=0 build's, which must be the same bytes) */
@@ -88,8 +90,17 @@ static void fm1_delay_ms(uint32_t ms) { (void)ms; }
 #endif
 #include "../src/usb.c"
 #if FELUCCA_OTA
+/* a send that waits for room calls ota_idle in a loop while the TIMER5 ISR moves the clock and, with a host that reads,
+ * ep1_tx hands queued packets to it: here each call is one millisecond, the host taking a packet every host_every ms */
+static uint32_t host_every;                                     /* 0: the host takes nothing (no app reads the FM-1) */
+static void ep1_tx(void);
 static uint32_t ota_now_ms(void) { return fm1_ms; }
-static void ota_idle(void) {}
+static void ota_idle(void)
+{
+    fm1_ms++;
+    if (host_every && fm1_ms % host_every == 0u)
+        ep1_tx();
+}
 #include "../src/midi_uart.c"   /* the TRS jack's parser, fed through its DMA ring (uart_midi_take) */
 #endif
 
@@ -488,6 +499,99 @@ static void test_midi_in_quiet(void)
     usb.config = 0;
 }
 #endif
+#if FELUCCA_OTA
+/* #375: the FM-1 on a computer where no app reads its MIDI. Every unasked message for the editor (TRACK_NOW after a step
+ * entered on the SEQ page, PARAM_NOW after a knob) goes through ota_wire_send from the main loop; once the 64-packet
+ * ring is full, a send that waited 200 ms each time stalled the panel (7.4 s of keys_poll for a run of steps). The main
+ * loop may wait at most DEAF_WAIT_MAX once for a host that takes nothing, then not at all until the host takes a packet;
+ * a host that reads, however slowly, never loses a message. */
+#define DEAF_WAIT_MAX 50u                                       /* ms: one send's longest wait (the fix's SX_WAIT_MS) */
+static uint32_t timed_send(int *rc)                             /* one 48-byte message (16 packets); the ms it took */
+{
+    uint8_t msg[48];
+    uint32_t i, t0 = fm1_ms;
+    msg[0] = 0xF0;
+    for (i = 1; i + 1u < sizeof msg; i++)
+        msg[i] = (uint8_t)(i & 0x7Fu);
+    msg[sizeof msg - 1u] = 0xF7;
+    *rc = ota_wire_send(msg, sizeof msg);
+    return fm1_ms - t0;
+}
+
+static void test_deaf_host(void)
+{
+    uint32_t i, ms, worst, bad;
+    int rc;
+    usb.up = 1;
+    usb.config = 1;
+    usb.suspended = 0;
+    so_w = so_r = 0;
+    mo_w = mo_r = 0;
+    fm1_ms = 1000;
+
+    /* a host that reads (a packet of 16 events every 1 ms, then every 20 ms): 200 messages, none refused */
+    host_every = 1;
+    for (i = 0, worst = 0, bad = 0; i < 200u; i++) {
+        ms = timed_send(&rc);
+        bad += rc != 0;
+        worst = ms > worst ? ms : worst;
+    }
+    CHECK(bad == 0u, "reading host: %u of 200 messages refused", bad);
+    CHECK(worst <= 1u, "reading host: a send waited %u ms", worst);
+    host_every = 20;
+    for (i = 0, worst = 0, bad = 0; i < 200u; i++) {
+        ms = timed_send(&rc);
+        bad += rc != 0;
+        worst = ms > worst ? ms : worst;
+    }
+    CHECK(bad == 0u, "slow host (a packet every 20 ms): %u of 200 messages refused", bad);
+    CHECK(worst <= 20u, "slow host: a send waited %u ms", worst);
+    while (so_r != so_w)
+        ep1_tx();
+
+    /* a host that takes nothing: four messages fill the ring at once; the fifth waits at most DEAF_WAIT_MAX and is
+     * refused, the next 30 (a run of steps entered by hand) are refused without waiting */
+    host_every = 0;
+    for (i = 0; i < 4u; i++) {
+        ms = timed_send(&rc);
+        CHECK(rc == 0 && ms == 0u, "deaf host: message %u fits in the ring (rc %d, %u ms)", i, rc, ms);
+    }
+    ms = timed_send(&rc);
+    CHECK(rc != 0, "deaf host: the ring full, a send is refused");
+    CHECK(ms > 0u && ms <= DEAF_WAIT_MAX + 1u, "deaf host: the first refused send waited %u ms (want 1..%u)", ms,
+          DEAF_WAIT_MAX + 1u);
+    for (i = 0, worst = 0, bad = 0; i < 30u; i++) {
+        ms = timed_send(&rc);
+        bad += rc == 0;
+        worst += ms;
+    }
+    CHECK(bad == 0u, "deaf host: %u of the next 30 sends were taken", bad);
+    CHECK(worst == 0u, "deaf host: the next 30 sends waited %u ms in all (want 0: the main loop goes on)", worst);
+
+    /* the host takes one USB packet (16 events): a message fits again; the one after finds the ring full and waits
+     * again (the host may be reading now), then gives up at once as before */
+    ep1_tx();
+    ms = timed_send(&rc);
+    CHECK(rc == 0 && ms == 0u, "host back: a message fits in the room it made (rc %d, %u ms)", rc, ms);
+    ms = timed_send(&rc);
+    CHECK(rc != 0 && ms > 0u && ms <= DEAF_WAIT_MAX + 1u, "host back: the next send waits again (rc %d, %u ms)", rc, ms);
+    ms = timed_send(&rc);
+    CHECK(rc != 0 && ms == 0u, "host back, then deaf again: refused at once (rc %d, %u ms)", rc, ms);
+
+    /* the host reads again (the ISR hands it packets between the main loop's sends too): nothing is refused */
+    host_every = 1;
+    for (i = 0, bad = 0; i < 50u; i++) {
+        ota_idle();                                             /* a millisecond of the main loop's other work */
+        timed_send(&rc);
+        bad += rc != 0;
+    }
+    CHECK(bad == 0u, "host reads again: %u of 50 messages refused", bad);
+    host_every = 0;
+    so_w = so_r = 0;
+    usb.up = 0;
+    usb.config = 0;
+}
+#endif
 
 /* ------------------------------------------------------------------ the stream --- */
 static uint32_t rng = 12345u;
@@ -624,6 +728,7 @@ int main(int argc, char **argv)
 #if FELUCCA_OTA
     test_midi_in_quiet();
     test_sysex_burst();
+    test_deaf_host();
 #endif
     stream(44118.0, 60.0, 2600u);                               /* the FM-1: 18 frames a second too many */
     stream(44082.0, 60.0, 2600u);                               /* the other way */
