@@ -26,6 +26,20 @@ const routeBytes = (p: Patch): number => {
 };
 
 describe('binary patch format', () => {
+  it('marks exactly the modules with a morph B side, including modules after the first mask byte', () => {
+    const p = emptyPatch();
+    for (let i = 0; i < 10; i++) addModule(p, DEFS.const, i, 0);
+    p.modules[2].paramsB = { value: 0.5 };
+    p.modules[9].paramsB = { value: -0.5 };
+    const out = addModule(p, DEFS.output, 0, 1);
+    for (const m of p.modules.slice(0, 10)) connect(p, DEFS, { module: m.id, port: 'out' }, { module: out.id, port: 'l' });
+    const bin = encodePatch(p);
+    const dev = deviceView(p, true).patch;
+    const at = 8 + PANEL_BYTES + 4 * dev.cables.length + dev.modules.reduce((n, m) => n + recordSize(m.type) + 4 * DEFS[m.type].params.length, 0);
+    expect(bin[7] & 2).toBe(2);
+    expect([...bin.subarray(at, at + 2)]).toEqual([1 << 2, 1 << 1]);
+  });
+
   it('the assembly overlay of the factory patches reaches the binary only as the device pages', () => {
     let grouped = 0;
     for (const [name, make] of Object.entries(FM1_PRESETS)) {

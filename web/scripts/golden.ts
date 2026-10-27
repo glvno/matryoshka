@@ -1429,6 +1429,23 @@ kit('macro', (add, wire) => {
   m[3].range = { p2: { pw: [unit('osc', 'pw', 0.2), unit('osc', 'pw', 0.5)] } };
 }
 setMorphTarget(tests.morph, make('morph-b', morphVoice(true)), DEFS);
+// #355: only the VCA has a B side. The other modules must not take a trip through morph's unit conversion.
+kit('morph-unassigned', (add, wire) => {
+  const main = add('fm1', 0, 0, { morph: 0.6 });
+  const offset = add('const', 0, 0, { value: -0.05 });
+  const osc = add('osc', 0, 0, { coarse: 7, wave: 0 });
+  const vca = add('vca', 0, 0, { gain: 0.2 });
+  const out = add('output', 0, 0);
+  wire(main, 'pitch', osc, 'pitch');
+  wire(offset, 'out', osc, 'pitch');
+  wire(osc, 'out', vca, 'in');
+  wire(main, 'gate', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
+{
+  const vca = tests['morph-unassigned'].modules.find((m) => m.type === 'vca')!;
+  vca.paramsB = { ...vca.params, gain: 0.8 };
+}
 kit('crush-color', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6, color: 0.6 });
   const cr = add('crush', 0, 0, { bits: 6, rate: 5 });
@@ -1716,8 +1733,7 @@ tests['steps-clk'] = make('steps-clk', (add, wire) => {
 // half a tick after a tick) at 80 % swing, a 1/2 track, a track morphed past max (rate 1/16 -> 1/64, a choice: B; swing
 // 60 -> 80, linearly), and a track whose base is past max under its pins (rate 1/64 + p2, swing 78 - p1: clamped to the
 // stretch, not pulled back to max); stop and run; then MIDI clock with every seventh tick early (the half tick's step
-// comes with it). (The C engine morphs every module, the TS one only those with a B side: values here survive C's
-// round trip through morph_unit, so the morph adds no difference of its own.)
+// comes with it). Modules without a B side stay untouched by the morph (format 36, #355).
 tests['steps-rates'] = make('steps-rates', (add, wire) => {
   const kb = add('fm1', 0, 0, { tempo: 133, morph: 0.6 });
   const out = add('output', 2000, 0, { level: 0.6 });

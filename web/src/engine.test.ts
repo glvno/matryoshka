@@ -554,7 +554,7 @@ describe('morph', () => {
     const withB = encodePatch(a.p);
     expect(withB[6] & ~32).toBe(1);
     const npar = a.p.modules.reduce((s, m) => s + DEFS[m.type].params.length, 0);
-    expect(withB.length).toBe(plain.length + 4 * npar);
+    expect(withB.length).toBe(plain.length + 4 * npar + Math.ceil(a.p.modules.length / 8));
     const cables = 8 + PANEL_BYTES + a.p.modules.reduce((n, m) => n + recordSize(m.type), 0) + 4 * a.p.cables.length;
     expect(Array.from(withB.subarray(8, cables))).toEqual(Array.from(plain.subarray(8, cables))); // the records and cables are untouched
   });

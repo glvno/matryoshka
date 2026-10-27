@@ -364,6 +364,7 @@ typedef struct {
 typedef struct {
     uint8_t type, disabled_inputs;
     uint16_t conn;                   /* bit i: input i has a cable (the Selector has 11 inputs) */
+    uint8_t morph;                   /* this module has a B side; legacy binaries morph every module */
     uint8_t bypass;                  /* 1: process() is skipped, the outputs copy the through input (DEFS[].thru) or are silent */
     uint8_t inst0, ninst;            /* its instances in inst_pool[]: one per part of its poly group, else one */
     uint8_t grp;                     /* its poly group (E.grp[]): 0 = it runs once and plays the shared keyboard */
@@ -778,6 +779,8 @@ static uint32_t eng_cables_end(const uint8_t *p, uint32_t len)
     if (!at)
         return 0;
     at += 4u * ((uint32_t)p[4] | (uint32_t)p[5] << 8) + ((p[6] & 1u) ? 4u * npar : 0u);
+    if (p[7] & ENG_FLAG_MORPH_MODULES)
+        at += (p[2] + 7u) / 8u;
     return at <= len ? at : 0;
 }
 
@@ -915,7 +918,7 @@ int eng_load(const uint8_t *p, uint32_t len)
 #endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
-    if ((p[7] & ~ENG_FLAG_EXTRAS) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return -1;
     for (i = 0; i < ENG_PANEL_BUTTONS; i++)      /* (before eng_buttons below: no Toggle of the last patch acts on this one) */
         E.btn_kind[i] = (uint8_t)ENG_BTN_GATE, E.btn_n[i] = 0;
@@ -1076,6 +1079,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             uint32_t n0 = eng_npar(d, p[1]);     /* (an older format: its parameters then; the rest at their defaults) */
             if (at + 4u * n0 > len)
                 return -3;
+            nd->morph = 1;
             nd->over = 0;
             for (j = 0; j < d->npar; j++) {
                 int32_t b = j < n0 ? rd32(p + at) : d->pdef[j];
@@ -1089,6 +1093,14 @@ int eng_load(const uint8_t *p, uint32_t len)
             }
         }
         E.has_b = 1;
+    }
+    if (p[7] & ENG_FLAG_MORPH_MODULES) {
+        uint32_t bytes = (E.nmod + 7u) / 8u;
+        if (at + bytes > len)
+            return -3;
+        for (i = 0; i < E.nmod; i++)
+            E.node[i].morph = (p[at + (i >> 3)] >> (i & 7u)) & 1u;
+        at += bytes;
     }
     if (p[6] & 4u) {                             /* fixed input links: one disabled-input mask per module */
         if (at + E.nmod > len)
@@ -5353,13 +5365,13 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
         mapped |= nd->input_map[s];
     }
     /* Most modules have no parameter modulation. Copy their base values without visiting each parameter's routes. */
-    if (!have && !side && !(E.has_b && E.morph > 0 && nd->type != T_FM1)) {
+    if (!have && !side && !(nd->morph && E.morph > 0 && nd->type != T_FM1)) {
         for (j = 0; j < d->npar; j++)
             eff[j] = par[j];
         return;
     }
     for (j = 0; j < d->npar; j++) {
-        int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, par[j], (uint32_t)parb[j], E.morph, nd->over >> j & 1u) : par[j];
+        int32_t v = nd->morph && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, par[j], (uint32_t)parb[j], E.morph, nd->over >> j & 1u) : par[j];
         uint32_t touched = 0;
         int32_t mod = 0, rv = 0;
         const range_t *rg = 0;
