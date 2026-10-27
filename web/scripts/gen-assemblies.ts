@@ -2388,13 +2388,14 @@ asm('Io 4', 'Voices', (b) => {
   const portaSel = b.add('select', 0, 6, { count: 2, pos: 1, v1: -1, v2: 0 }); // 1 off: the slew's time at its 1 ms floor
   const holdSel = b.add('select', 0, 6.5, { count: 2, pos: 1, v1: -4, v2: 0.4999 });
   // ---- the LFO: wave (the reverse saw is the saw times -1), rate and its bend, the delay
-  const lfo = b.add('lfo', 0, 0, { wave: 0, range: 3, wide: 4.5, depth: 1 }, { p1: 'wide', p2: 'wave' });
+  // RATE: the fast range, the rate row x 2, 0.04 .. 80 Hz (the JP-4's top is 80 Hz; the card and the FM-1 show the rate it runs at)
+  const lfo = b.add('lfo', 0, 0, { wave: 0, range: 2, rate: 2.25, depth: 1 }, { p1: 'rate', p2: 'wave' });
   const lfoWave = b.add('select', 0, 0.5, { count: 4, pos: 1, v1: 0, v2: 0.75, v3: 0.5, v4: 0.5 }); // x 4: wave 0 3 2 2
   b.wire(lfoWave, 'out', lfo, 'p2');
   const lfoSig = b.add('math', 0.5, 0.5, { ka: -2, kb: 1, off: 1 }); // (1 - 2 x rev saw) x the LFO
   b.wire(lfoWave, 'g4', lfoSig, 'a');
   b.wire(lfo, 'out', lfoSig, 'b');
-  const bendSel = b.add('select', 0, 1, { count: 2, pos: 1, v1: 1 / Math.log2(55 / 0.0008), v2: 4 / Math.log2(55 / 0.0008) }); // octaves of the wide rate's span
+  const bendSel = b.add('select', 0, 1, { count: 2, pos: 1, v1: 1 / Math.log2(40 / 0.02), v2: 4 / Math.log2(40 / 0.02) }); // octaves of the rate's span
   const lfoBend = b.add('scale', 0.5, 1, { gain: 0, offset: 0 }); // LFO BEND: -1 .. 1 the reach down or up
   b.wire(bendSel, 'out', lfoBend, 'in');
   b.wire(lfoBend, 'out', lfo, 'p1');
@@ -2543,7 +2544,7 @@ asm('Io 4', 'Voices', (b) => {
   for (const q of ['a', 'd', 's', 'r']) b.param(q, envA, q);
   b.param('level', vca, 'gain');
   b.param('wave form', lfoWave, 'pos', { head: 'lfo' });
-  b.param('rate', lfo, 'wide');
+  b.param('rate', lfo, 'rate');
   b.param('rate', trig, 'rate', { col: true, head: 'trigger' });
   b.param('vcf mod', trigAmt, 'gain');
   b.param('delay time', delayEnv, 'a', { head: 'delay/bend' });

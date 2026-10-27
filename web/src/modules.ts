@@ -6,6 +6,7 @@ import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleD
 import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type StepNote } from './track';
 import WT from './wavetables.json';
 import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
+import { formatValue } from './labels';
 
 export interface Voice {
   /** octaves relative to middle C (MIDI 60) */
@@ -446,6 +447,13 @@ export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 :
 /** the free LFO's rate ranges: the `rate` row times LFO_RANGE_K (slow 0.0008..1.6 Hz, fast 0.04..80 Hz) */
 export const LFO_RANGES = ['norm', 'slow', 'fast', 'wide'];
 export const LFO_RANGE_K = [1, 1 / 25, 2, 1];
+/** the free rate as the LFO runs it: the `rate` row times its range's factor (slow / 25, fast x 2; the card and the FM-1's
+ * page show this, pages_ui.c stretched), the knob keeps the row's own range */
+const lfoRateText = (v: number, p: Record<string, number>): string => {
+  const r = Math.round(p.range ?? 0);
+  const f = formatValue(v * (r === 1 || r === 2 ? LFO_RANGE_K[r] : 1), 'Hz', false);
+  return `${f.num} ${f.unit}`;
+};
 /** the synced LFO's speed against its note length: ÷8 makes a cycle 8 times as long, x8 an eighth as long (a 1/16 triplet
  * x8 is half a clock tick). The length is multiplied by num / den. Appended to, never reordered. */
 export const LFO_MULTS: { name: string; num: number; den: number }[] = [
@@ -511,7 +519,7 @@ const lfo: ModuleImpl<LfoState> = {
     outputs: [control('out')],
     params: [
       param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES }),
-      param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01, log: true }),
+      param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01, log: true, altText: { when: 'range', text: lfoRateText } }),
       param('depth', 0, 1, 1, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('div', 0, DELAY_DIVS.length - 1, 6, { step: 1, choices: DELAY_DIVS.map((d) => d.name) }),

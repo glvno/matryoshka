@@ -52,7 +52,7 @@ export interface ParamDef {
   /** an on/off switch (0 or 1): a check box in the editor, OFF / ON on the LCD */
   toggle?: boolean;
   /** while the toggle parameter `when` is on, the value is shown as `text(value)` instead of the number (the synced delay time as a note length) */
-  altText?: { when: string; text: (v: number) => string };
+  altText?: { when: string; text: (v: number, params: Record<string, number>) => string };
   /** not a value: a display (the Scope's screen); it has no slider and goes on an assembly card like a parameter */
   screen?: true;
   /** set from its module's screen (the Scope's hover toolbar), never a row of a card nor promoted */
