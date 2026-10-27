@@ -156,7 +156,7 @@ describe('a boot code that is not V15\'s (#183)', () => {
     expect(await run(refused, 'FM-1_015')).toBe('bootcode');
     expect(await run([0, 512], 'FM-1_015')).toBe('stopped');
     expect(await run(refused, 'FM-1_712')).toBe('stopped');
-  }, 10000);
+  });
 
   it('the Install panel explains it and names the way back', () => {
     expect(BOOT_CODE_HELP).toMatch(/update failed -5/);
