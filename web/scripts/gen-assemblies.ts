@@ -894,8 +894,8 @@ asm('Oracle V', 'Voices', (b) => {
 //  - GLIDE on / off: the glided pitch or the key's. OSCILLATOR 3 CONTROL off takes oscillator 3 off the keyboard (it then
 //    sits 2 octaves lower, so LO is sub-audio, and its FREQUENCY sweeps on its own).
 //  - RANGE (LO, 32', 16', 8', 4', 2') adds octaves to an oscillator's pitch (LO: 2 octaves under 32'). WAVEFORM (triangle,
-//    saw, square, wide and narrow rectangle) sets the oscillator's wave and pulse width through its parameter inputs: the
-//    Selector's value v gives wave 1 + 3v and pulse width 0.9 - 0.6v.
+//    triangle/saw hybrid (reverse saw on oscillator 3), saw, square, wide and narrow rectangle) sets the oscillator's wave
+//    and pulse width through its parameter inputs: value v gives wave 4 + 0.75v and pulse width 0.95 + 0.45v.
 //  - KEYBOARD CONTROL (off, 1, 2, 1 + 2: none, a third, two thirds or all of the key's pitch into the cutoff) sets an
 //    Attenuverter's gain through its pin.
 //  - DECAY on makes each contour's release its decay time: a Macro per contour (its DECAY TIME, 0..1 over the decay's range
@@ -906,8 +906,7 @@ asm('Oracle V', 'Voices', (b) => {
 //  - A-440 adds the reference tone (a sine at A4) to the output.
 // The ladder's cvamt is 1: the contour, the modulation and the keyboard each reach the cutoff through their own amount.
 // TUNE and the PITCH wheel (half an octave: Main's bend, of which the key's pitch already carries 2 semitones; plug Main's
-// bend into `bend`) are one Attenuverter. Left out, needing engine work (#351): the shark tooth and reverse saw waveforms
-// and the external input (audio input).
+// bend into `bend`) are one Attenuverter. Left out, needing engine work (#351): the external input (audio input).
 asm('Monolith D', 'Voices', (b) => {
   /** a module's parameter inputs: what each pin sets and their depths */
   const pins = (id: number, p1: string[], p2: string[], att: [number, number]): void => {
@@ -921,18 +920,18 @@ asm('Monolith D', 'Voices', (b) => {
   const bend = b.add('scale', 0, 2, { gain: 1 / 3, offset: 0 });
   const o3ctl = b.add('select', 1, 3, { count: 2, pos: 2, v1: -2 });
   const range = (row: number, pos: number): number => b.add('select', 1, row, { count: 6, pos, v1: -4, v2: -2, v3: -1, v4: 0, v5: 1, v6: 2 });
-  const wave = (row: number, pos: number): number => b.add('select', 2, row, { count: 5, pos, v1: 0, v2: 0.333, v3: 0.667, v4: 1, v5: 1.333 });
+  const wave = (row: number, pos: number): number => b.add('select', 2, row, { count: 6, pos, v1: -4, v2: row === 2 ? 1.333 : 0, v3: -2.667, v4: -1, v5: -1.556, v6: -1.889 });
   const osc = (row: number, p: Record<string, number>): number => {
-    const o = b.add('osc', 3, row, { wave: 1, pw: 0.9, level: 1, ...p });
-    pins(o, ['wave'], ['pw'], [1, -0.667]);
+    const o = b.add('osc', 3, row, { wave: 4, pw: 0.95, level: 1, ...p });
+    pins(o, ['wave'], ['pw'], [0.25, 0.5]);
     return o;
   };
   const r1 = range(0, 4);
   const r2 = range(1, 4);
   const r3 = range(2, 3);
-  const w1 = wave(0, 2);
-  const w2 = wave(1, 2);
-  const w3 = wave(2, 3);
+  const w1 = wave(0, 3);
+  const w2 = wave(1, 3);
+  const w3 = wave(2, 4);
   const o1 = osc(0, {});
   const o2 = osc(1, { fine: 6 });
   const o3 = osc(2, { fine: -4 });
@@ -1000,7 +999,8 @@ asm('Monolith D', 'Voices', (b) => {
   b.wire(part, 'gate', fenv, 'gate');
   b.wire(part, 'gate', aenv, 'gate');
   b.wire(fenv, 'env', amount, 'in');
-  for (const s of [amount, fltMod, kbdAmt]) b.wire(s, 'out', flt, 'cv');
+  for (const s of [amount, kbdAmt]) b.wire(s, 'out', flt, 'cv');
+  b.wire(fltMod, 'out', flt, 'fm');
   b.wire(flt, 'lp24', vca, 'in');
   b.wire(aenv, 'env', vca, 'cv');
   b.wire(vca, 'out', a440On, 'in1');
@@ -1055,11 +1055,11 @@ const namePositions = (asmName: string, names: Record<string, string[]>): void =
 {
   const OFF_ON = ['OFF', 'ON'];
   const RANGE = ['LO', "32'", "16'", "8'", "4'", "2'"];
-  const WAVE = ['TRIANGLE', 'SAW', 'SQUARE', 'WIDE RECT', 'NARROW RECT'];
+  const WAVE = ['TRIANGLE', 'TRI/SAW', 'SAW', 'SQUARE', 'WIDE RECT', 'NARROW RECT'];
   namePositions('Monolith D', {
     'glide on': OFF_ON, 'osc mod': OFF_ON, 'osc 3 ctrl': OFF_ON, 'decay on': OFF_ON, 'filter mod': OFF_ON, 'a-440': OFF_ON,
     'kbd control': ['OFF', '1', '2', '1+2'], 'white/pink': ['WHITE', 'PINK'],
-    'osc 1 range': RANGE, 'osc 2 range': RANGE, 'osc 3 range': RANGE, 'osc 1 wave': WAVE, 'osc 2 wave': WAVE, 'osc 3 wave': WAVE,
+    'osc 1 range': RANGE, 'osc 2 range': RANGE, 'osc 3 range': RANGE, 'osc 1 wave': WAVE, 'osc 2 wave': WAVE, 'osc 3 wave': WAVE.map((w, i) => i === 1 ? 'REVERSE SAW' : w),
   });
 }
 
