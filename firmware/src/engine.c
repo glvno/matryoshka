@@ -3077,6 +3077,30 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
     y2 = it->s.osc.y2;
     pm1 = it->s.osc.pm1;
     xb = it->s.osc.xb;
+    /* The common FM operator is a sine with no feedback or sync. Its two sub-samples need no waveform dispatch,
+     * feedback multiplies or sub-sample loop. Keep the same phase, interpolation and decimator state as the general path. */
+    if (kind == 0 && fb == 0 && !(nd->conn & (1u << OSC_I_SYNC))) {
+        for (i = 0; i < n; i++) {
+            int32_t pm_now = pm[i], pm_mid = (pm1 + pm_now) >> 1, p0, p1;
+            if (i == 0 || pitch[i] != pitch[i - 1]) {
+                dt_fm = exp2_scale(INC_C4, pitch[i] + base);
+                if (dt_fm > DT_MAX)
+                    dt_fm = DT_MAX;
+                dt_fm >>= 1;
+            }
+            pm1 = pm_now;
+            phase += dt_fm;
+            y2 = sin_turn(phase + (uint32_t)(((int64_t)mul16(idx, pm_mid) * TURN_PER_RAD) >> 16));
+            phase += dt_fm;
+            y1 = sin_turn(phase + (uint32_t)(((int64_t)mul16(idx, pm_now) * TURN_PER_RAD) >> 16));
+            p0 = allpass16(ap + 4, HB_A[2], allpass16(ap, HB_A[0], y2));
+            p1 = allpass16(ap + 6, HB_A[3], allpass16(ap + 2, HB_A[1], xb));
+            xb = y1;
+            out[i] = mul16((p0 + p1) >> 1, lvl);
+        }
+        s1 = n ? sync[n - 1] : s1;
+        n = 0;
+    }
     uint32_t *frc = it->s.osc.rc[0];                  /* blep_pos's cache, kept across blocks */
     for (i = 0; i < n; i++) {
         uint32_t dt, sub;
@@ -5337,30 +5361,41 @@ static void m_crush(const node_t *nd, inst_t *it, uint32_t n)
 
 /* Block-rate parameter modulation (engine.ts applyCv): the mean of p1 / p2 over the block, times the attenuverter, is
  * added (times the range) to the parameters the matrix assigns that input to; clamped when something was added. */
-static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
+/* Instances of one module run consecutively. A shared input buffer cannot change between them; a summed input or
+ * per-part output has its own buffer. Reuse only the previous rendered instance's means, including after idle skips. */
+static int32_t signal_mean(const esig_t *src, uint32_t n)
+{
+    int64_t sum = 0;
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        sum += src[i];
+    return block_mean(sum, n);
+}
+
+static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
 {
     const def_t *d = &DEFS[nd->type];
     int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
-    uint32_t j, i, s, have = 0, side = 0, mapped = 0;   /* side: some input has side routes (input_map) */
+    uint32_t j, s, have = 0, side = 0, mapped = 0;   /* side: some input has side routes (input_map) */
     const int32_t *par = nd->par, *parb = par + d->npar;   /* (the node's and the instance's slots, kept in registers; PARB) */
     int32_t *eff = it->eff;
     if (d->cvbase >= 0)
         for (s = 0; s < 2u; s++) {
             const esig_t *cv;
-            int64_t sum = 0;
-            if (!nd->map[s] || !(nd->conn & (1u << (d->cvbase + s))))
+            uint32_t pin = d->cvbase + s;
+            if (!nd->map[s] || !(nd->conn & (1u << pin)))
                 continue;
-            cv = it->in[d->cvbase + s];
-            for (i = 0; i < n; i++)
-                sum += cv[i];
-            mean[s] = mul16(block_mean(sum, n), nd->att[s]);
+            cv = it->in[pin];
+            if (!prev || cv != prev->in[pin])
+                means[pin] = signal_mean(cv, n);
+            mean[s] = mul16(means[pin], nd->att[s]);
             have |= 1u << s;
             mapped |= nd->map[s];
         }
     for (s = 0; s < d->nin; s++) if (nd->input_map[s]) {
-        int64_t sum = 0;
-        for (i = 0; i < n; i++) sum += it->in[s][i];
-        extra[s] = block_mean(sum, n);
+        if (!prev || it->in[s] != prev->in[s])
+            means[s] = signal_mean(it->in[s], n);
+        extra[s] = means[s];
         side = 1;
         mapped |= nd->input_map[s];
     }
@@ -5662,6 +5697,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         }
         for (k = 0; k < E.norder; k++) {
             const node_t *nd = &E.node[E.order[k]];
+            const inst_t *prev = 0;
+            int32_t means[MAX_IN];
             uint32_t ninst = nd->grp && cur_g_parts(nd) < nd->ninst ? cur_g_parts(nd) : nd->ninst;   /* (fewer after an overload: eng_shed) */
             cur_g = &E.grp[nd->grp];
             for (v = 0; v < ninst; v++) {               /* every part of a module in a poly group, once for the rest */
@@ -5716,7 +5753,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     }
                 }
                 ENG_PROF(1, E.order[k], v);
-                apply_cv(nd, it, n);
+                apply_cv(nd, it, n, prev, means);
+                prev = it;
                 if (nd->grp)
                     apply_flaws(nd, it);
                 ENG_PROF(2, E.order[k], v);
