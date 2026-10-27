@@ -157,6 +157,19 @@ tests['lfo-shape-sync'] = make('lfo-shape-sync', (add, wire) => {
   wire(lfo, 'pulse', out, 'r');
 });
 events['lfo-shape-sync'] = [[0, 'run', 0], [128 * 80, 'bon', 0], [128 * 82, 'boff', 0]];
+// Sallen 20's ESP routes on the FM-1 (SIGNAL IN, ESP ROUTE): VCO 1 -> F-V into VCO 2 and ENV into the VCA, the MG ->
+// TRIG into both EGs (a loop through EG 1 and VCO 1: its block of delay must fall where the editor's order puts it)
+for (const [route, src] of [[2, 2], [3, 2], [4, 4]] as const) {
+  const name = `sallen-esp-${route}`;
+  const p = FM1_PRESETS['Sallen 20']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'esp route'))!;
+  for (const [label, v] of [['signal in', src], ['esp route', route], ['threshold', 0.2]] as const) {
+    const row = card.params.find((r) => r.label === label)!;
+    p.modules.find((m) => m.id === row.module)!.params[row.param] = v;
+  }
+  tests[name] = p;
+  events[name] = [[128 * 60, 'on', 57], [128 * 120, 'off', 57]];
+}
 for (let pos = 1; pos <= 6; pos++) {
   const name = `monolith-wave-${pos}`;
   const p = FM1_PRESETS['Monolith D']();

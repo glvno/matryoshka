@@ -1422,8 +1422,8 @@ asm('Cassia 1', 'Voices', (b) => {
 // rectangle), the noise generator's white and pink outputs, the MVCA (EG 1 normalled to its
 // control, its signal input open), EG 1 and EG 2's reverse outputs, the control wheel (Main's mod wheel) and the momentary
 // switch (Main's FX button), KBD CV and trigger, the MG's triangle and rectangle, and INITIAL GAIN into the VCA. The ESP
-// (external signal processor) is a Follower: its SIGNAL IN is the assembly's `esp signal in` (the FM-1 has no audio input,
-// #274, so there it only hears what the browser patches in), its rows SIGNAL LEVEL, LOW CUT FREQ, HIGH CUT FREQ, CV ADJUST and
+// (external signal processor) is a Follower: its SIGNAL IN is the assembly's `esp signal in` plus the SIGNAL IN row's choice
+// of an internal signal (the FM-1 has no audio input, #274), its ESP ROUTE row patches one of its outputs (below), its rows SIGNAL LEVEL, LOW CUT FREQ, HIGH CUT FREQ, CV ADJUST and
 // THRESHOLD LEVEL, its jacks the amplifier and band-pass outs, F-V CV OUT, ENV OUT and TRIG OUT. The jacks its manual patches
 // them into are inputs too: VCO 1+2 CV IN (added to the keyboard's pitch), TRIGGER IN (a Logic or with the keyboard's gate,
 // into both EGs) and INITIAL GAIN (the VCA); VCO 2 CV IN is not (VCO 2's pitch input is VCO 1+2's). Nothing is patched, so they do not change the sound; their outputs meet at
@@ -1434,6 +1434,9 @@ asm('Sallen 20', 'Voices', (b) => {
     m.map = { ...m.map!, p1, p2 };
     m.att = att;
   };
+  // (first: TRIG>EGS closes a loop through EG 1, VCO 1 and the ESP, and the loop's one block of delay goes on the cable
+  // from the module processing reaches first, patch.ts processingOrder: this one, so the keyboard's path keeps no delay)
+  const trigTo = b.add('logic', 7, 6, { thresh: 0.5 });
   const part = b.add('alloc', 0, 3, { voices: 1, priority: 2 });
   const gl = b.add('glide', 0, 0, { time: 0.001 });
   const s1 = b.add('select', 1, 0, { count: 4, pos: 3, v1: -2, v2: -1, v3: 0, v4: 1 }); // 32' 16' 8' 4'
@@ -1521,6 +1524,28 @@ asm('Sallen 20', 'Voices', (b) => {
   b.wire(eg1, 'env', eg1Rev, 'in');
   b.wire(eg2, 'env', eg2Rev, 'in');
   b.wire(initGain, 'out', vca, 'cv');
+  // The ESP on the FM-1 (no audio input there): SIGNAL IN picks what it hears (OFF, VCO 1 as its WAVEFORM switch makes
+  // it, the white noise, the MG's triangle), summed with the browser's `esp signal in`. ESP ROUTE patches one of its
+  // outputs as the manual does: F-V CV into VCO 2 CV IN (not VCO 1+2: VCO 1 would then follow itself), ENV into INITIAL
+  // GAIN, TRIG into TRIGGER IN. Gates of the route's Selector open a VCA (or a Logic and) per route; OFF and OFF play as
+  // before (the routes add 0).
+  const espIn = b.add('select', 7, 4, { count: 4, pos: 1 });
+  b.wire(v1, 'out', espIn, 'in2');
+  b.wire(nz, 'out', espIn, 'in3');
+  b.wire(mg, 'out', espIn, 'in4');
+  b.wire(espIn, 'out', esp, 'in');
+  const espRoute = b.add('select', 8, 4, { count: 4, pos: 1 });
+  const fvTo = b.add('vca', 8, 5, { gain: 1 });
+  const envTo = b.add('vca', 8, 6, { gain: 1 });
+  b.wire(esp, 'pitch', fvTo, 'in');
+  b.wire(espRoute, 'g2', fvTo, 'cv');
+  b.wire(fvTo, 'out', o2, 'pitch');
+  b.wire(esp, 'env', envTo, 'in');
+  b.wire(espRoute, 'g3', envTo, 'cv');
+  b.wire(envTo, 'out', vca, 'cv');
+  b.wire(esp, 'trig', trigTo, 'a');
+  b.wire(espRoute, 'g4', trigTo, 'b');
+  b.wire(trigTo, 'and', trig, 'b');
   for (const [m, port] of [[mg, 'pulse'], [sh, 'out'], [pink, 'out'], [mvca, 'out'], [eg1Rev, 'out'], [eg2Rev, 'out'], [wheel, 'out'], [sw, 'out'], [esp, 'amp']] as const) b.wire(m, port, mix, 'in3');
   b.input('keys', part, 'keys');
   b.input('mvca in', mvca, 'in');
@@ -1584,15 +1609,18 @@ asm('Sallen 20', 'Voices', (b) => {
   b.param('frequency', mg, 'rate', { head: 'mg' });
   b.param('waveform', mgShape, 'value');
   b.param('initial gain', initGain, 'value', { head: 'patch panel' });
-  b.param('signal level', esp, 'level', { head: 'esp' });
+  b.param('signal in', espIn, 'pos', { head: 'esp' });
+  b.param('signal level', esp, 'level');
   b.param('low cut', esp, 'lowcut');
   b.param('high cut', esp, 'highcut');
   b.param('cv adjust', esp, 'cvadj');
   b.param('threshold', esp, 'thresh');
+  b.param('esp route', espRoute, 'pos');
 });
 namePositions('Sallen 20', {
   'vco 1 scale': ["32'", "16'", "8'", "4'"], 'vco 2 scale': ["16'", "8'", "4'", "2'"],
   'vco 1 wave': ['TRIANGLE', 'SAW', 'PULSE', 'NOISE'], 'vco 2 wave': ['SAW', 'SQUARE', 'NARROW', 'RING'],
+  'signal in': ['OFF', 'VCO 1', 'NOISE', 'MG'], 'esp route': ['OFF', 'F-V>VCO 2', 'ENV>GAIN', 'TRIG>EGS'],
 });
 
 // Expander S, a four-voice polysynth of state-variable expander modules (after Oberheim's SEM and its Four Voice):
