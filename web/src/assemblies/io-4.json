@@ -180,16 +180,16 @@
       "y": 0,
       "params": {
         "wave": 0,
-        "rate": 4.5,
+        "rate": 4,
         "depth": 1,
         "sync": 0,
         "div": 6,
         "bpm": 120,
         "phase": 0,
-        "range": 0,
+        "range": 3,
         "dir": 0,
         "mult": 3,
-        "wide": 4
+        "wide": 4.5
       },
       "att": [
         1,
@@ -197,7 +197,7 @@
       ],
       "map": {
         "p1": [
-          "rate"
+          "wide"
         ],
         "p2": [
           "wave"
@@ -279,8 +279,8 @@
         "pos": 1,
         "count": 2,
         "fade": 0,
-        "v1": 0.09119274773612923,
-        "v2": 0.3647709909445169,
+        "v1": 0.06223134691336705,
+        "v2": 0.2489253876534682,
         "v3": 0,
         "v4": 0,
         "v5": 0,
@@ -2347,7 +2347,12 @@
       "module": 23,
       "param": "pos",
       "label": "range",
-      "head": "vco"
+      "head": "vco",
+      "names": [
+        "16'",
+        "8'",
+        "4'"
+      ]
     },
     {
       "module": 22,
@@ -2362,23 +2367,38 @@
     {
       "module": 18,
       "param": "pos",
-      "label": "pw mode"
+      "label": "pw mode",
+      "names": [
+        "MANUAL",
+        "MOD"
+      ]
     },
     {
       "module": 17,
       "param": "pos",
-      "label": "pw"
+      "label": "pw",
+      "names": [
+        "50%",
+        "40%",
+        "20%",
+        "10%"
+      ]
     },
     {
       "module": 16,
       "param": "pos",
-      "label": "wave form"
+      "label": "wave form",
+      "names": [
+        "OFF",
+        "SAW",
+        "SQUARE",
+        "PULSE"
+      ]
     },
     {
       "module": 26,
       "param": "pos",
-      "label": "noise",
-      "head": "noise"
+      "label": "noise"
     },
     {
       "module": 49,
@@ -2400,7 +2420,13 @@
     {
       "module": 27,
       "param": "pos",
-      "label": "kybd follow"
+      "label": "kybd follow",
+      "names": [
+        "10%",
+        "40%",
+        "70%",
+        "100%"
+      ]
     },
     {
       "module": 15,
@@ -2415,7 +2441,11 @@
     {
       "module": 28,
       "param": "pos",
-      "label": "polarity"
+      "label": "polarity",
+      "names": [
+        "NORM",
+        "INV"
+      ]
     },
     {
       "module": 43,
@@ -2479,11 +2509,17 @@
       "module": 8,
       "param": "pos",
       "label": "wave form",
-      "head": "lfo"
+      "head": "lfo",
+      "names": [
+        "SINE",
+        "SQUARE",
+        "SAW",
+        "REV SAW"
+      ]
     },
     {
       "module": 7,
-      "param": "rate",
+      "param": "wide",
       "label": "rate"
     },
     {
@@ -2502,7 +2538,7 @@
       "module": 12,
       "param": "a",
       "label": "delay time",
-      "head": "delay / bend"
+      "head": "delay/bend"
     },
     {
       "module": 11,
@@ -2512,13 +2548,17 @@
     {
       "module": 10,
       "param": "pos",
-      "label": "norm / wide"
+      "label": "norm/wide",
+      "names": [
+        "NORM",
+        "WIDE"
+      ]
     },
     {
       "module": 34,
       "param": "gain",
       "label": "bend sens",
-      "head": "bend / mod"
+      "head": "bend/mod"
     },
     {
       "module": 33,
@@ -2528,17 +2568,32 @@
     {
       "module": 35,
       "param": "pos",
-      "label": "vco"
+      "label": "vco",
+      "names": [
+        "LFO",
+        "OFF",
+        "BEND"
+      ]
     },
     {
       "module": 36,
       "param": "pos",
-      "label": "vcf"
+      "label": "vcf",
+      "names": [
+        "LFO",
+        "OFF",
+        "BEND"
+      ]
     },
     {
       "module": 37,
       "param": "pos",
-      "label": "vca"
+      "label": "vca",
+      "names": [
+        "LFO",
+        "OFF",
+        "BEND"
+      ]
     },
     {
       "module": 38,
@@ -2550,13 +2605,17 @@
     {
       "module": 5,
       "param": "pos",
-      "label": "porta switch"
+      "label": "switch"
     },
     {
       "module": 3,
       "param": "pos",
       "label": "transpose",
-      "head": "keys"
+      "head": "keys",
+      "names": [
+        "NORMAL",
+        "-1 OCT"
+      ]
     },
     {
       "module": 24,

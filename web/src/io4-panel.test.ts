@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: GPL-3.0-only
+import { expect, it } from 'vitest';
+import { FACTORY } from './assemblies';
+import { DEFS } from './modules';
+import { FM1_PRESETS } from './presets';
+import { deviceBudget } from './patchbin';
+
+const io4 = FACTORY.find((d) => d.name === 'Io 4')!;
+const named = (label: string, nth = 0) => io4.params.filter((r) => r.label === label && r.param === 'pos')[nth]?.names;
+
+it('Io 4 names its switches with the Jupiter-4 panel legends', () => {
+  expect(named('range')).toEqual(["16'", "8'", "4'"]);
+  expect(named('wave form', 0)).toEqual(['OFF', 'SAW', 'SQUARE', 'PULSE']);
+  expect(named('wave form', 1)).toEqual(['SINE', 'SQUARE', 'SAW', 'REV SAW']);
+  expect(named('kybd follow')).toEqual(['10%', '40%', '70%', '100%']);
+  for (const lever of ['vco', 'vcf', 'vca']) expect(named(lever)).toEqual(['LFO', 'OFF', 'BEND']);
+});
+
+it('Io 4 LFO RATE is the wide rate, up to 55 Hz', () => {
+  const rows = io4.params.filter((r) => r.label === 'rate');
+  const lfo = io4.modules[rows[0].module - 1];
+  expect(lfo.type).toBe('lfo');
+  expect(rows[0].param).toBe('wide');
+  expect(lfo.params.range).toBe(3);
+  expect(DEFS.lfo.params.find((p) => p.name === 'wide')!.max).toBe(55);
+});
+
+it('the factory Io 4 keeps its four voices and its Arpeggiator within the FM-1 budget', () => {
+  const p = FM1_PRESETS['Io 4']();
+  expect(p.modules.some((m) => m.type === 'arp')).toBe(true);
+  expect(p.modules.find((m) => m.type === 'alloc' && m.params.voices === 4)).toBeDefined();
+  expect(deviceBudget(p).fits).toBe(true);
+});
