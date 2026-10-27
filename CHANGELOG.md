@@ -6,6 +6,7 @@
 - Silver Box has a named SAW / SQUARE switch. Its lean copy inside `<7PH` keeps the plain waveform control to fit the device.
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+- The new Ratio module supplies the DX100’s 64 frequency-ratio choices as a pitch offset. Algo Four XL exposes these choices and seven signed operator-detune positions; saved oscillator tuning stays unchanged.
 
 - Rate Env adds original attack/decay/release rates, zero-rate holds, keyboard rate scaling and pedal hold. Algo Four XL uses it for all four operators with the original control ranges and eight voices.
 

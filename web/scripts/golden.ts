@@ -53,6 +53,29 @@ const events: Record<string, Ev[]> = {};
 const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
+// The ratio table participates in plain, unison/sync and phase-modulated oscillator paths.
+for (const ratio of [0, 1, 4, 11, 42, 63]) for (const mode of ['plain', 'unison', 'fm']) {
+  const name = `osc-ratio-${ratio}-${mode}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+    const tuning = add('ratio', 0, 0, { ratio, detune: ratio % 7 });
+    const osc = add('osc', 0, 0, { wave: 0, coarse: -12, fine: 0,
+      unison: mode === 'unison' ? 3 : 1, detune: 9, pm: mode === 'fm' ? 1 : 0 });
+    wire(tuning, 'pitch', osc, 'pitch');
+    wire(main, 'pitch', osc, 'pitch'); wire(osc, 'out', out, 'l');
+    if (mode !== 'plain') {
+      const source = add('osc', 0, 0, { coarse: -24, level: 0.3 });
+      wire(main, 'pitch', source, 'pitch'); wire(source, 'out', osc, mode === 'fm' ? 'pm' : 'sync');
+    }
+  });
+}
+tests['osc-ratio-live'] = make('osc-ratio-live', (add, wire) => {
+  const main = add('fm1', 0, 0), out = add('output', 0, 0), osc = add('osc', 0, 0, { wave: 0, coarse: -24 });
+  const tuning = add('ratio', 0, 0, { ratio: 0, detune: 0 }, { map: { p1: ['ratio', 'detune'] } });
+  wire(main, 'mod', tuning, 'p1'); wire(tuning, 'pitch', osc, 'pitch');
+  wire(main, 'pitch', osc, 'pitch'); wire(osc, 'out', out, 'l');
+});
+events['osc-ratio-live'] = [[0, 'on', 60], [128 * 30, 'cc', 1, 64], [128 * 80, 'cc', 1, 127], [128 * 120, 'cc', 1, 0]];
 // Original rate-envelope extremes, pedal hold/retrigger, and key-rate scaling at low and high notes.
 for (const [suffix, params] of Object.entries({
   hold: { ar: 31, d1r: 24, d1l: 10, d2r: 0, rr: 8, krs: 0 },
