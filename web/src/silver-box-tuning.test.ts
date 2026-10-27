@@ -7,7 +7,7 @@ import { DEVICE_SR } from './modules';
 /** the fundamental of a held A4 (the Silver Box plays it an octave down) from the upward zero crossings over one second */
 function pitch(tuning: number): number {
   const { p, set } = around('test', 'Silver Box');
-  set('waveform', 0);
+  set('waveform', 2); // SQUARE: one zero crossing per cycle (the saw's filtered edge adds more)
   set('cut off freq', 5000);
   set('tuning', tuning);
   const e = new Engine(DEVICE_SR);
