@@ -179,6 +179,11 @@ static volatile uint8_t sx_ready, sx_collect, sx_busy;
 #define SXQ 64u
 static uint32_t sx_out_q[SXQ];
 static volatile uint32_t so_w, so_r;
+/* the host stopped reading: a send waited SX_WAIT_MS with no packet taken (the FM-1 on a computer where no app reads its MIDI).
+ * Until a packet is taken again, a send that finds no room gives up at once, so the main loop (a step entered, a knob) never
+ * waits on a host that is not listening; the editor syncs when it connects. 0: the host reads; else so_r + 1 at the stall */
+static uint32_t sx_deaf;
+#define SX_WAIT_MS 200u
 #endif
 
 static volatile uint32_t fm1_ms;                    /* also declared by core.h; parser-only host tests */
@@ -916,7 +921,14 @@ static int ota_wire_send(const uint8_t *p, uint32_t n)
         pkt = cin | (uint32_t)p[i] << 8 | (k > 1u ? (uint32_t)p[i + 1] << 16 : 0u) |
               (k > 2u ? (uint32_t)p[i + 2] << 24 : 0u);
         while (so_w - so_r >= SXQ) {
-            if (!*(volatile uint8_t *)&usb.config || usb.suspended || ota_now_ms() - t0 > 200u) {
+            if (sx_deaf && sx_deaf == so_r + 1u) {        /* still nothing taken since the stall: give up at once */
+                sx_busy = 0;
+                return -1;
+            }
+            sx_deaf = 0;
+            if (!*(volatile uint8_t *)&usb.config || usb.suspended || ota_now_ms() - t0 > SX_WAIT_MS) {
+                if (usb.config && !usb.suspended)
+                    sx_deaf = so_r + 1u;
                 sx_busy = 0;
                 return -1;
             }
