@@ -1918,8 +1918,8 @@ asm('Canvas', 'Voices', (b) => {
 
 // Wanderer, the ARP Odyssey (Rev 3: the 24 dB filter; ARP's Odyssey owner's manual 1976 and Korg's reissue manual),
 // duophonic as the original: one Voicing of one voice on the lowest key held plays VCO 1, one on the highest plays VCO 2
-// (one key plays both), and there is one filter, one high pass, one VCA, one ADSR and one AR. Each Voicing retriggers on
-// a new key (legato off); the keyboard gate is both gates ANDed, so either Voicing's retrigger restarts the envelopes.
+// (one key plays both), and there is one filter, one high pass, one VCA, one ADSR and one AR. A one-sample notch in
+// the held gate on every key press retriggers the envelopes, even for a middle key. Releases never retrigger.
 // Each VCO is one Oscillator (its wave row is the audio mixer's saw / square switch; it also offers sine and triangle):
 // the original has saw and pulse at once, which takes two per VCO and more patch bytes than the FM-1 holds (Wanderer XL
 // has them). So the S/H mixer's VCO 1 source and VCO 2 square are the VCO as the mixer has it, and the ring and the sync
@@ -1938,9 +1938,9 @@ asm('Canvas', 'Voices', (b) => {
 // FM-1's OCT buttons. Row names are short to leave patch bytes for the switches' position names (#358).
 asm('Wanderer', 'Voices', (b) => {
   // ---- the keys: lowest -> VCO 1, highest -> VCO 2; portamento
-  const lo = b.add('alloc', 0, 0, { voices: 1, priority: 1, legato: 1 });
-  const hi = b.add('alloc', 0, 1, { voices: 1, priority: 2, legato: 1 });
-  const gate = b.add('logic', 0, 2);
+  const lo = b.add('alloc', 0, 0, { voices: 1, priority: 1, legato: 2 });
+  const hi = b.add('alloc', 0, 1, { voices: 1, priority: 2, legato: 2 });
+  const gate = b.add('math', 0, 2); // held gate minus one-sample key press: retrigger only on presses
   const porta = b.add('macro', 0, 3, { value: 0 });
   const g1 = b.add('glide', 1, 0, { time: 0.001, curve: 1 }, { p1: 'time' });
   const g2 = b.add('glide', 1, 1, { time: 0.001, curve: 1 }, { p1: 'time' });
@@ -1995,7 +1995,7 @@ asm('Wanderer', 'Voices', (b) => {
 
   // keys, gate, portamento, vibrato
   b.wire(lo, 'gate', gate, 'a');
-  b.wire(hi, 'gate', gate, 'b');
+  b.wire(lo, 'trig', gate, 'b');
   b.wire(lo, 'pitch', g1, 'in');
   b.wire(hi, 'pitch', g2, 'in');
   b.wire(porta, 'out', g1, 'p1');
@@ -2037,7 +2037,7 @@ asm('Wanderer', 'Voices', (b) => {
   b.wire(sh2, 'out', shMix, 'b');
   b.wire(shMix, 'add', sh, 'in');
   b.wire(sq, 'not', shTrig, 'in1');
-  b.wire(gate, 'and', shTrig, 'in2');
+  b.wire(gate, 'sub', shTrig, 'in2');
   b.wire(shTrig, 'out', sh, 'clock');
   b.wire(sh, 'out', lag, 'in');
   // audio mixer
@@ -2069,11 +2069,11 @@ asm('Wanderer', 'Voices', (b) => {
   b.wire(vca, 'out', scope, 'a');
   // envelope triggers: the keyboard gate, or the LFO repeat (KYBD REPEAT: while a key is held; AUTO REPEAT: always)
   b.wire(lfo, 'out', sq, 'a');
-  b.wire(gate, 'and', sq, 'b');
+  b.wire(gate, 'sub', sq, 'b');
   b.wire(sq, 'and', rep, 'in1');
   b.wire(sq, 'not', rep, 'in2');
   for (const t of [adsrT, arT]) {
-    b.wire(gate, 'and', t, 'in1');
+    b.wire(gate, 'sub', t, 'in1');
     b.wire(rep, 'out', t, 'in2');
   }
   b.wire(adsrT, 'out', adsr, 'gate');

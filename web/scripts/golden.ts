@@ -53,6 +53,15 @@ const events: Record<string, Ev[]> = {};
 const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
+tests['key-press-duo'] = make('key-press-duo', (add, wire) => {
+  const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 1 });
+  for (const [priority, port] of [[1, 'l'], [2, 'r']] as const) {
+    const alloc = add('alloc', 0, 0, { voices: 1, priority, legato: 2 });
+    wire(main, 'keys', alloc, 'keys');
+    wire(alloc, 'trig', out, port);
+  }
+});
+events['key-press-duo'] = [[0, 'on', 60], [128, 'on', 72], [256, 'on', 67], [512, 'off', 72], [640, 'off', 60], [768, 'off', 67]];
 // Signed 16-bit audio XOR: single-output fast path and the general multiple-output path.
 for (const [a, b] of [[.5, .25], [-.5, .5], [-2, 2]]) for (const multi of [false, true]) {
   const name = `math-xor-${a}-${b}-${multi}`;
@@ -82,6 +91,7 @@ for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
   });
 }
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+events['Wanderer'] = [[0, 'on', 60], [128 * 20, 'on', 72], [128 * 40, 'on', 67], [128 * 60, 'off', 72], [128 * 80, 'off', 60], [128 * 100, 'off', 67]];
 tests['lfo-shape-sync'] = make('lfo-shape-sync', (add, wire) => {
   const main = add('fm1', 0, 0);
   const shape = add('const', 0, 0, { value: .37 });

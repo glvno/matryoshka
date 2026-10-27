@@ -5,7 +5,7 @@
 // control by control; its DRIVE switch and VCF TYPE switch are the reissue's, not the original's).
 // - Duophonic as the original: the lowest key held plays VCO 1, the highest VCO 2 (one key plays both; with no key held
 //   both keep the last), one VCF, one HPF, one VCA, one ADSR and one AR. Two one-voice Voicings (priority low / high),
-//   each retriggering on a new key; the keyboard gate is their gates ANDed.
+//   with legato on. The held gate minus the one-sample key-press pulse retriggers on every press, never on release.
 // - Each VCO has its saw and its pulse at once (two Oscillators on one pitch): the audio mixer's switch picks one; the
 //   pulse (with its width) feeds the ring modulator, the S/H mixer (VCO 2) and the sync; the S/H mixer's VCO 1 switch
 //   picks VCO 1's saw or pulse on its own. Coarse (octaves, continuous as the original's slider) and fine (a Selector's
@@ -36,9 +36,9 @@ import { around, define, matchLevel } from './def';
 
 const built = define('Wanderer XL', (b) => {
   // ---- the keys: lowest -> VCO 1, highest -> VCO 2; portamento; the PPC's vibrato
-  const lo = b.add('alloc', 0, 0, { voices: 1, priority: 1, legato: 1 });
-  const hi = b.add('alloc', 0, 1, { voices: 1, priority: 2, legato: 1 });
-  const gate = b.add('logic', 0, 2);
+  const lo = b.add('alloc', 0, 0, { voices: 1, priority: 1, legato: 2 });
+  const hi = b.add('alloc', 0, 1, { voices: 1, priority: 2, legato: 2 });
+  const gate = b.add('math', 0, 2); // held gate minus one-sample key press: retrigger only on presses
   const porta = b.add('macro', 0, 3, { value: 0 });
   const g1 = b.add('glide', 1, 0, { time: 0.001, curve: 1 });
   const g2 = b.add('glide', 1, 1, { time: 0.001, curve: 1 });
@@ -107,14 +107,14 @@ const built = define('Wanderer XL', (b) => {
 
   // keys, gate, portamento, vibrato, the LFO's square
   b.wire(lo, 'gate', gate, 'a');
-  b.wire(hi, 'gate', gate, 'b');
+  b.wire(lo, 'trig', gate, 'b');
   b.wire(lo, 'pitch', g1, 'in');
   b.wire(hi, 'pitch', g2, 'in');
   b.wire(porta, 'out', g1, 'p1');
   b.wire(porta, 'out', g2, 'p1');
   b.wire(lfo, 'out', vib, 'in');
   b.wire(lfo, 'out', sq, 'a');
-  b.wire(gate, 'and', sq, 'b');
+  b.wire(gate, 'sub', sq, 'b');
   // VCO 1 pitch: the keys (or LF), fine, coarse and FM, vibrato
   b.wire(g1, 'out', lf, 'in1');
   b.wire(lf, 'out', fine1, 'in1');
@@ -162,7 +162,7 @@ const built = define('Wanderer XL', (b) => {
   b.wire(sh2, 'out', shMix, 'b');
   b.wire(shMix, 'add', sh, 'in');
   b.wire(sq, 'not', shTrig, 'in1');
-  b.wire(gate, 'and', shTrig, 'in2');
+  b.wire(gate, 'sub', shTrig, 'in2');
   b.wire(shTrig, 'out', sh, 'clock');
   b.wire(sh, 'out', lag, 'in');
   // audio mixer
@@ -201,7 +201,7 @@ const built = define('Wanderer XL', (b) => {
   b.wire(sq, 'and', rep, 'in1');
   b.wire(sq, 'not', rep, 'in2');
   for (const t of [adsrT, arT]) {
-    b.wire(gate, 'and', t, 'in1');
+    b.wire(gate, 'sub', t, 'in1');
     b.wire(rep, 'out', t, 'in2');
   }
   b.wire(adsrT, 'out', adsr, 'gate');
