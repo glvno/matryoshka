@@ -731,10 +731,15 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
 }
 
 /* the value a row plays, where a switch of its module stretches it (the editor's card shows the same): the ADSR's long
- * (decay and release x 2.4) and the Delay's swell (feedback x 198 / 95); the bar keeps the knob's range */
+ * (decay and release x 2.4), the Delay's swell (feedback x 198 / 95) and the LFO's free rate in its slow / fast range
+ * (/ 25, x 2: modules.ts lfoRateText); the bar keeps the knob's range */
 static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
 {
     int t = eng_type(m);
+    if (t == T_LFO && j == LFO_P_RATE) {
+        int32_t r = (eng_get_param(m, LFO_P_RANGE) + 32768) >> 16;
+        return r == 1 ? v / 25 : r == 2 ? v * 2 : v;
+    }
     if (t == T_ADSR && (j == ADSR_P_D || j == ADSR_P_R) && eng_get_param(m, ADSR_P_LONG) >= 32768)
         return (int32_t)(((int64_t)v * ADSR_LONG_Q16) >> 16);
     if (t == T_DELAY && j == DELAY_P_FB && eng_get_param(m, DELAY_P_SWELL) >= 32768)

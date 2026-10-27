@@ -124,7 +124,7 @@ function rowOf(type: string, def: ModuleDef, params: Record<string, number>, par
     value = names[Math.round(v) - pd.min];
     u = toUnit(pd, v);
   } else if (pd.altText && (params[pd.altText.when] ?? 0) >= 0.5) {
-    value = pd.altText.text(v);
+    value = pd.altText.text(v, params);
     u = toUnit(pd, v);
   } else if (pd.choices) {
     const i = Math.max(0, Math.min(pd.choices.length - 1, Math.round(v)));

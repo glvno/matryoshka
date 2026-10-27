@@ -1667,7 +1667,7 @@ export class Editor {
     const val = document.createElement('output');
     // the number and its unit apart: the unit is drawn smaller (labels.ts formatValue)
     const parts = (v: number, params = m.params): { num: string; unit: string } =>
-      pd.altText && params[pd.altText.when] >= 0.5 ? { num: pd.altText.text(v), unit: '' }
+      pd.altText && params[pd.altText.when] >= 0.5 ? { num: pd.altText.text(v, params), unit: '' }
         : pd.choices ? { num: choiceName(def.type, pd.name, pd.choices[Math.round(v)] ?? ''), unit: '' }
         : posNames ? { num: namesNow()[Math.round(v) - off] ?? String(Math.round(v)), unit: '' }
         : formatValue(v, pd.unit, pd.min < 0);
@@ -1744,6 +1744,7 @@ export class Editor {
       const at = Number(input.value);
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? trackOf(v) : null);
+      if (def.params.some((q) => q.altText?.when === pd.name)) for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // (the LFO's range: how its rate shows)
       this.ev.onParam(m.id, pd.name, v);
       this.mirror(m.id, pd.name, v);
       this.chipsSoon();
