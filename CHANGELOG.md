@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 — 2026-10-27
 
 Figures compare this release with 1.4.2. Unless a line says otherwise, an FM-1 figure is the editor's estimate:
 modules and patch bytes from its budget, CPU from its CPU model, both run on each version's factory patches.
