@@ -891,12 +891,12 @@ static void seq_bar(void)
     }
     seq_name(seq_trk, name);
     p = put(p, name);
-    p = seq_pat_text(p);
-    seq_shown_pat = seq_pat_state();
     if (seq_rec)
         p = put(p, " REC");
     else if (seq_armed_trk() == (int)seq_trk)    /* the track shown is armed (#179) */
         p = put(p, " ARM");
+    p = seq_pat_text(p);                         /* (after REC / ARM: name REC P03>P04) */
+    seq_shown_pat = seq_pat_state();
     *p = 0;
     bar_text(b, seq_rec ? C_RED : C_ACC);
 }
