@@ -66,6 +66,11 @@ export const syncsWith = (info: Info | null): boolean => {
   return range.min <= VERSION && VERSION <= range.max;
 };
 export const UPDATE_TO_SYNC = 'This FM-1 runs older Matryoshka firmware that cannot play the editor\'s patches: update it to sync.';
+/** The remedy for an incompatible peer: a writer below the readable range needs a newer editor. */
+export const syncUpdateNotice = (info: Info | null): { message: string; label: string; target: 'editor' | 'firmware' } =>
+  info?.patchFormats && VERSION < info.patchFormats.min
+    ? { message: 'This editor is older than the firmware on your FM-1. Open the current editor to sync.', label: 'Open current editor', target: 'editor' }
+    : { message: UPDATE_TO_SYNC, label: 'Update the FM-1', target: 'firmware' };
 /** the hover of the chip in sandbox mode */
 export const SANDBOX_HOVER = 'Your patch is a sandbox patch, so the FM-1 plays it as a controller: the browser makes the sound. It syncs normally again once the patch fits.';
 /**

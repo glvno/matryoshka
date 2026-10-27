@@ -8,7 +8,8 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, UPDATE_TO_SYNC, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
 import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
@@ -361,11 +362,13 @@ function setLive(on: boolean): void {
   declineSync(false);
   if (fitsDevice) void sendPatch();   // (a sandbox patch is not sent: the FM-1 becomes its controller)
 }
-/** firmware too old for the editor's patch format (syncsWith): Live stays off, and the toast opens the install panel */
+/** Incompatible patch formats: Live stays off, and the toast offers the matching update. */
 function sayUpdate(): void {
   liveOn = false;
-  devStatus(UPDATE_TO_SYNC);
-  showAction(UPDATE_TO_SYNC, 'Update the FM-1', openInstall, 12000);
+  const notice = syncUpdateNotice(device.info);
+  devStatus(notice.message);
+  showAction(notice.message, notice.label, notice.target === 'editor'
+    ? () => { window.open(SITE_URL, '_blank', 'noopener'); } : openInstall, 12000);
 }
 const syncAsk = $<HTMLDialogElement>('sync-ask');
 syncAsk.onclose = () => {

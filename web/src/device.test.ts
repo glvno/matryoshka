@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, transportOf } from './device';
+import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch } from './patchbin';
@@ -175,6 +175,14 @@ describe('syncsWith', () => {
     expect(syncsWith({ ...legacy, patchFormats: { min: 31, max: 38 } })).toBe(false);
     expect(syncsWith({ ...legacy, patchFormats: { min: 40, max: 200 } })).toBe(false);
     expect(syncsWith({ ...legacy, patchFormats: { min: 40, max: 38 } })).toBe(false);
+  });
+  it('offers the matching update when either side is too old', () => {
+    const oldFirmware = { ...info(0), patchFormats: { min: 31, max: 38 } };
+    expect(syncUpdateNotice(oldFirmware)).toMatchObject({ target: 'firmware', label: 'Update the FM-1' });
+    expect(syncUpdateNotice(info(246))).toMatchObject({ target: 'firmware' });
+    const newFirmware = { ...info(65526), patchFormats: { min: 40, max: 200 } };
+    expect(syncUpdateNotice(newFirmware)).toMatchObject({ target: 'editor', label: 'Open current editor' });
+    expect(syncUpdateNotice(newFirmware).message).toContain('editor is older');
   });
   it('lets firmware that reads format 39 sync, and an FM-1 not heard from yet', () => {
     expect(syncsWith(info(246 | (255 << 8)))).toBe(true); // format 39
