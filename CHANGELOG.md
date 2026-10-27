@@ -6,6 +6,8 @@
 - Silver Box has a named SAW / SQUARE switch. Its lean copy inside `<7PH` keeps the plain waveform control to fit the device.
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+- Math adds signed 16-bit audio XOR. Elvira 2 XL uses it for BITMANGLER; the original instrument's exact mask sequence remains unverified.
+
 - LFO adds a shape input and a simultaneous pulse output. Sallen 20's modulation-generator WAVEFORM knob now sweeps continuously from falling saw through triangle to rising saw and changes the pulse width.
 
 - Ladder skips audio-rate checks when its FM input is unpatched. Selectors and gain modules avoid work for constant or unity-gain cases. All 150 audio kits and mode transitions remain bit-identical; CPU estimates distinguish the cheaper fixed gains from other or modulated gains.

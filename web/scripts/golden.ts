@@ -53,6 +53,24 @@ const events: Record<string, Ev[]> = {};
 const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
+// Signed 16-bit audio XOR: single-output fast path and the general multiple-output path.
+for (const [a, b] of [[.5, .25], [-.5, .5], [-2, 2]]) for (const multi of [false, true]) {
+  const name = `math-xor-${a}-${b}-${multi}`;
+  tests[name] = make(name, (add, wire) => {
+    const left = add('const', 0, 0, { value: a }), right = add('const', 0, 0, { value: b });
+    const op = add('math', 0, 0), out = add('output', 0, 0, { level: 1 });
+    wire(left, 'out', op, 'a'); wire(right, 'out', op, 'b');
+    wire(op, 'xor', out, 'l');
+    if (multi) wire(op, 'abs', out, 'r');
+  });
+}
+tests['math-xor-audio'] = make('math-xor-audio', (add, wire) => {
+  const source = add('osc', 0, 0, { freq: 110, wave: 0 });
+  const mask = add('const', 0, 0, { value: .625 });
+  const op = add('math', 0, 0), out = add('output', 0, 0, { level: 1 });
+  wire(source, 'out', op, 'a'); wire(mask, 'out', op, 'b');
+  wire(op, 'xor', out, 'l');
+});
 for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
   const name = `lfo-shape-${shape}-${back}`;
   tests[name] = make(name, (add, wire) => {

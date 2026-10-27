@@ -880,13 +880,16 @@ const dyn: ModuleImpl<{ env: number }> = {
   },
 };
 
-/** arithmetic on two signals: a' = a·ka + off, b' = b·kb; add, sub, mul, min, max, abs (of a'), cmp (1 while a' > b') */
+/** Quantize one audio sample to a signed 16-bit word for bitwise operations. */
+const xorWord = (x: number): number => Math.max(-32768, Math.min(32767, Math.floor(x * 32768)));
+
+/** Arithmetic on a' = a·ka + off, b' = b·kb, including bitwise XOR of their signed 16-bit samples. */
 const math: ModuleImpl<null> = {
   def: {
     type: 'math',
     label: 'Math',
     inputs: [control('a'), control('b')],
-    outputs: [control('add'), control('sub'), control('mul'), control('min'), control('max'), control('abs'), gate('cmp')],
+    outputs: [control('add'), control('sub'), control('mul'), control('min'), control('max'), control('abs'), gate('cmp'), audio('xor')],
     params: [param('ka', -4, 4, 1, { step: 0.01 }), param('kb', -4, 4, 1, { step: 0.01 }), param('off', -4, 4, 0, { step: 0.01 })],
   },
   init: () => null,
@@ -902,6 +905,7 @@ const math: ModuleImpl<null> = {
       o.max[i] = Math.max(a, b);
       o.abs[i] = Math.abs(a);
       o.cmp[i] = a > b ? 1 : 0;
+      o.xor[i] = (xorWord(a) ^ xorWord(b)) / 32768;
     }
   },
 };
