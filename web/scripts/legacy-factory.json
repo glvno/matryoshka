@@ -74,6 +74,12 @@
    "version": 40
   },
   {
+   "name": "<7PH",
+   "len": 3831,
+   "fnv": "e73ebe5d",
+   "version": 41
+  },
+  {
    "name": "303 ACID",
    "len": 140,
    "fnv": "1d419c2d",
@@ -302,6 +308,12 @@
    "version": 40
   },
   {
+   "name": "8 LIRE",
+   "len": 3300,
+   "fnv": "912edf51",
+   "version": 41
+  },
+  {
    "name": "808 KIT",
    "len": 1543,
    "fnv": "222d5611",
@@ -492,6 +504,12 @@
    "len": 3226,
    "fnv": "4ee14a11",
    "version": 40
+  },
+  {
+   "name": "808 KIT",
+   "len": 3226,
+   "fnv": "420d499a",
+   "version": 41
   },
   {
    "name": "909 KIT",
@@ -692,6 +710,12 @@
    "version": 40
   },
   {
+   "name": "909 KIT",
+   "len": 2959,
+   "fnv": "9a2e1c15",
+   "version": 41
+  },
+  {
    "name": "ALGO FOUR",
    "len": 772,
    "fnv": "bdf8c0cb",
@@ -834,6 +858,12 @@
    "len": 1573,
    "fnv": "a19f06f8",
    "version": 40
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1573,
+   "fnv": "fe109631",
+   "version": 41
   },
   {
    "name": "BRASS",
@@ -1112,6 +1142,12 @@
    "version": 40
   },
   {
+   "name": "BRIEFCASE 3",
+   "len": 3837,
+   "fnv": "5ac85166",
+   "version": 41
+  },
+  {
    "name": "BRIGHT SAW",
    "len": 354,
    "fnv": "353751d2",
@@ -1268,6 +1304,12 @@
    "version": 40
   },
   {
+   "name": "CANVAS",
+   "len": 3775,
+   "fnv": "023b9107",
+   "version": 41
+  },
+  {
    "name": "CASSIA 1",
    "len": 1627,
    "fnv": "55aec3e4",
@@ -1326,6 +1368,12 @@
    "len": 3737,
    "fnv": "c87c5837",
    "version": 40
+  },
+  {
+   "name": "CASSIA 1",
+   "len": 3737,
+   "fnv": "2037f962",
+   "version": 41
   },
   {
    "name": "CLAV",
@@ -1910,6 +1958,12 @@
    "version": 40
   },
   {
+   "name": "ELVIRA 2",
+   "len": 2263,
+   "fnv": "ddb57a13",
+   "version": 41
+  },
+  {
    "name": "EXPANDER S",
    "len": 642,
    "fnv": "68723401",
@@ -2058,6 +2112,12 @@
    "len": 1255,
    "fnv": "53d0ce9e",
    "version": 40
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1255,
+   "fnv": "cbfa381b",
+   "version": 41
   },
   {
    "name": "FAT MONO",
@@ -2732,6 +2792,12 @@
    "version": 40
   },
   {
+   "name": "HERA 6",
+   "len": 1197,
+   "fnv": "d40409f0",
+   "version": 41
+  },
+  {
    "name": "HI-HAT",
    "len": 146,
    "fnv": "641c8e55",
@@ -3002,6 +3068,12 @@
    "version": 40
   },
   {
+   "name": "INIT",
+   "len": 538,
+   "fnv": "1161a302",
+   "version": 41
+  },
+  {
    "name": "IO 4",
    "len": 546,
    "fnv": "2660bff9",
@@ -3150,6 +3222,12 @@
    "len": 3667,
    "fnv": "e66ec896",
    "version": 40
+  },
+  {
+   "name": "IO 4",
+   "len": 3667,
+   "fnv": "1f4a477b",
+   "version": 41
   },
   {
    "name": "KICK",
@@ -3470,6 +3548,12 @@
    "version": 40
   },
   {
+   "name": "MERIDIAN 8",
+   "len": 3022,
+   "fnv": "b9e3208f",
+   "version": 41
+  },
+  {
    "name": "METAL",
    "len": 186,
    "fnv": "9a40869a",
@@ -3756,6 +3840,12 @@
    "len": 3090,
    "fnv": "6c13e8c7",
    "version": 40
+  },
+  {
+   "name": "MONOLITH D",
+   "len": 3090,
+   "fnv": "9166b690",
+   "version": 41
   },
   {
    "name": "NES ARP LEAD",
@@ -4064,6 +4154,12 @@
    "version": 40
   },
   {
+   "name": "ORACLE V",
+   "len": 1303,
+   "fnv": "b06721d3",
+   "version": 41
+  },
+  {
    "name": "ORGAN",
    "len": 268,
    "fnv": "acb41837",
@@ -4260,6 +4356,12 @@
    "len": 2803,
    "fnv": "2bf17e16",
    "version": 40
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2803,
+   "fnv": "7534d41b",
+   "version": 41
   },
   {
    "name": "PHASE BASS",
@@ -4524,6 +4626,12 @@
    "len": 449,
    "fnv": "ca6e157b",
    "version": 40
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 449,
+   "fnv": "3d54fb82",
+   "version": 41
   },
   {
    "name": "PULSE LEAD",
@@ -4946,6 +5054,12 @@
    "version": 40
   },
   {
+   "name": "SALLEN 20",
+   "len": 2572,
+   "fnv": "010e8045",
+   "version": 41
+  },
+  {
    "name": "SCROUNGE",
    "len": 2953,
    "fnv": "7b2b7345",
@@ -5022,6 +5136,12 @@
    "len": 3215,
    "fnv": "10869403",
    "version": 40
+  },
+  {
+   "name": "SCROUNGE",
+   "len": 3215,
+   "fnv": "1377e616",
+   "version": 41
   },
   {
    "name": "SILVER BOX",
@@ -5210,6 +5330,18 @@
    "version": 40
   },
   {
+   "name": "SILVER BOX",
+   "len": 937,
+   "fnv": "2b48c3e6",
+   "version": 41
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 1021,
+   "fnv": "e772700e",
+   "version": 41
+  },
+  {
    "name": "SIMPLE FM",
    "len": 372,
    "fnv": "2e844979",
@@ -5352,6 +5484,12 @@
    "len": 758,
    "fnv": "7cc4a8ca",
    "version": 40
+  },
+  {
+   "name": "SIMPLE FM",
+   "len": 758,
+   "fnv": "09540f3d",
+   "version": 41
   },
   {
    "name": "SIREN",
@@ -5658,6 +5796,12 @@
    "len": 3568,
    "fnv": "e18327a7",
    "version": 40
+  },
+  {
+   "name": "SPOKES 6",
+   "len": 3568,
+   "fnv": "3e6f2438",
+   "version": 41
   },
   {
    "name": "SQUARE LEAD",
@@ -6542,6 +6686,12 @@
    "version": 40
   },
   {
+   "name": "VERNON 100",
+   "len": 3838,
+   "fnv": "fdc27ca4",
+   "version": 41
+  },
+  {
    "name": "VIBRATO LEAD",
    "len": 228,
    "fnv": "92e5bfbf",
@@ -6822,6 +6972,12 @@
    "len": 3824,
    "fnv": "269f4eb7",
    "version": 40
+  },
+  {
+   "name": "WANDERER",
+   "len": 3824,
+   "fnv": "4b1194a0",
+   "version": 41
   },
   {
    "name": "WARM PAD",

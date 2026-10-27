@@ -148,7 +148,7 @@ export function runCost(m: ModuleInst, t: TypeCost, inputs: Set<string>, outputs
 
 /** modules whose output may move every sample (a noisy or audio-rate signal; a glide, an envelope or a Random walk while it
  * moves, which can be all the time: a slow or modulated glide is, and the estimate is a worst case) */
-const MOVERS = new Set(['osc', 'pd', 'noise', 'wavetable', 'string', 'grain', 'glide', 'adsr', 'env', 'env8', 'random']);
+const MOVERS = new Set(['osc', 'pd', 'noise', 'wavetable', 'string', 'grain', 'glide', 'adsr', 'env', 'env8', 'rateenv', 'random']);
 
 /** outputs that need the same work as the first output (TypeCost.firstOff): the filter's mix is made from its lp24 */
 const FIRST_ALSO: Record<string, string[]> = { filter: ['mix'] };

@@ -156,7 +156,7 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
 
 describe('syncsWith', () => {
   const info = (features: number) => ({ version: 1, maxModules: 64, maxCables: 128, flashOk: true, patchLoaded: true, delays: 4, features, midiOut: null });
-  it('holds back firmware that does not report support for patch format 41: it refuses every patch the editor sends', () => {
+  it('holds back firmware that does not report support for current patch format: it refuses every patch the editor sends', () => {
     expect(syncsWith(info(246 | (63 << 8)))).toBe(false); // unreleased format 37 builds
     expect(syncsWith(info(246 | (127 << 8)))).toBe(false); // unreleased format 38 builds
     expect(syncsWith(info(54))).toBe(false);    // 1.0.0
@@ -186,7 +186,7 @@ describe('syncsWith', () => {
     expect(syncUpdateNotice(newFirmware).message).toContain('editor is older');
   });
   it('holds back legacy format 39 firmware, but not an FM-1 unheard from yet', () => {
-    expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 is not format 41
+    expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 predates the current writer
     expect(syncsWith(null)).toBe(true);
   });
 });

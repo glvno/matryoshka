@@ -11,6 +11,7 @@
 #include "defs.h"
 #include "dsp_tables.h"
 #include "wt_tables.h"
+#include "rate_envelope.h"
 
 #ifndef ENG_POOL
 #define ENG_POOL
@@ -344,6 +345,7 @@ typedef struct {
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
+        rate_env_t rateenv;
         struct { int32_t v, rk, inc, k; uint32_t t, len; uint8_t stage, prev, cst; } env8;   /* Q30, as env; one step's rates
                                                     * cached (cst: its step, 0 none; rk: the rate they are for): worked out
                                                     * again when the step changes or its rate moves */
@@ -3632,6 +3634,26 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
     it->s.adsr.prev = prev;
 }
 
+/* Original rate controls, with native pedal hold and unbent key pitch for key-rate scaling. */
+static void m_rateenv(const node_t *nd, inst_t *it, uint32_t n)
+{
+    rate_env_t *s = &it->s.rateenv;
+    uint32_t ar = (uint32_t)((EF(it, RATEENV_P_AR) + 32768) >> 16) * 2u;
+    uint32_t d1r = (uint32_t)((EF(it, RATEENV_P_D1R) + 32768) >> 16) * 2u;
+    uint32_t d2r = (uint32_t)((EF(it, RATEENV_P_D2R) + 32768) >> 16) * 2u;
+    uint32_t rr = (uint32_t)((EF(it, RATEENV_P_RR) + 32768) >> 16) * 4u + 2u;
+    uint32_t scaling = (uint32_t)((EF(it, RATEENV_P_KRS) + 32768) >> 16);
+    uint32_t level = 15u - (uint32_t)((EF(it, RATEENV_P_D1L) + 32768) >> 16);
+    uint32_t target = (level == 15u ? 31u : level) * 32u, i;
+    for (i = 0; i < n; i++) {
+        int32_t note = (int32_t)(((int64_t)it->in[RATEENV_I_PITCH][i] * 12 + 60 * 65536 + 32768) >> 16);
+        uint32_t key = (uint32_t)clampi(note < 13 ? 0 : (note - 13) / 3, 0, 31);
+        rate_env_sample(s, ENG_SR * 192u, it->in[RATEENV_I_GATE][i] > 32768,
+                        it->in[RATEENV_I_HOLD][i] > 32768, ar, d1r, target, d2r, rr, key >> (3u - scaling));
+        it->out[0][i] = s->stage && s->att < 1023 ? (esig_t)((EXPN_T[(s->att & 63) * 4] >> 15) >> (s->att >> 6)) : 0;
+    }
+}
+
 static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[VCA_I_IN], *cv = it->in[VCA_I_CV];
@@ -5757,6 +5779,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_SHAPE: m_shape(nd, it, n); break;
     case T_ENV: m_env(nd, it, n); break;
     case T_ENV8: m_env8(nd, it, n); break;
+    case T_RATEENV: m_rateenv(nd, it, n); break;
     case T_STRING: m_string(nd, it, n); break;
     case T_WAVETABLE: m_wavetable(nd, it, n); break;
     case T_PD: m_pd(nd, it, n); break;
@@ -5806,10 +5829,10 @@ static int part_quiet(uint32_t k, uint32_t v)
     for (i = 0; i < E.nmod; i++) {
         const node_t *nd = &E.node[i];
         const inst_t *it;
-        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV && nd->type != T_ENV8))
+        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV && nd->type != T_ENV8 && nd->type != T_RATEENV))
             continue;
         it = &inst_pool[nd->inst0 + v];
-        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : nd->type == T_ENV ? it->s.env.stage != 0 : it->s.env8.stage != 0)
+        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : nd->type == T_ENV ? it->s.env.stage != 0 : nd->type == T_ENV8 ? it->s.env8.stage != 0 : it->s.rateenv.stage != 0)
             return 0;
         envs++;
     }

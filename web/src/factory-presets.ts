@@ -54,9 +54,16 @@ const XL_EXTRA: Record<string, Rule> = {
   Pluck: (r) => (r.type === 'select' && r.label.startsWith('fast ') ? 2 : r.type !== 'env' ? undefined : r.param === 'r1' ? 0.002 : r.param === 'r2' || r.param === 'r3' ? Math.min(0.35, r.value) : r.param === 'l3' ? 0 : r.param === 'r4' ? Math.min(0.3, r.value) : undefined),
   Wet: (r) => (r.type === 'select' && r.label === 'chorus' ? 3 : r.type === 'xfade' && r.label === 'mix' ? Math.min(1, Math.max(0.35, r.value * 1.6)) : r.type === 'macro' && r.label === 'feedback' ? r.value + 0.15 : undefined),
 };
+/** Rate controls run faster as they rise; zero decay must remain a hold when making Long/Tight variations. */
+const RATE_VARIATIONS: Record<string, Rule> = {
+  Pad: (r) => ({ ar: Math.min(10, r.value), d1l: Math.max(14, r.value), d2r: 0, rr: Math.min(4, r.value) })[r.param],
+  Pluck: (r) => ({ ar: 31, d1r: Math.max(18, r.value), d1l: 0, d2r: Math.max(18, r.value), rr: Math.max(10, r.value) })[r.param],
+  Tight: (r) => r.param === 'd1r' || r.param === 'd2r' ? r.value ? r.value + 2 : 0 : undefined,
+  Long: (r) => r.param === 'd1r' || r.param === 'd2r' ? r.value ? Math.max(1, r.value - 2) : 0 : undefined,
+};
 export const XL_RULES: { name: string; rule: Rule }[] = RULES.map(({ name, rule }) => {
   const extra = XL_EXTRA[name];
-  return { name, rule: extra ? (r: Row) => rule(r) ?? extra(r) : rule };
+  return { name, rule: (r: Row) => r.type === 'rateenv' ? RATE_VARIATIONS[name]?.(r) : rule(r) ?? extra?.(r) };
 });
 
 /** a factory engine's presets: Init and every rule that moves at least one row */

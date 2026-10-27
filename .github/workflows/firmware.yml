@@ -24,6 +24,7 @@ on:
       - web/src/engine.ts
       - web/src/fallback.ts
       - web/src/labels.ts
+      - web/src/rate-envelope.ts
       - web/src/modules.ts
       - web/src/parameter-routing.ts
       - web/src/patch.ts
