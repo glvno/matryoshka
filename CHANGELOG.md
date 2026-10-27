@@ -3,6 +3,7 @@
 ## Unreleased
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+- Morph leaves modules without a B side untouched on the FM-1, matching the browser (#355). Format 36 records which modules morph; older bank records retain their playback when loaded and upgraded.
 
 - Random has a `clock` input and a `held` output: each rising edge draws an independent random voltage for that instance, held until the next edge. Existing fixed and wandering outputs keep their sound.
 
