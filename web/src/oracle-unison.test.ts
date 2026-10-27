@@ -17,19 +17,21 @@ it('Oracle V XL keeps five poly voices and applies its chord offsets and detune 
   expect(alloc.params.voices).toBe(5);
   p.cables = p.cables.filter(c => c.to.port !== 'keys');
   connect(p, DEFS, { module: main.id, port: 'keys' }, { module: alloc.id, port: 'keys' });
-  const gates = p.cables.filter(c => c.from.module === alloc.id && c.from.port === 'unison' && c.to.port === 'cv').map(c => c.to.module);
+  const gates = p.cables.filter(c => c.from.module === alloc.id && c.from.port === 'unison' && c.to.port === 'b').map(c => c.to.module);
   expect(gates).toHaveLength(2);
   p.modules.find(m => m.id === detune.module)!.params[detune.param] = 1;
   p.modules.find(m => m.id === chord.module)!.params[chord.param] = .5;
   const e = new Engine(44118); e.load(p);
   const signals = () => {
     e.render(new Float32Array(128 * 5), new Float32Array(128 * 5));
-    return gates.map(id => e.probeVoices(id, 'out')!.map(v => v[0] || 0));
+    return gates.map(id => e.probeVoices(id, 'mul')!.map(v => v[0] || 0));
   };
   e.noteOn(60);
   expect(signals()).toEqual([Array(5).fill(0), Array(5).fill(0)]);
   e.allNotesOff(); e.setParam(alloc.id, 'unison', 1); e.noteOn(60);
-  for (const values of signals()) expect(values.some(v => Math.abs(v) > .01)).toBe(true);
+  const [chords, detunes] = signals();
+  chords.forEach((v, i) => expect(v).toBeCloseTo(i === 1 ? .5 : 0, 6));
+  detunes.forEach((v, i) => expect(v).toBeCloseTo((i / 2 - 1) / 12, 6));
   e.setParam(count.module, count.param, 2);
   expect(e.voiceNotes().filter(v => v.on)).toHaveLength(2);
   e.allNotesOff(); e.setParam(alloc.id, 'unison', 0);

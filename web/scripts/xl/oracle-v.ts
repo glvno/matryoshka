@@ -88,18 +88,18 @@ export const xl: Xl = {
       e.wire(chordPos, 'out', chordMix, 'pos');
       const chordQ = per('quant', 2, 6, { scale: 0, root: 0 });
       e.wire(chordMix, 'out', chordQ, 'in');
-      const chordGate = per('vca', 2.25, 6);
-      e.wire(chordQ, 'out', chordGate, 'in');
-      e.wire(ALLOC, 'unison', chordGate, 'cv');
-      e.wire(chordGate, 'out', GLIDE, 'in');
+      const chordGate = per('math', 2.25, 6, { ka: 1, kb: 1 });
+      e.wire(chordQ, 'out', chordGate, 'a');
+      e.wire(ALLOC, 'unison', chordGate, 'b');
+      e.wire(chordGate, 'mul', GLIDE, 'in');
       // unison detune: the voices spread by their index, semitones
       const detune = e.add('const', 0, 6.5, { value: 0 });
       const spread = per('math', 2, 6.5, { ka: 1, kb: 1 / 12, off: 0 });
       e.wire(ALLOC, 'index', spread, 'a');
       e.wire(detune, 'out', spread, 'b');
-      const uniSpread = per('vca', 2.25, 6.5);
-      e.wire(spread, 'mul', uniSpread, 'in');
-      e.wire(ALLOC, 'unison', uniSpread, 'cv');
+      const uniSpread = per('math', 2.25, 6.5, { ka: 1, kb: 1 });
+      e.wire(spread, 'mul', uniSpread, 'a');
+      e.wire(ALLOC, 'unison', uniSpread, 'b');
       const tune = e.add('const', 0, 7, { value: 0 }); // master tune, semitones
       const tuneOct = e.add('scale', 0.5, 7, { gain: 1 / 12, offset: 0 });
       e.wire(tune, 'out', tuneOct, 'in');
@@ -121,7 +121,7 @@ export const xl: Xl = {
       e.unwire(GLIDE, 'out', OSC_A, 'pitch');
       e.unwire(POLY_ENV, 'out', OSC_A, 'pitch');
       e.wire(GLIDE, 'out', busA, 'in');
-      for (const [s, port] of [[tuneOct, 'out'], [bendAmt, 'out'], [uniSpread, 'out']] as const) {
+      for (const [s, port] of [[tuneOct, 'out'], [bendAmt, 'out'], [uniSpread, 'mul']] as const) {
         e.wire(s, port, busA, 'in');
         e.wire(s, port, busB, 'in');
       }

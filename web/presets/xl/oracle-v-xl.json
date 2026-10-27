@@ -701,11 +701,13 @@
   },
   {
    "id": 28,
-   "type": "vca",
+   "type": "math",
    "x": 740,
    "y": 3420,
    "params": {
-    "gain": 1
+    "ka": 1,
+    "kb": 1,
+    "off": 0
    },
    "att": [
     1,
@@ -713,9 +715,11 @@
    ],
    "map": {
     "p1": [
-     "gain"
+     "ka"
     ],
-    "p2": [],
+    "p2": [
+     "kb"
+    ],
     "k1": [],
     "k2": [],
     "k3": [],
@@ -774,11 +778,13 @@
   },
   {
    "id": 31,
-   "type": "vca",
+   "type": "math",
    "x": 740,
    "y": 3700,
    "params": {
-    "gain": 1
+    "ka": 1,
+    "kb": 1,
+    "off": 0
    },
    "att": [
     1,
@@ -786,9 +792,11 @@
    ],
    "map": {
     "p1": [
-     "gain"
+     "ka"
     ],
-    "p2": [],
+    "p2": [
+     "kb"
+    ],
     "k1": [],
     "k2": [],
     "k3": [],
@@ -2881,7 +2889,7 @@
    },
    "to": {
     "module": 28,
-    "port": "in"
+    "port": "a"
    }
   },
   {
@@ -2891,13 +2899,13 @@
    },
    "to": {
     "module": 28,
-    "port": "cv"
+    "port": "b"
    }
   },
   {
    "from": {
     "module": 28,
-    "port": "out"
+    "port": "mul"
    },
    "to": {
     "module": 7,
@@ -2931,7 +2939,7 @@
    },
    "to": {
     "module": 31,
-    "port": "in"
+    "port": "a"
    }
   },
   {
@@ -2941,7 +2949,7 @@
    },
    "to": {
     "module": 31,
-    "port": "cv"
+    "port": "b"
    }
   },
   {
@@ -3107,7 +3115,7 @@
   {
    "from": {
     "module": 31,
-    "port": "out"
+    "port": "mul"
    },
    "to": {
     "module": 45,
@@ -3117,7 +3125,7 @@
   {
    "from": {
     "module": 31,
-    "port": "out"
+    "port": "mul"
    },
    "to": {
     "module": 46,
@@ -4318,8 +4326,8 @@
     },
     {
      "module": 28,
-     "port": "cv",
-     "label": "cv"
+     "port": "b",
+     "label": "b"
     },
     {
      "module": 30,
@@ -4329,37 +4337,37 @@
     {
      "module": 30,
      "port": "b",
-     "label": "b"
-    },
-    {
-     "module": 31,
-     "port": "cv",
-     "label": "cv 2"
-    },
-    {
-     "module": 36,
-     "port": "b",
      "label": "b 2"
     },
     {
-     "module": 38,
+     "module": 31,
      "port": "b",
      "label": "b 3"
     },
     {
-     "module": 40,
+     "module": 36,
      "port": "b",
      "label": "b 4"
     },
     {
-     "module": 42,
+     "module": 38,
      "port": "b",
      "label": "b 5"
     },
     {
-     "module": 44,
+     "module": 40,
      "port": "b",
      "label": "b 6"
+    },
+    {
+     "module": 42,
+     "port": "b",
+     "label": "b 7"
+    },
+    {
+     "module": 44,
+     "port": "b",
+     "label": "b 8"
     },
     {
      "module": 45,
@@ -4384,7 +4392,7 @@
     {
      "module": 67,
      "port": "b",
-     "label": "b 7"
+     "label": "b 9"
     },
     {
      "module": 68,
