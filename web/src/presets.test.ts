@@ -151,10 +151,10 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // 100 (the ElectroComp 100's) get the arpeggiator alone: with PATTERN, Io 4 passes the CPU estimate's 100 % (it is about
 // 97 % without it) and Vernon 100 the patch bytes
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6'];
-const PAST_WARNING: string[] = ['Io 4'];
+const PAST_WARNING: string[] = ['Briefcase 3', 'Io 4'];
 /** the most a patch past the warning estimates */
-const PAST_MAX: Record<string, number> = { 'Io 4': 1 };
-const ARP_ONLY = ['Io 4', 'Vernon 100', 'Wanderer'];
+const PAST_MAX: Record<string, number> = { 'Io 4': 1, 'Briefcase 3': 0.9 };
+const ARP_ONLY = ['Io 4', 'Vernon 100', 'Wanderer', 'Briefcase 3'];
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
 /** the Arpeggiator alone, no PATTERN (D-336's fallback): Wanderer's switch names (#358) fill the patch bytes PATTERN needs */
 

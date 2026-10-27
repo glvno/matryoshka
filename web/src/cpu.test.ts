@@ -83,6 +83,9 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   // Io 4, Vernon 100: rebuilt after the Jupiter-4's and the ElectroComp 100's panels (#303; est about 97 % and 60 %)
   changed.add('io 4');
   changed.add('vernon 100');
+  // Canvas and Briefcase 3: rebuilt after the Music Easel's and the VCS3's panels (#303; est 76 % and 89 %)
+  changed.add('canvas');
+  changed.add('briefcase 3');
   // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH, Spokes 6, Cassia 1): measure them on the device, then add them to the survey file
   const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6', 'cassia 1']);
   it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(FM1_PRESETS).length));

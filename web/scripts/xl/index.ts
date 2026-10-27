@@ -14,6 +14,8 @@ import { xl as perun4 } from './perun-4';
 import { xl as kit909 } from './909-kit';
 import { xl as spokes6 } from './spokes-6';
 import { xl as wanderer } from './wanderer';
+import { xl as canvas } from './canvas';
+import { xl as briefcase3 } from './briefcase-3';
 
 export const XLS: Xl[] = [
   lire,
@@ -27,4 +29,6 @@ export const XLS: Xl[] = [
   kit909,
   spokes6,
   wanderer,
+  canvas,
+  briefcase3,
 ];
