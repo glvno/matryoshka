@@ -230,6 +230,16 @@ export interface SeqState {
   pattern?: number;
   song?: number;
   songs?: SongEntry[][];
+  /** the editor names the patterns as the TB-303 does (I-A1 .. IV-B8: patternName), not P01 .. P64; editor only, never in
+   * the binary (the FM-1 shows P01 ..) */
+  names?: '303';
+}
+
+/** pattern p (0-based) as the editor names it: P01 .. P64, or the TB-303's I-A1 .. IV-B8 (four groups of two sections of
+ * eight) */
+export function patternName(p: number, names?: '303'): string {
+  if (names !== '303') return `P${String(p + 1).padStart(2, '0')}`;
+  return `${['I', 'II', 'III', 'IV'][Math.floor(p / 16) % 4]}-${Math.floor((p % 16) / 8) ? 'B' : 'A'}${(p % 8) + 1}`;
 }
 
 /** a track's patterns 2.. from anything: null where the track has none (that pattern number plays its pattern 1), trailing
@@ -270,6 +280,7 @@ export function fixSeq(raw: unknown): SeqState | undefined {
     while (songs.length && !songs[songs.length - 1].length) songs.pop();
     if (songs.length) out.songs = songs;
   }
+  if (o.names === '303') out.names = '303';
   return Object.keys(out).length ? out : undefined;
 }
 

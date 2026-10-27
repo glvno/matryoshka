@@ -62,6 +62,9 @@ import {
   TRACK_NAME_MAX,
   DRUM_ROWS,
 } from './patch';
+import { patternStrip, type PatternStrip } from './pattern-strip';
+import { SongView } from './song';
+import type { PatternView } from './engine';
 import { fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepNote } from './track';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, stepPreset, storePreset } from './device-presets';
@@ -727,6 +730,7 @@ export class Editor {
     this.screens = [];
     this.envScreens = [];
     this.stepGrids.clear();
+    this.strips.clear();
     this.parameterDisplays = [];
     this.sliderPorts = [];
     this.lockers = [];
@@ -1067,11 +1071,95 @@ export class Editor {
   /** the Steps modules' grids drawn in this rebuild, by module id */
   private stepGrids = new Map<number, StepGrid>();
 
-  /** where the Steps modules are (Engine.stepsView through the worklet): their grids' playheads and mute switches */
-  showSteps(view: { id: number; pos: number; mute: boolean }[]): void {
+  /** where the Steps modules are (Engine.stepsView through the worklet): their grids' playheads and mute switches; the
+   * pattern each plays and the one it waits for, the song entry (Engine.patternView, #375) */
+  showSteps(view: { id: number; pos: number; mute: boolean }[], pats?: PatternView): void {
     for (const v of view) this.stepGrids.get(v.id)?.show(v.pos, v.mute);
     const r = this.roll && view.find((v) => v.id === this.roll!.id);
     if (r) this.roll!.view.show(r.pos);
+    if (pats) {
+      for (const t of pats.tracks) for (const s of this.strips.get(t.id) ?? []) s.show(t.pat, t.queued);
+      this.songView?.showLive(pats.song, pats.tracks.map((t) => t.entry));
+    }
+  }
+
+  /** the pattern strips drawn (a card's, the roll's), by module id */
+  private strips = new Map<number, PatternStrip[]>();
+  /** a Steps module as its grid and roll see it: its notes, length and rate those of the selected pattern (track.ts
+   * patternOf; one it has not got shows its pattern 1) */
+  private trackView(m: ModuleInst): ModuleInst {
+    const pattern = (): number => this.pattern;
+    return new Proxy(m, {
+      get(t, k, r) {
+        if (k === 'notes') return patternOf(t, pattern()).notes;
+        if (k === 'params') {
+          const v = patternOf(t, pattern());
+          return { ...t.params, len: v.len, rate: v.rate };
+        }
+        return Reflect.get(t, k, r);
+      },
+    });
+  }
+  /** a pattern strip for a Steps module (#375) */
+  private stripFor(id: number): PatternStrip {
+    const m = (): ModuleInst | undefined => this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    const strip = patternStrip({
+      pattern: () => this.pattern,
+      names: () => this.mainSeq()?.names,
+      select: (p) => this.selectPattern(p),
+      used: () => this.usedPatterns(),
+      shape: (p) => {
+        const t = m();
+        if (!t) return { own: true };
+        const x = p > 0 ? t.patterns?.[p - 1] ?? null : null;
+        return { own: p === 0 || !!x, len: x?.len, rate: x?.rate };
+      },
+      setShape: (p, shape) => this.setPatternShape(id, p, shape),
+      clear: (p) => {
+        const t = m();
+        if (!t) return;
+        this.touch();
+        this.setNotes(t, undefined, p);
+        this.stepGrids.get(id)?.refresh();
+        this.refreshStrips();
+      },
+      copy: (from, to) => this.copyPattern(from, to),
+      nextEmpty: () => this.nextEmptyPattern(),
+      song: () => (this.songView ? this.closeSong() : this.openSong()),
+      playing: () => this.song,
+    });
+    const list = this.strips.get(id) ?? [];
+    list.push(strip);
+    this.strips.set(id, list);
+    return strip;
+  }
+  private refreshStrips(): void {
+    for (const list of this.strips.values()) for (const s of list) s.refresh();
+  }
+
+  /** the song drawer (song.ts), over the canvas like the roll */
+  openSong(): void {
+    const host = this.canvas.parentElement;
+    if (!host || this.songView) return;
+    const view = new SongView({
+      songs: () => this.songs(),
+      playing: () => this.song,
+      pattern: () => this.pattern,
+      names: () => this.mainSeq()?.names,
+      setSong: (k, entries) => this.setSong(k, entries),
+      play: (n) => this.selectSong(n),
+      close: () => this.closeSong(),
+    });
+    this.songView = view;
+    host.append(view.el);
+    this.refreshStrips();
+  }
+  closeSong(): void {
+    const v = this.songView as SongView | null;
+    if (!v) return;
+    this.songView = null;
+    v.el.remove();
+    this.refreshStrips();
   }
 
   /** a track edited on the FM-1's SEQ page (its notes as they are now, of pattern `pat`): into the patch and the grid, an
@@ -1161,6 +1249,7 @@ export class Editor {
   private patternShown(): void {
     this.ev.onPattern?.(this.pattern, this.song);
     for (const g of this.stepGrids.values()) g.refresh();
+    this.refreshStrips();
     this.roll?.view.render();
     this.songView?.render();
   }
@@ -1241,7 +1330,7 @@ export class Editor {
     return -1;
   }
   /** the open song drawer (song.ts), if any */
-  songView: { render(): void } | null = null;
+  songView: SongView | null = null;
 
   /** a Steps module's grid follows its length (the len slider) */
   refreshSteps(id: number): void {
@@ -1252,10 +1341,11 @@ export class Editor {
    * (the name is in the binary the FM-1 gets) */
   private stepsRow(m: ModuleInst): StepGrid {
     const index = this.patch.modules.filter((x) => x.type === 'steps').indexOf(m);
-    const grid = stepGrid(m, index, {
+    const grid = stepGrid(this.trackView(m), index, {
       notes: (n) => {
         this.touch(); // a drag across the grid is one gesture: one undo step
         this.setNotes(m, n);
+        this.refreshStrips();
       },
       begin: () => this.beginEdit(),
       name: (s) => {
@@ -1277,6 +1367,7 @@ export class Editor {
     });
     this.stepGrids.set(m.id, grid);
     if (this.roll?.id === m.id) grid.rolled(true);
+    grid.el.insertBefore(this.stripFor(m.id).el, grid.el.children[1] ?? null);   // (the pattern strip under the head, #375)
     return grid;
   }
 
@@ -1404,9 +1495,11 @@ export class Editor {
     const host = this.canvas.parentElement;
     if (!m || !host) return;
     this.closeRoll();
-    const track = (): ModuleInst | null => this.patch.modules.find((x) => x.id === id && x.type === 'steps') ?? null;
+    const found = (): ModuleInst | null => this.patch.modules.find((x) => x.id === id && x.type === 'steps') ?? null;
+    const track = (): ModuleInst | null => { const t = found(); return t && this.trackView(t); };
     const view = new PianoRoll({
       track,
+      strip: () => this.stripFor(id).el,
       label: () => trackLabel(this.patch, id),
       plays: () => this.trackPlays(id),
       drums: () => {
@@ -1414,13 +1507,14 @@ export class Editor {
         return map ? Array.from({ length: DRUM_ROWS }, (_, r) => ({ name: drumRowName(map.names, r), note: Math.round(map.params[`n${r + 1}`] ?? 0) })) : null;
       },
       notes: (n) => {
-        const t = track();
+        const t = found();
         if (!t) return;
         this.setNotes(t, n);
         this.stepGrids.get(id)?.refresh();
+        this.refreshStrips();
       },
       begin: () => this.beginEdit(),
-      len: (n) => this.setParam(id, 'len', n),
+      len: (n) => (this.pattern > 0 ? this.setPatternShape(id, this.pattern, { len: n }) : this.setParam(id, 'len', n)),
       play: (note, vel) => this.ev.onThru?.(id, note, vel),
       arm: (on) => this.toggleArm(`m${id}`, on),
       armed: () => this.armedSet.has(`m${id}`),

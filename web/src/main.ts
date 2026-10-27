@@ -486,7 +486,7 @@ const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host
   limits: (type, name) => { const pd = DEFS[type].params.find((q) => q.name === name)!; return { min: pd.min, max: pd.max, def: pd.default }; },
 });
 host.onEnv = (key, states) => envs.receive(key, states);
-host.onSteps = (view) => editor.showSteps(view);
+host.onSteps = (view, pats) => editor.showSteps(view, pats);
 host.onRecorded = (took) => editor.recorded(took);
 /** the sidebar's sliders whose thumbs are jacks (cable slack, zoom): see sideSlider below; filled once the editor exists */
 const sides = new Map<SideKey, SideSlider>();
@@ -1266,6 +1266,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (k === '/' || (mod && k.toLowerCase() === 'k')) (openPalette(), (done = true));
   else if (k === '?') (help.showModal(), (done = true));
+  else if ((k === '[' || k === ']') && !mod && !e.altKey) (editor.selectPattern(editor.pattern + (k === ']' ? 1 : -1)), (done = true));   // the patch's pattern (#375)
   else if (e.shiftKey && !mod && !e.altKey && k.toLowerCase() === 'r') {   // REC on the armed track (#135)
     if (!editor.toggleRec()) status.textContent = 'Shift+R records on the armed track: ARM a Steps track first';
     done = true;
