@@ -729,9 +729,10 @@ enum {
 #define ALLOC_P_CHANNEL 5
 #define ALLOC_P_LOW 6
 #define ALLOC_P_HIGH 7
+#define ALLOC_P_STEAL 8
 #define ALLOC_NIN 1
 #define ALLOC_NOUT 7
-#define ALLOC_NPAR 8
+#define ALLOC_NPAR 9
 #define ALLOC_CVBASE -1
 #define ALLOC_NDATA 0
 
@@ -934,7 +935,7 @@ static const uint8_t LFO_MULT_DEN[LFO_NMULT] = {1, 1, 1, 1, 2, 4, 8};
 #define POLY_FLAW_DETUNE 50  /* a part's flaws (patch.ts PartFlaw): detune -n..n cents, bright -n..n semitones, env -n..n % */
 #define POLY_FLAW_BRIGHT 24
 #define POLY_FLAW_ENV 50
-static const char *const POLY_ASSIGN_NAME[3] = {"ROTATE", "LOWEST", "REUSE"};
+static const char *const POLY_ASSIGN_NAME[4] = {"ROTATE", "LOWEST", "REUSE", "RESET"};
 static const char *const POLY_LEGATO_NAME[3] = {"AUTO", "OFF", "ON"};
 static const char *const POLY_PRIORITY_NAME[3] = {"LAST", "LOW", "HIGH"};
 
@@ -1333,19 +1334,21 @@ static const char *const RANDOM_UNIT[] = {"", "HZ"};
 static const char *const RANDOM_CH0[] = {"FIXED", "WALK", 0};
 static const char *const *const RANDOM_CH[] = {RANDOM_CH0, 0};
 static const char *const ALLOC_INNAMES[] = {"KEYS"};
-static const int32_t ALLOC_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 0};
-static const int32_t ALLOC_MAX[] = {1048576, 131072, 131072, 131072, 65536, 1048576, 8323072, 8323072};
-static const int32_t ALLOC_DEF[] = {262144, 0, 0, 0, 0, 0, 0, 8323072};
-static const int32_t ALLOC_INC[] = {65536, 65536, 65536, 65536, 65536, 65536, 83231, 83231};
-static const char *const ALLOC_PN[] = {"VOICES", "ASSIGN", "LEGATO", "PRIORITY", "UNISON", "CHANNEL", "LOW", "HIGH"};
-static const uint8_t ALLOC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
-static const char *const ALLOC_UNIT[] = {"", "", "", "", "", "", "", ""};
-static const char *const ALLOC_CH1[] = {"ROTATE", "LOWEST", "REUSE", 0};
+static const int32_t ALLOC_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 0, 0};
+static const int32_t ALLOC_MAX[] = {1048576, 131072, 131072, 131072, 65536, 1048576, 8323072, 8323072, 65536};
+static const int32_t ALLOC_DEF[] = {262144, 0, 0, 0, 0, 0, 0, 8323072, 65536};
+static const int32_t ALLOC_INC[] = {65536, 65536, 65536, 65536, 65536, 65536, 83231, 83231, 65536};
+static const int32_t ALLOC_TOP[] = {1048576, 196608, 131072, 131072, 65536, 1048576, 8323072, 8323072, 65536};
+static const uint8_t ALLOC_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 37};
+static const char *const ALLOC_PN[] = {"VOICES", "ASSIGN", "LEGATO", "PRIORITY", "UNISON", "CHANNEL", "LOW", "HIGH", "STEAL"};
+static const uint8_t ALLOC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+static const char *const ALLOC_UNIT[] = {"", "", "", "", "", "", "", "", ""};
+static const char *const ALLOC_CH1[] = {"ROTATE", "LOWEST", "REUSE", "RESET", 0};
 static const char *const ALLOC_CH2[] = {"AUTO", "OFF", "ON", 0};
 static const char *const ALLOC_CH3[] = {"LAST", "LOW", "HIGH", 0};
 static const char *const ALLOC_CH5[] = {"ALL", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", 0};
 static const char *const ALLOC_CH6[] = {"C-1", "C#-1", "D-1", "D#-1", "E-1", "F-1", "F#-1", "G-1", "G#-1", "A-1", "A#-1", "B-1", "C0", "C#0", "D0", "D#0", "E0", "F0", "F#0", "G0", "G#0", "A0", "A#0", "B0", "C1", "C#1", "D1", "D#1", "E1", "F1", "F#1", "G1", "G#1", "A1", "A#1", "B1", "C2", "C#2", "D2", "D#2", "E2", "F2", "F#2", "G2", "G#2", "A2", "A#2", "B2", "C3", "C#3", "D3", "D#3", "E3", "F3", "F#3", "G3", "G#3", "A3", "A#3", "B3", "C4", "C#4", "D4", "D#4", "E4", "F4", "F#4", "G4", "G#4", "A4", "A#4", "B4", "C5", "C#5", "D5", "D#5", "E5", "F5", "F#5", "G5", "G#5", "A5", "A#5", "B5", "C6", "C#6", "D6", "D#6", "E6", "F6", "F#6", "G6", "G#6", "A6", "A#6", "B6", "C7", "C#7", "D7", "D#7", "E7", "F7", "F#7", "G7", "G#7", "A7", "A#7", "B7", "C8", "C#8", "D8", "D#8", "E8", "F8", "F#8", "G8", "G#8", "A8", "A#8", "B8", "C9", "C#9", "D9", "D#9", "E9", "F9", "F#9", "G9", 0};
-static const char *const *const ALLOC_CH[] = {0, ALLOC_CH1, ALLOC_CH2, ALLOC_CH3, ADSR_CH4, ALLOC_CH5, ALLOC_CH6, ALLOC_CH6};
+static const char *const *const ALLOC_CH[] = {0, ALLOC_CH1, ALLOC_CH2, ALLOC_CH3, ADSR_CH4, ALLOC_CH5, ALLOC_CH6, ALLOC_CH6, ADSR_CH4};
 static const char *const ARP_INNAMES[] = {"KEYS", "CLK", "RATE"};
 static const int32_t ARP_MIN[] = {0, 0, 65536, 6554, 0};
 static const int32_t ARP_MAX[] = {262144, 393216, 262144, 65536, 65536};
@@ -1458,7 +1461,7 @@ static const def_t DEFS[N_TYPES] = {
     {SHIFT_NIN, SHIFT_NOUT, SHIFT_NPAR, 2, SHIFT_CVBASE, 0, SHIFT_NDATA, 3, SHIFT_MIN, SHIFT_MAX, SHIFT_DEF, SHIFT_INC, "FREQ SHIFTER", SHIFT_PN, SHIFT_INNAMES, SHIFT_LOG, SHIFT_UNIT, SHIFT_CH, 0, 0},   /* shift */
     {PART_NIN, PART_NOUT, PART_NPAR, 0, PART_CVBASE, -1, PART_NDATA, 0, 0, 0, 0, 0, "PART", 0, PART_INNAMES, 0, 0, 0, 0, 0},   /* part */
     {RANDOM_NIN, RANDOM_NOUT, RANDOM_NPAR, 0, RANDOM_CVBASE, -1, RANDOM_NDATA, 0, RANDOM_MIN, RANDOM_MAX, RANDOM_DEF, RANDOM_INC, "RANDOM", RANDOM_PN, RANDOM_INNAMES, RANDOM_LOG, RANDOM_UNIT, RANDOM_CH, 0, 0},   /* random */
-    {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 0, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, 0, 0},   /* alloc */
+    {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 0, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, ALLOC_TOP, ALLOC_SINCE},   /* alloc */
     {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, 0, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH, 0, 0},   /* arp */
     {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH, STEPS_TOP, 0},   /* steps */
     {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH, 0, 0},   /* macro */

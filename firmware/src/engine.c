@@ -425,6 +425,8 @@ typedef struct {
 #define ENG_NPV (1 + ENG_MAX_GROUPS * ENG_MAX_PARTS)
 typedef struct {
     uint8_t parts, assign, legato, priority;   /* patch.ts PolyCfg */
+    uint8_t no_steal;               /* format 37: refuse extra polyphonic notes instead of taking a held voice */
+    uint32_t down[4];               /* all 128 held input keys, even if stolen or refused */
     uint8_t unison;                  /* every part plays the one note the priority picks (patch.ts PolyCfg.unison) */
     int8_t detune[ENG_MAX_PARTS];    /* each part's flaws (patch.ts PartFlaw): cents, */
     uint8_t drift[ENG_MAX_PARTS];    /* % of +-20 cents of wander, */
@@ -873,6 +875,7 @@ static void groups_reset(void)
     for (g = 0; g <= E.ngrp; g++) {
         E.grp[g].rot = 0;
         E.grp[g].nheld = 0;
+        E.grp[g].down[0] = E.grp[g].down[1] = E.grp[g].down[2] = E.grp[g].down[3] = 0;
         E.grp[g].pv0 = (uint8_t)pv0;
         pv0 += E.grp[g].parts;
     }
@@ -950,13 +953,14 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < p[3]; i++) {
         const uint8_t *q = p + 8u + ENG_GROUP_REC * i;
         grp_t *g = &E.grp[1u + i];
-        if (q[0] < 1u || q[0] > ENG_MAX_PARTS || q[1] > 2u || (q[2] & 0x7Fu) > 2u || q[3] > 2u)
+        if (!eng_group_valid(q, p[1]))
             return -3;
         g->parts = q[0];
         g->assign = q[1];
         g->legato = q[2] & 0x7Fu;
         g->unison = (q[2] >> 7) && q[0] > 1u;
-        g->priority = q[3];
+        g->priority = q[3] & 0x7Fu;
+        g->no_steal = q[3] >> 7;
         for (v = 0; v < ENG_MAX_PARTS; v++) {
             const uint8_t *f = q + 4u + 5u * v;
             int32_t det = (int8_t)f[0], bri = (int8_t)f[2], env = (int8_t)f[3];
@@ -1409,7 +1413,7 @@ int eng_poly_get(uint32_t g, uint32_t field)
     if (!E.loaded || g >= E.ngrp || field >= ENG_NPOLY)
         return -1;
     x = &E.grp[1u + g];
-    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : x->priority;
+    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison : !x->no_steal;
 }
 
 int eng_module_group(uint32_t module) { return E.loaded && module < E.nmod ? E.node[module].grp : 0; }
@@ -1417,12 +1421,14 @@ int eng_poly_unison(uint32_t g) { return E.loaded && g < E.ngrp ? E.grp[1u + g].
 int eng_poly_set(uint32_t g, uint32_t field, uint32_t v)
 {
     grp_t *x;
-    if (!E.loaded || g >= E.ngrp || field == ENG_POLY_PARTS || field >= ENG_NPOLY || v > 2u)
+    if (!E.loaded || g >= E.ngrp || field == ENG_POLY_PARTS || field == ENG_POLY_UNISON || field >= ENG_NPOLY
+        || v > (field == ENG_POLY_ASSIGN ? 3u : field == ENG_POLY_STEAL ? 1u : 2u))
         return 0;
     x = &E.grp[1u + g];
     if (field == ENG_POLY_ASSIGN) x->assign = (uint8_t)v;
     else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
-    else x->priority = (uint8_t)v;
+    else if (field == ENG_POLY_PRIORITY) x->priority = (uint8_t)v;
+    else x->no_steal = !v;
     return 1;
 }
 
@@ -1734,6 +1740,7 @@ static void held_drop(grp_t *g, uint32_t note)
 static void group_off(grp_t *g, uint32_t note)
 {
     uint32_t i;
+    g->down[note >> 5] &= ~(1u << (note & 31u));
     if (g->parts == 1 || g->unison) {
         held_drop(g, note);
         mono_update(g);
@@ -1758,6 +1765,8 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
 {
     pv_t *vs = &E.pv[g->pv0], *x;
     uint32_t n = g->parts, i;
+    if (g->assign == 3u && !(g->down[0] | g->down[1] | g->down[2] | g->down[3])) g->rot = 0;
+    g->down[note >> 5] |= 1u << (note & 31u);
     for (i = 0; i < n; i++) vs[i].key_trig = 1;
     int v = -1, nfree = 0;
     uint8_t over = 0;                            /* another key is down: this note overlaps it */
@@ -1786,7 +1795,7 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
         if (vs[i].on && vs[i].note == note)
             v = (int)i;
     if (v < 0 && nfree) {
-        if (g->assign == 0) {
+        if (g->assign == 0 || g->assign == 3) {
             for (i = 0; i < n && v < 0; i++)
                 if (!vs[(g->rot + i) % n].on)
                     v = (int)((g->rot + i) % n);
@@ -1805,6 +1814,7 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
                         v = (int)i;
         }
     } else if (v < 0) {
+        if (g->no_steal) return;
         v = 0;
         for (i = 1; i < n; i++)
             if (g->priority == 1 ? vs[i].note > vs[v].note : g->priority == 2 ? vs[i].note < vs[v].note : vs[i].on_stamp < vs[v].on_stamp)
@@ -2255,6 +2265,7 @@ static void keys_off(void)
         if (E.grp[g].src && grp_src(g) != 0u)
             continue;
         E.grp[g].nheld = 0;
+        E.grp[g].down[0] = E.grp[g].down[1] = E.grp[g].down[2] = E.grp[g].down[3] = 0;
         for (v = 0; v < E.grp[g].parts; v++) {
             E.pv[E.grp[g].pv0 + v].on = 0;
             E.pv[E.grp[g].pv0 + v].gate = 0;
@@ -2283,6 +2294,7 @@ static void arp_switched(uint32_t m)
         if (E.grp[g].src != m + 1u)
             continue;
         E.grp[g].nheld = 0;
+        E.grp[g].down[0] = E.grp[g].down[1] = E.grp[g].down[2] = E.grp[g].down[3] = 0;
         for (v = 0; v < E.grp[g].parts; v++) {
             E.pv[E.grp[g].pv0 + v].on = 0;
             E.pv[E.grp[g].pv0 + v].gate = 0;
@@ -2846,8 +2858,10 @@ void eng_all_notes_off(void)
         E.arp[i].cur = -1;
         E.arp[i].running = 0;
     }
-    for (i = 0; i <= E.ngrp; i++)
+    for (i = 0; i <= E.ngrp; i++) {
         E.grp[i].nheld = 0;
+        E.grp[i].down[0] = E.grp[i].down[1] = E.grp[i].down[2] = E.grp[i].down[3] = 0;
+    }
     for (i = 0; i < ENG_NPV; i++) {
         E.pv[i].on = 0;
         E.pv[i].gate = 0;

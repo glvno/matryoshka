@@ -1388,7 +1388,7 @@ describe('polyphony', () => {
     Object.assign(raw.modules.find((m: { id: number }) => m.id === ids.part).params, { voices: 99, assign: 7, legato: -1, priority: 'x' });
     const r = validatePatch(raw, DEFS);
     fixAssemblies(r, DEFS);
-    expect(polyGroups(r)[0].cfg).toEqual({ parts: EDITOR_MAX_PARTS, assign: 2, legato: 0, priority: 0, flaws: [{ detune: 50, drift: 0, bright: 2, env: 0, level: 100 }] });
+    expect(polyGroups(r)[0].cfg).toEqual({ parts: EDITOR_MAX_PARTS, assign: 3, legato: 0, priority: 0, flaws: [{ detune: 50, drift: 0, bright: 2, env: 0, level: 100 }] });
   });
 
   it('two poly assemblies layer: each plays every note on its own parts; a cable out of one sums its parts (at 1 / parts: ungated)', () => {

@@ -370,7 +370,7 @@ export const MAX_MODULES = 64;
 export interface PolyCfg {
   /** 1 .. EDITOR_MAX_PARTS (the FM-1 plays up to MAX_PARTS) */
   parts: number;
-  /** 0 rotate, 1 lowest free, 2 reuse (a free part whose last note was the key) */
+  /** 0 rotate, 1 lowest free, 2 reuse (a free part whose last note was the key), 3 rotate with reset after all keys lift */
   assign: number;
   /** 0 auto (legato with one part; a stolen part restarts its envelopes), 1 off (always restart), 2 on (never) */
   legato: number;
@@ -378,6 +378,8 @@ export interface PolyCfg {
   priority: number;
   /** every part plays the one note the priority picks (several parts only; the browser's engine, not yet the FM-1's) */
   unison?: boolean;
+  /** false: ignore new notes when all polyphonic voices are held; absent: steal by priority */
+  steal?: boolean;
   /**
    * Each part's own flaws, set by hand (an analog polysynth's voice cards are never quite alike): flaws[i] is part i's,
    * a missing entry is FLAW_NONE. Kept for every part number up to EDITOR_MAX_PARTS, so fewer parts and back keeps them.
@@ -450,7 +452,8 @@ export function polyCfg(alloc: ModuleInst, cards: PolyCards = {}): PolyCfg {
     const v = Math.round(Number(alloc.params[k]));
     return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
   };
-  const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 2, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
+  const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 3, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
+  if (!int('steal', 0, 1, 1)) cfg.steal = false;
   if (int('unison', 0, 1, 0) && cfg.parts > 1) cfg.unison = true;
   const ch = int('channel', 0, 16, 0), low = int('low', 0, 127, 0), high = int('high', 0, 127, 127);
   if (ch) cfg.channel = ch;

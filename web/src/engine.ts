@@ -111,6 +111,8 @@ interface Group {
   held: { note: number; vel: number }[];
   /** rotate: the part the next note tries first */
   rot: number;
+  /** all held input keys, including keys whose voices were stolen or refused */
+  down: number[];
   /** where its notes come from: -1 the keys (Main), else the id of the Arpeggiator or Steps module that feeds its allocator */
   src: number;
 }
@@ -138,7 +140,7 @@ const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
 /** g: the poly group's index (its parts' drift seeds), -1 for the shared keyboard */
 const newGroup = (key: string, cfg: PolyCfg, g: number): Group => ({
-  key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0, src: -1,
+  key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0, down: [0, 0, 0, 0], src: -1,
 });
 /** the tempo without a Main module */
 const TEMPO_DEFAULT = 120;
@@ -340,6 +342,7 @@ export class Engine {
     for (const g of this.groups) {
       if (g.src !== a.node.id) continue;
       g.held = [];
+      g.down.fill(0);
       for (const x of g.parts) {
         x.on = false;
         x.gate = 0;
@@ -752,6 +755,7 @@ export class Engine {
     for (const g of [this.kb, ...this.groups]) {
       if (g.src >= 0 && !this.passesMain(this.arpById.get(g.src))) continue;
       g.held = [];
+      g.down.fill(0);
       for (const x of g.parts) {
         x.on = false;
         x.gate = 0;
@@ -785,6 +789,8 @@ export class Engine {
    * key; otherwise the key does not sound). A taken-over part restarts its envelopes unless legato is on.
    */
   private groupOn(g: Group, note: number, velocity: number): void {
+    if (g.cfg.assign === 3 && g.down.every((bits) => bits === 0)) g.rot = 0;
+    g.down[note >>> 5] |= 1 << (note & 31);
     for (const x of g.parts) x.keyTrig = true;
     if (g.parts.length === 1 || g.cfg.unison) {
       g.held = g.held.filter((h) => h.note !== note);
@@ -800,12 +806,13 @@ export class Engine {
       const free = vs.map((x, i) => (x.on ? -1 : i)).filter((i) => i >= 0);
       if (free.length) {
         const mode = g.cfg.assign;
-        if (mode === 0) {
+        if (mode === 0 || mode === 3) {
           for (let k = 0; k < n && v < 0; k++) if (!vs[(g.rot + k) % n].on) v = (g.rot + k) % n;
           g.rot = (v + 1) % n;
         } else if (mode === 1) v = free[0];
         else v = free.find((i) => vs[i].note === note) ?? free.reduce((a, i) => (vs[i].offStamp < vs[a].offStamp ? i : a), free[0]);
       } else {
+        if (g.cfg.steal === false) return;
         const pr = g.cfg.priority;
         v = 0;
         for (let i = 1; i < n; i++) {
@@ -829,6 +836,7 @@ export class Engine {
   }
 
   private groupOff(g: Group, note: number): void {
+    g.down[note >>> 5] &= ~(1 << (note & 31));
     if (g.parts.length === 1 || g.cfg.unison) {
       g.held = g.held.filter((h) => h.note !== note);
       this.monoUpdate(g);
@@ -914,6 +922,7 @@ export class Engine {
     }
     for (const g of [this.kb, ...this.groups]) {
       g.held = [];
+      g.down.fill(0);
       for (const x of g.parts) {
         x.on = false;
         x.gate = 0;
