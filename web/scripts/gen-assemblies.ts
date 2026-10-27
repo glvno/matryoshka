@@ -1412,12 +1412,12 @@ asm('Cassia 1', 'Voices', (b) => {
 // the start, Math subtracts it), ATTACK, RELEASE (an ADSR at full sustain). EG 2: HOLD (a Pulse that keeps the gate up),
 // ATTACK, DECAY, SUSTAIN, RELEASE. The MG: FREQUENCY, WAVEFORM. The patch panel's own sections, as its jacks (the
 // assembly's outputs and inputs, to patch in the browser): the sample and hold (white noise in, clocked by the MG's
-// rectangle, a comparator on its triangle), the noise generator's white and pink outputs, the MVCA (EG 1 normalled to its
+// rectangle), the noise generator's white and pink outputs, the MVCA (EG 1 normalled to its
 // control, its signal input open), EG 1 and EG 2's reverse outputs, the control wheel (Main's mod wheel) and the momentary
 // switch (Main's FX button), KBD CV and trigger, the MG's triangle and rectangle, and INITIAL GAIN into the VCA. Nothing
 // is patched, so they do not change the sound; their outputs meet at the VCO mixer's unused third input, at 0, so they run
 // on the FM-1 too (it leaves out a module nothing audible reads). Left out: the ESP (audio input, a pitch-to-voltage
-// converter: #351), the MG's continuously variable waveform (#351) and the high pass's 6 dB slope (the Multimode filter's
+// converter: #351) and the high pass's 6 dB slope (the Multimode filter's
 // high pass is 12 dB).
 asm('Sallen 20', 'Voices', (b) => {
   const pins = (id: number, p1: string[], p2: string[], att: [number, number]): void => {
@@ -1451,6 +1451,8 @@ asm('Sallen 20', 'Voices', (b) => {
   const hold = b.add('pulse', 4, 3, { time: 0.001 });
   const eg2 = b.add('adsr', 5, 3, { a: 0.005, d: 0.4, s: 0.45, r: 0.3 });
   const mg = b.add('lfo', 6, 3, { wave: 1, rate: 5, depth: 1 });
+  const mgShape = b.add('macro', 7, 3, { value: 0.5 });
+  b.wire(mgShape, 'out', mg, 'shape');
   const amt = (col: number, row: number, gain = 0): number => b.add('scale', col, row, { gain, offset: 0 });
   const egPitch = amt(3, 4);
   const mgPitch = amt(6, 4);
@@ -1492,7 +1494,6 @@ asm('Sallen 20', 'Voices', (b) => {
     b.wire(a, 'out', f, 'cv');
   }
   // the patch panel
-  const rect = b.add('math', 7, 3, { ka: 1, kb: 1, off: 0 });
   const sh = b.add('sh', 8, 3, { mode: 0 });
   const pink = b.add('noise', 0, 5, { level: 1, color: 0.6 });
   const mvca = b.add('vca', 1, 5, { gain: 1 });
@@ -1501,14 +1502,13 @@ asm('Sallen 20', 'Voices', (b) => {
   const wheel = amt(4, 5, 1);
   const sw = amt(5, 5, 1);
   const initGain = b.add('const', 6, 5, { value: 0 });
-  b.wire(mg, 'out', rect, 'a');
   b.wire(nz, 'out', sh, 'in');
-  b.wire(rect, 'cmp', sh, 'clock');
+  b.wire(mg, 'pulse', sh, 'clock');
   b.wire(eg1, 'env', mvca, 'cv');
   b.wire(eg1, 'env', eg1Rev, 'in');
   b.wire(eg2, 'env', eg2Rev, 'in');
   b.wire(initGain, 'out', vca, 'cv');
-  for (const [m, port] of [[rect, 'cmp'], [sh, 'out'], [pink, 'out'], [mvca, 'out'], [eg1Rev, 'out'], [eg2Rev, 'out'], [wheel, 'out'], [sw, 'out']] as const) b.wire(m, port, mix, 'in3');
+  for (const [m, port] of [[mg, 'pulse'], [sh, 'out'], [pink, 'out'], [mvca, 'out'], [eg1Rev, 'out'], [eg2Rev, 'out'], [wheel, 'out'], [sw, 'out']] as const) b.wire(m, port, mix, 'in3');
   b.input('keys', part, 'keys');
   b.input('mvca in', mvca, 'in');
   b.input('wheel', wheel, 'in');
@@ -1523,7 +1523,7 @@ asm('Sallen 20', 'Voices', (b) => {
   b.output('eg2 normal', eg2, 'env');
   b.output('eg2 reverse', eg2Rev, 'out');
   b.output('mg triangle', mg, 'out');
-  b.output('mg rectangle', rect, 'cmp');
+  b.output('mg rectangle', mg, 'pulse');
   b.output('wheel out', wheel, 'out');
   b.output('switch out', sw, 'out');
   b.output('kbd cv', part, 'pitch');
@@ -1560,7 +1560,7 @@ asm('Sallen 20', 'Voices', (b) => {
   b.param('sustain', eg2, 's');
   b.param('release', eg2, 'r');
   b.param('frequency', mg, 'rate', { head: 'mg' });
-  b.param('waveform', mg, 'wave');
+  b.param('waveform', mgShape, 'value');
   b.param('initial gain', initGain, 'value', { head: 'patch panel' });
 });
 namePositions('Sallen 20', {

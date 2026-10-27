@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- LFO adds a shape input and a simultaneous pulse output. Sallen 20's modulation-generator WAVEFORM knob now sweeps continuously from falling saw through triangle to rising saw and changes the pulse width.
+
 - Ladder skips audio-rate checks when its FM input is unpatched. Selectors and gain modules avoid work for constant or unity-gain cases. All 150 audio kits and mode transitions remain bit-identical; CPU estimates distinguish the cheaper fixed gains from other or modulated gains.
 
 - Monolith D has all six waveform positions on each oscillator, including the triangle/saw hybrid and oscillator 3's reverse saw. FILTER MODULATION uses Ladder's audio-rate input.

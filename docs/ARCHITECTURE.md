@@ -950,3 +950,7 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   (`cargo test -- --ignored`); the smoke run needs a JieLi build (CI).
 - Not done: the plain module's labels on the FM-1 are defs.h's short capitals (L1, CVAMT); the device page draws in full
   on focus changes (no partial redraw of the chips); none of it has run on hardware.
+
+### LFO shape
+
+The LFO shape input uses the block average in 0..1 to set its triangle rise time and pulse width. Without a cable it uses 0.5. At the ends its triangle becomes a falling or rising saw. Its appended `pulse` output shares the phase, reset, sync and depth of the main output. Both outputs reverse with `dir`. Sallen 20 exposes this as the modulation generator's continuous WAVEFORM control ([D-436](ledger/modules.md#D-436), Proposed).

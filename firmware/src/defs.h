@@ -112,7 +112,9 @@ enum {
 #define LFO_I_RESET 1
 #define LFO_I_P1 2
 #define LFO_I_P2 3
+#define LFO_I_SHAPE 4
 #define LFO_O_OUT 0
+#define LFO_O_PULSE 1
 #define LFO_P_WAVE 0
 #define LFO_P_RATE 1
 #define LFO_P_DEPTH 2
@@ -123,8 +125,8 @@ enum {
 #define LFO_P_RANGE 7
 #define LFO_P_DIR 8
 #define LFO_P_MULT 9
-#define LFO_NIN 4
-#define LFO_NOUT 1
+#define LFO_NIN 5
+#define LFO_NOUT 2
 #define LFO_NPAR 10
 #define LFO_CVBASE 2
 #define LFO_NDATA 0
@@ -978,7 +980,7 @@ static const char *const OSC_UNIT[] = {"", "", "ST", "CT", "", "", "", "", "CT",
 static const char *const OSC_CH0[] = {"SINE", "TRIANGLE", "SAW", "SQUARE", "SHARKTOOTH", "REVERSE SAW", 0};
 static const char *const OSC_CH10[] = {"OFF", "+OCT", "+5TH", "+OCT+5TH", "-OCT", 0};
 static const char *const *const OSC_CH[] = {OSC_CH0, 0, 0, 0, 0, 0, 0, 0, 0, 0, OSC_CH10};
-static const char *const LFO_INNAMES[] = {"CLK", "RESET", "P1", "P2"};
+static const char *const LFO_INNAMES[] = {"CLK", "RESET", "P1", "P2", "SHAPE"};
 static const int32_t LFO_MIN[] = {0, 1311, 0, 0, 0, 2621440, 0, 0, 0, 0};
 static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 131072, 65536, 393216};
 static const int32_t LFO_DEF[] = {0, 262144, 65536, 0, 393216, 7864320, 0, 0, 0, 196608};
