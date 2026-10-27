@@ -1240,7 +1240,7 @@ kit(
   },
   2,
 );
-// every bank of the wavetable, the position swept by an LFO through p1, one of them phase modulated and synced
+// the original four banks, the position swept by an LFO through p1, one of them phase modulated and synced
 kit('wavetable', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const lfo = add('lfo', 0, 0, { wave: 1, rate: 0.7, depth: 1 });
@@ -1258,6 +1258,20 @@ kit('wavetable', (add, wire) => {
   });
   wire(mix, 'out', out, 'l');
 });
+// EML COLOR in the base and upper mip ranges, plus the octave-up double-saw endpoint.
+for (const mode of ['sweep', 'high', 'double-saw'] as const) {
+  kit(`wavetable-eml-${mode}`, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const w = add('wavetable', 0, 0, { bank: 4, pos: mode === 'double-saw' ? 1 : 0.5, coarse: mode === 'high' ? 24 : -12, level: 0.7 }, { map: { p1: ['pos'] }, att: [0.5, 1] });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', w, 'pitch');
+    if (mode !== 'double-saw') {
+      const sweep = add('lfo', 0, 0, { wave: 1, rate: 0.7, depth: 1 });
+      wire(sweep, 'out', w, 'p1');
+    }
+    wire(w, 'out', out, 'l');
+  });
+}
 // a shared chorus on a two-voice saw pad, l and r to the output
 kit(
   'chorus',
