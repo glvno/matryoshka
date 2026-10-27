@@ -20,7 +20,7 @@
     },
     "targets": {
      "arp": {
-      "module": 18
+      "module": 19
      }
     }
    }
@@ -369,11 +369,11 @@
   },
   {
    "id": 15,
-   "type": "const",
+   "type": "macro",
    "x": 340,
    "y": 1180,
    "params": {
-    "value": 0
+    "value": 0.5
    },
    "att": [
     1,
@@ -392,6 +392,32 @@
   },
   {
    "id": 16,
+   "type": "scale",
+   "x": 340,
+   "y": 1740,
+   "params": {
+    "gain": 0.833343505859375,
+    "offset": -0.4166717529296875
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 17,
    "type": "output",
    "x": 2000,
    "y": 20,
@@ -400,10 +426,10 @@
    }
   },
   {
-   "id": 17,
+   "id": 18,
    "type": "steps",
    "x": 20,
-   "y": 1480,
+   "y": 2040,
    "params": {
     "len": 16,
     "rate": 4,
@@ -438,10 +464,10 @@
    "name": "PATTERN"
   },
   {
-   "id": 18,
+   "id": 19,
    "type": "arp",
    "x": 2000,
-   "y": 1480,
+   "y": 2040,
    "params": {
     "mode": 0,
     "rate": 4,
@@ -466,6 +492,16 @@
   {
    "from": {
     "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 16,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 16,
     "port": "out"
    },
    "to": {
@@ -679,7 +715,7 @@
     "port": "out"
    },
    "to": {
-    "module": 16,
+    "module": 17,
     "port": "l"
    }
   },
@@ -689,7 +725,7 @@
     "port": "out"
    },
    "to": {
-    "module": 16,
+    "module": 17,
     "port": "r"
    }
   },
@@ -699,13 +735,13 @@
     "port": "keys"
    },
    "to": {
-    "module": 17,
+    "module": 18,
     "port": "keys"
    }
   },
   {
    "from": {
-    "module": 18,
+    "module": 19,
     "port": "keys"
    },
    "to": {
@@ -715,11 +751,11 @@
   },
   {
    "from": {
-    "module": 17,
+    "module": 18,
     "port": "keys"
    },
    "to": {
-    "module": 18,
+    "module": 19,
     "port": "keys"
    }
   }
@@ -747,7 +783,8 @@
     12,
     13,
     14,
-    15
+    15,
+    16
    ],
    "inputs": [
     {

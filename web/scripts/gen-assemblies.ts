@@ -1075,9 +1075,10 @@ const namePositions = (asmName: string, names: Record<string, string[]>): void =
 // original's diode, 47 kOhm and 1 uF), to the cutoff. RESONANCE is a Macro that sets the ladder's resonance and the sweep's
 // smoothing at once, as the original's resonance pot has a second gang in the sweep circuit: from 20 ms at 0 (the sweep
 // follows the MEG) to 0.68 s at 10 (99 % of a 147 kOhm x 1 uF charge), so at high resonance consecutive accents build up.
-// The ladder's cvamt is 1: ENV MOD and the accent each have their own amount. TUNING is an Offset into the oscillator's
-// pitch (in octaves): the owner's manual gives the knob ±500 cents (specifications, p. 89), more than the oscillator's fine
-// tune reaches. The sequencer is part of the instrument: a
+// The ladder's cvamt is 1: ENV MOD and the accent each have their own amount. TUNING spans the knob's ±500 cents (the
+// owner's manual, specifications, p. 89), more than the oscillator's fine tune reaches: a Macro (0..1, 0.5 in the middle)
+// through an Attenuverter into the oscillator's pitch, x 54614 / 65536 octaves - 27307 / 65536 (both exact in Q16, so the
+// middle plays exactly 0 in both engines: ±5 semitones to 0.006 cents). The sequencer is part of the instrument: a
 // patch's Steps track is it (a pattern's pitch, accent, slide, tie and rest, octave, triplet time, tempo). Left out:
 // MIX IN (needs audio input), the 64-pattern memory, the tracks that chain patterns with transpose, and song mode (#351).
 asm('Silver Box', 'Voices', (b) => {
@@ -1095,9 +1096,11 @@ asm('Silver Box', 'Voices', (b) => {
   const flt = b.add('ladder', 4, 0, { cutoff: 260, res: 0, cvamt: 1, drive: 1 }, { p1: 'res' });
   const aenv = b.add('adsr', 5, 1, { a: 0.002, d: 2.5, s: 0, r: 0.02 });
   const vca = b.add('vca', 5, 0, { gain: 0.8 }, { p1: 'gain', att: [0.25, 1] });
-  const tune = b.add('const', 1, 2, { value: 0 });
+  const tune = b.add('macro', 1, 2, { value: 0.5 });
+  const tuneSpan = b.add('scale', 1, 3, { gain: 54614 / 65536, offset: -27307 / 65536 }); // 0..1 -> -5..+5 semitones
   b.wire(part, 'pitch', gl, 'in');
-  b.wire(tune, 'out', osc, 'pitch');
+  b.wire(tune, 'out', tuneSpan, 'in');
+  b.wire(tuneSpan, 'out', osc, 'pitch');
   b.wire(part, 'legato', gl, 'p1');
   b.wire(gl, 'out', osc, 'pitch');
   b.wire(part, 'vel', accOn, 'a');

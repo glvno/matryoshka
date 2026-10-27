@@ -2,12 +2,14 @@
 import { expect, it } from 'vitest';
 import { around } from '../scripts/factory-build';
 import { Engine } from './engine';
-import { DEVICE_SR } from './modules';
+import { DEFS, DEVICE_SR } from './modules';
+import { rowDef } from './patch';
 
-/** the fundamental of a held A4 (the Silver Box plays it an octave down) from the upward zero crossings over one second */
+/** the fundamental of a held A4 (the Silver Box plays it an octave down) on the square wave (one clean pair of edges per
+ * cycle: on the saw the filtered edge adds zero crossings), from the upward zero crossings over one second */
 function pitch(tuning: number): number {
   const { p, set } = around('test', 'Silver Box');
-  set('waveform', 0);
+  set('waveform', 3); // square
   set('cut off freq', 5000);
   set('tuning', tuning);
   const e = new Engine(DEVICE_SR);
@@ -32,10 +34,17 @@ function pitch(tuning: number): number {
   return (count * DEVICE_SR) / (lastAt - first);
 }
 
-it('Silver Box TUNING reaches the TB-303 knob\'s ±500 cents', () => {
-  const at0 = pitch(0);
-  expect(at0).toBeGreaterThan(215);
-  expect(at0).toBeLessThan(225);
-  expect(pitch(5 / 12) / at0).toBeCloseTo(2 ** (5 / 12), 2);
-  expect(pitch(-5 / 12) / at0).toBeCloseTo(2 ** (-5 / 12), 2);
+it('Silver Box TUNING spans the TB-303 knob\'s ±500 cents, and no more', () => {
+  const mid = pitch(0.5);
+  expect(mid).toBeGreaterThan(218);
+  expect(mid).toBeLessThan(222);
+  const cents = (f: number): number => 1200 * Math.log2(f / mid);
+  expect(Math.abs(cents(pitch(1)) - 500)).toBeLessThan(3);
+  expect(Math.abs(cents(pitch(0)) + 500)).toBeLessThan(3);
+  // the row's ends are the knob's: the row is a Macro, 0 .. 1, so turning it all the way stops at ±5 semitones
+  const { a, p } = around('test', 'Silver Box');
+  const row = a.params.find((r) => r.label === 'tuning')!;
+  const m = p.modules.find((x) => x.id === row.module)!;
+  const pd = rowDef(DEFS[m.type], row.param)!;
+  expect([pd.min, pd.max, pd.top ?? pd.max, m.params[row.param]]).toEqual([0, 1, 1, 0.5]);
 });

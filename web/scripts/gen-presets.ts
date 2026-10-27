@@ -482,15 +482,18 @@ after.push(() => {
   const def = FACTORY.find((d) => d.name === 'Silver Box')!;
   const a = insertAssembly(p, DEFS, def, 920, 2600);
   // This groove-box test patch is full (3,839 of 3,840 bytes): its TUNING row stays on the oscillator's fine tune (a
-  // semitone either way), the Offset that gives the standalone Silver Box the TB-303's ±500 cents is left out (it plays 0
-  // there, so the sound is the same), and the cutoff row keeps its short name
+  // semitone either way), the Macro and Attenuverter that give the standalone Silver Box the TB-303's ±500 cents are left
+  // out (they play 0 there, so the sound is the same), and the cutoff row keeps its short name
   a.params.find((r) => r.label === 'cut off freq')!.label = 'cutoff';
   const tuning = a.params.find((r) => r.label === 'tuning')!;
-  const offset = tuning.module;
-  tuning.module = p.cables.find((c) => c.from.module === offset)!.to.module;
+  const knob = tuning.module;
+  const span = p.cables.find((c) => c.from.module === knob)!.to.module;
+  tuning.module = p.cables.find((c) => c.from.module === span)!.to.module;
   tuning.param = 'fine';
-  removeModule(p, offset);
-  removeMember(p, a, offset);
+  for (const id of [knob, span]) {
+    removeModule(p, id);
+    removeMember(p, a, id);
+  }
   wire(p, main.id, 'keys', st.id, 'keys');
   plugIn(p, st.id, 'keys', a, 'keys');
   plugOut(p, a, 'out', mix.id, 'in4');
