@@ -3,43 +3,56 @@
 // Sources: Landscape's NOON manual (landscape.fm/s/Noon-Manual-baw6.pdf: power, channels, inputs, CV mute, sliders,
 // volume, link, mod, mute, touch plates, audio input, outputs, pitch, drone, tips) and the instrument's page
 // (landscape.fm/noon: each channel's character words).
-// - The first design the FM-1 could not hold (commit 18ccc6e: it read 85 %): DOT and BACID through Multimodes whose cutoff
-//   the power moves per sample (the FM-1 version: Ladders, once per block), CYMPATH a three-voice cluster (one oscillator's
-//   three detuned copies) instead of one narrow square.
-// - The gate's voltage: a NOON channel runs on the voltage its gate input brings ("powered and controlled directly from
-//   its respective gate input"), so a higher gate is more power. The key's velocity (a Steps note's: the pattern's
-//   accents) scales the channel's power by `gate v` (0: every gate the same, 1: power = envelope x velocity).
-// - Each channel's MOD button ("change the behavior and sound of each circuit": two modes), as a crossfade from the
-//   circuit to its second mode: DOT the filter pinged (band pass), DUAL its sine through a pinged filter, SYS phased, PLAST
-//   static (crushed), CYMPATH the cluster uncrushed (scream), CYRINX folded (rough), LARYNX folded (squeal), BACID the
-//   filter's band pass (acidic). Which second mode each circuit has is our reading of the channel's words.
-// - The eight mute buttons (`on`, 1 = button down): after the gate input (not the odd / even CV, which has its own
-//   buttons), so a muted channel still takes CV and a link still shares a neighbour's power into it.
-// - The odd and even CV inputs (the `odd cv` / `even cv` knobs, and the assembly's inputs of those names for a cable),
-//   each channel through its CV mute button; CV alone powers a channel (the drone).
-// - LINK as voltage sharing: the seven buttons between neighbours share both ways, the two at the ends wrap around one
-//   way each (`8>1`: channel 8's power into 1, `1>8`: 1's into 8). Linked, a powered channel partly powers an unpowered one.
-// - CYMPATH's voltage starving: its pitch slider also sets its loudness (lower is lower and quieter).
-// - The touch plates. A finger across a channel's pair passes voltage by how much skin (`touch`) and how hard it presses
-//   (`press`, plus the keyboard's aftertouch from Main's `at`): each touched channel's power goes onto a shared bus, and
-//   the bus comes back into every touched channel through the skin (a slow random wobble on the bus: moisture). So one
-//   finger modulates its own channel, fingers on several channels send modulation between them (and partly power an
-//   unpowered one), and short trigs give little to share, as the manual says. `left plate` is a finger on the left-side
-//   plates: the incoming CVs and gates go onto the bus too (the drone patch: left plate spanned with a bottom plate).
-// - The audio input, fed from inside: each channel's `to in` sends its output into the audio input (the manual's internal
-//   processing, a channel's output patched back into the input), as does the assembly's `audio` input for a cable from
-//   any other module. The DOT/DUAL link button opens it, and it feeds DUAL through a drive: a filter-distortion-VCA that
-//   DUAL's power plays.
-// - The individual outputs as the assembly's outputs `1`..`8` (each channel before the main mix), and each channel's
-//   `to main` (0 takes it out of the main outputs, as plugging its individual output does).
-// - The passive mix: the odd / even CVs and outputs bleed into each other (`bleed`, a little by default), and `mono` puts
-//   all eight channels on both sides (the NOON with only its top main output plugged).
-// Kept as on the FM-1 version: the eight channels on the white keys from F3, their two tone sliders and volume, odd to
-// the left and even to the right, the main volume (driving the mix into compression, the passive mix's), the 16-step
-// pattern. Not here: the external audio input from outside the browser (a module that reads the computer's audio input
-// would be needed: an Audio in, with a block of samples from the browser's input in the browser engine and from the
-// FM-1's ADC in the firmware), the jacks themselves (the gate and CV inputs come from the keys, the knobs and cables
-// inside the patch; the individual outputs reach other modules, not a mixer).
+//
+// The card has the NOON's 58 controls, one row each; a button is a row of named positions (a Selector):
+//  - per channel (DOT, DUAL, SYS, PLAST, CYMPATH, CYRINX, LARYNX, BACID), as "Sliders" lists them: `main` (the main
+//    pitch / tone / texture slider), `secondary` (the secondary one), `volume`; then its MOD button (`mod`: up, down),
+//    its mute button (`mute`: mute, on) and its CV mute button (`cv mute`: mute, on). Each channel's own card shows the
+//    same six;
+//  - the nine LINK buttons (off, on): `1-2` (the DOT/DUAL button, which also opens the audio input) .. `7-8`, and the
+//    two at the ends, `8>1` and `1>8`;
+//  - the main volume (`main volume`).
+// Plus the Scope's screen (`out`), a display, not a control.
+//
+// How each part is built (none of this is on the card; its values stay set in the patch):
+//  - the first design the FM-1 could not hold (commit 18ccc6e: it read 85 %): DOT and BACID through Multimodes whose
+//    cutoff the power moves per sample (the FM-1 version: Ladders, once per block), CYMPATH a three-voice cluster (one
+//    oscillator's three detuned copies) instead of one narrow square;
+//  - the gate's voltage: a NOON channel runs on the voltage its gate input brings ("powered and controlled directly from
+//    its respective gate input"), so a higher gate is more power. The key's velocity (a Steps note's: the pattern's
+//    accents) scales the channel's power (by 0.5: a Macro, 0 = every gate the same, 1 = power = envelope x velocity);
+//  - each MOD button switches the circuit to its second mode: DOT the filter pinged (band pass), DUAL its sine through
+//    a pinged filter, SYS phased, PLAST static (crushed), CYMPATH the cluster uncrushed (scream), CYRINX folded
+//    (rough), LARYNX folded (squeal), BACID the filter's band pass (acidic). Which second mode each circuit has is our
+//    reading of the channel's words; up is the first mode;
+//  - the mute buttons sit after the gate input (not the odd / even CV, which has its own buttons), so a muted channel
+//    still takes CV and a link still shares a neighbour's power into it;
+//  - LINK as voltage sharing: the seven buttons between neighbours share both ways, the two at the ends wrap around one
+//    way each (`8>1`: channel 8's power into 1, `1>8`: 1's into 8). Linked, a powered channel partly powers an unpowered
+//    one;
+//  - CYMPATH's voltage starving: its main slider also sets its loudness (lower is lower and quieter);
+//  - the passive mix: the odd / even CVs and outputs bleed into each other a little (a Macro, 0.05).
+//
+// The patch points, as the assembly's ports (a cable is the NOON's interface for each):
+//  - the gate inputs are the keys (the eight channels on the white keys from F3, played by the PATTERN track);
+//  - the odd and even CV inputs are the inputs `odd cv` and `even cv`, each channel through its CV mute button; CV
+//    alone powers a channel (the drone). A Macro inside the assembly for each (0) stands for a fixed voltage;
+//  - the external audio input is the input `audio`, opened by the DOT/DUAL link button, into DUAL through a drive. The
+//    manual's internal processing (a channel's individual output patched back into the audio input) is a cable from
+//    the assembly's output `1`..`8` to its own input `audio`;
+//  - the individual outputs are the outputs `1`..`8` (each channel before the main mix); `l` and `r` are the two main
+//    outputs, odd channels left and even right.
+// The touch plates: the keyboard's aftertouch is a finger across every channel's pair of plates and the left-side
+// plates at once. A touched channel's power goes onto a shared bus, and the bus comes back into every touched channel
+// through the skin (a slow random wobble on the bus: moisture), so channels send modulation between them and partly
+// power an unpowered one, and short trigs give little to share, as the manual says. How much skin each channel has is
+// an Attenuverter inside the assembly (1 each); the assembly's input `touch` takes a cable as the pressure too.
+//
+// Not here, and why (D-347's reasons): the NOON takes a channel out of the main outputs when its individual output is
+// plugged, and sends all eight channels to the top main output when the bottom one is unplugged; the engines cannot
+// tell that a port has a cable, so a Mixer level per channel (1) and a mono Macro (0) inside the assembly stand for
+// those plugs. Audio from outside the browser into the audio input needs a module that reads the computer's audio input
+// (an Audio in, in both engines). The jacks themselves, the passive circuit's skin and moisture response: hardware.
 import { addModule, paramUnit } from '../../src/patch';
 import { DEFS } from '../../src/modules';
 import { level, players, wire } from '../factory-build';
@@ -71,6 +84,12 @@ interface Ch {
   touch: number;
 }
 
+/** a two-position button as a Selector's table: position 1 plays 0, position 2 plays 1 */
+const OFF_ON = { count: 2, v1: 0, v2: 1 };
+/** the names of the buttons' positions by row label */
+const NAMES: Record<string, string[]> = { mod: ['up', 'down'], mute: ['mute', 'on'], 'cv mute': ['mute', 'on'] };
+const LINK_NAMES = ['off', 'on'];
+
 function build(e: Def): void {
   const map = e.add('drummap', 0, 0, Object.fromEntries(ROW_KEYS.map((n, r) => [`n${r + 1}`, n])));
   e.module(map).names = ['DOT', 'DUAL', 'SYS', 'PLAST', 'CYMPATH', 'CYRINX', 'LARYNX', 'BACID'];
@@ -93,7 +112,7 @@ function build(e: Def): void {
   // the gate's voltage: each channel's power is its envelope x (1 - gate v + gate v x velocity)
   const gateV = e.add('macro', 0, 5, { value: 0.5 });
   // the touch plates: pressure (press + aftertouch), the shared bus with the skin's wobble, the left-side plates
-  const press = e.add('macro', 0, 5.5, { value: 0.5 });
+  const press = e.add('macro', 0, 5.5, { value: 0 });
   const pressure = e.add('scale', 0, 6, { gain: 1, offset: 0 });
   e.wire(press, 'out', pressure, 'in');
   const skin = e.add('random', 0, 6.5, { mode: 1, rate: 7 });
@@ -114,7 +133,7 @@ function build(e: Def): void {
   e.wire(busV, 'out', touchIn, 'in');
   e.wire(leftV, 'out', touchIn, 'in');
   // the DOT/DUAL link button: it also opens the audio input
-  const dotDual = e.add('macro', 1, 6, { value: 0 });
+  const dotDual = e.add('select', 1, 6, OFF_ON);
   // the audio input: the channels' sends and the assembly's `audio`, opened by the DOT/DUAL link button
   const ain = e.add('scale', 0, 10.5, { gain: 1, offset: 0 });
   const sendA = e.add('mixer', 0, 11.5, { l1: 0, l2: 0, l3: 0, l4: 0 });
@@ -164,12 +183,12 @@ function build(e: Def): void {
     const col = 1 + i;
     const env = e.add('adsr', col, 0, adsr);
     const gv = e.add('math', col, 0.25, { ka: 0, kb: 1, off: 1 }); // the gate's voltage: (velocity x ka + off) x envelope
-    const mute = e.add('scale', col, 0.4, { gain: 1, offset: 0 }); // the mute button, after the gate input
+    const mute = e.add('select', col, 0.4, { count: 2, pos: 2 }); // the mute button (mute, on), after the gate input
     const pw = e.add('scale', col, 0.5, { gain: 1, offset: 0 });
     // what reaches the circuit: its own power, the links' and the touch plates'
     const node = e.add('scale', col, 0.75, { gain: 1, offset: 0 });
     const vca = e.add('vca', col, 4, { gain: 0.8 });
-    const mod = e.add('xfade', col, 3.5, { mix: 0 });
+    const mod = e.add('select', col, 3.5, { count: 2 }); // the MOD button: the circuit's two modes
     e.wire(map, `g${i + 1}`, env, 'gate');
     e.wire(map, `v${i + 1}`, gv, 'a');
     e.wire(env, 'env', gv, 'b');
@@ -177,14 +196,14 @@ function build(e: Def): void {
     e.wire(gateV, 'out', gv, 'p2');
     e.pin(gv, 'p1', 'ka', [paramUnit(KA, 0), paramUnit(KA, 1)]);
     e.pin(gv, 'p2', 'off', [paramUnit(OFF, 1), paramUnit(OFF, 0)]);
-    e.wire(gv, 'mul', mute, 'in');
+    e.wire(gv, 'mul', mute, 'in2');
     e.wire(mute, 'out', pw, 'in');
     e.wire(map, `g${i + 1}`, leftSrc, 'in'); // (the gate inputs themselves, before the channel)
     e.wire(pw, 'out', node, 'in');
     const c = f(col, node);
-    e.wire(c.a[0], c.a[1], mod, 'a');
-    if (c.also) e.wire(c.also[0], c.also[1], mod, 'a');
-    e.wire(c.b[0], c.b[1], mod, 'b');
+    e.wire(c.a[0], c.a[1], mod, 'in1');
+    if (c.also) e.wire(c.also[0], c.also[1], mod, 'in1');
+    e.wire(c.b[0], c.b[1], mod, 'in2');
     if (c.post) {
       e.wire(mod, 'out', c.post, 'in');
       e.wire(c.post, 'out', vca, 'in');
@@ -192,7 +211,7 @@ function build(e: Def): void {
     const power: [number, string][] = [[vca, 'cv'], ...c.power];
     for (const [m, port] of power) e.wire(node, 'out', m, port);
     // the touch plates: how much skin (`touch`) x pressure; the channel's power onto the bus, the bus back into the channel
-    const touch = e.add('scale', col, 4.5, { gain: 0, offset: 0 });
+    const touch = e.add('scale', col, 4.5, { gain: 1, offset: 0 });
     const tOut = e.add('vca', col, 4.75, { gain: 1 });
     const tIn = e.add('vca', col, 5, { gain: 1 });
     e.wire(pressure, 'out', touch, 'in');
@@ -207,7 +226,7 @@ function build(e: Def): void {
     e.wire(vca, 'out', i % 2 === 0 ? oddSum : evenSum, `in${(i >> 1) + 1}`);
     return {
       name, env, vca, mod, pw, mute, touch, s1: c.s1, s2: c.s2, power: [[node, 'in']],
-      members: [env, gv, mute, pw, node, ...c.members, mod, ...(c.post ? [c.post] : []), vca],
+      members: [env, mute, pw, node, ...c.members, mod, ...(c.post ? [c.post] : []), vca],
     };
   };
   const chs: Ch[] = [
@@ -312,16 +331,25 @@ function build(e: Def): void {
   e.pin(links[0], 'p1', 'gain', [paramUnit(GAIN, 0), paramUnit(GAIN, 1)]);
   // the CV inputs, each channel through its CV mute button, into its power
   const cvMutes = chs.map((c, i) => {
-    const m = e.add('scale', 1 + i, 0.6, { gain: 1, offset: 0 });
-    e.wire(i % 2 === 0 ? oddBus : evenBus, 'out', m, 'in');
+    const m = e.add('select', 1 + i, 0.6, { count: 2, pos: 2 }); // the CV mute button (mute, on)
+    e.wire(i % 2 === 0 ? oddBus : evenBus, 'out', m, 'in2');
     e.wire(m, 'out', c.pw, 'in');
     return m;
   });
+  // the other eight link buttons (off, on): each sets its link's gain to 0 or 1
+  const buttons = links.slice(1).map((l, i) => {
+    const sw = e.add('select', 2 + i, 6.75, OFF_ON);
+    e.wire(sw, 'out', l, 'p1');
+    e.pin(l, 'p1', 'gain', [paramUnit(GAIN, 0), paramUnit(GAIN, 1)]);
+    return sw;
+  });
+  // the left-side plates: the keyboard's aftertouch presses them too
+  e.wire(pressure, 'out', leftV, 'cv');
   e.wire(main, 'out', L, 'p1');
   e.wire(main, 'out', R, 'p1');
   e.wire(Lo, 'out', scope, 'a');
   e.wire(Ro, 'out', scope, 'b');
-  chs.forEach((c, i) => e.nest(`${i + 1} ${c.name}`, 1 + i, 0, c.members, { inputs: [['gate', c.env, 'gate'], ['power', c.power[0][0], 'in']], outputs: [['out', c.vca, 'out']] }));
+  chs.forEach((c, i) => e.nest(`${i + 1} ${c.name}`, 1 + i, 0, [...c.members, cvMutes[i]], { inputs: [['gate', c.env, 'gate'], ['power', c.power[0][0], 'in']], outputs: [['out', c.vca, 'out']] }));
   e.input('keys', map, 'keys');
   e.input('odd cv', oddBus, 'in', [xe, 'in']);
   e.input('even cv', evenBus, 'in', [xo, 'in']);
@@ -330,33 +358,32 @@ function build(e: Def): void {
   e.output('l', Lo, 'out');
   e.output('r', Ro, 'out');
   chs.forEach((c, i) => e.output(`${i + 1}`, c.vca, 'out'));
+  // the card: the NOON's controls, one row each (the manual's "Sliders", "Volume controls", "Link buttons", "Mod
+  // buttons", "Mute buttons" and "CV mute buttons")
   chs.forEach((c, i) => {
-    e.param(c.s1[2], c.s1[0], c.s1[1], { head: `${i + 1} ${c.name}`, ...(i % 4 === 0 ? { col: true } : {}) });
-    e.param(c.s2[2], c.s2[0], c.s2[1]);
-    e.param('vol', c.vca, 'gain');
-    e.param('mod', c.mod, 'mix');
-    e.param('on', c.mute, 'gain');
-    e.param('touch', c.touch, 'gain');
-    e.param('to in', i < 4 ? sendA : sendB, `l${(i % 4) + 1}`);
-    e.param('to main', i % 2 === 0 ? oddSum : evenSum, `l${(i >> 1) + 1}`);
+    e.param('main', c.s1[0], c.s1[1], { head: `${i + 1} ${c.name}`, ...(i % 4 === 0 ? { col: true } : {}) });
+    e.param('secondary', c.s2[0], c.s2[1]);
+    e.param('volume', c.vca, 'gain');
+    e.param('mod', c.mod, 'pos');
+    e.param('mute', c.mute, 'pos');
+    e.param('cv mute', cvMutes[i], 'pos');
   });
-  links.forEach((l, i) => (i ? e.param(i < 7 ? `${i + 1}-${i + 2}` : i === 7 ? '8>1' : '1>8', l, 'gain') : e.param('1-2', dotDual, 'value', { col: true, head: 'link' })));
-  e.param('odd cv', odd, 'value', { col: true, head: 'cv' });
-  e.param('even cv', even, 'value');
-  cvMutes.forEach((m, i) => e.param(`${i + 1} cv`, m, 'gain', i === 0 ? { head: 'cv mute' } : {}));
-  e.param('gate v', gateV, 'value', { col: true, head: 'gates' });
-  e.param('press', press, 'value', { head: 'touch plates' });
-  e.param('left plate', left, 'value');
-  e.param('main', main, 'value', { head: 'out' });
-  e.param('bleed', bleed, 'value');
-  e.param('mono', mono, 'value');
+  e.param('1-2', dotDual, 'pos', { col: true, head: 'link' });
+  buttons.forEach((sw, i) => e.param(i < 6 ? `${i + 2}-${i + 3}` : i === 6 ? '8>1' : '1>8', sw, 'pos'));
+  e.param('main volume', main, 'value', { head: 'out' });
   e.param('out', scope, 'view', { col: true });
 }
 
 export const xl: Xl = {
   base: 'Meridian 8',
   build: (fm1) => {
-    const x = around('Meridian 8', define('Meridian 8', build));
+    const built = define('Meridian 8', build);
+    for (const list of [built.def.params, ...(built.def.assemblies ?? []).map((n) => n.params)])
+      for (const r of list) {
+        const names = NAMES[r.label] ?? (/^(\d-\d|\d>\d)$/.test(r.label) ? LINK_NAMES : undefined);
+        if (names) r.names = names;
+      }
+    const x = around('Meridian 8', built);
     const p = x.p;
     // the pattern on a Steps track, as the FM-1 version (gen-presets.ts `sequenced`): Main's keys into PATTERN, PATTERN into
     // the channels; its notes and the tempo are the FM-1 version's
@@ -381,4 +408,4 @@ export const xl: Xl = {
 };
 
 const NOTES =
-  'The Landscape NOON, after its manual: eight channels with MOD, mute and CV mute buttons, velocity as the gate’s voltage (gate v), odd / even CV (drones), nine LINK buttons, CYMPATH’s voltage starving, the touch plates (touch, press, aftertouch, left plate), the audio input fed by the channels’ `to in` or a cable (the 1-2 link opens it), individual outputs, the passive mix’s bleed, mono. Not here: audio from outside the browser.';
+  'The Landscape NOON, after its manual. The card is its 58 controls: per channel main, secondary, volume, MOD, mute and CV mute; nine LINK buttons; the main volume. Patch points are ports: odd / even cv, audio (opened by the 1-2 link; patch an output 1..8 into it for internal processing), outputs 1..8, l, r. Aftertouch presses all touch plates. Not here: audio from outside the browser; plug-sensing outputs (a level and a mono Macro inside stand in).';
