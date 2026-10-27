@@ -2065,133 +2065,432 @@ asm('Briefcase 3', 'Voices', (b) => {
   b.param('out', scope, 'view');
 });
 
-// Io 4, a four-voice polysynth after the Roland Jupiter-4: the keys go into the Voice allocator, which plays four
-// voice cards. A card: one oscillator (saw, square or pulse; its width follows the LFO by `pwm`), the resonant 24 dB
-// low pass (a ladder, key tracked) and the one ADSR that sweeps the filter by `env` and shapes the level, as the
-// original's single envelope. Once: the LFO (into the oscillators' fine tune by `lfo → pitch`, the cutoffs by
-// `lfo → filter`, the widths by `pwm`), the non-resonant high pass after the voices and the ensemble (our chorus).
+// Io 4, a four-voice polysynth after the Roland Jupiter-4, from its owner's manual ("JP-4 OWNER'S MANUAL '82 AUG.": the
+// panel drawings, the functions of the components and the specifications). The card is the JP-4's panel, one row per
+// slider, knob or switch, under its section names; a switch is a Selector row (1, 2, .. in the panel's order) until
+// Selectors name their positions (#358).
+// A voice (four, as the JP-4's four modules): the VCO (WAVE FORM: 1 OFF, 2 SAW, 3 SQUARE, 4 PULSE; RANGE 1 16', 2 8',
+// 3 4'; SUB, a square one octave down, 1 off, 2 on; MOD, the LFO into the pitch), the pulse width (PW 1..4 = 50, 40, 20,
+// 10 %; PW MODE 1 MANUAL: that width, 2 MOD: the LFO swings the width from 50 % down to it), NOISE (1 off, 2 on) into the
+// resonant 24 dB low pass (a ladder: LPF CUTOFF, RES; KYBD FOLLOW 1..4 = 10, 40, 70, 100 %; MOD, the LFO; ENV MOD and
+// POLARITY 1 normal, 2 inverted, of the VCF's own ADSR), then the VCA with its own ADSR and LEVEL. The manual's
+// specifications list two envelope generators, "for the VCF, VCA", and its panel drawing shows an A D S R set in each
+// section. Once for all voices: the LFO (WAVE FORM 1 sine, 2 square, 3 saw, 4 reverse saw; RATE), the non-resonant HPF
+// (after the voices: one cutoff for all, so the same filter), the ensemble (our chorus, 1 off, 2 on).
+// The modifier section: TRIGGER (RATE clocks the noise sample & hold into the cutoffs, VCF MOD its depth, and the
+// arpeggio: the `arp clock` output, which the factory patch plugs into its Arpeggiator); DELAY / BEND (DELAY TIME, the
+// LFO's fade-in after a key from no key held; LFO BEND offsets the LFO rate, NORM / WIDE its reach, 1 normal 1 octave,
+// 2 wide 4 octaves: the manual gives no figures); the lever: the FM-1's pitch bend is the lever's BEND, its mod wheel the
+// lever's LFO depth, LFO MOD (the depth at full wheel) and BEND SENS (the reach: VCO 1 octave, VCF 2 octaves, VCA about
+// one unit of gain), with the three switches 1 LFO, 2 OFF, 3 BEND for VCO, VCF and VCA (the part's own 2-semitone bend is
+// taken back out of the keys); PORTAMENTO (time; switch 1 off, 2 on: a slew per voice, each voice gliding from its own last
+// note); TRANSPOSE (1 normal, 2 one octave down); TUNING (+-50 cents: 0.04 octave). The KEY ASSIGNMENT MODE is two rows
+// of the Voice allocator: `assign` rotate is POLY I, lowest POLY II; `unison` on is UNISON I (all four voices on the
+// lowest key held). HOLD (1 off, 2 on): a voice whose key is let go keeps its gate while its VCA envelope still sounds.
+// Not here: UNISON II (one key four voices, two keys two each, three or four one each) needs a Voice allocator mode that
+// shares the voices among the held keys (#351). EXT CLOCK, the VCF CONT, EXP and DAMPER pedals, the memories and VOLUME
+// (the patch's level) are hardware or storage. The LFO's rate reaches 40 Hz (the JP-4's 80 Hz).
+import { BEND_OCT } from '../src/modules';
+/** Io 4 and Vernon 100 have many small modules: lay them all out on the grid in the order they were added, eight a row */
+const gridAll = (b: B): void => {
+  for (let id = 1; ; id++) {
+    let m: ModuleInst;
+    try {
+      m = b.module(id);
+    } catch {
+      return;
+    }
+    m.x = ((id - 1) % 8) * GX;
+    m.y = Math.floor((id - 1) / 8) * GY;
+  }
+};
 asm('Io 4', 'Voices', (b) => {
-  const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 4.5, depth: 1 });
-  const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
-  const pwm = b.add('scale', 0, 2, { gain: 0.25, offset: 0 });
-  const lflt = b.add('scale', 0, 3, { gain: 0, offset: 0 });
-  const part = b.add('alloc', 1, 3, { voices: 4 });
-  const osc = b.add('osc', 2, 0, { wave: 3, level: 0.6, pw: 0.4 }, { p1: 'fine', p2: 'pw' });
-  const flt = b.add('ladder', 3, 0, { cutoff: 1800, res: 0.25, cvamt: 2, track: 1 });
-  const env = b.add('adsr', 3, 1, { a: 0.02, d: 0.6, s: 0.55, r: 0.6 });
-  const vca = b.add('vca', 4, 0, { gain: 1 });
-  const hpf = b.add('filter', 5, 0, { cutoff: 30, res: 0 });
-  const ch = b.add('chorus', 6, 0, { rate: 0.6, depth: 0.5, mix: 0.45 });
-  const scope = b.add('scope', 7, 0, { time: 16 });
-  b.nest('voice', 2, 2, [osc, flt, env, vca], {
+  // ---- the keys
+  const part = b.add('alloc', 1, 4, { voices: 4, assign: 0, priority: 1, unison: 0 });
+  const held = b.add('alloc', 0, 4, { voices: 1, legato: 2 }); // high while any key is held: the LFO delay's gate
+  const transSel = b.add('select', 0, 5, { count: 2, pos: 1, v1: 0, v2: -1 });
+  const keyOffs = b.add('math', 0.5, 5, { ka: -BEND_OCT, kb: 1, off: 0 }); // the bend taken back out, plus the transpose
+  b.wire(transSel, 'out', keyOffs, 'b');
+  const portaSel = b.add('select', 0, 6, { count: 2, pos: 1, v1: -1, v2: 0 }); // 1 off: the slew's time at its 1 ms floor
+  const holdSel = b.add('select', 0, 6.5, { count: 2, pos: 1, v1: -4, v2: 0.4999 });
+  // ---- the LFO: wave (the reverse saw is the saw times -1), rate and its bend, the delay
+  const lfo = b.add('lfo', 0, 0, { wave: 0, rate: 4.5, depth: 1 }, { p1: 'rate', p2: 'wave' });
+  const lfoWave = b.add('select', 0, 0.5, { count: 4, pos: 1, v1: 0, v2: 0.75, v3: 0.5, v4: 0.5 }); // x 4: wave 0 3 2 2
+  b.wire(lfoWave, 'out', lfo, 'p2');
+  const lfoSig = b.add('math', 0.5, 0.5, { ka: -2, kb: 1, off: 1 }); // (1 - 2 x rev saw) x the LFO
+  b.wire(lfoWave, 'g4', lfoSig, 'a');
+  b.wire(lfo, 'out', lfoSig, 'b');
+  const bendSel = b.add('select', 0, 1, { count: 2, pos: 1, v1: 1 / Math.log2(2000), v2: 4 / Math.log2(2000) }); // octaves of the rate's span
+  const lfoBend = b.add('scale', 0.5, 1, { gain: 0, offset: 0 }); // LFO BEND: -1 .. 1 the reach down or up
+  b.wire(bendSel, 'out', lfoBend, 'in');
+  b.wire(lfoBend, 'out', lfo, 'p1');
+  const delayEnv = b.add('adsr', 0, 1.5, { a: 0.001, d: 0.001, s: 1, r: 8 });
+  b.wire(held, 'gate', delayEnv, 'gate');
+  const delayed = b.add('vca', 0.5, 1.5, { gain: 1 });
+  b.wire(lfoSig, 'mul', delayed, 'in');
+  b.wire(delayEnv, 'env', delayed, 'cv');
+  const vib = b.add('scale', 0, 2, { gain: 0, offset: 0 });
+  b.wire(delayed, 'out', vib, 'in');
+  const lflt = b.add('scale', 0.5, 2, { gain: 0, offset: 0 });
+  b.wire(delayed, 'out', lflt, 'in');
+  // ---- the VCO's switches, once for all voices
+  const waveSel = b.add('select', 1, 0, { count: 4, pos: 4, v1: 0, v2: 1, v3: 1, v4: 1 }); // the oscillator's level: 0 on OFF
+  const pwStep = b.add('select', 1, 0.5, { count: 4, pos: 2, v1: 0, v2: 0.1 / 0.9, v3: 0.3 / 0.9, v4: 0.4 / 0.9 });
+  const pwMode = b.add('select', 1, 1, { count: 2, pos: 2, v1: 1, v2: 0 }); // MANUAL: 1, MOD: the LFO
+  b.wire(delayed, 'out', pwMode, 'in2');
+  const pwDepth = b.add('math', 1.5, 1, { ka: 0.5, kb: 1, off: 0.5 }); // the step's width below 50 %, x 1 or x (1 + LFO) / 2
+  b.wire(pwMode, 'out', pwDepth, 'a');
+  b.wire(pwStep, 'out', pwDepth, 'b');
+  const waveKind = b.add('select', 1.5, 0, { count: 2, pos: 1, v1: 0, v2: 1 / 3 }); // SQUARE or PULSE: x 3 into the wave, saw 2 -> square 3
+  b.wire(waveSel, 'g3', waveKind, 'pos');
+  b.wire(waveSel, 'g4', waveKind, 'pos');
+  const pulseOn = b.add('select', 1, 1.5, { count: 2, pos: 1 }); // the width only on PULSE (its gate moves this to 2)
+  b.wire(waveSel, 'g4', pulseOn, 'pos');
+  b.wire(pwDepth, 'mul', pulseOn, 'in2');
+  const subSel = b.add('select', 1, 2, { count: 2, pos: 1, v1: 0, v2: 1 });
+  const rangeSel = b.add('select', 1, 2.5, { count: 3, pos: 2, v1: -1, v2: 0, v3: 1 });
+  const vcoMod = b.add('scale', 1.5, 2.5, { gain: 1, offset: 0 }); // RANGE, MOD, the lever; `offset` is TUNING
+  b.wire(rangeSel, 'out', vcoMod, 'in');
+  b.wire(vib, 'out', vcoMod, 'in');
+  const nz = b.add('noise', 1, 3, { level: 0.5 });
+  const noiseSel = b.add('select', 1.5, 3, { count: 2, pos: 1 });
+  b.wire(nz, 'out', noiseSel, 'in2');
+  // ---- the VCF's switches
+  const kybdSel = b.add('select', 1, 3.5, { count: 4, pos: 4, v1: 0.1 / 8, v2: 0.4 / 8, v3: 0.7 / 8, v4: 1 / 8 }); // x 8: the gain's span
+  const polSel = b.add('select', 1.5, 3.5, { count: 2, pos: 1, v1: 0, v2: -2 / 8 });
+  // ---- the trigger: a square clock, the noise sampled on it into the cutoffs
+  const trig = b.add('lfo', 2, 4, { wave: 3, rate: 6, depth: 1 });
+  const trigSh = b.add('sh', 2.5, 4, { mode: 0 });
+  b.wire(nz, 'out', trigSh, 'in');
+  b.wire(trig, 'out', trigSh, 'clock');
+  const trigAmt = b.add('scale', 3, 4, { gain: 0, offset: 0 });
+  b.wire(trigSh, 'out', trigAmt, 'in');
+  const fsum = b.add('scale', 3.5, 4, { gain: 2, offset: 0 }); // the cutoffs' shared modulation, 2 octaves a unit
+  b.wire(lflt, 'out', fsum, 'in');
+  b.wire(trigAmt, 'out', fsum, 'in');
+  // ---- the lever: its LFO (the mod wheel's depth) or its BEND, for VCO, VCF and VCA
+  const leverLfo = b.add('vca', 2, 5, { gain: 0.1 });
+  b.wire(lfoSig, 'mul', leverLfo, 'in');
+  const bendSens = b.add('scale', 2.5, 5, { gain: 2 / 12, offset: 0 });
+  const lever = [0, 1, 2].map((k) => {
+    const s = b.add('select', 3 + k * 0.5, 5, { count: 3, pos: k === 0 ? 3 : 2 });
+    b.wire(leverLfo, 'out', s, 'in1');
+    b.wire(bendSens, 'out', s, 'in3');
+    return s;
+  });
+  const [leverVco, leverVcf, leverVca] = lever;
+  b.wire(leverVco, 'out', vcoMod, 'in');
+  b.wire(leverVcf, 'out', fsum, 'in');
+  // ---- a voice
+  const glide = b.add('glide', 2, 0, { time: 0.15, curve: 0 }, { p1: 'time' });
+  const osc = b.add('osc', 3, 0, { wave: 2, level: 0.6, pw: 0.5 }, { p1: 'wave', p2: 'pw', att: [1, -1] });
+  const sub = b.add('osc', 3, 0.5, { wave: 3, level: 0, coarse: -12 }, { p1: 'level', att: [0.5, 1] });
+  const waveVca = b.add('vca', 3.5, 0, { gain: 1 });
+  const flt = b.add('ladder', 4, 0, { cutoff: 1800, res: 0.25, cvamt: 2, track: 0 }, { p2: 'cutoff', att: [1, 1 / Math.log2(800)] }); // p2: 1 octave a unit
+  const envF = b.add('adsr', 4, 1, { a: 0.02, d: 0.6, s: 0.55, r: 0.6 });
+  const polarity = b.add('scale', 4.5, 1, { gain: 1, offset: 0 }, { p1: 'gain' });
+  const kybd = b.add('scale', 4.5, 0.5, { gain: 0, offset: 0 }, { p1: 'gain' });
+  const envA = b.add('adsr', 5, 1, { a: 0.02, d: 0.6, s: 0.8, r: 0.6 });
+  const vca = b.add('vca', 5, 0, { gain: 1 });
+  const hold = b.add('logic', 5.5, 1, { thresh: 0.5 });
+  b.nest('voice', 2, 2, [glide, osc, sub, waveVca, flt, envF, polarity, kybd, envA, vca, hold], {
     flaws: [{ detune: 3, drift: 25, bright: 1, env: 2, level: 100 }, { detune: -4, drift: 30, bright: -1, env: -3, level: 98 }, { detune: 2, drift: 20, bright: 0, env: 4, level: 100 }, { detune: -2, drift: 28, bright: 2, env: -2, level: 97 }],
   });
-  b.wire(part, 'pitch', osc, 'pitch');
-  b.wire(part, 'gate', env, 'gate');
-  b.wire(osc, 'out', flt, 'in');
-  b.wire(env, 'env', flt, 'cv');
+  b.wire(part, 'pitch', glide, 'in');
+  b.wire(keyOffs, 'add', glide, 'in');
+  b.wire(portaSel, 'out', glide, 'p1');
+  for (const o of [osc, sub]) {
+    b.wire(glide, 'out', o, 'pitch');
+    b.wire(vcoMod, 'out', o, 'pitch');
+  }
+  b.wire(waveKind, 'out', osc, 'p1');
+  b.wire(pulseOn, 'out', osc, 'p2');
+  b.wire(subSel, 'out', sub, 'p1');
+  b.wire(osc, 'out', waveVca, 'in');
+  b.wire(waveSel, 'out', waveVca, 'cv');
+  b.wire(waveVca, 'out', flt, 'in');
+  b.wire(sub, 'out', flt, 'in');
+  b.wire(noiseSel, 'out', flt, 'in');
+  b.wire(envF, 'env', polarity, 'in');
+  b.wire(polSel, 'out', polarity, 'p1');
+  b.wire(polarity, 'out', flt, 'cv');
+  b.wire(glide, 'out', kybd, 'in');
+  b.wire(kybdSel, 'out', kybd, 'p1');
+  b.wire(kybd, 'out', flt, 'p2');
+  b.wire(fsum, 'out', flt, 'p2');
+  b.wire(part, 'gate', hold, 'a');
+  b.wire(holdSel, 'out', hold, 'b');
+  b.wire(envA, 'env', hold, 'b');
+  b.wire(hold, 'or', envF, 'gate');
+  b.wire(hold, 'or', envA, 'gate');
   b.wire(flt, 'lp24', vca, 'in');
-  b.wire(env, 'env', vca, 'cv');
-  b.wire(lfo, 'out', vib, 'in');
-  b.wire(lfo, 'out', pwm, 'in');
-  b.wire(lfo, 'out', lflt, 'in');
-  b.wire(vib, 'out', osc, 'p1');
-  b.wire(pwm, 'out', osc, 'p2');
-  b.wire(lflt, 'out', flt, 'cv');
-  b.wire(vca, 'out', hpf, 'in');
-  b.wire(hpf, 'hp', ch, 'in');
+  b.wire(envA, 'env', vca, 'cv');
+  // ---- once: the HPF, the ensemble
+  const hpf = b.add('filter', 6, 0, { cutoff: 40, res: 0 });
+  const ens = b.add('chorus', 7, 0, { rate: 0.6, depth: 0.5, mix: 0 }, { p1: 'mix' });
+  const ensSel = b.add('select', 7, 1, { count: 2, pos: 2, v1: 0, v2: 0.45 });
+  b.wire(ensSel, 'out', ens, 'p1');
+  const scope = b.add('scope', 8, 0, { time: 16 });
+  const leverGain = b.add('scale', 5.5, 3, { gain: 0.5, offset: 1 }); // 1 + the lever's VCA (about one unit of gain at full)
+  b.wire(leverVca, 'out', leverGain, 'in');
+  const allVca = b.add('vca', 5.5, 2.5, { gain: 1 });
+  b.wire(vca, 'out', allVca, 'in');
+  b.wire(leverGain, 'out', allVca, 'cv');
+  b.wire(allVca, 'out', hpf, 'in');
+  b.wire(hpf, 'hp', ens, 'in');
   b.wire(hpf, 'hp', scope, 'a');
-  b.input('keys', part, 'keys');
-  b.nestInput('pitch', osc, 'pitch');
-  b.nestInput('gate', env, 'gate');
-  b.nestInput('lfo', osc, 'p1');
-  b.nestInput('pwm', osc, 'p2');
-  b.output('l', ch, 'l');
-  b.output('r', ch, 'r');
+  b.input('keys', part, 'keys', [held, 'keys']);
+  b.input('bend', keyOffs, 'a', [bendSens, 'in']);
+  b.input('wheel', leverLfo, 'cv');
+  b.nestInput('pitch', glide, 'in');
+  b.nestInput('gate', hold, 'a');
+  b.output('l', ens, 'l');
+  b.output('r', ens, 'r');
+  b.output('arp clock', trig, 'out');
   b.nestOutput('out', vca, 'out');
-  b.param('voices', part, 'voices', { head: 'voice' });
-  b.param('lfo rate', lfo, 'rate', { head: 'lfo' });
-  b.param('lfo wave', lfo, 'wave');
-  b.param('lfo → pitch', vib, 'gain');
-  b.param('pwm', pwm, 'gain');
-  b.param('lfo → filter', lflt, 'gain');
-  b.param('wave', osc, 'wave', { head: 'vco' });
-  b.param('pw', osc, 'pw');
-  b.param('hpf', hpf, 'cutoff', { col: true, head: 'filters' });
-  b.param('cutoff', flt, 'cutoff');
+  // ---- the card: the JP-4's panel
+  b.param('range', rangeSel, 'pos', { head: 'vco' });
+  b.param('sub', subSel, 'pos');
+  b.param('mod', vib, 'gain');
+  b.param('pw mode', pwMode, 'pos');
+  b.param('pw', pwStep, 'pos');
+  b.param('wave form', waveSel, 'pos');
+  b.param('noise', noiseSel, 'pos', { head: 'noise' });
+  b.param('hpf cutoff', hpf, 'cutoff', { col: true, head: 'vcf' });
+  b.param('lpf cutoff', flt, 'cutoff');
   b.param('res', flt, 'res');
-  b.param('env', flt, 'cvamt');
-  b.param('kybd', flt, 'track');
-  b.param('envelope', env, 'view', { col: true, head: 'env' });
-  for (const q of ['a', 'd', 's', 'r']) b.param(q, env, q);
-  b.param('ensemble rate', ch, 'rate', { head: 'ensemble' });
-  b.param('ensemble depth', ch, 'depth');
-  b.param('ensemble mix', ch, 'mix');
+  b.param('kybd follow', kybdSel, 'pos');
+  b.param('mod', lflt, 'gain');
+  b.param('env mod', flt, 'cvamt');
+  b.param('polarity', polSel, 'pos');
+  b.param('vcf env', envF, 'view', { group: true });
+  for (const q of ['a', 'd', 's', 'r']) b.param(q, envF, q);
+  b.param('vca env', envA, 'view', { col: true, head: 'vca' });
+  for (const q of ['a', 'd', 's', 'r']) b.param(q, envA, q);
+  b.param('level', vca, 'gain');
+  b.param('wave form', lfoWave, 'pos', { head: 'lfo' });
+  b.param('rate', lfo, 'rate');
+  b.param('rate', trig, 'rate', { col: true, head: 'trigger' });
+  b.param('vcf mod', trigAmt, 'gain');
+  b.param('delay time', delayEnv, 'a', { head: 'delay / bend' });
+  b.param('lfo bend', lfoBend, 'gain');
+  b.param('norm / wide', bendSel, 'pos');
+  b.param('bend sens', bendSens, 'gain', { head: 'bend / mod' });
+  b.param('lfo mod', leverLfo, 'gain');
+  b.param('vco', leverVco, 'pos');
+  b.param('vcf', leverVcf, 'pos');
+  b.param('vca', leverVca, 'pos');
+  b.param('portamento', glide, 'time', { col: true, head: 'portamento' });
+  b.param('porta switch', portaSel, 'pos');
+  b.param('transpose', transSel, 'pos', { head: 'keys' });
+  b.param('tuning', vcoMod, 'offset');
+  b.param('assign', part, 'assign');
+  b.param('unison', part, 'unison');
+  b.param('hold', holdSel, 'pos');
+  b.param('ensemble', ensSel, 'pos');
   b.param('out', scope, 'view');
+  gridAll(b);
 });
 
-// Vernon 100, a duophonic synth after the EML ElectroComp 100 (made in Vernon, Connecticut): four oscillators, one
-// of them the LFO; the keys go into the Voice allocator, which plays two voice cards (the two notes the keyboard
-// sends), a card being one oscillator with a variable pulse width. Once, as on the original: both notes through the
-// one 12 dB multimode filter (`mode` sweeps low pass → band → high pass), two ADS envelopes on the shared gate (one
-// into the cutoff, one shaping the level; the release a short fixed tail), noise, and the sampler (sample & hold: the
-// noise sampled at the LFO's rate, into the cutoff by `s&h → filter`); the LFO also reaches the pitch and the widths.
+// Vernon 100, a duophonic synth after the EML ElectroComp 100 (made in Vernon, Connecticut). After the panel, not a
+// manual: no manual for the 100 was found. The panel (a 100's photos and a redrawn 100 panel) gives the controls; the
+// EML 101's owner's and service manuals give how the controls the two share behave. The card is the 100's panel, one
+// row per knob or switch under its section names; a switch is a Selector row (1, 2, .. in the panel's order) until
+// Selectors name their positions (#358).
+// The keyboard sends two pitches and one gate: KB1 the lowest key held, KB2 the highest (one key: both), the gate high
+// while any key is (one-voice Voice allocators, low and high priority; a key added under a held one does not retrigger).
+// KEYBOARD CONTROL: KEYS/OCT COARSE (fully down 12 keys an octave, up to about 60) and FINE scale both pitches;
+// PORTAMENTO glides both (slews; its knob reaches 5 s).
+// OSCILLATOR 1 (pitch source or control: HI / LO, 1 HI audio, 2 LO a hundred times slower): COLOR 1 falling ramp,
+// 2 ramp, 3 triangle, 4 square, 5 narrow pulse; TUNE; CONTROL MODE 1 OSC 4 / EXT, 2 ENV 1, 3 KB (KB1), CONTROL SENS the
+// depth of the first two. OSCILLATORS 2, 3, 4 (Wavetables on the analog bank: COLOR sweeps sine, triangle, saw, square,
+// narrow pulse; OCTAVE; TUNE): 2 plays KB1, CONTROL MODE 1 KB1, 2 KB1 + MIX; 3 plays KB2, 1 KB2, 2 KB2 + MIX, 3 MIX;
+// 4 1 OSC 3 (oscillator 3's control), 2 MAN (its OCTAVE and TUNE alone), 3 MIX; its OCTAVE 1 LO (sub-audio), -1, 0, +1.
+// MIX is the OSCILLATOR MIXER: two centre-zero knobs, OSC 1 <- 0 -> ENV 1 and OSC 4 / EXT <- 0 -> ENV 2 (one octave at
+// full). The FILTER INPUT MIXER: OSC 2, OSC 3, OSC 4 / EXT, and the noise knob WHITE <- 0 -> PINK. The FILTER: 12 dB
+// state variable, CUT OCTAVE 1 -1, 2 0, 3 +1; TUNE (the cutoff); RESONANCE; MODE 1 LP, 2 BP, 3 HP, 4 BR. FILTER
+// CONTROL: OSC 1 <- 0 -> ENV 1 and OSC 4 / EXT <- 0 -> ENV 2 (four octaves at full), and the key it follows, 1 KB1,
+// 2 KB2 (one octave per octave). ENVELOPES 1 and 2: ATTACK, DECAY, SUSTAIN; the SUSTAIN switch (1 ON, 2 OFF; one for
+// both): on, a released key's envelope falls at its decay time, off at once. The AMPLITUDE SHAPER: its envelope, 1 ENV 1,
+// 2 ENV 2. The OUTPUT MIXER: AMP SHAPER and OSC 3 / EXT (oscillator 3 around the filter and the shaper).
+// A centre-zero knob is a Math (`off`, -1 .. 1): its min and max, times the two sources. Its OSC side reaches the
+// destination with that oscillator's polarity; the panel does not say which way the original's does.
+// Unsure (no 100 manual): whether the filter MODE sweeps between its legends (LP at both ends of the knob suggests it)
+// or switches (here it switches); the COLOR sweep's order (the 101 manual: triangle, sloped square, square, saw, then a
+// pulse an octave up; the Wavetable's analog bank runs sine, triangle, saw, square, narrow pulses); the ranges of TUNE,
+// the mixers' depths and the envelopes; whether a key added under a held one retriggers the gate.
+// Not here: the PREAMP (an external input: the FM-1 has no audio in for a patch, #351), the jacks and multiples
+// (patching: the editor's own cables). The FM-1's pitch bend still bends both keys (2 semitones), as on every patch.
 asm('Vernon 100', 'Voices', (b) => {
-  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5, depth: 1 });
-  const vib = b.add('scale', 0, 1, { gain: 0, offset: 0 });
-  const pwm = b.add('scale', 0, 2, { gain: 0.2, offset: 0 });
-  const nz = b.add('noise', 1, 0, { level: 0 });
-  const sh = b.add('sh', 1, 1, { mode: 0 });
-  const shAmt = b.add('scale', 1, 2, { gain: 0, offset: 0 });
-  const part = b.add('alloc', 0, 3, { voices: 2, assign: 1 });
-  const osc = b.add('osc', 2, 0, { wave: 3, level: 0.5, pw: 0.45 }, { p1: 'fine', p2: 'pw' });
-  const flt = b.add('filter', 3, 0, { cutoff: 1100, res: 0.35, cvamt: 2.2, track: 1, morph: 0.25 });
-  const env1 = b.add('adsr', 3, 1, { a: 0.01, d: 0.5, s: 0.35, r: 0.15 });
-  const env2 = b.add('adsr', 4, 1, { a: 0.005, d: 0.3, s: 0.8, r: 0.15 });
-  const vca = b.add('vca', 4, 0, { gain: 1 });
-  const scope = b.add('scope', 5, 0, { time: 16 });
-  b.nest('voice', 2, 2, [osc], { flaws: [{ detune: 3, drift: 30, bright: 0, env: 0, level: 100 }, { detune: -4, drift: 35, bright: 0, env: 0, level: 97 }] });
-  b.wire(part, 'pitch', osc, 'pitch');
-  b.wire(part, 'gate', env1, 'gate');
-  b.wire(part, 'gate', env2, 'gate');
-  b.wire(osc, 'out', flt, 'in');
-  b.wire(nz, 'out', flt, 'in');
-  b.wire(env1, 'env', flt, 'cv');
-  b.wire(flt, 'mix', vca, 'in');
-  b.wire(env2, 'env', vca, 'cv');
-  b.wire(lfo, 'out', vib, 'in');
-  b.wire(lfo, 'out', pwm, 'in');
-  b.wire(vib, 'out', osc, 'p1');
-  b.wire(pwm, 'out', osc, 'p2');
-  b.wire(nz, 'out', sh, 'in');
-  b.wire(lfo, 'out', sh, 'clock');
-  b.wire(sh, 'out', shAmt, 'in');
-  b.wire(shAmt, 'out', flt, 'cv');
-  b.wire(vca, 'out', scope, 'a');
-  b.input('keys', part, 'keys');
-  b.nestInput('pitch', osc, 'pitch');
-  b.nestInput('lfo', osc, 'p1');
-  b.nestInput('pwm', osc, 'p2');
-  b.output('out', vca, 'out');
-  b.nestOutput('out', osc, 'out');
-  b.param('voices', part, 'voices', { head: 'oscillators' });
-  b.param('wave', osc, 'wave');
-  b.param('width', osc, 'pw');
-  b.param('noise', nz, 'level');
-  b.param('lfo rate', lfo, 'rate', { head: 'lfo / sampler' });
-  b.param('lfo → pitch', vib, 'gain');
-  b.param('lfo → width', pwm, 'gain');
-  b.param('s&h → filter', shAmt, 'gain');
-  b.param('cutoff', flt, 'cutoff', { col: true, head: 'filter' });
-  b.param('res', flt, 'res');
-  b.param('mode', flt, 'morph');
-  b.param('env 1 → filter', flt, 'cvamt');
-  b.param('kbd track', flt, 'track');
-  b.param('env 1', env1, 'view', { col: true, head: 'envelopes' });
-  for (const q of ['a', 'd', 's']) b.param(q, env1, q);
-  b.param('env 2', env2, 'view', { group: true });
-  for (const q of ['a', 'd', 's']) b.param(q, env2, q);
+  // ---- the keyboard: KB1 (lowest), KB2 (highest), the gate; keys / octave; portamento
+  const kb1 = b.add('alloc', 0, 0, { voices: 1, priority: 1, legato: 2 });
+  const kb2 = b.add('alloc', 0, 0.5, { voices: 1, priority: 2, legato: 2 });
+  const keysOct = b.add('math', 0.5, 0, { ka: 0.97, kb: 0.97, off: 0 }); // min = KB1, max = KB2, scaled
+  const m = b.module(keysOct);
+  m.map = { ...m.map!, p1: ['ka', 'kb'], p2: ['ka', 'kb'] };
+  m.att = [-0.1, 0.0075]; // COARSE: x 1 .. x 0.2 (12 .. 60 keys an octave); FINE: +-3 % around its middle
+  b.wire(kb1, 'pitch', keysOct, 'a');
+  b.wire(kb2, 'pitch', keysOct, 'b');
+  const coarse = b.add('macro', 0, 1, { value: 0 });
+  const fine = b.add('macro', 0.5, 1, { value: 0.5 });
+  b.wire(coarse, 'out', keysOct, 'p1');
+  b.wire(fine, 'out', keysOct, 'p2');
+  const porta = b.add('macro', 0, 1.5, { value: 0 });
+  const [g1, g2] = [0, 1].map((k) => {
+    const g = b.add('glide', 1, k * 0.5, { time: 0.001, curve: 0 }, { p1: 'time' });
+    b.wire(porta, 'out', g, 'p1');
+    b.wire(keysOct, k ? 'max' : 'min', g, 'in');
+    return g;
+  });
+  // ---- the envelopes on the one gate; decay (a Macro: decay and, with the sustain switch on, release)
+  const susSel = b.add('select', 0, 3, { count: 2, pos: 1 });
+  const envs = [0, 1].map((k) => {
+    const e = b.add('adsr', 1 + k, 3, { a: k ? 0.005 : 0.01, d: 0.001, s: k ? 0.8 : 0.35, r: 0.001 }, { p1: 'd', p2: 'r', att: [1, Math.log2(5000) / Math.log2(8000)] });
+    b.wire(kb1, 'gate', e, 'gate');
+    const dec = b.add('macro', 1 + k, 3.5, { value: Math.log(k ? 300 : 500) / Math.log(5000) });
+    b.wire(dec, 'out', e, 'p1');
+    const rel = b.add('math', 1.5 + k, 3.5, { ka: 1, kb: 1, off: 0 }); // the decay while the switch is on, else 0
+    b.wire(dec, 'out', rel, 'a');
+    b.wire(susSel, 'g1', rel, 'b');
+    b.wire(rel, 'mul', e, 'p2');
+    return { e, dec };
+  });
+  const [env1, env2] = envs.map((x) => x.e);
+  // ---- a centre-zero knob: `off` in -1 .. 1, the left source times its min (negated), the right one times its max
+  const centre = (col: number, row: number, left: [number, string], right: [number, string], k: number, depth: number): { knob: number; outs: number[] } => {
+    const knob = b.add('math', col, row, { ka: 1, kb: 1, off: k });
+    const l = b.add('math', col + 0.5, row, { ka: depth, kb: -1, off: 0 });
+    b.wire(left[0], left[1], l, 'a');
+    b.wire(knob, 'min', l, 'b');
+    const r = b.add('math', col + 0.5, row + 0.5, { ka: depth, kb: 1, off: 0 });
+    b.wire(right[0], right[1], r, 'a');
+    b.wire(knob, 'max', r, 'b');
+    return { knob, outs: [l, r] };
+  };
+  // ---- oscillator 1: its colour (wave on p1: x 3; the narrow pulse's width on p2; the falling ramp the ramp times -1)
+  const o1 = b.add('osc', 3, 0, { wave: 0, level: 1, pw: 0.5 }, { p1: 'wave', p2: 'pw', att: [1, -0.4 / 0.9] });
+  const color1 = b.add('select', 3, 0.5, { count: 5, pos: 3, v1: 2 / 3, v2: 2 / 3, v3: 1 / 3, v4: 1, v5: 1 });
+  b.wire(color1, 'out', o1, 'p1');
+  b.wire(color1, 'g5', o1, 'p2');
+  const o1sig = b.add('math', 3.5, 0, { ka: -2, kb: 1, off: 1 });
+  b.wire(color1, 'g1', o1sig, 'a');
+  b.wire(o1, 'out', o1sig, 'b');
+  const hilo = b.add('select', 3, 1, { count: 2, pos: 2, v1: -2, v2: -2 - Math.log2(100) });
+  b.wire(hilo, 'out', o1, 'pitch');
+  const ctl1 = b.add('select', 3, 1.5, { count: 3, pos: 2 });
+  const sens1 = b.add('scale', 3.5, 1.5, { gain: 0, offset: 2.9 }); // CONTROL SENS; `offset` is TUNE
+  b.wire(ctl1, 'out', sens1, 'in');
+  b.wire(sens1, 'out', o1, 'pitch');
+  const kb1o1 = b.add('math', 3.5, 1, { ka: 1, kb: 1, off: 0 }); // KB1 in the KB position
+  b.wire(ctl1, 'g3', kb1o1, 'a');
+  b.wire(g1, 'out', kb1o1, 'b');
+  b.wire(kb1o1, 'mul', o1, 'pitch');
+  // ---- oscillators 2, 3, 4
+  const wt = (col: number, pos: number): number => b.add('wavetable', col, 0, { bank: 0, pos, level: 1 });
+  const [w2, w3, w4] = [wt(5, 0.45), wt(6, 0.45), wt(7, 0.3)];
+  b.wire(w4, 'out', ctl1, 'in1');
+  b.wire(env1, 'env', ctl1, 'in2');
+  // the oscillator mixer (MIX)
+  const om1 = centre(4, 2, [o1sig, 'mul'], [env1, 'env'], 0, 1);
+  const om2 = centre(4, 3, [w4, 'out'], [env2, 'env'], 0, 1);
+  const mix = b.add('scale', 5, 2.5, { gain: 1, offset: 0 });
+  for (const o of [...om1.outs, ...om2.outs]) b.wire(o, 'mul', mix, 'in');
+  const osc = (w: number, col: number, count: number, ins: [number, string][][], octs: number[], octPos: number): { ctl: number; oct: number; tune: number } => {
+    const ctl = b.add('select', col, 1, { count, pos: 1 });
+    ins.forEach((srcs, j) => srcs.forEach(([mm, port]) => b.wire(mm, port, ctl, `in${j + 1}`)));
+    const oct = b.add('select', col, 1.5, { count: octs.length, pos: octPos, ...Object.fromEntries(octs.map((v, j) => [`v${j + 1}`, v])) });
+    const tune = b.add('const', col, 2, { value: 0 });
+    for (const s of [ctl, oct, tune]) b.wire(s, 'out', w, 'pitch');
+    return { ctl, oct, tune };
+  };
+  const os2 = osc(w2, 5, 2, [[[g1, 'out']], [[g1, 'out'], [mix, 'out']]], [-1, 0, 1], 2);
+  const os3 = osc(w3, 6, 3, [[[g2, 'out']], [[g2, 'out'], [mix, 'out']], [[mix, 'out']]], [-1, 0, 1], 2);
+  const os4 = osc(w4, 7, 3, [[], [], [[mix, 'out']]], [-7, -1, 0, 1], 3);
+  b.wire(os3.ctl, 'out', os4.ctl, 'in1');
+  b.module(os4.ctl).params.pos = 2;
+  // ---- noise (WHITE <- 0 -> PINK: the level its distance from 0, pink to the right)
+  const nz = b.add('noise', 4, 4, { level: 0, color: 0 }, { p1: 'level', p2: 'color' });
+  const nKnob = b.add('math', 4.5, 4, { ka: 1, kb: 1, off: 0 });
+  b.wire(nKnob, 'abs', nz, 'p1');
+  b.wire(nKnob, 'cmp', nz, 'p2');
+  // ---- the filter input mixer, the filter, its mode, its control
+  const inMix = b.add('mixer', 8, 0, { l1: 0.7, l2: 0.7, l3: 0, l4: 1 });
+  b.wire(w2, 'out', inMix, 'in1');
+  b.wire(w3, 'out', inMix, 'in2');
+  b.wire(w4, 'out', inMix, 'in3');
+  b.wire(nz, 'out', inMix, 'in4');
+  const flt = b.add('filter', 9, 0, { cutoff: 1100, res: 0.35, cvamt: 1, track: 0 });
+  b.wire(inMix, 'out', flt, 'in');
+  const mode = b.add('select', 10, 0, { count: 4, pos: 1, fade: 5 });
+  for (const [j, port] of ['lp12', 'bp', 'hp', 'notch'].entries()) b.wire(flt, port, mode, `in${j + 1}`);
+  const cutOct = b.add('select', 9, 1, { count: 3, pos: 2, v1: -1, v2: 0, v3: 1 });
+  b.wire(cutOct, 'out', flt, 'cv');
+  const fc1 = centre(8, 2, [o1sig, 'mul'], [env1, 'env'], 0.55, 4);
+  const fc2 = centre(8, 3, [w4, 'out'], [env2, 'env'], 0, 4);
+  for (const o of [...fc1.outs, ...fc2.outs]) b.wire(o, 'mul', flt, 'cv');
+  const kbSel = b.add('select', 9, 1.5, { count: 2, pos: 2 });
+  b.wire(g1, 'out', kbSel, 'in1');
+  b.wire(g2, 'out', kbSel, 'in2');
+  b.wire(kbSel, 'out', flt, 'cv');
+  // ---- the amplitude shaper, the output mixer
+  const ampSel = b.add('select', 10, 1, { count: 2, pos: 2 });
+  b.wire(env1, 'env', ampSel, 'in1');
+  b.wire(env2, 'env', ampSel, 'in2');
+  const vca = b.add('vca', 11, 0, { gain: 1 });
+  b.wire(mode, 'out', vca, 'in');
+  b.wire(ampSel, 'out', vca, 'cv');
+  const outMix = b.add('mixer', 12, 0, { l1: 0.8, l2: 0, l3: 0, l4: 0 });
+  b.wire(vca, 'out', outMix, 'in1');
+  b.wire(w3, 'out', outMix, 'in2');
+  const scope = b.add('scope', 13, 0, { time: 16 });
+  b.wire(outMix, 'out', scope, 'a');
+  b.input('keys', kb1, 'keys', [kb2, 'keys']);
+  b.output('out', outMix, 'out');
+  // ---- the card: the 100's panel
+  b.param('color', color1, 'pos', { head: 'oscillator 1' });
+  b.param('tune', sens1, 'offset');
+  b.param('hi / lo', hilo, 'pos');
+  b.param('control sens', sens1, 'gain');
+  b.param('control mode', ctl1, 'pos');
+  b.param('osc 1 / env 1', om1.knob, 'off', { head: 'osc mixer' });
+  b.param('osc 4 / env 2', om2.knob, 'off');
+  b.param('keys/oct crs', coarse, 'value', { head: 'keyboard' });
+  b.param('keys/oct fine', fine, 'value');
+  b.param('portamento', porta, 'value');
+  const oscRows = (n: number, o: { ctl: number; oct: number; tune: number }, w: number): void => {
+    b.param('control mode', o.ctl, 'pos', { col: n === 2, head: `oscillator ${n}` });
+    b.param('octave', o.oct, 'pos');
+    b.param('tune', o.tune, 'value');
+    b.param('color', w, 'pos');
+  };
+  oscRows(2, os2, w2);
+  oscRows(3, os3, w3);
+  oscRows(4, os4, w4);
+  b.param('osc 2', inMix, 'l1', { col: true, head: 'filter input' });
+  b.param('osc 3', inMix, 'l2');
+  b.param('osc 4 / ext', inMix, 'l3');
+  b.param('white / pink', nKnob, 'off');
+  b.param('cut octave', cutOct, 'pos', { head: 'filter' });
+  b.param('tune', flt, 'cutoff');
+  b.param('resonance', flt, 'res');
+  b.param('mode', mode, 'pos');
+  b.param('osc 1 / env 1', fc1.knob, 'off', { head: 'filter control' });
+  b.param('osc 4 / env 2', fc2.knob, 'off');
+  b.param('kb1 / kb2', kbSel, 'pos');
+  b.param('env 1', env1, 'view', { col: true, head: 'envelope 1' });
+  b.param('attack', env1, 'a');
+  b.param('decay', envs[0].dec, 'value');
+  b.param('sustain', env1, 's');
+  b.param('env 2', env2, 'view', { head: 'envelope 2' });
+  b.param('attack', env2, 'a');
+  b.param('decay', envs[1].dec, 'value');
+  b.param('sustain', env2, 's');
+  b.param('sustain on/off', susSel, 'pos');
+  b.param('env 1 / env 2', ampSel, 'pos', { head: 'amplitude shaper' });
+  b.param('amp shaper', outMix, 'l1', { head: 'output mixer' });
+  b.param('osc 3 / ext', outMix, 'l2');
   b.param('out', scope, 'view');
+  gridAll(b);
 });
 
 /** the touch plates' Drum map: the eight rows on the white keys F3..F4, repeated over the keybed (PLATE_KEYS) */

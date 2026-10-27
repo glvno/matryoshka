@@ -20,90 +20,65 @@
     },
     "targets": {
      "arp": {
-      "module": 17
+      "module": 61
      }
     }
    }
   },
   {
    "id": 2,
-   "type": "lfo",
+   "type": "alloc",
    "x": 20,
    "y": 60,
    "params": {
-    "wave": 1,
-    "rate": 5,
-    "depth": 1,
-    "sync": 0,
-    "div": 6,
-    "bpm": 120,
-    "phase": 0,
-    "range": 0,
-    "dir": 0,
-    "mult": 3
-   },
-   "att": [
-    1,
-    1
-   ],
-   "map": {
-    "p1": [
-     "wave"
-    ],
-    "p2": [
-     "rate"
-    ],
-    "k1": [],
-    "k2": [],
-    "k3": [],
-    "k4": []
+    "voices": 1,
+    "assign": 0,
+    "legato": 2,
+    "priority": 1,
+    "unison": 0,
+    "channel": 0,
+    "low": 0,
+    "high": 127
    }
   },
   {
    "id": 3,
-   "type": "scale",
-   "x": 20,
-   "y": 620,
+   "type": "alloc",
+   "x": 340,
+   "y": 60,
    "params": {
-    "gain": 0,
-    "offset": 0
-   },
-   "att": [
-    1,
-    1
-   ],
-   "map": {
-    "p1": [
-     "gain"
-    ],
-    "p2": [
-     "offset"
-    ],
-    "k1": [],
-    "k2": [],
-    "k3": [],
-    "k4": []
+    "voices": 1,
+    "assign": 0,
+    "legato": 2,
+    "priority": 2,
+    "unison": 0,
+    "channel": 0,
+    "low": 0,
+    "high": 127
    }
   },
   {
    "id": 4,
-   "type": "scale",
-   "x": 20,
-   "y": 1180,
+   "type": "math",
+   "x": 660,
+   "y": 60,
    "params": {
-    "gain": 0.2,
-    "offset": 0
+    "ka": 0.97,
+    "kb": 0.97,
+    "off": 0
    },
    "att": [
-    1,
-    1
+    -0.1,
+    0.0075
    ],
    "map": {
     "p1": [
-     "gain"
+     "ka",
+     "kb"
     ],
     "p2": [
-     "offset"
+     "ka",
+     "kb"
     ],
     "k1": [],
     "k2": [],
@@ -113,9 +88,1100 @@
   },
   {
    "id": 5,
+   "type": "macro",
+   "x": 980,
+   "y": 60,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 6,
+   "type": "macro",
+   "x": 1300,
+   "y": 60,
+   "params": {
+    "value": 0.5
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 7,
+   "type": "macro",
+   "x": 1620,
+   "y": 60,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 8,
+   "type": "glide",
+   "x": 1940,
+   "y": 60,
+   "params": {
+    "time": 0.001,
+    "curve": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "time"
+    ],
+    "p2": [
+     "curve"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 9,
+   "type": "glide",
+   "x": 2260,
+   "y": 60,
+   "params": {
+    "time": 0.001,
+    "curve": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "time"
+    ],
+    "p2": [
+     "curve"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 10,
+   "type": "select",
+   "x": 20,
+   "y": 620,
+   "params": {
+    "pos": 1,
+    "count": 2,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 11,
+   "type": "adsr",
+   "x": 340,
+   "y": 620,
+   "params": {
+    "a": 0.01,
+    "d": 0.001,
+    "s": 0.35,
+    "r": 0.001,
+    "long": 0
+   },
+   "att": [
+    1,
+    0.947702978067068
+   ],
+   "map": {
+    "p1": [
+     "d"
+    ],
+    "p2": [
+     "r"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 12,
+   "type": "macro",
+   "x": 660,
+   "y": 620,
+   "params": {
+    "value": 0.7296544716967759
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 13,
+   "type": "math",
+   "x": 980,
+   "y": 620,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 14,
+   "type": "adsr",
+   "x": 1300,
+   "y": 620,
+   "params": {
+    "a": 0.005,
+    "d": 0.001,
+    "s": 0.8,
+    "r": 0.001,
+    "long": 0
+   },
+   "att": [
+    1,
+    0.947702978067068
+   ],
+   "map": {
+    "p1": [
+     "d"
+    ],
+    "p2": [
+     "r"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 15,
+   "type": "macro",
+   "x": 1620,
+   "y": 620,
+   "params": {
+    "value": 0.6696786542783323
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 16,
+   "type": "math",
+   "x": 1940,
+   "y": 620,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 17,
+   "type": "osc",
+   "x": 2260,
+   "y": 620,
+   "params": {
+    "wave": 0,
+    "pw": 0.5,
+    "coarse": 0,
+    "fine": 0,
+    "pm": 0,
+    "level": 1,
+    "fb": 0,
+    "unison": 1,
+    "detune": 10,
+    "blend": 0.5,
+    "stack": 0
+   },
+   "att": [
+    1,
+    -0.4444444444444445
+   ],
+   "map": {
+    "p1": [
+     "wave"
+    ],
+    "p2": [
+     "pw"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 18,
+   "type": "select",
+   "x": 20,
+   "y": 1180,
+   "params": {
+    "pos": 3,
+    "count": 5,
+    "fade": 0,
+    "v1": 0.6666666666666666,
+    "v2": 0.6666666666666666,
+    "v3": 0.3333333333333333,
+    "v4": 1,
+    "v5": 1,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 19,
+   "type": "math",
+   "x": 340,
+   "y": 1180,
+   "params": {
+    "ka": -2,
+    "kb": 1,
+    "off": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 20,
+   "type": "select",
+   "x": 660,
+   "y": 1180,
+   "params": {
+    "pos": 2,
+    "count": 2,
+    "fade": 0,
+    "v1": -2,
+    "v2": -8.643856189774723,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 21,
+   "type": "select",
+   "x": 980,
+   "y": 1180,
+   "params": {
+    "pos": 2,
+    "count": 3,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 22,
+   "type": "scale",
+   "x": 1300,
+   "y": 1180,
+   "params": {
+    "gain": 0,
+    "offset": 2.9
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 23,
+   "type": "math",
+   "x": 1620,
+   "y": 1180,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 24,
+   "type": "wavetable",
+   "x": 1940,
+   "y": 1180,
+   "params": {
+    "bank": 0,
+    "pos": 0.45,
+    "coarse": 0,
+    "fine": 0,
+    "pm": 0,
+    "level": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "bank"
+    ],
+    "p2": [
+     "pos"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 25,
+   "type": "wavetable",
+   "x": 2260,
+   "y": 1180,
+   "params": {
+    "bank": 0,
+    "pos": 0.45,
+    "coarse": 0,
+    "fine": 0,
+    "pm": 0,
+    "level": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "bank"
+    ],
+    "p2": [
+     "pos"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 26,
+   "type": "wavetable",
+   "x": 20,
+   "y": 1740,
+   "params": {
+    "bank": 0,
+    "pos": 0.3,
+    "coarse": 0,
+    "fine": 0,
+    "pm": 0,
+    "level": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "bank"
+    ],
+    "p2": [
+     "pos"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 27,
+   "type": "math",
+   "x": 340,
+   "y": 1740,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 28,
+   "type": "math",
+   "x": 660,
+   "y": 1740,
+   "params": {
+    "ka": 1,
+    "kb": -1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 29,
+   "type": "math",
+   "x": 980,
+   "y": 1740,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 30,
+   "type": "math",
+   "x": 1300,
+   "y": 1740,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 31,
+   "type": "math",
+   "x": 1620,
+   "y": 1740,
+   "params": {
+    "ka": 1,
+    "kb": -1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 32,
+   "type": "math",
+   "x": 1940,
+   "y": 1740,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 33,
+   "type": "scale",
+   "x": 2260,
+   "y": 1740,
+   "params": {
+    "gain": 1,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 34,
+   "type": "select",
+   "x": 20,
+   "y": 2300,
+   "params": {
+    "pos": 1,
+    "count": 2,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 35,
+   "type": "select",
+   "x": 340,
+   "y": 2300,
+   "params": {
+    "pos": 2,
+    "count": 3,
+    "fade": 0,
+    "v1": -1,
+    "v2": 0,
+    "v3": 1,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 36,
+   "type": "const",
+   "x": 660,
+   "y": 2300,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 37,
+   "type": "select",
+   "x": 980,
+   "y": 2300,
+   "params": {
+    "pos": 1,
+    "count": 3,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 38,
+   "type": "select",
+   "x": 1300,
+   "y": 2300,
+   "params": {
+    "pos": 2,
+    "count": 3,
+    "fade": 0,
+    "v1": -1,
+    "v2": 0,
+    "v3": 1,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 39,
+   "type": "const",
+   "x": 1620,
+   "y": 2300,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 40,
+   "type": "select",
+   "x": 1940,
+   "y": 2300,
+   "params": {
+    "pos": 2,
+    "count": 3,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 41,
+   "type": "select",
+   "x": 2260,
+   "y": 2300,
+   "params": {
+    "pos": 3,
+    "count": 4,
+    "fade": 0,
+    "v1": -7,
+    "v2": -1,
+    "v3": 0,
+    "v4": 1,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 42,
+   "type": "const",
+   "x": 20,
+   "y": 2860,
+   "params": {
+    "value": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 43,
    "type": "noise",
    "x": 340,
-   "y": 60,
+   "y": 2860,
    "params": {
     "level": 0,
     "color": 0
@@ -138,87 +1204,14 @@
    }
   },
   {
-   "id": 6,
-   "type": "sh",
-   "x": 340,
-   "y": 620,
-   "params": {
-    "mode": 0
-   },
-   "att": [
-    1,
-    1
-   ],
-   "map": {
-    "p1": [
-     "mode"
-    ],
-    "p2": [],
-    "k1": [],
-    "k2": [],
-    "k3": [],
-    "k4": []
-   }
-  },
-  {
-   "id": 7,
-   "type": "scale",
-   "x": 340,
-   "y": 1180,
-   "params": {
-    "gain": 0,
-    "offset": 0
-   },
-   "att": [
-    1,
-    1
-   ],
-   "map": {
-    "p1": [
-     "gain"
-    ],
-    "p2": [
-     "offset"
-    ],
-    "k1": [],
-    "k2": [],
-    "k3": [],
-    "k4": []
-   }
-  },
-  {
-   "id": 8,
-   "type": "alloc",
-   "x": 20,
-   "y": 1740,
-   "params": {
-    "voices": 2,
-    "assign": 1,
-    "legato": 0,
-    "priority": 0,
-    "unison": 0,
-    "channel": 0,
-    "low": 0,
-    "high": 127
-   }
-  },
-  {
-   "id": 9,
-   "type": "osc",
+   "id": 44,
+   "type": "math",
    "x": 660,
-   "y": 60,
+   "y": 2860,
    "params": {
-    "wave": 3,
-    "pw": 0.45,
-    "coarse": 0,
-    "fine": 0,
-    "pm": 0,
-    "level": 0.5,
-    "fb": 0,
-    "unison": 1,
-    "detune": 10,
-    "blend": 0.5,
-    "stack": 0
+    "ka": 1,
+    "kb": 1,
+    "off": 0
    },
    "att": [
     1,
@@ -226,10 +1219,10 @@
    ],
    "map": {
     "p1": [
-     "fine"
+     "ka"
     ],
     "p2": [
-     "pw"
+     "kb"
     ],
     "k1": [],
     "k2": [],
@@ -238,16 +1231,44 @@
    }
   },
   {
-   "id": 10,
-   "type": "filter",
+   "id": 45,
+   "type": "mixer",
    "x": 980,
-   "y": 60,
+   "y": 2860,
+   "params": {
+    "l1": 0.7,
+    "l2": 0.7,
+    "l3": 0,
+    "l4": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "l1"
+    ],
+    "p2": [
+     "l2"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 46,
+   "type": "filter",
+   "x": 1300,
+   "y": 2860,
    "params": {
     "cutoff": 1100,
     "res": 0.35,
-    "cvamt": 2.2,
-    "track": 1,
-    "morph": 0.25
+    "cvamt": 1,
+    "track": 0,
+    "morph": 0
    },
    "att": [
     1,
@@ -267,16 +1288,192 @@
    }
   },
   {
-   "id": 11,
-   "type": "adsr",
+   "id": 47,
+   "type": "select",
+   "x": 1620,
+   "y": 2860,
+   "params": {
+    "pos": 1,
+    "count": 4,
+    "fade": 5,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 48,
+   "type": "select",
+   "x": 1940,
+   "y": 2860,
+   "params": {
+    "pos": 2,
+    "count": 3,
+    "fade": 0,
+    "v1": -1,
+    "v2": 0,
+    "v3": 1,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 49,
+   "type": "math",
+   "x": 2260,
+   "y": 2860,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0.55
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 50,
+   "type": "math",
+   "x": 20,
+   "y": 3420,
+   "params": {
+    "ka": 4,
+    "kb": -1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 51,
+   "type": "math",
+   "x": 340,
+   "y": 3420,
+   "params": {
+    "ka": 4,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 52,
+   "type": "math",
+   "x": 660,
+   "y": 3420,
+   "params": {
+    "ka": 1,
+    "kb": 1,
+    "off": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "ka"
+    ],
+    "p2": [
+     "kb"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 53,
+   "type": "math",
    "x": 980,
-   "y": 620,
+   "y": 3420,
    "params": {
-    "a": 0.01,
-    "d": 0.5,
-    "s": 0.35,
-    "r": 0.15,
-    "long": 0
+    "ka": 4,
+    "kb": -1,
+    "off": 0
    },
    "att": [
     1,
@@ -284,10 +1481,10 @@
    ],
    "map": {
     "p1": [
-     "a"
+     "ka"
     ],
     "p2": [
-     "d"
+     "kb"
     ],
     "k1": [],
     "k2": [],
@@ -296,16 +1493,14 @@
    }
   },
   {
-   "id": 12,
-   "type": "adsr",
+   "id": 54,
+   "type": "math",
    "x": 1300,
-   "y": 620,
+   "y": 3420,
    "params": {
-    "a": 0.005,
-    "d": 0.3,
-    "s": 0.8,
-    "r": 0.15,
-    "long": 0
+    "ka": 4,
+    "kb": 1,
+    "off": 0
    },
    "att": [
     1,
@@ -313,10 +1508,10 @@
    ],
    "map": {
     "p1": [
-     "a"
+     "ka"
     ],
     "p2": [
-     "d"
+     "kb"
     ],
     "k1": [],
     "k2": [],
@@ -325,10 +1520,80 @@
    }
   },
   {
-   "id": 13,
+   "id": 55,
+   "type": "select",
+   "x": 1620,
+   "y": 3420,
+   "params": {
+    "pos": 2,
+    "count": 2,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 56,
+   "type": "select",
+   "x": 1940,
+   "y": 3420,
+   "params": {
+    "pos": 2,
+    "count": 2,
+    "fade": 0,
+    "v1": 0,
+    "v2": 0,
+    "v3": 0,
+    "v4": 0,
+    "v5": 0,
+    "v6": 0,
+    "v7": 0,
+    "v8": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pos"
+    ],
+    "p2": [
+     "count"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 57,
    "type": "vca",
-   "x": 1300,
-   "y": 60,
+   "x": 2260,
+   "y": 3420,
    "params": {
     "gain": 1
    },
@@ -348,35 +1613,15 @@
    }
   },
   {
-   "id": 14,
-   "type": "scope",
-   "x": 1620,
-   "y": 60,
-   "params": {
-    "time": 16,
-    "mode": 0,
-    "voices": 0
-   }
-  },
-  {
-   "id": 15,
-   "type": "output",
-   "x": 2000,
-   "y": 20,
-   "params": {
-    "level": 1
-   }
-  },
-  {
-   "id": 16,
-   "type": "steps",
+   "id": 58,
+   "type": "mixer",
    "x": 20,
-   "y": 2040,
+   "y": 3980,
    "params": {
-    "len": 16,
-    "rate": 4,
-    "swing": 50,
-    "gate": 0.25
+    "l1": 0.8,
+    "l2": 0,
+    "l3": 0,
+    "l4": 0
    },
    "att": [
     1,
@@ -384,31 +1629,42 @@
    ],
    "map": {
     "p1": [
-     "len"
+     "l1"
     ],
     "p2": [
-     "rate"
+     "l2"
     ],
-    "k1": [
-     "len"
-    ],
-    "k2": [
-     "rate"
-    ],
-    "k3": [
-     "swing"
-    ],
-    "k4": [
-     "gate"
-    ]
-   },
-   "name": "PATTERN"
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
   },
   {
-   "id": 17,
+   "id": 59,
+   "type": "scope",
+   "x": 340,
+   "y": 3980,
+   "params": {
+    "time": 16,
+    "mode": 0,
+    "voices": 0
+   }
+  },
+  {
+   "id": 60,
+   "type": "output",
+   "x": 2640,
+   "y": 20,
+   "params": {
+    "level": 0.51
+   }
+  },
+  {
+   "id": 61,
    "type": "arp",
-   "x": 2000,
-   "y": 2040,
+   "x": 2640,
+   "y": 4280,
    "params": {
     "mode": 0,
     "rate": 4,
@@ -422,42 +1678,22 @@
  "cables": [
   {
    "from": {
-    "module": 8,
+    "module": 2,
     "port": "pitch"
    },
    "to": {
-    "module": 9,
+    "module": 4,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
     "port": "pitch"
-   }
-  },
-  {
-   "from": {
-    "module": 8,
-    "port": "gate"
    },
    "to": {
-    "module": 11,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
-    "module": 8,
-    "port": "gate"
-   },
-   "to": {
-    "module": 12,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
-    "module": 9,
-    "port": "out"
-   },
-   "to": {
-    "module": 10,
-    "port": "in"
+    "module": 4,
+    "port": "b"
    }
   },
   {
@@ -466,63 +1702,43 @@
     "port": "out"
    },
    "to": {
-    "module": 10,
-    "port": "in"
+    "module": 4,
+    "port": "p1"
    }
   },
   {
    "from": {
-    "module": 11,
-    "port": "env"
-   },
-   "to": {
-    "module": 10,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
-    "module": 10,
-    "port": "mix"
-   },
-   "to": {
-    "module": 13,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 12,
-    "port": "env"
-   },
-   "to": {
-    "module": 13,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
-    "module": 2,
-    "port": "out"
-   },
-   "to": {
-    "module": 3,
-    "port": "in"
-   }
-  },
-  {
-   "from": {
-    "module": 2,
+    "module": 6,
     "port": "out"
    },
    "to": {
     "module": 4,
+    "port": "p2"
+   }
+  },
+  {
+   "from": {
+    "module": 7,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "min"
+   },
+   "to": {
+    "module": 8,
     "port": "in"
    }
   },
   {
    "from": {
-    "module": 3,
+    "module": 7,
     "port": "out"
    },
    "to": {
@@ -533,81 +1749,911 @@
   {
    "from": {
     "module": 4,
-    "port": "out"
+    "port": "max"
    },
    "to": {
     "module": 9,
-    "port": "p2"
-   }
-  },
-  {
-   "from": {
-    "module": 5,
-    "port": "out"
-   },
-   "to": {
-    "module": 6,
     "port": "in"
    }
   },
   {
    "from": {
     "module": 2,
-    "port": "out"
+    "port": "gate"
    },
    "to": {
-    "module": 6,
-    "port": "clock"
+    "module": 11,
+    "port": "gate"
    }
   },
   {
    "from": {
-    "module": 6,
+    "module": 12,
     "port": "out"
    },
    "to": {
-    "module": 7,
-    "port": "in"
+    "module": 11,
+    "port": "p1"
    }
   },
   {
    "from": {
-    "module": 7,
+    "module": 12,
     "port": "out"
    },
    "to": {
-    "module": 10,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
     "module": 13,
-    "port": "out"
-   },
-   "to": {
-    "module": 14,
     "port": "a"
    }
   },
   {
    "from": {
-    "module": 13,
-    "port": "out"
+    "module": 10,
+    "port": "g1"
    },
    "to": {
-    "module": 15,
-    "port": "l"
+    "module": 13,
+    "port": "b"
    }
   },
   {
    "from": {
     "module": 13,
+    "port": "mul"
+   },
+   "to": {
+    "module": 11,
+    "port": "p2"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "gate"
+   },
+   "to": {
+    "module": 14,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 15,
     "port": "out"
    },
    "to": {
+    "module": 14,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
     "module": 15,
+    "port": "out"
+   },
+   "to": {
+    "module": 16,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 10,
+    "port": "g1"
+   },
+   "to": {
+    "module": 16,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 16,
+    "port": "mul"
+   },
+   "to": {
+    "module": 14,
+    "port": "p2"
+   }
+  },
+  {
+   "from": {
+    "module": 18,
+    "port": "out"
+   },
+   "to": {
+    "module": 17,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 18,
+    "port": "g5"
+   },
+   "to": {
+    "module": 17,
+    "port": "p2"
+   }
+  },
+  {
+   "from": {
+    "module": 18,
+    "port": "g1"
+   },
+   "to": {
+    "module": 19,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 17,
+    "port": "out"
+   },
+   "to": {
+    "module": 19,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 20,
+    "port": "out"
+   },
+   "to": {
+    "module": 17,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 21,
+    "port": "out"
+   },
+   "to": {
+    "module": 22,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 22,
+    "port": "out"
+   },
+   "to": {
+    "module": 17,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 21,
+    "port": "g3"
+   },
+   "to": {
+    "module": 23,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "out"
+   },
+   "to": {
+    "module": 23,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 23,
+    "port": "mul"
+   },
+   "to": {
+    "module": 17,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 26,
+    "port": "out"
+   },
+   "to": {
+    "module": 21,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 11,
+    "port": "env"
+   },
+   "to": {
+    "module": 21,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 19,
+    "port": "mul"
+   },
+   "to": {
+    "module": 28,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 27,
+    "port": "min"
+   },
+   "to": {
+    "module": 28,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 11,
+    "port": "env"
+   },
+   "to": {
+    "module": 29,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 27,
+    "port": "max"
+   },
+   "to": {
+    "module": 29,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 26,
+    "port": "out"
+   },
+   "to": {
+    "module": 31,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 30,
+    "port": "min"
+   },
+   "to": {
+    "module": 31,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 14,
+    "port": "env"
+   },
+   "to": {
+    "module": 32,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 30,
+    "port": "max"
+   },
+   "to": {
+    "module": 32,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 28,
+    "port": "mul"
+   },
+   "to": {
+    "module": 33,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 29,
+    "port": "mul"
+   },
+   "to": {
+    "module": 33,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 31,
+    "port": "mul"
+   },
+   "to": {
+    "module": 33,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 32,
+    "port": "mul"
+   },
+   "to": {
+    "module": 33,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "out"
+   },
+   "to": {
+    "module": 34,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "out"
+   },
+   "to": {
+    "module": 34,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 33,
+    "port": "out"
+   },
+   "to": {
+    "module": 34,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 34,
+    "port": "out"
+   },
+   "to": {
+    "module": 24,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 35,
+    "port": "out"
+   },
+   "to": {
+    "module": 24,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 36,
+    "port": "out"
+   },
+   "to": {
+    "module": 24,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "out"
+   },
+   "to": {
+    "module": 37,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "out"
+   },
+   "to": {
+    "module": 37,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 33,
+    "port": "out"
+   },
+   "to": {
+    "module": 37,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 33,
+    "port": "out"
+   },
+   "to": {
+    "module": 37,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 37,
+    "port": "out"
+   },
+   "to": {
+    "module": 25,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 38,
+    "port": "out"
+   },
+   "to": {
+    "module": 25,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 39,
+    "port": "out"
+   },
+   "to": {
+    "module": 25,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 33,
+    "port": "out"
+   },
+   "to": {
+    "module": 40,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 40,
+    "port": "out"
+   },
+   "to": {
+    "module": 26,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 41,
+    "port": "out"
+   },
+   "to": {
+    "module": 26,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 42,
+    "port": "out"
+   },
+   "to": {
+    "module": 26,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 37,
+    "port": "out"
+   },
+   "to": {
+    "module": 40,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 44,
+    "port": "abs"
+   },
+   "to": {
+    "module": 43,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 44,
+    "port": "cmp"
+   },
+   "to": {
+    "module": 43,
+    "port": "p2"
+   }
+  },
+  {
+   "from": {
+    "module": 24,
+    "port": "out"
+   },
+   "to": {
+    "module": 45,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 25,
+    "port": "out"
+   },
+   "to": {
+    "module": 45,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 26,
+    "port": "out"
+   },
+   "to": {
+    "module": 45,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 43,
+    "port": "out"
+   },
+   "to": {
+    "module": 45,
+    "port": "in4"
+   }
+  },
+  {
+   "from": {
+    "module": 45,
+    "port": "out"
+   },
+   "to": {
+    "module": 46,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 46,
+    "port": "lp12"
+   },
+   "to": {
+    "module": 47,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 46,
+    "port": "bp"
+   },
+   "to": {
+    "module": 47,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 46,
+    "port": "hp"
+   },
+   "to": {
+    "module": 47,
+    "port": "in3"
+   }
+  },
+  {
+   "from": {
+    "module": 46,
+    "port": "notch"
+   },
+   "to": {
+    "module": 47,
+    "port": "in4"
+   }
+  },
+  {
+   "from": {
+    "module": 48,
+    "port": "out"
+   },
+   "to": {
+    "module": 46,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 19,
+    "port": "mul"
+   },
+   "to": {
+    "module": 50,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 49,
+    "port": "min"
+   },
+   "to": {
+    "module": 50,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 11,
+    "port": "env"
+   },
+   "to": {
+    "module": 51,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 49,
+    "port": "max"
+   },
+   "to": {
+    "module": 51,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 26,
+    "port": "out"
+   },
+   "to": {
+    "module": 53,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 52,
+    "port": "min"
+   },
+   "to": {
+    "module": 53,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 14,
+    "port": "env"
+   },
+   "to": {
+    "module": 54,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 52,
+    "port": "max"
+   },
+   "to": {
+    "module": 54,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 50,
+    "port": "mul"
+   },
+   "to": {
+    "module": 46,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 51,
+    "port": "mul"
+   },
+   "to": {
+    "module": 46,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 53,
+    "port": "mul"
+   },
+   "to": {
+    "module": 46,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 54,
+    "port": "mul"
+   },
+   "to": {
+    "module": 46,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "out"
+   },
+   "to": {
+    "module": 55,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "out"
+   },
+   "to": {
+    "module": 55,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 55,
+    "port": "out"
+   },
+   "to": {
+    "module": 46,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 11,
+    "port": "env"
+   },
+   "to": {
+    "module": 56,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 14,
+    "port": "env"
+   },
+   "to": {
+    "module": 56,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 47,
+    "port": "out"
+   },
+   "to": {
+    "module": 57,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 56,
+    "port": "out"
+   },
+   "to": {
+    "module": 57,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 57,
+    "port": "out"
+   },
+   "to": {
+    "module": 58,
+    "port": "in1"
+   }
+  },
+  {
+   "from": {
+    "module": 25,
+    "port": "out"
+   },
+   "to": {
+    "module": 58,
+    "port": "in2"
+   }
+  },
+  {
+   "from": {
+    "module": 58,
+    "port": "out"
+   },
+   "to": {
+    "module": 59,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 58,
+    "port": "out"
+   },
+   "to": {
+    "module": 60,
+    "port": "l"
+   }
+  },
+  {
+   "from": {
+    "module": 58,
+    "port": "out"
+   },
+   "to": {
+    "module": 60,
     "port": "r"
+   }
+  },
+  {
+   "from": {
+    "module": 61,
+    "port": "keys"
+   },
+   "to": {
+    "module": 2,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 61,
+    "port": "keys"
+   },
+   "to": {
+    "module": 3,
+    "port": "keys"
    }
   },
   {
@@ -616,27 +2662,7 @@
     "port": "keys"
    },
    "to": {
-    "module": 16,
-    "port": "keys"
-   }
-  },
-  {
-   "from": {
-    "module": 17,
-    "port": "keys"
-   },
-   "to": {
-    "module": 8,
-    "port": "keys"
-   }
-  },
-  {
-   "from": {
-    "module": 16,
-    "port": "keys"
-   },
-   "to": {
-    "module": 17,
+    "module": 61,
     "port": "keys"
    }
   }
@@ -645,67 +2671,6 @@
   {
    "v": 1,
    "id": 1,
-   "name": "voice",
-   "label": "voice",
-   "x": 660,
-   "y": 1180,
-   "open": false,
-   "modules": [
-    9
-   ],
-   "inputs": [
-    {
-     "module": 9,
-     "port": "pitch",
-     "label": "pitch"
-    }
-   ],
-   "outputs": [
-    {
-     "module": 9,
-     "port": "out",
-     "label": "out"
-    }
-   ],
-   "params": [
-    {
-     "module": 9,
-     "param": "wave",
-     "label": "wave"
-    },
-    {
-     "module": 9,
-     "param": "pw",
-     "label": "width"
-    },
-    {
-     "module": 9,
-     "param": "fine",
-     "label": "fine tune"
-    }
-   ],
-   "poly": {
-    "flaws": [
-     {
-      "detune": 3,
-      "drift": 30,
-      "bright": 0,
-      "env": 0,
-      "level": 100
-     },
-     {
-      "detune": -4,
-      "drift": 35,
-      "bright": 0,
-      "env": 0,
-      "level": 97
-     }
-    ]
-   }
-  },
-  {
-   "v": 1,
-   "id": 2,
    "name": "Vernon 100",
    "label": "Vernon 100",
    "x": 20,
@@ -719,147 +2684,325 @@
     6,
     7,
     8,
+    9,
     10,
     11,
     12,
     13,
-    14
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59
    ],
    "inputs": [
     {
-     "module": 8,
+     "module": 2,
      "port": "keys",
-     "label": "keys"
+     "label": "keys",
+     "also": [
+      {
+       "module": 3,
+       "port": "keys"
+      }
+     ]
     }
    ],
    "outputs": [
     {
-     "module": 13,
+     "module": 58,
      "port": "out",
      "label": "out"
     }
    ],
    "params": [
     {
-     "module": 8,
-     "param": "voices",
-     "label": "voices",
-     "head": "oscillators"
+     "module": 18,
+     "param": "pos",
+     "label": "color",
+     "head": "oscillator 1"
     },
     {
-     "module": 9,
-     "param": "wave",
-     "label": "wave"
+     "module": 22,
+     "param": "offset",
+     "label": "tune"
     },
     {
-     "module": 9,
-     "param": "pw",
-     "label": "width"
+     "module": 20,
+     "param": "pos",
+     "label": "hi / lo"
+    },
+    {
+     "module": 22,
+     "param": "gain",
+     "label": "control sens"
+    },
+    {
+     "module": 21,
+     "param": "pos",
+     "label": "control mode"
+    },
+    {
+     "module": 27,
+     "param": "off",
+     "label": "osc 1 / env 1",
+     "head": "osc mixer"
+    },
+    {
+     "module": 30,
+     "param": "off",
+     "label": "osc 4 / env 2"
     },
     {
      "module": 5,
-     "param": "level",
-     "label": "noise"
+     "param": "value",
+     "label": "keys/oct crs",
+     "head": "keyboard"
     },
     {
-     "module": 2,
-     "param": "rate",
-     "label": "lfo rate",
-     "head": "lfo / sampler"
-    },
-    {
-     "module": 3,
-     "param": "gain",
-     "label": "lfo → pitch"
-    },
-    {
-     "module": 4,
-     "param": "gain",
-     "label": "lfo → width"
+     "module": 6,
+     "param": "value",
+     "label": "keys/oct fine"
     },
     {
      "module": 7,
-     "param": "gain",
-     "label": "s&h → filter"
+     "param": "value",
+     "label": "portamento"
     },
     {
-     "module": 10,
-     "param": "cutoff",
-     "label": "cutoff",
+     "module": 34,
+     "param": "pos",
+     "label": "control mode",
      "col": true,
+     "head": "oscillator 2"
+    },
+    {
+     "module": 35,
+     "param": "pos",
+     "label": "octave"
+    },
+    {
+     "module": 36,
+     "param": "value",
+     "label": "tune"
+    },
+    {
+     "module": 24,
+     "param": "pos",
+     "label": "color"
+    },
+    {
+     "module": 37,
+     "param": "pos",
+     "label": "control mode",
+     "head": "oscillator 3"
+    },
+    {
+     "module": 38,
+     "param": "pos",
+     "label": "octave"
+    },
+    {
+     "module": 39,
+     "param": "value",
+     "label": "tune"
+    },
+    {
+     "module": 25,
+     "param": "pos",
+     "label": "color"
+    },
+    {
+     "module": 40,
+     "param": "pos",
+     "label": "control mode",
+     "head": "oscillator 4"
+    },
+    {
+     "module": 41,
+     "param": "pos",
+     "label": "octave"
+    },
+    {
+     "module": 42,
+     "param": "value",
+     "label": "tune"
+    },
+    {
+     "module": 26,
+     "param": "pos",
+     "label": "color"
+    },
+    {
+     "module": 45,
+     "param": "l1",
+     "label": "osc 2",
+     "col": true,
+     "head": "filter input"
+    },
+    {
+     "module": 45,
+     "param": "l2",
+     "label": "osc 3"
+    },
+    {
+     "module": 45,
+     "param": "l3",
+     "label": "osc 4 / ext"
+    },
+    {
+     "module": 44,
+     "param": "off",
+     "label": "white / pink"
+    },
+    {
+     "module": 48,
+     "param": "pos",
+     "label": "cut octave",
      "head": "filter"
     },
     {
-     "module": 10,
-     "param": "res",
-     "label": "res"
+     "module": 46,
+     "param": "cutoff",
+     "label": "tune"
     },
     {
-     "module": 10,
-     "param": "morph",
+     "module": 46,
+     "param": "res",
+     "label": "resonance"
+    },
+    {
+     "module": 47,
+     "param": "pos",
      "label": "mode"
     },
     {
-     "module": 10,
-     "param": "cvamt",
-     "label": "env 1 → filter"
+     "module": 49,
+     "param": "off",
+     "label": "osc 1 / env 1",
+     "head": "filter control"
     },
     {
-     "module": 10,
-     "param": "track",
-     "label": "kbd track"
+     "module": 52,
+     "param": "off",
+     "label": "osc 4 / env 2"
+    },
+    {
+     "module": 55,
+     "param": "pos",
+     "label": "kb1 / kb2"
     },
     {
      "module": 11,
      "param": "view",
      "label": "env 1",
      "col": true,
-     "head": "envelopes"
+     "head": "envelope 1"
     },
     {
      "module": 11,
      "param": "a",
-     "label": "a"
+     "label": "attack"
     },
     {
-     "module": 11,
-     "param": "d",
-     "label": "d"
+     "module": 12,
+     "param": "value",
+     "label": "decay"
     },
     {
      "module": 11,
      "param": "s",
-     "label": "s"
-    },
-    {
-     "module": 12,
-     "param": "view",
-     "label": "env 2",
-     "group": true
-    },
-    {
-     "module": 12,
-     "param": "a",
-     "label": "a"
-    },
-    {
-     "module": 12,
-     "param": "d",
-     "label": "d"
-    },
-    {
-     "module": 12,
-     "param": "s",
-     "label": "s"
+     "label": "sustain"
     },
     {
      "module": 14,
      "param": "view",
+     "label": "env 2",
+     "head": "envelope 2"
+    },
+    {
+     "module": 14,
+     "param": "a",
+     "label": "attack"
+    },
+    {
+     "module": 15,
+     "param": "value",
+     "label": "decay"
+    },
+    {
+     "module": 14,
+     "param": "s",
+     "label": "sustain"
+    },
+    {
+     "module": 10,
+     "param": "pos",
+     "label": "sustain on/off"
+    },
+    {
+     "module": 56,
+     "param": "pos",
+     "label": "env 1 / env 2",
+     "head": "amplitude shaper"
+    },
+    {
+     "module": 58,
+     "param": "l1",
+     "label": "amp shaper",
+     "head": "output mixer"
+    },
+    {
+     "module": 58,
+     "param": "l2",
+     "label": "osc 3 / ext"
+    },
+    {
+     "module": 59,
+     "param": "view",
      "label": "out"
     }
-   ],
-   "children": [
-    1
    ]
   }
  ],

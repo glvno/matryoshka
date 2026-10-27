@@ -87,6 +87,35 @@
   engine's memory, leaving the row at −1 and the instrument silent. A failed edit now restores the patch, shows
   NO ROOM, and does not send the rejected value to the editor. Reloads pause audio processing while rebuilding the
   engine. Checked with the host panel test; firmware and device checks pending.
+- **Io 4 now has the Roland Jupiter-4's panel.** Its card follows the owner's manual, one row per control: the VCO's
+  range, sub oscillator, LFO mod, pulse width (four steps, manual or LFO) and waveform with OFF; noise; the high pass,
+  the low pass with its 10 / 40 / 70 / 100 % key follow, LFO mod, envelope mod and polarity; a VCF envelope and a VCA
+  envelope (the manual lists two ADSRs; Io 4 had one); the VCA level; the LFO's four waveforms. The modifier section is
+  there too: the trigger (its rate clocks a noise sample & hold into the cutoff, and the arpeggiator when ARP is on), the
+  LFO delay and LFO bend, the lever's three LFO / OFF / BEND switches with bend sensitivity and LFO depth (the FM-1's
+  pitch bend and mod wheel), portamento, transpose, tuning, POLY I / POLY II / UNISON I, hold and the ensemble switch.
+  Not there yet: UNISON II, which needs a new Voicing mode. The `voices` row and the ensemble's rate and depth rows are
+  gone. On the FM-1 it now takes 56 modules (15 before), 3,650 patch bytes of 3,840 (1,060) and about 97 % of the CPU
+  estimate (43 %), so it gets the arpeggiator but no PATTERN track. Host-tested only, not yet on a device.
+- **Vernon 100 now has the EML ElectroComp 100's panel.** Its card follows the 100's panel, read from photos (no manual for
+  the 100 was found; the EML 101's manuals explain the controls the two share). Four distinct oscillators: oscillator 2
+  plays the lowest key held and oscillator 3 the highest, oscillator 4 follows oscillator 3, its own tuning or the mixer,
+  and oscillator 1 is a slow or audio control oscillator with five shapes. The oscillator mixer and the filter control
+  have their two centre-zero knobs each; the filter input mixer, white or pink noise, a 12 dB filter with low pass, band
+  pass, high pass and band reject, cut octave and KB1 / KB2 tracking; two envelopes with the sustain switch; the
+  amplitude shaper's envelope switch; the output mixer with oscillator 3 around the filter; keys per octave and
+  portamento. The sample & hold, the pulse width rows and the LFO's width modulation are gone: the 100's panel has none
+  of them. On the FM-1 it takes 60 modules (16 before), 3,829 patch bytes of 3,840 (1,087) and about 60 % of the CPU
+  estimate (24 %), so it gets the arpeggiator but no PATTERN track. Host-tested only, not yet on a device.
+- **Cassia 1 is now the whole Casio CZ-1, on the FM-1 too.** Cassia 1 XL rebuilt on the PD Osc and Env 8 fits the FM-1,
+  so it takes Cassia 1's slot (24) and name, and the XL is gone ([D-348](docs/ledger/patches-and-presets.md#D-348)). Both lines play all eight waveforms with a
+  second one on every other cycle; line select 1, 2, 1 + 2 and 1 + 1'; ring and noise modulation on line 2; DCO, DCW and
+  DCA envelopes of eight steps with a sustain and an end step, as on the CZ (the six-step stand-in is gone); key follow,
+  velocity, aftertouch, vibrato with a delay. The XL took 230 modules, 10,809 patch bytes and an estimated 736 % of the
+  FM-1's CPU at four voices; Cassia 1 now takes 46 modules, 3,724 bytes of 3,840 and about 88 % at three voices (the
+  FM-1's old Cassia 1: 21 modules, 1,618 bytes, 74 %). In the browser four voices render in about 8 % of real time
+  (the XL took about 40 %), on a recent Mac. The envelope rows are short (r1, l1 .. r8, l8, sus, end) to fit the
+  patch bytes. Its presets gain Pluck (the variations now reach Env 8). Host-tested only, not yet on a device.
 - **Env 8, an eight-step envelope** after the Casio CZ's: eight levels and rates, a sustain step that holds while the
   key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off it
   runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then

@@ -152,6 +152,8 @@ export function withPlayers(src: Patch, what: Player): Patch {
     wire(p, arp.id, 'keys', c.to.module, c.to.port);
   }
   wire(p, from.id, 'keys', arp.id, 'keys');
+  // an assembly's `arp clock` output steps the arpeggiator, one step per edge (Io 4: the Jupiter-4's TRIGGER RATE)
+  for (const a of assembliesOf(p)) if (!parentOf(p, a.id)) for (const o of a.outputs) if (o.label === 'arp clock') wire(p, o.module, o.port, arp.id, 'clk');
   setKind(p, 'arp', 'bypass');
   setTarget(p, 'arp', { module: arp.id });
   setSwitches(p, 'arp', true);
