@@ -17,13 +17,23 @@ export interface Chip {
 export const chipOfBudget = (b: Pick<Budget, 'fits' | 'use'>): Chip =>
   b.fits ? { fits: true, text: `FM-1 · ${Math.round(b.use * 100)} %` } : { fits: false, text: 'SANDBOX' };
 
-/** a patch's chip, computed now (a patch that cannot be counted is a sandbox patch) */
+/** chips worked out this visit, by the patch's content (the Open picker lists every patch again after each save) */
+const known = new Map<string, Chip>();
+
+/** a patch's chip (a patch that cannot be counted is a sandbox patch) */
 export function chipOf(p: Patch): Chip {
+  const key = JSON.stringify(p);
+  const had = known.get(key);
+  if (had) return { ...had };
+  let c: Chip;
   try {
-    return chipOfBudget(deviceBudget(p));
+    c = chipOfBudget(deviceBudget(p));
   } catch {
-    return { fits: false, text: 'SANDBOX' };
+    c = { fits: false, text: 'SANDBOX' };
   }
+  if (known.size >= 256) known.clear();
+  known.set(key, c);
+  return { ...c };
 }
 
 /** the chip as an element: teal outline for FM-1, gold fill for SANDBOX */

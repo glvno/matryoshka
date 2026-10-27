@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.5.1 — 2026-10-27
+
+### Fixes
+
+- **The editor starts about three times faster.** It no longer works out, as the page loads, every factory patch, the
+  FM-1 budget of every patch in the Open picker, and the presets of every XL. A factory patch is built when it is first
+  opened. The picker's FM-1 · NN % and SANDBOX chips are worked out after the page is up, while it is idle (all of them
+  at once if the picker is opened first); they read as before. The factory presets of an engine are made when an engine
+  of that structure is first shown. Structure fingerprints and the patch check no longer compare every cable with every
+  other one. The Library's Patches section is drawn when it is shown, and remembers which patches fit the FM-1. Measured
+  in headless Chrome on the built site, empty browser storage: on an M-series Mac, the page was ready
+  (DOMContentLoaded) after 0.33 s (1.22 s before), with 0.56 s of script (1.13 s); with the CPU slowed 4× and a
+  9 Mbit/s, 70 ms network, after 1.69 s (4.21 s), with 1.03 s of script (2.98 s). With a browser that holds 50 saved
+  patches, a 64-slot bank and 20 library assemblies, mostly in the 1.3 and 1.4 formats, and an XL open: 0.47 s
+  (1.42 s) on the Mac and 1.98 s (4.90 s) slowed. Script time is counted until 4 s after load, so it includes the
+  chips worked out while idle (all but a few of them in the slowed run with stored patches).
+- **The browser tab's icon is 12 KB** instead of the 841 KB full-size logo.
+
 ## 1.5.0 — 2026-10-27
 
 Figures compare this release with 1.4.2. Unless a line says otherwise, an FM-1 figure is the editor's estimate:

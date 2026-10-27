@@ -74,7 +74,7 @@ import { isShortNote, noteWord, shortWord, type StepNote } from './track';
 import { deviceView, keysInto, MAX_POLY, type DeviceGroup } from './poly';
 import { devicesOf, NAME_MAX, type Device } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
-import { rowOrder, structureOf } from './structure';
+import { structureAndRows } from './structure';
 import { cpuEstimate, type CpuEstimate } from './cpu';
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t));
@@ -333,10 +333,11 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
   for (const d of devs) {
     const t = d.track === undefined ? -1 : devs.findIndex((x) => x.module === d.track);
     const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
-    const h = a ? parseInt(structureOf(source, a), 16) >>> 0 : 0;
+    const sr = a ? structureAndRows(source, a) : undefined;
+    const h = sr ? parseInt(sr.structure, 16) >>> 0 : 0;
     const name = deviceText(a?.preset ?? '');
     out.push(t < 0 ? 0xff : t, h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, name.length, ...Array.from(name, (c) => c.charCodeAt(0)));
-    const rows = a ? rowOrder(source, a) : [];
+    const rows = sr ? sr.rows : [];
     out.push(rows.length);
     for (const r of rows) {
       const i = index.get(r.module);

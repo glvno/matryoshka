@@ -755,20 +755,23 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   migratePatchParts(p as Patch, defs); // Part modules (before Voice allocators) become allocators
   // the SEQ and REC buttons belong to the device since #83 (the step page, live recording): cables from them go; so do
   // cables from a Steps module's acc output (#133: an accent is full velocity now)
+  // each module by id, the first of an id as find() would give it (looked up per cable)
+  const byId = new Map<unknown, (typeof p.modules)[number]>();
+  for (const m of p.modules) if (!byId.has(m.id)) byId.set(m.id, m);
   p.cables = p.cables.filter((c) => {
-    const t = p.modules.find((m) => m.id === c.from?.module)?.type;
+    const t = byId.get(c.from?.module)?.type;
     return !(t === 'fm1' && (c.from?.port === 'seq' || c.from?.port === 'rec')) && !(t === 'steps' && c.from?.port === 'acc');
   });
   for (const c of p.cables) {
-    const mf = p.modules.find((m) => m.id === c.from?.module);
+    const mf = byId.get(c.from?.module);
     if (mf?.type === 'filter' && c.from?.port === 'lp') c.from.port = 'lp12'; // the filter's 12 dB output used to be called lp
-    const mt = p.modules.find((m) => m.id === c.to?.module);
+    const mt = byId.get(c.to?.module);
     if (mt?.type === 'lfo' && c.to?.port === 'sync') c.to.port = 'reset'; // the LFO's restart input used to be called sync (its tempo-sync toggle is `sync` now)
     if (!mf || !mt) throw new Error('cable to a missing module');
     if (!defs[mf.type].outputs.some((o) => o.name === c.from.port)) throw new Error(`no output "${c.from.port}" on ${mf.type}`);
     if (!defs[mt.type].inputs.some((i) => i.name === c.to.port)) throw new Error(`no input "${c.to.port}" on ${mt.type}`);
   }
-  p.cables = p.cables.filter((c) => kindsFit(defs, p.modules.find((m) => m.id === c.from.module)!.type, c.from.port, p.modules.find((m) => m.id === c.to.module)!.type, c.to.port));
+  p.cables = p.cables.filter((c) => kindsFit(defs, byId.get(c.from.module)!.type, c.from.port, byId.get(c.to.module)!.type, c.to.port));
   {   // a Toggle's target that is gone: the button keeps its kind, without a target
     const main = p.modules.find((m) => m.type === 'fm1');
     const t = main?.panel?.targets;
