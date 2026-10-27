@@ -2,14 +2,14 @@
 // The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
 import { DEFS } from './modules';
 import type { Patch } from './patch';
-import type { StepNote } from './track';
+import type { SongEntry, StepNote } from './track';
 import { encodePatch, toQ16, VERSION } from './patchbin';
 import { deviceView } from './poly';
 
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -104,7 +104,10 @@ const TRIES = 3;
 export type DeviceEvent =
   | { kind: 'cc'; n: number; v: number }
   | { kind: 'slot'; slot: number; name: string }
-  | { kind: 'track'; module: number; notes: StepNote[] }
+  | { kind: 'track'; module: number; notes: StepNote[]; pat: number }
+  /** the patch's pattern / song chosen on the FM-1 (PATTERN_NOW, format 48), a song edited there (SONG_NOW) */
+  | { kind: 'pattern'; pattern: number; song: number }
+  | { kind: 'song'; song: number; entries: SongEntry[] }
   | { kind: 'mute'; module: number; on: boolean }
   | { kind: 'param'; module: number; param: number; value: number }
   | { kind: 'focus'; device: number; page: number }
@@ -156,6 +159,10 @@ export class DeviceLink {
       }
       const t = p?.cmd === CMD.trackNow ? parseTrack(p.payload) : null;
       if (t) return this.onEvent({ kind: 'track', ...t });
+      const pn = p?.cmd === CMD.patternNow ? parsePatternNow(p.payload) : null;
+      if (pn) return this.onEvent({ kind: 'pattern', ...pn });
+      const sn = p?.cmd === CMD.songNow ? parseSongNow(p.payload) : null;
+      if (sn) return this.onEvent({ kind: 'song', ...sn });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
       if (p?.cmd === CMD.paramNow && p.payload.length >= 6) {
         const v = new DataView(Uint8Array.from(p.payload.slice(2, 6)).buffer).getInt32(0, true) / 65536;
@@ -377,11 +384,27 @@ export class DeviceLink {
     return !!(this.info && this.info.features & 32);
   }
 
-  /** a Steps module's notes, all of them (#133) */
-  track(patch: Patch, moduleId: number, notes: readonly StepNote[] | undefined): void {
+  /** the firmware reads format 48: patterns and songs (TRACK with a pattern, PATTERN, SONG) */
+  get hasPatterns(): boolean {
+    return (this.info?.patchFormats?.max ?? 0) >= 48;
+  }
+
+  /** a Steps module's notes, all of them (#133), of pattern `pat` (0-based; format 48) */
+  track(patch: Patch, moduleId: number, notes: readonly StepNote[] | undefined, pat = 0): void {
     if (!this.connected || !this.hasTracks) return;
     const mi = deviceIndex(patch, moduleId);
-    if (mi >= 0) this.out!.send(trackFrame(mi, notes));
+    if (mi >= 0 && this.hasPatterns) this.out!.send(trackFrame(mi, notes, pat));
+    else if (mi >= 0 && !pat) this.out!.send(trackFrame(mi, notes));
+  }
+
+  /** the patch's pattern and the song playing (format 48) */
+  pattern(pattern: number, song: number): void {
+    if (this.connected && this.hasPatterns) this.out!.send(patternFrame(pattern, song));
+  }
+
+  /** a song's entries (format 48) */
+  song(s: number, entries: readonly SongEntry[]): void {
+    if (this.connected && this.hasPatterns) this.out!.send(songFrame(s, entries));
   }
 
   /** a Steps module muted / unmuted (not part of the patch) */

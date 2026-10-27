@@ -62,7 +62,7 @@ import {
   TRACK_NAME_MAX,
   DRUM_ROWS,
 } from './patch';
-import { fixNotes, overdub, type StepNote } from './track';
+import { fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepNote } from './track';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, stepPreset, storePreset } from './device-presets';
 import { structureOf } from './structure';
@@ -164,8 +164,12 @@ export interface EditorEvents {
   onAtt(id: number, index: number, value: number): void;
   /** a module's bypass switch (the structure is unchanged: the engine keeps its state) */
   onBypass(id: number, on: boolean): void;
-  /** a Steps module's notes changed (#133, ModuleInst.notes), a Steps module muted (not saved) */
-  onTrack?(id: number, notes: StepNote[] | undefined): void;
+  /** a Steps module's notes changed (#133, ModuleInst.notes), of pattern `pat` (0-based, #375), a Steps module muted (not saved) */
+  onTrack?(id: number, notes: StepNote[] | undefined, pat: number): void;
+  /** the patch's pattern (0-based) or the song that plays (0 none) changed (#375: saved with the patch, no undo step) */
+  onPattern?(pattern: number, song: number): void;
+  /** song k's entries changed (0-based k) */
+  onSong?(k: number, entries: SongEntry[]): void;
   onMute?(id: number, on: boolean): void;
   /** the armed Steps track changed (#134; null: none) and what it plays (poly.ts trackTargets), or its cables changed */
   /** the armed set changed (#190): the armed devices, and what each plays by name (a Steps track: what it drives) */
@@ -1070,24 +1074,174 @@ export class Editor {
     if (r) this.roll!.view.show(r.pos);
   }
 
-  /** a track edited on the FM-1's SEQ page (its notes as they are now): into the patch and the grid, an undo step like an
-   * edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
-  trackFromDevice(id: number, notes: StepNote[] | undefined): void {
+  /** a track edited on the FM-1's SEQ page (its notes as they are now, of pattern `pat`): into the patch and the grid, an
+   * undo step like an edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
+  trackFromDevice(id: number, notes: StepNote[] | undefined, pat = 0): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
     if (!m) return;
     this.touch();
-    this.setNotes(m, notes);
+    this.setNotes(m, notes, pat);
     this.stepGrids.get(id)?.refresh();
   }
 
-  /** a Steps module's notes, valid, into the patch and the engines */
-  private setNotes(m: ModuleInst, notes: StepNote[] | undefined): void {
+  /** a Steps module's notes of pattern p (0-based; the selected one), valid, into the patch and the engines. A pattern the
+   * track had not got is made (its notes are what the edit made of the pattern 1 it showed: track.ts patternOf) */
+  private setNotes(m: ModuleInst, notes: StepNote[] | undefined, p = this.pattern): void {
     const n = fixNotes(notes);
-    if (n) m.notes = n;
-    else delete m.notes;
-    this.ev.onTrack?.(m.id, m.notes);
+    if (p <= 0) {
+      if (n) m.notes = n;
+      else delete m.notes;
+    } else {
+      const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+      while (pats.length < p) pats.push(null);
+      const x: Pattern = { ...(pats[p - 1] ?? {}) };
+      if (n) x.notes = n;
+      else delete x.notes;
+      pats[p - 1] = x;
+      m.patterns = fixPatterns(pats);
+    }
+    this.ev.onTrack?.(m.id, n, p);
     if (this.roll?.id === m.id) this.roll.view.render();
   }
+
+  /* ---- patterns and songs (#375; track.ts SeqState on Main: the selected pattern, the song playing, the songs) */
+  private mainSeq(): SeqState | undefined {
+    return this.patch.modules.find((m) => m.type === 'fm1')?.seq;
+  }
+  /** the patch's selected pattern (0-based): every track's grid and roll show and edit it */
+  get pattern(): number {
+    return this.mainSeq()?.pattern ?? 0;
+  }
+  /** the song that plays (0: none, the selected pattern plays) */
+  get song(): number {
+    return this.mainSeq()?.song ?? 0;
+  }
+  /** the patch's songs (8 at most; an empty list for one with no entries) */
+  songs(): SongEntry[][] {
+    return Array.from({ length: SONGS_MAX }, (_, k) => (this.mainSeq()?.songs?.[k] ?? []).map((e) => ({ ...e })));
+  }
+  private putSeq(f: (s: SeqState) => void): void {
+    const main = this.patch.modules.find((m) => m.type === 'fm1');
+    if (!main) return;
+    const s: SeqState = structuredClone(main.seq ?? {});
+    f(s);
+    const v = fixSeq(s);
+    if (v) main.seq = v;
+    else delete main.seq;
+  }
+  /** a track's pattern p as the editor shows it (track.ts patternOf: one it has not got shows its pattern 1) */
+  patternOf(id: number, p = this.pattern): ReturnType<typeof patternOf> | null {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    return m ? patternOf(m, p) : null;
+  }
+  /** which tracks' patterns hold notes (or exist), by pattern number: for the strip's marks */
+  usedPatterns(): Set<number> {
+    const out = new Set<number>();
+    for (const m of this.patch.modules) {
+      if (m.type !== 'steps') continue;
+      if (m.notes?.length) out.add(0);
+      m.patterns?.forEach((x, i) => { if (x) out.add(i + 1); });
+    }
+    return out;
+  }
+  /** choose the patch's pattern / song: where the patch plays, saved with it but no undo step (like the transport); the
+   * grids and the roll show the pattern */
+  selectPattern(p: number): void {
+    p = Math.max(0, Math.min(PATTERNS_MAX - 1, Math.round(p)));
+    if (p === this.pattern) return;
+    this.putSeq((s) => (s.pattern = p));
+    this.patternShown();
+  }
+  selectSong(n: number): void {
+    n = Math.max(0, Math.min(SONGS_MAX, Math.round(n)));
+    if (n === this.song) return;
+    this.putSeq((s) => (s.song = n));
+    this.patternShown();
+  }
+  private patternShown(): void {
+    this.ev.onPattern?.(this.pattern, this.song);
+    for (const g of this.stepGrids.values()) g.refresh();
+    this.roll?.view.render();
+    this.songView?.render();
+  }
+  /** the FM-1 chose a pattern or a song (PATTERN_NOW): followed, not sent back (main.ts marks it) */
+  patternFromDevice(pattern: number, song: number): void {
+    this.putSeq((s) => { s.pattern = pattern; s.song = song; });
+    this.patternShown();
+  }
+  /** song k's entries (an undo step) */
+  setSong(k: number, entries: SongEntry[]): void {
+    if (k < 0 || k >= SONGS_MAX) return;
+    this.touch();
+    this.putSeq((s) => {
+      const songs = Array.from({ length: SONGS_MAX }, (_, j) => s.songs?.[j] ?? []);
+      songs[k] = entries.map((e) => ({ ...e }));
+      s.songs = songs;
+    });
+    this.ev.onSong?.(k, this.songs()[k]);
+    this.songView?.render();
+  }
+  /** song k edited on the FM-1's SONG page (SONG_NOW): an undo step, as a track edited there */
+  songFromDevice(k: number, entries: SongEntry[]): void {
+    this.setSong(k, entries);
+  }
+  /** a track's pattern p's own length or rate (undefined: the track's); pattern 1 has none of its own: its track's are set */
+  setPatternShape(id: number, p: number, shape: { len?: number | null; rate?: number | null }): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    if (!m) return;
+    if (p <= 0) {
+      if (shape.len) this.setParam(id, 'len', shape.len);
+      if (shape.rate !== undefined && shape.rate !== null) this.setParam(id, 'rate', shape.rate);
+      return;
+    }
+    this.touch();
+    const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+    while (pats.length < p) pats.push(null);
+    const x: Pattern = { ...(pats[p - 1] ?? { ...(m.notes ? { notes: m.notes.map((n) => ({ ...n })) } : {}) }) };
+    for (const k of ['len', 'rate'] as const) {
+      const v = shape[k];
+      if (v === null) delete x[k];
+      else if (v !== undefined) x[k] = v;
+    }
+    pats[p - 1] = x;
+    m.patterns = fixPatterns(pats);
+    this.ev.onStructure(this.patch);
+    this.stepGrids.get(id)?.refresh();
+    this.roll?.view.render();
+  }
+  /** copy pattern `from` of every track to pattern `to` (a track without `from` loses `to` too): an undo step */
+  copyPattern(from: number, to: number): void {
+    if (from === to || to < 0 || to >= PATTERNS_MAX) return;
+    this.touch();
+    for (const m of this.patch.modules) {
+      if (m.type !== 'steps') continue;
+      const src = from <= 0 ? { ...(m.notes ? { notes: m.notes } : {}) } : m.patterns?.[from - 1] ?? null;
+      if (to <= 0) {
+        if (src) {
+          if (src.notes?.length) m.notes = structuredClone(src.notes);
+          else delete m.notes;
+        }
+        continue;
+      }
+      const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+      while (pats.length < to) pats.push(null);
+      pats[to - 1] = src ? structuredClone(src) : null;
+      const fixed = fixPatterns(pats);
+      if (fixed) m.patterns = fixed;
+      else delete m.patterns;
+    }
+    this.ev.onStructure(this.patch);
+    for (const g of this.stepGrids.values()) g.refresh();
+    this.roll?.view.render();
+  }
+  /** the first pattern no track has (for Copy to the next empty one), -1 when all 64 are used */
+  nextEmptyPattern(): number {
+    const used = this.usedPatterns();
+    for (let p = 1; p < PATTERNS_MAX; p++) if (!used.has(p)) return p;
+    return -1;
+  }
+  /** the open song drawer (song.ts), if any */
+  songView: { render(): void } | null = null;
 
   /** a Steps module's grid follows its length (the len slider) */
   refreshSteps(id: number): void {
@@ -1237,7 +1391,7 @@ export class Editor {
         this.endGesture();
         this.pass = { id, loop, before: this.snap() };
       }
-      this.setNotes(m, overdub(m.notes, [note]));
+      this.setNotes(m, overdub(patternOf(m, this.pattern).notes, [note]));
       this.stepGrids.get(id)?.refresh();
     }
   }

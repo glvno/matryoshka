@@ -1424,7 +1424,7 @@ int main(void)
         check("REC with a melodic track armed, stopped: its roll with REC on (no step entry)", page == PAGE_SEQ && seq_rec == 2u
               && seq_trk == 1u && seq_map() < 0 && !seq_kbd());
         later(1100);
-        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC", C_RED));
+        check("  its bar: PATTERN REC on red", bar_shows("PATTERN P01 REC", C_RED));
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
         steps_inst((uint32_t)pat)->s.stp.hit = 0;
         r0 = seq_row;
@@ -1694,7 +1694,7 @@ int main(void)
         check("the arm: DRUMS ARMED in the bar, the track's line redrawn in place, nothing else, no blink",
               bar_shows("DRUMS ARMED", C_FG) && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        put(want, "DRUMS ARM")[0] = 0;                    /* (a drum track's bar: no row, the grid shows it) */
+        put(want, "DRUMS P01 ARM")[0] = 0;                    /* (a drum track's bar: no row, the grid shows it) */
         check("after the message the bar says ARM", bar_shows(want, C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM"));
         fb_watch_reset();
@@ -1761,7 +1761,7 @@ int main(void)
         check("melodic track: REC held + black key 1 arms it, the bar's message and the track's line (ARMED) only, no blink",
               eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        check("melodic track: the bar says ARM", bar_shows("DRUMS ARM", C_ACC));
+        check("melodic track: the bar says ARM", bar_shows("DRUMS P01 ARM", C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM_TRACK"));
         fb_watch_reset();
         held_key(BTN_SEQ, 1);
@@ -2868,6 +2868,100 @@ int main(void)
                 check("reverse reaches the recorded step next", eng_steps_pos(st) == 2);
             }
         }
+    }
+    /* patterns and songs on the panel (#375, D-541, D-544): PRESET on the SEQ page picks the patch's pattern (at once while
+     * stopped, at the end of the pass while running; the bar shows both), SEL tapped opens the SONG page, its knobs edit
+     * the song, SEQ held + REC deletes an entry (asked first), SEL goes back; SEL held as the pen opens nothing */
+    {
+        int32_t l[128], r[128];
+        uint32_t i, told;
+        int mod;
+        eng_transport(0);
+        check("patterns fixture loads", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
+        pv_gen++;
+        eng_render(l, r, 128);
+        if (page != PAGE_SEQ)
+            page_set(PAGE_SEQ);
+        seq_select(0);
+        ui_dirty = 2;
+        loop();
+        mod = seq_module();
+        check("the SEQ bar shows the pattern (P01)", bar_shows("STEPS 1 P01", C_ACC));
+        told = host_pattern_told;
+        enc(6, 1);
+        eng_render(l, r, 128);
+        later(1100);
+        check("PRESET on the SEQ page: pattern 2, at once while stopped, the editor told", eng_pattern() == 1
+              && eng_pattern_playing((uint32_t)mod) == 1 && host_pattern_told == told + 1u);
+        check("  the bar: P02; the page: its own length (5 steps)", bar_shows("STEPS 1 P02", C_ACC) && seq_len(mod) == 5);
+        eng_transport(1);
+        for (i = 0; i < 4u; i++)
+            eng_render(l, r, 128);
+        enc(6, 1);
+        later(1100);
+        check("running: pattern 3 waits for the end of the track's pass", eng_pattern() == 2 && eng_pattern_playing((uint32_t)mod) == 1
+              && eng_pattern_queued((uint32_t)mod) == 2);
+        check("  the bar: P02>P03", bar_shows("STEPS 1 P02>P03", C_ACC));
+        for (i = 0; i < 800u && eng_pattern_playing((uint32_t)mod) != 2; i++)
+            eng_render(l, r, 128);
+        loop();
+        check("  at the end of the pass: P03 (its own length, 12 steps)", eng_pattern_playing((uint32_t)mod) == 2
+              && bar_shows("STEPS 1 P03", C_ACC) && seq_len(mod) == 12);
+        eng_transport(0);
+        eng_render(l, r, 128);
+        tap(BTN_SEL);
+        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END)", page == PAGE_SONG && song_sel == 0 && song_len() == 0
+              && on_screen("END"));
+        told = host_song_told;
+        enc(2, 1);
+        check("K1 on END: an entry of the selected pattern, the editor told", song_len() == 1 && (eng_song_get(0, 0) & 0xFF) == 2
+              && host_song_told == told + 1u);
+        enc(2, 2);
+        enc(3, -3);
+        check("K1: its pattern, K2: its shift", eng_song_get(0, 0) == (4 | (0xFD << 8)) && on_screen("01  P05  -3"));
+        panel_held |= 1u << BTN_ACC;
+        enc(2, 1);
+        panel_held &= ~(1u << BTN_ACC);
+        check("FX + K1: a copy of it inserted before it", song_len() == 2 && eng_song_get(0, 1) == eng_song_get(0, 0));
+        enc(5, 1);
+        check("K4 right: the song plays", eng_song() == 1);
+        snap_to(getenv("PANEL_SNAP_SONG"));
+        enc(5, -1);
+        check("K4 left: the pattern plays again", eng_song() == 0);
+        enc(1, 1);
+        check("ALGO: song 2 (empty)", song_sel == 1 && song_len() == 0);
+        enc(1, -1);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        panel_held |= 1u << BTN_REC;
+        panel_edges(1u << BTN_REC, 0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("SEQ held + REC on the SONG page: it asks first", song_len() == 2 && song_del_at != 0u);
+        panel_held |= 1u << BTN_REC;
+        panel_edges(1u << BTN_REC, 0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("  REC again: the entry deleted", song_len() == 1);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  SEQ let go: the SONG page stays", page == PAGE_SONG);
+        tap(BTN_SEL);
+        check("SEL on the SONG page: back to the SEQ page", page == PAGE_SEQ);
+        panel_held |= 1u << BTN_SEL;
+        panel_edges(1u << BTN_SEL, 0);
+        panel_keys(1u << 5);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);
+        loop();
+        check("SEL held with a key (the pen): its release opens nothing", page == PAGE_SEQ);
+        enc(6, -2);
+        eng_render(l, r, 128);
+        check("PRESET back to pattern 1", eng_pattern() == 0 && eng_pattern_playing((uint32_t)mod) == 0);
     }
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;

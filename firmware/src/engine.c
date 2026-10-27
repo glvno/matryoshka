@@ -2837,10 +2837,14 @@ static int32_t steps_len(const inst_t *it, uint32_t t)
     uint32_t p = TRK_P(t);
     return p && E.pat_len[t][p] ? E.pat_len[t][p] : clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
 }
-int eng_steps_len(uint32_t module)
+int eng_steps_len(uint32_t module)   /* (the SEQ page's: the track's length as set, not as modulated this block) */
 {
-    inst_t *it = steps_inst(module);
-    return it ? steps_len(it, E.node[module].trk) : -1;
+    uint32_t t, p;
+    if (!steps_inst(module))
+        return -1;
+    t = E.node[module].trk;
+    p = TRK_P(t);
+    return p && E.pat_len[t][p] ? E.pat_len[t][p] : clampi(round_q16(eng_get_param(module, STEPS_P_LEN)), 1, TRACK_STEPS);
 }
 int eng_pattern_notes(uint32_t module, uint32_t p, const uint32_t **w)
 {

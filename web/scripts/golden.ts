@@ -2615,7 +2615,7 @@ events['808 Kit'] = events['909 Kit'];
 if (process.argv.includes('--panel-fixtures')) {
   const out = new URL('../../build/panel-fixtures/', import.meta.url);
   mkdirSync(out, { recursive: true });
-  for (const name of ['unison-count-0-0', 'steps-direction-1-64'])
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns'])
     writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
   console.log('panel fixtures generated');
   process.exit(0);
