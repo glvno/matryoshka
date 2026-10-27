@@ -219,6 +219,24 @@
   much for the FM-1, so it stays a browser patch.
 - **Oracle V XL:** chord memory is one Selector per voice. `chord 2` to `chord 5` now set each voice's interval above
   the key, not above the chord note before it. FM-1 CPU estimate: 420 % to 398 %.
+- **808 Kit: the Roland TR-808's controls, and its closed hihat cuts the open one.** One card, `808 kit`, holds the
+  drums with the TR-808's knobs only, one page per instrument named as on its panel: bass drum (level, tone, decay),
+  snare drum (level, tone, snappy), low tom (level, tuning), rim shot, hand clap, cow bell (level), open hihat (level,
+  decay), closed hihat (level). New: bass drum TONE (a low pass on the kick's attack, now with a 1 ms click) and snare
+  drum TONE (the balance of two body sines, about 238 and 335 Hz, the TR-808's two shells). The hihats are the factory
+  hats (a square cluster and noise) on one metallic source, and a closed hit shuts an open one until the next open hit.
+  The drums' other rows (tune, drop, snap, flam, stick ...) keep their values but leave the card. It still plays eight of
+  the TR-808's eleven voices, and each row accents its own drum by velocity, where the TR-808 has an ACCENT row for all.
+  FM-1 budget: 59 to 58 modules, 3,424 to 3,226 patch bytes of 3,840, CPU estimate 67 % to 76 % (the editor's
+  estimate). Host and firmware-engine tested only (`tools/golden.sh`), not yet on a device.
+- **808 Kit XL** (browser only): every TR-808 voice, knob and switch. The mid and high toms and the cymbal play from a
+  second track, DRUMS 2, whose Drum map also has the ACCENT row: a step on it accents every voice on that step by
+  ACCENT LEVEL, and the rows' velocities no longer accent. The tom / conga, rim shot / claves and hand clap / maracas
+  switches are rows of named choices. The cymbal and hihats share six square oscillators at the TR-808's frequencies;
+  the cymbal has TONE and DECAY. A pre-scale row (1/8T, 1/16, 1/16T, 1/32: 3, 4, 6 or 8 steps a beat) sets both
+  tracks' rate. The TR-808's rhythm memory (A /
+  B variations, fill-ins, auto fill, rhythm tracks) needs Steps features we lack (#351). 132 modules, an estimated 150 %
+  of the FM-1's CPU.
 
 ## 1.4.1 — 2026-10-26
 
