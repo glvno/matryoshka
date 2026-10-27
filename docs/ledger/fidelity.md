@@ -2,7 +2,7 @@
 
 IDs: D-700–D-749
 
-Factory cards follow their original instruments' controls ([D-347](patches-and-presets.md#D-347)). This file records choices about how those controls and patch points work. It does not certify that an instrument is complete. Factory inclusion for 1.5 follows [D-129](releases.md#D-129). Unfinished models may remain in Community under [D-130](releases.md#D-130).
+Factory cards follow their original instruments' controls ([D-347](patches-and-presets.md#D-347)). This file records choices about how those controls and patch points work. It does not certify that an instrument is complete. The full release scope and architectural and interface parity target follow [D-131](releases.md#D-131).
 
 | ID | Decision | Status | Date | Source |
 |---|---|---|---|---|
@@ -11,6 +11,5 @@ Factory cards follow their original instruments' controls ([D-347](patches-and-p
 
 ## Not yet settled
 
-- Final fidelity verdicts for the smaller factory set, including original polyphony — issues #303 and #351.
+- Final fidelity verdicts and remaining original-instrument controls after every required engine feature is complete — issues #303 and #351.
 - The boundary between physical input jacks and the sound-processing features they feed, including the Model D external input — issue #303.
-- How first-party works in progress appear in Community while preserving their existing license; the third-party submission rule is [D-316](patches-and-presets.md#D-316).
