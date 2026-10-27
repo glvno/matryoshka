@@ -1651,6 +1651,45 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-chip.error { border-color: var(--danger); color: var(--danger); }
 .fm1-chip[hidden] { display: none; }
 
+/* the pattern strip (#375, pattern-strip.ts): on a Steps card under its head and in the roll's header; the pattern
+ * playing -> the one a track waits for blinks */
+.pattern-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 5px; font: var(--cap); font-size: 10px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.roll-head .pattern-strip { flex-wrap: nowrap; margin: 0; }
+.pattern-strip button, .pattern-strip select { height: 20px; padding: 0 6px; font: inherit; color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.pattern-strip select { padding: 0 2px; max-width: 92px; }
+.pattern-strip select:disabled { opacity: .45; cursor: default; }
+.pattern-strip .pat-name { min-width: 40px; text-align: center; color: var(--ink); font-size: 11px; }
+.pattern-strip .pat-name.borrowed { color: var(--muted); font-style: italic; }
+.pattern-strip .pat-name.waiting { color: var(--accent); animation: pat-wait .5s steps(2, jump-none) infinite; }
+@keyframes pat-wait { 50% { opacity: .35; } }
+.pattern-strip .pat-pick { width: 22px; padding: 0; color: transparent; }
+.pattern-strip .pat-pick option { color: var(--ink); }
+.pattern-strip .pat-song.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* the song drawer (#375, song.ts): a panel at the right of the canvas, above the dock */
+.song-drawer { position: absolute; top: 48px; right: 8px; bottom: 8px; z-index: 9; width: min(340px, calc(100% - 16px)); display: flex;
+  flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 24px var(--shadow); }
+.song-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  font: var(--cap); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+.song-tabs, .song-mode { display: flex; gap: 3px; }
+.song-head button { height: 22px; min-width: 22px; padding: 0 6px; font: inherit; color: var(--muted); background: transparent; border: 1px solid var(--line);
+  border-radius: 4px; cursor: pointer; }
+.song-head .song-tab.used { color: var(--ink); }
+.song-head .song-tab.on { border-color: var(--ink); }
+.song-head .song-tab.playing, .song-head .song-mode-btn.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.song-close { margin-left: auto; }
+.song-list { flex: 1; overflow: auto; padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 3px; }
+.song-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; cursor: grab; }
+.song-row.live { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.song-no { width: 20px; font: var(--cap); font-size: 11px; color: var(--muted); }
+.song-row select, .song-row input { height: 22px; font: inherit; font-size: 12px; color: var(--ink); background: var(--bar); border: 1px solid var(--line); border-radius: 4px; }
+.song-shift { width: 52px; }
+.song-row button, .song-add { height: 22px; min-width: 22px; padding: 0 6px; color: var(--muted); background: transparent; border: 1px solid var(--line);
+  border-radius: 4px; cursor: pointer; }
+.song-add { align-self: flex-start; margin-top: 4px; }
+.song-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
+
 /* The piano roll (#136, roll.ts; design A): a drawer over the canvas above the dock, full width, edged in the armed colour
    while its track is armed. Header, then the keyboard and the grid of 64 steps, then the velocity lane. */
 .roll { --roll-step: color-mix(in srgb, var(--ink) 7%, transparent); --roll-beat: color-mix(in srgb, var(--ink) 14%, transparent);

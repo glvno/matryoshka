@@ -23,6 +23,8 @@ import { fixNotes, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './tra
 export interface RollOps {
   /** the track as it is now (null: it is gone) and its label */
   track(): ModuleInst | null;
+  /** the pattern strip for the header (pattern-strip.ts, #375) */
+  strip?(): HTMLElement;
   label(): string;
   /** what it plays (poly.ts trackTargets) */
   plays(): string[];
@@ -146,6 +148,8 @@ export class PianoRoll {
     const close = btn('×', 'roll-close', 'close the roll (Esc)', () => this.ops.close());
     close.setAttribute('aria-label', 'Close the roll');
     head.append(grip, this.nameEl, this.playsEl, this.armBtn, this.recBtn, this.lenEl, this.drawBtn, this.foldBtn, help, this.infoEl, close);
+    const strip = ops.strip?.();
+    if (strip) head.insertBefore(strip, this.lenEl);
 
     const rulerRow = document.createElement('div');
     rulerRow.className = 'roll-ruler-row';
