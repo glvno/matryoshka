@@ -1424,7 +1424,7 @@ int main(void)
         check("REC with a melodic track armed, stopped: its roll with REC on (no step entry)", page == PAGE_SEQ && seq_rec == 2u
               && seq_trk == 1u && seq_map() < 0 && !seq_kbd());
         later(1100);
-        check("  its bar: PATTERN REC on red", bar_shows("PATTERN P01 REC", C_RED));
+        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC P01", C_RED));
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
         steps_inst((uint32_t)pat)->s.stp.hit = 0;
         r0 = seq_row;
@@ -1694,7 +1694,7 @@ int main(void)
         check("the arm: DRUMS ARMED in the bar, the track's line redrawn in place, nothing else, no blink",
               bar_shows("DRUMS ARMED", C_FG) && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        put(want, "DRUMS P01 ARM")[0] = 0;                    /* (a drum track's bar: no row, the grid shows it) */
+        put(want, "DRUMS ARM P01")[0] = 0;                    /* (a drum track's bar: no row, the grid shows it) */
         check("after the message the bar says ARM", bar_shows(want, C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM"));
         fb_watch_reset();
@@ -1761,7 +1761,7 @@ int main(void)
         check("melodic track: REC held + black key 1 arms it, the bar's message and the track's line (ARMED) only, no blink",
               eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        check("melodic track: the bar says ARM", bar_shows("DRUMS P01 ARM", C_ACC));
+        check("melodic track: the bar says ARM", bar_shows("DRUMS ARM P01", C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM_TRACK"));
         fb_watch_reset();
         held_key(BTN_SEQ, 1);

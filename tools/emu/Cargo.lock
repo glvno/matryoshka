@@ -105,6 +105,7 @@ dependencies = [
 [[package]]
 name = "fm1-isa"
 version = "0.0.0"
+source = "git+https://github.com/joakimeriksson/fm1-emu?rev=7ca5b96c9e828dea5176fc60f0b945abbf442895#7ca5b96c9e828dea5176fc60f0b945abbf442895"
 
 [[package]]
 name = "fm1-soc"

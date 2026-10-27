@@ -45,6 +45,8 @@ const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
 const SELECT: u8 = 0; // encoder
 const K1: u8 = 2;
+const K4: u8 = 5; // encoder
+const SEL: u8 = 3; // the SEL button (SCL in Felucca's table)
 
 /// The device page's header, its rows (pages_ui.c LK_HH)
 const HEADER_ROWS: usize = 36;
@@ -505,6 +507,45 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         m.tap(SEQ, 120, 400)?;
     } else {
         t.check("roll: the factory <7PH is there", false, String::new());
+    }
+    if let Some(sb) = presets.iter().position(|(n, _)| n == "SILVER BOX") {
+        // patterns and songs (#375): PRESET on the SEQ page picks the pattern (stopped: at once; the bar shows it), SEL
+        // tapped opens the SONG page, K4 right plays song 1 (Silver Box's demo), PLAY sounds it, K4 left the pattern again
+        m.midi(&[0xC0, sb as u8], 500)?;
+        t.screen(&m, "song: Silver Box loads", "SILVER BOX");
+        m.tap(SEQ, 120, 400)?;
+        t.screen(&m, "song: the SEQ bar shows pattern 1", "P01");
+        m.turn(PRESET, 1, 600)?;
+        m.run_for(1200)?;
+        t.screen(&m, "song: PRESET on the SEQ page picks pattern 2, at once while stopped", "P02");
+        let mk = m.mark();
+        m.tap(PLAY, 120, 1500)?;
+        let p = m.peak_since(mk);
+        t.check("song: PLAY plays pattern 2 (pattern 1 is empty)", p > LOUD, format!("peak {p}"));
+        m.turn(PRESET, 1, 300)?;
+        t.screen(&m, "song: running, pattern 3 waits for the end of the pass", "PATTERN 03 NEXT");
+        m.run_for(3000)?;
+        t.screen(&m, "song: at the end of the pass, P03", "P03");
+        m.tap(PLAY, 120, 300)?;
+        m.turn(PRESET, -2, 600)?;
+        m.tap(SEL, 120, 600)?;
+        t.screen(&m, "song: SEL tapped opens the SONG page", "SONG 1");
+        t.screen(&m, "song: the demo song's entries", "01  P02  0");
+        m.turn(K4, 1, 600)?;
+        t.screen(&m, "song: K4 right, song 1 plays", "SONG 1 PLAYS");
+        let mk = m.mark();
+        m.tap(PLAY, 120, 2000)?;
+        let p = m.peak_since(mk);
+        t.check("song: PLAY plays the song", p > LOUD, format!("peak {p}"));
+        t.snap(&m, "song-page");
+        m.tap(PLAY, 120, 300)?;
+        m.turn(K4, -1, 600)?;
+        t.screen(&m, "song: K4 left, the pattern plays again", "PATTERN P01");
+        m.tap(SEL, 120, 400)?;
+        t.screen(&m, "song: SEL goes back to the SEQ page", "P01");
+        m.tap(SEQ, 120, 400)?;
+    } else {
+        t.check("song: the factory Silver Box is there", false, String::new());
     }
     *emulated += m.ms();
     Ok(())
