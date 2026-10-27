@@ -6,6 +6,8 @@
 - Silver Box has a named SAW / SQUARE switch. Its lean copy inside `<7PH` keeps the plain waveform control to fit the device.
 
 - USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+- Ladder skips audio-rate checks when its FM input is unpatched. Selectors and gain modules avoid work for constant or unity-gain cases. All 150 audio kits and mode transitions remain bit-identical; CPU estimates distinguish the cheaper fixed gains from other or modulated gains.
+
 - Monolith D has all six waveform positions on each oscillator, including the triangle/saw hybrid and oscillator 3's reverse saw. FILTER MODULATION uses Ladder's audio-rate input.
 
 - Factory generation keeps Io 4's arpeggiator-only setup and four voices: the rig sheds a voice with an added PATTERN track despite its modeled fit.
