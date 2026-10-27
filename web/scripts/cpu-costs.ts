@@ -241,6 +241,14 @@ async function typeCost(type: string): Promise<TypeCost> {
   if (def.inputs.some((i) => i.name === 'pitch')) {
     const moving = Math.round((await measure(type, { moving: true })).run - base.run);
     if (moving > thr) out.moving = moving;
+    // The unison loop has its own pitch-conversion overhead. Multiplying the single-copy difference undercounts it.
+    if (type === 'osc') out.movingCopies = await Promise.all([1, 2, 3, 4, 5].map(async (unison) => {
+      const costs = await Promise.all([0, 1, 2, 3].map(async (wave) => {
+        const params = { unison, wave };
+        return (await measure(type, { params, moving: true })).run - (await measure(type, { params })).run;
+      }));
+      return Math.max(0, Math.round(Math.max(...costs)));
+    }));
   }
   // work only the first output needs (the filter's second stage feeds lp24 and mix): saved when the module is heard through
   // its second output instead (cpu.ts FIRST_ALSO lists outputs that need the same work)

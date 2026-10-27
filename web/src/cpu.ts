@@ -28,6 +28,8 @@ export interface TypeCost {
   extra?: { dim: CostDim; add: number[] }[];
   /** cycles added when the pitch input moves every sample (not just from the keyboard), per unison copy */
   moving?: number;
+  /** oscillator pitch-conversion work for each unison count (1..5), measured with that many copies */
+  movingCopies?: number[];
   /** cycles saved when the first output is not patched (nor the outputs FIRST_ALSO lists): work only it needs; more with
    * some inputs patched (firstOffWith: the filter's second stage also works out its own coefficients while the cv moves) */
   firstOff?: number;
@@ -221,8 +223,10 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
     if (t.firstOff && !m.bypass && !outputs.has(def.outputs[0].name) && !(FIRST_ALSO[m.type] ?? []).some((o) => outputs.has(o)))
       one -= t.firstOff + Math.max(0, ...Object.entries(t.firstOffWith ?? {}).filter(([i]) => inputs.has(i)).map(([, v]) => v));
     // a pitch input that keeps moving: something that never holds still reaches it (an envelope or a glide only moves for a moment)
-    if (t.moving && !m.bypass && p.cables.some((c) => c.to.module === m.id && c.to.port === 'pitch' && keepsMoving(p, c.from.module)))
-      one += t.moving * (m.type === 'osc' ? Math.max(Math.round(m.params.unison ?? 1), STACKS[Math.round(m.params.stack ?? 0)]?.length ?? 1) : 1);
+    if (t.moving && !m.bypass && p.cables.some((c) => c.to.module === m.id && c.to.port === 'pitch' && keepsMoving(p, c.from.module))) {
+      const copies = m.type === 'osc' ? Math.max(Math.round(m.params.unison ?? 1), STACKS[Math.round(m.params.stack ?? 0)]?.length ?? 1) : 1;
+      one += t.movingCopies?.[copies - 1] ?? t.moving * copies;
+    }
     if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
     if (m.type === 'output') total += table.output;
     const k = ninst(m.id);
