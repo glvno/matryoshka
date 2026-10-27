@@ -138,6 +138,8 @@ function sandboxCheck(): void {
   sandboxWas = on;
   sandboxSent = '';
   if (on) {
+    // SANDBOX pages are discarded until LIVE paused arrives. Send the mode first, including on a fresh connection.
+    device.live(true);
     if (!mirror.following) {
       sandboxFollows = true;
       void followFm1('matryoshka');
@@ -864,7 +866,6 @@ function showBudget(): void {
   const was = fitsDevice;
   fitsDevice = b.fits;
   syncChip();
-  if (liveSync.pausesNow(device.connected, liveOn, was, b.fits)) device.live(true);   // (#200: the FM-1 says so at once)
   const el = $('budget');
   el.classList.toggle('over', !b.fits);
   const memOver = b.over.filter((i) => i.key !== 'cpu' && i.key !== 'browser');

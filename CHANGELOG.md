@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- USB MIDI keeps consecutive editor messages in order instead of dropping a SysEx frame while the previous one is pending. Entering sandbox mode sends LIVE paused before its first page, so the device mutes and receives that page together.
+
 - Random has a `clock` input and a `held` output: each rising edge draws an independent random voltage for that instance, held until the next edge. Existing fixed and wandering outputs keep their sound.
 
 - **Lower CPU use for parameter updates.** Modules without parameter modulation copy their settings directly;

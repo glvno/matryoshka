@@ -207,7 +207,7 @@ const FILTER_MIDI = (only) => {
     for (const p of keep(a.outputs).values()) {
       if (p.__wrapped) continue;
       const send = p.send.bind(p);
-      p.send = (d, t) => { if (d[0] === 0xf0 && d[1] === 0x7d) window.__sent.push([Math.round(performance.now()), d[4], d.length]); return send(d, t); };
+      p.send = (d, t) => { if (d[0] === 0xf0 && d[1] === 0x7d) window.__sent.push([Math.round(performance.now()), d[4], d.length, Array.from(d.slice(5, 9))]); return send(d, t); };
       p.__wrapped = true;
     }
     return new Proxy(a, {
@@ -394,10 +394,17 @@ async function main() {
       await emu.snap('connect');
     },
     async sandbox() {
+      await page.evaluate(() => window.__sent.splice(0));
       await open('Hera 6 XL');
       const s = await until(async () => { const x = await T(); return x.sandbox ? x : null; });
       await check('sandbox: over budget with Live on is sandbox mode', !!s?.sandbox, `chip ${(await T()).chip}`);
-      await check('sandbox: the FM-1 shows the sandbox page', await emu.waitText('BROWSER PLAYS'));
+      const shown = await emu.waitText('BROWSER PLAYS');
+      const sent = await page.evaluate(() => window.__sent.slice());
+      const pauseAt = sent.findIndex((x) => x[1] === 0x2c && x[3][0] === 1);
+      const pageAt = sent.findIndex((x) => x[1] === 0x31);
+      await check('sandbox: pause precedes the page', pauseAt >= 0 && pageAt > pauseAt, `sent ${sent.map((x) => x[1].toString(16)).join(' ')}`);
+      await check('sandbox: the FM-1 shows the sandbox page', shown);
+      await check('sandbox: its first page names the editor patch', await emu.waitText('HERA 6 XL'));
       await emu.snap('sandbox');
       const p = await emu.notePeak();
       await check('sandbox: the FM-1 is silent under a key', p < QUIET, `peak ${p}`);

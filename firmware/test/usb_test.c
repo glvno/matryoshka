@@ -359,6 +359,34 @@ static int ep1_packet(const uint8_t *p, uint32_t n)
     return rxcsr1_ep1 == 0u;
 }
 
+/* The editor sends LIVE, TRANSPORT and SANDBOX together. The pending frame belongs to the main loop; the rest of this
+ * USB packet must wait, then resume without repeating the MIDI events before it. */
+static void test_sysex_burst(void)
+{
+    const uint8_t burst[] = {
+        0x09, 0x90, 60, 100,
+        0x04, 0xF0, 0x7D, 0x4D, 0x07, 0x31, 0x2C, 0xF7,
+        0x04, 0xF0, 0x7D, 0x4D, 0x07, 0x31, 0x25, 0xF7,
+        0x04, 0xF0, 0x7D, 0x4D, 0x07, 0x31, 0x31, 0xF7,
+        0x08, 0x80, 60, 0,
+    };
+    const uint8_t commands[] = {0x2C, 0x25, 0x31};
+    const uint8_t *frame;
+    uint32_t n, i;
+    mi_r = mi_w = 0;
+    midi_in_resume();
+    CHECK(!ep1_packet(burst, sizeof burst), "SysEx burst: packet waits for its first frame to be handled");
+    for (i = 0; i < sizeof commands; i++) {
+        CHECK(ota_frame_get(&frame, &n) && n == 4u && frame[3] == commands[i], "SysEx burst: frame %u is delivered in order", i);
+        CHECK(mi_w == 1u, "SysEx burst: leading note is delivered once, trailing note waits");
+        ota_frame_done();
+        ep1_rx();
+    }
+    CHECK(!ota_frame_get(&frame, &n), "SysEx burst: no duplicate frame");
+    CHECK(rxcsr1_ep1 == 0u && mi_w == 2u, "SysEx burst: packet released after the trailing note");
+    mi_r = mi_w;
+}
+
 /* msg (F0 .. F7) from the host as USB-MIDI events, 16 to an EP1 packet, a realtime event (FE / F8, CIN F) after every
  * rt_every of them; TRS bytes between the packets; drain: the main loop empties the ring at each poll. A NAKed packet
  * is offered again for up to 2000 polls (1 s). 1 = all taken. */
@@ -595,6 +623,7 @@ int main(int argc, char **argv)
     test_ep0();
 #if FELUCCA_OTA
     test_midi_in_quiet();
+    test_sysex_burst();
 #endif
     stream(44118.0, 60.0, 2600u);                               /* the FM-1: 18 frames a second too many */
     stream(44082.0, 60.0, 2600u);                               /* the other way */

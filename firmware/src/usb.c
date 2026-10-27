@@ -164,14 +164,14 @@ static struct {
     uint8_t sysex[16];
     uint8_t sx_len, sx_on;
     uint8_t rx_pend;             /* EP1 OUT packet seen, not yet taken (the MIDI ring was too full) */
+    uint8_t rx_offset;           /* bytes already dispatched from that packet; a pending SysEx pauses it */
     volatile uint8_t uboot_req;
     volatile uint8_t ota_req;    /* F0 22 24 35 7F F7: M-UPGRADE upgrade command (FELUCCA_OTA) */
 } usb;
 
 #if FELUCCA_OTA
-/* M-UPGRADE SysEx (ota.c): one received frame at a time (7-bit bytes between
- * F0 and F7; frames arriving while one is pending are dropped, the host
- * retries), and a TX ring of SysEx event packets sent before any MIDI. */
+/* M-UPGRADE/editor SysEx: one received frame at a time (7-bit bytes between F0 and F7). EP1 and the emulator pause
+ * until the main loop releases it, keeping later messages in order. A TX ring sends SysEx packets before MIDI. */
 static uint8_t sx_frame[640];
 static uint32_t sx_pos;
 static volatile uint32_t sx_frame_len;
@@ -862,8 +862,15 @@ static int ep1_take(const uint8_t *b, uint32_t n)
     if (MQ - (mi_w - mi_r) < EP1_ROOM)
         return 0;
 #endif
-    for (i = 0; i + 3u < n; i += 4u)
+    for (i = usb.rx_offset; i + 3u < n; i += 4u) {
+#if FELUCCA_OTA
+        if (sx_ready)
+            return 0;                                   /* main loop owns the frame; this packet's remainder stays */
+#endif
         midi_in_event((uint32_t)b[i] | (uint32_t)b[i + 1] << 8 | (uint32_t)b[i + 2] << 16 | (uint32_t)b[i + 3] << 24);
+        usb.rx_offset = (uint8_t)(i + 4u);
+    }
+    usb.rx_offset = 0;
     return 1;
 }
 
@@ -1280,6 +1287,10 @@ static void emu_midi_poll(void)
     usb.config = 1;                                     /* a host is there for as long as the emulator runs */
     usb.suspended = 0;
     while (m1_emu_mb.in_r != m1_emu_mb.in_w && MQ - (mi_w - mi_r) >= 8u) {   /* 8 slots stay for TRS MIDI (ep1_take) */
+#if FELUCCA_OTA
+        if (sx_ready)
+            break;
+#endif
         RING_PUBLISH();
         midi_in_event(m1_emu_mb.in[m1_emu_mb.in_r % EMB_N]);
         RING_PUBLISH();
@@ -1371,6 +1382,7 @@ static void usb_poll(void)                              /* TIMER5 ISR, 2 kHz */
         usb.e0_tx = 0;
         usb.has_pend_addr = 0;
         usb.rx_pend = 0;
+        usb.rx_offset = 0;
 #if FELUCCA_CDC
         cdc.dtr = 0;
         cdc.e0_rx = 0;
