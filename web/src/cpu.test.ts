@@ -4,12 +4,25 @@ import { describe, expect, it } from 'vitest';
 import { CPU, cpuEstimate, runCost } from './cpu';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
-import { EDITOR_ONLY } from './patch';
+import { addModule, connect, emptyPatch, EDITOR_ONLY } from './patch';
 import { FM1_PRESETS } from './presets';
 import { withParts } from './test-poly';
 import { acid, twoOpFM } from './test-patches';
 
 describe('CPU estimate', () => {
+  it('charges moving oscillator pitch from the active wide LFO rate', () => {
+    const p = emptyPatch();
+    const lfo = addModule(p, DEFS.lfo, 0, 0), osc = addModule(p, DEFS.osc, 0, 0), out = addModule(p, DEFS.output, 0, 0);
+    Object.assign(lfo.params, { wave: 1, rate: .02, wide: 55, range: 0 });
+    connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: osc.id, port: 'pitch' });
+    connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' });
+    const oscillatorCost = () => cpuEstimate(p).modules.find(m => m.id === osc.id)!.cycles;
+    const slow = oscillatorCost();
+    lfo.params.range = 3;
+    expect(oscillatorCost()).toBeGreaterThan(slow);
+    lfo.params.wide = .0008;
+    expect(oscillatorCost()).toBe(slow);
+  });
   it('counts Io 4 voice-level flaws before choosing the VCA gain fast path', () => {
     const p = FM1_PRESETS['Io 4']();
     const withFlaws = cpuEstimate(p);
