@@ -42,7 +42,7 @@ const PORT_NAME = `FM-1 (emu ${process.pid})`;
 // panel ids (web/src/fm1-ui.ts BUTTONS, fm1-emu's key matrix): 14.. the note keys from F3
 const B = { octDown: 0, octUp: 1, fx: 2, scl: 3, env: 4, lfo: 5, edit: 6, glo: 7, home: 8, save: 9, arp: 10, seq: 11, play: 12, rec: 13 };
 const C4 = 14 + 7;
-const ENC = { select: 0, algo: 1, k1: 2, preset: 6 };
+const ENC = { select: 0, algo: 1, k1: 2, k4: 5, preset: 6 };
 const QUIET = 64;
 const LOUD = 1000;
 
@@ -392,6 +392,35 @@ async function main() {
       const p = await emu.notePeak();
       await loudCheck('connect: the FM-1 plays Init from a key', p, p > LOUD, `peak ${p}`);
       await emu.snap('connect');
+    },
+    async patterns() {   // #375: a pattern or song chosen on the FM-1 reaches the editor, the editor's reaches the FM-1
+      await open('Silver Box');
+      await until(async () => { const x = await T(); return !x.sandbox && x.live; });
+      await until(async () => !/sending/i.test((await T()).status ?? ''), 8000);
+      const seqOf = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.seq ?? {};
+      await emu.tap(B.seq);
+      await check('patterns: the SEQ bar shows P01', await emu.waitText('P01', 3000));
+      await emu.turn(ENC.preset, 1);
+      await check('patterns: PRESET on the SEQ page: the editor follows (pattern 2)', !!(await until(async () => (await seqOf()).pattern === 1, 3000)), JSON.stringify(await seqOf()));
+      await page.keyboard.press(']');
+      await check('patterns: ] in the editor: the FM-1 plays pattern 3', await emu.waitText('P03', 3000));
+      await emu.snap('patterns');
+      await emu.tap(B.scl);
+      await check('patterns: SEL tapped opens the SONG page with the demo song', await emu.waitText('SONG 1', 3000));
+      await emu.turn(ENC.k4, 1);
+      await check('patterns: K4 right: the editor plays song 1 too', !!(await until(async () => (await seqOf()).song === 1, 3000)), JSON.stringify(await seqOf()));
+      await emu.tap(B.play);
+      await sleep(400);
+      const m = await emu.mark();
+      await sleep(1500);
+      const p = await emu.peak(m);
+      await loudCheck('patterns: PLAY plays the song on the FM-1', p, p > LOUD, `peak ${p}`);
+      await emu.tap(B.play);
+      await emu.turn(ENC.k4, -1);
+      await check('patterns: K4 left: the editor plays the pattern again', !!(await until(async () => !(await seqOf()).song, 3000)));
+      await emu.tap(B.scl);
+      await emu.tap(B.seq);
+      await shot('patterns');
     },
     async sandbox() {
       await open('Hera 6 XL');
