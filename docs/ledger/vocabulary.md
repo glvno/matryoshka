@@ -60,7 +60,7 @@ The searchable list of every editor action, module, assembly and patch, opened w
 
 ### Community shelf
 
-Optional patches in Library > Community, including player submissions and Matryoshka works in progress. They come from the curated `community.json`. A user adds the ones they want, and only those appear in Your patches and the palette.
+Patches other people submitted, from the curated `community.json`, shown in Library > Community. A user adds the ones they want, and only those appear in Your patches and the palette.
 
 ### Course
 

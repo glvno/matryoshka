@@ -2,8 +2,6 @@
 
 ## Unreleased
 
-- Community patches show each version’s license and support Matryoshka works in progress under their existing GPL license.
-
 - Canvas XL exposes all patch-field control sources, including four independent random voltages. Choose PATCH on an input row to connect an assembly patch cord.
 - Silver Box has a named SAW / SQUARE switch. Its lean copy inside `<7PH` keeps the plain waveform control to fit the device.
 

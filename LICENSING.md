@@ -57,11 +57,9 @@ The active Matryoshka wordmark uses preset p13: the approved narrow Roboto Flex 
 
 Matryoshka does not ship M-VAVE Official Open, and will not when it can put Official Open back on an FM-1 (issue #183): the user downloads it from [M-VAVE's release page](https://github.com/m-vave/fm1_open/releases) (the Workbench page or its `.fwsc`). Official Open is a mix: M-VAVE's app sources are GPL-3.0 with an extra linking permission ([LICENSE.md](https://github.com/m-vave/fm1_open/blob/main/LICENSE.md)); its boot and update files are Apache-2.0; and its sound engine (`sdk/lib/libfm1_engine.a`) is M-VAVE's own and not open source ([THIRD_PARTY.md](https://github.com/m-vave/fm1_open/blob/main/THIRD_PARTY.md), "Binary SDK"). That licence lets anyone pass the engine on as part of firmware for FM-1 devices, with its notices, so shipping it would be allowed; Matryoshka ships only open-source files, so it leaves that to M-VAVE.
 
-## Community patches
+## Community patches (CC BY-SA 4.0)
 
-Third-party entries in `web/src/community.json` are patches made by other people, submitted through the issue form `.github/ISSUE_TEMPLATE/community-patch.yml`. Each is licensed by its author under the [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) licence; the author is named in its entry and shown with it in the app. They are data, distinct from the GPL-3.0-only code, which does not cover them. A submitter confirms on the form that they may license the patch so.
-
-Matryoshka models moved from the factory set to Community keep their GPL-3.0-only license. Each version in Community shows its own license; moving a patch does not relicense it.
+The entries of `web/src/community.json` are patches made by other people, submitted through the issue form `.github/ISSUE_TEMPLATE/community-patch.yml`. Each is licensed by its author under the [Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/) licence; the author is named in its entry and shown with it in the app. They are data, distinct from the GPL-3.0-only code, which does not cover them. A submitter confirms on the form that they may license the patch so.
 
 ## Ideas taken from other FM-1 projects (no code copied)
 
