@@ -3559,7 +3559,7 @@ static int32_t env_rate_n(uint32_t n) { return env_rate_q8((uint64_t)n << 8); }
 
 static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
 {
-    const esig_t *gate = it->in[ADSR_I_GATE];
+    const esig_t *gate = it->in[ADSR_I_GATE], *hold = it->in[ADSR_I_HOLD];
     esig_t *out = it->out[0];
     int32_t pa = EF(it, ADSR_P_A), pd = EF(it, ADSR_P_D), pr = EF(it, ADSR_P_R);
     int32_t ainc, ad, ar, sus = EF(it, ADSR_P_S) << 14, v = it->s.adsr.v;
@@ -3592,7 +3592,8 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
         uint8_t g = gate[i] > 32768 ? 1 : 0;
         if (g && !prev)
             stage = 1;
-        else if (!g && prev)
+        /* Hold defers release but preserves gate edges for a reused voice's next attack. */
+        else if (!g && stage && stage != 4 && hold[i] <= 32768)
             stage = 4;
         prev = g;
         switch (stage) {

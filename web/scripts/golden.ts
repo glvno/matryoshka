@@ -53,6 +53,19 @@ const events: Record<string, Ev[]> = {};
 const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
+// Pedal hold preserves the original gate's rising edges, including attacks during a sustained note.
+for (const sustain of [0, 0.3, 1]) {
+  const name = `adsr-hold-${sustain}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), env = add('adsr', 0, 0, { a: .02, d: .05, s: sustain, r: .1 });
+    const out = add('output', 0, 0, { level: 1 });
+    wire(main, 'gate', env, 'gate'); wire(main, 'sustain', env, 'hold');
+    wire(env, 'env', out, 'l');
+  });
+  events[name] = [[0, 'cc', 64, 64], [128 * 5, 'on', 60], [128 * 40, 'off', 60],
+    [128 * 70, 'on', 60], [128 * 90, 'off', 60], [128 * 110, 'cc', 64, 63],
+    [128 * 115, 'cc', 64, 127]];
+}
 tests['key-press-duo'] = make('key-press-duo', (add, wire) => {
   const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 1 });
   for (const [priority, port] of [[1, 'l'], [2, 'r']] as const) {

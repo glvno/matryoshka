@@ -172,13 +172,14 @@ enum {
 #define ADSR_I_GATE 0
 #define ADSR_I_P1 1
 #define ADSR_I_P2 2
+#define ADSR_I_HOLD 3
 #define ADSR_O_ENV 0
 #define ADSR_P_A 0
 #define ADSR_P_D 1
 #define ADSR_P_S 2
 #define ADSR_P_R 3
 #define ADSR_P_LONG 4
-#define ADSR_NIN 3
+#define ADSR_NIN 4
 #define ADSR_NOUT 1
 #define ADSR_NPAR 5
 #define ADSR_CVBASE 1
@@ -1037,7 +1038,7 @@ static const char *const SCALE_PN[] = {"GAIN", "OFFSET"};
 static const uint8_t SCALE_LOG[] = {0, 0};
 static const char *const SCALE_UNIT[] = {"", ""};
 static const char *const *const SCALE_CH[] = {0, 0};
-static const char *const ADSR_INNAMES[] = {"GATE", "P1", "P2"};
+static const char *const ADSR_INNAMES[] = {"GATE", "P1", "P2", "HOLD"};
 static const int32_t ADSR_MIN[] = {66, 66, 0, 66, 0};
 static const int32_t ADSR_MAX[] = {327680, 327680, 65536, 524288, 65536};
 static const int32_t ADSR_DEF[] = {655, 13107, 39322, 19661, 0};

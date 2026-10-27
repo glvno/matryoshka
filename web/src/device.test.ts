@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
-import { deviceBudget, encodePatch } from './patchbin';
+import { deviceBudget, encodePatch, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { liveFrame, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
@@ -156,7 +156,7 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
 
 describe('syncsWith', () => {
   const info = (features: number) => ({ version: 1, maxModules: 64, maxCables: 128, flashOk: true, patchLoaded: true, delays: 4, features, midiOut: null });
-  it('holds back firmware that does not report support for patch format 40: it refuses every patch the editor sends', () => {
+  it('holds back firmware that does not report support for patch format 41: it refuses every patch the editor sends', () => {
     expect(syncsWith(info(246 | (63 << 8)))).toBe(false); // unreleased format 37 builds
     expect(syncsWith(info(246 | (127 << 8)))).toBe(false); // unreleased format 38 builds
     expect(syncsWith(info(54))).toBe(false);    // 1.0.0
@@ -168,24 +168,25 @@ describe('syncsWith', () => {
   });
   it('uses the reported inclusive range instead of the legacy feature bits', () => {
     const base = info(0);
-    expect(syncsWith({ ...base, patchFormats: { min: 31, max: 40 } })).toBe(true);
-    expect(syncsWith({ ...base, patchFormats: { min: 40, max: 40 } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: 31, max: VERSION } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: VERSION, max: VERSION } })).toBe(true);
     expect(syncsWith({ ...base, patchFormats: { min: 31, max: 200 } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: 31, max: VERSION - 1 } })).toBe(false);
     const legacy = info(246 | (255 << 8));
     expect(syncsWith({ ...legacy, patchFormats: { min: 31, max: 38 } })).toBe(false);
-    expect(syncsWith({ ...legacy, patchFormats: { min: 41, max: 200 } })).toBe(false);
-    expect(syncsWith({ ...legacy, patchFormats: { min: 40, max: 38 } })).toBe(false);
+    expect(syncsWith({ ...legacy, patchFormats: { min: VERSION + 1, max: 200 } })).toBe(false);
+    expect(syncsWith({ ...legacy, patchFormats: { min: VERSION + 1, max: 38 } })).toBe(false);
   });
   it('offers the matching update when either side is too old', () => {
     const oldFirmware = { ...info(0), patchFormats: { min: 31, max: 38 } };
     expect(syncUpdateNotice(oldFirmware)).toMatchObject({ target: 'firmware', label: 'Update the FM-1' });
     expect(syncUpdateNotice(info(246))).toMatchObject({ target: 'firmware' });
-    const newFirmware = { ...info(65526), patchFormats: { min: 41, max: 200 } };
+    const newFirmware = { ...info(65526), patchFormats: { min: VERSION + 1, max: 200 } };
     expect(syncUpdateNotice(newFirmware)).toMatchObject({ target: 'editor', label: 'Open current editor' });
     expect(syncUpdateNotice(newFirmware).message).toContain('editor is older');
   });
   it('holds back legacy format 39 firmware, but not an FM-1 unheard from yet', () => {
-    expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 is not format 40
+    expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 is not format 41
     expect(syncsWith(null)).toBe(true);
   });
 });

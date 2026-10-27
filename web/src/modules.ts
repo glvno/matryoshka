@@ -674,7 +674,9 @@ const adsr: ModuleImpl<AdsrState> = {
     for (let i = 0; i < c.n; i++) {
       const g = c.inp.gate[i] > 0.5 ? 1 : 0;
       if (g && !s.prev) s.stage = 1;
-      else if (!g && s.prev) s.stage = 4;
+      // Hold defers release without hiding the gate's next rising edge. It cannot start an idle envelope
+      // or freeze a release already in progress.
+      else if (!g && s.stage !== 0 && s.stage !== 4 && (c.inp.hold?.[i] ?? 0) <= 0.5) s.stage = 4;
       s.prev = g;
       switch (s.stage) {
         case 1:
@@ -3118,6 +3120,7 @@ random.def.inputs.push(gate('clock'));
 ladder.def.inputs.push(control('fm'));
 lfo.def.inputs.push(control('shape'));
 lfo.def.outputs.push(control('pulse'));
+adsr.def.inputs.push(gate('hold'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 
