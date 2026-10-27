@@ -183,7 +183,7 @@ static volatile uint32_t so_w, so_r;
  * Until a packet is taken again, a send that finds no room gives up at once, so the main loop (a step entered, a knob) never
  * waits on a host that is not listening; the editor syncs when it connects. 0: the host reads; else so_r + 1 at the stall */
 static uint32_t sx_deaf;
-#define SX_WAIT_MS 200u
+#define SX_WAIT_MS 50u
 #endif
 
 static volatile uint32_t fm1_ms;                    /* also declared by core.h; parser-only host tests */
