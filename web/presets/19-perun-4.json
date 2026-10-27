@@ -67,7 +67,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -305,7 +306,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -544,7 +546,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -715,7 +718,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 1
+    "morph": 1,
+    "osc": 0
    },
    "att": [
     1,
@@ -914,7 +918,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 1
+    "morph": 1,
+    "osc": 0
    },
    "att": [
     1,
@@ -1100,7 +1105,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,

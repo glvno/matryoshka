@@ -4,7 +4,7 @@
 // measured on the device (a scale plus a fixed time per block); a table measured on the FM-1 itself can replace it (`source`). Every figure here is an estimate.
 import TABLE from './cpu-costs.json';
 import { DEFS, LFO_RANGE_K, STACKS, TRACK_POLY } from './modules';
-import { hasMorph, type ModuleInst, type Patch } from './patch';
+import { flawOf, hasMorph, type ModuleInst, type Patch } from './patch';
 import { deviceView } from './poly';
 
 /** what changes a module's cost: a choice / switch / small integer (its measured values, the nearest one counts), a number
@@ -14,6 +14,8 @@ export type CostDim =
   | { param: string; values: number[] }
   | { param: string; above: number }
   | { param: string; points: number[] }
+  /** exact fast paths, followed by one cell for every other value */
+  | { param: string; exact: number[] }
   | { input: string }
   | { output: string };
 
@@ -28,6 +30,8 @@ export interface TypeCost {
   extra?: { dim: CostDim; add: number[] }[];
   /** cycles added when the pitch input moves every sample (not just from the keyboard), per unison copy */
   moving?: number;
+  /** oscillator pitch-conversion work for each unison count (1..5), measured with that many copies */
+  movingCopies?: number[];
   /** cycles saved when the first output is not patched (nor the outputs FIRST_ALSO lists): work only it needs; more with
    * some inputs patched (firstOffWith: the filter's second stage also works out its own coefficients while the cv moves) */
   firstOff?: number;
@@ -95,6 +99,10 @@ const paramOf = (m: ModuleInst, name: string): number => m.params[name] ?? DEFS[
 
 /** where a module's setting falls along a dim: [index into the dim's values, weight], two for a number between two points */
 function place(d: CostDim, m: ModuleInst, inputs: Set<string>, outputs: Set<string>, moved: Set<string>, shift: number): [number, number][] {
+  if ('exact' in d) {
+    const i = moved.has(d.param) ? -1 : d.exact.indexOf(Math.round(paramOf(m, d.param) * 65536) / 65536);
+    return [[i < 0 ? d.exact.length : i, 1]];
+  }
   if ('values' in d) {
     const v = paramOf(m, d.param);
     return [[d.values.indexOf(nearest(d.values, v)), 1]];
@@ -116,7 +124,7 @@ function place(d: CostDim, m: ModuleInst, inputs: Set<string>, outputs: Set<stri
   return [[outputs.has(d.output) ? 1 : 0, 1]];
 }
 
-export const dimSize = (d: CostDim): number => ('values' in d ? d.values.length : 'points' in d ? d.points.length : 2);
+export const dimSize = (d: CostDim): number => ('values' in d ? d.values.length : 'points' in d ? d.points.length : 'exact' in d ? d.exact.length + 1 : 2);
 
 /** the run cost of one instance of `m`; `moved`: the parameters a parameter input or the morph moves (a mode that turns on
  * above a minimum counts as on then: the modulation may take it there) */
@@ -140,7 +148,7 @@ export function runCost(m: ModuleInst, t: TypeCost, inputs: Set<string>, outputs
 
 /** modules whose output may move every sample (a noisy or audio-rate signal; a glide, an envelope or a Random walk while it
  * moves, which can be all the time: a slow or modulated glide is, and the estimate is a worst case) */
-const MOVERS = new Set(['osc', 'pd', 'noise', 'wavetable', 'string', 'grain', 'glide', 'adsr', 'env', 'env8', 'random']);
+const MOVERS = new Set(['osc', 'pd', 'noise', 'wavetable', 'string', 'grain', 'glide', 'adsr', 'env', 'env8', 'rateenv', 'random']);
 
 /** outputs that need the same work as the first output (TypeCost.firstOff): the filter's mix is made from its lp24 */
 const FIRST_ALSO: Record<string, string[]> = { filter: ['mix'] };
@@ -160,8 +168,11 @@ function slope(p: Patch, id: number, seen = new Set<number>()): number {
     const clocked = ins.some((c) => c.to.port === 'clk' || c.to.port === 'reset');
     if (wave === 4 && !clocked) return 0;                                            // sample & hold: a step per cycle, whatever its rate
     if (ins.length || wave === 2 || wave === 3) return Infinity;                    // modulated (a knob may turn the rate up), or a saw / square edge
-    const k = (m.params.sync ?? 0) >= 0.5 ? 1 : LFO_RANGE_K[Math.round(m.params.range ?? 0)] ?? 1; // (the free rate's range)
-    return (4 * (m.params.rate ?? 4) * k * Math.abs(m.params.depth ?? 1) * 65536) / 44118; // a triangle's slope (a sine's is lower)
+    const sync = (m.params.sync ?? 0) >= 0.5;
+    const range = Math.round(m.params.range ?? 0);
+    const rate = !sync && range === 3 ? (m.params.wide ?? 4) : (m.params.rate ?? 4);
+    const k = sync ? 1 : LFO_RANGE_K[range] ?? 1; // (the free rate's range)
+    return (4 * rate * k * Math.abs(m.params.depth ?? 1) * 65536) / 44118; // a triangle's slope (a sine's is lower)
   }
   if (m.type === 'const' || m.type === 'fm1' || m.type === 'part') return 0;
   const inputs = p.cables.filter((c) => c.to.module === id).map((c) => slope(p, c.from.module, seen));
@@ -217,12 +228,27 @@ export function cpuEstimate(source: Patch, table: CpuTable = CPU): CpuEstimate {
       one += table.cv.morph * def.params.length;
       for (const [name, v] of Object.entries(m.paramsB ?? {})) if (v !== m.params[name]) moved.add(name);
     }
-    one += m.bypass ? table.bypass * outputs.size : runCost(m, t, inputs, outputs, moved, table.note);
+    const group = groups[groupOf.get(m.id) ?? -1];
+    if (!m.bypass && m.type === 'vca' && group) {
+      let work = 0;
+      const pd = def.params.find((p) => p.name === 'gain')!;
+      const base = Math.round(paramOf(m, 'gain') * 65536);
+      for (let part = 0; part < group.cfg.parts; part++) {
+        // Match apply_flaws: the level scales the Q16 base gain before the gain fast path is chosen.
+        const level = flawOf(group.cfg, part).level;
+        const scaled = Math.floor(base * Math.floor(level * 65536 / 100) / 65536) / 65536;
+        const gain = Math.max(pd.min, Math.min(pd.max, scaled));
+        work += runCost({ ...m, params: { ...m.params, gain } }, t, inputs, outputs, moved, table.note);
+      }
+      one += work / group.cfg.parts;
+    } else one += m.bypass ? table.bypass * outputs.size : runCost(m, t, inputs, outputs, moved, table.note);
     if (t.firstOff && !m.bypass && !outputs.has(def.outputs[0].name) && !(FIRST_ALSO[m.type] ?? []).some((o) => outputs.has(o)))
       one -= t.firstOff + Math.max(0, ...Object.entries(t.firstOffWith ?? {}).filter(([i]) => inputs.has(i)).map(([, v]) => v));
     // a pitch input that keeps moving: something that never holds still reaches it (an envelope or a glide only moves for a moment)
-    if (t.moving && !m.bypass && p.cables.some((c) => c.to.module === m.id && c.to.port === 'pitch' && keepsMoving(p, c.from.module)))
-      one += t.moving * (m.type === 'osc' ? Math.max(Math.round(m.params.unison ?? 1), STACKS[Math.round(m.params.stack ?? 0)]?.length ?? 1) : 1);
+    if (t.moving && !m.bypass && p.cables.some((c) => c.to.module === m.id && c.to.port === 'pitch' && keepsMoving(p, c.from.module))) {
+      const copies = m.type === 'osc' ? Math.max(Math.round(m.params.unison ?? 1), STACKS[Math.round(m.params.stack ?? 0)]?.length ?? 1) : 1;
+      one += t.movingCopies?.[copies - 1] ?? t.moving * copies;
+    }
     if (t.thru && m.type === 'steps' && inputs.has('keys')) one += t.thru * Math.min(TRACK_POLY, Math.max(1, ...groups.map((g) => g.cfg.parts)));
     if (m.type === 'output') total += table.output;
     const k = ninst(m.id);

@@ -3,7 +3,8 @@
 # Host test of the USB audio function (firmware/src/usb.c, FELUCCA_UAC): descriptors, EP0 requests, the ring and packet
 # logic under clock drift (firmware/test/usb_test.c), in the app's configuration and with the CDC console; and the
 # MIDI-only presentation (update mode) against a FELUCCA_UAC=0 build's descriptors, byte for byte; the app's build
-# (FELUCCA_OTA=1) also checks that SysEx is not held back by a full MIDI ring in an update session (#177).
+# (FELUCCA_OTA=1) also checks that SysEx is not held back by a full MIDI ring in an update session (#177), and that
+# SysEx out never stalls the main loop on a host that stops reading (#375).
 #   tools/usb_test.sh
 set -e
 cd "$(dirname "$0")/.."

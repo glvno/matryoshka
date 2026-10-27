@@ -11,6 +11,7 @@
 #include "defs.h"
 #include "dsp_tables.h"
 #include "wt_tables.h"
+#include "rate_envelope.h"
 
 #ifndef ENG_POOL
 #define ENG_POOL
@@ -39,10 +40,10 @@
 #define DELAY_LEN 23000u            /* 521 ms at ENG_SR (the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
-#define MAX_HELD 16
+#define MAX_HELD 128
 #define ENG_MAX_ARPS 2               /* Arpeggiator modules of a patch (a third does not load) */
 #define ENG_MAX_TRACKS 16            /* Steps modules of a patch (their notes live in E.trk_note) */
-#define ENG_MAX_NOTES 512            /* the notes of all Steps tracks of a patch (patchbin.ts DEVICE.notes) */
+#define ENG_MAX_NOTES 1536           /* the notes of all Steps tracks of a patch, every pattern (patchbin.ts DEVICE.notes) */
 #define ENG_KEV 64                   /* Steps keys out (note on / off) one block holds; more are dropped */
 #define ARP_HELD 16                  /* keys an arpeggiator holds (arpeggiator.ts ARP_HELD) */
 #define ARP_LIST (ARP_HELD * 4u)     /* its notes over four octaves */
@@ -220,6 +221,11 @@ HOT int32_t wave_square(uint32_t ph, uint32_t dt, uint32_t pw, uint32_t *rc)
     v -= poly_blep(ph - pw, dt, rc);                      /* the same increment: one cache serves both edges */
     return v;
 }
+HOT int32_t wave_shark(uint32_t ph, uint32_t dt, uint32_t *rc)
+{
+    return (wave_tri(ph) + wave_saw(ph, dt, rc)) >> 1;
+}
+
 /* rc: two words of blep_pos cache for this phase */
 static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw, uint32_t *rc)
 {
@@ -230,6 +236,10 @@ static int32_t wave(int32_t kind, uint32_t ph, uint32_t dt, uint32_t pw, uint32_
         return wave_tri(ph);
     case 2:
         return wave_saw(ph, dt, rc);
+    case 4:
+        return wave_shark(ph, dt, rc);
+    case 5:
+        return -wave_saw(ph, dt, rc);
     default:
         return wave_square(ph, dt, pw, rc);
     }
@@ -314,7 +324,7 @@ typedef struct {
     esig_t *out[MAX_OUT];
     union {
         struct { uint32_t phase; int32_t s1, y1, y2, pm1, xb, ap[8]; uint32_t ph[4], rc[5][2]; } osc;   /* s1: last sync sample; FM mode: feedback history, pm interpolation, decimator; ph: unison voices 2..5 (plain path); rc: their blep_pos caches, kept across blocks */
-        struct { uint32_t seed; walk_t w; } rnd;   /* seed: engine.ts instSeed */
+        struct { uint32_t seed; walk_t w; uint32_t held_seed; int32_t held, clock; } rnd;   /* seed: engine.ts instSeed */
         struct { uint32_t phase, seed; int32_t held; uint32_t since; int32_t interval; uint16_t ticks; uint8_t clk_hi, rst_hi, wraps; } lfo;   /* interval: clock edge distance in samples, Q8; wraps: cycles ended since the last snap */
         struct { int32_t y; } gld;         /* Q24 */
         struct { uint32_t seed; int32_t y; } noise;   /* y: the colour one-pole, Q24 */
@@ -327,6 +337,7 @@ typedef struct {
         struct { int32_t ic1, ic2, jc1, jc2; } flt;   /* stage 1 and stage 2 integrators */
         struct { int32_t s[4]; } lad;                 /* the four one-pole states, Q20 */
         struct { int32_t env; } dyn;                  /* the peak follower, Q24 */
+        struct { int32_t env, lc, hc, pk, prev, y; uint32_t cnt; int32_t frac, t; uint8_t trig, arm, valid; } esp;   /* Q24: the envelope, the band pass's one-poles, its peak hold, its previous sample, the glided pitch; samples since the last crossing, that crossing's fraction (Q16), the measured pitch (Q16 octaves) */
         struct { int32_t y1[6], y2[6], r30[6], gn[6], kdec, kdamp, kbr; uint8_t ok; } mod;   /* the modal resonators, Q20; r30, gn: the
                                                     * modes' radii and normalised gains for kdec kdamp / kbr, ok: which are worked out */
         struct { int32_t a[8], b[8], ia; uint32_t phase; } fs;   /* the Hilbert chains (w1 w2 per section), chain A's delayed sample, the quadrature oscillator */
@@ -335,6 +346,7 @@ typedef struct {
         struct { int16_t *buf; uint16_t li[8], ai[2], pi; int32_t lp[8]; uint32_t ph[2]; } rev;   /* the FDN lines' write indices, the diffusers', the pre-delay's; damping states; modulation phases */
         struct { int32_t v; uint32_t t; int32_t rk[4], inc[4], k[4]; uint32_t len[4]; uint8_t stage, prev, ok; } env;  /* Q30, like the ADSR; t: samples
                                                     * in the segment; rk, inc, k, len, ok: segments 1 2 3 and release, as m_adsr */
+        rate_env_t rateenv;
         struct { int32_t v, rk, inc, k; uint32_t t, len; uint8_t stage, prev, cst; } env8;   /* Q30, as env; one step's rates
                                                     * cached (cst: its step, 0 none; rk: the rate they are for): worked out
                                                     * again when the step changes or its rate moves */
@@ -344,12 +356,12 @@ typedef struct {
         struct { int16_t *buf; uint32_t w, phase; } ch;
         struct { uint32_t seed; int32_t c1, r1, y, period, since, gleft; int8_t pos, down; } seq;
         /* Steps (modules.ts StepsState): half ticks since the step (-1: the step came half a tick after a tick), the step
-         * (-1: the next is the first), times round the pattern, half: samples to a step half a tick after a tick (1/64),
+         * (-1: the next is the first), times round the pattern, visit: ordinal within the traversal, half: samples to a step half a tick after a tick (1/64),
          * a swung step waiting (samples, which), clk mode's edge distance; slen / sst: the step's length and samples since
          * it began (live recording rounds to the nearest step); skip: a step recorded ahead, its notes not played again
          * when reached; hit: 1 / 2 (accented) = sound now (eng_steps_hit); pitch / vel: the outputs' held values (Q16, the
          * last note that started); the notes sounding are the track's (E.trk_snd) */
-        struct { uint32_t seed, loop; int32_t c1, r1, since, period, half, pend, slen, sst, pitch, vel; int16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit, skipn; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
+        struct { uint32_t seed, loop; int32_t c1, r1, since, period, half, pend, slen, sst, pitch, vel; int16_t count; int8_t pos, pstep, skip; uint8_t run, gap, mute, hit, skipn, visit; } stp;   /* y: the glide one-pole, Q24; period / since: clock edge distance in samples (since -1 before the first edge) */
         /* Drum map (modules.ts DrumMapState): its rows' velocities (Q16), the rows whose gate is up, the rows that restart
          * this block (a low first sample) */
         struct { int32_t vel[DRUMMAP_NOUT / 2]; uint32_t held[4]; uint8_t gate, gap, fell; } dm;   /* fell: let go since the last
@@ -364,6 +376,7 @@ typedef struct {
 typedef struct {
     uint8_t type, disabled_inputs;
     uint16_t conn;                   /* bit i: input i has a cable (the Selector has 11 inputs) */
+    uint8_t morph;                   /* this module has a B side; legacy binaries morph every module */
     uint8_t bypass;                  /* 1: process() is skipped, the outputs copy the through input (DEFS[].thru) or are silent */
     uint8_t inst0, ninst;            /* its instances in inst_pool[]: one per part of its poly group, else one */
     uint8_t grp;                     /* its poly group (E.grp[]): 0 = it runs once and plays the shared keyboard */
@@ -400,6 +413,7 @@ typedef struct {
     int32_t jump;                    /* the last pitch step, octaves Q16 (the Part module's jump output) */
     uint8_t note, on, retrig;        /* note: the last key it played (255: none yet); on: a key holds it; retrig: taken over
                                         while sounding, this block's gate starts with one low sample */
+    uint8_t key_trig;                /* a key press reached the allocator in this block */
     uint8_t legato;                  /* the note began over a held one (the Part module's legato output) */
     uint32_t on_stamp, off_stamp;
     walk_t dw;                       /* the drift's random walk (modules.ts driftSeed), stepped every block */
@@ -414,7 +428,9 @@ typedef struct {
 #define ENG_NPV (1 + ENG_MAX_GROUPS * ENG_MAX_PARTS)
 typedef struct {
     uint8_t parts, assign, legato, priority;   /* patch.ts PolyCfg */
-    uint8_t unison;                  /* every part plays the one note the priority picks (patch.ts PolyCfg.unison) */
+    uint8_t no_steal;               /* format 37: refuse extra polyphonic notes instead of taking a held voice */
+    uint32_t down[4];               /* all 128 held input keys, even if stolen or refused */
+    uint8_t unison, stack;           /* unison mode and its voice count (0: all parts) */
     int8_t detune[ENG_MAX_PARTS];    /* each part's flaws (patch.ts PartFlaw): cents, */
     uint8_t drift[ENG_MAX_PARTS];    /* % of +-20 cents of wander, */
     int8_t bright[ENG_MAX_PARTS];    /* semitones on the filter cutoffs, */
@@ -464,7 +480,7 @@ typedef struct {
     uint8_t node, n, running, clk_hi;
     int16_t cur;
     arp_key_t held[ARP_HELD];
-    uint32_t pos, since, interval, next, seed;
+    uint32_t pos, since, interval, next, seed, rate_phase;
 } arp_t;
 
 typedef struct {
@@ -485,9 +501,23 @@ typedef struct {
     int32_t tick_off, tick_n, tick_len;   /* this block's ticks while running: the sample they fall on (-1 none), how many, samples per tick */
     uint32_t ext_since, ext_len;     /* MIDI clock: samples since its last tick, samples per tick as measured (0: not yet) */
     uint8_t ntrk;
-    uint16_t nnotes;                 /* the Steps tracks' notes (#133): track t's are trk_note[trk_first[t] .. + trk_n[t]), */
-    uint16_t trk_first[ENG_MAX_TRACKS];   /* sorted by step, then note (track.ts), the tracks in order */
-    uint8_t trk_n[ENG_MAX_TRACKS];
+    uint16_t nnotes;                 /* the Steps tracks' notes (#133): track t's pattern p are trk_note[pat_first[t][p] .. +
+                                      * pat_n[t][p]), sorted by step, then note (track.ts); the slices lie in the order of
+                                      * pat_layout: every track's pattern 0, then track by track its patterns 1.. */
+    uint16_t pat_first[ENG_MAX_TRACKS][ENG_PATTERNS];
+    uint8_t pat_n[ENG_MAX_TRACKS][ENG_PATTERNS];
+    uint8_t pat_len[ENG_MAX_TRACKS][ENG_PATTERNS];    /* its own length, 0 the track's */
+    uint8_t pat_rate[ENG_MAX_TRACKS][ENG_PATTERNS];   /* its own rate, 0xFF the track's */
+    uint64_t pat_has[ENG_MAX_TRACKS];    /* bit p: the track has pattern p (bit 0 always); one it has not got plays pattern 0 */
+    uint8_t trk_pat[ENG_MAX_TRACKS];     /* the pattern each track plays (TRK_P: the slice), the one it plays from the end */
+    uint8_t trk_q[ENG_MAX_TRACKS];       /* of its pass (0xFF none; stopped: from its next block), the song entry it plays */
+    int8_t trk_spos[ENG_MAX_TRACKS];     /* (-1: the next pass plays the first), the entry's shift (semitones; 0 on a track */
+    int8_t trk_shift[ENG_MAX_TRACKS];    /* that plays a Drum map: trk_drum) */
+    uint8_t trk_drum[ENG_MAX_TRACKS];
+    uint8_t pat_sel, song;               /* the patch's pattern (0-based), the song playing (0 none, 1..ENG_SONGS) */
+    uint8_t song_n[ENG_SONGS];           /* the songs: entries, each a pattern and a shift */
+    uint8_t song_pat[ENG_SONGS][ENG_SONG_LEN];
+    int8_t song_shift[ENG_SONGS][ENG_SONG_LEN];
     uint32_t trk_note[ENG_MAX_NOTES];
     snd_t trk_snd[ENG_MAX_TRACKS][TRACK_POLY];   /* the notes each track sounds, oldest first */
     uint8_t trk_nsnd[ENG_MAX_TRACKS];
@@ -517,6 +547,11 @@ typedef struct {
     int8_t main;                     /* the Main module, -1 without one */
     int32_t morph;                   /* the morph position of this block, Q16 0..1: the Main's MORPH parameter plus the mean of its morph input */
 } eng_t;
+
+/* the slice of the pattern track t plays (one it has not got: pattern 0), its first note and count */
+#define TRK_P(t) ((E.pat_has[t] >> E.trk_pat[t] & 1u) ? (uint32_t)E.trk_pat[t] : 0u)
+#define TRK_FIRST(t) E.pat_first[t][TRK_P(t)]
+#define TRK_N(t) E.pat_n[t][TRK_P(t)]
 
 /* the engine. The clock ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
 static eng_t eng_one ENG_POOL;
@@ -634,6 +669,7 @@ static void init_state(const node_t *nd, inst_t *it, uint32_t mod, uint32_t v)
     case T_RANDOM:                       /* modules.ts random.seed with engine.ts instSeed(module index, part) */
         it->s.rnd.seed = (mod * 8u + v + 1u) * 0x9e3779b9u;
         walk_init(&it->s.rnd.w, it->s.rnd.seed ^ 0x2545f491u);
+        it->s.rnd.held_seed = hash32(it->s.rnd.seed ^ 0xa511e9b3u);
         break;
     case T_LFO:
         it->s.lfo.seed = 0x2545f491u;
@@ -777,6 +813,8 @@ static uint32_t eng_cables_end(const uint8_t *p, uint32_t len)
     if (!at)
         return 0;
     at += 4u * ((uint32_t)p[4] | (uint32_t)p[5] << 8) + ((p[6] & 1u) ? 4u * npar : 0u);
+    if (p[7] & ENG_FLAG_MORPH_MODULES)
+        at += (p[2] + 7u) / 8u;
     return at <= len ? at : 0;
 }
 
@@ -859,6 +897,7 @@ static void groups_reset(void)
     for (g = 0; g <= E.ngrp; g++) {
         E.grp[g].rot = 0;
         E.grp[g].nheld = 0;
+        E.grp[g].down[0] = E.grp[g].down[1] = E.grp[g].down[2] = E.grp[g].down[3] = 0;
         E.grp[g].pv0 = (uint8_t)pv0;
         pv0 += E.grp[g].parts;
     }
@@ -873,6 +912,22 @@ static void groups_reset(void)
             walk_init(&E.pv[E.grp[g].pv0 + v].dw, (0x51edu + g * 16u + v) * 0x9e3779b9u);
 }
 
+/* the note slices' firsts from their counts, in their order (E.nnotes): every track's pattern 0, then track by track its
+ * patterns 1.. (eng_load reads them in that order; trk_put keeps it) */
+static void pat_layout(void)
+{
+    uint32_t t, k, n = 0;
+    for (t = 0; t < E.ntrk; t++) {
+        E.pat_first[t][0] = (uint16_t)n;
+        n += E.pat_n[t][0];
+    }
+    for (t = 0; t < E.ntrk; t++)
+        for (k = 1; k < ENG_PATTERNS; k++) {
+            E.pat_first[t][k] = (uint16_t)n;
+            n += E.pat_n[t][k];
+        }
+}
+
 int eng_load(const uint8_t *p, uint32_t len)
 {
     uint32_t i, j, c, k, v, at, ncab, n0;
@@ -884,6 +939,9 @@ int eng_load(const uint8_t *p, uint32_t len)
     E.narp = 0;
     E.ntrk = 0;
     E.nnotes = 0;
+    E.pat_sel = E.song = 0;
+    for (i = 0; i < ENG_SONGS; i++)
+        E.song_n[i] = 0;
     E.nkev = 0;
     E.arm = 0;
     E.armm = 0;                                  /* (another patch disarms: #191) */
@@ -914,7 +972,7 @@ int eng_load(const uint8_t *p, uint32_t len)
 #endif
     if (len < 8u || p[0] != 0xA1 || (p[1] > ENG_PATCH_VERSION || p[1] < ENG_PATCH_COMPAT_VERSION))
         return -1;
-    if ((p[7] & ~ENG_FLAG_EXTRAS) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
+    if ((p[7] & ~(ENG_FLAG_EXTRAS | ENG_FLAG_MORPH_MODULES | ENG_FLAG_PATTERNS)) || ((p[7] & ENG_FLAG_MORPH_MODULES) && (p[1] < 36u || !(p[6] & 1u))) || ((p[7] & ENG_FLAG_PATTERNS) && p[1] < 48u) || (p[1] < 34u && p[7]) || (p[1] < 33u && (p[6] & 128u)) || (p[1] < 17u && (p[6] & 4u)) || (p[1] < 18u && (p[6] & 8u)) || (p[1] < 27u && (p[6] & 16u)) || (p[1] < 30u && (p[6] & 64u)))
         return -1;
     for (i = 0; i < ENG_PANEL_BUTTONS; i++)      /* (before eng_buttons below: no Toggle of the last patch acts on this one) */
         E.btn_kind[i] = (uint8_t)ENG_BTN_GATE, E.btn_n[i] = 0;
@@ -936,13 +994,15 @@ int eng_load(const uint8_t *p, uint32_t len)
     for (i = 0; i < p[3]; i++) {
         const uint8_t *q = p + 8u + ENG_GROUP_REC * i;
         grp_t *g = &E.grp[1u + i];
-        if (q[0] < 1u || q[0] > ENG_MAX_PARTS || q[1] > 2u || (q[2] & 0x7Fu) > 2u || q[3] > 2u)
+        if (!eng_group_valid(q, p[1]))
             return -3;
-        g->parts = q[0];
+        g->parts = q[0] & 15u;
+        g->stack = q[0] >> 4;
         g->assign = q[1];
-        g->legato = q[2] & 0x7Fu;
-        g->unison = (q[2] >> 7) && q[0] > 1u;
-        g->priority = q[3];
+        g->legato = q[2] & 0x3Fu;
+        g->unison = q[2] & 0x80u ? (q[2] & 0x40u ? 2u : 1u) : 0u;
+        g->priority = q[3] & 0x7Fu;
+        g->no_steal = q[3] >> 7;
         for (v = 0; v < ENG_MAX_PARTS; v++) {
             const uint8_t *f = q + 4u + 5u * v;
             int32_t det = (int8_t)f[0], bri = (int8_t)f[2], env = (int8_t)f[3];
@@ -1019,8 +1079,17 @@ int eng_load(const uint8_t *p, uint32_t len)
             if (E.ntrk >= ENG_MAX_TRACKS)
                 return -2;
             nd->trk = E.ntrk++;
-            E.trk_first[nd->trk] = 0;
-            E.trk_n[nd->trk] = E.trk_nsnd[nd->trk] = 0;
+            for (j = 0; j < ENG_PATTERNS; j++) {
+                E.pat_first[nd->trk][j] = 0;
+                E.pat_n[nd->trk][j] = E.pat_len[nd->trk][j] = 0;
+                E.pat_rate[nd->trk][j] = 0xFFu;
+            }
+            E.pat_has[nd->trk] = 1u;
+            E.trk_pat[nd->trk] = 0;
+            E.trk_q[nd->trk] = 0xFFu;
+            E.trk_spos[nd->trk] = -1;
+            E.trk_shift[nd->trk] = 0;
+            E.trk_nsnd[nd->trk] = 0;
             E.trk_last[nd->trk] = STEP_NOTE;
         }
         nd->ksrc = nd->type == T_DRUMMAP ? p[at] : 0u;   /* (checked once every module is read) */
@@ -1075,6 +1144,7 @@ int eng_load(const uint8_t *p, uint32_t len)
             uint32_t n0 = eng_npar(d, p[1]);     /* (an older format: its parameters then; the rest at their defaults) */
             if (at + 4u * n0 > len)
                 return -3;
+            nd->morph = 1;
             nd->over = 0;
             for (j = 0; j < d->npar; j++) {
                 int32_t b = j < n0 ? rd32(p + at) : d->pdef[j];
@@ -1088,6 +1158,14 @@ int eng_load(const uint8_t *p, uint32_t len)
             }
         }
         E.has_b = 1;
+    }
+    if (p[7] & ENG_FLAG_MORPH_MODULES) {
+        uint32_t bytes = (E.nmod + 7u) / 8u;
+        if (at + bytes > len)
+            return -3;
+        for (i = 0; i < E.nmod; i++)
+            E.node[i].morph = (p[at + (i >> 3)] >> (i & 7u)) & 1u;
+        at += bytes;
     }
     if (p[6] & 4u) {                             /* fixed input links: one disabled-input mask per module */
         if (at + E.nmod > len)
@@ -1138,18 +1216,78 @@ int eng_load(const uint8_t *p, uint32_t len)
             last = t;
             for (j = 0; j < n; j++, at += 4u) {
                 uint32_t w = (uint32_t)rd32(p + at);
-                if (NW_AT(w) + NW_LEN(w) > TRACK_STEPS || !NW_VEL(w)) return -3;
+                if ((p[1] < 44u && NW_AT(w) + NW_LEN(w) > TRACK_STEPS) || !NW_VEL(w)) return -3;
                 E.trk_note[E.nnotes + j] = w;
             }
-            E.trk_first[t] = E.nnotes;
-            E.trk_n[t] = (uint8_t)n;
+            E.pat_n[t][0] = (uint8_t)n;
             E.nnotes = (uint16_t)(E.nnotes + n);
         }
-        for (t = 0, n = 0; t < E.ntrk; t++) {    /* (a track without notes starts where the next would) */
-            E.trk_first[t] = (uint16_t)n;
-            n += E.trk_n[t];
+    }
+    if (p[7] & ENG_FLAG_PATTERNS) {              /* the patterns and songs (format 48, patchbin.ts patternRecord) */
+        uint32_t count, last = 0, t, n, np, k, ns;
+        if (at + 3u > len || p[at] >= ENG_PATTERNS || p[at + 1u] > ENG_SONGS) return -3;
+        E.pat_sel = p[at];
+        E.song = p[at + 1u];
+        count = p[at + 2u];
+        at += 3u;
+        for (i = 0; i < count; i++) {
+            uint32_t mod;
+            if (at + 2u > len) return -3;
+            mod = p[at];
+            np = p[at + 1u];
+            at += 2u;
+            if (mod >= E.nmod || E.node[mod].type != T_STEPS || !np || np >= ENG_PATTERNS) return -3;
+            t = E.node[mod].trk;
+            if (i && t <= last) return -3;       /* in track order */
+            last = t;
+            for (k = 1; k <= np; k++) {
+                uint32_t sh, ln, rt;
+                if (at >= len) return -3;
+                n = p[at++];
+                if (n == 0xFFu)
+                    continue;
+                if (at + 2u > len) return -3;
+                sh = p[at] >> 7;
+                ln = p[at] & 0x7Fu;
+                rt = p[at + 1u];
+                at += 2u;
+                if (n > TRACK_NOTES_MAX || ln > TRACK_STEPS || (rt != 0xFFu && rt > 8u) || at + (sh ? 2u : 4u) * n > len || E.nnotes + n > ENG_MAX_NOTES) return -3;
+                for (j = 0; j < n; j++) {
+                    uint32_t w;
+                    if (sh) {
+                        w = (uint32_t)p[at] | (uint32_t)p[at + 1u] << 8;
+                        w = NW(w & 15u, ((w >> 4) & 15u) + 1u, (w >> 8) & 127u, (w & 0x8000u) ? ACCENT_VEL : STEP_VEL, 0u);
+                        at += 2u;
+                    } else {
+                        w = (uint32_t)rd32(p + at);
+                        at += 4u;
+                        if (!NW_VEL(w)) return -3;
+                    }
+                    E.trk_note[E.nnotes + j] = w;
+                }
+                E.pat_n[t][k] = (uint8_t)n;
+                E.pat_len[t][k] = (uint8_t)ln;
+                E.pat_rate[t][k] = (uint8_t)rt;
+                E.pat_has[t] |= (uint64_t)1u << k;
+                E.nnotes = (uint16_t)(E.nnotes + n);
+            }
+        }
+        if (at >= len) return -3;
+        ns = p[at++];
+        if (ns > ENG_SONGS) return -3;
+        for (i = 0; i < ns; i++) {
+            if (at >= len || p[at] > ENG_SONG_LEN || at + 1u + 2u * p[at] > len) return -3;
+            E.song_n[i] = p[at++];
+            for (k = 0; k < E.song_n[i]; k++, at += 2u) {
+                if (p[at] >= ENG_PATTERNS || (int8_t)p[at + 1u] < -ENG_SHIFT_MAX || (int8_t)p[at + 1u] > ENG_SHIFT_MAX) return -3;
+                E.song_pat[i][k] = p[at];
+                E.song_shift[i][k] = (int8_t)p[at + 1u];
+            }
         }
     }
+    pat_layout();                                /* (the slices in their order: every track's first, then the rest) */
+    for (i = 0; i < E.ntrk; i++)                 /* every track plays the patch's pattern */
+        E.trk_pat[i] = E.pat_sel;
     if (p[6] & 32u) {                            /* the device pages (the LCD's, proto.c / pages_ui.c): not the engine's */
         uint32_t end = eng_devices_end(p, len, at);
         if (!end)
@@ -1374,11 +1512,16 @@ int eng_load(const uint8_t *p, uint32_t len)
         if (E.node[E.order[i]].type == T_OUTPUT)
             E.outputs[E.nout++] = E.order[i];
     E.loaded = 1;
+    for (i = 0; i < E.nmod; i++)                 /* a track that plays a Drum map is never shifted by a song (engine.ts) */
+        if (E.node[i].type == T_STEPS)
+            E.trk_drum[E.node[i].trk] = (uint8_t)(eng_steps_drummap(i) >= 0);
     return 0;
 }
 
 int eng_parts(void) { return !E.loaded ? 0 : E.ngrp ? E.grp[1].parts : 1; }
 int eng_groups(void) { return E.loaded ? E.ngrp : 0; }
+
+static void mono_update(grp_t *g);
 
 int eng_poly_get(uint32_t g, uint32_t field)
 {
@@ -1386,7 +1529,7 @@ int eng_poly_get(uint32_t g, uint32_t field)
     if (!E.loaded || g >= E.ngrp || field >= ENG_NPOLY)
         return -1;
     x = &E.grp[1u + g];
-    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : x->priority;
+    return field == ENG_POLY_PARTS ? x->parts : field == ENG_POLY_ASSIGN ? x->assign : field == ENG_POLY_LEGATO ? x->legato : field == ENG_POLY_PRIORITY ? x->priority : field == ENG_POLY_UNISON ? x->unison : field == ENG_POLY_STACK ? x->stack : !x->no_steal;
 }
 
 int eng_module_group(uint32_t module) { return E.loaded && module < E.nmod ? E.node[module].grp : 0; }
@@ -1394,12 +1537,19 @@ int eng_poly_unison(uint32_t g) { return E.loaded && g < E.ngrp ? E.grp[1u + g].
 int eng_poly_set(uint32_t g, uint32_t field, uint32_t v)
 {
     grp_t *x;
-    if (!E.loaded || g >= E.ngrp || field == ENG_POLY_PARTS || field >= ENG_NPOLY || v > 2u)
+    if (!E.loaded || g >= E.ngrp || field == ENG_POLY_PARTS || field == ENG_POLY_UNISON || field >= ENG_NPOLY
+        || v > (field == ENG_POLY_STACK ? ENG_MAX_PARTS : field == ENG_POLY_ASSIGN ? 3u : field == ENG_POLY_STEAL ? 1u : 2u))
         return 0;
     x = &E.grp[1u + g];
     if (field == ENG_POLY_ASSIGN) x->assign = (uint8_t)v;
     else if (field == ENG_POLY_LEGATO) x->legato = (uint8_t)v;
-    else x->priority = (uint8_t)v;
+    else if (field == ENG_POLY_PRIORITY) x->priority = (uint8_t)v;
+    else if (field == ENG_POLY_STACK) {
+        uint32_t i;
+        x->stack = (uint8_t)v;
+        if (x->unison) mono_update(x);
+        for (i = 0; i < x->parts; i++) E.pv[x->pv0 + i].idle = 0;
+    } else x->no_steal = !v;
     return 1;
 }
 
@@ -1654,10 +1804,41 @@ static int32_t note_pitch(uint32_t note)
  * same stamps. (engine.ts monoUpdate / monoPart) */
 static void mono_part(const grp_t *g, pv_t *x, int k);
 
+/* Select by priority, then put the selected notes in keyboard order. Only the small voice pool is sorted. */
+static void shared_unison(grp_t *g)
+{
+    uint8_t keys[ENG_MAX_PARTS];
+    uint32_t i, j, at, nk = 0, slots = g->stack && g->stack < g->parts ? g->stack : g->parts;
+    uint32_t copies, s0 = E.stamp, s1 = s0;
+    for (i = 0; i < g->nheld; i++) {
+        for (at = 0; at < nk; at++) {
+            uint32_t prev = keys[at];
+            if (!g->priority || (g->priority == 1 ? g->held_note[i] < g->held_note[prev] : g->held_note[i] > g->held_note[prev])) break;
+        }
+        if (at >= slots) continue;
+        if (nk < slots) nk++;
+        for (j = nk - 1u; j > at; j--) keys[j] = keys[j - 1u];
+        keys[at] = (uint8_t)i;
+    }
+    for (i = 1; i < nk; i++) {
+        uint8_t k = keys[i];
+        for (j = i; j && g->held_note[keys[j - 1u]] > g->held_note[k]; j--) keys[j] = keys[j - 1u];
+        keys[j] = k;
+    }
+    copies = nk ? slots / nk : 0;
+    for (i = 0; i < g->parts; i++) {
+        E.stamp = s0;
+        mono_part(g, &E.pv[g->pv0 + i], copies && i < copies * nk ? keys[i / copies] : -1);
+        if (E.stamp > s1) s1 = E.stamp;
+    }
+    E.stamp = s1;
+}
+
 static void mono_update(grp_t *g)
 {
     int k = -1;
-    uint32_t i, n = g->unison ? g->parts : 1u, s0 = E.stamp, s1 = s0;
+    if (g->unison == 2u) { shared_unison(g); return; }
+    uint32_t i, n = g->unison ? (g->stack && g->stack < g->parts ? g->stack : g->parts) : 1u, s0 = E.stamp, s1 = s0;
     if (g->nheld) {
         k = (int)g->nheld - 1;
         if (g->priority)
@@ -1665,10 +1846,10 @@ static void mono_update(grp_t *g)
                 if (g->priority == 1 ? g->held_note[i] < g->held_note[k] : g->held_note[i] > g->held_note[k])
                     k = (int)i;
     }
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < g->parts; i++) {
         E.stamp = s0;
-        mono_part(g, &E.pv[g->pv0 + i], k);
-        s1 = E.stamp;
+        mono_part(g, &E.pv[g->pv0 + i], i < n ? k : -1);
+        if (E.stamp > s1) s1 = E.stamp;
     }
     E.stamp = s1;
 }
@@ -1711,6 +1892,7 @@ static void held_drop(grp_t *g, uint32_t note)
 static void group_off(grp_t *g, uint32_t note)
 {
     uint32_t i;
+    g->down[note >> 5] &= ~(1u << (note & 31u));
     if (g->parts == 1 || g->unison) {
         held_drop(g, note);
         mono_update(g);
@@ -1735,6 +1917,9 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
 {
     pv_t *vs = &E.pv[g->pv0], *x;
     uint32_t n = g->parts, i;
+    if (g->assign == 3u && !(g->down[0] | g->down[1] | g->down[2] | g->down[3])) g->rot = 0;
+    g->down[note >> 5] |= 1u << (note & 31u);
+    for (i = 0; i < n; i++) vs[i].key_trig = 1;
     int v = -1, nfree = 0;
     uint8_t over = 0;                            /* another key is down: this note overlaps it */
     if (n == 1 || g->unison) {                   /* the key again: to the top (no update in between) */
@@ -1762,7 +1947,7 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
         if (vs[i].on && vs[i].note == note)
             v = (int)i;
     if (v < 0 && nfree) {
-        if (g->assign == 0) {
+        if (g->assign == 0 || g->assign == 3) {
             for (i = 0; i < n && v < 0; i++)
                 if (!vs[(g->rot + i) % n].on)
                     v = (int)((g->rot + i) % n);
@@ -1781,6 +1966,7 @@ static void group_on(grp_t *g, uint32_t note, int32_t vel_q16)
                         v = (int)i;
         }
     } else if (v < 0) {
+        if (g->no_steal) return;
         v = 0;
         for (i = 1; i < n; i++)
             if (g->priority == 1 ? vs[i].note > vs[v].note : g->priority == 2 ? vs[i].note < vs[v].note : vs[i].on_stamp < vs[v].on_stamp)
@@ -2066,8 +2252,8 @@ static void steps_keys(void)
     E.nkev = 0;
 }
 
-/* one block (arpeggiator.ts arpBlock): steps on the clock at its rate, or one per block with a rising edge on clk (the
- * input as the last block left it); the gate a share of the last step's length */
+/* One block (arpeggiator.ts arpBlock): clk edges take precedence, then continuous rate in Hz, then tempo.
+ * Inputs are read as the last block left them. Gate length follows the continuous period or last clock interval. */
 static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
 {
     static const uint8_t RATE_TICKS[7] = {24, 16, 12, 8, 6, 4, 3};
@@ -2075,12 +2261,33 @@ static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
     const inst_t *it = &inst_pool[nd->inst0];
     uint32_t rate = RATE_TICKS[clampi((nd->par[ARP_P_RATE] + 32768) >> 16, 0, 6)], i;
     int clk = (nd->conn >> ARP_I_CLK) & 1u, edge = 0, step = 0;
+    int continuous = !clk && ((nd->conn >> ARP_I_RATE) & 1u), rate_edge = 0;
+    uint32_t period = 0;
     if (!arp_latched(a)) {                       /* latch turned off: the keys let go meanwhile go */
         uint32_t k = 0;
         for (i = 0; i < a->n; i++)
             if (a->held[i].down)
                 a->held[k++] = a->held[i];
         a->n = (uint8_t)k;
+    }
+    if (continuous) {
+        int64_t sum = 0;
+        int32_t hz;
+        for (i = 0; i < n; i++) sum += it->in[ARP_I_RATE][i];
+        hz = block_mean(sum, n);
+        if (hz <= 0) {
+            if (a->cur >= 0) arp_emit_off(a, (uint32_t)a->cur);
+            a->cur = -1; a->running = 0; a->rate_phase = 0;
+            return;
+        }
+        hz = clampi(hz, 1311, 80 * ENG_ONE);
+        period = (uint32_t)(((uint64_t)ENG_SR << 16) / (uint32_t)hz);
+        if (a->running) {
+            uint32_t before = a->rate_phase;
+            a->rate_phase += hz_turns((uint32_t)hz) * n;
+            rate_edge = a->rate_phase < before;
+        }
+        a->interval = period;
     }
     if (clk) {
         const esig_t *c = it->in[ARP_I_CLK];
@@ -2103,16 +2310,17 @@ static void arp_block(arp_t *a, uint32_t n, uint32_t bpm)
         step = 1;
         a->pos = 0;
         a->next = E.ticks + rate;
-        a->interval = (uint32_t)((uint64_t)rate * 60u * ENG_SR / (24u * bpm));
+        a->interval = continuous ? period : (uint32_t)((uint64_t)rate * 60u * ENG_SR / (24u * bpm));
+        a->rate_phase = 0;
         a->since = 0;
-    } else if (clk ? edge : (int32_t)(E.ticks - a->next) >= 0) {
+    } else if (clk ? edge : continuous ? rate_edge : (int32_t)(E.ticks - a->next) >= 0) {
         step = 1;
-        if (!clk) {
+        if (!clk && !continuous) {
             a->next += rate;
             if ((int32_t)(E.ticks - a->next) >= 0)
                 a->next = E.ticks + rate;        /* fell behind (a tempo jump): from now */
         }
-        if (a->since > 0)
+        if (!continuous && a->since > 0)
             a->interval = a->since;
         a->since = 0;
     }
@@ -2209,10 +2417,12 @@ static void keys_off(void)
         if (E.grp[g].src && grp_src(g) != 0u)
             continue;
         E.grp[g].nheld = 0;
+        E.grp[g].down[0] = E.grp[g].down[1] = E.grp[g].down[2] = E.grp[g].down[3] = 0;
         for (v = 0; v < E.grp[g].parts; v++) {
             E.pv[E.grp[g].pv0 + v].on = 0;
             E.pv[E.grp[g].pv0 + v].gate = 0;
             E.pv[E.grp[g].pv0 + v].retrig = 0;
+            E.pv[E.grp[g].pv0 + v].key_trig = 0;
         }
     }
     for (g = 0; g < E.nmod; g++)
@@ -2236,10 +2446,12 @@ static void arp_switched(uint32_t m)
         if (E.grp[g].src != m + 1u)
             continue;
         E.grp[g].nheld = 0;
+        E.grp[g].down[0] = E.grp[g].down[1] = E.grp[g].down[2] = E.grp[g].down[3] = 0;
         for (v = 0; v < E.grp[g].parts; v++) {
             E.pv[E.grp[g].pv0 + v].on = 0;
             E.pv[E.grp[g].pv0 + v].gate = 0;
             E.pv[E.grp[g].pv0 + v].retrig = 0;
+            E.pv[E.grp[g].pv0 + v].key_trig = 0;
         }
     }
     for (g = 0; g < E.nmod; g++)
@@ -2385,6 +2597,23 @@ void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
 int eng_transport_running(void) { return transport_on; }
 
 /* ------------------------------------------------------------------ Steps modules (the SEQ page) */
+/* A traversal's visit number is independent of its chosen step: swing and note lengths follow time order. */
+static int32_t steps_cycle(int32_t len, int32_t dir)
+{
+    return dir == 2 && len > 1 ? 2 * (len - 1) : len;
+}
+typedef struct { int32_t visit, pos; uint32_t loop; } step_visit_t;
+/* Preview only: recording and playback must choose the same next step, including random mode. */
+static step_visit_t steps_next(const inst_t *it, int32_t len, int32_t dir)
+{
+    step_visit_t next;
+    next.visit = it->s.stp.pos < 0 || it->s.stp.visit + 1 >= steps_cycle(len, dir) ? 0 : it->s.stp.visit + 1;
+    next.loop = it->s.stp.loop + (next.visit == 0 ? 1u : 0u);
+    next.pos = dir == 3 ? (int32_t)(hash32(it->s.stp.seed ^ (next.loop * 0x9e3779b9u) ^ ((uint32_t)(next.visit + 1) * 0x85ebca6bu)) % (uint32_t)len)
+        : dir == 1 ? len - 1 - next.visit : dir == 2 && next.visit >= len ? 2 * (len - 1) - next.visit : next.visit;
+    return next;
+}
+
 static inst_t *steps_inst(uint32_t module)
 {
     return E.loaded && module < E.nmod && E.node[module].type == T_STEPS ? &inst_pool[E.node[module].inst0] : 0;
@@ -2398,18 +2627,20 @@ int eng_steps_module(uint32_t t)
             return (int)i;
     return -1;
 }
-/* A track's notes as a working copy and back (track.ts fixNotes): sorted by step, then note (stable: of two notes on the same
- * step and key the first stays), at most TRACK_NOTES_MAX, into the pool (the tracks after it move) */
+/* A track's notes (those of the pattern it plays) as a working copy and back (track.ts fixNotes): sorted by step, then note
+ * (stable: of two notes on the same step and key the first stays), at most TRACK_NOTES_MAX, into the pool (the slices after
+ * it move) */
 static uint32_t trk_copy(uint32_t t, uint32_t *w)
 {
     uint32_t i;
-    for (i = 0; i < E.trk_n[t]; i++)
-        w[i] = E.trk_note[E.trk_first[t] + i];
-    return E.trk_n[t];
+    for (i = 0; i < TRK_N(t); i++)
+        w[i] = E.trk_note[TRK_FIRST(t) + i];
+    return TRK_N(t);
 }
-static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
+/* pattern p of track t becomes these notes (the track gets that pattern if it had none); the slices after it move */
+static int trk_put_at(uint32_t t, uint32_t p, uint32_t *w, uint32_t n)
 {
-    uint32_t i, j, k, old = E.trk_n[t], first = E.trk_first[t];
+    uint32_t i, j, k, old = E.pat_n[t][p], first = E.pat_first[t][p];
     for (i = 1; i < n; i++)                       /* insertion sort by (step, note) */
         for (j = i; j > 0 && ((NW_AT(w[j - 1]) << 7 | NW_NOTE(w[j - 1])) > (NW_AT(w[j]) << 7 | NW_NOTE(w[j]))); j--) {
             uint32_t x = w[j];
@@ -2420,9 +2651,9 @@ static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
         if (!k || NW_AT(w[i]) != NW_AT(w[k - 1]) || NW_NOTE(w[i]) != NW_NOTE(w[k - 1]))
             w[k++] = w[i];
     n = k < TRACK_NOTES_MAX ? k : TRACK_NOTES_MAX;
-    if ((uint32_t)E.nnotes - old + n > ENG_MAX_NOTES)
+    if (p >= ENG_PATTERNS || (uint32_t)E.nnotes - old + n > ENG_MAX_NOTES)
         return 0;
-    if (n > old)                                  /* the tracks after it move up or down */
+    if (n > old)                                  /* the slices after it move up or down */
         for (i = E.nnotes; i-- > first + old;)
             E.trk_note[i + n - old] = E.trk_note[i];
     else if (n < old)
@@ -2431,11 +2662,14 @@ static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
     for (i = 0; i < n; i++)
         E.trk_note[first + i] = w[i];
     E.nnotes = (uint16_t)(E.nnotes - old + n);
-    E.trk_n[t] = (uint8_t)n;
-    for (i = t + 1u; i < E.ntrk; i++)
-        E.trk_first[i] = (uint16_t)(E.trk_first[i] + n - old);
+    E.pat_n[t][p] = (uint8_t)n;
+    E.pat_has[t] |= (uint64_t)1u << p;
+    pat_layout();
     return 1;
 }
+/* the notes of the pattern track t plays (an edit on the SEQ page): a pattern it had not got is made, from its pattern 0
+ * (trk_copy read that) */
+static int trk_put(uint32_t t, uint32_t *w, uint32_t n) { return trk_put_at(t, E.trk_pat[t], w, n); }
 
 /* the step view (track.ts stepView, setStep, setStepValue): the SEQ page edits a track's notes as steps. A step is on
  * when notes start there (its accent, chance, note and velocity are its lowest note's), tied when a note started before
@@ -2444,9 +2678,9 @@ static int trk_put(uint32_t t, uint32_t *w, uint32_t n)
 static int steps_first(uint32_t t, uint32_t k)    /* the pool index of the first note on step k, -1 none */
 {
     uint32_t i;
-    for (i = 0; i < E.trk_n[t]; i++)
-        if (NW_AT(E.trk_note[E.trk_first[t] + i]) == k)
-            return (int)(E.trk_first[t] + i);
+    for (i = 0; i < TRK_N(t); i++)
+        if (NW_AT(E.trk_note[TRK_FIRST(t) + i]) == k)
+            return (int)(TRK_FIRST(t) + i);
     return -1;
 }
 static int steps_tied(uint32_t t, uint32_t k)     /* no note starts on k and one started before goes on through it */
@@ -2454,8 +2688,8 @@ static int steps_tied(uint32_t t, uint32_t k)     /* no note starts on k and one
     uint32_t i;
     if (steps_first(t, k) >= 0)
         return 0;
-    for (i = 0; i < E.trk_n[t]; i++) {
-        uint32_t w = E.trk_note[E.trk_first[t] + i];
+    for (i = 0; i < TRK_N(t); i++) {
+        uint32_t w = E.trk_note[TRK_FIRST(t) + i];
         if (NW_AT(w) < k && k < NW_AT(w) + NW_LEN(w))
             return 1;
     }
@@ -2558,8 +2792,8 @@ int eng_steps_notes(uint32_t module, const uint32_t **w)
 {
     if (!steps_inst(module))
         return -1;
-    *w = &E.trk_note[E.trk_first[E.node[module].trk]];
-    return E.trk_n[E.node[module].trk];
+    *w = &E.trk_note[TRK_FIRST(E.node[module].trk)];
+    return TRK_N(E.node[module].trk);
 }
 /* a track's notes replaced (the editor's TRACK): checked, sorted; 0 when they do not fit the pool */
 int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n)
@@ -2568,10 +2802,185 @@ int eng_steps_set_notes(uint32_t module, const uint32_t *notes, uint32_t n)
     if (!steps_inst(module) || n > TRACK_NOTES_MAX)
         return 0;
     for (i = 0; i < n; i++)
-        if (NW_AT(notes[i]) + NW_LEN(notes[i]) <= TRACK_STEPS && NW_VEL(notes[i]))
+        if (NW_VEL(notes[i]))
             w[m++] = notes[i] & 0x7FFFFFFFu;
     return trk_put(E.node[module].trk, w, m);
 }
+/* ------------------------------------------------------------------ patterns and songs (format 48) */
+void eng_pattern_set(uint32_t p)
+{
+    uint32_t t;
+    if (!E.loaded || p >= ENG_PATTERNS)
+        return;
+    E.pat_sel = (uint8_t)p;
+    for (t = 0; t < E.ntrk; t++)                  /* (m_steps: at the end of the pass, at once while stopped) */
+        E.trk_q[t] = (uint8_t)p;
+}
+int eng_pattern(void) { return E.loaded ? E.pat_sel : -1; }
+int eng_pattern_playing(uint32_t module) { return steps_inst(module) ? E.trk_pat[E.node[module].trk] : -1; }
+int eng_pattern_queued(uint32_t module)
+{
+    return steps_inst(module) && E.trk_q[E.node[module].trk] != 0xFFu ? E.trk_q[E.node[module].trk] : -1;
+}
+int eng_pattern_has(uint32_t module, uint32_t p)
+{
+    return steps_inst(module) && p < ENG_PATTERNS && (E.pat_has[E.node[module].trk] >> p & 1u);
+}
+int eng_pattern_len(uint32_t module, uint32_t p) { return eng_pattern_has(module, p) ? E.pat_len[E.node[module].trk][p] : 0; }
+int eng_pattern_rate(uint32_t module, uint32_t p)
+{
+    return eng_pattern_has(module, p) && E.pat_rate[E.node[module].trk][p] != 0xFFu ? E.pat_rate[E.node[module].trk][p] : -1;
+}
+/* the length of the pattern track t plays: its own, else the track's (modules.ts steps: shape) */
+static int32_t steps_len(const inst_t *it, uint32_t t)
+{
+    uint32_t p = TRK_P(t);
+    return p && E.pat_len[t][p] ? E.pat_len[t][p] : clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
+}
+int eng_steps_len(uint32_t module)   /* (the SEQ page's: the track's length as set, not as modulated this block) */
+{
+    uint32_t t, p;
+    if (!steps_inst(module))
+        return -1;
+    t = E.node[module].trk;
+    p = TRK_P(t);
+    return p && E.pat_len[t][p] ? E.pat_len[t][p] : clampi(round_q16(eng_get_param(module, STEPS_P_LEN)), 1, TRACK_STEPS);
+}
+int eng_pattern_notes(uint32_t module, uint32_t p, const uint32_t **w)
+{
+    uint32_t t;
+    if (!steps_inst(module) || p >= ENG_PATTERNS)
+        return -1;
+    t = E.node[module].trk;
+    *w = &E.trk_note[E.pat_first[t][p]];
+    return E.pat_n[t][p];
+}
+int eng_pattern_set_notes(uint32_t module, uint32_t p, const uint32_t *notes, uint32_t n)
+{
+    uint32_t w[TRACK_NOTES_MAX], i, m = 0;
+    if (!steps_inst(module) || n > TRACK_NOTES_MAX || p >= ENG_PATTERNS)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (NW_VEL(notes[i]))
+            w[m++] = notes[i] & 0x7FFFFFFFu;
+    return trk_put_at(E.node[module].trk, p, w, m);
+}
+void eng_song_set(uint32_t n)
+{
+    uint32_t t;
+    if (!E.loaded || n > ENG_SONGS)
+        return;
+    E.song = (uint8_t)n;
+    for (t = 0; t < E.ntrk; t++) {                /* from the end of each pass: the first entry, or the patch's pattern */
+        E.trk_spos[t] = -1;
+        E.trk_q[t] = n ? 0xFFu : E.pat_sel;
+    }
+}
+int eng_song(void) { return E.loaded ? E.song : 0; }
+int eng_song_entry(uint32_t module) { return steps_inst(module) && E.song ? E.trk_spos[E.node[module].trk] : -1; }
+int eng_song_len(uint32_t s) { return E.loaded && s < ENG_SONGS ? E.song_n[s] : 0; }
+int eng_song_get(uint32_t s, uint32_t k)
+{
+    return E.loaded && s < ENG_SONGS && k < E.song_n[s] ? (int)(E.song_pat[s][k] | (uint32_t)(uint8_t)E.song_shift[s][k] << 8) : -1;
+}
+int eng_song_put(uint32_t s, uint32_t k, uint32_t pat, int32_t shift)
+{
+    if (!E.loaded || s >= ENG_SONGS || k > E.song_n[s] || k >= ENG_SONG_LEN || pat >= ENG_PATTERNS)
+        return -1;
+    E.song_pat[s][k] = (uint8_t)pat;
+    E.song_shift[s][k] = (int8_t)clampi(shift, -ENG_SHIFT_MAX, ENG_SHIFT_MAX);
+    if (k == E.song_n[s])
+        E.song_n[s]++;
+    return 0;
+}
+int eng_song_insert(uint32_t s, uint32_t k)
+{
+    uint32_t i;
+    if (!E.loaded || s >= ENG_SONGS || k >= E.song_n[s] || E.song_n[s] >= ENG_SONG_LEN)
+        return -1;
+    for (i = E.song_n[s]; i > k; i--) {
+        E.song_pat[s][i] = E.song_pat[s][i - 1u];
+        E.song_shift[s][i] = E.song_shift[s][i - 1u];
+    }
+    E.song_n[s]++;
+    return 0;
+}
+int eng_song_delete(uint32_t s, uint32_t k)
+{
+    uint32_t i;
+    if (!E.loaded || s >= ENG_SONGS || k >= E.song_n[s])
+        return -1;
+    for (i = k; i + 1u < E.song_n[s]; i++) {
+        E.song_pat[s][i] = E.song_pat[s][i + 1u];
+        E.song_shift[s][i] = E.song_shift[s][i + 1u];
+    }
+    E.song_n[s]--;
+    return 0;
+}
+/* the patterns and songs section (patchbin.ts patternRecord: byte for byte what the editor writes for the same patterns) */
+int eng_patterns_record(uint8_t *out, uint32_t cap)
+{
+    uint32_t t, k, j, n = 0, ns = 0, nt = 0, np;
+#define PUT(b) do { if (out && n < cap) out[n] = (uint8_t)(b); n++; } while (0)
+    if (!E.loaded)
+        return 0;
+    for (k = 0; k < ENG_SONGS; k++)
+        if (E.song_n[k])
+            ns = k + 1u;
+    for (t = 0; t < E.ntrk; t++)
+        nt += E.pat_has[t] > 1u;
+    if (!nt && !ns && !E.pat_sel && !E.song)
+        return 0;
+    PUT(E.pat_sel);
+    PUT(E.song);
+    PUT(nt);
+    for (t = 0; t < E.ntrk; t++) {
+        if (E.pat_has[t] <= 1u)
+            continue;
+        for (np = ENG_PATTERNS - 1u; !(E.pat_has[t] >> np & 1u); np--)
+            ;
+        PUT(eng_steps_module(t));
+        PUT(np);
+        for (k = 1; k <= np; k++) {
+            uint32_t sh = 1, first = E.pat_first[t][k];
+            if (!(E.pat_has[t] >> k & 1u)) {
+                PUT(0xFFu);
+                continue;
+            }
+            for (j = 0; j < E.pat_n[t][k]; j++) {   /* short words when every note fits one (track.ts isShortNote) */
+                uint32_t w = E.trk_note[first + j];
+                sh &= NW_AT(w) < 16u && NW_LEN(w) <= 16u && (NW_VEL(w) == STEP_VEL || NW_VEL(w) == ACCENT_VEL) && !NW_CODE(w);
+            }
+            PUT(E.pat_n[t][k]);
+            PUT(E.pat_len[t][k] | (sh ? 0x80u : 0u));
+            PUT(E.pat_rate[t][k]);
+            for (j = 0; j < E.pat_n[t][k]; j++) {
+                uint32_t w = E.trk_note[first + j];
+                if (sh) {
+                    w = NW_AT(w) | (NW_LEN(w) - 1u) << 4 | NW_NOTE(w) << 8 | (NW_VEL(w) == ACCENT_VEL ? 0x8000u : 0u);
+                    PUT(w);
+                    PUT(w >> 8);
+                } else {
+                    PUT(w);
+                    PUT(w >> 8);
+                    PUT(w >> 16);
+                    PUT(w >> 24);
+                }
+            }
+        }
+    }
+    PUT(ns);
+    for (k = 0; k < ns; k++) {
+        PUT(E.song_n[k]);
+        for (j = 0; j < E.song_n[k]; j++) {
+            PUT(E.song_pat[k][j]);
+            PUT((uint8_t)E.song_shift[k][j]);
+        }
+    }
+#undef PUT
+    return n <= cap || !out ? (int)n : -1;
+}
+
 int eng_steps_pos(uint32_t module)
 {
     inst_t *it = steps_inst(module);
@@ -2600,10 +3009,10 @@ int eng_steps_hit(uint32_t module, int accent, int record)
     it->s.stp.hit = accent ? 2u : 1u;
     if (!record || eng_steps_pos(module) < 0)
         return -1;
-    len = clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
+    len = steps_len(it, E.node[module].trk);
     k = it->s.stp.pos < 0 ? 0 : it->s.stp.pos;
     if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
-        k = k + 1 >= len ? 0 : k + 1;
+        k = steps_next(it, len, clampi(round_q16(it->eff[STEPS_P_DIR]), 0, 3)).pos;
         it->s.stp.skip = (int8_t)k;
         it->s.stp.skipn = 0;                     /* (the whole step) */
     }
@@ -2625,7 +3034,7 @@ static uint32_t names_at(const uint8_t *p, uint32_t len)
         at += p[2];
     if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
         return 0;
-    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
+    if (!(at = eng_steps_end(p, len, at)))
         return 0;
     if ((p[6] & 32u) && !(at = eng_devices_end(p, len, at)))
         return 0;
@@ -2678,8 +3087,8 @@ uint32_t eng_steps_note(uint32_t module, uint32_t k, uint32_t note)
     if (!steps_inst(module))
         return 0;
     t = E.node[module].trk;
-    for (i = 0; i < E.trk_n[t]; i++) {
-        uint32_t w = E.trk_note[E.trk_first[t] + i];
+    for (i = 0; i < TRK_N(t); i++) {
+        uint32_t w = E.trk_note[TRK_FIRST(t) + i];
         if (NW_AT(w) == k && NW_NOTE(w) == note)
             return w;
     }
@@ -2711,10 +3120,10 @@ int eng_steps_hit_note(uint32_t module, uint32_t note, int accent, int record)
     it->s.stp.hit = accent ? 2u : 1u;
     if (!record || eng_steps_pos(module) < 0)
         return -1;
-    len = clampi(round_q16(it->eff[STEPS_P_LEN]), 1, TRACK_STEPS);
+    len = steps_len(it, E.node[module].trk);
     k = it->s.stp.pos < 0 ? 0 : it->s.stp.pos;
     if (it->s.stp.pos >= 0 && it->s.stp.slen > 0 && 2 * it->s.stp.sst >= it->s.stp.slen) {
-        k = k + 1 >= len ? 0 : k + 1;
+        k = steps_next(it, len, clampi(round_q16(it->eff[STEPS_P_DIR]), 0, 3)).pos;
         it->s.stp.skip = (int8_t)k;
         it->s.stp.skipn = (uint8_t)(note + 1u);
     }
@@ -2743,7 +3152,7 @@ void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t
 void eng_steps_overdub(uint32_t module, uint32_t word)
 {
     uint32_t w[TRACK_NOTES_MAX + 1u], n, i, m, t;
-    if (!steps_inst(module) || NW_AT(word) + NW_LEN(word) > TRACK_STEPS)
+    if (!steps_inst(module) || !NW_VEL(word))
         return;
     t = E.node[module].trk;
     n = trk_copy(t, w + 1);
@@ -2798,12 +3207,15 @@ void eng_all_notes_off(void)
         E.arp[i].cur = -1;
         E.arp[i].running = 0;
     }
-    for (i = 0; i <= E.ngrp; i++)
+    for (i = 0; i <= E.ngrp; i++) {
         E.grp[i].nheld = 0;
+        E.grp[i].down[0] = E.grp[i].down[1] = E.grp[i].down[2] = E.grp[i].down[3] = 0;
+    }
     for (i = 0; i < ENG_NPV; i++) {
         E.pv[i].on = 0;
         E.pv[i].gate = 0;
         E.pv[i].retrig = 0;
+        E.pv[i].key_trig = 0;
     }
     for (i = 0; i < E.nmod; i++)
         if (E.node[i].type == T_DRUMMAP)
@@ -2839,6 +3251,9 @@ static void m_fm1(const node_t *nd, inst_t *it, uint32_t n)
     fill(it->out[FM1_O_BEND], E.ctl[ENG_CTL_BEND], n);
     fill(it->out[FM1_O_MOD], E.ctl[ENG_CTL_MOD], n);
     fill(it->out[FM1_O_AT], E.ctl[ENG_CTL_AT], n);
+    fill(it->out[FM1_O_BREATH], E.ctl[ENG_CTL_BREATH], n);
+    fill(it->out[FM1_O_SUSTAIN], E.ctl[ENG_CTL_SUSTAIN], n);
+    fill(it->out[FM1_O_FOOT], E.ctl[ENG_CTL_FOOT], n);
     fill(it->out[FM1_O_KEYS], x->gate, n);   /* the keys for Voice allocators (modules.ts): never patched in the binary, 1 while a key is down */
     fill(it->out[FM1_O_GATE], x->gate, n);
     fill(it->out[FM1_O_VEL], x->vel, n);
@@ -2883,15 +3298,44 @@ static void m_part(const node_t *nd, inst_t *it, uint32_t n)
     fill(it->out[PART_O_INDEX], np > 1 ? (2 * (int32_t)cur_v - (np - 1)) * 65536 / (np - 1) : 0, n);   /* |.| < 2^24: 32 bits */
     fill(it->out[PART_O_LEGATO], x->legato ? ENG_ONE : 0, n);
     fill(it->out[PART_O_JUMP], x->jump, n);
+    if (it->out[PART_O_UNISON] != dummy_out) fill(it->out[PART_O_UNISON], cur_g->unison ? ENG_ONE : 0, n);
+    if (it->out[PART_O_TRIG] != dummy_out) {
+        fill(it->out[PART_O_TRIG], 0, n);
+        if (x->key_trig) it->out[PART_O_TRIG][0] = ENG_ONE;
+    }
+    if (it->out[PART_O_LOW] != dummy_out || it->out[PART_O_HIGH] != dummy_out) {
+        uint32_t i;
+        int low = x->on, high = x->on;
+        for (i = 0; i < cur_g->parts && (low || high); i++) {
+            const pv_t *other = &E.pv[cur_g->pv0 + i];
+            if (!other->on) continue;
+            if (other->note < x->note) low = 0;
+            if (other->note > x->note) high = 0;
+        }
+        if (it->out[PART_O_LOW] != dummy_out) fill(it->out[PART_O_LOW], low ? ENG_ONE : 0, n);
+        if (it->out[PART_O_HIGH] != dummy_out) fill(it->out[PART_O_HIGH], high ? ENG_ONE : 0, n);
+    }
 }
 
-/* the Random module (modules.ts random): fixed (a hash of its seed) or a walk, Q15 -> Q16 */
+/* Random: fixed or a walk on out, an independent draw on each rising clock edge on held. Q15 -> Q16. */
 static void m_random(const node_t *nd, inst_t *it, uint32_t n)
 {
     int32_t q;
+    uint32_t i;
     walk_step(&it->s.rnd.w, walk_hold(EF(it, RANDOM_P_RATE)));   /* every block, so the wander does not depend on the mode */
     q = round_q16(EF(it, RANDOM_P_MODE)) ? it->s.rnd.w.y : q15(hash32(it->s.rnd.seed));
     fill(it->out[RANDOM_O_OUT], 2 * q, n);
+    if (it->out[RANDOM_O_HELD] == dummy_out)
+        return;
+    for (i = 0; i < n; i++) {
+        int32_t clock = it->in[RANDOM_I_CLOCK][i];
+        if (clock >= 32768 && it->s.rnd.clock < 32768) {
+            it->s.rnd.held_seed = lcg(it->s.rnd.held_seed);
+            it->s.rnd.held = 2 * q15(it->s.rnd.held_seed);
+        }
+        it->s.rnd.clock = clock;
+        it->out[RANDOM_O_HELD][i] = it->s.rnd.held;
+    }
 }
 
 /* The FM oscillator (pm connected with pm > 0, or feedback) runs at twice the rate: two waves per frame, the pm input
@@ -2977,6 +3421,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 case 0: OSC_PLAIN(sin_turn(phase)) break;
                 case 1: OSC_PLAIN(wave_tri(phase)) break;
                 case 2: OSC_PLAIN(wave_saw(phase, dt, r)) break;
+                case 4: OSC_PLAIN(wave_shark(phase, dt, r)) break;
+                case 5: OSC_PLAIN(-wave_saw(phase, dt, r)) break;
                 default: OSC_PLAIN(wave_square(phase, dt, pw, r)) break;
                 }
                 s1 = n ? sync[n - 1] : s1;                                  /* (the unconnected sync input reads 0) */
@@ -2985,6 +3431,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 case 0: OSC_SYNC(sin_turn(phase)) break;
                 case 1: OSC_SYNC(wave_tri(phase)) break;
                 case 2: OSC_SYNC(wave_saw(phase, dt, r)) break;
+                case 4: OSC_SYNC(wave_shark(phase, dt, r)) break;
+                case 5: OSC_SYNC(-wave_saw(phase, dt, r)) break;
                 default: OSC_SYNC(wave_square(phase, dt, pw, r)) break;
                 }
             }
@@ -3001,6 +3449,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 #define OSC_TRI(p, d, r) wave_tri(p)
 #define OSC_SAW(p, d, r) wave_saw(p, d, r)
 #define OSC_SQR(p, d, r) wave_square(p, d, pw, r)
+#define OSC_SHARK(p, d, r) wave_shark(p, d, r)
+#define OSC_REVERSE(p, d, r) (-wave_saw(p, d, r))
 #define OSC_UNI(W)                                                                      \
             for (i = 0; i < n; i++) {                                                   \
                 int rst = sync[i] >= 32768 && s1 < 32768;   /* a rising edge on sync restarts the phases */ \
@@ -3031,6 +3481,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
             case 0: OSC_UNI(OSC_SIN) break;
             case 1: OSC_UNI(OSC_TRI) break;
             case 2: OSC_UNI(OSC_SAW) break;
+            case 4: OSC_UNI(OSC_SHARK) break;
+            case 5: OSC_UNI(OSC_REVERSE) break;
             default: OSC_UNI(OSC_SQR) break;
             }
 #undef OSC_UNI
@@ -3038,6 +3490,8 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 #undef OSC_TRI
 #undef OSC_SAW
 #undef OSC_SQR
+#undef OSC_SHARK
+#undef OSC_REVERSE
             for (j = 0; j < 4; j++)
                 ph[j] = lph[j];
         }
@@ -3052,6 +3506,30 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
     y2 = it->s.osc.y2;
     pm1 = it->s.osc.pm1;
     xb = it->s.osc.xb;
+    /* The common FM operator is a sine with no feedback or sync. Its two sub-samples need no waveform dispatch,
+     * feedback multiplies or sub-sample loop. Keep the same phase, interpolation and decimator state as the general path. */
+    if (kind == 0 && fb == 0 && !(nd->conn & (1u << OSC_I_SYNC))) {
+        for (i = 0; i < n; i++) {
+            int32_t pm_now = pm[i], pm_mid = (pm1 + pm_now) >> 1, p0, p1;
+            if (i == 0 || pitch[i] != pitch[i - 1]) {
+                dt_fm = exp2_scale(INC_C4, pitch[i] + base);
+                if (dt_fm > DT_MAX)
+                    dt_fm = DT_MAX;
+                dt_fm >>= 1;
+            }
+            pm1 = pm_now;
+            phase += dt_fm;
+            y2 = sin_turn(phase + (uint32_t)(((int64_t)mul16(idx, pm_mid) * TURN_PER_RAD) >> 16));
+            phase += dt_fm;
+            y1 = sin_turn(phase + (uint32_t)(((int64_t)mul16(idx, pm_now) * TURN_PER_RAD) >> 16));
+            p0 = allpass16(ap + 4, HB_A[2], allpass16(ap, HB_A[0], y2));
+            p1 = allpass16(ap + 6, HB_A[3], allpass16(ap + 2, HB_A[1], xb));
+            xb = y1;
+            out[i] = mul16((p0 + p1) >> 1, lvl);
+        }
+        s1 = n ? sync[n - 1] : s1;
+        n = 0;
+    }
     uint32_t *frc = it->s.osc.rc[0];                  /* blep_pos's cache, kept across blocks */
     for (i = 0; i < n; i++) {
         uint32_t dt, sub;
@@ -3133,9 +3611,25 @@ static void __attribute__((noinline)) lfo_free(inst_t *it, esig_t *out, uint32_t
  * whole number (`cycles`) of cycles ends on a tick; it runs at the measured clock speed in between and at bpm when there
  * is no clock (modules.ts lfoSyncCycle). per8 = 8 x ticks per cycle, a whole number. phase: where a cycle starts on the
  * wave; dir back: the wave backward, read as -w(phase - off) (the triangle as it is). */
+static int32_t lfo_wave(int32_t kind, uint32_t phase, uint32_t dt, uint32_t duty, uint32_t rise, uint32_t fall, uint32_t *rc)
+{
+    if (kind == 3 && (!duty || duty == 65536u))
+        return duty ? ENG_ONE : -ENG_ONE;
+    if (kind != 1 || duty == 32768u)
+        return wave(kind, phase, dt, duty == 65536u ? 0xFFFFFFFFu : duty << 16, rc);
+    if (!duty)
+        return -wave_saw(phase, dt, rc);
+    if (duty == 65536u)
+        return wave_saw(phase, dt, rc);
+    if (phase < duty << 16)
+        return (int32_t)(((uint64_t)phase * rise) >> 31) - ENG_ONE;
+    return ENG_ONE - (int32_t)(((uint64_t)(phase - (duty << 16)) * fall) >> 31);
+}
+
 static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
 {
     esig_t *out = it->out[0];
+    esig_t *pulse = it->out[LFO_O_PULSE];
     const esig_t *clk = it->in[LFO_I_CLK], *rst = it->in[LFO_I_RESET];
     uint32_t rate = (uint32_t)EF(it, LFO_P_RATE), dtfree, phase = it->s.lfo.phase, i, dt;
     int32_t kind = round_q16(EF(it, LFO_P_WAVE)), depth = EF(it, LFO_P_DEPTH);
@@ -3145,19 +3639,31 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
     uint32_t num = (uint32_t)DELAY_DIV_NUM[div] * LFO_MULT_NUM[mi], den = (uint32_t)DELAY_DIV_DEN[div] * LFO_MULT_DEN[mi];
     uint32_t per8 = 192u * num / den, g = per8 & 7u ? (per8 & 3u ? (per8 & 1u ? 1u : 2u) : 4u) : 8u;   /* g = gcd(per8, 8) */
     uint32_t snap = per8 / g, cycles = 8u / g, dtbpm = 0, lrc[4] = {0}, off = 0;
+    uint32_t duty = 32768u;
+    if (nd->conn & (1u << LFO_I_SHAPE)) {
+        int64_t sum = 0;
+        for (i = 0; i < n; i++) sum += it->in[LFO_I_SHAPE][i];
+        duty = (uint32_t)clampi(block_mean(sum, n), 0, ENG_ONE);
+    }
     if (EF(it, LFO_P_PHASE))                     /* degrees Q16 -> u32 turns (x 2^16 / 360) */
         off = (uint32_t)(((uint64_t)(uint32_t)EF(it, LFO_P_PHASE) * 11930465u) >> 16);
     if (back) {
         off = 0u - off;
+        duty = 65536u - duty;
         if (kind != 1)
             depth = -depth;
     }
+    /* Reciprocal slopes once per block, within two Q16 steps of the exact per-sample division. */
+    uint32_t rise = duty && duty != 32768u ? 0xFFFFFFFFu / duty : 0;
+    uint32_t fall = duty != 65536u && duty != 32768u ? 0xFFFFFFFFu / (65536u - duty) : 0;
+    if (range == 3)
+        rate = (uint32_t)EF(it, LFO_P_WIDE);
     dtfree = range == 1 ? (uint32_t)(((uint64_t)rate << 16) / (25u * ENG_SR)) : range == 2 ? hz_turns(rate) << 1 : hz_turns(rate);
     if (bpm < 65536)
         bpm = 65536;
     if (sync)                                    /* (a 64-bit division: only when it is used) */
         dtbpm = (uint32_t)(((uint64_t)(uint32_t)bpm * den << 16) / ((uint64_t)60u * num * ENG_SR));
-    if (!sync && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {   /* free running, nothing patched in */
+    if (!sync && duty == 32768u && pulse == dummy_out && !(nd->conn & ((1u << LFO_I_CLK) | (1u << LFO_I_RESET)))) {
         lfo_free(it, out, dtfree, kind, depth, off, n);
         return;
     }
@@ -3201,8 +3707,12 @@ static void m_lfo(const node_t *nd, inst_t *it, uint32_t n)
                 lfo_cycle(it);              /* a new cycle: sample & hold takes a new random value */
             }
         }
-        w = kind == 4 ? it->s.lfo.held : wave(kind, phase + off, dt, 0x80000000u, lrc);
+        w = kind == 4 ? it->s.lfo.held : lfo_wave(kind, phase + off, dt, duty, rise, fall, lrc);
         out[i] = mul16(w, depth);
+        if (pulse != dummy_out) {
+            int32_t pw = !duty ? -ENG_ONE : duty == 65536u ? ENG_ONE : wave_square(phase + off, dt, duty << 16, lrc);
+            pulse[i] = mul16(pw, back ? -EF(it, LFO_P_DEPTH) : EF(it, LFO_P_DEPTH));
+        }
     }
     it->s.lfo.phase = phase;
     (void)nd;
@@ -3224,6 +3734,14 @@ static void m_noise(const node_t *nd, inst_t *it, uint32_t n)
     it->s.noise.y = y;
 }
 
+static void m_ratio(const node_t *nd, inst_t *it, uint32_t n)
+{
+    (void)nd;
+    int32_t ratio = clampi(round_q16(EF(it, RATIO_P_RATIO)), 0, 63);
+    int32_t detune = clampi(round_q16(EF(it, RATIO_P_DETUNE)), 0, 6);
+    fill(it->out[0], RATIO_OCT[ratio] + RATIO_DETUNE_OCT[detune], n);
+}
+
 static void m_const(const node_t *nd, inst_t *it, uint32_t n) { fill(it->out[0], EF(it, 0), n); }
 
 static void m_scale(const node_t *nd, inst_t *it, uint32_t n)
@@ -3232,8 +3750,14 @@ static void m_scale(const node_t *nd, inst_t *it, uint32_t n)
     esig_t *out = it->out[0];
     int32_t g = EF(it, SCALE_P_GAIN), o = EF(it, SCALE_P_OFFSET);
     uint32_t i;
-    for (i = 0; i < n; i++)
-        out[i] = mul16(in[i], g) + o;
+    if (!g || in == zero_buf)
+        fill(out, o, n);
+    else if (g == ENG_ONE)
+        for (i = 0; i < n; i++)
+            out[i] = in[i] + o;
+    else
+        for (i = 0; i < n; i++)
+            out[i] = mul16(in[i], g) + o;
 }
 
 static int32_t env_rate(int32_t t_q16);
@@ -3353,7 +3877,7 @@ static int32_t env_rate_n(uint32_t n) { return env_rate_q8((uint64_t)n << 8); }
 
 static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
 {
-    const esig_t *gate = it->in[ADSR_I_GATE];
+    const esig_t *gate = it->in[ADSR_I_GATE], *hold = it->in[ADSR_I_HOLD];
     esig_t *out = it->out[0];
     int32_t pa = EF(it, ADSR_P_A), pd = EF(it, ADSR_P_D), pr = EF(it, ADSR_P_R);
     int32_t ainc, ad, ar, sus = EF(it, ADSR_P_S) << 14, v = it->s.adsr.v;
@@ -3386,7 +3910,8 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
         uint8_t g = gate[i] > 32768 ? 1 : 0;
         if (g && !prev)
             stage = 1;
-        else if (!g && prev)
+        /* Hold defers release but preserves gate edges for a reused voice's next attack. */
+        else if (!g && stage && stage != 4 && hold[i] <= 32768)
             stage = 4;
         prev = g;
         switch (stage) {
@@ -3425,6 +3950,26 @@ static void m_adsr(const node_t *nd, inst_t *it, uint32_t n)
     it->s.adsr.prev = prev;
 }
 
+/* Original rate controls, with native pedal hold and unbent key pitch for key-rate scaling. */
+static void m_rateenv(const node_t *nd, inst_t *it, uint32_t n)
+{
+    rate_env_t *s = &it->s.rateenv;
+    uint32_t ar = (uint32_t)((EF(it, RATEENV_P_AR) + 32768) >> 16) * 2u;
+    uint32_t d1r = (uint32_t)((EF(it, RATEENV_P_D1R) + 32768) >> 16) * 2u;
+    uint32_t d2r = (uint32_t)((EF(it, RATEENV_P_D2R) + 32768) >> 16) * 2u;
+    uint32_t rr = (uint32_t)((EF(it, RATEENV_P_RR) + 32768) >> 16) * 4u + 2u;
+    uint32_t scaling = (uint32_t)((EF(it, RATEENV_P_KRS) + 32768) >> 16);
+    uint32_t level = 15u - (uint32_t)((EF(it, RATEENV_P_D1L) + 32768) >> 16);
+    uint32_t target = (level == 15u ? 31u : level) * 32u, i;
+    for (i = 0; i < n; i++) {
+        int32_t note = (int32_t)(((int64_t)it->in[RATEENV_I_PITCH][i] * 12 + 60 * 65536 + 32768) >> 16);
+        uint32_t key = (uint32_t)clampi(note < 13 ? 0 : (note - 13) / 3, 0, 31);
+        rate_env_sample(s, ENG_SR * 192u, it->in[RATEENV_I_GATE][i] > 32768,
+                        it->in[RATEENV_I_HOLD][i] > 32768, ar, d1r, target, d2r, rr, key >> (3u - scaling));
+        it->out[0][i] = s->stage && s->att < 1023 ? (esig_t)((EXPN_T[(s->att & 63) * 4] >> 15) >> (s->att >> 6)) : 0;
+    }
+}
+
 static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
 {
     const esig_t *in = it->in[VCA_I_IN], *cv = it->in[VCA_I_CV];
@@ -3432,8 +3977,14 @@ static void m_vca(const node_t *nd, inst_t *it, uint32_t n)
     int32_t g = EF(it, VCA_P_GAIN);
     uint32_t i;
     (void)nd; /* an unplugged cv reads the zero buffer: a VCA with no control is closed */
-    for (i = 0; i < n; i++)
-        out[i] = mul16(mul16(in[i], cv[i]), g);
+    if (!g || in == zero_buf || cv == zero_buf)
+        fill(out, 0, n);
+    else if (g == ENG_ONE)
+        for (i = 0; i < n; i++)
+            out[i] = mul16(in[i], cv[i]);
+    else
+        for (i = 0; i < n; i++)
+            out[i] = mul16(mul16(in[i], cv[i]), g);
 }
 
 typedef struct {
@@ -3466,30 +4017,45 @@ static int32_t svf_g(uint32_t rinc)
 
 #define SQRT2_24 23726566   /* stage 2's k: sqrt(2) in Q24 (Q 0.7), the resonance comes from stage 1 only */
 
-/* Two stages: stage 1 (12 dB) gives lp12, bp, hp (and notch, peak, allpass from the same values, only when a cable
- * leaves them); stage 2 filters lp12 again (lp24); mix fades lp24 -> hp by morph.
+/* Two stages: stage 1 (12 dB) gives lp12, bp, hp (and notch, peak, allpass, and hp6 = hp + 2 bp, a resonant 6 dB high
+ * pass, from the same values, only when a cable leaves them); stage 2 filters lp12 again (lp24); mix fades lp24 -> hp by morph.
  * The integrator states are Q20 (+-2048: room for the resonance peak), the signals Q16; products are rounded.
  * Key tracking moves the cutoff by the voice pitch (octaves, C4 = as set), like the host engine, once per block. */
-static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
+static int32_t filter_over(const inst_t *it)   /* how far res is past FILTER_OSC_FROM with osc on, Q16 (0: off) */
+{
+    int32_t res = EF(it, FILTER_P_RES);
+    return EF(it, FILTER_P_OSC) >= 32768 && res > FILTER_OSC_FROM_Q16 ? res - FILTER_OSC_FROM_Q16 : 0;
+}
+
+/* osc: a constant at each call (m_filter), so the ordinary filter carries none of the self-oscillation's work */
+HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc)
 {
     const esig_t *in = it->in[FILTER_I_IN], *cv = it->in[FILTER_I_CV], *mo = it->in[FILTER_I_MORPH];
     esig_t *lp = it->out[FILTER_O_LP12], *bp = it->out[FILTER_O_BP], *hp = it->out[FILTER_O_HP];
     esig_t *lp24 = it->out[FILTER_O_LP24], *mix = it->out[FILTER_O_MIX];
     esig_t *notch = it->out[FILTER_O_NOTCH], *peak = it->out[FILTER_O_PEAK], *apo = it->out[FILTER_O_AP];
-    int32_t k24 = (2 << 24) - mulq(EF(it, FILTER_P_RES), 33218888, 16);   /* 2 - 1.98 res */
+    int32_t res = EF(it, FILTER_P_RES);
+    /* self-oscillation (osc on, res past FILTER_OSC_FROM; modules.ts): the damping falls below 0 near the top and grows
+     * with the band-pass state squared (held to +-FILTER_OSC_CLIP), so stage 1 is solved per sample there */
+    int32_t over = osc ? filter_over(it) : 0;   /* Q16 */
+    int32_t k24 = (2 << 24) - mulq(res, 33218888, 16) - mulq(over, FILTER_OSC_K_Q24, 16);   /* 2 - 1.98 res (- the fall) */
+    int32_t gam = mulq(over, FILTER_OSC_GAIN_Q24, 16), gc = 0, ke = k24;                    /* Q24; gc: the current g, ke: the damping */
     int32_t cvamt = EF(it, FILTER_P_CVAMT), ic1 = it->s.flt.ic1, ic2 = it->s.flt.ic2, jc1 = it->s.flt.jc1, jc2 = it->s.flt.jc2;
     int32_t morph = EF(it, FILTER_P_MORPH), tr = EF(it, FILTER_P_TRACK) >= 32768 ? cur_pv->pitch : 0;
     uint32_t base = hz_turns((uint32_t)EF(it, FILTER_P_CUTOFF)), i;
     svf_coef_t c, d;
     int fixed = !(nd->conn & (1u << FILTER_I_CV));
     int msig = nd->conn & (1u << FILTER_I_MORPH);
-    int ext = notch != dummy_out || peak != dummy_out || apo != dummy_out;   /* the notch / peak / allpass outputs are in use */
+    int ext = notch != dummy_out || peak != dummy_out || apo != dummy_out || it->out[FILTER_O_HP6] != dummy_out;   /* the notch / peak / allpass / hp6 outputs are in use */
     int st2 = lp24 != dummy_out || mix != dummy_out;     /* the second stage only feeds lp24 and mix: skipped when neither is */
     int32_t lcv = 0;
     if (tr)
         base = exp2_scale(base, tr);
+    if (osc && !ic1 && !ic2)
+        ic1 = FILTER_OSC_SEED_Q20;               /* a filter at rest: a small kick starts the oscillation */
     if (fixed) {
         int32_t g = svf_g(base);
+        gc = g;
         svf_stage(&c, g, k24);
         svf_stage(&d, g, SQRT2_24);
     }
@@ -3499,16 +4065,22 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
             int32_t g;
             lcv = cv[i];
             g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
+            gc = g;
             svf_stage(&c, g, k24);
             if (st2)
                 svf_stage(&d, g, SQRT2_24);
+        }
+        if (osc) {                                   /* the damping k + gam b^2 */
+            int32_t b = clampi(ic1, -FILTER_OSC_CLIP_Q20, FILTER_OSC_CLIP_Q20);
+            ke = k24 + mulr(gam, mulr(b, b, 20), 20);
+            svf_stage(&c, gc, ke);
         }
         v3 = v0 - ic2;
         v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
         v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
         ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
         ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-        kv1 = mulr(v1, k24, 24);
+        kv1 = mulr(v1, osc ? ke : k24, 24);
         h = v0 - kv1 - v2;
         lp[i] = (v2 + 8) >> 4;
         bp[i] = (v1 + 8) >> 4;
@@ -3523,10 +4095,13 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
             lp24[i] = (w2 + 8) >> 4;
             mix[i] = (w2 + mul16(h - w2, m) + 8) >> 4;
         }
-        if (ext) {                                                        /* from the same states: notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp */
+        if (ext) {                                                        /* from the same states: notch = in - k bp, peak = lp12 - hp, allpass = in - 2 k bp, hp6 */
             notch[i] = (v0 - kv1 + 8) >> 4;
             peak[i] = (v2 - h + 8) >> 4;
             apo[i] = (v0 - 2 * kv1 + 8) >> 4;
+            /* hp + 2 bp: the MS-20 filter's 6 dB high pass (modules.ts). Read through it->out here, not a local: a ninth
+             * live pointer made every filter dearer (npm run cpu-costs: filter run 29567 -> 31116 cycles; this way 25987) */
+            it->out[FILTER_O_HP6][i] = (h + 2 * v1 + 8) >> 4;
         }
     }
     it->s.flt.ic1 = ic1;
@@ -3535,43 +4110,55 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
     it->s.flt.jc2 = jc2;
 }
 
+static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
+{
+    if (filter_over(it))
+        filter_run(nd, it, n, 1);
+    else
+        filter_run(nd, it, n, 0);
+}
+
 #define LAD_SAT_KNEE (3 << 19)      /* 1.5 in Q20: the saturator's knee */
 #define LAD_SAT_CUBE 2485513        /* 1 / 6.75 in Q24 */
 
 /* Ladder filter with drive (modules.ts `ladder`): four TPT one-poles (G = g / (1 + g), Q24) in a loop with k = 4 res.
  * The loop is solved linearly per sample (y4 = F (G^4 x + S), S the states' share, F = 1 / (1 + k G^4)), the loop input
  * u = sat(drive x - k y4) then runs through the stages; sat is v - v^3 / 6.75 up to |v| = 1.5, +-1 beyond. The
- * coefficients come once per block from the block mean of cv, cvamt and key tracking (no per-sample recip24: the SVF
- * keeps that for audio-rate cutoff). States Q20, products rounded; the saturator bounds the states, so no clamps. */
-static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
+ * ordinary cutoff comes once per block from the mean of cv, cvamt and key tracking. With fm connected the coefficients
+ * also follow each change in its samples. States Q20, products rounded; the saturator bounds the states, so no clamps. */
+HOT void ladder_run(const node_t *nd, inst_t *it, uint32_t n, int audio)
 {
-    const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV];
+    const esig_t *in = it->in[LADDER_I_IN], *cv = it->in[LADDER_I_CV], *fm = it->in[LADDER_I_FM];
     esig_t *lp24 = it->out[LADDER_O_LP24], *lp12 = it->out[LADDER_O_LP12];
     int32_t *s = it->s.lad.s;
     int32_t drive = EF(it, LADDER_P_DRIVE), cvamt = EF(it, LADDER_P_CVAMT);
     int32_t k24 = EF(it, LADDER_P_RES) << 10;                                     /* 4 res, Q24 */
     int32_t tr = EF(it, LADDER_P_TRACK) >= 32768 ? cur_pv->pitch : 0, x = tr;
     uint32_t base = hz_turns((uint32_t)EF(it, LADDER_P_CUTOFF)), i;
-    int32_t g, G, G2, G3, G4, hG, F;
+    int32_t G = 0, G2 = 0, G3 = 0, G4 = 0, hG = 0, F = 0;
     if (nd->conn & (1u << LADDER_I_CV)) {
         int64_t sum = 0;
         for (i = 0; i < n; i++)
             sum += cv[i];
         x += mul16(block_mean(sum, n), cvamt);
     }
-    if (x)
-        base = exp2_scale(base, x);
-    g = svf_g(base);
-    G = mulq(g, recip24((1 << 24) + g), 24);
-    G2 = mulq(G, G, 24);
-    G3 = mulq(G2, G, 24);
-    G4 = mulq(G3, G, 24);
-    hG = (1 << 24) - G;
-    F = recip24((1 << 24) + mulq(k24, G4, 24));
+#define LADDER_COEFF(octave) do {                             \
+        int32_t oct = (octave);                              \
+        int32_t g = svf_g(oct ? exp2_scale(base, oct) : base); \
+        G = mulq(g, recip24((1 << 24) + g), 24);              \
+        G2 = mulq(G, G, 24);                                 \
+        G3 = mulq(G2, G, 24);                                \
+        G4 = mulq(G3, G, 24);                                \
+        hG = (1 << 24) - G;                                  \
+        F = recip24((1 << 24) + mulq(k24, G4, 24));           \
+    } while (0)
+    LADDER_COEFF(x + (audio && n ? mul16(fm[0], cvamt) : 0));
     {
         int32_t s0 = s[0], s1 = s[1], s2 = s[2], s3 = s[3];     /* the states in registers, the four stages written out */
         for (i = 0; i < n; i++) {
             int32_t x20 = in[i] << 4, S, y4, u, v, y2;
+            if (audio && i && fm[i] != fm[i - 1])
+                LADDER_COEFF(x + mul16(fm[i], cvamt));
             S = mulr(G3, s0, 24) + mulr(G2, s1, 24) + mulr(G, s2, 24) + s3;
             S = mulr(S, hG, 24);
             y4 = mulr(F, mulr(G4, x20, 24) + S, 24);
@@ -3595,6 +4182,16 @@ static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
         s[2] = s2;
         s[3] = s3;
     }
+#undef LADDER_COEFF
+}
+
+static void m_ladder(const node_t *nd, inst_t *it, uint32_t n)
+{
+    /* Constant arguments remove all audio-rate checks from the ordinary filter loop. */
+    if (nd->conn & (1u << LADDER_I_FM))
+        ladder_run(nd, it, n, 1);
+    else
+        ladder_run(nd, it, n, 0);
 }
 
 #define DB_TO_LOG2 10885            /* 1 / 6.0206 in Q16: dB -> octaves (log2) */
@@ -3626,12 +4223,152 @@ static void m_dyn(const node_t *nd, inst_t *it, uint32_t n)
     it->s.dyn.env = env;
 }
 
+#define LOG2_C4_Q16 526343            /* log2(261.6255653 Hz): pitch 0 */
+#define ESP_K_HZ 12282814ull          /* 4.6 / (2 pi) in Q24: a one-pole at f Hz is env_rate's curve over 4.6 / (2 pi f) s */
+
+/* a one-pole's coefficient for a corner at hz (Q16 Hz): 1 - exp(-2 pi f / sr), Q30 */
+static int32_t esp_k(int32_t hz)
+{
+    return env_rate_q8((ESP_K_HZ * ENG_SR) / (uint32_t)(hz < ENG_ONE ? ENG_ONE : hz));
+}
+
+/* Follower (modules.ts esp), after the Korg MS-20's External Signal Processor: amp = in x level; an envelope follower on
+ * |amp| (env) with a trigger (up above thresh, down below 3/4 of it); a band pass, a one-pole high pass at lowcut then a
+ * one-pole low pass at highcut (bp); a pitch to voltage converter: bp's period between rising crossings of +h after it went
+ * below -h (h = a quarter of bp's peak hold), each crossing placed between its samples, as log2(f / C4) + cvadj, through a
+ * short glide. One division per crossing (32-bit) and one log2_q16 per measured period. Nothing on `in`: it rests. */
+static void m_esp(const node_t *nd, inst_t *it, uint32_t n)
+{
+    esig_t *amp = it->out[ESP_O_AMP], *bp = it->out[ESP_O_BP], *po = it->out[ESP_O_PITCH], *eo = it->out[ESP_O_ENV], *to = it->out[ESP_O_TRIG];
+    int32_t adj = EF(it, ESP_P_CVADJ) / 12;                                    /* semitones -> octaves */
+    int32_t env = it->s.esp.env, lc = it->s.esp.lc, hc = it->s.esp.hc, pk = it->s.esp.pk, prev = it->s.esp.prev;
+    int32_t y = it->s.esp.y, frac = it->s.esp.frac, t = it->s.esp.t;
+    uint32_t cnt = it->s.esp.cnt, i;
+    uint8_t trig = it->s.esp.trig, arm = it->s.esp.arm, valid = it->s.esp.valid;
+    if (!(nd->conn & (1u << ESP_I_IN))) {                                      /* at rest, the pitch held (modules.ts espRest) */
+        it->s.esp.env = it->s.esp.lc = it->s.esp.hc = it->s.esp.pk = it->s.esp.prev = it->s.esp.frac = 0;
+        it->s.esp.cnt = 0;
+        it->s.esp.trig = it->s.esp.arm = it->s.esp.valid = 0;
+        fill(amp, 0, n);
+        fill(bp, 0, n);
+        fill(eo, 0, n);
+        fill(to, 0, n);
+        fill(po, ((y + 128) >> 8) + adj, n);
+        return;
+    }
+    {
+        const esig_t *in = it->in[ESP_I_IN];
+        int32_t level = EF(it, ESP_P_LEVEL), th = clampi(EF(it, ESP_P_THRESH), 0, ENG_ONE) << 8, off = th - (th >> 2);
+        int32_t ka = env_rate(ESP_ATTACK_Q16), kr = env_rate(ESP_RELEASE_Q16);
+        int32_t kl = esp_k(EF(it, ESP_P_LOWCUT)), kh = esp_k(EF(it, ESP_P_HIGHCUT));
+        int32_t base = log2_q16(ENG_SR) + (16 << 16) - LOG2_C4_Q16;            /* log2(sr / C4) + 16: per is Q16 */
+        for (i = 0; i < n; i++) {
+            int32_t x = clampi(mul16(in[i], level), -ESP_CLIP_Q16, ESP_CLIP_Q16), a, b, ab, h;
+            amp[i] = x;
+            x <<= 8;                                                           /* Q24, +-2^28 */
+            a = x < 0 ? -x : x;
+            env += mulq(a > env ? ka : kr, a - env, 30);
+            if (trig ? env < off : env > th)
+                trig ^= 1u;
+            lc += mulq(kl, x - lc, 30);
+            hc += mulq(kh, x - lc - hc, 30);
+            b = hc;
+            ab = b < 0 ? -b : b;
+            pk = ab > pk ? ab : pk - (pk >> ESP_PEAK_SHIFT);
+            h = pk >> 2;
+            if (++cnt > ESP_MAX_PERIOD) {
+                cnt = ESP_MAX_PERIOD;
+                valid = 0;
+            }
+            if (pk >= ESP_FLOOR_Q24) {
+                if (b < -h)
+                    arm = 1;
+                else if (arm && b >= h) {
+                    int32_t f = 0, per;
+                    if (b > prev) {                                            /* (b - h) / (b - prev), Q16, at most 1 */
+                        uint32_t num = (uint32_t)(b - h), den = (uint32_t)(b - prev);
+                        if (num >= den)
+                            f = ENG_ONE;
+                        else {
+                            while (den >= 1u << 15) {
+                                num >>= 1;
+                                den >>= 1;
+                            }
+                            f = (int32_t)((num << 16) / den);
+                        }
+                    }
+                    per = (int32_t)(cnt << 16) - f + frac;
+                    if (valid && per >= (ESP_MIN_PERIOD << 16))
+                        t = base - log2_q16((uint32_t)per);
+                    arm = 0;
+                    valid = 1;
+                    cnt = 0;
+                    frac = f;
+                }
+            }
+            prev = b;
+            y += ((t << 8) - y) >> ESP_GLIDE_SHIFT;
+            bp[i] = (b + 128) >> 8;
+            po[i] = ((y + 128) >> 8) + adj;
+            eo[i] = (env + 128) >> 8;
+            to[i] = trig ? ENG_ONE : 0;
+        }
+    }
+    it->s.esp.env = env;
+    it->s.esp.lc = lc;
+    it->s.esp.hc = hc;
+    it->s.esp.pk = pk;
+    it->s.esp.prev = prev;
+    it->s.esp.y = y;
+    it->s.esp.cnt = cnt;
+    it->s.esp.frac = frac;
+    it->s.esp.t = t;
+    it->s.esp.trig = trig;
+    it->s.esp.arm = arm;
+    it->s.esp.valid = valid;
+}
+
+/* Most utility modules feed one output. Pick that operation once per block instead of calculating every unused one. */
+static int only_output(const inst_t *it, uint32_t count)
+{
+    uint32_t i;
+    int found = -1;
+    for (i = 0; i < count; i++) if (it->out[i] != dummy_out) {
+        if (found >= 0)
+            return -1;
+        found = (int)i;
+    }
+    return found;
+}
+
+HOT int32_t bit_xor(int32_t a, int32_t b)
+{
+    return (clampi(a >> 1, -32768, 32767) ^ clampi(b >> 1, -32768, 32767)) * 2;
+}
+
 static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts `math`: a' = a ka + off, b' = b kb */
 {
     const esig_t *ia = it->in[MATH_I_A], *ib = it->in[MATH_I_B];
     esig_t **o = it->out;
     int32_t ka = EF(it, MATH_P_KA), kb = EF(it, MATH_P_KB), off = EF(it, MATH_P_OFF);
     uint32_t i;
+    int only = only_output(it, MATH_NOUT);
+    if (only >= 0) {
+        esig_t *dst = o[only];
+#define MATH_ONE(Y) for (i = 0; i < n; i++) { int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb); (void)b; dst[i] = (Y); }
+        switch (only) {
+        case MATH_O_ADD: MATH_ONE(a + b) break;
+        case MATH_O_SUB: MATH_ONE(a - b) break;
+        case MATH_O_MUL: MATH_ONE(mul16(a, b)) break;
+        case MATH_O_MIN: MATH_ONE(a < b ? a : b) break;
+        case MATH_O_MAX: MATH_ONE(a > b ? a : b) break;
+        case MATH_O_ABS: MATH_ONE(a < 0 ? -a : a) break;
+        case MATH_O_CMP: MATH_ONE(a > b ? ENG_ONE : 0) break;
+        case MATH_O_XOR: MATH_ONE(bit_xor(a, b)) break;
+        }
+#undef MATH_ONE
+        return;
+    }
     for (i = 0; i < n; i++) {
         int32_t a = mul16(ia[i], ka) + off, b = mul16(ib[i], kb);
         o[MATH_O_ADD][i] = a + b;
@@ -3641,6 +4378,8 @@ static void m_math(const node_t *nd, inst_t *it, uint32_t n)      /* modules.ts 
         o[MATH_O_MAX][i] = a > b ? a : b;
         o[MATH_O_ABS][i] = a < 0 ? -a : a;
         o[MATH_O_CMP][i] = a > b ? ENG_ONE : 0;
+        if (o[MATH_O_XOR] != dummy_out)
+            o[MATH_O_XOR][i] = bit_xor(a, b);
     }
     (void)nd;
 }
@@ -3651,6 +4390,19 @@ static void m_logic(const node_t *nd, inst_t *it, uint32_t n)     /* modules.ts 
     esig_t **o = it->out;
     int32_t t = EF(it, LOGIC_P_THRESH);
     uint32_t i;
+    int only = only_output(it, LOGIC_NOUT);
+    if (only >= 0) {
+        esig_t *dst = o[only];
+#define LOGIC_ONE(Y) for (i = 0; i < n; i++) { int a = ia[i] >= t, b = ib[i] >= t; (void)b; dst[i] = (Y) ? ENG_ONE : 0; }
+        switch (only) {
+        case LOGIC_O_AND: LOGIC_ONE(a && b) break;
+        case LOGIC_O_OR: LOGIC_ONE(a || b) break;
+        case LOGIC_O_XOR: LOGIC_ONE(a != b) break;
+        case LOGIC_O_NOT: LOGIC_ONE(!a) break;
+        }
+#undef LOGIC_ONE
+        return;
+    }
     for (i = 0; i < n; i++) {
         int a = ia[i] >= t, b = ib[i] >= t;
         o[LOGIC_O_AND][i] = a && b ? ENG_ONE : 0;
@@ -4706,7 +5458,7 @@ static void steps_thru_off(uint32_t t, uint32_t node, const inst_t *it, uint32_t
             rin_t x = E.rin[j];
             int32_t sl = it->s.stp.slen, len = x.t > 0 && sl > 0 ? (int32_t)((x.t + sl / 2) / sl) : 1;
             uint8_t h = took_head;
-            len = clampi(len, 1, TRACK_STEPS - x.at);
+            len = clampi(len, 1, TRACK_STEPS);
             for (; j + 1u < E.nrin; j++)
                 E.rin[j] = E.rin[j + 1u];
             E.nrin--;
@@ -4737,11 +5489,12 @@ static void steps_thru(const node_t *nd, inst_t *it, int32_t len, int ext, int32
             continue;
         if (live && E.nrin < ENG_RIN) {
             int32_t ago = it->s.stp.sst, sl = it->s.stp.slen, pos = it->s.stp.pos;
-            int next = ago * 2 >= sl, wrap = next && pos + 1 >= len;
+            int next = ago * 2 >= sl;
+            int32_t target = next ? steps_next(it, len, clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3)).pos : pos;
             rin_t *x = &E.rin[E.nrin++];
             x->trk = (uint8_t)t;
             x->note = (uint8_t)note;
-            x->at = (uint8_t)(wrap ? 0 : next ? pos + 1 : pos);
+            x->at = (uint8_t)target;
             x->vel = (uint8_t)vel;
             x->t = next ? ago - sl : ago;
         }
@@ -4786,10 +5539,10 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         return;
     }
     was = steps_sounding(t);
-    end = (uint32_t)E.trk_first[t] + E.trk_n[t];
-    for (i = E.trk_first[t]; i < end && i < ENG_MAX_NOTES; i++) {
+    end = (uint32_t)TRK_FIRST(t) + TRK_N(t);
+    for (i = TRK_FIRST(t); i < end && i < ENG_MAX_NOTES; i++) {
         uint32_t w = E.trk_note[i], left;
-        int32_t key;
+        int32_t key, note;
         if (NW_AT(w) != (uint32_t)k)
             continue;
         if (it->s.stp.skip == k && it->s.stp.skipn == NW_NOTE(w) + 1u) {   /* (a drum hit recorded ahead: only its note) */
@@ -4798,10 +5551,15 @@ static void steps_fire(const node_t *nd, inst_t *it, int32_t k, int32_t len, int
         }
         if (!steps_plays(it->s.stp.seed, it->s.stp.loop, (uint32_t)k, j++, NW_CODE(w)))
             continue;
-        key = clampi((int32_t)NW_NOTE(w) + semis, 0, 127);
-        left = (NW_LEN(w) < (uint32_t)(len - k) ? NW_LEN(w) : (uint32_t)(len - k)) - 1u;
+        note = clampi((int32_t)NW_NOTE(w) + E.trk_shift[t], 0, 127);   /* (a song entry's shift) */
+        key = clampi(note + semis, 0, 127);
+        {
+            int32_t dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3);
+            uint32_t remaining = (uint32_t)clampi(steps_cycle(len, dir) - it->s.stp.visit, 1, 126);
+            left = (NW_LEN(w) < remaining ? NW_LEN(w) : remaining) - 1u;
+        }
         steps_start(t, node, (uint32_t)key, NW_VEL(w), left, steps_hold(left, gate, sl));
-        it->s.stp.pitch = steps_pitch(NW_NOTE(w));
+        it->s.stp.pitch = steps_pitch((uint32_t)note);
         it->s.stp.vel = (int32_t)((NW_VEL(w) << 16) / 127u);
         E.trk_last[t] = (uint8_t)NW_NOTE(w);
         any = 1;
@@ -4832,17 +5590,42 @@ static void m_drummap(const node_t *nd, inst_t *it, uint32_t n)
     it->s.dm.gap = it->s.dm.fell = 0;
 }
 
+/* the end of a pass of track t (modules.ts stepsTurn): in a song, the next entry's pattern and shift (after the last, the
+ * first again); else a queued pattern */
+static void steps_turn(uint32_t t)
+{
+    uint32_t s = E.song;
+    if (s && E.song_n[s - 1u]) {
+        int32_t k = E.trk_spos[t] + 1 >= (int32_t)E.song_n[s - 1u] ? 0 : E.trk_spos[t] + 1;
+        E.trk_spos[t] = (int8_t)k;
+        E.trk_pat[t] = E.song_pat[s - 1u][k];
+        E.trk_shift[t] = E.trk_drum[t] ? 0 : E.song_shift[s - 1u][k];
+        E.trk_q[t] = 0xFFu;
+        return;
+    }
+    E.trk_shift[t] = 0;
+    if (E.trk_q[t] != 0xFFu)
+        E.trk_pat[t] = E.trk_q[t];
+    E.trk_q[t] = 0xFFu;
+}
+
 static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
 {
     static const uint8_t RATE_HT[9] = {48, 32, 24, 16, 12, 8, 6, 96, 3};   /* half ticks a step: track.ts STEPS_RATE_HT */
     const esig_t *clk = it->in[STEPS_I_CLK], *reset = it->in[STEPS_I_RESET], *tr = it->in[STEPS_I_TRANSPOSE];
     esig_t *trig = it->out[STEPS_O_TRIG], *keys = it->out[STEPS_O_KEYS], *pitch = it->out[STEPS_O_PITCH], *vel = it->out[STEPS_O_VEL];
     uint32_t t = nd->trk, node = (uint32_t)(nd - E.node);
-    int32_t len = clampi(round_q16(EF(it, STEPS_P_LEN)), 1, TRACK_STEPS);
-    int32_t ht = RATE_HT[clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)], step = (ht * E.tick_len) >> 1;   /* a step's samples */
+    int32_t len, dir = clampi(round_q16(EF(it, STEPS_P_DIR)), 0, 3), ht, step;
     int32_t swing = EF(it, STEPS_P_SWING) - 50 * ENG_ONE, gate = EF(it, STEPS_P_GATE);
     int ext = (nd->conn >> STEPS_I_CLK) & 1u;
     uint32_t i;
+    if (E.trk_q[t] != 0xFFu && !E.running) {     /* stopped: a chosen pattern plays at once */
+        E.trk_pat[t] = E.trk_q[t];
+        E.trk_q[t] = 0xFFu;
+    }
+    len = steps_len(it, t);                      /* the pattern's own length and rate, else the track's (modules.ts shape) */
+    ht = RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
+    step = (ht * E.tick_len) >> 1;               /* a step's samples */
     if (E.nthru || E.thru_kill)
         steps_thru(nd, it, len, ext, tr[0]);
     for (i = 0; i < n; i++) {
@@ -4865,6 +5648,7 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
                 it->s.stp.count = 0;
                 it->s.stp.half = 0;
                 it->s.stp.pos = -1;
+                E.trk_spos[t] = -1;              /* (a song starts again from its first entry) */
                 adv++;
             }
             if (it->s.stp.half > 0 && E.running && --it->s.stp.half == 0)
@@ -4894,16 +5678,39 @@ static void m_steps(const node_t *nd, inst_t *it, uint32_t n)
             it->s.stp.hit = 0;
         }
         it->s.stp.sst++;
-        if (it->s.stp.pend > 0 && --it->s.stp.pend == 0)
+        if (it->s.stp.pend > 0 && --it->s.stp.pend == 0 && (dir == 0 || it->s.stp.pstep < len))
             steps_fire(nd, it, it->s.stp.pstep, len, gate, sl, tr[i]);
         for (; adv > 0; adv--) {
-            int32_t sw = ext ? it->s.stp.period : step, d = 0;
-            it->s.stp.pos = (int8_t)(it->s.stp.pos + 1 >= len ? 0 : it->s.stp.pos + 1);
-            if (it->s.stp.pos == 0)
-                it->s.stp.loop++;
+            int32_t sw, d = 0;
+            step_visit_t next = steps_next(it, len, dir);
+            if (next.visit == 0) {               /* the end of a pass: a song's next entry, a queued pattern */
+                steps_turn(t);
+                len = steps_len(it, t);
+                ht = RATE_HT[TRK_P(t) && E.pat_rate[t][TRK_P(t)] != 0xFFu ? E.pat_rate[t][TRK_P(t)] : clampi(round_q16(EF(it, STEPS_P_RATE)), 0, 8)];
+                step = (ht * E.tick_len) >> 1;
+                sl = ext && it->s.stp.period > 0 ? it->s.stp.period : ext ? 6 * E.tick_len : step;
+                next = steps_next(it, len, dir);
+            }
+            sw = ext ? it->s.stp.period : step;
+            /* In the new play modes a live length edit may end the pass before an old note's countdown: such a
+             * note ends after this sample, so a note starting now still gets its low trig sample. A note whose
+             * countdown ran out keeps its gate tail. Forward keeps its older behaviour (D-538). */
+            if (next.visit == 0 && dir != 0) {
+                uint32_t j;
+                for (j = 0; j < E.trk_nsnd[t]; j++) {
+                    snd_t *x = &E.trk_snd[t][j];
+                    if (!x->thru && x->left > 0 && x->cnt > 0) {
+                        x->left = 0;
+                        x->cnt = 1;
+                    }
+                }
+            }
+            it->s.stp.pos = (int8_t)next.pos;
+            it->s.stp.visit = (uint8_t)next.visit;
+            it->s.stp.loop = next.loop;
             it->s.stp.sst = 0;
             it->s.stp.slen = sw;
-            if ((it->s.stp.pos & 1) && swing > 0 && sw > 0)
+            if ((it->s.stp.visit & 1) && swing > 0 && sw > 0)
                 d = (int32_t)(((int64_t)swing * sw) / (50 * ENG_ONE));
             if (d > 0) {
                 it->s.stp.pend = d;
@@ -5171,8 +5978,11 @@ static void m_select(inst_t *it, uint32_t n)
     if (!it->s.sel.fading) {
         const esig_t *x = it->in[SELECT_I_IN1 + k];
         int32_t v = EF(it, SELECT_P_V1 + k);
-        for (i = 0; i < n; i++)
-            out[i] = x[i] + v;
+        if (x == zero_buf)
+            fill(out, v, n);
+        else if (out != dummy_out)
+            for (i = 0; i < n; i++)
+                out[i] = x[i] + v;
     } else {
         int32_t *w = it->s.sel.w;
         uint32_t busy = 0;
@@ -5312,36 +6122,59 @@ static void m_crush(const node_t *nd, inst_t *it, uint32_t n)
 
 /* Block-rate parameter modulation (engine.ts applyCv): the mean of p1 / p2 over the block, times the attenuverter, is
  * added (times the range) to the parameters the matrix assigns that input to; clamped when something was added. */
-static void apply_cv(const node_t *nd, inst_t *it, uint32_t n)
+/* Instances of one module run consecutively. A shared input buffer cannot change between them; a summed input or
+ * per-part output has its own buffer. Reuse only the previous rendered instance's means, including after idle skips. */
+static int32_t signal_mean(const esig_t *src, uint32_t n)
+{
+    int64_t sum = 0;
+    uint32_t i;
+    for (i = 0; i < n; i++)
+        sum += src[i];
+    return block_mean(sum, n);
+}
+
+static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *prev, int32_t *means)
 {
     const def_t *d = &DEFS[nd->type];
     int32_t mean[2] = {0, 0}, extra[MAX_IN];   /* extra[s] is read only where input_map[s] set it (no memset per call) */
-    uint32_t j, i, s, have = 0, side = 0;   /* side: some input has side routes (input_map) */
+    uint32_t j, s, have = 0, side = 0, mapped = 0;   /* side: some input has side routes (input_map) */
     const int32_t *par = nd->par, *parb = par + d->npar;   /* (the node's and the instance's slots, kept in registers; PARB) */
     int32_t *eff = it->eff;
     if (d->cvbase >= 0)
         for (s = 0; s < 2u; s++) {
             const esig_t *cv;
-            int64_t sum = 0;
-            if (!(nd->conn & (1u << (d->cvbase + s))))
+            uint32_t pin = d->cvbase + s;
+            if (!nd->map[s] || !(nd->conn & (1u << pin)))
                 continue;
-            cv = it->in[d->cvbase + s];
-            for (i = 0; i < n; i++)
-                sum += cv[i];
-            mean[s] = mul16(block_mean(sum, n), nd->att[s]);
+            cv = it->in[pin];
+            if (!prev || cv != prev->in[pin])
+                means[pin] = signal_mean(cv, n);
+            mean[s] = mul16(means[pin], nd->att[s]);
             have |= 1u << s;
+            mapped |= nd->map[s];
         }
     for (s = 0; s < d->nin; s++) if (nd->input_map[s]) {
-        int64_t sum = 0;
-        for (i = 0; i < n; i++) sum += it->in[s][i];
-        extra[s] = block_mean(sum, n);
+        if (!prev || it->in[s] != prev->in[s])
+            means[s] = signal_mean(it->in[s], n);
+        extra[s] = means[s];
         side = 1;
+        mapped |= nd->input_map[s];
+    }
+    /* Most modules have no parameter modulation. Copy their base values without visiting each parameter's routes. */
+    if (!have && !side && !(nd->morph && E.morph > 0 && nd->type != T_FM1)) {
+        for (j = 0; j < d->npar; j++)
+            eff[j] = par[j];
+        return;
     }
     for (j = 0; j < d->npar; j++) {
-        int32_t v = E.has_b && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, par[j], (uint32_t)parb[j], E.morph, nd->over >> j & 1u) : par[j];
+        int32_t v = nd->morph && E.morph > 0 && nd->type != T_FM1 ? morph_of(d, j, par[j], (uint32_t)parb[j], E.morph, nd->over >> j & 1u) : par[j];
         uint32_t touched = 0;
         int32_t mod = 0, rv = 0;
         const range_t *rg = 0;
+        if (!(mapped >> j & 1u)) {
+            eff[j] = v;
+            continue;
+        }
         for (s = 0; s < 2u; s++)
             if ((have >> s & 1u) && (nd->map[s] >> j & 1u)) {
                 if (nd->ranged[s] >> j & 1u) {   /* a macro range: the input's value lands between its ends (replacing the base) */
@@ -5454,6 +6287,8 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_SHAPE: m_shape(nd, it, n); break;
     case T_ENV: m_env(nd, it, n); break;
     case T_ENV8: m_env8(nd, it, n); break;
+    case T_RATEENV: m_rateenv(nd, it, n); break;
+    case T_RATIO: m_ratio(nd, it, n); break;
     case T_STRING: m_string(nd, it, n); break;
     case T_WAVETABLE: m_wavetable(nd, it, n); break;
     case T_PD: m_pd(nd, it, n); break;
@@ -5472,6 +6307,7 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
     case T_PHASER: m_phaser(nd, it, n); break;
     case T_LADDER: m_ladder(nd, it, n); break;
     case T_DYN: m_dyn(nd, it, n); break;
+    case T_ESP: m_esp(nd, it, n); break;
     case T_MATH: m_math(nd, it, n); break;
     case T_LOGIC: m_logic(nd, it, n); break;
     case T_GRAIN: m_grain(nd, it, n); break;
@@ -5503,10 +6339,10 @@ static int part_quiet(uint32_t k, uint32_t v)
     for (i = 0; i < E.nmod; i++) {
         const node_t *nd = &E.node[i];
         const inst_t *it;
-        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV && nd->type != T_ENV8))
+        if (nd->grp != k || (nd->type != T_ADSR && nd->type != T_ENV && nd->type != T_ENV8 && nd->type != T_RATEENV))
             continue;
         it = &inst_pool[nd->inst0 + v];
-        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : nd->type == T_ENV ? it->s.env.stage != 0 : it->s.env8.stage != 0)
+        if (nd->type == T_ADSR ? it->s.adsr.stage != 0 : nd->type == T_ENV ? it->s.env.stage != 0 : nd->type == T_ENV8 ? it->s.env8.stage != 0 : it->s.rateenv.stage != 0)
             return 0;
         envs++;
     }
@@ -5603,8 +6439,11 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 thru_tail = q;
             }
             for (k = 0; k < E.narp; k++)
-                if (!E.node[E.arp[k].node].bypass)   /* (bypassed it plays nothing of its own: the keys it hears went straight on) */
+                if (!E.node[E.arp[k].node].bypass) { /* bypassed: its keys already went straight through */
+                    ENG_PROF(0, E.arp[k].node, 0);
                     arp_block(&E.arp[k], n, bpm);
+                    ENG_PROF(3, E.arp[k].node, 0);     /* include note scheduling in this module's CPU cost */
+                }
         }
         for (k = 1; k <= E.ngrp; k++) {                 /* the parts' pitch flaws: detune + drift (engine.ts render) */
             const grp_t *g = &E.grp[k];
@@ -5625,6 +6464,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         }
         for (k = 0; k < E.norder; k++) {
             const node_t *nd = &E.node[E.order[k]];
+            const inst_t *prev = 0;
+            int32_t means[MAX_IN];
             uint32_t ninst = nd->grp && cur_g_parts(nd) < nd->ninst ? cur_g_parts(nd) : nd->ninst;   /* (fewer after an overload: eng_shed) */
             cur_g = &E.grp[nd->grp];
             for (v = 0; v < ninst; v++) {               /* every part of a module in a poly group, once for the rest */
@@ -5679,7 +6520,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     }
                 }
                 ENG_PROF(1, E.order[k], v);
-                apply_cv(nd, it, n);
+                apply_cv(nd, it, n, prev, means);
+                prev = it;
                 if (nd->grp)
                     apply_flaws(nd, it);
                 ENG_PROF(2, E.order[k], v);
@@ -5715,8 +6557,10 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                         x->idle = 0;
                 }
             }
-        for (k = 0; k < ENG_NPV; k++)                   /* a retrig lasts one block (every Main / Part module saw it) */
+        for (k = 0; k < ENG_NPV; k++) {                 /* both triggers last one block */
             E.pv[k].retrig = 0;
+            E.pv[k].key_trig = 0;
+        }
         for (k = 0; k < E.nout; k++) {
             const node_t *o = &E.node[E.outputs[k]];
             const inst_t *it = &inst_pool[o->inst0];

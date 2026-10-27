@@ -11,7 +11,9 @@
 // - Mixer: A, B, noise. Filter: cutoff, resonance, envelope amount, keyboard amount (0 off, 0.5 half, 1 full) and the Rev
 //   switch (`filter rev`: 0 the Rev 1 / 2 filter, here the Multimode's 24 dB low pass, 1 the Rev 3 filter, here the
 //   Ladder, whose pass band drops with resonance as the CEM 3320's does). Cutoff and resonance are Macros that set both
-//   filters (0..1 over the whole range). Two ADSRs. The Release switch (off: both envelopes release fast).
+//   filters (0..1 over the whole range). Two ADSRs. Release OFF makes both envelopes release fast.
+//   In rEL mode, MIDI sustain (CC 64) also enables their programmed release. In HLd mode it holds the gates instead.
+//   Pedal values 0..63 are up and 64..127 down (User’s Guide, Global Settings p. 15 and Release Switch p. 43).
 // - Velocity to the filter envelope amount and to the amplifier, each switchable (0 off, 1 on), with a response curve
 //   (`vel curve` 0 linear, 1 squared). Aftertouch to the filter and to the LFO amount, each by its own amount, with a curve.
 // - Poly Mod, per voice: the filter envelope and oscillator B (its waves as mixed), each by its own amount, into
@@ -19,7 +21,7 @@
 // - LFO: saw, triangle and square, each on or off, from 0.022 to 500 Hz (`lfo freq` -4..4, three oscillators in phase).
 //   Wheel-Mod: the LFO / noise source mix, through the mod wheel plus the initial amount (and aftertouch), into frequency
 //   A, frequency B, pulse width A, pulse width B and the filter, each by its own amount (the original's switches).
-// - Keys: five voices; unison (the voices row is its voice count while it is on), its detune (semitones), chord memory
+// - Keys: five voices; unison with a separate voice count, its detune (semitones), chord memory
 //   (`chord 2`..`chord 5`: each voice's interval above the key, octaves rounded to semitones, picked per voice by a
 //   Selector on its index; voice 1 plays the key), key priority (low or last) and retrigger (`legato` off); glide; pitch wheel range (octaves: 0.08 a
 //   semitone, 1 an octave); transpose (octaves rounded to semitones); master tune (semitones); MIDI channel.
@@ -27,12 +29,9 @@
 //   amplifier gain spread, on top of the voice cards' flaws. A-440: the reference tone.
 // Not here, and why:
 // - Needing a module type, or a new ability of one, in both engines: a chord learned from the held keys (the Voicing would
-//   need a chord memory; here the intervals are set by hand, and with five voices); a unison voice count apart from the
-//   poly voice count, and detune and chord intervals that act only in unison (the Voicing would need both; here they act
-//   whenever set, so set them to 0 for poly); the sustain / hold footswitch (Main would need a sustain output for MIDI CC
-//   64); the 16 alternative tunings (a tuning table); the seven velocity and eight aftertouch response curves (one curve
-//   here, linear to squared); Poly Mod into the Rev 3 filter at audio rate (the Ladder moves its cutoff once per
-//   128-sample block). The LFO stays three oscillators: the LFO module's fast range reaches 80 Hz, the original 500 Hz.
+//   need a chord memory; here the intervals are set by hand, and with five voices); the 16 alternative tunings and
+//   seven velocity / eight aftertouch curves.
+// The LFO stays three oscillators: the LFO module's fast range reaches 80 Hz, the original 500 Hz.
 // Over the FM-1 in modules, instances, buffers, bytes and CPU (Tier 1 of issue #351: 420 % -> 398 %), so it stays an XL.
 // - Hardware: the CV and gate jacks, the filter-envelope and volume pedal jacks, the Tune button (the analog
 //   oscillators' and filters' calibration), the pot modes, parameter transmission over MIDI and program dumps (the
@@ -91,12 +90,18 @@ export const xl: Xl = {
       e.wire(chordPos, 'out', chordMix, 'pos');
       const chordQ = per('quant', 2, 6, { scale: 0, root: 0 });
       e.wire(chordMix, 'out', chordQ, 'in');
-      e.wire(chordQ, 'out', GLIDE, 'in');
+      const chordGate = per('math', 2.25, 6, { ka: 1, kb: 1 });
+      e.wire(chordQ, 'out', chordGate, 'a');
+      e.wire(ALLOC, 'unison', chordGate, 'b');
+      e.wire(chordGate, 'mul', GLIDE, 'in');
       // unison detune: the voices spread by their index, semitones
       const detune = e.add('const', 0, 6.5, { value: 0 });
       const spread = per('math', 2, 6.5, { ka: 1, kb: 1 / 12, off: 0 });
       e.wire(ALLOC, 'index', spread, 'a');
       e.wire(detune, 'out', spread, 'b');
+      const uniSpread = per('math', 2.25, 6.5, { ka: 1, kb: 1 });
+      e.wire(spread, 'mul', uniSpread, 'a');
+      e.wire(ALLOC, 'unison', uniSpread, 'b');
       const tune = e.add('const', 0, 7, { value: 0 }); // master tune, semitones
       const tuneOct = e.add('scale', 0.5, 7, { gain: 1 / 12, offset: 0 });
       e.wire(tune, 'out', tuneOct, 'in');
@@ -118,7 +123,7 @@ export const xl: Xl = {
       e.unwire(GLIDE, 'out', OSC_A, 'pitch');
       e.unwire(POLY_ENV, 'out', OSC_A, 'pitch');
       e.wire(GLIDE, 'out', busA, 'in');
-      for (const [s, port] of [[tuneOct, 'out'], [bendAmt, 'out'], [spread, 'mul']] as const) {
+      for (const [s, port] of [[tuneOct, 'out'], [bendAmt, 'out'], [uniSpread, 'mul']] as const) {
         e.wire(s, port, busA, 'in');
         e.wire(s, port, busB, 'in');
       }
@@ -241,11 +246,25 @@ export const xl: Xl = {
         e.m(env).map!.p2 = ['r'];
         e.wire(vintE, 'mul', env, 'p1');
       }
-      const fast = e.add('const', 6, 5, { value: -0.8 });
-      const release = e.add('xfade', 6.5, 5, { mix: 1 });
-      e.wire(fast, 'out', release, 'a');
-      e.wire(release, 'out', FENV, 'p2');
-      e.wire(release, 'out', AENV, 'p2');
+      const release = e.add('select', 6, 5, { count: 2, pos: 2, v1: 0, v2: 1 });
+      const pedal = e.add('logic', 6, 5.5, { thresh: 0.5 });
+      e.input('sustain', pedal, 'a');
+      const pedalMode = e.add('select', 6, 6, { count: 2, pos: 1 });
+      const releasePedal = e.add('logic', 6.5, 5.5, { thresh: 0.5 });
+      const holdPedal = e.add('logic', 6.5, 6, { thresh: 0.5 });
+      for (const [dest, mode] of [[releasePedal, 'g1'], [holdPedal, 'g2']] as const) {
+        e.wire(pedal, 'or', dest, 'a');
+        e.wire(pedalMode, mode, dest, 'b');
+      }
+      const releaseOn = e.add('logic', 7, 5, { thresh: 0.5 });
+      e.wire(release, 'out', releaseOn, 'a');
+      e.wire(releasePedal, 'and', releaseOn, 'b');
+      const releaseTime = e.add('scale', 7.5, 5, { gain: 0.8, offset: -0.8 });
+      e.wire(releaseOn, 'or', releaseTime, 'in');
+      e.wire(releaseTime, 'out', FENV, 'p2');
+      e.wire(releaseTime, 'out', AENV, 'p2');
+      // The envelope's hold input preserves note-on edges when a voice is reused under the pedal.
+      for (const env of [FENV, AENV]) e.wire(holdPedal, 'and', env, 'hold');
 
       // ---- Poly Mod: filter env (POLY_ENV) and osc B amounts summed, into freq A, pw A, filter
       Object.assign(e.m(POLY_ENV).params, { gain: 0, offset: 0 });
@@ -375,6 +394,7 @@ export const xl: Xl = {
       e.param('B lo freq', lo, 'value');
       e.param('priority', ALLOC, 'priority', { col: true, head: 'keys' });
       e.param('legato', ALLOC, 'legato');
+      e.param('uni voices', ALLOC, 'stack');
       e.param('uni detune', detune, 'value');
       e.param('bend range', bendAmt, 'gain');
       e.param('transpose', transpose, 'value');
@@ -390,7 +410,10 @@ export const xl: Xl = {
       e.param('at curve', at, 'mix');
       e.param('at → filter', atFilter, 'gain');
       e.param('at → lfo amt', atLfo, 'gain');
-      e.param('release', release, 'mix', { head: 'switches' });
+      e.param('release', release, 'pos', { head: 'switches' });
+      e.def.params[e.def.params.length - 1].names = ['OFF', 'ON'];
+      e.param('release/sustain', pedalMode, 'pos');
+      e.def.params[e.def.params.length - 1].names = ['rEL', 'HLd'];
       e.param('filter rev', rev, 'mix');
       e.param('vintage', vintage, 'value');
       e.param('A-440', a440, 'level');
@@ -398,6 +421,7 @@ export const xl: Xl = {
     const x = aroundDef('Oracle V', def);
     plugIn(x.p, x.main.id, 'bend', x.a, 'bend');
     plugIn(x.p, x.main.id, 'at', x.a, 'at');
+    plugIn(x.p, x.main.id, 'sustain', x.a, 'sustain');
     // the cutoff and resonance Macros set both filters over their whole range (insertAssembly does not copy macro ranges)
     const fresh = x.p.modules.slice(1, 1 + def.modules.length); // (after Main, in the definition's order)
     for (const local of [FILTER, ladder]) {
@@ -413,4 +437,4 @@ export const xl: Xl = {
 };
 
 const NOTES =
-  'The Prophet-5 Rev 4 whole (Sequential Prophet-5 User’s Guide): oscillator A saw and pulse, B saw, triangle and pulse, each on or off, sync, B’s keyboard switch and lo freq; the Rev 1/2 and Rev 3 filters, keyboard amount, velocity and aftertouch, the Release switch; Poly Mod (filter envelope and oscillator B into A’s frequency, pulse width and the filter, at audio rate) and Wheel-Mod (LFO saw / triangle / square, 0.022 to 500 Hz, or noise into both frequencies, both pulse widths and the filter); unison with voice count and detune, chord memory, key priority, pitch wheel range, transpose, master tune, vintage, A-440. Five voices. Not here: learning a chord from the keys (its intervals are set by hand), a unison voice count apart from the poly one, the sustain footswitch, the alternative tunings and response curves, the CV and gate jacks.';
+  'The Prophet-5 Rev 4 whole (Sequential Prophet-5 User’s Guide): oscillator A saw and pulse, B saw, triangle and pulse, each on or off, sync, B’s keyboard switch and lo freq; the Rev 1/2 and Rev 3 filters, keyboard amount, velocity and aftertouch, the Release switch; Poly Mod (filter envelope and oscillator B into A’s frequency, pulse width and the filter, at audio rate) and Wheel-Mod (LFO saw / triangle / square, 0.022 to 500 Hz, or noise into both frequencies, both pulse widths and the filter); unison with a separate voice count and detune, chord memory, key priority, pitch wheel range, transpose, master tune, vintage, A-440. Five voices. MIDI CC 64: rEL enables programmed release, HLd holds notes. Not here: learning a chord from the keys (its intervals are set by hand), the alternative tunings and response curves, the CV and gate jacks.';

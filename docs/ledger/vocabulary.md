@@ -148,7 +148,7 @@ The status-line indicator that shows the editor's link to the FM-1 (not connecte
 
 ### Format 35
 
-The current binary patch format (`VERSION` in `web/src/patchbin.ts`, `ENG_PATCH_VERSION` in `firmware/src/engine.h`).
+The binary patch format that added the PD Osc, Env 8 and Selector modules, the parameters appended to existing modules, and the device page row extras ([D-266](patch-format.md#D-266), [D-267](patch-format.md#D-267)). The current format is `VERSION` in `web/src/patchbin.ts` and `ENG_PATCH_VERSION` in `firmware/src/engine.h`.
 
 ### Forwarder
 
@@ -176,7 +176,7 @@ A copy of a repository that goes its own way for good: it takes no regular updat
 
 ### ID block
 
-The range of `D-###` numbers a subject file owns, declared under its title. The ID alone tells you which file a row lives in.
+The range of `D-###` numbers a subject file owns, declared under its title. A file that fills its block gets a second one. The ID alone tells you which file a row lives in.
 
 ### Identity
 
@@ -281,6 +281,10 @@ A PNG image of a patch drawn from its data, for sharing.
 ### Patch morphing
 
 Fading every parameter of a patch towards its B side with Main's `morph` parameter and input.
+
+### Pattern
+
+One of a Steps track's note lists, numbered 1 to 64, with its own length and rate or the track's. The patch has one selected pattern number, and every track plays its pattern of that number; a track that has no pattern of that number plays its pattern 1. Patterns are saved in the patch.
 
 ### Piano roll
 
@@ -398,6 +402,14 @@ The About card's section of AI-usage figures: Blood (time), Sweat (human interve
 
 One of the bank's 64 patch places on the FM-1, shown numbered 01..64. Program change 0 selects slot 01.
 
+### Song
+
+A list of up to 64 entries, each a pattern number and a shift (a transpose of up to 12 semitones either way). While a song plays, each track plays one entry per pass of its own, in order, and starts again at the first entry after the last. A patch holds up to 8 songs.
+
+### SONG page
+
+The FM-1's page for a patch's songs, opened from the SEQ page by tapping SEL: one row per entry, the song's number, and whether the patch plays its songs or its selected pattern.
+
 ### Source
 
 Where a teammate can find the ruling being made: a pull request, an issue, a commit, a document, a meeting note. Never something only one person can open.
@@ -412,7 +424,7 @@ Recording in the editor with the transport stopped: the keys held together fill 
 
 ### Steps track
 
-A Steps module: a sequence of notes, a key source that plays an engine through its keys out. Avoid: sequence, pattern.
+A Steps module: a key source that plays an engine through its keys out. It holds up to 64 patterns of notes. Avoid: sequence, and pattern for the track itself (a pattern is one of its note lists).
 
 ### Stored link
 

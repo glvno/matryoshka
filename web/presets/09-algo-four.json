@@ -38,7 +38,9 @@
     "unison": 0,
     "channel": 0,
     "low": 0,
-    "high": 127
+    "high": 127,
+    "steal": 1,
+    "stack": 0
    }
   },
   {
@@ -454,7 +456,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,

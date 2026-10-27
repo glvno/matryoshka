@@ -90,7 +90,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -996,7 +997,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -1051,7 +1053,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -1264,7 +1267,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -2056,7 +2060,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -2513,7 +2518,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -3366,7 +3372,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -3823,7 +3830,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -4401,7 +4409,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -4763,7 +4772,8 @@
     "res": 0.5,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -5304,7 +5314,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -5761,7 +5772,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -6336,7 +6348,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -6576,7 +6589,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -6675,7 +6689,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -6971,7 +6986,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -7408,7 +7424,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,
@@ -7445,7 +7462,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,
@@ -7514,7 +7532,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,
@@ -7577,7 +7596,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,
@@ -7634,7 +7654,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,
@@ -15508,6 +15529,6 @@
    ]
   }
  ],
- "notes": "After the PERKONS HD-01 manual (1.3): per voice 3 algorithms of 3 modes (CHORD, DIGITAL NOISE too), param 1 / 2, tune, decay, drone, cutoff, VCF LP / BP / HP, drive, send, level. The mod LFO (7 waves, sync) reaches all 8 knobs of each voice; control all; quantiser. Each voice has a track (VOICE 1..4: length, rate, swing, chance, accent, pitch = tune lock), rates ÷8..x4, groove, fills (C4..F4). Mod sync x8..÷8. BBD: colour, vintage, sync to 1/1D; compressor. Switches step, never blend. Not here: ",
+ "notes": "After the PERKONS HD-01 manual (1.3): per voice 3 algorithms of 3 modes (CHORD, DIGITAL NOISE too), param 1 / 2, tune, decay, drone, cutoff, VCF LP / BP / HP, drive, send, level. The mod LFO (7 waves, sync) reaches all 8 knobs of each voice; control all; quantiser. Each voice has a track (VOICE 1..4: length, rate, play mode, swing, chance, accent, tune lock), rates ÷8..x4, groove, fills (C4..F4). Mod sync x8..÷8. BBD: colour, vintage, sync to 1/1D; compressor. Switches step, never blend. Not her",
  "octave": -1
 }

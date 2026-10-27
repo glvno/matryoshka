@@ -2,11 +2,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFS } from './modules';
 import { addModule, connect, defaultMap, emptyPatch, validatePatch, type Patch } from './patch';
+import { isShortNote } from './track';
 import { connectParameter, setInputRoute } from './parameter-routing';
 import { devicesOf } from './pages';
 import { makeAssembly } from './assembly';
 import { engineBytes } from './test-bin';
-import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION } from './patchbin';
+import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { deviceView, polyGroups } from './poly';
 import { polyCfg, withParts } from './test-poly';
@@ -25,7 +26,30 @@ const routeBytes = (p: Patch): number => {
   return masks.length ? 1 + masks.reduce((n: number, b) => n + 2 + b, 0) : 0;
 };
 
+/** bytes of the patterns and songs section as the top of patchbin.ts documents it (0 without patterns or songs) */
+function patternBytes(p: Patch): number {
+  const seq = p.modules.find((m) => m.type === 'fm1')?.seq;
+  const tracks = p.modules.filter((m) => m.type === 'steps' && m.patterns?.length);
+  if (!tracks.length && !seq?.pattern && !seq?.song && !seq?.songs?.length) return 0;
+  return 3 + tracks.reduce((n, m) => n + 2 + m.patterns!.reduce((k, x) => k + (x ? 3 + (x.notes ?? []).length * ((x.notes ?? []).every(isShortNote) ? 2 : 4) : 1), 0), 0)
+    + 1 + (seq?.songs ?? []).reduce((n, e) => n + 1 + 2 * e.length, 0);
+}
+
 describe('binary patch format', () => {
+  it('marks exactly the modules with a morph B side, including modules after the first mask byte', () => {
+    const p = emptyPatch();
+    for (let i = 0; i < 10; i++) addModule(p, DEFS.const, i, 0);
+    p.modules[2].paramsB = { value: 0.5 };
+    p.modules[9].paramsB = { value: -0.5 };
+    const out = addModule(p, DEFS.output, 0, 1);
+    for (const m of p.modules.slice(0, 10)) connect(p, DEFS, { module: m.id, port: 'out' }, { module: out.id, port: 'l' });
+    const bin = encodePatch(p);
+    const dev = deviceView(p, true).patch;
+    const at = 8 + PANEL_BYTES + 4 * dev.cables.length + dev.modules.reduce((n, m) => n + recordSize(m.type, bin[1]) + 4 * paramsAt(m.type, bin[1]).length, 0);
+    expect(bin[7] & 2).toBe(2);
+    expect([...bin.subarray(at, at + 2)]).toEqual([1 << 2, 1 << 1]);
+  });
+
   it('the assembly overlay of the factory patches reaches the binary only as the device pages', () => {
     let grouped = 0;
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
@@ -48,7 +72,7 @@ describe('binary patch format', () => {
     filter.range = { p1: { cutoff: [.2, .8] } };
     filter.map!.p1 = ['cutoff'];
     const b = encodePatch(p);
-    expect(b[1]).toBe(VERSION);
+    expect(b[1]).toBe(formatOf(p));
     expect(b[6] & ~32).toBe(2);
     expect(b.length).toBe(before.length + 6);
     expect(b[before.length]).toBe(1); // macro range count
@@ -63,7 +87,7 @@ describe('binary patch format', () => {
     filter.inputMap = { cv: ['res', 'cvamt'], in: ['track'] };
     filter.range = { p1: { cutoff: [.2, .8] } }; filter.map!.p1 = ['cutoff'];
     const b = encodePatch(p);
-    expect(b[1]).toBe(VERSION);
+    expect(b[1]).toBe(formatOf(p));
     expect(b[6] & ~32).toBe(11);
     expect(b.length).toBe(before.length + 9 + 6);
     const routes = before.length - deviceBytes(p); // the routes come before the device pages
@@ -78,11 +102,19 @@ describe('binary patch format', () => {
     expect(b[b.length - 6]).toBe(1); // the macro ranges, last
   });
 
+  it('writes WRITE_FLOOR only while every later format just appends parameters (`since`) or a section written only when used', () => {
+    // a format that changes anything else (a type, a port, a section always written) must raise WRITE_FLOOR to itself, or
+    // a patch that uses it would be written in an older format that does not have it
+    const later = new Set(Object.values(DEFS).flatMap((d) => d.params.map((q) => q.since ?? 0)).filter((v) => v > WRITE_FLOOR));
+    for (const v of Object.keys(SECTION_FORMATS)) later.add(Number(v));
+    expect([...later].sort((a, b) => a - b)).toEqual(Array.from({ length: VERSION - WRITE_FLOOR }, (_, i) => WRITE_FLOOR + 1 + i));
+  });
+
   it('marks the parameters appended since format 34 (`since`), which the FM-1 reads an older binary without', () => {
     // format 34's types and their parameter counts where they grew (firmware/src/defs.h at v1.4.1)
-    const v34: Record<string, number> = { lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8 };
+    const v34: Record<string, number> = { lfo: 6, adsr: 4, delay: 5, reverb: 5, pulse: 1, drummap: 8, alloc: 8, steps: 4, filter: 5 };
     const nTypes34 = TYPE_ORDER.indexOf('pd'); // pd, env8, select came with format 35
-    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select']);
+    expect(TYPE_ORDER.slice(nTypes34)).toEqual(['pd', 'env8', 'select', 'rateenv', 'ratio', 'esp']); // Rate Env in 42, Ratio in 43, Follower in 46
     for (const t of TYPE_ORDER.slice(0, nTypes34)) {
       const ps = DEFS[t].params;
       expect(ps.filter((q) => (q.since ?? 0) <= 34).length, t).toBe(v34[t] ?? ps.length);
@@ -138,7 +170,7 @@ describe('binary patch format', () => {
     expect(b[6] & FLAG_DEVICES).toBe(FLAG_DEVICES);
     const devs = devicesOf(p, DEFS);
     const idx = (id: number): number => p.modules.findIndex((m) => m.id === id);
-    let at = 8 + PANEL_BYTES + p.modules.reduce((n, m) => n + recordSize(m.type), 0) + 4 * p.cables.length;
+    let at = 8 + PANEL_BYTES + p.modules.reduce((n, m) => n + recordSize(m.type, b[1]), 0) + 4 * p.cables.length;
     const text = (): string => { const n = b[at++]; const t = String.fromCharCode(...b.subarray(at, at + n)); at += n; return t; };
     expect(b[at++]).toBe(devs.length);
     for (const d of devs) {
@@ -205,7 +237,7 @@ describe('binary patch format', () => {
     const map = p.modules.find((m) => m.type === 'drummap')!;
     map.names = ['boom'];
     const b = encodePatch(p);
-    expect(b[1]).toBe(VERSION);
+    expect(b[1]).toBe(formatOf(p));
     expect(b[6] & FLAG_NAMES).toBe(FLAG_NAMES);
     const text = new TextDecoder().decode(b);
     expect(text).toContain('BOOM\0\0\0\0SNARE\0\0\0CLAP');
@@ -230,20 +262,23 @@ describe('binary patch format', () => {
       const g = groups.length;
       const dv = new DataView(b.buffer);
       expect(b[0], name).toBe(0xa1);
-      expect(b[1], name).toBe(VERSION);
+      expect(b[1], name).toBe(formatOf(make()));
       expect(b[2], name).toBe(p.modules.length);
       expect(b[3], name).toBe(g); // poly groups (Oracle V has one)
       expect(dv.getUint16(4, true), name).toBe(p.cables.length);
       const devs = deviceSection(make(), p);
       const txt = (t: string): number => 1 + deviceText(t).length;
-      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label), 0), 0)), 0)
+      // a row's extras (#357, #358): u8 count and 2 bytes per further parameter, u8 count and a text per position name
+      const more = (r: { also?: unknown[]; names?: string[] }): number => (r.also?.length || r.names?.length ? 2 + 2 * (r.also?.length ?? 0) + (r.names ?? []).reduce((k, s) => k + txt(s), 0) : 0);
+      const pages = devs.length ? 1 + devs.reduce((n, d) => n + (d.module !== undefined ? 2 : 2 + txt(d.name) + d.pages.reduce((k, pg) => k + txt(pg.name) + 4 + pg.rows.reduce((j, r) => j + 2 + txt(r.label) + more(r), 0), 0)), 0)
         + 1 + devs.reduce((n, d) => n + 8 + deviceText((d.asm !== undefined ? make().assemblies?.find((x) => x.id === d.asm)?.preset : '') ?? '').length + 2 * (d.asm !== undefined ? make().assemblies!.find((x) => x.id === d.asm)!.params.length : 0) + extrasMembers(make(), p, d), 0) : 0; // and the extras
       const valued = p.modules.filter((m) => m.type === 'steps' && m.notes?.length);
-      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * DEFS[m.type].params.length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
+      const size = 8 + GROUP_REC * g + (g ? p.modules.length : 0) + PANEL_BYTES + p.modules.reduce((s, m) => s + 1 + 4 * paramsAt(m.type, b[1]).length + (DEFS[m.type].paramInputs ? 8 + 6 * maskBytes(m.type) : 0) + (DEFS[m.type].data ?? 0), 0) + 4 * p.cables.length
         + (valued.length ? 1 + valued.reduce((n, m) => n + 2 + 4 * m.notes!.length, 0) : 0) + pages + buttonRecord(make(), p).length
         + (drumMaps(p).length ? 1 + drumMaps(p).length * (1 + 8 * 8) : 0)
         + (rangeList(p).length ? 1 + 5 * rangeList(p).length : 0) // the macro ranges (the 909 Kit's velocity VCAs)
-        + routeBytes(p); // the side-input routes (Cassia 1's PD Osc: pm to range)
+        + routeBytes(p) // the side-input routes (Cassia 1's PD Osc: pm to range)
+        + patternBytes(make()); // the patterns and songs (format 48: Silver Box's demo)
       expect(b.length, name).toBe(size);
       expect(!!(b[6] & FLAG_DEVICES), name).toBe(devs.length > 0);
       expect(!!(b[6] & FLAG_NAMES), name).toBe(drumMaps(p).length > 0);
@@ -282,7 +317,7 @@ describe('binary patch format', () => {
     expect(encodePatch(p)[10]).toBe(1);
     polyCfg(p).unison = true;
     const b = encodePatch(p);
-    expect(b[1]).toBe(VERSION);
+    expect(b[1]).toBe(formatOf(p));
     expect(b[10]).toBe(0x80 | 1);
   });
 
@@ -297,7 +332,7 @@ describe('binary patch format', () => {
     // the allocator is written in its place as the group's Part (poly.ts deviceView)
     expect(Array.from(b.slice(at, at + p.modules.length))).toEqual(p.modules.map((m) => (members.has(m.id) || m.type === 'alloc' ? 1 : 0)));
     const rec = at + p.modules.length + PANEL_BYTES; // the panel section, then the module records
-    expect(b[rec + p.modules.slice(0, p.modules.findIndex((m) => m.type === 'alloc')).reduce((n, m) => n + recordSize(m.type), 0)]).toBe(TYPE_ORDER.indexOf('part'));
+    expect(b[rec + p.modules.slice(0, p.modules.findIndex((m) => m.type === 'alloc')).reduce((n, m) => n + recordSize(m.type, b[1]), 0)]).toBe(TYPE_ORDER.indexOf('part'));
     expect(b.slice(at, at + p.modules.length).some((g) => g === 0)).toBe(true); // Main and Output run once
     expect(b[rec]).toBe(TYPE_ORDER.indexOf(p.modules[0].type)); // the module records follow
   });
@@ -315,7 +350,7 @@ describe('binary patch format', () => {
     expect(dv.getInt32(att, true)).toBe(65536);
     expect(dv.getInt32(att + 4, true)).toBe(65536);
     expect(Array.from(b.slice(att + 8, att + 20))).toEqual([1, 0, 2, 0, 1, 0, 2, 0, 4, 0, 8, 0]); // the default matrix, u16 LE
-    const cab = 8 + PANEL_BYTES + p.modules.reduce((n, m) => n + recordSize(m.type), 0);
+    const cab = 8 + PANEL_BYTES + p.modules.reduce((n, m) => n + recordSize(m.type, b[1]), 0);
     expect([b[cab], b[cab + 1], b[cab + 2], b[cab + 3]]).toEqual([0, DEFS.fm1.outputs.findIndex((o) => o.name === 'pitch'), 1, DEFS.osc.inputs.findIndex((i) => i.name === 'pitch')]);
   });
 

@@ -36,7 +36,7 @@
 // (individual outputs, trigger outs, sync, MIDI) and the tape and cartridge memory.
 import { DEFS } from '../../src/modules';
 import { addModule, paramUnit, rowDef, STEP_VEL, type ModuleInst, type Patch } from '../../src/patch';
-import { assembliesOf, deleteAssembly } from '../../src/assembly';
+import { addMember, assembliesOf, assemblyOf, deleteAssembly, removeMember, type AssemblyInst, type ParamRef } from '../../src/assembly';
 import { mod, players, plugIn, plugOut, wire } from '../factory-build';
 import { define, KIT_NOTES, matchLevel, place, type Built, type Def } from './def';
 import type { Xl } from './xl';
@@ -204,14 +204,29 @@ const DRUMS = [
   { key: 'cr', own: false, flam: false }, { key: 'rd', own: false, flam: false },
 ];
 
+/** a Selector's values v1..vn spread evenly over 0..1 (position 1 at 0, n at 1) */
+const steps = (n: number): Record<string, number> => Object.fromEntries(Array.from({ length: n }, (_, k) => [`v${k + 1}`, k / (n - 1)]));
+/** FLAM's eight intervals (the TR-909 sets them on step keys 1..8), position 1 the shortest; SHUFFLE's seven levels,
+ * position 1 straight; SCALE's four lengths in the TR-909's order */
+const FLAM_NAMES = ['1', '2', '3', '4', '5', '6', '7', '8'];
+const FLAM_POS = 4;
+const SHUFFLE_NAMES = ['1', '2', '3', '4', '5', '6', '7'];
+const SCALE_NAMES = ['1/16', '1/8T', '1/32', '1/16T'];
+/** name the positions of these Selector rows (ParamRef.names, D-636 in docs/ledger/editor.md) */
+function named(built: Built, names: Record<string, string[]>): Built {
+  for (const r of built.def.params) if (names[r.label]) r.names = [...names[r.label]];
+  return built;
+}
+
 /** the card "accent flam": per drum its level (inputs `<key>`: the row's gate, `<key> vel`) and, for a drum that flams,
  * its trigger (`<key> flam`, its FLAM row's gate; out `<key> trig`); `accent` (the ACCENT row's gate);
  * the SHUFFLE and SCALE Macros out to the tracks */
-const CONTROL = drums(define('accent flam', (b) => {
+const CONTROL = named(drums(define('accent flam', (b) => {
   const acc = b.add('math', 0, 0, { ka: TOTAL, kb: 0, off: 1 });   // 1 + TOTAL ACCENT on an accented step, else 1
-  const flam = b.add('macro', 0, 1, { value: 0.5 });
-  const shuffle = b.add('macro', 0, 2, { value: 0 });
-  const scale = b.add('macro', 0, 3, { value: 1 / 3 });   // (1/16)
+  // FLAM, SHUFFLE and SCALE are switches on the TR-909 (set with the step keys): Selectors, their values into the tracks
+  const flam = b.add('select', 0, 1, { pos: FLAM_POS, count: 8, ...steps(8) });
+  const shuffle = b.add('select', 0, 2, { pos: 1, count: 7, ...steps(7) });
+  const scale = b.add('select', 0, 3, { pos: 1, count: 4, v1: 1 / 3, v2: 0, v3: 1, v4: 2 / 3 });   // (the tracks' rate range: 1/8T 1/16 1/16T 1/32)
   DRUMS.forEach((d, i) => {
     const col = 1 + i;
     // the level the drum was hit with, held until its next hit
@@ -251,10 +266,10 @@ const CONTROL = drums(define('accent flam', (b) => {
   b.output('shuffle', shuffle, 'out');
   b.output('scale', scale, 'out');
   b.param('total accent', acc, 'ka', { head: 'accent flam' });
-  b.param('flam', flam, 'value');
-  b.param('shuffle', shuffle, 'value');
-  b.param('scale', scale, 'value');
-}));
+  b.param('flam', flam, 'pos');
+  b.param('shuffle', shuffle, 'pos');
+  b.param('scale', scale, 'pos');
+})), { flam: FLAM_NAMES, shuffle: SHUFFLE_NAMES, scale: SCALE_NAMES });
 
 /** the rows of the new Drum maps: name and key; '-' rows are unused */
 const MAP2: [string, number][] = [['MID TOM', 67], ['CRASH', 69], ['RIDE', 71], ['ACCENT', 72], ['-', 0], ['-', 0], ['-', 0], ['-', 0]];
@@ -267,6 +282,59 @@ const ROWS: Record<string, { at: [number, number]; flam?: [number, number] }> = 
 };
 /** the new voices by key */
 const VOICES: [string, Built][] = [['hc', CLAP], ['oh', OPEN_HAT], ['lt', tom('low tom', -17, 0.35)], ['mt', tom('mid tom', -12, 0.32)], ['ht', tom('high tom', -8, 0.28)], ['rs', RIM], ['cr', CRASH], ['rd', RIDE]];
+
+/**
+ * The cards as the TR-909's panel (D-347 in docs/ledger/patches-and-presets.md): one row per knob, named as the panel
+ * names it, in its order. The FM-1 version's kick, snare and hihat cards show how they are built (an envelope's r2, a
+ * mixer's l2): those rows go, their values stay. Its "Macros" card (the FM-1's knob page: snare snap, kick decay, snare
+ * tail, hat decay) duplicates them: each macro joins the voice it turns, off the card; snare snap is the snare's TONE.
+ */
+function panel(p: Patch, levelVca: Record<string, number>): void {
+  const card = (name: string): AssemblyInst => {
+    const a = assembliesOf(p).find((x) => x.name === name);
+    if (!a) throw new Error(`909 Kit XL: no card ${name}`);
+    return a;
+  };
+  const row = (a: AssemblyInst, label: string): ParamRef => {
+    const r = a.params.find((x) => x.label === label);
+    if (!r) throw new Error(`909 Kit XL: no row ${label} on ${a.name}`);
+    return r;
+  };
+  // the Macros card's macros join the voices they turn
+  const macros = card('Macros');
+  const snap = row(macros, 'snare snap').module;
+  for (const id of [...macros.modules]) {
+    const to = p.cables.find((c) => c.from.module === id)!.to.module;
+    removeMember(p, macros, id);
+    addMember(p, assemblyOf(p, to)!, id);
+  }
+  if (assembliesOf(p).some((a) => a.name === 'Macros')) throw new Error('909 Kit XL: the Macros card is not empty');
+  /** the card's rows: [label, module, parameter], the first keeping the card's heading */
+  const set = (a: AssemblyInst, rows: [string, number, string][]): void => {
+    const head = a.params[0]?.head;
+    a.params = rows.map(([label, module, param], i) => ({ module, param, label, ...(i === 0 && head ? { head } : {}) }));
+  };
+  const at = (a: AssemblyInst, label: string): [number, string] => {
+    const r = row(a, label);
+    return [r.module, r.param];
+  };
+  const kick = card('kick');
+  set(kick, [['tune', ...at(kick, 'coarse')], ['level', levelVca.bd, 'gain'], ['attack', ...at(kick, 'l2')], ['decay', ...at(kick, 'r3')]]);
+  const snare = card('snare');
+  set(snare, [['tune', ...at(snare, 'coarse')], ['level', ...at(snare, 'level')], ['tone', snap, 'value'], ['snappy', ...at(snare, 'l1')]]);
+  const hihat = card('hihat');
+  set(hihat, [['level', ...at(hihat, 'level')], ['ch decay', ...at(hihat, 'r3')]]);
+  const oh = card('open hat');
+  set(oh, [['oh decay', ...at(oh, 'decay')]]);
+  for (const t of ['low tom', 'mid tom', 'high tom']) {
+    const a = card(t);
+    set(a, [['tune', ...at(a, 'tune')], ['level', ...at(a, 'level')], ['decay', ...at(a, 'decay')]]);
+  }
+  for (const t of ['crash', 'ride']) {
+    const a = card(t);
+    set(a, [['level', ...at(a, 'level')], ['tune', ...at(a, 'tune')]]);
+  }
+}
 
 export const xl: Xl = {
   base: '909 Kit',
@@ -331,12 +399,15 @@ export const xl: Xl = {
       const r = ctl.outputs.find((x) => x.label === `${key} level`)!;
       return [r.module, r.port];
     };
+    /** the accent VCA after kick, snare and closed hat: the voice's LEVEL */
+    const levelVca: Record<string, number> = {};
     // kick, snare, closed hat (rows 1, 2, 4): their gates from the trigger, their velocity VCAs' cv from the card
     for (const [key, r] of [['bd', 1], ['sd', 2], ['ch', 4]] as const) {
       const [tm, tp] = trig(key);
       for (const c of p.cables.filter((x) => x.from.module === map1.id && x.from.port === `g${r}`)) c.from = { module: tm, port: tp };
       const c = p.cables.find((x) => x.from.module === map1.id && x.from.port === `v${r}` && mod(p, x.to.module).type === 'vca')!;
       mod(p, c.to.module).params.gain = 1;
+      levelVca[key] = c.to.module;
       c.from = { module: levelOut(key)[0], port: levelOut(key)[1] };
       levelIn(key);   // (after: its own row's gate and velocity go into the card)
     }
@@ -366,6 +437,7 @@ export const xl: Xl = {
         plugOut(p, a, 'out', hats.id, 'in1');
       } else plugOut(p, a, 'out', mix.id, 'in3');
     });
+    panel(p, levelVca);
     matchLevel(p, before, KIT_NOTES);
     return players(p, true);   // (an Arpeggiator, bypassed, between DRUMS and the Drum map)
   },

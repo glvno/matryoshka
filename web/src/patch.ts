@@ -2,7 +2,7 @@
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
 import { migrateKnobs } from './knob-migrate';
-import { fixNotes, migrateSteps, type StepNote } from './track';
+import { fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepNote } from './track';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -52,7 +52,7 @@ export interface ParamDef {
   /** an on/off switch (0 or 1): a check box in the editor, OFF / ON on the LCD */
   toggle?: boolean;
   /** while the toggle parameter `when` is on, the value is shown as `text(value)` instead of the number (the synced delay time as a note length) */
-  altText?: { when: string; text: (v: number) => string };
+  altText?: { when: string; text: (v: number, params: Record<string, number>) => string };
   /** not a value: a display (the Scope's screen); it has no slider and goes on an assembly card like a parameter */
   screen?: true;
   /** set from its module's screen (the Scope's hover toolbar), never a row of a card nor promoted */
@@ -169,6 +169,12 @@ export interface ModuleInst {
    * per step) instead: fixTrack turns them into notes. */
   name?: string;
   notes?: StepNote[];
+  /** a Steps module only: its patterns 2..PATTERNS_MAX (track.ts Pattern; null: it has none of that number, which then
+   * plays its pattern 1); absent while there are none */
+  patterns?: (Pattern | null)[];
+  /** the Main module only: the patch's selected pattern and its songs (track.ts SeqState); absent while pattern 1 is
+   * selected, no song plays and there are no songs */
+  seq?: SeqState;
   /** a Drum map only (#137): its rows' names (DRUM_ROWS, at most TRACK_NAME_MAX characters each; '' = the default name;
    * editor only: the roll shows them as its rows) */
   names?: string[];
@@ -236,8 +242,12 @@ export function fixTrack(m: ModuleInst): void {
   if (m.type !== 'steps') {
     delete m.name;
     delete m.notes;
+    delete m.patterns;
     return;
   }
+  const patterns = fixPatterns(m.patterns);
+  if (patterns) m.patterns = patterns;
+  else delete m.patterns;
   const name = trackName(m.name);
   if (name) m.name = name;
   else delete m.name;
@@ -370,14 +380,20 @@ export const MAX_MODULES = 64;
 export interface PolyCfg {
   /** 1 .. EDITOR_MAX_PARTS (the FM-1 plays up to MAX_PARTS) */
   parts: number;
-  /** 0 rotate, 1 lowest free, 2 reuse (a free part whose last note was the key) */
+  /** 0 rotate, 1 lowest free, 2 reuse (a free part whose last note was the key), 3 rotate with reset after all keys lift */
   assign: number;
   /** 0 auto (legato with one part; a stolen part restarts its envelopes), 1 off (always restart), 2 on (never) */
   legato: number;
   /** which held notes sound when there are more than parts: 0 last, 1 low, 2 high */
   priority: number;
-  /** every part plays the one note the priority picks (several parts only; the browser's engine, not yet the FM-1's) */
+  /** the selected unison voices play the one note the priority picks */
   unison?: boolean;
+  /** voices stacked in unison; absent or zero: all poly voices, otherwise capped by parts */
+  unisonParts?: number;
+  /** distribute the unison pool evenly over the held notes (Jupiter-4 UNISON II) */
+  unisonShare?: boolean;
+  /** false: ignore new notes when all polyphonic voices are held; absent: steal by priority */
+  steal?: boolean;
   /**
    * Each part's own flaws, set by hand (an analog polysynth's voice cards are never quite alike): flaws[i] is part i's,
    * a missing entry is FLAW_NONE. Kept for every part number up to EDITOR_MAX_PARTS, so fewer parts and back keeps them.
@@ -450,8 +466,13 @@ export function polyCfg(alloc: ModuleInst, cards: PolyCards = {}): PolyCfg {
     const v = Math.round(Number(alloc.params[k]));
     return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
   };
-  const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 2, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
-  if (int('unison', 0, 1, 0) && cfg.parts > 1) cfg.unison = true;
+  const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 3, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
+  if (!int('steal', 0, 1, 1)) cfg.steal = false;
+  const unison = int('unison', 0, 2, 0);
+  if (unison) cfg.unison = true;
+  if (unison === 2) cfg.unisonShare = true;
+  const stack = int('stack', 0, EDITOR_MAX_PARTS, 0);
+  if (stack) cfg.unisonParts = stack;
   const ch = int('channel', 0, 16, 0), low = int('low', 0, 127, 0), high = int('high', 0, 127, 127);
   if (ch) cfg.channel = ch;
   if (low) cfg.low = low;
@@ -694,7 +715,13 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
       const panel = fixPanel(m.panel);
       if (panel) m.panel = panel;
       else delete m.panel;
-    } else delete m.panel;
+      const seq = fixSeq(m.seq);
+      if (seq) m.seq = seq;
+      else delete m.seq;
+    } else {
+      delete m.panel;
+      delete m.seq;
+    }
     fixTrack(m);
     if (m.bypass && m.type !== 'fm1' && m.type !== 'output') m.bypass = true;
     else delete m.bypass;

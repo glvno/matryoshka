@@ -1,15 +1,49 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CPU, cpuEstimate } from './cpu';
+import { CPU, cpuEstimate, runCost } from './cpu';
 import { cpuChecks, looseModel } from './cpu-checks';
 import { DEFS } from './modules';
-import { EDITOR_ONLY } from './patch';
+import { addModule, connect, emptyPatch, EDITOR_ONLY } from './patch';
 import { FM1_PRESETS } from './presets';
 import { withParts } from './test-poly';
 import { acid, twoOpFM } from './test-patches';
 
 describe('CPU estimate', () => {
+  it('charges moving oscillator pitch from the active wide LFO rate', () => {
+    const p = emptyPatch();
+    const lfo = addModule(p, DEFS.lfo, 0, 0), osc = addModule(p, DEFS.osc, 0, 0), out = addModule(p, DEFS.output, 0, 0);
+    Object.assign(lfo.params, { wave: 1, rate: .02, wide: 55, range: 0 });
+    connect(p, DEFS, { module: lfo.id, port: 'out' }, { module: osc.id, port: 'pitch' });
+    connect(p, DEFS, { module: osc.id, port: 'out' }, { module: out.id, port: 'l' });
+    const oscillatorCost = () => cpuEstimate(p).modules.find(m => m.id === osc.id)!.cycles;
+    const slow = oscillatorCost();
+    lfo.params.range = 3;
+    expect(oscillatorCost()).toBeGreaterThan(slow);
+    lfo.params.wide = .0008;
+    expect(oscillatorCost()).toBe(slow);
+  });
+  it('counts Io 4 voice-level flaws before choosing the VCA gain fast path', () => {
+    const p = FM1_PRESETS['Io 4']();
+    const withFlaws = cpuEstimate(p);
+    for (const a of p.assemblies ?? []) for (const f of a.poly?.flaws ?? []) f.level = 100;
+    const withoutFlaws = cpuEstimate(p);
+    const cost = (e: typeof withFlaws): number => e.modules.filter((m) => m.type === 'vca').reduce((sum, m) => sum + m.cycles, 0);
+    expect(cost(withFlaws)).toBeGreaterThan(cost(withoutFlaws));
+  });
+  it('only discounts exact fixed gains, not nearby values or modulated gains', () => {
+    const p = acid();
+    const m = p.modules.find((m) => m.type === 'vca')!;
+    const costs = { run: 500, cv: 0, dims: [{ param: 'gain', exact: [0, 1] }], grid: [100, 200, 500] };
+    const cost = (gain: number, moved = false): number => {
+      m.params.gain = gain;
+      return runCost(m, costs, new Set(['in', 'cv']), new Set(['out']), new Set(moved ? ['gain'] : []));
+    };
+    expect(cost(0)).toBeLessThan(cost(.01));
+    expect(cost(1)).toBeLessThan(cost(.99));
+    expect(cost(1, true)).toBe(cost(.99));
+    expect(cost(1 + 1e-7)).toBe(cost(1)); // both encode to the same Q16 gain
+  });
   it('has a cost for every module type (npm run cpu-costs after adding one)', () => {
     expect(Object.keys(CPU.types).sort()).toEqual(Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t)).sort()); // the Scope never runs
   });
@@ -75,7 +109,17 @@ describe('CPU estimate against the device survey (docs/measurements/cpu-survey-2
   // 909 Kit: rows 3 and 5..8 got their voices (the survey measured its first three only; est 59 %)
   // Hera 6, Expander S, Algo Four: the engine's overhead cut (#289) took about 8 % off every patch's count, which puts these
   // three under the band's bottom; the survey measured the engine before it (re-measure: #289's device step)
-  const changed = new Set(['808 kit', 'oracle v', '909 kit', 'hera 6', 'expander s', 'algo four']);
+  // Monolith D, Sallen 20: rebuilt after their originals' panels (#303: switches as Selectors, each filter source on its own
+  // amount, the MS-20's EG 1 delay, EG 2 hold and patch panel), est 35 % and 42 % against the survey's 22 % and 28 %
+  const changed = new Set(['808 kit', 'oracle v', '909 kit', 'hera 6', 'expander s', 'algo four', 'monolith d', 'sallen 20']);
+  // Wanderer: rebuilt duophonic with the Odyssey's whole modulation section (#303; est 37 %, the survey's two-voice one 32 %)
+  changed.add('wanderer');
+  // Io 4, Vernon 100: rebuilt after the Jupiter-4's and the ElectroComp 100's panels (#303; est about 97 % and 60 %)
+  changed.add('io 4');
+  changed.add('vernon 100');
+  // Canvas and Briefcase 3: rebuilt after the Music Easel's and the VCS3's panels (#303; est 76 % and 89 %)
+  changed.add('canvas');
+  changed.add('briefcase 3');
   // patches added since the survey (#182, Elvira 2, Scrounge, Meridian 8, Perun 4, <7PH, Spokes 6, Cassia 1): measure them on the device, then add them to the survey file
   const unmeasured = new Set(['8 lire', 'elvira 2', 'scrounge', 'meridian 8', 'perun 4', '<7ph', 'spokes 6', 'cassia 1']);
   it('covers every factory patch', () => expect(survey.length + unmeasured.size).toBe(Object.keys(FM1_PRESETS).length));

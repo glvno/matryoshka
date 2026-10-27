@@ -8,7 +8,7 @@ import { copiesOf, polyGroups } from './poly';
 import { fixAssemblies, makeAssembly } from './assembly';
 import { addAlloc, polyCfg, withParts } from './test-poly';
 import { PRESETS } from './presets';
-import { PANEL_BYTES, encodePatch, recordSize } from './patchbin';
+import { PANEL_BYTES, encodePatch, paramsAt, recordSize } from './patchbin';
 import { acid, subtractiveSaw, twoOpFM, wobble } from './test-patches';
 
 const SR = 48000;
@@ -553,9 +553,9 @@ describe('morph', () => {
     setMorphTarget(a.p, b.p, DEFS);
     const withB = encodePatch(a.p);
     expect(withB[6] & ~32).toBe(1);
-    const npar = a.p.modules.reduce((s, m) => s + DEFS[m.type].params.length, 0);
-    expect(withB.length).toBe(plain.length + 4 * npar);
-    const cables = 8 + PANEL_BYTES + a.p.modules.reduce((n, m) => n + recordSize(m.type), 0) + 4 * a.p.cables.length;
+    const npar = a.p.modules.reduce((s, m) => s + paramsAt(m.type, withB[1]).length, 0);
+    expect(withB.length).toBe(plain.length + 4 * npar + Math.ceil(a.p.modules.length / 8));
+    const cables = 8 + PANEL_BYTES + a.p.modules.reduce((n, m) => n + recordSize(m.type, withB[1]), 0) + 4 * a.p.cables.length;
     expect(Array.from(withB.subarray(8, cables))).toEqual(Array.from(plain.subarray(8, cables))); // the records and cables are untouched
   });
 });
@@ -912,6 +912,19 @@ describe('bend, mod wheel, aftertouch, cc', () => {
     e.load(p);
     return { e, out: () => render(e, 128).l[100], kb: kb.id };
   }
+
+  it.each([[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const)('CC %i reaches Main %s independently', (cc, port) => {
+    const x = rig(port);
+    expect(x.out()).toBe(0);
+    x.e.cc(cc, 63);
+    expect(x.out()).toBeCloseTo(63 / 127, 6);
+    for (const other of [1, 2, 64, 65]) if (other !== cc) x.e.cc(other, 127);
+    expect(x.out()).toBeCloseTo(63 / 127, 6);
+    x.e.cc(cc, 127);
+    expect(x.out()).toBeCloseTo(1, 6);
+    x.e.cc(cc, 0);
+    expect(x.out()).toBe(0);
+  });
 
   it('bend moves the pitch output by up to two semitones and shows on the bend output', () => {
     const { e, out } = rig('pitch'); // (middle C: the engine clamps its output to +-1, so a high note would hide the bend)
@@ -1375,7 +1388,7 @@ describe('polyphony', () => {
     Object.assign(raw.modules.find((m: { id: number }) => m.id === ids.part).params, { voices: 99, assign: 7, legato: -1, priority: 'x' });
     const r = validatePatch(raw, DEFS);
     fixAssemblies(r, DEFS);
-    expect(polyGroups(r)[0].cfg).toEqual({ parts: EDITOR_MAX_PARTS, assign: 2, legato: 0, priority: 0, flaws: [{ detune: 50, drift: 0, bright: 2, env: 0, level: 100 }] });
+    expect(polyGroups(r)[0].cfg).toEqual({ parts: EDITOR_MAX_PARTS, assign: 3, legato: 0, priority: 0, flaws: [{ detune: 50, drift: 0, bright: 2, env: 0, level: 100 }] });
   });
 
   it('two poly assemblies layer: each plays every note on its own parts; a cable out of one sums its parts (at 1 / parts: ungated)', () => {

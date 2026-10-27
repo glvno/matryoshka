@@ -5,7 +5,7 @@ import { devicesOf } from './pages';
 import { Engine } from './engine';
 import { DEFS, PANEL_BUTTONS } from './modules';
 import { addModule, connect, emptyPatch, newPatch, validatePatch, type Patch } from './patch';
-import { FLAG_BUTTONS, VERSION, binaryPage, encodePatch } from './patchbin';
+import { FLAG_BUTTONS, formatOf, binaryPage, encodePatch } from './patchbin';
 
 /** Main, an oscillator into a VCA into the Output: the VCA has nothing in cv (closed), bypassed it lets the oscillator through */
 function rig(): { p: Patch; main: number; osc: number; vca: number } {
@@ -79,7 +79,7 @@ describe('patch button kinds (#116)', () => {
     p.modules[0].panel = { toggle: ['arp'], kinds: { fx: 'nothing', arp: 'bypass' }, targets: { arp: { module: vca } } };
     p.modules.find((m) => m.id === vca)!.bypass = true;
     const b = encodePatch(p);
-    expect(b[1]).toBe(VERSION);
+    expect(b[1]).toBe(formatOf(p));
     expect(flags(b) & FLAG_BUTTONS).toBe(FLAG_BUTTONS);
     // the section is the last one here (no ranges): seven kinds, then ARP's target list
     const tail = Array.from(b.slice(b.length - 9));

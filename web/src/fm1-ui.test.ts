@@ -11,11 +11,13 @@ import { encodePatch } from './patchbin';
 import { deviceView } from './poly';
 import { PROFILES } from './fm1-profiles';
 import { FM1_PRESETS } from './presets';
+import { DEFS } from './modules';
+import { devicesOf } from './pages';
 import { buildFm1Wasm } from '../scripts/fm1-wasm.mjs';
 
 const ROOT = resolve(__dirname, '../..');
 const WASM = resolve(ROOT, 'web/public/fm1-ui.wasm');
-const SRC = ['firmware/wasm/fm1_ui.c', 'firmware/test/host_ui.h', 'firmware/src/panel.c', 'firmware/src/pages_ui.c', 'firmware/src/ui.c', 'firmware/src/engine.c', 'firmware/src/presets.h'];
+const SRC = ['firmware/wasm/fm1_ui.c', 'firmware/test/host_ui.h', 'firmware/src/panel.c', 'firmware/src/poly_edit.h', 'firmware/src/pages_ui.c', 'firmware/src/ui.c', 'firmware/src/engine.c', 'firmware/src/presets.h'];
 
 /** the preview's framebuffer (RGB565 from its PPM's 8-bit channels, as it wrote them) */
 function preview(args: string[]): Uint8Array {
@@ -32,6 +34,27 @@ beforeAll(() => {
 }, 120_000);
 
 describe('the FM-1 UI as WebAssembly', () => {
+  it('keeps Cassia playable after rapid turns request more voices than fit, without sending rejected values', async () => {
+    const patch = FM1_PRESETS['Cassia 1']();
+    const values: number[] = [];
+    const ui = await Fm1Ui.create(bytes, { param: (_m, p, v) => { if (p === 0x80) values.push(v); } });
+    expect(ui.load(encodePatch(patch), 'CASSIA 1')).toBe(0);
+    const devices = devicesOf(patch, DEFS);
+    const d = devices.findIndex(d => d.pages.some(p => p.rows.some(r => r.param === 'voices')));
+    expect(d).toBeGreaterThanOrEqual(0);
+    const p = devices[d].pages.findIndex(p => p.rows.some(r => r.param === 'voices'));
+    const k = devices[d].pages[p].rows.findIndex(r => r.param === 'voices');
+    ui.focus(d, p);
+    for (let i = 0; i < 20; i++) {
+      ui.tick(1000 + i * 10);
+      ui.encoder(ENCODERS.k1 + k, 5);
+    }
+    expect(values).toEqual([3 << 16, 4 << 16]);
+    ui.encoder(ENCODERS.k1 + k, -5);
+    ui.encoder(ENCODERS.k1 + k, -5);
+    expect(values.slice(-2)).toEqual([3 << 16, 2 << 16]);
+  }, 30_000);
+
   it('draws a device page pixel for pixel as the host preview of the same firmware', async () => {
     const ui = await Fm1Ui.create(bytes);
     const name = Object.keys(FM1_PRESETS)[0];
@@ -76,7 +99,7 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.encoder(ENCODERS.algo, 1);
     ui.encoder(ENCODERS.select, 1);
     ui.encoder(ENCODERS.algo, 1);
-    expect([ui.focusDevice, ui.focusPage]).toEqual([3, 0]); // (the boom kick has one page)
+    expect([ui.focusDevice, ui.focusPage]).toEqual([3, 1]); // (the 808 kit card: its snare drum page)
     ui.encoder(ENCODERS.select, -1);
     ui.encoder(ENCODERS.algo, 1);
     expect([ui.focusDevice, ui.focusPage]).toEqual([2, 1]);
@@ -120,7 +143,7 @@ describe('the FM-1 UI as WebAssembly', () => {
         ui.tick((t += 60));
         pages.push(ui.page);
       }
-    expect(focus).toEqual([[3, 0]]); // SELECT from the home device (2) to the boom kick, one page: ALGO stays
+    expect(focus).toEqual([[3, 0], [3, 1]]); // SELECT from the home device (2) to the 808 kit card, ALGO its next page
     expect(pages).toEqual([0, 0, 0, 8, 8, 0]);              // SEQ opens on its release, HOME goes back
   }, 30_000);
 });

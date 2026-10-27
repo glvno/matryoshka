@@ -31,7 +31,7 @@ describe('Connect FM-1 when Matryoshka does not answer', () => {
     const id = await identifyFm1(fakeAccess('USB Composite Device', null));
     expect(id).toEqual({ text: null, loader: false, port: 'USB Composite Device' });
     expect(installOffer(id)).toMatch(/^An FM-1 is on USB MIDI \(USB Composite Device\) but does not answer as Matryoshka/);
-  }, 10000);
+  });
 
   it('says nothing more without an FM-1 port, or for Matryoshka itself', async () => {
     expect(await identifyFm1(fakeAccess('IAC Driver Bus 1', null))).toBeNull();

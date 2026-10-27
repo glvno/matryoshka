@@ -184,6 +184,12 @@ async function typeCost(type: string): Promise<TypeCost> {
   const numbers: ParamDef[] = [];
   await Promise.all(
     def.params.map(async (pd, order) => {
+      if ((type === 'scale' || type === 'vca') && pd.name === 'gain') {
+        const values = [0, 1, .37];
+        const effect = await effectOf(type, (v) => ({ gain: v }), values, [{}, { inputs: allInputs }]);
+        dims.push({ dim: { param: 'gain', exact: [0, 1] }, values, effect, order, set: setParam('gain') });
+        return;
+      }
       const t = tries(pd);
       if (!t.discrete) return void numbers.push(pd);
       const effect = await effectOf(type, (v) => ({ [pd.name]: v }), t.values, [{}, { inputs: allInputs }]);
@@ -216,11 +222,14 @@ async function typeCost(type: string): Promise<TypeCost> {
   // 3. inputs, alone and with each mode on (an oscillator's pm input does nothing until its pm index is above 0; its feedback
   // would hide that, it turns on the same FM mode)
   const off = Object.fromEntries(modes.map((q) => [q.name, q.min]));
-  const modeContexts: KitCfg[] = [{}, ...modes.map((q) => ({ params: { ...off, [q.name]: q.ref } }))];
+  const modeContexts: KitCfg[] = [{}, { inputs: allInputs }, ...modes.map((q) => ({ params: { ...off, [q.name]: q.ref } }))];
   const flag = (cfg: KitCfg, key: 'inputs' | 'outputs', name: string, on: number): void => void (on && (cfg[key] = [...(cfg[key] ?? []), name]));
   await Promise.all(
     allInputs.map(async (name, i) => {
-      const effects = await Promise.all(modeContexts.map(async (c) => Math.abs((await measure(type, { ...c, inputs: [name] })).run - (await measure(type, c)).run)));
+      const effects = await Promise.all(modeContexts.map(async (c) => {
+        const inputs = (c.inputs ?? []).filter((x) => x !== name);
+        return Math.abs((await measure(type, { ...c, inputs: [...inputs, name] })).run - (await measure(type, { ...c, inputs })).run);
+      }));
       const effect = Math.max(...effects);
       if (effect > thr) dims.push({ dim: { input: name }, values: [0, 1], effect, order: 1000 + i, set: (cfg, on) => flag(cfg, 'inputs', name, on) });
     }),
@@ -241,6 +250,15 @@ async function typeCost(type: string): Promise<TypeCost> {
   if (def.inputs.some((i) => i.name === 'pitch')) {
     const moving = Math.round((await measure(type, { moving: true })).run - base.run);
     if (moving > thr) out.moving = moving;
+    // The unison loop has its own pitch-conversion overhead. Multiplying the single-copy difference undercounts it.
+    if (type === 'osc') out.movingCopies = await Promise.all([1, 2, 3, 4, 5].map(async (unison) => {
+      const waves = def.params.find((p) => p.name === 'wave')!.choices!.map((_, i) => i);
+      const costs = await Promise.all(waves.map(async (wave) => {
+        const params = { unison, wave };
+        return (await measure(type, { params, moving: true })).run - (await measure(type, { params })).run;
+      }));
+      return Math.max(0, Math.round(Math.max(...costs)));
+    }));
   }
   // work only the first output needs (the filter's second stage feeds lp24 and mix): saved when the module is heard through
   // its second output instead (cpu.ts FIRST_ALSO lists outputs that need the same work)
@@ -403,7 +421,7 @@ const costs = await Promise.all(names.map(typeCost));
 const types: Record<string, TypeCost> = Object.fromEntries(names.map((n, i) => [n, costs[i]]));
 for (const type of names) {
   const t = types[type];
-  const show = (d: CostDim): string => ('values' in d ? `${d.param}[${d.values.length}]` : 'above' in d ? `${d.param}>${d.above}` : 'points' in d ? `${d.param}~${d.points.length}` : 'input' in d ? `in:${d.input}` : `out:${d.output}`);
+  const show = (d: CostDim): string => ('values' in d ? `${d.param}[${d.values.length}]` : 'above' in d ? `${d.param}>${d.above}` : 'points' in d ? `${d.param}~${d.points.length}` : 'exact' in d ? `${d.param}=${d.exact.join('/')}/other` : 'input' in d ? `in:${d.input}` : `out:${d.output}`);
   console.log(`${type.padEnd(10)} run ${String(t.run).padStart(7)}  cv ${String(t.cv).padStart(5)}${t.dims ? `  ${t.dims.map(show).join(' ')} (${t.grid!.length})` : ''}${t.extra ? `  + ${t.extra.map((e) => show(e.dim)).join(' ')}` : ''}`);
 }
 const [cal, loop, sum, cv, bypass, thru] = await Promise.all([calibration(), loopCosts(types), sumCost(), cvCost(), bypassCost(), thruCost()]);

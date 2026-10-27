@@ -14,7 +14,7 @@ import { instIsEngine } from './engines';
 import { choiceName, formatValue, moduleName } from './labels';
 import { DEFS, rowRange } from './modules';
 import { deviceBudget } from './patchbin';
-import { assemblyPages, modulePages, pageTitle } from './pages';
+import { assemblyPages, modulePages, pageTitle, PAGE_ROWS } from './pages';
 import { rowDef, toUnit, type ModuleDef, type ModuleInst, type Patch } from './patch';
 
 export const CARD_W = 1200, CARD_H = 900;
@@ -67,7 +67,8 @@ export interface CardLayout { map: Rect; boxes: CardBox[]; lines: CardLine[]; sc
 /** a card's size on the canvas, estimated from its rows (the editor measures the DOM; the card has none) */
 function moduleSize(def: ModuleDef | undefined): { w: number; h: number } {
   if (!def) return { w: 236, h: 120 };
-  const rows = def.params.length + (def.views?.length ?? 0) + Math.max(0, Math.max(def.inputs.length, def.outputs.length) - 4) / 2;
+  // The preview draws rows, not ports. Undisplayed ports/rows must not shrink neighboring cards.
+  const rows = Math.min(def.params.length, MODULE_PAGES * PAGE_ROWS) + (def.views?.length ?? 0);
   return { w: 236, h: Math.min(540, Math.max(90, 44 + 26 * rows)) };
 }
 function assemblySize(a: AssemblyInst): { w: number; h: number } {
@@ -123,7 +124,7 @@ function rowOf(type: string, def: ModuleDef, params: Record<string, number>, par
     value = names[Math.round(v) - pd.min];
     u = toUnit(pd, v);
   } else if (pd.altText && (params[pd.altText.when] ?? 0) >= 0.5) {
-    value = pd.altText.text(v);
+    value = pd.altText.text(v, params);
     u = toUnit(pd, v);
   } else if (pd.choices) {
     const i = Math.max(0, Math.min(pd.choices.length - 1, Math.round(v)));

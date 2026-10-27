@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-only
-# The wavetables of the `wavetable` module: four banks of eight frames, each frame a band-limited single cycle given by
+# The wavetables of the `wavetable` module: banks of eight frames, each frame a band-limited single cycle given by
 # its first 32 harmonics. Writes
 #   firmware/src/wt_tables.h   int16 (Q15) tables, 257 samples (one guard) per frame, at three mip levels (32, 16, 8 harmonics)
 #   web/src/wavetables.json    the harmonics (cos, sin coefficients) per frame; modules.ts builds the same tables from them
@@ -77,7 +77,14 @@ cubed = lambda t: math.sin(2 * math.pi * t) ** 3
 notch = lambda t: saw(t) if t < 0.5 else -saw(t)
 digital = [dft(stair(4)), dft(stair(8)), dft(half), dft(trap), dft(synced), dft(full), dft(cubed), dft(notch)]
 
-BANKS = [('analog', analog), ('organ', organ), ('formant', form), ('digital', digital)]
+# bank 4 "eml color": EML 101 owner's manual pp. 9-10, plus the service notes' "double saw" endpoint.
+# Triangle -> sloped square -> square -> saw -> double saw (one octave up, no fundamental).
+# The intermediate knob positions are our interpolation, not a measured calibration of the original pot.
+SLOPE = mix(TRI, SQ, 0.5)
+DOUBLE_SAW = dft(lambda t: saw((2 * t) % 1))
+eml_color = [TRI, mix(TRI, SLOPE, 0.5), SLOPE, SQ, mix(SQ, SAW, 0.5), SAW, mix(SAW, DOUBLE_SAW, 0.5), DOUBLE_SAW]
+
+BANKS = [('analog', analog), ('organ', organ), ('formant', form), ('digital', digital), ('eml color', eml_color)]
 frames = [normalize(f) for _, bank in BANKS for f in bank]
 
 # the JSON for the reference engine

@@ -23,20 +23,41 @@ WASM_IMPORT("preset") void js_preset(int32_t d);
 WASM_IMPORT("save") void js_save(void);
 WASM_IMPORT("midi") void js_midi(uint32_t status, uint32_t d1, uint32_t d2);
 WASM_IMPORT("transport") void js_transport(uint32_t run);
-/* the SEQ page edited a track (its notes as they are now: n words at `at` in memory, track.ts noteWord), muted a track:
- * module = its index in the binary */
-WASM_IMPORT("track") void js_track(uint32_t mod, const uint32_t *at, uint32_t n);
+/* the SEQ page edited a track (its notes as they are now: n words at `at` in memory, track.ts noteWord, of the pattern it
+ * plays, 0-based), muted a track: module = its index in the binary */
+WASM_IMPORT("track") void js_track(uint32_t mod, const uint32_t *at, uint32_t n, uint32_t pat);
+/* PRESET on the SEQ page / the SONG page chose the patch's pattern (0-based) or song (0 none); the SONG page edited song s
+ * (n entries at `at`: pattern, shift as i8, two bytes each) (#375) */
+WASM_IMPORT("pattern") void js_pattern(uint32_t pat, uint32_t song);
+WASM_IMPORT("song") void js_song(uint32_t s, const uint8_t *at, uint32_t n);
 WASM_IMPORT("mute") void js_mute(uint32_t mod, uint32_t on);
 /* the FM-1 armed or disarmed (#139, #191: REC held + a black key, REC on an environment row): the armed modules as a mask
  * (lo, hi: modules 0..31, 32..63); the page arms the same devices */
 WASM_IMPORT("arms") void js_arms(uint32_t lo, uint32_t hi);
 int eng_steps_notes(uint32_t module, const uint32_t **w);   /* (engine.c, included by host_ui.h) */
+int eng_pattern_playing(uint32_t module);
+int eng_pattern(void);
+int eng_song(void);
+int eng_song_len(uint32_t s);
+int eng_song_get(uint32_t s, uint32_t k);
 static void m1_track_now(uint32_t mod)
 {
     const uint32_t *w;
     int n = eng_steps_notes(mod, &w);
     if (n >= 0)
-        js_track(mod, w, (uint32_t)n);
+        js_track(mod, w, (uint32_t)n, (uint32_t)eng_pattern_playing(mod));
+}
+static void m1_pattern_now(void) { js_pattern((uint32_t)eng_pattern(), (uint32_t)eng_song()); }
+static void m1_song_now(uint32_t s)
+{
+    static uint8_t e[2u * 64u];
+    uint32_t n = (uint32_t)eng_song_len(s), k;
+    for (k = 0; k < n && k < 64u; k++) {
+        int x = eng_song_get(s, k);
+        e[2u * k] = (uint8_t)x;
+        e[2u * k + 1u] = (uint8_t)(x >> 8);
+    }
+    js_song(s, e, n);
 }
 static void m1_mute_now(uint32_t mod, int on) { js_mute(mod, (uint32_t)on); }
 static void m1_arms_now(uint32_t lo, uint32_t hi) { js_arms(lo, hi); }
@@ -112,29 +133,15 @@ static void preset_step(int32_t d) { js_preset(d); }
 static void save_state(void) { js_save(); }
 /* a poly group's setting from a device page: into the group record of the running patch, as main.c does on the device
  * (the page hears of it through m1_param_now and sends the edited patch again) */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+#include "../src/poly_edit.h"
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
 {
-    int g = eng_module_group(mod);
-    uint32_t at;
-    if (g <= 0 || !pv_len)
-        return;
-    at = 8u + ENG_GROUP_REC * (uint32_t)(g - 1);
-    if (at + 4u > pv_len)
-        return;
-    if (field == 0u)
-        pv_bin[at] = (uint8_t)clampi(v, 1, ENG_MAX_PARTS);
-    else if (field == 1u)
-        pv_bin[at + 1u] = (uint8_t)clampi(v, 0, 2);
-    else if (field == 2u)
-        pv_bin[at + 2u] = (uint8_t)((pv_bin[at + 2u] & 0x80u) | (uint32_t)clampi(v, 0, 2));
-    else if (field == 3u)
-        pv_bin[at + 3u] = (uint8_t)clampi(v, 0, 2);
-    else
-        pv_bin[at + 2u] = (uint8_t)((pv_bin[at + 2u] & 0x7Fu) | (v ? 0x80u : 0u));
-    if (field == 0u || field == 4u)
-        (void)eng_load(pv_bin, pv_len);
-    else
-        (void)eng_poly_set((uint32_t)g - 1u, field, (uint32_t)v);
+    if (poly_patch_set(pv_bin, pv_len, mod, field, v, eng_load)) {
+        ui_msg("NO ROOM", 1500);
+        ui_dirty = 2;
+        return -1;
+    }
+    return 0;
 }
 
 static char name_buf[24];                     /* the patch name the page writes (fm1w_name), NUL-terminated */

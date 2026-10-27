@@ -73,13 +73,13 @@ export interface ParamRef {
  * Copies of the same controls that the original instrument edits one at a time (D-347 amended: the Casio CZ's eight
  * envelope steps, each a rate and a level, picked with a step select): the row that carries it and the rows after it,
  * `count` copies of `rows` rows each, in order. The collapsed card shows one copy, picked on a row of its own named
- * `name` ("step"), and the FM-1 gives each copy a page of its own, so ALGO steps through them. Layout only, like a heading:
+ * `name` ("step"), and the FM-1 starts each copy on a new page, so ALGO steps through them. Layout only, like a heading:
  * every row stays a row (presets, the morph, cables and the binary see them all). A run broken by a heading, a column
  * break or a missing row is shown as plain rows (`copyRuns`).
  */
 export interface RowCopies { rows: number; count: number; name?: string }
-/** the most rows a copy has (one FM-1 page) and the most copies */
-export const COPY_ROWS_MAX = 4;
+/** the most rows a copy has (up to four FM-1 pages) and the most copies */
+export const COPY_ROWS_MAX = 16;
 export const COPIES_MAX = 16;
 
 /** a parameter a card row sets */
@@ -1360,11 +1360,12 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     m.params = { ...m.params, ...clone(src.params) };
     if (src.att) m.att = [...src.att];
     if (src.map) m.map = clone(src.map);
+    if (src.range) m.range = clone(src.range);
     if (src.inputMap) m.inputMap = structuredClone(src.inputMap);
     if (src.bypass) m.bypass = true; // toDef writes the members' own switches
     if (src.type === 'steps') {   // a track's name and notes (a definition from before #133: its pattern and step values, migrated)
       const old = src as typeof src & { steps?: unknown; vels?: unknown };
-      Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels }));
+      Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels, patterns: src.patterns }));
       fixTrack(m);
     }
     if (src.type === 'drummap' && src.names) {   // a Drum map's row names

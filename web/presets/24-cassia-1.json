@@ -31,14 +31,16 @@
    "x": 20,
    "y": 2300,
    "params": {
-    "voices": 3,
+    "voices": 2,
     "assign": 0,
     "legato": 0,
     "priority": 0,
     "unison": 0,
     "channel": 0,
     "low": 0,
-    "high": 127
+    "high": 127,
+    "steal": 1,
+    "stack": 0
    }
   },
   {
@@ -56,7 +58,8 @@
     "phase": 0,
     "range": 0,
     "dir": 0,
-    "mult": 3
+    "mult": 3,
+    "wide": 4
    },
    "att": [
     1,
@@ -1237,7 +1240,7 @@
    "x": 4240,
    "y": 20,
    "params": {
-    "level": 0.34
+    "level": 0.51
    }
   },
   {
@@ -1249,7 +1252,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,

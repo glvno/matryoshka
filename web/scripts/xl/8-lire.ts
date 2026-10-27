@@ -1,88 +1,113 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // 8 Lire XL: the SOMA Laboratory Lyra-8 as its user manual describes it (v2.1, 2020:
 // https://somasynths.com/wp-content/uploads/2020/11/LYRA-8_manual_Eng_V2_1.pdf), where the FM-1's 8 Lire
-// (gen-assemblies.ts) had to cut or guess. Eight voices in four pairs (1-2, 3-4, 5-6, 7-8) and two groups (1-4, 5-8):
-//  - each voice: TUNE (coarse / fine), its own envelope (attack / release per voice here: the Lyra's are fixed), a
-//    triangle that its pair's SHARP turns into a square (a Waveshaper per voice, so the shaped wave is also what it sends
-//    to FM), and its own vibrato LFO (eight, at eight rates), on with VIBRATO. The envelope is part of the voice, as the
-//    manual says: it bends the pitch a little (up to 6 cents) and sharpens the wave a little as it opens;
-//  - the plates: how hard a plate is touched (its velocity, held from the touch on, plus Main's aftertouch as the
-//    pressure) sets how far its envelope opens and how fast: a light touch opens it partly and slowly. TOUCH sets how
-//    much (0 = every touch opens it fully). The Drum map holds each plate's velocity from its touch on, whichever key
-//    played it (another key on a plate already held neither restarts it nor changes its velocity);
-//  - each pair: SHARP, MOD (depth), the modulation source switch (up FM from a pair of the other half of its group,
-//    centre off, down LFO CV: the Hyper LFO, or the output with TOTAL FB) and FAST: down, the pair's release is short
-//    (flipping it cuts a ringing voice short), its plates need more pressure (they open less and more slowly) and its
-//    HOLD needs a higher setting before the pair sounds;
-//  - each group: HOLD (the voices' floor) and PITCH (a transposition that keeps the intervals);
-//  - the FM structure switch (34>56 78>12): down, 1-2 and 3-4 modulate each other and so do 5-6 and 7-8; up, 3-4 also
+// (gen-assemblies.ts) had to cut or guess. Eight voices in four pairs (1-2, 3-4, 5-6, 7-8) and two groups (1-4, 5-8).
+//
+// The card has the Lyra-8's 46 controls (the manual's "Controls description", numbered 1 to 23), one row each, named as
+// the panel names them; a switch is a row of named positions (a Selector):
+//  - per voice: TUNE (`tune 1`..`tune 8`, the oscillator's coarse tune in semitones);
+//  - per pair: the FM modulation source switch (`source`: fm, off, lfo), MOD, SHARP, FAST (off, fast);
+//  - per group: HOLD, PITCH;
+//  - for all voices: the FM structure switch (`34>56 78>12`: off, on), TOTAL FB (off, on), VIBRATO (off, on);
+//  - the Hyper LFO: FREQ A, FREQ B, AND / OR (and, or), LINK (off, on);
+//  - the MOD DELAY: TIME 1, TIME 2, MOD 1, MOD 2, SELF / LFO (lfo, self), TRIANGLE / SQUARE, FB, MIX;
+//  - the DISTORTION: DRIVE, MIX, VOL.
+// Plus the Scope's screen (`out`), a display, not a control.
+//
+// How each part is built (none of this is on the card; its values stay set in the patch):
+//  - each voice: a triangle that its pair's SHARP turns into a square (a Waveshaper per voice, so the shaped wave is also
+//    what it sends to FM), its own envelope and its own vibrato LFO (eight, at eight rates), on with VIBRATO. The
+//    manual's envelopes are fixed, so their attack and release are set per voice in the patch, as is a fine tune under
+//    TUNE (the Lyra's TUNE is continuous; the row steps in semitones). The envelope is part of the voice, as the manual
+//    says: it bends the pitch a little (up to 6 cents) and sharpens the wave a little as it opens;
+//  - the plates (sensors 1..8): how hard a plate is touched (its velocity, held from the touch on, plus Main's
+//    aftertouch as the pressure) sets how far its envelope opens and how fast: a light touch opens it partly and
+//    slowly. How much is a Macro inside the assembly (0.5; 0 = every touch opens it fully). The Drum map holds each
+//    plate's velocity from its touch on, whichever key played it;
+//  - FAST down: the pair's release is short (flipping it cuts a ringing voice short), its plates need more pressure and
+//    its HOLD needs a higher setting before the pair sounds;
+//  - the source switch: FM from a pair of the other half of its group, off, or LFO CV (the Hyper LFO, or the output
+//    with TOTAL FB). The FM structure switch: off, 1-2 and 3-4 modulate each other and so do 5-6 and 7-8; on, 3-4 also
 //    drives 5-6 and 7-8 drives 1-2, one closed loop through all eight;
-//  - the Hyper LFO: FREQ A, FREQ B, AND / OR (the two squares multiplied or added) and LINK (A modulates B's rate);
-//  - the MOD DELAY: two lines, TIME 1 / TIME 2, a MOD depth each, SELF / LFO (the time modulated by the line's own
-//    output, or the LFO), TRIANGLE / SQUARE (the LFO for the delay: the sum of two triangles at FREQ A and B, or the AND
-//    square), one FB for both lines with cross-feedback (each line also feeds the other, through a soft clip so it can
-//    self-oscillate without running away), MIX, and its hiss (HISS: the manual's lo-fi delay is noisy);
-//  - the DISTORTION after the delay: DRIVE, MIX (clean / distorted), VOL; mono out;
-//  - the crosstalk: BLEED keeps every voice faintly sounding, as the manual's "noise and bleed" page describes;
-//  - the rear jacks, as the assembly's inputs (a cable from any module of the patch): EXT IN (mixed with the voices,
-//    so through the delay and distortion, and into TOTAL FB and SELF), HOLD GATE (scales both HOLDs), CV VOICES (replaces
-//    the LFO CV bus for the pairs set to LFO CV) and CV DELAY (replaces SELF / LFO as the delay lines' modulation). The
-//    Lyra switches each on by a cable in the jack; here a row says the jack is plugged (HOLD GATE, CV VOICES, CV DELAY).
-// Switches are rows 0..1 (a Crossfader or a Macro: in between mixes the two positions; the three-way source switch is
-// FM at 0, off at 0.5, LFO CV at 1). Cables that close a loop (FM between pairs, TOTAL FB, the delay's cross-feedback and
-// SELF) run one block late, as on the FM-1 version. SELF reads the line's output level (rectified), since a parameter
-// input takes one value per block. The keys are as on the FM-1 version: one Drum map with `repeat` on puts the eight
-// plates on the white keys from F3 and repeats them over the keybed in blocks of eight white keys, a black key playing the
-// plate of the white key below it. Not here: EXT IN from outside the
-// browser (a live audio input needs a new module type, an audio input in both engines), the phones and balanced outputs
-// and the power (hardware), the plates' response to skin moisture (hardware: velocity and aftertouch stand in for it).
+//  - the Hyper LFO: two triangles; AND multiplies their squares, OR adds them; LINK on puts FREQ A on FREQ B's rate
+//    (a tenth of its travel: our choice, the manual gives no depth);
+//  - the delay: two lines (TRIANGLE: the sum of the two LFO triangles; SQUARE: the AND square), one FB for both with
+//    cross-feedback through a soft clip, and a little hiss (the manual's "noise and bleed" page: its delay is noisy);
+//  - the crosstalk: every voice sounds faintly all the time (the same page), a floor under HOLD.
+// Cables that close a loop (FM between pairs, TOTAL FB, the delay's cross-feedback and SELF) run one block late, as on
+// the FM-1 version. SELF reads the line's output level (rectified), since a parameter input takes one value per block.
+// The keys are as on the FM-1 version: one Drum map with `repeat` on puts the eight plates on the white keys from F3 and
+// repeats them over the keybed in blocks of eight white keys, a black key playing the plate of the white key below it.
+//
+// The rear jacks are the assembly's inputs, for a cable from any module of the patch: EXT IN (mixed with the voices),
+// HOLD GATE (scales both HOLDs), CV VOICES (replaces the LFO CV bus for the pairs set to lfo) and CV DELAY (replaces SELF
+// / LFO as the delay lines' modulation). The Lyra-8 switches HOLD GATE, CV VOICES and CV DELAY over when a cable goes in
+// its jack; the engines cannot tell that an input has a cable, so each has a crossfader (or Macro) inside the assembly,
+// at 0 (nothing plugged): set it to 1 in the expanded assembly to use the jack. EXT IN needs no switch.
+//
+// Not here, and why (D-347's reasons): the switching of a jack by plugging it (the engines do not report a plugged
+// input); EXT IN from outside the browser (a live audio input needs a new module type, an audio input in both engines);
+// the phones and balanced outputs and the power (hardware); the plates' response to skin moisture (hardware: velocity
+// and aftertouch stand in for it).
 import { DEFS } from '../../src/modules';
 import { connect, validatePatch, type Patch } from '../../src/patch';
 import { players } from '../factory-build';
 import { around, define, KIT_NOTES, matchLevel, type Built } from './def';
 import type { Xl } from './xl';
 
+/** a two-position switch as a Selector's table: position 1 plays 0, position 2 plays 1 */
+const OFF_ON = { count: 2, v1: 0, v2: 1 };
+/** how far LINK moves FREQ B's rate (the pin's attenuverter: the triangle of FREQ A times this much of the rate's travel) */
+const LINK_FM = 0.1;
+
+/** the names of each switch's positions, position 1 first (the Lyra-8's panel names only some of them) */
+const NAMES: Record<string, string[]> = {
+  source: ['fm', 'off', 'lfo'], fast: ['off', 'fast'], '34>56 78>12': ['off', 'on'], 'total fb': ['off', 'on'], vibrato: ['off', 'on'],
+  'and / or': ['and', 'or'], link: ['off', 'on'], 'self / lfo': ['lfo', 'self'], 'tri / square': ['triangle', 'square'],
+};
+
 export function lireXl(keys: Record<string, number>): Built {
-  return define('8 Lire XL', (b) => {
+  const built = define('8 Lire XL', (b) => {
     const plate = b.add('drummap', 0, 0, { ...keys, repeat: 1 });
     b.module(plate).names = Array.from({ length: 8 }, (_, r) => `VOICE ${r + 1}`);   // (as the FM-1 version: the rows are the voices)
     // the Hyper LFO: two triangles; their squares (Logic, just above zero) multiplied (AND) or added (and + or = a + b)
     const lfoA = b.add('lfo', 0, 1, { wave: 1, rate: 0.7, depth: 1 });
     const lfoB = b.add('lfo', 0, 2, { wave: 1, rate: 1.9, depth: 1 });
-    const link = b.add('scale', 0, 3, { gain: 0, offset: 0 });
+    const link = b.add('select', 0, 3, { count: 2 }); // LINK: off, on (A into B's rate)
     const logic = b.add('logic', 0, 4, { thresh: 0.05 });
     const sum = b.add('mixer', 0, 5, { l1: 0.5, l2: 0.5, l3: 0, l4: 0 });
-    const hyper = b.add('xfade', 1, 5, { mix: 0 }); // 0 = AND, 1 = OR (the sum)
+    const hyper = b.add('select', 1, 5, { count: 2 }); // AND / OR (the sum)
     const triSum = b.add('mixer', 2, 5, { l1: 0.5, l2: 0.5, l3: 0, l4: 0 });
-    const dlyLfo = b.add('xfade', 3, 5, { mix: 0 }); // 0 = triangle, 1 = square
-    b.wire(lfoA, 'out', link, 'in');
+    const dlyLfo = b.add('select', 3, 5, { count: 2 }); // TRIANGLE / SQUARE
+    b.wire(lfoA, 'out', link, 'in2');
     b.wire(link, 'out', lfoB, 'p1');
     b.pin(lfoB, 'p1', 'rate');
+    b.module(lfoB).att = [LINK_FM, 1];
     b.wire(lfoA, 'out', logic, 'a');
     b.wire(lfoB, 'out', logic, 'b');
     b.wire(logic, 'and', sum, 'in1');
     b.wire(logic, 'or', sum, 'in2');
-    b.wire(logic, 'and', hyper, 'a');
-    b.wire(sum, 'out', hyper, 'b');
+    b.wire(logic, 'and', hyper, 'in1');
+    b.wire(sum, 'out', hyper, 'in2');
     b.wire(lfoA, 'out', triSum, 'in1');
     b.wire(lfoB, 'out', triSum, 'in2');
-    b.wire(triSum, 'out', dlyLfo, 'a');
-    b.wire(logic, 'and', dlyLfo, 'b');
-    // TOTAL FB: the LFO CV bus is the Hyper LFO or the output (after the distortion); CV VOICES (1 = a cable in the
-    // jack): the assembly's `cv voices` input replaces both
-    const lfoCv = b.add('xfade', 4, 5, { mix: 0 });
+    b.wire(triSum, 'out', dlyLfo, 'in1');
+    b.wire(logic, 'and', dlyLfo, 'in2');
+    // TOTAL FB: the LFO CV bus is the Hyper LFO or the output (after the distortion); CV VOICES (its crossfader at 1 =
+    // a cable in the jack): the assembly's `cv voices` input replaces both
+    const lfoCv = b.add('select', 4, 5, { count: 2 });
     const cvVoices = b.add('xfade', 4, 6, { mix: 0 });
-    b.wire(hyper, 'out', lfoCv, 'a');
+    b.wire(hyper, 'out', lfoCv, 'in1');
     b.wire(lfoCv, 'out', cvVoices, 'a');
-    // the switches that act on several places: Macros, each pinned where it acts
-    const structure = b.add('macro', 5, 5, { value: 0 });
-    const vibrato = b.add('macro', 6, 5, { value: 0 });
-    const selfLfo = b.add('macro', 7, 5, { value: 0 });
+    // the switches that act on several places: Selectors as tables (0, 1), each wired or pinned where it acts
+    const structure = b.add('select', 5, 5, OFF_ON);
+    const vibrato = b.add('select', 6, 5, OFF_ON);
+    const selfLfo = b.add('select', 7, 5, OFF_ON);
     const fb = b.add('macro', 8, 5, { value: 0.35 });
     const touch = b.add('macro', 9, 5, { value: 0.5 });
     const cvDelay = b.add('macro', 10, 5, { value: 0 });
     const sharp = [0, 1, 2, 3].map((p) => b.add('macro', 1 + 2 * p, 6, { value: 0.15 }));
-    const fast = [0, 1, 2, 3].map((p) => b.add('macro', 2 + 2 * p, 9, { value: 0 })); // 0 = up (off), 1 = down
+    const fast = [0, 1, 2, 3].map((p) => b.add('select', 2 + 2 * p, 9, OFF_ON)); // 0 = up (off), 1 = down
     // groups: HOLD and PITCH; HOLD GATE (1 = a cable in the jack): the assembly's `hold gate` input scales both HOLDs
     const hold = [0, 1].map((g) => b.add('const', 2 + 4 * g, 4, { value: 0 }));
     const pitch = [0, 1].map((g) => b.add('const', 3 + 4 * g, 4, { value: 0 }));
@@ -177,7 +202,7 @@ export function lireXl(keys: Record<string, number>): Built {
         fm = b.add('mixer', 1 + 2 * p, 8, { l1: 1, l2: 1, l3: 0, l4: 0 });
         pairOut(from[0]).forEach((v, k) => b.wire(v, 'out', fm, `in${k + 1}`));
       }
-      const sw = b.add('macro', 1 + 2 * p, 9, { value: 0 });
+      const sw = b.add('select', 1 + 2 * p, 9, { count: 3, v1: 0, v2: 0.5, v3: 1 }); // FM, off, LFO CV
       const fmOn = b.add('xfade', 1 + 2 * p, 10, { mix: 0 }); // the FM, faded out by 2 x (0 at 0.5 and up)
       b.wire(fm, 'out', fmOn, 'a');
       b.wire(sw, 'out', fmOn, 'p1');
@@ -244,13 +269,9 @@ export function lireXl(keys: Record<string, number>): Built {
     b.wire(drive, 'out', distMix, 'b');
     b.wire(distMix, 'out', vol, 'in');
     b.wire(one, 'out', vol, 'cv');
-    b.wire(vol, 'out', lfoCv, 'b'); // TOTAL FB
+    b.wire(vol, 'out', lfoCv, 'in2'); // TOTAL FB
     const scope = b.add('scope', 16, 2, { time: 16 });
     b.wire(vol, 'out', scope, 'a');
-    voices.forEach((v, i) => b.nest(`voice ${i + 1}`, 1 + i, 0, [v.osc, v.shp, v.env, v.vca, v.vlfo, v.open, v.level], {
-      inputs: [['mod', v.osc, 'pitch'], ['hold', v.vca, 'cv'], ['sharp', v.shp, 'p1'], ['vibrato', v.vlfo, 'p1']],
-      outputs: [['out', v.vca, 'out']],
-    }));
     b.input('keys', plate, 'keys');
     // the plates' pressure (Main's aftertouch, wired by the XL) and the rear jacks
     b.input('pressure', voices[0].open, 'a', ...voices.slice(1).map((v) => [v.open, 'a'] as [number, string]));
@@ -260,48 +281,42 @@ export function lireXl(keys: Record<string, number>): Built {
     b.input('cv delay', lines[0].ext, 'b', [lines[1].ext, 'b']);
     b.output('out', vol, 'out');
 
-    // the card: the FM-1 version's pages first where they still stand, then the rest
+    // the card: the Lyra-8's controls, one row each, named as its panel names them (switches as named positions)
     for (const g of [0, 1]) {
       const name = g ? '5-8' : '1-4';
       b.param('hold', hold[g], 'value', { col: g === 1, head: name });
       b.param('pitch', pitch[g], 'value');
-      for (const p of [2 * g, 2 * g + 1]) b.param(`source ${2 * p + 1}-${2 * p + 2}`, mods[p].sw, 'value');
+      for (const p of [2 * g, 2 * g + 1]) b.param(`source ${2 * p + 1}-${2 * p + 2}`, mods[p].sw, 'pos');
       for (const p of [2 * g, 2 * g + 1]) b.param(`mod ${2 * p + 1}-${2 * p + 2}`, mods[p].depth, 'gain', p === 2 * g ? { group: true } : {});
       for (const p of [2 * g, 2 * g + 1]) b.param(`sharp ${2 * p + 1}-${2 * p + 2}`, sharp[p], 'value');
-      for (const p of [2 * g, 2 * g + 1]) b.param(`fast ${2 * p + 1}-${2 * p + 2}`, fast[p], 'value', p === 2 * g ? { group: true } : {});
+      for (const p of [2 * g, 2 * g + 1]) b.param(`fast ${2 * p + 1}-${2 * p + 2}`, fast[p], 'pos', p === 2 * g ? { group: true } : {});
     }
-    b.param('34>56 78>12', structure, 'value', { head: 'all voices' });
-    b.param('total fb', lfoCv, 'mix');
-    b.param('vibrato', vibrato, 'value');
-    b.param('touch', touch, 'value');
-    b.param('bleed', bleed, 'value');
+    b.param('34>56 78>12', structure, 'pos', { head: 'all voices' });
+    b.param('total fb', lfoCv, 'pos');
+    b.param('vibrato', vibrato, 'pos');
     b.param('freq a', lfoA, 'rate', { col: true, head: 'hyper lfo' });
     b.param('freq b', lfoB, 'rate');
-    b.param('and / or', hyper, 'mix');
-    b.param('link', link, 'gain');
-    b.param('time 1', lines[0].d, 'time', { head: 'delay' });
+    b.param('and / or', hyper, 'pos');
+    b.param('link', link, 'pos');
+    b.param('time 1', lines[0].d, 'time', { head: 'mod delay' });
     b.param('time 2', lines[1].d, 'time');
     b.param('mod 1', lines[0].depth, 'gain');
     b.param('mod 2', lines[1].depth, 'gain');
-    b.param('lfo / self', selfLfo, 'value', { group: true });
-    b.param('tri / sq', dlyLfo, 'mix');
-    b.param('feedback', fb, 'value');
+    b.param('self / lfo', selfLfo, 'pos', { group: true });
+    b.param('tri / square', dlyLfo, 'pos');
+    b.param('fb', fb, 'value');
     b.param('mix', dlyMix, 'mix');
-    b.param('hiss', hiss, 'level');
     b.param('drive', drive, 'drive', { head: 'distortion' });
     b.param('mix', distMix, 'mix');
     b.param('vol', vol, 'gain');
-    b.param('hold gate', holdGate, 'mix', { head: 'jacks' });
-    b.param('cv voices', cvVoices, 'mix');
-    b.param('cv delay', cvDelay, 'value');
-    voices.forEach((v, i) => {
-      b.param('tune', v.osc, 'coarse', { head: `voice ${i + 1}`, ...(i % 4 === 0 ? { col: true } : {}) });
-      b.param('fine', v.osc, 'fine');
-      b.param('attack', v.env, 'a');
-      b.param('release', v.env, 'r');
-    });
+    voices.forEach((v, i) => b.param(`tune ${i + 1}`, v.osc, 'coarse', i === 0 ? { col: true, head: 'tune' } : i === 4 ? { group: true } : {}));
     b.param('out', scope, 'view', { col: true });
   });
+  for (const r of built.def.params) {
+    const names = NAMES[r.label.replace(/ \d-\d$/, '')];
+    if (names) r.names = names;
+  }
+  return built;
 }
 
 /** the rows of the FM-1 version's Drum map (the plates' keys, which it repeats over the keybed) */
@@ -313,7 +328,7 @@ export const platesOf = (fm1: Patch): Record<string, number> => {
 
 /** the patch's notes (Patch.notes, at most 500 characters) */
 const NOTES =
-  'The SOMA Lyra-8 after its manual (v2.1): two delay lines with cross-feedback, LFO / SELF, TRI / SQ, hiss, distortion, FM / off / LFO and FAST per pair, 34>56 78>12, PITCH and HOLD per group, TOTAL FB, VIBRATO, the Hyper LFO, touch, bleed. The rear jacks are inputs with a "plugged" row. Switches are 0..1 rows (source: FM 0, off 0.5, LFO 1). Not here: outside audio into EXT IN (no audio input module), the plates\' skin response (velocity and aftertouch stand in).';
+  'The SOMA Lyra-8 after its manual (v2.1). The card is its 46 controls: TUNE per voice; source (FM / off / LFO), MOD, SHARP, FAST per pair; HOLD, PITCH per group; 34>56 78>12, TOTAL FB, VIBRATO; the Hyper LFO; the MOD DELAY; the DISTORTION. The rear jacks are inputs; the Lyra switches them by plugging, here a crossfader inside the assembly (0 = unplugged). Not here: outside audio into EXT IN (no audio input module), the plates\' skin response (velocity and aftertouch stand in).';
 
 export const xl: Xl = {
   base: '8 Lire',

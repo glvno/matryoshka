@@ -20,8 +20,8 @@ const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
 /** [frame, kind, note (a button for bon / boff; a module index for arm, -1 none, and rec), MIDI channel of a note (absent:
- * 1; rec: 1 on, 0 off)]; take: the notes recorded so far go into their tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take', number, number?];
+ * 1; rec: 1 on, 0 off; cc: controller value 0..127)]; take: the notes recorded so far go into their tracks (the editor's overdub, the panel's) */
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -53,7 +53,141 @@ const events: Record<string, Ev[]> = {};
 const ends: Record<string, number> = {};
 /** a kit's binary, when not encodePatch of its patch */
 const bins: Record<string, Uint8Array> = {};
+// The ratio table participates in plain, unison/sync and phase-modulated oscillator paths.
+for (const ratio of [0, 1, 4, 11, 42, 63]) for (const mode of ['plain', 'unison', 'fm']) {
+  const name = `osc-ratio-${ratio}-${mode}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 0.5 });
+    const tuning = add('ratio', 0, 0, { ratio, detune: ratio % 7 });
+    const osc = add('osc', 0, 0, { wave: 0, coarse: -12, fine: 0,
+      unison: mode === 'unison' ? 3 : 1, detune: 9, pm: mode === 'fm' ? 1 : 0 });
+    wire(tuning, 'pitch', osc, 'pitch');
+    wire(main, 'pitch', osc, 'pitch'); wire(osc, 'out', out, 'l');
+    if (mode !== 'plain') {
+      const source = add('osc', 0, 0, { coarse: -24, level: 0.3 });
+      wire(main, 'pitch', source, 'pitch'); wire(source, 'out', osc, mode === 'fm' ? 'pm' : 'sync');
+    }
+  });
+}
+tests['osc-ratio-live'] = make('osc-ratio-live', (add, wire) => {
+  const main = add('fm1', 0, 0), out = add('output', 0, 0), osc = add('osc', 0, 0, { wave: 0, coarse: -24 });
+  const tuning = add('ratio', 0, 0, { ratio: 0, detune: 0 }, { map: { p1: ['ratio', 'detune'] } });
+  wire(main, 'mod', tuning, 'p1'); wire(tuning, 'pitch', osc, 'pitch');
+  wire(main, 'pitch', osc, 'pitch'); wire(osc, 'out', out, 'l');
+});
+events['osc-ratio-live'] = [[0, 'on', 60], [128 * 30, 'cc', 1, 64], [128 * 80, 'cc', 1, 127], [128 * 120, 'cc', 1, 0]];
+// Original rate-envelope extremes, pedal hold/retrigger, and key-rate scaling at low and high notes.
+for (const [suffix, params] of Object.entries({
+  hold: { ar: 31, d1r: 24, d1l: 10, d2r: 0, rr: 8, krs: 0 },
+  decay: { ar: 14, d1r: 16, d1l: 12, d2r: 14, rr: 0, krs: 3 },
+  stopped: { ar: 0, d1r: 0, d1l: 15, d2r: 0, rr: 15, krs: 3 },
+  fast: { ar: 31, d1r: 31, d1l: 0, d2r: 31, rr: 15, krs: 0 },
+})) {
+  const name = `rateenv-${suffix}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), env = add('rateenv', 0, 0, params), out = add('output', 0, 0, { level: 1 });
+    wire(main, 'gate', env, 'gate'); wire(main, 'pitch', env, 'pitch'); wire(main, 'sustain', env, 'hold');
+    wire(env, 'env', out, 'l');
+  });
+  events[name] = [[0, 'cc', 64, 127], [128 * 5, 'on', 36], [128 * 40, 'off', 36],
+    [128 * 65, 'on', 84], [128 * 90, 'off', 84], [128 * 110, 'cc', 64, 0],
+    [128 * 115, 'cc', 64, 127], [128 * 140, 'on', 60]];
+}
+// Pedal hold preserves the original gate's rising edges, including attacks during a sustained note.
+for (const sustain of [0, 0.3, 1]) {
+  const name = `adsr-hold-${sustain}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), env = add('adsr', 0, 0, { a: .02, d: .05, s: sustain, r: .1 });
+    const out = add('output', 0, 0, { level: 1 });
+    wire(main, 'gate', env, 'gate'); wire(main, 'sustain', env, 'hold');
+    wire(env, 'env', out, 'l');
+  });
+  events[name] = [[0, 'cc', 64, 64], [128 * 5, 'on', 60], [128 * 40, 'off', 60],
+    [128 * 70, 'on', 60], [128 * 90, 'off', 60], [128 * 110, 'cc', 64, 63],
+    [128 * 115, 'cc', 64, 127]];
+}
+tests['key-press-duo'] = make('key-press-duo', (add, wire) => {
+  const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 1 });
+  for (const [priority, port] of [[1, 'l'], [2, 'r']] as const) {
+    const alloc = add('alloc', 0, 0, { voices: 1, priority, legato: 2 });
+    wire(main, 'keys', alloc, 'keys');
+    wire(alloc, 'trig', out, port);
+  }
+});
+events['key-press-duo'] = [[0, 'on', 60], [128, 'on', 72], [256, 'on', 67], [512, 'off', 72], [640, 'off', 60], [768, 'off', 67]];
+// Signed 16-bit audio XOR: single-output fast path and the general multiple-output path.
+for (const [a, b] of [[.5, .25], [-.5, .5], [-2, 2]]) for (const multi of [false, true]) {
+  const name = `math-xor-${a}-${b}-${multi}`;
+  tests[name] = make(name, (add, wire) => {
+    const left = add('const', 0, 0, { value: a }), right = add('const', 0, 0, { value: b });
+    const op = add('math', 0, 0), out = add('output', 0, 0, { level: 1 });
+    wire(left, 'out', op, 'a'); wire(right, 'out', op, 'b');
+    wire(op, 'xor', out, 'l');
+    if (multi) wire(op, 'abs', out, 'r');
+  });
+}
+tests['math-xor-audio'] = make('math-xor-audio', (add, wire) => {
+  const source = add('osc', 0, 0, { freq: 110, wave: 0 });
+  const mask = add('const', 0, 0, { value: .625 });
+  const op = add('math', 0, 0), out = add('output', 0, 0, { level: 1 });
+  wire(source, 'out', op, 'a'); wire(mask, 'out', op, 'b');
+  wire(op, 'xor', out, 'l');
+});
+for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
+  const name = `lfo-shape-${shape}-${back}`;
+  tests[name] = make(name, (add, wire) => {
+    const lfo = add('lfo', 0, 0, { wave: 1, rate: 7, depth: .5, dir: back });
+    const source = add('const', 0, 0, { value: shape }), out = add('output', 0, 0, { level: 1 });
+    wire(source, 'out', lfo, 'shape');
+    wire(lfo, 'out', out, 'l');
+    wire(lfo, 'pulse', out, 'r');
+  });
+}
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
+events['Wanderer'] = [[0, 'on', 60], [128 * 20, 'on', 72], [128 * 40, 'on', 67], [128 * 60, 'off', 72], [128 * 80, 'off', 60], [128 * 100, 'off', 67]];
+tests['lfo-shape-sync'] = make('lfo-shape-sync', (add, wire) => {
+  const main = add('fm1', 0, 0);
+  const shape = add('const', 0, 0, { value: .37 });
+  const lfo = add('lfo', 0, 0, { wave: 3, sync: 1, div: 7, phase: 90, depth: .5 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(main, 'clock', lfo, 'clk');
+  wire(main, 'fx', lfo, 'reset');
+  wire(shape, 'out', lfo, 'shape');
+  wire(lfo, 'out', out, 'l');
+  wire(lfo, 'pulse', out, 'r');
+});
+events['lfo-shape-sync'] = [[0, 'run', 0], [128 * 80, 'bon', 0], [128 * 82, 'boff', 0]];
+// Sallen 20's ESP routes on the FM-1 (SIGNAL IN, ESP ROUTE): VCO 1 -> F-V into VCO 2 and ENV into the VCA, the MG ->
+// TRIG into both EGs (a loop through EG 1 and VCO 1: its block of delay must fall where the editor's order puts it)
+for (const [route, src] of [[2, 2], [3, 2], [4, 4]] as const) {
+  const name = `sallen-esp-${route}`;
+  const p = FM1_PRESETS['Sallen 20']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'esp route'))!;
+  for (const [label, v] of [['signal in', src], ['esp route', route], ['threshold', 0.2]] as const) {
+    const row = card.params.find((r) => r.label === label)!;
+    p.modules.find((m) => m.id === row.module)!.params[row.param] = v;
+  }
+  tests[name] = p;
+  events[name] = [[128 * 60, 'on', 57], [128 * 120, 'off', 57]];
+}
+for (let pos = 1; pos <= 6; pos++) {
+  const name = `monolith-wave-${pos}`;
+  const p = FM1_PRESETS['Monolith D']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'osc 1 wave'))!;
+  for (const row of card.params.filter((r) => /^osc [123] wave$/.test(r.label)))
+    p.modules.find((m) => m.id === row.module)!.params[row.param] = pos;
+  tests[name] = p;
+  events[name] = [[0, 'on', 60], [128 * 10, 'cc', 1, 16], [128 * 50, 'cc', 1, 0], [128 * 80, 'off', 60]];
+}
+for (const [cc, port] of [[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const) {
+  const name = `main-${port}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0), out = add('output', 0, 0, { level: 1 });
+    wire(main, port, out, 'l');
+  });
+  events[name] = [[128, 'cc', cc, 63], [128 * 4, 'cc', cc, 127], [128 * 8, 'cc', cc, 0]];
+  ends[name] = 128 * 12;
+}
 tests['acid'] = acid(); // also the protocol test's upload (golden.sh hands acid.m1p to proto_test)
 // one card row for two filters' cutoff and resonance, a Selector's named positions (#357, #358): the page rows' extras in
 // the device pages section (the engine plays it as any patch; panel_test.c turns its rows)
@@ -88,12 +222,21 @@ const kit = (name: string, b: Build, voices = 1): void => {
 const polyAsm = (p: Patch, ids: number[], cfg: Partial<PolyCfg>): void => {
   const alloc = p.modules.find((m) => ids.includes(m.id) && m.type === 'part')!;
   alloc.type = 'alloc';
-  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unison ? 1 : 0, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
+  alloc.params = { ...defaultParams(DEFS.alloc), voices: cfg.parts ?? 4, assign: cfg.assign ?? 0, legato: cfg.legato ?? 0, priority: cfg.priority ?? 0, unison: cfg.unisonShare ? 2 : cfg.unison ? 1 : 0, stack: cfg.unisonParts ?? 0, steal: cfg.steal === false ? 0 : 1, channel: cfg.channel ?? 0, low: cfg.low ?? 0, high: cfg.high ?? 127 };
   fixMatrix(alloc, DEFS.alloc);
   const main = p.modules.find((m) => m.type === 'fm1')!;
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: alloc.id, port: 'keys' } });
   makeAssembly(p, ids, `poly ${ids.join(' ')}`).poly = cfg.flaws ? { flaws: cfg.flaws } : {};
 };
+kit('random-held', (add, wire) => {
+  const clock = add('lfo', 0, 0, { wave: 3, rate: 13, depth: 1 });
+  const out = add('output', 0, 0);
+  for (const port of ['l', 'r']) {
+    const r = add('random', 0, 0);
+    wire(clock, 'out', r, 'clock');
+    wire(r, 'held', out, port);
+  }
+});
 kit('waves', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const mix = add('mixer', 0, 0, { l1: 0.25, l2: 0.25, l3: 0.25, l4: 0.25 });
@@ -144,6 +287,27 @@ lfoKit('lfo-bpm-x4', { sync: 1, div: 6, bpm: 140, mult: 5, wave: 3, dir: 1 }, ()
 lfoKit('lfo-reset-phase', { rate: 5, wave: 0, phase: 90, dir: 1 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
 lfoKit('lfo-fast-back', { rate: 20, range: 2, dir: 1, phase: 120 }, () => undefined);
 lfoKit('lfo-slow', { rate: 30, range: 1, wave: 0, phase: 90 }, () => undefined);
+// The slow endpoint is amplified after removing its DC offset, so a stalled phase cannot pass as a flat wave.
+for (const [wide, back, shape] of [[.0008, 0, -1], [55, 0, -1], [55, 1, .3]]) {
+  const name = `lfo-wide-${wide}-${back}`;
+  tests[name] = make(name, (add, wire) => {
+    const lfo = add('lfo', 0, 0, { wave: 2, range: 3, wide, dir: back });
+    const out = add('output', 0, 0, { level: 1 });
+    if (shape >= 0) {
+      const source = add('const', 0, 0, { value: shape });
+      wire(source, 'out', lfo, 'shape');
+      wire(lfo, 'pulse', out, 'r');
+    }
+    let source = lfo;
+    for (let i = 0; wide < .001 && i < 4; i++) {
+      const gain = add('scale', 0, 0, { gain: 4, offset: i === 0 ? 4 : 0 });
+      wire(source, 'out', gain, 'in'); source = gain;
+    }
+    wire(source, 'out', out, 'l');
+  });
+}
+lfoKit('lfo-wide-sync', { range: 3, wide: 55, sync: 1, div: 6 }, (wire, clk, _r, lfo) => wire(clk, 'out', lfo, 'clk'));
+lfoKit('lfo-wide-reset', { range: 3, wide: 8, wave: 0, phase: 90 }, (wire, _c, rst, lfo) => wire(rst, 'out', lfo, 'reset'));
 kit('noise-svf', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6 });
   const flt = add('filter', 0, 0, { cutoff: 900, res: 0.7 });
@@ -169,6 +333,39 @@ kit('filter-notch', (add, wire) => {
   wire(flt, 'peak', mix, 'in2');
   wire(flt, 'ap', mix, 'in3');
   wire(mix, 'out', out, 'l');
+});
+// the hp6 output (the MS-20 filter's resonant 6 dB high pass) alone, swept by an LFO, at high and low resonance
+for (const res of [0.2, 0.95]) {
+  kit(`filter-hp6-${res}`, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const osc = add('osc', 0, 0, { wave: 2, level: res > 0.5 ? 0.08 : 0.5 }); // (the resonance peak below the clamp)
+    const lfo = add('lfo', 0, 0, { wave: 0, rate: 0.9, depth: 1 });
+    const flt = add('filter', 0, 0, { cutoff: 400, res, cvamt: 2 });
+    const out = add('output', 0, 0, { level: 0.5 });
+    wire(kb, 'pitch', osc, 'pitch');
+    wire(osc, 'out', flt, 'in');
+    wire(lfo, 'out', flt, 'cv');
+    wire(flt, 'hp6', out, 'l');
+  });
+}
+// the filter's self-oscillation (osc on): alone at full resonance (it starts from rest and rings at the cutoff), and a
+// saw through it near the top with the cutoff swept
+kit('filter-osc-self', (add, wire) => {
+  add('fm1', 0, 0);
+  const flt = add('filter', 0, 0, { cutoff: 220, res: 1, osc: 1 });
+  const out = add('output', 0, 0, { level: 0.5 });
+  wire(flt, 'lp12', out, 'l');
+});
+kit('filter-osc-driven', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.3 });
+  const lfo = add('lfo', 0, 0, { wave: 0, rate: 0.9, depth: 1 });
+  const flt = add('filter', 0, 0, { cutoff: 600, res: 0.97, cvamt: 1, osc: 1 });
+  const out = add('output', 0, 0, { level: 0.5 });
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(osc, 'out', flt, 'in');
+  wire(lfo, 'out', flt, 'cv');
+  wire(flt, 'hp6', out, 'l');
 });
 kit('filter-morph', (add, wire) => {
   const kb = add('fm1', 0, 0);
@@ -362,6 +559,81 @@ events['poly-layers'] = [
   [128 * 108, 'off', 55],
   [128 * 112, 'off', 72],
 ];
+// Shared unison: hear the selected pitches and the number of held voices.
+for (const priority of [0, 1, 2]) {
+  const name = `unison-share-${priority}`;
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    add('fm1', 0, 0);
+    const part = add('part', 0, 0), pitch = add('vca', 0, 0), out = add('output', 0, 0, { level: .1 });
+    wire(part, 'pitch', pitch, 'in'); wire(part, 'gate', pitch, 'cv'); wire(pitch, 'out', out, 'l');
+    wire(part, 'gate', out, 'r'); ids = [part, pitch];
+  });
+  polyAsm(tests[name], ids, { parts: 4, unison: true, unisonShare: true, priority });
+  const keys = [72, 60, 64, 67, 55, 50];
+  events[name] = keys.map((key, i) => [i * 128, 'on', key] as Ev);
+  events[name].push(...[50, 55, 60, 64, 67, 72].map((key, i) => [(i + 6) * 128, 'off', key] as Ev));
+  // All 128 keys exercise the former C held-list limit and returning to notes that remain down.
+  for (let key = 0; key < 128; key++) events[name].push([(key + 12) * 128, 'on', key]);
+  for (let key = 0; key < 128; key++) events[name].push([(key + 140) * 128, 'off', key]);
+  ends[name] = 269 * 128;
+}
+// A separate unison count limits held voices without changing the allocated poly pool.
+for (const stack of [0, 1, 2, 4, 8]) for (const priority of [0, 1, 2]) {
+  const name = `unison-count-${stack}-${priority}`;
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    add('fm1', 0, 0);
+    const part = add('part', 0, 0), pitch = add('vca', 0, 0), mode = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: .2 });
+    wire(part, 'pitch', pitch, 'in'); wire(part, 'gate', pitch, 'cv'); wire(pitch, 'out', out, 'l');
+    wire(part, 'unison', mode, 'in'); wire(part, 'gate', mode, 'cv'); wire(mode, 'out', out, 'r');
+    ids = [part, pitch, mode];
+  });
+  polyAsm(tests[name], ids, { parts: 4, unison: true, unisonParts: stack, priority });
+  events[name] = [[0, 'on', 60], [128, 'on', 67], [256, 'on', 55], [384, 'off', 67],
+    [512, 'off', 55], [640, 'off', 60], [768, 'on', 72], [896, 'off', 72]];
+  ends[name] = 1024;
+}
+// Extreme-note flags are observable per voice: multiply by that voice's pitch before summing.
+for (const unison of [false, true]) for (const steal of [false, true]) {
+  const name = `voice-extremes-${unison}-${steal}`;
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    add('fm1', 0, 0);
+    const part = add('part', 0, 0), low = add('vca', 0, 0), high = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: .2 });
+    wire(part, 'pitch', low, 'in'); wire(part, 'low', low, 'cv'); wire(low, 'out', out, 'l');
+    wire(part, 'pitch', high, 'in'); wire(part, 'high', high, 'cv'); wire(high, 'out', out, 'r');
+    ids = [part, low, high];
+  });
+  polyAsm(tests[name], ids, { parts: 3, unison, steal });
+  events[name] = [[0, 'on', 67], [128, 'on', 60], [256, 'on', 64], [384, 'on', 72], [512, 'off', 60],
+    [640, 'off', 67], [768, 'off', 72], [896, 'off', 64], [1280, 'on', 55], [1408, 'off', 55]];
+  ends[name] = 1536;
+}
+// Allocation is observable without oscillators: held voice indices left, their pitches right.
+for (const assign of [0, 1, 2, 3]) for (const priority of [0, 1, 2]) for (const steal of assign === 3 ? [false, true] : [false]) {
+  const name = `alloc-modes-${assign}-${priority}-${steal}`;
+  let ids: number[] = [];
+  kit(name, (add, wire) => {
+    add('fm1', 0, 0);
+    const part = add('part', 0, 0), left = add('vca', 0, 0), right = add('vca', 0, 0);
+    const out = add('output', 0, 0, { level: 1 });
+    wire(part, 'index', left, 'in'); wire(part, 'gate', left, 'cv'); wire(left, 'out', out, 'l');
+    wire(part, 'pitch', right, 'in'); wire(part, 'gate', right, 'cv'); wire(right, 'out', out, 'r');
+    ids = [part, left, right];
+  });
+  polyAsm(tests[name], ids, { parts: 3, assign, priority, steal });
+  events[name] = [
+    [0, 'on', 60], [128, 'on', 61], [256, 'on', 62], [384, 'on', 63],
+    [512, 'off', 61], [640, 'off', 62], [768, 'off', 63],
+    [896, 'on', 64], [1024, 'off', 64], [1152, 'on', 65],
+    [1280, 'off', 60], [1408, 'off', 65], [1536, 'on', 67], [1664, 'off', 67],
+    [1792, 'on', 69], [1920, 'off', 69],
+  ];
+  ends[name] = 2048;
+}
 // four parts, lowest free, every part with its own flaws: a fixed Random (tolerance) on each part's cutoff, a walking one (drift, its rate swept
 // by a shared LFO) on its pitch, the Part's index on the pan; a walking Random outside (the shared keyboard's)
 // on every part's resonance
@@ -542,6 +814,51 @@ kit('dyn', (add, wire) => {
   wire(vca2, 'out', mix, 'in2');
   wire(mix, 'out', out, 'l');
 });
+// the Follower (the MS-20's ESP): its pitch and envelope outputs on a played saw (left: pitch in octaves, right: env)
+kit('esp-pitch', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.5 });
+  const adsr = add('adsr', 0, 0, { a: 0.01, d: 0.2, s: 0.5, r: 0.1 });
+  const vca = add('vca', 0, 0);
+  const esp = add('esp', 0, 0, { level: 1.5, lowcut: 60, highcut: 1500, thresh: 0.2 });
+  const out = add('output', 0, 0, { level: 0.5 });
+  wire(kb, 'pitch', osc, 'pitch');
+  wire(kb, 'gate', adsr, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(adsr, 'env', vca, 'cv');
+  wire(vca, 'out', esp, 'in');
+  wire(esp, 'pitch', out, 'l');
+  wire(esp, 'env', out, 'r');
+});
+// the manual's patch (F-V CV OUT to a VCO, TRIG OUT to an envelope, ENV OUT to the VCA) with cv adjust a fifth up, and the
+// band-passed signal mixed in
+kit('esp-follow', (add, wire) => {
+  const kb = add('fm1', 0, 0);
+  const src = add('osc', 0, 0, { wave: 0, level: 0.6, coarse: -12 });
+  const esp = add('esp', 0, 0, { level: 1, lowcut: 40, highcut: 800, cvadj: 7, thresh: 0.15 });
+  const osc = add('osc', 0, 0, { wave: 2, level: 0.5 });
+  const adsr = add('adsr', 0, 0, { a: 0.005, d: 0.1, s: 0.6, r: 0.2 });
+  const vca = add('vca', 0, 0);
+  const vca2 = add('vca', 0, 0);
+  const mix = add('mixer', 0, 0, { l1: 0.6, l2: 0.3 });
+  const out = add('output', 0, 0);
+  const gate = add('adsr', 0, 0, { a: 0.001, d: 0.001, s: 1, r: 0.05 });
+  const amp = add('vca', 0, 0);
+  wire(kb, 'pitch', src, 'pitch');
+  wire(kb, 'gate', gate, 'gate');
+  wire(src, 'out', amp, 'in');
+  wire(gate, 'env', amp, 'cv');
+  wire(amp, 'out', esp, 'in');
+  wire(esp, 'pitch', osc, 'pitch');
+  wire(esp, 'trig', adsr, 'gate');
+  wire(osc, 'out', vca, 'in');
+  wire(adsr, 'env', vca, 'cv');
+  wire(vca, 'out', vca2, 'in');
+  wire(esp, 'env', vca2, 'cv');
+  wire(vca2, 'out', mix, 'in1');
+  wire(esp, 'bp', mix, 'in2');
+  wire(mix, 'out', out, 'l');
+});
 kit('math-logic', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const lfo1 = add('lfo', 0, 0, { wave: 3, rate: 3, depth: 1 });
@@ -715,6 +1032,24 @@ kit('env8-poly', (add, wire) => {
 });
 polyAsm(tests['env8-poly'], env8Parts, { parts: 4, flaws: [{ detune: 0, drift: 0, bright: 0, env: 40, level: 100 }, { detune: 0, drift: 0, bright: 0, env: -30, level: 100 }] });
 events['env8-poly'] = POLY_EVENTS;
+const rateEnvParts: number[] = [];
+kit('rateenv-poly', (add, wire) => {
+  const main = add('fm1', 0, 0), pt = add('part', 0, 0), env = add('rateenv', 0, 0, { ar: 24, d1r: 24, d1l: 12, d2r: 0, rr: 15, krs: 2 });
+  const out = add('output', 0, 0, { level: 0.2 });
+  wire(pt, 'gate', env, 'gate'); wire(pt, 'pitch', env, 'pitch'); wire(main, 'sustain', env, 'hold');
+  wire(env, 'env', out, 'l'); rateEnvParts.push(pt, env);
+});
+polyAsm(tests['rateenv-poly'], rateEnvParts, { parts: 4 });
+events['rateenv-poly'] = POLY_EVENTS;
+kit('rateenv-live', (add, wire) => {
+  const main = add('fm1', 0, 0), env = add('rateenv', 0, 0, { ar: 0, d1r: 0, d1l: 0, d2r: 0, rr: 0, krs: 0 },
+    { map: { p1: ['ar', 'd1r', 'd1l', 'd2r', 'rr', 'krs'] } });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(main, 'gate', env, 'gate'); wire(main, 'pitch', env, 'pitch'); wire(main, 'mod', env, 'p1');
+  wire(env, 'env', out, 'l');
+});
+events['rateenv-live'] = [[0, 'on', 60], [128 * 20, 'cc', 1, 64], [128 * 50, 'cc', 1, 127],
+  [128 * 70, 'cc', 1, 0], [128 * 100, 'cc', 1, 96], [128 * 110, 'off', 60]];
 kit('shift', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const osc = add('osc', 0, 0, { wave: 2, level: 0.6 });
@@ -759,6 +1094,18 @@ kit('ladder', (add, wire) => {
   wire(lad, 'lp24', mix, 'in1');
   wire(lad, 'lp12', mix, 'in2');
   wire(mix, 'out', out, 'l');
+});
+kit('ladder-audio-fm', (add, wire) => {
+  const input = add('osc', 0, 0, { wave: 2, level: .4 });
+  const fm = add('osc', 0, 0, { wave: 0, coarse: 17, level: .6 });
+  const cv = add('const', 0, 0, { value: .15 });
+  const filter = add('ladder', 0, 0, { cutoff: 800, cvamt: 3, res: .3 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(input, 'out', filter, 'in');
+  wire(fm, 'out', filter, 'fm');
+  wire(cv, 'out', filter, 'cv');
+  wire(filter, 'lp24', out, 'l');
+  wire(filter, 'lp12', out, 'r');
 });
 kit('fm1-panel', (add, wire) => {
   const pn = add('fm1', 0, 0);
@@ -841,6 +1188,18 @@ kit('osc-feedback', (add, wire) => {
   wire(env, 'env', vca, 'cv');
   wire(vca, 'out', out, 'l');
 });
+for (const wave of [4, 5]) for (const mode of ['plain', 'unison', 'sync', 'fm', 'feedback']) {
+  kit(`osc-wave-${wave}-${mode}`, (add, wire) => {
+    const carrier = add('osc', 0, 0, { wave, level: .3, coarse: -12, unison: mode === 'unison' ? 3 : 1,
+      detune: 8, pm: mode === 'fm' ? .5 : 0, fb: mode === 'feedback' ? .1 : 0 });
+    if (mode === 'sync' || mode === 'fm') {
+      const mod = add('osc', 0, 0, { wave: mode === 'sync' ? 3 : 0, coarse: -19, level: .8 });
+      wire(mod, 'out', carrier, mode === 'sync' ? 'sync' : 'pm');
+    }
+    const out = add('output', 0, 0, { level: 1 });
+    wire(carrier, 'out', out, 'l');
+  });
+}
 kit('fm-2op', (add, wire) => {
   // two operators: modulator (ratio 2, its own envelope, velocity on the index) into the carrier's pm, carrier feedback 0.2
   const kb = add('fm1', 0, 0);
@@ -1139,7 +1498,7 @@ kit(
   },
   2,
 );
-// every bank of the wavetable, the position swept by an LFO through p1, one of them phase modulated and synced
+// the original four banks, the position swept by an LFO through p1, one of them phase modulated and synced
 kit('wavetable', (add, wire) => {
   const kb = add('fm1', 0, 0);
   const lfo = add('lfo', 0, 0, { wave: 1, rate: 0.7, depth: 1 });
@@ -1157,6 +1516,20 @@ kit('wavetable', (add, wire) => {
   });
   wire(mix, 'out', out, 'l');
 });
+// EML COLOR in the base and upper mip ranges, plus the octave-up double-saw endpoint.
+for (const mode of ['sweep', 'high', 'double-saw'] as const) {
+  kit(`wavetable-eml-${mode}`, (add, wire) => {
+    const kb = add('fm1', 0, 0);
+    const w = add('wavetable', 0, 0, { bank: 4, pos: mode === 'double-saw' ? 1 : 0.5, coarse: mode === 'high' ? 24 : -12, level: 0.7 }, { map: { p1: ['pos'] }, att: [0.5, 1] });
+    const out = add('output', 0, 0);
+    wire(kb, 'pitch', w, 'pitch');
+    if (mode !== 'double-saw') {
+      const sweep = add('lfo', 0, 0, { wave: 1, rate: 0.7, depth: 1 });
+      wire(sweep, 'out', w, 'p1');
+    }
+    wire(w, 'out', out, 'l');
+  });
+}
 // a shared chorus on a two-voice saw pad, l and r to the output
 kit(
   'chorus',
@@ -1420,6 +1793,23 @@ kit('macro', (add, wire) => {
   m[3].range = { p2: { pw: [unit('osc', 'pw', 0.2), unit('osc', 'pw', 0.5)] } };
 }
 setMorphTarget(tests.morph, make('morph-b', morphVoice(true)), DEFS);
+// #355: only the VCA has a B side. The other modules must not take a trip through morph's unit conversion.
+kit('morph-unassigned', (add, wire) => {
+  const main = add('fm1', 0, 0, { morph: 0.6 });
+  const offset = add('const', 0, 0, { value: -0.05 });
+  const osc = add('osc', 0, 0, { coarse: 7, wave: 0 });
+  const vca = add('vca', 0, 0, { gain: 0.2 });
+  const out = add('output', 0, 0);
+  wire(main, 'pitch', osc, 'pitch');
+  wire(offset, 'out', osc, 'pitch');
+  wire(osc, 'out', vca, 'in');
+  wire(main, 'gate', vca, 'cv');
+  wire(vca, 'out', out, 'l');
+});
+{
+  const vca = tests['morph-unassigned'].modules.find((m) => m.type === 'vca')!;
+  vca.paramsB = { ...vca.params, gain: 0.8 };
+}
 kit('crush-color', (add, wire) => {
   const nz = add('noise', 0, 0, { level: 0.6, color: 0.6 });
   const cr = add('crush', 0, 0, { bits: 6, rate: 5 });
@@ -1512,6 +1902,38 @@ ends['arp-random-latch'] = 128 * 300;
 arpVoice('arp-clk-played', { mode: 4, rate: 0, octaves: 1, gate: 0.3 }, 2, 120, true);
 events['arp-clk-played'] = [[0, 'on', 67], [128 * 5, 'on', 60], [128 * 9, 'on', 63], [128 * 180, 'off', 67], [128 * 180, 'off', 60], [128 * 180, 'off', 63]];
 ends['arp-clk-played'] = 128 * 240;
+for (const mode of ['fixed', 'moving', 'paused', 'clock'] as const) {
+  const name = `arp-rate-${mode}`;
+  arpVoice(name, { gate: .5 }, 2, 103, mode === 'clock');
+  const p = tests[name], arp = p.modules.find((m) => m.type === 'arp')!;
+  const cv = addModule(p, DEFS[mode === 'moving' ? 'lfo' : 'const'], 0, 0);
+  if (mode === 'moving') Object.assign(cv.params, { wave: 1, rate: 1.5, depth: 4 });
+  else cv.params.value = mode === 'fixed' ? 3.25 : 0;
+  p.cables.push({ from: { module: cv.id, port: 'out' }, to: { module: arp.id, port: 'rate' } });
+  events[name] = [[0, 'on', 60], [0, 'on', 64], [0, 'on', 67]];
+  ends[name] = 128 * 600;
+  if (mode === 'clock') {
+    // Exact clock edges and gate/trigger outputs isolate scheduling from oscillator pitch-grid drift.
+    const main = p.modules.find((m) => m.type === 'fm1')!;
+    const alloc = p.modules.find((m) => m.type === 'alloc')!;
+    const out = p.modules.find((m) => m.type === 'output')!;
+    alloc.params.voices = 1;
+    out.params.level = 1;
+    p.cables = p.cables.filter((c) => c.to.module !== out.id && !(c.to.module === arp.id && c.to.port === 'clk'));
+    p.cables.push(
+      { from: { module: main.id, port: 'fx' }, to: { module: arp.id, port: 'clk' } },
+      { from: { module: alloc.id, port: 'trig' }, to: { module: out.id, port: 'l' } },
+      { from: { module: alloc.id, port: 'gate' }, to: { module: out.id, port: 'r' } },
+    );
+    for (let block = 30; block < 600; block += 30)
+      events[name].push([128 * block, 'bon', 0], [128 * (block + 2), 'boff', 0]);
+    const control = structuredClone(p);
+    control.cables = control.cables.filter((c) => !(c.to.module === arp.id && c.to.port === 'rate'));
+    tests['arp-rate-clock-control'] = control;
+    events['arp-rate-clock-control'] = events[name];
+    ends['arp-rate-clock-control'] = ends[name];
+  }
+}
 // the Main module's clock (24 ppqn while the transport runs) through a divider into an envelope; run opens a second VCA
 tests['main-clock-run'] = make('main-clock-run', (add, wire) => {
   const kb = add('fm1', 0, 0, { tempo: 150 });
@@ -1707,8 +2129,7 @@ tests['steps-clk'] = make('steps-clk', (add, wire) => {
 // half a tick after a tick) at 80 % swing, a 1/2 track, a track morphed past max (rate 1/16 -> 1/64, a choice: B; swing
 // 60 -> 80, linearly), and a track whose base is past max under its pins (rate 1/64 + p2, swing 78 - p1: clamped to the
 // stretch, not pulled back to max); stop and run; then MIDI clock with every seventh tick early (the half tick's step
-// comes with it). (The C engine morphs every module, the TS one only those with a B side: values here survive C's
-// round trip through morph_unit, so the morph adds no difference of its own.)
+// comes with it). Modules without a B side stay untouched by the morph (format 36, #355).
 tests['steps-rates'] = make('steps-rates', (add, wire) => {
   const kb = add('fm1', 0, 0, { tempo: 133, morph: 0.6 });
   const out = add('output', 2000, 0, { level: 0.6 });
@@ -1996,6 +2417,128 @@ tests['steps-arm'] = make('steps-arm', (add, wire) => {
   ends['steps-arm'] = 128 * 560;
 }
 
+tests['steps-direction-live'] = make('steps-direction-live', (add, wire) => {
+  const main = add('fm1', 0, 0, { tempo: 240 });
+  const st = add('steps', 0, 0, { len: 4, rate: 6, swing: 75 }, { map: { p1: ['dir'], p2: ['len'] } });
+  const scale = add('scale', 0, 0, { gain: 0.05 });
+  const out = add('output', 0, 0, { level: 1 });
+  wire(main, 'mod', st, 'p1'); wire(main, 'breath', scale, 'in'); wire(scale, 'out', st, 'p2');
+  wire(main, 'gate', st, 'reset'); wire(st, 'trig', out, 'l'); wire(st, 'vel', out, 'r');
+});
+tests['steps-direction-live'].modules.find(m => m.type === 'steps')!.notes = Array.from({ length: 7 }, (_, at) =>
+  ({ at, len: at % 3 + 1, note: 60 + at, vel: 30 + at * 10 }));
+events['steps-direction-live'] = [[0, 'run', 0], [128 * 40, 'cc', 1, 42], [128 * 80, 'cc', 1, 85],
+  [128 * 120, 'cc', 1, 127], [128 * 150, 'cc', 2, 127], [128 * 180, 'on', 60], [128 * 181, 'off', 60],
+  [128 * 220, 'cc', 2, 0], [128 * 260, 'cc', 1, 0]];
+ends['steps-direction-live'] = 128 * 300;
+
+// A shortened reverse pass cancels an out-of-range swung visit and releases old long notes.
+for (const long of [false, true]) {
+  const name = `steps-shorten-${long ? 'held' : 'swing'}`;
+  tests[name] = make(name, (add, wire) => {
+    const main = add('fm1', 0, 0, { tempo: 120 });
+    const st = add('steps', 0, 0, { len: 2, dir: 1, swing: long ? 50 : 75 }, { map: { p1: ['len'] } });
+    const scale = add('scale', 0, 0, { gain: (long ? 62 : 2) / 63 });
+    const out = add('output', 0, 0, { level: 1 });
+    wire(main, 'mod', scale, 'in'); wire(scale, 'out', st, 'p1');
+    wire(st, 'trig', out, 'l'); wire(st, 'vel', out, 'r');
+  });
+  tests[name].modules.find(m => m.type === 'steps')!.notes = long
+    ? [{ at: 63, len: 64, note: 63, vel: 100 }]
+    : Array.from({ length: 4 }, (_, at) => ({ at, len: 1, note: 60 + at, vel: 30 + at * 20 }));
+  events[name] = [[0, 'cc', 1, 127], [128, 'run', 0], [128 * (long ? 9 : 52), 'cc', 1, 0]];
+  ends[name] = 128 * 220;
+}
+
+// Direction changes affect traversal, swing, note duration and live recording in both engines.
+for (const dir of [1, 2, 3]) {
+  for (const base of ['steps-notes', 'steps-clk', 'steps-arm']) {
+    const name = `${base}-dir-${dir}`;
+    tests[name] = structuredClone(tests[base]); tests[name].name = name;
+    for (const m of tests[name].modules) if (m.type === 'steps') m.params.dir = dir;
+    events[name] = structuredClone(events[base]); ends[name] = ends[base];
+  }
+}
+for (const dir of [0, 1, 2, 3]) for (const len of [1, 2, 5, 64]) {
+  const name = `steps-direction-${dir}-${len}`;
+  tests[name] = make(name, (add, wire) => {
+    add('fm1', 0, 0, { tempo: 240 });
+    const st = add('steps', 0, 0, { dir, len, swing: 75, rate: 8, gate: 0.5 });
+    const out = add('output', 0, 0, { level: 1 });
+    wire(st, 'trig', out, 'l'); wire(st, 'vel', out, 'r');
+  });
+  tests[name].modules.find(m => m.type === 'steps')!.notes = Array.from({ length: len }, (_, at) =>
+    ({ at, len: at === len - 1 ? 4 : 1, note: 48 + at, vel: 20 + at, chance: at % 2 ? 50 : 100 }));
+  events[name] = [[0, 'run', 0], [128 * 300, 'stop', 0], [128 * 320, 'run', 0]];
+  ends[name] = 128 * 600;
+}
+
+// patterns (format 48): two tracks of different lengths, each switching at the end of its own pass (a pattern chosen while
+// running waits; stopped, it plays at once); a pattern with its own length, one with its own length and rate, long words
+// (a chance, an odd velocity) and short ones; a pattern a track has not got plays its first, an empty one is silent; the
+// same with the first track backwards and the second at random
+for (const dirs of [[0, 0], [1, 3]]) {
+  const name = dirs[0] ? 'steps-patterns-dir' : 'steps-patterns';
+  tests[name] = make(name, (add, wire) => {
+    add('fm1', 0, 0, { tempo: 240 });
+    const out = add('output', 2000, 0, { level: 0.6 });
+    const voice = (x: number, wave: number, p: Record<string, number>, port: string): void => {
+      const st = add('steps', x, 0, p);
+      const o = add('osc', x + 100, 0, { wave });
+      const env = add('adsr', x + 100, 200, { a: 0.002, d: 0.05, s: 0.5, r: 0.03 });
+      const v1 = add('vca', x + 200, 0);
+      const v2 = add('vca', x + 300, 0);
+      wire(st, 'pitch', o, 'pitch'); wire(st, 'trig', env, 'gate');
+      wire(o, 'out', v1, 'in'); wire(env, 'env', v1, 'cv'); wire(v1, 'out', v2, 'in'); wire(st, 'vel', v2, 'cv');
+      wire(v2, 'out', out, port);
+    };
+    voice(200, 1, { len: 8, rate: 6, gate: 0.5, dir: dirs[0] }, 'l');
+    voice(700, 2, { len: 6, rate: 6, gate: 0.7, swing: 60, dir: dirs[1] }, 'r');
+  });
+  const [a, b] = tests[name].modules.filter((m) => m.type === 'steps');
+  a.notes = [n(0, 1, 48), n(1, 1, 55, 127), n(2, 2, 60), n(4, 1, 63, 90), n(5, 1, 67), n(6, 2, 70, 40), n(7, 1, 72)];
+  a.patterns = [
+    { notes: [n(0, 2, 62, 127), n(2, 1, 65), n(3, 1, 67, 100, 50), n(4, 3, 70, 77)], len: 5 },
+    { notes: [n(0, 1, 48, 127), n(1, 1, 50), n(3, 2, 53), n(5, 1, 55, 127), n(9, 1, 57), n(11, 4, 60)], len: 12, rate: 5 },
+  ];
+  b.notes = [n(0, 1, 36), n(2, 1, 43, 70), n(3, 1, 39), n(5, 1, 36, 127)];
+  b.patterns = [{ notes: [n(0, 2, 41), n(2, 1, 41, 127), n(4, 1, 44)] }, null, {}];
+  events[name] = [[128 * 5, 'run', 0], [128 * 40, 'pat', 1], [128 * 200, 'pat', 2], [128 * 420, 'pat', 3], [128 * 600, 'stop', 0],
+    [128 * 620, 'pat', 1], [128 * 640, 'run', 0], [128 * 800, 'pat', 0]];
+  ends[name] = 128 * 1000;
+}
+
+// songs (format 48): a song's entries, a pass each (patterns with their shift, back to the first after the last), stop and
+// PLAY start it again; another song chosen while running, then none (the selected pattern again, unshifted); a track that
+// plays a Drum map is never shifted (its notes stay on their rows) and a pattern it has not got plays its first
+tests['steps-song'] = make('steps-song', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 240 });
+  const out = add('output', 2000, 0, { level: 0.6 });
+  const st = add('steps', 200, 0, { len: 4, rate: 6, gate: 0.5 });
+  const o = add('osc', 300, 0, { wave: 1 });
+  const env = add('adsr', 300, 200, { a: 0.002, d: 0.05, s: 0.5, r: 0.03 });
+  const v = add('vca', 400, 0);
+  wire(st, 'pitch', o, 'pitch'); wire(st, 'trig', env, 'gate'); wire(o, 'out', v, 'in'); wire(env, 'env', v, 'cv');
+  wire(v, 'out', out, 'l');
+  const dt = add('steps', 200, 600, { len: 4, rate: 6, gate: 0.5 });
+  const dm = add('drummap', 400, 600);
+  const mx = add('mixer', 600, 600, { l1: 0.4, l2: 0.3, l3: 0.3 });
+  wire(dt, 'keys', dm, 'keys'); wire(dm, 'g1', mx, 'in1'); wire(dm, 'g2', mx, 'in2'); wire(dm, 'v2', mx, 'in3');
+  wire(mx, 'out', out, 'r');
+});
+{
+  const p = tests['steps-song'];
+  const [a, d] = p.modules.filter((m) => m.type === 'steps');
+  a.notes = [n(0, 1, 60), n(1, 1, 64), n(2, 1, 67, 127), n(3, 1, 72)];
+  a.patterns = [{ notes: [n(0, 2, 48, 127), n(2, 2, 55)] }, { notes: [n(0, 1, 72), n(1, 1, 71), n(2, 1, 69, 127)], len: 3 }];
+  d.notes = [n(0, 1, 36), n(2, 1, 38)];
+  d.patterns = [{ notes: [n(0, 1, 36), n(1, 1, 36), n(3, 1, 38, 127)] }];
+  p.modules.find((m) => m.type === 'fm1')!.seq = { song: 1, songs: [[{ pat: 0, shift: 0 }, { pat: 1, shift: 5 }, { pat: 2, shift: -7 }, { pat: 1, shift: 12 }], [{ pat: 2, shift: 3 }, { pat: 0, shift: -12 }]] };
+  events['steps-song'] = [[128 * 5, 'run', 0], [128 * 300, 'stop', 0], [128 * 330, 'run', 0], [128 * 500, 'song', 2], [128 * 700, 'song', 0],
+    [128 * 760, 'pat', 1], [128 * 900, 'stop', 0]];
+  ends['steps-song'] = 128 * 960;
+}
+
 // arming as a set (#191): two Voicing modules on Main's keys (A's gate left, B's right) and a Drum map on them (its first
 // row's gate added right); armed: only the armed ones hear Main, several at once; none: the cables again
 tests['arm-set'] = make('arm-set', (add, wire) => {
@@ -2047,7 +2590,7 @@ tests['arm-set'] = make('arm-set', (add, wire) => {
   const enc = encodePatch(p, true);
   if (enc[3] !== 0 || enc[6] & 1) throw new Error('disabled-inputs: the mask section goes after the cables (no groups, no morph)');
   let at = 8 + PANEL_BYTES;
-  for (const m of p.modules) at += recordSize(m.type);
+  for (const m of p.modules) at += recordSize(m.type, enc[1]);
   at += 4 * p.cables.length;
   const last = p.cables[p.cables.length - 1];
   const idx = (id: number): number => p.modules.findIndex((m) => m.id === id);
@@ -2064,6 +2607,19 @@ tests['arm-set'] = make('arm-set', (add, wire) => {
 // the 909 Kit: every Drum map row by its key on the running pattern (rows 3 and 5..8 are lean voices whose VCA gain the
 // row's velocity sets through a macro range)
 events['909 Kit'] = [[0, 'run', 0], ...[53, 55, 57, 59, 60, 62, 64, 65].flatMap((n, i): Ev[] => [[128 * (10 + 20 * i), 'on', n], [128 * (20 + 20 * i), 'off', n]])];
+// the 808 Kit: the same (each drum's velocity sets a VCA's gain through a macro range; the tom and rim strike through a
+// VCA on it; the closed hihat cuts the open one through a sample and hold)
+events['808 Kit'] = events['909 Kit'];
+
+// The standalone panel runner needs only these encoded patches, not an audio-golden run.
+if (process.argv.includes('--panel-fixtures')) {
+  const out = new URL('../../build/panel-fixtures/', import.meta.url);
+  mkdirSync(out, { recursive: true });
+  for (const name of ['unison-count-0-0', 'steps-direction-1-64', 'steps-patterns'])
+    writeFileSync(new URL(`${name}.m1p`, out), encodePatch(tests[name], true));
+  console.log('panel fixtures generated');
+  process.exit(0);
+}
 
 // the factory drum kits play on the transport: their kits start it with the notes
 for (const [name, patch] of Object.entries(tests))
@@ -2098,6 +2654,9 @@ for (const [name, patch] of Object.entries(tests)) {
         notes.set(r.id, overdub(notes.get(r.id), [r.note]));
         e.setTrack(r.id, notes.get(r.id));
       }
+    else if (kind === 'cc') e.cc(note, ch ?? 0);
+    else if (kind === 'pat') e.setPattern(note);
+    else if (kind === 'song') e.setSong(note);
     else if (kind === 'on') e.noteOn(note, 1, ch ?? 1);
     else if (kind === 'off') e.noteOff(note, ch ?? 1);
     else if (kind === 'bon' || kind === 'boff') e.setButton(note, kind === 'bon');
@@ -2118,7 +2677,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // the parameter values the editor's budget counts (DEVICE.params), which eng_load must take exactly (host_test checks)
   if (!bins[name]) writeFileSync(new URL(`${f}.par`, OUT), `${deviceBudget(patch).items.find((i) => i.key === 'params')!.used}\n`);
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' ? `${fr} ${k} ${n}` : k === 'rec' ? `${fr} rec ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

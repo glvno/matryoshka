@@ -2,14 +2,14 @@
 // The FM-1 as a Web MIDI SysEx peer: patch upload, store, live parameters (wire format: protocol.ts).
 import { DEFS } from './modules';
 import type { Patch } from './patch';
-import type { StepNote } from './track';
-import { encodePatch, toQ16 } from './patchbin';
+import type { SongEntry, StepNote } from './track';
+import { encodePatch, toQ16, VERSION } from './patchbin';
 import { deviceView } from './poly';
 
 /** a module's index on the FM-1: its place in the patch's device form (poly.ts deviceView: editor-only modules such as
  * the Scope are not there, so the editor's order is not the device's); -1 when the device does not have it */
 export const deviceIndex = (patch: Patch, moduleId: number): number => deviceView(patch, true).patch.modules.findIndex((m) => m.id === moduleId);
-import { RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
+import { RIG_STRUCTURE, sandboxFrame, FEATURE_SANDBOX, type SandboxPage, devicePresetName, parsePresetData, parsePresetEntry, parsePresetStored, presetDelFrame, presetGetFrame, presetPutFrame, presetsFrame, type DevicePresetEntry, muteFrame, trackFrame, parseTrack, patternFrame, songFrame, parsePatternNow, parseSongNow, focusFrame, liveFrame, transportFrame, attFrame, bypassFrame, chunkFrames, CMD, parseSlot, rangeFrame, slotEraseFrame, slotFrame, slotInfoFrame, SLOTS, type SlotInfo, commitFrame, helloFrame, paramFrame, parse, parseAck, parseInfo, STATUS_TEXT, storeFrame, type Ack, type Info } from './protocol';
 
 /** what connecting the FM-1 does with Live sync (#171): `sync` turns it on without asking, `ask` offers Sync / Not now,
  *  `off` leaves it off (Not now was chosen in this visit) */
@@ -56,13 +56,21 @@ export const liveSync = {
 /** a MIDI Start or Continue (true), Stop (false), or neither (null): the FM-1's PLAY as it goes out (panel.c play_toggle) */
 export const transportOf = (data: ArrayLike<number> | null | undefined): boolean | null =>
   !data || data.length !== 1 ? null : data[0] === 0xfa || data[0] === 0xfb ? true : data[0] === 0xfc ? false : null;
-/** INFO feature bit 11 came with the firmware that reads patch format 35 (#351 Tier 1), the format the editor writes:
- *  older firmware refuses every patch the editor sends, so it cannot sync. (Bit 7, the presets, marked format 34 from 1.2.0
- *  to 1.4.) A format bump raises it to a bit the new firmware brings. */
-export const FEATURE_SYNC = 2048;
+/** Last legacy format capability bit: firmware with bit 15 reads formats 31..39. New firmware reports the range
+ *  directly in INFO, so later format changes need no additional feature bits. Keep this bit for older editors. */
+export const FEATURE_SYNC = 32768;
 /** the FM-1 can play the editor's patches (an FM-1 not heard from yet is not held back) */
-export const syncsWith = (info: Info | null): boolean => !info || !!(info.features & FEATURE_SYNC);
+export const syncsWith = (info: Info | null): boolean => {
+  if (!info) return true;
+  const range = info.patchFormats ?? { min: 31, max: info.features & FEATURE_SYNC ? 39 : 0 };
+  return range.min <= VERSION && VERSION <= range.max;
+};
 export const UPDATE_TO_SYNC = 'This FM-1 runs older Matryoshka firmware that cannot play the editor\'s patches: update it to sync.';
+/** The remedy for an incompatible peer: a writer below the readable range needs a newer editor. */
+export const syncUpdateNotice = (info: Info | null): { message: string; label: string; target: 'editor' | 'firmware' } =>
+  info?.patchFormats && VERSION < info.patchFormats.min
+    ? { message: 'This editor is older than the firmware on your FM-1. Open the current editor to sync.', label: 'Open current editor', target: 'editor' }
+    : { message: UPDATE_TO_SYNC, label: 'Update the FM-1', target: 'firmware' };
 /** the hover of the chip in sandbox mode */
 export const SANDBOX_HOVER = 'Your patch is a sandbox patch, so the FM-1 plays it as a controller: the browser makes the sound. It syncs normally again once the patch fits.';
 /**
@@ -96,7 +104,10 @@ const TRIES = 3;
 export type DeviceEvent =
   | { kind: 'cc'; n: number; v: number }
   | { kind: 'slot'; slot: number; name: string }
-  | { kind: 'track'; module: number; notes: StepNote[] }
+  | { kind: 'track'; module: number; notes: StepNote[]; pat: number }
+  /** the patch's pattern / song chosen on the FM-1 (PATTERN_NOW, format 48), a song edited there (SONG_NOW) */
+  | { kind: 'pattern'; pattern: number; song: number }
+  | { kind: 'song'; song: number; entries: SongEntry[] }
   | { kind: 'mute'; module: number; on: boolean }
   | { kind: 'param'; module: number; param: number; value: number }
   | { kind: 'focus'; device: number; page: number }
@@ -148,6 +159,10 @@ export class DeviceLink {
       }
       const t = p?.cmd === CMD.trackNow ? parseTrack(p.payload) : null;
       if (t) return this.onEvent({ kind: 'track', ...t });
+      const pn = p?.cmd === CMD.patternNow ? parsePatternNow(p.payload) : null;
+      if (pn) return this.onEvent({ kind: 'pattern', ...pn });
+      const sn = p?.cmd === CMD.songNow ? parseSongNow(p.payload) : null;
+      if (sn) return this.onEvent({ kind: 'song', ...sn });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
       if (p?.cmd === CMD.paramNow && p.payload.length >= 6) {
         const v = new DataView(Uint8Array.from(p.payload.slice(2, 6)).buffer).getInt32(0, true) / 65536;
@@ -369,11 +384,27 @@ export class DeviceLink {
     return !!(this.info && this.info.features & 32);
   }
 
-  /** a Steps module's notes, all of them (#133) */
-  track(patch: Patch, moduleId: number, notes: readonly StepNote[] | undefined): void {
+  /** the firmware reads format 48: patterns and songs (TRACK with a pattern, PATTERN, SONG) */
+  get hasPatterns(): boolean {
+    return (this.info?.patchFormats?.max ?? 0) >= 48;
+  }
+
+  /** a Steps module's notes, all of them (#133), of pattern `pat` (0-based; format 48) */
+  track(patch: Patch, moduleId: number, notes: readonly StepNote[] | undefined, pat = 0): void {
     if (!this.connected || !this.hasTracks) return;
     const mi = deviceIndex(patch, moduleId);
-    if (mi >= 0) this.out!.send(trackFrame(mi, notes));
+    if (mi >= 0 && this.hasPatterns) this.out!.send(trackFrame(mi, notes, pat));
+    else if (mi >= 0 && !pat) this.out!.send(trackFrame(mi, notes));
+  }
+
+  /** the patch's pattern and the song playing (format 48) */
+  pattern(pattern: number, song: number): void {
+    if (this.connected && this.hasPatterns) this.out!.send(patternFrame(pattern, song));
+  }
+
+  /** a song's entries (format 48) */
+  song(s: number, entries: readonly SongEntry[]): void {
+    if (this.connected && this.hasPatterns) this.out!.send(songFrame(s, entries));
   }
 
   /** a Steps module muted / unmuted (not part of the patch) */

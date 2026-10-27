@@ -65,7 +65,11 @@ static void preset_step(int32_t d)
     }
 }
 static void save_state(void) { saved++; }
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v) { (void)mod; (void)field; (void)v; }
+#include "../src/poly_edit.h"
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+{
+    return poly_patch_set(pv_bin, pv_len, mod, field, v, eng_load);
+}
 
 #define ROWS_Y (LK_HH + 4u)                            /* the device page's first bar */
 #define K1_TAB px(BAR_X + LK_VP + 1u, row_y(0) + row_h() / 2u)   /* K1's accent tab (the page drawn last: its bars) */
@@ -255,6 +259,16 @@ static int load(const char *name)
 {
     return load_at(preset_at(name));
 }
+/* An encoded test patch in the same buffer used by the panel reload path. */
+static int load_fixture(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+    fclose(f);
+    return eng_load(pv_bin, pv_len);
+}
+
 /* the factory patch p (0..N_PRESETS-1) running */
 static int load_at(uint32_t p)
 {
@@ -331,6 +345,75 @@ int main(void)
     static uint16_t before[240 * 240];
     uint32_t mod, par;
     int32_t v0;
+    {
+        char num[24], unit[8];
+        value_parts(&DEFS[T_LFO], LFO_P_WIDE, DEFS[T_LFO].pmin[LFO_P_WIDE], num, unit);
+        check("slow LFO endpoint displays millihertz instead of zero", !strcmp(num, "0.79") && !strcmp(unit, "mHz"));
+        value_parts(&DEFS[T_LFO], LFO_P_WIDE, 55 << 16, num, unit);
+        check("fast LFO endpoint displays hertz", !strcmp(num, "55.0") && !strcmp(unit, "Hz"));
+    }
+    /* The real reload path: adding voices past the pools must leave a playable patch. */
+    check("Cassia loads for voice edit", load("CASSIA 1") == 0);
+    for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
+        ;
+    poly_row_set(mod, 0, 4);
+    check("Cassia accepts four voices in memory", eng_poly_get(0, 0) == 4);
+    poly_row_set(mod, 0, 5);
+    check("a rejected fifth voice restores the engine and patch", eng_poly_get(0, 0) == 4 && pv_bin[8] == 4);
+    poly_row_set(mod, 0, 2);
+    check("voices can be reduced after a rejected edit", eng_poly_get(0, 0) == 2 && pv_bin[8] == 2);
+    check("no-steal row changes the engine and saved flag", poly_row_set(mod, ENG_POLY_STEAL, 0) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 0 && (pv_bin[11] & 0x80u));
+    check("priority row preserves no-steal", poly_row_set(mod, ENG_POLY_PRIORITY, 2) == 0 && pv_bin[11] == 0x82u && eng_poly_get(0, ENG_POLY_PRIORITY) == 2);
+    check("reset assignment reaches the engine and saved patch", poly_row_set(mod, ENG_POLY_ASSIGN, 3) == 0 && eng_poly_get(0, ENG_POLY_ASSIGN) == 3 && pv_bin[9] == 3);
+    check("assignment row spans all four choices", poly_max(ENG_POLY_ASSIGN) == 3);
+    check("steal row is boolean", poly_max(ENG_POLY_STEAL) == 1);
+    check("reload retains no-steal and reset assignment", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 0 && eng_poly_get(0, ENG_POLY_ASSIGN) == 3);
+    check("turning stealing back on preserves priority", poly_row_set(mod, ENG_POLY_STEAL, 1) == 0 && pv_bin[11] == 2 && eng_poly_get(0, ENG_POLY_STEAL) == 1);
+    check("unison count edits preserve poly voices", poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 2 && pv_bin[8] == 0x12u);
+    check("unison count row spans all hardware voices", poly_max(ENG_POLY_STACK) == ENG_MAX_PARTS);
+    check("poly count edits preserve the unison count", poly_row_set(mod, ENG_POLY_PARTS, 4) == 0 && pv_bin[8] == 0x14u);
+    check("rejected poly edit restores both counts", poly_row_set(mod, ENG_POLY_PARTS, 5) != 0 && pv_bin[8] == 0x14u && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 4);
+    check("unison count survives reloading", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 1);
+    check("unison can use one of four voices", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 1);
+    group_on(&E.grp[1], 60, ENG_ONE); /* Cassia receives keys through its Arpeggiator. */
+    check("one unison voice sounds", E.pv[E.grp[1].pv0].on && !E.pv[E.grp[1].pv0 + 1].on);
+    check("increasing unison count wakes held voices", poly_row_set(mod, ENG_POLY_STACK, 3) == 0 && E.pv[E.grp[1].pv0 + 2].on && !E.pv[E.grp[1].pv0 + 3].on);
+    check("zero unison count means all", poly_row_set(mod, ENG_POLY_STACK, 0) == 0 && E.pv[E.grp[1].pv0 + 3].on);
+    check("reducing unison count releases excess voices", poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && !E.pv[E.grp[1].pv0 + 1].on);
+    check("shared unison mode saves both flags", poly_row_set(mod, ENG_POLY_UNISON, 2) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 2 && (pv_bin[10] & 0xC0u) == 0xC0u);
+    check("legato edit preserves shared unison", poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && pv_bin[10] == 0xC2u);
+    check("unison mode row has three choices", poly_max(ENG_POLY_UNISON) == 2);
+    check("normal unison keeps legato and clears share", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && pv_bin[10] == 0x82u);
+    /* Group-format guards use only stable Main/Part/VCA/Output records, independent of factory players.
+     * Real older records and upgrades are checked by tools/old_format.sh. */
+    check("group compatibility fixture loads", load_fixture("build/panel-fixtures/unison-count-0-0.m1p") == 0);
+    for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
+        ;
+    check("group compatibility fixture keeps the edited settings",
+          poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == 0
+          && poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && poly_row_set(mod, ENG_POLY_UNISON, 1) == 0);
+    pv_bin[1] = 38;
+    check("format 38 cannot add shared unison", poly_row_set(mod, ENG_POLY_UNISON, 2) == -1 && pv_bin[10] == 0x82u);
+    pv_bin[10] |= 0x40u;
+    check("format 38 rejects shared unison flag", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[1] = ENG_PATCH_VERSION; pv_bin[10] = 0x42u;
+    check("share flag without unison is invalid", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[10] = 0x82u;
+    pv_bin[1] = 37;
+    check("format 37 rejects the new count flag", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[8] &= 15u;
+    check("format 37 still loads ordinary unison", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 0);
+    check("old-format edit cannot add unison count", poly_row_set(mod, ENG_POLY_STACK, 2) == -1 && pv_bin[8] == 4u);
+    pv_bin[1] = ENG_PATCH_VERSION; pv_bin[8] = 0x94u;
+    check("invalid unison count is rejected", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[8] = 2; pv_bin[10] = 0;
+    pv_bin[1] = 36;
+    check("old formats reject reset assignment", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[9] = 0; pv_bin[11] = 0x80u;
+    check("old formats reject no-steal", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[11] = 0;
+    check("format 36 keeps ordinary allocation", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 1);
+    check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     fm1_ms = 10000;
     host_ps_init();
     if (load("808 KIT")) {
@@ -340,7 +423,7 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (3 pages: its rows, then REPEAT, #184), boom kick, snare ... Output */
+    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (3 pages: its rows, then REPEAT, #184), the 808 kit card, Output */
     check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
     {                                                       /* the header (the owner's design, 2026-10-24) */
         uint32_t x, gold = 0;
@@ -420,9 +503,9 @@ int main(void)
         check("700 ms later: nothing redrawn (no toast)", lcd_px == 0u);
         lcd_px = 0;
         stop_n = 0;
-        enc(0, 1);                                          /* SELECT: the boom kick, and back */
+        enc(0, 1);                                          /* SELECT: the 808 kit card, and back */
         check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 3 && focus_dev == 3
-              && on_screen("BOOM KICK") && !on_screen("DRUM MAP"));
+              && on_screen("808 KIT") && !on_screen("DRUM MAP"));
         printf("      LCD pixels for one SELECT click: the header %u, the page %u\n", stop_px[0], lcd_px);
         enc(0, -1);
         check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2 && pg_cur_page == 0);
@@ -663,16 +746,20 @@ int main(void)
         }
     }
 
-    if (pv_bin[6] & 2u) {                                   /* Page buttons (#117), spliced into the 808 Kit's binary */
-        check("(the 808 Kit has no macro ranges: the button kinds section goes last)", 0);
-    } else {
+    {                                                       /* Page buttons (#117), spliced into the 808 Kit's binary */
         /* LFO (button 3) a Page button: device 2 (the Drum map) page 0, then its page 1 (SEL is fixed since #197) */
         static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
-        uint32_t at = pv_len, n;
-        if (pv_bin[6] & 128u)                               /* before the Drum maps' row names, last here (format 33): */
+        uint32_t at = pv_len, n, end = pv_len;
+        if (pv_bin[6] & 2u)                                 /* before the macro ranges, always last: u8 count, count x 5 bytes */
+            for (n = 1; n < 256u; n++)
+                if (pv_len >= 1u + n * 5u && pv_bin[pv_len - 1u - n * 5u] == n) {
+                    at = end = pv_len - 1u - n * 5u;
+                    break;
+                }
+        if (pv_bin[6] & 128u)                               /* and before the Drum maps' row names (format 33): */
             for (n = 1; n < 16u; n++)                       /* u8 count, count x (1 + 64) bytes */
-                if (pv_len >= 1u + n * 65u && pv_bin[pv_len - 1u - n * 65u] == n) {
-                    at = pv_len - 1u - n * 65u;
+                if (end >= 1u + n * 65u && pv_bin[end - 1u - n * 65u] == n) {
+                    at = end - 1u - n * 65u;
                     break;
                 }
         memmove(pv_bin + at + sizeof sec, pv_bin + at, pv_len - at);
@@ -683,7 +770,7 @@ int main(void)
         check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(3) == ENG_BTN_PAGE);
         page_show(0);
         trail_n = 0;
-        pages_focus(4, 0);                                  /* (the snare) */
+        pages_focus(4, 0);                                  /* (the Output) */
         loop();
         tap(5);
         check("LFO tapped: its list's first page, a step on the trail, lit", pg_list_btn == 3 && pg_cur_dev == 2 && pg_cur_page == 0
@@ -757,28 +844,6 @@ int main(void)
             check("  only the old and the new row redrawn (not the bar, not the other rows), no blink",
                   all > 0u && all == part && fb_blinked() == 0u && lcd_px <= 2u * 240u * ENV_ROW_H);
         }
-        if (pg_ndev > ENV_ROWS) {                           /* past the last row shown: the list scrolls, the bar stays */
-            uint32_t d1 = pg_cur_dev, all, list, i;
-            for (i = 0; pg_cur_dev < env_first + ENV_ROWS - 1u && i < 16u; i++)
-                enc(0, 1);
-            fb_watch_reset();
-            lcd_px = lcd_xfers = 0;
-            enc(0, 1);
-            all = fb_changed_in(0, 0, 240, 240);
-            list = fb_changed_in(0, ENV_Y0, 240, ENV_Y0 + ENV_ROWS * ENV_ROW_H);
-            printf("      (ENV, SELECT scrolls the list: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
-            check("  SELECT past the window: the list scrolls, only its area redrawn (the bar stays), no blink",
-                  env_first > 0u && all > 0u && all == list && fb_blinked() == 0u);
-            {
-                uint16_t keep[240 * 240];
-                memcpy(keep, fb, sizeof keep);
-                ui_dirty = 2;
-                loop();
-                check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
-            }
-            while (pg_cur_dev != d1)
-                enc(0, -1);
-        }
         {
             const ppage_t *pg = pages_now();
             int32_t v = eng_get_param(pg->mod[0], pg->par[0]);
@@ -821,6 +886,54 @@ int main(void)
         loop();
         check("ENV held + SAVE: the release opens nothing", page == 0);
         later(1500);
+        pages_focus(2, 0);
+        loop();
+    }
+
+    {                                                       /* ENV past the last row shown: the list scrolls, the bar stays.
+                                                             * On the 909 Kit: the 808 Kit has fewer devices than ENV shows */
+        if (load("909 KIT") == 0) {
+            pv_gen++;
+            page = 0;
+            trail_n = 0;
+            loop();
+            pages_focus(2, 0);
+            loop();
+            tap(4);
+            later(2000);
+            check("(the 909 Kit: ENV, more devices than it shows)", page == PAGE_ENV && pg_ndev > ENV_ROWS);
+            {
+                uint32_t d1 = pg_cur_dev, all, list, i;
+                for (i = 0; pg_cur_dev < env_first + ENV_ROWS - 1u && i < 16u; i++)
+                    enc(0, 1);
+                fb_watch_reset();
+                lcd_px = lcd_xfers = 0;
+                enc(0, 1);
+                all = fb_changed_in(0, 0, 240, 240);
+                list = fb_changed_in(0, ENV_Y0, 240, ENV_Y0 + ENV_ROWS * ENV_ROW_H);
+                printf("      (ENV, SELECT scrolls the list: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+                check("  SELECT past the window: the list scrolls, only its area redrawn (the bar stays), no blink",
+                      env_first > 0u && all > 0u && all == list && fb_blinked() == 0u);
+                {
+                    uint16_t keep[240 * 240];
+                    memcpy(keep, fb, sizeof keep);
+                    ui_dirty = 2;
+                    loop();
+                    check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
+                }
+                while (pg_cur_dev != d1)
+                    enc(0, -1);
+            }
+            tap(4);
+            later(1500);
+        } else {
+            check("(the 909 Kit loads)", 0);
+        }
+        load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        loop();
         pages_focus(2, 0);
         loop();
     }
@@ -1311,7 +1424,7 @@ int main(void)
         check("REC with a melodic track armed, stopped: its roll with REC on (no step entry)", page == PAGE_SEQ && seq_rec == 2u
               && seq_trk == 1u && seq_map() < 0 && !seq_kbd());
         later(1100);
-        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC", C_RED));
+        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC P01", C_RED));
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
         steps_inst((uint32_t)pat)->s.stp.hit = 0;
         r0 = seq_row;
@@ -1581,7 +1694,7 @@ int main(void)
         check("the arm: DRUMS ARMED in the bar, the track's line redrawn in place, nothing else, no blink",
               bar_shows("DRUMS ARMED", C_FG) && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        put(want, "DRUMS ARM")[0] = 0;                    /* (a drum track's bar: no row, the grid shows it) */
+        put(want, "DRUMS ARM P01")[0] = 0;                    /* (a drum track's bar: no row, the grid shows it) */
         check("after the message the bar says ARM", bar_shows(want, C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM"));
         fb_watch_reset();
@@ -1648,7 +1761,7 @@ int main(void)
         check("melodic track: REC held + black key 1 arms it, the bar's message and the track's line (ARMED) only, no blink",
               eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        check("melodic track: the bar says ARM", bar_shows("DRUMS ARM", C_ACC));
+        check("melodic track: the bar says ARM", bar_shows("DRUMS ARM P01", C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM_TRACK"));
         fb_watch_reset();
         held_key(BTN_SEQ, 1);
@@ -2723,6 +2836,197 @@ int main(void)
             later(50);
             snap_to(getenv("PANEL_SNAP_ROWS"));
         }
+    }
+    /* The panel's two recording entry points preview the same reverse step as playback. */
+    {
+        FILE *f = fopen("build/panel-fixtures/steps-direction-1-64.m1p", "rb");
+        check("direction fixture exists", f != 0);
+        if (f) {
+            uint32_t st, i, count;
+            int32_t l[128], r[128];
+            const uint32_t *notes;
+            uint32_t held = NW(63u, 4u, 90u, 100u, 0u);
+            pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+            fclose(f);
+            check("format 44 loads a long note at the last step", eng_load(pv_bin, pv_len) == 0);
+            for (st = 0; st < E.nmod && E.node[st].type != T_STEPS; st++) ;
+            check("direction fixture has a track", st < E.nmod);
+            if (st < E.nmod) {
+                check("TRACK retains duration independently of start", eng_steps_set_notes(st, &held, 1u));
+                count = (uint32_t)eng_steps_notes(st, &notes);
+                check("a held reverse note retains all four steps", count == 1u && NW_AT(notes[0]) == 63u && NW_LEN(notes[0]) == 4u);
+                eng_set_param(0, FM1_P_TEMPO, 120 << 16);
+                eng_set_param(st, STEPS_P_LEN, 4 << 16);
+                eng_set_param(st, STEPS_P_RATE, 4 << 16);
+                eng_set_param(st, STEPS_P_SWING, 50 << 16);
+                eng_transport(1);
+                for (i = 0; i < 32u; i++) eng_render(l, r, 128);
+                check("reverse starts at the last step", eng_steps_pos(st) == 3);
+                check("panel hit records ahead at reverse step 3", eng_steps_hit(st, 0, 1) == 2);
+                check("panel drum hit records ahead at reverse step 3", eng_steps_hit_note(st, 61u, 0, 1) == 2);
+                for (i = 0; i < 24u; i++) eng_render(l, r, 128);
+                check("reverse reaches the recorded step next", eng_steps_pos(st) == 2);
+            }
+        }
+    }
+    /* patterns and songs on the panel (#375, D-541, D-544): PRESET on the SEQ page picks the patch's pattern (at once while
+     * stopped, at the end of the pass while running; the bar shows both), SEL tapped opens the SONG page, its knobs edit
+     * the song, SEQ held + REC deletes an entry (asked first), SEL goes back; SEL held as the pen opens nothing */
+    {
+        int32_t l[128], r[128];
+        uint32_t i, told;
+        int mod;
+        eng_transport(0);
+        check("patterns fixture loads", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
+        pv_gen++;
+        eng_render(l, r, 128);
+        if (page != PAGE_SEQ)
+            page_set(PAGE_SEQ);
+        seq_select(0);
+        ui_dirty = 2;
+        loop();
+        mod = seq_module();
+        check("the SEQ bar shows the pattern (P01)", bar_shows("STEPS 1 P01", C_ACC));
+        told = host_pattern_told;
+        enc(6, 1);
+        eng_render(l, r, 128);
+        later(1100);
+        check("PRESET on the SEQ page: pattern 2, at once while stopped, the editor told", eng_pattern() == 1
+              && eng_pattern_playing((uint32_t)mod) == 1 && host_pattern_told == told + 1u);
+        check("  the bar: P02; the page: its own length (5 steps)", bar_shows("STEPS 1 P02", C_ACC) && seq_len(mod) == 5);
+        eng_transport(1);
+        for (i = 0; i < 4u; i++)
+            eng_render(l, r, 128);
+        enc(6, 1);
+        later(1100);
+        check("running: pattern 3 waits for the end of the track's pass", eng_pattern() == 2 && eng_pattern_playing((uint32_t)mod) == 1
+              && eng_pattern_queued((uint32_t)mod) == 2);
+        check("  the bar: P02>P03", bar_shows("STEPS 1 P02>P03", C_ACC));
+        for (i = 0; i < 800u && eng_pattern_playing((uint32_t)mod) != 2; i++)
+            eng_render(l, r, 128);
+        loop();
+        check("  at the end of the pass: P03 (its own length, 12 steps)", eng_pattern_playing((uint32_t)mod) == 2
+              && bar_shows("STEPS 1 P03", C_ACC) && seq_len(mod) == 12);
+        eng_transport(0);
+        eng_render(l, r, 128);
+        tap(BTN_SEL);
+        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END)", page == PAGE_SONG && song_sel == 0 && song_len() == 0
+              && on_screen("END"));
+        told = host_song_told;
+        enc(2, 1);
+        check("K1 on END: an entry of the selected pattern, the editor told", song_len() == 1 && (eng_song_get(0, 0) & 0xFF) == 2
+              && host_song_told == told + 1u);
+        enc(2, 2);
+        enc(3, -3);
+        check("K1: its pattern, K2: its shift", eng_song_get(0, 0) == (4 | (0xFD << 8)) && on_screen("01  P05  -3"));
+        panel_held |= 1u << BTN_ACC;
+        enc(2, 1);
+        panel_held &= ~(1u << BTN_ACC);
+        check("FX + K1: a copy of it inserted before it", song_len() == 2 && eng_song_get(0, 1) == eng_song_get(0, 0));
+        enc(5, 1);
+        check("K4 right: the song plays", eng_song() == 1);
+        snap_to(getenv("PANEL_SNAP_SONG"));
+        enc(5, -1);
+        check("K4 left: the pattern plays again", eng_song() == 0);
+        enc(1, 1);
+        check("ALGO: song 2 (empty)", song_sel == 1 && song_len() == 0);
+        enc(1, -1);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        panel_held |= 1u << BTN_REC;
+        panel_edges(1u << BTN_REC, 0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("SEQ held + REC on the SONG page: it asks first", song_len() == 2 && song_del_at != 0u);
+        panel_held |= 1u << BTN_REC;
+        panel_edges(1u << BTN_REC, 0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("  REC again: the entry deleted", song_len() == 1);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  SEQ let go: the SONG page stays", page == PAGE_SONG);
+        tap(BTN_SEL);
+        check("SEL on the SONG page: back to the SEQ page", page == PAGE_SEQ);
+        panel_held |= 1u << BTN_SEL;
+        panel_edges(1u << BTN_SEL, 0);
+        panel_keys(1u << 5);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);
+        loop();
+        check("SEL held with a key (the pen): its release opens nothing", page == PAGE_SEQ);
+        enc(6, -2);
+        eng_render(l, r, 128);
+        check("PRESET back to pattern 1", eng_pattern() == 0 && eng_pattern_playing((uint32_t)mod) == 0);
+    }
+    {   /* The SEQ page drawn whole: once when SEQ opens it from a Steps track's device page (seq_select drew it a second
+         * time after page_show, and the device page's header before it), and its ground cleared around the cells only
+         * (seq_grid_ground): pixel for pixel the page drawn over a ground cleared whole first, from any screen */
+        static uint16_t ref[240 * 240];
+        static int32_t l[128], r[128];
+        uint32_t i, d, t, seq_px = 0, bad = 0;
+        check("(ELVIRA 2 for the SEQ page's whole draws)", load("ELVIRA 2") == 0);
+        pv_gen++;
+        trail_n = 0;
+        page_show(0);
+        screen_patch();
+        later(2000);
+        if (!eng_transport_running())
+            tap(BTN_PLAY);
+        for (d = 0; d < 12u && pages_focus_track() < 0; d++) {
+            enc(0, 1);
+            later(400);
+        }
+        check("(a Steps track's device page)", page == 0u && pages_focus_track() >= 0);
+        lcd_px = lcd_xfers = 0;
+        tap(BTN_SEQ);
+        printf("      SEQ from a Steps track's device page: %u px in %u transfers\n", (unsigned)lcd_px, (unsigned)lcd_xfers);
+        check("SEQ from a Steps track's device page: the SEQ page drawn once (under 1.5 screens of pixels)",
+              page == PAGE_SEQ && lcd_px < 240u * 240u * 3u / 2u);
+        for (t = 0; t < (uint32_t)eng_steps_count(); t++) {
+            for (i = 0; i < 20u; i++)
+                eng_render(l, r, 128);
+            for (i = 0; i < 240u * 240u; i++)
+                fb[i] = (uint16_t)(i * 2654435761u >> 7);
+            lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+            seq_draw(1);
+            memcpy(ref, fb, sizeof ref);
+            for (i = 0; i < 240u * 240u; i++)
+                fb[i] = (uint16_t)(i * 2654435761u >> 7);
+            lcd_px = 0;
+            seq_draw(1);
+            seq_px = lcd_px;
+            bad += memcmp(ref, fb, sizeof ref) != 0;
+            enc(1, 1);                                      /* ALGO: the next track */
+        }
+        printf("      the SEQ page whole: %u px (the ground cleared whole and the cells over it alone were %u)\n",
+               (unsigned)seq_px, (unsigned)(240u * (240u - BAR_H) + 128u * GRID_CW * GRID_CH));
+        check("the SEQ page whole, each track: the same pixels as over a ground cleared whole", bad == 0u);
+        check("  fewer of them than the ground cleared whole and the cells over it",
+              seq_px < 240u * (240u - BAR_H) + 128u * GRID_CW * GRID_CH);
+        {                                                   /* page_show clears only what the page leaves (the menu, SEQ and
+                                                             * SONG clear their own; ENV's rows are edge to edge) */
+            static const uint8_t PG[4] = {PAGE_ENV, PAGE_MENU, PAGE_SEQ, PAGE_SONG};
+            bad = 0;
+            for (t = 0; t < 4u; t++) {
+                for (i = 0; i < 240u * 240u; i++)
+                    fb[i] = (uint16_t)(i * 2654435761u >> 7);
+                lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+                page_show(PG[t]);
+                memcpy(ref, fb, sizeof ref);
+                for (i = 0; i < 240u * 240u; i++)
+                    fb[i] = (uint16_t)(i * 2654435761u >> 7);
+                page_show(PG[t]);
+                bad += memcmp(ref, fb, sizeof ref) != 0;
+            }
+            page_show(0);
+            check("ENV, the menu, SEQ and SONG opened over any screen: as over one cleared first", bad == 0u);
+        }
+        tap(BTN_PLAY);
     }
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;

@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-26",
+  "device": "registered test rig",
+  "firmware": "card-rows CI 40406160864, per handoff; not reflashed during this survey",
+  "patch_source": "two-voice Cassia from docs_fm1-overload-resume",
+  "method": "tools/rig_cpu_survey.py; peak DIAG 127 samples at rest, 1, 4 and 8 held keys; phases share one patch load, so later readings can follow voice shedding",
+  "results": [
+    {
+      "slot": 24,
+      "name": "Cassia 1",
+      "n0_us": 2030,
+      "n0_samples": [
+        2030,
+        2021,
+        2025,
+        2022
+      ],
+      "n0_ovl": 0,
+      "n1_us": 2062,
+      "n1_samples": [
+        2062,
+        2062,
+        2047,
+        2045
+      ],
+      "n1_ovl": 0,
+      "n4_us": 2113,
+      "n4_samples": [
+        2113,
+        2108,
+        2085,
+        2092
+      ],
+      "n4_ovl": 0,
+      "n8_us": 2219,
+      "n8_samples": [
+        2219,
+        2142,
+        2141,
+        2130
+      ],
+      "n8_ovl": 0,
+      "budget_us": 2902
+    }
+  ]
+}

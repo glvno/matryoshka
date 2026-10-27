@@ -11,7 +11,8 @@ import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, UPDATE_TO_SYNC, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
 import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
@@ -141,6 +142,8 @@ function sandboxCheck(): void {
   sandboxWas = on;
   sandboxSent = '';
   if (on) {
+    // SANDBOX pages are discarded until LIVE paused arrives. Send the mode first, including on a fresh connection.
+    device.live(true);
     if (!mirror.following) {
       sandboxFollows = true;
       void followFm1('matryoshka');
@@ -278,11 +281,19 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     if (id === undefined) return;
     mark(true);
     try {
-      if (e.kind === 'track') editor.trackFromDevice(id, e.notes);
+      if (e.kind === 'track') editor.trackFromDevice(id, e.notes, e.pat);
       else {
         host.send({ t: 'mute', id, on: e.on });
         if (from === 'device') emu.ui?.mute(e.module, e.on);   // (the emulator's black key lights follow the FM-1's mute)
       }
+    } finally { mark(false); }
+    return;
+  }
+  if (e.kind === 'pattern' || e.kind === 'song') {   // PRESET on the SEQ page, the SONG page (#375): the editor follows
+    mark(true);
+    try {
+      if (e.kind === 'pattern') editor.patternFromDevice(e.pattern, e.song);
+      else editor.songFromDevice(e.song, e.entries);
     } finally { mark(false); }
     return;
   }
@@ -362,11 +373,13 @@ function setLive(on: boolean): void {
   declineSync(false);
   if (fitsDevice) void sendPatch();   // (a sandbox patch is not sent: the FM-1 becomes its controller)
 }
-/** firmware too old for the editor's patch format (syncsWith): Live stays off, and the toast opens the install panel */
+/** Incompatible patch formats: Live stays off, and the toast offers the matching update. */
 function sayUpdate(): void {
   liveOn = false;
-  devStatus(UPDATE_TO_SYNC);
-  showAction(UPDATE_TO_SYNC, 'Update the FM-1', openInstall, 12000);
+  const notice = syncUpdateNotice(device.info);
+  devStatus(notice.message);
+  showAction(notice.message, notice.label, notice.target === 'editor'
+    ? () => { window.open(SITE_URL, '_blank', 'noopener'); } : openInstall, 12000);
 }
 const syncAsk = $<HTMLDialogElement>('sync-ask');
 syncAsk.onclose = () => {
@@ -478,7 +491,7 @@ const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host
   limits: (type, name) => { const pd = DEFS[type].params.find((q) => q.name === name)!; return { min: pd.min, max: pd.max, def: pd.default }; },
 });
 host.onEnv = (key, states) => envs.receive(key, states);
-host.onSteps = (view) => editor.showSteps(view);
+host.onSteps = (view, pats) => editor.showSteps(view, pats);
 host.onRecorded = (took) => editor.recorded(took);
 /** the sidebar's sliders whose thumbs are jacks (cable slack, zoom): see sideSlider below; filled once the editor exists */
 const sides = new Map<SideKey, SideSlider>();
@@ -509,7 +522,9 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     fromEmu = true;
     try { setPlaying(run); } finally { fromEmu = false; }
   },
-  track: (m, notes) => fm1Event({ kind: 'track', module: m, notes }, 'emu'),
+  track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
+  pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
+  song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
@@ -580,12 +595,29 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (live() && !uploading) device.param(editor.patch, id, name, value);
     else if (live()) dirty = true;
   },
-  onTrack(id, notes) {
-    host.send({ t: 'track', id, notes });
+  onTrack(id, notes, pat) {
+    host.send({ t: 'track', id, notes, pat });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) device.track(editor.patch, id, notes);
+    if (live() && !uploading) device.track(editor.patch, id, notes, pat);
+    else if (live()) dirty = true;
+  },
+  onPattern(pattern, song) {   // (#375) the patch's pattern / song: each track takes it at the end of its pass
+    host.send({ t: 'pattern', p: pattern });
+    host.send({ t: 'song', n: song });
+    if (!fromEmu) queueEmu();
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !uploading) device.pattern(pattern, song);
+    else if (live()) dirty = true;
+  },
+  onSong(k, entries) {
+    host.send({ t: 'songs', songs: editor.songs() });
+    if (!fromEmu) queueEmu();
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !uploading) device.song(k, entries);
     else if (live()) dirty = true;
   },
   onArm(armed, plays) {
@@ -867,7 +899,6 @@ function showBudget(): void {
   const was = fitsDevice;
   fitsDevice = b.fits;
   syncChip();
-  if (liveSync.pausesNow(device.connected, liveOn, was, b.fits)) device.live(true);   // (#200: the FM-1 says so at once)
   const el = $('budget');
   el.classList.toggle('over', !b.fits);
   const memOver = b.over.filter((i) => i.key !== 'cpu' && i.key !== 'browser');
@@ -1241,6 +1272,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (k === '/' || (mod && k.toLowerCase() === 'k')) (openPalette(), (done = true));
   else if (k === '?') (help.showModal(), (done = true));
+  else if ((k === '[' || k === ']') && !mod && !e.altKey) (editor.selectPattern(editor.pattern + (k === ']' ? 1 : -1)), (done = true));   // the patch's pattern (#375)
   else if (e.shiftKey && !mod && !e.altKey && k.toLowerCase() === 'r') {   // REC on the armed track (#135)
     if (!editor.toggleRec()) status.textContent = 'Shift+R records on the armed track: ARM a Steps track first';
     done = true;

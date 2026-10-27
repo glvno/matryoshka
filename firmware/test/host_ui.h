@@ -24,7 +24,7 @@ static uint8_t m1_edited;                  /* proto.c: the running patch was edi
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
-#define FELUCCA_VERSION "v1.4.1-DEV"
+#define FELUCCA_VERSION "v1.5.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
 /* lcd.c's shared line buffer and its rule: on the device the DMA reads it after the transfer call returns, until the next
@@ -243,11 +243,15 @@ static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the pre
 }
 static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
 static void m1_patch_notes(uint32_t mod) { (void)mod; }
+static void m1_patch_patterns(void) {}             /* (the preview keeps no patch: the engine has the patterns and songs) */
 static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_name(pv_bin, pv_len, map, r, out); }
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */
 static void m1_track_now(uint32_t mod) { (void)mod; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
 static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
+static uint32_t host_pattern_told, host_song_told;   /* (panel_test.c: PATTERN_NOW / SONG_NOW sent) */
+static void m1_pattern_now(void) { host_pattern_told++; }
+static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }
 #endif
 #include "../src/seq_ui.c"
 #include "../src/splash.c"

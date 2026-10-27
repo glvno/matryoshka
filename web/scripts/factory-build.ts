@@ -152,6 +152,8 @@ export function withPlayers(src: Patch, what: Player): Patch {
     wire(p, arp.id, 'keys', c.to.module, c.to.port);
   }
   wire(p, from.id, 'keys', arp.id, 'keys');
+  // an assembly's `arp clock` output steps the arpeggiator, one step per edge (Io 4: the Jupiter-4's TRIGGER RATE)
+  for (const a of assembliesOf(p)) if (!parentOf(p, a.id)) for (const o of a.outputs) if (o.label === 'arp clock') wire(p, o.module, o.port, arp.id, 'clk');
   setKind(p, 'arp', 'bypass');
   setTarget(p, 'arp', { module: arp.id });
   setSwitches(p, 'arp', true);
@@ -162,7 +164,10 @@ export function withPlayers(src: Patch, what: Player): Patch {
 export function players(p: Patch, browser = false): Patch {
   if (browser) return validatePatch(withPlayers(p, 'both'), DEFS);
   if (DRUMS.has(p.name)) return p;
-  for (const what of ['both', 'arp'] as const) {
+  // Io 4's four voices shed on the rig with PATTERN, despite the model saying it fits. Keep its existing player set.
+  // Measurement: docs/measurements/2026-10-26-io-4-player-budget.json. An XL still gets both above.
+  const attempts: Player[] = p.name === 'Io 4' ? ['arp'] : ['both', 'arp'];
+  for (const what of attempts) {
     const q = validatePatch(withPlayers(p, what), DEFS);
     if (deviceBudget(q).fits) return q;
   }

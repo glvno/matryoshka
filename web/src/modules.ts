@@ -3,14 +3,23 @@
 
 import { ARP_MODES, ARP_RATES } from './arpeggiator';
 import { DRUM_ROWS, STEP_NOTE, STEP_VEL, STEPS_MAX, TRACK_NAME_MAX, type ModuleDef, type ParamDef, type PortDef } from './patch';
-import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type StepNote } from './track';
+import { STEPS_RATE_HT, STEPS_RATE_PIN_MAX, STEPS_RATES, SWING_MAX, SWING_PIN_MAX, type SongEntry, type StepNote } from './track';
 import WT from './wavetables.json';
+import { rateEnvelopeInit, rateEnvelopeProcess } from './rate-envelope';
+import { formatValue } from './labels';
 
 export interface Voice {
   /** octaves relative to middle C (MIDI 60) */
   pitch: number;
   gate: number;
   velocity: number;
+  /** A key press reached this allocator in the current block; independent of pitch selection. */
+  keyTrig: boolean;
+  /** this held voice is at the lowest/highest note currently assigned in its group */
+  low: boolean;
+  high: boolean;
+  /** the allocator is in unison mode, independent of held keys */
+  unison: boolean;
   /** a clock tick (24 per quarter note) falls in this block while the transport runs */
   clock: boolean;
   /** the transport runs (PLAY, MIDI Start / Stop): the Main module's run output */
@@ -26,6 +35,10 @@ export interface Voice {
   bend: number;
   mod: number;
   at: number;
+  /** MIDI CC 2, 64 and 65 as independent 0..1 patch controls */
+  breath: number;
+  sustain: number;
+  foot: number;
   /** the part's number in its poly assembly (0 first) and how many parts it has (1 for the shared keyboard) */
   index: number;
   parts: number;
@@ -84,6 +97,7 @@ const param = (name: string, min: number, max: number, def: number, extra: Parti
 const cutoffRest = (p: Record<string, number>, cv: number): number => (p.cutoff ?? 1000) * Math.pow(2, cv * (p.cvamt ?? 1));
 
 const WAVES = ['sine', 'triangle', 'saw', 'square'];
+const OSC_WAVES = [...WAVES, 'sharktooth', 'reverse saw'];
 const C4 = 261.6255653;
 
 function polyBlep(t: number, dt: number): number {
@@ -106,6 +120,10 @@ function wave(kind: number, phase: number, dt: number, pw = 0.5): number {
       return 4 * Math.abs(phase - Math.floor(phase + 0.5)) - 1;
     case 2:
       return 2 * phase - 1 - polyBlep(phase, dt);
+    case 4: // ideal triangle/saw hybrid: both odd and even harmonics, softer than the saw alone
+      return (wave(1, phase, dt) + wave(2, phase, dt)) / 2;
+    case 5:
+      return -wave(2, phase, dt);
     default: {
       let v = phase < pw ? 1 : -1;
       v += polyBlep(phase, dt);
@@ -170,7 +188,7 @@ export const LEGATO_MODES = ['auto', 'off', 'on'];
 export const PRIORITIES = ['last', 'low', 'high'];
 /** how a poly assembly hands notes to its parts (engine.ts allocate): the next part in turn, the lowest-numbered free
  * part, or a free part whose last note was the key (else the one free the longest) */
-export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse'];
+export const ASSIGN_MODES = ['rotate', 'lowest', 'reuse', 'reset'];
 
 /** the FM-1 panel's buttons a patch owns (#57 decision 4), gate outputs of the Main module; the device keeps PRESET, PLAY,
  * SAVE, HOME and OCT- / OCT+. The knobs K1..K4 are no signals: they edit the rows of the device page in focus (pages.ts),
@@ -197,7 +215,7 @@ const fm1: ModuleImpl<null> = {
     inputs: [control('morph')],
     // pitch / gate / vel: the shared keyboard (one note: the last held, legato); keys: the held keys for Voice allocators
     // (the keyboard's ribbon cable to a polysynth's CPU); clock: 24 ppqn while the transport runs; run: high while it runs
-    outputs: [control('pitch'), gate('gate'), control('vel'), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run'), ...PANEL_BUTTONS.map(gate)],
+    outputs: [control('pitch'), gate('gate'), control('vel'), gate('clock'), control('bend'), control('mod'), control('at'), keys('keys'), gate('run'), ...PANEL_BUTTONS.map(gate), control('breath'), control('sustain'), control('foot')],
     params: [
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
       // the patch's tempo: the engine's clock (24 ppqn) runs from it unless MIDI clock comes in; arpeggiators and the clock output follow it
@@ -212,6 +230,9 @@ const fm1: ModuleImpl<null> = {
     c.out.bend.fill(c.voice.bend, 0, c.n); // the raw wheel, for other uses
     c.out.mod.fill(c.voice.mod, 0, c.n);
     c.out.at.fill(c.voice.at, 0, c.n);
+    c.out.breath.fill(c.voice.breath, 0, c.n);
+    c.out.sustain.fill(c.voice.sustain, 0, c.n);
+    c.out.foot.fill(c.voice.foot, 0, c.n);
     c.out.keys.fill(c.voice.gate, 0, c.n); // 1 while a key is down (a scope shows it; the allocators take the keys themselves)
     // clock: 24 ppqn (the tempo, or MIDI clock) while the transport runs, a pulse of half a block per block that saw a tick
     const hi = c.voice.clock ? Math.ceil(c.n / 2) : 0;
@@ -279,7 +300,7 @@ const osc: ModuleImpl<OscState> = {
     inputs: [control('pitch'), audio('pm'), gate('sync')],
     outputs: [audio('out')],
     params: [
-      param('wave', 0, 3, 0, { step: 1, choices: WAVES }),
+      param('wave', 0, 3, 0, { step: 1, choices: OSC_WAVES, top: 5 }),
       param('pw', 0.05, 0.95, 0.5, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
@@ -424,8 +445,15 @@ export const DELAY_SWELL_DEN = 95;
 export const delayClip = (x: number): number => (x >= 1.5 ? 1 : x <= -1.5 ? -1 : x - (4 / 27) * x * x * x);
 
 /** the free LFO's rate ranges: the `rate` row times LFO_RANGE_K (slow 0.0008..1.6 Hz, fast 0.04..80 Hz) */
-export const LFO_RANGES = ['norm', 'slow', 'fast'];
-export const LFO_RANGE_K = [1, 1 / 25, 2];
+export const LFO_RANGES = ['norm', 'slow', 'fast', 'wide'];
+export const LFO_RANGE_K = [1, 1 / 25, 2, 1];
+/** the free rate as the LFO runs it: the `rate` row times its range's factor (slow / 25, fast x 2; the card and the FM-1's
+ * page show this, pages_ui.c stretched), the knob keeps the row's own range */
+const lfoRateText = (v: number, p: Record<string, number>): string => {
+  const r = Math.round(p.range ?? 0);
+  const f = formatValue(v * (r === 1 || r === 2 ? LFO_RANGE_K[r] : 1), 'Hz', false);
+  return `${f.num} ${f.unit}`;
+};
 /** the synced LFO's speed against its note length: ÷8 makes a cycle 8 times as long, x8 an eighth as long (a 1/16 triplet
  * x8 is half a clock tick). The length is multiplied by num / den. Appended to, never reordered. */
 export const LFO_MULTS: { name: string; num: number; den: number }[] = [
@@ -467,8 +495,16 @@ interface LfoState {
   interval: number;
 }
 
+/** A triangle's rise occupies `duty` of its cycle; at the ends it becomes a falling or rising saw. */
+function lfoWave(kind: number, phase: number, dt: number, duty: number): number {
+  if (kind !== 1 || duty === .5) return wave(kind, phase, dt, duty);
+  if (duty === 0) return -wave(2, phase, dt);
+  if (duty === 1) return wave(2, phase, dt);
+  return phase < duty ? 2 * phase / duty - 1 : 1 - 2 * (phase - duty) / (1 - duty);
+}
+
 /**
- * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or, with `sync`, one cycle per note length `div` (as the delay)
+ * LFO. `rate` in Hz times the `range` (slow / 25, fast x2), or `wide` from 0.0008 to 55 Hz in wide range. With `sync`, one cycle per note length `div` (as the delay)
  * at the `mult` speed (÷8 .. x8). The clk input is a 24 ppqn clock (the Main module's clock output): the cycle snaps to every
  * n-th edge (n = 24 x the note length in quarter notes; for a length that ends between ticks, to the first tick a whole
  * number of cycles ends on) and runs at the measured clock speed in between. Without a clock (none for half a second) it
@@ -483,15 +519,16 @@ const lfo: ModuleImpl<LfoState> = {
     outputs: [control('out')],
     params: [
       param('wave', 0, 4, 0, { step: 1, choices: LFO_WAVES }),
-      param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01, log: true }),
+      param('rate', 0.02, 40, 4, { unit: 'Hz', step: 0.01, log: true, altText: { when: 'range', text: lfoRateText } }),
       param('depth', 0, 1, 1, { step: 0.01 }),
       param('sync', 0, 1, 0, { step: 1, choices: ['free', 'sync'], toggle: true }),
       param('div', 0, DELAY_DIVS.length - 1, 6, { step: 1, choices: DELAY_DIVS.map((d) => d.name) }),
       param('bpm', 40, 300, 120, { step: 1 }),
       param('phase', 0, 360, 0, { step: 1, unit: 'deg', since: 35 }),
-      param('range', 0, LFO_RANGES.length - 1, 0, { step: 1, choices: LFO_RANGES, since: 35 }),
+      param('range', 0, 2, 0, { step: 1, choices: LFO_RANGES, top: 3, since: 35 }),
       param('dir', 0, 1, 0, { step: 1, choices: ['fwd', 'back'], toggle: true, since: 35 }),
       param('mult', 0, LFO_MULTS.length - 1, 3, { step: 1, choices: LFO_MULTS.map((m) => m.name), since: 35 }),
+      param('wide', 0.0008, 55, 4, { unit: 'Hz', step: 0.0001, log: true, since: 40 }),
     ],
   },
   init: (sr) => ({ phase: 0, seed: 0x2545f491, held: 0, clkHi: false, rstHi: false, ticks: 0, wraps: 0, since: sr, interval: 0 }),
@@ -499,13 +536,21 @@ const lfo: ModuleImpl<LfoState> = {
     const kind = Math.round(c.p.wave ?? 0);
     // backward: the wave read at off - phase, which for these waves is -w(phase - off) (the triangle is the same both ways)
     const back = (c.p.dir ?? 0) >= 0.5;
+    let duty = .5;
+    if (c.connected.shape) {
+      let sum = 0;
+      for (let i = 0; i < c.n; i++) sum += c.inp.shape[i];
+      duty = Math.max(0, Math.min(1, Math.trunc(sum * 65536 / c.n) / 65536));
+    }
+    if (back) duty = 1 - duty;
     const depth = (c.p.depth ?? 1) * (back && kind !== 1 ? -1 : 1);
     const off = ((c.p.phase ?? 0) / 360) * (back ? -1 : 1);
     const sync = (c.p.sync ?? 0) >= 0.5;
     const cyc = lfoSyncCycle(Math.round(c.p.div ?? 6), Math.round(c.p.mult ?? 3));
     const perCycle = cyc.per8 / 8; // clock ticks per cycle
     const dtBpm = ((c.p.bpm ?? 120) * cyc.den) / (60 * cyc.num * c.sr);
-    const dtFree = ((c.p.rate ?? 1) * LFO_RANGE_K[Math.max(0, Math.min(LFO_RANGES.length - 1, Math.round(c.p.range ?? 0)))]) / c.sr;
+    const range = Math.max(0, Math.min(LFO_RANGES.length - 1, Math.round(c.p.range ?? 0)));
+    const dtFree = (range === 3 ? (c.p.wide ?? 4) : (c.p.rate ?? 1) * LFO_RANGE_K[range]) / c.sr;
     const newCycle = (): void => {
       // sample & hold: new random value (-1..1) at every cycle start
       s.seed = (Math.imul(s.seed, 1664525) + 1013904223) >>> 0;
@@ -546,7 +591,8 @@ const lfo: ModuleImpl<LfoState> = {
         }
       }
       const ph = off ? s.phase + off - Math.floor(s.phase + off) : s.phase;
-      c.out.out[i] = (kind === 4 ? s.held : wave(kind, ph, dt)) * depth;
+      c.out.out[i] = (kind === 4 ? s.held : lfoWave(kind, ph, dt, duty)) * depth;
+      c.out.pulse[i] = wave(3, ph, dt, duty) * (c.p.depth ?? 1) * (back ? -1 : 1);
     }
   },
 };
@@ -637,7 +683,9 @@ const adsr: ModuleImpl<AdsrState> = {
     for (let i = 0; i < c.n; i++) {
       const g = c.inp.gate[i] > 0.5 ? 1 : 0;
       if (g && !s.prev) s.stage = 1;
-      else if (!g && s.prev) s.stage = 4;
+      // Hold defers release without hiding the gate's next rising edge. It cannot start an idle envelope
+      // or freeze a release already in progress.
+      else if (!g && s.stage !== 0 && s.stage !== 4 && (c.inp.hold?.[i] ?? 0) <= 0.5) s.stage = 4;
       s.prev = g;
       switch (s.stage) {
         case 1:
@@ -687,7 +735,17 @@ const vca: ModuleImpl<null> = {
   },
 };
 
-/** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp, stage 2 takes lp12 and adds the other 12 dB (lp24) */
+/** the Multimode filter's self-oscillation (its `osc` parameter, on): from this `res` up, the damping falls by FILTER_OSC_K
+ * per unit of res past it (below 0 from about res 0.95, where the oscillation starts) and grows with FILTER_OSC_GAIN per
+ * unit past it times the band-pass state squared (held to +-FILTER_OSC_CLIP): about 0.5 peak on lp12 at res 1, at any cutoff.
+ * A filter at rest starts from a band-pass state of FILTER_OSC_SEED. engine.c reads these from defs.h. */
+export const FILTER_OSC_FROM = 0.85;
+export const FILTER_OSC_K = 1.19;
+export const FILTER_OSC_GAIN = 5.6;
+export const FILTER_OSC_CLIP = 2;
+export const FILTER_OSC_SEED = 1 / 1024;
+
+/** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp (and hp6, a resonant 6 dB high pass, appended), stage 2 takes lp12 and adds the other 12 dB (lp24) */
 const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
   def: {
     type: 'filter',
@@ -700,17 +758,30 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
       param('cvamt', 0, 4, 1, { unit: 'oct', step: 0.01 }),
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
+      param('osc', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 47 }),
     ],
   },
   init: () => ({ ic1: 0, ic2: 0, jc1: 0, jc2: 0 }),
   process(c, s) {
-    const k = 2 - 1.98 * (c.p.res ?? 0);
+    const res = c.p.res ?? 0;
+    // self-oscillation (osc on, res past FILTER_OSC_FROM): the damping k goes below 0 near the top (the loop gains),
+    // and grows with the band pass's square (k + gam b^2, b the stage 1 band-pass state held to +-FILTER_OSC_CLIP): a
+    // bounded sine-like oscillation at the cutoff whose level does not depend on the cutoff (a Van der Pol oscillator).
+    // From silence a small kick starts it. Below FILTER_OSC_FROM, or off, the filter is unchanged.
+    const over = (c.p.osc ?? 0) >= 0.5 ? Math.max(0, res - FILTER_OSC_FROM) : 0;
+    const k0 = 2 - 1.98 * res - FILTER_OSC_K * over, gam = FILTER_OSC_GAIN * over;
+    let k = k0;
+    if (over > 0 && s.ic1 === 0 && s.ic2 === 0) s.ic1 = FILTER_OSC_SEED;
     const k2 = Math.SQRT2; // stage 2 is damped (Q 0.7): the resonance peak comes from stage 1 alone
     const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0; // keyboard tracking: the cutoff follows the played pitch 1 octave per octave (C4 = the cutoff as set)
     let fc = c.p.cutoff ?? 1000, m = c.p.morph ?? 0;
     for (let i = 0; i < c.n; i++) {
       fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, c.inp.cv[i] * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
       const g = Math.tan((Math.PI * fc) / c.sr);
+      if (over > 0) {
+        const b = Math.min(FILTER_OSC_CLIP, Math.max(-FILTER_OSC_CLIP, s.ic1));
+        k = k0 + gam * b * b;
+      }
       const a1 = 1 / (1 + g * (g + k));
       const a2 = g * a1;
       const a3 = g * a2;
@@ -739,6 +810,9 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
       c.out.notch[i] = v0 - kv1; // = lp12 + hp: a null at the cutoff
       c.out.peak[i] = v2 - hp; // = lp12 - hp: a resonant bump at the cutoff over a flat response
       c.out.ap[i] = v0 - 2 * kv1; // = notch - k bp: flat magnitude, the phase turns through 360 degrees around the cutoff
+      // hp + 2 bp: the high pass of the MS-20 filter (s^2 + 2s over the same resonant denominator; Stinchcombe, "A Study of
+      // the Korg MS10 & MS20 Filters", section 7): 6 dB per octave below the cutoff, the resonance peak at it, flat above
+      c.out.hp6[i] = hp + 2 * v1;
     }
     if (c.display) {
       c.display.cutoff = fc;
@@ -773,19 +847,24 @@ const ladder: ModuleImpl<{ s: Float64Array }> = {
   init: () => ({ s: new Float64Array(4) }),
   process(c, st) {
     const s = st.s;
+    const audio = !!c.connected.fm;
     let cvm = 0;
     for (let i = 0; i < c.n; i++) cvm += c.inp.cv[i];
     cvm /= c.n;
     const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0;
-    const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, cvm * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
-    if (c.display) c.display.cutoff = fc;
-    const g = Math.tan((Math.PI * fc) / c.sr);
-    const G = g / (1 + g);
-    const G2 = G * G, G3 = G2 * G, G4 = G3 * G, hG = 1 - G;
     const k = 4 * (c.p.res ?? 0);
     const drive = c.p.drive ?? 1;
-    const F = 1 / (1 + k * G4);
+    let G = 0, G2 = 0, G3 = 0, G4 = 0, hG = 0, F = 0;
     for (let i = 0; i < c.n; i++) {
+      if (i === 0 || (audio && c.inp.fm[i] !== c.inp.fm[i - 1])) {
+        const cv = cvm + (audio ? c.inp.fm[i] : 0);
+        const fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, cv * (c.p.cvamt ?? 1) + tr), c.sr * .45);
+        if (c.display) c.display.cutoff = fc;
+        const g = Math.tan((Math.PI * fc) / c.sr);
+        G = g / (1 + g);
+        G2 = G * G; G3 = G2 * G; G4 = G3 * G; hG = 1 - G;
+        F = 1 / (1 + k * G4);
+      }
       const x = c.inp.in[i];
       const S = (G3 * s[0] + G2 * s[1] + G * s[2] + s[3]) * hG;
       const y4 = (G4 * x + S) * F;
@@ -847,13 +926,16 @@ const dyn: ModuleImpl<{ env: number }> = {
   },
 };
 
-/** arithmetic on two signals: a' = a·ka + off, b' = b·kb; add, sub, mul, min, max, abs (of a'), cmp (1 while a' > b') */
+/** Quantize one audio sample to a signed 16-bit word for bitwise operations. */
+const xorWord = (x: number): number => Math.max(-32768, Math.min(32767, Math.floor(x * 32768)));
+
+/** Arithmetic on a' = a·ka + off, b' = b·kb, including bitwise XOR of their signed 16-bit samples. */
 const math: ModuleImpl<null> = {
   def: {
     type: 'math',
     label: 'Math',
     inputs: [control('a'), control('b')],
-    outputs: [control('add'), control('sub'), control('mul'), control('min'), control('max'), control('abs'), gate('cmp')],
+    outputs: [control('add'), control('sub'), control('mul'), control('min'), control('max'), control('abs'), gate('cmp'), audio('xor')],
     params: [param('ka', -4, 4, 1, { step: 0.01 }), param('kb', -4, 4, 1, { step: 0.01 }), param('off', -4, 4, 0, { step: 0.01 })],
   },
   init: () => null,
@@ -869,6 +951,7 @@ const math: ModuleImpl<null> = {
       o.max[i] = Math.max(a, b);
       o.abs[i] = Math.abs(a);
       o.cmp[i] = a > b ? 1 : 0;
+      o.xor[i] = (xorWord(a) ^ xorWord(b)) / 32768;
     }
   },
 };
@@ -1709,7 +1792,7 @@ const string: ModuleImpl<StringState> = {
 };
 
 /**
- * The wavetables (tools/gen_wavetables.py): four banks of eight frames, each frame its first 32 harmonics, at three mip
+ * The wavetables (tools/gen_wavetables.py): banks of eight frames, each frame its first 32 harmonics, at three mip
  * levels (32, 16, 8 harmonics) so the high notes do not alias. Built once from the coefficients in wavetables.json; the
  * firmware has the same tables as int16 in wt_tables.h.
  */
@@ -1741,7 +1824,7 @@ const wavetable: ModuleImpl<WtState> = {
     inputs: [control('pitch'), audio('pm'), gate('sync')],
     outputs: [audio('out')],
     params: [
-      param('bank', 0, WT_BANKS.length - 1, 0, { step: 1, choices: WT_BANKS }),
+      param('bank', 0, 3, 0, { step: 1, choices: WT_BANKS, top: WT_BANKS.length - 1 }),
       param('pos', 0, 1, 0, { step: 0.01 }),
       param('coarse', -48, 48, 0, { step: 1, unit: 'st' }),
       param('fine', -100, 100, 0, { step: 1, unit: 'ct' }),
@@ -2239,7 +2322,7 @@ const part: ModuleImpl<null> = {
     type: 'part',
     label: 'Part',
     inputs: [],
-    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump')],
+    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [],
   },
   init: () => null,
@@ -2251,6 +2334,11 @@ const part: ModuleImpl<null> = {
     c.out.index.fill(v.parts > 1 ? (2 * v.index - (v.parts - 1)) / (v.parts - 1) : 0, 0, c.n);
     c.out.legato.fill(v.legato, 0, c.n);
     c.out.jump.fill(v.jump, 0, c.n);
+    c.out.trig.fill(0, 0, c.n);
+    if (v.keyTrig) c.out.trig[0] = 1;
+    c.out.low.fill(v.low ? 1 : 0, 0, c.n);
+    c.out.high.fill(v.high ? 1 : 0, 0, c.n);
+    c.out.unison.fill(v.unison ? 1 : 0, 0, c.n);
   },
 };
 
@@ -2258,32 +2346,48 @@ export const RANDOM_MODES = ['fixed', 'walk'];
 interface RandomState {
   seed: number;
   walk: Walk;
+  heldSeed: number;
+  held: number;
+  clock: number;
 }
 /**
  * A random value per copy, -1..1: `fixed` never changes (an analog part's tolerance), `walk` wanders slowly, a new target
- * every 1 / rate seconds (drift). Each copy has its own: the seed mixes the module's place in the patch and its part.
+ * every 1 / rate seconds (drift). `held` draws a new independent value on each rising `clock` edge. Each copy has its
+ * own stream: the seed mixes the module's place in the patch and its part. The clocked stream does not alter `out`.
  */
 const random: ModuleImpl<RandomState> = {
   def: {
     type: 'random',
     label: 'Random',
     inputs: [],
-    outputs: [control('out')],
+    outputs: [control('out'), control('held')],
     params: [param('mode', 0, 1, 0, { step: 1, choices: RANDOM_MODES }), param('rate', 0.05, 20, 1.5, { unit: 'Hz', step: 0.01, log: true })],
   },
-  init: () => ({ seed: 0, walk: walkInit(0) }),
+  init: () => ({ seed: 0, walk: walkInit(0), heldSeed: 0, held: 0, clock: 0 }),
   seed(s, seed) {
     s.seed = seed;
     s.walk = walkInit(seed ^ 0x2545f491);
+    s.heldSeed = hash32(seed ^ 0xa511e9b3);
   },
   process(c, s) {
     walkStep(s.walk, walkHold(c.sr, c.p.rate ?? 1.5)); // every block, so the wander does not depend on the mode
     const q = Math.round(c.p.mode ?? 0) ? s.walk.y : randomFixed(s.seed);
     c.out.out.fill(q / 32768, 0, c.n);
+    if (c.used?.held === false) return;
+    for (let i = 0; i < c.n; i++) {
+      const clock = c.inp.clock[i];
+      if (clock >= 0.5 && s.clock < 0.5) {
+        s.heldSeed = lcg(s.heldSeed);
+        s.held = q15(s.heldSeed) / 32768;
+      }
+      s.clock = clock;
+      c.out.held[i] = s.held;
+    }
   },
 };
 
 export const UNISON_MODES = ['off', 'on'];
+export const UNISON_ASSIGN = [...UNISON_MODES, 'share'];
 /** a Voice allocator's MIDI channel: `all` = the device's channel (MENU > MIDI CHANNEL on the FM-1, every channel in the browser) */
 export const KEY_CHANNELS = ['all', ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)];
 const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -2291,7 +2395,7 @@ const PITCH_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#
 export const NOTE_NAMES = Array.from({ length: 128 }, (_, n) => `${PITCH_CLASSES[n % 12]}${Math.floor(n / 12) - 1}`);
 /**
  * Voice allocator: a polysynth's CPU. It takes the keys held on its `keys` input (Main's keys) and hands them to `voices`
- * voices (assign, priority, legato as poly.ts describes; unison: every voice plays the one note the priority picks). Each
+ * voices (assign, priority, legato as poly.ts describes; unison: up to stack voices play the note the priority picks, with zero selecting all). Each
  * output is per voice: into a poly assembly voice i reaches copy i (the voice cards), into a module that runs once the
  * voices sum. The poly assemblies it feeds run once per voice. The engines run it in its Part form (poly.ts deviceView).
  * channel / low / high: it takes only the keys of that MIDI channel (all = the device's) between those notes (a split or
@@ -2302,16 +2406,18 @@ const alloc: ModuleImpl<null> = {
     type: 'alloc',
     label: 'Voicing',
     inputs: [keys('keys')],
-    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump')],
+    outputs: [control('pitch'), gate('gate'), control('vel'), control('index'), gate('legato'), control('jump'), gate('trig'), gate('low'), gate('high'), gate('unison')],
     params: [
       param('voices', 1, 16, 4, { step: 1 }),
-      param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES }),
+      param('assign', 0, 2, 0, { step: 1, choices: ASSIGN_MODES, top: 3 }),
       param('legato', 0, 2, 0, { step: 1, choices: LEGATO_MODES }),
       param('priority', 0, 2, 0, { step: 1, choices: PRIORITIES }),
-      param('unison', 0, 1, 0, { step: 1, choices: UNISON_MODES, toggle: true }),
+      param('unison', 0, 1, 0, { step: 1, choices: UNISON_ASSIGN, top: 2 }),
       param('channel', 0, 16, 0, { step: 1, choices: KEY_CHANNELS }),
       param('low', 0, 127, 0, { step: 1, choices: NOTE_NAMES }),
       param('high', 0, 127, 127, { step: 1, choices: NOTE_NAMES }),
+      param('steal', 0, 1, 1, { step: 1, choices: UNISON_MODES, toggle: true, since: 37 }),
+      param('stack', 0, 16, 0, { step: 1, choices: ['all', ...Array.from({ length: 16 }, (_, i) => `${i + 1}`)], since: 38 }),
     ],
   },
   init: () => null,
@@ -2320,14 +2426,14 @@ const alloc: ModuleImpl<null> = {
 
 /**
  * Arpeggiator: keys in, keys out (between the Main module and a Voice allocator). It plays the held keys one at a time
- * (arpeggiator.ts: mode, octaves, rate of the engine's clock or one step per edge on clk, gate length, latch). It runs once
+ * (arpeggiator.ts: mode, octaves, tempo rate or continuous Hz input, clock-edge override, gate length, latch). It runs once
  * (SHARED_TYPES); the engine runs its notes, not process(): the keys output only shows the gate of the note it plays.
  */
 const arp: ModuleImpl<null> = {
   def: {
     type: 'arp',
     label: 'Arpeggiator',
-    inputs: [keys('keys'), gate('clk')],
+    inputs: [keys('keys'), gate('clk'), control('rate')],
     outputs: [keys('keys')],
     params: [
       param('mode', 0, ARP_MODES.length - 1, 0, { step: 1, choices: ARP_MODES }),
@@ -2350,9 +2456,26 @@ export interface StepsSound { key: number; left: number; cnt: number; thru?: num
 /** how many notes a Steps track sounds at once (a further note ends the oldest) */
 export const TRACK_POLY = 8;
 
-/** the Steps module's state: its notes (ModuleInst.notes, loaded by the engine) and where it plays */
+/** a track's pattern as the engine holds it (track.ts Pattern; pattern 1 has no length or rate of its own) */
+export interface StepsPattern { notes: StepNote[]; len?: number; rate?: number }
+/** the patch's song state the engine shares with its tracks (Main's `seq`): the song playing (0 none) and the songs */
+export interface StepsSong { song: number; songs: SongEntry[][] }
+
+/** the Steps module's state: its patterns (ModuleInst.notes, .patterns, loaded by the engine), the notes of the one it
+ * plays, and where it plays */
 export interface StepsState {
   notes: StepNote[];
+  /** pattern k + 1 at k (null: the track has none of that number, which plays its pattern 1) */
+  pats: (StepsPattern | null)[];
+  /** the pattern playing (0-based; one the track has not got plays pattern 1), the one to play from the end of this pass
+   * (-1 none; with the transport stopped it plays from the next block), the song entry playing (-1: the next pass plays
+   * the first), the entry's shift (semitones; never on a track that plays a Drum map: `drum`) */
+  pat: number;
+  queued: number;
+  songPos: number;
+  shift: number;
+  drum: boolean;
+  song: StepsSong;
   /** what the pitch / vel outputs hold: the last note that started (before the first: STEP_NOTE / STEP_VEL), pitch in
    * octaves from C4 */
   pitch: number;
@@ -2368,6 +2491,8 @@ export interface StepsState {
    * step is the first), times round the pattern */
   count: number;
   pos: number;
+  /** ordinal visit within the current traversal, independent of the step chosen */
+  visit: number;
   loop: number;
   /** a step half a tick after a tick (1/64): samples to go (0: none) */
   half: number;
@@ -2405,13 +2530,49 @@ export function notePlays(seed: number, loop: number, k: number, j: number, chan
   return !code || hash32((seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(k + 1, 0x85ebca6b) ^ Math.imul(j, 0xc2b2ae35)) >>> 0) % 100 < 100 - 5 * code;
 }
 
+/** the pattern a track plays (pats[pat], else its pattern 1) */
+export const stepsPattern = (s: StepsState): StepsPattern => s.pats[s.pat] ?? s.pats[0] ?? { notes: [] };
+/** pattern p plays now: its notes are the track's */
+export function stepsGo(s: StepsState, p: number): void {
+  s.pat = p;
+  s.notes = stepsPattern(s).notes;
+}
+/** the end of a pass (engine.c steps_turn): in a song, the next entry's pattern and shift (after the last, the first
+ * again); else a queued pattern */
+function stepsTurn(s: StepsState): void {
+  const song = s.song.song > 0 ? s.song.songs[s.song.song - 1] : undefined;
+  if (song?.length) {
+    s.songPos = s.songPos + 1 >= song.length ? 0 : s.songPos + 1;
+    const e = song[s.songPos];
+    stepsGo(s, e.pat);
+    s.shift = s.drum ? 0 : e.shift;
+    s.queued = -1;
+    return;
+  }
+  s.shift = 0;
+  if (s.queued >= 0) stepsGo(s, s.queued);
+  s.queued = -1;
+}
+
+const stepCycle = (len: number, dir: number): number => dir === 2 && len > 1 ? 2 * (len - 1) : len;
+
+/** Preview the next visited step without consuming it, also used by live recording. */
+function nextStep(s: StepsState, len: number, dir: number): { visit: number; pos: number; loop: number } {
+  const visit = s.pos < 0 || s.visit + 1 >= stepCycle(len, dir) ? 0 : s.visit + 1;
+  const loop = (s.loop + (visit === 0 ? 1 : 0)) >>> 0;
+  const pos = dir === 3 ? hash32((s.seed ^ Math.imul(loop, 0x9e3779b9) ^ Math.imul(visit + 1, 0x85ebca6b)) >>> 0) % len
+    : dir === 1 ? len - 1 - visit : dir === 2 && visit >= len ? 2 * (len - 1) - visit : visit;
+  return { visit, pos, loop };
+}
+
 /** a MIDI note as the pitch output gives it: octaves from C4, Q16 rounded half away from zero (as engine.c) */
 const stepPitch = (note: number): number => (Math.sign(note - STEP_NOTE) * Math.round((Math.abs(note - STEP_NOTE) * 65536) / 12)) / 65536;
 
 /**
  * Steps: a track of notes (#83, #133). Each note (ModuleInst.notes, track.ts) starts on a step, lasts a number of steps
  * and has a velocity and a chance; a step can hold several (a chord). `len` plays the first steps; a note is cut at the
- * end of the pattern. With nothing in clk it follows the engine's clock while the transport runs: the first step when
+ * end of its traversal. `dir` selects forward, backward, ping-pong without repeated endpoints, or seeded random.
+ * Swing counts visits in time order; live recording previews the same next visit as playback. With nothing in clk it follows the engine's clock while the transport runs: the first step when
  * PLAY starts, then one step per `rate` (STEPS_RATES: half ticks of the 24 ppqn clock, STEPS_RATE_HT), each on the sample
  * its tick falls on; 1/64 is a tick and a half, so every second step lands half a tick (tickLen / 2 samples, rounded down)
  * after a tick. A rising edge in clk is a step instead. reset: the next step is the first. `swing` (50 % straight, 80 % the
@@ -2440,21 +2601,33 @@ const steps: ModuleImpl<StepsState> = {
       param('rate', 0, STEPS_RATE_PIN_MAX, 4, { step: 1, choices: STEPS_RATES, top: STEPS_RATES.length - 1 }),
       param('swing', 50, SWING_PIN_MAX, 50, { step: 1, unit: '%', top: SWING_MAX }),
       param('gate', 0.01, 1, 0.25, { step: 0.01 }),
+      param('dir', 0, 3, 0, { step: 1, choices: ['fwd', 'back', 'ping-pong', 'random'], since: 44 }),
     ],
     data: TRACK_NAME_MAX,
   },
-  init: () => ({ notes: [], pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
+  init: () => ({ notes: [], pats: [{ notes: [] }], pat: 0, queued: -1, songPos: -1, shift: 0, drum: false, song: { song: 0, songs: [] }, pitch: 0, vel: STEP_VEL / 127, seed: 0, mute: false, run: false, c1: 0, r1: 0, count: 0, pos: -1, visit: 0, loop: 0, half: 0, pend: 0, pstep: 0, snd: [], gap: false, since: -1, period: 0, ev: [], thru: [], rec: false, ago: 0, sl: 0, rin: [], took: [] }),
   seed(s, seed) {
     s.seed = seed;
   },
   process(c, s) {
     const q16 = (v: number | undefined): number => Math.round((v ?? 0) * 65536);
-    const len = Math.min(STEPS_MAX, Math.max(1, Math.round(c.p.len ?? 16)));
-    const ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, Math.round(c.p.rate ?? 4)))];
+    const v = c.voice;
+    if (s.queued >= 0 && !v.run) { // stopped: a chosen pattern plays at once
+      stepsGo(s, s.queued);
+      s.queued = -1;
+    }
+    // the pattern's own length and rate, else the track's (a pattern switch at the end of a pass changes them)
+    let len = 0, ht = 0, step = 0;
+    const shape = (): void => {
+      const x = s.pat > 0 ? s.pats[s.pat] : null;
+      len = Math.min(STEPS_MAX, Math.max(1, x?.len ?? Math.round(c.p.len ?? 16)));
+      ht = STEPS_RATE_HT[Math.min(STEPS_RATE_HT.length - 1, Math.max(0, x?.rate ?? Math.round(c.p.rate ?? 4)))];
+      step = Math.floor((ht * v.tickLen) / 2); // a step's samples at the clock's rate
+    };
+    shape();
+    const dir = Math.max(0, Math.min(3, Math.round(c.p.dir ?? 0)));
     const swing = q16(c.p.swing ?? 50) - 50 * 65536;
     const gate = q16(c.p.gate ?? 0.25);
-    const v = c.voice;
-    const step = Math.floor((ht * v.tickLen) / 2); // a step's samples at the clock's rate
     const ext = !!c.connected.clk;
     const { clk, reset, transpose } = c.inp;
     const end = (j: number): void => {
@@ -2474,14 +2647,15 @@ const steps: ModuleImpl<StepsState> = {
       for (const n of s.notes) {
         if (n.at !== k) continue;
         if (notePlays(s.seed, s.loop, k, j++, n.chance)) {
-          const key = Math.max(0, Math.min(127, n.note + semis));
+          const note = Math.max(0, Math.min(127, n.note + s.shift)); // (a song entry's shift)
+          const key = Math.max(0, Math.min(127, note + semis));
           const same = s.snd.findIndex((x) => x.key === key);
           if (same >= 0) end(same);
           if (s.snd.length >= TRACK_POLY) end(0);
-          const left = Math.min(n.len, len - k) - 1;
+          const left = Math.min(n.len, Math.max(1, stepCycle(len, dir) - s.visit)) - 1;
           s.snd.push({ key, left, cnt: hold(left) });
           s.ev.push(key | 0x80, n.vel);
-          s.pitch = stepPitch(n.note);
+          s.pitch = stepPitch(note);
           s.vel = n.vel / 127;
           any = true;
         }
@@ -2500,13 +2674,13 @@ const steps: ModuleImpl<StepsState> = {
         const r = s.rin.findIndex((x) => x.note === note);
         if (r >= 0) {
           const x = s.rin.splice(r, 1)[0];
-          s.took.push({ note: { at: x.at, len: Math.min(STEPS_MAX - x.at, Math.max(1, Math.round(x.t / s.sl))), note, vel: x.vel }, loop: x.loop });
+          s.took.push({ note: { at: x.at, len: Math.min(STEPS_MAX, Math.max(1, Math.round(x.t / s.sl))), note, vel: x.vel }, loop: x.loop });
         }
         if (!(s.thru[e] & 0x80)) continue;
         if (live) {
           const next = s.ago * 2 >= s.sl;
-          const wrap = next && s.pos + 1 >= len;
-          s.rin.push({ note, at: wrap ? 0 : next ? s.pos + 1 : s.pos, t: next ? s.ago - s.sl : s.ago, vel: s.thru[e + 1], loop: wrap ? (s.loop + 1) >>> 0 : s.loop });
+          const target = next ? nextStep(s, len, dir) : s;
+          s.rin.push({ note, at: target.pos, t: next ? s.ago - s.sl : s.ago, vel: s.thru[e + 1], loop: target.loop });
         }
         const was = s.snd.some((x) => x.cnt > 0);
         const key = Math.max(0, Math.min(127, note + semis));
@@ -2538,6 +2712,7 @@ const steps: ModuleImpl<StepsState> = {
           s.count = 0;
           s.half = 0;
           s.pos = -1;
+          s.songPos = -1; // (a song starts again from its first entry)
           adv++;
         }
         if (s.half > 0 && v.run && --s.half === 0) adv++;
@@ -2557,15 +2732,26 @@ const steps: ModuleImpl<StepsState> = {
           }
         }
       }
-      if (s.pend > 0 && --s.pend === 0) fire(s.pstep, i);
+      if (s.pend > 0 && --s.pend === 0 && (dir === 0 || s.pstep < len)) fire(s.pstep, i);
       s.ago++;
       for (; adv > 0; adv--) {
-        s.pos = s.pos + 1 >= len ? 0 : s.pos + 1;
-        if (s.pos === 0) s.loop = (s.loop + 1) >>> 0;
+        let next = nextStep(s, len, dir);
+        if (next.visit === 0) { // the end of a pass: a song's next entry, a queued pattern
+          stepsTurn(s);
+          shape();
+          next = nextStep(s, len, dir);
+        }
+        // In the new play modes a live length edit can end the pass before an old note's countdown does: such a note ends
+        // after this sample, so a note starting now still gets its low trig sample. A note whose countdown ran out keeps
+        // its gate tail. Forward keeps its older behaviour (D-538).
+        if (next.visit === 0 && dir !== 0)
+          for (const x of s.snd)
+            if (x.thru === undefined && x.left > 0 && x.cnt > 0) { x.left = 0; x.cnt = 1; }
+        s.pos = next.pos; s.visit = next.visit; s.loop = next.loop;
         const sl = ext ? s.period : step;
         s.ago = 0;
         s.sl = sl;
-        const d = s.pos & 1 && swing > 0 && sl > 0 ? Math.floor((swing * sl) / (50 * 65536)) : 0;
+        const d = s.visit & 1 && swing > 0 && sl > 0 ? Math.floor((swing * sl) / (50 * 65536)) : 0;
         if (d > 0) {
           s.pend = d;
           s.pstep = s.pos;
@@ -2937,7 +3123,7 @@ const scope: ModuleImpl<null> = {
  */
 export const ENV8_STEPS = 8;
 /** the envelopes: a poly part goes idle only once all of its envelopes have finished (stage 0; engine.ts partQuiet) */
-export const ENVELOPE_TYPES = new Set(['adsr', 'env', 'env8']);
+export const ENVELOPE_TYPES = new Set(['adsr', 'env', 'env8', 'rateenv']);
 export const ENV8_HOLD = 9;
 /** the step the sustain holds (0 none): sus, when it is not past the end */
 export const env8Sus = (sus: number, end: number): number => (sus >= 1 && sus <= end ? sus : 0);
@@ -3027,7 +3213,155 @@ const env8: ModuleImpl<Env8State> = {
   },
 };
 
-const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select];
+const rateenv: ModuleImpl<ReturnType<typeof rateEnvelopeInit>> = {
+  def: {
+    type: 'rateenv', label: 'Rate Env',
+    inputs: [gate('gate'), control('pitch'), gate('hold')], outputs: [control('env')],
+    params: [
+      param('ar', 0, 31, 31, { step: 1 }),
+      param('d1r', 0, 31, 12, { step: 1 }),
+      param('d1l', 0, 15, 10, { step: 1 }),
+      param('d2r', 0, 31, 0, { step: 1 }),
+      param('rr', 0, 15, 8, { step: 1 }),
+      param('krs', 0, 3, 0, { step: 1 }),
+    ],
+  },
+  init: rateEnvelopeInit,
+  process: rateEnvelopeProcess,
+};
+
+/** DX100 owner manual p.34: the displayed ratio table, used as rounded multipliers rather than a chip model.
+ * Output is a pitch offset in octaves, added by a cable to any oscillator pitch input. */
+export const RATIOS = [
+  0.50, 0.71, 0.78, 0.87, 1.00, 1.41, 1.57, 1.73,
+  2.00, 2.82, 3.00, 3.14, 3.46, 4.00, 4.24, 4.71,
+  5.00, 5.19, 5.65, 6.00, 6.28, 6.92, 7.00, 7.07,
+  7.85, 8.00, 8.48, 8.65, 9.00, 9.42, 9.89, 10.00,
+  10.38, 10.99, 11.00, 11.30, 12.00, 12.11, 12.56, 12.72,
+  13.00, 13.84, 14.00, 14.10, 14.13, 15.00, 15.55, 15.57,
+  15.70, 16.96, 17.27, 17.30, 18.37, 18.84, 19.03, 19.78,
+  20.41, 20.76, 21.20, 21.98, 22.49, 23.55, 24.22, 25.95,
+];
+/** Quantized octave offsets shared by both engines. */
+export const RATIO_OCT = RATIOS.map(r => Math.round(Math.log2(r) * 65536) / 65536);
+export const ratioIndex = (value = 4): number => Math.max(0, Math.min(RATIOS.length - 1, Math.round(value)));
+
+/** Seven detune positions, linearly spaced over the manual's ±2.6 cents. */
+export const RATIO_DETUNE_OCT = Array.from({ length: 7 }, (_, i) => Math.round((i - 3) * 2.6 / 3 / 1200 * 65536) / 65536);
+const ratio: ModuleImpl<null> = {
+  def: {
+    type: 'ratio', label: 'Ratio', inputs: [], outputs: [control('pitch')],
+    params: [
+      param('ratio', 0, 63, 4, { step: 1, choices: RATIOS.map(r => r.toFixed(2)) }),
+      param('detune', 0, 6, 3, { step: 1, choices: ['-3', '-2', '-1', '0', '+1', '+2', '+3'] }),
+    ],
+  },
+  init: () => null,
+  process(c) {
+    const detune = Math.max(0, Math.min(6, Math.round(c.p.detune ?? 3)));
+    c.out.pitch.fill(RATIO_OCT[ratioIndex(c.p.ratio)] + RATIO_DETUNE_OCT[detune], 0, c.n);
+  },
+};
+
+/** The Follower's fixed envelope times (99 % of a step, the ADSR's rate formula), its pitch detector's limits and smoothing. */
+export const ESP_ATTACK = 0.003;
+export const ESP_RELEASE = 0.08;
+/** the band-passed signal's peak must reach this (about -48 dB) before a crossing counts: silence gives no pitch */
+export const ESP_FLOOR = 1 / 256;
+/** the longest period measured, in samples (about 10.8 Hz at 44118 Hz); a longer gap starts the measurement again */
+export const ESP_MAX_PERIOD = 4096;
+/** the shortest period accepted, in samples */
+export const ESP_MIN_PERIOD = 2;
+/** amp is held to +-ESP_CLIP (room for the C engine's Q24 band-pass states) */
+export const ESP_CLIP = 16;
+/** the peak hold falls by 1 / 2^9 of itself per sample (about 12 ms); the pitch output glides 1 / 2^6 of the way per sample */
+export const ESP_PEAK_SHIFT = 9;
+export const ESP_GLIDE_SHIFT = 6;
+const C4_HZ = 261.6255653;
+
+interface EspState {
+  /** envelope follower (of amp), the low cut's one-pole, the high cut's one-pole, the band-passed peak hold */
+  env: number; lc: number; hc: number; pk: number;
+  /** the trigger, the detector armed (the band-passed signal went below -hysteresis), a previous crossing to measure from */
+  trig: boolean; arm: boolean; valid: boolean;
+  /** samples since the last crossing, its fraction of a sample back, the previous band-passed sample */
+  cnt: number; frac: number; prev: number;
+  /** the measured pitch (octaves from C4), the glided output */
+  t: number; y: number;
+}
+const espRest = (): Omit<EspState, 't' | 'y'> => ({ env: 0, lc: 0, hc: 0, pk: 0, trig: false, arm: false, valid: false, cnt: 0, frac: 0, prev: 0 });
+
+/**
+ * Follower, after the Korg MS-20's External Signal Processor (its owner's manual, 1978: "External Signal Processor (ESP)",
+ * "Using the External Signal Processor"). `in` x `level` is `amp` (the preamp out). An envelope follower on |amp| (attack
+ * ESP_ATTACK, release ESP_RELEASE) gives `env`; `trig` rises when env passes `thresh` and falls below 3/4 of it. A band pass,
+ * a one-pole high pass at `lowcut` then a one-pole low pass at `highcut` (6 dB per octave each side), gives `bp`. The pitch
+ * to voltage converter measures bp's period between rising crossings of +h after it went below -h (h = a quarter of bp's
+ * peak hold), each crossing placed between its two samples by linear interpolation, and outputs log2(f / C4) in octaves, as
+ * every pitch signal here, plus `cvadj` semitones, through a short glide. It holds the last pitch while bp's peak is below
+ * ESP_FLOOR or the period is out of range. With nothing patched to `in` it rests (outputs 0, the pitch held). Both engines do
+ * the same (engine.c m_esp).
+ */
+const esp: ModuleImpl<EspState> = {
+  def: {
+    type: 'esp',
+    label: 'Follower',
+    inputs: [audio('in')],
+    outputs: [audio('amp'), audio('bp'), control('pitch'), control('env'), gate('trig')],
+    params: [
+      param('level', 0, 4, 1, { step: 0.01 }),
+      param('lowcut', 20, 5000, 40, { unit: 'Hz', step: 1, log: true }),
+      param('highcut', 50, 10000, 2000, { unit: 'Hz', step: 1, log: true }),
+      param('cvadj', -12, 12, 0, { unit: 'st', step: 0.01 }),
+      param('thresh', 0, 1, 0.1, { step: 0.01 }),
+    ],
+  },
+  init: () => ({ ...espRest(), t: 0, y: 0 }),
+  process(c, s) {
+    const o = c.out, n = c.n;
+    const adj = (c.p.cvadj ?? 0) / 12;
+    if (!c.connected.in) {
+      Object.assign(s, espRest());
+      o.amp.fill(0, 0, n); o.bp.fill(0, 0, n); o.env.fill(0, 0, n); o.trig.fill(0, 0, n);
+      o.pitch.fill(s.y + adj, 0, n);
+      return;
+    }
+    const level = c.p.level ?? 1, th = c.p.thresh ?? 0.1, off = th * 0.75;
+    const ka = 1 - Math.exp(-4.6 / Math.max(ESP_ATTACK * c.sr, 1)), kr = 1 - Math.exp(-4.6 / Math.max(ESP_RELEASE * c.sr, 1));
+    const kl = 1 - Math.exp((-2 * Math.PI * (c.p.lowcut ?? 40)) / c.sr), kh = 1 - Math.exp((-2 * Math.PI * (c.p.highcut ?? 2000)) / c.sr);
+    const base = Math.log2(c.sr / C4_HZ);
+    for (let i = 0; i < n; i++) {
+      const x = Math.max(-ESP_CLIP, Math.min(ESP_CLIP, c.inp.in[i] * level));
+      o.amp[i] = x;
+      const a = Math.abs(x);
+      s.env += (a > s.env ? ka : kr) * (a - s.env);
+      if (s.trig ? s.env < off : s.env > th) s.trig = !s.trig;
+      s.lc += kl * (x - s.lc);
+      s.hc += kh * (x - s.lc - s.hc);
+      const b = s.hc, ab = Math.abs(b);
+      s.pk = ab > s.pk ? ab : s.pk - s.pk / (1 << ESP_PEAK_SHIFT);
+      const h = s.pk / 4;
+      if (++s.cnt > ESP_MAX_PERIOD) (s.cnt = ESP_MAX_PERIOD), (s.valid = false);
+      if (s.pk >= ESP_FLOOR) {
+        if (b < -h) s.arm = true;
+        else if (s.arm && b >= h) {
+          const f = b > s.prev ? Math.min(1, (b - h) / (b - s.prev)) : 0;
+          const per = s.cnt - f + s.frac;
+          if (s.valid && per >= ESP_MIN_PERIOD) s.t = base - Math.log2(per);
+          s.arm = false, s.valid = true, s.cnt = 0, s.frac = f;
+        }
+      }
+      s.prev = b;
+      s.y += (s.t - s.y) / (1 << ESP_GLIDE_SHIFT);
+      o.bp[i] = b;
+      o.pitch[i] = s.y + adj;
+      o.env[i] = s.env;
+      o.trig[i] = s.trig ? 1 : 0;
+    }
+  },
+};
+
+const ALL = [fm1, osc, lfo, noise, constant, scale, adsr, vca, filter, mixer, delay, reverb, output, glide, shape, env, string, wavetable, chorus, seq, clkdiv, sh, quant, pulse, pan, xfade, vowel, phaser, crush, ladder, dyn, math, logic, grain, comb, modal, shift, part, random, alloc, scope, arp, steps, macro, drummap, pd, env8, select, rateenv, ratio, esp];
 
 /**
  * Every module except the FM-1 panel (the input) and the output has two parameter inputs, p1 and p2, each with an
@@ -3045,6 +3379,12 @@ for (const m of ALL)
 
 // ports added after the pins (port indices are append-only): the Steps module's keys in (#134)
 steps.def.inputs.push(keys('keys'));
+random.def.inputs.push(gate('clock'));
+ladder.def.inputs.push(control('fm'));
+lfo.def.inputs.push(control('shape'));
+lfo.def.outputs.push(control('pulse'));
+adsr.def.inputs.push(gate('hold'));
+filter.def.outputs.push(audio('hp6'));
 
 export const IMPLS: Record<string, ModuleImpl> = Object.fromEntries(ALL.map((m) => [m.def.type, m as ModuleImpl]));
 

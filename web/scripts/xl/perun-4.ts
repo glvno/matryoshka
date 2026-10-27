@@ -38,6 +38,7 @@
 // (SHIFT and a knob moves that knob on all four voices) is a row per knob (`all tune` .. `all level`, 0 = as set), added
 // to the four voices' own. The realtime voice quantiser (firmware 1.3) is `quantise`: every voice's pitch to semitones.
 //
+// Each voice track exposes PLAY MODE: forward, backward, ping-pong or random.
 // The sequencer: each voice plays its own Steps track (VOICE 1 .. VOICE 4, in front of the engine), so each has its own
 // last step (len), time division or multiplication (rate: 1/2 .. 1/64 = ÷8 .. x4, the triplet rates are ÷4/3 and x3/2),
 // shuffle (swing), mute, probability (a note's chance) and accent (its velocity). A note's pitch is a TUNE lock that lasts
@@ -50,10 +51,9 @@
 // and MOD DEPTH on the time, the COLOUR switch `colour`, 0 bright / 1 dark, the VINTAGE BBD setting's noise `vintage`, BBD
 // SYNC `sync` on Main's clock, with 1/32, 1/2T, 1/2D, 1/1T and 1/1D on `sync note`), MASTER SEND (the voices' summed sends into the BBD), VOLUME, and the compressor's COMP.
 // THRSHLD (threshold and release on one knob) and COMP. AMT (ratio and make-up gain on one knob).
-// Not here: per-step ratchets (x2 .. x5), ODDS (play a step every 2nd .. 8th pass, and inverse odds), the play modes
-// (backward, ping-pong, random), per-step parameter locks and recorded automation for any control but TUNE, pattern
+// Not here: per-step ratchets (x2 .. x5), ODDS (play a step every 2nd .. 8th pass, and inverse odds), per-step parameter locks and recorded automation for any control but TUNE, pattern
 // chaining and the master pattern length: each needs a new ability in the Steps module (per-note ratchet, condition and
-// parameter-lock fields, a direction, a chain), in both engines (issue #351, tiers 2 and 3). The ACOUSTIC HATS samples
+// parameter-lock fields and a chain), in both engines (issue #351, tiers 2 and 3). The ACOUSTIC HATS samples
 // and the SAMPLER P2 CONFIG sample start need the original's samples. The trigger inputs, individual outputs, per-voice
 // and master send / return jacks, clock in / out and MIDI CC map are hardware.
 import { addModule, paramUnit, rowDef, type Patch } from '../../src/patch';
@@ -65,9 +65,9 @@ import type { Xl } from './xl';
 
 const NOTES = 'After the PERKONS HD-01 manual (1.3): per voice 3 algorithms of 3 modes (CHORD, DIGITAL NOISE too), param 1 / 2, ' +
   'tune, decay, drone, cutoff, VCF LP / BP / HP, drive, send, level. The mod LFO (7 waves, sync) reaches all 8 knobs of each ' +
-  'voice; control all; quantiser. Each voice has a track (VOICE 1..4: length, rate, swing, chance, accent, pitch = tune lock), ' +
+  'voice; control all; quantiser. Each voice has a track (VOICE 1..4: length, rate, play mode, swing, chance, accent, tune lock), ' +
   'rates ÷8..x4, groove, fills (C4..F4). Mod sync x8..÷8. BBD: colour, vintage, sync to 1/1D; compressor. Switches step, never ' +
-  'blend. Not here: ratchets, odds, play modes, other locks, pattern chains (need Steps features); hat samples.';
+  'blend. Not here: ratchets, odds, other locks, pattern chains (need Steps features); hat samples.';
 
 type Pin = 'p1' | 'p2';
 type Src = [number, string];

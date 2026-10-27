@@ -338,7 +338,8 @@
     "res": 0.3,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -568,7 +569,8 @@
     "res": 0.2,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -685,7 +687,7 @@
    "x": 1820,
    "y": 26,
    "params": {
-    "level": 0.23
+    "level": 0.25
    }
   },
   {
@@ -814,7 +816,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,
@@ -1105,7 +1108,8 @@
     "res": 0.35,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -1609,7 +1613,8 @@
     "len": 16,
     "rate": 4,
     "swing": 50,
-    "gate": 0.25
+    "gate": 0.25,
+    "dir": 0
    },
    "att": [
     1,
@@ -1736,37 +1741,13 @@
     "unison": 0,
     "channel": 0,
     "low": 0,
-    "high": 127
+    "high": 127,
+    "steal": 1,
+    "stack": 0
    }
   },
   {
    "id": 56,
-   "type": "scale",
-   "x": 920,
-   "y": 3720,
-   "params": {
-    "gain": 0.45,
-    "offset": 0
-   },
-   "att": [
-    1,
-    1
-   ],
-   "map": {
-    "p1": [
-     "gain"
-    ],
-    "p2": [
-     "offset"
-    ],
-    "k1": [],
-    "k2": [],
-    "k3": [],
-    "k4": []
-   }
-  },
-  {
-   "id": 57,
    "type": "glide",
    "x": 1240,
    "y": 3160,
@@ -1775,7 +1756,7 @@
     "curve": 0
    },
    "att": [
-    1,
+    0.45,
     1
    ],
    "map": {
@@ -1792,7 +1773,7 @@
    }
   },
   {
-   "id": 58,
+   "id": 57,
    "type": "osc",
    "x": 1240,
    "y": 2600,
@@ -1827,6 +1808,29 @@
    }
   },
   {
+   "id": 58,
+   "type": "logic",
+   "x": 920,
+   "y": 3720,
+   "params": {
+    "thresh": 0.9
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "thresh"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
    "id": 59,
    "type": "adsr",
    "x": 1560,
@@ -1834,6 +1838,35 @@
    "params": {
     "a": 0.001,
     "d": 0.3,
+    "s": 0,
+    "r": 0.05,
+    "long": 0
+   },
+   "att": [
+    -1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "d"
+    ],
+    "p2": [
+     "d"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 60,
+   "type": "adsr",
+   "x": 1560,
+   "y": 3720,
+   "params": {
+    "a": 0.001,
+    "d": 0.2,
     "s": 0,
     "r": 0.05,
     "long": 0
@@ -1856,12 +1889,12 @@
    }
   },
   {
-   "id": 60,
+   "id": 61,
    "type": "scale",
-   "x": 1240,
-   "y": 3720,
+   "x": 1880,
+   "y": 3160,
    "params": {
-    "gain": 0.25,
+    "gain": 2.6,
     "offset": 0
    },
    "att": [
@@ -1882,15 +1915,90 @@
    }
   },
   {
-   "id": 61,
+   "id": 62,
+   "type": "scale",
+   "x": 1880,
+   "y": 3720,
+   "params": {
+    "gain": 1,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 63,
+   "type": "glide",
+   "x": 2200,
+   "y": 3720,
+   "params": {
+    "time": 0.02,
+    "curve": 0
+   },
+   "att": [
+    0.414,
+    1
+   ],
+   "map": {
+    "p1": [
+     "time"
+    ],
+    "p2": [
+     "curve"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 64,
+   "type": "macro",
+   "x": 2200,
+   "y": 3160,
+   "params": {
+    "value": 0.75
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "value"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 65,
    "type": "ladder",
-   "x": 1560,
+   "x": 2200,
    "y": 2600,
    "params": {
     "cutoff": 260,
-    "res": 0.75,
-    "drive": 1.6,
-    "cvamt": 2.6,
+    "res": 0,
+    "drive": 1,
+    "cvamt": 1,
     "track": 0
    },
    "att": [
@@ -1899,7 +2007,7 @@
    ],
    "map": {
     "p1": [
-     "cutoff"
+     "res"
     ],
     "p2": [
      "res"
@@ -1911,9 +2019,9 @@
    }
   },
   {
-   "id": 62,
+   "id": 66,
    "type": "adsr",
-   "x": 1880,
+   "x": 2520,
    "y": 3160,
    "params": {
     "a": 0.002,
@@ -1940,15 +2048,15 @@
    }
   },
   {
-   "id": 63,
+   "id": 67,
    "type": "vca",
-   "x": 1880,
+   "x": 2520,
    "y": 2600,
    "params": {
     "gain": 0.8
    },
    "att": [
-    0.5,
+    0.25,
     1
    ],
    "map": {
@@ -1960,47 +2068,6 @@
     "k2": [],
     "k3": [],
     "k4": []
-   }
-  },
-  {
-   "id": 64,
-   "type": "shape",
-   "x": 2200,
-   "y": 2600,
-   "params": {
-    "drive": 1.6,
-    "mode": 0,
-    "level": 0.75,
-    "os": 0,
-    "sym": 0,
-    "stages": 1
-   },
-   "att": [
-    1,
-    1
-   ],
-   "map": {
-    "p1": [
-     "drive"
-    ],
-    "p2": [
-     "mode"
-    ],
-    "k1": [],
-    "k2": [],
-    "k3": [],
-    "k4": []
-   }
-  },
-  {
-   "id": 65,
-   "type": "scope",
-   "x": 2520,
-   "y": 2600,
-   "params": {
-    "time": 16,
-    "mode": 0,
-    "voices": 0
    }
   }
  ],
@@ -2681,7 +2748,7 @@
     "port": "pitch"
    },
    "to": {
-    "module": 57,
+    "module": 56,
     "port": "in"
    }
   },
@@ -2692,7 +2759,7 @@
    },
    "to": {
     "module": 56,
-    "port": "in"
+    "port": "p1"
    }
   },
   {
@@ -2702,37 +2769,7 @@
    },
    "to": {
     "module": 57,
-    "port": "p1"
-   }
-  },
-  {
-   "from": {
-    "module": 57,
-    "port": "out"
-   },
-   "to": {
-    "module": 58,
     "port": "pitch"
-   }
-  },
-  {
-   "from": {
-    "module": 55,
-    "port": "gate"
-   },
-   "to": {
-    "module": 59,
-    "port": "gate"
-   }
-  },
-  {
-   "from": {
-    "module": 55,
-    "port": "gate"
-   },
-   "to": {
-    "module": 62,
-    "port": "gate"
    }
   },
   {
@@ -2741,18 +2778,48 @@
     "port": "vel"
    },
    "to": {
-    "module": 60,
-    "port": "in"
+    "module": 58,
+    "port": "a"
+   }
+  },
+  {
+   "from": {
+    "module": 55,
+    "port": "gate"
+   },
+   "to": {
+    "module": 58,
+    "port": "b"
+   }
+  },
+  {
+   "from": {
+    "module": 55,
+    "port": "gate"
+   },
+   "to": {
+    "module": 59,
+    "port": "gate"
    }
   },
   {
    "from": {
     "module": 58,
-    "port": "out"
+    "port": "and"
    },
    "to": {
-    "module": 61,
-    "port": "in"
+    "module": 59,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 58,
+    "port": "and"
+   },
+   "to": {
+    "module": 60,
+    "port": "gate"
    }
   },
   {
@@ -2762,33 +2829,33 @@
    },
    "to": {
     "module": 61,
-    "port": "cv"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 60,
-    "port": "out"
+    "port": "env"
    },
    "to": {
     "module": 61,
-    "port": "cv"
+    "port": "in"
    }
   },
   {
    "from": {
     "module": 60,
-    "port": "out"
+    "port": "env"
    },
    "to": {
-    "module": 63,
-    "port": "p1"
+    "module": 62,
+    "port": "in"
    }
   },
   {
    "from": {
-    "module": 61,
-    "port": "lp24"
+    "module": 62,
+    "port": "out"
    },
    "to": {
     "module": 63,
@@ -2798,21 +2865,11 @@
   {
    "from": {
     "module": 62,
-    "port": "env"
-   },
-   "to": {
-    "module": 63,
-    "port": "cv"
-   }
-  },
-  {
-   "from": {
-    "module": 63,
     "port": "out"
    },
    "to": {
-    "module": 64,
-    "port": "in"
+    "module": 67,
+    "port": "p1"
    }
   },
   {
@@ -2822,7 +2879,77 @@
    },
    "to": {
     "module": 65,
-    "port": "a"
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 64,
+    "port": "out"
+   },
+   "to": {
+    "module": 63,
+    "port": "p1"
+   }
+  },
+  {
+   "from": {
+    "module": 57,
+    "port": "out"
+   },
+   "to": {
+    "module": 65,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 61,
+    "port": "out"
+   },
+   "to": {
+    "module": 65,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 63,
+    "port": "out"
+   },
+   "to": {
+    "module": 65,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 65,
+    "port": "lp24"
+   },
+   "to": {
+    "module": 67,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 55,
+    "port": "gate"
+   },
+   "to": {
+    "module": 66,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 66,
+    "port": "env"
+   },
+   "to": {
+    "module": 67,
+    "port": "cv"
    }
   },
   {
@@ -2847,7 +2974,7 @@
   },
   {
    "from": {
-    "module": 64,
+    "module": 67,
     "port": "out"
    },
    "to": {
@@ -3299,7 +3426,9 @@
     62,
     63,
     64,
-    65
+    65,
+    66,
+    67
    ],
    "inputs": [
     {
@@ -3310,37 +3439,36 @@
    ],
    "outputs": [
     {
-     "module": 64,
+     "module": 67,
      "port": "out",
      "label": "out"
     }
    ],
    "params": [
     {
-     "module": 58,
-     "param": "coarse",
-     "label": "tuning",
-     "head": "voice"
-    },
-    {
-     "module": 58,
+     "module": 57,
      "param": "wave",
-     "label": "waveform"
+     "label": "waveform",
+     "head": "tone"
     },
     {
-     "module": 61,
+     "module": 57,
+     "param": "fine",
+     "label": "tuning"
+    },
+    {
+     "module": 65,
      "param": "cutoff",
-     "label": "cutoff",
-     "group": true
+     "label": "cutoff"
     },
     {
-     "module": 61,
-     "param": "res",
+     "module": 64,
+     "param": "value",
      "label": "resonance"
     },
     {
      "module": 61,
-     "param": "cvamt",
+     "param": "gain",
      "label": "env mod"
     },
     {
@@ -3349,42 +3477,9 @@
      "label": "decay"
     },
     {
-     "module": 60,
-     "param": "gain",
-     "label": "accent",
-     "group": true
-    },
-    {
-     "module": 56,
-     "param": "gain",
-     "label": "slide"
-    },
-    {
-     "module": 64,
-     "param": "drive",
-     "label": "drive"
-    },
-    {
-     "module": 59,
-     "param": "view",
-     "label": "sweep",
-     "col": true,
-     "head": "envelopes"
-    },
-    {
      "module": 62,
-     "param": "view",
-     "label": "amp"
-    },
-    {
-     "module": 62,
-     "param": "d",
-     "label": "amp decay"
-    },
-    {
-     "module": 65,
-     "param": "view",
-     "label": "out"
+     "param": "gain",
+     "label": "accent"
     }
    ]
   }

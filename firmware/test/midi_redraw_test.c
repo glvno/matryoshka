@@ -92,6 +92,23 @@ int main(void)
     fm1_ms += 501;
     midi_yield();
     check("clock timeout still restores the internal clock", !midi_clk_seen);
+    /* The performance controls pass through both physical parsers during a draw and obey the selected channel. */
+    for (source = 1; source <= 2; source++) {
+        const uint32_t cc[] = {2, 64, 65}, ctl[] = {ENG_CTL_BREATH, ENG_CTL_SUSTAIN, ENG_CTL_FOOT};
+        cfg.ch = 2;
+        for (uint32_t k = 0; k < 3; k++) {
+            eng_ctl(ctl[k], 0);
+            for (uint32_t ch = 1; ch <= 2; ch++) {
+                uint32_t st = 0xB0u + ch - 1u, xfers = lcd_xfers;
+                if (source == 2) { um_byte(st); um_byte(cc[k]); um_byte(63); }
+                else midi_enqueue(0xBu | st << 8 | cc[k] << 16 | 63u << 24, 1);
+                midi_yield();
+                check("performance CC obeys channel and reaches the engine without drawing",
+                      E.ctl[ctl[k]] == (ch == 2 ? 63 * 65536 / 127 : 0) && mi_r == mi_w && lcd_xfers == xfers);
+            }
+        }
+    }
+    cfg.ch = 0;
     for (uint32_t kind = 0; kind < 3; kind++) {
         uint32_t st = kind == 2 ? 0xC0u : 0xB0u, n = kind == 0 ? 16u : kind == 1 ? 80u : 0u;
         eng_all_notes_off();
@@ -124,5 +141,31 @@ int main(void)
     eng_run = 1;
     midi_yield();
     check("queued note plays once the engine is running", mi_r == mi_w && E.grp[0].nheld == 1);
+    {
+        uint32_t d, g, k, found = 0;
+        check("Cassia loads for MIDI voice edit", load("CASSIA 1") == 0);
+        cfg.ch = 0;
+        pv_gen++;
+        screen_idle();
+        for (d = 0; d < pg_ndev && !found; d++)
+            for (g = 0; g < pg_dev[d].npg && !found; g++) {
+                const ppage_t *pg = &pg_page[pg_dev[d].pg0 + g];
+                for (k = 0; k < pg->nrows && !found; k++) {
+                    if (pg->par[k] != POLY_ROW)
+                        continue;
+                    found = 1;
+                    pages_focus(d, g);
+                    int told = param_now;
+                    midi_enqueue(0x0Bu | 0xB0u << 8 | (16u + k) << 16 | 127u << 24, 1);
+                    midi_enqueue(9u | 0x90u << 8 | 72u << 16 | 100u << 24, 1);
+                    midi_drain();
+                    check("rejected MIDI voice edit restores two voices and sends no rejected value",
+                          eng_poly_get(0, 0) == 2 && pv_bin[8] == 2 && param_now == told);
+                    check("note behind rejected MIDI voice edit plays, and the drain unlocks",
+                          mi_r == mi_w && E.grp[0].nheld == 1 && !midi_draining);
+                }
+            }
+        check("Cassia has a MIDI-editable voices row", found);
+    }
     return failed ? 1 : 0;
 }

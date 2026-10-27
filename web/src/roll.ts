@@ -23,6 +23,8 @@ import { fixNotes, STEP_VEL, STEPS_MAX, STEPS_RATES, type StepNote } from './tra
 export interface RollOps {
   /** the track as it is now (null: it is gone) and its label */
   track(): ModuleInst | null;
+  /** the pattern strip for the header (pattern-strip.ts, #375) */
+  strip?(): HTMLElement;
   label(): string;
   /** what it plays (poly.ts trackTargets) */
   plays(): string[];
@@ -146,6 +148,8 @@ export class PianoRoll {
     const close = btn('×', 'roll-close', 'close the roll (Esc)', () => this.ops.close());
     close.setAttribute('aria-label', 'Close the roll');
     head.append(grip, this.nameEl, this.playsEl, this.armBtn, this.recBtn, this.lenEl, this.drawBtn, this.foldBtn, help, this.infoEl, close);
+    const strip = ops.strip?.();
+    if (strip) head.insertBefore(strip, this.lenEl);
 
     const rulerRow = document.createElement('div');
     rulerRow.className = 'roll-ruler-row';
@@ -518,7 +522,7 @@ export class PianoRoll {
   /** move the selection (Option held at the press: a copy, the originals stay); it sounds the note under the pointer */
   private moveDrag(lead: StepNote, start: { k: number; row: number }, moving: StepNote[], copy: boolean, up: (move: (ev: PointerEvent) => void, done?: () => void) => void): void {
     const others = copy ? this.notes : this.notes.filter((n) => !moving.includes(n));
-    const minAt = Math.min(...moving.map((n) => n.at)), maxEnd = Math.max(...moving.map((n) => n.at + n.len));
+    const minAt = Math.min(...moving.map((n) => n.at)), maxAt = Math.max(...moving.map((n) => n.at));
     // (rows, not pitches: a Drum map's rows are not in pitch order; a note whose row is not shown stays)
     const listed = !!this.list;
     const rowsOf = moving.map((n) => this.rowOf(n.note)).filter((r) => r >= 0 || !listed);
@@ -530,7 +534,7 @@ export class PianoRoll {
     const shift = (n: StepNote, dr: number): number => { const r = this.rowOf(n.note); return r < 0 && listed ? n.note : this.noteAt(r + dr); };
     up((ev) => {
       const p = this.at(ev);
-      const dk = clamp(p.k - start.k, -minAt, STEPS_MAX - maxEnd);
+      const dk = clamp(p.k - start.k, -minAt, STEPS_MAX - 1 - maxAt);
       const dr = clamp(p.row - start.row, rlo - top, rhi - bottom);
       if (dk === last.dk && dr === last.dr) return;
       last = { dk, dr };
@@ -552,13 +556,13 @@ export class PianoRoll {
     up((ev) => {
       const d = this.at(ev).k - k0;
       const changed = moving.map((n) => {
-        if (right) return { ...n, len: clamp(n.len + d, 1, STEPS_MAX - n.at) };
-        const end = n.at + n.len, at = clamp(n.at + d, 0, end - 1);
+        if (right) return { ...n, len: clamp(n.len + d, 1, STEPS_MAX) };
+        const end = n.at + n.len, at = clamp(n.at + d, Math.max(0, end - STEPS_MAX), Math.min(STEPS_MAX - 1, end - 1));
         return { ...n, at, len: end - at };
       });
       this.sel = new Set(changed.map(id));
       this.newLen = changed.find((n) => n.note === lead.note)?.len ?? this.newLen;
-      this.infoEl.textContent = right ? `length ${lead.len + d < 1 ? 1 : lead.len + d}` : `start ${clamp(lead.at + d, 0, lead.at + lead.len - 1) + 1}`;
+      this.infoEl.textContent = right ? `length ${clamp(lead.len + d, 1, STEPS_MAX)}` : `start ${clamp(lead.at + d, Math.max(0, lead.at + lead.len - STEPS_MAX), Math.min(STEPS_MAX - 1, lead.at + lead.len - 1)) + 1}`;
       this.write(over(changed, others));
     });
   }
@@ -590,7 +594,7 @@ export class PianoRoll {
     const put = (ev: PointerEvent): void => {
       const p = this.at(ev);
       if (p.k < 0 || p.k >= STEPS_MAX || this.hit(ev)) return;
-      const n: StepNote = { at: p.k, len: Math.min(this.newLen, STEPS_MAX - p.k), note: p.note, vel: this.vel };
+      const n: StepNote = { at: p.k, len: this.newLen, note: p.note, vel: this.vel };
       if (this.notes.some((q) => same(q, n))) return;
       this.write([...this.notes, n]);
       if (sounding >= 0) this.ops.play(sounding, 0);
@@ -612,7 +616,7 @@ export class PianoRoll {
     } else {
       const p = this.at(e);
       if (p.k >= 0 && p.k < STEPS_MAX && p.y >= 0 && p.y < this.rows * this.rh) {
-        const n: StepNote = { at: p.k, len: Math.min(this.newLen, STEPS_MAX - p.k), note: p.note, vel: this.vel };
+        const n: StepNote = { at: p.k, len: this.newLen, note: p.note, vel: this.vel };
         this.sel = new Set([id(n)]);
         this.write(over([n], this.notes));
         this.ops.play(n.note, n.vel);
@@ -803,7 +807,7 @@ export class PianoRoll {
         if (!this.clip.length) return true;
         const span = Math.max(...this.clip.map((n) => n.at + n.len));
         const at = clamp(this.marker, 0, STEPS_MAX - 1);
-        const pasted = this.clip.filter((n) => at + n.at < STEPS_MAX).map((n) => ({ ...n, at: at + n.at, len: Math.min(n.len, STEPS_MAX - at - n.at) }));
+        const pasted = this.clip.filter((n) => at + n.at < STEPS_MAX).map((n) => ({ ...n, at: at + n.at }));
         this.sel = new Set(pasted.map(id));
         this.marker = Math.min(STEPS_MAX - 1, at + span);
         this.follow(pasted);
@@ -813,7 +817,7 @@ export class PianoRoll {
       if (lower === 'd') {
         if (!picked.length) return true;
         const a = Math.min(...picked.map((n) => n.at)), b = Math.max(...picked.map((n) => n.at + n.len));
-        const copy = picked.filter((n) => n.at + (b - a) < STEPS_MAX).map((n) => ({ ...n, at: n.at + (b - a), len: Math.min(n.len, STEPS_MAX - n.at - (b - a)) }));
+        const copy = picked.filter((n) => n.at + (b - a) < STEPS_MAX).map((n) => ({ ...n, at: n.at + (b - a) }));
         if (!copy.length) return true;
         this.sel = new Set(copy.map(id));
         this.edit(over(copy, this.notes));
@@ -846,7 +850,7 @@ export class PianoRoll {
     }
     if (dk && shift) {
       // Shift + left / right: every selected note a step shorter / longer
-      const changed = picked.map((n) => ({ ...n, len: clamp(n.len + dk, 1, STEPS_MAX - n.at) }));
+      const changed = picked.map((n) => ({ ...n, len: clamp(n.len + dk, 1, STEPS_MAX) }));
       this.newLen = changed[0].len;
       this.edit(over(changed, rest));
       return true;
@@ -858,7 +862,7 @@ export class PianoRoll {
       const r = this.rowOf(n.note);
       return r < 0 ? n.note : r - up < 0 || r - up >= list.length ? -1 : this.noteAt(r - up);
     };
-    if (picked.some((n) => n.at + dk < 0 || n.at + n.len + dk > STEPS_MAX || to(n) < 0 || to(n) > 127)) return true;
+    if (picked.some((n) => n.at + dk < 0 || n.at + dk >= STEPS_MAX || to(n) < 0 || to(n) > 127)) return true;
     const moved = picked.map((n) => ({ ...n, at: n.at + dk, note: to(n) }));
     this.sel = new Set(moved.map(id));
     this.follow(moved);

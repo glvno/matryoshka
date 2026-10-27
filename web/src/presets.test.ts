@@ -146,11 +146,18 @@ describe('factory <7PH (a groove box): the 909 Kit\'s drums and a Silver Box on 
 // the owner, 2026-10-23 (docs/ledger/patches-and-presets.md D-336): every melodic factory patch that can afford them has an
 // Arpeggiator on ARP, bypassed, and a 16-step PATTERN track feeding it: Main's keys -> PATTERN -> the arpeggiator -> the
 // voice. The drum patches get neither. Oracle V and Algo Four ran past the CPU estimate's warning with them (accepted);
-// since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %). Cassia 1, the CZ-1 in full since it
-// replaced its XL (D-348), estimates about 88 % at three voices with them
+// since the engine's overhead cut (#289) they estimate under it (about 78 % and 80 %). Cassia 1 uses two voices.
+// Io 4 (the Jupiter-4's panel) and Vernon
+// 100 (the ElectroComp 100's) get the arpeggiator alone: with PATTERN, Io 4 passes the CPU estimate's 100 % (it is about
+// 97 % without it) and Vernon 100 the patch bytes
 const NO_PLAYERS = ['808 Kit', '909 Kit', '<7PH', 'Spokes 6'];
-const PAST_WARNING: string[] = ['Cassia 1'];
+const PAST_WARNING: string[] = ['Briefcase 3', 'Io 4'];
+/** the most a patch past the warning estimates */
+const PAST_MAX: Record<string, number> = { 'Io 4': 1, 'Briefcase 3': 0.9 };
+const ARP_ONLY = ['Io 4', 'Vernon 100', 'Wanderer', 'Briefcase 3'];
 const PLAYED = Object.keys(FM1_PRESETS).filter((n) => !NO_PLAYERS.includes(n));
+/** the Arpeggiator alone, no PATTERN (D-336's fallback): Wanderer's switch names (#358) fill the patch bytes PATTERN needs */
+
 /** patterns that were there before (their notes stay); the others' PATTERN is empty */
 const OWN_PATTERN = ['Scrounge', 'Meridian 8', 'Perun 4'];
 /** the patches whose keys play voices on the white keys from F3 (Drum maps) */
@@ -209,7 +216,7 @@ describe('factory patches: an arpeggiator on ARP and a PATTERN track where they 
   });
 
   for (const name of PLAYED)
-    it(`${name}: Main's keys -> PATTERN (16 steps${OWN_PATTERN.includes(name) ? ', its pattern' : ', empty'}) -> an Arpeggiator, bypassed, on ARP; it fits; ARP off it plays as before, on it arpeggiates`, () => {
+    it(`${name}: Main's keys -> ${ARP_ONLY.includes(name) ? '' : `PATTERN (16 steps${OWN_PATTERN.includes(name) ? ', its pattern' : ', empty'}) -> `}an Arpeggiator, bypassed, on ARP; it fits; ARP off it plays as before, on it arpeggiates`, () => {
       const p = FM1_PRESETS[name]();
       const main = p.modules.find((m) => m.type === 'fm1')!;
       const arps = p.modules.filter((m) => m.type === 'arp');
@@ -220,29 +227,32 @@ describe('factory patches: an arpeggiator on ARP and a PATTERN track where they 
       expect(switches(main.panel, 'arp')).toBe(true);
       expect(toggleTargets(p, 'arp')).toEqual([arp.id]);
       const tracks = p.modules.filter((m) => m.type === 'steps');
-      expect(tracks.map((t) => t.name)).toEqual(['PATTERN']);
-      const [track] = tracks;
-      expect(track.params.len).toBe(16);
-      expect(!!track.notes?.length).toBe(OWN_PATTERN.includes(name));
+      expect(tracks.map((t) => t.name)).toEqual(ARP_ONLY.includes(name) ? [] : ['PATTERN']);
       const keys = (a: number, b: number): boolean => p.cables.some((c) => c.from.module === a && c.from.port === 'keys' && c.to.module === b && c.to.port === 'keys');
-      expect(keys(main.id, track.id)).toBe(true);
-      expect(keys(track.id, arp.id)).toBe(true);
+      const [track] = tracks;
+      if (track) {
+        expect(track.params.len).toBe(16);
+        expect(!!track.notes?.length).toBe(OWN_PATTERN.includes(name));
+        expect(keys(main.id, track.id)).toBe(true);
+        expect(keys(track.id, arp.id)).toBe(true);
+      } else expect(keys(main.id, arp.id)).toBe(true);
       // Main's keys and the track's go nowhere else: everything plays through the arpeggiator
-      expect(p.cables.filter((c) => (c.from.module === main.id || c.from.module === track.id) && c.from.port === 'keys').map((c) => c.to.module).sort()).toEqual([track.id, arp.id].sort());
+      const firsts = track ? [main.id, track.id] : [main.id];
+      expect(p.cables.filter((c) => firsts.includes(c.from.module) && c.from.port === 'keys').map((c) => c.to.module).sort()).toEqual((track ? [track.id, arp.id] : [arp.id]).sort());
       expect(p.cables.some((c) => c.from.module === arp.id && c.from.port === 'keys')).toBe(true);
       const b = deviceBudget(p);
       expect(b.fits, JSON.stringify(b.over)).toBe(true);
-      expect(b.cpu.use).toBeLessThanOrEqual(PAST_WARNING.includes(name) ? 0.9 : CPU_WARN);
+      expect(b.cpu.use).toBeLessThanOrEqual(PAST_MAX[name] ?? CPU_WARN);
       // the devices: Main first, then PATTERN, the Output last; the patch does not open on the arpeggiator
       const devs = devicesOf(p, DEFS);
       expect(devs[0].kind).toBe('main');
-      expect(devs[1].module).toBe(track.id);
+      if (track) expect(devs[1].module).toBe(track.id);
       expect(devs.at(-1)!.kind).toBe('output');
       expect(devs.find((d) => d.module === arp.id)?.kind).toBe('arp');
       expect(devs[homeDevice(devs)].module).not.toBe(arp.id);
       // ARP off: sample for sample the patch without them, a block later where the empty PATTERN passes the keys through
       const chord = KEYED.includes(name) ? [53, 57] : [48, 55, 60];
-      const late = OWN_PATTERN.includes(name) ? 0 : 128;
+      const late = OWN_PATTERN.includes(name) || !track ? 0 : 128;
       const now = play(p, chord, { n: SR / 2 });
       expect(loudest(now)).toBeGreaterThan(0.01);
       expect(now).toEqual(play(withoutPlayers(p), chord, { at: late, n: SR / 2 }));

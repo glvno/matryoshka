@@ -16,6 +16,9 @@
  *                   step's other notes; the selected row follows it). Turning a knob on a held step undoes the press:
  *                   the track's notes as they were, the note there.
  *   REC             live recording on / off (its LED is lit while on); it acts on its release
+ *   PRESET          the patch's pattern (#375, D-541): running, each track takes it at the end of its pass (the bar shows
+ *                   P03>P04 until then); stopped, at once. The bar shows the pattern (and the song while one plays)
+ *   SEL tapped      (pressed and let go with no key): the SONG page (below)
  *
  * A drum track (its keys out into a Drum map; the #139 follow-up, the owner's grid of 2026-10-23): the rows are the map's
  * rows. Black keys 1..8 pick the row (stopped: it sounds); with REC on they are hits on their rows instead (heard; while
@@ -59,7 +62,8 @@
 #define BTN_REC 13u
 #define BTN_ENV 4u                      /* ENV: the environment (#197) */
 #define BTN_ACC 2u                      /* FX: the SEQ page's accent key (#197; it was ENV) */
-#define BTN_PEN 3u                      /* SEL: held, the roll's pen (its release does nothing on this page: panel.c sel_open) */
+#define BTN_PEN 3u                      /* SEL: held, the roll's pen; tapped (no key meanwhile), the SONG page (panel.c) */
+#define PAGE_SONG 11u                   /* the SONG page (#375): seq_ui.c song_draw */
 #define BTN_LFO 5u                      /* LFO: the roll's tie key */
 
 static uint8_t seq_trk;                 /* the selected track (index among the patch's Steps modules) */
@@ -82,6 +86,9 @@ static char seq_msg_buf[28];            /* ... a message made up of a track's na
 static uint32_t seq_clear_at;           /* SEQ held + REC (#231): fm1_ms | 1 of the press that asked, 0 none */
 static uint32_t seq_clear_gen;          /* ... the patch then */
 static uint8_t seq_clear_trk;           /* ... the track it asked for */
+static uint32_t seq_pen_ms;             /* fm1_ms | 1 of the last key that was the pen (SEL held: its release then opens
+                                         * nothing, D-541), 0 none */
+static uint32_t seq_shown_pat = 0xFFFFFFFFu;   /* the bar's pattern, queued pattern, song and entry as drawn */
 
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's track (0..10), else -1 */
 static int seq_white(uint32_t n)
@@ -134,7 +141,40 @@ static int seq_kbd(void)
 
 static int32_t seq_len(int mod)
 {
-    return mod < 0 ? 16 : clampi((eng_get_param((uint32_t)mod, STEPS_P_LEN) + 32768) >> 16, 1, TRACK_STEPS);
+    return mod < 0 ? 16 : clampi(eng_steps_len((uint32_t)mod), 1, TRACK_STEPS);   /* (the pattern's own length, else the track's) */
+}
+
+/* a number as two digits (a pattern, an entry: 01..64) */
+static char *put2(char *p, int32_t v)
+{
+    v = clampi(v, 0, 99);
+    *p++ = (char)('0' + v / 10);
+    *p++ = (char)('0' + v % 10);
+    *p = 0;
+    return p;
+}
+/* the pattern state as the SEQ bar shows it: the selected track's pattern playing, the one it takes at the end of its pass
+ * and, while a song plays, its song and entry (one word, to see a change) */
+static uint32_t seq_pat_state(void)
+{
+    int mod = seq_module(), pl = mod >= 0 ? eng_pattern_playing((uint32_t)mod) : eng_pattern(), q = mod >= 0 ? eng_pattern_queued((uint32_t)mod) : -1;
+    return (uint32_t)(pl & 0xFF) | (uint32_t)(q & 0xFF) << 8 | (uint32_t)eng_song() << 16 | (uint32_t)(mod >= 0 ? eng_song_entry((uint32_t)mod) & 0xFF : 0xFF) << 24;
+}
+/* " P03", " P03>P04" (waiting for the end of the pass), " S1 P03" (song 1 plays) */
+static char *seq_pat_text(char *p)
+{
+    uint32_t st = seq_pat_state();
+    int pl = (int)(st & 0xFFu), q = (int)(st >> 8 & 0xFFu);
+    if (pl == 0xFF)
+        return p;
+    if (eng_song()) {
+        p = put(p, " S");
+        *p++ = (char)('0' + eng_song());
+    }
+    p = put2(put(p, " P"), pl + 1);
+    if (q != 0xFF && q != pl)
+        p = put2(put(p, ">P"), q + 1);
+    return p;
 }
 
 /* the track's name as the bar shows it: its own, else STEPS n */
@@ -298,6 +338,8 @@ static void seq_select(uint32_t t)
     seq_held = -1;
     seq_row = 0;
     seq_roll_trk = -1;                           /* (a roll opens around its notes again) */
+    if (page != PAGE_SEQ)
+        return;                                  /* (from another page: the caller's page_set draws the SEQ page whole) */
     header_draw();
     ui_dirty = 2;
 }
@@ -432,8 +474,8 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
                     prev = m - 1;
             }
             nn = m;
-            if (end > TRACK_STEPS)
-                end = TRACK_STEPS;
+            if (end > at + TRACK_STEPS)         /* (a note lasts 64 steps at most, and may run past the last) */
+                end = at + TRACK_STEPS;
             w[prev] = (w[prev] & ~(63u << 6)) | (end - at - 1u) << 6;
         }
         seq_msg_due = "TIED";
@@ -446,6 +488,7 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
 static void seq_pen(int mod, uint32_t n)
 {
     int32_t note = clampi(53 + (int32_t)n + 12 * octave, 0, 127);
+    seq_pen_ms = fm1_ms | 1u;
     seq_roll_show(note, note < seq_roll_lo || note > seq_roll_lo + 7);
     (void)eng_steps_hit_note((uint32_t)mod, (uint32_t)note, 0, 0);
 }
@@ -774,8 +817,10 @@ static void seq_clear_press(void)
     seq_msg_ms = SEQ_CLEAR_MS;
 }
 /* anything else pressed or turned, or SEQ let go, while the clear asks: not cleared */
+static uint32_t song_del_at;
 static void seq_clear_cancel(void)
 {
+    song_del_at = 0;                             /* (the SONG page's delete asks the same way) */
     if (!seq_clear_at)
         return;
     seq_clear_at = 0;
@@ -852,6 +897,8 @@ static void seq_bar(void)
         p = put(p, " REC");
     else if (seq_armed_trk() == (int)seq_trk)    /* the track shown is armed (#179) */
         p = put(p, " ARM");
+    p = seq_pat_text(p);                         /* (after REC / ARM: name REC P03>P04) */
+    seq_shown_pat = seq_pat_state();
     *p = 0;
     bar_text(b, seq_rec ? C_RED : C_ACC);
 }
@@ -977,6 +1024,22 @@ static void seq_grid_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, ui
     text_bc(&FONT_S, 8, y, s, fg, C_BG, field, TA_LEFT);
 }
 
+/* the ground of a whole redraw: the page's colour everywhere but under the 128 cells, which seq_grid_draw paints whole
+ * next (a cell is always painted edge to edge: seq_grid_paint), so their pixels go out once (a whole SEQ page was the
+ * ground and then the cells over it) */
+static void seq_grid_ground(void)
+{
+    uint32_t i, r, x1 = seq_grid_x(15) + GRID_CW;
+    lcd_fill(0, BAR_H, 240, GRID_Y - BAR_H, C_BG);                       /* the info line's band */
+    lcd_fill(0, GRID_Y, seq_grid_x(0), GRID_TICK_Y - GRID_Y, C_BG);       /* the names' column */
+    lcd_fill(x1, GRID_Y, 240u - x1, GRID_TICK_Y - GRID_Y, C_BG);          /* right of the last cell */
+    for (i = 0; i + 1u < 16u; i++)                                        /* the gaps between the columns */
+        lcd_fill(seq_grid_x(i) + GRID_CW, GRID_Y, seq_grid_x(i + 1u) - seq_grid_x(i) - GRID_CW, GRID_TICK_Y - GRID_Y, C_BG);
+    for (r = 0; r < ENG_DRUM_ROWS; r++)                                   /* the gaps under each row of cells */
+        lcd_fill(seq_grid_x(0), GRID_Y + GRID_RH * r + GRID_CH, x1 - seq_grid_x(0), GRID_RH - GRID_CH, C_BG);
+    lcd_fill(0, GRID_TICK_Y, 240, 240u - GRID_TICK_Y, C_BG);              /* the playhead, the track and hint lines */
+}
+
 static void seq_grid_draw(int full, int mod, int map, const char *info)
 {
     uint32_t cell[ENG_DRUM_ROWS][16], note[ENG_DRUM_ROWS], r, i, lo = map >= 0 ? 0xFFu : seq_roll_lo, mark = 0;
@@ -988,7 +1051,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     int remark = !full && !seq_grid_ok;          /* the markers' columns unknown: each drawn or cleared */
     if (full || !seq_grid_ok) {
         if (full)
-            lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+            seq_grid_ground();
         for (r = 0; r < ENG_DRUM_ROWS; r++)
             for (i = 0; i < 16u; i++)
                 seq_grid_cell[r][i] = GRID_NONE;
@@ -1107,7 +1170,10 @@ static void seq_draw(int full)
     fmt_int(num, len);
     p = put(p, num);
     p = put(p, "  RATE ");
-    p = put_param(p, &DEFS[T_STEPS], STEPS_P_RATE, eng_get_param((uint32_t)mod, STEPS_P_RATE));
+    {                                            /* (the pattern's own rate, else the track's) */
+        int rt = eng_pattern_rate((uint32_t)mod, (uint32_t)eng_pattern_playing((uint32_t)mod));
+        p = put_param(p, &DEFS[T_STEPS], STEPS_P_RATE, rt >= 0 && eng_pattern_has((uint32_t)mod, (uint32_t)eng_pattern_playing((uint32_t)mod)) ? rt << 16 : eng_get_param((uint32_t)mod, STEPS_P_RATE));
+    }
     {
         int32_t sw = (eng_get_param((uint32_t)mod, STEPS_P_SWING) + 32768) >> 16;
         if (sw > 50) {
@@ -1119,6 +1185,240 @@ static void seq_draw(int full)
     }
     *p = 0;
     seq_grid_draw(full, mod, map, line);
+}
+
+/* ---- the SONG page (#375; the owner, 2026-10-27: D-541, D-544): SEL tapped on the SEQ page. A song's entries, one a row
+ * (03  P12  +5: its number, pattern, shift), an END row after the last; the patch plays its songs or its selected pattern.
+ *   SELECT          the cursor (an entry, or END)
+ *   K1              the entry's pattern; on END: adds an entry (the last one's pattern, no shift); FX held: a copy of the
+ *                   entry inserted before it
+ *   K2              the entry's shift, -12..+12 semitones (a track that plays a Drum map is never shifted)
+ *   K4              right: the song plays (from the end of each track's pass, its first entry), left: the pattern again
+ *   ALGO            the song, 1..8 (while one plays, that one plays)
+ *   SEQ held + REC  deletes the entry, asked first (REC again within 3 s), as the track clear
+ *   PRESET          the pattern, as on the SEQ page
+ *   SEL / HOME      back to the SEQ page
+ * The entry each track plays is marked (>); only the rows that changed are redrawn. Edits go into the running patch (SAVE
+ * keeps them) and to the editor (SONG_NOW, PATTERN_NOW). */
+#define SONG_ROWS 8u
+#define SONG_Y 44u
+#define SONG_RH 19u
+static uint8_t song_sel;                /* the song shown (0..ENG_SONGS - 1) */
+static uint8_t song_cur, song_top;      /* the cursor (an entry, or the song's length: END), the first row shown */
+static char song_text[SONG_ROWS + 3u][40];   /* the rows, the info, the footer and the hint as drawn (a row's first byte: 1 the cursor) */
+static uint8_t song_ok;                 /* the page is on the LCD as song_text says */
+static int16_t song_shown_play = -2;    /* the entry playing as drawn */
+                                        /* song_del_at: SEQ held + REC: fm1_ms | 1 of the press that asked, 0 none */
+static uint8_t song_del_k;              /* ... the entry it asked for */
+
+static int song_len(void) { return eng_song_len(song_sel); }
+/* the entry the selected track plays in the song shown, -1 when that song does not play */
+static int song_playing(void)
+{
+    int mod = seq_module();
+    return mod >= 0 && eng_song() == song_sel + 1 ? eng_song_entry((uint32_t)mod) : -1;
+}
+/* the page about to open (panel.c, SEL tapped on the SEQ page): the song playing, else the last one shown */
+static void song_prep(void)
+{
+    if (eng_song())
+        song_sel = (uint8_t)(eng_song() - 1);
+    song_cur = song_top = 0;
+    song_del_at = 0;
+    song_ok = 0;
+}
+/* the song's entries changed: into the running binary and to the editor */
+static void song_sync(void)
+{
+    m1_patch_patterns();
+    m1_song_now(song_sel);
+}
+/* PRESET on the SEQ or SONG page: the patch's pattern, d patterns on */
+static void seq_pattern_step(int32_t d)
+{
+    char m[32];
+    int p = eng_pattern();
+    if (p < 0 || !eng_steps_count()) {
+        ui_msg("NO STEPS MODULE", 1000);
+        return;
+    }
+    p = clampi(p + d, 0, ENG_PATTERNS - 1);
+    if (p == eng_pattern())
+        return;
+    eng_pattern_set((uint32_t)p);
+    m1_patch_patterns();
+    m1_pattern_now();
+    put(put2(put(m, "PATTERN "), p + 1), eng_song() ? " (SONG PLAYS)" : eng_transport_running() ? " NEXT" : "")[0] = 0;
+    ui_msg(m, 1000);
+    if (!ui_dirty)
+        ui_dirty = 1;
+}
+/* the knobs on the SONG page (panel.c panel_encoders): st[0..6] = SELECT, ALGO, K1..K4, PRESET */
+static void song_knobs(int32_t *st)
+{
+    int n = song_len(), changed = 0, e;
+    if (st[1]) {                                 /* ALGO: the song (while one plays, this one) */
+        song_sel = (uint8_t)(((int32_t)song_sel + ENG_SONGS * 8 + st[1]) % ENG_SONGS);
+        song_cur = song_top = 0;
+        if (eng_song() && eng_song() != song_sel + 1) {
+            eng_song_set(song_sel + 1u);
+            m1_patch_patterns();
+            m1_pattern_now();
+        }
+        n = song_len();
+        header_draw();
+    }
+    if (st[0])
+        song_cur = (uint8_t)clampi((int32_t)song_cur + st[0], 0, n);
+    if (st[2]) {
+        if (song_cur >= n) {                     /* END: a new entry, the last one's pattern (the selected one first) */
+            if (n < ENG_SONG_LEN && !eng_song_put(song_sel, (uint32_t)n, n ? (uint32_t)eng_song_get(song_sel, (uint32_t)n - 1u) & 0xFFu : (uint32_t)eng_pattern(), 0))
+                changed = 1;
+            else if (n >= ENG_SONG_LEN)
+                ui_msg("SONG FULL: 64 ENTRIES", 1000);
+        } else if (panel_held >> BTN_ACC & 1u) { /* FX held: a copy before it (the 303's INS) */
+            if (!eng_song_insert(song_sel, song_cur))
+                changed = 1;
+            else
+                ui_msg("SONG FULL: 64 ENTRIES", 1000);
+        } else {
+            e = eng_song_get(song_sel, song_cur);
+            changed = !eng_song_put(song_sel, song_cur, (uint32_t)clampi((e & 0xFF) + st[2], 0, ENG_PATTERNS - 1), (int8_t)(e >> 8));
+        }
+    }
+    if (st[3] && song_cur < song_len()) {
+        e = eng_song_get(song_sel, song_cur);
+        changed |= !eng_song_put(song_sel, song_cur, (uint32_t)(e & 0xFF), clampi((int8_t)(e >> 8) + st[3], -ENG_SHIFT_MAX, ENG_SHIFT_MAX));
+    }
+    if (st[5]) {                                 /* K4: the song plays (right) or the pattern (left) */
+        uint32_t want = st[5] > 0 ? song_sel + 1u : 0u;
+        if ((int)want != eng_song()) {
+            eng_song_set(want);
+            m1_patch_patterns();
+            m1_pattern_now();
+            ui_msg(want ? "SONG PLAYS" : "PATTERN PLAYS", 1000);
+            header_draw();
+        }
+    }
+    if (st[6])
+        seq_pattern_step(st[6]);
+    if (changed)
+        song_sync();
+    ui_dirty = ui_dirty ? ui_dirty : 1;
+}
+/* SEQ held + REC on the SONG page: the entry at the cursor deleted, asked first (as seq_clear_press) */
+static void song_del_press(void)
+{
+    char num[4];
+    if (song_cur >= song_len()) {
+        seq_msg_due = "NO ENTRY HERE";
+        return;
+    }
+    put2(num, song_cur + 1);
+    if (song_del_at && song_del_k == song_cur && fm1_ms - (song_del_at & ~1u) < SEQ_CLEAR_MS) {
+        song_del_at = 0;
+        (void)eng_song_delete(song_sel, song_cur);
+        song_sync();
+        put(put(put(seq_msg_buf, "ENTRY "), num), " DELETED")[0] = 0;
+        seq_msg_due = seq_msg_buf;
+        seq_msg_ms = 1200;
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+        return;
+    }
+    song_del_at = fm1_ms | 1u;
+    song_del_k = song_cur;
+    put(put(put(seq_msg_buf, "DELETE ENTRY "), num), "? REC AGAIN")[0] = 0;
+    seq_msg_due = seq_msg_buf;
+    seq_msg_ms = SEQ_CLEAR_MS;
+}
+static void song_bar(void)
+{
+    char b[32], *p = b;
+    p = put(p, "SONG ");
+    *p++ = (char)('1' + song_sel);
+    p = put(p, eng_song() == song_sel + 1 ? " PLAYS" : eng_song() ? " (SONG " : " (PATTERN P");
+    if (eng_song() && eng_song() != song_sel + 1) {
+        *p++ = (char)('0' + eng_song());
+        p = put(p, " PLAYS)");
+    } else if (!eng_song())
+        p = put(put2(p, eng_pattern() + 1), ")");
+    *p = 0;
+    bar_text(b, C_ACC);
+}
+/* a text line of the page, drawn when it is not on the LCD as it is (cur: the cursor's colours) */
+static void song_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, int cur, uint32_t field)
+{
+    uint32_t i;
+    if (song_ok && song_text[n][0] == (char)(cur ? 1 : 2)) {
+        for (i = 0; s[i] && s[i] == song_text[n][1u + i]; i++)
+            ;
+        if (s[i] == song_text[n][1u + i])
+            return;
+    }
+    song_text[n][0] = (char)(cur ? 1 : 2);
+    for (i = 0; s[i] && i < sizeof song_text[n] - 2u; i++)
+        song_text[n][1u + i] = s[i];
+    song_text[n][1u + i] = 0;
+    text_bc(&FONT_S, 8, y, s, cur ? C_BG : fg, cur ? C_ACC : C_BG, field, TA_LEFT);
+}
+static void song_draw(int full)
+{
+    char t[40], num[8], *p;
+    int n, play = song_playing();
+    uint32_t r;
+    if (!eng_steps_count()) {
+        song_ok = 0;
+        if (full) {
+            lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+            text_bc(&FONT_M, 10, 56, "This patch has no Steps module.", C_FG, C_BG, 224, TA_LEFT);
+        }
+        return;
+    }
+    if (full) {
+        lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+        song_ok = 0;
+    }
+    n = song_len();
+    if (song_cur > n)
+        song_cur = (uint8_t)n;
+    if (song_cur < song_top)
+        song_top = song_cur;
+    if (song_cur >= song_top + SONG_ROWS)
+        song_top = (uint8_t)(song_cur - SONG_ROWS + 1u);
+    fmt_int(num, n);                             /* 12 ENTRIES  K4: PATTERN / SONG */
+    p = put(put(t, num), n == 1 ? " ENTRY" : " ENTRIES");
+    put(p, eng_song() == song_sel + 1 ? "  K4 LEFT: PATTERN" : "  K4 RIGHT: SONG")[0] = 0;
+    song_line(SONG_ROWS, 26, t, C_FG, 0, 224);
+    for (r = 0; r < SONG_ROWS; r++) {
+        int k = song_top + (int)r;
+        p = t;
+        if (k < n) {                             /* >03  P12  +5 */
+            int e = eng_song_get(song_sel, (uint32_t)k), sh = (int8_t)(e >> 8);
+            *p++ = k == play ? '>' : ' ';
+            p = put2(p, k + 1);
+            p = put2(put(p, "  P"), (e & 0xFF) + 1);
+            p = put(p, "  ");
+            if (sh > 0)
+                *p++ = '+';
+            fmt_int(num, sh);
+            p = put(p, num);
+        } else if (k == n)
+            p = put(p, n < (int)ENG_SONG_LEN ? " END   K1: ADD" : " END   FULL");
+        *p = 0;
+        song_line(r, SONG_Y + SONG_RH * r, t, k > n ? C_BG : k == n ? C_DIM : C_FG, k == song_cur, 120);
+    }
+    song_line(SONG_ROWS + 1u, 202, "K1 PAT  K2 SHIFT  FX+K1 INSERT", C_DIM, 0, 224);
+    song_line(SONG_ROWS + 2u, 222, "ALGO SONG  SEQ+REC DEL  SEL BACK", C_HINT, 0, 228);
+    song_shown_play = (int16_t)play;
+    song_ok = 1;
+}
+/* every pass (seq_poll): the SONG page's marker follows the entry playing; a delete asked in vain ends */
+static void song_poll(void)
+{
+    if (song_del_at && fm1_ms - (song_del_at & ~1u) >= SEQ_CLEAR_MS)
+        song_del_at = 0;
+    if (page == PAGE_SONG && song_playing() != song_shown_play && !ui_dirty)
+        ui_dirty = 1;
 }
 
 /* the main loop, every pass: the LEDs, and the cells when the playhead moved */
@@ -1134,6 +1434,11 @@ static void seq_poll(void)
     }
     if (seq_clear_at && fm1_ms - (seq_clear_at & ~1u) >= SEQ_CLEAR_MS)
         seq_clear_at = 0;                        /* (the clear asked in vain: its message ends with it) */
+    song_poll();
+    if (page == PAGE_SEQ && eng_steps_count() && seq_pat_state() != seq_shown_pat && !ui_yielding
+        && !(msg_until && (int32_t)(fm1_ms - msg_until) < 0))
+        header_draw();                           /* (a pattern taken at the end of a pass, a song's next entry: the bar,
+                                                  * once a message on it is over) */
     if (page != PAGE_SEQ) {
         kbd_was = -1;
         return;

@@ -89,7 +89,7 @@ static uint8_t pg_list_step, pg_list_peek;
 static void m1_track_name(uint32_t mod, char *out);     /* proto.c: a Steps track's name ("" none) */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);   /* proto.c: a row turned here (the editor follows) */
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v); /* proto.c: the running binary follows */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
 static void m1_preset_stored(uint32_t structure, const char *name);   /* proto.c: a preset stored here (#195) */
 static void m1_arms_now(uint32_t lo, uint32_t hi);              /* proto.c: the armed modules changed here (#191) */
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
@@ -104,15 +104,15 @@ static uint32_t pages_at(const uint8_t *p, uint32_t len)
     if (p[6] & 4u) at += p[2];
     if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
         return 0;
-    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
+    if (!(at = eng_steps_end(p, len, at)))
         return 0;
     return at < len ? at : 0;
 }
 
 /* bit 7 of a row's parameter byte: a setting of the poly group of that Part (patchbin.ts POLY_ROW_PARAMS): the voices,
- * assign, legato, priority, unison */
+ * assign, legato, priority, unison, steal, stack */
 #define POLY_ROW 0x80u
-#define POLY_FIELDS 5u
+#define POLY_FIELDS ENG_NPOLY
 static int row_ok(uint32_t m, uint32_t par)
 {
     if (par & POLY_ROW)
@@ -124,9 +124,9 @@ static int row_ok(uint32_t m, uint32_t par)
 static int32_t poly_value(uint32_t m, uint32_t f)
 {
     uint32_t g = (uint32_t)eng_module_group(m) - 1u;
-    return f == 4u ? eng_poly_unison(g) : eng_poly_get(g, f);
+    return eng_poly_get(g, f);
 }
-static int32_t poly_max(uint32_t f) { return f == 0u ? ENG_MAX_PARTS : f == 4u ? 1 : 2; }
+static int32_t poly_max(uint32_t f) { return f == 0u || f == ENG_POLY_STACK ? ENG_MAX_PARTS : f == ENG_POLY_STEAL ? 1 : f == 1u ? 3 : 2; }
 
 static const ppage_t *pages_now(void);
 static void caps(char *out, const char *s, uint32_t n, uint32_t max);
@@ -706,6 +706,11 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
         put(unit, "kHz")[0] = 0;
         return;
     }
+    if (str_eq(u, "HZ") && q16 > 0 && q16 < 655) {      /* below 0.01 Hz: millihertz, so a slow LFO never displays zero */
+        *put_num(num, q16 * 1000) = 0;
+        put(unit, "mHz")[0] = 0;
+        return;
+    }
     if (str_eq(u, "S") && q16 < 65536) {                 /* below a second: milliseconds (to a tenth below 100) */
         int32_t t = (int32_t)(((int64_t)q16 * 10000 + 32768) >> 16);
         char *e;
@@ -726,10 +731,15 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
 }
 
 /* the value a row plays, where a switch of its module stretches it (the editor's card shows the same): the ADSR's long
- * (decay and release x 2.4) and the Delay's swell (feedback x 198 / 95); the bar keeps the knob's range */
+ * (decay and release x 2.4), the Delay's swell (feedback x 198 / 95) and the LFO's free rate in its slow / fast range
+ * (/ 25, x 2: modules.ts lfoRateText); the bar keeps the knob's range */
 static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
 {
     int t = eng_type(m);
+    if (t == T_LFO && j == LFO_P_RATE) {
+        int32_t r = (eng_get_param(m, LFO_P_RANGE) + 32768) >> 16;
+        return r == 1 ? v / 25 : r == 2 ? v * 2 : v;
+    }
     if (t == T_ADSR && (j == ADSR_P_D || j == ADSR_P_R) && eng_get_param(m, ADSR_P_LONG) >= 32768)
         return (int32_t)(((int64_t)v * ADSR_LONG_Q16) >> 16);
     if (t == T_DELAY && j == DELAY_P_FB && eng_get_param(m, DELAY_P_SWELL) >= 32768)
@@ -750,12 +760,14 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
     if (j & POLY_ROW) {
         uint32_t f = j & 0x7Fu;
         int32_t v = poly_value(m, f);
-        static const char *const UNI[2] = {"OFF", "ON"};
+        static const char *const UNI[3] = {"OFF", "ON", "SHARE"};
         unit[0] = 0;
-        if (f == 0u)
+        if (f == ENG_POLY_STACK && !v)
+            put(num, "ALL")[0] = 0;
+        else if (f == 0u || f == ENG_POLY_STACK)
             fmt_int(num, v);
         else
-            put(num, f == 1u ? POLY_ASSIGN_NAME[clampi(v, 0, 2)] : f == 2u ? POLY_LEGATO_NAME[clampi(v, 0, 2)] : f == 3u ? POLY_PRIORITY_NAME[clampi(v, 0, 2)] : UNI[v ? 1 : 0])[0] = 0;
+            put(num, f == 1u ? POLY_ASSIGN_NAME[clampi(v, 0, 3)] : f == 2u ? POLY_LEGATO_NAME[clampi(v, 0, 2)] : f == 3u ? POLY_PRIORITY_NAME[clampi(v, 0, 2)] : UNI[clampi(v, 0, 2)])[0] = 0;
         *base = *live = (uint32_t)(v * (int32_t)width / poly_max(f));
         return;
     }
@@ -2248,7 +2260,8 @@ static int dp_load(uint32_t d, uint32_t k)
         if (par & POLY_ROW) {
             if (!row_ok(mod, par))
                 continue;
-            poly_row_set(mod, par & 0x7Fu, (v + 32768) >> 16);
+            if (poly_row_set(mod, par & 0x7Fu, (v + 32768) >> 16))
+                return -1;
             m1_param_now(mod, par, v);
         } else {
             if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar)

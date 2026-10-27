@@ -16,7 +16,7 @@ Findings print as  path:line: message  and are relative to the repository root.
 Exit codes: 0 clean, 1 findings, 2 usage or no ledger.
 
 What it enforces (the rules in docs/ledger/README.md):
-  1. every subject file has, in order: a title, an `IDs: D-###-D-###` block line, a
+  1. every subject file has, in order: a title, an `IDs: D-###-D-###` block line (more blocks after commas), a
      current-state paragraph, one table with the exact 5-column header, and a
      `## Not yet settled` heading
   2. every row's ID is inside its file's block
@@ -59,7 +59,9 @@ ID_RE = re.compile(r"\bD-(\d{3,})\b")
 TBD_RE = re.compile(r"\bD-TBD\b")
 ANCHOR_RE = re.compile(r'<a id="(D-\d{3,})"></a>\1')
 ANCHOR_ANY_RE = re.compile(r'<a id="(D-\d{3,})"></a>(D-\d{3,})')
-IDS_LINE_RE = re.compile(r"^IDs?:\s*D-(\d{3,})\s*(?:–|—|-|\.\.)\s*D-(\d{3,})\s*$")
+RANGE = r"D-(\d{3,})\s*(?:–|—|-|\.\.)\s*D-(\d{3,})"
+IDS_LINE_RE = re.compile(r"^IDs?:\s*" + RANGE + r"(?:\s*,\s*" + RANGE + r")*\s*$")
+RANGE_RE = re.compile(RANGE)
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)\s]*)\)")
 CODE_SPAN_RE = re.compile(r"`[^`]*`")
 BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
@@ -112,7 +114,7 @@ class Row:
 class SubjectFile:
     path: Path
     lines: list[str]
-    block: tuple[int, int] | None = None
+    blocks: list[tuple[int, int]] | None = None  # (a file that fills its first block gets a second, D-003)
     ids_line: int | None = None
     table_start: int | None = None
     rows: list[Row] = field(default_factory=list)
@@ -315,8 +317,8 @@ def parse_subject(p: Path) -> tuple[SubjectFile, list[Finding]]:
         m = IDS_LINE_RE.match(line.strip())
         if m and sf.ids_line is None and sf.table_start is None:
             sf.ids_line = n
-            sf.block = (int(m.group(1)), int(m.group(2)))
-            if sf.block[0] > sf.block[1]:
+            sf.blocks = [(int(a), int(b)) for a, b in RANGE_RE.findall(line)]
+            if any(a > b for a, b in sf.blocks):
                 f.append(Finding(p, n, "ID block start is after its end"))
             continue
         cells = split_cells(line)
@@ -386,10 +388,11 @@ def parse_row_id(row: Row, sf: SubjectFile) -> list[Finding]:
         else:
             f.append(Finding(row.file, row.line, 'ID cell must be `<a id="D-###"></a>D-###`'))
         return f
-    if sf.block is not None and row.rid:
+    if sf.blocks is not None and row.rid:
         num = int(row.rid[2:])
-        if not (sf.block[0] <= num <= sf.block[1]):
-            f.append(Finding(row.file, row.line, f"{row.rid} is outside this file's block D-{sf.block[0]:03d}–D-{sf.block[1]:03d}"))
+        if not any(a <= num <= b for a, b in sf.blocks):
+            ranges = ", ".join(f"D-{a:03d}–D-{b:03d}" for a, b in sf.blocks)
+            f.append(Finding(row.file, row.line, f"{row.rid} is outside this file's blocks {ranges}"))
     return f
 
 

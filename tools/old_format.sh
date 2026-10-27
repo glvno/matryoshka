@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 BASE="${1:-v1.4.1}"
 T=build/oldfmt
 rm -rf "$T" && mkdir -p "$T/base" "$T/out"
-git archive "$BASE" web/scripts web/src web/package.json web/tsconfig.json firmware | tar -x -C "$T/base"
+git archive "$BASE" web firmware | tar -x -C "$T/base"
 ln -s "$PWD/web/node_modules" "$T/base/web/node_modules"
 (cd "$T/base/web" && npx vite-node scripts/golden.ts) > /dev/null       # the older binaries: $T/base/build/golden
 [ -d build/golden ] || (cd web && npx vite-node scripts/golden.ts) > /dev/null

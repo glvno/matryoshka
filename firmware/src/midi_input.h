@@ -50,13 +50,17 @@ static void midi_drain_mode(int quick)
                 eng_all_notes_off();
             } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
                 eng_ctl(ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
+            } else if (st == 0xB0u && (n == 2u || n == 64u || n == 65u)) { /* Main's breath, sustain and foot outputs */
+                eng_ctl(n == 2u ? ENG_CTL_BREATH : n == 64u ? ENG_CTL_SUSTAIN : ENG_CTL_FOOT,
+                        (int32_t)(v * 65536u / 127u));
             } else if (st == 0xB0u && n >= 16u && n <= 19u) {   /* CC 16..19: K1..K4, the rows of the device page in focus */
                 uint32_t mod, par;
                 int32_t val, r = pages_set_unit(n - 16u, (int32_t)(v * 65536u / 127u), &mod, &par, &val);
                 if (r >= 0) {
-                    if (r == 1)
-                        poly_row_set(mod, par & 0x7Fu, val);
-                    else {
+                    if (r == 1) {
+                        if (poly_row_set(mod, par & 0x7Fu, val))
+                            continue;
+                    } else {
                         eng_set_param(mod, par, val);
                         m1_patch_param(mod, par, val);
                         pages_also(n - 16u, val);       /* (the parameters the row also sets, #357) */

@@ -42,7 +42,8 @@ const PORT_NAME = `FM-1 (emu ${process.pid})`;
 // panel ids (web/src/fm1-ui.ts BUTTONS, fm1-emu's key matrix): 14.. the note keys from F3
 const B = { octDown: 0, octUp: 1, fx: 2, scl: 3, env: 4, lfo: 5, edit: 6, glo: 7, home: 8, save: 9, arp: 10, seq: 11, play: 12, rec: 13 };
 const C4 = 14 + 7;
-const ENC = { select: 0, algo: 1, k1: 2, preset: 6 };
+const WHITE = [14, 16, 18, 20, 21, 23, 25, 26, 28, 30, 32, 33, 35, 37, 38, 40];   // F3 .. G5's white keys: steps 1..16 on the grid
+const ENC = { select: 0, algo: 1, k1: 2, k4: 5, preset: 6 };
 const QUIET = 64;
 const LOUD = 1000;
 
@@ -184,6 +185,14 @@ class Emu extends Target {
   async mark() { return Number((await this.cmd('mark')).split(' ')[1]); }
   async peak(m) { return Number((await this.cmd(`peak ${m}`)).split(' ')[1]); }
   snap(name) { return this.cmd(`snap ${join(OUT, `${name}.png`)}`); }
+  /** emulated time (the checks below count in it: the interpreter runs slower than the wall clock) */
+  async ms() { return Number((await this.cmd('ms')).split(' ')[1]); }
+  /** let `ms` emulated ms pass */
+  wait(ms) { return this.cmd(`wait ${ms}`); }
+  /** the emulated ms until `s` is on the LCD, null if not within `ms` */
+  async until(ms, s) { const [, seen, n] = (await this.cmd(`until ${ms} ${s}`)).split(' '); return seen === '1' ? Number(n) : null; }
+  /** a host that takes nothing from the FM-1 (a computer where no app reads its MIDI, #375), or one that reads again */
+  deaf(on) { return this.cmd(`deaf ${on ? 1 : 0}`); }
   quit() { try { this.proc.stdin.write('quit\n'); } catch { /* gone */ } }
 }
 
@@ -207,7 +216,7 @@ const FILTER_MIDI = (only) => {
     for (const p of keep(a.outputs).values()) {
       if (p.__wrapped) continue;
       const send = p.send.bind(p);
-      p.send = (d, t) => { if (d[0] === 0xf0 && d[1] === 0x7d) window.__sent.push([Math.round(performance.now()), d[4], d.length]); return send(d, t); };
+      p.send = (d, t) => { if (d[0] === 0xf0 && d[1] === 0x7d) window.__sent.push([Math.round(performance.now()), d[4], d.length, Array.from(d.slice(5, 9))]); return send(d, t); };
       p.__wrapped = true;
     }
     return new Proxy(a, {
@@ -393,11 +402,47 @@ async function main() {
       await loudCheck('connect: the FM-1 plays Init from a key', p, p > LOUD, `peak ${p}`);
       await emu.snap('connect');
     },
+    async patterns() {   // #375: a pattern or song chosen on the FM-1 reaches the editor, the editor's reaches the FM-1
+      await open('Silver Box');
+      await until(async () => { const x = await T(); return !x.sandbox && x.live; });
+      await until(async () => !/sending/i.test((await T()).status ?? ''), 8000);
+      const seqOf = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'fm1')?.seq ?? {};
+      await emu.tap(B.seq);
+      await check('patterns: the SEQ bar shows P01', await emu.waitText('P01', 3000));
+      await emu.turn(ENC.preset, 1);
+      await check('patterns: PRESET on the SEQ page: the editor follows (pattern 2)', !!(await until(async () => (await seqOf()).pattern === 1, 3000)), JSON.stringify(await seqOf()));
+      await page.keyboard.press(']');
+      await check('patterns: ] in the editor: the FM-1 plays pattern 3', await emu.waitText('P03', 3000));
+      await emu.snap('patterns');
+      await emu.tap(B.scl);
+      await check('patterns: SEL tapped opens the SONG page with the demo song', await emu.waitText('SONG 1', 3000));
+      await emu.turn(ENC.k4, 1);
+      await check('patterns: K4 right: the editor plays song 1 too', !!(await until(async () => (await seqOf()).song === 1, 3000)), JSON.stringify(await seqOf()));
+      await emu.tap(B.play);
+      await sleep(400);
+      const m = await emu.mark();
+      await sleep(1500);
+      const p = await emu.peak(m);
+      await loudCheck('patterns: PLAY plays the song on the FM-1', p, p > LOUD, `peak ${p}`);
+      await emu.tap(B.play);
+      await emu.turn(ENC.k4, -1);
+      await check('patterns: K4 left: the editor plays the pattern again', !!(await until(async () => !(await seqOf()).song, 3000)));
+      await emu.tap(B.scl);
+      await emu.tap(B.seq);
+      await shot('patterns');
+    },
     async sandbox() {
+      await page.evaluate(() => window.__sent.splice(0));
       await open('Hera 6 XL');
       const s = await until(async () => { const x = await T(); return x.sandbox ? x : null; });
       await check('sandbox: over budget with Live on is sandbox mode', !!s?.sandbox, `chip ${(await T()).chip}`);
-      await check('sandbox: the FM-1 shows the sandbox page', await emu.waitText('BROWSER PLAYS'));
+      const shown = await emu.waitText('BROWSER PLAYS');
+      const sent = await page.evaluate(() => window.__sent.slice());
+      const pauseAt = sent.findIndex((x) => x[1] === 0x2c && x[3][0] === 1);
+      const pageAt = sent.findIndex((x) => x[1] === 0x31);
+      await check('sandbox: pause precedes the page', pauseAt >= 0 && pageAt > pauseAt, `sent ${sent.map((x) => x[1].toString(16)).join(' ')}`);
+      await check('sandbox: the FM-1 shows the sandbox page', shown);
+      await check('sandbox: its first page names the editor patch', await emu.waitText('HERA 6 XL'));
       await emu.snap('sandbox');
       const p = await emu.notePeak();
       await check('sandbox: the FM-1 is silent under a key', p < QUIET, `peak ${p}`);
@@ -518,6 +563,52 @@ async function main() {
       await shot('switch');
       if (held >= 0) await emu.key(held, false);
       await emu.tap(B.play);   // stop
+    },
+    // #375: on a computer where no app reads the FM-1's MIDI, every message the FM-1 sends unasked (TRACK_NOW after a
+    // step, PARAM_NOW after a knob) found the SysEx ring full and waited 200 ms: entering steps by hand stalled the panel
+    // for seconds. The browser always read, so no scenario saw it: here m1emu stops taking the FM-1's packets (the same
+    // ota_wire_send path), steps are entered at a hand's pace, and SEQ must still close the page at once. Times are
+    // emulated ms (the interpreter runs slower than the wall clock).
+    async deafHost() {
+      if (DEVICE) return console.log('  (skipped: the deaf host is the emulator\'s, m1emu deaf)');
+      await check('deaf: the 808 Kit opens', await open('808 Kit'));
+      await sleep(600);                             // (the upload starts 150 ms after the change; deaf before it ends, it stalls)
+      const sent = await until(async () => { const x = await T(); return x.live && x.chip === 'synced' && x.status === 'patch on the FM-1'; }, 10000);
+      await check('deaf: the editor sent it, synced', !!sent && (await emu.waitText('= OCT =', 6000)), `chip ${(await T()).chip}, ${(await T()).status}`);
+      await emu.deaf(true);
+      await emu.press(B.seq, 120);
+      await check('deaf: SEQ opens the drum grid', (await emu.until(3000, 'ALGO: TRACK')) !== null);
+      await emu.wait(300);
+      const t0 = await emu.ms();
+      for (let i = 0; i < 30; i++) {                // steps 1..16 switched, then 1..14 back: a TRACK_NOW each, nobody taking them
+        await emu.press(WHITE[i % 16], 40);
+        await emu.wait(60);
+      }
+      const took = (await emu.ms()) - t0;
+      await emu.snap('deaf-steps');
+      await emu.press(B.seq, 120);
+      const back = await emu.until(3000, '= OCT =');
+      await check('deaf: 30 steps entered with no app reading the FM-1, the panel keeps up', back !== null && back <= 400,
+        `SEQ closed the page ${back === null ? 'not within 3000' : `after ${back}`} emulated ms (a reading host: about 140; the 30 steps took ${took} ms)`);
+      await emu.deaf(false);
+      await emu.wait(300);
+      await emu.press(B.seq, 120);
+      await emu.until(3000, 'ALGO: TRACK');
+      await emu.wait(300);
+      const before = await patchJson();
+      await emu.press(WHITE[0], 40);                // a step: its TRACK_NOW reaches the editor again
+      const followed = await until(async () => (await patchJson()) !== before, 3000);
+      await check('deaf: read again, the editor follows a step entered on the FM-1', !!followed);
+      await emu.wait(200);
+      await emu.press(WHITE[0], 40);                // (the step back)
+      await emu.wait(200);
+      await emu.press(B.seq, 120);
+      await emu.until(3000, '= OCT =');
+      await open('Init');
+      await sleep(600);
+      const s = await until(async () => { const x = await T(); return x.live && x.chip === 'synced' && x.status === 'patch on the FM-1'; }, 10000);
+      await check('deaf: the editor syncs a patch to the FM-1 again', !!s && (await emu.waitText('= OCT =', 4000)), `chip ${(await T()).chip}, ${(await T()).status}`);
+      await emu.snap('deaf-after');
     },
   };
 

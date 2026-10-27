@@ -27,7 +27,7 @@ export const SWING_PIN_MAX = 75;
 export const SWING_MAX = 80;
 
 export interface StepNote {
-  /** the step it starts on (0..STEPS_MAX - 1) and how many steps it lasts (1..STEPS_MAX - at; cut at the track's len) */
+  /** the step it starts on (0..STEPS_MAX - 1) and how many visited steps it lasts (1..STEPS_MAX; cut at the end of a traversal) */
   at: number;
   len: number;
   /** MIDI note (60 = C4) and velocity (1..127) */
@@ -62,7 +62,7 @@ export function fixNotes(raw: unknown): StepNote[] | undefined {
     const o = r as Record<string, unknown>;
     const at = int(o.at, 0, STEPS_MAX - 1), note = int(o.note, 0, 127);
     if (at === null || note === null || Number(o.at) < 0 || Number(o.at) >= STEPS_MAX) continue;
-    const n: StepNote = { at, len: int(o.len, 1, STEPS_MAX - at) ?? 1, note, vel: int(o.vel, 1, 127) ?? STEP_VEL };
+    const n: StepNote = { at, len: int(o.len, 1, STEPS_MAX) ?? 1, note, vel: int(o.vel, 1, 127) ?? STEP_VEL };
     const chance = fixChance(o.chance);
     if (chance !== undefined) n.chance = chance;
     out.push(n);
@@ -206,3 +206,96 @@ export function overdub(notes: readonly StepNote[] | undefined, add: readonly St
  * velocity), anything else a rest (the factory kits, tests) */
 export const patternNotes = (s: string): StepNote[] | undefined =>
   fixNotes([...s].flatMap((c, at) => (c === 'x' || c === 'X' ? [{ at, len: 1, note: STEP_NOTE, vel: c === 'X' ? ACCENT_VEL : STEP_VEL }] : [])));
+
+/** the patterns a Steps track holds (pattern 1 is ModuleInst.notes, patterns 2.. are ModuleInst.patterns) and the songs a
+ * patch holds (Main's `seq`): engine.c ENG_PATTERNS, ENG_SONGS, ENG_SONG_LEN */
+export const PATTERNS_MAX = 64;
+export const SONGS_MAX = 8;
+export const SONG_LEN_MAX = 64;
+/** a song entry's shift, in semitones either way */
+export const SHIFT_MAX = 12;
+
+/** a track's pattern 2..PATTERNS_MAX: its notes and, when set, its own length (1..STEPS_MAX) and rate (an index of
+ * STEPS_RATES) instead of the track's `len` / `rate` */
+export interface Pattern {
+  notes?: StepNote[];
+  len?: number;
+  rate?: number;
+}
+/** a song entry: the pattern it plays (0-based) and its shift in semitones (never applied to a track that plays a Drum map) */
+export interface SongEntry { pat: number; shift: number }
+/** the patch's pattern and songs (Main's `seq`): the selected pattern (0-based, saved), the song playing (0: none, the
+ * selected pattern plays; 1..SONGS_MAX), the songs */
+export interface SeqState {
+  pattern?: number;
+  song?: number;
+  songs?: SongEntry[][];
+  /** the editor names the patterns as the TB-303 does (I-A1 .. IV-B8: patternName), not P01 .. P64; editor only, never in
+   * the binary (the FM-1 shows P01 ..) */
+  names?: '303';
+}
+
+/** pattern p (0-based) as the editor names it: P01 .. P64, or the TB-303's I-A1 .. IV-B8 (four groups of two sections of
+ * eight) */
+export function patternName(p: number, names?: '303'): string {
+  if (names !== '303') return `P${String(p + 1).padStart(2, '0')}`;
+  return `${['I', 'II', 'III', 'IV'][Math.floor(p / 16) % 4]}-${Math.floor((p % 16) / 8) ? 'B' : 'A'}${(p % 8) + 1}`;
+}
+
+/** a track's patterns 2.. from anything: null where the track has none (that pattern number plays its pattern 1), trailing
+ * nulls dropped; undefined when it has none */
+export function fixPatterns(raw: unknown): (Pattern | null)[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out: (Pattern | null)[] = raw.slice(0, PATTERNS_MAX - 1).map((r) => {
+    if (!r || typeof r !== 'object') return null;
+    const o = r as Record<string, unknown>;
+    const p: Pattern = {};
+    const notes = fixNotes(o.notes);
+    if (notes) p.notes = notes;
+    const len = o.len === undefined ? null : int(o.len, 1, STEPS_MAX);
+    if (len !== null) p.len = len;
+    const rate = o.rate === undefined ? null : int(o.rate, 0, STEPS_RATES.length - 1);
+    if (rate !== null) p.rate = rate;
+    return p;
+  });
+  while (out.length && out[out.length - 1] === null) out.pop();
+  return out.length ? out : undefined;
+}
+
+/** the patch's pattern and songs from anything; undefined when they hold nothing (pattern 1, no song, no entries) */
+export function fixSeq(raw: unknown): SeqState | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const out: SeqState = {};
+  const pattern = int(o.pattern, 0, PATTERNS_MAX - 1);
+  if (pattern) out.pattern = pattern;
+  const song = int(o.song, 0, SONGS_MAX);
+  if (song) out.song = song;
+  if (Array.isArray(o.songs)) {
+    const songs = o.songs.slice(0, SONGS_MAX).map((s) => (Array.isArray(s) ? s : []).slice(0, SONG_LEN_MAX).flatMap((e): SongEntry[] => {
+      if (!e || typeof e !== 'object') return [];
+      const x = e as Record<string, unknown>;
+      return [{ pat: int(x.pat, 0, PATTERNS_MAX - 1) ?? 0, shift: int(x.shift, -SHIFT_MAX, SHIFT_MAX) ?? 0 }];
+    }));
+    while (songs.length && !songs[songs.length - 1].length) songs.pop();
+    if (songs.length) out.songs = songs;
+  }
+  if (o.names === '303') out.names = '303';
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** pattern p (0-based) of a track as it plays: its notes, length and rate. A pattern the track has not got plays its
+ * pattern 1 (`own` false); pattern 1 and a pattern without its own length / rate take the track's parameters */
+export function patternOf(m: { notes?: StepNote[]; patterns?: (Pattern | null)[]; params: Record<string, number> }, p: number): { notes: StepNote[] | undefined; len: number; rate: number; own: boolean } {
+  const x = p > 0 ? m.patterns?.[p - 1] ?? null : null;
+  const len = Math.min(STEPS_MAX, Math.max(1, Math.round(m.params.len ?? 16)));
+  const rate = Math.round(m.params.rate ?? 4);
+  if (!x) return { notes: m.notes, len, rate, own: p === 0 };
+  return { notes: x.notes, len: x.len ?? len, rate: x.rate ?? rate, own: true };
+}
+
+/** a short note word (format 48's patterns section, 16 bits): bits 0..3 the start, 4..7 the length - 1, 8..14 the note,
+ * 15 the accent (full velocity, else the default velocity); for a pattern whose every note fits it (isShortNote) */
+export const isShortNote = (n: StepNote): boolean => n.at < 16 && n.len <= 16 && (n.vel === STEP_VEL || n.vel === ACCENT_VEL) && (n.chance ?? 100) === 100;
+export const shortWord = (n: StepNote): number => n.at | ((n.len - 1) << 4) | (n.note << 8) | (n.vel === ACCENT_VEL ? 0x8000 : 0);
+export const wordShort = (w: number): StepNote => ({ at: w & 15, len: ((w >> 4) & 15) + 1, note: (w >> 8) & 127, vel: w & 0x8000 ? ACCENT_VEL : STEP_VEL });
