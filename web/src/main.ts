@@ -276,11 +276,19 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     if (id === undefined) return;
     mark(true);
     try {
-      if (e.kind === 'track') editor.trackFromDevice(id, e.notes);
+      if (e.kind === 'track') editor.trackFromDevice(id, e.notes, e.pat);
       else {
         host.send({ t: 'mute', id, on: e.on });
         if (from === 'device') emu.ui?.mute(e.module, e.on);   // (the emulator's black key lights follow the FM-1's mute)
       }
+    } finally { mark(false); }
+    return;
+  }
+  if (e.kind === 'pattern' || e.kind === 'song') {   // PRESET on the SEQ page, the SONG page (#375): the editor follows
+    mark(true);
+    try {
+      if (e.kind === 'pattern') editor.patternFromDevice(e.pattern, e.song);
+      else editor.songFromDevice(e.song, e.entries);
     } finally { mark(false); }
     return;
   }
@@ -509,7 +517,9 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     fromEmu = true;
     try { setPlaying(run); } finally { fromEmu = false; }
   },
-  track: (m, notes) => fm1Event({ kind: 'track', module: m, notes }, 'emu'),
+  track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
+  pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
+  song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
@@ -580,12 +590,29 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (live() && !uploading) device.param(editor.patch, id, name, value);
     else if (live()) dirty = true;
   },
-  onTrack(id, notes) {
-    host.send({ t: 'track', id, notes });
+  onTrack(id, notes, pat) {
+    host.send({ t: 'track', id, notes, pat });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) device.track(editor.patch, id, notes);
+    if (live() && !uploading) device.track(editor.patch, id, notes, pat);
+    else if (live()) dirty = true;
+  },
+  onPattern(pattern, song) {   // (#375) the patch's pattern / song: each track takes it at the end of its pass
+    host.send({ t: 'pattern', p: pattern });
+    host.send({ t: 'song', n: song });
+    if (!fromEmu) queueEmu();
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !uploading) device.pattern(pattern, song);
+    else if (live()) dirty = true;
+  },
+  onSong(k, entries) {
+    host.send({ t: 'songs', songs: editor.songs() });
+    if (!fromEmu) queueEmu();
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !uploading) device.song(k, entries);
     else if (live()) dirty = true;
   },
   onArm(armed, plays) {

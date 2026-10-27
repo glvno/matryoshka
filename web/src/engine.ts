@@ -13,7 +13,7 @@ import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFla
 import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
-import { fixNotes, PATTERNS_MAX, SONGS_MAX, type StepNote } from './track';
+import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
 export const BLOCK = 128;
@@ -519,6 +519,10 @@ export class Engine {
       const s = node.inst[0].state as StepsState;
       s.queued = this.pattern;
     }
+  }
+  /** the songs' entries (Main's `seq.songs`) changed: each track goes on from the entry it plays */
+  setSongs(songs: readonly SongEntry[][]): void {
+    this.song.songs = songs.map((x) => x.map((e) => ({ ...e })));
   }
   /** the song that plays (0: none, the selected pattern; 1..SONGS_MAX): from the end of each track's pass, its first entry */
   setSong(n: number): void {

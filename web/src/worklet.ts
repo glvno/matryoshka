@@ -2,7 +2,7 @@
 // AudioWorklet wrapper around Engine.
 import { Engine } from './engine';
 import type { Patch } from './patch';
-import type { StepNote } from './track';
+import type { SongEntry, StepNote } from './track';
 import { ViewStream, VoiceStreams, voiceSums, type ViewData } from './scope-stream';
 
 declare const sampleRate: number;
@@ -24,6 +24,7 @@ export type HostMsg =
   | { t: 'track'; id: number; notes: StepNote[] | undefined; pat?: number }
   | { t: 'pattern'; p: number }
   | { t: 'song'; n: number }
+  | { t: 'songs'; songs: SongEntry[][] }
   | { t: 'mute'; id: number; on: boolean }
   /** the armed devices (#190, `m<id>` / `a<id>`): only they hear Main's keys; none: the cables decide */
   | { t: 'arm'; devices: string[] }
@@ -106,6 +107,7 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'track') this.engine.setTrack(m.id, m.notes, m.pat);
         else if (m.t === 'pattern') this.engine.setPattern(m.p);
         else if (m.t === 'song') this.engine.setSong(m.n);
+        else if (m.t === 'songs') this.engine.setSongs(m.songs);
         else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
         else if (m.t === 'arm') this.engine.arm(m.devices);
         else if (m.t === 'rec') this.engine.setRec(m.id, m.on);

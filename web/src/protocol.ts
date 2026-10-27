@@ -25,8 +25,14 @@
 //                                                    settings until the Arpeggiator module replaced it: feature bit 0, retired.)
 //   26 STEP, 28 STEPVAL: a step's byte, a step's note / velocity (feature bits 2 and 3), retired with patch format 31 (#133)
 //   27 MUTE     module u8, on u8                     mute / unmute a Steps module (not saved); no reply. Feature bit 2.
-//   2A TRACK    module u8, n u8, n u32 LE notes      a Steps module's notes, all of them (track.ts noteWord, sorted, at most
-//                                                    TRACK_NOTES_MAX); no reply. Feature bit 5.
+//   2A TRACK    module u8, n u8, n u32 LE notes, [pattern u8]   a Steps module's notes, all of them (track.ts noteWord,
+//                                                    sorted, at most TRACK_NOTES_MAX), of that pattern (0-based; format 48,
+//                                                    without it: the one the track plays); no reply. Feature bit 5.
+//   36 PATTERN  pattern u8, song u8                  the patch's pattern (0-based) and the song playing (0 none): each track
+//                                                    takes them at the end of its pass (stopped: at once), into the running
+//                                                    patch; no reply. Format 48 (INFO's highest readable format)
+//   37 SONG     song u8 (0-based), n u8, n (pattern u8, shift i8)   a song's entries, into the running patch; no reply.
+//                                                    Format 48
 //   29 FOCUS    device u8, page u8                   show this device page (indices into the binary's device pages section,
 //                                                    pages.ts) and put it on K1..K4; no reply. Feature bit 4.
 //   2C LIVE     [paused u8]                          every LIVE_MS while the editor's Live is on: the FM-1 plays the
@@ -61,8 +67,12 @@
 //                                                    (16..21, 80..86) when MENU > MIDI OUT is on.
 //   44 STEP, 46 STEPVAL: retired with format 31 (#133)
 //   45 MUTE     module u8, on u8                      unasked: a track muted / unmuted on the FM-1 (SEQ held + a black key)
-//   49 TRACK_NOW  module u8, n u8, n u32 LE notes     unasked: a track's notes after an edit on the FM-1's SEQ page (a step,
-//                                                    its values, a hit recorded with REC)
+//   49 TRACK_NOW  module u8, n u8, n u32 LE notes, [pattern u8]   unasked: a track's notes after an edit on the FM-1's SEQ
+//                                                    page (a step, its values, a hit recorded with REC), of that pattern
+//                                                    (format 48: the one the track plays)
+//   52 PATTERN_NOW  pattern u8, song u8               unasked: the patch's pattern / song as the FM-1 chose them (PRESET on
+//                                                    the SEQ page, the SONG page's K4 / ALGO)
+//   53 SONG_NOW  song u8, n u8, n (pattern u8, shift i8)   unasked: a song's entries after an edit on the SONG page
 //   47 PARAM_NOW  module u8, param u8, value i32      unasked: a parameter turned on the FM-1 (K1..K4 on a device page)
 //   48 FOCUS_NOW  device u8, page u8                  unasked: the device page the FM-1 shows now (SELECT / ALGO / HOME)
 //   4C PRESET   index u8, count u8, structure u32, name 16 bytes, n u8   one of the FM-1's user presets (count 0: none)
@@ -81,10 +91,10 @@
 //   40 ACK      command, seq, status, aux            status 0 ok, 1 bad offset/size, 2 CRC, 3 load error (aux = code),
 //                                                    4 flash error, 5 unknown command, 6 nothing to store
 
-import { noteWord, TRACK_NOTES_MAX, wordNote, type StepNote } from './track';
+import { noteWord, PATTERNS_MAX, SHIFT_MAX, SONG_LEN_MAX, SONGS_MAX, TRACK_NOTES_MAX, wordNote, type SongEntry, type StepNote } from './track';
 
 export const PREFIX = [0x7d, 0x4d, 0x31];
-export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
+export const CMD = { hello: 0x01, chunk: 0x10, commit: 0x11, store: 0x12, param: 0x20, att: 0x21, bypass: 0x22, range: 0x23, transport: 0x25, mute: 0x27, focus: 0x29, track: 0x2a, diag: 0x2b, live: 0x2c, slot: 0x13, slotErase: 0x14, slotInfo: 0x15, ack: 0x40, info: 0x41, slotReply: 0x42, slotNow: 0x43, muteNow: 0x45, paramNow: 0x47, focusNow: 0x48, trackNow: 0x49, diagReply: 0x4b, presets: 0x2d, presetGet: 0x2e, presetPut: 0x2f, presetDel: 0x30, sandbox: 0x31, preset: 0x4c, presetData: 0x4d, presetStored: 0x4e, testKey: 0x32, testTurn: 0x33, testScreen: 0x34, testPeak: 0x35, screen: 0x50, peak: 0x51, pattern: 0x36, song: 0x37, patternNow: 0x52, songNow: 0x53 } as const; // diag: bring-up diagnostics (tools/m1_link.py diag; the editor does not use it)
 export const PROTO_VERSION = 1;
 export const CHUNK_BYTES = 384;
 export const STATUS_TEXT = ['ok', 'bad offset or size', 'checksum mismatch', 'the firmware refused the patch', 'flash error', 'unknown command', 'nothing to store', 'the preset store is full', 'no such preset'];
@@ -195,16 +205,34 @@ export const attFrame = (module: number, input: number, q16: number): Uint8Array
 };
 
 export const bypassFrame = (module: number, on: boolean): Uint8Array => frame(CMD.bypass, [module, on ? 1 : 0]);
-/** a Steps module's notes (all of them), a Steps module muted */
-export function trackFrame(module: number, notes: readonly StepNote[] | undefined): Uint8Array {
+/** a Steps module's notes (all of them), of pattern `pat` (0-based; format 48: absent, the one the track plays) */
+export function trackFrame(module: number, notes: readonly StepNote[] | undefined, pat?: number): Uint8Array {
   const n = (notes ?? []).slice(0, TRACK_NOTES_MAX);
-  return frame(CMD.track, [module, n.length, ...n.flatMap((x) => { const w = noteWord(x); return [w & 0xff, (w >>> 8) & 0xff, (w >>> 16) & 0xff, w >>> 24]; })]);
+  return frame(CMD.track, [module, n.length, ...n.flatMap((x) => { const w = noteWord(x); return [w & 0xff, (w >>> 8) & 0xff, (w >>> 16) & 0xff, w >>> 24]; }), ...(pat === undefined ? [] : [pat & 0xff])]);
 }
-/** a TRACK / TRACK_NOW payload's notes */
-export function parseTrack(payload: number[]): { module: number; notes: StepNote[] } | null {
+/** a TRACK / TRACK_NOW payload's notes and pattern (absent: an older firmware's, the track's only one: 0) */
+export function parseTrack(payload: number[]): { module: number; notes: StepNote[]; pat: number } | null {
   if (payload.length < 2 || payload.length < 2 + 4 * payload[1]) return null;
   const notes = Array.from({ length: payload[1] }, (_, j) => wordNote((payload[2 + 4 * j] | (payload[3 + 4 * j] << 8) | (payload[4 + 4 * j] << 16) | (payload[5 + 4 * j] << 24)) >>> 0));
-  return { module: payload[0], notes };
+  const pat = payload.length > 2 + 4 * payload[1] ? Math.min(PATTERNS_MAX - 1, payload[2 + 4 * payload[1]]) : 0;
+  return { module: payload[0], notes, pat };
+}
+/** the patch's pattern (0-based) and the song playing (0 none) */
+export const patternFrame = (pattern: number, song: number): Uint8Array => frame(CMD.pattern, [pattern & 0xff, song & 0xff]);
+/** song s's entries (0-based s) */
+export const songFrame = (s: number, entries: readonly SongEntry[]): Uint8Array =>
+  frame(CMD.song, [s & 0xff, Math.min(SONG_LEN_MAX, entries.length), ...entries.slice(0, SONG_LEN_MAX).flatMap((e) => [e.pat & 0xff, e.shift & 0xff])]);
+/** a PATTERN_NOW payload */
+export const parsePatternNow = (payload: number[]): { pattern: number; song: number } | null =>
+  payload.length >= 2 ? { pattern: Math.min(PATTERNS_MAX - 1, payload[0]), song: Math.min(SONGS_MAX, payload[1]) } : null;
+/** a SONG_NOW payload */
+export function parseSongNow(payload: number[]): { song: number; entries: SongEntry[] } | null {
+  if (payload.length < 2 || payload[0] >= SONGS_MAX || payload.length < 2 + 2 * payload[1]) return null;
+  const entries = Array.from({ length: Math.min(SONG_LEN_MAX, payload[1]) }, (_, k) => ({
+    pat: Math.min(PATTERNS_MAX - 1, payload[2 + 2 * k]),
+    shift: Math.max(-SHIFT_MAX, Math.min(SHIFT_MAX, (payload[3 + 2 * k] << 24) >> 24)),
+  }));
+  return { song: payload[0], entries };
 }
 export const focusFrame = (device: number, page: number): Uint8Array => frame(CMD.focus, [device & 0xff, page & 0xff]);
 export const muteFrame = (module: number, on: boolean): Uint8Array => frame(CMD.mute, [module, on ? 1 : 0]);

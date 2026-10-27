@@ -329,6 +329,11 @@ static void panel_encoders(int32_t *st)
             ui_dirty = ui_dirty ? ui_dirty : 1;
         return;
     }
+    if ((page == PAGE_SEQ || page == PAGE_SONG) && st[6]) {   /* PRESET on the SEQ / SONG page: the patch's pattern (#375,
+                                                     * D-541), as on ENV and PRESETS it is the page's list */
+        seq_pattern_step(st[6]);
+        return;
+    }
     if (st[6]) {                                    /* PRESET: the next patch, its name over the bars (#170) */
         if (!sb_on)
             pages_patch_ask();
@@ -347,6 +352,10 @@ static void panel_encoders(int32_t *st)
                     ui_dirty = 1;
             }
         }
+        return;
+    }
+    if (page == PAGE_SONG) {                        /* the SONG page (#375): its knobs, nothing else's */
+        song_knobs(st);
         return;
     }
     if (page == PAGE_SEQ && seq_rec == 2u)          /* the keys record into the armed track: ALGO keeps it */
@@ -535,6 +544,9 @@ static void panel_key_queue(int (*peek)(void), void (*pop)(void), int quick)
         pop();
 }
 
+/* fm1_ms of SEL's press (its release on the SEQ page: the SONG page unless a key was the pen since) */
+static uint32_t sel_down_ms;
+
 /* ENV held and SAVE pressed meanwhile: its release opens nothing */
 static uint8_t env_held_used;
 
@@ -546,7 +558,7 @@ static void sel_open(void)
     if (page == PAGE_ENV) {
         page_set(0);
         m1_focus_now(pg_cur_dev, pg_cur_page);
-    } else if (page == PAGE_PRESETS) {
+    } else if (page == PAGE_PRESETS || page == PAGE_SONG) {
         screen_back();
     } else if (page == 0 && pages_focus_track() >= 0) {
         seq_select((uint32_t)pages_focus_track());
@@ -587,11 +599,15 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if ((p & ~(1u << BTN_REC)) || (rel & (1u << BTN_SEQ)))   /* the track's clear asks: another button, or SEQ let go, */
         seq_clear_cancel();                                   /* and it is not cleared (#231) */
-    if (page == PAGE_SEQ && (p & (1u << BTN_REC)) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + REC: clear the track,
-                                                     * asked first (#231); neither SEQ's nor REC's release does its own */
+    if ((page == PAGE_SEQ || page == PAGE_SONG) && (p & (1u << BTN_REC)) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + REC:
+                                                     * clear the track (the SONG page: delete the entry), asked first (#231);
+                                                     * neither SEQ's nor REC's release does its own */
         seq_held_used = rec_held_used = 1;
         p &= ~(1u << BTN_REC);
-        seq_clear_press();
+        if (page == PAGE_SONG)
+            song_del_press();
+        else
+            seq_clear_press();
     }
     if (page == PAGE_MENU) {                        /* the menu: OCT- / OCT+ step the selected row's value */
         if (p & (1u << BTN_OCT_DOWN))
@@ -617,12 +633,22 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     /* SEQ and REC act on release, unless a black key muted / armed a track meanwhile; the flag is cleared at the release,
      * not the press: panel_keys runs first in a pass, so a key that lands in the same pass as the press has set it (#179) */
-    if ((rel & (1u << BTN_SEQ)) && !seq_held_used) {
+    if ((rel & (1u << BTN_SEQ)) && !seq_held_used && page == PAGE_SONG)
+        screen_back();                              /* SEQ on the SONG page: back to the SEQ page */
+    else if ((rel & (1u << BTN_SEQ)) && !seq_held_used) {
         if (page == 0 && pages_focus_track() >= 0)  /* from a Steps track's device page: that track's steps (#196) */
             seq_select((uint32_t)pages_focus_track());
         page_set(PAGE_SEQ);
     }
-    if (rel & (1u << BTN_SEL))                      /* SEL (#197, fixed): one level deeper */
+    if (p & (1u << BTN_SEL))
+        sel_down_ms = fm1_ms;
+    if ((rel & (1u << BTN_SEL)) && page == PAGE_SEQ) {   /* SEL tapped on the SEQ page (no key as the pen since its press,
+                                                     * a key in the same pass counting): the SONG page (#375, D-541) */
+        if (!(seq_pen_ms && (int32_t)((seq_pen_ms & ~1u) - (sel_down_ms & ~1u)) >= 0) && eng_steps_count()) {
+            song_prep();
+            page_set(PAGE_SONG);
+        }
+    } else if (rel & (1u << BTN_SEL))               /* SEL (#197, fixed): one level deeper */
         sel_open();
     if (p & (1u << BTN_ENV))                        /* ENV (#197, fixed): the environment, on its release (held + SAVE: a preset) */
         env_held_used = 0;

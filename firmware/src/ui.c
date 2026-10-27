@@ -19,9 +19,12 @@ static const char *patch_label;
 #define PAGE_GLO 6u                             /* GLO: the FM-1's own page (#199, pages_ui.c pg_glo) */
 #define PAGE_ENV 9u                             /* ENV: the environment (#197, pages_ui.c env_draw) */
 #define PAGE_PRESETS 10u                        /* SEL on an assembly device: its presets (#194, pages_ui.c presets_draw) */
-static uint8_t page;                            /* 0: the device page, 5 menu, 6 GLO, 8 the SEQ page, 9 the environment (seq_ui.c); (7, the legend, is gone: #114) */
+static uint8_t page;                            /* 0: the device page, 5 menu, 6 GLO, 8 the SEQ page, 9 the environment, 10 the
+                                                 * presets, 11 the SONG page (seq_ui.c); (7, the legend, is gone: #114) */
 static void seq_bar(void);
 static void seq_draw(int full);
+static void song_bar(void);                     /* the SONG page (seq_ui.c, #375) */
+static void song_draw(int full);
 static uint8_t booting = 1;                     /* the loading screen is up (main.c boot_step): the pages stay unseen */
 static uint8_t sb_on;                           /* sandbox mode (sandbox_ui.c): the device page shows the editor's page instead */
 static void sandbox_draw(int full);
@@ -317,6 +320,11 @@ static void header_draw_now(void)
         msg_until = 0;
         return;
     }
+    if (page == 11u && !eng_overload && !load_err) {    /* the SONG page: the song (seq_ui.c PAGE_SONG) */
+        song_bar();
+        msg_until = 0;
+        return;
+    }
     if (eng_overload) {                     /* audio.c: the patch was too heavy and is muted until another one loads */
         bar_text("OVERLOAD: CHANGE PATCH", C_RED);
     } else if (load_err) {
@@ -415,6 +423,8 @@ static void view_draw(int full)                 /* whichever page is showing */
         menu_draw(full);
     else if (page == 8u)
         seq_draw(full);
+    else if (page == 11u)
+        song_draw(full);
     else if (page == PAGE_ENV)
         env_draw(full);
     else if (page == PAGE_PRESETS)
