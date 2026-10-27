@@ -4169,7 +4169,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -4232,7 +4233,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -6624,7 +6626,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -6687,7 +6690,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -9079,7 +9083,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -9142,7 +9147,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -11534,7 +11540,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -11597,7 +11604,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -12525,7 +12533,8 @@
     "res": 0.25,
     "cvamt": 3,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -12568,7 +12577,8 @@
     "res": 0.1,
     "cvamt": 3,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -12605,7 +12615,8 @@
     "res": 0.1,
     "cvamt": 3,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -12642,7 +12653,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -12679,7 +12691,8 @@
     "res": 0,
     "cvamt": 3,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -12716,7 +12729,8 @@
     "res": 0,
     "cvamt": 3,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -12781,7 +12795,8 @@
     "res": 0,
     "cvamt": 3,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -13145,7 +13160,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,
@@ -13504,7 +13520,8 @@
     "res": 0,
     "cvamt": 1,
     "track": 0,
-    "morph": 0
+    "morph": 0,
+    "osc": 0
    },
    "att": [
     1,

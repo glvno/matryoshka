@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
-import { encodePatch, GROUP_REC, VERSION } from './patchbin';
+import { encodePatch, formatOf, GROUP_REC } from './patchbin';
 import { deviceView } from './poly';
 import { MAX_PARTS } from './patch';
 
@@ -227,7 +227,7 @@ describe('device form', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].src).toBe(ids.arp);
     const bin = encodePatch(p);
-    expect(bin[1]).toBe(VERSION);
+    expect(bin[1]).toBe(formatOf(p));
     expect(bin[8 + 4 + 5 * MAX_PARTS]).toBe(patch.modules.findIndex((m) => m.id === ids.arp) + 1);
     expect(GROUP_REC).toBe(8 + 5 * MAX_PARTS);
   });

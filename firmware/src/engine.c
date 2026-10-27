@@ -3731,13 +3731,25 @@ static int32_t svf_g(uint32_t rinc)
  * pass, from the same values, only when a cable leaves them); stage 2 filters lp12 again (lp24); mix fades lp24 -> hp by morph.
  * The integrator states are Q20 (+-2048: room for the resonance peak), the signals Q16; products are rounded.
  * Key tracking moves the cutoff by the voice pitch (octaves, C4 = as set), like the host engine, once per block. */
-static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
+static int32_t filter_over(const inst_t *it)   /* how far res is past FILTER_OSC_FROM with osc on, Q16 (0: off) */
+{
+    int32_t res = EF(it, FILTER_P_RES);
+    return EF(it, FILTER_P_OSC) >= 32768 && res > FILTER_OSC_FROM_Q16 ? res - FILTER_OSC_FROM_Q16 : 0;
+}
+
+/* osc: a constant at each call (m_filter), so the ordinary filter carries none of the self-oscillation's work */
+HOT void filter_run(const node_t *nd, inst_t *it, uint32_t n, int osc)
 {
     const esig_t *in = it->in[FILTER_I_IN], *cv = it->in[FILTER_I_CV], *mo = it->in[FILTER_I_MORPH];
     esig_t *lp = it->out[FILTER_O_LP12], *bp = it->out[FILTER_O_BP], *hp = it->out[FILTER_O_HP];
     esig_t *lp24 = it->out[FILTER_O_LP24], *mix = it->out[FILTER_O_MIX];
     esig_t *notch = it->out[FILTER_O_NOTCH], *peak = it->out[FILTER_O_PEAK], *apo = it->out[FILTER_O_AP];
-    int32_t k24 = (2 << 24) - mulq(EF(it, FILTER_P_RES), 33218888, 16);   /* 2 - 1.98 res */
+    int32_t res = EF(it, FILTER_P_RES);
+    /* self-oscillation (osc on, res past FILTER_OSC_FROM; modules.ts): the damping falls below 0 near the top and grows
+     * with the band-pass state squared (held to +-FILTER_OSC_CLIP), so stage 1 is solved per sample there */
+    int32_t over = osc ? filter_over(it) : 0;   /* Q16 */
+    int32_t k24 = (2 << 24) - mulq(res, 33218888, 16) - mulq(over, FILTER_OSC_K_Q24, 16);   /* 2 - 1.98 res (- the fall) */
+    int32_t gam = mulq(over, FILTER_OSC_GAIN_Q24, 16), gc = 0, ke = k24;                    /* Q24; gc: the current g, ke: the damping */
     int32_t cvamt = EF(it, FILTER_P_CVAMT), ic1 = it->s.flt.ic1, ic2 = it->s.flt.ic2, jc1 = it->s.flt.jc1, jc2 = it->s.flt.jc2;
     int32_t morph = EF(it, FILTER_P_MORPH), tr = EF(it, FILTER_P_TRACK) >= 32768 ? cur_pv->pitch : 0;
     uint32_t base = hz_turns((uint32_t)EF(it, FILTER_P_CUTOFF)), i;
@@ -3749,8 +3761,11 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
     int32_t lcv = 0;
     if (tr)
         base = exp2_scale(base, tr);
+    if (osc && !ic1 && !ic2)
+        ic1 = FILTER_OSC_SEED_Q20;               /* a filter at rest: a small kick starts the oscillation */
     if (fixed) {
         int32_t g = svf_g(base);
+        gc = g;
         svf_stage(&c, g, k24);
         svf_stage(&d, g, SQRT2_24);
     }
@@ -3760,16 +3775,22 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
             int32_t g;
             lcv = cv[i];
             g = svf_g(exp2_scale(base, mul16(lcv, cvamt)));
+            gc = g;
             svf_stage(&c, g, k24);
             if (st2)
                 svf_stage(&d, g, SQRT2_24);
+        }
+        if (osc) {                                   /* the damping k + gam b^2 */
+            int32_t b = clampi(ic1, -FILTER_OSC_CLIP_Q20, FILTER_OSC_CLIP_Q20);
+            ke = k24 + mulr(gam, mulr(b, b, 20), 20);
+            svf_stage(&c, gc, ke);
         }
         v3 = v0 - ic2;
         v1 = mulr(c.a1, ic1, 24) + mulr(c.a2, v3, 24);
         v2 = ic2 + mulr(c.a2, ic1, 24) + mulr(c.a3, v3, 24);
         ic1 = clampi(2 * v1 - ic1, -(1 << 30), 1 << 30);
         ic2 = clampi(2 * v2 - ic2, -(1 << 30), 1 << 30);
-        kv1 = mulr(v1, k24, 24);
+        kv1 = mulr(v1, osc ? ke : k24, 24);
         h = v0 - kv1 - v2;
         lp[i] = (v2 + 8) >> 4;
         bp[i] = (v1 + 8) >> 4;
@@ -3797,6 +3818,14 @@ static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
     it->s.flt.ic2 = ic2;
     it->s.flt.jc1 = jc1;
     it->s.flt.jc2 = jc2;
+}
+
+static void m_filter(const node_t *nd, inst_t *it, uint32_t n)
+{
+    if (filter_over(it))
+        filter_run(nd, it, n, 1);
+    else
+        filter_run(nd, it, n, 0);
 }
 
 #define LAD_SAT_KNEE (3 << 19)      /* 1.5 in Q20: the saturator's knee */

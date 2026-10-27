@@ -727,6 +727,16 @@ const vca: ModuleImpl<null> = {
   },
 };
 
+/** the Multimode filter's self-oscillation (its `osc` parameter, on): from this `res` up, the damping falls by FILTER_OSC_K
+ * per unit of res past it (below 0 from about res 0.95, where the oscillation starts) and grows with FILTER_OSC_GAIN per
+ * unit past it times the band-pass state squared (held to +-FILTER_OSC_CLIP): about 0.5 peak on lp12 at res 1, at any cutoff.
+ * A filter at rest starts from a band-pass state of FILTER_OSC_SEED. engine.c reads these from defs.h. */
+export const FILTER_OSC_FROM = 0.85;
+export const FILTER_OSC_K = 1.19;
+export const FILTER_OSC_GAIN = 5.6;
+export const FILTER_OSC_CLIP = 2;
+export const FILTER_OSC_SEED = 1 / 1024;
+
 /** state variable filter, two stages: stage 1 (12 dB) gives lp12 / bp / hp (and hp6, a resonant 6 dB high pass, appended), stage 2 takes lp12 and adds the other 12 dB (lp24) */
 const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }> = {
   def: {
@@ -740,17 +750,30 @@ const filter: ModuleImpl<{ ic1: number; ic2: number; jc1: number; jc2: number }>
       param('cvamt', 0, 4, 1, { unit: 'oct', step: 0.01 }),
       param('track', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true }),
       param('morph', 0, 1, 0, { step: 0.01, input: 'morph', rest: (p, cv) => (p.morph ?? 0) + cv }),
+      param('osc', 0, 1, 0, { step: 1, choices: ['off', 'on'], toggle: true, since: 47 }),
     ],
   },
   init: () => ({ ic1: 0, ic2: 0, jc1: 0, jc2: 0 }),
   process(c, s) {
-    const k = 2 - 1.98 * (c.p.res ?? 0);
+    const res = c.p.res ?? 0;
+    // self-oscillation (osc on, res past FILTER_OSC_FROM): the damping k goes below 0 near the top (the loop gains),
+    // and grows with the band pass's square (k + gam b^2, b the stage 1 band-pass state held to +-FILTER_OSC_CLIP): a
+    // bounded sine-like oscillation at the cutoff whose level does not depend on the cutoff (a Van der Pol oscillator).
+    // From silence a small kick starts it. Below FILTER_OSC_FROM, or off, the filter is unchanged.
+    const over = (c.p.osc ?? 0) >= 0.5 ? Math.max(0, res - FILTER_OSC_FROM) : 0;
+    const k0 = 2 - 1.98 * res - FILTER_OSC_K * over, gam = FILTER_OSC_GAIN * over;
+    let k = k0;
+    if (over > 0 && s.ic1 === 0 && s.ic2 === 0) s.ic1 = FILTER_OSC_SEED;
     const k2 = Math.SQRT2; // stage 2 is damped (Q 0.7): the resonance peak comes from stage 1 alone
     const tr = (c.p.track ?? 0) >= 0.5 ? c.voice.pitch : 0; // keyboard tracking: the cutoff follows the played pitch 1 octave per octave (C4 = the cutoff as set)
     let fc = c.p.cutoff ?? 1000, m = c.p.morph ?? 0;
     for (let i = 0; i < c.n; i++) {
       fc = Math.min((c.p.cutoff ?? 1000) * Math.pow(2, c.inp.cv[i] * (c.p.cvamt ?? 1) + tr), c.sr * 0.45);
       const g = Math.tan((Math.PI * fc) / c.sr);
+      if (over > 0) {
+        const b = Math.min(FILTER_OSC_CLIP, Math.max(-FILTER_OSC_CLIP, s.ic1));
+        k = k0 + gam * b * b;
+      }
       const a1 = 1 / (1 + g * (g + k));
       const a2 = g * a1;
       const a3 = g * a2;
