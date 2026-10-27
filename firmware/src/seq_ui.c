@@ -338,6 +338,8 @@ static void seq_select(uint32_t t)
     seq_held = -1;
     seq_row = 0;
     seq_roll_trk = -1;                           /* (a roll opens around its notes again) */
+    if (page != PAGE_SEQ)
+        return;                                  /* (from another page: the caller's page_set draws the SEQ page whole) */
     header_draw();
     ui_dirty = 2;
 }
@@ -1022,6 +1024,22 @@ static void seq_grid_line(uint32_t n, uint32_t y, const char *s, uint16_t fg, ui
     text_bc(&FONT_S, 8, y, s, fg, C_BG, field, TA_LEFT);
 }
 
+/* the ground of a whole redraw: the page's colour everywhere but under the 128 cells, which seq_grid_draw paints whole
+ * next (a cell is always painted edge to edge: seq_grid_paint), so their pixels go out once (a whole SEQ page was the
+ * ground and then the cells over it) */
+static void seq_grid_ground(void)
+{
+    uint32_t i, r, x1 = seq_grid_x(15) + GRID_CW;
+    lcd_fill(0, BAR_H, 240, GRID_Y - BAR_H, C_BG);                       /* the info line's band */
+    lcd_fill(0, GRID_Y, seq_grid_x(0), GRID_TICK_Y - GRID_Y, C_BG);       /* the names' column */
+    lcd_fill(x1, GRID_Y, 240u - x1, GRID_TICK_Y - GRID_Y, C_BG);          /* right of the last cell */
+    for (i = 0; i + 1u < 16u; i++)                                        /* the gaps between the columns */
+        lcd_fill(seq_grid_x(i) + GRID_CW, GRID_Y, seq_grid_x(i + 1u) - seq_grid_x(i) - GRID_CW, GRID_TICK_Y - GRID_Y, C_BG);
+    for (r = 0; r < ENG_DRUM_ROWS; r++)                                   /* the gaps under each row of cells */
+        lcd_fill(seq_grid_x(0), GRID_Y + GRID_RH * r + GRID_CH, x1 - seq_grid_x(0), GRID_RH - GRID_CH, C_BG);
+    lcd_fill(0, GRID_TICK_Y, 240, 240u - GRID_TICK_Y, C_BG);              /* the playhead, the track and hint lines */
+}
+
 static void seq_grid_draw(int full, int mod, int map, const char *info)
 {
     uint32_t cell[ENG_DRUM_ROWS][16], note[ENG_DRUM_ROWS], r, i, lo = map >= 0 ? 0xFFu : seq_roll_lo, mark = 0;
@@ -1033,7 +1051,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     int remark = !full && !seq_grid_ok;          /* the markers' columns unknown: each drawn or cleared */
     if (full || !seq_grid_ok) {
         if (full)
-            lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+            seq_grid_ground();
         for (r = 0; r < ENG_DRUM_ROWS; r++)
             for (i = 0; i < 16u; i++)
                 seq_grid_cell[r][i] = GRID_NONE;

@@ -2963,6 +2963,71 @@ int main(void)
         eng_render(l, r, 128);
         check("PRESET back to pattern 1", eng_pattern() == 0 && eng_pattern_playing((uint32_t)mod) == 0);
     }
+    {   /* The SEQ page drawn whole: once when SEQ opens it from a Steps track's device page (seq_select drew it a second
+         * time after page_show, and the device page's header before it), and its ground cleared around the cells only
+         * (seq_grid_ground): pixel for pixel the page drawn over a ground cleared whole first, from any screen */
+        static uint16_t ref[240 * 240];
+        static int32_t l[128], r[128];
+        uint32_t i, d, t, seq_px = 0, bad = 0;
+        check("(ELVIRA 2 for the SEQ page's whole draws)", load("ELVIRA 2") == 0);
+        pv_gen++;
+        trail_n = 0;
+        page_show(0);
+        screen_patch();
+        later(2000);
+        if (!eng_transport_running())
+            tap(BTN_PLAY);
+        for (d = 0; d < 12u && pages_focus_track() < 0; d++) {
+            enc(0, 1);
+            later(400);
+        }
+        check("(a Steps track's device page)", page == 0u && pages_focus_track() >= 0);
+        lcd_px = lcd_xfers = 0;
+        tap(BTN_SEQ);
+        printf("      SEQ from a Steps track's device page: %u px in %u transfers\n", (unsigned)lcd_px, (unsigned)lcd_xfers);
+        check("SEQ from a Steps track's device page: the SEQ page drawn once (under 1.5 screens of pixels)",
+              page == PAGE_SEQ && lcd_px < 240u * 240u * 3u / 2u);
+        for (t = 0; t < (uint32_t)eng_steps_count(); t++) {
+            for (i = 0; i < 20u; i++)
+                eng_render(l, r, 128);
+            for (i = 0; i < 240u * 240u; i++)
+                fb[i] = (uint16_t)(i * 2654435761u >> 7);
+            lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+            seq_draw(1);
+            memcpy(ref, fb, sizeof ref);
+            for (i = 0; i < 240u * 240u; i++)
+                fb[i] = (uint16_t)(i * 2654435761u >> 7);
+            lcd_px = 0;
+            seq_draw(1);
+            seq_px = lcd_px;
+            bad += memcmp(ref, fb, sizeof ref) != 0;
+            enc(1, 1);                                      /* ALGO: the next track */
+        }
+        printf("      the SEQ page whole: %u px (the ground cleared whole and the cells over it alone were %u)\n",
+               (unsigned)seq_px, (unsigned)(240u * (240u - BAR_H) + 128u * GRID_CW * GRID_CH));
+        check("the SEQ page whole, each track: the same pixels as over a ground cleared whole", bad == 0u);
+        check("  fewer of them than the ground cleared whole and the cells over it",
+              seq_px < 240u * (240u - BAR_H) + 128u * GRID_CW * GRID_CH);
+        {                                                   /* page_show clears only what the page leaves (the menu, SEQ and
+                                                             * SONG clear their own; ENV's rows are edge to edge) */
+            static const uint8_t PG[4] = {PAGE_ENV, PAGE_MENU, PAGE_SEQ, PAGE_SONG};
+            bad = 0;
+            for (t = 0; t < 4u; t++) {
+                for (i = 0; i < 240u * 240u; i++)
+                    fb[i] = (uint16_t)(i * 2654435761u >> 7);
+                lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+                page_show(PG[t]);
+                memcpy(ref, fb, sizeof ref);
+                for (i = 0; i < 240u * 240u; i++)
+                    fb[i] = (uint16_t)(i * 2654435761u >> 7);
+                page_show(PG[t]);
+                bad += memcmp(ref, fb, sizeof ref) != 0;
+            }
+            page_show(0);
+            check("ENV, the menu, SEQ and SONG opened over any screen: as over one cleared first", bad == 0u);
+        }
+        tap(BTN_PLAY);
+    }
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }
