@@ -40,17 +40,17 @@
 //   release of the one before), and both pressed, solo unison (all six voices on one key).
 // - Key transpose (+-1 octave in semitones: an offset quantized to semitones, before the portamento and the key follow);
 //   the rear panel's tune (+-1/4 tone).
-// - The PEDAL HOLD jack: Main's FX button, held, is the pedal: a voice whose key is let go keeps its gate while it is down
+// - The PEDAL HOLD jack: Main's sustain output (MIDI CC 64) is the pedal: a voice whose key is let go keeps its gate while it is down
 //   and its envelope still sounds (a voice that decayed to silence is let go, as on the original).
 // Not on the card, and why:
 // - Construction, kept at its values in the patch: the voice count (six, as the original), the chorus modules' settings,
-//   the bass boost's level, the hold's Macro (the pedal plays it).
+//   the bass boost's level, the hold's threshold (the pedal plays it).
 // - VOLUME: the Output module's level, outside the card.
 // - The assign mode is two rows, `assign mode` (rotate is POLY 1, lowest is POLY 2; the Voicing's third choice, reuse, is
 //   not the Juno's) and `unison`: a switch of the three would need the Voicing's settings on a Selector (D-635 keeps a
 //   Voicing's settings off a shared row), in both engines.
-// - Poly 2 with six keys down takes over a voice (the original then plays no more keys). It needs a "no take-over" choice
-//   on the Voice allocator, in both engines.
+// - Poly 2 with six keys down takes over a voice (the original then plays no more keys). Its assign control still needs to select
+//   the allocator's no-steal setting together with lowest-free assignment.
 // - The patch shift pedal jack, the tape interface, the memory and the MIDI function switch: hardware and storage, no part
 //   of the sound (the editor keeps the patches).
 // Over the FM-1's CPU (Tier 1 of issue #351, 2026-10-26: 194 % -> 177 %; module instances 136 -> 120 of 128): three
@@ -61,7 +61,6 @@ import type { Xl } from './xl';
 import { aroundDef, edit, type Ed, type RowOpts } from './asm-edit';
 import { ADSR_LONG, BEND_OCT, DEFS } from '../../src/modules';
 import { paramUnit } from '../../src/patch';
-import { setKind } from '../../src/buttons';
 
 // the FM-1 version's local module ids (src/assemblies/hera-6.json)
 const LFO = 1, VIB = 2, PWM = 3, LFO_FILTER = 4, NOISE = 5, PART = 6, OSC = 7, SUB = 8, LADDER = 9, ENV = 10, VCA = 11, HPF = 12, CHORUS = 13, SCOPE = 14;
@@ -152,11 +151,11 @@ export const xl: Xl = {
       e.input('bend', unbend, 'in', [dcoBend, 'in'], [vcfBend, 'in']);
       // ---- hold: the gate stays up while hold is on and the envelope still sounds. One Logic per voice: its b is the hold
       // level (just under the threshold while hold is on, far below it while off) plus the envelope, so b is high while
-      // hold is on and the envelope is above silence (1e-4); the gate is a or b. The pedal (Main's FX) adds to the Macro.
-      const hold = e.add('macro', 1, 7.5, { value: 0 });
+      // hold is on and the envelope is above silence (1e-4); the gate is a or b. The pedal (Main's sustain) switches at MIDI value 64.
+      const hold = e.add('logic', 1, 7.5, { thresh: 0.5 });
       const holdLevel = e.add('scale', 1.5, 7.5, { gain: 4.4999, offset: -4 });
-      e.wire(hold, 'out', holdLevel, 'in');
-      e.input('hold', holdLevel, 'in');
+      e.wire(hold, 'or', holdLevel, 'in');
+      e.input('hold', hold, 'a');
       const gate = e.add('logic', 4.5, 2.5, { thresh: 0.5 });
       e.unwire(PART, 'gate', ENV, 'gate');
       e.wire(PART, 'gate', gate, 'a');
@@ -277,12 +276,11 @@ export const xl: Xl = {
     });
     const x = aroundDef('Hera 6', def);
     plugIn(x.p, x.main.id, 'bend', x.a, 'bend');
-    plugIn(x.p, x.main.id, 'fx', x.a, 'hold'); // the hold pedal: FX held (or MIDI CC 80)
-    setKind(x.p, 'fx', 'gate');
+    plugIn(x.p, x.main.id, 'sustain', x.a, 'hold'); // MIDI CC 64: 0..63 up, 64..127 down
     level(x.p, { chord: true });
     x.p.notes = NOTES;
     return players(x.p, true);
   },
 };
 
-const NOTES = "Juno-106 panel, six voices. FX is the hold pedal; Output sets volume. Assign needs two rows: Selectors cannot set Voicing settings. Poly 2 steals when all voices are busy; the allocator lacks no-takeover mode. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.";
+const NOTES = "Juno-106 panel, six voices. MIDI CC 64 is the hold pedal; Output sets volume. Assign needs two rows: Selectors cannot set Voicing settings. Poly 2 steals when all voices are busy; its card still needs to select no-steal with Poly 2. HPF 2/3 and chorus II settings are approximated by ear. Patch shift, tape, memory and the MIDI function switch are hardware or storage, not reproduced.";
