@@ -1401,13 +1401,14 @@ static void toast_first(void)
     ut_end(UT_TOAST);
 }
 
-/* ---- the footer (LK_FH high, sand): the patch's name (ARM / REC and the track while one is armed; " *" when edited), the
- * tempo and a quarter note ("MIDI" on MIDI clock), the octave as = OCT = / OCT + / -- OCT and the battery, spread from margin to
- * margin; in sandbox mode who plays instead. The battery: 0..3 bars, a bolt on USB power, red when empty */
+/* ---- the footer (LK_FH high, sand): the patch's name (ARM / REC and the track while one is armed; " *" when edited;
+ * KEYS WIRED after it while nothing is armed, #395, the name cut first), the tempo and a quarter note ("MIDI" on MIDI
+ * clock), the octave as = OCT = / OCT + / -- OCT and the battery, spread from margin to margin; in sandbox mode who plays
+ * instead. The battery: 0..3 bars, a bolt on USB power, red when empty */
 typedef struct {
     uint8_t mode, rec;                                  /* 1: sandbox mode's line; REC (the name in red) */
-    char a[40], t[8], o[8];                             /* the name, the tempo, the octave (sandbox: a = its line) */
-    uint32_t xa, xt, xo;                                /* where each goes */
+    char a[40], t[8], o[8], w[12];                      /* the name, the tempo, the octave (sandbox: a = its line), WIRED */
+    uint32_t xa, xt, xo, xw;                            /* where each goes */
 } foot_t;
 static uint32_t ft_drawn;                               /* the hash of the footer as drawn (0: not on the screen) */
 #define BATT_FX (240u - 6u - 13u)                       /* the battery's x: 11 x 6 and its nub 2 px */
@@ -1454,8 +1455,16 @@ static uint32_t foot_layout(foot_t *f)
         *q = 0;
         wt = text_w(&FONT_F, f->t, -1) + 8u;
         wo = FOOT_OCT_W;
-        fit(f->a, &FONT_F, 240u - 12u - 13u - wt - wo - 3u * 6u);
-        wa = text_w(&FONT_F, f->a, -1);
+        {                                               /* nothing armed: KEYS WIRED after the name, in the tempo's ink */
+            uint32_t ww = eng_arm_mask_get() ? 0u : text_w(&FONT_F, " KEYS WIRED", -1);
+            fit(f->a, &FONT_F, 240u - 12u - 13u - wt - wo - 3u * 6u - ww);
+            wa = text_w(&FONT_F, f->a, -1);
+            if (ww) {
+                put(f->w, "KEYS WIRED")[0] = 0;
+                f->xw = 6u + wa + text_w(&FONT_F, " ", -1);
+                wa += ww;
+            }
+        }
         gap16 = (228u - wa - wt - wo - 13u) * 16u / 3u;  /* (space between: the battery ends at the right margin) */
         f->xa = 6u;
         f->xt = 6u + ((wa * 16u + gap16 + 8u) >> 4);
@@ -1499,6 +1508,8 @@ static void foot_row(const foot_t *f, uint32_t y, uint16_t *row)
         uint32_t nx = f->xt + text_w(&FONT_F, f->t, -1) + 2u;
         text_at(row, 240, &FONT_F, y, FOOT_BASE, f->t, f->xt, P_INK2);
         text_at(row, 240, &FONT_F, y, FOOT_BASE, f->o, f->xo, P_INK2);
+        if (f->w[0])
+            text_at(row, 240, &FONT_F, y, FOOT_BASE, f->w, f->xw, P_INK2);
         if (y + 5u >= FOOT_MID && y <= FOOT_MID + 3u)   /* the quarter note: rows -5..3 around the middle */
             for (i = 0; i < 6u; i++) {
                 uint32_t a = NOTE_A[y + 5u - FOOT_MID][i];
@@ -1971,8 +1982,13 @@ static uint64_t env_listeners(uint32_t d)
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
 
-/* REC on the environment (#191, #198): the row's device armed or disarmed, the others as they are */
-static void env_arm_toggle(void)
+static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed, a take on the old track ends) */
+
+/* SEL arms the device in focus (#395). layer (the environment): it is added to the armed set or taken out of it, the
+ * others stay (a layer, a split); the last one out leaves the keys WIRED (Main's cables decide). Else (a device page) it
+ * is armed and every other device disarmed. A device that takes no keys leaves the armed set as it is. State and a
+ * message only */
+static void dev_arm(int layer)
 {
     uint64_t l, mask;
     char m[32], t[20];
@@ -1983,12 +1999,11 @@ static void env_arm_toggle(void)
         ui_msg("NOTHING HERE TAKES KEYS", 1200);
         return;
     }
-    mask = env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : eng_arm_mask_get() | l;
-    eng_arm_mask(mask);
-    m1_arms_now((uint32_t)mask, (uint32_t)(mask >> 32));
+    mask = !layer ? l : env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : eng_arm_mask_get() | l;
+    seq_arm_set(mask);
     caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
     put(put(m, t), env_armed(pg_cur_dev) ? " ARMED" : " DISARMED")[0] = 0;
-    ui_msg(m, 1200);
+    ui_msg(eng_arm_mask_get() ? m : "KEYS WIRED", 1200);
 }
 
 static void env_status(uint32_t d, char *out)
