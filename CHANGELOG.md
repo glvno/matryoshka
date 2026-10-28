@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **Ties on the FM-1's drum-track grids (#368).** On the SEQ page, LFO held + a white key now ties a note on a track
+  that plays a Drum map, as it already did on the piano roll. A Drum map row stays up while its note sounds, so a tie
+  holds a voice that sustains, such as a Lire plate or an Elvira voice. The grid draws a tied note's steps dim and
+  joined, and a white key on a step a tie runs through cuts the tie there and starts a hit. Notes made longer in the
+  editor's piano roll now show their length on the FM-1 too.
+
 ## 1.5.1 — 2026-10-27
 
 ### Fixes

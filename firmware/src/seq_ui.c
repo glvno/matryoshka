@@ -23,7 +23,8 @@
  * A drum track (its keys out into a Drum map; the #139 follow-up, the owner's grid of 2026-10-23): the rows are the map's
  * rows. Black keys 1..8 pick the row (stopped: it sounds); with REC on they are hits on their rows instead (heard; while
  * running into the nearest step), the row picked stays. Off this page the keys play a Drum map the same way (panel.c
- * panel_key).
+ * panel_key). LFO held + a white key ties the selected row's hit through that step as on the roll (below; #368: a Drum
+ * map's row stays up while its note sounds, so a tie holds a Lire plate or an Elvira voice), drawn the same way.
  *
  * A melodic track (the owner, 2026-10-23, #241): the piano roll, 8 chromatic pitches of the track's range (C-1..G9, MIDI 0..127)
  * top to bottom, labelled C4, C#4 ..., the C rows tinted. A chord is several cells in one column; a note longer than a
@@ -64,7 +65,7 @@
 #define BTN_ACC 2u                      /* FX: the SEQ page's accent key (#197; it was ENV) */
 #define BTN_PEN 3u                      /* SEL: held, the roll's pen; tapped (no key meanwhile), the SONG page (panel.c) */
 #define PAGE_SONG 11u                   /* the SONG page (#375): seq_ui.c song_draw */
-#define BTN_LFO 5u                      /* LFO: the roll's tie key */
+#define BTN_LFO 5u                      /* LFO: the grid's tie key */
 
 static uint8_t seq_trk;                 /* the selected track (index among the patch's Steps modules) */
 static uint8_t seq_pg;                  /* the page of 16 steps */
@@ -442,7 +443,7 @@ static void seq_roll_toggle(int mod, uint32_t k, uint32_t note, uint32_t vel)
     eng_steps_toggle((uint32_t)mod, k, note, vel);
 }
 
-/* LFO held + a white key on the roll (#241): the selected pitch tied through step k. Its note sounding on the step before
+/* LFO held + a white key (the roll, #241; a drum track, #368): the selected row's note tied through step k. Its note sounding on the step before
  * goes on through k (a note of its own on k joins it); on a step it already runs through: cut before it */
 static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
 {
@@ -495,7 +496,7 @@ static void seq_pen(int mod, uint32_t n)
 
 /* a key on the SEQ page (n: note key 0..26). Drum track (the #139 follow-up): black keys 1..8 the Drum map's rows (stopped:
  * heard; REC on: a hit on the row, into the nearest step while it plays), white keys that row's hit on the page's steps
- * (FX held: an accent). The roll (#241): black keys the tracks (REC on: heard; REC with nothing armed: a hit on that
+ * (FX held: an accent; LFO held: its tie, #368). The roll (#241): black keys the tracks (REC on: heard; REC with nothing armed: a hit on that
  * track), SEL + a key the pen, white keys the selected pitch's notes (FX held: an accent; LFO held: its tie) */
 static void seq_key(uint32_t n, int down)
 {
@@ -556,7 +557,7 @@ static void seq_key(uint32_t n, int down)
         if (k >= seq_len(mod))
             return;
         seq_held_keep(mod);
-        if (map < 0 && (panel_held >> BTN_LFO & 1u)) {   /* the roll, LFO held: the tie (not a held step) */
+        if (panel_held >> BTN_LFO & 1u) {        /* LFO held: the tie (not a held step) */
             seq_roll_tie(mod, (uint32_t)k, note);
             seq_sync(mod);
             ui_dirty = ui_dirty ? ui_dirty : 1;
@@ -565,10 +566,8 @@ static void seq_key(uint32_t n, int down)
         have = eng_steps_note((uint32_t)mod, (uint32_t)k, note);
         if (fx && have)                          /* FX held: the accent on / off */
             eng_steps_overdub((uint32_t)mod, (have & ~(127u << 19)) | (uint32_t)(((have >> 19) & 127u) == ACCENT_VEL ? STEP_VEL : ACCENT_VEL) << 19);
-        else if (map < 0)
+        else                                     /* (a step a tie runs through: the tie cut before it, #368 on a drum track) */
             seq_roll_toggle(mod, (uint32_t)k, note, fx ? ACCENT_VEL : STEP_VEL);
-        else
-            eng_steps_toggle((uint32_t)mod, (uint32_t)k, note, fx ? ACCENT_VEL : STEP_VEL);
         seq_sync(mod);
         seq_held = (int8_t)k;
         ui_dirty = ui_dirty ? ui_dirty : 1;
@@ -1066,7 +1065,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             cell[r][i] = 0;
     }
     for (j = 0; j < nn; j++) {
-        int k = (int)(ws[j] & 63u) - k0, e = map >= 0 ? k + 1 : k + 1 + (int)((ws[j] >> 6) & 63u), c;
+        int k = (int)(ws[j] & 63u) - k0, e = k + 1 + (int)((ws[j] >> 6) & 63u), c;
         uint32_t pn = (ws[j] >> 12) & 127u;
         if (map < 0 && (pn < lo || pn > lo + 7u))    /* the roll: a note above / below the window, on the steps it sounds */
             for (c = k < 0 ? 0 : k; c < e && c < 16; c++)
@@ -1076,7 +1075,7 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
             if (((ws[j] >> 12) & 127u) == note[r]) {
                 if (k >= 0 && k < 16 && cell[r][k] <= 1u)
                     cell[r][k] = ws[j];
-                for (c = k + 1 < 0 ? 0 : k + 1; c < e && c < 16; c++)   /* (the roll: the steps it goes on through) */
+                for (c = k + 1 < 0 ? 0 : k + 1; c < e && c < 16; c++)   /* (the steps it goes on through) */
                     if (!cell[r][c])
                         cell[r][c] = 1u;
             }

@@ -1168,6 +1168,43 @@ int main(void)
         ui_dirty = 2;
         loop();
         snap_to(getenv("PANEL_SNAP_DRUMS"));
+        {                                                   /* #368: LFO + a white key ties a drum row's hit too (a Drum map row
+                                                             * stays up while its note sounds: a Lire plate held) */
+            static uint32_t keep[TRACK_NOTES_MAX];
+            const uint32_t *ws;
+            int keep_n = eng_steps_notes((uint32_t)drums, &ws), i;
+            uint32_t y = GRID_Y + GRID_RH * seq_row + GRID_CH - 1u;
+            for (i = 0; i < keep_n; i++)
+                keep[i] = ws[i];
+            if (eng_steps_note((uint32_t)drums, 3, 55))     /* (step 4 empty, so there is a hit on step 3 to tie) */
+                eng_steps_toggle((uint32_t)drums, 3, 55, STEP_VEL);
+            msg_text[0] = 0;
+            panel_held |= 1u << BTN_LFO;
+            panel_keys(1u << 6);                            /* LFO + B3: step 4 (index 3) */
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("LFO + a white key on a drum track: the hit on the step before tied through it, drawn dim",
+                  w && ((w >> 6) & 63u) == 1u && !eng_steps_note((uint32_t)drums, 3, 55) && !strcmp(msg_text, "TIED")
+                  && px(seq_grid_x(3) + 5u, y) == C_DIM && px(seq_grid_x(3) - 1u, y - 4u) == C_DIM);
+            panel_keys(1u << 6);                            /* again: untied */
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("again on the tied step: untied, the cell empty", w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "TIE OFF")
+                  && px(seq_grid_x(3) + 5u, y) != C_DIM && px(seq_grid_x(3) - 1u, y - 4u) == C_BG);
+            panel_keys(1u << 6);                            /* tied again, then a plain white key there */
+            panel_keys(0);
+            panel_held &= ~(1u << BTN_LFO);
+            panel_keys(1u << 6);
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("a white key on a step a tie runs through: the tie cut before it, a hit there",
+                  w && ((w >> 6) & 63u) == 0u && eng_steps_note((uint32_t)drums, 3, 55) && px(seq_grid_x(3) + 5u, y) == C_FG);
+            (void)eng_steps_set_notes((uint32_t)drums, keep, (uint32_t)keep_n);
+            seq_sync(drums);
+        }
         panel_keys(1u << 4);
         panel_keys(0);
         tap(BTN_SEQ);
