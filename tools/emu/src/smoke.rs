@@ -379,12 +379,12 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
 /// device page the black keys play the Drum map's rows (F#3 the kick), the white keys nothing (the owner, 2026-10-23).
 /// SEQ opens the drum grid (every row on 16 steps, row 1 selected), a white key switches the kick on a step (its cell
 /// lights), a black key picks the snare row (its name on coral), PLAY runs the track (sound), SEQ held + a black key
-/// mutes it and again brings it back, REC records hits. Arming (#139): REC held + a black key arms the track (no
-/// recording; the bar and the track's line say ARM, #179); REC on the armed drum track is its grid with REC on (no step
-/// entry), PLAY keeps it, the device pages name the armed track, REC held + the key again disarms. SEQ closes the page;
-/// REC with nothing armed opens the grid, REC again leaves it showing. Then the piano roll (#241) on <7PH's melodic
-/// PATTERN: its pitch rows, a marker under a step with a note below the window, a white key switches the selected pitch on a step, REC on the armed track stopped is the roll
-/// with REC on (no step entry).
+/// mutes it and again brings it back, REC records the track. Arming (#139): REC held + a black key arms the track (no
+/// recording; the bar and the track's line say ARM, #179). REC is global (#395): stopped, it starts the transport and
+/// records the armed track (the page stays), PLAY stops both; the device pages name the armed track, REC held + the key
+/// again disarms; REC with nothing armed stays on the device page and says so. Then the piano roll (#241) on <7PH's
+/// melodic PATTERN: its pitch rows, a marker under a step with a note below the window, a white key switches the
+/// selected pitch on a step, REC records it with the 27 keys as its keyboard.
 fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
     let Some(kit) = presets.iter().position(|(n, _)| n == "808 KIT") else {
         t.check("seq: the factory 808 Kit is there", false, String::new());
@@ -444,7 +444,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "seq: the page stays after the mute", "ALGO: TRACK");
     m.tap(REC, 120, 300)?;
     m.run_for(1100)?;
-    t.screen(&m, "seq: REC on (black keys record hits on the rows)", "DRUMS REC");
+    t.screen(&m, "seq: REC, running: the track shown records", "DRUMS REC");
     m.tap(REC, 120, 300)?;
     m.tap(PLAY, 120, 300)?;
     m.key(REC, true);                        // REC held + F#3: DRUMS (armed by the SEQ page) disarmed, then armed again;
@@ -457,13 +457,15 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.run_for(1300)?;
     t.screen(&m, "arm: REC's release after arming records nothing, the bar says ARM", "DRUMS ARM");
     t.screen(&m, "arm: the track's line says ARMED (#179)", "TRACK 1/1  ARMED");
-    m.tap(REC, 120, 1300)?;                  // stopped: the armed drum track's grid, REC on (no step entry)
-    t.screen(&m, "arm: REC with a drum track armed, stopped: its grid, REC on", "DRUMS REC");
+    let mk = m.mark();
+    m.tap(REC, 120, 1300)?;                  // stopped: REC starts the transport and records the armed track (#395)
+    t.screen(&m, "rec: REC, stopped, with a drum track armed: it records, the grid stays", "DRUMS REC");
     t.snap(&m, "arm-drum-grid-rec");
-    m.tap(PLAY, 120, 600)?;
-    t.screen(&m, "arm: PLAY keeps the grid (REC)", "DRUMS REC");
-    m.tap(REC, 120, 300)?;
-    m.tap(PLAY, 120, 300)?;
+    m.run_for(1000)?;
+    let p = m.peak_since(mk);
+    t.check("rec: REC, stopped, starts the transport (the track sounds)", p > LOUD, format!("peak {p}"));
+    m.tap(PLAY, 120, 1300)?;
+    t.screen(&m, "rec: PLAY stops the transport and the recording", "DRUMS ARM");
     m.tap(SEQ, 120, 400)?;
     t.screen(&m, "seq: SEQ again closes the page", DEVICE_PAGE);
     t.screen(&m, "arm: the device page names the armed track", "ARM DRUMS");
@@ -474,10 +476,15 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.key(REC, false);
     m.run_for(1300)?;
     t.screen(&m, "arm: nothing armed, the footer says KEYS WIRED", "KEYS WIRED");
-    m.tap(REC, 120, 1300)?;                  // nothing armed: REC opens the grid
-    t.screen(&m, "seq: REC with nothing armed opens the drum grid", "DRUMS REC");
-    m.tap(REC, 120, 1300)?;
-    t.screen(&m, "seq: REC again: off, the grid stays", "ALGO: TRACK");
+    m.tap(REC, 120, 300)?;                   // nothing armed: REC runs, the device page stays (#395)
+    t.screen(&m, "rec: REC with nothing armed says so", "REC: NO TRACK ARMED");
+    m.run_for(1200)?;
+    t.screen(&m, "rec: REC never changes the page", DEVICE_PAGE);
+    m.tap(REC, 120, 300)?;
+    t.screen(&m, "rec: REC again: off", "REC OFF");
+    m.tap(PLAY, 120, 300)?;
+    m.tap(SEQ, 120, 1300)?;
+    t.screen(&m, "seq: SEQ opens the grid again", "ALGO: TRACK");
     t.screen(&m, "arm: the track line says ARMED, the ALGO hint after it (the clear hint no longer fits, #395)", "TRACK 1/1  ARMED  ALGO: TRACK");
     m.key(SEQ, true);                        // SEQ held + REC: the track's clear asks; REC again within 3 s clears it (#231)
     m.run_for(200)?;
@@ -493,7 +500,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     m.tap(SEQ, 120, 400)?;
     if let Some(gb) = presets.iter().position(|(n, _)| n == "<7PH") {
         // the piano roll (#241): <7PH's PATTERN (melodic) on 8 pitch rows; a white key switches the selected pitch
-        // (A#3, the median) on a step; REC on the armed track, stopped, is the roll with REC on (no step entry)
+        // (A#3, the median) on a step; REC records the armed roll, all 27 keys its keyboard (#395)
         m.midi(&[0xC0, gb as u8], 500)?;
         t.screen(&m, "roll: <7PH loads", "<7PH");
         m.tap(SEQ, 120, 400)?;
@@ -523,10 +530,11 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
             format!("{before:#06x} -> {after:#06x}"));
         m.tap(14 + 4, 120, 300)?;            // (off again)
         t.screen(&m, "roll: ALGO arms the track it shows (#395)", "PATTERN ARM");
-        m.tap(REC, 120, 1300)?;              // PATTERN armed (by the page), stopped: the roll with REC on
-        t.screen(&m, "roll: REC with the melodic track armed, stopped: its roll, REC on", "PATTERN REC");
-        t.screen(&m, "roll: the black keys pick and sound rows, no step entry", "BLACK row  SEL+KEY pen  WHITE step");
+        m.tap(REC, 120, 1300)?;              // PATTERN armed (by the page), stopped: the transport starts, it records
+        t.screen(&m, "roll: REC records the melodic track armed", "PATTERN REC");
+        t.screen(&m, "roll: while recording the keys are its keyboard", "KEYS record  SEL row  OCT octave");
         m.tap(REC, 120, 300)?;
+        m.tap(PLAY, 120, 300)?;
         m.tap(SEQ, 120, 400)?;
     } else {
         t.check("roll: the factory <7PH is there", false, String::new());

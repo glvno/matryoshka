@@ -6,12 +6,20 @@
 
 - **On the FM-1, SEL arms what the keys play** (#395). SEL on a device page arms that device and disarms the others,
   so the keys play it; on a device with no keys input the bar says NOTHING HERE TAKES KEYS and nothing changes. SEL on
-  an environment row adds that device to the armed ones or takes it out (a layer or a split); REC there no longer arms
-  and does nothing for now. With nothing armed the keys are wired: Main's cables decide where they go, as before, and
+  an environment row adds that device to the armed ones or takes it out (a layer or a split); REC there no longer arms.
+  With nothing armed the keys are wired: Main's cables decide where they go, as before, and
   the footer says KEYS WIRED after the patch's name. A patch loads wired. The SEQ page arms the track it shows when it
   opens and when ALGO picks another. SEL no longer opens the SEQ page (SEQ does), a row's device pages, or an
   assembly's preset list; a device's presets are still stepped with PRESET or ALGO on its environment row. On the SEQ
   page the track line's SEQ+REC: CLEAR hint no longer fits next to ARMED.
+- **On the FM-1, REC records the same way on every page** (#395). With the transport stopped, REC starts it and
+  records; running, REC records; REC again stops recording and the transport goes on. PLAY stops both. What records is
+  every armed Steps track, over the notes already there, and a track armed while REC is on records from then on (ALGO
+  on the SEQ page included). REC never changes the page: it no longer opens the SEQ page, and SEQ is the only way
+  there. With no track armed REC still runs and the bar says REC: NO TRACK ARMED. On a drum grid a black key now always
+  sounds its row and picks it, and while recording it also records the hit; SELECT moves the row silently. On the piano
+  roll, all 27 keys play and record while REC records, and the black keys pick rows otherwise. Gone: REC with nothing
+  armed recording hits from the black keys, REC on the SEQ page while stopped, and REC arming the roll's track itself.
 - **On the FM-1's piano roll the black keys pick the rows, not the track** (#387). Black keys 1 to 8 are the 8 pitches
   on screen, black key 1 the bottom one, and they follow the window as SELECT scrolls it. With the transport stopped
   the row picked sounds, with REC on or off; its black key is lit, as on the drum grid. ALGO picks the track. Before,

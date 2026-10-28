@@ -745,10 +745,9 @@ async function main() {
       await loudCheck('hold: let go, it decays (500 ms on: under half the held level)', top, late < heldMax / 2, d);
       let ns = await trackNotes();
       await check('hold: stopped, nothing recorded', ns.length === 0, fmt(ns));
-      // REC on (the SEQ page armed this drum track, #395), running: black key 2 held about four steps
+      // REC (the SEQ page armed this drum track; stopped, REC starts the transport and records it, #395): black key 2
+      // held about four steps
       await emu.tap(B.rec);
-      await sleep(300);
-      await emu.tap(B.play);
       await sleep(400);
       await emu.key(BLACK[1], true);
       await sleep(450);
@@ -757,13 +756,11 @@ async function main() {
       const rec = ns.find((x) => x.note === 55);
       await check('hold: REC on, running: a black key held about 450 ms records one note on its row, 3 to 5 steps long (125 ms a step)',
         ns.length === 1 && !!rec && rec.len >= 3 && rec.len <= 5, fmt(ns));
-      // step write while REC plays: a white key on row 1 (the row picked stays: REC's black keys pick none)
+      // step write while REC plays: a white key on the selected row, the one black key 2 picked (#395)
       await emu.tap(WHITE[12]);
-      ns = await notesUntil((x) => noteAt(x, 12, 53) !== undefined);
-      await check('hold: step write while REC plays: a white key places a step on the selected row', noteAt(ns, 12, 53)?.len === 1 && ns.length === 2, fmt(ns));
-      await emu.tap(B.play);
-      await sleep(300);
-      await emu.tap(B.rec);
+      ns = await notesUntil((x) => noteAt(x, 12, 55) !== undefined);
+      await check('hold: step write while REC plays: a white key places a step on the row the black key picked', noteAt(ns, 12, 55)?.len === 1 && ns.length === 2, fmt(ns));
+      await emu.tap(B.play);                        // PLAY stops the transport and the recording
       await sleep(300);
       await emu.tap(B.seq, 120);
       await emu.waitText('= OCT =', 3000);
@@ -907,9 +904,11 @@ async function main() {
       await emu.tap(B.scl);
       await check('arming: SEL on the last armed row: disarmed, the keys WIRED', await emu.waitText('KEYS WIRED', 1500));
       await sleep(1300);
-      await emu.tap(B.rec);
-      await sleep(600);
-      await check('arming: REC on the environment does nothing (no recording, the page stays)', (await emu.text('ENVIRONMENT')) && !(await emu.text('REC')));
+      await emu.tap(B.rec);                         // REC is global (#395): it runs here too, nothing armed records
+      await check('arming: REC on the environment with the keys wired: REC runs, says nothing records, the page stays',
+        (await emu.waitText('REC: NO TRACK ARMED', 1500)) && (await emu.text('ENVIRONMENT')));
+      await emu.tap(B.play);                        // (PLAY stops it all)
+      await sleep(1300);
       await emu.tap(B.scl);
       await check('arming: SEL on the row again: armed', await emu.waitText('DRUMS ARMED', 1500));
       await emu.snap('arming-env');
