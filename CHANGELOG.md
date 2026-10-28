@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changes
+
+- **On the FM-1's piano roll the black keys pick the rows, not the track** (#387). Black keys 1 to 8 are the 8 pitches
+  on screen, black key 1 the bottom one, and they follow the window as SELECT scrolls it. With the transport stopped
+  the row picked sounds, with REC on or off; its black key is lit, as on the drum grid. ALGO picks the track. Before,
+  black key n switched to track n, so in a one-track patch only the first did anything. SEQ held or REC held + a black
+  key still mutes or arms track n, and a live take still plays all 27 keys.
+
 ### Patches
 
 - **8 Lire XL's TUNE is continuous,** as the Lyra-8's knob: each `tune` row is an Offset into its voice's pitch, ±4

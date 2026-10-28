@@ -832,6 +832,54 @@ async function main() {
       await check('deaf: the editor syncs a patch to the FM-1 again', !!s && (await emu.waitText('= OCT =', 4000)), `chip ${(await T()).chip}, ${(await T()).status}`);
       await emu.snap('deaf-after');
     },
+    // #387 (the owner, 2026-10-28): on the piano roll the black keys pick the rows on screen, black key 1 the bottom one,
+    // not the tracks. Spokes 6's TONE (the owner's report: ALGO to TONE lit black key 2, to CHORD black key 3), read back
+    // through the link (TRACK_NOW: the editor's copy of the tracks) and heard through the peak
+    async rollBlack() {
+      const KEY = [1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25].map((n) => 14 + n);   // the black keys, F#3 up
+      const tracks = async () => Object.fromEntries(JSON.parse(await patchJson()).modules.filter((m) => m.type === 'steps').map((m) => [m.name, m.notes]));
+      const fmt = (ns) => (ns ?? []).map((n) => `${n.note}@${n.at}x${n.len}`).join(' ') || 'none';
+      const added = (was, now) => (now ?? []).filter((n) => !(was ?? []).some((o) => o.at === n.at && o.note === n.note));
+      await check('roll black: Spokes 6 opens', await open('Spokes 6'));
+      await sleep(600);
+      const s = await until(async () => { const x = await T(); return x.live && x.chip === 'synced' && x.status === 'patch on the FM-1'; }, 10000);
+      await check('roll black: synced, the device page', !!s && (await emu.waitText('= OCT =', 6000)), `chip ${(await T()).chip}, ${(await T()).status}`);
+      await emu.tap(B.seq, 120);
+      await check('roll black: SEQ opens the drum grid', await emu.waitText('ALGO: TRACK', 3000));
+      let tone = false;
+      for (let i = 0; i < 3 && !tone; i++) {        // ALGO a track a click, to TONE (the 2nd of 3)
+        await emu.turn(ENC.algo, 1);
+        tone = await emu.waitText('TONE P', 1500);
+      }
+      await check('roll black: ALGO: the TONE track\'s roll', tone);
+      const t0 = await tracks();
+      const m = await emu.mark();                   // black key 1 held, stopped: its row (the bottom pitch) heard
+      await emu.key(KEY[0], true);
+      await sleep(400);
+      const p = await emu.peak(m);
+      await emu.key(KEY[0], false);
+      await sleep(300);
+      await loudCheck('roll black: stopped, black key 1 sounds its row', p, p > LOUD, `peak ${p}`);
+      await check('roll black: black key 1 keeps the TONE track (it picked a track before)', (await emu.text('TONE P')) && !(await emu.text('CHORD')));
+      await emu.tap(WHITE[13]);                     // a white key: a note on step 14 at black key 1's row
+      const t1 = await until(async () => { const x = await tracks(); return added(t0.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
+      const low = added(t0.TONE, t1.TONE)[0];
+      await check('roll black: then a white key writes on TONE, not on another track', !!low && low.at === 13 && fmt(t1.CHORD) === fmt(t0.CHORD) && fmt(t1.DRUMS) === fmt(t0.DRUMS), fmt(added(t0.TONE, t1.TONE)));
+      await emu.tap(KEY[7]);                        // black key 8: the top row, 7 semitones up
+      await emu.tap(WHITE[14]);
+      const t2 = await until(async () => { const x = await tracks(); return added(t1.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
+      const high = added(t1.TONE, t2.TONE)[0];
+      await check('roll black: black key 8 is the top row: 7 semitones over black key 1\'s', !!low && !!high && high.at === 14 && high.note === low.note + 7, `${fmt([low])} then ${fmt([high])}`);
+      await emu.tap(KEY[8]);                        // black key 9: nothing (8 rows), still TONE, still the top row
+      await emu.tap(WHITE[14]);                     // (the top row's note on step 15 off again)
+      await emu.tap(KEY[0]);
+      await emu.tap(WHITE[13]);                     // (and the bottom row's on step 14)
+      const t3 = await until(async () => { const x = await tracks(); return fmt(x.TONE) === fmt(t0.TONE) ? x : null; }, 3000) ?? (await tracks());
+      await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE P')), fmt(added(t0.TONE, t3.TONE)));
+      await emu.snap('roll-black');
+      await emu.tap(B.seq, 120);
+      await emu.waitText('= OCT =', 3000);
+    },
   };
 
   try {
