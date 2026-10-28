@@ -5,7 +5,7 @@
 //
 // The card has the Lyra-8's 46 controls (the manual's "Controls description", numbered 1 to 23), one row each, named as
 // the panel names them; a switch is a row of named positions (a Selector):
-//  - per voice: TUNE (`tune 1`..`tune 8`, the oscillator's coarse tune in semitones);
+//  - per voice: TUNE (`tune 1`..`tune 8`: continuous, in octaves, 0 = the voice's own tuning; an Offset into its pitch);
 //  - per pair: the FM modulation source switch (`source`: fm, off, lfo), MOD, SHARP, FAST (off, fast);
 //  - per group: HOLD, PITCH;
 //  - for all voices: the FM structure switch (`34>56 78>12`: off, on), TOTAL FB (off, on), VIBRATO (off, on);
@@ -17,8 +17,10 @@
 // How each part is built (none of this is on the card; its values stay set in the patch):
 //  - each voice: a triangle that its pair's SHARP turns into a square (a Waveshaper per voice, so the shaped wave is also
 //    what it sends to FM), its own envelope and its own vibrato LFO (eight, at eight rates), on with VIBRATO. The
-//    manual's envelopes are fixed, so their attack and release are set per voice in the patch, as is a fine tune under
-//    TUNE (the Lyra's TUNE is continuous; the row steps in semitones). The envelope is part of the voice, as the manual
+//    manual's envelopes are fixed, so their attack and release are set per voice in the patch, as is each voice's base
+//    tuning (coarse and fine) that TUNE moves from: the Lyra's TUNE is continuous, in steps smaller than a semitone, over
+//    tens to thousands of hertz, so the row is an Offset into the voice's pitch, ±4 octaves in hundredths of an octave
+//    (12 cents). The envelope is part of the voice, as the manual
 //    says: it bends the pitch a little (up to 6 cents) and sharpens the wave a little as it opens;
 //  - the plates (sensors 1..8): how hard a plate is touched (its velocity, held from the touch on, plus Main's
 //    aftertouch as the pressure) sets how far its envelope opens and how fast: a light touch opens it partly and
@@ -146,6 +148,8 @@ export function lireXl(keys: Record<string, number>): Built {
       const env = b.add('adsr', 1 + i, 2, { a, d: 0.2, s: 1, r });
       const vca = b.add('vca', 1 + i, 3, { gain: 1 });
       const vlfo = b.add('lfo', 1 + i, 7, { wave: 0, rate: vib, depth: 0 });
+      const tune = b.add('const', 1 + i, 14, { value: 0 }); // TUNE: octaves from the voice's base tuning
+      b.wire(tune, 'out', osc, 'pitch');
       b.wire(osc, 'out', shp, 'in');
       b.wire(shp, 'out', vca, 'in');
       b.wire(holdPair[p], 'max', vca, 'cv');
@@ -184,7 +188,7 @@ export function lireXl(keys: Record<string, number>): Built {
       b.wire(fast[p], 'out', env, 'p2');
       b.pin(env, 'p2', 'r');
       b.module(env).att = [-0.3, -0.35];
-      return { osc, shp, env, vca, vlfo, open, level };
+      return { osc, shp, env, vca, vlfo, open, level, tune };
     });
     // pairs: the FM source (another pair's voices, after their VCAs: an operator fades with its envelope), the source
     // switch (FM / off / LFO CV at 0 / 0.5 / 1: two Crossfaders, each moved twice as far as the switch: its value on the
@@ -309,7 +313,7 @@ export function lireXl(keys: Record<string, number>): Built {
     b.param('drive', drive, 'drive', { head: 'distortion' });
     b.param('mix', distMix, 'mix');
     b.param('vol', vol, 'gain');
-    voices.forEach((v, i) => b.param(`tune ${i + 1}`, v.osc, 'coarse', i === 0 ? { col: true, head: 'tune' } : i === 4 ? { group: true } : {}));
+    voices.forEach((v, i) => b.param(`tune ${i + 1}`, v.tune, 'value', i === 0 ? { col: true, head: 'tune' } : i === 4 ? { group: true } : {}));
     b.param('out', scope, 'view', { col: true });
   });
   for (const r of built.def.params) {
@@ -328,7 +332,7 @@ export const platesOf = (fm1: Patch): Record<string, number> => {
 
 /** the patch's notes (Patch.notes, at most 500 characters) */
 const NOTES =
-  'The SOMA Lyra-8 after its manual (v2.1). The card is its 46 controls: TUNE per voice; source (FM / off / LFO), MOD, SHARP, FAST per pair; HOLD, PITCH per group; 34>56 78>12, TOTAL FB, VIBRATO; the Hyper LFO; the MOD DELAY; the DISTORTION. The rear jacks are inputs; the Lyra switches them by plugging, here a crossfader inside the assembly (0 = unplugged). Not here: outside audio into EXT IN (no audio input module), the plates\' skin response (velocity and aftertouch stand in).';
+  'The SOMA Lyra-8 after its manual (v2.1). The card is its 46 controls: TUNE per voice (continuous); source (FM / off / LFO), MOD, SHARP, FAST per pair; HOLD, PITCH per group; 34>56 78>12, TOTAL FB, VIBRATO; the Hyper LFO; the MOD DELAY; the DISTORTION. The rear jacks are inputs; the Lyra switches them by plugging, here a crossfader inside the assembly (0 = unplugged). Not here: outside audio into EXT IN (no audio input module), the plates\' skin response (velocity and aftertouch stand in).';
 
 export const xl: Xl = {
   base: '8 Lire',

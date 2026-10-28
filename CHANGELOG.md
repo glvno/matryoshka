@@ -10,8 +10,23 @@
   black key n switched to track n, so in a one-track patch only the first did anything. SEQ held or REC held + a black
   key still mutes or arms track n, and a live take still plays all 27 keys.
 
+### Patches
+
+- **8 Lire XL's TUNE is continuous,** as the Lyra-8's knob: each `tune` row is an Offset into its voice's pitch, ±4
+  octaves in hundredths of an octave (12 cents), from the voice's own tuning. It stepped in semitones before. The default
+  sound is unchanged (rendered sample for sample); the XL has 151 modules (143) and an estimated 146 % CPU (144 %).
+- **Meridian 8 XL's gate inputs take any voltage,** as the NOON's: the inputs `gate 1`..`gate 8` power their channel
+  directly, after its mute button, so an offset, a held gate, an LFO or an oscillator there drones the channels that
+  hold a sound (DOT, for one) with no key held. The keys still play the channels as before. The default sound is
+  unchanged (rendered sample for sample); the XL has 180 modules (172) and an estimated 148 % CPU (143 %).
+
 ### Fixes
 
+- **Choosing what an assembly's card shows: a switch row's check box no longer covers its name.** On rows with
+  named positions (a Selector, such as Io 4's ASSIGN or LEGATO) the name now moves right of the box and gets more of the
+  row, as on a slider's row (#342).
+- **Space after clicking Octave down / Octave up starts the transport again.** The button no longer keeps the focus
+  after a click, so Space no longer pressed it a second time. Reached from the keyboard, it keeps the focus (#208).
 - **Ties on the FM-1's drum-track grids, and ties that reach (#368).** On the SEQ page, LFO held + a white key now
   ties a note on a track that plays a Drum map, as it already did on the piano roll. A Drum map row stays up while its
   note sounds, so a tie holds a voice that sustains, such as a Lire plate or an Elvira voice. On both grids the tie
