@@ -1656,6 +1656,8 @@ int main(void)
             tap(BTN_PLAY);                                  /* PLAY stops everything */
             check("PLAY while recording: the transport stops (MIDI Stop out) and recording ends", !seq_rec && !eng_transport_running()
                   && sent(at, 0xFCu, 0xFFu, 0xFFu) && !(E.trk_rec >> E.node[pat].trk & 1u) && page == PAGE_SEQ);
+            later(1500);
+            check("  the bar says ARM again, not REC (redrawn by the loop)", bar_shows("PATTERN ARM P01", C_ACC));
         }
         (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
         seq_sync(pat);

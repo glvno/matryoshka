@@ -90,6 +90,7 @@ static uint8_t seq_clear_trk;           /* ... the track it asked for */
 static uint32_t seq_pen_ms;             /* fm1_ms | 1 of the last key that was the pen (SEL held: its release then opens
                                          * nothing, D-541), 0 none */
 static uint32_t seq_shown_pat = 0xFFFFFFFFu;   /* the bar's pattern, queued pattern, song and entry as drawn */
+static uint8_t seq_shown_mark = 0xFFu;  /* ... and its ARM / REC (seq_bar_mark) */
 
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's number (0..10: a row on the SEQ
  * page, a track with SEQ or REC held), else -1 */
@@ -136,6 +137,8 @@ static int seq_armed_trk(void)
 }
 /* a module is in the armed set (#191) */
 static int seq_mod_armed(int mod) { return mod >= 0 && (eng_arm_mask_get() >> mod & 1u); }
+/* the SEQ bar's mark: bit 0 the track shown armed (ARM / REC), bit 1 REC on (the bar red) */
+static uint8_t seq_bar_mark(void) { return (uint8_t)(seq_mod_armed(seq_module()) | (seq_rec ? 2 : 0)); }
 /* the keys are the shown melodic track's keyboard: REC records it (it is armed) on this page, a live take; a drum track's
  * grid keeps its black keys as rows (seq_key, recorded there too) */
 static int seq_kbd(void)
@@ -906,6 +909,7 @@ static void seq_bar(void)
         p = put(p, seq_rec ? " REC" : " ARM");
     p = seq_pat_text(p);                         /* (after REC / ARM: name REC P03>P04) */
     seq_shown_pat = seq_pat_state();
+    seq_shown_mark = seq_bar_mark();
     *p = 0;
     bar_text(b, seq_rec ? C_RED : C_ACC);
 }
@@ -1442,10 +1446,10 @@ static void seq_poll(void)
     if (seq_clear_at && fm1_ms - (seq_clear_at & ~1u) >= SEQ_CLEAR_MS)
         seq_clear_at = 0;                        /* (the clear asked in vain: its message ends with it) */
     song_poll();
-    if (page == PAGE_SEQ && eng_steps_count() && seq_pat_state() != seq_shown_pat && !ui_yielding
+    if (page == PAGE_SEQ && eng_steps_count() && (seq_pat_state() != seq_shown_pat || seq_bar_mark() != seq_shown_mark) && !ui_yielding
         && !(msg_until && (int32_t)(fm1_ms - msg_until) < 0))
-        header_draw();                           /* (a pattern taken at the end of a pass, a song's next entry: the bar,
-                                                  * once a message on it is over) */
+        header_draw();                           /* (a pattern taken at the end of a pass, a song's next entry, REC ended
+                                                  * by PLAY or a stop (#395): the bar, once a message on it is over) */
     if (page != PAGE_SEQ) {
         kbd_was = -1;
         return;
