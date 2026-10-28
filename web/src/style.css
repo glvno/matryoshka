@@ -1391,7 +1391,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   border-inline: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 7%, var(--panel)); color: var(--ink); white-space: nowrap; overflow: hidden; }
 :is(.mhead, .fhead) .preset-chip .preset-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :is(.mhead, .fhead) .preset-chip .preset-name:hover { color: var(--secondary); }
-/* step entry's cursor (#127): the step the next note goes into */
+/* cursor entry's cursor (#127): the step the next note goes into */
 .step.cursor::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
 .steps-lanes { display: flex; }
 .steps-screen .steps-lanes button { padding: 2px 5px; font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);

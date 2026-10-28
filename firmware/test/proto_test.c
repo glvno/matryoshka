@@ -161,7 +161,9 @@ static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
         out[0] = 2;
         out[1] = 0;
         out[2] = 1;
-        return 3;
+        out[3] = 0x08;                                  /* (the buttons, #368: LFO's jack up, and bit 8) */
+        out[4] = 0x01;
+        return 5;
     }
     if (k >= 2u)
         return 0;
@@ -828,6 +830,7 @@ int main(int argc, char **argv)
         n0 = nreplies;
         CHECK(m1_handle(fr, 4) == 1 && nreplies == n0 + 3 && replies[n0][4] == R_SCREEN && replies[n0 + 2][4] == R_SCREEN);
         CHECK(m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 4 && got[0] == 0xFF && got[1] == 2 && got[3] == 1);
+        CHECK(m1_unpack7(replies[n0] + 5, reply_len[n0] - 6, got, sizeof got) >= 6 && got[4] == 0x08 && got[5] == 0x01);
         CHECK(m1_unpack7(replies[n0 + 2] + 5, reply_len[n0 + 2] - 6, got, sizeof got) >= 19 && got[0] == 1 && got[1] == 11 && got[2] == 20
               && got[5] == 13 && !memcmp(got + 6, "BROWSER PLAYS", 13));
         fr[3] = C_TEST_PEAK;

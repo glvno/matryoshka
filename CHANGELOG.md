@@ -9,6 +9,22 @@
   row, as on a slider's row (#342).
 - **Space after clicking Octave down / Octave up starts the transport again.** The button no longer keeps the focus
   after a click, so Space no longer pressed it a second time. Reached from the keyboard, it keeps the focus (#208).
+- **Ties on the FM-1's drum-track grids, and ties that reach (#368).** On the SEQ page, LFO held + a white key now
+  ties a note on a track that plays a Drum map, as it already did on the piano roll. A Drum map row stays up while its
+  note sounds, so a tie holds a voice that sustains, such as a Lire plate or an Elvira voice. On both grids the tie
+  now reaches: the row's last note before that step is extended to end on it, so one press ties step 1 through step
+  16 (before, the key only tied the note sounding on the step before). LFO + a step inside a note ends it there, and
+  LFO + its last step makes it one step again (before, a tied step cut the note before it). With no note before the
+  step the bar says NOTHING TO TIE; a tie does not run across the end of the loop. The grid draws a tied note's steps
+  dim and joined, and a white key on a step a tie runs through cuts the tie there and starts a hit. Notes made longer
+  in the editor's piano roll now show their length on the FM-1 too.
+- **Held black keys on the FM-1's drum grids (#368).** On a drum track's SEQ page a black key now sounds its row for as
+  long as it is held, not as a one-step hit, with REC on or off and the transport running or stopped. With REC on and
+  the transport running it records a note lasting the whole steps it was held (at least one), on the nearest step, the
+  same way a live take records melodic notes. The white keys still place steps while REC records.
+- **Wording: cursor entry and step write.** The editor's recording with the transport stopped (the keys held together
+  fill the cursor's step) is now called cursor entry, in its tooltips and help. Placing steps with the white keys, on
+  the FM-1 or on a Steps card, is step write.
 
 ## 1.5.1 — 2026-10-27
 
