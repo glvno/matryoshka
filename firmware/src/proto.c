@@ -267,7 +267,7 @@ static void m1_patch_stepval(uint32_t mod, uint32_t k, uint32_t note, uint32_t v
     eng_steps_value_set(mod, k, note, vel);
     m1_patch_track(mod);
 }
-/* a track's notes changed in the engine (#139: step entry's chord, a live take): into the running binary */
+/* a track's notes changed in the engine (#139: cursor entry's chord, a live take): into the running binary */
 static void m1_patch_notes(uint32_t mod) { m1_patch_track(mod); }
 /* a track armed or disarmed on the panel (#139): the editor is not told (the FM-1 tab's emulator is) */
 static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }   /* (the device tells no one of its arming: #139, #191) */

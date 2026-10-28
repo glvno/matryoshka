@@ -728,6 +728,46 @@ async function main() {
         await check('tie 808: LFO held on the device page: Main\'s LFO jack up (TEST_SCREEN sees the jacks)', b !== undefined && !!(b & LFO_BIT), `buttons ${b}`);
       }
     },
+    async drumHold() {   // #368 (the owner, 2026-10-28): a black key on a drum track's grid sounds while held; REC running records it
+      await check('hold: 8 Lire opens, synced', await openSynced('8 Lire'));
+      await check('hold: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      // stopped: row 1's plate while black key 1 is held (about 600 ms), then let go
+      await emu.windows(4, 25);                     // (quiet first)
+      await emu.key(BLACK[0], true);
+      const held = await emu.windows(24, 25);
+      await emu.key(BLACK[0], false);
+      const gone = await emu.windows(16, 25);
+      const top = Math.max(held[0][1], held[1][1]), heldLow = Math.min(...held.slice(2).map((x) => x[1]));
+      const late = Math.max(...gone.filter((x) => x[0] >= 300).map((x) => x[1]));
+      console.log(`  hold peaks per 25 ms, held: ${prof(held)}; let go: ${prof(gone)}`);
+      const d = `held: peak ${top}, lowest after it ${heldLow} (kept ${top ? (heldLow / top).toFixed(2) : 0}); 300 ms after letting go: ${late}`;
+      await loudCheck('hold: stopped, a held black key sounds its row as long as it is held (keeps 90 %)', top, top > LOUD && heldLow >= 0.9 * top, d);
+      await loudCheck('hold: let go, it decays (300 ms on: under half)', top, late < top / 2, d);
+      let ns = await trackNotes();
+      await check('hold: stopped, nothing recorded', ns.length === 0, fmt(ns));
+      // REC on (nothing armed: the black keys record on this drum track), running: black key 2 held about four steps
+      await emu.tap(B.rec);
+      await sleep(300);
+      await emu.tap(B.play);
+      await sleep(400);
+      await emu.key(BLACK[1], true);
+      await sleep(450);
+      await emu.key(BLACK[1], false);
+      ns = await notesUntil((x) => x.length >= 1);
+      const rec = ns.find((x) => x.note === 55);
+      await check('hold: REC on, running: a black key held about 450 ms records one note on its row, 3 to 5 steps long (125 ms a step)',
+        ns.length === 1 && !!rec && rec.len >= 3 && rec.len <= 5, fmt(ns));
+      // step write while REC plays: a white key on row 1 (the row picked stays: REC's black keys pick none)
+      await emu.tap(WHITE[12]);
+      ns = await notesUntil((x) => noteAt(x, 12, 53) !== undefined);
+      await check('hold: step write while REC plays: a white key places a step on the selected row', noteAt(ns, 12, 53)?.len === 1 && ns.length === 2, fmt(ns));
+      await emu.tap(B.play);
+      await sleep(300);
+      await emu.tap(B.rec);
+      await sleep(300);
+      await emu.tap(B.seq, 120);
+      await emu.waitText('= OCT =', 3000);
+    },
     async tieRoll() {   // the piano roll (#241) keeps its tie: Silver Box's PATTERN, pattern 1 (empty)
       await check('tie roll: Silver Box opens, synced', await openSynced('Silver Box'));
       await check('tie roll: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));

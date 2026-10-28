@@ -71,6 +71,9 @@ static uint8_t seq_trk;                 /* the selected track (index among the p
 static uint8_t seq_pg;                  /* the page of 16 steps */
 static uint8_t seq_rec;                 /* REC: 1 black keys record hits, 2 the keys record into the armed track (#139) */
 static int8_t seq_rec_arms = -1;        /* the module REC armed itself on the roll (seq_rec_press), disarmed when REC ends */
+static uint64_t seq_rec_mods;           /* the drum tracks REC set recording live for their black keys (#368), until REC ends */
+static uint8_t seq_thru_note[27];       /* a black key held on a drum track's page (#368): its note + 1 (0 none), sounding through */
+static uint8_t seq_thru_mod[27];        /* ... the track it sounds through, let go there */
 static uint8_t seq_row;                 /* the grid's selected row: a Drum map's row, or the roll's (0 the top: its highest pitch) */
 static uint8_t seq_roll_lo = 57;        /* the roll (#241): the pitch of its lowest row (0..120) */
 static int8_t seq_roll_trk = -1;        /* the track its window was opened for (-1: open it again), and the patch then */
@@ -498,6 +501,15 @@ static void seq_pen(int mod, uint32_t n)
     (void)eng_steps_hit_note((uint32_t)mod, (uint32_t)note, 0, 0);
 }
 
+/* a black key let go that sounded through a drum track (#368): its note ends (recording: it is recorded now) */
+static void seq_thru_up(uint32_t n)
+{
+    if (n < 27u && seq_thru_note[n]) {
+        eng_steps_thru(seq_thru_mod[n], seq_thru_note[n] - 1u, 0);
+        seq_thru_note[n] = 0;
+    }
+}
+
 /* a key on the SEQ page (n: note key 0..26). Drum track (the #139 follow-up): black keys 1..8 the Drum map's rows (stopped:
  * heard; REC on: a hit on the row, into the nearest step while it plays), white keys that row's hit on the page's steps
  * (FX held: an accent; LFO held: its tie, #368). The roll (#241): black keys the tracks (REC on: heard; REC with nothing armed: a hit on that
@@ -509,6 +521,7 @@ static void seq_key(uint32_t n, int down)
     if (!down) {
         if (w >= 0 && seq_held == seq_pg * 16 + w)
             seq_held = -1;
+        seq_thru_up(n);
         return;
     }
     if (mod < 0)
@@ -542,14 +555,19 @@ static void seq_key(uint32_t n, int down)
         }
         if (b >= (int)ENG_DRUM_ROWS)
             return;
-        if (seq_rec) {                           /* REC on: a hit on that row, the row picked stays (only its cell is drawn) */
-            if (eng_steps_hit_note((uint32_t)mod, seq_row_note(map, (uint32_t)b), fx, 1) >= 0)
-                seq_sync(mod);
-        } else {                                 /* else the row picked (stopped: heard); its name and the last one redrawn */
+        /* the row's note sounds through the track while the key is held (#368, the owner 2026-10-28: running or stopped).
+         * REC on: the row picked stays, and while the track plays the note is recorded as a live take records it (the
+         * nearest step, the whole steps held, at least one: eng_steps_rec, laid over the track by seq_take); else the row
+         * picked, its name and the last one redrawn */
+        if (seq_rec) {
+            eng_steps_rec((uint32_t)mod, 1);
+            seq_rec_mods |= (uint64_t)1 << mod;
+        } else
             seq_row = (uint8_t)b;
-            if (!eng_transport_running())
-                (void)eng_steps_hit_note((uint32_t)mod, seq_row_note(map, seq_row), 0, 0);
-        }
+        seq_thru_up(n);
+        seq_thru_mod[n] = (uint8_t)mod;
+        seq_thru_note[n] = (uint8_t)(seq_row_note(map, (uint32_t)b) + 1u);
+        eng_steps_thru((uint32_t)mod, seq_thru_note[n] - 1u, fx ? ACCENT_VEL : STEP_VEL);
         ui_dirty = ui_dirty ? ui_dirty : 1;
         return;
     }
@@ -699,8 +717,13 @@ static void seq_sync(int mod)
 
 static void seq_rec_off(void)
 {
+    uint32_t m;
     if (seq_rec == 2u && eng_armed() >= 0)
         eng_steps_rec((uint32_t)eng_armed(), 0);
+    for (m = 0; seq_rec_mods >> m; m++)          /* (the drum tracks recording their black keys, #368) */
+        if (seq_rec_mods >> m & 1u)
+            eng_steps_rec(m, 0);
+    seq_rec_mods = 0;
     if (seq_rec_arms >= 0 && (eng_arm_mask_get() >> seq_rec_arms & 1u)) {
         eng_arm_mask(eng_arm_mask_get() & ~((uint64_t)1 << seq_rec_arms));
         m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
@@ -738,7 +761,7 @@ static void seq_rec_press(void)
         ui_dirty = 2;
         return;
     }
-    seq_rec = 2;                                 /* the armed track's grid or roll, REC on (#241: no step entry) */
+    seq_rec = 2;                                 /* the armed track's grid or roll, REC on (#241: no cursor entry) */
     eng_steps_rec((uint32_t)eng_armed(), 1);
     if ((uint32_t)t != seq_trk) {
         seq_pg = 0;

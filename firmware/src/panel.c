@@ -496,6 +496,8 @@ static int panel_key(uint32_t n, int down, int quick)
     if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_kbd()) || !down)) {   /* the SEQ page: steps and tracks */
         if (page == PAGE_SEQ && !seq_kbd())
             seq_key(n, down);
+        else
+            seq_thru_up(n);                         /* (a black key held on a drum track's page, let go elsewhere: #368) */
         return 1;
     }
     if (down) {

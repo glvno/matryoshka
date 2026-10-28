@@ -13,6 +13,13 @@
   step the bar says NOTHING TO TIE; a tie does not run across the end of the loop. The grid draws a tied note's steps
   dim and joined, and a white key on a step a tie runs through cuts the tie there and starts a hit. Notes made longer
   in the editor's piano roll now show their length on the FM-1 too.
+- **Held black keys on the FM-1's drum grids (#368).** On a drum track's SEQ page a black key now sounds its row for as
+  long as it is held, not as a one-step hit, with REC on or off and the transport running or stopped. With REC on and
+  the transport running it records a note lasting the whole steps it was held (at least one), on the nearest step, the
+  same way a live take records melodic notes. The white keys still place steps while REC records.
+- **Wording: cursor entry and step write.** The editor's recording with the transport stopped (the keys held together
+  fill the cursor's step) is now called cursor entry, in its tooltips and help. Placing steps with the white keys, on
+  the FM-1 or on a Steps card, is step write.
 
 ## 1.5.1 — 2026-10-27
 

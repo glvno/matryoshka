@@ -90,7 +90,7 @@ int main(int argc, char **argv)
                 unsigned long long m;
                 fscanf(ev, "%llu", &m);
             }
-            else if (!strcmp(kind, "rec") || !strcmp(kind, "cc"))
+            else if (!strcmp(kind, "rec") || !strcmp(kind, "cc") || !strcmp(kind, "thon") || !strcmp(kind, "thoff"))
                 fscanf(ev, "%u %u", &note, &vel);
             else if (!strcmp(kind, "pat") || !strcmp(kind, "song"))
                 fscanf(ev, "%u", &note);
@@ -140,6 +140,11 @@ int main(int argc, char **argv)
         } else if (!strcmp(kind, "rec")) {
             fscanf(ev, "%u %u", &note, &vel);
             eng_steps_rec(note, (int)vel);
+        } else if (!strcmp(kind, "thon") || !strcmp(kind, "thoff")) {   /* (#368) a note into a track's keys in: module, note */
+            fscanf(ev, "%u %u", &note, &vel);
+#ifdef ENG_STEPS_THRU /* engine_exact.sh also builds this harness with older engine headers */
+            eng_steps_thru(note, vel, !strcmp(kind, "thon") ? 100u : 0u);
+#endif
         } else if (!strcmp(kind, "pat") || !strcmp(kind, "song")) {   /* (format 48) the patch's pattern, the song */
             fscanf(ev, "%u", &note);
 #ifdef ENG_PATTERNS /* engine_exact.sh also builds this harness with older engine headers */

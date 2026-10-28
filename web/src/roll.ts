@@ -132,7 +132,7 @@ export class PianoRoll {
       return b;
     };
     this.armBtn = btn('arm', 'roll-arm', 'ARM: Main’s keys play into this track and through to its instrument', () => this.ops.arm(!this.ops.armed()));
-    this.recBtn = btn('● rec', 'roll-rec', 'REC (Shift+R): stopped, step entry on the card’s cursor; running, play along (each pass overdubs, one undo step)', () => this.ops.rec(!this.ops.recording()));
+    this.recBtn = btn('● rec', 'roll-rec', 'REC (Shift+R): stopped, cursor entry on the card’s cursor; running, play along (each pass overdubs, one undo step)', () => this.ops.rec(!this.ops.recording()));
     this.lenEl = document.createElement('span');
     this.lenEl.className = 'roll-len';
     this.drawBtn = btn('✎ draw', 'roll-tool', 'Draw mode (B): a press paints a note, a drag one per step; a press on a note removes it', () => this.setDraw(!this.draw));
