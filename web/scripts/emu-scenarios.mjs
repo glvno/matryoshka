@@ -474,10 +474,30 @@ async function main() {
     return { at: w[i][0], top, low, kept: top ? +(low / top).toFixed(2) : 0 };
   }
   const prof = (w) => w.map((x) => x[1]).join(',');
-  const LFO_BIT = 1 << 3;   // Main's patch buttons: FX SCL ENV LFO EDIT GLO ARP (engine.h ENG_PANEL_BUTTONS)
+  const LFO_BIT = 1 << 3;
+  /** a 4-step note on step 1 back to one step, as D-531 says (2026-10-28): LFO + step 2 (inside it) ends it there, LFO +
+   *  step 2 again (its last step) makes it one step, LFO + step 1 (its own step, nothing before) is NOTHING TO TIE */
+  async function untie(tag, note) {
+    await lfoKeys([1]);
+    let ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 2);
+    await check(`${tag}: LFO + step 2, inside the tie: it ends there (2 steps)`, noteAt(ns, 0, note)?.len === 2 && ns.length === 1, fmt(ns));
+    await lfoKeys([1]);
+    ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 1);
+    await check(`${tag}: LFO + step 2 again, its last step: one step`, noteAt(ns, 0, note)?.len === 1 && ns.length === 1, fmt(ns));
+    await emu.key(B.lfo, true);
+    await sleep(150);
+    await emu.tap(WHITE[0]);
+    const said = await emu.waitText('NOTHING TO TIE', 1500);
+    await emu.key(B.lfo, false);
+    await sleep(300);
+    ns = await trackNotes();
+    await check(`${tag}: LFO + step 1, the hit's own step with nothing before it: NOTHING TO TIE, no change`, said && noteAt(ns, 0, note)?.len === 1 && ns.length === 1, fmt(ns));
+  }   // Main's patch buttons: FX SCL ENV LFO EDIT GLO ARP (engine.h ENG_PANEL_BUTTONS)
 
-  /** a drum track's grid: a hit on step 1 of row `row`, tied through steps 2..4 (LFO + white keys), heard; untied (LFO + step
-   *  2), heard again at the same place; tied again and cut by a plain white key on step 3. `sustains`: the row's voice holds
+  /** a drum track's grid (D-531 as of 2026-10-28): a hit on step 1 of row `row`, LFO + step 4 ties it through step 4 in one
+   *  press, heard; LFO + step 2 (inside it) ends it there, LFO + step 2 again (its last step) makes it one step, heard again
+   *  at the same place; LFO + step 1 (its own step, nothing before it) is NOTHING TO TIE; tied again and cut by a plain
+   *  white key on step 3. `sustains`: the row's voice holds
    *  while its gate is up (8 Lire's plates), else a one-shot whose sound must not change (the 808 Kit) */
   async function drumTie(tag, name, row, sustains) {
     await check(`${tag}: ${name} opens, synced`, await openSynced(name));
@@ -489,14 +509,12 @@ async function main() {
     const note = ns[0]?.note;
     await check(`${tag}: a hit on step 1 of row ${row + 1}`, ns.length === 1 && ns[0].at === 0 && ns[0].len === 1, fmt(ns));
     const untiedW = await passProfile();
-    const buttons = await lfoKeys([1, 2, 3]);
+    const buttons = await lfoKeys([3]);
     ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 4);
-    await check(`${tag}: LFO + steps 2, 3, 4: the hit tied through them (4 steps)`, noteAt(ns, 0, note)?.len === 4 && ns.length === 1, fmt(ns));
+    await check(`${tag}: LFO + step 4: the hit tied through it in one press (4 steps)`, noteAt(ns, 0, note)?.len === 4 && ns.length === 1, fmt(ns));
     if (DEVICE) await check(`${tag}: LFO held on the SEQ page: Main's LFO jack stays down`, buttons !== undefined && !(buttons & LFO_BIT), `buttons ${buttons}`);
     const tiedW = await passProfile();
-    await lfoKeys([1]);
-    ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 1);
-    await check(`${tag}: LFO + step 2 again: untied, one step`, noteAt(ns, 0, note)?.len === 1 && ns.length === 1, fmt(ns));
+    await untie(tag, note);
     const againW = await passProfile();
     const u = hold(untiedW), t = hold(tiedW), a = hold(againW);
     console.log(`  ${tag} peaks per 25 ms, untied: ${prof(untiedW)}`);
@@ -511,7 +529,7 @@ async function main() {
       await loudCheck(`${tag}: a one-shot sounds the same tied (peak within 15 %, kept within 0.1)`, t.top,
         t.top > LOUD && near(t.top, u.top, 0.15) && near(a.top, u.top, 0.15) && Math.abs(t.kept - u.kept) <= 0.1 && Math.abs(a.kept - u.kept) <= 0.1, detail);
     }
-    await lfoKeys([1, 2, 3]);
+    await lfoKeys([3]);
     await emu.tap(WHITE[2]);
     ns = await notesUntil((x) => noteAt(x, 2, note) !== undefined);
     await check(`${tag}: a plain white key on step 3, which the tie runs through: the tie cut before it, a hit there`,
@@ -717,13 +735,11 @@ async function main() {
       let ns = await notesUntil((x) => x.length === 1);
       const note = ns[0]?.note;
       await check('tie roll: a note on step 1', ns.length === 1 && ns[0].at === 0 && ns[0].len === 1, fmt(ns));
-      await lfoKeys([1, 2, 3]);
+      await lfoKeys([3]);
       ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 4);
-      await check('tie roll: LFO + steps 2, 3, 4: tied through them (4 steps)', noteAt(ns, 0, note)?.len === 4 && ns.length === 1, fmt(ns));
-      await lfoKeys([1]);
-      ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 1);
-      await check('tie roll: LFO + step 2 again: untied', noteAt(ns, 0, note)?.len === 1 && ns.length === 1, fmt(ns));
-      await lfoKeys([1, 2, 3]);
+      await check('tie roll: LFO + step 4: tied through it in one press (4 steps)', noteAt(ns, 0, note)?.len === 4 && ns.length === 1, fmt(ns));
+      await untie('tie roll', note);
+      await lfoKeys([3]);
       await emu.tap(WHITE[2]);
       ns = await notesUntil((x) => noteAt(x, 2, note) !== undefined);
       await check('tie roll: a plain white key on a tied step: the tie cut, a note there', noteAt(ns, 0, note)?.len === 2 && noteAt(ns, 2, note)?.len === 1, fmt(ns));

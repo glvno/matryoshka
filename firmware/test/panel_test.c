@@ -1202,6 +1202,35 @@ int main(void)
             w = eng_steps_note((uint32_t)drums, 2, 55);
             check("a white key on a step a tie runs through: the tie cut before it, a hit there",
                   w && ((w >> 6) & 63u) == 0u && eng_steps_note((uint32_t)drums, 3, 55) && px(seq_grid_x(3) + 5u, y) == C_FG);
+            {                                               /* the rule of 2026-10-28: LFO + step 16, the row's last hit before it
+                                                             * ends there (one press); again: one step; LFO + a hit's own step with
+                                                             * nothing before it: NOTHING TO TIE */
+                uint32_t n16 = 0, at = 0, k;
+                while (seq_white(n16) != 15)
+                    n16++;
+                for (k = 0; k < 15u; k++)
+                    if (eng_steps_note((uint32_t)drums, k, 55))
+                        at = k;
+                panel_held |= 1u << BTN_LFO;
+                panel_keys(1u << n16);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, at, 55);
+                check("LFO + step 16: the row's last hit before it ends on step 16, in one press",
+                      w && (w & 63u) + ((w >> 6) & 63u) == 15u && !strcmp(msg_text, "TIED") && px(seq_grid_x(15) + 5u, y) == C_DIM);
+                panel_keys(1u << n16);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, at, 55);
+                check("again (its last step): one step", w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "TIE OFF"));
+                panel_keys(1u << 4);                        /* A3: step 3, its own hit, no row-2 hit before it */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("LFO + a hit's own step with nothing before it: NOTHING TO TIE (no tie across the loop)",
+                      w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
+                panel_held &= ~(1u << BTN_LFO);
+            }
             (void)eng_steps_set_notes((uint32_t)drums, keep, (uint32_t)keep_n);
             seq_sync(drums);
         }
@@ -1383,23 +1412,30 @@ int main(void)
         check("LFO + a white key: the note sounding on the step before tied through it (3 steps), drawn dim",
               seq_white(18) == 10 && hw && ((hw >> 6) & 63u) == 2u && roll_shows(pat)
               && px(seq_grid_x(10) + 5u, GRID_Y + GRID_RH * seq_row + 5u) == C_DIM);
-        panel_keys(1u << 16);                               /* LFO + step 10 (tied): cut before it */
+        panel_keys(1u << 16);                               /* LFO + step 10 (inside it, 2026-10-28): it ends there */
         panel_keys(0);
         loop();
         hw = eng_steps_note((uint32_t)pat, 8u, 46u);
-        check("LFO + a tied step: the note ends before it", seq_white(16) == 9 && hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
-              && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG);
-        msg_text[0] = 0;
-        panel_keys(1u << 9);                                /* LFO + step 6: no A#2 on step 5 */
+        check("LFO + a step inside the note: it ends there (2 steps)", seq_white(16) == 9 && hw && ((hw >> 6) & 63u) == 1u
+              && roll_shows(pat) && px(seq_grid_x(10) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG && !strcmp(msg_text, "TIED"));
+        panel_keys(1u << 16);                               /* LFO + step 10 again, its last step: one step again */
         panel_keys(0);
         loop();
-        check("LFO + a step after nothing: NOTHING TO TIE", seq_white(9) == 5 && !strcmp(msg_text, "NOTHING TO TIE"));
+        hw = eng_steps_note((uint32_t)pat, 8u, 46u);
+        check("LFO + the note's last step: one step again (TIE OFF)", hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
+              && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG && !strcmp(msg_text, "TIE OFF"));
+        msg_text[0] = 0;
+        panel_keys(1u << 0);                                /* LFO + step 1: its own A#2, none before it (no tie across the loop) */
+        panel_keys(0);
+        loop();
+        check("LFO + a note's own step, nothing before it: NOTHING TO TIE", seq_white(0) == 0 && eng_steps_note((uint32_t)pat, 0u, 46u)
+              && ((eng_steps_note((uint32_t)pat, 0u, 46u) >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
         later(1000);
         panel_yield = keys_yield_q;                         /* the roll's keys during a full redraw (D-228): nothing drawn from inside */
         yield_xfers = 0;
         msg_text[0] = 0;
-        kq_edge(9, 1);                                      /* LFO + step 6 again: its message waits for the loop's pass */
-        kq_edge(9, 0);
+        kq_edge(0, 1);                                      /* LFO + step 1 again: its message waits for the loop's pass */
+        kq_edge(0, 0);
         ui_dirty = 2;
         panel_draw();
         check("in a redraw, LFO + a step: taken, its message left for the pass", kq_r == kq_w && yield_xfers == 0u && !msg_text[0]);

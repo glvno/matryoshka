@@ -34,8 +34,8 @@
  *   black keys      pick the track (1..11, patch order)
  *   SEL held + a key  the pen: the selected row jumps to that key's pitch (the keys' octave; the window scrolls to show
  *                   it) and it sounds. FX held + OCT- / OCT+: the keys' octave (the pen's)
- *   LFO held + a white key  ties the selected row's note through that step (the note sounding on the step before goes
- *                   on through it, a note of its own there joins it); again on a tied step: cut before it
+ *   LFO held + a white key  the selected row's last note starting before that step ends on it (a note of its own
+ *                   there joins it); on a step inside a note: it ends there, on its last step: one step again
  *
  * Arming and recording from the keys (#139, the editor's #134 / #135):
  *   REC held + a black key (any page): arm that track, again: disarm. While a track is armed the keys (and MIDI notes)
@@ -443,8 +443,11 @@ static void seq_roll_toggle(int mod, uint32_t k, uint32_t note, uint32_t vel)
     eng_steps_toggle((uint32_t)mod, k, note, vel);
 }
 
-/* LFO held + a white key (the roll, #241; a drum track, #368): the selected row's note tied through step k. Its note sounding on the step before
- * goes on through k (a note of its own on k joins it); on a step it already runs through: cut before it */
+/* LFO held + a white key (the roll, #241; a drum track, #368; the rule of 2026-10-28): the selected row's note around
+ * step k. On a step a note of that row runs through (started before k): k its last step already, the note is one step
+ * again (TIE OFF), else it now ends on k (TIED). Else the row's last note starting before k ends on k (one press ties
+ * step 1 to 16), a note of its own starting on k joining it (TIED). No note before k: NOTHING TO TIE (no tie across the
+ * loop's end: a hit's own step is no tie) */
 static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
 {
     uint32_t w[TRACK_NOTES_MAX];
@@ -452,12 +455,13 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
     int i, m, nn = eng_steps_notes((uint32_t)mod, &ws), t = seq_through(ws, nn, k, note), prev = -1;
     for (i = 0; i < nn; i++)
         w[i] = ws[i];
-    if (t >= 0) {                                /* tied already: the note ends before k */
-        w[t] = (w[t] & ~(63u << 6)) | (k - (w[t] & 63u) - 1u) << 6;
-        seq_msg_due = "TIE OFF";
+    if (t >= 0) {                                /* inside a note: it ends on k, or (k its last step) is one step again */
+        uint32_t at = w[t] & 63u, last = at + ((w[t] >> 6) & 63u);
+        w[t] = (w[t] & ~(63u << 6)) | (k == last ? 0u : k - at) << 6;
+        seq_msg_due = k == last ? "TIE OFF" : "TIED";
     } else {
-        for (i = 0; k > 0u && i < nn; i++)       /* the note of this pitch sounding on k - 1 */
-            if (((w[i] >> 12) & 127u) == note && (w[i] & 63u) <= k - 1u && k - 1u <= (w[i] & 63u) + ((w[i] >> 6) & 63u))
+        for (i = 0; i < nn; i++)                 /* the row's last note starting before k */
+            if (((w[i] >> 12) & 127u) == note && (w[i] & 63u) < k && (prev < 0 || (w[i] & 63u) > (w[prev] & 63u)))
                 prev = i;
         if (prev < 0) {
             seq_msg_due = "NOTHING TO TIE";
@@ -475,8 +479,8 @@ static void seq_roll_tie(int mod, uint32_t k, uint32_t note)
                     prev = m - 1;
             }
             nn = m;
-            if (end > at + TRACK_STEPS)         /* (a note lasts 64 steps at most, and may run past the last) */
-                end = at + TRACK_STEPS;
+            if (end > TRACK_STEPS)
+                end = TRACK_STEPS;
             w[prev] = (w[prev] & ~(63u << 6)) | (end - at - 1u) << 6;
         }
         seq_msg_due = "TIED";
