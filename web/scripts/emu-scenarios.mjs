@@ -745,7 +745,7 @@ async function main() {
       await loudCheck('hold: let go, it decays (500 ms on: under half the held level)', top, late < heldMax / 2, d);
       let ns = await trackNotes();
       await check('hold: stopped, nothing recorded', ns.length === 0, fmt(ns));
-      // REC on (nothing armed: the black keys record on this drum track), running: black key 2 held about four steps
+      // REC on (the SEQ page armed this drum track, #395), running: black key 2 held about four steps
       await emu.tap(B.rec);
       await sleep(300);
       await emu.tap(B.play);
@@ -878,6 +878,42 @@ async function main() {
       await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE P')), fmt(added(t0.TONE, t3.TONE)));
       await emu.snap('roll-black');
       await emu.tap(B.seq, 120);
+      await emu.waitText('= OCT =', 3000);
+    },
+    // #395 (the owner, 2026-10-28): SEL arms the device in focus and disarms the rest, SEL on environment rows adds and
+    // removes them, the last one out leaves the keys WIRED, and the SEQ page arms the track it shows. The link does not
+    // carry the armed set (D-516): read from the FM-1's screen, heard through the peak
+    async arming() {
+      await check('arming: the 808 Kit opens, synced', await openSynced('808 Kit'));
+      await check('arming: a patch loads with nothing armed: the footer says KEYS WIRED', await emu.waitText('KEYS WIRED', 3000));
+      await emu.tap(B.scl);                         // the home device, the Drum map: its keys come from the track, not Main
+      await check('arming: SEL on a device that takes no keys says so', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
+      await sleep(1300);
+      await emu.tap(B.seq, 120);
+      await check('arming: the SEQ page arms the track it shows', await emu.waitText('DRUMS ARM', 3000));
+      await emu.tap(B.seq, 120);
+      await check('arming: back on the device page, the footer names the armed track', await emu.waitText('ARM DRUMS', 3000));
+      const m = await emu.mark();                   // armed: black key 1 plays the kick through DRUMS
+      await emu.key(BLACK[0], true);
+      await sleep(300);
+      await emu.key(BLACK[0], false);
+      const p = await emu.peak(m);
+      await loudCheck('arming: DRUMS armed, black key 1 plays the kick', p, p > LOUD, `peak ${p}`);
+      await sleep(1000);
+      await emu.tap(B.env, 120);
+      await check('arming: ENV opens the environment', await emu.waitText('ENVIRONMENT', 3000));
+      await emu.turn(ENC.select, -1);               // the Drum map's row, then DRUMS'
+      await sleep(300);
+      await emu.tap(B.scl);
+      await check('arming: SEL on the last armed row: disarmed, the keys WIRED', await emu.waitText('KEYS WIRED', 1500));
+      await sleep(1300);
+      await emu.tap(B.rec);
+      await sleep(600);
+      await check('arming: REC on the environment does nothing (no recording, the page stays)', (await emu.text('ENVIRONMENT')) && !(await emu.text('REC')));
+      await emu.tap(B.scl);
+      await check('arming: SEL on the row again: armed', await emu.waitText('DRUMS ARMED', 1500));
+      await emu.snap('arming-env');
+      await emu.tap(B.env, 120);
       await emu.waitText('= OCT =', 3000);
     },
   };

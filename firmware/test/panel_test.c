@@ -3100,6 +3100,7 @@ int main(void)
         seq_trk = 0;
         tap(BTN_SEQ);
         check("SEQ: the page arms the track it shows", page == PAGE_SEQ && seq_trk == 0u && eng_arm_mask_get() == (uint64_t)1 << drums);
+        check("  its track line: ARMED, then the ALGO hint where it fits", strstr(seq_grid_text[1], "  ARMED  ALGO: TRACK") != 0);
         enc(1, 1);
         check("ALGO there: the track it shows now armed, the one before disarmed", seq_trk == 1u && eng_arm_mask_get() == (uint64_t)1 << pat);
         later(1500);

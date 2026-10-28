@@ -117,9 +117,8 @@ impl Run {
     }
 }
 
-/// The patch's name on the screen (PRESET's toast, a track armed's footer), else in the environment's bar: a patch loads
-/// with nothing armed and the device page's footer then says KEYS WIRED, not the name (#395). ENV opens and closes the
-/// environment for it.
+/// The patch's name on the screen (the footer, PRESET's toast), else in the environment's bar: a patch loads with nothing
+/// armed, and the footer then cuts a long name to show KEYS WIRED after it (#395). ENV opens and closes the environment.
 fn patch_screen(t: &mut Run, m: &mut Machine, what: &str, name: &str) -> Result<bool, String> {
     if font::on_screen(m.lcd(), name) {
         return Ok(t.screen(m, what, name));
@@ -318,7 +317,7 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     let mut m = Machine::boot(app, Some(&flash));
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(300)?;
-    patch_screen(t, &mut m, "store: boot opens slot 0 (no settings record)", "EMU ZERO")?;
+    t.screen(&m, "store: boot opens slot 0 (no settings record)", "EMU ZERO");
     m.midi(&[0xC0, 3], 500)?;
     t.screen(&m, "store: the newer of two records of a slot wins", "EMU NEW");
     m.midi(&[0xC0, 7], 500)?;
@@ -334,7 +333,7 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     t.screen(&m, "store: the boot message stays up", "FACTORY BANK WRITTEN");
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
-    patch_screen(t, &mut m, "store: factory slot 0 plays", &presets[0].0)?;
+    t.screen(&m, "store: factory slot 0 plays", &presets[0].0);
     let last = presets.len() - 1;
     m.midi(&[0xC0, last as u8], 500)?;
     t.screen(&m, "store: the last factory slot", &presets[last].0);
@@ -350,7 +349,7 @@ fn panel(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     let mut m = Machine::boot(app, Some(&flash));
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(2500)?;
-    patch_screen(t, &mut m, "panel: the patch loads", "EMU PANEL")?;
+    t.screen(&m, "panel: the patch loads", "EMU PANEL");
     let hold = |m: &mut Machine, fx: bool| -> Result<i32, String> {
         m.midi(&[0x90, 60, 100], 0)?;
         if fx { m.key(FX, true); }
@@ -479,7 +478,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
     t.screen(&m, "seq: REC with nothing armed opens the drum grid", "DRUMS REC");
     m.tap(REC, 120, 1300)?;
     t.screen(&m, "seq: REC again: off, the grid stays", "ALGO: TRACK");
-    t.screen(&m, "clear: the track line names it (#231)", "SEQ+REC: CLEAR");
+    t.screen(&m, "arm: the track line says ARMED, the ALGO hint after it (the clear hint no longer fits, #395)", "TRACK 1/1  ARMED  ALGO: TRACK");
     m.key(SEQ, true);                        // SEQ held + REC: the track's clear asks; REC again within 3 s clears it (#231)
     m.run_for(200)?;
     m.tap(REC, 120, 300)?;

@@ -4,6 +4,14 @@
 
 ### Changes
 
+- **On the FM-1, SEL arms what the keys play** (#395). SEL on a device page arms that device and disarms the others,
+  so the keys play it; on a device with no keys input the bar says NOTHING HERE TAKES KEYS and nothing changes. SEL on
+  an environment row adds that device to the armed ones or takes it out (a layer or a split); REC there no longer arms
+  and does nothing for now. With nothing armed the keys are wired: Main's cables decide where they go, as before, and
+  the footer says KEYS WIRED after the patch's name. A patch loads wired. The SEQ page arms the track it shows when it
+  opens and when ALGO picks another. SEL no longer opens the SEQ page (SEQ does), a row's device pages, or an
+  assembly's preset list; a device's presets are still stepped with PRESET or ALGO on its environment row. On the SEQ
+  page the track line's SEQ+REC: CLEAR hint no longer fits next to ARMED.
 - **On the FM-1's piano roll the black keys pick the rows, not the track** (#387). Black keys 1 to 8 are the 8 pitches
   on screen, black key 1 the bottom one, and they follow the window as SELECT scrolls it. With the transport stopped
   the row picked sounds, with REC on or off; its black key is lit, as on the drum grid. ALGO picks the track. Before,

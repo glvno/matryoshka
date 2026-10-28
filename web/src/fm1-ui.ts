@@ -28,7 +28,7 @@ export interface Fm1Events {
   /** the SONG page edited song s (0-based): its entries */
   song?(s: number, entries: SongEntry[]): void;
   mute?(module: number, on: boolean): void;
-  /** the FM-1 armed or disarmed (#139, #191: REC held + a black key, REC on an environment row): the armed modules, by
+  /** the FM-1 armed or disarmed (#139, #191, #395: REC held + a black key, SEL, the SEQ page): the armed modules, by
    * their index in the binary, as a mask in two halves */
   arms?(lo: number, hi: number): void;
 }
