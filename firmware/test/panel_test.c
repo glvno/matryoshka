@@ -1336,6 +1336,47 @@ int main(void)
               seq_row == 0u && seq_roll_lo == 56u && seq_grid_note(-1, 0) == 63u && all > 0u && all == part && fb_blinked() == 0
               && roll_shows(pat) && marks_ok(pat));
 
+        {                                                   /* the roll's black keys (#387): 1..8 the rows on screen, black key 1
+                                                             * the bottom one; stopped, the row sounds; the track stays */
+            uint32_t keys, nn0 = (uint32_t)eng_steps_notes((uint32_t)pat, &w), trk0 = seq_trk;
+            steps_inst((uint32_t)pat)->s.stp.hit = 0;
+            fb_watch_reset();
+            lcd_px = lcd_xfers = 0;
+            panel_keys(1u << 1);                            /* black key 1 (F#3): the bottom row, G#3 */
+            panel_keys(0);
+            loop();
+            all = fb_changed_in(0, 0, 240, 240);
+            part = fb_changed_in(4, GRID_Y, 4 + GRID_NAME_W, GRID_Y + FONT_S.h)
+                 + fb_changed_in(4, GRID_Y + GRID_RH * 7u, 4 + GRID_NAME_W, GRID_Y + GRID_RH * 7u + FONT_S.h);
+            keys = host_led_mask(fm1_led, 14);
+            printf("      (roll, black key 1: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+            check("roll: black key 1 picks the bottom row (G#3) and sounds it; the track stays, nothing written, two names redrawn",
+                  seq_row == 7u && seq_grid_note(-1, seq_row) == 56u && seq_roll_lo == 56u && seq_trk == trk0
+                  && steps_inst((uint32_t)pat)->s.stp.hit && E.trk_last[E.node[pat].trk] == 56u
+                  && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == nn0 && all > 0u && all == part);
+            check("  its LED bright, no other black key bright", (keys >> 1 & 1u) && !(keys & (1u << 3 | 1u << 5 | 1u << 8 | 1u << 10
+                  | 1u << 13 | 1u << 15 | 1u << 17 | 1u << 20 | 1u << 22 | 1u << 25)));
+            panel_keys(1u << 17);                           /* black key 8 (A#4): the top row, D#4 */
+            panel_keys(0);
+            loop();
+            keys = host_led_mask(fm1_led, 14);
+            check("roll: black key 8 picks the top row (D#4), its LED bright", seq_row == 0u && seq_grid_note(-1, seq_row) == 63u
+                  && seq_trk == trk0 && (keys >> 17 & 1u) && !(keys >> 1 & 1u));
+            panel_keys(1u << 20);                           /* black key 9 (C#5): nothing (8 rows) */
+            panel_keys(0);
+            loop();
+            check("roll: black key 9 does nothing (the track, the row stay)", seq_row == 0u && seq_trk == trk0 && seq_roll_lo == 56u);
+            enc(0, -1);                                     /* the window scrolls: black key 1 follows it (now A3) */
+            panel_keys(1u << 1);
+            panel_keys(0);
+            loop();
+            check("roll: the window scrolled a semitone, black key 1 is its new bottom row (A3)", seq_roll_lo == 57u && seq_row == 7u
+                  && seq_grid_note(-1, seq_row) == 57u);
+            enc(0, 1);                                      /* (back as it was: G#3 at the bottom, the top row D#4) */
+            enc(0, -7);
+            check("  (SELECT back: the window and the row as before)", seq_roll_lo == 56u && seq_row == 0u);
+        }
+
         steps_inst((uint32_t)pat)->s.stp.hit = 0;           /* FX held + OCT-: the keys' octave; then the pen, SEL held + a key */
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
         panel_held |= 1u << BTN_ACC;
@@ -1518,10 +1559,13 @@ int main(void)
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
         steps_inst((uint32_t)pat)->s.stp.hit = 0;
         r0 = seq_row;
-        panel_keys(1u << 8);                                /* black key C#4: heard, nothing recorded, the row stays */
-        panel_keys(0);
-        check("a black key there: its pitch heard, nothing recorded, the row stays", steps_inst((uint32_t)pat)->s.stp.hit
-              && E.trk_last[E.node[pat].trk] == base + 8u && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before && seq_row == r0);
+        panel_keys(1u << 8);                                /* black key 4 (C#4): its row (the 4th from the bottom) picked and heard, */
+        panel_keys(0);                                      /* nothing recorded (#387) */
+        check("a black key there: its row picked and heard, nothing recorded", steps_inst((uint32_t)pat)->s.stp.hit
+              && seq_row == 4u && E.trk_last[E.node[pat].trk] == seq_roll_lo + 3u
+              && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before);
+        (void)r0;
+        (void)base;
         hw = eng_steps_note((uint32_t)pat, 1u, seq_grid_note(-1, seq_row));
         panel_keys(1u << 2);                                /* a white key: step 2, the selected pitch */
         panel_keys(0);

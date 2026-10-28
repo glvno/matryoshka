@@ -476,8 +476,18 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         t.screen(&m, "roll: <7PH loads", "<7PH");
         m.tap(SEQ, 120, 400)?;
         m.turn(ALGO, 1, 600)?;               // DRUMS, then PATTERN
-        t.screen(&m, "roll: PATTERN's piano roll", "BLACK/ALGO: TRACK");
+        t.screen(&m, "roll: PATTERN's piano roll", "BLACK row  SEL+KEY pen");
         t.screen(&m, "roll: its pitch rows (A#3 the median)", "A#3");
+        // #387: the black keys pick the rows on screen, black key 1 the bottom one (its name on coral), not a track
+        let name = |m: &Machine, r: usize| m.lcd()[(44 + 19 * r + 1) * 240 + 49];
+        m.tap(14 + 1, 120, 400)?;            // black key 1 (F#3): the bottom row
+        let (bottom, middle) = (name(&m, 7), name(&m, 4));
+        t.check("roll: black key 1 picks the bottom row, not a track", bottom == 0xE3AB && middle != 0xE3AB,
+            format!("{bottom:#06x} / {middle:#06x}"));
+        t.screen(&m, "roll: black key 1 keeps the track (PATTERN)", "PATTERN P");
+        m.tap(14 + 8, 120, 400)?;            // black key 4 (C#4): the 4th row from the bottom, A#3 again
+        let back = name(&m, 4);
+        t.check("roll: black key 4 picks the 4th row from the bottom (A#3)", back == 0xE3AB, format!("{back:#06x}"));
         let below = m.lcd()[192 * 240 + 57]; // step 1's marker under the bottom row: A#2 is below the window
         let above = m.lcd()[42 * 240 + 57]; // (nothing above it on step 1)
         t.check("roll: a marker under a step with a note below the window", below == 0x9cf2 && above != 0x9cf2,
@@ -497,7 +507,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         m.run_for(1300)?;
         m.tap(REC, 120, 1300)?;              // stopped: the roll with REC on
         t.screen(&m, "roll: REC with the melodic track armed, stopped: its roll, REC on", "PATTERN REC");
-        t.screen(&m, "roll: the black keys sound, no step entry", "BLACK hear");
+        t.screen(&m, "roll: the black keys pick and sound rows, no step entry", "BLACK row  SEL+KEY pen  WHITE step");
         m.tap(REC, 120, 300)?;
         m.key(REC, true);                    // (disarmed)
         m.run_for(200)?;

@@ -376,7 +376,7 @@ The control for a choice parameter: a notched groove with the jack on the live c
 
 ### SEQ page
 
-The FM-1 screen, opened by SEQ, where a track is an 8 × 16 grid and the white keys are the selected row's steps: on a drum track the rows are the Drum map's and the black keys pick them; on a melodic track it is a piano roll and the black keys pick tracks.
+The FM-1 screen, opened by SEQ, where a track is an 8 × 16 grid and the white keys are the selected row's steps: on a drum track the rows are the Drum map's, on a melodic track it is a piano roll of 8 pitches, and on both the black keys pick the rows.
 
 ### Settings record
 

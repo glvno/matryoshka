@@ -17,7 +17,7 @@ import { buildFm1Wasm } from '../scripts/fm1-wasm.mjs';
 
 const ROOT = resolve(__dirname, '../..');
 const WASM = resolve(ROOT, 'web/public/fm1-ui.wasm');
-const SRC = ['firmware/wasm/fm1_ui.c', 'firmware/test/host_ui.h', 'firmware/src/panel.c', 'firmware/src/poly_edit.h', 'firmware/src/pages_ui.c', 'firmware/src/ui.c', 'firmware/src/engine.c', 'firmware/src/presets.h'];
+const SRC = ['firmware/wasm/fm1_ui.c', 'firmware/test/host_ui.h', 'firmware/src/panel.c', 'firmware/src/poly_edit.h', 'firmware/src/pages_ui.c', 'firmware/src/seq_ui.c', 'firmware/src/ui.c', 'firmware/src/engine.c', 'firmware/src/presets.h'];
 
 /** the preview's framebuffer (RGB565 from its PPM's 8-bit channels, as it wrote them) */
 function preview(args: string[]): Uint8Array {
@@ -80,13 +80,17 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.button(BUTTONS.seq, false);
     ui.tick(1100);
     expect(ui.page).toBe(home);
-    ui.button(BUTTONS.seq, true);   // the SEQ page: the first black key is the first track's
+    ui.button(BUTTONS.seq, true);   // the SEQ page: its roll's selected row is on a black key (#387)
     ui.button(BUTTONS.seq, false);
     expect(ui.page).not.toBe(home);
-    const key = (ms: number): number => { ui.tick(ms); return ui.lights().keys.lit >> 1 & 1; };
-    expect([key(2000), key(2200)].sort()).toEqual([0, 1]);   // muted: it blinks (200 ms)
+    const BLACK = [1, 3, 5, 8, 10, 13, 15, 17, 20, 22, 25].reduce((m, n) => m | 1 << n, 0);
+    const key = (ms: number): number => { ui.tick(ms); return ui.lights().keys.lit & BLACK; };
+    const [a, b] = [key(2000), key(2200)];
+    const row = a | b;
+    expect(Math.min(a, b)).toBe(0);                          // muted: the selected row's key blinks (200 ms)
+    expect(row && !(row & row - 1)).toBeTruthy();            // (one key)
     ui.mute(track, false);
-    expect([key(2400), key(2600)]).toEqual([1, 1]);          // the selected track, playing: steady
+    expect([key(2400), key(2600)]).toEqual([row, row]);      // playing: steady
   }, 120_000);
   it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes back along the trail', async () => {
     const focus: [number, number][] = [];
