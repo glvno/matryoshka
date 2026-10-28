@@ -44,7 +44,7 @@ The FM-1 is a patch player: patches are built in the browser, and the device pla
 | <a id="D-235"></a>D-235 | On the FM-1, SEL on a device page [**arms**](vocabulary.md#arm) that device and disarms every other. SEL on a device with no keys input leaves the armed devices as they are, and the bar says `NOTHING HERE TAKES KEYS`. SEL opens no page from a device page. | Decided | 2026-10-28 | issue #395; owner in chat 2026-10-28 |
 | <a id="D-236"></a>D-236 | While the keys are [**wired**](vocabulary.md#wired), the device page's footer shows `KEYS WIRED` after the patch's name, in the tempo's colour. A long name is cut first, so both fit. With a Steps track armed the footer shows `ARM` and the track's name, as before. With any other device armed it shows the patch's name alone. | Proposed (decider: michael glaviano) | 2026-10-28 | issue #395; PR #397 |
 | <a id="D-237"></a>D-237 | SEL on the page of a device that is already the only armed one keeps it armed. SEL on the environment that takes out the last armed device says `KEYS WIRED` in the bar. | Proposed (decider: michael glaviano) | 2026-10-28 | issue #395; PR #397 |
-| <a id="D-238"></a>D-238 | See [D-548](steps.md#D-548). | Superseded by [D-548](steps.md#D-548) | 2026-10-28 | issue #395; PR #397; PR #PRNUM |
+| <a id="D-238"></a>D-238 | See [D-548](steps.md#D-548). | Superseded by [D-548](steps.md#D-548) | 2026-10-28 | issue #395; PR #397; PR #398 |
 
 ## Not yet settled
 
