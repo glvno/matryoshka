@@ -906,7 +906,7 @@ async function main() {
       await sleep(1300);
       await emu.tap(B.rec);                         // REC is global (#395): it runs here too, nothing armed records
       await check('arming: REC on the environment with the keys wired: REC runs, says nothing records, the page stays',
-        (await emu.waitText('REC: NO TRACK ARMED', 1500)) && (await emu.text('ENVIRONMENT')));
+        (await emu.waitText('REC: NO TRACK ARMED', 1500)) && (await emu.waitText('ENVIRONMENT', 2500)));   // (the bar's message, then the page's bar)
       await emu.tap(B.play);                        // (PLAY stops it all)
       await sleep(1300);
       await emu.tap(B.scl);
