@@ -506,7 +506,7 @@ fn seq(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)
         let (bottom, middle) = (name(&m, 7), name(&m, 4));
         t.check("roll: black key 1 picks the bottom row, not a track", bottom == 0xE3AB && middle != 0xE3AB,
             format!("{bottom:#06x} / {middle:#06x}"));
-        t.screen(&m, "roll: black key 1 keeps the track (PATTERN)", "PATTERN P");
+        t.screen(&m, "roll: black key 1 keeps the track (PATTERN)", "PATTERN ARM P"); // (the page armed it, #395)
         m.tap(14 + 8, 120, 400)?;            // black key 4 (C#4): the 4th row from the bottom, A#3 again
         let back = name(&m, 4);
         t.check("roll: black key 4 picks the 4th row from the bottom (A#3)", back == 0xE3AB, format!("{back:#06x}"));

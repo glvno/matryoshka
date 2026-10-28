@@ -849,7 +849,7 @@ async function main() {
       let tone = false;
       for (let i = 0; i < 3 && !tone; i++) {        // ALGO a track a click, to TONE (the 2nd of 3)
         await emu.turn(ENC.algo, 1);
-        tone = await emu.waitText('TONE P', 1500);
+        tone = await emu.waitText('TONE ARM P', 1500);
       }
       await check('roll black: ALGO: the TONE track\'s roll', tone);
       const t0 = await tracks();
@@ -860,7 +860,7 @@ async function main() {
       await emu.key(KEY[0], false);
       await sleep(300);
       await loudCheck('roll black: stopped, black key 1 sounds its row', p, p > LOUD, `peak ${p}`);
-      await check('roll black: black key 1 keeps the TONE track (it picked a track before)', (await emu.text('TONE P')) && !(await emu.text('CHORD')));
+      await check('roll black: black key 1 keeps the TONE track (it picked a track before)', (await emu.text('TONE ARM P')) && !(await emu.text('CHORD')));
       await emu.tap(WHITE[13]);                     // a white key: a note on step 14 at black key 1's row
       const t1 = await until(async () => { const x = await tracks(); return added(t0.TONE, x.TONE).length === 1 ? x : null; }, 3000) ?? (await tracks());
       const low = added(t0.TONE, t1.TONE)[0];
@@ -875,7 +875,7 @@ async function main() {
       await emu.tap(KEY[0]);
       await emu.tap(WHITE[13]);                     // (and the bottom row's on step 14)
       const t3 = await until(async () => { const x = await tracks(); return fmt(x.TONE) === fmt(t0.TONE) ? x : null; }, 3000) ?? (await tracks());
-      await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE P')), fmt(added(t0.TONE, t3.TONE)));
+      await check('roll black: black key 9 changes nothing; both notes off again (the track as it was)', fmt(t3.TONE) === fmt(t0.TONE) && (await emu.text('TONE ARM P')), fmt(added(t0.TONE, t3.TONE)));
       await emu.snap('roll-black');
       await emu.tap(B.seq, 120);
       await emu.waitText('= OCT =', 3000);
