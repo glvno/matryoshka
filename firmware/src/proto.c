@@ -23,7 +23,8 @@
  *   static int  m1_test_key(uint32_t id, int down);             the device test mode (#291): a panel key held / let go as if
  *                                                               by a hand (ids as the HAL's: 0..13 buttons, 14..40 the keys); 0 = ok
  *   static int  m1_test_turn(uint32_t enc, int32_t clicks);     an encoder turned (0 SELECT, 1 ALGO, 2..5 K1..K4, 6 PRESET); 0 = ok
- *   static uint32_t m1_test_screen(uint32_t k, uint8_t *out);   the screen as text: k 0xFF its head (count, page, flags), else
+ *   static uint32_t m1_test_screen(uint32_t k, uint8_t *out);   the screen as text: k 0xFF its head (count, page, flags, Main's
+ *                                                               patch buttons u16: their jacks, #368), else
  *                                                               text k (x, y, w, h, n, n characters); the bytes written, 0 = none
  *   static uint32_t m1_test_peak(void);                         the output's peak (16 bit, before MASTER) since the last call, bit
  *                                                               16 the engine runs, 17 the sound is muted (sandbox mode), 18 MASTER
@@ -941,7 +942,7 @@ static int m1_handle(const uint8_t *f, uint32_t n)
     case C_TEST_TURN:                                        /* #291: encoder u8, clicks i8 -> ACK */
         m1_ack(C_TEST_TURN, len >= 1u ? d[0] : 0u, len >= 2u && !m1_test_turn(d[0], (int8_t)d[1]) ? S_OK : S_RANGE, 0);
         break;
-    case C_TEST_SCREEN: {                                    /* #291: SCREEN 0xFF (count, page, flags), then one SCREEN per text */
+    case C_TEST_SCREEN: {                                    /* #291: SCREEN 0xFF (count, page, flags, buttons u16), then one SCREEN per text */
         uint8_t p[1u + 6u + 32u];
         uint32_t n, k, cnt;
         p[0] = 0xFF;

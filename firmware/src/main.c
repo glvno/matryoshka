@@ -809,7 +809,8 @@ static int m1_test_turn(uint32_t enc, int32_t clicks)
     test_input_ms = fm1_ms ? fm1_ms : 1u;
     return 0;
 }
-/* k 0xFF: the head (texts, the page, flags: bit 0 sandbox mode, bit 1 the boot screen), else text k (x, y, w, h, n, text) */
+/* k 0xFF: the head (texts, the page, flags: bit 0 sandbox mode, bit 1 the boot screen, then Main's patch buttons as their
+ * jacks stand, u16: eng_buttons_get, #368), else text k (x, y, w, h, n, text) */
 static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
 {
     static uint8_t idx[SCR_N];
@@ -821,7 +822,9 @@ static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
         out[0] = (uint8_t)n;
         out[1] = page;
         out[2] = (uint8_t)((sb_on ? 1u : 0u) | (booting ? 2u : 0u));
-        return 3;
+        out[3] = (uint8_t)eng_buttons_get();
+        out[4] = (uint8_t)(eng_buttons_get() >> 8);
+        return 5;
     }
     if (k >= n)
         return 0;

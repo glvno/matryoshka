@@ -51,7 +51,7 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
   over-budget patch is sandbox mode (the sandbox page on the LCD, the FM-1 silent under a key); ARP twice; OCT; PRESET;
   back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL; a computer
-  where no app reads the FM-1's MIDI (issue #375, `deafHost`, below). The page sees
+  where no app reads the FM-1's MIDI (issue #375, `deafHost`, below); ties on the SEQ page (issue #368, below). The page sees
   only the emulator's MIDI port, so a real FM-1 plugged in is never touched. A development-server hook (`__m1test` in
   `main.ts`) opens patches by name and reports the link's state. Without BIN it fetches the `matryoshka-emu-midi`
   artifact of this commit's firmware run (else its branch's, else main's). Results and LCD snapshots go to
@@ -65,6 +65,14 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   The first message after such a stall is a SysEx cut short (the FM-1 gave up halfway); `m1emu` drops it at the next
   F0, as a MIDI receiver should (Chrome's Web MIDI parser, by its source, does the same), and says so on its output.
   The host side alone is in `tools/usb_test.sh` (`firmware/test/usb_test.c`, `test_deaf_host`).
+- **Ties on the SEQ page (`tieLire`, `tieElvira`, `tie808`, `tieRoll`, issue #368):** on 8 Lire, Elvira 2 and the
+  808 Kit's drum grids and Silver Box's piano roll, the track is cleared (SEQ held + REC twice), a hit goes on step 1,
+  and LFO held + steps 2..4 tie it. The editor's copy of the track (the FM-1's TRACK_NOW) must show the note 4 steps
+  long, then 1 step after LFO + step 2, then cut at step 3 by a plain white key. With the transport running the peak
+  is read in 25 ms windows over a pass. On 8 Lire and Elvira 2 a tied hit must keep 90 % of its peak through the next
+  250 ms, and an untied one must decay below 85 %. On the 808 Kit a tied hit's peak and decay must match the untied
+  one's. Through the device test mode (device:scenarios, or `--via-emu`) the TEST_SCREEN head's patch buttons must show
+  Main's LFO jack down while LFO is held on the SEQ page, and up while it is held on the device page.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 
