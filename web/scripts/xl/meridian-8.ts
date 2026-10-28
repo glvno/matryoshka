@@ -34,7 +34,11 @@
 //  - the passive mix: the odd / even CVs and outputs bleed into each other a little (a Macro, 0.05).
 //
 // The patch points, as the assembly's ports (a cable is the NOON's interface for each):
-//  - the gate inputs are the keys (the eight channels on the white keys from F3, played by the PATTERN track);
+//  - the gate inputs are the keys (the eight channels on the white keys from F3, played by the PATTERN track), and
+//    the inputs `gate 1`..`gate 8` for any other voltage: as on the NOON, what comes in there powers the channel
+//    directly (a held gate, an offset, an LFO or an oscillator: a drone in the channels that hold a sound, the manual's
+//    "Drone" page; a struck circuit such as SYS still needs a gate's edge), after its mute button, and reaches the
+//    left-side plates;
 //  - the odd and even CV inputs are the inputs `odd cv` and `even cv`, each channel through its CV mute button; CV
 //    alone powers a channel (the drone). A Macro inside the assembly for each (0) stands for a fixed voltage;
 //  - the external audio input is the input `audio`, opened by the DOT/DUAL link button, into DUAL through a drive. The
@@ -82,6 +86,8 @@ interface Ch {
   mod: number;
   mute: number;
   touch: number;
+  /** the gate input as a voltage (`gate n`): straight into the power, after the mute button */
+  gin: number;
 }
 
 /** a two-position button as a Selector's table: position 1 plays 0, position 2 plays 1 */
@@ -199,6 +205,10 @@ function build(e: Def): void {
     e.wire(gv, 'mul', mute, 'in2');
     e.wire(mute, 'out', pw, 'in');
     e.wire(map, `g${i + 1}`, leftSrc, 'in'); // (the gate inputs themselves, before the channel)
+    // the gate input as a voltage (input `gate n`): it powers the channel directly, after the mute button
+    const gin = e.add('scale', col, 0.3, { gain: 1, offset: 0 });
+    e.wire(gin, 'out', mute, 'in2');
+    e.wire(gin, 'out', leftSrc, 'in');
     e.wire(pw, 'out', node, 'in');
     const c = f(col, node);
     e.wire(c.a[0], c.a[1], mod, 'in1');
@@ -225,8 +235,8 @@ function build(e: Def): void {
     e.wire(vca, 'out', i < 4 ? sendA : sendB, `in${(i % 4) + 1}`);
     e.wire(vca, 'out', i % 2 === 0 ? oddSum : evenSum, `in${(i >> 1) + 1}`);
     return {
-      name, env, vca, mod, pw, mute, touch, s1: c.s1, s2: c.s2, power: [[node, 'in']],
-      members: [env, mute, pw, node, ...c.members, mod, ...(c.post ? [c.post] : []), vca],
+      name, env, vca, mod, pw, mute, touch, gin, s1: c.s1, s2: c.s2, power: [[node, 'in']],
+      members: [env, gin, mute, pw, node, ...c.members, mod, ...(c.post ? [c.post] : []), vca],
     };
   };
   const chs: Ch[] = [
@@ -351,6 +361,7 @@ function build(e: Def): void {
   e.wire(Ro, 'out', scope, 'b');
   chs.forEach((c, i) => e.nest(`${i + 1} ${c.name}`, 1 + i, 0, [...c.members, cvMutes[i]], { inputs: [['gate', c.env, 'gate'], ['power', c.power[0][0], 'in']], outputs: [['out', c.vca, 'out']] }));
   e.input('keys', map, 'keys');
+  chs.forEach((c, i) => e.input(`gate ${i + 1}`, c.gin, 'in'));
   e.input('odd cv', oddBus, 'in', [xe, 'in']);
   e.input('even cv', evenBus, 'in', [xo, 'in']);
   e.input('touch', pressure, 'in');
@@ -408,4 +419,4 @@ export const xl: Xl = {
 };
 
 const NOTES =
-  'The Landscape NOON, after its manual. The card is its 58 controls: per channel main, secondary, volume, MOD, mute and CV mute; nine LINK buttons; the main volume. Patch points are ports: odd / even cv, audio (opened by the 1-2 link; patch an output 1..8 into it for internal processing), outputs 1..8, l, r. Aftertouch presses all touch plates. Not here: audio from outside the browser; plug-sensing outputs (a level and a mono Macro inside stand in).';
+  'The Landscape NOON, after its manual. The card is its 58 controls: per channel main, secondary, volume, MOD, mute and CV mute; nine LINK buttons; the main volume. Patch points are ports: gate 1..8 (any voltage powers its channel: drones), odd / even cv, audio (opened by the 1-2 link; patch an output 1..8 into it for internal processing), outputs 1..8, l, r. Aftertouch presses all touch plates. Not here: audio from outside the browser; plug-sensing outputs (a level and a mono Macro stand in).';
