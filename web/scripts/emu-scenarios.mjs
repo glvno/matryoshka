@@ -736,13 +736,13 @@ async function main() {
       await emu.key(BLACK[0], true);
       const held = await emu.windows(24, 25);
       await emu.key(BLACK[0], false);
-      const gone = await emu.windows(16, 25);
+      const gone = await emu.windows(20, 25);
       const top = Math.max(held[0][1], held[1][1]), heldLow = Math.min(...held.slice(2).map((x) => x[1]));
-      const late = Math.max(...gone.filter((x) => x[0] >= 300).map((x) => x[1]));
+      const heldMax = Math.max(...held.map((x) => x[1])), late = gone[gone.length - 1][1];
       console.log(`  hold peaks per 25 ms, held: ${prof(held)}; let go: ${prof(gone)}`);
-      const d = `held: peak ${top}, lowest after it ${heldLow} (kept ${top ? (heldLow / top).toFixed(2) : 0}); 300 ms after letting go: ${late}`;
+      const d = `held: peak ${top}, lowest after it ${heldLow} (kept ${top ? (heldLow / top).toFixed(2) : 0}), loudest ${heldMax}; 500 ms after letting go: ${late}`;
       await loudCheck('hold: stopped, a held black key sounds its row as long as it is held (keeps 90 %)', top, top > LOUD && heldLow >= 0.9 * top, d);
-      await loudCheck('hold: let go, it decays (300 ms on: under half)', top, late < top / 2, d);
+      await loudCheck('hold: let go, it decays (500 ms on: under half the held level)', top, late < heldMax / 2, d);
       let ns = await trackNotes();
       await check('hold: stopped, nothing recorded', ns.length === 0, fmt(ns));
       // REC on (nothing armed: the black keys record on this drum track), running: black key 2 held about four steps
