@@ -1208,6 +1208,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .param.bar.sel { display: flex; align-items: flex-start; gap: 8px; height: 34px; background: transparent; }
 /* the name lines up with the groove (the slider), not with the names under it */
 .param.bar.sel > span:first-child { flex: none; max-width: 40%; padding: 2px 0 0 6px; line-height: 12px; }
+/* pick mode: the name makes room for the check box, as on a slider's bar, and takes more of the row: the selector does
+   not move there, the name is what is being picked (#342) */
+.picking .param.bar.sel > span:first-child { max-width: 60%; padding-left: 21px; }
 .param.bar.sel > .parameter-routing { top: -1px; }
 .param.bar.sel.shown::after { top: 6px; }
 .sel-track { position: relative; flex: 1; min-width: 0; height: 34px; margin-right: 7px; cursor: pointer; touch-action: none; outline: none; }

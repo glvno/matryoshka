@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- **Choosing what an assembly's card shows: a switch row's check box no longer covers its name.** On rows with
+  named positions (a Selector, such as Io 4's ASSIGN or LEGATO) the name now moves right of the box and gets more of the
+  row, as on a slider's row (#342).
+
 ## 1.5.1 — 2026-10-27
 
 ### Fixes
