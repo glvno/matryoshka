@@ -14,6 +14,11 @@
 
 ### Fixes
 
+- **Choosing what an assembly's card shows: a switch row's check box no longer covers its name.** On rows with
+  named positions (a Selector, such as Io 4's ASSIGN or LEGATO) the name now moves right of the box and gets more of the
+  row, as on a slider's row (#342).
+- **Space after clicking Octave down / Octave up starts the transport again.** The button no longer keeps the focus
+  after a click, so Space no longer pressed it a second time. Reached from the keyboard, it keeps the focus (#208).
 - **Ties on the FM-1's drum-track grids, and ties that reach (#368).** On the SEQ page, LFO held + a white key now
   ties a note on a track that plays a Drum map, as it already did on the piano roll. A Drum map row stays up while its
   note sounds, so a tie holds a voice that sustains, such as a Lire plate or an Elvira voice. On both grids the tie
