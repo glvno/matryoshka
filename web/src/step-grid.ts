@@ -11,7 +11,7 @@
 // The step playing is outlined (Engine.stepsView through the worklet). The editor owns the patch and the undo history:
 // the grid only reports through `ops`. `arm` (#134) arms the track: Main's keys go into it and through to what it plays
 // (the editor holds which track is armed: one at a time, not saved, no undo step).
-// REC (#127, #135; the editor holds it, on the armed track: `rec` arms the track too, Shift+R) puts the grid in step entry
+// REC (#127, #135; the editor holds it, on the armed track: `rec` arms the track too, Shift+R) puts the grid in cursor entry
 // (the note lane, a cursor on the first step or the one clicked). With the transport stopped every key held when the first
 // is let go (the note keys, a MIDI controller, the on-screen keys: recordNote / recordOff) becomes the cursor's step (a
 // chord, its velocities, one step long) and the cursor moves on; Backspace a rest (its notes go), Enter a tie, Left / Right
@@ -46,7 +46,7 @@ export interface StepGrid {
   refresh(): void;
   /** the track was armed or disarmed (#134) */
   armed(on: boolean): void;
-  /** REC went on or off (#135): step entry starts on the first step, or stops */
+  /** REC went on or off (#135): cursor entry starts on the first step, or stops */
   rec(on: boolean): void;
   /** the roll is open on this track, or not */
   rolled(on: boolean): void;
@@ -54,22 +54,22 @@ export interface StepGrid {
 
 type Lane = 'steps' | 'note' | 'vel';
 
-/** the grid in step entry (#127, #135): its module, the cursor, and what the newest grid of that module does with a note
+/** the grid in cursor entry (#127, #135): its module, the cursor, and what the newest grid of that module does with a note
  * played, a note let go or a key */
 let entry: { id: number; k: number; note(note: number, vel: number): void; off(note: number): void; key(key: string): boolean; stop(): void } | null = null;
-/** a note played while a grid is in step entry: it joins the chord for the cursor's step; false when none is */
+/** a note played while a grid is in cursor entry: it joins the chord for the cursor's step; false when none is */
 export function recordNote(note: number, vel: number): boolean {
   if (!entry) return false;
   entry.note(note, vel);
   return true;
 }
-/** a note let go while a grid is in step entry: the first let go writes the chord */
+/** a note let go while a grid is in cursor entry: the first let go writes the chord */
 export function recordOff(note: number): void {
   entry?.off(note);
 }
-/** a key while a grid is in step entry (Backspace, Enter, Left, Right, Escape): true when it was the grid's */
+/** a key while a grid is in cursor entry (Backspace, Enter, Left, Right, Escape): true when it was the grid's */
 export const recordKey = (key: string): boolean => !!entry?.key(key);
-/** stop step entry (another patch loaded, REC off) */
+/** stop cursor entry (another patch loaded, REC off) */
 export function stopEntry(): void {
   const a = entry;
   entry = null;
@@ -281,7 +281,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation(); // (not a card drag)
-      if (entry?.id === m.id) return move(k); // step entry: a click puts the cursor there
+      if (entry?.id === m.id) return move(k); // cursor entry: a click puts the cursor there
       c.setPointerCapture(e.pointerId);
       if (lane === 'vel') return velSweep(c, k, e);
       if (lane === 'note') return noteDrag(c, k, e);
@@ -362,7 +362,7 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
       end();
     };
   };
-  /** step entry: the cursor's step and the key / note handlers, kept on the module across the editor's rebuilds */
+  /** cursor entry: the cursor's step and the key / note handlers, kept on the module across the editor's rebuilds */
   const showRec = (): void => {
     const on = entry?.id === m.id;
     rec.classList.toggle('on', on);

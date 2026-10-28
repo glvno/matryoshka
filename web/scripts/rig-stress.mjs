@@ -1,4 +1,4 @@
-// scratch: step entry + paging with the sequencer running; ack latency per key (a hung main loop answers late)
+// scratch: cursor entry + paging with the sequencer running; ack latency per key (a hung main loop answers late)
 import { chromium } from 'playwright-core';
 import { rigPage, startEditor, survey } from './rig-link.mjs';
 const PATCH = process.argv[2] ?? 'ELVIRA 2';
@@ -34,7 +34,7 @@ try {
   console.log('peak after paging', JSON.stringify(await ev('peak', [])));
   for (const k of [14, 18, 21, 25]) await ev('key', [k, false]);
   console.log(`paging: ack ${stats(pg)}; CPU ${c[0]} %, longest ISR ${c[1]}/${c[2]} us, overload ${c[3]}`);
-  // step entry on the SEQ page
+  // cursor entry on the SEQ page
   await ev('tap', [11]); await sleep(800);
   const st = [];
   for (let i = 0; i < 24; i++) { const k = 14 + (i * 5) % 16; const t = performance.now(); await ev('key', [k, true]); await sleep(40); await ev('key', [k, false]); st.push(performance.now() - t - 40); await sleep(60); }
