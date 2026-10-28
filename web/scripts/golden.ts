@@ -19,9 +19,11 @@ const SR = DEVICE_SR;
 const OUT = new URL('../../build/golden/', import.meta.url);
 mkdirSync(OUT, { recursive: true });
 
-/** [frame, kind, note (a button for bon / boff; a module index for arm, -1 none, and rec), MIDI channel of a note (absent:
- * 1; rec: 1 on, 0 off; cc: controller value 0..127)]; take: the notes recorded so far go into their tracks (the editor's overdub, the panel's) */
-type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song', number, number?];
+/** [frame, kind, note (a button for bon / boff; a module index for arm, -1 none, rec, thon and thoff), MIDI channel of a note
+ * (absent: 1; rec: 1 on, 0 off; cc: controller value 0..127; thon / thoff: the note played into that track's keys in, at
+ * velocity 100 / let go: engine.ts thru, engine.c eng_steps_thru, #368)]; take: the notes recorded so far go into their
+ * tracks (the editor's overdub, the panel's) */
+type Ev = [number, 'on' | 'off' | 'run' | 'stop' | 'bon' | 'boff' | 'ext' | 'int' | 'tick' | 'arm' | 'arms' | 'rec' | 'take' | 'cc' | 'pat' | 'song' | 'thon' | 'thoff', number, number?];
 const EVENTS: Ev[] = [
   [0, 'on', 60],
   [128 * 40, 'on', 67],
@@ -2261,6 +2263,30 @@ events['drummap'] = [[128 * 4, 'run', 0], [128 * 30, 'on', 60], [128 * 60, 'on',
   [128 * 120, 'off', 62], [128 * 140, 'off', 60], [128 * 300, 'stop', 0]];
 ends['drummap'] = 128 * 360;
 
+// A drum track's black keys on the FM-1's SEQ page (#368): a note played into the track's keys in (thru) sounds through it
+// into its Drum map, the row up while held; recording live, it lands on the nearest step lasting the whole steps held. The
+// track plays the recorded notes on the next pass; stopped, a held note keeps its row up, nothing recorded.
+tests['drum-thru'] = make('drum-thru', (add, wire) => {
+  add('fm1', 0, 0, { tempo: 150 });
+  const st = add('steps', 200, 0, { len: 8, rate: 4, gate: 0.5 });
+  const dm = add('drummap', 400, 0);
+  const ml = add('mixer', 600, 0, { l1: 0.4, l2: 0.3, l3: 0.3 });
+  const out = add('output', 800, 0, { level: 1 });
+  wire(st, 'keys', dm, 'keys');
+  wire(dm, 'g1', ml, 'in1');
+  wire(dm, 'v1', ml, 'in2');
+  wire(dm, 'g2', ml, 'in3');
+  wire(ml, 'out', out, 'l');
+  wire(dm, 'g3', out, 'r');
+});
+{
+  const st = tests['drum-thru'].modules.findIndex((m) => m.type === 'steps');
+  events['drum-thru'] = [[128 * 4, 'run', 0], [128 * 6, 'rec', st, 1], [128 * 20, 'thon', st, 36], [128 * 120, 'thoff', st, 36],
+    [128 * 140, 'thon', st, 38], [128 * 150, 'thoff', st, 38], [128 * 160, 'take', 0], [128 * 170, 'rec', st, 0],
+    [128 * 400, 'stop', 0], [128 * 420, 'thon', st, 39], [128 * 480, 'thoff', st, 39], [128 * 500, 'take', 0]];
+  ends['drum-thru'] = 128 * 540;
+}
+
 // Drum map repeat (#184): Main's keys into two maps that repeat their rows. The left one's rows are on the white keys
 // F3..F4 (blocks of eight white keys, a black key plays the white key's row below it): G4 and F3 both play row 1 (the
 // second held key neither restarts it nor lets it fall when the first goes), F#4 row 8, F2 row 2, F#5 row 7. The right
@@ -2649,6 +2675,7 @@ for (const [name, patch] of Object.entries(tests)) {
     if (kind === 'arm') e.arm(note < 0 ? null : patch.modules[note].id);
     else if (kind === 'arms') e.arm(patch.modules.flatMap((m, i) => (Math.floor(note / 2 ** i) % 2 ? [`m${m.id}`] : [])));   // (#191: a mask of module indices)
     else if (kind === 'rec') e.setRec(patch.modules[note].id, !!ch);
+    else if (kind === 'thon' || kind === 'thoff') e.thru(patch.modules[note].id, ch ?? 60, kind === 'thon' ? 100 : 0);
     else if (kind === 'take')
       for (const r of e.takeRecorded()) {
         notes.set(r.id, overdub(notes.get(r.id), [r.note]));
@@ -2677,7 +2704,7 @@ for (const [name, patch] of Object.entries(tests)) {
   // the parameter values the editor's budget counts (DEVICE.params), which eng_load must take exactly (host_test checks)
   if (!bins[name]) writeFileSync(new URL(`${f}.par`, OUT), `${deviceBudget(patch).items.find((i) => i.key === 'params')!.used}\n`);
   writeFileSync(new URL(`${f}.f32`, OUT), new Uint8Array(st.buffer));
-  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
+  writeFileSync(new URL(`${f}.ev`, OUT), evs.map(([fr, k, n, ch]) => (k === 'on' ? `${fr} on ${n} 127 ${ch ?? 1}` : k === 'off' ? `${fr} off ${n} ${ch ?? 1}` : k === 'bon' || k === 'boff' || k === 'arm' || k === 'arms' || k === 'pat' || k === 'song' ? `${fr} ${k} ${n}` : k === 'rec' || k === 'cc' || k === 'thon' || k === 'thoff' ? `${fr} ${k} ${n} ${ch}` : `${fr} ${k}`)).join('\n') + `\n${END} end\n`);
 }
 // protocol test input: upload of the acid kit, then a cutoff change on its filter
 {

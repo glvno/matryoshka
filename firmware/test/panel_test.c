@@ -111,6 +111,23 @@ static void later(uint32_t ms)
     loop();
 }
 static uint16_t px(uint32_t x, uint32_t y) { return fb[y * 240u + x]; }
+/* #368: a black key on a drum track's page sounds through the track (eng_steps_thru): its note into the track's keys
+ * since the thru ring stood at `from` (thru_head) */
+static int thru_heard(uint8_t from, uint32_t mod, uint32_t note)
+{
+    uint8_t h;
+    for (h = from; h != thru_head; h++)
+        if (thru_ring[h % ENG_THRU][0] == mod && thru_ring[h % ENG_THRU][1] == (note | 0x80u))
+            return 1;
+    return 0;
+}
+static uint8_t th;                          /* (where the thru ring stood before a key) */
+static void blocks(uint32_t n)
+{
+    static int32_t bl[128], br[128];
+    while (n--)
+        eng_render(bl, br, 128);
+}
 /* the screen as text (screen_text.h, the device test mode's SCREEN, #291) holds a text containing s */
 static int on_screen(const char *s)
 {
@@ -1168,6 +1185,72 @@ int main(void)
         ui_dirty = 2;
         loop();
         snap_to(getenv("PANEL_SNAP_DRUMS"));
+        {                                                   /* #368: LFO + a white key ties a drum row's hit too (a Drum map row
+                                                             * stays up while its note sounds: a Lire plate held) */
+            static uint32_t keep[TRACK_NOTES_MAX];
+            const uint32_t *ws;
+            int keep_n = eng_steps_notes((uint32_t)drums, &ws), i;
+            uint32_t y = GRID_Y + GRID_RH * seq_row + GRID_CH - 1u;
+            for (i = 0; i < keep_n; i++)
+                keep[i] = ws[i];
+            if (eng_steps_note((uint32_t)drums, 3, 55))     /* (step 4 empty, so there is a hit on step 3 to tie) */
+                eng_steps_toggle((uint32_t)drums, 3, 55, STEP_VEL);
+            msg_text[0] = 0;
+            panel_held |= 1u << BTN_LFO;
+            panel_keys(1u << 6);                            /* LFO + B3: step 4 (index 3) */
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("LFO + a white key on a drum track: the hit on the step before tied through it, drawn dim",
+                  w && ((w >> 6) & 63u) == 1u && !eng_steps_note((uint32_t)drums, 3, 55) && !strcmp(msg_text, "TIED")
+                  && px(seq_grid_x(3) + 5u, y) == C_DIM && px(seq_grid_x(3) - 1u, y - 4u) == C_DIM);
+            panel_keys(1u << 6);                            /* again: untied */
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("again on the tied step: untied, the cell empty", w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "TIE OFF")
+                  && px(seq_grid_x(3) + 5u, y) != C_DIM && px(seq_grid_x(3) - 1u, y - 4u) == C_BG);
+            panel_keys(1u << 6);                            /* tied again, then a plain white key there */
+            panel_keys(0);
+            panel_held &= ~(1u << BTN_LFO);
+            panel_keys(1u << 6);
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("a white key on a step a tie runs through: the tie cut before it, a hit there",
+                  w && ((w >> 6) & 63u) == 0u && eng_steps_note((uint32_t)drums, 3, 55) && px(seq_grid_x(3) + 5u, y) == C_FG);
+            {                                               /* the rule of 2026-10-28: LFO + step 16, the row's last hit before it
+                                                             * ends there (one press); again: one step; LFO + a hit's own step with
+                                                             * nothing before it: NOTHING TO TIE */
+                uint32_t n16 = 0, at = 0, k;
+                while (seq_white(n16) != 15)
+                    n16++;
+                for (k = 0; k < 15u; k++)
+                    if (eng_steps_note((uint32_t)drums, k, 55))
+                        at = k;
+                panel_held |= 1u << BTN_LFO;
+                panel_keys(1u << n16);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, at, 55);
+                check("LFO + step 16: the row's last hit before it ends on step 16, in one press",
+                      w && (w & 63u) + ((w >> 6) & 63u) == 15u && !strcmp(msg_text, "TIED") && px(seq_grid_x(15) + 5u, y) == C_DIM);
+                panel_keys(1u << n16);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, at, 55);
+                check("again (its last step): one step", w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "TIE OFF"));
+                panel_keys(1u << 4);                        /* A3: step 3, its own hit, no row-2 hit before it */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("LFO + a hit's own step with nothing before it: NOTHING TO TIE (no tie across the loop)",
+                      w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
+                panel_held &= ~(1u << BTN_LFO);
+            }
+            (void)eng_steps_set_notes((uint32_t)drums, keep, (uint32_t)keep_n);
+            seq_sync(drums);
+        }
         panel_keys(1u << 4);
         panel_keys(0);
         tap(BTN_SEQ);
@@ -1176,7 +1259,7 @@ int main(void)
     {                                                       /* the piano roll (#241) on <7PH's PATTERN (melodic, 46..65): 8 pitches
                                                              * x 16 steps, drawn in place; then arming and recording from the keys
                                                              * (#139): REC on the armed track stopped is the roll with REC on (no
-                                                             * step entry), running a live take */
+                                                             * cursor entry), running a live take */
         static int32_t l[128], r[128];
         static uint32_t keep[TRACK_NOTES_MAX];
         int pat, i, keep_n, k, pos;
@@ -1387,23 +1470,30 @@ int main(void)
         check("LFO + a white key: the note sounding on the step before tied through it (3 steps), drawn dim",
               seq_white(18) == 10 && hw && ((hw >> 6) & 63u) == 2u && roll_shows(pat)
               && px(seq_grid_x(10) + 5u, GRID_Y + GRID_RH * seq_row + 5u) == C_DIM);
-        panel_keys(1u << 16);                               /* LFO + step 10 (tied): cut before it */
+        panel_keys(1u << 16);                               /* LFO + step 10 (inside it, 2026-10-28): it ends there */
         panel_keys(0);
         loop();
         hw = eng_steps_note((uint32_t)pat, 8u, 46u);
-        check("LFO + a tied step: the note ends before it", seq_white(16) == 9 && hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
-              && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG);
-        msg_text[0] = 0;
-        panel_keys(1u << 9);                                /* LFO + step 6: no A#2 on step 5 */
+        check("LFO + a step inside the note: it ends there (2 steps)", seq_white(16) == 9 && hw && ((hw >> 6) & 63u) == 1u
+              && roll_shows(pat) && px(seq_grid_x(10) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG && !strcmp(msg_text, "TIED"));
+        panel_keys(1u << 16);                               /* LFO + step 10 again, its last step: one step again */
         panel_keys(0);
         loop();
-        check("LFO + a step after nothing: NOTHING TO TIE", seq_white(9) == 5 && !strcmp(msg_text, "NOTHING TO TIE"));
+        hw = eng_steps_note((uint32_t)pat, 8u, 46u);
+        check("LFO + the note's last step: one step again (TIE OFF)", hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
+              && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG && !strcmp(msg_text, "TIE OFF"));
+        msg_text[0] = 0;
+        panel_keys(1u << 0);                                /* LFO + step 1: its own A#2, none before it (no tie across the loop) */
+        panel_keys(0);
+        loop();
+        check("LFO + a note's own step, nothing before it: NOTHING TO TIE", seq_white(0) == 0 && eng_steps_note((uint32_t)pat, 0u, 46u)
+              && ((eng_steps_note((uint32_t)pat, 0u, 46u) >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
         later(1000);
         panel_yield = keys_yield_q;                         /* the roll's keys during a full redraw (D-228): nothing drawn from inside */
         yield_xfers = 0;
         msg_text[0] = 0;
-        kq_edge(9, 1);                                      /* LFO + step 6 again: its message waits for the loop's pass */
-        kq_edge(9, 0);
+        kq_edge(0, 1);                                      /* LFO + step 1 again: its message waits for the loop's pass */
+        kq_edge(0, 0);
         ui_dirty = 2;
         panel_draw();
         check("in a redraw, LFO + a step: taken, its message left for the pass", kq_r == kq_w && yield_xfers == 0u && !msg_text[0]);
@@ -1462,7 +1552,7 @@ int main(void)
         loop();
         check("REC held + a black key: the track armed, REC's release records nothing", pat >= 0 && eng_armed() == pat && seq_rec == 0 && page == 0u);
         tap(BTN_REC);
-        check("REC with a melodic track armed, stopped: its roll with REC on (no step entry)", page == PAGE_SEQ && seq_rec == 2u
+        check("REC with a melodic track armed, stopped: its roll with REC on (no cursor entry)", page == PAGE_SEQ && seq_rec == 2u
               && seq_trk == 1u && seq_map() < 0 && !seq_kbd());
         later(1100);
         check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC P01", C_RED));
@@ -1686,24 +1776,27 @@ int main(void)
         (void)eng_steps_set_notes((uint32_t)drums, wk, (uint32_t)got);
         check("(the SEQ page, a Drum map, REC on, running)", page == PAGE_SEQ && seq_map() == map && seq_rec == 1u
               && eng_transport_running() && eng_steps_pos((uint32_t)drums) >= 0);
-        steps_inst((uint32_t)drums)->s.stp.hit = 0;
         yield_xfers = 0;
         r0 = seq_row;
+        th = thru_head;
         kq_edge(8, 1);                                      /* C#4 hit and let go during a full redraw */
         kq_edge(8, 0);
         ui_dirty = 2;
         panel_draw();
+        check("a black key's hit during a redraw: heard (through the track, #368), the row picked stays, nothing drawn from inside",
+              seq_row == r0 && thru_heard(th, (uint32_t)drums, rn) && kq_r == kq_w && yield_xfers == 0u);
+        check("no header_draw left for the redraw's end (a hit leaves the bar)", !ui_yielding && !ui_header_due);
+        blocks(4);                                          /* (the engine takes the note, let go: recorded, laid over the track) */
+        loop();
         n = eng_steps_notes((uint32_t)drums, &w);
         for (i = 0, got = 0; i < n; i++)
             got += ((w[i] >> 12) & 127u) == rn;
-        check("a black key's hit during a redraw: heard and recorded on its row, the row picked stays, nothing drawn from inside",
-              seq_row == r0 && steps_inst((uint32_t)drums)->s.stp.hit && got == 1 && kq_r == kq_w && yield_xfers == 0u);
-        check("no header_draw left for the redraw's end (a hit leaves the bar)", !ui_yielding && !ui_header_due);
-        steps_inst((uint32_t)drums)->s.stp.hit = 0;
+        check("  recorded on its row once the engine took it", got == 1);
+        th = thru_head;
         kq_edge(3, 1);                                      /* G#3 (row 2) hit and let go within one pass */
         kq_edge(3, 0);
         keys_poll_q(0);
-        check("a hit pressed and let go within one pass: heard, the row picked stays", seq_row == r0 && steps_inst((uint32_t)drums)->s.stp.hit);
+        check("a hit pressed and let go within one pass: heard, the row picked stays", seq_row == r0 && thru_heard(th, (uint32_t)drums, seq_row_note(map, 1)));
         panel_yield = 0;
         tap(BTN_REC);
         tap(BTN_PLAY);
@@ -1985,6 +2078,7 @@ int main(void)
         r0 = seq_row;                                       /* a row pick, stopped: black key 3 (A#3) */
         fb_watch_reset();
         lcd_px = lcd_xfers = 0;
+        th = thru_head;
         panel_keys(1u << 5);
         panel_keys(0);
         loop();
@@ -1993,7 +2087,7 @@ int main(void)
              + fb_changed_in(4, GRID_Y + GRID_RH * 2u, 4 + GRID_NAME_W, GRID_Y + GRID_RH * 2u + FONT_S.h);
         printf("      (a row pick: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
         check("black key 3, stopped: row 3 picked (heard); only its name and the last one's redrawn, no blink",
-              seq_row == 2u && steps_inst((uint32_t)drums)->s.stp.hit && all > 0u && all == part && fb_blinked() == 0
+              seq_row == 2u && thru_heard(th, (uint32_t)drums, seq_row_note(map, 2)) && all > 0u && all == part && fb_blinked() == 0
               && lcd_px <= 2u * GRID_NAME_W * FONT_S.h);
         fb_watch_reset();                                   /* SELECT, no step held: the row (the owner, 2026-10-23) */
         lcd_px = lcd_xfers = 0;
@@ -2066,6 +2160,7 @@ int main(void)
         lcd_px = lcd_xfers = 0;
         panel_keys(1u << n);
         panel_keys(0);
+        blocks(2);                                          /* (#368: the engine records it when let go) */
         loop();
         steps = 0;
         for (st = 0; st < 16u; st++)
@@ -2079,6 +2174,33 @@ int main(void)
         check("REC on, running: a hit lands on its row's nearest step; that cell alone redrawn, the row picked and the bar stay",
               row < ENG_DRUM_ROWS && seq_rec == 1u && steps == 1 && seq_row == r0 && all > 0u && all == part && lcd_px <= GRID_CW * GRID_CH
               && fb_changed_in(0, 0, 240, BAR_H) == 0u);
+        {                                               /* #368 (the owner, 2026-10-28): a black key held over steps while REC
+                                                         * records: one note on its row lasting the whole steps held; its Drum map
+                                                         * row stays up while held */
+            const uint32_t *ws2;
+            uint32_t sl = (uint32_t)steps_inst((uint32_t)drums)->s.stp.slen, j, before = 0, after = 0, longest = 0;
+            uint8_t up;
+            int nn2 = eng_steps_notes((uint32_t)drums, &ws2);
+            for (j = 0; j < (uint32_t)nn2; j++)
+                before += ((ws2[j] >> 12) & 127u) == seq_row_note(map, row);
+            panel_keys(1u << n);
+            blocks(3u * sl / 128u + 2u);                    /* (three steps and a bit held) */
+            up = inst_pool[E.node[map].inst0].s.dm.gate;
+            panel_keys(0);
+            blocks(2);
+            loop();
+            nn2 = eng_steps_notes((uint32_t)drums, &ws2);
+            for (j = 0; j < (uint32_t)nn2; j++)
+                if (((ws2[j] >> 12) & 127u) == seq_row_note(map, row)) {
+                    after++;
+                    if (((ws2[j] >> 6) & 63u) + 1u > longest)
+                        longest = ((ws2[j] >> 6) & 63u) + 1u;
+                }
+            printf("      (held over three steps: recorded %u steps long; a step %u samples)\n", (unsigned)longest, (unsigned)sl);
+            check("REC on, running: a black key held over steps records one note on its row, the whole steps held (3)",
+                  after == before + 1u && longest >= 3u && longest <= 4u);
+            check("  its Drum map row stays up while the key is held", (up >> row & 1u) != 0);
+        }
         enc(0, 1);                                          /* SELECT with REC on: the row too */
         check("REC on: SELECT picks the next row (the black keys stay hits)", seq_rec == 1u && seq_row == (r0 + 1u < ENG_DRUM_ROWS ? r0 + 1u : r0));
         pos = eng_steps_pos((uint32_t)drums);               /* the playhead moves on: its two columns */
@@ -2144,14 +2266,25 @@ int main(void)
         tap(BTN_HOME);
         held_key(BTN_REC, 1);                               /* DRUMS armed, stopped: REC opens its grid */
         tap(BTN_REC);
-        check("REC with a drum track armed, stopped: its grid (no step entry), REC on", page == PAGE_SEQ && seq_trk == 0u
+        check("REC with a drum track armed, stopped: its grid (no cursor entry), REC on", page == PAGE_SEQ && seq_trk == 0u
               && seq_rec == 2u && !seq_kbd() && seq_map() == map);
         n0 = eng_steps_notes((uint32_t)drums, &w);
-        steps_inst((uint32_t)drums)->s.stp.hit = 0;
+        th = thru_head;
         panel_keys(1u << 3);                                /* black key 2: a hit, heard, nothing recorded while stopped */
         panel_keys(0);
-        check("a black key there: a hit (heard), the row stays, nothing recorded", steps_inst((uint32_t)drums)->s.stp.hit
+        blocks(4);
+        loop();
+        check("a black key there: a hit (heard), the row stays, nothing recorded", thru_heard(th, (uint32_t)drums, seq_row_note(map, 1))
               && seq_row == 0u && eng_steps_notes((uint32_t)drums, &w) == n0);
+        panel_keys(1u << 3);                                /* #368: held, stopped: its row stays up until let go */
+        blocks(40);
+        {
+            uint8_t up = inst_pool[E.node[map].inst0].s.dm.gate;
+            panel_keys(0);
+            blocks(2);
+            check("a black key held there, stopped: its Drum map row up while held, down when let go, nothing recorded",
+                  (up >> 1 & 1u) && !(inst_pool[E.node[map].inst0].s.dm.gate >> 1 & 1u) && eng_steps_notes((uint32_t)drums, &w) == n0);
+        }
         tap(BTN_REC);
         tap(BTN_HOME);
         tap(BTN_PLAY);                                      /* running, from the device page: a live take on DRUMS */

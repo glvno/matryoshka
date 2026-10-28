@@ -143,6 +143,7 @@ describe('the device test mode on the wire (#291)', () => {
   it('reads SCREEN (the head, a text) and PEAK', () => {
     const head = parse(frame(CMD.screen, [0xff, 2, 0, 1]))!;
     expect(parseScreen(head)).toEqual({ head: { count: 2, page: 0, sandbox: true, booting: false } });
+    expect(parseScreen(parse(frame(CMD.screen, [0xff, 2, 8, 0, 8, 1]))!)).toEqual({ head: { count: 2, page: 8, sandbox: false, booting: false, buttons: 0x108 } });
     const t = parse(frame(CMD.screen, [1, 11, 20, 60, 11, 13, ...Array.from('BROWSER PLAYS', (c) => c.charCodeAt(0))]))!;
     expect(parseScreen(t)).toEqual({ k: 1, text: { x: 11, y: 20, w: 60, h: 11, s: 'BROWSER PLAYS' } });
     expect(parseScreen(parse(frame(CMD.screen, [1, 11, 20, 60, 11, 13, 65]))!)).toBeNull();

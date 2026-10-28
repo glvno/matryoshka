@@ -42,6 +42,7 @@ const PORT_NAME = `FM-1 (emu ${process.pid})`;
 // panel ids (web/src/fm1-ui.ts BUTTONS, fm1-emu's key matrix): 14.. the note keys from F3
 const B = { octDown: 0, octUp: 1, fx: 2, scl: 3, env: 4, lfo: 5, edit: 6, glo: 7, home: 8, save: 9, arp: 10, seq: 11, play: 12, rec: 13 };
 const C4 = 14 + 7;
+const BLACK = [15, 17, 19, 22, 24, 27, 29, 31];   // F#3 .. A#4's black keys: a drum grid's rows 1..8
 const WHITE = [14, 16, 18, 20, 21, 23, 25, 26, 28, 30, 32, 33, 35, 37, 38, 40];   // F3 .. G5's white keys: steps 1..16 on the grid
 const ENC = { select: 0, algo: 1, k1: 2, k4: 5, preset: 6 };
 const QUIET = 64;
@@ -116,6 +117,18 @@ class Target {
     return p;
   }
   /** wait up to `ms` for `s` on the LCD */
+  /** the output's peak in `n` windows of about `ms` each: [ms since the first window began, peak] per window (#368: how long
+   *  a note sounds; the rig's windows are a round trip longer, hence the times) */
+  async windows(n, ms) {
+    const out = [];
+    const t0 = Date.now();
+    await this.mark();
+    for (let i = 0; i < n; i++) {
+      await sleep(ms);
+      out.push([Date.now() - t0, await this.peak()]);
+    }
+    return out;
+  }
   async waitText(s, ms = 3000) {
     const t = Date.now();
     do {
@@ -189,6 +202,17 @@ class Emu extends Target {
   async ms() { return Number((await this.cmd('ms')).split(' ')[1]); }
   /** let `ms` emulated ms pass */
   wait(ms) { return this.cmd(`wait ${ms}`); }
+  /** (Target's, in emulated ms: exact windows) */
+  async windows(n, ms) {
+    const out = [];
+    let m = await this.mark();
+    for (let i = 0; i < n; i++) {
+      await this.wait(ms);
+      out.push([(i + 1) * ms, await this.peak(m)]);
+      m = await this.mark();
+    }
+    return out;
+  }
   /** the emulated ms until `s` is on the LCD, null if not within `ms` */
   async until(ms, s) { const [, seen, n] = (await this.cmd(`until ${ms} ${s}`)).split(' '); return seen === '1' ? Number(n) : null; }
   /** a host that takes nothing from the FM-1 (a computer where no app reads its MIDI, #375), or one that reads again */
@@ -387,6 +411,133 @@ async function main() {
     return asked;
   }
 
+
+  // ---- #368: ties on the SEQ page (a drum track's grid and the piano roll), read back through the link (TRACK_NOW: the
+  // editor's copy of the track), heard through the peak, and Main's LFO jack through TEST_SCREEN's head (DEVICE only)
+  const trackNotes = async () => JSON.parse(await patchJson()).modules.find((m) => m.type === 'steps')?.notes ?? [];
+  const noteAt = (ns, at, note) => ns.find((n) => n.at === at && (note === undefined || n.note === note));
+  const fmt = (ns) => ns.map((n) => `${n.note}@${n.at}x${n.len}`).join(' ') || 'none';
+  /** the editor's copy of the track until `f` holds of it (the FM-1's TRACK_NOW arrived), else the last read */
+  const notesUntil = async (f, ms = 3000) => (await until(async () => { const ns = await trackNotes(); return f(ns) ? ns : null; }, ms)) ?? (await trackNotes());
+  /** a patch opened in the editor and on the FM-1 (synced), the FM-1 on its device page */
+  async function openSynced(name) {
+    if (!(await open(name))) return false;
+    await sleep(600);
+    const s = await until(async () => { const x = await T(); return !x.sandbox && x.live && x.chip === 'synced' && x.status === 'patch on the FM-1'; }, 10000);
+    return !!s && (await emu.waitText('= OCT =', 6000));
+  }
+  /** the SEQ page, its selected track cleared (SEQ held + REC, REC again), so the steps measured are the only ones */
+  async function seqCleared() {
+    await emu.tap(B.seq, 120);
+    const shown = await emu.waitText('ALGO: TRACK', 3000);
+    await emu.key(B.seq, true);
+    await sleep(150);
+    await emu.tap(B.rec);
+    await sleep(200);
+    await emu.tap(B.rec);
+    await sleep(200);
+    await emu.key(B.seq, false);
+    await sleep(300);
+    return shown && (await notesUntil((ns) => !ns.length)).length === 0;
+  }
+  /** LFO held + the white keys of `steps` (0-based); Main's patch buttons as TEST_SCREEN says while LFO is held (DEVICE) */
+  async function lfoKeys(steps) {
+    await emu.key(B.lfo, true);
+    await sleep(150);
+    for (const k of steps) await emu.tap(WHITE[k]);
+    const buttons = DEVICE ? (await emu.screen()).buttons : undefined;
+    await emu.key(B.lfo, false);
+    await sleep(200);
+    return buttons;
+  }
+  /** a pass and a bit with the transport running: the peak in windows of 25 ms (one step of 1/16 at 120 BPM = 125 ms) */
+  async function passProfile() {
+    await emu.tap(B.play);
+    await sleep(300);
+    const w = await emu.windows(100, 25);
+    await emu.tap(B.play);
+    await sleep(600);
+    return w;
+  }
+  /** the hit in a profile: its onset (the window with the biggest rise that the next two windows keep at least half of:
+   *  the rig's TEST_PEAK now and then gives one window about a hit's level out of nowhere, 4 in some 3,600 reads over three
+   *  runs, never the emulator), its peak (that window or the next: an attack can span two) and how much of it the windows
+   *  of the next `ms` keep at least (their lowest / the peak): a voice held by its gate keeps about all of it, one let go
+   *  decays */
+  function hold(w, ms = 300) {
+    let i = 1;
+    const rise = (k) => (k + 2 < w.length && w[k + 1][1] * 2 >= w[k][1] && w[k + 2][1] * 2 >= w[k][1] ? w[k][1] - w[k - 1][1] : -Infinity);
+    for (let k = 2; k < w.length; k++) if (rise(k) > rise(i)) i = k;
+    const top = Math.max(w[i][1], w[i + 1]?.[1] ?? 0);
+    const after = w.filter((x) => x[0] > w[i + 1]?.[0] && x[0] <= w[i][0] + ms).map((x) => x[1]);
+    const low = after.length ? Math.min(...after) : 0;
+    return { at: w[i][0], top, low, kept: top ? +(low / top).toFixed(2) : 0 };
+  }
+  const prof = (w) => w.map((x) => x[1]).join(',');
+  const LFO_BIT = 1 << 3;
+  /** a 4-step note on step 1 back to one step, as D-531 says (2026-10-28): LFO + step 2 (inside it) ends it there, LFO +
+   *  step 2 again (its last step) makes it one step, LFO + step 1 (its own step, nothing before) is NOTHING TO TIE */
+  async function untie(tag, note) {
+    await lfoKeys([1]);
+    let ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 2);
+    await check(`${tag}: LFO + step 2, inside the tie: it ends there (2 steps)`, noteAt(ns, 0, note)?.len === 2 && ns.length === 1, fmt(ns));
+    await lfoKeys([1]);
+    ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 1);
+    await check(`${tag}: LFO + step 2 again, its last step: one step`, noteAt(ns, 0, note)?.len === 1 && ns.length === 1, fmt(ns));
+    await emu.key(B.lfo, true);
+    await sleep(150);
+    await emu.tap(WHITE[0]);
+    const said = await emu.waitText('NOTHING TO TIE', 1500);
+    await emu.key(B.lfo, false);
+    await sleep(300);
+    ns = await trackNotes();
+    await check(`${tag}: LFO + step 1, the hit's own step with nothing before it: NOTHING TO TIE, no change`, said && noteAt(ns, 0, note)?.len === 1 && ns.length === 1, fmt(ns));
+  }   // Main's patch buttons: FX SCL ENV LFO EDIT GLO ARP (engine.h ENG_PANEL_BUTTONS)
+
+  /** a drum track's grid (D-531 as of 2026-10-28): a hit on step 1 of row `row`, LFO + step 4 ties it through step 4 in one
+   *  press, heard; LFO + step 2 (inside it) ends it there, LFO + step 2 again (its last step) makes it one step, heard again
+   *  at the same place; LFO + step 1 (its own step, nothing before it) is NOTHING TO TIE; tied again and cut by a plain
+   *  white key on step 3. `sustains`: the row's voice holds
+   *  while its gate is up (8 Lire's plates), else a one-shot whose sound must not change (the 808 Kit) */
+  async function drumTie(tag, name, row, sustains) {
+    await check(`${tag}: ${name} opens, synced`, await openSynced(name));
+    await check(`${tag}: the SEQ page, the track cleared`, await seqCleared(), fmt(await trackNotes()));
+    await emu.tap(BLACK[row]);
+    await sleep(200);
+    await emu.tap(WHITE[0]);
+    let ns = await notesUntil((x) => x.length === 1);
+    const note = ns[0]?.note;
+    await check(`${tag}: a hit on step 1 of row ${row + 1}`, ns.length === 1 && ns[0].at === 0 && ns[0].len === 1, fmt(ns));
+    const untiedW = await passProfile();
+    const buttons = await lfoKeys([3]);
+    ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 4);
+    await check(`${tag}: LFO + step 4: the hit tied through it in one press (4 steps)`, noteAt(ns, 0, note)?.len === 4 && ns.length === 1, fmt(ns));
+    if (DEVICE) await check(`${tag}: LFO held on the SEQ page: Main's LFO jack stays down`, buttons !== undefined && !(buttons & LFO_BIT), `buttons ${buttons}`);
+    const tiedW = await passProfile();
+    await untie(tag, note);
+    const againW = await passProfile();
+    const u = hold(untiedW), t = hold(tiedW), a = hold(againW);
+    console.log(`  ${tag} peaks per 25 ms, untied: ${prof(untiedW)}`);
+    console.log(`  ${tag} tied (4 steps): ${prof(tiedW)}`);
+    console.log(`  ${tag} untied again: ${prof(againW)}`);
+    const detail = `the hit's peak, the lowest in the 300 ms after it, kept: untied ${u.top} ${u.low} ${u.kept}, tied ${t.top} ${t.low} ${t.kept}, untied again ${a.top} ${a.low} ${a.kept}`;
+    if (sustains) {
+      await loudCheck(`${tag}: tied, the voice holds through the tied steps (keeps 90 % and more, above ${QUIET})`, t.top, t.kept >= 0.9 && t.low > QUIET, detail);
+      await loudCheck(`${tag}: untied, it decays at the same place (keeps under 85 %)`, u.top, u.kept < 0.85 && a.kept < 0.85, detail);
+    } else {
+      const near = (x, y, tol) => Math.abs(x - y) <= tol * Math.max(x, y);
+      await loudCheck(`${tag}: a one-shot sounds the same tied (peak within 15 %, kept within 0.1)`, t.top,
+        t.top > LOUD && near(t.top, u.top, 0.15) && near(a.top, u.top, 0.15) && Math.abs(t.kept - u.kept) <= 0.1 && Math.abs(a.kept - u.kept) <= 0.1, detail);
+    }
+    await lfoKeys([3]);
+    await emu.tap(WHITE[2]);
+    ns = await notesUntil((x) => noteAt(x, 2, note) !== undefined);
+    await check(`${tag}: a plain white key on step 3, which the tie runs through: the tie cut before it, a hit there`,
+      noteAt(ns, 0, note)?.len === 2 && noteAt(ns, 2, note)?.len === 1 && ns.length === 2, fmt(ns));
+    await emu.tap(B.seq, 120);
+    await emu.waitText('= OCT =', 3000);
+  }
+
   const scenarios = {
     async connect() {
       await load();
@@ -563,6 +714,77 @@ async function main() {
       await shot('switch');
       if (held >= 0) await emu.key(held, false);
       await emu.tap(B.play);   // stop
+    },
+    async tieLire() { await drumTie('tie lire', '8 Lire', 0, true); },
+    async tieElvira() { await drumTie('tie elvira', 'Elvira 2', 0, true); },
+    async tie808() {
+      await drumTie('tie 808', '808 Kit', 0, false);
+      if (DEVICE) {   // (the check above means something: LFO off the SEQ page is Main's jack, and TEST_SCREEN shows it)
+        await emu.key(B.lfo, true);
+        await sleep(200);
+        const b = (await emu.screen()).buttons;
+        await emu.key(B.lfo, false);
+        await sleep(200);
+        await check('tie 808: LFO held on the device page: Main\'s LFO jack up (TEST_SCREEN sees the jacks)', b !== undefined && !!(b & LFO_BIT), `buttons ${b}`);
+      }
+    },
+    async drumHold() {   // #368 (the owner, 2026-10-28): a black key on a drum track's grid sounds while held; REC running records it
+      await check('hold: 8 Lire opens, synced', await openSynced('8 Lire'));
+      await check('hold: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      // stopped: row 1's plate while black key 1 is held (about 600 ms), then let go
+      await emu.windows(4, 25);                     // (quiet first)
+      await emu.key(BLACK[0], true);
+      const held = await emu.windows(24, 25);
+      await emu.key(BLACK[0], false);
+      const gone = await emu.windows(20, 25);
+      const top = Math.max(held[0][1], held[1][1]), heldLow = Math.min(...held.slice(2).map((x) => x[1]));
+      const heldMax = Math.max(...held.map((x) => x[1])), late = gone[gone.length - 1][1];
+      console.log(`  hold peaks per 25 ms, held: ${prof(held)}; let go: ${prof(gone)}`);
+      const d = `held: peak ${top}, lowest after it ${heldLow} (kept ${top ? (heldLow / top).toFixed(2) : 0}), loudest ${heldMax}; 500 ms after letting go: ${late}`;
+      await loudCheck('hold: stopped, a held black key sounds its row as long as it is held (keeps 90 %)', top, top > LOUD && heldLow >= 0.9 * top, d);
+      await loudCheck('hold: let go, it decays (500 ms on: under half the held level)', top, late < heldMax / 2, d);
+      let ns = await trackNotes();
+      await check('hold: stopped, nothing recorded', ns.length === 0, fmt(ns));
+      // REC on (nothing armed: the black keys record on this drum track), running: black key 2 held about four steps
+      await emu.tap(B.rec);
+      await sleep(300);
+      await emu.tap(B.play);
+      await sleep(400);
+      await emu.key(BLACK[1], true);
+      await sleep(450);
+      await emu.key(BLACK[1], false);
+      ns = await notesUntil((x) => x.length >= 1);
+      const rec = ns.find((x) => x.note === 55);
+      await check('hold: REC on, running: a black key held about 450 ms records one note on its row, 3 to 5 steps long (125 ms a step)',
+        ns.length === 1 && !!rec && rec.len >= 3 && rec.len <= 5, fmt(ns));
+      // step write while REC plays: a white key on row 1 (the row picked stays: REC's black keys pick none)
+      await emu.tap(WHITE[12]);
+      ns = await notesUntil((x) => noteAt(x, 12, 53) !== undefined);
+      await check('hold: step write while REC plays: a white key places a step on the selected row', noteAt(ns, 12, 53)?.len === 1 && ns.length === 2, fmt(ns));
+      await emu.tap(B.play);
+      await sleep(300);
+      await emu.tap(B.rec);
+      await sleep(300);
+      await emu.tap(B.seq, 120);
+      await emu.waitText('= OCT =', 3000);
+    },
+    async tieRoll() {   // the piano roll (#241) keeps its tie: Silver Box's PATTERN, pattern 1 (empty)
+      await check('tie roll: Silver Box opens, synced', await openSynced('Silver Box'));
+      await check('tie roll: the SEQ page, the track cleared', await seqCleared(), fmt(await trackNotes()));
+      await emu.tap(WHITE[0]);
+      let ns = await notesUntil((x) => x.length === 1);
+      const note = ns[0]?.note;
+      await check('tie roll: a note on step 1', ns.length === 1 && ns[0].at === 0 && ns[0].len === 1, fmt(ns));
+      await lfoKeys([3]);
+      ns = await notesUntil((x) => noteAt(x, 0, note)?.len === 4);
+      await check('tie roll: LFO + step 4: tied through it in one press (4 steps)', noteAt(ns, 0, note)?.len === 4 && ns.length === 1, fmt(ns));
+      await untie('tie roll', note);
+      await lfoKeys([3]);
+      await emu.tap(WHITE[2]);
+      ns = await notesUntil((x) => noteAt(x, 2, note) !== undefined);
+      await check('tie roll: a plain white key on a tied step: the tie cut, a note there', noteAt(ns, 0, note)?.len === 2 && noteAt(ns, 2, note)?.len === 1, fmt(ns));
+      await emu.tap(B.seq, 120);
+      await emu.waitText('= OCT =', 3000);
     },
     // #375: on a computer where no app reads the FM-1's MIDI, every message the FM-1 sends unasked (TRACK_NOW after a
     // step, PARAM_NOW after a knob) found the SysEx ring full and waited 200 ms: entering steps by hand stalled the panel
