@@ -496,6 +496,8 @@ static int panel_key(uint32_t n, int down, int quick)
     if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_kbd()) || !down)) {   /* the SEQ page: steps and tracks */
         if (page == PAGE_SEQ && !seq_kbd())
             seq_key(n, down);
+        else
+            seq_thru_up(n);                         /* (a black key held on a drum track's page, let go elsewhere: #368) */
         return 1;
     }
     if (down) {
@@ -624,7 +626,8 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * page's */
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track (the roll with FX held:
-                                                     * the keys' octave, the pen's), FX the accent key, LFO the roll's tie */
+                                                     * the keys' octave, the pen's), FX the accent key, LFO the tie (#368:
+                                                     * a drum track's too) */
         int roll = seq_module() >= 0 && seq_map() < 0;
         if (!roll || !(panel_held >> BTN_ACC & 1u)) {
             if (p & (1u << BTN_OCT_DOWN))
@@ -633,7 +636,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
                 seq_page_step(1);
             p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
         }
-        p &= ~((1u << BTN_ACC) | (roll ? 1u << BTN_LFO : 0u));
+        p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     }
     /* SEQ and REC act on release, unless a black key muted / armed a track meanwhile; the flag is cleared at the release,
      * not the press: panel_keys runs first in a pass, so a key that lands in the same pass as the press has set it (#179) */

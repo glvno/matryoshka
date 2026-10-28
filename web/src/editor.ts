@@ -392,7 +392,7 @@ export class Editor {
   }
 
   setPatch(p: Patch): void {
-    stopEntry(); // (step entry, the armed track and the roll belong to the patch they started in)
+    stopEntry(); // (cursor entry, the armed track and the roll belong to the patch they started in)
     this.armTrack(null);
     this.closeRoll();
     this.patch = p;
@@ -1439,7 +1439,7 @@ export class Editor {
     for (const { path, cable } of this.cablePaths) path.classList.toggle('muted', !!cable && muted.has(cable));
   }
 
-  /** REC on the armed track (#135; editor state like the arming): stopped, step entry on its card; running, the engine
+  /** REC on the armed track (#135; editor state like the arming): stopped, cursor entry on its card; running, the engine
    * records what is played (recorded) */
   recOn = false;
 

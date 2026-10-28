@@ -379,7 +379,7 @@ int eng_song_delete(uint32_t s, uint32_t k);
  * 0 when there is nothing to write (pattern 1, no song, no patterns, no entries), -1 when it does not fit */
 int eng_patterns_record(uint8_t *out, uint32_t cap);
 /* arming and recording from the keys (#139): the armed Steps module (-1 none); live recording on a track; the notes it
- * recorded, one at a time (0: none); step entry's chord; a recorded note laid over the track */
+ * recorded, one at a time (0: none); cursor entry's chord; a recorded note laid over the track */
 void eng_arm(int module);
 int eng_armed(void);
 /* arm a set of modules (#191; engine.ts arm / arm.ts armView): while the mask is not 0 Main's keys go only to the key
@@ -395,6 +395,10 @@ int eng_listens(uint32_t m);
  * (panel.c panel_key); -1 none */
 int eng_keys_drummap(void);
 void eng_steps_rec(uint32_t module, int on);
+/* a note into a track's keys in, armed or not (engine.ts thru; the SEQ page's black keys on a drum track, #368): it sounds
+ * through the track until let go (vel 0), and a track recording live (eng_steps_rec) records it as a played note */
+void eng_steps_thru(uint32_t module, uint32_t note, uint32_t vel);
+#define ENG_STEPS_THRU 1
 int eng_steps_take(uint32_t *module, uint32_t *word);
 void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t n, uint32_t vel);
 void eng_steps_overdub(uint32_t module, uint32_t word);

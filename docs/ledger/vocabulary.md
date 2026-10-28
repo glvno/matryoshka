@@ -66,6 +66,10 @@ Patches other people submitted, from the curated `community.json`, shown in Libr
 
 The whole tutorial as data: every chapter and step in `web/src/tutorial/course.json`.
 
+### Cursor entry
+
+Recording in the editor with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on. The FM-1 has none. Formerly called step entry.
+
 ### Decider
 
 The person whose call a ruling is. Named in a `Proposed` status, in a subject file's current-state paragraph, or by default in [D-011](process.md#D-011).
@@ -418,9 +422,9 @@ Where a teammate can find the ruling being made: a pull request, an issue, a com
 
 The line under the deck with hover help, messages, the FM-1 budget and the FM-1 chip.
 
-### Step entry
+### Step write
 
-Recording in the editor with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on. The FM-1 has none.
+Placing steps with the white keys, one key per step: on the FM-1's SEQ page (a drum track's grid or the piano roll) and on the editor's Steps card grid. It works with REC on or off, and while a live take records.
 
 ### Steps track
 

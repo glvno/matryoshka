@@ -346,7 +346,7 @@ describe('the Steps module (#83, #133)', () => {
     expect(e.takeRecorded()).toEqual([]);
     e.transport(false);
     run(256);
-    e.noteOn(60, 1); // stopped: nothing recorded (the editor's step entry takes it)
+    e.noteOn(60, 1); // stopped: nothing recorded (the editor's cursor entry takes it)
     run(256);
     e.noteOff(60);
     run(256);
