@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: GPL-3.0-only
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { Piano } from './piano';
 
 const setup = (): { shift: ReturnType<typeof vi.fn>; down: HTMLButtonElement } => {
@@ -13,6 +13,10 @@ const setup = (): { shift: ReturnType<typeof vi.fn>; down: HTMLButtonElement } =
 };
 
 describe('the dock octave buttons (#208)', () => {
+  // jsdom has no Element.scrollTo; the piano calls it from an animation frame to bring the lettered keys into view
+  beforeAll(() => {
+    HTMLElement.prototype.scrollTo ??= () => {};
+  });
   afterEach(() => {
     document.body.innerHTML = '';
   });
