@@ -78,7 +78,8 @@
 //   4C PRESET   index u8, count u8, structure u32, name 16 bytes, n u8   one of the FM-1's user presets (count 0: none)
 //   4D PRESET_DATA  structure u32, name 16 bytes, n u8 (0xFF: none), n i32 values
 //   4E PRESET_STORED  structure u32, name 16 bytes  unasked: a preset stored on the FM-1 (ENV held + SAVE)
-//   50 SCREEN   k u8 = 0xFF, count u8, page u8, flags u8 (bit0 sandbox mode, bit1 the boot screen); then k = 0..count-1:
+//   50 SCREEN   k u8 = 0xFF, count u8, page u8, flags u8 (bit0 sandbox mode, bit1 the boot screen), [buttons u16: Main's
+//               patch buttons as their jacks stand, bit 0 FX .. bit 6 ARP; #368, absent from older firmware]; then k = 0..count-1:
 //               x u8, y u8, w u8, h u8, n u8, n characters   a text on the LCD and its box (firmware/src/screen_text.h)
 //   51 PEAK     peak u16 (16 bit, before MASTER: as at its default), flags u8 (bit0 the engine runs, bit1 the sound is muted:
 //               sandbox mode, bit2 MASTER is all the way down)
@@ -375,12 +376,12 @@ export const testTurnFrame = (enc: number, clicks: number): Uint8Array => frame(
 export const testScreenFrame = (): Uint8Array => frame(CMD.testScreen);
 export const testPeakFrame = (): Uint8Array => frame(CMD.testPeak);
 export interface ScreenText { x: number; y: number; w: number; h: number; s: string }
-export interface ScreenHead { count: number; page: number; sandbox: boolean; booting: boolean }
+export interface ScreenHead { count: number; page: number; sandbox: boolean; booting: boolean; buttons?: number }
 /** a SCREEN frame: the head (k 0xFF) or text k */
 export function parseScreen(p: Parsed): { head: ScreenHead } | { k: number; text: ScreenText } | null {
   if (p.cmd !== CMD.screen || p.payload.length < 1) return null;
   const d = p.payload;
-  if (d[0] === 0xff) return d.length >= 4 ? { head: { count: d[1], page: d[2], sandbox: !!(d[3] & 1), booting: !!(d[3] & 2) } } : null;
+  if (d[0] === 0xff) return d.length >= 4 ? { head: { count: d[1], page: d[2], sandbox: !!(d[3] & 1), booting: !!(d[3] & 2), ...(d.length >= 6 ? { buttons: d[4] | (d[5] << 8) } : {}) } } : null;
   if (d.length < 6 || d.length < 6 + d[5]) return null;
   return { k: d[0], text: { x: d[1], y: d[2], w: d[3], h: d[4], s: String.fromCharCode(...d.slice(6, 6 + d[5])) } };
 }

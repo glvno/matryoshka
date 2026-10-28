@@ -2546,6 +2546,12 @@ void eng_steps_rec(uint32_t module, int on)
     else
         E.trk_rec &= (uint16_t)~(1u << E.node[module].trk);
 }
+void eng_steps_thru(uint32_t module, uint32_t note, uint32_t vel)
+{
+    if (!E.loaded || module >= E.nmod || E.node[module].type != T_STEPS || note > 127u)
+        return;
+    thru_put(module, vel ? note | 0x80u : note, vel ? (vel > 127u ? 127u : vel) : 0u);
+}
 /* a recorded note (module index, note word: one step at least, chance 100 %), 0 when none is waiting */
 int eng_steps_take(uint32_t *module, uint32_t *word)
 {
@@ -3131,7 +3137,7 @@ int eng_steps_hit_note(uint32_t module, uint32_t note, int accent, int record)
     return k;
 }
 
-/* step entry (#139; track.ts setChord): step k's notes replaced by `n` notes one step long at `vel` (its chance kept, a tie
+/* cursor entry (#139; track.ts setChord): step k's notes replaced by `n` notes one step long at `vel` (its chance kept, a tie
  * through it cut) */
 void eng_steps_chord(uint32_t module, uint32_t k, const uint8_t *notes, uint32_t n, uint32_t vel)
 {

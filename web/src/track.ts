@@ -185,7 +185,7 @@ export function setStepValue(notes: readonly StepNote[] | undefined, k: number, 
   return fixNotes(out);
 }
 
-/** step k holds exactly these notes (step entry of a chord, #135): its own notes go (a note tied through it ends before it),
+/** step k holds exactly these notes (cursor entry of a chord, #135): its own notes go (a note tied through it ends before it),
  * each key a note one step long at its velocity (1..127), the step's chance kept */
 export function setChord(notes: readonly StepNote[] | undefined, k: number, keys: readonly { note: number; vel: number }[]): StepNote[] | undefined {
   const chance = stepView(notes, k).on ? stepView(notes, k).chance : 100;

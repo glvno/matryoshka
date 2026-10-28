@@ -428,7 +428,7 @@ const sink = {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
     if (msg.t === 'on') host.mute(false);
-    // a Steps card's step entry (#127, #135: a chord when the first key is let go); it sounds too. Running, the engine
+    // a Steps card's cursor entry (#127, #135: a chord when the first key is let go); it sounds too. Running, the engine
     // records instead (live overdub)
     if (msg.t === 'on' && currentTab === 'patch' && !editor.playing) recordNote(msg.note, msg.vel);
     if (msg.t === 'off' && currentTab === 'patch') recordOff(msg.note);
@@ -461,7 +461,7 @@ function showArmed(): void {
   if (!editor.recOn) return pinStatus({ tag: `Armed: ${name}`, text: `Main’s keys play ${name}, ${hear}. Shift+R records; ARM again gives Main its keys back.` }, 'arm');
   pinStatus({ tag: `Rec: ${name}`, text: editor.playing
     ? `live: play along, notes land on the nearest step; each pass overdubs and is one undo step. Shift+R stops.`
-    : `step entry: play a note or a chord into the cursor’s step; Backspace a rest, Enter a tie, ← → move. Shift+R or Esc stops.` }, 'arm');
+    : `cursor entry: play a note or a chord into the cursor’s step; Backspace a rest, Enter a tie, ← → move. Shift+R or Esc stops.` }, 'arm');
 }
 // the demo video's script (web/dev/demo) plays its riff through the sink as the keys do, also while a dialog is open
 // (the letter keys stop then); the dev server only
@@ -1290,7 +1290,7 @@ window.addEventListener('keydown', (e) => {
   if (t?.closest('[role=tab], [role=slider], input[type=range], input[type=radio], .resize-handle') && e.key.startsWith('Arrow')) return;
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
-  let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's step entry: rest, tie, cursor, stop (#127)
+  let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's cursor entry: rest, tie, cursor, stop (#127)
   if (done) {
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -1566,7 +1566,7 @@ function setPlaying(on: boolean): void {
   clockOut.transport(on);
   if (!fromEmu) emu.ui?.transport(on);
   syncPlayBtn();
-  showArmed(); // (REC: step entry stopped, live running)
+  showArmed(); // (REC: cursor entry stopped, live running)
 }
 function togglePlaying(): void {
   setPlaying(!editor.playing);
