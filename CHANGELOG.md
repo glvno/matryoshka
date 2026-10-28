@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Patches
+
+- **8 Lire XL's TUNE is continuous,** as the Lyra-8's knob: each `tune` row is an Offset into its voice's pitch, ±4
+  octaves in hundredths of an octave (12 cents), from the voice's own tuning. It stepped in semitones before. The default
+  sound is unchanged (rendered sample for sample); the XL has 151 modules (143) and an estimated 146 % CPU (144 %).
+- **Meridian 8 XL's gate inputs take any voltage,** as the NOON's: the inputs `gate 1`..`gate 8` power their channel
+  directly, after its mute button, so an offset, a held gate, an LFO or an oscillator there drones the channels that
+  hold a sound (DOT, for one) with no key held. The keys still play the channels as before. The default sound is
+  unchanged (rendered sample for sample); the XL has 180 modules (172) and an estimated 148 % CPU (143 %).
+
 ### Fixes
 
 - **Choosing what an assembly's card shows: a switch row's check box no longer covers its name.** On rows with
