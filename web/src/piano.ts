@@ -40,7 +40,12 @@ export class Piano {
       b.textContent = label;
       b.title = `${label} (${letter})`;
       b.setAttribute('aria-label', label);
-      b.onclick = () => host.shift(d);
+      // a click with the pointer lets go of the focus, so Space starts the transport instead of pressing the button again;
+      // one from the keyboard (detail 0) keeps it, so Enter / Space can step on (#208)
+      b.onclick = (e) => {
+        host.shift(d);
+        if (e.detail > 0) b.blur();
+      };
       return b;
     };
     this.where = document.createElement('output');
