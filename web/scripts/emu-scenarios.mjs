@@ -459,12 +459,15 @@ async function main() {
     await sleep(600);
     return w;
   }
-  /** the hit in a profile: its onset (the window with the biggest rise), its peak (that window or the next: an attack can
-   *  span two) and how much of it the windows of the next `ms` keep at least (their lowest / the peak): a voice held by its
-   *  gate keeps about all of it, one let go decays */
-  function hold(w, ms = 250) {
+  /** the hit in a profile: its onset (the window with the biggest rise that the next two windows keep at least half of:
+   *  the rig's TEST_PEAK now and then gives one window about a hit's level out of nowhere, 4 in some 3,600 reads over three
+   *  runs, never the emulator), its peak (that window or the next: an attack can span two) and how much of it the windows
+   *  of the next `ms` keep at least (their lowest / the peak): a voice held by its gate keeps about all of it, one let go
+   *  decays */
+  function hold(w, ms = 300) {
     let i = 1;
-    for (let k = 2; k < w.length; k++) if (w[k][1] - w[k - 1][1] > w[i][1] - w[i - 1][1]) i = k;
+    const rise = (k) => (k + 2 < w.length && w[k + 1][1] * 2 >= w[k][1] && w[k + 2][1] * 2 >= w[k][1] ? w[k][1] - w[k - 1][1] : -Infinity);
+    for (let k = 2; k < w.length; k++) if (rise(k) > rise(i)) i = k;
     const top = Math.max(w[i][1], w[i + 1]?.[1] ?? 0);
     const after = w.filter((x) => x[0] > w[i + 1]?.[0] && x[0] <= w[i][0] + ms).map((x) => x[1]);
     const low = after.length ? Math.min(...after) : 0;
@@ -499,7 +502,7 @@ async function main() {
     console.log(`  ${tag} peaks per 25 ms, untied: ${prof(untiedW)}`);
     console.log(`  ${tag} tied (4 steps): ${prof(tiedW)}`);
     console.log(`  ${tag} untied again: ${prof(againW)}`);
-    const detail = `the hit's peak, the lowest in the 250 ms after it, kept: untied ${u.top} ${u.low} ${u.kept}, tied ${t.top} ${t.low} ${t.kept}, untied again ${a.top} ${a.low} ${a.kept}`;
+    const detail = `the hit's peak, the lowest in the 300 ms after it, kept: untied ${u.top} ${u.low} ${u.kept}, tied ${t.top} ${t.low} ${t.kept}, untied again ${a.top} ${a.low} ${a.kept}`;
     if (sustains) {
       await loudCheck(`${tag}: tied, the voice holds through the tied steps (keeps 90 % and more, above ${QUIET})`, t.top, t.kept >= 0.9 && t.low > QUIET, detail);
       await loudCheck(`${tag}: untied, it decays at the same place (keeps under 85 %)`, u.top, u.kept < 0.85 && a.kept < 0.85, detail);
