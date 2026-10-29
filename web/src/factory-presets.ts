@@ -1,16 +1,34 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Factory presets (#193): every factory engine ships with presets, read-only (device-presets.ts). "Init" is the engine as
-// it comes; the others are the same engine with a few card rows moved by a rule that reads parameter names only (a
-// filter's cutoff, an envelope's times, an effect's mix), so a rule that finds nothing to move makes no preset. The
-// FM-1 gets the same list in ROM (export-defs, #194). The XL patches' engines get the same variations, made from the
-// engine as the XL ships it; they stay in the browser, as the XLs do.
+// it comes. An engine with a card file (web/presets/cards/<slug>.txt, preset-cards.ts, #413) ships the presets written
+// there, in their order. The others get the same engine with a few card rows moved by a rule that reads parameter names
+// only (a filter's cutoff, an envelope's times, an effect's mix), so a rule that finds nothing to move makes no preset.
+// The FM-1 gets the same list in ROM (export-defs, #194). The XL patches' engines get the same variations, made from the
+// engine as the XL ships it (a card's presets are carried over only onto an XL whose rows are its FM-1 version's under
+// the same names, which the XLs built as their originals' whole panels are not); they stay in the browser, as the XLs do.
 import { FACTORY } from './assemblies';
 import { toDef, type AssemblyDef } from './assembly';
 import { setFactoryPresets, type Preset } from './device-presets';
 import { defIsEngine, instIsEngine } from './engines';
 import { DEFS } from './modules';
+import { cardSlug, parseCard, projectPresets, type CardParse } from './preset-cards';
 import { XL_PRESETS } from './presets';
 import { defStructureAndOrder } from './structure';
+
+/** the card files by slug (web/presets/cards/hera-6.txt is "hera-6") */
+export const CARDS: Record<string, string> = Object.fromEntries(
+  Object.entries(import.meta.glob<string>('../presets/cards/*.txt', { eager: true, query: '?raw', import: 'default' }))
+    .map(([path, text]) => [path.replace(/^.*\//, '').replace(/\.txt$/, ''), text]),
+);
+
+/** an engine's card, parsed; undefined when it has none. A card with mistakes is reported and not used. */
+export function cardOf(def: AssemblyDef): CardParse | undefined {
+  const text = CARDS[cardSlug(def.name)];
+  if (text === undefined) return undefined;
+  const parsed = parseCard(text, def);
+  if (parsed.errors.length) console.warn(`presets/cards/${cardSlug(def.name)}.txt is not used:\n  ${parsed.errors.join('\n  ')}`);
+  return parsed;
+}
 
 /** a row as a rule sees it: its module's type, the parameter, its label on the card, the value now */
 interface Row { type: string; param: string; label: string; value: number }
@@ -66,8 +84,15 @@ export const XL_RULES: { name: string; rule: Rule }[] = RULES.map(({ name, rule 
   return { name, rule: (r: Row) => r.type === 'rateenv' ? RATE_VARIATIONS[name]?.(r) : rule(r) ?? extra?.(r) };
 });
 
-/** a factory engine's presets: Init and every rule that moves at least one row */
+/** a factory engine's presets: Init and its card's, or Init and every rule that moves at least one row */
 export function presetsOfDef(def: AssemblyDef, rules = RULES): Preset[] {
+  const card = rules === RULES ? cardOf(def) : undefined;
+  if (card?.presets.length) return card.presets;
+  return presetsByRules(def, rules);
+}
+
+/** the rule-made presets: Init and every rule that moves at least one row */
+export function presetsByRules(def: AssemblyDef, rules = RULES): Preset[] {
   const { structure, order } = defStructureAndOrder(def);
   const rows: Row[] = order.map((i) => {
     const r = def.params[i];
@@ -97,11 +122,20 @@ const once = <T>(f: () => T): (() => T) => {
 /** every factory engine's presets (the FM-1's ROM list) */
 export const factoryPresets = once((): Preset[] => FACTORY.filter((d) => defIsEngine(d)).flatMap((d) => presetsOfDef(d)));
 
+/** an XL engine's presets: its FM-1 version's card (the FM-1 engine of the same name, or the name without " XL") carried
+ * onto its rows when every row the card sets is there under the same name, else the XL rules */
+export function xlPresetsOfDef(def: AssemblyDef): Preset[] {
+  const base = FACTORY.find((d) => d.name === def.name || `${d.name} XL` === def.name);
+  const card = base ? cardOf(base) : undefined;
+  const carried = base && card?.presets.length ? projectPresets(base, card.presets, def) : null;
+  return carried ?? presetsByRules(def, XL_RULES);
+}
+
 /** the XL patches' engines' presets, by XL name: browser only */
 export const xlEnginePresets = once((): Record<string, Preset[]> => Object.fromEntries(
   Object.entries(XL_PRESETS).map(([name, make]) => {
     const p = make();
-    return [name, (p.assemblies ?? []).filter((a) => instIsEngine(p, a)).flatMap((a) => presetsOfDef(toDef(p, a), XL_RULES))];
+    return [name, (p.assemblies ?? []).filter((a) => instIsEngine(p, a)).flatMap((a) => xlPresetsOfDef(toDef(p, a)))];
   }),
 ));
 
