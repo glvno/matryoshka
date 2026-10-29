@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* The panel core (firmware/src/panel.c) on the host, with no HAL: SELECT, ALGO, K1, HOME (the trail back, held = menu),
+/* The panel core (firmware/src/panel.c) on the host, with no HAL: SELECT, ALGO, K1, HOME (the trail back), GLO (the menu),
  * PLAY / tempo, a key and the MIDI out of every control (#115), checked on the core's state and on the LCD's framebuffer (ui_preview.c's stand-ins).
  *   tools/panel_test.sh */
 #define UI_PREVIEW_LIB
@@ -592,34 +592,46 @@ int main(void)
     check("HOME on the device pages, nothing to go back to: nothing", page == 0 && pg_cur_dev == 2 && pg_cur_page == 1
           && trail_n == 0 && memcmp(before, fb, sizeof before) == 0);
 
-    panel_held |= 1u << BTN_HOME;                           /* HOME held: the menu after 0.7 s */
+    panel_held |= 1u << BTN_HOME;                           /* HOME held: nothing any more (#395: GLO is the menu) */
     panel_edges(1u << BTN_HOME, 0);
-    later(400);
-    check("HOME held 0.4 s: not yet", page == 0);
-    later(400);
-    check("HOME held 0.8 s: the settings menu", page == PAGE_MENU);
+    later(1200);
     panel_held &= ~(1u << BTN_HOME);
     panel_edges(0, 1u << BTN_HOME);
     loop();
-    check("its release does not close it", page == PAGE_MENU);
+    check("HOME held 1.2 s: no menu (its release is a tap, nothing to go back to)", page == 0 && trail_n == 0);
+    mlen = 0;                                               /* (the MIDI log holds 256 messages; the menu's steps below would fill it) */
+    tap(BTN_GLO);
+    check("GLO: the menu on its MIDI tab, a step on the trail", page == PAGE_MENU && menu_tab == MT_MIDI && trail_n == 1 && menu_page());
+    check("its header: MENU on coral; the rows: MIDI channel, clock in, MIDI out", px(2, 2) == P_CORAL && pages_now()->nrows == 3u
+          && pages_now()->mod[0] == SETTING_ROW && pages_now()->par[0] == MR_CH && pages_now()->par[2] == MR_MOUT);
     {
-        uint8_t tab = menu_tab, row;
+        uint32_t ch = cfg.ch;
         int stepped = presets_stepped;
-        enc(1, 1);                                          /* ALGO: the next tab */
-        check("ALGO in the menu: the next tab", menu_tab != tab);
-        row = menu_sel;
+        enc(2, 1);
+        check("K1 on MIDI: the channel one step a click", cfg.ch == (ch < 16u ? ch + 1u : 16u));
+        enc(2, -1);
+        check("  and back", cfg.ch == ch);
         enc(0, 1);
-        check("SELECT in the menu: the next row", menu_sel != row);
-        row = menu_sel;
+        check("SELECT in the menu: nothing", page == PAGE_MENU && menu_tab == MT_MIDI);
         enc(6, 1);
-        check("PRESET in the menu: the next patch, not a row", menu_sel == row && presets_stepped == stepped + 1);
+        check("PRESET in the menu: the next patch", presets_stepped == stepped + 1 && page == PAGE_MENU);
         presets_stepped = stepped;
+        enc(1, 1);
+        check("ALGO: the PANEL tab (LEDs, knob accel)", menu_tab == MT_PANEL && pages_now()->nrows == 2u && pages_now()->par[0] == MR_LEDS);
+        enc(1, 1);
+        check("ALGO again: SYSTEM (update mode, factory reset)", menu_tab == MT_SYSTEM && pages_now()->nrows == 2u && pages_now()->par[1] == MR_DEFAULTS);
+        enc(1, 1);
+        check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
+        enc(1, 1);
+        check("ALGO again: MANUAL", menu_tab == MT_MANUAL && !menu_page());
+        enc(1, 1);
+        check("ALGO wraps to MIDI", menu_tab == MT_MIDI);
+        enc(1, -1);
+        check("ALGO back: MANUAL", menu_tab == MT_MANUAL);
     }
-    {                                                       /* #146: an idle SYSTEM tab redraws only the CPU values */
-        uint8_t tab = menu_tab, row = menu_sel;
-        uint32_t i, n = 0, outside = 0, y0 = MENU_Y + menu_pos(MR_CPU) * MENU_PITCH, y1 = MENU_Y + menu_pos(MR_PEAK) * MENU_PITCH;
-        menu_tab = MT_SYSTEM;
-        menu_sel = MR_VERSION;
+    {                                                       /* #146: an idle INFO tab redraws only the CPU values */
+        uint32_t i, n = 0, outside = 0, y0 = MENU_Y + info_pos(MR_CPU) * MENU_PITCH, y1 = MENU_Y + info_pos(MR_PEAK) * MENU_PITCH;
+        menu_tab = MT_INFO;
         ui_dirty = 2;
         loop();
         fb_watch_reset();
@@ -633,10 +645,9 @@ int main(void)
             n += fb_changes[i] != 0u;
             outside += fb_changes[i] != 0u && !in;
         }
-        check("SYSTEM idle, the CPU changed: only the CPU and CPU PEAK values redrawn, no blink",
+        check("INFO idle, the CPU changed: only the CPU and CPU PEAK values redrawn, no blink",
               n > 0u && outside == 0u && fb_blinked() == 0);
         menu_tab = MT_PANEL;
-        menu_sel = MR_LEDS;
         ui_dirty = 2;
         loop();
         fb_watch_reset();
@@ -648,28 +659,59 @@ int main(void)
         for (i = 0; i < 240u * 240u; i++)
             n += fb_changes[i] != 0u;
         check("PANEL idle, the CPU changed: nothing redrawn", n == 0u);
-        menu_tab = MT_SYSTEM;                               /* the device test mode (#291): no FACTORY RESET or UPDATE MODE */
-        menu_sel = MR_DEFAULTS;
+    }
+    {                                                       /* SYSTEM (#395): a turn arms a row, GLO held 2 s does it; a nudge or a tap never */
+        int32_t oct = octave;
+        menu_tab = MT_SYSTEM;
         ui_dirty = 2;
         loop();
-        check("the screen as text: the menu's rows", on_screen("FACTORY RESET") && on_screen("UPDATE MODE") && !on_screen("OCT "));
-        test_input_ms = fm1_ms ? fm1_ms : 1u;
-        setting_step(MR_DEFAULTS, 1);
-        setting_step(MR_DEFAULTS, 1);
-        setting_step(MR_UPDATE, 1);
-        setting_step(MR_UPDATE, 1);
+        tap(BTN_OCT_UP);
+        check("OCT+ in the menu: nothing (no octave, nothing armed)", host_updates == 0 && host_defaults == 0 && menu_armed == MR_COUNT && octave == oct);
+        enc(3, 1);
+        check("K2 right on SYSTEM: FACTORY RESET armed, not done", menu_armed == MR_DEFAULTS && host_defaults == 0 && on_screen("HOLD GLO 2 S"));
+        tap(BTN_GLO);
+        check("GLO tapped while armed: back out of the menu, nothing done", page == 0 && host_defaults == 0 && trail_n == 0);
+        tap(BTN_GLO);
+        enc(1, 1);
+        enc(1, 1);
+        enc(3, 1);
+        check("again: the menu, SYSTEM, FACTORY RESET armed", page == PAGE_MENU && menu_tab == MT_SYSTEM && menu_armed == MR_DEFAULTS);
+        later(MENU_ARM_MS + 100u);
+        panel_held |= 1u << BTN_GLO;
+        panel_edges(1u << BTN_GLO, 0);
+        later(2100);
+        panel_held &= ~(1u << BTN_GLO);
+        panel_edges(0, 1u << BTN_GLO);
         loop();
-        check("test input: FACTORY RESET and UPDATE MODE refused, and said so", host_defaults == 0 && host_updates == 0 && on_screen("TEST INPUT: REFUSED"));
+        check("armed over 5 s ago, GLO held 2 s: too late, nothing done; the hold is no tap, the menu stays", host_defaults == 0 && page == PAGE_MENU);
+        enc(2, 1);
+        check("K1 right: UPDATE MODE armed", menu_armed == MR_UPDATE);
+        enc(2, -1);
+        check("K1 left: disarmed", menu_armed == MR_COUNT);
+        enc(2, 1);
+        test_input_ms = fm1_ms ? fm1_ms : 1u;             /* the device test mode (#291): no FACTORY RESET or UPDATE MODE */
+        panel_held |= 1u << BTN_GLO;
+        panel_edges(1u << BTN_GLO, 0);
+        later(2100);
+        panel_held &= ~(1u << BTN_GLO);
+        panel_edges(0, 1u << BTN_GLO);
+        loop();
+        check("test input: UPDATE MODE's hold refused, and said so", host_updates == 0 && on_screen("TEST INPUT: REFUSED") && page == PAGE_MENU);
         fm1_ms += TEST_HOLD_MS;
-        setting_step(MR_DEFAULTS, 1);
-        setting_step(MR_DEFAULTS, 1);
-        check("  10 s after the last test input: FACTORY RESET by hand again", host_defaults == 1);
+        enc(3, 1);
+        panel_held |= 1u << BTN_GLO;
+        panel_edges(1u << BTN_GLO, 0);
+        later(2100);
+        panel_held &= ~(1u << BTN_GLO);
+        panel_edges(0, 1u << BTN_GLO);
+        loop();
+        check("  10 s after the last test input: K2 right, GLO held 2 s: FACTORY RESET by hand again", host_defaults == 1 && menu_armed == MR_COUNT);
         host_defaults = 0;
         test_input_ms = 0;
-        menu_tab = tab;
-        menu_sel = row;
+        menu_tab = MT_MIDI;
         ui_dirty = 2;
         loop();
+        mlen = 0;
     }
     tap(BTN_SEQ);
     check("SEQ from the menu: the step page, a second step", page == PAGE_SEQ && trail_n == 2);
@@ -677,11 +719,7 @@ int main(void)
     check("HOME: back to the menu", page == PAGE_MENU && trail_n == 1);
     tap(BTN_HOME);
     check("HOME tapped: the menu closes, back on the page it was opened from", page == 0 && trail_n == 0 && pg_cur_dev == 2 && pg_cur_page == 1);
-    panel_held |= 1u << BTN_HOME;                           /* the menu again, then SAVE */
-    panel_edges(1u << BTN_HOME, 0);
-    later(800);
-    panel_held &= ~(1u << BTN_HOME);
-    panel_edges(0, 1u << BTN_HOME);
+    tap(BTN_GLO);                                           /* the menu again, then SAVE */
     tap(BTN_SAVE);
     check("SAVE in the menu: saved, the menu closes", page == 0 && saved == 1);
     saved = 0;
@@ -1180,18 +1218,18 @@ int main(void)
         loop();
     }
 
-    {                                                       /* GLO (#199): the FM-1's own settings */
+    {                                                       /* GLO (#199, #395): the menu, its MIDI tab first */
         int main = eng_find(T_FM1);
         int32_t bpm = eng_get_param((uint32_t)main, FM1_P_TEMPO);
         uint32_t d = pg_cur_dev, g = pg_cur_page, ch = cfg.ch;
         tap(7);
-        check("GLO: the global page, a step on the trail, GLO's jack was high while held", page == PAGE_GLO && trail_n == 1);
-        check("its bar: GLOBAL on coral", px(2, 2) == P_CORAL);
+        check("GLO: the menu on MIDI, a step on the trail, GLO's jack was high while held", page == PAGE_MENU && menu_tab == MT_MIDI && trail_n == 1);
+        check("its bar: MENU on coral", px(2, 2) == P_CORAL);
         enc(2, 4);
-        check("K1 on GLO: the MIDI channel one step a turn, not the patch's tempo", cfg.ch == (ch < 16u ? ch + 1u : 16u) && eng_get_param((uint32_t)main, FM1_P_TEMPO) == bpm);
+        check("K1 in the menu: the MIDI channel one step a turn, not the patch's tempo", cfg.ch == (ch < 16u ? ch + 1u : 16u) && eng_get_param((uint32_t)main, FM1_P_TEMPO) == bpm);
         enc(2, -4);
         later(1500);
-        check("the rows: MIDI channel, clock in, MIDI out, LEDs", pages_now()->nrows == 4u && pages_now()->mod[0] == SETTING_ROW && cfg.ch == ch);
+        check("the rows: MIDI channel, clock in, MIDI out", pages_now()->nrows == 3u && pages_now()->mod[0] == SETTING_ROW && cfg.ch == ch);
         if (getenv("PANEL_SNAP_GLO")) {
             const char *keep = getenv("PANEL_SNAP");
             setenv("PANEL_SNAP", getenv("PANEL_SNAP_GLO"), 1);
@@ -1202,7 +1240,7 @@ int main(void)
         check("HOME: back to the device page it came from", page == 0 && pg_cur_dev == d && pg_cur_page == g && trail_n == 0);
         tap(7);
         tap(7);
-        check("GLO again on its page: back", page == 0);
+        check("GLO again in the menu: back", page == 0);
         eng_set_param((uint32_t)main, FM1_P_TEMPO, bpm);
     }
 
@@ -2581,8 +2619,8 @@ int main(void)
         from = mlen;
         tap(BTN_SEQ);                                       /* SEQ: out as MIDI only */
         check("SEQ in sandbox mode: its CC goes out, the page stays", sent(from, 0xB0u, 89u, 127u) && page == 0u && sb_on);
-        tap(BTN_GLO);                                       /* GLO: the FM-1's own page (MIDI OUT is there) */
-        check("GLO in sandbox mode: the FM-1's own page", page == PAGE_GLO);
+        tap(BTN_GLO);                                       /* GLO: the menu (MIDI OUT is there) */
+        check("GLO in sandbox mode: the menu", page == PAGE_MENU);
         tap(BTN_HOME);
         check("  HOME: back to the sandbox page", page == 0u && px(4, 4) == P_GOLD && K1_TAB != P_NIGHT);
         check("  the screen as text: the sandbox page, the device page's texts gone", on_screen("BROWSER PLAYS") && !on_screen("= OCT ="));
@@ -2633,7 +2671,7 @@ int main(void)
         tap(BTN_GLO);
         m1_live(1);
         loop();
-        check("  begun on GLO (the FM-1's own page): GLO stays", sb_on && page == PAGE_GLO);
+        check("  begun on GLO (the menu): the menu stays", sb_on && page == PAGE_MENU);
         tap(BTN_HOME);
         m1_live(0);
         loop();
@@ -2694,10 +2732,10 @@ int main(void)
         ui_battery(540, 0);
         loop();
         check("one bar", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND);
-        page_set(PAGE_GLO);
+        page_set(PAGE_MENU);
         ui_dirty = 2;
         loop();
-        check("GLO: the battery in its footer too", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND && px(4, 4) == P_CORAL);
+        check("the menu's MIDI tab: the battery in its footer too", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND && px(4, 4) == P_CORAL);
         page_set(0);
         ui_dirty = 2;
         loop();
@@ -2729,20 +2767,19 @@ int main(void)
         ui_battery(600, 0);
         loop();
         menu_value(MR_BATT, v);
-        check("MENU > SYSTEM > BATTERY: the reading and its bars", !strcmp(v, "600  3/3"));
+        check("MENU > INFO > BATTERY: the reading and its bars", !strcmp(v, "600  3/3"));
         ui_battery(600, 1);
         menu_value(MR_BATT, v);
         check("... USB on it", !strcmp(v, "600  USB"));
         ui_battery(600, 0);
         {
-            uint8_t tab = menu_tab, row = menu_sel;
-            uint32_t n = 0, outside = 0, y0 = MENU_Y + menu_pos(MR_BATT) * MENU_PITCH;
+            uint8_t tab = menu_tab;
+            uint32_t n = 0, outside = 0, y0 = MENU_Y + info_pos(MR_BATT) * MENU_PITCH;
             page_set(PAGE_MENU);
-            menu_tab = MT_SYSTEM;
-            menu_sel = MR_VERSION;
+            menu_tab = MT_INFO;
             ui_dirty = 2;
             loop();
-            check("SYSTEM: its seven rows fit above the hint", MENU_Y + menu_count(MT_SYSTEM) * MENU_PITCH <= 220u);
+            check("INFO: its five rows fit above the hint", MENU_Y + INFO_N * MENU_PITCH <= 220u);
             fb_watch_reset();
             ui_battery(560, 0);                             /* 600 -> 590: 3 bars to 2, the value changes */
             loop();
@@ -2753,10 +2790,9 @@ int main(void)
                 outside += fb_changes[i] != 0u && !in;
             }
             menu_value(MR_BATT, v);
-            check("SYSTEM idle, a new reading: only its value redrawn (the menu has no battery), no blink", n > 0u && outside == 0u
+            check("INFO idle, a new reading: only its value redrawn (the menu has no battery), no blink", n > 0u && outside == 0u
                   && fb_blinked() == 0 && !strcmp(v, "590  2/3"));
             menu_tab = tab;
-            menu_sel = row;
             screen_back();
             loop();
         }

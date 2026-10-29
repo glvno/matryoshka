@@ -479,45 +479,51 @@ static void pages_patch_ask(void)
     pg_patch_ask_ms = fm1_ms;
 }
 
-/* GLO (#199): the FM-1's own quick page, never a patch's (the patch's tempo and morph are on Main's device page, #196).
- * K1 the MIDI channel, K2 MIDI clock in, K3 MIDI out, K4 the LEDs: the menu's settings (menu.c setting_step), saved with
- * the state (SAVE). A row of it is a setting, not a module's parameter: SETTING_ROW in its module byte. */
+/* The menu's settings tabs (#395; GLO's own page of #199 became them): each a page of up to four of the FM-1's settings
+ * on K1..K4, drawn as a device page. MIDI: the MIDI channel, clock in, MIDI out (K3: sandbox mode's hint names it); PANEL:
+ * the LEDs, knob acceleration; SYSTEM: update mode, factory reset (a turn arms the row, GLO held 2 s does it: menu.c
+ * menu_fire). The settings live in the state (SAVE), never in a patch (menu.c setting_step). A row of them is a setting,
+ * not a module's parameter: SETTING_ROW in its module byte. */
 #define SETTING_ROW 0xFFu
 static void setting_step(uint32_t row, int32_t s);      /* menu.c */
 static void menu_value(uint32_t row, char *out);
-static ppage_t pg_glo;
-static const ppage_t *glo_page(void)
+static uint8_t menu_armed = MR_COUNT;                   /* menu.c: the SYSTEM row a turn armed for GLO's hold (MR_COUNT: none) */
+static const char *const MENU_TAB_NAME[MT_COUNT] = {"MIDI", "PANEL", "SYSTEM", "INFO", "MANUAL"};
+static ppage_t pg_menu;
+static const ppage_t *menu_tab_page(void)
 {
-    static const char *const LAB[4] = {"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", "LEDS"};
-    static const uint8_t ROW[4] = {MR_CH, MR_CLOCK, MR_MOUT, MR_LEDS};
-    uint32_t k;
-    pg_glo.name = "GLOBAL";
-    pg_glo.nlen = 6;
-    pg_glo.part = 0;
-    pg_glo.parts = 1;
-    pg_glo.display = 0;
-    pg_glo.nrows = PG_ROWS;
+    static const char *const LAB[3][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", ""}, {"LEDS", "KNOB ACCEL", "", ""}, {"UPDATE MODE", "FACTORY RESET", "", ""}};
+    static const uint8_t ROW[3][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, 0}, {MR_LEDS, MR_ACCEL, 0, 0}, {MR_UPDATE, MR_DEFAULTS, 0, 0}};
+    static const uint8_t N[3] = {3, 2, 2};
+    uint32_t t = menu_tab > MT_SYSTEM ? MT_MIDI : menu_tab, k;
+    pg_menu.name = MENU_TAB_NAME[t];
+    pg_menu.nlen = (uint8_t)str_len(MENU_TAB_NAME[t]);
+    pg_menu.part = 0;
+    pg_menu.parts = 1;
+    pg_menu.display = 0;
+    pg_menu.nrows = N[t];
     for (k = 0; k < PG_ROWS; k++) {
-        pg_glo.mod[k] = SETTING_ROW;
-        pg_glo.par[k] = ROW[k];
-        pg_glo.lab[k] = LAB[k];
-        pg_glo.llen[k] = (uint8_t)str_len(LAB[k]);
+        pg_menu.mod[k] = SETTING_ROW;
+        pg_menu.par[k] = ROW[t][k];
+        pg_menu.lab[k] = LAB[t][k];
+        pg_menu.llen[k] = (uint8_t)str_len(LAB[t][k]);
     }
-    return &pg_glo;
+    return &pg_menu;
 }
 
 /* a setting's place in its range, 0..width (its bar) */
 static uint32_t setting_bar(uint32_t row, uint32_t width)
 {
     return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u
+         : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
          : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : cfg.accel) ? width : 0u;
 }
 
 static const ppage_t *pages_now(void)
 {
     pages_ensure();
-    if (page == PAGE_GLO)
-        return glo_page();
+    if (menu_page())
+        return menu_tab_page();
     return pg_ndev ? &pg_page[pg_dev[pg_cur_dev].pg0 + pg_cur_page] : 0;
 }
 
@@ -937,7 +943,7 @@ static void dashes_onto(uint16_t *row, int32_t x0, int32_t x1, uint32_t gap, uin
  * a dash per device (the current gold) and per page group (the current sky) under them; the third section a stack of
  * bars, one per page of the group (the current mist). Widths 2 : 3 : 1 of the screen; a section whose name needs more
  * grows, the others give the rest up evenly, never below their own need. Other headers on the same band: a Page button's
- * list (seafoam), GLO (coral), sandbox mode (gold, sandbox_ui.c), no devices */
+ * list (seafoam), the menu (coral, #395), sandbox mode (gold, sandbox_ui.c), no devices */
 #define HM_DEV 0u
 #define HM_LIST 1u
 #define HM_GLO 2u
@@ -969,19 +975,10 @@ static void head_layout(head_t *h)
         fit(h->b, &FONT_H, 232u - 8u - text_w(&FONT_H, h->a, -1) - 12u);
         return;
     }
-    if (page == PAGE_GLO) {                             /* GLO: GLOBAL and the patch, on coral */
+    if (menu_page()) {                                  /* the menu (#395): MENU and its tab, on coral */
         h->mode = HM_GLO;
-        put(h->a, "GLOBAL")[0] = 0;
-        q = h->b;
-        if (cur_preset < M1_SLOTS) {
-            fmt_int(num, (int32_t)cur_preset + 1);
-            if (cur_preset < 9u)
-                *q++ = '0';
-            q = put(q, num);
-            *q++ = ' ';
-        }
-        caps(q, patch_label ? patch_label : "", patch_label ? str_len(patch_label) : 0u, 20);
-        fit(h->b, &FONT_H, 232u - 8u - text_w(&FONT_H, h->a, -1) - 12u);
+        put(h->a, "MENU")[0] = 0;
+        put(h->b, MENU_TAB_NAME[menu_tab])[0] = 0;
         return;
     }
     if (!pg_ndev) {
@@ -1242,7 +1239,7 @@ static void geo_set(uint32_t y0, uint32_t y1)
 }
 static uint32_t row_y(uint32_t k) { return (4u * g_y0 + k * (g_y1 - g_y0 + ROW_GAP) + 2u) / 4u; }
 static uint32_t row_h(void) { return (g_y1 - g_y0 - 3u * ROW_GAP + 2u) / 4u; }
-/* the device page's and GLO's areas (GLO keeps its button list under the bars) */
+/* the device page's and the menu's areas (the menu keeps its tab chips under the bars) */
 #define GLO_LIST_H 36u
 static void geo_page(int glo) { geo_set(LK_HH + 4u, FOOT_Y - 4u - (glo ? GLO_LIST_H : 0u)); }
 
@@ -1740,27 +1737,16 @@ static void screen_patch(void)
     screen_idle();
 }
 
-/* GLO's list under its bars: what each patch button does in this patch (its label; else its kind; "-" for Nothing) */
-static void glo_footer(void)
+/* the menu's tabs under its bars (#395): a chip each, the open one in seafoam, and the line that says how to move */
+static void menu_chips(void)
 {
-    static const char *const KIND[4] = {"GATE", "-", "TOGGLE", "PAGE"};
-    char t[16], line[40], *q;
-    uint32_t b, i = 0, y0 = g_y1 + 4u;
-    for (b = 0; b < ENG_PANEL_BUTTONS; b++, i++) {
-        uint32_t x, y, kind = eng_button_kind(b);
-        if (b == 5u) {                                  /* (GLO is this page) */
-            i--;
-            continue;
-        }
-        x = BAR_X + (i % 3u) * 76u;
-        y = y0 + (i / 3u) * 16u;
-        q = put(line, PANEL_BTN_NAME[b]);
-        *q = 0;
-        text_bc(&FONT_S, x, y, line, P_FAINT, P_NIGHT, 30, TA_LEFT);
-        if (!panel_label(b, t))
-            put(t, KIND[kind <= 3u ? kind : 1u])[0] = 0;
-        text_bc(&FONT_S, x + 28u, y, t, kind == ENG_BTN_NOTHING && !t[1] ? P_FAINT : P_INK, P_NIGHT, 46, TA_LEFT);
+    uint32_t t, x = BAR_X, y0 = g_y1 + 4u;
+    for (t = 0; t < MT_COUNT; t++) {
+        uint32_t w = text_w(&FONT_S, MENU_TAB_NAME[t], -1) + 10u;
+        text_bc(&FONT_S, x, y0 + 1u, MENU_TAB_NAME[t], t == menu_tab ? P_NIGHT : P_FAINT, t == menu_tab ? P_SEA : P_NIGHT, w, TA_CENTER);
+        x += w + 4u;
     }
+    text_bc(&FONT_S, BAR_X, y0 + 19u, "ALGO: TAB   GLO: BACK   K1-K4: SET", P_FAINT, P_NIGHT, 232u - BAR_X, TA_LEFT);
 }
 
 /* SELECT or ALGO moved the focus (panel.c): the page it reached, drawn in passes (pages_staged) */
@@ -1840,13 +1826,13 @@ static void pages_staged(const ppage_t *pg, int glo)
     pg_plain = 1;
 }
 
-/* the device page (page 0) and GLO's (PAGE_GLO); full: everything, else what changed (the header's sections, the bars
+/* the device page (page 0) and the menu's settings tabs (menu_page); full: everything, else what changed (the header's sections, the bars
  * in place, the footer, PRESET's toast going) */
 static void pages_draw(int full)
 {
     const ppage_t *pg = pages_now();
     uint32_t k;
-    int glo = page == PAGE_GLO;
+    int glo = menu_page();
     geo_page(glo);
     if (!full && pg && pg_algo_due && pg_plain && !glo) {
         ut_begin(UT_PAGE);
@@ -1896,7 +1882,7 @@ static void pages_draw(int full)
     for (k = 0; k < PG_ROWS; k++)
         drawn_note(k, &pg_bar[k]);
     if (glo)
-        glo_footer();
+        menu_chips();
     pg_plain = 1;
     ut_end(UT_FULL);
 }
@@ -1919,7 +1905,7 @@ static void pages_ticks(void)
     uint32_t k;
     if (!pg || sb_on || pg_algo_due || !pg_plain)
         return;
-    geo_page(page == PAGE_GLO);
+    geo_page(menu_page());
     for (k = 0; k < PG_ROWS; k++) {
         bar_t b;
         pages_row(pg, k, &b);
