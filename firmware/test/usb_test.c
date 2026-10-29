@@ -11,7 +11,9 @@
  *   - SysEx in on EP1 while the MIDI ring is full of TRS clock (#177): refused (NAK) while the ring holds back, taken
  *     once midi_in_quiet (an update session, update mode) drops MIDI in;
  *   - SysEx out to a host that stops reading (#375): ota_wire_send waits at most 50 ms once, then gives up at once until
- *     the host takes a packet; a host that reads never loses a message.
+ *     the host takes a packet; a host that reads never loses a message;
+ *   - a refused send leaves no half message (#378): a message that fits the ring goes whole or not at all, a longer one
+ *     that is cut off gets its F7 ahead of the next send.
  *   usb_test            (all of the above; built by tools/usb_test.sh in several configurations)
  *   usb_test dump       (the MIDI-only device + configuration descriptors as hex: the script compares them with a
  *                        FELUCCA_UAC=0 build's, which must be the same bytes) */
@@ -591,6 +593,87 @@ static void test_deaf_host(void)
     usb.up = 0;
     usb.config = 0;
 }
+
+/* #378: a refused send never leaves part of a message in the ring. A message that fits (at most SXQ packets) is queued
+ * whole or not at all; a longer one streams, and when it is cut off, the next send puts the F7 it owes first */
+static void test_cut_sysex(void)
+{
+    uint8_t big[3u * (SXQ + 6u)];                               /* 70 packets: longer than the ring */
+    uint32_t i, w, ms;
+    int rc;
+    usb.up = 1;
+    usb.config = 1;
+    usb.suspended = 0;
+    so_w = so_r = 0;
+    mo_w = mo_r = 0;
+    sx_deaf = 0;
+    sx_cut = 0;
+    host_every = 0;
+    fm1_ms = 2000;
+
+    /* the ring full, the host took 8 packets: a 16-packet message is refused and leaves nothing (it used to leave 8) */
+    for (i = 0; i < 4u; i++)
+        timed_send(&rc);
+    so_r += 8u;
+    w = so_w;
+    ms = timed_send(&rc);
+    CHECK(rc != 0 && so_w == w, "whole or nothing: room for 8, a 16-packet message is refused, %u packets queued (want 0)", so_w - w);
+    CHECK(ms > 0u && ms <= DEAF_WAIT_MAX + 1u, "whole or nothing: the refused send waited %u ms (want 1..%u)", ms, DEAF_WAIT_MAX + 1u);
+    so_r += 8u;                                                 /* room for 16: it goes whole */
+    w = so_w;
+    ms = timed_send(&rc);
+    CHECK(rc == 0 && so_w - w == 16u && (sx_out_q[(so_w - 1u) % SXQ] & 15u) == 7u,
+          "whole or nothing: room for 16, the message goes whole and ends the SysEx (rc %d, +%u, CIN %u)", rc, so_w - w,
+          sx_out_q[(so_w - 1u) % SXQ] & 15u);
+
+    /* a message longer than the ring, the host taking nothing: it fills the ring and is cut off without its F7 */
+    so_w = so_r = 0;
+    sx_deaf = 0;
+    big[0] = 0xF0;
+    for (i = 1; i + 1u < sizeof big; i++)
+        big[i] = (uint8_t)(i & 0x7Fu);
+    big[sizeof big - 1u] = 0xF7;
+    rc = ota_wire_send(big, sizeof big);
+    CHECK(rc != 0 && so_w - so_r == SXQ && (sx_out_q[(so_w - 1u) % SXQ] & 15u) == 4u,
+          "a long message cut off: the ring full of it, the last packet a continuation (rc %d, %u queued, CIN %u)", rc, so_w - so_r,
+          sx_out_q[(so_w - 1u) % SXQ] & 15u);
+    /* the host takes a packet (16 events): the next send puts the owed F7 first; its own 16 packets find room for 15 and
+     * wait, then give up whole */
+    ep1_tx();
+    w = so_w;
+    ms = timed_send(&rc);
+    CHECK(rc != 0 && so_w == w + 1u && sx_out_q[w % SXQ] == (0x05u | 0xF7u << 8),
+          "cut off: the owed F7 goes first as its own packet (rc %d, +%u, packet %08x)", rc, so_w - w, sx_out_q[w % SXQ]);
+    CHECK(!sx_cut, "cut off: the F7 is owed once");
+    ep1_tx();                                                   /* room for 31: the next message goes whole after the F7 */
+    w = so_w;
+    ms = timed_send(&rc);
+    CHECK(rc == 0 && so_w - w == 16u && (sx_out_q[w % SXQ] & 0xFF0Fu) == 0xF004u,
+          "cut off: room again, the next message goes whole, starting with F0 (rc %d, +%u, packet %08x)", rc, so_w - w, sx_out_q[w % SXQ]);
+    /* a cut-off message whose first packet never went out owes nothing */
+    while (so_r != so_w)
+        ep1_tx();
+    so_r = so_w;
+    sx_deaf = 0;
+    for (i = 0; i < 4u; i++)
+        timed_send(&rc);                                        /* full again */
+    rc = ota_wire_send(big, sizeof big);
+    CHECK(rc != 0 && !sx_cut, "a long message refused before its first packet owes no F7 (rc %d, cut %u)", rc, sx_cut);
+
+    /* the host reading: a long message streams through whole */
+    so_w = so_r = 0;
+    sx_deaf = 0;
+    host_every = 1;
+    rc = ota_wire_send(big, sizeof big);
+    CHECK(rc == 0 && !sx_cut, "reading host: a 70-packet message goes through (rc %d, cut %u)", rc, sx_cut);
+    while (so_r != so_w)
+        ep1_tx();
+    host_every = 0;
+    so_w = so_r = 0;
+    sx_deaf = 0;
+    usb.up = 0;
+    usb.config = 0;
+}
 #endif
 
 /* ------------------------------------------------------------------ the stream --- */
@@ -729,6 +812,7 @@ int main(int argc, char **argv)
     test_midi_in_quiet();
     test_sysex_burst();
     test_deaf_host();
+    test_cut_sysex();
 #endif
     stream(44118.0, 60.0, 2600u);                               /* the FM-1: 18 frames a second too many */
     stream(44082.0, 60.0, 2600u);                               /* the other way */

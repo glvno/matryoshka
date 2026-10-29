@@ -184,9 +184,12 @@ static volatile uint32_t so_w, so_r;
  * waits on a host that is not listening; the editor syncs when it connects. 0: the host reads; else so_r + 1 at the stall */
 static uint32_t sx_deaf;
 #define SX_WAIT_MS 50u
+/* #378: a message longer than the ring that gave up half-way left its packets without an F7; the next send puts one
+ * first, so the host's parser never waits for the following message's F0 to end it */
+static uint8_t sx_cut;
 #endif
 
-static volatile uint32_t fm1_ms;                    /* also declared by core.h; parser-only host tests */
+static volatile uint32_t fm1_ms;                   /* also declared by core.h; parser-only host tests */
 #include "midi_queue.h"
 static uint32_t midi_out_q[MQ];
 static volatile uint32_t mo_w, mo_r;
@@ -907,36 +910,65 @@ static void ep1_rx(void)                                /* leaves the packet (NA
 static uint32_t ota_now_ms(void);
 static void ota_idle(void);
 
+/* room in the SysEx ring for `need` packets, waited for as the main loop allows: at most SX_WAIT_MS once, then not at
+ * all until the host takes a packet (sx_deaf, #375). -1 = none within the rules; nothing was queued */
+static int sx_room(uint32_t need, uint32_t t0)
+{
+    while (SXQ - (so_w - so_r) < need) {
+        if (sx_deaf && sx_deaf == so_r + 1u)                /* still nothing taken since the stall: give up at once */
+            return -1;
+        sx_deaf = 0;
+        if (!*(volatile uint8_t *)&usb.config || usb.suspended || ota_now_ms() - t0 > SX_WAIT_MS) {
+            if (usb.config && !usb.suspended)
+                sx_deaf = so_r + 1u;
+            return -1;
+        }
+        ota_idle();
+    }
+    return 0;
+}
+
+static void sx_push(uint32_t pkt)
+{
+    sx_out_q[so_w % SXQ] = pkt;
+    RING_PUBLISH();
+    so_w++;
+}
+
 /* F0..F7 -> USB-MIDI SysEx packets. Refused at once with no host: not configured, or suspended (unplugged after it was
- * configured, or the host asleep: usb.config stays set then, and waiting for room would cost 200 ms per message) */
+ * configured, or the host asleep: usb.config stays set then, and waiting for room would cost 200 ms per message).
+ * #378: a message that fits the ring (at most SXQ packets: every editor message but TRACK_NOW with many notes and the
+ * update protocol's long replies) is queued whole or not at all, so a refused send leaves no half message behind. A
+ * longer one streams; if it is refused half-way, the F7 it owes goes out ahead of the next send (sx_cut) */
 static int ota_wire_send(const uint8_t *p, uint32_t n)
 {
-    uint32_t i = 0, t0 = ota_now_ms();
+    uint32_t i = 0, t0 = ota_now_ms(), npk = (n + 2u) / 3u;
     if (!*(volatile uint8_t *)&usb.config || usb.suspended)
         return -1;
     sx_busy = 1;
+    if (sx_cut) {
+        if (sx_room(1u, t0)) {
+            sx_busy = 0;
+            return -1;
+        }
+        sx_push(0x05u | 0xF7u << 8);                        /* CIN 5: a SysEx ending in one byte */
+        sx_cut = 0;
+    }
+    if (sx_room(npk <= SXQ ? npk : 1u, t0)) {
+        sx_busy = 0;
+        return -1;
+    }
     while (i < n) {
         uint32_t k = n - i >= 3u ? 3u : n - i, pkt;
         uint32_t cin = k == 3u && i + 3u < n ? 4u : k == 3u ? 7u : 4u + k;   /* 4 continues; 5/6/7 end */
         pkt = cin | (uint32_t)p[i] << 8 | (k > 1u ? (uint32_t)p[i + 1] << 16 : 0u) |
               (k > 2u ? (uint32_t)p[i + 2] << 24 : 0u);
-        while (so_w - so_r >= SXQ) {
-            if (sx_deaf && sx_deaf == so_r + 1u) {        /* still nothing taken since the stall: give up at once */
-                sx_busy = 0;
-                return -1;
-            }
-            sx_deaf = 0;
-            if (!*(volatile uint8_t *)&usb.config || usb.suspended || ota_now_ms() - t0 > SX_WAIT_MS) {
-                if (usb.config && !usb.suspended)
-                    sx_deaf = so_r + 1u;
-                sx_busy = 0;
-                return -1;
-            }
-            ota_idle();
+        if (npk > SXQ && sx_room(1u, t0)) {                 /* (a message that fits had its room checked whole) */
+            sx_cut = i > 0u;                                /* packets of it went out: they end with the next send's F7 */
+            sx_busy = 0;
+            return -1;
         }
-        sx_out_q[so_w % SXQ] = pkt;
-        RING_PUBLISH();
-        so_w++;
+        sx_push(pkt);
         i += k;
     }
     sx_busy = 0;

@@ -176,11 +176,13 @@ class Emu extends Target {
     super();
     this.proc = own(spawn(bin, ['serve', fw, '--name', PORT_NAME], { cwd: ROOT, stdio: ['pipe', 'pipe', 'inherit'] }));
     this.waiting = [];
+    this.cutSysex = 0;                            // m1emu's "a SysEx from the FM-1 ended without F7" lines (#378)
     this.ready = new Promise((res, rej) => {
       this.proc.on('exit', (c) => rej(new Error(`m1emu exited (${c})`)));
       createInterface({ input: this.proc.stdout }).on('line', (l) => {
         if (l.startsWith('# ')) {
           console.log(`  emu ${l.slice(2)}`);
+          if (l.includes('ended without F7')) this.cutSysex++;
           if (l.startsWith('# ready')) res();
           return;
         }
@@ -827,6 +829,7 @@ async function main() {
       await sleep(600);
       const s = await until(async () => { const x = await T(); return x.live && x.chip === 'synced' && x.status === 'patch on the FM-1'; }, 10000);
       await check('deaf: the editor syncs a patch to the FM-1 again', !!s && (await emu.waitText('= OCT =', 4000)), `chip ${(await T()).chip}, ${(await T()).status}`);
+      await check('deaf: no message from the FM-1 went out without its F7 (#378)', emu.cutSysex === 0, `${emu.cutSysex} cut off`);
       await emu.snap('deaf-after');
     },
     // #387 (the owner, 2026-10-28): on the piano roll the black keys pick the rows on screen, black key 1 the bottom one,

@@ -43,6 +43,13 @@
   shows nothing armed. The editor's own keys keep going to the FM-1 while the armed set is the FM-1's, because the FM-1
   routes them to it. Before, the FM-1 told the editor nothing of its arming. Arming in the editor still does not reach
   the FM-1. Checked in the emulator (the `arming` scenario); not yet on a device.
+- **A message for the editor that the FM-1 gives up on no longer goes out half-way** (#378). When a computer stops
+  reading the FM-1's MIDI (no app open) and the FM-1's queue for the editor fills, a message that fits the queue is now
+  queued whole or not at all, so nothing goes out without its closing F7. A message longer than the queue (a track with
+  many notes, an update reply) still streams; if it is cut off, its F7 goes out ahead of the next message, so the
+  computer's MIDI parser never waits for the following message to end it. Before, the first message after the computer
+  started reading again could be lost that way. Checked in the host USB test and the emulator's deaf-host scenario;
+  not yet on a device.
 
 ## 1.6.0 — 2026-10-28
 
