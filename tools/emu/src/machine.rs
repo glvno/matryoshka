@@ -10,6 +10,11 @@ pub const RAM_SIZE: usize = 1 << 20;
 pub const ENTRY: u32 = 0x0200_0120;
 const XIP_PAD: usize = 0x120;
 pub const FLASH_SIZE: usize = 1 << 20;
+/// Stack paint (#273): the firmware paints its stacks with this word at boot (main.c `stack_paint`); the emulator also
+/// paints PAINT_LO..PAINT_HI before the first instruction, so a build without that (main before #273) is measured too.
+pub const PAINT: u32 = 0x5AC3_A55C;
+const PAINT_LO: u32 = 0x01C6_0000;
+const PAINT_HI: u32 = 0x01C7_C000; // NOINIT starts here (firmware/app.ld)
 
 pub struct Machine {
     pub cpu: Cpu,
@@ -43,6 +48,11 @@ impl Machine {
         cpu.user = true; // the SPL hands cpu0 over in user mode (fm1-emu)
         let params = RAM_BASE + 0x7fc00; // the SPL's boot parameters: an all-zero pair (fm1-emu)
         soc.write32(params, params + 0x40);
+        let mut a = PAINT_LO;
+        while a < PAINT_HI {
+            soc.write32(a, PAINT);
+            a += 4;
+        }
         cpu.regs[0] = params;
         Machine { cpu, cpu1: None, soc, pending_tick: false, audio: Vec::new() }
     }
@@ -138,9 +148,63 @@ impl Machine {
         v
     }
 
+    /// The painted words nobody wrote since boot, as runs of at least 256 bytes inside PAINT_LO..PAINT_HI: a stack's
+    /// run ends where its deepest use began (its top minus the run's end = the most it ever held).
+    pub fn untouched(&mut self) -> Vec<(u32, u32)> {
+        let mut runs = Vec::new();
+        let (mut a, mut start) = (PAINT_LO, None);
+        while a <= PAINT_HI {
+            let painted = a < PAINT_HI && self.soc.read32(a) == PAINT;
+            match (painted, start) {
+                (true, None) => start = Some(a),
+                (false, Some(s)) => {
+                    if a - s >= 256 {
+                        runs.push((s, a));
+                    }
+                    start = None;
+                }
+                _ => {}
+            }
+            a += 4;
+        }
+        runs
+    }
+
+    /// `untouched` in words: "stack paint: untouched 0x..-0x.. (N B), ..."
+    pub fn stack_report(&mut self) -> String {
+        report(&self.untouched())
+    }
+
     /// Write the audio so far as a 16-bit stereo WAV.
     pub fn write_wav(&self, path: &str, rate: u32) -> std::io::Result<()> {
         write_wav(&self.audio, path, rate)
+    }
+}
+
+/// The untouched runs of every machine dropped so far (a smoke test boots several): per run start the least left.
+static UNTOUCHED: std::sync::Mutex<Vec<(u32, u32)>> = std::sync::Mutex::new(Vec::new());
+
+pub fn untouched_all() -> Vec<(u32, u32)> {
+    UNTOUCHED.lock().map(|v| v.clone()).unwrap_or_default()
+}
+
+pub fn report(runs: &[(u32, u32)]) -> String {
+    let r: Vec<String> = runs.iter().map(|(s, e)| format!("{s:#010x}..{e:#010x} ({} B)", e - s)).collect();
+    format!("stack paint: untouched {}", if r.is_empty() { "nothing".to_string() } else { r.join(", ") })
+}
+
+impl Drop for Machine {
+    fn drop(&mut self) {
+        let runs = self.untouched();
+        if let Ok(mut all) = UNTOUCHED.lock() {
+            for (s, e) in runs {
+                match all.iter_mut().find(|r| r.0 == s) {
+                    Some(r) => r.1 = r.1.min(e),
+                    None => all.push((s, e)),
+                }
+            }
+            all.sort_unstable();
+        }
     }
 }
 

@@ -545,11 +545,11 @@ export type BudgetKey = keyof typeof DEVICE;
  * browser-only ability the patch uses, `label` says which, used 1 of 0) */
 export interface BudgetItem { key: BudgetKey | 'cpu' | 'browser'; label: string; used: number; max: number }
 
-/** a budget line over its limit in words: "CPU 130 %", "Delay over 520 ms: browser only", "70 modules of 64" */
+/** a budget line over its limit in words: "CPU 130 %", "Delay over 700 ms: browser only", "70 modules of 64" */
 export const overText = (i: BudgetItem): string => (i.key === 'cpu' ? `CPU ${i.used} %` : i.key === 'browser' ? i.label : `${i.used} ${i.label} of ${i.max}`);
 
 /**
- * The browser-only abilities a patch uses, one reason each ("Delay over 520 ms: browser only"); none: the FM-1 can play
+ * The browser-only abilities a patch uses, one reason each ("Delay over 700 ms: browser only"); none: the FM-1 can play
  * everything in it. Today: a parameter past the FM-1's range into its browser-only stretch (ParamDef.browserMax), on either
  * morph side. A patch with any is over the FM-1 budget (deviceBudget), so it is never sent.
  */

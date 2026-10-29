@@ -6,7 +6,7 @@
  * its parts. Each group hands the notes to its parts with its own allocator, the rest plays the shared keyboard (one note).
  * Number formats: signals, parameters Q16.16; oscillator phase u32 (2^32 = 1 cycle);
  * filter coefficients Q24; envelope level and rates Q30. Build: -DENG_POOL=... places the big buffers (device:
- * the .pool section). Needs 64-bit multiply (hardware) and, at block rate and on waveform edges, 64/32 division. */
+ * the .pool section), ENG_LOWRAM the reverb and chorus lines (device: .lowram, below the RAM region, #273). Needs 64-bit multiply (hardware) and, at block rate and on waveform edges, 64/32 division. */
 #include "engine.h"
 #include "defs.h"
 #include "dsp_tables.h"
@@ -15,6 +15,9 @@
 
 #ifndef ENG_POOL
 #define ENG_POOL
+#endif
+#ifndef ENG_LOWRAM
+#define ENG_LOWRAM
 #endif
 
 /* The patch: modules, cables, summed inputs; below them the memories (pools of slots with an owner, slot_take; a load
@@ -37,7 +40,7 @@
 #define GRAIN_MAX 8
 #define GRAIN_SPRAY (ENG_SR / 4u)   /* spray scatters a grain's start by up to this many samples (0.25 s) */
 #define RV_LEN 8074u                /* the eight FDN lines (5740), two input allpasses (570) and the 40 ms pre-delay (1764), int16 Q13 */
-#define DELAY_LEN 23000u            /* 521 ms at ENG_SR (the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
+#define DELAY_LEN 30944u            /* 700 ms and 61 samples at ENG_SR (#273; the reference engine, web/src/modules.ts, has the same length; ping-pong halves it) */
 #define STR_LEN 1104u               /* ceil(ENG_SR / 40) + 1: the lowest string is 40 Hz, as the reference */
 #define CH_LEN 927u                 /* ceil(ENG_SR * 0.021): 12 ms +- 8 ms of sweep */
 #define MAX_HELD 128
@@ -572,11 +575,11 @@ static esig_t buf_pool[ENG_NBUF][ENG_BLOCK] ENG_POOL;
 static uint8_t buf_own[ENG_NBUF];
 static int16_t dly_pool[ENG_NDELAY][DELAY_LEN] ENG_POOL;
 static uint8_t dly_own[ENG_NDELAY];
-static int16_t rev_pool[ENG_NREV][RV_LEN] ENG_POOL;
+static int16_t rev_pool[ENG_NREV][RV_LEN] ENG_LOWRAM;
 static uint8_t rev_own[ENG_NREV];
 static int16_t str_pool[ENG_NSTRING][STR_LEN] ENG_POOL;
 static uint8_t str_own[ENG_NSTRING];
-static int16_t ch_pool[ENG_NCHORUS][CH_LEN] ENG_POOL;
+static int16_t ch_pool[ENG_NCHORUS][CH_LEN] ENG_LOWRAM;
 static uint8_t ch_own[ENG_NCHORUS];
 /* a granular line: the recording (Q13 like the delay) and the grains reading it (start, read phase from it Q16, rate Q16,
  * window phase and increment (u32 turns, half a turn over the grain), samples left) */
@@ -4594,10 +4597,11 @@ static void m_mixer(const node_t *nd, inst_t *it, uint32_t n)
 
 #define DELAY_HALF (DELAY_LEN / 2u)
 
-/* the note length the time knob selects while the delay is synced: its range split into DELAY_NDIV steps (also used by the LCD) */
+/* the note length the time knob selects while the delay is synced: 1..DELAY_SYNC_TOP ms split into DELAY_NDIV steps, a time
+ * past it the longest (modules.ts delayDivIndex; also used by the LCD) */
 uint32_t delay_div(int32_t time_q16)
 {
-    int64_t lo = DEFS[T_DELAY].pmin[DELAY_P_TIME], range = DEFS[T_DELAY].pmax[DELAY_P_TIME] - lo;
+    int64_t lo = DEFS[T_DELAY].pmin[DELAY_P_TIME], range = (int64_t)DELAY_SYNC_TOP * 65536 - lo;
     int64_t i = (((int64_t)time_q16 - lo) * (DELAY_NDIV - 1) * 2 + range) / (range * 2);
     return (uint32_t)(i < 0 ? 0 : i > DELAY_NDIV - 1 ? DELAY_NDIV - 1 : i);
 }

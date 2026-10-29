@@ -12,18 +12,26 @@ clang --target=riscv32-unknown-elf -march=rv32im -fno-integrated-as -Os -ffuncti
   -Wno-unused-function -I../hal -I. -DFELUCCA_ID='"FM-1_700"' "$@" -S modular.c -o "$out"
 python3 - "$out" <<'PY'
 import re, sys
-sec = None; pool = 0; items = []
+sec = None; pool = 0; items = []; low = []; alias = set()
 for line in open(sys.argv[1]):
+    m = re.match(r'(\S+) = ', line)          # a global merged into .L_MergedGlobals.N: counted with it, not again
+    if m:
+        alias.add(m.group(1)); continue
     m = re.match(r'\s*\.section\s+([^,\s]+)', line)
     if m:
         sec = m.group(1); continue
     if re.match(r'\s*\.(text|data|bss)\b', line):
         sec = line.split()[0][1:]; continue
     m = re.match(r'\s*\.size\s+(\S+),\s*(\d+)', line)
+    if m and m.group(1) in alias:
+        continue
     if m and sec == '.pool':
         items.append((int(m.group(2)), m.group(1))); pool += int(m.group(2))
+    if m and sec == '.lowram':
+        low.append((int(m.group(2)), m.group(1)))
 for n, name in sorted(items, reverse=True)[:14]:
     print(f"{n:8d}  {name}")
 total = 417792                       # firmware/app.ld POOL
 print(f"pool {pool} B of {total} ({total - pool} B free)")
+print(f".lowram {sum(n for n, _ in low)} B: " + ", ".join(f"{name} {n}" for n, name in low))
 PY

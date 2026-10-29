@@ -52,6 +52,7 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 #include "font5x7.c"
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
+#define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
 #include "engine.c"
 #include "presets.h"
 #include "audio.c"

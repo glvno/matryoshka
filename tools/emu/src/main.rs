@@ -108,6 +108,7 @@ fn run(app: &[u8], a: &[String]) -> ExitCode {
     if let Some(t) = opt(a, "--text") {
         println!("{t:?} on screen: {}", font::on_screen(m.lcd(), t));
     }
+    println!("{}", m.stack_report());
     for (addr, w, n) in m.unknown_mmio() {
         println!("unknown MMIO {} {addr:#010x} x{n}", if w { "write" } else { "read " });
     }

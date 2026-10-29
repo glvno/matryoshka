@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- **The FM-1's Delay reaches 700 ms** (#273; it stopped at 520 ms). The firmware now uses the SRAM below its RAM region
+  that Felucca-based firmwares kept for a debug build and never used (`.lowram`, 29.5 KB; sloop-fm1 found it): the
+  reverb and chorus lines live there, and the room they left in the pool went to the delay line. Every boot proves that
+  memory (two patterns written and read back) and `tools/m1_link.py mem` (DIAG page 124) reports it with each stack's
+  deepest use since boot. Measured on the CI build (`tools/build.py`): the delay line 46,000 → 61,888 B (520 → 700 ms;
+  ping-pong 350 ms a side), the pool 381,032 → 378,916 of 417,792 B, `.lowram` 18,004 B used and 11,584 B free. The
+  stacks keep their sizes (main 24,320 B, supervisor 7,936 B; on the test rig they never went past 2,764 B and 2,052 B
+  over a 50-minute soak). Synced note lengths stay spread over 1..520 ms, so a stored synced Delay keeps its note
+  length; a knob click is 7 ms. The browser's Delay still reaches 1.6 s past that, browser only ("Delay over 700 ms").
+  Checked on the test rig (26 of 26 device scenarios) and in the emulator; not yet on the owner's FM-1.
+
 ## 1.6.0 — 2026-10-28
 
 ### Changes

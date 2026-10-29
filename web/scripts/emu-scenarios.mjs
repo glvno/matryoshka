@@ -957,6 +957,8 @@ async function main() {
     }
   } finally {
     writeFileSync(join(OUT, 'results.json'), JSON.stringify(results, null, 1));
+    // the stack paint nobody reached (#273, serve.rs `stacks`): how deep the firmware's stacks went in these scenarios
+    if (emuProc instanceof Emu) console.log(`  emu ${await Promise.race([emuProc.cmd('stacks'), new Promise((r) => setTimeout(() => r('stacks: no answer'), 3000))])}`);
     if (!flag('--keep')) {
       await browser.close().catch(() => {});
       emuProc?.quit();

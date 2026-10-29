@@ -32,7 +32,7 @@ A factory engine's one-line description in the owner's wording, kept on the asse
 
 ### Browser-only ability
 
-Something only the browser's engine can do, such as a Delay time past 520 ms. A patch that uses one is over the FM-1 budget, so it is a sandbox patch. `browserOnly` in `web/src/patchbin.ts` lists them.
+Something only the browser's engine can do, such as a Delay time past 700 ms. A patch that uses one is over the FM-1 budget, so it is a sandbox patch. `browserOnly` in `web/src/patchbin.ts` lists them.
 
 ### Budget meter
 

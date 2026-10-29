@@ -1154,6 +1154,12 @@ const delayKit = (name: string, params: Record<string, number>): void =>
 delayKit('delay-pingpong', { time: 120, pingpong: 1 });
 delayKit('delay-sync', { sync: 1, div: 5, bpm: 133 });
 delayKit('delay-sync-pingpong', { sync: 1, div: 6, bpm: 90, pingpong: 1 });
+// the FM-1's 700 ms line (#273): echoes past the old 521 ms, free, synced (a half note at 120 bpm, cut to the line) and
+// ping-pong (half the line)
+delayKit('delay-long', { time: 650 });
+delayKit('delay-long-sync', { sync: 1, time: 416 });
+delayKit('delay-long-pingpong', { time: 700, pingpong: 1 });
+for (const n of ['delay-long', 'delay-long-sync', 'delay-long-pingpong']) ends[n] = 128 * 800;
 // #351: the extra note lengths (1/32; 1/2T, longer than the ping-pong half, is cut to it) and the swelling feedback
 delayKit('delay-sync-note', { sync: 1, note: 1 });
 delayKit('delay-sync-note-pingpong', { sync: 1, note: 2, pingpong: 1 });

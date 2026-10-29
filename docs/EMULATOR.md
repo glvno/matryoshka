@@ -138,8 +138,15 @@ HOME held (the menu), HOME; the PRESET encoder; TRS MIDI program change and note
 (name shown, sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning);
 SAVE, the flash kept, a restart (STATE RESTORED and the state back); a patch bank written straight into the flash
 (three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the safety steps
-(shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; no register
+(shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; the Delay at its
+longest time (#273: the echo 700 ms after the note, ping-pong 350 ms left and 700 ms right); no register
 fm1-emu does not model besides P33. Snapshots of each step, a WAV and the levels table go to `build/emu/`.
+
+**Stack depth (#273).** `m1emu` fills 0x01C60000..0x01C7C000 with the word 0x5AC3A55C before the first instruction (the
+firmware paints its stacks with the same word since #273, so a build from before is measured too). At the end, `smoke`
+prints the runs of that word nobody wrote, over every machine of the run: a stack's run ends where its deepest use began
+(top minus that = the most it held). `run` prints it for its one machine, `serve` answers `stacks` with it and writes it to
+stderr on `quit` (so `emu:scenarios` shows it). See "Memory map since #273" in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## What it does not cover
 
