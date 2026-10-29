@@ -8,7 +8,7 @@ An in-place change to a row whose ruling still stands but whose facts moved. Wri
 
 ### Arm
 
-To make a device with a keys input hear Main's keys, cable or not. Several devices can be armed at once (a layer, or a split by their key ranges); while any is armed, only armed devices hear Main, and while none is, the cables decide. Arming reroutes only Main: other key sources keep playing what they drive.
+To make a device with a keys input hear Main's keys, cable or not. Several devices can be armed at once (a layer, or a split by their key ranges); while any is armed, only armed devices hear Main, and while none is, the cables decide. Arming reroutes only Main: other key sources keep playing what they drive. A device whose keys come through a track or an Arpeggiator arms them with it, so the keys reach it the way its cables take them. An Arpeggiator alone is not armed.
 
 ### Arrange mode
 

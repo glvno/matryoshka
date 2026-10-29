@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { armable, armableDevices, armedFromMask, armMask, armView, keepArmed, mutedCables, virtualCables } from './arm';
+import { armable, armableDevices, armedFromMask, armedWith, armMask, armView, keepArmed, mutedCables, virtualCables } from './arm';
+import { assembliesOf } from './assembly';
+import { FM1_PRESETS } from './presets';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { newPatch } from './patch';
@@ -97,5 +99,41 @@ describe('arming as a set (#190)', () => {
     const both = armMask(p, [`a${a.id}`, `a${b.id}`]);
     expect(armedFromMask(p, ...both).sort()).toEqual([`a${a.id}`, `a${b.id}`].sort());
     expect(armMask(p, [])).toEqual([0, 0]);
+  });
+});
+
+describe('an instrument armed through its key sources (#395)', () => {
+  const sourceOf = (p: Patch, type: string): number => p.modules.find((m) => m.type === type)!.id;
+
+  it('every factory instrument fed by a track or an Arpeggiator arms them with it; an Arpeggiator alone is not armed', () => {
+    for (const [name, make] of Object.entries(FM1_PRESETS)) {
+      const p = make();
+      const arp = p.modules.find((m) => m.type === 'arp');
+      if (arp) expect(armable(p, `m${arp.id}`), name).toBe(false);
+      for (const a of assembliesOf(p)) {
+        const fed = p.cables.some((c) => a.modules.includes(c.to.module) && c.from.port === 'keys' && !a.modules.includes(c.from.module));
+        if (!fed) continue;
+        expect(armable(p, `a${a.id}`), `${name}: ${a.label}`).toBe(true);
+        const on = armedWith(p, [`a${a.id}`]);
+        if (arp) expect(on, name).toContain(`m${arp.id}`);
+        // nothing the keys reach the instrument through is muted, and only a keys input nothing cables into gets Main's
+        expect(mutedCables(p, [`a${a.id}`]).filter((c) => on.includes(`m${c.to.module}`)), name).toEqual([]);
+        for (const v of virtualCables(p, [`a${a.id}`]))
+          expect(p.cables.some((c) => c.to.module === v.to.module && c.to.port === v.to.port), name).toBe(false);
+        expect(armedFromMask(p, ...armMask(p, [`a${a.id}`])), name).toEqual([`a${a.id}`]);
+      }
+    }
+  });
+
+  it("Oracle V armed: Main's keys reach it through its track and the bypassed Arpeggiator, and the mask names both", () => {
+    const p = FM1_PRESETS['Oracle V']();
+    const a = assembliesOf(p).find((x) => x.label === 'Oracle V')!;
+    const steps = sourceOf(p, 'steps'), arp = sourceOf(p, 'arp');
+    expect(armedWith(p, [`a${a.id}`]).sort()).toEqual([`a${a.id}`, `m${arp}`, `m${steps}`].sort());
+    const view = armView(p, [`a${a.id}`]);
+    expect(view.cables.some((c) => c.from.port === 'keys' && c.to.module === steps)).toBe(true);
+    const [lo, hi] = armMask(p, [`a${a.id}`]);
+    const [slo, shi] = armMask(p, [`m${steps}`]);
+    expect([lo & slo, hi & shi]).toEqual([slo, shi]);
   });
 });

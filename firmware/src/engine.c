@@ -2489,14 +2489,29 @@ void eng_arm(int module)
     eng_arm_mask(module >= 0 && (uint32_t)module < E.nmod && E.node[module].type == T_STEPS ? (uint64_t)1 << module : 0u);
 }
 
-int eng_listens(uint32_t m)
+/* a key source n (an Arpeggiator or a Steps track) and the track an Arpeggiator plays, as a mask */
+static uint64_t key_chain(uint32_t n)
 {
-    if (!E.loaded || m >= E.nmod)
+    uint64_t b;
+    if (n >= 64u)
         return 0;
-    switch (E.node[m].type) {
-    case T_STEPS: case T_ARP: return 1;
-    case T_DRUMMAP: return E.node[m].ksrc == 1u;
-    default: return E.node[m].grp && !E.grp[E.node[m].grp].src;
+    b = (uint64_t)1 << n;
+    if (E.node[n].type == T_ARP && E.node[n].ksrc >= 2u && E.node[n].ksrc - 2u < 64u)
+        b |= (uint64_t)1 << (E.node[n].ksrc - 2u);
+    return b;
+}
+
+uint64_t eng_arms(uint32_t m)
+{
+    const node_t *nd;
+    if (!E.loaded || m >= E.nmod || m >= 64u)
+        return 0;
+    nd = &E.node[m];
+    switch (nd->type) {
+    case T_STEPS: return (uint64_t)1 << m;
+    case T_ARP: return key_chain(m);
+    case T_DRUMMAP: return nd->ksrc == 1u ? (uint64_t)1 << m : nd->ksrc >= 2u ? key_chain(nd->ksrc - 2u) : 0u;
+    default: return !nd->grp ? 0u : E.grp[nd->grp].src ? key_chain(E.grp[nd->grp].src - 1u) : (uint64_t)1 << m;
     }
 }
 int eng_armed(void) { return E.loaded && E.arm ? (int)E.arm - 1 : -1; }   /* (the first armed track: REC records into it) */

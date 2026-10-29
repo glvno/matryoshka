@@ -911,9 +911,13 @@ int main(void)
               && seq_rec && eng_transport_running() && (E.trk_rec >> E.node[eng_steps_module(0)].trk & 1u) && page == PAGE_ENV && !rec_held_used);
         tap(BTN_PLAY);
         check("  PLAY: REC and the transport stopped", !seq_rec && !eng_transport_running() && !E.trk_rec);
-        pages_focus(2, 0);                                  /* the Drum map: its keys come from the track, not Main */
+        pages_focus(2, 0);                                  /* the Drum map: its keys come through the track (#395) */
         tap(3);
-        check("SEL on a row with nothing on Main's keys: nothing armed there", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0));
+        check("SEL on the Drum map's row, its track armed: armed through it, so taken out with it, the keys WIRED",
+              eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+        tap(3);
+        check("SEL there again: the track it plays through armed", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+              && strstr(msg_text, " ARMED") != 0);
         pages_focus(1, 0);
         tap(3);
         check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", eng_arm_mask_get() == 0u && eng_armed() < 0
@@ -1110,10 +1114,35 @@ int main(void)
             tap(3);                                         /* SEL on the assembly's page (#395): armed, no preset list */
             loop();
             printf("      (the bar: \"%s\")\n", msg_text);
-            check("SEL on an assembly device's page: no preset list; armed alone if it takes keys, else it says so (not \"SEL ON\")",
-                  page == 0 && (env_listeners(d) ? eng_arm_mask_get() == env_listeners(d) && strstr(msg_text, " ARMED") != 0
-                                : eng_arm_mask_get() == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS")));
+            {
+                uint64_t a = eng_arm_mask_get();
+                uint32_t m, trk = 0, arp = 0;
+                for (m = 0; m < 64u; m++)
+                    if (a >> m & 1u) {
+                        trk += eng_type(m) == T_STEPS;
+                        arp += eng_type(m) == T_ARP;
+                    }
+                check("SEL on an instrument's page: no preset list; armed with the track and the Arpeggiator its keys come "
+                      "through (#395), not NOTHING HERE TAKES KEYS",
+                      page == 0 && a && a == env_listeners(d) && strstr(msg_text, " ARMED") != 0 && trk == 1u && arp == 1u);
+            }
             eng_arm_mask(0);
+            {                                           /* an Arpeggiator alone is not a device to arm (#395) */
+                uint32_t e, d0 = pg_cur_dev, g0 = pg_cur_page;
+                for (e = 0; e < pg_ndev && !(pg_dev[e].module >= 0 && eng_type((uint32_t)pg_dev[e].module) == T_ARP); e++)
+                    ;
+                check("  (the patch has an Arpeggiator's device)", e < pg_ndev);
+                if (e < pg_ndev) {
+                    (void)pages_focus(e, 0);
+                    later(1500);
+                    tap(3);
+                    loop();
+                    check("SEL on an Arpeggiator's page: nothing armed, NOTHING HERE TAKES KEYS",
+                          eng_arm_mask_get() == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
+                    (void)pages_focus(d0, g0);
+                    later(1500);
+                }
+            }
             tap(4);                                         /* the environment (#198): ALGO and PRESET step the row's presets */
             {
                 char before[17];
