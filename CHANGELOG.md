@@ -4,6 +4,15 @@
 
 ### Changes
 
+- **On the FM-1, GLO opens the settings menu** (#395, slice 1). The GLOBAL page is gone: GLO opens the menu on its MIDI
+  tab, and GLO again or a HOME tap goes back. ALGO steps the tabs. MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), PANEL
+  (LEDS, KNOB ACCEL) and SYSTEM (UPDATE MODE, FACTORY RESET) are pages of settings, each row turned by its own knob
+  K1..K4 in that knob's colour, drawn like a device page with the tab chips under the bars; INFO lists VERSION, CPU,
+  CPU PEAK, BANK SLOTS and BATTERY; MANUAL is the text as before. UPDATE MODE and FACTORY RESET take a hold: turn their
+  knob right (the bar says HOLD GLO 2 S), then hold GLO for 2 s within 5 s; a nudge alone does nothing. SELECT, OCT-
+  and OCT+ do nothing in the menu, PRESET steps patches as everywhere, SAVE saves and closes it. HOME held no longer
+  opens anything. Sandbox mode's hint TURN ON MIDI OUT: GLO, K3 still holds. The editor's GLO button reads MENU.
+  Host- and emulator-tested; not yet on a device.
 - **The FM-1's Delay reaches 700 ms** (#273; it stopped at 520 ms). The firmware now uses the SRAM below its RAM region
   that Felucca-based firmwares kept for a debug build and never used (`.lowram`, 29.5 KB; sloop-fm1 found it): the
   reverb and chorus lines live there, and the room they left in the pool went to the delay line. Every boot proves that

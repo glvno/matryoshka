@@ -29,7 +29,7 @@ static uint8_t play_turned;                   /* PRESET turned the tempo while P
 static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
 
 /* The device's own buttons (matrix ids, M-VAVE's fm1_open order): OCT- 0, OCT+ 1: octave; SAVE 9: write the patch into its slot
- * (in the menu: and close it); HOME 8: tap = back (the trail), held = the menu; PLAY 12: the transport. The others are the
+ * (in the menu: and close it); HOME 8: tap = back (the trail); PLAY 12: the transport. The others are the
  * patch's (PANEL_BTN_ID). */
 #define BTN_OCT_DOWN 0u
 #define BTN_OCT_UP 1u
@@ -75,6 +75,8 @@ static void panel_button(uint32_t b, int down) { panel_button_set(b, down); }
 static void page_button(uint32_t b, int down);
 static void page_set(uint32_t p);
 static void page_mask(void);
+static void screen_back(void);                 /* (below: one step back on the trail) */
+static uint32_t glo_t0;                        /* fm1_ms | 1 of a GLO press in the menu, 0: none; bit 1: its 2 s hold fired (menu_fire) */
 static void panel_button_set(uint32_t b, int down)
 {
     const uint8_t *pn;
@@ -82,8 +84,18 @@ static void panel_button_set(uint32_t b, int down)
         page_button(b, down);
         return;
     }
-    if (b == BTN_GLO_IDX && down)                  /* GLO (#118): Main's global page; again (or HOME) goes back. Its jack as a Gate */
-        page_set(PAGE_GLO);
+    if (b == BTN_GLO_IDX) {                        /* GLO (#118, #395): the menu on its MIDI tab; in the menu a tap goes back (as HOME)
+                                                     * and a 2 s hold does an armed SYSTEM row (glo_t0, panel_edges). Its jack as a Gate */
+        if (down && page != PAGE_MENU)
+            page_set(PAGE_MENU);
+        else if (down)
+            glo_t0 = (fm1_ms & ~3u) | 1u;
+        else if (glo_t0) {
+            if (!(glo_t0 & 2u))
+                screen_back();
+            glo_t0 = 0;
+        }
+    }
     pn = m1_panel();
     uint32_t tog = pn ? ((uint32_t)pn[0] | (uint32_t)pn[1] << 8) & ~FIXED_BTNS : 0u, mask = eng_buttons_get(), was = mask;
     if (tog >> b & 1u) {
@@ -302,11 +314,14 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 7u; k++)                        /* a turn while the track's clear asks: not cleared (#231) */
         if (st[k])
             seq_clear_cancel();
-    if (page == PAGE_MENU) {                        /* the settings menu: ALGO tabs, SELECT rows, K1..K4 the value */
+    if (page == PAGE_MENU) {                        /* the menu (#395): ALGO the tab, SELECT the manual's scroll (menu.c); PRESET
+                                                     * steps the patches; a settings tab's K1..K4 go on below, as a device page's */
         menu_knobs(st);
-        if (st[6])                                  /* (PRESET only ever steps the patches) */
+        if (st[6])
             preset_step(st[6]);
-        return;
+        st[0] = st[1] = st[6] = 0;
+        if (!menu_page())
+            return;
     }
     if (st[6] && (panel_held >> BTN_PLAY & 1u)) {   /* PLAY held + PRESET: the tempo (the Main module's), 1 bpm a click */
         play_turned = 1;
@@ -390,8 +405,6 @@ static void panel_encoders(int32_t *st)
             st[2] = st[3] = 0;
         }
     }
-    if (page == PAGE_GLO && (st[0] || st[1]))       /* SELECT / ALGO on GLO's page: back to the device pages, then as there */
-        screen_back();
     if (page == PAGE_PRESETS) {                     /* the preset list: SELECT / ALGO load the next / previous as they turn */
         if (presets_turn(st[0] + st[1]))
             ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the old and the new row: #229) */
@@ -406,7 +419,7 @@ static void panel_encoders(int32_t *st)
             ui_dirty = ui_dirty ? ui_dirty : 1;
         st[0] = st[1] = 0;
     }
-    if (page != 0 && page != PAGE_GLO && page != PAGE_ENV)
+    if (page != 0 && !menu_page() && page != PAGE_ENV)
         return;
     if (st[0] && pg_list_btn >= 0 && !pg_list_peek) {   /* SELECT inside a page list: leaves it */
         pg_list_btn = -1;
@@ -438,7 +451,7 @@ static void panel_encoders(int32_t *st)
         if (!c || (r = pages_turn(k, c, cfg.accel && fm1_ms - last_ms[2u + k] < 80u, &mod, &par, &v)) < 0)
             continue;
         last_ms[2u + k] = fm1_ms;
-        if (r == 2) {                               /* GLO: an FM-1 setting (pages_turn set it): not the patch's, not the editor's */
+        if (r == 2) {                               /* the menu: an FM-1 setting (pages_turn set it): not the patch's, not the editor's */
             if (!ui_dirty)
                 ui_dirty = 1;
             continue;
@@ -585,10 +598,9 @@ static void preset_store_focused(void)
 }
 
 /* buttons pressed (p) and let go (rel) since the last call, matrix ids as bits; call it often, also with no edges: a
- * held HOME opens the menu after 0.7 s */
+ * GLO held in the menu does its armed row after 2 s */
 static void panel_edges(uint32_t p, uint32_t rel)
 {
-    static uint32_t home_t0;                        /* fm1_ms | 1 of the HOME press, 0: not held; bit 1: the hold fired */
     {                                               /* MIDI out: every button, raw, before anything uses it */
         uint32_t id;
         for (id = 0; (p | rel) >> id && id < 14u; id++) {
@@ -615,13 +627,8 @@ static void panel_edges(uint32_t p, uint32_t rel)
         else
             seq_clear_press();
     }
-    if (page == PAGE_MENU) {                        /* the menu: OCT- / OCT+ step the selected row's value */
-        if (p & (1u << BTN_OCT_DOWN))
-            menu_set_row(menu_sel, -1);
-        if (p & (1u << BTN_OCT_UP))
-            menu_set_row(menu_sel, 1);
+    if (page == PAGE_MENU)                          /* the menu: OCT- / OCT+ do nothing there (#395) */
         p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
-    }
     if (page == PAGE_SEQ && seq_kbd()) {            /* the armed track's keyboard (a live take): OCT the octave, FX and LFO are the
                                                      * page's */
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
@@ -713,19 +720,13 @@ static void panel_edges(uint32_t p, uint32_t rel)
         }
     }
     page_hold_poll();
-    if (p & (1u << BTN_HOME))
-        home_t0 = (fm1_ms & ~3u) | 1u;              /* HOME acts on release: a tap goes back, 0.7 s held opens the menu
-                                                     * (bit 1 cleared: with fm1_ms's own bit 1 a press looked fired) */
-    if (home_t0 && !(home_t0 & 2u) && (panel_held >> BTN_HOME & 1u) && fm1_ms - (home_t0 & ~3u) > 700u) {
-        home_t0 |= 2u;
-        if (page != PAGE_MENU)
-            page_set(PAGE_MENU);
+    if (glo_t0 && !(glo_t0 & 2u) && (panel_held >> BTN_GLO & 1u) && fm1_ms - (glo_t0 & ~3u) > 2000u) {   /* GLO held 2 s in the
+                                                     * menu: the armed SYSTEM row (#395); its release then does not go back */
+        glo_t0 |= 2u;
+        menu_fire();
     }
-    if (rel & (1u << BTN_HOME)) {
-        if (home_t0 && !(home_t0 & 2u))
-            screen_back();                          /* a tap: one step back (out of the menu, the SEQ page ...) */
-        home_t0 = 0;
-    }
+    if (rel & (1u << BTN_HOME))
+        screen_back();                              /* HOME: one step back (out of the menu, the SEQ page ...); held it is nothing (#395) */
     if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
         play_turned = 0;
     if ((rel & (1u << BTN_PLAY)) && !play_turned)
@@ -741,7 +742,7 @@ static void panel_status(void)
     sandbox_poll();                                 /* (no LIVE for 5 s: the FM-1 sounds again) */
     if (sb_home_due) {                              /* sandbox mode began: its page, unless the FM-1's own settings show */
         sb_home_due = 0;
-        if (sb_on && page != 0u && page != PAGE_MENU && page != PAGE_GLO)
+        if (sb_on && page != 0u && page != PAGE_MENU)
             page_show(0u);
     }
     if (knob_touched || button_touched) {           /* what was just moved, in the bar for a second */
@@ -776,11 +777,11 @@ static void panel_status(void)
         if (shed_seen)
             ui_msg("OVERLOAD: A PART LESS", 1500);
     }
-    if ((page == 0 || page == PAGE_GLO) && pages_expired())   /* PRESET's toast ended: the page comes back */
+    if (dev_like() && pages_expired())            /* PRESET's toast ended: the page comes back */
         ui_dirty = ui_dirty ? ui_dirty : 1;
     {                                               /* the live ticks of modulated rows, ten times a second */
         static uint32_t tick_ms;
-        if ((page == 0 || page == PAGE_GLO) && !ui_dirty && fm1_ms - tick_ms >= 100u) {
+        if (dev_like() && !ui_dirty && fm1_ms - tick_ms >= 100u) {
             tick_ms = fm1_ms;
             pages_ticks();
         }

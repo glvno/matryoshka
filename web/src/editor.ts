@@ -2958,7 +2958,7 @@ export class Editor {
     else if (kind !== 'nothing') top.append(kindMark(kind));
     const label = document.createElement('span');
     label.className = 'pb-label';
-    label.textContent = glo ? 'GLOBAL' : fixed ? name : kind === 'nothing' ? name : panel?.labels?.[b] || name;
+    label.textContent = glo ? 'MENU' : fixed ? name : kind === 'nothing' ? name : panel?.labels?.[b] || name;
     top.append(label);
     const under = document.createElement('span');
     under.className = 'pb-hw';
@@ -5008,12 +5008,12 @@ export class Editor {
   private focusedDevice(): Device | undefined { return this.gloOn ? this.gloDevice() : this.devices.find((d) => d.key === this.focus?.device); }
   private focusedPage(): Page | undefined { return this.gloOn ? this.gloDevice().pages[0] : this.focusedDevice()?.pages[this.focus!.page]; }
 
-  // ---- GLO (#199): the FM-1's own quick page (pages_ui.c glo_page: MIDI channel, clock in, MIDI out, LEDs), never the
+  // ---- GLO (#199, #395): the FM-1's own menu (pages_ui.c menu_tab_page: MIDI channel, clock in, MIDI out; LEDs; ...), never the
   // patch's: the editor has no rows for it (the patch's tempo and morph are on Main's device page, #196). Not one of the
   // devices: the pickers leave it, the focus stays where it was.
   private gloOn = false;
   private gloDevice(): Device {
-    return { key: '$glo', name: 'Global (the FM-1’s own)', pages: [{ name: 'Global', part: 0, parts: 1, rows: [] }] };
+    return { key: '$glo', name: 'Menu (the FM-1’s own)', pages: [{ name: 'Menu', part: 0, parts: 1, rows: [] }] };
   }
 
   /** GLO's page on (or off: back to the focus it left) */

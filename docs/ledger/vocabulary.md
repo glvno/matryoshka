@@ -160,7 +160,7 @@ The page at the old GitHub Pages address: it sends visitors to the Cloudflare si
 
 ### Global
 
-Belonging to the FM-1, not to any patch (the GLO page, the MENU). Avoid: global for the patch's own tempo, morph and arpeggiators.
+Belonging to the FM-1, not to any patch (the MENU, which GLO opens). Avoid: global for the patch's own tempo, morph and arpeggiators.
 
 ### Golden kit
 
