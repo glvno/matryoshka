@@ -54,13 +54,13 @@ The arpeggiator is a module in the patch, not part of the firmware. See [D-415](
 
 Knobs and stuff. Every top-level module or assembly with card rows is a device, and so are Main, each Steps track and the Output.
 
-* **PRESET** steps through the patches (it skips empty slots)
+* **HOME held + PRESET** steps through the patches (it skips empty slots); **PRESET** alone steps the presets of the device in focus (an assembly's stored values; a module has none)
 * **SELECT** steps through the devices, **ALGO** through the pages of the device
 * **KNOB1 - 4** turn the four rows of the page in focus
 * **HOME** goes back one step
-* **ENV** opens the environment page: one row per device, opening on the current one. SELECT moves the row, K1–K4 turn the row's first page, PRESET or ALGO step the row's presets, SEL opens its device pages; ENV or HOME goes back.
+* **ENV** opens the environment page: one row per device, opening on the current one. SELECT moves the row, K1–K4 turn the row's first page, PRESET or ALGO step the row's presets, SEL arms the row's device or disarms it; ENV or HOME goes back.
 * **GLO** opens the settings menu on its MIDI tab; ALGO steps the tabs (MIDI, PANEL, SYSTEM, INFO, MANUAL), K1–K4 set a tab's rows, and GLO again or HOME goes back
-* **SEL** on an assembly device's page opens its preset list; on a Steps track's page it opens the SEQ page on that track
+* **SEL** on a device's page arms that device alone (armed: disarms it); **SEQ** on a Steps track's page opens the SEQ page on that track
 * **SEQ** opens and closes the SEQ page, where the white keys are the track's steps
 * **FX, LFO, EDIT, ARP** are patch buttons: the patch decides what each does (a gate, a Toggle that bypasses a module or assembly, or a list of device pages)
 * **SAVE held at power-on** boots in safe mode: it plays the fallback patch compiled into the firmware and reads nothing from flash (`SAFE MODE: FALLBACK PATCH`); the stored state stays in flash for the next normal boot, MENU > SYSTEM > FACTORY RESET erases it. A boot that did not get through makes the next one safe by itself; two failed boots in a row go to update mode. See [D-154](docs/ledger/firmware-install.md#D-154) and [D-155](docs/ledger/firmware-install.md#D-155).

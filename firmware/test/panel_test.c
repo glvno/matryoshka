@@ -105,6 +105,15 @@ static void tap(uint32_t id)
     panel_edges(0, 1u << id);
     loop();
 }
+/* HOME held + PRESET (#395): the next / previous patch; HOME's release then goes nowhere */
+static void patch_enc(int32_t clicks)
+{
+    panel_held |= 1u << BTN_HOME;
+    panel_edges(1u << BTN_HOME, 0);
+    enc(6, clicks);
+    panel_held &= ~(1u << BTN_HOME);
+    panel_edges(0, 1u << BTN_HOME);                     /* (no loop after it: the release draws nothing) */
+}
 static void later(uint32_t ms)
 {
     fm1_ms += ms;
@@ -633,6 +642,8 @@ int main(void)
         check("SELECT in the menu: nothing", page == PAGE_MENU && menu_tab == MT_MIDI);
         enc(6, 1);
         check("PRESET in the menu: the next patch", presets_stepped == stepped + 1 && page == PAGE_MENU);
+        patch_enc(1);
+        check("HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", presets_stepped == stepped + 2 && page == PAGE_MENU);
         presets_stepped = stepped;
         enc(1, 1);
         check("ALGO: the PANEL tab (LEDs, knob accel)", menu_tab == MT_PANEL && pages_now()->nrows == 2u && pages_now()->par[0] == MR_LEDS);
@@ -768,8 +779,12 @@ int main(void)
         loop();
         check("PLAY held + PRESET: the tempo, the release does not stop", panel >= 0 && (eng_get_param((uint32_t)panel, FM1_P_TEMPO) >> 16) == bpm + 3 && eng_transport_running() == 1);
     }
+    msg_text[0] = 0;
     enc(6, 1);
-    check("PRESET alone: the next patch", presets_stepped == 1);
+    check("PRESET alone on a module's page (#395): no patch, NO PRESETS ON A MODULE", presets_stepped == 0 && !strcmp(msg_text, "NO PRESETS ON A MODULE"));
+    later(1600);
+    patch_enc(1);
+    check("HOME held + PRESET: the next patch", presets_stepped == 1 && page == 0);
     tap(BTN_SAVE);
     check("SAVE", saved == 1);
 
@@ -1071,47 +1086,27 @@ int main(void)
             loop();
             n0 = dp_list(d);
             check("its factory presets in ROM", n0 >= 2u);
-            presets_open();                                 /* (nothing opens the list since SEL arms, #395; its PRESET
-                                                             * slice removes it: until then its code is tested here) */
-            page_set(PAGE_PRESETS);
-            loop();
-            check("(the preset list, opened directly)", page == PAGE_PRESETS);
-            if (getenv("PANEL_SNAP_PRESETS")) {
-                const char *keep = getenv("PANEL_SNAP");
-                setenv("PANEL_SNAP", getenv("PANEL_SNAP_PRESETS"), 1);
-                snap();
-                if (keep) setenv("PANEL_SNAP", keep, 1);
-            }
-            {
-                uint32_t i, mod = 0, par = 0;
-                for (i = 0; i < pg_dev[d].nrows; i++)
-                    if (pg_dev[d].rows[2u * i] != 0xFFu && !(pg_dev[d].rows[2u * i + 1u] & POLY_ROW)) {
-                        mod = pg_dev[d].rows[2u * i];
-                        par = pg_dev[d].rows[2u * i + 1u];
-                        break;
-                    }
-                (void)mod; (void)par;
+            {                                               /* PRESET on the assembly's page (#395): its next preset, loaded,
+                                                             * the editor told, its name in the bar; the rows redrawn as a
+                                                             * whole redraw would draw them */
+                uint16_t keep[240 * 240];
+                char before[17];
+                int stepped = presets_stepped;
+                memcpy(before, pg_pname[d], sizeof before);
                 param_now = 0;
-                {                                           /* #229: the old and the new row alone */
-                    uint32_t s0 = pr_sel, ya = ENV_Y0 + s0 * ENV_ROW_H, all, part;
-                    later(2000);
-                    fb_watch_reset();
-                    lcd_px = lcd_xfers = 0;
-                    enc(0, 1);                              /* SELECT: the next preset, loaded */
-                    all = fb_changed_in(0, 0, 240, 240);
-                    part = fb_changed_in(0, ya, 240, ya + 2u * ENV_ROW_H);
-                    printf("      (presets, SELECT a row on: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
-                    check("SELECT on the list: the next preset loaded, the editor told", pg_pname[d][0] && param_now > 0 && pr_sel == s0 + 1u);
-                    check("  only the old and the new row redrawn (not the bar), no blink",
-                          all > 0u && all == part && fb_blinked() == 0u && lcd_px <= 2u * 240u * ENV_ROW_H);
-                    {
-                        uint16_t keep[240 * 240];
-                        memcpy(keep, fb, sizeof keep);
-                        ui_dirty = 2;
-                        loop();
-                        check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
-                    }
-                }
+                later(2000);
+                enc(6, 1);
+                check("PRESET on an assembly's page: its first preset loaded (none was set), the editor told, PRESET <NAME> in the bar",
+                      page == 0 && pg_pname[d][0] && strcmp(before, pg_pname[d]) != 0 && param_now > 0 && presets_stepped == stepped
+                      && !strncmp(msg_text, "PRESET ", 7) && !strcmp(msg_text + 7, pg_pname[d]));
+                memcpy(before, pg_pname[d], sizeof before);
+                enc(6, 1);
+                check("  again: the one after it, no patch change", strcmp(before, pg_pname[d]) != 0 && presets_stepped == stepped && cur_preset == preset_at("ORACLE V"));
+                memcpy(keep, fb, sizeof keep);
+                ui_dirty = 2;
+                loop();
+                check("  what it drew under the bar is what a whole redraw draws", !memcmp(keep + BAR_H * 240u, fb + BAR_H * 240u, sizeof keep - BAR_H * 240u * 2u));
+                later(1500);
             }
             for (r = 0; r < 17; r++)
                 was[r] = pg_pname[d][r];
@@ -1178,8 +1173,6 @@ int main(void)
                 dp_deleted(pg_dev[d].structure, "NOT IN USE");
                 check("  one no device is set to: no message", !msg_text[0]);
             }
-            tap(3);
-            check("SEL on the list: back", page == 0);
             later(1500);
             tap(3);                                         /* SEL on the assembly's page (#395): armed, no preset list */
             loop();
@@ -2506,7 +2499,7 @@ int main(void)
         later(2000);
         preset_loads = 1;
         lcd_px = 0;
-        enc(6, 1);
+        patch_enc(1);
         check("PRESET: the next patch, its slot and name in the footer's toast, its page around it", cur_preset == preset_at("<7PH")
               && !strcmp(patch_label, "<7PH") && on_screen("<7PH") && on_screen("23.") && toast_scr != 0u
               && px(0, 240u - LK_TOH) == P_SAND && px(0, 239u - LK_TOH) != P_SAND && K1_TAB == KNOB_HUE[0]);
@@ -2526,7 +2519,7 @@ int main(void)
         stop_answer = 1;                                    /* PRESET turning fast: a newer click waits */
         pages_waiting = stop_probe;
         lcd_px = 0;
-        enc(6, 1);
+        patch_enc(1);
         printf("      LCD pixels for a PRESET click while the next one waits: %u\n", lcd_px);
         check("PRESET turning fast: the next name, only the toast drawn", cur_preset == 0 && !strcmp(patch_label, "ORACLE V")
               && on_screen("ORACLE V") && lcd_px == 240u * LK_TOH);
@@ -2555,7 +2548,7 @@ int main(void)
         loop();
         check("PLAY held + PRESET: the tempo, the patch and the bars stay", main >= 0 && cur_preset == 0
               && K1_TAB != P_NIGHT && !toast_wanted());
-        enc(6, -1);
+        patch_enc(-1);
         enc(0, 1);                                          /* SELECT while it shows: the toast goes */
         check("SELECT during it: the toast gone, the footer back", !toast_wanted() && toast_scr == 0u
               && px(0, 240u - LK_TOH) != P_SAND);
@@ -2669,7 +2662,7 @@ int main(void)
               && px(4, 4) != P_GOLD && K1_TAB != P_NIGHT && msg_text[0] == 0);
         m1_sandbox(&pg);
         check("  a page after it: not taken", !sb_have);
-        enc(6, -1);
+        patch_enc(-1);
         check("PRESET under Live (resumed): still held, EDITOR LIVE: NO PRESET", cur_preset == slot
               && presets_stepped == stepped && !strcmp(msg_text, "EDITOR LIVE: NO PRESET"));
         later(1600);
@@ -2677,7 +2670,7 @@ int main(void)
         check("LIVE paused after a resume: sandbox mode again", sb_on && snd_muted);
         later(LIVE_HOLD_MS + 100u);                          /* no LIVE for 5 s (a closed tab): the sound and PRESET are free */
         check("Live lapsed: sandbox mode ends", !sb_on && !snd_muted);
-        enc(6, 1);
+        patch_enc(1);
         check("Live lapsed: PRESET steps again", presets_stepped == stepped + 1 && cur_preset != slot);
         later(1600);
         tap(BTN_SEQ);                                       /* the SEQ page up (its steps may run) when the patch goes over */
@@ -3093,7 +3086,7 @@ int main(void)
             memcpy(plain, fb, sizeof plain);
             fb_watch_reset();
             lcd_px = 0;
-            enc(6, 1);
+            patch_enc(1);
             pre_px += lcd_px;
             pre_n++;
             pre_max = lcd_px > pre_max ? lcd_px : pre_max;

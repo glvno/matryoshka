@@ -2026,7 +2026,7 @@ static uint32_t row_sig_word(uint32_t h, uint32_t v)
     return h;
 }
 
-/* a row of the environment or the preset list (#229), drawn a scanline at a time into lcd.c's line (the frame, the
+/* a row of the environment (#229), drawn a scanline at a time into lcd.c's line (the frame, the
  * square or stripe, the type blended onto them), so every pixel goes out once and a row that changes does not blink.
  * frame 0: none, 1: ivory lines over and under, 2: and at the sides. mark_w 8: a track's square, 3: a stripe, 0 none.
  * a in afg, then b (0 none) in coral; c (0 none) in the small type, 3 px lower */
@@ -2061,7 +2061,7 @@ static void list_row(uint32_t y, int frame, uint16_t bg, uint32_t mark_x, uint32
     }
 }
 
-/* the environment's or the preset list's rows as on the LCD: their looks (row_sig), 0 not drawn, 1 an empty row */
+/* the environment's rows as on the LCD: their looks (row_sig), 0 not drawn, 1 an empty row */
 static uint32_t list_shown[ENV_ROWS];
 
 /* screen row i of the environment: device d (none past pg_ndev), drawn only when its look changed */
@@ -2177,7 +2177,6 @@ static void env_knob_msg(uint32_t k)
 #define PR_MAX (N_FPRESETS + PS_SLOTS)
 static uint16_t pr_list[PR_MAX < 256u ? 256u : PR_MAX];
 static int32_t pr_vals[PS_MAXV];
-static uint8_t pr_sel;                                  /* the preset list page's row */
 
 /* device d's presets into pr_list: how many */
 static uint32_t dp_list(uint32_t d)
@@ -2362,77 +2361,6 @@ static void dp_deleted(uint32_t structure, const char *name)
     ui_dirty = 2;                                       /* (ENV's rows lose the name) */
 }
 
-/* the preset list page (SEL on an assembly device's page): its presets, the one it was set to marked; SELECT / ALGO /
- * PRESET move and load as they turn; SEL or HOME goes back */
-static void presets_open(void)
-{
-    uint32_t n = dp_list(pg_cur_dev);
-    int c = dp_current(pg_cur_dev, n);
-    pr_sel = (uint8_t)(c < 0 ? 0 : c);
-}
-
-static int presets_turn(int32_t s)
-{
-    uint32_t n = dp_list(pg_cur_dev);
-    if (!n || !s)
-        return 0;
-    pr_sel = (uint8_t)(((int32_t)pr_sel + s % (int32_t)n + (int32_t)n) % (int32_t)n);
-    return dp_load(pg_cur_dev, pr_sel) == 0;
-}
-
-/* the preset list's bar: PRESETS and the device, on gold (ui.c header_draw: a message's end puts it back) */
-static void presets_bar(void)
-{
-    char t[20];
-    pages_ensure();
-    caps(t, pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].name : "", pg_cur_dev < pg_ndev ? pg_dev[pg_cur_dev].nlen : 0, 16);
-    bar_fill(P_GOLD);
-    text_bc(&FONT_S, 8, 3, "PRESETS", P_NIGHT, P_GOLD, 80, TA_LEFT);
-    text_bc(&FONT_S, 88, 3, t, P_NIGHT, P_GOLD, 126, TA_RIGHT);
-}
-
-/* the list: whole, or the rows whose look changed (SELECT: the old and the new row, the one named coral; past the
- * window: the list; #229). The bar is header_draw's */
-static void presets_draw(int full)
-{
-    uint32_t n, i, first;
-    pages_ensure();
-    if (full)
-        for (i = 0; i < ENV_ROWS; i++)
-            list_shown[i] = 0;
-    n = dp_list(pg_cur_dev);
-    if (pr_sel >= n)
-        pr_sel = 0;
-    first = pr_sel >= ENV_ROWS ? pr_sel + 1u - ENV_ROWS : 0u;
-    for (i = 0; i < ENV_ROWS; i++) {
-        uint32_t y = ENV_Y0 + i * ENV_ROW_H, k = first + i, h;
-        char nm[17], t[20];
-        int on = k == pr_sel, named;
-        if (k >= n) {
-            if (list_shown[i] != 1u)
-                lcd_fill(0, y, 240, ENV_ROW_H, P_NIGHT);
-            list_shown[i] = 1u;
-            continue;
-        }
-        if (dp_entry(pr_list[k], nm) < 0)
-            put(nm, "?")[0] = 0;
-        caps(t, nm, str_len(nm), 16);
-        fit(t, &FONT_M, 160);
-        named = !ps_name_cmp(nm, pg_pname[pg_cur_dev]);
-        h = row_sig_word(row_sig_word(2166136261u, k), (uint32_t)on | (uint32_t)named << 1 | (pr_list[k] & PR_USER));
-        h = row_sig(h, t, str_len(t) + 1u) | 2u;
-        if (list_shown[i] == h)
-            continue;
-        list_shown[i] = h;
-        {
-            const char *src = (pr_list[k] & PR_USER) ? "YOURS" : "FACTORY";
-            list_row(y, on, on ? P_TRACK : P_PANEL, 0, 0, 0, t, 10, named ? P_CORAL : P_INK, 0, 0, src, 230u - text_w(&FONT_S, src, -1), P_DIM);
-        }
-    }
-    if (!n && full)
-        text_bc(&FONT_S, 8, ENV_Y0 + 4u, "NO PRESETS: ENV HELD + SAVE STORES ONE", P_FAINT, P_NIGHT, 0, TA_LEFT);
-}
-
 /* why a device has no presets to show, in the bar (26 characters): a plain module never has any; an assembly in a patch
  * stored before format 34 has no structure to match them by (the bank's slots keep the format they were saved in: the
  * editor's Send or Live, then SAVE, rewrites it); else none stored yet */
@@ -2442,9 +2370,9 @@ static void dp_none_msg(uint32_t d)
            : !pg_dev[d].structure ? "OLD PATCH: SEND + SAVE IT" : "NONE YET: ENV+SAVE STORES", 1500);
 }
 
-/* PRESET or ALGO on the environment (#198): the row's next / previous preset, loaded as you turn; a row without presets:
- * nothing (a short message) */
-static int env_preset_step(int32_t st)
+/* PRESET on a device page (#395), PRESET or ALGO on the environment (#198): the focused device's next / previous preset,
+ * loaded as you turn, its name in the bar; a device without presets: nothing (a short message) */
+static int dev_preset_step(int32_t st)
 {
     uint32_t n;
     int c;

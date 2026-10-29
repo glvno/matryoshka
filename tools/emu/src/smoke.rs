@@ -7,7 +7,7 @@
 //! 3. pages: GLO (the menu, again: back), PLAY twice, HOME (nothing to go back to: the page stays), SELECT /
 //!    ALGO (the header shows where they went, no toast; back again: as it was), GLO (the menu's MIDI tab), ALGO (its
 //!    INFO tab), HOME (back out of it), HOME held (nothing, #395)
-//! 4. PRESET encoder: forward, forward, back
+//! 4. PRESET encoder: alone, Main's page has no presets (#395); HOME held, forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
 //! 7. the preset bank: three slots (and one with a bad CRC) written straight into the flash,
@@ -256,6 +256,15 @@ fn diagram(m: &Machine) -> Vec<u16> {
 }
 
 /// Back to the module page from wherever: HOME taps (a tap closes the menu, another goes home).
+/// HOME held + PRESET (#395): the next / previous patch; HOME's release then goes nowhere
+fn patch_turn(m: &mut Machine, clicks: i32, after: u64) -> Result<(), String> {
+    m.key(HOME, true);
+    m.run_for(100)?;
+    m.turn(PRESET, clicks, 100)?;
+    m.key(HOME, false);
+    m.run_for(after)
+}
+
 fn go_home(m: &mut Machine) -> Result<(), String> {
     for _ in 0..4 {
         if font::on_screen(m.lcd(), DEVICE_PAGE) {
@@ -630,7 +639,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     let p = m.peak_since(mk);
     t.check("overload: the heavy poly patch still sounds", p > QUIET, format!("peak {p}"));
     m.midi(&[0xB0, 123, 0], 300)?;
-    m.turn(PRESET, 1, 0)?;                    // the heavy mono patch: it is over the budget before any key
+    patch_turn(&mut m, 1, 0)?;                // the heavy mono patch: it is over the budget before any key
     m.midi(&[0x90, 60, 100], 0)?;
     let muted = wait_text(&mut m, "OVERLOAD: CHANGE PATCH", 4000)?;
     t.snap(&m, "overload-muted");
@@ -640,7 +649,7 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     let p = m.peak_since(mk);
     t.check("overload: silent while muted", p < QUIET, format!("peak {p}"));
     m.midi(&[0x80, 60, 0], 100)?;
-    m.turn(PRESET, 1, 800)?;
+    patch_turn(&mut m, 1, 800)?;
     t.screen(&m, "overload: the next patch loads", "EMU LIGHT");
     let gone = !font::on_screen(m.lcd(), "OVERLOAD");
     t.check("overload: forgotten with the next patch", gone, String::new());
@@ -765,6 +774,9 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "the release after a tempo turn: the footer's tempo 121", "121");
     m.tap(GLO, 120, 400)?;
     t.screen(&m, "GLO: the menu on its MIDI tab", "MIDI");
+    patch_turn(&mut m, 1, 500)?;
+    t.screen(&m, "HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", "MIDI");
+    t.screen(&m, "  (the next patch)", &presets[1].0);
     m.turn(ALGO, 3, 400)?;
     t.screen(&m, "ALGO three times: the INFO tab", "VERSION");
     m.tap(HOME, 120, 400)?;
@@ -773,13 +785,17 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "HOME held: nothing opens (#395)", DEVICE_PAGE);
     go_home(&mut m)?;
 
-    // ---- 4. PRESET encoder
+    // ---- 4. PRESET encoder (#395): alone it steps the focused device's presets (Main, a module: none); HOME held, patches
     m.turn(PRESET, 1, 500)?;
-    t.screen(&m, "PRESET +1", &presets[1].0);
-    m.turn(PRESET, 1, 500)?;
-    t.screen(&m, "PRESET +1 again", &presets[2].0);
-    m.turn(PRESET, -2, 500)?;
-    t.screen(&m, "PRESET -2", &presets[0].0);
+    t.screen(&m, "PRESET alone on Main's page: NO PRESETS ON A MODULE, the patch stays", "NO PRESETS ON A MODULE");
+    t.screen(&m, "  (the patch stays)", &presets[0].0);
+    m.run_for(1500)?;
+    patch_turn(&mut m, 1, 500)?;
+    t.screen(&m, "HOME held + PRESET +1", &presets[1].0);
+    patch_turn(&mut m, 1, 500)?;
+    t.screen(&m, "HOME held + PRESET +1 again", &presets[2].0);
+    patch_turn(&mut m, -2, 500)?;
+    t.screen(&m, "HOME held + PRESET -2", &presets[0].0);
 
     // ---- 5. TRS MIDI
     m.midi(&[0xC0, 5], 500)?;
@@ -861,15 +877,15 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     m.run_for(300)?;
     t.screen(&m, "bank: boot plays slot entry 0", "EMU BANK A");
-    m.turn(PRESET, 1, 500)?;
-    t.screen(&m, "bank: PRESET +1", "EMU BANK B");
+    patch_turn(&mut m, 1, 500)?;
+    t.screen(&m, "bank: HOME held + PRESET +1", "EMU BANK B");
     m.midi(&[0xC0, 5], 500)?;
     t.screen(&m, "bank: program change 5 (slot 5)", "EMU BANK C");
     m.midi(&[0xC0, 3], 500)?;
     t.screen(&m, "bank: program change to an empty slot: nothing", "EMU BANK C");
     let p = midi_note_peak(&mut m, 60, 500)?;
     t.check("bank: a note sounds", p > QUIET, format!("peak {p}"));
-    m.turn(PRESET, 1, 500)?;
+    patch_turn(&mut m, 1, 500)?;
     let d = font::on_screen(m.lcd(), "EMU BANK D");
     t.screen(&m, "bank: PRESET wraps past the bad slot", "EMU BANK A");
     t.check("bank: the slot with a bad CRC is skipped", !d, String::new());
