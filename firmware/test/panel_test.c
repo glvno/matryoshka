@@ -622,10 +622,11 @@ int main(void)
         check("ALGO again: SYSTEM (update mode, factory reset)", menu_tab == MT_SYSTEM && pages_now()->nrows == 2u && pages_now()->par[1] == MR_DEFAULTS);
         enc(1, 1);
         check("ALGO again: INFO, a list, not a page", menu_tab == MT_INFO && !menu_page() && on_screen("BANK SLOTS") && on_screen("VERSION"));
+        check("  its top bar is the plain bar with the patch's name, not the coral header's top", on_screen(patch_label));
         enc(1, 1);
         check("ALGO again: MANUAL", menu_tab == MT_MANUAL && !menu_page());
         enc(1, 1);
-        check("ALGO wraps to MIDI", menu_tab == MT_MIDI);
+        check("ALGO wraps to MIDI, the coral header back", menu_tab == MT_MIDI && px(2, 2) == P_CORAL);
         enc(1, -1);
         check("ALGO back: MANUAL", menu_tab == MT_MANUAL);
     }

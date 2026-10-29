@@ -271,6 +271,9 @@ static void menu_tab_go(int32_t s)                      /* ALGO: the next / prev
     menu_armed = MR_COUNT;
     update_arm = 0;
     ui_dirty = 2;
+    if (!menu_page())                               /* a text tab after a settings tab: the top bar over the coral header's
+                                                     * rows (a settings tab paints its own header with the page) */
+        header_draw();
 }
 
 /* the encoders while the menu is open (panel.c panel_encoders): ALGO the tab, SELECT scrolls the manual; a settings
