@@ -7,7 +7,7 @@
 //! 3. pages: GLO (the menu, again: back), PLAY twice, HOME (nothing to go back to: the page stays), SELECT /
 //!    ALGO (the header shows where they went, no toast; back again: as it was), GLO (the menu's MIDI tab), ALGO (its
 //!    INFO tab), HOME (back out of it), HOME held (nothing, #395)
-//! 4. PRESET encoder: alone, Main's page has no presets (#395); HOME held, forward, forward, back
+//! 4. PRESET encoder: alone, the focused device's preset (#395); HOME held, forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
 //! 7. the preset bank: three slots (and one with a bad CRC) written straight into the flash,
@@ -787,9 +787,10 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "HOME held: nothing opens (#395)", DEVICE_PAGE);
     go_home(&mut m)?;
 
-    // ---- 4. PRESET encoder (#395): alone it steps the focused device's presets (Main, a module: none); HOME held, patches
+    // ---- 4. PRESET encoder (#395): alone it steps the focused device's presets (here Oracle V's assembly: its INIT
+    // preset, named in the bar; a module's page says NO PRESETS ON A MODULE, panel_test.c); HOME held, patches
     m.turn(PRESET, 1, 500)?;
-    t.screen(&m, "PRESET alone on Main's page: NO PRESETS ON A MODULE, the patch stays", "NO PRESETS ON A MODULE");
+    t.screen(&m, "PRESET alone on an assembly's page: its preset loaded, PRESET INIT in the bar", "PRESET INIT");
     t.screen(&m, "  (the patch stays)", &presets[0].0);
     m.run_for(1500)?;
     patch_turn(&mut m, 1, 500)?;
