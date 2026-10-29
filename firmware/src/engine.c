@@ -300,7 +300,7 @@ static int32_t unit_of(const def_t *d, uint32_t j, int32_t v)
     if (d->plog && d->plog[j]) {
         int32_t l0 = log2_q16((uint32_t)lo);
         int32_t t = (int32_t)(((int64_t)(log2_q16((uint32_t)v) - l0) << 16) / (log2_q16((uint32_t)hi) - l0));
-        return d->plog[j] == 2 ? (int32_t)isqrt32((uint32_t)t << 16) : t;
+        return d->plog[j] != 2 ? t : t >= ENG_ONE ? ENG_ONE : (int32_t)isqrt32((uint32_t)t << 16);   /* (at the top t << 16 is 2^32: 0 in 32 bits, which read a cutoff at its maximum as at its minimum, #396) */
     }
     return (int32_t)(((int64_t)(v - lo) << 16) / (hi - lo));
 }
