@@ -37,6 +37,10 @@
 
 ### Fixes
 
+- **On the FM-1, a filter's cutoff no longer wraps from 20 kHz to 20 Hz** (#396). At the very top of its range the knob's
+  position was computed as the bottom (a 32-bit shift of exactly 2^16 came out as 0 in the bent cutoff curve), so the bar
+  went empty at the top and the next click up landed near 20 Hz. The position is now the top, and a click up stays there.
+  Host-tested (panel_test, every bent parameter); not yet on a device.
 - **Arming on the FM-1 shows in the editor** (#191). With Live on, SEL on a device page or an environment row, REC held + a
   black key, or the SEQ page arming the track it shows now lights the same devices' ARM in the editor (the Steps card's
   arm icon included), and the status line says what the keys play; a disarm clears it, and a patch loaded from the panel

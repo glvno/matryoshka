@@ -369,6 +369,24 @@ int main(void)
         value_parts(&DEFS[T_LFO], LFO_P_WIDE, 55 << 16, num, unit);
         check("fast LFO endpoint displays hertz", !strcmp(num, "55.0") && !strcmp(unit, "Hz"));
     }
+    {                                                       /* #396: a bent (plog 2) cutoff at its top read as at its bottom, so the
+                                                             * bar went empty at 20 kHz and the next click up landed near 20 Hz */
+        uint32_t t, j, n = 0, ok = 1;
+        for (t = 0; t < N_TYPES; t++) {
+            const def_t *d = &DEFS[t];
+            for (j = 0; j < d->npar; j++) {
+                int32_t hi, u;
+                if (!d->plog || d->plog[j] != 2)
+                    continue;
+                hi = d->pmax[j];
+                u = unit_of(d, j, hi);
+                n++;
+                ok &= u == ENG_ONE && value_of(d, j, u) == hi && value_of(d, j, u + 655) == hi && unit_of(d, j, value_of(d, j, ENG_ONE - 655)) < ENG_ONE;
+            }
+        }
+        printf("      (%u bent cutoff parameters)\n", (unsigned)n);
+        check("a bent cutoff at its top: the knob's position is the top, a click up stays there, a click below is below", n > 0u && ok);
+    }
     /* The real reload path: adding voices past the pools must leave a playable patch. */
     check("Cassia loads for voice edit", load("CASSIA 1") == 0);
     for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
