@@ -17,7 +17,7 @@ the FM-1 restarts and the installed identity is checked.
                                       download it from https://github.com/m-vave/fm1_open/releases)
   fm1_install.py --info [--port NAME] [--save-head FILE]
                                       (--info also names the FM-1's boot code: V15's, Official Open's or another;
-                                      --save-head writes it, flash 0x0000-0x3FFF, to FILE; Matryoshka 1.3 and later)
+                                      --save-head writes it, flash 0x0000-0x3FFF, to FILE; Matryoshka 1.7 and later)
 
 If the FM-1 is still in update mode (an earlier install was cut off), the
 install finishes the write, when that loader may write this package. Needs mido with python-rtmidi.
@@ -172,7 +172,7 @@ def parse_head_piece(pkt):
 
 
 def read_head(link, tries=2):
-    """the FM-1's boot code (flash 0x0000-0x3FFF), or None when its firmware does not answer (before Matryoshka 1.3,
+    """the FM-1's boot code (flash 0x0000-0x3FFF), or None when its firmware does not answer (before Matryoshka 1.7,
     Felucca, Sloop, stock; the update loaders)"""
     link.drain()
     out = bytearray()
