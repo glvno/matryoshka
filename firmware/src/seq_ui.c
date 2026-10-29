@@ -6,7 +6,7 @@
  *
  *   SEQ             opens / closes the page; held + a black key: mute / unmute that track (from any page, not saved);
  *                   held + REC (here): clear the selected track, asked first (REC again within 3 s: seq_clear_press)
- *   ALGO            steps through the tracks (not while REC records the armed one)
+ *   ALGO            steps through the tracks and arms the one shown (#395; while REC is on it records from then on)
  *   SELECT          the selected row, a row a click (a drum track: clamped at the first and the last; the roll scrolls
  *                   its window of 8 pitches when it reaches an edge); on a drum track with a white key held: that
  *                   step's chance (the roll: always the row)
@@ -15,15 +15,15 @@
  *                   note's chance, 100 % .. 5 % in steps of 5; on the roll + K1: its pitch (a semitone a click, past the
  *                   step's other notes; the selected row follows it). Turning a knob on a held step undoes the press:
  *                   the track's notes as they were, the note there.
- *   REC             live recording on / off (its LED is lit while on); it acts on its release
+ *   REC             recording on / off, the same on every page (#395, below); it acts on its release
  *   PRESET          the patch's pattern (#375, D-541): running, each track takes it at the end of its pass (the bar shows
  *                   P03>P04 until then); stopped, at once. The bar shows the pattern (and the song while one plays)
  *   SEL tapped      (pressed and let go with no key): the SONG page (below)
  *
  * A drum track (its keys out into a Drum map; the #139 follow-up, the owner's grid of 2026-10-23): the rows are the map's
- * rows. Black keys 1..8 pick the row (stopped: it sounds); with REC on they are hits on their rows instead (heard; while
- * running into the nearest step), the row picked stays. Off this page the keys play a Drum map the same way (panel.c
- * panel_key). LFO held + a white key ties the selected row's hit through that step as on the roll (below; #368: a Drum
+ * rows. Black keys 1..8 sound their row while held and pick it, REC on or off, running or stopped; while REC records the
+ * track they are also recorded into the nearest step (#395). SELECT moves the row silently. Off this page the keys play
+ * a Drum map the same way (panel.c panel_key). LFO held + a white key ties the selected row's hit through that step as on the roll (below; #368: a Drum
  * map's row stays up while its note sounds, so a tie holds a Lire plate or an Elvira voice), drawn the same way.
  *
  * A melodic track (the owner, 2026-10-23, #241): the piano roll, 8 chromatic pitches of the track's range (C-1..G9, MIDI 0..127)
@@ -33,28 +33,24 @@
  * row; an empty track: C of the keys' octave).
  *   black keys      1..8 pick the 8 rows on screen, black key 1 the bottom row (the lowest pitch shown), so they
  *                   follow the window as it scrolls; stopped, the row sounds (#387, the owner, 2026-10-28; ALGO picks
- *                   the track). With REC on and the transport stopped they do the same; REC's black-key hits (REC
- *                   with nothing armed on a drum track, then ALGO to the roll) record a hit on the row, as on drums
+ *                   the track). While REC records the track all 27 keys are its keyboard instead (seq_kbd, below)
  *   SEL held + a key  the pen: the selected row jumps to that key's pitch (the keys' octave; the window scrolls to show
  *                   it) and it sounds. FX held + OCT- / OCT+: the keys' octave (the pen's)
  *   LFO held + a white key  the selected row's last note starting before that step ends on it (a note of its own
  *                   there joins it); on a step inside a note: it ends there, on its last step: one step again
  *
- * Arming and recording from the keys (#139, the editor's #134 / #135):
- *   REC held + a black key (any page): arm that track, again: disarm. While a track is armed the keys (and MIDI notes)
- *                   play through it to what it plays (engine.c eng_arm); the device pages' info line says ARM and its name,
- *                   the SEQ page ARM in the bar and ARMED on the track's line (#179). Black key n is track n here also on the
- *                   SEQ page, where the keys alone pick rows; a key past the tracks says NO TRACK n.
- *   REC with a track armed: stopped, the SEQ page opens on it with REC on: the grid as without REC, but the black keys
- *                   sound (a drum track: hits on its rows; the roll: they pick and sound their rows), nothing recorded;
- *                   the white keys place steps. Running, the page stays: the keys play and the engine records them live onto the
- *                   nearest step (eng_steps_rec); on a melodic track's roll all 27 keys are its keyboard (seq_kbd) and OCT-
- *                   / OCT+ the octave. REC again, or another arm, ends it; leaving the page stopped ends it (a live take
- *                   goes on).
- *   REC with nothing armed: on a melodic track's roll it arms that track and records it as above (the owner's 1.2.0
- *                   device check: the keys are notes there, not track hits), REC off disarms it again (seq_rec_arms);
- *                   else the black keys record hits; from another page it opens this one on the selected track if it
- *                   is a drum track, else the first drum track (seq_rec_aim), so the hits are seen landing.
+ * Arming and recording (#139; #395, the owner 2026-10-28):
+ *   REC held + a black key (any page): that track into the armed set, again: out of it. While a track is armed the keys
+ *                   (and MIDI notes) play through it to what it plays (engine.c eng_arm); the device pages' info line says
+ *                   ARM and its name, the SEQ page ARM in the bar and ARMED on the track's line (#179). Black key n is track
+ *                   n here also on the SEQ page, where the keys alone pick rows; a key past the tracks says NO TRACK n.
+ *   REC (any page)  global: stopped, it starts the transport (as PLAY does, MIDI Start out) and records; running, it
+ *                   records; again, recording ends and the transport goes on. PLAY (any stop) ends both. It never changes
+ *                   the page. What records is the armed set's Steps tracks (seq_rec_sync, every pass: a track armed while
+ *                   REC is on records from then on); the engine lays what is played through them onto the nearest step
+ *                   (eng_steps_rec), over the notes there. No Steps track armed: REC still runs, the bar says
+ *                   REC: NO TRACK ARMED. On the SEQ page a drum grid's black keys record as above; on a melodic track's
+ *                   roll all 27 keys are its keyboard (seq_kbd) and OCT- / OCT+ the octave.
  *
  * Key LEDs: the selected row's notes on the page bright, the step playing at the mid level (dark on a step that is on),
  * the selected row's black key bright (blinking: the track muted) and rows with notes dim (a drum track's and the
@@ -72,9 +68,7 @@
 
 static uint8_t seq_trk;                 /* the selected track (index among the patch's Steps modules) */
 static uint8_t seq_pg;                  /* the page of 16 steps */
-static uint8_t seq_rec;                 /* REC: 1 black keys record hits, 2 the keys record into the armed track (#139) */
-static int8_t seq_rec_arms = -1;        /* the module REC armed itself on the roll (seq_rec_press), disarmed when REC ends */
-static uint64_t seq_rec_mods;           /* the drum tracks REC set recording live for their black keys (#368), until REC ends */
+static uint8_t seq_rec;                 /* REC records (#395: global; the armed Steps tracks; the transport runs meanwhile) */
 static uint8_t seq_thru_note[27];       /* a black key held on a drum track's page (#368): its note + 1 (0 none), sounding through */
 static uint8_t seq_thru_mod[27];        /* ... the track it sounds through, let go there */
 static uint8_t seq_row;                 /* the grid's selected row: a Drum map's row, or the roll's (0 the top: its highest pitch) */
@@ -96,6 +90,7 @@ static uint8_t seq_clear_trk;           /* ... the track it asked for */
 static uint32_t seq_pen_ms;             /* fm1_ms | 1 of the last key that was the pen (SEL held: its release then opens
                                          * nothing, D-541), 0 none */
 static uint32_t seq_shown_pat = 0xFFFFFFFFu;   /* the bar's pattern, queued pattern, song and entry as drawn */
+static uint8_t seq_shown_mark = 0xFFu;  /* ... and its ARM / REC (seq_bar_mark) */
 
 /* note key n (0 = F3) -> its white key's step on the page (0..15) or its black key's number (0..10: a row on the SEQ
  * page, a track with SEQ or REC held), else -1 */
@@ -140,11 +135,15 @@ static int seq_armed_trk(void)
             return t;
     return -1;
 }
-/* the keys are the armed melodic track's keyboard: REC records it on this page while the transport runs (a live take); a
- * drum track's grid takes the black keys as hits instead (seq_key) */
+/* a module is in the armed set (#191) */
+static int seq_mod_armed(int mod) { return mod >= 0 && (eng_arm_mask_get() >> mod & 1u); }
+/* the SEQ bar's mark: bit 0 the track shown armed (ARM / REC), bit 1 REC on (the bar red) */
+static uint8_t seq_bar_mark(void) { return (uint8_t)(seq_mod_armed(seq_module()) | (seq_rec ? 2 : 0)); }
+/* the keys are the shown melodic track's keyboard: REC records it (it is armed) on this page, a live take; a drum track's
+ * grid keeps its black keys as rows (seq_key, recorded there too) */
 static int seq_kbd(void)
 {
-    return seq_rec == 2u && page == PAGE_SEQ && eng_armed() >= 0 && eng_steps_drummap((uint32_t)eng_armed()) < 0 && eng_transport_running();
+    return seq_rec && page == PAGE_SEQ && seq_mod_armed(seq_module()) && seq_map() < 0 && eng_transport_running();
 }
 
 static int32_t seq_len(int mod)
@@ -326,7 +325,7 @@ static void seq_leds(void)
 
 /* ---- the panel */
 
-static void seq_arm_shown(void);
+static void seq_arm_shown(int opening);
 static void seq_select(uint32_t t)
 {
     if (t >= (uint32_t)eng_steps_count())
@@ -338,7 +337,7 @@ static void seq_select(uint32_t t)
     seq_roll_trk = -1;                           /* (a roll opens around its notes again) */
     if (page != PAGE_SEQ)
         return;                                  /* (from another page: the caller's page_set draws the SEQ page whole) */
-    seq_arm_shown();                             /* (ALGO: the track shown is the one armed, #395) */
+    seq_arm_shown(0);                            /* (ALGO: the track shown is the one armed, #395; REC on: it records) */
     header_draw();
     ui_dirty = 2;
 }
@@ -375,7 +374,7 @@ static int seq_no_track(int b)
 }
 
 /* a mute or an arm changed: redrawn in place, nothing cleared first (#179). On the SEQ page its track line and, after the
- * message, the bar; the device pages' info line (the arm) is drawn on every redraw. seq_rec_off's 2 (a take ended,
+ * message, the bar; the device pages' info line (the arm) is drawn on every redraw. seq_rec_off's 2 (recording ended,
  * the page's layout changes) stays. */
 static void seq_track_redraw(void)
 {
@@ -505,11 +504,11 @@ static void seq_thru_up(uint32_t n)
     }
 }
 
-/* a key on the SEQ page (n: note key 0..26). Drum track (the #139 follow-up): black keys 1..8 the Drum map's rows (stopped:
- * heard; REC on: a hit on the row, into the nearest step while it plays), white keys that row's hit on the page's steps
- * (FX held: an accent; LFO held: its tie, #368). The roll (#241): black keys 1..8 its rows on screen from the bottom
- * (#387; stopped: heard; REC's black-key hits: a hit on the row), SEL + a key the pen, white keys the selected pitch's
- * notes (FX held: an accent; LFO held: its tie) */
+/* a key on the SEQ page (n: note key 0..26). Drum track (the #139 follow-up): black keys 1..8 the Drum map's rows (heard
+ * while held, and picked; while REC records the track, into the nearest step too: #395), white keys that row's hit on the
+ * page's steps (FX held: an accent; LFO held: its tie, #368). The roll (#241): black keys 1..8 its rows on screen from the
+ * bottom (#387; stopped: heard), SEL + a key the pen, white keys the selected pitch's notes (FX held: an accent; LFO
+ * held: its tie). While REC records the roll its keys are the track's keyboard (seq_kbd: panel.c plays them, not here) */
 static void seq_key(uint32_t n, int down)
 {
     int w = seq_white(n), b = seq_black(n), mod = seq_module(), map = seq_map();
@@ -532,30 +531,21 @@ static void seq_key(uint32_t n, int down)
     }
     if (b >= 0) {
         if (map < 0) {                           /* the roll (#387): black keys 1..8 the rows on screen, the lowest */
-            uint32_t note;                       /* pitch first; the row picked, heard while stopped (REC on: a hit */
-            if (b >= 8)                          /* recorded while the track plays, as on drums) */
+            if (b >= 8)                          /* pitch first; the row picked, heard while stopped */
                 return;
             seq_row = (uint8_t)(7 - b);
-            note = seq_grid_note(-1, seq_row);
-            if (seq_rec == 1u) {
-                if (eng_steps_hit_note((uint32_t)mod, note, fx, 1) >= 0)
-                    seq_sync(mod);
-            } else if (!eng_transport_running())
-                (void)eng_steps_hit_note((uint32_t)mod, note, 0, 0);
+            if (!eng_transport_running())
+                (void)eng_steps_hit_note((uint32_t)mod, seq_grid_note(-1, seq_row), 0, 0);
             ui_dirty = ui_dirty ? ui_dirty : 1;
             return;
         }
         if (b >= (int)ENG_DRUM_ROWS)
             return;
-        /* the row's note sounds through the track while the key is held (#368, the owner 2026-10-28: running or stopped).
-         * REC on: the row picked stays, and while the track plays the note is recorded as a live take records it (the
-         * nearest step, the whole steps held, at least one: eng_steps_rec, laid over the track by seq_take); else the row
-         * picked, its name and the last one redrawn */
-        if (seq_rec) {
-            eng_steps_rec((uint32_t)mod, 1);
-            seq_rec_mods |= (uint64_t)1 << mod;
-        } else
-            seq_row = (uint8_t)b;
+        /* the row's note sounds through the track while the key is held (#368, the owner 2026-10-28: running or stopped)
+         * and the row is picked, REC on or off (#395); while REC records the track (it is armed: seq_rec_sync) the note is
+         * recorded as a live take records it (the nearest step, the whole steps held, at least one: eng_steps_rec, laid
+         * over the track by seq_take) */
+        seq_row = (uint8_t)b;
         seq_thru_up(n);
         seq_thru_mod[n] = (uint8_t)mod;
         seq_thru_note[n] = (uint8_t)(seq_row_note(map, (uint32_t)b) + 1u);
@@ -707,49 +697,46 @@ static void seq_sync(int mod)
     m1_track_now((uint32_t)mod);
 }
 
+/* REC's recording follows the armed set (#395): a Steps track records while REC is on and it is armed, the others not (the
+ * engine's flag per track, eng_steps_rec). Every pass (seq_take), and at once after REC or an arm */
+static void seq_rec_sync(void)
+{
+    int t, n = eng_steps_count();
+    for (t = 0; t < n; t++) {
+        int mod = eng_steps_module((uint32_t)t);
+        eng_steps_rec((uint32_t)mod, seq_rec && seq_mod_armed(mod));
+    }
+}
+
+/* recording ends (REC again, PLAY, any stop of the transport): the notes still held are recorded when let go */
 static void seq_rec_off(void)
 {
-    uint32_t m;
-    if (seq_rec == 2u && eng_armed() >= 0)
-        eng_steps_rec((uint32_t)eng_armed(), 0);
-    for (m = 0; seq_rec_mods >> m; m++)          /* (the drum tracks recording their black keys, #368) */
-        if (seq_rec_mods >> m & 1u)
-            eng_steps_rec(m, 0);
-    seq_rec_mods = 0;
-    if (seq_rec_arms >= 0 && (eng_arm_mask_get() >> seq_rec_arms & 1u)) {
-        eng_arm_mask(eng_arm_mask_get() & ~((uint64_t)1 << seq_rec_arms));
-        m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
-    }
-    seq_rec_arms = -1;
     seq_rec = 0;
+    seq_rec_sync();
     ent_keys = 0;
     ui_dirty = 2;
 }
 
 /* the armed set becomes `mask` (#395: SEL on a device page or an environment row, the SEQ page's track), the editor's FM-1
- * tab told; a take ends first when the track REC records into is no longer the first armed one */
+ * tab told; while REC is on, the tracks armed now record and the others stop (seq_rec_sync) */
 static void seq_arm_set(uint64_t mask)
 {
-    int m, first = -1;
     if (mask == eng_arm_mask_get())
         return;
-    for (m = 0; m < 64 && first < 0; m++)
-        if ((mask >> m & 1u) && eng_type((uint32_t)m) == T_STEPS)
-            first = m;
-    if (seq_rec == 2u && eng_armed() != first)
-        seq_rec_off();
     eng_arm_mask(mask);
     m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+    seq_rec_sync();
     seq_track_redraw();
 }
 
 /* the SEQ page arms the track it shows (#395): opening the page (panel.c page_show), ALGO there (seq_select), or another
- * patch while it shows (seq_poll) arm that track and disarm the rest */
+ * patch while it shows (seq_poll) arm that track and disarm the rest. opening: the page opens, and while REC records a
+ * track (the first armed) it shows that one, so the recording goes on there (D-547) */
 static uint32_t seq_armed_gen;          /* the patch the page last armed its track in */
-static void seq_arm_shown(void)
+static void seq_arm_shown(int opening)
 {
     int mod, t = seq_armed_trk();
-    if (seq_rec == 2u && t >= 0 && (uint32_t)t != seq_trk) {   /* (a take runs: the page shows its track, the take goes on) */
+    if (opening && seq_rec && t >= 0 && (uint32_t)t != seq_trk) {
         seq_trk = (uint8_t)t;
         seq_pg = 0;
         seq_row = 0;
@@ -763,63 +750,34 @@ static void seq_arm_shown(void)
         seq_arm_set((uint64_t)1 << mod);
 }
 
-/* REC let go (panel.c; not after REC held + a black key armed a track): off, or on: with a track armed into it (stopped:
- * its grid with REC on, the caller opens the SEQ page: seq_rec_page), else the black keys record hits */
-static int seq_rec_page(void) { return !seq_rec && (eng_armed() < 0 || !eng_transport_running()); }
+/* REC let go (panel.c, which started the transport first when it was stopped; not after REC held + a black key armed a
+ * track), on any page (#395): recording off, or on for the armed Steps tracks. The bar names what records: REC and the
+ * track, REC n TRACKS, or REC: NO TRACK ARMED (REC still runs: a track armed later records). The page stays */
 static void seq_rec_press(void)
 {
-    int t = seq_armed_trk();
-    char m[32], name[TRACK_NAME_MAX + 8];
+    int t, n = 0, first = -1;
+    char m[32], num[8], name[TRACK_NAME_MAX + 8];
     if (seq_rec) {
         seq_rec_off();
         ui_msg("REC OFF", 1000);
         return;
     }
-    if (t < 0 && page == PAGE_SEQ && seq_module() >= 0 && seq_map() < 0) {
-        /* nothing armed, a melodic track's roll shown (the owner's 1.2.0 device check): REC records that track, so the
-         * keys play its pitches and a running take records them, as if it were armed; REC off disarms it again */
-        int mod = seq_module();
-        eng_arm_mask(eng_arm_mask_get() | (uint64_t)1 << mod);
-        m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
-        seq_rec_arms = (int8_t)mod;
-        t = seq_armed_trk();
+    seq_rec = 1;
+    seq_rec_sync();
+    for (t = 0; t < eng_steps_count(); t++)
+        if (seq_mod_armed(eng_steps_module((uint32_t)t)) && !n++)
+            first = t;
+    if (!n)
+        put(m, "REC: NO TRACK ARMED")[0] = 0;
+    else if (n == 1) {
+        seq_name((uint32_t)first, name);
+        put(put(m, "REC "), name)[0] = 0;
+    } else {
+        fmt_int(num, n);
+        put(put(put(m, "REC "), num), " TRACKS")[0] = 0;
     }
-    if (t < 0) {
-        seq_rec = 1;
-        ui_msg("REC: BLACK KEYS RECORD", 1000);
-        ui_dirty = 2;
-        return;
-    }
-    seq_rec = 2;                                 /* the armed track's grid or roll, REC on (#241: no cursor entry) */
-    eng_steps_rec((uint32_t)eng_armed(), 1);
-    if ((uint32_t)t != seq_trk) {
-        seq_pg = 0;
-        seq_row = 0;
-        seq_roll_trk = -1;
-    }
-    seq_trk = (uint8_t)t;
-    seq_held = -1;
-    seq_name((uint32_t)t, name);
-    put(put(m, "REC "), name)[0] = 0;
-    ui_msg(m, 1000);
+    ui_msg(m, 1200);
     ui_dirty = 2;
-}
-
-/* REC about to open the SEQ page with nothing armed (panel.c, before page_set): the selected track if it is a drum track,
- * else the first drum track, so the hits are seen landing on its grid */
-static void seq_rec_aim(void)
-{
-    int t, n = eng_steps_count();
-    if (seq_rec || eng_armed() >= 0 || (seq_trk < (uint32_t)n && seq_map() >= 0))
-        return;
-    for (t = 0; t < n; t++)
-        if (eng_steps_drummap((uint32_t)eng_steps_module((uint32_t)t)) >= 0) {
-            seq_trk = (uint8_t)t;
-            seq_pg = 0;
-            seq_row = 0;
-            seq_held = -1;
-            return;
-        }
 }
 
 /* REC held + a black key (any page): that track armed, or disarmed if it was */
@@ -830,10 +788,9 @@ static void seq_arm_key(uint32_t n)
     if (seq_no_track(b))
         return;
     mod = eng_steps_module((uint32_t)b);
-    if (seq_rec == 2u)                           /* (a take on the track armed before ends) */
-        seq_rec_off();
     eng_arm_mask(eng_arm_mask_get() ^ (uint64_t)1 << mod);   /* (#191: one of the armed set, the others stay) */
     m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+    seq_rec_sync();                              /* (REC on: it records from now on, or no longer: #395) */
     seq_name((uint32_t)b, name);
     put(put(m, name), (eng_arm_mask_get() >> mod & 1u) ? " ARMED" : " DISARMED")[0] = 0;
     ui_msg(m, 1200);
@@ -883,11 +840,9 @@ static void seq_clear_cancel(void)
     seq_msg_ms = 0;
 }
 
-/* the page is left: REC on the armed track while stopped and the black keys' recording end (a live take goes on) */
+/* the page is left: the roll's keyboard forgets its keys (REC goes on: it is global, #395) */
 static void seq_leave(void)
 {
-    if (seq_rec == 1u || (seq_rec == 2u && !eng_transport_running()))
-        seq_rec_off();
     ent_keys = 0;
 }
 
@@ -908,13 +863,14 @@ static int seq_arm_label(char *out, int *rec)
     if (t < 0)
         return 0;
     seq_name((uint32_t)t, name);
-    *rec = seq_rec == 2u;
+    *rec = seq_rec != 0;                         /* (REC on: the armed tracks record, #395) */
     put(put(out, *rec ? "REC " : "ARM "), name)[0] = 0;
     return 1;
 }
 
-/* the main loop, every pass (seq_poll): the notes the engine recorded laid over their tracks; a patch that took the arm
- * away ends the take; REC's LED off the page */
+/* the main loop, every pass (seq_poll): the notes the engine recorded laid over their tracks; the transport stopped (PLAY,
+ * the editor, MIDI Stop) ends recording, else the armed tracks record (seq_rec_sync: another patch, an arm); REC's LED
+ * off the page */
 static void seq_take(void)
 {
     uint32_t m, w, done = 0;
@@ -930,8 +886,9 @@ static void seq_take(void)
         seq_sync(last);
     if (done && page == PAGE_SEQ)
         ui_dirty = ui_dirty ? ui_dirty : 1;
-    if (seq_rec == 2u && eng_armed() < 0)
+    if (seq_rec && !eng_transport_running())
         seq_rec_off();
+    seq_rec_sync();
     if (page != PAGE_SEQ)
         fm1_led_key(BTN_REC, seq_rec != 0);
 }
@@ -948,12 +905,11 @@ static void seq_bar(void)
     }
     seq_name(seq_trk, name);
     p = put(p, name);
-    if (seq_rec)
-        p = put(p, " REC");
-    else if (seq_armed_trk() == (int)seq_trk)    /* the track shown is armed (#179) */
-        p = put(p, " ARM");
+    if (seq_mod_armed(seq_module()))             /* the track shown is armed (#179): REC records it (#395) */
+        p = put(p, seq_rec ? " REC" : " ARM");
     p = seq_pat_text(p);                         /* (after REC / ARM: name REC P03>P04) */
     seq_shown_pat = seq_pat_state();
+    seq_shown_mark = seq_bar_mark();
     *p = 0;
     bar_text(b, seq_rec ? C_RED : C_ACC);
 }
@@ -1186,12 +1142,11 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
     }
     seq_grid_line(1, 202, line, C_DIM, 224);
     if (map >= 0)
-        hint = seq_rec ? "BLACK hit  SEL row  WHITE step  FX acc" : "BLACK/SEL row  WHITE step  FX acc  K2 vel";
+        hint = seq_rec && seq_mod_armed(mod) ? "BLACK rec  SEL row  WHITE step  FX acc" : "BLACK/SEL row  WHITE step  FX acc  K2 vel";
     else if (seq_kbd())
         hint = "KEYS record  SEL row  OCT octave";
     else
-        hint = seq_rec == 2u ? "BLACK row  SEL+KEY pen  WHITE step" : seq_rec ? "BLACK hit  SEL+KEY pen  WHITE step"
-             : "BLACK row  SEL+KEY pen  WHITE step  LFO tie";
+        hint = "BLACK row  SEL+KEY pen  WHITE step  LFO tie";
     seq_grid_line(2, 222, hint, C_HINT, 228);
     seq_grid_ok = 1;
 }
@@ -1491,17 +1446,17 @@ static void seq_poll(void)
     if (seq_clear_at && fm1_ms - (seq_clear_at & ~1u) >= SEQ_CLEAR_MS)
         seq_clear_at = 0;                        /* (the clear asked in vain: its message ends with it) */
     song_poll();
-    if (page == PAGE_SEQ && eng_steps_count() && seq_pat_state() != seq_shown_pat && !ui_yielding
+    if (page == PAGE_SEQ && eng_steps_count() && (seq_pat_state() != seq_shown_pat || seq_bar_mark() != seq_shown_mark) && !ui_yielding
         && !(msg_until && (int32_t)(fm1_ms - msg_until) < 0))
-        header_draw();                           /* (a pattern taken at the end of a pass, a song's next entry: the bar,
-                                                  * once a message on it is over) */
+        header_draw();                           /* (a pattern taken at the end of a pass, a song's next entry, REC ended
+                                                  * by PLAY or a stop (#395): the bar, once a message on it is over) */
     if (page != PAGE_SEQ) {
         kbd_was = -1;
         return;
     }
     if (seq_armed_gen != pages_gen())            /* another patch while the page shows: its track armed (#395) */
-        seq_arm_shown();
-    if (seq_kbd() != kbd_was) {                  /* PLAY / stop while REC records the armed track: its keyboard or the roll */
+        seq_arm_shown(0);
+    if (seq_kbd() != kbd_was) {                  /* REC on / off on the armed roll, a stop: its keyboard or the roll */
         kbd_was = (int8_t)seq_kbd();
         ent_keys = 0;
         seq_held = -1;

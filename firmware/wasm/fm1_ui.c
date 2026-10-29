@@ -292,8 +292,8 @@ WASM_EXPORT("fm1w_transport") void fm1w_transport(uint32_t run)
         ui_dirty = 1;
     panel_draw();
 }
-/* the editor's armed devices (#191) as a mask of their modules (lo, hi): only they hear the keys; REC records into the
- * first armed track, the info line names it */
+/* the editor's armed devices (#191) as a mask of their modules (lo, hi): only they hear the keys; REC records the armed
+ * Steps tracks (seq_rec_sync, #395), the info line names the first */
 WASM_EXPORT("fm1w_arm_mask") void fm1w_arm_mask(uint32_t lo, uint32_t hi)
 {
     eng_arm_mask((uint64_t)lo | (uint64_t)hi << 32);

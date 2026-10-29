@@ -80,8 +80,13 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   not carry the armed set ([D-516](ledger/steps.md#D-516)), so the checks read the FM-1's screen. The 808 Kit must load
   with the footer saying KEYS WIRED. SEL on its home device, the Drum map, must say NOTHING HERE TAKES KEYS. The SEQ page
   must arm DRUMS (its bar says DRUMS ARM, the device page's footer ARM DRUMS), and black key 1 must then sound the kick.
-  On the environment, SEL on DRUMS' row must disarm it and say KEYS WIRED, REC must do nothing, and SEL again must arm
-  it.
+  On the environment, SEL on DRUMS' row must disarm it and say KEYS WIRED. REC there must start the transport and say
+  REC: NO TRACK ARMED with the environment still showing ([D-548](ledger/steps.md#D-548),
+  [D-549](ledger/steps.md#D-549)); PLAY stops it. SEL again must arm it.
+- **A held drum hit (`drumHold`, issues #368 and #395, [D-523](ledger/steps.md#D-523)):** on 8 Lire's grid, stopped, a
+  held black key must sound its row while held and record nothing. REC alone (no PLAY) must then start the transport
+  and record: black key 2 held about 450 ms must land as one note of 3 to 5 steps on its row, and a white key must then
+  place a step on the row that black key picked. PLAY stops the transport and the recording.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 

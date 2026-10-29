@@ -1982,7 +1982,7 @@ static uint64_t env_listeners(uint32_t d)
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
 
-static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed, a take on the old track ends) */
+static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed; REC on: they record) */
 
 /* SEL arms the device in focus (#395). layer (the environment): it is added to the armed set or taken out of it, the
  * others stay (a layer, a split); the last one out leaves the keys WIRED (Main's cables decide). Else (a device page) it

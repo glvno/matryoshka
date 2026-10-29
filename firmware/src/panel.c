@@ -112,7 +112,7 @@ static void panel_button_set(uint32_t b, int down)
     }
 }
 
-/* The trail (#114): every screen change by a button (SEQ, REC, opening the menu; page buttons and GLO later) leaves a step
+/* The trail (#114): every screen change by a button (SEQ, opening the menu; page buttons and GLO later) leaves a step
  * of where it came from; a HOME tap goes back one. ALGO / SELECT moving on the device pages are no steps. The oldest step
  * goes when the trail is full. */
 #define TRAIL_MAX 8u
@@ -142,11 +142,11 @@ static void page_show(uint32_t p)
     pg_strip_dirty = 1;
     if (page == PAGE_MENU)
         menu_open();
-    if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends its recording, not a live take: seq_leave) */
+    if (page != PAGE_SEQ) {                         /* (leaving the SEQ page: REC goes on, #395; seq_leave) */
         seq_leave();
         seq_leds_off();
     } else
-        seq_arm_shown();                            /* (the SEQ page arms the track it shows, #395) */
+        seq_arm_shown(1);                           /* (the SEQ page arms the track it shows, #395) */
     if (dev_like() && !sb_on && !eng_overload && !load_err)
         msg_until = 0;                              /* (the device page and GLO's draw their header with the rest) */
     else
@@ -278,10 +278,13 @@ static void page_hold_poll(void)
     list_focus();
 }
 
-static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock) */
+static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock); a stop
+                                                     * ends recording too (#395: PLAY stops everything) */
 {
     eng_transport(!eng_transport_running());
     midi_send_rt(eng_transport_running() ? 0xFAu : 0xFCu);
+    if (!eng_transport_running() && seq_rec)
+        seq_rec_off();
     leds_play();
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
@@ -363,8 +366,6 @@ static void panel_encoders(int32_t *st)
         song_knobs(st);
         return;
     }
-    if (page == PAGE_SEQ && seq_rec == 2u)          /* the keys record into the armed track: ALGO keeps it */
-        st[1] = 0;
     if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track; a step held: its chance, SELECT on a
                                                      * drum grid, K3 on the roll (the owner, 2026-10-24: there SELECT moves the row) */
         int roll = seq_module() >= 0 && seq_map() < 0;
@@ -664,16 +665,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (rel & (1u << BTN_SEQ))
         seq_held_used = 0;
-    if ((rel & (1u << BTN_REC)) && page == PAGE_ENV) {   /* REC on the environment: nothing (SEL arms its rows, #395; REC
-                                                     * on every screen is #395's next slice) */
-        rec_held_used = 0;
-        rel &= ~(1u << BTN_REC);
-    }
-    if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, the armed track) */
-        if (seq_rec_page() && page != PAGE_SEQ) {
-            seq_rec_aim();                          /* (nothing armed: on a drum track, the hits seen landing) */
-            page_set(PAGE_SEQ);
-        }
+    if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC (#395): the same on every page, the page stays. Stopped: the
+                                                     * transport starts (as PLAY) and it records; running: it records;
+                                                     * recording: it ends, the transport goes on */
+        if (!seq_rec && !eng_transport_running())
+            play_toggle();
         seq_rec_press();
     }
     if (rel & (1u << BTN_REC))
