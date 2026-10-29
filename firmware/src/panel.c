@@ -25,6 +25,7 @@ static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button 
 #define BTN_ENV_IDX 2u                /* ENV (#197): fixed, the environment; its jack a Gate */
 #define FIXED_BTNS ((1u << BTN_GLO_IDX) | (1u << BTN_SEL_IDX) | (1u << BTN_ENV_IDX))
 static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */
+static uint8_t home_turned;                   /* PRESET turned the patch while HOME was held: its release does not go back (#395) */
 
 static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
 
@@ -39,6 +40,17 @@ static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};  
 #define BTN_GLO 7u
 /* the buttons that act on the FM-1 itself in sandbox mode (sandbox_ui.c); the others only go out as MIDI */
 #define SB_OWN_BTNS ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_HOME) | (1u << BTN_PLAY) | (1u << BTN_GLO))
+
+/* HOME held + PRESET (#395), and PRESET in the menu: the next / previous patch, its name over the bars (#170); HOME's
+ * release then does not go back. In sandbox mode the editor's Live holds it (live.c) */
+static void patch_turn(int32_t d)
+{
+    if (panel_held >> BTN_HOME & 1u)
+        home_turned = 1;
+    if (!sb_on)
+        pages_patch_ask();
+    preset_step(d);
+}
 
 /* MIDI out (#115, MENU > MIDI OUT; docs/ARCHITECTURE.md "MIDI out map"): every panel control as it is touched, whatever
  * it does here, so a host can mirror or replay the panel. Buttons: CC 127 on the press, 0 on the release (by matrix id
@@ -165,8 +177,8 @@ static void page_show(uint32_t p)
         header_draw();
     leds_play();
     leds_panel();                                   /* (GLO is lit while its page shows) */
-    if (page == PAGE_ENV || page == PAGE_PRESETS) {   /* their rows are drawn whole, edge to edge: only the strips above
-                                                     * and below them are cleared (the menu, SEQ and SONG pages clear their
+    if (page == PAGE_ENV) {                         /* its rows are drawn whole, edge to edge: only the strips above and
+                                                     * below them are cleared (the menu, SEQ and SONG pages clear their
                                                      * own ground when drawn whole) */
         lcd_fill(0, BAR_H, 240, ENV_Y0 - BAR_H, C_BG);
         lcd_fill(0, ENV_Y0 + ENV_ROWS * ENV_ROW_H, 240, 240u - ENV_Y0 - ENV_ROWS * ENV_ROW_H, C_BG);
@@ -318,7 +330,7 @@ static void panel_encoders(int32_t *st)
                                                      * steps the patches; a settings tab's K1..K4 go on below, as a device page's */
         menu_knobs(st);
         if (st[6])
-            preset_step(st[6]);
+            patch_turn(st[6]);
         st[0] = st[1] = st[6] = 0;
         if (!menu_page())
             return;
@@ -342,25 +354,21 @@ static void panel_encoders(int32_t *st)
         }
         return;
     }
-    if (page == PAGE_ENV && st[6]) {                /* PRESET on the environment: the row's presets (#198), not the patch */
-        if (env_preset_step(st[6]))
-            ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the rows that changed: #229) */
-        return;
-    }
-    if (page == PAGE_PRESETS && st[6]) {            /* PRESET on the preset list: the presets too (#194) */
-        if (presets_turn(st[6]))
-            ui_dirty = ui_dirty ? ui_dirty : 1;
+    if (st[6] && (panel_held >> BTN_HOME & 1u)) {   /* HOME held + PRESET (#395): the next patch */
+        patch_turn(st[6]);
         return;
     }
     if ((page == PAGE_SEQ || page == PAGE_SONG) && st[6]) {   /* PRESET on the SEQ / SONG page: the patch's pattern (#375,
-                                                     * D-541), as on ENV and PRESETS it is the page's list */
+                                                     * D-541), as on ENV and a device page it is the page's list */
         seq_pattern_step(st[6]);
         return;
     }
-    if (st[6]) {                                    /* PRESET: the next patch, its name over the bars (#170) */
-        if (!sb_on)
-            pages_patch_ask();
-        preset_step(st[6]);                         /* (in sandbox mode the editor's Live holds it: live.c) */
+    if (st[6]) {                                    /* PRESET alone (#395): the focused device's presets (#198; a module has
+                                                     * none), loaded as it turns; in sandbox mode the editor's Live holds it */
+        if (sb_on)
+            preset_step(st[6]);
+        else if (dev_preset_step(st[6]))
+            ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the rows that changed: #229) */
         return;
     }
     if (sb_on && page == 0u && sb_have) {           /* sandbox mode: SELECT / ALGO went out as MIDI (the editor's page follows),
@@ -405,17 +413,12 @@ static void panel_encoders(int32_t *st)
             st[2] = st[3] = 0;
         }
     }
-    if (page == PAGE_PRESETS) {                     /* the preset list: SELECT / ALGO load the next / previous as they turn */
-        if (presets_turn(st[0] + st[1]))
-            ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the old and the new row: #229) */
-        return;
-    }
     if (page == PAGE_ENV) {                         /* the environment: SELECT the row (its first page on K1..K4), ALGO its presets */
         if (st[0] && pages_select(st[0])) {
             m1_focus_now(pg_cur_dev, pg_cur_page);
             ui_dirty = ui_dirty ? ui_dirty : 1;   /* (the old and the new row: #229) */
         }
-        if (st[1] && env_preset_step(st[1]))
+        if (st[1] && dev_preset_step(st[1]))
             ui_dirty = ui_dirty ? ui_dirty : 1;
         st[0] = st[1] = 0;
     }
@@ -573,15 +576,14 @@ static uint8_t env_held_used;
 
 /* SEL (#197; arming: #395). A device page: arms its device, the others disarmed, or takes it out when armed; an
  * environment row: its device into the armed set or out of it (a layer); a device that takes no keys: the armed set as
- * it was, NOTHING HERE TAKES KEYS. On
- * the SONG page (and the preset list, which nothing opens until #395's PRESET slice removes it): back */
+ * it was, NOTHING HERE TAKES KEYS. On the SONG page: back */
 static void sel_open(void)
 {
     pages_ensure();
     if (page == PAGE_ENV) {
         dev_arm(1);
         ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
-    } else if (page == PAGE_PRESETS || page == PAGE_SONG) {
+    } else if (page == PAGE_SONG) {
         screen_back();
     } else if (page == 0) {
         dev_arm(0);
@@ -593,7 +595,7 @@ static void sel_open(void)
 static void preset_store_focused(void)
 {
     dp_store(pg_cur_dev);
-    if (page == PAGE_ENV || page == PAGE_PRESETS)
+    if (page == PAGE_ENV)
         ui_dirty = 2;
 }
 
@@ -725,8 +727,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
         glo_t0 |= 2u;
         menu_fire();
     }
-    if (rel & (1u << BTN_HOME))
-        screen_back();                              /* HOME: one step back (out of the menu, the SEQ page ...); held it is nothing (#395) */
+    if (p & (1u << BTN_HOME))                       /* HOME acts on release: one step back (out of the menu, the SEQ page ...),
+                                                     * unless PRESET turned the patch meanwhile; held alone it is nothing (#395) */
+        home_turned = 0;
+    if ((rel & (1u << BTN_HOME)) && !home_turned)
+        screen_back();
     if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
         play_turned = 0;
     if ((rel & (1u << BTN_PLAY)) && !play_turned)

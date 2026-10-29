@@ -4,6 +4,14 @@
 
 ### Changes
 
+- **On the FM-1, PRESET alone steps the focused device's presets; HOME held + PRESET steps patches** (#395, slice 4).
+  On a device's page, PRESET loads that device's next or previous preset as it turns (an assembly's stored values,
+  factory or yours), its name in the bar; a module has none (NO PRESETS ON A MODULE). The environment row's PRESET and
+  ALGO do the same as before. To change patch, hold HOME and turn PRESET: the slot and name show in the footer's toast as
+  before, and that HOME release goes nowhere. On the SEQ and SONG pages PRESET still picks the pattern; in the menu it
+  still steps patches; PLAY held + PRESET is still the tempo. The preset list page is gone (nothing opened it since SEL
+  began to arm). The LCD manual says so. In the editor's FM-1 tab, Shift-click latches HOME for the chord. Host- and
+  emulator-tested; not yet on a device.
 - **On the FM-1, GLO opens the settings menu** (#395, slice 1). The GLOBAL page is gone: GLO opens the menu on its MIDI
   tab, and GLO again or a HOME tap goes back. ALGO steps the tabs. MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), PANEL
   (LEDS, KNOB ACCEL) and SYSTEM (UPDATE MODE, FACTORY RESET) are pages of settings, each row turned by its own knob
