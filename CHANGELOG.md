@@ -37,6 +37,12 @@
 
 ### Fixes
 
+- **Arming on the FM-1 shows in the editor** (#191). With Live on, SEL on a device page or an environment row, REC held + a
+  black key, or the SEQ page arming the track it shows now lights the same devices' ARM in the editor (the Steps card's
+  arm icon included), and the status line says what the keys play; a disarm clears it, and a patch loaded from the panel
+  shows nothing armed. The editor's own keys keep going to the FM-1 while the armed set is the FM-1's, because the FM-1
+  routes them to it. Before, the FM-1 told the editor nothing of its arming. Arming in the editor still does not reach
+  the FM-1. Checked in the emulator (the `arming` scenario); not yet on a device.
 - **A message for the editor that the FM-1 gives up on no longer goes out half-way** (#378). When a computer stops
   reading the FM-1's MIDI (no app open) and the FM-1's queue for the editor fills, a message that fits the queue is now
   queued whole or not at all, so nothing goes out without its closing F7. A message longer than the queue (a track with

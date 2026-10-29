@@ -58,11 +58,12 @@ Steps is the sequencer for melodies, chords and drums: a **Steps track** holds s
 | <a id="D-549"></a>D-549 | When REC starts recording and no Steps track is armed, it still runs as [D-548](steps.md#D-548) says, and the top bar says `REC: NO TRACK ARMED`. With one Steps track armed the bar says `REC` and the track's name; with several, `REC` and how many. | Proposed (decider: michael glaviano) | 2026-10-28 | issue #395; owner in chat 2026-10-28; PR #398 |
 | <a id="D-800"></a>D-800 | While REC is on, the recording follows the armed set. A Steps track armed while REC is on records from then on, and one taken out of the set stops recording. This holds for every way of arming: SEL, an environment row, the SEQ page and ALGO there, and REC held + a black key. ALGO picks the track on the SEQ page while REC is on too. Another patch loading leaves REC on. | Proposed (decider: michael glaviano) | 2026-10-28 | issue #395; owner in chat 2026-10-28; PR #398 |
 | <a id="D-801"></a>D-801 | Any stop of the transport ends the recording on the FM-1: PLAY, the editor's PLAY, and a MIDI Stop. The FM-1 never records while its transport is stopped. | Proposed (decider: michael glaviano) | 2026-10-28 | issue #395; owner in chat 2026-10-28; PR #398 |
+| <a id="D-802"></a>D-802 | The FM-1 tells the editor its armed set whenever it changes on its panel (SEL, REC held + a black key, the SEQ page arming the track it shows; a slot loaded from the panel reports nothing armed), as an unasked message with the module mask (54 ARMS_NOW). The editor shows the same set, as if armed there, and keeps sending its notes to the FM-1 while the set is the FM-1's own, because the FM-1 routes them to it. Nothing is sent back. The editor's own arming still does not reach the FM-1, and while a device armed in the editor is the armed set the editor still sends no notes. This amends [D-516](steps.md#D-516), under which the link carried no armed set in either direction. | Proposed (decider: michael glaviano) | 2026-10-29 | issue #191 (the owner's report of 2026-10-28); PR #407 |
 
 ## Not yet settled
 
 - A master length for tracks of different lengths, so polymetric patches switch patterns and song entries together — issue #375.
 
 - How to arm an engine on the FM-1 when no keys cable from Main reaches it — issue #191
-- Whether the editor and the FM-1 mirror the armed set both ways over the USB link, with a set form of the arm message behind a feature bit — issue #191
+- Whether the editor's arming reaches the FM-1 over the USB link (the FM-1's reaches the editor by [D-802](steps.md#D-802), proposed) — issue #191
 - The FM-1's count-in before REC records: issue #395 plans a MENU setting, off by default, built with its MENU slice — issue #395

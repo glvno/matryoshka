@@ -109,6 +109,8 @@ export type DeviceEvent =
   | { kind: 'pattern'; pattern: number; song: number }
   | { kind: 'song'; song: number; entries: SongEntry[] }
   | { kind: 'mute'; module: number; on: boolean }
+  /** the armed set after it changed on the FM-1 (ARMS_NOW, #191): a mask over the module indices of the patch it plays */
+  | { kind: 'arms'; lo: number; hi: number }
   | { kind: 'param'; module: number; param: number; value: number }
   | { kind: 'focus'; device: number; page: number }
   /** a preset stored on the FM-1 (#195, ENV held + SAVE) */
@@ -164,6 +166,10 @@ export class DeviceLink {
       const sn = p?.cmd === CMD.songNow ? parseSongNow(p.payload) : null;
       if (sn) return this.onEvent({ kind: 'song', ...sn });
       if (p?.cmd === CMD.muteNow && p.payload.length >= 2) return this.onEvent({ kind: 'mute', module: p.payload[0], on: !!p.payload[1] });
+      if (p?.cmd === CMD.armsNow && p.payload.length >= 8) {
+        const v = new DataView(Uint8Array.from(p.payload.slice(0, 8)).buffer);
+        return this.onEvent({ kind: 'arms', lo: v.getUint32(0, true), hi: v.getUint32(4, true) });
+      }
       if (p?.cmd === CMD.paramNow && p.payload.length >= 6) {
         const v = new DataView(Uint8Array.from(p.payload.slice(2, 6)).buffer).getInt32(0, true) / 65536;
         return this.onEvent({ kind: 'param', module: p.payload[0], param: p.payload[1], value: v });
