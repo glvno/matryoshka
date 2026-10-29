@@ -3124,7 +3124,7 @@ int main(void)
               " for pixel", runs > 200u && bad == 0u);
         check("the toast's end: only its band drawn again", outside_toast == 0u && end_max <= 240u * (LK_TOH + 4u));
     }
-    check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
+    check("no renderer wrote the line buffer the LCD was still reading (#377: lcd_line is the other one, afresh each row)",
           lcd_line_clobbers == 0u);
     {   /* a card row that sets several parameters and a Selector's named positions (#357, #358): golden.ts's card-rows kit
          * (test-patches.ts cardRows): the voice's page is CUTOFF (both filters), RES (both), SOURCE (LOW HIGH RAW, 3 in use),

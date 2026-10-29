@@ -73,11 +73,21 @@ static void lcd_window(uint32_t x0, uint32_t y0, uint32_t x1, uint32_t y1)
     lcd_cmd(0x2C);
 }
 
-/* THE line buffer: one scanline, shared by every renderer (lcd_fill's colour, the text rows of font5x7.c / font_bc.c,
- * pages_ui.c's bars and toast, the splash, the battery mark). The DMA reads it after lcd_data returns, so a renderer
- * calls lcd_sync() before writing it, and keeps no row of its own (480 B of RAM each). Nothing draws from
- * lcd_yield (panel.c), so a row being built is never clobbered from inside a transfer's wait. */
-static uint16_t lcd_line[240];
+/* THE line buffers: two scanlines (#377), shared by every renderer (lcd_fill's colour, the text rows of font5x7.c /
+ * font_bc.c, pages_ui.c's bars and toast, the splash). lcd_line is the free one: a renderer builds its scanline there
+ * without waiting and sends it with lcd_line_out (or lcd_line_send), which hands that buffer to the DMA and makes the
+ * other one lcd_line. The other one is free by then: lcd_data waits for the running transfer before it starts the next,
+ * so at most one buffer is ever the LCD's, and the CPU builds a row while the one before it goes out. Write only
+ * lcd_line, read it afresh for every row (never keep its pointer across an out), and keep no row of your own (480 B of
+ * RAM each). Nothing draws from lcd_yield (panel.c), so a row being built is never clobbered from inside a transfer's
+ * wait. */
+static uint16_t lcd_lines[2][240];
+static uint16_t *lcd_line = lcd_lines[0];
+
+static void lcd_line_flip(void)        /* the buffer just handed to the DMA is the LCD's: the other one is free */
+{
+    lcd_line = lcd_line == lcd_lines[0] ? lcd_lines[1] : lcd_lines[0];
+}
 
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
@@ -89,7 +99,6 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
     if (y + h > 240u)
         h = 240u - y;
     scr_erase(x, y, w, h);
-    lcd_sync();
     k = 240u / w * w;                       /* whole rows per transfer (narrow fills: one DMA) */
     for (i = 0; i < k; i++)
         lcd_line[i] = (uint16_t)sw;
@@ -99,6 +108,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
             k = n;
         lcd_data(lcd_line, k * 2u);
     }
+    lcd_line_flip();
 }
 
 static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *px)
@@ -109,15 +119,23 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
     lcd_data(px, w * h * 2u);
 }
 
-/* lcd_line's first w pixels (RGB565, native order) out as one scanline at x, y: swapped to big endian in place, so the
- * buffer is the LCD's until the next lcd_sync */
+/* lcd_line's first w pixels (big endian already) out as one scanline at x, y: the buffer is the LCD's, the other one
+ * is lcd_line from here */
+static void lcd_line_send(uint32_t x, uint32_t y, uint32_t w)
+{
+    lcd_blit(x, y, w, 1, lcd_line);
+    lcd_line_flip();
+}
+
+/* lcd_line's first w pixels (RGB565, native order) out as one scanline at x, y: swapped to big endian in place, then
+ * lcd_line_send */
 static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)
 {
     uint32_t i;
     for (i = 0; i < w; i++)
         lcd_line[i] = (uint16_t)((lcd_line[i] >> 8) | (lcd_line[i] << 8));
     scr_line(x, y, w);
-    lcd_blit(x, y, w, 1, lcd_line);
+    lcd_line_send(x, y, w);
 }
 
 /* ST7789V init: reset, then 16-bit colour, scan direction and IPS inversion;
