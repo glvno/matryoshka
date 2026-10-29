@@ -19,9 +19,8 @@ static const char *patch_label;
                                                  * pages of settings drawn as a device page (pages_ui.c menu_tab_page); INFO
                                                  * and MANUAL are texts */
 #define PAGE_ENV 9u                             /* ENV: the environment (#197, pages_ui.c env_draw) */
-#define PAGE_PRESETS 10u                        /* SEL on an assembly device: its presets (#194, pages_ui.c presets_draw) */
-static uint8_t page;                            /* 0: the device page, 5 the menu (6, GLO's own page, went into it: #395), 8 the SEQ page, 9 the environment, 10 the
-                                                 * presets, 11 the SONG page (seq_ui.c); (7, the legend, is gone: #114) */
+static uint8_t page;                            /* 0: the device page, 5 the menu (6, GLO's own page, went into it: #395), 8 the SEQ page, 9 the environment,
+                                                 * 11 the SONG page (seq_ui.c); (7, the legend, is gone: #114; 10, the preset list, too: #395) */
 static void seq_bar(void);
 static void seq_draw(int full);
 static void song_bar(void);                     /* the SONG page (seq_ui.c, #375) */
@@ -205,7 +204,7 @@ static uint32_t param_bar(const def_t *def, uint32_t j, int32_t q16, uint32_t wi
 
 /* ---- the picture of the patch: modules as coloured boxes in rows by depth (a vertical strip), cables as lines */
 
-#define BAR_H 20u                               /* the top bar of the menu, SEQ, ENV and the preset list (the device page's
+#define BAR_H 20u                               /* the top bar of the menu, SEQ, ENV (the device page's
                                                  * header is taller: pages_ui.c LK_HH) */
 
 /* The battery (#240): main.c reads SARADC ch 3 (the divider on PB1) every 2 s and hands the mean of a few conversions to
@@ -299,7 +298,6 @@ static void bar_text(const char *s, uint16_t bg)
 
 static void pages_draw(int full);
 static void pages_strip(void);
-static void presets_bar(void);
 static uint8_t ui_yielding;                     /* panel.c: keys are taken from inside a redraw (#230): nothing may draw */
 static uint8_t ui_header_due;                   /* a header_draw asked for meanwhile: panel_draw does it at the end */
 static void header_draw_now(void);
@@ -356,8 +354,6 @@ static void header_draw_now(void)
         msg_until = 0;
         if (dev_like() || page == PAGE_ENV)   /* the device page: the devices strip; the menu's and ENV's bars */
             pages_strip();
-        else if (page == PAGE_PRESETS)          /* the preset list: PRESETS and the device, on gold */
-            presets_bar();
         else
             bar_text(b, C_ACC);
         return;
@@ -399,7 +395,6 @@ static uint32_t panel_used(void)
 
 static void menu_draw(int full);
 static void env_draw(int full);
-static void presets_draw(int full);
 
 #define LEFT_W 216u
 
@@ -432,8 +427,6 @@ static void view_draw(int full)                 /* whichever page is showing */
         song_draw(full);
     else if (page == PAGE_ENV)
         env_draw(full);
-    else if (page == PAGE_PRESETS)
-        presets_draw(full);
     else if (sb_on && page == 0u)
         sandbox_draw(full);
     else

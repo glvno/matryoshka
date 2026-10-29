@@ -178,7 +178,7 @@ export class Fm1View {
     if (i.t === 'button') {
       this.btnEls.get(i.id)?.classList.toggle('down', i.down);
       ui.button(i.id, i.down);
-      // a held button needs the clock running (HOME held = the menu, a Page button's hold) while this tab is hidden too
+      // a held button needs the clock running (GLO held in the menu, HOME + PRESET, a Page button's hold) while this tab is hidden too
       if (i.down) this.farHeld.add(i.id);
       else this.farHeld.delete(i.id);
       if (this.farHeld.size && !this.farTimer) this.farTimer = window.setInterval(() => { ui.tick(performance.now() - this.t0); if (!this.farHeld.size) { clearInterval(this.farTimer); this.farTimer = 0; } }, 40);
