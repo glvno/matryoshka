@@ -66,4 +66,4 @@ Steps is the sequencer for melodies, chords and drums: a **Steps track** holds s
 
 - How to arm an engine on the FM-1 when no keys cable from Main reaches it — issue #191
 - Whether the editor's arming reaches the FM-1 over the USB link (the FM-1's reaches the editor by [D-802](steps.md#D-802), proposed) — issue #191
-- The FM-1's count-in before REC records: issue #395 plans a MENU setting, off by default, built with its MENU slice — issue #395
+- The FM-1's count-in before REC records: issue #395 decided a MENU setting, off by default; its length, sound and when it applies are open — issue #414

@@ -52,7 +52,7 @@ The FM-1 is a patch player: patches are built in the browser, and the device pla
 
 ## Not yet settled
 
-- The count-in setting of issue #395 (slice 1): not built, because nothing records with a count-in yet — issue #395.
+- The count-in setting before REC records (a MENU setting, off by default, decided in issue #395): not built, because nothing records with a count-in yet — issue #414.
 - Whether the stock battery thresholds (531 / 561 / 591) match this FM-1's readings on USB, unplugged full, later and near shutdown — issue #240
 - Whether GLO's page gets a level and a speaker mute (no such setting or hardware control is known) — issue #199
 - Whether device page bars for envelopes draw a faint envelope shape — issue #112
