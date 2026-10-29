@@ -933,6 +933,9 @@ async function main() {
       const vp = await emu.peak(v);
       await loudCheck('arming: Vernon 100 armed, a white key plays it', vp, vp > LOUD, `peak ${vp}`);
       await sleep(1000);
+      await emu.tap(B.scl);                         // SEL is a toggle (D-239): armed, it takes it out
+      await check('arming: SEL again on its page disarms it, the keys WIRED', await emu.waitText('KEYS WIRED', 1500));
+      await sleep(1300);
       await emu.turn(ENC.select, -1);               // the device before: the Arpeggiator
       await sleep(300);
       await emu.tap(B.scl);
