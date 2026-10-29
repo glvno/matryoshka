@@ -388,7 +388,7 @@ fn long_delay(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String>
         let mut m = Machine::boot(app, Some(&flash));
         wait_text(&mut m, DEVICE_PAGE, 9000)?;
         m.run_for(2500)?;
-        t.screen(&m, &format!("long delay: {name} loads"), name);
+        patch_screen(t, &mut m, &format!("long delay: {name} loads"), name)?;   // (the footer cuts the name before KEYS WIRED)
         let mk = m.mark();
         m.midi(&[0x90, 60, 100], 60)?;
         m.midi(&[0x80, 60, 0], 1500)?;
