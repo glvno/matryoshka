@@ -7,6 +7,8 @@
 // the loader reads the whole image and writes it. Both steps are "the device
 // asks, we answer": cmd 0x30 read requests on the logical image.
 
+import { headIs, headWhich, sha256hex } from "./fm1pkg.js";
+
 const HS_QUERY = [0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7];
 const UPGRADE = [0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7];
 const MAXDATA = 512;
@@ -17,13 +19,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const IS_OTA = (id) => /^ota-/i.test(id.model);
 
 // errors carry a code the pages translate: notfound, model, stopped, noloader, lost, noreturn,
-// mismatch (detail: the identity the device reports), badreq, phase, bootcode (bootMismatch)
+// mismatch (detail: the identity the device reports), badreq, phase, bootcode (bootMismatch: the FM-1 refused an
+// M-VAVE package, its boot code unknown here), bootcode-is-v15 / bootcode-is-open / bootcode-is-other (read before
+// sending, #264: the FM-1's boot code is V15's / Official Open's / another, detail: its SHA-256)
 // Which loader may finish an interrupted write of which package. M-VAVE's loader (ota-FM-1_015)
-// writes the flash head (boot code) from the package, so it only ever gets the official V15.
+// writes the flash head (boot code) from the package, so it only ever gets M-VAVE's own packages: the official V15 or
+// Official Open (FM-1_8xxxxxx, the user's file, #183), the one that was being installed (the page remembers it).
 // Felucca-lineage loaders (Felucca FM-1_9XY, ours FM-1_7XY since #79 and FM-1_800 before; three digits) never write the head
 // and get every other package; their identity does not follow the package's (ours reports
-// ota-FM-1_700 for release builds too). Unknown loaders (M-VAVE Official Open, others) get nothing.
+// ota-FM-1_700 for release builds too). Unknown loaders get nothing.
 export const STOCK_PRODUCT = "FM-1_015";
+export const isOpenProduct = (p) => /^FM-1_8\d{6}$/.test(p);
+/** M-VAVE's packages: written by M-VAVE's loader, which rewrites the boot code from them */
+export const isMvaveProduct = (p) => p === STOCK_PRODUCT || isOpenProduct(p);
 
 // #183: before a package with M-VAVE's loader is staged, the running firmware (ota.c ota_stage, step 2) compares the
 // package's flash head (boot code, 0x0000-0x3FFF) with its own, because that loader rewrites the head from the package;
@@ -34,10 +42,56 @@ export function bootMismatch(addrs) {
   return addrs.length >= 4 && addrs[0] === 0 && addrs[1] === 512 && addrs[addrs.length - 1] < addrs[2];
 }
 export const BOOT_MISMATCH =
-  "nothing was changed: the FM-1 refused the official V15 (its screen says update failed -5), because the small piece " +
-  "of software that starts it (its boot code) is not V15's; most likely it was set up by M-VAVE's Official Open";
+  "this FM-1's boot code (flash 0x0000-0x3FFF) is not the one inside this package, so it refused the update before " +
+  "erasing anything (its screen says update failed -5); the device is safe";
+
+// #264: Matryoshka 1.3 and later answer cmd 0x12 (ota.c ota_reply_head) with 64 bytes of the boot code
+const HEAD_LEN = 0x4000, HEAD_PIECE = 64;
+function headRequest(off) {
+  const body = [0x00, 0x59, 0x12, 2, 0, 0, off & 0xFF, off >> 8];
+  body.push(~(body[6] + body[7]) & 0xFF);
+  return [0xF0, ...pack7(body), 0xF7];
+}
+function parseHeadPiece(pkt) {
+  if (pkt[0] !== 0xF0 || pkt[pkt.length - 1] !== 0xF7) return null;
+  const d = unpack7(pkt.slice(1, -1));
+  if (d.length < 73 || d[0] !== 0 || d[1] !== 0x59 || d[2] !== 0x12 || d[3] !== 66 || d[4] || d[5]) return null;
+  let s = 0;
+  for (let i = 6; i < 72; i++) s += d[i];
+  if ((~s & 0xFF) !== d[72]) return null;
+  return { off: d[6] | (d[7] << 8), data: d.slice(8, 72) };
+}
+/** the FM-1's boot code (flash 0x0000-0x3FFF), or null when its firmware does not answer (before Matryoshka 1.3,
+ *  Felucca, Sloop, stock, the update loaders) */
+export async function readHead(link, ms = 1000) {
+  link.drain();
+  const out = new Uint8Array(HEAD_LEN);
+  for (let off = 0; off < HEAD_LEN; off += HEAD_PIECE) {
+    let got = null;
+    for (let t = 0; t < 2 && !got; t++) {
+      if (!link.send(headRequest(off))) return null;
+      const end = Date.now() + ms;
+      while (!got && Date.now() < end) {
+        const p = await link.read(end - Date.now());
+        if (!p) break;
+        const r = parseHeadPiece(p);
+        if (r && r.off === off) got = r.data;
+      }
+    }
+    if (!got) return null;
+    out.set(got, off);
+  }
+  return out;
+}
+/** -> null when the FM-1's boot code is the package's or could not be read, else the error code naming it */
+export async function headProblem(head, product) {
+  if (!head) return null;
+  if (await headIs(head, product === STOCK_PRODUCT ? "v15" : "open")) return null;
+  const w = await headWhich(head);
+  return { code: w === "v15" ? "bootcode-is-v15" : w === "open" ? "bootcode-is-open" : "bootcode-is-other", sha: await sha256hex(head) };
+}
 export function loaderFits(loader, product) {
-  if (product === STOCK_PRODUCT) return loader === "ota-" + STOCK_PRODUCT;
+  if (isMvaveProduct(product)) return loader === "ota-" + STOCK_PRODUCT;
   return /^ota-FM-1_[789]\d\d$/.test(loader);
 }
 
@@ -221,12 +275,17 @@ export class Updater {
     if (!dev) throw fail("notfound", "FM-1 not found (USB cable, and no other app using it?)");
     const [model] = product.split("_");
     if (dev.id.model !== model) { dev.link.close(); throw fail("model", `the device is ${dev.id.text}, the package is for ${product}`); }
+    if (isMvaveProduct(product)) {          // #264: the boot code first; a package of M-VAVE's only goes over its own
+      const bad = await headProblem(await readHead(dev.link), product);
+      if (bad) { dev.link.close(); throw fail(bad.code, `the FM-1's boot code is not the one in ${product}`, bad.code === "bootcode-is-other" ? `SHA-256 ${bad.sha}` : ""); }
+    }
     step("start", dev.id.text);
     dev.link.send(UPGRADE);
     await sleep(2000);
     const s1 = await this.serve(dev.link, image, FINISH_CHECK, 8000, (n) => step("verify", n));
     dev.link.close();
-    if (!s1.finished && !s1.lost && product === STOCK_PRODUCT && bootMismatch(s1.addrs)) throw fail("bootcode", BOOT_MISMATCH);
+    if (!s1.finished && !s1.lost && isMvaveProduct(product) && bootMismatch(s1.addrs))
+      throw fail("bootcode", BOOT_MISMATCH);
     if (!s1.finished) throw fail(s1.lost ? "lost" : "stopped", `the device ${s1.lost ? "was disconnected" : "stopped"} after ${s1.served} requests: nothing was written`);
     step("loader");
     await sleep(3000);
@@ -256,14 +315,18 @@ export class Updater {
 
   // resume: the device is already in update mode (loader) -> true when the write finished.
   // Only a loader that may write this package is fed (loaderFits); any other loader is refused,
-  // never written to: M-VAVE's own loader rewrites the flash head with whatever it is given.
-  async resume(image, onStep, product) {
+  // never written to: M-VAVE's own loader rewrites the flash head with whatever it is given, so `guard(loader)` (the
+  // page's memory of which M-VAVE package was being written) may refuse too, by throwing, before anything is sent.
+  async resume(image, onStep, product, guard) {
     const model = product.split("_")[0];
     const ota = await this.find(IS_OTA);
     if (!ota) return false;
     if (!loaderFits(ota.id.text, product)) {
       ota.link.close();
       throw fail("otherloader", `the FM-1 waits in the update loader ${ota.id.text}, which must not be given ${product}`, ota.id.text);
+    }
+    if (guard) {
+      try { guard(ota.id.text); } catch (e) { ota.link.close(); throw e; }
     }
     const step = onStep || (() => {});
     const result = await this.write(ota, image, step);

@@ -4,6 +4,8 @@
  *
  * The updater talks SysEx (F0 pack7(00 59 cmd len24 body chk) F7):
  *   cmd 0x11  handshake -> we answer our package identity (FELUCCA_ID)
+ *   cmd 0x12  (Matryoshka change, #264) body: offset (2 bytes, a multiple of 64 below 0x4000) -> we answer the offset
+ *     and 64 bytes of our head from there: read only, so a host can tell which boot code the FM-1 has before an update
  *   F0 22 24 35 7F F7  upgrade -> ota_session(): pull parts of the package
  *     with cmd 0x30 read requests, check them, stage the package's update
  *     loader at 0xE0000 (outside Felucca's store), ask 0xE0000000 ("success"),
@@ -13,6 +15,8 @@
  * staging began erases the staging area, and Felucca carries on. A package
  * whose flash.bin is not exactly this board's size (OTA_FL_LEN: another
  * board's package) is refused in step 1, before anything is erased.
+ * (Matryoshka change, #183: except a shorter one with M-VAVE's loader whose head equals ours: Official Open's.)
+ * (Matryoshka change, #264: "equals" lets the chip key's block differ when both decode to the same key.)
  *
  * Portable core: the firmware (felucca.c) and the Mac test (ota_test.c)
  * supply these hooks:
@@ -29,6 +33,9 @@
 #define OTA_RES (OTA_AREA + OTA_AREA_LEN - 0x100u)  /* 0xE4F00 = 4K boundary - 256: SPL scan */
 #define OTA_FL_LEN 0x93000u                      /* flash.bin = [0, the PRCT end): the head and this board's app area,
                                                   * the size the update loader writes (ldr_core.c LDR_APP_HI) */
+/* Matryoshka change (#183): M-VAVE Official Open's flash.bin is shorter (0x6F000 in V12, 0x73000 in V14); a shorter one
+ * is whole 4 KiB sectors past the 16 KiB head */
+#define OTA_FL_SHORT_OK(n) ((n) < OTA_FL_LEN && (n) > 0x4000u && !((n) & 0xFFFu))
 #define OTA_LDR_HCRC 0xEBAAu                     /* official update loader (usb_hid_ota.bin) */
 #define OTA_LDR_DCRC 0x5881u
 #define OTA_LDR_LEN 0x4DE1u
@@ -107,10 +114,10 @@ static uint32_t ota_unpack7(const uint8_t *in, uint32_t n, uint8_t *out, uint32_
     return o;
 }
 
-static uint8_t ota_msg[8 + 32], ota_wire[2 + 48];
+static uint8_t ota_msg[8 + 66], ota_wire[2 + 84];   /* Matryoshka (#264): 66-byte bodies (was 32) */
 static uint8_t ota_dec[OTA_FRAME_MAX] __attribute__((section(".pool")));   /* decoded host message */
 
-static int ota_send_msg(uint32_t cmd, const uint8_t *body, uint32_t n)   /* n <= 32 */
+static int ota_send_msg(uint32_t cmd, const uint8_t *body, uint32_t n)   /* n <= 66 */
 {
     uint32_t i, s = 0, w;
     ota_msg[0] = 0;
@@ -158,12 +165,25 @@ static uint32_t ota_take(void)
     return d;
 }
 
-/* main loop, outside a session: answer handshakes */
+/* Matryoshka change (#264): 64 bytes of the head (flash 0x0000-0x3FFF) for a host; nothing else is readable */
+static void ota_reply_head(void)
+{
+    uint8_t r[66];
+    uint32_t off = ota_rd16(ota_dec + 6);
+    if ((off & 63u) || off >= 0x4000u || ota_fread(off, r + 2, 64))
+        return;
+    ota_wr16(r, off);
+    ota_send_msg(0x12, r, sizeof r);
+}
+
+/* main loop, outside a session: answer handshakes (and head reads) */
 static void ota_service(void)
 {
     uint32_t d = ota_take();
     if (d == 7u && ota_dec[2] == 0x11)
         ota_reply_identity();
+    if (d == 9u && ota_dec[2] == 0x12)
+        ota_reply_head();
 }
 
 /* one read request (3 tries x 5 s); data -> dst */
@@ -259,6 +279,47 @@ static int ota_ufw(uint8_t *hdr, uint32_t *fl_off, uint32_t *fl_len, uint32_t *o
     return 0;
 }
 
+/* Matryoshka change (#264): where our head keeps the chip key: the isd_config.ini entry, whose first 4 bytes are its two
+ * CRCs (*ent), and its key block, 32 bytes + CRC16 (*blk). A JieLi tool can write that block again with other bytes for
+ * the same key (seen on an FM-1, #264). 0 = found */
+static int ota_key_area(uint32_t *ent, uint32_t *blk)
+{
+    uint8_t e[32];
+    uint32_t off;
+    for (off = 32; off < 0x400u; off += 32u) {
+        if (ota_fread(off, e, 32))
+            return -1;
+        ota_jl_enc(e, 32);
+        if (ota_crc16(e + 2, 30, 0) != ota_rd16(e))
+            return -1;
+        if (ota_memeq(e + 16, (const uint8_t *)"isd_config.ini", 15)) {
+            *ent = off;
+            *blk = ota_rd32(e + 4);
+            return *blk >= 0x400u && *blk + 34u <= 0x4000u ? 0 : -1;
+        }
+        if (ota_rd16(e + 14))
+            return -1;                                      /* last entry */
+    }
+    return -1;
+}
+
+/* the chip key a key block decodes to (as the loader's ldr_core.c ldr_chip_key); 0 = its CRC holds */
+static int ota_key_of(const uint8_t *blob, uint32_t *key)
+{
+    uint32_t i, sum = 0, k = 0;
+    if (ota_crc16(blob, 32, 0) != ota_rd16(blob + 32))
+        return -1;
+    for (i = 0; i < 16u; i++)
+        sum += blob[i];
+    sum &= 0xFFu;
+    sum = sum >= 0xE0u ? 0xAAu : sum <= 0x10u ? 0x55u : sum;
+    for (i = 0; i < 16u; i++)
+        if ((uint32_t)(blob[16 + i] ^ blob[15 - i]) < sum)
+            k |= 1u << i;
+    *key = k;
+    return 0;
+}
+
 /* ota_stage's failures from step 4's first erase on (-8 .. -13; the steps before: -1 .. -7 and -15, nothing written) */
 #define OTA_STAGED_RC(rc) ((rc) <= -8 && (rc) >= -13)
 static int ota_stage(void)                       /* steps 1..6; 0 = host said success */
@@ -272,7 +333,9 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         return rc;
     if (!fl_off || !ota_off)
         return -3;
-    if (fl_len != OTA_FL_LEN)
+    /* Matryoshka change (#183): a shorter flash.bin (M-VAVE Official Open's) is let through to step 2, which takes
+     * it only with the official loader and only when the whole head equals ours; any other size: as Felucca */
+    if (fl_len != OTA_FL_LEN && !OTA_FL_SHORT_OK(fl_len))
         return -15;                                         /* another board's package: nothing staged, nothing erased */
     /* 2. which loader: the official one (known CRCs; it rewrites the whole flash.bin
      *    including the head) or Felucca's own (app area only, checks the chip key) */
@@ -288,14 +351,32 @@ static int ota_stage(void)                       /* steps 1..6; 0 = host said su
         own = ota_memeq(b + i, (const uint8_t *)"FELUCCA-LOADER-1", 16) && ota_rd32(b + 0x20 + 4) <= 0x14000u;
     if (!official && !own)
         return -7;
+    if (fl_len != OTA_FL_LEN && !official)
+        return -15;                                         /* Matryoshka (#183): a shorter one only with M-VAVE's loader */
     if (official) {                    /* the official loader writes the head: it must equal ours */
+        /* Matryoshka change (#264): apart from the chip key's block and its entry's CRCs, when both blocks hold the
+         * same key: the head the loader writes then starts this chip the same way */
+        uint8_t pk[34], dk[34];
+        uint32_t ent = 0, blk = 0, keyed = !ota_key_area(&ent, &blk), moved = 0, j, a, kp, kd;
         ota_show(2, 0);
         for (i = 0; i < 0x4000u; i += 512u) {
             if (ota_read(fl_off + i, b, 512) || ota_fread(i, mine, 512))
                 return -4;
-            if (!ota_memeq(b, mine, 512))
-                return -5;
+            for (j = 0; j < 512u; j++) {
+                a = i + j;
+                if (keyed && a >= blk && a < blk + 34u) {
+                    pk[a - blk] = b[j];
+                    dk[a - blk] = mine[j];
+                    moved |= b[j] != mine[j];
+                } else if (keyed && a >= ent && a < ent + 4u) {
+                    moved |= b[j] != mine[j];
+                } else if (b[j] != mine[j]) {
+                    return -5;
+                }
+            }
         }
+        if (moved && (ota_key_of(pk, &kp) || ota_key_of(dk, &kd) || kp != kd))
+            return -5;
     }
     /* 4. stage the package's loader: erase, body, verify, head last */
     ota_show(3, 0);

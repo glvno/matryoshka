@@ -1,7 +1,7 @@
 name: firmware
 # Builds the firmware with the JieLi toolchain on every push that touches it (paths below) and every pull request that does and fails on compiler warnings or on a
 # pool headroom below 8 KB (tools/build.py). Then the host tests that need a C compiler: the golden vectors (web engine
-# vs firmware engine), the arpeggiator, protocol, USB audio and panel tests, the LCD preview. The .fwsc and .bin are kept as an artifact
+# vs firmware engine), the arpeggiator, protocol, USB audio, update check (ota_test) and panel tests, the LCD preview. The .fwsc and .bin are kept as an artifact
 # (the emulator smoke test, npm run emu:smoke, downloads them; not for the only device: see the fork's issue 1).
 on:
   push:
@@ -12,6 +12,8 @@ on:
       - tools/**
       - .github/workflows/firmware.yml
       - web/presets/**
+      - web/public/firmware/FM-1_015.fwsc
+      - web/public/firmware/matryoshka.fwsc
       - web/package-lock.json
       - web/scripts/export-defs.ts
       - web/scripts/legacy-factory.json
@@ -127,6 +129,8 @@ jobs:
           export
           tools/golden.sh
           tools/usb_test.sh
+          tools/ota_test.sh
+          python3 tools/fm1_install_test.py
           tools/panel_test.sh
           tools/preset_test.sh
           tools/ui_preview.sh build/ui-preview.png 0 1

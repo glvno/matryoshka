@@ -14,6 +14,17 @@
   over a 50-minute soak). Synced note lengths stay spread over 1..520 ms, so a stored synced Delay keeps its note
   length; a knob click is 7 ms. The browser's Delay still reaches 1.6 s past that, browser only ("Delay over 700 ms").
   Checked on the test rig (26 of 26 device scenarios) and in the emulator; not yet on the owner's FM-1.
+- **Restore Official Open** (Install panel, and `tools/fm1_install.py`): an FM-1 that was set up by M-VAVE's Official
+  Open refuses the official V15 ("update failed -5", nothing changed). It can now take Official Open back from M-VAVE's
+  own file (its Workbench page or `.fwsc`); from there, M-VAVE's Workbench goes back to V15. Official Open does not come
+  with Matryoshka: it includes M-VAVE's own sound engine, which is not open source. Needs this firmware. Confirmed on a user's FM-1 on 2026-10-24 (issue #183): Official Open V14 came back and started.
+- A cut-off return to stock is finished only with the package it was writing (V15 or Official Open).
+- Before it sends the official V15 or Official Open, the Install panel and `tools/fm1_install.py` read the FM-1's
+  start-up software (its boot code) and say which one it has: V15's, Official Open's, or neither. A package the FM-1
+  would refuse is not sent, and a refusal no longer guesses which one it is (1.2.2 guessed Official Open's).
+  `fm1_install.py --info` shows it, and `--save-head FILE` saves it for a bug report. Needs this firmware.
+- An FM-1 whose start-up software has its chip-key block written again (seen after the chip's repair mode) is no longer
+  refused Official Open or V15 for that alone, when the block holds the same key.
 
 ## 1.6.0 — 2026-10-28
 
