@@ -777,6 +777,8 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     patch_turn(&mut m, 1, 500)?;
     t.screen(&m, "HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", "MIDI");
     t.screen(&m, "  (the next patch)", &presets[1].0);
+    patch_turn(&mut m, -1, 500)?;
+    t.screen(&m, "  (and back, so step 4 starts from patch 1)", &presets[0].0);
     m.turn(ALGO, 3, 400)?;
     t.screen(&m, "ALGO three times: the INFO tab", "VERSION");
     m.tap(HOME, 120, 400)?;
