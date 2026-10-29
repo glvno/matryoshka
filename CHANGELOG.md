@@ -4,6 +4,14 @@
 
 ### Changes
 
+- **The FM-1 draws its screens faster: a second LCD line buffer** (#377). The LCD driver keeps two scanline buffers
+  (480 B each, RAM 960 B instead of 480 B), so a row is built while the one before it goes out over SPI by DMA; before,
+  every row waited for the last one's transfer. Measured on the test rig (`npm run rig:bench`, Elvira 2 at 43 % CPU, 3
+  rounds, the firmware's own draw times): a page reached by SELECT / ALGO 123.7 → 103.3 ms (worst 200.2 → 153.7),
+  the whole device page 139.8 → 121.6 ms (worst 156.9 → 136.5), PRESET's toast 34.8 → 30.8 ms, a knob click's worst
+  18.2 → 15.1 ms; the same with the transport running. The audio interrupt (about 2.3 ms of every 2.9 at that load)
+  still pauses the screen, so the gain is smaller on a heavy patch than on an idle one. The screen is drawn the same,
+  pixel for pixel (panel_test.c); checked on the test rig, not yet on the owner's FM-1.
 - **On the FM-1, PRESET alone steps the focused device's presets; HOME held + PRESET steps patches** (#395, slice 4).
   On a device's page, PRESET loads that device's next or previous preset as it turns (an assembly's stored values,
   factory or yours), its name in the bar; a module has none (NO PRESETS ON A MODULE). The environment row's PRESET and
