@@ -35,11 +35,11 @@ html { touch-action: pan-x pan-y; }
 .sidebar > * { flex-shrink: 0; }
 .sidebar > .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: calc(48px + 6px + 38px + 6px + 26px); flex-shrink: 1; } /* never below the 48 px logo + gap + the wordmark (38 px at the sidebar's width) + gap + About: below that they ran into the tabs */
 .brand img { width: 100%; height: auto; min-width: 0; object-fit: contain; }
-.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 48px; }
+.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 48px; cursor: pointer; }
 .brand h1 { flex-shrink: 0; width: 100%; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.045em; }
 .patch-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden], .library-side[hidden] { display: none; }
+.patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden] { display: none; }
 .patch-controls > * { width: 100%; min-width: 0; }
 /* the FM-1 budget meter at the right of the status line: memory (the fullest limit) and the estimated CPU load side by
  * side; open, a card above the status line with every limit and the costliest modules */
@@ -111,7 +111,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* the main area: the views fill it and scroll themselves; the view switch, Connect FM-1 and the Install panel sit over it */
 main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-.tab:not(#tab-patch) { height: 100%; overflow: auto; padding: 56px 24px 24px; }
+.tab:not(#tab-patch) { height: 100%; overflow: auto; padding: 84px 24px 24px; }
 .tab[hidden] { display: none; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 /* touch-action: none: the canvas's own pinch, two-finger pan and one-finger pan (editor.ts touchGestures, rubberBand)
@@ -750,6 +750,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .internal-cables { overflow: hidden; border-radius: inherit; }
 .module .mbody { position: relative; pointer-events: none; }
 .module .mbody :is(input, select, button, summary, label, .dot:not(.slider-port), .rename, .param > span:not(.slider-jack), output) { pointer-events: auto; }
+/* Arrange mode: a grip and a whole row take the press (the body above lets it through to the card, where it starts a band) */
+.module.arranging .mbody :is(.arr-grip, .arr-item) { pointer-events: auto; }
 /* Only solid controls mask routes. Labels, values and ranges span grid cells;
    keep their backgrounds transparent so they cannot cut gaps in the cables. */
 .module .mbody :is(input:not(.jack-range), select, button, summary) { background-color: var(--panel); }
@@ -1062,6 +1064,12 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .picking .param.bar > span:first-child { padding-left: 21px; }
 .picking .param.bar :is(.slider-port, .slider-thumb, .picker-jack) { visibility: hidden; }
 .picking .param.bar :is(input, button, summary) { pointer-events: none; }
+/* a card row that sets several parameters (#357): its count, or the row that sets it, after the name */
+.param.bar .row-tie { font-size: 9.5px; letter-spacing: 0; }
+/* pick mode's tools for such a row and a Selector's position names (#358), at the bar's right over the value */
+.module .param.bar > .row-tools { position: absolute; z-index: 6; right: 4px; top: 1px; display: flex; gap: 3px; align-items: center; }
+.picking .param.bar > .row-tools :is(button, select) { pointer-events: auto; height: 16px; padding: 0 4px; font-size: 9px; }
+.picking .param.bar > .row-tools select.merge { width: 20px; max-width: 20px; padding: 0; text-indent: -999px; }
 .picking .port { cursor: pointer; }
 .fhead .pick-btn[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .frame.picking { border-color: var(--accent); }
@@ -1134,12 +1142,6 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 #palette-btn kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
 .sidebar #tour-btn { padding-inline: 8px; text-align: center; }
 /* the LIBRARY view's sidebar (main.ts setLibrarySection): its sections as a list, the current one marked like a selected row */
-.library-side { display: grid; gap: 10px; }
-.library-nav { display: grid; gap: 2px; }
-#workspace-sidebar .library-nav button { min-height: 34px; padding: 6px 10px; text-align: left; background: transparent; border: 1px solid transparent; color: var(--ink); font-size: 14px; }
-#workspace-sidebar .library-nav button:hover { border-color: var(--line); filter: none; color: var(--ink); }
-#workspace-sidebar .library-nav button[aria-current="true"] { background: var(--surface-tint); border-color: var(--line); color: var(--secondary); }
-.library-note { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* ---- Library in the cards' style: each card a module-like panel with a header strip (family tag + condensed title), rows on
    the bar shade, toolbar buttons yellow like the sidebar's, the row tools quiet ---- */
@@ -1206,6 +1208,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .param.bar.sel { display: flex; align-items: flex-start; gap: 8px; height: 34px; background: transparent; }
 /* the name lines up with the groove (the slider), not with the names under it */
 .param.bar.sel > span:first-child { flex: none; max-width: 40%; padding: 2px 0 0 6px; line-height: 12px; }
+/* pick mode: the name makes room for the check box, as on a slider's bar, and takes more of the row: the selector does
+   not move there, the name is what is being picked (#342) */
+.picking .param.bar.sel > span:first-child { max-width: 60%; padding-left: 21px; }
 .param.bar.sel > .parameter-routing { top: -1px; }
 .param.bar.sel.shown::after { top: 6px; }
 .sel-track { position: relative; flex: 1; min-width: 0; height: 34px; margin-right: 7px; cursor: pointer; touch-action: none; outline: none; }
@@ -1291,16 +1296,41 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* the band that selects rows (pick / arrange mode) in the selection's teal, not the modules' coral band */
 .rubber.rows { border-color: var(--secondary); background: color-mix(in srgb, var(--secondary) 10%, transparent); }
 .arr-grip { flex: none; padding: 0 3px; cursor: grab; touch-action: none; color: var(--muted); font-size: 14px; line-height: 1; }
-/* Arrange mode: the strip above every group (one FM-1 page), named as the FM-1 names it; its grip drags that page */
-.ebreak.epage { justify-content: flex-start; gap: 4px; height: 21px; margin-top: 3px; padding: 0 2px; border-color: var(--line);
-  font-size: 13px; letter-spacing: .1em; color: var(--muted); white-space: nowrap; overflow: hidden; }
-/* the focused page's label above its first row would repeat the strip's name */
+/* while arranging, the focused page's label above its first row is not drawn */
 .arranging .param.bar.page-start { margin-top: 0; }
 .arranging .param.bar.page-start::before { content: none; }
-.epage-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.epage-flag { display: flex; align-items: center; gap: 2px; font-size: 9px; letter-spacing: .08em; color: var(--accent); }
 .arr-grip:hover { color: var(--accent); }
-.ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held { opacity: .5; }
+.ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held, .eempty.arr-dragging, .arr-pgbox.arr-dragging { opacity: .5; }
+/* Arrange mode (arrange.ts, D-616): sections and pages get room for their outlines and the tools between them; an
+   overlay (.arr-ov) draws a faint outline around each section and each page, the page's handle in a strip on its
+   outline's left, the one line where a drag would land, + heading, + page break and a hand-set break's × */
+.arranging .param.arr-row, .arranging .eempty { margin-left: 14px; }
+.arranging .arr-secstart { margin-top: 16px; }
+.arranging .arr-pgstart { margin-top: 14px; }
+.arranging .arr-colend { margin-bottom: 18px; }
+.ehead.arr-head { border-bottom: 0; overflow: visible; }
+.ehead.arr-head .hfield { flex: 1; min-width: 0; display: flex; align-items: center; height: 21px; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); }
+.ehead.arr-head .hfield:focus-within { border-color: var(--accent); }
+.ehead.arr-head .hfield input { flex: 1; min-width: 0; height: 19px; padding: 0; border: 0; outline: 0; background: transparent; }
+.ehead.arr-head .fm1 { flex: none; padding-left: 4px; font: 10px ui-monospace, monospace; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.eempty { padding: 5px 6px; border: 1px dashed var(--line); border-radius: 4px; font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.arr-ov { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.arr-ov > * { position: absolute; box-sizing: border-box; }
+.arr-secbox { border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--secondary) 4%, transparent); z-index: -1; }
+.arr-pgbox { border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 5px; }
+.arr-pghandle { display: grid; place-items: center; border-right: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 5px 0 0 0;
+  font-size: 11px; line-height: 1; color: var(--muted); cursor: grab; touch-action: none; pointer-events: auto; user-select: none; }
+.arr-pghandle:hover { color: var(--accent); }
+.arr-ov:has(.arr-pghandle:hover) .arr-pgbox { border-color: color-mix(in srgb, var(--muted) 30%, transparent); }
+.arr-zone { display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.arr-zone .arr-zbtn { display: none; height: 15px; padding: 0 6px; font-size: 9px; line-height: 1; border-style: dashed; color: var(--secondary); background: var(--panel); }
+.arr-zone:hover .arr-zbtn { display: block; }
+.arr-brk { display: flex; align-items: center; justify-content: flex-end; pointer-events: none; }
+.arr-brk::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed color-mix(in srgb, var(--secondary) 60%, transparent); }
+.arr-brk .arr-brkx { position: relative; height: 14px; margin-right: 6px; padding: 0 5px; font-size: 9px; line-height: 1; border-style: dashed; color: var(--secondary); background: var(--panel); pointer-events: auto; }
+.arr-brk .arr-brkx:hover { color: var(--danger); border-color: var(--danger); }
+.arr-line { height: 3px; border-radius: 2px; background: var(--accent); box-shadow: none !important; z-index: 2; }
+.arr-ov:has(.arr-line:not([hidden])) :is(.arr-zone, .arr-brk) { visibility: hidden; }
 .pickbox.pickall { pointer-events: auto; cursor: pointer; padding: 0; margin-right: 5px; vertical-align: -1px; display: inline-block; }
 .pickbox.some { border-color: var(--accent); color: var(--accent); }
 
@@ -1361,7 +1391,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   border-inline: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 7%, var(--panel)); color: var(--ink); white-space: nowrap; overflow: hidden; }
 :is(.mhead, .fhead) .preset-chip .preset-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :is(.mhead, .fhead) .preset-chip .preset-name:hover { color: var(--secondary); }
-/* step entry's cursor (#127): the step the next note goes into */
+/* cursor entry's cursor (#127): the step the next note goes into */
 .step.cursor::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
 .steps-lanes { display: flex; }
 .steps-screen .steps-lanes button { padding: 2px 5px; font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
@@ -1429,6 +1459,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .view-switch button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
 .view-switch button:not([aria-selected="true"]):hover { color: var(--ink); }
+/* LIBRARY's sections: a second switch under PATCH | EMU | LIBRARY */
+.library-tabs { top: 46px; }
+.library-tabs[hidden] { display: none; }
+.library-tabs button { min-width: 0; height: 24px; font-size: 11px; }
+.library-tabs button[aria-current="true"] { background: var(--surface-tint); color: var(--secondary); }
+.library-tabs button:not([aria-current="true"]):hover { color: var(--ink); }
 /* Connect FM-1 (main.ts syncChip): the main area's top right in every view, the view switch's frame; a primary button until
    connected, then quiet with the status line chip's dot (teal: synced, ring: not synced, red: too big) */
 .fm1-connect { position: absolute; top: 10px; right: 12px; z-index: 7; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
@@ -1452,7 +1488,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   gap: 10px; padding: 52px 16px 16px; box-sizing: border-box; }
 #fm1-view[hidden] { display: none; }
 /* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it; LIBRARY plays nothing and takes the full height */
-.workspace:is(.fm1-mode, .library-mode) > :is(.wheels, .dock-wrap, .deck) { display: none; }
+.workspace:is(.fm1-mode, .library-mode) > :is(.wheels, .dock-wrap) { display: none; }
+/* there the deck keeps Audio on / Panic and MIDI, in one short row */
+.workspace:is(.fm1-mode, .library-mode) :is(#keys-btn, .piano) { display: none; }
+.workspace:is(.fm1-mode, .library-mode) .deck-row { height: auto; }
+.workspace:is(.fm1-mode, .library-mode) .deck-controls { grid-template-rows: none; grid-template-columns: auto auto; }
+.workspace:is(.fm1-mode, .library-mode) .deck-controls #audio-btn { grid-column: auto; }
 /* the Install panel: the install page over the whole main area (the switch and Connect FM-1 too), closed with its Close */
 #flash-view { position: absolute; inset: 0; z-index: 8; overflow: auto; background: var(--bg); padding: 16px 16px 24px; }
 #flash-view[hidden] { display: none; }
@@ -1613,6 +1654,45 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-chip.error { border-color: var(--danger); color: var(--danger); }
 .fm1-chip[hidden] { display: none; }
 
+/* the pattern strip (#375, pattern-strip.ts): on a Steps card under its head and in the roll's header; the pattern
+ * playing -> the one a track waits for blinks */
+.pattern-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 5px; font: var(--cap); font-size: 10px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.roll-head .pattern-strip { flex-wrap: nowrap; margin: 0; }
+.pattern-strip button, .pattern-strip select { height: 20px; padding: 0 6px; font: inherit; color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.pattern-strip select { padding: 0 2px; max-width: 92px; }
+.pattern-strip select:disabled { opacity: .45; cursor: default; }
+.pattern-strip .pat-name { min-width: 40px; text-align: center; color: var(--ink); font-size: 11px; }
+.pattern-strip .pat-name.borrowed { color: var(--muted); font-style: italic; }
+.pattern-strip .pat-name.waiting { color: var(--accent); animation: pat-wait .5s steps(2, jump-none) infinite; }
+@keyframes pat-wait { 50% { opacity: .35; } }
+.pattern-strip .pat-pick { width: 22px; padding: 0; color: transparent; }
+.pattern-strip .pat-pick option { color: var(--ink); }
+.pattern-strip .pat-song.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* the song drawer (#375, song.ts): a panel at the right of the canvas, above the dock */
+.song-drawer { position: absolute; top: 48px; right: 8px; bottom: 8px; z-index: 9; width: min(340px, calc(100% - 16px)); display: flex;
+  flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 24px var(--shadow); }
+.song-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  font: var(--cap); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+.song-tabs, .song-mode { display: flex; gap: 3px; }
+.song-head button { height: 22px; min-width: 22px; padding: 0 6px; font: inherit; color: var(--muted); background: transparent; border: 1px solid var(--line);
+  border-radius: 4px; cursor: pointer; }
+.song-head .song-tab.used { color: var(--ink); }
+.song-head .song-tab.on { border-color: var(--ink); }
+.song-head .song-tab.playing, .song-head .song-mode-btn.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.song-close { margin-left: auto; }
+.song-list { flex: 1; overflow: auto; padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 3px; }
+.song-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; cursor: grab; }
+.song-row.live { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.song-no { width: 20px; font: var(--cap); font-size: 11px; color: var(--muted); }
+.song-row select, .song-row input { height: 22px; font: inherit; font-size: 12px; color: var(--ink); background: var(--bar); border: 1px solid var(--line); border-radius: 4px; }
+.song-shift { width: 52px; }
+.song-row button, .song-add { height: 22px; min-width: 22px; padding: 0 6px; color: var(--muted); background: transparent; border: 1px solid var(--line);
+  border-radius: 4px; cursor: pointer; }
+.song-add { align-self: flex-start; margin-top: 4px; }
+.song-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
+
 /* The piano roll (#136, roll.ts; design A): a drawer over the canvas above the dock, full width, edged in the armed colour
    while its track is armed. Header, then the keyboard and the grid of 64 steps, then the velocity lane. */
 .roll { --roll-step: color-mix(in srgb, var(--ink) 7%, transparent); --roll-beat: color-mix(in srgb, var(--ink) 14%, transparent);
@@ -1736,3 +1816,13 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .comm-source { margin: 8px 0 0; font-size: 12px; }
 .comm-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 18px 0 0; font-size: 13px; }
 #tab-library .lib-section .bank-row > .fit-chip { cursor: help; }
+/* the move offer at the pages.dev address (move-offer.ts): a bar at the top, above the app, like a toast */
+.move-bar { position: fixed; z-index: 61; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 8px 8px 8px 14px; border: 1px solid var(--secondary); border-radius: 6px;
+  background: var(--panel); color: var(--ink); box-shadow: 0 6px 20px color-mix(in srgb, #000 25%, transparent); font-size: 13px; line-height: 1.4; }
+.move-bar > span[role=status] { flex: 1 1 22rem; min-width: 0; }
+.move-bar a { color: var(--secondary); }
+.move-bar .move-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.move-bar button { flex: none; min-height: 28px; padding: 0 10px; border: 1px solid var(--secondary); border-radius: 4px; background: var(--secondary); color: var(--panel);
+  font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; cursor: pointer; }
+.move-bar button.move-close { background: transparent; color: var(--secondary); }

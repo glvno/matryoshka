@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, transportOf } from './device';
+import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
-import { deviceBudget, encodePatch } from './patchbin';
+import { deviceBudget, encodePatch, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
 import { liveFrame, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
@@ -151,5 +151,42 @@ describe('sandbox mode (the FM-1 as a sandbox patch\'s controller)', () => {
     const old = sandboxChip({ hasSandbox: false, midiOut: null });
     expect(old.text).toBe('FM-1 \u00b7 SANDBOX CONTROLLER');
     expect(old.title).toBe(`${SANDBOX_HOVER} Update the FM-1 to 1.3 to mute it and show the page.`);
+  });
+});
+
+describe('syncsWith', () => {
+  const info = (features: number) => ({ version: 1, maxModules: 64, maxCables: 128, flashOk: true, patchLoaded: true, delays: 4, features, midiOut: null });
+  it('holds back firmware that does not report support for current patch format: it refuses every patch the editor sends', () => {
+    expect(syncsWith(info(246 | (63 << 8)))).toBe(false); // unreleased format 37 builds
+    expect(syncsWith(info(246 | (127 << 8)))).toBe(false); // unreleased format 38 builds
+    expect(syncsWith(info(54))).toBe(false);    // 1.0.0
+    expect(syncsWith(info(118))).toBe(false);   // 1.1.0
+    expect(syncsWith(info(246))).toBe(false);           // 1.2.0 (format 34)
+    expect(syncsWith(info(246 | (31 << 8)))).toBe(false); // unreleased format 36 builds
+    expect(syncsWith(info(246 | (15 << 8)))).toBe(false); // unreleased format 35 builds
+    expect(syncsWith(info(246 | (7 << 8)))).toBe(false); // 1.3.0 .. 1.4 (format 34)
+  });
+  it('uses the reported inclusive range instead of the legacy feature bits', () => {
+    const base = info(0);
+    expect(syncsWith({ ...base, patchFormats: { min: 31, max: VERSION } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: VERSION, max: VERSION } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: 31, max: 200 } })).toBe(true);
+    expect(syncsWith({ ...base, patchFormats: { min: 31, max: VERSION - 1 } })).toBe(false);
+    const legacy = info(246 | (255 << 8));
+    expect(syncsWith({ ...legacy, patchFormats: { min: 31, max: 38 } })).toBe(false);
+    expect(syncsWith({ ...legacy, patchFormats: { min: VERSION + 1, max: 200 } })).toBe(false);
+    expect(syncsWith({ ...legacy, patchFormats: { min: VERSION + 1, max: 38 } })).toBe(false);
+  });
+  it('offers the matching update when either side is too old', () => {
+    const oldFirmware = { ...info(0), patchFormats: { min: 31, max: 38 } };
+    expect(syncUpdateNotice(oldFirmware)).toMatchObject({ target: 'firmware', label: 'Update the FM-1' });
+    expect(syncUpdateNotice(info(246))).toMatchObject({ target: 'firmware' });
+    const newFirmware = { ...info(65526), patchFormats: { min: VERSION + 1, max: 200 } };
+    expect(syncUpdateNotice(newFirmware)).toMatchObject({ target: 'editor', label: 'Open current editor' });
+    expect(syncUpdateNotice(newFirmware).message).toContain('editor is older');
+  });
+  it('holds back legacy format 39 firmware, but not an FM-1 unheard from yet', () => {
+    expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 predates the current writer
+    expect(syncsWith(null)).toBe(true);
   });
 });

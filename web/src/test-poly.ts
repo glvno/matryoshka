@@ -20,10 +20,11 @@ export function polyCfg(p: Patch): PolyCfg {
   const a = p.assemblies!.find((x) => x.poly)!;
   const alloc = allocatorOf(p, a)!;
   const o = {} as PolyCfg;
-  const params: Record<string, string> = { parts: 'voices', assign: 'assign', legato: 'legato', priority: 'priority' };
+  const params: Record<string, string> = { parts: 'voices', assign: 'assign', legato: 'legato', priority: 'priority', unisonParts: 'stack' };
   for (const [k, q] of Object.entries(params))
     Object.defineProperty(o, k, { enumerable: true, get: () => alloc.params[q], set: (v: number) => (alloc.params[q] = v) });
   Object.defineProperty(o, 'unison', { enumerable: false, get: () => alloc.params.unison >= 0.5 || undefined, set: (v: boolean) => (alloc.params.unison = v ? 1 : 0) });
+  Object.defineProperty(o, 'steal', { enumerable: false, get: () => alloc.params.steal < 0.5 ? false : undefined, set: (v: boolean) => (alloc.params.steal = v === false ? 0 : 1) });
   Object.defineProperty(o, 'flaws', { enumerable: true, get: () => a.poly!.flaws, set: (v: PolyCfg['flaws']) => (v ? (a.poly!.flaws = v) : delete a.poly!.flaws) });
   return o;
 }
@@ -35,6 +36,9 @@ export function addAlloc(p: Patch, cfg: Partial<PolyCfg> = {}): ModuleInst {
   if (cfg.parts !== undefined) a.params.voices = cfg.parts;
   for (const k of ['assign', 'legato', 'priority'] as const) if (cfg[k] !== undefined) a.params[k] = cfg[k]!;
   if (cfg.unison) a.params.unison = 1;
+  if (cfg.unisonShare) a.params.unison = 2;
+  if (cfg.unisonParts !== undefined) a.params.stack = cfg.unisonParts;
+  if (cfg.steal === false) a.params.steal = 0;
   p.cables.push({ from: { module: main.id, port: 'keys' }, to: { module: a.id, port: 'keys' } });
   return a;
 }

@@ -2,14 +2,15 @@
 // Writes firmware/src/defs.h (module definitions for the C engine) and firmware/src/presets.h (the factory
 // patches as binary). Run from web/:  npx vite-node scripts/export-defs.ts
 import { readFileSync, writeFileSync } from 'node:fs';
-import { ASSIGN_MODES, DEFS, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_SYNC_TOP, LEGATO_MODES, PRIORITIES, TRACK_POLY } from '../src/modules';
-import { encodePatch, TYPE_ORDER, toQ16 } from '../src/patchbin';
+import { ADSR_LONG, ASSIGN_MODES, DEFS, ESP_ATTACK, FILTER_OSC_CLIP, FILTER_OSC_FROM, FILTER_OSC_GAIN, FILTER_OSC_K, FILTER_OSC_SEED, ESP_CLIP, ESP_FLOOR, ESP_GLIDE_SHIFT, ESP_MAX_PERIOD, ESP_MIN_PERIOD, ESP_PEAK_SHIFT, ESP_RELEASE, DELAY_DIVS, DELAY_CLK_PPQN, DELAY_NOTES, DELAY_SYNC_TOP, DELAY_SWELL_DEN, DELAY_SWELL_NUM, LEGATO_MODES, LFO_MULTS, LFO_RANGE_K, RATIO_OCT, RATIO_DETUNE_OCT, PRIORITIES, TRACK_POLY } from '../src/modules';
+import { encodePatch, TYPE_ORDER, toQ16, VERSION } from '../src/patchbin';
 import { FLAW_RANGE, MAX_PARTS, STEP_NOTE, STEP_VEL, STEPS_MAX, thruInput, TRACK_NAME_MAX } from '../src/patch';
 import { ACCENT_VEL, TRACK_NOTES_MAX } from '../src/track';
 import { MAX_POLY } from '../src/poly';
 import { FM1_PRESETS } from '../src/presets';
 import { FALLBACK_NAME, fallbackPatch } from '../src/fallback';
-import { FACTORY_PRESETS } from '../src/factory-presets';
+import { factoryPresets } from '../src/factory-presets';
+const FACTORY_PRESETS = factoryPresets();
 
 const up = (s: string): string => s.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 const L: string[] = [];
@@ -44,6 +45,31 @@ w(`#define DELAY_SYNC_TOP ${DELAY_SYNC_TOP}   /* ms: the synced note lengths spr
 w(`static const uint8_t DELAY_DIV_NUM[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.num).join(', ')}};`);
 w(`static const uint8_t DELAY_DIV_DEN[DELAY_NDIV] = {${DELAY_DIVS.map((d) => d.den).join(', ')}};`);
 w(`static const char *const DELAY_DIV_NAME[DELAY_NDIV] = {${DELAY_DIVS.map((d) => `"${d.name}"`).join(', ')}};`);
+w(`#define DELAY_NNOTE ${DELAY_NOTES.length}   /* the synced delay's \`note\` row: 0 = the time knob's length, else this one */`);
+w(`static const uint8_t DELAY_NOTE_NUM[DELAY_NNOTE] = {${DELAY_NOTES.map((d) => d.num).join(', ')}};`);
+w(`static const uint8_t DELAY_NOTE_DEN[DELAY_NNOTE] = {${DELAY_NOTES.map((d) => d.den).join(', ')}};`);
+w(`#define DELAY_SWELL_NUM ${DELAY_SWELL_NUM}   /* swell: the feedback x NUM / DEN */`);
+w(`#define DELAY_SWELL_DEN ${DELAY_SWELL_DEN}`);
+w(`#define LFO_NMULT ${LFO_MULTS.length}   /* the synced LFO's speeds: its note length x NUM / DEN */`);
+w(`static const uint8_t LFO_MULT_NUM[LFO_NMULT] = {${LFO_MULTS.map((d) => d.num).join(', ')}};`);
+w(`static const uint8_t LFO_MULT_DEN[LFO_NMULT] = {${LFO_MULTS.map((d) => d.den).join(', ')}};`);
+w(`#define LFO_NRANGE ${LFO_RANGE_K.length}   /* the free LFO's rate ranges: norm, slow (/ 25), fast (x 2), wide (separate rate) */`);
+w(`static const int32_t RATIO_OCT[${RATIO_OCT.length}] = {${RATIO_OCT.map(toQ16).join(', ')}};`);
+w(`static const int32_t RATIO_DETUNE_OCT[7] = {${RATIO_DETUNE_OCT.map(toQ16).join(', ')}};`);
+w(`#define ESP_ATTACK_Q16 ${Math.round(ESP_ATTACK * 65536)}   /* the Follower's envelope: attack and release, s (99 % of a step) */`);
+w(`#define ESP_RELEASE_Q16 ${Math.round(ESP_RELEASE * 65536)}`);
+w(`#define ESP_FLOOR_Q24 ${Math.round(ESP_FLOOR * (1 << 24))}   /* the band-passed peak below which no crossing counts */`);
+w(`#define ESP_MAX_PERIOD ${ESP_MAX_PERIOD}   /* samples: a longer gap starts the period measurement again */`);
+w(`#define ESP_MIN_PERIOD ${ESP_MIN_PERIOD}`);
+w(`#define ESP_CLIP_Q16 ${ESP_CLIP * 65536}   /* amp is held to +-this (room for the Q24 band-pass states) */`);
+w(`#define ESP_PEAK_SHIFT ${ESP_PEAK_SHIFT}   /* the peak hold falls by 1 / 2^this per sample */`);
+w(`#define ESP_GLIDE_SHIFT ${ESP_GLIDE_SHIFT}   /* the pitch output glides 1 / 2^this of the way per sample */`);
+w(`#define FILTER_OSC_FROM_Q16 ${Math.round(FILTER_OSC_FROM * 65536)}   /* the Multimode filter's self-oscillation (osc on): from this res up */`);
+w(`#define FILTER_OSC_K_Q24 ${Math.round(FILTER_OSC_K * (1 << 24))}   /* the damping's fall per unit of res past it */`);
+w(`#define FILTER_OSC_GAIN_Q24 ${Math.round(FILTER_OSC_GAIN * (1 << 24))}   /* the damping's growth per unit of res past it, times the band pass squared */`);
+w(`#define FILTER_OSC_CLIP_Q20 ${FILTER_OSC_CLIP * (1 << 20)}   /* the band-pass state is held to +-this there */`);
+w(`#define FILTER_OSC_SEED_Q20 ${Math.round(FILTER_OSC_SEED * (1 << 20))}   /* the band-pass state a filter at rest starts from */`);
+w(`#define ADSR_LONG_Q16 ${Math.round(ADSR_LONG * 65536)}   /* the ADSR's long: decay and release x ${ADSR_LONG} */`);
 w();
 // poly assemblies (patch.ts PolyCfg): the group records of the binary
 const names = (a: string[]): string => `{${a.map((c) => `"${c.toUpperCase()}"`).join(', ')}}`;
@@ -83,7 +109,12 @@ w('    const char *const *inname;              /* input names, upper case */');
 w('    const uint8_t *plog;                    /* 1: a logarithmic parameter, 2: logarithmic and bent (the filter cutoff) */');
 w('    const char *const *punit;               /* "HZ", "ST", ... or "" */');
 w('    const char *const *const *pchoice;      /* per parameter: the names of a choice parameter (0-terminated), or 0 */');
+w('    const int32_t *ptop;    /* Q16.16, or 0: past pmax, the most the knobs and a stored value reach (ParamDef.top) */');
+w('    const uint8_t *psince;  /* or 0: per parameter the patch format that appended it (ParamDef.since; 0 = older): a binary of an');
+w('                             * older format holds fewer (engine.c eng_npar) */');
 w('} def_t;');
+w('/* the most parameter j of def d takes: its stretch past pmax (ptop), else pmax */');
+w('#define DEF_TOP(d, j) ((d)->ptop ? (d)->ptop[j] : (d)->pmax[j])');
 w();
 const choiceLists = new Map<string, string>();
 for (const t of TYPE_ORDER) {
@@ -95,6 +126,15 @@ for (const t of TYPE_ORDER) {
   w(`static const int32_t ${up(t)}_MAX[] = {${row((p) => p.max)}};`);
   w(`static const int32_t ${up(t)}_DEF[] = {${row((p) => p.default)}};`);
   w(`static const int32_t ${up(t)}_INC[] = {${row((p) => Math.max(p.step ?? 0, (p.max - p.min) / 100))}};`);
+  // (engine.c keeps a morph B side past max as B - min in 1/2048 of a unit, in 16 bits: a stretch is under 32 wide)
+  for (const p of ps) if (p.top !== undefined && (p.log || p.top - p.min >= 32)) throw new Error(`${t}.${p.name}: a stretch (top) must be linear and under 32 wide`);
+  if (ps.some((p) => p.top !== undefined)) w(`static const int32_t ${up(t)}_TOP[] = {${row((p) => p.top ?? p.max)}};`);
+  // (engine.c eng_npar drops the last parameters newer than a binary's format: `since` only on a type's last ones, rising)
+  ps.forEach((p, i) => {
+    if ((ps[i - 1]?.since ?? 0) > (p.since ?? 0)) throw new Error(`${t}.${p.name}: a parameter with \`since\` must come after the older ones`);
+    if ((p.since ?? 0) > VERSION) throw new Error(`${t}.${p.name}: since ${p.since} is past the format ${VERSION}`);
+  });
+  if (ps.some((p) => p.since !== undefined)) w(`static const uint8_t ${up(t)}_SINCE[] = {${ps.map((p) => p.since ?? 0).join(', ')}};`);
   w(`static const char *const ${up(t)}_PN[] = {${ps.map((p) => `"${p.name.toUpperCase()}"`).join(', ')}};`);
   w(`static const uint8_t ${up(t)}_LOG[] = {${ps.map((p) => (p.log ? (p.bend ? 2 : 1) : 0)).join(', ')}};`);
   w(`static const char *const ${up(t)}_UNIT[] = {${ps.map((p) => `"${(p.unit ?? '').toUpperCase()}"`).join(', ')}};`);
@@ -117,7 +157,7 @@ for (const t of TYPE_ORDER) {
   const d = DEFS[t];
   const has = d.params.length > 0;
   const n = up(t);
-  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${d.outputs.reduce((mask, o, i) => mask | (o.kind === 'audio' ? 1 << i : 0), 0)}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}},   /* ${t} */`);
+  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${d.outputs.reduce((mask, o, i) => mask | (o.kind === 'audio' ? 1 << i : 0), 0)}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}, ${d.params.some((p) => p.top !== undefined) ? `${n}_TOP` : '0'}, ${d.params.some((p) => p.since !== undefined) ? `${n}_SINCE` : '0'}},   /* ${t} */`);
 }
 w('};');
 w();
@@ -125,8 +165,12 @@ writeFileSync(new URL('../../firmware/src/defs.h', import.meta.url), L.join('\n'
 
 const P: string[] = ['/* SPDX-License-Identifier: GPL-3.0-only */', '/* Generated by web/scripts/export-defs.ts from the JSON files in web/presets. Do not edit. */', '#pragma once', '#include <stdint.h>', ''];
 const presetNames = Object.keys(FM1_PRESETS);
+const todays = new Set<string>();   // fnv/length of today's factory binaries (a slot already holding one needs no rewrite)
 presetNames.forEach((n, i) => {
   const bin = encodePatch(FM1_PRESETS[n]());
+  let h = 0x811c9dc5;   // FNV-1a (main.c fnv32)
+  for (const x of bin) h = Math.imul(h ^ x, 0x01000193) >>> 0;
+  todays.add(`${h.toString(16).padStart(8, '0')}/${bin.length}`);
   P.push(`static const uint8_t PRESET_${i}[${bin.length}] = {${Array.from(bin).join(',')}};   /* ${n} */`);
 });
 P.push('', `#define N_PRESETS ${presetNames.length}`);
@@ -141,7 +185,9 @@ P.push('};', '');
   // today's patch of that name after an update (main.c bank_upgrade); `now` is its index in PRESET_LIST
   const legacy = (JSON.parse(readFileSync(new URL('./legacy-factory.json', import.meta.url), 'utf8')) as { patches: { name: string; len: number; fnv: string }[] }).patches;
   const now = new Map(presetNames.map((n, i) => [n.toUpperCase(), i]));
-  const rows = legacy.filter((x) => now.has(x.name)).sort((a, b) => parseInt(a.fnv, 16) - parseInt(b.fnv, 16) || a.len - b.len);
+  // (one that is byte for byte today's patch is left out: a patch that uses nothing newer is written in an older format,
+  // patchbin.ts WRITE_FLOOR, so an older presets.h can hold today's bytes)
+  const rows = legacy.filter((x) => now.has(x.name) && !todays.has(`${x.fnv}/${x.len}`)).sort((a, b) => parseInt(a.fnv, 16) - parseInt(b.fnv, 16) || a.len - b.len);
   P.push('/* the factory patches earlier firmwares wrote (web/scripts/legacy-factory.json): FNV-1a of the bytes, length, today\'s', '   patch of that name (PRESET_LIST index); sorted by fnv */');
   P.push(`#define N_LEGACY_FACTORY ${rows.length}`);
   P.push('static const struct { uint32_t fnv; uint16_t len; uint8_t now; } LEGACY_FACTORY[N_LEGACY_FACTORY] = {');

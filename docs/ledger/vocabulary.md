@@ -8,7 +8,7 @@ An in-place change to a row whose ruling still stands but whose facts moved. Wri
 
 ### Arm
 
-To make a device with a keys input hear Main's keys, cable or not. Several devices can be armed at once (a layer, or a split by their key ranges); while any is armed, only armed devices hear Main, and while none is, the cables decide. Arming reroutes only Main: other key sources keep playing what they drive.
+To make a device with a keys input hear Main's keys, cable or not. Several devices can be armed at once (a layer, or a split by their key ranges); while any is armed, only armed devices hear Main, and while none is, the cables decide. Arming reroutes only Main: other key sources keep playing what they drive. A device whose keys come through a track or an Arpeggiator arms them with it, so the keys reach it the way its cables take them. An Arpeggiator alone is not armed.
 
 ### Arrange mode
 
@@ -65,6 +65,10 @@ Patches other people submitted, from the curated `community.json`, shown in Libr
 ### Course
 
 The whole tutorial as data: every chapter and step in `web/src/tutorial/course.json`.
+
+### Cursor entry
+
+Recording in the editor with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on. The FM-1 has none. Formerly called step entry.
 
 ### Decider
 
@@ -146,9 +150,9 @@ Per-part offsets of a poly assembly (detune, drift, brightness, envelope times, 
 
 The status-line indicator that shows the editor's link to the FM-1 (not connected, synced, not synced, patch too big to sync) and opens FM-1 & MIDI.
 
-### Format 34
+### Format 35
 
-The current binary patch format (`VERSION` in `web/src/patchbin.ts`, `ENG_PATCH_VERSION` in `firmware/src/engine.h`).
+The binary patch format that added the PD Osc, Env 8 and Selector modules, the parameters appended to existing modules, and the device page row extras ([D-266](patch-format.md#D-266), [D-267](patch-format.md#D-267)). The current format is `VERSION` in `web/src/patchbin.ts` and `ENG_PATCH_VERSION` in `firmware/src/engine.h`.
 
 ### Forwarder
 
@@ -176,7 +180,7 @@ A copy of a repository that goes its own way for good: it takes no regular updat
 
 ### ID block
 
-The range of `D-###` numbers a subject file owns, declared under its title. The ID alone tells you which file a row lives in.
+The range of `D-###` numbers a subject file owns, declared under its title. A file that fills its block gets a second one. The ID alone tells you which file a row lives in.
 
 ### Identity
 
@@ -282,6 +286,10 @@ A PNG image of a patch drawn from its data, for sharing.
 
 Fading every parameter of a patch towards its B side with Main's `morph` parameter and input.
 
+### Pattern
+
+One of a Steps track's note lists, numbered 1 to 64, with its own length and rate or the track's. The patch has one selected pattern number, and every track plays its pattern of that number; a track that has no pattern of that number plays its pattern 1. Patterns are saved in the patch.
+
 ### Piano roll
 
 A pitch-by-step grid for a Steps track's notes: the editor's drawer, and on the FM-1 a melodic track's SEQ page, 8 pitches at a time.
@@ -368,7 +376,7 @@ The control for a choice parameter: a notched groove with the jack on the live c
 
 ### SEQ page
 
-The FM-1 screen, opened by SEQ, where a track is an 8 × 16 grid and the white keys are the selected row's steps: on a drum track the rows are the Drum map's and the black keys pick them; on a melodic track it is a piano roll and the black keys pick tracks.
+The FM-1 screen, opened by SEQ, where a track is an 8 × 16 grid and the white keys are the selected row's steps: on a drum track the rows are the Drum map's, on a melodic track it is a piano roll of 8 pitches, and on both the black keys pick the rows.
 
 ### Settings record
 
@@ -398,6 +406,14 @@ The About card's section of AI-usage figures: Blood (time), Sweat (human interve
 
 One of the bank's 64 patch places on the FM-1, shown numbered 01..64. Program change 0 selects slot 01.
 
+### Song
+
+A list of up to 64 entries, each a pattern number and a shift (a transpose of up to 12 semitones either way). While a song plays, each track plays one entry per pass of its own, in order, and starts again at the first entry after the last. A patch holds up to 8 songs.
+
+### SONG page
+
+The FM-1's page for a patch's songs, opened from the SEQ page by tapping SEL: one row per entry, the song's number, and whether the patch plays its songs or its selected pattern.
+
 ### Source
 
 Where a teammate can find the ruling being made: a pull request, an issue, a commit, a document, a meeting note. Never something only one person can open.
@@ -406,13 +422,13 @@ Where a teammate can find the ruling being made: a pull request, an issue, a com
 
 The line under the deck with hover help, messages, the FM-1 budget and the FM-1 chip.
 
-### Step entry
+### Step write
 
-Recording in the editor with the transport stopped: the keys held together fill the cursor's step, then the cursor moves on. The FM-1 has none.
+Placing steps with the white keys, one key per step: on the FM-1's SEQ page (a drum track's grid or the piano roll) and on the editor's Steps card grid. It works with REC on or off, and while a live take records.
 
 ### Steps track
 
-A Steps module: a sequence of notes, a key source that plays an engine through its keys out. Avoid: sequence, pattern.
+A Steps module: a key source that plays an engine through its keys out. It holds up to 64 patterns of notes. Avoid: sequence, and pattern for the track itself (a pattern is one of its note lists).
 
 ### Stored link
 
@@ -490,9 +506,13 @@ In the web app, polyphony (how many notes at once). Avoid: voice for a single no
 
 The part of an engine that turns keys into notes for its voices. Allocated voicing gives each key a free voice (one voice is monophony); mapped voicing sends each key to its own voice, as a drum engine picks its drum. Done by a Voicing module (allocated; also called "Voice allocator") or a Drum map (mapped).
 
+### Wired
+
+The keys' state with no device armed: Main's cables decide where the keys go. Every patch loads wired. The FM-1's footer says `KEYS WIRED`.
+
 ### XL
 
-The full browser version of a factory patch that was cut down to fit the FM-1, named after it with "XL" ("Algo Four XL"). It is the original instrument's full specification, no more. An XL never goes into the FM-1's bank. "XL" is only a name: whether a patch is a sandbox patch is worked out from the patch itself.
+The full browser version of a factory patch that was cut down to fit the FM-1, named after it with "XL" ("Algo Four XL"). It is the original instrument's full specification, no less, and always has a Steps track and an Arpeggiator in front of its sound. An XL never goes into the FM-1's bank. "XL" is only a name: whether a patch is a sandbox patch is worked out from the patch itself.
 
 ### Your patches
 

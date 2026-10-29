@@ -127,6 +127,9 @@ describe('sandbox mode on the wire', () => {
     expect(info([1, 64, 255, 1, 8, 246, 1]).midiOut).toBe(false);
     expect(info([1, 64, 255, 1 | 4, 8, 246]).midiOut).toBeNull();   // 1.2 firmware: it does not say
     expect(info([1, 64, 255, 1, 8, 246]).features).toBe(246);
+    expect(info([1, 64, 255, 1, 8, 246, 255]).patchFormats).toBeUndefined();
+    const extended = parseInfo(parse(frame(CMD.info, [1, 64, 255, 7, 8, 246, 255, 31, 200]))!)!;
+    expect(extended).toMatchObject({ patchFormats: { min: 31, max: 200 }, features: 65526, midiOut: true });
   });
 });
 
@@ -140,10 +143,35 @@ describe('the device test mode on the wire (#291)', () => {
   it('reads SCREEN (the head, a text) and PEAK', () => {
     const head = parse(frame(CMD.screen, [0xff, 2, 0, 1]))!;
     expect(parseScreen(head)).toEqual({ head: { count: 2, page: 0, sandbox: true, booting: false } });
+    expect(parseScreen(parse(frame(CMD.screen, [0xff, 2, 8, 0, 8, 1]))!)).toEqual({ head: { count: 2, page: 8, sandbox: false, booting: false, buttons: 0x108 } });
     const t = parse(frame(CMD.screen, [1, 11, 20, 60, 11, 13, ...Array.from('BROWSER PLAYS', (c) => c.charCodeAt(0))]))!;
     expect(parseScreen(t)).toEqual({ k: 1, text: { x: 11, y: 20, w: 60, h: 11, s: 'BROWSER PLAYS' } });
     expect(parseScreen(parse(frame(CMD.screen, [1, 11, 20, 60, 11, 13, 65]))!)).toBeNull();
     expect(parsePeak(parse(frame(CMD.peak, [1234 & 255, 1234 >> 8, 3]))!)).toEqual({ peak: 1234, running: true, muted: true, masterDown: false });
     expect(parsePeak(parse(frame(CMD.peak, [0, 0, 5]))!)).toEqual({ peak: 0, running: true, muted: false, masterDown: true });
+  });
+});
+
+describe('patterns and songs on the wire (#375, format 48)', () => {
+  it('TRACK names its pattern; TRACK_NOW without one is pattern 1', async () => {
+    const { trackFrame, parseTrack } = await import('./protocol');
+    const notes = [{ at: 0, len: 2, note: 60, vel: 127 }, { at: 4, len: 1, note: 67, vel: 100 }];
+    const p = parse(trackFrame(3, notes, 5))!;
+    expect(p.cmd).toBe(CMD.track);
+    expect(p.payload.length).toBe(2 + 8 + 1);
+    expect(parseTrack(p.payload)).toEqual({ module: 3, notes, pat: 5 });
+    expect(parseTrack(parse(trackFrame(3, notes))!.payload)).toEqual({ module: 3, notes, pat: 0 });
+  });
+  it('PATTERN, SONG and their unasked replies', async () => {
+    const { patternFrame, songFrame, parsePatternNow, parseSongNow } = await import('./protocol');
+    expect(parse(patternFrame(7, 2))).toEqual({ cmd: CMD.pattern, payload: [7, 2] });
+    const entries = [{ pat: 0, shift: 0 }, { pat: 3, shift: -7 }, { pat: 63, shift: 12 }];
+    const s = parse(songFrame(4, entries))!;
+    expect(s.cmd).toBe(CMD.song);
+    expect(s.payload).toEqual([4, 3, 0, 0, 3, 0xf9, 63, 12]);
+    expect(parseSongNow(s.payload)).toEqual({ song: 4, entries });
+    expect(parsePatternNow([9, 1])).toEqual({ pattern: 9, song: 1 });
+    expect(parseSongNow([8, 0])).toBeNull();
+    expect(parseSongNow([0, 2, 1, 1])).toBeNull();
   });
 });

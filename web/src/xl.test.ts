@@ -52,6 +52,15 @@ describe('XLs', () => {
     expect(order).toEqual(['Oracle V', 'Oracle V XL', 'Init', 'Algo Four', 'Algo Four XL', 'Gone XL']);
   });
 
+  it('gives every shipped XL a Steps track and an Arpeggiator after it, on the keys (the kitchen sink)', () => {
+    for (const [name, make] of Object.entries(XL_PRESETS)) {
+      const p = make();
+      const type = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
+      const keys = p.cables.filter((c) => c.from.port === 'keys' && c.to.port === 'keys');
+      expect(keys.some((c) => type(c.from.module) === 'steps' && type(c.to.module) === 'arp'), name).toBe(true);
+      expect(keys.some((c) => type(c.from.module) === 'arp'), name).toBe(true);
+    }
+  });
   it('keeps the shipped XLs out of everything that goes to the FM-1', () => {
     const fm1 = Object.keys(FM1_PRESETS);
     const xls = Object.keys(XL_PRESETS);

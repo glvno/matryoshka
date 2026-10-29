@@ -50,11 +50,43 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   starts this checkout's dev server on a free port, starts `m1emu serve`, and drives the editor in Chrome (playwright-core
   with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
   over-budget patch is sandbox mode (the sandbox page on the LCD, the FM-1 silent under a key); ARP twice; OCT; PRESET;
-  back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL. The page sees
+  back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL; a computer
+  where no app reads the FM-1's MIDI (issue #375, `deafHost`, below); ties on the SEQ page (issue #368, below). The page sees
   only the emulator's MIDI port, so a real FM-1 plugged in is never touched. A development-server hook (`__m1test` in
   `main.ts`) opens patches by name and reports the link's state. Without BIN it fetches the `matryoshka-emu-midi`
   artifact of this commit's firmware run (else its branch's, else main's). Results and LCD snapshots go to
   `build/emu/scenarios/`; about four minutes.
+- **A host that stops reading (`deafHost`, issue #375):** every other scenario has Chrome reading the FM-1's MIDI, so
+  the FM-1's queue for the editor always empties. `deaf 1` makes `m1emu serve` stop taking packets from the mailbox; the
+  firmware's SysEx queue then fills, as on a computer where no app reads the FM-1, and every message the FM-1 sends
+  unasked goes through the same `ota_wire_send` wait as over USB. The scenario enters 30 steps on the 808 Kit's SEQ
+  page at a hand's pace, then SEQ must close the page within 400 emulated ms (about 140 with a reading host; 2890
+  before the fix of #375). After `deaf 0` the editor must follow a step entered on the FM-1 and sync a patch again.
+  The first message after such a stall is a SysEx cut short (the FM-1 gave up halfway); `m1emu` drops it at the next
+  F0, as a MIDI receiver should (Chrome's Web MIDI parser, by its source, does the same), and says so on its output.
+  The host side alone is in `tools/usb_test.sh` (`firmware/test/usb_test.c`, `test_deaf_host`).
+- **Ties on the SEQ page (`tieLire`, `tieElvira`, `tie808`, `tieRoll`, issue #368, [D-531](ledger/steps.md#D-531)):** on
+  8 Lire, Elvira 2 and the 808 Kit's drum grids and Silver Box's piano roll, the track is cleared (SEQ held + REC twice)
+  and a hit goes on step 1. LFO held + step 4 must tie it through step 4 in one press, as the editor's copy of the track
+  (the FM-1's TRACK_NOW) shows. LFO + step 2 (inside the note) must end it there (2 steps), and LFO + step 2 again (its
+  last step) must make it one step. LFO + step 1 (the hit's own step, nothing before it) must say NOTHING TO TIE and
+  change nothing. Tied again, a plain white key on step 3 must cut it there and start a hit. With the transport running
+  the peak is read in 25 ms windows over a pass. On 8 Lire and Elvira 2 a tied hit must keep 90 % of its peak through
+  the next 300 ms (the tie holds the gate 406 ms), and an untied one must decay below 85 %. On the 808 Kit a tied hit's
+  peak and decay must match the untied one's. Through the device test mode (device:scenarios, or `--via-emu`) the
+  TEST_SCREEN head's patch buttons must show Main's LFO jack down while LFO is held on the SEQ page, and up while it is
+  held on the device page.
+- **Arming (`arming`, issue #395, [D-235](ledger/device-ui.md#D-235), [D-545](ledger/steps.md#D-545)):** the link does
+  not carry the armed set ([D-516](ledger/steps.md#D-516)), so the checks read the FM-1's screen. The 808 Kit must load
+  with the footer saying KEYS WIRED. SEL on its home device, the Drum map, must say NOTHING HERE TAKES KEYS. The SEQ page
+  must arm DRUMS (its bar says DRUMS ARM, the device page's footer ARM DRUMS), and black key 1 must then sound the kick.
+  On the environment, SEL on DRUMS' row must disarm it and say KEYS WIRED. REC there must start the transport and say
+  REC: NO TRACK ARMED with the environment still showing ([D-548](ledger/steps.md#D-548),
+  [D-549](ledger/steps.md#D-549)); PLAY stops it. SEL again must arm it.
+- **A held drum hit (`drumHold`, issues #368 and #395, [D-523](ledger/steps.md#D-523)):** on 8 Lire's grid, stopped, a
+  held black key must sound its row while held and record nothing. REC alone (no PLAY) must then start the transport
+  and record: black key 2 held about 450 ms must land as one note of 3 to 5 steps on its row, and a white key must then
+  place a step on the row that black key picked. PLAY stops the transport and the recording.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 

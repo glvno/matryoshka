@@ -5,7 +5,7 @@ import { parseValue } from './value-input';
 import { isTextEntry } from './input';
 import { lockOf } from './relevance';
 import { isPile, tidy, tidyAssembly } from './tidy';
-import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS } from './modules';
+import { buttonLabel, DEFS, drumRowName, FIXED_DOES, PANEL_BUTTONS, rowRange } from './modules';
 import { FIXED_BUTTONS } from './patch';
 import { FM1_BUTTON_ROWS, buttonKind, jackColumn, tracePath } from './dock-buttons';
 import { arpLitInverted, buttonLight, kindOf, pageList, setPages, switches, toggleEngaged, toggleTargets, type ButtonKind } from './buttons';
@@ -16,8 +16,9 @@ import { positionPopover } from './popover';
 import { parameterInputs, connectParameter, setInputRoute } from './parameter-routing';
 import { parameterMenu } from './parameter-menu';
 import { sliderJack } from './slider-jack';
-import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, pageLabel, pageTitle, paramPageTitles, paramStarts, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
+import { devicesOf, findRow, fixFocus, groupStarts, moduleRows, NAME_MAX, pageLabel, pageTitle, PAGE_ROWS, type Device, type Page, type PageRow } from './pages';
 import { cableRole } from './cable-role';
+import { addBreak, fm1Name, layoutOf, moveRows, moveSection, pagesOf, removeBreak, removeHeading, removeRows, renameHeading, rowKey, setLayout, type KnobOf, type Layout, type RowSpot, type Sec } from './arrange';
 import type { ParameterValues } from './engine';
 import { deviceBudget, DEVICE } from './patchbin';
 import { choiceName, formatValue, longName, moduleName, moduleTag } from './labels';
@@ -61,11 +62,14 @@ import {
   TRACK_NAME_MAX,
   DRUM_ROWS,
 } from './patch';
-import { fixNotes, overdub, type StepNote } from './track';
+import { patternStrip, type PatternStrip } from './pattern-strip';
+import { SongView } from './song';
+import type { PatternView } from './engine';
+import { fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternOf, SONGS_MAX, type Pattern, type SeqState, type SongEntry, type StepNote } from './track';
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, stepPreset, storePreset } from './device-presets';
 import { structureOf } from './structure';
-import { armable, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
+import { armable, armedWith, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
@@ -115,8 +119,10 @@ import { EXCLUDED_TYPES,
   type AssemblyInst,
   type PortRef,
   type Rect,
-  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveParam, moveRef, setColumnBreak, setGroupBreak, setHeading, setSpan, spanPlan, type SpanBlock,
-  keepParams, moveBlock, moveGroup, moveSection, sectionRows, groupRows, blockDropOk, pickRows, pickState, keyRange, type PickRow } from './assembly';
+  type Target, type ParamRef, GRID, bypassAssembly, paramColumns, moveRef, setColumnBreak, setHeading, setSpan, spanPlan, type SpanBlock,
+  keepParams, pickRows, pickState, keyRange, type PickRow,
+  mergeRows, rowNames, rowOf, sameRange, setRowNames, splitRow, syncTied, tiedTo, ties, type Ties, ROW_NAMES_MAX, ROW_NAME_MAX,
+  copyRuns, copyStarts, setCopies, COPY_ROWS_MAX, COPIES_MAX } from './assembly';
 
 const SVGNS = 'http://www.w3.org/2000/svg';
 /** a Page button held this long shows its list's first page while it is down (panel.c PAGE_HOLD_MS) */
@@ -161,8 +167,12 @@ export interface EditorEvents {
   onAtt(id: number, index: number, value: number): void;
   /** a module's bypass switch (the structure is unchanged: the engine keeps its state) */
   onBypass(id: number, on: boolean): void;
-  /** a Steps module's notes changed (#133, ModuleInst.notes), a Steps module muted (not saved) */
-  onTrack?(id: number, notes: StepNote[] | undefined): void;
+  /** a Steps module's notes changed (#133, ModuleInst.notes), of pattern `pat` (0-based, #375), a Steps module muted (not saved) */
+  onTrack?(id: number, notes: StepNote[] | undefined, pat: number): void;
+  /** the patch's pattern (0-based) or the song that plays (0 none) changed (#375: saved with the patch, no undo step) */
+  onPattern?(pattern: number, song: number): void;
+  /** song k's entries changed (0-based k) */
+  onSong?(k: number, entries: SongEntry[]): void;
   onMute?(id: number, on: boolean): void;
   /** the armed Steps track changed (#134; null: none) and what it plays (poly.ts trackTargets), or its cables changed */
   /** the armed set changed (#190): the armed devices, and what each plays by name (a Steps track: what it drives) */
@@ -190,7 +200,7 @@ export interface EditorEvents {
   /** undo or redo happened (the tutorial counts them) */
   onHistory?(kind: 'undo' | 'redo'): void;
   /** the patches the morph picker on the Main card offers as the B side (those of the same structure are listed) */
-  morphCandidates?(): { name: string; patch: Patch }[];
+  morphCandidates?(like: Patch): { name: string; patch: Patch }[];
 }
 
 /** an SVG path through a cubic Bézier's four points */
@@ -234,7 +244,16 @@ const EDGE_JACKS = 4;
 type EdgePort = { el: HTMLElement; module: number; port: string };
 /** a parameter for a card's edge layout: its row, its dedicated input, a column break before it, rows above it (a heading) */
 /** `gap`: a new group (FM-1 page) starts at this row within its column, drawn as a divider above it */
-type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; span?: number; gap?: boolean };
+type EdgeParam = { el: HTMLElement; input?: Target; col?: boolean; above?: HTMLElement[]; below?: HTMLElement[]; span?: number; gap?: boolean };
+/** a section of the card being arranged, as drawn: its heading, its empty box (no rows), its pages' rows and their elements */
+type ArrSec = { sec: Sec; col: number; index: number; head: HTMLElement | null; empty: HTMLElement | null; pages: { rows: ParamRef[]; drawn: ParamRef[]; els: HTMLElement[] }[] };
+/** Arrange mode's state for one rebuild: the card's layout tree (arrange.ts), the sections as drawn, the overlay's line */
+type ArrangeCtx = { a: AssemblyInst; layout: Layout; knob: KnobOf; body: HTMLElement; secs: ArrSec[]; transient: Sec | null; line: HTMLElement | null };
+/** a place an arrange drag can land: a line from x1 to x2 at y (client coordinates), and what a drop there does */
+type ArrSpot = { x1: number; x2: number; y: number; act: () => void };
+type Box = { left: number; top: number; right: number; bottom: number };
+/** the width of a page outline's handle strip, left of its rows (px) */
+const ARR_HANDLE = 14;
 /** an entry of a card's menu: `key` is the shortcut shown at the right, `rule` a line above it */
 type MenuItem = { text: string; run: () => void; key?: string; danger?: boolean; rule?: boolean };
 /** a drop is judged by the card's header (where it is held), this far below its top */
@@ -373,7 +392,7 @@ export class Editor {
   }
 
   setPatch(p: Patch): void {
-    stopEntry(); // (step entry, the armed track and the roll belong to the patch they started in)
+    stopEntry(); // (cursor entry, the armed track and the roll belong to the patch they started in)
     this.armTrack(null);
     this.closeRoll();
     this.patch = p;
@@ -525,15 +544,12 @@ export class Editor {
     if (!set.mods.length && !set.asms.length) return this.ev.onError('select the modules first: shift-click them, or drag a box on the canvas');
     // a patch's own modules never go into a building block: they stay outside, the rest is grouped
     const ids = set.mods.filter((m) => !EXCLUDED_TYPES.has(m.type)).map((m) => m.id);
-    if (!ids.length) return this.ev.onError(set.asms.length ? 'select at least one module with the assemblies: they go inside the new one' : 'the Main panel and the Output stay outside an assembly: select other modules');
+    if (!ids.length && !set.asms.length) return this.ev.onError('the Main panel and the Output stay outside an assembly: select other modules');
     const name = window.prompt('Name of the assembly', 'assembly')?.trim();
     if (!name) return;
     const kept = ids.length < set.mods.length;
-    // selected assemblies become children of the new one
-    if (this.change(() => {
-      const made = makeAssembly(this.patch, ids, name);
-      for (const a of set.asms) addChild(this.patch, made, a.id);
-    })) {
+    // selected assemblies become children of the new one (it may hold assemblies only)
+    if (this.change(() => makeAssembly(this.patch, ids, name, set.asms.map((a) => a.id)))) {
       this.selected.clear();
       this.selectedAsm.clear();
       if (kept) this.ev.onError('Main and Output stay outside');
@@ -686,6 +702,7 @@ export class Editor {
       return false;
     }
     this.report(reconcileAll(this.patch, DEFS).map((l) => `assembly "${l}" is empty and was removed`));
+    syncTied(this.patch, DEFS);   // (what a card row sets follows its first: a cable, a route or a range made on it, #357)
     if (!this.commit(before)) return false;
     this.rebuild();
     this.ev.onStructure(this.patch);
@@ -713,6 +730,7 @@ export class Editor {
     this.screens = [];
     this.envScreens = [];
     this.stepGrids.clear();
+    this.strips.clear();
     this.parameterDisplays = [];
     this.sliderPorts = [];
     this.lockers = [];
@@ -1035,7 +1053,8 @@ export class Editor {
     const params = rows.map((pd, i) => {
       const r = row(pd.name);
       const named = r >= 0 ? { label: drumRowName(m.names, r), rename: () => this.renameDrumRow(m, r) } : {};
-      return { el: this.paramRow(m, def, pd, { open, ...named }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
+      const pos = m.type === 'select' && pd.name === 'pos' ? { names: rowNames(this.patch, m.id, pd.name) } : {};
+      return { el: this.paramRow(m, def, pd, { open, ...named, ...pos }), input: pd.input ? { module: m.id, port: pd.input } : undefined, gap: i > 0 && starts[i] };
     });
     // a second Main card (from an old patch) keeps its B side under the rows
     const extra = def.type === 'fm1' ? [this.morphRow()] : steps ? def.views!.map((pd) => this.paramRow(m, def, pd, { open })) : [];
@@ -1052,31 +1071,266 @@ export class Editor {
   /** the Steps modules' grids drawn in this rebuild, by module id */
   private stepGrids = new Map<number, StepGrid>();
 
-  /** where the Steps modules are (Engine.stepsView through the worklet): their grids' playheads and mute switches */
-  showSteps(view: { id: number; pos: number; mute: boolean }[]): void {
+  /** where the Steps modules are (Engine.stepsView through the worklet): their grids' playheads and mute switches; the
+   * pattern each plays and the one it waits for, the song entry (Engine.patternView, #375) */
+  showSteps(view: { id: number; pos: number; mute: boolean }[], pats?: PatternView): void {
     for (const v of view) this.stepGrids.get(v.id)?.show(v.pos, v.mute);
     const r = this.roll && view.find((v) => v.id === this.roll!.id);
     if (r) this.roll!.view.show(r.pos);
+    if (pats) {
+      for (const t of pats.tracks) for (const s of this.strips.get(t.id) ?? []) s.show(t.pat, t.queued);
+      this.songView?.showLive(pats.song, pats.tracks.map((t) => t.entry));
+    }
   }
 
-  /** a track edited on the FM-1's SEQ page (its notes as they are now): into the patch and the grid, an undo step like an
-   * edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
-  trackFromDevice(id: number, notes: StepNote[] | undefined): void {
+  /** the pattern strips drawn (a card's, the roll's), by module id */
+  private strips = new Map<number, PatternStrip[]>();
+  /** a Steps module as its grid and roll see it: its notes, length and rate those of the selected pattern (track.ts
+   * patternOf; one it has not got shows its pattern 1) */
+  private trackView(m: ModuleInst): ModuleInst {
+    const pattern = (): number => this.pattern;
+    return new Proxy(m, {
+      get(t, k, r) {
+        if (k === 'notes') return patternOf(t, pattern()).notes;
+        if (k === 'params') {
+          const v = patternOf(t, pattern());
+          return { ...t.params, len: v.len, rate: v.rate };
+        }
+        return Reflect.get(t, k, r);
+      },
+    });
+  }
+  /** a pattern strip for a Steps module (#375) */
+  private stripFor(id: number): PatternStrip {
+    const m = (): ModuleInst | undefined => this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    const strip = patternStrip({
+      pattern: () => this.pattern,
+      names: () => this.mainSeq()?.names,
+      select: (p) => this.selectPattern(p),
+      used: () => this.usedPatterns(),
+      shape: (p) => {
+        const t = m();
+        if (!t) return { own: true };
+        const x = p > 0 ? t.patterns?.[p - 1] ?? null : null;
+        return { own: p === 0 || !!x, len: x?.len, rate: x?.rate };
+      },
+      setShape: (p, shape) => this.setPatternShape(id, p, shape),
+      clear: (p) => {
+        const t = m();
+        if (!t) return;
+        this.touch();
+        this.setNotes(t, undefined, p);
+        this.stepGrids.get(id)?.refresh();
+        this.refreshStrips();
+      },
+      copy: (from, to) => this.copyPattern(from, to),
+      nextEmpty: () => this.nextEmptyPattern(),
+      song: () => (this.songView ? this.closeSong() : this.openSong()),
+      playing: () => this.song,
+    });
+    const list = this.strips.get(id) ?? [];
+    list.push(strip);
+    this.strips.set(id, list);
+    return strip;
+  }
+  private refreshStrips(): void {
+    for (const list of this.strips.values()) for (const s of list) s.refresh();
+  }
+
+  /** the song drawer (song.ts), over the canvas like the roll */
+  openSong(): void {
+    const host = this.canvas.parentElement;
+    if (!host || this.songView) return;
+    const view = new SongView({
+      songs: () => this.songs(),
+      playing: () => this.song,
+      pattern: () => this.pattern,
+      names: () => this.mainSeq()?.names,
+      setSong: (k, entries) => this.setSong(k, entries),
+      play: (n) => this.selectSong(n),
+      close: () => this.closeSong(),
+    });
+    this.songView = view;
+    host.append(view.el);
+    this.refreshStrips();
+  }
+  closeSong(): void {
+    const v = this.songView as SongView | null;
+    if (!v) return;
+    this.songView = null;
+    v.el.remove();
+    this.refreshStrips();
+  }
+
+  /** a track edited on the FM-1's SEQ page (its notes as they are now, of pattern `pat`): into the patch and the grid, an
+   * undo step like an edit here (an undo sends the patch back to the FM-1, so a change made there must be in the history) */
+  trackFromDevice(id: number, notes: StepNote[] | undefined, pat = 0): void {
     const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
     if (!m) return;
     this.touch();
-    this.setNotes(m, notes);
+    this.setNotes(m, notes, pat);
     this.stepGrids.get(id)?.refresh();
   }
 
-  /** a Steps module's notes, valid, into the patch and the engines */
-  private setNotes(m: ModuleInst, notes: StepNote[] | undefined): void {
+  /** a Steps module's notes of pattern p (0-based; the selected one), valid, into the patch and the engines. A pattern the
+   * track had not got is made (its notes are what the edit made of the pattern 1 it showed: track.ts patternOf) */
+  private setNotes(m: ModuleInst, notes: StepNote[] | undefined, p = this.pattern): void {
     const n = fixNotes(notes);
-    if (n) m.notes = n;
-    else delete m.notes;
-    this.ev.onTrack?.(m.id, m.notes);
+    if (p <= 0) {
+      if (n) m.notes = n;
+      else delete m.notes;
+    } else {
+      const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+      while (pats.length < p) pats.push(null);
+      const x: Pattern = { ...(pats[p - 1] ?? {}) };
+      if (n) x.notes = n;
+      else delete x.notes;
+      pats[p - 1] = x;
+      m.patterns = fixPatterns(pats);
+    }
+    this.ev.onTrack?.(m.id, n, p);
     if (this.roll?.id === m.id) this.roll.view.render();
   }
+
+  /* ---- patterns and songs (#375; track.ts SeqState on Main: the selected pattern, the song playing, the songs) */
+  private mainSeq(): SeqState | undefined {
+    return this.patch.modules.find((m) => m.type === 'fm1')?.seq;
+  }
+  /** the patch's selected pattern (0-based): every track's grid and roll show and edit it */
+  get pattern(): number {
+    return this.mainSeq()?.pattern ?? 0;
+  }
+  /** the song that plays (0: none, the selected pattern plays) */
+  get song(): number {
+    return this.mainSeq()?.song ?? 0;
+  }
+  /** the patch's songs (8 at most; an empty list for one with no entries) */
+  songs(): SongEntry[][] {
+    return Array.from({ length: SONGS_MAX }, (_, k) => (this.mainSeq()?.songs?.[k] ?? []).map((e) => ({ ...e })));
+  }
+  private putSeq(f: (s: SeqState) => void): void {
+    const main = this.patch.modules.find((m) => m.type === 'fm1');
+    if (!main) return;
+    const s: SeqState = structuredClone(main.seq ?? {});
+    f(s);
+    const v = fixSeq(s);
+    if (v) main.seq = v;
+    else delete main.seq;
+  }
+  /** a track's pattern p as the editor shows it (track.ts patternOf: one it has not got shows its pattern 1) */
+  patternOf(id: number, p = this.pattern): ReturnType<typeof patternOf> | null {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    return m ? patternOf(m, p) : null;
+  }
+  /** which tracks' patterns hold notes (or exist), by pattern number: for the strip's marks */
+  usedPatterns(): Set<number> {
+    const out = new Set<number>();
+    for (const m of this.patch.modules) {
+      if (m.type !== 'steps') continue;
+      if (m.notes?.length) out.add(0);
+      m.patterns?.forEach((x, i) => { if (x) out.add(i + 1); });
+    }
+    return out;
+  }
+  /** choose the patch's pattern / song: where the patch plays, saved with it but no undo step (like the transport); the
+   * grids and the roll show the pattern */
+  selectPattern(p: number): void {
+    p = Math.max(0, Math.min(PATTERNS_MAX - 1, Math.round(p)));
+    if (p === this.pattern) return;
+    this.putSeq((s) => (s.pattern = p));
+    this.patternShown();
+  }
+  selectSong(n: number): void {
+    n = Math.max(0, Math.min(SONGS_MAX, Math.round(n)));
+    if (n === this.song) return;
+    this.putSeq((s) => (s.song = n));
+    this.patternShown();
+  }
+  private patternShown(): void {
+    this.ev.onPattern?.(this.pattern, this.song);
+    for (const g of this.stepGrids.values()) g.refresh();
+    this.refreshStrips();
+    this.roll?.view.render();
+    this.songView?.render();
+  }
+  /** the FM-1 chose a pattern or a song (PATTERN_NOW): followed, not sent back (main.ts marks it) */
+  patternFromDevice(pattern: number, song: number): void {
+    this.putSeq((s) => { s.pattern = pattern; s.song = song; });
+    this.patternShown();
+  }
+  /** song k's entries (an undo step) */
+  setSong(k: number, entries: SongEntry[]): void {
+    if (k < 0 || k >= SONGS_MAX) return;
+    this.touch();
+    this.putSeq((s) => {
+      const songs = Array.from({ length: SONGS_MAX }, (_, j) => s.songs?.[j] ?? []);
+      songs[k] = entries.map((e) => ({ ...e }));
+      s.songs = songs;
+    });
+    this.ev.onSong?.(k, this.songs()[k]);
+    this.songView?.render();
+  }
+  /** song k edited on the FM-1's SONG page (SONG_NOW): an undo step, as a track edited there */
+  songFromDevice(k: number, entries: SongEntry[]): void {
+    this.setSong(k, entries);
+  }
+  /** a track's pattern p's own length or rate (undefined: the track's); pattern 1 has none of its own: its track's are set */
+  setPatternShape(id: number, p: number, shape: { len?: number | null; rate?: number | null }): void {
+    const m = this.patch.modules.find((x) => x.id === id && x.type === 'steps');
+    if (!m) return;
+    if (p <= 0) {
+      if (shape.len) this.setParam(id, 'len', shape.len);
+      if (shape.rate !== undefined && shape.rate !== null) this.setParam(id, 'rate', shape.rate);
+      return;
+    }
+    this.touch();
+    const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+    while (pats.length < p) pats.push(null);
+    const x: Pattern = { ...(pats[p - 1] ?? { ...(m.notes ? { notes: m.notes.map((n) => ({ ...n })) } : {}) }) };
+    for (const k of ['len', 'rate'] as const) {
+      const v = shape[k];
+      if (v === null) delete x[k];
+      else if (v !== undefined) x[k] = v;
+    }
+    pats[p - 1] = x;
+    m.patterns = fixPatterns(pats);
+    this.ev.onStructure(this.patch);
+    this.stepGrids.get(id)?.refresh();
+    this.roll?.view.render();
+  }
+  /** copy pattern `from` of every track to pattern `to` (a track without `from` loses `to` too): an undo step */
+  copyPattern(from: number, to: number): void {
+    if (from === to || to < 0 || to >= PATTERNS_MAX) return;
+    this.touch();
+    for (const m of this.patch.modules) {
+      if (m.type !== 'steps') continue;
+      const src = from <= 0 ? { ...(m.notes ? { notes: m.notes } : {}) } : m.patterns?.[from - 1] ?? null;
+      if (to <= 0) {
+        if (src) {
+          if (src.notes?.length) m.notes = structuredClone(src.notes);
+          else delete m.notes;
+        }
+        continue;
+      }
+      const pats: (Pattern | null)[] = [...(m.patterns ?? [])];
+      while (pats.length < to) pats.push(null);
+      pats[to - 1] = src ? structuredClone(src) : null;
+      const fixed = fixPatterns(pats);
+      if (fixed) m.patterns = fixed;
+      else delete m.patterns;
+    }
+    this.ev.onStructure(this.patch);
+    for (const g of this.stepGrids.values()) g.refresh();
+    this.roll?.view.render();
+  }
+  /** the first pattern no track has (for Copy to the next empty one), -1 when all 64 are used */
+  nextEmptyPattern(): number {
+    const used = this.usedPatterns();
+    for (let p = 1; p < PATTERNS_MAX; p++) if (!used.has(p)) return p;
+    return -1;
+  }
+  /** the open song drawer (song.ts), if any */
+  songView: SongView | null = null;
 
   /** a Steps module's grid follows its length (the len slider) */
   refreshSteps(id: number): void {
@@ -1087,10 +1341,11 @@ export class Editor {
    * (the name is in the binary the FM-1 gets) */
   private stepsRow(m: ModuleInst): StepGrid {
     const index = this.patch.modules.filter((x) => x.type === 'steps').indexOf(m);
-    const grid = stepGrid(m, index, {
+    const grid = stepGrid(this.trackView(m), index, {
       notes: (n) => {
         this.touch(); // a drag across the grid is one gesture: one undo step
         this.setNotes(m, n);
+        this.refreshStrips();
       },
       begin: () => this.beginEdit(),
       name: (s) => {
@@ -1112,6 +1367,7 @@ export class Editor {
     });
     this.stepGrids.set(m.id, grid);
     if (this.roll?.id === m.id) grid.rolled(true);
+    grid.el.insertBefore(this.stripFor(m.id).el, grid.el.children[1] ?? null);   // (the pattern strip under the head, #375)
     return grid;
   }
 
@@ -1124,8 +1380,9 @@ export class Editor {
     return this.trackOf(this.armedSet);
   }
 
+  /** the one Steps track these devices arm, themselves or as the key source an armed instrument plays through (#395) */
   private trackOf(keys: Iterable<DeviceKey>): number | null {
-    const ids = [...keys].filter((k) => k[0] === 'm').map((k) => Number(k.slice(1))).filter((id) => this.patch.modules.some((m) => m.id === id && m.type === 'steps'));
+    const ids = armedWith(this.patch, keys).filter((k) => k[0] === 'm').map((k) => Number(k.slice(1))).filter((id) => this.patch.modules.some((m) => m.id === id && m.type === 'steps'));
     return ids.length === 1 ? ids[0] : null;
   }
 
@@ -1183,7 +1440,7 @@ export class Editor {
     for (const { path, cable } of this.cablePaths) path.classList.toggle('muted', !!cable && muted.has(cable));
   }
 
-  /** REC on the armed track (#135; editor state like the arming): stopped, step entry on its card; running, the engine
+  /** REC on the armed track (#135; editor state like the arming): stopped, cursor entry on its card; running, the engine
    * records what is played (recorded) */
   recOn = false;
 
@@ -1226,7 +1483,7 @@ export class Editor {
         this.endGesture();
         this.pass = { id, loop, before: this.snap() };
       }
-      this.setNotes(m, overdub(m.notes, [note]));
+      this.setNotes(m, overdub(patternOf(m, this.pattern).notes, [note]));
       this.stepGrids.get(id)?.refresh();
     }
   }
@@ -1239,9 +1496,11 @@ export class Editor {
     const host = this.canvas.parentElement;
     if (!m || !host) return;
     this.closeRoll();
-    const track = (): ModuleInst | null => this.patch.modules.find((x) => x.id === id && x.type === 'steps') ?? null;
+    const found = (): ModuleInst | null => this.patch.modules.find((x) => x.id === id && x.type === 'steps') ?? null;
+    const track = (): ModuleInst | null => { const t = found(); return t && this.trackView(t); };
     const view = new PianoRoll({
       track,
+      strip: () => this.stripFor(id).el,
       label: () => trackLabel(this.patch, id),
       plays: () => this.trackPlays(id),
       drums: () => {
@@ -1249,13 +1508,14 @@ export class Editor {
         return map ? Array.from({ length: DRUM_ROWS }, (_, r) => ({ name: drumRowName(map.names, r), note: Math.round(map.params[`n${r + 1}`] ?? 0) })) : null;
       },
       notes: (n) => {
-        const t = track();
+        const t = found();
         if (!t) return;
         this.setNotes(t, n);
         this.stepGrids.get(id)?.refresh();
+        this.refreshStrips();
       },
       begin: () => this.beginEdit(),
-      len: (n) => this.setParam(id, 'len', n),
+      len: (n) => (this.pattern > 0 ? this.setPatternShape(id, this.pattern, { len: n }) : this.setParam(id, 'len', n)),
       play: (note, vel) => this.ev.onThru?.(id, note, vel),
       arm: (on) => this.toggleArm(`m${id}`, on),
       armed: () => this.armedSet.has(`m${id}`),
@@ -1343,7 +1603,7 @@ export class Editor {
       if (open) {
         const on = isPromoted(open, m.id, pd.name);
         row.classList.toggle('shown', on);
-        this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)), { module: m.id, param: pd.name });
+        this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name, this.patch)), { module: m.id, param: pd.name });
         if (this.picking(open)) row.append(this.pickBox(on));
       }
       return row;
@@ -1367,7 +1627,7 @@ export class Editor {
     if (open) {
       const on = isPromoted(open, m.id, pd.name);
       row.classList.toggle('shown', on);
-      this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name)), { module: m.id, param: pd.name });
+      this.promoteClick(row, open, () => (on ? demote(open, m.id, pd.name) : promote(open, m.id, pd.name, this.patch)), { module: m.id, param: pd.name });
       if (this.picking(open)) row.append(this.pickBox(on));
     }
     if (!isScope) {
@@ -1462,14 +1722,14 @@ export class Editor {
    */
   private edgeLayout(ins: EdgePort[], outs: HTMLElement[], params: EdgeParam[], extra: HTMLElement[] = []): HTMLElement[] {
     // a row of the card: a parameter (with its headings above it) or a row only for a jack; `l` / `r` are its jacks
-    type Item = { el: HTMLElement | null; above: HTMLElement[]; param?: EdgeParam; l?: HTMLElement; r?: HTMLElement };
+    type Item = { el: HTMLElement | null; above: HTMLElement[]; below?: HTMLElement[]; param?: EdgeParam; l?: HTMLElement; r?: HTMLElement };
     const cols: Item[][] = [[]];
     for (const p of params) {
       if (p.col && cols[cols.length - 1].length) cols.push([]);
-      cols[cols.length - 1].push({ el: p.el, above: p.above ?? [], param: p });
+      cols[cols.length - 1].push({ el: p.el, above: p.above ?? [], below: p.below, param: p });
     }
     const n = cols.length;
-    const height = (c: Item[]): number => c.reduce((h, it) => h + 1 + it.above.length, 0);
+    const height = (c: Item[]): number => c.reduce((h, it) => h + 1 + it.above.length + (it.below?.length ?? 0), 0);
     const cap = n > 1 ? Math.max(EDGE_JACKS, ...cols.map(height)) : EDGE_JACKS;
     // the k-th place for a jack on a side edge: the column's k-th row, then rows for jacks only under it
     const slot = (ci: number, k: number): Item => {
@@ -1512,7 +1772,8 @@ export class Editor {
       return el;
     };
     const rowsOf = (it: Item, first: boolean, last: boolean, across = 1): HTMLElement[] => {
-      const els = [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across)];
+      const els = [...it.above.map((h) => rowEl(h, first, last, undefined, undefined, across)), rowEl(it.el, first, last, it.l, it.r, across),
+        ...(it.below ?? []).map((h) => rowEl(h, first, last, undefined, undefined, across))];
       if (it.param?.gap) els[0].classList.add('gstart');
       return els;
     };
@@ -1595,7 +1856,7 @@ export class Editor {
   /** redraws the value of a parameter row (the synced delay shows its time as a note length) */
   private refreshers = new WeakMap<HTMLElement, () => void>();
 
-  private paramRow(m: ModuleInst, def: ModuleDef, pd: ParamDef, o: { open?: AssemblyInst; label?: string; rename?: () => void } = {}): HTMLElement {
+  private paramRow(m: ModuleInst, def: ModuleDef, pd: ParamDef, o: { open?: AssemblyInst; label?: string; rename?: () => void; names?: string[]; ties?: number } = {}): HTMLElement {
     if (pd.screen) return this.screenRow(m, pd, o);
     const row = document.createElement('div');
     row.className = 'param bar';
@@ -1608,20 +1869,41 @@ export class Editor {
     }, true);
     const name = document.createElement('span');
     name.textContent = o.label ?? longName(def.type, pd.name);
+    // a card row that sets several parameters (#357): ×N on the collapsed card and on its first's member card, → the row's
+    // name on the others
+    const tie = o.open ? rowOf(o.open, m.id, pd.name) : undefined;
+    const tieText = o.ties && o.ties > 1 ? `×${o.ties}` : tie?.also?.length ? (tie.module === m.id && tie.param === pd.name ? `×${tie.also.length + 1}` : `→ ${tie.label}`) : '';
+    if (tieText) {
+      const badge = document.createElement('span');
+      badge.className = 'merged row-tie';
+      badge.textContent = ` ${tieText}`;
+      name.title = tieText.startsWith('×') ? `one row for ${tieText.slice(1)} parameters: turning it moves them all` : `set by the "${tie!.label}" row of the card`;
+      name.append(badge);
+    }
+    // a Selector's position: over the positions in use (1..count, #358), by the names its card row gives them
+    const range = (): ParamDef => rowRange(m.type, m.params, pd);
+    const posNames = o.names && m.type === 'select' && pd.name === 'pos' ? o.names : undefined;
+    const namesNow = (): string[] => Array.from({ length: range().max - pd.min + 1 }, (_, i) => posNames?.[i] || String(i + pd.min));
+    /** a selector's index for a value: the choice, or a named position counted from the first */
+    const off = posNames ? pd.min : 0;
     // an enum parameter is a selector (a detent rail, or a drum when the names do not fit) whose jack stands on the live choice
-    const choice = !!pd.choices && !pd.toggle;
+    const choice = (!!pd.choices && !pd.toggle) || !!posNames;
     // a switch has no thumb either: its jack stands the same way, above the check box
     const jacked = choice || !!pd.toggle;
     if (jacked) row.classList.add('choice');
     if (choice) row.classList.add('sel');
     if (pd.toggle) row.classList.add('toggle');
     let pickBox: HTMLElement | null = null; // pick mode's check box, last in the row (the name stays its first child)
+    let rowTools: HTMLElement[] = []; // pick mode's tools for a row that sets several parameters or names positions
     if (o.open) {
       const a = o.open;
       const on = isPromoted(a, m.id, pd.name);
       row.classList.toggle('shown', on);
-      this.promoteClick(row, a, () => (on ? demote(a, m.id, pd.name) : promote(a, m.id, pd.name)), { module: m.id, param: pd.name });
-      if (this.picking(a)) pickBox = this.pickBox(on);
+      this.promoteClick(row, a, () => (on ? demote(a, m.id, pd.name) : promote(a, m.id, pd.name, this.patch)), { module: m.id, param: pd.name });
+      if (this.picking(a)) {
+        pickBox = this.pickBox(on);
+        rowTools = this.rowTools(a, m, pd);
+      }
     }
     if (o.rename) {
       name.title = 'click to rename';
@@ -1634,8 +1916,9 @@ export class Editor {
     const val = document.createElement('output');
     // the number and its unit apart: the unit is drawn smaller (labels.ts formatValue)
     const parts = (v: number, params = m.params): { num: string; unit: string } =>
-      pd.altText && params[pd.altText.when] >= 0.5 ? { num: pd.altText.text(v), unit: '' }
+      pd.altText && params[pd.altText.when] >= 0.5 ? { num: pd.altText.text(v, params), unit: '' }
         : pd.choices ? { num: choiceName(def.type, pd.name, pd.choices[Math.round(v)] ?? ''), unit: '' }
+        : posNames ? { num: namesNow()[Math.round(v) - off] ?? String(Math.round(v)), unit: '' }
         : formatValue(v, pd.unit, pd.min < 0);
     const fmt = (v: number, params = m.params): string => { const p = parts(v, params); return p.unit ? `${p.num} ${p.unit}` : p.num; };
     let shown = '';
@@ -1662,7 +1945,7 @@ export class Editor {
       input.value = String(Math.round(toUnit(pd, m.params[pd.name]) * 1000));
     } else {
       input.min = String(pd.min);
-      input.max = String(topOf(pd)); // (the browser-only stretch too: the Delay's time to 1.6 s)
+      input.max = String(topOf(range())); // (the browser-only stretch too: the Delay's time to 1.6 s; a Selector's positions in use)
       input.step = String(pd.step ?? (pd.max - pd.min) / 200);
       input.value = String(m.params[pd.name]);
     }
@@ -1674,7 +1957,7 @@ export class Editor {
     let offset = 0;
     const posOf = (v: number): number => (pd.log ? Math.round(toUnit(pd, v) * 1000) : v);
     /** a value's place on the slider, 0..1 (its track spans the browser-only stretch too) */
-    const trackOf = (v: number): number => (pd.log ? toUnit(pd, v) : (v - pd.min) / (topOf(pd) - pd.min));
+    const trackOf = (v: number): number => (pd.log ? toUnit(pd, v) : (v - pd.min) / (topOf(range()) - pd.min));
     const begin = (): void => {
       if (!editing) offset = Number(input.value) - posOf(m.params[pd.name]);
       editing = true;
@@ -1710,7 +1993,9 @@ export class Editor {
       const at = Number(input.value);
       show(!offset ? v : pd.log ? snapTo(pd, fromUnit(pd, at / 1000)) : Number(at.toFixed(6)));
       thumb?.setBase(offset ? trackOf(v) : null);
+      if (def.params.some((q) => q.altText?.when === pd.name)) for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // (the LFO's range: how its rate shows)
       this.ev.onParam(m.id, pd.name, v);
+      this.mirror(m.id, pd.name, v);
       this.chipsSoon();
       this.syncDials();
       this.relock(m.id);
@@ -1726,6 +2011,7 @@ export class Editor {
         show(v);
         for (const el of row.parentElement?.children ?? []) this.refreshers.get(el as HTMLElement)?.(); // a toggle can change how its siblings show (altText)
         this.ev.onParam(m.id, pd.name, v);
+        this.mirror(m.id, pd.name, v);
         this.chipsSoon();
         this.syncDials();
         this.relock(m.id);
@@ -1741,11 +2027,11 @@ export class Editor {
     // the selector: its jack is the live choice's marker (routes and cables end on it, as on a slider's thumb)
     const sel = choice ? selector({
       label: longName(def.type, pd.name),
-      names: pd.choices!.map((c) => choiceName(def.type, pd.name, c)),
-      get: () => Math.round(m.params[pd.name]),
+      names: posNames ? namesNow() : pd.choices!.map((c) => choiceName(def.type, pd.name, c)),
+      get: () => Math.round(m.params[pd.name]) - off,
       set: (i) => {
         if (row.classList.contains('locked')) return;
-        input.value = String(i);
+        input.value = String(i + off);
         input.dispatchEvent(new Event('input'));
       },
       onPatch: canPatch ? (e, jack) => this.beginDrag(e, jack) : undefined,
@@ -1793,7 +2079,7 @@ export class Editor {
         else if (input.value !== position) input.value = position;
         thumb?.update();
         thumb?.setBase(automated ? trackOf(base) : null);
-        sel?.update(Math.round(v), Math.round(base));
+        sel?.update(Math.round(v) - off, Math.round(base) - off);
         input.title = automated ? `Live: ${text}. Base: ${fmt(base)}. ${gesture || 'Drag to edit the base value.'}` : gesture;
       }
       if (editing) return; // the edit shows its own value (oninput); a report taken before the last move would set it back
@@ -1825,10 +2111,14 @@ export class Editor {
       row.append(line);
     } else if (!choice) row.append(thumb?.element ?? plain?.element ?? input);
     if (plain) this.parameterDisplays.push({ id: m.id, update: () => { if (!editing) plain.update(); } });
-    if (pickBox) row.append(pickBox);
+    if (pickBox) row.append(pickBox, ...rowTools);
     // a parameter with no effect in the module's current setting is dimmed and takes no direct edits (relevance.ts);
     // cables still reach its jack
     const relock = (): void => {
+      if (range() !== pd && !pd.log) {   // a Selector's position: its count moved, so do the range and the names
+        input.max = String(range().max);
+        sel?.setNames(namesNow());
+      }
       const why = lockOf(this.patch, m, def.params, pd.name);
       row.classList.toggle('locked', !!why);
       input.disabled = !!why;
@@ -1844,7 +2134,14 @@ export class Editor {
         if (performance.now() - lastInput < TYPE_GAP_MS * 2 && m.params[pd.name] !== gestureFrom) this.setParam(m.id, pd.name, gestureFrom);
         this.endGesture(); // the double-click's own presses (moved and put back) leave no step
         this.typeValue(row, fmt(m.params[pd.name]), (text) => {
-          let v = parseValue(text, pd, names);
+          if (posNames) {   // a named position: by its name, or its number
+            const i = parseValue(text, { ...pd, choices: namesNow() }, namesNow());
+            if (i === null) return false;
+            this.setParam(m.id, pd.name, i + off);
+            this.endGesture();
+            return true;
+          }
+          let v = parseValue(text, range(), names);
           if (v === null) return false;
           if (pd.log) v = snapTo(pd, v);
           this.setParam(m.id, pd.name, v);
@@ -1987,7 +2284,7 @@ export class Editor {
     row.className = 'param bar morph-row';
     const name = document.createElement('span');
     name.textContent = 'B side';
-    const cands = (this.ev.morphCandidates?.() ?? []).filter((c) => sameStructure(this.patch, c.patch));
+    const cands = (this.ev.morphCandidates?.(this.patch) ?? []).filter((c) => sameStructure(this.patch, c.patch));
     // index 0 = none, then the candidates; the current B side is matched by name (it is a copy of a candidate's values)
     const current = (): number => (hasMorph(this.patch) ? cands.findIndex((c) => c.name === this.patch.morphName) + 1 : 0);
     const names = ['none', ...cands.map((c) => c.name)];
@@ -2589,7 +2886,7 @@ export class Editor {
       const on = isExposed(a, dir, m.id, p.name);
       const ref = findRef(a, dir, m.id, p.name);
       row.classList.toggle('shown', on);
-      this.promoteClick(row, a, () => (on ? hidePort(this.patch, a, dir, m.id, p.name) : exposePort(a, dir, m.id, p.name, o.also)));
+      this.promoteClick(row, a, () => (on ? hidePort(this.patch, a, dir, m.id, p.name) : exposePort(a, dir, m.id, p.name, o.also, this.patch)));
       // pick mode: the check box between the label and the jack
       if (this.picking(a)) parts.splice(1, 0, this.pickBox(on));
       if (dir === 'in') parts.push(...this.mergeTools(a, m, p, ref, this.picking(a)));
@@ -3178,7 +3475,7 @@ export class Editor {
     const a = this.pickAsm !== null ? assemblyById(this.patch, this.pickAsm) : undefined;
     const rows = this.selectedRows();
     if (!a || !rows.length) return false;
-    this.change(() => pickRows(a, rows));
+    this.change(() => pickRows(a, rows, this.patch));
     return true;
   }
 
@@ -3189,7 +3486,12 @@ export class Editor {
     if (!a || !this.rowSel.size) return false;
     const gone = new Set(this.rowSel);
     this.dropRows();
-    this.change(() => (a.params = keepParams(a.params, (r) => !gone.has(`${r.module}:${r.param}`))));
+    this.change(() => {
+      // through the layout tree: a heading whose rows all go stays, empty
+      const layout = layoutOf(a.params, a.heads);
+      removeRows(layout, [...gone], this.knobOf());
+      setLayout(a, layout);
+    });
     return true;
   }
 
@@ -3197,7 +3499,7 @@ export class Editor {
   private pickBar(a: AssemblyInst): HTMLElement[] {
     const all = this.button('select all', `Select all: every parameter of the members goes on the "${a.label}" card (jacks stay one click each)`, () => {
       const off = this.selRows.filter((r) => !isPromoted(a, r.module, r.param));
-      if (off.length) this.change(() => off.forEach((r) => promote(a, r.module, r.param)));
+      if (off.length) this.change(() => off.forEach((r) => promote(a, r.module, r.param, this.patch)));
     }, 'sm pick-all');
     const none = this.button('select none', `Select none: no parameter on the "${a.label}" card (jacks stay one click each)`, () => {
       if (a.params.length) this.change(() => (a.params = []));
@@ -3225,7 +3527,7 @@ export class Editor {
     box.onclick = (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.change(() => pickRows(a, rows));
+      this.change(() => pickRows(a, rows, this.patch));
     };
     return box;
   }
@@ -3466,27 +3768,25 @@ export class Editor {
     // where its groups (FM-1 pages) start: a divider above a group that has no heading or column of its own
     const shown = a.params.map((r) => rowDef(DEFS[mod(r.module).type], r.param)!);
     const kept = a.params.map((_, i) => i).filter((i) => !shown[i].onScreen);
-    const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
-    // while arranging, every group (one FM-1 page) has a strip above it that names the page and drags it
-    const pageTitles = arranging ? paramPageTitles(this.patch, a, DEFS) : [];
-    const pageStarts = arranging ? paramStarts(this.patch, a, DEFS) : [];
-    const params = a.params.flatMap((r, i): EdgeParam[] => {
+    const copy = copyStarts(a.params);
+    const starts = new Map(groupStarts(kept.map((i) => ({ ...a.params[i], copy: copy[i], knob: !shown[i].screen }))).map((st, k) => [kept[k], st && k > 0]));
+    const tie = this.patch.assemblies?.some((x) => x.params.some((r) => r.also || r.names)) ? ties(this.patch) : null;
+    // copies shown one at a time (the CZ's envelope steps): only the picked one, under a row that picks it
+    const runs = copyRuns(a.params);
+    const runOf = (i: number) => runs.find((x) => i >= x.at && i < x.at + x.rows * x.count);
+    const params = arranging ? this.arrangeRows(a, body, spanRoom) : a.params.flatMap((r, i): EdgeParam[] => {
       const m = mod(r.module);
       const def = DEFS[m.type];
       const pd = shown[i];
       if (pd.onScreen) return [];
-      const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open });
-      const above: HTMLElement[] = [];
-      if (arranging && r.col) above.push(this.columnChip(a, i));
-      if (r.head || (arranging && this.newHeading === `${a.id}:${i}`)) above.push(this.heading(a, i, arranging));
-      // a group with no knob (a display alone) is no FM-1 page: no strip; it drags as a row
-      if (arranging && pageStarts[i] && pageTitles[i]) above.push(this.pageStrip(a, i, pageTitles[i]!));
-      else if (arranging && r.group && !r.head && !r.col) above.push(this.pageStrip(a, i, ''));
-      if (arranging) {
-        this.arrangeItem(row, a, 'param', i, this.selectable(row, r));
-        row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
-      }
-      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!r.col, above, span: pd.screen ? r.span : undefined, gap: !arranging && !!starts.get(i) && !r.col && !r.head }];
+      const run = runOf(i);
+      const picked = run ? this.copyPicked(a, run) : 0;
+      if (run && Math.floor((i - run.at) / run.rows) !== picked) return [];
+      const row = this.paramRow(m, def, pd, { label: r.label, rename: () => this.renameRef(r, 'parameter'), open, ...this.rowShow(r, tie) });
+      const first = run && i === run.at + picked * run.rows;
+      const lead = first ? a.params[run.at] : r;   // (the run's heading and column break stay above whichever copy shows)
+      const above = [...(lead.head ? [this.heading(a, first ? run.at : i)] : []), ...(first ? [this.copyPicker(a, run)] : [])];
+      return [{ el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: !!lead.col, above, span: pd.screen ? r.span : undefined, gap: !!starts.get(first ? run.at : i) && !lead.col && !lead.head && !run }];
     });
     body.append(...this.edgeLayout(ins, outs, params));
     if (!a.inputs.length && !a.outputs.length && !a.params.length) {
@@ -3504,7 +3804,6 @@ export class Editor {
   /** the collapsed assembly whose card is being arranged (its menu's Arrange the card), else null */
   private arrangeAsm: number | null = null;
   /** a heading just added (`asm:row`): drawn as an empty field with the focus until it gets a text */
-  private newHeading: string | null = null;
 
   /** a layout change of an assembly card: undoable, saved, no engine reload */
   private layoutChange(fn: () => void): void {
@@ -3515,44 +3814,17 @@ export class Editor {
     this.ev.onLayout(this.patch);
   }
 
-  /** a heading above row `i`: plain text, a field while arranging (empty = gone) */
-  private heading(a: AssemblyInst, i: number, arranging: boolean): HTMLElement {
+  /** a heading above row `i` on the collapsed card: plain text (double-click renames; empty removes it) */
+  private heading(a: AssemblyInst, i: number): HTMLElement {
     const r = a.params[i];
     const h = document.createElement('div');
     h.className = 'ehead';
-    h.dataset.arrKind = 'param';
-    h.dataset.arrIndex = String(i);
-    h.dataset.arrBefore = '1'; // a row dropped on a heading goes under it
-    if (!arranging) {
-      h.textContent = r.head ?? '';
-      h.title = 'double-click to rename';
-      h.ondblclick = () => {
-        const v = window.prompt('Heading (empty removes it)', r.head ?? '');
-        if (v !== null) this.layoutChange(() => setHeading(a.params, i, v));
-      };
-      return h;
-    }
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = r.head ?? '';
-    input.placeholder = 'heading';
-    input.maxLength = 40;
-    input.setAttribute('aria-label', 'Heading');
-    const commit = (): void => {
-      if (this.newHeading === `${a.id}:${i}`) this.newHeading = null;
-      this.layoutChange(() => setHeading(a.params, i, input.value));
+    h.textContent = r.head ?? '';
+    h.title = 'double-click to rename';
+    h.ondblclick = () => {
+      const v = window.prompt('Heading (empty removes it)', r.head ?? '');
+      if (v !== null) this.layoutChange(() => setHeading(a.params, i, v));
     };
-    input.onchange = commit;
-    input.onblur = () => { if (!input.value.trim()) commit(); };
-    input.onkeydown = (e) => {
-      e.stopPropagation(); // typing is not shortcuts
-      if (e.key === 'Enter' || e.key === 'Escape') input.blur();
-    };
-    input.onpointerdown = (e) => e.stopPropagation();
-    const x = this.button('×', 'Remove the heading', () => this.layoutChange(() => setHeading(a.params, i, '')), 'sm arr-x');
-    if (r.head) h.append(this.blockGrip(a, 'section', i));
-    h.append(input, x);
-    if (this.newHeading === `${a.id}:${i}`) requestAnimationFrame(() => input.focus());
     return h;
   }
 
@@ -3565,55 +3837,437 @@ export class Editor {
     return c;
   }
 
-  /**
-   * While arranging: the strip above each group (one FM-1 page), whether it starts at a heading, a group flag, a column
-   * or because the page before is full. Its grip drags that page alone (#186); it names the page as the FM-1 does
-   * ("FILTER 2/3", "PAGE 1/2"); a group flag (`ParamRef.group`, "new group") has its × here.
-   */
-  private pageStrip(a: AssemblyInst, i: number, title: string): HTMLElement {
-    const r = a.params[i];
-    const c = document.createElement('div');
-    c.className = 'ebreak epage';
-    c.dataset.page = String(i);
-    const name = document.createElement('span');
-    name.className = 'epage-name';
-    name.textContent = title;
-    c.append(this.blockGrip(a, 'group', i), name);
-    if (r.group && !r.head && !r.col) {
-      const flag = document.createElement('span');
-      flag.className = 'epage-flag';
-      flag.textContent = 'new group';
-      flag.append(this.button('×', 'Let the groups fill in fours here again', () => this.layoutChange(() => setGroupBreak(a.params, i, false)), 'sm arr-x'));
-      c.append(flag);
-    }
-    return c;
-  }
-
-  /** whether a group already starts at row `i` of an assembly card on its own (the one before it is full) */
-  private groupStartAt(a: AssemblyInst, i: number): boolean {
-    const starts = paramStarts(this.patch, a, DEFS);
-    return starts[i] && starts.indexOf(true) < i;
-  }
-
-  /** while arranging: on a row's top edge, + heading and a column break before it; on a display that could reach across
-   * `room` columns, ↔ steps how many it spans (1 .. room, then back to 1) */
+  /** while arranging: on a row's top edge, a column break before it; on a display that could reach across `room`
+   * columns, ↔ steps how many it spans (1 .. room, then back to 1) */
   private arrangeTools(a: AssemblyInst, i: number, room = 0): HTMLElement {
     const t = document.createElement('span');
     t.className = 'arr-tools';
     const r = a.params[i];
-    if (!r.head) t.append(this.button('+ heading', 'A heading above this row', () => {
-      this.newHeading = `${a.id}:${i}`;
-      this.rebuild();
-    }, 'sm'));
-    if (i > 0 && !r.col && !r.head && !r.group && !this.groupStartAt(a, i)) t.append(this.button('↵ new group', 'End the group before this row: this row starts the next FM-1 page', () => this.layoutChange(() => setGroupBreak(a.params, i, true)), 'sm'));
     if (i > 0 && !r.col) t.append(this.button('↦ column', 'Start a new column with this row', () => this.layoutChange(() => setColumnBreak(a.params, i, true)), 'sm'));
     if (room > 1) {
       const now = Math.min(r.span ?? 1, room);
       const next = now >= room ? 1 : now + 1;
       t.append(this.button(`↔ span ${now}`, next > 1 ? `Reach across ${next} columns` : 'Back to its own column', () => this.layoutChange(() => setSpan(a.params, i, next)), 'sm arr-span'));
     }
+    const c = r.copies;
+    t.append(this.button(c ? `⧉ ${c.count} × ${c.rows}` : '⧉ one at a time',
+      'Copies of the same controls the original edits one at a time (the CZ\'s envelope steps): the card shows one, picked by a step row; the FM-1 starts each on a new page',
+      () => this.askCopies(a, i), 'sm'));
     for (const b of t.querySelectorAll('button')) b.addEventListener('pointerdown', (e) => e.stopPropagation());
     return t;
+  }
+
+  /** ask how many copies of how many rows start at row `i` (`RowCopies`): "8 x 2 step" = eight steps of two rows */
+  private askCopies(a: AssemblyInst, i: number): void {
+    const c = a.params[i].copies;
+    const v = window.prompt(`Copies shown one at a time from this row: how many copies, of how many rows each, and the picker's name (e.g. "8 x 2 step": eight steps of a rate and a level; up to ${COPIES_MAX} of ${COPY_ROWS_MAX} rows). Empty: plain rows again`, c ? `${c.count} x ${c.rows} ${c.name ?? 'step'}` : '8 x 2 step');
+    if (v === null) return;
+    const m = /^\s*(\d+)\s*[x×*]\s*(\d+)\s*(.*)$/i.exec(v);
+    this.layoutChange(() => setCopies(a.params, i, m ? Number(m[2]) : 0, m ? Number(m[1]) : 0, m?.[3]));
+  }
+
+  // ---- Arrange mode's rows (D-616): sections (a heading and its rows) cut into pages (one FM-1 page each), read from
+  // and written back through arrange.ts. An overlay over the card draws a faint outline around each section and each
+  // page, the page's handle on its outline, the one line where a drag would land, + heading, + page break and the × of
+  // a page break set by hand.
+
+  /** "ci:at" of the heading field Arrange mode shows before it exists (+ heading): `${assembly id}:${column}:${index}` */
+  private newHeading: string | null = null;
+
+  /** whether a row takes a knob, is a display, or is not drawn (set from a module's screen, or gone): arrange.ts KnobOf */
+  private knobOf(): KnobOf {
+    return (r) => {
+      const m = this.patch.modules.find((x) => x.id === r.module);
+      const pd = m && rowDef(DEFS[m.type], r.param);
+      return !pd || pd.onScreen ? null : !pd.screen;
+    };
+  }
+
+  /** the rows of the card being arranged, from its layout tree; the overlay follows once the card is on the page */
+  private arrangeRows(a: AssemblyInst, body: HTMLElement, spanRoom: number[]): EdgeParam[] {
+    const knob = this.knobOf();
+    const layout = layoutOf(a.params, a.heads);
+    // + heading clicked: a field with no name yet, a new section there (or the name of the rows a column starts with)
+    let transient: Sec | null = null;
+    const want = this.newHeading?.startsWith(`${a.id}:`) ? this.newHeading.split(':').slice(1).map(Number) : null;
+    if (want && layout[want[0]]) {
+      const col = layout[want[0]];
+      if (want[1] === 0 && col.secs[0]?.head === undefined) transient = col.secs[0];
+      else col.secs.splice(want[1], 0, (transient = { rows: [] }));
+      transient.head = '';
+    }
+    const ctx: ArrangeCtx = { a, layout, knob, body, secs: [], transient, line: null };
+    const idx = new Map(a.params.map((r, i) => [rowKey(r), i]));
+    const out: EdgeParam[] = [];
+    layout.forEach((col, ci) => {
+      let pending: HTMLElement[] = [];
+      let firstInCol = true;
+      let last: EdgeParam | null = null;
+      col.secs.forEach((sec, si) => {
+        const head = sec.head !== undefined ? this.arrangeHeading(ctx, sec, ci, si) : null;
+        const entry: ArrSec = { sec, col: ci, index: si, head, empty: null,
+          pages: pagesOf(sec, knob).map((rows) => ({ rows, drawn: rows.filter((r) => knob(r) !== null), els: [] })) };
+        ctx.secs.push(entry);
+        if (!entry.pages.some((pg) => pg.drawn.length)) {
+          if (!head) return;
+          const box = document.createElement('div');
+          box.className = 'eempty';
+          box.textContent = 'empty: drop rows here';
+          entry.empty = box;
+          head.classList.add('arr-secstart');
+          pending.push(head, box);
+          return;
+        }
+        let firstRow = true;
+        for (const pg of entry.pages) for (const r of pg.drawn) {
+          const i = idx.get(rowKey(r))!;
+          const orig = a.params[i];
+          const m = this.patch.modules.find((x) => x.id === r.module)!;
+          const def = DEFS[m.type];
+          const pd = rowDef(def, r.param)!;
+          const row = this.paramRow(m, def, pd, { label: orig.label, rename: () => this.renameRef(orig, 'parameter'), ...this.rowShow(orig, null) });
+          row.classList.add('arr-row');
+          const above: HTMLElement[] = [];
+          if (firstInCol && ci > 0) above.push(this.columnChip(a, i));
+          above.push(...pending);
+          pending = [];
+          if (firstRow) {
+            if (head) above.push(head);
+            (head ?? row).classList.add('arr-secstart');
+          } else if (!pg.els.length) row.classList.add('arr-pgstart');
+          pg.els.push(row);
+          this.arrangeRow(row, ctx, rowKey(r), this.selectable(row, orig));
+          row.append(this.arrangeTools(a, i, pd.screen ? spanRoom[i] : 0));
+          last = { el: row, input: pd.input ? { module: m.id, port: pd.input } : undefined, col: firstInCol && out.length > 0, above, span: pd.screen ? orig.span : undefined };
+          out.push(last);
+          firstInCol = false;
+          firstRow = false;
+        }
+      });
+      // headings with no rows at the column's end; the column's last element leaves room for + heading under it
+      const tail = last as EdgeParam | null;
+      if (tail && pending.length) tail.below = pending;
+      if (tail) (tail.below?.[tail.below.length - 1] ?? tail.el).classList.add('arr-colend');
+    });
+    requestAnimationFrame(() => this.drawArrange(ctx));
+    return out;
+  }
+
+  /** a heading of the card being arranged: its grip (drags the section), the field with the FM-1's page name in it, × */
+  private arrangeHeading(ctx: ArrangeCtx, sec: Sec, ci: number, si: number): HTMLElement {
+    const fresh = sec === ctx.transient;
+    const h = document.createElement('div');
+    h.className = 'ehead arr-head';
+    if (!fresh) {
+      const grip = document.createElement('span');
+      grip.className = 'arr-grip';
+      grip.textContent = '⠿';
+      grip.title = 'Drag: move this section with its pages (between sections, in any column)';
+      grip.addEventListener('pointerdown', (e) => this.dragSection(e, ctx, sec, h));
+      h.append(grip);
+    }
+    const field = document.createElement('label');
+    field.className = 'hfield';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = sec.head ?? '';
+    input.placeholder = 'heading';
+    input.maxLength = 40;
+    input.setAttribute('aria-label', 'Heading');
+    const fm = document.createElement('span');
+    fm.className = 'fm1';
+    fm.title = "The FM-1's name for these pages";
+    const name = (): void => { fm.textContent = `(${fm1Name(input.value, NAME_MAX)})`; };
+    name();
+    let done = false;
+    const commit = (): void => {
+      if (done) return;
+      done = true;
+      if (fresh && !input.value.trim()) {
+        this.newHeading = null;
+        this.rebuild();
+        return;
+      }
+      if (!fresh && input.value.trim() === sec.head) return;
+      this.arrangeChange(ctx, () => renameHeading(ctx.layout, sec, input.value));
+    };
+    input.oninput = name;
+    input.onchange = commit;
+    input.onblur = () => { if (fresh || !input.value.trim()) commit(); };
+    input.onkeydown = (e) => {
+      e.stopPropagation(); // typing is not shortcuts
+      if (e.key === 'Enter' || e.key === 'Escape') input.blur();
+    };
+    input.onpointerdown = (e) => e.stopPropagation();
+    field.append(input, fm);
+    const x = this.button('×', sec.rows.length ? 'Remove the heading (its rows join the section above)' : 'Remove the heading', () => {
+      if (fresh) { this.newHeading = null; this.rebuild(); return; }
+      this.arrangeChange(ctx, () => removeHeading(ctx.layout, sec));
+    }, 'sm arr-x');
+    h.append(field, x);
+    h.dataset.sec = `${ci}:${si}`;
+    if (fresh) requestAnimationFrame(() => input.focus());
+    return h;
+  }
+
+  /** an edit of the layout tree, written back to the card as one undo step */
+  private arrangeChange(ctx: ArrangeCtx, fn: () => void): void {
+    this.newHeading = null;
+    this.layoutChange(() => {
+      fn();
+      // a + heading field that got no name is not part of the card
+      const t = ctx.transient;
+      if (t?.head === '') {
+        if (t.rows.length) delete t.head;
+        else for (const col of ctx.layout) col.secs = col.secs.filter((s) => s !== t);
+      }
+      setLayout(ctx.a, ctx.layout);
+    });
+  }
+
+  /** the outlines of the sections and pages in client coordinates, measured now */
+  private arrangeBoxes(ctx: ArrangeCtx): { sec: Box | null; pages: (Box | null)[] }[] {
+    const rect = (el: HTMLElement): Box => el.getBoundingClientRect();
+    const union = (bs: Box[]): Box | null => (bs.length ? { left: Math.min(...bs.map((b) => b.left)), top: Math.min(...bs.map((b) => b.top)),
+      right: Math.max(...bs.map((b) => b.right)), bottom: Math.max(...bs.map((b) => b.bottom)) } : null);
+    return ctx.secs.map((e) => {
+      const pages = e.pages.map((pg) => {
+        const u = union(pg.els.map(rect));
+        return u && { left: u.left - ARR_HANDLE, top: u.top - 2, right: u.right + 2, bottom: u.bottom + 2 };
+      });
+      const u = union([...(e.head ? [rect(e.head)] : []), ...(e.empty ? [rect(e.empty)] : []), ...pages.filter((b): b is Box => !!b)]);
+      return { sec: u && { left: u.left - 3, top: u.top - 3, right: u.right + 3, bottom: u.bottom + 3 }, pages };
+    });
+  }
+
+  /** draw the overlay of the card being arranged (after layout: it measures the rows) */
+  private drawArrange(ctx: ArrangeCtx): void {
+    const body = ctx.body;
+    if (!body.isConnected) return;
+    body.querySelector(':scope > .arr-ov')?.remove();
+    const ov = document.createElement('div');
+    ov.className = 'arr-ov';
+    body.append(ov);
+    const br = body.getBoundingClientRect();
+    const k = br.width / (body.offsetWidth || 1) || 1;
+    const put = (el: HTMLElement, b: Box): HTMLElement => {
+      Object.assign(el.style, { left: `${(b.left - br.left) / k}px`, top: `${(b.top - br.top) / k}px`, width: `${(b.right - b.left) / k}px`, height: `${(b.bottom - b.top) / k}px` });
+      ov.append(el);
+      return el;
+    };
+    const div = (cls: string): HTMLElement => { const d = document.createElement('div'); d.className = cls; return d; };
+    const boxes = this.arrangeBoxes(ctx);
+    const act = (fn: () => void) => () => this.arrangeChange(ctx, fn);
+    ctx.secs.forEach((e, si) => {
+      const b = boxes[si];
+      if (b.sec) put(div('arr-secbox'), b.sec);
+      e.pages.forEach((pg, pi) => {
+        const pb = b.pages[pi];
+        if (!pb) return;
+        const box = put(div('arr-pgbox'), pb);
+        const grip = div('arr-pghandle');
+        grip.textContent = '⠿';
+        grip.title = 'Drag: move this page (one FM-1 page)';
+        grip.addEventListener('pointerdown', (ev) => this.dragPage(ev, ctx, e, pi, box));
+        put(grip, { left: pb.left, top: pb.top, right: pb.left + ARR_HANDLE * k, bottom: pb.top + 20 * k });
+        // between two rows of a page: + page break
+        pg.els.forEach((el, j) => {
+          if (j === 0) return;
+          const y = (pg.els[j - 1].getBoundingClientRect().bottom + el.getBoundingClientRect().top) / 2;
+          const z = put(div('arr-zone'), { left: pb.left + ARR_HANDLE * k, top: y - 5 * k, right: pb.right, bottom: y + 5 * k });
+          const key = rowKey(pg.drawn[j]);
+          z.append(this.button('+ page break', 'Start a new FM-1 page here', act(() => addBreak(ctx.layout, key, ctx.knob)), 'sm arr-zbtn'));
+        });
+        // a page break set by hand: its × between the two pages
+        const prev = b.pages[pi - 1];
+        if (pi > 0 && prev && pg.rows[0].group) {
+          const y = (prev.bottom + pb.top) / 2;
+          const z = put(div('arr-brk'), { left: pb.left + ARR_HANDLE * k, top: y - 7 * k, right: pb.right, bottom: y + 7 * k });
+          const key = rowKey(pg.rows[0]);
+          z.append(this.button('page break ×', 'Remove this page break: the two pages join', act(() => removeBreak(ctx.layout, key)), 'sm arr-brkx'));
+        }
+      });
+    });
+    // + heading: at the top of each column and under each section
+    ctx.layout.forEach((col, ci) => {
+      const own = ctx.secs.map((e, i) => ({ e, b: boxes[i].sec })).filter((x) => x.e.col === ci && x.b);
+      if (!own.length) return;
+      const add = (at: number, y: number, b: Box): void => {
+        const z = put(div('arr-zone arr-hzone'), { left: b.left, top: y - 6 * k, right: b.right, bottom: y + 6 * k });
+        z.append(this.button('+ heading', 'A heading here (it stays when it has no rows)', () => {
+          this.newHeading = `${ctx.a.id}:${ci}:${at}`;
+          this.rebuild();
+        }, 'sm arr-zbtn'));
+      };
+      if (!ctx.transient || ctx.secs.find((e) => e.sec === ctx.transient)?.col !== ci) add(0, own[0].b!.top - 8 * k, own[0].b!);
+      own.forEach((x) => add(x.e.index + 1, x.b!.bottom + 8 * k, x.b!));
+    });
+    ctx.line = div('arr-line');
+    ctx.line.hidden = true;
+    ov.append(ctx.line);
+  }
+
+  /** show the drop line at a spot (none: hide it); what arrangeDrag marks */
+  private arrangeLine(ctx: ArrangeCtx, spot: ArrSpot | null): { el: HTMLElement; after: boolean } | null {
+    const line = ctx.line;
+    if (!line) return null;
+    line.hidden = !spot;
+    if (!spot) return null;
+    const br = ctx.body.getBoundingClientRect();
+    const k = br.width / (ctx.body.offsetWidth || 1) || 1;
+    Object.assign(line.style, { left: `${(spot.x1 - br.left) / k}px`, top: `${(spot.y - br.top) / k - 1.5}px`, width: `${(spot.x2 - spot.x1) / k}px` });
+    return { el: line, after: false };
+  }
+
+  /** the spot nearest the pointer, if one is close */
+  private nearestSpot(spots: ArrSpot[], x: number, y: number): ArrSpot | null {
+    let best: ArrSpot | null = null;
+    let dist = 80;
+    for (const s of spots) {
+      const dx = Math.max(s.x1 - x, 0, x - s.x2);
+      const d = Math.hypot(dx * 2, y - s.y);
+      if (d < dist) { dist = d; best = s; }
+    }
+    return best;
+  }
+
+  /** where rows (their keys) can land: inside a page at its start, between its rows or at its end; into an empty
+   * section. Never where nothing would change, and one knob row never into another page that has PAGE_ROWS knobs */
+  private rowSpots(ctx: ArrangeCtx, keys: string[]): ArrSpot[] {
+    const set = new Set(keys);
+    const one = keys.length === 1 ? keys[0] : null;
+    const oneKnob = one ? !!ctx.secs.flatMap((e) => e.sec.rows).find((r) => rowKey(r) === one && ctx.knob(r)) : false;
+    const boxes = this.arrangeBoxes(ctx);
+    const spots: ArrSpot[] = [];
+    const go = (to: RowSpot) => () => moveRows(ctx.layout, keys, to, ctx.knob);
+    ctx.secs.forEach((e, si) => {
+      if (e.empty) {
+        const r = e.empty.getBoundingClientRect();
+        spots.push({ x1: r.left, x2: r.right, y: (r.top + r.bottom) / 2, act: go({ sec: e.sec }) });
+        return;
+      }
+      e.pages.forEach((pg, pi) => {
+        const b = boxes[si].pages[pi];
+        if (!b) return;
+        const own = pg.rows.some((r) => set.has(rowKey(r)));
+        if (one && oneKnob && !own && pg.rows.filter((r) => ctx.knob(r)).length >= PAGE_ROWS) return;
+        const x1 = b.left + ARR_HANDLE;
+        const first = rowKey(pg.rows[0]);
+        if (!set.has(first)) spots.push({ x1, x2: b.right, y: b.top + 3, act: go({ sec: e.sec, before: first, start: true }) });
+        pg.drawn.forEach((r, j) => {
+          if (j === 0) return;
+          const key = rowKey(r);
+          if (set.has(key) || set.has(rowKey(pg.drawn[j - 1]))) return;
+          const y = (pg.els[j - 1].getBoundingClientRect().bottom + pg.els[j].getBoundingClientRect().top) / 2;
+          spots.push({ x1, x2: b.right, y, act: go({ sec: e.sec, before: key }) });
+        });
+        const lastKey = rowKey(pg.rows[pg.rows.length - 1]);
+        if (!set.has(lastKey)) spots.push({ x1, x2: b.right, y: b.bottom - 3, act: go({ sec: e.sec, after: lastKey }) });
+      });
+    });
+    return spots;
+  }
+
+  /** a row of the card being arranged: dragging it (or the selection it is in) to a spot; Shift / Cmd / Ctrl-click
+   * selects (#186); a finger drags after a long press */
+  private arrangeRow(el: HTMLElement, ctx: ArrangeCtx, key: string, sel: string): void {
+    el.classList.add('arr-item');
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('.arr-tools, input[type=text]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.shiftKey || e.metaKey || e.ctrlKey) return this.rowClick(sel, e.shiftKey);
+      const card = el.closest<HTMLElement>('.module')!;
+      const touch = e.pointerType === 'touch';
+      const block = (): boolean => this.rowSel.has(sel) && this.rowSel.size > 1;
+      const keys = (): string[] => (block() ? ctx.secs.flatMap((s) => s.sec.rows.map(rowKey)).filter((k) => this.rowSel.has(k)) : [key]);
+      let spots: ArrSpot[] | null = null;
+      let spot: ArrSpot | null = null;
+      this.arrangeDrag(e, card, {
+        live: !touch || (this.rowTouch && this.rowSel.has(sel)),
+        moving: () => (block() ? this.selRows.filter((r) => this.rowSel.has(r.key)).map((r) => r.el) : [el]),
+        held: () => this.rowHeld(sel),
+        tap: () => touch && this.rowTouch && this.rowClick(sel, false),
+        aim: (x, y) => {
+          spots ??= this.rowSpots(ctx, keys());
+          spot = this.nearestSpot(spots, x, y);
+          return this.arrangeLine(ctx, spot);
+        },
+        drop: () => { const s = spot; if (s) this.arrangeChange(ctx, s.act); },
+      });
+    }, true);
+  }
+
+  /** a page's handle: the page moves whole, between pages or into an empty section */
+  private dragPage(e: PointerEvent, ctx: ArrangeCtx, entry: ArrSec, pi: number, box: HTMLElement): void {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const keys = entry.pages[pi].rows.map(rowKey);
+    let spot: ArrSpot | null = null;
+    let spots: ArrSpot[] | null = null;
+    const make = (): ArrSpot[] => {
+      const boxes = this.arrangeBoxes(ctx);
+      const out: ArrSpot[] = [];
+      ctx.secs.forEach((e2, si) => {
+        const go = (to: RowSpot) => () => moveRows(ctx.layout, keys, to, ctx.knob, true);
+        if (e2.empty) {
+          const r = e2.empty.getBoundingClientRect();
+          out.push({ x1: r.left, x2: r.right, y: (r.top + r.bottom) / 2, act: go({ sec: e2.sec }) });
+          return;
+        }
+        const pbs = boxes[si].pages;
+        const n = pbs.length;
+        for (let q = 0; q <= n; q++) {
+          if (e2 === entry && (q === pi || q === pi + 1)) continue;
+          const b = pbs[Math.min(q, n - 1)];
+          if (!b) continue;
+          const y = q === 0 ? b.top - 4 : q === n ? b.bottom + 4 : (pbs[q - 1]!.bottom + b.top) / 2;
+          out.push({ x1: b.left, x2: b.right, y, act: go(q < n ? { sec: e2.sec, before: rowKey(e2.pages[q].rows[0]) } : { sec: e2.sec }) });
+        }
+      });
+      return out;
+    };
+    this.arrangeDrag(e, ctx.body.closest<HTMLElement>('.module')!, {
+      live: e.pointerType !== 'touch',
+      moving: () => [box, ...entry.pages[pi].els],
+      aim: (x, y) => { spots ??= make(); spot = this.nearestSpot(spots, x, y); return this.arrangeLine(ctx, spot); },
+      drop: () => { const s = spot; if (s) this.arrangeChange(ctx, s.act); },
+    });
+  }
+
+  /** a heading's grip: the section moves whole, to the top or end of a column or between two sections */
+  private dragSection(e: PointerEvent, ctx: ArrangeCtx, sec: Sec, head: HTMLElement): void {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const entry = ctx.secs.find((x) => x.sec === sec)!;
+    let spot: ArrSpot | null = null;
+    let spots: ArrSpot[] | null = null;
+    const make = (): ArrSpot[] => {
+      const boxes = this.arrangeBoxes(ctx);
+      const out: ArrSpot[] = [];
+      ctx.layout.forEach((_, ci) => {
+        const own = ctx.secs.map((x, i) => ({ x, b: boxes[i].sec })).filter((y) => y.x.col === ci && y.b);
+        const n = own.length;
+        for (let q = 0; q <= n; q++) {
+          if (q < n && own[q].x.sec.head === undefined) continue; // never above the rows a column goes on with
+          if (q < n && own[q].x === entry) continue;
+          if (q > 0 && own[q - 1].x === entry) continue;
+          const b = own[Math.min(q, n - 1)].b!;
+          const y = q === 0 ? b.top - 5 : q === n ? b.bottom + 5 : (own[q - 1].b!.bottom + b.top) / 2;
+          const before = q < n ? own[q].x.sec : undefined;
+          out.push({ x1: b.left, x2: b.right, y, act: () => moveSection(ctx.layout, sec, { col: ci, before }) });
+        }
+      });
+      return out;
+    };
+    this.arrangeDrag(e, ctx.body.closest<HTMLElement>('.module')!, {
+      live: e.pointerType !== 'touch',
+      moving: () => [head, ...(entry.empty ? [entry.empty] : []), ...entry.pages.flatMap((pg) => pg.els)],
+      aim: (x, y) => { spots ??= make(); spot = this.nearestSpot(spots, x, y); return this.arrangeLine(ctx, spot); },
+      drop: () => { const s = spot; if (s) this.arrangeChange(ctx, s.act); },
+    });
   }
 
   /**
@@ -3622,7 +4276,7 @@ export class Editor {
    * drags the whole selection as one block; Shift / Cmd / Ctrl-click selects. A finger's long press starts a selection
    * (and can drag on at once), then taps add or remove rows and a selected row drags at once.
    */
-  private arrangeItem(el: HTMLElement, a: AssemblyInst, kind: 'param' | 'in' | 'out', index: number, key?: string): void {
+  private arrangeItem(el: HTMLElement, a: AssemblyInst, kind: 'in' | 'out', index: number, key?: string): void {
     el.dataset.arrKind = kind;
     el.dataset.arrIndex = String(index);
     el.classList.add('arr-item');
@@ -3654,9 +4308,7 @@ export class Editor {
           const after = t.after && !t.el.dataset.arrBefore;
           const b = block();
           this.layoutChange(() => {
-            if (b) a.params = moveBlock(a.params, b, to, after);
-            else if (kind === 'param') a.params = moveParam(a.params, index, to, after);
-            else if (kind === 'in') a.inputs = moveRef(a.inputs, index, to, after);
+            if (kind === 'in') a.inputs = moveRef(a.inputs, index, to, after);
             else a.outputs = moveRef(a.outputs, index, to, after);
           });
         },
@@ -3749,61 +4401,6 @@ export class Editor {
     return best;
   }
 
-  /**
-   * While arranging: the grip of a heading (drags its section) or of a page strip (drags its group, one FM-1 page). A
-   * section lands only between sections or at the end, a group only between groups (#186).
-   */
-  private blockGrip(a: AssemblyInst, whole: 'section' | 'group', i: number): HTMLElement {
-    const grip = document.createElement('span');
-    grip.className = 'arr-grip';
-    grip.textContent = '⠿';
-    grip.title = whole === 'section' ? 'Drag: move this section (between sections or to the end)' : 'Drag: move this group, one FM-1 page (between groups)';
-    grip.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const starts = whole === 'group' ? paramStarts(this.patch, a, DEFS) : undefined;
-      const rows = starts ? groupRows(starts, i) : sectionRows(a.params, i);
-      if (!rows.length) return;
-      const card = grip.closest<HTMLElement>('.module')!;
-      const items = (): HTMLElement[] => [...card.querySelectorAll<HTMLElement>('.arr-item[data-arr-kind="param"]')];
-      let slot: { to: number; after: boolean } | null = null;
-      this.arrangeDrag(e, card, {
-        live: e.pointerType !== 'touch',
-        moving: () => [...new Set([grip.parentElement!, ...items().filter((c) => rows.includes(Number(c.dataset.arrIndex))),
-          ...[...card.querySelectorAll<HTMLElement>('.epage')].filter((c) => rows.includes(Number(c.dataset.page)))])],
-        aim: (x, y) => {
-          let best: { el: HTMLElement; after: boolean } | null = null;
-          let dist = Infinity;
-          slot = null;
-          for (const c of items()) {
-            const k = Number(c.dataset.arrIndex);
-            const r = c.getBoundingClientRect();
-            const dx = Math.max(r.left - x, 0, x - r.right);
-            for (const after of [false, true]) {
-              if (!blockDropOk(a.params, rows, k, after, starts)) continue;
-              const d = Math.hypot(dx, y - (after ? r.bottom : r.top));
-              if (d >= dist) continue;
-              dist = d;
-              slot = { to: k, after };
-              // before a row: a section lands above its heading, a group under the heading, on the row's page strip
-              const head = !after && whole === 'section' ? card.querySelector<HTMLElement>(`.ehead[data-arr-index="${k}"]`) : null;
-              const strip = !after ? card.querySelector<HTMLElement>(`.epage[data-page="${k}"]`) : null;
-              best = { el: head ?? strip ?? c, after };
-            }
-          }
-          return best;
-        },
-        drop: () => {
-          const t = slot;
-          if (!t) return;
-          this.layoutChange(() => (a.params = starts ? moveGroup(a.params, rows, starts, t.to, t.after) : moveSection(a.params, rows, t.to, t.after)));
-        },
-      });
-    });
-    return grip;
-  }
-
   /** a Drum map row's name (the roll shows it; at most TRACK_NAME_MAX characters, empty: the default) */
   private renameDrumRow(m: ModuleInst, r: number): void {
     const was = drumRowName(m.names, r);
@@ -3815,6 +4412,88 @@ export class Editor {
       m.names = Array.from({ length: DRUM_ROWS }, (_, k) => (k === r ? name : m.names?.[k] ?? ''));
       fixTrack(m);
     });
+  }
+
+  /** the copy each run of copies on a card shows (by `asm:first row`), 0 until another is picked; not saved */
+  private copyAt = new Map<string, number>();
+  private copyPicked(a: AssemblyInst, run: { at: number; count: number }): number {
+    return Math.min(run.count - 1, this.copyAt.get(`${a.id}:${run.at}`) ?? 0);
+  }
+
+  /** the row that picks which copy of a run a collapsed card shows ("step 1 .. 8", the CZ's step select) */
+  private copyPicker(a: AssemblyInst, run: { at: number; count: number; name: string }): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'param bar choice sel copy-pick';
+    const name = document.createElement('span');
+    name.textContent = run.name;
+    const sel = selector({
+      label: `${a.label} ${run.name}`,
+      names: Array.from({ length: run.count }, (_, k) => String(k + 1)),
+      get: () => this.copyPicked(a, run),
+      set: (k) => {
+        this.copyAt.set(`${a.id}:${run.at}`, k);
+        this.rebuild();
+      },
+    });
+    row.title = `Which ${run.name} the rows below set: the card shows one at a time, as the original does (the FM-1: each starts a new page)`;
+    row.append(name, sel.element);
+    return row;
+  }
+
+  /** what a collapsed card's row shows besides its parameter (#357, #358): how many parameters it sets (a nested card's
+   * row's too), its positions' names (its own, else a nested card's row's) */
+  private rowShow(r: ParamRef, tie: Ties | null): { names?: string[]; ties?: number } {
+    const n = tie ? tie.tied(r.module, r.param).length : 1 + (r.also?.length ?? 0);
+    const names = r.names ?? tie?.names(r.module, r.param);
+    return { ...(n > 1 ? { ties: n } : {}), ...(names ? { names } : {}) };
+  }
+
+  /** the names of a Selector's positions on its card row (#358): typed as a list, position 1 first */
+  private nameRow(a: AssemblyInst, r: ParamRef): void {
+    const v = window.prompt(`Names of the positions of "${r.label}", separated by commas, position 1 first (up to ${ROW_NAMES_MAX} of ${ROW_NAME_MAX} characters; none: the numbers)`, r.names?.join(', ') ?? '');
+    if (v === null) return;
+    const i = a.params.indexOf(r);
+    this.change(() => setRowNames(a.params, i, v.split(',')));
+  }
+
+  /**
+   * On a parameter of a card row inside an expanded assembly, in pick mode (#357, #358): a "one row with…" list of the
+   * card's other rows of the same range (the row then sets both), a button to split a row that sets several, and on a
+   * Selector's position row a button for its positions' names.
+   */
+  private rowTools(a: AssemblyInst, m: ModuleInst, pd: ParamDef): HTMLElement[] {
+    const ref = rowOf(a, m.id, pd.name);
+    if (!ref) return [];
+    const out: HTMLElement[] = [];
+    const primary = ref.module === m.id && ref.param === pd.name;
+    const stop = (el: HTMLElement): HTMLElement => {
+      el.addEventListener('pointerdown', (e) => e.stopPropagation());
+      el.addEventListener('click', (e) => e.stopPropagation());
+      return el;
+    };
+    if (primary && ref.also?.length) out.push(stop(this.button('split', `Split "${ref.label}": one row per parameter again`, () => this.change(() => splitRow(a, m.id, pd.name)), 'sm')));
+    if (primary && m.type === 'select' && pd.name === 'pos') out.push(stop(this.button('names', `Name the positions of "${ref.label}": the card, the Selector and the FM-1 show the names`, () => this.nameRow(a, ref), 'sm')));
+    const pdOf = (r: ParamRef): ParamDef | undefined => { const x = this.patch.modules.find((q) => q.id === r.module); return x && x.type !== 'alloc' ? rowDef(DEFS[x.type], r.param) : undefined; };
+    const others = m.type === 'alloc' ? [] : a.params.filter((r) => r !== ref && pdOf(r) && sameRange(pd, pdOf(r)!));
+    if (others.length) {
+      const sel = document.createElement('select');
+      sel.className = 'merge';
+      sel.title = `Let another row of the "${a.label}" card set this parameter too: one row for both (the same range only)`;
+      sel.setAttribute('aria-label', `set ${ref.label} with another row`);
+      sel.append(new Option('one row with…', ''));
+      for (const r of others) sel.append(new Option(r.label, `${r.module}:${r.param}`));
+      sel.onchange = () => {
+        const [mod, ...rest] = sel.value.split(':');
+        if (!mod) return;
+        this.change(() => mergeRows(this.patch, a, DEFS, { module: Number(mod), param: rest.join(':') }, { module: m.id, param: pd.name }));
+      };
+      out.push(stop(sel));
+    }
+    if (!out.length) return [];
+    const box = document.createElement('span');
+    box.className = 'row-tools';
+    box.append(...out);
+    return [box];
   }
 
   private renameRef(r: { label: string }, what: string): void {
@@ -4413,16 +5092,19 @@ export class Editor {
       return box;
     }
     caption.textContent = r.label;
-    // the dial is the row's position in its range (octaves for a log parameter); choices and switches snap
-    const unitOf = (v: number): number => (pd.choices ? (pd.choices.length > 1 ? Math.round(v) / (pd.choices.length - 1) : 0) : toUnit(pd, v));
+    // the dial is the row's position in its range (octaves for a log parameter; a Selector's positions in use, #358);
+    // choices and switches snap
+    const rd = (): ParamDef => rowRange(m.type, m.params, pd);
+    const unitOf = (v: number): number => (pd.choices ? (pd.choices.length > 1 ? Math.round(v) / (pd.choices.length - 1) : 0) : toUnit(rd(), v));
     const valueOf = (u: number): number => {
       if (pd.toggle) return u >= 0.5 ? 1 : 0;
       if (pd.choices) return Math.round(u * (pd.choices.length - 1));
-      const v = fromUnit(pd, u);
+      const v = fromUnit(rd(), u);
       return pd.log ? snapTo(pd, v) : pd.step ? Math.round(v / pd.step) * pd.step : Number(v.toFixed(6));
     };
     const text = (v: number): string => {
       if (pd.choices) return choiceName(m.type, pd.name, pd.choices[Math.round(v)] ?? '');
+      if (r.names?.[Math.round(v) - pd.min]) return r.names[Math.round(v) - pd.min];   // a Selector's named position (#358)
       const f = formatValue(v, pd.unit, pd.min < 0);
       return f.unit ? `${f.num} ${f.unit}` : f.num;
     };
@@ -4519,7 +5201,8 @@ export class Editor {
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) return false;
     const v = m.params[r.param];
-    const w = fromUnit(pd, Math.min(1, Math.max(0, toUnit(pd, v) + notches / 100)));
+    const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358)
+    const w = fromUnit(rd, Math.min(1, Math.max(0, toUnit(rd, v) + notches / 100)));
     this.setParam(m.id, r.param, pd.toggle ? (notches > 0 ? 1 : 0)
       : pd.choices ? Math.min(pd.choices.length - 1, Math.max(0, Math.round(v) + Math.sign(notches)))
       : pd.log ? snapTo(pd, w) : pd.step ? Math.round(w / pd.step) * pd.step : Number(w.toFixed(6)));
@@ -4538,7 +5221,9 @@ export class Editor {
     const pd = m && DEFS[m.type].params.find((q) => q.name === r!.param);
     if (!r || !m || !pd) return;
     const x = Math.min(1, Math.max(0, u));
-    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : pd.log ? snapTo(pd, fromUnit(pd, x)) : Number(fromUnit(pd, x).toFixed(6));
+    const rd = rowRange(m.type, m.params, pd);   // (a Selector's positions in use, #358: as the FM-1's pages_set_unit)
+    const v = pd.toggle ? (x >= 0.5 ? 1 : 0) : pd.choices ? Math.round(x * (pd.choices.length - 1)) : pd.log ? snapTo(pd, fromUnit(pd, x))
+      : rd !== pd ? Math.round(fromUnit(rd, x)) : Number(fromUnit(pd, x).toFixed(6));
     this.setParam(m.id, r.param, v);
   }
 
@@ -4951,7 +5636,12 @@ export class Editor {
         physicalCables.add(key);
       } else
         // a pin has no jack: its cable is drawn to every thumb it feeds, and each drawn cable removes just that route
-        for (const { jack, pd } of thumbs) add(a, jack, kind, () => this.change(() => removeRoute(this.patch, c, pd.name)), `Disconnect from ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}`, false, c);
+        for (const { jack, pd } of thumbs) add(a, jack, kind, () => this.change(() => {
+          // (a card row that sets several parameters, #357: the same output's routes into the others go too)
+          const tied = this.tiedCables(c).flatMap((end) => this.patch.cables.filter((x) => sameEnd(x.from, c.from) && sameEnd(x.to, end)));
+          removeRoute(this.patch, c, pd.name);
+          for (const x of tied) for (const t of tiedTo(this.patch, c.to.module, pd.name).slice(1)) if (t.module === x.to.module) removeRoute(this.patch, x, t.param);
+        }), `Disconnect from ${longName(this.patch.modules.find((x) => x.id === c.to.module)!.type, pd.name)}`, false, c);
     }
     this.positionCables();
     this.markMuted();
@@ -4964,16 +5654,34 @@ export class Editor {
     this.touch();
     m.params[name] = v;
     this.ev.onParam(id, name, v);
+    this.mirror(id, name, v);
     this.chipsSoon();
     this.syncDials();
     for (const d of this.parameterDisplays) if (d.id === id) d.update(null);
     this.relock(id);
   }
 
-  /** remove a cable; one drawn to a merged jack whose other inputs are hidden takes their cables (from the same output) with it */
+  /** the parameters card rows tie to this one (#357) take its new value too, each clamped to its range (they share it) */
+  private mirror(id: number, name: string, v: number): void {
+    if (!assembliesOf(this.patch).some((a) => a.params.some((r) => r.also))) return;
+    for (const t of tiedTo(this.patch, id, name).slice(1)) {
+      const m = this.patch.modules.find((x) => x.id === t.module);
+      const pd = m && DEFS[m.type].params.find((q) => q.name === t.param);
+      if (!m || !pd) continue;
+      const w = Math.min(topOf(pd), Math.max(pd.min, v));
+      if (m.params[t.param] === w) continue;
+      m.params[t.param] = w;
+      this.ev.onParam(m.id, t.param, w);
+      for (const d of this.parameterDisplays) if (d.id === m.id) d.update(null);
+      this.relock(m.id);
+    }
+  }
+
+  /** remove a cable; one drawn to a merged jack whose other inputs are hidden takes their cables (from the same output) with it,
+   * and one into a parameter a card row ties to others (#357) takes the same output's cables into those */
   private removeCable(c: Cable): void {
     const hidden = hiddenModules(this.patch);
-    const more: Endpoint[] = [];
+    const more: Endpoint[] = [...this.tiedCables(c)];
     for (const a of assembliesOf(this.patch)) {
       const ref = findRef(a, 'in', c.to.module, c.to.port);
       if (!ref?.also?.length) continue;
@@ -4983,6 +5691,27 @@ export class Editor {
       disconnect(this.patch, c);
       for (const t of more) disconnect(this.patch, { from: c.from, to: t });
     });
+  }
+
+  /** the ends of the cables from c's output into the parameters tied to those c feeds (#357: a cable made on a row) */
+  private tiedCables(c: Cable): Endpoint[] {
+    const m = this.patch.modules.find((x) => x.id === c.to.module);
+    if (!m || !assembliesOf(this.patch).some((a) => a.params.some((r) => r.also))) return [];
+    const out: Endpoint[] = [];
+    const feeds = (x: ModuleInst, pd: ParamDef, port: string): boolean => pd.input === port || ((port === 'p1' || port === 'p2') && !!x.map?.[port]?.includes(pd.name));
+    for (const pd of DEFS[m.type].params) {
+      if (!feeds(m, pd, c.to.port)) continue;
+      for (const t of tiedTo(this.patch, m.id, pd.name).slice(1)) {
+        const tm = this.patch.modules.find((x) => x.id === t.module);
+        const tp = tm && DEFS[tm.type].params.find((q) => q.name === t.param);
+        if (!tm || !tp) continue;
+        for (const port of [tp.input, 'p1', 'p2']) {
+          const end = { module: tm.id, port: port ?? '' };
+          if (port && feeds(tm, tp, port) && this.patch.cables.some((x) => sameEnd(x.from, c.from) && sameEnd(x.to, end)) && !out.some((e) => sameEnd(e, end))) out.push(end);
+        }
+      }
+    }
+    return out;
   }
 
   private internalPair(a: HTMLElement, b: HTMLElement): [HTMLElement, HTMLElement] | null {
@@ -5012,6 +5741,8 @@ export class Editor {
       let to: Endpoint;
       if (input.dataset.param) {
         to = connectParameter(this.patch, DEFS, from, Number(input.dataset.mod), input.dataset.param);
+        // a card row that sets several parameters (#357): the cable reaches every one of them
+        for (const t of tiedTo(this.patch, Number(input.dataset.mod), input.dataset.param).slice(1)) connectParameter(this.patch, DEFS, from, t.module, t.param);
       } else {
         to = { module: Number(input.dataset.mod), port: input.dataset.port! };
         if (!this.patch.cables.some((c) => sameEnd(c.from, from) && sameEnd(c.to, to)) && !connect(this.patch, DEFS, from, to))

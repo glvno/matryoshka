@@ -36,7 +36,19 @@ const STORE = renamedKey('matryoshka.bank', 'modular-1.bank');
 /** the old list of patches over the FM-1's budget (before #218): folded into Your patches on the next read */
 const STORE_OVER = 'matryoshka.bank-over';
 
-const fits = (p: Patch): boolean => deviceBudget(p).fits;
+/** whether a patch fits the FM-1, remembered by its content (a patch's budget takes a while to work out, and the Library
+ *  rows ask again on every change) */
+const fitsKnown = new Map<string, boolean>();
+const fits = (p: Patch): boolean => {
+  const key = JSON.stringify(p);
+  let ok = fitsKnown.get(key);
+  if (ok === undefined) {
+    ok = deviceBudget(p).fits;
+    if (fitsKnown.size >= 256) fitsKnown.clear();
+    fitsKnown.set(key, ok);
+  }
+  return ok;
+};
 
 function loadOver(): Entry[] {
   try {
@@ -180,7 +192,9 @@ export function knownCopy(s: SlotInfo, candidates: Candidate[], length: (p: Patc
 }
 
 /** the patches the bank holds (the editor's own copies; factory patches are rebuilt), for the morph picker */
-export const bankPatches = (): { name: string; patch: Patch }[] => load().map((e) => ({ name: e.name, patch: patchOf(e) }));
+/** the bank's patches; `factory` picks which factory patches the bank names are built (all of them by default) */
+export const bankPatches = (factory: (name: string) => boolean = () => true): { name: string; patch: Patch }[] =>
+  load().filter((e) => e.patch || factory(e.name)).map((e) => ({ name: e.name, patch: patchOf(e) }));
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, props: Partial<HTMLElementTagNameMap[K]> & { class?: string } = {}, ...kids: (Node | string)[]): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -322,6 +336,8 @@ export function buildPatchesSection(root: HTMLElement, device: DeviceLink, ev: P
   };
 
   const refresh = (): void => {
+    // off screen (another view or section): redrawn when shown (enter)
+    if (root.closest('[hidden]')) return;
     const ready = live() && !busy;
     // In this browser: Your patches, then the community patches added to them (not those saved as the user's own since)
     const mine = savedPatches();

@@ -2,7 +2,7 @@
 // AudioWorklet wrapper around Engine.
 import { Engine } from './engine';
 import type { Patch } from './patch';
-import type { StepNote } from './track';
+import type { SongEntry, StepNote } from './track';
 import { ViewStream, VoiceStreams, voiceSums, type ViewData } from './scope-stream';
 
 declare const sampleRate: number;
@@ -21,7 +21,10 @@ export type HostMsg =
   | { t: 'transport'; on: boolean }
   | { t: 'button'; i: number; on: boolean }
   /** a Steps module's notes edited (#133), a Steps module muted */
-  | { t: 'track'; id: number; notes: StepNote[] | undefined }
+  | { t: 'track'; id: number; notes: StepNote[] | undefined; pat?: number }
+  | { t: 'pattern'; p: number }
+  | { t: 'song'; n: number }
+  | { t: 'songs'; songs: SongEntry[][] }
   | { t: 'mute'; id: number; on: boolean }
   /** the armed devices (#190, `m<id>` / `a<id>`): only they hear Main's keys; none: the cables decide */
   | { t: 'arm'; devices: string[] }
@@ -101,7 +104,10 @@ class ModularProcessor extends AudioWorkletProcessor {
         else if (m.t === 'unenvwatch') this.envs.delete(m.key);
         else if (m.t === 'transport') this.engine.transport(m.on);
         else if (m.t === 'button') this.engine.setButton(m.i, m.on);
-        else if (m.t === 'track') this.engine.setTrack(m.id, m.notes);
+        else if (m.t === 'track') this.engine.setTrack(m.id, m.notes, m.pat);
+        else if (m.t === 'pattern') this.engine.setPattern(m.p);
+        else if (m.t === 'song') this.engine.setSong(m.n);
+        else if (m.t === 'songs') this.engine.setSongs(m.songs);
         else if (m.t === 'mute') this.engine.setMute(m.id, m.on);
         else if (m.t === 'arm') this.engine.arm(m.devices);
         else if (m.t === 'rec') this.engine.setRec(m.id, m.on);
@@ -176,10 +182,11 @@ class ModularProcessor extends AudioWorkletProcessor {
       if (++this.stepsBlocks >= DISPLAY_EVERY / 2) {   // the Steps modules' playheads, about 60 times a second when they move
         this.stepsBlocks = 0;
         const v = this.engine.stepsView();
-        const s = JSON.stringify(v);
+        const pats = this.engine.patternView();
+        const s = JSON.stringify([v, pats]);
         if (s !== this.stepsSent) {
           this.stepsSent = s;
-          this.port.postMessage({ steps: v });
+          this.port.postMessage({ steps: v, pats });
         }
       }
       if (this.valuesRequested) {

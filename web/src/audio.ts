@@ -5,6 +5,7 @@ import type { HostMsg } from './worklet';
 import type { ParameterValues } from './engine';
 import type { ViewData } from './scope-stream';
 import type { StepNote } from './track';
+import type { PatternView } from './engine';
 
 export class AudioHost {
   private ctx: AudioContext | null = null;
@@ -41,7 +42,7 @@ export class AudioHost {
   /** a Scope screen's latest histories, one per input (scope-stream.ts); `voices`: per input its voices' histories (#54), or null */
   onView: (key: string, chans: ViewData[], sr: number, voices: (ViewData[] | null)[] | null) => void = () => {};
   /** where the Steps modules are (Engine.stepsView), when that changes */
-  onSteps: (view: { id: number; pos: number; mute: boolean }[]) => void = () => {};
+  onSteps: (view: { id: number; pos: number; mute: boolean }[], pats?: PatternView) => void = () => {};
   /** notes a Steps track recorded live (#135, Engine.takeRecorded) */
   onRecorded: (took: { id: number; loop: number; note: StepNote }[]) => void = () => {};
   /** an envelope display's copies (Engine.envStates) */
@@ -76,7 +77,7 @@ export class AudioHost {
         } else if (typeof ev.data?.watch === 'string') {
           this.onWatch(ev.data.watch, ev.data.v);
         } else if (Array.isArray(ev.data?.steps)) {
-          this.onSteps(ev.data.steps);
+          this.onSteps(ev.data.steps, ev.data.pats);
         } else if (Array.isArray(ev.data?.recorded)) {
           this.onRecorded(ev.data.recorded);
         } else if (typeof ev.data?.env === 'string') {

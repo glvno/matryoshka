@@ -4,11 +4,14 @@ import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { applyPreset, deletePreset, presetsOf, renamePreset, storePreset } from './device-presets';
 import { defIsEngine, instIsEngine } from './engines';
-import { FACTORY_PRESETS, presetsOfDef, XL_ENGINE_PRESETS } from './factory-presets';
+import { factoryPresets, presetsOfDef, xlEnginePresets } from './factory-presets';
 import { DEFS } from './modules';
 import { newPatch } from './patch';
 import { FM1_PRESETS, XL_PRESETS, xlBase } from './presets';
 import { defStructure, structureOf } from './structure';
+
+const FACTORY_PRESETS = factoryPresets();
+const XL_ENGINE_PRESETS = xlEnginePresets();
 
 const mem = new Map<string, string>();
 beforeEach(() => {
@@ -63,5 +66,5 @@ describe('factory presets (#193)', () => {
         expect(applyPreset(p, a, list[list.length - 1]), name).toBe(true);
       }
     }
-  });
+  }, 120000); // (the XLs with their originals' whole panels are heavy: about 5 s on CI, longer under coverage)
 });

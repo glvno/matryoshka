@@ -16,7 +16,7 @@ static void midi_send(uint32_t status, uint32_t d1, uint32_t d2);
 static void midi_send_rt(uint32_t b);                   /* a one-byte real-time message (Start 0xFA, Stop 0xFC) */
 static void preset_step(int32_t d);                     /* PRESET: the next / previous patch */
 static void save_state(void);                           /* SAVE */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v);
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v);
 
 static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button (1..7) last moved: the bar shows it */
 #define BTN_PLAY 12u                  /* PLAY: the transport; held, PRESET sets the tempo */
@@ -35,7 +35,7 @@ static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};  
 #define BTN_OCT_UP 1u
 #define BTN_SAVE 9u
 #define BTN_HOME 8u
-#define BTN_SEL 3u                    /* SEL (SCL in Felucca's table): on a Steps track's page it opens the track's steps (#196) */
+#define BTN_SEL 3u                    /* SEL (SCL in Felucca's table): arms the device in focus (#395) */
 #define BTN_GLO 7u
 /* the buttons that act on the FM-1 itself in sandbox mode (sandbox_ui.c); the others only go out as MIDI */
 #define SB_OWN_BTNS ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_HOME) | (1u << BTN_PLAY) | (1u << BTN_GLO))
@@ -112,7 +112,7 @@ static void panel_button_set(uint32_t b, int down)
     }
 }
 
-/* The trail (#114): every screen change by a button (SEQ, REC, opening the menu; page buttons and GLO later) leaves a step
+/* The trail (#114): every screen change by a button (SEQ, opening the menu; page buttons and GLO later) leaves a step
  * of where it came from; a HOME tap goes back one. ALGO / SELECT moving on the device pages are no steps. The oldest step
  * goes when the trail is full. */
 #define TRAIL_MAX 8u
@@ -142,18 +142,23 @@ static void page_show(uint32_t p)
     pg_strip_dirty = 1;
     if (page == PAGE_MENU)
         menu_open();
-    if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends its recording, not a live take: seq_leave) */
+    if (page != PAGE_SEQ) {                         /* (leaving the SEQ page: REC goes on, #395; seq_leave) */
         seq_leave();
         seq_leds_off();
-    }
+    } else
+        seq_arm_shown(1);                           /* (the SEQ page arms the track it shows, #395) */
     if (dev_like() && !sb_on && !eng_overload && !load_err)
         msg_until = 0;                              /* (the device page and GLO's draw their header with the rest) */
     else
         header_draw();
     leds_play();
     leds_panel();                                   /* (GLO is lit while its page shows) */
-    if (!dev_like())
-        lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+    if (page == PAGE_ENV || page == PAGE_PRESETS) {   /* their rows are drawn whole, edge to edge: only the strips above
+                                                     * and below them are cleared (the menu, SEQ and SONG pages clear their
+                                                     * own ground when drawn whole) */
+        lcd_fill(0, BAR_H, 240, ENV_Y0 - BAR_H, C_BG);
+        lcd_fill(0, ENV_Y0 + ENV_ROWS * ENV_ROW_H, 240, 240u - ENV_Y0 - ENV_ROWS * ENV_ROW_H, C_BG);
+    }
     view_draw(1);
 }
 
@@ -273,10 +278,13 @@ static void page_hold_poll(void)
     list_focus();
 }
 
-static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock) */
+static void play_toggle(void)                       /* PLAY: the transport (the Main module's run output and clock); a stop
+                                                     * ends recording too (#395: PLAY stops everything) */
 {
     eng_transport(!eng_transport_running());
     midi_send_rt(eng_transport_running() ? 0xFAu : 0xFCu);
+    if (!eng_transport_running() && seq_rec)
+        seq_rec_off();
     leds_play();
     ui_dirty = ui_dirty ? ui_dirty : 1;
 }
@@ -329,6 +337,11 @@ static void panel_encoders(int32_t *st)
             ui_dirty = ui_dirty ? ui_dirty : 1;
         return;
     }
+    if ((page == PAGE_SEQ || page == PAGE_SONG) && st[6]) {   /* PRESET on the SEQ / SONG page: the patch's pattern (#375,
+                                                     * D-541), as on ENV and PRESETS it is the page's list */
+        seq_pattern_step(st[6]);
+        return;
+    }
     if (st[6]) {                                    /* PRESET: the next patch, its name over the bars (#170) */
         if (!sb_on)
             pages_patch_ask();
@@ -349,8 +362,10 @@ static void panel_encoders(int32_t *st)
         }
         return;
     }
-    if (page == PAGE_SEQ && seq_rec == 2u)          /* the keys record into the armed track: ALGO keeps it */
-        st[1] = 0;
+    if (page == PAGE_SONG) {                        /* the SONG page (#375): its knobs, nothing else's */
+        song_knobs(st);
+        return;
+    }
     if (page == PAGE_SEQ) {                         /* the SEQ page: ALGO picks the track; a step held: its chance, SELECT on a
                                                      * drum grid, K3 on the roll (the owner, 2026-10-24: there SELECT moves the row) */
         int roll = seq_module() >= 0 && seq_map() < 0;
@@ -428,11 +443,13 @@ static void panel_encoders(int32_t *st)
                 ui_dirty = 1;
             continue;
         }
-        if (r == 1)
-            poly_row_set(mod, par & 0x7Fu, v);      /* a poly group's setting (the Voice allocator's in the editor) */
-        else {
+        if (r == 1) {
+            if (poly_row_set(mod, par & 0x7Fu, v))
+                continue;                         /* rejected: keep the old value in the editor too */
+        } else {
             eng_set_param(mod, par, v);
             m1_patch_param(mod, par, v);
+            pages_also(k, v);                       /* (the parameters the row also sets, #357) */
         }
         m1_param_now(mod, par, r == 1 ? v << 16 : v);   /* the editor follows (Live) */
         if (page == PAGE_ENV)
@@ -481,6 +498,8 @@ static int panel_key(uint32_t n, int down, int quick)
     if (!(key_sounding & bit) && ((page == PAGE_SEQ && !seq_kbd()) || !down)) {   /* the SEQ page: steps and tracks */
         if (page == PAGE_SEQ && !seq_kbd())
             seq_key(n, down);
+        else
+            seq_thru_up(n);                         /* (a black key held on a drum track's page, let go elsewhere: #368) */
         return 1;
     }
     if (down) {
@@ -491,9 +510,11 @@ static int panel_key(uint32_t n, int down, int quick)
         int map = seq_kbd() || sb_on ? -1 : eng_keys_drummap(), b = seq_black(n);   /* (sandbox mode: the plain notes) */
         key_note[n] = (uint8_t)(note < 0 ? 0 : note > 127 ? 127 : note);
         /* the keys reach a Drum map (the owner, 2026-10-23): black keys 1..8 play its rows 1..8 at any octave, as on the
-         * SEQ page, the white keys nothing; MIDI out sends what plays: the row's note, nothing for a white key, so a
-         * recording played back into a Drum map hits the same rows */
-        key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b) : KEY_SILENT;
+         * SEQ page, the white keys nothing, or their own note when the map repeats its rows (#184: the repeat picks the
+         * row); MIDI out sends what plays: the row's note, the key's own, nothing for a silent key, so a recording played
+         * back into a Drum map hits the same rows */
+        key_eng[n] = map < 0 ? key_note[n] : b >= 0 && b < (int)ENG_DRUM_ROWS ? (uint8_t)eng_drummap_note((uint32_t)map, (uint32_t)b)
+            : eng_drummap_repeat((uint32_t)map) ? key_note[n] : KEY_SILENT;
         key_sounding |= bit;
         if (key_eng[n] != KEY_SILENT)
             eng_note_on(key_eng[n], vel == 127u ? ENG_ONE : (int32_t)((vel << 16) / 127u), cfg.ch ? cfg.ch : 1u);   /* the panel plays on the device's channel */
@@ -531,27 +552,28 @@ static void panel_key_queue(int (*peek)(void), void (*pop)(void), int quick)
         pop();
 }
 
+/* fm1_ms of SEL's press (its release on the SEQ page: the SONG page unless a key was the pen since) */
+static uint32_t sel_down_ms;
+
 /* ENV held and SAVE pressed meanwhile: its release opens nothing */
 static uint8_t env_held_used;
 
-/* SEL (#197): one level deeper. The environment's row: its device pages; a Steps track's page: its steps (#196); an
- * assembly device's page: its presets (#194); on the preset list: back */
+/* SEL (#197; arming: #395). A device page: arms its device, the others disarmed, or takes it out when armed; an
+ * environment row: its device into the armed set or out of it (a layer); a device that takes no keys: the armed set as
+ * it was, NOTHING HERE TAKES KEYS. On
+ * the SONG page (and the preset list, which nothing opens until #395's PRESET slice removes it): back */
 static void sel_open(void)
 {
     pages_ensure();
     if (page == PAGE_ENV) {
-        page_set(0);
-        m1_focus_now(pg_cur_dev, pg_cur_page);
-    } else if (page == PAGE_PRESETS) {
+        dev_arm(1);
+        ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
+    } else if (page == PAGE_PRESETS || page == PAGE_SONG) {
         screen_back();
-    } else if (page == 0 && pages_focus_track() >= 0) {
-        seq_select((uint32_t)pages_focus_track());
-        page_set(PAGE_SEQ);
-    } else if (page == 0 && pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure) {
-        presets_open();
-        page_set(PAGE_PRESETS);
-    } else if (page == 0)
-        dp_none_msg(pg_cur_dev);                    /* (why not: an old patch, a plain module) */
+    } else if (page == 0) {
+        dev_arm(0);
+        ui_dirty = ui_dirty ? ui_dirty : 1;          /* (the footer) */
+    }
 }
 
 /* ENV held + SAVE (#194): the focused device's values as its preset */
@@ -583,11 +605,15 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if ((p & ~(1u << BTN_REC)) || (rel & (1u << BTN_SEQ)))   /* the track's clear asks: another button, or SEQ let go, */
         seq_clear_cancel();                                   /* and it is not cleared (#231) */
-    if (page == PAGE_SEQ && (p & (1u << BTN_REC)) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + REC: clear the track,
-                                                     * asked first (#231); neither SEQ's nor REC's release does its own */
+    if ((page == PAGE_SEQ || page == PAGE_SONG) && (p & (1u << BTN_REC)) && (panel_held >> BTN_SEQ & 1u)) {   /* SEQ held + REC:
+                                                     * clear the track (the SONG page: delete the entry), asked first (#231);
+                                                     * neither SEQ's nor REC's release does its own */
         seq_held_used = rec_held_used = 1;
         p &= ~(1u << BTN_REC);
-        seq_clear_press();
+        if (page == PAGE_SONG)
+            song_del_press();
+        else
+            seq_clear_press();
     }
     if (page == PAGE_MENU) {                        /* the menu: OCT- / OCT+ step the selected row's value */
         if (p & (1u << BTN_OCT_DOWN))
@@ -600,7 +626,8 @@ static void panel_edges(uint32_t p, uint32_t rel)
                                                      * page's */
         p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     } else if (page == PAGE_SEQ) {                  /* the SEQ page: OCT- / OCT+ page through a long track (the roll with FX held:
-                                                     * the keys' octave, the pen's), FX the accent key, LFO the roll's tie */
+                                                     * the keys' octave, the pen's), FX the accent key, LFO the tie (#368:
+                                                     * a drum track's too) */
         int roll = seq_module() >= 0 && seq_map() < 0;
         if (!roll || !(panel_held >> BTN_ACC & 1u)) {
             if (p & (1u << BTN_OCT_DOWN))
@@ -609,16 +636,26 @@ static void panel_edges(uint32_t p, uint32_t rel)
                 seq_page_step(1);
             p &= ~((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP));
         }
-        p &= ~((1u << BTN_ACC) | (roll ? 1u << BTN_LFO : 0u));
+        p &= ~((1u << BTN_ACC) | (1u << BTN_LFO));
     }
     /* SEQ and REC act on release, unless a black key muted / armed a track meanwhile; the flag is cleared at the release,
      * not the press: panel_keys runs first in a pass, so a key that lands in the same pass as the press has set it (#179) */
-    if ((rel & (1u << BTN_SEQ)) && !seq_held_used) {
+    if ((rel & (1u << BTN_SEQ)) && !seq_held_used && page == PAGE_SONG)
+        screen_back();                              /* SEQ on the SONG page: back to the SEQ page */
+    else if ((rel & (1u << BTN_SEQ)) && !seq_held_used) {
         if (page == 0 && pages_focus_track() >= 0)  /* from a Steps track's device page: that track's steps (#196) */
             seq_select((uint32_t)pages_focus_track());
         page_set(PAGE_SEQ);
     }
-    if (rel & (1u << BTN_SEL))                      /* SEL (#197, fixed): one level deeper */
+    if (p & (1u << BTN_SEL))
+        sel_down_ms = fm1_ms;
+    if ((rel & (1u << BTN_SEL)) && page == PAGE_SEQ) {   /* SEL tapped on the SEQ page (no key as the pen since its press,
+                                                     * a key in the same pass counting): the SONG page (#375, D-541) */
+        if (!(seq_pen_ms && (int32_t)((seq_pen_ms & ~1u) - (sel_down_ms & ~1u)) >= 0) && eng_steps_count()) {
+            song_prep();
+            page_set(PAGE_SONG);
+        }
+    } else if (rel & (1u << BTN_SEL))               /* SEL (#197, fixed): one level deeper */
         sel_open();
     if (p & (1u << BTN_ENV))                        /* ENV (#197, fixed): the environment, on its release (held + SAVE: a preset) */
         env_held_used = 0;
@@ -629,16 +666,11 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (rel & (1u << BTN_SEQ))
         seq_held_used = 0;
-    if ((rel & (1u << BTN_REC)) && !rec_held_used && page == PAGE_ENV) {   /* REC on the environment: the row's arm (#191, #198) */
-        env_arm_toggle();
-        rel &= ~(1u << BTN_REC);
-        ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
-    }
-    if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, the armed track) */
-        if (seq_rec_page() && page != PAGE_SEQ) {
-            seq_rec_aim();                          /* (nothing armed: on a drum track, the hits seen landing) */
-            page_set(PAGE_SEQ);
-        }
+    if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC (#395): the same on every page, the page stays. Stopped: the
+                                                     * transport starts (as PLAY) and it records; running: it records;
+                                                     * recording: it ends, the transport goes on */
+        if (!seq_rec && !eng_transport_running())
+            play_toggle();
         seq_rec_press();
     }
     if (rel & (1u << BTN_REC))
@@ -649,6 +681,7 @@ static void panel_edges(uint32_t p, uint32_t rel)
         octave = octave < 3 ? octave + 1 : octave;
     if (p & ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP))) {
         leds_octave();
+        ui_dirty = ui_dirty ? ui_dirty : 1;         /* (the footer's octave) */
         {
             char m[12], num[8], *q = m;
             q = put(q, "OCTAVE ");

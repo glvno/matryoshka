@@ -57,6 +57,8 @@ typedef struct {
     uint8_t nlen, part, parts, display, nrows;          /* display: 1 + the envelope module drawn above, 0 none */
     uint8_t mod[PG_ROWS], par[PG_ROWS], llen[PG_ROWS];
     const char *lab[PG_ROWS];
+    uint16_t xo[PG_ROWS];                               /* where the row's extras start in the binary (ENG_ROW_MORE: the further
+                                                         * parameters it sets, its positions' names; #357, #358), 0 none */
 } ppage_t;
 static pdev_t pg_dev[PG_DEVS] UI_POOL;
 static char pg_tname[PG_DEVS][9] UI_POOL;              /* a Steps track's name, for its device (m1_track_name: 8 characters) */
@@ -87,7 +89,7 @@ static uint8_t pg_list_step, pg_list_peek;
 static void m1_track_name(uint32_t mod, char *out);     /* proto.c: a Steps track's name ("" none) */
 static void m1_param_now(uint32_t mod, uint32_t par, int32_t v);   /* proto.c: a row turned here (the editor follows) */
 static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v); /* proto.c: the running binary follows */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v); /* main.c: a poly group's setting */
 static void m1_preset_stored(uint32_t structure, const char *name);   /* proto.c: a preset stored here (#195) */
 static void m1_arms_now(uint32_t lo, uint32_t hi);              /* proto.c: the armed modules changed here (#191) */
 static const uint8_t *pages_src(uint32_t *len);         /* the running patch's binary (proto.c m1_cur; the preview's) */
@@ -96,34 +98,21 @@ static uint32_t pages_gen(void);                        /* changes when another 
 /* where the device pages section starts in (p, len), 0 if there is none (proto.c m1_devices_at, on any binary) */
 static uint32_t pages_at(const uint8_t *p, uint32_t len)
 {
-    uint32_t at = eng_records_at(p, len), i, nmod, ncab, npar = 0;
-    if (!at || !(p[6] & 32u))
+    uint32_t at;
+    if (len < 8u || !(p[6] & 32u) || !(at = eng_cables_end(p, len)))
         return 0;
-    nmod = p[2];
-    ncab = (uint32_t)p[4] | (uint32_t)p[5] << 8;
-    for (i = 0; i < nmod; i++) {
-        const def_t *d;
-        if (at >= len || (p[at] & 0x7Fu) >= N_TYPES)
-            return 0;
-        d = &DEFS[p[at] & 0x7Fu];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
-        npar += d->npar;
-    }
-    at += 4u * ncab + ((p[6] & 1u) ? 4u * npar : 0u);
-    if (p[6] & 4u) at += nmod;
-    if (p[6] & 8u) {
-        if (at >= len) return 0;
-        at += 1u + 4u * p[at];
-    }
-    if ((p[6] & 16u) && !(at = eng_notes_end(p, len, at)))
+    if (p[6] & 4u) at += p[2];
+    if ((p[6] & 8u) && !(at = eng_routes_end(p, len, at)))
+        return 0;
+    if (!(at = eng_steps_end(p, len, at)))
         return 0;
     return at < len ? at : 0;
 }
 
 /* bit 7 of a row's parameter byte: a setting of the poly group of that Part (patchbin.ts POLY_ROW_PARAMS): the voices,
- * assign, legato, priority, unison */
+ * assign, legato, priority, unison, steal, stack */
 #define POLY_ROW 0x80u
-#define POLY_FIELDS 5u
+#define POLY_FIELDS ENG_NPOLY
 static int row_ok(uint32_t m, uint32_t par)
 {
     if (par & POLY_ROW)
@@ -135,9 +124,75 @@ static int row_ok(uint32_t m, uint32_t par)
 static int32_t poly_value(uint32_t m, uint32_t f)
 {
     uint32_t g = (uint32_t)eng_module_group(m) - 1u;
-    return f == 4u ? eng_poly_unison(g) : eng_poly_get(g, f);
+    return eng_poly_get(g, f);
 }
-static int32_t poly_max(uint32_t f) { return f == 0u ? ENG_MAX_PARTS : f == 4u ? 1 : 2; }
+static int32_t poly_max(uint32_t f) { return f == 0u || f == ENG_POLY_STACK ? ENG_MAX_PARTS : f == ENG_POLY_STEAL ? 1 : f == 1u ? 3 : 2; }
+
+static const ppage_t *pages_now(void);
+static void caps(char *out, const char *s, uint32_t n, uint32_t max);
+
+/* a Selector's position row spans the positions in use, 1..count (#358: it never offers one that plays nothing): the
+ * top of row j of module m, Q16 (else the parameter's own, DEF_TOP) */
+static int32_t row_top(uint32_t m, uint32_t j, const def_t *d)
+{
+    if (eng_type(m) == T_SELECT && j == SELECT_P_POS)
+        return clampi((eng_get_param(m, SELECT_P_COUNT) + 32768) >> 16, 2, (int32_t)(d->pmax[j] >> 16)) << 16;
+    return DEF_TOP(d, j);
+}
+
+/* row k's extras in the running binary (ENG_ROW_MORE), 0 when it has none: u8 n, n (module, parameter), u8 k, k texts */
+static const uint8_t *row_more(const ppage_t *pg, uint32_t k)
+{
+    uint32_t len;
+    const uint8_t *p = pages_src(&len);
+    return p && k < pg->nrows && pg->xo[k] && pg->xo[k] < len ? p + pg->xo[k] : 0;
+}
+
+/* a row's further parameters take its value (#357): the engine and the running binary; the editor follows the first and
+ * sets the others itself */
+static void more_set(const uint8_t *x, int32_t v)
+{
+    uint32_t i;
+    for (i = 0; x && i < x[0]; i++) {
+        uint32_t m = x[1u + 2u * i], j = x[2u + 2u * i];
+        const def_t *d;
+        if (m >= (uint32_t)eng_nmodules() || eng_type(m) < 0 || j >= DEFS[eng_type(m)].npar)
+            continue;
+        d = &DEFS[eng_type(m)];
+        eng_set_param(m, j, clampi(v, d->pmin[j], DEF_TOP(d, j)));
+        m1_patch_param(m, j, clampi(v, d->pmin[j], DEF_TOP(d, j)));
+    }
+}
+
+/* knob k's row was set to v (pages_turn / pages_set_unit returned 0): the parameters it also sets follow */
+static void pages_also(uint32_t k, int32_t v)
+{
+    const ppage_t *pg = pages_now();
+    if (pg)
+        more_set(row_more(pg, k), v);
+}
+
+/* the name row k gives position v (a Selector's, Q16 1..; #358) into out in capitals, 0 when it names none */
+static int row_name(const ppage_t *pg, uint32_t k, int32_t v, char *out)
+{
+    const uint8_t *x = row_more(pg, k), *t;
+    uint32_t n, i, want;
+    if (!x)
+        return 0;
+    t = x + 1u + 2u * x[0];
+    n = *t++;
+    want = (uint32_t)(((v + 32768) >> 16) - 1);
+    for (i = 0; i < n; i++) {
+        if (i == want) {
+            if (!t[0])
+                return 0;
+            caps(out, (const char *)t + 1, t[0], 12u);
+            return 1;
+        }
+        t += 1u + t[0];
+    }
+    return 0;
+}
 
 /* a plain module's pages: its parameters, four to a page, the module's name; an envelope draws its shape on the first */
 static void pages_plain(uint32_t m)
@@ -168,13 +223,14 @@ static void pages_plain(uint32_t m)
         pg->nlen = pg_dev[pg_ndev].nlen;
         pg->part = (uint8_t)j;
         pg->parts = (uint8_t)n;
-        pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV) ? m + 1u : 0u);
+        pg->display = (uint8_t)(j == 0 && (t == T_ADSR || t == T_ENV || t == T_ENV8) ? m + 1u : 0u);
         pg->nrows = 0;
         for (r = 0; r < PG_ROWS && j * PG_ROWS + r < d->npar; r++) {
             pg->mod[r] = (uint8_t)m;
             pg->par[r] = (uint8_t)(j * PG_ROWS + r);
             pg->lab[r] = d->pname[j * PG_ROWS + r];
             pg->llen[r] = (uint8_t)str_len(pg->lab[r]);
+            pg->xo[r] = 0;
             pg->nrows++;
         }
     }
@@ -281,15 +337,21 @@ static void pages_build(void)
             }
             at += 4u;
             for (r = 0; r < nr; r++) {
-                if (pg && pg->nrows < PG_ROWS && p[at] < (uint32_t)eng_nmodules() && eng_type(p[at]) >= 0 && row_ok(p[at], p[at + 1u])) {
+                uint32_t par = p[at + 1u], more = !(par & POLY_ROW) && (par & ENG_ROW_MORE);
+                if (more)
+                    par &= ~ENG_ROW_MORE;
+                if (pg && pg->nrows < PG_ROWS && p[at] < (uint32_t)eng_nmodules() && eng_type(p[at]) >= 0 && row_ok(p[at], par)) {
                     pg->mod[pg->nrows] = p[at];
-                    pg->par[pg->nrows] = p[at + 1u];
+                    pg->par[pg->nrows] = (uint8_t)par;
                     pg->lab[pg->nrows] = (const char *)p + at + 3u;
                     pg->llen[pg->nrows] = p[at + 2u];
+                    pg->xo[pg->nrows] = (uint16_t)(more ? at + 3u + p[at + 2u] : 0u);
                     pg->nrows++;
                 }
                 at += 2u;
                 at += 1u + p[at];
+                if (more)
+                    at = eng_row_more_end(p, len, at);   /* (eng_devices_end checked it) */
             }
             if (pg && pg->nrows)
                 pg_npage++;
@@ -379,7 +441,7 @@ static int32_t eff_now(uint32_t m, uint32_t j, const def_t *d, int32_t v)
                 pg_lag[k].on = 0;
                 return e;
             }
-            return clampi(e + (v - pg_lag[k].was), d->pmin[j], d->pmax[j]);
+            return clampi(e + (v - pg_lag[k].was), d->pmin[j], DEF_TOP(d, j));
         }
     return e;
 }
@@ -552,7 +614,7 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
     } else if (eng_param_is_log(m, j)) {
         *v = eng_step_param(m, j, clicks * (fast ? 5 : 1), 655);   /* 1/100 of the octaves a click */
     } else {
-        *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], d->pmax[j]);
+        *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], row_top(m, j, d));   /* (past pmax: a stretch) */
     }
     return 0;
 }
@@ -585,6 +647,9 @@ static int pages_set_unit(uint32_t k, int32_t u, uint32_t *mod, uint32_t *par, i
         while (d->pchoice[j][n])
             n++;
         *v = (int32_t)((((int64_t)u * (n - 1)) + 32768) >> 16) << 16;
+    } else if (row_top(m, j, d) != DEF_TOP(d, j)) {      /* a Selector's position: over the positions in use */
+        int32_t lo = d->pmin[j] >> 16, hi = row_top(m, j, d) >> 16;
+        *v = (lo + (int32_t)((((int64_t)u * (hi - lo)) + 32768) >> 16)) << 16;
     } else {
         *v = value_of(d, j, u);
     }
@@ -601,7 +666,18 @@ static uint32_t pages_cc(uint32_t k)
         return setting_bar(pg->par[k], 127u);
     if (pg->par[k] & POLY_ROW)
         return (uint32_t)(poly_value(pg->mod[k], pg->par[k] & 0x7Fu) * 127 / poly_max(pg->par[k] & 0x7Fu));
-    return (uint32_t)((unit_of(&DEFS[eng_type(pg->mod[k])], pg->par[k], eng_get_param(pg->mod[k], pg->par[k])) * 127 + 32768) >> 16);
+    {
+        const def_t *d = &DEFS[eng_type(pg->mod[k])];
+        uint32_t j = pg->par[k];
+        int32_t v = eng_get_param(pg->mod[k], j), lo = d->pmin[j], u;
+        if (d->ptop && d->pchoice && d->pchoice[j])     /* a choice list past pmax (a stretch): over every choice, as pages_set_unit */
+            u = (int32_t)(((int64_t)(clampi(v, lo, d->ptop[j]) - lo) << 16) / (d->ptop[j] - lo));
+        else if (row_top(pg->mod[k], j, d) != DEF_TOP(d, j))   /* a Selector's position: over the positions in use */
+            u = (int32_t)(((int64_t)(clampi(v, lo, row_top(pg->mod[k], j, d)) - lo) << 16) / (row_top(pg->mod[k], j, d) - lo));
+        else
+            u = unit_of(d, j, v);
+        return (uint32_t)((u * 127 + 32768) >> 16);
+    }
 }
 
 /* ---- drawing */
@@ -630,6 +706,11 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
         put(unit, "kHz")[0] = 0;
         return;
     }
+    if (str_eq(u, "HZ") && q16 > 0 && q16 < 655) {      /* below 0.01 Hz: millihertz, so a slow LFO never displays zero */
+        *put_num(num, q16 * 1000) = 0;
+        put(unit, "mHz")[0] = 0;
+        return;
+    }
     if (str_eq(u, "S") && q16 < 65536) {                 /* below a second: milliseconds (to a tenth below 100) */
         int32_t t = (int32_t)(((int64_t)q16 * 10000 + 32768) >> 16);
         char *e;
@@ -649,6 +730,23 @@ static void value_parts(const def_t *d, uint32_t j, int32_t q16, char *num, char
     put(unit, str_eq(u, "HZ") ? "Hz" : str_eq(u, "S") ? "s" : str_eq(u, "MS") ? "ms" : str_eq(u, "DB") ? "dB" : str_eq(u, "BPM") ? "bpm" : str_eq(u, "CT") ? "ct" : str_eq(u, "ST") ? "st" : str_eq(u, "OCT") ? "oct" : u)[0] = 0;
 }
 
+/* the value a row plays, where a switch of its module stretches it (the editor's card shows the same): the ADSR's long
+ * (decay and release x 2.4), the Delay's swell (feedback x 198 / 95) and the LFO's free rate in its slow / fast range
+ * (/ 25, x 2: modules.ts lfoRateText); the bar keeps the knob's range */
+static int32_t stretched(uint32_t m, uint32_t j, int32_t v)
+{
+    int t = eng_type(m);
+    if (t == T_LFO && j == LFO_P_RATE) {
+        int32_t r = (eng_get_param(m, LFO_P_RANGE) + 32768) >> 16;
+        return r == 1 ? v / 25 : r == 2 ? v * 2 : v;
+    }
+    if (t == T_ADSR && (j == ADSR_P_D || j == ADSR_P_R) && eng_get_param(m, ADSR_P_LONG) >= 32768)
+        return (int32_t)(((int64_t)v * ADSR_LONG_Q16) >> 16);
+    if (t == T_DELAY && j == DELAY_P_FB && eng_get_param(m, DELAY_P_SWELL) >= 32768)
+        return (int32_t)((int64_t)v * DELAY_SWELL_NUM / DELAY_SWELL_DEN);
+    return v;
+}
+
 /* a row's value as text and its bar positions (base, live) over `width` px: a parameter, or a poly group's setting */
 static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint32_t width, uint32_t *base, uint32_t *live)
 {
@@ -662,12 +760,14 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
     if (j & POLY_ROW) {
         uint32_t f = j & 0x7Fu;
         int32_t v = poly_value(m, f);
-        static const char *const UNI[2] = {"OFF", "ON"};
+        static const char *const UNI[3] = {"OFF", "ON", "SHARE"};
         unit[0] = 0;
-        if (f == 0u)
+        if (f == ENG_POLY_STACK && !v)
+            put(num, "ALL")[0] = 0;
+        else if (f == 0u || f == ENG_POLY_STACK)
             fmt_int(num, v);
         else
-            put(num, f == 1u ? POLY_ASSIGN_NAME[clampi(v, 0, 2)] : f == 2u ? POLY_LEGATO_NAME[clampi(v, 0, 2)] : f == 3u ? POLY_PRIORITY_NAME[clampi(v, 0, 2)] : UNI[v ? 1 : 0])[0] = 0;
+            put(num, f == 1u ? POLY_ASSIGN_NAME[clampi(v, 0, 3)] : f == 2u ? POLY_LEGATO_NAME[clampi(v, 0, 2)] : f == 3u ? POLY_PRIORITY_NAME[clampi(v, 0, 2)] : UNI[clampi(v, 0, 2)])[0] = 0;
         *base = *live = (uint32_t)(v * (int32_t)width / poly_max(f));
         return;
     }
@@ -679,10 +779,18 @@ static void row_show(const ppage_t *pg, uint32_t k, char *num, char *unit, uint3
     }
     {
         const def_t *d = &DEFS[eng_type(m)];
-        int32_t v = eng_get_param(m, j), e = eff_now(m, j, d, v);
-        value_parts(d, j, v, num, unit);
-        *base = param_bar(d, j, v, width);
-        *live = param_bar(d, j, e, width);
+        int32_t v = eng_get_param(m, j), e = eff_now(m, j, d, v), top = row_top(m, j, d);
+        if (row_name(pg, k, v, num))                    /* a Selector's position by the name its card row gives it (#358) */
+            unit[0] = 0;
+        else
+            value_parts(d, j, stretched(m, j, v), num, unit);
+        if (top != DEF_TOP(d, j)) {                     /* a Selector's position: the bar spans the positions in use */
+            *base = (uint32_t)(((int64_t)(clampi(v, d->pmin[j], top) - d->pmin[j]) * width) / (top - d->pmin[j]));
+            *live = (uint32_t)(((int64_t)(clampi(e, d->pmin[j], top) - d->pmin[j]) * width) / (top - d->pmin[j]));
+        } else {
+            *base = param_bar(d, j, v, width);
+            *live = param_bar(d, j, e, width);
+        }
     }
 }
 
@@ -1293,13 +1401,14 @@ static void toast_first(void)
     ut_end(UT_TOAST);
 }
 
-/* ---- the footer (LK_FH high, sand): the patch's name (ARM / REC and the track while one is armed; " *" when edited), the
- * tempo and a quarter note ("MIDI" on MIDI clock), the octave as = OCT = / OCT + / -- OCT and the battery, spread from margin to
- * margin; in sandbox mode who plays instead. The battery: 0..3 bars, a bolt on USB power, red when empty */
+/* ---- the footer (LK_FH high, sand): the patch's name (ARM / REC and the track while one is armed; " *" when edited;
+ * KEYS WIRED after it while nothing is armed, #395, the name cut first), the tempo and a quarter note ("MIDI" on MIDI
+ * clock), the octave as = OCT = / OCT + / -- OCT and the battery, spread from margin to margin; in sandbox mode who plays
+ * instead. The battery: 0..3 bars, a bolt on USB power, red when empty */
 typedef struct {
     uint8_t mode, rec;                                  /* 1: sandbox mode's line; REC (the name in red) */
-    char a[40], t[8], o[8];                             /* the name, the tempo, the octave (sandbox: a = its line) */
-    uint32_t xa, xt, xo;                                /* where each goes */
+    char a[40], t[8], o[8], w[12];                      /* the name, the tempo, the octave (sandbox: a = its line), WIRED */
+    uint32_t xa, xt, xo, xw;                            /* where each goes */
 } foot_t;
 static uint32_t ft_drawn;                               /* the hash of the footer as drawn (0: not on the screen) */
 #define BATT_FX (240u - 6u - 13u)                       /* the battery's x: 11 x 6 and its nub 2 px */
@@ -1346,8 +1455,16 @@ static uint32_t foot_layout(foot_t *f)
         *q = 0;
         wt = text_w(&FONT_F, f->t, -1) + 8u;
         wo = FOOT_OCT_W;
-        fit(f->a, &FONT_F, 240u - 12u - 13u - wt - wo - 3u * 6u);
-        wa = text_w(&FONT_F, f->a, -1);
+        {                                               /* nothing armed: KEYS WIRED after the name, in the tempo's ink */
+            uint32_t ww = eng_arm_mask_get() ? 0u : text_w(&FONT_F, " KEYS WIRED", -1);
+            fit(f->a, &FONT_F, 240u - 12u - 13u - wt - wo - 3u * 6u - ww);
+            wa = text_w(&FONT_F, f->a, -1);
+            if (ww) {
+                put(f->w, "KEYS WIRED")[0] = 0;
+                f->xw = 6u + wa + text_w(&FONT_F, " ", -1);
+                wa += ww;
+            }
+        }
         gap16 = (228u - wa - wt - wo - 13u) * 16u / 3u;  /* (space between: the battery ends at the right margin) */
         f->xa = 6u;
         f->xt = 6u + ((wa * 16u + gap16 + 8u) >> 4);
@@ -1391,6 +1508,8 @@ static void foot_row(const foot_t *f, uint32_t y, uint16_t *row)
         uint32_t nx = f->xt + text_w(&FONT_F, f->t, -1) + 2u;
         text_at(row, 240, &FONT_F, y, FOOT_BASE, f->t, f->xt, P_INK2);
         text_at(row, 240, &FONT_F, y, FOOT_BASE, f->o, f->xo, P_INK2);
+        if (f->w[0])
+            text_at(row, 240, &FONT_F, y, FOOT_BASE, f->w, f->xw, P_INK2);
         if (y + 5u >= FOOT_MID && y <= FOOT_MID + 3u)   /* the quarter note: rows -5..3 around the middle */
             for (i = 0; i < 6u; i++) {
                 uint32_t a = NOTE_A[y + 5u - FOOT_MID][i];
@@ -1846,25 +1965,32 @@ static int env_track_no(uint32_t d)
 }
 
 /* the right-hand text of device d's row: Main's tempo, a track's length, ARMED */
-/* device d's key listeners (#191: what arming it arms), as a module mask */
+/* what arming device d arms (#191), as a module mask: its key listeners, and the key sources its keys come through (#395:
+ * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm */
 static uint64_t env_listeners(uint32_t d)
 {
     uint64_t mask = 0;
     uint32_t k;
+    if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_ARP)
+        return 0;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
-            if (pg_dev[d].mem[k] < 64u && eng_listens(pg_dev[d].mem[k]))
-                mask |= (uint64_t)1 << pg_dev[d].mem[k];
-    } else if (pg_dev[d].module >= 0 && eng_listens((uint32_t)pg_dev[d].module)) {
-        mask = (uint64_t)1 << pg_dev[d].module;
+            mask |= eng_arms(pg_dev[d].mem[k]);
+    } else if (pg_dev[d].module >= 0) {
+        mask = eng_arms((uint32_t)pg_dev[d].module);
     }
     return mask;
 }
 
 static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)) != 0; }
 
-/* REC on the environment (#191, #198): the row's device armed or disarmed, the others as they are */
-static void env_arm_toggle(void)
+static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed; REC on: they record) */
+
+/* SEL arms the device in focus (#395), a toggle. Armed, it is taken out of the armed set, the others stay; the last one
+ * out leaves the keys WIRED (Main's cables decide). Not armed: layer (the environment) adds it to the set (a layer, a
+ * split), else (a device page) it is armed and every other device disarmed. A device that takes no keys leaves the armed
+ * set as it is. State and a message only */
+static void dev_arm(int layer)
 {
     uint64_t l, mask;
     char m[32], t[20];
@@ -1875,12 +2001,11 @@ static void env_arm_toggle(void)
         ui_msg("NOTHING HERE TAKES KEYS", 1200);
         return;
     }
-    mask = env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : eng_arm_mask_get() | l;
-    eng_arm_mask(mask);
-    m1_arms_now((uint32_t)mask, (uint32_t)(mask >> 32));
+    mask = env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : layer ? eng_arm_mask_get() | l : l;
+    seq_arm_set(mask);
     caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
     put(put(m, t), env_armed(pg_cur_dev) ? " ARMED" : " DISARMED")[0] = 0;
-    ui_msg(m, 1200);
+    ui_msg(eng_arm_mask_get() ? m : "KEYS WIRED", 1200);
 }
 
 static void env_status(uint32_t d, char *out)
@@ -2125,6 +2250,17 @@ static void dp_name_set(uint32_t d, const char *name)
         pg_built_at = 0xFFFFFFFFu;                      /* (the binary moved after it: the pages are read again, the names kept) */
 }
 
+/* the extras (row_more) of device d's page row on module mod's parameter par, 0 none */
+static const uint8_t *dev_row_more(uint32_t d, uint32_t mod, uint32_t par)
+{
+    uint32_t g, k;
+    for (g = pg_dev[d].pg0; g < (uint32_t)pg_dev[d].pg0 + pg_dev[d].npg && g < PG_PAGES; g++)
+        for (k = 0; k < pg_page[g].nrows; k++)
+            if (pg_page[g].mod[k] == mod && pg_page[g].par[k] == par)
+                return row_more(&pg_page[g], k);
+    return 0;
+}
+
 /* load list entry k of device d: its rows take the values (the running binary and the editor too) */
 static int dp_load(uint32_t d, uint32_t k)
 {
@@ -2141,7 +2277,8 @@ static int dp_load(uint32_t d, uint32_t k)
         if (par & POLY_ROW) {
             if (!row_ok(mod, par))
                 continue;
-            poly_row_set(mod, par & 0x7Fu, (v + 32768) >> 16);
+            if (poly_row_set(mod, par & 0x7Fu, (v + 32768) >> 16))
+                return -1;
             m1_param_now(mod, par, v);
         } else {
             if (eng_type(mod) < 0 || par >= DEFS[eng_type(mod)].npar)
@@ -2149,6 +2286,7 @@ static int dp_load(uint32_t d, uint32_t k)
             eng_set_param(mod, par, v);
             m1_patch_param(mod, par, v);
             m1_param_now(mod, par, v);
+            more_set(dev_row_more(d, mod, par), v);     /* (the parameters the row also sets, #357) */
         }
     }
     dp_name_set(d, nm);

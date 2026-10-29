@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* Host test of the fixed-point engine against the TypeScript reference.
- *   host_test NAME.m1p NAME.ev NAME.f32
- * .ev: lines "frame on NOTE VEL" / "frame off NOTE" (frame a multiple of 128, ascending), last line "end FRAMES".
+ *   host_test NAME.m1p NAME.ev NAME.f32 [NAME.par]
+ * .par: the parameter values the editor's budget counts for the patch (patchbin.ts DEVICE.params); eng_load must take as many.
+ * .ev: lines "frame on NOTE VEL" / "frame off NOTE" (frame a multiple of 128, ascending), last line "end FRAMES"; "frame
+ * pat N" / "frame song N" choose the patch's pattern / song (format 48).
  * .f32: float32 stereo interleaved reference output. Prints max and rms error (full scale = 1.0). */
 #include <math.h>
 #include <stdio.h>
@@ -54,6 +56,18 @@ int main(int argc, char **argv)
         fprintf(stderr, "eng_load failed (%d)\n", rc);
         return 1;
     }
+#ifdef ENG_PAR_WORDS                    /* (tools/engine_exact.sh builds this file against an older engine too) */
+    if (argc > 4) {
+        FILE *pf = fopen(argv[4], "r");
+        unsigned want = 0;
+        if (pf && fscanf(pf, "%u", &want) == 1 && want != par_used) {
+            printf("parameter values: eng_load took %u, the editor's budget counts %u\n", (unsigned)par_used, want);
+            return 1;
+        }
+        if (pf)
+            fclose(pf);
+    }
+#endif
     ev = fopen(argv[2], "r");
     if (!ev) {
         perror(argv[2]);
@@ -76,8 +90,10 @@ int main(int argc, char **argv)
                 unsigned long long m;
                 fscanf(ev, "%llu", &m);
             }
-            else if (!strcmp(kind, "rec"))
+            else if (!strcmp(kind, "rec") || !strcmp(kind, "cc") || !strcmp(kind, "thon") || !strcmp(kind, "thoff"))
                 fscanf(ev, "%u %u", &note, &vel);
+            else if (!strcmp(kind, "pat") || !strcmp(kind, "song"))
+                fscanf(ev, "%u", &note);
         }
         rewind(ev);
     }
@@ -114,9 +130,29 @@ int main(int argc, char **argv)
             unsigned long long m;
             fscanf(ev, "%llu", &m);
             eng_arm_mask((uint64_t)m);
+        } else if (!strcmp(kind, "cc")) {
+            fscanf(ev, "%u %u", &note, &vel);
+#ifdef FM1_O_BREATH /* engine_exact.sh also builds this harness with older engine headers */
+            if (note == 1 || note == 2 || note == 64 || note == 65)
+                eng_ctl(note == 1 ? ENG_CTL_MOD : note == 2 ? ENG_CTL_BREATH : note == 64 ? ENG_CTL_SUSTAIN : ENG_CTL_FOOT,
+                        (int32_t)(vel * 65536u / 127u));
+#endif
         } else if (!strcmp(kind, "rec")) {
             fscanf(ev, "%u %u", &note, &vel);
             eng_steps_rec(note, (int)vel);
+        } else if (!strcmp(kind, "thon") || !strcmp(kind, "thoff")) {   /* (#368) a note into a track's keys in: module, note */
+            fscanf(ev, "%u %u", &note, &vel);
+#ifdef ENG_STEPS_THRU /* engine_exact.sh also builds this harness with older engine headers */
+            eng_steps_thru(note, vel, !strcmp(kind, "thon") ? 100u : 0u);
+#endif
+        } else if (!strcmp(kind, "pat") || !strcmp(kind, "song")) {   /* (format 48) the patch's pattern, the song */
+            fscanf(ev, "%u", &note);
+#ifdef ENG_PATTERNS /* engine_exact.sh also builds this harness with older engine headers */
+            if (!strcmp(kind, "pat"))
+                eng_pattern_set(note);
+            else
+                eng_song_set(note);
+#endif
         } else if (!strcmp(kind, "take")) {
             uint32_t m, w;
             while (eng_steps_take(&m, &w))

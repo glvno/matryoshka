@@ -3,9 +3,10 @@
 // same bytes. Run from web/:
 //   npm run flash                       the firmware CI build of this checkout's commit (needs `gh`; none: it says so)
 //   npm run flash -- --ci RUN           the matryoshka-firmware artifact of that firmware CI run
-//   npm run flash -- path/to/x.fwsc     that package (the smoke test runs on x.bin next to it, else on the package)
+//   npm run flash -- path/to/x.fwsc     that package (the smoke test runs on x.bin or x-app.bin next to it, else on the package)
 //   npm run flash -- --info             print the connected FM-1's identity, install nothing
-// --no-smoke skips the smoke test; --port NAME and --force go to fm1_install.py, which asks before it writes.
+// --no-smoke skips the smoke test; --port NAME, --force and --yes go to fm1_install.py, which asks before it writes unless
+// --yes (a shell with no prompt, such as Claude Code's `!`, answers no).
 // fm1_install.py needs mido + python-rtmidi: build/venv (made with uv on the first run when it is missing).
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -32,7 +33,7 @@ const valueOf = (name) => {
   const i = args.indexOf(name);
   return i >= 0 && args[i + 1] && !args[i + 1].startsWith('--') ? args[i + 1] : undefined;
 };
-const passed = [...(valueOf('--port') ? ['--port', valueOf('--port')] : []), ...(flag('--force') ? ['--force'] : [])];
+const passed = [...(valueOf('--port') ? ['--port', valueOf('--port')] : []), ...(flag('--force') ? ['--force'] : []), ...(flag('--yes') ? ['--yes'] : [])];
 const taken = new Set([valueOf('--port'), valueOf('--ci')]);
 const given = args.find((a) => !a.startsWith('--') && !taken.has(a));
 
@@ -80,8 +81,9 @@ if (!/^FM-1_7\d\d$/.test(product)) fail(`${pkg}: identity ${product} is not a Ma
 const py = python();
 
 if (!flag('--no-smoke') && given) {
-  const bin = pkg.replace(/\.fwsc$/i, '.bin');
-  const fw = existsSync(bin) ? bin : pkg;
+  // (x.bin next to it, or a release's x-app.bin: the package itself is encrypted, the emulator cannot run it)
+  const bin = [pkg.replace(/\.fwsc$/i, '.bin'), pkg.replace(/\.fwsc$/i, '-app.bin')].find((f) => existsSync(f));
+  const fw = bin ?? pkg;
   console.log(`\nemu:smoke on ${fw} (about two minutes; --no-smoke skips it)`);
   if (run('node', [join(ROOT, 'web/scripts/emu.mjs'), '--smoke', fw]) !== 0) fail('\nthe smoke test failed: nothing installed');
 } else if (!flag('--no-smoke')) {                          // (a CI build: its result is kept, for the Flash tab too)

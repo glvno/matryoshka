@@ -12,9 +12,9 @@ import { allModules, assembliesOf, findRef, hiddenAssemblies, hiddenModules, par
 import { cableRole, type CableRole } from './cable-role';
 import { instIsEngine } from './engines';
 import { choiceName, formatValue, moduleName } from './labels';
-import { DEFS } from './modules';
+import { DEFS, rowRange } from './modules';
 import { deviceBudget } from './patchbin';
-import { assemblyPages, modulePages, pageTitle } from './pages';
+import { assemblyPages, modulePages, pageTitle, PAGE_ROWS } from './pages';
 import { rowDef, toUnit, type ModuleDef, type ModuleInst, type Patch } from './patch';
 
 export const CARD_W = 1200, CARD_H = 900;
@@ -67,7 +67,8 @@ export interface CardLayout { map: Rect; boxes: CardBox[]; lines: CardLine[]; sc
 /** a card's size on the canvas, estimated from its rows (the editor measures the DOM; the card has none) */
 function moduleSize(def: ModuleDef | undefined): { w: number; h: number } {
   if (!def) return { w: 236, h: 120 };
-  const rows = def.params.length + (def.views?.length ?? 0) + Math.max(0, Math.max(def.inputs.length, def.outputs.length) - 4) / 2;
+  // The preview draws rows, not ports. Undisplayed ports/rows must not shrink neighboring cards.
+  const rows = Math.min(def.params.length, MODULE_PAGES * PAGE_ROWS) + (def.views?.length ?? 0);
   return { w: 236, h: Math.min(540, Math.max(90, 44 + 26 * rows)) };
 }
 function assemblySize(a: AssemblyInst): { w: number; h: number } {
@@ -112,14 +113,18 @@ const BOX_GAP = 10, MIN_W = 40, MIN_H = 24;
 export const detailFor = (n: number): Detail => (n <= 12 ? 'full' : n <= 40 ? 'compact' : 'names');
 
 /** a parameter's value as the card shows it (editor.ts param rows: the choice's name, the number and its unit) */
-function rowOf(type: string, def: ModuleDef, params: Record<string, number>, param: string, label: string): CardRow | null {
-  const pd = rowDef(def, param);
-  if (!pd || pd.screen || pd.onScreen) return null;
+function rowOf(type: string, def: ModuleDef, params: Record<string, number>, param: string, label: string, names?: string[]): CardRow | null {
+  const own = rowDef(def, param);
+  if (!own || own.screen || own.onScreen) return null;
+  const pd = rowRange(type, params, own);   // (a Selector's positions in use, #358)
   const v = params[param] ?? pd.default;
   let value: string;
   let u: number;
-  if (pd.altText && (params[pd.altText.when] ?? 0) >= 0.5) {
-    value = pd.altText.text(v);
+  if (names?.[Math.round(v) - pd.min]) {   // a Selector's position by its card row's name (#358)
+    value = names[Math.round(v) - pd.min];
+    u = toUnit(pd, v);
+  } else if (pd.altText && (params[pd.altText.when] ?? 0) >= 0.5) {
+    value = pd.altText.text(v, params);
     u = toUnit(pd, v);
   } else if (pd.choices) {
     const i = Math.max(0, Math.min(pd.choices.length - 1, Math.round(v)));
@@ -144,7 +149,7 @@ function pagesOf(p: Patch, defs: Record<string, ModuleDef>, item: { asm?: Assemb
     const rows = pg.rows.flatMap((r) => {
       const m = p.modules.find((x) => x.id === r.module);
       const def = m && defs[m.type];
-      const row = m && def && rowOf(m.type, def, m.params, r.param, r.label);
+      const row = m && def && rowOf(m.type, def, m.params, r.param, r.label, r.names);
       return row ? [row] : [];
     });
     return rows.length ? [{ title: pg.name.toUpperCase() === item.label ? '' : pageTitle(pg), rows }] : [];

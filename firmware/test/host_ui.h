@@ -24,7 +24,7 @@ static uint8_t m1_edited;                  /* proto.c: the running patch was edi
 static uint64_t bank_mask = 0x3FFFu;     /* slotstore.c: the occupied slots (the preview: the factory patches) */
 static uint8_t pv_bin[4096];               /* the previewed patch (proto.c's m1_cur) */
 static uint32_t pv_len;
-#define FELUCCA_VERSION "v1.3.1-DEV"
+#define FELUCCA_VERSION "v1.6.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
 /* lcd.c's shared line buffer and its rule: on the device the DMA reads it after the transfer call returns, until the next
@@ -51,10 +51,20 @@ static void lcd_line_sending(uint32_t n)
         lcd_line_sent[i] = lcd_line[i];
 }
 #include "../src/screen_text.h"           /* the texts on the screen, as text (#291): lcd.c's */
+static void (*lcd_service)(void);
+#ifdef FB_WATCH
+static void (*lcd_test_transfer)(void); /* test arrival of input while a draw is in progress */
+#endif
 static void (*lcd_yield)(void);            /* lcd.c's: called before each transfer here (on the device while one runs) */
 static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 {
     uint32_t i, j;
+#ifdef FB_WATCH
+    if (lcd_test_transfer)
+        lcd_test_transfer();
+#endif
+    if (lcd_service)
+        lcd_service();
     if (lcd_yield)
         lcd_yield();
     lcd_line_done();
@@ -77,6 +87,12 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
 static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint16_t *px)
 {
     uint32_t i, j;
+#ifdef FB_WATCH
+    if (lcd_test_transfer)
+        lcd_test_transfer();
+#endif
+    if (lcd_service)
+        lcd_service();
     if (lcd_yield)
         lcd_yield();
     lcd_line_done();
@@ -218,20 +234,24 @@ static void m1_track_name(uint32_t mod, char *out)     /* (proto.c's, on the pre
     uint32_t at = eng_records_at(pv_bin, pv_len), i;
     for (i = 0; i < mod; i++) {
         const def_t *d = &DEFS[pv_bin[at] & 0x7Fu];
-        at += 1u + 4u * d->npar + (d->cvbase >= 0 ? 20u : 0u) + d->ndata;
+        at += eng_record_size(d, pv_bin[1]);
     }
-    at += 1u + 4u * DEFS[T_STEPS].npar + (DEFS[T_STEPS].cvbase >= 0 ? 20u : 0u);
+    at += eng_record_size(&DEFS[T_STEPS], pv_bin[1]) - DEFS[T_STEPS].ndata;
     for (i = 0; i < TRACK_NAME_MAX && pv_bin[at + i]; i++)
         out[i] = (char)pv_bin[at + i];
     out[i] = 0;
 }
 static void m1_patch_step(uint32_t mod, uint32_t k, uint32_t b) { eng_steps_set(mod, k, b); }
 static void m1_patch_notes(uint32_t mod) { (void)mod; }
+static void m1_patch_patterns(void) {}             /* (the preview keeps no patch: the engine has the patterns and songs) */
 static int m1_drum_name(uint32_t map, uint32_t r, char *out) { return eng_drum_name(pv_bin, pv_len, map, r, out); }
 #ifndef HOST_STEP_HOOKS                     /* (the wasm build tells the page instead) */
 static void m1_track_now(uint32_t mod) { (void)mod; }
 static void m1_mute_now(uint32_t mod, int on) { (void)mod; (void)on; }
 static void m1_arms_now(uint32_t lo, uint32_t hi) { (void)lo; (void)hi; }
+static uint32_t host_pattern_told, host_song_told;   /* (panel_test.c: PATTERN_NOW / SONG_NOW sent) */
+static void m1_pattern_now(void) { host_pattern_told++; }
+static void m1_song_now(uint32_t s) { (void)s; host_song_told++; }
 #endif
 #include "../src/seq_ui.c"
 #include "../src/splash.c"

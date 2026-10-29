@@ -108,8 +108,10 @@ export function level(p: Patch, opts: { chord?: boolean; drums?: boolean } = {})
 // arpeggiator. A patch with a PATTERN already (Scrounge, Meridian 8, Perun 4) gets the arpeggiator after it. One that
 // played Main's pitch / gate gets a one-voice Voicing for the arpeggiator to play. Oracle V and Algo Four run past the CPU
 // estimate's warning with them (the owner accepts it); one that would not fit the FM-1's limits would get the arpeggiator
-// alone, else neither. The drum kits and <7PH get neither.
-export const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH']);
+// alone, else neither. The drum kits, <7PH and Spokes 6 get neither on the FM-1 (Spokes 6's melodic voices play their
+// Steps tracks' pitch and gate, which an arpeggiator's keys cannot reach); an XL is the kitchen sink and gets both, a
+// kit's arpeggiator between its DRUMS track and its Drum map.
+export const DRUMS = new Set(['808 Kit', '909 Kit', '<7PH', 'Spokes 6']);
 export type Player = 'both' | 'arp' | 'none';
 export function withPlayers(src: Patch, what: Player): Patch {
   const p = structuredClone(src);
@@ -117,7 +119,7 @@ export function withPlayers(src: Patch, what: Player): Patch {
   const main = p.modules.find((m) => m.type === 'fm1')!;
   const below = Math.max(...p.modules.map((m) => m.y)) + 300;
   const keysOut = (id: number): Cable[] => p.cables.filter((c) => c.from.module === id && c.from.port === 'keys' && mod(p, c.to.module).type !== 'steps');
-  let track = p.modules.find((m) => m.type === 'steps' && m.name === 'PATTERN');
+  let track = p.modules.find((m) => m.type === 'steps' && (m.name === 'PATTERN' || m.name === 'DRUMS'));
   let into = keysOut(track?.id ?? main.id);
   if (!into.length) {
     // Main's pitch / gate played the voice: a one-voice Voicing between (its pitch and gate as Main's were), inside the
@@ -150,17 +152,22 @@ export function withPlayers(src: Patch, what: Player): Patch {
     wire(p, arp.id, 'keys', c.to.module, c.to.port);
   }
   wire(p, from.id, 'keys', arp.id, 'keys');
+  // an assembly's `arp clock` output steps the arpeggiator, one step per edge (Io 4: the Jupiter-4's TRIGGER RATE)
+  for (const a of assembliesOf(p)) if (!parentOf(p, a.id)) for (const o of a.outputs) if (o.label === 'arp clock') wire(p, o.module, o.port, arp.id, 'clk');
   setKind(p, 'arp', 'bypass');
   setTarget(p, 'arp', { module: arp.id });
   setSwitches(p, 'arp', true);
   return p;
 }
 /** the most a patch takes: the players that fit the FM-1 (its limits; the CPU estimate's warning is no bar); with
- * `browser` (an XL: it never goes to the FM-1) both, whatever the budget */
+ * `browser` (an XL: it never goes to the FM-1) both, whatever the budget, the drum kits too */
 export function players(p: Patch, browser = false): Patch {
-  if (DRUMS.has(p.name)) return p;
   if (browser) return validatePatch(withPlayers(p, 'both'), DEFS);
-  for (const what of ['both', 'arp'] as const) {
+  if (DRUMS.has(p.name)) return p;
+  // Io 4's four voices shed on the rig with PATTERN, despite the model saying it fits. Keep its existing player set.
+  // Measurement: docs/measurements/2026-10-26-io-4-player-budget.json. An XL still gets both above.
+  const attempts: Player[] = p.name === 'Io 4' ? ['arp'] : ['both', 'arp'];
+  for (const what of attempts) {
     const q = validatePatch(withPlayers(p, what), DEFS);
     if (deviceBudget(q).fits) return q;
   }

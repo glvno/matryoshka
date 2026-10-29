@@ -15,24 +15,52 @@ const GENERIC: Record<string, string> = {
 };
 
 const BY_TYPE: Record<string, Record<string, string>> = {
-  adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release' },
+  fm1: { breath: 'breath (CC 2)', sustain: 'sustain (CC 64)', foot: 'foot switch (CC 65)' },
+  adsr: { a: 'attack', d: 'decay', s: 'sustain', r: 'release', long: 'long times' },
+  ladder: { fm: 'audio-rate cutoff' },
+  filter: { hp6: 'high pass 6' },
+  lfo: { phase: 'start phase', range: 'rate range', mult: 'sync speed', shape: 'shape (0..1)', pulse: 'pulse' },
+  delay: { note: 'note length' },
+  pulse: { inf: 'infinite' },
   mixer: { l1: 'level 1', l2: 'level 2', l3: 'level 3', l4: 'level 4' },
   env: { l1: 'level 1', r1: 'rate 1', l2: 'level 2', r2: 'rate 2', l3: 'level 3', r3: 'rate 3', l4: 'level 4', r4: 'rate 4', shot: 'one-shot' },
+  ratio: { ratio: 'frequency ratio', detune: 'detune position' },
+  esp: { level: 'signal level', lowcut: 'low cut', highcut: 'high cut', cvadj: 'cv adjust', amp: 'amp out', pitch: 'pitch (F-V)' },
+  steps: { dir: 'play mode' },
+  rateenv: { ar: 'attack rate', d1r: 'decay 1 rate', d1l: 'decay 1 level', d2r: 'decay 2 rate', rr: 'release rate', krs: 'key rate scaling' },
+  env8: { ...Object.fromEntries(Array.from({ length: 8 }, (_, i) => [[`l${i + 1}`, `level ${i + 1}`], [`r${i + 1}`, `rate ${i + 1}`]]).flat()), sus: 'sustain step', end: 'end step' },
   seq: { s1: 'step 1', s2: 'step 2', s3: 'step 3', s4: 'step 4', s5: 'step 5', s6: 'step 6', s7: 'step 7', s8: 'step 8' },
-  math: { ka: 'a gain', kb: 'b gain', off: 'offset', sub: 'subtract', mul: 'multiply', abs: 'absolute', cmp: 'compare' },
+  alloc: { trig: 'key press', stack: 'uni voices' },
+  part: { trig: 'key press' },
+  math: { ka: 'a gain', kb: 'b gain', off: 'offset', sub: 'subtract', mul: 'multiply', abs: 'absolute', cmp: 'compare', xor: 'bit xor' },
+  pd: { dcw: 'DCW (bend)', wave2: 'wave 2', range: 'resonance range' },
+  select: {
+    count: 'positions', fade: 'crossfade',
+    ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].flatMap((k) => [[`in${k}`, `in ${k}`], [`g${k}`, `gate ${k}`], [`v${k}`, `value ${k}`]])),
+  },
 };
 
 const MODULES: Record<string, string> = {
-  sh: 'Sample & hold', clkdiv: 'Clock divider', shift: 'Frequency shifter', env: 'Level/rate envelope',
+  sh: 'Sample & hold', clkdiv: 'Clock divider', shift: 'Frequency shifter', env: 'Level/rate envelope', pd: 'Phase distortion',
+  env8: 'Eight-step envelope',
+};
+
+const PD_CHOICES: Record<string, string> = {
+  'dbl sine': 'double sine', 'reso 1': 'resonance I (ramp)', 'reso 2': 'resonance II (triangle)', 'reso 3': 'resonance III (trapezoid)',
 };
 
 const CHOICES: Record<string, Record<string, string>> = {
   'osc.stack': { '+oct': '+octave', '+5th': '+fifth', '+oct+5th': '+octave +fifth', '-oct': '−octave' },
   'lfo.wave': { 'S&H': 'sample & hold' },
   'lfo.div': { '1/16T': '1/16 triplet', '1/8T': '1/8 triplet', '1/16.': '1/16 dotted', '1/8.': '1/8 dotted' },
+  'lfo.dir': { fwd: 'forward', back: 'backward' },
+  'lfo.mult': { '/8': '÷ 8', '/4': '÷ 4', '/2': '÷ 2' },
+  'delay.note': { time: 'time knob', '1/2T': '1/2 triplet', '1/2.': '1/2 dotted', '1/1T': '1/1 triplet', '1/1.': '1/1 dotted' },
   'glide.curve': { exp: 'exponential', lin: 'linear' },
   'seq.dir': { fwd: 'forward', back: 'backward' },
   'quant.scale': { 'pent maj': 'pentatonic major', 'pent min': 'pentatonic minor', whole: 'whole tone' },
+  'pd.wave': PD_CHOICES,
+  'pd.wave2': PD_CHOICES,
 };
 
 /** a port's or parameter's label on a module of `type` */
@@ -51,13 +79,13 @@ const TAGS: Record<string, [string, TagFamily]> = {
   osc: ['VCO', 'src'], noise: ['NOISE', 'src'], wavetable: ['WAVE', 'src'], string: ['STRING', 'src'], grain: ['GRAIN', 'src'],
   filter: ['VCF', 'shp'], ladder: ['VCF', 'shp'], vca: ['VCA', 'shp'], shape: ['SHAPE', 'shp'], crush: ['CRUSH', 'shp'],
   vowel: ['VOWEL', 'shp'], dyn: ['DYN', 'shp'], pan: ['PAN', 'shp'], xfade: ['XFADE', 'shp'],
-  adsr: ['ENV', 'mod'], env: ['ENV', 'mod'], lfo: ['LFO', 'mod'], random: ['RAND', 'mod'], seq: ['SEQ', 'mod'], glide: ['GLIDE', 'mod'],
+  adsr: ['ENV', 'mod'], env: ['ENV', 'mod'], env8: ['ENV', 'mod'], rateenv: ['ENV', 'mod'], lfo: ['LFO', 'mod'], random: ['RAND', 'mod'], seq: ['SEQ', 'mod'], glide: ['GLIDE', 'mod'],
   sh: ['S&H', 'mod'], quant: ['QUANT', 'mod'], clkdiv: ['CLOCK', 'mod'], pulse: ['PULSE', 'mod'],
   delay: ['DELAY', 'fx'], reverb: ['VERB', 'fx'], chorus: ['CHORUS', 'fx'], phaser: ['PHASER', 'fx'], shift: ['SHIFT', 'fx'],
   comb: ['COMB', 'fx'], modal: ['MODAL', 'fx'],
   mixer: ['MIX', 'util'], math: ['MATH', 'util'], logic: ['LOGIC', 'util'], const: ['DC', 'util'], macro: ['MACRO', 'util'], scale: ['SCALE', 'util'],
   output: ['OUT', 'util'], fm1: ['MAIN', 'util'], part: ['PART', 'util'], alloc: ['VOICES', 'util'], scope: ['SCOPE', 'util'],
-  drummap: ['MAP', 'mod'],
+  drummap: ['MAP', 'mod'], pd: ['PD', 'src'], select: ['SEL', 'util'],
 };
 
 /** the short tag before a card's title and the family that colours it */

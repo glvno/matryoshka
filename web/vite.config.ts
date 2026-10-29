@@ -39,5 +39,7 @@ export default defineConfig(({ command }) => ({
   // the share sheet falls back to a link without the layout)
   server: { proxy: { '/api': 'http://localhost:8788' } },
   // dev/demo is its own project (the Remotion demo video, its own node_modules)
-  test: { environment: 'node', exclude: ['**/node_modules/**', 'dev/demo/**'] },
+  // testTimeout: a few tests take 3-6 s alone (the XLs, the flasher's real waits, the demo); 30 s keeps them passing
+  // when golden / emulator runs share the machine (the 5 s default timed them out under load)
+  test: { environment: 'node', exclude: ['**/node_modules/**', 'dev/demo/**'], testTimeout: 30000 },
 }) as never);

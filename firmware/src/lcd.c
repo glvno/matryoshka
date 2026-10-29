@@ -6,7 +6,8 @@
  * A pixel transfer is left running (lcd_busy): the next LCD access, or a write
  * to its source buffer (lcd_sync), waits for it, so the main loop works
  * while the last strip of a frame goes out. lcd_yield (panel.c panel_draw, #230), when set, is called
- * while a transfer runs, before it is waited for: the keys are taken there during a long redraw. */
+ * while a transfer runs, before it is waited for: the keys are taken there during a long redraw.
+ * lcd_service serves MIDI on every screen, including messages drawn outside panel_draw. Neither hook may draw. */
 /* pins and SPI1: hal/fm1_lcd_hw.h */
 #include "screen_text.h"          /* the texts on the screen, as text (#291) */
 #ifndef LCD_BAUD
@@ -15,6 +16,7 @@
 
 static uint8_t lcd_small[64];
 static uint8_t lcd_busy;           /* a lcd_data DMA may still run; CS is low */
+static void (*lcd_service)(void);  /* non-drawing main-thread work, on every screen */
 static void (*lcd_yield)(void);    /* (must not touch the LCD) */
 
 static void lcd_spin(uint32_t n)
@@ -27,6 +29,8 @@ static void lcd_sync(void)          /* finish the running transfer (before touch
 {
     if (!lcd_busy)
         return;
+    if (lcd_service)
+        lcd_service();
     if (lcd_yield)
         lcd_yield();
     fm1_lcd_wait();

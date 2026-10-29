@@ -2,7 +2,7 @@
 import type { AssemblyInst } from './assembly';
 import { migratePatchParts, migrateVoicing } from './poly';
 import { migrateKnobs } from './knob-migrate';
-import { fixNotes, migrateSteps, type StepNote } from './track';
+import { fixNotes, fixPatterns, fixSeq, migrateSteps, type Pattern, type SeqState, type StepNote } from './track';
 // Patch data model, shared by the editor, the WebAudio engine and (later) the firmware encoder.
 
 /** keys: the held keys from Main to a Voice allocator (only into a keys input) */
@@ -33,6 +33,12 @@ export interface ParamDef {
   /** a browser-only stretch: the browser's engine takes values up to this (the card's slider reaches it). A value past
    * `max` is a browser-only ability: the patch is over the FM-1 budget (patchbin.ts browserOnly). Linear parameters only. */
   browserMax?: number;
+  /** a stretch both engines take, past `max` (defs.h ptop): the card's slider, a typed value and the FM-1's knobs reach it,
+   * while the parameter inputs, macro ranges and the morph keep moving over min..max, so patches made before the stretch
+   * play the same (the Steps rates 1/2 and 1/64, swing to 80 %). A base past max stays past it under modulation, and a
+   * morph with a side past max moves linearly. MIDI CC knobs span every choice of a choice list, else min..max. Linear
+   * parameters only. */
+  top?: number;
   default: number;
   step?: number;
   unit?: string;
@@ -46,11 +52,15 @@ export interface ParamDef {
   /** an on/off switch (0 or 1): a check box in the editor, OFF / ON on the LCD */
   toggle?: boolean;
   /** while the toggle parameter `when` is on, the value is shown as `text(value)` instead of the number (the synced delay time as a note length) */
-  altText?: { when: string; text: (v: number) => string };
+  altText?: { when: string; text: (v: number, params: Record<string, number>) => string };
   /** not a value: a display (the Scope's screen); it has no slider and goes on an assembly card like a parameter */
   screen?: true;
   /** set from its module's screen (the Scope's hover toolbar), never a row of a card nor promoted */
   onScreen?: true;
+  /** the patch format (patchbin.ts VERSION) that appended this parameter to a type that existed before it. A binary of an
+   * older format holds the type's parameters of its own format; the FM-1 reads it that way and gives this one its default
+   * (engine.c eng_npar, defs.h psince). Only on the last parameters of a type, never decreasing. */
+  since?: number;
 }
 
 /** position of a value in its range, 0..1 (logarithmic for log parameters) */
@@ -67,11 +77,11 @@ export function fromUnit(pd: ParamDef, u: number): number {
   return pd.min * Math.pow(pd.max / pd.min, pd.bend ? x * x : x);
 }
 
-/** the most a parameter takes in the browser: its browser-only stretch (browserMax) or its max */
-export const topOf = (pd: ParamDef): number => pd.browserMax ?? pd.max;
+/** the most a parameter takes in the browser: its browser-only stretch (browserMax), its stretch (top) or its max */
+export const topOf = (pd: ParamDef): number => pd.browserMax ?? pd.top ?? pd.max;
 
 /** a parameter's base value moved by `mod` of its range (mean of a parameter input x attenuverter), clamped to the range; a
- * base past max (a browser-only stretch) is clamped to the stretch instead, so modulation does not pull it back to max */
+ * base past max (a stretch, browserMax or top) is clamped to the stretch instead, so modulation does not pull it back to max */
 export function modulate(pd: ParamDef, base: number, mod: number): number {
   if (!pd.log) return Math.min(base > pd.max ? topOf(pd) : pd.max, Math.max(pd.min, base + mod * (pd.max - pd.min)));
   return fromUnit(pd, toUnit(pd, base) + mod);
@@ -159,6 +169,12 @@ export interface ModuleInst {
    * per step) instead: fixTrack turns them into notes. */
   name?: string;
   notes?: StepNote[];
+  /** a Steps module only: its patterns 2..PATTERNS_MAX (track.ts Pattern; null: it has none of that number, which then
+   * plays its pattern 1); absent while there are none */
+  patterns?: (Pattern | null)[];
+  /** the Main module only: the patch's selected pattern and its songs (track.ts SeqState); absent while pattern 1 is
+   * selected, no song plays and there are no songs */
+  seq?: SeqState;
   /** a Drum map only (#137): its rows' names (DRUM_ROWS, at most TRACK_NAME_MAX characters each; '' = the default name;
    * editor only: the roll shows them as its rows) */
   names?: string[];
@@ -184,7 +200,7 @@ export const NEW_PANEL = (): MainPanel => ({ kinds: Object.fromEntries(['fx', 's
 /** the controls a panel label can name: the patch buttons (patchbin.ts writes the labels in this order). The knobs have
  * none any more: they show the names of the rows they turn (pages.ts). */
 export const PANEL_LABEL_KEYS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
-/** the panel buttons with a fixed role on the FM-1 (GLO its own page #199, SEL one level deeper and ENV the environment
+/** the panel buttons with a fixed role on the FM-1 (GLO its own page #199, SEL arms the device #395 and ENV the environment
  * #197): never a Toggle or Page button, never switching; their jacks still go high while they are held */
 export const FIXED_BUTTONS = new Set(['glo', 'scl', 'env']);
 export const PANEL_LABEL_MAX = 10;
@@ -226,8 +242,12 @@ export function fixTrack(m: ModuleInst): void {
   if (m.type !== 'steps') {
     delete m.name;
     delete m.notes;
+    delete m.patterns;
     return;
   }
+  const patterns = fixPatterns(m.patterns);
+  if (patterns) m.patterns = patterns;
+  else delete m.patterns;
   const name = trackName(m.name);
   if (name) m.name = name;
   else delete m.name;
@@ -345,7 +365,7 @@ export const hasMorph = (p: Patch): boolean => p.modules.some((m) => m.paramsB);
  * slider's bend: the midpoint of 200 and 3200 Hz is 800 Hz); a choice or switch snaps at 0.5 */
 export function morphValue(pd: ParamDef, a: number, b: number, t: number): number {
   if (pd.choices || pd.toggle) return t < 0.5 ? a : b;
-  if (!pd.log && Math.max(a, b) > pd.max) return a + (b - a) * t; // (a browser-only stretch: past the range paramUnit clamps to)
+  if (!pd.log && Math.max(a, b) > pd.max) return a + (b - a) * t; // (a stretch, browserMax or top: past the range paramUnit clamps to)
   return paramValue(pd, paramUnit(pd, a) + (paramUnit(pd, b) - paramUnit(pd, a)) * t);
 }
 
@@ -360,14 +380,20 @@ export const MAX_MODULES = 64;
 export interface PolyCfg {
   /** 1 .. EDITOR_MAX_PARTS (the FM-1 plays up to MAX_PARTS) */
   parts: number;
-  /** 0 rotate, 1 lowest free, 2 reuse (a free part whose last note was the key) */
+  /** 0 rotate, 1 lowest free, 2 reuse (a free part whose last note was the key), 3 rotate with reset after all keys lift */
   assign: number;
   /** 0 auto (legato with one part; a stolen part restarts its envelopes), 1 off (always restart), 2 on (never) */
   legato: number;
   /** which held notes sound when there are more than parts: 0 last, 1 low, 2 high */
   priority: number;
-  /** every part plays the one note the priority picks (several parts only; the browser's engine, not yet the FM-1's) */
+  /** the selected unison voices play the one note the priority picks */
   unison?: boolean;
+  /** voices stacked in unison; absent or zero: all poly voices, otherwise capped by parts */
+  unisonParts?: number;
+  /** distribute the unison pool evenly over the held notes (Jupiter-4 UNISON II) */
+  unisonShare?: boolean;
+  /** false: ignore new notes when all polyphonic voices are held; absent: steal by priority */
+  steal?: boolean;
   /**
    * Each part's own flaws, set by hand (an analog polysynth's voice cards are never quite alike): flaws[i] is part i's,
    * a missing entry is FLAW_NONE. Kept for every part number up to EDITOR_MAX_PARTS, so fewer parts and back keeps them.
@@ -413,7 +439,7 @@ export const DRIFT_CENTS = 20;
 /** the parameters each flaw moves, by module type (engine.ts applyFlaws, engine.c apply_flaws) */
 export const FLAW_TARGETS: Record<'bright' | 'env' | 'level', Record<string, string[]>> = {
   bright: { filter: ['cutoff'], ladder: ['cutoff'] },
-  env: { adsr: ['a', 'd', 'r'], env: ['r1', 'r2', 'r3', 'r4'] },
+  env: { adsr: ['a', 'd', 'r'], env: ['r1', 'r2', 'r3', 'r4'], env8: ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8'] },
   level: { vca: ['gain'] },
 };
 /** the FM-1's part limit (POLY_MAX_PARTS in defs.h); the editor and the browser engine go up to EDITOR_MAX_PARTS */
@@ -440,8 +466,13 @@ export function polyCfg(alloc: ModuleInst, cards: PolyCards = {}): PolyCfg {
     const v = Math.round(Number(alloc.params[k]));
     return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d;
   };
-  const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 2, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
-  if (int('unison', 0, 1, 0) && cfg.parts > 1) cfg.unison = true;
+  const cfg: PolyCfg = { parts: int('voices', 1, EDITOR_MAX_PARTS, POLY_DEFAULT.parts), assign: int('assign', 0, 3, 0), legato: int('legato', 0, 2, 0), priority: int('priority', 0, 2, 0) };
+  if (!int('steal', 0, 1, 1)) cfg.steal = false;
+  const unison = int('unison', 0, 2, 0);
+  if (unison) cfg.unison = true;
+  if (unison === 2) cfg.unisonShare = true;
+  const stack = int('stack', 0, EDITOR_MAX_PARTS, 0);
+  if (stack) cfg.unisonParts = stack;
   const ch = int('channel', 0, 16, 0), low = int('low', 0, 127, 0), high = int('high', 0, 127, 127);
   if (ch) cfg.channel = ch;
   if (low) cfg.low = low;
@@ -519,9 +550,11 @@ export function defaultParams(def: ModuleDef): Record<string, number> {
   return out;
 }
 
-/** the default matrix: p1 and p2 control the first two parameters, knob n the n-th */
+/** the default matrix: p1 and p2 control the first two parameters, knob n the n-th. A parameter appended to its type later
+ * (`since`) never joins it, so a module whose patch has no matrix routes as it did (a Pulse's p2 stays unrouted, not `inf`) */
 export function defaultMap(def: ModuleDef): Record<Source, string[]> {
-  const at = (i: number): string[] => (def.params[i] ? [def.params[i].name] : []);
+  const ps = def.params.filter((q) => q.since === undefined);
+  const at = (i: number): string[] => (ps[i] ? [ps[i].name] : []);
   return { p1: at(0), p2: at(1), k1: at(0), k2: at(1), k3: at(2), k4: at(3) };
 }
 
@@ -682,7 +715,13 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
       const panel = fixPanel(m.panel);
       if (panel) m.panel = panel;
       else delete m.panel;
-    } else delete m.panel;
+      const seq = fixSeq(m.seq);
+      if (seq) m.seq = seq;
+      else delete m.seq;
+    } else {
+      delete m.panel;
+      delete m.seq;
+    }
     fixTrack(m);
     if (m.bypass && m.type !== 'fm1' && m.type !== 'output') m.bypass = true;
     else delete m.bypass;
@@ -716,20 +755,23 @@ export function validatePatch(raw: unknown, defs: Record<string, ModuleDef>): Pa
   migratePatchParts(p as Patch, defs); // Part modules (before Voice allocators) become allocators
   // the SEQ and REC buttons belong to the device since #83 (the step page, live recording): cables from them go; so do
   // cables from a Steps module's acc output (#133: an accent is full velocity now)
+  // each module by id, the first of an id as find() would give it (looked up per cable)
+  const byId = new Map<unknown, (typeof p.modules)[number]>();
+  for (const m of p.modules) if (!byId.has(m.id)) byId.set(m.id, m);
   p.cables = p.cables.filter((c) => {
-    const t = p.modules.find((m) => m.id === c.from?.module)?.type;
+    const t = byId.get(c.from?.module)?.type;
     return !(t === 'fm1' && (c.from?.port === 'seq' || c.from?.port === 'rec')) && !(t === 'steps' && c.from?.port === 'acc');
   });
   for (const c of p.cables) {
-    const mf = p.modules.find((m) => m.id === c.from?.module);
+    const mf = byId.get(c.from?.module);
     if (mf?.type === 'filter' && c.from?.port === 'lp') c.from.port = 'lp12'; // the filter's 12 dB output used to be called lp
-    const mt = p.modules.find((m) => m.id === c.to?.module);
+    const mt = byId.get(c.to?.module);
     if (mt?.type === 'lfo' && c.to?.port === 'sync') c.to.port = 'reset'; // the LFO's restart input used to be called sync (its tempo-sync toggle is `sync` now)
     if (!mf || !mt) throw new Error('cable to a missing module');
     if (!defs[mf.type].outputs.some((o) => o.name === c.from.port)) throw new Error(`no output "${c.from.port}" on ${mf.type}`);
     if (!defs[mt.type].inputs.some((i) => i.name === c.to.port)) throw new Error(`no input "${c.to.port}" on ${mt.type}`);
   }
-  p.cables = p.cables.filter((c) => kindsFit(defs, p.modules.find((m) => m.id === c.from.module)!.type, c.from.port, p.modules.find((m) => m.id === c.to.module)!.type, c.to.port));
+  p.cables = p.cables.filter((c) => kindsFit(defs, byId.get(c.from.module)!.type, c.from.port, byId.get(c.to.module)!.type, c.to.port));
   {   // a Toggle's target that is gone: the button keeps its kind, without a target
     const main = p.modules.find((m) => m.type === 'fm1');
     const t = main?.panel?.targets;
