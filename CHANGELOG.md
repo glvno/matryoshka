@@ -5,7 +5,9 @@
 ### Changes
 
 - **On the FM-1, SEL arms what the keys play** (#395). SEL on a device page arms that device and disarms the others,
-  so the keys play it; on a device with no keys input the bar says NOTHING HERE TAKES KEYS and nothing changes. SEL on
+  so the keys play it; an instrument whose keys come through a track and an Arpeggiator (every factory instrument) is
+  armed with them, and REC records that track. On a device with no keys input, or an Arpeggiator alone, the bar says
+  NOTHING HERE TAKES KEYS and nothing changes. In the editor, arming an instrument works the same way. SEL on
   an environment row adds that device to the armed ones or takes it out (a layer or a split); REC there no longer arms.
   With nothing armed the keys are wired: Main's cables decide where they go, as before, and
   the footer says KEYS WIRED after the patch's name. A patch loads wired. The SEQ page arms the track it shows when it

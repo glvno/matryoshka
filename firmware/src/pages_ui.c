@@ -1965,17 +1965,19 @@ static int env_track_no(uint32_t d)
 }
 
 /* the right-hand text of device d's row: Main's tempo, a track's length, ARMED */
-/* device d's key listeners (#191: what arming it arms), as a module mask */
+/* what arming device d arms (#191), as a module mask: its key listeners, and the key sources its keys come through (#395:
+ * the track and the Arpeggiator in front of an instrument). An Arpeggiator alone is not a device to arm */
 static uint64_t env_listeners(uint32_t d)
 {
     uint64_t mask = 0;
     uint32_t k;
+    if (pg_dev[d].module >= 0 && eng_type((uint32_t)pg_dev[d].module) == T_ARP)
+        return 0;
     if (pg_dev[d].mem) {
         for (k = 0; k < pg_dev[d].nmem; k++)
-            if (pg_dev[d].mem[k] < 64u && eng_listens(pg_dev[d].mem[k]))
-                mask |= (uint64_t)1 << pg_dev[d].mem[k];
-    } else if (pg_dev[d].module >= 0 && eng_listens((uint32_t)pg_dev[d].module)) {
-        mask = (uint64_t)1 << pg_dev[d].module;
+            mask |= eng_arms(pg_dev[d].mem[k]);
+    } else if (pg_dev[d].module >= 0) {
+        mask = eng_arms((uint32_t)pg_dev[d].module);
     }
     return mask;
 }

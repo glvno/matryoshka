@@ -883,8 +883,14 @@ async function main() {
     async arming() {
       await check('arming: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await check('arming: a patch loads with nothing armed: the footer says KEYS WIRED', await emu.waitText('KEYS WIRED', 3000));
-      await emu.tap(B.scl);                         // the home device, the Drum map: its keys come from the track, not Main
+      await emu.tap(B.scl);                         // the home device, the Drum map: its keys come through DRUMS (#395)
+      await check('arming: SEL on a device fed through a track arms it with the track', await emu.waitText('DRUM MAP ARMED', 1500));
+      await sleep(1300);
+      await emu.turn(ENC.select, 1);                // the next device, an instrument of the kit: its voices take no keys
+      await sleep(300);
+      await emu.tap(B.scl);
       await check('arming: SEL on a device that takes no keys says so', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
+      await emu.turn(ENC.select, -1);
       await sleep(1300);
       await emu.tap(B.seq, 120);
       await check('arming: the SEQ page arms the track it shows', await emu.waitText('DRUMS ARM', 3000));
@@ -914,6 +920,24 @@ async function main() {
       await emu.snap('arming-env');
       await emu.tap(B.env, 120);
       await emu.waitText('= OCT =', 3000);
+      // an instrument whose keys come through its track and Arpeggiator (every factory instrument; the owner, 2026-10-28):
+      // SEL on its first page arms it, and the keys play it; the Arpeggiator alone takes no keys
+      await check('arming: Vernon 100 opens, synced', await openSynced('Vernon 100'));
+      await emu.tap(B.scl);
+      await check('arming: SEL on Vernon 100\'s first page arms it', await emu.waitText('VERNON 100 ARMED', 1500));
+      await sleep(1300);
+      const v = await emu.mark();
+      await emu.key(WHITE[7], true);
+      await sleep(300);
+      await emu.key(WHITE[7], false);
+      const vp = await emu.peak(v);
+      await loudCheck('arming: Vernon 100 armed, a white key plays it', vp, vp > LOUD, `peak ${vp}`);
+      await sleep(1000);
+      await emu.turn(ENC.select, -1);               // the device before: the Arpeggiator
+      await sleep(300);
+      await emu.tap(B.scl);
+      await check('arming: SEL on the Arpeggiator alone: nothing here takes keys', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
+      await emu.snap('arming-instrument');
     },
   };
 
