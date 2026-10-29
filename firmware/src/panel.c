@@ -558,8 +558,9 @@ static uint32_t sel_down_ms;
 /* ENV held and SAVE pressed meanwhile: its release opens nothing */
 static uint8_t env_held_used;
 
-/* SEL (#197; arming: #395). A device page: arms its device, the others disarmed; an environment row: its device into the
- * armed set or out of it (a layer); a device that takes no keys: the armed set as it was, NOTHING HERE TAKES KEYS. On
+/* SEL (#197; arming: #395). A device page: arms its device, the others disarmed, or takes it out when armed; an
+ * environment row: its device into the armed set or out of it (a layer); a device that takes no keys: the armed set as
+ * it was, NOTHING HERE TAKES KEYS. On
  * the SONG page (and the preset list, which nothing opens until #395's PRESET slice removes it): back */
 static void sel_open(void)
 {
