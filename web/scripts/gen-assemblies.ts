@@ -4037,6 +4037,218 @@ asm('auto pan', 'Effects', (b) => {
   b.param('centre', pan, 'pan');
 });
 
+
+// Undertone (spike, #383 follow-up): after the Moog Subharmonicon (Subharmonicon manual, Moog / inMusic, "Subharmonicon_Manual
+// AMZ.pdf"). Two VCOs, each with two subharmonic oscillators at its frequency divided by a whole number, a mixer of all six
+// into the ladder, a VCF EG and a VCA EG (attack, decay), two four-step sequencers whose clocks come from four rhythm
+// generators (the tempo divided by 1..16) combined with OR or XOR, QUANTIZE (off, 12-ET, 8-ET; the JI tunings need tuning
+// tables) and SEQ OCT. Our subharmonics are oscillators tuned to the VCO's pitch minus log2(n), not frequency dividers:
+// the frequency is exact, the phase is not locked. `div16`: SUB FREQ reaches 1..16 through three Selectors and two Scales
+// per subharmonic (Undertone XL); without it a subharmonic is one Selector of eight (÷1..÷8, the FM-1 version).
+const UNDERTONE_DIVS = (lo: number, n: number): number[] => Array.from({ length: n }, (_, k) => Math.round(-Math.log2(lo + k) * 1000) / 1000);
+/** the second QUANTIZE and LOGIC Selectors of each Undertone, which the first's row also sets */
+const UNDERTONE_SHARED = new Map<string, { quantize: number; logic: number }>();
+const undertone = (b: B, div16: boolean, name: string): void => {
+  const part = b.add('alloc', 0, 0, { voices: 1, legato: 0 });
+  // shared: QUANTIZE, SEQ OCT, the tempo clock and the rhythm generators
+  const oct = b.add('select', 1, 9, { count: 3, pos: 2, v1: 0.25, v2: 0.5, v3: 1.25 }); // ±1, ±2, ±5 octaves, before VCO FREQ's x4
+  const tempo = b.add('lfo', 0, 9, { wave: 3, range: 3, wide: 2, depth: 1 });
+  const rhythm = [1, 2, 3, 4].map((k) => b.add('clkdiv', 0, 9 + k, { div: k }));
+  const play = b.add('logic', 0, 14, { thresh: 0.5 }); // PLAY: the clock reaches the rhythm generators while the transport runs
+  b.wire(tempo, 'pulse', play, 'a');
+  for (const r of rhythm) b.wire(play, 'and', r, 'clock');
+  const logicSel: number[] = [];
+  const seqs: number[] = [];
+  const routes: number[][] = [];
+  for (let s = 0; s < 2; s++) {
+    // a rhythm generator's SEQ button: its level into this sequencer's sum (0 off, 1 on); OR: the sum reaches 1, XOR: it is 1
+    const sum = b.add('mixer', 2, 9 + 3 * s, { l1: s === 0 ? 1 : 0, l2: s === 1 ? 1 : 0, l3: 0, l4: 0 });
+    rhythm.forEach((r, k) => b.wire(r, 'out', sum, `in${k + 1}`));
+    const half = b.add('scale', 3, 9 + 3 * s, { gain: 0.5, offset: 0 });
+    const lg = b.add('logic', 4, 9 + 3 * s, { thresh: 0.75 });
+    b.wire(sum, 'out', lg, 'a');
+    b.wire(sum, 'out', half, 'in');
+    b.wire(half, 'out', lg, 'b');
+    const pick = b.add('select', 5, 9 + 3 * s, { count: 2, pos: 1 });
+    b.wire(lg, 'or', pick, 'in1');
+    b.wire(lg, 'xor', pick, 'in2');
+    const seq = b.add('seq', 6, 9 + 3 * s, { len: 4, s1: 0, s2: 0.1, s3: -0.1, s4: 0.2, gate: 0.5 });
+    b.wire(pick, 'out', seq, 'clock');
+    logicSel.push(pick);
+    seqs.push(seq);
+    routes.push([sum]);
+  }
+  // per VCO
+  const mix: number[] = [];
+  const vcoOsc: number[] = [];
+  const subRows: { knob: number; osc: number }[][] = [];
+  const quantSel: number[] = [];
+  const waveSel: number[] = [];
+  const assign: number[][] = [];
+  const freqKnob: number[] = [];
+  for (let v = 0; v < 2; v++) {
+    const y = v * 4;
+    const knob = b.add('macro', 1, y, { value: 0 });
+    const span = b.add('scale', 2, y, { gain: 4, offset: 0 }); // VCO FREQ: four octaves up from middle C
+    b.wire(knob, 'out', span, 'in');
+    const mul = b.add('math', 2, y + 1, { ka: 1, kb: 1, off: 0 }); // a step times SEQ OCT
+    b.wire(seqs[v], 'out', mul, 'a');
+    b.wire(oct, 'out', mul, 'b');
+    const toOsc = b.add('select', 3, y + 1, { count: 2, pos: 2 });
+    b.wire(mul, 'mul', toOsc, 'in2');
+    b.wire(toOsc, 'out', span, 'in'); // (in octaves, after the four-octave span: summed after it)
+    // QUANTIZE: OFF passes the pitch; 12-ET and 8-ET go through one quantizer, 8-ET moving its scale to major (its p1)
+    const qs = b.add('select', 4, y, { count: 3, pos: 1 });
+    const q = b.add('quant', 3, y, { scale: 0, root: 0 }, { p1: 'scale', att: [0.1, 1] });
+    b.wire(qs, 'g3', q, 'p1');
+    b.wire(span, 'out', qs, 'in1');
+    b.wire(span, 'out', q, 'in');
+    b.wire(q, 'out', qs, 'in2');
+    b.wire(q, 'out', qs, 'in3');
+    const wave = b.add('select', 4, y + 2, { count: 3, pos: 3 }); // UP, MIDDLE, DOWN
+    const vco = b.add('osc', 5, y, { wave: 2, level: 0.8 }, { p1: 'wave', p2: 'pw', att: [1, 0.4] });
+    b.wire(qs, 'out', vco, 'pitch');
+    b.wire(part, 'pitch', vco, 'pitch');
+    b.wire(wave, 'g1', vco, 'p1');
+    b.wire(wave, 'g2', vco, 'p1');
+    const subs: { knob: number; osc: number }[] = [];
+    const subAssign: number[] = [];
+    for (let k = 0; k < 2; k++) {
+      const sy = y + 1 + k;
+      const so = b.add('osc', 9, sy, { wave: 2, level: 0.8 }, { p1: 'wave' });
+      b.wire(qs, 'out', so, 'pitch');
+      b.wire(part, 'pitch', so, 'pitch');
+      b.wire(wave, 'g1', so, 'p1');
+      const sa = b.add('select', 6, sy, { count: 2, pos: 1 });
+      b.wire(seqs[v], 'out', sa, 'in2');
+      subAssign.push(sa);
+      if (!div16) {
+        const sel = b.add('select', 7, sy, { count: 8, pos: 8, ...Object.fromEntries(UNDERTONE_DIVS(1, 8).reverse().map((d, i) => [`v${i + 1}`, d])) });
+        b.wire(sa, 'out', sel, 'pos');
+        b.wire(sel, 'out', so, 'pitch');
+        subs.push({ knob: sel, osc: so });
+      } else {
+        const m = b.add('macro', 7, sy, { value: 1 });
+        const loCv = b.add('scale', 13, sy, { gain: -2, offset: 2 });
+        const hiCv = b.add('scale', 14, sy, { gain: -2, offset: 1 });
+        const lo = b.add('select', 15, sy, { count: 8, pos: 1, ...Object.fromEntries(UNDERTONE_DIVS(1, 8).map((d, i) => [`v${i + 1}`, d])) });
+        const hi = b.add('select', 16, sy, { count: 8, pos: 1, ...Object.fromEntries(UNDERTONE_DIVS(9, 8).map((d, i) => [`v${i + 1}`, d])) });
+        const pick = b.add('select', 17, sy, { count: 2, pos: 1 });
+        for (const src of [m, sa]) {
+          b.wire(src, 'out', loCv, 'in');
+          b.wire(src, 'out', hiCv, 'in');
+          b.wire(src, 'out', pick, 'pos');
+        }
+        b.wire(loCv, 'out', lo, 'pos');
+        b.wire(hiCv, 'out', hi, 'pos');
+        b.wire(hi, 'out', pick, 'in1');
+        b.wire(lo, 'out', pick, 'in2');
+        b.wire(pick, 'out', so, 'pitch');
+        subs.push({ knob: m, osc: so });
+      }
+    }
+    // MIDDLE: VCO square, its pulse width moved by SUB 1's saw
+    const pwm = b.add('vca', 6, y + 3, { gain: 1 });
+    b.wire(subs[0].osc, 'out', pwm, 'in');
+    b.wire(wave, 'g2', pwm, 'cv');
+    b.wire(pwm, 'out', vco, 'p2');
+    const mx = b.add('mixer', 10, y, { l1: 0.5, l2: 0.5, l3: 0, l4: 0 });
+    b.wire(vco, 'out', mx, 'in1');
+    b.wire(subs[0].osc, 'out', mx, 'in2');
+    b.wire(subs[1].osc, 'out', mx, 'in3');
+    mix.push(mx);
+    vcoOsc.push(vco);
+    subRows.push(subs);
+    quantSel.push(qs);
+    waveSel.push(wave);
+    assign.push([toOsc, ...subAssign]);
+    freqKnob.push(knob);
+  }
+  // filter, envelopes, amplifier
+  const flt = b.add('ladder', 11, 0, { cutoff: 1200, res: 0.2, cvamt: 1, drive: 1 });
+  for (const m of mix) b.wire(m, 'out', flt, 'in');
+  const egMode = b.add('select', 7, 9, { count: 3, pos: 2 }); // OFF, ON, HELD
+  for (const p of logicSel) b.wire(p, 'out', egMode, 'in2');
+  const vcfEg = b.add('env', 11, 1, { l1: 1, r1: 0.001, l2: 0, r2: 0.3, l3: 0, r3: 0.001, l4: 0, r4: 0.001, shot: 1 });
+  const vcaEg = b.add('env', 11, 2, { l1: 1, r1: 0.001, l2: 0, r2: 0.5, l3: 0, r3: 0.001, l4: 0, r4: 0.001, shot: 1 });
+  for (const e of [vcfEg, vcaEg]) {
+    b.wire(egMode, 'out', e, 'gate');
+    b.wire(part, 'gate', e, 'gate');
+  }
+  const amt = b.add('scale', 12, 1, { gain: 2, offset: 0 });
+  b.wire(vcfEg, 'env', amt, 'in');
+  b.wire(egMode, 'g3', amt, 'in');
+  b.wire(amt, 'out', flt, 'cv');
+  const vca = b.add('vca', 12, 0, { gain: 0.8 });
+  b.wire(flt, 'lp24', vca, 'in');
+  b.wire(vcaEg, 'env', vca, 'cv');
+  b.wire(egMode, 'g3', vca, 'cv');
+  b.input('keys', part, 'keys');
+  b.input('play', play, 'b');
+  b.input('trigger', vcfEg, 'gate', [vcaEg, 'gate']);
+  b.input('reset', seqs[0], 'reset', [seqs[1], 'reset'], ...rhythm.map((r): [number, string] => [r, 'reset']));
+  b.output('out', vca, 'out');
+  // the panel, in its order
+  for (let v = 0; v < 2; v++) {
+    const n = v + 1;
+    b.param(`vco ${n} freq`, freqKnob[v], 'value', { head: `vco ${n}`, col: v === 1 });
+    b.param(`sub 1 freq`, subRows[v][0].knob, div16 ? 'value' : 'pos');
+    b.param(`sub 2 freq`, subRows[v][1].knob, div16 ? 'value' : 'pos');
+    b.param(`wave`, waveSel[v], 'pos');
+    b.param(`vco ${n} level`, mix[v], 'l1');
+    b.param(`sub 1 level`, mix[v], 'l2');
+    b.param(`sub 2 level`, mix[v], 'l3');
+  }
+  UNDERTONE_SHARED.set(name, { quantize: quantSel[1], logic: logicSel[1] });
+  b.param('quantize', quantSel[0], 'pos', { head: 'shared', col: true });
+  b.param('seq oct', oct, 'pos');
+  b.param('cutoff', flt, 'cutoff', { head: 'filter' });
+  b.param('resonance', flt, 'res');
+  b.param('vcf attack', vcfEg, 'r1', { head: 'envelopes' });
+  b.param('vcf decay', vcfEg, 'r2');
+  b.param('vcf eg amt', amt, 'gain');
+  b.param('vca attack', vcaEg, 'r1');
+  b.param('vca decay', vcaEg, 'r2');
+  b.param('volume', vca, 'gain');
+  b.param('tempo', tempo, 'wide', { head: 'sequencer', col: true });
+  b.param('eg', egMode, 'pos');
+  b.param('logic', logicSel[0], 'pos');
+  for (let s = 0; s < 2; s++) {
+    for (let k = 1; k <= 4; k++) b.param(`seq ${s + 1} step ${k}`, seqs[s], `s${k}`, k === 1 ? { head: `seq ${s + 1}` } : {});
+    b.param(`seq ${s + 1} osc ${s + 1}`, assign[s][0], 'pos');
+    b.param(`seq ${s + 1} sub 1`, assign[s][1], 'pos');
+    b.param(`seq ${s + 1} sub 2`, assign[s][2], 'pos');
+  }
+  rhythm.forEach((r, k) => {
+    b.param(`rhythm ${k + 1}`, r, 'div', k === 0 ? { head: 'polyrhythm', col: true } : {});
+    b.param(`rhythm ${k + 1} seq 1`, routes[0][0], `l${k + 1}`);
+    b.param(`rhythm ${k + 1} seq 2`, routes[1][0], `l${k + 1}`);
+  });
+};
+asm('Undertone', 'Voices', (b) => undertone(b, false, 'Undertone'));
+asm('Undertone XL', 'Voices', (b) => undertone(b, true, 'Undertone XL'));
+{
+  const OFF_ON = ['OFF', 'ON'];
+  const ut = (name: string, div16: boolean): void => {
+    const d = defs.find((x) => x.name === name)!;
+    // QUANTIZE and LOGIC are shared, as on the panel: their row also sets the other VCO's / sequencer's Selector
+    const sh = UNDERTONE_SHARED.get(name)!;
+    d.params.find((x) => x.label === 'quantize')!.also = [{ module: sh.quantize, param: 'pos' }];
+    d.params.find((x) => x.label === 'logic')!.also = [{ module: sh.logic, param: 'pos' }];
+    for (const r of d.params) {
+      if (r.label === 'quantize') r.names = ['OFF', '12-ET', '8-ET'];
+      if (r.label === 'seq oct') r.names = ['±1', '±2', '±5'];
+      if (r.label === 'wave') r.names = ['UP', 'MIDDLE', 'DOWN'];
+      if (r.label === 'eg') r.names = ['OFF', 'ON', 'HELD'];
+      if (r.label === 'logic') r.names = ['OR', 'XOR'];
+      if (/^seq \d (osc|sub)/.test(r.label)) r.names = OFF_ON;
+      if (!div16 && /^sub \d freq$/.test(r.label)) r.names = ['÷8', '÷7', '÷6', '÷5', '÷4', '÷3', '÷2', '÷1'];
+    }
+  };
+  ut('Undertone', false);
+  ut('Undertone XL', true);
+}
+
 // an exposed pin is offered as the sliders it routes to (the editor has no p1 / p2 jacks): the same migration as on load
 for (const d of defs) {
   const moduleOf = (id: number): ModuleInst | undefined => d.modules.find((m) => m.id === id);
@@ -4066,6 +4278,8 @@ const BLURBS: Record<string, string> = {
   'Perun 4': 'Perkons HD-01 type shit',
   'Spokes 6': 'Model:Cycles type shit',
   'Cassia 1': 'CZ-1 type shit',
+  Undertone: 'Subharmonicon type shit',
+  'Undertone XL': 'Subharmonicon type shit',
   'drift poly': 'Two oscillators per voice, four voices that drift a little out of tune',
   'basic poly': 'The plainest polysynth: a saw, a low pass and an envelope per voice',
   'mono lead': 'One voice through a ladder filter, gliding between legato notes',
