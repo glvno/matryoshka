@@ -1152,7 +1152,6 @@ static void head_out(const head_t *h, uint32_t x0, uint32_t x1)
 {
     uint32_t y;
     for (y = 0; y < LK_HH; y++) {
-        lcd_sync();
         head_row(h, y, lcd_line);
         line_out(0, y, 240, x0, x1);
     }
@@ -1390,7 +1389,6 @@ static void toast_first(void)
     uint32_t y;
     ut_begin(UT_TOAST);
     for (y = toast_top; y < 240u; y++) {
-        lcd_sync();
         toast_row(y, lcd_line);
         lcd_line_out(0, y, 240);
     }
@@ -1530,7 +1528,6 @@ static void foot_draw(int whole)
     if (!whole && h == ft_drawn && batt_drawn == batt_shown())
         return;
     for (y = FOOT_Y; y < 240u; y++) {
-        lcd_sync();
         foot_row(&f, y, lcd_line);
         line_out(0, y, 240, 0, 240);
     }
@@ -1549,15 +1546,14 @@ static void foot_batt_sync(void)
         return;                                         /* (not on the screen: drawn with the footer) */
     (void)foot_layout(&f);
     for (y = BATT_FY; y < BATT_FY + 6u; y++) {
-        lcd_sync();
         foot_row(&f, y, lcd_line);
         line_out(0, y, 240, BATT_FX, BATT_FX + 13u);
     }
     batt_drawn = batt_shown();
 }
 
-/* lcd_line holds a scanline of the page at y, its pixel 0 at screen x x0 and w px wide: its pixels s0..s1 out, none while
- * PRESET's toast stays on the screen over that row */
+/* lcd_line holds a scanline of the page at y, its pixel 0 at screen x x0 and w px wide: its pixels s0..s1 out (the
+ * buffer is then the LCD's and lcd_line the other one), none while PRESET's toast stays on the screen over that row */
 static void line_out(uint32_t x0, uint32_t y, uint32_t w, uint32_t s0, uint32_t s1)
 {
     uint16_t *row = lcd_line;
@@ -1581,7 +1577,6 @@ static void row_bar_part(uint32_t k, const bar_t *b, uint32_t r0, uint32_t r1, u
 {
     uint32_t r, y0 = row_y(k);
     for (r = r0; r < r1; r++) {
-        lcd_sync();                                     /* the last row may still be on its way out of lcd_line */
         bar_row(b, k, r, lcd_line, 0);
         line_out(BAR_X, y0 + r, BAR_W, s0, s1);
     }
@@ -1668,7 +1663,6 @@ static void page_out(uint32_t y0, uint32_t y1, uint32_t x0, uint32_t x1)
 {
     uint32_t y;
     for (y = y0; y < y1; y++) {
-        lcd_sync();
         page_row(y, lcd_line);
         line_out(0, y, 240, x0, x1);
     }
@@ -2033,10 +2027,10 @@ static uint32_t row_sig_word(uint32_t h, uint32_t v)
 static void list_row(uint32_t y, int frame, uint16_t bg, uint32_t mark_x, uint32_t mark_w, uint16_t mark, const char *a,
                      uint32_t ax, uint16_t afg, const char *b, uint32_t bx, const char *c, uint32_t cx, uint16_t cfg)
 {
-    uint16_t *row = lcd_line;
+    uint16_t *row;
     uint32_t r, i;
     for (r = 0; r < ENV_ROW_H; r++) {
-        lcd_sync();                                     /* the last row may still be on its way out of lcd_line */
+        row = lcd_line;                                 /* (the free one: the last row went out of the other, #377) */
         for (i = 0; i < 240u; i++)
             row[i] = P_NIGHT;
         if (r >= 1u && r < ENV_ROW_H - 1u) {

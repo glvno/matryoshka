@@ -790,7 +790,11 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
     are not shown.
   - Everything goes through one scanline composer per region (`page_row`, `bar_row`, `head_row`, `foot_row`,
     `toast_row`) into lcd.c's `lcd_line` and out through `line_out`, so a part drawn alone is the same pixels as the page
-    drawn whole. A whole page (`pages_draw(1)`) is every row of the screen once, nothing cleared first: 57,600 px.
+    drawn whole. `lcd_line` is one of two scanline buffers (#377, [D-242](ledger/device-ui.md#D-242)): `lcd_line_out`
+    hands the row to the DMA and makes the other buffer `lcd_line`, so the next row is built while this one goes out
+    (before, the one buffer was waited for before every row). A renderer writes only `lcd_line`, reads the pointer afresh
+    for every row, and keeps no row of its own; the host stand-in (`firmware/test/host_ui.h`) counts a write into the
+    buffer the LCD still reads, and panel_test.c wants none. A whole page (`pages_draw(1)`) is every row of the screen once, nothing cleared first: 57,600 px.
   - A turned knob moves its own bar in place (#298, `pages_row_update`): only the columns its fill's end and live tick
     crossed (the whole height), and its value and unit when they changed (their band), are redrawn (about 1,200 px a
     click), from what the bar showed (`pg_drawn`), with the same values the bar is then noted with. The live tick comes

@@ -75,8 +75,7 @@ static void text_dots(uint32_t x, uint32_t y, const char *s, uint32_t size2, uin
         uint32_t w = n * cell;
         if (w > 240u)
             w = 240u;
-        lcd_sync();                         /* (lcd.c's lcd_line: the last row may still be on its way out) */
-        for (i = 0; i < w; i++)
+        for (i = 0; i < w; i++)             /* (lcd.c's lcd_line: the free one, the last row went out of the other) */
             lcd_line[i] = bg;
         for (c = 0; c < n; c++) {
             uint32_t ch = (uint8_t)s[c];

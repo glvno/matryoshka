@@ -14,13 +14,13 @@
 #define SPLASH_BAR_W 216u
 #define SPLASH_VER_Y 226u
 
-/* one image centred at row y: decode a row of runs into lcd_line, send it, next row (runs carry across rows) */
+/* one image centred at row y: decode a row of runs into lcd_line (big endian), send it, next row (runs carry across
+ * rows) */
 static void splash_art(uint32_t y, const splash_art_t *a)
 {
     uint32_t x = (240u - a->w) / 2u, at = 0, run = 0, i, j;
     uint16_t c = 0;
     for (j = 0; j < a->h; j++) {
-        lcd_sync();                             /* the last row may still be on its way out of the buffer */
         for (i = 0; i < a->w; i++) {
             if (!run) {
                 uint8_t b = at < a->len ? a->rle[at++] : 0u;
@@ -33,7 +33,7 @@ static void splash_art(uint32_t y, const splash_art_t *a)
             lcd_line[i] = c;
             run--;
         }
-        lcd_blit(x, y + j, a->w, 1, lcd_line);
+        lcd_line_send(x, y + j, a->w);
     }
 }
 

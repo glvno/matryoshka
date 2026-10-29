@@ -27,29 +27,35 @@ static uint32_t pv_len;
 #define FELUCCA_VERSION "v1.6.0-DEV"
 #define FM1_TICKS_PER_US 24u
 
-/* lcd.c's shared line buffer and its rule: on the device the DMA reads it after the transfer call returns, until the next
- * lcd_sync (or LCD access). Here a transfer from it keeps a copy, and the next sync / transfer counts a change made
- * meanwhile in lcd_line_clobbers (panel_test.c wants none) */
-static uint16_t lcd_line[240];
+/* lcd.c's two line buffers (#377) and their rule: on the device the DMA reads the one just sent until the next transfer
+ * (or lcd_sync), and lcd_line is then the other one. Here a transfer from a line buffer keeps a copy, and the next
+ * sync / transfer counts a change made to that buffer meanwhile in lcd_line_clobbers (panel_test.c wants none: a
+ * renderer that kept lcd_line's pointer across a row's out would show up here) */
+static uint16_t lcd_lines[2][240];
+static uint16_t *lcd_line = lcd_lines[0];
 static uint16_t lcd_line_sent[240];
-static uint32_t lcd_line_busy, lcd_line_clobbers;  /* pixels of lcd_line the transfer still reads; writes into them */
+static const uint16_t *lcd_line_lcd;               /* the buffer the transfer still reads (0: none) */
+static uint32_t lcd_line_busy, lcd_line_clobbers;  /* its pixels the transfer still reads; writes into them */
 static void lcd_line_done(void)
 {
     uint32_t i;
-    for (i = 0; i < lcd_line_busy; i++)
-        if (lcd_line[i] != lcd_line_sent[i]) {
+    for (i = 0; lcd_line_lcd && i < lcd_line_busy; i++)
+        if (lcd_line_lcd[i] != lcd_line_sent[i]) {
             lcd_line_clobbers++;
             break;
         }
     lcd_line_busy = 0;
+    lcd_line_lcd = 0;
 }
-static void lcd_line_sending(uint32_t n)
+static void lcd_line_sending(const uint16_t *buf, uint32_t n)
 {
     uint32_t i;
+    lcd_line_lcd = buf;
     lcd_line_busy = n < 240u ? n : 240u;
     for (i = 0; i < lcd_line_busy; i++)
-        lcd_line_sent[i] = lcd_line[i];
+        lcd_line_sent[i] = buf[i];
 }
+static void lcd_line_flip(void) { lcd_line = lcd_line == lcd_lines[0] ? lcd_lines[1] : lcd_lines[0]; }
 #include "../src/screen_text.h"           /* the texts on the screen, as text (#291): lcd.c's */
 static void (*lcd_service)(void);
 #ifdef FB_WATCH
@@ -70,11 +76,12 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
     lcd_line_done();
     if (w && h && x < 240u && y < 240u)
         scr_erase(x, y, x + w > 240u ? 240u - x : w, y + h > 240u ? 240u - y : h);
-    if (w && h && x < 240u && y < 240u) {  /* lcd.c fills lcd_line with whole rows of the colour and sends from it */
+    if (w && h && x < 240u && y < 240u) {  /* lcd.c fills lcd_line with whole rows of the colour, sends from it, flips */
         uint32_t ww = x + w > 240u ? 240u - x : w, k = 240u / ww * ww;
         for (i = 0; i < k; i++)
             lcd_line[i] = (uint16_t)((c >> 8) | (c << 8));
-        lcd_line_sending(k);
+        lcd_line_sending(lcd_line, k);
+        lcd_line_flip();
     }
     lcd_px += w * h;
     lcd_xfers++;
@@ -96,8 +103,8 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
     if (lcd_yield)
         lcd_yield();
     lcd_line_done();
-    if (px == lcd_line)
-        lcd_line_sending(w * h);
+    if (px == lcd_lines[0] || px == lcd_lines[1])
+        lcd_line_sending(px, w * h);
     lcd_px += w * h;
     lcd_xfers++;
     for (j = 0; j < h; j++)
@@ -109,13 +116,18 @@ static void lcd_blit(uint32_t x, uint32_t y, uint32_t w, uint32_t h, const uint1
     fb_dirty = 1;
 }
 static void lcd_sync(void) { lcd_line_done(); }
+static void lcd_line_send(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
+{
+    lcd_blit(x, y, w, 1, lcd_line);
+    lcd_line_flip();
+}
 static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)   /* lcd.c's */
 {
     uint32_t i;
     for (i = 0; i < w; i++)
         lcd_line[i] = (uint16_t)((lcd_line[i] >> 8) | (lcd_line[i] << 8));
     scr_line(x, y, w);
-    lcd_blit(x, y, w, 1, lcd_line);
+    lcd_line_send(x, y, w);
 }
 
 #include "../src/engine.c"
