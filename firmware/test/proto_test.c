@@ -725,6 +725,15 @@ int main(int argc, char **argv)
                   && !memcmp(replies[r0] + 5, replies[63], reply_len[r0] - 6u));
             nreplies = r0;
         }
+        {                                                        /* R_ARMS_NOW (m1_arms_now, #191): the mask, lo u32 LE then hi */
+            uint8_t d[8];
+            uint32_t r0 = nreplies;
+            m1_arms_now(0x00000005u, 0x80000001u);
+            CHECK(nreplies == r0 + 1u && replies[r0][4] == R_ARMS_NOW && replies[r0][reply_len[r0] - 1u] == 0xF7);
+            CHECK(m1_unpack7(replies[r0] + 5, reply_len[r0] - 6u, d, sizeof d) == 8u);
+            CHECK(d[0] == 5u && d[1] == 0u && d[2] == 0u && d[3] == 0u && d[4] == 1u && d[5] == 0u && d[6] == 0u && d[7] == 0x80u);
+            nreplies = r0;
+        }
         base = m1_notes_at();
         end = eng_notes_end(m1_cur, m1_cur_len, base);
         devb = (m1_cur[6] & 32u) ? eng_devices_end(m1_cur, m1_cur_len, end) - end : 0u;   /* the device pages follow */

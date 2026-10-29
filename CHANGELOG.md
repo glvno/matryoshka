@@ -26,6 +26,15 @@
 - An FM-1 whose start-up software has its chip-key block written again (seen after the chip's repair mode) is no longer
   refused Official Open or V15 for that alone, when the block holds the same key.
 
+### Fixes
+
+- **Arming on the FM-1 shows in the editor** (#191). With Live on, SEL on a device page or an environment row, REC held + a
+  black key, or the SEQ page arming the track it shows now lights the same devices' ARM in the editor (the Steps card's
+  arm icon included), and the status line says what the keys play; a disarm clears it, and a patch loaded from the panel
+  shows nothing armed. The editor's own keys keep going to the FM-1 while the armed set is the FM-1's, because the FM-1
+  routes them to it. Before, the FM-1 told the editor nothing of its arming. Arming in the editor still does not reach
+  the FM-1. Checked in the emulator (the `arming` scenario); not yet on a device.
+
 ## 1.6.0 — 2026-10-28
 
 ### Changes

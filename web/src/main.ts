@@ -238,6 +238,8 @@ device.onStatus = (msg) => {
 };
 // the FM-1 on its own (#65): while Live is on, its knobs and patch buttons move the editor's, and the status line follows its slot
 let fromDevice = false;
+/** the armed set is the FM-1's own (ARMS_NOW, #191): it routes the editor's notes to it, so they keep going there */
+let armFromDevice = false;
 /** the change comes from the FM-1 tab's emulator (fm1-view.ts): not sent back to it, but on to a Live FM-1 */
 let fromEmu = false;
 let deviceSlot: { slot: number; name: string } | null = null;
@@ -287,6 +289,11 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
         if (from === 'device') emu.ui?.mute(e.module, e.on);   // (the emulator's black key lights follow the FM-1's mute)
       }
     } finally { mark(false); }
+    return;
+  }
+  if (e.kind === 'arms') {   // the FM-1 armed or disarmed something on its panel (#191): the editor shows the same set
+    mark(true);                              // (not sent back: the FM-1 has it; an undo step no more than the editor's own ARM)
+    try { editor.setArmed(armedFromMask(editor.patch, e.lo, e.hi)); } finally { mark(false); }
     return;
   }
   if (e.kind === 'pattern' || e.kind === 'song') {   // PRESET on the SEQ page, the SONG page (#375): the editor follows
@@ -439,8 +446,9 @@ const sink = {
     hands.track(msg);
     if (msg.t === 'on') tutorial.noteOn();
     if (live() && !fromDevice) {   // (what the FM-1 played itself is not sent back)
-      // (the keys of an armed device stay here: the FM-1 does not take the editor's arm yet, #139 / #191)
-      if (!editor.armedSet.size) device.note(msg as { t: string; note?: number; vel?: number });
+      // (the keys of a device armed in the editor stay here: the FM-1 does not take the editor's arm yet, #139 / #191;
+      // a set the FM-1 armed itself hears them there, D-802)
+      if (!editor.armedSet.size || armFromDevice) device.note(msg as { t: string; note?: number; vel?: number });
       if (msg.t === 'bend') device.bend(msg.v);
       else if (msg.t === 'cc') device.cc(msg.n, msg.v);
     }
@@ -624,6 +632,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     else if (live()) dirty = true;
   },
   onArm(armed, plays) {
+    armFromDevice = fromDevice && armed.length > 0;
     host.send({ t: 'arm', devices: armed });
     emuArm();
     armPlays = plays;
@@ -2388,7 +2397,7 @@ if (import.meta.env.DEV) {
     state: () => ({
       connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
       playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
-      syncAsk: syncAsk.open, status: $('dev-status').textContent,
+      syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
   };

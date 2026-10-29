@@ -345,8 +345,10 @@ static int preset_load(uint32_t n)
     put(label_buf, slot_name)[0] = 0;
     patch_label = label_buf;
     screen_patch();                             /* (while PRESET's last name shows: in place, #170) */
-    if (patches_up)
+    if (patches_up) {
         m1_slot_now(n, label_buf);                  /* the editor follows the slot (#65) */
+        m1_arms_now(0u, 0u);                        /* (a patch loads wired: #191) */
+    }
     return 0;
 }
 

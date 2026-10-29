@@ -878,13 +878,14 @@ async function main() {
       await emu.waitText('= OCT =', 3000);
     },
     // #395 (the owner, 2026-10-28): SEL arms the device in focus and disarms the rest, SEL on environment rows adds and
-    // removes them, the last one out leaves the keys WIRED, and the SEQ page arms the track it shows. The link does not
-    // carry the armed set (D-516): read from the FM-1's screen, heard through the peak
+    // removes them, the last one out leaves the keys WIRED, and the SEQ page arms the track it shows. Read from the FM-1's
+    // screen, heard through the peak, and seen in the editor: the FM-1 reports its armed set (ARMS_NOW, #191)
     async arming() {
       await check('arming: the 808 Kit opens, synced', await openSynced('808 Kit'));
       await check('arming: a patch loads with nothing armed: the footer says KEYS WIRED', await emu.waitText('KEYS WIRED', 3000));
       await emu.tap(B.scl);                         // the home device, the Drum map: its keys come through DRUMS (#395)
       await check('arming: SEL on a device fed through a track arms it with the track', await emu.waitText('DRUM MAP ARMED', 1500));
+      await check('arming: the editor shows the set the FM-1 armed (ARMS_NOW, #191)', !!(await until(async () => (await T()).armed.length > 0, 2000)));
       await sleep(1300);
       await emu.turn(ENC.select, 1);                // the next device, an instrument of the kit: its voices take no keys
       await sleep(300);
@@ -909,6 +910,7 @@ async function main() {
       await sleep(300);
       await emu.tap(B.scl);
       await check('arming: SEL on the last armed row: disarmed, the keys WIRED', await emu.waitText('KEYS WIRED', 1500));
+      await check('arming: the editor shows nothing armed either (#191)', !!(await until(async () => (await T()).armed.length === 0, 2000)));
       await sleep(1300);
       await emu.tap(B.rec);                         // REC is global (#395): it runs here too, nothing armed records
       await check('arming: REC on the environment with the keys wired: REC runs, says nothing records, the page stays',
