@@ -240,6 +240,11 @@ device.onStatus = (msg) => {
 let fromDevice = false;
 /** the armed set is the FM-1's own (ARMS_NOW, #191): it routes the editor's notes to it, so they keep going there */
 let armFromDevice = false;
+/** the connected FM-1 reports its armed set (an ARMS_NOW came, #191): then the FM-1 tab's copy of the panel logic, which
+ * replays the FM-1's buttons, no longer sets the editor's armed set; it is pulled to the editor's instead */
+let armsReported = false;
+/** an ARMS_NOW being applied: the FM-1 tab gets the set from its own replay of the press, not pushed (no double toggle) */
+let armsApplying = false;
 /** the change comes from the FM-1 tab's emulator (fm1-view.ts): not sent back to it, but on to a Live FM-1 */
 let fromEmu = false;
 let deviceSlot: { slot: number; name: string } | null = null;
@@ -292,8 +297,10 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     return;
   }
   if (e.kind === 'arms') {   // the FM-1 armed or disarmed something on its panel (#191): the editor shows the same set
+    if (from === 'device') armsReported = true;
     mark(true);                              // (not sent back: the FM-1 has it; an undo step no more than the editor's own ARM)
-    try { editor.setArmed(armedFromMask(editor.patch, e.lo, e.hi)); } finally { mark(false); }
+    armsApplying = from === 'device';
+    try { editor.setArmed(armedFromMask(editor.patch, e.lo, e.hi)); } finally { mark(false); armsApplying = false; }
     return;
   }
   if (e.kind === 'pattern' || e.kind === 'song') {   // PRESET on the SEQ page, the SONG page (#375): the editor follows
@@ -539,7 +546,10 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
-  arms: (lo, hi) => editor.setArmed(armedFromMask(editor.patch, lo, hi)),
+  arms: (lo, hi) => {
+    if (armsReported && mirror.following) return emuArm();   // (the FM-1 itself says what is armed: its tab follows the editor)
+    editor.setArmed(armedFromMask(editor.patch, lo, hi));
+  },
   key: (k, down) => {                        // a pill key: the note at the emulated octave, through the sink (it sounds, and the emulator hears it)
     if (down) {
       const note = 53 + k + 12 * emu.octave;
@@ -634,7 +644,7 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onArm(armed, plays) {
     armFromDevice = fromDevice && armed.length > 0;
     host.send({ t: 'arm', devices: armed });
-    emuArm();
+    if (!armsApplying) emuArm();
     armPlays = plays;
     showArmed();
   },
@@ -1817,6 +1827,7 @@ async function connectFm1(): Promise<void> {
     devStatus(`FM-1 connected (protocol ${info.version}, up to ${info.maxModules} modules, flash ${info.flashOk ? 'ok' : 'not available'})`);
     for (const id of ['dev-send', 'dev-store']) $<HTMLInputElement>(id).disabled = false;
     $('dev-btn').textContent = 'Reconnect';
+    armsReported = false;                                   // (whether this firmware reports its armed set shows with its first ARMS_NOW)
     if (!mirror.following) void followFm1('matryoshka');   // it runs Matryoshka (it answered HELLO): its panel drives the page
     offerSync();
     libraryDeviceChanged();
