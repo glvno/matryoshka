@@ -4,9 +4,9 @@
 //!
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
-//! 3. pages: GLO (Main's global page, again: back), PLAY twice, HOME (nothing to go back to: the page stays), SELECT /
-//!    ALGO (the header shows where they went, no toast; back again: as it was), HOME held (the menu), HOME again (back
-//!    out of it)
+//! 3. pages: GLO (the menu, again: back), PLAY twice, HOME (nothing to go back to: the page stays), SELECT /
+//!    ALGO (the header shows where they went, no toast; back again: as it was), GLO (the menu's MIDI tab), ALGO (its
+//!    INFO tab), HOME (back out of it), HOME held (nothing, #395)
 //! 4. PRESET encoder: forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
@@ -14,7 +14,7 @@
 //!    PRESET and program change step through the three, wrapping
 //! 8. safety: a patch far over the CPU budget sheds parts, one with nothing to shed is muted (OVERLOAD) and the
 //!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank); OCT- +
-//!    OCT+ held at power-on and MENU > UPDATE MODE = update mode (no engine)
+//!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
 //! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
 //! 11. hardware the emulator does not model: any register besides P33 fails the test
@@ -678,22 +678,24 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     t.check("update mode: no engine (a key is silent)", p < QUIET, format!("peak {p}"));
     *emulated += m.ms();
 
-    // update mode from the menu: HOME held, ALGO to SYSTEM, SELECT to UPDATE MODE, OCT+ twice
+    // update mode from the menu (#395): GLO, ALGO to INFO (the readings), back to SYSTEM, K1 right arms UPDATE MODE, GLO
+    // held 2 s does it
     let mut m = Machine::boot(app, None);
     wait_text(&mut m, DEVICE_PAGE, 9000)?;
     // (step 1 waits the same way: since patch 0, Oracle V, got its arpeggiator and PATTERN (D-336, about 84 % of the CPU
     // estimate), a key held the moment its page first shows is not taken until the panel's loop runs again: 400 ms after
     // the page was enough in the emulator, without it HOME held for 1.2 s did nothing)
     m.run_for(2500)?;
-    m.tap(HOME, 1000, 400)?;
-    m.turn(ALGO, 2, 400)?;
-    t.screen(&m, "menu: the SYSTEM tab", "UPDATE MODE");
+    m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 3, 400)?;
+    t.screen(&m, "menu: the INFO tab", "VERSION");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
     t.screen(&m, "menu: the battery's reading (fm1-emu's ch 3: 640, 3 bars)", "640  3/3");
-    m.turn(SELECT, 5, 400)?;
-    m.tap(OCT_UP, 120, 300)?;
-    m.tap(OCT_UP, 120, 800)?;
-    t.screen(&m, "menu: UPDATE MODE enters update mode", "FROM THE MENU");
+    m.turn(ALGO, -1, 400)?;
+    t.screen(&m, "menu: the SYSTEM tab", "SYSTEM");
+    m.turn(K1, 1, 400)?;
+    m.tap(GLO, 2200, 800)?;
+    t.screen(&m, "menu: K1 arms UPDATE MODE, GLO held 2 s enters update mode", "FROM THE MENU");
     *emulated += m.ms();
     Ok(())
 }
@@ -732,7 +734,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
 
     // ---- 3. pages
     for (key, what, text) in [
-        (GLO, "GLO: Main's global page", "GLOBAL"),
+        (GLO, "GLO: the menu, on its MIDI tab", "MENU"),
         (GLO, "GLO again: back to the device page", DEVICE_PAGE),
         (PLAY, "PLAY: the device page stays", DEVICE_PAGE),
         (PLAY, "PLAY again: it stops, the page stays", DEVICE_PAGE),
@@ -761,10 +763,14 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     m.key(PLAY, false);
     m.run_for(1300)?;
     t.screen(&m, "the release after a tempo turn: the footer's tempo 121", "121");
-    m.tap(HOME, 1000, 400)?;
-    t.screen(&m, "HOME held: settings menu", "PANEL");
+    m.tap(GLO, 120, 400)?;
+    t.screen(&m, "GLO: the menu on its MIDI tab", "MIDI");
+    m.turn(ALGO, 3, 400)?;
+    t.screen(&m, "ALGO three times: the INFO tab", "VERSION");
     m.tap(HOME, 120, 400)?;
     t.screen(&m, "HOME tapped: back out of the menu", DEVICE_PAGE);
+    m.tap(HOME, 1000, 400)?;
+    t.screen(&m, "HOME held: nothing opens (#395)", DEVICE_PAGE);
     go_home(&mut m)?;
 
     // ---- 4. PRESET encoder

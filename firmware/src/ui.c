@@ -15,11 +15,12 @@
 static uint32_t cur_preset, sel;
 static int load_err;
 static const char *patch_label;
-#define PAGE_MENU 5u                            /* HOME held: the settings menu (menu.c) */
-#define PAGE_GLO 6u                             /* GLO: the FM-1's own page (#199, pages_ui.c pg_glo) */
+#define PAGE_MENU 5u                            /* GLO: the settings menu (menu.c, #395). Its MIDI, PANEL and SYSTEM tabs are
+                                                 * pages of settings drawn as a device page (pages_ui.c menu_tab_page); INFO
+                                                 * and MANUAL are texts */
 #define PAGE_ENV 9u                             /* ENV: the environment (#197, pages_ui.c env_draw) */
 #define PAGE_PRESETS 10u                        /* SEL on an assembly device: its presets (#194, pages_ui.c presets_draw) */
-static uint8_t page;                            /* 0: the device page, 5 menu, 6 GLO, 8 the SEQ page, 9 the environment, 10 the
+static uint8_t page;                            /* 0: the device page, 5 the menu (6, GLO's own page, went into it: #395), 8 the SEQ page, 9 the environment, 10 the
                                                  * presets, 11 the SONG page (seq_ui.c); (7, the legend, is gone: #114) */
 static void seq_bar(void);
 static void seq_draw(int full);
@@ -30,8 +31,12 @@ static uint8_t sb_on;                           /* sandbox mode (sandbox_ui.c): 
 static void sandbox_draw(int full);
 static void sandbox_bar(void);
 
-/* the settings' rows (menu.c; GLO shows some of them: pages_ui.c glo_page) */
+/* the settings' rows (menu.c; the menu's MIDI, PANEL and SYSTEM tabs show them as pages: pages_ui.c menu_tab_page) */
 enum { MR_LEDS, MR_ACCEL, MR_CH, MR_CLOCK, MR_MOUT, MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT, MR_UPDATE, MR_DEFAULTS, MR_COUNT };
+/* the menu's tabs (menu.c, #395): MIDI, PANEL and SYSTEM are pages of settings on K1..K4, INFO a list of readings, MANUAL a text */
+enum { MT_MIDI, MT_PANEL, MT_SYSTEM, MT_INFO, MT_MANUAL, MT_COUNT };
+static uint8_t menu_tab;
+static int menu_page(void) { return page == PAGE_MENU && menu_tab <= MT_SYSTEM; }   /* the menu on a tab drawn as a device page */
 /* the settings of the menu (menu.c); saved with the state (SAVE) */
 static struct {
     uint8_t leds;                       /* the idle buttons glow: 0 off, 1 dim low, 2 dim higher */
@@ -259,9 +264,9 @@ static void ui_battery(int32_t sample, int host)
     }
 }
 
-/* the device page, GLO's and the sandbox page (page 0 in sandbox mode): a header and a footer of their own (pages_ui.c);
- * the other pages have the 20 px top bar */
-static int dev_like(void) { return page == 0u || page == PAGE_GLO; }
+/* the device page, the menu's settings tabs and the sandbox page (page 0 in sandbox mode): a header and a footer of their
+ * own (pages_ui.c); the other pages have the 20 px top bar */
+static int dev_like(void) { return page == 0u || menu_page(); }
 static uint32_t page_bar_h(void);               /* pages_ui.c: the header's height (LK_HH) */
 static uint32_t bar_h(void) { return dev_like() ? page_bar_h() : BAR_H; }
 
@@ -347,9 +352,9 @@ static void header_draw_now(void)
         if (m1_edited)
             p = put(p, " *");                   /* edited since it was loaded (SAVE writes it into its slot) */
         *p = 0;
-        b[24] = 0;                              /* (the CPU load is in MENU > SYSTEM) */
+        b[24] = 0;                              /* (the CPU load is in MENU > INFO) */
         msg_until = 0;
-        if (page == 0 || page == PAGE_GLO || page == PAGE_ENV)   /* the device page: the devices strip; GLO's and ENV's bars */
+        if (dev_like() || page == PAGE_ENV)   /* the device page: the devices strip; the menu's and ENV's bars */
             pages_strip();
         else if (page == PAGE_PRESETS)          /* the preset list: PRESETS and the device, on gold */
             presets_bar();
@@ -417,10 +422,10 @@ static const char *const PANEL_BTN_NAME[ENG_PANEL_BUTTONS] = {"FX", "SEL", "ENV"
 static uint8_t pg_plain;                        /* pages_ui.c: the device page's bars are on screen as it draws them */
 static void view_draw(int full)                 /* whichever page is showing */
 {
-    if ((page != 0u && page != PAGE_GLO) || sb_on)
+    if (!dev_like() || sb_on)
         pg_plain = 0;
-    if (page == PAGE_MENU)
-        menu_draw(full);
+    if (page == PAGE_MENU && !menu_page())
+        menu_draw(full);                        /* (INFO, MANUAL; a settings tab is drawn as a device page) */
     else if (page == 8u)
         seq_draw(full);
     else if (page == 11u)
