@@ -46,7 +46,8 @@ export function parseValue(text: string, pd: ParamDef, names?: string[]): number
     v *= factor;
   }
   if (!Number.isFinite(v)) return null;
-  v = Math.min(pd.max, Math.max(pd.min, v));
-  if (pd.step) v = Math.min(pd.max, Math.max(pd.min, pd.min + Math.round((v - pd.min) / pd.step) * pd.step));
+  const hi = pd.top ?? pd.max; // (a stretch both engines take: Steps swing to 80 %)
+  v = Math.min(hi, Math.max(pd.min, v));
+  if (pd.step) v = Math.min(hi, Math.max(pd.min, pd.min + Math.round((v - pd.min) / pd.step) * pd.step));
   return Number(v.toPrecision(12));
 }

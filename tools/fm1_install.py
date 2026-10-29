@@ -32,7 +32,7 @@ Felucca-type one everything else), 8 the FM-1's boot code is not the one in this
 M-VAVE's loader also writes the small piece of software at the start of the FM-1's memory
 that starts it when switched on (its boot code, flash 0x0000-0x3FFF), from its package, and
 V15 and Official Open carry different ones. The running firmware refuses a package whose one
-differs ("update failed -5"), so it is never replaced by another. Matryoshka 1.3 and later also let the
+differs ("update failed -5"), so it is never replaced by another. Matryoshka 1.7 and later also let the
 tool read the boot code (#264), so such a package is refused before anything is sent, with which boot code
 the FM-1 has. Which package an install was
 writing is kept in ~/.config/matryoshka/fm1-mvave-target until the FM-1 is back, so a cut-off
@@ -768,7 +768,7 @@ def run(a, backend, out, ask):
         head = None if dev.id.loader else read_head(dev.link)
         dev.link.close()
         if head is None:
-            print("boot code: not readable (needs Matryoshka 1.3 or later running)", file=out)
+            print("boot code: not readable (needs Matryoshka 1.7 or later running)", file=out)
             if a.save_head:
                 raise InstallError("usage", "the boot code could not be read, nothing was saved")
             return 0

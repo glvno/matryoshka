@@ -192,7 +192,7 @@ def build_app():
     flags = [*CFLAGS, "-Ifirmware/hal", "-Ifirmware/src"]
     for flag in ("FELUCCA_FLASH", "FELUCCA_OTA", "FELUCCA_OTA_DRYRUN", "FELUCCA_OTA_RAMONLY", "FELUCCA_CDC",
                  "FELUCCA_UAC", "FELUCCA_UAC_TONE", "FELUCCA_UAC_48K", "FELUCCA_ICONS", "FELUCCA_SLICE", "FELUCCA_FM4",
-                 "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST"):
+                 "FELUCCA_CDC_DEFAULT", "FELUCCA_UAC_AS_FIRST", "M1_EMU_MIDI"):
         v = os.environ.get(flag)    # unset: the default in firmware/src/modular.c
         if v in ("0", "1"):
             flags.append(f"-D{flag}={v}")
@@ -281,6 +281,10 @@ def check(img, syms, dis, rt):
     bss = sym("_bss_end") - ram_org
     pool = sym("_pool_end") - sym("_pool_start")
     notes.append(f"image {len(img)} B; RAM .data+.bss {bss} B of {ram_len}; pool {pool} B of {pool_len}")
+    lowram, lr_free = sym("_lr_end") - sym("_lr_start"), sym("_lr_limit") - sym("_lr_end")
+    ustack, sstack = sym("_ustack_top") - sym("_ustack_lo"), sym("_sstack_top") - sym("_sstack_lo")
+    notes.append(f".lowram {lowram} B ({lr_free} B free after it and .ram_text); stacks: main {ustack} B, "
+                 f"supervisor {sstack} B")
     if region["RAM"][0] + ram_len != region["POOL"][0]:
         errors.append("app.ld: POOL does not start where RAM ends")
     if ram_len - bss < 4096:                      # keep >= 4 KiB of .bss spare (state the audio side touches)
@@ -391,8 +395,8 @@ def main():
         (rel / name).with_suffix(".json").write_text(side)
         (rel / "SHA256SUMS").write_text("".join(f"{hashlib.sha256(b).hexdigest()}  {n}\n"
                                                 for n, b in ((name, pkg), (app, bytes(img)))))
-        # only the texts for what the package embeds (LICENSING.md): the JieLi SDK files and the LCD font's bitmaps
-        for f in (SRC / "LICENSES" / "Apache-2.0.txt", SRC / "web" / "public" / "fonts" / "OFL-BarlowCondensed.txt"):
+        # only the texts for what the package embeds (LICENSING.md): the JieLi SDK files, LCD font bitmaps and rate-envelope implementation
+        for f in (SRC / "LICENSES" / "Apache-2.0.txt", SRC / "web" / "public" / "fonts" / "OFL-BarlowCondensed.txt", SRC / "LICENSES" / "BSD-3-Clause-ymfm.txt"):
             shutil.copy(f, rel / "LICENSES" / f.name)
         for doc in ("LICENSE", "LICENSING.md"):
             shutil.copy(SRC / doc, rel / doc)

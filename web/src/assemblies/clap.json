@@ -40,7 +40,8 @@
         "res": 0.55,
         "cvamt": 1,
         "track": 0,
-        "morph": 0
+        "morph": 0,
+        "osc": 0
       },
       "att": [
         1,
@@ -65,7 +66,8 @@
       "x": 0,
       "y": 560,
       "params": {
-        "time": 0.02
+        "time": 0.02,
+        "inf": 0
       },
       "att": [
         1,

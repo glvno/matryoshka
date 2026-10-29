@@ -188,6 +188,10 @@ static volatile struct {
     uint32_t enc_dfr[FM1_NENC];
     uint32_t frames;
 } fm1_in;
+/* keys and encoders driven by the editor link's device test mode (main.c m1_test_key / m1_test_turn, #291): a key here
+ * reads as a closed contact in the scan, an encoder's clicks join its steps */
+static volatile uint32_t fm1_virt_btn, fm1_virt_note;   /* bit i: button i (0..13); bit n: note key n (0 = F3) */
+static volatile int16_t fm1_virt_enc[FM1_NENC];
 static uint8_t fm1_led[FM1_NCOL];
 static uint8_t fm1_led_dim[FM1_NCOL];
 static uint8_t fm1_led_breath[FM1_NCOL];   /* breathing LEDs (see top): dark .. ~60 % of lit, in step */
@@ -330,8 +334,11 @@ static void fm1__keys(uint32_t p)                  /* the keys of column p, just
 {
     uint32_t r, raw = fm1_in.raw[p];
     for (r = 1; r < 5u; r++)
-        if (FM1_KEYMAP[r][p] >= 0)
-            fm1__key((uint32_t)FM1_KEYMAP[r][p], (raw >> r) & 1u);
+        if (FM1_KEYMAP[r][p] >= 0) {
+            uint32_t id = (uint32_t)FM1_KEYMAP[r][p];
+            uint32_t virt = id < 14u ? fm1_virt_btn >> id : fm1_virt_note >> (id - 14u);
+            fm1__key(id, ((raw >> r) | virt) & 1u);
+        }
 }
 
 static void fm1__frame(void);
@@ -620,12 +627,19 @@ static inline void fm1__unlock(uint32_t v)
     __asm__ volatile("csync\n\tsti" ::: "memory");
 }
 
+/* whether encoder e has steps waiting (fm1_enc_take would return them); only looks */
+static int fm1_enc_waiting(uint32_t e)
+{
+    return ((volatile int16_t *)fm1_in.enc_steps)[e] + fm1_virt_enc[e] != 0;
+}
+
 /* detent steps turned since the last call, + = clockwise */
 static int32_t fm1_enc_take(uint32_t e)
 {
     uint32_t k = fm1__lock();
-    int32_t s = fm1_in.enc_steps[e];
+    int32_t s = fm1_in.enc_steps[e] + fm1_virt_enc[e];
     fm1_in.enc_steps[e] = 0;
+    fm1_virt_enc[e] = 0;
     fm1__unlock(k);
     return s;
 }

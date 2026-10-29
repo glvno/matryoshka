@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The patch card (glvno/matryoshka#163): a 1200 x 900 PNG of the patch, drawn from the patch data (never a screenshot of
-// the page), for a post. Always the dark theme, whatever the app shows: the colours are the dark tokens of style.css,
+// the page), for a post. Always the dark theme, whatever the app shows: the colours are the dark tokens of tokens.css,
 // copied here once (patch-card.test.ts checks they still match). Header: MATRYOSHKA PATCH, the title, the notes, "by"
 // and the engines; the map: the canvas's top-level cards (collapsed assemblies and the modules not inside one) in their
 // saved arrangement, each box showing what a player knows it by (an engine's blurb, its pages of knobs as the FM-1 has
@@ -12,9 +12,9 @@ import { allModules, assembliesOf, findRef, hiddenAssemblies, hiddenModules, par
 import { cableRole, type CableRole } from './cable-role';
 import { instIsEngine } from './engines';
 import { choiceName, formatValue, moduleName } from './labels';
-import { DEFS } from './modules';
+import { DEFS, rowRange } from './modules';
 import { deviceBudget } from './patchbin';
-import { assemblyPages, modulePages, pageTitle } from './pages';
+import { assemblyPages, modulePages, pageTitle, PAGE_ROWS } from './pages';
 import { rowDef, toUnit, type ModuleDef, type ModuleInst, type Patch } from './patch';
 
 export const CARD_W = 1200, CARD_H = 900;
@@ -28,7 +28,7 @@ const MAX_SCALE = 0.8;
 /** a box's label: its font size, the room either side, and a generous width per (upper-case, condensed) character */
 export const LABEL_PX = 13, LABEL_PAD = 8, LABEL_CHAR = 8;
 
-/** the dark theme's tokens (style.css, `:root[data-theme="dark"]` and the --ref-* palette) */
+/** the dark theme's tokens (tokens.css, `:root[data-theme="dark"]` and the --ref-* palette) */
 export const DARK = {
   bg: '#171f21', // --ref-night
   panel: '#202a2c', // --ref-ink
@@ -39,7 +39,6 @@ export const DARK = {
   accent: '#e7775d', // --ref-coral: the signal cables
   secondary: '#79c7c1', // --ref-seafoam: modulation
   gate: '#e8b65a', // --ref-gold: gates, triggers, clocks
-  warn: '#ffb3a1',
   map: '#1b2426', // the map's ground, between --ref-night and --ref-ink
 } as const;
 
@@ -68,7 +67,8 @@ export interface CardLayout { map: Rect; boxes: CardBox[]; lines: CardLine[]; sc
 /** a card's size on the canvas, estimated from its rows (the editor measures the DOM; the card has none) */
 function moduleSize(def: ModuleDef | undefined): { w: number; h: number } {
   if (!def) return { w: 236, h: 120 };
-  const rows = def.params.length + (def.views?.length ?? 0) + Math.max(0, Math.max(def.inputs.length, def.outputs.length) - 4) / 2;
+  // The preview draws rows, not ports. Undisplayed ports/rows must not shrink neighboring cards.
+  const rows = Math.min(def.params.length, MODULE_PAGES * PAGE_ROWS) + (def.views?.length ?? 0);
   return { w: 236, h: Math.min(540, Math.max(90, 44 + 26 * rows)) };
 }
 function assemblySize(a: AssemblyInst): { w: number; h: number } {
@@ -113,14 +113,18 @@ const BOX_GAP = 10, MIN_W = 40, MIN_H = 24;
 export const detailFor = (n: number): Detail => (n <= 12 ? 'full' : n <= 40 ? 'compact' : 'names');
 
 /** a parameter's value as the card shows it (editor.ts param rows: the choice's name, the number and its unit) */
-function rowOf(type: string, def: ModuleDef, params: Record<string, number>, param: string, label: string): CardRow | null {
-  const pd = rowDef(def, param);
-  if (!pd || pd.screen || pd.onScreen) return null;
+function rowOf(type: string, def: ModuleDef, params: Record<string, number>, param: string, label: string, names?: string[]): CardRow | null {
+  const own = rowDef(def, param);
+  if (!own || own.screen || own.onScreen) return null;
+  const pd = rowRange(type, params, own);   // (a Selector's positions in use, #358)
   const v = params[param] ?? pd.default;
   let value: string;
   let u: number;
-  if (pd.altText && (params[pd.altText.when] ?? 0) >= 0.5) {
-    value = pd.altText.text(v);
+  if (names?.[Math.round(v) - pd.min]) {   // a Selector's position by its card row's name (#358)
+    value = names[Math.round(v) - pd.min];
+    u = toUnit(pd, v);
+  } else if (pd.altText && (params[pd.altText.when] ?? 0) >= 0.5) {
+    value = pd.altText.text(v, params);
     u = toUnit(pd, v);
   } else if (pd.choices) {
     const i = Math.max(0, Math.min(pd.choices.length - 1, Math.round(v)));
@@ -145,7 +149,7 @@ function pagesOf(p: Patch, defs: Record<string, ModuleDef>, item: { asm?: Assemb
     const rows = pg.rows.flatMap((r) => {
       const m = p.modules.find((x) => x.id === r.module);
       const def = m && defs[m.type];
-      const row = m && def && rowOf(m.type, def, m.params, r.param, r.label);
+      const row = m && def && rowOf(m.type, def, m.params, r.param, r.label, r.names);
       return row ? [row] : [];
     });
     return rows.length ? [{ title: pg.name.toUpperCase() === item.label ? '' : pageTitle(pg), rows }] : [];
@@ -474,15 +478,16 @@ export function patchFacts(p: Patch, defs: Record<string, ModuleDef>): PatchFact
     fits = b.fits;
     cpu = Math.round(b.cpu.use * 100);
   } catch {
-    /* cannot be counted: shown as "Browser only" */
+    /* cannot be counted: shown as a sandbox patch */
   }
   return { modules: p.modules.length, cables: p.cables.length, engines, fits, cpu };
 }
 
-/** the FM-1 line, as the budget panel says it: "Plays on the FM-1 · 71 %", or "Browser only" with how far over the CPU is */
+/** the FM-1 line, as the budget panel says it: "Plays on the FM-1 · 71 %", or "Sandbox" (too big for the FM-1, it plays in
+ *  the browser, sandbox.ts) with how far over the CPU is */
 export function fitLine(f: PatchFacts): string {
   if (f.fits) return f.cpu === null ? 'Plays on the FM-1' : `Plays on the FM-1 · ${f.cpu} %`;
-  return f.cpu !== null && f.cpu > 100 ? `Browser only · ${f.cpu} % of the FM-1` : 'Browser only · too much for the FM-1';
+  return f.cpu !== null && f.cpu > 100 ? `Sandbox · ${f.cpu} % of the FM-1` : 'Sandbox · bigger than the FM-1 holds';
 }
 
 const plural = (n: number, one: string): string => `${n.toLocaleString('en')} ${one}${n === 1 ? '' : 's'}`;
@@ -539,15 +544,9 @@ function pill(ctx: Ctx, x: number, y: number, text: string, warn: boolean): numb
   ctx.font = F_BODY(17);
   const w = ctx.measureText(text).width + 28;
   roundRect(ctx, x, y, w, 36, 18);
-  if (warn) {
-    ctx.strokeStyle = DARK.accent;
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-  } else {
-    ctx.fillStyle = DARK.line;
-    ctx.fill();
-  }
-  ctx.fillStyle = warn ? DARK.warn : DARK.ink;
+  ctx.fillStyle = warn ? DARK.gate : DARK.line; // a sandbox patch: gold, as in the app
+  ctx.fill();
+  ctx.fillStyle = warn ? DARK.bg : DARK.ink;
   ctx.textBaseline = 'middle';
   ctx.fillText(text, x + 14, y + 19);
   return w;

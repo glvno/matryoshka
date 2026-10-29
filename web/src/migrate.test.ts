@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { acceptKeys, backupKeys, BACKUP_FORMAT, importSummary, OLD_ORIGIN, planImport, withoutMigrate } from './migrate';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  acceptKeys, backupFile, backupKeys, BACKUP_FORMAT, collectKeys, importSummary, MIGRATE_DATA, MIGRATE_DONE, MIGRATE_FROM, MIGRATE_READY, MOVE_OFFER,
+  planImport, receiveMigration, sendMigration, withoutMigrate,
+} from './migrate';
 
 const store = (o: Record<string, string>) => (k: string): string | null => (k in o ? o[k] : null);
 const patch = (name: string, extra = 0) => ({ name, modules: [{ id: extra }] });
@@ -108,11 +111,88 @@ describe('planImport', () => {
 });
 
 describe('the hand-off', () => {
-  it('trusts only the old site by default', () => {
-    expect(OLD_ORIGIN).toBe('https://glvno.github.io');
+  it('trusts only the earlier addresses by default', () => {
+    expect(MIGRATE_FROM).toEqual(['https://glvno.github.io', 'https://matry0shka.pages.dev']);
   });
   it('strips migrate=1 and keeps the rest of the address', () => {
-    expect(withoutMigrate('https://matry0shka.pages.dev/?migrate=1&x=2#p=abc')).toBe('/?x=2#p=abc');
-    expect(withoutMigrate('https://matry0shka.pages.dev/brand/?migrate=1')).toBe('/brand/');
+    expect(withoutMigrate('https://matryoshka.lol/?migrate=1&x=2#p=abc')).toBe('/?x=2#p=abc');
+    expect(withoutMigrate('https://matryoshka.lol/brand/?migrate=1')).toBe('/brand/');
+  });
+});
+
+describe('collecting and backing up', () => {
+  const storage = (o: Record<string, string>) => ({ length: Object.keys(o).length, key: (i: number) => Object.keys(o)[i] ?? null, getItem: (k: string) => o[k] ?? null });
+  it("collects the app's keys, never the move offer's memory", () => {
+    const keys = collectKeys(storage({ 'matryoshka.patch': '{}', [MOVE_OFFER]: 'later', other: 'x', 'modular-1.theme': 'dark' }));
+    expect(keys).toEqual({ 'matryoshka.patch': '{}', 'matryoshka.theme': 'dark' });
+    expect(acceptKeys({ [MOVE_OFFER]: 'moved' })).toEqual({});
+  });
+  it('collects nothing when storage is blocked', () => {
+    expect(collectKeys({ get length(): number { throw new Error('blocked'); }, key: () => null, getItem: () => null })).toEqual({});
+  });
+  it('writes a backup file that Load .json reads back', () => {
+    const file = backupFile({ 'matryoshka.patch': '{}' }, 'https://matry0shka.pages.dev', new Date('2026-10-26T00:00:00Z'));
+    expect(file).toMatchObject({ format: BACKUP_FORMAT, version: 1, from: 'https://matry0shka.pages.dev', saved: '2026-10-26T00:00:00.000Z' });
+    expect(backupKeys(JSON.parse(JSON.stringify(file)))).toEqual({ 'matryoshka.patch': '{}' });
+  });
+});
+
+/** a window that records its posts and hands messages to its listeners */
+function fakeWindow(origin: string) {
+  const listeners: ((e: MessageEvent) => void)[] = [];
+  const self = {
+    origin,
+    posts: [] as { data: unknown; target: string }[],
+    addEventListener: (_: string, f: (e: MessageEvent) => void) => listeners.push(f),
+    removeEventListener: (_: string, f: (e: MessageEvent) => void) => listeners.splice(listeners.indexOf(f), 1),
+    /** deliver `data` from window `source` at `from` */
+    hear: (data: unknown, from: string, source: unknown) => [...listeners].forEach((f) => f({ data, origin: from, source } as MessageEvent)),
+    listeners,
+  };
+  return self;
+}
+
+describe('the hand-off between windows', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('the receiver asks every earlier address and takes the data from the one that answers', () => {
+    const opener = { posts: [] as { data: unknown; target: string }[], postMessage(data: unknown, target: string) { this.posts.push({ data, target }); } };
+    const win = Object.assign(fakeWindow('https://matryoshka.lol'), { opener, setTimeout: () => 0 });
+    vi.stubGlobal('window', win);
+    vi.stubGlobal('location', new URL('https://matryoshka.lol/?migrate=1#p=x'));
+    vi.stubGlobal('history', { state: null, replaceState: vi.fn() });
+    const got: [Record<string, string>, string][] = [];
+    expect(receiveMigration((keys, origin) => got.push([keys, origin]), MIGRATE_FROM, 1000)).toBe(true);
+    expect(opener.posts).toEqual(MIGRATE_FROM.map((target) => ({ data: { type: MIGRATE_READY }, target })));
+    win.hear({ type: MIGRATE_DATA, keys: { 'matryoshka.patch': 'evil' } }, 'https://evil.example', opener);
+    win.hear({ type: MIGRATE_DATA, keys: { 'matryoshka.patch': 'other window' } }, 'https://matry0shka.pages.dev', {});
+    expect(got).toEqual([]);
+    win.hear({ type: MIGRATE_DATA, keys: { 'matryoshka.patch': '{}' } }, 'https://matry0shka.pages.dev', opener);
+    expect(got).toEqual([[{ 'matryoshka.patch': '{}' }, 'https://matry0shka.pages.dev']]);
+    expect(opener.posts.at(-1)).toEqual({ data: { type: MIGRATE_DONE }, target: 'https://matry0shka.pages.dev' });
+    expect(win.listeners).toHaveLength(0);
+  });
+
+  it('the sender opens the new address with migrate=1 and answers only that tab', () => {
+    const tab = { posts: [] as { data: unknown; target: string }[], postMessage(data: unknown, target: string) { this.posts.push({ data, target }); } };
+    const open = vi.fn(() => tab);
+    const win = Object.assign(fakeWindow('https://matry0shka.pages.dev'), { open });
+    vi.stubGlobal('window', win);
+    const states: string[] = [];
+    expect(sendMigration('https://matryoshka.lol/', () => ({ 'matryoshka.patch': '{}' }), (s) => states.push(s))).toBe(true);
+    expect(open).toHaveBeenCalledWith('https://matryoshka.lol/?migrate=1', '_blank');
+    win.hear({ type: MIGRATE_READY }, 'https://matryoshka.lol', {});
+    win.hear({ type: MIGRATE_READY }, 'https://evil.example', tab);
+    expect(tab.posts).toEqual([]);
+    win.hear({ type: MIGRATE_READY }, 'https://matryoshka.lol', tab);
+    expect(tab.posts).toEqual([{ data: { type: MIGRATE_DATA, keys: { 'matryoshka.patch': '{}' } }, target: 'https://matryoshka.lol' }]);
+    win.hear({ type: MIGRATE_DONE }, 'https://matryoshka.lol', tab);
+    expect(states).toEqual(['sending', 'done']);
+    expect(win.listeners).toHaveLength(0);
+  });
+
+  it('the sender says so when the browser blocks the tab', () => {
+    vi.stubGlobal('window', Object.assign(fakeWindow('https://matry0shka.pages.dev'), { open: () => null }));
+    expect(sendMigration('https://matryoshka.lol/', () => ({}), () => {})).toBe(false);
   });
 });

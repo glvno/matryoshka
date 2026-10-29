@@ -12,7 +12,7 @@
 // section's second group). Groups fill in fours; a row's `group` flag (Arrange's "new group") or a column break ends one
 // early. An envelope's shape on the card (adsr / env `view`) is drawn above the page that holds its rows. Pure model code: the editor, the binary
 // format (patchbin.ts) and the tests use it.
-import { allModules, assembliesOf, parentOf, type AssemblyInst } from './assembly';
+import { allModules, assembliesOf, copyStarts, parentOf, ties, type AssemblyInst, type RowTarget } from './assembly';
 import { longName, moduleName } from './labels';
 import { EDITOR_ONLY, rowDef, type ModuleDef, type ModuleInst, type Patch } from './patch';
 
@@ -23,11 +23,19 @@ export const NAME_MAX = 12;
 /** top-level modules that are no devices */
 export const NOT_DEVICES = new Set(['part', ...EDITOR_ONLY]);
 /** module types whose card display is an envelope shape the FM-1 draws */
-export const ENVELOPES = new Set(['adsr', 'env']);
+export const ENVELOPES = new Set(['adsr', 'env', 'env8']);
 /** how far right a card may start and still be in the column of the card above it (half a card, as tidy.ts reads it) */
 const COLUMN_SLACK = 150;
 
-export interface PageRow { module: number; param: string; label: string }
+export interface PageRow {
+  module: number;
+  param: string;
+  label: string;
+  /** the further parameters the row sets (#357: its card row's, and those tied to it through nested cards) */
+  also?: RowTarget[];
+  /** its positions' names (#358: a Selector's, from its card row) */
+  names?: string[];
+}
 export interface Page {
   /** the heading, or the device's name for rows before the first heading */
   name: string;
@@ -80,18 +88,19 @@ export function pageLabel(dev: Device, i: number): string {
   return own && own !== dev.name ? own : fallback;
 }
 
-/** a row of a card as grouping sees it: its layout flags, and whether it takes a knob (a display does not) */
-export interface GroupItem { head?: string; group?: true; col?: true; knob: boolean }
+/** a row of a card as grouping sees it: its layout flags, and whether it takes a knob (a display does not); `copy`: a copy
+ * of a run shown one at a time starts here, or the run ended (assembly.ts copyStarts) */
+export interface GroupItem { head?: string; group?: true; pin?: true; col?: true; copy?: boolean; knob: boolean }
 
 /**
- * Where a card's groups start (true at the first item of each): at the first item, a heading, a `group` flag, a column
+ * Where a card's groups start (true at the first item of each): at the first item, a heading, a `group` or `pin` flag, a column
  * break, and wherever the group already has PAGE_ROWS knob rows (a display there starts the next group, so it stays with
  * the rows under it). Items set from the screen (onScreen) are not passed in.
  */
 export function groupStarts(items: GroupItem[]): boolean[] {
   let n = 0;
   return items.map((it, i) => {
-    const start = i === 0 || !!it.head || !!it.group || !!it.col || n >= PAGE_ROWS;
+    const start = i === 0 || !!it.head || !!it.group || !!it.pin || !!it.col || !!it.copy || n >= PAGE_ROWS;
     if (start) n = 0;
     if (it.knob) n++;
     return start;
@@ -155,31 +164,24 @@ function moduleSections(type: string, def: ModuleDef, id: number): Section[] {
 
 /** an assembly's sections: its promoted parameters, cut at the headings, in groups */
 function assemblySections(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): Section[] {
-  const items = a.params.flatMap((r) => {
+  const copy = copyStarts(a.params);
+  const items = a.params.flatMap((r, i) => {
     const m = p.modules.find((x) => x.id === r.module);
     const def = m && defs[m.type];
     const pd = def && rowDef(def, r.param);
     if (!m || !pd || pd.onScreen) return [];
-    return [{ head: r.head, group: r.group, col: r.col, knob: !pd.screen, r, screen: !!pd.screen }];
+    return [{ head: r.head, group: r.group, pin: r.pin, col: r.col, copy: copy[i], knob: !pd.screen, r, screen: !!pd.screen }];
   });
-  return sectionsOf(a.label, items, (it) => (it.screen ? it.r.module : { module: it.r.module, param: it.r.param, label: it.r.label }));
-}
-
-/** where an assembly card's groups (FM-1 pages) start, per promoted parameter (`a.params[i]`): `groupStarts` over the rows
- * the card draws; a row set from the screen (onScreen) or no longer there starts none and rides with the group before it */
-export function paramStarts(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): boolean[] {
-  const kept: number[] = [];
-  const items: GroupItem[] = [];
-  a.params.forEach((r, i) => {
-    const m = p.modules.find((x) => x.id === r.module);
-    const pd = m && defs[m.type] && rowDef(defs[m.type], r.param);
-    if (!pd || pd.onScreen) return;
-    kept.push(i);
-    items.push({ head: r.head, group: r.group, col: r.col, knob: !pd.screen });
+  const tie = items.some((it) => it.r.also || it.r.names) || assembliesOf(p).some((x) => x.params.some((r) => r.also || r.names)) ? ties(p) : null;
+  return sectionsOf(a.label, items, (it) => {
+    if (it.screen) return it.r.module;
+    const row: PageRow = { module: it.r.module, param: it.r.param, label: it.r.label };
+    const also = tie?.tied(row.module, row.param).slice(1) ?? [];
+    const names = it.r.names ?? tie?.names(row.module, row.param);
+    if (also.length) row.also = also;
+    if (names) row.names = names;
+    return row;
   });
-  const out = a.params.map(() => false);
-  groupStarts(items).forEach((st, k) => (out[kept[k]] = st));
-  return out;
 }
 
 /** a page's title as the FM-1's page chip shows it in focus (pages_ui.c pages_chips): the heading in capitals, cut to
@@ -188,32 +190,6 @@ export function paramStarts(p: Patch, a: AssemblyInst, defs: Record<string, Modu
 export function fm1PageTitle(device: string, pg: Page): string {
   const base = pg.name === device ? 'PAGE' : pg.name.slice(0, NAME_MAX).toUpperCase();
   return pg.parts > 1 ? `${base} ${pg.part + 1}/${pg.parts}` : base;
-}
-
-/** per promoted parameter (`a.params[i]`): the FM-1 title (fm1PageTitle) of the page whose group starts there (Arrange
- * mode's page strips), else undefined; a group with no knob row (a display alone) is no page and has none */
-export function paramPageTitles(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>): (string | undefined)[] {
-  const starts = paramStarts(p, a, defs);
-  const pages = assemblyPages(p, a, defs);
-  const out: (string | undefined)[] = a.params.map(() => undefined);
-  let pg = 0;
-  let open = -1;
-  let knobs = false;
-  const close = (): void => {
-    if (open >= 0 && knobs && pages[pg]) out[open] = fm1PageTitle(a.label, pages[pg++]);
-  };
-  a.params.forEach((r, i) => {
-    if (starts[i]) {
-      close();
-      open = i;
-      knobs = false;
-    }
-    const m = p.modules.find((x) => x.id === r.module);
-    const pd = m && defs[m.type] && rowDef(defs[m.type], r.param);
-    if (pd && !pd.onScreen && !pd.screen) knobs = true;
-  });
-  close();
-  return out;
 }
 
 /** where a top-level item sits on the canvas: a collapsed card's corner, an open frame's first member */

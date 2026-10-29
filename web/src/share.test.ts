@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { decodeShare, encodeShare, handOut, LINK_MAX, openShareLink, PAGES_URL, shareCodeOf, shareLink, storedIdOf, storedLink } from './share';
 import { fetchCode, storeCode, type Kv } from './share-store';
 import { DEFS } from './modules';
-import { PRESETS } from './presets';
+import { PRESETS, xlBase } from './presets';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
 import { demoPatch } from './demo';
@@ -19,11 +19,20 @@ describe('share links', () => {
     for (const make of Object.values(PRESETS)) {
       const p = make();
       const s = await encodeShare(p, { base: 'https://example.test/x/' });
-      expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
       expect(s.length).toBe(s.link.length);
-      expect(s.length).toBeLessThan(LINK_MAX * 0.6); // (Meridian 8 with its arpeggiator: about 4100)
       expect(/^[A-Za-z0-9_-]+$/.test(s.code)).toBe(true);
-      expect(await decodeShare(s.code, DEFS)).toEqual(p);
+      if (xlBase(p.name)) {
+        // an XL may be over LINK_MAX: then it is handed out as a stored link (docs/ledger/editor.md D-586), whole, with
+        // its layout
+        expect(s.tooLong, p.name).toBe(false);
+        const h = await handOut(s, { base: 'https://example.test/x/', store: async () => 'abcdefghijkl' });
+        expect(h.layout, p.name).toBe(true);
+        expect(await decodeShare(s.full, DEFS)).toEqual(p);
+      } else {
+        expect(s).toMatchObject({ layout: true, layoutFits: true, tooLong: false });
+        expect(s.length).toBeLessThan(LINK_MAX * 0.75); // an FM-1 version (Briefcase 3, the VCS3's control columns: about 5800)
+      }
+      if (s.layout) expect(await decodeShare(s.code, DEFS)).toEqual(p);
       expect(shareCodeOf(s.link)).toBe(s.code);
       expect(s.link).toBe(shareLink(s.code, 'https://example.test/x/'));
     }

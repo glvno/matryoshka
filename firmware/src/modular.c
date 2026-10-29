@@ -8,7 +8,7 @@
 #define FELUCCA_ID "FM-1_700"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v1.3.0-DEV"
+#define FELUCCA_VERSION "v1.6.0-DEV"
 #endif
 #define FELUCCA_FLASH 1
 #define FELUCCA_OTA 1
@@ -47,10 +47,12 @@ struct { uint32_t magic, failed, pending; } bootguard __attribute__((section(".n
 
 #include "libc.c"
 #include "div64.c"           /* 64-bit division in 32-bit steps, ahead of libcompiler-rt.a in the link */
+#define SCR_POOL __attribute__((section(".pool")))   /* screen_text.h: the texts on the screen, as text (#291) */
 #include "lcd.c"
 #include "font5x7.c"
 #include "font_bc.c"
 #define ENG_POOL __attribute__((section(".pool")))
+#define ENG_LOWRAM __attribute__((section(".lowram")))   /* app.ld: the SRAM below the RAM region (#273) */
 #include "engine.c"
 #include "presets.h"
 #include "audio.c"
@@ -71,7 +73,14 @@ static void m1_ui_changed(void);                               /* main.c: a live
 static void m1_ui_rows(void);                                  /* main.c: a live parameter changed: the rows */
 static void m1_transport(int run);                             /* main.c: the editor's TRANSPORT command (PLAY) */
 static void m1_focus(uint32_t dev, uint32_t pg);               /* main.c: the editor's FOCUS command (a device page) */
-static void m1_live(uint32_t paused);                          /* live.c: the editor's LIVE command (it drives the FM-1; paused: its patch is too big, #200) */
+static void m1_live(uint32_t paused);                          /* live.c: the editor's LIVE command (it drives the FM-1; paused: its patch is a sandbox patch) */
+static int m1_midi_out(void);                                  /* main.c: MENU > MIDI OUT (INFO says it) */
+#include "sandbox_msg.h"
+static void m1_sandbox(const sb_page_t *s);                    /* sandbox_ui.c: the editor's page in sandbox mode */
+static int m1_test_key(uint32_t id, int down);                 /* main.c: the device test mode (#291) */
+static int m1_test_turn(uint32_t enc, int32_t clicks);
+static uint32_t m1_test_screen(uint32_t k, uint8_t *out);
+static uint32_t m1_test_peak(void);
 #include "proto.c"
 #include "slotstore.c"
 #include "presetstore.c"
@@ -81,6 +90,7 @@ static void m1_live(uint32_t paused);                          /* live.c: the ed
 #define UI_POOL __attribute__((section(".pool")))
 #include "ui.c"
 #include "pages_ui.c"
+#include "sandbox_ui.c"
 static const uint8_t *pages_src(uint32_t *len) { *len = m1_cur_len; return m1_cur_len ? m1_cur : 0; }
 static uint32_t pages_gen(void) { return m1_gen; }
 #include "menu.c"

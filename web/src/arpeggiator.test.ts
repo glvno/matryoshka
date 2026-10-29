@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Engine } from './engine';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
-import { encodePatch, GROUP_REC, VERSION } from './patchbin';
+import { encodePatch, formatOf, GROUP_REC } from './patchbin';
 import { deviceView } from './poly';
 import { MAX_PARTS } from './patch';
 
@@ -227,7 +227,7 @@ describe('device form', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].src).toBe(ids.arp);
     const bin = encodePatch(p);
-    expect(bin[1]).toBe(VERSION);
+    expect(bin[1]).toBe(formatOf(p));
     expect(bin[8 + 4 + 5 * MAX_PARTS]).toBe(patch.modules.findIndex((m) => m.id === ids.arp) + 1);
     expect(GROUP_REC).toBe(8 + 5 * MAX_PARTS);
   });
@@ -240,5 +240,50 @@ describe('device form', () => {
     const q = validatePatch(raw, DEFS);
     expect(q.arp).toBeUndefined();
     expect(q.modules[0].params.tempo).toBe(140);
+  });
+});
+
+describe('continuous Arpeggiator rate input', () => {
+  it.each([2, 4])('runs at %f Hz independently of Main tempo', (hz) => {
+    const run = (tempo: number): number[] => {
+      const { p, ids } = arpPatch({ rate: 0, gate: .5 }, 1, tempo);
+      const cv = addModule(p, DEFS.const, 0, 0);
+      cv.params.value = hz;
+      expect(connect(p, DEFS, { module: cv.id, port: 'out' }, { module: ids.arp, port: 'rate' })).toBe(true);
+      const e = new Engine(SR);
+      e.load(p);
+      e.noteOn(60, 1); e.noteOn(64, 1);
+      return played(e, Math.floor(SR / 128));
+    };
+    expect(run(60)).toHaveLength(hz);
+    expect(run(240)).toEqual(run(60));
+  });
+  it('restarts held notes when its continuous rate rises from zero', () => {
+    const { p, ids } = arpPatch();
+    const cv = addModule(p, DEFS.const, 0, 0);
+    cv.params.value = 0;
+    connect(p, DEFS, { module: cv.id, port: 'out' }, { module: ids.arp, port: 'rate' });
+    const e = new Engine(SR);
+    e.load(p); e.noteOn(60, 1); e.noteOn(64, 1);
+    expect(played(e, 50)).toEqual([]);
+    e.setParam(cv.id, 'value', 4);
+    expect(played(e, Math.floor(SR / 128 / 2))).toEqual([60, 64]);
+    e.setParam(cv.id, 'value', -1);
+    played(e, 2); // the input is read from the preceding block
+    expect(played(e, 50)).toEqual([]);
+  });
+  it('pauses at zero and lets a patched clock take precedence', () => {
+    const { p, ids } = arpPatch();
+    const cv = addModule(p, DEFS.const, 0, 0);
+    cv.params.value = 0;
+    connect(p, DEFS, { module: cv.id, port: 'out' }, { module: ids.arp, port: 'rate' });
+    const e = new Engine(SR);
+    e.load(p); e.noteOn(60, 1); e.noteOn(64, 1);
+    expect(played(e, 100)).toEqual([]);
+    const clk = addModule(p, DEFS.lfo, 0, 0);
+    Object.assign(clk.params, { rate: 4, wave: 3 });
+    connect(p, DEFS, { module: clk.id, port: 'out' }, { module: ids.arp, port: 'clk' });
+    e.load(p);
+    expect(played(e, Math.floor(SR / 128)).length).toBeGreaterThanOrEqual(4);
   });
 });

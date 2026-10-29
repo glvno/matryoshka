@@ -1,18 +1,23 @@
 # Changelog
 
-What changed in Matryoshka for the people who use it: the web editor and the FM-1 firmware, which are released together.
-The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The development log from before 1.0 is in
-[docs/CHANGELOG-pre-1.0.md](docs/CHANGELOG-pre-1.0.md).
-
 ## Unreleased
 
-- **MIDI clock out:** FM-1 & MIDI > MIDI clock out makes the web editor the clock for your FM-1s. Tick the outputs (FM-1s are
-  ticked already), switch it on, and every ticked FM-1 follows Main's tempo and starts and stops with the editor's Play
-  (Space), so two FM-1s play in time. An FM-1 follows it with CLOCK IN on (GLO, K2), which is the default.
+### Changes
+
+- **The FM-1's Delay reaches 700 ms** (#273; it stopped at 520 ms). The firmware now uses the SRAM below its RAM region
+  that Felucca-based firmwares kept for a debug build and never used (`.lowram`, 29.5 KB; sloop-fm1 found it): the
+  reverb and chorus lines live there, and the room they left in the pool went to the delay line. Every boot proves that
+  memory (two patterns written and read back) and `tools/m1_link.py mem` (DIAG page 124) reports it with each stack's
+  deepest use since boot. Measured on the CI build (`tools/build.py`): the delay line 46,000 → 61,888 B (520 → 700 ms;
+  ping-pong 350 ms a side), the pool 381,032 → 378,916 of 417,792 B, `.lowram` 18,004 B used and 11,584 B free. The
+  stacks keep their sizes (main 24,320 B, supervisor 7,936 B; on the test rig they never went past 2,764 B and 2,052 B
+  over a 50-minute soak). Synced note lengths stay spread over 1..520 ms, so a stored synced Delay keeps its note
+  length; a knob click is 7 ms. The browser's Delay still reaches 1.6 s past that, browser only ("Delay over 700 ms").
+  Checked on the test rig (26 of 26 device scenarios) and in the emulator; not yet on the owner's FM-1.
 - **Restore Official Open** (Install panel, and `tools/fm1_install.py`): an FM-1 that was set up by M-VAVE's Official
   Open refuses the official V15 ("update failed -5", nothing changed). It can now take Official Open back from M-VAVE's
   own file (its Workbench page or `.fwsc`); from there, M-VAVE's Workbench goes back to V15. Official Open does not come
-  with Matryoshka: it includes M-VAVE's own sound engine, which is not open source. Needs this firmware.
+  with Matryoshka: it includes M-VAVE's own sound engine, which is not open source. Needs this firmware. Confirmed on a user's FM-1 on 2026-10-24 (issue #183): Official Open V14 came back and started.
 - A cut-off return to stock is finished only with the package it was writing (V15 or Official Open).
 - Before it sends the official V15 or Official Open, the Install panel and `tools/fm1_install.py` read the FM-1's
   start-up software (its boot code) and say which one it has: V15's, Official Open's, or neither. A package the FM-1
@@ -21,323 +26,635 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The
 - An FM-1 whose start-up software has its chip-key block written again (seen after the chip's repair mode) is no longer
   refused Official Open or V15 for that alone, when the block holds the same key.
 
-## 1.2.2 — 2026-10-24
+## 1.6.0 — 2026-10-28
 
-- **"update failed -5"** on Return to official V15 is now explained in plain words: the FM-1 was most likely set up by
-  M-VAVE's Official Open, whose start-up software differs from V15's, and nothing was changed. Putting Official Open
-  back or going back to V15 from the Install panel comes with a later firmware; the README says why Official Open will
-  not come with Matryoshka (its sound engine is M-VAVE's own, not open source).
-- A new community patch, **Sol 29N**, recalls the Elta Music Solar 42N in stereo: three saw drones that swell on their
-  own pulse generators (FX, LFO and EDIT switch them), two noise voices with sample & hold (ARP), two keyboard voices with
-  a morphing wavetable, a sub and pulse-width modulation, a 5-step line on PLAY, a distortion and a band-pass filter per
-  side swept together, a long reverb and a ping-pong delay. It plays on the FM-1.
+### Changes
 
-## 1.2.1 — 2026-10-23
+- **On the FM-1, SEL arms what the keys play** (#395). SEL on a device page arms that device and disarms the others,
+  so the keys play it; an instrument whose keys come through a track and an Arpeggiator (every factory instrument) is
+  armed with them, and REC records that track. On a device with no keys input, or an Arpeggiator alone, the bar says
+  NOTHING HERE TAKES KEYS and nothing changes. In the editor, arming an instrument works the same way. SEL on an armed device's page
+  disarms it again (the others stay armed; the last one out leaves the keys wired). SEL on
+  an environment row adds that device to the armed ones or takes it out (a layer or a split); REC there no longer arms.
+  With nothing armed the keys are wired: Main's cables decide where they go, as before, and
+  the footer says KEYS WIRED after the patch's name. A patch loads wired. The SEQ page arms the track it shows when it
+  opens and when ALGO picks another. SEL no longer opens the SEQ page (SEQ does), a row's device pages, or an
+  assembly's preset list; a device's presets are still stepped with PRESET or ALGO on its environment row. On the SEQ
+  page the track line's SEQ+REC: CLEAR hint no longer fits next to ARMED.
+- **On the FM-1, REC records the same way on every page** (#395). With the transport stopped, REC starts it and
+  records; running, REC records; REC again stops recording and the transport goes on. PLAY stops both. What records is
+  every armed Steps track, over the notes already there, and a track armed while REC is on records from then on (ALGO
+  on the SEQ page included). REC never changes the page: it no longer opens the SEQ page, and SEQ is the only way
+  there. With no track armed REC still runs and the bar says REC: NO TRACK ARMED. On a drum grid a black key now always
+  sounds its row and picks it, and while recording it also records the hit; SELECT moves the row silently. On the piano
+  roll, all 27 keys play and record while REC records, and the black keys pick rows otherwise. Gone: REC with nothing
+  armed recording hits from the black keys, REC on the SEQ page while stopped, and REC arming the roll's track itself.
+- **On the FM-1's piano roll the black keys pick the rows, not the track** (#387). Black keys 1 to 8 are the 8 pitches
+  on screen, black key 1 the bottom one, and they follow the window as SELECT scrolls it. With the transport stopped
+  the row picked sounds, with REC on or off; its black key is lit, as on the drum grid. ALGO picks the track. Before,
+  black key n switched to track n, so in a one-track patch only the first did anything. SEQ held or REC held + a black
+  key still mutes or arms track n, and a live take still plays all 27 keys.
 
-- **Return to official V15** on an FM-1 whose boot code is not V15's (the FM-1 shows "update failed -5") now says so in
-  the Install panel and in `tools/fm1_install.py`: nothing was erased, and the way back is the chip's boot mode with
-  MvaveFM1Unbricker (#183). It used to say only that the device stopped answering.
+### Patches
 
-## 1.2.0 — 2026-10-23
+- **8 Lire XL's TUNE is continuous,** as the Lyra-8's knob: each `tune` row is an Offset into its voice's pitch, ±4
+  octaves in hundredths of an octave (12 cents), from the voice's own tuning. It stepped in semitones before. The default
+  sound is unchanged (rendered sample for sample); the XL has 151 modules (143) and an estimated 146 % CPU (144 %).
+- **Meridian 8 XL's gate inputs take any voltage,** as the NOON's: the inputs `gate 1`..`gate 8` power their channel
+  directly, after its mute button, so an offset, a held gate, an LFO or an oscillator there drones the channels that
+  hold a sound (DOT, for one) with no key held. The keys still play the channels as before. The default sound is
+  unchanged (rendered sample for sample); the XL has 180 modules (172) and an estimated 148 % CPU (143 %).
 
-- On battery after the USB cable was pulled, turning SELECT on the FM-1's preset list no longer freezes the screen for
-  several hundred milliseconds: messages to a computer that is gone are dropped at once instead of waited on.
-- The **909 Kit** plays all eight drum rows: CLAP, OPEN HAT, LOW TOM, RIM and COWBELL were silent (the kit only ever had a
-  kick, a snare and a hat). Its rows are now in the 808 Kit's order, so the hat moved from the third black key / white
-  key to the fourth (its pattern moved with it); the new voices' decays are on one card, PERC. <7PH has the same kit. An
-  FM-1 gets the new kit from MENU > SYSTEM > FACTORY RESET.
-- **Connect FM-1** on an FM-1 that runs other firmware now always says so and offers **Install Matryoshka**: it names
-  M-VAVE's official firmware or Felucca, and an FM-1 that does not answer at all is named by its port. FM-1 & MIDI's
-  Connect says the same in its status line.
-- Every melodic factory patch (all but the 808 Kit, the 909 Kit and <7PH) has an **arpeggiator on ARP** and an empty
-  16-step **PATTERN** track: Main's keys go through PATTERN into the arpeggiator, then the voice. The arpeggiator starts
-  off, so a patch sounds as before (a few milliseconds later, through PATTERN) until ARP is pressed; notes entered on
-  PATTERN play on PLAY, through the arpeggiator when ARP is on. Scrounge, Meridian 8 and Perun 4 keep their pattern
-  and get the arpeggiator. Oracle V and Algo Four now estimate at about 84 % and 86 % of the FM-1's CPU. On the FM-1
-  the arpeggiator comes after the voice in the device order and a patch still opens on the voice (Init opens on its
-  new one-voice Voicing). An FM-1 in use gets the new patches only from MENU > SYSTEM > FACTORY RESET; a normal update
-  leaves the saved slots as they are.
-- ARP's light, when ARP switches an arpeggiator: lit while it arpeggiates, dark while it is off (the LED, the bar's
-  ARP ON / OFF, the editor's dock and EMU agree). Other Toggles keep their light: lit while their target is bypassed.
-- A bypassed Arpeggiator (ARP as its Toggle, or its card's power switch) now plays the keys straight through instead of
-  arpeggiating anyway; switching it lets go of what it was playing. An Arpeggiator can play a Steps track's notes (the
-  track's keys out into its keys in) and can drive Drum maps, in the editor and on the FM-1. On the FM-1 the black
-  keys still play the Drum map's rows when a track plays it through an arpeggiator (8 Lire, Elvira 2, Scrounge,
-  Meridian 8, Perun 4).
-- The FM-1's OCTAVE message no longer shows a stray character after the number.
-- FM-1: the battery in the top right corner of the screen: 0 to 3 bars, a bolt while a computer powers it over USB, and
-  LOW BATTERY in the top bar once when it runs low. MENU > SYSTEM > BATTERY shows the reading behind it. The thresholds
-  are the stock firmware's (via Felucca) and are still to be checked on a real FM-1 (#240).
-- FM-1 drums on the black keys everywhere: whenever the keys reach a Drum map (a drum patch like the 808 Kit, or an
-  armed drum track), black keys 1..8 play its rows 1..8 on every page, recording or not, and the white keys play nothing
-  (they still switch steps on the SEQ page). A melodic patch, or <7PH's PATTERN, still gets every key. MIDI
-  out sends the row's note for a black key and nothing for a white one, so a recording played back hits the same rows;
-  MIDI notes coming in still play a row by its note.
-- FM-1: a drum track's SEQ page is now an 8 × 16 grid, every row's hits at once with the row names at the left, the
-  selected row highlighted, the playhead's column, accents in coral and OCT- / OCT+ for steps past 16. A hit, a step or a
-  row pick redraws only its cell or two names, so recording hits no longer redraws the page or switches the row shown.
-  SELECT also picks the row, with REC on or off. REC on an armed drum track is this grid.
-- FM-1: a melodic track's SEQ page is now a piano roll on the same grid: 8 pitch rows (C4, C#4 ..., the C rows tinted)
-  across 16 steps, opened around the track's notes, chords as several cells in a column and long notes drawn running on.
-  SELECT moves the row and scrolls at the edges, white keys switch the selected pitch on a step (FX held: accented), SEL
-  held + any key jumps to that key's pitch and plays it (FX + OCT: the octave), LFO held + a white key ties the note
-  through that step, and a held step + K1 / K2 / K3 sets that note's pitch, velocity and chance (SELECT still moves the
-  row). Small triangles over or under a step show notes above or below the 8 rows on screen. REC on the roll records
-  its track, arming it if nothing is armed (REC off disarms it again); stopped, black keys sound and white keys place
-  notes; running, every key records its own pitch into the nearest step. This
-  replaces step entry (the cursor, FX + OCT rest, LFO + OCT tie), which is gone from the FM-1 (#241).
-- FM-1: REC with nothing armed opens the SEQ page on a drum track, so the hits are seen landing; REC off stays there.
-- FM-1: clear a whole track from the SEQ page: hold SEQ and press REC; the bar asks (CLEAR DRUMS? REC AGAIN) and REC
-  again within 3 s, SEQ still held, removes all the track's hits or notes. Any other key, button or knob, or letting go
-  of SEQ, leaves the track as it was (NOT CLEARED). The editor follows, as one undo step with Live on (#231).
-- FM-1: turning SELECT on the ENV page or a device's preset list redraws only the old and the new row instead of the
-  whole screen (a scroll redraws the list, never the bar), so the list no longer flickers as it turns (#229).
-- The first community patch: **Lire + Elvira**, 8 Lire and Elvira 2 layered on one keyboard (slimmed to fit the FM-1),
-  under Community in the Open picker and the palette.
-- FM-1: no key press is lost or late while the screen redraws. A note (or a hit on the SEQ page) pressed and let go
-  during a full redraw used to be missed, and any key waited for the redraw to end; now every press and release plays,
-  in order, within a moment of the press (#230).
-- A new factory patch, **<7PH** (patch 23, a groove box, after the 909 Kit): the 909 Kit's drums and the Silver Box playing a
-  16-step acid bass line in B flat minor on its own PATTERN track, at 124 BPM. PLAY starts both, Main's keys play the
-  bass, arming DRUMS (REC held + its black key on the FM-1) puts the keys on the kit, and the kit's mixer balances kick,
-  snare, hats and bass. An FM-1 in use gets it only from MENU > SYSTEM > FACTORY RESET, which rewrites the whole bank;
-  a normal update leaves the saved slots as they are.
-- The SEQ page's white keys: B now switches its step, and A# (a black key) no longer does; before, every B did nothing
-  and every A# both picked a track and switched the next step (since 1.0, on the FM-1 and in EMU).
-- The tutorial's text follows the new navigation and the removed Riff button (play notes on the keys, or Note for a
-  held C4; LIBRARY → Assemblies; + Module and New patch in the PATCH panel).
-- After an update to a new version, a returning visitor sees a short "what's new" card once, linking to the full
-  release notes; the About card has a What's new link too.
-- New navigation (#218): one switch at the top, PATCH | EMU | LIBRARY, replaces the sidebar's Patch / Library tabs, and
-  the sidebar shows the current view's panels. EMU is the FM-1 view renamed ("Mirroring your FM-1" while a connected
-  FM-1 drives it); LIBRARY lists its sections Patches, Assemblies and Presets. The Open picker moved next to New patch.
-  Flash left the switch: **Install firmware** (Get started, the palette, `#flash`) opens the install page as a panel
-  over the main area, and Connect FM-1 offers it when the FM-1 runs other firmware. `#emu`, `#library`,
-  `#assemblies` and `#presets` open those views, and going to a view closes the install panel. LIBRARY hides the
-  keyboard and takes the full height. The PATCH panel's header shows the whole patch name; Save, Share and ⋯ sit beside
-  New patch.
-- The Library manages what is stored and opens nothing (#218). **Patches** and **Presets** show two columns, In this
-  browser and FM-1, with → (onto the FM-1) and ← (into this browser) on each row. The FM-1 column always shows: without
-  an FM-1 it is the bank's offline copy (order, rename, remove, Add from factory ▾); with one it shows what the FM-1's
-  slots (numbered 01..64, as everywhere else) really hold, named Bank when that is the offline copy, else Unsaved bank with Save as bank…. A patch too big for
-  the FM-1 stays in this browser marked "browser only" (the Over budget card is gone). **Assemblies** lists only your
-  own, with rename. Factory assemblies and Community patches are in the Open picker, the palette and the assembly
-  browser. Deleting a patch, preset or assembly kept in this browser, or replacing an assembly, acts at once with Undo;
-  only replacing something on the FM-1 asks first. The Import link field and "Add the patch from the editor" are gone
-  (open the link, or Save, then →). → onto a name the offline copy already holds (your "Vernon 100" over the factory
-  one) replaces that entry, with Undo, and every → says where the patch went (or that the bank is full). The switch
-  keeps the address in step (PATCH none, `#emu`, `#library` / `#assemblies` / `#presets`), and the tutorial's welcome
-  card shows only in PATCH.
-- Choosing and arranging what an assembly card shows works on several rows at once (#186): select rows with a band,
-  Shift-click or Cmd / Ctrl-click (Cmd / Ctrl+A: all, Esc: none). Choosing: Space or Enter shows them (or hides them
-  when all are shown), each member card's title has a check box for all its parameters, and Select all / Select none
-  sit in the frame's bar. Arranging: drag the selection as one block, drag a heading's grip to move its section, and
-  every page (one FM-1 page, also one that starts because the page before is full) has a strip named as the FM-1 names
-  it ("FILTER 2/3", "PAGE 1/2") whose grip moves that page alone. Delete takes the selection off the card. On a touch
-  screen a long press starts a selection.
-- Section headings on assembly cards are 30 % larger (13 px), so cards with headings are a little taller.
-- On the FM-1, turning SELECT or ALGO shows a quick card instead of redrawing the whole page on every click: the
-  device's name on red (SELECT), the page's name on blue (ALGO). The page comes back about 0.4 s after you stop, or at
-  once when you turn K1..K4 (#221).
-- The tutorial has no Riff button any more: Note (a held C4) is its playback, and the intro's preview holds it too.
-- The FM-1's SEQ page hints name FX, the key that really sets accents and rests (they said ENV).
-- Factory patches: Simple FM's modulator now gets pitch and gate from the keys, and the 808 Kit's kick, snare, clap and
-  tom get every gate their drum takes (both were wired to the first target only). An FM-1 picks them up on FACTORY
-  RESET; a slot already in the bank keeps its sound.
-- The Flash tab reads an FM-1 that reports `FM-1_8XX` as M-VAVE firmware (as the FM-1 panel does), not as Matryoshka (#217).
-- A patch too big for the FM-1 no longer lets PRESET step through the bank under Live (#200, the EMLYRA bug): Live
-  pauses, the editor keeps telling the FM-1 it is there, and the FM-1 says EDITOR PATCH TOO BIG (and again when PRESET
-  is turned) until the patch fits.
-- On the environment, PRESET or ALGO steps the row's presets, loading them as you turn (#198); REC arms the row.
-- Presets between the editor and the FM-1 (#195): Library > Presets on the FM-1 reads the FM-1's own presets, gets one
-  into this browser or deletes it there, and sends all of yours to it. Under Live, a preset stored on the FM-1 (ENV held
-  + SAVE) comes into your presets by itself. Nothing else syncs. Deleting asks first; a device set to the deleted preset
-  keeps its sound and no longer names it (the FM-1 shows PRESET DELETED: SOUND KEPT).
-- The factory engines' Steps modules are named PATTERN, not after the engine (ENV showed PERUN above PERUN 4).
-- Arming on the FM-1 is a set too (#191): REC on an environment row arms or disarms that device, REC held + a black key
-  adds or removes a track, several at once; only armed devices hear the keys, ARMED shows on their rows. The FM-1 tab
-  and the editor arm the same devices. On the FM-1 a device can be armed when something in it already takes Main's keys
-  by cable (or it is a Steps track): an engine with no cable from Main is not on the FM-1's keys at all.
-- Presets on the FM-1 (#194): SEL on an assembly's page lists its presets (the factory engines' come built in);
-  SELECT, ALGO or PRESET load them as you turn. ENV held + SAVE stores the device's values as a preset: over your
-  preset it was set to, else as a new one named after the preset it was based on with the next number (BRIGHT 2;
-  from a factory patch as it ships, INIT 2). The editor suggests the same name.
-  Preset names are one name in any case: the FM-1's BRIGHT 2 is the editor's Bright 2 (one replaces the other, never a
-  second copy), and a new one from the FM-1 comes into the editor as Bright 2. The FM-1 keeps about 60 of your presets in flash sectors nothing else
-  uses: your 64 patch slots stay as they are, nothing to reset. A patch remembers each device's preset name (patch
-  format 34: patches from this editor need this firmware). On the first start after the update, every slot still
-  holding a factory patch exactly as an earlier version wrote it gets today's version of that patch (FACTORY PATCHES
-  UPDATED); slots you edited and saved stay as they are, and have no presets until you send them from the editor and
-  SAVE: SEL says so (OLD PATCH: SEND + SAVE IT). The fixed buttons (GLO, SEL, ENV) no longer flash "ON" in the bar.
-- The environment on the FM-1 (#197): ENV opens a list of every device in the patch, Main first, each Steps track then
-  what it plays (indented, with a stripe in the track's colour), the Output last, with each device's preset name and
-  what it is doing. SELECT picks the row, K1..K4 turn its first page, SEL opens its pages; ENV or HOME goes back.
-  ENV and SEL are fixed buttons now (their jacks still go high while held; a patch's role for them is dropped), and FX
-  is the SEQ page's accent / rest key in place of ENV.
-- GLO is the FM-1's own quick page (#199): K1..K4 set the MIDI channel, MIDI clock in, MIDI out and the LEDs (saved with
-  SAVE), never the patch's. The patch's tempo and morph are on Main's device page. The SCL button is shown as SEL.
-- Main, the Steps tracks and the Output are devices too (#196): SELECT steps through all of them in the environment's
-  order: Main first, each Steps track followed by what it plays, then the rest, the Output last. A patch still opens on
-  its first instrument. A track's page is LEN RATE SWING GATE, named after the track; SEL or SEQ there opens its steps.
-  The editor's DEVICE picker follows the same order.
-- Presets (#192): store an assembly's card values as a named preset (its menu: Store as a preset…), and every copy of the
-  same assembly, in any patch and under any name, can load it. An assembly with presets shows a fixed-width ‹ name › picker on its header:
-  the arrows step through them, the name opens the list (store over, store as new, rename, delete); a star means a value
-  changed since. Loading is one undo step; the patch remembers the preset's name. Presets are matched by structure
-  (the modules, cables, nesting and which rows are on the card), so changing those makes a new kind with no presets
-  yet. Palette: Export presets as .json / Import presets from .json.
-- Every factory engine comes with presets (#193): Init (as it ships) and variations such as Bright, Dark, Pad, Pluck,
-  Tight, Long and Wet, where the engine has the rows for them. They are read-only: storing over one makes a new one.
-- Arm anything that takes keys, several at once (#190): ARM (a record-style dot, red while armed) is on every engine, Voicing, Drum map and
-  Steps track card, each its own toggle. While anything is armed Main's keys play only the armed devices, cabled or not (a layer: arm two
-  engines); with nothing armed the cables decide. Steps tracks keep playing what they drive. A dashed keys ribbon shows where
-  Main's keys go, and armed cards are edged in red; your own Main keys cables into unarmed devices are dimmed meanwhile. In the editor only for now: the
-  FM-1 still arms one Steps track from its panel.
-- An engine is now what its insides make it (keys → voicing → voices): an assembly whose keys reach a Voicing module or
-  a Drum map, through an Arpeggiator or a Steps track if need be, and that makes audio. Assemblies with a keys input that
-  nothing voices are no longer engines. The Voice assigner is now called **Voicing** (patches load as before).
-  An engine's card is tagged ENG instead of ASM.
-- A new engine and factory patch, **Scrounge**, after the neutral labs Scrooge: five voices played by their control
-  voltage, a curve per hit (its height from the velocity, TILT its rise, GATE its fall) that sets each voice's level, pitch
-  and tone at once (a boomy kick, a starved square for hats and drones, a noise snare, a growl / chirp, a squelchy bass),
-  two unlabelled knobs, a volume and an A-B switch per voice, the MOD X and MOD Y tracks with their slew, a saturating
-  mix, CHOP and MELT. The patch plays a pattern on PLAY; the white keys from F3 play the voices and the modulation tracks.
-- A new engine and factory patch, **Meridian 8**, after the Landscape NOON: eight channels powered by their gates (DOT,
-  DUAL, SYS, PLAST, CYMPATH, CYRINX, LARYNX, BACID), each with two tone sliders and a volume; the power also bends the
-  pitch or the filter, so a short gate starves the sound and a held key drones. LINK lets a channel half-power its
-  neighbour, ODD / EVEN CV hold the odd or even channels up; the odd channels play on the left, the even ones on the
-  right, squashed a little as the passive mix is. The patch plays a pattern on PLAY.
-- A new engine and factory patch, **Perun 4**, after the Erica Synths PERKONS HD-01: four drum voices with the same
-  controls (tune, decay, param 1 and 2, a filter from low pass to high pass, drive, an FX send and a level): a folded
-  kick, a wavetable drum, a snare of body and noise, a hat of noise and a pulse stack; a delay on the sends with an LFO on
-  its time, and a master compressor. Accented steps play louder. The patch plays a pattern on PLAY.
-- A new or factory-reset FM-1 has Scrounge, Meridian 8 and Perun 4 as patches 18, 19 and 20 (the 808 and 909 Kits move
-  to 21 and 22); an FM-1 already in use keeps its bank: send them from the editor.
+### Fixes
 
-## 1.1.0 — 2026-10-22
+- **Choosing what an assembly's card shows: a switch row's check box no longer covers its name.** On rows with
+  named positions (a Selector, such as Io 4's ASSIGN or LEGATO) the name now moves right of the box and gets more of the
+  row, as on a slider's row (#342).
+- **Space after clicking Octave down / Octave up starts the transport again.** The button no longer keeps the focus
+  after a click, so Space no longer pressed it a second time. Reached from the keyboard, it keeps the focus (#208).
+- **Ties on the FM-1's drum-track grids, and ties that reach (#368).** On the SEQ page, LFO held + a white key now
+  ties a note on a track that plays a Drum map, as it already did on the piano roll. A Drum map row stays up while its
+  note sounds, so a tie holds a voice that sustains, such as a Lire plate or an Elvira voice. On both grids the tie
+  now reaches: the row's last note before that step is extended to end on it, so one press ties step 1 through step
+  16 (before, the key only tied the note sounding on the step before). LFO + a step inside a note ends it there, and
+  LFO + its last step makes it one step again (before, a tied step cut the note before it). With no note before the
+  step the bar says NOTHING TO TIE; a tie does not run across the end of the loop. The grid draws a tied note's steps
+  dim and joined, and a white key on a step a tie runs through cuts the tie there and starts a hit. Notes made longer
+  in the editor's piano roll now show their length on the FM-1 too.
+- **Held black keys on the FM-1's drum grids (#368).** On a drum track's SEQ page a black key now sounds its row for as
+  long as it is held, not as a one-step hit, with REC on or off and the transport running or stopped. With REC on and
+  the transport running it records a note lasting the whole steps it was held (at least one), on the nearest step, the
+  same way a live take records melodic notes. The white keys still place steps while REC records.
+- **Wording: cursor entry and step write.** The editor's recording with the transport stopped (the keys held together
+  fill the cursor's step) is now called cursor entry, in its tooltips and help. Placing steps with the white keys, on
+  the FM-1 or on a Steps card, is step write.
 
-- Modules are named after the hardware they stand for: Scale is now Attenuverter, Constant Offset, Shaper Waveshaper,
-  Digitizer Bitcrusher, Modal Resonator, Vowel Formant filter, Freq shift Freq shifter, Clock div Clock divider,
-  Crossfade Crossfader, Comb Comb filter, Filter Multimode, Glide Slew limiter and Voice allocator Voice assigner.
-  Only the names changed: patches, links and banks load as before. The FM-1's screen shows the new names from the
-  next firmware release.
-- Direct links: https://matry0shka.pages.dev/#fm1 opens the FM-1 view, #flash the firmware install (as before); both also
-  work when the address changes on an open page.
-- Share links keep big patches whole: a patch over 8,000 characters as a link (the Demo) is stored on the site and
-  shared as a short `#s=` link with its layout and assemblies. A link without the layout no longer drops the assemblies
-  (their poly racks and device pages), and its cards open spread over the canvas instead of stacked on one spot.
-- Tidy up spreads a pile of stacked cards over the canvas instead of making one tall column.
-- Audio on is highlighted like the tutorial's targets while the audio is off (not started, or after Panic).
-- A new engine and factory patch, **8 Lire**, after the SOMA Lyra-8: eight drone voices, each played by a white key
-  (repeating from E2 to A6), each with its own tuning and attack / release, waveshaping and cross-modulation per pair and quad, HOLD to let them drone,
-  a Hyper LFO and a ping-pong delay.
-- A new engine and factory patch, **Elvira 2**, after the neutral labs Elmyra 2: four wavetable voices on the white keys
-  (from E2 to A6), each with its tune, wave, wavetable page, a MOD that lowers its sample rate, attack / release and
-  DRONE; then a saturated mix, a ladder low pass, a delay and OUCH (bite and choke), with two LFOs.
-- The firmware install page is now the third view of the switch over the canvas: Patch | FM-1 | Flash (#flash still
-  opens it).
-- Fixed: with the editor's Live on, a knob click on the FM-1 could make a value jump (the FM-1 and the editor had come to
-  hold different values). While Live is on, PRESET and program change on the FM-1 no longer load a slot of their own, and
-  each knob turn reaches the editor as the exact parameter it moved.
-- A new or factory-reset FM-1 has 8 Lire and Elvira 2 as patches 16 and 17 (the 808 and 909 Kits move to 18 and 19); an
-  FM-1 already in use keeps its bank: send them from the editor.
+## 1.5.1 — 2026-10-27
 
-## 1.0.0 — 2026-10-21
+### Fixes
 
-The first release of Matryoshka. It has two parts:
+- **The editor starts about three times faster.** It no longer works out, as the page loads, every factory patch, the
+  FM-1 budget of every patch in the Open picker, and the presets of every XL. A factory patch is built when it is first
+  opened. The picker's FM-1 · NN % and SANDBOX chips are worked out after the page is up, while it is idle (all of them
+  at once if the picker is opened first); they read as before. The factory presets of an engine are made when an engine
+  of that structure is first shown. Structure fingerprints and the patch check no longer compare every cable with every
+  other one. The Library's Patches section is drawn when it is shown, and remembers which patches fit the FM-1. Measured
+  in headless Chrome on the built site, empty browser storage: on an M-series Mac, the page was ready
+  (DOMContentLoaded) after 0.33 s (1.22 s before), with 0.56 s of script (1.13 s); with the CPU slowed 4× and a
+  9 Mbit/s, 70 ms network, after 1.69 s (4.21 s), with 1.03 s of script (2.98 s). With a browser that holds 50 saved
+  patches, a 64-slot bank and 20 library assemblies, mostly in the 1.3 and 1.4 formats, and an XL open: 0.47 s
+  (1.42 s) on the Mac and 1.98 s (4.90 s) slowed. Script time is counted until 4 s after load, so it includes the
+  chips worked out while idle (all but a few of them in the slowed run with stored patches).
+- **The browser tab's icon is 12 KB** instead of the 841 KB full-size logo.
 
-- a **patch editor** that runs in the browser (Chrome or Edge for the FM-1 connection), at
-  https://matry0shka.pages.dev/;
-- a **firmware for the M-VAVE FM-1** that turns it into a player for the patches you make in the editor.
+## 1.5.0 — 2026-10-27
 
-A patch is a small modular synthesizer: modules joined by cables, played from the keys. You build it in the editor, hear it
-there at once, and send it to the FM-1, which plays the same patch on its own.
+Figures compare this release with 1.4.2. Unless a line says otherwise, an FM-1 figure is the editor's estimate:
+modules and patch bytes from its budget, CPU from its CPU model, both run on each version's factory patches.
+
+### Fixes
+
+- **The FM-1 no longer stalls when it is plugged into a computer where no app reads its MIDI.** Each message for the
+  editor (a step entered, a knob turned) waited up to 0.2 s for USB room there, as in 1.4.2. Entering steps quickly
+  then froze the screen, the LEDs and the keys for seconds, and the sound cut out. On the test rig, with a build from
+  before the fix (Elvira 2, sequencer running, steps entered by hand), the main loop's longest pass took 7.46 s. Now a
+  message waits at most 0.05 s. Once one has waited that long with nothing read, the next ones are dropped at once,
+  until the computer reads again; the editor syncs when it connects. In the emulator, after 30 steps entered with
+  nothing reading, the SEQ page closes in 140 emulated ms (2,890 before). The final version is tested on the host, in
+  the emulator, and by hand on the test rig.
+- **USB MIDI keeps consecutive editor messages in order** instead of dropping one that arrives while the one before is
+  still pending. Entering sandbox mode sends LIVE paused before its first page, so the FM-1 mutes and receives that
+  page together.
+- **Turning VOICES past the available memory keeps the last playable setting.** Cassia 1's fifth voice could exhaust
+  the engine's memory, leaving the row at −1 and the instrument silent. A failed edit now restores the patch, shows NO
+  ROOM and does not send the rejected value to the editor. Reloads pause audio while the engine is rebuilt. Checked
+  with the host panel test; not yet checked on a device.
+- **The patch-bytes budget counts the panel buttons' record.** A patch whose ARP, FX or LFO button is not a plain gate
+  sends 9 more bytes than the editor counted. So a patch within 9 bytes of the 3,840 limit passed the budget and was
+  then refused by the FM-1. The budget now equals what is sent (in 1.4.2 Oracle V showed 1,266 bytes and sent 1,275).
+- **Inserted assemblies keep their macro ranges** (#367). Saving and inserting an assembly no longer turns a bounded
+  macro control into ordinary added modulation. Each inserted copy keeps its own ranges. A round-trip test checks both
+  the rendered sound and that editing one copy leaves the others unchanged.
+- **Morph leaves modules without a B side untouched on the FM-1,** as the browser does (#355). The patch now records
+  which modules morph. Patches stored on the FM-1 before keep how they play when they are loaded and upgraded.
+
+### FM-1 instruments after their originals' panels
+
+Each of these was tested on the host (both engines), not yet on a device, unless the entry says more.
+
+- **Silver Box is the Roland TB-303.** An accented note (velocity 115 or more, or a Steps accent) runs the filter
+  envelope at its shortest decay, 200 ms. That envelope times ACCENT lifts the level and, through the accent sweep
+  circuit, the cutoff. At high RESONANCE the sweep is smoother and builds up over consecutive accents, as the
+  original's second resonance gang does. ENV MOD no longer scales the accent. The soft clip after the filter is gone
+  (the 303 has none), and so are the slide, drive and amp decay rows: the slide time and the volume envelope's decay
+  are fixed, as on the original. WAVEFORM is a named SAW / SQUARE switch. TUNING spans ±5 semitones and no more, as
+  the TB-303's TUNING knob (±500 cents in its owner's manual), with no detune in the middle of the row
+  ([D-702](docs/ledger/fidelity.md#D-702)); it was the oscillator's coarse tune, ±4 octaves in semitone steps. The
+  cutoff row is CUT OFF FREQ, as on the panel. The patch's Steps tracks have the 303's pattern memory, pattern
+  chaining with transpose and song mode (see Steps below). It comes with four demo patterns in the 303's style: acid
+  lines with accents and slides, the fourth in the 303's triplet mode (12 steps of 1/16T). A song chains them with
+  shifts, and the editor names the patterns as the 303 does (I-A1 .. IV-B8). Pattern 1 stays empty, so the keys still
+  play it as a synth and PLAY alone plays nothing: choose the song on the FM-1 (SEL on the SEQ page, then K4 right) or
+  with SONG on its card. Still missing: MIX IN, the external audio input. FM-1: 14 → 20 modules, 886 → 1,234 patch
+  bytes, CPU 17 → 20 %. The copy inside `<7PH` keeps a plain waveform row and the one-semitone tuning to fit: `<7PH`
+  takes 63 modules (60), 3,839 bytes of 3,840 (3,776) and 65 % of the CPU (67 %). The patterns and the song were
+  tested in the emulator.
+- **Monolith D has the Minimoog Model D's panel.** Its card holds the original's controls under their names: TUNE and
+  a half-octave PITCH wheel, GLIDE with its on / off switch, OSCILLATOR 3 CONTROL (oscillator 3 off the keys, for a
+  slow modulation source), RANGE as the six footages LO to 2', the WHITE / PINK switch, KEYBOARD CONTROL off, 1, 2 or
+  both, the DECAY switch (each contour's release takes its decay time, or the note stops at once) and the A-440 tone.
+  WAVEFORM has all six positions on each oscillator: triangle, the triangle / saw hybrid (oscillator 3: reverse saw),
+  saw, square, wide and narrow rectangle. The modulation switches now switch. The modulation mix comes from oscillator
+  3 and the noise before the mixer's volumes, so a silent noise or a quiet oscillator 3 no longer weakens it. FILTER
+  MODULATION runs at audio rate and no longer depends on the contour amount. Gone: the drive, release and scope rows,
+  which the original lacks. The switches show their positions by name. Still missing: the external input. FM-1: 18 →
+  37 modules, 1,372 → 3,094 patch bytes, CPU 23 → 37 %.
+- **Sallen 20 is the Korg MS-20.** The highest held key plays (the MS-20 mini's manual). VCO 1 and 2 have SCALE as
+  footages and their own WAVEFORM switches (VCO 1's noise, VCO 2's narrow pulse and ring modulator in place of the
+  ring row). MASTER TUNE, EG 1's DELAY and EG 2's HOLD are new. Each filter has its own MG/T.EXT and EG2/EXT amounts
+  (the high pass had no MG amount, and the low pass's MG depended on its EG amount). The MG's frequency modulation
+  reaches the oscillators' pitch, not just their fine tune. The MG's WAVEFORM knob sweeps continuously from falling
+  saw through triangle to rising saw and changes the pulse width, with its triangle and rectangle out at once. The
+  high pass falls 6 dB per octave below its cutoff, as the MS-20's does (it was 12 dB), so more low end passes. Both
+  filters self-oscillate, so the PEAK knobs scream at the top, as on the MS-20. The soft drive after the low pass is
+  gone. Its ESP (External Signal Processor) section is there: the ESP's rows, its amplifier, band-pass, F-V CV,
+  envelope and trigger outputs, and VCO 1+2 CV IN, TRIGGER IN and INITIAL GAIN to patch them into, as the MS-20's
+  manual does. The FM-1 has no audio input, so a SIGNAL IN row picks what the ESP hears (VCO 1, the noise or the MG).
+  An ESP ROUTE row patches one of its outputs: F-V into VCO 2's pitch, ENV into the initial gain, or TRIG into both
+  EGs. Both start OFF, and then the patch sounds as it does without the ESP. The patch panel's sections are the
+  assembly's jacks, to patch in the browser: the sample and hold (white noise, clocked by the MG's rectangle), white
+  and pink noise, the MVCA (EG 1 on its control), both envelopes' normal and reverse outputs, the control wheel (the
+  mod wheel), the momentary switch (the FX button, labelled SWITCH), KBD CV and trigger, the MG's triangle and
+  rectangle, INITIAL GAIN (a row) and `esp signal in` (it adds to SIGNAL IN's choice). Unpatched they leave the sound
+  as it was. The scale and wave switches show their positions by name. Still missing: the ESP's external input and
+  repatching on the FM-1 itself. FM-1: 19 → 48 modules, 1,425 → 3,098 patch bytes, CPU 29 → 45 % (the ESP always runs
+  on the FM-1).
+- **Io 4 has the Roland Jupiter-4's panel.** Its card follows the owner's manual, one row per control: the VCO's
+  range, sub oscillator, LFO mod, pulse width (four steps, manual or LFO) and waveform with OFF; noise; the high pass,
+  the low pass with its 10 / 40 / 70 / 100 % key follow, LFO mod, envelope mod and polarity; a VCF envelope and a VCA
+  envelope (the manual lists two ADSRs; Io 4 had one); the VCA level; the LFO's four waveforms. The modifier section
+  is there too: the trigger (its rate clocks a noise sample & hold into the cutoff, and the arpeggiator when ARP is
+  on), the LFO delay and LFO bend, the lever's three LFO / OFF / BEND switches with bend sensitivity and LFO depth
+  (the FM-1's pitch bend and mod wheel), portamento (its switch row is called SWITCH), transpose, tuning, POLY I /
+  POLY II / UNISON I / UNISON II (SHARE on its unison row shares the four voices across held notes), hold and the
+  ensemble switch. LFO RATE runs on the LFO's fast range, so it reaches the Jupiter-4's 80 Hz (it stopped at 40 Hz)
+  ([D-704](docs/ledger/fidelity.md#D-704)). The switches show the panel's legends: RANGE 16' / 8' / 4', both WAVE
+  FORMs, PW and PW MODE, KYBD FOLLOW, POLARITY, NORM / WIDE, the lever's switches and TRANSPOSE. The five OFF / ON
+  switches stay numbered (1 OFF, 2 ON), and NOISE shares the VCO's second page: the FM-1's patch memory holds no more
+  ([D-703](docs/ledger/fidelity.md#D-703)). The `voices` row and the ensemble's rate and depth rows are gone. Still
+  missing: KEY ASSIGN as one four-position switch (it is two rows). FM-1: 15 → 56 modules, 1,049 → 3,838 of 3,840
+  patch bytes, CPU 44 → 93 %, four voices. It gets the arpeggiator but no PATTERN track: with one added, the test rig
+  shed a voice although the estimate said it fit.
+- **Vernon 100 has the EML ElectroComp 100's panel.** Its card follows the 100's panel, read from photos (no manual
+  for the 100 was found; the EML 101's manuals explain the controls the two share). Four distinct oscillators:
+  oscillator 2 plays the lowest key held and oscillator 3 the highest, oscillator 4 follows oscillator 3, its own
+  tuning or the mixer, and oscillator 1 is a slow or audio control oscillator with five shapes. Oscillators 2 to 4
+  play the new EML COLOR wavetable bank: triangle through sloped square, square and saw to double saw an octave
+  higher. The oscillator mixer and the filter control have their two centre-zero knobs each; the filter input mixer,
+  white or pink noise, a 12 dB filter with low pass, band pass, high pass and band reject, cut octave and KB1 / KB2
+  tracking; two envelopes with the sustain switch; the amplitude shaper's envelope switch; the output mixer with
+  oscillator 3 around the filter; keys per octave and portamento. The sample & hold, the pulse width rows and the
+  LFO's width modulation are gone: the 100's panel has none of them. Still missing: names for the switch positions (2
+  bytes left) and the external input. FM-1: 16 → 60 modules, 1,072 → 3,838 patch bytes, CPU 24 → 58 %. It gets the
+  arpeggiator but no PATTERN track.
+- **Wanderer is duophonic, as the ARP Odyssey is** (#303). The lowest key held plays VCO 1 and the highest plays VCO 2
+  (one key plays both), into one filter, one VCA, one ADSR and one AR; it was a two-voice polysynth with both VCOs, a
+  filter and both envelopes per voice. New, after the Odyssey's panel: portamento, VCO 1's AUDIO / LF switch, both
+  VCOs' FM (two depths each, each with its source switch), PWM (LFO / ADSR), sync, the S/H mixer (two levels and the
+  noise / VCO 2 switch), the S/H trigger (LFO / keyboard) and OUTPUT LAG, the LFO's sine and square, the envelopes'
+  LFO repeat (KYBD REPEAT / AUTO REPEAT), the VCF's three modulation sliders with their switches, the VCA's AR / ADSR
+  switch, level and GAIN, the noise generator's white / pink, and the ring modulator as the Odyssey's (the two VCOs'
+  square waves XORed). Main's mod wheel is the PPC's vibrato pad. The envelopes retrigger on every key press,
+  including a note between two held notes, and not when an outer note is released (in Wanderer XL too). The voices row
+  is gone (the Odyssey has two). On the FM-1 each VCO is one oscillator, so the S/H mixer and the ring take the VCO's
+  wave as the mixer has it, and the ring plays at half a VCO's level. Every switch shows its positions by name (AUDIO
+  / LF, SINE / SQUARE ...). The names leave no room for the PATTERN track, so Wanderer has the arpeggiator alone.
+  FM-1: 17 → 49 modules, 1,245 → 3,824 patch bytes, CPU 30 → 33 %.
+- **Canvas is the Buchla Music Easel's panel** (#303): the sequential voltage source (five voltages, 3 to 5 stages,
+  the pulse sequence), the envelope generator (sustained, transient or off; attack, sustain, decay), the pulser
+  (triggered by the keys, itself or the sequencer), the random voltage, the modulation oscillator (three ranges,
+  triangle, saw or square, FM or AM by its index), the complex oscillator (the timbre switch and pot, the folder,
+  polarity), both lopass gates (lopass, combination or VCA; gate 2 from the mod oscillator or gate 1, out of phase),
+  chan A and B, the reverb, the portamento, each with its trigger select or keyboard switch, named as the Easel's
+  panel names them. The patch field is a fixed patch on the FM-1 (sequencer into pitch, envelope into the index and
+  both levels, random into the timbre, each through its processing control). It sounds different. FM-1: 16 → 53
+  modules, 1,072 → 3,779 patch bytes, CPU 25 → 71 %.
+- **Briefcase 3 gets the EMS VCS3's pin matrix for its controls** (#303): columns I to P (the three oscillators'
+  frequency, the envelope's decay, the reverb mix, the filter frequency, the two output levels), every source a row,
+  each pin named as the VCS3's manual names it (I8, N6), on the assembly's matrix card in the editor. The keys reach
+  the oscillators as on the VCS3, through input amplifier 1 (pins I8 and J8). The panel is filled in: oscillator 2 and
+  3's triangles and oscillator 3's audio range, noise colour, the filter and reverb levels, the envelope's signal and
+  trapezoid levels (the trapezoid rests low and rises while on), two output amplifiers with their filters, the
+  joystick. It sounds different. FM-1: 18 → 64 of 64 modules, 1,336 → 3,837 patch bytes, CPU 40 → 88 %; its PATTERN
+  track no longer fits (the arpeggiator stays).
+- **808 Kit has the Roland TR-808's controls, and its closed hihat cuts the open one.** One card, `808 kit`, holds the
+  drums with the TR-808's knobs only, one page per instrument named as on its panel: bass drum (level, tone, decay),
+  snare drum (level, tone, snappy), low tom (level, tuning), rim shot, hand clap, cow bell (level), open hihat (level,
+  decay), closed hihat (level). New: bass drum TONE (a low pass on the kick's attack, now with a 1 ms click) and snare
+  drum TONE (the balance of two body sines, about 238 and 335 Hz, the TR-808's two shells). The hihats are the factory
+  hats (a square cluster and noise) on one metallic source, and a closed hit shuts an open one until the next open
+  hit. The drums' other rows (tune, drop, snap, flam, stick ...) keep their values but leave the card. It plays eight
+  of the TR-808's eleven voices, and each row accents its own drum by velocity, where the TR-808 has an ACCENT row for
+  all. FM-1: 59 → 58 modules, 3,408 → 3,230 patch bytes, CPU 68 → 74 %. Also tested with the firmware's engine on the
+  host (`tools/golden.sh`).
+- **Cassia 1 is rebuilt on the new PD Osc and Env 8 modules.** Both lines play all eight CZ waveforms, with a second
+  one on every other cycle; line select 1, 2, 1 + 2 and 1 + 1'; ring and noise modulation on line 2; DCO, DCW and DCA
+  envelopes of eight steps with a sustain and an end step, as on the CZ (the six-step stand-in is gone); key follow,
+  velocity, aftertouch, vibrato with a delay. The envelope rows are short (r1, l1 .. r8, l8, sus, end) to fit the
+  patch bytes. Its presets gain Pluck (the variations reach Env 8). It plays two voices on the FM-1, where the CZ-1
+  plays eight. Still missing: a pitch envelope per line, portamento, chorus and several per-line controls. FM-1: 21 →
+  46 modules, 1,611 → 3,741 patch bytes, three → two voices, CPU 75 → 57 %. On the test rig, with a pre-release build
+  (CI run 40406160864), the rebuilt Cassia 1's peak over rest and 1 / 4 / 8 held notes fell from 2,920 µs at three
+  voices to 2,219 µs at two (100.6 % to 76.5 % of a block). The three-voice run shed voices; the two-voice run did not
+  mute. In the browser (Node on an Apple M3 Max, four voices, four notes held) it renders in about 9 % of real time,
+  where Cassia 1 XL took 44 %. Cassia 1 XL is gone for now: the browser lists Cassia 1 alone until a fuller XL is
+  built ([D-348](docs/ledger/patches-and-presets.md#D-348)).
+- **8 Lire and Elvira 2 play their plates from one repeating Drum map** in place of four copies, so every key now
+  plays a plate (a black key the plate of the white key below it). With the speed-ups below, 8 Lire goes from 49 to
+  37 % of the FM-1's CPU and from 94 to 86 % of its memory, Elvira 2 from 47 to 38 % and from 68 to 59 %. Not yet
+  checked on a device.
+
+### XLs (browser only)
+
+- **Wanderer XL,** the whole ARP Odyssey: each VCO has its saw and pulse at once, so the S/H mixer has its own VCO 1
+  saw / square switch, and the ring and S/H always take the pulses with their width. Coarse is continuous and fine
+  reaches the Odyssey's ±400 cents (the FM-1 version: semitones and ±100 cents). Its switches show their positions by
+  name. It takes 4,597 patch bytes, over the FM-1's 3,840. Not there: the external audio input (the engines have
+  none), the pedal, footswitch and CV / gate / trigger jacks.
+- **Canvas XL,** the Music Easel with its patch field. Each control input picks its cord through its processing
+  control: MAIN, pressure, sequencer, envelope, pulser, four independent random voltages, mod cv or the inverter.
+  Choose PATCH on an input row to connect an assembly patch cord. Also the preset voltages and add to main, pressure,
+  the pulser's once (the FX button), the modulation oscillator's three dial ranges and half-octave fine tunes.
+- **Briefcase 3 XL,** the VCS3 with its whole 16 × 16 pin matrix, 256 pins on the card, a section per column (A meter
+  to P output 2 level); the oscillators' full dial ranges, output filters flat in the middle, the pan knobs and the
+  joystick's ranges.
+- **808 Kit XL:** every TR-808 voice, knob and switch. The mid and high toms and the cymbal play from a second track,
+  DRUMS 2, whose Drum map also has the ACCENT row: a step on it accents every voice on that step by ACCENT LEVEL, and
+  the rows' velocities no longer accent. The tom / conga, rim shot / claves and hand clap / maracas switches are rows
+  of named choices. The cymbal and hihats share six square oscillators at the TR-808's frequencies; the cymbal has
+  TONE and DECAY. A pre-scale row (1/8T, 1/16, 1/16T, 1/32: 3, 4, 6 or 8 steps a beat) sets both tracks' rate. The
+  TR-808's rhythm memory (A / B variations, fill-ins, auto fill, rhythm tracks) is not there yet. 132 modules, an
+  estimated 143 % of the FM-1's CPU.
+- **Algo Four XL is the Yamaha DX100's parameter list** (#359), named as its display names them. The operators' 14
+  parameters show one operator at a time under an "op" row, with one picker for all fourteen. LFO wave (SAW UP,
+  SQUARE, TRIANGLE, S/HOLD: the DX100's four, in its order), LFO sync, porta mode, foot sw and each operator's on-off
+  and AMS on-off are named switches. Card rows: 152 → 139 (the main card 91 → 80). The algorithm row moves one
+  Selector per route in each voice, in place of a sequencer, a sample and hold, 7 comparators, 6 logic gates and 9
+  path VCAs per voice. All four operators run on the new Rate Env with the original control ranges, and on the new
+  Ratio module with the DX100's 64 frequency ratios and seven signed detune positions; saved oscillator tuning is
+  unchanged. LFO SYNC starts the wave at its peak, and LFO SPEED covers the DX100's 0.0008 to 55 Hz. LOW / HIGH / KON
+  pitch bend works, and breath and foot-switch MIDI controllers arrive directly. It plays eight voices. It still does
+  not fit the FM-1: 117 → 101 modules (of 64), 6,221 → 6,349 patch bytes (of 3,840), and at its eight voices an
+  estimated 646 → 480 % of the CPU.
+- **Hera 6 XL's card is the Juno-106's panel** (#359): one row per control of the owner's manual, named as the panel
+  names it. Range (16', 8', 4'), PWM mode (LFO / MAN), pulse, saw, HPF (0 to 3, 0 the bass boost), VCF polarity, VCA
+  mode (ENV / GATE), chorus (OFF, I, II) and the portamento switch are named switches; one PWM slider sets the width
+  on MAN and the depth on LFO. Card rows: 61 → 49 (the main card 41 → 33). Decay and release reach 12 s, as on the
+  Juno-106. The hold pedal is MIDI sustain (CC 64): values 64 to 127 hold the sounding voices and 0 to 63 release them
+  ([D-471](docs/ledger/link-and-midi.md#D-471)). FM-1 CPU estimate: 196 → 181 %, still too much for the FM-1.
+- **Oracle V XL:** the original's rEL / HLd pedal modes on MIDI sustain (CC 64), a named OFF / ON Release switch, and
+  a unison voice count of its own: detune and the manual chord offsets apply only in unison. Chord memory is one
+  Selector per voice: `chord 2` to `chord 5` set each voice's interval above the key, not above the chord note before
+  it. FM-1 CPU estimate: 425 → 402 %.
+- **8 Lire XL and Meridian 8 XL show their original panel controls** (#359): 8 Lire XL has 47 rows instead of 141,
+  Meridian 8 XL 107 instead of 146, including its nested cards. Their patch points remain assembly ports. 8 Lire XL's
+  plates are one repeating Drum map, which holds each plate's velocity, so its 32 velocity VCAs and 8 S&Hs are gone
+  (185 → 142 modules); a plate held on two keys keeps its own velocity instead of adding the two.
+- **8 Lire XL and Hera 6 XL keep their Pad, Pluck and Wet presets after the card changes.** The variations use the
+  panel controls: FAST and SHARP on 8 Lire, and chorus II on Hera.
+- **909 Kit XL groups the original drum controls on its cards** (#359): 30 rows instead of 43. FLAM, SHUFFLE and SCALE
+  use named choices. FLAM defaults to about 22 ms (position 4); it was 24 ms.
+- **Elvira 2 XL:** its choices (programs, chords, filter types, tunings, LFO waves, reverb, tune follow, MODP
+  chaining) are Selectors in place of comparator and Crossfader chains (702 → 475 modules). BITMANGLER uses the new
+  signed audio XOR; the original instrument's exact mask sequence is unverified. It plays a test phrase slightly
+  louder than before (peak 0.50 → 0.54).
+- **Perun 4 XL:** its tracks reach the PERKONS' ÷8 and x4 rates (1/2 and 1/64) and the new play modes on each voice
+  track; the modulation LFO syncs x8 to ÷8 (`mod mult`), and the BBD syncs to 1/32, 1/2T, 1/2D, 1/1T and 1/1D (`sync
+  note`). Its switches (algorithm, mode, VCF, groove, LFO wave, chord) are Selectors: they step from one position to
+  the next and no longer blend two. It sounds the same at every switch position. 345 → 268 modules; FM-1 CPU estimate
+  402 → 317 %, so it stays an XL.
+- **Spokes 6 XL** gains what the new ranges make possible: swing to 80 % and the 1/8X scale (Steps 1/2), the LFO's
+  start phase, backward speed, slow and fast ranges and synced speeds /8 to x8, synced retrigs down to a 1/128 triplet
+  and an INF retrig length, a delay `note` row and `swell` (feedback to 1.98), and a reverb `freeze`. Each track's
+  machine choice is one Selector in place of ten comparators: 836 → 782 modules. The sound as shipped is the same.
+- **How fast the XLs render** (Node on an Apple M3 Max, four notes held, transport running, 3 s rendered, as a share
+  of real time): Elvira 2 XL 41.1 → 32.2 %, Perun 4 XL 21.1 → 21.5 %, 8 Lire XL 11.5 → 11.9 %, Spokes 6 XL
+  65.4 → 65.3 %.
+
+### Steps
+
+- **Pattern memory and songs.** A Steps track holds up to 64 patterns, each with its own length and rate or the
+  track's, saved in the patch. The patch has one selected pattern: while playing, each track switches at the end of
+  its own pass; stopped, at once; a track without that pattern plays its first. Songs chain patterns: up to 8 songs of
+  up to 64 entries, each a pattern and a shift of up to an octave either way (tracks that play a Drum map are never
+  shifted). A song loops, and PLAY starts it at its first entry. The patterns and songs are written only when a patch
+  has some, with 16-bit note words where a pattern allows (half the bytes of the usual 32-bit ones), so a patch
+  without them takes no more bytes. The FM-1's note pool holds 1,536 notes per patch (512 in 1.4.2). Tested on the
+  host and in the emulator.
+- **Patterns and songs on the FM-1.** PRESET on the SEQ page picks the patch's pattern (1 to 64): while playing, each
+  track takes it at the end of its pass, and the top bar shows both numbers (`P03>P04`) until then; stopped, it
+  changes at once. Tapping SEL on the SEQ page opens the new SONG page: one row per entry, K1 sets the entry's pattern
+  (on END it adds one, FX + K1 inserts a copy), K2 its shift, K4 switches between the song and the pattern, ALGO picks
+  song 1 to 8, SEQ + REC deletes an entry (asked first).
+- **Patterns and songs in the editor.** Each Steps card and the piano roll have a pattern strip (‹ P01 ›, or `[` /
+  `]`) that picks the patch's pattern, blinks while a track waits for the end of its pass, sets a pattern's own length
+  and rate, copies every track's pattern to the next empty one and clears this track's. SONG opens a songs drawer:
+  tabs 1 to 8, a pattern / song switch, entries with a pattern and a shift to add, insert, delete and drag, the entry
+  playing highlighted. The editor follows the FM-1's choices and edits them over the link.
+- **Play modes:** backward, ping-pong and random alongside forward. Swing and live recording follow the visited steps.
+  A note near the end of the grid can last up to 64 steps, so a note at step 64 still lasts its full length when the
+  track plays backward.
+- **Two more rates and more swing.** A track also runs at 1/2 (eight times slower than 1/16, the Model:Cycles' 1/8X
+  and the PERKONS' ÷8) and at 1/64 (four times faster than 1/16), and its swing goes up to 80 % (75 % before), on the
+  card, in the roll and on the FM-1's SEQ page. Cables and macros into rate and swing still cover 1/4 to 1/32 and 50
+  to 75 %, so every patch made before plays exactly as it did.
+- **A Drum map can repeat its rows across the keybed** (its new REPEAT switch, off by default), so every key plays a
+  row. Rows on white keys repeat in blocks of white keys, and a black key plays the row of the white key below it:
+  rows on F3 to F4 come again from G4 and below E3. On the FM-1, the keys that play nothing on a Drum map (the white
+  keys and black keys 9 to 11) then play a row too. Not yet played on a device.
+
+### Modules
+
+- **New: the Selector.** One stepped row (1..8, or a cable: 0..1 covers the positions in use) picks one of eight
+  inputs, each with a value added (with nothing patched in, it is a table of eight values), and raises that position's
+  gate, so one choice can switch several things at once. An optional crossfade (up to 100 ms) avoids clicks. It costs
+  about 0.2 to 0.3 % of the FM-1's CPU, plus about 0.1 % per gate cabled (the CPU model's figures). In the browser a
+  Selector writes only the gates that are cabled (or watched), as the FM-1 does.
+- **New: Phase distortion** (PD Osc on the FM-1), after the Casio CZ: all eight CZ waveforms (saw, square, pulse,
+  double sine, saw-pulse; resonance I, II and III) with a DCW amount and input, a second waveform on every other
+  cycle, the resonance's range, `pm` and `sync`. High notes stay clean: the bend is held back as the note rises. One
+  module plays what took Cassia 1 XL about 60 modules per line. About 4 % of the FM-1's CPU per copy as Cassia 1 uses
+  it (estimate).
+- **New: Env 8, an eight-step envelope** after the Casio CZ's: eight levels and rates, a sustain step that holds while
+  the key is down (the key's release jumps to the step after it) and an end step where it rests. With the sustain off
+  it runs through like a one-shot. Its card draws the shape; on the FM-1 it has five pages (two steps a page, then
+  sustain and end). About 1.2 to 1.4 % of the FM-1's CPU per copy (estimate).
+- **New: the Follower,** after the Korg MS-20's External Signal Processor: it turns any signal into a pitch (in
+  octaves, like the keyboard's), an envelope and a trigger, with the ESP's signal level, low cut, high cut, cv adjust
+  and threshold. On the FM-1 it hears only what a patch makes.
+- **New: Ratio,** the DX100's 64 frequency-ratio choices as a pitch offset.
+- **New: Rate Env,** with the original attack / decay / release rates, zero-rate holds, keyboard rate scaling and
+  pedal hold.
+- **Longer and wider ranges on five modules,** on the FM-1 too (#351). Each is a new row whose default plays as
+  before:
+  - **ADSR `long`:** decay and release times 2.4 times as long, up to 12 s and 19.2 s (the Juno-106 reaches 12 s). The
+    ADSR also has a hold input that defers the release and still lets new notes attack, for MIDI sustain.
+  - **LFO:** `phase` sets where a reset or a clock restart starts the wave (90 degrees starts a sine at its peak, as
+    the DX100). `range` slow divides the rate by 25 (down to 0.0008 Hz), fast doubles it (up to 80 Hz), and wide has a
+    continuous rate of its own from 0.0008 to 55 Hz ([D-445](docs/ledger/modules.md#D-445)). The rate row shows the
+    rate the LFO runs at, on the card and on the FM-1; the knob's range is unchanged
+    ([D-372](docs/ledger/engine.md#D-372)). `dir` back runs the wave backward (a saw falls). `mult` makes a synced
+    cycle up to 8 times longer (/8) or shorter (x8): a 1/16 triplet at x8 is a 1/128 triplet, for fast synced retrigs.
+    A new shape input sweeps the wave from falling saw through triangle to rising saw and changes the pulse width, and
+    a pulse output plays at the same time.
+  - **Delay:** `note` gives the synced delay 1/32, 1/2T, 1/2 dotted, 1/1T and 1/1 dotted in place of the time knob's
+    length. `swell` scales the feedback up to 1.98 (the Model:Cycles' 198) with a soft clip in the loop, so the echoes
+    grow to about full level and hold there.
+  - **Reverb `freeze`:** an infinite decay. The tail holds and nothing new goes in; the dry sound still passes.
+  - **Pulse `inf`:** the window stays open until it is switched off (the Model:Cycles' INF retrig length).
+- **Multimode filter:** an `hp6` output, a resonant high pass that falls 6 dB per octave below the cutoff, after the
+  Korg MS-20's. A self-oscillation switch (`osc`, off by default): on, it rings a steady sine-like tone at its cutoff
+  near full resonance, as the MS-20's filters do at full PEAK, even with nothing on its input
+  ([D-371](docs/ledger/engine.md#D-371)).
+- **Oscillator:** sharktooth (a triangle / saw hybrid) and reverse saw, including unison, sync and phase modulation.
+  Existing waveform indices and parameter-input ranges stay unchanged.
+- **Ladder:** an audio-rate cutoff input for oscillator-speed filter modulation. Its existing cutoff input keeps its
+  block-rate behaviour for saved patches.
+- **Voicing:** a separate number of voices to stack in unison, keeping the polyphonic count. SHARE spreads the voices
+  across held notes, like the Jupiter-4's UNISON II; both engines keep all 128 held MIDI keys. Lowest and highest
+  held-voice gates. A key-press trigger. Voice stealing can be turned off, and the rotation can reset to voice one
+  once all keys are released. Both engines and the FM-1's device pages support these settings; older patches keep
+  their allocation.
+- **Arpeggiator:** a continuous rate input in hertz, with zero to pause; an external clock takes precedence. Its CPU
+  estimate includes note scheduling.
+- **Main** has breath (CC 2), sustain (CC 64) and foot switch (CC 65) as separate patchable outputs, in the browser
+  and on the FM-1.
+- **Random** has a `clock` input and a `held` output: each rising edge draws an independent random voltage for that
+  instance, held until the next edge. Existing fixed and wandering outputs keep their sound.
+- **Math** adds signed 16-bit audio XOR.
+- **Wavetable** adds the EML COLOR bank (see Vernon 100).
 
 ### The editor
 
-- 44 module types: oscillators (with unison, sync and FM), a wavetable oscillator, noise, filters (multimode and ladder),
-  envelopes (ADSR and DX7-style level / rate), VCAs, mixers, a plucked string, a comb filter, a modal resonator,
-  granular, delay, reverb, chorus, phaser, frequency shifter, shaper, digitizer, compressor, sequencers, a clock
-  divider, sample and hold, a quantizer, logic and math, an arpeggiator, a scope.
-- **Assemblies:** select modules and make them one card that shows only the knobs and jacks you choose. Assemblies nest
-  (three levels), go into your library and into any other patch, and can be exported as files. 61 come with the editor:
-  drums, voices, effects, textures, utilities and instruments modelled on well-known synthesizers.
-- **17 factory patches**, from a basic init patch to the instrument recreations and two drum kits.
-- **Polyphony:** a Voice allocator plays an assembly as several voices (up to 8 on the FM-1). Splits, layers and
-  different MIDI channels per allocator.
-- **Steps:** a step sequencer track of notes (up to 64 steps), with chance, swing and accents, edited on the card's
-  grid or in a piano roll. Arm a track to play and record into it from the keys, by step or live. A Drum map turns a
-  track's notes into drum hits by row.
-- **Device pages:** every top-level module or assembly is a device; its rows are pages of four. The editor shows which
-  rows the FM-1's knobs K1..K4 will turn.
-- **The Library** keeps your patches and assemblies in the browser and writes the whole bank to the FM-1.
-- **Share links:** a link that opens your patch, with its layout and assemblies, in anyone's editor.
-- **Share sheet:** a link, the patch as a file, or a patch card image with its name, engine, notes and knob pages. The
-  **Community shelf** lists patches other people have submitted (through a GitHub issue form, CC BY-SA 4.0).
-- **Engines:** an engine is an assembly that plays from the keys and makes sound (an Engines shelf, with a short
-  description of each). A new patch starts from a screen of engines, or empty; an engine you add is wired to the keys and
-  the output for you.
-- **Cables** show what they carry: sound bold, modulation in a second colour, gates as a hollow rail, keys as a ribbon.
-  Dashed lines are links the app draws, never your own cables.
-- **The tutorial** ("How a patch works" in the sidebar): thirteen chapters, from a first sound to drums and voicing.
-- **The FM-1 tab** shows the FM-1's screen and panel, running the firmware's own interface in the browser.
-- Undo / redo, copy / paste, a command palette (Ctrl/Cmd+K), keyboard shortcuts (`?` lists them), a CPU meter that
-  estimates the patch's load on the FM-1, light and dark themes. Phones and tablets: pinch to zoom, two-finger pan, and a
-  page that scrolls. Connect FM-1 sits at the canvas's top right, Share beside Save, About under the logo; the patch
-  menu (⋯) holds the FM-1 & MIDI settings and file import.
-- New modules and assemblies land in the part of the canvas you are looking at.
+- **The editor has its own address: [matryoshka.lol](https://matryoshka.lol/).** The browser keeps the editor's data
+  separately for each address. If you used matry0shka.pages.dev, it keeps working, and a bar at the top offers **Move
+  them there**: one click opens matryoshka.lol and brings your patches, FM-1 bank, library, tutorial progress and
+  settings along, without replacing anything already there. A toast lists what came over. If you never used it, a
+  matry0shka.pages.dev link opens at matryoshka.lol instead, with its patch. The command palette has **Move to
+  matryoshka.lol** there, and **Save browser backup** everywhere: a .json file of all of it, which **Load .json** reads.
 
-### The FM-1 firmware
+- **One card row can set several modules at once** (#357). In pick mode, "one row with…" joins a row to another of the
+  same range: turning it moves both (two filters' cutoff, say), and so do a cable or a macro on it, a card preset and
+  the FM-1's knob on its page. "split" gives each its own row again. A row that sets several shows ×2, ×3 … after its
+  name. Host-tested (`tools/panel_test.sh` turns such rows), not yet on a device.
+- **A Selector's positions can have names** (#358): pick mode's "names" on a card row of its position, such as SAW,
+  SQUARE, PULSE. The card, the Selector's own card, Main's knobs and the FM-1's page show the names (in capitals on
+  the FM-1). The position row offers only the positions in use (1 to its count), on the card, the knobs and the FM-1.
+- **Controls the original edits one at a time can show one at a time** (Arrange mode's "⧉ one at a time"): for example
+  the Casio CZ's eight envelope steps become one rate and one level under a "step" row. The FM-1 gives each copy a
+  page, and copies of card controls can span several FM-1 pages. Algo Four XL uses it for its operators.
+- **Tutorial reference patches** receive newly added module defaults when opened. Patch previews no longer let
+  undisplayed module rows squeeze neighbouring controls.
 
-- **Patch player:** SELECT and ALGO page through the patch's devices, K1..K4 turn the four rows of the page in focus,
-  PRESET steps through the patches.
-- **The bank:** 64 patch slots in the FM-1's flash. The first start writes the factory patches; SAVE stores the patch you
-  are playing, with your edits, in its slot. The FM-1 opens the last saved slot when it starts.
-- **Steps on the panel:** the SEQ page edits a track's steps on the keys (by row for a drum track); REC held with a black
-  key arms a track (ARM shows on the SEQ page), REC records into it by step or live.
-- **MIDI:** notes, pitch bend, mod wheel, aftertouch, program change, CC to the knobs and buttons, MIDI clock and
-  Start / Stop in, over USB and the TRS MIDI input. Every panel control goes out over USB MIDI.
-- **Editor link over USB:** send a patch, store it to a slot, write the whole bank from the Library, and sync: the editor
-  asks when the FM-1 connects, then patch changes, knobs, buttons and the page in focus go both ways while you edit. The
-  FM-1 chip in the status line shows whether it is synced.
-- **USB audio out:** the FM-1 appears on a computer as a 2-channel recording device (16-bit, 44.1 kHz) carrying its
-  output, alongside MIDI.
-- **Safe mode:** hold SAVE at power-on to start with the fallback patch, skipping the stored state. A start that crashes
-  makes the next one safe by itself.
-- **Update mode:** hold OCT- and OCT+ at power-on, or MENU > SYSTEM > UPDATE MODE, to have the FM-1 wait for an install.
-- A settings menu (hold HOME): LEDs, knob acceleration, MIDI channel, clock in, MIDI out, CPU, version, factory reset, and
-  a short manual on the screen. PRESET shows the patch name as you turn it.
-- The factory drum kits play from the keys: one row per key from F3 up, an octave below the melodic patches.
+### On the FM-1's screen
 
-### Install and return to stock
+- **The SEQ page opens with about half the screen traffic,** so it appears sooner while the sequencer plays. SEQ or
+  SEL from a Steps track's device page drew the SEQ page twice (and the device page's header first). Opening the SEQ,
+  SONG and menu pages cleared the screen twice, and a whole SEQ page cleared the ground under the cells it then
+  painted over. Host pixel counts (`tools/panel_test.sh`, Elvira 2), not yet measured on a device: SEQ from a Steps
+  track's device page 242,832 → 76,248 px; SEQ from another device page 147,576 → 76,248; the SONG page 136,664 →
+  83,864; ENV 118,592 → 68,672; the menu 166,922 → 114,122; one whole SEQ page 86,616 → 68,088. The screen looks the
+  same.
 
-Install from the editor's Flash tab or with `tools/fm1_install.py`; returning to the official firmware (V15) is one button
-in the same tab. If your FM-1 runs anything other than the official firmware or Matryoshka, return it to stock first. See
-[Install on the FM-1](README.md#install-on-the-fm-1) in the README.
+### Speed and memory
 
-### Known limits
+- **Lower CPU use.** Modules without parameter modulation copy their settings directly, and other modules skip
+  parameters with no routes. FM sine operators skip unused feedback and waveform selection work, and polyphonic
+  modules reuse shared control averages. Math and Logic calculate only the selected operation when one output is
+  connected. The Ladder skips audio-rate checks when its FM input is unpatched, and Selectors and gain modules skip
+  constant or unity-gain cases; the CPU estimate tells the cheaper fixed gains apart from other or modulated gains.
+  Each step was checked bit-identical on every audio kit and mode change (`tools/engine_exact.sh`). The estimate for
+  factory patches whose design did not change: Algo Four 80 → 56 %, Spokes 6 85 → 72 %, Hera 6 71 → 67 %, Expander S
+  54 → 50 %, Simple FM 17 → 13 %. Not measured on a device as before and after.
+- **FM-1 memory.** Each module takes only the parameter slots its type needs, from a shared store of 1,536 values,
+  instead of room for the largest module's (18, with Env 8), which would have taken about 9 KB more; the editor's
+  budget shows the new "parameter values" line, and no factory patch uses more than 798 of them (Io 4). Page rows that
+  set several parameters take 1,280 bytes more and 916 bytes more firmware. The engine's state grows from 18,800 to
+  31,512 bytes, most of it the note pool for patterns. In all, the pool goes from 381,038 to 399,638 of 417,792 bytes
+  (the stand-in estimate, `tools/pool_sizes.sh`). A Steps track costs 12,644 → 14,282 cycles per block
+  (`npm run cpu-costs`, host build).
 
-- A power cut while the firmware is being written has been tried only in cases where the image stayed whole. A cut while
-  the image is half old and half new is untested.
-- The editor's CPU figures for the FM-1 are estimates, calibrated against measurements of the 17 factory patches on
-  one FM-1, and agree with them within a few points. The busiest factory patch, the 808 Kit, uses about 81 % with eight
-  keys held.
-- MIDI clock in and program change are implemented but have not been tried on an FM-1 yet.
-- The FM-1 has 64 patch slots and limits per patch (64 modules, 255 cables, 8 voices, one delay, one reverb); the editor
-  warns when a patch does not fit.
-- The Scope runs only in the editor.
+### Compatibility
 
-### Coming from Modular-1 or Felucca
+- **Patches saved on the FM-1 before this release still load and sound the same.** New parameters take their defaults
+  in them, and saving such a patch again stores it in the new format. The editor writes a patch in the lowest format
+  that holds it, so a new parameter, the filter's `osc` switch or patterns cost FM-1 bytes only in patches that use
+  them ([D-281](docs/ledger/patch-format.md#D-281)). The editor checks which patch formats the firmware reads before
+  syncing, and it tells an FM-1 on an older firmware to update; older firmware keeps its existing compatibility check.
 
-- Matryoshka grew out of [Modular-1](https://github.com/WiggisModular/Modular-1), and this editor used that name until
-  1.0. It still reads what its earlier versions saved in the browser (patch, bank, assemblies, under the old
-  `modular-1.*` names) and assembly files saved under the old format name. Older patch files load.
-- **The editor moved** from https://glvno.github.io/matryoshka/ to https://matry0shka.pages.dev/. The old address
-  forwards, so bookmarks and share links made before keep working. The browser keeps the editor's data per address: with
-  data at the old address, it offers **Bring my patches**, which copies Your patches, the bank, the library, the open
-  patch, the tutorial progress and the settings to the new one without replacing what is already there, or **Download a
-  backup**, which the new editor reads with Load .json (or the palette's Import browser backup). The site counts visits
-  with Cloudflare Web Analytics, which uses no cookies.
-- Matryoshka stores its patches in flash sectors that Felucca uses for its projects, samples and user presets. Installing
-  Matryoshka overwrites that Felucca data: save it with Felucca first. The Flash tab asks again when it finds Felucca.
-  Patches stored by the official M-VAVE firmware are not touched.
+## 1.4.2 — 2026-10-26
+
+- **Incoming MIDI notes keep playing while the FM-1 screen redraws** (#363). USB and TRS notes and clock are taken
+  between screen transfers, including octave messages. This fixes short notes disappearing or arriving together
+  when turning SELECT or ALGO or pressing octave buttons. On the exact release package, the test rig played all
+  50 notes during page changes and all 200 during octave changes at 20 ms spacing. Note spacing matched idle
+  playback. See the [release measurements](docs/measurements/2026-10-26-1.4.2.md).
+- **Cassia 1 joins the FM-1 factory patches.** This is the patch already published in the 1.4.1 browser, now included
+  in the firmware's factory set. Existing banks stay intact; Cassia can still be sent from the editor.
+  The browser keeps its 1.4.1 patches and features. The firmware engine and patch format stay
+  at 1.4.0's, with the MIDI redraw fix applied.
+
+## 1.4.1 — 2026-10-26
+
+Web only: the FM-1 firmware is 1.4.0's. New factory patches now ship in the browser first; the FM-1 gets them as
+factory patches with its next firmware release.
+
+- **A new engine, Cassia 1,** after the Casio CZ-1: phase distortion. Each voice has the CZ's two lines: line 1 sweeps
+  from a sine to the CZ saw or square, line 2 is the CZ's resonance waveform, a resonant peak that sweeps. Each line
+  has its DCW envelope, with one DCA envelope, line mix, line 2 detune, key follow, velocity and vibrato. Three voices on the
+  FM-1 (75 % of its CPU, estimated). Its factory patch is in the browser now and comes to the FM-1 with the next firmware
+  release; until then, send it to the FM-1 over the editor link.
+- **Cassia 1 XL** in the browser: all eight CZ waveforms (saw, square, pulse, double sine, saw-pulse; resonance I, II
+  and III) and a second waveform on every other cycle, both lines with their own DCW and DCA envelopes of six steps
+  (the CZ has eight), the 1+1' line mode, a pitch envelope, ring and noise modulation, vibrato with delay, key follow,
+  velocity and aftertouch. Four voices with two lines, as the CZ-1; eight with one.
+- **Every XL now has its original's whole panel**, after the original's manual; what is still missing is listed in the
+  XL's notes with the reason (a module we do not have yet, hardware, or samples). Among the additions:
+  - **Oracle V XL:** saw, triangle and pulse on oscillator B, the Rev 3 filter, velocity and aftertouch, unison detune,
+    chord memory, the release switch, the Vintage knob.
+  - **Hera 6 XL:** the DCO range, PWM mode, key transpose, bender amounts, portamento, assign modes, hold.
+  - **Expander S XL:** eight SEMs, each with its own knobs, and the Eight Voice keyboard (split, unison, portamento).
+    An "all SEMs" section at the top moves each control on all eight at once, keeping their differences.
+  - **Algo Four XL:** one algorithm row (1 to 8), velocity, level and rate scaling, LFO delay and sync, portamento,
+    pitch bend range, key shift.
+  - **8 Lire XL:** the FAST switches, touch (velocity and pressure per plate), the rear jacks as inputs.
+  - **Elvira 2 XL:** all eleven MOD programs, twelve filter types, the reverb, the ATT and ADD utilities, the jacks.
+  - **Meridian 8 XL:** mute and CV mute buttons, nine LINK buttons, the touch plates, individual outputs.
+  - **Perun 4 XL:** the LFO on any knob, CONTROL ALL, CHORD and DIGITAL NOISE modes, four sequencer tracks with
+    chance, groove and fill, the BBD's controls and the compressor.
+  - **909 Kit XL:** mid tom, crash and ride, TOTAL ACCENT and per-drum accent, flam, shuffle and scale.
+  - **Spokes 6 XL:** all six machines on every track, chance, fill lanes, retrigs, the LFO on any destination,
+    velocity routes, pads.
+- The XLs are heavier in the browser. With four notes held, in Chrome on a recent Mac, as a share of real time:
+  Spokes 6 XL 61 %, Cassia 1 XL 39 %, Elvira 2 XL 37 %, Expander S XL 23 %, the others 6 % to 20 %. Big XLs share as a
+  stored link.
+
+## 1.4.0 — 2026-10-25
+
+- **A new engine, Spokes 6,** after the Elektron Model:Cycles: six FM tracks (kick, snare, metal, perc, tone, chord),
+  each with pitch, decay, color, shape, sweep and contour, plus volume and a delay send. Its factory patch comes last,
+  after <7PH: three Steps tracks (DRUMS, TONE, CHORD) play a 16-step groove in A minor at 120 BPM, and the keys play TONE.
+  It estimates 85 % of the FM-1's CPU (not yet measured on a device).
+- **Spokes 6 XL** in the browser: the same with a reverb, stereo pan, distortion and an LFO per track, and phase
+  modulation on the snare and metal. It is a sandbox patch (146 % of the FM-1's CPU).
+
+## 1.3.5 — 2026-10-25
+
+Web only: the FM-1 firmware is 1.3.3's.
+
+- Arrange mode is redone. Each heading and its pages sit in a faint outline, each FM-1 page in a fainter one with its
+  own ⠿ handle, and the heading field shows the FM-1's name for its pages, "filter (FILTER)". A drag shows one line where
+  it will land: a row can go to the start, middle or end of any page that has room, a page anywhere between pages, a
+  section to the top of any column. Moving things never reshuffles the other pages.
+- Arrange mode: + heading under any section or at the top of a column, and + page break between any two rows of a page;
+  a page break you added has a × to join the pages again. A heading keeps its place when you move all its rows away, and
+  is saved with the patch (the FM-1 and the normal card skip it).
+
+## 1.3.4 — 2026-10-25
+
+Web only: the FM-1 firmware is 1.3.3's.
+
+- An assembly made of assemblies keeps the names they gave their controls and jacks: promoting a nested
+  "hold pitch" slider onto the outer card shows "hold pitch", not the Macro's "value".
+- A control promoted from a nested assembly lands under a heading named after it and its page there ("Lire 5-8",
+  label "hold"), next to the other controls from that page. Factory assemblies and saved patches are unchanged.
+
+## 1.3.3 — 2026-10-25
+
+- Syncing with an FM-1 on firmware older than 1.2 now says to update it (with a button to the install panel),
+  instead of failing with "the firmware refused the patch".
+- The sidebar stays the same in Patch, Emu and Library; Get started, Audio on / Panic and MIDI are there in all three.
+  Library's Patches, Assemblies, Presets and Community are tabs at the top. The logo takes you back to the canvas.
+- 909 Kit XL has an arpeggiator (ARP, off until pressed) between its DRUMS track and the drum map, like every other XL.
+- Make assembly (Ctrl/Cmd+G) works on a selection of assemblies alone: group two engines into one and promote just
+  the controls you want.
+- Emu: muting a track on a synced FM-1 (SEQ + a black key) now blinks that key on the emulator too, and letting go of
+  SEQ no longer flips the emulator to the SEQ page.
+- 8 Lire and Elvira 2 (and their XLs) call their piano roll rows VOICE 1, VOICE 2, ... instead of KICK, SNARE, ...;
+  the browser's roll and the FM-1's SEQ page now show the same names on the same notes.
+
+## 1.3.2 — 2026-10-25
+
+Not released on its own: it ships in 1.3.3.
+
+- FM-1: the footer's octave (= OCT =, OCT +, - OCT) changes as soon as you press OCT- / OCT+, not only once something
+  else redraws the screen.
+
+## 1.3.0 — 2026-10-24
+
+### On the literal physical FM-1 device
+
+- Big ol UI overhaul: 
+  - Paging through params is 6x faster. 
+  - Knobs respond 29x faster (lol). 
+  - You no longer need a jeweler's loupe to know your current patch, device, or assembly. 
+  - The UX on the FM1 sucked shit before -- sorry about that! I got swept up in patch editor feature creep and briefly forgot what my job was
+ - CPU cycles down 8-13% on the FM-1; audio output is bit-identical to output before optimizations
+
+### In the browser
+
+- **SANDBOX MODE BABY!!!** If a patch is too big for the FM-1, the FM-1 becomes its
+  controller as if it did fit on the device. 
+  - I find that starting with something excessive and ambitious, then accommodating constraints later, results in cooler stuff than building reasonably for the jump, and the patch editor now suits that kind of workflow.
+- **XL patches:** Every factory patch modeled after a synth whose architecture was too beefy to fit on the FM-1 now gets a browser-only version that is faithful to the OG architecture.
+- **Community patches!!!** have their own Library section!!! Send me your most depraved patches, sickos!!!
+- **MIDI clock out:** the editor can now keep multiple connected FM-1s in sync. Clock stopgap while I figure out Bluetooth vs GPL friction. I now understand why baudgirl is not FOSS 
+- **OCT- / OCT+ on the FM-1 move the editor's octave too,** so the on-screen keyboard shows what you play.
+- The FM-1 budget no longer reads a patch with an arpeggiator as half full. Now it reads it as half empty
+
+
+## 1.2.2 — 2026-10-24
+
+- **"update failed -5" explained:** the FM-1 was set up by M-VAVE's Official Open, and nothing was changed.
+- **Sol 29N:** a new community patch after the Elta Music Solar 42N, playable on the FM-1.
+
+## 1.2.1 — 2026-10-23
+
+- **A refused return to V15 now says why,** and how to get back: nothing was erased.
+
+## 1.2.0 — 2026-10-23
+
+- **Presets:** store an assembly's values as a named preset and load it into any copy, in the editor and on the FM-1.
+  Every factory engine comes with its own.
+- **The environment page on the FM-1:** ENV lists every device in the patch, to pick, turn and open.
+- **Arm several devices at once** to layer them on the keys, in the editor and on the FM-1.
+- **Three new engines:** Scrounge, Meridian 8 and Perun 4, after the neutral labs Scrooge, the Landscape NOON and the
+  Erica Synths PERKONS HD-01. Plus **<7PH**, a groove box patch.
+- **An arpeggiator and a PATTERN track on every melodic factory patch,** on ARP.
+- **A piano roll and a drum grid on the FM-1's SEQ page.**
+- **The 909 Kit plays all eight rows:** five were silent.
+- **No key press is lost while the FM-1's screen redraws.**
+- **A battery gauge on the FM-1.**
+- **New navigation:** PATCH | EMU | LIBRARY, and a Library that shows the browser and the FM-1 side by side.
+- **Lire + Elvira,** the first community patch.
+
+## 1.1.0 — 2026-10-22
+
+- **Two new engines:** 8 Lire and Elvira 2, after the SOMA Lyra-8 and the neutral labs Elmyra 2.
+- **Modules are named after the hardware they stand for:** Attenuverter, Slew limiter and so on. Patches load as before.
+- **Share links keep big patches whole.**
+- **With Live on, FM-1 knobs no longer make values jump.**
+
+## 1.0.0 — 2026-10-21
+
+The first release: a modular patch editor in the browser, and a firmware that turns the M-VAVE FM-1 into a player for its
+patches.
+
+- **44 module types,** and **assemblies** that make any group of them one card. 61 come with the editor.
+- **17 factory patches,** from an init patch to instrument recreations and two drum kits.
+- **Polyphony** of up to 8 voices on the FM-1, and **Steps** sequencer tracks of up to 64 steps.
+- **The FM-1 plays your patches:** 64 slots, SELECT and ALGO page through the devices, K1..K4 turn the page in focus.
+- **Live sync over USB:** edits, knobs and buttons go both ways.
+- **USB MIDI and audio:** notes, CC and clock in, every control out, and the FM-1 as a 2-channel recording device.
+- **Install and return to stock** from the browser.
+- **Coming from Felucca:** installing overwrites Felucca's saved projects and samples. Save them first.

@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
-// first: migrate.ts notes which storage keys the page found before anything here writes one
+// first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
+// everything else; then migrate.ts notes which storage keys the page found before anything here writes one
+import './site-move';
 import { addUserPreset, exportPresets, importPresets } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
-import { applyImport, backupKeys, importSummary, OLD_ORIGIN, receiveMigration } from './migrate';
+import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
+import { moveOffer, onPagesDev } from './move-offer';
 import { CPU, CPU_WARN } from './cpu';
 import { setupPopoverPositioning } from './popover';
 import { AudioHost } from './audio';
 import type { HostMsg } from './worklet';
-import { chipState, DeviceLink, deviceIndex, liveSync, syncLine, syncOnConnect, type ChipState, type DeviceEvent } from './device';
+import { chipState, DeviceLink, deviceIndex, liveSync, sandboxChip, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, type ChipState, type DeviceEvent } from './device';
+import { SITE_URL } from './site';
+import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
 import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
@@ -16,6 +21,7 @@ import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
 import { addToBank, bankPatches, buildPatchesSection, type LibrarySection as LibraryPane } from './bank';
 import { buildPresetsSection } from './library-presets';
+import { buildCommunitySection } from './library-community';
 import { isSaved, onSavedChange, putBackSaved, removeSaved, restoreSaved, savedPatches, savePatch as keepPatch, unsavedChanges } from './saved';
 import { showAction, showToast, showUndo } from './toast';
 import { popMenu, type MenuItem } from './menu';
@@ -24,7 +30,7 @@ import { buildAssembliesSection, storeAssembly, storeTutorialAssembly } from './
 import { AssemblyBrowser } from './browser';
 import { searchCommands, type Command } from './commands';
 import { buildFlashTab } from './flasher';
-import { attachKeyboard, attachMidi, isTextEntry } from './input';
+import { attachKeyboard, attachMidi, followOctave, isTextEntry } from './input';
 import { Piano } from './piano';
 import { sliderJack } from './slider-jack';
 import { PANEL_BUTTONS } from './modules';
@@ -43,18 +49,19 @@ import type { AssemblyDef } from './assembly';
 import { defIsEngine, feedsOutput } from './engines';
 import { EngineStart } from './engine-start';
 import { encodeShare, handOut, isShareLink, openShareLink, shareCodeOf } from './share';
-import { loadCommunity } from './community';
+import { addedTitles, loadCommunity, onAddedChange, unlinkSaved } from './community';
+import { chipEl, sandboxCardDue, sandboxWords, showSandboxCard, type Chip } from './sandbox';
 import { ShareSheet } from './share-sheet';
 import { fileStem, savePatchCard } from './patch-card';
 import { starterPatch } from './starter';
 import { recordKey, recordNote, recordOff } from './step-grid';
 import { Tutorial } from './tutorial/tutorial';
 import { synthLink } from './tutorial/link';
-import { PRESETS } from './presets';
+import { factoryShape, PRESETS, shapeOf } from './presets';
 import { inlineWordmarks } from './brand';
 import { clipText, parseClip, type Clip } from './clipboard';
 import { addableModules, assemblyShelves, openableByValue, openableGroups } from './catalog';
-import { binaryPage, deviceBudget, editorPage, encodePatch, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
+import { binaryPage, browserOnly, deviceBudget, editorPage, encodePatch, overText, POLY_ROW, POLY_ROW_PARAMS, toQ16 } from './patchbin';
 import { ALLOC, deviceView } from './poly';
 import { AboutCard } from './about';
 import { whatsNew } from './whats-new';
@@ -62,6 +69,7 @@ import { demoPatch } from './demo';
 import { renamedKey } from './storage-key';
 import { ClockOut, isFm1Out, portLabels } from './clock-out';
 import { currentTheme, onThemeChange, setTheme, themeChoice, toggleTheme } from './theme';
+import { installLabel } from './version';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 const STORE = renamedKey('matryoshka.patch', 'modular-1.patch');
@@ -120,6 +128,44 @@ const sayLive = (): void => {
   if (f) device.live(f.paused);
 };
 window.setInterval(sayLive, LIVE_MS);
+/** sandbox mode: the patch is a sandbox patch while Live is on (LIVE paused): the FM-1 is its controller. The editor
+ *  follows its panel (the mirror, as Follow its panel does) and sends it the page in focus (SANDBOX) whenever that page or
+ *  a row's value changed; a 1.3 FM-1 mutes itself and draws it */
+const sandboxOn = (): boolean => liveSync.sandbox(device.connected, liveOn, fitsDevice);
+/** sandbox mode as last seen (sandboxCheck), whether it started following the FM-1 (it stops it again), the page last sent */
+let sandboxWas = false;
+let sandboxFollows = false;
+let sandboxSent = '';
+function sandboxCheck(): void {
+  const on = sandboxOn();
+  if (on === sandboxWas) return;
+  sandboxWas = on;
+  sandboxSent = '';
+  if (on) {
+    // SANDBOX pages are discarded until LIVE paused arrives. Send the mode first, including on a fresh connection.
+    device.live(true);
+    if (!mirror.following) {
+      sandboxFollows = true;
+      void followFm1('matryoshka');
+    }
+    setPlaying(liveSync.sandboxRuns(device.running, editor.playing));   // (one transport: a sequence the FM-1 played goes on here)
+    sandboxSend();
+    return;
+  }
+  if (sandboxFollows && mirror.following) unfollowFm1('sandbox mode ended: not following the FM-1');
+  sandboxFollows = false;
+}
+/** the page in focus to the FM-1, when it differs from the last one sent (checked every SANDBOX_MS while in sandbox mode) */
+function sandboxSend(): void {
+  if (!sandboxOn() || !device.hasSandbox) return;
+  const pg = sandboxPage(editor.patch, editor.devices, editor.focus);
+  const key = sandboxKey(pg);
+  if (key === sandboxSent) return;
+  sandboxSent = key;
+  device.sandboxPage(pg);
+}
+const SANDBOX_MS = 80;
+window.setInterval(sandboxSend, SANDBOX_MS);
 let uploadTimer = 0;
 let uploading = false;
 let dirty = false;
@@ -141,6 +187,7 @@ const syncChip = (): void => {
     el.classList.toggle('on', s === 'synced');
     el.classList.toggle('idle', s === 'not synced');
     el.classList.toggle('over', s === 'patch too big to sync');
+    el.classList.toggle('sandbox', s === 'sandbox controller');
   }
   fm1Connect.classList.toggle('connected', device.connected);
   fm1Connect.querySelector('.fm1-connect-text')!.textContent = device.connected ? 'FM-1 connected' : 'Connect FM-1';
@@ -151,13 +198,21 @@ const syncChip = (): void => {
   fm1Chip.title = s === 'not synced' ? 'Sync with the FM-1: it plays the editor\'s patch, and changes on either side follow the other'
     : s === 'patch too big to sync' ? 'The patch is over the FM-1 budget: it plays here only (the budget beside says what is over). FM-1 & MIDI'
     : 'FM-1 & MIDI: connect, send, store, follow its panel';
+  if (s === 'sandbox controller') {   // (sandbox mode: the FM-1 drives the browser's patch)
+    const c = sandboxChip({ hasSandbox: device.hasSandbox, midiOut: device.info?.midiOut ?? null });
+    fm1Chip.querySelector('.sl-chip-text')!.textContent = c.text;
+    fm1Chip.setAttribute('aria-label', `${c.text}: open FM-1 & MIDI`);
+    fm1Chip.title = fm1Connect.title = c.title;
+  }
   const line = syncLine(s);
   $('dev-sync-text').textContent = line.text;
   const btn = $<HTMLButtonElement>('dev-sync-btn');
   btn.hidden = $('dev-sync-sep').hidden = !line.action;
   btn.textContent = line.action === 'stop' ? 'Stop syncing' : 'Sync';
   btn.title = line.action === 'stop' ? 'The FM-1 keeps the patch it has; edits here stay in the browser'
+    : s === 'patch too big to sync' ? 'The FM-1 becomes this sandbox patch\'s controller: the browser plays it. Once the patch fits, the FM-1 plays it and changes on either side follow the other'
     : 'The FM-1 plays the editor\'s patch, and changes on either side follow the other';
+  sandboxCheck();
 };
 fm1Chip.onclick = () => {
   if (fm1State() === 'not synced') offerSync(true);
@@ -187,6 +242,7 @@ let fromDevice = false;
 let fromEmu = false;
 let deviceSlot: { slot: number; name: string } | null = null;
 device.onEvent = (e) => {
+  if (e.kind === 'info') return syncChip();   // (MENU > MIDI OUT changed: the chip says so in sandbox mode)
   if (e.kind === 'slot') {
     if (!device.hasLive) onEditorPatch = false;   // (an FM-1 that takes LIVE loads no slot under Live: this is SAVE or a boot)
     deviceSlot = { slot: e.slot, name: e.name };
@@ -225,8 +281,19 @@ function fm1Event(e: DeviceEvent, from: 'device' | 'emu'): void {
     if (id === undefined) return;
     mark(true);
     try {
-      if (e.kind === 'track') editor.trackFromDevice(id, e.notes);
-      else host.send({ t: 'mute', id, on: e.on });
+      if (e.kind === 'track') editor.trackFromDevice(id, e.notes, e.pat);
+      else {
+        host.send({ t: 'mute', id, on: e.on });
+        if (from === 'device') emu.ui?.mute(e.module, e.on);   // (the emulator's black key lights follow the FM-1's mute)
+      }
+    } finally { mark(false); }
+    return;
+  }
+  if (e.kind === 'pattern' || e.kind === 'song') {   // PRESET on the SEQ page, the SONG page (#375): the editor follows
+    mark(true);
+    try {
+      if (e.kind === 'pattern') editor.patternFromDevice(e.pattern, e.song);
+      else editor.songFromDevice(e.song, e.entries);
     } finally { mark(false); }
     return;
   }
@@ -298,12 +365,21 @@ const declineSync = (on: boolean): void => {
 /** Live sync on or off: the one switch for the connect dialog, the chip and FM-1 & MIDI's sync line (on: the FM-1 gets the
  *  editor's patch) */
 function setLive(on: boolean): void {
+  if (on && device.connected && !syncsWith(device.info)) return sayUpdate();
   liveOn = on;
   syncChip();
   if (!on) return;
   sayLive();
   declineSync(false);
-  void sendPatch();
+  if (fitsDevice) void sendPatch();   // (a sandbox patch is not sent: the FM-1 becomes its controller)
+}
+/** Incompatible patch formats: Live stays off, and the toast offers the matching update. */
+function sayUpdate(): void {
+  liveOn = false;
+  const notice = syncUpdateNotice(device.info);
+  devStatus(notice.message);
+  showAction(notice.message, notice.label, notice.target === 'editor'
+    ? () => { window.open(SITE_URL, '_blank', 'noopener'); } : openInstall, 12000);
 }
 const syncAsk = $<HTMLDialogElement>('sync-ask');
 syncAsk.onclose = () => {
@@ -319,6 +395,7 @@ syncAsk.onclose = () => {
  */
 function offerSync(asked = false): void {
   if (!device.connected) return syncChip();
+  if (!syncsWith(device.info)) return sayUpdate();
   if (liveOn && !asked) {
     if (fitsDevice) void sendPatch();
     return syncChip();
@@ -326,11 +403,12 @@ function offerSync(asked = false): void {
   const d = syncOnConnect({ fits: fitsDevice, declined: !asked && syncDeclined(), editorBin: fitsDevice ? encodePatch(editor.patch) : new Uint8Array(), deviceBin: null });
   if (d === 'sync') return setLive(true);
   if (d === 'ask' && !syncAsk.open) {
-    $('sync-ask-text').textContent = `The editor's patch "${editor.patch.name.trim() || 'Untitled'}" will play on the FM-1, and changes on either side follow the other.`;
+    const name = editor.patch.name.trim() || 'Untitled';
+    $('sync-ask-text').textContent = fitsDevice ? `The editor's patch "${name}" will play on the FM-1, and changes on either side follow the other.`
+      : `"${name}" is a sandbox patch: the browser plays it, and the FM-1 becomes its controller (its keys, knobs and pages drive it here).`;
     syncAsk.returnValue = '';
     syncAsk.showModal();
   }
-  if (d === 'too-big') devStatus('over the FM-1 budget: Live sync stays off until the patch fits');
   syncChip();
 }
 /** the on-screen keyboard plays through the sink like the letter keys; Z / X and its buttons share the octave */
@@ -350,7 +428,7 @@ const sink = {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
     if (msg.t === 'on') host.mute(false);
-    // a Steps card's step entry (#127, #135: a chord when the first key is let go); it sounds too. Running, the engine
+    // a Steps card's cursor entry (#127, #135: a chord when the first key is let go); it sounds too. Running, the engine
     // records instead (live overdub)
     if (msg.t === 'on' && currentTab === 'patch' && !editor.playing) recordNote(msg.note, msg.vel);
     if (msg.t === 'off' && currentTab === 'patch') recordOff(msg.note);
@@ -383,7 +461,7 @@ function showArmed(): void {
   if (!editor.recOn) return pinStatus({ tag: `Armed: ${name}`, text: `Main’s keys play ${name}, ${hear}. Shift+R records; ARM again gives Main its keys back.` }, 'arm');
   pinStatus({ tag: `Rec: ${name}`, text: editor.playing
     ? `live: play along, notes land on the nearest step; each pass overdubs and is one undo step. Shift+R stops.`
-    : `step entry: play a note or a chord into the cursor’s step; Backspace a rest, Enter a tie, ← → move. Shift+R or Esc stops.` }, 'arm');
+    : `cursor entry: play a note or a chord into the cursor’s step; Backspace a rest, Enter a tie, ← → move. Shift+R or Esc stops.` }, 'arm');
 }
 // the demo video's script (web/dev/demo) plays its riff through the sink as the keys do, also while a dialog is open
 // (the letter keys stop then); the dev server only
@@ -393,10 +471,13 @@ let refreshAssemblies: () => void = () => {};
 /** the factory patches and the Patches page's own copies (the morph picker keeps those of the same structure; the palette loads any) */
 // A/B is off for 1.0 (#103): nothing sets this, so Snapshot B is not offered as a B side until A/B returns
 let snapshotCandidates: () => { name: string; patch: Patch }[] = () => [];
-const patchCandidates = (): { name: string; patch: Patch }[] => {
+/** (`like`: only a factory patch of its shape is built, presets.ts shapeOf; the others could not be of its structure) */
+const patchCandidates = (like?: Patch): { name: string; patch: Patch }[] => {
   const seen = new Set<string>();
   const out: { name: string; patch: Patch }[] = [];
-  for (const c of [...snapshotCandidates(), ...savedPatches(), ...bankPatches(), ...Object.entries(PRESETS).map(([name, make]) => ({ name, patch: make() }))])
+  const shape = like && shapeOf(like);
+  const wanted = (name: string): boolean => !shape || factoryShape(name) === shape;
+  for (const c of [...snapshotCandidates(), ...savedPatches(), ...bankPatches(wanted), ...Object.entries(PRESETS).filter(([name]) => wanted(name)).map(([name, make]) => ({ name, patch: make() }))])
     if (!seen.has(c.name)) {
       seen.add(c.name);
       out.push(c);
@@ -413,7 +494,7 @@ const envs = new EnvScreens((msg) => host.send(msg), () => host.running && !host
   limits: (type, name) => { const pd = DEFS[type].params.find((q) => q.name === name)!; return { min: pd.min, max: pd.max, def: pd.default }; },
 });
 host.onEnv = (key, states) => envs.receive(key, states);
-host.onSteps = (view) => editor.showSteps(view);
+host.onSteps = (view, pats) => editor.showSteps(view, pats);
 host.onRecorded = (took) => editor.recorded(took);
 /** the sidebar's sliders whose thumbs are jacks (cable slack, zoom): see sideSlider below; filled once the editor exists */
 const sides = new Map<SideKey, SideSlider>();
@@ -444,7 +525,9 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
     fromEmu = true;
     try { setPlaying(run); } finally { fromEmu = false; }
   },
-  track: (m, notes) => fm1Event({ kind: 'track', module: m, notes }, 'emu'),
+  track: (m, notes, pat) => fm1Event({ kind: 'track', module: m, notes, pat }, 'emu'),
+  pattern: (p, song) => fm1Event({ kind: 'pattern', pattern: p, song }, 'emu'),
+  song: (k, entries) => fm1Event({ kind: 'song', song: k, entries }, 'emu'),
   mute: (m, on) => fm1Event({ kind: 'mute', module: m, on }, 'emu'),
   // REC held + a black key on the emulated FM-1 (#139): the editor arms the same track, so the keys the page plays (the
   // emulator's MIDI out) go through it as they do on the device
@@ -502,17 +585,42 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
       queueEmu();
       return;
     }
+    // a parameter with a browser-only stretch (the Delay's time past 700 ms) can take the patch over the FM-1 budget or
+    // back under it: the budget first, so Live pauses before the value would go out (and sends the patch again once it fits)
+    const pd = DEFS[editor.patch.modules.find((m) => m.id === id)?.type ?? '']?.params.find((q) => q.name === name);
+    if (pd?.browserMax !== undefined && (browserOnly(editor.patch).length > 0) === fitsDevice) {
+      const was = fitsDevice;
+      showBudget();
+      if (!was && fitsDevice && live() && !fromDevice) queueUpload();
+    }
     if (!fromEmu) emuParam(id, name, value);
     if (fromDevice) return;
     if (live() && !uploading) device.param(editor.patch, id, name, value);
     else if (live()) dirty = true;
   },
-  onTrack(id, notes) {
-    host.send({ t: 'track', id, notes });
+  onTrack(id, notes, pat) {
+    host.send({ t: 'track', id, notes, pat });
     if (!fromEmu) queueEmu();
     queueSave(editor.patch);
     if (fromDevice) return;
-    if (live() && !uploading) device.track(editor.patch, id, notes);
+    if (live() && !uploading) device.track(editor.patch, id, notes, pat);
+    else if (live()) dirty = true;
+  },
+  onPattern(pattern, song) {   // (#375) the patch's pattern / song: each track takes it at the end of its pass
+    host.send({ t: 'pattern', p: pattern });
+    host.send({ t: 'song', n: song });
+    if (!fromEmu) queueEmu();
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !uploading) device.pattern(pattern, song);
+    else if (live()) dirty = true;
+  },
+  onSong(k, entries) {
+    host.send({ t: 'songs', songs: editor.songs() });
+    if (!fromEmu) queueEmu();
+    queueSave(editor.patch);
+    if (fromDevice) return;
+    if (live() && !uploading) device.song(k, entries);
     else if (live()) dirty = true;
   },
   onArm(armed, plays) {
@@ -648,24 +756,67 @@ host.onValues = (values) => {
 // Sidebar
 setupPopoverPositioning();
 const presetSel = $<HTMLSelectElement>('preset');
-/** the Open picker: the user's saved patches (rebuilt on every save), the examples, the tutorial chapters' ends (catalog.ts) */
+/** the Open picker: Your patches (rebuilt on every save, and when a community patch is added or removed) and the factory
+ *  patches (catalog.ts), each row with its chip, FM-1 · NN % or SANDBOX. Where the browser draws a select's options itself
+ *  (appearance: base-select) the chip is a pill at the row's end; elsewhere the row reads "name — chip". Working a chip
+ *  out costs the patch's whole FM-1 budget, so the rows are listed at once and their chips are worked out after, a few at a
+ *  time while the page is idle, and every one still missing the moment the picker is focused or pressed (before it opens) */
+let chipsDue: { slot: HTMLSpanElement; chip: () => Chip }[] = [];
+const drawChip = ({ slot, chip }: { slot: HTMLSpanElement; chip: () => Chip }): void => slot.replaceWith(chipEl(chip()));
+const chipsNow = (): void => { const due = chipsDue; chipsDue = []; due.forEach(drawChip); };
+let chipsQueued = false;
+const chipsWhenIdle = (): void => {
+  if (chipsQueued || !chipsDue.length) return;
+  chipsQueued = true;
+  const step = (deadline?: IdleDeadline): void => {
+    chipsQueued = false;
+    do { const next = chipsDue.shift(); if (next) drawChip(next); } while (chipsDue.length && deadline && deadline.timeRemaining() > 4);
+    chipsWhenIdle();
+  };
+  if ('requestIdleCallback' in window) requestIdleCallback(step, { timeout: 4000 });
+  else setTimeout(step, 50);
+};
+presetSel.addEventListener('focus', chipsNow);
+presetSel.addEventListener('pointerdown', chipsNow);
 const fillPicker = (): void => {
+  chipsDue = [];
   presetSel.replaceChildren(
     new Option('Open a patch…', ''),
     ...openableGroups().map(({ label, items }) => {
       const g = document.createElement('optgroup');
       g.label = label;
-      g.append(...items.map((o) => new Option(o.name, o.value)));
+      g.append(...items.map((o) => {
+        const opt = new Option('', o.value);
+        const name = document.createElement('span');
+        name.className = 'o-name';
+        name.textContent = `${o.xl ? '└ ' : ''}${o.name}`;
+        if (o.author) {
+          const by = document.createElement('span');
+          by.className = 'o-by';
+          by.textContent = ` · ${o.author}`;
+          name.append(by);
+        }
+        const sep = document.createElement('span');
+        sep.className = 'o-sep';
+        sep.textContent = ' — ';
+        const slot = document.createElement('span');
+        chipsDue.push({ slot, chip: o.chip });
+        opt.append(name, sep, slot);
+        return opt;
+      }));
       return g;
     }),
   );
+  if (document.activeElement === presetSel) chipsNow();
+  else chipsWhenIdle();
 };
 fillPicker();
-onSavedChange(fillPicker);
+onSavedChange(() => { unlinkSaved(savedPatches().map((e) => e.name)); fillPicker(); });
+onAddedChange(fillPicker);
 void inlineWordmarks(); // the sidebar's wordmark in the theme's colours
 presetSel.onchange = () => {
   const o = openableByValue(presetSel.value);
-  if (o) { loadNamed(o.load(), { from: o.value.startsWith('saved:') ? o.name : undefined }); closeSidebar(); }
+  if (o) { loadNamed(o.load(), { from: o.from }); closeSidebar(); }
   presetSel.value = '';
 };
 /** delete one of Your patches at once, with an Undo toast instead of a question (Library rows, the trash icon) */
@@ -774,10 +925,9 @@ function showBudget(): void {
   const was = fitsDevice;
   fitsDevice = b.fits;
   syncChip();
-  if (liveSync.pausesNow(device.connected, liveOn, was, b.fits)) device.live(true);   // (#200: the FM-1 says so at once)
   const el = $('budget');
   el.classList.toggle('over', !b.fits);
-  const memOver = b.over.filter((i) => i.key !== 'cpu');
+  const memOver = b.over.filter((i) => i.key !== 'cpu' && i.key !== 'browser');
   const fullest = memOver[0] ?? b.fullest;
   const [mem, cpu] = el.querySelectorAll('.budget-row');
   meterRow(mem, 'MEM', memOver.length ? 1.01 : b.memory, memOver.length ? 'over' : `${Math.round(b.memory * 100)} %`);
@@ -806,16 +956,31 @@ function showBudget(): void {
     ...b.items.filter((i) => i.used > 0).map((i) => budgetLine(i.label, i.used / i.max, `${i.used} / ${i.max}`, '', i.max > 1)),
     head('CPU, estimated'),
     ...costly,
+    ...(b.over.some((i) => i.key === 'browser') ? [head('Browser only'), ...b.over.filter((i) => i.key === 'browser').map((i) => budgetLine(i.label, 1.01, 'over', '', false))] : []),
   );
   const note = document.createElement('p');
   note.className = 'muted';
   note.textContent = b.fits
     ? 'The CPU figure is an estimate: counted on a model of the FM-1\'s processor, calibrated on the factory patches measured on the FM-1. Treat anything above 80 % as tight.'
-    : 'Plays in the browser. The FM-1 cannot run it: Send, Store and Live stay off, and Library > Patches marks it "browser only".';
+    : 'A sandbox patch: it plays here in the browser with no FM-1 limits. It goes to the FM-1 once it fits under the bars; Library > Patches marks it SANDBOX.';
   list.append(note);
-  pinStatus(b.fits ? null : { tag: 'Too much for the FM-1', text: `${b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} of ${i.max}`).join(', ')}. It plays here; click the budget for what costs most.` });
+  showSandbox(b);
   if (was && !b.fits && device.connected) devStatus('over the FM-1 budget: Live paused until the patch fits');
   requestAnimationFrame(placeBudget);
+}
+// a sandbox patch (over the FM-1 budget, sandbox.ts): the status line's gold SANDBOX pill and its plain words; the first
+// time in this browser the "No limits here" card shows, afterwards the pill opens it
+function sandboxCard(): void {
+  showSandboxCard({ costs: () => { ($('budget') as HTMLDetailsElement).open = true; } });
+}
+function showSandbox(b: ReturnType<typeof deviceBudget>): void {
+  const pill = $<HTMLButtonElement>('sandbox-pill');
+  pill.hidden = b.fits;
+  pill.onclick = sandboxCard;
+  pinStatus(b.fits ? null : { tag: '', text: sandboxWords(b), more: { label: 'What sandbox means', run: sandboxCard } });
+  // after this turn, so a card the page load shows (the tutorial's welcome, what's new) is up first: the sandbox card does
+  // not go over another card, and waits for the next sandbox patch
+  if (!b.fits && sandboxCardDue()) setTimeout(() => { if (sandboxCardDue() && !document.querySelector('.tutorial-offer')) sandboxCard(); });
 }
 // the open budget is a card above the status line, over the meter; a
 // click elsewhere or Escape closes it
@@ -900,7 +1065,9 @@ const commands = (): Command[] => {
       URL.revokeObjectURL(a.href);
     } },
     { kind: 'command', label: 'Import presets from .json', keywords: 'load file library device', run: () => $('load-file').click() },
-    { kind: 'command', label: 'Import browser backup', detail: 'from the old address', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
+    { kind: 'command', label: 'Save browser backup', detail: 'everything this browser keeps here, as .json', keywords: 'export download file backup patches bank library settings move', run: saveBrowserBackup },
+    { kind: 'command', label: 'Import browser backup', detail: 'a backup .json', keywords: 'restore migrate moved glvno github pages patches bank library', run: () => $('load-file').click() },
+    ...(onPagesDev() ? [{ kind: 'command' as const, label: 'Move to matryoshka.lol', detail: 'your patches, bank, library and settings', keywords: 'migrate moved address domain pages.dev bring', run: () => move.open() }] : []),
     { kind: 'command', label: 'Share patch\u2026', keywords: 'link copy url clipboard reddit post card notes', run: () => shareSheet.open() },
     { kind: 'command', label: 'Save patch card (PNG)', keywords: 'image picture share post export download', run: () => void saveCard() },
     { kind: 'command', label: 'Tutorial', keywords: 'learn help starter tour chapters course', run: () => { toPatch(); tutorial.open(); } },
@@ -925,6 +1092,7 @@ const commands = (): Command[] => {
     { kind: 'command', label: 'Keyboard shortcuts', keywords: 'help', detail: '?', run: () => help.showModal() },
     { kind: 'command', label: currentTheme() === 'dark' ? 'Theme: light' : 'Theme: dark', keywords: 'theme dark light mode colours colors night day appearance', run: () => toggleTheme() },
     ...(themeChoice() ? [{ kind: 'command' as const, label: 'Theme: follow the system', keywords: 'theme dark light mode auto os appearance', run: () => setTheme(null) }] : []),
+    { kind: 'command', label: 'Browse community patches', keywords: 'community shared players reddit add library others', run: () => setLibrarySection('community') },
     { kind: 'command', label: 'Open the demo patch', keywords: 'demo example song listen play showcase', run: () => openDemo() },
     { kind: 'command', label: 'Collapse / expand the sidebar', keywords: 'hide show side panel rail more room', detail: 'Ctrl/Cmd+B', run: () => toggleSidebarCollapsed() },
     { kind: 'command', label: 'Expand all assemblies', keywords: 'open frames nested show inside', run: inPatch(() => editor.setAllOpen(true)) },
@@ -941,7 +1109,7 @@ const commands = (): Command[] => {
     // the same lists as + Add module, the assembly browser and the Open picker (catalog.ts)
     ...addableModules(DEFS).map((m) => ({ kind: 'add module', tags: ['module'], label: m.name, keywords: m.def.label, run: () => editor.add(m.type) })),
     ...assemblyShelves().filter((a, i, all) => all.findIndex((b) => b.def === a.def) === i).map((a) => assembly(a.def, a.shelf)), // the drum kit once
-    ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.name, detail: g.label, run: () => loadNamed(o.load(), { from: g.label === 'Your patches' ? o.name : undefined }) }))),
+    ...openableGroups().flatMap((g) => g.items.map((o) => ({ kind: 'load patch', label: o.author ? `${o.name} · ${o.author}` : o.name, detail: g.label, run: () => loadNamed(o.load(), { from: o.from }) }))),
   ];
 };
 /**
@@ -1070,13 +1238,20 @@ const engineStart = new EngineStart($<HTMLDialogElement>('engine-start'), {
 });
 const startNew = (): void => (tutorial.active ? emptyNew() : engineStart.open());
 $('new-patch-btn').onclick = () => { closeSidebar(); startNew(); };
-$('add-btn').onclick = () => openPalette('module');
-$('add-assembly-btn').onclick = () => openPalette('assembly');
-$('tidy-btn').onclick = () => editor.tidyUp();
-$('fit-btn').onclick = () => editor.zoomToFit();
-$('expand-all-btn').onclick = () => editor.setAllOpen(true);
-$('collapse-all-btn').onclick = () => editor.setAllOpen(false);
+// the sidebar is the same in every view: + Module, + Assembly and the Canvas panel go to the canvas first
+const onCanvas = (run: () => void) => (): void => {
+  if (currentView !== 'patch') setView('patch');
+  run();
+};
+$('add-btn').onclick = onCanvas(() => openPalette('module'));
+$('add-assembly-btn').onclick = onCanvas(() => openPalette('assembly'));
+$('tidy-btn').onclick = onCanvas(() => editor.tidyUp());
+$('fit-btn').onclick = onCanvas(() => editor.zoomToFit());
+$('expand-all-btn').onclick = onCanvas(() => editor.setAllOpen(true));
+$('collapse-all-btn').onclick = onCanvas(() => editor.setAllOpen(false));
 $('tour-btn').onclick = () => { toPatch(); tutorial.open(); };
+// Get started > Install names the firmware it installs: "Install v1.2" (version.ts installLabel)
+$('install-btn').textContent = installLabel();
 $('install-btn').onclick = () => openInstall();
 /** the demo patch, with the audio and the transport started (the click is the gesture the browser wants; its drums
  * and the drone's pump are Steps tracks, which play while the transport runs) */
@@ -1115,7 +1290,7 @@ window.addEventListener('keydown', (e) => {
   if (t?.closest('[role=tab], [role=slider], input[type=range], input[type=radio], .resize-handle') && e.key.startsWith('Arrow')) return;
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
-  let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's step entry: rest, tie, cursor, stop (#127)
+  let done = editor.rollKey(e) || (!mod && !e.altKey && recordKey(k)); // the piano roll's keys (#136); a Steps card's cursor entry: rest, tie, cursor, stop (#127)
   if (done) {
     e.preventDefault();
     e.stopImmediatePropagation();
@@ -1123,6 +1298,7 @@ window.addEventListener('keydown', (e) => {
   }
   if (k === '/' || (mod && k.toLowerCase() === 'k')) (openPalette(), (done = true));
   else if (k === '?') (help.showModal(), (done = true));
+  else if ((k === '[' || k === ']') && !mod && !e.altKey) (editor.selectPattern(editor.pattern + (k === ']' ? 1 : -1)), (done = true));   // the patch's pattern (#375)
   else if (e.shiftKey && !mod && !e.altKey && k.toLowerCase() === 'r') {   // REC on the armed track (#135)
     if (!editor.toggleRec()) status.textContent = 'Shift+R records on the armed track: ARM a Steps track first';
     done = true;
@@ -1386,11 +1562,11 @@ function setPlaying(on: boolean): void {
   if (on) host.mute(false);
   editor.playing = on;
   host.transport(on);
-  if (live()) device.transport(on);
+  if (liveSync.transports(device.connected, liveOn)) device.transport(on);   // (sandbox mode too: the FM-1's PLAY in step)
   clockOut.transport(on);
   if (!fromEmu) emu.ui?.transport(on);
   syncPlayBtn();
-  showArmed(); // (REC: step entry stopped, live running)
+  showArmed(); // (REC: cursor entry stopped, live running)
 }
 function togglePlaying(): void {
   setPlaying(!editor.playing);
@@ -1407,7 +1583,7 @@ function emuLoad(): void {
   // a patch over the budget still loads here (the emulator has the firmware's tables, not its timing): a notice says so
   // and the view stays usable; past the tables themselves the firmware refuses it and the last patch stays
   const b = deviceBudget(editor.patch);
-  const over = b.over.map((i) => i.key === 'cpu' ? `CPU ${i.used} %` : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
+  const over = b.over.map((i) => i.key === 'cpu' || i.key === 'browser' ? overText(i) : `${i.used} ${i.label} (the FM-1 holds ${i.max})`).join(', ');
   let err = 0;
   try {
     err = ui.load(encodePatch(editor.patch, true), editor.patch.name.toUpperCase(), { fresh: emuFresh });
@@ -1448,13 +1624,15 @@ function emuParam(id: number, name: string, value: number): void {
   const pi = m ? DEFS[m.type].params.findIndex((q) => q.name === name) : -1;
   if (mi >= 0 && pi >= 0) emu.ui.param(mi, pi, toQ16(value));
 }
-/** the emulated PRESET knob: the next / previous entry of the Open list's Your patches and Examples (not Community) */
+/** the emulated PRESET knob: the next / previous entry of the Open list (Your patches, then the factory patches), stepping
+ *  over sandbox patches as the FM-1's PRESET does: they never go into its bank */
 function stepOpenList(d: number): void {
-  const list = openableGroups().filter((g) => g.label !== 'Tutorial' && g.label !== 'Community').flatMap((g) => g.items.map((o) => ({ ...o, mine: g.label === 'Your patches' })));
-  if (!list.length || !d) return;
+  if (!d) return;
+  const list = openableGroups().flatMap((g) => g.items).filter((o) => o.chip().fits);
+  if (!list.length) return;
   const i = list.findIndex((o) => o.name === editor.patch.name);
   const next = list[(((i < 0 ? (d > 0 ? -1 : 0) : i) + d) % list.length + list.length) % list.length];
-  loadNamed(next.load(), { from: next.mine ? next.name : undefined, stay: true });
+  loadNamed(next.load(), { from: next.from, stay: true });
   status.textContent = `FM-1: ${next.name}`;
 }
 /** the keyboard's notes are the emulated FM-1's keys while its tab shows; on its SEQ page they enter steps and do not
@@ -1489,14 +1667,10 @@ function setView(v: View): void {
   $('tab-library').hidden = v !== 'library';
   $('canvas').hidden = v !== 'patch';
   $('help-btn').hidden = v !== 'patch';
-  // the sidebar per view: PATCH has the PATCH, Canvas and Get started panels; EMU the PATCH panel without + Module /
-  // + Assembly; LIBRARY its section list
-  document.querySelector<HTMLElement>('.patch-controls')!.hidden = v === 'library';
-  for (const el of document.querySelectorAll<HTMLElement>('.patch-controls [data-views]')) el.hidden = !el.dataset.views!.split(' ').includes(v);
-  document.querySelector<HTMLElement>('.add-row')!.hidden = v !== 'patch';
-  document.querySelector<HTMLElement>('.library-side')!.hidden = v !== 'library';
+  // the sidebar is the same in every view; LIBRARY's sections are tabs under the switch
+  $('library-tabs').hidden = v !== 'library';
   // the FM-1 is its own instrument: its panel has the keys and knobs, so the Main dock, the wheels and the keyboard go;
-  // LIBRARY plays nothing, so they go there too and it has the full height
+  // LIBRARY plays nothing, so they go there too. Audio on / Panic and MIDI stay
   workspace.classList.toggle('fm1-mode', v === 'emu');
   workspace.classList.toggle('library-mode', v === 'library');
   host.setMaster(v === 'emu' ? emuLevel : 1);
@@ -1508,9 +1682,9 @@ function setView(v: View): void {
   showAddress();
 }
 /** the address follows the view (#218), replaced, not pushed: PATCH has no fragment, EMU #emu, LIBRARY #library (Patches),
- *  #assemblies or #presets. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
+ *  #assemblies, #presets or #community. A replaceState fires no hashchange, so openFromAddress does not run again. A fragment that is
  *  not a view's (a share link's #p= being opened) is left alone */
-const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#assemblies', '#flash', '#about'];
+const VIEW_HASHES = ['', '#patch', '#emu', '#fm1', '#library', '#presets', '#assemblies', '#community', '#flash', '#about'];
 function showAddress(): void {
   if (!VIEW_HASHES.includes(location.hash)) return;
   const want = currentView === 'emu' ? '#emu' : currentView === 'library' ? (librarySection === 'patches' ? '#library' : `#${librarySection}`) : '';
@@ -1534,12 +1708,12 @@ function toPatch(): void {
   if (currentView === 'library') setView('patch');
 }
 
-// LIBRARY's sections (#218): Patches, Assemblies, Presets in the sidebar, the last one remembered per browser; one shows
+// LIBRARY's sections (#218): Patches, Assemblies, Presets, Community as tabs under the switch, the last one remembered per browser; one shows
 // at a time (bank.ts, assemblies.ts, library-presets.ts build them below). Entering one rereads it, and reads the FM-1
 // when one is connected
-type LibrarySection = 'patches' | 'assemblies' | 'presets';
+type LibrarySection = 'patches' | 'assemblies' | 'presets' | 'community';
 const LIBRARY_SECTION = 'matryoshka.library-section';
-const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets';
+const isSection = (v: unknown): v is LibrarySection => v === 'patches' || v === 'assemblies' || v === 'presets' || v === 'community';
 let librarySection: LibrarySection = (() => {
   try {
     const v = localStorage.getItem(LIBRARY_SECTION);
@@ -1548,8 +1722,8 @@ let librarySection: LibrarySection = (() => {
     return 'patches'; // storage blocked: Patches every time
   }
 })();
-const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('.library-nav [data-section]')];
-const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets') };
+const sectionBtns = [...document.querySelectorAll<HTMLButtonElement>('#library-tabs [data-section]')];
+const sectionEls: Record<LibrarySection, HTMLElement> = { patches: $('lib-patches'), assemblies: $('lib-assemblies'), presets: $('lib-presets'), community: $('lib-community') };
 /** the sections' panes with an FM-1 column (set when they are built, below) */
 const libraryPanes: Partial<Record<LibrarySection, LibraryPane>> = {};
 function showLibrarySection(): void {
@@ -1663,12 +1837,17 @@ async function mirrorInput(i: PanelInput): Promise<void> {
       case 'master': emu.setMaster(i.v); host.setMaster(i.v); break;
       case 'transport': setPlaying(i.run); break;
       case 'enc':
-        if (i.n === ENCODERS.preset && live()) break;          // (with Live the FM-1 plays the editor's patch: its slots are its own)
+        if (i.n === ENCODERS.preset && (live() || sandboxOn())) break;   // (with Live the FM-1 plays the editor's patch: its slots are its own)
+        if (sandboxOn() && (i.n === ENCODERS.select || i.n === ENCODERS.algo)) {   // sandbox mode: the editor's own focus moves
+          const f = sandboxStep(editor.devices, editor.focus, i.n === ENCODERS.select, i.clicks);
+          if (f) editor.setFocus(f);
+          break;
+        }
         emu.drive(i);
         break;
       case 'button': {
         const b = PANEL_OF_ID.get(i.id);
-        emu.drive(i);
+        followOctave(noteKeys, () => emu.octave, () => emu.drive(i));   // (OCT- / OCT+: the editor's keys follow the FM-1's)
         if (b !== undefined) editor.pressButton(b, i.down);
         break;
       }
@@ -1687,12 +1866,16 @@ async function followFm1(fw?: Firmware): Promise<void> {
     devStatus((e as Error).message);
   }
 }
+function unfollowFm1(why = 'not following the FM-1'): void {
+  mirror.stop();
+  emu.following(null, null);
+  $('mirror-btn').textContent = 'Follow its panel';
+  devStatus(why);
+}
 $('mirror-btn').onclick = () => {
   if (mirror.following) {
-    mirror.stop();
-    emu.following(null, null);
-    $('mirror-btn').textContent = 'Follow its panel';
-    devStatus('not following the FM-1');
+    sandboxFollows = false;   // (the user's choice: sandbox mode leaves it be)
+    unfollowFm1();
     return;
   }
   const v = $<HTMLSelectElement>('mirror-fw').value;
@@ -1912,6 +2095,7 @@ const setMidi = async (on: boolean): Promise<void> => {
       midiInputs = n;
       showMidi();
     },
+    (port) => mirror.follows(port),   // (the followed FM-1's panel comes in through the mirror: not twice)
   );
   midiAsking = false;
   midiOn = !!midiSwitch;
@@ -2096,8 +2280,9 @@ onThemeChange(showTheme);
 showTheme();
 const toggleSidebarCollapsed = (): void => setSidebarCollapsed(!sidebar.parentElement!.classList.contains('side-collapsed'));
 collapseBtn.onclick = toggleSidebarCollapsed;
-sidebar.querySelector<HTMLElement>('.brand')!.addEventListener('click', () => {
+sidebar.querySelector<HTMLElement>('.brand')!.addEventListener('click', (e) => {
   if (sidebar.parentElement!.classList.contains('side-collapsed')) setSidebarCollapsed(false);
+  if ((e.target as Element).closest('.logo, .wordmark') && currentView !== 'patch') setView('patch');   // the logo: back to the canvas
 });
 try {
   if (localStorage.getItem(SIDEBAR_COLLAPSED)) setSidebarCollapsed(true);
@@ -2105,10 +2290,12 @@ try {
   /* storage blocked: start expanded */
 }
 
-// LIBRARY's sections (#218): it manages what is stored and opens nothing. The Community patches are in the Open picker and
-// the palette, which refill once they are decoded
-void loadCommunity().then(fillPicker);
+// LIBRARY's sections (#218): it manages what is stored and opens nothing. Community is opt-in: its patches are decoded
+// when Library > Community first shows, or now when some were added to Your patches (the Open picker, the palette and
+// Library > Patches list those, once decoded)
 libraryPanes.patches = buildPatchesSection($('lib-patches'), device, { remove: deleteSaved });
+if (addedTitles().length) void loadCommunity().then(() => { fillPicker(); libraryPanes.patches?.refresh(); });
+libraryPanes.community = buildCommunitySection($('lib-community'), { status: (msg) => { status.textContent = msg; } });
 libraryPanes.presets = buildPresetsSection($('lib-presets'), device, { changed: () => editor.rebuild() });
 refreshAssemblies = buildAssembliesSection($('lib-assemblies'), {
   status(msg) {
@@ -2125,13 +2312,13 @@ $('about-btn').onclick = (e) => {
   void about.open();
 };
 
-// the address (#218): #library opens LIBRARY on Patches, #presets and #assemblies on those sections, #emu (and the old #fm1)
+// the address (#218): #library opens LIBRARY on Patches, #presets, #assemblies and #community on those sections, #emu (and the old #fm1)
 // EMU, #flash the Install panel, #about the About card. Other sites link here (fm1-editor.com/firmware: #flash and #fm1).
 // Without one a page load opens PATCH
 const openFromAddress = (): void => {
   const h = location.hash.slice(1);
   if (h === 'patch') setView('patch');
-  if (h === 'library' || h === 'presets' || h === 'assemblies') setLibrarySection(h === 'library' ? 'patches' : h);
+  if (h === 'library' || h === 'presets' || h === 'assemblies' || h === 'community') setLibrarySection(h === 'library' ? 'patches' : h);
   if (h === 'emu' || h === 'fm1') setView('emu');
   if (h === 'flash') openInstall();
   if (h === 'about') void about.open();
@@ -2143,7 +2330,19 @@ window.addEventListener('hashchange', openFromAddress);
 // a returning visitor on a new version sees what changed, once, instead of the tutorial's welcome
 if (currentView === 'patch' && !installOpen() && !isShareLink(location.href) && !whatsNew()) tutorial.welcome();
 // the old address's hand-off (?migrate=1), and the toast of an import before the reload
-receiveMigration((keys) => importBrowserData(keys, new URL(OLD_ORIGIN).host));
+receiveMigration((keys, origin) => importBrowserData(keys, new URL(origin).host));
+/** everything the app keeps in this browser at this address, as a backup file ("Load .json" takes it) */
+function saveBrowserBackup(): void {
+  const file = backupFile(collectKeys(), location.origin);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+  a.download = `matryoshka-backup-${file.saved.slice(0, 10)}.json`;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+const move = moveOffer(saveBrowserBackup);
 try {
   const imported = sessionStorage.getItem(IMPORTED);
   if (imported) {
@@ -2171,4 +2370,26 @@ if (import.meta.env.DEV) {
   link.href = '/lesson-editor'; link.target = '_blank'; link.rel = 'noopener';
   link.textContent = 'Edit lessons';
   document.querySelector('.sidebar-bottom')?.append(link);
+}
+
+// the emulator scenarios (npm run emu:scenarios, docs/EMULATOR.md, #290): open a patch by name, read the editor's side of
+// the link. Development server only
+if (import.meta.env.DEV) {
+  const inputs: unknown[] = [];   // what the followed FM-1's panel did, as the mirror read it
+  const onInput = mirror.onInput;
+  mirror.onInput = (i) => { inputs.push({ at: Math.round(performance.now()), ...i }); onInput(i); };
+  (window as unknown as { __m1test?: unknown }).__m1test = {
+    inputs: (): unknown[] => inputs.splice(0),
+    open: (name: string): boolean => {
+      const o = openableGroups().flatMap((g) => g.items).find((x) => x.name === name);
+      if (o) loadNamed(o.load(), { from: o.from });
+      return !!o;
+    },
+    state: () => ({
+      connected: device.connected, live: liveOn, fits: fitsDevice, sandbox: sandboxOn(), chip: fm1State(), following: mirror.following,
+      playing: editor.playing, deviceRunning: device.running, octave: noteKeys.octave(), focus: editor.focus, patch: editor.patch.name,
+      syncAsk: syncAsk.open, status: $('dev-status').textContent,
+    }),
+    patchJson: (): string => JSON.stringify(editor.patch),
+  };
 }

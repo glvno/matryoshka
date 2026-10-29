@@ -30,7 +30,7 @@ const ROM_BOOT =
 export const MVAVE_WORKBENCH = 'https://open.m-vave.com/fm1-workbench';
 
 /** #183: the running firmware refused an M-VAVE package because its start-up part differs from the package's
- *  (fm1ota.js bootMismatch). Firmware before Matryoshka 1.3 cannot tell which one it has (#264), so this does not guess. */
+ *  (fm1ota.js bootMismatch). Firmware before Matryoshka 1.7 cannot tell which one it has (#264), so this does not guess. */
 export const BOOT_CODE_HELP =
   `Nothing was changed: the FM-1 refused this package (its screen says "update failed -5"), because ${STARTUP} is not ` +
   'the one inside it. It still runs its firmware. Which one it has could not be read: install the current Matryoshka, ' +

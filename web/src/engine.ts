@@ -8,12 +8,12 @@
 // held). A module reading another group's per-part output gets the sum over those parts; a per-part module reading a
 // shared output gets that one buffer.
 
-import { type DrumMapState, driftSeed, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
+import { type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
 import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
-import { fixNotes, type StepNote } from './track';
+import { fixNotes, PATTERNS_MAX, SONGS_MAX, type SongEntry, type StepNote } from './track';
 import { arpBlock, arpClear, arpInit, arpKeyOff, arpKeyOn, type ArpParams, type ArpState, PPQN } from './arpeggiator';
 
 export const BLOCK = 128;
@@ -42,6 +42,10 @@ function paraMix(nodes: Node[]): void {
 /** A display snapshot, detached from the patch and the audio thread's mutable state. */
 export type ParameterValues = { id: number; params: Record<string, number> }[];
 
+/** what the tracks play (Engine.patternView): the selected pattern, the song (0 none), per track the pattern playing, the
+ * queued one (-1 none) and the song entry (-1 none yet) */
+export interface PatternView { pattern: number; song: number; tracks: { id: number; pat: number; queued: number; entry: number }[] }
+
 /** one running copy of a module: one per part inside a poly assembly, else one */
 interface Inst {
   /** instSeed of the module index and part: the Random module's seed, the same as the firmware's */
@@ -65,6 +69,8 @@ interface Node {
   att: [number, number];
   map: Record<Source, string[]>;
   connected: Record<string, boolean>;
+  /** its outputs something reads: a cable from it, or a probe / watch (probe marks it, so it is written from the next block) */
+  used: Record<string, boolean>;
   inputRoutes: { port: string; params: string[]; mean: number }[];
   /** w: the weight a summed source adds with (paraMix), else 1 */
   sources: { port: string; from: Node; fromPort: string; w: number }[];
@@ -109,6 +115,8 @@ interface Group {
   held: { note: number; vel: number }[];
   /** rotate: the part the next note tries first */
   rot: number;
+  /** all held input keys, including keys whose voices were stolen or refused */
+  down: number[];
   /** where its notes come from: -1 the keys (Main), else the id of the Arpeggiator or Steps module that feeds its allocator */
   src: number;
 }
@@ -130,13 +138,13 @@ const IDLE = 6 / 65536;
 const IDLE_CHECK = 32;
 
 const newVoice = (index: number, parts: number, seed: number): VoiceState => ({
-  pitch: 0, gate: 0, velocity: 0, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, index, parts, legato: 0, jump: 0, flaw: 0,
+  pitch: 0, gate: 0, velocity: 0, keyTrig: false, low: false, high: false, unison: false, clock: false, run: false, tick: -1, ticks: 0, tickLen: 0, buttons: 0, bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0, index, parts, legato: 0, jump: 0, flaw: 0,
   note: -1, on: false, onStamp: 0, offStamp: 0, retrig: false, walk: walkInit(seed),
 });
 const KEYBOARD: PolyCfg = { parts: 1, assign: 0, legato: 0, priority: 0 };
 /** g: the poly group's index (its parts' drift seeds), -1 for the shared keyboard */
 const newGroup = (key: string, cfg: PolyCfg, g: number): Group => ({
-  key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0, src: -1,
+  key, cfg: { ...cfg }, parts: Array.from({ length: cfg.parts }, (_, i) => newVoice(i, cfg.parts, driftSeed(g + 1, i))), held: [], rot: 0, down: [0, 0, 0, 0], src: -1,
 });
 /** the tempo without a Main module */
 const TEMPO_DEFAULT = 120;
@@ -173,7 +181,7 @@ export class Engine {
   private btnSwitch: boolean[] = [];
   private arps: ArpRun[] = [];
   /** the performance controls (pitch bend -1..1, mod wheel 0..1, channel aftertouch 0..1): one set, every part sees it */
-  private ctl = { bend: 0, mod: 0, at: 0 };
+  private ctl = { bend: 0, mod: 0, at: 0, breath: 0, sustain: 0, foot: 0 };
   /** the Main module, and the morph position of the current block (its morph parameter plus the block mean of its morph input, one block late) */
   private main: Node | null = null;
   private morphT = 0;
@@ -220,7 +228,9 @@ export class Engine {
     const oldGroups = new Map(this.groups.map((g) => [g.key, g]));
     this.groups = pg.map((x, i) => {
       const g = oldGroups.get(x.key) ?? newGroup(x.key, x.cfg, i);
+      const stackChanged = g.cfg.unisonParts !== x.cfg.unisonParts || (g.cfg.unison && x.cfg.unison && g.cfg.unisonShare !== x.cfg.unisonShare);
       g.cfg = { ...x.cfg };
+      if (stackChanged && g.cfg.unison) this.monoUpdate(g);
       g.src = x.src ?? -1;
       for (const v of g.parts) v.idle = false; // the patch changed: every part runs and is judged again
       return g;
@@ -228,6 +238,10 @@ export class Engine {
     const groupOf = new Map<number, number>();
     pg.forEach((x, i) => x.modules.forEach((id) => groupOf.set(id, i)));
     const next = new Map<number, Node>();
+    const mainSeq = source.modules.find((m) => m.type === 'fm1')?.seq;
+    this.song.song = mainSeq?.song ?? 0;
+    this.song.songs = (mainSeq?.songs ?? []).map((x) => x.map((e) => ({ ...e })));
+    this.pattern = mainSeq?.pattern ?? 0;
     for (const [mi, m] of patch.modules.entries()) {
       const impl = IMPLS[m.type];
       if (!impl) throw new Error(`unknown module type "${m.type}"`);
@@ -245,6 +259,7 @@ export class Engine {
             att: [1, 1],
             map: defaultMap(impl.def),
             connected: {},
+            used: {},
             inputRoutes: [],
             sources: [],
             group,
@@ -267,10 +282,17 @@ export class Engine {
       if (m.type === 'steps')
         for (const inst of node.inst) {
           const st = inst.state as StepsState;
-          st.notes = (m.notes ?? []).map((n) => ({ ...n }));
+          st.pats = [{ notes: (m.notes ?? []).map((n) => ({ ...n })) }, ...(m.patterns ?? []).map((x) => (x ? { ...x, notes: (x.notes ?? []).map((n) => ({ ...n })) } : null))];
+          st.song = this.song;
+          if (!keep) {
+            st.pat = Math.min(PATTERNS_MAX - 1, Math.max(0, mainSeq?.pattern ?? 0));
+            st.songPos = -1;
+          }
+          stepsGo(st, st.pat);
         }
       node.sources = [];
       node.connected = {};
+      node.used = {};
       next.set(m.id, node);
     }
     for (const c of patch.cables) {
@@ -278,6 +300,7 @@ export class Engine {
       const from = next.get(c.from.module)!;
       to.sources.push({ port: c.to.port, from, fromPort: c.from.port, w: 1 });
       to.connected[c.to.port] = true;
+      from.used[c.from.port] = true;
     }
     this.nodes = next;
     paraMix([...next.values()]);
@@ -311,6 +334,10 @@ export class Engine {
       const from = m && keysInto(source, m);
       return from ? [{ st: node.inst[0].state as DrumMapState, src: from.type === 'fm1' ? -1 : from.id }] : [];
     });
+    // a track that plays a Drum map (directly or through the Arpeggiator it feeds) is never shifted by a song (engine.c
+    // eng_steps_drummap)
+    for (const node of this.tracks)
+      (node.inst[0].state as StepsState).drum = this.maps.some((x) => x.src === node.id || (x.src >= 0 && this.arpById.get(x.src)?.feed === node.id));
     for (const a of this.arps) if (a.byp !== a.node.bypass) this.arpSwitched(a); // (an edit switched it while the patch reloaded)
   }
 
@@ -331,14 +358,16 @@ export class Engine {
     a.byp = a.node.bypass;
     a.st.cur = -1;
     a.st.running = false;
-    for (const x of this.maps) if (x.src === a.node.id) x.st.gate.fill(0);
+    for (const x of this.maps) if (x.src === a.node.id) dropRows(x.st);
     for (const g of this.groups) {
       if (g.src !== a.node.id) continue;
       g.held = [];
+      g.down.fill(0);
       for (const x of g.parts) {
         x.on = false;
         x.gate = 0;
         x.retrig = false;
+        x.keyTrig = false;
       }
     }
   }
@@ -419,6 +448,7 @@ export class Engine {
   probe(id: number, port: string): Float32Array | null {
     const node = this.nodes.get(id);
     if (!node) return null;
+    node.used[port] = true;
     if (node.group < 0 || node.inst.length < 2) return node.inst[0]?.out[port] ?? null;
     if (node.impl.def.outputs.find((o) => o.name === port)?.kind !== 'audio')
       return node.inst[this.shownPart(this.groups[node.group])]?.out[port] ?? null;
@@ -436,6 +466,7 @@ export class Engine {
    */
   probeVoices(id: number, port: string): Float32Array[] | null {
     const node = this.nodes.get(id);
+    if (node) node.used[port] = true;
     if (!node || node.group < 0 || node.inst.length < 2) return null;
     const audio = node.impl.def.outputs.find((o) => o.name === port)?.kind === 'audio';
     const parts = this.groups[node.group].parts;
@@ -465,11 +496,50 @@ export class Engine {
     const node = this.nodes.get(id);
     return node?.type === 'steps' ? (node.inst[0].state as StepsState) : null;
   }
-  /** a Steps module's notes changed (ModuleInst.notes, track.ts): no reload, the track plays on; the notes sounding end
-   * as they would */
-  setTrack(id: number, notes: readonly StepNote[] | undefined): void {
+  /** a Steps module's notes changed (ModuleInst.notes, track.ts), of pattern `pat` (0-based; absent: the one it plays):
+   * no reload, the track plays on; the notes sounding end as they would */
+  setTrack(id: number, notes: readonly StepNote[] | undefined, pat?: number): void {
     const s = this.stepsOf(id);
-    if (s) s.notes = fixNotes(notes) ?? [];
+    if (!s) return;
+    const p = Math.min(PATTERNS_MAX - 1, Math.max(0, pat ?? s.pat));
+    while (s.pats.length <= p) s.pats.push(null);
+    const x = s.pats[p];
+    if (x) x.notes = fixNotes(notes) ?? [];
+    else s.pats[p] = { notes: fixNotes(notes) ?? [] };
+    s.notes = stepsPattern(s).notes;
+  }
+  /** the song state the tracks share (Main's `seq`) and the selected pattern */
+  private song: StepsSong = { song: 0, songs: [] };
+  private pattern = 0;
+  /** the patch's pattern (0-based; track.ts SeqState.pattern): each track plays it from the end of its pass, at once while
+   * the transport is stopped (from the next block) */
+  setPattern(p: number): void {
+    this.pattern = Math.min(PATTERNS_MAX - 1, Math.max(0, Math.round(p)));
+    for (const node of this.tracks) {
+      const s = node.inst[0].state as StepsState;
+      s.queued = this.pattern;
+    }
+  }
+  /** the songs' entries (Main's `seq.songs`) changed: each track goes on from the entry it plays */
+  setSongs(songs: readonly SongEntry[][]): void {
+    this.song.songs = songs.map((x) => x.map((e) => ({ ...e })));
+  }
+  /** the song that plays (0: none, the selected pattern; 1..SONGS_MAX): from the end of each track's pass, its first entry */
+  setSong(n: number): void {
+    this.song.song = Math.min(SONGS_MAX, Math.max(0, Math.round(n)));
+    for (const node of this.tracks) {
+      const s = node.inst[0].state as StepsState;
+      s.songPos = -1;
+      s.queued = this.song.song ? -1 : this.pattern;
+    }
+  }
+  /** what the tracks play: the selected pattern, the song (0 none) and per track the pattern playing, the queued one (-1
+   * none) and the song entry (-1 none yet) */
+  patternView(): PatternView {
+    return { pattern: this.pattern, song: this.song.song, tracks: this.tracks.map((n) => {
+      const s = n.inst[0].state as StepsState;
+      return { id: n.id, pat: s.pat, queued: s.queued, entry: this.song.song ? s.songPos : -1 };
+    }) };
   }
   /** mute / unmute a Steps module (not part of the patch: a reload keeps it while the module stays) */
   setMute(id: number, on: boolean): void {
@@ -697,7 +767,16 @@ export class Engine {
         const out = { ...m, params: { ...m.params, ...n.params }, att: [n.att[0], n.att[1]] as [number, number], range: { p1: { ...n.range[0] }, p2: { ...n.range[1] } } };
         if (n.bypass) out.bypass = true;
         else delete out.bypass;
-        if (m.type === 'steps') out.notes = (n.inst[0].state as StepsState).notes.map((x) => ({ ...x }));
+        if (m.type === 'steps') {
+          const st = n.inst[0].state as StepsState;
+          const notes = (st.pats[0]?.notes ?? []).map((x) => ({ ...x }));
+          if (notes.length) out.notes = notes;
+          else delete out.notes;
+          const pats = st.pats.slice(1).map((x) => (x ? { ...x, notes: x.notes.map((y) => ({ ...y })) } : null));
+          while (pats.length && !pats[pats.length - 1]) pats.pop();
+          if (pats.length) out.patterns = pats.map((x) => (x ? { ...(x.notes.length ? { notes: x.notes } : {}), ...(x.len !== undefined ? { len: x.len } : {}), ...(x.rate !== undefined ? { rate: x.rate } : {}) } : null));
+          else delete out.patterns;
+        }
         return out;
       }),
     };
@@ -734,7 +813,7 @@ export class Engine {
 
   /** the keys' own listeners let go of every key: the shared keyboard, the groups that play the keys, the Arpeggiators */
   private keysOff(): void {
-    for (const x of this.maps) if (this.effSrc(x.src) === -1) x.st.gate.fill(0);
+    for (const x of this.maps) if (this.effSrc(x.src) === -1) dropRows(x.st);
     for (const t of this.fed) this.thruOff(t);
     for (const a of this.arps) {
       arpClear(a.st);
@@ -744,10 +823,12 @@ export class Engine {
     for (const g of [this.kb, ...this.groups]) {
       if (g.src >= 0 && !this.passesMain(this.arpById.get(g.src))) continue;
       g.held = [];
+      g.down.fill(0);
       for (const x of g.parts) {
         x.on = false;
         x.gate = 0;
         x.retrig = false;
+        x.keyTrig = false;
       }
     }
   }
@@ -776,6 +857,9 @@ export class Engine {
    * key; otherwise the key does not sound). A taken-over part restarts its envelopes unless legato is on.
    */
   private groupOn(g: Group, note: number, velocity: number): void {
+    if (g.cfg.assign === 3 && g.down.every((bits) => bits === 0)) g.rot = 0;
+    g.down[note >>> 5] |= 1 << (note & 31);
+    for (const x of g.parts) x.keyTrig = true;
     if (g.parts.length === 1 || g.cfg.unison) {
       g.held = g.held.filter((h) => h.note !== note);
       g.held.push({ note, vel: velocity });
@@ -790,12 +874,13 @@ export class Engine {
       const free = vs.map((x, i) => (x.on ? -1 : i)).filter((i) => i >= 0);
       if (free.length) {
         const mode = g.cfg.assign;
-        if (mode === 0) {
+        if (mode === 0 || mode === 3) {
           for (let k = 0; k < n && v < 0; k++) if (!vs[(g.rot + k) % n].on) v = (g.rot + k) % n;
           g.rot = (v + 1) % n;
         } else if (mode === 1) v = free[0];
         else v = free.find((i) => vs[i].note === note) ?? free.reduce((a, i) => (vs[i].offStamp < vs[a].offStamp ? i : a), free[0]);
       } else {
+        if (g.cfg.steal === false) return;
         const pr = g.cfg.priority;
         v = 0;
         for (let i = 1; i < n; i++) {
@@ -819,6 +904,7 @@ export class Engine {
   }
 
   private groupOff(g: Group, note: number): void {
+    g.down[note >>> 5] &= ~(1 << (note & 31));
     if (g.parts.length === 1 || g.cfg.unison) {
       g.held = g.held.filter((h) => h.note !== note);
       this.monoUpdate(g);
@@ -879,7 +965,7 @@ export class Engine {
     this.ctl.at = Math.max(0, Math.min(1, v));
   }
 
-  /** a control change: CC 1 (mod wheel) is the Main module's mod output, CC 22 its morph, CC 80..86 hold / release its
+  /** a control change: CC 1 / 2 / 64 / 65 drive Main mod / breath / sustain / foot; CC 22 its morph, CC 80..86 hold / release its
    * patch buttons (64 and up: on); others are ignored (CC 16..19, the knobs, edit the device page in focus: the editor's) */
   cc(n: number, v: number): void {
     const x = Math.max(0, Math.min(1, v / 127));
@@ -887,13 +973,16 @@ export class Engine {
       for (const node of this.nodes.values()) if (node.type === 'fm1') node.params[name] = x;
     };
     if (n === 1) this.ctl.mod = x;
+    else if (n === 2) this.ctl.breath = x;
+    else if (n === 64) this.ctl.sustain = x;
+    else if (n === 65) this.ctl.foot = x;
     else if (n === 22) main('morph');
     else if (n >= 80 && n < 80 + PANEL_BUTTONS.length) this.setButton(n - 80, v >= 64);
   }
 
   allNotesOff(): void {
     for (const node of this.tracks) this.thruOff(node.inst[0].state as StepsState);
-    for (const x of this.maps) x.st.gate.fill(0);
+    for (const x of this.maps) dropRows(x.st);
     for (const a of this.arps) {
       arpClear(a.st);
       a.st.cur = -1;
@@ -901,10 +990,12 @@ export class Engine {
     }
     for (const g of [this.kb, ...this.groups]) {
       g.held = [];
+      g.down.fill(0);
       for (const x of g.parts) {
         x.on = false;
         x.gate = 0;
         x.retrig = false;
+        x.keyTrig = false;
       }
     }
   }
@@ -915,17 +1006,37 @@ export class Engine {
    * envelopes restart (one low gate sample); auto and on keep them running.
    */
   private monoUpdate(g: Group): void {
+    if (g.cfg.unisonShare) { this.sharedUnison(g); return; }
     const { legato, priority } = g.cfg;
     let top = g.held[g.held.length - 1];
     if (priority) for (const h of g.held) if (priority === 1 ? h.note < top.note : h.note > top.note) top = h;
-    // unison: every part as the one part would be (the same stamps, so the display and the allocator see one note)
+    // Unison uses its own count without changing the polyphonic voice pool.
+    const count = g.cfg.unison ? Math.min(g.parts.length, g.cfg.unisonParts || g.parts.length) : 1;
+    // The same stamps let the display and allocator see one note.
     const stamp = this.stamp;
     let after = stamp;
-    for (const x of g.parts) {
+    for (const [i, x] of g.parts.entries()) {
       this.stamp = stamp;
-      this.monoPart(x, top, legato);
-      after = this.stamp;
+      this.monoPart(x, i < count ? top : undefined, legato);
+      after = Math.max(after, this.stamp);
     }
+    this.stamp = after;
+  }
+
+  /** Equal-sized stacks for selected held notes, in keyboard order. Spare voices release. */
+  private sharedUnison(g: Group): void {
+    const slots = Math.min(g.parts.length, g.cfg.unisonParts || g.parts.length);
+    const { priority, legato } = g.cfg;
+    const selected = (priority ? [...g.held].sort((a, b) => priority === 1 ? a.note - b.note : b.note - a.note).slice(0, slots)
+      : g.held.slice(-slots)).sort((a, b) => a.note - b.note);
+    const copies = selected.length ? Math.floor(slots / selected.length) : 0;
+    const stamp = this.stamp;
+    let after = stamp;
+    g.parts.forEach((x, i) => {
+      this.stamp = stamp;
+      this.monoPart(x, copies && i < copies * selected.length ? selected[Math.floor(i / copies)] : undefined, legato);
+      after = Math.max(after, this.stamp);
+    });
     this.stamp = after;
   }
 
@@ -977,7 +1088,7 @@ export class Engine {
       else out[name].fill(0, 0, n);
       return;
     }
-    const ctx: Ctx = { sr: this.sampleRate, n, inp: inst.dspInp, out, connected: node.connected, p: inst.eff, voice, display: inst.display };
+    const ctx: Ctx = { sr: this.sampleRate, n, inp: inst.dspInp, out, connected: node.connected, used: node.used, p: inst.eff, voice, display: inst.display };
     node.impl.process(ctx, inst.state);
     if ((node.type === 'fm1' || node.type === 'part') && voice.retrig) out.gate[0] = 0; // one low sample: a taken-over part's envelopes see a new gate
   }
@@ -985,12 +1096,12 @@ export class Engine {
   /** Render `left.length` frames (any length; processed in blocks of up to BLOCK). */
   /**
    * Is part v of poly group g idle (engine.c part_quiet, the same rule)? Its envelopes (ADSR / level envelope, at least one)
-   * have all finished and every output leaving the group stayed within IDLE (6 in Q16) for the whole block.
+   * have all finished (ENVELOPE_TYPES) and every output leaving the group stayed within IDLE (6 in Q16) for the whole block.
    */
   private partQuiet(g: number, v: number): boolean {
     let envs = 0;
     for (const node of this.order) {
-      if (node.group !== g || (node.type !== 'adsr' && node.type !== 'env')) continue;
+      if (node.group !== g || !ENVELOPE_TYPES.has(node.type)) continue;
       if ((node.inst[v].state as { stage: number }).stage !== 0) return false;
       envs++;
     }
@@ -1054,7 +1165,7 @@ export class Engine {
       for (const a of this.arps)
         if (!a.node.bypass) // (bypassed it plays nothing of its own: the keys it hears went straight on)
           arpBlock(a.st, this.arpParams(a), n, this.ticks, a.node.connected.clk ? a.node.inst[0].inp.clk : null, a.clk, bpm, this.sampleRate,
-            (note, vel) => this.arpOn(a, note, vel), (note) => { this.mapKeys(a.node.id, note, 0); for (const g of this.arpGroups(a)) this.groupOff(g, note); });
+            (note, vel) => this.arpOn(a, note, vel), (note) => { this.mapKeys(a.node.id, note, 0); for (const g of this.arpGroups(a)) this.groupOff(g, note); }, a.node.connected.rate ? a.node.inst[0].inp.rate : null);
       this.morphT = this.hasB ? this.morphPosition(n) : 0;
       const hold = walkHold(this.sampleRate, DRIFT_RATE);
       for (const g of this.groups)
@@ -1063,8 +1174,13 @@ export class Engine {
           walkStep(x.walk, hold); // every block, so the wander does not depend on the amount
           x.flaw = flawQ16(f.detune, f.drift, x.walk.y) / 65536;
         });
-      for (const g of all)
+      for (const g of all) {
+        let low = Infinity, high = -Infinity;
+        for (const x of g.parts) if (x.on) { low = Math.min(low, x.note); high = Math.max(high, x.note); }
         for (const x of g.parts) {
+          x.low = x.on && x.note === low;
+          x.high = x.on && x.note === high;
+          x.unison = !!g.cfg.unison;
           x.clock = clock;
           x.tick = this.running ? tick : -1;
           x.ticks = nt;
@@ -1074,7 +1190,11 @@ export class Engine {
           x.bend = this.ctl.bend;
           x.mod = this.ctl.mod;
           x.at = this.ctl.at;
+          x.breath = this.ctl.breath;
+          x.sustain = this.ctl.sustain;
+          x.foot = this.ctl.foot;
         }
+      }
       // idle parts (partQuiet): woken by a note, else run every IDLE_CHECK-th block
       for (const g of this.groups)
         for (const x of g.parts) {
@@ -1105,7 +1225,7 @@ export class Engine {
             } else x.idle = false;
           }),
         );
-      for (const g of all) for (const x of g.parts) x.retrig = false;
+      for (const g of all) for (const x of g.parts) { x.retrig = false; x.keyTrig = false; }
       for (const o of this.outputs) {
         const inst = o.inst[0];
         const lvl = inst.eff.level ?? 1;

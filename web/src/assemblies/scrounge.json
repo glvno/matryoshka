@@ -18,7 +18,8 @@
         "n5": 60,
         "n6": 62,
         "n7": 64,
-        "n8": 65
+        "n8": 65,
+        "repeat": 0
       },
       "names": [
         "VOICE 1",
@@ -715,7 +716,8 @@
         "res": 0.5,
         "cvamt": 2,
         "track": 0,
-        "morph": 0
+        "morph": 0,
+        "osc": 0
       },
       "att": [
         1,
@@ -1119,7 +1121,12 @@
         "depth": 0,
         "sync": 0,
         "div": 6,
-        "bpm": 120
+        "bpm": 120,
+        "phase": 0,
+        "range": 0,
+        "dir": 0,
+        "mult": 3,
+        "wide": 4
       },
       "att": [
         1,

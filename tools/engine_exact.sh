@@ -24,5 +24,16 @@ for p in build/golden/*.m1p; do
   n=$((n + 1))
   if ! cmp -s "$T/out/$b.base" "$T/out/$b.new"; then echo "DIFFERS $b"; fail=1; fi
 done
-[ $fail = 0 ] && echo "all $n kits bit-identical to $BASE"
+# Changing modes exercises retained oscillator state; partial blocks and idle/wake exercise shared-input means.
+gcc -O1 -w -I"$T/base/src" -o "$T/base_transition" firmware/test/exact_transition.c -lm
+gcc -O1 -w -Ifirmware/src -o "$T/new_transition" firmware/test/exact_transition.c -lm
+for b in fm-2op simple-fm poly-feedback poly-shared part-flaws side-input-fanout; do
+    [ -f "build/golden/$b.m1p" ] || continue
+    "$T/base_transition" "build/golden/$b.m1p" > "$T/out/$b.transitions.base"
+    "$T/new_transition" "build/golden/$b.m1p" > "$T/out/$b.transitions.new"
+    if ! cmp -s "$T/out/$b.transitions.base" "$T/out/$b.transitions.new"; then
+        echo "DIFFERS $b transitions"; fail=1
+    fi
+done
+[ $fail = 0 ] && echo "all $n kits and transition checks bit-identical to $BASE"
 exit $fail

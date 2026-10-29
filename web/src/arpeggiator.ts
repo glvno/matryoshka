@@ -3,7 +3,8 @@
 // on their way from the Main module to a Voice allocator and hands that allocator one note at a time. It runs at the
 // start of every block, before the modules (block-quantized: a step lands on a block boundary, 2.9 ms at most late),
 // from the engine's 24 ppqn clock (the Main module's tempo, or MIDI clock) at its rate, or, when something is cabled into
-// its clk input, one step per block that saw a rising edge there (the input as it was at the end of the last block).
+// its clk input, one step per block that saw a rising edge there. With rate patched and no clock, its positive block
+// average is a continuous frequency in Hz; zero pauses. Inputs are read as the last block left them.
 
 export const ARP_MODES = ['up', 'down', 'up-down', 'random', 'as played'];
 export const ARP_RATES = ['1/4', '1/4T', '1/8', '1/8T', '1/16', '1/16T', '1/32'];
@@ -34,6 +35,8 @@ export interface ArpState {
   /** the clock tick of the next step (its own clock) */
   next: number;
   running: boolean;
+  /** Fraction of a continuous-rate cycle, in unsigned 32-bit turns. */
+  ratePhase: number;
   /** the random mode's generator */
   seed: number;
 }
@@ -46,7 +49,7 @@ export interface ArpParams {
   latch: number;
 }
 
-export const arpInit = (): ArpState => ({ held: [], pos: 0, cur: -1, since: 0, interval: 0, next: 0, running: false, seed: 0x2545f491 });
+export const arpInit = (): ArpState => ({ held: [], pos: 0, cur: -1, since: 0, interval: 0, next: 0, running: false, ratePhase: 0, seed: 0x2545f491 });
 
 const q16 = (v: number): number => Math.round(v * 65536);
 const latched = (p: ArpParams): boolean => q16(p.latch) >= 32768;
@@ -97,14 +100,34 @@ export function arpNote(s: ArpState, p: ArpParams): { note: number; vel: number 
 /**
  * One block of `n` samples. `ticks`: the engine's clock count now; `clk`: what is cabled into the clk input (as the last
  * block left it), null when nothing is; `bpm`: the tempo (the first step's length); on / off: hand a note to the
- * allocator(s) this arpeggiator feeds.
+ * allocator(s) this arpeggiator feeds. A patched rateCv overrides tempo, but not a patched clk.
  */
 export function arpBlock(
   s: ArpState, p: ArpParams, n: number, ticks: number, clk: Float32Array | null, clkPrev: { hi: boolean }, bpm: number, sr: number,
-  on: (note: number, vel: number) => void, off: (note: number) => void,
+  on: (note: number, vel: number) => void, off: (note: number) => void, rateCv: Float32Array | null = null,
 ): void {
   const rate = ARP_RATE_TICKS[Math.min(ARP_RATES.length - 1, Math.max(0, Math.round(p.rate)))];
   if (!latched(p)) s.held = s.held.filter((k) => k.down); // latch turned off: the keys let go meanwhile go
+  const continuous = !clk && rateCv !== null;
+  let hz = 0, period = 0, rateEdge = false;
+  if (continuous) {
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += rateCv![i];
+    hz = Math.trunc(sum * 65536 / n);
+    if (hz <= 0) {
+      if (s.cur >= 0) off(s.cur);
+      s.cur = -1; s.running = false; s.ratePhase = 0;
+      return;
+    }
+    hz = Math.min(80 * 65536, Math.max(1311, hz)); // positive rate: 0.02..80 Hz
+    period = Math.floor(sr * 65536 / hz);
+    if (s.running) {
+      const phase = s.ratePhase + Math.floor(hz * 65536 / sr) * n;
+      rateEdge = phase >= 4294967296;
+      s.ratePhase = phase >>> 0;
+    }
+    s.interval = period;
+  }
   let edge = false;
   if (clk) {
     for (let i = 0; i < n; i++) {
@@ -125,15 +148,16 @@ export function arpBlock(
     step = true;
     s.pos = 0;
     s.next = ticks + rate;
-    s.interval = stepSamples(rate, bpm, sr);
+    s.interval = continuous ? period : stepSamples(rate, bpm, sr);
+    s.ratePhase = 0;
     s.since = 0;
-  } else if (clk ? edge : ((ticks - s.next) | 0) >= 0) {
+  } else if (clk ? edge : continuous ? rateEdge : ((ticks - s.next) | 0) >= 0) {
     step = true;
-    if (!clk) {
+    if (!clk && !continuous) {
       s.next = (s.next + rate) >>> 0;
       if (((ticks - s.next) | 0) >= 0) s.next = (ticks + rate) >>> 0; // fell behind (a tempo jump): from now
     }
-    if (s.since > 0) s.interval = s.since;
+    if (!continuous && s.since > 0) s.interval = s.since;
     s.since = 0;
   }
   if (step) {

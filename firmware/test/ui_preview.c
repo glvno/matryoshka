@@ -2,8 +2,9 @@
  * Copyright (C) 2026 morgulbrut */
 /* Renders the device's LCD (firmware/src/ui.c) on the host into a PPM image, to look at the layout without a device.
  *   ui_preview OUT.ppm PRESET_INDEX [SELECTED_MODULE or DEVICE:PAGE [OCTAVE [PAGE [STEP [MENU_TAB [MANUAL_LINE [POLY]]]]]]]
- * Environment: TOAST=k shows knob k's toast on the device page, CARD=1 SELECT's device card, CARD=2 ALGO's page
- * card (#221), PATCHTOAST=1 the patch PRESET just loaded (the factory bank's slot)
+ * Environment: PATCHTOAST=1 PRESET's toast (the factory bank's slot; BANK=n: a bank of n filled slots instead, the patch
+ * in slot SLOT, default the preset index), SANDBOX=1 sandbox mode before the editor's first page (the card), SANDBOX=2
+ * with a page of the editor's (MIDIOUT=0: MENU > MIDI OUT off), BATT=0..3 or 4 (USB) the battery's level
  * tools/ui_preview.sh converts the image to PNG. With UI_PREVIEW_LIB defined it is only the host's stand-ins and the UI
  * (host_ui.h; panel_test.c includes it so). */
 #include <stdint.h>
@@ -61,19 +62,18 @@ int main(int argc, char **argv)
     sel = argc > 3 ? (uint32_t)atoi(argv[3]) : 0u;
     if (argc > 3 && strchr(argv[3], ':'))                   /* the device page: DEVICE:PAGE */
         pages_focus((uint32_t)atoi(argv[3]), (uint32_t)atoi(strchr(argv[3], ':') + 1));
-    pg_card_until = 0;
-    if (getenv("TOAST")) {                                  /* knob n just turned: its toast */
-        pg_toast_k = (uint8_t)atoi(getenv("TOAST"));
-        pg_toast_until = 1000;
-    }
-    if (getenv("CARD")) {                                   /* 1: SELECT's device card, 2: ALGO's page card (#221) */
+    if (getenv("PATCHTOAST")) {                             /* PRESET's toast (#170) */
+        uint32_t n = getenv("BANK") ? (uint32_t)atoi(getenv("BANK")) : N_PRESETS;
         pages_ensure();                                     /* (a fresh patch would end it) */
-        pages_card((uint32_t)atoi(getenv("CARD")));
+        bank_mask = n >= 64u ? ~(uint64_t)0 : ((uint64_t)1 << n) - 1u;
+        cur_preset = getenv("SLOT") ? (uint32_t)atoi(getenv("SLOT")) - 1u : p;
+        fm1_ms = 1;
+        toast_start();
     }
-    if (getenv("PATCHTOAST")) {
-        bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
-        cur_preset = p;
-        pg_patch_until = 1000;
+    if (getenv("BATT")) {                                   /* the battery's level (4: USB) */
+        int b = atoi(getenv("BATT"));
+        batt_usb = b == 4;
+        batt_lvl = (uint8_t)(b >= 0 && b <= 3 ? b : 3);
     }
     octave = argc > 4 ? atoi(argv[4]) : 0;
     page = argc > 5 ? (uint8_t)atoi(argv[5]) : 0u;          /* 5: menu, 8: SEQ (SELECTED_MODULE = the track) */
@@ -98,6 +98,31 @@ int main(int argc, char **argv)
         man_top = (uint32_t)(t < 0 ? 0 : t > max ? max : t);
     }
     patch_label = PRESET_LIST[p].name;
+    if (getenv("MIDIOUT"))
+        cfg.midi_out = (uint8_t)atoi(getenv("MIDIOUT"));
+    if (getenv("SANDBOX")) {                                /* sandbox mode: the card, or (2) a page of the editor's */
+        sandbox_live(1, 5000);
+        if (atoi(getenv("SANDBOX")) == 2) {
+            static sb_page_t s;
+            static const char *const LAB[3] = {"Cutoff", "Resonance", "Wave"}, *const VAL[3] = {"2.40", "0.62", "SAW"};
+            static const uint8_t POS[3] = {150, 158, 0};
+            uint32_t k;
+            s.rows = 7;
+            s.index = 2;
+            s.count = 5;
+            strcpy(s.patch, "Sol 29N XL");
+            strcpy(s.dev, "Sol filter");
+            strcpy(s.page, "FILTER 1/2");
+            for (k = 0; k < 3u; k++) {
+                strcpy(s.label[k], LAB[k]);
+                strcpy(s.value[k], VAL[k]);
+                s.pos[k] = POS[k];
+                s.steps[k] = k == 2u ? 4u : 0u;
+            }
+            strcpy(s.unit[0], "kHz");
+            m1_sandbox(&s);
+        }
+    }
     if (page == 9u) {                                       /* the loading screen, the bar 60 % in */
         splash_draw();
         splash_line("LOADING PATCH");

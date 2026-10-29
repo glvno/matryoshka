@@ -1,72 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
-:root {
-  /* Logo palette; darker shades keep small controls readable on paper. */
-  --ref-coral: #e7775d; --ref-teal: #287d80; --ref-gold: #e8b65a;
-  --ref-ivory: #fff7e8; --ref-ink: #202a2c;
-  --ref-paper: #f3eddf; --ref-white: #fffcf5; --ref-stone: #68665e; --ref-sand: #cfc6b5;
-  --ref-rust: #ad432e; --ref-deep-teal: #226669; --ref-ochre: #80560f;
-  --ref-night: #171f21; --ref-slate: #344345; --ref-mist: #b4b8ad;
-  --ref-seafoam: #79c7c1; --ref-lilac: #795c97; --ref-lilac-light: #c6abdf;
-  --ref-blue: #486b96; --ref-blue-light: #9dbde6; --ref-rose: #96546a; --ref-rose-light: #e7a6b8;
-  --ref-red: #b33135; --ref-red-light: #ff9992;
-  --bg: var(--ref-paper); --panel: var(--ref-white); --ink: var(--ref-ink);
-  --muted: var(--ref-stone); --line: var(--ref-sand);
-  --accent: var(--ref-rust); --accent-ink: var(--ref-white);
-  --secondary: var(--ref-deep-teal); --audio: var(--accent); --control: var(--secondary); --gate: var(--ref-ochre);
-  /* The FM-1 knobs K1..K4 in the logo's colours (coral, gold, teal, sand; K5 / K6 the lilac and blue of the tags),
-     darkened for paper. A knob mark always carries its number too, so the colour is never the only cue. */
-  --k1: var(--ref-rust); --k2: var(--ref-ochre); --k3: var(--ref-deep-teal); --k4: #7d7058; --k5: var(--ref-lilac); --k6: var(--ref-blue);
-  /* a poly assembly's voices V1..V8 (voice-colors.ts: scope traces, voices panel): the knob hues, then rose and blue */
-  --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose); --voice8: var(--ref-blue);
-  --danger: var(--ref-red); --warning: var(--gate);
-  /* armed devices (#190): a record-style red, on the ARM dot, the armed edges and the dashed keys ribbons */
-  --arm: var(--ref-red);
-  /* filled yellow buttons: the gate colour, greyed down so it does not shout */
-  --btn-yellow: color-mix(in oklab, var(--ref-ochre) 70%, var(--ref-stone));
-  /* the Demo button (LEARN): the palette's blue */
-  --piano-h: 160px;
-  /* The on-screen keyboard: paper and ink keys, the lettered range tinted teal, held keys in the accent. */
-  --key-white: var(--ref-white); --key-black: var(--ref-ink); --key-edge: var(--ref-sand);
-  --key-white-mapped: color-mix(in oklab, var(--ref-deep-teal) 12%, var(--ref-white));
-  --key-black-mapped: var(--ref-slate);
-  --key-white-letter: var(--ref-deep-teal); --key-black-letter: var(--ref-seafoam);
-  --key-held: var(--accent); --key-held-ink: var(--accent-ink); --key-name: var(--ref-stone);
-  --shadow: color-mix(in srgb, var(--ref-ink) 16%, transparent);
-  --backdrop: color-mix(in srgb, var(--ref-night) 45%, transparent);
-  --surface-tint: color-mix(in oklab, var(--secondary) 5%, var(--panel));
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: var(--ref-night); --panel: var(--ref-ink); --ink: var(--ref-ivory);
-    --muted: var(--ref-mist); --line: var(--ref-slate);
-    --accent: var(--ref-coral); --accent-ink: var(--ref-night);
-    --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light); --arm: var(--ref-red-light);
-    --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
-    --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand); --k5: var(--ref-lilac-light); --k6: var(--ref-blue-light);
-    --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
-    --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
-    --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
-    --key-black-mapped: color-mix(in oklab, var(--ref-seafoam) 22%, var(--ref-night));
-    --key-white-letter: var(--ref-deep-teal); --key-black-letter: var(--ref-seafoam);
-    color-scheme: dark;
-  }
-}
-/* the theme toggle (theme.ts): the same dark tokens when chosen, whatever the system prefers */
-:root[data-theme="dark"] {
-  --bg: var(--ref-night); --panel: var(--ref-ink); --ink: var(--ref-ivory);
-  --muted: var(--ref-mist); --line: var(--ref-slate);
-  --accent: var(--ref-coral); --accent-ink: var(--ref-night);
-  --secondary: var(--ref-seafoam); --gate: var(--ref-gold); --danger: var(--ref-red-light); --arm: var(--ref-red-light);
-  --btn-yellow: color-mix(in oklab, var(--ref-gold) 62%, var(--ref-mist));
-  --k1: var(--ref-coral); --k2: var(--ref-gold); --k3: var(--ref-seafoam); --k4: var(--ref-sand); --k5: var(--ref-lilac-light); --k6: var(--ref-blue-light);
-  --voice1: var(--k1); --voice2: var(--k2); --voice3: var(--k3); --voice4: var(--k4); --voice5: var(--k5); --voice6: var(--k6); --voice7: var(--ref-rose-light); --voice8: var(--ref-blue-light);
-  --key-white: color-mix(in oklab, var(--ref-ivory) 86%, var(--ref-night)); --key-black: var(--ref-night); --key-edge: var(--ref-night);
-  --key-white-mapped: color-mix(in oklab, var(--ref-seafoam) 30%, var(--key-white));
-  --key-black-mapped: color-mix(in oklab, var(--ref-seafoam) 22%, var(--ref-night));
-  --key-white-letter: var(--ref-deep-teal); --key-black-letter: var(--ref-seafoam);
-  color-scheme: dark;
-}
+@import './tokens.css';
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, sans-serif; }
 /* no page zoom (#153): a pinch zooms the canvas only; scrolling still works everywhere. iOS zooms the page in on a focused
@@ -102,25 +35,11 @@ html { touch-action: pan-x pan-y; }
 .sidebar > * { flex-shrink: 0; }
 .sidebar > .brand { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; min-height: calc(48px + 6px + 38px + 6px + 26px); flex-shrink: 1; } /* never below the 48 px logo + gap + the wordmark (38 px at the sidebar's width) + gap + About: below that they ran into the tabs */
 .brand img { width: 100%; height: auto; min-width: 0; object-fit: contain; }
-.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 48px; }
-/* the logo: colour masks (brand.ts, scripts/logo-layers.ts) filled with the theme's button colours, so it follows the theme
-   switch; cream, rim and the dark line work are the art's own */
-.logo { position: relative; display: block; aspect-ratio: 1; min-width: 0; }
-.logo i { position: absolute; inset: 0; -webkit-mask: center / contain no-repeat; mask: center / contain no-repeat; }
-.logo .l-coral { -webkit-mask-image: url('/brand/layers/coral.png'); mask-image: url('/brand/layers/coral.png'); background: var(--accent); }
-.logo .l-gold { -webkit-mask-image: url('/brand/layers/gold.png'); mask-image: url('/brand/layers/gold.png'); background: var(--btn-yellow); }
-.logo .l-shade { -webkit-mask-image: url('/brand/layers/shade.png'); mask-image: url('/brand/layers/shade.png'); background: color-mix(in oklab, var(--btn-yellow) 78%, #000); }
-.logo .l-teal { -webkit-mask-image: url('/brand/layers/teal.png'); mask-image: url('/brand/layers/teal.png'); background: var(--secondary); }
-.logo .l-rim { -webkit-mask-image: url('/brand/layers/rim.png'); mask-image: url('/brand/layers/rim.png'); background: var(--ref-sand); }
-.logo .l-cream { -webkit-mask-image: url('/brand/layers/cream.png'); mask-image: url('/brand/layers/cream.png'); background: var(--ref-ivory); }
-.logo .l-ink { -webkit-mask-image: url('/brand/layers/ink.png'); mask-image: url('/brand/layers/ink.png'); background: var(--ref-ink); }
-/* the inline wordmark (brand.ts inlineWordmarks): ink and the teal M */
-svg.brand-mark .ink { fill: var(--ink); }
-svg.brand-mark .accent { fill: var(--secondary); }
+.brand > .logo { flex: 0 1 auto; width: 100%; min-height: 48px; cursor: pointer; }
 .brand h1 { flex-shrink: 0; width: 100%; }
 .brand h1 { margin: 0; font-size: 17px; font-weight: 750; letter-spacing: -.045em; }
 .patch-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden], .library-side[hidden] { display: none; }
+.patch-controls[hidden], .patch-controls > [hidden], .add-row[hidden] { display: none; }
 .patch-controls > * { width: 100%; min-width: 0; }
 /* the FM-1 budget meter at the right of the status line: memory (the fullest limit) and the estimated CPU load side by
  * side; open, a card above the status line with every limit and the costliest modules */
@@ -134,8 +53,8 @@ svg.brand-mark .accent { fill: var(--secondary); }
 .budget-bar > span { display: block; height: 100%; background: var(--secondary); }
 .budget-pct { min-width: 30px; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
 .budget-row.near .budget-bar > span { background: var(--accent); }
-.budget-row.over .budget-bar > span { width: 100% !important; background: var(--danger); }
-.budget-row.over .budget-pct, .budget-row.over .budget-name { color: var(--danger); }
+.budget-row.over .budget-bar > span { width: 100% !important; background: var(--sandbox); }
+.budget-row.over .budget-pct, .budget-row.over .budget-name { color: var(--sandbox-text); }
 .budget[open] summary .budget-title { color: var(--secondary); }
 .budget-list { position: fixed; z-index: 30; bottom: 32px; width: 260px; max-height: calc(100dvh - 48px); overflow: auto;
   display: grid; gap: 2px; padding: 8px 12px; font-size: 11.5px; background: var(--panel); border: 1px solid var(--muted); border-radius: 8px; box-shadow: 0 4px 16px var(--shadow); }
@@ -147,8 +66,8 @@ svg.brand-mark .accent { fill: var(--secondary); }
 .budget-mini { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
 .budget-mini > span { display: block; height: 100%; background: var(--secondary); }
 .budget-item.near .budget-mini > span { background: var(--accent); }
-.budget-item.over { color: var(--danger); font-weight: 650; }
-.budget-item.over .budget-mini > span { background: var(--danger); }
+.budget-item.over { color: var(--sandbox-text); font-weight: 650; }
+.budget-item.over .budget-mini > span { background: var(--sandbox); }
 .budget-item.pick { cursor: pointer; }
 .budget-item.pick:hover > :first-child { color: var(--ink); text-decoration: underline; }
 .budget-list p { margin: 4px 0 0; font-size: 11px; }
@@ -192,7 +111,7 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* the main area: the views fill it and scroll themselves; the view switch, Connect FM-1 and the Install panel sit over it */
 main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
-.tab:not(#tab-patch) { height: 100%; overflow: auto; padding: 56px 24px 24px; }
+.tab:not(#tab-patch) { height: 100%; overflow: auto; padding: 84px 24px 24px; }
 .tab[hidden] { display: none; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
 /* touch-action: none: the canvas's own pinch, two-finger pan and one-finger pan (editor.ts touchGestures, rubberBand)
@@ -413,7 +332,7 @@ dialog.share-sheet { width: 800px; }
 .share-field textarea { resize: vertical; min-height: 64px; }
 .share-facts { display: flex; flex-wrap: wrap; gap: 6px; }
 .share-chip { padding: 3px 8px; border-radius: 99px; background: var(--bar); font-size: 12px; overflow-wrap: anywhere; }
-.share-chip.over { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+.share-chip.over { background: var(--sandbox); color: var(--sandbox-ink); }   /* a sandbox patch (sandbox.ts) */
 .share-check { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; }
 .share-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--secondary); }
 .share-check:has(input:disabled) { color: var(--muted); }
@@ -831,6 +750,8 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .internal-cables { overflow: hidden; border-radius: inherit; }
 .module .mbody { position: relative; pointer-events: none; }
 .module .mbody :is(input, select, button, summary, label, .dot:not(.slider-port), .rename, .param > span:not(.slider-jack), output) { pointer-events: auto; }
+/* Arrange mode: a grip and a whole row take the press (the body above lets it through to the card, where it starts a band) */
+.module.arranging .mbody :is(.arr-grip, .arr-item) { pointer-events: auto; }
 /* Only solid controls mask routes. Labels, values and ranges span grid cells;
    keep their backgrounds transparent so they cannot cut gaps in the cables. */
 .module .mbody :is(input:not(.jack-range), select, button, summary) { background-color: var(--panel); }
@@ -1143,6 +1064,12 @@ svg.button-traces path { fill: none; stroke: var(--gate); stroke-width: 2; strok
 .picking .param.bar > span:first-child { padding-left: 21px; }
 .picking .param.bar :is(.slider-port, .slider-thumb, .picker-jack) { visibility: hidden; }
 .picking .param.bar :is(input, button, summary) { pointer-events: none; }
+/* a card row that sets several parameters (#357): its count, or the row that sets it, after the name */
+.param.bar .row-tie { font-size: 9.5px; letter-spacing: 0; }
+/* pick mode's tools for such a row and a Selector's position names (#358), at the bar's right over the value */
+.module .param.bar > .row-tools { position: absolute; z-index: 6; right: 4px; top: 1px; display: flex; gap: 3px; align-items: center; }
+.picking .param.bar > .row-tools :is(button, select) { pointer-events: auto; height: 16px; padding: 0 4px; font-size: 9px; }
+.picking .param.bar > .row-tools select.merge { width: 20px; max-width: 20px; padding: 0; text-indent: -999px; }
 .picking .port { cursor: pointer; }
 .fhead .pick-btn[aria-pressed="true"] { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 .frame.picking { border-color: var(--accent); }
@@ -1200,6 +1127,9 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 .add-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 /* LEARN: the tutorial and the demo side by side */
 .learn-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+/* LEARN: the changelog page (changelog.html), a quiet link under Install */
+.sidebar .side-link { justify-self: start; padding: 0 2px; font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--secondary); }
+.sidebar .side-link:hover { text-decoration: underline; }
 /* the cable slack and zoom sliders are cards' value bars (sliderJack; main.ts sideSlider) with a small name and a thumb as tall
    as the bar. Their thumbs are jacks (the easter egg): a cable from any output dropped on one moves it (Patch.slackFrom / zoomFrom) */
 .side-bar > .slider-jack { --jack-size: 18px; }
@@ -1212,12 +1142,6 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 #palette-btn kbd { font: 500 10px/1 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; }
 .sidebar #tour-btn { padding-inline: 8px; text-align: center; }
 /* the LIBRARY view's sidebar (main.ts setLibrarySection): its sections as a list, the current one marked like a selected row */
-.library-side { display: grid; gap: 10px; }
-.library-nav { display: grid; gap: 2px; }
-#workspace-sidebar .library-nav button { min-height: 34px; padding: 6px 10px; text-align: left; background: transparent; border: 1px solid transparent; color: var(--ink); font-size: 14px; }
-#workspace-sidebar .library-nav button:hover { border-color: var(--line); filter: none; color: var(--ink); }
-#workspace-sidebar .library-nav button[aria-current="true"] { background: var(--surface-tint); border-color: var(--line); color: var(--secondary); }
-.library-note { margin: 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
 
 /* ---- Library in the cards' style: each card a module-like panel with a header strip (family tag + condensed title), rows on
    the bar shade, toolbar buttons yellow like the sidebar's, the row tools quiet ---- */
@@ -1266,9 +1190,6 @@ input#patch-name:focus { border-color: var(--secondary); background: var(--bar);
 #tab-library .lib-factory { min-height: 28px; padding: 2px 8px; border-radius: 5px; background: var(--bar); border-color: var(--line); font: 500 13px/1.2 'Barlow', system-ui, sans-serif; }
 #tab-library .lib-count, #tab-library .lib-status, #tab-library .lib-note { margin: 8px 0 0; font-size: 12px; }
 #tab-library .lib-status:empty, #tab-library .lib-count:empty { display: none; }
-/* "browser only": a patch too big for the FM-1 (its tooltip says so) */
-#tab-library .bank-row .lib-badge { padding: 2px 6px; border: 1px solid var(--danger); border-radius: 3px; color: var(--danger); cursor: help;
-  font: 600 10.5px/1 'Barlow Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; }
 #tab-library .lib-section .bank-row .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* the transfer arrows: the row's last tool, a little stronger than the rest */
 #tab-library .bank-row button.lib-move { min-width: 26px; color: var(--secondary); font-size: 14px; }
@@ -1287,6 +1208,9 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .param.bar.sel { display: flex; align-items: flex-start; gap: 8px; height: 34px; background: transparent; }
 /* the name lines up with the groove (the slider), not with the names under it */
 .param.bar.sel > span:first-child { flex: none; max-width: 40%; padding: 2px 0 0 6px; line-height: 12px; }
+/* pick mode: the name makes room for the check box, as on a slider's bar, and takes more of the row: the selector does
+   not move there, the name is what is being picked (#342) */
+.picking .param.bar.sel > span:first-child { max-width: 60%; padding-left: 21px; }
 .param.bar.sel > .parameter-routing { top: -1px; }
 .param.bar.sel.shown::after { top: 6px; }
 .sel-track { position: relative; flex: 1; min-width: 0; height: 34px; margin-right: 7px; cursor: pointer; touch-action: none; outline: none; }
@@ -1372,16 +1296,41 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 /* the band that selects rows (pick / arrange mode) in the selection's teal, not the modules' coral band */
 .rubber.rows { border-color: var(--secondary); background: color-mix(in srgb, var(--secondary) 10%, transparent); }
 .arr-grip { flex: none; padding: 0 3px; cursor: grab; touch-action: none; color: var(--muted); font-size: 14px; line-height: 1; }
-/* Arrange mode: the strip above every group (one FM-1 page), named as the FM-1 names it; its grip drags that page */
-.ebreak.epage { justify-content: flex-start; gap: 4px; height: 21px; margin-top: 3px; padding: 0 2px; border-color: var(--line);
-  font-size: 13px; letter-spacing: .1em; color: var(--muted); white-space: nowrap; overflow: hidden; }
-/* the focused page's label above its first row would repeat the strip's name */
+/* while arranging, the focused page's label above its first row is not drawn */
 .arranging .param.bar.page-start { margin-top: 0; }
 .arranging .param.bar.page-start::before { content: none; }
-.epage-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.epage-flag { display: flex; align-items: center; gap: 2px; font-size: 9px; letter-spacing: .08em; color: var(--accent); }
 .arr-grip:hover { color: var(--accent); }
-.ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held { opacity: .5; }
+.ehead.arr-dragging, .ebreak.arr-dragging, .ehead.arr-held, .ebreak.arr-held, .eempty.arr-dragging, .arr-pgbox.arr-dragging { opacity: .5; }
+/* Arrange mode (arrange.ts, D-616): sections and pages get room for their outlines and the tools between them; an
+   overlay (.arr-ov) draws a faint outline around each section and each page, the page's handle in a strip on its
+   outline's left, the one line where a drag would land, + heading, + page break and a hand-set break's × */
+.arranging .param.arr-row, .arranging .eempty { margin-left: 14px; }
+.arranging .arr-secstart { margin-top: 16px; }
+.arranging .arr-pgstart { margin-top: 14px; }
+.arranging .arr-colend { margin-bottom: 18px; }
+.ehead.arr-head { border-bottom: 0; overflow: visible; }
+.ehead.arr-head .hfield { flex: 1; min-width: 0; display: flex; align-items: center; height: 21px; padding: 0 5px; border: 1px solid var(--line); border-radius: 3px; background: var(--panel); }
+.ehead.arr-head .hfield:focus-within { border-color: var(--accent); }
+.ehead.arr-head .hfield input { flex: 1; min-width: 0; height: 19px; padding: 0; border: 0; outline: 0; background: transparent; }
+.ehead.arr-head .fm1 { flex: none; padding-left: 4px; font: 10px ui-monospace, monospace; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.eempty { padding: 5px 6px; border: 1px dashed var(--line); border-radius: 4px; font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.arr-ov { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+.arr-ov > * { position: absolute; box-sizing: border-box; }
+.arr-secbox { border: 1px solid color-mix(in srgb, var(--secondary) 30%, transparent); border-radius: 7px; background: color-mix(in srgb, var(--secondary) 4%, transparent); z-index: -1; }
+.arr-pgbox { border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 5px; }
+.arr-pghandle { display: grid; place-items: center; border-right: 1px solid color-mix(in srgb, var(--muted) 30%, transparent); border-radius: 5px 0 0 0;
+  font-size: 11px; line-height: 1; color: var(--muted); cursor: grab; touch-action: none; pointer-events: auto; user-select: none; }
+.arr-pghandle:hover { color: var(--accent); }
+.arr-ov:has(.arr-pghandle:hover) .arr-pgbox { border-color: color-mix(in srgb, var(--muted) 30%, transparent); }
+.arr-zone { display: flex; align-items: center; justify-content: center; pointer-events: auto; }
+.arr-zone .arr-zbtn { display: none; height: 15px; padding: 0 6px; font-size: 9px; line-height: 1; border-style: dashed; color: var(--secondary); background: var(--panel); }
+.arr-zone:hover .arr-zbtn { display: block; }
+.arr-brk { display: flex; align-items: center; justify-content: flex-end; pointer-events: none; }
+.arr-brk::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed color-mix(in srgb, var(--secondary) 60%, transparent); }
+.arr-brk .arr-brkx { position: relative; height: 14px; margin-right: 6px; padding: 0 5px; font-size: 9px; line-height: 1; border-style: dashed; color: var(--secondary); background: var(--panel); pointer-events: auto; }
+.arr-brk .arr-brkx:hover { color: var(--danger); border-color: var(--danger); }
+.arr-line { height: 3px; border-radius: 2px; background: var(--accent); box-shadow: none !important; z-index: 2; }
+.arr-ov:has(.arr-line:not([hidden])) :is(.arr-zone, .arr-brk) { visibility: hidden; }
 .pickbox.pickall { pointer-events: auto; cursor: pointer; padding: 0; margin-right: 5px; vertical-align: -1px; display: inline-block; }
 .pickbox.some { border-color: var(--accent); color: var(--accent); }
 
@@ -1442,7 +1391,7 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   border-inline: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 7%, var(--panel)); color: var(--ink); white-space: nowrap; overflow: hidden; }
 :is(.mhead, .fhead) .preset-chip .preset-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 :is(.mhead, .fhead) .preset-chip .preset-name:hover { color: var(--secondary); }
-/* step entry's cursor (#127): the step the next note goes into */
+/* cursor entry's cursor (#127): the step the next note goes into */
 .step.cursor::before { content: ''; position: absolute; inset: 0; z-index: 2; border-radius: 2px; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none; }
 .steps-lanes { display: flex; }
 .steps-screen .steps-lanes button { padding: 2px 5px; font: var(--cap); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted);
@@ -1510,6 +1459,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
 .view-switch button[aria-selected="true"] { background: var(--ink); color: var(--panel); }
 .view-switch button:not([aria-selected="true"]):hover { color: var(--ink); }
+/* LIBRARY's sections: a second switch under PATCH | EMU | LIBRARY */
+.library-tabs { top: 46px; }
+.library-tabs[hidden] { display: none; }
+.library-tabs button { min-width: 0; height: 24px; font-size: 11px; }
+.library-tabs button[aria-current="true"] { background: var(--surface-tint); color: var(--secondary); }
+.library-tabs button:not([aria-current="true"]):hover { color: var(--ink); }
 /* Connect FM-1 (main.ts syncChip): the main area's top right in every view, the view switch's frame; a primary button until
    connected, then quiet with the status line chip's dot (teal: synced, ring: not synced, red: too big) */
 .fm1-connect { position: absolute; top: 10px; right: 12px; z-index: 7; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px;
@@ -1521,7 +1476,8 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-connect.connected:hover { filter: none; border-color: var(--secondary); }
 .fm1-connect.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .fm1-connect.idle .sl-dot { border: 2px solid var(--secondary); }
-.fm1-connect.over .sl-dot { background: var(--danger); border-color: var(--danger); }
+.fm1-connect.over .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
+.fm1-connect.sandbox .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
 /* narrow: the switch moves to the left, so Connect FM-1 fits beside it */
 @media (max-width: 700px) {
   .fm1-connect { right: 8px; height: 30px; padding: 0 8px; gap: 5px; font-size: 11px; letter-spacing: .06em; }
@@ -1532,7 +1488,12 @@ svg.slack-cable .cable.pending { pointer-events: none; }
   gap: 10px; padding: 52px 16px 16px; box-sizing: border-box; }
 #fm1-view[hidden] { display: none; }
 /* the FM-1 is its own instrument: no Main dock, wheels or keyboard beside it; LIBRARY plays nothing and takes the full height */
-.workspace:is(.fm1-mode, .library-mode) > :is(.wheels, .dock-wrap, .deck) { display: none; }
+.workspace:is(.fm1-mode, .library-mode) > :is(.wheels, .dock-wrap) { display: none; }
+/* there the deck keeps Audio on / Panic and MIDI, in one short row */
+.workspace:is(.fm1-mode, .library-mode) :is(#keys-btn, .piano) { display: none; }
+.workspace:is(.fm1-mode, .library-mode) .deck-row { height: auto; }
+.workspace:is(.fm1-mode, .library-mode) .deck-controls { grid-template-rows: none; grid-template-columns: auto auto; }
+.workspace:is(.fm1-mode, .library-mode) .deck-controls #audio-btn { grid-column: auto; }
 /* the Install panel: the install page over the whole main area (the switch and Connect FM-1 too), closed with its Close */
 #flash-view { position: absolute; inset: 0; z-index: 8; overflow: auto; background: var(--bg); padding: 16px 16px 24px; }
 #flash-view[hidden] { display: none; }
@@ -1637,9 +1598,16 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .statusline .sl-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
 .statusline .sl-chip.on .sl-dot { background: var(--secondary); border-color: var(--secondary); }
 .statusline .sl-chip.idle .sl-dot { border: 2px solid var(--secondary); }   /* connected, not synced (#171) */
-.statusline .sl-chip.over .sl-dot { background: var(--danger); border-color: var(--danger); }   /* too big to sync */
+.statusline .sl-chip.over .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }   /* a sandbox patch, not synced */
+.statusline .sl-chip.sandbox { color: var(--sandbox-text); }   /* sandbox mode: the FM-1 is the browser patch's controller */
+.statusline .sl-chip.sandbox .sl-dot { background: var(--sandbox); border-color: var(--sandbox); }
 @media (max-width: 700px) { .statusline .sl-chip-text { display: none; } .statusline .sl-chip { height: 24px; padding: 0 8px; } }
-.statusline:has(.budget.over) .sl-tag { color: var(--danger); }
+/* a sandbox patch (main.ts showSandbox): the gold SANDBOX pill opens the "No limits here" card; "What sandbox means" too */
+.statusline .sl-sandbox { flex: none; min-height: 0; height: 18px; padding: 0 7px; cursor: pointer; }
+.statusline .sl-sandbox[hidden] { display: none; }
+.statusline .sl-sandbox:hover { filter: brightness(1.08); }
+.statusline .sl-more { min-height: 0; padding: 0; border: 0; background: none; color: var(--secondary); font: inherit; text-decoration: underline; cursor: pointer; }
+.statusline .sl-more:hover { color: var(--ink); }
 .statusline .budget { padding-left: 12px; border-left: 1px solid var(--line); }
 
 /* the hovered cable's glow (design A), over the cards: a soft halo in its colour, a fine light core, rings on its jacks */
@@ -1685,6 +1653,45 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .fm1-chip::before { content: '\26A0\FE0E'; }
 .fm1-chip.error { border-color: var(--danger); color: var(--danger); }
 .fm1-chip[hidden] { display: none; }
+
+/* the pattern strip (#375, pattern-strip.ts): on a Steps card under its head and in the roll's header; the pattern
+ * playing -> the one a track waits for blinks */
+.pattern-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 5px; font: var(--cap); font-size: 10px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.roll-head .pattern-strip { flex-wrap: nowrap; margin: 0; }
+.pattern-strip button, .pattern-strip select { height: 20px; padding: 0 6px; font: inherit; color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px; cursor: pointer; }
+.pattern-strip select { padding: 0 2px; max-width: 92px; }
+.pattern-strip select:disabled { opacity: .45; cursor: default; }
+.pattern-strip .pat-name { min-width: 40px; text-align: center; color: var(--ink); font-size: 11px; }
+.pattern-strip .pat-name.borrowed { color: var(--muted); font-style: italic; }
+.pattern-strip .pat-name.waiting { color: var(--accent); animation: pat-wait .5s steps(2, jump-none) infinite; }
+@keyframes pat-wait { 50% { opacity: .35; } }
+.pattern-strip .pat-pick { width: 22px; padding: 0; color: transparent; }
+.pattern-strip .pat-pick option { color: var(--ink); }
+.pattern-strip .pat-song.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* the song drawer (#375, song.ts): a panel at the right of the canvas, above the dock */
+.song-drawer { position: absolute; top: 48px; right: 8px; bottom: 8px; z-index: 9; width: min(340px, calc(100% - 16px)); display: flex;
+  flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 10px 24px var(--shadow); }
+.song-head { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line);
+  font: var(--cap); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink); }
+.song-tabs, .song-mode { display: flex; gap: 3px; }
+.song-head button { height: 22px; min-width: 22px; padding: 0 6px; font: inherit; color: var(--muted); background: transparent; border: 1px solid var(--line);
+  border-radius: 4px; cursor: pointer; }
+.song-head .song-tab.used { color: var(--ink); }
+.song-head .song-tab.on { border-color: var(--ink); }
+.song-head .song-tab.playing, .song-head .song-mode-btn.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.song-close { margin-left: auto; }
+.song-list { flex: 1; overflow: auto; padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 3px; }
+.song-row { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 4px; cursor: grab; }
+.song-row.live { background: color-mix(in srgb, var(--accent) 22%, transparent); }
+.song-no { width: 20px; font: var(--cap); font-size: 11px; color: var(--muted); }
+.song-row select, .song-row input { height: 22px; font: inherit; font-size: 12px; color: var(--ink); background: var(--bar); border: 1px solid var(--line); border-radius: 4px; }
+.song-shift { width: 52px; }
+.song-row button, .song-add { height: 22px; min-width: 22px; padding: 0 6px; color: var(--muted); background: transparent; border: 1px solid var(--line);
+  border-radius: 4px; cursor: pointer; }
+.song-add { align-self: flex-start; margin-top: 4px; }
+.song-note { margin: 8px 0 0; font-size: 11px; color: var(--muted); }
 
 /* The piano roll (#136, roll.ts; design A): a drawer over the canvas above the dock, full width, edged in the armed colour
    while its track is armed. Header, then the keyboard and the grid of 64 steps, then the velocity lane. */
@@ -1757,3 +1764,65 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .steps-screen .steps-head .steps-roll.on { color: var(--panel); background: var(--secondary); border-color: var(--secondary); }
 .share-submit { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
 .share-submit:disabled { color: var(--muted); text-decoration: none; cursor: default; }
+
+/* ---- Sandbox (sandbox.ts): a patch over the FM-1 budget plays here with no limits. Gold is its colour (red stays for
+   real failures). Every patch list shows one chip: FM-1 · NN % in a teal outline, or SANDBOX filled gold ---- */
+/* --sandbox fills (gold in both themes, night ink on it), --sandbox-text is gold as text: the theme's --gate, which is a
+   darker ochre on the light theme's paper */
+:root { --sandbox: var(--ref-gold); --sandbox-ink: var(--ref-night); --sandbox-text: var(--gate); }
+.fit-chip { display: inline-flex; align-items: center; flex: none; padding: 2px 6px; border: 1px solid var(--secondary); border-radius: 3px;
+  font: 600 10.5px/1 'Barlow Condensed', 'Barlow Semi Condensed', system-ui, sans-serif; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; color: var(--secondary); }
+.fit-chip.sandbox { border-color: var(--sandbox); background: var(--sandbox); color: var(--sandbox-ink); }
+/* the "No limits here" card: the what's-new card's frame, its edge gold */
+.sandbox-card { border-color: var(--sandbox); }
+.sandbox-card .shead .fit-chip { margin-right: 4px; }
+.sandbox-card .tutorial-body > p { color: var(--ink); margin-bottom: 10px; }
+.sandbox-lines { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 6px 8px; margin-bottom: 12px; color: var(--muted); }
+.sandbox-lines b { color: var(--ink); font-weight: 650; }
+.sandbox-icon { color: var(--sandbox-text); text-align: center; }
+
+/* the Open picker (main.ts fillPicker): where the browser draws a select's options itself, each row is its name and its
+   chip at the end; elsewhere the options read "name — chip" */
+@supports (appearance: base-select) {
+  #preset, #preset::picker(select) { appearance: base-select; }
+  #preset::picker(select) { width: max-content; min-width: 280px; max-width: min(440px, calc(100vw - 16px)); max-height: min(70dvh, 560px); padding: 4px 0; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--panel); color: var(--ink); box-shadow: 0 8px 28px var(--shadow); }
+  #preset optgroup { font: var(--cap); font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  #preset option { display: flex; align-items: center; gap: 10px; padding: 4px 10px; font: 500 13px/1.3 'Barlow', system-ui, sans-serif; text-transform: none; letter-spacing: 0; color: var(--ink); }
+  #preset option::checkmark { display: none; }
+  #preset option:is(:hover, :focus-visible) { background: var(--surface-tint); }
+  #preset .o-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #preset .o-by { color: var(--muted); }
+  #preset .o-sep { display: none; }
+}
+
+/* Library > Community (library-community.ts): the filters, a card per family, the links at the foot */
+.comm-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 14px; }
+.comm-top > p { flex: 1 1 320px; margin: 0; font-size: 13px; line-height: 1.45; }
+.comm-filters { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--bar); }
+#tab-library .comm-filters button { min-height: 24px; padding: 2px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--muted);
+  font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
+#tab-library .comm-filters button[aria-pressed="true"] { background: var(--secondary); color: var(--accent-ink); }
+.comm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+#tab-library .comm-card { margin: 0; }
+#tab-library .comm-card > p { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+#tab-library .comm-card > h2 .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tab-library .comm-card .bank-row { gap: 8px; }
+#tab-library .comm-card .bank-row a { font-size: 12px; }
+#tab-library .comm-card .bank-row button.comm-add { min-width: 64px; color: var(--accent-ink); background: var(--btn-yellow); }
+#tab-library .comm-card .bank-row button.comm-add.added { color: var(--secondary); background: transparent; border: 1px solid var(--secondary); }
+#tab-library .comm-card .bank-row button.comm-add:hover:not(:disabled) { filter: brightness(1.08); color: var(--accent-ink); background: var(--btn-yellow); }
+#tab-library .comm-card .bank-row button.comm-add.added:hover:not(:disabled) { color: var(--ink); background: transparent; }
+.comm-source { margin: 8px 0 0; font-size: 12px; }
+.comm-foot { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 18px 0 0; font-size: 13px; }
+#tab-library .lib-section .bank-row > .fit-chip { cursor: help; }
+/* the move offer at the pages.dev address (move-offer.ts): a bar at the top, above the app, like a toast */
+.move-bar { position: fixed; z-index: 61; top: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 8px 8px 8px 14px; border: 1px solid var(--secondary); border-radius: 6px;
+  background: var(--panel); color: var(--ink); box-shadow: 0 6px 20px color-mix(in srgb, #000 25%, transparent); font-size: 13px; line-height: 1.4; }
+.move-bar > span[role=status] { flex: 1 1 22rem; min-width: 0; }
+.move-bar a { color: var(--secondary); }
+.move-bar .move-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+.move-bar button { flex: none; min-height: 28px; padding: 0 10px; border: 1px solid var(--secondary); border-radius: 4px; background: var(--secondary); color: var(--panel);
+  font: var(--cap); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; cursor: pointer; }
+.move-bar button.move-close { background: transparent; color: var(--secondary); }

@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { addChild, fixAssemblies, makeAssembly, memberProblem, toDef, insertAssembly, validateAssemblyDef } from './assembly';
 import { DEFS } from './modules';
 import { addModule, connect, emptyPatch, validatePatch, type Patch } from './patch';
-import { allocatorOf, deviceView, makeRoom, MAX_POLY, polyGroups, POLY_TOP, setPoly } from './poly';
+import { allocatorOf, deviceView, makeRoom, MAX_POLY, polyGroups, POLY_TOP, setPoly, trackDrumMap } from './poly';
+import { FM1_PRESETS } from './presets';
+import { drumRowName } from './modules';
 import { addAlloc } from './test-poly';
 import { Engine } from './engine';
 import { deviceBudget } from './patchbin';
@@ -206,5 +208,18 @@ describe('Voice allocator', () => {
     expect(deviceView(p).groups).toEqual([]);
     al.params.priority = 1;
     expect(deviceView(p).groups.map((g) => g.cfg.parts)).toEqual([1]);
+  });
+});
+
+describe('trackDrumMap', () => {
+  it('names the rows of the map the FM-1 picks: the first in its module order, whatever the cable order', () => {
+    for (const name of ['8 Lire', 'Elvira 2']) {
+      const p = FM1_PRESETS[name]();
+      const track = p.modules.find((m) => m.type === 'steps')!;
+      const map = trackDrumMap(p, track.id)!;
+      const first = deviceView(p, true).patch.modules.find((m) => m.type === 'drummap')!;
+      expect(map.id, name).toBe(first.id);
+      expect(drumRowName(map.names, 0), name).toBe('VOICE 1');   // (a voice, not a KICK)
+    }
   });
 });

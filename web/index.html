@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Matryoshka</title>
-  <meta name="description" content="A recursively modular and FM1-friendly synth framework" />
+  <meta name="description" content="A recursively modular and FM1-friendly synth engine framework" />
   <!-- link previews (#165): one generic card for every link; the patch in a link's fragment never reaches a server.
        The address placeholders are src/site.ts's SITE_URL, filled in by vite.config.ts -->
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Matryoshka" />
   <meta property="og:title" content="Matryoshka" />
-  <meta property="og:description" content="A modular synth in your browser that plays on the M-VAVE FM-1. Open a shared patch and play it, no install." />
+  <meta property="og:description" content="A recursively modular and FM1-friendly synth engine framework" />
   <meta property="og:url" content="%SITE_URL%" />
   <meta property="og:image" content="%SITE_URL%brand/og-image.png" />
   <meta property="og:image:width" content="1200" />
@@ -18,9 +18,9 @@
   <meta property="og:image:alt" content="The Matryoshka dolls and wordmark: a modular synth in your browser that plays on the M-VAVE FM-1" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Matryoshka" />
-  <meta name="twitter:description" content="A modular synth in your browser that plays on the M-VAVE FM-1. Open a shared patch and play it, no install." />
+  <meta name="twitter:description" content="A recursively modular and FM1-friendly synth engine framework" />
   <meta name="twitter:image" content="%SITE_URL%brand/og-image.png" />
-  <link rel="icon" type="image/png" href="./brand/matryoshka.png" />
+  <link rel="icon" type="image/png" sizes="96x96" href="./brand/icon-96.png" />
   <link rel="stylesheet" href="/src/style.css" />
   <!-- the stored theme (theme.ts) before the first paint, so a reload does not flash the other one -->
   <script>try { const t = localStorage.getItem('matryoshka.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
@@ -33,7 +33,7 @@
       <button id="sidebar-collapse" class="side-collapse" aria-expanded="true" aria-controls="workspace-sidebar" title="Collapse the sidebar (Ctrl/Cmd+B)" aria-label="Collapse the sidebar">«</button>
       <button id="theme-btn" class="side-collapse theme-toggle" title="Dark theme" aria-label="Switch to the dark theme">☾</button>
       <div class="brand">
-        <span class="logo" aria-hidden="true"><i class="l-coral"></i><i class="l-gold"></i><i class="l-shade"></i><i class="l-teal"></i><i class="l-rim"></i><i class="l-cream"></i><i class="l-ink"></i></span>
+        <span class="logo" aria-hidden="true" title="Back to the canvas"><i class="l-coral"></i><i class="l-gold"></i><i class="l-shade"></i><i class="l-teal"></i><i class="l-rim"></i><i class="l-cream"></i><i class="l-ink"></i></span>
         <h1 class="wordmark"><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" /></h1>
         <!-- About under the logo (as before #166; the word only, no heart): in the collapsed strip it stays under the logo -->
         <button id="about-btn" type="button" title="About Matryoshka, the AI usage figures, the credits, and support">About</button>
@@ -45,11 +45,11 @@
           <div class="sbody">
             <!-- Save, Share and ⋯ sit beside New patch, so the header strip is the tag and the name, as on the other panels -->
             <div class="patch-row"><button id="new-patch-btn">New patch</button><button id="save-patch-btn" class="icon-btn" title="Save patch to Your patches (Ctrl/Cmd+S)" aria-label="Save patch"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2.5 1.5h8.6l2.4 2.4v10.6h-11z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.8 1.5v3.8h5.6V1.5M4.5 14.5V9.3h7v5.2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg></button><button id="share-patch-btn" class="icon-btn" type="button" title="Share: copy a link, post to Reddit, submit to the Community shelf" aria-label="Share patch"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M8 10V1.8M5 4.6l3-3 3 3M5.5 7H3.5v7.5h9V7h-2" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" stroke-linecap="round"/></svg></button><button id="patch-menu-btn" class="icon-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Patch actions" title="Share, save, load, FM-1"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><circle cx="3.2" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="12.8" cy="8" r="1.4" fill="currentColor"/></svg></button></div>
-            <select id="preset" aria-label="Open a saved patch or an example" title="Open one of your patches, an example or a Community patch"></select>
+            <select id="preset" aria-label="Open one of your patches or a factory patch" title="Open one of your patches or a factory patch"></select>
             <div class="add-row"><button id="add-btn" class="primary" title="Add module" aria-label="Add module">+ Module</button><button id="add-assembly-btn" class="primary" title="Add assembly" aria-label="Add assembly">+ Assembly</button></div>
           </div>
         </section>
-        <section class="spanel" aria-label="View" data-views="patch">
+        <section class="spanel" aria-label="View">
           <div class="shead"><span class="mtag shp">VIEW</span><span class="stitle">Canvas</span></div>
           <div class="sbody">
             <div class="view-row"><button id="tidy-btn" title="Line the cards up in columns, keeping their order (undo with Ctrl/Cmd+Z)">TIDY</button><button id="fit-btn" title="Zoom so every card is in view">FIT</button></div>
@@ -58,22 +58,15 @@
             <div id="zoom-bar" class="param bar side-bar"><span>Zoom</span><output id="zoom-out">100 %</output><input id="zoom-input" type="range" min="0" max="1" step="any" value="0.63" aria-label="Zoom" /></div>
           </div>
         </section>
-        <section class="spanel" aria-label="Learn" data-views="patch">
+        <section class="spanel" aria-label="Learn">
           <div class="shead"><span class="mtag mod">LEARN</span><span class="stitle">Get started</span></div>
           <div class="sbody">
             <div class="learn-row"><button id="tour-btn">Tutorial ↗</button><button id="demo-btn" title="Open the demo patch and start the audio: a drone plays at once, the keys play the bassline">Demo</button></div>
+            <!-- "Install v1.2": the firmware version it installs (changelog.ts shortVersion, main.ts); the changelog page under it -->
             <button id="install-btn" title="Install the Matryoshka firmware on the FM-1, or return it to the official one">Install firmware</button>
+            <a id="changelog-link" class="side-link" href="./changelog" target="_blank" rel="noopener" title="What changed in each release (opens in a new tab)">Changelog ↗</a>
           </div>
         </section>
-      </div>
-      <!-- the LIBRARY view's sidebar: its sections (main.ts setLibrarySection) -->
-      <div class="library-side" hidden>
-        <nav class="library-nav" aria-label="Library sections">
-          <button type="button" data-section="patches" aria-current="true">Patches</button>
-          <button type="button" data-section="assemblies" aria-current="false">Assemblies</button>
-          <button type="button" data-section="presets" aria-current="false">Presets</button>
-        </nav>
-        <p class="library-note">Manage what is stored, in this browser and on the FM-1.</p>
       </div>
       <div class="sidebar-bottom">
         <button id="palette-btn" title="All commands (Ctrl/Cmd+K)">Commands <kbd>⌘ / Ctrl K</kbd></button>
@@ -93,9 +86,12 @@
       <div id="lib-patches" class="lib-section"><h2 class="lib-title">Patches</h2></div>
       <div id="lib-assemblies" class="lib-section" hidden><h2 class="lib-title">Assemblies</h2></div>
       <div id="lib-presets" class="lib-section" hidden><h2 class="lib-title">Presets</h2></div>
+      <div id="lib-community" class="lib-section" hidden><h2 class="lib-title">Community patches</h2></div>
     </section>
     <!-- the views (main.ts setView): centred over the main area; Install firmware is a panel over all three, not a view -->
     <div id="view-switch" class="view-switch" role="tablist" aria-label="View"><button type="button" role="tab" data-view="patch" aria-selected="true" title="The patch: the canvas of cards">Patch</button><button type="button" role="tab" data-view="emu" aria-selected="false" tabindex="-1" title="The FM-1's firmware, emulated in the browser">Emu</button><button type="button" role="tab" data-view="library" aria-selected="false" tabindex="-1" title="Manage what is stored, in this browser and on the FM-1">Library</button></div>
+    <!-- LIBRARY's sections, tabs under the switch while LIBRARY shows (main.ts setLibrarySection) -->
+    <nav id="library-tabs" class="library-tabs view-switch" aria-label="Library sections" hidden><button type="button" data-section="patches" aria-current="true">Patches</button><button type="button" data-section="assemblies" aria-current="false">Assemblies</button><button type="button" data-section="presets" aria-current="false">Presets</button><button type="button" data-section="community" aria-current="false">Community</button></nav>
     <!-- Connect FM-1 (top right, in every view): connects as FM-1 & MIDI's Connect does; connected, it opens FM-1 & MIDI (main.ts syncChip) -->
     <button id="fm1-connect" class="fm1-connect" type="button" title="Connect the FM-1 over USB MIDI"><span class="sl-dot" aria-hidden="true"></span><span class="fm1-connect-text">Connect FM-1</span></button>
     <!-- the Install panel (Get started > Install firmware, the palette, #flash): flasher.ts's page over the main area -->
@@ -116,8 +112,8 @@
       <div id="piano" class="piano" role="group" aria-label="Keyboard"></div>
       </div>
     </footer>
-    <!-- the status line (statusline.ts): what the pointer is over, then the FM-1 budget (main.ts showBudget) -->
-    <div id="statusline" class="statusline"><span class="sl-tag"></span><span class="sl-text" aria-live="off"></span>
+    <!-- the status line (statusline.ts): a sandbox patch's SANDBOX pill (main.ts showSandbox), what the pointer is over, then the FM-1 budget (main.ts showBudget) -->
+    <div id="statusline" class="statusline"><button id="sandbox-pill" class="fit-chip sandbox sl-sandbox" type="button" title="Sandbox patch: bigger than the FM-1 holds, so it plays here in the browser, with no limits. Click for what that means" hidden>SANDBOX</button><span class="sl-tag"></span><span class="sl-text" aria-live="off"></span>
       <!-- what the last action did (main.ts writes every message here): beside the hover text, announced politely -->
       <span id="audio-status" class="sl-status" role="status" aria-live="polite">Audio ready · play a key</span>
       <button id="fm1-chip" class="sl-chip" type="button" title="FM-1 & MIDI: connect, send, store, follow its panel"><span class="sl-dot" aria-hidden="true"></span><span class="sl-chip-text">FM-1 · not connected</span></button>
@@ -171,7 +167,7 @@
             <div class="hrow"><span class="hkeys"><kbd>/</kbd> <kbd>Ctrl/Cmd+K</kbd></span><span>command palette: add a module, insert an assembly, open a patch, any action</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+S</kbd></span><span>save the patch to Your patches</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd+B</kbd></span><span>collapse / expand the sidebar</span></div>
-            <div class="hrow"><span class="hkeys">PATCH · EMU · LIBRARY</span><span>the switch at the top: the canvas, the FM-1’s firmware emulated in the browser, and what is stored in this browser and on the FM-1 (<kbd>←</kbd><kbd>→</kbd> move along it). Install firmware is under Get started and in the palette</span></div>
+            <div class="hrow"><span class="hkeys">PATCH · EMU · LIBRARY</span><span>the switch at the top: the canvas, the FM-1’s firmware emulated in the browser, and what is stored in this browser and on the FM-1 (<kbd>←</kbd><kbd>→</kbd> move along it). Install (the firmware) is under Get started and in the palette</span></div>
             <div class="hrow"><span class="hkeys">LIBRARY <b>→</b> <b>←</b></span><span>Patches and Presets in two columns, this browser and the FM-1: → puts one on the FM-1 (or in the bank’s offline copy while none is connected), ← copies one into this browser. Deleting in this browser offers Undo; replacing on the FM-1 asks first</span></div>
             <div class="hrow"><span class="hkeys"><kbd>?</kbd></span><span>this list</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Esc</kbd></span><span>cancel a connection, clear the rows selected while choosing or arranging a card (again: finish choosing or arranging), close a dialog or the Install panel</span></div>
@@ -212,6 +208,8 @@
             <div class="hrow"><span class="hkeys">‹ preset › on an assembly</span><span>its presets (stored values of its card rows, shared by every copy of the same assembly): the arrows step, the name opens the list; a star: changed since. Its ⋯ menu: Store as a preset…</span></div>
             <div class="hrow"><span class="hkeys">a Steps card’s <b>rec</b>, <kbd>Shift+R</kbd></span><span>record on the armed track. Stopped: a note or a chord (the keys held when the first is let go) fills the cursor’s step; <kbd>Backspace</kbd> a rest, <kbd>Enter</kbd> a tie, <kbd>←</kbd><kbd>→</kbd> move, <kbd>Esc</kbd> stops. Running: play along, notes land on the nearest step, each pass overdubs and is one undo step</span></div>
             <div class="hrow"><span class="hkeys"><kbd>Ctrl/Cmd</kbd>-click a step</span><span>tie it to the note before (it holds on through the step)</span></div>
+            <div class="hrow"><span class="hkeys"><kbd>[</kbd> <kbd>]</kbd>, a Steps card’s ‹ P01 ›</span><span>the patch’s pattern (1..64): every track’s card and roll show and edit their pattern of that number (one a track has not got shows its first, and an edit makes it). While playing, each track takes it at the end of its pass (the strip blinks P01 → P02 until then). The strip also sets this pattern’s own length and rate, copies every track’s pattern to the next empty one (Alt-click: to a number), clears this track’s pattern; <b>song</b> opens the songs</span></div>
+            <div class="hrow"><span class="hkeys"><b>song</b> on the strip</span><span>songs 1..8: entries of a pattern and a shift (−12..+12 semitones; tracks that play a Drum map are never shifted), + inserts a copy, × deletes, drag to reorder, + entry adds one. <b>pattern</b> / <b>song n</b> say what the patch plays; each track plays an entry per pass, then the first again</span></div>
             <div class="hrow"><span class="hkeys">hover</span><span>the status line under the keyboard says what it is and what it does; the FM-1 budget is at its right</span></div>
             <div class="hrow"><span class="hkeys">touch screen</span><span>pinch to zoom the canvas, two fingers to pan it, anywhere on it; one finger pans the empty canvas or a card’s body and works a control as a mouse would. Swipe the dock sideways for the rest of Main (from a knob or a button too); drag a knob up and down to turn it</span></div>
             <div class="hrow"><span class="hkeys">drag a slider</span><span>set its value; press anywhere on the bar to jump there</span></div>
@@ -229,15 +227,19 @@
           <section class="hsec"><h3>On the FM-1</h3>
             <div class="hrow"><span class="hkeys">HOME</span><span>back one step (out of the SEQ page, out of the menu); on the device pages with nothing to go back to it does nothing. Held: the settings menu</span></div>
             <div class="hrow"><span class="hkeys">ALGO / SELECT</span><span>ALGO moves sideways (a device’s pages, the menu’s tabs), SELECT picks (the device, a menu row)</span></div>
-            <div class="hrow"><span class="hkeys">ENV</span><span>the environment: every device from Main to the Output, each Steps track followed by what it plays. SELECT the row, K1..K4 its first page, PRESET or ALGO its presets, REC arms it (several at once), SEL its pages; ENV or HOME goes back. ENV held + SAVE: the device’s preset</span></div>
-            <div class="hrow"><span class="hkeys">SEL</span><span>one level deeper: an environment row’s pages, a Steps track’s steps</span></div>
+            <div class="hrow"><span class="hkeys">ENV</span><span>the environment: every device from Main to the Output, each Steps track followed by what it plays. SELECT the row, K1..K4 its first page, PRESET or ALGO its presets, SEL arms or disarms it (several at once: a layer or a split); ENV or HOME goes back. ENV held + SAVE: the device’s preset</span></div>
+            <div class="hrow"><span class="hkeys">SEL</span><span>arms the device on screen, so the keys play it, and disarms the others; on an environment row it adds the row to the armed devices or takes it out. A device with no keys input says NOTHING HERE TAKES KEYS and changes nothing. On the SEQ page a tap opens the SONG page</span></div>
+            <div class="hrow"><span class="hkeys">KEYS WIRED</span><span>nothing armed: Main’s cables decide what the keys play. A patch loads this way, and the footer says KEYS WIRED after its name. Taking the last device out in the environment leaves the keys wired. The SEQ page arms the track it shows (opening it, or ALGO there)</span></div>
+            <div class="hrow"><span class="hkeys">REC</span><span>the same on every page, and it never changes the page. Stopped: the transport starts and recording begins. Running: recording begins. Again: recording stops, the transport goes on. PLAY stops both. What records is the armed Steps tracks, over the notes already there (a track armed while REC is on records from then on); with none armed the bar says REC: NO TRACK ARMED. REC held + a black key adds track n to the armed devices or takes it out</span></div>
             <div class="hrow"><span class="hkeys">keys on drums</span><span>while the keys reach a Drum map (its track armed, or cabled from Main with nothing armed) black keys 1..8 play its rows 1..8 on every page, the white keys nothing; MIDI out sends the row’s note (white keys nothing), MIDI notes coming in still play the row of their note</span></div>
-            <div class="hrow"><span class="hkeys">SEQ on a drum track</span><span>an 8 × 16 grid of the map’s rows: black keys or SELECT pick the row (stopped: heard), white keys its hit on a step (FX held: accent), OCT− / OCT+ the next 16 steps. With REC on the black keys are hits on their rows (into the nearest step while running) and SELECT picks the row; REC with nothing armed opens this page on a drum track</span></div>
-            <div class="hrow"><span class="hkeys">SEQ on a melodic track</span><span>a piano roll: 8 pitches × 16 steps, C rows tinted, opened around the track’s notes; SELECT moves the row and scrolls at the edges, black keys or ALGO pick the track, white keys switch the selected pitch on a step, OCT− / OCT+ the next 16 steps. FX held + a white key: an accent. SEL held + a key: the row jumps to that key’s pitch and it sounds (FX + OCT: the octave). A small triangle over or under a step: notes above or below the 8 rows shown. LFO held + a white key: tie the note through that step (again: untie). A held step + K1 its pitch, + K2 velocity, + K3 chance (SELECT still moves the row). REC on the roll arms its track if nothing is armed (REC off disarms it): stopped, the roll with REC on (black keys sound, white keys place notes); running, every key records its own pitch into the nearest step</span></div>
+            <div class="hrow"><span class="hkeys">SEQ on a drum track</span><span>an 8 × 16 grid of the map’s rows: a black key sounds its row while held and picks it, REC on or off, running or stopped; while REC records, it also records the hit into the nearest step. SELECT picks the row silently, white keys switch its hit on a step (FX held: accent, also while REC records), OCT− / OCT+ the next 16 steps</span></div>
+            <div class="hrow"><span class="hkeys">SEQ on a melodic track</span><span>a piano roll: 8 pitches × 16 steps, C rows tinted, opened around the track’s notes; SELECT moves the row and scrolls at the edges, black keys 1..8 pick the 8 rows shown (black key 1 the bottom one; stopped: heard), ALGO the track, white keys switch the selected pitch on a step, OCT− / OCT+ the next 16 steps. FX held + a white key: an accent. SEL held + a key: the row jumps to that key’s pitch and it sounds (FX + OCT: the octave). A small triangle over or under a step: notes above or below the 8 rows shown. LFO held + a white key: tie the note through that step (again: untie). A held step + K1 its pitch, + K2 velocity, + K3 chance (SELECT still moves the row). The page arms the track it shows. While REC records, all 27 keys play the track and record their own pitch into the nearest step (OCT− / OCT+ the octave)</span></div>
             <div class="hrow"><span class="hkeys">SEQ held + REC</span><span>on the SEQ page: clear the selected track (all its hits or notes). The bar asks first; REC again within 3 s, SEQ still held, clears it; another key or button, a knob, or letting go of SEQ leaves it as it was. The editor follows (with Live on, one undo step)</span></div>
             <div class="hrow"><span class="hkeys">GLO</span><span>The FM-1’s own quick page on K1..K4: MIDI channel, MIDI clock in, MIDI out, LEDs (saved with SAVE); its footer lists what each patch button does. The patch’s tempo and morph are on Main’s device page. GLO again goes back.</span></div>
             <div class="hrow"><span class="hkeys">a Page button</span><span>a press: the next page of its list; held: its first page while it is down. ALGO steps the list, SELECT leaves it</span></div>
-            <div class="hrow"><span class="hkeys">PRESET</span><span>only steps through the patches; PLAY held + PRESET: the tempo</span></div>
+            <div class="hrow"><span class="hkeys">PRESET</span><span>steps through the patches (on the SEQ and SONG pages: the patch’s pattern); PLAY held + PRESET: the tempo</span></div>
+            <div class="hrow"><span class="hkeys">PRESET on the SEQ page</span><span>the patch’s pattern, 1..64: running, each track takes it at the end of its pass (the bar shows P03&gt;P04 until then); stopped, at once. A track without that pattern plays its first</span></div>
+            <div class="hrow"><span class="hkeys">SEL tapped on the SEQ page</span><span>the SONG page: one row per entry (pattern and shift). SELECT the row, K1 its pattern (on END: a new entry; FX held: a copy inserted before it), K2 its shift (−12..+12, never on a drum track), K4 right the song plays, left the pattern again, ALGO song 1..8, SEQ held + REC deletes the entry (REC again within 3 s), SEL or HOME back</span></div>
             <div class="hrow"><span class="hkeys">SAVE</span><span>the patch into its slot, with the panel settings; in the menu it also closes it</span></div>
           </section>
         </div>

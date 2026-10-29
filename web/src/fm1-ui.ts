@@ -3,7 +3,7 @@
 // panel core and screens on the C engine, with no hardware. The page loads a patch binary (patchbin.ts encodePatch),
 // drives the panel and the clock, and draws the 240 x 240 RGB565 framebuffer. No DOM here: the editor's FM-1 tab
 // (#110) and the tests use it.
-import { wordNote, type StepNote } from './track';
+import { wordNote, type SongEntry, type StepNote } from './track';
 
 /** what the emulated FM-1 tells the page */
 export interface Fm1Events {
@@ -20,10 +20,15 @@ export interface Fm1Events {
   midi?(status: number, d1: number, d2: number): void;
   /** PLAY started / stopped the transport */
   transport?(run: boolean): void;
-  /** the SEQ page: a track's notes as they are after an edit there, a track muted (module = its index in the binary) */
-  track?(module: number, notes: StepNote[]): void;
+  /** the SEQ page: a track's notes as they are after an edit there (of pattern `pat`, 0-based: the one it plays), a track
+   * muted (module = its index in the binary) */
+  track?(module: number, notes: StepNote[], pat: number): void;
+  /** PRESET on the SEQ page or the SONG page chose the patch's pattern (0-based) or the song (0 none) (#375) */
+  pattern?(pattern: number, song: number): void;
+  /** the SONG page edited song s (0-based): its entries */
+  song?(s: number, entries: SongEntry[]): void;
   mute?(module: number, on: boolean): void;
-  /** the FM-1 armed or disarmed (#139, #191: REC held + a black key, REC on an environment row): the armed modules, by
+  /** the FM-1 armed or disarmed (#139, #191, #395: REC held + a black key, SEL, the SEQ page): the armed modules, by
    * their index in the binary, as a mask in two halves */
   arms?(lo: number, hi: number): void;
 }
@@ -51,6 +56,7 @@ interface Exports {
   fm1w_focus(device: number, page: number): void;
   fm1w_param(module: number, param: number, value: number): void;
   fm1w_transport(run: number): void;
+  fm1w_mute(module: number, on: number): void;
   fm1w_arm_mask(lo: number, hi: number): void;
   fm1w_focus_dev(): number; fm1w_focus_page(): number; fm1w_octave(): number;
 }
@@ -68,7 +74,12 @@ export class Fm1Ui {
       save: () => ev.save?.(),
       midi: (s: number, a: number, b: number) => ev.midi?.(s, a, b),
       transport: (r: number) => ev.transport?.(r !== 0),
-      track: (m: number, at: number, n: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : []),
+      track: (m: number, at: number, n: number, pat: number) => ev.track?.(m, memory ? [...new Uint32Array(memory.buffer, at, n)].map(wordNote) : [], pat ?? 0),
+      pattern: (p: number, song: number) => ev.pattern?.(p, song),
+      song: (k: number, at: number, n: number) => ev.song?.(k, memory ? Array.from({ length: n }, (_, j) => {
+        const b = new Uint8Array(memory!.buffer, at + 2 * j, 2);
+        return { pat: b[0], shift: (b[1] << 24) >> 24 };
+      }) : []),
       mute: (m: number, on: number) => ev.mute?.(m, on !== 0),
       arms: (lo: number, hi: number) => ev.arms?.(lo >>> 0, hi >>> 0),
     };
@@ -97,6 +108,8 @@ export class Fm1Ui {
   focus(device: number, page: number): void { this.x.fm1w_focus(device, page); }
   param(module: number, param: number, value: number): void { this.x.fm1w_param(module, param, value | 0); }
   transport(run: boolean): void { this.x.fm1w_transport(run ? 1 : 0); }
+  /** a track muted / unmuted on the FM-1 it follows (MUTE_NOW): its black key's light follows */
+  mute(module: number, on: boolean): void { this.x.fm1w_mute(module, on ? 1 : 0); }
   /** the editor's armed devices (#191): their modules as a mask (arm.ts armMask) */
   armMask(lo: number, hi: number): void { this.x.fm1w_arm_mask(lo >>> 0, hi >>> 0); }
 

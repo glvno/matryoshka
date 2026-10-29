@@ -12,6 +12,10 @@ static int32_t abuf[2u * HALF_WORDS] __attribute__((aligned(4)));
 static volatile uint8_t eng_run;
 static volatile uint32_t master_q12 = 2048;        /* the MASTER pot, 0..4088 (Q12), square law */
 static volatile int32_t patch_gain = 65536;        /* the mixer page's level of the patch, Q16 (0 = muted; menu.c) */
+static volatile uint8_t snd_muted;                 /* sandbox mode (sandbox_ui.c): the browser plays; the FM-1's patch runs on, unheard */
+static volatile uint8_t tp_on;                     /* the device test mode (#291) asked for the output's level: tp_peak is kept */
+static volatile uint32_t tp_peak;                  /* the loudest sample since the last TEST_PEAK, 16 bit: before the MASTER pot (as at its
+                                                    * default, so a script does not depend on where the knob is), after mute */
 static volatile uint32_t eng_us_last, eng_us_max, eng_halves;
 static int32_t eng_l[HALF_FRAMES], eng_r[HALF_FRAMES];
 #if FELUCCA_UAC
@@ -64,10 +68,23 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
         }
         if (eng_run) {
             eng_render(eng_l, eng_r, HALF_FRAMES);
-            int32_t m = (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
+            int32_t m = snd_muted ? 0 : (int32_t)(((int64_t)master_q12 * patch_gain) >> 16);
             for (i = 0; i < HALF_FRAMES; i++) {         /* Q16 (+-1.0) * MASTER -> 24 bit in the low bits, -6 dBFS ceiling */
                 o[2u * i] = ((eng_l[i] * m) >> 12) << 6;
                 o[2u * i + 1u] = ((eng_r[i] * m) >> 12) << 6;
+            }
+            if (tp_on) {                                /* (only once a script asked: no cost otherwise) */
+                int32_t mr = snd_muted ? 0 : (int32_t)(((int64_t)2048 * patch_gain) >> 16);   /* MASTER at its default */
+                uint32_t pk = tp_peak, a;
+                for (i = 0; i < HALF_FRAMES; i++) {
+                    a = (uint32_t)(eng_l[i] < 0 ? -eng_l[i] : eng_l[i]);
+                    if (eng_r[i] < 0 ? (uint32_t)-eng_r[i] > a : (uint32_t)eng_r[i] > a)
+                        a = (uint32_t)(eng_r[i] < 0 ? -eng_r[i] : eng_r[i]);
+                    a = (uint32_t)(((uint64_t)a * (uint32_t)mr) >> 14);   /* the output's 16-bit scale: (x m >> 12 << 6) >> 8 */
+                    if (a > pk)
+                        pk = a;
+                }
+                tp_peak = pk;
             }
         } else {
             for (i = 0; i < HALF_WORDS; i++)

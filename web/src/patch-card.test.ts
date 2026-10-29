@@ -87,6 +87,14 @@ describe('the patch card', () => {
     expect(l.boxes.some((b) => b.blurb)).toBe(false);
   });
 
+  it('undisplayed module ports and rows do not hide a neighboring envelope control', () => {
+    const p = PRESETS.Init();
+    const defs = { ...DEFS, alloc: { ...DEFS.alloc, params: [...DEFS.alloc.params, ...DEFS.alloc.params], outputs: [...DEFS.alloc.outputs, ...DEFS.alloc.outputs] } };
+    const l = cardLayout(p, defs);
+    inside(l);
+    expect(l.boxes.find((b) => b.label === 'ADSR')!.pages![0].rows.map((r) => r.label)).toEqual(['attack', 'decay', 'sustain', 'release']);
+  });
+
   it('shows less per box the more boxes there are', () => {
     expect(detailFor(5)).toBe('full');
     expect(detailFor(30)).toBe('compact');
@@ -129,12 +137,12 @@ describe('the patch card', () => {
     expect(init.fits).toBe(true);
     expect(fitLine(init)).toMatch(/^Plays on the FM-1 · \d+ %$/);
     const demo = patchFacts(demoPatch(), DEFS);
-    expect(fitLine(demo)).toMatch(/^Browser only/);
+    expect(fitLine(demo)).toMatch(/^Sandbox/);
     expect(patchFacts(PRESETS['Hera 6'](), DEFS).engines.length).toBeLessThanOrEqual(1);
   });
 
-  it('uses the dark theme\'s token values from style.css', () => {
-    const css = readFileSync(new URL('./style.css', import.meta.url), 'utf8');
+  it('uses the dark theme\'s token values from tokens.css', () => {
+    const css = readFileSync(new URL('./tokens.css', import.meta.url), 'utf8');
     const ref = (name: string): string => new RegExp(`--ref-${name}: (#[0-9a-f]{6})`).exec(css)![1];
     const dark = /:root\[data-theme="dark"\] \{([^}]*)\}/.exec(css)![1];
     const tok = (name: string): string => ref(new RegExp(`--${name}: var\\(--ref-([a-z-]+)\\)`).exec(dark)![1]);

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Matryoshka changelog</title>
+  <meta name="description" content="What changed in each release of Matryoshka, the web editor and the FM-1 firmware" />
+  <!-- the released versions of CHANGELOG.md, read when the site is built (src/changelog.ts); each has an anchor, #v1.2.0 -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Matryoshka" />
+  <meta property="og:title" content="Matryoshka changelog" />
+  <meta property="og:description" content="What changed in each release of Matryoshka, the web editor and the FM-1 firmware." />
+  <meta property="og:url" content="%SITE_URL%changelog" />
+  <meta property="og:image" content="%SITE_URL%brand/og-image.png" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/png" sizes="96x96" href="./brand/icon-96.png" />
+  <link rel="stylesheet" href="/src/changelog.css" />
+  <!-- the stored theme (theme.ts), as index.html does, before the first paint -->
+  <script>try { const t = localStorage.getItem('matryoshka.theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
+</head>
+<body>
+  <header class="cl-head">
+    <a class="cl-brand" href="./" title="Open Matryoshka"><span class="logo" aria-hidden="true"><i class="l-coral"></i><i class="l-gold"></i><i class="l-shade"></i><i class="l-teal"></i><i class="l-rim"></i><i class="l-cream"></i><i class="l-ink"></i></span><img class="brand-mark" src="./brand/wordmark.svg" alt="Matryoshka" /></a>
+    <a class="cl-open" href="./">Open the editor</a>
+  </header>
+  <main class="cl-main">
+    <h1>Changelog</h1>
+    <p class="cl-intro">What changed in each release of the web editor and the FM-1 firmware, which are released together. The history from before 1.0 is in the <a href="https://github.com/glvno/matryoshka/blob/main/docs/CHANGELOG-pre-1.0.md" target="_blank" rel="noopener noreferrer">development log</a>.</p>
+    <nav class="cl-toc" aria-label="Releases"></nav>
+    <div id="releases"></div>
+  </main>
+  <script type="module" src="/src/changelog-page.ts"></script>
+</body>
+</html>

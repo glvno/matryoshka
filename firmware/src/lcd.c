@@ -6,14 +6,17 @@
  * A pixel transfer is left running (lcd_busy): the next LCD access, or a write
  * to its source buffer (lcd_sync), waits for it, so the main loop works
  * while the last strip of a frame goes out. lcd_yield (panel.c panel_draw, #230), when set, is called
- * while a transfer runs, before it is waited for: the keys are taken there during a long redraw. */
+ * while a transfer runs, before it is waited for: the keys are taken there during a long redraw.
+ * lcd_service serves MIDI on every screen, including messages drawn outside panel_draw. Neither hook may draw. */
 /* pins and SPI1: hal/fm1_lcd_hw.h */
+#include "screen_text.h"          /* the texts on the screen, as text (#291) */
 #ifndef LCD_BAUD
 #define LCD_BAUD 4u                /* lsb/(BAUD+1): 4 = 12 MHz */
 #endif
 
 static uint8_t lcd_small[64];
 static uint8_t lcd_busy;           /* a lcd_data DMA may still run; CS is low */
+static void (*lcd_service)(void);  /* non-drawing main-thread work, on every screen */
 static void (*lcd_yield)(void);    /* (must not touch the LCD) */
 
 static void lcd_spin(uint32_t n)
@@ -26,6 +29,8 @@ static void lcd_sync(void)          /* finish the running transfer (before touch
 {
     if (!lcd_busy)
         return;
+    if (lcd_service)
+        lcd_service();
     if (lcd_yield)
         lcd_yield();
     fm1_lcd_wait();
@@ -83,6 +88,7 @@ static void lcd_fill(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint16_t c)
         w = 240u - x;
     if (y + h > 240u)
         h = 240u - y;
+    scr_erase(x, y, w, h);
     lcd_sync();
     k = 240u / w * w;                       /* whole rows per transfer (narrow fills: one DMA) */
     for (i = 0; i < k; i++)
@@ -110,6 +116,7 @@ static void lcd_line_out(uint32_t x, uint32_t y, uint32_t w)
     uint32_t i;
     for (i = 0; i < w; i++)
         lcd_line[i] = (uint16_t)((lcd_line[i] >> 8) | (lcd_line[i] << 8));
+    scr_line(x, y, w);
     lcd_blit(x, y, w, 1, lcd_line);
 }
 

@@ -7,7 +7,7 @@
 // docs/TUTORIAL.md; the data's shape in course-schema.ts.
 import content from './course.json';
 import { DEFS } from '../modules';
-import { emptyPatch, newPatch, type Patch } from '../patch';
+import { emptyPatch, newPatch, validatePatch, type Patch } from '../patch';
 import { PRESETS } from '../presets';
 import type { AssemblyDef } from '../assembly';
 import { findDef, type Chapter, type Step, type TutorialState } from './model';
@@ -86,7 +86,7 @@ export function chapterStart(i: number, course: CourseData = COURSE): Patch {
     case 'new': return fresh(); // `voices` of a start rule is from before poly assemblies (an empty patch has none to set)
     case 'empty': return emptyPatch(ch.patchName);
     case 'preset': { const make = PRESETS[ch.start.name]; return make ? { ...make(), name: ch.patchName } : fresh(); }
-    case 'patch': return clone(ch.start.patch);
+    case 'patch': return validatePatch(clone(ch.start.patch), DEFS);
     case 'continue': return i > 0 ? clone(chapterEnd(i - 1, course)) : fresh();
   }
 }
@@ -94,10 +94,10 @@ export function chapterStart(i: number, course: CourseData = COURSE): Patch {
 /** the patch a step begins from: the previous task step's reference, else the chapter's start */
 export function stepStart(ci: number, si: number, course: CourseData = COURSE): Patch {
   const r = lastReference(course, ci, si);
-  return r ? clone(r) : chapterStart(ci, course);
+  return r ? validatePatch(clone(r), DEFS) : chapterStart(ci, course);
 }
 
-/** a chapter's canned end: its last reference patch (the Examples entries, the intro's preview, the next chapter's start) */
+/** a chapter's canned end: its last reference patch (the intro's preview, the next chapter's start) */
 export function chapterEnd(i: number, course: CourseData = COURSE): Patch {
   return stepStart(i, course.chapters[i].steps.length, course);
 }

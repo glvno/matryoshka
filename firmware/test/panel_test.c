@@ -44,7 +44,9 @@ static int sent(int from, uint32_t s, uint32_t a, uint32_t b)
             return 1;
     return 0;
 }
-#include "../src/live.c"                            /* the editor's Live (#185, #200): main.c's, as on the device */
+static int info_told;                               /* proto.c's INFO, unasked (live.c: MIDI OUT changed) */
+static void m1_info(void) { info_told++; }
+#include "../src/live.c"                            /* the editor's Live (#185) and sandbox mode: main.c's, as on the device */
 /* PRESET: counted; with preset_loads the next factory patch runs, as main.c preset_load does with the bank's; under the
  * editor's Live it waits, as main.c preset_step */
 static int preset_loads;
@@ -63,8 +65,15 @@ static void preset_step(int32_t d)
     }
 }
 static void save_state(void) { saved++; }
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v) { (void)mod; (void)field; (void)v; }
+#include "../src/poly_edit.h"
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+{
+    return poly_patch_set(pv_bin, pv_len, mod, field, v, eng_load);
+}
 
+#define ROWS_Y (LK_HH + 4u)                            /* the device page's first bar */
+#define K1_TAB px(BAR_X + LK_VP + 1u, row_y(0) + row_h() / 2u)   /* K1's accent tab (the page drawn last: its bars) */
+#define BPX(x, y) px(BATT_FX + (x), BATT_FY + (y))      /* the footer's battery */
 static int failed;
 static void check(const char *what, int ok)
 {
@@ -102,6 +111,60 @@ static void later(uint32_t ms)
     loop();
 }
 static uint16_t px(uint32_t x, uint32_t y) { return fb[y * 240u + x]; }
+/* #368: a black key on a drum track's page sounds through the track (eng_steps_thru): its note into the track's keys
+ * since the thru ring stood at `from` (thru_head) */
+static int thru_heard(uint8_t from, uint32_t mod, uint32_t note)
+{
+    uint8_t h;
+    for (h = from; h != thru_head; h++)
+        if (thru_ring[h % ENG_THRU][0] == mod && thru_ring[h % ENG_THRU][1] == (note | 0x80u))
+            return 1;
+    return 0;
+}
+static uint8_t th;                          /* (where the thru ring stood before a key) */
+static void blocks(uint32_t n)
+{
+    static int32_t bl[128], br[128];
+    while (n--)
+        eng_render(bl, br, 128);
+}
+/* the screen as text (screen_text.h, the device test mode's SCREEN, #291) holds a text containing s */
+static int on_screen(const char *s)
+{
+    uint32_t i;
+    for (i = 0; i < SCR_N; i++)
+        if (scr_text[i].w && strstr(scr_text[i].s, s))
+            return 1;
+    return 0;
+}
+/* a pixel of colour c in the text line from row y (14 rows) */
+static int fb_has_hue(uint32_t y, uint16_t c)
+{
+    uint32_t i;
+    for (i = y * 240u; i < (y + 14u) * 240u && i < 240u * 240u; i++)
+        if (fb[i] == c)
+            return 1;
+    return 0;
+}
+/* a pixel of colour c anywhere on the screen */
+static int fb_has(uint16_t c)
+{
+    uint32_t i;
+    for (i = 0; i < 240u * 240u; i++)
+        if (fb[i] == c)
+            return 1;
+    return 0;
+}
+/* pages_waiting's stand-in (#298): lcd_px at each place a staged draw may give way, and its answer */
+static uint32_t stop_px[16], stop_n;
+static int stop_answer;
+static int stop_probe(void)
+{
+    if (stop_n < 16u)
+        stop_px[stop_n] = lcd_px;
+    stop_n++;
+    return stop_answer;
+}
 /* the pixels that blinked since fb_watch_reset(): changed value twice or more (cleared, then drawn again) */
 static void fb_watch_reset(void) { memset(fb_changes, 0, sizeof fb_changes); }
 static uint32_t fb_blinked(void)
@@ -144,7 +207,7 @@ static void held_key(uint32_t btn, uint32_t n)
 /* the top bar shows what bar_text(s, bg) draws */
 static int bar_shows(const char *s, uint16_t bg)
 {
-    static uint16_t was[240 * BAR_H];
+    static uint16_t was[240 * LK_HH];
     int same;
     memcpy(was, fb, sizeof was);
     bar_text(s, bg);
@@ -201,13 +264,28 @@ static int sent_at(int from, uint32_t s, uint32_t a, uint32_t b)
 }
 
 static int load_at(uint32_t p);
-static int load(const char *name)
+/* the slot of the factory patch of this name (N_PRESETS: none) */
+static uint32_t preset_at(const char *name)
 {
     uint32_t p;
     for (p = 0; p < N_PRESETS && strcmp(PRESET_LIST[p].name, name); p++)
         ;
-    return load_at(p);
+    return p;
 }
+static int load(const char *name)
+{
+    return load_at(preset_at(name));
+}
+/* An encoded test patch in the same buffer used by the panel reload path. */
+static int load_fixture(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+    fclose(f);
+    return eng_load(pv_bin, pv_len);
+}
+
 /* the factory patch p (0..N_PRESETS-1) running */
 static int load_at(uint32_t p)
 {
@@ -284,6 +362,75 @@ int main(void)
     static uint16_t before[240 * 240];
     uint32_t mod, par;
     int32_t v0;
+    {
+        char num[24], unit[8];
+        value_parts(&DEFS[T_LFO], LFO_P_WIDE, DEFS[T_LFO].pmin[LFO_P_WIDE], num, unit);
+        check("slow LFO endpoint displays millihertz instead of zero", !strcmp(num, "0.79") && !strcmp(unit, "mHz"));
+        value_parts(&DEFS[T_LFO], LFO_P_WIDE, 55 << 16, num, unit);
+        check("fast LFO endpoint displays hertz", !strcmp(num, "55.0") && !strcmp(unit, "Hz"));
+    }
+    /* The real reload path: adding voices past the pools must leave a playable patch. */
+    check("Cassia loads for voice edit", load("CASSIA 1") == 0);
+    for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
+        ;
+    poly_row_set(mod, 0, 4);
+    check("Cassia accepts four voices in memory", eng_poly_get(0, 0) == 4);
+    poly_row_set(mod, 0, 5);
+    check("a rejected fifth voice restores the engine and patch", eng_poly_get(0, 0) == 4 && pv_bin[8] == 4);
+    poly_row_set(mod, 0, 2);
+    check("voices can be reduced after a rejected edit", eng_poly_get(0, 0) == 2 && pv_bin[8] == 2);
+    check("no-steal row changes the engine and saved flag", poly_row_set(mod, ENG_POLY_STEAL, 0) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 0 && (pv_bin[11] & 0x80u));
+    check("priority row preserves no-steal", poly_row_set(mod, ENG_POLY_PRIORITY, 2) == 0 && pv_bin[11] == 0x82u && eng_poly_get(0, ENG_POLY_PRIORITY) == 2);
+    check("reset assignment reaches the engine and saved patch", poly_row_set(mod, ENG_POLY_ASSIGN, 3) == 0 && eng_poly_get(0, ENG_POLY_ASSIGN) == 3 && pv_bin[9] == 3);
+    check("assignment row spans all four choices", poly_max(ENG_POLY_ASSIGN) == 3);
+    check("steal row is boolean", poly_max(ENG_POLY_STEAL) == 1);
+    check("reload retains no-steal and reset assignment", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 0 && eng_poly_get(0, ENG_POLY_ASSIGN) == 3);
+    check("turning stealing back on preserves priority", poly_row_set(mod, ENG_POLY_STEAL, 1) == 0 && pv_bin[11] == 2 && eng_poly_get(0, ENG_POLY_STEAL) == 1);
+    check("unison count edits preserve poly voices", poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 2 && pv_bin[8] == 0x12u);
+    check("unison count row spans all hardware voices", poly_max(ENG_POLY_STACK) == ENG_MAX_PARTS);
+    check("poly count edits preserve the unison count", poly_row_set(mod, ENG_POLY_PARTS, 4) == 0 && pv_bin[8] == 0x14u);
+    check("rejected poly edit restores both counts", poly_row_set(mod, ENG_POLY_PARTS, 5) != 0 && pv_bin[8] == 0x14u && eng_poly_get(0, ENG_POLY_STACK) == 1 && eng_poly_get(0, ENG_POLY_PARTS) == 4);
+    check("unison count survives reloading", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 1);
+    check("unison can use one of four voices", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 1);
+    group_on(&E.grp[1], 60, ENG_ONE); /* Cassia receives keys through its Arpeggiator. */
+    check("one unison voice sounds", E.pv[E.grp[1].pv0].on && !E.pv[E.grp[1].pv0 + 1].on);
+    check("increasing unison count wakes held voices", poly_row_set(mod, ENG_POLY_STACK, 3) == 0 && E.pv[E.grp[1].pv0 + 2].on && !E.pv[E.grp[1].pv0 + 3].on);
+    check("zero unison count means all", poly_row_set(mod, ENG_POLY_STACK, 0) == 0 && E.pv[E.grp[1].pv0 + 3].on);
+    check("reducing unison count releases excess voices", poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && !E.pv[E.grp[1].pv0 + 1].on);
+    check("shared unison mode saves both flags", poly_row_set(mod, ENG_POLY_UNISON, 2) == 0 && eng_poly_get(0, ENG_POLY_UNISON) == 2 && (pv_bin[10] & 0xC0u) == 0xC0u);
+    check("legato edit preserves shared unison", poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && pv_bin[10] == 0xC2u);
+    check("unison mode row has three choices", poly_max(ENG_POLY_UNISON) == 2);
+    check("normal unison keeps legato and clears share", poly_row_set(mod, ENG_POLY_UNISON, 1) == 0 && pv_bin[10] == 0x82u);
+    /* Group-format guards use only stable Main/Part/VCA/Output records, independent of factory players.
+     * Real older records and upgrades are checked by tools/old_format.sh. */
+    check("group compatibility fixture loads", load_fixture("build/panel-fixtures/unison-count-0-0.m1p") == 0);
+    for (mod = 0; mod < (uint32_t)eng_nmodules() && !eng_module_group(mod); mod++)
+        ;
+    check("group compatibility fixture keeps the edited settings",
+          poly_row_set(mod, ENG_POLY_STACK, 1) == 0 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == 0
+          && poly_row_set(mod, ENG_POLY_LEGATO, 2) == 0 && poly_row_set(mod, ENG_POLY_UNISON, 1) == 0);
+    pv_bin[1] = 38;
+    check("format 38 cannot add shared unison", poly_row_set(mod, ENG_POLY_UNISON, 2) == -1 && pv_bin[10] == 0x82u);
+    pv_bin[10] |= 0x40u;
+    check("format 38 rejects shared unison flag", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[1] = ENG_PATCH_VERSION; pv_bin[10] = 0x42u;
+    check("share flag without unison is invalid", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[10] = 0x82u;
+    pv_bin[1] = 37;
+    check("format 37 rejects the new count flag", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[8] &= 15u;
+    check("format 37 still loads ordinary unison", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STACK) == 0);
+    check("old-format edit cannot add unison count", poly_row_set(mod, ENG_POLY_STACK, 2) == -1 && pv_bin[8] == 4u);
+    pv_bin[1] = ENG_PATCH_VERSION; pv_bin[8] = 0x94u;
+    check("invalid unison count is rejected", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[8] = 2; pv_bin[10] = 0;
+    pv_bin[1] = 36;
+    check("old formats reject reset assignment", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[9] = 0; pv_bin[11] = 0x80u;
+    check("old formats reject no-steal", eng_load(pv_bin, pv_len) != 0);
+    pv_bin[11] = 0;
+    check("format 36 keeps ordinary allocation", eng_load(pv_bin, pv_len) == 0 && eng_poly_get(0, ENG_POLY_STEAL) == 1);
+    check("old-format edits cannot add new allocation settings", poly_row_set(mod, ENG_POLY_STEAL, 0) == -1 && poly_row_set(mod, ENG_POLY_ASSIGN, 3) == -1 && pv_bin[9] == 0 && pv_bin[11] == 0);
     fm1_ms = 10000;
     host_ps_init();
     if (load("808 KIT")) {
@@ -293,65 +440,104 @@ int main(void)
     booting = 0;
     page = 0;
     screen_idle();
-    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (2 pages), boom kick, snare ... Output */
+    /* the 808 Kit's devices (#196): Main, DRUMS (the track), the Drum map it drives (3 pages: its rows, then REPEAT, #184), the 808 kit card, Output */
     check("the device page: the home device in focus (not Main or the track)", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && pg_ndev > 4);
-    {
-        uint32_t x, ink = 0;                                /* (the third tab now: somewhere along the strip) */
-        for (x = 0; x < 240u; x++)
-            ink += px(x, 1) == P_INK;
-        check("the LCD: the tab in focus is ivory, K1's bar shows its hue", ink > 10u && px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+    {                                                       /* the header (the owner's design, 2026-10-24) */
+        uint32_t x, gold = 0;
+        for (x = 0; x < 120u; x++)
+            gold += px(x, LK_HH - 6u) == P_GOLD;
+        check("the LCD: the header's dash of the device in focus gold, its name; K1's tab in its hue", gold >= 2u
+              && on_screen("DRUM MAP") && K1_TAB == KNOB_HUE[0]);
+    }
+    {                                                       /* the footer: the octave in a slot of its own, so the tempo stays
+                                                             * put whatever the octave (the owner, 2026-10-24) */
+        foot_t f;
+        uint32_t xt = 0, widest = 0, moved = 0;
+        int32_t o, was = octave;
+        for (o = -3; o <= 3; o++) {
+            octave = o;
+            (void)foot_layout(&f);
+            if (o == -3)
+                xt = f.xt;
+            moved += f.xt != xt;
+            widest = text_w(&FONT_F, f.o, -1) > widest ? text_w(&FONT_F, f.o, -1) : widest;
+        }
+        octave = was;
+        check("the footer: the tempo at the same x in every octave state, the octave's slot its widest", moved == 0u
+              && widest == FOOT_OCT_W);
+    }
+    {                                                       /* #291: the screen as text, as SCREEN reports it */
+        uint8_t idx[SCR_N];
+        uint32_t n = scr_list(idx), i, ordered = 1;
+        for (i = 1; i < n; i++)
+            ordered &= scr_text[idx[i - 1]].y <= scr_text[idx[i]].y;
+        check("the screen as text: the device page's octave and K1's row, in reading order", on_screen("= OCT =") && n > 4u && ordered);
     }
 
-    {   /* #221: while SELECT / ALGO turn, a card alone (red / blue), the page once they stop; lcd_px: the pixels sent */
-        uint32_t page_px, card1_px, card2_px, card3_px, settle_px;
+    {   /* SELECT / ALGO (the owner's design, 2026-10-24): no toast, the header shows where they went; the header's sections
+         * that changed, then the bars, in passes a newer click stops; lcd_px: the pixels sent */
+        static uint16_t staged[240 * 240];
+        uint32_t page_px, i, n;
         lcd_px = lcd_xfers = 0;
-        ui_dirty = 2;                                       /* (today's cost of a click: the whole page) */
+        ui_dirty = 2;                                       /* (a whole page) */
         loop();
         page_px = lcd_px;
-        lcd_px = lcd_xfers = 0;
-        enc(0, 1);                                          /* SELECT: the boom kick, and back to the Drum map */
-        card1_px = lcd_px;
-        check("SELECT: the next device, the editor told", pg_cur_dev == 3 && pg_cur_page == 0 && focus_dev == 3 && focus_pg == 0);
-        check("SELECT: the device card, red, from the top bar down", px(4, 4) == P_CARD_DEV && px(12, ROWS_Y + 15) == P_CARD_DEV
-              && px(4, 236) == P_CARD_DEV);
-        snap_to(getenv("PANEL_SNAP_DEVCARD"));
-        fb_watch_reset();
+        stop_n = 0;
+        stop_answer = 0;
+        pages_waiting = stop_probe;                         /* records lcd_px at each place a draw may give way */
         lcd_px = 0;
-        later(100);
-        enc(0, -1);
-        card2_px = lcd_px;
-        check("SELECT back: the device before, in place (no fill, no blink)", pg_cur_dev == 2 && focus_dev == 2
-              && fb_blinked() == 0 && fb_changed_in(0, 0, 240, CARD_Y0) == 0 && fb_changed_in(0, CARD_Y1, 240, CARD_Y1 + FONT_L.h) > 0);
         fb_watch_reset();
-        ui_dirty = 1;                                       /* a redraw while it shows (the beat's, a Live edit) */
-        later(100);
-        check("SELECT: a redraw under the card leaves it be", fb_blinked() == 0 && fb_changed_in(0, 0, 240, 240) == 0);
-        later(200);
-        check("SELECT: 300 ms after the last click, still the card", px(12, ROWS_Y + 15) == P_CARD_DEV);
-        lcd_px = 0;
-        later(200);
-        settle_px = lcd_px;
-        check("SELECT stopped 400 ms: the page, whole (strip, bars, foot line)", px(12, ROWS_Y + 15) == KNOB_HUE[0]
-              && px(4, 236) == P_NIGHT && px(0, 0) != P_CARD_DEV);
         enc(1, 1);                                          /* ALGO */
-        check("ALGO: the device's next page, its card blue", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1
-              && px(4, 4) == P_CARD_PAGE);
-        snap_to(getenv("PANEL_SNAP_PAGECARD"));
-        lcd_px = 0;
-        enc(1, -1);
-        card3_px = lcd_px;
+        check("ALGO: the device's next page, the editor told", pg_cur_dev == 2 && pg_cur_page == 1 && focus_pg == 1);
+        printf("      LCD pixels for one ALGO click: the header %u, the rows' type %u, the page %u (a whole page %u)\n",
+               stop_px[0], stop_px[5], lcd_px, page_px);
+        check("ALGO: the header's sections and the bars, nothing below them, no pixel twice", stop_n >= 6u
+              && stop_px[0] <= 240u * LK_HH && fb_changed_in(0, FOOT_Y, 240, 240) == 0u && fb_blinked() == 0u);
+        check("one ALGO click: the page under 80 % of a whole page's pixels (nothing cleared first)", lcd_px * 100u < page_px * 80u);
+        snap_to(getenv("PANEL_SNAP_ALGO"));
+        memcpy(staged, fb, sizeof staged);
+        ui_dirty = 2;                                       /* the same state drawn whole: the same picture */
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += staged[i] != fb[i];
+        check("the staged page is the page drawn whole, pixel for pixel", n == 0u);
+        stop_answer = 1;                                    /* a newer click waits: fast scrolling */
+        lcd_px = lcd_xfers = 0;
         enc(1, 1);
-        printf("      LCD pixels: a whole page %u, the first card %u, the next click %u (ALGO %u), the settle %u\n", page_px,
-               card1_px, card2_px, card3_px, settle_px);
-        check("a card costs under 60 % of a page, the next click under a fourth of the first", card1_px * 10u < page_px * 6u
-              && card2_px * 4u < card1_px && card3_px * 4u < card1_px);
-        memcpy(before, fb, sizeof before);
-        enc(4, 1);                                          /* K3 while the card shows: the page at once */
-        check("K3 during the card: the page it named, whole, at once", pg_cur_page == 1 && px(4, 4) != P_CARD_PAGE
-              && px(0, ROWS_END + 10u) == P_NIGHT);
+        printf("      LCD pixels for an ALGO click while the next one waits: %u\n", lcd_px);
+        check("ALGO turning fast: only the header drawn, the page still due", lcd_px <= 240u * LK_HH && lcd_px > 0u
+              && pg_cur_page == 2 && pg_algo_due && ui_dirty);
+        stop_answer = 0;
+        loop();                                             /* it stops: the page */
+        memcpy(staged, fb, sizeof staged);
+        ui_dirty = 2;
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += staged[i] != fb[i];
+        check("a stopped draw, then drawn: the page whole, nothing left of the one before", n == 0u && !pg_algo_due);
+        lcd_px = 0;
+        later(700);
+        check("700 ms later: nothing redrawn (no toast)", lcd_px == 0u);
+        lcd_px = 0;
+        stop_n = 0;
+        enc(0, 1);                                          /* SELECT: the 808 kit card, and back */
+        check("SELECT: the next device, the editor told, its name in the header", pg_cur_dev == 3 && focus_dev == 3
+              && on_screen("808 KIT") && !on_screen("DRUM MAP"));
+        printf("      LCD pixels for one SELECT click: the header %u, the page %u\n", stop_px[0], lcd_px);
+        enc(0, -1);
+        check("SELECT back: the device before", pg_cur_dev == 2 && focus_dev == 2 && pg_cur_page == 0);
+        enc(4, 1);
         enc(4, -1);
         later(1100);
-        check("the knob's toast ends: the bars", px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+        pages_waiting = 0;
+        enc(1, 1);                                          /* (on the Drum map's second page, as the tests below expect) */
+        later(700);
+        tap(BTN_OCT_UP);                                    /* the transport stopped, nothing else to redraw: the footer at once */
+        check("OCT+: the footer's octave at once (it stayed = OCT =), the message kept", octave == 1 && on_screen("OCT +")
+              && !on_screen("= OCT =") && on_screen("OCTAVE +1"));
+        tap(BTN_OCT_DOWN);
+        check("OCT-: = OCT = again", octave == 0 && on_screen("= OCT ="));
+        later(1100);                                        /* (the OCTAVE message ends) */
         param_now = 0;
     }
 
@@ -361,17 +547,45 @@ int main(void)
         par = pg->par[0];
         v0 = eng_get_param(mod, par);
     }
-    enc(2, 5);                                              /* K1 */
-    check("K1: its row's parameter moved, the editor told", eng_get_param(mod, par) != v0 && param_now == 1);
-    check("K1: the toast shows the row's range bar in K1's hue", px(14, TOAST_Y + 66u) == KNOB_HUE[0]);
-    fb_watch_reset();
-    enc(2, 1);                                              /* K1 again: the value and the bar, nothing cleared first */
-    check("K1 turned again: no pixel of the toast blinks", fb_blinked() == 0);
-    fb_watch_reset();
-    enc(2, -3);
-    check("K1 turned back: no pixel blinks", fb_blinked() == 0);
-    later(1100);
-    check("the toast ends", px(12, ROWS_Y + 15) == KNOB_HUE[0]);
+    {   /* #298: a knob turned moves its own bar where it is: the slider and the number, nothing else on the screen */
+        static uint16_t was[240 * 240];
+        uint32_t i, outside = 0, k1_px, y_lo = row_y(0), y_hi = row_y(0) + row_h(), n;
+        memcpy(was, fb, sizeof was);
+        lcd_px = lcd_xfers = 0;
+        enc(2, 5);                                          /* K1 */
+        k1_px = lcd_px;
+        check("K1: its row's parameter moved, the editor told", eng_get_param(mod, par) != v0 && param_now == 1);
+        for (i = 0; i < 240u * 240u; i++)
+            outside += was[i] != fb[i] && (i / 240u < y_lo || i / 240u >= y_hi || i % 240u < BAR_X || i % 240u >= BAR_X + BAR_W);
+        printf("      LCD pixels for a K1 turn: %u in %u transfers\n", k1_px, lcd_xfers);
+        check("K1: no pixel outside its bar changes, and the bar moves (no toast)", outside == 0u
+              && memcmp(was, fb, sizeof was) != 0 && K1_TAB == KNOB_HUE[0]);
+        memcpy(was, fb, sizeof was);
+        lcd_px = 0;
+        enc(2, 1);                                          /* K1 again: one click */
+        k1_px = lcd_px;
+        for (i = 0, outside = 0; i < 240u * 240u; i++)
+            outside += was[i] != fb[i] && (i / 240u < y_lo || i / 240u >= y_hi);
+        printf("      LCD pixels for one K1 click: %u\n", k1_px);
+        check("one K1 click: under 2,500 px (about 3 ms), only its bar", k1_px < 2500u && outside == 0u);
+        memcpy(was, fb, sizeof was);
+        ui_dirty = 2;                                       /* the bar drawn whole: the same picture */
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += was[i] != fb[i];
+        check("the moved bar is the bar drawn whole, pixel for pixel", n == 0u);
+        fb_watch_reset();
+        enc(2, -3);
+        check("K1 turned back: no pixel blinks", fb_blinked() == 0);
+        {
+            static int32_t l[128], r[128];
+            eng_render(l, r, 128);                          /* (the audio's next block: the effective value follows) */
+        }
+        lcd_px = 0;
+        later(1100);
+        printf("      (a second later: %u px)\n", lcd_px);
+        check("a second later: nothing redrawn (no toast to end)", lcd_px == 0u && K1_TAB == KNOB_HUE[0]);
+    }
 
     memcpy(before, fb, sizeof before);
     tap(BTN_HOME);
@@ -434,6 +648,24 @@ int main(void)
         for (i = 0; i < 240u * 240u; i++)
             n += fb_changes[i] != 0u;
         check("PANEL idle, the CPU changed: nothing redrawn", n == 0u);
+        menu_tab = MT_SYSTEM;                               /* the device test mode (#291): no FACTORY RESET or UPDATE MODE */
+        menu_sel = MR_DEFAULTS;
+        ui_dirty = 2;
+        loop();
+        check("the screen as text: the menu's rows", on_screen("FACTORY RESET") && on_screen("UPDATE MODE") && !on_screen("OCT "));
+        test_input_ms = fm1_ms ? fm1_ms : 1u;
+        setting_step(MR_DEFAULTS, 1);
+        setting_step(MR_DEFAULTS, 1);
+        setting_step(MR_UPDATE, 1);
+        setting_step(MR_UPDATE, 1);
+        loop();
+        check("test input: FACTORY RESET and UPDATE MODE refused, and said so", host_defaults == 0 && host_updates == 0 && on_screen("TEST INPUT: REFUSED"));
+        fm1_ms += TEST_HOLD_MS;
+        setting_step(MR_DEFAULTS, 1);
+        setting_step(MR_DEFAULTS, 1);
+        check("  10 s after the last test input: FACTORY RESET by hand again", host_defaults == 1);
+        host_defaults = 0;
+        test_input_ms = 0;
         menu_tab = tab;
         menu_sel = row;
         ui_dirty = 2;
@@ -531,16 +763,20 @@ int main(void)
         }
     }
 
-    if (pv_bin[6] & 2u) {                                   /* Page buttons (#117), spliced into the 808 Kit's binary */
-        check("(the 808 Kit has no macro ranges: the button kinds section goes last)", 0);
-    } else {
+    {                                                       /* Page buttons (#117), spliced into the 808 Kit's binary */
         /* LFO (button 3) a Page button: device 2 (the Drum map) page 0, then its page 1 (SEL is fixed since #197) */
         static const uint8_t sec[] = {0, 0, 0, 3, 0, 0, 0, 2, 2, 0, 2, 1};
-        uint32_t at = pv_len, n;
-        if (pv_bin[6] & 128u)                               /* before the Drum maps' row names, last here (format 33): */
+        uint32_t at = pv_len, n, end = pv_len;
+        if (pv_bin[6] & 2u)                                 /* before the macro ranges, always last: u8 count, count x 5 bytes */
+            for (n = 1; n < 256u; n++)
+                if (pv_len >= 1u + n * 5u && pv_bin[pv_len - 1u - n * 5u] == n) {
+                    at = end = pv_len - 1u - n * 5u;
+                    break;
+                }
+        if (pv_bin[6] & 128u)                               /* and before the Drum maps' row names (format 33): */
             for (n = 1; n < 16u; n++)                       /* u8 count, count x (1 + 64) bytes */
-                if (pv_len >= 1u + n * 65u && pv_bin[pv_len - 1u - n * 65u] == n) {
-                    at = pv_len - 1u - n * 65u;
+                if (end >= 1u + n * 65u && pv_bin[end - 1u - n * 65u] == n) {
+                    at = end - 1u - n * 65u;
                     break;
                 }
         memmove(pv_bin + at + sizeof sec, pv_bin + at, pv_len - at);
@@ -551,7 +787,7 @@ int main(void)
         check("a patch with a Page button loads", eng_load(pv_bin, pv_len) == 0 && eng_button_kind(3) == ENG_BTN_PAGE);
         page_show(0);
         trail_n = 0;
-        pages_focus(4, 0);                                  /* (the snare) */
+        pages_focus(4, 0);                                  /* (the Output) */
         loop();
         tap(5);
         check("LFO tapped: its list's first page, a step on the trail, lit", pg_list_btn == 3 && pg_cur_dev == 2 && pg_cur_page == 0
@@ -582,18 +818,49 @@ int main(void)
         trail_n = 0;
     }
 
-    {                                                       /* SEL on a Steps track's device page (#196): its steps */
+    {                                                       /* SEL on a device page arms its device (#395); SEQ opens a track's
+                                                             * steps (#196) and arms it */
+        uint64_t drums = (uint64_t)1 << eng_steps_module(0);
+        foot_t f;
+        check("a patch loads WIRED: nothing armed, the footer: the patch, then KEYS WIRED", eng_arm_mask_get() == 0u
+              && (foot_layout(&f), !strcmp(f.a, "808 KIT") && !strcmp(f.w, "KEYS WIRED")));
         pages_focus(1, 0);                                  /* DRUMS */
         loop();
         check("the track's device page: LEN RATE SWING GATE", pages_now()->nrows == 4u && pages_focus_track() == 0);
         tap(3);
-        check("SEL there: the SEQ page on that track", page == PAGE_SEQ && seq_trk == 0);
-        tap(BTN_HOME);
-        check("HOME: back to the track's page", page == 0 && pg_cur_dev == 1);
+        check("SEL there: that track armed, no page opened", page == 0 && eng_arm_mask_get() == drums && !strcmp(msg_text, "DRUMS ARMED"));
+        check("  the footer: ARM DRUMS", (foot_layout(&f), !strcmp(f.a, "ARM DRUMS") && !f.w[0]));
+        later(1500);
+        tap(3);
+        check("SEL again: a toggle, disarmed, the keys WIRED (#395)", page == 0 && eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+        later(1500);
+        tap(3);
+        check("SEL a third time: armed again", eng_arm_mask_get() == drums && !strcmp(msg_text, "DRUMS ARMED"));
+        {                                               /* armed with another (a bit of the set): SEL takes it out, the other stays */
+            uint64_t other = (uint64_t)1 << (eng_steps_module(0) ? 0u : 1u);
+            eng_arm_mask(drums | other);
+            later(1500);
+            tap(3);
+            check("SEL on a device armed with another: taken out, the other stays", eng_arm_mask_get() == other
+                  && !strcmp(msg_text, "DRUMS DISARMED"));
+            eng_arm_mask(drums);
+        }
+        pages_focus(0, 0);                                  /* Main: no keys input */
+        loop();
+        later(1500);
+        tap(3);
+        check("SEL on Main: NOTHING HERE TAKES KEYS, the armed set as it was", page == 0 && eng_arm_mask_get() == drums
+              && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
+        eng_arm_mask(0);
+        pages_focus(1, 0);
+        loop();
         tap(BTN_SEQ);
-        check("SEQ there: the same", page == PAGE_SEQ && seq_trk == 0);
+        check("SEQ on the track's page: the SEQ page on that track, armed", page == PAGE_SEQ && seq_trk == 0 && eng_arm_mask_get() == drums);
         tap(BTN_HOME);
+        check("HOME: back to the track's page, still armed", page == 0 && pg_cur_dev == 1 && eng_arm_mask_get() == drums);
+        eng_arm_mask(0);
         pages_focus(2, 0);
+        later(1500);
         loop();
         trail_n = 0;
     }
@@ -625,28 +892,6 @@ int main(void)
             check("  only the old and the new row redrawn (not the bar, not the other rows), no blink",
                   all > 0u && all == part && fb_blinked() == 0u && lcd_px <= 2u * 240u * ENV_ROW_H);
         }
-        if (pg_ndev > ENV_ROWS) {                           /* past the last row shown: the list scrolls, the bar stays */
-            uint32_t d1 = pg_cur_dev, all, list, i;
-            for (i = 0; pg_cur_dev < env_first + ENV_ROWS - 1u && i < 16u; i++)
-                enc(0, 1);
-            fb_watch_reset();
-            lcd_px = lcd_xfers = 0;
-            enc(0, 1);
-            all = fb_changed_in(0, 0, 240, 240);
-            list = fb_changed_in(0, ENV_Y0, 240, ENV_Y0 + ENV_ROWS * ENV_ROW_H);
-            printf("      (ENV, SELECT scrolls the list: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
-            check("  SELECT past the window: the list scrolls, only its area redrawn (the bar stays), no blink",
-                  env_first > 0u && all > 0u && all == list && fb_blinked() == 0u);
-            {
-                uint16_t keep[240 * 240];
-                memcpy(keep, fb, sizeof keep);
-                ui_dirty = 2;
-                loop();
-                check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
-            }
-            while (pg_cur_dev != d1)
-                enc(0, -1);
-        }
         {
             const ppage_t *pg = pages_now();
             int32_t v = eng_get_param(pg->mod[0], pg->par[0]);
@@ -662,23 +907,34 @@ int main(void)
             }
             enc(2, -3);
         }
-        tap(3);
-        check("SEL: the row's device pages", page == 0 && pg_cur_dev == d0 + 1u);
-        tap(BTN_HOME);
-        check("HOME: back to the environment", page == PAGE_ENV);
+        later(1500);
+        tap(3);                                             /* the 808 kit card: its keys come from the Drum map, not Main */
+        check("SEL on a row that takes no keys: NOTHING HERE TAKES KEYS, nothing armed, the page stays",
+              page == PAGE_ENV && pg_cur_dev == d0 + 1u && eng_arm_mask_get() == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
         tap(4);
         check("ENV again: back where it came from", page == 0 && trail_n == n0);
-        pages_focus(1, 0);                                  /* REC on a row (#191): DRUMS armed, then disarmed */
+        pages_focus(1, 0);                                  /* SEL on a row (#395): DRUMS armed, then disarmed */
         loop();
         tap(4);
+        tap(3);
+        check("SEL on the environment's track row: armed (the set), no recording, the page stays", eng_armed() == eng_steps_module(0)
+              && seq_rec == 0 && page == PAGE_ENV && !strcmp(msg_text, "DRUMS ARMED"));
         tap(BTN_REC);
-        check("REC on the environment's track row: armed (the set), no recording", eng_armed() == eng_steps_module(0) && seq_rec == 0 && page == PAGE_ENV);
-        pages_focus(2, 0);                                  /* the Drum map: its keys come from the track, not Main */
-        tap(BTN_REC);
-        check("REC on a row with nothing on Main's keys: nothing armed there", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0));
+        check("REC on the environment (#395): records the armed track, arms nothing, the page stays", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+              && seq_rec && eng_transport_running() && (E.trk_rec >> E.node[eng_steps_module(0)].trk & 1u) && page == PAGE_ENV && !rec_held_used);
+        tap(BTN_PLAY);
+        check("  PLAY: REC and the transport stopped", !seq_rec && !eng_transport_running() && !E.trk_rec);
+        pages_focus(2, 0);                                  /* the Drum map: its keys come through the track (#395) */
+        tap(3);
+        check("SEL on the Drum map's row, its track armed: armed through it, so taken out with it, the keys WIRED",
+              eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+        tap(3);
+        check("SEL there again: the track it plays through armed", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+              && strstr(msg_text, " ARMED") != 0);
         pages_focus(1, 0);
-        tap(BTN_REC);
-        check("REC again on the track: disarmed", eng_arm_mask_get() == 0u && eng_armed() < 0);
+        tap(3);
+        check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", eng_arm_mask_get() == 0u && eng_armed() < 0
+              && !strcmp(msg_text, "KEYS WIRED"));
         tap(4);
         panel_held |= 1u << 4;                              /* ENV held + SAVE: no environment on the release */
         panel_edges(1u << 4, 0);
@@ -689,6 +945,54 @@ int main(void)
         loop();
         check("ENV held + SAVE: the release opens nothing", page == 0);
         later(1500);
+        pages_focus(2, 0);
+        loop();
+    }
+
+    {                                                       /* ENV past the last row shown: the list scrolls, the bar stays.
+                                                             * On the 909 Kit: the 808 Kit has fewer devices than ENV shows */
+        if (load("909 KIT") == 0) {
+            pv_gen++;
+            page = 0;
+            trail_n = 0;
+            loop();
+            pages_focus(2, 0);
+            loop();
+            tap(4);
+            later(2000);
+            check("(the 909 Kit: ENV, more devices than it shows)", page == PAGE_ENV && pg_ndev > ENV_ROWS);
+            {
+                uint32_t d1 = pg_cur_dev, all, list, i;
+                for (i = 0; pg_cur_dev < env_first + ENV_ROWS - 1u && i < 16u; i++)
+                    enc(0, 1);
+                fb_watch_reset();
+                lcd_px = lcd_xfers = 0;
+                enc(0, 1);
+                all = fb_changed_in(0, 0, 240, 240);
+                list = fb_changed_in(0, ENV_Y0, 240, ENV_Y0 + ENV_ROWS * ENV_ROW_H);
+                printf("      (ENV, SELECT scrolls the list: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+                check("  SELECT past the window: the list scrolls, only its area redrawn (the bar stays), no blink",
+                      env_first > 0u && all > 0u && all == list && fb_blinked() == 0u);
+                {
+                    uint16_t keep[240 * 240];
+                    memcpy(keep, fb, sizeof keep);
+                    ui_dirty = 2;
+                    loop();
+                    check("  what it drew is what a whole redraw draws", !memcmp(keep, fb, sizeof keep));
+                }
+                while (pg_cur_dev != d1)
+                    enc(0, -1);
+            }
+            tap(4);
+            later(1500);
+        } else {
+            check("(the 909 Kit loads)", 0);
+        }
+        load("808 KIT");
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        loop();
         pages_focus(2, 0);
         loop();
     }
@@ -710,8 +1014,11 @@ int main(void)
             loop();
             n0 = dp_list(d);
             check("its factory presets in ROM", n0 >= 2u);
-            tap(3);
-            check("SEL on it: the preset list", page == PAGE_PRESETS);
+            presets_open();                                 /* (nothing opens the list since SEL arms, #395; its PRESET
+                                                             * slice removes it: until then its code is tested here) */
+            page_set(PAGE_PRESETS);
+            loop();
+            check("(the preset list, opened directly)", page == PAGE_PRESETS);
             if (getenv("PANEL_SNAP_PRESETS")) {
                 const char *keep = getenv("PANEL_SNAP");
                 setenv("PANEL_SNAP", getenv("PANEL_SNAP_PRESETS"), 1);
@@ -816,15 +1123,38 @@ int main(void)
             }
             tap(3);
             check("SEL on the list: back", page == 0);
-            {                                               /* a patch stored before format 34 (the bank keeps it): no structure */
-                uint32_t keep = pg_dev[d].structure;
-                pg_dev[d].structure = 0;
-                tap(3);
-                loop();
-                printf("      (the bar: \"%s\")\n", msg_text);
-                check("SEL on an assembly of an old patch: no list, the bar says why (not \"SEL ON\")",
-                      page == 0 && !strcmp(msg_text, "OLD PATCH: SEND + SAVE IT"));
-                pg_dev[d].structure = keep;
+            later(1500);
+            tap(3);                                         /* SEL on the assembly's page (#395): armed, no preset list */
+            loop();
+            printf("      (the bar: \"%s\")\n", msg_text);
+            {
+                uint64_t a = eng_arm_mask_get();
+                uint32_t m, trk = 0, arp = 0;
+                for (m = 0; m < 64u; m++)
+                    if (a >> m & 1u) {
+                        trk += eng_type(m) == T_STEPS;
+                        arp += eng_type(m) == T_ARP;
+                    }
+                check("SEL on an instrument's page: no preset list; armed with the track and the Arpeggiator its keys come "
+                      "through (#395), not NOTHING HERE TAKES KEYS",
+                      page == 0 && a && a == env_listeners(d) && strstr(msg_text, " ARMED") != 0 && trk == 1u && arp == 1u);
+            }
+            eng_arm_mask(0);
+            {                                           /* an Arpeggiator alone is not a device to arm (#395) */
+                uint32_t e, d0 = pg_cur_dev, g0 = pg_cur_page;
+                for (e = 0; e < pg_ndev && !(pg_dev[e].module >= 0 && eng_type((uint32_t)pg_dev[e].module) == T_ARP); e++)
+                    ;
+                check("  (the patch has an Arpeggiator's device)", e < pg_ndev);
+                if (e < pg_ndev) {
+                    (void)pages_focus(e, 0);
+                    later(1500);
+                    tap(3);
+                    loop();
+                    check("SEL on an Arpeggiator's page: nothing armed, NOTHING HERE TAKES KEYS",
+                          eng_arm_mask_get() == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
+                    (void)pages_focus(d0, g0);
+                    later(1500);
+                }
             }
             tap(4);                                         /* the environment (#198): ALGO and PRESET step the row's presets */
             {
@@ -923,6 +1253,72 @@ int main(void)
         ui_dirty = 2;
         loop();
         snap_to(getenv("PANEL_SNAP_DRUMS"));
+        {                                                   /* #368: LFO + a white key ties a drum row's hit too (a Drum map row
+                                                             * stays up while its note sounds: a Lire plate held) */
+            static uint32_t keep[TRACK_NOTES_MAX];
+            const uint32_t *ws;
+            int keep_n = eng_steps_notes((uint32_t)drums, &ws), i;
+            uint32_t y = GRID_Y + GRID_RH * seq_row + GRID_CH - 1u;
+            for (i = 0; i < keep_n; i++)
+                keep[i] = ws[i];
+            if (eng_steps_note((uint32_t)drums, 3, 55))     /* (step 4 empty, so there is a hit on step 3 to tie) */
+                eng_steps_toggle((uint32_t)drums, 3, 55, STEP_VEL);
+            msg_text[0] = 0;
+            panel_held |= 1u << BTN_LFO;
+            panel_keys(1u << 6);                            /* LFO + B3: step 4 (index 3) */
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("LFO + a white key on a drum track: the hit on the step before tied through it, drawn dim",
+                  w && ((w >> 6) & 63u) == 1u && !eng_steps_note((uint32_t)drums, 3, 55) && !strcmp(msg_text, "TIED")
+                  && px(seq_grid_x(3) + 5u, y) == C_DIM && px(seq_grid_x(3) - 1u, y - 4u) == C_DIM);
+            panel_keys(1u << 6);                            /* again: untied */
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("again on the tied step: untied, the cell empty", w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "TIE OFF")
+                  && px(seq_grid_x(3) + 5u, y) != C_DIM && px(seq_grid_x(3) - 1u, y - 4u) == C_BG);
+            panel_keys(1u << 6);                            /* tied again, then a plain white key there */
+            panel_keys(0);
+            panel_held &= ~(1u << BTN_LFO);
+            panel_keys(1u << 6);
+            panel_keys(0);
+            loop();
+            w = eng_steps_note((uint32_t)drums, 2, 55);
+            check("a white key on a step a tie runs through: the tie cut before it, a hit there",
+                  w && ((w >> 6) & 63u) == 0u && eng_steps_note((uint32_t)drums, 3, 55) && px(seq_grid_x(3) + 5u, y) == C_FG);
+            {                                               /* the rule of 2026-10-28: LFO + step 16, the row's last hit before it
+                                                             * ends there (one press); again: one step; LFO + a hit's own step with
+                                                             * nothing before it: NOTHING TO TIE */
+                uint32_t n16 = 0, at = 0, k;
+                while (seq_white(n16) != 15)
+                    n16++;
+                for (k = 0; k < 15u; k++)
+                    if (eng_steps_note((uint32_t)drums, k, 55))
+                        at = k;
+                panel_held |= 1u << BTN_LFO;
+                panel_keys(1u << n16);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, at, 55);
+                check("LFO + step 16: the row's last hit before it ends on step 16, in one press",
+                      w && (w & 63u) + ((w >> 6) & 63u) == 15u && !strcmp(msg_text, "TIED") && px(seq_grid_x(15) + 5u, y) == C_DIM);
+                panel_keys(1u << n16);
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, at, 55);
+                check("again (its last step): one step", w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "TIE OFF"));
+                panel_keys(1u << 4);                        /* A3: step 3, its own hit, no row-2 hit before it */
+                panel_keys(0);
+                loop();
+                w = eng_steps_note((uint32_t)drums, 2, 55);
+                check("LFO + a hit's own step with nothing before it: NOTHING TO TIE (no tie across the loop)",
+                      w && ((w >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
+                panel_held &= ~(1u << BTN_LFO);
+            }
+            (void)eng_steps_set_notes((uint32_t)drums, keep, (uint32_t)keep_n);
+            seq_sync(drums);
+        }
         panel_keys(1u << 4);
         panel_keys(0);
         tap(BTN_SEQ);
@@ -931,7 +1327,7 @@ int main(void)
     {                                                       /* the piano roll (#241) on <7PH's PATTERN (melodic, 46..65): 8 pitches
                                                              * x 16 steps, drawn in place; then arming and recording from the keys
                                                              * (#139): REC on the armed track stopped is the roll with REC on (no
-                                                             * step entry), running a live take */
+                                                             * cursor entry), running a live take */
         static int32_t l[128], r[128];
         static uint32_t keep[TRACK_NOTES_MAX];
         int pat, i, keep_n, k, pos;
@@ -941,7 +1337,7 @@ int main(void)
             tap(BTN_HOME);
         if (eng_transport_running())
             tap(BTN_PLAY);
-        check("(<7PH, the last factory patch, loads: DRUMS, then PATTERN into the Silver Box)", !load_at(N_PRESETS - 1u)
+        check("(<7PH loads: DRUMS, then PATTERN into the Silver Box)", !load("<7PH")
               && eng_steps_count() == 2 && eng_steps_drummap((uint32_t)eng_steps_module(0)) >= 0
               && eng_steps_drummap((uint32_t)eng_steps_module(1)) < 0);
         pv_gen++;
@@ -1007,6 +1403,47 @@ int main(void)
         check("SELECT past the top row: the window scrolls (D#4 on top), only the rows redrawn (not the bar, the lines)",
               seq_row == 0u && seq_roll_lo == 56u && seq_grid_note(-1, 0) == 63u && all > 0u && all == part && fb_blinked() == 0
               && roll_shows(pat) && marks_ok(pat));
+
+        {                                                   /* the roll's black keys (#387): 1..8 the rows on screen, black key 1
+                                                             * the bottom one; stopped, the row sounds; the track stays */
+            uint32_t keys, nn0 = (uint32_t)eng_steps_notes((uint32_t)pat, &w), trk0 = seq_trk;
+            steps_inst((uint32_t)pat)->s.stp.hit = 0;
+            fb_watch_reset();
+            lcd_px = lcd_xfers = 0;
+            panel_keys(1u << 1);                            /* black key 1 (F#3): the bottom row, G#3 */
+            panel_keys(0);
+            loop();
+            all = fb_changed_in(0, 0, 240, 240);
+            part = fb_changed_in(4, GRID_Y, 4 + GRID_NAME_W, GRID_Y + FONT_S.h)
+                 + fb_changed_in(4, GRID_Y + GRID_RH * 7u, 4 + GRID_NAME_W, GRID_Y + GRID_RH * 7u + FONT_S.h);
+            keys = host_led_mask(fm1_led, 14);
+            printf("      (roll, black key 1: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
+            check("roll: black key 1 picks the bottom row (G#3) and sounds it; the track stays, nothing written, two names redrawn",
+                  seq_row == 7u && seq_grid_note(-1, seq_row) == 56u && seq_roll_lo == 56u && seq_trk == trk0
+                  && steps_inst((uint32_t)pat)->s.stp.hit && E.trk_last[E.node[pat].trk] == 56u
+                  && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == nn0 && all > 0u && all == part);
+            check("  its LED bright, no other black key bright", (keys >> 1 & 1u) && !(keys & (1u << 3 | 1u << 5 | 1u << 8 | 1u << 10
+                  | 1u << 13 | 1u << 15 | 1u << 17 | 1u << 20 | 1u << 22 | 1u << 25)));
+            panel_keys(1u << 17);                           /* black key 8 (A#4): the top row, D#4 */
+            panel_keys(0);
+            loop();
+            keys = host_led_mask(fm1_led, 14);
+            check("roll: black key 8 picks the top row (D#4), its LED bright", seq_row == 0u && seq_grid_note(-1, seq_row) == 63u
+                  && seq_trk == trk0 && (keys >> 17 & 1u) && !(keys >> 1 & 1u));
+            panel_keys(1u << 20);                           /* black key 9 (C#5): nothing (8 rows) */
+            panel_keys(0);
+            loop();
+            check("roll: black key 9 does nothing (the track, the row stay)", seq_row == 0u && seq_trk == trk0 && seq_roll_lo == 56u);
+            enc(0, -1);                                     /* the window scrolls: black key 1 follows it (now A3) */
+            panel_keys(1u << 1);
+            panel_keys(0);
+            loop();
+            check("roll: the window scrolled a semitone, black key 1 is its new bottom row (A3)", seq_roll_lo == 57u && seq_row == 7u
+                  && seq_grid_note(-1, seq_row) == 57u);
+            enc(0, 1);                                      /* (back as it was: G#3 at the bottom, the top row D#4) */
+            enc(0, -7);
+            check("  (SELECT back: the window and the row as before)", seq_roll_lo == 56u && seq_row == 0u);
+        }
 
         steps_inst((uint32_t)pat)->s.stp.hit = 0;           /* FX held + OCT-: the keys' octave; then the pen, SEL held + a key */
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
@@ -1101,23 +1538,30 @@ int main(void)
         check("LFO + a white key: the note sounding on the step before tied through it (3 steps), drawn dim",
               seq_white(18) == 10 && hw && ((hw >> 6) & 63u) == 2u && roll_shows(pat)
               && px(seq_grid_x(10) + 5u, GRID_Y + GRID_RH * seq_row + 5u) == C_DIM);
-        panel_keys(1u << 16);                               /* LFO + step 10 (tied): cut before it */
+        panel_keys(1u << 16);                               /* LFO + step 10 (inside it, 2026-10-28): it ends there */
         panel_keys(0);
         loop();
         hw = eng_steps_note((uint32_t)pat, 8u, 46u);
-        check("LFO + a tied step: the note ends before it", seq_white(16) == 9 && hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
-              && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG);
-        msg_text[0] = 0;
-        panel_keys(1u << 9);                                /* LFO + step 6: no A#2 on step 5 */
+        check("LFO + a step inside the note: it ends there (2 steps)", seq_white(16) == 9 && hw && ((hw >> 6) & 63u) == 1u
+              && roll_shows(pat) && px(seq_grid_x(10) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG && !strcmp(msg_text, "TIED"));
+        panel_keys(1u << 16);                               /* LFO + step 10 again, its last step: one step again */
         panel_keys(0);
         loop();
-        check("LFO + a step after nothing: NOTHING TO TIE", seq_white(9) == 5 && !strcmp(msg_text, "NOTHING TO TIE"));
+        hw = eng_steps_note((uint32_t)pat, 8u, 46u);
+        check("LFO + the note's last step: one step again (TIE OFF)", hw && ((hw >> 6) & 63u) == 0u && roll_shows(pat)
+              && px(seq_grid_x(9) - 1u, GRID_Y + GRID_RH * seq_row + 5u) == C_BG && !strcmp(msg_text, "TIE OFF"));
+        msg_text[0] = 0;
+        panel_keys(1u << 0);                                /* LFO + step 1: its own A#2, none before it (no tie across the loop) */
+        panel_keys(0);
+        loop();
+        check("LFO + a note's own step, nothing before it: NOTHING TO TIE", seq_white(0) == 0 && eng_steps_note((uint32_t)pat, 0u, 46u)
+              && ((eng_steps_note((uint32_t)pat, 0u, 46u) >> 6) & 63u) == 0u && !strcmp(msg_text, "NOTHING TO TIE"));
         later(1000);
         panel_yield = keys_yield_q;                         /* the roll's keys during a full redraw (D-228): nothing drawn from inside */
         yield_xfers = 0;
         msg_text[0] = 0;
-        kq_edge(9, 1);                                      /* LFO + step 6 again: its message waits for the loop's pass */
-        kq_edge(9, 0);
+        kq_edge(0, 1);                                      /* LFO + step 1 again: its message waits for the loop's pass */
+        kq_edge(0, 0);
         ui_dirty = 2;
         panel_draw();
         check("in a redraw, LFO + a step: taken, its message left for the pass", kq_r == kq_w && yield_xfers == 0u && !msg_text[0]);
@@ -1167,6 +1611,8 @@ int main(void)
         tap(BTN_HOME);
 
         base = (uint32_t)(53 + 12 * octave);
+        check("the SEQ page armed the track it showed (#395)", eng_arm_mask_get() == (uint64_t)1 << pat);
+        eng_arm_mask(0);                                    /* (WIRED again, for REC held + a black key) */
         panel_held |= 1u << BTN_REC;                        /* REC held + black key 2 (G#3): PATTERN armed, no recording */
         panel_edges(1u << BTN_REC, 0);
         panel_keys(1u << 3);
@@ -1174,85 +1620,18 @@ int main(void)
         panel_held &= ~(1u << BTN_REC);
         panel_edges(0, 1u << BTN_REC);
         loop();
-        check("REC held + a black key: the track armed, REC's release records nothing", pat >= 0 && eng_armed() == pat && seq_rec == 0 && page == 0u);
-        tap(BTN_REC);
-        check("REC with a melodic track armed, stopped: its roll with REC on (no step entry)", page == PAGE_SEQ && seq_rec == 2u
-              && seq_trk == 1u && seq_map() < 0 && !seq_kbd());
-        later(1100);
-        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC", C_RED));
-        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
-        steps_inst((uint32_t)pat)->s.stp.hit = 0;
-        r0 = seq_row;
-        panel_keys(1u << 8);                                /* black key C#4: heard, nothing recorded, the row stays */
-        panel_keys(0);
-        check("a black key there: its pitch heard, nothing recorded, the row stays", steps_inst((uint32_t)pat)->s.stp.hit
-              && E.trk_last[E.node[pat].trk] == base + 8u && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before && seq_row == r0);
-        hw = eng_steps_note((uint32_t)pat, 1u, seq_grid_note(-1, seq_row));
-        panel_keys(1u << 2);                                /* a white key: step 2, the selected pitch */
-        panel_keys(0);
-        loop();
-        check("a white key: the selected pitch's note on its step switched", !hw == !!eng_steps_note((uint32_t)pat, 1u, seq_grid_note(-1, seq_row)));
-        snap_to(getenv("PANEL_SNAP_ROLL_REC"));
-        tap(BTN_PLAY);                                      /* PLAY: a live take on the roll, the 27 keys its keyboard */
-        loop();
-        check("PLAY with REC on: the keys are the armed track's keyboard (the hint says so)", seq_kbd()
-              && !strcmp(seq_grid_text[2], "KEYS record  SEL row  OCT octave"));
-        for (i = 0; i < 40; i++)
-            eng_render(l, r, 128);
-        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
-        panel_keys(1u << 1);                                /* F#3: a note the track did not have */
-        for (i = 0; i < 10; i++)
-            eng_render(l, r, 128);
-        panel_keys(0);
-        eng_render(l, r, 128);
-        loop();
-        {
-            int nn = eng_steps_notes((uint32_t)pat, &w), got = 0;
-            for (i = 0; i < nn; i++)
-                got |= ((w[i] >> 12) & 127u) == base + 1u;
-            check("the live take on the roll: the played note in the track", got && (uint32_t)nn == before + 1u);
+        check("REC held + a black key: the track armed, REC's release records nothing", pat >= 0 && eng_armed() == pat && seq_rec == 0
+              && !eng_transport_running() && page == 0u);
+        {                                                   /* REC, stopped, on the device page (#395): the transport starts and */
+            int at = mlen;                                  /* it records the armed track; the page stays */
+            tap(BTN_REC);
+            check("REC, stopped: the transport starts (MIDI Start out) and PATTERN records, the device page stays", seq_rec
+                  && eng_transport_running() && sent(at, 0xFAu, 0xFFu, 0xFFu) && page == 0u && (E.trk_rec >> E.node[pat].trk & 1u)
+                  && !strcmp(msg_text, "REC PATTERN"));
         }
-        tap(BTN_PLAY);
-        loop();
-        check("stopped again: the roll with REC on", !seq_kbd() && seq_rec == 2u && page == PAGE_SEQ);
-        tap(BTN_REC);
-        check("REC again: off", seq_rec == 0 && !seq_kbd());
-
-        eng_arm_mask(0);                                    /* nothing armed, the roll shown (the owner's 1.2.0 device check) */
-        loop();
-        tap(BTN_PLAY);
-        tap(BTN_REC);
-        loop();
-        check("PLAY, REC on the roll with nothing armed: REC arms the track shown, the keys its keyboard", eng_armed() == pat
-              && seq_rec == 2u && seq_kbd() && page == PAGE_SEQ && seq_trk == 1u);
-        for (i = 0; i < 40; i++)
-            eng_render(l, r, 128);
-        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
-        panel_keys(1u << 2);                                /* a white key (G3): its own pitch, not a step of the selected row */
-        for (i = 0; i < 10; i++)
-            eng_render(l, r, 128);
-        panel_keys(0);
-        eng_render(l, r, 128);
-        loop();
-        {
-            int nn = eng_steps_notes((uint32_t)pat, &w), got = 0;
-            for (i = 0; i < nn; i++)
-                got += ((w[i] >> 12) & 127u) == base + 2u;
-            check("  a white key: its own pitch (G3, not the selected row's A#2) recorded once into the nearest step",
-                  got == 1 && (uint32_t)nn == before + 1u && seq_grid_note(-1, seq_row) != base + 2u);
-        }
-        tap(BTN_REC);
-        loop();
-        check("  REC off: the track disarmed again", seq_rec == 0 && eng_armed() < 0 && !seq_kbd());
-        tap(BTN_PLAY);
-        loop();
-        eng_arm_mask((uint64_t)1 << pat);                   /* (PATTERN armed again for what follows) */
+        check("REC's LED lit on the device page", host_led_mask(fm1_led, 0) >> BTN_REC & 1u);
         (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
         seq_sync(pat);
-        tap(BTN_HOME);
-        tap(BTN_PLAY);
-        tap(BTN_REC);
-        check("REC with a track armed, running: a live take, the page stays", page == 0u && seq_rec == 2u);
         for (i = 0; i < 40; i++)
             eng_render(l, r, 128);
         before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
@@ -1266,25 +1645,111 @@ int main(void)
             int nn = eng_steps_notes((uint32_t)pat, &w), got = 0;
             for (i = 0; i < nn; i++)
                 got |= ((w[i] >> 12) & 127u) == base;
-            check("the live take: the played note in the track", got && (uint32_t)nn == before + 1u);
+            check("the live take on the device page: the played note in the track", got && (uint32_t)nn == before + 1u);
         }
-        check("REC's LED lit on the device page while the take goes on", host_led_mask(fm1_led, 0) >> BTN_REC & 1u);
         ui_dirty = 2;
         loop();
         snap_to(getenv("PANEL_SNAP_TAKE"));
-        panel_held |= 1u << BTN_REC;                        /* REC held + the same black key: disarmed, the take ends */
+        tap(BTN_SEQ);                                       /* SEQ while recording: the take's track, its keyboard */
+        loop();
+        check("SEQ while REC records: PATTERN's roll, all keys its keyboard (the hint says so)", page == PAGE_SEQ && seq_trk == 1u
+              && seq_kbd() && !strcmp(seq_grid_text[2], "KEYS record  SEL row  OCT octave"));
+        later(1100);
+        check("  its bar: PATTERN REC on red", bar_shows("PATTERN REC P01", C_RED));
+        snap_to(getenv("PANEL_SNAP_ROLL_REC"));
+        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
+        panel_keys(1u << 2);                                /* a white key (G3): its own pitch, not a step of the selected row */
+        for (i = 0; i < 10; i++)
+            eng_render(l, r, 128);
+        panel_keys(0);
+        eng_render(l, r, 128);
+        loop();
+        {
+            int nn = eng_steps_notes((uint32_t)pat, &w), got = 0;
+            for (i = 0; i < nn; i++)
+                got += ((w[i] >> 12) & 127u) == base + 2u;
+            check("  a white key: its own pitch (G3) recorded once into the nearest step", got == 1 && (uint32_t)nn == before + 1u);
+        }
+        tap(BTN_REC);                                       /* REC again: recording ends, the transport goes on */
+        check("REC again: recording off, the transport still runs, the page stays", !seq_rec && eng_transport_running()
+              && page == PAGE_SEQ && !seq_kbd() && !(E.trk_rec >> E.node[pat].trk & 1u) && !strcmp(msg_text, "REC OFF"));
+        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
+        panel_keys(1u << 8);                                /* black key 4, running, not recording: its row, nothing recorded */
+        for (i = 0; i < 10; i++)
+            eng_render(l, r, 128);
+        panel_keys(0);
+        eng_render(l, r, 128);
+        loop();
+        check("  a black key then: its row picked, nothing recorded", seq_row == 4u && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before);
+        tap(BTN_REC);                                       /* running: REC records at once */
+        check("REC, running: recording again", seq_rec && seq_kbd() && (E.trk_rec >> E.node[pat].trk & 1u));
+        enc(1, -1);                                         /* ALGO while recording: the track shown armed, it records instead */
+        loop();
+        {
+            int t0 = eng_steps_module(0);
+            check("  ALGO while recording: the track shown is armed and records, the other not, REC goes on", seq_rec && seq_trk == 0u
+                  && eng_arm_mask_get() == (uint64_t)1 << t0 && (E.trk_rec >> E.node[t0].trk & 1u) && !(E.trk_rec >> E.node[pat].trk & 1u));
+        }
+        enc(1, 1);
+        loop();
+        check("  ALGO back: PATTERN records again", seq_rec && seq_trk == 1u && (E.trk_rec >> E.node[pat].trk & 1u) && seq_kbd());
+        {
+            int at = mlen;
+            tap(BTN_PLAY);                                  /* PLAY stops everything */
+            check("PLAY while recording: the transport stops (MIDI Stop out) and recording ends", !seq_rec && !eng_transport_running()
+                  && sent(at, 0xFCu, 0xFFu, 0xFFu) && !(E.trk_rec >> E.node[pat].trk & 1u) && page == PAGE_SEQ);
+            later(1500);
+            check("  the bar says ARM again, not REC (redrawn by the loop)", bar_shows("PATTERN ARM P01", C_ACC));
+        }
+        (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
+        seq_sync(pat);
+        loop();
+        before = (uint32_t)eng_steps_notes((uint32_t)pat, &w);
+        steps_inst((uint32_t)pat)->s.stp.hit = 0;
+        panel_keys(1u << 8);                                /* stopped: black key 4 (C#4) picks its row and it is heard, nothing */
+        panel_keys(0);                                      /* recorded (#387) */
+        check("stopped, REC off: a black key picks its row and it is heard, nothing recorded", steps_inst((uint32_t)pat)->s.stp.hit
+              && seq_row == 4u && E.trk_last[E.node[pat].trk] == seq_roll_lo + 3u
+              && (uint32_t)eng_steps_notes((uint32_t)pat, &w) == before);
+        hw = eng_steps_note((uint32_t)pat, 1u, seq_grid_note(-1, seq_row));
+        panel_keys(1u << 2);                                /* a white key: step 2, the selected pitch */
+        panel_keys(0);
+        loop();
+        check("a white key: the selected pitch's note on its step switched", !hw == !!eng_steps_note((uint32_t)pat, 1u, seq_grid_note(-1, seq_row)));
+        (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
+        seq_sync(pat);
+
+        panel_held |= 1u << BTN_REC;                        /* REC held + black key 2: PATTERN out of the armed set, the keys wired */
         panel_edges(1u << BTN_REC, 0);
         panel_keys(1u << 3);
         panel_keys(0);
         panel_held &= ~(1u << BTN_REC);
         panel_edges(0, 1u << BTN_REC);
         loop();
-        check("REC held + the armed track's key: disarmed, REC off", eng_armed() < 0 && seq_rec == 0);
+        tap(BTN_REC);
+        check("REC with nothing armed: it still runs, the bar says so, nothing records", seq_rec && eng_transport_running()
+              && eng_arm_mask_get() == 0u && !E.trk_rec && !seq_kbd() && page == PAGE_SEQ && !strcmp(msg_text, "REC: NO TRACK ARMED"));
+        panel_held |= 1u << BTN_REC;                        /* REC held + black key 2 while recording: PATTERN armed, it records */
+        panel_edges(1u << BTN_REC, 0);
+        panel_keys(1u << 3);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("  a track armed while REC is on records from then on (REC goes on)", seq_rec && eng_armed() == pat
+              && (E.trk_rec >> E.node[pat].trk & 1u) && seq_kbd());
         tap(BTN_PLAY);
+        check("  PLAY: all stopped", !seq_rec && !eng_transport_running() && !E.trk_rec);
+        tap(BTN_PLAY);                                      /* a stop from elsewhere (the editor, MIDI Stop) ends recording too */
+        tap(BTN_REC);
+        check("(recording, running)", seq_rec && eng_transport_running());
+        eng_transport(0);
+        loop();
+        check("the transport stopped from elsewhere: recording ends", !seq_rec && !E.trk_rec);
         (void)eng_steps_set_notes((uint32_t)pat, keep, (uint32_t)keep_n);
+        seq_sync(pat);
         while (page != 0u && trail_n)
             tap(BTN_HOME);
-
         (void)load("SCROUNGE");                             /* the factory Scrounge's PATTERN: it drives a Drum map, so its grid */
         pv_gen++;
         page = 0;
@@ -1395,26 +1860,30 @@ int main(void)
             if (((w[i] >> 12) & 127u) != rn)
                 wk[got++] = w[i];
         (void)eng_steps_set_notes((uint32_t)drums, wk, (uint32_t)got);
-        check("(the SEQ page, a Drum map, REC on, running)", page == PAGE_SEQ && seq_map() == map && seq_rec == 1u
+        check("(the SEQ page, a Drum map armed by it (#395), REC on, running)", page == PAGE_SEQ && seq_map() == map && seq_rec
               && eng_transport_running() && eng_steps_pos((uint32_t)drums) >= 0);
-        steps_inst((uint32_t)drums)->s.stp.hit = 0;
         yield_xfers = 0;
         r0 = seq_row;
+        th = thru_head;
         kq_edge(8, 1);                                      /* C#4 hit and let go during a full redraw */
         kq_edge(8, 0);
         ui_dirty = 2;
         panel_draw();
+        check("a black key's hit during a redraw: heard (through the track, #368), its row picked (#395), nothing drawn from inside",
+              seq_row == 3u && thru_heard(th, (uint32_t)drums, rn) && kq_r == kq_w && yield_xfers == 0u);
+        (void)r0;
+        check("no header_draw left for the redraw's end (a hit leaves the bar)", !ui_yielding && !ui_header_due);
+        blocks(4);                                          /* (the engine takes the note, let go: recorded, laid over the track) */
+        loop();
         n = eng_steps_notes((uint32_t)drums, &w);
         for (i = 0, got = 0; i < n; i++)
             got += ((w[i] >> 12) & 127u) == rn;
-        check("a black key's hit during a redraw: heard and recorded on its row, the row picked stays, nothing drawn from inside",
-              seq_row == r0 && steps_inst((uint32_t)drums)->s.stp.hit && got == 1 && kq_r == kq_w && yield_xfers == 0u);
-        check("no header_draw left for the redraw's end (a hit leaves the bar)", !ui_yielding && !ui_header_due);
-        steps_inst((uint32_t)drums)->s.stp.hit = 0;
+        check("  recorded on its row once the engine took it", got == 1);
+        th = thru_head;
         kq_edge(3, 1);                                      /* G#3 (row 2) hit and let go within one pass */
         kq_edge(3, 0);
         keys_poll_q(0);
-        check("a hit pressed and let go within one pass: heard, the row picked stays", seq_row == r0 && steps_inst((uint32_t)drums)->s.stp.hit);
+        check("a hit pressed and let go within one pass: heard, its row picked", seq_row == 1u && thru_heard(th, (uint32_t)drums, seq_row_note(map, 1)));
         panel_yield = 0;
         tap(BTN_REC);
         tap(BTN_PLAY);
@@ -1435,6 +1904,10 @@ int main(void)
         if (eng_transport_running())
             tap(BTN_PLAY);
         tap(BTN_SEQ);
+        eng_arm_mask(0);                                    /* (the page armed DRUMS, #395: WIRED again, as REC held + its key
+                                                             * leaves it) */
+        header_draw();
+        ui_dirty = 2;
         later(1500);
         check("(the 808 Kit's DRUMS on the SEQ page, nothing armed)", page == PAGE_SEQ && seq_map() == map && eng_armed() < 0);
         memcpy(base, fb, sizeof base);
@@ -1449,7 +1922,7 @@ int main(void)
         check("the arm: DRUMS ARMED in the bar, the track's line redrawn in place, nothing else, no blink",
               bar_shows("DRUMS ARMED", C_FG) && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        put(want, "DRUMS ARM")[0] = 0;                    /* (a drum track's bar: no row, the grid shows it) */
+        put(want, "DRUMS ARM P01")[0] = 0;                    /* (a drum track's bar: no row, the grid shows it) */
         check("after the message the bar says ARM", bar_shows(want, C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM"));
         fb_watch_reset();
@@ -1489,14 +1962,15 @@ int main(void)
         fb_watch_reset();
         held_key(BTN_REC, 1);
         all = fb_changed_in(0, 0, 240, 240);
-        bar = fb_changed_in(0, 0, 240, BAR_H);
-        line = fb_changed_in(0, FOOT_Y, 240, FOOT_Y + FONT_S.h);
-        check("device page: the arm redraws the bar's message and the info line (ARM DRUMS) only, no blink",
-              eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
+        bar = fb_changed_in(0, 0, 240, LK_HH);
+        line = fb_changed_in(0, FOOT_Y, 240, 240);
+        check("device page: the arm redraws the header's message and the footer (ARM DRUMS) only, no blink",
+              eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(LK_HH) == 0
+              && on_screen("ARM DRUMS"));
         fb_watch_reset();
         held_key(BTN_SEQ, 1);
-        check("device page: a mute draws only the bar's message", eng_steps_muted((uint32_t)drums)
-              && fb_changed_in(0, 0, 240, 240) == fb_changed_in(0, 0, 240, BAR_H) && fb_blinked_below(BAR_H) == 0);
+        check("device page: a mute draws only the header's message", eng_steps_muted((uint32_t)drums)
+              && fb_changed_in(0, 0, 240, 240) == fb_changed_in(0, 0, 240, LK_HH) && fb_blinked_below(LK_HH) == 0);
         held_key(BTN_SEQ, 1);
         held_key(BTN_REC, 1);
         later(1500);
@@ -1504,6 +1978,9 @@ int main(void)
 
         E.node[map].ksrc = 0;                               /* the Drum map off DRUMS: a melodic track, its roll (#241) */
         tap(BTN_SEQ);
+        eng_arm_mask(0);                                    /* (WIRED again: the page armed it) */
+        header_draw();
+        ui_dirty = 2;
         later(1500);
         check("(DRUMS a melodic track now: the roll)", page == PAGE_SEQ && seq_map() < 0);
         memcpy(base, fb, sizeof base);
@@ -1515,7 +1992,7 @@ int main(void)
         check("melodic track: REC held + black key 1 arms it, the bar's message and the track's line (ARMED) only, no blink",
               eng_armed() == drums && bar > 0u && line > 0u && all == bar + line && fb_blinked_below(BAR_H) == 0);
         later(1500);
-        check("melodic track: the bar says ARM", bar_shows("DRUMS ARM", C_ACC));
+        check("melodic track: the bar says ARM", bar_shows("DRUMS ARM P01", C_ACC));
         snap_to(getenv("PANEL_SNAP_ARM_TRACK"));
         fb_watch_reset();
         held_key(BTN_SEQ, 1);
@@ -1549,7 +2026,7 @@ int main(void)
             if (kit < 2u)
                 (void)load(kit ? "909 KIT" : "808 KIT");
             else
-                (void)load_at(N_PRESETS - 1u);              /* (the last factory patch: <7PH) */
+                (void)load("<7PH");
             page = 0;
             trail_n = 0;
             octave = 0;
@@ -1601,6 +2078,27 @@ int main(void)
             }
             snprintf(what, sizeof what, "%s: white keys and black keys 9..11 play nothing, on MIDI out too", KIT[kit]);
             check(what, quiet);
+            if (kit == 0u) {                                /* the map repeats its rows (#184): those keys play their own note */
+                uint32_t rows = 0;
+                ok = 1;
+                eng_set_param((uint32_t)map, DRUMMAP_P_REPEAT, ENG_ONE);
+                for (n = 0; n < 27u; n++) {
+                    if (seq_black(n) >= 0 && seq_black(n) < (int)ENG_DRUM_ROWS)
+                        continue;
+                    m0 = mlen;
+                    panel_keys(1u << n);
+                    for (i = 0; i < 3; i++)
+                        eng_render(l, r, 128);
+                    rows |= inst_pool[E.node[map].inst0].s.dm.gate;
+                    ok &= inst_pool[E.node[map].inst0].s.dm.gate != 0 && key_eng[n] == key_note[n] && sent(m0, 0x90u, key_note[n], 100u);
+                    panel_keys(0);
+                    for (i = 0; i < 3; i++)
+                        eng_render(l, r, 128);
+                    ok &= inst_pool[E.node[map].inst0].s.dm.gate == 0;
+                }
+                eng_set_param((uint32_t)map, DRUMMAP_P_REPEAT, 0);
+                check("808 Kit, its Drum map's repeat on: every other key plays a row (its own note on MIDI out), all eight rows reached", ok && rows == 0xFFu);
+            }
             octave = 2;                                     /* at any octave: black key 2 is row 2 */
             panel_keys(1u << 3);
             for (i = 0; i < 3; i++)
@@ -1674,6 +2172,7 @@ int main(void)
         r0 = seq_row;                                       /* a row pick, stopped: black key 3 (A#3) */
         fb_watch_reset();
         lcd_px = lcd_xfers = 0;
+        th = thru_head;
         panel_keys(1u << 5);
         panel_keys(0);
         loop();
@@ -1682,7 +2181,7 @@ int main(void)
              + fb_changed_in(4, GRID_Y + GRID_RH * 2u, 4 + GRID_NAME_W, GRID_Y + GRID_RH * 2u + FONT_S.h);
         printf("      (a row pick: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
         check("black key 3, stopped: row 3 picked (heard); only its name and the last one's redrawn, no blink",
-              seq_row == 2u && steps_inst((uint32_t)drums)->s.stp.hit && all > 0u && all == part && fb_blinked() == 0
+              seq_row == 2u && thru_heard(th, (uint32_t)drums, seq_row_note(map, 2)) && all > 0u && all == part && fb_blinked() == 0
               && lcd_px <= 2u * GRID_NAME_W * FONT_S.h);
         fb_watch_reset();                                   /* SELECT, no step held: the row (the owner, 2026-10-23) */
         lcd_px = lcd_xfers = 0;
@@ -1750,11 +2249,15 @@ int main(void)
         }
         for (n = 0; seq_black(n) != (int)row; n++)
             ;
+        seq_row = (uint8_t)row;                             /* (the row picked first: the hit redraws its cell alone) */
+        ui_dirty = ui_dirty ? ui_dirty : 1;
+        loop();
         r0 = seq_row;
         fb_watch_reset();
         lcd_px = lcd_xfers = 0;
         panel_keys(1u << n);
         panel_keys(0);
+        blocks(2);                                          /* (#368: the engine records it when let go) */
         loop();
         steps = 0;
         for (st = 0; st < 16u; st++)
@@ -1765,11 +2268,51 @@ int main(void)
         all = fb_changed_in(0, 0, 240, 240);
         part = fb_changed_in(x, y, x + GRID_CW, y + GRID_CH);
         printf("      (a hit while recording: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
-        check("REC on, running: a hit lands on its row's nearest step; that cell alone redrawn, the row picked and the bar stay",
-              row < ENG_DRUM_ROWS && seq_rec == 1u && steps == 1 && seq_row == r0 && all > 0u && all == part && lcd_px <= GRID_CW * GRID_CH
+        check("REC on, running: a hit lands on its row's nearest step; that cell alone redrawn, the bar stays",
+              row < ENG_DRUM_ROWS && seq_rec && steps == 1 && seq_row == r0 && all > 0u && all == part && lcd_px <= GRID_CW * GRID_CH
               && fb_changed_in(0, 0, 240, BAR_H) == 0u);
+        {                                               /* #368 (the owner, 2026-10-28): a black key held over steps while REC
+                                                         * records: one note on its row lasting the whole steps held; its Drum map
+                                                         * row stays up while held */
+            const uint32_t *ws2;
+            uint32_t sl = (uint32_t)steps_inst((uint32_t)drums)->s.stp.slen, j, before = 0, after = 0, longest = 0;
+            uint8_t up;
+            int nn2 = eng_steps_notes((uint32_t)drums, &ws2);
+            for (j = 0; j < (uint32_t)nn2; j++)
+                before += ((ws2[j] >> 12) & 127u) == seq_row_note(map, row);
+            panel_keys(1u << n);
+            blocks(3u * sl / 128u + 2u);                    /* (three steps and a bit held) */
+            up = inst_pool[E.node[map].inst0].s.dm.gate;
+            panel_keys(0);
+            blocks(2);
+            loop();
+            nn2 = eng_steps_notes((uint32_t)drums, &ws2);
+            for (j = 0; j < (uint32_t)nn2; j++)
+                if (((ws2[j] >> 12) & 127u) == seq_row_note(map, row)) {
+                    after++;
+                    if (((ws2[j] >> 6) & 63u) + 1u > longest)
+                        longest = ((ws2[j] >> 6) & 63u) + 1u;
+                }
+            printf("      (held over three steps: recorded %u steps long; a step %u samples)\n", (unsigned)longest, (unsigned)sl);
+            check("REC on, running: a black key held over steps records one note on its row, the whole steps held (3)",
+                  after == before + 1u && longest >= 3u && longest <= 4u);
+            check("  its Drum map row stays up while the key is held", (up >> row & 1u) != 0);
+        }
+        {                                               /* #395: a black key on another row while recording picks that row too */
+            uint32_t other = row ? 0u : 1u, on;
+            for (on = 0; seq_black(on) != (int)other; on++)
+                ;
+            panel_keys(1u << on);
+            panel_keys(0);
+            blocks(2);
+            loop();
+            check("REC on: a black key on another row records there and picks that row", seq_rec && seq_row == other);
+            seq_row = (uint8_t)r0;
+            ui_dirty = ui_dirty ? ui_dirty : 1;
+            loop();
+        }
         enc(0, 1);                                          /* SELECT with REC on: the row too */
-        check("REC on: SELECT picks the next row (the black keys stay hits)", seq_rec == 1u && seq_row == (r0 + 1u < ENG_DRUM_ROWS ? r0 + 1u : r0));
+        check("REC on: SELECT picks the next row", seq_rec && seq_row == (r0 + 1u < ENG_DRUM_ROWS ? r0 + 1u : r0));
         pos = eng_steps_pos((uint32_t)drums);               /* the playhead moves on: its two columns */
         for (i = 0; i < 400 && eng_steps_pos((uint32_t)drums) == pos; i++)
             eng_render(l, r, 128);
@@ -1785,8 +2328,8 @@ int main(void)
                   && lcd_xfers <= 2u * (2u * ENG_DRUM_ROWS + 1u));
         }
         tap(BTN_REC);
+        check("REC off: the page stays, the transport goes on", seq_rec == 0u && page == PAGE_SEQ && eng_transport_running());
         tap(BTN_PLAY);
-        check("REC off: the page stays", seq_rec == 0u && page == PAGE_SEQ);
 
         len0 = eng_get_param((uint32_t)drums, STEPS_P_LEN);   /* a track of 32: OCT+ its second page */
         eng_set_param((uint32_t)drums, STEPS_P_LEN, 32 << 16);
@@ -1808,8 +2351,8 @@ int main(void)
         later(1500);
     }
 
-    {                                                       /* REC with nothing armed opens the SEQ page on a drum track (the owner,
-                                                             * 2026-10-23); an armed drum track's REC: its grid */
+    {                                                       /* #395 (the owner, 2026-10-28): REC is global, it never changes the
+                                                             * page; what records is the armed Steps tracks */
         static int32_t l[128], r[128];
         int drums, map, i, n0, n1;
         const uint32_t *w;
@@ -1817,7 +2360,7 @@ int main(void)
             tap(BTN_HOME);
         if (eng_transport_running())
             tap(BTN_PLAY);
-        (void)load_at(N_PRESETS - 1u);                      /* <7PH: DRUMS, PATTERN */
+        (void)load("<7PH");                                  /* DRUMS, PATTERN */
         page = 0;
         trail_n = 0;
         screen_idle();
@@ -1825,27 +2368,48 @@ int main(void)
         map = eng_steps_drummap((uint32_t)drums);
         seq_trk = 1;                                        /* (PATTERN selected last) */
         tap(BTN_REC);
-        check("REC, nothing armed: the SEQ page on the drum track, its grid, the black keys record hits",
-              page == PAGE_SEQ && seq_trk == 0u && seq_map() == map && seq_rec == 1u
-              && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * seq_row + 1u) == C_ACC);
+        check("REC, nothing armed (wired): the transport runs, REC is on, the page stays, the bar says nothing records",
+              page == 0u && seq_rec && eng_transport_running() && !E.trk_rec && !strcmp(msg_text, "REC: NO TRACK ARMED"));
+        tap(BTN_PLAY);
+        check("PLAY: the transport and REC stopped", !seq_rec && !eng_transport_running());
+        page_set(PAGE_ENV);                                 /* REC on the environment: the same (D-238 retired) */
+        loop();
         tap(BTN_REC);
-        check("REC again: off, the page stays", seq_rec == 0u && page == PAGE_SEQ);
+        check("REC on the environment: the transport runs, REC on, the environment stays", page == PAGE_ENV && seq_rec
+              && eng_transport_running());
+        tap(BTN_REC);
+        check("  REC again: REC off, the transport goes on", page == PAGE_ENV && !seq_rec && eng_transport_running());
+        tap(BTN_PLAY);
         tap(BTN_HOME);
-        held_key(BTN_REC, 1);                               /* DRUMS armed, stopped: REC opens its grid */
-        tap(BTN_REC);
-        check("REC with a drum track armed, stopped: its grid (no step entry), REC on", page == PAGE_SEQ && seq_trk == 0u
-              && seq_rec == 2u && !seq_kbd() && seq_map() == map);
+        seq_trk = 0;
+        tap(BTN_SEQ);                                       /* DRUMS' grid (the page arms it), stopped, REC off */
+        check("(DRUMS' grid, armed by the page, stopped)", page == PAGE_SEQ && seq_trk == 0u && seq_map() == map
+              && eng_armed() == drums && !seq_rec && !eng_transport_running());
         n0 = eng_steps_notes((uint32_t)drums, &w);
-        steps_inst((uint32_t)drums)->s.stp.hit = 0;
-        panel_keys(1u << 3);                                /* black key 2: a hit, heard, nothing recorded while stopped */
+        th = thru_head;
+        panel_keys(1u << 3);                                /* black key 2, stopped: heard, its row picked, nothing recorded */
         panel_keys(0);
-        check("a black key there: a hit (heard), the row stays, nothing recorded", steps_inst((uint32_t)drums)->s.stp.hit
-              && seq_row == 0u && eng_steps_notes((uint32_t)drums, &w) == n0);
-        tap(BTN_REC);
+        blocks(4);
+        loop();
+        check("stopped, REC off: a black key is heard and picks its row, nothing recorded", thru_heard(th, (uint32_t)drums, seq_row_note(map, 1))
+              && seq_row == 1u && eng_steps_notes((uint32_t)drums, &w) == n0);
+        panel_keys(1u << 3);                                /* #368: held, stopped: its row stays up until let go */
+        blocks(40);
+        {
+            uint8_t up = inst_pool[E.node[map].inst0].s.dm.gate;
+            panel_keys(0);
+            blocks(2);
+            check("a black key held there, stopped: its Drum map row up while held, down when let go, nothing recorded",
+                  (up >> 1 & 1u) && !(inst_pool[E.node[map].inst0].s.dm.gate >> 1 & 1u) && eng_steps_notes((uint32_t)drums, &w) == n0);
+        }
+        enc(0, 1);                                          /* SELECT: the next row, silently */
+        th = thru_head;
+        blocks(2);
+        check("SELECT moves the row and sounds nothing", seq_row == 2u && thru_head == th);
         tap(BTN_HOME);
-        tap(BTN_PLAY);                                      /* running, from the device page: a live take on DRUMS */
-        tap(BTN_REC);
-        check("(REC, DRUMS armed, running: a live take, the device page stays)", page == 0u && seq_rec == 2u);
+        tap(BTN_REC);                                       /* stopped, from the device page: the transport starts, a take on DRUMS */
+        check("(REC, DRUMS armed, stopped: the transport runs and DRUMS records, the device page stays)", page == 0u && seq_rec
+              && eng_transport_running() && (E.trk_rec >> E.node[drums].trk & 1u) && !strcmp(msg_text, "REC DRUMS"));
         for (i = 0; i < 20; i++)
             eng_render(l, r, 128);
         n0 = eng_steps_notes((uint32_t)drums, &w);
@@ -1863,47 +2427,68 @@ int main(void)
                 got += ((w[i] >> 12) & 127u) == seq_row_note(map, 6);
             check("the live take: black key 7 recorded as row 7's note", seq_black(15) == 6 && got == n1 + 1);
         }
-        tap(BTN_REC);
         tap(BTN_PLAY);
         held_key(BTN_REC, 1);
         check("(disarmed, stopped)", eng_armed() < 0 && !eng_transport_running() && seq_rec == 0u);
         while (page != 0u && trail_n)
             tap(BTN_HOME);
     }
-
-    {                                                       /* #170: PRESET shows the patch's name over the bars */
-        uint32_t i, ink = 0, band = 0, blink = 0, y0 = TOAST_Y + 24u, y1 = y0 + FONT_L.h;
-        static uint16_t name1[240 * 240];
+    {                                                       /* #170, the owner's design (2026-10-24): PRESET grows the footer
+                                                             * into a toast (the slot, the name, the filled slots), the new
+                                                             * patch's page drawn around it at once */
+        static uint16_t staged[240 * 240];
+        uint32_t i, n;
         int main;
         bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
         (void)load("909 KIT");
-        cur_preset = N_PRESETS - 2u;                        /* the 909 Kit, then <7PH, the last factory patch */
+        cur_preset = preset_at("<7PH") - 1u;               /* the 909 Kit, then <7PH */
         pv_gen++;
         page = 0;
         trail_n = 0;
         screen_idle();
         later(2000);
         preset_loads = 1;
+        lcd_px = 0;
         enc(6, 1);
-        for (i = y0 * 240u; i < y1 * 240u; i++)
-            ink += fb[i] == P_INK;
-        check("PRESET: the next patch, its name over the bars", cur_preset == N_PRESETS - 1u && !strcmp(patch_label, "<7PH")
-              && ink > 50u && px(12, ROWS_Y + 15) == P_NIGHT);
+        check("PRESET: the next patch, its slot and name in the footer's toast, its page around it", cur_preset == preset_at("<7PH")
+              && !strcmp(patch_label, "<7PH") && on_screen("<7PH") && on_screen("23.") && toast_scr != 0u
+              && px(0, 240u - LK_TOH) == P_SAND && px(0, 239u - LK_TOH) != P_SAND && K1_TAB == KNOB_HUE[0]);
+        printf("      LCD pixels for one PRESET click: %u\n", lcd_px);
         snap_to(getenv("PANEL_SNAP_PATCH"));
-        memcpy(name1, fb, sizeof name1);
+        memcpy(staged, fb, sizeof staged);
+        ui_dirty = 2;
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += staged[i] != fb[i];
+        check("PRESET's staged page is the page drawn whole", n == 0u);
         fb_watch_reset();
         later(300);
         check("a beat's redraw under it leaves it be", fb_blinked() == 0);
+        cur_preset = N_PRESETS - 1u;                        /* (the last slot: the next click wraps to the first) */
+        stop_n = 0;
+        stop_answer = 1;                                    /* PRESET turning fast: a newer click waits */
+        pages_waiting = stop_probe;
+        lcd_px = 0;
+        enc(6, 1);
+        printf("      LCD pixels for a PRESET click while the next one waits: %u\n", lcd_px);
+        check("PRESET turning fast: the next name, only the toast drawn", cur_preset == 0 && !strcmp(patch_label, "ORACLE V")
+              && on_screen("ORACLE V") && lcd_px == 240u * LK_TOH);
+        stop_answer = 0;
+        loop();
+        pages_waiting = 0;
         fb_watch_reset();
-        enc(6, 1);                                          /* again while it shows: the next name in place */
-        for (i = ROWS_Y * 240u; i < ROWS_END * 240u; i++) {
-            band += fb_changes[i] != 0u && i >= y0 * 240u && i < y1 * 240u;
-            blink += fb_changes[i] >= 2u;
-        }
-        check("PRESET again within it: the next name, nothing in the toast cleared first", cur_preset == 0
-              && !strcmp(patch_label, "ORACLE V") && band > 0u && blink == 0u && memcmp(name1, fb, sizeof name1) != 0);
+        lcd_px = 0;
         later(1100);
-        check("the toast ends: the device page's bars come back", px(12, ROWS_Y + 15) != P_NIGHT);
+        printf("      LCD pixels for the toast's end: %u\n", lcd_px);
+        check("the toast ends: only its band drawn again, the footer and the bars under it", toast_scr == 0u
+              && fb_changed_in(0, 0, 240, 240u - LK_TOH) == 0u && lcd_px <= 240u * LK_TOH && px(0, 239) == P_SAND
+              && px(0, 240u - LK_TOH) != P_SAND && on_screen("ORACLE V"));
+        memcpy(staged, fb, sizeof staged);
+        ui_dirty = 2;
+        loop();
+        for (i = 0, n = 0; i < 240u * 240u; i++)
+            n += staged[i] != fb[i];
+        check("  then the page drawn whole, pixel for pixel", n == 0u);
         main = eng_find(T_FM1);
         panel_held |= 1u << BTN_PLAY;                       /* PLAY held + PRESET: the tempo, no patch, no toast */
         panel_edges(1u << BTN_PLAY, 0);
@@ -1912,46 +2497,146 @@ int main(void)
         panel_edges(0, 1u << BTN_PLAY);
         loop();
         check("PLAY held + PRESET: the tempo, the patch and the bars stay", main >= 0 && cur_preset == 0
-              && px(12, ROWS_Y + 15) != P_NIGHT && fm1_ms >= pg_patch_until);
+              && K1_TAB != P_NIGHT && !toast_wanted());
         enc(6, -1);
-        enc(0, 1);                                          /* SELECT while it shows: the device card instead */
-        check("SELECT during it: the device card takes over", fm1_ms >= pg_patch_until && pages_carding()
-              && px(4, 4) == P_CARD_DEV);
+        enc(0, 1);                                          /* SELECT while it shows: the toast goes */
+        check("SELECT during it: the toast gone, the footer back", !toast_wanted() && toast_scr == 0u
+              && px(0, 240u - LK_TOH) != P_SAND);
         later(1100);
         preset_loads = 0;
     }
 
-    {                                                       /* #200: the editor's Live, its patch over the FM-1's budget (paused) */
-        uint32_t slot = cur_preset;
-        int stepped = presets_stepped;
+    {                                                       /* sandbox mode: the editor's Live paused (its patch is a sandbox
+                                                             * patch): the FM-1 muted, the editor's page drawn, PRESET held */
+        uint32_t slot = cur_preset, y, x, gold;
+        int stepped = presets_stepped, from, pn;
+        sb_page_t pg;
         page = 0;
         trail_n = 0;
         screen_idle();
         later(2000);
         preset_loads = 1;
-        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
-        m1_live(1);                                         /* LIVE paused: the FM-1 says so at once */
-        check("LIVE paused: EDITOR PATCH TOO BIG at once", !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
-        later(3000);
-        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
-        m1_live(1);                                         /* every 2 s again: no new toast */
-        check("LIVE paused again: no new message", msg_text[0] == 0);
+        info_told = 0;
+        m1_live(1);                                         /* LIVE paused: sandbox mode */
+        check("LIVE paused: sandbox mode, the FM-1 muted", sb_on && snd_muted && !sb_have);
+        check("  the MIDI OUT setting told once (INFO)", info_told == 1);
+        loop();
+        for (gold = 0, y = 70; y < 100u; y++)
+            for (x = 0; x < 240u; x++)
+                gold += px(x, y) == P_GOLD;
+        check("  the screen: the gold SANDBOX bar and the card (no bars yet)", px(4, 4) == P_GOLD && gold > 30u
+              && K1_TAB == P_NIGHT);
+        later(1000);
+        m1_live(1);                                         /* every 2 s again */
+        check("  LIVE paused again: no INFO", info_told == 1);
+        {                                                   /* the editor's page (SANDBOX), through sb_parse */
+            uint8_t d[SB_BYTES];
+            uint32_t k;
+            static const char *const LAB[4] = {"Cutoff", "Res", "Wave", ""};
+            memset(d, 0, sizeof d);
+            d[0] = 7;                                       /* rows 1..3 */
+            d[1] = 2;
+            d[2] = 5;
+            memcpy(d + 3, "SOL 29N XL", 10);
+            memcpy(d + 3 + SB_PATCH, "Sol filter", 10);
+            memcpy(d + 3 + SB_PATCH + SB_DEV, "FILTER 1/2", 10);
+            for (k = 0; k < 3u; k++) {
+                uint8_t *r = d + SB_HEAD_BYTES + k * SB_ROW_BYTES;
+                memcpy(r, LAB[k], strlen(LAB[k]));
+                memcpy(r + SB_LABEL, k == 2u ? "SAW" : "2.40", k == 2u ? 3 : 4);
+                if (k == 0u)
+                    memcpy(r + SB_LABEL + SB_VALUE, "kHz", 3);
+                r[SB_LABEL + SB_VALUE + SB_UNIT] = k == 0u ? 128u : k == 1u ? 255u : 0u;
+                r[SB_LABEL + SB_VALUE + SB_UNIT + 1u] = k == 2u ? 3u : 0u;   /* Wave: three choices */
+            }
+            check("SANDBOX parses (and a short one does not)", sb_parse(d, sizeof d, &pg) == 0 && sb_parse(d, sizeof d - 1u, &pg) < 0
+                  && pg.rows == 7u && pg.index == 2u && pg.count == 5u && !strcmp(pg.patch, "SOL 29N XL") && !strcmp(pg.dev, "Sol filter")
+                  && !strcmp(pg.label[0], "Cutoff") && !strcmp(pg.unit[0], "kHz") && pg.pos[0] == 128u && pg.steps[2] == 3u);
+        }
+        m1_sandbox(&pg);
+        loop();
+        for (gold = 0, x = 0; x < 240u; x++)
+            gold += px(x, SB_RAIL_Y) == P_GOLD;
+        check("the page: its bars (K4 empty), the third page of five lit in gold", sb_have && K1_TAB != P_NIGHT
+              && px(BAR_X + 2u, row_y(3) + 2u) == P_STRIP && gold > 20u && px(4, 4) == P_GOLD);
+        check("  K1 half way: its fill to the middle", px(BAR_X + BAR_W / 2u - 8u, row_y(0) + 4u) != px(BAR_X + BAR_W / 2u + 8u, row_y(0) + 4u));
+        from = mlen;
+        pn = param_now;
+        enc(2, 1);                                          /* K1: one click from the editor's position (128 = CC 64) */
+        check("K1 in sandbox mode: CC 16 one up from the editor's position, the FM-1's patch untouched",
+              sent(from, 0xB0u, 16u, 65u) && param_now == pn && sb_cc[0] == 65u);
+        from = mlen;
+        enc(4, 1);                                          /* K3 on a row of three choices: the next one */
+        check("K3 on three choices: CC 18 a choice up (64)", sent(from, 0xB0u, 18u, 64u));
+        from = mlen;
+        enc(3, 1);                                          /* K2 at its end: nothing to send */
+        enc(5, 1);                                          /* K4: no row */
+        check("K2 at its end, K4 with no row: no CC", mlen == from);
+        pg.pos[0] = 10u;                                    /* the editor's page brings K1's old position back at once: */
+        m1_sandbox(&pg);                                    /* the turn here wins for a moment */
+        check("  an echo right after a turn keeps the turned position", sb_cc[0] == 65u);
+        later(SB_ECHO_MS + 10u);
+        m1_sandbox(&pg);
+        check("  later the editor's position counts", sb_cc[0] == (10u * 127u + 127u) / 255u);
+        from = mlen;
+        tap(BTN_SEQ);                                       /* SEQ: out as MIDI only */
+        check("SEQ in sandbox mode: its CC goes out, the page stays", sent(from, 0xB0u, 89u, 127u) && page == 0u && sb_on);
+        tap(BTN_GLO);                                       /* GLO: the FM-1's own page (MIDI OUT is there) */
+        check("GLO in sandbox mode: the FM-1's own page", page == PAGE_GLO);
+        tap(BTN_HOME);
+        check("  HOME: back to the sandbox page", page == 0u && px(4, 4) == P_GOLD && K1_TAB != P_NIGHT);
+        check("  the screen as text: the sandbox page, the device page's texts gone", on_screen("BROWSER PLAYS") && !on_screen("= OCT ="));
+        loop();
+        check("  the battery in the footer, night on sand", px(BATT_FX, BATT_FY) == P_NIGHT && px(BATT_FX - 2u, BATT_FY) == P_SAND);
+        from = mlen;
+        panel_keys(1u);                                     /* a key: the note goes out (the FM-1 itself is muted) */
+        panel_keys(0u);
+        loop();
+        check("a key in sandbox mode: its note out", sent(from, 0x90u, (uint32_t)(53 + 12 * octave), 100u));
         enc(6, 1);
-        check("PRESET under a paused Live: no slot change, EDITOR PATCH TOO BIG", cur_preset == slot
-              && presets_stepped == stepped && !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
+        check("PRESET in sandbox mode: no slot change, SANDBOX: NO PRESET", cur_preset == slot
+              && presets_stepped == stepped && !strcmp(msg_text, "SANDBOX: NO PRESET"));
         later(1600);
-        msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
+        check("  the message ends: the gold bar again", px(4, 4) == P_GOLD);
+        cfg.midi_out = 0;                                   /* MIDI OUT off on the GLO page: the editor hears of it */
+        m1_live(1);
+        ui_dirty = 2;
+        loop();
+        check("MIDI OUT off: INFO again, the foot line says how to turn it on", info_told == 2 && fb_has_hue(FOOT_Y, P_WARN));
+        cfg.midi_out = 1;
+        m1_live(1);
+        msg_text[0] = 0;
         m1_live(0);                                         /* the patch fits again: Live resumes */
-        check("LIVE resumed: no message of its own", msg_text[0] == 0);
+        loop();
+        check("LIVE not paused: sandbox mode ends, the sound and the device page back", !sb_on && !snd_muted
+              && px(4, 4) != P_GOLD && K1_TAB != P_NIGHT && msg_text[0] == 0);
+        m1_sandbox(&pg);
+        check("  a page after it: not taken", !sb_have);
         enc(6, -1);
         check("PRESET under Live (resumed): still held, EDITOR LIVE: NO PRESET", cur_preset == slot
               && presets_stepped == stepped && !strcmp(msg_text, "EDITOR LIVE: NO PRESET"));
         later(1600);
-        m1_live(1);                                         /* over the budget once more: says so again */
-        check("LIVE paused after a resume: the message again", !strcmp(msg_text, "EDITOR PATCH TOO BIG"));
-        later(LIVE_HOLD_MS + 100u);                          /* no LIVE for 5 s (a closed tab): PRESET is free */
+        m1_live(1);                                         /* over the budget once more */
+        check("LIVE paused after a resume: sandbox mode again", sb_on && snd_muted);
+        later(LIVE_HOLD_MS + 100u);                          /* no LIVE for 5 s (a closed tab): the sound and PRESET are free */
+        check("Live lapsed: sandbox mode ends", !sb_on && !snd_muted);
         enc(6, 1);
         check("Live lapsed: PRESET steps again", presets_stepped == stepped + 1 && cur_preset != slot);
+        later(1600);
+        tap(BTN_SEQ);                                       /* the SEQ page up (its steps may run) when the patch goes over */
+        check("SEQ without sandbox mode: the SEQ page", page == PAGE_SEQ);
+        m1_live(1);
+        loop();
+        check("sandbox mode begun on the SEQ page: the sandbox page comes up at once", sb_on && page == 0u && px(4, 4) == P_GOLD);
+        m1_live(0);
+        loop();
+        tap(BTN_GLO);
+        m1_live(1);
+        loop();
+        check("  begun on GLO (the FM-1's own page): GLO stays", sb_on && page == PAGE_GLO);
+        tap(BTN_HOME);
+        m1_live(0);
+        loop();
         preset_loads = 0;
     }
 
@@ -1963,8 +2648,8 @@ int main(void)
         trail_n = 0;
         screen_idle();
         later(3000);
-        check("host builds start full (BATT_START 900): 3 bars in the bar's cell", batt_shown() == 3u && batt_drawn == 3u
-              && px(BATT_X + 4u, 10) == C_FG && px(BATT_X + 10u, 10) == C_FG);
+        check("host builds start full (BATT_START 900): 3 bars in the footer's battery", batt_shown() == 3u && batt_drawn == 3u
+              && BPX(2, 2) == P_NIGHT && BPX(8, 2) == P_NIGHT && BPX(4, 2) == P_SAND);
         batt_q16 = 0;                                       /* (not read yet) */
         ui_battery(600, 0);
         ok = batt_raw() == 600;
@@ -1992,6 +2677,7 @@ int main(void)
         batt_q16 = 600 * 16;
         ui_battery(600, 0);
         loop();
+        later(3100);                                        /* (the LOW BATTERY the readings under 531 gave: ended) */
         fb_watch_reset();
         lcd_xfers = 0;
         ui_battery(598, 0);                                 /* another reading, the same level */
@@ -2001,19 +2687,29 @@ int main(void)
         ui_battery(570, 0);                                 /* 2 bars */
         loop();
         all = fb_changed_in(0, 0, 240, 240);
-        cell = fb_changed_in(BATT_X, 0, 240, BAR_H);
-        check("a level change: the cell alone, two transfers (its halves), no blink", lcd_xfers == 2u && all > 0u && all == cell
-              && fb_blinked() == 0 && px(BATT_X + 10u, 10) == BATT_BG && px(BATT_X + 7u, 10) == C_FG);
+        cell = fb_changed_in(BATT_FX, BATT_FY, BATT_FX + 13u, BATT_FY + 6u);
+        check("a level change: the battery alone, a transfer a row, no blink", lcd_xfers == 6u && all > 0u && all == cell
+              && fb_blinked() == 0 && BPX(8, 2) == P_SAND && BPX(5, 2) == P_NIGHT);
         batt_q16 = 540 * 16;
         ui_battery(540, 0);
         loop();
-        check("one bar: in the accent", px(BATT_X + 4u, 10) == C_ACC && px(BATT_X + 7u, 10) == BATT_BG);
+        check("one bar", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND);
+        page_set(PAGE_GLO);
+        ui_dirty = 2;
+        loop();
+        check("GLO: the battery in its footer too", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND && px(4, 4) == P_CORAL);
+        page_set(0);
+        ui_dirty = 2;
+        loop();
+        check("  back on the device page: the same", BPX(2, 2) == P_NIGHT && BPX(5, 2) == P_SAND);
         msg_text[0] = 0;                                    /* (a marker: a new message fills it) */
         batt_q16 = 520 * 16;
         ui_battery(520, 0);                                 /* under 531: LOW BATTERY */
         later(10);
-        check("under the lowest threshold: LOW BATTERY in the bar, the outline red", !strcmp(msg_text, "LOW BATTERY")
-              && bar_shows("LOW BATTERY", C_FG) && px(BATT_X + 2u, 10) == C_RED);
+        check("under the lowest threshold: LOW BATTERY over the header, the battery's outline red",
+              !strcmp(msg_text, "LOW BATTERY") && bar_shows("LOW BATTERY", C_FG) && BPX(0, 0) == P_WARN && BPX(2, 2) == P_SAND);
+        later(3100);
+        check("  the message gone: the header again", px(4, 4) != C_FG && BPX(0, 0) == P_WARN);
         later(3100);
         msg_text[0] = 0;
         ui_battery(518, 0);
@@ -2023,8 +2719,8 @@ int main(void)
         check("LOW BATTERY once: not again while it stays low", msg_text[0] == 0);
         ui_battery(515, 1);                                 /* a USB host: external power, a bolt */
         loop();
-        check("USB power: the bolt (seafoam), no message", msg_text[0] == 0 && batt_shown() == BATT_USB
-              && px(BATT_X + 2u, 10) == 0x7E38u && px(BATT_X + 6u, 10) == 0x7E38u);
+        check("USB power: the bolt, no message", msg_text[0] == 0 && batt_shown() == BATT_USB
+              && BPX(5, 1) == P_NIGHT && BPX(1, 1) == P_SAND && BPX(0, 0) == P_NIGHT);
         ui_battery(515, 0);                                 /* unplugged, still low: says so again */
         later(10);
         check("USB gone while low: LOW BATTERY again", !strcmp(msg_text, "LOW BATTERY"));
@@ -2052,12 +2748,12 @@ int main(void)
             loop();
             for (i = 0; i < 240u * 240u; i++) {
                 uint32_t x = i % 240u, y = i / 240u;
-                int in = (x >= 150u && x < 228u && y >= y0 + MENU_TXT && y < y0 + MENU_TXT + 18u) || (x >= BATT_X && y < BAR_H);
+                int in = (x >= 150u && x < 228u && y >= y0 + MENU_TXT && y < y0 + MENU_TXT + 18u);
                 n += fb_changes[i] != 0u;
                 outside += fb_changes[i] != 0u && !in;
             }
             menu_value(MR_BATT, v);
-            check("SYSTEM idle, a new reading: only its value (and the cell) redrawn, no blink", n > 0u && outside == 0u
+            check("SYSTEM idle, a new reading: only its value redrawn (the menu has no battery), no blink", n > 0u && outside == 0u
                   && fb_blinked() == 0 && !strcmp(v, "590  2/3"));
             menu_tab = tab;
             menu_sel = row;
@@ -2100,7 +2796,7 @@ int main(void)
             if (eng_transport_running())
                 tap(BTN_PLAY);
             if (kit)
-                (void)load_at(N_PRESETS - 1u);
+                (void)load("<7PH");
             else
                 (void)load("808 KIT");
             pv_gen++;
@@ -2193,6 +2889,9 @@ int main(void)
             tap(BTN_REC);                                   /* REC alone: recording on / off as before */
             check("  REC alone after it: recording on, nothing cleared", seq_rec != 0u && eng_steps_notes((uint32_t)mod, &w) == keep_n);
             tap(BTN_REC);
+            tap(BTN_PLAY);                                  /* (REC started the transport, #395: stopped again) */
+            (void)eng_steps_set_notes((uint32_t)mod, keep, (uint32_t)keep_n);
+            seq_sync(mod);
             later(2000);
         }
         (void)load("808 KIT");
@@ -2203,8 +2902,509 @@ int main(void)
     }
 
     lcd_sync();
+    {   /* #298 follow-up: K1..K4 turned in steps both ways, slow and fast, across every page of every factory patch (the
+         * values crossing the name and value, the live tick, the hue's edge), with and without the audio's blocks between
+         * the clicks and the ten-a-second tick pass: the screen after the bars' redraws in place is the screen drawn whole,
+         * pixel for pixel (the owner saw thin ivory stripes left in the bars on 1.3.0-dev) */
+        static uint16_t inc[240 * 240];
+        static const int32_t TURN[] = {1, 1, 1, -1, -1, 3, -2, 5, 5, -5, 1, -1, 12, -12, 30, -30, 2, -7, 1, 1};
+        static int32_t al[128], ar[128];
+        uint32_t p, d, g, k, t, i, n, bad = 0, runs = 0, worst = 0, mode, clicks = 0;
+        uint64_t click_px = 0;
+        uint8_t accel_was = cfg.accel;
+        sb_on = 0;
+        page = 0;
+        cfg.accel = 1;
+        for (mode = 0; mode < 3u; mode++)                   /* 0: no audio between clicks, 1: a block before each, 2: some */
+            for (p = 0; p < N_PRESETS; p++) {
+                if (load_at(p))
+                    continue;
+                pv_gen++;
+                screen_idle();
+                for (d = 0; d < pg_ndev; d++)
+                    for (g = 0; g < pg_dev[d].npg; g++) {
+                        (void)pages_focus(d, g);
+                        ui_dirty = 2;
+                        loop();
+                        for (k = 0; k < pg_page[pg_dev[d].pg0 + g].nrows; k++) {
+                            for (t = 0; t < sizeof TURN / sizeof TURN[0]; t++) {
+                                if (mode == 1u || (mode == 2u && t % 3u != 2u))
+                                    eng_render(al, ar, 128);
+                                fm1_ms += (t & 4u) ? 10u : 150u;  /* (fast: within 80 ms, five steps a click) */
+                                lcd_px = 0;
+                                enc(2u + k, TURN[t]);
+                                click_px += lcd_px;
+                                clicks++;
+                                if (mode == 2u && t % 5u == 4u)
+                                    later(120);             /* (the live ticks' pass) */
+                                if (t != 9u && t + 1u != sizeof TURN / sizeof TURN[0])
+                                    continue;
+                                later(120);                 /* (the other rows' live ticks follow the audio) */
+                                memcpy(inc, fb, sizeof inc);
+                                ui_dirty = 2;
+                                loop();
+                                runs++;
+                                for (i = 0, n = 0; i < 240u * 240u; i++)
+                                    n += inc[i] != fb[i];
+                                if (n) {
+                                    if (bad < 6u) {
+                                        for (i = 0; inc[i] == fb[i]; i++)
+                                            ;
+                                        printf("      (%s device %u page %u K%u, audio %u: %u px differ, the first at %u,%u: %#06x, drawn"
+                                               " whole %#06x)\n", PRESET_LIST[p].name, d, g, k + 1u, mode, n, i % 240u, i / 240u, inc[i], fb[i]);
+                                    }
+                                    bad++;
+                                    worst = n > worst ? n : worst;
+                                }
+                            }
+                        }
+                    }
+            }
+        printf("      knob turns: %u compared on %u factory patches, %u differ (worst %u px); %u LCD px a click on average\n",
+               runs, (unsigned)N_PRESETS, bad, worst, (unsigned)(click_px / (clicks ? clicks : 1u)));
+        check("K1..K4 turned on every factory page: the bars moved in place are the screen drawn whole, pixel for pixel",
+              runs > 1000u && bad == 0u);
+        cfg.accel = accel_was;
+    }
+    {   /* the owner's design (2026-10-24): on every page of every factory patch, reached by SELECT and ALGO (drawn in
+         * passes, now and then stopped by a waiting click), and on every patch reached by PRESET (its toast first, the page
+         * around it) and when its toast ends, the screen is the screen drawn whole, pixel for pixel; and the pixels each
+         * costs, on average and at most */
+        static uint16_t inc[240 * 240];
+        uint32_t p, d, g, i, n, runs = 0, bad = 0, algo_n = 0, sel_n = 0, pre_n = 0, end_n = 0, outside_toast = 0;
+        uint64_t algo_px = 0, sel_px = 0, pre_px = 0, end_px = 0;
+        uint32_t algo_max = 0, sel_max = 0, pre_max = 0, end_max = 0;
+#define SAME_AS_WHOLE(what) do { memcpy(inc, fb, sizeof inc); ui_dirty = 2; loop(); runs++; \
+            for (i = 0, n = 0; i < 240u * 240u; i++) n += inc[i] != fb[i]; \
+            if (n) { if (bad < 6u) { for (i = 0; inc[i] == fb[i]; i++) ; \
+                printf("      (%s: %s device %u page %u: %u px differ, the first at %u,%u: %#06x, drawn whole %#06x)\n", what, \
+                       PRESET_LIST[cur_preset].name, pg_cur_dev, pg_cur_page, n, i % 240u, i / 240u, inc[i], fb[i]); } bad++; } } while (0)
+        sb_on = 0;
+        page = 0;
+        trail_n = 0;
+        bank_mask = ((uint64_t)1 << N_PRESETS) - 1u;
+        pages_waiting = stop_probe;
+        for (p = 0; p < N_PRESETS; p++) {
+            if (load_at(p))
+                continue;
+            cur_preset = p;
+            pv_gen++;
+            screen_idle();
+            later(1100);
+            for (d = 0; d < pg_ndev; d++)
+                for (g = 0; g < pg_dev[d].npg; g++) {
+                    if (!d && !g)
+                        continue;
+                    stop_answer = (d + g) % 5u == 3u;       /* (now and then a click waits: the draw stops, then goes on) */
+                    lcd_px = 0;
+                    if (g)
+                        enc(1, 1);                          /* ALGO */
+                    else {
+                        (void)pages_focus(d - 1u, pg_dev[d - 1u].npg - 1u);   /* (from the last page of the device before) */
+                        ui_dirty = 2;
+                        loop();
+                        lcd_px = 0;
+                        enc(0, 1);                          /* SELECT */
+                    }
+                    if (!stop_answer) {
+                        if (g) {
+                            algo_px += lcd_px;
+                            algo_n++;
+                            algo_max = lcd_px > algo_max ? lcd_px : algo_max;
+                        } else {
+                            sel_px += lcd_px;
+                            sel_n++;
+                            sel_max = lcd_px > sel_max ? lcd_px : sel_max;
+                        }
+                    }
+                    stop_answer = 0;
+                    loop();
+                    if (pg_cur_dev != d || pg_cur_page != g) {
+                        printf("      (%s: SELECT / ALGO reached device %u page %u, not %u %u)\n", PRESET_LIST[p].name, pg_cur_dev,
+                               pg_cur_page, d, g);
+                        bad++;
+                    }
+                    SAME_AS_WHOLE(g ? "ALGO" : "SELECT");
+                }
+        }
+        preset_loads = 1;                                   /* PRESET through the bank, every patch in turn */
+        cur_preset = N_PRESETS - 1u;
+        (void)load_at(cur_preset);
+        pv_gen++;
+        screen_idle();
+        later(1100);
+        for (p = 0; p < N_PRESETS; p++) {
+            static uint16_t plain[240 * 240];
+            memcpy(plain, fb, sizeof plain);
+            fb_watch_reset();
+            lcd_px = 0;
+            enc(6, 1);
+            pre_px += lcd_px;
+            pre_n++;
+            pre_max = lcd_px > pre_max ? lcd_px : pre_max;
+            if (cur_preset != p || !toast_scr || !on_screen(PRESET_LIST[p].name)) {
+                printf("      (PRESET to %s: slot %u, toast %u, its name %s)\n", PRESET_LIST[p].name, (unsigned)cur_preset, toast_scr,
+                       on_screen(PRESET_LIST[p].name) ? "shown" : "not shown");
+                bad++;
+            }
+            SAME_AS_WHOLE("PRESET");
+            fb_watch_reset();
+            lcd_px = 0;
+            later(1100);                                    /* the toast's end: its band alone */
+            end_px += lcd_px;
+            end_n++;
+            end_max = lcd_px > end_max ? lcd_px : end_max;
+            outside_toast += fb_changed_in(0, 0, 240, toast_top);
+            SAME_AS_WHOLE("the toast's end");
+            (void)plain;
+        }
+        preset_loads = 0;
+        pages_waiting = 0;
+#undef SAME_AS_WHOLE
+        printf("      pages and patches: %u compared, %u differ; LCD px a click: ALGO %u (most %u), SELECT %u (most %u), PRESET %u"
+               " (most %u), the toast's end %u (most %u)\n", runs, bad, (unsigned)(algo_px / (algo_n ? algo_n : 1u)), algo_max,
+               (unsigned)(sel_px / (sel_n ? sel_n : 1u)), sel_max, (unsigned)(pre_px / (pre_n ? pre_n : 1u)), pre_max,
+               (unsigned)(end_px / (end_n ? end_n : 1u)), end_max);
+        check("SELECT, ALGO and PRESET on every page of every factory patch, and the toast's end: the screen drawn whole, pixel"
+              " for pixel", runs > 200u && bad == 0u);
+        check("the toast's end: only its band drawn again", outside_toast == 0u && end_max <= 240u * (LK_TOH + 4u));
+    }
     check("every renderer waited (lcd_sync) before writing lcd.c's shared lcd_line: none wrote it under a transfer",
           lcd_line_clobbers == 0u);
+    {   /* a card row that sets several parameters and a Selector's named positions (#357, #358): golden.ts's card-rows kit
+         * (test-patches.ts cardRows): the voice's page is CUTOFF (both filters), RES (both), SOURCE (LOW HIGH RAW, 3 in use),
+         * COUNT */
+        FILE *f = fopen("build/golden/card-rows.m1p", "rb");
+        if (!f)
+            printf("skip  card rows: no build/golden/card-rows.m1p (tools/golden.sh writes it)\n");
+        else {
+            uint32_t d, mf, mg, ms, cut, res;
+            const ppage_t *pg;
+            const uint8_t *x;
+            uint32_t m, j;
+            int32_t v, was;
+            pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+            fclose(f);
+            check("card rows: the patch loads", eng_load(pv_bin, pv_len) == 0);
+            pv_gen++;
+            page = 0;
+            pg_list_btn = -1;
+            pages_ensure();
+            for (d = 0; d < pg_ndev && !(pg_dev[d].nlen == 5u && !memcmp(pg_dev[d].name, "voice", 5)); d++)
+                ;
+            check("card rows: the voice is a device", d < pg_ndev);
+            pages_focus(d, 0);
+            later(50);
+            pg = pages_now();
+            x = row_more(pg, 0);
+            check("card rows: its page has four rows; cutoff, res and source carry extras, count none",
+                  pg->nrows == 4u && x && x[0] == 1u && row_more(pg, 1) && row_more(pg, 2) && !row_more(pg, 3));
+            mf = pg->mod[0];
+            cut = pg->par[0];
+            mg = x[1];
+            res = pg->par[1];
+            ms = pg->mod[2];
+            check("card rows: the cutoff row's other parameter is the second filter's cutoff", x[2] == cut && mg != mf);
+            was = eng_get_param(mg, cut);
+            enc(2u, 4);                                     /* K1 */
+            check("card rows: K1 moves both filters' cutoff, to the same value",
+                  eng_get_param(mf, cut) != was && eng_get_param(mg, cut) == eng_get_param(mf, cut));
+            enc(3u, -3);                                    /* K2 */
+            check("card rows: K2 moves both resonances", eng_get_param(mg, res) == eng_get_param(mf, res) && eng_get_param(mf, res) != 26214);
+            pages_set_unit(0u, 0, &m, &j, &v);              /* MIDI CC 16 at 0: as main.c applies it */
+            eng_set_param(m, j, v);
+            pages_also(0u, v);
+            check("card rows: a MIDI CC on K1 moves both too", eng_get_param(mg, cut) == eng_get_param(mf, cut) && v == eng_get_param(mf, cut));
+            later(50);
+            check("card rows: SOURCE shows position 2 by its name, HIGH", eng_get_param(ms, 0) == (2 << 16) && on_screen("HIGH"));
+            enc(4u, 5);                                     /* K3, five clicks up: three positions in use */
+            later(50);
+            check("card rows: SOURCE stops at the last position in use, RAW", eng_get_param(ms, 0) == (3 << 16) && on_screen("RAW") && pages_cc(2u) == 127u);
+            enc(4u, -5);
+            later(50);
+            check("card rows: and at the first, LOW", eng_get_param(ms, 0) == (1 << 16) && on_screen("LOW") && pages_cc(2u) == 0u);
+            pages_set_unit(2u, 65536, &m, &j, &v);          /* MIDI CC 18 at 127: the last position in use */
+            check("card rows: CC 18 at its top is position 3", m == ms && v == (3 << 16));
+            enc(5u, 2);                                     /* K4: COUNT 3 -> 5 */
+            enc(4u, 9);
+            later(50);
+            check("card rows: with five in use SOURCE reaches 5, by its number (it has no name)",
+                  eng_get_param(ms, 0) == (5 << 16) && !on_screen("RAW") && !on_screen("HIGH"));
+            enc(4u, -3);                                    /* back to HIGH: PANEL_SNAP_ROWS=file.ppm shows the page */
+            later(50);
+            snap_to(getenv("PANEL_SNAP_ROWS"));
+        }
+    }
+    /* The panel's two recording entry points preview the same reverse step as playback. */
+    {
+        FILE *f = fopen("build/panel-fixtures/steps-direction-1-64.m1p", "rb");
+        check("direction fixture exists", f != 0);
+        if (f) {
+            uint32_t st, i, count;
+            int32_t l[128], r[128];
+            const uint32_t *notes;
+            uint32_t held = NW(63u, 4u, 90u, 100u, 0u);
+            pv_len = (uint32_t)fread(pv_bin, 1, sizeof pv_bin, f);
+            fclose(f);
+            check("format 44 loads a long note at the last step", eng_load(pv_bin, pv_len) == 0);
+            for (st = 0; st < E.nmod && E.node[st].type != T_STEPS; st++) ;
+            check("direction fixture has a track", st < E.nmod);
+            if (st < E.nmod) {
+                check("TRACK retains duration independently of start", eng_steps_set_notes(st, &held, 1u));
+                count = (uint32_t)eng_steps_notes(st, &notes);
+                check("a held reverse note retains all four steps", count == 1u && NW_AT(notes[0]) == 63u && NW_LEN(notes[0]) == 4u);
+                eng_set_param(0, FM1_P_TEMPO, 120 << 16);
+                eng_set_param(st, STEPS_P_LEN, 4 << 16);
+                eng_set_param(st, STEPS_P_RATE, 4 << 16);
+                eng_set_param(st, STEPS_P_SWING, 50 << 16);
+                eng_transport(1);
+                for (i = 0; i < 32u; i++) eng_render(l, r, 128);
+                check("reverse starts at the last step", eng_steps_pos(st) == 3);
+                check("panel hit records ahead at reverse step 3", eng_steps_hit(st, 0, 1) == 2);
+                check("panel drum hit records ahead at reverse step 3", eng_steps_hit_note(st, 61u, 0, 1) == 2);
+                for (i = 0; i < 24u; i++) eng_render(l, r, 128);
+                check("reverse reaches the recorded step next", eng_steps_pos(st) == 2);
+            }
+        }
+    }
+    {                                                       /* #395: the SEQ page arms what it shows, SEL on environment rows
+                                                             * layers, the last one out leaves the keys WIRED; SEL arming
+                                                             * another track ends a take */
+        int drums, pat, dd = -1, dp = -1;
+        uint32_t d;
+        foot_t f;
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+        if (eng_transport_running())
+            tap(BTN_PLAY);
+        (void)load("<7PH");                                  /* DRUMS, PATTERN */
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+        loop();
+        drums = eng_steps_module(0);
+        pat = eng_steps_module(1);
+        check("(<7PH loads with nothing armed: WIRED)", drums >= 0 && pat >= 0 && eng_arm_mask_get() == 0u);
+        seq_trk = 0;
+        tap(BTN_SEQ);
+        check("SEQ: the page arms the track it shows", page == PAGE_SEQ && seq_trk == 0u && eng_arm_mask_get() == (uint64_t)1 << drums);
+        check("  its track line: ARMED, then the ALGO hint where it fits", strstr(seq_grid_text[1], "  ARMED  ALGO: TRACK") != 0);
+        enc(1, 1);
+        check("ALGO there: the track it shows now armed, the one before disarmed", seq_trk == 1u && eng_arm_mask_get() == (uint64_t)1 << pat);
+        later(1500);
+        check("  its bar: PATTERN ARM", bar_shows("PATTERN ARM P01", C_ACC));
+        (void)load("<7PH");                                  /* another patch while the page shows (the editor's Send) */
+        pv_gen++;
+        loop();
+        check("another patch while the SEQ page shows: the track it shows armed again", page == PAGE_SEQ
+              && eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(seq_trk));
+        tap(BTN_SEQ);
+        eng_arm_mask(0);
+        pages_ensure();
+        for (d = 0; d < pg_ndev; d++) {
+            if (pg_dev[d].module == drums)
+                dd = (int)d;
+            if (pg_dev[d].module == pat)
+                dp = (int)d;
+        }
+        pages_focus((uint32_t)dd, 0);
+        loop();
+        tap(4);
+        check("(the environment on DRUMS' row)", page == PAGE_ENV && pg_cur_dev == (uint32_t)dd && dp >= 0);
+        tap(3);
+        pages_select(dp - dd);
+        loop();
+        tap(3);
+        check("SEL on two environment rows: both armed (a layer)", page == PAGE_ENV && pg_cur_dev == (uint32_t)dp
+              && eng_arm_mask_get() == ((uint64_t)1 << drums | (uint64_t)1 << pat) && env_armed((uint32_t)dd) && env_armed((uint32_t)dp));
+        pages_select(dd - dp);
+        loop();
+        tap(3);
+        check("SEL on the first again: only the second stays armed", eng_arm_mask_get() == (uint64_t)1 << pat && !strcmp(msg_text, "DRUMS DISARMED"));
+        pages_select(dp - dd);
+        loop();
+        tap(3);
+        check("SEL on the last one armed: nothing armed, the keys WIRED", eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+        tap(4);
+        later(1500);
+        printf("      (the footer: \"%s\" \"%s\")\n", (foot_layout(&f), f.a), f.w);
+        check("  the device page's footer: KEYS WIRED", page == 0u && (foot_layout(&f), !strcmp(f.w, "KEYS WIRED")) && on_screen("KEYS WIRED"));
+        pages_focus((uint32_t)dp, 0);                       /* a take on PATTERN, then SEL on DRUMS' page: DRUMS records instead */
+        loop();
+        tap(3);
+        tap(BTN_PLAY);
+        tap(BTN_REC);
+        check("(a take on PATTERN, the device page)", page == 0u && seq_rec && eng_armed() == pat && (E.trk_rec >> E.node[pat].trk & 1u));
+        pages_focus((uint32_t)dd, 0);
+        loop();
+        tap(3);
+        check("SEL on another track's page while recording: that track armed alone and recording, REC goes on", eng_arm_mask_get() == (uint64_t)1 << drums
+              && seq_rec && !(E.trk_rec >> E.node[pat].trk & 1u) && (E.trk_rec >> E.node[drums].trk & 1u));
+        tap(BTN_PLAY);
+        eng_arm_mask(0);
+        later(1500);
+    }
+
+    /* patterns and songs on the panel (#375, D-541, D-544): PRESET on the SEQ page picks the patch's pattern (at once while
+     * stopped, at the end of the pass while running; the bar shows both), SEL tapped opens the SONG page, its knobs edit
+     * the song, SEQ held + REC deletes an entry (asked first), SEL goes back; SEL held as the pen opens nothing */
+    {
+        int32_t l[128], r[128];
+        uint32_t i, told;
+        int mod;
+        eng_transport(0);
+        check("patterns fixture loads", load_fixture("build/panel-fixtures/steps-patterns.m1p") == 0);
+        pv_gen++;
+        eng_render(l, r, 128);
+        if (page != PAGE_SEQ)
+            page_set(PAGE_SEQ);
+        seq_select(0);
+        ui_dirty = 2;
+        loop();
+        mod = seq_module();
+        check("the SEQ bar shows the pattern (P01)", bar_shows("STEPS 1 ARM P01", C_ACC));
+        told = host_pattern_told;
+        enc(6, 1);
+        eng_render(l, r, 128);
+        later(1100);
+        check("PRESET on the SEQ page: pattern 2, at once while stopped, the editor told", eng_pattern() == 1
+              && eng_pattern_playing((uint32_t)mod) == 1 && host_pattern_told == told + 1u);
+        check("  the bar: P02; the page: its own length (5 steps)", bar_shows("STEPS 1 ARM P02", C_ACC) && seq_len(mod) == 5);
+        eng_transport(1);
+        for (i = 0; i < 4u; i++)
+            eng_render(l, r, 128);
+        enc(6, 1);
+        later(1100);
+        check("running: pattern 3 waits for the end of the track's pass", eng_pattern() == 2 && eng_pattern_playing((uint32_t)mod) == 1
+              && eng_pattern_queued((uint32_t)mod) == 2);
+        check("  the bar: P02>P03", bar_shows("STEPS 1 ARM P02>P03", C_ACC));
+        for (i = 0; i < 800u && eng_pattern_playing((uint32_t)mod) != 2; i++)
+            eng_render(l, r, 128);
+        loop();
+        check("  at the end of the pass: P03 (its own length, 12 steps)", eng_pattern_playing((uint32_t)mod) == 2
+              && bar_shows("STEPS 1 ARM P03", C_ACC) && seq_len(mod) == 12);
+        eng_transport(0);
+        eng_render(l, r, 128);
+        tap(BTN_SEL);
+        check("SEL tapped on the SEQ page: the SONG page, song 1, empty (END)", page == PAGE_SONG && song_sel == 0 && song_len() == 0
+              && on_screen("END"));
+        told = host_song_told;
+        enc(2, 1);
+        check("K1 on END: an entry of the selected pattern, the editor told", song_len() == 1 && (eng_song_get(0, 0) & 0xFF) == 2
+              && host_song_told == told + 1u);
+        enc(2, 2);
+        enc(3, -3);
+        check("K1: its pattern, K2: its shift", eng_song_get(0, 0) == (4 | (0xFD << 8)) && on_screen("01  P05  -3"));
+        panel_held |= 1u << BTN_ACC;
+        enc(2, 1);
+        panel_held &= ~(1u << BTN_ACC);
+        check("FX + K1: a copy of it inserted before it", song_len() == 2 && eng_song_get(0, 1) == eng_song_get(0, 0));
+        enc(5, 1);
+        check("K4 right: the song plays", eng_song() == 1);
+        snap_to(getenv("PANEL_SNAP_SONG"));
+        enc(5, -1);
+        check("K4 left: the pattern plays again", eng_song() == 0);
+        enc(1, 1);
+        check("ALGO: song 2 (empty)", song_sel == 1 && song_len() == 0);
+        enc(1, -1);
+        panel_held |= 1u << BTN_SEQ;
+        panel_edges(1u << BTN_SEQ, 0);
+        panel_held |= 1u << BTN_REC;
+        panel_edges(1u << BTN_REC, 0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("SEQ held + REC on the SONG page: it asks first", song_len() == 2 && song_del_at != 0u);
+        panel_held |= 1u << BTN_REC;
+        panel_edges(1u << BTN_REC, 0);
+        panel_held &= ~(1u << BTN_REC);
+        panel_edges(0, 1u << BTN_REC);
+        loop();
+        check("  REC again: the entry deleted", song_len() == 1);
+        panel_held &= ~(1u << BTN_SEQ);
+        panel_edges(0, 1u << BTN_SEQ);
+        loop();
+        check("  SEQ let go: the SONG page stays", page == PAGE_SONG);
+        tap(BTN_SEL);
+        check("SEL on the SONG page: back to the SEQ page", page == PAGE_SEQ);
+        panel_held |= 1u << BTN_SEL;
+        panel_edges(1u << BTN_SEL, 0);
+        panel_keys(1u << 5);
+        panel_keys(0);
+        panel_held &= ~(1u << BTN_SEL);
+        panel_edges(0, 1u << BTN_SEL);
+        loop();
+        check("SEL held with a key (the pen): its release opens nothing", page == PAGE_SEQ);
+        enc(6, -2);
+        eng_render(l, r, 128);
+        check("PRESET back to pattern 1", eng_pattern() == 0 && eng_pattern_playing((uint32_t)mod) == 0);
+    }
+    {   /* The SEQ page drawn whole: once when SEQ opens it from a Steps track's device page (seq_select drew it a second
+         * time after page_show, and the device page's header before it), and its ground cleared around the cells only
+         * (seq_grid_ground): pixel for pixel the page drawn over a ground cleared whole first, from any screen */
+        static uint16_t ref[240 * 240];
+        static int32_t l[128], r[128];
+        uint32_t i, d, t, seq_px = 0, bad = 0;
+        check("(ELVIRA 2 for the SEQ page's whole draws)", load("ELVIRA 2") == 0);
+        pv_gen++;
+        trail_n = 0;
+        page_show(0);
+        screen_patch();
+        later(2000);
+        if (!eng_transport_running())
+            tap(BTN_PLAY);
+        for (d = 0; d < 12u && pages_focus_track() < 0; d++) {
+            enc(0, 1);
+            later(400);
+        }
+        check("(a Steps track's device page)", page == 0u && pages_focus_track() >= 0);
+        lcd_px = lcd_xfers = 0;
+        tap(BTN_SEQ);
+        printf("      SEQ from a Steps track's device page: %u px in %u transfers\n", (unsigned)lcd_px, (unsigned)lcd_xfers);
+        check("SEQ from a Steps track's device page: the SEQ page drawn once (under 1.5 screens of pixels)",
+              page == PAGE_SEQ && lcd_px < 240u * 240u * 3u / 2u);
+        for (t = 0; t < (uint32_t)eng_steps_count(); t++) {
+            for (i = 0; i < 20u; i++)
+                eng_render(l, r, 128);
+            for (i = 0; i < 240u * 240u; i++)
+                fb[i] = (uint16_t)(i * 2654435761u >> 7);
+            lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+            seq_draw(1);
+            memcpy(ref, fb, sizeof ref);
+            for (i = 0; i < 240u * 240u; i++)
+                fb[i] = (uint16_t)(i * 2654435761u >> 7);
+            lcd_px = 0;
+            seq_draw(1);
+            seq_px = lcd_px;
+            bad += memcmp(ref, fb, sizeof ref) != 0;
+            enc(1, 1);                                      /* ALGO: the next track */
+        }
+        printf("      the SEQ page whole: %u px (the ground cleared whole and the cells over it alone were %u)\n",
+               (unsigned)seq_px, (unsigned)(240u * (240u - BAR_H) + 128u * GRID_CW * GRID_CH));
+        check("the SEQ page whole, each track: the same pixels as over a ground cleared whole", bad == 0u);
+        check("  fewer of them than the ground cleared whole and the cells over it",
+              seq_px < 240u * (240u - BAR_H) + 128u * GRID_CW * GRID_CH);
+        {                                                   /* page_show clears only what the page leaves (the menu, SEQ and
+                                                             * SONG clear their own; ENV's rows are edge to edge) */
+            static const uint8_t PG[4] = {PAGE_ENV, PAGE_MENU, PAGE_SEQ, PAGE_SONG};
+            bad = 0;
+            for (t = 0; t < 4u; t++) {
+                for (i = 0; i < 240u * 240u; i++)
+                    fb[i] = (uint16_t)(i * 2654435761u >> 7);
+                lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
+                page_show(PG[t]);
+                memcpy(ref, fb, sizeof ref);
+                for (i = 0; i < 240u * 240u; i++)
+                    fb[i] = (uint16_t)(i * 2654435761u >> 7);
+                page_show(PG[t]);
+                bad += memcmp(ref, fb, sizeof ref) != 0;
+            }
+            page_show(0);
+            check("ENV, the menu, SEQ and SONG opened over any screen: as over one cleared first", bad == 0u);
+        }
+        tap(BTN_PLAY);
+    }
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;
 }

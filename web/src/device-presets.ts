@@ -4,9 +4,9 @@
 // kept in the browser (localStorage `matryoshka.presets`); factory ones (#193) come with the app, read-only (storing over
 // one makes a new one). A patch remembers which preset each assembly was set to (AssemblyInst.preset), for display only:
 // the patch plays its own values. Not the A/B snapshot, not a patch (a patch is the whole stored thing).
-import { type AssemblyInst } from './assembly';
+import { tiedTo, type AssemblyInst } from './assembly';
 import { DEFS } from './modules';
-import type { Patch } from './patch';
+import { topOf, type Patch } from './patch';
 import { rowOrder, structureOf } from './structure';
 
 export interface Preset {
@@ -25,9 +25,21 @@ const STORE = 'matryoshka.presets';
 /** a preset name's length at most (the FM-1 shows 8 characters of it) */
 export const PRESET_NAME_MAX = 24;
 
-/** the factory presets: set by factory-presets.ts (#193) */
-let factory: Preset[] = [];
-export const setFactoryPresets = (list: Preset[]): void => void (factory = list.map((p) => ({ ...p, factory: true })));
+/** the factory presets: set by factory-presets.ts (#193), as a list or as a function that gives a structure's (called when a
+ * structure's factory presets are first asked for, so the page does not work them all out as it loads) */
+let factorySource: Preset[] | ((structure: string) => Preset[]) = [];
+let factoryMade = new Map<string, Preset[]>();
+export const setFactoryPresets = (list: Preset[] | ((structure: string) => Preset[])): void => void ((factorySource = list), (factoryMade = new Map()));
+/** a structure's factory presets, in their own order (Init first) */
+function factoryFor(structure: string): Preset[] {
+  let out = factoryMade.get(structure);
+  if (!out) {
+    const src = factorySource;
+    out = (typeof src === 'function' ? src(structure) : src.filter((p) => p.structure === structure)).map((p) => ({ ...p, factory: true as const }));
+    factoryMade.set(structure, out);
+  }
+  return out;
+}
 
 /** preset names are one name whatever their case (the FM-1 shows and stores capitals: BRIGHT 2 is Bright 2) */
 export const sameName = (a: string | undefined, b: string | undefined): boolean => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -66,7 +78,7 @@ function writeUser(list: Preset[]): void {
 /** the presets of a structure: factory first (in their own order, Init first), then the user's by name */
 export function presetsFor(structure: string): Preset[] {
   const by = (a: Preset, b: Preset): number => a.name.localeCompare(b.name, undefined, { numeric: true });
-  return [...factory.filter((p) => p.structure === structure), ...userPresets().filter((p) => p.structure === structure).sort(by)];
+  return [...factoryFor(structure), ...userPresets().filter((p) => p.structure === structure).sort(by)];
 }
 
 /** the presets an assembly can load */
@@ -77,16 +89,18 @@ export function currentValues(p: Patch, a: AssemblyInst): number[] {
   return rowOrder(p, a).map((r) => p.modules.find((m) => m.id === r.module)?.params[r.param] ?? 0);
 }
 
-/** load a preset into an assembly: its card rows take the preset's values (clamped to each parameter's range); the
- * assembly remembers its name. False when it does not fit (another structure). */
+/** load a preset into an assembly: its card rows take the preset's values (clamped to each parameter's range), every
+ * parameter a row sets (#357) too; the assembly remembers its name. False when it does not fit (another structure). */
 export function applyPreset(p: Patch, a: AssemblyInst, preset: Preset): boolean {
   if (preset.structure !== structureOf(p, a)) return false;
   const rows = rowOrder(p, a);
   if (rows.length !== preset.values.length) return false;
   rows.forEach((r, i) => {
-    const m = p.modules.find((x) => x.id === r.module);
-    const pd = m && DEFS[m.type]?.params.find((d) => d.name === r.param);
-    if (m && pd) m.params[r.param] = Math.min(pd.max, Math.max(pd.min, preset.values[i]));
+    for (const t of tiedTo(p, r.module, r.param)) {
+      const m = p.modules.find((x) => x.id === t.module);
+      const pd = m && DEFS[m.type]?.params.find((d) => d.name === t.param);
+      if (m && pd) m.params[t.param] = Math.min(topOf(pd), Math.max(pd.min, preset.values[i]));
+    }
   });
   a.preset = preset.name;
   return true;
@@ -106,7 +120,7 @@ export function matchesPreset(p: Patch, a: AssemblyInst): boolean {
 export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
   const structure = structureOf(p, a);
   let n = fixName(name) || 'preset';
-  const taken = (x: string): boolean => factory.some((f) => f.structure === structure && sameName(f.name, x));
+  const taken = (x: string): boolean => factoryFor(structure).some((f) => sameName(f.name, x));
   for (let k = 2; taken(n); k++) n = `${fixName(name).slice(0, PRESET_NAME_MAX - 3)} ${k}`;
   const list = userPresets().filter((x) => !(x.structure === structure && sameName(x.name, n)));
   list.push({ structure, name: n, values: currentValues(p, a) });
@@ -120,7 +134,7 @@ export function storePreset(p: Patch, a: AssemblyInst, name: string): string {
  * style (INIT 2 -> Init 2). False when a factory one has that name. Returns the name it is stored under */
 export function addUserPreset(structure: string, name: string, values: number[]): string | false {
   let n = fixName(name);
-  if (!n || factory.some((f) => f.structure === structure && sameName(f.name, n))) return false;
+  if (!n || factoryFor(structure).some((f) => sameName(f.name, n))) return false;
   const users = userPresets();
   const had = users.find((x) => x.structure === structure && sameName(x.name, n));
   if (had) n = had.name;

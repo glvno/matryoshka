@@ -26,6 +26,7 @@ on:
       - web/src/engine.ts
       - web/src/fallback.ts
       - web/src/labels.ts
+      - web/src/rate-envelope.ts
       - web/src/modules.ts
       - web/src/parameter-routing.ts
       - web/src/patch.ts
@@ -148,4 +149,19 @@ jobs:
           path: |
             build/matryoshka.elf
             build/matryoshka.dis
+          if-no-files-found: error
+      - name: the emulator bridge's build (M1_EMU_MIDI=1, never installed; docs/EMULATOR.md, #290)
+        run: |
+          export JIELI_TOOLCHAIN="$HOME/.jieli/toolchain" AC79_SDK="$HOME/.jieli/ac79-sdk"
+          sha256sum build/matryoshka.bin | tee build/normal.sha256
+          M1_EMU_MIDI=1 python3 tools/build.py 2>&1 | tee build/build-emu.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -E "warning:" build/build-emu.log | grep -v "SDK .* differs"; then echo "::error::compiler warnings (M1_EMU_MIDI=1)"; exit 1; fi
+          mkdir -p build/emu-midi
+          cp build/matryoshka.bin build/emu-midi/matryoshka-emu.bin
+          cp build/matryoshka.elf build/emu-midi/matryoshka-emu.elf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: matryoshka-emu-midi
+          path: build/emu-midi/
           if-no-files-found: error

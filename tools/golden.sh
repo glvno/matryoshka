@@ -14,10 +14,11 @@ mkdir -p build
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/host_test firmware/test/host_test.c -lm
 gcc -O1 -Wall -Wextra -Wno-unused-parameter -Wno-unused-result $CF -o build/proto_test firmware/test/proto_test.c -lm
 fail=0
-build/proto_test build/golden/acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx build/golden/steps-kit.m1p || fail=1
+build/proto_test build/golden/acid.m1p build/golden/proto.syx $(cat build/golden/proto.args) build/golden/proto-slot.syx build/golden/steps-kit.m1p build/golden/proto-sandbox.syx build/golden/steps-patterns.m1p build/golden/steps-song.m1p || fail=1
 for p in build/golden/*.m1p; do
   n="${p%.m1p}"
-  out="$(build/host_test "$p" "$n.ev" "$n.f32")" || { echo "FAIL $(basename "$n"): $out"; fail=1; continue; }
+  par=""; [ -f "$n.par" ] && par="$n.par"
+  out="$(build/host_test "$p" "$n.ev" "$n.f32" $par)" || { echo "FAIL $(basename "$n"): $out"; fail=1; continue; }
   err="$(echo "$out" | sed 's/.*rel_rms \([0-9.]*\).*/\1/')"
   if awk "BEGIN{exit !($err > $TOL)}"; then echo "FAIL $(basename "$n"): $out"; fail=1; else echo "ok   $(basename "$n"): $out"; fi
 done

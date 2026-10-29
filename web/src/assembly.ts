@@ -23,8 +23,10 @@ import {
   type ModuleDef,
   type ModuleInst,
   type Patch,
+  type ParamDef,
   type PolyCards,
   rowDef,
+  topOf,
 } from './patch';
 import { isPin } from './parameter-routing';
 import { migrateParts, oscDrift, takeDrift } from './poly';
@@ -47,12 +49,83 @@ export interface ParamRef {
   col?: true;
   /** a heading above this row on the collapsed card */
   head?: string;
-  /** a new group (one FM-1 page, pages.ts `groupStarts`) starts at this row, before the four of the last one are full */
+  /** a new group (one FM-1 page, pages.ts `groupStarts`) starts at this row, before the four of the last one are full:
+   * a page break the user set (Arrange mode shows it with a ×) */
   group?: true;
+  /** a group starts at this row because Arrange mode kept the pages around a move as they were (arrange.ts pinPages): a
+   * start like `group`, but not one the user set, so it has no × */
+  pin?: true;
   /** a display on this row reaches across this many columns of the collapsed card, its own and those to its right (2..;
    * see `spanPlan`; cut short where the card has fewer columns or another span is in the way) */
   span?: number;
+  /** further parameters the row sets (#357, like `PortRef.also`): turning the row moves every one of them to the same
+   * value, the card shows the first's. Each has the same range as the first (`sameRange`); a cable or a macro on the row
+   * reaches all of them, and so do card presets, the morph and the FM-1's device page */
+  also?: RowTarget[];
+  /** names of a Selector's positions (#358), position 1 first: the row is a row of named choices on the card, on the
+   * Selector's own card and on the FM-1. Only on a Selector's `pos` row; ROW_NAMES_MAX names of ROW_NAME_MAX characters */
+  names?: string[];
+  /** this row starts copies of the same controls, shown one at a time (`RowCopies`): layout only */
+  copies?: RowCopies;
 }
+
+/**
+ * Copies of the same controls that the original instrument edits one at a time (D-347 amended: the Casio CZ's eight
+ * envelope steps, each a rate and a level, picked with a step select): the row that carries it and the rows after it,
+ * `count` copies of `rows` rows each, in order. The collapsed card shows one copy, picked on a row of its own named
+ * `name` ("step"), and the FM-1 starts each copy on a new page, so ALGO steps through them. Layout only, like a heading:
+ * every row stays a row (presets, the morph, cables and the binary see them all). A run broken by a heading, a column
+ * break or a missing row is shown as plain rows (`copyRuns`).
+ */
+export interface RowCopies { rows: number; count: number; name?: string }
+/** the most rows a copy has (up to four FM-1 pages) and the most copies */
+export const COPY_ROWS_MAX = 16;
+export const COPIES_MAX = 16;
+
+/** a parameter a card row sets */
+export interface RowTarget { module: number; param: string }
+
+/** the most position names a row keeps (a Selector's positions, modules.ts SELECT_N) and their longest (the FM-1's
+ * NAME_MAX, pages.ts) */
+export const ROW_NAMES_MAX = 8;
+export const ROW_NAME_MAX = 12;
+
+/** a row's parameters: the first, then the ones it also sets */
+export const rowTargets = (r: ParamRef): RowTarget[] => [{ module: r.module, param: r.param }, ...(r.also ?? [])];
+const sameTarget = (a: RowTarget, b: RowTarget): boolean => a.module === b.module && a.param === b.param;
+
+/** two parameters one row can set together: the same range, step, curve, unit and choices (a value of one is a value of
+ * the other, on the FM-1 too) */
+export function sameRange(a: ParamDef, b: ParamDef): boolean {
+  return a.min === b.min && a.max === b.max && topOf(a) === topOf(b) && (a.step ?? 0) === (b.step ?? 0) && !!a.log === !!b.log
+    && !!a.bend === !!b.bend && !!a.toggle === !!b.toggle && (a.unit ?? '') === (b.unit ?? '')
+    && (a.choices ?? []).join('\n') === (b.choices ?? []).join('\n') && !a.screen && !b.screen;
+}
+
+/** the extras of a promoted parameter from a file: the further targets and the position names, each only when well formed */
+function rowExtras(r: Record<string, unknown>): Pick<ParamRef, 'also' | 'names'> {
+  const out: Pick<ParamRef, 'also' | 'names'> = {};
+  if (Array.isArray(r.also)) {
+    const also = r.also.flatMap((t: unknown) => (isRec(t) && Number.isInteger(Number(t.module)) && typeof t.param === 'string' ? [{ module: Number(t.module), param: t.param }] : []));
+    if (also.length) out.also = also;
+  }
+  const names = fixNames(r.names);
+  if (names) out.names = names;
+  return out;
+}
+
+/** position names as a row keeps them: trimmed, cut to ROW_NAME_MAX, at most ROW_NAMES_MAX, none empty at the end;
+ * undefined when none is left */
+export function fixNames(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const names = raw.slice(0, ROW_NAMES_MAX).map((x) => (typeof x === 'string' ? x.trim().slice(0, ROW_NAME_MAX).trim() : ''));
+  while (names.length && !names[names.length - 1]) names.pop();
+  return names.length ? names : undefined;
+}
+
+/** a heading with no rows on an assembly card (Arrange mode keeps it, arrange.ts): it sits before the section that the
+ * row (module, param) opens, or with `after` after the last row of that row's column. The FM-1 has no page for it. */
+export interface EmptyHead { head: string; module: number; param: string; after?: true }
 
 /** the longest heading kept */
 const HEAD_MAX = 40;
@@ -62,10 +135,17 @@ const SPAN_MAX = 16;
 
 /** the layout fields of a promoted parameter from a file: a column break, a heading, a group start and a span, each only
  * when well formed */
-function rowLayout(r: Record<string, unknown>): Pick<ParamRef, 'col' | 'head' | 'group' | 'span'> {
-  const out: Pick<ParamRef, 'col' | 'head' | 'group' | 'span'> = {};
+function rowLayout(r: Record<string, unknown>): Pick<ParamRef, 'col' | 'head' | 'group' | 'pin' | 'span' | 'copies'> {
+  const out: Pick<ParamRef, 'col' | 'head' | 'group' | 'pin' | 'span' | 'copies'> = {};
+  const c = isRec(r.copies) ? r.copies : undefined;
+  if (c && Number.isInteger(c.rows) && Number.isInteger(c.count)) {
+    const rows = c.rows as number, count = c.count as number;
+    const name = typeof c.name === 'string' ? c.name.trim().slice(0, ROW_NAME_MAX).trim() : '';
+    if (rows >= 1 && rows <= COPY_ROWS_MAX && count >= 2 && count <= COPIES_MAX) out.copies = { rows, count, ...(name ? { name } : {}) };
+  }
   if (r.col === true) out.col = true;
   if (r.group === true) out.group = true;
+  else if (r.pin === true) out.pin = true;
   const head = typeof r.head === 'string' ? r.head.trim().slice(0, HEAD_MAX) : '';
   if (head) out.head = head;
   if (Number.isInteger(r.span) && (r.span as number) >= 2) out.span = Math.min(r.span as number, SPAN_MAX);
@@ -74,8 +154,8 @@ function rowLayout(r: Record<string, unknown>): Pick<ParamRef, 'col' | 'head' | 
 
 /** a column break or group start on the first row means nothing: drop them */
 function tidyRows(list: ParamRef[]): ParamRef[] {
-  if (list[0]?.col || list[0]?.group) {
-    const { col: _, group: _g, ...rest } = list[0];
+  if (list[0]?.col || list[0]?.group || list[0]?.pin) {
+    const { col: _, group: _g, pin: _p, ...rest } = list[0];
     list[0] = rest;
   }
   return list;
@@ -87,166 +167,43 @@ function tidyRows(list: ParamRef[]): ParamRef[] {
  * after it they go too.
  */
 export function keepParams(list: ParamRef[], keep: (r: ParamRef) => boolean): ParamRef[] {
+  // a run of copies that loses a row is plain rows again (its copies would no longer line up)
+  const broken = new Set<ParamRef>();
+  list.forEach((r, i) => {
+    if (r.copies && list.slice(i, i + r.copies.rows * r.copies.count).some((x) => !keep(x))) broken.add(r);
+  });
+  if (broken.size) list = list.map((r) => { if (!broken.has(r)) return r; const { copies: _, ...rest } = r; return rest; });
   const out: ParamRef[] = [];
   let col = false;
   let group = false;
+  let pin = false;
   let head: string | undefined;
   let span: number | undefined;
   for (const r of list) {
     if (!keep(r)) {
       col ||= !!r.col;
       group ||= !!r.group;
+      pin ||= !!r.pin;
       if (r.head) head = r.head;
       if (r.span) span = r.span;
       continue;
     }
-    if (col || group || head || span) {
+    if (col || group || pin || head || span) {
       const n: ParamRef = { ...r };
       if (col) n.col = true;
       if (group) n.group = true;
+      else if (pin && !n.group) n.pin = true;
       if (head && !n.head) n.head = head;
       if (span && !n.span) n.span = span;
       out.push(n);
       col = false;
       group = false;
+      pin = false;
       head = undefined;
       span = undefined;
     } else out.push(r);
   }
   return tidyRows(out);
-}
-
-/**
- * Move the promoted parameter at `from` next to the one at `to`: before it, where it takes over that row's place (the
- * top of a column or section stays the top: the moved row goes under the heading), or after it.
- */
-export function moveParam(list: ParamRef[], from: number, to: number, after: boolean): ParamRef[] {
-  if (from === to || !list[from] || !list[to]) return list;
-  const moving = list[from];
-  const target = list[to];
-  const same = (a: ParamRef, b: ParamRef): boolean => a.module === b.module && a.param === b.param;
-  const rest = keepParams(list, (r) => r !== moving);
-  const i = rest.findIndex((r) => same(r, target));
-  const { col: _c, head: _h, group: _g, span: _s, ...plain } = moving;
-  if (after) rest.splice(i + 1, 0, plain);
-  else {
-    const { col, head, group, span, ...was } = rest[i];
-    rest.splice(i, 1, { ...plain, ...(col ? { col } : {}), ...(head ? { head } : {}), ...(group ? { group } : {}), ...(span ? { span } : {}) }, was);
-  }
-  return tidyRows(rest);
-}
-
-/**
- * Move several promoted parameters (`picked`, indices into `list`) as one block next to the row at `to` (not one of them),
- * before or after it (#186). The block keeps its rows' order and their own headings, group flags, spans and the column
- * breaks inside it, so a block that spans a column break still does. Its first row's column break stays where it was:
- * the next row left there takes it. Dropped before a row, the block takes that row's column break (the top of a column
- * stays the top), and, when its first row has no heading or group flag of its own, that row's heading and group flag too
- * (it goes under the heading, as one row does); otherwise the row keeps them and the block goes before it.
- */
-export function moveBlock(list: ParamRef[], picked: readonly number[], to: number, after: boolean): ParamRef[] {
-  const set = new Set(picked.filter((i) => list[i]));
-  if (!set.size || set.has(to) || !list[to]) return list;
-  const idx = [...set].sort((x, y) => x - y);
-  const block = idx.map((i) => ({ ...list[i] }));
-  let handCol = !!block[0].col;
-  delete block[0].col;
-  const rest: ParamRef[] = [];
-  const restIdx: number[] = [];
-  list.forEach((r, i) => {
-    if (set.has(i)) return;
-    if (handCol && i > idx[0]) {
-      rest.push(r.col ? r : { ...r, col: true });
-      handCol = false;
-    } else rest.push(r);
-    restIdx.push(i);
-  });
-  const k = restIdx.indexOf(to);
-  if (after) rest.splice(k + 1, 0, ...block);
-  else {
-    const t = { ...rest[k] };
-    if (t.col) {
-      block[0].col = true;
-      delete t.col;
-    }
-    if (!block[0].head && !block[0].group && (t.head || t.group)) {
-      if (t.head) block[0].head = t.head;
-      if (t.group) block[0].group = true;
-      delete t.head;
-      delete t.group;
-    }
-    rest.splice(k, 1, ...block, t);
-  }
-  return tidyRows(rest);
-}
-
-/** the rows of the section whose heading is on row `i` (up to the next heading), or [] when row `i` has none */
-export function sectionRows(list: ParamRef[], i: number): number[] {
-  if (!list[i]?.head) return [];
-  const out = [i];
-  for (let j = i + 1; j < list.length && !list[j].head; j++) out.push(j);
-  return out;
-}
-
-/** the rows of the group (one FM-1 page) that starts at row `i`, given where groups start (`starts[j]` per row of the
- * list; a row no group counts, such as one set from the screen, is false), or [] when no group starts there */
-export function groupRows(starts: readonly boolean[], i: number): number[] {
-  if (!starts[i]) return [];
-  const out = [i];
-  for (let j = i + 1; j < starts.length && !starts[j]; j++) out.push(j);
-  return out;
-}
-
-/**
- * Where a dragged section (`rows` from `sectionRows`; boundaries at headings) or group (from `groupRows`, with its
- * `starts`) may land (#186): before a row that starts one, or after the row before such a row or after the last row.
- * Never inside the rows it moves or right next to them (that would change nothing), and a section never above the rows
- * before the first heading.
- */
-export function blockDropOk(list: ParamRef[], rows: readonly number[], to: number, after: boolean, starts?: readonly boolean[]): boolean {
-  if (!rows.length || !list[to] || rows.includes(to)) return false;
-  const slot = after ? to + 1 : to;
-  // a section never goes above rows that have no heading: they would join it
-  const boundary = slot === list.length || (starts ? slot === 0 || !!starts[slot] : !!list[slot].head);
-  return boundary && slot !== rows[0] && slot !== rows[rows.length - 1] + 1;
-}
-
-/** move a whole section (`rows` from `sectionRows`) to a place `blockDropOk` allows */
-export function moveSection(list: ParamRef[], rows: readonly number[], to: number, after: boolean): ParamRef[] {
-  return blockDropOk(list, rows, to, after) ? moveBlock(list, rows, to, after) : list;
-}
-
-/**
- * Move a whole group (one FM-1 page, `rows` from `groupRows`) to a place `blockDropOk` allows. The pages around it stay
- * as they were: the group's first row, the row after it and the row it lands against get a group flag where they
- * started a group only because the group before them was full. Before a row with a heading it goes under the heading.
- * A section's first page leaves its heading to the section's next page, if it has one: one page moves, not the section.
- */
-export function moveGroup(list: ParamRef[], rows: readonly number[], starts: readonly boolean[], to: number, after: boolean): ParamRef[] {
-  if (!blockDropOk(list, rows, to, after, starts)) return list;
-  const out = list.map((r) => ({ ...r }));
-  const pin = (j: number): void => {
-    if (out[j] && starts[j] && !out[j].head && !out[j].group) out[j].group = true;
-  };
-  // the first page of a section with more pages: the heading stays with the pages left, the page goes alone
-  const first = out[rows[0]];
-  const next = out[rows[rows.length - 1] + 1];
-  if (first.head && next && !next.head) {
-    next.head = first.head;
-    delete next.group;
-    delete first.head;
-  }
-  pin(rows[0]);
-  pin(rows[rows.length - 1] + 1);
-  pin(after ? to + 1 : to);
-  // before a section's first row: under its heading, as the section's first page (that row starts the next one)
-  if (!after && out[to].head && !out[rows[0]].head) {
-    out[rows[0]].head = out[to].head;
-    delete out[rows[0]].group;
-    delete out[to].head;
-    out[to].group = true;
-  }
-  return moveBlock(out, rows, to, after);
 }
 
 /** a parameter row of a member card, as pick mode selects it */
@@ -260,14 +217,11 @@ export function pickState(a: AssemblyInst, rows: readonly PickRow[]): 'all' | 'n
 
 /** one action on several rows in pick mode (#186): if any is off the card they all go on (the new ones in the given
  * order), if all are on they all come off. False when there are no rows */
-export function pickRows(a: AssemblyInst, rows: readonly PickRow[]): boolean {
+export function pickRows(a: AssemblyInst, rows: readonly PickRow[], p?: Patch): boolean {
   if (!rows.length) return false;
   const off = rows.filter((r) => !isPromoted(a, r.module, r.param));
-  if (off.length) for (const r of off) promote(a, r.module, r.param);
-  else {
-    const gone = new Set(rows.map((r) => `${r.module}:${r.param}`));
-    a.params = keepParams(a.params, (r) => !gone.has(`${r.module}:${r.param}`));
-  }
+  if (off.length) for (const r of off) promote(a, r.module, r.param, p);
+  else for (const r of rows) demote(a, r.module, r.param);
   return true;
 }
 
@@ -286,14 +240,6 @@ export function setColumnBreak(list: ParamRef[], i: number, on: boolean): void {
   if (!r) return;
   if (on && i > 0) r.col = true;
   else delete r.col;
-}
-
-/** start a new group (FM-1 page) at row `i` (not the first), or let the groups fill in fours again there */
-export function setGroupBreak(list: ParamRef[], i: number, on: boolean): void {
-  const r = list[i];
-  if (!r) return;
-  if (on && i > 0) r.group = true;
-  else delete r.group;
 }
 
 /** the heading above row `i`; an empty text removes it */
@@ -416,6 +362,8 @@ export interface AssemblyInst extends AssemblyLayout {
   inputs: PortRef[];
   outputs: PortRef[];
   params: ParamRef[];
+  /** headings with no rows (Arrange mode, arrange.ts) */
+  heads?: EmptyHead[];
   /** the group switch is off: every member module is bypassed (editor only, like the rest of the overlay) */
   bypass?: boolean;
   /** with `bypass`: the members that were bypassed on their own before the group went off; they stay off when it comes back */
@@ -440,6 +388,7 @@ export interface NestedDef extends AssemblyLayout {
   inputs: PortRef[];
   outputs: PortRef[];
   params: ParamRef[];
+  heads?: EmptyHead[];
   poly?: PolyCards;
 }
 
@@ -461,6 +410,7 @@ export interface AssemblyDef extends AssemblyLayout {
   inputs: PortRef[];
   outputs: PortRef[];
   params: ParamRef[];
+  heads?: EmptyHead[];
   /** the top level's direct children (ids in `assemblies`); modules not claimed by a nested assembly are its direct members */
   children?: number[];
   assemblies?: NestedDef[];
@@ -586,8 +536,14 @@ export function isExposed(a: AssemblyInst, dir: 'in' | 'out', module: number, po
   return !!findRef(a, dir, module, port);
 }
 
+/** whether the card has a row that sets this parameter (as its first or one it also sets, #357) */
 export function isPromoted(a: AssemblyInst, module: number, param: string): boolean {
-  return a.params.some((r) => r.module === module && r.param === param);
+  return !!rowOf(a, module, param);
+}
+
+/** the card row that sets this parameter (as its first or one it also sets) */
+export function rowOf(a: AssemblyInst, module: number, param: string): ParamRef | undefined {
+  return a.params.find((r) => (r.module === module && r.param === param) || !!r.also?.some((t) => t.module === module && t.param === param));
 }
 
 /** the cables that cross the assembly's boundary */
@@ -628,8 +584,8 @@ export function pinsToParams(inputs: PortRef[], params: ParamRef[], moduleOf: (i
   return out;
 }
 
-const promoteOnce = (params: ParamRef[], m: ModuleInst, param: string): void => {
-  if (!params.some((q) => q.module === m.id && q.param === param)) params.push({ module: m.id, param, label: longName(m.type, param) });
+const promoteOnce = (params: ParamRef[], m: ModuleInst, param: string, label?: string): void => {
+  if (!params.some((q) => rowTargets(q).some((t) => t.module === m.id && t.param === param))) params.push({ module: m.id, param, label: label ?? longName(m.type, param) });
 };
 
 /** the inner ports with a cable to or from outside: the ports an assembly must expose */
@@ -692,6 +648,42 @@ function reachableParam(p: Patch, a: AssemblyInst, module: number, param: string
 }
 
 /**
+ * The card's rows with their further targets checked (#357): a target that is gone, not reachable, set from a screen, a
+ * Voice allocator's, another row's or of another range than the row's first goes; a row whose first is gone is led by
+ * the next target that stays. Position names stay on a Selector's `pos` row only (#358). The rows themselves are checked
+ * by the caller.
+ */
+function cleanRows(p: Patch, a: AssemblyInst, member: Set<number>, defs?: Record<string, ModuleDef>): ParamRef[] {
+  if (!a.params.some((r) => r.also || r.names)) return a.params;
+  const typeOf = (id: number): string | undefined => p.modules.find((m) => m.id === id)?.type;
+  const pdOf = (t: RowTarget): ParamDef | undefined => { const ty = typeOf(t.module); return ty && defs?.[ty] ? rowDef(defs[ty], t.param) : undefined; };
+  const ok = (t: RowTarget): boolean => member.has(t.module) && (!defs || (!!pdOf(t) && !pdOf(t)!.onScreen && typeOf(t.module) !== 'alloc')) && reachableParam(p, a, t.module, t.param);
+  const firsts = new Set(a.params.map((r) => `${r.module}:${r.param}`));
+  const seen = new Set<string>();
+  return a.params.map((r) => {
+    if (!r.also && !r.names) return r;
+    const n: ParamRef = { ...r };
+    if (r.also) {
+      const ts = rowTargets(r).filter((t, i) => {
+        const k = `${t.module}:${t.param}`;
+        if (!ok(t) || seen.has(k) || (i > 0 && firsts.has(k))) return false;
+        seen.add(k);
+        return true;
+      });
+      const lead = ts[0] ?? { module: r.module, param: r.param };
+      const same = (t: RowTarget): boolean => !defs || sameRange(pdOf(lead)!, pdOf(t)!);
+      const also = ts.slice(1).filter(same);
+      n.module = lead.module;
+      n.param = lead.param;
+      if (also.length) n.also = also;
+      else delete n.also;
+    }
+    if (r.names && defs && !(typeOf(n.module) === 'select' && n.param === 'pos')) delete n.names;
+    return n;
+  });
+}
+
+/**
  * Keep an assembly consistent with the patch: members that are gone leave, exposures and promotions of departed modules
  * go, a parent only shows what its children expose, and every inner port with an outside cable is exposed (labels of
  * ports that stay are kept). Children must be reconciled first (reconcileAll does). Returns false when nothing is left.
@@ -741,18 +733,18 @@ export function reconcile(p: Patch, a: AssemblyInst, defs?: Record<string, Modul
   const moduleOf = (id: number): ModuleInst | undefined => p.modules.find((m) => m.id === id);
   a.inputs = clean('in', pinsToParams(a.inputs, a.params, moduleOf));
   a.outputs = clean('out', a.outputs);
-  a.params = keepParams(a.params, (r) => member.has(r.module) && (!defs || !rowDef(defs[typeOf(r.module)], r.param)?.onScreen && !!rowDef(defs[typeOf(r.module)], r.param)) && reachableParam(p, a, r.module, r.param));
+  a.params = keepParams(cleanRows(p, a, member, defs), (r) => member.has(r.module) && (!defs || !rowDef(defs[typeOf(r.module)], r.param)?.onScreen && !!rowDef(defs[typeOf(r.module)], r.param)) && reachableParam(p, a, r.module, r.param));
   const b = boundary(p, members);
   for (const r of b.inputs) {
     // an outside cable into a routed pin shows on the sliders it feeds: promote those instead of exposing the pin
     const m = moduleOf(r.module);
     const routed = isPin(r.port) && m?.map?.[r.port]?.length ? m.map[r.port] : null;
     if (routed && m) for (const param of routed) {
-      if (reachableParam(p, a, m.id, param)) promoteOnce(a.params, m, param);
+      if (reachableParam(p, a, m.id, param)) promoteOnce(a.params, m, param, childLabel(p, a, 'param', m.id, param));
     }
-    else if (!isExposed(a, 'in', r.module, r.port)) a.inputs.push({ ...r, label: uniqueLabel(a.inputs.map((x) => x.label), r.port) });
+    else if (!isExposed(a, 'in', r.module, r.port)) a.inputs.push({ ...r, label: uniqueLabel(a.inputs.map((x) => x.label), childLabel(p, a, 'in', r.module, r.port) ?? r.port) });
   }
-  for (const r of b.outputs) if (!isExposed(a, 'out', r.module, r.port)) a.outputs.push({ ...r, label: uniqueLabel(a.outputs.map((x) => x.label), r.port) });
+  for (const r of b.outputs) if (!isExposed(a, 'out', r.module, r.port)) a.outputs.push({ ...r, label: uniqueLabel(a.outputs.map((x) => x.label), childLabel(p, a, 'out', r.module, r.port) ?? r.port) });
   return true;
 }
 
@@ -788,27 +780,29 @@ const nextAssemblyId = (p: Patch): number => assembliesOf(p).reduce((m, a) => Ma
 const instanceLabel = (p: Patch, name: string): string => uniqueLabel(assembliesOf(p).map((a) => a.label), name);
 
 /**
- * Group the given modules into a new, collapsed assembly: the ports with outside cables are exposed. Modules that are all
- * direct members of one assembly form a child of it (nesting).
+ * Group the given modules and assemblies (`childIds`, which become its children) into a new, collapsed assembly: the
+ * ports with outside cables are exposed. One may hold assemblies only. Modules that are all direct members of one
+ * assembly form a child of it (nesting); assemblies only, a child of their parent.
  */
-export function makeAssembly(p: Patch, memberIds: number[], name = 'assembly'): AssemblyInst {
+export function makeAssembly(p: Patch, memberIds: number[], name = 'assembly', childIds: number[] = []): AssemblyInst {
   const ids = [...new Set(memberIds)];
-  if (!ids.length) throw new Error('select the modules first (shift-click, or drag a box on the canvas)');
-  const parent = assemblyOf(p, ids[0]);
+  const kids = [...new Set(childIds)];
+  if (!ids.length && !kids.length) throw new Error('select the modules first (shift-click, or drag a box on the canvas)');
+  const parent = ids.length ? assemblyOf(p, ids[0]) : parentOf(p, kids[0]);
   for (const id of ids) {
     const why = memberProblem(p, id, parent);
     if (why) throw new Error(why);
     if (parent && !parent.modules.includes(id)) throw new Error(`${describe(p, p.modules.find((m) => m.id === ids[0])!)} is already in "${parent.label}": to nest, select modules inside it only`);
   }
   if (parent && depthOf(p, parent) + 1 > MAX_DEPTH) throw new Error(`assemblies nest at most ${MAX_DEPTH} deep`);
-  const ms = ids.map((id) => p.modules.find((m) => m.id === id)!);
+  const at = [...ids.map((id) => p.modules.find((m) => m.id === id)!), ...kids.map((id) => assemblyById(p, id) ?? { x: Infinity, y: Infinity })];
   const a: AssemblyInst = {
     v: 1,
     id: nextAssemblyId(p),
     name,
     label: instanceLabel(p, name),
-    x: Math.min(...ms.map((m) => m.x)),
-    y: Math.min(...ms.map((m) => m.y)),
+    x: Math.min(...at.map((m) => m.x)),
+    y: Math.min(...at.map((m) => m.y)),
     open: false,
     modules: ids,
     inputs: [],
@@ -820,6 +814,7 @@ export function makeAssembly(p: Patch, memberIds: number[], name = 'assembly'): 
     parent.modules = parent.modules.filter((id) => !ids.includes(id));
     parent.children = [...(parent.children ?? []), a.id];
   }
+  for (const id of kids) addChild(p, a, id);
   reconcile(p, a);
   if (parent) reconcile(p, parent);
   return a;
@@ -902,11 +897,20 @@ export function removeChild(p: Patch, parent: AssemblyInst, childId: number): vo
   ungroup(p, parent.id);
 }
 
-/** show an inner port on the card; `also` merges further inner inputs into the same jack */
-export function exposePort(a: AssemblyInst, dir: 'in' | 'out', module: number, port: string, also?: Target[]): void {
+/** the label a nested assembly gives an inner row or jack it shows, which a parent showing it too takes over */
+function childLabel(p: Patch | undefined, a: AssemblyInst, kind: 'param' | 'in' | 'out', module: number, name: string): string | undefined {
+  if (!p || a.modules.includes(module)) return undefined;
+  const c = childrenOf(p, a).find((x) => allModules(p, x).includes(module));
+  if (!c) return undefined;
+  return kind === 'param' ? c.params.find((r) => r.module === module && r.param === name)?.label : findRef(c, kind, module, name)?.label;
+}
+
+/** show an inner port on the card; `also` merges further inner inputs into the same jack. With the patch, a port a nested
+ * assembly shows keeps that assembly's label */
+export function exposePort(a: AssemblyInst, dir: 'in' | 'out', module: number, port: string, also?: Target[], p?: Patch): void {
   if (isExposed(a, dir, module, port)) return;
   const list = dir === 'in' ? a.inputs : a.outputs;
-  const r: PortRef = { module, port, label: uniqueLabel(list.map((x) => x.label), port) };
+  const r: PortRef = { module, port, label: uniqueLabel(list.map((x) => x.label), childLabel(p, a, dir, module, port) ?? port) };
   const extra = dir === 'in' ? (also ?? []).filter((t) => !isExposed(a, 'in', t.module, t.port) && !(t.module === module && t.port === port)) : [];
   if (extra.length) r.also = extra;
   list.push(r);
@@ -947,12 +951,236 @@ export function unmergePort(a: AssemblyInst, module: number, port: string): void
   a.inputs = list;
 }
 
-export function promote(a: AssemblyInst, module: number, param: string): void {
-  if (!isPromoted(a, module, param)) a.params.push({ module, param, label: uniqueLabel(a.params.map((r) => r.label), param) });
+/** the heading each row of a card sits under: its own, else the last one above it (undefined before the first) */
+function headings(params: readonly ParamRef[]): (string | undefined)[] {
+  let h: string | undefined;
+  return params.map((r) => (h = r.head ?? h));
 }
 
+/**
+ * Put a parameter on the card. With the patch, a row a nested assembly shows comes over named as it is there: the
+ * heading is that assembly's label and the page it sits on ("Lire 5-8", or just "Lire" above its first heading), the
+ * label stays its own ("hold"). It joins the rows already under that heading, else starts a block of its own at the end.
+ * Names are copied once; a row from a direct member takes the parameter's name.
+ */
+export function promote(a: AssemblyInst, module: number, param: string, p?: Patch): void {
+  if (isPromoted(a, module, param)) return;
+  const c = p && !a.modules.includes(module) ? childrenOf(p, a).find((x) => allModules(p, x).includes(module)) : undefined;
+  if (!c) {
+    a.params.push({ module, param, label: uniqueLabel(a.params.map((r) => r.label), param) });
+    return;
+  }
+  const at = c.params.findIndex((r) => r.module === module && r.param === param);
+  const page = at < 0 ? undefined : headings(c.params)[at];
+  const head = (page ? `${c.label} ${page}` : c.label).slice(0, HEAD_MAX);
+  const heads = headings(a.params);
+  const last = heads.lastIndexOf(head);
+  const block = a.params.filter((_, i) => heads[i] === head).map((r) => r.label);
+  const r: ParamRef = { module, param, label: uniqueLabel(block, at < 0 ? param : c.params[at].label) };
+  if (last < 0) a.params.push({ ...r, head });
+  else a.params.splice(last + 1, 0, r);
+}
+
+/** take a parameter off the card: its row goes; one a row also sets leaves that row, and a row's first that also sets
+ * others hands the row to the next (#357) */
 export function demote(a: AssemblyInst, module: number, param: string): void {
-  a.params = keepParams(a.params, (r) => !(r.module === module && r.param === param));
+  const r = rowOf(a, module, param);
+  if (!r) return;
+  const me = { module, param };
+  if (!sameTarget(r, me)) {
+    r.also = r.also!.filter((t) => !sameTarget(t, me));
+    if (!r.also.length) delete r.also;
+    return;
+  }
+  if (r.also?.length) {
+    const [next, ...rest] = r.also;
+    r.module = next.module;
+    r.param = next.param;
+    if (rest.length) r.also = rest;
+    else delete r.also;
+    return;
+  }
+  a.params = keepParams(a.params, (x) => x !== r);
+}
+
+/** let the card row that sets `into` set `from` too, with whatever `from`'s row set (#357): one row for both. Throws when
+ * a parameter is not on the card or the ranges differ (sameRange) */
+export function mergeRows(p: Patch, a: AssemblyInst, defs: Record<string, ModuleDef>, into: RowTarget, from: RowTarget): void {
+  const r1 = rowOf(a, into.module, into.param);
+  const r2 = rowOf(a, from.module, from.param);
+  if (!r1 || !r2) throw new Error('both parameters must be on the card');
+  if (r1 === r2) return;
+  const pd = (t: RowTarget): ParamDef | undefined => { const m = p.modules.find((x) => x.id === t.module); return m && rowDef(defs[m.type], t.param); };
+  const lead = pd(r1)!;
+  for (const t of rowTargets(r2)) {
+    const m = p.modules.find((x) => x.id === t.module)!;
+    if (m.type === 'alloc' || !sameRange(lead, pd(t)!)) throw new Error(`"${r2.label}" cannot join "${r1.label}": their ranges differ`);
+  }
+  r1.also = [...(r1.also ?? []), ...rowTargets(r2)];
+  if (!r1.names && r2.names) r1.names = [...r2.names];
+  a.params = keepParams(a.params, (x) => x !== r2);
+}
+
+/** split a row that sets several parameters: each one it also set gets its own row again, right after it */
+export function splitRow(a: AssemblyInst, module: number, param: string): void {
+  const r = a.params.find((x) => x.module === module && x.param === param);
+  if (!r?.also?.length) return;
+  const at = a.params.indexOf(r);
+  const extra: ParamRef[] = r.also.map((t) => ({ ...t, label: '' }));
+  delete r.also;
+  const list = [...a.params.slice(0, at + 1), ...extra, ...a.params.slice(at + 1)];
+  for (const x of extra) x.label = uniqueLabel(list.filter((y) => y.label).map((y) => y.label), x.param);
+  a.params = list;
+}
+
+/** the runs of copies on a card (`RowCopies`) that hold together: `count` copies of `rows` rows from row `at`, with no
+ * heading, column break or other run inside, all on the card */
+export function copyRuns(list: readonly ParamRef[]): { at: number; rows: number; count: number; name: string }[] {
+  const out: { at: number; rows: number; count: number; name: string }[] = [];
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i].copies;
+    if (!c) continue;
+    const end = i + c.rows * c.count;
+    if (end > list.length || list.slice(i + 1, end).some((r) => r.head || r.col || r.copies)) continue;
+    out.push({ at: i, rows: c.rows, count: c.count, name: c.name ?? 'step' });
+    i = end - 1;
+  }
+  return out;
+}
+
+/** where a run of copies makes an FM-1 page start (each copy, and the row after the run): true at those rows */
+export function copyStarts(list: readonly ParamRef[]): boolean[] {
+  const out = list.map(() => false);
+  for (const run of copyRuns(list)) {
+    for (let k = 0; k < run.count; k++) out[run.at + k * run.rows] = true;
+    if (run.at + run.rows * run.count < list.length) out[run.at + run.rows * run.count] = true;
+  }
+  return out;
+}
+
+/** let rows `i`.. be `count` copies of `rows` rows shown one at a time (`RowCopies`); rows < 1 or count < 2: plain rows */
+export function setCopies(list: ParamRef[], i: number, rows: number, count: number, name?: string): void {
+  const r = list[i];
+  if (!r) return;
+  const c = rowLayout({ copies: { rows, count, name } }).copies;
+  if (c && i + rows * count <= list.length) r.copies = c;
+  else delete r.copies;
+}
+
+/** the names of row `i`'s positions (a Selector's, #358); none: the numbers again */
+export function setRowNames(list: ParamRef[], i: number, names: readonly string[]): void {
+  const r = list[i];
+  if (!r) return;
+  const n = fixNames(names);
+  if (n) r.names = n;
+  else delete r.names;
+}
+
+/** the parameters card rows tie together (#357) and the position names they give (#358), worked out once for a patch */
+export interface Ties {
+  /** every parameter tied to this one, itself first: the rows of every assembly that set it, the rows that set any of
+   * those, and so on (a nested card's row and its parent's); just itself when no row ties it */
+  tied(module: number, param: string): RowTarget[];
+  /** the position names a card row gives this parameter: its own row's, else those of a row it is tied to */
+  names(module: number, param: string): string[] | undefined;
+}
+
+export function ties(p: Patch): Ties {
+  const key = (t: RowTarget): string => `${t.module}:${t.param}`;
+  const up = new Map<string, string>();
+  const find = (k: string): string => {
+    let r = k;
+    while (up.has(r) && up.get(r) !== r) r = up.get(r)!;
+    return r;
+  };
+  const rows = assembliesOf(p).flatMap((a) => a.params.filter((r) => r.also?.length || r.names));
+  for (const r of rows) {
+    const ts = rowTargets(r).map(key);
+    for (const k of ts) if (!up.has(k)) up.set(k, k);
+    for (const k of ts.slice(1)) up.set(find(k), find(ts[0]));
+  }
+  const groups = new Map<string, RowTarget[]>();
+  for (const k of up.keys()) {
+    const [m, ...rest] = k.split(':');
+    const g = groups.get(find(k)) ?? [];
+    g.push({ module: Number(m), param: rest.join(':') });
+    groups.set(find(k), g);
+  }
+  const named = new Map<string, string[]>();
+  for (const r of rows) if (r.names && !named.has(find(key(r)))) named.set(find(key(r)), r.names);
+  return {
+    tied(module, param) {
+      const me = { module, param };
+      const g = up.has(key(me)) ? groups.get(find(key(me))) : undefined;
+      return [me, ...(g ?? []).filter((t) => !sameTarget(t, me))];
+    },
+    names(module, param) {
+      const k = key({ module, param });
+      return up.has(k) ? named.get(find(k)) : undefined;
+    },
+  };
+}
+
+/** every parameter tied to this one by card rows (#357), itself first (Ties.tied) */
+export const tiedTo = (p: Patch, module: number, param: string): RowTarget[] => ties(p).tied(module, param);
+
+/** the position names a card row gives this parameter (#358, Ties.names) */
+export const rowNames = (p: Patch, module: number, param: string): string[] | undefined => ties(p).names(module, param);
+
+/**
+ * Make every parameter a row ties (#357) follow the row's first: its value (clamped to its range), whether p1 / p2 route
+ * to it, its macro range on that pin, the pin's depth where the pin routes to it alone on both, and the side-input routes
+ * to it. What the editor's cables and menus did to the first reaches the others this way. Returns whether anything changed.
+ */
+export function syncTied(p: Patch, defs: Record<string, ModuleDef>): boolean {
+  let changed = false;
+  const byId = new Map(p.modules.map((m) => [m.id, m]));
+  for (const a of assembliesOf(p))
+    for (const r of a.params) {
+      if (!r.also?.length) continue;
+      const src = byId.get(r.module);
+      const pd = src && defs[src.type]?.params.find((q) => q.name === r.param);
+      if (!src || !pd) continue;
+      for (const t of r.also) {
+        const m = byId.get(t.module);
+        const tp = m && defs[m.type]?.params.find((q) => q.name === t.param);
+        if (!m || !tp) continue;
+        const v = Math.min(topOf(tp), Math.max(tp.min, src.params[r.param] ?? pd.default));
+        if (m.params[t.param] !== v) (m.params[t.param] = v, changed = true);
+        for (const [pin, k] of [['p1', 0], ['p2', 1]] as const) {
+          if (!m.map || !src.map) continue;
+          const on = src.map[pin].includes(r.param);
+          if (on !== m.map[pin].includes(t.param)) {
+            m.map[pin] = on ? [...m.map[pin], t.param] : m.map[pin].filter((x) => x !== t.param);
+            changed = true;
+          }
+          const want = on ? src.range?.[pin]?.[r.param] : undefined;
+          const have = m.range?.[pin]?.[t.param];
+          if (want?.[0] !== have?.[0] || want?.[1] !== have?.[1]) {
+            m.range ??= {};
+            const list = { ...(m.range[pin] ?? {}) };
+            if (want) list[t.param] = [want[0], want[1]];
+            else delete list[t.param];
+            if (Object.keys(list).length) m.range[pin] = list;
+            else delete m.range[pin];
+            if (!m.range.p1 && !m.range.p2) delete m.range;
+            changed = true;
+          }
+          const alone = (x: ModuleInst, name: string): boolean => x.map![pin].length === 1 && x.map![pin][0] === name;
+          if (on && src.att && m.att && alone(src, r.param) && alone(m, t.param) && m.att[k] !== src.att[k]) {
+            m.att = [...m.att] as [number, number];
+            m.att[k] = src.att[k];
+            changed = true;
+          }
+        }
+        for (const [port, list] of Object.entries(src.inputMap ?? {})) {
+          if (!list.includes(r.param) || !defs[m.type].inputs.some((q) => q.name === port) || m.inputMap?.[port]?.includes(t.param)) continue;
+          m.inputMap = { ...(m.inputMap ?? {}), [port]: [...(m.inputMap?.[port] ?? []), t.param] };
+          changed = true;
+        }
+      }
+    }
+  return changed;
 }
 
 /** move the collapsed card, every member and every nested assembly by (dx, dy) */
@@ -1079,6 +1307,13 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
     if (r.also) n.also = r.also.map(remap);
     return n;
   };
+  const row = (r: ParamRef): ParamRef => {
+    const n = remap(r);
+    if (r.also) n.also = r.also.map(remap);
+    if (r.names) n.names = [...r.names];
+    if (r.copies) n.copies = { ...r.copies };
+    return n;
+  };
   const def: AssemblyDef = {
     format: ASSEMBLY_FORMAT,
     version: 1,
@@ -1088,8 +1323,9 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
     cables: p.cables.filter((c) => local.has(c.from.module) && local.has(c.to.module)).map((c) => ({ from: remap(c.from), to: remap(c.to) })),
     inputs: a.inputs.map(port),
     outputs: a.outputs.map(port),
-    params: a.params.map(remap),
+    params: a.params.map(row),
   };
+  if (a.heads?.length) def.heads = a.heads.map(remap);
   if (a.poly) def.poly = { ...a.poly };
   if (nested.length) {
     def.children = (a.children ?? []).map((id) => localAsm.get(id)!);
@@ -1105,8 +1341,9 @@ export function toDef(p: Patch, a: AssemblyInst): AssemblyDef {
         modules: d.modules.map((id) => local.get(id)!),
         inputs: d.inputs.map(port),
         outputs: d.outputs.map(port),
-        params: d.params.map(remap),
+        params: d.params.map(row),
       };
+      if (d.heads?.length) n.heads = d.heads.map(remap);
       if (d.children?.length) n.children = d.children.map((id) => localAsm.get(id)!);
       if (d.poly) n.poly = { ...d.poly };
       return n;
@@ -1123,11 +1360,12 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     m.params = { ...m.params, ...clone(src.params) };
     if (src.att) m.att = [...src.att];
     if (src.map) m.map = clone(src.map);
+    if (src.range) m.range = clone(src.range);
     if (src.inputMap) m.inputMap = structuredClone(src.inputMap);
     if (src.bypass) m.bypass = true; // toDef writes the members' own switches
     if (src.type === 'steps') {   // a track's name and notes (a definition from before #133: its pattern and step values, migrated)
       const old = src as typeof src & { steps?: unknown; vels?: unknown };
-      Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels }));
+      Object.assign(m, clone({ name: src.name, steps: old.steps, notes: src.notes, vels: old.vels, patterns: src.patterns }));
       fixTrack(m);
     }
     if (src.type === 'drummap' && src.names) {   // a Drum map's row names
@@ -1143,6 +1381,13 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
   const port = (r: PortRef): PortRef => {
     const n = remap(r);
     if (r.also) n.also = r.also.map(remap);
+    return n;
+  };
+  const row = (r: ParamRef): ParamRef => {
+    const n = remap(r);
+    if (r.also) n.also = r.also.map(remap);
+    if (r.names) n.names = [...r.names];
+    if (r.copies) n.copies = { ...r.copies };
     return n;
   };
   for (const c of def.cables) p.cables.push({ from: remap(c.from), to: remap(c.to) });
@@ -1164,8 +1409,9 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
       modules: d.modules.map((id) => fresh.get(id)!),
       inputs: d.inputs.map(port),
       outputs: d.outputs.map(port),
-      params: d.params.map(remap),
+      params: d.params.map(row),
     };
+    if (d.heads?.length) n.heads = d.heads.map(remap);
     taken.push(n.label);
     if (d.children?.length) n.children = d.children.map((id) => freshAsm.get(id)!);
     if (d.poly) n.poly = fixCards(d.poly);
@@ -1183,8 +1429,9 @@ export function insertAssembly(p: Patch, defs: Record<string, ModuleDef>, def: A
     modules: def.modules.filter((src) => !claimed.has(src.id)).map((src) => fresh.get(src.id)!),
     inputs: def.inputs.map(port),
     outputs: def.outputs.map(port),
-    params: def.params.map(remap),
+    params: def.params.map(row),
   };
+  if (def.heads?.length) a.heads = def.heads.map(remap);
   if (def.children?.length) a.children = def.children.map((id) => freshAsm.get(id)!);
   if (def.poly) a.poly = fixCards(def.poly);
   p.assemblies = [...assembliesOf(p), ...made, a];
@@ -1305,10 +1552,16 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
       const pd = t ? rowDef(defs[t], String(r.param)) : undefined;
       if (!pd) throw new Error(`promoted parameter "${String(r.param)}" does not exist`);
       if (pd.onScreen) return []; // set on its module's screen: not a row of the card
-      return [{ module: Number(r.module), param: String(r.param), label: String(r.label ?? r.param), ...rowLayout(r) }];
+      const ex = rowExtras(r);
+      if (ex.also) ex.also = ex.also.filter((t) => { const tt = typeOf(t.module); const tq = tt ? rowDef(defs[tt], t.param) : undefined; return !!tq && tt !== 'alloc' && sameRange(pd, tq); });
+      if (!ex.also?.length) delete ex.also;
+      if (ex.names && !(t === 'select' && r.param === 'pos')) delete ex.names;
+      return [{ module: Number(r.module), param: String(r.param), label: String(r.label ?? r.param), ...rowLayout(r), ...ex }];
     }));
   const moduleOf = (id: number): ModuleInst | undefined => d.modules.find((m) => m.id === id);
   d.params = params(d.params);
+  const dh = emptyHeads(d.heads, d.params);
+  if (dh) d.heads = dh; else delete d.heads;
   d.inputs = pinsToParams(ports(d.inputs, 'in'), d.params, moduleOf);
   d.outputs = ports(d.outputs, 'out');
   // nested assemblies: local ids, disjoint direct members, a tree of at most MAX_DEPTH levels
@@ -1339,6 +1592,8 @@ export function validateAssemblyDef(raw: unknown, defs: Record<string, ModuleDef
         outputs: ports(e.outputs, 'out'),
         params: params(e.params),
       };
+      const nh = emptyHeads(e.heads, n.params);
+      if (nh) n.heads = nh;
       n.inputs = pinsToParams(ports(e.inputs, 'in'), n.params, moduleOf);
       if (Array.isArray(e.children) && e.children.length) n.children = e.children.map(Number);
       if (e.poly) n.poly = fixCards(e.poly);
@@ -1423,6 +1678,8 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
       outputs: refs(e.outputs, 'port').map((r) => ({ module: r.module, port: r.port, label: r.label })),
       params: tidyRows(refs(e.params, 'param') as unknown as ParamRef[]),
     };
+    const ah = emptyHeads(e.heads, a.params);
+    if (ah) a.heads = ah;
     if (e.poly) a.poly = fixCards(e.poly);
     if (typeof e.preset === 'string' && e.preset.trim()) a.preset = e.preset.trim().slice(0, 24);
     if (e.bypass) {
@@ -1474,13 +1731,28 @@ export function fixAssemblies(p: Patch, defs: Record<string, ModuleDef>): string
       if (!par.children.length) delete par.children;
     }
   reconcileAll(p, defs);
+  syncTied(p, defs);   // (what a row sets follows its first, #357)
   return msgs;
+}
+
+/** the well-formed empty headings of a file: a heading of up to HEAD_MAX characters at a row the card has; none: undefined */
+function emptyHeads(list: unknown, params: readonly ParamRef[]): EmptyHead[] | undefined {
+  if (!Array.isArray(list)) return undefined;
+  const out = list.flatMap((h: unknown): EmptyHead[] => {
+    if (!isRec(h) || typeof h.head !== 'string') return [];
+    const head = h.head.trim().slice(0, HEAD_MAX);
+    const module = Number(h.module);
+    const param = String(h.param);
+    if (!head || !params.some((r) => r.module === module && r.param === param)) return [];
+    return [{ head, module, param, ...(h.after === true ? { after: true as const } : {}) }];
+  });
+  return out.length ? out : undefined;
 }
 
 function refs(list: unknown, key: 'port' | 'param'): PortRef[] {
   return (Array.isArray(list) ? list : []).flatMap((r: unknown) => {
     if (!isRec(r) || !Number.isInteger(Number(r.module)) || typeof r[key] !== 'string') return [];
-    const ref = { module: Number(r.module), [key]: r[key], label: String(r.label ?? r[key]), ...(key === 'param' ? rowLayout(r) : {}) } as unknown as PortRef;
+    const ref = { module: Number(r.module), [key]: r[key], label: String(r.label ?? r[key]), ...(key === 'param' ? { ...rowLayout(r), ...rowExtras(r) } : {}) } as unknown as PortRef;
     if (key === 'port' && Array.isArray(r.also)) {
       const also = r.also.flatMap((t: unknown) => (isRec(t) && Number.isInteger(Number(t.module)) && typeof t.port === 'string' ? [{ module: Number(t.module), port: t.port }] : []));
       if (also.length) ref.also = also;

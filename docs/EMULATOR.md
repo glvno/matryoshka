@@ -32,6 +32,103 @@ its disassembly (artifact `matryoshka-elf`) for tracing such faults to a functio
   --flash-in F --flash-out F --text S` is a free run (SCRIPT as fm1-emu's: `800:n7,1500:n7^,2000:e6:1,2500:mc005`;
   snapshots as `lcd_MS.png` in the current directory).
 
+## The editor link: `m1emu serve` and the scenarios
+
+fm1-emu has no USB controller, so the checks that cross the editor link (Sync, Live, sandbox mode, PRESET with the
+editor, the reconnect) run against a firmware built for it ([D-119](ledger/releases.md#D-119), issue #290):
+
+- **The firmware:** `M1_EMU_MIDI=1 python3 tools/build.py` (CI does this after the normal build: artifact
+  `matryoshka-emu-midi`, `matryoshka-emu.bin` and its ELF). Its `usb_poll` moves USB-MIDI event packets through a mailbox
+  in RAM (`m1_emu_mb` in `firmware/src/usb.c`, found by its magic words `M1EM` `MIDI`) instead of EP1; the rest of the
+  MIDI path (the rings, SysEx, the editor protocol) is the normal one. It is never packaged or installed. The normal
+  build does not change: the flag defaults to 0 (checked by comparing the CI builds' sha256 before and after).
+- **`m1emu serve BIN [--name NAME]`:** the firmware in real time (the interpreter runs at about 0.75x, so emulated time
+  falls behind under load), its MIDI on a CoreMIDI virtual source and destination named `NAME` (default `FM-1 (emu)`,
+  which the editor's port match takes like a real FM-1), and a line protocol on stdin for the panel, the LCD and the
+  audio (`tools/emu/src/serve.rs` lists it). `M1EMU_TRACE=1` prints every short message the FM-1 sends.
+- **`cd web && npm run emu:scenarios [-- BIN] [--only NAME,..] [--headed]`:** builds m1emu and the panel WebAssembly,
+  starts this checkout's dev server on a free port, starts `m1emu serve`, and drives the editor in Chrome (playwright-core
+  with the installed Chrome, headless) through the scenarios in `web/scripts/emu-scenarios.mjs`: connect and Sync; an
+  over-budget patch is sandbox mode (the sandbox page on the LCD, the FM-1 silent under a key); ARP twice; OCT; PRESET;
+  back under budget; the tab closed and reopened on a sandbox patch; Elvira 2 running, then Elvira 2 XL; a computer
+  where no app reads the FM-1's MIDI (issue #375, `deafHost`, below); ties on the SEQ page (issue #368, below). The page sees
+  only the emulator's MIDI port, so a real FM-1 plugged in is never touched. A development-server hook (`__m1test` in
+  `main.ts`) opens patches by name and reports the link's state. Without BIN it fetches the `matryoshka-emu-midi`
+  artifact of this commit's firmware run (else its branch's, else main's). Results and LCD snapshots go to
+  `build/emu/scenarios/`; about four minutes.
+- **A host that stops reading (`deafHost`, issue #375):** every other scenario has Chrome reading the FM-1's MIDI, so
+  the FM-1's queue for the editor always empties. `deaf 1` makes `m1emu serve` stop taking packets from the mailbox; the
+  firmware's SysEx queue then fills, as on a computer where no app reads the FM-1, and every message the FM-1 sends
+  unasked goes through the same `ota_wire_send` wait as over USB. The scenario enters 30 steps on the 808 Kit's SEQ
+  page at a hand's pace, then SEQ must close the page within 400 emulated ms (about 140 with a reading host; 2890
+  before the fix of #375). After `deaf 0` the editor must follow a step entered on the FM-1 and sync a patch again.
+  The first message after such a stall is a SysEx cut short (the FM-1 gave up halfway); `m1emu` drops it at the next
+  F0, as a MIDI receiver should (Chrome's Web MIDI parser, by its source, does the same), and says so on its output.
+  The host side alone is in `tools/usb_test.sh` (`firmware/test/usb_test.c`, `test_deaf_host`).
+- **Ties on the SEQ page (`tieLire`, `tieElvira`, `tie808`, `tieRoll`, issue #368, [D-531](ledger/steps.md#D-531)):** on
+  8 Lire, Elvira 2 and the 808 Kit's drum grids and Silver Box's piano roll, the track is cleared (SEQ held + REC twice)
+  and a hit goes on step 1. LFO held + step 4 must tie it through step 4 in one press, as the editor's copy of the track
+  (the FM-1's TRACK_NOW) shows. LFO + step 2 (inside the note) must end it there (2 steps), and LFO + step 2 again (its
+  last step) must make it one step. LFO + step 1 (the hit's own step, nothing before it) must say NOTHING TO TIE and
+  change nothing. Tied again, a plain white key on step 3 must cut it there and start a hit. With the transport running
+  the peak is read in 25 ms windows over a pass. On 8 Lire and Elvira 2 a tied hit must keep 90 % of its peak through
+  the next 300 ms (the tie holds the gate 406 ms), and an untied one must decay below 85 %. On the 808 Kit a tied hit's
+  peak and decay must match the untied one's. Through the device test mode (device:scenarios, or `--via-emu`) the
+  TEST_SCREEN head's patch buttons must show Main's LFO jack down while LFO is held on the SEQ page, and up while it is
+  held on the device page.
+- **Arming (`arming`, issue #395, [D-235](ledger/device-ui.md#D-235), [D-545](ledger/steps.md#D-545)):** the link does
+  not carry the armed set ([D-516](ledger/steps.md#D-516)), so the checks read the FM-1's screen. The 808 Kit must load
+  with the footer saying KEYS WIRED. SEL on its home device, the Drum map, must say NOTHING HERE TAKES KEYS. The SEQ page
+  must arm DRUMS (its bar says DRUMS ARM, the device page's footer ARM DRUMS), and black key 1 must then sound the kick.
+  On the environment, SEL on DRUMS' row must disarm it and say KEYS WIRED. REC there must start the transport and say
+  REC: NO TRACK ARMED with the environment still showing ([D-548](ledger/steps.md#D-548),
+  [D-549](ledger/steps.md#D-549)); PLAY stops it. SEL again must arm it.
+- **A held drum hit (`drumHold`, issues #368 and #395, [D-523](ledger/steps.md#D-523)):** on 8 Lire's grid, stopped, a
+  held black key must sound its row while held and record nothing. REC alone (no PLAY) must then start the transport
+  and record: black key 2 held about 450 ms must land as one note of 3 to 5 steps on its row, and a white key must then
+  place a step on the row that black key picked. PLAY stops the transport and the recording.
+- **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
+  merges ([D-120](ledger/releases.md#D-120)).
+
+Not covered: plugging and unplugging USB, the installer and the update loader, USB audio.
+
+## The test rig: the same scenarios on a real FM-1
+
+The device test mode (issue #291, [D-121](ledger/releases.md#D-121)) lets a script drive a real FM-1 over the editor
+link as `m1emu serve` drives the emulator:
+
+- **The firmware's side:** TEST_KEY and TEST_TURN (`firmware/src/proto.c`, `web/src/protocol.ts`) put a key or an
+  encoder's clicks into the HAL's scan (`fm1_virt_btn`, `fm1_virt_note`, `fm1_virt_enc` in `firmware/hal/fm1_input.h`),
+  so they take the panel's own paths. TEST_SCREEN reports the texts on the LCD with their boxes: every text the fonts
+  draw is noted as it goes out and dropped when something is drawn over it (`firmware/src/screen_text.h`). TEST_PEAK
+  reports the loudest sample since the last ask, read before the MASTER knob as if it sat at its default, so a knob
+  left down fails nothing ([D-124](ledger/releases.md#D-124)); a flag says when MASTER is all the way down. INFO feature
+  bit 9 says the firmware has them. For 10 s after a test key or turn, the panel refuses UPDATE MODE and FACTORY RESET.
+- **The rig** ([D-122](ledger/releases.md#D-122)): the owner's second FM-1, kept on the Mac. `npm run rig -- register`,
+  with the rig the only FM-1 connected, writes a hidden preset (`RIG_STRUCTURE`, values at random) and keeps the values
+  in `~/.config/matryoshka/rig.json`; the Library does not list that preset. `npm run rig -- check` names the rig among
+  the connected FM-1s.
+- **`cd web && npm run device:scenarios [-- --install RUN] [--only NAME,..] [--headed]`:** the scenarios of
+  `emu-scenarios.mjs` on the rig. The rig's page (`/__rig` on the dev server, `web/dev/rig-client.ts`) finds the FM-1s,
+  asks each its INFO and the mark (nothing else), and drives only the rig; the editor's page sees only the rig's ports.
+  `--install RUN` first installs that firmware CI run on the rig ([D-123](ledger/releases.md#D-123)): after `emu:smoke`
+  and `emu:scenarios` passed on that run's builds, and only when the rig is the one FM-1 connected. Results and the
+  screen as text go to `build/device/scenarios/`. Before the scenarios the runner taps HOME until the screen reports
+  the device page (the menu, GLO, SEQ or a preset list left up), and stops with a message if it never does. The volume
+  never stops a run ([D-125](ledger/releases.md#D-125)): on a rig whose firmware reads its peak after MASTER (no INFO
+  feature bit 10), a check that hears nothing is skipped as "MASTER down"; skips are counted apart and are no failure.
+- **`cd web && npm run rig:bench [-- --patch NAME] [--rounds N]`:** the LCD's draw times on the rig, with the rig the
+  only FM-1 connected (it refuses otherwise, before sending anything but INFO and the mark's read). It zeroes the times,
+  pages with ALGO and SELECT, turns K1..K4, opens and closes GLO and steps PRESET on and back, then prints the last and
+  the worst time of each kind of draw. The firmware keeps them (`ui_time` in `firmware/src/ui.c`: `fm1_ticks` around
+  each draw, the LCD's transfers included) and reports them as DIAG pages 121..123 (page 120 zeroes them);
+  `tools/m1_link.py uitime` reads the same. Run on two builds, it compares them.
+- **`npm run device:scenarios -- --via-emu`:** the device path against the emulator (its build has the test mode too),
+  to check the runner and the firmware's side without a rig.
+
+Not covered: the audio leaving the FM-1 (the peak is read inside the firmware, before the codec and USB audio), USB
+plugging, the scenarios' sound judged by ear.
+
 ## The smoke test (`tools/emu/src/smoke.rs`)
 
 It reads the LCD with the firmware's own font (`font.rs` parses `font5x7.c` and finds a string drawn by
@@ -41,12 +138,19 @@ HOME held (the menu), HOME; the PRESET encoder; TRS MIDI program change and note
 (name shown, sound, its peak against the web engine's, from `web/scripts/emu-levels.ts`, within 6 dB as a warning);
 SAVE, the flash kept, a restart (STATE RESTORED and the state back); a patch bank written straight into the flash
 (three slots and one with a bad CRC; PRESET and program change step through the three and wrap); the safety steps
-(shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; no register
+(shedding and OVERLOAD, safe mode, update mode); the patch buttons and the SEQ page on the 808 Kit; the Delay at its
+longest time (#273: the echo 700 ms after the note, ping-pong 350 ms left and 700 ms right); no register
 fm1-emu does not model besides P33. Snapshots of each step, a WAV and the levels table go to `build/emu/`.
+
+**Stack depth (#273).** `m1emu` fills 0x01C60000..0x01C7C000 with the word 0x5AC3A55C before the first instruction (the
+firmware paints its stacks with the same word since #273, so a build from before is measured too). At the end, `smoke`
+prints the runs of that word nobody wrote, over every machine of the run: a stack's run ends where its deepest use began
+(top minus that = the most it held). `run` prints it for its one machine, `serve` answers `stacks` with it and writes it to
+stderr on `quit` (so `emu:scenarios` shows it). See "Memory map since #273" in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## What it does not cover
 
-- **USB is not emulated**: the editor's SysEx link, USB MIDI, firmware installs (M-UPGRADE, the loader), recovery and
+- **USB is not emulated**: the smoke test leaves out the editor's SysEx link and USB MIDI (`emu:scenarios` covers them, above), firmware installs (M-UPGRADE, the loader), recovery and
   the UBOOT SysEx are untested by it. The bank is therefore seeded in the flash image, not uploaded.
 - **P33** (watchdog, reset reason, reboot, UBOOT entry: `firmware/hal/fm1_sys.h`) is not modelled: the boot-loop
   guard and MENU > UPDATE MODE cannot be checked.

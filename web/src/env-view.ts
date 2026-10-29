@@ -5,27 +5,53 @@
 // per copy that sounds (one per voice in a poly assembly, the newest held one brightest) streamed from the audio thread
 // while the shape is on screen; the live (modulated) values draw the curve, the settings a faint outline while they
 // differ; its corners drag the times (sideways) and levels (up / down).
-import { IMPLS } from './modules';
+import { ADSR_LONG, env8End, env8Sus, ENV8_HOLD, IMPLS } from './modules';
 import type { ModuleInst } from './patch';
 import type { HostMsg } from './worklet';
 
-/** how each envelope type's stages map to its parameters */
+/** how an envelope's stages map to its parameters (for its settings: the eight-step envelope's depend on sus and end) */
 interface Spec {
-  /** the stage that holds while the gate is up, and the release stage */
+  /** the stage that holds while the gate is up */
   sustain: number;
-  release: number;
+  /** the stage the gate's fall starts, if any (none: the gate only starts the envelope); with holdLast the sustain slot
+   * goes after the last moving stage */
+  release?: number;
+  holdLast?: boolean;
   /** the time parameter of each moving stage, in the order they run (release last) */
-  times: Record<number, string>;
+  times: [number, string][];
+  /** the stage a finished one goes on to while the gate stays up */
+  next(stage: number): number;
   /** the corners: where each segment ends, which parameter its x drags (a time) and its y (a level), if any */
   corners: { stage: number; x: string; y?: string }[];
 }
-export const ENV_SPECS: Record<string, Spec> = {
-  adsr: { sustain: 3, release: 4, times: { 1: 'a', 2: 'd', 4: 'r' }, corners: [{ stage: 1, x: 'a' }, { stage: 2, x: 'd', y: 's' }, { stage: 4, x: 'r' }] },
-  env: {
-    sustain: 4, release: 5, times: { 1: 'r1', 2: 'r2', 3: 'r3', 5: 'r4' },
-    corners: [{ stage: 1, x: 'r1', y: 'l1' }, { stage: 2, x: 'r2', y: 'l2' }, { stage: 3, x: 'r3', y: 'l3' }, { stage: 5, x: 'r4', y: 'l4' }],
+const SPECS: Record<string, (p: Record<string, number>) => Spec> = {
+  adsr: () => ({
+    sustain: 3, release: 4, times: [[1, 'a'], [2, 'd'], [4, 'r']], next: (st) => st + 1,
+    corners: [{ stage: 1, x: 'a' }, { stage: 2, x: 'd', y: 's' }, { stage: 4, x: 'r' }],
+  }),
+  env: (p) => {
+    const shot = (p.shot ?? 0) >= 0.5; // one-shot: no sustain, the release follows the last segment
+    return {
+      sustain: 4, release: shot ? undefined : 5, times: [[1, 'r1'], [2, 'r2'], [3, 'r3'], [5, 'r4']], next: (st) => (st === 3 ? (shot ? 5 : 4) : st + 1),
+      corners: [{ stage: 1, x: 'r1', y: 'l1' }, { stage: 2, x: 'r2', y: 'l2' }, { stage: 3, x: 'r3', y: 'l3' }, { stage: 5, x: 'r4', y: 'l4' }],
+    };
+  },
+  // steps 1..end; the sustain slot after step sus (the gate's fall starts the next), at the end when sus = end, none when off
+  env8: (p) => {
+    const end = env8End(p.end ?? 3);
+    const hs = env8Sus(Math.round(p.sus ?? 2), end);
+    const steps = Array.from({ length: end }, (_, i) => i + 1);
+    return {
+      sustain: ENV8_HOLD, release: hs && hs < end ? hs + 1 : undefined, holdLast: hs === end,
+      times: steps.map((k) => [k, `r${k}`]), next: (st) => (st === hs ? ENV8_HOLD : st + 1),
+      corners: steps.map((k) => ({ stage: k, x: `r${k}`, y: `l${k}` })),
+    };
   },
 };
+/** the module types that draw an envelope's shape */
+export const ENV_TYPES = Object.keys(SPECS);
+/** an envelope's stages for these settings */
+export const envSpec = (type: string, p: Record<string, number>): Spec => SPECS[type](p);
 
 /** the share of the width the sustain slot takes, and the narrowest a moving segment gets */
 const SUSTAIN_W = 0.16;
@@ -48,9 +74,10 @@ export interface Segment {
  * rate that gives each segment SEG_SAMPLES samples (stopping at its time, as a decay that only nears its target).
  */
 export function envShape(type: string, p: Record<string, number>): Segment[] {
-  const spec = ENV_SPECS[type];
+  const spec = envSpec(type, p);
   const impl = IMPLS[type];
-  const moving = Object.keys(spec.times).map(Number);
+  const moving = spec.times.map(([st]) => st);
+  const timeOf = new Map(spec.times);
   const raw: { stage: number; ys: number[]; time: number }[] = [];
   let state = impl.init(48000);
   const gate = new Float32Array(1);
@@ -66,15 +93,16 @@ export function envShape(type: string, p: Record<string, number>): Segment[] {
     return ys;
   };
   let level = 0;
-  const shot = type === 'env' && (p.shot ?? 0) >= 0.5; // one-shot: no sustain, the release follows the last segment
+  gate[0] = 1;
   for (const stage of moving) {
-    const time = p[spec.times[stage]] ?? 0.01;
-    const sr = SEG_SAMPLES / Math.max(time, 1e-4);
+    const time = p[timeOf.get(stage)!] ?? 0.01;
+    // (the ADSR's `long` stretches its decay and release: the segment runs at the rate of the time it plays)
+    const sr = SEG_SAMPLES / Math.max(time * (type === 'adsr' && stage !== 1 && (p.long ?? 0) >= 0.5 ? ADSR_LONG : 1), 1e-4);
     if (stage === spec.release) {
       // the sustain slot first: the level the held gate rests at
-      if (!shot) raw.push({ stage: spec.sustain, ys: [level, level], time: 0 });
+      raw.push({ stage: spec.sustain, ys: [level, level], time: 0 });
       gate[0] = 0;
-    } else gate[0] = 1;
+    }
     // a segment whose start is already its end (a level equal to the one before) still gets its slot
     if ((state as { stage: number }).stage !== stage && stage !== spec.release && raw.length) {
       raw.push({ stage, ys: [level, level], time });
@@ -86,22 +114,23 @@ export function envShape(type: string, p: Record<string, number>): Segment[] {
     raw.push({ stage, ys, time });
     // a stage that ran out its time without reaching its target: move the state on by hand so the next one starts
     if ((state as { stage: number }).stage === stage && stage !== spec.release) {
-      state = { ...(state as object), stage: stage === Math.max(...moving.filter((s) => s !== spec.release)) ? (shot ? spec.release : spec.sustain) : stage + 1 } as typeof state;
+      state = { ...(state as object), stage: spec.next(stage) } as typeof state;
       (state as { v: number }).v = level;
       if ('t' in (state as object)) (state as { t: number }).t = 0;
     }
   }
+  if (spec.holdLast) raw.push({ stage: spec.sustain, ys: [level, level], time: 0 });
   // widths: sqrt of the time, at least MIN_W, the sustain slot fixed
   const moves = raw.filter((r) => r.stage !== spec.sustain);
   const weights = moves.map((r) => Math.sqrt(Math.max(r.time, 1e-4)));
   const sum = weights.reduce((a, b) => a + b, 0) || 1;
-  const free = 1 - (shot ? 0 : SUSTAIN_W) - MIN_W * moves.length;
+  const free = 1 - (raw.length > moves.length ? SUSTAIN_W : 0) - MIN_W * moves.length;
   let x = 0;
   let k = 0;
   return raw.map((r) => {
     const w = r.stage === spec.sustain ? SUSTAIN_W : MIN_W + (free * weights[k++]) / sum;
     const seg: Segment = { stage: r.stage, x0: x, x1: x + w, ys: r.ys };
-    if (r.stage !== spec.sustain) seg.time = { name: spec.times[r.stage], value: r.time };
+    if (r.stage !== spec.sustain) seg.time = { name: timeOf.get(r.stage)!, value: r.time };
     x += w;
     return seg;
   });
@@ -229,7 +258,7 @@ export class EnvScreens {
 
   /** the corners in canvas px of a shape */
   private corners(s: Screen, segs: Segment[], W: number, H: number): { x: number; y: number; x_: string; y_?: string }[] {
-    const spec = ENV_SPECS[s.m.type];
+    const spec = envSpec(s.m.type, this.shown(s));
     return spec.corners.flatMap((c) => {
       const seg = segs.find((g) => g.stage === c.stage);
       if (!seg) return [];
@@ -266,13 +295,14 @@ export class EnvScreens {
     };
     const base = envShape(s.m.type, s.m.params);
     const shown = this.shown(s);
-    const modulated = s.live && Object.keys(ENV_SPECS[s.m.type].times).length && Object.values(ENV_SPECS[s.m.type].corners).some((c) =>
+    const spec = envSpec(s.m.type, shown);
+    const modulated = s.live && spec.corners.some((c) =>
       Math.abs((shown[c.x] ?? 0) - (s.m.params[c.x] ?? 0)) > 1e-6 || (c.y && Math.abs((shown[c.y] ?? 0) - (s.m.params[c.y] ?? 0)) > 1e-6));
     const segs = modulated ? envShape(s.m.type, shown) : base;
     // segment dividers, the sustain slot shaded
     g.fillStyle = color('--line');
     for (const seg of segs) {
-      if (seg.stage === ENV_SPECS[s.m.type].sustain) {
+      if (seg.stage === spec.sustain) {
         g.globalAlpha = 0.35;
         g.fillRect(X(seg.x0), PAD, X(seg.x1) - X(seg.x0), H - 2 * PAD);
         g.globalAlpha = 1;

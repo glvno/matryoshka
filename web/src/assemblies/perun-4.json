@@ -18,7 +18,8 @@
         "n5": 60,
         "n6": 62,
         "n7": 64,
-        "n8": 65
+        "n8": 65,
+        "repeat": 0
       },
       "names": [
         "VOICE 1",
@@ -42,7 +43,12 @@
         "depth": 1,
         "sync": 0,
         "div": 6,
-        "bpm": 120
+        "bpm": 120,
+        "phase": 0,
+        "range": 0,
+        "dir": 0,
+        "mult": 3,
+        "wide": 4
       },
       "att": [
         1,
@@ -153,7 +159,9 @@
         "fb": 0.35,
         "mix": 1,
         "sync": 0,
-        "pingpong": 0
+        "pingpong": 0,
+        "note": 0,
+        "swell": 0
       },
       "att": [
         1,
@@ -278,7 +286,8 @@
         "res": 0,
         "cvamt": 1,
         "track": 0,
-        "morph": 0
+        "morph": 0,
+        "osc": 0
       },
       "att": [
         1,
@@ -517,7 +526,8 @@
         "res": 0,
         "cvamt": 1,
         "track": 0,
-        "morph": 0
+        "morph": 0,
+        "osc": 0
       },
       "att": [
         1,
@@ -688,7 +698,8 @@
         "res": 0,
         "cvamt": 1,
         "track": 0,
-        "morph": 1
+        "morph": 1,
+        "osc": 0
       },
       "att": [
         1,
@@ -887,7 +898,8 @@
         "res": 0,
         "cvamt": 1,
         "track": 0,
-        "morph": 1
+        "morph": 1,
+        "osc": 0
       },
       "att": [
         1,

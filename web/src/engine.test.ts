@@ -2,13 +2,13 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCK, Engine } from './engine';
 import { devicesOf } from './pages';
-import { DEFS, DELAY_TIME_MAX, DELAY_TIME_MIN } from './modules';
+import { DEFS, DELAY_SYNC_TOP, DELAY_TIME_MIN } from './modules';
 import { EDITOR_MAX_PARTS, addModule, clearMorph, connect, disconnect, emptyPatch, fromUnit, hasMorph, modulate, morphValue, paramUnit, paramValue, processingOrder, removeModule, sameStructure, setMorphTarget, toUnit, validatePatch, type Patch, type PolyCfg } from './patch';
 import { copiesOf, polyGroups } from './poly';
 import { fixAssemblies, makeAssembly } from './assembly';
 import { addAlloc, polyCfg, withParts } from './test-poly';
 import { PRESETS } from './presets';
-import { PANEL_BYTES, encodePatch, recordSize } from './patchbin';
+import { PANEL_BYTES, encodePatch, paramsAt, recordSize } from './patchbin';
 import { acid, subtractiveSaw, twoOpFM, wobble } from './test-patches';
 
 const SR = 48000;
@@ -291,7 +291,7 @@ describe('engine', () => {
       expect(rms(l), name).toBeGreaterThan(0.005);
       expect(rms(r), name).toBeGreaterThan(0.005);
     }
-  });
+  }, 120000); // (the XLs with their originals' whole panels are heavy: about 6 s on CI, and over 30 s under the deploy's coverage run)
 
   it('the filter cutoff is logarithmic: modulation moves it in octaves', () => {
     const cutoff = DEFS.filter.params.find((q) => q.name === 'cutoff')!;
@@ -553,9 +553,9 @@ describe('morph', () => {
     setMorphTarget(a.p, b.p, DEFS);
     const withB = encodePatch(a.p);
     expect(withB[6] & ~32).toBe(1);
-    const npar = a.p.modules.reduce((s, m) => s + DEFS[m.type].params.length, 0);
-    expect(withB.length).toBe(plain.length + 4 * npar);
-    const cables = 8 + PANEL_BYTES + a.p.modules.reduce((n, m) => n + recordSize(m.type), 0) + 4 * a.p.cables.length;
+    const npar = a.p.modules.reduce((s, m) => s + paramsAt(m.type, withB[1]).length, 0);
+    expect(withB.length).toBe(plain.length + 4 * npar + Math.ceil(a.p.modules.length / 8));
+    const cables = 8 + PANEL_BYTES + a.p.modules.reduce((n, m) => n + recordSize(m.type, withB[1]), 0) + 4 * a.p.cables.length;
     expect(Array.from(withB.subarray(8, cables))).toEqual(Array.from(plain.subarray(8, cables))); // the records and cables are untouched
   });
 });
@@ -912,6 +912,19 @@ describe('bend, mod wheel, aftertouch, cc', () => {
     e.load(p);
     return { e, out: () => render(e, 128).l[100], kb: kb.id };
   }
+
+  it.each([[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const)('CC %i reaches Main %s independently', (cc, port) => {
+    const x = rig(port);
+    expect(x.out()).toBe(0);
+    x.e.cc(cc, 63);
+    expect(x.out()).toBeCloseTo(63 / 127, 6);
+    for (const other of [1, 2, 64, 65]) if (other !== cc) x.e.cc(other, 127);
+    expect(x.out()).toBeCloseTo(63 / 127, 6);
+    x.e.cc(cc, 127);
+    expect(x.out()).toBeCloseTo(1, 6);
+    x.e.cc(cc, 0);
+    expect(x.out()).toBe(0);
+  });
 
   it('bend moves the pitch output by up to two semitones and shows on the bend output', () => {
     const { e, out } = rig('pitch'); // (middle C: the engine clamps its output to +-1, so a high note would hide the bend)
@@ -1375,7 +1388,7 @@ describe('polyphony', () => {
     Object.assign(raw.modules.find((m: { id: number }) => m.id === ids.part).params, { voices: 99, assign: 7, legato: -1, priority: 'x' });
     const r = validatePatch(raw, DEFS);
     fixAssemblies(r, DEFS);
-    expect(polyGroups(r)[0].cfg).toEqual({ parts: EDITOR_MAX_PARTS, assign: 2, legato: 0, priority: 0, flaws: [{ detune: 50, drift: 0, bright: 2, env: 0, level: 100 }] });
+    expect(polyGroups(r)[0].cfg).toEqual({ parts: EDITOR_MAX_PARTS, assign: 3, legato: 0, priority: 0, flaws: [{ detune: 50, drift: 0, bright: 2, env: 0, level: 100 }] });
   });
 
   it('two poly assemblies layer: each plays every note on its own parts; a cable out of one sums its parts (at 1 / parts: ungated)', () => {
@@ -1739,6 +1752,81 @@ describe('level/rate envelope, string, wavetable, chorus', () => {
     expect(render(en, 1000).l[999]).toBeCloseTo(0.1, 2);
   });
 
+  const env8Patch = (params: Record<string, number>): Engine => {
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0).id;
+    const e = addModule(p, DEFS.env8, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    out.params.level = 1;
+    Object.assign(e.params, params);
+    wire(p, kb, 'gate', e.id, 'gate');
+    wire(p, e.id, 'env', out.id, 'l');
+    const en = new Engine(SR);
+    en.load(p);
+    return en;
+  };
+  const last = (a: Float32Array): number => a[a.length - 1];
+  const steps5 = { l1: 1, r1: 0.01, l2: 0.25, r2: 0.1, l3: 0.75, r3: 0.1, l4: 0.4, r4: 0.1, l5: 0.1, r5: 0.1, l6: 0.9, r6: 0.1 };
+
+  it('env8 runs its steps to the sustain step, holds it, on release runs the steps after it to the end, rests there', () => {
+    const en = env8Patch({ ...steps5, sus: 3, end: 5 });
+    expect(render(en, 100).l[50]).toBeCloseTo(0.1, 5); // resting at the end's level
+    en.noteOn(60);
+    expect(Math.max(...render(en, Math.round(SR * 0.01)).l)).toBeCloseTo(1, 4);
+    expect(last(render(en, Math.round(SR * 0.1)).l)).toBeCloseTo(0.25, 1);
+    expect(last(render(en, Math.round(SR * 0.1)).l)).toBeCloseTo(0.75, 5);
+    expect(render(en, Math.round(SR * 0.3)).l[5000]).toBeCloseTo(0.75, 5); // held
+    en.noteOff(60);
+    expect(last(render(en, Math.round(SR * 0.1)).l)).toBeCloseTo(0.4, 1); // step 4
+    expect(last(render(en, Math.round(SR * 0.1)).l)).toBeCloseTo(0.1, 1); // step 5, the end
+    expect(render(en, 2000).l[1999]).toBeCloseTo(0.1, 5); // step 6 never runs
+  });
+
+  it('env8: a release before the sustain step jumps past it; sus off runs every step through the gate; sus = end holds the end', () => {
+    let en = env8Patch({ ...steps5, sus: 3, end: 5 });
+    en.noteOn(60);
+    render(en, Math.round(SR * 0.05)); // in step 2
+    en.noteOff(60);
+    const r = render(en, Math.round(SR * 0.2)).l;
+    expect(Math.max(...r)).toBeCloseTo(0.4, 2); // straight up to step 4's level, step 3 skipped
+    expect(last(r)).toBeCloseTo(0.1, 1); // then step 5
+    en = env8Patch({ ...steps5, sus: 0, end: 4 });
+    en.noteOn(60);
+    render(en, 128);
+    en.noteOff(60); // a short trig: the steps run on
+    expect(Math.max(...render(en, Math.round(SR * 0.2)).l)).toBeCloseTo(1, 2);
+    expect(last(render(en, Math.round(SR * 0.3)).l)).toBeCloseTo(0.4, 1);
+    en = env8Patch({ ...steps5, sus: 4, end: 4 });
+    en.noteOn(60);
+    expect(last(render(en, Math.round(SR * 0.5)).l)).toBeCloseTo(0.4, 1);
+    en.noteOff(60);
+    expect(render(en, 1000).l[999]).toBeCloseTo(0.4, 5); // resting at the end's level
+  });
+
+  it('env8 counts as an envelope for idle parts: a released part goes idle once its steps have run', () => {
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0).id;
+    const o = addModule(p, DEFS.osc, 0, 0);
+    const e = addModule(p, DEFS.env8, 0, 0);
+    const v = addModule(p, DEFS.vca, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    Object.assign(e.params, { r1: 0.005, r2: 0.05, l3: 0, r3: 0.05, sus: 2, end: 3 });
+    wire(p, kb, 'pitch', o.id, 'pitch');
+    wire(p, kb, 'gate', e.id, 'gate');
+    wire(p, o.id, 'out', v.id, 'in');
+    wire(p, e.id, 'env', v.id, 'cv');
+    wire(p, v.id, 'out', out.id, 'l');
+    const en = new Engine(SR);
+    en.load(withParts(p, 2));
+    const parts = (): { idle?: boolean }[] => (en as unknown as { groups: { parts: { idle?: boolean }[] }[] }).groups.find((g) => g.parts.length === 2)!.parts;
+    en.noteOn(60);
+    render(en, Math.round(SR * 0.2));
+    expect(parts()[0].idle).toBeFalsy(); // held at the sustain step
+    en.noteOff(60);
+    render(en, Math.round(SR * 0.2));
+    expect(parts()[0].idle).toBe(true);
+  });
+
   const stringPatch = (params: Record<string, number>, exc = false) => {
     const p = emptyPatch();
     const kb = addModule(p, DEFS.fm1, 0, 0).id;
@@ -2092,6 +2180,69 @@ describe('pan, crossfade, vowel, phaser, digitizer, noise colour', () => {
     expect(run(0.5)).toBeCloseTo(0.1, 5);
   });
 
+  it('selector: pos chooses an input plus its value, that position\'s gate is high, its pos input spans the count', () => {
+    const run = (params: Record<string, number>, cv = 0, port = 'out'): number => {
+      const { p, out, add } = start();
+      const a = add('const', { value: 0.4 });
+      const b = add('const', { value: -0.2 });
+      const c = add('const', { value: cv });
+      const x = add('select', params);
+      wire(p, a, 'out', x, 'in1');
+      wire(p, b, 'out', x, 'in3');
+      wire(p, c, 'out', x, 'pos');
+      wire(p, x, port, out, 'l');
+      return play(p, 256).l[200];
+    };
+    expect(run({ pos: 1 })).toBeCloseTo(0.4, 5);
+    expect(run({ pos: 3, v3: 0.1 })).toBeCloseTo(-0.1, 5);
+    expect(run({ pos: 5, v5: 0.25 })).toBeCloseTo(0.25, 5); // nothing patched in: the value
+    expect(run({ pos: 8, count: 3 })).toBeCloseTo(-0.2, 5); // clamped to the count
+    expect(run({ pos: 1, count: 3 }, 0.5)).toBeCloseTo(0, 5); // 0..1 spans 1..3: 0.5 = 2
+    expect(run({ pos: 1, count: 3 }, 1)).toBeCloseTo(-0.2, 5);
+    expect(run({ pos: 3 }, 0, 'g3')).toBe(1);
+    expect(run({ pos: 3 }, 0, 'g1')).toBe(0);
+  });
+
+  it('selector: a gate with no cable is not written (as engine.c skips dummy_out), a probe of it reads it from the next block', () => {
+    const { p, out, add } = start();
+    const x = add('select', { pos: 2 });
+    wire(p, x, 'g2', out, 'l');
+    const e = new Engine(SR);
+    e.load(p);
+    render(e, 128);
+    expect(e.probe(x, 'g2')![0]).toBe(1);
+    expect(e.probe(x, 'g1')![0]).toBe(0); // (never written yet)
+    expect(e.probe(x, 'g3')![0]).toBe(0);
+    e.setParam(x, 'pos', 3);
+    render(e, 128);
+    expect(e.probe(x, 'g3')![0]).toBe(1); // probed above: written since
+    expect(e.probe(x, 'g2')![0]).toBe(0);
+  });
+
+  it('selector: fade crossfades linearly over its time when the position changes; 0 switches at once', () => {
+    const run = (fade: number): Float32Array => {
+      const { p, out, add } = start();
+      const a = add('const', { value: 1 });
+      const x = add('select', { pos: 2, fade });
+      const e = new Engine(SR);
+      wire(p, a, 'out', x, 'in1');
+      wire(p, x, 'out', out, 'l');
+      e.load(p);
+      render(e, 128); // settled on 2 (nothing patched: 0)
+      e.setParam(x, 'pos', 1);
+      const l = new Float32Array(1024), r = new Float32Array(1024);
+      e.render(l, r);
+      return l;
+    };
+    const now = run(0);
+    expect(now[0]).toBeCloseTo(1, 5);
+    const slow = run(10); // 480 samples at 48 kHz
+    expect(slow[0]).toBeLessThan(0.01);
+    expect(slow[240]).toBeCloseTo(0.5, 1);
+    expect(slow[300]).toBeLessThan(slow[400]);
+    expect(slow[700]).toBeCloseTo(1, 5);
+  });
+
   it('vowel: the A vowel passes its first formant and not 3 kHz; finite at full resonance', () => {
     const run = (f: number, res: number): Float32Array => {
       const { p, out, add } = start();
@@ -2295,7 +2446,7 @@ describe('delay sync and ping-pong', () => {
   };
   it('a synced delay follows the clock: 1/4 is one beat', () => {
     // 24 ticks per beat, a tick every 460 samples = 11040 samples per beat; the delayed constant 1 appears after that
-    const { first } = run({ sync: 1, time: DELAY_TIME_MIN + (6 / 10) * (DELAY_TIME_MAX - DELAY_TIME_MIN) }, 460);
+    const { first } = run({ sync: 1, time: DELAY_TIME_MIN + (6 / 10) * (DELAY_SYNC_TOP - DELAY_TIME_MIN) }, 460);
     const at = first.findIndex((v) => v > 0.5);
     expect(at * 128).toBeGreaterThan(11040 - 400);
     expect(at * 128).toBeLessThan(11040 + 400);
@@ -2384,6 +2535,7 @@ describe('dedicated CV parameter displays', () => {
     ['vca', 'cv', 'gain', 1.5, 0.75],
     ['pan', 'pos', 'pan', 0, 0.5],
     ['xfade', 'pos', 'mix', 0.2, 0.7],
+    ['select', 'pos', 'pos', 1, 5],
     ['vowel', 'vowel', 'vowel', 1, 1.5],
     ['shift', 'cv', 'shift', 100, 150],
     ['filter', 'morph', 'morph', 0.2, 0.7],

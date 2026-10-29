@@ -23,6 +23,50 @@ diag_t diag __attribute__((section(".noinit")));        /* (not static: see fm1_
 static volatile uint32_t diag_alive, diag_armed;      /* fm1_ms of the main loop's last pass; set once the loop runs */
 static struct { uint32_t p3, src, wdt; diag_t stall; fm1_crash_t crash; } diag_prev;   /* (m1_link.py diag reads it as u32s) */
 
+/* #273: the SRAM below the RAM region (app.ld .lowram: the reverb and chorus lines) and the two stacks. The boot proves
+ * .lowram word by word (two patterns, then zero) and paints both stacks with STACK_PAINT (on the stack it runs on, only
+ * below its own frame); DIAG page 124 (tools/m1_link.py mem) reports the proof and how deep each stack has gone since boot.
+ * The emulator reads the same paint (tools/emu/src/machine.rs PAINT). */
+extern uint32_t _lr_start[], _lr_end[], _lr_limit[];
+extern char _ustack_top[];
+#define STACK_PAINT 0x5AC3A55Cu
+#define LOWRAM_PAT 0xA5A55A5Au
+static uint8_t lowram_state;                    /* 1: every word of .lowram took and gave back both patterns; 2: one did not */
+
+static void lowram_prove(void)
+{
+    volatile uint32_t *d;
+    uint32_t bad = 0;
+    for (d = _lr_start; d < _lr_end; d++)
+        *d = (uint32_t)(uintptr_t)d ^ LOWRAM_PAT;
+    for (d = _lr_start; d < _lr_end; d++) {
+        bad |= *d ^ ((uint32_t)(uintptr_t)d ^ LOWRAM_PAT);
+        *d = ~((uint32_t)(uintptr_t)d ^ LOWRAM_PAT);
+    }
+    for (d = _lr_start; d < _lr_end; d++) {
+        bad |= *d ^ ~((uint32_t)(uintptr_t)d ^ LOWRAM_PAT);
+        *d = 0;
+    }
+    lowram_state = bad ? 2u : 1u;
+}
+
+static void stack_paint(char *lo, char *top)
+{
+    volatile uint32_t here = 0, *d, *end = (uint32_t *)top;
+    if ((char *)&here >= lo && (char *)&here < top)
+        end = (uint32_t *)&here - 64;           /* the stack this runs on: this frame and 256 B under it stay */
+    for (d = (uint32_t *)lo; d < end; d++)
+        *d = STACK_PAINT;
+}
+
+static uint32_t stack_deepest(char *lo, char *top)     /* the most bytes the stack has held since boot */
+{
+    const volatile uint32_t *d = (const uint32_t *)lo;
+    while ((char *)d < top && *d == STACK_PAINT)
+        d++;
+    return (uint32_t)(top - (char *)d);
+}
+
 void fm1_timer5_irq(uint32_t *f)                /* f: the saved r0..r3, reti, rets, psr (fm1_isr.S) */
 {
     static uint32_t sub, last, acc, next;
@@ -65,6 +109,7 @@ static void fm1_fault(const fm1_crash_t *c)
     char b[12];
     uint32_t t0;
     fm1_audio_stop();
+    lcd_service = lcd_yield = 0;                  /* a fault screen must not resume input or engine work */
     lcd_wake_now();
     lcd_fill(0, 0, 240, 240, 0xF800u);
     text5x7(8, 8, "CRASH", 3, C_FG, 0xF800u);
@@ -82,6 +127,7 @@ static void fm1_fault(const fm1_crash_t *c)
 
 /* proto.c hooks */
 static int m1_flash_ok(void) { return flash_ok; }
+static int m1_midi_out(void) { return cfg.midi_out; }   /* proto.c INFO: MENU > MIDI OUT (sandbox mode needs it) */
 static void m1_send(const uint8_t *f, uint32_t n) { (void)ota_wire_send(f, n); }
 static int m1_apply(const uint8_t *patch, uint32_t len)
 {
@@ -105,7 +151,7 @@ static uint32_t batt_us;                        /* the last battery read's time,
 /* the DIAG command (proto.c): page 0 the reset cause and the crash record, pages 1.. the stall record, 32 bytes a page;
  * page 127 the CPU now: % of the half buffer, the longest audio ISR (us) since the last read of this page (then reset),
  * the half buffer's budget (us), the overload mute, the halves rendered, the battery read's time (us, batt_poll) and its
- * smoothed reading (0..1023, 0 = none yet);
+ * smoothed reading (0..1023, 0 = none yet), then voices shed since the last patch load;
  * pages 125, 126 the USB audio stream (usb.c uac, FELUCCA_UAC; m1_link.py uac), 8 words each:
  *   125: flags (bit 0 presented, 1 alt 1 set by the host, 2 the host reads, 3 primed, 4 configured), streams started,
  *        packets, frames in them, SET_CUR requests, bus resets, last fill_min, USB frame number
@@ -143,8 +189,24 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         return sizeof v;
     }
 #endif
+    if (page == 124u) {                         /* #273: .lowram and the stacks */
+        uint32_t v[8];
+        v[0] = lowram_state;
+        v[1] = (uint32_t)((uintptr_t)_lr_end - (uintptr_t)_lr_start);
+        v[2] = (uint32_t)((uintptr_t)_lr_limit - (uintptr_t)_lr_end);
+        v[3] = (uint32_t)(_ustack_top - _ustack_lo);
+        v[4] = stack_deepest(_ustack_lo, _ustack_top);
+        v[5] = (uint32_t)(_sstack_top - _sstack_lo);
+        v[6] = stack_deepest(_sstack_lo, _sstack_top);
+        v[7] = (uint32_t)((uintptr_t)_guard0 - (uintptr_t)_pool_end);   /* the pool left free */
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
+    if (page >= 120u && page <= 123u)                    /* the draw times (ui.c ui_time_diag) */
+        return ui_time_diag(page, out);
     if (page == 127u) {
-        uint32_t v[7];
+        uint32_t v[8];
         v[0] = cpu_pct;
         v[1] = diag_us_peak > eng_us_max ? diag_us_peak : eng_us_max;
         v[2] = 2902u;
@@ -152,6 +214,7 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
         v[4] = eng_halves;
         v[5] = batt_us;
         v[6] = (uint32_t)batt_raw();
+        v[7] = eng_shed_count;
         diag_us_peak = 0;
         for (i = 0; i < sizeof v; i++)
             out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
@@ -287,7 +350,7 @@ static int preset_load(uint32_t n)
     return 0;
 }
 
-#include "live.c"                                   /* the editor's Live: PRESET and program change wait (#185, #200) */
+#include "live.c"                                   /* the editor's Live: PRESET and program change wait (#185); sandbox mode */
 
 static void preset_step(int32_t d)                  /* the PRESET knob: the next / previous occupied slot */
 {
@@ -548,108 +611,34 @@ static void defaults_now(void)
     ui_msg("FACTORY RESET", 1500);
 }
 
-static uint32_t midi_clk_ms;                    /* fm1_ms of the last MIDI clock tick (MIDI clock drives the clock while they come) */
-static uint8_t midi_clk_seen;
-
 /* a poly group's setting from a device page (pages_ui.c poly rows): voices, assign, legato, priority, unison, into the
  * group record of the running patch; the voices and unison are read at load: the engine loads the patch again */
-static void poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+#include "poly_edit.h"
+/* Keep the audio interrupt out of eng_load, including the retry after a rejected edit. */
+static int poly_reload(const uint8_t *bin, uint32_t len)
 {
-    int g = eng_module_group(mod);
-    uint32_t at;
-    if (g <= 0 || !m1_cur_len)
-        return;
-    at = 8u + ENG_GROUP_REC * (uint32_t)(g - 1);
-    if (at + 4u > m1_cur_len)
-        return;
-    if (field == 0u)
-        m1_cur[at] = (uint8_t)clampi(v, 1, ENG_MAX_PARTS);
-    else if (field == 1u)
-        m1_cur[at + 1u] = (uint8_t)clampi(v, 0, 2);
-    else if (field == 2u)
-        m1_cur[at + 2u] = (uint8_t)((m1_cur[at + 2u] & 0x80u) | (uint32_t)clampi(v, 0, 2));
-    else if (field == 3u)
-        m1_cur[at + 3u] = (uint8_t)clampi(v, 0, 2);
-    else
-        m1_cur[at + 2u] = (uint8_t)((m1_cur[at + 2u] & 0x7Fu) | (v ? 0x80u : 0u));
+    int rc;
+    eng_run = 0;
+    __asm__ volatile("" ::: "memory");
+    rc = eng_load(bin, len);
+    if (!rc)
+        eng_overload_clear();
+    __asm__ volatile("" ::: "memory");
+    eng_run = (uint8_t)(rc == 0);
+    return rc;
+}
+static int poly_row_set(uint32_t mod, uint32_t field, int32_t v)
+{
+    if (poly_patch_set(m1_cur, m1_cur_len, mod, field, v, poly_reload)) {
+        ui_msg("NO ROOM", 1500);
+        ui_dirty = 2;
+        return -1;
+    }
     m1_edited = 1;
-    if (field == 0u || field == 4u)
-        (void)eng_load(m1_cur, m1_cur_len);     /* (the parts sound again from the next note) */
-    else
-        (void)eng_poly_set((uint32_t)g - 1u, field, (uint32_t)v);
+    return 0;
 }
 
-static void midi_drain(void)                    /* USB-MIDI events -> the engine */
-{
-    while (mi_r != mi_w) {
-        uint32_t pkt = midi_in_q[mi_r % MQ], st = (pkt >> 8) & 0xF0u, n = (pkt >> 16) & 0x7Fu, v = pkt >> 24;
-        RING_PUBLISH();
-        mi_r++;
-        uint32_t chn = ((pkt >> 8) & 15u) + 1u;
-        if (st == 0xF0u) {                      /* realtime (MENU > CLOCK IN): MIDI clock drives the clock, Start / Continue / Stop the transport */
-            uint32_t rt = (pkt >> 8) & 0xFFu;
-            if (!cfg.clock_in) {
-            } else if (rt == 0xF8u) {
-                if (!midi_clk_seen)
-                    eng_clock_external(1);
-                midi_clk_seen = 1;
-                midi_clk_ms = fm1_ms;
-                eng_clock_tick();
-            } else if (rt == 0xFAu || rt == 0xFBu || rt == 0xFCu) {
-                eng_transport(rt != 0xFCu);
-                leds_play();
-                if (!ui_dirty)
-                    ui_dirty = 1;
-            }
-        } else if (st == 0x90u || st == 0x80u) {  /* notes on every channel: the engine judges them (a Voice allocator may take its own channel) */
-            eng_midi_channel(cfg.ch);
-            if (st == 0x90u && v)
-                eng_note_on(n, (int32_t)(v * 65536u / 127u), chn);
-            else
-                eng_note_off(n, chn);
-        } else if (!cfg.ch || cfg.ch == chn) {  /* other channel messages on the MIDI channel (MENU > MIDI CHANNEL; 0 = all) */
-            if (st == 0xB0u && n == 123u) {
-                eng_all_notes_off();
-            } else if (st == 0xB0u && n == 1u) {        /* mod wheel: the Main module's mod output */
-                eng_ctl(ENG_CTL_MOD, (int32_t)(v * 65536u / 127u));
-            } else if (st == 0xB0u && n >= 16u && n <= 19u) {   /* CC 16..19: K1..K4, the rows of the device page in focus */
-                uint32_t mod, par;
-                int32_t val, r = pages_set_unit(n - 16u, (int32_t)(v * 65536u / 127u), &mod, &par, &val);
-                if (r >= 0) {
-                    if (r == 1)
-                        poly_row_set(mod, par & 0x7Fu, val);
-                    else {
-                        eng_set_param(mod, par, val);
-                        m1_patch_param(mod, par, val);
-                    }
-                    m1_param_now(mod, par, r == 1 ? val << 16 : val);
-                    if (!ui_dirty)
-                        ui_dirty = 1;
-                }
-            } else if (st == 0xB0u && n == 22u) {      /* CC 22: the Main module's MORPH */
-                int m = eng_find(T_FM1);
-                if (m >= 0) {
-                    eng_set_param((uint32_t)m, FM1_P_MORPH, (int32_t)(v * 65536u / 127u));
-                    m1_patch_param((uint32_t)m, FM1_P_MORPH, (int32_t)(v * 65536u / 127u));
-                }
-            } else if (st == 0xB0u && n >= 80u && n < 80u + ENG_PANEL_BUTTONS) {   /* CC 80..86: the patch buttons pressed (64 and up) / let go */
-                panel_button_set(n - 80u, v >= 64u);
-            } else if (st == 0xE0u) {                   /* pitch bend: +-2 semitones on the pitch, and the bend output */
-                eng_ctl(ENG_CTL_BEND, ((int32_t)(v << 7 | n) - 8192) << 3);
-            } else if (st == 0xD0u) {                   /* channel aftertouch: the at output */
-                eng_ctl(ENG_CTL_AT, (int32_t)(n * 65536u / 127u));
-            } else if (st == 0xC0u && cfg.prog_chg && slot_used(n) && !editor_live()) {   /* program change n: bank slot n (an empty one, or the editor's Live: nothing) */
-                pages_patch_ask();                     /* its name over the bars, as PRESET (#170) */
-                preset_load(n);
-            }
-        }
-    }
-    midi_in_overflow = 0;
-    if (midi_clk_seen && fm1_ms - midi_clk_ms > 500u) {   /* half a second without MIDI clock: the Main module's tempo again */
-        midi_clk_seen = 0;
-        eng_clock_external(0);
-    }
-}
+#include "midi_input.h"
 
 /* MASTER pot (ADC 0..1023, square law): read before the audio starts, then smoothed per main-loop pass */
 static int32_t master_knob = 512 * 16;
@@ -701,6 +690,17 @@ static void master_boot(void)
             return;
         }
     }
+}
+
+/* a draw of the device page gives way when an encoder has a step waiting (pages_ui.c pages_staged, #298): SELECT, ALGO,
+ * K1..K4, PRESET. Only looks (knobs_poll takes them) */
+static int encs_waiting(void)
+{
+    uint32_t e;
+    for (e = 0; e < 7u; e++)
+        if (fm1_enc_waiting(e))
+            return 1;
+    return 0;
 }
 
 /* the HAL's inputs into the panel core (panel.c) */
@@ -840,6 +840,70 @@ static void m1_focus(uint32_t dev, uint32_t pg)
 }
 static void m1_ui_changed(void) { ui_dirty = 2; }    /* proto.c: the editor bypassed a module: title and picture */
 static void m1_ui_rows(void) { ui_dirty = ui_dirty ? ui_dirty : 1; }   /* proto.c: the editor moved a parameter (Live) */
+
+/* The device test mode (#291): a script on the Mac drives the panel over the editor link and reads the screen and the
+ * output level, as `m1emu serve` does the emulator's. A key goes into the HAL's scan as a closed contact (fm1_input.h
+ * fm1_virt_btn / fm1_virt_note), an encoder's clicks into its steps, so both take the panel's own paths (debounce, the
+ * MIDI out, the pages). For TEST_HOLD_MS after one, the panel refuses UPDATE MODE and FACTORY RESET (menu.c). */
+static int m1_test_key(uint32_t id, int down)
+{
+    if (id >= FM1_NKEY)
+        return -1;
+    if (id < 14u)
+        fm1_virt_btn = down ? fm1_virt_btn | 1u << id : fm1_virt_btn & ~(1u << id);
+    else
+        fm1_virt_note = down ? fm1_virt_note | 1u << (id - 14u) : fm1_virt_note & ~(1u << (id - 14u));
+    test_input_ms = fm1_ms ? fm1_ms : 1u;
+    return 0;
+}
+static int m1_test_turn(uint32_t enc, int32_t clicks)
+{
+    uint32_t k;
+    if (enc >= FM1_NENC)
+        return -1;
+    k = fm1__lock();
+    fm1_virt_enc[enc] = (int16_t)(fm1_virt_enc[enc] + clicks);
+    fm1__unlock(k);
+    test_input_ms = fm1_ms ? fm1_ms : 1u;
+    return 0;
+}
+/* k 0xFF: the head (texts, the page, flags: bit 0 sandbox mode, bit 1 the boot screen, then Main's patch buttons as their
+ * jacks stand, u16: eng_buttons_get, #368), else text k (x, y, w, h, n, text) */
+static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
+{
+    static uint8_t idx[SCR_N];
+    static uint32_t n;
+    uint32_t i;
+    const scr_text_t *t;
+    if (k == 0xFFu) {
+        n = scr_list(idx);
+        out[0] = (uint8_t)n;
+        out[1] = page;
+        out[2] = (uint8_t)((sb_on ? 1u : 0u) | (booting ? 2u : 0u));
+        out[3] = (uint8_t)eng_buttons_get();
+        out[4] = (uint8_t)(eng_buttons_get() >> 8);
+        return 5;
+    }
+    if (k >= n)
+        return 0;
+    t = &scr_text[idx[k]];
+    out[0] = t->x;
+    out[1] = t->y;
+    out[2] = t->w;
+    out[3] = t->h;
+    for (i = 0; i < SCR_CH && t->s[i]; i++)
+        out[5u + i] = (uint8_t)t->s[i];
+    out[4] = (uint8_t)i;
+    return 5u + i;
+}
+static uint32_t m1_test_peak(void)
+{
+    uint32_t p;
+    tp_on = 1;
+    p = tp_peak;
+    tp_peak = 0;
+    return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u) | (master_q12 < 64u ? 1u << 18 : 0u);
+}
 
 /* The chip's mask-ROM download mode (USB "WL80UBOOT", 4C4A:8057): only the explicit SysEx F0 22 24 35 7D F7 gets here. No
  * tool of this project (nor M-VAVE's web updater) talks to that mode: jl-uboot-tool / FM-1 Transporter do. A power cycle
@@ -991,7 +1055,7 @@ static void fm1_main(int update)                    /* update: the boot guard sa
     }
     booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
-    batt_drawn = BATT_NONE;                             /* (its cell too) */
+    batt_drawn = BATT_NONE;                             /* (the footer's battery too) */
     screen_idle();                                      /* the top bar and the page */
     if (boot_msg)
         ui_msg(boot_msg, boot_msg_ms);
@@ -1003,7 +1067,9 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         while (fm1_input_key_peek() >= 0)               /* (and the keys: the first pass plays those held now) */
             fm1_input_key_pop();
     }
+    lcd_service = midi_yield;
     panel_yield = keys_yield;
+    pages_waiting = encs_waiting;
     diag_alive = fm1_ms;
     diag_armed = 1;
     for (;;) {
@@ -1056,6 +1122,9 @@ void fm1_cstart(void)
         *d = 0;
     for (d = _pool_start; d < _pool_end; d++)
         *d = 0;
+    lowram_prove();
+    stack_paint(_ustack_lo, _ustack_top);
+    stack_paint(_sstack_lo, _sstack_top);
     for (s = _data_load, d = _data_start; d < _data_end; s++, d++)
         *d = *s;
     for (s = _rt_load, d = _rt_start; d < _rt_end; s++, d++)

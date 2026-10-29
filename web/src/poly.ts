@@ -143,20 +143,16 @@ export function keysInto(p: Patch, m: ModuleInst): ModuleInst | null {
   return from.type === 'fm1' || from.type === 'steps' || (from.type === 'arp' && arpFeed(p, from)) ? from : null;
 }
 
-/** the Drum map a Steps track plays: cabled from its keys out, or through the Arpeggiator it feeds (the roll's rows) */
+/** the Drum map a Steps track plays: cabled from its keys out, or through the Arpeggiator it feeds (the roll's rows). With
+ *  several, the first in the FM-1's module order, as the firmware picks it (engine.c eng_steps_drummap), so the roll and
+ *  the FM-1's SEQ page name the same rows */
 export function trackDrumMap(p: Patch, steps: number): ModuleInst | null {
-  const into = (from: number): ModuleInst | undefined => {
-    const c = p.cables.find((x) => x.from.module === from && x.from.port === 'keys' && p.modules.find((q) => q.id === x.to.module)?.type === 'drummap');
-    return c && p.modules.find((q) => q.id === c.to.module);
-  };
-  const direct = into(steps);
-  if (direct) return direct;
-  for (const c of p.cables)
-    if (c.from.module === steps && c.from.port === 'keys' && c.to.port === 'keys' && p.modules.find((q) => q.id === c.to.module)?.type === 'arp') {
-      const m = into(c.to.module);
-      if (m) return m;
-    }
-  return null;
+  const type = (id: number): string | undefined => p.modules.find((q) => q.id === id)?.type;
+  const fed = (map: number, from: number): boolean => p.cables.some((c) => c.from.module === from && c.from.port === 'keys' && c.to.module === map && c.to.port === 'keys');
+  const arps = p.cables.filter((c) => c.from.module === steps && c.from.port === 'keys' && c.to.port === 'keys' && type(c.to.module) === 'arp').map((c) => c.to.module);
+  const plays = (m: ModuleInst): boolean => m.type === 'drummap' && (fed(m.id, steps) || arps.some((a) => fed(m.id, a)));
+  const id = deviceView(p, true).patch.modules.find(plays)?.id;
+  return (id !== undefined && p.modules.find((q) => q.id === id)) || p.modules.find(plays) || null;
 }
 
 /** what a Steps track plays (#134, the status line while it is armed): the instruments its outputs go into, by the
@@ -244,7 +240,7 @@ export function deviceView(source: Patch, compile = false): { patch: Patch; grou
       modules[slot] = partAt(alloc, alloc.id);
       const cfg = polyCfg(alloc);
       // (an arpeggiated, sequenced or split allocator always gets a group of its own: the shared keyboard plays every key)
-      if (cfg.parts > 1 || cfg.legato || cfg.priority || arp || cfg.channel || cfg.low !== undefined || cfg.high !== undefined) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
+      if (cfg.parts > 1 || cfg.unison || cfg.unisonParts || cfg.legato || cfg.priority || arp || cfg.channel || cfg.low !== undefined || cfg.high !== undefined) out.push({ key: `a${alloc.id}:${cfg.parts}`, cfg, modules: new Set([alloc.id]) });
     }
     if (arp) {
       for (const i of mine) out[i].src = arp.id;
@@ -359,7 +355,12 @@ export function setPoly(p: Patch, defs: Record<string, ModuleDef>, a: AssemblyIn
 
 /** drop duplicate cables (two rewired ones that now join the same ports) */
 function dedupe(p: Patch): void {
-  p.cables = p.cables.filter((c, i) => p.cables.findIndex((d) => sameEnd(c.from, d.from) && sameEnd(c.to, d.to)) === i);
+  // the first of each (from, to) pair stays (a key per cable, not a scan of every cable for each)
+  const seen = new Set<string>();
+  p.cables = p.cables.filter((c) => {
+    const k = JSON.stringify([c.from.module, c.from.port, c.to.module, c.to.port]);
+    return !seen.has(k) && !!seen.add(k);
+  });
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
