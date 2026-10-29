@@ -45,6 +45,7 @@ on:
       - web/src/device-presets.ts
       - web/src/engines.ts
       - web/src/factory-presets.ts
+      - web/src/preset-cards.ts
       - web/src/knob-migrate.ts
       - web/src/pages.ts
       - web/src/storage-key.ts

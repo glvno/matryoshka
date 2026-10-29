@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Factory presets can be written by hand, one text file per engine (`web/presets/cards/`, `npm run presets`); an engine with a card ships those instead of the rule-made Bright / Dark / Pad set. Hera 6 has the first five (drafts, not yet listened to on the FM-1) (#413)
 ### Changes
 
 - **The FM-1 draws its screens faster: a second LCD line buffer** (#377). The LCD driver keeps two scanline buffers

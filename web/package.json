@@ -16,6 +16,7 @@
     "firmware": "node scripts/sync-firmware.mjs",
     "flash": "node scripts/flash.mjs",
     "export-defs": "vite-node scripts/export-defs.ts",
+    "presets": "vite-node scripts/presets.ts",
     "cpu-costs": "vite-node scripts/cpu-costs.ts",
     "cpu-hot": "vite-node scripts/cpu-hot.ts",
     "listen-renders": "vite-node scripts/listen-renders.ts",

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { beforeEach, describe, expect, it } from 'vitest';
 import { FACTORY } from './assemblies';
-import { insertAssembly } from './assembly';
+import { insertAssembly, toDef } from './assembly';
 import { applyPreset, deletePreset, presetsOf, renamePreset, storePreset } from './device-presets';
 import { defIsEngine, instIsEngine } from './engines';
-import { factoryPresets, presetsOfDef, xlEnginePresets } from './factory-presets';
+import { factoryPresets, presetsByRules, presetsOfDef, xlEnginePresets } from './factory-presets';
 import { DEFS } from './modules';
 import { newPatch } from './patch';
 import { FM1_PRESETS, XL_PRESETS, xlBase } from './presets';
@@ -42,18 +42,20 @@ describe('factory presets (#193)', () => {
     const p = newPatch(DEFS);
     const a = insertAssembly(p, DEFS, FACTORY.find((d) => d.name === 'Hera 6')!, 0, 0);
     const list = presetsOf(p, a);
-    expect(list.map((x) => x.name).slice(0, 2)).toEqual(['Init', 'Bright']);
+    expect(list.map((x) => x.name).slice(0, 2)).toEqual(['Init', 'Brass']); // its card (presets/cards/hera-6.txt)
     expect(applyPreset(p, a, list[1])).toBe(true);
     expect(renamePreset(list[0].structure, 'Init', 'x')).toBe(false);
-    expect(deletePreset(list[0].structure, 'Bright')).toBe(false);
-    expect(storePreset(p, a, 'Bright')).toBe('Bright 2');
+    expect(deletePreset(list[0].structure, 'Brass')).toBe(false);
+    expect(storePreset(p, a, 'Brass')).toBe('Brass 2');
   });
 
-  it('every XL engine has at least as many presets as its FM-1 version, loadable on the XL as it opens', () => {
+  it('every XL engine has at least as many rule-made presets as its FM-1 version, loadable on the XL as it opens', () => {
     expect(Object.keys(XL_ENGINE_PRESETS).length).toBe(Object.keys(XL_PRESETS).length);
     for (const [name, make] of Object.entries(XL_PRESETS)) {
       const fm1 = FM1_PRESETS[xlBase(name)!]();
-      const fm1Count = (fm1.assemblies ?? []).filter((a) => instIsEngine(fm1, a)).flatMap((a) => presetsOf(fm1, a)).length;
+      // an FM-1 engine with a card (presets/cards/) ships the card's presets; its XL, built as the original's whole panel,
+      // keeps the rule-made ones, so the count compared is the rules'
+      const fm1Count = (fm1.assemblies ?? []).filter((a) => instIsEngine(fm1, a)).flatMap((a) => presetsByRules(toDef(fm1, a))).length;
       const p = make();
       const engines = (p.assemblies ?? []).filter((a) => instIsEngine(p, a));
       // a drum kit has no engine, so neither version has presets

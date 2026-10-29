@@ -1,0 +1,109 @@
+# Hera 6: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# voice
+#   voices = 6                         1..16
+# lfo
+#   lfo rate = 3 Hz                    0.02..40 Hz
+#   lfo → pitch = 0                    -4..4
+#   pwm = 0.3                          -4..4
+#   lfo → filter = 0                   -4..4
+# dco
+#   wave = saw                         sine, triangle, saw, square, sharktooth, reverse saw
+#   pw = 0.5                           0.05..0.95
+#   sub = 0.25                         0..1
+#   noise = 0                          0..1
+# filters
+#   hpf = 20 Hz                        20..16000 Hz
+#   cutoff = 1400 Hz                   20..16000 Hz
+#   res = 0.15                         0..1
+#   env = 2.2 oct                      0..4 oct
+#   kybd = on                          off, on
+# env
+#   envelope: a screen, not a value
+#   a = 0.01 s                         0.001..5 s
+#   d = 0.8 s                          0.001..5 s
+#   s = 0.6                            0..1
+#   r = 0.5 s                          0.001..8 s
+#   vca = 1                            0..2
+# chorus
+#   chorus rate = 0.5 Hz               0.05..5 Hz
+#   chorus depth = 0.55                0..1
+#   chorus mix = 0.5                   0..1
+#   out: a screen, not a value
+#
+# Drafts of 2026-10-29 after the Juno-6's patch sheets, not yet listened to on the FM-1 (#413).
+
+engine: Hera 6
+
+preset: Brass
+  pwm = 0
+  cutoff = 900 Hz
+  res = 0.1
+  env = 2.8 oct
+  a = 0.06 s
+  d = 0.5 s
+  s = 0.55
+  r = 0.25 s
+  chorus mix = 0.35
+
+preset: Strings
+  lfo rate = 0.8 Hz
+  pwm = 0.6
+  wave = square
+  sub = 0.2
+  hpf = 120 Hz
+  cutoff = 2200 Hz
+  res = 0.05
+  env = 1 oct
+  a = 0.7 s
+  d = 1 s
+  s = 0.8
+  r = 1.4 s
+  chorus depth = 0.7
+  chorus mix = 0.6
+
+preset: Bass
+  pwm = 0
+  wave = square
+  sub = 0.6
+  cutoff = 450 Hz
+  res = 0.2
+  env = 2.4 oct
+  a = 0.003 s
+  d = 0.3 s
+  s = 0.15
+  r = 0.15 s
+  chorus mix = 0
+
+preset: Organ
+  pwm = 0
+  wave = square
+  sub = 0.5
+  cutoff = 7000 Hz
+  res = 0
+  env = 0 oct
+  a = 0.004 s
+  d = 0.1 s
+  s = 1
+  r = 0.05 s
+  chorus rate = 5 Hz
+  chorus depth = 0.3
+
+preset: Glass Pad
+  lfo rate = 0.4 Hz
+  pwm = 0.45
+  lfo → filter = 0.3
+  wave = square
+  hpf = 200 Hz
+  cutoff = 1800 Hz
+  res = 0.3
+  env = 1.2 oct
+  a = 1.5 s
+  d = 2 s
+  s = 0.7
+  r = 2.5 s
+  chorus depth = 0.8
+  chorus mix = 0.65
