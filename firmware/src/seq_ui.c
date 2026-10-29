@@ -326,6 +326,7 @@ static void seq_leds(void)
 
 /* ---- the panel */
 
+static void seq_arm_shown(void);
 static void seq_select(uint32_t t)
 {
     if (t >= (uint32_t)eng_steps_count())
@@ -337,6 +338,7 @@ static void seq_select(uint32_t t)
     seq_roll_trk = -1;                           /* (a roll opens around its notes again) */
     if (page != PAGE_SEQ)
         return;                                  /* (from another page: the caller's page_set draws the SEQ page whole) */
+    seq_arm_shown();                             /* (ALGO: the track shown is the one armed, #395) */
     header_draw();
     ui_dirty = 2;
 }
@@ -722,6 +724,43 @@ static void seq_rec_off(void)
     seq_rec = 0;
     ent_keys = 0;
     ui_dirty = 2;
+}
+
+/* the armed set becomes `mask` (#395: SEL on a device page or an environment row, the SEQ page's track), the editor's FM-1
+ * tab told; a take ends first when the track REC records into is no longer the first armed one */
+static void seq_arm_set(uint64_t mask)
+{
+    int m, first = -1;
+    if (mask == eng_arm_mask_get())
+        return;
+    for (m = 0; m < 64 && first < 0; m++)
+        if ((mask >> m & 1u) && eng_type((uint32_t)m) == T_STEPS)
+            first = m;
+    if (seq_rec == 2u && eng_armed() != first)
+        seq_rec_off();
+    eng_arm_mask(mask);
+    m1_arms_now((uint32_t)eng_arm_mask_get(), (uint32_t)(eng_arm_mask_get() >> 32));
+    seq_track_redraw();
+}
+
+/* the SEQ page arms the track it shows (#395): opening the page (panel.c page_show), ALGO there (seq_select), or another
+ * patch while it shows (seq_poll) arm that track and disarm the rest */
+static uint32_t seq_armed_gen;          /* the patch the page last armed its track in */
+static void seq_arm_shown(void)
+{
+    int mod, t = seq_armed_trk();
+    if (seq_rec == 2u && t >= 0 && (uint32_t)t != seq_trk) {   /* (a take runs: the page shows its track, the take goes on) */
+        seq_trk = (uint8_t)t;
+        seq_pg = 0;
+        seq_row = 0;
+        seq_held = -1;
+        seq_roll_trk = -1;
+    }
+    seq_clamp();
+    mod = seq_module();
+    seq_armed_gen = pages_gen();
+    if (mod >= 0)
+        seq_arm_set((uint64_t)1 << mod);
 }
 
 /* REC let go (panel.c; not after REC held + a black key armed a track): off, or on: with a track armed into it (stopped:
@@ -1137,13 +1176,14 @@ static void seq_grid_draw(int full, int mod, int map, const char *info)
         p = put(p, "  ARMED");
     if (eng_steps_muted((uint32_t)mod))
         p = put(p, "  MUTED");
-    if (seq_armed_trk() != (int)seq_trk && !eng_steps_muted((uint32_t)mod)) {
-        p = put(p, "  ALGO: TRACK");
-        *put(p, "  SEQ+REC: CLEAR") = 0;           /* (#231: where it fits) */
+    {                                            /* the hints where they fit (#231; the track shown is armed: #395) */
+        char *q = put(p, "  ALGO: TRACK");
+        *put(q, "  SEQ+REC: CLEAR") = 0;
+        if (text_w(&FONT_S, line, -1) > 224u)
+            *q = 0;
         if (text_w(&FONT_S, line, -1) > 224u)
             *p = 0;
-    } else
-        *p = 0;
+    }
     seq_grid_line(1, 202, line, C_DIM, 224);
     if (map >= 0)
         hint = seq_rec ? "BLACK hit  SEL row  WHITE step  FX acc" : "BLACK/SEL row  WHITE step  FX acc  K2 vel";
@@ -1459,6 +1499,8 @@ static void seq_poll(void)
         kbd_was = -1;
         return;
     }
+    if (seq_armed_gen != pages_gen())            /* another patch while the page shows: its track armed (#395) */
+        seq_arm_shown();
     if (seq_kbd() != kbd_was) {                  /* PLAY / stop while REC records the armed track: its keyboard or the roll */
         kbd_was = (int8_t)seq_kbd();
         ent_keys = 0;

@@ -506,6 +506,10 @@ In the web app, polyphony (how many notes at once). Avoid: voice for a single no
 
 The part of an engine that turns keys into notes for its voices. Allocated voicing gives each key a free voice (one voice is monophony); mapped voicing sends each key to its own voice, as a drum engine picks its drum. Done by a Voicing module (allocated; also called "Voice allocator") or a Drum map (mapped).
 
+### Wired
+
+The keys' state with no device armed: Main's cables decide where the keys go. Every patch loads wired. The FM-1's footer says `KEYS WIRED`.
+
 ### XL
 
 The full browser version of a factory patch that was cut down to fit the FM-1, named after it with "XL" ("Algo Four XL"). It is the original instrument's full specification, no less, and always has a Steps track and an Arpeggiator in front of its sound. An XL never goes into the FM-1's bank. "XL" is only a name: whether a patch is a sandbox patch is worked out from the patch itself.

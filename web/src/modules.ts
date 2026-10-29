@@ -199,7 +199,7 @@ export const buttonLabel = (b: string): string => (b === 'scl' ? 'SEL' : b.toUpp
 /** what a fixed button does, for the dock and the button editor */
 export const FIXED_DOES: Record<string, string> = {
   glo: 'the FM-1’s own settings on its knobs (MIDI channel, clock in, MIDI out, LEDs; set them on the FM-1); again: back',
-  scl: 'one level deeper on the FM-1: an environment row’s pages, a track’s steps',
+  scl: 'arms the device on screen on the FM-1, so the keys play it (on an environment row: adds it or takes it out)',
   env: 'the environment on the FM-1: every device from Main to the Output (here the canvas is the environment); held + SAVE stores the device’s preset',
 };   // SEQ and REC: the device's step page (#83)
 /** the Main module's tempo range (bpm) */

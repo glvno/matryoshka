@@ -200,7 +200,7 @@ export const NEW_PANEL = (): MainPanel => ({ kinds: Object.fromEntries(['fx', 's
 /** the controls a panel label can name: the patch buttons (patchbin.ts writes the labels in this order). The knobs have
  * none any more: they show the names of the rows they turn (pages.ts). */
 export const PANEL_LABEL_KEYS = ['fx', 'scl', 'env', 'lfo', 'edit', 'glo', 'arp'];
-/** the panel buttons with a fixed role on the FM-1 (GLO its own page #199, SEL one level deeper and ENV the environment
+/** the panel buttons with a fixed role on the FM-1 (GLO its own page #199, SEL arms the device #395 and ENV the environment
  * #197): never a Toggle or Page button, never switching; their jacks still go high while they are held */
 export const FIXED_BUTTONS = new Set(['glo', 'scl', 'env']);
 export const PANEL_LABEL_MAX = 10;

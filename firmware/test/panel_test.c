@@ -818,18 +818,36 @@ int main(void)
         trail_n = 0;
     }
 
-    {                                                       /* SEL on a Steps track's device page (#196): its steps */
+    {                                                       /* SEL on a device page arms its device (#395); SEQ opens a track's
+                                                             * steps (#196) and arms it */
+        uint64_t drums = (uint64_t)1 << eng_steps_module(0);
+        foot_t f;
+        check("a patch loads WIRED: nothing armed, the footer: the patch, then KEYS WIRED", eng_arm_mask_get() == 0u
+              && (foot_layout(&f), !strcmp(f.a, "808 KIT") && !strcmp(f.w, "KEYS WIRED")));
         pages_focus(1, 0);                                  /* DRUMS */
         loop();
         check("the track's device page: LEN RATE SWING GATE", pages_now()->nrows == 4u && pages_focus_track() == 0);
         tap(3);
-        check("SEL there: the SEQ page on that track", page == PAGE_SEQ && seq_trk == 0);
-        tap(BTN_HOME);
-        check("HOME: back to the track's page", page == 0 && pg_cur_dev == 1);
+        check("SEL there: that track armed, no page opened", page == 0 && eng_arm_mask_get() == drums && !strcmp(msg_text, "DRUMS ARMED"));
+        check("  the footer: ARM DRUMS", (foot_layout(&f), !strcmp(f.a, "ARM DRUMS") && !f.w[0]));
+        tap(3);
+        check("SEL again: still armed", page == 0 && eng_arm_mask_get() == drums);
+        pages_focus(0, 0);                                  /* Main: no keys input */
+        loop();
+        later(1500);
+        tap(3);
+        check("SEL on Main: NOTHING HERE TAKES KEYS, the armed set as it was", page == 0 && eng_arm_mask_get() == drums
+              && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
+        eng_arm_mask(0);
+        pages_focus(1, 0);
+        loop();
         tap(BTN_SEQ);
-        check("SEQ there: the same", page == PAGE_SEQ && seq_trk == 0);
+        check("SEQ on the track's page: the SEQ page on that track, armed", page == PAGE_SEQ && seq_trk == 0 && eng_arm_mask_get() == drums);
         tap(BTN_HOME);
+        check("HOME: back to the track's page, still armed", page == 0 && pg_cur_dev == 1 && eng_arm_mask_get() == drums);
+        eng_arm_mask(0);
         pages_focus(2, 0);
+        later(1500);
         loop();
         trail_n = 0;
     }
@@ -876,23 +894,28 @@ int main(void)
             }
             enc(2, -3);
         }
-        tap(3);
-        check("SEL: the row's device pages", page == 0 && pg_cur_dev == d0 + 1u);
-        tap(BTN_HOME);
-        check("HOME: back to the environment", page == PAGE_ENV);
+        later(1500);
+        tap(3);                                             /* the 808 kit card: its keys come from the Drum map, not Main */
+        check("SEL on a row that takes no keys: NOTHING HERE TAKES KEYS, nothing armed, the page stays",
+              page == PAGE_ENV && pg_cur_dev == d0 + 1u && eng_arm_mask_get() == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS"));
         tap(4);
         check("ENV again: back where it came from", page == 0 && trail_n == n0);
-        pages_focus(1, 0);                                  /* REC on a row (#191): DRUMS armed, then disarmed */
+        pages_focus(1, 0);                                  /* SEL on a row (#395): DRUMS armed, then disarmed */
         loop();
         tap(4);
+        tap(3);
+        check("SEL on the environment's track row: armed (the set), no recording, the page stays", eng_armed() == eng_steps_module(0)
+              && seq_rec == 0 && page == PAGE_ENV && !strcmp(msg_text, "DRUMS ARMED"));
         tap(BTN_REC);
-        check("REC on the environment's track row: armed (the set), no recording", eng_armed() == eng_steps_module(0) && seq_rec == 0 && page == PAGE_ENV);
+        check("REC on the environment: nothing (no arm, no recording, no page)", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0)
+              && seq_rec == 0 && page == PAGE_ENV && !rec_held_used);
         pages_focus(2, 0);                                  /* the Drum map: its keys come from the track, not Main */
-        tap(BTN_REC);
-        check("REC on a row with nothing on Main's keys: nothing armed there", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0));
+        tap(3);
+        check("SEL on a row with nothing on Main's keys: nothing armed there", eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(0));
         pages_focus(1, 0);
-        tap(BTN_REC);
-        check("REC again on the track: disarmed", eng_arm_mask_get() == 0u && eng_armed() < 0);
+        tap(3);
+        check("SEL again on the track: disarmed, the keys WIRED (the bar says so)", eng_arm_mask_get() == 0u && eng_armed() < 0
+              && !strcmp(msg_text, "KEYS WIRED"));
         tap(4);
         panel_held |= 1u << 4;                              /* ENV held + SAVE: no environment on the release */
         panel_edges(1u << 4, 0);
@@ -972,8 +995,11 @@ int main(void)
             loop();
             n0 = dp_list(d);
             check("its factory presets in ROM", n0 >= 2u);
-            tap(3);
-            check("SEL on it: the preset list", page == PAGE_PRESETS);
+            presets_open();                                 /* (nothing opens the list since SEL arms, #395; its PRESET
+                                                             * slice removes it: until then its code is tested here) */
+            page_set(PAGE_PRESETS);
+            loop();
+            check("(the preset list, opened directly)", page == PAGE_PRESETS);
             if (getenv("PANEL_SNAP_PRESETS")) {
                 const char *keep = getenv("PANEL_SNAP");
                 setenv("PANEL_SNAP", getenv("PANEL_SNAP_PRESETS"), 1);
@@ -1078,16 +1104,14 @@ int main(void)
             }
             tap(3);
             check("SEL on the list: back", page == 0);
-            {                                               /* a patch stored before format 34 (the bank keeps it): no structure */
-                uint32_t keep = pg_dev[d].structure;
-                pg_dev[d].structure = 0;
-                tap(3);
-                loop();
-                printf("      (the bar: \"%s\")\n", msg_text);
-                check("SEL on an assembly of an old patch: no list, the bar says why (not \"SEL ON\")",
-                      page == 0 && !strcmp(msg_text, "OLD PATCH: SEND + SAVE IT"));
-                pg_dev[d].structure = keep;
-            }
+            later(1500);
+            tap(3);                                         /* SEL on the assembly's page (#395): armed, no preset list */
+            loop();
+            printf("      (the bar: \"%s\")\n", msg_text);
+            check("SEL on an assembly device's page: no preset list; armed alone if it takes keys, else it says so (not \"SEL ON\")",
+                  page == 0 && (env_listeners(d) ? eng_arm_mask_get() == env_listeners(d) && strstr(msg_text, " ARMED") != 0
+                                : eng_arm_mask_get() == 0u && !strcmp(msg_text, "NOTHING HERE TAKES KEYS")));
+            eng_arm_mask(0);
             tap(4);                                         /* the environment (#198): ALGO and PRESET step the row's presets */
             {
                 char before[17];
@@ -1543,6 +1567,8 @@ int main(void)
         tap(BTN_HOME);
 
         base = (uint32_t)(53 + 12 * octave);
+        check("the SEQ page armed the track it showed (#395)", eng_arm_mask_get() == (uint64_t)1 << pat);
+        eng_arm_mask(0);                                    /* (WIRED again, for REC held + a black key) */
         panel_held |= 1u << BTN_REC;                        /* REC held + black key 2 (G#3): PATTERN armed, no recording */
         panel_edges(1u << BTN_REC, 0);
         panel_keys(1u << 3);
@@ -1774,7 +1800,7 @@ int main(void)
             if (((w[i] >> 12) & 127u) != rn)
                 wk[got++] = w[i];
         (void)eng_steps_set_notes((uint32_t)drums, wk, (uint32_t)got);
-        check("(the SEQ page, a Drum map, REC on, running)", page == PAGE_SEQ && seq_map() == map && seq_rec == 1u
+        check("(the SEQ page, a Drum map armed by it (#395), REC on, running)", page == PAGE_SEQ && seq_map() == map && seq_rec == 2u
               && eng_transport_running() && eng_steps_pos((uint32_t)drums) >= 0);
         yield_xfers = 0;
         r0 = seq_row;
@@ -1817,6 +1843,10 @@ int main(void)
         if (eng_transport_running())
             tap(BTN_PLAY);
         tap(BTN_SEQ);
+        eng_arm_mask(0);                                    /* (the page armed DRUMS, #395: WIRED again, as REC held + its key
+                                                             * leaves it) */
+        header_draw();
+        ui_dirty = 2;
         later(1500);
         check("(the 808 Kit's DRUMS on the SEQ page, nothing armed)", page == PAGE_SEQ && seq_map() == map && eng_armed() < 0);
         memcpy(base, fb, sizeof base);
@@ -1887,6 +1917,9 @@ int main(void)
 
         E.node[map].ksrc = 0;                               /* the Drum map off DRUMS: a melodic track, its roll (#241) */
         tap(BTN_SEQ);
+        eng_arm_mask(0);                                    /* (WIRED again: the page armed it) */
+        header_draw();
+        ui_dirty = 2;
         later(1500);
         check("(DRUMS a melodic track now: the roll)", page == PAGE_SEQ && seq_map() < 0);
         memcpy(base, fb, sizeof base);
@@ -2172,7 +2205,7 @@ int main(void)
         part = fb_changed_in(x, y, x + GRID_CW, y + GRID_CH);
         printf("      (a hit while recording: %u LCD transfers, %u pixels)\n", (unsigned)lcd_xfers, (unsigned)lcd_px);
         check("REC on, running: a hit lands on its row's nearest step; that cell alone redrawn, the row picked and the bar stay",
-              row < ENG_DRUM_ROWS && seq_rec == 1u && steps == 1 && seq_row == r0 && all > 0u && all == part && lcd_px <= GRID_CW * GRID_CH
+              row < ENG_DRUM_ROWS && seq_rec == 2u && steps == 1 && seq_row == r0 && all > 0u && all == part && lcd_px <= GRID_CW * GRID_CH
               && fb_changed_in(0, 0, 240, BAR_H) == 0u);
         {                                               /* #368 (the owner, 2026-10-28): a black key held over steps while REC
                                                          * records: one note on its row lasting the whole steps held; its Drum map
@@ -2202,7 +2235,7 @@ int main(void)
             check("  its Drum map row stays up while the key is held", (up >> row & 1u) != 0);
         }
         enc(0, 1);                                          /* SELECT with REC on: the row too */
-        check("REC on: SELECT picks the next row (the black keys stay hits)", seq_rec == 1u && seq_row == (r0 + 1u < ENG_DRUM_ROWS ? r0 + 1u : r0));
+        check("REC on: SELECT picks the next row (the black keys stay hits)", seq_rec == 2u && seq_row == (r0 + 1u < ENG_DRUM_ROWS ? r0 + 1u : r0));
         pos = eng_steps_pos((uint32_t)drums);               /* the playhead moves on: its two columns */
         for (i = 0; i < 400 && eng_steps_pos((uint32_t)drums) == pos; i++)
             eng_render(l, r, 128);
@@ -2258,13 +2291,12 @@ int main(void)
         map = eng_steps_drummap((uint32_t)drums);
         seq_trk = 1;                                        /* (PATTERN selected last) */
         tap(BTN_REC);
-        check("REC, nothing armed: the SEQ page on the drum track, its grid, the black keys record hits",
-              page == PAGE_SEQ && seq_trk == 0u && seq_map() == map && seq_rec == 1u
+        check("REC, nothing armed: the SEQ page on the drum track, which it arms (#395), its grid, REC on",
+              page == PAGE_SEQ && seq_trk == 0u && seq_map() == map && seq_rec == 2u && eng_armed() == drums
               && px(4u + GRID_NAME_W - 1u, GRID_Y + GRID_RH * seq_row + 1u) == C_ACC);
         tap(BTN_REC);
         check("REC again: off, the page stays", seq_rec == 0u && page == PAGE_SEQ);
-        tap(BTN_HOME);
-        held_key(BTN_REC, 1);                               /* DRUMS armed, stopped: REC opens its grid */
+        tap(BTN_HOME);                                      /* DRUMS armed (the SEQ page armed it), stopped: REC opens its grid */
         tap(BTN_REC);
         check("REC with a drum track armed, stopped: its grid (no cursor entry), REC on", page == PAGE_SEQ && seq_trk == 0u
               && seq_rec == 2u && !seq_kbd() && seq_map() == map);
@@ -3046,6 +3078,85 @@ int main(void)
             }
         }
     }
+    {                                                       /* #395: the SEQ page arms what it shows, SEL on environment rows
+                                                             * layers, the last one out leaves the keys WIRED; SEL arming
+                                                             * another track ends a take */
+        int drums, pat, dd = -1, dp = -1;
+        uint32_t d;
+        foot_t f;
+        while (page != 0u && trail_n)
+            tap(BTN_HOME);
+        if (eng_transport_running())
+            tap(BTN_PLAY);
+        (void)load("<7PH");                                  /* DRUMS, PATTERN */
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        screen_idle();
+        loop();
+        drums = eng_steps_module(0);
+        pat = eng_steps_module(1);
+        check("(<7PH loads with nothing armed: WIRED)", drums >= 0 && pat >= 0 && eng_arm_mask_get() == 0u);
+        seq_trk = 0;
+        tap(BTN_SEQ);
+        check("SEQ: the page arms the track it shows", page == PAGE_SEQ && seq_trk == 0u && eng_arm_mask_get() == (uint64_t)1 << drums);
+        check("  its track line: ARMED, then the ALGO hint where it fits", strstr(seq_grid_text[1], "  ARMED  ALGO: TRACK") != 0);
+        enc(1, 1);
+        check("ALGO there: the track it shows now armed, the one before disarmed", seq_trk == 1u && eng_arm_mask_get() == (uint64_t)1 << pat);
+        later(1500);
+        check("  its bar: PATTERN ARM", bar_shows("PATTERN ARM P01", C_ACC));
+        (void)load("<7PH");                                  /* another patch while the page shows (the editor's Send) */
+        pv_gen++;
+        loop();
+        check("another patch while the SEQ page shows: the track it shows armed again", page == PAGE_SEQ
+              && eng_arm_mask_get() == (uint64_t)1 << eng_steps_module(seq_trk));
+        tap(BTN_SEQ);
+        eng_arm_mask(0);
+        pages_ensure();
+        for (d = 0; d < pg_ndev; d++) {
+            if (pg_dev[d].module == drums)
+                dd = (int)d;
+            if (pg_dev[d].module == pat)
+                dp = (int)d;
+        }
+        pages_focus((uint32_t)dd, 0);
+        loop();
+        tap(4);
+        check("(the environment on DRUMS' row)", page == PAGE_ENV && pg_cur_dev == (uint32_t)dd && dp >= 0);
+        tap(3);
+        pages_select(dp - dd);
+        loop();
+        tap(3);
+        check("SEL on two environment rows: both armed (a layer)", page == PAGE_ENV && pg_cur_dev == (uint32_t)dp
+              && eng_arm_mask_get() == ((uint64_t)1 << drums | (uint64_t)1 << pat) && env_armed((uint32_t)dd) && env_armed((uint32_t)dp));
+        pages_select(dd - dp);
+        loop();
+        tap(3);
+        check("SEL on the first again: only the second stays armed", eng_arm_mask_get() == (uint64_t)1 << pat && !strcmp(msg_text, "DRUMS DISARMED"));
+        pages_select(dp - dd);
+        loop();
+        tap(3);
+        check("SEL on the last one armed: nothing armed, the keys WIRED", eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+        tap(4);
+        later(1500);
+        printf("      (the footer: \"%s\" \"%s\")\n", (foot_layout(&f), f.a), f.w);
+        check("  the device page's footer: KEYS WIRED", page == 0u && (foot_layout(&f), !strcmp(f.w, "KEYS WIRED")) && on_screen("KEYS WIRED"));
+        pages_focus((uint32_t)dp, 0);                       /* a take on PATTERN, then SEL on DRUMS' page: the take ends */
+        loop();
+        tap(3);
+        tap(BTN_PLAY);
+        tap(BTN_REC);
+        check("(a take on PATTERN, the device page)", page == 0u && seq_rec == 2u && eng_armed() == pat);
+        pages_focus((uint32_t)dd, 0);
+        loop();
+        tap(3);
+        check("SEL on another track's page during a take: that track armed alone, the take over", eng_arm_mask_get() == (uint64_t)1 << drums
+              && seq_rec == 0u && !(E.trk_rec >> E.node[pat].trk & 1u));
+        tap(BTN_PLAY);
+        eng_arm_mask(0);
+        later(1500);
+    }
+
     /* patterns and songs on the panel (#375, D-541, D-544): PRESET on the SEQ page picks the patch's pattern (at once while
      * stopped, at the end of the pass while running; the bar shows both), SEL tapped opens the SONG page, its knobs edit
      * the song, SEQ held + REC deletes an entry (asked first), SEL goes back; SEL held as the pen opens nothing */
@@ -3063,14 +3174,14 @@ int main(void)
         ui_dirty = 2;
         loop();
         mod = seq_module();
-        check("the SEQ bar shows the pattern (P01)", bar_shows("STEPS 1 P01", C_ACC));
+        check("the SEQ bar shows the pattern (P01)", bar_shows("STEPS 1 ARM P01", C_ACC));
         told = host_pattern_told;
         enc(6, 1);
         eng_render(l, r, 128);
         later(1100);
         check("PRESET on the SEQ page: pattern 2, at once while stopped, the editor told", eng_pattern() == 1
               && eng_pattern_playing((uint32_t)mod) == 1 && host_pattern_told == told + 1u);
-        check("  the bar: P02; the page: its own length (5 steps)", bar_shows("STEPS 1 P02", C_ACC) && seq_len(mod) == 5);
+        check("  the bar: P02; the page: its own length (5 steps)", bar_shows("STEPS 1 ARM P02", C_ACC) && seq_len(mod) == 5);
         eng_transport(1);
         for (i = 0; i < 4u; i++)
             eng_render(l, r, 128);
@@ -3078,12 +3189,12 @@ int main(void)
         later(1100);
         check("running: pattern 3 waits for the end of the track's pass", eng_pattern() == 2 && eng_pattern_playing((uint32_t)mod) == 1
               && eng_pattern_queued((uint32_t)mod) == 2);
-        check("  the bar: P02>P03", bar_shows("STEPS 1 P02>P03", C_ACC));
+        check("  the bar: P02>P03", bar_shows("STEPS 1 ARM P02>P03", C_ACC));
         for (i = 0; i < 800u && eng_pattern_playing((uint32_t)mod) != 2; i++)
             eng_render(l, r, 128);
         loop();
         check("  at the end of the pass: P03 (its own length, 12 steps)", eng_pattern_playing((uint32_t)mod) == 2
-              && bar_shows("STEPS 1 P03", C_ACC) && seq_len(mod) == 12);
+              && bar_shows("STEPS 1 ARM P03", C_ACC) && seq_len(mod) == 12);
         eng_transport(0);
         eng_render(l, r, 128);
         tap(BTN_SEL);

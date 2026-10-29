@@ -76,6 +76,12 @@ editor, the reconnect) run against a firmware built for it ([D-119](ledger/relea
   peak and decay must match the untied one's. Through the device test mode (device:scenarios, or `--via-emu`) the
   TEST_SCREEN head's patch buttons must show Main's LFO jack down while LFO is held on the SEQ page, and up while it is
   held on the device page.
+- **Arming (`arming`, issue #395, [D-235](ledger/device-ui.md#D-235), [D-545](ledger/steps.md#D-545)):** the link does
+  not carry the armed set ([D-516](ledger/steps.md#D-516)), so the checks read the FM-1's screen. The 808 Kit must load
+  with the footer saying KEYS WIRED. SEL on its home device, the Drum map, must say NOTHING HERE TAKES KEYS. The SEQ page
+  must arm DRUMS (its bar says DRUMS ARM, the device page's footer ARM DRUMS), and black key 1 must then sound the kick.
+  On the environment, SEL on DRUMS' row must disarm it and say KEYS WIRED, REC must do nothing, and SEL again must arm
+  it.
 - **When:** every pull request that changes firmware runs `emu:smoke` and `emu:scenarios` on its own CI build before it
   merges ([D-120](ledger/releases.md#D-120)).
 

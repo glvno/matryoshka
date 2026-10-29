@@ -35,7 +35,7 @@ static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};  
 #define BTN_OCT_UP 1u
 #define BTN_SAVE 9u
 #define BTN_HOME 8u
-#define BTN_SEL 3u                    /* SEL (SCL in Felucca's table): on a Steps track's page it opens the track's steps (#196) */
+#define BTN_SEL 3u                    /* SEL (SCL in Felucca's table): arms the device in focus (#395) */
 #define BTN_GLO 7u
 /* the buttons that act on the FM-1 itself in sandbox mode (sandbox_ui.c); the others only go out as MIDI */
 #define SB_OWN_BTNS ((1u << BTN_OCT_DOWN) | (1u << BTN_OCT_UP) | (1u << BTN_HOME) | (1u << BTN_PLAY) | (1u << BTN_GLO))
@@ -145,7 +145,8 @@ static void page_show(uint32_t p)
     if (page != PAGE_SEQ) {                         /* (leaving the SEQ page ends its recording, not a live take: seq_leave) */
         seq_leave();
         seq_leds_off();
-    }
+    } else
+        seq_arm_shown();                            /* (the SEQ page arms the track it shows, #395) */
     if (dev_like() && !sb_on && !eng_overload && !load_err)
         msg_until = 0;                              /* (the device page and GLO's draw their header with the rest) */
     else
@@ -556,24 +557,21 @@ static uint32_t sel_down_ms;
 /* ENV held and SAVE pressed meanwhile: its release opens nothing */
 static uint8_t env_held_used;
 
-/* SEL (#197): one level deeper. The environment's row: its device pages; a Steps track's page: its steps (#196); an
- * assembly device's page: its presets (#194); on the preset list: back */
+/* SEL (#197; arming: #395). A device page: arms its device, the others disarmed; an environment row: its device into the
+ * armed set or out of it (a layer); a device that takes no keys: the armed set as it was, NOTHING HERE TAKES KEYS. On
+ * the SONG page (and the preset list, which nothing opens until #395's PRESET slice removes it): back */
 static void sel_open(void)
 {
     pages_ensure();
     if (page == PAGE_ENV) {
-        page_set(0);
-        m1_focus_now(pg_cur_dev, pg_cur_page);
+        dev_arm(1);
+        ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
     } else if (page == PAGE_PRESETS || page == PAGE_SONG) {
         screen_back();
-    } else if (page == 0 && pages_focus_track() >= 0) {
-        seq_select((uint32_t)pages_focus_track());
-        page_set(PAGE_SEQ);
-    } else if (page == 0 && pg_cur_dev < pg_ndev && pg_dev[pg_cur_dev].structure) {
-        presets_open();
-        page_set(PAGE_PRESETS);
-    } else if (page == 0)
-        dp_none_msg(pg_cur_dev);                    /* (why not: an old patch, a plain module) */
+    } else if (page == 0) {
+        dev_arm(0);
+        ui_dirty = ui_dirty ? ui_dirty : 1;          /* (the footer) */
+    }
 }
 
 /* ENV held + SAVE (#194): the focused device's values as its preset */
@@ -666,10 +664,10 @@ static void panel_edges(uint32_t p, uint32_t rel)
     }
     if (rel & (1u << BTN_SEQ))
         seq_held_used = 0;
-    if ((rel & (1u << BTN_REC)) && !rec_held_used && page == PAGE_ENV) {   /* REC on the environment: the row's arm (#191, #198) */
-        env_arm_toggle();
+    if ((rel & (1u << BTN_REC)) && page == PAGE_ENV) {   /* REC on the environment: nothing (SEL arms its rows, #395; REC
+                                                     * on every screen is #395's next slice) */
+        rec_held_used = 0;
         rel &= ~(1u << BTN_REC);
-        ui_dirty = ui_dirty ? ui_dirty : 1;          /* (its row) */
     }
     if ((rel & (1u << BTN_REC)) && !rec_held_used) {   /* REC: recording on / off (the SEQ page opens for hits, the armed track) */
         if (seq_rec_page() && page != PAGE_SEQ) {
