@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
-/* The settings menu, after ui.c and before main.c:
+/* The settings menu, after ui.c, pages_ui.c and sandbox_ui.c, before main.c:
  *
- *
- * MENU (HOME held 0.7 s, HOME again closes it): the settings, in tabs like Felucca's menu (its layout, its rows are ours).
- * ALGORITHM steps between the tabs, PRESET and SELECT between the rows, K1..K4 and OCT- / OCT+ change the value of the
- * selected row. The values are applied at once and saved with the state (SAVE: main.c save bits).
+ * MENU (GLO; GLO again or HOME closes it; #395): the FM-1's settings in tabs. ALGO steps the tabs: MIDI, PANEL and SYSTEM
+ * are pages of settings on K1..K4, drawn as a device page (pages_ui.c menu_tab_page; the knobs go through panel.c as on
+ * a device page); INFO lists readings (drawn here) and MANUAL is a text SELECT scrolls. The values are applied at once
+ * and saved with the state (SAVE: main.c save bits; SAVE in the menu closes it). UPDATE MODE and FACTORY RESET (SYSTEM)
+ * take a hold: a turn to the right arms the row for MENU_ARM_MS, GLO held 2 s then does it (menu_fire, from panel.c), so
+ * a nudge never starts them. SELECT, OCT- and OCT+ do nothing in the menu; PRESET steps the patches as everywhere.
  *
  * The state is plain bytes the main loop writes. */
 
@@ -19,48 +21,21 @@ static void defaults_now(void);
 
 /* ---- settings menu */
 
-enum { MT_PANEL, MT_MIDI, MT_SYSTEM, MT_MANUAL, MT_COUNT };   /* (MANUAL has no rows: a text) */
 static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET"};
-static const uint8_t ROW_TAB[MR_COUNT] = {MT_PANEL, MT_PANEL, MT_MIDI, MT_MIDI, MT_MIDI, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM, MT_SYSTEM,
-                                          MT_SYSTEM};
-static const char *const TAB_NAME[MT_COUNT] = {"PANEL", "MIDI", "SYSTEM", "MANUAL"};
+#define INFO_N 5u
+static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT};   /* the INFO tab's list, top down */
+#define MENU_ARM_MS 5000u                               /* an armed SYSTEM row waits this long for GLO's hold */
 
-static uint8_t menu_tab, menu_sel = MR_LEDS;     /* the tab and the selected row (a row number) */
 static uint32_t cpu_peak;                       /* the highest CPU % since boot */
 static uint32_t diag_us_peak;                   /* the longest audio ISR in us since the DIAG CPU page was last read (main.c m1_diag) */
-static uint32_t update_arm;                     /* UPDATE MODE / DEFAULTS: fm1_ms | 1 of the first OCT+ (the row is menu_sel) */
+static uint32_t update_arm;                     /* UPDATE MODE / FACTORY RESET: fm1_ms | 1 of the turn that armed menu_armed */
 
-static uint32_t menu_first(uint32_t tab)
+static uint32_t info_pos(uint32_t row)          /* a reading's place in the INFO list, INFO_N when it is not one */
 {
-    uint32_t r = 0;
-    while (r < MR_COUNT && ROW_TAB[r] != tab)
-        r++;
-    return r < MR_COUNT ? r : 0u;                 /* (the manual has no rows) */
-}
-
-static uint32_t menu_count(uint32_t tab)
-{
-    uint32_t r, n = 0;
-    for (r = 0; r < MR_COUNT; r++)
-        n += ROW_TAB[r] == tab;
-    return n;
-}
-
-static uint32_t menu_row_at(uint32_t tab, uint32_t k)   /* the k-th row of the tab (its rows need not be contiguous: CH_TAB) */
-{
-    uint32_t r;
-    for (r = 0; r < MR_COUNT; r++)
-        if (ROW_TAB[r] == tab && k-- == 0u)
-            return r;
-    return menu_first(tab);
-}
-
-static uint32_t menu_pos(uint32_t row)                  /* the position of a row within its tab */
-{
-    uint32_t r, k = 0;
-    for (r = 0; r < row; r++)
-        k += ROW_TAB[r] == ROW_TAB[row];
+    uint32_t k = 0;
+    while (k < INFO_N && INFO_ROWS[k] != row)
+        k++;
     return k;
 }
 
@@ -121,37 +96,33 @@ static void menu_value(uint32_t row, char *out)
         p += str_len(p);
         *p++ = '%';
         break;
-    default: p = put(p, update_arm && row == menu_sel ? "OCT+ AGAIN" : "OCT+ TWICE"); break;
+    default: p = put(p, menu_armed == row ? "HOLD GLO" : "TURN >"); break;   /* (UPDATE MODE, FACTORY RESET) */
     }
     *p = 0;
 }
 
-#define MENU_Y 68u                                      /* the first row's top, the rows' pitch (SYSTEM's 7 rows end at 214) */
+#define MENU_Y 68u                                      /* the INFO list: the first row's top, the rows' pitch */
 #define MENU_PITCH 21u
 #define MENU_ROW_H 20u
 #define MENU_TXT 1u                                     /* a row's text below its top */
 
-/* a row's value alone, over the old one (text_bc paints its field's background with each scanline: no blink) */
+/* a reading's value alone, over the old one, on the INFO tab (text_bc paints its field's background with each
+ * scanline: no blink) */
 static void menu_value_draw(uint32_t row)
 {
     char val[24];
-    uint32_t y = MENU_Y + menu_pos(row) * MENU_PITCH;
-    int hot = row == menu_sel;
-    if (ROW_TAB[row] != menu_tab)
+    uint32_t k = info_pos(row), y = MENU_Y + k * MENU_PITCH;
+    if (k >= INFO_N || page != PAGE_MENU || menu_tab != MT_INFO)
         return;
     menu_value(row, val);
-    text_bc(&FONT_M, 150, y + MENU_TXT, val, hot ? C_ACC : C_FG, hot ? C_TRACK : C_BG, 78, TA_RIGHT);
+    text_bc(&FONT_M, 150, y + MENU_TXT, val, C_FG, C_BG, 78, TA_RIGHT);
 }
 
-static void menu_row_draw(uint32_t row)
+static void menu_row_draw(uint32_t row)         /* an INFO row: the name and its value (nothing is selected there) */
 {
-    int hot = row == menu_sel;
-    uint32_t y = MENU_Y + menu_pos(row) * MENU_PITCH;
-    uint16_t bg = hot ? C_TRACK : C_BG;
-    lcd_fill(6, y, 228, MENU_ROW_H, bg);
-    if (hot)
-        lcd_fill(6, y, 3, MENU_ROW_H, C_ACC);
-    text_bc(&FONT_M, 14, y + MENU_TXT, ROW_NAME[row], hot ? C_FG : C_DIM, bg, 136, TA_LEFT);
+    uint32_t y = MENU_Y + info_pos(row) * MENU_PITCH;
+    lcd_fill(6, y, 228, MENU_ROW_H, C_BG);
+    text_bc(&FONT_M, 14, y + MENU_TXT, ROW_NAME[row], C_DIM, C_BG, 136, TA_LEFT);
     menu_value_draw(row);
 }
 
@@ -202,43 +173,58 @@ static void manual_scroll(int32_t s)
     }
 }
 
+/* the INFO and MANUAL tabs (view_draw; a settings tab is drawn as a device page, pages_ui.c pages_draw): the tab chips
+ * under the top bar, the open one in seafoam, the title, then the list or the text */
 static void menu_draw(int full)
 {
     static uint8_t shown = 255;
-    uint32_t t, r, n = menu_count(menu_tab), y = MENU_Y + n * MENU_PITCH, x = 6;   /* (y: below the last row) */
+    uint32_t t, r, y = MENU_Y + INFO_N * MENU_PITCH, x = 6;   /* (y: below the last row) */
     if (full || shown != menu_tab) {                /* (a new tab: the page is cleared, the hint changes) */
         lcd_fill(0, BAR_H, 240, 240u - BAR_H, C_BG);
-        text_bc(&FONT_S, 8, 222, menu_tab == MT_MANUAL ? "SELECT  scroll      ALGO  tab" : "ALGO  tab    SELECT  row    K1-K4  value", C_HINT, C_BG, 226, TA_LEFT);
+        text_bc(&FONT_S, 8, 222, menu_tab == MT_MANUAL ? "SELECT  scroll    ALGO  tab    GLO  back" : "ALGO  tab    GLO  back", C_HINT, C_BG, 226, TA_LEFT);
         shown = menu_tab;
     }
     for (t = 0; t < MT_COUNT; t++) {     /* the tabs: chips, the open one in seafoam (as a device's pages) */
-        uint32_t w = text_w(&FONT_S, TAB_NAME[t], -1) + 12u;
-        text_bc(&FONT_S, x, 24, TAB_NAME[t], t == menu_tab ? C_BG : C_DIM, t == menu_tab ? 0x7E38u : C_TRACK, w, TA_CENTER);
+        uint32_t w = text_w(&FONT_S, MENU_TAB_NAME[t], -1) + 12u;
+        text_bc(&FONT_S, x, 24, MENU_TAB_NAME[t], t == menu_tab ? C_BG : C_DIM, t == menu_tab ? 0x7E38u : C_TRACK, w, TA_CENTER);
         x += w + 3u;
     }
-    text_bc(&FONT_L, 8, 42, menu_tab == MT_MANUAL ? "Manual" : TAB_NAME[menu_tab], C_ACC, C_BG, 200, TA_LEFT);
+    text_bc(&FONT_L, 8, 42, menu_tab == MT_MANUAL ? "Manual" : "Info", C_ACC, C_BG, 200, TA_LEFT);
     if (menu_tab == MT_MANUAL) {
         manual_draw();
         return;
     }
-    for (r = 0; r < n; r++)
-        menu_row_draw(menu_row_at(menu_tab, r));
+    for (r = 0; r < INFO_N; r++)
+        menu_row_draw(INFO_ROWS[r]);
     if (y < 218u)
-        lcd_fill(0, y, 240, 218u - y, C_BG);       /* (the rows a longer tab had) */
+        lcd_fill(0, y, 240, 218u - y, C_BG);
 }
 
-static void menu_open(void)             /* via page_show (panel.c): the tab and row it was left at */
+static void menu_open(void)             /* via page_show (panel.c): GLO opens the menu on MIDI, nothing armed (#395) */
 {
-    if (ROW_TAB[menu_sel] != menu_tab)
-        menu_sel = (uint8_t)menu_first(menu_tab);
+    menu_tab = MT_MIDI;
+    menu_armed = MR_COUNT;
     update_arm = 0;
 }
 
-static void menu_set_row(uint32_t row, int32_t s)       /* s > 0: the next value, s < 0: the previous (stopping at the ends) */
+/* GLO held 2 s in the menu (panel.c panel_edges): the SYSTEM row a turn armed, while its MENU_ARM_MS last. 1 = taken */
+static int menu_fire(void)
 {
-    if (menu_tab == MT_MANUAL)
-        return;                                     /* (no row: the buttons do nothing on the manual) */
-    setting_step(row, s);
+    uint32_t row = menu_armed;
+    if (row == MR_COUNT || fm1_ms - (update_arm & ~1u) > MENU_ARM_MS)
+        return 0;
+    menu_armed = MR_COUNT;
+    update_arm = 0;
+    ui_dirty = 1;
+    if (test_input_recent()) {                      /* the device test mode (#291): a script never wipes or leaves the FM-1 */
+        ui_msg("TEST INPUT: REFUSED", 2000);
+        return 1;
+    }
+    if (row == MR_UPDATE)
+        update_only("FROM THE MENU");
+    else
+        defaults_now();
+    return 1;
 }
 
 static void setting_step(uint32_t row, int32_t s)       /* a setting's next / previous value (the menu's and GLO's rows) */
@@ -261,68 +247,47 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
     case MR_CLOCK: cfg.clock_in = (uint8_t)up; break;
     case MR_MOUT: cfg.midi_out = (uint8_t)up; break;
     case MR_UPDATE:
-    case MR_DEFAULTS:
+    case MR_DEFAULTS:                               /* a turn right arms the row for GLO's hold (menu_fire), left disarms it */
+        menu_armed = MR_COUNT;
+        update_arm = 0;
         if (!up)
             break;
         if (test_input_recent()) {                  /* the device test mode (#291): a script never wipes or leaves the FM-1 */
-            update_arm = 0;
             ui_msg("TEST INPUT: REFUSED", 2000);
             break;
         }
-        if (update_arm && fm1_ms - (update_arm & ~1u) < 3000u) {
-            update_arm = 0;
-            if (row == MR_UPDATE)
-                update_only("FROM THE MENU");
-            else
-                defaults_now();
-        } else {
-            update_arm = fm1_ms | 1u;
-        }
+        menu_armed = (uint8_t)row;
+        update_arm = fm1_ms | 1u;
+        ui_msg(row == MR_UPDATE ? "HOLD GLO 2 S: UPDATE MODE" : "HOLD GLO 2 S: FACTORY RESET", MENU_ARM_MS);
         break;
     default: break;
     }
     ui_dirty = 1;
 }
 
-static void menu_move(int32_t s)                        /* SELECT: the next / previous row of the tab */
+static void menu_tab_go(int32_t s)                      /* ALGO: the next / previous tab, drawn whole (another layout) */
 {
-    uint32_t n = menu_count(menu_tab), k = menu_pos(menu_sel);
-    if (!n)
-        return;
-    k = (k + (s > 0 ? 1u : n - 1u)) % n;
-    menu_sel = (uint8_t)menu_row_at(menu_tab, k);
+    menu_tab = (uint8_t)((menu_tab + (s > 0 ? 1u : MT_COUNT - 1u)) % MT_COUNT);
+    menu_armed = MR_COUNT;
     update_arm = 0;
-    ui_dirty = 1;
+    ui_dirty = 2;
+    if (!menu_page())                               /* a text tab after a settings tab: the top bar over the coral header's
+                                                     * rows (a settings tab paints its own header with the page) */
+        header_draw();
 }
 
-static void menu_tab_go(int32_t s)                      /* ALGORITHM: the next / previous tab */
-{
-    uint32_t t = (menu_tab + (s > 0 ? 1u : MT_COUNT - 1u)) % MT_COUNT;
-    menu_tab = (uint8_t)t;
-    menu_sel = (uint8_t)menu_first(t);
-    update_arm = 0;
-    ui_dirty = 1;
-}
-
-/* the knobs while the menu is open: st[] as in knobs_poll */
+/* the encoders while the menu is open (panel.c panel_encoders): ALGO the tab, SELECT scrolls the manual; a settings
+ * tab's K1..K4 go on in panel.c as a device page's (pages_turn) */
 static void menu_knobs(const int32_t *st)
 {
-    uint32_t k;
     if (st[1])
         menu_tab_go(st[1]);
-    if (menu_tab == MT_MANUAL) {                    /* the manual: SELECT scrolls */
+    if (st[0] && menu_tab == MT_MANUAL)
         manual_scroll(st[0]);
-        return;
-    }
-    if (st[0])                                      /* SELECT: the rows (PRESET steps the patches, panel.c) */
-        menu_move(st[0]);
-    for (k = 0; k < 4u; k++)
-        if (st[2u + k])
-            menu_set_row(menu_sel, st[2u + k]);
 }
 
-/* the CPU load (SYSTEM's CPU and CPU PEAK rows): the peak ISR time of the last half second, in % of the 128 frame half
- * buffer (2.9 ms). On an idle SYSTEM tab only the two values are redrawn, not the page (#146). */
+/* the CPU load (INFO's CPU and CPU PEAK rows): the peak ISR time of the last half second, in % of the 128 frame half
+ * buffer (2.9 ms). On an idle INFO tab only the two values are redrawn, not the page (#146). */
 static void cpu_poll(void)
 {
     static uint32_t t0;
@@ -339,7 +304,7 @@ static void cpu_poll(void)
         pct = 999u;
     if (pct > cpu_peak)
         cpu_peak = pct;
-    shown = page == PAGE_MENU && menu_tab == MT_SYSTEM && !ui_dirty;   /* (a pending redraw shows them anyway) */
+    shown = page == PAGE_MENU && menu_tab == MT_INFO && !ui_dirty;   /* (a pending redraw shows them anyway) */
     if (pct != cpu_pct) {
         cpu_pct = pct;
         if (shown)
@@ -350,7 +315,7 @@ static void cpu_poll(void)
 }
 
 /* the battery on screen (ui.c ui_battery set it): by the loop's drawing (panel_draw), never by a key. LOW BATTERY in the
- * bar once, the cell in the top bar when its level changed, MENU > SYSTEM > BATTERY's value when the reading changed */
+ * bar once, the cell in the top bar when its level changed, MENU > INFO > BATTERY's value when the reading changed */
 static void batt_draw(void)
 {
     static int32_t raw_shown = -1;
@@ -365,7 +330,7 @@ static void batt_draw(void)
     if (batt_raw() != raw_shown || batt_shown() != lvl_shown) {
         raw_shown = batt_raw();
         lvl_shown = batt_shown();
-        if (page == PAGE_MENU && menu_tab == MT_SYSTEM && !ui_dirty)   /* (a pending redraw shows it anyway) */
+        if (page == PAGE_MENU && menu_tab == MT_INFO && !ui_dirty)   /* (a pending redraw shows it anyway) */
             menu_value_draw(MR_BATT);
     }
 }
