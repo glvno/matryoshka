@@ -69,7 +69,7 @@ import { fixNotes, fixPatterns, fixSeq, overdub, PATTERNS_MAX, patternOf, SONGS_
 import { defIsEngine, instIsEngine, wireEngine, wiredText, type Wired } from './engines';
 import { applyPreset, deletePreset, matchesPreset, nextPresetName, presetsOf, sameName, renamePreset, stepPreset, storePreset } from './device-presets';
 import { structureOf } from './structure';
-import { armable, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
+import { armable, armedWith, keepArmed, keysTargets, mutedCables, type DeviceKey } from './arm';
 import { PianoRoll } from './roll';
 import { stepGrid, stopEntry, type StepGrid } from './step-grid';
 import { FlawPanel } from './flaws-panel';
@@ -1380,8 +1380,9 @@ export class Editor {
     return this.trackOf(this.armedSet);
   }
 
+  /** the one Steps track these devices arm, themselves or as the key source an armed instrument plays through (#395) */
   private trackOf(keys: Iterable<DeviceKey>): number | null {
-    const ids = [...keys].filter((k) => k[0] === 'm').map((k) => Number(k.slice(1))).filter((id) => this.patch.modules.some((m) => m.id === id && m.type === 'steps'));
+    const ids = armedWith(this.patch, keys).filter((k) => k[0] === 'm').map((k) => Number(k.slice(1))).filter((id) => this.patch.modules.some((m) => m.id === id && m.type === 'steps'));
     return ids.length === 1 ? ids[0] : null;
   }
 

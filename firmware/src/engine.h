@@ -387,9 +387,10 @@ int eng_armed(void);
  * track) and to nothing else (not the shared keyboard); 0: the cables decide. eng_arm(module) is the one-track form. */
 void eng_arm_mask(uint64_t mask);
 uint64_t eng_arm_mask_get(void);
-/* whether module m hears Main's keys when armed: a Steps track, a Part or card of a group that takes the keys, a Drum map on
- * the keys, an Arpeggiator */
-int eng_listens(uint32_t m);
+/* what arming module m arms (#395; arm.ts armedWith), as a mask: m itself when it hears Main's keys armed (a Steps track,
+ * a Part or card of a group that takes the keys, a Drum map on the keys, an Arpeggiator); when its keys come through a
+ * key source (a group's or a Drum map's Arpeggiator or track), that source, and the track an Arpeggiator plays; 0 none */
+uint64_t eng_arms(uint32_t m);
 /* the Drum map Main's keys reach (the armed set's, else the ones cabled), when they reach one and nothing that plays them as
  * notes (a group, the shared keyboard, an Arpeggiator, a track into no Drum map): the panel's black keys 1..8 play its rows
  * (panel.c panel_key); -1 none */
