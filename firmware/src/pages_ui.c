@@ -1986,10 +1986,10 @@ static int env_armed(uint32_t d) { return (eng_arm_mask_get() & env_listeners(d)
 
 static void seq_arm_set(uint64_t mask);                 /* (seq_ui.c: the armed set changed; REC on: they record) */
 
-/* SEL arms the device in focus (#395). layer (the environment): it is added to the armed set or taken out of it, the
- * others stay (a layer, a split); the last one out leaves the keys WIRED (Main's cables decide). Else (a device page) it
- * is armed and every other device disarmed. A device that takes no keys leaves the armed set as it is. State and a
- * message only */
+/* SEL arms the device in focus (#395), a toggle. Armed, it is taken out of the armed set, the others stay; the last one
+ * out leaves the keys WIRED (Main's cables decide). Not armed: layer (the environment) adds it to the set (a layer, a
+ * split), else (a device page) it is armed and every other device disarmed. A device that takes no keys leaves the armed
+ * set as it is. State and a message only */
 static void dev_arm(int layer)
 {
     uint64_t l, mask;
@@ -2001,7 +2001,7 @@ static void dev_arm(int layer)
         ui_msg("NOTHING HERE TAKES KEYS", 1200);
         return;
     }
-    mask = !layer ? l : env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : eng_arm_mask_get() | l;
+    mask = env_armed(pg_cur_dev) ? eng_arm_mask_get() & ~l : layer ? eng_arm_mask_get() | l : l;
     seq_arm_set(mask);
     caps(t, pg_dev[pg_cur_dev].name, pg_dev[pg_cur_dev].nlen, 14);
     put(put(m, t), env_armed(pg_cur_dev) ? " ARMED" : " DISARMED")[0] = 0;

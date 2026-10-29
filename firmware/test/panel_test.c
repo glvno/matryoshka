@@ -830,8 +830,21 @@ int main(void)
         tap(3);
         check("SEL there: that track armed, no page opened", page == 0 && eng_arm_mask_get() == drums && !strcmp(msg_text, "DRUMS ARMED"));
         check("  the footer: ARM DRUMS", (foot_layout(&f), !strcmp(f.a, "ARM DRUMS") && !f.w[0]));
+        later(1500);
         tap(3);
-        check("SEL again: still armed", page == 0 && eng_arm_mask_get() == drums);
+        check("SEL again: a toggle, disarmed, the keys WIRED (#395)", page == 0 && eng_arm_mask_get() == 0u && !strcmp(msg_text, "KEYS WIRED"));
+        later(1500);
+        tap(3);
+        check("SEL a third time: armed again", eng_arm_mask_get() == drums && !strcmp(msg_text, "DRUMS ARMED"));
+        {                                               /* armed with another (a bit of the set): SEL takes it out, the other stays */
+            uint64_t other = (uint64_t)1 << (eng_steps_module(0) ? 0u : 1u);
+            eng_arm_mask(drums | other);
+            later(1500);
+            tap(3);
+            check("SEL on a device armed with another: taken out, the other stays", eng_arm_mask_get() == other
+                  && !strcmp(msg_text, "DRUMS DISARMED"));
+            eng_arm_mask(drums);
+        }
         pages_focus(0, 0);                                  /* Main: no keys input */
         loop();
         later(1500);
