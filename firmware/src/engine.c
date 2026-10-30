@@ -559,6 +559,10 @@ typedef struct {
 /* the engine. The clock ticks (24 ppqn) come from the arpeggiator or MIDI in (eng_clock_tick). */
 static eng_t eng_one ENG_POOL;
 #define E eng_one
+/* the knobs' pending ramps (#405, eng_knob_param): the module and parameter, blocks left, the offset still to go, its step */
+typedef struct { uint8_t mod, par, left; int32_t off, step; } ramp_t;
+static ramp_t ramp[ENG_KNOBS];
+static int32_t ramp_buf[MAX_PAR];
 static void toggles_sync(void);
 static volatile uint32_t clk_ticks;   /* MIDI clock ticks (eng_clock_tick, the main loop) */
 static volatile uint8_t clk_ext;      /* MIDI clock drives the clock */
@@ -937,6 +941,8 @@ int eng_load(const uint8_t *p, uint32_t len)
     uint8_t st[ENG_MAX_MODULES], member[ENG_MAX_MODULES];
     E.loaded = 0;
     E.stamp = 0;
+    for (i = 0; i < ENG_KNOBS; i++)              /* (a knob ramp of the patch before: gone) */
+        ramp[i].left = 0;
     E.clk_seen = clk_ticks;
     E.clk_pulse = 0;
     E.narp = 0;
@@ -1639,6 +1645,71 @@ int32_t eng_att(uint32_t module, uint32_t input)
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
 {
     if (module < E.nmod && param < DEFS[E.node[module].type].npar)
+        E.node[module].par[param] = q16;
+}
+
+/* Knob ramps (#405). On the FM-1 a knob's click reaches the module over ENG_RAMP_BLOCKS blocks (20 ms) instead of at once,
+ * so a stepped level, offset, tuning or cutoff neither clicks nor zippers. The parameter itself (par[]) takes the new
+ * value at once: eng_get_param, the editor's mirror, MIDI out and a save all see it. Only the base apply_cv derives the
+ * effective value from lags: knob k's ramp holds the difference between where the module stood and the new value, and
+ * render_voice shrinks it by one step a block to zero. A new click on the same row starts from where its ramp stands
+ * (no jump back); a click on another row takes the knob's slot over. With no ramp pending the engine is bit for bit what
+ * it was without them (tools/engine_exact.sh). The browser engine does not ramp: its sliders are continuous. The main
+ * loop starts a ramp while the audio interrupt renders: a start that lands inside apply_cv of that module can make one
+ * block use the step as a jump, which is what every click did before. */
+static void ramp_start(uint32_t k, uint32_t m, uint32_t j, int32_t to)
+{
+    ramp_t *r = &ramp[k];
+    int32_t from = E.node[m].par[j];
+    if (r->left && r->mod == m && r->par == j)
+        from += r->off;
+    r->left = 0;
+    r->mod = (uint8_t)m;
+    r->par = (uint8_t)j;
+    r->off = from - to;
+    r->step = r->off / ENG_RAMP_BLOCKS;
+    E.node[m].par[j] = to;
+    r->left = ENG_RAMP_BLOCKS;
+}
+/* once a block: every pending ramp one step nearer to zero */
+static void ramp_tick(void)
+{
+    uint32_t k;
+    for (k = 0; k < ENG_KNOBS; k++) {
+        ramp_t *r = &ramp[k];
+        if (!r->left)
+            continue;
+        if (--r->left)
+            r->off -= r->step;
+        else
+            r->off = 0;
+    }
+}
+/* the base values apply_cv works from: the node's, or a copy with its pending ramps added */
+static const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t npar)
+{
+    uint32_t k, m = (uint32_t)(nd - E.node), j, any = 0;
+    for (k = 0; k < ENG_KNOBS; k++)
+        if (ramp[k].left && ramp[k].mod == m && ramp[k].par < npar) {
+            if (!any) {
+                for (j = 0; j < npar; j++)
+                    ramp_buf[j] = par[j];
+                any = 1;
+            }
+            ramp_buf[ramp[k].par] += ramp[k].off;
+        }
+    return any ? ramp_buf : par;
+}
+
+void eng_knob_param(uint32_t knob, uint32_t module, uint32_t param, int32_t q16)
+{
+    const def_t *d;
+    if (module >= E.nmod || param >= DEFS[E.node[module].type].npar)
+        return;
+    d = &DEFS[E.node[module].type];
+    if (knob < ENG_KNOBS && !(d->pchoice && d->pchoice[param]) && E.node[module].par[param] != q16)
+        ramp_start(knob, module, param, q16);
+    else
         E.node[module].par[param] = q16;
 }
 
@@ -6165,6 +6236,8 @@ static void apply_cv(const node_t *nd, inst_t *it, uint32_t n, const inst_t *pre
     uint32_t j, s, have = 0, side = 0, mapped = 0;   /* side: some input has side routes (input_map) */
     const int32_t *par = nd->par, *parb = par + d->npar;   /* (the node's and the instance's slots, kept in registers; PARB) */
     int32_t *eff = it->eff;
+    if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)   /* a knob's click still on its way (#405) */
+        par = ramp_base(nd, par, d->npar);
     if (d->cvbase >= 0)
         for (s = 0; s < 2u; s++) {
             const esig_t *cv;
@@ -6410,6 +6483,8 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
     for (off = 0; off < total; off += ENG_BLOCK) {
         uint32_t n = total - off < ENG_BLOCK ? total - off : ENG_BLOCK;
         ENG_PROF(4, 0, 0);
+        if (ramp[0].left | ramp[1].left | ramp[2].left | ramp[3].left)
+            ramp_tick();
         E.morph = E.has_b ? morph_position(n) : 0;
         {   /* the clock: MIDI ticks while external, else the Main module's tempo (whole bpm x 24 ticks a minute) */
             uint32_t bpm = E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;

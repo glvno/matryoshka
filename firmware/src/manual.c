@@ -75,6 +75,8 @@ static const char *const MANUAL[] = {
     " ENV HELD + SAVE: STORE ITS VALUES",
     "   (OVER YOURS, A FACTORY ONE: NEW)",
     " K1-K4: THE FOUR ROWS OF THE PAGE",
+    "   FAST: X5 (NOT ON A REVERSAL)",
+    " HOME HELD + K1-K4: FINE, 1/10 CLICK",
     " HOME: BACK ONE STEP (OUT OF SEQ,",
     "   OF THIS MENU)",
     " ALGO MOVES SIDEWAYS, SELECT PICKS",

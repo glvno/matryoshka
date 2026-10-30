@@ -25,7 +25,8 @@ static uint8_t knob_touched, button_touched;  /* the knob (1..6) / patch button 
 #define BTN_ENV_IDX 2u                /* ENV (#197): fixed, the environment; its jack a Gate */
 #define FIXED_BTNS ((1u << BTN_GLO_IDX) | (1u << BTN_SEL_IDX) | (1u << BTN_ENV_IDX))
 static uint8_t play_turned;                   /* PRESET turned the tempo while PLAY was held: its release does not start / stop */
-static uint8_t home_turned;                   /* PRESET turned the patch while HOME was held: its release does not go back (#395) */
+static uint8_t home_turned;                   /* PRESET turned the patch, or K1..K4 turned fine, while HOME was held: its release does
+                                               * not go back (#395, #340) */
 
 static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
 
@@ -314,12 +315,26 @@ static void play_toggle(void)                       /* PLAY: the transport (the 
 }
 
 
+/* a turn of `clicks` on knob slot `s` (0 the tempo, 1 a step's value, 2..5 K1..K4) is a fast one: KNOB ACCEL on, within
+ * 80 ms of the slot's last click and the same way as it. A reversal is always a single step, so a turn right and then
+ * left lands on the values between (#340) */
+static int knob_fast(uint32_t s, int32_t clicks)
+{
+    static uint32_t last_ms[6];
+    static int8_t last_dir[6];
+    int8_t dir = clicks > 0 ? 1 : -1;
+    int fast = cfg.accel && fm1_ms - last_ms[s] < 80u && last_dir[s] == dir;
+    last_ms[s] = fm1_ms;
+    last_dir[s] = dir;
+    return fast;
+}
+
 /* the encoders turned: st[0..6] = SELECT, ALGO, K1..K4, PRESET (clicks since the last call; the array is used up) */
 static void panel_encoders(int32_t *st)
 {
-    static uint32_t last_ms[6];
     uint32_t k;
     int panel = eng_find(T_FM1);
+    int fine = panel_held >> BTN_HOME & 1u;         /* HOME held + K1..K4: fine turns (#340); HOME's release then goes nowhere */
     for (k = 0; k < 7u; k++)                        /* MIDI out: the encoders as they turn, before anything uses them */
         if (ENC_CC[k] && st[k])
             midi_send(0xB0u, ENC_CC[k], rel_cc(st[k]));
@@ -340,8 +355,7 @@ static void panel_encoders(int32_t *st)
         if (panel >= 0 && !eng_clock_is_external()) {
             char m[16], num[8];
             int32_t bpm = (eng_get_param((uint32_t)panel, FM1_P_TEMPO) + 32768) >> 16;
-            bpm = clampi(bpm + st[6] * (cfg.accel && fm1_ms - last_ms[0] < 80u ? 5 : 1), 20, 300);
-            last_ms[0] = fm1_ms;
+            bpm = clampi(bpm + st[6] * (knob_fast(0, st[6]) ? 5 : 1), 20, 300);
             eng_set_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
             m1_patch_param((uint32_t)panel, FM1_P_TEMPO, bpm << 16);
             fmt_int(num, bpm);
@@ -374,9 +388,7 @@ static void panel_encoders(int32_t *st)
     if (sb_on && page == 0u && sb_have) {           /* sandbox mode: SELECT / ALGO went out as MIDI (the editor's page follows),
                                                      * K1..K4 turn the editor's rows from the positions it sent (sandbox_ui.c) */
         for (k = 0; k < 4u; k++) {
-            int32_t v = sandbox_knob(k, st[2u + k], cfg.accel && fm1_ms - last_ms[2u + k] < 80u);
-            if (st[2u + k])
-                last_ms[2u + k] = fm1_ms;
+            int32_t v = sandbox_knob(k, st[2u + k], st[2u + k] ? knob_fast(2u + k, st[2u + k]) : 0);
             if (v >= 0) {
                 midi_send(0xB0u, 16u + k, (uint32_t)v);
                 if (!ui_dirty)
@@ -408,8 +420,7 @@ static void panel_encoders(int32_t *st)
             st[0] = 0;
         }
         if ((st[2] || st[3]) && seq_held >= 0) {   /* K1 / K2 with a step held: its note / velocity (not the Main knobs) */
-            seq_value(st[2], st[3], cfg.accel && fm1_ms - last_ms[1] < 80u);
-            last_ms[1] = fm1_ms;
+            seq_value(st[2], st[3], knob_fast(1, st[2] ? st[2] : st[3]));
             st[2] = st[3] = 0;
         }
     }
@@ -451,9 +462,12 @@ static void panel_encoders(int32_t *st)
     for (k = 0; k < 4u; k++) {                      /* K1..K4: the rows of the page in focus, relative */
         uint32_t mod, par;
         int32_t v, c = st[2u + k], r;
-        if (!c || (r = pages_turn(k, c, cfg.accel && fm1_ms - last_ms[2u + k] < 80u, &mod, &par, &v)) < 0)
+        if (!c)
             continue;
-        last_ms[2u + k] = fm1_ms;
+        if (fine)
+            home_turned = 1;
+        if ((r = pages_turn(k, c, knob_fast(2u + k, c), fine, &mod, &par, &v)) < 0)
+            continue;
         if (r == 2) {                               /* the menu: an FM-1 setting (pages_turn set it): not the patch's, not the editor's */
             if (!ui_dirty)
                 ui_dirty = 1;
@@ -463,7 +477,7 @@ static void panel_encoders(int32_t *st)
             if (poly_row_set(mod, par & 0x7Fu, v))
                 continue;                         /* rejected: keep the old value in the editor too */
         } else {
-            eng_set_param(mod, par, v);
+            eng_knob_param(k, mod, par, v);         /* (over 20 ms, #405) */
             m1_patch_param(mod, par, v);
             pages_also(k, v);                       /* (the parameters the row also sets, #357) */
         }

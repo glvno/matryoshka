@@ -112,6 +112,7 @@ w('    const char *const *const *pchoice;      /* per parameter: the names of a 
 w('    const int32_t *ptop;    /* Q16.16, or 0: past pmax, the most the knobs and a stored value reach (ParamDef.top) */');
 w('    const uint8_t *psince;  /* or 0: per parameter the patch format that appended it (ParamDef.since; 0 = older): a binary of an');
 w('                             * older format holds fewer (engine.c eng_npar) */');
+w('    const int32_t *pstep;   /* Q16.16, 0: none: the editor\'s step (ParamDef.step), the least a fine knob click moves (pages_ui.c) */');
 w('} def_t;');
 w('/* the most parameter j of def d takes: its stretch past pmax (ptop), else pmax */');
 w('#define DEF_TOP(d, j) ((d)->ptop ? (d)->ptop[j] : (d)->pmax[j])');
@@ -126,6 +127,7 @@ for (const t of TYPE_ORDER) {
   w(`static const int32_t ${up(t)}_MAX[] = {${row((p) => p.max)}};`);
   w(`static const int32_t ${up(t)}_DEF[] = {${row((p) => p.default)}};`);
   w(`static const int32_t ${up(t)}_INC[] = {${row((p) => Math.max(p.step ?? 0, (p.max - p.min) / 100))}};`);
+  w(`static const int32_t ${up(t)}_STEP[] = {${row((p) => p.step ?? 0)}};`);
   // (engine.c keeps a morph B side past max as B - min in 1/2048 of a unit, in 16 bits: a stretch is under 32 wide)
   for (const p of ps) if (p.top !== undefined && (p.log || p.top - p.min >= 32)) throw new Error(`${t}.${p.name}: a stretch (top) must be linear and under 32 wide`);
   if (ps.some((p) => p.top !== undefined)) w(`static const int32_t ${up(t)}_TOP[] = {${row((p) => p.top ?? p.max)}};`);
@@ -157,7 +159,7 @@ for (const t of TYPE_ORDER) {
   const d = DEFS[t];
   const has = d.params.length > 0;
   const n = up(t);
-  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${d.outputs.reduce((mask, o, i) => mask | (o.kind === 'audio' ? 1 << i : 0), 0)}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}, ${d.params.some((p) => p.top !== undefined) ? `${n}_TOP` : '0'}, ${d.params.some((p) => p.since !== undefined) ? `${n}_SINCE` : '0'}},   /* ${t} */`);
+  w(`    {${n}_NIN, ${n}_NOUT, ${n}_NPAR, ${d.inputs.reduce((mask, port, i) => mask | (d.params.some((pd) => pd.input === port.name) ? 1 << i : 0), 0)}, ${n}_CVBASE, ${(() => { const t = thruInput(d); return t ? d.inputs.findIndex((p) => p.name === t) : -1; })()}, ${n}_NDATA, ${d.outputs.reduce((mask, o, i) => mask | (o.kind === 'audio' ? 1 << i : 0), 0)}, ${has ? `${n}_MIN, ${n}_MAX, ${n}_DEF, ${n}_INC` : '0, 0, 0, 0'}, "${d.label.toUpperCase()}", ${has ? `${n}_PN` : '0'}, ${n}_INNAMES, ${has ? `${n}_LOG, ${n}_UNIT, ${n}_CH` : '0, 0, 0'}, ${d.params.some((p) => p.top !== undefined) ? `${n}_TOP` : '0'}, ${d.params.some((p) => p.since !== undefined) ? `${n}_SINCE` : '0'}, ${has ? `${n}_STEP` : '0'}},   /* ${t} */`);
 }
 w('};');
 w();
