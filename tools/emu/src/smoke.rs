@@ -48,6 +48,7 @@ const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
 const SELECT: u8 = 0; // encoder
 const K1: u8 = 2;
+const K3: u8 = 4;
 const K4: u8 = 5; // encoder
 const SEL: u8 = 3; // the SEL button (SCL in Felucca's table)
 
@@ -822,6 +823,17 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
         m.key(HOME, false);
         m.run_for(400)?;
         t.screen(&m, "HOME's release after a fine turn: the device page stays", DEVICE_PAGE);
+        m.midi(&[0xB0, 19, 127], 400)?;          // CC 19: K4's row by position, the top of -4..4
+        t.screen(&m, "MIDI CC 19 at 127: the drone row at 4.00", "4.00");
+        // Monolith D's CONTROLLERS page: TUNE (an Offset) on K1, GLIDE ON (a switch) on K3
+        if let Some(mono) = presets.iter().position(|(n, _)| n == "MONOLITH D") {
+            m.midi(&[0xC0, mono as u8], 800)?;
+            t.screen(&m, "program change: Monolith D, its CONTROLLERS page", "GLIDE ON");
+            m.turn(K3, -1, 300)?;
+            t.screen(&m, "Monolith D, K3 (GLIDE ON) one click left: OFF (a switch steps at once)", "OFF");
+            m.turn(K1, 1, 300)?;
+            t.screen(&m, "Monolith D, K1 (TUNE) one click: 0.08", "0.08");
+        }
         m.midi(&[0xC0, 0], 800)?;
         t.screen(&m, "  (program change 0: back on patch 0 for step 5)", &presets[0].0);
     } else {

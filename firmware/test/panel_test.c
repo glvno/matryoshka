@@ -3456,7 +3456,7 @@ int main(void)
     }
     {   /* #340, #405: knob turns on Elvira 2's rows. A fast click counts only after a click the same way; HOME held, a
          * click is a tenth of a click and never under the editor's step; a click reaches the module over ENG_RAMP_BLOCKS
-         * blocks, the parameter at once */
+         * blocks (8: 23 ms), the parameter at once */
         uint32_t d, g, k, kd = 9, kf = 9, kc = 9, kl = 9, dd = 0, gd = 0, df = 0, gf = 0, dc = 0, gc = 0, dl = 0, gl = 0, m, j;
         int32_t v0, v1, v2, v3, e, off, step;
         const def_t *dn;
@@ -3518,10 +3518,10 @@ int main(void)
             step = off / ENG_RAMP_BLOCKS;
             blocks(1);
             e = eng_get_eff(m, j);
-            check("one block later: the module a seventh of the way", e == v1 + off - step && e > v0 && e < v1);
+            check("one block later: the module an eighth of the way", e == v1 + off - step && e > v0 && e < v1);
             blocks(2);
             e = eng_get_eff(m, j);
-            check("three blocks: three sevenths", e == v1 + off - 3 * step);
+            check("three blocks: three eighths", e == v1 + off - 3 * step);
             later(200);
             enc(2u + kd, 1);                                /* another click while the ramp runs: on from where it stands */
             v2 = eng_get_param(m, j);
@@ -3529,7 +3529,7 @@ int main(void)
             check("a click mid-ramp: the parameter at once, the module on from where it stood, no jump back",
                   v2 == v1 + dn->pinc[j] && eng_get_eff(m, j) > e && eng_get_eff(m, j) < v2);
             blocks(ENG_RAMP_BLOCKS - 1u);
-            check("seven blocks after the last click: the module at the value", eng_get_eff(m, j) == v2 && ramp[kd].left == 0u);
+            check("eight blocks after the last click: the module at the value", eng_get_eff(m, j) == v2 && ramp[kd].left == 0u);
             /* a choice row: at once */
             pages_focus(dc, gc);
             ui_dirty = 2;

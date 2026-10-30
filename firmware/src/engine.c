@@ -560,7 +560,7 @@ typedef struct {
 static eng_t eng_one ENG_POOL;
 #define E eng_one
 /* the knobs' pending ramps (#405, eng_knob_param): the module and parameter, blocks left, the offset still to go, its step */
-typedef struct { uint8_t mod, par, left; int32_t off, step; } ramp_t;
+typedef struct { int32_t mod, par, left, off, step; } ramp_t;
 static ramp_t ramp[ENG_KNOBS];
 static int32_t ramp_buf[MAX_PAR];
 static void toggles_sync(void);
@@ -1648,7 +1648,7 @@ void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
         E.node[module].par[param] = q16;
 }
 
-/* Knob ramps (#405). On the FM-1 a knob's click reaches the module over ENG_RAMP_BLOCKS blocks (20 ms) instead of at once,
+/* Knob ramps (#405). On the FM-1 a knob's click reaches the module over ENG_RAMP_BLOCKS blocks (23 ms) instead of at once,
  * so a stepped level, offset, tuning or cutoff neither clicks nor zippers. The parameter itself (par[]) takes the new
  * value at once: eng_get_param, the editor's mirror, MIDI out and a save all see it. Only the base apply_cv derives the
  * effective value from lags: knob k's ramp holds the difference between where the module stood and the new value, and
@@ -1657,18 +1657,16 @@ void eng_set_param(uint32_t module, uint32_t param, int32_t q16)
  * it was without them (tools/engine_exact.sh). The browser engine does not ramp: its sliders are continuous. The main
  * loop starts a ramp while the audio interrupt renders: a start that lands inside apply_cv of that module can make one
  * block use the step as a jump, which is what every click did before. */
-static void ramp_start(uint32_t k, uint32_t m, uint32_t j, int32_t to)
+static void ramp_start(uint32_t k, int32_t m, int32_t j, int32_t from, int32_t to)
 {
     ramp_t *r = &ramp[k];
-    int32_t from = E.node[m].par[j];
     if (r->left && r->mod == m && r->par == j)
         from += r->off;
     r->left = 0;
-    r->mod = (uint8_t)m;
-    r->par = (uint8_t)j;
+    r->mod = m;
+    r->par = j;
     r->off = from - to;
     r->step = r->off / ENG_RAMP_BLOCKS;
-    E.node[m].par[j] = to;
     r->left = ENG_RAMP_BLOCKS;
 }
 /* once a block: every pending ramp one step nearer to zero */
@@ -1688,9 +1686,10 @@ static void ramp_tick(void)
 /* the base values apply_cv works from: the node's, or a copy with its pending ramps added */
 static const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t npar)
 {
-    uint32_t k, m = (uint32_t)(nd - E.node), j, any = 0;
+    uint32_t k, j, any = 0;
+    int32_t m = (int32_t)(nd - E.node);
     for (k = 0; k < ENG_KNOBS; k++)
-        if (ramp[k].left && ramp[k].mod == m && ramp[k].par < npar) {
+        if (ramp[k].left && ramp[k].mod == m && (uint32_t)ramp[k].par < npar) {
             if (!any) {
                 for (j = 0; j < npar; j++)
                     ramp_buf[j] = par[j];
@@ -1704,13 +1703,14 @@ static const int32_t *ramp_base(const node_t *nd, const int32_t *par, uint32_t n
 void eng_knob_param(uint32_t knob, uint32_t module, uint32_t param, int32_t q16)
 {
     const def_t *d;
+    int32_t was;
     if (module >= E.nmod || param >= DEFS[E.node[module].type].npar)
         return;
     d = &DEFS[E.node[module].type];
-    if (knob < ENG_KNOBS && !(d->pchoice && d->pchoice[param]) && E.node[module].par[param] != q16)
-        ramp_start(knob, module, param, q16);
-    else
-        E.node[module].par[param] = q16;
+    was = E.node[module].par[param];
+    E.node[module].par[param] = q16;                /* (as eng_set_param: the parameter at once) */
+    if (knob < ENG_KNOBS && was != q16 && !(d->pchoice && d->pchoice[param]))
+        ramp_start(knob, (int32_t)module, (int32_t)param, was, q16);
 }
 
 int eng_has_morph(void) { return E.loaded && E.has_b; }

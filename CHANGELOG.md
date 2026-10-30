@@ -2,12 +2,12 @@
 
 ## Unreleased
 
-- **FM-1 knob turns: a fast click only after one the same way, HOME held turns fine, a click glides over 20 ms** (#340,
+- **FM-1 knob turns: a fast click only after one the same way, HOME held turns fine, a click glides over 23 ms** (#340,
   #405). KNOB ACCEL's five-click step now counts only when the knob's previous click, within 80 ms, went the same way; a
   reversal is one click, so a turn back lands on the values between. HOME held + K1..K4 moves a row by a tenth of a
   click, never under the row's step in the editor: an Offset row (Elvira 2's drone, 8 Lire's hold) 0.01 instead of
   0.08, a fine row 1 ct instead of 2 ct, a log row 1/1000 octave; HOME's release then goes nowhere. A knob's click (or
-  MIDI CC 16..19) reaches the module over 7 blocks of 128 frames (20 ms) instead of at once, so stepping a level, drone,
+  MIDI CC 16..19) reaches the module over 8 blocks of 128 frames (23 ms) instead of at once, so stepping a level, drone,
   hold, tune or cutoff row neither clicks nor zippers; the value itself, the editor's mirror, MIDI out and a save see it
   at once; choices, settings, patch loads, presets and the editor's sends set at once, and the browser engine does not
   glide. With no click pending the engine is bit for bit as before (`tools/engine_exact.sh`, 291 kits). The LCD manual
