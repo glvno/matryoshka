@@ -13,7 +13,7 @@ import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright-core';
-import { parentOf } from '../src/assembly';
+import { allModules, parentOf } from '../src/assembly';
 import { presetsOf } from '../src/device-presets';
 import { instIsEngine } from '../src/engines';
 import '../src/factory-presets';
@@ -58,8 +58,14 @@ if (!existsSync(songFile)) {
   const have = readdirSync(join(WEB, 'demo/songs')).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5));
   throw new Error(`no song ${SONG} (web/demo/songs/${SONG}.json); there are: ${have.join(', ')}`);
 }
-const song = JSON.parse(readFileSync(songFile, 'utf8')) as { title?: string; tempo?: number; notes: [string | number | (string | number)[], number][] };
-const EVENTS: Ev[] = song.notes.map(([p, beats]) => ({ notes: [...new Set((Array.isArray(p) ? p : [p]).map(midi))], beats }));
+const song = JSON.parse(readFileSync(songFile, 'utf8')) as { title?: string; tempo?: number; chords?: boolean; notes: [string | number | (string | number)[], number][] };
+// one key per entry by default, the lowest of its notes (an octave in the bass is one note on the FM-1's keys); --chords,
+// or "chords": true in the song, plays every note of an entry
+const CHORDS = flag('--chords') || song.chords === true;
+const EVENTS: Ev[] = song.notes.map(([p, beats]) => {
+  const notes = [...new Set((Array.isArray(p) ? p : [p]).map(midi))];
+  return { notes: CHORDS ? notes : [Math.min(...notes)], beats };
+});
 if (!EVENTS.length) throw new Error(`song ${SONG} has no notes`);
 
 // the keybed: 27 keys from F3 (MIDI 53) at the panel's octave (-3..3, OCT- / OCT+). The octave that holds most of the
@@ -78,9 +84,15 @@ const KEYED = EVENTS.map((e) => ({
     return x - LO;
   }))],
 }));
+// an engine whose keys reach a Drum map and no Voicing (8 Lire, Elvira 2: a voice per row, started and held by a key) is
+// played on the FM-1's black keys: black key n (from the lowest, D-520) plays row n. The song's pitches become rows by
+// their order: its lowest pitch row 1, the next row 2, and so on round the eight rows
+const BLACK = [1, 3, 5, 8, 10, 13, 15, 17];   // the keybed's first eight black keys (F#3, G#3, A#3, C#4, ...), as key numbers
+const PITCHES = [...new Set(EVENTS.flatMap((e) => e.notes))].sort((a, b) => a - b);
+const ROWED = EVENTS.map((e) => ({ beats: e.beats, keys: [...new Set(e.notes.map((n) => BLACK[PITCHES.indexOf(n) % 8]))] }));
 
 // ---- the plan: which patches, which presets, in what order (from the patches themselves, as the FM-1 has them)
-interface Item { name: string; engine: string | null; device: number; presets: (string | null)[]; why: string }
+interface Item { name: string; engine: string | null; device: number; presets: (string | null)[]; rows: boolean }
 const keyboard: Item[] = [];
 const drums: Item[] = [];
 const left: string[] = [];
@@ -95,7 +107,10 @@ for (const [name, make] of Object.entries(FM1_PRESETS)) {
     .map((a) => ({ a, presets: presetsOf(p, a).filter((x) => x.factory).map((x) => x.name) }))
     .find((x) => x.presets.length);
   const presets = (eng?.presets ?? []).filter((x) => INIT || x !== 'Init');
-  const item: Item = { name, engine: eng?.a.label ?? null, device: eng ? binaryPage(p, `a${eng.a.id}`, 0)?.[0] ?? -1 : -1, presets, why: pattern ? 'pattern' : 'keys' };
+  // played on the black keys: its keys reach a Drum map and no Voicing (D-520: then black keys 1..8 play rows 1..8)
+  const types = eng ? allModules(p, eng.a).map((id) => p.modules.find((m) => m.id === id)?.type) : [];
+  const rows = types.includes('drummap') && !types.includes('alloc');
+  const item: Item = { name, engine: eng?.a.label ?? null, device: eng ? binaryPage(p, `a${eng.a.id}`, 0)?.[0] ?? -1 : -1, presets, rows };
   if (pattern) drums.push({ ...item, presets: presets.length ? presets : [null] });
   else if (presets.length) keyboard.push(item);
   else left.push(name);
@@ -106,8 +121,8 @@ const kbPresets = keyboard.reduce((s, i) => s + i.presets.length, 0);
 const drumSteps = drums.reduce((s, i) => s + i.presets.length, 0);
 // the notes each keyboard preset plays: the song goes on across presets (and patches), from the top again at its end
 let cursor = 0;
-const take = (): typeof KEYED => Array.from({ length: NOTES }, () => KEYED[cursor++ % KEYED.length]);
-const steps = keyboard.map((i) => i.presets.map((name) => ({ name, events: take() })));
+const take = (rows: boolean): typeof KEYED => Array.from({ length: NOTES }, () => (rows ? ROWED : KEYED)[cursor++ % KEYED.length]);
+const steps = keyboard.map((i) => i.presets.map((name) => ({ name, events: take(i.rows) })));
 const nNotes = steps.flat().reduce((s, x) => s + x.events.length, 0);
 const beats = steps.flat().reduce((s, x) => s + x.events.reduce((t, e) => t + e.beats, 0), 0);
 const fixedS = ((keyboard.length + drums.length) * LOAD_MS + kbPresets * PRESET_MS) / 1000 + drumSteps * DRUM_S;
@@ -125,9 +140,9 @@ const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(Math.round(s
 const r3 = (x: number): number => Math.round(x * 1000) / 1000;
 
 console.log(`song: ${song.title ?? SONG} (${EVENTS.length} entries, ${r3(EVENTS.reduce((s, e) => s + e.beats, 0))} beats)`);
-console.log(`keys: octave ${OCT >= 0 ? '+' : ''}${OCT} (F${3 + OCT}..G${5 + OCT})${folded ? `, ${folded} note${folded === 1 ? '' : 's'} played an octave in` : ''}`);
+console.log(`keys: ${CHORDS ? 'every note of an entry' : 'one key an entry (its lowest note)'}, octave ${OCT >= 0 ? '+' : ''}${OCT} (F${3 + OCT}..G${5 + OCT})${folded ? `, ${folded} note${folded === 1 ? '' : 's'} played an octave in` : ''}`);
 console.log(`\nplayed from the keys: ${keyboard.length} patches, ${kbPresets} presets${INIT ? ' (Init included)' : ' (Init skipped)'}, ${NOTES} notes each`);
-for (const i of keyboard) console.log(`  ${i.name.padEnd(16)} ${i.presets.join(', ')}`);
+for (const i of keyboard) console.log(`  ${i.name.padEnd(16)} ${i.presets.join(', ')}${i.rows ? '  (black keys: its Drum map rows)' : ''}`);
 console.log(`\nfrom a pattern (PLAY): ${drums.length} patches, ${drumSteps} steps of ${DRUM_S} s`);
 for (const i of drums) console.log(`  ${i.name.padEnd(16)} ${i.presets.map((x) => x ?? '(as it comes: no presets)').join(', ')}`);
 if (left.length) console.log(`\nleft out (no factory presets, played from the keys): ${left.join(', ')}`);
@@ -140,7 +155,6 @@ if (flag('--dry-run')) process.exit(0);
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 const children: ChildProcess[] = [];
 process.on('exit', () => { for (const c of children) try { c.kill(); } catch { /* gone */ } });
-// (Ctrl-C mid-run: the storage goes back first)
 for (const s of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(s, () => void (cleanup?.() ?? Promise.resolve()).catch(() => {}).finally(() => process.exit(130)));
 const freePort = (): Promise<number> => new Promise((res) => {
   const s = createServer();
@@ -209,28 +223,19 @@ async function main(): Promise<void> {
   const context = await browser.newContext({ viewport: { width: W, height: H } });
   await context.addInitScript(NO_MIDI);
   await context.addInitScript(TAP);
-  // this origin's storage as it was before the page's first script: put back exactly when the demo ends, however it ends
-  // (opening patches writes the open patch; a sandbox patch marks its card seen)
-  // (kept in this tab's sessionStorage, so a reload of the page, say by the dev server, keeps the first one)
-  await context.addInitScript(() => {
-    const w = window as unknown as { __demoBefore?: Record<string, string> };
-    const kept = sessionStorage.getItem('matryoshka-demo.before');
-    w.__demoBefore = kept ? JSON.parse(kept) : Object.fromEntries(Object.keys(localStorage).map((k) => [k, localStorage.getItem(k)!]));
-    if (!kept) sessionStorage.setItem('matryoshka-demo.before', JSON.stringify(w.__demoBefore));
-  });
+  // (the browser is Playwright's own, with a new empty profile that is deleted when it closes: nothing it stores reaches
+  // the owner's Chrome, whatever origin it opens)
   const page = await context.newPage();
-  cleanup = async () => {
-    const back = await page.evaluate(() => {
-      const b = (window as unknown as { __demoBefore?: Record<string, string> }).__demoBefore;
-      if (!b) return null;
-      const changed = Object.keys(localStorage).filter((k) => localStorage.getItem(k) !== (b[k] ?? null));
-      for (const k of Object.keys(localStorage)) if (!(k in b)) localStorage.removeItem(k);
-      for (const [k, v] of Object.entries(b)) localStorage.setItem(k, v);
-      return changed;
-    }).catch(() => null);
-    console.log(back ? `storage: ${back.length ? `put back ${back.join(', ')}` : 'unchanged'}` : 'warning: could not put this origin\'s storage back');
-    await browser.close();
-  };
+  cleanup = () => browser.close();
+  // --wasm FILE: the Emulator view runs this build of the FM-1's UI instead of the server's (a server whose
+  // public/fm1-ui.wasm is older than its firmware sources)
+  const wasm = opt('--wasm');
+  if (wasm) {
+    const file = resolve(process.cwd(), wasm);
+    if (!existsSync(file)) throw new Error(`--wasm ${wasm}: no such file (npm run fm1-wasm writes public/fm1-ui.wasm)`);
+    await page.route('**/fm1-ui.wasm', (r) => r.fulfill({ path: file, contentType: 'application/wasm' }));
+    console.log(`fm1-ui.wasm: ${file}`);
+  }
   page.on('pageerror', (e) => console.log(`  page error: ${e.message}`));
   await page.goto(`${url}#emu`);
   await page.waitForFunction(() => !!(window as unknown as { __m1test?: unknown }).__m1test, null, { timeout: 30000 });
@@ -254,8 +259,8 @@ async function main(): Promise<void> {
     page.locator('.fm1-btn', { hasText: new RegExp(`^${label.replace(/[+-]/g, '\\$&')}$`) }).click({ delay: 60 });
   type Now = { name: string; off: number; rows: number } | null;
   interface Step { clicks: number; engine: string | null; want: string | null; notesAt: number; end: number; notes: { keys: number[]; ms: number }[] }
-  const step = (s: Step): Promise<{ now: Now; peak: number; k: number }> => page.evaluate(async (s) => {
-    const w = window as unknown as { __m1test: { presetNow(l: string): Now }; __demoPeak?: () => number };
+  const step = (s: Step): Promise<{ now: Now; peak: number; k: number; loaded: string }> => page.evaluate(async (s) => {
+    const w = window as unknown as { __m1test: { presetNow(l: string): Now; emu(): { loaded: string } }; __demoPeak?: () => number };
     const until = (t: number): Promise<void> => new Promise((r) => setTimeout(r, Math.max(0, t - Date.now())));
     const wheel = (label: string, clicks: number): void => {
       const d = document.querySelector(`#fm1-view [aria-label="${label} encoder"]`);
@@ -269,6 +274,8 @@ async function main(): Promise<void> {
     let now = s.engine ? w.__m1test.presetNow(s.engine) : null;
     // (a patch whose values matched no preset as it came: the first click lands on Init, one more goes on)
     if (s.want && s.want !== 'Init' && now?.name === 'Init' && !now.off) { wheel('Presets', 1); now = w.__m1test.presetNow(s.engine!); }
+    // (the patch the emulated FM-1 runs after the click: another one means PRESET stepped patches, not presets)
+    const loaded = w.__m1test.emu().loaded;
     await until(s.notesAt);
     // late (a slow page): the notes are shortened so that the step still ends on time, by half at most
     const len = s.notes.reduce((t, e) => t + e.ms, 0);
@@ -282,7 +289,7 @@ async function main(): Promise<void> {
       await until(t);
     }
     await until(s.end);
-    return { now, peak: w.__demoPeak?.() ?? -1, k };
+    return { now, peak: w.__demoPeak?.() ?? -1, k, loaded };
   }, s);
 
   // the audio starts with the first press on the panel (as for a person): a click on the screen's bezel
@@ -313,6 +320,12 @@ async function main(): Promise<void> {
     }
     await peak();   // (from here on: this patch's)
   };
+  /** PRESET alone steps the focused device's presets since firmware #395 (2026-10-29); in an older build of the FM-1's
+   *  UI it steps the patches, and every step after it plays another patch: stop and say how to get a current build */
+  const stale = (it: Item, loaded: string): void => {
+    if (loaded === it.name.toUpperCase()) return;
+    throw new Error(`PRESET opened another patch (${loaded}) instead of ${it.name}'s next preset: the server's fm1-ui.wasm is older than #395 (PRESET alone steps the device's presets). Run npm run fm1-wasm in that server's web/ (the page loads it on the next run, no restart needed), or pass --wasm public/fm1-ui.wasm after npm run fm1-wasm in this checkout`);
+  };
   const says = (want: string, now: Now): string => (now?.name === want && !now.off ? '' : now ? `  (the engine is nearest ${now.name}: ${now.off} of its ${now.rows} rows differ)` : '  (no preset matched)');
 
   const shots = flag('--shots');
@@ -338,6 +351,7 @@ async function main(): Promise<void> {
       const notesAt = t0 + at + PRESET_MS;
       if (shots && j === 1) shot(`${it.name}-${s.name}`, notesAt + notes[0].ms / 2);
       const r = await step({ clicks: 1, engine: it.engine, want: s.name, notesAt, end: notesAt + len, notes });
+      stale(it, r.loaded);
       at += PRESET_MS + len;
       report.push({ patch: it.name, preset: s.name!, ok: r.now?.name === s.name && !r.now.off, peak: r.peak });
       console.log(`  ${stamp()}  ${it.name} > ${s.name}${says(s.name!, r.now)}  peak ${r.peak.toFixed(3)}${r.k < 0.9 ? `  (notes at ${(r.k * 100).toFixed(0)} %: late)` : ''}`);
@@ -351,6 +365,7 @@ async function main(): Promise<void> {
     for (const [j, name] of it.presets.entries()) {
       if (shots && j === 0) shot(`${it.name}-${name ?? 'pattern'}`, t0 + at + DRUM_S * 500);
       const r = await step({ clicks: name ? 1 : 0, engine: name ? it.engine : null, want: name, notesAt: 0, end: t0 + at + DRUM_S * 1000, notes: [] });
+      stale(it, r.loaded);
       at += DRUM_S * 1000;
       report.push({ patch: it.name, preset: name ?? '(pattern)', ok: !name || (r.now?.name === name && !r.now.off), peak: r.peak });
       console.log(`  ${stamp()}  ${it.name} > ${name ?? '(its pattern)'}${name ? says(name, r.now) : ''}  peak ${r.peak.toFixed(3)}`);
@@ -366,7 +381,7 @@ async function main(): Promise<void> {
   await sleep(1200);
 }
 
-/** puts the origin's storage back and closes the browser (set once the page is open) */
+/** closes the browser (set once it is open) */
 let cleanup: (() => Promise<void>) | null = null;
 main().then(
   async () => { await cleanup?.(); process.exit(0); },
