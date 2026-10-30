@@ -64,6 +64,7 @@ Steps is the sequencer for melodies, chords and drums: a **Steps track** holds s
 
 - A master length for tracks of different lengths, so polymetric patches switch patterns and song entries together — issue #375.
 
+- Proposed amendment to [D-514](steps.md#D-514): the arm is drawn as what it routes ([D-642](editor.md#D-642)), not as one dashed virtual cable per armed device. A virtual cable is drawn only into a keys input no cable feeds, and the cables Main's keys travel are lit — issue #418
 - How to arm an engine on the FM-1 when no keys cable from Main reaches it — issue #191
 - Whether the editor's arming reaches the FM-1 over the USB link (the FM-1's reaches the editor by [D-802](steps.md#D-802), proposed) — issue #191
 - The FM-1's count-in before REC records: issue #395 decided a MENU setting, off by default; its length, sound and when it applies are open — issue #414

@@ -463,15 +463,24 @@ const sink = {
 };
 /** what the armed devices play (Editor onArm), for the status line */
 let armPlays: string[] = [];
+/** the devices armed with the user's choice (#418: the key sources in front of an armed instrument), by name */
+let armThrough: string[] = [];
 /** the status line while devices are armed (#134, #190) or a track records (#135): what the keys play and what REC does now */
 function showArmed(): void {
   const id = editor.armedTrack;
   if (!editor.armedSet.size) return pinStatus(null, 'arm');
+  // (the key sources armed with the user's choice, #418: "through PATTERN, Arpeggiator (armed with it)")
+  const through = armThrough.length ? ` through ${armThrough.join(', ')} (armed with it)` : '';
   if (id === null || editor.armedSet.size > 1 && !editor.recOn) {
     const list = armPlays.length ? armPlays.join(', ') : 'nothing yet';
-    return pinStatus({ tag: `Armed: ${editor.armedSet.size}`, text: `Main’s keys play ${list}; only armed devices hear them.${id === null ? '' : ' Shift+R records on the armed track.'} ARM again to disarm.` }, 'arm');
+    return pinStatus({ tag: `Armed: ${editor.armedSet.size}`, text: `Main’s keys play ${list}${through}; only armed devices hear them.${id === null ? '' : ' Shift+R records on the armed track.'} ARM again to disarm.` }, 'arm');
   }
   const name = trackLabel(editor.patch, id);
+  if (!editor.recOn && !editor.armedSet.has(`m${id}`)) {
+    // an instrument armed, its track with it: the keys go through the track to it
+    const what = armPlays.length ? armPlays.join(', ') : 'nothing yet';
+    return pinStatus({ tag: `Armed: ${what}`, text: `Main’s keys play ${what}${through}. Shift+R records on ${name}; ARM again gives Main its keys back.` }, 'arm');
+  }
   const hear = armPlays.length ? `heard through ${armPlays.join(', ')}` : 'which plays nothing yet: cable its keys out (or trig / pitch) to an instrument';
   if (!editor.recOn) return pinStatus({ tag: `Armed: ${name}`, text: `Main’s keys play ${name}, ${hear}. Shift+R records; ARM again gives Main its keys back.` }, 'arm');
   pinStatus({ tag: `Rec: ${name}`, text: editor.playing
@@ -641,11 +650,12 @@ const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
     if (live() && !uploading) device.song(k, entries);
     else if (live()) dirty = true;
   },
-  onArm(armed, plays) {
+  onArm(armed, plays, through) {
     armFromDevice = fromDevice && armed.length > 0;
     host.send({ t: 'arm', devices: armed });
     if (!armsApplying) emuArm();
     armPlays = plays;
+    armThrough = through;
     showArmed();
   },
   onRec(id, on) {

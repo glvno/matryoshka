@@ -492,7 +492,7 @@ A saved copy of the learner's patch kept by the tutorial, so work replaced by a 
 
 ### Virtual cable
 
-A dashed line the app draws to show a connection it makes for you (an armed device's keys, a knob's target); never saved, no undo. A cable you made is solid. Avoid: ghost cable, route.
+A dashed line the app draws to show a connection it makes for you, into the jack the connection goes to (Main's keys into an armed device's keys input that no cable feeds, a knob's target); never saved, no undo. A cable you made is solid; one the arm sends Main's keys over is drawn in the arm colour ([D-642](editor.md#D-642)). Avoid: ghost cable, route.
 
 ### Voice
 
