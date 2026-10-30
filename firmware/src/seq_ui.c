@@ -51,6 +51,11 @@
  *                   (eng_steps_rec), over the notes there. No Steps track armed: REC still runs, the bar says
  *                   REC: NO TRACK ARMED. On the SEQ page a drum grid's black keys record as above; on a melodic track's
  *                   roll all 27 keys are its keyboard (seq_kbd) and OCT- / OCT+ the octave.
+ *   Count-in (#414) MENU > PANEL > COUNT-IN (OFF, 1 BAR, 2 BARS; off as made): REC waits that many bars before the
+ *                   tracks record, from the transport's start or, running already, from the next bar line, so recording
+ *                   begins on a bar (seq_cin_poll). The bar counts the beats (COUNT-IN 3; two bars: 1.3), REC's LED
+ *                   blinks on them, the keys sound as ever and nothing is recorded; REC again meanwhile: off, nothing
+ *                   recorded. No click: the FM-1 has no metronome voice.
  *
  * Key LEDs: the selected row's notes on the page bright, the step playing at the mid level (dark on a step that is on),
  * the selected row's black key bright (blinking: the track muted) and rows with notes dim (a drum track's and the
@@ -69,6 +74,13 @@
 static uint8_t seq_trk;                 /* the selected track (index among the patch's Steps modules) */
 static uint8_t seq_pg;                  /* the page of 16 steps */
 static uint8_t seq_rec;                 /* REC records (#395: global; the armed Steps tracks; the transport runs meanwhile) */
+static uint8_t seq_cin;                 /* REC's count-in (#414): 1 waiting for the engine to take the transport's start,
+                                         * 2 counting; the tracks record once it ends (seq_cin_poll) */
+static uint8_t seq_cin_bars;            /* ... the bars it counts (the setting when REC was pressed) */
+static uint32_t seq_cin_at;             /* ... the clock's ticks when REC was pressed */
+static uint32_t seq_cin_end;            /* ... ticks since the transport's start at which recording begins */
+static uint8_t seq_cin_shown;           /* ... the beat the bar shows (0.. over the bars, 0xFF none yet) */
+static uint8_t seq_cin_lit;             /* ... REC's LED (on for the first half of each beat) */
 static uint8_t seq_thru_note[27];       /* a black key held on a drum track's page (#368): its note + 1 (0 none), sounding through */
 static uint8_t seq_thru_mod[27];        /* ... the track it sounds through, let go there */
 static uint8_t seq_row;                 /* the grid's selected row: a Drum map's row, or the roll's (0 the top: its highest pitch) */
@@ -137,6 +149,8 @@ static int seq_armed_trk(void)
 }
 /* a module is in the armed set (#191) */
 static int seq_mod_armed(int mod) { return mod >= 0 && (eng_arm_mask_get() >> mod & 1u); }
+/* REC's LED: lit while REC is on, blinking on the beats of the count-in */
+static int seq_rec_lit(void) { return seq_rec && (seq_cin != 2u || seq_cin_lit); }
 /* the SEQ bar's mark: bit 0 the track shown armed (ARM / REC), bit 1 REC on (the bar red) */
 static uint8_t seq_bar_mark(void) { return (uint8_t)(seq_mod_armed(seq_module()) | (seq_rec ? 2 : 0)); }
 /* the keys are the shown melodic track's keyboard: REC records it (it is armed) on this page, a live take; a drum track's
@@ -320,7 +334,7 @@ static void seq_leds(void)
         led_bit(fm1_led_mid, 14u + n, mid);
         led_bit(fm1_led_dim, 14u + n, dim);
     }
-    fm1_led_key(BTN_REC, seq_rec);
+    fm1_led_key(BTN_REC, seq_rec_lit());
 }
 
 /* ---- the panel */
@@ -698,20 +712,23 @@ static void seq_sync(int mod)
 }
 
 /* REC's recording follows the armed set (#395): a Steps track records while REC is on and it is armed, the others not (the
- * engine's flag per track, eng_steps_rec). Every pass (seq_take), and at once after REC or an arm */
+ * engine's flag per track, eng_steps_rec); none while the count-in runs (#414). Every pass (seq_take), and at once after
+ * REC or an arm */
 static void seq_rec_sync(void)
 {
     int t, n = eng_steps_count();
     for (t = 0; t < n; t++) {
         int mod = eng_steps_module((uint32_t)t);
-        eng_steps_rec((uint32_t)mod, seq_rec && seq_mod_armed(mod));
+        eng_steps_rec((uint32_t)mod, seq_rec && !seq_cin && seq_mod_armed(mod));
     }
 }
 
-/* recording ends (REC again, PLAY, any stop of the transport): the notes still held are recorded when let go */
+/* recording ends (REC again, PLAY, any stop of the transport): the notes still held are recorded when let go; a
+ * count-in still running is dropped, nothing recorded */
 static void seq_rec_off(void)
 {
     seq_rec = 0;
+    seq_cin = 0;
     seq_rec_sync();
     ent_keys = 0;
     ui_dirty = 2;
@@ -750,20 +767,12 @@ static void seq_arm_shown(int opening)
         seq_arm_set((uint64_t)1 << mod);
 }
 
-/* REC let go (panel.c, which started the transport first when it was stopped; not after REC held + a black key armed a
- * track), on any page (#395): recording off, or on for the armed Steps tracks. The bar names what records: REC and the
- * track, REC n TRACKS, or REC: NO TRACK ARMED (REC still runs: a track armed later records). The page stays */
-static void seq_rec_press(void)
+/* the bar names what records (D-549): REC and the track, REC n TRACKS, or REC: NO TRACK ARMED (REC still runs: a track
+ * armed later records) */
+static void seq_rec_msg(void)
 {
     int t, n = 0, first = -1;
     char m[32], num[8], name[TRACK_NAME_MAX + 8];
-    if (seq_rec) {
-        seq_rec_off();
-        ui_msg("REC OFF", 1000);
-        return;
-    }
-    seq_rec = 1;
-    seq_rec_sync();
     for (t = 0; t < eng_steps_count(); t++)
         if (seq_mod_armed(eng_steps_module((uint32_t)t)) && !n++)
             first = t;
@@ -777,7 +786,78 @@ static void seq_rec_press(void)
         put(put(put(m, "REC "), num), " TRACKS")[0] = 0;
     }
     ui_msg(m, 1200);
+}
+
+/* REC let go (panel.c, which started the transport first when it was stopped; not after REC held + a black key armed a
+ * track), on any page (#395): recording off, or on for the armed Steps tracks, after the count-in when the setting is on
+ * (#414: the bar says COUNT-IN until its first beat). The page stays */
+static void seq_rec_press(void)
+{
+    if (seq_rec) {
+        seq_rec_off();
+        ui_msg("REC OFF", 1000);
+        return;
+    }
+    seq_rec = 1;
+    if (cfg.count_in) {
+        seq_cin = 1;
+        seq_cin_bars = cfg.count_in;
+        seq_cin_at = eng_ticks();
+        seq_cin_shown = 0xFF;
+        seq_cin_lit = 1;
+        ui_msg("COUNT-IN", 4000);
+    } else
+        seq_rec_msg();
+    seq_rec_sync();
     ui_dirty = 2;
+}
+
+/* The count-in (#414), every pass while it runs (seq_take). Its bars count from the transport's start (eng_run_ticks:
+ * where the tracks' bars are). REC with the transport stopped started it: the count-in is its first bars; running
+ * already: it begins at the next bar line and lasts the set bars, so recording always begins on a bar. Each beat the bar
+ * says COUNT-IN and the beat (with two bars the bar before it: 1.3) and REC's LED is on for the beat's first half; the
+ * keys sound as ever and the tracks do not record (seq_rec_sync). When it ends the tracks record and the bar names them */
+#define CIN_BAR 96u                              /* ticks a bar: four beats of 24 */
+static void seq_cin_poll(void)
+{
+    int32_t rel = eng_run_ticks();
+    uint32_t into, k;
+    char m[24], num[8], *p;
+    if (rel < 0)
+        return;                                  /* (the engine has not taken the start yet) */
+    if (seq_cin == 1u) {
+        uint32_t start = eng_ticks() - (uint32_t)rel, from = 0;   /* the tick the transport started on */
+        if ((int32_t)(seq_cin_at - start) > 0)   /* running already when REC was pressed: from the next bar line */
+            from = (seq_cin_at - start + CIN_BAR - 1u) / CIN_BAR * CIN_BAR;
+        seq_cin_end = from + seq_cin_bars * CIN_BAR;
+        seq_cin = 2;
+    }
+    if ((uint32_t)rel >= seq_cin_end) {          /* it ends: the armed tracks record from this bar */
+        seq_cin = 0;
+        seq_rec_sync();
+        seq_rec_msg();
+        ui_dirty = ui_dirty ? ui_dirty : 1;      /* (the footer: REC and the track) */
+        return;
+    }
+    if (seq_cin_end - (uint32_t)rel > seq_cin_bars * CIN_BAR) {   /* before the bar line it begins on */
+        seq_cin_lit = 1;
+        return;
+    }
+    into = seq_cin_bars * CIN_BAR - (seq_cin_end - (uint32_t)rel);   /* ticks into the count */
+    seq_cin_lit = (uint8_t)(into % 24u < 12u);
+    k = into / 24u;                              /* the beat, 0.. over the bars */
+    if (k == seq_cin_shown)
+        return;
+    seq_cin_shown = (uint8_t)k;
+    p = put(m, "COUNT-IN ");
+    if (seq_cin_bars > 1u) {
+        fmt_int(num, (int32_t)(k / 4u) + 1);
+        p = put(p, num);
+        *p++ = '.';
+    }
+    fmt_int(num, (int32_t)(k % 4u) + 1);
+    put(p, num)[0] = 0;
+    ui_msg(m, 4000);                             /* (the next beat's message replaces it, or the end's) */
 }
 
 /* REC held + a black key (any page): that track armed, or disarmed if it was */
@@ -863,14 +943,14 @@ static int seq_arm_label(char *out, int *rec)
     if (t < 0)
         return 0;
     seq_name((uint32_t)t, name);
-    *rec = seq_rec != 0;                         /* (REC on: the armed tracks record, #395) */
-    put(put(out, *rec ? "REC " : "ARM "), name)[0] = 0;
+    *rec = seq_rec != 0;                         /* (REC on: the armed tracks record, #395; COUNT-IN until then, #414) */
+    put(put(out, seq_cin ? "COUNT-IN " : *rec ? "REC " : "ARM "), name)[0] = 0;
     return 1;
 }
 
 /* the main loop, every pass (seq_poll): the notes the engine recorded laid over their tracks; the transport stopped (PLAY,
- * the editor, MIDI Stop) ends recording, else the armed tracks record (seq_rec_sync: another patch, an arm); REC's LED
- * off the page */
+ * the editor, MIDI Stop) ends recording (and a count-in), the count-in goes on, else the armed tracks record
+ * (seq_rec_sync: another patch, an arm); REC's LED off the page */
 static void seq_take(void)
 {
     uint32_t m, w, done = 0;
@@ -888,9 +968,11 @@ static void seq_take(void)
         ui_dirty = ui_dirty ? ui_dirty : 1;
     if (seq_rec && !eng_transport_running())
         seq_rec_off();
+    if (seq_cin)
+        seq_cin_poll();
     seq_rec_sync();
     if (page != PAGE_SEQ)
-        fm1_led_key(BTN_REC, seq_rec != 0);
+        fm1_led_key(BTN_REC, seq_rec_lit());
 }
 
 /* ---- the LCD */

@@ -21,7 +21,7 @@ static void defaults_now(void);
 
 /* ---- settings menu */
 
-static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
+static const char *const ROW_NAME[MR_COUNT] = {"LEDS", "KNOB ACCEL", "COUNT-IN", "MIDI CHANNEL", "CLOCK IN", "MIDI OUT",
                                               "VERSION", "CPU", "CPU PEAK", "BANK SLOTS", "BATTERY", "UPDATE MODE", "FACTORY RESET"};
 #define INFO_N 5u
 static const uint8_t INFO_ROWS[INFO_N] = {MR_VERSION, MR_CPU, MR_PEAK, MR_SLOTS, MR_BATT};   /* the INFO tab's list, top down */
@@ -46,6 +46,7 @@ static void menu_value(uint32_t row, char *out)
     switch (row) {
     case MR_LEDS: p = put(p, cfg.leds == 0 ? "OFF" : cfg.leds == 1 ? "DIM LOW" : "DIM HIGH"); break;
     case MR_ACCEL: p = put(p, ONOFF[cfg.accel]); break;
+    case MR_CIN: p = put(p, cfg.count_in == 0 ? "OFF" : cfg.count_in == 1 ? "1 BAR" : "2 BARS"); break;
     case MR_CPU:
         fmt_int(p, (int32_t)cpu_pct);
         p += str_len(p);
@@ -239,6 +240,11 @@ static void setting_step(uint32_t row, int32_t s)       /* a setting's next / pr
         break;
     }
     case MR_ACCEL: cfg.accel = (uint8_t)up; break;
+    case MR_CIN: {                                      /* REC's count-in (#414): OFF, 1 BAR, 2 BARS */
+        int32_t v = (int32_t)cfg.count_in + d;
+        cfg.count_in = (uint8_t)(v < 0 ? 0 : v > 2 ? 2 : v);
+        break;
+    }
     case MR_CH: {
         int32_t v = (int32_t)cfg.ch + d;
         cfg.ch = (uint8_t)(v < 0 ? 0 : v > 16 ? 16 : v);
