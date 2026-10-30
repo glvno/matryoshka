@@ -147,6 +147,10 @@ for (const shape of [0, .25, .5, .75, 1]) for (const back of [0, 1]) {
 }
 for (const [n, p] of Object.entries(FM1_PRESETS)) tests[n] = p();
 events['Wanderer'] = [[0, 'on', 60], [128 * 20, 'on', 72], [128 * 40, 'on', 67], [128 * 60, 'off', 72], [128 * 80, 'off', 60], [128 * 100, 'off', 67]];
+// Mono Lead: its notes one after another. A note over a held one lengthens its glide to 166 ms (the allocator's legato output on
+// the Glide's time), and a gliding pitch leaves a small phase offset between the engines (within a cent, nothing at rest),
+// which its unison saw's edges magnify past the kit tolerance (as legato-glide says, which covers that glide on a sine)
+events['Mono Lead'] = [[0, 'on', 60], [128 * 40, 'off', 60], [128 * 45, 'on', 67], [128 * 85, 'off', 67], [128 * 90, 'on', 55], [128 * 120, 'off', 55]];
 tests['lfo-shape-sync'] = make('lfo-shape-sync', (add, wire) => {
   const main = add('fm1', 0, 0);
   const shape = add('const', 0, 0, { value: .37 });

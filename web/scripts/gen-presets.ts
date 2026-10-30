@@ -591,6 +591,18 @@ after.push(() => {
   return players(validatePatch(structuredClone(x.p), DEFS));
 });
 
+// The simple engines with a preset card (#413: web/presets/cards): on the FM-1 an engine's presets are reached by PRESET on
+// its page, so each needs a factory patch to be reachable. Slots 25..28 (after the last, D-334). Each is the engine's
+// factory assembly as made (its voices, its Init rows: the presets change the rows, not the patch), Main's keys into it,
+// and the players (D-336) as every melodic patch.
+for (const [name, asm, chord] of [['Basic Poly', 'basic poly', true], ['Drift Poly', 'drift poly', true], ['Mono Lead', 'mono lead', false], ['Supersaw Stack', 'supersaw stack', true]] as const)
+  after.push(() => {
+    const x = around(name, asm);
+    x.p.notes = `The ${asm} engine as made, so its presets (PRESET on its page) are at hand on the FM-1.`;
+    level(x.p, { chord });
+    return players(validatePatch(structuredClone(x.p), DEFS));
+  });
+
 // ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit
 // after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
