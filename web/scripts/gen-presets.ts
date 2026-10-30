@@ -516,9 +516,12 @@ after.push(() => {
   oscillator.map!.p1 = defaultMap(DEFS.osc).p1;
   // Also, its TUNING row stays on the oscillator's fine tune (a
   // semitone either way), the Macro and Attenuverter that give the standalone Silver Box the TB-303's ±500 cents are left
-  // out (they play 0 there, so the sound is the same), and the cutoff row keeps its short name
+  // out (they play 0 there, so the sound is the same), and the cutoff row keeps its short name. The waveform, tuning and
+  // resonance rows have short names too (wave, tune, reso: 11 bytes), so the room the FM-1 budget keeps for the engine's
+  // preset name fits (#452)
   a.params.find((r) => r.label === 'cut off freq')!.label = 'cutoff';
-  const tuning = a.params.find((r) => r.label === 'tuning')!;
+  for (const [from, to] of [['waveform', 'wave'], ['tuning', 'tune'], ['resonance', 'reso']]) a.params.find((r) => r.label === from)!.label = to;
+  const tuning = a.params.find((r) => r.label === 'tune')!;
   const knob = tuning.module;
   const span = p.cables.find((c) => c.from.module === knob)!.to.module;
   tuning.module = p.cables.find((c) => c.from.module === span)!.to.module;

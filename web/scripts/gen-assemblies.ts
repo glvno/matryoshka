@@ -2328,7 +2328,7 @@ asm('Briefcase 3', 'Voices', (b) => {
   b.param('frequency', flt, 'cutoff', { head: 'filter' });
   b.param('response', flt, 'res');
   b.param('level', fLvl, 'l1');
-  b.param('envelope', env, 'view', { col: true, head: 'envelope' });
+  b.param('envelope', env, 'view', { col: true, head: 'env' });
   b.param('attack', env, 'r1');
   b.param('on', env, 'r2');
   b.param('decay', env, 'r4');
@@ -2585,12 +2585,12 @@ asm('Io 4', 'Voices', (b) => {
   b.param('delay time', delayEnv, 'a', { head: 'delay/bend' });
   b.param('lfo bend', lfoBend, 'gain');
   b.param('norm/wide', bendSel, 'pos');
-  b.param('bend sens', bendSens, 'gain', { head: 'bend/mod' });
+  b.param('bend sens', bendSens, 'gain', { head: 'lever' });
   b.param('lfo mod', leverLfo, 'gain');
   b.param('vco', leverVco, 'pos');
   b.param('vcf', leverVcf, 'pos');
   b.param('vca', leverVca, 'pos');
-  b.param('portamento', glide, 'time', { col: true, head: 'portamento' });
+  b.param('portamento', glide, 'time', { col: true, head: 'porta' });
   b.param('switch', portaSel, 'pos');
   b.param('transpose', transSel, 'pos', { head: 'keys' });
   b.param('tuning', vcoMod, 'offset');
@@ -2777,13 +2777,13 @@ asm('Vernon 100', 'Voices', (b) => {
   // ---- the card: the 100's panel
   b.param('color', color1, 'pos', { head: 'oscillator 1' });
   b.param('tune', sens1, 'offset');
-  b.param('hi / lo', hilo, 'pos');
+  b.param('hi/lo', hilo, 'pos');
   b.param('control sens', sens1, 'gain');
   b.param('control mode', ctl1, 'pos');
-  b.param('osc 1 / env 1', om1.knob, 'off', { head: 'osc mixer' });
-  b.param('osc 4 / env 2', om2.knob, 'off');
-  b.param('keys/oct crs', coarse, 'value', { head: 'keyboard' });
-  b.param('keys/oct fine', fine, 'value');
+  b.param('osc 1/env 1', om1.knob, 'off', { head: 'osc mixer' });
+  b.param('osc 4/env 2', om2.knob, 'off');
+  b.param('kb/oct crs', coarse, 'value', { head: 'keyboard' });
+  b.param('kb/oct fine', fine, 'value');
   b.param('portamento', porta, 'value');
   const oscRows = (n: number, o: { ctl: number; oct: number; tune: number }, w: number): void => {
     b.param('control mode', o.ctl, 'pos', { col: n === 2, head: `oscillator ${n}` });
@@ -2796,15 +2796,15 @@ asm('Vernon 100', 'Voices', (b) => {
   oscRows(4, os4, w4);
   b.param('osc 2', inMix, 'l1', { col: true, head: 'filter input' });
   b.param('osc 3', inMix, 'l2');
-  b.param('osc 4 / ext', inMix, 'l3');
-  b.param('white / pink', nKnob, 'off');
+  b.param('osc 4/ext', inMix, 'l3');
+  b.param('white/pink', nKnob, 'off');
   b.param('cut octave', cutOct, 'pos', { head: 'filter' });
   b.param('tune', flt, 'cutoff');
   b.param('resonance', flt, 'res');
   b.param('mode', mode, 'pos');
-  b.param('osc 1 / env 1', fc1.knob, 'off', { head: 'filter control' });
-  b.param('osc 4 / env 2', fc2.knob, 'off');
-  b.param('kb1 / kb2', kbSel, 'pos');
+  b.param('osc 1/env 1', fc1.knob, 'off', { head: 'filter control' });
+  b.param('osc 4/env 2', fc2.knob, 'off');
+  b.param('kb1/kb2', kbSel, 'pos');
   b.param('env 1', env1, 'view', { col: true, head: 'envelope 1' });
   b.param('attack', env1, 'a');
   b.param('decay', envs[0].dec, 'value');
@@ -2813,10 +2813,10 @@ asm('Vernon 100', 'Voices', (b) => {
   b.param('attack', env2, 'a');
   b.param('decay', envs[1].dec, 'value');
   b.param('sustain', env2, 's');
-  b.param('sustain on/off', susSel, 'pos');
-  b.param('env 1 / env 2', ampSel, 'pos', { head: 'amplitude shaper' });
+  b.param('sus on/off', susSel, 'pos');
+  b.param('env 1/env 2', ampSel, 'pos', { head: 'amp shaper' });
   b.param('amp shaper', outMix, 'l1', { head: 'output mixer' });
-  b.param('osc 3 / ext', outMix, 'l2');
+  b.param('osc 3/ext', outMix, 'l2');
   b.param('out', scope, 'view');
   gridAll(b);
 });
