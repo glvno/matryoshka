@@ -1,0 +1,260 @@
+[
+ {
+  "slot": 0,
+  "name": "ORACLE V INIT",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2320,
+  "n0_samples": [
+   2320,
+   681,
+   681,
+   677
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2222,
+  "n1_samples": [
+   2222,
+   1047,
+   1026,
+   1033
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2281,
+  "n4_samples": [
+   2281,
+   2002,
+   1988,
+   2000
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2320,
+  "n8_samples": [
+   2320,
+   2081,
+   2063,
+   2028
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 1,
+  "name": "ORACLE V SYNC LEAD",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2330,
+  "n0_samples": [
+   2330,
+   696,
+   690,
+   696
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2327,
+  "n1_samples": [
+   2327,
+   1080,
+   1058,
+   1058
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2347,
+  "n4_samples": [
+   2347,
+   2117,
+   2042,
+   2036
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2395,
+  "n8_samples": [
+   2395,
+   2267,
+   2110,
+   2100
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 2,
+  "name": "ORACLE V POLY BRASS",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2270,
+  "n0_samples": [
+   2270,
+   696,
+   696,
+   680
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2205,
+  "n1_samples": [
+   2205,
+   1045,
+   1031,
+   1038
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2052,
+  "n4_samples": [
+   2052,
+   2007,
+   1986,
+   1974
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2307,
+  "n8_samples": [
+   2307,
+   2056,
+   2027,
+   2015
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 3,
+  "name": "ORACLE V VINTAGE STRINGS",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2275,
+  "n0_samples": [
+   2275,
+   695,
+   691,
+   691
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2276,
+  "n1_samples": [
+   2276,
+   1031,
+   1042,
+   1042
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2285,
+  "n4_samples": [
+   2285,
+   1992,
+   1992,
+   2004
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2314,
+  "n8_samples": [
+   2314,
+   2050,
+   2050,
+   2053
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 4,
+  "name": "ORACLE V POLY-MOD BELL",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 3197,
+  "n0_samples": [
+   3197,
+   903,
+   865,
+   851
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 3097,
+  "n1_samples": [
+   3097,
+   1406,
+   1398,
+   1398
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 3204,
+  "n4_samples": [
+   3204,
+   2923,
+   2923,
+   2923
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 3226,
+  "n8_samples": [
+   3226,
+   2458,
+   2454,
+   2450
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 5,
+  "name": "ORACLE V UNISON BASS",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2342,
+  "n0_samples": [
+   2342,
+   692,
+   692,
+   692
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2270,
+  "n1_samples": [
+   2270,
+   2023,
+   1982,
+   1981
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2362,
+  "n4_samples": [
+   2362,
+   2066,
+   2016,
+   2023
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2405,
+  "n8_samples": [
+   2405,
+   2108,
+   2077,
+   2073
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ }
+]
