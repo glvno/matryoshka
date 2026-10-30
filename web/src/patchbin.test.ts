@@ -4,8 +4,9 @@ import { DEFS } from './modules';
 import { addModule, connect, defaultMap, emptyPatch, validatePatch, type Patch } from './patch';
 import { isShortNote } from './track';
 import { connectParameter, setInputRoute } from './parameter-routing';
-import { devicesOf } from './pages';
-import { makeAssembly } from './assembly';
+import { devicesOf, NAME_MAX } from './pages';
+import { assemblyById, makeAssembly } from './assembly';
+import { instIsEngine } from './engines';
 import { engineBytes } from './test-bin';
 import { buttonRecord, deviceText, deviceBytes, deviceSection, drumMaps, extrasRecord, FLAG_DEVICES, FLAG_EXTRAS, FLAG_INPUT_MAP, FLAG_NAMES, maskBytes, rangeList, GROUP_REC, PANEL_BYTES, deviceBudget, DEVICE, encodePatch, MAX_CABLES, recordSize, TYPE_ORDER, VERSION, formatOf, paramsAt, SECTION_FORMATS, WRITE_FLOOR } from './patchbin';
 import { FM1_PRESETS } from './presets';
@@ -386,11 +387,14 @@ describe('the budget\'s memory reading', () => {
 
 describe('the budget counts what the FM-1 receives', () => {
   // the button record (non-gate panel buttons) went uncounted: a patch could pass the budget and still be over M1_PATCH_MAX
-  it('patch bytes equal the encoded size for every factory patch', () => {
+  // (plus the room kept for each engine device's preset name, #452: NAME_MAX less the name it has)
+  it('patch bytes equal the encoded size for every factory patch, plus the room kept for engine preset names', () => {
     for (const [name, make] of Object.entries(FM1_PRESETS)) {
       const p = make();
       const used = deviceBudget(p).items.find((i) => i.key === 'bytes')!.used;
-      expect(used, name).toBe(encodePatch(p).length);
+      const engines = devicesOf(p, DEFS).filter((d) => d.asm !== undefined && instIsEngine(p, assemblyById(p, d.asm)!));
+      const kept = engines.reduce((n, d) => n + NAME_MAX - deviceText(assemblyById(p, d.asm!)!.preset ?? '').length, 0);
+      expect(used, name).toBe(encodePatch(p).length + kept);
     }
   });
 });

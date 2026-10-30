@@ -41,13 +41,13 @@
 #   delay time = 0.001 s               0.001..5 s
 #   lfo bend = 0                       -4..4
 #   norm/wide = NORM                   NORM, WIDE
-# bend/mod
+# lever
 #   bend sens = 0.1667                 -4..4
 #   lfo mod = 0.1                      0..2
 #   vco = BEND                         LFO, OFF, BEND
 #   vcf = OFF                          LFO, OFF, BEND
 #   vca = OFF                          LFO, OFF, BEND
-# portamento
+# porta
 #   portamento = 0.15 s                0.001..5 s
 #   switch = 1                         1..2
 # keys

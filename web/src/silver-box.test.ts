@@ -20,7 +20,7 @@ it.each([1, 2])('Silver Box waveform position %i selects the named oscillator wa
 
 it('keeps the lean Silver Box in <7PH within the FM-1 budget', () => {
   const p = FM1_PRESETS['<7PH']();
-  const row = p.assemblies!.flatMap((a) => a.params).find((r) => r.label === 'waveform')!;
+  const row = p.assemblies!.flatMap((a) => a.params).find((r) => r.label === 'wave')!;
   expect(row.param).toBe('wave');
   expect(p.modules.find((m) => m.id === row.module)!.type).toBe('osc');
   expect(deviceBudget(p).fits).toBe(true);

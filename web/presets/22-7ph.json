@@ -3448,13 +3448,13 @@
     {
      "module": 57,
      "param": "wave",
-     "label": "waveform",
+     "label": "wave",
      "head": "tone"
     },
     {
      "module": 57,
      "param": "fine",
-     "label": "tuning"
+     "label": "tune"
     },
     {
      "module": 65,
@@ -3464,7 +3464,7 @@
     {
      "module": 64,
      "param": "value",
-     "label": "resonance"
+     "label": "reso"
     },
     {
      "module": 61,

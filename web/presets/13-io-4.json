@@ -2946,7 +2946,7 @@
      "module": 35,
      "param": "gain",
      "label": "bend sens",
-     "head": "bend/mod"
+     "head": "lever"
     },
     {
      "module": 34,
@@ -2988,7 +2988,7 @@
      "param": "time",
      "label": "portamento",
      "col": true,
-     "head": "portamento"
+     "head": "porta"
     },
     {
      "module": 6,
