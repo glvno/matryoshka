@@ -97,8 +97,9 @@ preset: Vintage Strings
   osc A / wave = saw
   osc B / wave = saw
   fine = 12 ct
-  A level = 0.5
-  B level = 0.5
+  # the mixer a quarter down (0.5 / 0.5 before): five voices of it peaked 1.1 and clipped (#440)
+  A level = 0.37
+  B level = 0.37
   cutoff = 1500 Hz
   res = 0
   env amt = 1.2 oct
@@ -146,8 +147,9 @@ preset: Unison Bass
   osc B / wave = saw
   freq = -12 st
   fine = 6 ct
-  A level = 0.5
-  B level = 0.5
+  # the mixer a little down (0.5 / 0.5 before): the unison's five voices on one key peaked 0.92, near clipping (#440)
+  A level = 0.44
+  B level = 0.44
   cutoff = 350 Hz
   res = 0.25
   env amt = 2.5 oct

@@ -83,6 +83,8 @@ preset: Ensemble Pad
   vca / d = 1 s
   vca / s = 1
   vca / r = 1.5 s
+  # the VCA down (1 before), after the filter: four voices with the sub peaked 1.36 and clipped (#440)
+  level = 0.6
   lfo / rate = 2.5 Hz
   ensemble = 2
 
@@ -103,6 +105,8 @@ preset: Arp Pluck
   vca / d = 0.3 s
   vca / s = 0
   vca / r = 0.3 s
+  # the VCA down (1 before), after the filter: four voices with the sub peaked 1.02 and clipped (#440)
+  level = 0.8
   trigger / rate = 8 Hz
   ensemble = 1
 
@@ -122,6 +126,8 @@ preset: Unison Lead
   vca / d = 0.4 s
   vca / s = 0.9
   vca / r = 0.3 s
+  # the VCA down (1 before), after the filter: the four unison voices on one key with the sub peaked 2.15 and clipped (#440)
+  level = 0.38
   lfo / rate = 4.5 Hz
   delay time = 0.4 s
   portamento = 0.12 s
@@ -161,5 +167,7 @@ preset: PWM Brass
   vca / d = 0.4 s
   vca / s = 0.9
   vca / r = 0.4 s
+  # the VCA down (1 before), after the filter: four voices peaked 1.4 and clipped (#440)
+  level = 0.58
   lfo / rate = 1.5 Hz
   ensemble = 1

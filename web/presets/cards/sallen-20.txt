@@ -94,8 +94,10 @@ preset: Growl Bass
   vco 2 wave = 1
   vco 2 pitch = 0 st
   vco 2 fine = -6 ct
-  vco 1 level = 0.5
-  vco 2 level = 0.45
+  # the mixer at about half (0.5 / 0.45 before): the resonant filters stay as they were, the level after them
+  # peaked 1.5 and clipped (#440)
+  vco 1 level = 0.27
+  vco 2 level = 0.24
   highpass / cutoff = 150 Hz
   highpass / peak = 0.85
   highpass / eg2/ext = 2
@@ -130,7 +132,9 @@ preset: Ring Mod Bell
 # VCO 1's NOISE position through both resonant filters, the MG sweeping them slowly: wind and surf.
 preset: Noise Sweep
   vco 1 wave = 4
-  vco 1 level = 0.5
+  # the noise at about half (0.5 before): both resonant filters stay as they were, the level after them peaked 1.4 and
+  # clipped (#440)
+  vco 1 level = 0.26
   vco 2 level = 0
   highpass / cutoff = 400 Hz
   highpass / peak = 0.9
