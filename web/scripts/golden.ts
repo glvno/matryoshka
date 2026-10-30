@@ -1038,6 +1038,29 @@ kit('env8-poly', (add, wire) => {
 });
 polyAsm(tests['env8-poly'], env8Parts, { parts: 4, flaws: [{ detune: 0, drift: 0, bright: 0, env: 40, level: 100 }, { detune: 0, drift: 0, bright: 0, env: -30, level: 100 }] });
 events['env8-poly'] = POLY_EVENTS;
+// idle parts' checks staggered (#434): two poly groups of eight parts, one note held through several IDLE_CHECK periods
+// (the rest idle since the load), a second note released into idle; firmware/test/idle_test.c also checks that no two
+// idle parts run their check in one block
+const idleParts: number[][] = [[], []];
+kit('idle-stagger', (add, wire) => {
+  add('fm1', 0, 0);
+  const out = add('output', 0, 0, { level: 0.3 });
+  for (const ids of idleParts) {
+    const pt = add('part', 0, 0);
+    const o = add('osc', 0, 0, { wave: 2, level: 0.5 });
+    const e = add('adsr', 0, 0, { a: 0.005, d: 0.1, s: 0.6, r: 0.05 });
+    const v = add('vca', 0, 0);
+    wire(pt, 'pitch', o, 'pitch');
+    wire(pt, 'gate', e, 'gate');
+    wire(o, 'out', v, 'in');
+    wire(e, 'env', v, 'cv');
+    wire(v, 'out', out, 'l');
+    ids.push(pt, o, e, v);
+  }
+});
+for (const ids of idleParts) polyAsm(tests['idle-stagger'], ids, { parts: 8 });
+events['idle-stagger'] = [[0, 'on', 60], [128 * 40, 'on', 64], [128 * 48, 'off', 64], [128 * 200, 'off', 60]];
+ends['idle-stagger'] = 128 * 240;
 const rateEnvParts: number[] = [];
 kit('rateenv-poly', (add, wire) => {
   const main = add('fm1', 0, 0), pt = add('part', 0, 0), env = add('rateenv', 0, 0, { ar: 24, d1r: 24, d1l: 12, d2r: 0, rr: 15, krs: 2 });
