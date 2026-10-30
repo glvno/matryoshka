@@ -242,7 +242,7 @@
     },
     {
       "id": 9,
-      "type": "const",
+      "type": "macro",
       "x": 320,
       "y": 1680,
       "params": {
@@ -374,7 +374,7 @@
     },
     {
       "id": 14,
-      "type": "const",
+      "type": "macro",
       "x": 640,
       "y": 1680,
       "params": {
@@ -506,7 +506,7 @@
     },
     {
       "id": 19,
-      "type": "const",
+      "type": "macro",
       "x": 960,
       "y": 1680,
       "params": {
@@ -638,7 +638,7 @@
     },
     {
       "id": 24,
-      "type": "const",
+      "type": "macro",
       "x": 1280,
       "y": 1680,
       "params": {

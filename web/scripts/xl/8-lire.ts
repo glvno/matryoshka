@@ -111,7 +111,7 @@ export function lireXl(keys: Record<string, number>): Built {
     const sharp = [0, 1, 2, 3].map((p) => b.add('macro', 1 + 2 * p, 6, { value: 0.15 }));
     const fast = [0, 1, 2, 3].map((p) => b.add('select', 2 + 2 * p, 9, OFF_ON)); // 0 = up (off), 1 = down
     // groups: HOLD and PITCH; HOLD GATE (1 = a cable in the jack): the assembly's `hold gate` input scales both HOLDs
-    const hold = [0, 1].map((g) => b.add('const', 2 + 4 * g, 4, { value: 0 }));
+    const hold = [0, 1].map((g) => b.add('macro', 2 + 4 * g, 4, { value: 0 })); // (0..1, as the FM-1 version's row)
     const pitch = [0, 1].map((g) => b.add('const', 3 + 4 * g, 4, { value: 0 }));
     const one = b.add('const', 16, 1, { value: 1 });
     const minusOne = b.add('const', 16, 3, { value: -1 });

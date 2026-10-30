@@ -411,7 +411,7 @@ export function elviraXl(keys: Record<string, number>): Built {
       const envOut = P('math', {});
       b.wire(env, 'env', envOut, 'a');
       b.wire(held, 'out', envOut, 'b');
-      const drone = P('const', { value: 0 });
+      const drone = P('macro', { value: 0 }); // (0..1, as the FM-1 version's row)
       const level = P('math', {});
       b.wire(envOut, 'mul', level, 'a');
       b.wire(drone, 'out', level, 'b');

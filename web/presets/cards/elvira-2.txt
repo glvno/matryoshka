@@ -11,7 +11,7 @@
 #   voice 1 / mod = 1                  1..64
 #   voice 1 / attack = 0.05 s          0.001..5 s
 #   voice 1 / release = 0.8 s          0.001..8 s
-#   voice 1 / drone = 0                -4..4
+#   voice 1 / drone = 0                0..1
 # voice 2
 #   voice 2 / tune = -8 st             -48..48 st
 #   voice 2 / fine = 0 ct              -100..100 ct
@@ -20,7 +20,7 @@
 #   voice 2 / mod = 1                  1..64
 #   voice 2 / attack = 0.05 s          0.001..5 s
 #   voice 2 / release = 0.8 s          0.001..8 s
-#   voice 2 / drone = 0                -4..4
+#   voice 2 / drone = 0                0..1
 # voice 3
 #   voice 3 / tune = -3 st             -48..48 st
 #   voice 3 / fine = 0 ct              -100..100 ct
@@ -29,7 +29,7 @@
 #   voice 3 / mod = 1                  1..64
 #   voice 3 / attack = 0.3 s           0.001..5 s
 #   voice 3 / release = 1.5 s          0.001..8 s
-#   voice 3 / drone = 0                -4..4
+#   voice 3 / drone = 0                0..1
 # voice 4
 #   voice 4 / tune = 0 st              -48..48 st
 #   voice 4 / fine = 0 ct              -100..100 ct
@@ -38,7 +38,7 @@
 #   voice 4 / mod = 1                  1..64
 #   voice 4 / attack = 0.3 s           0.001..5 s
 #   voice 4 / release = 1.5 s          0.001..8 s
-#   voice 4 / drone = 0                -4..4
+#   voice 4 / drone = 0                0..1
 # lpf
 #   cutoff = 2500 Hz                   20..16000 Hz
 #   reso = 0.25                        0..1
