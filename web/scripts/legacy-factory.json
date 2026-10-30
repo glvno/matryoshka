@@ -608,6 +608,12 @@
    "version": 46
   },
   {
+   "name": "808 KIT",
+   "len": 3230,
+   "fnv": "cc8c7679",
+   "version": 46
+  },
+  {
    "name": "909 KIT",
    "len": 1345,
    "fnv": "61929948",
@@ -1018,7 +1024,19 @@
   {
    "name": "ALGO FOUR",
    "len": 1577,
+   "fnv": "413ed10c",
+   "version": 46
+  },
+  {
+   "name": "ALGO FOUR",
+   "len": 1577,
    "fnv": "79b61652",
+   "version": 46
+  },
+  {
+   "name": "BASIC POLY",
+   "len": 606,
+   "fnv": "59743633",
    "version": 46
   },
   {
@@ -1532,6 +1550,12 @@
    "version": 46
   },
   {
+   "name": "CANVAS",
+   "len": 3779,
+   "fnv": "9f47766d",
+   "version": 46
+  },
+  {
    "name": "CASSIA 1",
    "len": 1627,
    "fnv": "55aec3e4",
@@ -1620,6 +1644,12 @@
    "len": 3741,
    "fnv": "c678c55e",
    "version": 45
+  },
+  {
+   "name": "CASSIA 1",
+   "len": 3741,
+   "fnv": "79a51338",
+   "version": 46
   },
   {
    "name": "CASSIA 1",
@@ -2446,6 +2476,12 @@
   {
    "name": "EXPANDER S",
    "len": 1259,
+   "fnv": "47c9fd19",
+   "version": 46
+  },
+  {
+   "name": "EXPANDER S",
+   "len": 1259,
    "fnv": "a1314948",
    "version": 46
   },
@@ -3155,6 +3191,12 @@
    "name": "HERA 6",
    "len": 1201,
    "fnv": "7effc95f",
+   "version": 46
+  },
+  {
+   "name": "HERA 6",
+   "len": 1201,
+   "fnv": "fa2bd41b",
    "version": 46
   },
   {
@@ -4918,6 +4960,12 @@
   {
    "name": "PERUN 4",
    "len": 2807,
+   "fnv": "34267c9a",
+   "version": 46
+  },
+  {
+   "name": "PERUN 4",
+   "len": 2807,
    "fnv": "d5eff1e4",
    "version": 46
   },
@@ -5219,6 +5267,12 @@
    "name": "PLUCKED STRING",
    "len": 453,
    "fnv": "1d5b8e89",
+   "version": 46
+  },
+  {
+   "name": "PLUCKED STRING",
+   "len": 453,
+   "fnv": "4b4f63f7",
    "version": 46
   },
   {
@@ -5679,6 +5733,12 @@
   },
   {
    "name": "SALLEN 20",
+   "len": 3098,
+   "fnv": "5389f6be",
+   "version": 47
+  },
+  {
+   "name": "SALLEN 20",
    "len": 2748,
    "fnv": "6f5531f0",
    "version": 47
@@ -6084,6 +6144,18 @@
    "len": 1062,
    "fnv": "be3c1336",
    "version": 46
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 1234,
+   "fnv": "8203557a",
+   "version": 48
+  },
+  {
+   "name": "SILVER BOX",
+   "len": 1150,
+   "fnv": "8d1994bc",
+   "version": 48
   },
   {
    "name": "SIMPLE FM",
@@ -7086,6 +7158,12 @@
    "len": 246,
    "fnv": "6904e3e5",
    "version": 21
+  },
+  {
+   "name": "SUPERSAW STACK",
+   "len": 734,
+   "fnv": "062455ca",
+   "version": 46
   },
   {
    "name": "SUPERSAW STACK",

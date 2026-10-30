@@ -17,6 +17,8 @@
 //! 8. safety: a patch far over the CPU budget sheds parts, one with nothing to shed is muted (OVERLOAD) and the
 //!    next patch plays again; SAVE held at power-on = safe mode (the built-in fallback patch, not the bank); OCT- +
 //!    OCT+ held at power-on and MENU > SYSTEM > UPDATE MODE (K1, then GLO held) = update mode (no engine)
+//!    then the bank's power-loss rules and the first boot's factory bank; an update that changed a factory patch but not
+//!    the format (#441): the untouched slot gets today's patch, an edited one and today's stay, once
 //! 9. the patch buttons (held / switched) and the SEQ page on the 808 Kit: a step, a track, PLAY, a mute, REC
 //! 10. the Delay's longest time (#273): its echo 700 ms after the note, ping-pong half of it on the left and 700 ms on the right
 //! 11. hardware the emulator does not model: any register besides P33 fails the test
@@ -363,6 +365,62 @@ fn store(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8
     let last = presets.len() - 1;
     m.midi(&[0xC0, last as u8], 500)?;
     t.screen(&m, "store: the last factory slot", &presets[last].0);
+    *emulated += m.ms();
+    Ok(())
+}
+
+/// The newest record of `id` in the bank (firmware/src/slotstore.c: 66 sectors, "M1S2" records): (sequence number, data)
+fn bank_record(f: &[u8], id: u32) -> Option<(u32, Vec<u8>)> {
+    let word = |a: usize| u32::from_le_bytes(f[a..a + 4].try_into().unwrap());
+    (0..66usize)
+        .map(|i| if i < 2 { 0x97000 + i * 0x1000 } else { 0xA0000 + (i - 2) * 0x1000 })
+        .filter(|&a| word(a) == 0x3253_314D && word(a + 4) == id)
+        .map(|a| (word(a + 8), f[a + 256..a + 256 + word(a + 12) as usize].to_vec()))
+        .max_by_key(|r| r.0)
+}
+
+/// After an update that changed a factory patch but not the format (#441): a bank from 1.6.0 (a 12-byte settings record
+/// at today's format, no factory set) with slot 0 an earlier factory Drift Poly (untouched), slot 1 an edited copy of
+/// it and slot 2 today's Init. The boot rewrites slot 0 with today's Drift Poly and says FACTORY PATCHES UPDATED,
+/// leaves slots 1 and 2 alone and stores the factory set (settings bytes 13..15); the next boot rewrites nothing.
+fn upgrade(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u8>)]) -> Result<(), String> {
+    let old = std::fs::read("build/emu/old-drift-poly.m1p").map_err(|e| format!("build/emu/old-drift-poly.m1p: {e} (run web/scripts/emu-patches.ts)"))?;
+    let today = |name: &str| presets.iter().find(|p| p.0 == name).map(|p| p.1.clone()).ok_or(format!("no factory {name}"));
+    let (drift, init) = (today("DRIFT POLY")?, today("INIT")?);
+    let version: u8 = include_str!("../../../firmware/src/engine.h").split("#define ENG_PATCH_VERSION ").nth(1).and_then(|s| s.split_whitespace().next()?.parse().ok()).ok_or("ENG_PATCH_VERSION")?;
+    let set_id = u32::from_str_radix(PRESETS_H.split("#define FACTORY_SET_ID 0x").nth(1).and_then(|s| s.split('u').next()).ok_or("FACTORY_SET_ID")?, 16).map_err(|e| e.to_string())?;
+    let mut edited = old.clone();
+    let last = edited.len() - 1;
+    edited[last] ^= 1;
+    let mut flash = vec![0xffu8; crate::machine::FLASH_SIZE];
+    let put = |f: &mut Vec<u8>, at: usize, s: Vec<u8>| f[at..at + 0x1000].copy_from_slice(&s);
+    put(&mut flash, 0xA0000, record(0, 1, "DRIFT POLY", &old, false));
+    put(&mut flash, 0xA1000, record(1, 2, "MY DRIFT", &edited, false));
+    put(&mut flash, 0xA2000, record(2, 3, "INIT", &init, false));
+    // 1.6.0's settings record: version 1, slot 2, octave 0, LEDs, accel, CPU bar, clock in, program change, channel,
+    // MIDI out, the bank's format (today's), module 0
+    put(&mut flash, 0xA3000, record(64, 4, "", &[1, 2, 8, 0, 1, 0, 0, 0, 0, 1, version, 0], false));
+    let mut m = Machine::boot(app, Some(&flash));
+    let said = wait_text(&mut m, "FACTORY PATCHES UPDATED", 9000)?;
+    t.check("upgrade: a same-format factory change says FACTORY PATCHES UPDATED", said, String::new());
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    t.screen(&m, "upgrade: boot opens the settings record's slot", "INIT");
+    let f = m.flash();
+    *emulated += m.ms();
+    let s0 = bank_record(&f, 0).ok_or("slot 0 gone")?;
+    t.check("upgrade: the untouched earlier Drift Poly holds today's", s0.1 == drift, format!("{} bytes, format {} (today's: {} bytes)", s0.1.len(), s0.1[1], drift.len()));
+    let s1 = bank_record(&f, 1).ok_or("slot 1 gone")?;
+    t.check("upgrade: the edited copy stays as it is", s1 == (2, edited.clone()), format!("sequence {}", s1.0));
+    let s2 = bank_record(&f, 2).ok_or("slot 2 gone")?;
+    t.check("upgrade: a slot holding today's patch is not rewritten", s2 == (3, init.clone()), format!("sequence {}", s2.0));
+    let set = bank_record(&f, 64).ok_or("settings gone")?.1;
+    let got = if set.len() >= 16 { set[13] as u32 | (set[14] as u32) << 8 | (set[15] as u32) << 16 } else { 0 };
+    t.check("upgrade: the settings record keeps the factory set (16 bytes, 13..15)", set.len() == 16 && got == set_id && set[1] == 2, format!("{} bytes, set {got:06x}, FACTORY_SET_ID {set_id:06x}", set.len()));
+    let mut m = Machine::boot(app, Some(&f));
+    let again = wait_text(&mut m, "FACTORY PATCHES UPDATED", 4000)?;
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    t.check("upgrade: the next boot rewrites nothing", !again && m.flash() == f, String::new());
     *emulated += m.ms();
     Ok(())
 }
@@ -1002,6 +1060,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     // ---- 8. safety: the overload guard, safe mode, update mode; power-safe slot writes
     safety(app, t, emulated, &presets)?;
     store(app, t, emulated, &presets)?;
+    upgrade(app, t, emulated, &presets)?;
     panel(app, t, emulated)?;
     seq(app, t, emulated, &presets)?;
     count_in(app, t, emulated)?;
