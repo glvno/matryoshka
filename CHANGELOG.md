@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Hera 6's Glass Pad preset is a thin, slowly swept pulse (narrow width, high-pass up, open filter, a long swell): the first draft was Strings again. From the owner's listening pass on the test rig (#413).
+- drift poly's Slow Pad and Analog Strings presets play five voices, not eight and six: on the test rig big chords broke up at six and seven voices, and Slow Pad at eight clicked on a single note (#413, #434). From the owner's listening pass.
 - **Four new factory patches: Basic Poly, Drift Poly, Mono Lead and Supersaw Stack** (slots 26..29 as the FM-1 numbers
   them; #413). On the FM-1 an engine's presets are reached by PRESET on its page, so an engine's presets were out of
   reach until some patch in the bank held it: these four engines have hand-written preset cards but had no factory
