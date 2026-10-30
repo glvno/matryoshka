@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **The FM-1 rounds a row's value to the figure it shows** (#426). A 0..1 row's knob click is 0.00999, so one click from 0 read `0.00` and three read `0.02`; every row stepped by a knob was shown cut, not rounded (mixer levels, resonance, Silver Box TUNING). Now `0.01` and `0.03`, and a one-decimal value such as `12.46` reads `12.5`. Host- and emulator-tested; not yet on a device.
 - **FM-1 knob turns: a fast click only after one the same way, HOME held turns fine, a click glides over 23 ms** (#340,
   #405). KNOB ACCEL's five-click step now counts only when the knob's previous click, within 80 ms, went the same way; a
   reversal is one click, so a turn back lands on the values between. HOME held + K1..K4 moves a row by a tenth of a
