@@ -76,6 +76,7 @@ import { devicesOf, NAME_MAX, type Device } from './pages';
 import { allModules, assemblyById, ROW_NAMES_MAX } from './assembly';
 import { structureAndRows } from './structure';
 import { cpuEstimate, type CpuEstimate } from './cpu';
+import { instIsEngine } from './engines';
 
 export const TYPE_ORDER: string[] = Object.keys(DEFS).filter((t) => !EDITOR_ONLY.has(t));
 /** bytes of a poly group record: parts, assign, legato, priority, five flaw bytes per part, the note source, the MIDI
@@ -285,9 +286,37 @@ export function editorPage(source: Patch, device: number, page: number): { devic
 }
 
 /** bytes of a patch's device pages section (0 without one) */
-export const deviceBytes = (source: Patch): number => { const p = deviceView(source, true).patch; return devicesSize(deviceSection(source, p), p, source); };
+export const deviceBytes = (source: Patch): number => {
+  const { patch: p, groups } = deviceView(source, true);
+  const devs = deviceSection(source, p);
+  return devicesSize(devs, p, source, presetNames(source, p, groups, devs, buttonRecord(source, p).length).names);
+};
 
-const devicesSize = (devs: Device[], p: Patch, source?: Patch): number => deviceRecord(devs, p).length + (source ? extrasRecord(devs, source, p).length : 0);
+const devicesSize = (devs: Device[], p: Patch, source?: Patch, names?: string[]): number => deviceRecord(devs, p).length + (source ? extrasRecord(devs, source, p, names).length : 0);
+
+/**
+ * The preset names the device extras write, one per device, and the room the FM-1 budget keeps for them (#452). An engine
+ * device (an engine assembly: it can load presets, the factory's or the user's) has NAME_MAX bytes counted for its name
+ * whether it has one or not (`reserve`: what its name leaves of them), so loading or storing a preset never takes a patch
+ * over the FM-1's bytes. Another device's name is written only while it fits in what the patch leaves (in device order),
+ * else left out, as the FM-1 skips a name that does not fit (proto.c m1_preset_name). `tail`: the bytes after the
+ * device section that sizeOf does not count (the button kinds).
+ */
+export function presetNames(source: Patch, p: Patch, dg: DeviceGroup[], devs: Device[], tail: number): { names: string[]; reserve: number } {
+  const asm = devs.map((d) => (d.asm === undefined ? undefined : assemblyById(source, d.asm)));
+  const kept = asm.map((a) => !!a && instIsEngine(source, a));
+  const full = asm.map((a) => deviceText(a?.preset ?? ''));
+  const names = full.map((n, i) => (kept[i] ? n : ''));
+  const reserve = names.reduce((k, n, i) => k + (kept[i] ? NAME_MAX - n.length : 0), 0);
+  if (full.every((n, i) => kept[i] || !n)) return { names, reserve };
+  let room = DEVICE.bytes - sizeOf(p, dg, devs, source, names) - tail - reserve;
+  full.forEach((n, i) => {
+    if (kept[i] || !n || n.length > room) return;
+    names[i] = n;
+    room -= n.length;
+  });
+  return { names, reserve };
+}
 
 /** the device pages section's bytes (see the top of this file) */
 export function deviceRecord(devs: Device[], p: Patch): number[] {
@@ -326,16 +355,16 @@ export function deviceRecord(devs: Device[], p: Patch): number[] {
 }
 
 /** the device extras section's bytes (see the top of this file); `dev` is the device form (its module indices) */
-export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceView(source, true).patch): number[] {
+export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceView(source, true).patch, names?: string[]): number[] {
   if (!devs.length) return [];
   const index = new Map(dev.modules.map((m, i) => [m.id, i]));
   const out = [devs.length];
-  for (const d of devs) {
+  devs.forEach((d, di) => {
     const t = d.track === undefined ? -1 : devs.findIndex((x) => x.module === d.track);
     const a = d.asm === undefined ? undefined : assemblyById(source, d.asm);
     const sr = a ? structureAndRows(source, a) : undefined;
     const h = sr ? parseInt(sr.structure, 16) >>> 0 : 0;
-    const name = deviceText(a?.preset ?? '');
+    const name = names ? names[di] : deviceText(a?.preset ?? '');
     out.push(t < 0 ? 0xff : t, h & 0xff, (h >>> 8) & 0xff, (h >>> 16) & 0xff, h >>> 24, name.length, ...Array.from(name, (c) => c.charCodeAt(0)));
     const rows = sr ? sr.rows : [];
     out.push(rows.length);
@@ -346,17 +375,19 @@ export function extrasRecord(devs: Device[], source: Patch, dev: Patch = deviceV
     }
     const members = (a ? allModules(source, a) : [d.module!]).map((id) => index.get(id)).filter((i): i is number => i !== undefined);
     out.push(members.length, ...members);
-  }
+  });
   return out;
 }
 
 /** bytes of the binary patch (what the FM-1 must hold, M1_PATCH_MAX) */
 export function encodedSize(source: Patch): number {
   const { patch: p, groups: dg } = deviceView(source, true);
-  return sizeOf(p, dg, deviceSection(source, p), source) + buttonRecord(source, p).length;
+  const devs = deviceSection(source, p);
+  const tail = buttonRecord(source, p).length;
+  return sizeOf(p, dg, devs, source, presetNames(source, p, dg, devs, tail).names) + tail;
 }
 
-function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], source?: Patch): number {
+function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], source?: Patch, names?: string[]): number {
   const groups = dg.length;
   const routes = routesOf(p);
   const ranges = rangeList(p).length;
@@ -375,7 +406,7 @@ function sizeOf(p: Patch, dg: DeviceGroup[], devs: Device[], source?: Patch): nu
   if (ranges) size += 1 + 5 * ranges;
   const maps = drumMaps(p).length;
   if (maps) size += 1 + maps * (1 + DRUM_ROWS * TRACK_NAME_MAX);
-  return size + devicesSize(devs, p, source);
+  return size + devicesSize(devs, p, source, names);
 }
 
 /** the module indices of the Drum maps (their row names go into the binary, flag bit 7) */
@@ -396,7 +427,8 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
   const devs = deviceSection(source, p);
   const kinds = buttonRecord(source, p);
   const pats = patternRecord(source, p);
-  const size = sizeOf(p, groups, devs, source) + kinds.length;
+  const { names } = presetNames(source, p, groups, devs, kinds.length);
+  const size = sizeOf(p, groups, devs, source, names) + kinds.length;
   const ver = formatOf(source, p);
   const out = new Uint8Array(size);
   const dv = new DataView(out.buffer);
@@ -506,7 +538,7 @@ export function encodePatch(source: Patch, anyway = false): Uint8Array {
     at += pats.length;
   }
   if (devs.length) {
-    const rec = [...deviceRecord(devs, p), ...extrasRecord(devs, source, p)];
+    const rec = [...deviceRecord(devs, p), ...extrasRecord(devs, source, p, names)];
     out.set(rec, at);
     at += rec.length;
   }
@@ -595,6 +627,14 @@ export interface Budget {
   use: number;
 }
 
+/** the patch bytes the budget counts: the binary's, plus the room kept for the engine devices' preset names (presetNames) */
+function bytesOf(source: Patch, p: Patch, groups: DeviceGroup[]): number {
+  const devs = deviceSection(source, p);
+  const tail = buttonRecord(source, p).length;
+  const { names, reserve } = presetNames(source, p, groups, devs, tail);
+  return sizeOf(p, groups, devs, source, names) + tail + reserve;
+}
+
 export function deviceBudget(source: Patch): Budget {
   const { patch: p, groups } = deviceView(source, true);
   const copies = new Map<number, number>();
@@ -627,7 +667,7 @@ export function deviceBudget(source: Patch): Budget {
   const used: Record<BudgetKey, number> = {
     modules: p.modules.length, cables: p.cables.length, poly: groups.length, parts: Math.max(1, ...[...copies.values()]),
     instances, buffers, params, delays: count('delay'), reverbs: count('reverb'), strings: count('string', 'comb'), chorus: count('chorus'),
-    grains: count('grain'), arps: count('arp'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.notes?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.notes?.length ?? 0), 0) : 0), 0), bytes: sizeOf(p, groups, deviceSection(source, p), source) + buttonRecord(source, p).length,
+    grains: count('grain'), arps: count('arp'), tracks: count('steps'), notes: p.modules.reduce((n, m) => n + (m.type === 'steps' ? (m.notes?.length ?? 0) + (m.patterns ?? []).reduce((k, x) => k + (x?.notes?.length ?? 0), 0) : 0), 0), bytes: bytesOf(source, p, groups),
   };
   const items = (Object.keys(DEVICE) as BudgetKey[]).map((key) => ({ key, label: LABELS[key], used: used[key], max: DEVICE[key] }));
   const over: BudgetItem[] = items.filter((i) => i.used > i.max);

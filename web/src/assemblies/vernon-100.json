@@ -2614,7 +2614,7 @@
     {
       "module": 19,
       "param": "pos",
-      "label": "hi / lo"
+      "label": "hi/lo"
     },
     {
       "module": 21,
@@ -2629,24 +2629,24 @@
     {
       "module": 26,
       "param": "off",
-      "label": "osc 1 / env 1",
+      "label": "osc 1/env 1",
       "head": "osc mixer"
     },
     {
       "module": 29,
       "param": "off",
-      "label": "osc 4 / env 2"
+      "label": "osc 4/env 2"
     },
     {
       "module": 4,
       "param": "value",
-      "label": "keys/oct crs",
+      "label": "kb/oct crs",
       "head": "keyboard"
     },
     {
       "module": 5,
       "param": "value",
-      "label": "keys/oct fine"
+      "label": "kb/oct fine"
     },
     {
       "module": 6,
@@ -2732,12 +2732,12 @@
     {
       "module": 44,
       "param": "l3",
-      "label": "osc 4 / ext"
+      "label": "osc 4/ext"
     },
     {
       "module": 43,
       "param": "off",
-      "label": "white / pink"
+      "label": "white/pink"
     },
     {
       "module": 47,
@@ -2763,18 +2763,18 @@
     {
       "module": 48,
       "param": "off",
-      "label": "osc 1 / env 1",
+      "label": "osc 1/env 1",
       "head": "filter control"
     },
     {
       "module": 51,
       "param": "off",
-      "label": "osc 4 / env 2"
+      "label": "osc 4/env 2"
     },
     {
       "module": 54,
       "param": "pos",
-      "label": "kb1 / kb2"
+      "label": "kb1/kb2"
     },
     {
       "module": 10,
@@ -2822,13 +2822,13 @@
     {
       "module": 9,
       "param": "pos",
-      "label": "sustain on/off"
+      "label": "sus on/off"
     },
     {
       "module": 55,
       "param": "pos",
-      "label": "env 1 / env 2",
-      "head": "amplitude shaper"
+      "label": "env 1/env 2",
+      "head": "amp shaper"
     },
     {
       "module": 57,
@@ -2839,7 +2839,7 @@
     {
       "module": 57,
       "param": "l2",
-      "label": "osc 3 / ext"
+      "label": "osc 3/ext"
     },
     {
       "module": 58,

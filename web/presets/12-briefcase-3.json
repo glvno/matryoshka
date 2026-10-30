@@ -5189,7 +5189,7 @@
      "param": "view",
      "label": "envelope",
      "col": true,
-     "head": "envelope"
+     "head": "env"
     },
     {
      "module": 17,
