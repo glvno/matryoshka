@@ -10,6 +10,8 @@ import { allModules, assembliesOf, insertAssembly, parentOf, type AssemblyInst }
 import { deviceBudget } from '../src/patchbin';
 import { allocatorOf, setPoly } from '../src/poly';
 import { Engine } from '../src/engine';
+import { HEADROOM, peakOfPlay, plays } from '../src/headroom';
+import '../src/factory-presets'; // (the engines' factory presets, which headroom plays)
 
 export type Ref = { module: number; param: string };
 /** a row of an assembly card by label; a label that repeats (a d s r) by the section after the row `after` */
@@ -100,6 +102,20 @@ export function level(p: Patch, opts: { chord?: boolean; drums?: boolean } = {})
   let lv = Math.min(0.45 / Math.max(single, 1e-6), chord ? 0.85 / chord : 1);
   lv = Math.max(0.05, Math.min(1, lv));
   out.params.level = Math.round(lv * 100) / 100;
+}
+
+/** the Output's level lowered (never raised) so that no way of playing the patch peaks over HEADROOM: itself and each of
+ * its engines at each factory preset, with min(voices, 8) keys held, its Drum maps' keys, its patterns running
+ * (src/headroom.ts, #440), at the FM-1's rate and at 48 kHz. Every factory patch goes through it last, after its level from
+ * the rules above. */
+export function headroom(p: Patch, secs = 3): Patch {
+  const out = p.modules.find((m) => m.type === 'output')!;
+  const lv = out.params.level;
+  out.params.level = 0.1;
+  // (the peak at level 1, at the FM-1's rate and at a browser's usual 48 kHz: a drum's peak moves a few % with the rate)
+  const loud = Math.max(...plays(p).flatMap((w) => [SR, 48000].map((sr) => peakOfPlay(w, secs, sr)))) / 0.1;
+  out.params.level = loud * lv > HEADROOM ? Math.max(0.01, Math.floor((HEADROOM / loud) * 100) / 100) : lv;
+  return p;
 }
 
 // ---- the players (the owner, 2026-10-23: docs/ledger/patches-and-presets.md D-336): every melodic patch gets an Arpeggiator on ARP, bypassed (the patch sounds as before until ARP is pressed: bypassed it hands the keys
