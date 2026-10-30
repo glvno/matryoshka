@@ -61,7 +61,7 @@ static void midi_drain_mode(int quick)
                         if (poly_row_set(mod, par & 0x7Fu, val))
                             continue;
                     } else {
-                        eng_set_param(mod, par, val);
+                        eng_knob_param(n - 16u, mod, par, val);   /* (over 20 ms, as a knob's click: #405) */
                         m1_patch_param(mod, par, val);
                         pages_also(n - 16u, val);       /* (the parameters the row also sets, #357) */
                     }

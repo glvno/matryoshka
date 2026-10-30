@@ -9,6 +9,7 @@
 //!    SELECT then HOME (the patch's home page, #391), GLO (the menu's MIDI tab), ALGO (its INFO tab), HOME (back out of
 //!    it), HOME held (nothing, #395)
 //! 4. PRESET encoder: alone, the focused device's preset (#395); HOME held, forward, forward, back
+//!    then K1..K4 on Elvira 2's drone row: a fast click only after one the same way, HOME held a fine click (#340)
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
 //! 7. the preset bank: three slots (and one with a bad CRC) written straight into the flash,
@@ -48,6 +49,7 @@ const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
 const SELECT: u8 = 0; // encoder
 const K1: u8 = 2;
+const K3: u8 = 4;
 const K4: u8 = 5; // encoder
 const SEL: u8 = 3; // the SEL button (SCL in Felucca's table)
 
@@ -822,6 +824,44 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "HOME held + PRESET +1 again", &presets[2].0);
     patch_turn(&mut m, -2, 500)?;
     t.screen(&m, "HOME held + PRESET -2", &presets[0].0);
+
+    // ---- 4b. K1..K4 (#340, #405): a fast click counts only after a click the same way, HOME held turns fine. Elvira 2
+    // opens on its voice page; ALGO once: mod, attack, release, drone (an Offset -4..4: a click 0.08, a fine click 0.01)
+    if let Some(el) = presets.iter().position(|(n, _)| n == "ELVIRA 2") {
+        m.midi(&[0xC0, el as u8], 800)?;
+        t.screen(&m, "program change: Elvira 2", &presets[el].0);
+        m.turn(ALGO, 1, 500)?;
+        m.turn(K4, 1, 300)?;
+        t.screen(&m, "Elvira 2, K4 (drone) one click: 0.08", "0.08");
+        m.turn(K4, 1, 30)?;                   // (300 ms after the last: a plain click, 0.16)
+        m.turn(K4, 1, 300)?;                  // 30 ms after it, the same way: five clicks (KNOB ACCEL)
+        t.screen(&m, "a click 30 ms after one the same way: five clicks, 0.56", "0.56");
+        m.turn(K4, 1, 30)?;                   // (a plain click, 0.64)
+        m.turn(K4, -1, 300)?;                 // 30 ms after it, the other way: a single click, so 0.56 is reached again
+        t.screen(&m, "a click back 30 ms after one: a single click (#340), 0.56 again", "0.56");
+        m.key(HOME, true);
+        m.run_for(150)?;
+        m.turn(K4, 1, 300)?;
+        t.screen(&m, "HOME held + K4: a fine click, 0.01 (the editor's step), 0.57", "0.57");
+        m.key(HOME, false);
+        m.run_for(400)?;
+        t.screen(&m, "HOME's release after a fine turn: the device page stays", DEVICE_PAGE);
+        m.midi(&[0xB0, 19, 127], 400)?;          // CC 19: K4's row by position, the top of -4..4
+        t.screen(&m, "MIDI CC 19 at 127: the drone row at 4.00", "4.00");
+        // Monolith D's CONTROLLERS page: TUNE (an Offset) on K1, GLIDE ON (a switch) on K3
+        if let Some(mono) = presets.iter().position(|(n, _)| n == "MONOLITH D") {
+            m.midi(&[0xC0, mono as u8], 800)?;
+            t.screen(&m, "program change: Monolith D, its CONTROLLERS page", "GLIDE ON");
+            m.turn(K3, -1, 300)?;
+            t.screen(&m, "Monolith D, K3 (GLIDE ON) one click left: OFF (a switch steps at once)", "OFF");
+            m.turn(K1, 1, 300)?;
+            t.screen(&m, "Monolith D, K1 (TUNE) one click: 0.08", "0.08");
+        }
+        m.midi(&[0xC0, 0], 800)?;
+        t.screen(&m, "  (program change 0: back on patch 0 for step 5)", &presets[0].0);
+    } else {
+        t.check("the factory Elvira 2 is there", false, String::new());
+    }
 
     // ---- 5. TRS MIDI
     m.midi(&[0xC0, 5], 500)?;

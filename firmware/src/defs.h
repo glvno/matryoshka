@@ -1042,6 +1042,7 @@ typedef struct {
     const int32_t *ptop;    /* Q16.16, or 0: past pmax, the most the knobs and a stored value reach (ParamDef.top) */
     const uint8_t *psince;  /* or 0: per parameter the patch format that appended it (ParamDef.since; 0 = older): a binary of an
                              * older format holds fewer (engine.c eng_npar) */
+    const int32_t *pstep;   /* Q16.16, 0: none: the editor's step (ParamDef.step), the least a fine knob click moves (pages_ui.c) */
 } def_t;
 /* the most parameter j of def d takes: its stretch past pmax (ptop), else pmax */
 #define DEF_TOP(d, j) ((d)->ptop ? (d)->ptop[j] : (d)->pmax[j])
@@ -1051,6 +1052,7 @@ static const int32_t FM1_MIN[] = {0, 1310720};
 static const int32_t FM1_MAX[] = {65536, 19660800};
 static const int32_t FM1_DEF[] = {0, 7864320};
 static const int32_t FM1_INC[] = {655, 183501};
+static const int32_t FM1_STEP[] = {655, 65536};
 static const char *const FM1_PN[] = {"MORPH", "TEMPO"};
 static const uint8_t FM1_LOG[] = {0, 0};
 static const char *const FM1_UNIT[] = {"", "BPM"};
@@ -1060,6 +1062,7 @@ static const int32_t OSC_MIN[] = {0, 3277, -3145728, -6553600, 0, 0, 0, 65536, 0
 static const int32_t OSC_MAX[] = {196608, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144};
 static const int32_t OSC_DEF[] = {0, 32768, 0, 0, 0, 52429, 0, 65536, 655360, 32768, 0};
 static const int32_t OSC_INC[] = {65536, 655, 65536, 131072, 5243, 655, 655, 65536, 65536, 655, 65536};
+static const int32_t OSC_STEP[] = {65536, 655, 65536, 65536, 655, 655, 655, 65536, 65536, 655, 65536};
 static const int32_t OSC_TOP[] = {327680, 62259, 3145728, 6553600, 524288, 65536, 65536, 327680, 6553600, 65536, 262144};
 static const char *const OSC_PN[] = {"WAVE", "PW", "COARSE", "FINE", "PM", "LEVEL", "FB", "UNISON", "DETUNE", "BLEND", "STACK"};
 static const uint8_t OSC_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1072,6 +1075,7 @@ static const int32_t LFO_MIN[] = {0, 1311, 0, 0, 0, 2621440, 0, 0, 0, 0, 52};
 static const int32_t LFO_MAX[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 131072, 65536, 393216, 3604480};
 static const int32_t LFO_DEF[] = {0, 262144, 65536, 0, 393216, 7864320, 0, 0, 0, 196608, 262144};
 static const int32_t LFO_INC[] = {65536, 26201, 655, 65536, 65536, 170394, 235930, 65536, 65536, 65536, 36044};
+static const int32_t LFO_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 7};
 static const int32_t LFO_TOP[] = {262144, 2621440, 65536, 65536, 655360, 19660800, 23592960, 196608, 65536, 393216, 3604480};
 static const uint8_t LFO_SINCE[] = {0, 0, 0, 0, 0, 0, 35, 35, 35, 35, 40};
 static const char *const LFO_PN[] = {"WAVE", "RATE", "DEPTH", "SYNC", "DIV", "BPM", "PHASE", "RANGE", "DIR", "MULT", "WIDE"};
@@ -1089,6 +1093,7 @@ static const int32_t NOISE_MIN[] = {0, 0};
 static const int32_t NOISE_MAX[] = {65536, 65536};
 static const int32_t NOISE_DEF[] = {32768, 0};
 static const int32_t NOISE_INC[] = {655, 655};
+static const int32_t NOISE_STEP[] = {655, 655};
 static const char *const NOISE_PN[] = {"LEVEL", "COLOR"};
 static const uint8_t NOISE_LOG[] = {0, 0};
 static const char *const NOISE_UNIT[] = {"", ""};
@@ -1098,6 +1103,7 @@ static const int32_t CONST_MIN[] = {-262144};
 static const int32_t CONST_MAX[] = {262144};
 static const int32_t CONST_DEF[] = {0};
 static const int32_t CONST_INC[] = {5243};
+static const int32_t CONST_STEP[] = {655};
 static const char *const CONST_PN[] = {"VALUE"};
 static const uint8_t CONST_LOG[] = {0};
 static const char *const CONST_UNIT[] = {""};
@@ -1107,6 +1113,7 @@ static const int32_t SCALE_MIN[] = {-262144, -262144};
 static const int32_t SCALE_MAX[] = {262144, 262144};
 static const int32_t SCALE_DEF[] = {65536, 0};
 static const int32_t SCALE_INC[] = {5243, 5243};
+static const int32_t SCALE_STEP[] = {655, 655};
 static const char *const SCALE_PN[] = {"GAIN", "OFFSET"};
 static const uint8_t SCALE_LOG[] = {0, 0};
 static const char *const SCALE_UNIT[] = {"", ""};
@@ -1116,6 +1123,7 @@ static const int32_t ADSR_MIN[] = {66, 66, 0, 66, 0};
 static const int32_t ADSR_MAX[] = {327680, 327680, 65536, 524288, 65536};
 static const int32_t ADSR_DEF[] = {655, 13107, 39322, 19661, 0};
 static const int32_t ADSR_INC[] = {3276, 3276, 655, 5242, 65536};
+static const int32_t ADSR_STEP[] = {66, 66, 655, 66, 65536};
 static const uint8_t ADSR_SINCE[] = {0, 0, 0, 0, 35};
 static const char *const ADSR_PN[] = {"A", "D", "S", "R", "LONG"};
 static const uint8_t ADSR_LOG[] = {1, 1, 0, 1, 0};
@@ -1127,6 +1135,7 @@ static const int32_t VCA_MIN[] = {0};
 static const int32_t VCA_MAX[] = {131072};
 static const int32_t VCA_DEF[] = {65536};
 static const int32_t VCA_INC[] = {1311};
+static const int32_t VCA_STEP[] = {655};
 static const char *const VCA_PN[] = {"GAIN"};
 static const uint8_t VCA_LOG[] = {0};
 static const char *const VCA_UNIT[] = {""};
@@ -1136,6 +1145,7 @@ static const int32_t FILTER_MIN[] = {1310720, 0, 0, 0, 0, 0};
 static const int32_t FILTER_MAX[] = {1048576000, 65536, 262144, 65536, 65536, 65536};
 static const int32_t FILTER_DEF[] = {78643200, 13107, 65536, 0, 0, 0};
 static const int32_t FILTER_INC[] = {10472653, 655, 2621, 65536, 655, 65536};
+static const int32_t FILTER_STEP[] = {65536, 655, 655, 65536, 655, 65536};
 static const uint8_t FILTER_SINCE[] = {0, 0, 0, 0, 0, 47};
 static const char *const FILTER_PN[] = {"CUTOFF", "RES", "CVAMT", "TRACK", "MORPH", "OSC"};
 static const uint8_t FILTER_LOG[] = {2, 0, 0, 0, 0, 0};
@@ -1146,6 +1156,7 @@ static const int32_t MIXER_MIN[] = {0, 0, 0, 0};
 static const int32_t MIXER_MAX[] = {65536, 65536, 65536, 65536};
 static const int32_t MIXER_DEF[] = {45875, 45875, 45875, 45875};
 static const int32_t MIXER_INC[] = {655, 655, 655, 655};
+static const int32_t MIXER_STEP[] = {655, 655, 655, 655};
 static const char *const MIXER_PN[] = {"L1", "L2", "L3", "L4"};
 static const uint8_t MIXER_LOG[] = {0, 0, 0, 0};
 static const char *const MIXER_UNIT[] = {"", "", "", ""};
@@ -1155,6 +1166,7 @@ static const int32_t DELAY_MIN[] = {65536, 0, 0, 0, 0, 0, 0};
 static const int32_t DELAY_MAX[] = {45875200, 62259, 65536, 65536, 65536, 327680, 65536};
 static const int32_t DELAY_DEF[] = {16384000, 26214, 19661, 0, 0, 0, 0};
 static const int32_t DELAY_INC[] = {458097, 655, 655, 65536, 65536, 65536, 65536};
+static const int32_t DELAY_STEP[] = {65536, 655, 655, 65536, 65536, 65536, 65536};
 static const uint8_t DELAY_SINCE[] = {0, 0, 0, 0, 0, 35, 35};
 static const char *const DELAY_PN[] = {"TIME", "FB", "MIX", "SYNC", "PINGPONG", "NOTE", "SWELL"};
 static const uint8_t DELAY_LOG[] = {0, 0, 0, 0, 0, 0, 0};
@@ -1166,6 +1178,7 @@ static const int32_t REVERB_MIN[] = {0, 0, 0, 0, 0, 0};
 static const int32_t REVERB_MAX[] = {65536, 65536, 65536, 2621440, 65536, 65536};
 static const int32_t REVERB_DEF[] = {32768, 26214, 19661, 0, 19661, 0};
 static const int32_t REVERB_INC[] = {655, 655, 655, 32768, 655, 65536};
+static const int32_t REVERB_STEP[] = {655, 655, 655, 32768, 655, 65536};
 static const uint8_t REVERB_SINCE[] = {0, 0, 0, 0, 0, 35};
 static const char *const REVERB_PN[] = {"SIZE", "DAMP", "MIX", "PRE", "MOD", "FREEZE"};
 static const uint8_t REVERB_LOG[] = {0, 0, 0, 0, 0, 0};
@@ -1176,6 +1189,7 @@ static const int32_t OUTPUT_MIN[] = {0};
 static const int32_t OUTPUT_MAX[] = {65536};
 static const int32_t OUTPUT_DEF[] = {9830};
 static const int32_t OUTPUT_INC[] = {655};
+static const int32_t OUTPUT_STEP[] = {655};
 static const char *const OUTPUT_PN[] = {"LEVEL"};
 static const uint8_t OUTPUT_LOG[] = {0};
 static const char *const OUTPUT_UNIT[] = {""};
@@ -1185,6 +1199,7 @@ static const int32_t GLIDE_MIN[] = {66, 0};
 static const int32_t GLIDE_MAX[] = {327680, 65536};
 static const int32_t GLIDE_DEF[] = {6554, 0};
 static const int32_t GLIDE_INC[] = {3276, 65536};
+static const int32_t GLIDE_STEP[] = {66, 65536};
 static const char *const GLIDE_PN[] = {"TIME", "CURVE"};
 static const uint8_t GLIDE_LOG[] = {1, 0};
 static const char *const GLIDE_UNIT[] = {"S", ""};
@@ -1195,6 +1210,7 @@ static const int32_t SHAPE_MIN[] = {65536, 0, 0, 0, -65536, 65536};
 static const int32_t SHAPE_MAX[] = {2097152, 131072, 65536, 65536, 65536, 262144};
 static const int32_t SHAPE_DEF[] = {131072, 0, 45875, 0, 0, 65536};
 static const int32_t SHAPE_INC[] = {20316, 65536, 655, 65536, 1311, 65536};
+static const int32_t SHAPE_STEP[] = {655, 65536, 655, 65536, 655, 65536};
 static const char *const SHAPE_PN[] = {"DRIVE", "MODE", "LEVEL", "OS", "SYM", "STAGES"};
 static const uint8_t SHAPE_LOG[] = {1, 0, 0, 0, 0, 0};
 static const char *const SHAPE_UNIT[] = {"", "", "", "", "", ""};
@@ -1205,6 +1221,7 @@ static const int32_t ENV_MIN[] = {0, 66, 0, 66, 0, 66, 0, 66, 0};
 static const int32_t ENV_MAX[] = {65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536};
 static const int32_t ENV_DEF[] = {65536, 655, 39322, 19661, 39322, 65536, 0, 32768, 0};
 static const int32_t ENV_INC[] = {655, 6553, 655, 6553, 655, 6553, 655, 6553, 65536};
+static const int32_t ENV_STEP[] = {655, 66, 655, 66, 655, 66, 655, 66, 65536};
 static const char *const ENV_PN[] = {"L1", "R1", "L2", "R2", "L3", "R3", "L4", "R4", "SHOT"};
 static const uint8_t ENV_LOG[] = {0, 1, 0, 1, 0, 1, 0, 1, 0};
 static const char *const ENV_UNIT[] = {"", "S", "", "S", "", "S", "", "S", ""};
@@ -1214,6 +1231,7 @@ static const int32_t STRING_MIN[] = {3277, 0, 0, -1572864, 0};
 static const int32_t STRING_MAX[] = {655360, 65536, 65536, 1572864, 65536};
 static const int32_t STRING_DEF[] = {131072, 19661, 0, 0, 52429};
 static const int32_t STRING_INC[] = {6521, 655, 65536, 65536, 655};
+static const int32_t STRING_STEP[] = {655, 655, 65536, 65536, 655};
 static const char *const STRING_PN[] = {"DECAY", "DAMP", "BURST", "COARSE", "LEVEL"};
 static const uint8_t STRING_LOG[] = {1, 0, 0, 0, 0};
 static const char *const STRING_UNIT[] = {"S", "", "", "ST", ""};
@@ -1224,6 +1242,7 @@ static const int32_t WAVETABLE_MIN[] = {0, 0, -3145728, -6553600, 0, 0};
 static const int32_t WAVETABLE_MAX[] = {196608, 65536, 3145728, 6553600, 524288, 65536};
 static const int32_t WAVETABLE_DEF[] = {0, 0, 0, 0, 0, 52429};
 static const int32_t WAVETABLE_INC[] = {65536, 655, 65536, 131072, 5243, 655};
+static const int32_t WAVETABLE_STEP[] = {65536, 655, 65536, 65536, 655, 655};
 static const int32_t WAVETABLE_TOP[] = {262144, 65536, 3145728, 6553600, 524288, 65536};
 static const char *const WAVETABLE_PN[] = {"BANK", "POS", "COARSE", "FINE", "PM", "LEVEL"};
 static const uint8_t WAVETABLE_LOG[] = {0, 0, 0, 0, 0, 0};
@@ -1235,6 +1254,7 @@ static const int32_t CHORUS_MIN[] = {3277, 0, 0};
 static const int32_t CHORUS_MAX[] = {327680, 65536, 65536};
 static const int32_t CHORUS_DEF[] = {39322, 32768, 32768};
 static const int32_t CHORUS_INC[] = {3244, 655, 655};
+static const int32_t CHORUS_STEP[] = {655, 655, 655};
 static const char *const CHORUS_PN[] = {"RATE", "DEPTH", "MIX"};
 static const uint8_t CHORUS_LOG[] = {1, 0, 0};
 static const char *const CHORUS_UNIT[] = {"HZ", "", ""};
@@ -1244,6 +1264,7 @@ static const int32_t SEQ_MIN[] = {-65536, -65536, -65536, -65536, -65536, -65536
 static const int32_t SEQ_MAX[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 524288, 196608, 65536, 65536};
 static const int32_t SEQ_DEF[] = {0, 0, 0, 0, 0, 0, 0, 0, 524288, 0, 0, 0};
 static const int32_t SEQ_INC[] = {1311, 1311, 1311, 1311, 1311, 1311, 1311, 1311, 65536, 65536, 655, 655};
+static const int32_t SEQ_STEP[] = {655, 655, 655, 655, 655, 655, 655, 655, 65536, 65536, 655, 655};
 static const char *const SEQ_PN[] = {"S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "LEN", "DIR", "GLIDE", "GATE"};
 static const uint8_t SEQ_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const SEQ_UNIT[] = {"", "", "", "", "", "", "", "", "", "", "", ""};
@@ -1254,6 +1275,7 @@ static const int32_t CLKDIV_MIN[] = {65536};
 static const int32_t CLKDIV_MAX[] = {1048576};
 static const int32_t CLKDIV_DEF[] = {196608};
 static const int32_t CLKDIV_INC[] = {65536};
+static const int32_t CLKDIV_STEP[] = {65536};
 static const char *const CLKDIV_PN[] = {"DIV"};
 static const uint8_t CLKDIV_LOG[] = {0};
 static const char *const CLKDIV_UNIT[] = {""};
@@ -1263,6 +1285,7 @@ static const int32_t SH_MIN[] = {0};
 static const int32_t SH_MAX[] = {65536};
 static const int32_t SH_DEF[] = {0};
 static const int32_t SH_INC[] = {65536};
+static const int32_t SH_STEP[] = {65536};
 static const char *const SH_PN[] = {"MODE"};
 static const uint8_t SH_LOG[] = {0};
 static const char *const SH_UNIT[] = {""};
@@ -1273,6 +1296,7 @@ static const int32_t QUANT_MIN[] = {0, 0};
 static const int32_t QUANT_MAX[] = {655360, 720896};
 static const int32_t QUANT_DEF[] = {65536, 0};
 static const int32_t QUANT_INC[] = {65536, 65536};
+static const int32_t QUANT_STEP[] = {65536, 65536};
 static const char *const QUANT_PN[] = {"SCALE", "ROOT"};
 static const uint8_t QUANT_LOG[] = {0, 0};
 static const char *const QUANT_UNIT[] = {"", ""};
@@ -1284,6 +1308,7 @@ static const int32_t PULSE_MIN[] = {66, 0};
 static const int32_t PULSE_MAX[] = {131072, 65536};
 static const int32_t PULSE_DEF[] = {6554, 0};
 static const int32_t PULSE_INC[] = {1310, 65536};
+static const int32_t PULSE_STEP[] = {66, 65536};
 static const uint8_t PULSE_SINCE[] = {0, 35};
 static const char *const PULSE_PN[] = {"TIME", "INF"};
 static const uint8_t PULSE_LOG[] = {1, 0};
@@ -1294,6 +1319,7 @@ static const int32_t PAN_MIN[] = {-65536};
 static const int32_t PAN_MAX[] = {65536};
 static const int32_t PAN_DEF[] = {0};
 static const int32_t PAN_INC[] = {1311};
+static const int32_t PAN_STEP[] = {655};
 static const char *const PAN_PN[] = {"PAN"};
 static const uint8_t PAN_LOG[] = {0};
 static const char *const PAN_UNIT[] = {""};
@@ -1303,6 +1329,7 @@ static const int32_t XFADE_MIN[] = {0};
 static const int32_t XFADE_MAX[] = {65536};
 static const int32_t XFADE_DEF[] = {32768};
 static const int32_t XFADE_INC[] = {655};
+static const int32_t XFADE_STEP[] = {655};
 static const char *const XFADE_PN[] = {"MIX"};
 static const uint8_t XFADE_LOG[] = {0};
 static const char *const XFADE_UNIT[] = {""};
@@ -1312,6 +1339,7 @@ static const int32_t VOWEL_MIN[] = {0, 0, 0};
 static const int32_t VOWEL_MAX[] = {262144, 65536, 65536};
 static const int32_t VOWEL_DEF[] = {0, 32768, 45875};
 static const int32_t VOWEL_INC[] = {2621, 655, 655};
+static const int32_t VOWEL_STEP[] = {655, 655, 655};
 static const char *const VOWEL_PN[] = {"VOWEL", "RES", "LEVEL"};
 static const uint8_t VOWEL_LOG[] = {0, 0, 0};
 static const char *const VOWEL_UNIT[] = {"", "", ""};
@@ -1321,6 +1349,7 @@ static const int32_t PHASER_MIN[] = {1311, 0, 6553600, 0, 0};
 static const int32_t PHASER_MAX[] = {655360, 65536, 262144000, 58982, 65536};
 static const int32_t PHASER_DEF[] = {32768, 45875, 52428800, 19661, 32768};
 static const int32_t PHASER_INC[] = {6540, 655, 2555904, 655, 655};
+static const int32_t PHASER_STEP[] = {655, 655, 65536, 655, 655};
 static const char *const PHASER_PN[] = {"RATE", "DEPTH", "CENTER", "FB", "MIX"};
 static const uint8_t PHASER_LOG[] = {1, 0, 1, 0, 0};
 static const char *const PHASER_UNIT[] = {"HZ", "", "HZ", "", ""};
@@ -1330,6 +1359,7 @@ static const int32_t CRUSH_MIN[] = {65536, 65536, 0};
 static const int32_t CRUSH_MAX[] = {1048576, 4194304, 65536};
 static const int32_t CRUSH_DEF[] = {524288, 65536, 0};
 static const int32_t CRUSH_INC[] = {65536, 65536, 65536};
+static const int32_t CRUSH_STEP[] = {65536, 65536, 65536};
 static const char *const CRUSH_PN[] = {"BITS", "RATE", "OS"};
 static const uint8_t CRUSH_LOG[] = {0, 0, 0};
 static const char *const CRUSH_UNIT[] = {"", "", ""};
@@ -1339,6 +1369,7 @@ static const int32_t LADDER_MIN[] = {1310720, 0, 65536, 0, 0};
 static const int32_t LADDER_MAX[] = {1048576000, 65536, 524288, 262144, 65536};
 static const int32_t LADDER_DEF[] = {78643200, 13107, 65536, 65536, 0};
 static const int32_t LADDER_INC[] = {10472653, 655, 4588, 2621, 65536};
+static const int32_t LADDER_STEP[] = {65536, 655, 655, 655, 65536};
 static const char *const LADDER_PN[] = {"CUTOFF", "RES", "DRIVE", "CVAMT", "TRACK"};
 static const uint8_t LADDER_LOG[] = {2, 0, 1, 0, 0};
 static const char *const LADDER_UNIT[] = {"HZ", "", "", "OCT", ""};
@@ -1348,6 +1379,7 @@ static const int32_t DYN_MIN[] = {-2621440, 65536, 66, 655, 0};
 static const int32_t DYN_MAX[] = {0, 1310720, 13107, 65536, 1572864};
 static const int32_t DYN_DEF[] = {-786432, 262144, 655, 6554, 0};
 static const int32_t DYN_INC[] = {32768, 12452, 130, 655, 32768};
+static const int32_t DYN_STEP[] = {32768, 6554, 66, 655, 32768};
 static const char *const DYN_PN[] = {"THRESH", "RATIO", "ATTACK", "RELEASE", "GAIN"};
 static const uint8_t DYN_LOG[] = {0, 0, 1, 1, 0};
 static const char *const DYN_UNIT[] = {"DB", "", "S", "S", "DB"};
@@ -1357,6 +1389,7 @@ static const int32_t MATH_MIN[] = {-262144, -262144, -262144};
 static const int32_t MATH_MAX[] = {262144, 262144, 262144};
 static const int32_t MATH_DEF[] = {65536, 65536, 0};
 static const int32_t MATH_INC[] = {5243, 5243, 5243};
+static const int32_t MATH_STEP[] = {655, 655, 655};
 static const char *const MATH_PN[] = {"KA", "KB", "OFF"};
 static const uint8_t MATH_LOG[] = {0, 0, 0};
 static const char *const MATH_UNIT[] = {"", "", ""};
@@ -1366,6 +1399,7 @@ static const int32_t LOGIC_MIN[] = {3277};
 static const int32_t LOGIC_MAX[] = {62259};
 static const int32_t LOGIC_DEF[] = {32768};
 static const int32_t LOGIC_INC[] = {655};
+static const int32_t LOGIC_STEP[] = {655};
 static const char *const LOGIC_PN[] = {"THRESH"};
 static const uint8_t LOGIC_LOG[] = {0};
 static const char *const LOGIC_UNIT[] = {""};
@@ -1375,6 +1409,7 @@ static const int32_t GRAIN_MIN[] = {0, 655, 0, -1572864, 0, 0, 0};
 static const int32_t GRAIN_MAX[] = {65536, 32768, 6553600, 1572864, 65536, 65536, 65536};
 static const int32_t GRAIN_DEF[] = {19661, 5243, 1310720, 0, 13107, 0, 32768};
 static const int32_t GRAIN_INC[] = {655, 321, 65536, 65536, 655, 65536, 655};
+static const int32_t GRAIN_STEP[] = {655, 66, 32768, 65536, 655, 65536, 655};
 static const char *const GRAIN_PN[] = {"POSITION", "SIZE", "DENSITY", "PITCH", "SPRAY", "FREEZE", "MIX"};
 static const uint8_t GRAIN_LOG[] = {0, 1, 0, 0, 0, 0, 0};
 static const char *const GRAIN_UNIT[] = {"", "S", "HZ", "ST", "", "", ""};
@@ -1384,6 +1419,7 @@ static const int32_t COMB_MIN[] = {-1572864, -64225, 0, 0};
 static const int32_t COMB_MAX[] = {1572864, 64225, 65536, 65536};
 static const int32_t COMB_DEF[] = {0, 45875, 13107, 65536};
 static const int32_t COMB_INC[] = {65536, 1285, 655, 655};
+static const int32_t COMB_STEP[] = {65536, 655, 655, 655};
 static const char *const COMB_PN[] = {"COARSE", "FB", "DAMP", "MIX"};
 static const uint8_t COMB_LOG[] = {0, 0, 0, 0};
 static const char *const COMB_UNIT[] = {"ST", "", "", ""};
@@ -1393,6 +1429,7 @@ static const int32_t MODAL_MIN[] = {-1572864, 3277, 0, 0, 0};
 static const int32_t MODAL_MAX[] = {1572864, 327680, 65536, 65536, 65536};
 static const int32_t MODAL_DEF[] = {0, 65536, 0, 32768, 19661};
 static const int32_t MODAL_INC[] = {65536, 3244, 655, 655, 655};
+static const int32_t MODAL_STEP[] = {65536, 655, 655, 655, 655};
 static const char *const MODAL_PN[] = {"COARSE", "DECAY", "STRUCT", "BRIGHT", "DAMP"};
 static const uint8_t MODAL_LOG[] = {0, 1, 0, 0, 0};
 static const char *const MODAL_UNIT[] = {"ST", "S", "", "", ""};
@@ -1402,6 +1439,7 @@ static const int32_t SHIFT_MIN[] = {-65536000, 0, 0};
 static const int32_t SHIFT_MAX[] = {65536000, 65536000, 65536};
 static const int32_t SHIFT_DEF[] = {6553600, 6553600, 65536};
 static const int32_t SHIFT_INC[] = {1310720, 655360, 655};
+static const int32_t SHIFT_STEP[] = {32768, 65536, 655};
 static const char *const SHIFT_PN[] = {"SHIFT", "CVAMT", "MIX"};
 static const uint8_t SHIFT_LOG[] = {0, 0, 0};
 static const char *const SHIFT_UNIT[] = {"HZ", "HZ", ""};
@@ -1412,6 +1450,7 @@ static const int32_t RANDOM_MIN[] = {0, 3277};
 static const int32_t RANDOM_MAX[] = {65536, 1310720};
 static const int32_t RANDOM_DEF[] = {0, 98304};
 static const int32_t RANDOM_INC[] = {65536, 13074};
+static const int32_t RANDOM_STEP[] = {65536, 655};
 static const char *const RANDOM_PN[] = {"MODE", "RATE"};
 static const uint8_t RANDOM_LOG[] = {0, 1};
 static const char *const RANDOM_UNIT[] = {"", "HZ"};
@@ -1422,6 +1461,7 @@ static const int32_t ALLOC_MIN[] = {65536, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const int32_t ALLOC_MAX[] = {1048576, 131072, 131072, 131072, 65536, 1048576, 8323072, 8323072, 65536, 1048576};
 static const int32_t ALLOC_DEF[] = {262144, 0, 0, 0, 0, 0, 0, 8323072, 65536, 0};
 static const int32_t ALLOC_INC[] = {65536, 65536, 65536, 65536, 65536, 65536, 83231, 83231, 65536, 65536};
+static const int32_t ALLOC_STEP[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536};
 static const int32_t ALLOC_TOP[] = {1048576, 196608, 131072, 131072, 131072, 1048576, 8323072, 8323072, 65536, 1048576};
 static const uint8_t ALLOC_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 37, 38};
 static const char *const ALLOC_PN[] = {"VOICES", "ASSIGN", "LEGATO", "PRIORITY", "UNISON", "CHANNEL", "LOW", "HIGH", "STEAL", "STACK"};
@@ -1439,6 +1479,7 @@ static const int32_t ARP_MIN[] = {0, 0, 65536, 6554, 0};
 static const int32_t ARP_MAX[] = {262144, 393216, 262144, 65536, 65536};
 static const int32_t ARP_DEF[] = {0, 262144, 65536, 32768, 0};
 static const int32_t ARP_INC[] = {65536, 65536, 65536, 655, 65536};
+static const int32_t ARP_STEP[] = {65536, 65536, 65536, 655, 65536};
 static const char *const ARP_PN[] = {"MODE", "RATE", "OCTAVES", "GATE", "LATCH"};
 static const uint8_t ARP_LOG[] = {0, 0, 0, 0, 0};
 static const char *const ARP_UNIT[] = {"", "", "", "", ""};
@@ -1450,6 +1491,7 @@ static const int32_t STEPS_MIN[] = {65536, 0, 3276800, 655, 0};
 static const int32_t STEPS_MAX[] = {4194304, 393216, 4915200, 65536, 196608};
 static const int32_t STEPS_DEF[] = {1048576, 262144, 3276800, 16384, 0};
 static const int32_t STEPS_INC[] = {65536, 65536, 65536, 655, 65536};
+static const int32_t STEPS_STEP[] = {65536, 65536, 65536, 655, 65536};
 static const int32_t STEPS_TOP[] = {4194304, 524288, 5242880, 65536, 196608};
 static const uint8_t STEPS_SINCE[] = {0, 0, 0, 0, 44};
 static const char *const STEPS_PN[] = {"LEN", "RATE", "SWING", "GATE", "DIR"};
@@ -1463,6 +1505,7 @@ static const int32_t MACRO_MIN[] = {0};
 static const int32_t MACRO_MAX[] = {65536};
 static const int32_t MACRO_DEF[] = {32768};
 static const int32_t MACRO_INC[] = {655};
+static const int32_t MACRO_STEP[] = {655};
 static const char *const MACRO_PN[] = {"VALUE"};
 static const uint8_t MACRO_LOG[] = {0};
 static const char *const MACRO_UNIT[] = {""};
@@ -1472,6 +1515,7 @@ static const int32_t DRUMMAP_MIN[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const int32_t DRUMMAP_MAX[] = {8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 8323072, 65536};
 static const int32_t DRUMMAP_DEF[] = {2359296, 2490368, 2555904, 2752512, 3014656, 2949120, 2424832, 3670016, 0};
 static const int32_t DRUMMAP_INC[] = {83231, 83231, 83231, 83231, 83231, 83231, 83231, 83231, 65536};
+static const int32_t DRUMMAP_STEP[] = {65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536, 65536};
 static const uint8_t DRUMMAP_SINCE[] = {0, 0, 0, 0, 0, 0, 0, 0, 35};
 static const char *const DRUMMAP_PN[] = {"N1", "N2", "N3", "N4", "N5", "N6", "N7", "N8", "REPEAT"};
 static const uint8_t DRUMMAP_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1482,6 +1526,7 @@ static const int32_t PD_MIN[] = {0, 0, 0, 0, -3145728, -6553600, 0, 0};
 static const int32_t PD_MAX[] = {458752, 524288, 65536, 327680, 3145728, 6553600, 524288, 65536};
 static const int32_t PD_DEF[] = {0, 0, 32768, 196608, 0, 0, 0, 52429};
 static const int32_t PD_INC[] = {65536, 65536, 655, 3277, 65536, 131072, 5243, 655};
+static const int32_t PD_STEP[] = {65536, 65536, 655, 655, 65536, 65536, 655, 655};
 static const char *const PD_PN[] = {"WAVE", "WAVE2", "DCW", "RANGE", "COARSE", "FINE", "PM", "LEVEL"};
 static const uint8_t PD_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const PD_UNIT[] = {"", "", "", "OCT", "ST", "CT", "", ""};
@@ -1493,6 +1538,7 @@ static const int32_t ENV8_MIN[] = {0, 66, 0, 66, 0, 66, 0, 66, 0, 66, 0, 66, 0, 
 static const int32_t ENV8_MAX[] = {65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 65536, 655360, 524288, 524288};
 static const int32_t ENV8_DEF[] = {65536, 655, 39322, 19661, 0, 32768, 0, 13107, 0, 13107, 0, 13107, 0, 13107, 0, 13107, 131072, 196608};
 static const int32_t ENV8_INC[] = {655, 6553, 655, 6553, 655, 6553, 655, 6553, 655, 6553, 655, 6553, 655, 6553, 655, 6553, 65536, 65536};
+static const int32_t ENV8_STEP[] = {655, 66, 655, 66, 655, 66, 655, 66, 655, 66, 655, 66, 655, 66, 655, 66, 65536, 65536};
 static const char *const ENV8_PN[] = {"L1", "R1", "L2", "R2", "L3", "R3", "L4", "R4", "L5", "R5", "L6", "R6", "L7", "R7", "L8", "R8", "SUS", "END"};
 static const uint8_t ENV8_LOG[] = {0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0};
 static const char *const ENV8_UNIT[] = {"", "S", "", "S", "", "S", "", "S", "", "S", "", "S", "", "S", "", "S", "", ""};
@@ -1503,6 +1549,7 @@ static const int32_t SELECT_MIN[] = {65536, 131072, 0, -262144, -262144, -262144
 static const int32_t SELECT_MAX[] = {524288, 524288, 6553600, 262144, 262144, 262144, 262144, 262144, 262144, 262144, 262144};
 static const int32_t SELECT_DEF[] = {65536, 524288, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const int32_t SELECT_INC[] = {65536, 65536, 65536, 5243, 5243, 5243, 5243, 5243, 5243, 5243, 5243};
+static const int32_t SELECT_STEP[] = {65536, 65536, 6554, 66, 66, 66, 66, 66, 66, 66, 66};
 static const char *const SELECT_PN[] = {"POS", "COUNT", "FADE", "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8"};
 static const uint8_t SELECT_LOG[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 static const char *const SELECT_UNIT[] = {"", "", "MS", "", "", "", "", "", "", "", ""};
@@ -1512,6 +1559,7 @@ static const int32_t RATEENV_MIN[] = {0, 0, 0, 0, 0, 0};
 static const int32_t RATEENV_MAX[] = {2031616, 2031616, 983040, 2031616, 983040, 196608};
 static const int32_t RATEENV_DEF[] = {2031616, 786432, 655360, 0, 524288, 0};
 static const int32_t RATEENV_INC[] = {65536, 65536, 65536, 65536, 65536, 65536};
+static const int32_t RATEENV_STEP[] = {65536, 65536, 65536, 65536, 65536, 65536};
 static const char *const RATEENV_PN[] = {"AR", "D1R", "D1L", "D2R", "RR", "KRS"};
 static const uint8_t RATEENV_LOG[] = {0, 0, 0, 0, 0, 0};
 static const char *const RATEENV_UNIT[] = {"", "", "", "", "", ""};
@@ -1521,6 +1569,7 @@ static const int32_t RATIO_MIN[] = {0, 0};
 static const int32_t RATIO_MAX[] = {4128768, 393216};
 static const int32_t RATIO_DEF[] = {262144, 196608};
 static const int32_t RATIO_INC[] = {65536, 65536};
+static const int32_t RATIO_STEP[] = {65536, 65536};
 static const char *const RATIO_PN[] = {"RATIO", "DETUNE"};
 static const uint8_t RATIO_LOG[] = {0, 0};
 static const char *const RATIO_UNIT[] = {"", ""};
@@ -1532,60 +1581,61 @@ static const int32_t ESP_MIN[] = {0, 1310720, 3276800, -786432, 0};
 static const int32_t ESP_MAX[] = {262144, 327680000, 655360000, 786432, 65536};
 static const int32_t ESP_DEF[] = {65536, 2621440, 131072000, 0, 6554};
 static const int32_t ESP_INC[] = {2621, 3263693, 6520832, 15729, 655};
+static const int32_t ESP_STEP[] = {655, 65536, 65536, 655, 655};
 static const char *const ESP_PN[] = {"LEVEL", "LOWCUT", "HIGHCUT", "CVADJ", "THRESH"};
 static const uint8_t ESP_LOG[] = {0, 1, 1, 0, 0};
 static const char *const ESP_UNIT[] = {"", "HZ", "HZ", "ST", ""};
 static const char *const *const ESP_CH[] = {0, 0, 0, 0, 0};
 
 static const def_t DEFS[N_TYPES] = {
-    {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0},   /* fm1 */
-    {OSC_NIN, OSC_NOUT, OSC_NPAR, 0, OSC_CVBASE, -1, OSC_NDATA, 1, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN, OSC_INNAMES, OSC_LOG, OSC_UNIT, OSC_CH, OSC_TOP, 0},   /* osc */
-    {LFO_NIN, LFO_NOUT, LFO_NPAR, 0, LFO_CVBASE, -1, LFO_NDATA, 0, LFO_MIN, LFO_MAX, LFO_DEF, LFO_INC, "LFO", LFO_PN, LFO_INNAMES, LFO_LOG, LFO_UNIT, LFO_CH, LFO_TOP, LFO_SINCE},   /* lfo */
-    {NOISE_NIN, NOISE_NOUT, NOISE_NPAR, 0, NOISE_CVBASE, -1, NOISE_NDATA, 1, NOISE_MIN, NOISE_MAX, NOISE_DEF, NOISE_INC, "NOISE", NOISE_PN, NOISE_INNAMES, NOISE_LOG, NOISE_UNIT, NOISE_CH, 0, 0},   /* noise */
-    {CONST_NIN, CONST_NOUT, CONST_NPAR, 0, CONST_CVBASE, -1, CONST_NDATA, 0, CONST_MIN, CONST_MAX, CONST_DEF, CONST_INC, "OFFSET", CONST_PN, CONST_INNAMES, CONST_LOG, CONST_UNIT, CONST_CH, 0, 0},   /* const */
-    {SCALE_NIN, SCALE_NOUT, SCALE_NPAR, 0, SCALE_CVBASE, 0, SCALE_NDATA, 0, SCALE_MIN, SCALE_MAX, SCALE_DEF, SCALE_INC, "ATTENUVERTER", SCALE_PN, SCALE_INNAMES, SCALE_LOG, SCALE_UNIT, SCALE_CH, 0, 0},   /* scale */
-    {ADSR_NIN, ADSR_NOUT, ADSR_NPAR, 0, ADSR_CVBASE, -1, ADSR_NDATA, 0, ADSR_MIN, ADSR_MAX, ADSR_DEF, ADSR_INC, "ADSR", ADSR_PN, ADSR_INNAMES, ADSR_LOG, ADSR_UNIT, ADSR_CH, 0, ADSR_SINCE},   /* adsr */
-    {VCA_NIN, VCA_NOUT, VCA_NPAR, 2, VCA_CVBASE, 0, VCA_NDATA, 1, VCA_MIN, VCA_MAX, VCA_DEF, VCA_INC, "VCA", VCA_PN, VCA_INNAMES, VCA_LOG, VCA_UNIT, VCA_CH, 0, 0},   /* vca */
-    {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, 6, FILTER_CVBASE, 0, FILTER_NDATA, 511, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "MULTIMODE", FILTER_PN, FILTER_INNAMES, FILTER_LOG, FILTER_UNIT, FILTER_CH, 0, FILTER_SINCE},   /* filter */
-    {MIXER_NIN, MIXER_NOUT, MIXER_NPAR, 0, MIXER_CVBASE, 0, MIXER_NDATA, 1, MIXER_MIN, MIXER_MAX, MIXER_DEF, MIXER_INC, "MIXER 4", MIXER_PN, MIXER_INNAMES, MIXER_LOG, MIXER_UNIT, MIXER_CH, 0, 0},   /* mixer */
-    {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, 0, DELAY_CVBASE, 0, DELAY_NDATA, 3, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN, DELAY_INNAMES, DELAY_LOG, DELAY_UNIT, DELAY_CH, 0, DELAY_SINCE},   /* delay */
-    {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, 0, REVERB_CVBASE, 0, REVERB_NDATA, 1, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH, 0, REVERB_SINCE},   /* reverb */
-    {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, 0, OUTPUT_CVBASE, -1, OUTPUT_NDATA, 0, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN, OUTPUT_INNAMES, OUTPUT_LOG, OUTPUT_UNIT, OUTPUT_CH, 0, 0},   /* output */
-    {GLIDE_NIN, GLIDE_NOUT, GLIDE_NPAR, 0, GLIDE_CVBASE, 0, GLIDE_NDATA, 0, GLIDE_MIN, GLIDE_MAX, GLIDE_DEF, GLIDE_INC, "SLEW LIMITER", GLIDE_PN, GLIDE_INNAMES, GLIDE_LOG, GLIDE_UNIT, GLIDE_CH, 0, 0},   /* glide */
-    {SHAPE_NIN, SHAPE_NOUT, SHAPE_NPAR, 0, SHAPE_CVBASE, 0, SHAPE_NDATA, 1, SHAPE_MIN, SHAPE_MAX, SHAPE_DEF, SHAPE_INC, "WAVESHAPER", SHAPE_PN, SHAPE_INNAMES, SHAPE_LOG, SHAPE_UNIT, SHAPE_CH, 0, 0},   /* shape */
-    {ENV_NIN, ENV_NOUT, ENV_NPAR, 0, ENV_CVBASE, -1, ENV_NDATA, 0, ENV_MIN, ENV_MAX, ENV_DEF, ENV_INC, "ENV L/R", ENV_PN, ENV_INNAMES, ENV_LOG, ENV_UNIT, ENV_CH, 0, 0},   /* env */
-    {STRING_NIN, STRING_NOUT, STRING_NPAR, 0, STRING_CVBASE, -1, STRING_NDATA, 1, STRING_MIN, STRING_MAX, STRING_DEF, STRING_INC, "STRING", STRING_PN, STRING_INNAMES, STRING_LOG, STRING_UNIT, STRING_CH, 0, 0},   /* string */
-    {WAVETABLE_NIN, WAVETABLE_NOUT, WAVETABLE_NPAR, 0, WAVETABLE_CVBASE, -1, WAVETABLE_NDATA, 1, WAVETABLE_MIN, WAVETABLE_MAX, WAVETABLE_DEF, WAVETABLE_INC, "WAVETABLE", WAVETABLE_PN, WAVETABLE_INNAMES, WAVETABLE_LOG, WAVETABLE_UNIT, WAVETABLE_CH, WAVETABLE_TOP, 0},   /* wavetable */
-    {CHORUS_NIN, CHORUS_NOUT, CHORUS_NPAR, 0, CHORUS_CVBASE, 0, CHORUS_NDATA, 3, CHORUS_MIN, CHORUS_MAX, CHORUS_DEF, CHORUS_INC, "CHORUS", CHORUS_PN, CHORUS_INNAMES, CHORUS_LOG, CHORUS_UNIT, CHORUS_CH, 0, 0},   /* chorus */
-    {SEQ_NIN, SEQ_NOUT, SEQ_NPAR, 0, SEQ_CVBASE, -1, SEQ_NDATA, 0, SEQ_MIN, SEQ_MAX, SEQ_DEF, SEQ_INC, "SEQUENCER", SEQ_PN, SEQ_INNAMES, SEQ_LOG, SEQ_UNIT, SEQ_CH, 0, 0},   /* seq */
-    {CLKDIV_NIN, CLKDIV_NOUT, CLKDIV_NPAR, 0, CLKDIV_CVBASE, -1, CLKDIV_NDATA, 0, CLKDIV_MIN, CLKDIV_MAX, CLKDIV_DEF, CLKDIV_INC, "CLOCK DIVIDER", CLKDIV_PN, CLKDIV_INNAMES, CLKDIV_LOG, CLKDIV_UNIT, CLKDIV_CH, 0, 0},   /* clkdiv */
-    {SH_NIN, SH_NOUT, SH_NPAR, 0, SH_CVBASE, 0, SH_NDATA, 0, SH_MIN, SH_MAX, SH_DEF, SH_INC, "S&H", SH_PN, SH_INNAMES, SH_LOG, SH_UNIT, SH_CH, 0, 0},   /* sh */
-    {QUANT_NIN, QUANT_NOUT, QUANT_NPAR, 0, QUANT_CVBASE, 0, QUANT_NDATA, 0, QUANT_MIN, QUANT_MAX, QUANT_DEF, QUANT_INC, "QUANTIZER", QUANT_PN, QUANT_INNAMES, QUANT_LOG, QUANT_UNIT, QUANT_CH, 0, 0},   /* quant */
-    {PULSE_NIN, PULSE_NOUT, PULSE_NPAR, 0, PULSE_CVBASE, -1, PULSE_NDATA, 0, PULSE_MIN, PULSE_MAX, PULSE_DEF, PULSE_INC, "PULSE", PULSE_PN, PULSE_INNAMES, PULSE_LOG, PULSE_UNIT, PULSE_CH, 0, PULSE_SINCE},   /* pulse */
-    {PAN_NIN, PAN_NOUT, PAN_NPAR, 2, PAN_CVBASE, 0, PAN_NDATA, 3, PAN_MIN, PAN_MAX, PAN_DEF, PAN_INC, "PAN", PAN_PN, PAN_INNAMES, PAN_LOG, PAN_UNIT, PAN_CH, 0, 0},   /* pan */
-    {XFADE_NIN, XFADE_NOUT, XFADE_NPAR, 4, XFADE_CVBASE, 0, XFADE_NDATA, 1, XFADE_MIN, XFADE_MAX, XFADE_DEF, XFADE_INC, "CROSSFADER", XFADE_PN, XFADE_INNAMES, XFADE_LOG, XFADE_UNIT, XFADE_CH, 0, 0},   /* xfade */
-    {VOWEL_NIN, VOWEL_NOUT, VOWEL_NPAR, 2, VOWEL_CVBASE, 0, VOWEL_NDATA, 1, VOWEL_MIN, VOWEL_MAX, VOWEL_DEF, VOWEL_INC, "FORMANT FILTER", VOWEL_PN, VOWEL_INNAMES, VOWEL_LOG, VOWEL_UNIT, VOWEL_CH, 0, 0},   /* vowel */
-    {PHASER_NIN, PHASER_NOUT, PHASER_NPAR, 0, PHASER_CVBASE, 0, PHASER_NDATA, 1, PHASER_MIN, PHASER_MAX, PHASER_DEF, PHASER_INC, "PHASER", PHASER_PN, PHASER_INNAMES, PHASER_LOG, PHASER_UNIT, PHASER_CH, 0, 0},   /* phaser */
-    {CRUSH_NIN, CRUSH_NOUT, CRUSH_NPAR, 0, CRUSH_CVBASE, 0, CRUSH_NDATA, 1, CRUSH_MIN, CRUSH_MAX, CRUSH_DEF, CRUSH_INC, "BITCRUSHER", CRUSH_PN, CRUSH_INNAMES, CRUSH_LOG, CRUSH_UNIT, CRUSH_CH, 0, 0},   /* crush */
-    {LADDER_NIN, LADDER_NOUT, LADDER_NPAR, 2, LADDER_CVBASE, 0, LADDER_NDATA, 3, LADDER_MIN, LADDER_MAX, LADDER_DEF, LADDER_INC, "LADDER", LADDER_PN, LADDER_INNAMES, LADDER_LOG, LADDER_UNIT, LADDER_CH, 0, 0},   /* ladder */
-    {DYN_NIN, DYN_NOUT, DYN_NPAR, 0, DYN_CVBASE, 0, DYN_NDATA, 1, DYN_MIN, DYN_MAX, DYN_DEF, DYN_INC, "COMPRESSOR", DYN_PN, DYN_INNAMES, DYN_LOG, DYN_UNIT, DYN_CH, 0, 0},   /* dyn */
-    {MATH_NIN, MATH_NOUT, MATH_NPAR, 0, MATH_CVBASE, -1, MATH_NDATA, 128, MATH_MIN, MATH_MAX, MATH_DEF, MATH_INC, "MATH", MATH_PN, MATH_INNAMES, MATH_LOG, MATH_UNIT, MATH_CH, 0, 0},   /* math */
-    {LOGIC_NIN, LOGIC_NOUT, LOGIC_NPAR, 0, LOGIC_CVBASE, -1, LOGIC_NDATA, 0, LOGIC_MIN, LOGIC_MAX, LOGIC_DEF, LOGIC_INC, "LOGIC", LOGIC_PN, LOGIC_INNAMES, LOGIC_LOG, LOGIC_UNIT, LOGIC_CH, 0, 0},   /* logic */
-    {GRAIN_NIN, GRAIN_NOUT, GRAIN_NPAR, 0, GRAIN_CVBASE, 0, GRAIN_NDATA, 1, GRAIN_MIN, GRAIN_MAX, GRAIN_DEF, GRAIN_INC, "GRANULAR", GRAIN_PN, GRAIN_INNAMES, GRAIN_LOG, GRAIN_UNIT, GRAIN_CH, 0, 0},   /* grain */
-    {COMB_NIN, COMB_NOUT, COMB_NPAR, 0, COMB_CVBASE, 0, COMB_NDATA, 1, COMB_MIN, COMB_MAX, COMB_DEF, COMB_INC, "COMB FILTER", COMB_PN, COMB_INNAMES, COMB_LOG, COMB_UNIT, COMB_CH, 0, 0},   /* comb */
-    {MODAL_NIN, MODAL_NOUT, MODAL_NPAR, 0, MODAL_CVBASE, 0, MODAL_NDATA, 1, MODAL_MIN, MODAL_MAX, MODAL_DEF, MODAL_INC, "RESONATOR", MODAL_PN, MODAL_INNAMES, MODAL_LOG, MODAL_UNIT, MODAL_CH, 0, 0},   /* modal */
-    {SHIFT_NIN, SHIFT_NOUT, SHIFT_NPAR, 2, SHIFT_CVBASE, 0, SHIFT_NDATA, 3, SHIFT_MIN, SHIFT_MAX, SHIFT_DEF, SHIFT_INC, "FREQ SHIFTER", SHIFT_PN, SHIFT_INNAMES, SHIFT_LOG, SHIFT_UNIT, SHIFT_CH, 0, 0},   /* shift */
-    {PART_NIN, PART_NOUT, PART_NPAR, 0, PART_CVBASE, -1, PART_NDATA, 0, 0, 0, 0, 0, "PART", 0, PART_INNAMES, 0, 0, 0, 0, 0},   /* part */
-    {RANDOM_NIN, RANDOM_NOUT, RANDOM_NPAR, 0, RANDOM_CVBASE, -1, RANDOM_NDATA, 0, RANDOM_MIN, RANDOM_MAX, RANDOM_DEF, RANDOM_INC, "RANDOM", RANDOM_PN, RANDOM_INNAMES, RANDOM_LOG, RANDOM_UNIT, RANDOM_CH, 0, 0},   /* random */
-    {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 0, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, ALLOC_TOP, ALLOC_SINCE},   /* alloc */
-    {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, 0, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH, 0, 0},   /* arp */
-    {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH, STEPS_TOP, STEPS_SINCE},   /* steps */
-    {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH, 0, 0},   /* macro */
-    {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH, 0, DRUMMAP_SINCE},   /* drummap */
-    {PD_NIN, PD_NOUT, PD_NPAR, 2, PD_CVBASE, -1, PD_NDATA, 1, PD_MIN, PD_MAX, PD_DEF, PD_INC, "PD OSC", PD_PN, PD_INNAMES, PD_LOG, PD_UNIT, PD_CH, 0, 0},   /* pd */
-    {ENV8_NIN, ENV8_NOUT, ENV8_NPAR, 0, ENV8_CVBASE, -1, ENV8_NDATA, 0, ENV8_MIN, ENV8_MAX, ENV8_DEF, ENV8_INC, "ENV 8", ENV8_PN, ENV8_INNAMES, ENV8_LOG, ENV8_UNIT, ENV8_CH, 0, 0},   /* env8 */
-    {SELECT_NIN, SELECT_NOUT, SELECT_NPAR, 1, SELECT_CVBASE, 1, SELECT_NDATA, 1, SELECT_MIN, SELECT_MAX, SELECT_DEF, SELECT_INC, "SELECTOR", SELECT_PN, SELECT_INNAMES, SELECT_LOG, SELECT_UNIT, SELECT_CH, 0, 0},   /* select */
-    {RATEENV_NIN, RATEENV_NOUT, RATEENV_NPAR, 0, RATEENV_CVBASE, -1, RATEENV_NDATA, 0, RATEENV_MIN, RATEENV_MAX, RATEENV_DEF, RATEENV_INC, "RATE ENV", RATEENV_PN, RATEENV_INNAMES, RATEENV_LOG, RATEENV_UNIT, RATEENV_CH, 0, 0},   /* rateenv */
-    {RATIO_NIN, RATIO_NOUT, RATIO_NPAR, 0, RATIO_CVBASE, -1, RATIO_NDATA, 0, RATIO_MIN, RATIO_MAX, RATIO_DEF, RATIO_INC, "RATIO", RATIO_PN, RATIO_INNAMES, RATIO_LOG, RATIO_UNIT, RATIO_CH, 0, 0},   /* ratio */
-    {ESP_NIN, ESP_NOUT, ESP_NPAR, 0, ESP_CVBASE, 0, ESP_NDATA, 3, ESP_MIN, ESP_MAX, ESP_DEF, ESP_INC, "FOLLOWER", ESP_PN, ESP_INNAMES, ESP_LOG, ESP_UNIT, ESP_CH, 0, 0},   /* esp */
+    {FM1_NIN, FM1_NOUT, FM1_NPAR, 1, FM1_CVBASE, -1, FM1_NDATA, 0, FM1_MIN, FM1_MAX, FM1_DEF, FM1_INC, "MAIN", FM1_PN, FM1_INNAMES, FM1_LOG, FM1_UNIT, FM1_CH, 0, 0, FM1_STEP},   /* fm1 */
+    {OSC_NIN, OSC_NOUT, OSC_NPAR, 0, OSC_CVBASE, -1, OSC_NDATA, 1, OSC_MIN, OSC_MAX, OSC_DEF, OSC_INC, "OSCILLATOR", OSC_PN, OSC_INNAMES, OSC_LOG, OSC_UNIT, OSC_CH, OSC_TOP, 0, OSC_STEP},   /* osc */
+    {LFO_NIN, LFO_NOUT, LFO_NPAR, 0, LFO_CVBASE, -1, LFO_NDATA, 0, LFO_MIN, LFO_MAX, LFO_DEF, LFO_INC, "LFO", LFO_PN, LFO_INNAMES, LFO_LOG, LFO_UNIT, LFO_CH, LFO_TOP, LFO_SINCE, LFO_STEP},   /* lfo */
+    {NOISE_NIN, NOISE_NOUT, NOISE_NPAR, 0, NOISE_CVBASE, -1, NOISE_NDATA, 1, NOISE_MIN, NOISE_MAX, NOISE_DEF, NOISE_INC, "NOISE", NOISE_PN, NOISE_INNAMES, NOISE_LOG, NOISE_UNIT, NOISE_CH, 0, 0, NOISE_STEP},   /* noise */
+    {CONST_NIN, CONST_NOUT, CONST_NPAR, 0, CONST_CVBASE, -1, CONST_NDATA, 0, CONST_MIN, CONST_MAX, CONST_DEF, CONST_INC, "OFFSET", CONST_PN, CONST_INNAMES, CONST_LOG, CONST_UNIT, CONST_CH, 0, 0, CONST_STEP},   /* const */
+    {SCALE_NIN, SCALE_NOUT, SCALE_NPAR, 0, SCALE_CVBASE, 0, SCALE_NDATA, 0, SCALE_MIN, SCALE_MAX, SCALE_DEF, SCALE_INC, "ATTENUVERTER", SCALE_PN, SCALE_INNAMES, SCALE_LOG, SCALE_UNIT, SCALE_CH, 0, 0, SCALE_STEP},   /* scale */
+    {ADSR_NIN, ADSR_NOUT, ADSR_NPAR, 0, ADSR_CVBASE, -1, ADSR_NDATA, 0, ADSR_MIN, ADSR_MAX, ADSR_DEF, ADSR_INC, "ADSR", ADSR_PN, ADSR_INNAMES, ADSR_LOG, ADSR_UNIT, ADSR_CH, 0, ADSR_SINCE, ADSR_STEP},   /* adsr */
+    {VCA_NIN, VCA_NOUT, VCA_NPAR, 2, VCA_CVBASE, 0, VCA_NDATA, 1, VCA_MIN, VCA_MAX, VCA_DEF, VCA_INC, "VCA", VCA_PN, VCA_INNAMES, VCA_LOG, VCA_UNIT, VCA_CH, 0, 0, VCA_STEP},   /* vca */
+    {FILTER_NIN, FILTER_NOUT, FILTER_NPAR, 6, FILTER_CVBASE, 0, FILTER_NDATA, 511, FILTER_MIN, FILTER_MAX, FILTER_DEF, FILTER_INC, "MULTIMODE", FILTER_PN, FILTER_INNAMES, FILTER_LOG, FILTER_UNIT, FILTER_CH, 0, FILTER_SINCE, FILTER_STEP},   /* filter */
+    {MIXER_NIN, MIXER_NOUT, MIXER_NPAR, 0, MIXER_CVBASE, 0, MIXER_NDATA, 1, MIXER_MIN, MIXER_MAX, MIXER_DEF, MIXER_INC, "MIXER 4", MIXER_PN, MIXER_INNAMES, MIXER_LOG, MIXER_UNIT, MIXER_CH, 0, 0, MIXER_STEP},   /* mixer */
+    {DELAY_NIN, DELAY_NOUT, DELAY_NPAR, 0, DELAY_CVBASE, 0, DELAY_NDATA, 3, DELAY_MIN, DELAY_MAX, DELAY_DEF, DELAY_INC, "DELAY", DELAY_PN, DELAY_INNAMES, DELAY_LOG, DELAY_UNIT, DELAY_CH, 0, DELAY_SINCE, DELAY_STEP},   /* delay */
+    {REVERB_NIN, REVERB_NOUT, REVERB_NPAR, 0, REVERB_CVBASE, 0, REVERB_NDATA, 1, REVERB_MIN, REVERB_MAX, REVERB_DEF, REVERB_INC, "REVERB", REVERB_PN, REVERB_INNAMES, REVERB_LOG, REVERB_UNIT, REVERB_CH, 0, REVERB_SINCE, REVERB_STEP},   /* reverb */
+    {OUTPUT_NIN, OUTPUT_NOUT, OUTPUT_NPAR, 0, OUTPUT_CVBASE, -1, OUTPUT_NDATA, 0, OUTPUT_MIN, OUTPUT_MAX, OUTPUT_DEF, OUTPUT_INC, "OUTPUT", OUTPUT_PN, OUTPUT_INNAMES, OUTPUT_LOG, OUTPUT_UNIT, OUTPUT_CH, 0, 0, OUTPUT_STEP},   /* output */
+    {GLIDE_NIN, GLIDE_NOUT, GLIDE_NPAR, 0, GLIDE_CVBASE, 0, GLIDE_NDATA, 0, GLIDE_MIN, GLIDE_MAX, GLIDE_DEF, GLIDE_INC, "SLEW LIMITER", GLIDE_PN, GLIDE_INNAMES, GLIDE_LOG, GLIDE_UNIT, GLIDE_CH, 0, 0, GLIDE_STEP},   /* glide */
+    {SHAPE_NIN, SHAPE_NOUT, SHAPE_NPAR, 0, SHAPE_CVBASE, 0, SHAPE_NDATA, 1, SHAPE_MIN, SHAPE_MAX, SHAPE_DEF, SHAPE_INC, "WAVESHAPER", SHAPE_PN, SHAPE_INNAMES, SHAPE_LOG, SHAPE_UNIT, SHAPE_CH, 0, 0, SHAPE_STEP},   /* shape */
+    {ENV_NIN, ENV_NOUT, ENV_NPAR, 0, ENV_CVBASE, -1, ENV_NDATA, 0, ENV_MIN, ENV_MAX, ENV_DEF, ENV_INC, "ENV L/R", ENV_PN, ENV_INNAMES, ENV_LOG, ENV_UNIT, ENV_CH, 0, 0, ENV_STEP},   /* env */
+    {STRING_NIN, STRING_NOUT, STRING_NPAR, 0, STRING_CVBASE, -1, STRING_NDATA, 1, STRING_MIN, STRING_MAX, STRING_DEF, STRING_INC, "STRING", STRING_PN, STRING_INNAMES, STRING_LOG, STRING_UNIT, STRING_CH, 0, 0, STRING_STEP},   /* string */
+    {WAVETABLE_NIN, WAVETABLE_NOUT, WAVETABLE_NPAR, 0, WAVETABLE_CVBASE, -1, WAVETABLE_NDATA, 1, WAVETABLE_MIN, WAVETABLE_MAX, WAVETABLE_DEF, WAVETABLE_INC, "WAVETABLE", WAVETABLE_PN, WAVETABLE_INNAMES, WAVETABLE_LOG, WAVETABLE_UNIT, WAVETABLE_CH, WAVETABLE_TOP, 0, WAVETABLE_STEP},   /* wavetable */
+    {CHORUS_NIN, CHORUS_NOUT, CHORUS_NPAR, 0, CHORUS_CVBASE, 0, CHORUS_NDATA, 3, CHORUS_MIN, CHORUS_MAX, CHORUS_DEF, CHORUS_INC, "CHORUS", CHORUS_PN, CHORUS_INNAMES, CHORUS_LOG, CHORUS_UNIT, CHORUS_CH, 0, 0, CHORUS_STEP},   /* chorus */
+    {SEQ_NIN, SEQ_NOUT, SEQ_NPAR, 0, SEQ_CVBASE, -1, SEQ_NDATA, 0, SEQ_MIN, SEQ_MAX, SEQ_DEF, SEQ_INC, "SEQUENCER", SEQ_PN, SEQ_INNAMES, SEQ_LOG, SEQ_UNIT, SEQ_CH, 0, 0, SEQ_STEP},   /* seq */
+    {CLKDIV_NIN, CLKDIV_NOUT, CLKDIV_NPAR, 0, CLKDIV_CVBASE, -1, CLKDIV_NDATA, 0, CLKDIV_MIN, CLKDIV_MAX, CLKDIV_DEF, CLKDIV_INC, "CLOCK DIVIDER", CLKDIV_PN, CLKDIV_INNAMES, CLKDIV_LOG, CLKDIV_UNIT, CLKDIV_CH, 0, 0, CLKDIV_STEP},   /* clkdiv */
+    {SH_NIN, SH_NOUT, SH_NPAR, 0, SH_CVBASE, 0, SH_NDATA, 0, SH_MIN, SH_MAX, SH_DEF, SH_INC, "S&H", SH_PN, SH_INNAMES, SH_LOG, SH_UNIT, SH_CH, 0, 0, SH_STEP},   /* sh */
+    {QUANT_NIN, QUANT_NOUT, QUANT_NPAR, 0, QUANT_CVBASE, 0, QUANT_NDATA, 0, QUANT_MIN, QUANT_MAX, QUANT_DEF, QUANT_INC, "QUANTIZER", QUANT_PN, QUANT_INNAMES, QUANT_LOG, QUANT_UNIT, QUANT_CH, 0, 0, QUANT_STEP},   /* quant */
+    {PULSE_NIN, PULSE_NOUT, PULSE_NPAR, 0, PULSE_CVBASE, -1, PULSE_NDATA, 0, PULSE_MIN, PULSE_MAX, PULSE_DEF, PULSE_INC, "PULSE", PULSE_PN, PULSE_INNAMES, PULSE_LOG, PULSE_UNIT, PULSE_CH, 0, PULSE_SINCE, PULSE_STEP},   /* pulse */
+    {PAN_NIN, PAN_NOUT, PAN_NPAR, 2, PAN_CVBASE, 0, PAN_NDATA, 3, PAN_MIN, PAN_MAX, PAN_DEF, PAN_INC, "PAN", PAN_PN, PAN_INNAMES, PAN_LOG, PAN_UNIT, PAN_CH, 0, 0, PAN_STEP},   /* pan */
+    {XFADE_NIN, XFADE_NOUT, XFADE_NPAR, 4, XFADE_CVBASE, 0, XFADE_NDATA, 1, XFADE_MIN, XFADE_MAX, XFADE_DEF, XFADE_INC, "CROSSFADER", XFADE_PN, XFADE_INNAMES, XFADE_LOG, XFADE_UNIT, XFADE_CH, 0, 0, XFADE_STEP},   /* xfade */
+    {VOWEL_NIN, VOWEL_NOUT, VOWEL_NPAR, 2, VOWEL_CVBASE, 0, VOWEL_NDATA, 1, VOWEL_MIN, VOWEL_MAX, VOWEL_DEF, VOWEL_INC, "FORMANT FILTER", VOWEL_PN, VOWEL_INNAMES, VOWEL_LOG, VOWEL_UNIT, VOWEL_CH, 0, 0, VOWEL_STEP},   /* vowel */
+    {PHASER_NIN, PHASER_NOUT, PHASER_NPAR, 0, PHASER_CVBASE, 0, PHASER_NDATA, 1, PHASER_MIN, PHASER_MAX, PHASER_DEF, PHASER_INC, "PHASER", PHASER_PN, PHASER_INNAMES, PHASER_LOG, PHASER_UNIT, PHASER_CH, 0, 0, PHASER_STEP},   /* phaser */
+    {CRUSH_NIN, CRUSH_NOUT, CRUSH_NPAR, 0, CRUSH_CVBASE, 0, CRUSH_NDATA, 1, CRUSH_MIN, CRUSH_MAX, CRUSH_DEF, CRUSH_INC, "BITCRUSHER", CRUSH_PN, CRUSH_INNAMES, CRUSH_LOG, CRUSH_UNIT, CRUSH_CH, 0, 0, CRUSH_STEP},   /* crush */
+    {LADDER_NIN, LADDER_NOUT, LADDER_NPAR, 2, LADDER_CVBASE, 0, LADDER_NDATA, 3, LADDER_MIN, LADDER_MAX, LADDER_DEF, LADDER_INC, "LADDER", LADDER_PN, LADDER_INNAMES, LADDER_LOG, LADDER_UNIT, LADDER_CH, 0, 0, LADDER_STEP},   /* ladder */
+    {DYN_NIN, DYN_NOUT, DYN_NPAR, 0, DYN_CVBASE, 0, DYN_NDATA, 1, DYN_MIN, DYN_MAX, DYN_DEF, DYN_INC, "COMPRESSOR", DYN_PN, DYN_INNAMES, DYN_LOG, DYN_UNIT, DYN_CH, 0, 0, DYN_STEP},   /* dyn */
+    {MATH_NIN, MATH_NOUT, MATH_NPAR, 0, MATH_CVBASE, -1, MATH_NDATA, 128, MATH_MIN, MATH_MAX, MATH_DEF, MATH_INC, "MATH", MATH_PN, MATH_INNAMES, MATH_LOG, MATH_UNIT, MATH_CH, 0, 0, MATH_STEP},   /* math */
+    {LOGIC_NIN, LOGIC_NOUT, LOGIC_NPAR, 0, LOGIC_CVBASE, -1, LOGIC_NDATA, 0, LOGIC_MIN, LOGIC_MAX, LOGIC_DEF, LOGIC_INC, "LOGIC", LOGIC_PN, LOGIC_INNAMES, LOGIC_LOG, LOGIC_UNIT, LOGIC_CH, 0, 0, LOGIC_STEP},   /* logic */
+    {GRAIN_NIN, GRAIN_NOUT, GRAIN_NPAR, 0, GRAIN_CVBASE, 0, GRAIN_NDATA, 1, GRAIN_MIN, GRAIN_MAX, GRAIN_DEF, GRAIN_INC, "GRANULAR", GRAIN_PN, GRAIN_INNAMES, GRAIN_LOG, GRAIN_UNIT, GRAIN_CH, 0, 0, GRAIN_STEP},   /* grain */
+    {COMB_NIN, COMB_NOUT, COMB_NPAR, 0, COMB_CVBASE, 0, COMB_NDATA, 1, COMB_MIN, COMB_MAX, COMB_DEF, COMB_INC, "COMB FILTER", COMB_PN, COMB_INNAMES, COMB_LOG, COMB_UNIT, COMB_CH, 0, 0, COMB_STEP},   /* comb */
+    {MODAL_NIN, MODAL_NOUT, MODAL_NPAR, 0, MODAL_CVBASE, 0, MODAL_NDATA, 1, MODAL_MIN, MODAL_MAX, MODAL_DEF, MODAL_INC, "RESONATOR", MODAL_PN, MODAL_INNAMES, MODAL_LOG, MODAL_UNIT, MODAL_CH, 0, 0, MODAL_STEP},   /* modal */
+    {SHIFT_NIN, SHIFT_NOUT, SHIFT_NPAR, 2, SHIFT_CVBASE, 0, SHIFT_NDATA, 3, SHIFT_MIN, SHIFT_MAX, SHIFT_DEF, SHIFT_INC, "FREQ SHIFTER", SHIFT_PN, SHIFT_INNAMES, SHIFT_LOG, SHIFT_UNIT, SHIFT_CH, 0, 0, SHIFT_STEP},   /* shift */
+    {PART_NIN, PART_NOUT, PART_NPAR, 0, PART_CVBASE, -1, PART_NDATA, 0, 0, 0, 0, 0, "PART", 0, PART_INNAMES, 0, 0, 0, 0, 0, 0},   /* part */
+    {RANDOM_NIN, RANDOM_NOUT, RANDOM_NPAR, 0, RANDOM_CVBASE, -1, RANDOM_NDATA, 0, RANDOM_MIN, RANDOM_MAX, RANDOM_DEF, RANDOM_INC, "RANDOM", RANDOM_PN, RANDOM_INNAMES, RANDOM_LOG, RANDOM_UNIT, RANDOM_CH, 0, 0, RANDOM_STEP},   /* random */
+    {ALLOC_NIN, ALLOC_NOUT, ALLOC_NPAR, 0, ALLOC_CVBASE, -1, ALLOC_NDATA, 0, ALLOC_MIN, ALLOC_MAX, ALLOC_DEF, ALLOC_INC, "VOICING", ALLOC_PN, ALLOC_INNAMES, ALLOC_LOG, ALLOC_UNIT, ALLOC_CH, ALLOC_TOP, ALLOC_SINCE, ALLOC_STEP},   /* alloc */
+    {ARP_NIN, ARP_NOUT, ARP_NPAR, 0, ARP_CVBASE, -1, ARP_NDATA, 0, ARP_MIN, ARP_MAX, ARP_DEF, ARP_INC, "ARPEGGIATOR", ARP_PN, ARP_INNAMES, ARP_LOG, ARP_UNIT, ARP_CH, 0, 0, ARP_STEP},   /* arp */
+    {STEPS_NIN, STEPS_NOUT, STEPS_NPAR, 0, STEPS_CVBASE, -1, STEPS_NDATA, 0, STEPS_MIN, STEPS_MAX, STEPS_DEF, STEPS_INC, "STEPS", STEPS_PN, STEPS_INNAMES, STEPS_LOG, STEPS_UNIT, STEPS_CH, STEPS_TOP, STEPS_SINCE, STEPS_STEP},   /* steps */
+    {MACRO_NIN, MACRO_NOUT, MACRO_NPAR, 0, MACRO_CVBASE, -1, MACRO_NDATA, 0, MACRO_MIN, MACRO_MAX, MACRO_DEF, MACRO_INC, "MACRO", MACRO_PN, MACRO_INNAMES, MACRO_LOG, MACRO_UNIT, MACRO_CH, 0, 0, MACRO_STEP},   /* macro */
+    {DRUMMAP_NIN, DRUMMAP_NOUT, DRUMMAP_NPAR, 0, DRUMMAP_CVBASE, -1, DRUMMAP_NDATA, 0, DRUMMAP_MIN, DRUMMAP_MAX, DRUMMAP_DEF, DRUMMAP_INC, "DRUM MAP", DRUMMAP_PN, DRUMMAP_INNAMES, DRUMMAP_LOG, DRUMMAP_UNIT, DRUMMAP_CH, 0, DRUMMAP_SINCE, DRUMMAP_STEP},   /* drummap */
+    {PD_NIN, PD_NOUT, PD_NPAR, 2, PD_CVBASE, -1, PD_NDATA, 1, PD_MIN, PD_MAX, PD_DEF, PD_INC, "PD OSC", PD_PN, PD_INNAMES, PD_LOG, PD_UNIT, PD_CH, 0, 0, PD_STEP},   /* pd */
+    {ENV8_NIN, ENV8_NOUT, ENV8_NPAR, 0, ENV8_CVBASE, -1, ENV8_NDATA, 0, ENV8_MIN, ENV8_MAX, ENV8_DEF, ENV8_INC, "ENV 8", ENV8_PN, ENV8_INNAMES, ENV8_LOG, ENV8_UNIT, ENV8_CH, 0, 0, ENV8_STEP},   /* env8 */
+    {SELECT_NIN, SELECT_NOUT, SELECT_NPAR, 1, SELECT_CVBASE, 1, SELECT_NDATA, 1, SELECT_MIN, SELECT_MAX, SELECT_DEF, SELECT_INC, "SELECTOR", SELECT_PN, SELECT_INNAMES, SELECT_LOG, SELECT_UNIT, SELECT_CH, 0, 0, SELECT_STEP},   /* select */
+    {RATEENV_NIN, RATEENV_NOUT, RATEENV_NPAR, 0, RATEENV_CVBASE, -1, RATEENV_NDATA, 0, RATEENV_MIN, RATEENV_MAX, RATEENV_DEF, RATEENV_INC, "RATE ENV", RATEENV_PN, RATEENV_INNAMES, RATEENV_LOG, RATEENV_UNIT, RATEENV_CH, 0, 0, RATEENV_STEP},   /* rateenv */
+    {RATIO_NIN, RATIO_NOUT, RATIO_NPAR, 0, RATIO_CVBASE, -1, RATIO_NDATA, 0, RATIO_MIN, RATIO_MAX, RATIO_DEF, RATIO_INC, "RATIO", RATIO_PN, RATIO_INNAMES, RATIO_LOG, RATIO_UNIT, RATIO_CH, 0, 0, RATIO_STEP},   /* ratio */
+    {ESP_NIN, ESP_NOUT, ESP_NPAR, 0, ESP_CVBASE, 0, ESP_NDATA, 3, ESP_MIN, ESP_MAX, ESP_DEF, ESP_INC, "FOLLOWER", ESP_PN, ESP_INNAMES, ESP_LOG, ESP_UNIT, ESP_CH, 0, 0, ESP_STEP},   /* esp */
 };
