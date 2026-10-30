@@ -31,8 +31,8 @@ static uint8_t home_turned;                   /* PRESET turned the patch, or K1.
 static const uint8_t PANEL_BTN_ID[ENG_PANEL_BUTTONS] = {2, 3, 4, 5, 6, 7, 10};   /* (SEQ 11 and REC 13: the step page, seq_ui.c) */
 
 /* The device's own buttons (matrix ids, M-VAVE's fm1_open order): OCT- 0, OCT+ 1: octave; SAVE 9: write the patch into its slot
- * (in the menu: and close it); HOME 8: tap = back (the trail); PLAY 12: the transport. The others are the
- * patch's (PANEL_BTN_ID). */
+ * (in the menu: and close it); HOME 8: tap = the device's first page, then the patch's home page, out of a dive back
+ * along the trail (home_tap); PLAY 12: the transport. The others are the patch's (PANEL_BTN_ID). */
 #define BTN_OCT_DOWN 0u
 #define BTN_OCT_UP 1u
 #define BTN_SAVE 9u
@@ -138,8 +138,8 @@ static void panel_button_set(uint32_t b, int down)
 }
 
 /* The trail (#114): every screen change by a button (SEQ, opening the menu; page buttons and GLO later) leaves a step
- * of where it came from; a HOME tap goes back one. ALGO / SELECT moving on the device pages are no steps. The oldest step
- * goes when the trail is full. */
+ * of where it came from; a HOME tap on such a screen goes back one (home_tap). ALGO / SELECT / HOME moving on the device
+ * pages are no steps. The oldest step goes when the trail is full. */
 #define TRAIL_MAX 8u
 static struct { uint8_t page, dev, pg; int8_t lbtn; uint8_t lstep; } trail[TRAIL_MAX];   /* (lbtn: a page list on, -1 none) */
 static uint8_t trail_n;
@@ -201,6 +201,30 @@ static void screen_back(void)
         m1_focus_now(pg_cur_dev, pg_cur_page);
     page_show(trail[trail_n].page);
     page_mask();
+}
+
+/* HOME tapped (#391, #365, D-243). A device page: its device's first page; a device's first page: the patch's home page
+ * (pages_home: the first device that is no frame), drawn as SELECT / ALGO draw a page; the home page itself: nothing. A
+ * move between device pages is no step on the trail, and landing on the home page clears it. A dive (the menu, SEQ, SONG,
+ * the environment), a Page button's list showing on a device page, and sandbox mode (the page is the editor's): one step
+ * back along the trail */
+static void home_tap(void)
+{
+    uint32_t home;
+    if (page != 0u || sb_on || pg_list_btn >= 0) {
+        screen_back();
+        return;
+    }
+    pages_ensure();
+    home = pages_home();
+    if (pg_cur_page != 0u ? pages_focus(pg_cur_dev, 0) : pg_cur_dev != home && pages_focus(home, 0)) {
+        pages_moved();
+        m1_focus_now(pg_cur_dev, pg_cur_page);
+        if (!ui_dirty)
+            ui_dirty = 1;
+    }
+    if (pg_cur_dev == home && pg_cur_page == 0u)
+        trail_n = 0;
 }
 
 /* a button opens screen p: a step on the trail; the same button again (p showing) goes back */
@@ -741,11 +765,12 @@ static void panel_edges(uint32_t p, uint32_t rel)
         glo_t0 |= 2u;
         menu_fire();
     }
-    if (p & (1u << BTN_HOME))                       /* HOME acts on release: one step back (out of the menu, the SEQ page ...),
-                                                     * unless PRESET turned the patch meanwhile; held alone it is nothing (#395) */
+    if (p & (1u << BTN_HOME))                       /* HOME acts on release (home_tap: the device's first page, the home page,
+                                                     * out of a dive back), unless PRESET turned the patch meanwhile; held
+                                                     * alone it is nothing (#395) */
         home_turned = 0;
     if ((rel & (1u << BTN_HOME)) && !home_turned)
-        screen_back();
+        home_tap();
     if (p & (1u << BTN_PLAY))                       /* PLAY acts on release, unless PRESET turned the tempo meanwhile */
         play_turned = 0;
     if ((rel & (1u << BTN_PLAY)) && !play_turned)

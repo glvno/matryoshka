@@ -468,7 +468,7 @@ The unnumbered tutorial chapter for experienced users, "Overview for advanced us
 
 ### Trail
 
-The list (at most 8) of screens a button press has opened; a HOME tap goes back one.
+The list (at most 8) of screens a button press has opened; a HOME tap on one of them goes back one. On a device page a HOME tap moves between the pages instead ([D-243](device-ui.md#D-243)).
 
 ### Unplugged
 
