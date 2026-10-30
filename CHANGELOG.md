@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 — 2026-10-30
 
 - Io 4's Unison Lead preset has no vibrato: with it, the four unison voices overloaded the FM-1 on the first key and it played on three ("ONE PART LESS"). Without it the test rig measured no shed (2026-10-30, #453). Ensemble Pad can still drop a part at four notes.
 - **An oscillator whose pitch moves costs less** (#453). On the test rig Io 4's Unison Lead and Ensemble Pad overloaded and dropped a part; the trigger was their vibrato (`vco / mod = 0.03`): an oscillator works out its phase increment (`exp2_scale`) every sample its pitch input moves, so a vibrato, a glide or a note's start pays it every sample. `exp2_scale` now does its arithmetic in 32 bits where the result fits them (every phase increment) and is bit for bit the same (`tools/engine_exact.sh`, 304 kits; `exact_test` against the 64-bit form on every pitch from -70 to +40 octaves for twelve bases and 20 million random pairs). On the CPU model (`tools/cpu`, 4 notes held, 400 blocks), peak block before → after: Ensemble Pad 565 k → 548 k cycles (about 2,444 → 2,370 µs of the 2,902 µs block), Unison Lead 565 k → 550 k; the vibrato's extra cost in Ensemble Pad 55 k → 43 k cycles a block; the note-start block of Io 4's other presets 556 k → 544 k. Every factory check's peak block -0.4 % on average (`npm run cpu-hot`), most in Vernon 100 (-2.7 %), Acid at 4 parts (-2.7 %) and Monolith D (-2.3 %), none slower. Rig data: `docs/measurements/2026-10-30-rig-io4-*.json`. Host-tested; not yet on a device.
