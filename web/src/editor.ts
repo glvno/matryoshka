@@ -784,6 +784,7 @@ export class Editor {
     if (!this.rowSel.size) this.rowTouch = false;
     this.showRowSel();
     this.markFocus();
+    if (this.armedSet.size) this.showArmed();   // (the rebuilt cards: armed, and armed with an armed device, #418)
     this.applyStack();
     if (this.buttonPop) this.fillButtonEditor();
     this.flawPanel?.sync();
