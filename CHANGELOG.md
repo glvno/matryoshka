@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- The factory assembly `step sequencer` is gone (#417): a Steps track, a pattern or the Arpeggiator does its job. `random melody` (chance) and `clock` (a free-running clock with divisions for S&H, grains and the `seq` module) stay. A patch that holds a copy of it plays as before: an inserted assembly is copied into the patch.
 - Factory presets are written by hand, one text file per engine (`web/presets/cards/`, `npm run presets`), in place of the rule-made Bright / Dark / Pad set: every one of the 24 FM-1 engines has five, named for what they are for (Fat Bass, Vintage Strings, Acid Squelch, Tight Techno ...). Drafts, not yet listened to on the FM-1 (#413)
 ### Changes
 

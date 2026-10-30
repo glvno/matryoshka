@@ -3613,24 +3613,6 @@ asm('vibrato', 'Utilities', (b) => {
   b.param('wave', lfo, 'wave');
 });
 
-// a step sequencer with its own clock: pitch (quantized) and gate out; add its pitch to Main's into an oscillator
-asm('step sequencer', 'Utilities', (b) => {
-  const clk = b.add('lfo', 0, 0, { wave: 3, rate: 8, depth: 1 });
-  const sq = b.add('seq', 1, 0, { s1: 0, s2: 0.25, s3: 0.58, s4: 0.33, s5: 0, s6: 0.75, s7: 0.58, s8: 1, len: 8, dir: 0 });
-  const qn = b.add('quant', 2, 0, { scale: 1, root: 0 });
-  b.wire(clk, 'out', sq, 'clock');
-  b.wire(sq, 'out', qn, 'in');
-  b.input('reset', sq, 'reset', [clk, 'reset']);
-  b.output('pitch', qn, 'out');
-  b.output('gate', sq, 'gate');
-  b.param('tempo', clk, 'rate', { head: 'sequence' });
-  b.param('length', sq, 'len');
-  b.param('direction', sq, 'dir');
-  b.param('scale', qn, 'scale');
-  b.param('root', qn, 'root');
-  for (const q of ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8']) b.param(q, sq, q, q === 's1' ? { head: 'steps' } : {});
-});
-
 // a random melody: clocked sample & hold on noise, quantized; a pulse makes the gate
 asm('random melody', 'Utilities', (b) => {
   const clk = b.add('lfo', 0, 0, { wave: 3, rate: 6, depth: 1 });
