@@ -105,6 +105,12 @@
   },
   {
    "name": "<7PH",
+   "len": 3828,
+   "fnv": "1b910635",
+   "version": 46
+  },
+  {
+   "name": "<7PH",
    "len": 3839,
    "fnv": "690e5dce",
    "version": 46
@@ -1355,6 +1361,12 @@
    "name": "BRIEFCASE 3",
    "len": 3837,
    "fnv": "6e7c84b9",
+   "version": 46
+  },
+  {
+   "name": "BRIEFCASE 3",
+   "len": 3827,
+   "fnv": "fd628273",
    "version": 46
   },
   {
@@ -3713,6 +3725,12 @@
    "name": "IO 4",
    "len": 3838,
    "fnv": "0d3653ec",
+   "version": 46
+  },
+  {
+   "name": "IO 4",
+   "len": 3827,
+   "fnv": "627fce20",
    "version": 46
   },
   {
@@ -7625,6 +7643,12 @@
    "name": "VERNON 100",
    "len": 3838,
    "fnv": "c8a06de5",
+   "version": 46
+  },
+  {
+   "name": "VERNON 100",
+   "len": 3821,
+   "fnv": "d158b34a",
    "version": 46
   },
   {
