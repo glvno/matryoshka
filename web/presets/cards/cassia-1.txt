@@ -5,8 +5,7 @@
 #
 # voice
 #   voices = 2                         1..16
-#   line = 3                           1..8
-#   1+1' = 0                           -4..4
+#   line = 4                           1..8
 # vibrato
 #   vib wave = triangle                sine, triangle, saw, square, S&H
 #   vib rate = 5.5 Hz                  0.02..40 Hz
@@ -41,8 +40,8 @@
 #   at dca = 0                         -4..4
 #   at vib = 0                         -4..4
 # line 1
-#   line 1 / wave = 0                  -4..4
-#   line 1 / wave 2 = 0                -4..4
+#   line 1 / wave = saw                saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3
+#   line 1 / wave 2 = saw              saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3
 #   line 1 / res range = 3             -4..4
 # dcw 1
 #   dcw 1: a screen, not a value
@@ -85,8 +84,8 @@
 #   dca 1 / sus = 3                    off, 1, 2, 3, 4, 5, 6, 7, 8
 #   dca 1 / end = 6                    1..8
 # line 2
-#   line 2 / wave = 5                  -4..4
-#   line 2 / wave 2 = 0                -4..4
+#   line 2 / wave = reso 1             saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3
+#   line 2 / wave 2 = reso 1           saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3
 #   line 2 / res range = 3             -4..4
 #   ring = 1                           1..8
 #   noise = 1                          1..8
@@ -134,14 +133,16 @@
 #   dca 2 / end = 6                    1..8
 #   out: a screen, not a value
 
-# Drafts of 2026-10-29 after the Casio CZ-1, not yet listened to on the FM-1 (#413).
+# Drafts of 2026-10-29 after the Casio CZ-1 (#413), listened to by the owner on 2026-10-29. Reso Pad moved onto a
+# resonance wave on 2026-10-30 (#430), not yet listened to. Wave 2 set to the line's wave: no second waveform.
+# line: 1 line 1, 2 line 2, 3 1+1', 4 1+2' (both). vib depth is in semitones.
 engine: Cassia 1
 
 preset: PD Bass
   # the CZ-101 synth bass: line 1 alone, a saw with a square on every other cycle, the DCW snaps
   # open and settles dark in a quarter second; key follow keeps the top of the keyboard dull
   line = 1
-  line 1 / wave 2 = 2
+  line 1 / wave 2 = square
   dcw kf = -0.35
   vel dcw = 0.45
   dcw 1 / r1 = 0.003 s
@@ -163,11 +164,11 @@ preset: PD Bass
   dca 1 / end = 4
 
 preset: PD Brass
-  # synth brass: both lines play line 1's saw (1 + 1'), line 2 eight cents sharp, a pitch blip at
+  # synth brass: both lines play line 1's saw (1+1'), line 2 eight cents sharp, a pitch blip at
   # the start, the DCW swells in over a tenth of a second; aftertouch opens it and adds vibrato
-  1+1' = 1
+  line = 3
   fine = 8 ct
-  vib depth = 0.02
+  vib depth = 0.24
   vib delay = 0.8 s
   vel dcw = 0.3
   at dcw = 0.5
@@ -199,8 +200,10 @@ preset: Glass Bell
   # fall at once and the DCAs decay to nothing with no sustain step, so the note rings out
   ring = 2
   coarse = 29 st
-  line 1 / wave = 3
-  line 2 / wave = 1
+  line 1 / wave = dbl sine
+  line 1 / wave 2 = dbl sine
+  line 2 / wave = square
+  line 2 / wave 2 = square
   dcw kf = -0.3
   vel dcw = 0.4
   dcw 1 / r1 = 0.002 s
@@ -237,11 +240,12 @@ preset: Glass Bell
 preset: Reso Pad
   # a pad: line 2's resonance wave (Init's reso 1) swept up four octaves by a two-second DCW
   # against line 1's saw-pulse, seven cents flat; slow DCAs, vibrato after a second and a half
-  line 1 / wave = 4
+  line 1 / wave = saw-pulse
+  line 1 / wave 2 = saw-pulse
   line 2 / res range = 4
   fine = -7 ct
   vib rate = 4.5 Hz
-  vib depth = 0.01
+  vib depth = 0.12
   vib delay = 1.5 s
   dcw kf = -0.1
   at dcw = 0.3
@@ -280,8 +284,10 @@ preset: Reso Pad
 preset: Tine Piano
   # an electric piano: line 1 a square that velocity opens and the DCW closes fast; line 2 an
   # octave up, a double sine, the tine's ping, gone in a moment; the body falls over seconds
-  line 1 / wave = 1
-  line 2 / wave = 3
+  line 1 / wave = square
+  line 1 / wave 2 = square
+  line 2 / wave = dbl sine
+  line 2 / wave 2 = dbl sine
   coarse = 12 st
   dcw kf = -0.3
   dca kf = -0.15

@@ -7,7 +7,8 @@
 //   engine: Hera 6                 the engine's name, once, before the first preset
 //   preset: Brass                  starts a preset (its name, up to PRESET_NAME_MAX characters; the FM-1 shows 16)
 //     filters / cutoff = 1800 Hz   a row's value: "section / label = value"; the label alone when it is the only one
-//     dco / wave = saw             a choice row takes the choice's name; a switch takes on or off
+//     dco / wave = saw             a choice row takes the choice's name (a Selector row its named position's, or its
+//                                  number); a switch takes on or off
 //     env / a = 0.05 s             a number is in the row's unit (the unit may be left out), snapped to the row's step
 //   # a comment                    comments and blank lines go anywhere
 //
@@ -36,6 +37,8 @@ export interface CardRow {
   pd?: ParamDef;
   /** the value Init has */
   init: number;
+  /** a Selector row's position names (#358), position 1 first, as many as the Selector has positions */
+  names?: string[];
 }
 
 /** the card file's name for an engine: its name in lower case, runs of other characters as "-" */
@@ -48,7 +51,8 @@ export function cardRows(def: AssemblyDef): CardRow[] {
     if (r.head) section = r.head;
     const m = def.modules.find((x) => x.id === r.module)!;
     const pd = DEFS[m.type]?.params.find((d) => d.name === r.param);
-    return { i, section, label: r.label, key: '', type: m.type, param: r.param, pd: pd && !pd.screen ? pd : undefined, init: m.params[r.param] ?? pd?.default ?? 0 };
+    const names = r.names && m.type === 'select' && r.param === 'pos' ? r.names.slice(0, m.params.count ?? r.names.length) : undefined;
+    return { i, section, label: r.label, key: '', type: m.type, param: r.param, pd: pd && !pd.screen ? pd : undefined, init: m.params[r.param] ?? pd?.default ?? 0, ...(names ? { names } : {}) };
   });
   const count = new Map<string, number>();
   for (const r of rows) count.set(`${r.section}/${r.label}`, (count.get(`${r.section}/${r.label}`) ?? 0) + 1);
@@ -83,6 +87,7 @@ export function formatValue(r: CardRow, v: number): string {
   const pd = r.pd;
   if (!pd) return num(v);
   if (pd.toggle) return v ? 'on' : 'off';
+  if (r.names && Number.isInteger(v) && r.names[v - pd.min]) return r.names[v - pd.min];
   if (pd.choices && Number.isInteger(v) && v >= 0 && v < pd.choices.length) return pd.choices[v];
   return pd.unit ? `${num(v)} ${pd.unit}` : num(v);
 }
@@ -95,13 +100,17 @@ export function parseValue(r: CardRow, text: string): { value: number } | { erro
   const lo = pd.min;
   const hi = pd.top ?? pd.max;
   if (pd.toggle && (t === 'on' || t === 'off')) return { value: t === 'on' ? 1 : 0 };
+  if (r.names) {
+    const k = r.names.findIndex((c) => norm(c) === t);
+    if (k >= 0) return { value: pd.min + k };
+  }
   if (pd.choices) {
     const k = pd.choices.findIndex((c) => norm(c) === t);
     if (k >= 0) return k <= hi ? { value: k } : { error: `${r.key}: ${pd.choices[k]} is past the FM-1's range` };
   }
   const m = /^([-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?)\s*([^\d\s].*)?$/.exec(t);
   if (!m) {
-    const choices = pd.toggle ? 'on or off' : pd.choices ? pd.choices.join(', ') : `a number${pd.unit ? ` in ${pd.unit}` : ''}`;
+    const choices = pd.toggle ? 'on or off' : r.names ? r.names.join(', ') : pd.choices ? pd.choices.join(', ') : `a number${pd.unit ? ` in ${pd.unit}` : ''}`;
     return { error: `${r.key}: "${text.trim()}" is not a value (${choices})` };
   }
   let v = Number(m[1]);
@@ -241,7 +250,7 @@ export function cardTemplate(def: AssemblyDef): string {
       continue;
     }
     const pd = r.pd;
-    const range = pd.toggle ? 'off, on' : pd.choices ? pd.choices.slice(0, (pd.top ?? pd.max) + 1).join(', ') : `${num(pd.min)}..${num(pd.top ?? pd.max)}${pd.unit ? ` ${pd.unit}` : ''}`;
+    const range = pd.toggle ? 'off, on' : r.names ? r.names.join(', ') : pd.choices ? pd.choices.slice(0, (pd.top ?? pd.max) + 1).join(', ') : `${num(pd.min)}..${num(pd.top ?? pd.max)}${pd.unit ? ` ${pd.unit}` : ''}`;
     out.push(`#   ${`${key} = ${formatValue(r, r.init)}`.padEnd(34)} ${range}`);
   }
   out.push('', `engine: ${def.name}`, '');

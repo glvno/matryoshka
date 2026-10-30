@@ -4,33 +4,33 @@
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
 #
 # vco 1
-#   kybd = 1                           1..8
+#   kybd = audio                       audio, lf
 #   vco 1 / coarse = 0 st              -48..48 st
 #   vco 1 / fine = 0 ct                -100..100 ct
 #   vco 1 / fm 1 = 0                   -4..4
-#   vco 1 / fm 1 src = 1               1..8
+#   vco 1 / fm 1 src = sine            sine, square
 #   vco 1 / fm 2 = 0                   -4..4
-#   vco 1 / fm 2 src = 1               1..8
+#   vco 1 / fm 2 src = s/h             s/h, adsr
 #   vco 1 / pulse width = 0.5          0.05..0.95
 #   vco 1 / pwm = 0                    -4..4
-#   vco 1 / pwm src = 1                1..8
+#   vco 1 / pwm src = lfo              lfo, adsr
 # vco 2
 #   vco 2 / coarse = 12 st             -48..48 st
 #   vco 2 / fine = 4 ct                -100..100 ct
-#   sync = 1                           1..8
+#   sync = off                         off, on
 #   vco 2 / fm 1 = 0                   -4..4
-#   vco 2 / fm 1 src = 1               1..8
+#   vco 2 / fm 1 src = sine            sine, s/h mix
 #   vco 2 / fm 2 = 0                   -4..4
-#   vco 2 / fm 2 src = 1               1..8
+#   vco 2 / fm 2 src = s/h             s/h, adsr
 #   vco 2 / pulse width = 0.35         0.05..0.95
 #   vco 2 / pwm = 0                    -4..4
-#   vco 2 / pwm src = 1                1..8
+#   vco 2 / pwm src = lfo              lfo, adsr
 # lfo · s/h
 #   lfo freq = 6 Hz                    0.02..40 Hz
 #   s/h 1 = 0                          -4..4
 #   s/h 2 = 1                          -4..4
-#   s/h 2 src = 1                      1..8
-#   s/h trig = 1                       1..8
+#   s/h 2 src = noise                  noise, vco 2
+#   s/h trig = lfo                     lfo, kybd
 #   output lag = 0.001 s               0.001..5 s
 #   portamento = 0                     0..1
 # mixer
@@ -39,33 +39,33 @@
 #   vco 2 = 0.35                       0..1
 #   vco 2 wave = square                sine, triangle, saw, square, sharktooth, reverse saw
 #   noise/ring = 0                     0..1
-#   n/r src = 1                        1..8
+#   n/r src = noise                    noise, ring
 #   noise = 0                          0..1
 # filters · vca
 #   vcf freq = 900 Hz                  20..16000 Hz
 #   resonance = 0.4                    0..1
 #   mod 1 = 0.25                       0..1
-#   mod 1 src = 1                      1..8
+#   mod 1 src = kybd                   kybd, s/h mix
 #   mod 2 = 0                          0..1
-#   mod 2 src = 1                      1..8
+#   mod 2 src = s/h                    s/h, lfo
 #   mod 3 = 0.6                        0..1
-#   mod 3 src = 1                      1..8
+#   mod 3 src = adsr                   adsr, ar
 #   hpf = 40 Hz                        20..16000 Hz
-#   vca eg = 1                         1..8
+#   vca eg = ar                        ar, adsr
 #   vca level = 1                      -4..4
 #   gain = 0                           -4..4
 # envelopes
 #   ar: a screen, not a value
 #   attack = 0.004 s                   0.001..5 s
 #   release = 0.25 s                   0.001..8 s
-#   ar trig = 1                        1..8
+#   ar trig = kybd                     kybd, lfo
 #   adsr: a screen, not a value
 #   a = 0.005 s                        0.001..5 s
 #   d = 0.4 s                          0.001..5 s
 #   s = 0.4                            0..1
 #   r = 0.3 s                          0.001..8 s
-#   adsr trig = 1                      1..8
-#   repeat = 1                         1..8
+#   adsr trig = kybd                   kybd, lfo
+#   repeat = kybd                      kybd, auto
 #   out: a screen, not a value
 
 # Drafts of 2026-10-29 after the ARP Odyssey, not yet listened to on the FM-1 (#413).
