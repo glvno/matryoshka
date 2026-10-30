@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { armable, armableDevices, armedFromMask, armedWith, armMask, armView, keepArmed, mutedCables, virtualCables } from './arm';
+import { armable, armableDevices, armDrawing, armedFromMask, armedWith, armMask, armView, keepArmed, mutedCables, virtualCables } from './arm';
 import { assembliesOf } from './assembly';
+import { deviceView } from './poly';
 import { FM1_PRESETS } from './presets';
 import { FACTORY } from './assemblies';
 import { insertAssembly } from './assembly';
@@ -135,5 +136,69 @@ describe('an instrument armed through its key sources (#395)', () => {
     const [lo, hi] = armMask(p, [`a${a.id}`]);
     const [slo, shi] = armMask(p, [`m${steps}`]);
     expect([lo & slo, hi & shi]).toEqual([slo, shi]);
+  });
+});
+
+describe('what the editor draws for the arm (#418): everything the arm routes, nothing else', () => {
+  const ends = (c: { from: { module: number; port: string }; to: { module: number; port: string } }): string => `${c.from.module}:${c.from.port}>${c.to.module}:${c.to.port}`;
+  const heraChain = (): { p: Patch; a: string; steps: number; arp: number; cables: string[] } => {
+    const p = FM1_PRESETS['Hera 6']();
+    const a = `a${assembliesOf(p).find((x) => x.label === 'Hera 6')!.id}`;
+    const main = p.modules.find((m) => m.type === 'fm1')!.id;
+    const steps = p.modules.find((m) => m.type === 'steps')!.id, arp = p.modules.find((m) => m.type === 'arp')!.id;
+    // the factory chain: Main's keys into the track, the track's into the Arpeggiator, its into the instrument
+    const chain = p.cables.filter((c) => (c.from.module === main && c.from.port === 'keys') || (c.from.module === steps && c.from.port === 'keys') || (c.from.module === arp && c.from.port === 'keys'));
+    expect(chain.map((c) => c.from.module).sort()).toEqual([main, steps, arp].sort());
+    return { p, a, steps, arp, cables: chain.map(ends).sort() };
+  };
+
+  it('a factory instrument armed at the instrument: no virtual cable, the whole chain live, the track and the Arpeggiator armed with it', () => {
+    const { p, a, steps, arp, cables } = heraChain();
+    const d = armDrawing(p, [a]);
+    expect(d.virtual).toEqual([]);
+    expect(d.muted).toEqual([]);
+    expect(d.live.map(ends).sort()).toEqual(cables);
+    expect(d.with.sort()).toEqual([`m${arp}`, `m${steps}`].sort());
+  });
+
+  it('armed at the track: the chain is live on from the track too, nothing is armed with it', () => {
+    const { p, steps, cables } = heraChain();
+    const d = armDrawing(p, [`m${steps}`]);
+    expect(d.virtual).toEqual([]);
+    expect(d.live.map(ends).sort()).toEqual(cables);
+    expect(d.with).toEqual([]);
+  });
+
+  it("from the FM-1's masks: SEL on the instrument's page names its key sources and draws the instrument armed; the SEQ page names the track alone", () => {
+    const { p, a, steps, arp, cables } = heraChain();
+    const index = new Map(deviceView(p, true).patch.modules.map((m, i) => [m.id, i]));
+    const bit = (id: number): number => 1 << index.get(id)!;
+    // engine.c eng_arms: an instrument fed by an Arpeggiator arms as the Arpeggiator and the track it plays, not its own modules
+    const sel = armedFromMask(p, bit(steps) | bit(arp), 0);
+    expect(sel).toEqual([a]);
+    expect(armDrawing(p, sel)).toEqual(armDrawing(p, [a]));
+    // the SEQ page (D-545) arms the track it shows
+    const seq = armedFromMask(p, bit(steps), 0);
+    expect(seq).toEqual([`m${steps}`]);
+    expect(armDrawing(p, seq).live.map(ends).sort()).toEqual(cables);
+    // and the editor's own mask comes back as what was armed
+    expect(armedFromMask(p, ...armMask(p, [a]))).toEqual([a]);
+  });
+
+  it('a device no cable feeds gets a virtual cable into its keys jack, and the cable into the other device is muted', () => {
+    const { p, main, a, b } = rig();
+    const d = armDrawing(p, [`m${b.id}`]);
+    expect(d.virtual.map(ends)).toEqual([`${main.id}:keys>${b.id}:keys`]);
+    expect(d.muted.map(ends)).toEqual([`${main.id}:keys>${a.id}:keys`]);
+    expect(d.live).toEqual([]);
+    expect(d.with).toEqual([]);
+    // the cabled device armed: its cable is live, nothing virtual
+    const e = armDrawing(p, [`m${a.id}`]);
+    expect(e.virtual).toEqual([]);
+    expect(e.live.map(ends)).toEqual([`${main.id}:keys>${a.id}:keys`]);
+  });
+
+  it('nothing armed: nothing drawn', () => {
+    expect(armDrawing(rig().p, [])).toEqual({ virtual: [], live: [], muted: [], with: [] });
   });
 });
