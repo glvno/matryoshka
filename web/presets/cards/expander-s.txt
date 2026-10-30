@@ -1,0 +1,154 @@
+# Expander S: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# voice
+#   voices = 4                         1..16
+#   unison = off                       off, on, share
+#   width = 0.4                        -4..4
+# oscillators
+#   vco 1 wave = saw                   sine, triangle, saw, square, sharktooth, reverse saw
+#   vco 1 pw = 0.5                     0.05..0.95
+#   vco 2 wave = square                sine, triangle, saw, square, sharktooth, reverse saw
+#   vco 2 pw = 0.4                     0.05..0.95
+#   vco 2 freq = 0 st                  -48..48 st
+#   vco 2 fine = 5 ct                  -100..100 ct
+#   vco 1 = 0.5                        0..1
+#   vco 2 = 0.4                        0..1
+# filter
+#   cutoff = 1100 Hz                   20..16000 Hz
+#   resonance = 0.35                   0..1
+#   mode = 0                           0..1
+#   env 1 amt = 0.25                   -4..4
+# envelopes
+#   env 1: a screen, not a value
+#   envelopes / a (1) = 0.01 s         0.001..5 s
+#   envelopes / d (1) = 0.6 s          0.001..5 s
+#   envelopes / s (1) = 0.4            0..1
+#   envelopes / r (1) = 0.6 s          0.001..8 s
+#   env 2: a screen, not a value
+#   envelopes / a (2) = 0.01 s         0.001..5 s
+#   envelopes / d (2) = 0.6 s          0.001..5 s
+#   envelopes / s (2) = 0.8            0..1
+#   envelopes / r (2) = 0.6 s          0.001..8 s
+# lfo
+#   lfo rate = 5 Hz                    0.02..40 Hz
+#   vibrato = 0                        -4..4
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the Oberheim SEM, not yet listened to on the FM-1 (#413).
+engine: Expander S
+
+preset: SEM Brass
+  width = 0.5
+  vco 1 wave = saw
+  vco 2 wave = saw
+  vco 2 fine = 8 ct
+  vco 1 = 0.5
+  vco 2 = 0.5
+  cutoff = 700 Hz
+  resonance = 0.2
+  mode = 0
+  env 1 amt = 0.2
+  envelopes / a (1) = 0.06 s
+  envelopes / d (1) = 0.5 s
+  envelopes / s (1) = 0.6
+  envelopes / r (1) = 0.3 s
+  envelopes / a (2) = 0.04 s
+  envelopes / d (2) = 0.4 s
+  envelopes / s (2) = 0.9
+  envelopes / r (2) = 0.3 s
+  lfo rate = 5.5 Hz
+  vibrato = 0.05
+
+preset: SEM Bass
+  voices = 1
+  width = 0
+  vco 1 wave = saw
+  vco 2 wave = square
+  vco 2 pw = 0.5
+  vco 2 freq = -12 st
+  vco 2 fine = 0 ct
+  vco 1 = 0.5
+  vco 2 = 0.45
+  cutoff = 350 Hz
+  resonance = 0.3
+  mode = 0
+  env 1 amt = 0.18
+  envelopes / a (1) = 0.002 s
+  envelopes / d (1) = 0.3 s
+  envelopes / s (1) = 0.2
+  envelopes / r (1) = 0.15 s
+  envelopes / a (2) = 0.002 s
+  envelopes / d (2) = 0.3 s
+  envelopes / s (2) = 0.6
+  envelopes / r (2) = 0.15 s
+
+preset: Notch Strings
+  voices = 6
+  width = 1
+  vco 1 wave = saw
+  vco 2 wave = saw
+  vco 2 fine = -7 ct
+  vco 1 = 0.5
+  vco 2 = 0.5
+  cutoff = 1500 Hz
+  resonance = 0.2
+  mode = 0.5
+  env 1 amt = 0.08
+  envelopes / a (1) = 0.8 s
+  envelopes / d (1) = 1 s
+  envelopes / s (1) = 0.7
+  envelopes / r (1) = 1.5 s
+  envelopes / a (2) = 0.7 s
+  envelopes / d (2) = 1 s
+  envelopes / s (2) = 0.9
+  envelopes / r (2) = 1.8 s
+  lfo rate = 5.5 Hz
+  vibrato = 0.03
+
+preset: Highpass Pluck
+  width = 0.6
+  vco 1 wave = square
+  vco 1 pw = 0.3
+  vco 2 wave = square
+  vco 2 pw = 0.6
+  vco 2 freq = 12 st
+  vco 1 = 0.5
+  vco 2 = 0.35
+  cutoff = 600 Hz
+  resonance = 0.5
+  mode = 1
+  env 1 amt = 0.3
+  envelopes / a (1) = 0.001 s
+  envelopes / d (1) = 0.25 s
+  envelopes / s (1) = 0
+  envelopes / r (1) = 0.2 s
+  envelopes / a (2) = 0.001 s
+  envelopes / d (2) = 0.4 s
+  envelopes / s (2) = 0.2
+  envelopes / r (2) = 0.3 s
+
+preset: Unison Lead
+  unison = on
+  width = 0.2
+  vco 1 wave = saw
+  vco 2 wave = saw
+  vco 2 fine = 12 ct
+  vco 1 = 0.5
+  vco 2 = 0.5
+  cutoff = 1800 Hz
+  resonance = 0.4
+  mode = 0
+  env 1 amt = 0.15
+  envelopes / a (1) = 0.01 s
+  envelopes / d (1) = 0.4 s
+  envelopes / s (1) = 0.5
+  envelopes / r (1) = 0.3 s
+  envelopes / a (2) = 0.01 s
+  envelopes / d (2) = 0.3 s
+  envelopes / s (2) = 0.8
+  envelopes / r (2) = 0.3 s
+  lfo rate = 6 Hz
+  vibrato = 0.06

@@ -1,0 +1,266 @@
+# 8 Lire: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# 1-4
+#   1-4 / hold = 0                     -4..4
+#   from 5-8 = 1                       0..1
+#   1-4 / from lfo = 0                 0..1
+#   1-4 / from fb = 0                  0..1
+#   mod 1-2 = 0                        -4..4
+#   mod 3-4 = 0                        -4..4
+#   sharp 1-2 = 2                      1..32
+#   sharp 3-4 = 2                      1..32
+# 5-8
+#   5-8 / hold = 0                     -4..4
+#   from 1-4 = 1                       0..1
+#   5-8 / from lfo = 0                 0..1
+#   5-8 / from fb = 0                  0..1
+#   mod 5-6 = 0                        -4..4
+#   mod 7-8 = 0                        -4..4
+#   sharp 5-6 = 2                      1..32
+#   sharp 7-8 = 2                      1..32
+# hyper lfo
+#   rate a = 0.7 Hz                    0.02..40 Hz
+#   rate b = 1.9 Hz                    0.02..40 Hz
+#   and / or = 0                       0..1
+#   lfo → delay = 0                    -4..4
+# delay
+#   time = 330 ms                      1..700 ms
+#   feedback = 0.45                    0..0.95
+#   mix = 0.35                         0..1
+#   ping-pong = on                     off, on
+# out
+#   drive = 1.5                        1..32
+#   vol = 0.7                          0..1
+# voice 1
+#   voice 1 / tune = -22 st            -48..48 st
+#   voice 1 / fine = 0 ct              -100..100 ct
+#   voice 1 / attack = 0.02 s          0.001..5 s
+#   voice 1 / release = 1.2 s          0.001..8 s
+# voice 2
+#   voice 2 / tune = -22 st            -48..48 st
+#   voice 2 / fine = 7 ct              -100..100 ct
+#   voice 2 / attack = 0.02 s          0.001..5 s
+#   voice 2 / release = 1.2 s          0.001..8 s
+# voice 3
+#   voice 3 / tune = -15 st            -48..48 st
+#   voice 3 / fine = 0 ct              -100..100 ct
+#   voice 3 / attack = 0.6 s           0.001..5 s
+#   voice 3 / release = 2.5 s          0.001..8 s
+# voice 4
+#   voice 4 / tune = -15 st            -48..48 st
+#   voice 4 / fine = -6 ct             -100..100 ct
+#   voice 4 / attack = 0.6 s           0.001..5 s
+#   voice 4 / release = 2.5 s          0.001..8 s
+# voice 5
+#   voice 5 / tune = -10 st            -48..48 st
+#   voice 5 / fine = 0 ct              -100..100 ct
+#   voice 5 / attack = 0.01 s          0.001..5 s
+#   voice 5 / release = 0.6 s          0.001..8 s
+# voice 6
+#   voice 6 / tune = -3 st             -48..48 st
+#   voice 6 / fine = 4 ct              -100..100 ct
+#   voice 6 / attack = 0.01 s          0.001..5 s
+#   voice 6 / release = 0.6 s          0.001..8 s
+# voice 7
+#   voice 7 / tune = 0 st              -48..48 st
+#   voice 7 / fine = 0 ct              -100..100 ct
+#   voice 7 / attack = 0.9 s           0.001..5 s
+#   voice 7 / release = 3 s            0.001..8 s
+# voice 8
+#   voice 8 / tune = 4 st              -48..48 st
+#   voice 8 / fine = -3 ct             -100..100 ct
+#   voice 8 / attack = 0.9 s           0.001..5 s
+#   voice 8 / release = 3 s            0.001..8 s
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the SOMA Lyra-8, not yet listened to on the FM-1 (#413).
+engine: 8 Lire
+
+# Keys F3..F4 each trigger one of the eight voices at its own tune; "hold" keeps a side
+# sounding without a key. "mod n-m" is the FM depth into that pair from the other side's
+# audio ("from 5-8" / "from 1-4"), the hyper LFO ("from lfo") and the delay output ("from fb").
+
+preset: Lyre Chord
+# Gentle, played from the keys: a C major stack across three octaves, slow swells, light ping-pong delay.
+voice 1 / tune = -24 st
+voice 1 / attack = 0.3 s
+voice 1 / release = 2.5 s
+voice 2 / tune = -17 st
+voice 2 / fine = 4 ct
+voice 2 / attack = 0.3 s
+voice 2 / release = 2.5 s
+voice 3 / tune = -12 st
+voice 3 / fine = -3 ct
+voice 3 / attack = 0.4 s
+voice 3 / release = 3 s
+voice 4 / tune = -8 st
+voice 4 / attack = 0.4 s
+voice 4 / release = 3 s
+voice 5 / tune = -5 st
+voice 5 / fine = 5 ct
+voice 5 / attack = 0.3 s
+voice 5 / release = 2.5 s
+voice 6 / tune = 0 st
+voice 6 / attack = 0.3 s
+voice 6 / release = 2.5 s
+voice 7 / tune = 4 st
+voice 7 / fine = -4 ct
+voice 7 / attack = 0.5 s
+voice 7 / release = 3.5 s
+voice 8 / tune = 7 st
+voice 8 / attack = 0.5 s
+voice 8 / release = 3.5 s
+sharp 1-2 = 1.5
+sharp 3-4 = 1.5
+sharp 5-6 = 1.5
+sharp 7-8 = 1.5
+time = 420 ms
+feedback = 0.4
+mix = 0.3
+drive = 1.2
+
+preset: Eight Drone
+# Self-running: both holds up on low fifths and octaves with slow beating, a touch of cross FM and a slow hyper LFO wandering the delay.
+1-4 / hold = 1
+5-8 / hold = 1
+voice 1 / tune = -36 st
+voice 2 / tune = -29 st
+voice 2 / fine = 5 ct
+voice 3 / tune = -24 st
+voice 3 / fine = -6 ct
+voice 4 / tune = -24 st
+voice 4 / fine = 9 ct
+voice 5 / tune = -17 st
+voice 6 / tune = -12 st
+voice 6 / fine = -7 ct
+voice 7 / tune = -12 st
+voice 7 / fine = 4 ct
+voice 8 / tune = -5 st
+mod 1-2 = 0.15
+mod 7-8 = 0.1
+1-4 / from lfo = 0.3
+sharp 1-2 = 3
+sharp 5-6 = 3
+rate a = 0.05 Hz
+rate b = 0.11 Hz
+and / or = 0.5
+lfo → delay = 0.3
+time = 600 ms
+feedback = 0.6
+mix = 0.45
+vol = 0.55
+
+preset: Pair FM Bells
+# Keys: each side frequency-modulates the other, so every strike rings metallic; wide intervals, quick attacks, long decays.
+voice 1 / tune = -12 st
+voice 1 / attack = 0.005 s
+voice 1 / release = 2 s
+voice 2 / tune = 7 st
+voice 2 / attack = 0.005 s
+voice 2 / release = 2 s
+voice 3 / tune = 0 st
+voice 3 / attack = 0.005 s
+voice 3 / release = 2.5 s
+voice 4 / tune = 19 st
+voice 4 / fine = -6 ct
+voice 4 / attack = 0.005 s
+voice 4 / release = 2.5 s
+voice 5 / tune = -5 st
+voice 5 / attack = 0.005 s
+voice 5 / release = 2 s
+voice 6 / tune = 14 st
+voice 6 / fine = 8 ct
+voice 6 / attack = 0.005 s
+voice 6 / release = 2 s
+voice 7 / tune = 2 st
+voice 7 / attack = 0.005 s
+voice 7 / release = 3 s
+voice 8 / tune = 26 st
+voice 8 / attack = 0.005 s
+voice 8 / release = 3 s
+mod 1-2 = 1.5
+mod 3-4 = 1
+mod 5-6 = 1.2
+mod 7-8 = 0.8
+sharp 1-2 = 4
+sharp 3-4 = 4
+sharp 5-6 = 4
+sharp 7-8 = 4
+time = 300 ms
+feedback = 0.5
+mix = 0.4
+
+preset: Trill Delay
+# Rhythmic: voices 1-4 drone a low bed while keys 5-8 are short notes whose pitch is trilled by the hyper LFO (AND of two rates) into a tight ping-pong delay.
+1-4 / hold = 0.7
+voice 1 / tune = -24 st
+voice 2 / tune = -17 st
+voice 2 / fine = 6 ct
+voice 3 / tune = -12 st
+voice 3 / fine = -5 ct
+voice 4 / tune = -12 st
+voice 4 / fine = 7 ct
+voice 5 / tune = 0 st
+voice 5 / attack = 0.01 s
+voice 5 / release = 0.4 s
+voice 6 / tune = 3 st
+voice 6 / attack = 0.01 s
+voice 6 / release = 0.4 s
+voice 7 / tune = 7 st
+voice 7 / attack = 0.01 s
+voice 7 / release = 0.5 s
+voice 8 / tune = 10 st
+voice 8 / attack = 0.01 s
+voice 8 / release = 0.5 s
+5-8 / from lfo = 1
+from 1-4 = 0
+mod 5-6 = 0.5
+mod 7-8 = -0.5
+sharp 5-6 = 3
+sharp 7-8 = 3
+rate a = 2.4 Hz
+rate b = 3.1 Hz
+and / or = 0
+lfo → delay = 0.6
+time = 180 ms
+feedback = 0.7
+mix = 0.5
+
+preset: Feedback Howl
+# Harsh and self-running: both holds up, every pair FM-ed by the other side and by the delay output, hard sharp and drive, a fast hyper LFO shaking the delay time.
+1-4 / hold = 1
+5-8 / hold = 1
+voice 1 / tune = -19 st
+voice 2 / tune = -13 st
+voice 2 / fine = 20 ct
+voice 3 / tune = -6 st
+voice 4 / tune = 1 st
+voice 4 / fine = -25 ct
+voice 5 / tune = -14 st
+voice 6 / tune = -7 st
+voice 6 / fine = 30 ct
+voice 7 / tune = 5 st
+voice 8 / tune = 11 st
+voice 8 / fine = -18 ct
+1-4 / from fb = 0.6
+5-8 / from fb = 0.6
+mod 1-2 = 2.5
+mod 3-4 = -2
+mod 5-6 = 2
+mod 7-8 = -3
+sharp 1-2 = 12
+sharp 3-4 = 8
+sharp 5-6 = 12
+sharp 7-8 = 8
+rate a = 5 Hz
+rate b = 7.3 Hz
+and / or = 1
+lfo → delay = 1.5
+time = 250 ms
+feedback = 0.8
+mix = 0.5
+drive = 4
+vol = 0.45

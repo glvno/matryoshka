@@ -1,0 +1,212 @@
+# Scrounge: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# voice 1
+#   voice 1 / pitch = -31 st           -48..48 st
+#   boom = 1.5                         -4..4
+#   voice 1 / tilt = 0.001 s           0.001..10 s
+#   voice 1 / gate = 0.35 s            0.001..10 s
+#   voice 1 / vol = 0.8                0..2
+#   voice 1 / a-b = 0                  -1..1
+#   voice 1 / x = 0                    0..1
+#   voice 1 / y = 0                    0..1
+# voice 2
+#   voice 2 / pitch = 30 st            -48..48 st
+#   grit = 6                           1..64
+#   voice 2 / tilt = 0.001 s           0.001..10 s
+#   voice 2 / gate = 0.06 s            0.001..10 s
+#   voice 2 / vol = 0.8                0..2
+#   voice 2 / a-b = 0                  -1..1
+#   voice 2 / x = 0                    0..1
+#   voice 2 / y = 0.15                 0..1
+# voice 3
+#   tone = 1800 Hz                     20..16000 Hz
+#   ring = 0.5                         0..1
+#   voice 3 / tilt = 0.001 s           0.001..10 s
+#   voice 3 / gate = 0.15 s            0.001..10 s
+#   voice 3 / vol = 0.8                0..2
+#   voice 3 / a-b = 0                  -1..1
+#   voice 3 / x = 0                    0..1
+#   voice 3 / y = 0                    0..1
+# voice 4
+#   voice 4 / pitch = 7 st             -48..48 st
+#   growl = 2                          0..8
+#   voice 4 / tilt = 0.001 s           0.001..10 s
+#   voice 4 / gate = 0.12 s            0.001..10 s
+#   voice 4 / vol = 0.8                0..2
+#   voice 4 / a-b = 0                  -1..1
+#   voice 4 / x = 0                    0..1
+#   voice 4 / y = 0.4                  0..1
+# voice 5
+#   voice 5 / pitch = -24 st           -48..48 st
+#   squelch = 0.7                      0..1
+#   voice 5 / tilt = 0.001 s           0.001..10 s
+#   voice 5 / gate = 0.25 s            0.001..10 s
+#   voice 5 / vol = 0.8                0..2
+#   voice 5 / a-b = 0                  -1..1
+#   voice 5 / x = 0.35                 0..1
+#   voice 5 / y = 0                    0..1
+# mod
+#   x gate = 0.4 s                     0.001..10 s
+#   x slew = 0.05 s                    0.001..5 s
+#   y gate = 0.2 s                     0.001..10 s
+#   y slew = 0.2 s                     0.001..5 s
+# ctl all
+#   chop = 8 Hz                        0.02..40 Hz
+#   chop depth = 0                     0..1
+#   melt = 0                           0..1
+# out
+#   vol a = 0.8                        0..1
+#   vol b = 0.8                        0..1
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the Scrooge lo-fi drum machine, not yet listened to on the FM-1 (#413).
+engine: Scrounge
+
+# voice 1 is the boom kick (boom: pitch sweep amount), voice 2 the crushed high hit (grit: crush rate),
+# voice 3 the band-passed noise hat (tone, ring), voice 4 the FM growl perc, voice 5 the squelchy ladder tom.
+# tilt is a voice's attack, gate its decay; a-b sends it to output A (-1) or B (1);
+# x and y add the two extra envelopes (keys 6 and 7) to the voice; melt crushes the sample rate of both outputs.
+
+preset: Dusty Boom Bap
+# a deep, dull kit: low boom, a gritty snap, a dark hat, a soft growl; some melt over everything
+voice 1 / pitch = -33
+boom = 2
+voice 1 / gate = 0.45
+voice 1 / vol = 0.9
+voice 2 / pitch = 24
+grit = 12
+voice 2 / gate = 0.08
+voice 2 / vol = 0.7
+tone = 2500
+ring = 0.6
+voice 3 / gate = 0.1
+voice 3 / vol = 0.6
+voice 4 / pitch = 3
+growl = 1.5
+voice 4 / gate = 0.15
+voice 4 / vol = 0.7
+voice 5 / pitch = -20
+squelch = 0.5
+voice 5 / gate = 0.2
+melt = 0.3
+
+preset: Crunch Techno
+# hard and split: the kick and tom on output A, the hits on B; a fast chop over everything, the tom follows x
+voice 1 / pitch = -29
+boom = 3
+voice 1 / gate = 0.3
+voice 1 / vol = 0.9
+voice 1 / a-b = -0.5
+voice 2 / pitch = 36
+grit = 24
+voice 2 / gate = 0.04
+voice 2 / vol = 0.7
+voice 2 / a-b = 0.6
+tone = 4000
+ring = 0.8
+voice 3 / gate = 0.05
+voice 3 / vol = 0.6
+voice 3 / a-b = 0.6
+voice 4 / pitch = 12
+growl = 5
+voice 4 / gate = 0.08
+voice 4 / a-b = 0.8
+voice 5 / pitch = -28
+squelch = 0.9
+voice 5 / gate = 0.3
+voice 5 / a-b = -0.5
+voice 5 / x = 0.5
+chop = 16
+chop depth = 0.35
+melt = 0.15
+vol a = 0.85
+
+preset: Broken Glitch
+# broken: a rising kick (boom below zero), a long shredded hit, a swelling hat, a wild growl, a hard squelch;
+# x is a short snap and y a slow swell, a slow deep chop and half melt
+voice 1 / pitch = -24
+boom = -2
+voice 1 / gate = 0.12
+voice 2 / pitch = 44
+grit = 48
+voice 2 / gate = 0.15
+voice 2 / y = 0.5
+tone = 8000
+ring = 0.95
+voice 3 / tilt = 0.1
+voice 3 / gate = 0.3
+voice 4 / pitch = 19
+growl = 8
+voice 4 / gate = 0.25
+voice 4 / x = 0.6
+voice 5 / pitch = -12
+squelch = 1
+voice 5 / tilt = 0.05
+voice 5 / gate = 0.1
+x gate = 0.15
+x slew = 0.01
+y gate = 0.6
+y slew = 0.4
+chop = 11
+chop depth = 0.5
+melt = 0.5
+
+preset: Slow Dub
+# slow and long: a very low long kick, a soft hit, a washy hat, a lazy growl, a long tom that x swells
+voice 1 / pitch = -36
+boom = 1
+voice 1 / gate = 0.8
+voice 1 / vol = 0.85
+voice 2 / pitch = 18
+grit = 4
+voice 2 / tilt = 0.02
+voice 2 / gate = 0.2
+voice 2 / vol = 0.6
+tone = 1200
+ring = 0.3
+voice 3 / gate = 0.4
+voice 3 / vol = 0.5
+voice 4 / pitch = -5
+growl = 1
+voice 4 / tilt = 0.01
+voice 4 / gate = 0.5
+voice 4 / vol = 0.6
+voice 5 / pitch = -31
+squelch = 0.6
+voice 5 / gate = 0.6
+voice 5 / x = 0.3
+x gate = 1.5
+x slew = 0.3
+chop = 0.5
+chop depth = 0.2
+melt = 0.2
+vol a = 0.75
+vol b = 0.75
+
+preset: Clean Electro
+# the machine without its dirt: no grit, no melt, no chop; a punchy kick, a short tom, tight hits
+voice 1 / pitch = -31
+boom = 2.5
+voice 1 / gate = 0.25
+voice 1 / vol = 0.9
+voice 2 / pitch = 30
+grit = 1
+voice 2 / gate = 0.06
+voice 2 / vol = 0.7
+tone = 6000
+ring = 0.4
+voice 3 / gate = 0.06
+voice 3 / vol = 0.55
+voice 4 / pitch = 10
+growl = 3
+voice 4 / gate = 0.1
+voice 4 / vol = 0.65
+voice 5 / pitch = -17
+squelch = 0.4
+voice 5 / gate = 0.15
+voice 5 / vol = 0.7
+melt = 0
+chop depth = 0

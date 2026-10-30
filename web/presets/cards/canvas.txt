@@ -1,0 +1,207 @@
+# Canvas: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# sequencer
+#   sequencer / trigger = 3            1..8
+#   stages = 3                         1..8
+#   voltage 1 = 0                      -1..1
+#   voltage 2 = 0.2                    -1..1
+#   voltage 3 = 0.4                    -1..1
+#   voltage 4 = 0.6                    -1..1
+#   voltage 5 = 0.8                    -1..1
+#   pulse 1 = 0                        -1..1
+#   pulse 2 = 0                        -1..1
+#   pulse 3 = 0                        -1..1
+#   pulse 4 = 0                        -1..1
+#   pulse 5 = 0                        -1..1
+# envelope
+#   envelope: a screen, not a value
+#   envelope / trigger = 1             1..8
+#   envelope / mode = 2                1..8
+#   attack = 0.003 s                   0.001..10 s
+#   sustain = 0.02 s                   0.001..10 s
+#   decay = 0.6 s                      0.001..10 s
+# pulser
+#   pulser / trigger = 2               1..8
+#   pulser / mode = 1                  1..8
+#   period = 0.33 s                    0.001..10 s
+# random
+#   random / trigger = 2               1..8
+# mod osc
+#   mod osc / keyboard = 1             1..8
+#   range = 2                          1..8
+#   frequency = 7 st                   -48..48 st
+#   mod osc / fine tune = 0 ct         -100..100 ct
+#   waveshape = triangle               sine, triangle, saw, square, sharktooth, reverse saw
+#   modulation = 2                     1..8
+#   index = 1                          -4..4
+#   index proc = 0                     -4..4
+# complex osc
+#   complex osc / keyboard = 1         1..8
+#   polarity = 2                       1..8
+#   pitch = 0 st                       -48..48 st
+#   complex osc / fine tune = 0 ct     -100..100 ct
+#   pitch proc = 0                     0..2
+#   timbre wave = saw                  sine, triangle, saw, square, sharktooth, reverse saw
+#   timbre mix = 0                     0..1
+#   timbre = 2.2                       1..32
+#   timbre proc = 0                    -4..4
+# lopass gate
+#   mode 1 = 2                         1..8
+#   level 1 = 0                        -4..4
+#   level 1 proc = 0.75                -4..4
+#   source 2 = 3                       1..8
+#   mode 2 = 2                         1..8
+#   level 2 = 0                        -4..4
+#   level 2 proc = 0.75                -4..4
+# output
+#   chan a = 0.9                       -4..4
+#   chan b = 0                         -4..4
+#   reverb = 0.15                      0..1
+# keyboard
+#   portamento = 0.001 s               0.001..5 s
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the Buchla Music Easel, not yet listened to on the FM-1 (#413).
+engine: Canvas
+
+# Switch positions: sequencer trigger 1 keyboard, 2 pulser, 3 off; stages 1..3 = 3, 4, 5 stages; a pulse row at -1 is a
+# rest. Envelope trigger 1 keyboard, 2 pulser, 3 sequencer; mode 1 sustained, 2 transient, 3 off. Pulser trigger
+# 1 keyboard, 2 self, 3 sequencer; mode 1 triggered, 2 off, 3 once. Random trigger 1 keyboard, 2 pulser, 3 sequencer.
+# Mod osc keyboard 1 on, 2 off; range 1 -high, 2 +hi, 3 low (five octaves down); modulation 1 bal. ext (silent here),
+# 2 f.m., 3 a.m. Complex osc keyboard 1 on, 2 off; polarity 1 -, 2 +. Lopass gate mode 1 lopass, 2 combination, 3 vca;
+# source 2 1 preamp (silent here), 2 mod osc, 3 gate 1. The fixed patch: the sequencer into the pitch (pitch proc, in
+# octaves: a voltage of 0.58 is a fifth), the envelope into the index and the gate levels (.. proc), the random voltage
+# into the timbre (timbre proc).
+
+# The pulser clocks a five-stage sequence with one rest into the pitch; the envelope and the random timbre follow it.
+preset: Sequencer Run
+  sequencer / trigger = 2
+  stages = 3
+  voltage 1 = 0
+  voltage 2 = 0.25
+  voltage 3 = 0.58
+  voltage 4 = 0.83
+  voltage 5 = 1
+  pulse 4 = -1
+  envelope / trigger = 3
+  envelope / mode = 2
+  attack = 0.003 s
+  sustain = 0.02 s
+  decay = 0.3 s
+  pulser / trigger = 2
+  pulser / mode = 1
+  period = 0.18 s
+  random / trigger = 3
+  pitch proc = 1
+  timbre wave = saw
+  timbre mix = 0.6
+  timbre = 5
+  timbre proc = 1.5
+  mode 1 = 1
+  level 1 proc = 1
+  reverb = 0.25
+
+# The complex oscillator folded hard, the mod osc a fifth up in f.m. with the envelope opening the index: a keyboard lead.
+preset: Complex Lead
+  envelope / trigger = 1
+  envelope / mode = 1
+  attack = 0.02 s
+  sustain = 0.1 s
+  decay = 0.5 s
+  pulser / mode = 2
+  random / trigger = 1
+  mod osc / keyboard = 1
+  range = 2
+  frequency = 7 st
+  waveshape = triangle
+  modulation = 2
+  index = 0.5
+  index proc = 1.5
+  timbre wave = saw
+  timbre mix = 0.8
+  timbre = 10
+  timbre proc = 0.3
+  mode 1 = 2
+  level 1 proc = 1
+  portamento = 0.06 s
+  reverb = 0.2
+
+# The pulser fires a short transient envelope through the lopass gate, the random voltage picking a timbre per hit.
+preset: Easel Bongos
+  envelope / trigger = 2
+  envelope / mode = 2
+  attack = 0.001 s
+  sustain = 0.003 s
+  decay = 0.12 s
+  pulser / trigger = 2
+  pulser / mode = 1
+  period = 0.25 s
+  random / trigger = 2
+  mod osc / keyboard = 1
+  range = 2
+  frequency = 12 st
+  modulation = 3
+  index = 0.4
+  timbre wave = triangle
+  timbre mix = 0.4
+  timbre = 3
+  timbre proc = 2.5
+  mode 1 = 1
+  level 1 proc = 1.3
+  reverb = 0.3
+
+# The folder at its deepest, the mod osc five octaves down in a.m. as a slow tremolo, the gate as a plain VCA: a drone.
+preset: Fold Drone
+  envelope / trigger = 1
+  envelope / mode = 1
+  attack = 2 s
+  sustain = 0.5 s
+  decay = 3 s
+  pulser / mode = 2
+  random / trigger = 1
+  mod osc / keyboard = 2
+  range = 3
+  frequency = -12 st
+  waveshape = triangle
+  modulation = 3
+  index = 0.7
+  timbre wave = triangle
+  timbre mix = 0.5
+  timbre = 20
+  mode 1 = 3
+  level 1 proc = 1
+  reverb = 0.45
+
+# A pure sine with f.m. near 3:1 that the envelope lets ring out, a four-stage sequence clocked by the pulser: chimes.
+preset: FM Chimes
+  sequencer / trigger = 2
+  stages = 2
+  voltage 1 = 0
+  voltage 2 = 0.58
+  voltage 3 = 1
+  voltage 4 = 0.33
+  envelope / trigger = 3
+  envelope / mode = 2
+  attack = 0.002 s
+  sustain = 0.01 s
+  decay = 1.5 s
+  pulser / trigger = 2
+  pulser / mode = 1
+  period = 0.5 s
+  random / trigger = 3
+  pitch proc = 1
+  mod osc / keyboard = 1
+  range = 2
+  frequency = 19 st
+  modulation = 2
+  index = 0.3
+  index proc = 1.2
+  timbre mix = 0
+  timbre = 1
+  timbre proc = 0
+  mode 1 = 2
+  level 1 proc = 1
+  reverb = 0.5

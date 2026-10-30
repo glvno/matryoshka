@@ -1,0 +1,93 @@
+# drum kit: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# drums
+#   kick tune = -29 st                 -48..48 st
+#   kick decay = 0.6 s                 0.001..10 s
+#   snare tone = 2 st                  -48..48 st
+#   snare noise = 0.45                 0..1
+#   clap tail = 0.12 s                 0.001..10 s
+#   hat decay = 0.07 s                 0.001..10 s
+#   open decay = 0.45 s                0.001..10 s
+#   tom tune = -12 st                  -24..24 st
+#   cowbell tune = 14 st               -48..48 st
+#   kick level = 0.8                   0..1
+#   snare level = 0.45                 0..1
+#   hats level = 0.35                  0..1
+
+# Drafts of 2026-10-29 after a simple one-drum-per-key kit, not yet listened to on the FM-1 (#413).
+engine: drum kit
+
+preset: Boom Bap
+# a dusty hip hop kit: short fat kick, a lower snare with body, tight closed hat
+kick tune = -31
+kick decay = 0.35
+snare tone = -2
+snare noise = 0.55
+clap tail = 0.18
+hat decay = 0.05
+open decay = 0.3
+tom tune = -16
+kick level = 0.85
+snare level = 0.55
+
+preset: Tight Techno
+# a clicky, short kick, a snappy snare, tight hats and a bright cowbell
+kick tune = -27
+kick decay = 0.22
+snare tone = 4
+snare noise = 0.7
+clap tail = 0.08
+hat decay = 0.04
+open decay = 0.22
+tom tune = -8
+cowbell tune = 12
+kick level = 0.85
+snare level = 0.4
+hats level = 0.4
+
+preset: Electro 808
+# a long booming kick, a tonal snare, long open hat and high toms
+kick tune = -33
+kick decay = 1.4
+snare tone = 6
+snare noise = 0.35
+clap tail = 0.25
+hat decay = 0.09
+open decay = 0.7
+tom tune = -4
+cowbell tune = 14
+kick level = 0.9
+snare level = 0.5
+hats level = 0.3
+
+preset: Lo-fi House
+# a soft, roomy kit: medium kick, a dark snare with a lot of noise, a lazy clap and loose hats
+kick tune = -29
+kick decay = 0.5
+snare tone = -4
+snare noise = 0.6
+clap tail = 0.3
+hat decay = 0.12
+open decay = 0.6
+tom tune = -14
+kick level = 0.75
+snare level = 0.5
+hats level = 0.3
+
+preset: Tribal Toms
+# a kit for tom patterns: a higher rounded kick, high tuned toms, a tonal snare and a high cowbell
+kick tune = -25
+kick decay = 0.8
+snare tone = 0
+snare noise = 0.3
+clap tail = 0.1
+hat decay = 0.06
+open decay = 0.35
+tom tune = 6
+cowbell tune = 20
+kick level = 0.8
+snare level = 0.45
+hats level = 0.25

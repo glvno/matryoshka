@@ -1,0 +1,173 @@
+# Monolith D: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# controllers
+#   tune = 0                           -4..4
+#   glide = 0.04 s                     0.001..5 s
+#   glide on = 1                       1..8
+#   mod mix = 0                        0..1
+#   osc mod = 1                        1..8
+#   osc 3 ctrl = 2                     1..8
+#   decay on = 2                       1..8
+# oscillators
+#   osc 1 range = 4                    1..8
+#   osc 1 wave = 3                     1..8
+#   osc 2 range = 4                    1..8
+#   osc 2 freq = 0 st                  -48..48 st
+#   osc 2 fine = 6 ct                  -100..100 ct
+#   osc 2 wave = 3                     1..8
+#   osc 3 range = 3                    1..8
+#   osc 3 freq = 0 st                  -48..48 st
+#   osc 3 fine = -4 ct                 -100..100 ct
+#   osc 3 wave = 4                     1..8
+# mixer
+#   osc 1 = 0.45                       0..1
+#   osc 2 = 0.4                        0..1
+#   osc 3 = 0.3                        0..1
+#   noise = 0                          0..1
+#   white/pink = 1                     1..8
+# filter
+#   cutoff = 700 Hz                    20..16000 Hz
+#   emphasis = 0.3                     0..1
+#   contour = 3                        -4..4
+#   kbd control = 4                    1..8
+#   filter mod = 2                     1..8
+# contours
+#   filter contour: a screen, not a value
+#   contours / attack (1) = 0.005 s    0.001..5 s
+#   contours / decay (1) = 0.72        0..1
+#   contours / sustain (1) = 0.35      0..1
+#   loudness contour: a screen, not a value
+#   contours / attack (2) = 0.004 s    0.001..5 s
+#   contours / decay (2) = 0.67        0..1
+#   contours / sustain (2) = 0.85      0..1
+# output
+#   a-440 = 1                          1..8
+
+# Drafts of 2026-10-29 after the Minimoog Model D, not yet listened to on the FM-1 (#413).
+engine: Monolith D
+
+# Ranges: 1 LO, 2 32', 3 16', 4 8', 5 4', 6 2'. Waves: 1 triangle, 2 tri/saw (osc 3: reverse saw), 3 saw, 4 square, 5 wide rect, 6 narrow rect.
+# Kbd control: 1 off, 2 a third, 3 two thirds, 4 all. Decay: 0..1 over 1 ms .. 5 s. Decay on 2 = the release follows the decay.
+
+# Two saws at 32' and a square at 16', a low snappy filter: the bass.
+preset: Fat Bass
+  glide on = 1
+  osc 1 range = 2
+  osc 1 wave = 3
+  osc 2 range = 2
+  osc 2 fine = 8 ct
+  osc 2 wave = 3
+  osc 3 range = 3
+  osc 3 wave = 4
+  osc 1 = 0.5
+  osc 2 = 0.45
+  osc 3 = 0.3
+  cutoff = 300 Hz
+  emphasis = 0.25
+  contour = 2.5
+  kbd control = 2
+  contours / attack (1) = 0.002 s
+  contours / decay (1) = 0.6
+  contours / sustain (1) = 0.2
+  contours / attack (2) = 0.003 s
+  contours / decay (2) = 0.7
+  contours / sustain (2) = 0.9
+  decay on = 2
+
+# Three detuned 8' waves, glide on, the filter open with some emphasis: the singing lead.
+preset: Glide Lead
+  glide = 0.08 s
+  glide on = 2
+  osc 1 range = 4
+  osc 1 wave = 3
+  osc 2 range = 4
+  osc 2 fine = 12 ct
+  osc 2 wave = 3
+  osc 3 range = 4
+  osc 3 fine = -10 ct
+  osc 3 wave = 1
+  osc 1 = 0.45
+  osc 2 = 0.4
+  osc 3 = 0.3
+  cutoff = 1500 Hz
+  emphasis = 0.55
+  contour = 2
+  kbd control = 4
+  contours / attack (1) = 0.01 s
+  contours / decay (1) = 0.65
+  contours / sustain (1) = 0.5
+  contours / attack (2) = 0.004 s
+  contours / decay (2) = 0.8
+  contours / sustain (2) = 1
+  decay on = 2
+
+# Square and wide rectangle at 8' over a 16' square: the hollow lead.
+preset: Square Lead
+  glide = 0.06 s
+  glide on = 2
+  osc 1 range = 4
+  osc 1 wave = 4
+  osc 2 range = 4
+  osc 2 fine = 5 ct
+  osc 2 wave = 5
+  osc 3 range = 3
+  osc 3 wave = 4
+  osc 1 = 0.45
+  osc 2 = 0.4
+  osc 3 = 0.2
+  cutoff = 900 Hz
+  emphasis = 0.4
+  contour = 2.5
+  kbd control = 3
+  contours / attack (1) = 0.005 s
+  contours / decay (1) = 0.6
+  contours / sustain (1) = 0.3
+  contours / attack (2) = 0.004 s
+  contours / decay (2) = 0.8
+  contours / sustain (2) = 1
+  decay on = 2
+
+# Pink noise alone through a slow, resonant filter sweep: wind and surf.
+preset: Pink Wind
+  osc 1 = 0
+  osc 2 = 0
+  osc 3 = 0
+  noise = 0.8
+  white/pink = 2
+  cutoff = 300 Hz
+  emphasis = 0.7
+  contour = 3.5
+  kbd control = 1
+  contours / attack (1) = 1.2 s
+  contours / decay (1) = 0.9
+  contours / sustain (1) = 0
+  contours / attack (2) = 0.8 s
+  contours / decay (2) = 0.95
+  contours / sustain (2) = 0.6
+  decay on = 2
+
+# A triangle at 8' with a faint 4' triangle, a soft attack, a gentle filter: a flute.
+preset: Soft Flute
+  glide on = 1
+  osc 1 range = 4
+  osc 1 wave = 1
+  osc 2 = 0
+  osc 3 range = 5
+  osc 3 wave = 1
+  osc 3 fine = 3 ct
+  osc 1 = 0.6
+  osc 3 = 0.15
+  cutoff = 1200 Hz
+  emphasis = 0.1
+  contour = 1
+  kbd control = 4
+  contours / attack (1) = 0.08 s
+  contours / decay (1) = 0.6
+  contours / sustain (1) = 0.6
+  contours / attack (2) = 0.06 s
+  contours / decay (2) = 0.75
+  contours / sustain (2) = 0.9
+  decay on = 2

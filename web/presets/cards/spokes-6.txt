@@ -1,0 +1,291 @@
+# Spokes 6: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# 1 kick
+#   1 kick / pitch = -2.25             -4..4
+#   1 kick / decay = 0.45 s            0.001..10 s
+#   1 kick / color = 0.4               0..8
+#   1 kick / shape = 12 st             -48..48 st
+#   1 kick / sweep = 2.5               -4..4
+#   1 kick / contour = 0.05 s          0.001..5 s
+#   1 kick / volume = 0.9              0..1
+#   1 kick / delay = 0                 0..1
+# 2 snare
+#   2 snare / pitch = -0.75            -4..4
+#   2 snare / decay = 0.16 s           0.001..10 s
+#   2 snare / color = 0.3              0..1
+#   2 snare / shape = 0.8              0..1
+#   2 snare / sweep = 0.5              -4..4
+#   2 snare / contour = 0.12 s         0.001..5 s
+#   2 snare / volume = 0.85            0..1
+#   2 snare / delay = 0.15             0..1
+# 3 metal
+#   3 metal / pitch = 30 st            -48..48 st
+#   3 metal / decay = 0.12 s           0.001..10 s
+#   3 metal / color = 37 st            -48..48 st
+#   3 metal / shape = 2500 Hz          20..16000 Hz
+#   3 metal / sweep = 1                -4..4
+#   3 metal / contour = 0.1            0..1
+#   3 metal / volume = 0.9             0..1
+#   3 metal / delay = 0.1              0..1
+# 4 perc
+#   4 perc / pitch = -0.5              -4..4
+#   4 perc / decay = 0.25 s            0.001..10 s
+#   4 perc / color = 2.5               0..8
+#   4 perc / shape = 19 st             -48..48 st
+#   4 perc / sweep = 0.3               -4..4
+#   4 perc / contour = 0.08 s          0.001..5 s
+#   4 perc / volume = 0.6              0..1
+#   4 perc / delay = 0.3               0..1
+# 5 tone
+#   5 tone / pitch = 0                 -4..4
+#   5 tone / decay = 0.5 s             0.001..5 s
+#   5 tone / color = 12 st             -48..48 st
+#   5 tone / shape = 1.5               0..8
+#   5 tone / sweep = 0                 0..1
+#   5 tone / contour = 0.3 s           0.001..5 s
+#   5 tone / volume = 0.35             0..1
+#   5 tone / delay = 0.25              0..1
+# 6 chord
+#   6 chord / pitch = 0                -4..4
+#   6 chord / decay = 0.8 s            0.001..5 s
+#   6 chord / color = +5th             off, +oct, +5th, +oct+5th, -oct
+#   6 chord / shape = 3 st             -48..48 st
+#   6 chord / sweep = 2000 Hz          20..16000 Hz
+#   6 chord / contour = 0.005 s        0.001..5 s
+#   6 chord / volume = 0.7             0..1
+#   6 chord / delay = 0.2              0..1
+# delay
+#   time = 375 ms                      1..700 ms
+#   feedback = 0.4                     0..0.95
+# master
+#   dist = 1                           1..32
+#   master = 0.8                       0..1
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the Elektron Model:Cycles, not yet listened to on the FM-1 (#413).
+engine: Spokes 6
+
+# kick and perc: color is the FM amount, shape the modulator's tune, sweep the pitch envelope amount, contour its decay.
+# snare: color is the noise colour, shape its level, sweep the pitch envelope, contour the noise decay.
+# metal: color is the second oscillator's tune, shape the filter cutoff, sweep the filter envelope, contour the resonance.
+# tone: color is the modulator's tune, shape the FM amount, sweep the noise level, contour the noise decay.
+# chord: color is the stack, shape the detune, sweep the filter cutoff, contour the attack.
+
+preset: Tight Techno
+# short and hard: a clicky kick with a big sweep, a snappy white snare, a short bright metal, tight perc, a delayed chord stab
+1 kick / pitch = -2.5
+1 kick / decay = 0.3
+1 kick / color = 0.6
+1 kick / sweep = 3
+1 kick / contour = 0.03
+2 snare / pitch = -1
+2 snare / decay = 0.12
+2 snare / color = 0.5
+2 snare / shape = 0.9
+2 snare / sweep = 0.8
+2 snare / contour = 0.08
+2 snare / delay = 0.1
+3 metal / pitch = 34
+3 metal / decay = 0.06
+3 metal / color = 41
+3 metal / shape = 4000
+3 metal / sweep = 1.5
+3 metal / contour = 0.2
+3 metal / volume = 0.7
+4 perc / pitch = -0.75
+4 perc / decay = 0.15
+4 perc / color = 1.5
+4 perc / shape = 7
+4 perc / sweep = 0.5
+4 perc / contour = 0.05
+4 perc / volume = 0.5
+5 tone / decay = 0.15
+5 tone / shape = 2.5
+5 tone / volume = 0.3
+5 tone / delay = 0.4
+6 chord / decay = 0.3
+6 chord / color = +oct
+6 chord / sweep = 1200
+6 chord / volume = 0.5
+6 chord / delay = 0.4
+time = 375
+feedback = 0.5
+dist = 2
+
+preset: Boom Bap
+# a dusty, rounded kit: a longer softer kick, a thick dark snare, a dull metal, a woody perc, a low chord
+1 kick / pitch = -2.75
+1 kick / decay = 0.6
+1 kick / color = 1.2
+1 kick / shape = 7
+1 kick / sweep = 1.5
+1 kick / contour = 0.08
+2 snare / pitch = -1.5
+2 snare / decay = 0.22
+2 snare / color = 0.2
+2 snare / shape = 0.6
+2 snare / sweep = 0.3
+2 snare / contour = 0.18
+2 snare / volume = 0.9
+2 snare / delay = 0.05
+3 metal / pitch = 26
+3 metal / decay = 0.08
+3 metal / shape = 1800
+3 metal / contour = 0.3
+3 metal / volume = 0.6
+4 perc / pitch = -1
+4 perc / decay = 0.35
+4 perc / color = 1
+4 perc / shape = 12
+4 perc / sweep = 0.2
+4 perc / contour = 0.1
+5 tone / pitch = -1
+5 tone / decay = 0.4
+5 tone / color = 7
+5 tone / shape = 1
+5 tone / sweep = 0.2
+5 tone / volume = 0.4
+6 chord / decay = 0.5
+6 chord / color = -oct
+6 chord / sweep = 900
+6 chord / contour = 0.02
+6 chord / volume = 0.5
+time = 280
+feedback = 0.25
+dist = 3
+master = 0.75
+
+preset: Industrial
+# harsh FM: a long roaring kick, a noisy long snare, a ringing resonant metal, a falling perc, a long chord through a long delay, heavy distortion
+1 kick / pitch = -2
+1 kick / decay = 0.5
+1 kick / color = 3
+1 kick / shape = 19
+1 kick / sweep = 4
+1 kick / contour = 0.1
+2 snare / decay = 0.3
+2 snare / color = 0.9
+2 snare / shape = 1
+2 snare / sweep = 1.5
+2 snare / contour = 0.2
+2 snare / delay = 0.3
+3 metal / pitch = 36
+3 metal / decay = 0.4
+3 metal / color = 43
+3 metal / shape = 6000
+3 metal / sweep = 2.5
+3 metal / contour = 0.6
+3 metal / volume = 0.8
+3 metal / delay = 0.25
+4 perc / pitch = 0.5
+4 perc / decay = 0.3
+4 perc / color = 6
+4 perc / shape = 31
+4 perc / sweep = -1
+4 perc / contour = 0.15
+4 perc / delay = 0.4
+5 tone / pitch = -1
+5 tone / decay = 1
+5 tone / color = 24
+5 tone / shape = 5
+5 tone / sweep = 0.6
+5 tone / volume = 0.4
+5 tone / delay = 0.4
+6 chord / decay = 1.2
+6 chord / color = +oct+5th
+6 chord / shape = 1
+6 chord / sweep = 4000
+6 chord / contour = 0.1
+6 chord / volume = 0.5
+6 chord / delay = 0.4
+time = 500
+feedback = 0.6
+dist = 10
+master = 0.7
+
+preset: FM Melodic
+# played melodically: a clean kick, a dry snare, a bell-like metal, a mallet perc, a long tone and a big open chord, both delayed
+1 kick / pitch = -2
+1 kick / decay = 0.35
+1 kick / color = 0.2
+1 kick / sweep = 1
+1 kick / contour = 0.04
+2 snare / decay = 0.14
+2 snare / color = 0.1
+2 snare / shape = 0.5
+2 snare / sweep = 0.3
+2 snare / delay = 0.25
+3 metal / pitch = 24
+3 metal / decay = 0.2
+3 metal / color = 24
+3 metal / shape = 3500
+3 metal / sweep = 0.5
+3 metal / contour = 0.05
+3 metal / volume = 0.6
+3 metal / delay = 0.3
+4 perc / pitch = 0
+4 perc / decay = 0.4
+4 perc / color = 1.2
+4 perc / shape = 12
+4 perc / sweep = 0.1
+4 perc / contour = 0.2
+4 perc / delay = 0.35
+5 tone / decay = 0.8
+5 tone / color = 19
+5 tone / shape = 2.5
+5 tone / contour = 0.5
+5 tone / volume = 0.55
+5 tone / delay = 0.4
+6 chord / decay = 1.5
+6 chord / color = +oct+5th
+6 chord / shape = 7
+6 chord / sweep = 3000
+6 chord / contour = 0.01
+6 chord / delay = 0.4
+feedback = 0.55
+
+preset: Lo-fi House
+# warm and a bit dirty: a soft deep kick, a mid snare, a dull metal, a soft perc, a muted chord, mild distortion
+1 kick / pitch = -2.5
+1 kick / decay = 0.5
+1 kick / color = 0.8
+1 kick / shape = 5
+1 kick / sweep = 2
+1 kick / contour = 0.06
+2 snare / pitch = -0.5
+2 snare / decay = 0.18
+2 snare / color = 0.4
+2 snare / shape = 1
+2 snare / sweep = 0.4
+2 snare / contour = 0.14
+2 snare / delay = 0.2
+3 metal / pitch = 29
+3 metal / decay = 0.15
+3 metal / color = 36
+3 metal / shape = 2000
+3 metal / sweep = 0.8
+3 metal / contour = 0.2
+3 metal / volume = 0.7
+3 metal / delay = 0.15
+4 perc / pitch = -0.5
+4 perc / decay = 0.2
+4 perc / color = 2
+4 perc / sweep = 0.3
+4 perc / volume = 0.5
+5 tone / decay = 0.3
+5 tone / shape = 1
+5 tone / sweep = 0.3
+5 tone / volume = 0.3
+5 tone / delay = 0.3
+6 chord / decay = 0.6
+6 chord / sweep = 1500
+6 chord / contour = 0.05
+6 chord / volume = 0.6
+6 chord / delay = 0.3
+time = 330
+feedback = 0.35
+dist = 4
+master = 0.75

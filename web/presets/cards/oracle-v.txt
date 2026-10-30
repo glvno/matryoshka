@@ -1,0 +1,162 @@
+# Oracle V: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# voice
+#   voices = 5                         1..16
+#   unison = off                       off, on, share
+#   glide = 0.001 s                    0.001..5 s
+# osc A
+#   osc A / wave = saw                 sine, triangle, saw, square, sharktooth, reverse saw
+#   pw = 0.5                           0.05..0.95
+#   sync = 0                           -4..4
+# osc B
+#   osc B / wave = saw                 sine, triangle, saw, square, sharktooth, reverse saw
+#   freq = 0 st                        -48..48 st
+#   fine = 7 ct                        -100..100 ct
+# mixer
+#   A level = 0.55                     0..1
+#   B level = 0.45                     0..1
+#   noise = 0                          0..1
+#   out: a screen, not a value
+# filter
+#   cutoff = 600 Hz                    20..16000 Hz
+#   res = 0.2                          0..1
+#   env amt = 3.5 oct                  0..4 oct
+#   kbd track = off                    off, on
+#   filter env: a screen, not a value
+#   filter / a = 0.01 s                0.001..5 s
+#   filter / d = 0.6 s                 0.001..5 s
+#   filter / s = 0.35                  0..1
+#   filter / r = 0.4 s                 0.001..8 s
+#   filter: a screen, not a value
+# amp
+#   amp env: a screen, not a value
+#   amp / a = 0.01 s                   0.001..5 s
+#   amp / d = 0.5 s                    0.001..5 s
+#   amp / s = 0.8                      0..1
+#   amp / r = 0.4 s                    0.001..8 s
+# mod
+#   pmod env→A = 0                     -4..4
+#   pmod B→A = 0                       0..8
+#   lfo rate = 5 Hz                    0.02..40 Hz
+#   lfo wave = triangle                sine, triangle, saw, square, S&H
+#   vibrato = 0.24                     -4..4
+#   lfo / osc A: a screen, not a value
+
+# Drafts of 2026-10-29 after the Prophet-5, not yet listened to on the FM-1 (#413).
+engine: Oracle V
+
+# The poly-mod sync lead: the filter envelope drives osc A's pitch against osc B, which it is synced to.
+preset: Sync Lead
+  osc A / wave = saw
+  sync = 1
+  osc B / wave = saw
+  fine = 0 ct
+  A level = 0.7
+  B level = 0.2
+  cutoff = 1200 Hz
+  res = 0.3
+  env amt = 3 oct
+  kbd track = on
+  filter / a = 0.005 s
+  filter / d = 0.9 s
+  filter / s = 0.2
+  filter / r = 0.4 s
+  amp / a = 0.005 s
+  amp / d = 0.5 s
+  amp / s = 0.9
+  amp / r = 0.3 s
+  pmod env→A = 2.5
+  vibrato = 0.1
+
+# Two detuned saws, a slow filter attack: the brass swell.
+preset: Poly Brass
+  osc A / wave = saw
+  osc B / wave = saw
+  fine = 10 ct
+  A level = 0.5
+  B level = 0.5
+  cutoff = 400 Hz
+  res = 0.1
+  env amt = 3 oct
+  kbd track = on
+  filter / a = 0.07 s
+  filter / d = 0.35 s
+  filter / s = 0.5
+  filter / r = 0.3 s
+  amp / a = 0.03 s
+  amp / d = 0.3 s
+  amp / s = 0.9
+  amp / r = 0.35 s
+  vibrato = 0.08
+
+# Slow saws with light vibrato and long envelopes.
+preset: Vintage Strings
+  osc A / wave = saw
+  osc B / wave = saw
+  fine = 12 ct
+  A level = 0.5
+  B level = 0.5
+  cutoff = 1500 Hz
+  res = 0
+  env amt = 1.2 oct
+  kbd track = on
+  filter / a = 0.8 s
+  filter / d = 1 s
+  filter / s = 0.6
+  filter / r = 1.2 s
+  amp / a = 0.7 s
+  amp / d = 1 s
+  amp / s = 1
+  amp / r = 1.4 s
+  lfo rate = 5.5 Hz
+  vibrato = 0.2
+
+# Poly-mod FM: osc B, a 12th up, into osc A's phase; sines through an open filter with a percussive decay.
+preset: Poly-Mod Bell
+  osc A / wave = sine
+  osc B / wave = sine
+  freq = 19 st
+  fine = 4 ct
+  A level = 0.7
+  B level = 0
+  cutoff = 4000 Hz
+  res = 0.1
+  env amt = 1 oct
+  kbd track = on
+  filter / a = 0.001 s
+  filter / d = 1.2 s
+  filter / s = 0
+  filter / r = 1.2 s
+  amp / a = 0.002 s
+  amp / d = 1.5 s
+  amp / s = 0
+  amp / r = 1.5 s
+  pmod B→A = 3
+  vibrato = 0
+
+# All five voices in unison: a pulse and a saw an octave down through a snappy low filter.
+preset: Unison Bass
+  unison = on
+  glide = 0.04 s
+  osc A / wave = square
+  pw = 0.3
+  osc B / wave = saw
+  freq = -12 st
+  fine = 6 ct
+  A level = 0.5
+  B level = 0.5
+  cutoff = 350 Hz
+  res = 0.25
+  env amt = 2.5 oct
+  filter / a = 0.002 s
+  filter / d = 0.35 s
+  filter / s = 0.1
+  filter / r = 0.3 s
+  amp / a = 0.002 s
+  amp / d = 0.4 s
+  amp / s = 0.7
+  amp / r = 0.2 s
+  vibrato = 0
