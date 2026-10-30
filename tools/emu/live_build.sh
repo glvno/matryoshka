@@ -13,5 +13,5 @@ DST=tools/emu/target/fm1-emu-src
 rm -rf "$DST"; cp -R "$SRC" "$DST"; rm -rf "$DST/.git"
 cp tools/emu/target/fm1-isa/src/generated_isa.rs "$DST/crates/fm1-isa/src/generated_isa.rs"
 grep -q 'mask: 0x000080000000ffff_u64' "$DST/crates/fm1-isa/src/generated_isa.rs"   # the fixes are in
-test -f "tools/emu/target/fm1-isa/.fixed2-$REV"
+test -f "tools/emu/target/fm1-isa/.fixed3-$REV"
 cargo install --quiet --path "$DST/crates/fm1-live" --force --root tools/emu/live

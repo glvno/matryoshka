@@ -268,6 +268,11 @@ int eng_load(const uint8_t *p, uint32_t len);
  * -1 malformed or too big for cap (left as it was). */
 int eng_upgrade(uint8_t *p, uint32_t *len, uint32_t cap);
 void eng_set_param(uint32_t module, uint32_t param, int32_t q16);
+/* a knob's click (K1..K4 = knob 0..3, or MIDI CC 16..19; #405): the parameter takes the value at once, what the module uses
+ * reaches it over ENG_RAMP_BLOCKS blocks; a choice parameter (defs.h pchoice) is set at once */
+#define ENG_KNOBS 4u
+#define ENG_RAMP_BLOCKS 8            /* 8 x 128 frames = 23 ms at ENG_SR (a power of two: the step is a shift) */
+void eng_knob_param(uint32_t knob, uint32_t module, uint32_t param, int32_t q16);
 uint32_t delay_div(int32_t time_q16);                               /* the note length (DELAY_DIV_*) a synced delay's time value selects */
 int32_t eng_get_param(uint32_t module, uint32_t param);
 int32_t eng_get_eff(uint32_t module, uint32_t param);               /* what the last block used: base + modulation */

@@ -14,7 +14,12 @@ with it stopped the emulator at boot with UnknownInstruction (every build from t
 `R = R & ~(#i << R) #` (`..f194` with bit 16 set; fm1-isa learned it from two samples) had an overfitted mask and its
 own slot layout, so `r4 = r9 & ~(1 << r2) #` in `dm_keys` (the Drum map, format 32 on) stopped the smoke test after
 the factory patches (pc 0x020032d2). It now has its three siblings' layout (`&`, `& #`, `&~`: mask `0xfffff`, dest =
-bits 28..31, source = 20..23, shift register = 24..27). fm1-core already runs `#` pairs with the second instruction
+bits 28..31, source = 20..23, shift register = 24..27). The third (2026-10-29): the `|` and `^` heads of that family,
+`R = R | (#i << R) #` (14 samples) and `R = R ^ (#i << R) #` (6), had a three-bit shift-register slot (24..26: their
+samples shifted by r0..r7 only) and masks that pin bit 27, so `r0 = r1 | (1 << r15) #` (pages_turn, the row a knob
+turns, from the knob turns of #340 on) decoded as another instruction: every knob click on the device page reached a
+module index that did not exist, the row stayed, and the patch was still marked edited. They have the `&` pair's layout
+now. fm1-core already runs `#` pairs with the second instruction
 seeing the old registers. The firmware CI keeps the ELF and
 its disassembly (artifact `matryoshka-elf`) for tracing such faults to a function.
 

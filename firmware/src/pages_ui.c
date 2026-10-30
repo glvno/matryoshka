@@ -586,8 +586,9 @@ static int pages_page(int32_t s)
     return pages_focus(pg_cur_dev, (uint32_t)(((int32_t)pg_cur_page + s % (int32_t)n + (int32_t)n) % (int32_t)n));
 }
 
-/* knob k turned by `clicks` (fast: five times as far): its row's new value; *mod / *par say which parameter. -1: no row */
-static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint32_t *par, int32_t *v)
+/* knob k turned by `clicks` (fast: five times as far; fine, HOME held: a tenth of a click, never under the editor's step,
+ * #340): its row's new value; *mod / *par say which parameter. -1: no row */
+static int pages_turn(uint32_t k, int32_t clicks, int fast, int fine, uint32_t *mod, uint32_t *par, int32_t *v)
 {
     const ppage_t *pg = pages_now();
     const def_t *d;
@@ -619,8 +620,17 @@ static int pages_turn(uint32_t k, int32_t clicks, int fast, uint32_t *mod, uint3
         *v = i << 16;
     } else if (eng_param_is_log(m, j)) {
         *v = eng_step_param(m, j, clicks * (fast ? 5 : 1), 655);   /* 1/100 of the octaves a click */
+        if (fine) {                                     /* a fine click: 1/1000, raised to the editor's step, never past the click */
+            int32_t was = eng_get_param(m, j), f = eng_step_param(m, j, clicks * (fast ? 5 : 1), 65), st = d->pstep[j];
+            if (st && f != was && (f > was ? f - was : was - f) < st)
+                f = clampi(was + (clicks > 0 ? st : -st), d->pmin[j], d->pmax[j]);
+            *v = clicks > 0 ? (f < *v ? f : *v) : (f > *v ? f : *v);
+        }
     } else {
-        *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * d->pinc[j], d->pmin[j], row_top(m, j, d));   /* (past pmax: a stretch) */
+        int32_t inc = d->pinc[j];
+        if (fine)                                       /* a fine click: a tenth of a click, never under the editor's step */
+            inc = d->pstep[j] > inc / 10 ? d->pstep[j] : inc / 10;
+        *v = clampi(eng_get_param(m, j) + clicks * (fast ? 5 : 1) * inc, d->pmin[j], row_top(m, j, d));   /* (past pmax: a stretch) */
     }
     return 0;
 }
