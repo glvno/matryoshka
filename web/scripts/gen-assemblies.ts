@@ -3,7 +3,7 @@
 // cables, the exposed ports (an input with `also` fans out to several inner inputs) and the promoted parameters.
 // `voice` and `echo` are kept as files. Run from web/:  npx vite-node scripts/gen-assemblies.ts
 import { writeFileSync } from 'node:fs';
-import { DEFS, PD_RANGE_MAX, PD_WAVES } from '../src/modules';
+import { DEFS, PD_RANGE_MAX, PD_WAVES, SELECT_N } from '../src/modules';
 import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type PolyCards, type Source } from '../src/patch';
 import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
@@ -1218,14 +1218,14 @@ asm('Hera 6', 'Voices', (b) => {
 // A voice has both lines, each one PD Osc (the CZ's eight waveforms, a second waveform on every other cycle, the DCW
 // input) with its DCW and DCA envelopes; every envelope (the DCO's too) is an Env 8: eight rates and levels, a sustain
 // step and an end step, as on the CZ.
-//  - a line's waveforms (`wave`, `wave 2`) are Selectors named after the eight waves (saw .. reso 3) and its resonance
-//    range an Offset, once for all voices, that set the line's PD Osc: wave through p1 (x 1/7 of the wave's span: the
-//    position's value -4..3 on the PD Osc's wave 4, so position k plays the k-th wave), the range through p2 (x 1/5, so
-//    the Offset is the range in octaves), wave 2 through the pm input routed to `wave2` (the position's value (k - 4) / 8
-//    on its wave2 4: the k-th wave on every other cycle; the oscillator's own pm depth is 0, so pm does no phase
-//    modulation). Being signals, they let 1+1' hand line 1's settings to line 2. The CZ's "no second waveform" is wave 2
-//    set to the line's own wave (the PD Osc then plays the same cycle every time, as with its wave2 off); Init has that
-//    on both lines. Line 2's wave is reso 1 as made (#430).
+//  - a line's waveforms and resonance range, once for all voices, set the line's PD Osc: `wave` a Selector named after
+//    the eight waves (saw .. reso 3), through p1 (x 1/7 of the wave's span: the position's value -4..3 on the PD Osc's
+//    wave 4, so position k plays the k-th wave); `wave 2` a Selector of off and seven waves (saw .. reso 2: a Selector
+//    has eight positions, so reso 3 is left out of wave 2 only), through the pm input routed to `wave2` (the position's
+//    value (k - 5) / 8 on its wave2 4, so position k is wave2 k - 1: 0 off, else that wave on every other cycle; the
+//    oscillator's own pm depth is 0, so pm does no phase modulation); `res range` an Offset through p2 (x 1/5, so the
+//    Offset is the range in octaves). Being signals, they let 1+1' hand line 1's settings to line 2. Init has wave 2 off
+//    on both lines and line 2 on reso 1 (#430).
 //  - the DCW: the line's DCW envelope plus key follow, velocity and aftertouch, summed into the PD Osc's dcw input.
 // Line select (`line`, a Selector), as the CZ's: 1 line 1, 2 line 2, 3 1+1', 4 1+2' (both lines). In 1+1' line 2 plays
 // line 1's waveforms, range and DCW / DCA envelopes at line 2's pitch (`coarse`, `fine`): line 1'. The select's gate 3
@@ -1236,9 +1236,9 @@ asm('Hera 6', 'Voices', (b) => {
 // follow lowers the DCW and DCA levels from C4; velocity opens the DCA (and the DCW by `vel dcw`); aftertouch reaches
 // DCW, DCA and vibrato depth (the `at` input).
 // Left out: the CZ has a DCO envelope per line (one here moves both); the CZ-1's velocity curves; its cartridge, tone
-// mix / split and multi-timbral MIDI modes (hardware and memory). The rows are short (r1, l1 ..) and the switches are
-// Selectors and Crossfaders, not Macros, to stay inside the FM-1's patch bytes (3,840: Cassia 1's factory patch takes
-// 3,813) and 32 pages per device.
+// mix / split and multi-timbral MIDI modes (hardware and memory); reso 3 as a second waveform (wave 2's eight positions
+// are off and saw .. reso 2). The rows are short (r1, l1 ..) and the switches are Selectors and Crossfaders, not Macros,
+// to stay inside the FM-1's patch bytes (3,840: Cassia 1's factory patch takes 3,805) and 32 pages per device.
 const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<string, number> => {
   const p: Record<string, number> = { sus, end };
   for (let k = 0; k < 8; k++) {
@@ -1271,16 +1271,16 @@ asm('Cassia 1', 'Voices', (b) => {
   const mode: R = [sel, 'g3'];
   // ---- a line's settings, once for all voices: the wave Selectors and the range's Offset; line 2's go through a
   // Crossfader each (per voice: the line select is) that hands it line 1's in 1+1' (pos 0: its own, 1: line 1's)
-  // position k's value: (k - 5) for wave (on p1, x 1/7 of its span: the PD Osc's wave 4 plus it), (k - 4) / 8 for wave 2
-  // (through pm: its wave2 4 plus 8 times it, 1 + the wave)
-  const waves = (col: number, row: number, wave: number, at: (k: number) => number): number => {
+  // position k's value: (k - 5) for wave (on p1, x 1/7 of its span: the PD Osc's wave 4 plus it), (k - 5) / 8 for wave 2
+  // (through pm: its wave2 4 plus 8 times it, k - 1: position 1 off)
+  const waves = (col: number, row: number, pos: number, at: (k: number) => number): number => {
     const v: Record<string, number> = {};
-    for (let k = 1; k <= PD_WAVES.length; k++) v[`v${k}`] = at(k);
-    return b.add('select', col, row, { count: PD_WAVES.length, pos: wave + 1, fade: 0, ...v });
+    for (let k = 1; k <= SELECT_N; k++) v[`v${k}`] = at(k);
+    return b.add('select', col, row, { count: SELECT_N, pos, fade: 0, ...v });
   };
   const settings = (col: number, wave: number): { wave: number; wave2: number; range: number } => ({
-    wave: waves(col, 0, wave, (k) => k - 5),
-    wave2: waves(col, 0.3, wave, (k) => (k - 4) / 8),
+    wave: waves(col, 0, wave + 1, (k) => k - 5),
+    wave2: waves(col, 0.3, 1, (k) => (k - 5) / 8),
     range: b.add('const', col, 0.6, { value: 3 }),
   });
   const pick = (own: number, l1: number, row: number): R => {
@@ -1413,7 +1413,7 @@ asm('Cassia 1', 'Voices', (b) => {
   }
   b.param('out', scope, 'view', { col: true });
 });
-namePositions('Cassia 1', { wave: PD_WAVES, 'wave 2': PD_WAVES });
+namePositions('Cassia 1', { wave: PD_WAVES, 'wave 2': ['off', ...PD_WAVES.slice(0, SELECT_N - 1)] });
 
 // Sallen 20, after the Korg MS-20 (its owner's manual, 1978; the MS-20 mini's, which reproduces its circuit, for the key
 // priority): the instrument as it plays with nothing patched, its panel's controls named as the original names them. One

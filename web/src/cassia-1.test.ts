@@ -35,16 +35,20 @@ function waves(p: Patch): [number, number][] {
 }
 
 describe('Cassia 1 wave rows (#430)', () => {
-  it('each position of wave and wave 2 plays that wave, on both lines; the rows carry the waves\' names', () => {
+  it('each position of wave plays that wave and of wave 2 off or that wave, on both lines; the rows carry the names', () => {
     for (let k = 1; k <= 8; k++) {
       const p = cassia();
       set(p, 'wave', 0, k);
       set(p, 'wave 2', 0, 9 - k);
       set(p, 'wave', 1, 9 - k);
       set(p, 'wave 2', 1, k);
-      expect(waves(p)).toEqual([[k - 1, 9 - k], [8 - k, k]]);
+      // wave2 as the PD Osc reads it: 0 off, k the k-th wave (position k + 1)
+      expect(waves(p)).toEqual([[k - 1, 8 - k], [8 - k, k - 1]]);
     }
-    for (const label of ['wave', 'wave 2']) for (const n of [0, 1]) expect(rowOf(cassia(), label, n).names).toEqual(PD_WAVES);
+    for (const n of [0, 1]) {
+      expect(rowOf(cassia(), 'wave', n).names).toEqual(PD_WAVES);
+      expect(rowOf(cassia(), 'wave 2', n).names).toEqual(['off', ...PD_WAVES.slice(0, 7)]);
+    }
   });
 
   it('line 3 (1+1\') hands line 1\'s waves to line 2; 4 (1+2\') keeps line 2\'s own', () => {
@@ -52,19 +56,19 @@ describe('Cassia 1 wave rows (#430)', () => {
     set(p, 'wave', 0, 2);
     set(p, 'wave 2', 0, 3);
     set(p, 'line', 0, 3);
-    expect(waves(p)).toEqual([[1, 3], [1, 3]]);
+    expect(waves(p)).toEqual([[1, 2], [1, 2]]);
     set(p, 'line', 0, 4);
-    expect(waves(p)).toEqual([[1, 3], [5, 6]]);
+    expect(waves(p)).toEqual([[1, 2], [5, 0]]);
   });
 
   it('Init plays line 2 on reso 1 as made, Reso Pad on a resonance wave; the other presets keep their waves', () => {
     const want: Record<string, [string, string, string, string]> = {
-      Init: ['saw', 'saw', 'reso 1', 'reso 1'],
-      'PD Bass': ['saw', 'square', 'reso 1', 'reso 1'],
-      'PD Brass': ['saw', 'saw', 'saw', 'saw'],   // line 3: line 2 plays line 1's
-      'Glass Bell': ['dbl sine', 'dbl sine', 'square', 'square'],
-      'Reso Pad': ['saw-pulse', 'saw-pulse', 'reso 1', 'reso 1'],
-      'Tine Piano': ['square', 'square', 'dbl sine', 'dbl sine'],
+      Init: ['saw', 'off', 'reso 1', 'off'],
+      'PD Bass': ['saw', 'square', 'reso 1', 'off'],
+      'PD Brass': ['saw', 'off', 'saw', 'off'],   // line 3: line 2 plays line 1's
+      'Glass Bell': ['dbl sine', 'off', 'square', 'off'],
+      'Reso Pad': ['saw-pulse', 'off', 'reso 1', 'off'],
+      'Tine Piano': ['square', 'off', 'dbl sine', 'off'],
     };
     const base = cassia();
     const list = presetsOf(base, card(base));
@@ -73,7 +77,7 @@ describe('Cassia 1 wave rows (#430)', () => {
       const p = cassia();
       expect(applyPreset(p, card(p), pr)).toBe(true);
       const [w1, w2] = waves(p);
-      const ix = want[pr.name].map((w) => PD_WAVES.indexOf(w));
+      const ix = want[pr.name].map((w) => PD_WAVES.indexOf(w));   // (off: -1, so wave2 0)
       expect([w1, w2], pr.name).toEqual([[ix[0], ix[1] + 1], [ix[2], ix[3] + 1]]);
     }
   });

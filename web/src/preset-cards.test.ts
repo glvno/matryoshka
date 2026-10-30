@@ -56,7 +56,7 @@ describe('preset cards (#413)', () => {
     const p = r.presets[1];
     expect(p.values[at(cz, 'line 2 / wave')]).toBe(8);
     expect(p.values[at(cz, 'line 1 / wave 2')]).toBe(2);
-    expect(formatPreset(cz, 'T', p.values)).toContain('line 1 / wave 2 = square');
+    expect(formatPreset(cz, 'T', p.values)).toContain('line 1 / wave 2 = saw');
     expect(formatPreset(cz, 'T', p.values)).toContain('line 2 / wave = reso 3');
     expect(parseCard(['engine: Cassia 1', 'preset: T', '  line = 5'].join('\n'), cz).errors[0]).toMatch(/outside 1\.\.4/);
     expect(parseCard(['engine: Cassia 1', 'preset: T', '  line 1 / wave = reso 4'].join('\n'), cz).errors[0]).toMatch(/saw, square/);
