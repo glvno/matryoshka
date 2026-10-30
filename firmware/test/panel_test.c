@@ -646,7 +646,16 @@ int main(void)
         check("HOME held + PRESET in the menu: the next patch, HOME's release stays in the menu", presets_stepped == stepped + 2 && page == PAGE_MENU);
         presets_stepped = stepped;
         enc(1, 1);
-        check("ALGO: the PANEL tab (LEDs, knob accel)", menu_tab == MT_PANEL && pages_now()->nrows == 2u && pages_now()->par[0] == MR_LEDS);
+        check("ALGO: the PANEL tab (LEDs, knob accel, count-in)", menu_tab == MT_PANEL && pages_now()->nrows == 3u && pages_now()->par[0] == MR_LEDS && pages_now()->par[2] == MR_CIN);
+        enc(4, 1);                                          /* K3: COUNT-IN (#414), OFF > 1 BAR > 2 BARS */
+        check("K3 on PANEL: COUNT-IN OFF > 1 BAR (#414)", cfg.count_in == 1u && on_screen("1 BAR"));
+        enc(4, 2);                                          /* (a setting steps once per turn, whatever the clicks) */
+        check("  2 BARS at most", cfg.count_in == 2u && on_screen("2 BARS"));
+        enc(4, 1);
+        check("  stays at 2 BARS", cfg.count_in == 2u);
+        enc(4, -1);
+        enc(4, -1);
+        check("  and back to OFF", cfg.count_in == 0u && on_screen("OFF"));
         enc(1, 1);
         check("ALGO again: SYSTEM (update mode, factory reset)", menu_tab == MT_SYSTEM && pages_now()->nrows == 2u && pages_now()->par[1] == MR_DEFAULTS);
         enc(1, 1);
@@ -2476,6 +2485,73 @@ int main(void)
             for (i = 0; i < n; i++)
                 got += ((w[i] >> 12) & 127u) == seq_row_note(map, 6);
             check("the live take: black key 7 recorded as row 7's note", seq_black(15) == 6 && got == n1 + 1);
+        }
+        {                                                   /* the count-in (#414): MENU > PANEL > COUNT-IN; the bars count
+                                                             * from the transport's start (eng_run_ticks) */
+            int32_t rel;
+            uint32_t guard;
+            tap(BTN_REC);                                   /* REC off, the transport runs on */
+            cfg.count_in = 1;
+            tap(BTN_REC);                                   /* running: REC on, the count-in begins at the next bar line */
+            check("COUNT-IN 1 BAR, REC while running: REC on, the count-in runs, nothing records yet, the bar says COUNT-IN",
+                  seq_rec && seq_cin && !E.trk_rec && !strcmp(msg_text, "COUNT-IN") && eng_transport_running());
+            for (guard = 0; seq_cin == 1u && guard < 10u; guard++) {
+                eng_render(l, r, 128);
+                loop();
+            }
+            rel = eng_run_ticks();
+            check("  it ends on the bar line a bar after the next one", seq_cin == 2u && seq_cin_end % 96u == 0u
+                  && seq_cin_end > (uint32_t)rel + 96u && seq_cin_end <= (uint32_t)rel + 192u);
+            for (guard = 0; seq_cin && seq_cin_end - (uint32_t)eng_run_ticks() > 96u - 25u && guard < 100000u; guard++) {
+                eng_render(l, r, 128);
+                loop();
+            }
+            check("  beat 2 of the count: the bar says COUNT-IN 2, nothing records", seq_cin == 2u && !strcmp(msg_text, "COUNT-IN 2") && !E.trk_rec);
+            check("  REC's LED on the device page: on in the beat's first half", (host_led_mask(fm1_led, 0) >> BTN_REC & 1u) == ((uint32_t)(eng_run_ticks() - (int32_t)(seq_cin_end - 96u)) % 24u < 12u));
+            n0 = eng_steps_notes((uint32_t)drums, &w);
+            th = thru_head;
+            panel_keys(1u << 15);                           /* G#4 during the count: heard through DRUMS, not recorded */
+            blocks(10);
+            panel_keys(0);
+            blocks(2);
+            loop();
+            check("  a key played during the count-in sounds through the track and is not recorded", thru_heard(th, (uint32_t)drums, seq_row_note(map, 6))
+                  && eng_steps_notes((uint32_t)drums, &w) == n0 && !E.trk_rec);
+            for (guard = 0; seq_cin && guard < 100000u; guard++) {
+                eng_render(l, r, 128);
+                loop();
+            }
+            rel = eng_run_ticks();
+            check("  at the bar line: the count-in ends, DRUMS records, the bar names it", !seq_cin && seq_rec && (E.trk_rec >> E.node[drums].trk & 1u)
+                  && !strcmp(msg_text, "REC DRUMS") && rel >= 0 && (uint32_t)rel % 96u < 2u);
+            tap(BTN_REC);
+            tap(BTN_PLAY);
+            blocks(1);                                      /* (the engine takes the stop: a start within the same block is
+                                                             * none to it, and the tracks' bars go on from the old start) */
+            cfg.count_in = 2;
+            tap(BTN_REC);                                   /* stopped: the transport starts, two bars of count-in from its start */
+            check("COUNT-IN 2 BARS, REC while stopped: the transport starts, the count-in runs from its start", seq_rec && seq_cin
+                  && eng_transport_running() && !E.trk_rec);
+            for (guard = 0; seq_cin == 1u && guard < 10u; guard++) {
+                eng_render(l, r, 128);
+                loop();
+            }
+            check("  it ends 192 ticks after the start", seq_cin == 2u && seq_cin_end == 192u);
+            for (guard = 0; seq_cin && eng_run_ticks() < 24 * 5 + 1 && guard < 100000u; guard++) {
+                eng_render(l, r, 128);
+                loop();
+            }
+            check("  bar 2, beat 2: the bar says COUNT-IN 2.2", seq_cin == 2u && !strcmp(msg_text, "COUNT-IN 2.2"));
+            tap(BTN_REC);
+            check("  REC again during the count-in: REC off, nothing recorded, the transport goes on", !seq_rec && !seq_cin && !E.trk_rec
+                  && eng_transport_running() && !strcmp(msg_text, "REC OFF"));
+            tap(BTN_REC);
+            check("  REC once more: a new count-in", seq_rec && seq_cin);
+            tap(BTN_PLAY);
+            check("  PLAY during the count-in: all stopped, nothing recorded", !seq_rec && !seq_cin && !eng_transport_running() && !E.trk_rec);
+            cfg.count_in = 0;
+            tap(BTN_REC);
+            check("COUNT-IN OFF: REC records at once", seq_rec && !seq_cin && (E.trk_rec >> E.node[drums].trk & 1u) && !strcmp(msg_text, "REC DRUMS"));
         }
         tap(BTN_PLAY);
         held_key(BTN_REC, 1);

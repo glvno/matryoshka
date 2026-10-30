@@ -247,9 +247,11 @@ static uint32_t popcount64(uint64_t v)
 static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u); }
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel, CPU in the bar, clock in, program change,
- * MIDI channel, MIDI out, the bank's format, the selected module */
+ * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
+ * it, SET_MIN bytes, reads as OFF; the version stays 1, so an older firmware reads the longer record too) */
 #define SET_VERSION 1u
-#define SET_LEN 12u
+#define SET_MIN 12u
+#define SET_LEN 13u
 /* the patch format the bank's untouched factory slots were brought to (settings byte 10; 0 in a record from before):
  * below ENG_PATCH_VERSION, the boot rewrites them once (bank_upgrade) */
 static uint8_t bank_fmt;
@@ -267,10 +269,11 @@ static void settings_pack(uint8_t *d)
     d[9] = cfg.midi_out;                        /* (was the mixer's level before #60: values over 1 read as on) */
     d[10] = bank_fmt;
     d[11] = (uint8_t)sel;
+    d[12] = cfg.count_in;
 }
 static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint32_t *module)
 {
-    if (len < SET_LEN || d[0] != SET_VERSION)
+    if (len < SET_MIN || d[0] != SET_VERSION)
         return -1;
     *slot = d[1];
     octave = clampi((int32_t)d[2] - 8, -3, 3);
@@ -281,6 +284,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     cfg.midi_out = d[9] == 0u ? 0u : 1u;
     bank_fmt = d[10];
     *module = d[11];
+    cfg.count_in = len > 12u ? (d[12] > 2u ? 2u : d[12]) : 0u;
     return 0;
 }
 

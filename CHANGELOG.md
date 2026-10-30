@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The FM-1 can count in before REC records** (#414). MENU > PANEL > COUNT-IN: OFF (as made), 1 BAR or 2 BARS, saved
+  with the panel settings (SAVE). With it on, REC with the transport stopped starts the transport and records from the
+  end of the count; REC while running waits for the next bar line, then counts the bars, so recording always begins on
+  a bar. The bar counts the beats (COUNT-IN 1 .. 4; with two bars, 2.3 for bar 2, beat 3), the footer says COUNT-IN and
+  the track, and REC's LED blinks on the beat; the keys sound as usual and nothing is recorded until the count ends.
+  REC again during the count turns REC off, and PLAY or any stop ends it. No click: the FM-1 has no metronome voice.
+  The LCD manual says so. Host- and emulator-tested; not yet on a device.
 - Factory presets are written by hand, one text file per engine (`web/presets/cards/`, `npm run presets`), in place of the rule-made Bright / Dark / Pad set: every one of the 24 FM-1 engines has five, named for what they are for (Fat Bass, Vintage Strings, Acid Squelch, Tight Techno ...). Drafts, not yet listened to on the FM-1 (#413)
 ### Changes
 

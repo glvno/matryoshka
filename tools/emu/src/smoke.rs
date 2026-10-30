@@ -47,6 +47,7 @@ const PRESET: u8 = 6; // encoder
 const ALGO: u8 = 1; // encoder
 const SELECT: u8 = 0; // encoder
 const K1: u8 = 2;
+const K3: u8 = 4;
 const K4: u8 = 5; // encoder
 const SEL: u8 = 3; // the SEL button (SCL in Felucca's table)
 
@@ -709,6 +710,46 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     Ok(())
 }
 
+/// The count-in (#414): MENU > PANEL > COUNT-IN, saved in the settings record (SAVE, then a boot on the same flash);
+/// REC, stopped, then starts the transport, the bar counts the beats of a bar, and REC records from the next bar line
+/// (nothing armed here: it says so); REC again during the count cancels it.
+fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
+    let mut m = Machine::boot(app, None);
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "count-in: the menu's PANEL tab has COUNT-IN", "COUNT-IN");
+    t.screen(&m, "count-in: OFF as made", "OFF");
+    m.turn(K3, 1, 400)?;
+    t.screen(&m, "count-in: K3 turns it to 1 BAR", "1 BAR");
+    m.tap(SAVE, 120, 400)?;
+    t.check("count-in: SAVE writes the settings record and closes the menu", wait_text(&mut m, "SAVED", 1500)?, String::new());
+    let flash = m.flash();
+    *emulated += m.ms();
+    let mut m = Machine::boot(app, Some(&flash));
+    wait_text(&mut m, DEVICE_PAGE, 9000)?;
+    m.run_for(2500)?;
+    m.tap(GLO, 120, 400)?;
+    m.turn(ALGO, 1, 400)?;
+    t.screen(&m, "count-in: the setting survives a boot (the settings record's byte 12)", "1 BAR");
+    m.tap(HOME, 120, 400)?;
+    t.screen(&m, "count-in: HOME: the device page", DEVICE_PAGE);
+    m.tap(REC, 120, 300)?;
+    t.screen(&m, "count-in: REC, stopped: the transport starts and the bar says COUNT-IN", "COUNT-IN");
+    t.check("count-in: the bar counts the beats (COUNT-IN 2)", wait_text(&mut m, "COUNT-IN 2", 3000)?, format!("at {} ms", m.ms()));
+    t.check("count-in: a bar later REC records (nothing armed: it says so)", wait_text(&mut m, "REC: NO TRACK ARMED", 4000)?, format!("at {} ms", m.ms()));
+    m.tap(REC, 120, 300)?;
+    t.screen(&m, "count-in: REC again: off", "REC OFF");
+    m.tap(REC, 120, 300)?;
+    t.screen(&m, "count-in: REC while running: a count-in again", "COUNT-IN");
+    m.tap(REC, 120, 300)?;
+    t.screen(&m, "count-in: REC during the count: off, nothing recorded", "REC OFF");
+    m.tap(PLAY, 120, 300)?;
+    *emulated += m.ms();
+    Ok(())
+}
+
 fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bool)]) -> Result<(), String> {
     let presets = factory();
     // ---- 1. boot
@@ -899,6 +940,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     store(app, t, emulated, &presets)?;
     panel(app, t, emulated)?;
     seq(app, t, emulated, &presets)?;
+    count_in(app, t, emulated)?;
     long_delay(app, t, emulated)?;
 
     // ---- 9. unmodelled hardware

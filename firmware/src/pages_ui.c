@@ -492,9 +492,9 @@ static const char *const MENU_TAB_NAME[MT_COUNT] = {"MIDI", "PANEL", "SYSTEM", "
 static ppage_t pg_menu;
 static const ppage_t *menu_tab_page(void)
 {
-    static const char *const LAB[3][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", ""}, {"LEDS", "KNOB ACCEL", "", ""}, {"UPDATE MODE", "FACTORY RESET", "", ""}};
-    static const uint8_t ROW[3][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, 0}, {MR_LEDS, MR_ACCEL, 0, 0}, {MR_UPDATE, MR_DEFAULTS, 0, 0}};
-    static const uint8_t N[3] = {3, 2, 2};
+    static const char *const LAB[3][PG_ROWS] = {{"MIDI CHANNEL", "CLOCK IN", "MIDI OUT", ""}, {"LEDS", "KNOB ACCEL", "COUNT-IN", ""}, {"UPDATE MODE", "FACTORY RESET", "", ""}};
+    static const uint8_t ROW[3][PG_ROWS] = {{MR_CH, MR_CLOCK, MR_MOUT, 0}, {MR_LEDS, MR_ACCEL, MR_CIN, 0}, {MR_UPDATE, MR_DEFAULTS, 0, 0}};
+    static const uint8_t N[3] = {3, 3, 2};
     uint32_t t = menu_tab > MT_SYSTEM ? MT_MIDI : menu_tab, k;
     pg_menu.name = MENU_TAB_NAME[t];
     pg_menu.nlen = (uint8_t)str_len(MENU_TAB_NAME[t]);
@@ -514,7 +514,7 @@ static const ppage_t *menu_tab_page(void)
 /* a setting's place in its range, 0..width (its bar) */
 static uint32_t setting_bar(uint32_t row, uint32_t width)
 {
-    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u
+    return row == MR_CH ? cfg.ch * width / 16u : row == MR_LEDS ? cfg.leds * width / 2u : row == MR_CIN ? cfg.count_in * width / 2u
          : row == MR_UPDATE || row == MR_DEFAULTS ? (menu_armed == row ? width : 0u)
          : (row == MR_CLOCK ? cfg.clock_in : row == MR_MOUT ? cfg.midi_out : cfg.accel) ? width : 0u;
 }

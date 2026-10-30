@@ -501,6 +501,7 @@ typedef struct {
     uint32_t stamp;
     uint32_t clk_seen, clk_pulse;    /* MIDI clock ticks counted so far; the Main module's clock pulse length in this block */
     uint32_t ticks, tick_acc;        /* the clock: ticks so far, the tempo's remainder (1 / (60 ENG_SR) of a tick) */
+    uint32_t run_ticks;              /* ticks when the transport last started (the tracks' bars count from there: eng_run_ticks) */
     int32_t tick_off, tick_n, tick_len;   /* this block's ticks while running: the sample they fall on (-1 none), how many, samples per tick */
     uint32_t ext_since, ext_len;     /* MIDI clock: samples since its last tick, samples per tick as measured (0: not yet) */
     uint8_t ntrk;
@@ -2616,6 +2617,7 @@ uint32_t eng_buttons_lit(void)
     return arps ? panel_buttons ^ (1u << b) : panel_buttons;
 }
 uint32_t eng_ticks(void) { return E.ticks; }
+int32_t eng_run_ticks(void) { return E.running ? (int32_t)(E.ticks - E.run_ticks) : -1; }
 int eng_clock_is_external(void) { return clk_ext; }
 void eng_transport(int on) { transport_on = (uint8_t)(on != 0); }
 int eng_transport_running(void) { return transport_on; }
@@ -6414,8 +6416,10 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
         {   /* the clock: MIDI ticks while external, else the Main module's tempo (whole bpm x 24 ticks a minute) */
             uint32_t bpm = E.main >= 0 ? (uint32_t)clampi((E.node[E.main].par[FM1_P_TEMPO] + 32768) >> 16, 20, 300) : TEMPO_DEFAULT, seen = 0, t;
             uint8_t run = transport_on;
-            if (run && !E.running)
+            if (run && !E.running) {
                 E.tick_acc = 0;                  /* the transport starts: the tempo's ticks from here */
+                E.run_ticks = E.ticks;
+            }
             E.running = run;
             t = clk_ticks;
             /* where this block's ticks fall (Steps modules start their steps there, engine.ts render): MIDI clock ticks on the
