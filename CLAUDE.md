@@ -31,6 +31,7 @@ Nord Modular–style patchable synth for the **M-VAVE FM-1**: a browser editor (
 ## Rules when changing things
 
 - Module types are appended to `ALL` in modules.ts; type / port indices are append-only. A format change: `patch.ts` (`validatePatch` migration), `patchbin.ts`, engine.c / proto.c (`ENG_PATCH_VERSION`, compat), presets, tests, golden kits, `npx vite-node scripts/legacy-factory.ts` (so the FM-1 rewrites untouched factory slots in the new format, main.c `bank_upgrade`), `FEATURE_SYNC` in device.ts (older firmware is told to update to sync), then `export-defs` — together. A parameter appended to an existing type carries `since: <format>` (the firmware reads older records with the older count, `eng_npar`), and `tools/old_format.sh` proves older binaries still play the same.
+- Any change to a factory patch (an assembly, a card, a level), not only a format change: `npx vite-node scripts/legacy-factory.ts` then `npm run export-defs`, so the FM-1 rewrites untouched factory slots at the next boot ([D-283](docs/ledger/patch-format.md#D-283)); a preset load sets only the card's rows, so without it an update keeps the old patch.
 - Keep both engines in step: `SCALES` order, quantized increments for anything driven by an accumulator, the same idle-part rule. Add a golden kit per new module / behaviour.
 - New module types need a cost in cpu-costs.json (`cpu.test.ts` fails otherwise).
 - Keep the LCD manual (`manual.c`: ≤ 35 chars, capitals, no `;`), the ? help card and the shortcut handler in step with what they describe.
