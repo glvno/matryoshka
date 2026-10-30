@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **The FM-1 rounds a row's value to the figure it shows** (#426). A 0..1 row's knob click is 0.00999, so one click from 0 read `0.00` and three read `0.02`; every row stepped by a knob was shown cut, not rounded (mixer levels, resonance, Silver Box TUNING). Now `0.01` and `0.03`, and a one-decimal value such as `12.46` reads `12.5`. Host- and emulator-tested; not yet on a device.
 - **FM-1 knob turns: a fast click only after one the same way, HOME held turns fine, a click glides over 23 ms** (#340,
   #405). KNOB ACCEL's five-click step now counts only when the knob's previous click, within 80 ms, went the same way; a
   reversal is one click, so a turn back lands on the values between. HOME held + K1..K4 moves a row by a tenth of a
@@ -31,6 +32,7 @@
   press that starts while the page is going out no longer vanishes; on the device that draw takes about 120 ms.
   Emulator-tested (the smoke taps GLO the moment the header appears); not yet on a device.
 - Factory presets are written by hand, one text file per engine (`web/presets/cards/`, `npm run presets`), in place of the rule-made Bright / Dark / Pad set: every one of the 24 FM-1 engines has five, named for what they are for (Fat Bass, Vintage Strings, Acid Squelch, Tight Techno ...). Drafts, not yet listened to on the FM-1 (#413)
+- **Elvira 2's `drone` rows and 8 Lire's `hold` rows turn in steps of 0.01 on the FM-1** (#405). The Offset (-4..4) behind each row is a Macro (0..1), so a knob click is 0.01 instead of 0.08 over a row whose useful part is 0..1; the same value reaches the voice and the factory presets sound the same. The structure of the two engines changes with it: a preset you stored on an FM-1 for Elvira 2 or 8 Lire no longer matches them (the factory ones are regenerated). The same rows in Elvira 2 XL and 8 Lire XL are 0..1 too. Host-tested only.
 ### Changes
 
 - **The FM-1 draws its screens faster: a second LCD line buffer** (#377). The LCD driver keeps two scanline buffers

@@ -3563,13 +3563,13 @@ int main(void)
                     if (pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW))
                         continue;
                     t = eng_type(pg->mod[k]);
-                    if (kd == 9 && t == T_CONST) { kd = k; dd = d; gd = g; }
+                    if (kd == 9 && t == T_MACRO) { kd = k; dd = d; gd = g; }
                     if (kf == 9 && t == T_WAVETABLE && pg->par[k] == WAVETABLE_P_FINE) { kf = k; df = d; gf = g; }
                     if (kc == 9 && DEFS[t].pchoice && DEFS[t].pchoice[pg->par[k]]) { kc = k; dc = d; gc = g; }
                     if (kl == 9 && DEFS[t].plog && DEFS[t].plog[pg->par[k]]) { kl = k; dl = d; gl = g; }
                 }
             }
-        check("Elvira 2: a drone row (an Offset's value), a fine row (a wavetable's) and a choice row on its pages", kd < 9u && kf < 9u && kc < 9u);
+        check("Elvira 2: a drone row (a Macro's value), a fine row (a wavetable's) and a choice row on its pages", kd < 9u && kf < 9u && kc < 9u);
         if (kd < 9u && kf < 9u && kc < 9u) {
             char num[24], unit[8];
             pages_focus(dd, gd);
@@ -3582,7 +3582,7 @@ int main(void)
             v0 = eng_get_param(m, j);
             enc(2u + kd, 1);
             v1 = eng_get_param(m, j);
-            check("drone: a click adds 0.08 (1/100 of -4..4)", v1 == v0 + dn->pinc[j] && dn->pinc[j] == 5243);
+            check("drone: a click adds 0.01 (1/100 of 0..1)", v1 == v0 + dn->pinc[j] && dn->pinc[j] == 655);
             enc(2u + kd, 1);                                /* at once, the same way: fast */
             v2 = eng_get_param(m, j);
             check("a second click within 80 ms the same way: five clicks (KNOB ACCEL)", v2 == v1 + 5 * dn->pinc[j]);
@@ -3669,7 +3669,7 @@ int main(void)
                 if (page == PAGE_ENV)
                     tap(BTN_HOME);
             }
-            pages_focus(dd, gd);                            /* the drone row fine: 0.01, the editor's step, not 0.008 */
+            pages_focus(dd, gd);                            /* the drone row fine: 0.01, the editor's step, not 0.001 */
             ui_dirty = 2;
             loop();
             m = pages_now()->mod[kd];
@@ -3682,7 +3682,7 @@ int main(void)
             panel_held &= ~(1u << BTN_HOME);
             panel_edges(0, 1u << BTN_HOME);
             loop();
-            check("drone, HOME held + the knob: 0.01, the editor's step (a tenth of a click would be 0.008)", eng_get_param(m, j) == v0 + 655);
+            check("drone, HOME held + the knob: 0.01, the editor's step (a tenth of a click would be 0.001)", eng_get_param(m, j) == v0 + 655);
             value_parts(&DEFS[eng_type(m)], j, eng_get_param(m, j), num, unit);
             printf("      (the drone row after a fine click reads \"%s\")\n", num);
             if (kl < 9u) {                                  /* a log row: a fine click is 1/1000 octave, at least the step, at most the click */

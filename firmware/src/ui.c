@@ -153,11 +153,14 @@ static char *put_hundredths(char *d, int32_t x, int decimals)
     return d;
 }
 
-/* a Q16 number, three significant figures: 1200, 12.5, 0.25 */
+/* a Q16 number, three significant figures: 1200, 12.5, 0.25. Rounded to the figure shown, not cut: a 0..1 row's knob
+ * click is 655 (0.00999), which read 0.00 after one click and 0.02 after three (#426) */
 static char *put_num(char *d, int32_t q16)
 {
-    int64_t x = ((int64_t)q16 * 100) / 65536;            /* hundredths */
+    int64_t h = (int64_t)q16 * 100, x = (h + (h < 0 ? -32768 : 32768)) / 65536;   /* hundredths, rounded */
     int64_t a = x < 0 ? -x : x;
+    if (a >= 1000 && a < 10000)                         /* one decimal: rounded to tenths (put_hundredths cuts) */
+        x = (x + (x < 0 ? -5 : 5)) / 10 * 10;
     return put_hundredths(d, (int32_t)x, a >= 10000 ? 0 : a >= 1000 ? 1 : 2);
 }
 
