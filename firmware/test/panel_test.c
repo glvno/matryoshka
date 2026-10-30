@@ -3171,9 +3171,10 @@ int main(void)
             enc(3u, -3);                                    /* K2 */
             check("card rows: K2 moves both resonances", eng_get_param(mg, res) == eng_get_param(mf, res) && eng_get_param(mf, res) != 26214);
             pages_set_unit(0u, 0, &m, &j, &v);              /* MIDI CC 16 at 0: as main.c applies it */
-            eng_set_param(m, j, v);
+            eng_knob_param(0u, m, j, v);
             pages_also(0u, v);
             check("card rows: a MIDI CC on K1 moves both too", eng_get_param(mg, cut) == eng_get_param(mf, cut) && v == eng_get_param(mf, cut));
+            check("  and ramps the cutoff as a click does (#405)", ramp[0].left == ENG_RAMP_BLOCKS && ramp[0].mod == m && ramp[0].par == j);
             later(50);
             check("card rows: SOURCE shows position 2 by its name, HIGH", eng_get_param(ms, 0) == (2 << 16) && on_screen("HIGH"));
             enc(4u, 5);                                     /* K3, five clicks up: three positions in use */
@@ -3463,6 +3464,180 @@ int main(void)
             check("ENV, the menu, SEQ and SONG opened over any screen: as over one cleared first", bad == 0u);
         }
         tap(BTN_PLAY);
+    }
+    {   /* #340, #405: knob turns on Elvira 2's rows. A fast click counts only after a click the same way; HOME held, a
+         * click is a tenth of a click and never under the editor's step; a click reaches the module over ENG_RAMP_BLOCKS
+         * blocks (8: 23 ms), the parameter at once */
+        uint32_t d, g, k, kd = 9, kf = 9, kc = 9, kl = 9, dd = 0, gd = 0, df = 0, gf = 0, dc = 0, gc = 0, dl = 0, gl = 0, m, j;
+        int32_t v0, v1, v2, v3, e, off, step;
+        const def_t *dn;
+        check("(ELVIRA 2 for the knob turns)", load("ELVIRA 2") == 0);
+        pv_gen++;
+        page = 0;
+        trail_n = 0;
+        loop();
+        pages_ensure();
+        for (d = 0; d < pg_ndev; d++)
+            for (g = 0; g < pg_dev[d].npg; g++) {
+                const ppage_t *pg;
+                pages_focus(d, g);
+                pg = pages_now();
+                for (k = 0; pg && k < pg->nrows; k++) {
+                    int t;
+                    if (pg->mod[k] == SETTING_ROW || (pg->par[k] & POLY_ROW))
+                        continue;
+                    t = eng_type(pg->mod[k]);
+                    if (kd == 9 && t == T_CONST) { kd = k; dd = d; gd = g; }
+                    if (kf == 9 && t == T_WAVETABLE && pg->par[k] == WAVETABLE_P_FINE) { kf = k; df = d; gf = g; }
+                    if (kc == 9 && DEFS[t].pchoice && DEFS[t].pchoice[pg->par[k]]) { kc = k; dc = d; gc = g; }
+                    if (kl == 9 && DEFS[t].plog && DEFS[t].plog[pg->par[k]]) { kl = k; dl = d; gl = g; }
+                }
+            }
+        check("Elvira 2: a drone row (an Offset's value), a fine row (a wavetable's) and a choice row on its pages", kd < 9u && kf < 9u && kc < 9u);
+        if (kd < 9u && kf < 9u && kc < 9u) {
+            char num[24], unit[8];
+            pages_focus(dd, gd);
+            ui_dirty = 2;
+            loop();
+            m = pages_now()->mod[kd];
+            j = pages_now()->par[kd];
+            dn = &DEFS[eng_type(m)];
+            later(200);                                     /* (out of the acceleration window) */
+            v0 = eng_get_param(m, j);
+            enc(2u + kd, 1);
+            v1 = eng_get_param(m, j);
+            check("drone: a click adds 0.08 (1/100 of -4..4)", v1 == v0 + dn->pinc[j] && dn->pinc[j] == 5243);
+            enc(2u + kd, 1);                                /* at once, the same way: fast */
+            v2 = eng_get_param(m, j);
+            check("a second click within 80 ms the same way: five clicks (KNOB ACCEL)", v2 == v1 + 5 * dn->pinc[j]);
+            enc(2u + kd, -1);                               /* at once, the other way: a single click, not five */
+            v3 = eng_get_param(m, j);
+            check("a click back within 80 ms: a single click, so the value before the fast one is reachable (#340)", v3 == v2 - dn->pinc[j]);
+            enc(2u + kd, -1);
+            check("  the next click back, the same way: fast again", eng_get_param(m, j) == v3 - 5 * dn->pinc[j]);
+            value_parts(dn, j, v1, num, unit);
+            printf("      (the drone row: device %u page %u K%u, the patch opens on device %u; after one click it reads \"%s\" \"%s\")\n", (unsigned)dd, (unsigned)gd, (unsigned)kd + 1u, (unsigned)pages_home(), num, unit);
+            /* the ramp (#405) */
+            later(200);
+            blocks(ENG_RAMP_BLOCKS + 1u);                   /* (what was pending: done) */
+            v0 = eng_get_param(m, j);
+            check("(the module stands at the value)", eng_get_eff(m, j) == v0);
+            enc(2u + kd, 1);
+            v1 = eng_get_param(m, j);
+            check("a click: the parameter takes the value at once, the module still at the old one", v1 == v0 + dn->pinc[j] && eng_get_eff(m, j) == v0);
+            off = v0 - v1;
+            step = off / ENG_RAMP_BLOCKS;
+            blocks(1);
+            e = eng_get_eff(m, j);
+            check("one block later: the module an eighth of the way", e == v1 + off - step && e > v0 && e < v1);
+            blocks(2);
+            e = eng_get_eff(m, j);
+            check("three blocks: three eighths", e == v1 + off - 3 * step);
+            later(200);
+            enc(2u + kd, 1);                                /* another click while the ramp runs: on from where it stands */
+            v2 = eng_get_param(m, j);
+            blocks(1);
+            check("a click mid-ramp: the parameter at once, the module on from where it stood, no jump back",
+                  v2 == v1 + dn->pinc[j] && eng_get_eff(m, j) > e && eng_get_eff(m, j) < v2);
+            blocks(ENG_RAMP_BLOCKS - 1u);
+            check("eight blocks after the last click: the module at the value", eng_get_eff(m, j) == v2 && ramp[kd].left == 0u);
+            /* a choice row: at once */
+            pages_focus(dc, gc);
+            ui_dirty = 2;
+            loop();
+            m = pages_now()->mod[kc];
+            j = pages_now()->par[kc];
+            v0 = eng_get_param(m, j);
+            later(200);
+            enc(2u + kc, v0 > 0 ? -1 : 1);
+            v1 = eng_get_param(m, j);
+            blocks(1);
+            check("a choice row's click: one choice, no ramp (the module at it after a block)", v1 != v0 && eng_get_eff(m, j) == v1 && ramp[kc].left == 0u);
+            /* fine turns (#340): HOME held */
+            pages_focus(df, gf);
+            ui_dirty = 2;
+            loop();
+            m = pages_now()->mod[kf];
+            j = pages_now()->par[kf];
+            dn = &DEFS[eng_type(m)];
+            later(200);
+            v0 = eng_get_param(m, j);
+            enc(2u + kf, 1);
+            check("fine (ct): a click is 2 ct (1/100 of -100..100)", eng_get_param(m, j) == v0 + 2 * 65536 && dn->pinc[j] == 2 * 65536);
+            later(200);
+            panel_held |= 1u << BTN_HOME;
+            panel_edges(1u << BTN_HOME, 0);
+            enc(2u + kf, 1);
+            check("HOME held + the knob: 1 ct, the editor's step (a tenth of a click would be 0.2 ct)", eng_get_param(m, j) == v0 + 3 * 65536 && home_turned);
+            enc(2u + kf, 1);
+            check("  within 80 ms the same way: five fine clicks", eng_get_param(m, j) == v0 + 8 * 65536);
+            panel_held &= ~(1u << BTN_HOME);
+            panel_edges(0, 1u << BTN_HOME);
+            loop();
+            check("  HOME's release after a fine turn: nothing (the page stays)", page == 0u && pg_cur_dev == df && pg_cur_page == gf);
+            tap(4);                                         /* ENV: its K1..K4 are the focused row's first page; HOME goes back */
+            if (page == PAGE_ENV && pages_now() && kf < pages_now()->nrows && pages_now()->mod[kf] == m && pages_now()->par[kf] == j) {
+                later(200);
+                v0 = eng_get_param(m, j);
+                panel_held |= 1u << BTN_HOME;
+                panel_edges(1u << BTN_HOME, 0);
+                enc(2u + kf, -1);
+                panel_held &= ~(1u << BTN_HOME);
+                panel_edges(0, 1u << BTN_HOME);
+                loop();
+                check("ENV, HOME held + the knob: 1 ct, and HOME's release stays on ENV", eng_get_param(m, j) == v0 - 65536 && page == PAGE_ENV);
+                tap(BTN_HOME);
+                check("  HOME tapped: back", page == 0u);
+            } else {
+                printf("      (ENV's rows are not voice 1's first page here: the release check on the device page only)\n");
+                if (page == PAGE_ENV)
+                    tap(BTN_HOME);
+            }
+            pages_focus(dd, gd);                            /* the drone row fine: 0.01, the editor's step, not 0.008 */
+            ui_dirty = 2;
+            loop();
+            m = pages_now()->mod[kd];
+            j = pages_now()->par[kd];
+            later(200);
+            v0 = eng_get_param(m, j);
+            panel_held |= 1u << BTN_HOME;
+            panel_edges(1u << BTN_HOME, 0);
+            enc(2u + kd, 1);
+            panel_held &= ~(1u << BTN_HOME);
+            panel_edges(0, 1u << BTN_HOME);
+            loop();
+            check("drone, HOME held + the knob: 0.01, the editor's step (a tenth of a click would be 0.008)", eng_get_param(m, j) == v0 + 655);
+            value_parts(&DEFS[eng_type(m)], j, eng_get_param(m, j), num, unit);
+            printf("      (the drone row after a fine click reads \"%s\")\n", num);
+            if (kl < 9u) {                                  /* a log row: a fine click is 1/1000 octave, at least the step, at most the click */
+                int32_t dc, dfine;
+                pages_focus(dl, gl);
+                ui_dirty = 2;
+                loop();
+                m = pages_now()->mod[kl];
+                j = pages_now()->par[kl];
+                dn = &DEFS[eng_type(m)];
+                later(200);
+                v0 = eng_get_param(m, j);
+                enc(2u + kl, 1);
+                dc = eng_get_param(m, j) - v0;
+                later(200);
+                v0 = eng_get_param(m, j);
+                panel_held |= 1u << BTN_HOME;
+                panel_edges(1u << BTN_HOME, 0);
+                enc(2u + kl, 1);
+                panel_held &= ~(1u << BTN_HOME);
+                panel_edges(0, 1u << BTN_HOME);
+                loop();
+                dfine = eng_get_param(m, j) - v0;
+                printf("      (a log row, %s %s: a click %d, a fine click %d, the step %d)\n", dn->name, dn->pname[j], (int)dc, (int)dfine, (int)dn->pstep[j]);
+                check("a log row, HOME held: under a click, not under the editor's step", dfine > 0 && dfine <= dc && dfine >= dn->pstep[j]);
+            } else {
+                printf("      (no log row on Elvira 2's pages)\n");
+            }
+            later(200);
+            blocks(ENG_RAMP_BLOCKS + 1u);
+        }
     }
     printf("%s\n", failed ? "panel test FAILED" : "panel test passed");
     return failed != 0;

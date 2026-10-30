@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **FM-1 knob turns: a fast click only after one the same way, HOME held turns fine, a click glides over 23 ms** (#340,
+  #405). KNOB ACCEL's five-click step now counts only when the knob's previous click, within 80 ms, went the same way; a
+  reversal is one click, so a turn back lands on the values between. HOME held + K1..K4 moves a row by a tenth of a
+  click, never under the row's step in the editor: an Offset row (Elvira 2's drone, 8 Lire's hold) 0.01 instead of
+  0.08, a fine row 1 ct instead of 2 ct, a log row 1/1000 octave; HOME's release then goes nowhere. A knob's click (or
+  MIDI CC 16..19) reaches the module over 8 blocks of 128 frames (23 ms) instead of at once, so stepping a level, drone,
+  hold, tune or cutoff row neither clicks nor zippers; the value itself, the editor's mirror, MIDI out and a save see it
+  at once; choices, settings, patch loads, presets and the editor's sends set at once, and the browser engine does not
+  glide. With no click pending the engine is bit for bit as before (`tools/engine_exact.sh`, 291 kits). The LCD manual
+  says so. Host- and emulator-tested; not yet on a device.
 - The factory assembly `step sequencer` is gone (#417): a Steps track, a pattern or the Arpeggiator does its job. `random melody` (chance) and `clock` (a free-running clock with divisions for S&H, grains and the `seq` module) stay. A patch that holds a copy of it plays as before: an inserted assembly is copied into the patch.
 - **The editor draws the arm as the cabling it is** (#418). Arming a factory instrument lights the cables Main's keys travel to it, Main → its Steps track → its Arpeggiator → the instrument, in the arm colour, and marks the track and the Arpeggiator as armed with it (a lighter edge, a half-filled ARM dot that says which device they are armed with); arming the track lights the same chain on from it. A dashed virtual cable is drawn only into a keys input no cable feeds, into that jack; before, one dashed line ran from Main straight to each armed device, a path the keys do not take, and the devices armed with it showed nothing. The FM-1's SEL on an instrument's page now shows that instrument armed in the editor, not only its track.
 - **On the FM-1, a HOME tap goes to the device's first page, then to the patch's home page** (#391, #365). On a later
