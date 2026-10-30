@@ -1,0 +1,174 @@
+[
+ {
+  "slot": 0,
+  "name": "IO 4 INIT",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2821,
+  "n0_samples": [
+   2821,
+   1325,
+   1304,
+   1304
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2759,
+  "n1_samples": [
+   2759,
+   1700,
+   1691,
+   1691
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2775,
+  "n4_samples": [
+   2775,
+   2484,
+   2443,
+   2439
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2641,
+  "n8_samples": [
+   2641,
+   2467,
+   2457,
+   2435
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 1,
+  "name": "IO 4 ENSEMBLE PAD",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2603,
+  "n0_samples": [
+   2603,
+   1272,
+   1295,
+   1271
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2725,
+  "n1_samples": [
+   2725,
+   1795,
+   1795,
+   1781
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2595,
+  "n4_samples": [
+   2595,
+   2243,
+   2261,
+   2261
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2640,
+  "n8_samples": [
+   2640,
+   2257,
+   2251,
+   2251
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 2,
+  "name": "IO 4 UNISON LEAD",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2551,
+  "n0_samples": [
+   2551,
+   1300,
+   1300,
+   1269
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2683,
+  "n1_samples": [
+   2683,
+   2255,
+   2235,
+   2229
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 1,
+  "n4_us": 2506,
+  "n4_samples": [
+   2506,
+   2252,
+   2242,
+   2249
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2608,
+  "n8_samples": [
+   2608,
+   2236,
+   2232,
+   2229
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 3,
+  "name": "ORACLE V POLY-MOD BELL",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2124,
+  "n0_samples": [
+   2124,
+   835,
+   820,
+   817
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2115,
+  "n1_samples": [
+   2115,
+   1336,
+   1339,
+   1339
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2065,
+  "n4_samples": [
+   2065,
+   1891,
+   1890,
+   1889
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2140,
+  "n8_samples": [
+   2140,
+   1934,
+   1937,
+   1929
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ }
+]
