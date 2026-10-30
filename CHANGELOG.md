@@ -14,6 +14,7 @@
   press that starts while the page is going out no longer vanishes; on the device that draw takes about 120 ms.
   Emulator-tested (the smoke taps GLO the moment the header appears); not yet on a device.
 - Factory presets are written by hand, one text file per engine (`web/presets/cards/`, `npm run presets`), in place of the rule-made Bright / Dark / Pad set: every one of the 24 FM-1 engines has five, named for what they are for (Fat Bass, Vintage Strings, Acid Squelch, Tight Techno ...). Drafts, not yet listened to on the FM-1 (#413)
+- **Elvira 2's `drone` rows and 8 Lire's `hold` rows turn in steps of 0.01 on the FM-1** (#405). The Offset (-4..4) behind each row is a Macro (0..1), so a knob click is 0.01 instead of 0.08 over a row whose useful part is 0..1; the same value reaches the voice and the factory presets sound the same. The structure of the two engines changes with it: a preset you stored on an FM-1 for Elvira 2 or 8 Lire no longer matches them (the factory ones are regenerated). The same rows in Elvira 2 XL and 8 Lire XL are 0..1 too. Host-tested only.
 ### Changes
 
 - **The FM-1 draws its screens faster: a second LCD line buffer** (#377). The LCD driver keeps two scanline buffers
