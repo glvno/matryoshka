@@ -133,20 +133,32 @@ static uint32_t walk_hold(int32_t rate)
 /* blocks between a part drift's targets: walk_hold(0.5 Hz) (engine.ts DRIFT_RATE) */
 #define DRIFT_HOLD ((uint32_t)(((((uint64_t)ENG_SR << 17) / (128u * 32768u)) + 1u) >> 1))
 
-/* base * 2^(x / 65536), saturating at 2^32 - 1. base: a phase increment, x: octaves Q16.16 */
-static uint32_t exp2_scale(uint32_t base, int32_t x)
+/* base * 2^(x / 65536), saturating at 2^32 - 1. base: a phase increment, x: octaves Q16.16. The mantissa m (Q28, 1..2) is
+ * interpolated in 32 bits (a step of EXP2_T is under 2^21, times r < 2^8). v = base m / 2^28 is shifted in 32 bits when it
+ * fits them (base under about 2^31: every phase increment), the 64-bit shifts only otherwise: a modulated pitch works this
+ * out every sample (#453). The same results as the 64-bit form (firmware/test/exact_test.c checks them). */
+HOT uint32_t exp2_scale_in(uint32_t base, int32_t x)
 {
     int32_t n = x >> 16;
-    uint32_t fr = (uint32_t)x & 0xFFFFu, i = fr >> 8, r = fr & 255u;
-    uint32_t m = EXP2_T[i] + (uint32_t)(((uint64_t)(EXP2_T[i + 1u] - EXP2_T[i]) * r) >> 8);   /* Q28, 1..2 */
-    uint64_t v = ((uint64_t)base * m) >> 28;
-    if (n >= 0) {
-        if (n >= 32 || v >= (1ull << (32 - n)))
+    uint32_t i = ((uint32_t)x >> 8) & 255u, r = (uint32_t)x & 255u;
+    uint32_t m = EXP2_T[i] + (((EXP2_T[i + 1u] - EXP2_T[i]) * r) >> 8);
+    uint64_t p = (uint64_t)base * m;
+    uint32_t hi = (uint32_t)(p >> 32), v;
+    if (hi >> 28) {                                     /* v >= 2^32 */
+        if (n >= 0)
             return 0xFFFFFFFFu;
-        return (uint32_t)(v << n);
+        return -n >= 64 ? 0u : (uint32_t)((p >> 28) >> -n);
     }
-    return -n >= 64 ? 0u : (uint32_t)(v >> -n);
+    v = (hi << 4) | ((uint32_t)p >> 28);
+    if (n >= 0) {
+        if (n >= 32 || (n && v >> (32 - n)))
+            return 0xFFFFFFFFu;
+        return v << n;
+    }
+    return n <= -32 ? 0u : v >> -n;
 }
+
+static uint32_t exp2_scale(uint32_t base, int32_t x) { return exp2_scale_in(base, x); }
 
 /* sin(2 pi phase), phase u32 turns -> Q16 */
 static int32_t sin_turn(uint32_t ph)
@@ -3493,7 +3505,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
 #define OSC_PITCH                                                                       \
                 if (i == 0 || pitch[i] != lastp) {                                      \
                     lastp = pitch[i];                                                   \
-                    dt = exp2_scale(INC_C4, lastp + d0);                                \
+                    dt = exp2_scale(INC_C4, lastp + d0);                             \
                     if (dt > DT_MAX)                                                    \
                         dt = DT_MAX;                                                    \
                 }
@@ -3555,7 +3567,7 @@ static void m_osc(const node_t *nd, inst_t *it, uint32_t n)
                 if (i == 0 || pitch[i] != lastp) {          /* the increments only when the pitch moves */ \
                     lastp = pitch[i];                                                   \
                     for (j = 0; j < nu; j++) {                                          \
-                        dts[j] = exp2_scale(INC_C4, lastp + base + doct[j]);            \
+                        dts[j] = exp2_scale(INC_C4, lastp + base + doct[j]);         \
                         if (dts[j] > DT_MAX)                                            \
                             dts[j] = DT_MAX;                                            \
                     }                                                                   \

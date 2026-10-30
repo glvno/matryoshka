@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 morgulbrut */
 /* The engine's division-free helpers against the plain divisions they replace, on random and edge inputs (run by
- * tools/engine_exact.sh): blep_pos (poly-BLEP position), hz_turns (Hz -> turns per sample), block_mean. */
+ * tools/engine_exact.sh): blep_pos (poly-BLEP position), hz_turns (Hz -> turns per sample), block_mean, exp2_scale (its
+ * 32-bit form against the 64-bit one it replaced). */
 #include <stdio.h>
 #include <stdlib.h>
 #include "../src/engine.c"
@@ -14,6 +15,44 @@ static uint32_t rnd(void)
     rs ^= rs >> 7;
     rs ^= rs << 17;
     return (uint32_t)rs;
+}
+
+/* exp2_scale as it was written with 64-bit arithmetic throughout (before #453) */
+static uint32_t exp2_scale_ref(uint32_t base, int32_t x)
+{
+    int32_t n = x >> 16;
+    uint32_t fr = (uint32_t)x & 0xFFFFu, i = fr >> 8, r = fr & 255u;
+    uint32_t m = EXP2_T[i] + (uint32_t)(((uint64_t)(EXP2_T[i + 1u] - EXP2_T[i]) * r) >> 8);
+    uint64_t v = ((uint64_t)base * m) >> 28;
+    if (n >= 0) {
+        if (n >= 32 || v >= (1ull << (32 - n)))
+            return 0xFFFFFFFFu;
+        return (uint32_t)(v << n);
+    }
+    return -n >= 64 ? 0u : (uint32_t)(v >> -n);
+}
+
+/* every x from -70 to +40 octaves for the engine's bases and bases around the 32-bit border of v, random pairs besides */
+static long exp2_check(long cases)
+{
+    static const uint32_t bases[] = {0u, 1u, 255u, 65536u, 25469723u /* INC_C4 */, 65536u * 440u, 1u << 30, 0x7FFFFFFFu,
+                                     0x80000000u, 0x80000001u, 0xC0000000u, 0xFFFFFFFFu};
+    long bad = 0, k;
+    uint32_t b;
+    int32_t x;
+    for (b = 0; b < sizeof bases / sizeof bases[0]; b++)
+        for (x = -(70 << 16); x <= (40 << 16); x++)
+            if (exp2_scale(bases[b], x) != exp2_scale_ref(bases[b], x) && bad++ < 5)
+                printf("exp2_scale base %u x %d\n", bases[b], x);
+    for (k = 0; k < cases; k++) {
+        uint32_t base = rnd() >> (rnd() % 32);
+        x = (int32_t)rnd();
+        if (k & 1)
+            x >>= rnd() % 32;
+        if (exp2_scale(base, x) != exp2_scale_ref(base, x) && bad++ < 10)
+            printf("exp2_scale base %u x %d\n", base, x);
+    }
+    return bad;
 }
 
 /* One patched output must equal that output with every port patched, including partial blocks. */
@@ -58,6 +97,7 @@ int main(int argc, char **argv)
     long cases = argc > 1 ? atol(argv[1]) : 20000000, k, bad = 0;
     uint32_t rc[2] = {0, 0};
     bad += single_outputs();
+    bad += exp2_check(cases);
     for (k = 0; k < cases; k++) {
         uint32_t dt = rnd() >> (rnd() % 32), t;
         if (!dt)

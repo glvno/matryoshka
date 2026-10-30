@@ -1,0 +1,260 @@
+[
+ {
+  "slot": 0,
+  "name": "IO 4 INIT",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2709,
+  "n0_samples": [
+   2709,
+   1291,
+   1291,
+   1271
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2694,
+  "n1_samples": [
+   2694,
+   1670,
+   1670,
+   1642
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2741,
+  "n4_samples": [
+   2741,
+   2447,
+   2439,
+   2425
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2677,
+  "n8_samples": [
+   2677,
+   2453,
+   2432,
+   2412
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 1,
+  "name": "IO 4 ENSEMBLE PAD",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2619,
+  "n0_samples": [
+   2619,
+   1257,
+   1282,
+   1252
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2674,
+  "n1_samples": [
+   2674,
+   1752,
+   1745,
+   1748
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2686,
+  "n4_samples": [
+   2686,
+   2228,
+   2208,
+   2216
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2611,
+  "n8_samples": [
+   2611,
+   2217,
+   2203,
+   2222
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 2,
+  "name": "IO 4 ARP PLUCK",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2666,
+  "n0_samples": [
+   2666,
+   1255,
+   1277,
+   1255
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2779,
+  "n1_samples": [
+   2779,
+   1623,
+   1655,
+   1655
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2747,
+  "n4_samples": [
+   2747,
+   2415,
+   2404,
+   2413
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2748,
+  "n8_samples": [
+   2748,
+   2460,
+   2403,
+   2420
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 3,
+  "name": "IO 4 UNISON LEAD",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2647,
+  "n0_samples": [
+   2647,
+   1261,
+   1273,
+   1252
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2634,
+  "n1_samples": [
+   2634,
+   2215,
+   2196,
+   2188
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 1,
+  "n4_us": 2556,
+  "n4_samples": [
+   2556,
+   2213,
+   2188,
+   2190
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2561,
+  "n8_samples": [
+   2561,
+   2201,
+   2187,
+   2193
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 4,
+  "name": "IO 4 S&H FILTER",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2645,
+  "n0_samples": [
+   2645,
+   1264,
+   1284,
+   1254
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2780,
+  "n1_samples": [
+   2780,
+   1666,
+   1694,
+   1694
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2699,
+  "n4_samples": [
+   2699,
+   2479,
+   2460,
+   2446
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2656,
+  "n8_samples": [
+   2656,
+   2484,
+   2460,
+   2445
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 5,
+  "name": "IO 4 PWM BRASS",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2667,
+  "n0_samples": [
+   2667,
+   1264,
+   1287,
+   1265
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2690,
+  "n1_samples": [
+   2690,
+   1709,
+   1650,
+   1698
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2663,
+  "n4_samples": [
+   2663,
+   2473,
+   2447,
+   2445
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2634,
+  "n8_samples": [
+   2634,
+   2470,
+   2440,
+   2440
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ }
+]

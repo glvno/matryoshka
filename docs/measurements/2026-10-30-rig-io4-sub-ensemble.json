@@ -1,0 +1,217 @@
+[
+ {
+  "slot": 0,
+  "name": "EP AS IS",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2666,
+  "n0_samples": [
+   2666,
+   1295,
+   1295,
+   1268
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2650,
+  "n1_samples": [
+   2650,
+   1759,
+   1761,
+   1753
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2719,
+  "n4_samples": [
+   2719,
+   2241,
+   2241,
+   2221
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2608,
+  "n8_samples": [
+   2608,
+   2230,
+   2246,
+   2227
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 1,
+  "name": "EP SUB OFF",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2583,
+  "n0_samples": [
+   2583,
+   1296,
+   1258,
+   1264
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2677,
+  "n1_samples": [
+   2677,
+   1761,
+   1763,
+   1755
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2742,
+  "n4_samples": [
+   2742,
+   2258,
+   2250,
+   2247
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2639,
+  "n8_samples": [
+   2639,
+   2234,
+   2247,
+   2247
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 2,
+  "name": "EP ENS OFF",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2620,
+  "n0_samples": [
+   2620,
+   1265,
+   1282,
+   1282
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2644,
+  "n1_samples": [
+   2644,
+   1767,
+   1767,
+   1754
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2659,
+  "n4_samples": [
+   2659,
+   2241,
+   2235,
+   2244
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2644,
+  "n8_samples": [
+   2644,
+   2241,
+   2242,
+   2242
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 3,
+  "name": "UL AS IS",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2575,
+  "n0_samples": [
+   2575,
+   1293,
+   1266,
+   1299
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2619,
+  "n1_samples": [
+   2619,
+   2221,
+   2221,
+   2212
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 1,
+  "n4_us": 2549,
+  "n4_samples": [
+   2549,
+   2239,
+   2214,
+   2226
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2541,
+  "n8_samples": [
+   2541,
+   2235,
+   2225,
+   2220
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 4,
+  "name": "UL SUB OFF",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2594,
+  "n0_samples": [
+   2594,
+   1266,
+   1287,
+   1277
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2696,
+  "n1_samples": [
+   2696,
+   2227,
+   2230,
+   2213
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 1,
+  "n4_us": 2540,
+  "n4_samples": [
+   2540,
+   2243,
+   2230,
+   2211
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2543,
+  "n8_samples": [
+   2543,
+   2241,
+   2212,
+   2222
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ }
+]

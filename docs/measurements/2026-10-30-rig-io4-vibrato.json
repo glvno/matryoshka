@@ -1,0 +1,174 @@
+[
+ {
+  "slot": 0,
+  "name": "EP NO VIB",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2720,
+  "n0_samples": [
+   2720,
+   1294,
+   1294,
+   1284
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2649,
+  "n1_samples": [
+   2649,
+   1667,
+   1639,
+   1681
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2733,
+  "n4_samples": [
+   2733,
+   2050,
+   2050,
+   2049
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2613,
+  "n8_samples": [
+   2613,
+   2418,
+   2417,
+   2431
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 1,
+  "name": "EP WAVE 4",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2657,
+  "n0_samples": [
+   2657,
+   1311,
+   1281,
+   1294
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2776,
+  "n1_samples": [
+   2776,
+   1775,
+   1783,
+   1776
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2796,
+  "n4_samples": [
+   2796,
+   2261,
+   2261,
+   2260
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2733,
+  "n8_samples": [
+   2733,
+   2262,
+   2262,
+   2260
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ },
+ {
+  "slot": 2,
+  "name": "UL NO VIB",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2564,
+  "n0_samples": [
+   2564,
+   1269,
+   1294,
+   1258
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2686,
+  "n1_samples": [
+   2686,
+   2449,
+   2417,
+   2407
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2589,
+  "n4_samples": [
+   2589,
+   2422,
+   2418,
+   2407
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2757,
+  "n8_samples": [
+   2757,
+   2431,
+   2396,
+   2401
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 3,
+  "name": "UL WAVE 4",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2663,
+  "n0_samples": [
+   2663,
+   1293,
+   1300,
+   1275
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2759,
+  "n1_samples": [
+   2759,
+   2264,
+   2246,
+   2252
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 1,
+  "n4_us": 2641,
+  "n4_samples": [
+   2641,
+   2265,
+   2252,
+   2250
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 1,
+  "n8_us": 2580,
+  "n8_samples": [
+   2580,
+   2253,
+   2246,
+   2250
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 1,
+  "budget_us": 2902
+ }
+]
