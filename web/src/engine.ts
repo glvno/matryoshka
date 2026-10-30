@@ -9,7 +9,7 @@
 // shared output gets that one buffer.
 
 import { type DrumMapState, dropRows, stepsGo, stepsPattern, type StepsSong, driftSeed, ENVELOPE_TYPES, flawQ16, IMPLS, instSeed, PANEL_BUTTONS, type StepsState, TEMPO_MAX, TEMPO_MIN, walkHold, walkInit, walkStep, type Ctx, type ModuleImpl, type Voice, type Walk } from './modules';
-import { defaultMap, FLAW_TARGETS, flawOf, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
+import { defaultMap, FLAW_TARGETS, flawOf, MAX_PARTS, modulate, type ParamDef, type PartFlaw, morphValue, paramValue, processingOrder, SOURCES, type Cable, type Patch, type PolyCfg, type Range, type Source, takesKey, thruInput } from './patch';
 import { ALLOC, deviceView, keysInto } from './poly';
 import { armView, type DeviceKey } from './arm';
 import { kindOf, switches, toggleTargets } from './buttons';
@@ -97,10 +97,9 @@ interface VoiceState extends Voice {
   offStamp: number;
   /** the part was taken over while sounding: this block's gate starts with one low sample so envelopes restart */
   retrig: boolean;
-  /** released and silent (partQuiet): its modules are skipped; skip: this block; idleN: blocks since it went idle */
+  /** released and silent (partQuiet): its modules are skipped; skip: this block */
   idle?: boolean;
   skip?: boolean;
-  idleN?: number;
   /** the drift's random walk (driftSeed), stepped every block */
   walk: Walk;
 }
@@ -133,7 +132,8 @@ interface ArpRun {
 }
 
 /** idle parts (Engine.partQuiet): an output within this counts as silent (6 in Q16, engine.c IDLE_Q16); every IDLE_CHECK-th
- * block an idle part runs and is checked again */
+ * block an idle part runs and is checked again, part v of group g in the blocks where (idleBlk + g MAX_PARTS + v) % IDLE_CHECK
+ * is 0 (staggered, #434: parts that went idle together do not all run in one block) */
 const IDLE = 6 / 65536;
 const IDLE_CHECK = 32;
 
@@ -167,6 +167,8 @@ export class Engine {
   /** the clock: 24 ppqn ticks so far (from the Main module's tempo, or MIDI clock while it comes in), the internal
    * clock's remainder (in 1 / (60 sr) of a tick), MIDI clock ticks not yet counted, and the transport */
   private ticks = 0;
+  /** blocks mod IDLE_CHECK (never reset, engine.c idle_blk): which idle parts run their check */
+  private idleBlk = 0;
   private tickAcc = 0;
   private extTicks = 0;
   private ext = false;
@@ -1195,12 +1197,14 @@ export class Engine {
           x.foot = this.ctl.foot;
         }
       }
-      // idle parts (partQuiet): woken by a note, else run every IDLE_CHECK-th block
-      for (const g of this.groups)
-        for (const x of g.parts) {
+      // idle parts (partQuiet): woken by a note, else run every IDLE_CHECK-th block, each part in its own (staggered, #434)
+      this.groups.forEach((g, gi) =>
+        g.parts.forEach((x, v) => {
           if (x.idle && (x.gate > 0 || x.retrig)) x.idle = false;
-          x.skip = !!x.idle && (x.idleN = (x.idleN ?? 0) + 1) % IDLE_CHECK !== 0;
-        }
+          x.skip = !!x.idle && (this.idleBlk + gi * MAX_PARTS + v) % IDLE_CHECK !== 0;
+        }),
+      );
+      this.idleBlk = (this.idleBlk + 1) % IDLE_CHECK;
       const kb = this.kb.parts[0];
       for (const node of this.order) {
         const parts = node.group >= 0 ? this.groups[node.group].parts : null;
@@ -1219,7 +1223,6 @@ export class Engine {
           g.parts.forEach((x, v) => {
             if (x.skip) return;
             if (!x.gate && !x.retrig && this.partQuiet(gi, v)) {
-              if (!x.idle) x.idleN = 0;
               x.idle = true;
               this.partSilence(gi, v);
             } else x.idle = false;

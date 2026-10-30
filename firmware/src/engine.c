@@ -422,7 +422,6 @@ typedef struct {
     walk_t dw;                       /* the drift's random walk (modules.ts driftSeed), stepped every block */
     int32_t flaw;                    /* the pitch flaw, octaves Q16: detune + drift (modules.ts flawQ16); the Part module adds it */
     uint8_t idle, skip;              /* idle: released and silent, its modules are skipped (part_idle); skip: this block */
-    uint16_t idle_n;                 /* blocks since it went idle: every IDLE_CHECK-th one runs and checks again */
 } pv_t;
 
 /* an allocator and its parts (engine.ts Group): grp[0] is the shared keyboard (one part, legato auto, last note), grp[1..]
@@ -550,6 +549,7 @@ typedef struct {
     uint16_t btn_sw;                 /* the buttons that switch (the panel's mask) */
     int8_t main;                     /* the Main module, -1 without one */
     int32_t morph;                   /* the morph position of this block, Q16 0..1: the Main's MORPH parameter plus the mean of its morph input */
+    uint8_t idle_blk;                /* blocks mod IDLE_CHECK (never reset): which idle parts run their check (part_quiet) */
 } eng_t;
 
 /* the slice of the pattern track t plays (one it has not got: pattern 0), its first note and count */
@@ -6430,7 +6430,9 @@ static void process(const node_t *nd, inst_t *it, uint32_t n)
 /* Idle parts (engine.ts partIdle, the same rule): a part of a poly group whose gate is low, whose envelopes (ADSR / level
  * envelope, eight-step envelope, at least one) have all finished, and whose outputs that leave the group stayed within IDLE_Q16 for a whole block
  * is idle: those outputs are set to 0 and its modules are skipped until a note reaches it, except every IDLE_CHECK-th block,
- * which runs it and checks again (a part that sounds without its envelopes, a knob opening a drone, comes back). */
+ * which runs it and checks again (a part that sounds without its envelopes, a knob opening a drone, comes back). The checks
+ * are staggered (#434): part v of group k runs in the blocks where (idle_blk + (k - 1) ENG_MAX_PARTS + v) % IDLE_CHECK is 0,
+ * so parts that went idle together (every part after a load) do not all run in one block. */
 #define IDLE_Q16 6
 #define IDLE_CHECK 32u
 static int part_quiet(uint32_t k, uint32_t v)
@@ -6557,15 +6559,16 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                 x->flaw = (int32_t)g->detune[v] * 65536 / 1200 + flaw_drift(x->dw.y, g->drift[v]);
             }
         }
-        for (k = 1; k <= E.ngrp; k++) {                 /* idle parts: woken by a note, else run every IDLE_CHECK-th block */
-            const grp_t *g = &E.grp[k];
+        for (k = 1; k <= E.ngrp; k++) {                 /* idle parts: woken by a note, else run every IDLE_CHECK-th block, */
+            const grp_t *g = &E.grp[k];                 /* each part in its own block of the IDLE_CHECK (staggered, #434) */
             for (v = 0; v < g->parts; v++) {
                 pv_t *x = &E.pv[g->pv0 + v];
                 if (x->idle && (x->gate || x->retrig))
                     x->idle = 0;
-                x->skip = x->idle && ++x->idle_n % IDLE_CHECK != 0u;
+                x->skip = x->idle && (E.idle_blk + (k - 1u) * ENG_MAX_PARTS + v) % IDLE_CHECK != 0u;
             }
         }
+        E.idle_blk = (uint8_t)((E.idle_blk + 1u) % IDLE_CHECK);
         for (k = 0; k < E.norder; k++) {
             const node_t *nd = &E.node[E.order[k]];
             const inst_t *prev = 0;
@@ -6653,8 +6656,6 @@ static void render_voice(int32_t *left, int32_t *right, uint32_t total)   /* the
                     if (x->skip)
                         continue;
                     if (!x->gate && !x->retrig && part_quiet(k, v)) {
-                        if (!x->idle)
-                            x->idle_n = 0;
                         x->idle = 1;
                         part_silence(k, v);
                     } else

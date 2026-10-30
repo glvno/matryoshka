@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Idle voices no longer all wake in the same block** (#434). An idle voice runs every 32nd block to check that it is still silent; voices that went idle together (every voice after a patch load) all ran that check in the same block, so drift poly's Slow Pad at 8 voices clicked like a helicopter on one held note. Each voice now checks in its own block. Peak block of drift poly at 8 voices with one note held, on the CPU model (`tools/cpu`): 578 k → 163 k cycles (86 % → 25 % of the block; the median block stays 93 k, 14 %); with all 8 notes held it stays 86 %. A voice that wakes from idle can start with its oscillators at another phase than before (golden kits still agree, `tools/golden.sh`). Host-tested; not yet on a device.
 - Hera 6's Glass Pad preset is a thin, slowly swept pulse (narrow width, high-pass up, open filter, a long swell): the first draft was Strings again. From the owner's listening pass on the test rig (#413).
 - **Four new factory patches: Basic Poly, Drift Poly, Mono Lead and Supersaw Stack** (slots 26..29 as the FM-1 numbers
   them; #413). On the FM-1 an engine's presets are reached by PRESET on its page, so an engine's presets were out of
