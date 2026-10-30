@@ -1128,6 +1128,38 @@ int main(void)
                 check("  what it drew under the bar is what a whole redraw draws", !memcmp(keep + BAR_H * 240u, fb + BAR_H * 240u, sizeof keep - BAR_H * 240u * 2u));
                 later(1500);
             }
+            {                                               /* a device set to no preset stands on the entry whose values
+                                                             * it has (#432): on Init, right is the entry after it, left the
+                                                             * last, never Init again */
+                char before[17], nm1[17], nml[17];
+                uint32_t k, n = dp_list(d);
+                int at = -1;
+                memcpy(before, pg_pname[d], sizeof before);
+                for (k = 0; k < n && at < 0; k++)
+                    if (dp_entry(pr_list[k], nm1) >= 0 && !ps_name_cmp(nm1, before))
+                        at = (int)k;
+                (void)dp_entry(pr_list[1], nm1);
+                (void)dp_entry(pr_list[n - 1u], nml);
+                check("  (its list: an Init, then others)", n >= 2u && at >= 0 && !dp_load(d, 0));
+                dp_name_set(d, "");
+                pages_ensure();
+                enc(6, 1);
+                check("  on Init's values, set to none (#432): PRESET right loads the entry after Init", !ps_name_cmp(pg_pname[d], nm1) && !strcmp(msg_text + 7, pg_pname[d]));
+                later(1500);
+                (void)dp_load(d, 0);
+                dp_name_set(d, "");
+                pages_ensure();
+                enc(6, -1);
+                check("  and PRESET left the last entry", !ps_name_cmp(pg_pname[d], nml));
+                later(1500);
+                (void)dp_load(d, 0);
+                dp_name_set(d, "");
+                pages_ensure();
+                dp_list(d);
+                check("  on Init's values: dp_current finds Init, the name left unset", dp_current(d, n) == 0 && !pg_pname[d][0]);
+                (void)dp_load(d, (uint32_t)at);              /* (back to the preset it was on, for what follows) */
+                pages_ensure();
+            }
             for (r = 0; r < 17; r++)
                 was[r] = pg_pname[d][r];
             panel_held |= 1u << 4;                          /* ENV held + SAVE: stored as a new user preset */

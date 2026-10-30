@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **PRESET's first turn on a device set to no preset reaches a real preset** (#432). On the FM-1 a device in a patch just opened had no place in its preset list, so the first PRESET turn right loaded INIT, the values it already had: the bar said `PRESET INIT` and nothing changed. Now a device with no preset name stands on the first preset whose values it has, so a fresh Silver Box goes to ACID SQUELCH on the first turn right and to LONG SWEEP on the first turn left. The editor's ‹ › preset arrows had the same dead first step and now match. Host- and emulator-tested; not yet on a device.
 - Hera 6's Glass Pad preset is a thin, slowly swept pulse (narrow width, high-pass up, open filter, a long swell): the first draft was Strings again. From the owner's listening pass on the test rig (#413).
 - **Four new factory patches: Basic Poly, Drift Poly, Mono Lead and Supersaw Stack** (slots 26..29 as the FM-1 numbers
   them; #413). On the FM-1 an engine's presets are reached by PRESET on its page, so an engine's presets were out of
