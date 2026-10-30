@@ -14,7 +14,7 @@ import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track'
 import { FACTORY } from '../src/assemblies';
 import { allModules, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
-import { around, level, mod, peakOf, players, plugIn, plugOut, row, wire, type Inst } from './factory-build';
+import { around, headroom, level, mod, peakOf, players, plugIn, plugOut, row, wire, type Inst } from './factory-build';
 
 const DIR = new URL('../presets/', import.meta.url);
 const KEEP = '909-kit.json'; // ours, kept as written
@@ -606,8 +606,9 @@ for (const [name, asm, chord] of [['Basic Poly', 'basic poly', true], ['Drift Po
 // ---- write: build and check every patch first, then clear the folder (but the kept file), number them, the 909 Kit
 // after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const made = presets.map((f) => silverDemo(players(validatePatch(structuredClone(f()), DEFS))));
-const later = after.map((f) => validatePatch(structuredClone(f()), DEFS));
+// (last, headroom: the Output so that no way of playing a patch clips, its engines' presets too, #440)
+const made = presets.map((f) => headroom(silverDemo(players(validatePatch(structuredClone(f()), DEFS)))));
+const later = after.map((f) => headroom(validatePatch(structuredClone(f()), DEFS)));
 for (const p of [...made, ...later]) {
   const b = deviceBudget(p);
   if (!b.fits) {

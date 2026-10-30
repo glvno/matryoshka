@@ -228,6 +228,8 @@ lfo → delay = 0.6
 time = 180 ms
 feedback = 0.7
 mix = 0.5
+# the volume after the drive down (0.7 before): the delay's feedback piled the eight keys up to 1.0, clipping (#440)
+vol = 0.6
 
 preset: Feedback Howl
 # Harsh and self-running: both holds up, every pair FM-ed by the other side and by the delay output, hard sharp and drive, a fast hyper LFO shaking the delay time.

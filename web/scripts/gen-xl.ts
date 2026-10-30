@@ -9,9 +9,12 @@ import { FM1_PRESETS } from '../src/presets';
 import { browserOnly } from '../src/patchbin';
 import { XLS } from './xl/index';
 import { buildXls, xlFile } from './xl/xl';
+import { headroom } from './factory-build';
 
 const DIR = new URL('../presets/xl/', import.meta.url);
-const built = buildXls(XLS, FM1_PRESETS); // (build and check them all before a file is touched)
+// (build and check them all before a file is touched; last, headroom: the Output so that no way of playing an XL clips,
+// its engines' presets too, #440)
+const built = buildXls(XLS, FM1_PRESETS).map((b) => ({ ...b, patch: headroom(b.patch) }));
 mkdirSync(DIR, { recursive: true });
 for (const f of readdirSync(DIR)) if (f.endsWith('.json')) unlinkSync(new URL(f, DIR));
 for (const { patch, budget: b } of built) {

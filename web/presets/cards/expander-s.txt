@@ -136,8 +136,10 @@ preset: Unison Lead
   vco 1 wave = saw
   vco 2 wave = saw
   vco 2 fine = 12 ct
-  vco 1 = 0.5
-  vco 2 = 0.5
+  # the oscillators' levels down (0.5 / 0.5 before), into the filter: the four unison voices on one key peaked 1.2 and
+  # clipped (#440)
+  vco 1 = 0.35
+  vco 2 = 0.35
   cutoff = 1800 Hz
   resonance = 0.4
   mode = 0
