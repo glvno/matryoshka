@@ -2218,13 +2218,51 @@ static int dp_entry(uint16_t e, char *name)
     return (int)n;
 }
 
-/* where device d's list stands: the entry named as the device's preset, -1 none */
+/* device d's row i value now (canonical order, as a preset holds it) */
+static int32_t dp_row_value(uint32_t d, uint32_t i)
+{
+    uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
+    return mod == 0xFFu ? 0 : (par & POLY_ROW) ? (row_ok(mod, par) ? poly_value(mod, par & 0x7Fu) << 16 : 0) : eng_get_param(mod, par);
+}
+
+/* whether loading entry e (its values read into pr_vals, n of them) would leave device d as it is: each row dp_load
+ * sets holds the entry's value already (a poly row at its whole number); rows past a shorter entry are kept by a load,
+ * so they do not count. An entry of no values never matches. */
+static int dp_same(uint32_t d, int n)
+{
+    uint32_t i;
+    if (n <= 0)
+        return 0;
+    for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
+        uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
+        int32_t v = pr_vals[i];
+        if (mod == 0xFFu)
+            continue;
+        if (par & POLY_ROW) {
+            if (row_ok(mod, par) && (int32_t)poly_value(mod, par & 0x7Fu) != ((v + 32768) >> 16))
+                return 0;
+        } else if (eng_type(mod) >= 0 && par < DEFS[eng_type(mod)].npar && eng_get_param(mod, par) != v)
+            return 0;
+    }
+    return 1;
+}
+
+/* where device d's list stands: the entry named as the device's preset; a device not set to one (a patch just loaded,
+ * #432): the first entry whose values it has (a fresh factory engine is on Init, so the next is the first after it);
+ * -1 none. The name is not set by a match: only a load or a store names the device's preset. */
 static int dp_current(uint32_t d, uint32_t n)
 {
     char nm[17];
     uint32_t k;
+    int c;
+    if (pg_pname[d][0]) {
+        for (k = 0; k < n; k++)
+            if (dp_entry(pr_list[k], nm) >= 0 && !ps_name_cmp(nm, pg_pname[d]))
+                return (int)k;
+        return -1;
+    }
     for (k = 0; k < n; k++)
-        if (dp_entry(pr_list[k], nm) >= 0 && !ps_name_cmp(nm, pg_pname[d]) && pg_pname[d][0])
+        if ((c = dp_entry(pr_list[k], nm)) >= 0 && dp_same(d, c))
             return (int)k;
     return -1;
 }
@@ -2286,10 +2324,8 @@ static int dp_load(uint32_t d, uint32_t k)
 static uint32_t dp_values(uint32_t d)
 {
     uint32_t i, n = pg_dev[d].nrows < PS_MAXV ? pg_dev[d].nrows : PS_MAXV;
-    for (i = 0; i < n; i++) {
-        uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
-        pr_vals[i] = mod == 0xFFu ? 0 : (par & POLY_ROW) ? (row_ok(mod, par) ? poly_value(mod, par & 0x7Fu) << 16 : 0) : eng_get_param(mod, par);
-    }
+    for (i = 0; i < n; i++)
+        pr_vals[i] = dp_row_value(d, i);
     return n;
 }
 

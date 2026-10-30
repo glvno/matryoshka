@@ -189,10 +189,15 @@ export function nextPresetName(p: Patch, a: AssemblyInst): string {
   return `${base} ${k}`;
 }
 
-/** step from the assembly's remembered preset to the next (dir 1) or previous (-1) one, round; null when it has none */
+/** step from the assembly's remembered preset to the next (dir 1) or previous (-1) one, round; null when it has none. One
+ * that remembers none (a patch just loaded, #432) stands on the first preset whose values it has, as the FM-1 does
+ * (pages_ui.c dp_current): a fresh factory engine is on Init, so the next is the first after it */
 export function stepPreset(p: Patch, a: AssemblyInst, dir: 1 | -1): Preset | null {
   const list = presetsOf(p, a);
   if (!list.length) return null;
-  const i = list.findIndex((x) => sameName(x.name, a.preset));
+  const now = a.preset ? [] : currentValues(p, a);
+  const i = a.preset
+    ? list.findIndex((x) => sameName(x.name, a.preset))
+    : list.findIndex((x) => x.values.length === now.length && now.every((v, k) => Math.abs(v - x.values[k]) < 1e-6));
   return list[i < 0 ? (dir > 0 ? 0 : list.length - 1) : (i + dir + list.length) % list.length];
 }
