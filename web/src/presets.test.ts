@@ -210,7 +210,7 @@ const loudest = (x: Float32Array): number => x.reduce((m, v) => Math.max(m, Math
 
 describe('factory patches: an arpeggiator on ARP and a PATTERN track where they fit (D-336)', () => {
   it('every melodic patch has them, the drum patches do not; none passes the CPU warning', () => {
-    expect(PLAYED).toHaveLength(21);
+    expect(PLAYED).toHaveLength(25);
     for (const name of NO_PLAYERS) expect(FM1_PRESETS[name]().modules.some((m) => m.type === 'arp'), name).toBe(false);
     expect(PLAYED.filter((name) => deviceBudget(FM1_PRESETS[name]()).cpu.use > CPU_WARN)).toEqual(PAST_WARNING);
   });

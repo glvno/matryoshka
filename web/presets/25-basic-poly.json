@@ -1,0 +1,408 @@
+{
+ "version": 2,
+ "name": "Basic Poly",
+ "modules": [
+  {
+   "id": 1,
+   "type": "fm1",
+   "x": 20,
+   "y": 20,
+   "params": {
+    "morph": 0,
+    "tempo": 120
+   },
+   "panel": {
+    "toggle": [
+     "arp"
+    ],
+    "kinds": {
+     "arp": "bypass"
+    },
+    "targets": {
+     "arp": {
+      "module": 9
+     }
+    }
+   }
+  },
+  {
+   "id": 2,
+   "type": "alloc",
+   "x": 20,
+   "y": 620,
+   "params": {
+    "voices": 4,
+    "assign": 0,
+    "legato": 0,
+    "priority": 0,
+    "unison": 0,
+    "channel": 0,
+    "low": 0,
+    "high": 127,
+    "steal": 1,
+    "stack": 0
+   }
+  },
+  {
+   "id": 3,
+   "type": "osc",
+   "x": 20,
+   "y": 60,
+   "params": {
+    "wave": 2,
+    "pw": 0.5,
+    "coarse": 0,
+    "fine": 0,
+    "pm": 0,
+    "level": 0.8,
+    "fb": 0,
+    "unison": 1,
+    "detune": 10,
+    "blend": 0.5,
+    "stack": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "wave"
+    ],
+    "p2": [
+     "pw"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 4,
+   "type": "filter",
+   "x": 340,
+   "y": 60,
+   "params": {
+    "cutoff": 2000,
+    "res": 0.2,
+    "cvamt": 1,
+    "track": 0,
+    "morph": 0,
+    "osc": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "cutoff"
+    ],
+    "p2": [
+     "res"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "adsr",
+   "x": 340,
+   "y": 620,
+   "params": {
+    "a": 0.005,
+    "d": 0.3,
+    "s": 0.6,
+    "r": 0.3,
+    "long": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "a"
+    ],
+    "p2": [
+     "d"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 6,
+   "type": "vca",
+   "x": 660,
+   "y": 60,
+   "params": {
+    "gain": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 7,
+   "type": "output",
+   "x": 1040,
+   "y": 20,
+   "params": {
+    "level": 0.31
+   }
+  },
+  {
+   "id": 8,
+   "type": "steps",
+   "x": 20,
+   "y": 920,
+   "params": {
+    "len": 16,
+    "rate": 4,
+    "swing": 50,
+    "gate": 0.25,
+    "dir": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "len"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "swing"
+    ],
+    "k4": [
+     "gate"
+    ]
+   },
+   "name": "PATTERN"
+  },
+  {
+   "id": 9,
+   "type": "arp",
+   "x": 1040,
+   "y": 920,
+   "params": {
+    "mode": 0,
+    "rate": 4,
+    "octaves": 1,
+    "gate": 0.5,
+    "latch": 0
+   },
+   "bypass": true
+  }
+ ],
+ "cables": [
+  {
+   "from": {
+    "module": 2,
+    "port": "pitch"
+   },
+   "to": {
+    "module": 3,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "gate"
+   },
+   "to": {
+    "module": 5,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "out"
+   },
+   "to": {
+    "module": 4,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "lp24"
+   },
+   "to": {
+    "module": 6,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 5,
+    "port": "env"
+   },
+   "to": {
+    "module": 6,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "out"
+   },
+   "to": {
+    "module": 7,
+    "port": "l"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "out"
+   },
+   "to": {
+    "module": 7,
+    "port": "r"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
+    "module": 8,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 9,
+    "port": "keys"
+   },
+   "to": {
+    "module": 2,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "keys"
+   },
+   "to": {
+    "module": 9,
+    "port": "keys"
+   }
+  }
+ ],
+ "assemblies": [
+  {
+   "v": 1,
+   "id": 1,
+   "name": "basic poly",
+   "label": "basic poly",
+   "x": 20,
+   "y": 60,
+   "open": false,
+   "modules": [
+    2,
+    3,
+    4,
+    5,
+    6
+   ],
+   "inputs": [
+    {
+     "module": 2,
+     "port": "keys",
+     "label": "keys"
+    },
+    {
+     "module": 4,
+     "port": "cv",
+     "label": "cutoff cv"
+    }
+   ],
+   "outputs": [
+    {
+     "module": 6,
+     "port": "out",
+     "label": "out"
+    }
+   ],
+   "params": [
+    {
+     "module": 2,
+     "param": "voices",
+     "label": "voices"
+    },
+    {
+     "module": 3,
+     "param": "wave",
+     "label": "wave"
+    },
+    {
+     "module": 4,
+     "param": "cutoff",
+     "label": "cutoff"
+    },
+    {
+     "module": 4,
+     "param": "res",
+     "label": "res"
+    },
+    {
+     "module": 5,
+     "param": "a",
+     "label": "a"
+    },
+    {
+     "module": 5,
+     "param": "d",
+     "label": "d"
+    },
+    {
+     "module": 5,
+     "param": "s",
+     "label": "s"
+    },
+    {
+     "module": 5,
+     "param": "r",
+     "label": "r"
+    }
+   ],
+   "poly": {}
+  }
+ ],
+ "notes": "The basic poly engine as made, so its presets (PRESET on its page) are at hand on the FM-1."
+}

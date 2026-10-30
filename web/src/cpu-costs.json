@@ -48942,6 +48942,22 @@
    "cycles": 353427
   },
   {
+   "name": "Basic Poly",
+   "cycles": 212968
+  },
+  {
+   "name": "Drift Poly",
+   "cycles": 322217
+  },
+  {
+   "name": "Mono Lead",
+   "cycles": 98948
+  },
+  {
+   "name": "Supersaw Stack",
+   "cycles": 323784
+  },
+  {
    "name": "Acid, 4 parts",
    "cycles": 341963
   },

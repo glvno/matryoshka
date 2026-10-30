@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Four new factory patches: Basic Poly, Drift Poly, Mono Lead and Supersaw Stack** (slots 26..29 as the FM-1 numbers
+  them; #413). On the FM-1 an engine's presets are reached by PRESET on its page, so an engine's presets were out of
+  reach until some patch in the bank held it: these four engines have hand-written preset cards but had no factory
+  patch. Each new patch is the engine as made (its Init rows), Main's keys into it, with the Arpeggiator and an empty
+  PATTERN track every melodic patch has; the CPU estimate says 32 %, 48 %, 17 % and 47 %. An FM-1 updated from an
+  earlier firmware keeps its bank as it is: the new slots appear after FACTORY RESET (MENU > SYSTEM), or on the first
+  boot of an empty store. Host-tested; not yet on a device.
 - **FM-1 knob turns: a fast click only after one the same way, HOME held turns fine, a click glides over 23 ms** (#340,
   #405). KNOB ACCEL's five-click step now counts only when the knob's previous click, within 80 ms, went the same way; a
   reversal is one click, so a turn back lands on the values between. HOME held + K1..K4 moves a row by a tenth of a

@@ -1,0 +1,504 @@
+{
+ "version": 2,
+ "name": "Supersaw Stack",
+ "modules": [
+  {
+   "id": 1,
+   "type": "fm1",
+   "x": 20,
+   "y": 20,
+   "params": {
+    "morph": 0,
+    "tempo": 120
+   },
+   "panel": {
+    "toggle": [
+     "arp"
+    ],
+    "kinds": {
+     "arp": "bypass"
+    },
+    "targets": {
+     "arp": {
+      "module": 11
+     }
+    }
+   }
+  },
+  {
+   "id": 2,
+   "type": "alloc",
+   "x": 20,
+   "y": 1180,
+   "params": {
+    "voices": 4,
+    "assign": 0,
+    "legato": 0,
+    "priority": 0,
+    "unison": 0,
+    "channel": 0,
+    "low": 0,
+    "high": 127,
+    "steal": 1,
+    "stack": 0
+   }
+  },
+  {
+   "id": 3,
+   "type": "osc",
+   "x": 20,
+   "y": 60,
+   "params": {
+    "wave": 2,
+    "pw": 0.5,
+    "coarse": 0,
+    "fine": 0,
+    "pm": 0,
+    "level": 0.9,
+    "fb": 0,
+    "unison": 5,
+    "detune": 22,
+    "blend": 0.65,
+    "stack": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "wave"
+    ],
+    "p2": [
+     "pw"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 4,
+   "type": "filter",
+   "x": 340,
+   "y": 60,
+   "params": {
+    "cutoff": 3500,
+    "res": 0.15,
+    "cvamt": 1,
+    "track": 0,
+    "morph": 0,
+    "osc": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "cutoff"
+    ],
+    "p2": [
+     "res"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 5,
+   "type": "adsr",
+   "x": 20,
+   "y": 620,
+   "params": {
+    "a": 0.02,
+    "d": 0.4,
+    "s": 0.75,
+    "r": 0.5,
+    "long": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "a"
+    ],
+    "p2": [
+     "d"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 6,
+   "type": "vca",
+   "x": 340,
+   "y": 620,
+   "params": {
+    "gain": 1
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 7,
+   "type": "scale",
+   "x": 340,
+   "y": 1180,
+   "params": {
+    "gain": 0.6,
+    "offset": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "gain"
+    ],
+    "p2": [
+     "offset"
+    ],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 8,
+   "type": "pan",
+   "x": 660,
+   "y": 60,
+   "params": {
+    "pan": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "pan"
+    ],
+    "p2": [],
+    "k1": [],
+    "k2": [],
+    "k3": [],
+    "k4": []
+   }
+  },
+  {
+   "id": 9,
+   "type": "output",
+   "x": 1040,
+   "y": 20,
+   "params": {
+    "level": 0.54
+   }
+  },
+  {
+   "id": 10,
+   "type": "steps",
+   "x": 20,
+   "y": 1480,
+   "params": {
+    "len": 16,
+    "rate": 4,
+    "swing": 50,
+    "gate": 0.25,
+    "dir": 0
+   },
+   "att": [
+    1,
+    1
+   ],
+   "map": {
+    "p1": [
+     "len"
+    ],
+    "p2": [
+     "rate"
+    ],
+    "k1": [
+     "len"
+    ],
+    "k2": [
+     "rate"
+    ],
+    "k3": [
+     "swing"
+    ],
+    "k4": [
+     "gate"
+    ]
+   },
+   "name": "PATTERN"
+  },
+  {
+   "id": 11,
+   "type": "arp",
+   "x": 1040,
+   "y": 1480,
+   "params": {
+    "mode": 0,
+    "rate": 4,
+    "octaves": 1,
+    "gate": 0.5,
+    "latch": 0
+   },
+   "bypass": true
+  }
+ ],
+ "cables": [
+  {
+   "from": {
+    "module": 2,
+    "port": "pitch"
+   },
+   "to": {
+    "module": 3,
+    "port": "pitch"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "gate"
+   },
+   "to": {
+    "module": 5,
+    "port": "gate"
+   }
+  },
+  {
+   "from": {
+    "module": 2,
+    "port": "index"
+   },
+   "to": {
+    "module": 7,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 7,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
+    "port": "pos"
+   }
+  },
+  {
+   "from": {
+    "module": 3,
+    "port": "out"
+   },
+   "to": {
+    "module": 4,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 4,
+    "port": "lp12"
+   },
+   "to": {
+    "module": 6,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 5,
+    "port": "env"
+   },
+   "to": {
+    "module": 6,
+    "port": "cv"
+   }
+  },
+  {
+   "from": {
+    "module": 6,
+    "port": "out"
+   },
+   "to": {
+    "module": 8,
+    "port": "in"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "l"
+   },
+   "to": {
+    "module": 9,
+    "port": "l"
+   }
+  },
+  {
+   "from": {
+    "module": 8,
+    "port": "r"
+   },
+   "to": {
+    "module": 9,
+    "port": "r"
+   }
+  },
+  {
+   "from": {
+    "module": 1,
+    "port": "keys"
+   },
+   "to": {
+    "module": 10,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 11,
+    "port": "keys"
+   },
+   "to": {
+    "module": 2,
+    "port": "keys"
+   }
+  },
+  {
+   "from": {
+    "module": 10,
+    "port": "keys"
+   },
+   "to": {
+    "module": 11,
+    "port": "keys"
+   }
+  }
+ ],
+ "assemblies": [
+  {
+   "v": 1,
+   "id": 1,
+   "name": "supersaw stack",
+   "label": "supersaw stack",
+   "x": 20,
+   "y": 60,
+   "open": false,
+   "modules": [
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+   ],
+   "inputs": [
+    {
+     "module": 2,
+     "port": "keys",
+     "label": "keys"
+    }
+   ],
+   "outputs": [
+    {
+     "module": 8,
+     "port": "l",
+     "label": "l"
+    },
+    {
+     "module": 8,
+     "port": "r",
+     "label": "r"
+    }
+   ],
+   "params": [
+    {
+     "module": 3,
+     "param": "unison",
+     "label": "unison"
+    },
+    {
+     "module": 3,
+     "param": "detune",
+     "label": "detune"
+    },
+    {
+     "module": 3,
+     "param": "blend",
+     "label": "blend"
+    },
+    {
+     "module": 3,
+     "param": "stack",
+     "label": "stack"
+    },
+    {
+     "module": 4,
+     "param": "cutoff",
+     "label": "cutoff"
+    },
+    {
+     "module": 7,
+     "param": "gain",
+     "label": "width"
+    },
+    {
+     "module": 2,
+     "param": "voices",
+     "label": "voices"
+    },
+    {
+     "module": 5,
+     "param": "a",
+     "label": "a"
+    },
+    {
+     "module": 5,
+     "param": "d",
+     "label": "d"
+    },
+    {
+     "module": 5,
+     "param": "s",
+     "label": "s"
+    },
+    {
+     "module": 5,
+     "param": "r",
+     "label": "r"
+    }
+   ],
+   "poly": {}
+  }
+ ],
+ "notes": "The supersaw stack engine as made, so its presets (PRESET on its page) are at hand on the FM-1."
+}

@@ -48,7 +48,7 @@ The firmware plays one patch at a time. See [D-202](docs/ledger/device-ui.md#D-2
 
 ## FM-1
 
-> **Coming from Felucca?** Matryoshka keeps its patches in flash sectors that Felucca uses for its projects, samples and user presets (0x97000, 0x98000, 0xA0000-0xDFFFF). Its first start writes the 25 factory patches into the 64-slot bank there (that erases almost all of those sectors) and every SAVE writes there again, so the Felucca data in them is lost. Save them with Felucca before you install; the Flash tab asks again when the FM-1 reports a Felucca identity. Patches stored by the official M-VAVE firmware are not touched.
+> **Coming from Felucca?** Matryoshka keeps its patches in flash sectors that Felucca uses for its projects, samples and user presets (0x97000, 0x98000, 0xA0000-0xDFFFF). Its first start writes the 29 factory patches into the 64-slot bank there (that erases almost all of those sectors) and every SAVE writes there again, so the Felucca data in them is lost. Save them with Felucca before you install; the Flash tab asks again when the FM-1 reports a Felucca identity. Patches stored by the official M-VAVE firmware are not touched.
 
 The arpeggiator is a module in the patch, not part of the firmware. See [D-415](docs/ledger/modules.md#D-415).
 
