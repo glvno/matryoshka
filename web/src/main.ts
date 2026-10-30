@@ -2,7 +2,7 @@
 // first of all: at the pages.dev address with no data, site-move.ts sends the visitor on to matryoshka.lol and stops
 // everything else; then migrate.ts notes which storage keys the page found before anything here writes one
 import './site-move';
-import { addUserPreset, exportPresets, importPresets } from './device-presets';
+import { addUserPreset, currentValues, exportPresets, importPresets, presetsOf } from './device-presets';
 import { armedFromMask, armMask } from './arm';
 import './factory-presets'; // the factory engines' presets (#193)
 import { applyImport, backupFile, backupKeys, collectKeys, importSummary, receiveMigration } from './migrate';
@@ -2421,5 +2421,25 @@ if (import.meta.env.DEV) {
       syncAsk: syncAsk.open, status: $('dev-status').textContent, armed: [...editor.armedSet],
     }),
     patchJson: (): string => JSON.stringify(editor.patch),
+    // the preset demo (npm run demo, web/demo/README.md): a factory patch opened as the FM-1's PRESET opens it (the view
+    // stays, no Undo toast), what the emulated FM-1 shows, and which factory preset an assembly's card values match now
+    openFactory: (name: string): boolean => {
+      const o = openableByValue(name);
+      if (o) loadNamed(o.load(), { from: o.from, stay: true, quiet: true });
+      return !!o;
+    },
+    emu: () => ({ loaded: emuLoaded, device: emu.ui?.focusDevice ?? -1, page: emu.ui?.page ?? -1, octave: emu.ui?.octave ?? 0 }),
+    // the factory preset nearest the assembly's card values now: its name, the rows that differ from it (0: it is that
+    // preset, within the FM-1's Q16 rounding) and the rows there are
+    presetNow: (label: string): { name: string; off: number; rows: number } | null => {
+      const a = (editor.patch.assemblies ?? []).find((x) => x?.label === label);
+      if (!a) return null;
+      const now = currentValues(editor.patch, a);
+      const near = (u: number, v: number): boolean => Math.abs(u - v) <= 2e-3 * Math.max(1, Math.abs(v));
+      const best = presetsOf(editor.patch, a).filter((p) => p.factory && p.values.length === now.length)
+        .map((p) => ({ name: p.name, off: p.values.filter((v, i) => !near(now[i], v)).length, rows: now.length }))
+        .sort((x, y) => x.off - y.off)[0];
+      return best ?? null;
+    },
   };
 }

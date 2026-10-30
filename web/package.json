@@ -29,7 +29,8 @@
     "emu:scenarios": "node scripts/emu-scenarios.mjs",
     "device:scenarios": "node scripts/emu-scenarios.mjs --device",
     "rig": "node scripts/rig.mjs",
-    "rig:bench": "node scripts/rig-bench.mjs"
+    "rig:bench": "node scripts/rig-bench.mjs",
+    "demo": "vite-node scripts/demo.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
