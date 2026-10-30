@@ -723,8 +723,8 @@ fn count_in(app: &[u8], t: &mut Run, emulated: &mut u64) -> Result<(), String> {
     t.screen(&m, "count-in: OFF as made", "OFF");
     m.turn(K3, 1, 400)?;
     t.screen(&m, "count-in: K3 turns it to 1 BAR", "1 BAR");
-    m.tap(SAVE, 120, 400)?;
-    t.check("count-in: SAVE writes the settings record and closes the menu", wait_text(&mut m, "SAVED", 1500)?, String::new());
+    m.tap(SAVE, 120, 1500)?;                 // (SAVED shows in the bar only until the device page is drawn over it)
+    t.screen(&m, "count-in: SAVE closes the menu (and writes the settings record: the boot below)", DEVICE_PAGE);
     let flash = m.flash();
     *emulated += m.ms();
     let mut m = Machine::boot(app, Some(&flash));
