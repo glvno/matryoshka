@@ -49166,10 +49166,6 @@
    "cycles": 51415
   },
   {
-   "name": "assembly step sequencer",
-   "cycles": 51913
-  },
-  {
    "name": "assembly stutter",
    "cycles": 69157
   },
