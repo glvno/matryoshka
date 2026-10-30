@@ -332,6 +332,8 @@ void eng_buttons(uint32_t mask);
 uint32_t eng_button_kind(uint32_t b);
 uint32_t eng_button_targets(uint32_t b, const uint8_t **list);
 uint32_t eng_ticks(void);                 /* the clock's ticks so far (24 a quarter note) */
+int32_t eng_run_ticks(void);              /* ticks since the transport started (the Steps tracks' bars count from there:
+                                           * 96 a bar of four beats), -1 until the engine has taken the start */
 int eng_clock_is_external(void);          /* MIDI clock drives the clock */
 uint32_t eng_buttons_get(void);
 /* the patch buttons' LEDs (the FM-1, the EMU view): eng_buttons_get, but ARP as a Toggle of Arpeggiators is lit while
