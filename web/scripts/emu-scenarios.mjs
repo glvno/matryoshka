@@ -952,10 +952,12 @@ async function main() {
     // opens on Init's, so the first PRESET turn right loads the preset after Init, not Init again
     async devicePreset() {
       await check('device preset: Silver Box opens, synced', await openSynced('Silver Box'));
+      const before = await patchJson();
       await emu.turn(ENC.preset, 1);
       await check('device preset: the first PRESET turn right on a fresh engine loads ACID SQUELCH, not INIT (#432)', await emu.waitText('PRESET ACID SQUELCH', 2000));
       await emu.snap('device-preset');
-      await check('device preset: the editor names it too', !!(await until(async () => /acid squelch/i.test(await patchJson()), 3000)));
+      // (the values reach the editor as PARAM_NOW; the name stays in the FM-1's copy until the patch comes back)
+      await check('device preset: its values change in the editor too (Init would change none)', !!(await until(async () => (await patchJson()) !== before, 3000)));
       await sleep(1200);
       await check('device preset: Silver Box opens again, synced', await openSynced('Silver Box'));
       await emu.turn(ENC.preset, -1);
