@@ -4,9 +4,10 @@
 //!
 //! 1. boot: the loading screen, then the main page of factory patch 0
 //! 2. sound: silent without keys, a note on a panel key, silent again after the release
-//! 3. pages: GLO (the menu, again: back), PLAY twice, HOME (nothing to go back to: the page stays), SELECT /
-//!    ALGO (the header shows where they went, no toast; back again: as it was), GLO (the menu's MIDI tab), ALGO (its
-//!    INFO tab), HOME (back out of it), HOME held (nothing, #395)
+//! 3. pages: GLO (the menu, again: back), PLAY twice, HOME (on the patch's home page: nothing, the page stays), SELECT /
+//!    ALGO (the header shows where they went, no toast; back again: as it was), ALGO then HOME (the device's first page),
+//!    SELECT then HOME (the patch's home page, #391), GLO (the menu's MIDI tab), ALGO (its INFO tab), HOME (back out of
+//!    it), HOME held (nothing, #395)
 //! 4. PRESET encoder: alone, the focused device's preset (#395); HOME held, forward, forward, back
 //! 5. TRS MIDI: program change, a note, then every factory patch in turn (name + sound)
 //! 6. SAVE: patch, octave; the flash kept, a restart, STATE RESTORED and the state back
@@ -142,6 +143,17 @@ fn wait_text(m: &mut Machine, s: &str, max: u64) -> Result<bool, String> {
     Ok(font::on_screen(m.lcd(), s))
 }
 
+/// Run up to `max` ms more until the device page's header is on the screen (a gold pixel, P_GOLD, the device's dash in
+/// its 36 rows), checked every ms: the page is drawn top to bottom, the footer last.
+fn wait_header(m: &mut Machine, max: u64) -> Result<bool, String> {
+    let end = m.ms() + max;
+    let up = |m: &Machine| m.lcd()[..240 * HEADER_ROWS].iter().any(|&p| p == 0xEDAB);
+    while m.ms() < end && !up(m) {
+        m.run_for(1)?;
+    }
+    Ok(up(m))
+}
+
 /// The CPU figure at the right of the top bar ("11%"), if one is drawn.
 fn cpu_figure(m: &Machine) -> Option<u32> {
     (0..=100).rev().find(|n| [2, 3].iter().any(|&z| font::find(m.lcd(), &format!("{n}%"), z).is_some_and(|(x, y, ..)| y < 24 && x > 150)))
@@ -255,7 +267,6 @@ fn diagram(m: &Machine) -> Vec<u16> {
     (24..220).flat_map(|y| (164..240).map(move |x| fb[y * 240 + x])).collect()
 }
 
-/// Back to the module page from wherever: HOME taps (a tap closes the menu, another goes home).
 /// HOME held + PRESET (#395): the next / previous patch; HOME's release then goes nowhere
 fn patch_turn(m: &mut Machine, clicks: i32, after: u64) -> Result<(), String> {
     m.key(HOME, true);
@@ -265,6 +276,8 @@ fn patch_turn(m: &mut Machine, clicks: i32, after: u64) -> Result<(), String> {
     m.run_for(after)
 }
 
+/// Back to a device page from wherever: HOME taps (a tap closes the menu, another a page it opened; on a device page
+/// it moves to the device's first page or the patch's home page, #391, and the footer shows on every device page)
 fn go_home(m: &mut Machine) -> Result<(), String> {
     for _ in 0..4 {
         if font::on_screen(m.lcd(), DEVICE_PAGE) {
@@ -690,12 +703,11 @@ fn safety(app: &[u8], t: &mut Run, emulated: &mut u64, presets: &[(String, Vec<u
     // update mode from the menu (#395): GLO, ALGO to INFO (the readings), back to SYSTEM, K1 right arms UPDATE MODE, GLO
     // held 2 s does it
     let mut m = Machine::boot(app, None);
-    wait_text(&mut m, DEVICE_PAGE, 9000)?;
-    // (step 1 waits the same way: since patch 0, Oracle V, got its arpeggiator and PATTERN (D-336, about 84 % of the CPU
-    // estimate), a key held the moment its page first shows is not taken until the panel's loop runs again: 400 ms after
-    // the page was enough in the emulator, without it HOME held for 1.2 s did nothing)
-    m.run_for(2500)?;
+    // GLO the moment the first page's header appears after a first boot (#248): a press that starts once the page shows
+    // is taken (the presses made while the loading screen was up are dropped before the page is drawn, not after it)
+    let up = wait_header(&mut m, 9000)?;
     m.tap(GLO, 120, 400)?;
+    t.check("GLO the moment the first page appears (first boot, #248): the menu", up && font::on_screen(m.lcd(), "MENU"), format!("header at {} ms", m.ms() - 520));
     m.turn(ALGO, 3, 400)?;
     t.screen(&m, "menu: the INFO tab", "VERSION");
     t.screen(&m, "menu: the bank's slots", &format!("{} OF 64", presets.len()));
@@ -747,7 +759,7 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
         (GLO, "GLO again: back to the device page", DEVICE_PAGE),
         (PLAY, "PLAY: the device page stays", DEVICE_PAGE),
         (PLAY, "PLAY again: it stops, the page stays", DEVICE_PAGE),
-        (HOME, "HOME on the device page, nothing to go back to: the page stays", DEVICE_PAGE),
+        (HOME, "HOME on the patch's home page: nothing, the page stays", DEVICE_PAGE),
     ] {
         m.tap(key, 120, 400)?;
         t.screen(&m, what, text);
@@ -764,6 +776,17 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
         m.turn(enc, -1, 300)?;
         t.check(&format!("{name} back: the header as it was"), m.lcd()[..240 * HEADER_ROWS] == head[..], String::new());
         t.screen(&m, &format!("{name} back: the device page"), DEVICE_PAGE);
+    }
+    // HOME on the device pages (#391, D-243): on a later page of a device its first page, on a device's first page the
+    // patch's home page; the header then reads as it did on the home page's first page
+    {
+        let head = m.lcd()[..240 * HEADER_ROWS].to_vec();
+        m.turn(ALGO, 1, 300)?;
+        m.tap(HOME, 120, 400)?;
+        t.check("ALGO, then HOME: the device's first page (the header as it was)", m.lcd()[..240 * HEADER_ROWS] == head[..], format!("at {} ms", m.ms()));
+        m.turn(SELECT, 1, 300)?;
+        m.tap(HOME, 120, 400)?;
+        t.check("SELECT, then HOME: the patch's home page (the header as it was)", m.lcd()[..240 * HEADER_ROWS] == head[..], format!("at {} ms", m.ms()));
     }
     m.key(PLAY, true);                        // PLAY held + PRESET: the tempo; the release then does not start the transport
     m.run_for(200)?;

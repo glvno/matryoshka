@@ -822,8 +822,9 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
     the toast's end 4,400 → 14,400 (it is a band now); a whole page 107,810 → 57,600 (144 → 77 ms). Preview:
     `PATCHTOAST=1 [BANK=n SLOT=s] tools/ui_preview.sh`, `BATT=0..4`. There is
   no picture area: the envelope drawing and page map are gone (faint envelopes in the bars are #112). SELECT steps the devices, ALGO the pages, K1..K4 edit relatively (fast turns five times as far),
-  HOME goes back along the trail (below; on the device pages with nothing to go back to it does nothing; the legend is
-  gone); MIDI CC 16..19 set the rows (absolute). A poly row writes the
+  HOME climbs (`home_tap`, #391, [D-243](ledger/device-ui.md#D-243)): on a later page of a device to its first page, on a
+  device's first page to the patch's home page (`pages_home`), on the home page nothing; out of a dive it goes back along
+  the trail (below); MIDI CC 16..19 set the rows (absolute). A poly row writes the
   group record of `m1_cur` (`poly_row_set` in main.c; the voices and unison reload the engine).
 - Panel core (`firmware/src/panel.c`, #108): what the knobs, keys and buttons do, apart from the HAL. main.c's polls
   read the hardware and hand it in (`panel_held` = the buttons held, `panel_encoders(st[7])`, `panel_keys(bits)`,
@@ -914,9 +915,9 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   amber "Over the FM-1 budget") that dismisses to a chip above the device ("Over budget · CPU 104 % · won't upload"),
   which brings it back. A patch past the firmware's tables is refused by `ui.load`: a red card, the view keeps the last
   patch it loaded and the chip names it. A dismissed card comes back only when the level changes or the patch fits again.
-- Navigation (#114): one rule. A button that changes the screen (SEQ, GLO = the menu (#395); page buttons #117) leaves a step on the trail (`panel.c` `page_set`: page + the device page in focus, `TRAIL_MAX` 8, the
-  oldest dropped); a HOME tap goes back one (`screen_back`, restoring the device page if it moved; the same button again
-  goes back too). ALGO moves sideways (device pages, menu tabs, SEQ tracks), SELECT picks (the device, the
+- Navigation (#114, #391): a button that changes the screen (SEQ, GLO = the menu (#395); page buttons #117) leaves a step on the trail (`panel.c` `page_set`: page + the device page in focus, `TRAIL_MAX` 8, the
+  oldest dropped); a HOME tap on such a screen goes back one (`screen_back`, restoring the device page if it moved; the same button again
+  goes back too). On a device page a HOME tap (`home_tap`, [D-243](ledger/device-ui.md#D-243)) goes to the device's first page, from there to the patch's home page (`pages_home`), and on the home page does nothing; these moves leave no step, landing on the home page clears the trail, and HOME depends only on what is on screen (a device page reached from a dive follows the same rule). A Page button's list showing on a device page, and sandbox mode, go back along the trail. ALGO moves sideways (device pages, menu tabs, SEQ tracks), SELECT picks (the device, the
   manual's scroll); HOME held + PRESET steps patches (in the menu PRESET alone does too, and HOME's release then stays), PRESET alone steps the focused device's presets (`dev_preset_step`, #395; a module: NO PRESETS ON A MODULE), but on the SEQ page the patch's pattern ([D-541](ledger/steps.md#D-541)). SAVE in the menu saves, then goes back.
 - The UI as WebAssembly (#109): `firmware/wasm/fm1_ui.c` = the panel core and screens on the C engine over the host
   stand-ins of `firmware/test/host_ui.h` (shared with ui_preview.c and panel_test.c; no libc, framebuffer `fb` with a
