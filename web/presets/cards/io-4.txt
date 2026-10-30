@@ -113,7 +113,8 @@ preset: Arp Pluck
 # All four voices on one key (UNISON I), portamento on, the LFO fading in after a key: the lead.
 preset: Unison Lead
   sub = 2
-  vco / mod = 0.03
+  # no vibrato (0.03 before): with it the four unison voices overloaded the FM-1 on the first key and the guard
+  # shed one (test rig 2026-10-30, #453; docs/measurements/2026-10-30-rig-io4-vibrato.json)
   vco / wave form = 2
   lpf cutoff = 2000 Hz
   res = 0.2
