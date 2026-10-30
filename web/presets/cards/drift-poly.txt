@@ -27,9 +27,10 @@ preset: Drift Bass
   r = 0.2 s
 
 preset: Slow Pad
-# five voices, not eight: on the rig (2026-10-30) eight clicked like a helicopter on one note (the idle voices' checks, #434),
-# and big chords broke up at six and seven (drift poly costs more on the FM-1 than the CPU estimate says)
-  voices = 5
+# six voices, not eight: 6 keeps the FM-1 near 75 % of the CPU (the rig survey of 2026-10-30, about 240 us a voice; eight
+# measure about 92 %). The chord breakup heard on the rig was clipping (the mixer levels now leave headroom, #413), and the
+# helicopter on one note at eight was the idle voices' checks (#434)
+  voices = 6
   drift rate = 0.15 Hz
   cutoff = 900 Hz
   res = 0.2
@@ -59,8 +60,8 @@ preset: Seasick Lead
   r = 0.3 s
 
 preset: Analog Strings
-# five voices, not six: big drift poly chords broke up at six on the rig (2026-10-30, heard on Slow Pad)
-  voices = 5
+# six voices, as Slow Pad: its chords broke up from clipping (the mixer levels now leave headroom, #413), not the CPU
+  voices = 6
   drift rate = 0.5 Hz
   cutoff = 1800 Hz
   res = 0.1

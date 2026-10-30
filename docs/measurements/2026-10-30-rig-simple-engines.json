@@ -1,0 +1,217 @@
+[
+ {
+  "slot": 6,
+  "name": "Hera 6",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 2370,
+  "n0_samples": [
+   2370,
+   812,
+   818,
+   818
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 2251,
+  "n1_samples": [
+   2251,
+   1123,
+   1123,
+   1136
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 2266,
+  "n4_samples": [
+   2266,
+   1947,
+   1947,
+   1928
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 2349,
+  "n8_samples": [
+   2349,
+   2239,
+   2239,
+   2221
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 25,
+  "name": "Basic Poly",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1273,
+  "n0_samples": [
+   1273,
+   485,
+   459,
+   461
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1278,
+  "n1_samples": [
+   1278,
+   709,
+   698,
+   698
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1296,
+  "n4_samples": [
+   1296,
+   1120,
+   1134,
+   1113
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1291,
+  "n8_samples": [
+   1291,
+   1175,
+   1162,
+   1153
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 26,
+  "name": "Drift Poly",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1770,
+  "n0_samples": [
+   1770,
+   649,
+   640,
+   647
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1844,
+  "n1_samples": [
+   1844,
+   984,
+   1010,
+   986
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1803,
+  "n4_samples": [
+   1803,
+   1684,
+   1672,
+   1672
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1832,
+  "n8_samples": [
+   1832,
+   1722,
+   1713,
+   1713
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 27,
+  "name": "Mono Lead",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 637,
+  "n0_samples": [
+   637,
+   466,
+   480,
+   476
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 669,
+  "n1_samples": [
+   669,
+   499,
+   492,
+   501
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 690,
+  "n4_samples": [
+   690,
+   633,
+   535,
+   530
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 727,
+  "n8_samples": [
+   727,
+   572,
+   568,
+   567
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ },
+ {
+  "slot": 28,
+  "name": "Supersaw Stack",
+  "transport": false,
+  "hold_seconds": 2.0,
+  "n0_us": 1778,
+  "n0_samples": [
+   1778,
+   612,
+   590,
+   579
+  ],
+  "n0_ovl": 0,
+  "n0_shed": 0,
+  "n1_us": 1774,
+  "n1_samples": [
+   1774,
+   941,
+   949,
+   949
+  ],
+  "n1_ovl": 0,
+  "n1_shed": 0,
+  "n4_us": 1782,
+  "n4_samples": [
+   1782,
+   1606,
+   1589,
+   1590
+  ],
+  "n4_ovl": 0,
+  "n4_shed": 0,
+  "n8_us": 1779,
+  "n8_samples": [
+   1779,
+   1663,
+   1651,
+   1647
+  ],
+  "n8_ovl": 0,
+  "n8_shed": 0,
+  "budget_us": 2902
+ }
+]

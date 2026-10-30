@@ -737,7 +737,8 @@ asm('supersaw stack', 'Voices', (b) => {
 
 // an analog polysynth of four voices that has drifted out of spec: each oscillator's fine tune follows its own slow
 // Random walk (a few cents), a fixed Random per voice card (its tolerance) offsets the cutoff and the decay. The cards'
-// flaws (set by hand per card) add to that.
+// flaws (set by hand per card) add to that. The mixer's levels leave headroom: eight voices of its loudest preset peak
+// about 0.83 (two oscillators into a resonant low pass sum hotter than basic poly's one; at 0.7 / 0.6 five clipped, #413).
 asm('drift poly', 'Voices', (b) => {
   const part = b.add('alloc', 0, 2, { voices: 4 });
   b.input('keys', part, 'keys');
@@ -746,7 +747,7 @@ asm('drift poly', 'Voices', (b) => {
   const tol = b.add('random', 3, 2, { mode: 0 });
   const o1 = b.add('osc', 0, 0, { wave: 2, level: 0.7 }, { p1: 'fine', att: [0.03, 1] });
   const o2 = b.add('osc', 0, 1, { wave: 3, pw: 0.45, level: 0.6, fine: 4 }, { p1: 'fine', att: [0.045, 1] });
-  const mix = b.add('mixer', 1, 0, { l1: 0.7, l2: 0.6, l3: 0, l4: 0 });
+  const mix = b.add('mixer', 1, 0, { l1: 0.17, l2: 0.14, l3: 0, l4: 0 });
   const flt = b.add('filter', 2, 0, { cutoff: 1400, res: 0.25 }, { p1: 'cutoff', att: [0.08, 1] });
   const env = b.add('adsr', 1, 1, { a: 0.008, d: 0.35, s: 0.55, r: 0.3 }, { p1: 'd', att: [0.06, 1] });
   const vca = b.add('vca', 2, 1);
