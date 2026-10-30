@@ -1,0 +1,165 @@
+# Io 4: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# vco
+#   range = 2                          1..8
+#   sub = 1                            1..8
+#   vco / mod = 0                      -4..4
+#   pw mode = 2                        1..8
+#   pw = 2                             1..8
+#   vco / wave form = 4                1..8
+#   noise = 1                          1..8
+# vcf
+#   hpf cutoff = 40 Hz                 20..16000 Hz
+#   lpf cutoff = 1800 Hz               20..16000 Hz
+#   res = 0.25                         0..1
+#   kybd follow = 4                    1..8
+#   vcf / mod = 0                      -4..4
+#   env mod = 2 oct                    0..4 oct
+#   polarity = 1                       1..8
+#   vcf env: a screen, not a value
+#   vcf / a = 0.02 s                   0.001..5 s
+#   vcf / d = 0.6 s                    0.001..5 s
+#   vcf / s = 0.55                     0..1
+#   vcf / r = 0.6 s                    0.001..8 s
+# vca
+#   vca env: a screen, not a value
+#   vca / a = 0.02 s                   0.001..5 s
+#   vca / d = 0.6 s                    0.001..5 s
+#   vca / s = 0.8                      0..1
+#   vca / r = 0.6 s                    0.001..8 s
+#   level = 1                          0..2
+# lfo
+#   lfo / wave form = 1                1..8
+#   lfo / rate = 2.25 Hz               0.02..40 Hz
+# trigger
+#   trigger / rate = 6 Hz              0.02..40 Hz
+#   vcf mod = 0                        -4..4
+# delay/bend
+#   delay time = 0.001 s               0.001..5 s
+#   lfo bend = 0                       -4..4
+#   norm/wide = 1                      1..8
+# bend/mod
+#   bend sens = 0.1667                 -4..4
+#   lfo mod = 0.1                      0..2
+#   vco = 3                            1..8
+#   vcf = 2                            1..8
+#   vca = 2                            1..8
+# portamento
+#   portamento = 0.15 s                0.001..5 s
+#   switch = 1                         1..8
+# keys
+#   transpose = 1                      1..8
+#   tuning = 0                         -4..4
+#   assign = rotate                    rotate, lowest, reuse, reset
+#   unison = off                       off, on, share
+#   hold = 1                           1..8
+#   ensemble = 2                       1..8
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the Jupiter-4, not yet listened to on the FM-1 (#413).
+engine: Io 4
+
+# Switches: range 1 16', 2 8', 3 4'. vco wave form 1 off, 2 saw, 3 square, 4 pulse. pw 1 50 %, 2 40 %, 3 20 %, 4 10 %;
+# pw mode 1 manual, 2 LFO. kybd follow 1 10 %, 2 40 %, 3 70 %, 4 100 %. polarity 1 norm, 2 inv. lfo wave form 1 sine, 2 square,
+# 3 saw, 4 reverse saw. norm/wide 1 norm, 2 wide. sub, noise, switch (portamento), hold, ensemble: 1 off, 2 on. transpose 2 = -1 oct.
+
+# Saw with the sub, slow envelopes, a light vibrato and the ensemble: the string pad.
+preset: Ensemble Pad
+  sub = 2
+  vco / mod = 0.03
+  vco / wave form = 2
+  lpf cutoff = 1200 Hz
+  res = 0.1
+  kybd follow = 4
+  env mod = 1 oct
+  vcf / a = 0.6 s
+  vcf / d = 1 s
+  vcf / s = 0.6
+  vcf / r = 1.2 s
+  vca / a = 0.8 s
+  vca / d = 1 s
+  vca / s = 1
+  vca / r = 1.5 s
+  lfo / rate = 2.5 Hz
+  ensemble = 2
+
+# A narrow pulse with the sub, plucked envelopes, the ensemble off: for the arpeggio (the TRIGGER rate clocks it).
+preset: Arp Pluck
+  sub = 2
+  pw mode = 1
+  pw = 3
+  vco / wave form = 4
+  lpf cutoff = 900 Hz
+  res = 0.3
+  env mod = 2.5 oct
+  vcf / a = 0.001 s
+  vcf / d = 0.25 s
+  vcf / s = 0
+  vcf / r = 0.25 s
+  vca / a = 0.001 s
+  vca / d = 0.3 s
+  vca / s = 0
+  vca / r = 0.3 s
+  trigger / rate = 8 Hz
+  ensemble = 1
+
+# All four voices on one key (UNISON I), portamento on, the LFO fading in after a key: the lead.
+preset: Unison Lead
+  sub = 2
+  vco / mod = 0.03
+  vco / wave form = 2
+  lpf cutoff = 2000 Hz
+  res = 0.2
+  env mod = 2 oct
+  vcf / a = 0.005 s
+  vcf / d = 0.5 s
+  vcf / s = 0.4
+  vcf / r = 0.4 s
+  vca / a = 0.005 s
+  vca / d = 0.4 s
+  vca / s = 0.9
+  vca / r = 0.3 s
+  lfo / rate = 4.5 Hz
+  delay time = 0.4 s
+  portamento = 0.12 s
+  switch = 2
+  unison = on
+  ensemble = 1
+
+# The TRIGGER's sample and hold steps the cutoff of a resonant filter on a sustained pulse.
+preset: S&H Filter
+  pw = 2
+  vco / wave form = 4
+  lpf cutoff = 700 Hz
+  res = 0.6
+  env mod = 0.5 oct
+  vcf / a = 0.01 s
+  vcf / s = 0.8
+  vca / a = 0.01 s
+  vca / s = 0.9
+  trigger / rate = 5 Hz
+  vcf mod = 1.5
+  ensemble = 1
+
+# The LFO swings the pulse width from 50 % down to 20 %, a brass filter envelope, the sub and ensemble off.
+preset: PWM Brass
+  sub = 1
+  pw mode = 2
+  pw = 3
+  vco / wave form = 4
+  lpf cutoff = 1500 Hz
+  res = 0.1
+  env mod = 2 oct
+  vcf / a = 0.08 s
+  vcf / d = 0.4 s
+  vcf / s = 0.5
+  vcf / r = 0.4 s
+  vca / a = 0.04 s
+  vca / d = 0.4 s
+  vca / s = 0.9
+  vca / r = 0.4 s
+  lfo / rate = 1.5 Hz
+  ensemble = 1

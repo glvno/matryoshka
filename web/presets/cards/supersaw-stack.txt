@@ -1,0 +1,84 @@
+# supersaw stack: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# (no heading)
+#   unison = 5                         1..5
+#   detune = 22 ct                     0..100 ct
+#   blend = 0.65                       0..1
+#   stack = +oct                       off, +oct, +5th, +oct+5th, -oct
+#   cutoff = 3500 Hz                   20..16000 Hz
+#   width = 0.6                        -4..4
+#   voices = 4                         1..16
+#   a = 0.02 s                         0.001..5 s
+#   d = 0.4 s                          0.001..5 s
+#   s = 0.75                           0..1
+#   r = 0.5 s                          0.001..8 s
+
+# Drafts of 2026-10-29 after a detuned stereo supersaw, not yet listened to on the FM-1 (#413).
+engine: supersaw stack
+
+preset: Trance Lead
+  unison = 5
+  detune = 30 ct
+  blend = 0.75
+  stack = off
+  cutoff = 6000 Hz
+  width = 0.8
+  voices = 2
+  a = 0.01 s
+  d = 0.3 s
+  s = 0.8
+  r = 0.3 s
+
+preset: Wide Pad
+  unison = 5
+  detune = 18 ct
+  blend = 0.6
+  stack = +oct
+  cutoff = 2000 Hz
+  width = 1
+  voices = 6
+  a = 1.2 s
+  d = 1.5 s
+  s = 0.8
+  r = 2.5 s
+
+preset: Stack Bass
+  unison = 3
+  detune = 10 ct
+  blend = 0.4
+  stack = -oct
+  cutoff = 500 Hz
+  width = 0.2
+  voices = 1
+  a = 0.002 s
+  d = 0.3 s
+  s = 0.5
+  r = 0.2 s
+
+preset: Fifth Stab
+  unison = 4
+  detune = 25 ct
+  blend = 0.7
+  stack = +oct+5th
+  cutoff = 4000 Hz
+  width = 0.6
+  voices = 4
+  a = 0.003 s
+  d = 0.35 s
+  s = 0
+  r = 0.3 s
+
+preset: Thin Saw Keys
+  unison = 1
+  detune = 0 ct
+  stack = off
+  cutoff = 2500 Hz
+  width = 0
+  voices = 6
+  a = 0.005 s
+  d = 0.5 s
+  s = 0.3
+  r = 0.5 s

@@ -1,0 +1,170 @@
+# Sallen 20: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# vco
+#   portamento = 0.001 s               0.001..5 s
+#   master tune = 0                    -4..4
+#   vco 1 scale = 3                    1..8
+#   vco 1 wave = 2                     1..8
+#   vco 1 pw = 0.5                     0.05..0.95
+#   vco 2 scale = 2                    1..8
+#   vco 2 wave = 2                     1..8
+#   vco 2 pitch = 7 st                 -48..48 st
+#   vco 2 fine = 0 ct                  -100..100 ct
+# freq mod
+#   freq mod / mg/t.ext = 0            -4..4
+#   eg1/ext = 0                        -4..4
+# vco mixer
+#   vco 1 level = 0.5                  0..1
+#   vco 2 level = 0                    0..1
+# highpass
+#   highpass / cutoff = 60 Hz          20..16000 Hz
+#   highpass / peak = 0.2              0..1
+#   highpass / mg/t.ext = 0            -4..4
+#   highpass / eg2/ext = 0             -4..4
+# lowpass
+#   lowpass / cutoff = 1600 Hz         20..16000 Hz
+#   lowpass / peak = 0.45              0..1
+#   lowpass / mg/t.ext = 0             -4..4
+#   lowpass / eg2/ext = 2.5            -4..4
+# eg 1
+#   eg 1: a screen, not a value
+#   delay = 0.001 s                    0.001..2 s
+#   eg 1 / attack = 0.001 s            0.001..5 s
+#   eg 1 / release = 0.3 s             0.001..8 s
+# eg 2
+#   eg 2: a screen, not a value
+#   hold = 0.001 s                     0.001..2 s
+#   eg 2 / attack = 0.005 s            0.001..5 s
+#   decay = 0.4 s                      0.001..5 s
+#   sustain = 0.45                     0..1
+#   eg 2 / release = 0.3 s             0.001..8 s
+# mg
+#   frequency = 5 Hz                   0.02..40 Hz
+#   waveform = 0.5                     0..1
+# patch panel
+#   initial gain = 0                   -4..4
+# esp
+#   signal in = 1                      1..8
+#   signal level = 1                   0..4
+#   low cut = 40 Hz                    20..5000 Hz
+#   high cut = 2000 Hz                 50..10000 Hz
+#   cv adjust = 0 st                   -12..12 st
+#   threshold = 0.1                    0..1
+#   esp route = 1                      1..8
+
+# Drafts of 2026-10-29 after the Korg MS-20, not yet listened to on the FM-1 (#413).
+engine: Sallen 20
+
+# Switch positions: vco 1 scale 1..4 = 32' 16' 8' 4'; vco 2 scale 1..4 = 16' 8' 4' 2';
+# vco 1 wave 1..4 = TRIANGLE SAW PULSE NOISE; vco 2 wave 1..4 = SAW SQUARE NARROW RING;
+# signal in 1..4 = OFF, VCO 1, NOISE, MG; esp route 1..4 = OFF, F-V>VCO 2, ENV>GAIN, TRIG>EGS.
+
+# Two oscillators a hair apart into the low pass at the edge of self-oscillation, EG 2 kicking it: the MS-20 scream.
+preset: Acid Scream
+  portamento = 0.05 s
+  vco 1 scale = 3
+  vco 1 wave = 2
+  vco 2 scale = 2
+  vco 2 wave = 2
+  vco 2 pitch = 0 st
+  vco 2 fine = 8 ct
+  vco 1 level = 0.5
+  vco 2 level = 0.4
+  highpass / cutoff = 120 Hz
+  highpass / peak = 0.5
+  lowpass / cutoff = 300 Hz
+  lowpass / peak = 0.93
+  lowpass / mg/t.ext = 0.3
+  lowpass / eg2/ext = 3.5
+  eg 2 / attack = 0.002 s
+  decay = 0.25 s
+  sustain = 0.15
+  eg 2 / release = 0.2 s
+  frequency = 6 Hz
+
+# A 16' pulse and saw with the resonant high pass peaking on each note: the high-pass growl the MS-20 is known for.
+preset: Growl Bass
+  vco 1 scale = 2
+  vco 1 wave = 3
+  vco 1 pw = 0.3
+  vco 2 scale = 1
+  vco 2 wave = 1
+  vco 2 pitch = 0 st
+  vco 2 fine = -6 ct
+  vco 1 level = 0.5
+  vco 2 level = 0.45
+  highpass / cutoff = 150 Hz
+  highpass / peak = 0.85
+  highpass / eg2/ext = 2
+  lowpass / cutoff = 700 Hz
+  lowpass / peak = 0.35
+  lowpass / eg2/ext = 1.5
+  eg 2 / attack = 0.005 s
+  decay = 0.35 s
+  sustain = 0.5
+  eg 2 / release = 0.15 s
+
+# VCO 2's RING position (VCO 1 times VCO 2) at an inharmonic interval, a percussive EG 2: a metal bell.
+preset: Ring Mod Bell
+  vco 1 scale = 3
+  vco 1 wave = 1
+  vco 2 scale = 3
+  vco 2 wave = 4
+  vco 2 pitch = 5 st
+  vco 2 fine = 35 ct
+  vco 1 level = 0.15
+  vco 2 level = 0.6
+  highpass / cutoff = 250 Hz
+  highpass / peak = 0.2
+  lowpass / cutoff = 2500 Hz
+  lowpass / peak = 0.3
+  lowpass / eg2/ext = 1.5
+  eg 2 / attack = 0.001 s
+  decay = 1.8 s
+  sustain = 0
+  eg 2 / release = 1.5 s
+
+# VCO 1's NOISE position through both resonant filters, the MG sweeping them slowly: wind and surf.
+preset: Noise Sweep
+  vco 1 wave = 4
+  vco 1 level = 0.5
+  vco 2 level = 0
+  highpass / cutoff = 400 Hz
+  highpass / peak = 0.9
+  highpass / mg/t.ext = 2
+  lowpass / cutoff = 1200 Hz
+  lowpass / peak = 0.85
+  lowpass / mg/t.ext = 2
+  lowpass / eg2/ext = 0
+  eg 2 / attack = 1.5 s
+  decay = 1 s
+  sustain = 1
+  eg 2 / release = 2.5 s
+  frequency = 0.15 Hz
+  waveform = 0.5
+
+# The ESP hears the white noise through a narrow band and its F-V output drives VCO 2: a random warble on top of VCO 1.
+preset: ESP Warble
+  vco 1 scale = 3
+  vco 1 wave = 2
+  vco 2 scale = 1
+  vco 2 wave = 3
+  vco 2 pitch = 0 st
+  vco 1 level = 0.3
+  vco 2 level = 0.5
+  lowpass / cutoff = 2000 Hz
+  lowpass / peak = 0.5
+  lowpass / eg2/ext = 1
+  eg 2 / attack = 0.01 s
+  decay = 0.5 s
+  sustain = 0.6
+  eg 2 / release = 0.3 s
+  signal in = 3
+  signal level = 1
+  low cut = 300 Hz
+  high cut = 600 Hz
+  threshold = 0.1
+  esp route = 2

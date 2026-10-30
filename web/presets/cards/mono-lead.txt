@@ -1,0 +1,79 @@
+# mono lead: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# (no heading)
+#   porta = 0.001 s                    0.001..5 s
+#   curve = exp                        exp, lin
+#   cutoff = 1800 Hz                   20..16000 Hz
+#   res = 0.35                         0..1
+#   legato = auto                      auto, off, on
+#   priority = last                    last, low, high
+#   a = 0.005 s                        0.001..5 s
+#   d = 0.25 s                         0.001..5 s
+#   s = 0.6                            0..1
+#   r = 0.2 s                          0.001..8 s
+
+# Drafts of 2026-10-29 after a ladder-filter mono lead, not yet listened to on the FM-1 (#413).
+engine: mono lead
+
+preset: Glide Lead
+  porta = 0.12 s
+  curve = exp
+  cutoff = 2200 Hz
+  res = 0.4
+  legato = on
+  priority = last
+  a = 0.005 s
+  d = 0.3 s
+  s = 0.7
+  r = 0.25 s
+
+preset: Sub Bass
+  porta = 0.03 s
+  curve = exp
+  cutoff = 300 Hz
+  res = 0.2
+  legato = auto
+  priority = low
+  a = 0.002 s
+  d = 0.2 s
+  s = 0.6
+  r = 0.1 s
+
+preset: Acid Bite
+  porta = 0.06 s
+  curve = exp
+  cutoff = 900 Hz
+  res = 0.7
+  legato = auto
+  priority = last
+  a = 0.001 s
+  d = 0.15 s
+  s = 0.3
+  r = 0.15 s
+
+preset: Slow Slide Solo
+  porta = 0.5 s
+  curve = lin
+  cutoff = 1500 Hz
+  res = 0.5
+  legato = on
+  priority = last
+  a = 0.1 s
+  d = 0.4 s
+  s = 0.8
+  r = 0.5 s
+
+preset: High Whistle
+  porta = 0.02 s
+  curve = exp
+  cutoff = 4000 Hz
+  res = 0.85
+  legato = off
+  priority = high
+  a = 0.05 s
+  d = 0.3 s
+  s = 0.7
+  r = 0.3 s

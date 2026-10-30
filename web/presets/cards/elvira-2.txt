@@ -1,0 +1,238 @@
+# Elvira 2: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# voice 1
+#   voice 1 / tune = -15 st            -48..48 st
+#   voice 1 / fine = 0 ct              -100..100 ct
+#   voice 1 / wave = 0.2               0..1
+#   voice 1 / page = analog            analog, organ, formant, digital, eml color
+#   voice 1 / mod = 1                  1..64
+#   voice 1 / attack = 0.05 s          0.001..5 s
+#   voice 1 / release = 0.8 s          0.001..8 s
+#   voice 1 / drone = 0                -4..4
+# voice 2
+#   voice 2 / tune = -8 st             -48..48 st
+#   voice 2 / fine = 0 ct              -100..100 ct
+#   voice 2 / wave = 0.4               0..1
+#   voice 2 / page = organ             analog, organ, formant, digital, eml color
+#   voice 2 / mod = 1                  1..64
+#   voice 2 / attack = 0.05 s          0.001..5 s
+#   voice 2 / release = 0.8 s          0.001..8 s
+#   voice 2 / drone = 0                -4..4
+# voice 3
+#   voice 3 / tune = -3 st             -48..48 st
+#   voice 3 / fine = 0 ct              -100..100 ct
+#   voice 3 / wave = 0.3               0..1
+#   voice 3 / page = formant           analog, organ, formant, digital, eml color
+#   voice 3 / mod = 1                  1..64
+#   voice 3 / attack = 0.3 s           0.001..5 s
+#   voice 3 / release = 1.5 s          0.001..8 s
+#   voice 3 / drone = 0                -4..4
+# voice 4
+#   voice 4 / tune = 0 st              -48..48 st
+#   voice 4 / fine = 0 ct              -100..100 ct
+#   voice 4 / wave = 0.6               0..1
+#   voice 4 / page = digital           analog, organ, formant, digital, eml color
+#   voice 4 / mod = 1                  1..64
+#   voice 4 / attack = 0.3 s           0.001..5 s
+#   voice 4 / release = 1.5 s          0.001..8 s
+#   voice 4 / drone = 0                -4..4
+# lpf
+#   cutoff = 2500 Hz                   20..16000 Hz
+#   reso = 0.25                        0..1
+# delay
+#   time = 400 ms                      1..700 ms
+#   fdbk = 0.4                         0..0.95
+#   mix = 0.3                          0..1
+# ouch
+#   bite = 1                           1..32
+#   choke = 16000 Hz                   20..16000 Hz
+#   vol = 0.8                          0..1
+# lfos
+#   lfo 1 freq = 0.2 Hz                0.02..40 Hz
+#   lfo 1 → cutoff = 0                 -4..4
+#   lfo 2 freq = 3 Hz                  0.02..40 Hz
+#   lfo 2 wav = saw                    sine, triangle, saw, square, S&H
+#   lfo 2 → bite = 0                   -4..4
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the Neuzeit Elmyra 2, not yet listened to on the FM-1 (#413).
+engine: Elvira 2
+
+# Keys F3..B3 and C4..F4 each trigger one of the four voices at its own tune; the
+# tunes below are intervals, so a preset is a chord. "mod" is the crush rate (1 = clean).
+
+preset: Fifths Pad
+# Gentle, played from the keys: C / G / C / G over two octaves, soft analog and organ waves.
+voice 1 / tune = -12 st
+voice 1 / wave = 0.15
+voice 1 / page = analog
+voice 1 / attack = 0.4 s
+voice 1 / release = 2.5 s
+voice 2 / tune = -5 st
+voice 2 / fine = 4 ct
+voice 2 / wave = 0.3
+voice 2 / page = organ
+voice 2 / attack = 0.4 s
+voice 2 / release = 2.5 s
+voice 3 / tune = 0 st
+voice 3 / fine = -3 ct
+voice 3 / wave = 0.2
+voice 3 / page = analog
+voice 3 / attack = 0.5 s
+voice 3 / release = 3 s
+voice 4 / tune = 7 st
+voice 4 / wave = 0.35
+voice 4 / page = organ
+voice 4 / attack = 0.5 s
+voice 4 / release = 3 s
+cutoff = 1800 Hz
+reso = 0.15
+time = 450 ms
+fdbk = 0.35
+mix = 0.25
+lfo 1 freq = 0.08 Hz
+lfo 1 → cutoff = 0.4
+
+preset: Deep Drone
+# Self-running dark ambient: all four drones up on C2 / G2 / C3 / G3, a closed ladder breathing slowly.
+voice 1 / tune = -24 st
+voice 1 / wave = 0.1
+voice 1 / page = analog
+voice 1 / drone = 1
+voice 2 / tune = -17 st
+voice 2 / fine = 6 ct
+voice 2 / wave = 0.25
+voice 2 / page = organ
+voice 2 / drone = 1
+voice 3 / tune = -12 st
+voice 3 / fine = -5 ct
+voice 3 / wave = 0.2
+voice 3 / page = formant
+voice 3 / drone = 1
+voice 4 / tune = -5 st
+voice 4 / wave = 0.4
+voice 4 / page = analog
+voice 4 / drone = 0.8
+cutoff = 600 Hz
+reso = 0.35
+time = 650 ms
+fdbk = 0.6
+mix = 0.4
+bite = 2
+choke = 4000 Hz
+vol = 0.7
+lfo 1 freq = 0.05 Hz
+lfo 1 → cutoff = 0.8
+
+preset: Rusty Bells
+# Keys: a high open-fifth cluster on digital / formant pages, crushed to ring like rusted metal, long delay tails.
+voice 1 / tune = 0 st
+voice 1 / wave = 0.7
+voice 1 / page = formant
+voice 1 / mod = 6
+voice 1 / attack = 0.005 s
+voice 1 / release = 3 s
+voice 2 / tune = 7 st
+voice 2 / fine = 9 ct
+voice 2 / wave = 0.8
+voice 2 / page = digital
+voice 2 / mod = 9
+voice 2 / attack = 0.005 s
+voice 2 / release = 3 s
+voice 3 / tune = 14 st
+voice 3 / wave = 0.55
+voice 3 / page = eml color
+voice 3 / mod = 12
+voice 3 / attack = 0.005 s
+voice 3 / release = 3.5 s
+voice 4 / tune = 19 st
+voice 4 / fine = -11 ct
+voice 4 / wave = 0.9
+voice 4 / page = digital
+voice 4 / mod = 8
+voice 4 / attack = 0.005 s
+voice 4 / release = 3.5 s
+cutoff = 6000 Hz
+reso = 0.2
+time = 375 ms
+fdbk = 0.5
+mix = 0.35
+bite = 3
+choke = 9000 Hz
+lfo 2 freq = 0.4 Hz
+lfo 2 wav = S&H
+lfo 2 → bite = 0.5
+
+preset: Ouch Rhythm
+# Harsh and rhythmic from the keys: short plucks on a minor-seventh cluster, heavy crush, the ouch drive pulsed by a square LFO into a short feeding-back delay.
+voice 1 / tune = -12 st
+voice 1 / wave = 0.6
+voice 1 / page = eml color
+voice 1 / mod = 16
+voice 1 / attack = 0.005 s
+voice 1 / release = 0.25 s
+voice 2 / tune = -7 st
+voice 2 / wave = 0.5
+voice 2 / page = digital
+voice 2 / mod = 24
+voice 2 / attack = 0.005 s
+voice 2 / release = 0.25 s
+voice 3 / tune = -2 st
+voice 3 / wave = 0.75
+voice 3 / page = eml color
+voice 3 / mod = 12
+voice 3 / attack = 0.005 s
+voice 3 / release = 0.3 s
+voice 4 / tune = 3 st
+voice 4 / wave = 0.9
+voice 4 / page = digital
+voice 4 / mod = 20
+voice 4 / attack = 0.005 s
+voice 4 / release = 0.3 s
+cutoff = 3500 Hz
+reso = 0.5
+time = 190 ms
+fdbk = 0.75
+mix = 0.5
+bite = 12
+choke = 5000 Hz
+vol = 0.6
+lfo 2 freq = 2.5 Hz
+lfo 2 wav = square
+lfo 2 → bite = 2
+
+preset: Swarm Cluster
+# Self-running dissonant swarm: four drones a semitone apart with detuned beating, eml color waves, a slow filter sweep and a long delay.
+voice 1 / tune = -3 st
+voice 1 / fine = -14 ct
+voice 1 / wave = 0.45
+voice 1 / page = eml color
+voice 1 / drone = 0.9
+voice 2 / tune = -2 st
+voice 2 / fine = 12 ct
+voice 2 / wave = 0.55
+voice 2 / page = eml color
+voice 2 / drone = 0.9
+voice 3 / tune = 0 st
+voice 3 / fine = -8 ct
+voice 3 / wave = 0.35
+voice 3 / page = formant
+voice 3 / drone = 0.9
+voice 4 / tune = 1 st
+voice 4 / fine = 15 ct
+voice 4 / wave = 0.65
+voice 4 / page = analog
+voice 4 / drone = 0.9
+cutoff = 1200 Hz
+reso = 0.4
+time = 620 ms
+fdbk = 0.7
+mix = 0.45
+bite = 4
+choke = 7000 Hz
+vol = 0.65
+lfo 1 freq = 0.03 Hz
+lfo 1 → cutoff = 1.2

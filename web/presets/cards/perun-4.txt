@@ -1,0 +1,243 @@
+# Perun 4: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# voice 1
+#   voice 1 / tune = -27 st            -48..48 st
+#   voice 1 / decay = 0.45 s           0.001..10 s
+#   voice 1 / param 1 = 2              -4..4
+#   voice 1 / param 2 = 1.2            1..32
+#   voice 1 / cutoff = 9000 Hz         20..16000 Hz
+#   voice 1 / mode = 0                 0..1
+#   voice 1 / drive = 1.5              1..32
+#   voice 1 / send = 0                 0..1
+#   voice 1 / level = 0.9              0..1
+# voice 2
+#   voice 2 / tune = -12 st            -48..48 st
+#   voice 2 / decay = 0.3 s            0.001..10 s
+#   voice 2 / param 1 = 0.3            0..1
+#   voice 2 / param 2 = organ          analog, organ, formant, digital, eml color
+#   voice 2 / cutoff = 7000 Hz         20..16000 Hz
+#   voice 2 / mode = 0                 0..1
+#   voice 2 / drive = 1.5              1..32
+#   voice 2 / send = 0.2               0..1
+#   voice 2 / level = 0.7              0..1
+# voice 3
+#   voice 3 / tune = -8 st             -48..48 st
+#   voice 3 / decay = 0.18 s           0.001..10 s
+#   voice 3 / param 1 = 0.6            0..1
+#   voice 3 / param 2 = 0              0..1
+#   voice 3 / cutoff = 250 Hz          20..16000 Hz
+#   voice 3 / mode = 1                 0..1
+#   voice 3 / drive = 1.5              1..32
+#   voice 3 / send = 0.3               0..1
+#   voice 3 / level = 0.7              0..1
+# voice 4
+#   voice 4 / tune = 31 st             -48..48 st
+#   voice 4 / decay = 0.06 s           0.001..10 s
+#   voice 4 / param 1 = 0.5            0..1
+#   voice 4 / param 2 = 37 st          -48..48 st
+#   voice 4 / cutoff = 6000 Hz         20..16000 Hz
+#   voice 4 / mode = 1                 0..1
+#   voice 4 / drive = 1.5              1..32
+#   voice 4 / send = 0.15              0..1
+#   voice 4 / level = 0.5              0..1
+# delay
+#   time = 300 ms                      1..700 ms
+#   feedback = 0.35                    0..0.95
+#   lfo → time = 0.02                  -4..4
+# lfo
+#   lfo rate = 0.3 Hz                  0.02..40 Hz
+#   lfo wave = sine                    sine, triangle, saw, square, S&H
+# master
+#   comp = -14 dB                      -40..0 dB
+#   master = 3 dB                      0..24 dB
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the Erica Synths Perkons HD-01, not yet listened to on the FM-1 (#413).
+engine: Perun 4
+
+# voice 1 is the kick: param 1 is the pitch sweep amount, param 2 saturates it before the filter.
+# voice 2 is the wavetable snare: param 1 is the table position, param 2 the table.
+# voice 3 is the hat: param 1 crossfades oscillator (0) to noise (1), param 2 colours the noise.
+# voice 4 is the metal: param 1 crossfades the two squares (0) to noise (1), param 2 tunes the second square.
+# mode: 0 = low pass, 1 = high pass.
+
+preset: Techno Rumble
+# a long, filtered, driven kick with a delay tail; a dark snare; a short hat; a tiny metal tick
+voice 1 / tune = -31
+voice 1 / decay = 0.9
+voice 1 / param 1 = 3
+voice 1 / param 2 = 2
+voice 1 / cutoff = 400
+voice 1 / drive = 4
+voice 1 / send = 0.35
+voice 2 / tune = -16
+voice 2 / decay = 0.22
+voice 2 / param 1 = 0.5
+voice 2 / cutoff = 3000
+voice 2 / drive = 3
+voice 2 / send = 0.3
+voice 3 / decay = 0.08
+voice 3 / param 1 = 0.9
+voice 3 / cutoff = 6000
+voice 3 / drive = 2
+voice 3 / level = 0.6
+voice 4 / tune = 28
+voice 4 / decay = 0.04
+voice 4 / param 1 = 0.7
+voice 4 / cutoff = 7000
+voice 4 / drive = 2
+voice 4 / level = 0.4
+time = 375
+feedback = 0.5
+lfo → time = 0.05
+comp = -20
+master = 4
+
+preset: Punchy Breaks
+# a short, open, punchy kick; a crisp analogue snare; a high-passed tight hat; a short metal
+voice 1 / tune = -24
+voice 1 / decay = 0.25
+voice 1 / param 1 = 1.5
+voice 1 / param 2 = 3
+voice 1 / cutoff = 12000
+voice 1 / drive = 2.5
+voice 2 / tune = -8
+voice 2 / decay = 0.2
+voice 2 / param 1 = 0.7
+voice 2 / param 2 = analog
+voice 2 / cutoff = 9000
+voice 2 / drive = 2.5
+voice 2 / send = 0.1
+voice 2 / level = 0.8
+voice 3 / decay = 0.06
+voice 3 / param 1 = 0.95
+voice 3 / param 2 = 0.4
+voice 3 / cutoff = 400
+voice 3 / mode = 1
+voice 3 / drive = 2
+voice 3 / level = 0.6
+voice 4 / tune = 24
+voice 4 / decay = 0.15
+voice 4 / param 1 = 0.3
+voice 4 / param 2 = 31
+voice 4 / cutoff = 8000
+voice 4 / mode = 0.3
+voice 4 / send = 0.1
+time = 150
+feedback = 0.2
+comp = -10
+
+preset: Distorted EBM
+# everything driven hard: a saturated mid-length kick, a digital snare, a growling low-passed hat,
+# a long metal; a slow wobbling delay
+voice 1 / decay = 0.4
+voice 1 / param 1 = 2.5
+voice 1 / param 2 = 6
+voice 1 / cutoff = 2500
+voice 1 / drive = 8
+voice 1 / level = 0.85
+voice 2 / tune = -14
+voice 2 / decay = 0.35
+voice 2 / param 1 = 0.9
+voice 2 / param 2 = digital
+voice 2 / cutoff = 5000
+voice 2 / drive = 6
+voice 3 / decay = 0.25
+voice 3 / param 1 = 0.7
+voice 3 / cutoff = 1200
+voice 3 / mode = 0.7
+voice 3 / drive = 5
+voice 3 / send = 0.4
+voice 3 / level = 0.6
+voice 4 / tune = 19
+voice 4 / decay = 0.3
+voice 4 / param 1 = 0.5
+voice 4 / param 2 = 26
+voice 4 / cutoff = 4000
+voice 4 / drive = 6
+voice 4 / send = 0.3
+time = 250
+feedback = 0.45
+lfo → time = 0.1
+lfo rate = 0.15
+lfo wave = triangle
+comp = -24
+master = 5
+
+preset: Dub Percussion
+# clean and wet: a soft deep kick; a formant snare, a band-ish hat and a high tuned metal all sent to a long,
+# slowly drifting delay
+voice 1 / tune = -29
+voice 1 / decay = 0.6
+voice 1 / param 1 = 1.2
+voice 1 / cutoff = 600
+voice 1 / send = 0.1
+voice 2 / tune = -5
+voice 2 / decay = 0.15
+voice 2 / param 1 = 0.2
+voice 2 / param 2 = formant
+voice 2 / cutoff = 2000
+voice 2 / mode = 0.5
+voice 2 / send = 0.6
+voice 2 / level = 0.6
+voice 3 / tune = -2
+voice 3 / decay = 0.12
+voice 3 / param 1 = 0.4
+voice 3 / param 2 = 0.6
+voice 3 / cutoff = 3000
+voice 3 / mode = 0.5
+voice 3 / send = 0.5
+voice 4 / tune = 36
+voice 4 / decay = 0.3
+voice 4 / param 1 = 0.2
+voice 4 / param 2 = 43
+voice 4 / cutoff = 5000
+voice 4 / mode = 0
+voice 4 / send = 0.7
+voice 4 / level = 0.45
+time = 450
+feedback = 0.7
+lfo → time = 0.3
+lfo rate = 0.08
+comp = -16
+
+preset: Clicky Minimal
+# tiny sounds: a very short clicking kick with a big sweep, a short eml snare, a high-passed tick hat,
+# a 20 ms metal; a short stepping delay (sample and hold on the time)
+voice 1 / tune = -33
+voice 1 / decay = 0.18
+voice 1 / param 1 = 4
+voice 1 / param 2 = 1
+voice 1 / cutoff = 5000
+voice 1 / drive = 1.2
+voice 1 / level = 0.85
+voice 2 / tune = 4
+voice 2 / decay = 0.05
+voice 2 / param 1 = 0.1
+voice 2 / param 2 = eml color
+voice 2 / cutoff = 8000
+voice 2 / drive = 1
+voice 2 / send = 0.3
+voice 2 / level = 0.55
+voice 3 / decay = 0.03
+voice 3 / param 1 = 1
+voice 3 / param 2 = 0.9
+voice 3 / cutoff = 9000
+voice 3 / level = 0.5
+voice 4 / tune = 40
+voice 4 / decay = 0.02
+voice 4 / param 1 = 0.9
+voice 4 / param 2 = 46
+voice 4 / cutoff = 10000
+voice 4 / send = 0.4
+voice 4 / level = 0.4
+time = 190
+feedback = 0.55
+lfo → time = 0.5
+lfo rate = 2
+lfo wave = S&H
+comp = -8
+master = 2

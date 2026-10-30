@@ -1,0 +1,182 @@
+# Vernon 100: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# oscillator 1
+#   oscillator 1 / color = 3           1..8
+#   oscillator 1 / tune = 2.9          -4..4
+#   hi / lo = 2                        1..8
+#   control sens = 0                   -4..4
+#   oscillator 1 / control mode = 2    1..8
+# osc mixer
+#   osc mixer / osc 1 / env 1 = 0      -4..4
+#   osc mixer / osc 4 / env 2 = 0      -4..4
+# keyboard
+#   keys/oct crs = 0                   0..1
+#   keys/oct fine = 0.5                0..1
+#   portamento = 0                     0..1
+# oscillator 2
+#   oscillator 2 / control mode = 1    1..8
+#   oscillator 2 / octave = 2          1..8
+#   oscillator 2 / tune = 0            -4..4
+#   oscillator 2 / color = 0.45        0..1
+# oscillator 3
+#   oscillator 3 / control mode = 1    1..8
+#   oscillator 3 / octave = 2          1..8
+#   oscillator 3 / tune = 0            -4..4
+#   oscillator 3 / color = 0.45        0..1
+# oscillator 4
+#   oscillator 4 / control mode = 2    1..8
+#   oscillator 4 / octave = 3          1..8
+#   oscillator 4 / tune = 0            -4..4
+#   oscillator 4 / color = 0.3         0..1
+# filter input
+#   osc 2 = 0.7                        0..1
+#   osc 3 = 0.7                        0..1
+#   osc 4 / ext = 0                    0..1
+#   white / pink = 0                   -4..4
+# filter
+#   cut octave = 2                     1..8
+#   filter / tune = 1100 Hz            20..16000 Hz
+#   resonance = 0.35                   0..1
+#   mode = 1                           1..8
+# filter control
+#   filter control / osc 1 / env 1 = 0.55 -4..4
+#   filter control / osc 4 / env 2 = 0 -4..4
+#   kb1 / kb2 = 2                      1..8
+# envelope 1
+#   env 1: a screen, not a value
+#   envelope 1 / attack = 0.01 s       0.001..5 s
+#   envelope 1 / decay = 0.7297        0..1
+#   envelope 1 / sustain = 0.35        0..1
+# envelope 2
+#   env 2: a screen, not a value
+#   envelope 2 / attack = 0.005 s      0.001..5 s
+#   envelope 2 / decay = 0.6697        0..1
+#   envelope 2 / sustain = 0.8         0..1
+#   sustain on/off = 1                 1..8
+# amplitude shaper
+#   env 1 / env 2 = 2                  1..8
+# output mixer
+#   amp shaper = 0.8                   0..1
+#   osc 3 / ext = 0                    0..1
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the EML ElectroComp 100, not yet listened to on the FM-1 (#413).
+engine: Vernon 100
+
+# Switch positions: oscillator 1 color 1..5 = falling ramp, ramp, triangle, square, narrow pulse; hi / lo 1 HI (audio),
+# 2 LO (a hundred times slower); oscillator 1 control mode 1 OSC 4 / EXT, 2 ENV 1, 3 KB. Oscillator 2 control mode
+# 1 KB1, 2 KB1 + MIX; oscillator 3 1 KB2, 2 KB2 + MIX, 3 MIX; oscillator 4 1 OSC 3, 2 MAN, 3 MIX. Octave 1..3 = -1, 0, +1
+# (oscillator 4: 1 LO, 2 -1, 3 0, 4 +1). Color 0..1 moves triangle, sloped square, square, saw, double saw.
+# Filter cut octave 1..3 = -1, 0, +1; mode 1 LP, 2 BP, 3 HP, 4 BR; kb1 / kb2 1 KB1, 2 KB2. Sustain on/off 1 ON, 2 OFF.
+# Env 1 / env 2 1 ENV 1, 2 ENV 2. A centre-zero knob (osc .. / env ..) is -1..1: negative the oscillator, positive the
+# envelope. Decay is the panel's knob, 0..1 on a log scale: 0.46 = 50 ms, 0.73 = 500 ms, 0.81 = 1 s, 0.94 = 3 s.
+
+# Two saws, one on each key held, a square sub under the top key: the duophonic lead the 100 was sold for.
+preset: Fat Duo Lead
+  portamento = 0.15
+  oscillator 2 / color = 0.75
+  oscillator 2 / tune = -0.01
+  oscillator 3 / color = 0.75
+  oscillator 3 / tune = 0.01
+  oscillator 4 / control mode = 1
+  oscillator 4 / octave = 2
+  oscillator 4 / color = 0.5
+  osc 2 = 0.7
+  osc 3 = 0.7
+  osc 4 / ext = 0.5
+  filter / tune = 900 Hz
+  resonance = 0.45
+  filter control / osc 1 / env 1 = 0.6
+  envelope 1 / attack = 0.01 s
+  envelope 1 / decay = 0.81
+  envelope 1 / sustain = 0.3
+  envelope 2 / attack = 0.01 s
+  envelope 2 / decay = 0.73
+  envelope 2 / sustain = 0.85
+
+# Oscillator 1 in LO as a triangle sweeping the low pass over a saw-and-square bass an octave down.
+preset: Wobble Bass
+  oscillator 1 / color = 3
+  oscillator 1 / tune = 2.3
+  hi / lo = 2
+  oscillator 2 / octave = 1
+  oscillator 2 / color = 0.8
+  oscillator 3 / octave = 1
+  oscillator 3 / tune = 0.005
+  oscillator 3 / color = 0.5
+  filter / tune = 250 Hz
+  resonance = 0.6
+  filter control / osc 1 / env 1 = -0.7
+  kb1 / kb2 = 1
+  envelope 2 / attack = 0.005 s
+  envelope 2 / decay = 0.46
+  envelope 2 / sustain = 1
+  sustain on/off = 2
+
+# Oscillator 1 in LO as a square steps the band pass and both pitches by a semitone: a sample-and-hold stand-in.
+preset: Stepped Pulse
+  oscillator 1 / color = 4
+  oscillator 1 / tune = 1.9
+  hi / lo = 2
+  osc mixer / osc 1 / env 1 = -0.08
+  oscillator 2 / control mode = 2
+  oscillator 2 / color = 0.3
+  oscillator 3 / control mode = 2
+  oscillator 3 / octave = 1
+  oscillator 3 / color = 0.95
+  filter / tune = 600 Hz
+  resonance = 0.7
+  mode = 2
+  filter control / osc 1 / env 1 = -0.45
+  envelope 2 / attack = 0.005 s
+  envelope 2 / decay = 0.73
+  envelope 2 / sustain = 0.7
+
+# Oscillator 1 at audio rate, tracking the keys, into oscillators 2 and 3 through the mixer: clangorous FM, struck.
+preset: Metal Clang
+  oscillator 1 / color = 4
+  oscillator 1 / tune = 2.9
+  hi / lo = 1
+  oscillator 1 / control mode = 3
+  osc mixer / osc 1 / env 1 = -1
+  oscillator 2 / control mode = 2
+  oscillator 2 / color = 0.1
+  oscillator 3 / control mode = 2
+  oscillator 3 / octave = 3
+  oscillator 3 / color = 0.1
+  filter / tune = 2200 Hz
+  resonance = 0.5
+  mode = 2
+  filter control / osc 1 / env 1 = 0.6
+  envelope 1 / attack = 0.001 s
+  envelope 1 / decay = 0.785
+  envelope 1 / sustain = 0
+  envelope 2 / attack = 0.001 s
+  envelope 2 / decay = 0.86
+  envelope 2 / sustain = 0
+  sustain on/off = 2
+
+# Oscillator 4 in LO as a slow triangle over the filter, long envelopes, a breath of pink noise: a sweeping pad.
+preset: Slow Sweep Pad
+  oscillator 2 / color = 0.6
+  oscillator 2 / tune = -0.008
+  oscillator 3 / color = 0.6
+  oscillator 3 / tune = 0.008
+  oscillator 4 / control mode = 2
+  oscillator 4 / octave = 1
+  oscillator 4 / tune = -3
+  oscillator 4 / color = 0.1
+  white / pink = 0.15
+  filter / tune = 500 Hz
+  resonance = 0.4
+  filter control / osc 1 / env 1 = 0.2
+  filter control / osc 4 / env 2 = -0.5
+  envelope 1 / attack = 1.5 s
+  envelope 1 / decay = 0.94
+  envelope 1 / sustain = 0.6
+  envelope 2 / attack = 1.2 s
+  envelope 2 / decay = 0.94
+  envelope 2 / sustain = 0.8

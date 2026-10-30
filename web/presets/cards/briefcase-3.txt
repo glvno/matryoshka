@@ -1,0 +1,143 @@
+# Briefcase 3: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# osc 1
+#   osc 1 / frequency = 0              -4..4
+#   sine = 0.6                         0..1
+#   ramp = 0.5                         0..1
+# osc 2
+#   osc 2 / frequency = 0.59           -4..4
+#   osc 2 / shape = 0.5                0.05..0.95
+#   osc 2 / square = 0.35              0..1
+#   osc 2 / triangle = 0               0..1
+# osc 3
+#   osc 3 / frequency = -4             -4..4
+#   osc 3 / shape = 0.5                0.05..0.95
+#   osc 3 / square = 0                 0..1
+#   osc 3 / triangle = 1               0..1
+# noise
+#   colour = 0                         0..1
+#   noise / level = 0                  0..1
+#   input 1 = 0.25                     -4..4
+#   ring mod = 0.3                     0..2
+# filter
+#   filter / frequency = 2140 Hz       20..16000 Hz
+#   response = 0.55                    0..1
+#   filter / level = 1                 0..1
+# envelope
+#   envelope: a screen, not a value
+#   attack = 0.02 s                    0.001..10 s
+#   on = 0.6 s                         0.001..10 s
+#   decay = 1.4 s                      0.001..10 s
+#   signal = 1.8                       0..2
+#   trapezoid = 1                      0..1
+# reverb
+#   mix = 0.25                         0..1
+#   reverb / level = 1                 0..1
+# output
+#   filter 1 = 0.15                    0..1
+#   level 1 = 0.7                      -4..4
+#   filter 2 = 0.15                    0..1
+#   level 2 = 0.7                      -4..4
+# joystick
+#   x = 0                              -4..4
+#   y = 0                              -4..4
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the EMS VCS3, not yet listened to on the FM-1 (#413).
+engine: Briefcase 3
+
+# The fixed patch: oscillators 1 and 2, the ring modulator (osc 1 ramp times osc 2 square) and the noise into the filter,
+# the filter into the envelope shaper, then the reverb and both outputs. The classic pins are set: the keys track
+# oscillators 1, 2 and the filter; oscillator 3's triangle is the vibrato (into oscillator 1 and the filter: its
+# frequency -4 is about 1 Hz, +4 about 262 Hz); the trapezoid sweeps the filter. Osc 3's square and the joystick reach
+# nothing on the FM-1 (the matrix card).
+
+# Two oscillators a beat apart, ring modulator and noise under them, a slow trapezoid and a wet reverb: the VCS3 drone.
+preset: Space Drone
+  osc 1 / frequency = -1
+  sine = 0.7
+  ramp = 0.25
+  osc 2 / frequency = -1.01
+  osc 2 / square = 0.3
+  osc 3 / frequency = -4
+  osc 3 / triangle = 0.6
+  colour = 0.3
+  noise / level = 0.1
+  ring mod = 0.5
+  filter / frequency = 700 Hz
+  response = 0.65
+  attack = 3 s
+  on = 8 s
+  decay = 6 s
+  signal = 1.5
+  mix = 0.6
+  filter 1 = 0.1
+  filter 2 = 0.1
+
+# Oscillator 2 at an inharmonic interval, the ring modulator up, a sharp trapezoid: a struck metal clang.
+preset: Ring Mod Clang
+  osc 1 / frequency = 0
+  sine = 0
+  ramp = 0.6
+  osc 2 / frequency = 1.42
+  osc 2 / square = 0.6
+  osc 3 / triangle = 0
+  ring mod = 1.5
+  filter / frequency = 5000 Hz
+  response = 0.3
+  attack = 0.002 s
+  on = 0.05 s
+  decay = 2 s
+  mix = 0.45
+
+# The filter past self-oscillation, pinged by a noise burst and tracking the keys: a resonant ping.
+preset: Resonant Ping
+  sine = 0.05
+  ramp = 0
+  osc 2 / square = 0
+  osc 3 / triangle = 0
+  noise / level = 0.2
+  ring mod = 0
+  filter / frequency = 900 Hz
+  response = 0.97
+  attack = 0.001 s
+  on = 0.02 s
+  decay = 0.6 s
+  mix = 0.5
+
+# Noise alone through a resonant filter that oscillator 3 rocks slowly, long rise and fall: surf.
+preset: Sea Noise
+  sine = 0
+  ramp = 0
+  osc 2 / square = 0
+  osc 3 / frequency = -4
+  osc 3 / triangle = 1
+  colour = 0.4
+  noise / level = 0.9
+  ring mod = 0
+  filter / frequency = 500 Hz
+  response = 0.8
+  attack = 2.5 s
+  on = 3 s
+  decay = 5 s
+  mix = 0.55
+
+# Both oscillators in unison, oscillator 3 as a 6 Hz vibrato, the trapezoid opening the filter: a buzzing lead.
+preset: Buzz Lead
+  sine = 0.3
+  ramp = 0.7
+  osc 2 / frequency = 0
+  osc 2 / shape = 0.3
+  osc 2 / square = 0.5
+  osc 3 / frequency = -1.5
+  osc 3 / triangle = 0.5
+  ring mod = 0
+  filter / frequency = 1800 Hz
+  response = 0.4
+  attack = 0.01 s
+  on = 0.3 s
+  decay = 0.8 s
+  mix = 0.2

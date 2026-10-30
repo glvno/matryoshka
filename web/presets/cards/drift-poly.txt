@@ -1,0 +1,67 @@
+# drift poly: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# (no heading)
+#   voices = 4                         1..16
+#   drift rate = 0.7 Hz                0.05..20 Hz
+#   cutoff = 1400 Hz                   20..16000 Hz
+#   res = 0.25                         0..1
+#   a = 0.008 s                        0.001..5 s
+#   d = 0.35 s                         0.001..5 s
+#   s = 0.55                           0..1
+#   r = 0.3 s                          0.001..8 s
+
+# Drafts of 2026-10-29 after a two-oscillator drifting polysynth, not yet listened to on the FM-1 (#413).
+engine: drift poly
+
+preset: Drift Bass
+  voices = 2
+  drift rate = 0.3 Hz
+  cutoff = 350 Hz
+  res = 0.3
+  a = 0.002 s
+  d = 0.3 s
+  s = 0.4
+  r = 0.2 s
+
+preset: Slow Pad
+  voices = 8
+  drift rate = 0.15 Hz
+  cutoff = 900 Hz
+  res = 0.2
+  a = 1.2 s
+  d = 1.5 s
+  s = 0.8
+  r = 2.5 s
+
+preset: Wobble Keys
+  voices = 4
+  drift rate = 3 Hz
+  cutoff = 2500 Hz
+  res = 0.3
+  a = 0.003 s
+  d = 0.5 s
+  s = 0.2
+  r = 0.4 s
+
+preset: Seasick Lead
+  voices = 1
+  drift rate = 6 Hz
+  cutoff = 3000 Hz
+  res = 0.45
+  a = 0.01 s
+  d = 0.3 s
+  s = 0.7
+  r = 0.3 s
+
+preset: Analog Strings
+  voices = 6
+  drift rate = 0.5 Hz
+  cutoff = 1800 Hz
+  res = 0.1
+  a = 0.6 s
+  d = 0.8 s
+  s = 0.85
+  r = 1 s

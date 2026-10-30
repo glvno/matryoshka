@@ -1,0 +1,320 @@
+# Cassia 1: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# voice
+#   voices = 2                         1..16
+#   line = 3                           1..8
+#   1+1' = 0                           -4..4
+# vibrato
+#   vib wave = triangle                sine, triangle, saw, square, S&H
+#   vib rate = 5.5 Hz                  0.02..40 Hz
+#   vib depth = 0                      -4..4
+#   vib delay = 0.6 s                  0.001..5 s
+# dco env
+#   dco env: a screen, not a value
+#   dco env / r1 = 0.05 s              0.001..10 s
+#   dco env / l1 = 0                   0..1
+#   dco env / r2 = 0.3 s               0.001..10 s
+#   dco env / l2 = 0                   0..1
+#   dco env / r3 = 0.5 s               0.001..10 s
+#   dco env / l3 = 0                   0..1
+#   dco env / r4 = 0.2 s               0.001..10 s
+#   dco env / l4 = 0                   0..1
+#   dco env / r5 = 0.2 s               0.001..10 s
+#   dco env / l5 = 0                   0..1
+#   dco env / r6 = 0.2 s               0.001..10 s
+#   dco env / l6 = 0                   0..1
+#   dco env / r7 = 0.2 s               0.001..10 s
+#   dco env / l7 = 0                   0..1
+#   dco env / r8 = 0.2 s               0.001..10 s
+#   dco env / l8 = 0                   0..1
+#   dco env / sus = 2                  off, 1, 2, 3, 4, 5, 6, 7, 8
+#   dco env / end = 3                  1..8
+#   depth = 1                          -4..4
+# touch
+#   dcw kf = -0.15                     -4..4
+#   dca kf = -0.1                      -4..4
+#   vel dcw = 0                        -4..4
+#   at dcw = 0                         -4..4
+#   at dca = 0                         -4..4
+#   at vib = 0                         -4..4
+# line 1
+#   line 1 / wave = 0                  -4..4
+#   line 1 / wave 2 = 0                -4..4
+#   line 1 / res range = 3             -4..4
+# dcw 1
+#   dcw 1: a screen, not a value
+#   dcw 1 / r1 = 0.05 s                0.001..10 s
+#   dcw 1 / l1 = 0.9                   0..1
+#   dcw 1 / r2 = 0.6 s                 0.001..10 s
+#   dcw 1 / l2 = 0.6                   0..1
+#   dcw 1 / r3 = 1.5 s                 0.001..10 s
+#   dcw 1 / l3 = 0.4                   0..1
+#   dcw 1 / r4 = 0.15 s                0.001..10 s
+#   dcw 1 / l4 = 0.2                   0..1
+#   dcw 1 / r5 = 0.3 s                 0.001..10 s
+#   dcw 1 / l5 = 0.06                  0..1
+#   dcw 1 / r6 = 0.4 s                 0.001..10 s
+#   dcw 1 / l6 = 0                     0..1
+#   dcw 1 / r7 = 0.2 s                 0.001..10 s
+#   dcw 1 / l7 = 0                     0..1
+#   dcw 1 / r8 = 0.2 s                 0.001..10 s
+#   dcw 1 / l8 = 0                     0..1
+#   dcw 1 / sus = 3                    off, 1, 2, 3, 4, 5, 6, 7, 8
+#   dcw 1 / end = 6                    1..8
+# dca 1
+#   dca 1: a screen, not a value
+#   dca 1 / r1 = 0.01 s                0.001..10 s
+#   dca 1 / l1 = 1                     0..1
+#   dca 1 / r2 = 0.4 s                 0.001..10 s
+#   dca 1 / l2 = 0.8                   0..1
+#   dca 1 / r3 = 2 s                   0.001..10 s
+#   dca 1 / l3 = 0.6                   0..1
+#   dca 1 / r4 = 0.15 s                0.001..10 s
+#   dca 1 / l4 = 0.3                   0..1
+#   dca 1 / r5 = 0.3 s                 0.001..10 s
+#   dca 1 / l5 = 0.09                  0..1
+#   dca 1 / r6 = 0.4 s                 0.001..10 s
+#   dca 1 / l6 = 0                     0..1
+#   dca 1 / r7 = 0.2 s                 0.001..10 s
+#   dca 1 / l7 = 0                     0..1
+#   dca 1 / r8 = 0.2 s                 0.001..10 s
+#   dca 1 / l8 = 0                     0..1
+#   dca 1 / sus = 3                    off, 1, 2, 3, 4, 5, 6, 7, 8
+#   dca 1 / end = 6                    1..8
+# line 2
+#   line 2 / wave = 5                  -4..4
+#   line 2 / wave 2 = 0                -4..4
+#   line 2 / res range = 3             -4..4
+#   ring = 1                           1..8
+#   noise = 1                          1..8
+#   coarse = 0 st                      -48..48 st
+#   fine = 0 ct                        -100..100 ct
+# dcw 2
+#   dcw 2: a screen, not a value
+#   dcw 2 / r1 = 0.1 s                 0.001..10 s
+#   dcw 2 / l1 = 0.7                   0..1
+#   dcw 2 / r2 = 0.8 s                 0.001..10 s
+#   dcw 2 / l2 = 0.4                   0..1
+#   dcw 2 / r3 = 2 s                   0.001..10 s
+#   dcw 2 / l3 = 0.25                  0..1
+#   dcw 2 / r4 = 0.15 s                0.001..10 s
+#   dcw 2 / l4 = 0.125                 0..1
+#   dcw 2 / r5 = 0.3 s                 0.001..10 s
+#   dcw 2 / l5 = 0.04                  0..1
+#   dcw 2 / r6 = 0.4 s                 0.001..10 s
+#   dcw 2 / l6 = 0                     0..1
+#   dcw 2 / r7 = 0.2 s                 0.001..10 s
+#   dcw 2 / l7 = 0                     0..1
+#   dcw 2 / r8 = 0.2 s                 0.001..10 s
+#   dcw 2 / l8 = 0                     0..1
+#   dcw 2 / sus = 3                    off, 1, 2, 3, 4, 5, 6, 7, 8
+#   dcw 2 / end = 6                    1..8
+# dca 2
+#   dca 2: a screen, not a value
+#   dca 2 / r1 = 0.01 s                0.001..10 s
+#   dca 2 / l1 = 1                     0..1
+#   dca 2 / r2 = 0.4 s                 0.001..10 s
+#   dca 2 / l2 = 0.8                   0..1
+#   dca 2 / r3 = 2 s                   0.001..10 s
+#   dca 2 / l3 = 0.6                   0..1
+#   dca 2 / r4 = 0.15 s                0.001..10 s
+#   dca 2 / l4 = 0.3                   0..1
+#   dca 2 / r5 = 0.3 s                 0.001..10 s
+#   dca 2 / l5 = 0.09                  0..1
+#   dca 2 / r6 = 0.4 s                 0.001..10 s
+#   dca 2 / l6 = 0                     0..1
+#   dca 2 / r7 = 0.2 s                 0.001..10 s
+#   dca 2 / l7 = 0                     0..1
+#   dca 2 / r8 = 0.2 s                 0.001..10 s
+#   dca 2 / l8 = 0                     0..1
+#   dca 2 / sus = 3                    off, 1, 2, 3, 4, 5, 6, 7, 8
+#   dca 2 / end = 6                    1..8
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the Casio CZ-1, not yet listened to on the FM-1 (#413).
+engine: Cassia 1
+
+preset: PD Bass
+  # the CZ-101 synth bass: line 1 alone, a saw with a square on every other cycle, the DCW snaps
+  # open and settles dark in a quarter second; key follow keeps the top of the keyboard dull
+  line = 1
+  line 1 / wave 2 = 2
+  dcw kf = -0.35
+  vel dcw = 0.45
+  dcw 1 / r1 = 0.003 s
+  dcw 1 / l1 = 1
+  dcw 1 / r2 = 0.22 s
+  dcw 1 / l2 = 0.45
+  dcw 1 / r3 = 0.5 s
+  dcw 1 / l3 = 0.3
+  dcw 1 / r4 = 0.12 s
+  dcw 1 / l4 = 0
+  dcw 1 / end = 4
+  dca 1 / r1 = 0.002 s
+  dca 1 / r2 = 0.25 s
+  dca 1 / l2 = 0.75
+  dca 1 / r3 = 0.4 s
+  dca 1 / l3 = 0.55
+  dca 1 / r4 = 0.1 s
+  dca 1 / l4 = 0
+  dca 1 / end = 4
+
+preset: PD Brass
+  # synth brass: both lines play line 1's saw (1 + 1'), line 2 eight cents sharp, a pitch blip at
+  # the start, the DCW swells in over a tenth of a second; aftertouch opens it and adds vibrato
+  1+1' = 1
+  fine = 8 ct
+  vib depth = 0.02
+  vib delay = 0.8 s
+  vel dcw = 0.3
+  at dcw = 0.5
+  at vib = 0.03
+  dco env / r1 = 0.001 s
+  dco env / l1 = 0.04
+  dco env / r2 = 0.09 s
+  dco env / end = 2
+  dcw 1 / r1 = 0.09 s
+  dcw 1 / l1 = 0.8
+  dcw 1 / r2 = 0.4 s
+  dcw 1 / l2 = 0.55
+  dcw 1 / r3 = 1 s
+  dcw 1 / l3 = 0.5
+  dcw 1 / r4 = 0.25 s
+  dcw 1 / l4 = 0
+  dcw 1 / end = 4
+  dca 1 / r1 = 0.035 s
+  dca 1 / r2 = 0.3 s
+  dca 1 / l2 = 0.85
+  dca 1 / r3 = 1 s
+  dca 1 / l3 = 0.75
+  dca 1 / r4 = 0.3 s
+  dca 1 / l4 = 0
+  dca 1 / end = 4
+
+preset: Glass Bell
+  # a bell: line 2 (a square, 29 semitones up) rings against line 1's double sine, both DCWs
+  # fall at once and the DCAs decay to nothing with no sustain step, so the note rings out
+  ring = 2
+  coarse = 29 st
+  line 1 / wave = 3
+  line 2 / wave = 1
+  dcw kf = -0.3
+  vel dcw = 0.4
+  dcw 1 / r1 = 0.002 s
+  dcw 1 / l1 = 0.7
+  dcw 1 / r2 = 0.35 s
+  dcw 1 / l2 = 0.25
+  dcw 1 / r3 = 2.5 s
+  dcw 1 / l3 = 0.05
+  dcw 1 / sus = off
+  dcw 1 / end = 3
+  dca 1 / r1 = 0.002 s
+  dca 1 / r2 = 0.6 s
+  dca 1 / l2 = 0.55
+  dca 1 / r3 = 3.5 s
+  dca 1 / l3 = 0
+  dca 1 / sus = off
+  dca 1 / end = 3
+  dcw 2 / r1 = 0.002 s
+  dcw 2 / l1 = 0.5
+  dcw 2 / r2 = 0.25 s
+  dcw 2 / l2 = 0.15
+  dcw 2 / r3 = 1.5 s
+  dcw 2 / l3 = 0
+  dcw 2 / sus = off
+  dcw 2 / end = 3
+  dca 2 / r1 = 0.002 s
+  dca 2 / r2 = 0.3 s
+  dca 2 / l2 = 0.5
+  dca 2 / r3 = 1.8 s
+  dca 2 / l3 = 0
+  dca 2 / sus = off
+  dca 2 / end = 3
+
+preset: Reso Pad
+  # a pad: line 2's resonance wave (Init's reso 1) swept up four octaves by a two-second DCW
+  # against line 1's saw-pulse, seven cents flat; slow DCAs, vibrato after a second and a half
+  line 1 / wave = 4
+  line 2 / res range = 4
+  fine = -7 ct
+  vib rate = 4.5 Hz
+  vib depth = 0.01
+  vib delay = 1.5 s
+  dcw kf = -0.1
+  at dcw = 0.3
+  dcw 1 / r1 = 0.9 s
+  dcw 1 / l1 = 0.6
+  dcw 1 / r2 = 2.5 s
+  dcw 1 / l2 = 0.35
+  dcw 1 / r3 = 1.6 s
+  dcw 1 / l3 = 0
+  dcw 1 / sus = 2
+  dcw 1 / end = 3
+  dca 1 / r1 = 0.45 s
+  dca 1 / r2 = 1.2 s
+  dca 1 / l2 = 0.85
+  dca 1 / r3 = 1.4 s
+  dca 1 / l3 = 0
+  dca 1 / sus = 2
+  dca 1 / end = 3
+  dcw 2 / r1 = 1.8 s
+  dcw 2 / l1 = 0.85
+  dcw 2 / r2 = 2.5 s
+  dcw 2 / l2 = 0.5
+  dcw 2 / r3 = 3 s
+  dcw 2 / l3 = 0.4
+  dcw 2 / r4 = 1.2 s
+  dcw 2 / l4 = 0
+  dcw 2 / end = 4
+  dca 2 / r1 = 0.6 s
+  dca 2 / r2 = 1.5 s
+  dca 2 / l2 = 0.9
+  dca 2 / r3 = 1.4 s
+  dca 2 / l3 = 0
+  dca 2 / sus = 2
+  dca 2 / end = 3
+
+preset: Tine Piano
+  # an electric piano: line 1 a square that velocity opens and the DCW closes fast; line 2 an
+  # octave up, a double sine, the tine's ping, gone in a moment; the body falls over seconds
+  line 1 / wave = 1
+  line 2 / wave = 3
+  coarse = 12 st
+  dcw kf = -0.3
+  dca kf = -0.15
+  vel dcw = 0.6
+  dcw 1 / r1 = 0.002 s
+  dcw 1 / l1 = 0.55
+  dcw 1 / r2 = 0.3 s
+  dcw 1 / l2 = 0.3
+  dcw 1 / r3 = 2 s
+  dcw 1 / l3 = 0.12
+  dcw 1 / r4 = 0.2 s
+  dcw 1 / l4 = 0
+  dcw 1 / end = 4
+  dca 1 / r1 = 0.002 s
+  dca 1 / r2 = 0.8 s
+  dca 1 / l2 = 0.6
+  dca 1 / r3 = 4 s
+  dca 1 / l3 = 0.05
+  dca 1 / r4 = 0.25 s
+  dca 1 / l4 = 0
+  dca 1 / end = 4
+  dcw 2 / r1 = 0.002 s
+  dcw 2 / l1 = 0.8
+  dcw 2 / r2 = 0.12 s
+  dcw 2 / l2 = 0.2
+  dcw 2 / r3 = 0.5 s
+  dcw 2 / l3 = 0
+  dcw 2 / sus = off
+  dcw 2 / end = 3
+  dca 2 / r1 = 0.002 s
+  dca 2 / r2 = 0.25 s
+  dca 2 / l2 = 0.3
+  dca 2 / r3 = 0.8 s
+  dca 2 / l3 = 0
+  dca 2 / sus = off
+  dca 2 / end = 3

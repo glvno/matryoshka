@@ -1,0 +1,188 @@
+# Wanderer: its factory presets, one block per preset (web/src/preset-cards.ts; npm run presets -- check).
+# "preset: NAME" starts one (up to 24 characters; the FM-1 shows 16). Under it, one row per line: "row = value".
+# A row not listed keeps Init's value. A row is "section / label", or the label alone when no other row has it.
+# A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
+#
+# vco 1
+#   kybd = 1                           1..8
+#   vco 1 / coarse = 0 st              -48..48 st
+#   vco 1 / fine = 0 ct                -100..100 ct
+#   vco 1 / fm 1 = 0                   -4..4
+#   vco 1 / fm 1 src = 1               1..8
+#   vco 1 / fm 2 = 0                   -4..4
+#   vco 1 / fm 2 src = 1               1..8
+#   vco 1 / pulse width = 0.5          0.05..0.95
+#   vco 1 / pwm = 0                    -4..4
+#   vco 1 / pwm src = 1                1..8
+# vco 2
+#   vco 2 / coarse = 12 st             -48..48 st
+#   vco 2 / fine = 4 ct                -100..100 ct
+#   sync = 1                           1..8
+#   vco 2 / fm 1 = 0                   -4..4
+#   vco 2 / fm 1 src = 1               1..8
+#   vco 2 / fm 2 = 0                   -4..4
+#   vco 2 / fm 2 src = 1               1..8
+#   vco 2 / pulse width = 0.35         0.05..0.95
+#   vco 2 / pwm = 0                    -4..4
+#   vco 2 / pwm src = 1                1..8
+# lfo · s/h
+#   lfo freq = 6 Hz                    0.02..40 Hz
+#   s/h 1 = 0                          -4..4
+#   s/h 2 = 1                          -4..4
+#   s/h 2 src = 1                      1..8
+#   s/h trig = 1                       1..8
+#   output lag = 0.001 s               0.001..5 s
+#   portamento = 0                     0..1
+# mixer
+#   vco 1 = 0.45                       0..1
+#   vco 1 wave = saw                   sine, triangle, saw, square, sharktooth, reverse saw
+#   vco 2 = 0.35                       0..1
+#   vco 2 wave = square                sine, triangle, saw, square, sharktooth, reverse saw
+#   noise/ring = 0                     0..1
+#   n/r src = 1                        1..8
+#   noise = 0                          0..1
+# filters · vca
+#   vcf freq = 900 Hz                  20..16000 Hz
+#   resonance = 0.4                    0..1
+#   mod 1 = 0.25                       0..1
+#   mod 1 src = 1                      1..8
+#   mod 2 = 0                          0..1
+#   mod 2 src = 1                      1..8
+#   mod 3 = 0.6                        0..1
+#   mod 3 src = 1                      1..8
+#   hpf = 40 Hz                        20..16000 Hz
+#   vca eg = 1                         1..8
+#   vca level = 1                      -4..4
+#   gain = 0                           -4..4
+# envelopes
+#   ar: a screen, not a value
+#   attack = 0.004 s                   0.001..5 s
+#   release = 0.25 s                   0.001..8 s
+#   ar trig = 1                        1..8
+#   adsr: a screen, not a value
+#   a = 0.005 s                        0.001..5 s
+#   d = 0.4 s                          0.001..5 s
+#   s = 0.4                            0..1
+#   r = 0.3 s                          0.001..8 s
+#   adsr trig = 1                      1..8
+#   repeat = 1                         1..8
+#   out: a screen, not a value
+
+# Drafts of 2026-10-29 after the ARP Odyssey, not yet listened to on the FM-1 (#413).
+engine: Wanderer
+
+# Switches: kybd 1 keyboard, 2 LF. vco 1 fm 1 src 1 LFO sine, 2 LFO square; vco 2 fm 1 src 1 LFO sine, 2 S/H mixer;
+# fm 2 src 1 S/H (lagged), 2 ADSR; pwm src 1 LFO sine, 2 ADSR. sync 2 = on. s/h 2 src 1 noise, 2 VCO 2 square;
+# s/h trig 1 LFO, 2 keyboard. n/r src 1 noise, 2 ring. mod 1 src 1 kybd CV, 2 S/H mixer; mod 2 src 1 S/H (lagged), 2 LFO sine;
+# mod 3 src 1 ADSR, 2 AR. vca eg 1 AR, 2 ADSR. ar / adsr trig 1 keyboard, 2 LFO repeat; repeat 1 kybd repeat, 2 auto repeat.
+
+# VCO 2 synced to VCO 1 and swept a fifth up and back by the ADSR: the sync lead.
+preset: Sync Lead
+  vco 2 / coarse = 7 st
+  vco 2 / fine = 0 ct
+  sync = 2
+  vco 2 / fm 2 = 1.5
+  vco 2 / fm 2 src = 2
+  vco 1 = 0.1
+  vco 2 = 0.6
+  vco 2 wave = saw
+  vcf freq = 1500 Hz
+  resonance = 0.3
+  mod 3 = 0.4
+  mod 3 src = 1
+  vca eg = 2
+  a = 0.005 s
+  d = 0.6 s
+  s = 0.3
+  r = 0.3 s
+  portamento = 0.1
+
+# The LFO clocks noise into the sample and hold, which steps the filter and nudges the pitch; the AR repeats with the LFO while a key is held.
+preset: S/H Bleeps
+  vco 1 / fm 2 = 0.3
+  vco 1 / fm 2 src = 1
+  lfo freq = 4 Hz
+  s/h 1 = 0
+  s/h 2 = 1
+  s/h 2 src = 1
+  s/h trig = 1
+  output lag = 0.01 s
+  vco 1 = 0.5
+  vco 1 wave = square
+  vco 2 = 0
+  vcf freq = 600 Hz
+  resonance = 0.6
+  mod 1 = 0.25
+  mod 2 = 0.5
+  mod 2 src = 1
+  mod 3 = 0
+  vca eg = 1
+  attack = 0.004 s
+  release = 0.15 s
+  ar trig = 2
+  repeat = 1
+
+# The ring modulator on two VCOs an inharmonic 16 semitones apart, the ADSR on the VCA: a metallic bell.
+preset: Ring Bell
+  vco 2 / coarse = 16 st
+  vco 2 / fine = 30 ct
+  vco 1 = 0.15
+  vco 2 = 0.1
+  vco 2 wave = square
+  noise/ring = 0.7
+  n/r src = 2
+  vcf freq = 3000 Hz
+  resonance = 0.2
+  mod 3 = 0.3
+  mod 3 src = 1
+  vca eg = 2
+  a = 0.003 s
+  d = 1.2 s
+  s = 0
+  r = 1.2 s
+
+# Both VCOs an octave down into a low, punchy filter on the ADSR.
+preset: Punch Bass
+  vco 1 / coarse = -12 st
+  vco 2 / coarse = -12 st
+  vco 2 / fine = 6 ct
+  vco 2 / pulse width = 0.5
+  vco 1 = 0.5
+  vco 1 wave = saw
+  vco 2 = 0.4
+  vco 2 wave = square
+  vcf freq = 300 Hz
+  resonance = 0.35
+  mod 1 = 0.3
+  mod 3 = 0.45
+  mod 3 src = 1
+  vca eg = 2
+  a = 0.003 s
+  d = 0.3 s
+  s = 0.3
+  r = 0.2 s
+  portamento = 0
+
+# LFO vibrato on VCO 1 and pulse width modulation on VCO 2, a little portamento: the lead.
+preset: PWM Lead
+  vco 1 / fm 1 = 0.04
+  vco 1 / fm 1 src = 1
+  vco 2 / coarse = 0 st
+  vco 2 / fine = 8 ct
+  vco 2 / pwm = 0.3
+  vco 2 / pwm src = 1
+  lfo freq = 5.5 Hz
+  vco 1 = 0.4
+  vco 1 wave = saw
+  vco 2 = 0.45
+  vco 2 wave = square
+  vcf freq = 1800 Hz
+  resonance = 0.2
+  mod 3 = 0.5
+  mod 3 src = 1
+  vca eg = 2
+  a = 0.01 s
+  d = 0.5 s
+  s = 0.7
+  r = 0.3 s
+  portamento = 0.15
