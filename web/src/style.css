@@ -144,10 +144,11 @@ main { position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 /* the dotted lines from the dock's dials to the rows they turn: no signal, an edit binding */
 svg.bind-cables { position: fixed; inset: 0; width: 100vw; height: 100dvh; z-index: 14; overflow: visible; pointer-events: none; }
 svg.bind-cables .bind { fill: none; stroke: var(--knob); stroke-width: 1.6; stroke-dasharray: 1.5 4; stroke-linecap: round; opacity: .9; --march: 5.5px; --march-t: .28s; }
-/* an armed device's virtual cable (#190): the keys ribbon (.cable.role-keys, its core and middle wire) cut into dashes */
-svg.bind-cables .bind.arm { stroke: var(--ink); stroke-width: 7; stroke-dasharray: 10 5; stroke-linecap: butt; opacity: .85; --march: 15px; --march-t: .55s; }
+/* the arm's virtual cables (#190, #418): the keys ribbon (.cable.role-keys, its core and middle wire) cut into dashes, in the
+   arm colour like the live cables, into the jack the arm routes Main's keys to */
+svg.bind-cables .bind.arm { stroke: var(--arm); stroke-width: 7; stroke-dasharray: 10 5; stroke-linecap: butt; opacity: .85; --march: 15px; --march-t: .55s; }
 svg.bind-cables .bind.arm-core { stroke: var(--panel); stroke-width: 4.6; stroke-dasharray: 10 5; stroke-linecap: butt; opacity: 1; --march: 15px; --march-t: .55s; }
-svg.bind-cables .bind.arm-wire { stroke: var(--ink); stroke-width: 1.2; stroke-dasharray: 10 5; stroke-linecap: butt; opacity: 1; --march: 15px; --march-t: .55s; }
+svg.bind-cables .bind.arm-wire { stroke: var(--arm); stroke-width: 1.2; stroke-dasharray: 10 5; stroke-linecap: butt; opacity: 1; --march: 15px; --march-t: .55s; }
 .cable.pending { stroke: var(--muted); stroke-dasharray: 5 4; pointer-events: none; --march: 9px; --march-t: .45s; }
 /* automatic links march: one dash period (--march) per cycle (--march-t, about 20 px/s), toward the path's end (paths
    run source to receiver) */
@@ -1381,6 +1382,15 @@ svg.slack-cable .cable.pending { pointer-events: none; }
 .arm-dot.on, .mhead .tools .arm-dot.on, .steps-screen .steps-head .arm-dot.on { background: transparent; border-color: color-mix(in srgb, var(--arm) 55%, var(--line)); }
 .arm-dot.on::before { background: var(--arm); border-color: var(--arm); box-shadow: 0 0 0 3px color-mix(in srgb, var(--arm) 22%, transparent); }
 .cable.muted { opacity: .25; }
+/* the arm's live path (#418): the cables Main's keys travel while armed (into the armed devices, on through their key
+   sources), the ribbon and its middle wire in the arm colour; the cables keep their click */
+.cable.live, .cable-wire.live { stroke: var(--arm); }
+.cable.live { opacity: 1; }
+/* a device armed with the user's choice (#418: the track and the Arpeggiator in front of an armed instrument): the armed
+   edge in a lighter tone, its ARM dot half filled */
+.module.armed-with:not(.selected):not(.armed) { outline: 2px dashed color-mix(in srgb, var(--arm) 65%, transparent); outline-offset: 1px; }
+.steps-screen.armed-with:not(.armed) { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--arm) 65%, transparent); }
+.arm-dot.with::before { background: color-mix(in srgb, var(--arm) 45%, transparent); border-color: var(--arm); }
 /* the preset chip on an assembly device's header (#192): ‹ name › */
 :is(.mhead, .fhead) span.preset-chip { display: inline-flex; contain: none; font: inherit; text-transform: none; letter-spacing: normal; align-items: stretch; flex: none; width: 124px; height: 20px; margin-left: auto; margin-right: 6px;
   border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--panel); }
