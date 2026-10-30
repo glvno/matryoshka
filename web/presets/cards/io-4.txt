@@ -5,12 +5,12 @@
 #
 # vco
 #   range = 8'                         16', 8', 4'
-#   sub = 1                            1..8
+#   sub = 1                            1..2
 #   vco / mod = 0                      -4..4
 #   pw mode = MOD                      MANUAL, MOD
 #   pw = 40%                           50%, 40%, 20%, 10%
 #   vco / wave form = PULSE            OFF, SAW, SQUARE, PULSE
-#   noise = 1                          1..8
+#   noise = 1                          1..2
 # vcf
 #   hpf cutoff = 40 Hz                 20..16000 Hz
 #   lpf cutoff = 1800 Hz               20..16000 Hz
@@ -49,14 +49,14 @@
 #   vca = OFF                          LFO, OFF, BEND
 # portamento
 #   portamento = 0.15 s                0.001..5 s
-#   switch = 1                         1..8
+#   switch = 1                         1..2
 # keys
 #   transpose = NORMAL                 NORMAL, -1 OCT
 #   tuning = 0                         -4..4
 #   assign = rotate                    rotate, lowest, reuse, reset
 #   unison = off                       off, on, share
-#   hold = 1                           1..8
-#   ensemble = 2                       1..8
+#   hold = 1                           1..2
+#   ensemble = 2                       1..2
 #   out: a screen, not a value
 
 # Drafts of 2026-10-29 after the Jupiter-4, not yet listened to on the FM-1 (#413).

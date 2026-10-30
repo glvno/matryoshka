@@ -1051,65 +1051,7 @@
       "y": 280,
       "params": {
         "pos": 1,
-        "count": 2,
-        "fade": 0,
-        "v1": 1,
-        "v2": 0,
-        "v3": 0,
-        "v4": 0,
-        "v5": 0,
-        "v6": 0,
-        "v7": 0,
-        "v8": 0
-      },
-      "att": [
-        1,
-        1
-      ],
-      "map": {
-        "p1": [
-          "pos"
-        ],
-        "p2": [
-          "count"
-        ],
-        "k1": [],
-        "k2": [],
-        "k3": [],
-        "k4": []
-      }
-    },
-    {
-      "id": 38,
-      "type": "vca",
-      "x": 2880,
-      "y": 560,
-      "params": {
-        "gain": 1
-      },
-      "att": [
-        1,
-        1
-      ],
-      "map": {
-        "p1": [
-          "gain"
-        ],
-        "p2": [],
-        "k1": [],
-        "k2": [],
-        "k3": [],
-        "k4": []
-      }
-    },
-    {
-      "id": 39,
-      "type": "select",
-      "x": 2880,
-      "y": 840,
-      "params": {
-        "pos": 1,
-        "count": 2,
+        "count": 3,
         "fade": 0,
         "v1": 1,
         "v2": 0,
@@ -1721,6 +1663,16 @@
     },
     {
       "from": {
+        "module": 4,
+        "port": "out"
+      },
+      "to": {
+        "module": 37,
+        "port": "in3"
+      }
+    },
+    {
+      "from": {
         "module": 37,
         "port": "out"
       },
@@ -1741,37 +1693,7 @@
     },
     {
       "from": {
-        "module": 4,
-        "port": "out"
-      },
-      "to": {
-        "module": 39,
-        "port": "in2"
-      }
-    },
-    {
-      "from": {
-        "module": 39,
-        "port": "out"
-      },
-      "to": {
-        "module": 38,
-        "port": "cv"
-      }
-    },
-    {
-      "from": {
         "module": 36,
-        "port": "out"
-      },
-      "to": {
-        "module": 38,
-        "port": "in"
-      }
-    },
-    {
-      "from": {
-        "module": 38,
         "port": "out"
       },
       "to": {
@@ -2325,12 +2247,7 @@
     {
       "module": 37,
       "param": "pos",
-      "label": "ring"
-    },
-    {
-      "module": 39,
-      "param": "pos",
-      "label": "noise"
+      "label": "mod"
     },
     {
       "module": 33,
@@ -2577,8 +2494,7 @@
         34,
         35,
         36,
-        37,
-        38
+        37
       ],
       "inputs": [],
       "outputs": [
@@ -2907,7 +2823,7 @@
         {
           "module": 37,
           "param": "pos",
-          "label": "ring"
+          "label": "mod"
         },
         {
           "module": 33,

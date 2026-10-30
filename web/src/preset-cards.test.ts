@@ -49,6 +49,22 @@ describe('preset cards (#413)', () => {
     expect(init.values).toEqual(presetsByRules(HERA)[0].values);
   });
 
+  it('a Selector row takes its positions\' names or numbers up to its count, and is written by name (#430)', () => {
+    const cz = ENGINES.find((d) => d.name === 'Cassia 1')!;
+    const r = parseCard(['engine: Cassia 1', 'preset: T', '  line 2 / wave = reso 3', '  line 1 / wave 2 = 2', '  line = 3'].join('\n'), cz);
+    expect(r.errors).toEqual([]);
+    const p = r.presets[1];
+    expect(p.values[at(cz, 'line 2 / wave')]).toBe(8);
+    expect(p.values[at(cz, 'line 1 / wave 2')]).toBe(2);
+    expect(formatPreset(cz, 'T', p.values)).toContain('line 1 / wave 2 = square');
+    expect(formatPreset(cz, 'T', p.values)).toContain('line 2 / wave = reso 3');
+    expect(parseCard(['engine: Cassia 1', 'preset: T', '  line = 5'].join('\n'), cz).errors[0]).toMatch(/outside 1\.\.4/);
+    expect(parseCard(['engine: Cassia 1', 'preset: T', '  line 1 / wave = reso 4'].join('\n'), cz).errors[0]).toMatch(/saw, square/);
+    const t = cardTemplate(cz);
+    expect(t).toMatch(/line 2 \/ wave = reso 1 +saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3/);
+    expect(t).toMatch(/line = 4 +1\.\.4/);
+  });
+
   it('reports every mistake with its line and then holds no preset', () => {
     const r = parseCard([
       'engine: Oracle V', // 1: wrong engine

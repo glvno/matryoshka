@@ -1229,8 +1229,8 @@ asm('Hera 6', 'Voices', (b) => {
 //  - the DCW: the line's DCW envelope plus key follow, velocity and aftertouch, summed into the PD Osc's dcw input.
 // Line select (`line`, a Selector), as the CZ's: 1 line 1, 2 line 2, 3 1+1', 4 1+2' (both lines). In 1+1' line 2 plays
 // line 1's waveforms, range and DCW / DCA envelopes at line 2's pitch (`coarse`, `fine`): line 1'. The select's gate 3
-// moves a Crossfader per setting (0 line 2's own, 1 line 1's). Line 2's ring modulation (times line 1) and noise
-// modulation (times the noise) are Selectors too, 1 off, 2 on: each picks a VCA's cv, 1 or the modulator. The DCO
+// moves a Crossfader per setting (0 line 2's own, 1 line 1's). Line 2's modulation (`mod`, a Selector, as the CZ's one
+// setting): 1 off, 2 ring (times line 1), 3 noise (times the noise); it picks a VCA's cv, 1 or the modulator. The DCO
 // envelope moves both lines' pitch by `depth` octaves; vibrato's wave (the CZ's saw down is a negative `vib depth`), rate,
 // depth in semitones (the LFO plays at 1/12: a step of the row is a cent, a click on the FM-1 8 cents) and delay; key
 // follow lowers the DCW and DCA levels from C4; velocity opens the DCA (and the DCW by `vel dcw`); aftertouch reaches
@@ -1353,19 +1353,15 @@ asm('Cassia 1', 'Voices', (b) => {
   const v2 = dcaVca(7);
   b.wire(pd1, 'out', v1, 'in');
   b.wire(dca1, 'env', v1, 'cv');
-  // line 2's modulation before its DCA: ring (times line 1), then noise. Each is a VCA whose cv a Selector picks: 1 (its v1,
-  // off) or the modulator (on); the noise's Selector is once for all voices
-  const ringV = add('vca', 9, 0, { gain: 1 });
-  const ring = add('select', 9, 0.5, { pos: 1, count: 2, fade: 0, v1: 1 });
-  const noiseV = add('vca', 9, 1, { gain: 1 });
-  const noise = b.add('select', 9, 1.5, { pos: 1, count: 2, fade: 0, v1: 1 });
-  b.wire(pd1, 'out', ring, 'in2');
-  b.wire(ring, 'out', ringV, 'cv');
-  b.wire(pd2, 'out', ringV, 'in');
-  b.wire(nz, 'out', noise, 'in2');
-  b.wire(noise, 'out', noiseV, 'cv');
-  b.wire(ringV, 'out', noiseV, 'in');
-  b.wire(noiseV, 'out', v2, 'in');
+  // line 2's modulation before its DCA, as the CZ's: 1 off, 2 ring (times line 1), 3 noise (times the noise). A VCA whose
+  // cv the `mod` Selector picks: 1 (its v1), line 1 or the noise
+  const modV = add('vca', 9, 0, { gain: 1 });
+  const mod = add('select', 9, 0.5, { pos: 1, count: 3, fade: 0, v1: 1 });
+  b.wire(pd1, 'out', mod, 'in2');
+  b.wire(nz, 'out', mod, 'in3');
+  b.wire(mod, 'out', modV, 'cv');
+  b.wire(pd2, 'out', modV, 'in');
+  b.wire(modV, 'out', v2, 'in');
   b.wire(dcaX[0], dcaX[1], v2, 'cv');
   // the line select's outputs: 1 line 1, 2 line 2, 3 and 4 both
   b.wire(v1, 'out', sel, 'in1');
@@ -1408,8 +1404,7 @@ asm('Cassia 1', 'Voices', (b) => {
     b.param('wave 2', k.wave2, 'pos');
     b.param('res range', k.range, 'value');
     if (n === 2) {
-      b.param('ring', ring, 'pos');
-      b.param('noise', noise, 'pos');
+      b.param('mod', mod, 'pos');
       b.param('coarse', pd2, 'coarse');
       b.param('fine', pd2, 'fine');
     }

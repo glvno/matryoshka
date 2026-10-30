@@ -18,7 +18,7 @@
 // rules and warns). The reverse, a preset as a block of text, serves `npm run presets -- show` and the library import.
 import type { AssemblyDef } from './assembly';
 import { PRESET_NAME_MAX, type Preset } from './device-presets';
-import { DEFS } from './modules';
+import { DEFS, selectCount } from './modules';
 import type { ParamDef } from './patch';
 import { defStructureAndOrder } from './structure';
 
@@ -39,6 +39,8 @@ export interface CardRow {
   init: number;
   /** a Selector row's position names (#358), position 1 first, as many as the Selector has positions */
   names?: string[];
+  /** a Selector row's number of positions (its `count`): the row's range is 1..this */
+  positions?: number;
 }
 
 /** the card file's name for an engine: its name in lower case, runs of other characters as "-" */
@@ -51,8 +53,9 @@ export function cardRows(def: AssemblyDef): CardRow[] {
     if (r.head) section = r.head;
     const m = def.modules.find((x) => x.id === r.module)!;
     const pd = DEFS[m.type]?.params.find((d) => d.name === r.param);
-    const names = r.names && m.type === 'select' && r.param === 'pos' ? r.names.slice(0, m.params.count ?? r.names.length) : undefined;
-    return { i, section, label: r.label, key: '', type: m.type, param: r.param, pd: pd && !pd.screen ? pd : undefined, init: m.params[r.param] ?? pd?.default ?? 0, ...(names ? { names } : {}) };
+    const positions = m.type === 'select' && r.param === 'pos' ? selectCount(m.params) : undefined;
+    const names = r.names && positions ? r.names.slice(0, positions) : undefined;
+    return { i, section, label: r.label, key: '', type: m.type, param: r.param, pd: pd && !pd.screen ? pd : undefined, init: m.params[r.param] ?? pd?.default ?? 0, ...(names ? { names } : {}), ...(positions ? { positions } : {}) };
   });
   const count = new Map<string, number>();
   for (const r of rows) count.set(`${r.section}/${r.label}`, (count.get(`${r.section}/${r.label}`) ?? 0) + 1);
@@ -98,7 +101,7 @@ export function parseValue(r: CardRow, text: string): { value: number } | { erro
   if (!pd) return { error: `${r.key} is a screen, not a value` };
   const t = norm(text);
   const lo = pd.min;
-  const hi = pd.top ?? pd.max;
+  const hi = r.positions ?? pd.top ?? pd.max;
   if (pd.toggle && (t === 'on' || t === 'off')) return { value: t === 'on' ? 1 : 0 };
   if (r.names) {
     const k = r.names.findIndex((c) => norm(c) === t);
@@ -250,7 +253,7 @@ export function cardTemplate(def: AssemblyDef): string {
       continue;
     }
     const pd = r.pd;
-    const range = pd.toggle ? 'off, on' : r.names ? r.names.join(', ') : pd.choices ? pd.choices.slice(0, (pd.top ?? pd.max) + 1).join(', ') : `${num(pd.min)}..${num(pd.top ?? pd.max)}${pd.unit ? ` ${pd.unit}` : ''}`;
+    const range = pd.toggle ? 'off, on' : r.names ? r.names.join(', ') : pd.choices ? pd.choices.slice(0, (pd.top ?? pd.max) + 1).join(', ') : `${num(pd.min)}..${num(r.positions ?? pd.top ?? pd.max)}${pd.unit ? ` ${pd.unit}` : ''}`;
     out.push(`#   ${`${key} = ${formatValue(r, r.init)}`.padEnd(34)} ${range}`);
   }
   out.push('', `engine: ${def.name}`, '');

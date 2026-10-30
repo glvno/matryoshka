@@ -5,7 +5,7 @@
 #
 # voice
 #   voices = 2                         1..16
-#   line = 4                           1..8
+#   line = 4                           1..4
 # vibrato
 #   vib wave = triangle                sine, triangle, saw, square, S&H
 #   vib rate = 5.5 Hz                  0.02..40 Hz
@@ -87,8 +87,7 @@
 #   line 2 / wave = reso 1             saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3
 #   line 2 / wave 2 = reso 1           saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3
 #   line 2 / res range = 3             -4..4
-#   ring = 1                           1..8
-#   noise = 1                          1..8
+#   mod = 1                            1..3
 #   coarse = 0 st                      -48..48 st
 #   fine = 0 ct                        -100..100 ct
 # dcw 2
@@ -135,7 +134,7 @@
 
 # Drafts of 2026-10-29 after the Casio CZ-1 (#413), listened to by the owner on 2026-10-29. Reso Pad moved onto a
 # resonance wave on 2026-10-30 (#430), not yet listened to. Wave 2 set to the line's wave: no second waveform.
-# line: 1 line 1, 2 line 2, 3 1+1', 4 1+2' (both). vib depth is in semitones.
+# line: 1 line 1, 2 line 2, 3 1+1', 4 1+2' (both). mod: 1 off, 2 ring, 3 noise. vib depth is in semitones.
 engine: Cassia 1
 
 preset: PD Bass
@@ -198,7 +197,7 @@ preset: PD Brass
 preset: Glass Bell
   # a bell: line 2 (a square, 29 semitones up) rings against line 1's double sine, both DCWs
   # fall at once and the DCAs decay to nothing with no sustain step, so the note rings out
-  ring = 2
+  mod = 2
   coarse = 29 st
   line 1 / wave = dbl sine
   line 1 / wave 2 = dbl sine

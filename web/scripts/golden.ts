@@ -185,6 +185,26 @@ for (let pos = 1; pos <= 6; pos++) {
   tests[name] = p;
   events[name] = [[0, 'on', 60], [128 * 10, 'cc', 1, 16], [128 * 50, 'cc', 1, 0], [128 * 80, 'off', 60]];
 }
+// Cassia 1's wave rows (#430): Selectors into the PD Osc's wave (p1) and wave2 (pm, routed): every position on both lines'
+// rows, line 2 by its own rows (4: 1+2') or line 1's (3: 1+1', the line select's gate 3 moving the Crossfaders), and the
+// line 2 modulation off, ring and noise
+for (let k = 1; k <= 8; k++) {
+  const name = `cassia-wave-${k}`;
+  const p = FM1_PRESETS['Cassia 1']();
+  const card = p.assemblies!.find((a) => a.params.some((r) => r.label === 'wave 2'))!;
+  const set = (label: string, head: number, v: number): void => {
+    const row = card.params.filter((r) => r.label === label)[head];
+    p.modules.find((m) => m.id === row.module)!.params[row.param] = v;
+  };
+  set('wave', 0, k);
+  set('wave 2', 0, (k % 8) + 1);
+  set('wave', 1, ((k + 2) % 8) + 1);
+  set('wave 2', 1, ((k + 5) % 8) + 1);
+  set('line', 0, k === 8 ? 3 : 4);
+  set('mod', 0, (k % 3) + 1);
+  tests[name] = p;
+  events[name] = [[0, 'on', 48 + k], [128 * 30, 'on', 60 + k], [128 * 90, 'off', 48 + k], [128 * 110, 'off', 60 + k]];
+}
 for (const [cc, port] of [[2, 'breath'], [64, 'sustain'], [65, 'foot']] as const) {
   const name = `main-${port}`;
   tests[name] = make(name, (add, wire) => {
