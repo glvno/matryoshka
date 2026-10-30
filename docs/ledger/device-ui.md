@@ -52,7 +52,7 @@ The FM-1 is a patch player: patches are built in the browser, and the device pla
 
 ## Not yet settled
 
-- Proposed amendment to [D-240](device-ui.md#D-240): the PANEL tab's rows are LEDS, KNOB ACCEL and COUNT-IN, REC's count-in ([D-803](steps.md#D-803)) — issue #414.
+- Proposed amendment to [D-240](device-ui.md#D-240): the PANEL tab's rows are LEDS, KNOB ACCEL and COUNT-IN, REC's count-in ([D-803](steps.md#D-803)) — issue #414, PR #423.
 - Whether the stock battery thresholds (531 / 561 / 591) match this FM-1's readings on USB, unplugged full, later and near shutdown — issue #240
 - Whether GLO's page gets a level and a speaker mute (no such setting or hardware control is known) — issue #199
 - Whether device page bars for envelopes draw a faint envelope shape — issue #112
