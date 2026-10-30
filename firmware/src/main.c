@@ -248,13 +248,17 @@ static int slot_used(uint32_t s) { return s < M1_SLOTS && (bank_mask >> s & 1u);
 
 /* the settings record: version, slot, octave + 8, LED mode, knob accel, CPU in the bar, clock in, program change,
  * MIDI channel, MIDI out, the bank's format, the selected module, REC's count-in (byte 12, #414: a record without
- * it, SET_MIN bytes, reads as OFF; the version stays 1, so an older firmware reads the longer record too) */
+ * it, SET_MIN bytes, reads as OFF), the factory set the bank's untouched factory slots hold (bytes 13..15, #441: a
+ * record without them reads as unknown). The version stays 1, so an older firmware reads the longer record too; it
+ * must stay at most 16 bytes: firmware up to 1.6 reads it into a buffer of 12 + 4 bytes without a bound */
 #define SET_VERSION 1u
 #define SET_MIN 12u
-#define SET_LEN 13u
-/* the patch format the bank's untouched factory slots were brought to (settings byte 10; 0 in a record from before):
- * below ENG_PATCH_VERSION, the boot rewrites them once (bank_upgrade) */
+#define SET_LEN 16u
+/* the patch format the bank's untouched factory slots were brought to (settings byte 10; 0 in a record from before)
+ * and the factory set they were brought to (presets.h FACTORY_SET_ID; 0 = unknown): either one off, the boot rewrites
+ * them once (bank_upgrade) */
 static uint8_t bank_fmt;
+static uint32_t bank_set;
 static void settings_pack(uint8_t *d)
 {
     d[0] = SET_VERSION;
@@ -270,6 +274,9 @@ static void settings_pack(uint8_t *d)
     d[10] = bank_fmt;
     d[11] = (uint8_t)sel;
     d[12] = cfg.count_in;
+    d[13] = (uint8_t)bank_set;
+    d[14] = (uint8_t)(bank_set >> 8);
+    d[15] = (uint8_t)(bank_set >> 16);
 }
 static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint32_t *module)
 {
@@ -285,6 +292,7 @@ static int settings_unpack(const uint8_t *d, uint32_t len, uint32_t *slot, uint3
     bank_fmt = d[10];
     *module = d[11];
     cfg.count_in = len > 12u ? (d[12] > 2u ? 2u : d[12]) : 0u;
+    bank_set = len > 15u ? (uint32_t)d[13] | (uint32_t)d[14] << 8 | (uint32_t)d[15] << 16 : 0u;
     return 0;
 }
 
@@ -493,6 +501,7 @@ static void factory_bank(void)
     cur_preset = 0;
     sel = 0;
     bank_fmt = ENG_PATCH_VERSION;
+    bank_set = FACTORY_SET_ID;
     settings_pack(set);
     (void)store_write(SL_SETTINGS, 0, set, SET_LEN);
 }
@@ -507,9 +516,9 @@ static uint32_t fnv32(const uint8_t *p, uint32_t n)
 }
 
 /* after an update: every slot that is byte for byte a factory patch an earlier firmware wrote (presets.h LEGACY_FACTORY,
- * so untouched since the factory bank or FACTORY RESET) gets today's patch of that name, in today's format (format 34's
- * extras: presets, the environment); the slot keeps its name, anything edited and saved stays as it is. Once per format
- * (bank_fmt). Returns how many slots were rewritten */
+ * so untouched since the factory bank or FACTORY RESET), in any format, gets today's patch of that name; the slot keeps
+ * its name, anything edited and saved stays as it is, and a slot holding one of today's patches is not in the table.
+ * Once per factory set and format (bank_set, bank_fmt). Returns how many slots were rewritten */
 static uint32_t bank_upgrade(void)
 {
     uint32_t s, k, len, h, n = 0;
@@ -521,7 +530,7 @@ static uint32_t bank_upgrade(void)
         fm1_wdt_feed();
         for (k = 0; k <= M1_NAME; k++)
             name[k] = 0;
-        if (sl_read(s, m1_up, &len, name) || len < 8u || m1_up[0] != 0xA1u || m1_up[1] >= ENG_PATCH_VERSION)
+        if (sl_read(s, m1_up, &len, name) || len < 8u || m1_up[0] != 0xA1u)
             continue;
         h = fnv32(m1_up, len);
         for (k = 0; k < N_LEGACY_FACTORY; k++)
@@ -531,6 +540,7 @@ static uint32_t bank_upgrade(void)
             n++;
     }
     bank_fmt = ENG_PATCH_VERSION;
+    bank_set = FACTORY_SET_ID;
     return n;
 }
 
@@ -569,7 +579,7 @@ static void patch_boot(void)                    /* the slot the settings record 
         boot_msg = "FACTORY BANK WRITTEN";
         boot_msg_ms = 2000;
     } else if (sl_read(SL_SETTINGS, set, &len, 0) == 0 && settings_unpack(set, len, &slot, &module) == 0) {
-        if (bank_fmt < ENG_PATCH_VERSION) {           /* the first boot after an update that changed the format */
+        if (bank_fmt < ENG_PATCH_VERSION || bank_set != FACTORY_SET_ID) {   /* the first boot after an update that changed the factory patches or the format */
             uint32_t n = bank_upgrade();
             cur_preset = slot;
             sel = module;

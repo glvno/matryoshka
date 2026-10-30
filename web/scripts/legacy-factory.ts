@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The factory patches every earlier firmware wrote into the bank (firmware/src/presets.h in each commit of the git
 // history, every branch), as fingerprints: web/scripts/legacy-factory.json, which export-defs turns into presets.h's
-// LEGACY_FACTORY. After an update the FM-1 rewrites a slot that is byte for byte one of them (untouched since the factory
-// bank or FACTORY RESET wrote it) with today's patch of that name, in today's format (main.c bank_upgrade). Run after a
-// patch format bump, before export-defs:  npx vite-node scripts/legacy-factory.ts
+// LEGACY_FACTORY. After an update that changed the factory set (FACTORY_SET_ID) or the format, the FM-1 rewrites a slot
+// that is byte for byte one of them (untouched since the factory bank or FACTORY RESET wrote it) with today's patch of
+// that name (main.c bank_upgrade). Every format counts: a factory patch changed within one format is an earlier one too.
+// export-defs leaves out the ones that are byte for byte one of today's patches. Run after any change to a factory patch
+// (firmware/src/presets.h), before export-defs:  npx vite-node scripts/legacy-factory.ts
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
-import { VERSION } from '../src/patchbin';
 
 const ROOT = new URL('../../', import.meta.url).pathname;
 const git = (...a: string[]): string => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8', maxBuffer: 256 << 20 });
@@ -31,7 +32,7 @@ for (const c of commits) {
   for (const m of src.matchAll(/static const uint8_t (PRESET_\d+)\[\d+\] = \{([^}]*)\}/g)) data.set(m[1], m[2].split(',').map(Number));
   for (const m of src.matchAll(/\{"([^"]*)", (PRESET_\d+),/g)) {
     const bytes = data.get(m[2]);
-    if (!bytes || bytes.length < 8 || bytes[0] !== 0xa1 || bytes[1] >= VERSION) continue; // (today's format needs no rewrite)
+    if (!bytes || bytes.length < 8 || bytes[0] !== 0xa1) continue;
     const fnv = fnv32(bytes).toString(16).padStart(8, '0');
     const key = `${fnv}/${bytes.length}`;
     if (!seen.has(key)) seen.set(key, { name: m[1], len: bytes.length, fnv, version: bytes[1] });

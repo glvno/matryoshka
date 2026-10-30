@@ -175,6 +175,13 @@ presetNames.forEach((n, i) => {
   todays.add(`${h.toString(16).padStart(8, '0')}/${bin.length}`);
   P.push(`static const uint8_t PRESET_${i}[${bin.length}] = {${Array.from(bin).join(',')}};   /* ${n} */`);
 });
+{ // the factory set's fingerprint (24 bits of FNV-1a over every name and binary, never 0): stored in the settings record,
+  // a change makes the boot rewrite the untouched factory slots (main.c bank_upgrade)
+  let h = 0x811c9dc5;
+  for (const n of presetNames) for (const x of [...new TextEncoder().encode(n.toUpperCase()), 0, ...encodePatch(FM1_PRESETS[n]())]) h = Math.imul(h ^ x, 0x01000193) >>> 0;
+  P.push('', '/* the factory set (PRESET_LIST: names and bytes), 24 bits of FNV-1a, never 0: kept in the settings record, a change', '   makes the boot rewrite the untouched factory slots (main.c bank_upgrade) */');
+  P.push(`#define FACTORY_SET_ID 0x${((h & 0xffffff) || 1).toString(16).padStart(6, '0')}u`);
+}
 P.push('', `#define N_PRESETS ${presetNames.length}`);
 P.push('static const struct { const char *name; const uint8_t *data; uint32_t len; } PRESET_LIST[N_PRESETS] = {');
 presetNames.forEach((n, i) => P.push(`    {"${n.toUpperCase()}", PRESET_${i}, sizeof PRESET_${i}},`));
@@ -184,11 +191,13 @@ P.push('};', '');
   P.push(`#define FALLBACK_NAME "${FALLBACK_NAME}"`, `static const uint8_t FALLBACK_PATCH[${bin.length}] = {${Array.from(bin).join(',')}};`, '');
 }
 { // the factory patches earlier firmwares wrote (scripts/legacy-factory.ts): an untouched slot holding one is rewritten with
-  // today's patch of that name after an update (main.c bank_upgrade); `now` is its index in PRESET_LIST
+  // today's patch of that name after an update that changed the factory set or the format (main.c bank_upgrade); `now`
+  // is its index in PRESET_LIST
   const legacy = (JSON.parse(readFileSync(new URL('./legacy-factory.json', import.meta.url), 'utf8')) as { patches: { name: string; len: number; fnv: string }[] }).patches;
   const now = new Map(presetNames.map((n, i) => [n.toUpperCase(), i]));
-  // (one that is byte for byte today's patch is left out: a patch that uses nothing newer is written in an older format,
-  // patchbin.ts WRITE_FLOOR, so an older presets.h can hold today's bytes)
+  // (one that is byte for byte one of today's patches, of any name, is left out: a slot holding today's bytes is never
+  // rewritten, and a patch that uses nothing newer is written in an older format, patchbin.ts WRITE_FLOOR, so an older
+  // presets.h can hold today's bytes)
   const rows = legacy.filter((x) => now.has(x.name) && !todays.has(`${x.fnv}/${x.len}`)).sort((a, b) => parseInt(a.fnv, 16) - parseInt(b.fnv, 16) || a.len - b.len);
   P.push('/* the factory patches earlier firmwares wrote (web/scripts/legacy-factory.json): FNV-1a of the bytes, length, today\'s', '   patch of that name (PRESET_LIST index); sorted by fnv */');
   P.push(`#define N_LEGACY_FACTORY ${rows.length}`);
