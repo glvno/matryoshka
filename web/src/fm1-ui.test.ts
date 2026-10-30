@@ -92,7 +92,7 @@ describe('the FM-1 UI as WebAssembly', () => {
     ui.mute(track, false);
     expect([key(2400), key(2600)]).toEqual([row, row]);      // playing: steady
   }, 120_000);
-  it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes back along the trail', async () => {
+  it('the panel drives it: SELECT / ALGO move the focus (and say so), K1 sets a parameter, HOME goes to the device\'s first page, then back along the trail', async () => {
     const focus: [number, number][] = [];
     const params: number[][] = [];
     const ui = await Fm1Ui.create(bytes, { focus: (d, g) => focus.push([d, g]), param: (m, p, v) => params.push([m, p, v]) });
@@ -114,8 +114,11 @@ describe('the FM-1 UI as WebAssembly', () => {
     expect(ui.takeDirty()).toBe(true);
     ui.tick(12_000);
     const tap = (id: number, at: number): void => { ui.tick(at); ui.button(id, true); ui.tick(at + 50); ui.button(id, false); ui.tick(at + 100); };
-    tap(BUTTONS.home, 12_000);                 // nothing to go back to: the page stays
-    expect([ui.page, ui.focusDevice, ui.focusPage]).toEqual([0, 2, 1]);
+    tap(BUTTONS.home, 12_000);                 // HOME on a device's second page: its first page, the editor told (#391)
+    expect([ui.page, ui.focusDevice, ui.focusPage]).toEqual([0, 2, 0]);
+    expect(focus.at(-1)).toEqual([2, 0]);
+    tap(BUTTONS.home, 12_300);                 // on the patch's home page: nothing
+    expect([ui.page, ui.focusDevice, ui.focusPage]).toEqual([0, 2, 0]);
     tap(BUTTONS.seq, 13_000);                  // the SEQ page, HOME back
     expect(ui.page).toBe(8);
     tap(BUTTONS.home, 13_500);

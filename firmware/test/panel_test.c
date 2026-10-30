@@ -614,10 +614,19 @@ int main(void)
         check("a second later: nothing redrawn (no toast to end)", lcd_px == 0u && K1_TAB == KNOB_HUE[0]);
     }
 
+    tap(BTN_HOME);                                          /* HOME on the device pages (#391, D-243) */
+    check("HOME on a device's second page: its first page, the editor told, no step", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0
+          && focus_dev == 2 && focus_pg == 0 && trail_n == 0);
+    enc(0, 1);
+    check("SELECT: the next device's first page", pg_cur_dev == 3 && pg_cur_page == 0);
+    tap(BTN_HOME);
+    check("HOME on a device's first page: the patch's home page", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0 && focus_dev == 2);
+    loop();
     memcpy(before, fb, sizeof before);
     tap(BTN_HOME);
-    check("HOME on the device pages, nothing to go back to: nothing", page == 0 && pg_cur_dev == 2 && pg_cur_page == 1
+    check("HOME on the patch's home page: nothing", page == 0 && pg_cur_dev == 2 && pg_cur_page == 0
           && trail_n == 0 && memcmp(before, fb, sizeof before) == 0);
+    enc(1, 1);
 
     panel_held |= 1u << BTN_HOME;                           /* HOME held: nothing any more (#395: GLO is the menu) */
     panel_edges(1u << BTN_HOME, 0);
@@ -625,7 +634,9 @@ int main(void)
     panel_held &= ~(1u << BTN_HOME);
     panel_edges(0, 1u << BTN_HOME);
     loop();
-    check("HOME held 1.2 s: no menu (its release is a tap, nothing to go back to)", page == 0 && trail_n == 0);
+    check("HOME held 1.2 s: no menu (its release is a tap: the device's first page)", page == 0 && trail_n == 0 && pg_cur_dev == 2 && pg_cur_page == 0);
+    enc(1, 1);                                              /* (the second page again: the checks below expect it) */
+    check("ALGO: the second page again", pg_cur_dev == 2 && pg_cur_page == 1);
     mlen = 0;                                               /* (the MIDI log holds 256 messages; the menu's steps below would fill it) */
     tap(BTN_GLO);
     check("GLO: the menu on its MIDI tab, a step on the trail", page == PAGE_MENU && menu_tab == MT_MIDI && trail_n == 1 && menu_page());
