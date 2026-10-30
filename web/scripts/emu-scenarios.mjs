@@ -948,6 +948,25 @@ async function main() {
       await check('arming: SEL on the Arpeggiator alone: nothing here takes keys', await emu.waitText('NOTHING HERE TAKES KEYS', 1500));
       await emu.snap('arming-instrument');
     },
+    // #432: a device set to no preset (a patch just opened) stands on the entry whose values it has: Silver Box's engine
+    // opens on Init's, so the first PRESET turn right loads the preset after Init, not Init again
+    async devicePreset() {
+      await check('device preset: Silver Box opens, synced', await openSynced('Silver Box'));
+      const before = await patchJson();
+      await emu.turn(ENC.preset, 1);
+      await check('device preset: the first PRESET turn right on a fresh engine loads ACID SQUELCH, not INIT (#432)', await emu.waitText('PRESET ACID SQUELCH', 2000));
+      await emu.snap('device-preset');
+      // (the values reach the editor as PARAM_NOW; the name stays in the FM-1's copy until the patch comes back)
+      await check('device preset: its values change in the editor too (Init would change none)', !!(await until(async () => (await patchJson()) !== before, 3000)));
+      await sleep(1200);
+      await check('device preset: Silver Box opens again, synced', await openSynced('Silver Box'));
+      await emu.turn(ENC.preset, -1);
+      // (the last of its list: LONG SWEEP, the last factory one, in the emulator; the rig may hold user presets after it)
+      const last = DEVICE ? 'PRESET ' : 'PRESET LONG SWEEP';
+      const shown = await emu.waitText(last, 2000);
+      await check('device preset: the first PRESET turn left loads the last of its list, not INIT', shown && !(await emu.text('PRESET INIT')));
+      await sleep(1200);
+    },
   };
 
   try {

@@ -852,10 +852,11 @@ fn steps(app: &[u8], t: &mut Run, emulated: &mut u64, levels: &[(String, i32, bo
     t.screen(&m, "HOME held: nothing opens (#395)", DEVICE_PAGE);
     go_home(&mut m)?;
 
-    // ---- 4. PRESET encoder (#395): alone it steps the focused device's presets (here Oracle V's assembly: its INIT
-    // preset, named in the bar; a module's page says NO PRESETS ON A MODULE, panel_test.c); HOME held, patches
+    // ---- 4. PRESET encoder (#395): alone it steps the focused device's presets (here Oracle V's assembly, set to no
+    // preset and at Init's values, so on INIT: the next, SYNC LEAD, #432; named in the bar; a module's page says NO
+    // PRESETS ON A MODULE, panel_test.c); HOME held, patches
     m.turn(PRESET, 1, 500)?;
-    t.screen(&m, "PRESET alone on an assembly's page: its preset loaded, PRESET INIT in the bar", "PRESET INIT");
+    t.screen(&m, "PRESET alone on an assembly's page at Init's values: the preset after INIT loaded, PRESET SYNC LEAD in the bar (#432)", "PRESET SYNC LEAD");
     t.screen(&m, "  (the patch stays)", &presets[0].0);
     m.run_for(1500)?;
     patch_turn(&mut m, 1, 500)?;
