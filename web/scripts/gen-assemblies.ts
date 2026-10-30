@@ -2825,7 +2825,7 @@ const plates = (b: B): number => b.add('drummap', 0, 0, { ...Object.fromEntries(
 // repeated over the keybed in blocks of eight white keys, a black key playing the white key's below: PLATE_KEYS); each
 // voice keeps its own tuning and plays a triangle through a VCA on its own envelope (attack / release for the FAST / SLOW
 // switch). Voices come in pairs (1-2, 3-4, 5-6, 7-8): a pair shares a waveshaper (SHARP) and a
-// modulation depth (MOD, into both voices' pitch); pairs come in quads (1-4, 5-8): a quad shares HOLD (an offset into its
+// modulation depth (MOD, into both voices' pitch); pairs come in quads (1-4, 5-8): a quad shares HOLD (a Macro, 0..1, into its
 // voices' VCAs, so they drone with nothing held) and its modulation bus, a mix of the other quad, the Hyper LFO and the
 // total feedback (the delay's output). The Hyper LFO: two square LFOs combined, AND crossfaded into OR, into the bus and
 // the delay time. The drive, then the delay (the FM-1 holds one Delay: the Lyra's two lines are its ping-pong taps, the
@@ -2855,7 +2855,7 @@ asm('8 Lire', 'Voices', (b) => {
   const sharp = [0, 1, 2, 3].map((p) => b.add('shape', 1 + 2 * p, 3, { drive: 2, mode: 0, level: 0.7 }));
   const mod = [0, 1, 2, 3].map((p) => b.add('scale', 2 + 2 * p, 3, { gain: 0, offset: 0 }));
   const bus = [0, 1].map((q) => b.add('mixer', 1 + 4 * q, 4, { l1: 1, l2: 0, l3: 0, l4: 0 }));
-  const hold = [0, 1].map((q) => b.add('const', 2 + 4 * q, 4, { value: 0 }));
+  const hold = [0, 1].map((q) => b.add('macro', 2 + 4 * q, 4, { value: 0 })); // (a Macro: 0..1, so an FM-1 click is 0.01)
   const mix = b.add('mixer', 9, 0, { l1: 0.7, l2: 0.7, l3: 0.7, l4: 0.7 });
   const drive = b.add('shape', 9, 1, { drive: 1.5, mode: 0, level: 0.7 });
   const dly = b.add('delay', 10, 0, { time: 330, fb: 0.45, mix: 0.35, pingpong: 1 }, { p1: 'time' });
@@ -2924,7 +2924,7 @@ asm('8 Lire', 'Voices', (b) => {
 
 // Elvira 2, after the neutral labs Elmyra 2 (its manual v2.4): four voices, each a wavetable oscillator (PG's four pages
 // = `bank`, WAVE = `pos`, TUNE) through its MOD program (here the SRR one, a Bitcrusher's rate: clean at the left) into a
-// VCA on its own envelope (the ENV knob's attack and release as two rows) plus DRONE (an offset into the VCA: the
+// VCA on its own envelope (the ENV knob's attack and release as two rows) plus DRONE (a Macro, 0..1, into the VCA: the
 // envelope held at the top). The keys play the voices as touchpads: the Drum map's rows 1-4 and 5-8 are voices 1-4 (the
 // white keys from F3, repeated over the keybed as 8 Lire's). The mix is saturated, then the ladder low pass (CUTOFF,
 // RESO), the delay (TIME, FDBK, MIX; ours reaches 520 ms, the original 1.6 s) and OUCH: BITE (a folding Waveshaper) into CHOKE (a low pass, open
@@ -2946,7 +2946,7 @@ asm('Elvira 2', 'Voices', (b) => {
     const wt = b.add('wavetable', 1 + i, 0, { bank, pos, coarse, level: 0.8 });
     const srr = b.add('crush', 1 + i, 1, { bits: 16, rate: 1 });
     const env = b.add('adsr', 1 + i, 2, { a, d: 0.2, s: 1, r });
-    const drone = b.add('const', 1 + i, 3, { value: 0 });
+    const drone = b.add('macro', 1 + i, 3, { value: 0 }); // (a Macro: 0..1, so an FM-1 click is 0.01)
     const vca = b.add('vca', 1 + i, 4, { gain: 1 });
     b.wire(wt, 'out', srr, 'in');
     b.wire(srr, 'out', vca, 'in');

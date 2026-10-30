@@ -4,7 +4,7 @@
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
 #
 # 1-4
-#   1-4 / hold = 0                     -4..4
+#   1-4 / hold = 0                     0..1
 #   from 5-8 = 1                       0..1
 #   1-4 / from lfo = 0                 0..1
 #   1-4 / from fb = 0                  0..1
@@ -13,7 +13,7 @@
 #   sharp 1-2 = 2                      1..32
 #   sharp 3-4 = 2                      1..32
 # 5-8
-#   5-8 / hold = 0                     -4..4
+#   5-8 / hold = 0                     0..1
 #   from 1-4 = 1                       0..1
 #   5-8 / from lfo = 0                 0..1
 #   5-8 / from fb = 0                  0..1

@@ -1172,7 +1172,7 @@
   },
   {
    "id": 42,
-   "type": "const",
+   "type": "macro",
    "x": 660,
    "y": 2300,
    "params": {
@@ -1195,7 +1195,7 @@
   },
   {
    "id": 43,
-   "type": "const",
+   "type": "macro",
    "x": 1940,
    "y": 2300,
    "params": {
