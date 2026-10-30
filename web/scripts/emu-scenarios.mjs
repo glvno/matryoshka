@@ -151,8 +151,9 @@ class RigTarget extends Target {
   async peak() { return (await this.page.evaluate(() => window.__rig.peak())).peak; }
   async snap(name) { writeFileSync(join(OUT, `${name}.json`), JSON.stringify(await this.screen(), null, 1)); }
   quit() {}
-  /** back to the device page from wherever the FM-1 was left (the menu, SEQ, the environment, the SONG page): HOME taps,
-   *  one step back each, reading the screen between; false after `tries` */
+  /** back to a device page from wherever the FM-1 was left (the menu, SEQ, the environment, the SONG page): HOME taps,
+   *  one step back each (on a device page a tap moves to its first page or the patch's home page, #391, and the screen
+   *  already reports page 0), reading the screen between; false after `tries` */
   async home(tries = 6, bootMs = 20000) {
     const t0 = Date.now();
     for (let i = 0; ; ) {

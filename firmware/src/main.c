@@ -1055,6 +1055,14 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         host_poll();
         boot_step(BOOT_READY);
     }
+    {   /* presses made while the loading screen was up are not commands: SAVE held for safe mode must not save the fallback
+         * over the stored state. Dropped before the first page is drawn (#248): a press that starts once the page shows
+         * waits in the HAL for the loop's first pass, so none is lost to the draw (about 120 ms on the device) */
+        uint32_t rel;
+        (void)fm1_input_edges(&rel);
+        while (fm1_input_key_peek() >= 0)               /* (and the keys: the first pass plays those held now) */
+            fm1_input_key_pop();
+    }
     booting = 0;
     lcd_fill(0, 0, 240, 240, C_BG);
     batt_drawn = BATT_NONE;                             /* (the footer's battery too) */
@@ -1063,12 +1071,6 @@ static void fm1_main(int update)                    /* update: the boot guard sa
         ui_msg(boot_msg, boot_msg_ms);
     leds_play();
     leds_avail();
-    {   /* presses while booting are not commands: SAVE held for safe mode must not save the fallback over the stored state */
-        uint32_t rel;
-        (void)fm1_input_edges(&rel);
-        while (fm1_input_key_peek() >= 0)               /* (and the keys: the first pass plays those held now) */
-            fm1_input_key_pop();
-    }
     lcd_service = midi_yield;
     panel_yield = keys_yield;
     pages_waiting = encs_waiting;

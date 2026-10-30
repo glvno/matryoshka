@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **On the FM-1, a HOME tap goes to the device's first page, then to the patch's home page** (#391, #365). On a later
+  page of a device HOME goes to its first page; on a device's first page it goes to the patch's home page (the page a
+  fresh patch opens on); there it does nothing. Out of the menu, the environment, the SEQ page, the SONG page or a Page
+  button's list it still goes back one step, and HOME held + PRESET still steps patches. The LCD manual says so.
+  Host- and emulator-tested; not yet on a device.
+- **A button pressed the moment the first page appears after a first boot (or FACTORY RESET) is taken** (#248). The
+  presses made while the loading screen was up are dropped before the page is drawn, not after it, so a GLO (or any)
+  press that starts while the page is going out no longer vanishes; on the device that draw takes about 120 ms.
+  Emulator-tested (the smoke taps GLO the moment the header appears); not yet on a device.
 - Factory presets are written by hand, one text file per engine (`web/presets/cards/`, `npm run presets`), in place of the rule-made Bright / Dark / Pad set: every one of the 24 FM-1 engines has five, named for what they are for (Fat Bass, Vintage Strings, Acid Squelch, Tight Techno ...). Drafts, not yet listened to on the FM-1 (#413)
 ### Changes
 
