@@ -4,7 +4,7 @@
 // other key sources (Steps tracks, Arpeggiators) keep playing what they drive. A device whose keys come through key sources
 // (a track, an Arpeggiator in front of an instrument) arms them with it (#395, armedWith); an Arpeggiator alone is not armed. The engine plays the arm as a patch
 // transform (armView): Main's keys cables into unarmed devices go, Main's keys into each armed device's keys input come;
-// the editor draws the same as virtual cables. Not saved, no undo.
+// the editor draws exactly what the arm routes (armDrawing, #418, docs/ledger/editor.md D-641). Not saved, no undo.
 import { allModules, assembliesOf, assemblyById, parentOf, targetsOf, type AssemblyInst } from './assembly';
 import { DEFS } from './modules';
 import type { Cable, ModuleDef, Patch } from './patch';
@@ -99,6 +99,46 @@ export function virtualCables(p: Patch, armed: Iterable<DeviceKey>, defs: Record
   return out;
 }
 
+/** what the editor draws for the arm (#418): nothing but what the arm routes, as cabling */
+export interface ArmDrawing {
+  /** the virtual cables, each into the jack it goes into (`virtualCables`) */
+  virtual: Cable[];
+  /** the cables Main's keys travel while the arm is on: Main's keys cables into armed devices, and on from every key
+   * source they reach (a track, an Arpeggiator) through its keys outputs */
+  live: Cable[];
+  /** Main's keys cables the arm overrides (`mutedCables`) */
+  muted: Cable[];
+  /** the devices armed with the user's choice, not by it: the key sources in front of an armed device (`armedWith`
+   * less the armed set) */
+  with: DeviceKey[];
+}
+
+/** the editor's drawing of the arm (#418): every cable the arm routes Main's keys over, and nothing else */
+export function armDrawing(p: Patch, armed: Iterable<DeviceKey>, defs: Record<string, ModuleDef> = DEFS): ArmDrawing {
+  const list = keepArmed(p, armed, defs);
+  if (!list.length) return { virtual: [], live: [], muted: [], with: [] };
+  const on = new Set(armedWith(p, list, defs));
+  const virtual = virtualCables(p, list, defs);
+  const muted = new Set(mutedCables(p, list, defs));
+  const live: Cable[] = [];
+  const reached = new Set<number>();
+  const queue: number[] = [];
+  const reach = (c: Cable): void => {
+    live.push(c);
+    if (!reached.has(c.to.module)) { reached.add(c.to.module); queue.push(c.to.module); }
+  };
+  for (const c of p.cables) if (fromMainKeys(p, c) && !muted.has(c)) reach(c);
+  for (const c of virtual) if (!reached.has(c.to.module)) { reached.add(c.to.module); queue.push(c.to.module); }
+  // on from each key source the keys reach: what its keys outputs cable into carries Main's keys too
+  for (let m = queue.shift(); m !== undefined; m = queue.shift()) {
+    const type = p.modules.find((x) => x.id === m)?.type ?? '';
+    if (type === 'fm1') continue;
+    const outs = (defs[type]?.outputs ?? []).filter((o) => o.kind === 'keys').map((o) => o.name);
+    if (outs.length) for (const c of p.cables) if (c.from.module === m && outs.includes(c.from.port)) reach(c);
+  }
+  return { virtual, live, muted: [...muted], with: [...on].filter((k) => !list.includes(k)) };
+}
+
 /** the patch as the engine plays it while these devices are armed: the same patch when none is */
 export function armView(p: Patch, armed: Iterable<DeviceKey>, defs: Record<string, ModuleDef> = DEFS): Patch {
   const list = keepArmed(p, armed, defs);
@@ -125,13 +165,21 @@ export function armMask(p: Patch, armed: Iterable<DeviceKey>, defs: Record<strin
   return [lo >>> 0, hi >>> 0];
 }
 
-/** the reverse: the devices whose modules a mask from the FM-1 names, less the ones armed only as another's key source */
+/** the reverse: the devices whose modules a mask from the FM-1 names, less the ones armed only as another's key source.
+ * An Arpeggiator in the mask stands for the devices its keys play (#418): the FM-1 arms an instrument as its key sources
+ * (engine.c eng_arms names the track and the Arpeggiator in front of it, not its own modules), so the instrument is what
+ * was armed */
 export function armedFromMask(p: Patch, lo: number, hi: number, defs: Record<string, ModuleDef> = DEFS): DeviceKey[] {
   const mods = deviceView(p, true).patch.modules;
   const keys = new Set<DeviceKey>();
   mods.forEach((m, i) => {
     const on = i < 32 ? (lo >>> i) & 1 : i < 64 ? (hi >>> (i - 32)) & 1 : 0;
-    if (on && p.modules.some((x) => x.id === m.id)) keys.add(deviceOfModule(p, m.id));
+    if (!on || !p.modules.some((x) => x.id === m.id)) return;
+    keys.add(deviceOfModule(p, m.id));
+    const type = p.modules.find((x) => x.id === m.id)?.type ?? '';
+    if (type === 'arp')
+      for (const c of p.cables)
+        if (c.from.module === m.id && defs[type]?.outputs.find((o) => o.name === c.from.port)?.kind === 'keys') keys.add(deviceOfModule(p, c.to.module));
   });
   const list = keepArmed(p, keys, defs);
   return list.filter((k) => !armedWith(p, list.filter((x) => x !== k), defs).includes(k));

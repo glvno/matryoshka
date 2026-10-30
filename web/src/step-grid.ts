@@ -44,8 +44,9 @@ export interface StepGrid {
   show(pos: number, mute: boolean): void;
   /** a step changed elsewhere (the FM-1's SEQ page) */
   refresh(): void;
-  /** the track was armed or disarmed (#134) */
-  armed(on: boolean): void;
+  /** the track was armed or disarmed (#134); `by` names the armed devices it is armed with instead (#418: the track in
+   * front of an armed instrument), an empty string none */
+  armed(on: boolean, by?: string): void;
   /** REC went on or off (#135): cursor entry starts on the first step, or stops */
   rec(on: boolean): void;
   /** the roll is open on this track, or not */
@@ -140,10 +141,15 @@ export function stepGrid(m: ModuleInst, index: number, ops: StepGridOps): StepGr
   arm.setAttribute('aria-label', 'Arm the track');
   arm.title = 'ARM: Main’s keys play into this track and through to what it plays, so you hear its instrument (with any other armed device; not saved)';
   arm.onclick = () => ops.arm(!ops.armed());
-  const showArm = (on: boolean): void => {
+  const armHint = arm.title;
+  const showArm = (on: boolean, by = ''): void => {
+    const via = !on && !!by;
     arm.classList.toggle('on', on);
-    arm.setAttribute('aria-pressed', String(on));
+    arm.classList.toggle('with', via);
+    arm.setAttribute('aria-pressed', via ? 'mixed' : String(on));
+    arm.title = via ? `Armed with ${by}: Main’s keys go through this track to it. ARM arms the track on its own too` : armHint;
     el.classList.toggle('armed', on);
+    el.classList.toggle('armed-with', via);
   };
   const roll = document.createElement('button');
   roll.type = 'button';

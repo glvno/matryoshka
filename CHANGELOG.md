@@ -9,6 +9,8 @@
   the track, and REC's LED blinks on the beat; the keys sound as usual and nothing is recorded until the count ends.
   REC again during the count turns REC off, and PLAY or any stop ends it. No click: the FM-1 has no metronome voice.
   The LCD manual says so. Host- and emulator-tested; not yet on a device.
+- The factory assembly `step sequencer` is gone (#417): a Steps track, a pattern or the Arpeggiator does its job. `random melody` (chance) and `clock` (a free-running clock with divisions for S&H, grains and the `seq` module) stay. A patch that holds a copy of it plays as before: an inserted assembly is copied into the patch.
+- **The editor draws the arm as the cabling it is** (#418). Arming a factory instrument lights the cables Main's keys travel to it, Main → its Steps track → its Arpeggiator → the instrument, in the arm colour, and marks the track and the Arpeggiator as armed with it (a lighter edge, a half-filled ARM dot that says which device they are armed with); arming the track lights the same chain on from it. A dashed virtual cable is drawn only into a keys input no cable feeds, into that jack; before, one dashed line ran from Main straight to each armed device, a path the keys do not take, and the devices armed with it showed nothing. The FM-1's SEL on an instrument's page now shows that instrument armed in the editor, not only its track.
 - Factory presets are written by hand, one text file per engine (`web/presets/cards/`, `npm run presets`), in place of the rule-made Bright / Dark / Pad set: every one of the 24 FM-1 engines has five, named for what they are for (Fat Bass, Vintage Strings, Acid Squelch, Tight Techno ...). Drafts, not yet listened to on the FM-1 (#413)
 ### Changes
 
