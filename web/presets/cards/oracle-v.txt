@@ -117,6 +117,9 @@ preset: Vintage Strings
 
 # Poly-mod FM: osc B, a 12th up, into osc A's phase; sines through an open filter with a percussive decay.
 preset: Poly-Mod Bell
+  # three voices, not five: osc B into osc A's phase costs about a third more per voice, and four voices measured
+  # 2,923 us of the FM-1's 2,902 us block on the test rig (2026-10-30, docs/measurements/2026-10-30-rig-oracle-v-presets.json)
+  voices = 3
   osc A / wave = sine
   osc B / wave = sine
   freq = 19 st
