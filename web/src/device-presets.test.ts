@@ -110,8 +110,26 @@ describe('presets (#192)', () => {
     a.preset = 'Init';
     expect(stepPreset(p, a, 1)!.name).toBe('Strings');
     expect(stepPreset(p, a, -1)!.name).toBe('Strings');
-    a.preset = undefined;
-    expect(stepPreset(p, a, 1)!.name).toBe('Init');
+    a.preset = undefined;                                         // none remembered, its values Init's: on Init (#432)
+    expect(stepPreset(p, a, 1)!.name).toBe('Strings');
+    expect(stepPreset(p, a, -1)!.name).toBe('Strings');
+  });
+
+  it('an assembly that remembers no preset stands on the first one whose values it has (#432), else before the first', () => {
+    const p = newPatch(DEFS);
+    const a = insertAssembly(p, DEFS, named('Hera 6'), 0, 0);
+    const s = structureOf(p, a);
+    const init = currentValues(p, a);
+    const other = init.map((x, i) => (i === 0 ? x + 1 : x));
+    const third = init.map((x, i) => (i === 0 ? x + 2 : x));
+    setFactoryPresets([{ structure: s, name: 'Init', values: init }, { structure: s, name: 'Bright', values: other }, { structure: s, name: 'Dark', values: other }]);
+    expect(stepPreset(p, a, 1)!.name).toBe('Bright');             // on Init: the next is the first after it
+    expect(stepPreset(p, a, -1)!.name).toBe('Dark');              // and the previous the last
+    setFactoryPresets([{ structure: s, name: 'Init', values: other }, { structure: s, name: 'Bright', values: init }, { structure: s, name: 'Dark', values: init }]);
+    expect(stepPreset(p, a, 1)!.name).toBe('Dark');               // Bright's values (Dark's too): the first of them
+    setFactoryPresets([{ structure: s, name: 'Init', values: other }, { structure: s, name: 'Bright', values: third }]);
+    expect(stepPreset(p, a, 1)!.name).toBe('Init');               // none matches: right is the first, left the last
+    expect(stepPreset(p, a, -1)!.name).toBe('Bright');
   });
 
   it('a new preset\'s default name: the one it is based on and the next free number, as the FM-1 names it', () => {
