@@ -1827,6 +1827,43 @@ describe('level/rate envelope, string, wavetable, chorus', () => {
     expect(parts()[0].idle).toBe(true);
   });
 
+  it('idle parts run their checks in different blocks (#434): never two of one group in a block, each every IDLE_CHECK blocks', () => {
+    const p = emptyPatch();
+    const kb = addModule(p, DEFS.fm1, 0, 0).id;
+    const o = addModule(p, DEFS.osc, 0, 0);
+    const e = addModule(p, DEFS.adsr, 0, 0);
+    const v = addModule(p, DEFS.vca, 0, 0);
+    const out = addModule(p, DEFS.output, 0, 0);
+    wire(p, kb, 'pitch', o.id, 'pitch');
+    wire(p, kb, 'gate', e.id, 'gate');
+    wire(p, o.id, 'out', v.id, 'in');
+    wire(p, e.id, 'env', v.id, 'cv');
+    wire(p, v.id, 'out', out.id, 'l');
+    const en = new Engine(SR);
+    en.load(withParts(p, 8));
+    type Part = { idle?: boolean; skip?: boolean; gate: number };
+    const parts = (): Part[] => (en as unknown as { groups: { parts: Part[] }[] }).groups.find((g) => g.parts.length === 8)!.parts;
+    render(en, 128); // every part goes idle in this block (nothing played since the load)
+    expect(parts().every((x) => x.idle)).toBe(true);
+    en.noteOn(60); // one note held, as in the issue (drift poly at 8 voices)
+    const checks: number[][] = parts().map(() => []);
+    for (let b = 0; b < 4 * 32; b++) {
+      const was = parts().map((x) => !!x.idle);
+      render(en, 128);
+      let n = 0;
+      parts().forEach((x, i) => {
+        if (was[i] && !x.skip && !x.gate) { n++; checks[i].push(b); }
+      });
+      expect(n).toBeLessThanOrEqual(1);
+    }
+    const idle = checks.filter((c) => c.length);
+    expect(idle.length).toBe(7); // the part playing the note never checks
+    for (const c of idle) {
+      expect(c.length).toBe(4);
+      for (let i = 1; i < c.length; i++) expect(c[i] - c[i - 1]).toBe(32);
+    }
+  });
+
   const stringPatch = (params: Record<string, number>, exc = false) => {
     const p = emptyPatch();
     const kb = addModule(p, DEFS.fm1, 0, 0).id;
