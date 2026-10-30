@@ -38,7 +38,7 @@ function patterns(p: Patch): number[] {
     if (m.type === 'seq') out.add(0);
     if (m.type !== 'steps') continue;
     if (m.notes?.length) out.add(0);
-    (m.patterns ?? []).forEach((q, i) => q?.notes.length && out.add(i + 1));
+    (m.patterns ?? []).forEach((q, i) => q?.notes?.length && out.add(i + 1));
   }
   return [...out].sort((a, b) => a - b);
 }
