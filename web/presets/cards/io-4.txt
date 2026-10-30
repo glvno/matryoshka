@@ -4,21 +4,21 @@
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
 #
 # vco
-#   range = 2                          1..8
-#   sub = 1                            1..8
+#   range = 8'                         16', 8', 4'
+#   sub = 1                            1..2
 #   vco / mod = 0                      -4..4
-#   pw mode = 2                        1..8
-#   pw = 2                             1..8
-#   vco / wave form = 4                1..8
-#   noise = 1                          1..8
+#   pw mode = MOD                      MANUAL, MOD
+#   pw = 40%                           50%, 40%, 20%, 10%
+#   vco / wave form = PULSE            OFF, SAW, SQUARE, PULSE
+#   noise = 1                          1..2
 # vcf
 #   hpf cutoff = 40 Hz                 20..16000 Hz
 #   lpf cutoff = 1800 Hz               20..16000 Hz
 #   res = 0.25                         0..1
-#   kybd follow = 4                    1..8
+#   kybd follow = 100%                 10%, 40%, 70%, 100%
 #   vcf / mod = 0                      -4..4
 #   env mod = 2 oct                    0..4 oct
-#   polarity = 1                       1..8
+#   polarity = NORM                    NORM, INV
 #   vcf env: a screen, not a value
 #   vcf / a = 0.02 s                   0.001..5 s
 #   vcf / d = 0.6 s                    0.001..5 s
@@ -32,7 +32,7 @@
 #   vca / r = 0.6 s                    0.001..8 s
 #   level = 1                          0..2
 # lfo
-#   lfo / wave form = 1                1..8
+#   lfo / wave form = SINE             SINE, SQUARE, SAW, REV SAW
 #   lfo / rate = 2.25 Hz               0.02..40 Hz
 # trigger
 #   trigger / rate = 6 Hz              0.02..40 Hz
@@ -40,23 +40,23 @@
 # delay/bend
 #   delay time = 0.001 s               0.001..5 s
 #   lfo bend = 0                       -4..4
-#   norm/wide = 1                      1..8
+#   norm/wide = NORM                   NORM, WIDE
 # bend/mod
 #   bend sens = 0.1667                 -4..4
 #   lfo mod = 0.1                      0..2
-#   vco = 3                            1..8
-#   vcf = 2                            1..8
-#   vca = 2                            1..8
+#   vco = BEND                         LFO, OFF, BEND
+#   vcf = OFF                          LFO, OFF, BEND
+#   vca = OFF                          LFO, OFF, BEND
 # portamento
 #   portamento = 0.15 s                0.001..5 s
-#   switch = 1                         1..8
+#   switch = 1                         1..2
 # keys
-#   transpose = 1                      1..8
+#   transpose = NORMAL                 NORMAL, -1 OCT
 #   tuning = 0                         -4..4
 #   assign = rotate                    rotate, lowest, reuse, reset
 #   unison = off                       off, on, share
-#   hold = 1                           1..8
-#   ensemble = 2                       1..8
+#   hold = 1                           1..2
+#   ensemble = 2                       1..2
 #   out: a screen, not a value
 
 # Drafts of 2026-10-29 after the Jupiter-4, not yet listened to on the FM-1 (#413).

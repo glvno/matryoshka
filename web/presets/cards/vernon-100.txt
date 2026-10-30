@@ -4,11 +4,11 @@
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
 #
 # oscillator 1
-#   oscillator 1 / color = 3           1..8
+#   oscillator 1 / color = 3           1..5
 #   oscillator 1 / tune = 2.9          -4..4
-#   hi / lo = 2                        1..8
+#   hi / lo = 2                        1..2
 #   control sens = 0                   -4..4
-#   oscillator 1 / control mode = 2    1..8
+#   oscillator 1 / control mode = 2    1..3
 # osc mixer
 #   osc mixer / osc 1 / env 1 = 0      -4..4
 #   osc mixer / osc 4 / env 2 = 0      -4..4
@@ -17,18 +17,18 @@
 #   keys/oct fine = 0.5                0..1
 #   portamento = 0                     0..1
 # oscillator 2
-#   oscillator 2 / control mode = 1    1..8
-#   oscillator 2 / octave = 2          1..8
+#   oscillator 2 / control mode = 1    1..2
+#   oscillator 2 / octave = 2          1..3
 #   oscillator 2 / tune = 0            -4..4
 #   oscillator 2 / color = 0.45        0..1
 # oscillator 3
-#   oscillator 3 / control mode = 1    1..8
-#   oscillator 3 / octave = 2          1..8
+#   oscillator 3 / control mode = 1    1..3
+#   oscillator 3 / octave = 2          1..3
 #   oscillator 3 / tune = 0            -4..4
 #   oscillator 3 / color = 0.45        0..1
 # oscillator 4
-#   oscillator 4 / control mode = 2    1..8
-#   oscillator 4 / octave = 3          1..8
+#   oscillator 4 / control mode = 2    1..3
+#   oscillator 4 / octave = 3          1..4
 #   oscillator 4 / tune = 0            -4..4
 #   oscillator 4 / color = 0.3         0..1
 # filter input
@@ -37,14 +37,14 @@
 #   osc 4 / ext = 0                    0..1
 #   white / pink = 0                   -4..4
 # filter
-#   cut octave = 2                     1..8
+#   cut octave = 2                     1..3
 #   filter / tune = 1100 Hz            20..16000 Hz
 #   resonance = 0.35                   0..1
-#   mode = 1                           1..8
+#   mode = 1                           1..4
 # filter control
 #   filter control / osc 1 / env 1 = 0.55 -4..4
 #   filter control / osc 4 / env 2 = 0 -4..4
-#   kb1 / kb2 = 2                      1..8
+#   kb1 / kb2 = 2                      1..2
 # envelope 1
 #   env 1: a screen, not a value
 #   envelope 1 / attack = 0.01 s       0.001..5 s
@@ -55,9 +55,9 @@
 #   envelope 2 / attack = 0.005 s      0.001..5 s
 #   envelope 2 / decay = 0.6697        0..1
 #   envelope 2 / sustain = 0.8         0..1
-#   sustain on/off = 1                 1..8
+#   sustain on/off = 1                 1..2
 # amplitude shaper
-#   env 1 / env 2 = 2                  1..8
+#   env 1 / env 2 = 2                  1..2
 # output mixer
 #   amp shaper = 0.8                   0..1
 #   osc 3 / ext = 0                    0..1

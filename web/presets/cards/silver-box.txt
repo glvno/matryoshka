@@ -4,7 +4,7 @@
 # A number is in the row's unit; a choice row takes a name; a switch takes on or off. Init and the ranges:
 #
 # tone
-#   waveform = 1                       1..8
+#   waveform = SAW                     SAW, SQUARE
 #   tuning = 0.5                       0..1
 #   cut off freq = 260 Hz              20..16000 Hz
 #   resonance = 0.75                   0..1

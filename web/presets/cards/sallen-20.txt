@@ -6,11 +6,11 @@
 # vco
 #   portamento = 0.001 s               0.001..5 s
 #   master tune = 0                    -4..4
-#   vco 1 scale = 3                    1..8
-#   vco 1 wave = 2                     1..8
+#   vco 1 scale = 8'                   32', 16', 8', 4'
+#   vco 1 wave = SAW                   TRIANGLE, SAW, PULSE, NOISE
 #   vco 1 pw = 0.5                     0.05..0.95
-#   vco 2 scale = 2                    1..8
-#   vco 2 wave = 2                     1..8
+#   vco 2 scale = 8'                   16', 8', 4', 2'
+#   vco 2 wave = SQUARE                SAW, SQUARE, NARROW, RING
 #   vco 2 pitch = 7 st                 -48..48 st
 #   vco 2 fine = 0 ct                  -100..100 ct
 # freq mod
@@ -47,13 +47,13 @@
 # patch panel
 #   initial gain = 0                   -4..4
 # esp
-#   signal in = 1                      1..8
+#   signal in = OFF                    OFF, VCO 1, NOISE, MG
 #   signal level = 1                   0..4
 #   low cut = 40 Hz                    20..5000 Hz
 #   high cut = 2000 Hz                 50..10000 Hz
 #   cv adjust = 0 st                   -12..12 st
 #   threshold = 0.1                    0..1
-#   esp route = 1                      1..8
+#   esp route = OFF                    OFF, F-V>VCO 2, ENV>GAIN, TRIG>EGS
 
 # Drafts of 2026-10-29 after the Korg MS-20, not yet listened to on the FM-1 (#413).
 engine: Sallen 20

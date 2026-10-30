@@ -3,7 +3,7 @@
 // cables, the exposed ports (an input with `also` fans out to several inner inputs) and the promoted parameters.
 // `voice` and `echo` are kept as files. Run from web/:  npx vite-node scripts/gen-assemblies.ts
 import { writeFileSync } from 'node:fs';
-import { DEFS, PD_RANGE_MAX, PD_WAVES } from '../src/modules';
+import { DEFS, PD_RANGE_MAX, PD_WAVES, SELECT_N } from '../src/modules';
 import { defaultMap, defaultParams, rowDef, STEP_VEL, type ModuleInst, type PolyCards, type Source } from '../src/patch';
 import { defIsEngine } from '../src/engines';
 import { pinsToParams, type AssemblyDef, type NestedDef, type PortRef, type ParamRef } from '../src/assembly';
@@ -1218,20 +1218,27 @@ asm('Hera 6', 'Voices', (b) => {
 // A voice has both lines, each one PD Osc (the CZ's eight waveforms, a second waveform on every other cycle, the DCW
 // input) with its DCW and DCA envelopes; every envelope (the DCO's too) is an Env 8: eight rates and levels, a sustain
 // step and an end step, as on the CZ.
-//  - a line's waveforms (`wave`, `wave 2`) and resonance range are Offsets, once for all voices, that set the line's
-//    PD Osc through its pins: wave on p1 (x 1/7, so the Offset's 0..7 is the wave), wave 2 on p2 (x 1/8), the range
-//    through the pm input, routed to `range` (an Attenuverter makes it fifths of the range; the oscillator's own pm depth
-//    is 0, so pm does no phase modulation). That lets 1 + 1' hand line 1's settings to line 2.
+//  - a line's waveforms and resonance range, once for all voices, set the line's PD Osc: `wave` a Selector named after
+//    the eight waves (saw .. reso 3), through p1 (x 1/7 of the wave's span: the position's value -4..3 on the PD Osc's
+//    wave 4, so position k plays the k-th wave); `wave 2` a Selector of off and seven waves (saw .. reso 2: a Selector
+//    has eight positions, so reso 3 is left out of wave 2 only), through the pm input routed to `wave2` (the position's
+//    value (k - 5) / 8 on its wave2 4, so position k is wave2 k - 1: 0 off, else that wave on every other cycle; the
+//    oscillator's own pm depth is 0, so pm does no phase modulation); `res range` an Offset through p2 (x 1/5, so the
+//    Offset is the range in octaves). Being signals, they let 1+1' hand line 1's settings to line 2. Init has wave 2 off
+//    on both lines and line 2 on reso 1 (#430).
 //  - the DCW: the line's DCW envelope plus key follow, velocity and aftertouch, summed into the PD Osc's dcw input.
-// Line select (`line`, a Selector): 1 line 1, 2 line 2, 3 both (1 + 2). `1+1'` (0 / 1) makes line 2 play line 1's
-// waveforms, range and DCW / DCA envelopes at line 2's pitch (`coarse`, `fine`): line 1'. Line 2's ring modulation
-// (times line 1) and noise modulation (times the noise) are Selectors too: 1 off, 2 on. The DCO envelope moves both
-// lines' pitch by `depth` octaves; vibrato's wave (the CZ's saw down is a negative `vib depth`), rate, depth and delay;
-// key follow lowers the DCW and DCA levels from C4; velocity opens the DCA (and the DCW by `vel dcw`); aftertouch reaches
+// Line select (`line`, a Selector), as the CZ's: 1 line 1, 2 line 2, 3 1+1', 4 1+2' (both lines). In 1+1' line 2 plays
+// line 1's waveforms, range and DCW / DCA envelopes at line 2's pitch (`coarse`, `fine`): line 1'. The select's gate 3
+// moves a Crossfader per setting (0 line 2's own, 1 line 1's). Line 2's modulation (`mod`, a Selector, as the CZ's one
+// setting): 1 off, 2 ring (times line 1), 3 noise (times the noise); it picks a VCA's cv, 1 or the modulator. The DCO
+// envelope moves both lines' pitch by `depth` octaves; vibrato's wave (the CZ's saw down is a negative `vib depth`), rate,
+// depth in semitones (the LFO plays at 1/12: a step of the row is a cent, a click on the FM-1 8 cents) and delay; key
+// follow lowers the DCW and DCA levels from C4; velocity opens the DCA (and the DCW by `vel dcw`); aftertouch reaches
 // DCW, DCA and vibrato depth (the `at` input).
 // Left out: the CZ has a DCO envelope per line (one here moves both); the CZ-1's velocity curves; its cartridge, tone
-// mix / split and multi-timbral MIDI modes (hardware and memory). The rows are short (r1, l1 ..) and the mode switches
-// are Selectors and Crossfaders, not Macros, to stay inside the FM-1's patch bytes (3,840) and 32 pages per device.
+// mix / split and multi-timbral MIDI modes (hardware and memory); reso 3 as a second waveform (wave 2's eight positions
+// are off and saw .. reso 2). The rows are short (r1, l1 ..) and the switches are Selectors and Crossfaders, not Macros,
+// to stay inside the FM-1's patch bytes (3,840: Cassia 1's factory patch takes 3,805) and 32 pages per device.
 const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<string, number> => {
   const p: Record<string, number> = { sus, end };
   for (let k = 0; k < 8; k++) {
@@ -1243,8 +1250,8 @@ const CZ_STEPS = (s: [number, number][], sus: number, end: number): Record<strin
 };
 asm('Cassia 1', 'Voices', (b) => {
   const part = b.add('alloc', 0, 4, { voices: 2 });
-  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 });
-  const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // vib depth (negative: the CZ's saw down)
+  const lfo = b.add('lfo', 0, 0, { wave: 1, rate: 5.5, depth: 1 / 12 });
+  const vibS = b.add('scale', 0, 0.5, { gain: 0, offset: 0 }); // vib depth in semitones (negative: the CZ's saw down)
   const nz = b.add('noise', 0, 1, { level: 1, color: 0 });
   const scope = b.add('scope', 12, 0, { time: 16 });
   const atVib = b.add('scale', 0, 2.5, { gain: 0, offset: 0 });
@@ -1258,33 +1265,37 @@ asm('Cassia 1', 'Voices', (b) => {
     return id;
   };
   type R = [number, string];
-  // ---- a line's settings, once for all voices: Offsets; line 2's go through a Crossfader each that hands it line 1's in
-  // 1 + 1' (pos 0: its own, 1: line 1's)
-  const mode = b.add('const', 5, 0, { value: 0 });
-  const consts = (col: number, wave: number): { wave: number; wave2: number; range: number } => ({
-    wave: b.add('const', col, 0, { value: wave }),
-    wave2: b.add('const', col, 0.3, { value: 0 }),
+  // ---- the line select, as the CZ's: 1 line 1, 2 line 2, 3 1+1' (both lines, line 2 playing line 1's settings), 4 1+2'
+  // (both). Its gate 3 is 1+1': it moves the Crossfaders that hand line 2 line 1's settings
+  const sel = add('select', 10, 0.5, { pos: 4, count: 4, fade: 0 });
+  const mode: R = [sel, 'g3'];
+  // ---- a line's settings, once for all voices: the wave Selectors and the range's Offset; line 2's go through a
+  // Crossfader each (per voice: the line select is) that hands it line 1's in 1+1' (pos 0: its own, 1: line 1's)
+  // position k's value: (k - 5) for wave (on p1, x 1/7 of its span: the PD Osc's wave 4 plus it), (k - 5) / 8 for wave 2
+  // (through pm: its wave2 4 plus 8 times it, k - 1: position 1 off)
+  const waves = (col: number, row: number, pos: number, at: (k: number) => number): number => {
+    const v: Record<string, number> = {};
+    for (let k = 1; k <= SELECT_N; k++) v[`v${k}`] = at(k);
+    return b.add('select', col, row, { count: SELECT_N, pos, fade: 0, ...v });
+  };
+  const settings = (col: number, wave: number): { wave: number; wave2: number; range: number } => ({
+    wave: waves(col, 0, wave + 1, (k) => k - 5),
+    wave2: waves(col, 0.3, 1, (k) => (k - 5) / 8),
     range: b.add('const', col, 0.6, { value: 3 }),
   });
-  const fifths = (from: R, col: number): R => {
-    const s = b.add('scale', col, 1, { gain: 1 / PD_RANGE_MAX, offset: 0 });
-    b.wire(from[0], from[1], s, 'in');
-    return [s, 'out'];
-  };
   const pick = (own: number, l1: number, row: number): R => {
-    const x = b.add('xfade', 5, row, { mix: 0 });
+    const x = add('xfade', 5, row, { mix: 0 });
     b.wire(own, 'out', x, 'a');
     b.wire(l1, 'out', x, 'b');
-    b.wire(mode, 'out', x, 'pos');
+    b.wire(mode[0], mode[1], x, 'pos');
     return [x, 'out'];
   };
-  const k1 = consts(1, 0);
-  const k2 = consts(2, PD_WAVES.indexOf('reso 1'));
-  const c1 = { wave: [k1.wave, 'out'] as R, wave2: [k1.wave2, 'out'] as R, range: fifths([k1.range, 'out'], 1) };
-  const c2 = { wave: pick(k2.wave, k1.wave, 0.3), wave2: pick(k2.wave2, k1.wave2, 0.6), range: fifths(pick(k2.range, k1.range, 0.9), 2) };
+  const k1 = settings(1, 0);
+  const k2 = settings(2, PD_WAVES.indexOf('reso 1'));
+  const c1 = { wave: [k1.wave, 'out'] as R, wave2: [k1.wave2, 'out'] as R, range: [k1.range, 'out'] as R };
+  const c2 = { wave: pick(k2.wave, k1.wave, 0.3), wave2: pick(k2.wave2, k1.wave2, 0.6), range: pick(k2.range, k1.range, 0.9) };
 
   // ---- per voice: pitch (DCO envelope, vibrato after its delay), key follow, velocity
-  const pitch = add('scale', 1, 5, { gain: 1, offset: 0 });
   const dco = add('env8', 1, 5.5, CZ_STEPS([[0.05, 0], [0.3, 0], [0.5, 0]], 2, 3));
   const pdepth = add('scale', 1, 6, { gain: 1, offset: 0 });
   const vdel = add('adsr', 1, 7, { a: 0.6, d: 0.001, s: 1, r: 0.3 });
@@ -1298,9 +1309,6 @@ asm('Cassia 1', 'Voices', (b) => {
   b.wire(vibS, 'out', vgate, 'in');
   b.wire(vdel, 'env', vgate, 'cv');
   b.wire(atVib, 'out', vgate, 'cv');
-  b.wire(part, 'pitch', pitch, 'in');
-  b.wire(pdepth, 'out', pitch, 'in');
-  b.wire(vgate, 'out', pitch, 'in');
   b.wire(part, 'pitch', kfw, 'in');
   b.wire(part, 'pitch', kfa, 'in');
   b.wire(part, 'vel', velW, 'in');
@@ -1313,22 +1321,22 @@ asm('Cassia 1', 'Voices', (b) => {
   for (const e of [dcw1, dca1, dcw2, dca2]) b.wire(part, 'gate', e, 'gate');
   // 1 + 1': line 2 takes line 1's envelopes
   const own = (e2: number, e1: number, row: number): R => {
-    const s = add('select', 4, row, { pos: 1, count: 2, fade: 0 });
-    b.wire(e2, 'env', s, 'in1');
-    b.wire(e1, 'env', s, 'in2');
-    b.wire(mode, 'out', s, 'pos');
+    const s = add('xfade', 4, row, { mix: 0 });
+    b.wire(e2, 'env', s, 'a');
+    b.wire(e1, 'env', s, 'b');
+    b.wire(mode[0], mode[1], s, 'pos');
     return [s, 'out'];
   };
   const dcwX = own(dcw2, dcw1, 2);
   const dcaX = own(dca2, dca1, 2.5);
   // ---- a line: its PD Osc (dcw: the envelope plus the touch) and its DCA (velocity, key follow, aftertouch on its gain)
   const line = (col: number, c: { wave: R; wave2: R; range: R }, dcw: R): number => {
-    const pd = add('pd', col, 3, { wave: 0, wave2: 0, dcw: 0, range: 0, pm: 0, level: 1 }, { p1: 'wave', p2: 'wave2', att: [1 / 7, 1 / 8] });
-    b.module(pd).inputMap = { pm: ['range'] };
+    const pd = add('pd', col, 3, { wave: 4, wave2: 4, dcw: 0, range: 0, pm: 0, level: 1 }, { p1: 'wave', p2: 'range', att: [1 / 7, 1 / PD_RANGE_MAX] });
+    b.module(pd).inputMap = { pm: ['wave2'] };
     b.wire(c.wave[0], c.wave[1], pd, 'p1');
-    b.wire(c.wave2[0], c.wave2[1], pd, 'p2');
-    b.wire(c.range[0], c.range[1], pd, 'pm');
-    b.wire(pitch, 'out', pd, 'pitch');
+    b.wire(c.range[0], c.range[1], pd, 'p2');
+    b.wire(c.wave2[0], c.wave2[1], pd, 'pm');
+    for (const [m, port] of [[part, 'pitch'], [pdepth, 'out'], [vgate, 'out']] as R[]) b.wire(m, port, pd, 'pitch');   // pitch: the key, DCO envelope, vibrato
     for (const [m, port] of [dcw, [kfw, 'out'], [velW, 'out'], [atW, 'out']] as R[]) b.wire(m, port, pd, 'dcw');
     return pd;
   };
@@ -1345,27 +1353,23 @@ asm('Cassia 1', 'Voices', (b) => {
   const v2 = dcaVca(7);
   b.wire(pd1, 'out', v1, 'in');
   b.wire(dca1, 'env', v1, 'cv');
-  // line 2's modulation before its DCA: ring (times line 1), then noise
-  const ringV = add('vca', 9, 0, { gain: 1 });
-  const ring = add('select', 9, 0.5, { pos: 1, count: 2, fade: 0 });
-  const noiseV = add('vca', 9, 1, { gain: 1 });
-  const noise = add('select', 9, 1.5, { pos: 1, count: 2, fade: 0 });
-  b.wire(pd2, 'out', ringV, 'in');
-  b.wire(pd1, 'out', ringV, 'cv');
-  b.wire(pd2, 'out', ring, 'in1');
-  b.wire(ringV, 'out', ring, 'in2');
-  b.wire(ring, 'out', noiseV, 'in');
-  b.wire(nz, 'out', noiseV, 'cv');
-  b.wire(ring, 'out', noise, 'in1');
-  b.wire(noiseV, 'out', noise, 'in2');
-  b.wire(noise, 'out', v2, 'in');
+  // line 2's modulation before its DCA, as the CZ's: 1 off, 2 ring (times line 1), 3 noise (times the noise). A VCA whose
+  // cv the `mod` Selector picks: 1 (its v1), line 1 or the noise
+  const modV = add('vca', 9, 0, { gain: 1 });
+  const mod = add('select', 9, 0.5, { pos: 1, count: 3, fade: 0, v1: 1 });
+  b.wire(pd1, 'out', mod, 'in2');
+  b.wire(nz, 'out', mod, 'in3');
+  b.wire(mod, 'out', modV, 'cv');
+  b.wire(pd2, 'out', modV, 'in');
+  b.wire(modV, 'out', v2, 'in');
   b.wire(dcaX[0], dcaX[1], v2, 'cv');
-  // the line select: 1 line 1, 2 line 2, 3 both
-  const sel = add('select', 10, 0.5, { pos: 3, count: 3, fade: 0 });
+  // the line select's outputs: 1 line 1, 2 line 2, 3 and 4 both
   b.wire(v1, 'out', sel, 'in1');
   b.wire(v2, 'out', sel, 'in2');
-  b.wire(v1, 'out', sel, 'in3');
-  b.wire(v2, 'out', sel, 'in3');
+  for (const i of ['in3', 'in4']) {
+    b.wire(v1, 'out', sel, i);
+    b.wire(v2, 'out', sel, i);
+  }
   b.wire(sel, 'out', scope, 'a');
   b.nest('voice', 3, 6, members, {});
   b.input('keys', part, 'keys');
@@ -1374,7 +1378,6 @@ asm('Cassia 1', 'Voices', (b) => {
 
   b.param('voices', part, 'voices', { head: 'voice' });
   b.param('line', sel, 'pos');
-  b.param("1+1'", mode, 'value');
   b.param('vib wave', lfo, 'wave', { head: 'vibrato' });
   b.param('vib rate', lfo, 'rate');
   b.param('vib depth', vibS, 'gain');
@@ -1397,12 +1400,11 @@ asm('Cassia 1', 'Voices', (b) => {
   b.param('at dca', atA, 'gain');
   b.param('at vib', atVib, 'gain');
   for (const [n, k, dcw, dca] of [[1, k1, dcw1, dca1], [2, k2, dcw2, dca2]] as const) {
-    b.param('wave', k.wave, 'value', { head: `line ${n}`, col: true });
-    b.param('wave 2', k.wave2, 'value');
+    b.param('wave', k.wave, 'pos', { head: `line ${n}`, col: true });
+    b.param('wave 2', k.wave2, 'pos');
     b.param('res range', k.range, 'value');
     if (n === 2) {
-      b.param('ring', ring, 'pos');
-      b.param('noise', noise, 'pos');
+      b.param('mod', mod, 'pos');
       b.param('coarse', pd2, 'coarse');
       b.param('fine', pd2, 'fine');
     }
@@ -1411,6 +1413,7 @@ asm('Cassia 1', 'Voices', (b) => {
   }
   b.param('out', scope, 'view', { col: true });
 });
+namePositions('Cassia 1', { wave: PD_WAVES, 'wave 2': ['off', ...PD_WAVES.slice(0, SELECT_N - 1)] });
 
 // Sallen 20, after the Korg MS-20 (its owner's manual, 1978; the MS-20 mini's, which reproduces its circuit, for the key
 // priority): the instrument as it plays with nothing patched, its panel's controls named as the original names them. One

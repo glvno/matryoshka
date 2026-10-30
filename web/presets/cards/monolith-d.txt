@@ -6,34 +6,34 @@
 # controllers
 #   tune = 0                           -4..4
 #   glide = 0.04 s                     0.001..5 s
-#   glide on = 1                       1..8
+#   glide on = OFF                     OFF, ON
 #   mod mix = 0                        0..1
-#   osc mod = 1                        1..8
-#   osc 3 ctrl = 2                     1..8
-#   decay on = 2                       1..8
+#   osc mod = OFF                      OFF, ON
+#   osc 3 ctrl = ON                    OFF, ON
+#   decay on = ON                      OFF, ON
 # oscillators
-#   osc 1 range = 4                    1..8
-#   osc 1 wave = 3                     1..8
-#   osc 2 range = 4                    1..8
+#   osc 1 range = 8'                   LO, 32', 16', 8', 4', 2'
+#   osc 1 wave = SAW                   TRIANGLE, TRI/SAW, SAW, SQUARE, WIDE RECT, NARROW RECT
+#   osc 2 range = 8'                   LO, 32', 16', 8', 4', 2'
 #   osc 2 freq = 0 st                  -48..48 st
 #   osc 2 fine = 6 ct                  -100..100 ct
-#   osc 2 wave = 3                     1..8
-#   osc 3 range = 3                    1..8
+#   osc 2 wave = SAW                   TRIANGLE, TRI/SAW, SAW, SQUARE, WIDE RECT, NARROW RECT
+#   osc 3 range = 16'                  LO, 32', 16', 8', 4', 2'
 #   osc 3 freq = 0 st                  -48..48 st
 #   osc 3 fine = -4 ct                 -100..100 ct
-#   osc 3 wave = 4                     1..8
+#   osc 3 wave = SQUARE                TRIANGLE, REVERSE SAW, SAW, SQUARE, WIDE RECT, NARROW RECT
 # mixer
 #   osc 1 = 0.45                       0..1
 #   osc 2 = 0.4                        0..1
 #   osc 3 = 0.3                        0..1
 #   noise = 0                          0..1
-#   white/pink = 1                     1..8
+#   white/pink = WHITE                 WHITE, PINK
 # filter
 #   cutoff = 700 Hz                    20..16000 Hz
 #   emphasis = 0.3                     0..1
 #   contour = 3                        -4..4
-#   kbd control = 4                    1..8
-#   filter mod = 2                     1..8
+#   kbd control = 1+2                  OFF, 1, 2, 1+2
+#   filter mod = ON                    OFF, ON
 # contours
 #   filter contour: a screen, not a value
 #   contours / attack (1) = 0.005 s    0.001..5 s
@@ -44,7 +44,7 @@
 #   contours / decay (2) = 0.67        0..1
 #   contours / sustain (2) = 0.85      0..1
 # output
-#   a-440 = 1                          1..8
+#   a-440 = OFF                        OFF, ON
 
 # Drafts of 2026-10-29 after the Minimoog Model D, not yet listened to on the FM-1 (#413).
 engine: Monolith D
