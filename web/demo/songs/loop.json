@@ -1,0 +1,31 @@
+{
+  "title": "i-VI-III-VII in A minor (a chord loop for the preset demo)",
+  "about": "One chord a bar, round and round: Am, F, C, G. Every preset plays one bar of it in a role that suits it. Written for this demo.",
+  "tempo": 100,
+  "beatsPerBar": 2,
+  "chords": ["Am", "F", "C", "G"],
+  "roles": {
+    "pad": { "from": "F3", "phrase": [[0, 2, [0, 1, 2]]] },
+    "bass": { "from": "C2", "phrase": [[0, 0.5, [0]], [0.5, 0.5, [0]], [1, 0.5, [3]], [1.5, 0.5, [0]]] },
+    "lead": { "from": "F3", "phrase": [[0, 0.75, [4]], [0.75, 0.25, [3]], [1, 1, [2]]] },
+    "arp": { "from": "A3", "phrase": [[0, 0.5, [0]], [0.5, 0.5, [1]], [1, 0.5, [2]], [1.5, 0.5, [3]]] },
+    "drone": { "phrase": [[0, 2, [0]]] }
+  },
+  "guess": [
+    ["lead", ["lead", "solo", "whistle", "flute", "scream", "warble", "howl"]],
+    ["bass", ["bass", "sub", "303", "acid"]],
+    ["arp", ["bell", "bells", "chime", "chimes", "pluck", "keys", "piano", "clang", "ping", "bleeps", "run", "pulse", "tine", "bongos", "filter"]],
+    ["pad", ["pad", "strings", "brass", "organ", "drone", "sweep", "noise", "wind", "ensemble", "stab", "cluster"]]
+  ],
+  "default": "pad",
+  "higher": { "words": ["bell", "bells", "chime", "chimes", "whistle", "glass", "tine"], "shift": 12 },
+  "overrides": {
+    "Silver Box": "bass",
+    "Silver Box > Long Sweep": { "role": "bass", "shift": 12 },
+    "Silver Box > Short Zap": { "role": "bass", "shift": 12 },
+    "Canvas > Sequencer Run": "arp",
+    "Canvas > Easel Bongos": { "role": "arp", "shift": -12 },
+    "Briefcase 3 > Buzz Lead": "lead"
+  },
+  "format": "chords: one a bar, looped (a root A-G with # or b, then m for minor). roles: each role's phrase is a bar of [start beat, length in beats, [chord tones]], tone 0 the root, 1 the third, 2 the fifth, 3 the root an octave up, and so on; from: the lowest note the role's root may take. A preset's role is guessed from its name by the words in guess (first match), else default; higher moves a preset whose name has one of its words up by shift semitones; overrides set a role (and a shift) by patch or by \"patch > preset\". The drone role is for engines played on the black keys (a Drum map's rows): its tones count rows from the bar's chord. An engine with fewer voices than a phrase's chord plays its lowest tones."
+}
