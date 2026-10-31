@@ -25,16 +25,25 @@ static void uac_render_start(void);
 static void uac_tap(const int32_t *out, uint32_t n);
 #endif
 
-/* Overload guard (as Felucca's shed_check): a render that takes longer than the half it fills makes the ISR come back at
- * once, the main loop starves (no watchdog feed, no USB host: no OTA) and the watchdog resets. So after two halves in a
- * row above 85 % of a half (the render plus the key scan and USB nested in it) a part of a poly group is dropped
- * (eng_shed), one more per two halves while it lasts; when no group has more than one part the engine is muted
- * (eng_overload, OVERLOAD on the LCD) until a patch is loaded again (eng_resume). */
-#define OVL_TICKS ((HALF_FRAMES * 1000000u / FS) * 85u / 100u * FM1_TICKS_PER_US)
+/* Overload guard (after Felucca's shed_check; the decision in ovl_guard.h, issue #458): a render that takes longer than
+ * the half it fills is heard (the hardware plays the half before it is written, or the ISR misses a half), and far over
+ * it the ISR comes back at once, the main loop starves (no watchdog feed, no USB host: no OTA) and the watchdog resets.
+ * So a part of a poly group is dropped (eng_shed) when the mean ISR time (the render plus the key scan and USB nested in
+ * it) stays over 90 % of a half, or when a half comes out late a second time within 2 s; one more while it lasts. When no group
+ * has more than one part the engine is muted (eng_overload, OVERLOAD on the LCD) until a patch is loaded again
+ * (eng_resume). */
+#include "ovl_guard.h"
+#define OVL_HALF_TICKS ((HALF_FRAMES * 1000000u / FS) * FM1_TICKS_PER_US)
+#define OVL_TICKS (OVL_HALF_TICKS / 100u * 85u)   /* "hot": over 85 % of a half (DIAG page 119 only) */
 static volatile uint8_t eng_overload;            /* muted after an overload: until the next patch load */
 static volatile uint32_t eng_shed_count;         /* parts dropped since the last patch load (the LCD says so) */
-static uint8_t ovl_bits;                         /* bit k: the half k halves ago was over 85 % */
+static ovl_guard_t ovl_g;
 static uint8_t shed_req;
+/* the guard's view, for DIAG page 119 (main.c m1_diag): halves over 85 %, halves the hardware began playing before their
+ * render ended (late), the longest run of halves over 85 %, the longest gap between two ISR entries and the shortest
+ * ISR (us) since the last read of that page, and the guard's mean (us) */
+static volatile uint32_t ovl_hot, ovl_late, ovl_run_max, ovl_gap_max, ovl_us_min = 0xFFFFFFFFu;
+static uint32_t ovl_run, ovl_t_prev;
 
 /* after a patch load (or a flash write that had the audio off): play again, unless the overload muted it */
 static void eng_resume(void) { eng_run = (uint8_t)!eng_overload; }
@@ -43,7 +52,7 @@ static void eng_overload_clear(void)
 {
     eng_overload = 0;
     eng_shed_count = 0;
-    ovl_bits = 0;
+    ovl_guard_reset(&ovl_g);
     shed_req = 0;
 }
 
@@ -52,7 +61,7 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
     uint8_t p = fm1_audio_pending();
     fm1_audio_ack_aux(p);
     if (p & FM1_AUDIO_HALF) {
-        uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), all;
+        uint32_t half = fm1_audio_free_half(), i, t0 = fm1_ticks(), all, late;
         int32_t *o = &abuf[half * HALF_WORDS];
 #if FELUCCA_UAC
         uac_render_start();
@@ -86,11 +95,22 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #endif
         fm1_audio_ack_half();
         all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
-        ovl_bits = (uint8_t)(ovl_bits << 1 | (all > OVL_TICKS));
-        if ((ovl_bits & 3u) == 3u) {
-            ovl_bits = 0;
-            shed_req = 1;
+        late = fm1_audio_free_half() != half;           /* the hardware already plays the half just written */
+        ovl_late += late;
+        if (all > OVL_TICKS) {
+            ovl_hot++;
+            if (++ovl_run > ovl_run_max)
+                ovl_run_max = ovl_run;
+        } else {
+            ovl_run = 0;
         }
+        if ((t0 - ovl_t_prev) / FM1_TICKS_PER_US > ovl_gap_max && eng_halves)
+            ovl_gap_max = (t0 - ovl_t_prev) / FM1_TICKS_PER_US;
+        ovl_t_prev = t0;
+        if (all / FM1_TICKS_PER_US < ovl_us_min)
+            ovl_us_min = all / FM1_TICKS_PER_US;
+        if (eng_run && ovl_guard_step(&ovl_g, all, OVL_HALF_TICKS, late))
+            shed_req = 1;
         eng_us_last = all / FM1_TICKS_PER_US;
         if (eng_us_last > eng_us_max)
             eng_us_max = eng_us_last;

@@ -103,6 +103,11 @@ class Packages(unittest.TestCase):
             fi.load_package(f.name, False)
         self.assertIn("no M-VAVE Official Open", str(e.exception))
 
+    def test_a_package_starting_with_lt_is_not_a_page(self):
+        # an encrypted .fwsc starts with "<" (0x3C) about once in 256 builds (CI run 41178937616): still a package
+        self.assertFalse(fi.is_page(b"<\xe1\xd7\x42\xa7\x6e\x75\xf8" + bytes(56)))
+        self.assertTrue(fi.is_page(b"\n  <!doctype html><html>"))
+
     @unittest.skipUnless(os.environ.get("FM1_OPEN_FILE"), "FM1_OPEN_FILE not set")
     def test_mvave_official_open(self):
         product, image, target = fi.load_package(os.environ["FM1_OPEN_FILE"], False)

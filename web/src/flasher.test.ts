@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 // @ts-ignore untyped JS module
-import { OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, crc16, headIs, headWhich, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage } from './flasher/fm1pkg.js';
+import { OPEN_HEAD_SHA256, MVAVE_LOADER_SHA256, OPEN_RELEASES, STOCK_V15_SHA256, V15_HEAD_SHA256, crc16, headIs, headWhich, logicalImage, openPackageProblem, productOf, validateOpenPackage, validateStockPackage, workbenchPackages } from './flasher/fm1pkg.js';
 // @ts-ignore untyped JS module
 import { Updater, bootMismatch, headProblem, loaderFits, pack7, readHead, unpack7 } from './flasher/fm1ota.js';
 import { BOOT_CODE_HELP, BOOT_CODE_IS_OPEN, BOOT_CODE_IS_OTHER, BOOT_CODE_IS_V15, MVAVE_WORKBENCH, OPEN_WHY, guardUnload } from './flasher';
@@ -317,6 +317,12 @@ describe("Restore Official Open: the user's own M-VAVE file (#183)", () => {
     const ours = new Uint8Array(readFileSync(new URL('../public/firmware/matryoshka.fwsc', import.meta.url)));
     await expect(validateOpenPackage(ours)).rejects.toThrow(/not M-VAVE Official Open/);
     await expect(validateOpenPackage(new TextEncoder().encode('<!doctype html><p>no firmware here'))).rejects.toThrow(/not an FM-1 package/);
+  });
+
+  it('takes a package whose first byte is "<" for a package, not a page', () => {
+    const pkg = new Uint8Array([0x3c, 0xe1, 0xd7, 0x42, 0xa7, 0x6e, 0x75, 0xf8, ...new Array(56).fill(0)]);   // CI run 41178937616
+    expect(workbenchPackages(pkg)).toEqual([pkg]);
+    expect(workbenchPackages(new TextEncoder().encode('\n <!doctype html><p>no firmware here'))).toEqual([]);
   });
 
   // M-VAVE's files are not in the repository (licence): FM1_OPEN_FILE names a local copy, a .fwsc or the Workbench page
