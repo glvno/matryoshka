@@ -12,7 +12,7 @@ import { DEFS } from '../src/modules';
 import { addModule, defaultMap, emptyPatch, paramUnit, removeModule, rowDef, STEP_VEL, validatePatch, type ModuleInst, type Patch } from '../src/patch';
 import { ACCENT_VEL, fixNotes, patternNotes, type StepNote } from '../src/track';
 import { FACTORY } from '../src/assemblies';
-import { allModules, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
+import { allModules, fixAssemblies, insertAssembly, makeAssembly, removeMember, type AssemblyInst } from '../src/assembly';
 import { deviceBudget } from '../src/patchbin';
 import { around, headroom, level, mod, peakOf, players, plugIn, plugOut, row, wire, type Inst } from './factory-build';
 
@@ -449,7 +449,8 @@ presets.push(() => {
   card.params = rows.map(([head, label, m, param]) => ({ module: m.id, param, label, ...(head ? { head } : {}) }));
   // each drum's own card (open the 808 kit card to see them) shows the same rows
   for (const [d] of drums) d.a.params = card.params.filter((r) => allModules(p, d.a).includes(r.module)).map(({ module, param, label }) => ({ module, param, label }));
-  // (by hand, not reconcile: that would show the velocity pins as rows) the card's jacks: each drum's, after its name
+  // the card's jacks: each drum's, after its name (a velocity pin drives its gain through a macro range, so it stays a
+  // jack, not a row: assembly.ts pinsToParams)
   card.inputs = [...new Set(drums.map(([d]) => d.a))].flatMap((a) => a.inputs.map((r) => ({ ...r, label: `${a.label} ${r.label}` })));
   card.outputs = [{ module: mixA.id, port: 'out', label: 'out' }];
   level(p, { drums: true });
@@ -460,7 +461,20 @@ presets.push(() => {
 // ---- after the 909 Kit (it is built from it)
 const kept = readdirSync(DIR).find((f) => f.endsWith(KEEP));
 if (!kept) throw new Error(`presets/*-${KEEP} is missing (restore it from git)`);
-const keptJson = readFileSync(new URL(kept, DIR), 'utf8');
+/** the 909 Kit's file as written, but its cards' jacks and rows as the editor reconciles them when it opens the patch
+ * (fixAssemblies, see `reconciled` below): the rest of the file is left as it is */
+function keptReconciled(json: string): string {
+  const raw = JSON.parse(json) as { assemblies?: Record<string, unknown>[] };
+  const v = validatePatch(JSON.parse(json), DEFS);
+  fixAssemblies(v, DEFS);
+  (raw.assemblies ?? []).forEach((a, i) => {
+    const b = v.assemblies?.[i];
+    if (!b || b.label !== a.label) throw new Error(`${KEEP}: card ${String(a.label)} does not survive the editor's check`);
+    Object.assign(a, { inputs: b.inputs, outputs: b.outputs, params: b.params });
+  });
+  return JSON.stringify(raw, null, 1) + '\n';
+}
+const keptJson = keptReconciled(readFileSync(new URL(kept, DIR), 'utf8'));
 const after: (() => Patch)[] = [];
 
 // <7PH: a groove-box test patch, the 909 Kit's drums with a Silver Box on its own track, PLAY starts both at one
@@ -610,8 +624,11 @@ for (const [name, asm, chord] of [['Basic Poly', 'basic poly', true], ['Drift Po
 // after them, then the patches built from it
 const slug = (n: string): string => n.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 // (last, headroom: the Output so that no way of playing a patch clips, its engines' presets too, #440)
-const made = presets.map((f) => headroom(silverDemo(players(validatePatch(structuredClone(f()), DEFS)))));
-const later = after.map((f) => headroom(validatePatch(structuredClone(f()), DEFS)));
+// (each as the editor holds it once opened: fixAssemblies reconciles every card with the cables crossing its frame, so a
+// factory patch the editor opens is the one the FM-1 plays and the budget counts, #465)
+const reconciled = (p: Patch): Patch => (fixAssemblies(p, DEFS), p);
+const made = presets.map((f) => headroom(reconciled(silverDemo(players(validatePatch(structuredClone(f()), DEFS))))));
+const later = after.map((f) => headroom(reconciled(validatePatch(structuredClone(f()), DEFS))));
 for (const p of [...made, ...later]) {
   const b = deviceBudget(p);
   if (!b.fits) {
