@@ -935,10 +935,7 @@ static uint32_t m1_test_screen(uint32_t k, uint8_t *out)
 }
 static uint32_t m1_test_peak(void)
 {
-    uint32_t p;
-    tp_on = 1;
-    p = tp_peak;
-    tp_peak = 0;
+    uint32_t p = tp_take();                         /* (test_peak.h: no half lost between two reads, #385) */
     return (p > 0xFFFFu ? 0xFFFFu : p) | (eng_run ? 1u << 16 : 0u) | (snd_muted ? 1u << 17 : 0u) | (master_q12 < 64u ? 1u << 18 : 0u);
 }
 

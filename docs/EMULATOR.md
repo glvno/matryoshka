@@ -128,6 +128,11 @@ link as `m1emu serve` drives the emulator:
   the worst time of each kind of draw. The firmware keeps them (`ui_time` in `firmware/src/ui.c`: `fm1_ticks` around
   each draw, the LCD's transfers included) and reports them as DIAG pages 121..123 (page 120 zeroes them);
   `tools/m1_link.py uitime` reads the same. Run on two builds, it compares them.
+- **A TEST_PEAK asked again (#385):** about one TEST_PEAK in 500 gets no answer on the rig, and the rig's page asks
+  again 2 s later. That answer holds the loudest sample of the whole 2 s. The scenarios' peak profiles (`windows`) leave
+  such a long window out and print a note; before, it read as one window at a hit's level out of nowhere.
+  `cd web && node scripts/rig-peak.mjs [--patch NAME] [--play] [--key] [--reads N] [--raw]` reads the peak in 25 ms
+  windows on the rig and counts the long windows and the loud windows their neighbours do not explain.
 - **`npm run device:scenarios -- --via-emu`:** the device path against the emulator (its build has the test mode too),
   to check the runner and the firmware's side without a rig.
 
