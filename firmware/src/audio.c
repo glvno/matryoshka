@@ -35,6 +35,11 @@ static volatile uint8_t eng_overload;            /* muted after an overload: unt
 static volatile uint32_t eng_shed_count;         /* parts dropped since the last patch load (the LCD says so) */
 static uint8_t ovl_bits;                         /* bit k: the half k halves ago was over 85 % */
 static uint8_t shed_req;
+/* the guard's view, for DIAG page 119 (main.c m1_diag): halves over 85 %, halves the hardware began playing before their
+ * render ended (late), the longest run of halves over 85 % and the longest gap between two ISR entries (us) since the
+ * last read of that page */
+static volatile uint32_t ovl_hot, ovl_late, ovl_run_max, ovl_gap_max, ovl_us_min = 0xFFFFFFFFu;
+static uint32_t ovl_run, ovl_t_prev;
 
 /* after a patch load (or a flash write that had the audio off): play again, unless the overload muted it */
 static void eng_resume(void) { eng_run = (uint8_t)!eng_overload; }
@@ -95,6 +100,20 @@ void fm1_alnk0_irq(void)                       /* via isr_alnk0 (hal/fm1_isr.S) 
 #endif
         fm1_audio_ack_half();
         all = fm1_ticks() - t0;                         /* includes the key scan and USB poll nested in the ISR */
+        if (fm1_audio_free_half() != half)              /* the hardware already plays the half just written */
+            ovl_late++;
+        if (all > OVL_TICKS) {
+            ovl_hot++;
+            if (++ovl_run > ovl_run_max)
+                ovl_run_max = ovl_run;
+        } else {
+            ovl_run = 0;
+        }
+        if ((t0 - ovl_t_prev) / FM1_TICKS_PER_US > ovl_gap_max && eng_halves)
+            ovl_gap_max = (t0 - ovl_t_prev) / FM1_TICKS_PER_US;
+        ovl_t_prev = t0;
+        if (all / FM1_TICKS_PER_US < ovl_us_min)
+            ovl_us_min = all / FM1_TICKS_PER_US;
         ovl_bits = (uint8_t)(ovl_bits << 1 | (all > OVL_TICKS));
         if ((ovl_bits & 3u) == 3u) {
             ovl_bits = 0;

@@ -205,6 +205,23 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
     }
     if (page >= 120u && page <= 123u)                    /* the draw times (ui.c ui_time_diag) */
         return ui_time_diag(page, out);
+    if (page == 119u) {                         /* the overload guard's view (audio.c), the run, gap and min since the last read */
+        uint32_t v[8];
+        v[0] = eng_halves;
+        v[1] = ovl_hot;
+        v[2] = ovl_late;
+        v[3] = ovl_run_max;
+        v[4] = ovl_gap_max;
+        v[5] = ovl_us_min;
+        v[6] = eng_shed_count;
+        v[7] = eng_overload;
+        ovl_run_max = 0;
+        ovl_gap_max = 0;
+        ovl_us_min = 0xFFFFFFFFu;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 127u) {
         uint32_t v[8];
         v[0] = cpu_pct;
