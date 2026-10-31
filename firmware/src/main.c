@@ -156,7 +156,11 @@ static uint32_t batt_us;                        /* the last battery read's time,
  *   125: flags (bit 0 presented, 1 alt 1 set by the host, 2 the host reads, 3 primed, 4 configured), streams started,
  *        packets, frames in them, SET_CUR requests, bus resets, last fill_min, USB frame number
  *   126: underruns, overruns, missed IN tokens, stalls, adj_up, adj_down, fill_lo (min of fill_min since the stream
- *        started, 0xFFFFFFFF: none yet), fill_hi */
+ *        started, 0xFFFFFFFF: none yet), fill_hi
+ * page 119 the overload guard (audio.c, #458): halves rendered, halves over 85 %, late halves (the hardware played them
+ * before their render ended), then since the last read of this page the longest run of halves over 85 %, the longest
+ * gap between two audio ISRs (us) and the shortest ISR (us), then parts shed since the last patch load and the guard's
+ * mean ISR time (us) */
 static uint32_t m1_diag(uint32_t page, uint8_t *out)
 {
     const uint8_t *b = (const uint8_t *)&diag_prev;
@@ -205,6 +209,23 @@ static uint32_t m1_diag(uint32_t page, uint8_t *out)
     }
     if (page >= 120u && page <= 123u)                    /* the draw times (ui.c ui_time_diag) */
         return ui_time_diag(page, out);
+    if (page == 119u) {                         /* the overload guard's view (audio.c), the run, gap and min since the last read */
+        uint32_t v[8];
+        v[0] = eng_halves;
+        v[1] = ovl_hot;
+        v[2] = ovl_late;
+        v[3] = ovl_run_max;
+        v[4] = ovl_gap_max;
+        v[5] = ovl_us_min;
+        v[6] = eng_shed_count;
+        v[7] = ovl_guard_mean(&ovl_g) / FM1_TICKS_PER_US;
+        ovl_run_max = 0;
+        ovl_gap_max = 0;
+        ovl_us_min = 0xFFFFFFFFu;
+        for (i = 0; i < sizeof v; i++)
+            out[i] = (uint8_t)(v[i / 4u] >> (8u * (i % 4u)));
+        return sizeof v;
+    }
     if (page == 127u) {
         uint32_t v[8];
         v[0] = cpu_pct;

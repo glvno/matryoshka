@@ -1881,7 +1881,7 @@ async function mirrorInput(i: PanelInput): Promise<void> {
 }
 async function followFm1(fw?: Firmware): Promise<void> {
   try {
-    const p = await mirror.follow(fw);
+    const p = await mirror.follow(fw, fw === 'matryoshka' && device.connected ? device.input : null);   // (the link's port, whatever its name)
     emu.following(p.name, p.reports);
     $<HTMLSelectElement>('mirror-fw').value = p.firmware;
     devStatus(`following the FM-1's panel: ${p.name}${mirror.identity ? ` (${mirror.identity})` : ''}`);
