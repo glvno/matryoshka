@@ -5448,13 +5448,13 @@
      "module": 52,
      "param": "ratio",
      "label": "freq ratio",
-     "head": "operator",
-     "col": true,
      "copies": {
       "rows": 14,
       "count": 4,
       "name": "op"
-     }
+     },
+     "col": true,
+     "head": "operator"
     },
     {
      "module": 52,
