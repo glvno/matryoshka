@@ -8,23 +8,28 @@
 
 ## 1.7.0 — 2026-10-30
 
-### How you play the FM-1
+### tl;dr
+1.7 contains the last big changes of the badly-needed redesign of FM1 controls:
+- Turning the preset knob alone now changes engine preset rather than changing the engine.
+- To change the engine, hold HOME and turn the preset knob. Don't sleep on this, there are a fuckton of engines
+- The global settings menu, the info screen, and the manual now live under GLO alongside the midi settings that were already there.
+- HOME on a params page now takes you back to that device's first page. Press it again to go to the home page of the patch.
+- **Count-in before recording:** GLO > PANEL > COUNT-IN, 1 or 2 bars. Recording always starts on a bar.
 
-- **PRESET now changes the sound of the device you're on; HOME + PRESET changes the patch.** Turn PRESET on a device's page to step through that device's presets (factory or your own). Hold HOME and turn PRESET to change patch. In the menu PRESET still steps patches, on SEQ / SONG it still picks the pattern, and PLAY + PRESET is still the tempo. In the editor's FM-1 tab, Shift-click holds HOME.
-- **GLO opens the settings menu.** It replaces the GLOBAL page. ALGO steps through its tabs: MIDI, PANEL, SYSTEM, INFO and MANUAL. UPDATE MODE and FACTORY RESET need GLO held for 2 s.
-- **HOME goes back to the device's first page, then to the patch's home page.**
-- **Count-in before recording:** MENU > PANEL > COUNT-IN, 1 or 2 bars. Recording always starts on a bar.
-- **Arming on the FM-1 shows in the editor,** and the editor draws arming as the cables the keys really travel.
+1.7 also replaces the placeholder presets for each engine with five well-thought-out patches per engine, many of them based on the factory presets from the instruments they were modeled after.
+- Every preset for every engine was audited for distortion caused by CPU overload as well as clipping. On the rare occasion that the CPU threatens to fuck with your sound, the patch will preemptively decrement polyphony instead, dropping one voice until the patch is loaded again.
+
+### Full 1.7.0 changes
 
 ### Quality of life
 
 - **Knobs feel better.** A turn back no longer jumps 5 clicks at once. HOME held + a knob turns in fine steps. A click glides over 23 ms, so levels and cutoffs no longer zipper.
-- **Values are rounded, not cut off:** one click from 0 reads 0.01, not 0.00.
-- **PRESET's first turn reaches a real preset** instead of loading INIT again.
 - **Screens draw faster:** a page reached by SELECT / ALGO in 103 ms instead of 124.
 - **Delay reaches 700 ms** on the FM-1, up from 520.
 - Elvira 2's `drone` and 8 Lire's `hold` turn in steps of 0.01, not 0.08.
-- A button pressed just as the first page appears after a first boot is no longer lost.
+- **Arming on the FM-1 shows in the editor,** and the editor draws arming as the cables the keys really travel.
+- **PRESET's first turn reaches a real preset** instead of loading INIT again.
+- **Values are rounded, not cut off:** one click from 0 reads 0.01, not 0.00.
 
 ### Presets, and an audit of every factory sound
 
@@ -37,7 +42,7 @@
   - Drift Poly's Slow Pad and Analog Strings play 6 voices.
   - Oscillators with moving pitch (vibrato, glide) cost less.
   - Io 4's Ensemble Pad can still drop a voice at 4 notes.
-- **No more helicopter on one note:** idle voices no longer all wake in the same block.
+- Idle voices no longer all wake in the same block.
 - **Cassia 1 reaches its resonance waves.** Its rows now match the Casio CZ-1's: named waves, a real "off" for wave 2, and the CZ's four line modes. Presets you stored for Cassia 1 on the FM-1 no longer match it.
 - **Factory fixes reach your FM-1.** An update now refreshes untouched factory slots whenever the factory patches change, and says FACTORY PATCHES UPDATED. Slots you edited and saved are kept.
 - **Loading a preset no longer pushes a patch over the FM-1's size limit.** A few long knob names were shortened to make room.
@@ -53,8 +58,6 @@
 - A filter's cutoff no longer wraps from 20 kHz to 20 Hz at the top of the knob.
 - A message to the editor is no longer cut off half-way when the computer stops reading the FM-1.
 - A return to stock that was cut off finishes with the package it was writing.
-
-Most of these were checked in the emulator, and by ear on the test FM-1. MIDI clock in, program change and a power cut while saving are not yet checked on a device.
 
 ## 1.6.0 — 2026-10-28
 
