@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
+
 ## 1.7.0 — 2026-10-30
 
 - Io 4's Unison Lead preset has no vibrato: with it, the four unison voices overloaded the FM-1 on the first key and it played on three ("ONE PART LESS"). Without it the test rig measured no shed (2026-10-30, #453). Ensemble Pad can still drop a part at four notes.

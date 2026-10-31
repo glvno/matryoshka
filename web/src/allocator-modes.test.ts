@@ -96,3 +96,16 @@ it('live assignment edits preserve the held-key state', () => {
   e.noteOff(60); e.noteOff(67); e.noteOn(69);
   expect(e.voiceNotes().map((v) => v.note)).toEqual([69, 67, 62]);
 });
+
+it('a voice-count change keeps the rows set before it (a preset load sets rows, then the voices)', () => {
+  const { p, alloc } = patch(0);
+  const vca = addModule(p, DEFS.vca, 0, 0);
+  const e = new Engine(44118);
+  e.load(p);
+  const name = Object.keys(vca.params)[0];
+  e.setParam(vca.id, name, 0.37);
+  e.setParam(alloc.id, 'voices', 5);
+  const live = (e as unknown as { nodes: Map<number, { params: Record<string, number> }> }).nodes;
+  expect(live.get(vca.id)!.params[name]).toBe(0.37);
+  expect(e.voiceNotes()).toHaveLength(5);
+});

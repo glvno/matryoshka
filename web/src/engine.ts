@@ -599,9 +599,12 @@ export class Engine {
   setParam(id: number, name: string, value: number): void {
     const m = this.src?.modules.find((x) => x.id === id);
     if (m?.type === ALLOC) {
-      // the voice count, assign, legato, priority, unison: the groups change, the patch loads again (running modules keep their state)
+      // the voice count, assign, legato, priority, unison: the groups change, the patch loads again (running modules keep their
+      // state), as it plays now: a preset's rows set just before stay
       m.params[name] = value;
-      this.load(this.src!, this.compiled);
+      const n = this.nodes.get(id);
+      if (n) n.params[name] = value;
+      this.load(this.liveSource(this.src!), this.compiled);
       return;
     }
     const n = this.nodes.get(id);
