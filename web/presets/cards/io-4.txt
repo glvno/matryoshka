@@ -66,10 +66,12 @@ engine: Io 4
 # pw mode 1 manual, 2 LFO. kybd follow 1 10 %, 2 40 %, 3 70 %, 4 100 %. polarity 1 norm, 2 inv. lfo wave form 1 sine, 2 square,
 # 3 saw, 4 reverse saw. norm/wide 1 norm, 2 wide. sub, noise, switch (portamento), hold, ensemble: 1 off, 2 on. transpose 2 = -1 oct.
 
-# Saw with the sub, slow envelopes, a light vibrato and the ensemble: the string pad.
+# Saw with the sub, slow envelopes and the ensemble: the string pad.
 preset: Ensemble Pad
+  # no vibrato (vco / mod 0.03 before): with it four voices ran a mean of 89..91 % of the FM-1's audio block and dropped
+  # a part; without it 81..82 %, no part dropped at 1, 4 or 8 notes in three runs (test rig 2026-10-31, #461,
+  # docs/measurements/2026-10-31-rig-io4-ensemble-pad.json)
   sub = 2
-  vco / mod = 0.03
   vco / wave form = 2
   lpf cutoff = 1200 Hz
   res = 0.1
