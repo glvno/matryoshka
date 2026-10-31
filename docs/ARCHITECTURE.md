@@ -968,7 +968,10 @@ of the page in focus. Assemblies hide the inside: what the card shows is what th
   to it at once (`emuParam`), any other edit reloads the patch into it (`queueEmu`, 120 ms; it keeps the focus), the
   editor's focus and transport go to it, its PLAY sets the editor's. HOME held + PRESET (Shift-click latches HOME) steps the Open list (Your patches,
   the factory patches), skipping sandbox patches as the FM-1 does, SAVE = Save patch. The pill keys and the computer keyboard play through the note sink at the emulated
-  octave; the held notes are the emulator's keys (`emuKeys`), on its SEQ page they enter steps and are not sounded.
+  octave; the held notes are the emulator's keys (`emu-keys.ts`), on its SEQ page they enter steps and are not sounded.
+  For the panel's own keys (the pill keys, the computer keyboard, the on-screen one) the browser engine plays what
+  panel.c gave the wasm's engine (`fm1_ui.c` reports each `eng_note_on` / `eng_note_off` of panel.c to the page), so a
+  Drum map's rows land on black keys 1..8 as on the device ([D-643](ledger/editor.md#D-643)); a MIDI note plays its own number.
   The browser engine plays; there is no emulated flash bank. Lights (after X0X's browser emulator): host_ui.h keeps
   the HAL's LED arrays over a host matrix (id = (row - 1) * 11 + column), so seq_ui.c's step cells and the wasm's
   `leds_play` / `leds_octave` / `leds_avail` (as main.c) land there; `fm1w_led(kind, first)` reads them as bits (lit,
