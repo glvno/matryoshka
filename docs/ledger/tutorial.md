@@ -22,8 +22,8 @@ The tutorial is a **course** kept as data in `web/src/tutorial/course.json`. It 
 | <a id="D-663"></a>D-663 | The tutorial has no Riff button: a looped riff rarely fits the tutorial patch's sound. | Decided | 2026-10-23 | commit eb79bf3; PR #205 |
 | <a id="D-664"></a>D-664 | The tutorial panel docks at the bottom right by default. Follow optionally places it near the highlighted target. | Decided | 2026-10-15 | issue #31; commit 34e1570; PR #205 |
 | <a id="D-665"></a>D-665 | Each requirement shows on a check-box line of its own, apart from the surrounding prose. The renderer (`markdown.ts`) splits the paragraph, and lesson text is worded to read well when split. | Decided | 2026-10-21 | issue #173; commit 0699320 |
-| <a id="D-666"></a>D-666 | The course uses no A/B events (`flips`, `snapshotA`, `snapshotB`). They stay in the schema, but the lesson editor hides them and the course validator rejects them. The morph lesson fades to a saved variation instead. | Decided | 2026-10-21 | issue #155; commit cc2c53b |
+| <a id="D-666"></a>D-666 | The course uses no A/B events (`flips`, `snapshotA`, `snapshotB`). They stay in the schema, but the lesson editor hides them and the course validator rejects them. The morph lesson fades to a saved variation instead. **Amended 2026-10-31 (michael glaviano):** the A/B flip is back in the editor ([D-645](editor.md#D-645)), and these events are to come back to the lesson editor and the validator at low priority (issue #488). Until then they stay hidden. | Decided, amended | 2026-10-21 → 2026-10-31 | issue #155; commit cc2c53b; issue #488 |
 
 ## Not yet settled
 
-- Whether the A/B flip comes back, and with it the tutorial's A/B events — issue #103
+- (none)
