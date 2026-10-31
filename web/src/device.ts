@@ -95,6 +95,55 @@ export const syncLine = (s: ChipState): { text: string; action: 'sync' | 'stop' 
   : { text: 'Not connected', action: null };
 
 const NAME = /felucca|fm-?1|matryoshka|modular/i;
+/** an update loader's port (FM-1_700's "Felucca Update", M-VAVE's ota-...): it never answers HELLO */
+const LOADER = /ota-|felucca update/i;
+
+/** one input and one output that may be the FM-1; `named`: its name says FM-1 */
+export interface LinkCandidate { inp: MIDIInput; out: MIDIOutput; named: boolean }
+
+/**
+ * The in / out pairs Connect FM-1 says HELLO to, in order (#187). An input and an output of one USB MIDI device share
+ * its name, so ports pair by name. The pairs named like an FM-1 (Matryoshka, Felucca, FM-1...) come first. Every other
+ * pair follows, because macOS keeps the name it first saw for a USB id at a USB socket: an FM-1 that ran Felucca, or
+ * another device with the same test id 1209:0001, shows under that old name, and so does a device renamed in Audio MIDI
+ * Setup. HELLO is a SysEx frame under the non-commercial id 7D, which other gear ignores. Left out: disconnected ports,
+ * an update loader, and Apple's own ports (the IAC bus, network sessions: a DAW could record what goes there). With no
+ * same-named pair, an FM-1-named input and output pair as before.
+ */
+export function linkCandidates(inputs: Iterable<MIDIInput>, outputs: Iterable<MIDIOutput>): LinkCandidate[] {
+  const live = <T extends MIDIPort>(ps: Iterable<T>): T[] => [...ps].filter((p) => p.state !== 'disconnected' && !LOADER.test(p.name ?? ''));
+  const ins = live(inputs), outs = live(outputs);
+  const pairs: LinkCandidate[] = [];
+  for (const inp of ins) {
+    const named = NAME.test(inp.name ?? '');
+    if (!named && /^apple/i.test(inp.manufacturer ?? '')) continue;
+    const out = outs.find((o) => (o.name ?? '') === (inp.name ?? '') && !pairs.some((p) => p.out === o));
+    if (out) pairs.push({ inp, out, named });
+  }
+  if (!pairs.some((p) => p.named)) {
+    const inp = ins.find((p) => NAME.test(p.name ?? '')), out = outs.find((p) => NAME.test(p.name ?? ''));
+    if (inp && out) pairs.push({ inp, out, named: true });
+  }
+  return [...pairs.filter((p) => p.named), ...pairs.filter((p) => !p.named)];
+}
+
+/** Connect FM-1's message when no port answered HELLO (`tried`: some pair was asked), with the ports it saw, so the user
+ *  can tell what the computer calls the FM-1 */
+export function notFound(inputs: Iterable<MIDIPort>, outputs: Iterable<MIDIPort>, tried: boolean): string {
+  const names = [...new Set([...inputs, ...outputs].filter((p) => p.state !== 'disconnected').map((p) => p.name || '(no name)'))];
+  const seen = names.length ? `MIDI ports: ${names.join(', ')}` : 'the browser sees no MIDI ports';
+  return tried
+    ? `No FM-1 answered as Matryoshka (${seen}). Is it running the Matryoshka firmware? Just after an install, wait until it shows its pages, then connect again`
+    : `FM-1 not found (${seen}). Is it connected by USB and switched on?`;
+}
+
+/** Connect FM-1's message when the browser would not open Web MIDI with SysEx */
+export function sysexRefused(e: unknown): string {
+  const name = (e as { name?: string } | null)?.name;
+  return name === 'NotAllowedError' || name === 'SecurityError'
+    ? 'This browser blocks SysEx for this site, and the FM-1 link needs it: allow MIDI devices in the site settings (the icon left of the address), reload the page and connect again'
+    : `Web MIDI did not open: ${(e as Error | null)?.message ?? String(e)}`;
+}
 const ACK_TIMEOUT = 700;
 const FLASH_TIMEOUT = 2500; // a flash sector erase and program
 const TRIES = 3;
@@ -138,14 +187,43 @@ export class DeviceLink {
     return !!this.out && this.out.state === 'connected';
   }
 
+  /** the MIDI input the link listens on (the panel follower listens there too, whatever the port is named) */
+  get input(): MIDIInput | null {
+    return this.inp;
+  }
+
   async connect(): Promise<Info> {
     if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
     if (this.inp) this.inp.onmidimessage = null; // a reconnect: let go of the old port
-    const access = await navigator.requestMIDIAccess({ sysex: true });
-    const pick = <T extends MIDIPort>(ports: Iterable<T>): T | null => [...ports].find((p) => NAME.test(p.name ?? '') && !/ota-/i.test(p.name ?? '')) ?? null;
-    this.out = pick(access.outputs.values());
-    this.inp = pick(access.inputs.values());
-    if (!this.out || !this.inp) throw new Error('FM-1 not found. Is it connected and running the Matryoshka firmware?');
+    this.out = this.inp = null;
+    let access: MIDIAccess;
+    try {
+      access = await navigator.requestMIDIAccess({ sysex: true });
+    } catch (e) {
+      throw new Error(sysexRefused(e));
+    }
+    access.onstatechange = () => {
+      if (this.out && this.out.state !== 'connected') this.onStatus('FM-1 disconnected');
+    };
+    const inputs = [...access.inputs.values()], outputs = [...access.outputs.values()];
+    // the ports named like an FM-1 first; then, as macOS may show it under another name (#187), every other in / out pair
+    const pairs = linkCandidates(inputs, outputs);
+    for (const c of pairs) {
+      this.attach(c.inp, c.out);
+      try {
+        return await this.hello(c.named ? TRIES : 1);
+      } catch {
+        c.inp.onmidimessage = null;
+        this.out = this.inp = null;
+      }
+    }
+    throw new Error(notFound(inputs, outputs, pairs.length > 0));
+  }
+
+  /** listen on `inp` and send to `out`: the link's ports from now on */
+  private attach(inp: MIDIInput, out: MIDIOutput): void {
+    this.out = out;
+    this.inp = inp;
     this.running = false;
     this.inp.onmidimessage = (ev) => {
       const run = transportOf(ev.data);
@@ -191,20 +269,16 @@ export class DeviceLink {
         this.onEvent({ kind: 'info' });
       }
     };
-    access.onstatechange = () => {
-      if (this.out?.state !== 'connected') this.onStatus('FM-1 disconnected');
-    };
-    return this.hello();
   }
 
-  private request(frame: Uint8Array, match: (p: ReturnType<typeof parse>) => boolean, timeout = ACK_TIMEOUT): Promise<NonNullable<ReturnType<typeof parse>>> {
+  private request(frame: Uint8Array, match: (p: ReturnType<typeof parse>) => boolean, timeout = ACK_TIMEOUT, most = TRIES): Promise<NonNullable<ReturnType<typeof parse>>> {
     return new Promise((resolve, reject) => {
       let tries = 0;
       const attempt = (): void => {
         tries++;
         const t = window.setTimeout(() => {
           this.waiter = null;
-          if (tries < TRIES) attempt();
+          if (tries < most) attempt();
           else reject(new Error('no answer from the FM-1'));
         }, timeout);
         this.waiter = {
@@ -220,8 +294,9 @@ export class DeviceLink {
     });
   }
 
-  async hello(): Promise<Info> {
-    const p = await this.request(helloFrame(), (x) => x?.cmd === CMD.info);
+  /** HELLO, asked up to `tries` times */
+  async hello(tries = TRIES): Promise<Info> {
+    const p = await this.request(helloFrame(), (x) => x?.cmd === CMD.info, ACK_TIMEOUT, tries);
     this.info = parseInfo(p);
     if (!this.info) throw new Error('unexpected answer to HELLO');
     return this.info;

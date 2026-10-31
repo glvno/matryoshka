@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Connecting the FM-1 syncs by default (#171): the decision on connect and the chip's state; Live over the budget (#200).
 import { describe, expect, it } from 'vitest';
-import { chipState, liveSync, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
+import { chipState, DeviceLink, linkCandidates, type LinkCandidate, liveSync, notFound, sysexRefused, sandboxChip, SANDBOX_HOVER, sameBinary, syncLine, syncOnConnect, syncsWith, syncUpdateNotice, transportOf } from './device';
 import { DEFS } from './modules';
 import { addModule, connect, newPatch, removeModule } from './patch';
 import { deviceBudget, encodePatch, VERSION } from './patchbin';
 import { FM1_PRESETS } from './presets';
-import { liveFrame, parse } from './protocol';
+import { CMD, frame, liveFrame, parse } from './protocol';
 import { subtractiveSaw } from './test-patches';
 
 const names = Object.keys(FM1_PRESETS);
@@ -188,5 +188,107 @@ describe('syncsWith', () => {
   it('holds back legacy format 39 firmware, but not an FM-1 unheard from yet', () => {
     expect(syncsWith(info(246 | (255 << 8)))).toBe(false); // format 39 predates the current writer
     expect(syncsWith(null)).toBe(true);
+  });
+});
+
+// ---- finding the FM-1 among the MIDI ports (#187)
+
+type FakePort = { id: string; name: string; manufacturer: string; state: string; onmidimessage: ((ev: { data: Uint8Array }) => void) | null; send: (d: Uint8Array) => void; sent: Uint8Array[] };
+const port = (id: string, name: string, o: { manufacturer?: string; state?: string } = {}): FakePort => {
+  const p: FakePort = { id, name, manufacturer: o.manufacturer ?? '', state: o.state ?? 'connected', onmidimessage: null, sent: [], send: (d) => void p.sent.push(d) };
+  return p;
+};
+/** an output that answers HELLO on `inp`, as Matryoshka does */
+const answering = (out: FakePort, inp: FakePort): void => {
+  out.send = (d) => {
+    out.sent.push(d);
+    if (parse(d)?.cmd === CMD.hello) setTimeout(() => inp.onmidimessage?.({ data: frame(CMD.info, [1, 64, 255, 3, 1, 0, 1, 48, 48]) }), 5);
+  };
+};
+const pairNames = (cs: LinkCandidate[]): [string, boolean][] => cs.map((c) => [c.inp.name ?? '', c.named]);
+const asIn = (ps: FakePort[]): MIDIInput[] => ps as unknown as MIDIInput[];
+const asOut = (ps: FakePort[]): MIDIOutput[] => ps as unknown as MIDIOutput[];
+
+describe('linkCandidates', () => {
+  it('pairs ports by name, the FM-1-named ones first, then the rest (macOS may keep an old name)', () => {
+    const ins = [port('a', 'Launchkey MIDI'), port('b', 'Felucca'), port('c', 'Pico Synth')];
+    const outs = [port('A', 'Pico Synth'), port('B', 'Felucca'), port('C', 'Launchkey MIDI')];
+    const cs = linkCandidates(asIn(ins), asOut(outs));
+    expect(pairNames(cs)).toEqual([['Felucca', true], ['Launchkey MIDI', false], ['Pico Synth', false]]);
+    expect(cs[0].out).toBe(outs[1]);
+  });
+  it('leaves out disconnected ports, update loaders and Apple\'s own ports', () => {
+    const ins = [port('a', 'Matryoshka', { state: 'disconnected' }), port('b', 'Felucca Update'), port('c', 'ota-FM-1_700'), port('d', 'IAC Driver Bus 1', { manufacturer: 'Apple Inc.' }), port('e', 'Matryoshka')];
+    const outs = [port('A', 'Matryoshka', { state: 'disconnected' }), port('B', 'Felucca Update'), port('C', 'ota-FM-1_700'), port('D', 'IAC Driver Bus 1', { manufacturer: 'Apple Inc.' }), port('E', 'Matryoshka')];
+    const cs = linkCandidates(asIn(ins), asOut(outs));
+    expect(pairNames(cs)).toEqual([['Matryoshka', true]]);
+    expect(cs[0].inp).toBe(ins[4]);
+    expect(cs[0].out).toBe(outs[4]);
+  });
+  it('pairs an FM-1-named input and output whose names differ (as Windows may name them)', () => {
+    expect(pairNames(linkCandidates(asIn([port('a', 'FM-1')]), asOut([port('A', 'MIDIOUT2 (FM-1)')])))).toEqual([['FM-1', true]]);
+  });
+  it('gives nothing without ports', () => {
+    expect(linkCandidates([], [])).toEqual([]);
+  });
+});
+
+describe('DeviceLink.connect', () => {
+  const g = globalThis as unknown as { window?: unknown; navigator: { requestMIDIAccess?: unknown } };
+  const withMidi = async <T,>(ins: FakePort[], outs: FakePort[], run: () => Promise<T>, refuse?: Error): Promise<T> => {
+    const saved = g.navigator.requestMIDIAccess, savedWin = g.window;
+    g.window ??= globalThis;
+    g.navigator.requestMIDIAccess = async () => {
+      if (refuse) throw refuse;
+      return { inputs: new Map(ins.map((p) => [p.id, p])), outputs: new Map(outs.map((p) => [p.id, p])), onstatechange: null };
+    };
+    try {
+      return await run();
+    } finally {
+      g.navigator.requestMIDIAccess = saved;
+      g.window = savedWin;
+    }
+  };
+  it('finds an FM-1 that macOS shows under a name no FM-1 has, by asking each pair HELLO', async () => {
+    const other = { i: port('k', 'Launchkey MIDI'), o: port('K', 'Launchkey MIDI') };
+    const fm1 = { i: port('u', 'USB MIDI Device'), o: port('U', 'USB MIDI Device') };
+    answering(fm1.o, fm1.i);
+    const link = new DeviceLink();
+    const info = await withMidi([other.i, fm1.i], [other.o, fm1.o], () => link.connect());
+    expect(info.version).toBe(1);
+    expect(link.input).toBe(fm1.i);
+    expect(link.connected).toBe(true);
+    expect(other.o.sent.length).toBe(1);          // (one HELLO to a port not named like an FM-1)
+    expect(other.i.onmidimessage).toBeNull();     // (let go of again)
+  });
+  it('asks a named pair first, and a named FM-1 that answers is the one linked', async () => {
+    const fm1 = { i: port('f', 'Felucca'), o: port('F', 'Felucca') };
+    const other = { i: port('k', 'Launchkey MIDI'), o: port('K', 'Launchkey MIDI') };
+    answering(fm1.o, fm1.i);
+    const link = new DeviceLink();
+    await withMidi([other.i, fm1.i], [other.o, fm1.o], () => link.connect());
+    expect(link.input).toBe(fm1.i);
+    expect(other.o.sent.length).toBe(0);
+  });
+  it('lists the ports it saw when nothing answers', async () => {
+    const link = new DeviceLink();
+    const err = await withMidi([port('k', 'Launchkey MIDI')], [port('K', 'Launchkey MIDI')], () => link.connect()).catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/^No FM-1 answered as Matryoshka \(MIDI ports: Launchkey MIDI\)/);
+    expect(link.connected).toBe(false);
+  });
+  it('says what to change when the browser blocks SysEx', async () => {
+    const refused = Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
+    const err = await withMidi([], [], () => new DeviceLink().connect(), refused).catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/blocks SysEx for this site/);
+  });
+});
+
+describe('notFound / sysexRefused', () => {
+  it('says there are no ports, or names the connected ones', () => {
+    expect(notFound([], [], false)).toBe('FM-1 not found (the browser sees no MIDI ports). Is it connected by USB and switched on?');
+    expect(notFound(asIn([port('a', 'X', { state: 'disconnected' }), port('b', 'Y')]), asOut([port('B', 'Y')]), false)).toMatch(/\(MIDI ports: Y\)/);
+  });
+  it('passes on another error', () => {
+    expect(sysexRefused(new Error('boom'))).toBe('Web MIDI did not open: boom');
   });
 });
