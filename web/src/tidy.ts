@@ -146,3 +146,96 @@ export function tidy(p: Patch, sizes: TidySizes, skip: Set<number> = new Set()):
 export function isPile(p: Patch, sizes: TidySizes, skip: Set<number> = new Set()): boolean {
   return piled(p.modules.filter((m) => !skip.has(m.id)).map((m) => ({ x: m.x, y: m.y, ...sizes.module(m.id) })));
 }
+
+/**
+ * Make room for a box that grew (an assembly's frame on expansion, #206): `rects` are its neighbours, and none of them may
+ * come closer than TIDY_GAP to it. A neighbour in the way moves the shortest way out: right or down, or left or up when
+ * that spot is free (on the canvas, near nothing). A neighbour that moved and now lies near another pushes the one further
+ * right and down in turn, so the push runs on through a column or a row. Neighbours nobody moved keep their places, even
+ * where they already lay on one another. Returns the neighbours' new boxes, in their order; `fixed` never moves.
+ */
+export function pushAside(fixed: Rect, rects: Rect[]): Rect[] {
+  const out = rects.map((r) => ({ ...r }));
+  const moved = new Set<number>();
+  const sum = (i: number): number => out[i].x + out[i].y;
+  /** the next neighbour to move and the box it has to clear: anything near the fixed box, or near one that moved */
+  const clash = (): { i: number; o: Rect } | null => {
+    for (let i = 0; i < out.length; i++) {
+      if (near(fixed, out[i])) return { i, o: fixed };
+      for (const j of moved)
+        if (j !== i && near(out[i], out[j])) return sum(i) > sum(j) || (sum(i) === sum(j) && i > j) ? { i, o: out[j] } : { i: j, o: out[i] };
+    }
+    return null;
+  };
+  const free = (i: number, r: Rect): boolean => r.x >= 0 && r.y >= 0 && !near(fixed, r) && !out.some((o, j) => j !== i && near(o, r));
+  for (let guard = 50 * (out.length + 1); guard > 0; guard--) {
+    const c = clash();
+    if (!c) break;
+    const r = out[c.i], o = c.o;
+    const ways = [
+      { dx: o.x + o.w + TIDY_GAP - r.x, dy: 0, always: true },
+      { dx: 0, dy: o.y + o.h + TIDY_GAP - r.y, always: true },
+      { dx: o.x - TIDY_GAP - (r.x + r.w), dy: 0, always: false },
+      { dx: 0, dy: o.y - TIDY_GAP - (r.y + r.h), always: false },
+    ].sort((u, v) => Math.abs(u.dx + u.dy) - Math.abs(v.dx + v.dy));
+    const way = ways.find((w) => w.always || free(c.i, { ...r, x: r.x + w.dx, y: r.y + w.dy }))!;
+    r.x += way.dx;
+    r.y += way.dy;
+    moved.add(c.i);
+  }
+  return out;
+}
+
+const box = (x: number, y: number, s: { w: number; h: number }): Rect => ({ x, y, w: s.w, h: s.h });
+
+/** an expanded assembly's frame as drawn around what it shows (its cards, its children's cards or frames), nothing
+ *  rearranged; null when it shows nothing */
+function frameBox(p: Patch, a: AssemblyInst, sizes: TidySizes): Rect | null {
+  const boxes: Rect[] = [];
+  for (const id of a.modules) {
+    const m = p.modules.find((x) => x.id === id);
+    if (m) boxes.push(box(m.x, m.y, sizes.module(id)));
+  }
+  for (const ch of childrenOf(p, a)) {
+    const r = ch.open ? frameBox(p, ch, sizes) : box(ch.x, ch.y, sizes.container(ch.id));
+    if (r) boxes.push(r);
+  }
+  if (!boxes.length) return null;
+  const { pad, head, minW, padX = pad } = sizes.frame(a);
+  const left = Math.min(...boxes.map((r) => r.x)), top = Math.min(...boxes.map((r) => r.y));
+  const right = Math.max(...boxes.map((r) => r.x + r.w)), bottom = Math.max(...boxes.map((r) => r.y + r.h));
+  return {
+    x: left - padX,
+    y: top - pad - head,
+    w: Math.max(right - left + 2 * padX, minW, a.frameSize?.width ?? 0),
+    h: Math.max(bottom - top + 2 * pad + head, a.frameSize?.height ?? 0),
+  };
+}
+
+/**
+ * After assemblies expand (#206): each one's frame pushes aside (`pushAside`) the cards and frames beside it, among the
+ * other members of the assembly it is in, or on the canvas when it is in none. The assembly around it grew too, so that
+ * frame then does the same one level up, and so on out to the canvas. `skip` = module ids not on the canvas (the docked
+ * Main). Positions change in `p`.
+ */
+export function clearAround(p: Patch, ids: number[], sizes: TidySizes, skip: Set<number> = new Set()): void {
+  const inAsm = new Set(assembliesOf(p).flatMap((a) => a.modules));
+  for (const id of ids)
+    for (let a = assembliesOf(p).find((x) => x.id === id); a?.open; a = parentOf(p, a.id)) {
+      const parent = parentOf(p, a.id);
+      const frame = frameBox(p, a, sizes);
+      if (!frame) continue;
+      const items: Item[] = [];
+      for (const mid of parent ? parent.modules : p.modules.filter((m) => !inAsm.has(m.id)).map((m) => m.id)) {
+        const m = p.modules.find((x) => x.id === mid);
+        if (!m || skip.has(mid)) continue;
+        items.push({ r: box(m.x, m.y, sizes.module(mid)), move: (dx, dy) => { m.x += dx; m.y += dy; } });
+      }
+      for (const b of parent ? childrenOf(p, parent) : assembliesOf(p).filter((x) => !parentOf(p, x.id))) {
+        if (b === a) continue;
+        const r = b.open ? frameBox(p, b, sizes) : box(b.x, b.y, sizes.container(b.id));
+        if (r) items.push({ r, move: (dx, dy) => moveAssembly(p, b, dx, dy) });
+      }
+      pushAside(frame, items.map((it) => it.r)).forEach((r, k) => items[k].move(r.x - items[k].r.x, r.y - items[k].r.y));
+    }
+}

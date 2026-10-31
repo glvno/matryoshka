@@ -79,7 +79,25 @@ static void m1_patch_param(uint32_t mod, uint32_t par, int32_t v)
 }
 static void m1_panel_on(uint32_t mask) { (void)mask; }
 static void m1_patch_bypass(uint32_t mod, int on) { (void)mod; (void)on; }   /* (the page hears of a Toggle through its button) */
+/* what the panel's keys play (#467): the note panel.c gives the engine (a key's own, a Drum map row's for black keys
+ * 1..8 by D-520, none for a silent key) also goes to the page, whose browser engine is the one that sounds. Only
+ * panel.c's calls are redirected: the engine's own (steps, MIDI) stay as they are */
+WASM_IMPORT("note") void js_note(uint32_t note, int32_t vel_q16, uint32_t on);
+static void ui_note_on(uint32_t note, int32_t vel_q16, uint32_t ch)
+{
+    eng_note_on(note, vel_q16, ch);
+    js_note(note, vel_q16, 1u);
+}
+static void ui_note_off(uint32_t note, uint32_t ch)
+{
+    eng_note_off(note, ch);
+    js_note(note, 0, 0u);
+}
+#define eng_note_on ui_note_on
+#define eng_note_off ui_note_off
 #include "../src/panel.c"
+#undef eng_note_on
+#undef eng_note_off
 
 /* the hooks: the LEDs as main.c lights them on the device, into the host's LED arrays (host_ui.h), which the page
  * reads as bits (fm1w_led); the rest goes to the page. Lighting after X0X (charlesvestal/fm1-x0x, GPL-3.0-only):

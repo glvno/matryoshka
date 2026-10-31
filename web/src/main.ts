@@ -16,6 +16,7 @@ import { SITE_URL } from './site';
 import { sandboxKey, sandboxPage, sandboxStep } from './sandbox-mode';
 import { LIVE_MS, slotLabel } from './protocol';
 import { Fm1View } from './fm1-view';
+import { EmuKeys } from './emu-keys';
 import { Editor, ZOOM_MAX, ZOOM_MIN } from './editor';
 import { ScopeScreens } from './scope-view';
 import { EnvScreens } from './env-view';
@@ -427,8 +428,8 @@ function offerSync(asked = false): void {
 }
 /** the on-screen keyboard plays through the sink like the letter keys; Z / X and its buttons share the octave */
 const piano = new Piano($('piano'), {
-  on: (note, vel) => sink.send({ t: 'on', note, vel }),
-  off: (note) => sink.send({ t: 'off', note }),
+  on: (note, vel) => sink.send({ t: 'on', note, vel }, true),
+  off: (note) => sink.send({ t: 'off', note }, true),
   shift: (d) => noteKeys.shift(d),
 });
 /** the wheels: pitch bend and CC 1, shown in the dock under Main's bend and modulation jacks (the editor places them) */
@@ -436,18 +437,22 @@ const hands = new DeckControls(document.createElement('div'), {
   bend: (v) => sink.send({ t: 'bend', v }),
   mod: (v) => sink.send({ t: 'cc', n: 1, v: v * 127 }),
 });
-/** notes go to the browser engine and, with Live on, to the FM-1 */
+/** notes go to the browser engine and, with Live on, to the FM-1. `fromPanel`: one of the keys the Emulator view takes as
+ * the FM-1's own (the pill keys, the computer keyboard, the on-screen one), not MIDI */
 const sink = {
-  send(msg: HostMsg): void {
+  send(msg: HostMsg, fromPanel = false): void {
     // CC 16..19 from a MIDI controller turn Main's knobs: the rows of the device page in focus
     if (msg.t === 'cc' && msg.n >= 16 && msg.n <= 19) return editor.turnKnob(msg.n - 16, msg.v / 127);
+    // the Emulator view: its keys play what the emulated FM-1 plays for them (#467, emu-keys.ts)
+    for (const m of emuKeys.route(msg, fromPanel)) sink.play(m);
+  },
+  play(msg: HostMsg): void {
     if (msg.t === 'on') host.mute(false);
     // a Steps card's cursor entry (#127, #135: a chord when the first key is let go); it sounds too. Running, the engine
     // records instead (live overdub)
     if (msg.t === 'on' && currentTab === 'patch' && !editor.playing) recordNote(msg.note, msg.vel);
     if (msg.t === 'off' && currentTab === 'patch') recordOff(msg.note);
     if (msg.t === 'on' || msg.t === 'off') editor.rollHeld(msg.note, msg.t === 'on');   // (the roll's keys light, the #136 follow-up)
-    if (emuKeys(msg)) return;
     host.send(msg);
     piano.track(msg);
     hands.track(msg);
@@ -563,11 +568,11 @@ const emu = new Fm1View($('fm1-view'), `${import.meta.env.BASE_URL}fm1-ui.wasm`,
       const note = 53 + k + 12 * emu.octave;
       if (note < 0 || note > 127) return;
       pillNote.set(k, note);
-      sink.send({ t: 'on', note, vel: 0.8 });
+      sink.send({ t: 'on', note, vel: 0.8 }, true);
     } else {
       const note = pillNote.get(k);
       pillNote.delete(k);
-      if (note !== undefined) sink.send({ t: 'off', note });
+      if (note !== undefined) sink.send({ t: 'off', note }, true);
     }
   },
   master: (v) => { emuLevel = v; host.setMaster(v); try { localStorage.setItem(MASTER_KEY, String(v)); } catch { /* private mode */ } },
@@ -579,8 +584,8 @@ let emuFresh = true;
 /** the name of the last patch the emulated FM-1 took (a refused one leaves it showing) */
 let emuLoaded = '';
 let emuTimer = 0;
-const emuHeld = new Set<number>();
-const emuSwallowed = new Set<number>();
+/** the editor's notes as the emulated FM-1's keys while its view shows (emu-keys.ts) */
+const emuKeys = new EmuKeys(emu);
 const editor = new Editor($('canvas'), loadSaved() ?? starterPatch(), {
   onStructure(p) {
     stampOctave(p);
@@ -1667,19 +1672,6 @@ function stepOpenList(d: number): void {
   loadNamed(next.load(), { from: next.from, stay: true });
   status.textContent = `FM-1: ${next.name}`;
 }
-/** the keyboard's notes are the emulated FM-1's keys while its tab shows; on its SEQ page they enter steps and do not
- * sound (as on the device). True: the message is used up */
-function emuKeys(msg: HostMsg): boolean {
-  if (msg.t === 'panic') { emuHeld.clear(); emuSwallowed.clear(); }
-  if (!emu.shown || !emu.ui || (msg.t !== 'on' && msg.t !== 'off')) return false;
-  const note = (msg as { note: number }).note;
-  if (msg.t === 'on') emuHeld.add(note);
-  else emuHeld.delete(note);
-  emu.keys(emuHeld);
-  if (msg.t === 'on' && emu.ui.page === 8) { emuSwallowed.add(note); return true; }
-  if (msg.t === 'off' && emuSwallowed.delete(note)) return true;
-  return false;
-}
 // the PATCH | EMU | LIBRARY switch over the main area (#218): the primary navigation; the sidebar shows the view's panels
 type View = 'patch' | 'emu' | 'library';
 let currentView: View = 'patch';
@@ -2091,7 +2083,7 @@ const syncAudioBtn = (): void => {
 host.onState = () => { syncAudioBtn(); screens.state(); envs.state(); };
 syncAudioBtn();
 audioBtn.onclick = () => (host.running && !host.muted ? panic() : void startAudio());
-const noteKeys = attachKeyboard(sink, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
+const noteKeys = attachKeyboard({ send: (m) => sink.send(m, true) }, () => currentTab === 'patch' && !document.querySelector('dialog[open], [popover]:popover-open'), (o) => {
   keyOctave = o;
   piano.setOctave(o);
   if (stampOctave(editor.patch)) queueSave(editor.patch);
