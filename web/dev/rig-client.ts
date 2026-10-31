@@ -17,6 +17,8 @@ type Match = (inId: string, p: Parsed) => boolean;
 let access: MIDIAccess | null = null;
 let pair: { inp: MIDIInput; out: MIDIOutput } | null = null;
 const waiters: { match: Match; done: (p: Parsed, inId: string) => void }[] = [];
+/** what went unanswered (#385, scripts/rig-peak.mjs): [kind, time] per wait that timed out, per frame no wait took */
+const rigLog: unknown[] = [];
 
 async function open(): Promise<MIDIAccess> {
   if (access) return access;
@@ -27,6 +29,7 @@ async function open(): Promise<MIDIAccess> {
       const p = ev.data ? parse(ev.data) : null;
       const w = p ? waiters.findIndex((x) => x.match(inp.id, p)) : -1;
       if (p && w >= 0) waiters.splice(w, 1)[0].done(p, inp.id);
+      else if (p) rigLog.push(['unasked', performance.now(), p.cmd]);
     };
   }
   return access;
@@ -39,6 +42,7 @@ function wait(match: Match, ms: number): Promise<{ p: Parsed; inId: string } | n
     const t = setTimeout(() => {
       const i = waiters.indexOf(w);
       if (i >= 0) waiters.splice(i, 1);
+      rigLog.push(['timeout', performance.now()]);
       res(null);
     }, ms);
     waiters.push(w);
@@ -162,4 +166,5 @@ async function screenOnce(): Promise<ScreenHead & { texts: ScreenText[] }> {
 }
 
 (window as unknown as { __rig: typeof rig }).__rig = rig;
+(window as unknown as { __rigLog: unknown[] }).__rigLog = rigLog;
 document.title = 'rig ready';

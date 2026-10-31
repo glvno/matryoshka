@@ -2180,7 +2180,9 @@ static void env_knob_msg(uint32_t k)
 #define PR_USER 0x8000u                                 /* a list entry: a store slot | PR_USER, else a FPRESET_LIST index */
 #define PR_MAX (N_FPRESETS + PS_SLOTS)
 static uint16_t pr_list[PR_MAX < 256u ? 256u : PR_MAX];
-static int32_t pr_vals[PS_MAXV];
+static int32_t pr_vals[PS_MAXV];                        /* a user preset's values (the store holds PS_MAXV at most) */
+static const int32_t *pr_at = pr_vals;                  /* the entry dp_entry read last: its values (a factory one's in ROM, any
+                                                         * number of them: Cassia 1 has 118 rows, #464), else pr_vals */
 
 /* device d's presets into pr_list: how many */
 static uint32_t dp_list(uint32_t d)
@@ -2198,7 +2200,7 @@ static uint32_t dp_list(uint32_t d)
     return n;
 }
 
-/* entry e's name (17 bytes) and values (pr_vals): how many values, -1 unreadable */
+/* entry e's name (17 bytes) and values (pr_at): how many values, -1 unreadable */
 static int dp_entry(uint16_t e, char *name)
 {
     uint32_t k, n, st;
@@ -2207,15 +2209,14 @@ static int dp_entry(uint16_t e, char *name)
             return -1;
         for (k = 0; k < n; k++)
             pr_vals[k] = ps_vbuf[k];
+        pr_at = pr_vals;
         return (int)n;
     }
     for (k = 0; k < 16u && FPRESET_LIST[e].name[k]; k++)
         name[k] = FPRESET_LIST[e].name[k];
     name[k] = 0;
-    n = FPRESET_LIST[e].n < PS_MAXV ? FPRESET_LIST[e].n : PS_MAXV;
-    for (k = 0; k < n; k++)
-        pr_vals[k] = FPRESET_LIST[e].v[k];
-    return (int)n;
+    pr_at = FPRESET_LIST[e].v;                          /* (all of them: not cut to what the store holds) */
+    return (int)FPRESET_LIST[e].n;
 }
 
 /* device d's row i value now (canonical order, as a preset holds it) */
@@ -2225,7 +2226,7 @@ static int32_t dp_row_value(uint32_t d, uint32_t i)
     return mod == 0xFFu ? 0 : (par & POLY_ROW) ? (row_ok(mod, par) ? poly_value(mod, par & 0x7Fu) << 16 : 0) : eng_get_param(mod, par);
 }
 
-/* whether loading entry e (its values read into pr_vals, n of them) would leave device d as it is: each row dp_load
+/* whether loading entry e (its values at pr_at, n of them) would leave device d as it is: each row dp_load
  * sets holds the entry's value already (a poly row at its whole number); rows past a shorter entry are kept by a load,
  * so they do not count. An entry of no values never matches. */
 static int dp_same(uint32_t d, int n)
@@ -2235,7 +2236,7 @@ static int dp_same(uint32_t d, int n)
         return 0;
     for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
         uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
-        int32_t v = pr_vals[i];
+        int32_t v = pr_at[i];
         if (mod == 0xFFu)
             continue;
         if (par & POLY_ROW) {
@@ -2298,7 +2299,7 @@ static int dp_load(uint32_t d, uint32_t k)
         return -1;
     for (i = 0; i < (uint32_t)n && i < pg_dev[d].nrows; i++) {
         uint32_t mod = pg_dev[d].rows[2u * i], par = pg_dev[d].rows[2u * i + 1u];
-        int32_t v = pr_vals[i];
+        int32_t v = pr_at[i];
         if (mod == 0xFFu)
             continue;
         if (par & POLY_ROW) {
@@ -2369,7 +2370,7 @@ static void dp_store(uint32_t d)
                 break;
         }
     }
-    n = dp_values(d);                                   /* (after the names: dp_entry reads each one's values into pr_vals) */
+    n = dp_values(d);                                   /* (after the names: dp_entry reads a user one's values into pr_vals) */
     rc = ps_put(pg_dev[d].structure, nm, pr_vals, n);
     if (rc) {
         ui_msg(rc == -2 ? "PRESETS FULL" : "PRESET NOT STORED", 1500);

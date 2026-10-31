@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 import { describe, expect, it } from 'vitest';
-import { makeAssembly, overlaps } from './assembly';
+import { childrenOf, makeAssembly, overlaps, parentOf, type AssemblyInst, type Rect } from './assembly';
 import { DEFS } from './modules';
 import { addModule, emptyPatch, type Patch } from './patch';
 import { PRESETS } from './presets';
-import { isPile, TIDY_GAP, tidy, tidyAssembly, type TidySizes } from './tidy';
+import { clearAround, isPile, pushAside, TIDY_GAP, tidy, tidyAssembly, type TidySizes } from './tidy';
 
 const W = 250;
 const H = 300;
@@ -139,5 +139,119 @@ describe('tidy up', () => {
       ];
       boxes.forEach((a, i) => boxes.slice(i + 1).forEach((b) => expect(overlaps(a, b), name).toBe(false)));
     }
+  });
+});
+
+/** two boxes come closer than TIDY_GAP */
+const close = (a: Rect, b: Rect): boolean =>
+  a.x < b.x + b.w + TIDY_GAP && b.x < a.x + a.w + TIDY_GAP && a.y < b.y + b.h + TIDY_GAP && b.y < a.y + a.h + TIDY_GAP;
+
+describe('an expanded frame pushes its neighbours aside (#206)', () => {
+  const frame = { x: 100, y: 100, w: 600, h: 400 };
+
+  it('moves what it covers the shortest way out, and leaves what it does not touch', () => {
+    const [right, below, far] = pushAside(frame, [
+      { x: 650, y: 120, w: 200, h: 200 },   // over the right edge: right is shorter
+      { x: 150, y: 480, w: 200, h: 200 },   // over the bottom edge: down is shorter
+      { x: 2000, y: 2000, w: 200, h: 200 },
+    ]);
+    expect(right).toEqual({ x: 100 + 600 + TIDY_GAP, y: 120, w: 200, h: 200 });
+    expect(below).toEqual({ x: 150, y: 100 + 400 + TIDY_GAP, w: 200, h: 200 });
+    expect(far).toEqual({ x: 2000, y: 2000, w: 200, h: 200 });
+  });
+
+  it('pushes on through a row: a card it moved into another moves that one too, keeping their order', () => {
+    const row = [{ x: 680, y: 150, w: 200, h: 200 }, { x: 900, y: 150, w: 200, h: 200 }, { x: 1120, y: 150, w: 200, h: 200 }];
+    const out = pushAside(frame, row);
+    expect(out.map((r) => r.x)).toEqual([720, 940, 1160]);
+    expect(out.every((r) => r.y === 150)).toBe(true);
+    const all = [frame, ...out];
+    all.forEach((a, i) => all.slice(i + 1).forEach((b) => expect(close(a, b)).toBe(false)));
+  });
+
+  it('moves a card up or left when that spot is free, never off the canvas', () => {
+    // just above the frame's header, with room above it: up is the short way
+    const [up] = pushAside(frame, [{ x: 200, y: 60, w: 200, h: 40 }]);
+    expect(up).toEqual({ x: 200, y: 100 - TIDY_GAP - 40, w: 200, h: 40 });
+    // at the canvas's top: it cannot go up, so it goes down past the frame
+    const [down] = pushAside({ x: 0, y: 0, w: 600, h: 400 }, [{ x: 100, y: 0, w: 200, h: 100 }]);
+    expect(down).toEqual({ x: 100, y: 400 + TIDY_GAP, w: 200, h: 100 });
+  });
+
+  it('keeps cards that already lay on one another where they are, when the frame does not reach them', () => {
+    const pile = [{ x: 1500, y: 1500, w: 200, h: 200 }, { x: 1520, y: 1520, w: 200, h: 200 }];
+    expect(pushAside(frame, pile)).toEqual(pile);
+  });
+
+  it('on the canvas: the expanded frame clears the cards and collapsed assemblies around it', () => {
+    const p = emptyPatch();
+    const a1 = addModule(p, DEFS.osc, 100, 100);
+    const a2 = addModule(p, DEFS.adsr, 400, 100);
+    const a3 = addModule(p, DEFS.vca, 100, 450);
+    const right = addModule(p, DEFS.lfo, 400 + W + 30, 120);    // beside the collapsed card, under the frame once it opens
+    const under = addModule(p, DEFS.noise, 150, 450 + H + 10);
+    const other = addModule(p, DEFS.mixer, 2000, 2000);
+    const b = makeAssembly(p, [other.id], 'b');
+    const asm = makeAssembly(p, [a1.id, a2.id, a3.id], 'v');
+    asm.open = true;
+    clearAround(p, [asm.id], sizes);
+    const f = { x: 100 - 12, y: 100 - 12 - 30, w: 400 + W - 100 + 24, h: 450 + H - 100 + 24 + 30 };
+    for (const id of [right.id, under.id]) { const [x, y] = at(p, id); expect(close(f, { x, y, w: W, h: H }), String(id)).toBe(false); }
+    expect(at(p, right.id)[1]).toBe(120);       // pushed right, not down
+    expect(at(p, under.id)[0]).toBe(150);       // pushed down, not right
+    expect([b.x, b.y]).toEqual([2000, 2000]);   // out of reach: stays
+  });
+
+  it('inside an assembly: a nested frame clears its fellow members, and the frame around it then clears the canvas', () => {
+    const p = emptyPatch();
+    const x = addModule(p, DEFS.osc, 100, 100);
+    const y = addModule(p, DEFS.adsr, 100 + W + 30, 100);
+    const sibling = addModule(p, DEFS.vca, 100 + 2 * (W + 30), 100);   // 18 px right of the inner frame once it opens
+    const outer = makeAssembly(p, [x.id, y.id, sibling.id], 'outer');
+    const inner = makeAssembly(p, [x.id, y.id], 'inner');
+    const beside = addModule(p, DEFS.lfo, 100 + 2 * (W + 30) + W + 25, 100);
+    outer.open = true;
+    clearAround(p, [outer.id], sizes);                // the outer frame alone: its neighbour is clear
+    expect(childrenOf(p, outer)).toEqual([inner]);
+    expect(parentOf(p, inner.id)).toBe(outer);
+    inner.open = true;                               // its frame is wider than its collapsed card (200 wide): it covers the sibling
+    const before = at(p, sibling.id)[0];
+    clearAround(p, [inner.id], sizes);
+    expect(at(p, sibling.id)[0]).toBeGreaterThan(before);
+    const box = (id: number): Rect => { const [bx, by] = at(p, id); return { x: bx, y: by, w: W, h: H }; };
+    const frameOf = (a: AssemblyInst, rs: Rect[]): Rect => {
+      const l = Math.min(...rs.map((r) => r.x)), t = Math.min(...rs.map((r) => r.y));
+      const r = Math.max(...rs.map((q) => q.x + q.w)), b = Math.max(...rs.map((q) => q.y + q.h));
+      return { x: l - 12, y: t - 12 - 30, w: r - l + 24, h: b - t + 24 + 30 };
+    };
+    const innerF = frameOf(inner, [box(x.id), box(y.id)]);
+    expect(close(innerF, box(sibling.id))).toBe(false);
+    const outerF = frameOf(outer, [innerF, box(sibling.id)]);
+    expect(close(outerF, box(beside.id))).toBe(false);
+  });
+
+  it('every factory patch: each assembly expanded on its own, tidied inside, nothing comes near its frame', () => {
+    const size = (id: number) => ({ w: 200 + (id % 5) * 60, h: 120 + (id % 7) * 50 });
+    const sz: TidySizes = { module: size, container: size, frame: () => ({ pad: 12, head: 30, minW: 0 }) };
+    for (const [name, make] of Object.entries(PRESETS))
+      for (const top of (make().assemblies ?? []).filter((a) => !(make().assemblies ?? []).some((b) => b.children?.includes(a.id)))) {
+        const p = make();
+        const a = p.assemblies!.find((x) => x.id === top.id)!;
+        a.open = true;
+        tidyAssembly(p, a, sz);
+        clearAround(p, [a.id], sz);
+        const inAsm = new Set(p.assemblies!.flatMap((x) => x.modules));
+        const tops = p.assemblies!.filter((b) => !p.assemblies!.some((c) => c.children?.includes(b.id)));
+        const mods = a.modules.map((id) => p.modules.find((m) => m.id === id)!);
+        const kids = childrenOf(p, a);
+        const rs = [...mods.map((m) => ({ x: m.x, y: m.y, ...size(m.id) })), ...kids.map((k) => ({ x: k.x, y: k.y, ...size(k.id) }))];
+        const l = Math.min(...rs.map((r) => r.x)), t = Math.min(...rs.map((r) => r.y));
+        const f = { x: l - 12, y: t - 42, w: Math.max(...rs.map((r) => r.x + r.w)) - l + 24, h: Math.max(...rs.map((r) => r.y + r.h)) - t + 54 };
+        const others = [
+          ...p.modules.filter((m) => !inAsm.has(m.id)).map((m) => ({ x: m.x, y: m.y, ...size(m.id) })),
+          ...tops.filter((b) => b !== a).map((b) => ({ x: b.x, y: b.y, ...size(b.id) })),
+        ];
+        for (const o of others) expect(close(f, o), `${name} / ${a.label}`).toBe(false);
+      }
   });
 });
