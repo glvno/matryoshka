@@ -9,8 +9,10 @@ name: deploy
 # The site serves the latest release, not main: the editor and the firmware are released together, so the site always
 # pairs an editor with the firmware package it was released with. Pushing a release tag vX.Y.Z deploys it (only when it
 # is the newest release: an older tag pushed later leaves the site alone); a manual run builds the newest release tag
-# or the one it names (to roll back). Nothing else deploys: the About card's AI usage figures are as of the last deploy. Merging to main deploys nothing; unreleased
-# work is tried on the dev server (npm run dev). Tags with a suffix (v1.2.0-rc1) are not releases.
+# or the one it names (to roll back). The changelog page is the exception: CHANGELOG.md always comes from main (the page
+# shows released versions only), and a push to main that changes it deploys the newest release again with it (D-112).
+# Nothing else deploys: the About card's AI usage figures are as of the last deploy. Other merges to main deploy nothing;
+# unreleased work is tried on the dev server (npm run dev). Tags with a suffix (v1.2.0-rc1) are not releases.
 # One-time setup: the repository secret CLOUDFLARE_API_TOKEN (Cloudflare Pages: Edit) and the variable CLOUDFLARE_ACCOUNT_ID;
 # repository Settings > Pages > Source: GitHub Actions (the github-pages environment deploys only main, so the forwarder
 # is published by a manual run on main; a tag push publishes only the app).
@@ -18,6 +20,8 @@ name: deploy
 on:
   push:
     tags: ['v*']
+    branches: [main]
+    paths: [CHANGELOG.md]   # (a tag push ignores paths: it always runs)
   workflow_dispatch:
     inputs:
       tag:
@@ -55,7 +59,13 @@ jobs:
               exit 0
             fi
           else
-            tag=${ASKED:-$newest}
+            tag=${ASKED:-$newest}   # (a manual run, or a CHANGELOG.md change on main: the newest release again)
+            # a release's own merge dates its section before its tag exists: that tag's push deploys it
+            top=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+ ' CHANGELOG.md | cut -c4- | tr -d ' ')
+            if [ "$GITHUB_EVENT_NAME" = push ] && [ -n "$top" ] && [ "v$top" != "$newest" ]; then
+              echo "::notice::CHANGELOG.md's newest release is $top, not ${newest#v}: its tag will deploy it"
+              exit 0
+            fi
           fi
           git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "::error::no tag $tag"; exit 1; }
           echo "::notice::deploying $tag"
@@ -72,6 +82,12 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.pick.outputs.tag }}
+      # the changelog page reads main's CHANGELOG.md, so a wording fix reaches the site without a release (D-112)
+      - name: CHANGELOG.md from main
+        working-directory: .
+        run: |
+          git fetch --depth=1 origin main
+          git checkout FETCH_HEAD -- CHANGELOG.md
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -124,7 +140,7 @@ jobs:
   # the old address serves only the forwarder, after the app is up at the new one (from main's copy of it)
   forward:
     needs: build
-    if: github.ref == 'refs/heads/main'                # (the github-pages environment deploys only main: not on a tag push)
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'   # (only a manual run from main: the github-pages environment deploys only main)
     runs-on: ubuntu-latest
     permissions:
       contents: read
