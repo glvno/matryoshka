@@ -2889,10 +2889,6 @@
       {
        "module": 45,
        "port": "in"
-      },
-      {
-       "module": 45,
-       "port": "clock"
       }
      ]
     },
@@ -3148,10 +3144,6 @@
       {
        "module": 45,
        "port": "in"
-      },
-      {
-       "module": 45,
-       "port": "clock"
       }
      ]
     },

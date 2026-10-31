@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Opening `<7PH` in the editor no longer shows it over the FM-1's memory budget (3,894 of 3,840 bytes, measured in the editor before; 3,840 now, the same as on the FM-1), so it no longer opens as a sandbox patch or pauses Live sync. The drum kits' velocity inputs show as jacks on their cards again, instead of gain rows whose sliders did nothing (#465).
 - In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
 
 ## 1.7.0 — 2026-10-30

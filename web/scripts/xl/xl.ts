@@ -3,6 +3,7 @@
 // (docs/ledger/patches-and-presets.md D-338). Each XL is one file, scripts/xl/<slug>.ts, exporting `xl` (an Xl), plus one
 // line in scripts/xl/index.ts; gen-xl.ts writes them to web/presets/xl/<slug>.json, where src/presets.ts finds them.
 // XLs never go to the FM-1, so the FM-1's budget does not bind them: one over it is a sandbox patch.
+import { fixAssemblies } from '../../src/assembly';
 import { DEFS } from '../../src/modules';
 import { validatePatch, type Patch } from '../../src/patch';
 import { deviceBudget, type Budget } from '../../src/patchbin';
@@ -35,6 +36,7 @@ export function buildXls(xls: Xl[], fm1: Record<string, () => Patch>): BuiltXl[]
     if (seen.has(name)) throw new Error(`two XLs named "${name}"`);
     seen.add(name);
     const patch = validatePatch(structuredClone({ ...x.build(from()), name }), DEFS);
+    fixAssemblies(patch, DEFS);   // (as the editor holds it once opened, #465)
     return { patch, budget: deviceBudget(patch) };
   });
 }
