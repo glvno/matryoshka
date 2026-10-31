@@ -2886,16 +2886,16 @@
      "param": "pos",
      "label": "chorus",
      "head": "chorus",
-     "names": [
-      "OFF",
-      "I",
-      "II"
-     ],
      "also": [
       {
        "module": 54,
        "param": "pos"
       }
+     ],
+     "names": [
+      "OFF",
+      "I",
+      "II"
      ]
     },
     {

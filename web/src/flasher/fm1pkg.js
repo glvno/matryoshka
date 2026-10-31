@@ -305,7 +305,8 @@ export function openPackageProblem({ product, flashSize, headSha, loaderSha }) {
 // M-VAVE publishes Official Open inside its Workbench page (FM1-Open-Vxx-Workbench.html), as base64: the packages in it
 export function workbenchPackages(bytes) {
   const start = new TextDecoder("latin1").decode(bytes.subarray(0, Math.min(bytes.length, 64)));
-  if (!/^\s*</.test(start)) return [bytes];
+  // a page is text: an encrypted .fwsc starts with "<" (0x3C) about once in 256 builds (tools/fm1_install.py is_page)
+  if (!/^\s*<[\t\r\n\x20-\x7e]*$/.test(start)) return [bytes];
   const html = new TextDecoder("latin1").decode(bytes), out = [];
   for (const m of html.matchAll(/"data":"([A-Za-z0-9+/=]{100000,})"/g)) {
     try { out.push(Uint8Array.from(atob(m[1]), (c) => c.charCodeAt(0))); } catch (_) { /* not base64 */ }
