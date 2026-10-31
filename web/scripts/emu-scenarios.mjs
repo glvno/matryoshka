@@ -118,14 +118,21 @@ class Target {
   }
   /** wait up to `ms` for `s` on the LCD */
   /** the output's peak in `n` windows of about `ms` each: [ms since the first window began, peak] per window (#368: how long
-   *  a note sounds; the rig's windows are a round trip longer, hence the times) */
+   *  a note sounds; the rig's windows are a round trip longer, hence the times). A window that took far longer is left out
+   *  (#385): now and then a TEST_PEAK gets no answer, the rig's link asks again 2 s later, and that answer holds the
+   *  loudest sample of the whole 2 s, so it read as one window at a hit's level out of nowhere. The times show the gap. */
   async windows(n, ms) {
     const out = [];
     const t0 = Date.now();
     await this.mark();
+    let last = Date.now();
     for (let i = 0; i < n; i++) {
       await sleep(ms);
-      out.push([Date.now() - t0, await this.peak()]);
+      const p = await this.peak();
+      const now = Date.now();
+      if (now - last > ms + 500) console.log(`  note: a window of ${now - last} ms left out (a TEST_PEAK asked again, #385)`);
+      else out.push([now - t0, p]);
+      last = now;
     }
     return out;
   }
@@ -462,11 +469,10 @@ async function main() {
     await sleep(600);
     return w;
   }
-  /** the hit in a profile: its onset (the window with the biggest rise that the next two windows keep at least half of:
-   *  the rig's TEST_PEAK now and then gives one window about a hit's level out of nowhere, 4 in some 3,600 reads over three
-   *  runs, never the emulator), its peak (that window or the next: an attack can span two) and how much of it the windows
-   *  of the next `ms` keep at least (their lowest / the peak): a voice held by its gate keeps about all of it, one let go
-   *  decays */
+  /** the hit in a profile: its onset (the window with the biggest rise that the next two windows keep at least half of: a
+   *  guard from before windows() left out the long windows of a TEST_PEAK asked again, #385), its peak (that window or the
+   *  next: an attack can span two) and how much of it the windows of the next `ms` keep at least (their lowest / the
+   *  peak): a voice held by its gate keeps about all of it, one let go decays */
   function hold(w, ms = 300) {
     let i = 1;
     const rise = (k) => (k + 2 < w.length && w[k + 1][1] * 2 >= w[k][1] && w[k + 2][1] * 2 >= w[k][1] ? w[k][1] - w[k - 1][1] : -Infinity);
