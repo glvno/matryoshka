@@ -1,124 +1,66 @@
 # Changelog
 
-## 1.7.0 — 2026-10-30
-
-- Io 4's Unison Lead preset has no vibrato: with it, the four unison voices overloaded the FM-1 on the first key and it played on three ("ONE PART LESS"). Without it the test rig measured no shed (2026-10-30, #453). Ensemble Pad can still drop a part at four notes.
-- **An oscillator whose pitch moves costs less** (#453). On the test rig Io 4's Unison Lead and Ensemble Pad overloaded and dropped a part; the trigger was their vibrato (`vco / mod = 0.03`): an oscillator works out its phase increment (`exp2_scale`) every sample its pitch input moves, so a vibrato, a glide or a note's start pays it every sample. `exp2_scale` now does its arithmetic in 32 bits where the result fits them (every phase increment) and is bit for bit the same (`tools/engine_exact.sh`, 304 kits; `exact_test` against the 64-bit form on every pitch from -70 to +40 octaves for twelve bases and 20 million random pairs). On the CPU model (`tools/cpu`, 4 notes held, 400 blocks), peak block before → after: Ensemble Pad 565 k → 548 k cycles (about 2,444 → 2,370 µs of the 2,902 µs block), Unison Lead 565 k → 550 k; the vibrato's extra cost in Ensemble Pad 55 k → 43 k cycles a block; the note-start block of Io 4's other presets 556 k → 544 k. Every factory check's peak block -0.4 % on average (`npm run cpu-hot`), most in Vernon 100 (-2.7 %), Acid at 4 parts (-2.7 %) and Monolith D (-2.3 %), none slower. Rig data: `docs/measurements/2026-10-30-rig-io4-*.json`. Host-tested; not yet on a device.
-- Oracle V's Poly-Mod Bell preset plays three voices, not five: its phase modulation costs about a third more per voice, and four voices measured 2,923 µs of the FM-1's 2,902 µs audio block on the test rig, so it could crackle and the editor treated a patch at that preset as a sandbox patch (CPU estimate 108 % → 67 %). Measured 2026-10-30, docs/measurements/2026-10-30-rig-oracle-v-presets.json.
-- **Loading a preset no longer makes a factory patch too big for the FM-1** (#452). Io 4, Briefcase 3 and Vernon 100 sat a few bytes under the FM-1's 3,840 patch bytes, and the preset name a load stores (up to 12 bytes) took them over: the patch turned into a sandbox patch (SANDBOX, the memory bar over, "Plays here, with no FM-1 limits: 1.1× its memory"), Live sync paused and the FM-1 went into sandbox mode, and Send refused it. The FM-1 budget now counts 12 bytes for every engine's preset name, named or not, so a preset load or store never changes whether a patch fits ([D-284](docs/ledger/patch-format.md#D-284)). Another device's preset name goes to the FM-1 only while it fits, else it is left out, as the FM-1 itself does. The four factory patches that then did not fit are trimmed by names only, no module, sound or player lost, and the FM-1's display shows several of them whole for the first time (it cut names at 12 characters). Patch bytes counted, before → after (the binary itself in brackets): Io 4 3,850 at its presets → 3,839 (3,827): its `bend/mod` pages are `lever`, its `portamento` page `porta`. Briefcase 3 3,849 → 3,839 (3,827): the `envelope` pages are `env`. Vernon 100 3,850 → 3,833 (3,821): `amplitude shaper` (shown AMPLITUDE SH) is `amp shaper`, `keys/oct crs` / `keys/oct fine` (KEYS/OCT FIN) are `kb/oct crs` / `kb/oct fine`, `sustain on/off` (SUSTAIN ON/O) is `sus on/off`, and the slashed knob names lose their spaces (`osc 1/env 1`, `hi/lo`, `kb1/kb2`, `white/pink`, `osc 3/ext`, `osc 4/ext`, `env 1/env 2`). `<7PH` 3,851 → 3,840 (3,828): its Silver Box's `waveform`, `tuning` and `resonance` rows are `wave`, `tune` and `reso`. Every other factory patch already fitted with the room counted (Wanderer the closest, 3,836). Structures, presets, sounds and CPU estimates are unchanged; an FM-1 rewrites these four untouched slots in the bank. Host- and emulator-tested; not yet on a device.
-- **Cassia 1 reaches its resonance waves, and its rows are the Casio CZ-1's** (#430). Each line's `wave` row is a choice of the eight waveforms by name (saw, square, pulse, dbl sine, saw-pulse, reso 1, reso 2, reso 3), and its `wave 2` row of off and seven of them (saw .. reso 2: a choice row holds eight); they were numbers from -4 to 4, so the resonance waves could not be chosen and loading any preset, Init included, turned line 2 from reso 1 to saw-pulse. Wave 2 off plays the line's wave alone, as on the CZ. `line` has the CZ's four positions, 1, 2, 1+1' and 1+2', and replaces the separate `1+1'` row; line 2's `ring` and `noise` rows are one `mod` row, 1 off, 2 ring, 3 noise, as on the CZ. `vib depth` is in semitones: a step is a cent (it was 12) and a click on the FM-1 8 cents (it was 96). Reso Pad plays line 2 on reso 1, its DCW sweep moving the resonance; the other presets keep their waves, numbers and sound. Preset cards take a named choice row's names (`line 2 / wave = reso 1`) and list them in the header. The structure of Cassia 1 changes with it: a preset you stored on an FM-1 for Cassia 1 no longer matches it (the factory ones are regenerated, and an FM-1 rewrites an untouched Cassia 1 slot in the bank). The factory patch takes 3,805 of the FM-1's 3,840 patch bytes (3,741 before) and the CPU estimate says 63 % (58 % before). Peaks in the browser engine, 2 notes held 3 s, at the patch's Output of 0.51 before #440: Init 1.000 with 12 samples clipped → 0.859 (line 2 is reso 1 again), Reso Pad 0.944 → 0.848, the others unchanged; at the Output of 0.43 that #440 set: Init 0.725, PD Bass 0.445, PD Brass 0.862, Glass Bell 0.784, Reso Pad 0.715, Tine Piano 0.780, none over the 0.88 headroom. Host-tested; not yet on a device.
-- **No factory patch or factory preset clips** (#440). Every FM-1 factory patch, and every factory preset of its engines, was played with as many keys held as its voices allow (at most 8: notes 60 64 67 71 72 76 79 83), with all of a Drum map's keys and with its patterns running; sixteen presets and the Plucked String patch clipped. A preset far louder than its engine's others is turned down on its card, at a level after any drive or resonance, so its sound stays; then the generators lower a patch's Output (never raise it) until the loudest way of playing it peaks at 0.88 at most, at the FM-1's rate and at 48 kHz ([D-854](docs/ledger/patches-and-presets.md#D-854)). A test keeps every FM-1 factory patch under 0.95. Peaks in the browser engine (3 s held, 48 kHz), before → after: Oracle V's Vintage Strings 1.10 → 0.84 (oscillator levels 0.5 / 0.5 → 0.37 / 0.37) and Unison Bass 0.92 → 0.82 (→ 0.44 / 0.44); Hera 6's Brass 1.13 → 0.79, Strings 1.80 → 0.78, Bass 1.83 → 0.80, Organ 2.95 → 0.77 (its VCA 1 → 0.8, 0.5, 0.5, 0.3) and Init 0.97 → 0.84; Sallen 20's Growl Bass 1.51 → 0.76 (VCO levels 0.5 / 0.45 → 0.27 / 0.24) and Noise Sweep 1.44 → 0.74 (0.5 → 0.26); Expander S's Unison Lead 1.20 → 0.83 (VCO levels 0.5 / 0.5 → 0.35 / 0.35); Io 4's Ensemble Pad 1.36 → 0.82, Arp Pluck 1.02 → 0.82, Unison Lead 2.15 → 0.82, PWM Brass 1.40 → 0.81 (its VCA level 1 → 0.6, 0.8, 0.38, 0.58); 8 Lire's Trill Delay 1.00 → 0.86 (vol 0.7 → 0.6); Cassia 1's Init and PD Brass 1.02 → 0.86; Basic Poly's Glass Bell 1.60 → 0.82; Supersaw Stack's Thin Saw Keys 1.06 → 0.82; Plucked String 1.28 → 0.81. What sounds quieter, by the patch's Output: Basic Poly 0.31 → 0.16 (all its presets about 6 dB down, for Glass Bell's eight sines), Plucked String 0.88 → 0.56 (4 dB), Supersaw Stack 0.54 → 0.42 (2 dB), Cassia 1 0.51 → 0.43 (1.5 dB), Hera 6 0.77 → 0.67 (1.2 dB), Canvas 1 → 0.91, Sallen 20 1 → 0.93 and the 808 Kit 0.32 → 0.30 (under 1 dB), Expander S 0.78 → 0.77, Algo Four 0.55 → 0.54; Perun 4 0.24 → 0.25 (its level rule run again). The presets cut on their cards are that much quieter besides (Hera 6's Organ about 10 dB, Io 4's Unison Lead 8 dB, Sallen 20's two and Io 4's Ensemble Pad and PWM Brass 4 to 6 dB). The XLs (browser only) take the same Output rule: Algo Four XL 0.28 → 0.12 (eight voices peaked 1.88), Expander S XL 0.66 → 0.43, Hera 6 XL 0.5 → 0.36, Spokes 6 XL 0.59 → 0.49, 808 Kit XL 0.41 → 0.39, Perun 4 XL 0.28 → 0.29. The FM-1's engine (the golden host build) peaks within 2 % of the browser's on all 241 of these ways of playing (at the FM-1's rate), 0.88 at most. An FM-1 rewrites an untouched factory slot in the bank. Host-tested; not yet on a device.
-- **An update brings factory patches changed without a format change** (#441). The FM-1 rewrote the untouched factory slots of its bank only when the patch format changed, so an update that retuned a factory patch (Drift Poly's headroom, #437) left the old one in the bank: the test rig's Drift Poly still clipped. The boot now also rewrites them when the firmware's factory patches differ from the ones the bank was brought to (a fingerprint in the settings record, which grows from 13 to 16 bytes; an older firmware still reads it), and says FACTORY PATCHES UPDATED. A slot you edited and saved, or one already holding today's patch, stays as it is. The lookup table grows from 704 to 705 earlier factory patches (`LEGACY_FACTORY`), now in every format. Host- and emulator-tested; not yet on a device.
-- **Idle voices no longer all wake in the same block** (#434). An idle voice runs every 32nd block to check that it is still silent; voices that went idle together (every voice after a patch load) all ran that check in the same block, so drift poly's Slow Pad at 8 voices clicked like a helicopter on one held note. Each voice now checks in its own block. Peak block of drift poly at 8 voices with one note held, on the CPU model (`tools/cpu`): 578 k → 163 k cycles (86 % → 25 % of the block; the median block stays 93 k, 14 %); with all 8 notes held it stays 86 %. A voice that wakes from idle can start with its oscillators at another phase than before (golden kits still agree, `tools/golden.sh`). Host-tested; not yet on a device.
-- **PRESET's first turn on a device set to no preset reaches a real preset** (#432). On the FM-1 a device in a patch just opened had no place in its preset list, so the first PRESET turn right loaded INIT, the values it already had: the bar said `PRESET INIT` and nothing changed. Now a device with no preset name stands on the first preset whose values it has, so a fresh Silver Box goes to ACID SQUELCH on the first turn right and to LONG SWEEP on the first turn left. The editor's ‹ › preset arrows had the same dead first step and now match. Host- and emulator-tested; not yet on a device.
-- Hera 6's Glass Pad preset is a thin, slowly swept pulse (narrow width, high-pass up, open filter, a long swell): the first draft was Strings again. From the owner's listening pass on the test rig (#413).
-- **drift poly's chords no longer clip** (#413). The owner heard its chords break up on the test rig; it was clipping, not the CPU (the rig's survey: 4 voices sounding take about 1715 of a 2902 µs block, `docs/measurements/2026-10-30-rig-simple-engines.json`). Its mixer levels go from 0.7 / 0.6 to 0.17 / 0.14 and the Drift Poly patch's Output from 0.59 to 1, about 0.4 times as loud overall. Peaks in the browser engine (3 s held, notes 60 64 67 71 72 ..), before → after: one note 0.25..0.40 → 0.10..0.16 (Drift Bass 0.06 → 0.02); Slow Pad 5 notes 1.000 with 210 samples clipped → 0.52; Analog Strings 5 notes 1957 clipped → 0.59; at 8 voices and 8 notes every preset clipped but Drift Bass (up to 8759 samples) → 0.13..0.83. Slow Pad and Analog Strings play 6 voices (5 since the last listening pass): 6, not 8, keeps the FM-1 near 75 % of the CPU (8 measure about 92 %); Slow Pad's single-note helicopter at 8 was the idle checks (#434). An FM-1 rewrites an untouched Drift Poly slot in the bank. Host-tested; not yet on a device.
-- **Four new factory patches: Basic Poly, Drift Poly, Mono Lead and Supersaw Stack** (slots 26..29 as the FM-1 numbers
-  them; #413). On the FM-1 an engine's presets are reached by PRESET on its page, so an engine's presets were out of
-  reach until some patch in the bank held it: these four engines have hand-written preset cards but had no factory
-  patch. Each new patch is the engine as made (its Init rows), Main's keys into it, with the Arpeggiator and an empty
-  PATTERN track every melodic patch has; the CPU estimate says 32 %, 48 %, 17 % and 47 %. An FM-1 updated from an
-  earlier firmware keeps its bank as it is: the new slots appear after FACTORY RESET (MENU > SYSTEM), or on the first
-  boot of an empty store. Host-tested; not yet on a device.
-- **The FM-1 rounds a row's value to the figure it shows** (#426). A 0..1 row's knob click is 0.00999, so one click from 0 read `0.00` and three read `0.02`; every row stepped by a knob was shown cut, not rounded (mixer levels, resonance, Silver Box TUNING). Now `0.01` and `0.03`, and a one-decimal value such as `12.46` reads `12.5`. Host- and emulator-tested; not yet on a device.
-- **FM-1 knob turns: a fast click only after one the same way, HOME held turns fine, a click glides over 23 ms** (#340,
-  #405). KNOB ACCEL's five-click step now counts only when the knob's previous click, within 80 ms, went the same way; a
-  reversal is one click, so a turn back lands on the values between. HOME held + K1..K4 moves a row by a tenth of a
-  click, never under the row's step in the editor: an Offset row (Elvira 2's drone, 8 Lire's hold) 0.01 instead of
-  0.08, a fine row 1 ct instead of 2 ct, a log row 1/1000 octave; HOME's release then goes nowhere. A knob's click (or
-  MIDI CC 16..19) reaches the module over 8 blocks of 128 frames (23 ms) instead of at once, so stepping a level, drone,
-  hold, tune or cutoff row neither clicks nor zippers; the value itself, the editor's mirror, MIDI out and a save see it
-  at once; choices, settings, patch loads, presets and the editor's sends set at once, and the browser engine does not
-  glide. With no click pending the engine is bit for bit as before (`tools/engine_exact.sh`, 291 kits). The LCD manual
-  says so. Host- and emulator-tested; not yet on a device.
-- **The FM-1 can count in before REC records** (#414). MENU > PANEL > COUNT-IN: OFF (as made), 1 BAR or 2 BARS, saved
-  with the panel settings (SAVE). With it on, REC with the transport stopped starts the transport and records from the
-  end of the count; REC while running waits for the next bar line, then counts the bars, so recording always begins on
-  a bar. The bar counts the beats (COUNT-IN 1 .. 4; with two bars, 2.3 for bar 2, beat 3), the footer says COUNT-IN and
-  the track, and REC's LED blinks on the beat; the keys sound as usual and nothing is recorded until the count ends.
-  REC again during the count turns REC off, and PLAY or any stop ends it. No click: the FM-1 has no metronome voice.
-  The LCD manual says so. Host- and emulator-tested; not yet on a device.
-- The factory assembly `step sequencer` is gone (#417): a Steps track, a pattern or the Arpeggiator does its job. `random melody` (chance) and `clock` (a free-running clock with divisions for S&H, grains and the `seq` module) stay. A patch that holds a copy of it plays as before: an inserted assembly is copied into the patch.
-- **The editor draws the arm as the cabling it is** (#418). Arming a factory instrument lights the cables Main's keys travel to it, Main → its Steps track → its Arpeggiator → the instrument, in the arm colour, and marks the track and the Arpeggiator as armed with it (a lighter edge, a half-filled ARM dot that says which device they are armed with); arming the track lights the same chain on from it. A dashed virtual cable is drawn only into a keys input no cable feeds, into that jack; before, one dashed line ran from Main straight to each armed device, a path the keys do not take, and the devices armed with it showed nothing. The FM-1's SEL on an instrument's page now shows that instrument armed in the editor, not only its track.
-- **On the FM-1, a HOME tap goes to the device's first page, then to the patch's home page** (#391, #365). On a later
-  page of a device HOME goes to its first page; on a device's first page it goes to the patch's home page (the page a
-  fresh patch opens on); there it does nothing. Out of the menu, the environment, the SEQ page, the SONG page or a Page
-  button's list it still goes back one step, and HOME held + PRESET still steps patches. The LCD manual says so.
-  Host- and emulator-tested; not yet on a device.
-- **A button pressed the moment the first page appears after a first boot (or FACTORY RESET) is taken** (#248). The
-  presses made while the loading screen was up are dropped before the page is drawn, not after it, so a GLO (or any)
-  press that starts while the page is going out no longer vanishes; on the device that draw takes about 120 ms.
-  Emulator-tested (the smoke taps GLO the moment the header appears); not yet on a device.
-- Factory presets are written by hand, one text file per engine (`web/presets/cards/`, `npm run presets`), in place of the rule-made Bright / Dark / Pad set: every one of the 24 FM-1 engines has five, named for what they are for (Fat Bass, Vintage Strings, Acid Squelch, Tight Techno ...). Drafts, not yet listened to on the FM-1 (#413)
-- **Elvira 2's `drone` rows and 8 Lire's `hold` rows turn in steps of 0.01 on the FM-1** (#405). The Offset (-4..4) behind each row is a Macro (0..1), so a knob click is 0.01 instead of 0.08 over a row whose useful part is 0..1; the same value reaches the voice and the factory presets sound the same. The structure of the two engines changes with it: a preset you stored on an FM-1 for Elvira 2 or 8 Lire no longer matches them (the factory ones are regenerated). The same rows in Elvira 2 XL and 8 Lire XL are 0..1 too. Host-tested only.
-### Changes
-
-- **The FM-1 draws its screens faster: a second LCD line buffer** (#377). The LCD driver keeps two scanline buffers
-  (480 B each, RAM 960 B instead of 480 B), so a row is built while the one before it goes out over SPI by DMA; before,
-  every row waited for the last one's transfer. Measured on the test rig (`npm run rig:bench`, Elvira 2 at 43 % CPU, 3
-  rounds, the firmware's own draw times): a page reached by SELECT / ALGO 123.7 → 103.3 ms (worst 200.2 → 153.7),
-  the whole device page 139.8 → 121.6 ms (worst 156.9 → 136.5), PRESET's toast 34.8 → 30.8 ms, a knob click's worst
-  18.2 → 15.1 ms; the same with the transport running. The audio interrupt (about 2.3 ms of every 2.9 at that load)
-  still pauses the screen, so the gain is smaller on a heavy patch than on an idle one. The screen is drawn the same,
-  pixel for pixel (panel_test.c); checked on the test rig, not yet on the owner's FM-1.
-- **On the FM-1, PRESET alone steps the focused device's presets; HOME held + PRESET steps patches** (#395, slice 4).
-  On a device's page, PRESET loads that device's next or previous preset as it turns (an assembly's stored values,
-  factory or yours), its name in the bar; a module has none (NO PRESETS ON A MODULE). The environment row's PRESET and
-  ALGO do the same as before. To change patch, hold HOME and turn PRESET: the slot and name show in the footer's toast as
-  before, and that HOME release goes nowhere. On the SEQ and SONG pages PRESET still picks the pattern; in the menu it
-  still steps patches; PLAY held + PRESET is still the tempo. The preset list page is gone (nothing opened it since SEL
-  began to arm). The LCD manual says so. In the editor's FM-1 tab, Shift-click latches HOME for the chord. Host- and
-  emulator-tested; not yet on a device.
-- **On the FM-1, GLO opens the settings menu** (#395, slice 1). The GLOBAL page is gone: GLO opens the menu on its MIDI
-  tab, and GLO again or a HOME tap goes back. ALGO steps the tabs. MIDI (MIDI CHANNEL, CLOCK IN, MIDI OUT), PANEL
-  (LEDS, KNOB ACCEL) and SYSTEM (UPDATE MODE, FACTORY RESET) are pages of settings, each row turned by its own knob
-  K1..K4 in that knob's colour, drawn like a device page with the tab chips under the bars; INFO lists VERSION, CPU,
-  CPU PEAK, BANK SLOTS and BATTERY; MANUAL is the text as before. UPDATE MODE and FACTORY RESET take a hold: turn their
-  knob right (the bar says HOLD GLO 2 S), then hold GLO for 2 s within 5 s; a nudge alone does nothing. SELECT, OCT-
-  and OCT+ do nothing in the menu, PRESET steps patches as everywhere, SAVE saves and closes it. HOME held no longer
-  opens anything. Sandbox mode's hint TURN ON MIDI OUT: GLO, K3 still holds. The editor's GLO button reads MENU.
-  Host- and emulator-tested; not yet on a device.
-- **The FM-1's Delay reaches 700 ms** (#273; it stopped at 520 ms). The firmware now uses the SRAM below its RAM region
-  that Felucca-based firmwares kept for a debug build and never used (`.lowram`, 29.5 KB; sloop-fm1 found it): the
-  reverb and chorus lines live there, and the room they left in the pool went to the delay line. Every boot proves that
-  memory (two patterns written and read back) and `tools/m1_link.py mem` (DIAG page 124) reports it with each stack's
-  deepest use since boot. Measured on the CI build (`tools/build.py`): the delay line 46,000 → 61,888 B (520 → 700 ms;
-  ping-pong 350 ms a side), the pool 381,032 → 378,916 of 417,792 B, `.lowram` 18,004 B used and 11,584 B free. The
-  stacks keep their sizes (main 24,320 B, supervisor 7,936 B; on the test rig they never went past 2,764 B and 2,052 B
-  over a 50-minute soak). Synced note lengths stay spread over 1..520 ms, so a stored synced Delay keeps its note
-  length; a knob click is 7 ms. The browser's Delay still reaches 1.6 s past that, browser only ("Delay over 700 ms").
-  Checked on the test rig (26 of 26 device scenarios) and in the emulator; not yet on the owner's FM-1.
-- **Restore Official Open** (Install panel, and `tools/fm1_install.py`): an FM-1 that was set up by M-VAVE's Official
-  Open refuses the official V15 ("update failed -5", nothing changed). It can now take Official Open back from M-VAVE's
-  own file (its Workbench page or `.fwsc`); from there, M-VAVE's Workbench goes back to V15. Official Open does not come
-  with Matryoshka: it includes M-VAVE's own sound engine, which is not open source. Needs this firmware. Confirmed on a user's FM-1 on 2026-10-24 (issue #183): Official Open V14 came back and started.
-- A cut-off return to stock is finished only with the package it was writing (V15 or Official Open).
-- Before it sends the official V15 or Official Open, the Install panel and `tools/fm1_install.py` read the FM-1's
-  start-up software (its boot code) and say which one it has: V15's, Official Open's, or neither. A package the FM-1
-  would refuse is not sent, and a refusal no longer guesses which one it is (1.2.2 guessed Official Open's).
-  `fm1_install.py --info` shows it, and `--save-head FILE` saves it for a bug report. Needs this firmware.
-- An FM-1 whose start-up software has its chip-key block written again (seen after the chip's repair mode) is no longer
-  refused Official Open or V15 for that alone, when the block holds the same key.
+## Unreleased
 
 ### Fixes
 
-- **On the FM-1, a filter's cutoff no longer wraps from 20 kHz to 20 Hz** (#396). At the very top of its range the knob's
-  position was computed as the bottom (a 32-bit shift of exactly 2^16 came out as 0 in the bent cutoff curve), so the bar
-  went empty at the top and the next click up landed near 20 Hz. The position is now the top, and a click up stays there.
-  Host-tested (panel_test, every bent parameter); not yet on a device.
-- **Arming on the FM-1 shows in the editor** (#191). With Live on, SEL on a device page or an environment row, REC held + a
-  black key, or the SEQ page arming the track it shows now lights the same devices' ARM in the editor (the Steps card's
-  arm icon included), and the status line says what the keys play; a disarm clears it, and a patch loaded from the panel
-  shows nothing armed. The editor's own keys keep going to the FM-1 while the armed set is the FM-1's, because the FM-1
-  routes them to it. Before, the FM-1 told the editor nothing of its arming. Arming in the editor still does not reach
-  the FM-1. Checked in the emulator (the `arming` scenario); not yet on a device.
-- **A message for the editor that the FM-1 gives up on no longer goes out half-way** (#378). When a computer stops
-  reading the FM-1's MIDI (no app open) and the FM-1's queue for the editor fills, a message that fits the queue is now
-  queued whole or not at all, so nothing goes out without its closing F7. A message longer than the queue (a track with
-  many notes, an update reply) still streams; if it is cut off, its F7 goes out ahead of the next message, so the
-  computer's MIDI parser never waits for the following message to end it. Before, the first message after the computer
-  started reading again could be lost that way. Checked in the host USB test and the emulator's deaf-host scenario;
-  not yet on a device.
+- In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
+- In the editor's Emulator view, black keys 1 to 8 on 8 Lire, Elvira 2 and other patches whose keys reach a Drum map now play its rows 1 to 8, as the FM-1 does and as the screen shows. Before, they played other rows. A MIDI keyboard still plays the row of its note number.
+- In the editor, expanding an assembly (or Expand all) moves the cards and frames around it out of the way, so its frame no longer lies on top of them. In the factory patches, 12 of 29 single expansions and 8 of 25 Expand alls left a frame over another card; now none do (headless browser check).
+- On the FM-1, a Cassia 1 preset loaded with PRESET now sets all 118 of its card rows. Before, only the first 88 were set, so line 2's envelopes, its coarse and fine tuning and two depth rows kept the previous preset's values (#464).
+
+## 1.7.0 — 2026-10-30
+
+### tl;dr
+1.7 contains the last big changes of the badly-needed redesign of FM1 controls:
+- Turning the preset knob alone now changes engine preset rather than changing the engine.
+- To change the engine, hold HOME and turn the preset knob. Don't sleep on this, there are a fuckton of engines
+- The global settings menu, the info screen, and the manual now live under GLO alongside the midi settings that were already there.
+- HOME on a params page now takes you back to that device's first page. Press it again to go to the home page of the patch.
+- **Count-in before recording:** GLO > PANEL > COUNT-IN, 1 or 2 bars. Recording always starts on a bar.
+
+1.7 also replaces the placeholder presets for each engine with five well-thought-out patches per engine, many of them based on the factory presets from the instruments they were modeled after.
+- Every preset for every engine was audited for distortion caused by CPU overload as well as clipping. On the rare occasion that the CPU threatens to fuck with your sound, the patch will preemptively decrement polyphony instead, dropping one voice until the patch is loaded again.
+
+### Full 1.7.0 changes
+
+### Quality of life
+
+- **Knobs feel better.** A turn back no longer jumps 5 clicks at once. HOME held + a knob turns in fine steps. A click glides over 23 ms, so levels and cutoffs no longer zipper.
+- **Screens draw faster:** a page reached by SELECT / ALGO in 103 ms instead of 124.
+- **Delay reaches 700 ms** on the FM-1, up from 520.
+- Elvira 2's `drone` and 8 Lire's `hold` turn in steps of 0.01, not 0.08.
+- **Arming on the FM-1 shows in the editor,** and the editor draws arming as the cables the keys really travel.
+- **PRESET's first turn reaches a real preset** instead of loading INIT again.
+- **Values are rounded, not cut off:** one click from 0 reads 0.01, not 0.00.
+
+### Presets, and an audit of every factory sound
+
+- **Every engine has five hand-written presets,** named for what they're for: Fat Bass, Vintage Strings, Acid Squelch, Tight Techno, and so on. They replace the rule-made Bright / Dark / Pad set.
+- **Four new factory patches:** Basic Poly, Drift Poly, Mono Lead and Supersaw Stack. They appear after FACTORY RESET.
+- **Nothing in the factory set clips anymore.** Every factory patch and preset was played with all its voices and patterns going. The ones that clipped were turned down, so some patches are quieter than before.
+- **The heaviest presets were trimmed to fit the FM-1's CPU,** after measuring them on a real FM-1 with 1, 4 and 8 notes held:
+  - Oracle V's Poly-Mod Bell plays 3 voices.
+  - Io 4's Unison Lead has no vibrato.
+  - Drift Poly's Slow Pad and Analog Strings play 6 voices.
+  - Oscillators with moving pitch (vibrato, glide) cost less.
+  - Io 4's Ensemble Pad can still drop a voice at 4 notes.
+- Idle voices no longer all wake in the same block.
+- **Cassia 1 reaches its resonance waves.** Its rows now match the Casio CZ-1's: named waves, a real "off" for wave 2, and the CZ's four line modes. Presets you stored for Cassia 1 on the FM-1 no longer match it.
+- **Factory fixes reach your FM-1.** An update now refreshes untouched factory slots whenever the factory patches change, and says FACTORY PATCHES UPDATED. Slots you edited and saved are kept.
+- **Loading a preset no longer pushes a patch over the FM-1's size limit.** A few long knob names were shortened to make room.
+- The `step sequencer` assembly is gone: a Steps track, a pattern or the Arpeggiator does its job. Patches that hold one still play.
+
+### Installing
+
+- **Restore Official Open:** an FM-1 set up with M-VAVE's Official Open can go back to it from M-VAVE's own file, and from there to V15.
+- The installer checks which start-up software the FM-1 has and won't send a package it would refuse.
+
+### Fixes
+
+- A filter's cutoff no longer wraps from 20 kHz to 20 Hz at the top of the knob.
+- A message to the editor is no longer cut off half-way when the computer stops reading the FM-1.
+- A return to stock that was cut off finishes with the package it was writing.
 
 ## 1.6.0 — 2026-10-28
 

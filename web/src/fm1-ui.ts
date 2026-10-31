@@ -33,6 +33,10 @@ export interface Fm1Events {
   arms?(lo: number, hi: number): void;
 }
 
+/** a note the panel's keys started or let go in the engine (panel.c panel_key): a key's own note at the octave, or a row
+ * of the Drum map the keys reach (D-520: black keys 1..8 play rows 1..8); velocity Q16 (0 on a release) */
+export interface KeyPlay { note: number; vel: number; on: boolean }
+
 /** bits of lit buttons (matrix ids) and keys (key n = F3 + n) */
 export interface Lights {
   buttons: { lit: number; dim: number; breath: number };
@@ -62,12 +66,14 @@ interface Exports {
 }
 
 export class Fm1Ui {
-  private constructor(private x: Exports) {}
+  private constructor(private x: Exports, private played: KeyPlay[]) {}
 
   /** instantiate from the module's bytes (a fetch of fm1-ui.wasm, or a file in tests) */
   static async create(bytes: BufferSource, ev: Fm1Events = {}): Promise<Fm1Ui> {
     let memory: WebAssembly.Memory | null = null;
+    const played: KeyPlay[] = [];
     const env = {
+      note: (n: number, v: number, on: number) => { played.push({ note: n, vel: v, on: on !== 0 }); },
       focus: (d: number, g: number) => ev.focus?.(d, g),
       param: (m: number, p: number, v: number) => ev.param?.(m, p, v),
       preset: (d: number) => ev.preset?.(d),
@@ -85,7 +91,7 @@ export class Fm1Ui {
     };
     const { instance } = await WebAssembly.instantiate(bytes, { fm1: env });
     memory = (instance.exports as unknown as Exports).memory;
-    return new Fm1Ui(instance.exports as unknown as Exports);
+    return new Fm1Ui(instance.exports as unknown as Exports, played);
   }
 
   /** run a patch binary (name as the FM-1 shows it; slot 0..63 shown as "01".., else none). `fresh`: another patch, the
@@ -103,8 +109,13 @@ export class Fm1Ui {
   tick(ms: number): void { this.x.fm1w_tick(ms >>> 0); }
   encoder(n: number, clicks: number): void { this.x.fm1w_encoder(n, clicks | 0); }
   button(id: number, down: boolean): void { this.x.fm1w_button(id, down ? 1 : 0); }
-  /** the 27 keys held now, bit 0 = F3 */
-  keys(bits: number): void { this.x.fm1w_keys(bits >>> 0); }
+  /** the 27 keys held now, bit 0 = F3. Returns what the keys that changed played, as the FM-1 plays them (#467): the
+   * page sounds these, not the keys' own notes */
+  keys(bits: number): KeyPlay[] {
+    this.played.length = 0;
+    this.x.fm1w_keys(bits >>> 0);
+    return this.played.splice(0);
+  }
   focus(device: number, page: number): void { this.x.fm1w_focus(device, page); }
   param(module: number, param: number, value: number): void { this.x.fm1w_param(module, param, value | 0); }
   transport(run: boolean): void { this.x.fm1w_transport(run ? 1 : 0); }

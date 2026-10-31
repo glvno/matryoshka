@@ -6,7 +6,8 @@
 // by drag, wheel or arrows; a button is held while pressed (Shift-click latches it down, for chords such as PLAY +
 // PRESET); the keys play notes. No editor knowledge here: main.ts wires the events.
 import { inlineWordmarks, logoHtml } from './brand';
-import { BUTTONS, ENCODERS, Fm1Ui, type Fm1Events } from './fm1-ui';
+import { keyBits } from './emu-keys';
+import { BUTTONS, ENCODERS, Fm1Ui, type Fm1Events, type KeyPlay } from './fm1-ui';
 
 /** keep a pointer's moves and release on el (a pointer that is already gone cannot be captured: then without) */
 const capture = (el: Element, id: number): void => { try { el.setPointerCapture(id); } catch { /* gone */ } };
@@ -289,17 +290,13 @@ export class Fm1View {
   }
 
   /** the notes held now (the computer keyboard's, the pill keys'): the FM-1's 27 keys from F3 at its octave; the
-   * pill keys show which are down */
-  keys(notes: Iterable<number>): void {
+   * pill keys show which are down. Returns what the keys that changed played (emu-keys.ts sounds it) */
+  keys(notes: Iterable<number>): KeyPlay[] {
     const ui = this.ui;
-    if (!ui) return;
-    let bits = 0;
-    for (const n of notes) {
-      const k = n - 53 - 12 * ui.octave;
-      if (k >= 0 && k < 27) bits |= 1 << k;
-    }
+    if (!ui) return [];
+    const bits = keyBits(notes, ui.octave);
     for (const [k, el] of this.keyEls) el.classList.toggle('down', (bits >> k & 1) !== 0);
-    ui.keys(bits);
+    return ui.keys(bits);
   }
 
   /** the emulated octave (the page plays the pill keys at it) */
