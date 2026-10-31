@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### The editor
+
+- A/B is back in the editor: Set snapshot A, Set snapshot B and Switch A / B snapshots in Commands, or Alt+B (Option+B on a Mac). A flip keeps the canvas where it is (cards, frames, the view) and takes the other version's name. When only values differ (parameters, attenuverters, bypass, macro ranges, Steps notes) the browser and, with Live on, the FM-1 change them in place, so notes keep sounding; anything else loads the other version whole.
+
 ### Fixes
 
 - In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
