@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // The preset demo (web/demo/README.md): every FM-1 factory patch's presets on the editor's Emulator view (EMU), in a
-// headed Chrome window sized for a screen recording, at the song's tempo (the default song: 100 bpm, about 2:41).
+// headed Chrome window sized for a screen recording, at the song's tempo (the default song: 100 bpm, about 2:22).
 //   npm run demo [-- --song NAME] [--seconds S | --tempo BPM] [--init] [--only A,B] [--skip A,B] [--url URL]
 //                [--size WxH] [--wasm FILE] [--no-normalize | --loudness DB] [--dry-run] [--headless] [--shots]
-// Everything runs on one beat grid. Patches played from the keys come first: each patch is opened (a beat), then the
-// PRESET encoder steps its engine's factory presets on bar lines, and each preset plays a bar of the song. With a chord
+// Everything runs on one beat grid, with no gap between patches. Patches played from the keys come first: each patch is
+// opened in the end of the bar before its first, then the PRESET encoder steps its engine's factory presets on bar lines, and each preset plays a bar of the song. With a chord
 // loop (songs/loop.json, the default) each preset plays a part that suits it: a pad holds the chord, a bass plays a root
 // riff, a lead a short melody, a bell or pluck an arpeggio, a drone engine its rows on the black keys. With a list of
 // notes (songs/moonlight.json) each preset plays the next notes. Patches that play from a pattern (pattern 1 of a Steps
-// track has notes: the drum machines and kits) come last: their tempo is set to the demo's (PLAY held + PRESET, not
-// stored), PLAY runs the pattern and PRESET steps the presets, a bar each. A caption over the panel names the patch and
+// track has notes: the drum machines and kits) come last: their tempo is set to the demo's as they open (PLAY held +
+// PRESET, not stored), PLAY runs the pattern and PRESET steps the presets, a bar each. A caption over the panel names the patch and
 // the preset. The page's Web MIDI sees no ports, so no FM-1 is ever reached; nothing is stored. Each step's loudness is
 // measured first, offline with the browser's engine, and the page evens it out with a gain and a limiter after MASTER.
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -33,7 +33,12 @@ const OUT = join(ROOT, 'build/demo');
 const args = process.argv.slice(2);
 const flag = (n: string): boolean => args.includes(n);
 const opt = (n: string): string | undefined => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
-const num = (n: string, d: number): number => { const v = opt(n); if (v === undefined) return d; const x = Number(v); if (!Number.isFinite(x) || x <= 0) throw new Error(`${n} takes a positive number`); return x; };
+const num = (n: string, d: number, zero = false): number => {
+  const v = opt(n); if (v === undefined) return d;
+  const x = Number(v);
+  if (!Number.isFinite(x) || x < 0 || (x === 0 && !zero)) throw new Error(`${n} takes a ${zero ? 'number of 0 or more' : 'positive number'}`);
+  return x;
+};
 const list = (n: string): string[] | undefined => opt(n)?.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 
 const SONG = opt('--song') ?? 'loop';
@@ -44,11 +49,19 @@ const INIT = flag('--init');
 const ONLY = list('--only');
 const SKIP = list('--skip') ?? [];
 const [W, H] = (opt('--size') ?? '1600x900').split('x').map(Number);
-/** beats a patch gets to load (and a pattern patch to take the tempo) before its first preset's bar */
-const LOAD_BEATS = Math.round(num('--load-beats', 1));
-const PATTERN_LOAD_BEATS = LOAD_BEATS + 1;
+/** beats of silence a patch gets to load before its first preset's bar (0: none, the demo stays on the bar grid; more
+ *  for a machine too slow to open a patch in the lead below) */
+const LOAD_BEATS = Math.round(num('--load-beats', 0, true));
 /** ms before a bar line that its PRESET click (and OCT- / OCT+) happen, so the preset is in before the first note */
 const LEAD_MS = 80;
+/** ms before a patch's first bar line that it is opened: the open (the editor loads it, the emulated FM-1 takes it, the
+ *  engine's device in focus) and the PRESET click before the line. A pattern patch also gets its tempo set (PLAY held +
+ *  PRESET). Measured on headless runs (MacBook, 2026-10-30): an open takes 141..286 ms (median about 165), the tempo
+ *  under 5 ms (its clicks planned, tempoClicks; a wait would add about 100 ms). The leads leave room for a slower one.
+ *  With no load beats they cut the end of the bar before: its notes are let go before the open, and one that would start
+ *  in it is left out (the offline render does the same, so its loudness matches) */
+const OPEN_LEAD_MS = 350;
+const PATTERN_OPEN_LEAD_MS = 450;
 
 // ---- notes and the keybed
 const SEMI: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -209,7 +222,7 @@ const parts = keyboard.map((it) => it.presets.map((name) => {
 const DRUM_BEATS = Math.round(num('--drum-beats', LOOP ? BAR : 4));
 const kbBeats = parts.flat().reduce((s, x) => s + x.beats, 0);
 const drumSteps = drums.reduce((s, i) => s + i.presets.length, 0);
-const loadBeats = keyboard.length * LOAD_BEATS + drums.length * PATTERN_LOAD_BEATS;
+const loadBeats = (keyboard.length + drums.length) * LOAD_BEATS;
 const beats = kbBeats + drumSteps * DRUM_BEATS + loadBeats;
 // the tempo: --tempo, else the song's own (120 for a song without one); with --seconds, raised to the lowest whole bpm
 // that fits that budget
@@ -217,6 +230,26 @@ const fitTempo = SECONDS ? Math.ceil((beats * 60) / SECONDS) : 0;
 const tempo = TEMPO ?? Math.max(song.tempo ?? 120, fitTempo);
 const beatMs = 60000 / tempo;
 const totalS = (beats * beatMs) / 1000;
+// a patch change: the next patch is opened its lead before its first bar line. What of that lead the load beats do not
+// cover is cut from the end of the patch's last bar: its notes there are let go before the open (and a pattern stopped)
+const leadOf = (it: Item): number => (drums.includes(it) ? PATTERN_OPEN_LEAD_MS : OPEN_LEAD_MS);
+const order = [...keyboard, ...drums];
+/** ms cut from the end of each patch's last bar for the next patch's open (0 for the last patch) */
+const tailOf = new Map(order.map((it, i) => [it, i + 1 < order.length ? Math.max(0, leadOf(order[i + 1]) - LOAD_BEATS * beatMs) : 0]));
+/** a bar's events with the last `cut` ms of its `beats` taken off: a note let go there, one that starts in it (or within
+ *  50 ms of it) left out */
+const clip = (events: Ev[], beats: number, cut: number): Ev[] => {
+  const lim = beats - cut / beatMs;
+  return cut <= 0 ? events : events.filter((e) => e.at < lim - 50 / beatMs).map((e) => ({ ...e, len: Math.min(e.len, lim - e.at) }));
+};
+/** the notes the cut leaves out, by patch */
+const dropped: string[] = [];
+for (const [n, it] of keyboard.entries()) {
+  const p = parts[n][parts[n].length - 1];
+  const was = p.events.length;
+  p.events = clip(p.events, p.beats, tailOf.get(it)!);
+  if (p.events.length < was) dropped.push(`${it.name} ${was - p.events.length}`);
+}
 const mmss = (s: number): string => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
 console.log(`song: ${song.title ?? SONG}${LOOP ? `, ${song.chords.join(' ')}, a bar of ${BAR} beats a preset` : `, ${NOTES_EACH} notes a preset`}`);
@@ -234,7 +267,8 @@ console.log(`\nfrom a pattern (PLAY, tempo set to ${tempo} bpm, not stored): ${d
 for (const i of drums) console.log(`  ${i.name.padEnd(15)} ${i.presets.map((x) => x ?? '(as it comes: no presets)').join(', ')}${i.tempo !== tempo ? `  (its own tempo ${i.tempo})` : ''}`);
 if (left.length) console.log(`\nleft out (no factory presets, played from the keys): ${left.join(', ')}`);
 console.log(`\ntempo: ${tempo} bpm${TEMPO ? ' (--tempo)' : SECONDS && tempo > (song.tempo ?? 120) ? ` (the song's ${song.tempo ?? 120} raised to fit ${SECONDS} s; at ${song.tempo ?? 120} the demo takes ${mmss((beats * 60) / (song.tempo ?? 120))})` : song.tempo ? " (the song's)" : ''}, a beat ${beatMs.toFixed(0)} ms${LOOP ? `, a preset's bar ${((BAR * beatMs) / 1000).toFixed(2)} s` : ''}`);
-console.log(`time: ${beats} beats: keys ${kbBeats} + patterns ${drumSteps * DRUM_BEATS} + loads ${loadBeats} = ${totalS.toFixed(1)} s (${mmss(totalS)})${SECONDS && totalS > SECONDS + 0.5 ? `  OVER the ${SECONDS} s budget` : ''}`);
+console.log(`time: ${beats} beats: keys ${kbBeats} + patterns ${drumSteps * DRUM_BEATS}${loadBeats ? ` + loads ${loadBeats} (--load-beats ${LOAD_BEATS})` : ''} = ${totalS.toFixed(1)} s (${mmss(totalS)})${SECONDS && totalS > SECONDS + 0.5 ? `  OVER the ${SECONDS} s budget` : ''}`);
+console.log(`patch changes: a patch is opened ${OPEN_LEAD_MS} ms before its first bar line (a pattern patch ${PATTERN_OPEN_LEAD_MS} ms, its tempo set in it)${LOAD_BEATS ? `, after ${LOAD_BEATS} load beat${LOAD_BEATS > 1 ? 's' : ''}` : ', in the end of the bar before'}${dropped.length ? `; notes left out of a last bar for it: ${dropped.join(', ')}` : ''}`);
 
 // ---- loudness: every patch rendered offline first, with the browser's engine (engine.ts) at 48 kHz, as the demo plays
 // it (its presets in turn on the same beat grid, the keys at the panel's octave, velocity 0.8 as the panel's keys send,
@@ -282,10 +316,11 @@ const lkfs = (ms: number): number => (ms > 0 ? -0.691 + 10 * Math.log10(ms) : -I
 /** a step of a patch, for its render: the preset (null: as the patch comes), the bar's keys and its length */
 interface Bar0 { preset: string | null; events: Ev[]; oct: number; beats: number }
 /**
- * A patch's steps' loudness, rendered as the page plays them, in one go: the patch opened, its load beats, then each
- * step's preset taken (Engine.load keeps running voices, delays and reverbs, as the editor's engine does when PRESET
+ * A patch's steps' loudness, rendered as the page plays them, in one go: the patch opened, its load beats (if any), then
+ * each step's preset taken (Engine.load keeps running voices, delays and reverbs, as the editor's engine does when PRESET
  * steps on the panel) and its bar played. A step's loudness is over what its gain covers in the page: from its preset's
- * click (80 ms before the bar line from the keys, on it for a pattern) to the next step's, so a ringing tail counts.
+ * click (80 ms before the bar line from the keys and for a pattern patch's first; on it while a pattern runs) to the next step's, so a ringing tail counts. The
+ * last step ends where the next patch is opened (its notes already cut to that in the plan).
  */
 function loudnessOfPatch(it: Item, bars: Bar0[], pattern: boolean): number[] {
   const make = (preset: string | null): ReturnType<(typeof FM1_PRESETS)[string]> => {
@@ -296,7 +331,7 @@ function loudnessOfPatch(it: Item, bars: Bar0[], pattern: boolean): number[] {
       if (!a || !pr || !applyPreset(p, a, pr)) throw new Error(`loudness: ${it.name} > ${preset} did not apply`);
     }
     const main = p.modules.find((m) => m.type === 'fm1');
-    if (main && pattern) main.params.tempo = tempo;   // (PLAY held + PRESET in the load beats)
+    if (main && pattern) main.params.tempo = tempo;   // (PLAY held + PRESET as it opens)
     return p;
   };
   const smp = (ms: number): number => Math.round((ms * SR) / 1000);
@@ -324,11 +359,12 @@ function loudnessOfPatch(it: Item, bars: Bar0[], pattern: boolean): number[] {
       for (const [k, v] of Object.entries(m.params)) if (!sent.has(`${m.id}.${k}`) && typeof v === 'number' && v !== was(m.id, k)) e.setParam(m.id, k, v);
     dev = q;
   };
-  let beat = pattern ? PATTERN_LOAD_BEATS : LOAD_BEATS;
+  const PRE = 200;   // (ms of the patch as it comes before the first click, which is before the first bar line)
+  let beat = LOAD_BEATS;
   const edges: number[] = [];
   for (const [j, b] of bars.entries()) {
-    const t0 = beat * beatMs;
-    const click = smp(t0 - lead);
+    const t0 = PRE + beat * beatMs;
+    const click = smp(t0 - (j === 0 ? LEAD_MS : lead));   // (a pattern patch's first preset before PLAY, on the line)
     edges.push(click);
     acts.push({ t: click, f: () => take(b.preset) });
     if (pattern && j === 0) acts.push({ t: smp(t0), f: () => e.transport(true) });
@@ -341,7 +377,7 @@ function loudnessOfPatch(it: Item, bars: Bar0[], pattern: boolean): number[] {
     }
     beat += b.beats;
   }
-  const end = smp(beat * beatMs - lead);
+  const end = smp(PRE + beat * beatMs - Math.max(lead, tailOf.get(it)!));
   edges.push(end);
   acts.sort((a, b) => a.t - b.t);   // (stable: a bar's preset before its first note)
   const l = new Float32Array(end), r = new Float32Array(end);
@@ -395,6 +431,38 @@ if (NORMALIZE) {
   }
 } else console.log('\nloudness: as the patches come (--no-normalize)');
 if (flag('--dry-run')) process.exit(0);
+
+/**
+ * The clicks that move the tempo by `d` bpm with PLAY held + PRESET (panel.c knob_fast): a click counts 5 when it
+ * follows one the same way within 80 ms, else 1 (the first, one after a reversal, one after a wait). A burst of clicks
+ * one way after a slow one counts 1 + 5 a click more; a wait (0 here) makes the next click slow again. The fewest
+ * waits, then the fewest clicks: +1 / -1 a click, 0 a wait.
+ */
+function tempoClicks(d: number): number[] {
+  type S = { v: number; dir: number; slow: boolean };
+  const key = (x: S): string => `${x.v},${x.dir},${x.slow}`;
+  const lim = Math.abs(d) + 12;
+  let front: { s: S; plan: number[] }[] = [{ s: { v: 0, dir: 0, slow: true }, plan: [] }];
+  const seen = new Set([key(front[0].s)]);
+  // breadth first on waits (each round may add one), clicks within a round
+  for (let waits = 0; waits < 5; waits++) {
+    const queue = [...front];
+    const next: typeof front = [];
+    for (let i = 0; i < queue.length; i++) {
+      const { s, plan } = queue[i];
+      if (s.v === d) return plan;
+      for (const dir of [1, -1]) {
+        const v = s.v + dir * (dir === s.dir && !s.slow ? 5 : 1);
+        const n = { v, dir, slow: false };
+        if (Math.abs(v) <= lim && !seen.has(key(n))) { seen.add(key(n)); queue.push({ s: n, plan: [...plan, dir] }); }
+      }
+      const n = { ...s, slow: true };
+      if (!s.slow && !seen.has(key(n))) { seen.add(key(n)); next.push({ s: n, plan: [...plan, 0] }); }
+    }
+    front = next;
+  }
+  throw new Error(`no tempo clicks for ${d} bpm`);
+}
 
 // ---- the browser
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -553,10 +621,15 @@ async function main(): Promise<void> {
   // do). A preset's whole bar (OCT- / OCT+, the PRESET click, the check, its notes, the peak) is one call into the page,
   // timed there against the plan's clock (Date.now() is the same clock on both sides): a busy page costs no round trips.
   type Now = { name: string; off: number; rows: number } | null;
-  interface Bar { t: number; end: number; gain: number | null; oct: number; clicks: number; engine: string | null; want: string | null; events: Ev[]; beatMs: number; pattern: boolean; start: boolean; stop: boolean; caption: [string, string] }
-  const step = (s: Bar): Promise<{ now: Now; peak: number; ms: number; k: number; loaded: string; octave: number }> => page.evaluate(async (s) => {
+  interface Bar { t: number; end: number; cut: number; gain: number | null; oct: number; clicks: number; engine: string | null; want: string | null; events: Ev[]; beatMs: number; pattern: boolean; start: boolean; stop: boolean; caption: [string, string] }
+  const step = (s: Bar): Promise<{ now: Now; peak: number; ms: number; k: number; loaded: string; octave: number; late: number | null }> => page.evaluate(async (s) => {
     const w = window as unknown as { __m1test: { presetNow(l: string): Now; emu(): { loaded: string; octave: number } }; __demoLevel?: () => { peak: number; ms: number }; __demoGain?: (db: number) => void };
-    const until = (t: number): Promise<void> => new Promise((r) => setTimeout(r, Math.max(0, t - Date.now())));
+    // (a timer wakes up to 25 ms before `t` and the rest is waited out: a timer alone came up to 50 ms late on a busy page;
+    // the audio runs in its own thread, so only the drawing waits)
+    const until = async (t: number): Promise<void> => {
+      await new Promise((r) => setTimeout(r, Math.max(0, t - 25 - Date.now())));
+      while (Date.now() < t) { /* spin */ }
+    };
     const wheel = (label: string, clicks: number): void => {
       const d = document.querySelector(`#fm1-view [aria-label="${label} encoder"]`);
       for (let i = 0; i < Math.abs(clicks); i++) d?.dispatchEvent(new WheelEvent('wheel', { deltaY: clicks > 0 ? -100 : 100, bubbles: true, cancelable: true }));
@@ -571,8 +644,9 @@ async function main(): Promise<void> {
       pointer(b, 'pointerup', 99);
     };
     const cap = document.getElementById('demo-caption');
-    // a bar line: the octave and the preset just before it (a pattern's preset on it, so its beat stays whole)
-    await until(s.pattern ? s.t : s.t - 80);
+    // a bar line: the octave and the preset just before it (a running pattern's preset on it, so its beat stays whole;
+    // a pattern patch's first preset before it too, then PLAY on it)
+    await until(s.pattern && !s.start ? s.t : s.t - 80);
     for (let o = w.__m1test.emu().octave; o > s.oct; o--) button('Oct-');
     for (let o = w.__m1test.emu().octave; o < s.oct; o++) button('Oct+');
     wheel('Presets', s.clicks);
@@ -581,7 +655,9 @@ async function main(): Promise<void> {
     // (a patch whose values matched no preset as it came: the first click lands on Init, one more goes on)
     if (s.want && s.want !== 'Init' && now?.name === 'Init' && !now.off) { wheel('Presets', 1); now = w.__m1test.presetNow(s.engine!); }
     if (cap) cap.innerHTML = `${s.caption[0]}${s.caption[1] ? `<span>${s.caption[1]}</span>` : ''}`;
-    if (s.start) button('PLAY');
+    // (how late the bar's first sound is: PLAY for a pattern, else its first key)
+    let late: number | null = null;
+    if (s.start) { await until(s.t); button('PLAY'); late = Date.now() - s.t; }
     // (the patch the emulated FM-1 runs after the click: another one means PRESET stepped patches, not presets)
     const loaded = w.__m1test.emu().loaded;
     await until(s.t);
@@ -589,37 +665,37 @@ async function main(): Promise<void> {
     const k = s.events.length ? Math.min(1, Math.max(0.5, (s.end - Date.now()) / (s.end - s.t))) : 1;
     const t0 = Date.now();
     const on = s.events.map((e) => ({ ...e, down: t0 + e.at * s.beatMs * k, up: t0 + (e.at + e.len) * s.beatMs * k - Math.min(100, e.len * s.beatMs * k * 0.25) }));
-    const edges = [...on.map((e) => ({ t: e.down, keys: e.keys, type: 'pointerdown' })), ...on.map((e) => ({ t: e.up, keys: e.keys, type: 'pointerup' }))].sort((a, b) => a.t - b.t);
+    const edges = [...on.map((e) => ({ t: e.down, at: e.at, keys: e.keys, type: 'pointerdown' })), ...on.map((e) => ({ t: e.up, at: e.at, keys: e.keys, type: 'pointerup' }))].sort((a, b) => a.t - b.t);
     for (const e of edges) {
       await until(e.t);
       for (const n of e.keys) key(n, e.type);
+      if (late === null && e.type === 'pointerdown') late = Date.now() - (s.t + e.at * s.beatMs);
     }
-    await until(s.end - (s.pattern ? 0 : 80));
+    // the bar's end: just before the next bar's click, or where the next patch is opened
+    await until(s.cut);
     if (s.stop) button('PLAY');
     const lv = w.__demoLevel?.() ?? { peak: -1, ms: 0 };
-    return { now, peak: lv.peak, ms: lv.ms, k, loaded, octave: w.__m1test.emu().octave };
+    return { now, peak: lv.peak, ms: lv.ms, k, loaded, octave: w.__m1test.emu().octave, late };
   }, s);
-  /** Main's tempo, as the FM-1 sets it: PLAY held + PRESET (1 bpm a click, 5 when turned fast), read back from the editor
-   *  (the emulated FM-1 sends it on); demo only: the patch is never stored */
-  const setTempo = (bpm: number): Promise<number> => page.evaluate(async (bpm) => {
+  /** Main's tempo, as the FM-1 sets it: PLAY held + PRESET, read back from the editor (the emulated FM-1 sends it on);
+   *  demo only: the patch is never stored. The clicks are planned from the patch's own tempo (tempoClicks), so they go
+   *  in one burst with at most a wait or two; if the tempo read back is not the one asked for, it is corrected a click
+   *  at a time, as slowly as the FM-1 needs */
+  const setTempo = (from: number, bpm: number): Promise<number> => page.evaluate(async ([plan, bpm]) => {
     const w = window as unknown as { __m1test: { patchJson(): string } };
     const now = (): number => Math.round((JSON.parse(w.__m1test.patchJson()) as { modules: { type: string; params: { tempo?: number } }[] }).modules.find((m) => m.type === 'fm1')?.params.tempo ?? 0);
     const d = document.querySelector('#fm1-view [aria-label="Presets encoder"]');
     const play = [...document.querySelectorAll('#fm1-view .fm1-btn')].find((x) => x.textContent === 'PLAY') ?? null;
     const pointer = (type: string): void => { play?.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 98, pointerType: 'touch', isPrimary: false })); };
+    const click = (dir: number): void => { d?.dispatchEvent(new WheelEvent('wheel', { deltaY: dir > 0 ? -100 : 100, bubbles: true, cancelable: true })); };
+    // (the FM-1's clock in the page moves on each frame: a wait is 90 ms and then a frame, so the next click is a slow one)
+    const pause = async (): Promise<void> => { await new Promise((r) => setTimeout(r, 90)); await new Promise((r) => requestAnimationFrame(() => r(null))); };
     pointer('pointerdown');
-    let last = 0, lastDir = 0;
-    for (let i = 0; i < 60 && now() !== bpm; i++) {
-      const dir = Math.sign(bpm - now());
-      // (a click within 80 ms of one the same way counts 5: near the target, wait that out)
-      if (Math.abs(bpm - now()) < 5 && dir === lastDir) await new Promise((r) => setTimeout(r, Math.max(0, 90 - (performance.now() - last))));
-      d?.dispatchEvent(new WheelEvent('wheel', { deltaY: dir > 0 ? -100 : 100, bubbles: true, cancelable: true }));
-      last = performance.now();
-      lastDir = dir;
-    }
+    for (const a of plan) if (a === 0) await pause(); else click(a);
+    for (let i = 0; i < 40 && now() !== bpm; i++) { await pause(); click(Math.sign(bpm - now())); }
     pointer('pointerup');   // (a release after PLAY held + PRESET neither starts nor stops)
     return now();
-  }, bpm);
+  }, [tempoClicks(bpm - from), bpm] as const);
 
   // the audio starts with the first press on the panel (as for a person): a click on the screen's bezel
   await page.locator('.fm1-bezel').click();
@@ -627,7 +703,7 @@ async function main(): Promise<void> {
   const peak = (): Promise<unknown> => page.evaluate(() => (window as unknown as { __demoLevel?: () => unknown }).__demoLevel?.());
 
   const open = async (it: Item): Promise<void> => {
-    await page.evaluate((n) => { const c = document.getElementById('demo-caption'); if (c) c.textContent = n; }, it.name);
+    // (the caption stays on the bar before: the first preset's click names the patch and the preset together)
     if (!(await call<boolean>('openFactory', it.name))) throw new Error(`the page has no factory patch ${it.name}`);
     const want = it.name.toUpperCase();
     for (let t = Date.now(); (await emuState()).loaded !== want && Date.now() - t < 5000; ) await sleep(20);
@@ -659,57 +735,83 @@ async function main(): Promise<void> {
   const nextLevel = (): Level | null => (NORMALIZE ? levels[li++] : null);
   const db = (r: { ms: number }): string => (r.ms > 0 ? `${lkfs(r.ms).toFixed(1)} LKFS` : 'silent');
   const gainSays = (lv: Level | null): string => (lv ? `  gain ${(lv.gain >= 0 ? '+' : '') + lv.gain.toFixed(1)}${lv.capped ? ' (capped)' : ''}` : '');
-  const t0 = Date.now() + 1000;   // (a second to settle: the first beat is the first patch's load)
+  const t0 = Date.now() + 1000;   // (a second to settle: the first patch is opened in it)
   let at = 0;   // the plan's clock, in beats from t0
   const ms = (b: number): number => t0 + b * beatMs;
-  const lateBy = (b: number): number => Date.now() - ms(b);
   let shotN = 0;
   const shot = (name: string, when: number): void => {
     const n = ++shotN;
     setTimeout(() => void page.screenshot({ path: join(OUT, `${String(n).padStart(2, '0')}-${name.replace(/[^\w-]+/g, '_')}.png`) }).catch(() => {}), Math.max(0, when - Date.now()));
   };
   const stamp = (): string => `${((Date.now() - t0) / 1000).toFixed(1).padStart(6)} s`;
-  let loadLate = 0;
+  /** each patch's open: how long it took, the tempo setting (a pattern patch), how far it ran past the time its first
+   *  click needed, and how late its first sound was */
+  const changes: { name: string; open: number; tempo: number | null; over: number; late: number | null }[] = [];
+  /** a patch opened its lead before its first bar line (after its load beats, if any), a pattern patch's tempo set too */
+  const change = async (it: Item): Promise<void> => {
+    const line = ms(at + LOAD_BEATS);
+    await sleep(Math.max(0, line - leadOf(it) - Date.now()));
+    const a = Date.now();
+    await open(it);
+    const b = Date.now();
+    let tempoMs: number | null = null;
+    if (drums.includes(it)) {
+      const got = await setTempo(it.tempo, tempo);
+      tempoMs = Date.now() - b;
+      if (got !== tempo) console.log(`  warning: ${it.name}'s tempo is ${got}, not ${tempo}`);
+    }
+    // (its first click is 80 ms before the line)
+    changes.push({ name: it.name, open: b - a, tempo: tempoMs, over: Date.now() - (line - LEAD_MS), late: null });
+    at += LOAD_BEATS;
+  };
+  /** where a bar ends: just before the next bar's click, or (a patch's last bar) where the next patch is opened */
+  const cutOf = (it: Item, end: number, last: boolean, pattern: boolean): number => end - Math.max(pattern ? 0 : LEAD_MS, last ? tailOf.get(it)! : 0);
+  /** the latest first sound of a bar within a patch (not a patch change), for comparison */
+  let barLate = { late: 0, name: '' };
+  const lateSays = (j: number, late: number | null, what: string): string => (j === 0 && late !== null && late > 30 ? `  (${what} ${late} ms late)` : '');
 
   console.log(`\nplaying (${mmss(totalS)} planned, ${tempo} bpm)`);
-  await sleep(Math.max(0, t0 - Date.now()));
   for (const [n, it] of keyboard.entries()) {
-    await open(it);
-    loadLate = Math.max(loadLate, lateBy(at + LOAD_BEATS) + 80);
-    at += LOAD_BEATS;
+    await change(it);
     for (const [j, name] of it.presets.entries()) {
       const p = parts[n][j];
       if (shots && j === 1) shot(`${it.name}-${name}`, ms(at + Math.min(1, p.beats / 2)));
       const lv = nextLevel();
-      const r = await step({ t: ms(at), end: ms(at + p.beats), gain: lv?.gain ?? null, oct: p.oct, clicks: 1, engine: it.engine, want: name, events: p.events, beatMs, pattern: false, start: false, stop: false, caption: [it.name, name!] });
+      const last = j === it.presets.length - 1;
+      const r = await step({ t: ms(at), end: ms(at + p.beats), cut: cutOf(it, ms(at + p.beats), last, false), gain: lv?.gain ?? null, oct: p.oct, clicks: 1, engine: it.engine, want: name, events: p.events, beatMs, pattern: false, start: false, stop: false, caption: [it.name, name!] });
       stale(it, r.loaded);
+      if (j === 0) changes[changes.length - 1].late = r.late;
+      else if (r.late !== null && r.late > barLate.late) barLate = { late: r.late, name: `${it.name} > ${name}` };
       at += p.beats;
       report.push({ patch: it.name, preset: name!, ok: r.now?.name === name && !r.now.off, peak: r.peak, live: lkfs(r.ms), capped: !!lv?.capped });
-      console.log(`  ${stamp()}  ${it.name} > ${name} [${p.role}]${says(name!, r.now)}  peak ${r.peak.toFixed(3)}, ${db(r)}${gainSays(lv)}${r.k < 0.9 ? `  (notes at ${(r.k * 100).toFixed(0)} %: late)` : ''}${r.octave !== p.oct ? `  (octave ${r.octave}, not ${p.oct})` : ''}`);
+      console.log(`  ${stamp()}  ${it.name} > ${name} [${p.role}]${says(name!, r.now)}  peak ${r.peak.toFixed(3)}, ${db(r)}${gainSays(lv)}${r.k < 0.9 ? `  (notes at ${(r.k * 100).toFixed(0)} %: late)` : ''}${r.octave !== p.oct ? `  (octave ${r.octave}, not ${p.oct})` : ''}${lateSays(j, r.late, 'first note')}`);
     }
   }
   for (const it of drums) {
-    await open(it);
-    const got = await setTempo(tempo);
-    if (got !== tempo) console.log(`  warning: ${it.name}'s tempo is ${got}, not ${tempo}`);
-    loadLate = Math.max(loadLate, lateBy(at + PATTERN_LOAD_BEATS));
-    at += PATTERN_LOAD_BEATS;
+    await change(it);
     for (const [j, name] of it.presets.entries()) {
       if (shots && j === 0) shot(`${it.name}-${name ?? 'pattern'}`, ms(at + DRUM_BEATS / 2));
       const last = j === it.presets.length - 1;
       const lv = nextLevel();
-      const r = await step({ t: ms(at), end: ms(at + DRUM_BEATS), gain: lv?.gain ?? null, oct: (await emuState()).octave, clicks: name ? 1 : 0, engine: name ? it.engine : null, want: name, events: [], beatMs,
+      const r = await step({ t: ms(at), end: ms(at + DRUM_BEATS), cut: cutOf(it, ms(at + DRUM_BEATS), last, true), gain: lv?.gain ?? null, oct: (await emuState()).octave, clicks: name ? 1 : 0, engine: name ? it.engine : null, want: name, events: [], beatMs,
         pattern: true, start: j === 0, stop: last, caption: [it.name, name ?? ''] });
       stale(it, r.loaded);
+      if (j === 0) changes[changes.length - 1].late = r.late;
+      else if (r.late !== null && r.late > barLate.late) barLate = { late: r.late, name: `${it.name} > ${name}` };
       at += DRUM_BEATS;
       report.push({ patch: it.name, preset: name ?? '(pattern)', ok: !name || (r.now?.name === name && !r.now.off), peak: r.peak, live: lkfs(r.ms), capped: !!lv?.capped });
-      console.log(`  ${stamp()}  ${it.name} > ${name ?? '(its pattern)'}${name ? says(name, r.now) : ''}  peak ${r.peak.toFixed(3)}, ${db(r)}${gainSays(lv)}`);
+      console.log(`  ${stamp()}  ${it.name} > ${name ?? '(its pattern)'}${name ? says(name, r.now) : ''}  peak ${r.peak.toFixed(3)}, ${db(r)}${gainSays(lv)}${lateSays(j, r.late, 'PLAY')}`);
     }
   }
   const took = (Date.now() - t0) / 1000;
   const silent = report.filter((r) => r.peak >= 0 && r.peak < 0.002);
   const wrong = report.filter((r) => !r.ok);
-  console.log(`\ndone: ${took.toFixed(1)} s played, ${totalS.toFixed(1)} s planned (${(took - totalS >= 0 ? '+' : '') + (took - totalS).toFixed(1)} s); the slowest load ran ${loadLate > 0 ? `${loadLate.toFixed(0)} ms into its first bar` : 'on time'}`);
+  console.log(`\ndone: ${took.toFixed(1)} s played, ${totalS.toFixed(1)} s planned (${(took - totalS >= 0 ? '+' : '') + (took - totalS).toFixed(1)} s)`);
+  const spread = (xs: number[]): string => { const v = [...xs].sort((a, b) => a - b); return v.length ? `${v[0]} / ${v[Math.floor(v.length / 2)]} / ${v[v.length - 1]} ms` : 'none'; };
+  const pats = changes.filter((c) => c.tempo !== null);
+  const worst = changes.filter((c) => c.late !== null).sort((a, b) => b.late! - a.late!)[0];
+  const overs = changes.filter((c) => c.over > 0);
+  console.log(`patch changes (min / median / max): open ${spread(changes.map((c) => c.open))}${pats.length ? `; a pattern patch's tempo ${spread(pats.map((c) => c.tempo!))}` : ''}; the latest first sound ${worst ? `${worst.late} ms (${worst.name})` : 'none'} (within a patch: ${barLate.late} ms${barLate.name ? `, ${barLate.name}` : ''})${overs.length ? `; past the lead: ${overs.map((c) => `${c.name} +${c.over} ms`).join(', ')}` : ''}`);
   console.log(`${report.length} steps; silent: ${silent.length ? silent.map((r) => `${r.patch} > ${r.preset}`).join(', ') : 'none'}; preset not confirmed in the editor: ${wrong.length ? wrong.map((r) => `${r.patch} > ${r.preset}`).join(', ') : 'none'}`);
   const heard = report.filter((r) => Number.isFinite(r.live)).sort((a, b) => a.live - b.live);
   if (heard.length) {

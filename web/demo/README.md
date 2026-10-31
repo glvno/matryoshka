@@ -1,6 +1,6 @@
 # The preset demo
 
-`npm run demo` (in `web/`) plays every FM-1 factory patch's presets on the editor's Emulator view (EMU) in about two
+`npm run demo` (in `web/`) plays every FM-1 factory patch's presets on the editor's Emulator view (EMU) in under two
 and a half minutes, in a Chrome window sized for a screen recording, each preset about as loud as the others. The window shows the FM-1 panel alone, under a caption with
 the patch's and the preset's names: the sidebar, the status line and the other editor controls are hidden.
 
@@ -25,16 +25,18 @@ so. `--wasm public/fm1-ui.wasm` makes the page run this checkout's build instead
 ## What it plays
 
 Everything runs on one beat grid, so a change of preset lands on a bar line and the demo sounds like one track changing
-instruments.
+instruments. A change of patch costs no beat: the bar after a patch's last preset is the next patch's first.
 
 1. It opens `#emu` and starts the audio with a click on the screen.
-2. **Patches played from the keys** come first. Opening a patch takes a beat. Then the PRESET encoder steps its engine's
-   factory presets, one click a bar, and the LCD shows `PRESET <NAME>`. Each preset plays one bar of the song on the
+2. **Patches played from the keys** come first. A patch is opened 350 ms before its first bar line, in the end of the bar
+   before: that bar's notes are let go before the open, and a note that would start in it is left out. Then the PRESET
+   encoder steps its engine's factory presets, one click a bar, and the LCD shows `PRESET <NAME>`. Each preset plays one bar of the song on the
    panel's keys. OCT- and OCT+ move the keys to where that bar's notes are, just before the bar. All of a patch's
    presets play before the next patch.
-3. **Patches that play from a pattern** come last: the drum machines and kits. Opening one takes two beats, in which
-   the demo sets Main's tempo to the demo's tempo with PLAY held + PRESET, as on the FM-1 (never stored). Then PLAY runs
-   the pattern on a bar line, and PRESET steps the presets, a bar each. A patch with no presets (the 808 Kit, the
+3. **Patches that play from a pattern** come last: the drum machines and kits. One is opened 450 ms before its first
+   bar line, and in that time the demo sets Main's tempo to the demo's tempo with PLAY held + PRESET, as on the FM-1
+   (never stored). The clicks are worked out from the patch's own tempo, so they take a burst and at most one short
+   wait. Then PLAY runs the pattern on the bar line, and PRESET steps the presets, a bar each. A patch with no presets (the 808 Kit, the
    909 Kit, `<7PH`) runs its pattern for one bar.
 
 The split is read from each patch, not from a list. A patch plays from a pattern when the pattern its Steps track plays
@@ -43,14 +45,15 @@ on PLAY (pattern 1) has notes. Every other patch is played from the keys. A patc
 An engine whose keys reach a Drum map and no Voicing (8 Lire, Elvira 2: one voice per row) is played on the black keys,
 as on the FM-1, where black key n plays row n ([D-520](../../docs/ledger/steps.md#D-520)).
 
-The caption over the panel is the demo's own. The FM-1 shows a patch's name only when PRESET or a program change loads
+The caption over the panel is the demo's own. It names the patch and its first preset together, at the first preset's
+click. The FM-1 shows a patch's name only when PRESET or a program change loads
 it, which the demo does not use.
 
 ## Time
 
-The tempo is the song's own: 100 bpm for the default song. Every preset gets one bar of two beats, 1.2 s: 269 beats
-in all, 2:41. `--seconds S` raises the tempo to the lowest whole number of beats a minute that fits S seconds (117 s
-gives 138 bpm, 0.87 s a preset, 1:57). `--tempo BPM` sets the tempo whatever the time. The plan prints the tempo and
+The tempo is the song's own: 100 bpm for the default song. Every preset gets one bar of two beats, 1.2 s: 236 beats
+in all, 2:22. `--seconds S` raises the tempo to the lowest whole number of beats a minute that fits S seconds (117 s
+gives 122 bpm, 0.98 s a preset, 1:56). `--tempo BPM` sets the tempo whatever the time. The plan prints the tempo and
 the total.
 
 ## Loudness
@@ -82,7 +85,7 @@ Options:
 | `--seconds S` | | a time budget; the tempo is raised to fit it |
 | `--tempo BPM` | | this tempo, whatever the time |
 | `--drum-beats N` | a bar | how long each pattern step runs |
-| `--load-beats N` | 1 | beats to open a patch (a pattern patch gets one more) |
+| `--load-beats N` | 0 | beats of silence before each patch's first bar, to open it (for a machine too slow to open one in the lead) |
 | `--loudness DB` | the median step | the loudness every step is brought to, in LKFS (such as `-18`) |
 | `--no-normalize` | | no gain and no limiter: every preset as loud as it comes |
 | `--init` | off | include each engine's Init preset |
@@ -95,7 +98,8 @@ Options:
 | `--shots` | | one screenshot per patch into `build/demo/` |
 | `--notes N`, `--chords`, `--rhythm` | 3, off, off | for a song that is a list of notes (below) |
 
-At the end the script prints the time played against the plan. It also lists any preset that made no sound, any
+At the end the script prints the time played against the plan, how long the patches took to open (and the pattern
+patches' tempo to set), and the latest first sound after a patch change. It also lists any preset that made no sound, any
 preset whose values the editor did not see arrive, and the spread of loudness at the speakers.
 
 ## Recording
