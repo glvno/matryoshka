@@ -62,14 +62,16 @@ export class Fm1Mirror {
 
   /** find the FM-1 and start following it; `firmware`: the user's choice, else what its identity says. Throws with a
    * readable message when there is no FM-1 or its firmware is not known (then it has to be picked) */
-  async follow(firmware?: Firmware): Promise<Profile> {
+  async follow(firmware?: Firmware, port?: MIDIInput | null): Promise<Profile> {
     if (!navigator.requestMIDIAccess) throw new Error('Web MIDI is not available in this browser (use Chrome or Edge)');
     this.stop();
     const access = await navigator.requestMIDIAccess({ sysex: true });
-    const found = await identifyFm1(access);   // (no answer to the handshake: by port name only)
+    // `port`: the input the editor link found (#187: it may carry a name no FM-1 has, which macOS kept from before)
+    const found = port ? null : await identifyFm1(access);   // (no answer to the handshake: by port name only)
     const id = found?.text ?? null;
     const name = found?.text ? found.port : null;
-    const input = [...access.inputs.values()].find((p) => (name ? p.name === name : PORT.test(p.name ?? '')) && !/ota-/i.test(p.name ?? '') && p.state !== 'disconnected');
+    const input = port && port.state !== 'disconnected' ? port
+      : [...access.inputs.values()].find((p) => (name ? p.name === name : PORT.test(p.name ?? '')) && !/ota-/i.test(p.name ?? '') && p.state !== 'disconnected');
     if (!input) throw new Error('no FM-1 found among the MIDI inputs');
     const fw = firmware ?? firmwareOf(id);
     if (!fw) throw new Error(`${input.name}${id ? ` (${id})` : ''}: which firmware does it run? Pick it in the list`);

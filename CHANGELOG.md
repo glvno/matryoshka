@@ -5,6 +5,7 @@
 ### Fixes
 
 - Opening `<7PH` in the editor no longer shows it over the FM-1's memory budget (3,894 of 3,840 bytes, measured in the editor before; 3,840 now, the same as on the FM-1), so it no longer opens as a sandbox patch or pauses Live sync. The drum kits' velocity inputs show as jacks on their cards again, instead of gain rows whose sliders did nothing (#465).
+- Connect FM-1 finds the FM-1 even when the computer shows it under another name. macOS keeps the first name it saw for a USB device, so after an install the FM-1 can appear as "Felucca" or some other name (#187). When the FM-1 is still not found, the message now lists the MIDI ports the browser sees. When the browser blocks SysEx, the message says where to allow it.
 - In the editor, a preset that changes the voice count (Basic Poly, Supersaw Stack, Drift Poly, Io 4, Oracle V and others) no longer keeps part of the previous preset's sound.
 - In the editor's Emulator view, black keys 1 to 8 on 8 Lire, Elvira 2 and other patches whose keys reach a Drum map now play its rows 1 to 8, as the FM-1 does and as the screen shows. Before, they played other rows. A MIDI keyboard still plays the row of its note number.
 - In the editor, expanding an assembly (or Expand all) moves the cards and frames around it out of the way, so its frame no longer lies on top of them. In the factory patches, 12 of 29 single expansions and 8 of 25 Expand alls left a frame over another card; now none do (headless browser check).
