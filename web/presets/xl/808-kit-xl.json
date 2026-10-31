@@ -6295,10 +6295,6 @@
       {
        "module": 45,
        "port": "in"
-      },
-      {
-       "module": 45,
-       "port": "clock"
       }
      ]
     },
@@ -6374,6 +6370,11 @@
      "module": 51,
      "port": "cv",
      "label": "vel"
+    },
+    {
+     "module": 48,
+     "port": "p1",
+     "label": "p1"
     }
    ],
    "outputs": [
@@ -6509,6 +6510,11 @@
      ]
     },
     {
+     "module": 11,
+     "port": "p1",
+     "label": "bass drum vel"
+    },
+    {
      "module": 18,
      "port": "gate",
      "label": "snare drum gate",
@@ -6520,6 +6526,17 @@
      ]
     },
     {
+     "module": 17,
+     "port": "p1",
+     "label": "snare drum vel",
+     "also": [
+      {
+       "module": 20,
+       "port": "p1"
+      }
+     ]
+    },
+    {
      "module": 27,
      "port": "trig",
      "label": "hand clap gate",
@@ -6527,6 +6544,17 @@
       {
        "module": 30,
        "port": "gate"
+      }
+     ]
+    },
+    {
+     "module": 29,
+     "port": "p1",
+     "label": "hand clap vel",
+     "also": [
+      {
+       "module": 31,
+       "port": "p1"
       }
      ]
     },
@@ -6551,6 +6579,16 @@
        "port": "in"
       }
      ]
+    },
+    {
+     "module": 38,
+     "port": "p1",
+     "label": "hihats closed vel"
+    },
+    {
+     "module": 40,
+     "port": "p1",
+     "label": "hihats open vel"
     },
     {
      "module": 46,
@@ -6582,6 +6620,11 @@
      "module": 61,
      "port": "gate",
      "label": "cow bell gate"
+    },
+    {
+     "module": 62,
+     "port": "p1",
+     "label": "cow bell vel"
     },
     {
      "module": 67,
@@ -6980,6 +7023,16 @@
        "port": "gate"
       }
      ]
+    },
+    {
+     "module": 86,
+     "port": "p1",
+     "label": "p1"
+    },
+    {
+     "module": 85,
+     "port": "p1",
+     "label": "p1 2"
     }
    ],
    "outputs": [
@@ -7017,6 +7070,16 @@
        "port": "gate"
       }
      ]
+    },
+    {
+     "module": 94,
+     "port": "p1",
+     "label": "p1"
+    },
+    {
+     "module": 93,
+     "port": "p1",
+     "label": "p1 2"
     }
    ],
    "outputs": [
@@ -7054,6 +7117,16 @@
        "port": "gate"
       }
      ]
+    },
+    {
+     "module": 99,
+     "port": "p1",
+     "label": "p1"
+    },
+    {
+     "module": 98,
+     "port": "p1",
+     "label": "p1 2"
     }
    ],
    "outputs": [
@@ -7091,6 +7164,16 @@
        "port": "gate"
       }
      ]
+    },
+    {
+     "module": 107,
+     "port": "p1",
+     "label": "p1"
+    },
+    {
+     "module": 106,
+     "port": "p1",
+     "label": "p1 2"
     }
    ],
    "outputs": [
@@ -7128,6 +7211,16 @@
        "port": "gate"
       }
      ]
+    },
+    {
+     "module": 112,
+     "port": "p1",
+     "label": "p1"
+    },
+    {
+     "module": 111,
+     "port": "p1",
+     "label": "p1 2"
     }
    ],
    "outputs": [

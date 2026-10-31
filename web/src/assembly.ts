@@ -25,6 +25,7 @@ import {
   type Patch,
   type ParamDef,
   type PolyCards,
+  rangeOf,
   rowDef,
   topOf,
 } from './patch';
@@ -559,9 +560,18 @@ function uniqueLabel(taken: Iterable<string>, want: string): string {
 }
 
 /**
+ * The parameters a pin's cable shows on a card (its rows `params`) as rows: those it routes to, but not one through a
+ * macro range that has no row there yet. A macro range puts the pin's value between two positions instead of adding to
+ * the base (patch.ts rangeOf), so with the cable in, a new row's slider would do nothing: such a pin stays a jack on the
+ * card instead (the drum kits' velocity pins, #465). None: the pin is a jack.
+ */
+export const pinRows = (m: ModuleInst | undefined, pin: string, params: readonly ParamRef[]): string[] =>
+  isPin(pin) && m ? (m.map?.[pin] ?? []).filter((param) => !rangeOf(m, pin, param) || params.some((q) => rowTargets(q).some((t) => t.module === m.id && t.param === param))) : [];
+
+/**
  * Exposed pins become promoted parameters. The editor has no p1 / p2 jacks, so an assembly offers modulation through the
- * sliders of the parameters a pin routes to (a cable to such a slider goes to the inner pin). A pin routed nowhere stays
- * an exposed input, so its cable can still be seen. Returns the inputs left; the promotions are added to `params`.
+ * sliders of the parameters a pin routes to (a cable to such a slider goes to the inner pin). A pin routed nowhere, or
+ * only through macro ranges with no row (pinRows), stays an exposed input, so its cable can still be seen. Returns the inputs left; the promotions are added to `params`.
  */
 export function pinsToParams(inputs: PortRef[], params: ParamRef[], moduleOf: (id: number) => ModuleInst | undefined): PortRef[] {
   const out: PortRef[] = [];
@@ -569,8 +579,8 @@ export function pinsToParams(inputs: PortRef[], params: ParamRef[], moduleOf: (i
     const keep: Target[] = [];
     for (const t of targetsOf(r)) {
       const m = moduleOf(t.module);
-      const routed = isPin(t.port) && m?.map?.[t.port]?.length ? m.map[t.port] : null;
-      if (!routed || !m) {
+      const routed = pinRows(m, t.port, params);
+      if (!routed.length || !m) {
         keep.push(t);
         continue;
       }
@@ -738,8 +748,8 @@ export function reconcile(p: Patch, a: AssemblyInst, defs?: Record<string, Modul
   for (const r of b.inputs) {
     // an outside cable into a routed pin shows on the sliders it feeds: promote those instead of exposing the pin
     const m = moduleOf(r.module);
-    const routed = isPin(r.port) && m?.map?.[r.port]?.length ? m.map[r.port] : null;
-    if (routed && m) for (const param of routed) {
+    const routed = pinRows(m, r.port, a.params);
+    if (routed.length && m) for (const param of routed) {
       if (reachableParam(p, a, m.id, param)) promoteOnce(a.params, m, param, childLabel(p, a, 'param', m.id, param));
     }
     else if (!isExposed(a, 'in', r.module, r.port)) a.inputs.push({ ...r, label: uniqueLabel(a.inputs.map((x) => x.label), childLabel(p, a, 'in', r.module, r.port) ?? r.port) });

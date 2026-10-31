@@ -106,6 +106,7 @@ import { EXCLUDED_TYPES,
   moveAssembly,
   overlapping,
   parentOf,
+  pinRows,
   promote,
   reconcileAll,
   removeChild,
@@ -3832,7 +3833,8 @@ export class Editor {
     a.inputs.forEach((r, i) => {
       const m = mod(r.module);
       const pd = DEFS[m.type].inputs.find((q) => q.name === r.port)!;
-      if (isPin(pd.name) && !this.unrouted(m, pd.name)) return; // routed pins are shown as promoted parameters
+      // routed pins are shown as promoted parameters; one routed only through macro ranges is a jack (pinRows)
+      if (isPin(pd.name) && !this.unrouted(m, pd.name) && pinRows(m, pd.name, a.params).length) return;
       const port = this.port(m, pd, 'in', { label: r.label, rename: () => this.renameRef(r, 'input'), also: r.also, open });
       if (arranging) this.arrangeItem(port, a, 'in', i);
       ins.push({ el: port, module: m.id, port: pd.name });

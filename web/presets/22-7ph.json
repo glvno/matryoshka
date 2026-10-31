@@ -3128,6 +3128,11 @@
      "module": 37,
      "port": "out",
      "label": "out"
+    },
+    {
+     "module": 16,
+     "port": "out",
+     "label": "out 2"
     }
    ],
    "params": [
@@ -3195,6 +3200,11 @@
      "module": 38,
      "port": "out",
      "label": "out"
+    },
+    {
+     "module": 25,
+     "port": "hp",
+     "label": "hp"
     }
    ],
    "params": [
@@ -3350,6 +3360,16 @@
      "module": 51,
      "port": "p1",
      "label": "cowbell vel"
+    },
+    {
+     "module": 41,
+     "port": "in",
+     "label": "in"
+    },
+    {
+     "module": 43,
+     "port": "in",
+     "label": "in 2"
     }
    ],
    "outputs": [

@@ -686,9 +686,16 @@ def open_problem(raw):
     return None
 
 
+def is_page(raw):
+    """a web page (M-VAVE's Workbench page), not a package: text starting with "<". A .fwsc is encrypted, so its first
+    byte is "<" (0x3C) about once in 256 builds; its first bytes are not text (CI run 41178937616)"""
+    head = raw[:64].lstrip()
+    return head.startswith(b"<") and all(32 <= c < 127 or c in b"\t\r\n" for c in head)
+
+
 def workbench_packages(raw):
     """M-VAVE publishes Official Open inside its Workbench page as base64: the packages in it (a .fwsc: itself)"""
-    if not raw[:64].lstrip().startswith(b"<"):
+    if not is_page(raw):
         return [raw]
     out = []
     for m in re.finditer(rb'"data":"([A-Za-z0-9+/=]{100000,})"', raw):
@@ -710,7 +717,7 @@ def load_package(path, force):
         why = open_problem(pkg)
         if why is None:
             return product_of(pkg), logical_image(pkg), "open"
-    if raw[:64].lstrip().startswith(b"<"):
+    if is_page(raw):
         raise InstallError("badpkg", f"{path}: no M-VAVE Official Open in this page ({why or 'no packages'})")
     product = product_of(raw)
     if OPEN_PRODUCT_RE.fullmatch(product):
